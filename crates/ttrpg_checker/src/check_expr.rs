@@ -608,6 +608,9 @@ impl<'a> Checker<'a> {
                 ),
                 callee.span,
             );
+            for arg in args {
+                self.check_expr(&arg.value);
+            }
             return Ty::Error;
         }
 
@@ -622,6 +625,9 @@ impl<'a> Checker<'a> {
             Some(info) => info.clone(),
             None => {
                 self.error(format!("undefined function `{}`", callee_name), callee.span);
+                for arg in args {
+                    self.check_expr(&arg.value);
+                }
                 return Ty::Error;
             }
         };

@@ -76,6 +76,7 @@ impl<'a> Checker<'a> {
                     );
                 }
             } else {
+                self.check_expr(&binding.value);
                 self.error(
                     format!(
                         "modify binding `{}` does not match any parameter of `{}`",
@@ -184,6 +185,7 @@ impl<'a> Checker<'a> {
                         );
                     }
                 } else {
+                    self.check_expr(value);
                     self.error(
                         format!(
                             "`{}` has no parameter `{}`",
@@ -294,6 +296,7 @@ impl<'a> Checker<'a> {
                         );
                     }
                 } else {
+                    self.check_expr(&binding.value);
                     self.error(
                         format!(
                             "suppress binding `{}` does not match any parameter or field of event `{}`",

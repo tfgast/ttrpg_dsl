@@ -842,6 +842,25 @@ system "test" {
     expect_errors(source, &["does not match any parameter or field"]);
 }
 
+#[test]
+fn test_suppress_binding_unknown_param_still_checks_value() {
+    let source = r#"
+system "test" {
+    entity Character { name: string }
+    event leave(actor: Character) {
+        target: Character
+    }
+    condition Foo on bearer: Character {
+        suppress leave(nonexistent: undefined_var)
+    }
+}
+"#;
+    expect_errors(source, &[
+        "does not match any parameter or field",
+        "undefined variable `undefined_var`",
+    ]);
+}
+
 // ═══════════════════════════════════════════════════════════════
 // Fix #4: Modify targets must be derive or mechanic
 // ═══════════════════════════════════════════════════════════════
@@ -1584,6 +1603,26 @@ system "test" {
 }
 
 #[test]
+fn test_trigger_unknown_binding_still_checks_value() {
+    let source = r#"
+system "test" {
+    entity Character { name: string }
+    event hit(actor: Character) {
+        damage: int
+    }
+    reaction Block on reactor: Character (trigger: hit(nonexistent: undefined_var)) {
+        cost { reaction }
+        resolve {}
+    }
+}
+"#;
+    expect_errors(source, &[
+        "does not match any parameter of event",
+        "undefined variable `undefined_var`",
+    ]);
+}
+
+#[test]
 fn test_duplicate_modify_binding() {
     let source = r#"
 system "test" {
@@ -1599,6 +1638,48 @@ system "test" {
 }
 "#;
     expect_errors(source, &["duplicate modify binding `actor`"]);
+}
+
+#[test]
+fn test_modify_unknown_binding_still_checks_value() {
+    let source = r#"
+system "test" {
+    entity Character { speed: int }
+    derive initial_budget(actor: Character) -> int {
+        actor.speed
+    }
+    condition Slow on bearer: Character {
+        modify initial_budget(nonexistent: undefined_var) {
+            result = result - 10
+        }
+    }
+}
+"#;
+    expect_errors(source, &[
+        "does not match any parameter",
+        "undefined variable `undefined_var`",
+    ]);
+}
+
+#[test]
+fn test_modify_unknown_param_override_still_checks_value() {
+    let source = r#"
+system "test" {
+    entity Character { speed: int }
+    derive initial_budget(actor: Character) -> int {
+        actor.speed
+    }
+    condition Slow on bearer: Character {
+        modify initial_budget(actor: bearer) {
+            nonexistent_param = undefined_var
+        }
+    }
+}
+"#;
+    expect_errors(source, &[
+        "has no parameter `nonexistent_param`",
+        "undefined variable `undefined_var`",
+    ]);
 }
 
 #[test]
@@ -2503,6 +2584,19 @@ system "test" {
     expect_no_errors(source);
 }
 
+#[test]
+fn test_option_extends_warns() {
+    let source = r#"
+system "test" {
+    option flanking extends "Some System" {
+        description: "Flanking gives advantage"
+        default: on
+    }
+}
+"#;
+    expect_warnings(source, &["option `extends` is not yet validated"]);
+}
+
 // ═══════════════════════════════════════════════════════════════
 // Move declarations
 // ═══════════════════════════════════════════════════════════════
@@ -2693,6 +2787,38 @@ system "test" {
 }
 "#;
     expect_errors(source, &["is a local binding of type int, not a callable function"]);
+}
+
+#[test]
+fn local_binding_as_callee_still_checks_args() {
+    let source = r#"
+system "test" {
+    derive bar() -> int { 1 }
+    derive foo() -> int {
+        let bar = 5
+        bar(undefined_var)
+    }
+}
+"#;
+    expect_errors(source, &[
+        "is a local binding of type int, not a callable function",
+        "undefined variable `undefined_var`",
+    ]);
+}
+
+#[test]
+fn undefined_function_still_checks_args() {
+    let source = r#"
+system "test" {
+    derive foo() -> int {
+        nonexistent(undefined_var)
+    }
+}
+"#;
+    expect_errors(source, &[
+        "undefined function `nonexistent`",
+        "undefined variable `undefined_var`",
+    ]);
 }
 
 #[test]

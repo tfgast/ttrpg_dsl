@@ -633,6 +633,13 @@ fn collect_option(
             span,
         ));
     }
+
+    if o.extends.is_some() {
+        diagnostics.push(Diagnostic::warning(
+            "option `extends` is not yet validated (requires module resolution)".to_string(),
+            span,
+        ));
+    }
 }
 
 fn collect_move(

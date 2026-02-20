@@ -200,6 +200,7 @@ impl<'a> Checker<'a> {
                             );
                         }
                     } else {
+                        self.check_expr(&binding.value);
                         self.error(
                             format!(
                                 "trigger binding `{}` does not match any parameter of event `{}`",
