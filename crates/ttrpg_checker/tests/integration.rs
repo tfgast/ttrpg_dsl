@@ -1954,6 +1954,140 @@ system "test" {
     expect_no_errors(source);
 }
 
+// ═══════════════════════════════════════════════════════════════
+// Fix: Receiver type must be entity
+// ═══════════════════════════════════════════════════════════════
+
+#[test]
+fn test_action_struct_receiver_rejected() {
+    let source = r#"
+system "test" {
+    struct Stats { hp: int }
+    action Heal on actor: Stats () {
+        cost { action }
+        resolve {}
+    }
+}
+"#;
+    expect_errors(source, &["action `Heal` receiver type must be an entity, found Stats"]);
+}
+
+#[test]
+fn test_reaction_struct_receiver_rejected() {
+    let source = r#"
+system "test" {
+    struct Stats { hp: int }
+    entity Character { hp: int }
+    event damage(actor: Character) {}
+    reaction Block on actor: Stats (trigger: damage(actor)) {
+        cost { reaction }
+        resolve {}
+    }
+}
+"#;
+    expect_errors(source, &["reaction `Block` receiver type must be an entity, found Stats"]);
+}
+
+#[test]
+fn test_condition_struct_receiver_rejected() {
+    let source = r#"
+system "test" {
+    struct Stats { hp: int }
+    condition Slow on bearer: Stats {}
+}
+"#;
+    expect_errors(source, &["condition `Slow` receiver type must be an entity, found Stats"]);
+}
+
+#[test]
+fn test_action_enum_receiver_rejected() {
+    let source = r#"
+system "test" {
+    enum Color { red, green }
+    action Paint on actor: Color () {
+        cost { action }
+        resolve {}
+    }
+}
+"#;
+    expect_errors(source, &["action `Paint` receiver type must be an entity, found Color"]);
+}
+
+#[test]
+fn test_action_entity_receiver_ok() {
+    let source = r#"
+system "test" {
+    entity Character { hp: int }
+    action Heal on actor: Character () {
+        cost { action }
+        resolve { actor.hp += 10 }
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Fix: Entity-generic builtins (apply_condition, remove_condition)
+// ═══════════════════════════════════════════════════════════════
+
+#[test]
+fn test_apply_condition_with_non_character_entity() {
+    let source = r#"
+system "test" {
+    entity Monster {
+        hp: int
+    }
+    condition Stunned on bearer: Monster {}
+    action Bash on actor: Monster (target: Monster) {
+        cost { action }
+        resolve {
+            apply_condition(target, Stunned, Duration.indefinite)
+        }
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_remove_condition_with_non_character_entity() {
+    let source = r#"
+system "test" {
+    entity Monster {
+        hp: int
+    }
+    condition Stunned on bearer: Monster {}
+    action Cleanse on actor: Monster (target: Monster) {
+        cost { action }
+        resolve {
+            remove_condition(target, Stunned)
+        }
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_apply_condition_with_struct_rejected() {
+    let source = r#"
+system "test" {
+    entity Character { hp: int }
+    struct Stats { hp: int }
+    condition Stunned on bearer: Character {}
+    action Bash on actor: Character (target: Character) {
+        cost { action }
+        resolve {
+            let s = Stats { hp: 10 }
+            apply_condition(s, Stunned, Duration.indefinite)
+        }
+    }
+}
+"#;
+    expect_errors(source, &["argument `target` has type Stats, expected entity"]);
+}
+
 // ── Issue 1: Immutable let bindings reject field/index mutation ──
 
 #[test]

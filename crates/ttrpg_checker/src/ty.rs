@@ -22,6 +22,9 @@ pub enum Ty {
     Struct(std::string::String),
     Entity(std::string::String),
 
+    // Wildcard: matches any Entity(_) — used for entity-generic builtins
+    AnyEntity,
+
     // Generic containers
     List(Box<Ty>),
     Set(Box<Ty>),
@@ -46,6 +49,10 @@ impl Ty {
     /// Whether this is the `none` literal type: `option<error>`.
     pub fn is_none(&self) -> bool {
         matches!(self, Ty::Option(inner) if inner.is_error())
+    }
+
+    pub fn is_entity(&self) -> bool {
+        matches!(self, Ty::Entity(_) | Ty::AnyEntity)
     }
 
     pub fn is_numeric(&self) -> bool {
@@ -73,6 +80,7 @@ impl Ty {
             Ty::Enum(name) => name.clone(),
             Ty::Struct(name) => name.clone(),
             Ty::Entity(name) => name.clone(),
+            Ty::AnyEntity => "entity".into(),
             Ty::List(inner) => format!("list<{}>", inner.display()),
             Ty::Set(inner) => format!("set<{}>", inner.display()),
             Ty::Map(k, v) => format!("map<{}, {}>", k.display(), v.display()),

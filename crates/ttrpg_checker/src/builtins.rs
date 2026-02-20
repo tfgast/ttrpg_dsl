@@ -118,7 +118,7 @@ pub fn register_builtins() -> Vec<FnInfo> {
             params: vec![
                 ParamInfo {
                     name: "target".into(),
-                    ty: Ty::Entity("Character".into()),
+                    ty: Ty::AnyEntity,
                     has_default: false,
                 },
                 ParamInfo {
@@ -141,7 +141,7 @@ pub fn register_builtins() -> Vec<FnInfo> {
             params: vec![
                 ParamInfo {
                     name: "target".into(),
-                    ty: Ty::Entity("Character".into()),
+                    ty: Ty::AnyEntity,
                     has_default: false,
                 },
                 ParamInfo {

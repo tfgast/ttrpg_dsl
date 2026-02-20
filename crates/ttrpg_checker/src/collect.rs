@@ -330,6 +330,17 @@ fn collect_action(
     }
 
     env.validate_type_names(&a.receiver_type, diagnostics);
+    let recv_ty = env.resolve_type(&a.receiver_type);
+    if !recv_ty.is_error() && !recv_ty.is_entity() {
+        diagnostics.push(Diagnostic::error(
+            format!(
+                "action `{}` receiver type must be an entity, found {}",
+                a.name,
+                recv_ty.display()
+            ),
+            a.receiver_type.span,
+        ));
+    }
 
     // Detect implicit name shadowing
     if a.receiver_name == "turn" {
@@ -393,6 +404,17 @@ fn collect_reaction(
     }
 
     env.validate_type_names(&r.receiver_type, diagnostics);
+    let recv_ty = env.resolve_type(&r.receiver_type);
+    if !recv_ty.is_error() && !recv_ty.is_entity() {
+        diagnostics.push(Diagnostic::error(
+            format!(
+                "reaction `{}` receiver type must be an entity, found {}",
+                r.name,
+                recv_ty.display()
+            ),
+            r.receiver_type.span,
+        ));
+    }
 
     // Detect implicit name shadowing
     if r.receiver_name == "trigger" {
@@ -448,6 +470,17 @@ fn collect_condition(
     }
 
     env.validate_type_names(&c.receiver_type, diagnostics);
+    let recv_ty = env.resolve_type(&c.receiver_type);
+    if !recv_ty.is_error() && !recv_ty.is_entity() {
+        diagnostics.push(Diagnostic::error(
+            format!(
+                "condition `{}` receiver type must be an entity, found {}",
+                name,
+                recv_ty.display()
+            ),
+            c.receiver_type.span,
+        ));
+    }
     env.conditions.insert(
         name.clone(),
         ConditionInfo {

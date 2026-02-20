@@ -419,6 +419,13 @@ impl<'a> Checker<'a> {
             }
             _ => {}
         }
+        // AnyEntity matches any Entity(_)
+        match (actual, expected) {
+            (Ty::Entity(_), Ty::AnyEntity)
+            | (Ty::AnyEntity, Ty::Entity(_))
+            | (Ty::AnyEntity, Ty::AnyEntity) => return true,
+            _ => {}
+        }
         // Built-in type keywords and user-defined types with the same name are equivalent
         match (actual, expected) {
             (Ty::Enum(name), Ty::Duration) | (Ty::Duration, Ty::Enum(name))
