@@ -154,12 +154,14 @@ impl<'a> Checker<'a> {
             let mut positional_index = 0usize;
             let mut seen_bindings = HashSet::new();
 
-            // By design: positional trigger bindings use Python-style resolution.
+            // By design: positional trigger bindings use fill-the-gaps resolution.
             // All named bindings are collected first, then positional bindings fill the
             // remaining slots left-to-right. This means the positional mapping depends
             // on the full set of named bindings, not just those preceding the positional
-            // one. This is consistent with how keyword arguments work in Python and keeps
-            // the implementation simple without sacrificing correctness.
+            // one. This is more permissive than Python (which forbids positional after
+            // keyword) but keeps the implementation simple and the behavior predictable:
+            // named bindings always claim their slot, positional bindings always fill
+            // the leftmost unclaimed slot.
             let named_param_names: HashSet<String> = r
                 .trigger
                 .bindings

@@ -527,13 +527,9 @@ impl<'a> Checker<'a> {
                 if let Ty::Enum(enum_name) = &obj_ty {
                     return self.check_enum_constructor(enum_name, field, args, span);
                 }
-                // For method-like calls, check if it's a known type's variant constructor
-                if let ExprKind::Ident(type_name) = &object.node {
-                    // Check if the type is an enum
-                    if let Some(DeclInfo::Enum(_)) = self.env.types.get(type_name.as_str()) {
-                        return self.check_enum_constructor(type_name, field, args, span);
-                    }
-                }
+                // No fallback to env.types here — check_expr already resolved the
+                // identifier through the normal scope chain. If a local variable
+                // shadows an enum name, the local binding wins.
                 self.error("cannot call a field access expression".to_string(), span);
                 return Ty::Error;
             }

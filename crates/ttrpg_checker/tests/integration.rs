@@ -1892,6 +1892,26 @@ system "test" {
     expect_no_errors(source);
 }
 
+#[test]
+fn test_local_variable_shadows_enum_constructor() {
+    // A local variable named after an enum type should shadow the enum
+    // for constructor calls — the fallback to env.types must not bypass scope.
+    let source = r#"
+system "test" {
+    enum Effect {
+        timed(count: int)
+        permanent
+    }
+    derive foo() -> int {
+        let Effect = 5
+        Effect.timed(count: 1)
+        0
+    }
+}
+"#;
+    expect_errors(source, &["cannot call a field access expression"]);
+}
+
 // ═══════════════════════════════════════════════════════════════
 // Regression: none should not collapse option types
 // ═══════════════════════════════════════════════════════════════
