@@ -2375,3 +2375,291 @@ system "test" {
 "#;
     expect_errors(source, &["duplicate binding `a` in pattern"]);
 }
+
+// ═══════════════════════════════════════════════════════════════
+// Option declarations
+// ═══════════════════════════════════════════════════════════════
+
+#[test]
+fn test_option_with_modify_clause_ok() {
+    let source = r#"
+system "test" {
+    derive base_modifier(x: int) -> int { x + 2 }
+    option generous {
+        description: "Increases base modifier"
+        default: off
+        when enabled {
+            modify base_modifier(x: 10) {
+                result = result + 5
+            }
+        }
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_option_modify_undefined_target() {
+    let source = r#"
+system "test" {
+    option flanking {
+        when enabled {
+            modify nonexistent_fn(actor: 1) {
+                result = 0
+            }
+        }
+    }
+}
+"#;
+    expect_errors(source, &["modify target `nonexistent_fn` is not a defined function"]);
+}
+
+#[test]
+fn test_option_modify_wrong_target_kind() {
+    let source = r#"
+system "test" {
+    entity Character { hp: int }
+    action Heal on actor: Character () {
+        cost { action }
+        resolve { actor.hp += 10 }
+    }
+    option flanking {
+        when enabled {
+            modify Heal(actor: 1) {
+                result = 0
+            }
+        }
+    }
+}
+"#;
+    expect_errors(source, &["modify target `Heal` must be a derive or mechanic"]);
+}
+
+#[test]
+fn test_option_modify_binding_type_mismatch() {
+    let source = r#"
+system "test" {
+    entity Character { speed: int }
+    derive initial_budget(actor: Character) -> int {
+        actor.speed
+    }
+    option flanking {
+        when enabled {
+            modify initial_budget(actor: "not_a_character") {
+                result = result + 5
+            }
+        }
+    }
+}
+"#;
+    expect_errors(source, &["modify binding `actor` has type string, expected Character"]);
+}
+
+#[test]
+fn test_option_with_modify_clause_with_receiver_in_condition() {
+    // Verify condition modify still works after refactor
+    let source = r#"
+system "test" {
+    entity Character { speed: int }
+    derive initial_budget(actor: Character) -> int {
+        actor.speed
+    }
+    condition Slow on bearer: Character {
+        modify initial_budget(actor: bearer) {
+            result = result - 10
+        }
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_duplicate_option_name() {
+    let source = r#"
+system "test" {
+    option flanking {
+        description: "First"
+    }
+    option flanking {
+        description: "Second"
+    }
+}
+"#;
+    expect_errors(source, &["duplicate option declaration `flanking`"]);
+}
+
+#[test]
+fn test_option_empty_no_errors() {
+    let source = r#"
+system "test" {
+    option flanking {
+        description: "Flanking gives advantage"
+        default: on
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Move declarations
+// ═══════════════════════════════════════════════════════════════
+
+#[test]
+fn test_move_valid_ok() {
+    let source = r#"
+system "test" {
+    entity Character {
+        stat: int
+    }
+    move Hack on actor: Character () {
+        trigger: "When you hack and slash"
+        roll: 2d6 + actor.stat
+        on success {
+            actor.stat += 1
+        }
+        on failure {
+            actor.stat -= 1
+        }
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_move_receiver_must_be_entity() {
+    let source = r#"
+system "test" {
+    struct Stats { hp: int }
+    move Hack on actor: Stats () {
+        trigger: "When you hack"
+        roll: 2d6
+        on success {}
+    }
+}
+"#;
+    expect_errors(source, &["move `Hack` receiver type must be an entity, found Stats"]);
+}
+
+#[test]
+fn test_move_roll_must_be_dice_expr() {
+    let source = r#"
+system "test" {
+    entity Character { stat: int }
+    move Hack on actor: Character () {
+        trigger: "When you hack"
+        roll: 42
+        on success {}
+    }
+}
+"#;
+    expect_errors(source, &["move `Hack` roll expression must be DiceExpr, found int"]);
+}
+
+#[test]
+fn test_move_outcome_can_mutate_and_roll() {
+    let source = r#"
+system "test" {
+    entity Character { hp: int }
+    move Hack on actor: Character () {
+        trigger: "When you hack"
+        roll: 2d6
+        on success {
+            let r = roll(1d6)
+            actor.hp += r.total
+        }
+        on failure {}
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_move_undefined_variable_in_outcome() {
+    let source = r#"
+system "test" {
+    entity Character { hp: int }
+    move Hack on actor: Character () {
+        trigger: "When you hack"
+        roll: 2d6
+        on success {
+            actor.hp += nonexistent
+        }
+    }
+}
+"#;
+    expect_errors(source, &["undefined variable `nonexistent`"]);
+}
+
+#[test]
+fn test_move_receiver_shadows_turn() {
+    let source = r#"
+system "test" {
+    entity Character { hp: int }
+    move Hack on turn: Character () {
+        trigger: "When you hack"
+        roll: 2d6
+        on success {}
+    }
+}
+"#;
+    expect_errors(source, &["receiver `turn` shadows the implicit turn budget binding"]);
+}
+
+#[test]
+fn test_move_param_shadows_receiver() {
+    let source = r#"
+system "test" {
+    entity Character { hp: int }
+    move Hack on actor: Character (actor: int) {
+        trigger: "When you hack"
+        roll: 2d6
+        on success {}
+    }
+}
+"#;
+    expect_errors(source, &["parameter `actor` shadows the receiver binding"]);
+}
+
+#[test]
+fn test_duplicate_move_name() {
+    let source = r#"
+system "test" {
+    entity Character { hp: int }
+    move Hack on actor: Character () {
+        trigger: "First"
+        roll: 2d6
+        on success {}
+    }
+    move Hack on actor: Character () {
+        trigger: "Second"
+        roll: 2d6
+        on success {}
+    }
+}
+"#;
+    expect_errors(source, &["duplicate function declaration `Hack`"]);
+}
+
+#[test]
+fn test_move_call_from_derive_rejected() {
+    let source = r#"
+system "test" {
+    entity Character { hp: int }
+    move Hack on actor: Character () {
+        trigger: "When you hack"
+        roll: 2d6
+        on success {}
+    }
+    derive foo(c: Character) -> int {
+        Hack(c)
+        0
+    }
+}
+"#;
+    expect_errors(source, &["is a move and can only be called from action or reaction context"]);
+}

@@ -586,17 +586,18 @@ impl<'a> Checker<'a> {
             self.check_builtin_permissions(&callee_name, span);
         }
 
-        // Check context restrictions for actions/reactions
-        if matches!(fn_info.kind, FnKind::Action | FnKind::Reaction) {
+        // Check context restrictions for actions/reactions/moves
+        if matches!(fn_info.kind, FnKind::Action | FnKind::Reaction | FnKind::Move) {
             let current_ctx = self.scope.current_block_kind();
             if !matches!(
                 current_ctx,
                 Some(BlockKind::ActionResolve) | Some(BlockKind::ReactionResolve)
             ) {
-                let kind_name = if fn_info.kind == FnKind::Action {
-                    "an action"
-                } else {
-                    "a reaction"
+                let kind_name = match fn_info.kind {
+                    FnKind::Action => "an action",
+                    FnKind::Reaction => "a reaction",
+                    FnKind::Move => "a move",
+                    _ => unreachable!(),
                 };
                 self.error(
                     format!(

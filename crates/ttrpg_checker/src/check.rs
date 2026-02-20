@@ -59,7 +59,8 @@ impl<'a> Checker<'a> {
             DeclKind::Entity(e) => self.check_entity_defaults(e),
             DeclKind::Prompt(p) => self.check_prompt(p),
             DeclKind::Event(_) | DeclKind::Enum(_) => {}
-            DeclKind::Option(_) | DeclKind::Move(_) => {}
+            DeclKind::Option(o) => self.check_option(o),
+            DeclKind::Move(m) => self.check_move(m),
         }
     }
 
@@ -287,13 +288,73 @@ impl<'a> Checker<'a> {
         for clause in &c.clauses {
             match clause {
                 ConditionClause::Modify(m) => {
-                    self.check_modify_clause(m, &c.receiver_name, &c.receiver_type);
+                    self.check_modify_clause(
+                        m,
+                        Some((&c.receiver_name, &c.receiver_type)),
+                    );
                 }
                 ConditionClause::Suppress(s) => {
                     self.check_suppress_clause(s, &c.receiver_name, &c.receiver_type);
                 }
             }
         }
+    }
+
+    fn check_option(&mut self, o: &OptionDecl) {
+        if let Some(ref clauses) = o.when_enabled {
+            for clause in clauses {
+                self.check_modify_clause(clause, None);
+            }
+        }
+    }
+
+    fn check_move(&mut self, m: &MoveDecl) {
+        self.scope.push(BlockKind::ActionResolve);
+
+        // Bind receiver
+        let recv_ty = self.env.resolve_type(&m.receiver_type);
+        self.scope.bind(
+            m.receiver_name.clone(),
+            VarBinding {
+                ty: recv_ty,
+                mutable: false,
+                is_local: false,
+            },
+        );
+
+        // Bind params
+        self.bind_params(&m.params);
+
+        // Bind turn keyword
+        self.scope.bind(
+            "turn".into(),
+            VarBinding {
+                ty: Ty::TurnBudget,
+                mutable: true,
+                is_local: false,
+            },
+        );
+
+        // Check roll expression must be DiceExpr
+        let roll_ty = self.check_expr(&m.roll_expr);
+        if !roll_ty.is_error() && roll_ty != Ty::DiceExpr {
+            self.error(
+                format!(
+                    "move `{}` roll expression must be DiceExpr, found {}",
+                    m.name, roll_ty
+                ),
+                m.roll_expr.span,
+            );
+        }
+
+        // Check each outcome block
+        for outcome in &m.outcomes {
+            self.scope.push(BlockKind::ActionResolve);
+            self.check_block(&outcome.body);
+            self.scope.pop();
+        }
+
+        self.scope.pop();
     }
 
     fn check_prompt(&mut self, p: &PromptDecl) {

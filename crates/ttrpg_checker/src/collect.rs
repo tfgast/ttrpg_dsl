@@ -114,9 +114,8 @@ fn pass_1b(
             DeclKind::Condition(c) => collect_condition(c, env, diagnostics, decl.span),
             DeclKind::Prompt(p) => collect_prompt(p, env, diagnostics, decl.span),
             DeclKind::Event(e) => collect_event(e, env, diagnostics, decl.span),
-            DeclKind::Option(_) | DeclKind::Move(_) => {
-                // Options and moves: skip for now (v0 doesn't deeply check these)
-            }
+            DeclKind::Option(o) => collect_option(o, env, diagnostics, decl.span),
+            DeclKind::Move(m) => collect_move(m, env, diagnostics, decl.span),
         }
     }
 }
@@ -577,6 +576,88 @@ fn collect_event(
             params,
             fields,
         },
+    );
+}
+
+fn collect_option(
+    o: &OptionDecl,
+    env: &mut TypeEnv,
+    diagnostics: &mut Vec<Diagnostic>,
+    span: Span,
+) {
+    if !env.options.insert(o.name.clone()) {
+        diagnostics.push(Diagnostic::error(
+            format!("duplicate option declaration `{}`", o.name),
+            span,
+        ));
+    }
+}
+
+fn collect_move(
+    m: &MoveDecl,
+    env: &mut TypeEnv,
+    diagnostics: &mut Vec<Diagnostic>,
+    span: Span,
+) {
+    env.validate_type_names(&m.receiver_type, diagnostics);
+    let recv_ty = env.resolve_type(&m.receiver_type);
+    if !recv_ty.is_error() && !recv_ty.is_entity() {
+        diagnostics.push(Diagnostic::error(
+            format!(
+                "move `{}` receiver type must be an entity, found {}",
+                m.name,
+                recv_ty.display()
+            ),
+            m.receiver_type.span,
+        ));
+    }
+
+    // Detect implicit name shadowing
+    if m.receiver_name == "turn" {
+        diagnostics.push(Diagnostic::error(
+            format!(
+                "move `{}` receiver `turn` shadows the implicit turn budget binding",
+                m.name
+            ),
+            span,
+        ));
+    }
+    for p in &m.params {
+        if p.name == "turn" {
+            diagnostics.push(Diagnostic::error(
+                format!(
+                    "move `{}` parameter `turn` shadows the implicit turn budget binding",
+                    m.name
+                ),
+                p.span,
+            ));
+        }
+        if p.name == m.receiver_name {
+            diagnostics.push(Diagnostic::error(
+                format!(
+                    "move `{}` parameter `{}` shadows the receiver binding",
+                    m.name, p.name
+                ),
+                p.span,
+            ));
+        }
+    }
+
+    let receiver = ParamInfo {
+        name: m.receiver_name.clone(),
+        ty: env.resolve_type(&m.receiver_type),
+        has_default: false,
+    };
+
+    collect_fn(
+        &m.name,
+        FnKind::Move,
+        &m.params,
+        None,
+        Some(receiver),
+        env,
+        diagnostics,
+        span,
     );
 }
 

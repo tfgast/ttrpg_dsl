@@ -9,12 +9,12 @@ use crate::scope::*;
 use crate::ty::Ty;
 
 impl<'a> Checker<'a> {
-    /// Check a modify clause in a condition declaration.
+    /// Check a modify clause. `receiver` is `Some` for conditions (which have
+    /// a receiver binding) and `None` for options (which have no receiver).
     pub fn check_modify_clause(
         &mut self,
         clause: &ModifyClause,
-        receiver_name: &str,
-        receiver_type: &Spanned<TypeExpr>,
+        receiver: Option<(&str, &Spanned<TypeExpr>)>,
     ) {
         // Look up the target function
         let fn_info = match self.env.lookup_fn(&clause.target) {
@@ -42,16 +42,18 @@ impl<'a> Checker<'a> {
 
         self.scope.push(BlockKind::ModifyClause);
 
-        // Bind the condition receiver
-        let recv_ty = self.env.resolve_type(receiver_type);
-        self.scope.bind(
-            receiver_name.to_string(),
-            VarBinding {
-                ty: recv_ty,
-                mutable: false,
-                is_local: false,
-            },
-        );
+        // Bind the receiver if present (conditions have one, options don't)
+        if let Some((receiver_name, receiver_type)) = receiver {
+            let recv_ty = self.env.resolve_type(receiver_type);
+            self.scope.bind(
+                receiver_name.to_string(),
+                VarBinding {
+                    ty: recv_ty,
+                    mutable: false,
+                    is_local: false,
+                },
+            );
+        }
 
         // Validate bindings reference real parameters and type-check value expressions
         let mut seen_bindings = HashSet::new();

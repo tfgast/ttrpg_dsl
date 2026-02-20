@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::ty::Ty;
 use ttrpg_ast::ast::TypeExpr;
@@ -52,6 +52,7 @@ pub enum FnKind {
     Action,
     Reaction,
     Prompt,
+    Move,
     Builtin,
 }
 
@@ -95,6 +96,7 @@ pub struct TypeEnv {
     pub events: HashMap<String, EventInfo>,
     pub variant_to_enum: HashMap<String, String>,
     pub builtins: HashMap<String, FnInfo>,
+    pub options: HashSet<String>,
 }
 
 impl TypeEnv {
@@ -106,6 +108,7 @@ impl TypeEnv {
             events: HashMap::new(),
             variant_to_enum: HashMap::new(),
             builtins: HashMap::new(),
+            options: HashSet::new(),
         }
     }
 
