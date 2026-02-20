@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use ttrpg_ast::ast::*;
 use ttrpg_ast::diagnostic::Diagnostic;
 use ttrpg_ast::Span;
@@ -27,6 +29,12 @@ impl<'a> Checker<'a> {
 
     pub fn warning(&mut self, message: impl Into<String>, span: Span) {
         self.diagnostics.push(Diagnostic::warning(message, span));
+    }
+
+    /// Validate type names in a type expression, emitting diagnostics for unknowns.
+    pub fn validate_type(&mut self, texpr: &ttrpg_ast::Spanned<TypeExpr>) {
+        self.env
+            .validate_type_names(texpr, &mut self.diagnostics);
     }
 
     /// Check all declarations in the program.
@@ -144,8 +152,15 @@ impl<'a> Checker<'a> {
             // Check trigger bindings: validate names match event params/fields and types match.
             let event_info = event_info.clone();
             let mut positional_index = 0usize;
+            let mut seen_bindings = HashSet::new();
             for binding in &r.trigger.bindings {
                 if let Some(ref name) = binding.name {
+                    if !seen_bindings.insert(name.clone()) {
+                        self.error(
+                            format!("duplicate trigger binding `{}`", name),
+                            binding.span,
+                        );
+                    }
                     let expected_ty = event_info
                         .params
                         .iter()
@@ -341,6 +356,16 @@ impl<'a> Checker<'a> {
         // Resource is int-like for reads
         if actual.is_int_like() && expected.is_int_like() {
             return true;
+        }
+        // none (Option(Error)) is compatible with any Option(T)
+        match (actual, expected) {
+            (Ty::Option(inner), _) if inner.is_error() && matches!(expected, Ty::Option(_)) => {
+                return true;
+            }
+            (_, Ty::Option(inner)) if inner.is_error() && matches!(actual, Ty::Option(_)) => {
+                return true;
+            }
+            _ => {}
         }
         // Built-in type keywords and user-defined types with the same name are equivalent
         match (actual, expected) {

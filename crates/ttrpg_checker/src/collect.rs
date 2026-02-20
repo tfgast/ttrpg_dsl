@@ -441,6 +441,16 @@ fn collect_event(
         .iter()
         .filter_map(|f| {
             env.validate_type_names(&f.ty, diagnostics);
+            if seen_params.contains(&f.name) {
+                diagnostics.push(Diagnostic::error(
+                    format!(
+                        "event `{}` field `{}` collides with a parameter of the same name",
+                        e.name, f.name
+                    ),
+                    f.span,
+                ));
+                return None;
+            }
             if !seen_fields.insert(f.name.clone()) {
                 diagnostics.push(Diagnostic::error(
                     format!("duplicate field `{}` in event `{}`", f.name, e.name),

@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use ttrpg_ast::ast::*;
 use ttrpg_ast::Spanned;
 
@@ -51,7 +53,14 @@ impl<'a> Checker<'a> {
         );
 
         // Validate bindings reference real parameters and type-check value expressions
+        let mut seen_bindings = HashSet::new();
         for binding in &clause.bindings {
+            if !seen_bindings.insert(binding.name.clone()) {
+                self.error(
+                    format!("duplicate modify binding `{}`", binding.name),
+                    binding.span,
+                );
+            }
             if let Some(param) = fn_info.params.iter().find(|p| p.name == binding.name) {
                 let val_ty = self.check_expr(&binding.value);
                 if !val_ty.is_error() && !self.types_compatible(&val_ty, &param.ty) {
@@ -112,8 +121,9 @@ impl<'a> Checker<'a> {
             } => {
                 let val_ty = self.check_expr(value);
                 if let Some(ref type_ann) = ty {
+                    self.validate_type(type_ann);
                     let ann_ty = self.env.resolve_type(type_ann);
-                    if !val_ty.is_error() && !self.types_compatible(&val_ty, &ann_ty) {
+                    if !val_ty.is_error() && !ann_ty.is_error() && !self.types_compatible(&val_ty, &ann_ty) {
                         self.error(
                             format!(
                                 "let `{}`: value has type {}, annotation says {}",
@@ -242,7 +252,14 @@ impl<'a> Checker<'a> {
             );
 
             // Validate bindings reference real event params or fields, and type-check values
+            let mut seen_bindings = HashSet::new();
             for binding in &clause.bindings {
+                if !seen_bindings.insert(binding.name.clone()) {
+                    self.error(
+                        format!("duplicate suppress binding `{}`", binding.name),
+                        binding.span,
+                    );
+                }
                 let expected_ty = event_info
                     .params
                     .iter()

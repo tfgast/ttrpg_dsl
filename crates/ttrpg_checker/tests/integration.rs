@@ -55,6 +55,25 @@ fn expect_errors(source: &str, expected_fragments: &[&str]) {
     }
 }
 
+fn expect_error_count(source: &str, expected_count: usize) {
+    let result = check_source(source);
+    let errors: Vec<_> = result
+        .diagnostics
+        .iter()
+        .filter(|d| d.severity == ttrpg_ast::diagnostic::Severity::Error)
+        .collect();
+    if errors.len() != expected_count {
+        let sm = SourceMap::new(source);
+        let rendered: Vec<_> = errors.iter().map(|d| sm.render(d)).collect();
+        panic!(
+            "expected {} error(s), found {}:\n{}",
+            expected_count,
+            errors.len(),
+            rendered.join("\n\n")
+        );
+    }
+}
+
 fn expect_warnings(source: &str, expected_fragments: &[&str]) {
     let result = check_source(source);
     let warnings: Vec<_> = result
@@ -1494,4 +1513,187 @@ system "test" {
 }
 "#;
     expect_errors(source, &["duplicate parameter `actor` in event `hit`"]);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Fix: none assignable to option<T>
+// ═══════════════════════════════════════════════════════════════
+
+#[test]
+fn test_none_assignable_to_option_int() {
+    let source = r#"
+system "test" {
+    derive foo() -> option<int> { none }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_none_assignable_to_option_string() {
+    let source = r#"
+system "test" {
+    derive foo() -> option<string> { none }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_none_in_let_with_option_annotation() {
+    let source = r#"
+system "test" {
+    derive foo() -> option<int> {
+        let x: option<int> = none
+        x
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_none_not_assignable_to_int() {
+    let source = r#"
+system "test" {
+    derive foo() -> int { none }
+}
+"#;
+    expect_errors(source, &["function body has type option"]);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Fix: Duplicate bindings in trigger/modify/suppress
+// ═══════════════════════════════════════════════════════════════
+
+#[test]
+fn test_duplicate_trigger_binding() {
+    let source = r#"
+system "test" {
+    entity Character { name: string }
+    event hit(actor: Character) {
+        damage: int
+    }
+    reaction Block on reactor: Character (trigger: hit(actor: reactor, actor: reactor)) {
+        cost { reaction }
+        resolve {}
+    }
+}
+"#;
+    expect_errors(source, &["duplicate trigger binding `actor`"]);
+}
+
+#[test]
+fn test_duplicate_modify_binding() {
+    let source = r#"
+system "test" {
+    entity Character { speed: int }
+    derive initial_budget(actor: Character) -> int {
+        actor.speed
+    }
+    condition Slow on bearer: Character {
+        modify initial_budget(actor: bearer, actor: bearer) {
+            result = result - 10
+        }
+    }
+}
+"#;
+    expect_errors(source, &["duplicate modify binding `actor`"]);
+}
+
+#[test]
+fn test_duplicate_suppress_binding() {
+    let source = r#"
+system "test" {
+    entity Character { name: string }
+    event leave(actor: Character) {
+        target: Character
+    }
+    condition Foo on bearer: Character {
+        suppress leave(actor: bearer, actor: bearer)
+    }
+}
+"#;
+    expect_errors(source, &["duplicate suppress binding `actor`"]);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Fix: Event param/field name collisions
+// ═══════════════════════════════════════════════════════════════
+
+#[test]
+fn test_event_param_field_collision() {
+    let source = r#"
+system "test" {
+    entity Character { name: string }
+    event hit(actor: Character) {
+        actor: int
+    }
+}
+"#;
+    expect_errors(source, &["field `actor` collides with a parameter"]);
+}
+
+#[test]
+fn test_event_no_collision_different_names() {
+    let source = r#"
+system "test" {
+    entity Character { name: string }
+    event hit(actor: Character) {
+        damage: int
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Fix: Unknown types in local let annotations
+// ═══════════════════════════════════════════════════════════════
+
+#[test]
+fn test_unknown_type_in_let_annotation() {
+    let source = r#"
+system "test" {
+    derive foo() -> int {
+        let x: MissingType = 42
+        0
+    }
+}
+"#;
+    expect_errors(source, &["unknown type `MissingType`"]);
+}
+
+#[test]
+fn test_unknown_type_in_modify_let_annotation() {
+    let source = r#"
+system "test" {
+    entity Character { speed: int }
+    derive initial_budget(actor: Character) -> int {
+        actor.speed
+    }
+    condition Slow on bearer: Character {
+        modify initial_budget(actor: bearer) {
+            let x: MissingType = 42
+            result = 0
+        }
+    }
+}
+"#;
+    expect_errors(source, &["unknown type `MissingType`"]);
+}
+
+#[test]
+fn test_unknown_type_in_let_is_sole_error() {
+    // Ensure the unknown type is reported even when the value is well-typed
+    let source = r#"
+system "test" {
+    derive foo() -> int {
+        let x: MissingType = 42
+        0
+    }
+}
+"#;
+    expect_error_count(source, 1);
+    expect_errors(source, &["unknown type `MissingType`"]);
 }
