@@ -80,15 +80,31 @@ impl<'a> Checker<'a> {
         value: &Spanned<ExprKind>,
         span: ttrpg_ast::Span,
     ) {
-        // Check mutation permission
-        if !self.scope.allows_mutation() {
-            // Special case: "turn" is always mutable in action/reaction
-            let is_turn = target.root == "turn" && self.scope.allows_turn();
-            if !is_turn {
-                self.error(
-                    "assignment to entity fields requires action or reaction context".to_string(),
-                    span,
-                );
+        if target.segments.is_empty() {
+            // Direct variable reassignment (e.g. `x = 2`): binding must be mutable
+            if let Some(binding) = self.scope.lookup(&target.root) {
+                if !binding.mutable {
+                    self.error(
+                        format!("cannot reassign immutable binding `{}`", target.root),
+                        span,
+                    );
+                    // Still check value expression for other errors
+                    self.check_expr(value);
+                    return;
+                }
+            }
+        } else {
+            // Field/index mutation (e.g. `target.HP += 5`): check block-level permission
+            if !self.scope.allows_mutation() {
+                // Special case: "turn" is always mutable in action/reaction
+                let is_turn = target.root == "turn" && self.scope.allows_turn();
+                if !is_turn {
+                    self.error(
+                        "assignment to entity fields requires action or reaction context"
+                            .to_string(),
+                        span,
+                    );
+                }
             }
         }
 

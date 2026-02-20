@@ -192,13 +192,17 @@ impl<'a> Checker<'a> {
                         condition.span,
                     );
                 }
+                self.scope.push(BlockKind::Inner);
                 for s in then_body {
                     self.check_modify_stmt(s, fn_info);
                 }
+                self.scope.pop();
                 if let Some(else_stmts) = else_body {
+                    self.scope.push(BlockKind::Inner);
                     for s in else_stmts {
                         self.check_modify_stmt(s, fn_info);
                     }
+                    self.scope.pop();
                 }
             }
         }

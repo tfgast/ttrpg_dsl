@@ -547,18 +547,29 @@ impl<'a> Checker<'a> {
 
         // Track which parameters have been satisfied
         let mut satisfied: HashSet<usize> = HashSet::new();
+        let mut next_positional = 0usize;
 
         // Check argument types and resolve parameter mapping
-        for (i, arg) in args.iter().enumerate() {
+        for (_i, arg) in args.iter().enumerate() {
             let arg_ty = self.check_expr(&arg.value);
 
             // Resolve which parameter this argument maps to
             let param_idx = if let Some(ref name) = arg.name {
                 fn_info.params.iter().position(|p| p.name == *name)
-            } else if i < fn_info.params.len() {
-                Some(i)
             } else {
-                None
+                // Skip params already claimed by named args
+                while next_positional < fn_info.params.len()
+                    && satisfied.contains(&next_positional)
+                {
+                    next_positional += 1;
+                }
+                if next_positional < fn_info.params.len() {
+                    let idx = next_positional;
+                    next_positional += 1;
+                    Some(idx)
+                } else {
+                    None
+                }
             };
 
             if let Some(idx) = param_idx {
@@ -671,7 +682,28 @@ impl<'a> Checker<'a> {
                 if arg_ty.is_error() {
                     continue;
                 }
-                if let Some((_, expected)) = variant.fields.get(i) {
+                if let Some(ref name) = arg.name {
+                    // Named argument: validate against field name
+                    if let Some((_, expected)) = variant.fields.iter().find(|(n, _)| n == name) {
+                        if !self.types_compatible(&arg_ty, expected) {
+                            self.error(
+                                format!(
+                                    "variant field `{}` has type {}, found {}",
+                                    name, expected, arg_ty
+                                ),
+                                arg.span,
+                            );
+                        }
+                    } else {
+                        self.error(
+                            format!(
+                                "variant `{}` has no field `{}`",
+                                variant_name, name
+                            ),
+                            arg.span,
+                        );
+                    }
+                } else if let Some((_, expected)) = variant.fields.get(i) {
                     if !self.types_compatible(&arg_ty, expected) {
                         self.error(
                             format!(

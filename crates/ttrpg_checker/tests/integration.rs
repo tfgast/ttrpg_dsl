@@ -1014,3 +1014,250 @@ system "test" {
 "#;
     expect_no_errors(source);
 }
+
+// ═══════════════════════════════════════════════════════════════
+// Fix: Immutable binding enforcement
+// ═══════════════════════════════════════════════════════════════
+
+#[test]
+fn test_let_reassignment_in_action_rejected() {
+    let source = r#"
+system "test" {
+    entity Character { HP: int }
+    action Heal on actor: Character (target: Character) {
+        cost { action }
+        resolve {
+            let x = 1
+            x = 2
+        }
+    }
+}
+"#;
+    expect_errors(source, &["cannot reassign immutable binding `x`"]);
+}
+
+#[test]
+fn test_let_reassignment_in_derive_rejected() {
+    let source = r#"
+system "test" {
+    derive foo() -> int {
+        let x = 1
+        x = 2
+        x
+    }
+}
+"#;
+    expect_errors(source, &["cannot reassign immutable binding `x`"]);
+}
+
+#[test]
+fn test_param_reassignment_rejected() {
+    let source = r#"
+system "test" {
+    derive foo(x: int) -> int {
+        x = 2
+        x
+    }
+}
+"#;
+    expect_errors(source, &["cannot reassign immutable binding `x`"]);
+}
+
+#[test]
+fn test_mutable_receiver_field_ok() {
+    let source = r#"
+system "test" {
+    entity Character { HP: int }
+    action Heal on actor: Character () {
+        cost { action }
+        resolve {
+            actor.HP += 10
+        }
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Fix: Mixed named + positional arg mapping
+// ═══════════════════════════════════════════════════════════════
+
+#[test]
+fn test_mixed_named_then_positional_args() {
+    let source = r#"
+system "test" {
+    derive add(a: int, b: int) -> int { a + b }
+    derive ok() -> int { add(b: 2, 1) }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_mixed_positional_then_named_args() {
+    let source = r#"
+system "test" {
+    derive add(a: int, b: int) -> int { a + b }
+    derive ok() -> int { add(1, b: 2) }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_mixed_args_type_mismatch() {
+    let source = r#"
+system "test" {
+    derive add(a: int, b: int) -> int { a + b }
+    derive bad() -> int { add(b: 2, "hello") }
+}
+"#;
+    expect_errors(source, &["argument `a` has type string, expected int"]);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Fix: Enum constructor named argument validation
+// ═══════════════════════════════════════════════════════════════
+
+#[test]
+fn test_enum_constructor_wrong_field_name() {
+    let source = r#"
+system "test" {
+    enum Effect {
+        timed(count: int),
+        permanent
+    }
+    derive foo() -> Effect {
+        Effect.timed(foo: 1)
+    }
+}
+"#;
+    expect_errors(source, &["variant `timed` has no field `foo`"]);
+}
+
+#[test]
+fn test_enum_constructor_correct_field_name() {
+    let source = r#"
+system "test" {
+    enum Effect {
+        timed(count: int),
+        permanent
+    }
+    derive foo() -> Effect {
+        Effect.timed(count: 1)
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_enum_constructor_named_type_mismatch() {
+    let source = r#"
+system "test" {
+    enum Effect {
+        timed(count: int),
+        permanent
+    }
+    derive foo() -> Effect {
+        Effect.timed(count: "hello")
+    }
+}
+"#;
+    expect_errors(source, &["variant field `count` has type int, found string"]);
+}
+
+#[test]
+fn test_enum_constructor_positional_still_works() {
+    let source = r#"
+system "test" {
+    enum Effect {
+        timed(count: int),
+        permanent
+    }
+    derive foo() -> Effect {
+        Effect.timed(5)
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Fix: modify-if branch scope isolation
+// ═══════════════════════════════════════════════════════════════
+
+#[test]
+fn test_modify_if_scope_leak_rejected() {
+    let source = r#"
+system "test" {
+    entity Character { speed: int }
+    struct Budget {
+        movement: int
+    }
+    derive initial_budget(actor: Character) -> Budget {
+        Budget { movement: actor.speed }
+    }
+    condition Slow on bearer: Character {
+        modify initial_budget(actor: bearer) {
+            if true {
+                let x = 2
+            }
+            result.movement = result.movement - x
+        }
+    }
+}
+"#;
+    expect_errors(source, &["undefined variable `x`"]);
+}
+
+#[test]
+fn test_modify_if_let_inside_branch_ok() {
+    let source = r#"
+system "test" {
+    entity Character { speed: int }
+    struct Budget {
+        movement: int
+    }
+    derive initial_budget(actor: Character) -> Budget {
+        Budget { movement: actor.speed }
+    }
+    condition Slow on bearer: Character {
+        modify initial_budget(actor: bearer) {
+            if true {
+                let x = 2
+                result.movement = result.movement - x
+            }
+        }
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_modify_else_scope_leak_rejected() {
+    let source = r#"
+system "test" {
+    entity Character { speed: int }
+    struct Budget {
+        movement: int
+    }
+    derive initial_budget(actor: Character) -> Budget {
+        Budget { movement: actor.speed }
+    }
+    condition Slow on bearer: Character {
+        modify initial_budget(actor: bearer) {
+            if false {
+                result.movement = result.movement
+            } else {
+                let y = 5
+            }
+            result.movement = result.movement - y
+        }
+    }
+}
+"#;
+    expect_errors(source, &["undefined variable `y`"]);
+}
