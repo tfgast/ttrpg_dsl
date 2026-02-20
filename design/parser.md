@@ -2,7 +2,7 @@
 
 ## Context
 
-We have a draft spec (`v0/`) for a TTRPG domain-specific language with a complete EBNF grammar, type system, scoping rules, and a full worked example (D&D 5e combat). The goal for this milestone is: **Lexer + Parser → AST** — parse `04_full_example.ttrpg` into a well-typed Rust AST with no semantic analysis yet.
+We have a draft spec (`spec/v0/`) for a TTRPG domain-specific language with a complete EBNF grammar, type system, scoping rules, and a full worked example (D&D 5e combat). The goal for this milestone is: **Lexer + Parser → AST** — parse `04_full_example.ttrpg` into a well-typed Rust AST with no semantic analysis yet.
 
 Strategy: Hand-rolled recursive descent parser in a Cargo workspace.
 
@@ -13,7 +13,7 @@ Strategy: Hand-rolled recursive descent parser in a Cargo workspace.
 ```
 ttrpg_dsl/
   Cargo.toml                    # workspace root
-  v0/                           # spec (existing)
+  spec/v0/                      # spec (existing)
   crates/
     ttrpg_lexer/
       src/
@@ -415,7 +415,7 @@ Match on `self.peek()` as `Ident(s)` and dispatch by soft keyword string to the 
 ## 6. Verification
 
 - **Unit tests per phase** — each lexer token variant, each parser production
-- **Integration test:** parse `v0/04_full_example.ttrpg` → no errors, correct structure (1 system block with 5 enums, 2 structs, 2 entities, 4 derives, 6 mechanics, 4 actions, 1 event, 1 reaction, 3 conditions, 2 prompts)
+- **Integration test:** parse `spec/v0/04_full_example.ttrpg` → no errors, correct structure (1 system block with 5 enums, 2 structs, 2 entities, 4 derives, 6 mechanics, 4 actions, 1 event, 1 reaction, 3 conditions, 2 prompts)
 - **Standalone declaration tests:** `option_decl` and `move_decl` are not present in the full example — test with dedicated snippets:
 
   ```ttrpg
@@ -454,7 +454,7 @@ Match on `self.peek()` as `Ident(s)` and dispatch by soft keyword string to the 
 
 | File | Role |
 |------|------|
-| `v0/03_canonical_grammar.ttrpg` | Complete EBNF — every parser production must match this |
-| `v0/04_full_example.ttrpg` | Acceptance test — parser must handle this with zero errors |
-| `v0/01_type_system.ttrpg` | Informs AST design for types, dice, coercion |
-| `v0/02_scoping.ttrpg` | Informs action/reaction/condition AST structure |
+| `spec/v0/03_canonical_grammar.ttrpg` | Complete EBNF — every parser production must match this |
+| `spec/v0/04_full_example.ttrpg` | Acceptance test — parser must handle this with zero errors |
+| `spec/v0/01_type_system.ttrpg` | Informs AST design for types, dice, coercion |
+| `spec/v0/02_scoping.ttrpg` | Informs action/reaction/condition AST structure |
