@@ -51,6 +51,11 @@ impl Parser {
             }
         }
 
+        if variants.is_empty() {
+            self.error("enum declaration requires at least one variant");
+            return Err(());
+        }
+
         self.expect(&TokenKind::RBrace)?;
         Ok(EnumDecl { name, variants })
     }
@@ -358,15 +363,13 @@ impl Parser {
 
     fn parse_trigger_bindings(&mut self) -> Result<Vec<TriggerBinding>, ()> {
         let mut bindings = Vec::new();
-        if !matches!(self.peek(), TokenKind::RParen) {
-            bindings.push(self.parse_trigger_binding()?);
-            while matches!(self.peek(), TokenKind::Comma) {
-                self.advance();
-                if matches!(self.peek(), TokenKind::RParen) {
-                    break;
-                }
-                bindings.push(self.parse_trigger_binding()?);
+        bindings.push(self.parse_trigger_binding()?);
+        while matches!(self.peek(), TokenKind::Comma) {
+            self.advance();
+            if matches!(self.peek(), TokenKind::RParen) {
+                break;
             }
+            bindings.push(self.parse_trigger_binding()?);
         }
         Ok(bindings)
     }
@@ -385,7 +388,9 @@ impl Parser {
                 span: self.end_span(start),
             })
         } else {
-            let value = self.parse_expr()?;
+            // Positional binding must be a bare IDENT per spec
+            let (ident, ident_span) = self.expect_ident()?;
+            let value = Spanned::new(ExprKind::Ident(ident), ident_span);
             Ok(TriggerBinding {
                 name: None,
                 value,
@@ -769,6 +774,11 @@ impl Parser {
                 span: self.end_span(start),
             });
             self.skip_newlines();
+        }
+
+        if outcomes.is_empty() {
+            self.error("move declaration requires at least one 'on' outcome block");
+            return Err(());
         }
 
         self.expect(&TokenKind::RBrace)?;

@@ -84,7 +84,7 @@ impl Parser {
         Ok(StmtKind::Let { name, ty, value })
     }
 
-    fn expr_to_lvalue(&self, expr: Spanned<ExprKind>) -> Result<LValue, ()> {
+    fn expr_to_lvalue(&mut self, expr: Spanned<ExprKind>) -> Result<LValue, ()> {
         match expr.node {
             ExprKind::Ident(name) => Ok(LValue {
                 root: name,
@@ -104,7 +104,7 @@ impl Parser {
                 Ok(lval)
             }
             _ => {
-                // Can't convert arbitrary expression to lvalue
+                self.error("invalid assignment target");
                 Err(())
             }
         }

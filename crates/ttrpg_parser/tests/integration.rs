@@ -129,6 +129,126 @@ fn test_parse_move_decl() {
     }
 }
 
+// ── Validation tests ─────────────────────────────────────────────
+
+#[test]
+fn test_invalid_lvalue_produces_error() {
+    let source = r#"system "test" {
+    derive f(x: int) -> int {
+        1 = 2
+        x
+    }
+}"#;
+    let (_, diagnostics) = parse(source);
+    assert!(
+        diagnostics.iter().any(|d| d.message.contains("invalid assignment target")),
+        "should report invalid assignment target, got: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn test_move_requires_outcome_blocks() {
+    let source = r#"system "test" {
+    move GoAggro on actor: Character (target: Character) {
+        trigger: "threaten"
+        roll: 2d6 + actor.stats[Hard]
+    }
+}"#;
+    let (_, diagnostics) = parse(source);
+    assert!(
+        diagnostics.iter().any(|d| d.message.contains("outcome")),
+        "should report missing outcome blocks, got: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn test_enum_requires_at_least_one_variant() {
+    let source = r#"system "test" {
+    enum Empty {}
+}"#;
+    let (_, diagnostics) = parse(source);
+    assert!(
+        diagnostics.iter().any(|d| d.message.contains("at least one variant")),
+        "should report empty enum, got: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn test_enum_newline_separated_variants() {
+    let source = r#"system "test" {
+    enum Result {
+        hit
+        miss
+        graze
+    }
+}"#;
+    let (program, diagnostics) = parse(source);
+    assert!(diagnostics.is_empty(), "errors: {:?}", diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>());
+    let system = match &program.items[0].node {
+        TopLevel::System(s) => s,
+        _ => panic!("expected system block"),
+    };
+    match &system.decls[0].node {
+        DeclKind::Enum(e) => assert_eq!(e.variants.len(), 3),
+        _ => panic!("expected enum decl"),
+    }
+}
+
+#[test]
+fn test_match_arms_newline_separated() {
+    let source = r#"system "test" {
+    derive f(x: int) -> int {
+        match x {
+            1 => 10
+            2 => 20
+            _ => 0
+        }
+    }
+}"#;
+    let (_, diagnostics) = parse(source);
+    assert!(diagnostics.is_empty(), "errors: {:?}", diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>());
+}
+
+#[test]
+fn test_guard_match_newline_separated() {
+    let source = r#"system "test" {
+    derive f(x: int) -> int {
+        match {
+            x > 10 => 100
+            x > 5 => 50
+            _ => 0
+        }
+    }
+}"#;
+    let (_, diagnostics) = parse(source);
+    assert!(diagnostics.is_empty(), "errors: {:?}", diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>());
+}
+
+#[test]
+fn test_trailing_comma_in_params() {
+    let source = r#"system "test" {
+    derive f(x: int, y: int,) -> int {
+        x + y
+    }
+}"#;
+    let (_, diagnostics) = parse(source);
+    assert!(diagnostics.is_empty(), "errors: {:?}", diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>());
+}
+
+#[test]
+fn test_trailing_comma_in_args() {
+    let source = r#"system "test" {
+    derive f(x: int) -> int {
+        f(x,)
+    }
+}"#;
+    let (_, diagnostics) = parse(source);
+    assert!(diagnostics.is_empty(), "errors: {:?}", diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>());
+}
+
 // ── Error recovery tests ─────────────────────────────────────────
 
 #[test]

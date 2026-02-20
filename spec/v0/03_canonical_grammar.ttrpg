@@ -143,7 +143,7 @@ decl            = enum_decl
 
 // --- Enum ---
 enum_decl       = "enum" IDENT "{" enum_variants "}"
-enum_variants   = enum_variant ("," enum_variant)* ","?
+enum_variants   = enum_variant (("," | NL) enum_variant)* ","?
 enum_variant    = IDENT                             // no data:  STR, miss
                 | IDENT "(" field_list ")"          // with data: hit(amount: int)
 
@@ -154,7 +154,7 @@ struct_decl     = "struct" IDENT "{" field_def* "}"
 entity_decl     = "entity" IDENT "{" field_def* "}"
 
 // --- Field definitions ---
-field_list      = field_entry ("," field_entry)*
+field_list      = field_entry ("," field_entry)* ","?
 field_entry     = IDENT ":" type
 
 field_def       = IDENT ":" type ("=" expr)? term
@@ -214,7 +214,7 @@ reaction_decl   = "reaction" IDENT "on" IDENT ":" type
                   "}"
 
 trigger_expr    = IDENT "(" trigger_bindings ")"
-trigger_bindings = trigger_binding ("," trigger_binding)*
+trigger_bindings = trigger_binding ("," trigger_binding)* ","?
 trigger_binding  = IDENT ":" expr                   // e.g., reactor: reactor
                  | IDENT                             // positional
 
@@ -283,7 +283,7 @@ when_clause        = "when" "enabled" "{" modify_clause* "}"
 // 3. Parameters
 // =========================
 
-params          = (param ("," param)*)?
+params          = (param ("," param)* ","?)?
 param           = IDENT ":" type ("=" expr)?
 
 
@@ -431,7 +431,7 @@ if_expr         = "if" expr block ("else" (block | if_expr))?
 // Arms are patterns tested against the scrutinee value.
 match_expr      = pattern_match | guard_match
 
-pattern_match   = "match" expr "{" pattern_arm ("," pattern_arm)* ","? "}"
+pattern_match   = "match" expr "{" pattern_arm (("," | NL) pattern_arm)* ","? "}"
 pattern_arm     = pattern "=>" (expr | block)
 pattern         = "_"                                             // wildcard
                 | INT | STRING | "true" | "false"                 // literal
@@ -464,13 +464,13 @@ pattern         = "_"                                             // wildcard
 // Guard match: `match { bool_expr => body, ... }`
 // No scrutinee. Each arm is a boolean expression, tested top-to-bottom.
 // First truthy arm wins. `_` is always-true (like `else`).
-guard_match     = "match" "{" guard_arm ("," guard_arm)* ","? "}"
+guard_match     = "match" "{" guard_arm (("," | NL) guard_arm)* ","? "}"
 guard_arm       = guard "=>" (expr | block)
 guard           = "_"                                // always matches (must be last)
                 | expr                               // boolean expression
 
 // --- Call arguments ---
-arg_list        = arg ("," arg)*
+arg_list        = arg ("," arg)* ","?
 arg             = (IDENT ":")? expr                   // optional named arg
 
 
