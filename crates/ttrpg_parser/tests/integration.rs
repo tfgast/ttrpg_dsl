@@ -198,6 +198,22 @@ fn test_enum_newline_separated_variants() {
 }
 
 #[test]
+fn test_enum_empty_payload_rejected() {
+    let source = r#"system "test" {
+    enum Result {
+        hit
+        miss()
+    }
+}"#;
+    let (_, diagnostics) = parse(source);
+    assert!(
+        diagnostics.iter().any(|d| d.message.contains("at least one field")),
+        "should reject empty enum variant payload, got: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
 fn test_match_arms_newline_separated() {
     let source = r#"system "test" {
     derive f(x: int) -> int {

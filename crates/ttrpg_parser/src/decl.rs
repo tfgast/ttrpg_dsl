@@ -73,6 +73,10 @@ impl Parser {
         let fields = if matches!(self.peek(), TokenKind::LParen) {
             self.advance();
             let list = self.parse_field_list()?;
+            if list.is_empty() {
+                self.error("enum variant payload requires at least one field");
+                return Err(());
+            }
             self.expect(&TokenKind::RParen)?;
             Some(list)
         } else {
