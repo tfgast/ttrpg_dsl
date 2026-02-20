@@ -7,6 +7,14 @@ name = "ttrpg_ast"
 version = "0.1.0"
 
 [[package]]
+name = "ttrpg_checker"
+version = "0.1.0"
+dependencies = [
+ "ttrpg_ast",
+ "ttrpg_parser",
+]
+
+[[package]]
 name = "ttrpg_lexer"
 version = "0.1.0"
 dependencies = [
