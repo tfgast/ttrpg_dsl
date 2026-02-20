@@ -153,6 +153,15 @@ impl<'a> Checker<'a> {
             let event_info = event_info.clone();
             let mut positional_index = 0usize;
             let mut seen_bindings = HashSet::new();
+
+            // Pre-scan: collect param names bound by name so positional bindings skip them
+            let named_param_names: HashSet<String> = r
+                .trigger
+                .bindings
+                .iter()
+                .filter_map(|b| b.name.clone())
+                .collect();
+
             for binding in &r.trigger.bindings {
                 if let Some(ref name) = binding.name {
                     if !seen_bindings.insert(name.clone()) {
@@ -196,7 +205,14 @@ impl<'a> Checker<'a> {
                         );
                     }
                 } else {
-                    // Positional binding — match against event params by position
+                    // Positional binding — match against event params by position,
+                    // skipping params already bound by name
+                    while positional_index < event_info.params.len()
+                        && named_param_names
+                            .contains(&event_info.params[positional_index].name)
+                    {
+                        positional_index += 1;
+                    }
                     if positional_index < event_info.params.len() {
                         let expected = &event_info.params[positional_index].ty;
                         let param_name = &event_info.params[positional_index].name;

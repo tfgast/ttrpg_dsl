@@ -1697,3 +1697,131 @@ system "test" {
     expect_error_count(source, 1);
     expect_errors(source, &["unknown type `MissingType`"]);
 }
+
+// ═══════════════════════════════════════════════════════════════
+// Mixed named+positional trigger bindings
+// ═══════════════════════════════════════════════════════════════
+
+#[test]
+fn test_mixed_named_then_positional_trigger_binding() {
+    // named `actor:` consumes param 0, positional should resolve to param 1 (target)
+    let source = r#"
+system "test" {
+    entity Character { name: string }
+    event damage(actor: Character, target: Character) {}
+    reaction Block on defender: Character (trigger: damage(actor: defender, defender)) {
+        cost { reaction }
+        resolve {}
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_mixed_positional_then_named_trigger_binding() {
+    // positional should fill param 0 (actor), named `amount:` fills param 1
+    let source = r#"
+system "test" {
+    entity Character { name: string }
+    event damage(actor: Character, amount: int) {}
+    reaction Block on defender: Character (trigger: damage(defender, amount: 42)) {
+        cost { reaction }
+        resolve {}
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_mixed_named_positional_trigger_type_mismatch() {
+    // named binds param 0 (actor); positional should check against param 1 (amount: int), not param 0
+    let source = r#"
+system "test" {
+    entity Character { name: string }
+    event damage(actor: Character, amount: int) {}
+    reaction Block on defender: Character (trigger: damage(actor: defender, defender)) {
+        cost { reaction }
+        resolve {}
+    }
+}
+"#;
+    expect_errors(source, &["positional trigger binding 1 has type Character, expected int"]);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Implicit name shadowing in actions/reactions
+// ═══════════════════════════════════════════════════════════════
+
+#[test]
+fn test_action_receiver_shadows_turn() {
+    let source = r#"
+system "test" {
+    entity Character { HP: int }
+    action Heal on turn: Character () {
+        cost { action }
+        resolve {}
+    }
+}
+"#;
+    expect_errors(source, &["receiver `turn` shadows the implicit turn budget binding"]);
+}
+
+#[test]
+fn test_action_param_shadows_turn() {
+    let source = r#"
+system "test" {
+    entity Character { HP: int }
+    action Heal on target: Character (turn: int) {
+        cost { action }
+        resolve {}
+    }
+}
+"#;
+    expect_errors(source, &["parameter `turn` shadows the implicit turn budget binding"]);
+}
+
+#[test]
+fn test_action_param_shadows_receiver() {
+    let source = r#"
+system "test" {
+    entity Character { HP: int }
+    action Heal on target: Character (target: int) {
+        cost { action }
+        resolve {}
+    }
+}
+"#;
+    expect_errors(source, &["parameter `target` shadows the receiver binding"]);
+}
+
+#[test]
+fn test_reaction_receiver_shadows_trigger() {
+    let source = r#"
+system "test" {
+    entity Character { HP: int }
+    event damage(actor: Character) {}
+    reaction Block on trigger: Character (trigger: damage(trigger)) {
+        cost { reaction }
+        resolve {}
+    }
+}
+"#;
+    expect_errors(source, &["receiver `trigger` shadows the implicit trigger binding"]);
+}
+
+#[test]
+fn test_reaction_receiver_shadows_turn() {
+    let source = r#"
+system "test" {
+    entity Character { HP: int }
+    event damage(actor: Character) {}
+    reaction Block on turn: Character (trigger: damage(turn)) {
+        cost { reaction }
+        resolve {}
+    }
+}
+"#;
+    expect_errors(source, &["receiver `turn` shadows the implicit turn budget binding"]);
+}

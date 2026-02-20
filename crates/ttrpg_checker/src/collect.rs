@@ -308,6 +308,38 @@ fn collect_action(
     }
 
     env.validate_type_names(&a.receiver_type, diagnostics);
+
+    // Detect implicit name shadowing
+    if a.receiver_name == "turn" {
+        diagnostics.push(Diagnostic::error(
+            format!(
+                "action `{}` receiver `turn` shadows the implicit turn budget binding",
+                a.name
+            ),
+            span,
+        ));
+    }
+    for p in &a.params {
+        if p.name == "turn" {
+            diagnostics.push(Diagnostic::error(
+                format!(
+                    "action `{}` parameter `turn` shadows the implicit turn budget binding",
+                    a.name
+                ),
+                p.span,
+            ));
+        }
+        if p.name == a.receiver_name {
+            diagnostics.push(Diagnostic::error(
+                format!(
+                    "action `{}` parameter `{}` shadows the receiver binding",
+                    a.name, p.name
+                ),
+                p.span,
+            ));
+        }
+    }
+
     let receiver = ParamInfo {
         name: a.receiver_name.clone(),
         ty: env.resolve_type(&a.receiver_type),
@@ -339,6 +371,27 @@ fn collect_reaction(
     }
 
     env.validate_type_names(&r.receiver_type, diagnostics);
+
+    // Detect implicit name shadowing
+    if r.receiver_name == "trigger" {
+        diagnostics.push(Diagnostic::error(
+            format!(
+                "reaction `{}` receiver `trigger` shadows the implicit trigger binding",
+                r.name
+            ),
+            span,
+        ));
+    }
+    if r.receiver_name == "turn" {
+        diagnostics.push(Diagnostic::error(
+            format!(
+                "reaction `{}` receiver `turn` shadows the implicit turn budget binding",
+                r.name
+            ),
+            span,
+        ));
+    }
+
     let receiver = ParamInfo {
         name: r.receiver_name.clone(),
         ty: env.resolve_type(&r.receiver_type),
