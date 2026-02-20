@@ -2139,3 +2139,105 @@ system "test" {
 "#;
     expect_no_errors(source);
 }
+
+// ═══════════════════════════════════════════════════════════════
+// Fix: Trigger payload direct field mutation is blocked
+// ═══════════════════════════════════════════════════════════════
+
+#[test]
+fn test_trigger_direct_field_mutation_rejected() {
+    let source = r#"
+system "test" {
+    entity Character { HP: int }
+    event damage(actor: Character, target: Character) {}
+    reaction Block on reactor: Character (trigger: damage(reactor)) {
+        cost { reaction }
+        resolve { trigger.target = reactor }
+    }
+}
+"#;
+    expect_errors(source, &["cannot mutate field of trigger payload"]);
+}
+
+#[test]
+fn test_trigger_deep_field_mutation_ok() {
+    // trigger.entity.HP goes through an entity reference — allowed
+    let source = r#"
+system "test" {
+    entity Character { HP: int }
+    event damage(actor: Character, target: Character) {}
+    reaction Block on reactor: Character (trigger: damage(reactor)) {
+        cost { reaction }
+        resolve { trigger.target.HP = trigger.target.HP - 1 }
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Fix: Receiver rebinding is blocked
+// ═══════════════════════════════════════════════════════════════
+
+#[test]
+fn test_receiver_reassignment_rejected() {
+    let source = r#"
+system "test" {
+    entity Character { HP: int }
+    action Heal on actor: Character (target: Character) {
+        cost { action }
+        resolve { actor = target }
+    }
+}
+"#;
+    expect_errors(source, &["cannot reassign immutable binding `actor`"]);
+}
+
+#[test]
+fn test_receiver_field_mutation_still_ok() {
+    let source = r#"
+system "test" {
+    entity Character { HP: int }
+    action Heal on actor: Character (target: Character) {
+        cost { action }
+        resolve { actor.HP = actor.HP + 10 }
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_reaction_receiver_reassignment_rejected() {
+    let source = r#"
+system "test" {
+    entity Character { HP: int }
+    event damage(actor: Character) {}
+    reaction Block on reactor: Character (trigger: damage(reactor)) {
+        cost { reaction }
+        resolve { reactor = trigger.actor }
+    }
+}
+"#;
+    expect_errors(source, &["cannot reassign immutable binding `reactor`"]);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Fix: Duplicate pattern bindings
+// ═══════════════════════════════════════════════════════════════
+
+#[test]
+fn test_duplicate_pattern_binding_rejected() {
+    let source = r#"
+system "test" {
+    enum Outcome { hit(amount: int, target: int), miss }
+    derive check(x: Outcome) -> int {
+        match x {
+            Outcome.hit(a, a) => a
+            miss => 0
+        }
+    }
+}
+"#;
+    expect_errors(source, &["duplicate binding `a` in pattern"]);
+}

@@ -73,14 +73,21 @@ impl<'a> Checker<'a> {
                     }
                 } else {
                     // It's a binding variable — bind to scrutinee type
-                    self.scope.bind(
-                        name.clone(),
-                        VarBinding {
-                            ty: scrutinee_ty.clone(),
-                            mutable: false,
-                            is_local: true,
-                        },
-                    );
+                    if self.scope.has_in_current_scope(name) {
+                        self.error(
+                            format!("duplicate binding `{}` in pattern", name),
+                            pattern.span,
+                        );
+                    } else {
+                        self.scope.bind(
+                            name.clone(),
+                            VarBinding {
+                                ty: scrutinee_ty.clone(),
+                                mutable: false,
+                                is_local: true,
+                            },
+                        );
+                    }
                 }
             }
 

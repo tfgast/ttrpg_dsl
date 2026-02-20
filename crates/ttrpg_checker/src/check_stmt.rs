@@ -112,6 +112,24 @@ impl<'a> Checker<'a> {
                     self.check_expr(value);
                     return;
                 }
+
+                // Trigger payload: direct fields are immutable, but deep paths
+                // (e.g. trigger.entity.HP) are allowed for entity state mutation
+                if !binding.mutable {
+                    if let Ty::Struct(ref s) = binding.ty {
+                        if s.starts_with("__event_") && target.segments.len() <= 1 {
+                            self.error(
+                                format!(
+                                    "cannot mutate field of trigger payload `{}`",
+                                    target.root
+                                ),
+                                span,
+                            );
+                            self.check_expr(value);
+                            return;
+                        }
+                    }
+                }
             }
 
             // Params/receivers: check block-level permission

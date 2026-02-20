@@ -114,4 +114,11 @@ impl ScopeStack {
         self.current_block_kind()
             .map_or(false, |k| k.allows_turn())
     }
+
+    /// Check if a name is already bound in the innermost scope.
+    pub fn has_in_current_scope(&self, name: &str) -> bool {
+        self.scopes
+            .last()
+            .map_or(false, |s| s.bindings.contains_key(name))
+    }
 }

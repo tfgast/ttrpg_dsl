@@ -84,13 +84,13 @@ impl<'a> Checker<'a> {
     fn check_action(&mut self, a: &ActionDecl) {
         self.scope.push(BlockKind::ActionResolve);
 
-        // Bind receiver as mutable
+        // Bind receiver (field-mutable via action context, but not rebindable)
         let recv_ty = self.env.resolve_type(&a.receiver_type);
         self.scope.bind(
             a.receiver_name.clone(),
             VarBinding {
                 ty: recv_ty,
-                mutable: true,
+                mutable: false,
                 is_local: false,
             },
         );
@@ -128,13 +128,13 @@ impl<'a> Checker<'a> {
     fn check_reaction(&mut self, r: &ReactionDecl) {
         self.scope.push(BlockKind::ReactionResolve);
 
-        // Bind receiver as mutable
+        // Bind receiver (field-mutable via reaction context, but not rebindable)
         let recv_ty = self.env.resolve_type(&r.receiver_type);
         self.scope.bind(
             r.receiver_name.clone(),
             VarBinding {
                 ty: recv_ty,
-                mutable: true,
+                mutable: false,
                 is_local: false,
             },
         );
