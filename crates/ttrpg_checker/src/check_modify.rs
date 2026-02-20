@@ -140,8 +140,22 @@ impl<'a> Checker<'a> {
                 }
             }
             ModifyStmt::ParamOverride { name, value, span } => {
-                // Check that the param exists and types match
-                if let Some(param) = fn_info.params.iter().find(|p| p.name == *name) {
+                if name == "result" {
+                    // Direct result assignment: `result = expr`
+                    let val_ty = self.check_expr(value);
+                    if !val_ty.is_error()
+                        && !self.types_compatible(&val_ty, &fn_info.return_type)
+                    {
+                        self.error(
+                            format!(
+                                "result has type {}, found {}",
+                                fn_info.return_type, val_ty
+                            ),
+                            value.span,
+                        );
+                    }
+                } else if let Some(param) = fn_info.params.iter().find(|p| p.name == *name) {
+                    // Check that the param exists and types match
                     let val_ty = self.check_expr(value);
                     if !val_ty.is_error() && !self.types_compatible(&val_ty, &param.ty) {
                         self.error(

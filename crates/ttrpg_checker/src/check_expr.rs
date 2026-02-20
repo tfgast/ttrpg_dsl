@@ -428,7 +428,17 @@ impl<'a> Checker<'a> {
             // Qualified enum variant: EnumType.Variant
             Ty::Enum(enum_name) => {
                 if let Some(DeclInfo::Enum(info)) = self.env.types.get(enum_name) {
-                    if info.variants.iter().any(|v| v.name == field) {
+                    if let Some(variant) = info.variants.iter().find(|v| v.name == field) {
+                        if !variant.fields.is_empty() {
+                            self.error(
+                                format!(
+                                    "variant `{}` has payload fields and must be called as a constructor",
+                                    field
+                                ),
+                                span,
+                            );
+                            return Ty::Error;
+                        }
                         return Ty::Enum(enum_name.clone());
                     }
                 }
@@ -545,6 +555,37 @@ impl<'a> Checker<'a> {
             self.check_builtin_permissions(&callee_name, span);
         }
 
+        // Check context restrictions for actions/reactions
+        if matches!(fn_info.kind, FnKind::Action | FnKind::Reaction) {
+            let current_ctx = self.scope.current_block_kind();
+            if !matches!(
+                current_ctx,
+                Some(BlockKind::ActionResolve) | Some(BlockKind::ReactionResolve)
+            ) {
+                let kind_name = if fn_info.kind == FnKind::Action {
+                    "an action"
+                } else {
+                    "a reaction"
+                };
+                self.error(
+                    format!(
+                        "`{}` is {} and can only be called from action or reaction context",
+                        callee_name, kind_name
+                    ),
+                    span,
+                );
+            }
+        }
+
+        // Build effective params: include receiver as first param for actions/reactions
+        let effective_params: Vec<ParamInfo> = if let Some(ref receiver) = fn_info.receiver {
+            let mut params = vec![receiver.clone()];
+            params.extend(fn_info.params.iter().cloned());
+            params
+        } else {
+            fn_info.params.clone()
+        };
+
         // Track which parameters have been satisfied
         let mut satisfied: HashSet<usize> = HashSet::new();
         let mut next_positional = 0usize;
@@ -555,15 +596,15 @@ impl<'a> Checker<'a> {
 
             // Resolve which parameter this argument maps to
             let param_idx = if let Some(ref name) = arg.name {
-                fn_info.params.iter().position(|p| p.name == *name)
+                effective_params.iter().position(|p| p.name == *name)
             } else {
                 // Skip params already claimed by named args
-                while next_positional < fn_info.params.len()
+                while next_positional < effective_params.len()
                     && satisfied.contains(&next_positional)
                 {
                     next_positional += 1;
                 }
-                if next_positional < fn_info.params.len() {
+                if next_positional < effective_params.len() {
                     let idx = next_positional;
                     next_positional += 1;
                     Some(idx)
@@ -578,18 +619,20 @@ impl<'a> Checker<'a> {
                     self.error(
                         format!(
                             "duplicate argument for parameter `{}`",
-                            fn_info.params[idx].name
+                            effective_params[idx].name
                         ),
                         arg.span,
                     );
                 }
 
                 // Check type compatibility
-                if !arg_ty.is_error() && !self.types_compatible(&arg_ty, &fn_info.params[idx].ty) {
+                if !arg_ty.is_error()
+                    && !self.types_compatible(&arg_ty, &effective_params[idx].ty)
+                {
                     self.error(
                         format!(
                             "argument `{}` has type {}, expected {}",
-                            fn_info.params[idx].name, arg_ty, fn_info.params[idx].ty
+                            effective_params[idx].name, arg_ty, effective_params[idx].ty
                         ),
                         arg.span,
                     );
@@ -604,7 +647,7 @@ impl<'a> Checker<'a> {
                     format!(
                         "`{}` expects at most {} argument(s), found {}",
                         callee_name,
-                        fn_info.params.len(),
+                        effective_params.len(),
                         args.len()
                     ),
                     span,
@@ -614,7 +657,7 @@ impl<'a> Checker<'a> {
         }
 
         // Check that all required (non-default) parameters were provided
-        for (idx, param) in fn_info.params.iter().enumerate() {
+        for (idx, param) in effective_params.iter().enumerate() {
             if !param.has_default && !satisfied.contains(&idx) {
                 self.error(
                     format!(

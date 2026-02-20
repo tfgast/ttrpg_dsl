@@ -415,11 +415,18 @@ fn collect_event(
         return;
     }
 
+    let mut seen_params = HashSet::new();
     let params: Vec<ParamInfo> = e
         .params
         .iter()
         .map(|p| {
             env.validate_type_names(&p.ty, diagnostics);
+            if !seen_params.insert(p.name.clone()) {
+                diagnostics.push(Diagnostic::error(
+                    format!("duplicate parameter `{}` in event `{}`", p.name, e.name),
+                    p.span,
+                ));
+            }
             ParamInfo {
                 name: p.name.clone(),
                 ty: env.resolve_type(&p.ty),

@@ -579,7 +579,7 @@ system "test" {
     // But for a plain int return, `result = result - 10` would be a param override on "result".
     // The target function has a param named "actor", not "result".
     // So this might not parse correctly. Let me adjust.
-    let _ = check_source(source);
+    expect_no_errors(source);
 }
 
 #[test]
@@ -864,7 +864,7 @@ system "test" {
 }
 "#;
     // Should not error — derive is a valid modify target
-    let _ = check_source(source);
+    expect_no_errors(source);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1414,4 +1414,84 @@ system "test" {
 }
 "#;
     expect_no_errors(source);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Payload enum variant without constructor args
+// ═══════════════════════════════════════════════════════════════
+
+#[test]
+fn test_payload_variant_requires_constructor() {
+    let source = r#"
+system "test" {
+    enum Effect { timed(count: int), permanent }
+    derive foo() -> Effect { Effect.timed }
+}
+"#;
+    expect_errors(source, &["variant `timed` has payload fields and must be called as a constructor"]);
+}
+
+#[test]
+fn test_simple_variant_field_access_ok() {
+    let source = r#"
+system "test" {
+    enum Effect { timed(count: int), permanent }
+    derive foo() -> Effect { Effect.permanent }
+}
+"#;
+    expect_no_errors(source);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Action/reaction receiver enforcement
+// ═══════════════════════════════════════════════════════════════
+
+#[test]
+fn test_action_call_from_derive_rejected() {
+    let source = r#"
+system "test" {
+    entity Character { hp: int }
+    action Heal on actor: Character (target: Character) {
+        resolve { target.hp = target.hp + 10 }
+    }
+    derive foo(target: Character) -> int {
+        Heal(actor: target, target: target)
+        0
+    }
+}
+"#;
+    expect_errors(source, &["is an action and can only be called from action or reaction context"]);
+}
+
+#[test]
+fn test_action_call_missing_receiver_arg() {
+    let source = r#"
+system "test" {
+    entity Character { hp: int }
+    event combat(actor: Character) {}
+    action Heal on actor: Character (target: Character) {
+        resolve { target.hp = target.hp + 10 }
+    }
+    reaction Counter on reactor: Character (trigger: combat(actor: reactor)) {
+        cost { reaction }
+        resolve { Heal(target: reactor) }
+    }
+}
+"#;
+    expect_errors(source, &["missing required argument `actor`"]);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Duplicate event parameter names
+// ═══════════════════════════════════════════════════════════════
+
+#[test]
+fn test_duplicate_event_param() {
+    let source = r#"
+system "test" {
+    entity Character {}
+    event hit(actor: Character, actor: Character) {}
+}
+"#;
+    expect_errors(source, &["duplicate parameter `actor` in event `hit`"]);
 }
