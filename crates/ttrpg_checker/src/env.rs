@@ -188,6 +188,11 @@ impl TypeEnv {
     }
 
     /// Look up a function by name (user-defined or builtin).
+    ///
+    /// By design, user-defined functions shadow builtins. This is consistent
+    /// with most languages (Rust, Python, JS) and lets users override default
+    /// behavior when needed. A future lint pass could warn on shadowing if
+    /// desired, but it is not an error.
     pub fn lookup_fn(&self, name: &str) -> Option<&FnInfo> {
         self.functions.get(name).or_else(|| self.builtins.get(name))
     }

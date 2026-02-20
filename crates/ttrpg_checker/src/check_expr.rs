@@ -78,16 +78,21 @@ impl<'a> Checker<'a> {
             return Ty::Condition;
         }
 
-        // Type names resolve as values to support qualified access (e.g.,
-        // `DamageType.fire`, `ResolvedDamage.miss`). This intentionally allows
-        // bare type names in expression position. A bare type name without
-        // subsequent `.variant` access is semantically questionable but harmless;
-        // a future lint pass could warn on unused bare type-name expressions.
+        // Enum type names resolve as values to support qualified variant access
+        // (e.g., `DamageType.fire`). Struct/entity names are NOT values — they
+        // exist only in the type namespace. Using a struct/entity name bare in
+        // expression position is an error; instances come from struct literals
+        // or function parameters, not from the type name itself.
         if let Some(decl) = self.env.types.get(name) {
             return match decl {
                 DeclInfo::Enum(_) => Ty::Enum(name.to_string()),
-                DeclInfo::Struct(_) => Ty::Struct(name.to_string()),
-                DeclInfo::Entity(_) => Ty::Entity(name.to_string()),
+                DeclInfo::Struct(_) | DeclInfo::Entity(_) => {
+                    self.error(
+                        format!("type `{}` cannot be used as a value", name),
+                        span,
+                    );
+                    Ty::Error
+                }
             };
         }
 
@@ -516,6 +521,9 @@ impl<'a> Checker<'a> {
             ExprKind::FieldAccess { object, field } => {
                 // Qualified call like Type.Variant(args) — enum constructor
                 let obj_ty = self.check_expr(object);
+                if obj_ty.is_error() {
+                    return Ty::Error;
+                }
                 if let Ty::Enum(enum_name) = &obj_ty {
                     return self.check_enum_constructor(enum_name, field, args, span);
                 }
@@ -947,45 +955,34 @@ impl<'a> Checker<'a> {
         match else_branch {
             Some(ElseBranch::Block(else_block)) => {
                 let else_ty = self.check_block(else_block);
-                // Unify types
-                if then_ty.is_error() {
-                    else_ty
-                } else if else_ty.is_error() {
-                    then_ty
-                } else if self.types_compatible(&then_ty, &else_ty) {
-                    then_ty
-                } else if self.types_compatible(&else_ty, &then_ty) {
-                    else_ty
-                } else {
-                    self.error(
-                        format!(
-                            "if/else branches have incompatible types: {} and {}",
-                            then_ty, else_ty
-                        ),
-                        span,
-                    );
-                    Ty::Error
+                match self.unify_branch_types(&then_ty, &else_ty) {
+                    Some(ty) => ty,
+                    None => {
+                        self.error(
+                            format!(
+                                "if/else branches have incompatible types: {} and {}",
+                                then_ty, else_ty
+                            ),
+                            span,
+                        );
+                        Ty::Error
+                    }
                 }
             }
             Some(ElseBranch::If(if_expr)) => {
                 let else_ty = self.check_expr(if_expr);
-                if then_ty.is_error() {
-                    else_ty
-                } else if else_ty.is_error() {
-                    then_ty
-                } else if self.types_compatible(&then_ty, &else_ty) {
-                    then_ty
-                } else if self.types_compatible(&else_ty, &then_ty) {
-                    else_ty
-                } else {
-                    self.error(
-                        format!(
-                            "if/else branches have incompatible types: {} and {}",
-                            then_ty, else_ty
-                        ),
-                        span,
-                    );
-                    Ty::Error
+                match self.unify_branch_types(&then_ty, &else_ty) {
+                    Some(ty) => ty,
+                    None => {
+                        self.error(
+                            format!(
+                                "if/else branches have incompatible types: {} and {}",
+                                then_ty, else_ty
+                            ),
+                            span,
+                        );
+                        Ty::Error
+                    }
                 }
             }
             None => {
@@ -1012,18 +1009,22 @@ impl<'a> Checker<'a> {
             self.scope.pop();
 
             if !arm_ty.is_error() {
-                if let Some(ref existing) = result_ty {
-                    if !existing.is_error() && !self.types_compatible(&arm_ty, existing) {
-                        self.error(
-                            format!(
-                                "match arm has type {}, expected {}",
-                                arm_ty, existing
-                            ),
-                            arm.span,
-                        );
+                match result_ty {
+                    Some(ref existing) => {
+                        match self.unify_branch_types(existing, &arm_ty) {
+                            Some(unified) => result_ty = Some(unified),
+                            None => {
+                                self.error(
+                                    format!(
+                                        "match arm has type {}, expected {}",
+                                        arm_ty, existing
+                                    ),
+                                    arm.span,
+                                );
+                            }
+                        }
                     }
-                } else {
-                    result_ty = Some(arm_ty);
+                    None => result_ty = Some(arm_ty),
                 }
             }
         }
@@ -1071,18 +1072,22 @@ impl<'a> Checker<'a> {
             let arm_ty = self.check_arm_body(&arm.body);
 
             if !arm_ty.is_error() {
-                if let Some(ref existing) = result_ty {
-                    if !existing.is_error() && !self.types_compatible(&arm_ty, existing) {
-                        self.error(
-                            format!(
-                                "match arm has type {}, expected {}",
-                                arm_ty, existing
-                            ),
-                            arm.span,
-                        );
+                match result_ty {
+                    Some(ref existing) => {
+                        match self.unify_branch_types(existing, &arm_ty) {
+                            Some(unified) => result_ty = Some(unified),
+                            None => {
+                                self.error(
+                                    format!(
+                                        "match arm has type {}, expected {}",
+                                        arm_ty, existing
+                                    ),
+                                    arm.span,
+                                );
+                            }
+                        }
                     }
-                } else {
-                    result_ty = Some(arm_ty);
+                    None => result_ty = Some(arm_ty),
                 }
             }
         }

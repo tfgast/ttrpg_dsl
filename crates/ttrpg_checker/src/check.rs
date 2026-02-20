@@ -154,7 +154,12 @@ impl<'a> Checker<'a> {
             let mut positional_index = 0usize;
             let mut seen_bindings = HashSet::new();
 
-            // Pre-scan: collect param names bound by name so positional bindings skip them
+            // By design: positional trigger bindings use Python-style resolution.
+            // All named bindings are collected first, then positional bindings fill the
+            // remaining slots left-to-right. This means the positional mapping depends
+            // on the full set of named bindings, not just those preceding the positional
+            // one. This is consistent with how keyword arguments work in Python and keeps
+            // the implementation simple without sacrificing correctness.
             let named_param_names: HashSet<String> = r
                 .trigger
                 .bindings
@@ -398,5 +403,34 @@ impl<'a> Checker<'a> {
             _ => {}
         }
         false
+    }
+
+    /// Unify two branch types (if/else, match arms), returning the preferred
+    /// result type or `None` if incompatible.
+    ///
+    /// When one side is `none` (i.e. `option<error>`), the concrete option type
+    /// from the other side is preferred so that the inferred type carries the
+    /// real element type forward.
+    pub fn unify_branch_types(&self, a: &Ty, b: &Ty) -> Option<Ty> {
+        if a.is_error() {
+            return Some(b.clone());
+        }
+        if b.is_error() {
+            return Some(a.clone());
+        }
+        // Prefer the concrete side when the other is `none`
+        if a.is_none() && self.types_compatible(a, b) {
+            return Some(b.clone());
+        }
+        if b.is_none() && self.types_compatible(b, a) {
+            return Some(a.clone());
+        }
+        if self.types_compatible(a, b) {
+            return Some(a.clone());
+        }
+        if self.types_compatible(b, a) {
+            return Some(b.clone());
+        }
+        None
     }
 }

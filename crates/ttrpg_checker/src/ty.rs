@@ -43,6 +43,11 @@ impl Ty {
         matches!(self, Ty::Error)
     }
 
+    /// Whether this is the `none` literal type: `option<error>`.
+    pub fn is_none(&self) -> bool {
+        matches!(self, Ty::Option(inner) if inner.is_error())
+    }
+
     pub fn is_numeric(&self) -> bool {
         matches!(self, Ty::Int | Ty::Float | Ty::Resource)
     }

@@ -1825,3 +1825,111 @@ system "test" {
 "#;
     expect_errors(source, &["receiver `turn` shadows the implicit turn budget binding"]);
 }
+
+// ═══════════════════════════════════════════════════════════════
+// Regression: type/value namespace separation
+// ═══════════════════════════════════════════════════════════════
+
+#[test]
+fn test_bare_struct_name_is_not_a_value() {
+    // Struct type names must not be usable as values — instances come from
+    // struct literals or function parameters, not from the type name itself.
+    let source = r#"
+system "test" {
+    struct Pair {
+        a: int
+        b: int
+    }
+    derive foo() -> int {
+        let x = Pair
+        0
+    }
+}
+"#;
+    expect_errors(source, &["type `Pair` cannot be used as a value"]);
+}
+
+#[test]
+fn test_bare_entity_name_is_not_a_value() {
+    let source = r#"
+system "test" {
+    entity Character { HP: int }
+    derive foo() -> int {
+        let x = Character
+        0
+    }
+}
+"#;
+    expect_errors(source, &["type `Character` cannot be used as a value"]);
+}
+
+#[test]
+fn test_bare_struct_field_access_rejected() {
+    // Character.hp should not type-check without a Character instance
+    let source = r#"
+system "test" {
+    entity Character { HP: int }
+    derive foo() -> int {
+        Character.HP
+    }
+}
+"#;
+    expect_errors(source, &["type `Character` cannot be used as a value"]);
+}
+
+#[test]
+fn test_enum_qualified_access_still_works() {
+    // Enum qualified variant access should still work
+    let source = r#"
+system "test" {
+    entity Character { HP: int }
+    enum DamageType { fire, cold, lightning }
+    derive foo() -> DamageType {
+        DamageType.fire
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Regression: none should not collapse option types
+// ═══════════════════════════════════════════════════════════════
+
+#[test]
+fn test_none_if_else_prefers_concrete_type() {
+    // When both branches are `none`, the result is option<error> which is
+    // compatible with any option<T> return type.
+    let source = r#"
+system "test" {
+    derive foo(x: bool) -> option<int> {
+        if x { none } else { none }
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_none_then_concrete_option_unifies() {
+    let source = r#"
+system "test" {
+    derive foo(x: bool, y: option<int>) -> option<int> {
+        if x { none } else { y }
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_concrete_option_then_none_unifies() {
+    let source = r#"
+system "test" {
+    derive foo(x: bool, y: option<int>) -> option<int> {
+        if x { y } else { none }
+    }
+}
+"#;
+    expect_no_errors(source);
+}
