@@ -566,6 +566,18 @@ impl<'a> Checker<'a> {
             }
         };
 
+        // If a local binding shadows the name, it wins — local values aren't callable.
+        if let Some(binding) = self.scope.lookup(&callee_name) {
+            self.error(
+                format!(
+                    "`{}` is a local binding of type {}, not a callable function",
+                    callee_name, binding.ty
+                ),
+                callee.span,
+            );
+            return Ty::Error;
+        }
+
         // Check if it's an enum variant constructor (bare name)
         if let Some(enum_name) = self.env.variant_to_enum.get(&callee_name) {
             let enum_name = enum_name.clone();
@@ -942,21 +954,24 @@ impl<'a> Checker<'a> {
             return Ty::List(Box::new(Ty::Error));
         }
 
-        let first_ty = self.check_expr(&elems[0]);
+        let mut unified_ty = self.check_expr(&elems[0]);
         for elem in &elems[1..] {
             let elem_ty = self.check_expr(elem);
-            if !elem_ty.is_error() && !first_ty.is_error() && !self.types_compatible(&elem_ty, &first_ty) {
-                self.error(
-                    format!(
-                        "list element has type {}, expected {}",
-                        elem_ty, first_ty
-                    ),
-                    elem.span,
-                );
+            match self.unify_branch_types(&unified_ty, &elem_ty) {
+                Some(ty) => unified_ty = ty,
+                None => {
+                    self.error(
+                        format!(
+                            "list element has type {}, expected {}",
+                            elem_ty, unified_ty
+                        ),
+                        elem.span,
+                    );
+                }
             }
         }
 
-        Ty::List(Box::new(first_ty))
+        Ty::List(Box::new(unified_ty))
     }
 
     fn check_if(

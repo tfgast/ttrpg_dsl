@@ -2663,3 +2663,103 @@ system "test" {
 "#;
     expect_errors(source, &["is a move and can only be called from action or reaction context"]);
 }
+
+// ── Bare-call shadowing by local bindings ────────────────────────────
+
+#[test]
+fn local_binding_shadows_enum_variant_constructor() {
+    let source = r#"
+system "test" {
+    enum Effect { timed(count: int), permanent }
+    derive foo() -> int {
+        let timed = 5
+        timed(count: 1)
+        0
+    }
+}
+"#;
+    expect_errors(source, &["is a local binding of type int, not a callable function"]);
+}
+
+#[test]
+fn local_binding_shadows_function() {
+    let source = r#"
+system "test" {
+    derive bar() -> int { 1 }
+    derive foo() -> int {
+        let bar = 5
+        bar()
+    }
+}
+"#;
+    expect_errors(source, &["is a local binding of type int, not a callable function"]);
+}
+
+#[test]
+fn local_binding_does_not_shadow_qualified_call() {
+    // Qualified calls go through check_expr on the object, so a local
+    // variable with the same name as an enum variant should NOT interfere
+    // with Type.variant() syntax.
+    let source = r#"
+system "test" {
+    enum Effect { timed(count: int), permanent }
+    derive foo() -> Effect {
+        let timed = 5
+        Effect.timed(count: timed)
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+// ── List literal typing with none ────────────────────────────────────
+
+#[test]
+fn list_literal_none_first_element() {
+    let source = r#"
+system "test" {
+    derive foo(y: option<int>) -> list<option<int>> {
+        [none, y]
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn list_literal_none_later_element() {
+    let source = r#"
+system "test" {
+    derive foo(y: option<int>) -> list<option<int>> {
+        [y, none]
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn list_literal_all_none_needs_context() {
+    // All none — inferred as list<option<error>>; no concrete type to unify
+    // against, so it cannot satisfy a concrete return type.
+    let source = r#"
+system "test" {
+    derive foo() -> list<option<int>> {
+        [none, none]
+    }
+}
+"#;
+    expect_errors(source, &["expected return type"]);
+}
+
+#[test]
+fn list_literal_mixed_type_still_errors() {
+    let source = r#"
+system "test" {
+    derive foo() -> list<int> {
+        [1, "hello"]
+    }
+}
+"#;
+    expect_errors(source, &["list element has type string, expected int"]);
+}
