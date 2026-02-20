@@ -85,7 +85,7 @@ fn test_parse_option_decl() {
         description: "Melee attackers on opposite sides gain advantage"
         default: off
         when enabled {
-            modify attack_roll(attacker: _, target: _) {
+            modify attack_roll(attacker: attacker, target: target) {
                 if flanking_position(attacker, target) {
                     mode = advantage
                 }
@@ -306,6 +306,49 @@ fn test_trailing_comma_in_args() {
 }"#;
     let (_, diagnostics) = parse(source);
     assert!(diagnostics.is_empty(), "errors: {:?}", diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>());
+}
+
+// ── NL suppression tests ────────────────────────────────────────
+
+#[test]
+fn test_colon_nl_suppression() {
+    // Colon should suppress following newline, allowing multi-line field values
+    let source = r#"system "test" {
+    struct Weapon {
+        name:
+            string
+        damage:
+            int
+    }
+}"#;
+    let (_, diagnostics) = parse(source);
+    assert!(diagnostics.is_empty(), "colon should suppress NL: {:?}", diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>());
+}
+
+#[test]
+fn test_arrow_nl_suppression() {
+    // Thin arrow should suppress following newline in return type annotations
+    let source = r#"system "test" {
+    derive modifier(score: int) ->
+        int {
+        floor((score - 10) / 2)
+    }
+}"#;
+    let (_, diagnostics) = parse(source);
+    assert!(diagnostics.is_empty(), "-> should suppress NL: {:?}", diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>());
+}
+
+#[test]
+fn test_underscore_rejected_in_expr() {
+    // _ should not be valid in expression context (only in patterns)
+    let source = r#"system "test" {
+    derive f(x: int) -> int {
+        let y = _
+        y
+    }
+}"#;
+    let (_, diagnostics) = parse(source);
+    assert!(!diagnostics.is_empty(), "_ should be rejected in expression context");
 }
 
 // ── Error recovery tests ─────────────────────────────────────────

@@ -264,12 +264,6 @@ impl Parser {
                 Ok(Spanned::new(ExprKind::NoneLit, tok.span))
             }
 
-            TokenKind::Underscore => {
-                // In expression context, underscore is just an identifier
-                let tok = self.advance();
-                Ok(Spanned::new(ExprKind::Ident("_".into()), tok.span))
-            }
-
             TokenKind::Ident(_) => {
                 // Could be: simple ident, struct lit, or just ident
                 // Struct lit disambiguation: IDENT { ... } where we peek

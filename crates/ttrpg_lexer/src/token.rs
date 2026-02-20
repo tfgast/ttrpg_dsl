@@ -93,12 +93,14 @@ impl TokenKind {
             // with generic type brackets (e.g., set<T>). >= and <= still suppress.
             | TokenKind::In
             | TokenKind::FatArrow
+            | TokenKind::Arrow
             | TokenKind::Eq
             | TokenKind::PlusEq
             | TokenKind::MinusEq
-            // After { and ,
+            // After {  ,  and  :
             | TokenKind::LBrace
             | TokenKind::Comma
+            | TokenKind::Colon
         )
     }
 }

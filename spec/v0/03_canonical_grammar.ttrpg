@@ -31,7 +31,7 @@
 //
 //   1. Inside ( ) and [ ]: all NL tokens are discarded.
 //   2. After binary/assignment operators and arrows:
-//      +  -  *  /  ||  &&  ==  !=  >=  <=  in  =>  =  +=  -=
+//      +  -  *  /  ||  &&  ==  !=  >=  <=  in  =>  ->  =  +=  -=
 //      NL is suppressed (line continuation).
 //
 //      Note: bare `>` and `<` are deliberately excluded. They are
@@ -39,7 +39,7 @@
 //      Suppressing NL after `>` would merge a field like
 //      `properties: set<WeaponProperty>` with the next line.
 //      The multi-character forms `>=` and `<=` still suppress.
-//   3. After { and , : NL is suppressed.
+//   3. After {  ,  and  : — NL is suppressed.
 //
 // That's it — three rules, all suppression, no insertion.
 // The lexer never injects tokens.
