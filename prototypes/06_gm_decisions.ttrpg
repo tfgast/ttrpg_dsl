@@ -1,0 +1,70 @@
+// ============================================================
+// Prototype 6: The "GM decides" problem
+//
+// Many TTRPG rules punt to human judgment. The DSL needs to
+// represent these decision points without pretending they're
+// mechanically determinable.
+// ============================================================
+
+system "Common" {
+
+  // --- Decision points ---
+  // `prompt` marks a point where a human must decide.
+  // The DSL describes what information is relevant, but
+  // doesn't try to automate the decision.
+
+  // Example: setting a DC
+  prompt set_DC(task_description: string) -> int {
+    hint: "Typical DCs: 5 trivial, 10 easy, 15 moderate, 20 hard, 25 very hard, 30 near impossible"
+    suggest: match task_description.difficulty {
+      trivial => 5,
+      easy    => 10,
+      moderate => 15,
+      hard     => 20,
+      extreme  => 25
+    }
+  }
+
+  // Example: ruling on a creative player action
+  prompt adjudicate(action: string, context: string) -> Resolution {
+    // The DSL can suggest which mechanic *might* apply
+    suggest_mechanic: ability_check | skill_check | saving_throw | auto_success | auto_fail
+    hint: "Consider the fiction. What would reasonably happen?"
+  }
+
+  // --- Optional / variant rules ---
+  // Rules that a table may or may not use
+
+  option flanking {
+    description: "Melee attackers on opposite sides of a target gain advantage"
+    default: off
+
+    when enabled {
+      modify attack_roll(attacker: _, target: _) {
+        if flanking(attacker, target) {
+          mode = advantage
+        }
+      }
+    }
+  }
+
+  option critical_fumble {
+    description: "Natural 1 on attack rolls causes a fumble effect"
+    default: off
+
+    when enabled {
+      modify attack_roll {
+        on natural_1 {
+          prompt gm_fumble_effect(attacker, context)
+        }
+      }
+    }
+  }
+
+  // --- Homebrew hook ---
+  // Let users extend or override any mechanic
+  extend attack_roll {
+    // Additional modifiers, conditions, etc. can be injected here
+    // by the consuming application or homebrew layer
+  }
+}

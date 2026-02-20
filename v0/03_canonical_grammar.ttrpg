@@ -1,0 +1,530 @@
+// ============================================================
+// v0 Spec — Part 3: Canonical Grammar
+//
+// Complete EBNF. Every nonterminal defined. The full example
+// in 04_full_example.ttrpg is parseable by this grammar.
+// ============================================================
+
+// Notation:
+//   X*             zero or more X
+//   X+             one or more X
+//   X?             optional X
+//   X ("," X)*     comma-separated list (one or more)
+//   "keyword"      literal keyword or punctuation
+//   IDENT          [a-zA-Z_][a-zA-Z0-9_]*
+//   INT            [0-9]+
+//   STRING         double-quoted string literal (with standard escapes)
+//   NL             newline
+//   EOF            end of input
+//   COMMENT        "//" to end of line (lexer discards, not in grammar)
+//   &X             lookahead: succeeds when X is next, does NOT consume
+//                  (PEG syntactic predicate; see implementation note below)
+//
+// --- Lexer: comments ---
+//
+// Line comments: // to end of line. Discarded by the lexer.
+// Block comments: not supported in v0.
+//
+// --- Lexer: newline handling ---
+//
+// NL is a real token. The lexer suppresses it in these contexts:
+//
+//   1. Inside ( ) and [ ]: all NL tokens are discarded.
+//   2. After binary/assignment operators and arrows:
+//      +  -  *  /  ||  &&  ==  !=  >=  <=  >  <  in  =>  =  +=  -=
+//      NL is suppressed (line continuation).
+//   3. After { and , : NL is suppressed.
+//
+// That's it — three rules, all suppression, no insertion.
+// The lexer never injects tokens.
+//
+// --- Lexer: keyword handling ---
+//
+// Keywords fall into two categories:
+//
+//   Reserved (always keyword tokens, never IDENT):
+//     let  if  else  match  true  false  none  in
+//
+//   Contextual / soft (lexed as IDENT, recognized by parser in position):
+//     system  use  enum  struct  entity  derive  mechanic  action
+//     reaction  condition  prompt  option  event  move  cost
+//     requires  resolve  modify  suppress  trigger  roll  on
+//     when  enabled  hint  suggest  description  default  result
+//
+// Soft keywords CAN be used as field names, variable names, and
+// enum variants. The parser distinguishes based on position:
+//   `action Attack on ...`   — `action` starts a declaration
+//   `cost { action }`        — `action` is an IDENT (cost token)
+//   `actor.action`           — `action` is an IDENT (field access)
+//
+// This avoids reserving common TTRPG terms. An implementation may
+// choose to reserve all keywords (simpler lexer, fewer field names
+// available) — the grammar is compatible with either approach.
+//
+// --- Parser: the `term` production ---
+//
+// Statements, field definitions, and clause-level productions are
+// terminated by `term`, defined as:
+//
+//   term = NL | &"}" | EOF
+//
+// `&"}"` is a lookahead (PEG syntactic predicate): it succeeds when
+// the next token is `}` but does NOT consume it. This means:
+//
+//   - In multi-line blocks, each stmt/field ends with a real NL.
+//   - The LAST stmt/field before `}` can omit NL because `&"}"` matches.
+//   - Empty blocks `{}` work: stmt* matches zero times, then `}`.
+//   - One-line blocks `{ DEX }` work: DEX has no NL, but `&"}"` matches.
+//   - Non-block braces `cost { action }` work: the `}` is consumed
+//     by the enclosing cost_clause production, not by term.
+//
+// EOF handles top-level declarations (like `use`) at end of file
+// without requiring a trailing newline.
+//
+// In the grammar below, `term` replaces all previous uses of `NL`
+// as a statement/field terminator.
+//
+// --- Implementation note: lookahead ---
+//
+// `&X` is a PEG syntactic predicate (zero-width assertion). It does
+// not exist in standard EBNF or in most LR grammar formalisms.
+// Implementation strategies by parser family:
+//
+//   PEG / packrat / recursive descent:
+//     Native support. `&"}"` is just peek-at-next-token.
+//
+//   ANTLR (LL):
+//     Use a semantic predicate: `{getCurrentToken().getType() == RBRACE}?`
+//     Or rewrite `term` as an inline check at each use site.
+//
+//   LALR / LR (yacc, bison):
+//     Eliminate `term` entirely. Use the standard trick: make NL
+//     optional before `}` by having `}` reduce any open statement.
+//     Concretely: define `opt_term = NL | /* empty */` and use it
+//     only for the last item in a block. Or, emit a synthetic NL
+//     before every `}` in the lexer (simpler but less precise).
+//
+// The grammar uses `&X` for spec clarity. An implementation may
+// inline the equivalent logic at the parser or lexer level.
+
+
+// =========================
+// 1. Program structure
+// =========================
+
+program         = top_level* EOF
+top_level       = use_decl | system_block
+use_decl        = "use" STRING term
+system_block    = "system" STRING "{" decl* "}"
+
+
+// =========================
+// 2. Declarations
+// =========================
+
+decl            = enum_decl
+                | struct_decl
+                | entity_decl
+                | derive_decl
+                | mechanic_decl
+                | action_decl
+                | reaction_decl
+                | condition_decl
+                | prompt_decl
+                | option_decl
+                | event_decl
+                | move_decl          // PbtA sugar (desugars to mechanic + action)
+
+// --- Enum ---
+enum_decl       = "enum" IDENT "{" enum_variants "}"
+enum_variants   = enum_variant ("," enum_variant)* ","?
+enum_variant    = IDENT                             // no data:  STR, miss
+                | IDENT "(" field_list ")"          // with data: hit(amount: int)
+
+// --- Struct ---
+struct_decl     = "struct" IDENT "{" field_def* "}"
+
+// --- Entity ---
+entity_decl     = "entity" IDENT "{" field_def* "}"
+
+// --- Field definitions ---
+field_list      = field_entry ("," field_entry)*
+field_entry     = IDENT ":" type
+
+field_def       = IDENT ":" type ("=" expr)? term
+
+// --- Derive (pure, no dice, no mutation, no receiver) ---
+derive_decl     = "derive" IDENT "(" params ")" "->" type block
+
+// --- Mechanic (can roll, no mutation, no receiver) ---
+mechanic_decl   = "mechanic" IDENT "(" params ")" "->" type block
+
+// --- Action (can roll, can mutate, has receiver) ---
+action_decl     = "action" IDENT "on" IDENT ":" type
+                      "(" params ")" "{"
+                      cost_clause?
+                      requires_clause?
+                      resolve_block
+                  "}"
+
+cost_clause     = "cost" "{" cost_entry ("," cost_entry)* "}" term
+cost_entry      = IDENT                              // a cost token (see mapping below)
+requires_clause = "requires" "{" expr "}" term
+resolve_block   = "resolve" block
+
+// --- Cost token → budget field mapping ---
+//
+// Cost tokens are singular names used in cost clauses. The runtime
+// maps each token to a TurnBudget field and decrements it by 1:
+//
+//   Cost token       Budget field         Effect
+//   ----------       ------------         ------
+//   action           turn.actions         turn.actions -= 1
+//   bonus_action     turn.bonus_actions   turn.bonus_actions -= 1
+//   reaction         turn.reactions       turn.reactions -= 1
+//
+// The singular token is the DSL-facing name (matches D&D terminology:
+// "costs an action"). The plural field is the counter in TurnBudget
+// ("you have 1 actions remaining").
+//
+// STATIC CHECK: The compiler validates cost tokens during semantic
+// analysis (not during parsing). The grammar accepts any IDENT in
+// cost_entry, but the compiler rejects tokens not in the mapping
+// table above. This is a static semantic error, reported as:
+//
+//   error: unknown cost token `foo`
+//     --> file.ttrpg:12:14
+//     | cost { foo }
+//     |        ^^^ expected one of: action, bonus_action, reaction
+//
+// User-defined cost tokens are not supported in v0. A future version
+// may allow systems to extend the cost vocabulary.
+
+// --- Reaction (can roll, can mutate, has receiver + trigger) ---
+reaction_decl   = "reaction" IDENT "on" IDENT ":" type
+                      "(" "trigger" ":" trigger_expr ")" "{"
+                      cost_clause?
+                      resolve_block
+                  "}"
+
+trigger_expr    = IDENT "(" trigger_bindings ")"
+trigger_bindings = trigger_binding ("," trigger_binding)*
+trigger_binding  = IDENT ":" expr                   // e.g., reactor: reactor
+                 | IDENT                             // positional
+
+// --- Event (declares the shape of a trigger event) ---
+event_decl      = "event" IDENT "(" params ")" "{" field_def* "}"
+
+// --- Condition (declarative modifiers, has receiver, no mutation) ---
+condition_decl  = "condition" IDENT "on" IDENT ":" type "{"
+                      condition_clause*
+                  "}"
+
+condition_clause = modify_clause | suppress_clause
+
+modify_clause   = "modify" mechanic_ref "(" modify_bindings ")" modify_body
+mechanic_ref    = IDENT                             // name of target mechanic/derive
+modify_bindings = modify_binding ("," modify_binding)*
+modify_binding  = IDENT ":" expr                    // e.g., attacker: bearer
+modify_body     = "{" modify_stmt* "}"
+modify_stmt     = "let" IDENT (":" type)? "=" expr term   // local binding (either phase)
+                | IDENT "=" expr term                // Phase 1: override input parameter
+                | "result" "." IDENT "=" expr term   // Phase 2: rewrite output field
+                | "if" expr modify_body
+                      ("else" modify_body)? term     // conditional (either phase)
+
+// Phase 1 stmts (IDENT = expr) execute before the target function.
+// Phase 2 stmts (result.IDENT = expr) execute after.
+// A single modify body can contain both phases; the runtime
+// partitions them. `if` blocks can contain either kind.
+
+suppress_clause = "suppress" IDENT "(" modify_bindings ")" term
+// Declares that this condition prevents the named trigger event
+// from firing when bindings match. e.g.:
+//   suppress entity_leaves_reach(entity: bearer)
+// means "while this condition is active, entity_leaves_reach
+// does not fire when target == bearer"
+
+// --- Prompt (human decision point) ---
+prompt_decl     = "prompt" IDENT "(" params ")" "->" type "{"
+                      hint_clause?
+                      suggest_clause?
+                  "}"
+
+hint_clause     = "hint" ":" STRING term
+suggest_clause  = "suggest" ":" expr term
+
+// Prompts are DECLARED as above but INVOKED like function calls:
+//   let choice = choose(target, options: ["Comply", "Suffer"])
+// The call syntax is the same as any function call (see expr grammar).
+// The runtime suspends execution and waits for human input.
+
+// --- Option (variant/homebrew rules) ---
+option_decl     = "option" IDENT ("extends" STRING)? "{"
+                      option_body
+                  "}"
+
+option_body     = description_clause?
+                  default_clause?
+                  when_clause?
+
+description_clause = "description" ":" STRING term
+default_clause     = "default" ":" ("on" | "off") term
+when_clause        = "when" "enabled" "{" modify_clause* "}"
+
+
+// =========================
+// 3. Parameters
+// =========================
+
+params          = (param ("," param)*)?
+param           = IDENT ":" type ("=" expr)?
+
+
+// =========================
+// 4. Types
+// =========================
+
+type            = "int" | "bool" | "string" | "float"
+                | "DiceExpr" | "RollResult"
+                | "TurnBudget" | "Duration" | "Position"
+                | "Condition"
+                | IDENT                              // user-defined type
+                | "map" "<" type "," type ">"
+                | "list" "<" type ">"
+                | "set" "<" type ">"
+                | "option" "<" type ">"
+                | "resource" "(" expr ".." expr ")"
+
+
+// =========================
+// 5. Statements and blocks
+// =========================
+
+term            = NL | &"}" | EOF
+// `term` terminates statements, field definitions, and clauses.
+// NL is a real newline. &"}" is a lookahead that succeeds when
+// the next token is "}" but does NOT consume it. EOF handles
+// top-level productions (use_decl, the last decl in a system
+// block) at end of input without a trailing newline.
+
+block           = "{" stmt* "}"
+
+// --- Block value semantics ---
+//
+// A block's value is determined SEMANTICALLY from its last stmt:
+//
+//   - If the last stmt is an expr_stmt: the block's value is that
+//     expression's value.
+//   - If the last stmt is let_stmt or assign_stmt: block value is unit.
+//   - If the block is empty: block value is unit.
+//
+// All control flow (if, match) is expression-level (see section 6).
+// When `if` or `match` appears as the last thing in a block, it
+// is an expr_stmt and the block value is the expression's value.
+// There is no ambiguity: there is only ONE stmt kind that can
+// contain an expression, and that is expr_stmt.
+//
+// Examples:
+//   { let x = 5             => let_stmt
+//     x + 1                 => expr_stmt → block value = x + 1
+//   }
+//
+//   { target.HP -= amount   => assign_stmt → block value = unit
+//   }
+//
+//   { floor((score - 10) / 2)   => expr_stmt → block value = result
+//   }
+//
+//   { DEX }                 => expr_stmt (term matches &"}")
+//                              block value = DEX
+//
+//   { match { ... } }       => expr_stmt (match_expr) → block value = match result
+//
+// Type checking (semantic analysis, not parsing):
+//   - derive/mechanic: block type must match declared return type.
+//   - action/reaction resolve: block value is discarded (no constraint).
+
+stmt            = let_stmt | assign_stmt | expr_stmt
+
+let_stmt        = "let" IDENT (":" type)? "=" expr term
+assign_stmt     = lvalue assign_op expr term
+assign_op       = "=" | "+=" | "-="
+lvalue          = IDENT ("." IDENT | "[" expr "]")*
+expr_stmt       = expr term
+
+
+// =========================
+// 6. Expressions
+// =========================
+
+// Precedence (low to high):
+//   ||
+//   &&
+//   ==  !=  >=  <=  >  <
+//   in
+//   +  -
+//   *  /
+//   unary (! -)
+//   postfix (. [] ())
+
+expr            = or_expr
+or_expr         = and_expr ("||" and_expr)*
+and_expr        = cmp_expr ("&&" cmp_expr)*
+cmp_expr        = in_expr (cmp_op in_expr)?
+cmp_op          = "==" | "!=" | ">=" | "<=" | ">" | "<"
+in_expr         = add_expr ("in" add_expr)?
+add_expr        = mul_expr (("+" | "-") mul_expr)*
+mul_expr        = unary_expr (("*" | "/") unary_expr)*
+unary_expr      = "!" unary_expr
+                | "-" unary_expr
+                | postfix_expr
+postfix_expr    = primary_expr postfix_op*
+postfix_op      = "." IDENT                          // field access
+                | "[" expr "]"                        // index
+                | "(" arg_list? ")"                   // call
+primary_expr    = INT | STRING
+                | "true" | "false" | "none"
+                | dice_lit
+                | IDENT
+                | struct_lit
+                | list_lit
+                | "(" expr ")"
+                | if_expr
+                | match_expr
+
+// --- Dice literals ---
+dice_lit        = INT "d" INT filter?
+filter          = ("kh" | "kl" | "dh" | "dl") INT
+
+// Note: dice_lit produces a value of type DiceExpr.
+// Operators +, -, * applied to DiceExpr values use dice algebra
+// (defined in 01_type_system.ttrpg). No special grammar needed —
+// the type checker handles it.
+
+// --- Struct construction ---
+struct_lit      = IDENT "{" (struct_field ("," struct_field)* ","?)? "}"
+struct_field    = IDENT ":" expr
+
+// --- List literal ---
+list_lit        = "[" (expr ("," expr)* ","?)? "]"
+
+// --- If expression ---
+//
+// `if` is always an expression. Its type depends on structure:
+//   - With else:    type is the common type of both branches.
+//   - Without else: type is unit. Can appear as expr_stmt but not
+//                   in value-returning positions (type checker enforces).
+if_expr         = "if" expr block ("else" (block | if_expr))?
+
+// --- Match expressions ---
+//
+// Two forms: pattern match (with scrutinee) and guard match (without).
+
+// Pattern match: `match expr { pattern => body, ... }`
+// Arms are patterns tested against the scrutinee value.
+match_expr      = pattern_match | guard_match
+
+pattern_match   = "match" expr "{" pattern_arm ("," pattern_arm)* ","? "}"
+pattern_arm     = pattern "=>" (expr | block)
+pattern         = "_"                                             // wildcard
+                | INT | STRING | "true" | "false"                 // literal
+                | IDENT "." IDENT                                 // qualified variant
+                | IDENT "." IDENT "(" (pattern ("," pattern)*)? ")" // qualified destructure
+                | IDENT "(" (pattern ("," pattern)*)? ")"         // bare destructure
+                | IDENT                                           // binding or bare variant
+
+// --- Pattern IDENT disambiguation (static semantic rule) ---
+//
+// A bare IDENT in pattern position is ambiguous between:
+//   (a) an enum variant (matches that specific value)
+//   (b) a variable binding (captures the matched value)
+//
+// Resolution (checked during semantic analysis, not parsing):
+//   - If IDENT matches an enum variant in scope: it is a variant pattern.
+//   - Otherwise: it is a binding.
+//   - "_" is always a wildcard (matches anything, binds nothing).
+//
+// To avoid ambiguity, use qualified syntax (always a variant):
+//   ResolvedDamage.miss => {}
+//   ResolvedDamage.hit(amount) => {}
+//
+// Bare names work when unambiguous (standard ML/Rust/Swift rule):
+//   miss => {}               // variant (if `miss` is in scope)
+//   hit(amount) => {}        // variant with binding
+//
+// Compiler warning if a bare IDENT shadows a variant name.
+
+// Guard match: `match { bool_expr => body, ... }`
+// No scrutinee. Each arm is a boolean expression, tested top-to-bottom.
+// First truthy arm wins. `_` is always-true (like `else`).
+guard_match     = "match" "{" guard_arm ("," guard_arm)* ","? "}"
+guard_arm       = guard "=>" (expr | block)
+guard           = "_"                                // always matches (must be last)
+                | expr                               // boolean expression
+
+// --- Call arguments ---
+arg_list        = arg ("," arg)*
+arg             = (IDENT ":")? expr                   // optional named arg
+
+
+// =========================
+// 7. PbtA move sugar (desugaring)
+// =========================
+//
+// `move` is syntactic sugar that desugars into mechanic + action.
+// Parseable as a declaration (included in `decl`), but the compiler
+// lowers it to canonical forms before type checking.
+
+move_decl       = "move" IDENT "on" IDENT ":" type
+                      "(" params ")" "{"
+                      trigger_clause
+                      roll_clause
+                      outcome_block+
+                  "}"
+
+trigger_clause  = "trigger" ":" STRING term
+roll_clause     = "roll" ":" expr term
+outcome_block   = "on" IDENT block
+
+// The roll clause takes an arbitrary expression that evaluates to
+// DiceExpr. The receiver parameter is in scope. Typical usage:
+//   roll: 2d6 + actor.stats[Hard]       // PbtA standard
+//   roll: 2d10 + actor.stats[Sharp]     // custom dice
+//   roll: 1d20 + modifier(actor.abilities[CHA])  // d20-based move
+//
+// Desugaring rule:
+//
+//   move GoAggro on actor: Character (target: Character) {
+//       trigger: "threaten with force"
+//       roll: 2d6 + actor.stats[Hard]
+//       on strong_hit { ... }
+//       on weak_hit   { ... }
+//       on miss       { ... }
+//   }
+//
+// =>
+//
+//   mechanic go_aggro_roll(actor: Character) -> RollResult {
+//       roll(2d6 + actor.stats[Hard])
+//   }
+//
+//   action GoAggro on actor: Character (target: Character) {
+//       cost { action }
+//       resolve {
+//           let result = go_aggro_roll(actor)
+//           match {
+//               result >= 10 => { /* strong_hit body */ },
+//               result >= 7  => { /* weak_hit body */ },
+//               _            => { /* miss body */ }
+//           }
+//       }
+//   }
+//
+// The outcome thresholds (10/7) are the standard PbtA breakpoints
+// (strong hit / weak hit / miss). The move sugar assumes this
+// three-tier structure. Games with different outcome tiers should
+// use mechanic + action directly for full control.
+//
+// The trigger string is preserved as metadata on the action for
+// documentation/UI purposes but has no runtime semantics in v0.

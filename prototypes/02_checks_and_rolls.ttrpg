@@ -1,0 +1,70 @@
+// ============================================================
+// Prototype 2: Checks, contests, and roll resolution
+// ============================================================
+
+system "D&D 5e" {
+
+  // --- Roll modifiers ---
+  // Advantage/disadvantage as a roll modifier, not a separate mechanic
+  enum RollMode { normal, advantage, disadvantage }
+
+  // The core d20 test: ability checks, saves, attacks all share this shape
+  mechanic d20_test(
+    ability: Ability,
+    proficient: bool = false,
+    bonus: int = 0,
+    mode: RollMode = normal
+  ) -> Roll {
+    let base = match mode {
+      normal      => 1d20,
+      advantage   => 2d20kh1,
+      disadvantage => 2d20kl1
+    }
+    base + modifier(abilities[ability]) + bonus
+      + if proficient then proficiency_bonus(level) else 0
+  }
+
+  // --- Ability check ---
+  check ability_check(
+    ability: Ability,
+    DC: int,
+    proficient: bool = false,
+    mode: RollMode = normal
+  ) -> outcome(success, failure) {
+    let roll = d20_test(ability, proficient, mode: mode)
+    if roll >= DC then success else failure
+  }
+
+  // --- Skill check ---
+  // Builds on ability_check — the skill just determines which ability
+  check skill_check(
+    skill: Skill,
+    DC: int,
+    mode: RollMode = normal
+  ) -> outcome(success, failure) {
+    let ability = skill.ability   // e.g., Stealth -> DEX
+    let prof = skill in self.proficient_skills
+    ability_check(ability, DC, proficient: prof, mode: mode)
+  }
+
+  // --- Saving throw ---
+  check saving_throw(
+    ability: Ability,
+    DC: int,
+    mode: RollMode = normal
+  ) -> outcome(success, failure) {
+    let prof = ability in self.proficient_saves
+    ability_check(ability, DC, proficient: prof, mode: mode)
+  }
+
+  // --- Contested check ---
+  // Two entities roll against each other instead of a fixed DC
+  check contest(
+    actor: Character performs skill_check,
+    opponent: Character performs skill_check
+  ) -> outcome(actor_wins, opponent_wins) {
+    let actor_roll = actor.skill_check(...)
+    let opponent_roll = opponent.skill_check(...)
+    if actor_roll >= opponent_roll then actor_wins else opponent_wins
+  }
+}

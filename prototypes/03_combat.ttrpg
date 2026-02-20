@@ -1,0 +1,106 @@
+// ============================================================
+// Prototype 3: Combat — attacks, damage, conditions
+// ============================================================
+
+system "D&D 5e" {
+
+  enum DamageType {
+    slashing, piercing, bludgeoning,
+    fire, cold, lightning, thunder, poison,
+    acid, necrotic, radiant, psychic, force
+  }
+
+  // Damage is typed — this matters for resistance/immunity
+  struct Damage {
+    amount: dice
+    type: DamageType
+  }
+
+  entity Weapon {
+    name: string
+    damage: Damage
+    ability: Ability      // STR or DEX (or either for finesse)
+    properties: set<WeaponProperty>
+  }
+
+  enum WeaponProperty { light, heavy, finesse, thrown, versatile, reach }
+
+  // --- Attack roll ---
+  mechanic attack_roll(
+    attacker: Character,
+    target: Character,
+    weapon: Weapon,
+    mode: RollMode = normal
+  ) -> outcome(hit, miss, critical) {
+    // Determine ability — finesse lets you choose
+    let ability = if finesse in weapon.properties
+      then max_by(modifier, [weapon.ability, DEX])
+      else weapon.ability
+
+    let roll = d20_test(ability, proficient: true, mode: mode)
+
+    match {
+      roll.natural == 20 => critical,
+      roll.natural == 1  => miss,
+      roll.total >= target.AC => hit,
+      else => miss
+    }
+  }
+
+  // --- Damage roll ---
+  mechanic damage_roll(
+    attacker: Character,
+    weapon: Weapon,
+    critical: bool = false
+  ) -> Damage {
+    let dice = if critical
+      then weapon.damage.amount * 2   // double the dice on crit
+      else weapon.damage.amount
+    Damage {
+      amount: dice + modifier(attacker.abilities[weapon.ability]),
+      type: weapon.damage.type
+    }
+  }
+
+  // --- Taking damage ---
+  // Resistance/immunity/vulnerability modify incoming damage
+  mechanic apply_damage(target: Character, damage: Damage) {
+    let multiplier = match {
+      damage.type in target.immunities     => 0,
+      damage.type in target.resistances    => 0.5,
+      damage.type in target.vulnerabilities => 2,
+      else => 1
+    }
+    let final = floor(damage.amount * multiplier)
+    target.HP -= final
+  }
+
+  // --- Conditions ---
+  // Conditions are named states that apply modifiers to mechanics
+  condition Prone {
+    // Conditions declaratively modify other mechanics
+    modify attack_roll(attacker: self, mode: _) {
+      mode = disadvantage
+    }
+    modify attack_roll(target: self) {
+      // Melee attacks have advantage, ranged have disadvantage
+      mode = if within(attacker, self, 5ft) then advantage else disadvantage
+    }
+    // Standing up costs half movement
+    modify self.speed { speed = speed / 2 }
+  }
+
+  condition Poisoned {
+    modify d20_test(ability: _, mode: _) {
+      mode = disadvantage   // disadvantage on ability checks and attack rolls
+    }
+  }
+
+  // --- Initiative ---
+  mechanic initiative(combatants: list<Character>) -> list<Character> {
+    // Each combatant rolls, sorted descending
+    sort_by(combatants, desc) { c =>
+      d20_test(DEX).using(c)   // roll in context of each character
+    }
+  }
+}

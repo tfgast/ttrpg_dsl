@@ -1,0 +1,101 @@
+// ============================================================
+// Prototype 4: Resources, actions, and the action economy
+// ============================================================
+
+system "D&D 5e" {
+
+  // --- Resources ---
+  // Resources are quantities that deplete and restore on triggers.
+
+  resource HitPoints(entity: Character) {
+    max = entity.max_HP
+    min = 0
+    on_zero = unconscious   // triggers a condition
+  }
+
+  resource SpellSlots(entity: Character, slot_level: int) {
+    max = spell_slots_table[entity.level][slot_level]
+    restore on long_rest { fill }
+  }
+
+  // Per-rest abilities
+  resource Uses(name: string, max: int, restore_on: RestType) {
+    restore on restore_on { fill }
+  }
+
+  enum RestType { short_rest, long_rest }
+
+  // --- Action economy ---
+  // A turn has a budget of action types
+
+  turn_structure {
+    action: 1,
+    bonus_action: 1,
+    reaction: 1,          // resets at start of your turn
+    movement: self.speed,  // in feet
+    free_interaction: 1    // e.g., draw a weapon
+  }
+
+  // --- Actions ---
+  // Actions are things entities can do. They cost from the turn budget.
+
+  action Attack(target: Character, weapon: Weapon) {
+    cost: action
+    requires: target within weapon.range
+
+    resolve {
+      let result = attack_roll(self, target, weapon)
+      match result {
+        critical => apply_damage(target, damage_roll(self, weapon, critical: true)),
+        hit      => apply_damage(target, damage_roll(self, weapon)),
+        miss     => {}
+      }
+    }
+  }
+
+  action Dash {
+    cost: action
+    resolve {
+      self.movement += self.speed  // double movement this turn
+    }
+  }
+
+  action Dodge {
+    cost: action
+    resolve {
+      // Lasts until start of next turn
+      apply_until(self, next_turn_start) {
+        modify attack_roll(target: self) { mode = disadvantage }
+        modify saving_throw(ability: DEX) { mode = advantage }
+      }
+    }
+  }
+
+  action Disengage {
+    cost: action
+    resolve {
+      apply_until(self, end_of_turn) {
+        suppress opportunity_attack(target: self)
+      }
+    }
+  }
+
+  // --- Reactions ---
+  reaction OpportunityAttack(trigger: entity leaves self.reach) {
+    cost: reaction
+    resolve {
+      Attack(trigger.entity, self.equipped_weapon)
+    }
+  }
+
+  // --- Movement ---
+  // Movement isn't an action but consumes from the movement budget
+  move Move(destination: Position) {
+    let distance = distance(self.position, destination)
+    requires: distance <= self.movement
+    resolve {
+      self.movement -= distance
+      self.position = destination
+    }
+  }
+}

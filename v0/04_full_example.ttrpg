@@ -1,0 +1,321 @@
+// ============================================================
+// v0 Spec — Part 4: Full Worked Example
+//
+// Parseable by the grammar in 03_canonical_grammar.ttrpg.
+// Every type annotated. Every scope declared. Every field
+// traced to its source. No undefined references.
+//
+// This file is self-contained — all types and functions are
+// defined locally. A real project would split these across
+// modules (see 02_scoping.ttrpg for the import model).
+// ============================================================
+
+system "D&D 5e Combat" {
+
+    // --- Enums ---
+
+    enum Ability { STR, DEX, CON, INT, WIS, CHA }
+    enum RollMode { normal, advantage, disadvantage }
+
+    enum DamageType {
+        slashing, piercing, bludgeoning,
+        fire, cold, lightning, thunder, poison,
+        acid, necrotic, radiant, psychic, force
+    }
+
+    enum WeaponProperty { light, heavy, finesse, thrown, versatile, reach }
+
+    enum ResolvedDamage {
+        miss,
+        hit(amount: int)
+    }
+
+
+    // --- Structs ---
+
+    struct DamageSpec {
+        dice: DiceExpr
+        type: DamageType
+    }
+
+    struct TurnBudget {
+        actions: int
+        bonus_actions: int
+        reactions: int
+        movement: int
+        free_interactions: int
+    }
+
+
+    // --- Entities ---
+
+    entity Weapon {
+        name: string
+        damage: DamageSpec
+        ability: Ability
+        properties: set<WeaponProperty>
+        range: int
+        long_range: option<int>
+    }
+
+    entity Character {
+        name: string
+        level: int = 1
+        abilities: map<Ability, int>
+        proficient_saves: set<Ability>
+        AC: int
+        HP: resource(0..max_HP)
+        max_HP: int
+        speed: int = 30
+        resistances: set<DamageType>
+        immunities: set<DamageType>
+        vulnerabilities: set<DamageType>
+        conditions: set<Condition>
+        position: Position
+        equipped_weapon: Weapon
+    }
+
+
+    // --- Derives (pure, no dice, no mutation) ---
+
+    derive modifier(score: int) -> int {
+        floor((score - 10) / 2)
+    }
+
+    derive proficiency_bonus(level: int) -> int {
+        floor((level - 1) / 4) + 2
+    }
+
+    derive initial_budget(actor: Character) -> TurnBudget {
+        TurnBudget {
+            actions: 1,
+            bonus_actions: 1,
+            reactions: 1,
+            movement: actor.speed,
+            free_interactions: 1
+        }
+    }
+
+    derive apply_resistances(
+        target: Character,
+        raw_damage: int,
+        damage_type: DamageType
+    ) -> int {
+        match {
+            damage_type in target.immunities      => 0,
+            damage_type in target.resistances     => floor(raw_damage / 2),
+            damage_type in target.vulnerabilities => raw_damage * 2,
+            _ => raw_damage
+        }
+    }
+
+
+    // --- Mechanics (can roll, no mutation) ---
+
+    mechanic choose_attack_ability(
+        attacker: Character,
+        weapon: Weapon
+    ) -> Ability {
+        if finesse in weapon.properties {
+            let str_mod = modifier(attacker.abilities[STR])
+            let dex_mod = modifier(attacker.abilities[DEX])
+            if dex_mod > str_mod { DEX } else { weapon.ability }
+        } else {
+            weapon.ability
+        }
+    }
+
+    mechanic d20_expr(
+        score: int,
+        proficiency: int = 0,
+        bonus: int = 0,
+        mode: RollMode = normal
+    ) -> DiceExpr {
+        let base: DiceExpr = match mode {
+            normal       => 1d20,
+            advantage    => 2d20kh1,
+            disadvantage => 2d20kl1
+        }
+        base + modifier(score) + proficiency + bonus
+    }
+
+    mechanic attack_roll(
+        attacker: Character,
+        target: Character,
+        weapon: Weapon,
+        mode: RollMode = normal
+    ) -> RollResult {
+        let ability = choose_attack_ability(attacker, weapon)
+        let expr = d20_expr(
+            score: attacker.abilities[ability],
+            proficiency: proficiency_bonus(attacker.level),
+            mode: mode
+        )
+        roll(expr)
+    }
+
+    mechanic damage_expr(
+        attacker: Character,
+        weapon: Weapon,
+        critical: bool = false
+    ) -> DiceExpr {
+        let ability = choose_attack_ability(attacker, weapon)
+        let dice: DiceExpr = if critical {
+            multiply_dice(weapon.damage.dice, 2)
+        } else {
+            weapon.damage.dice
+        }
+        dice + modifier(attacker.abilities[ability])
+    }
+
+    // Shared attack resolution logic. Returns a value (ResolvedDamage)
+    // but does NOT mutate state — the calling action applies the result.
+    mechanic resolve_melee_attack(
+        attacker: Character,
+        target: Character,
+        weapon: Weapon,
+        mode: RollMode = normal
+    ) -> ResolvedDamage {
+        let atk: RollResult = attack_roll(attacker, target, weapon, mode)
+        match {
+            atk.unmodified == 1 => ResolvedDamage.miss,
+            atk.unmodified == 20 => {
+                let dmg: RollResult = roll(damage_expr(attacker, weapon, critical: true))
+                let final_dmg = apply_resistances(target, dmg.total, weapon.damage.type)
+                ResolvedDamage.hit(final_dmg)
+            },
+            atk >= target.AC => {
+                let dmg: RollResult = roll(damage_expr(attacker, weapon, critical: false))
+                let final_dmg = apply_resistances(target, dmg.total, weapon.damage.type)
+                ResolvedDamage.hit(final_dmg)
+            },
+            _ => ResolvedDamage.miss
+        }
+    }
+
+    // Initiative roll for a single character.
+    // Sorting combatants by result is a runtime/VTT responsibility —
+    // the DSL provides the per-character roll, not list operations.
+    mechanic initiative_roll(combatant: Character) -> RollResult {
+        let expr = d20_expr(score: combatant.abilities[DEX], proficiency: 0)
+        roll(expr)
+    }
+
+
+    // --- Prompts (human decision points) ---
+
+    prompt choose(chooser: Character, options: list<string>) -> string {
+        hint: "The player or GM selects one option from the list"
+    }
+
+    prompt gm_decides(context: string) -> string {
+        hint: "The GM determines the outcome based on the fiction"
+    }
+
+
+    // --- Actions (can roll AND mutate, have receiver) ---
+
+    action Attack on attacker: Character (target: Character, weapon: Weapon) {
+        cost { action }
+        requires { distance(attacker.position, target.position) <= weapon.range }
+
+        resolve {
+            let result = resolve_melee_attack(attacker, target, weapon)
+            match result {
+                hit(amount) => { target.HP -= amount },
+                miss => {}
+            }
+        }
+    }
+
+    action Dash on actor: Character () {
+        cost { action }
+
+        resolve {
+            turn.movement += actor.speed
+        }
+    }
+
+    action Dodge on actor: Character () {
+        cost { action }
+
+        resolve {
+            apply_condition(actor, Dodging, Duration.start_of_next_turn)
+        }
+    }
+
+    action Disengage on actor: Character () {
+        cost { action }
+
+        resolve {
+            apply_condition(actor, Disengaging, Duration.end_of_turn)
+        }
+    }
+
+
+    // --- Events (trigger event shapes) ---
+    //
+    // Events declare the shape of things that happen during play.
+    // Reactions listen for them. Conditions can suppress them.
+
+    event entity_leaves_reach(reactor: Character) {
+        entity: Character       // the entity that is leaving
+        from_position: Position
+        to_position: Position
+    }
+
+
+    // --- Reactions (can roll AND mutate, trigger-driven) ---
+
+    reaction OpportunityAttack on reactor: Character (
+        trigger: entity_leaves_reach(reactor: reactor)
+    ) {
+        cost { reaction }
+
+        resolve {
+            // Calls the shared mechanic — no cost/requires bypass
+            let result = resolve_melee_attack(
+                reactor, trigger.entity, reactor.equipped_weapon
+            )
+            match result {
+                hit(amount) => { trigger.entity.HP -= amount },
+                miss => {}
+            }
+        }
+    }
+
+
+    // --- Conditions (declarative modifiers, no mutation) ---
+
+    condition Prone on bearer: Character {
+        modify attack_roll(attacker: bearer) {
+            mode = disadvantage
+        }
+        modify attack_roll(target: bearer) {
+            mode = if distance(attacker.position, bearer.position) <= 5 {
+                advantage
+            } else {
+                disadvantage
+            }
+        }
+        modify initial_budget(actor: bearer) {
+            result.movement = result.movement - floor(bearer.speed / 2)
+        }
+    }
+
+    condition Dodging on bearer: Character {
+        modify attack_roll(target: bearer) {
+            mode = disadvantage
+        }
+        // Note: saving throw advantage for DEX saves would require
+        // a saving_throw mechanic (omitted for brevity in this example)
+    }
+
+    condition Disengaging on bearer: Character {
+        // Suppresses opportunity attacks against bearer.
+        // The runtime checks: if target has Disengaging, skip the
+        // entity_leaves_reach trigger. This is a built-in interaction
+        // between conditions and triggers, not custom logic.
+        suppress entity_leaves_reach(entity: bearer)
+    }
+}

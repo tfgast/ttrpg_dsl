@@ -1,0 +1,223 @@
+// ============================================================
+// v0 Spec — Part 1: Type System
+//
+// Three-stage roll pipeline:  DiceExpr -> RollResult -> int
+// Primitives, composites, coercion rules, dice algebra.
+// ============================================================
+
+
+// --- Primitive types ---
+//
+//   int       signed integer
+//   bool      true | false
+//   string    double-quoted text
+//   float     intermediate numeric type; no float literals in v0
+//
+// float values are produced by the `/` operator (see Arithmetic below).
+// floor() and ceil() convert float → int. There is no syntax for float
+// literals — floats exist only as intermediate computation results.
+// Variables and fields CAN be typed float (e.g., `let x: float = a / b`),
+// but there is no way to write a float constant directly.
+
+
+// --- The roll pipeline ---
+//
+// Stage 1: DiceExpr
+//
+//   An unevaluated description of dice to roll.
+//   Constructed from dice literals or returned by mechanics/derives.
+//
+//   Dice literals:
+//     1d20            -> DiceExpr
+//     2d6             -> DiceExpr
+//     4d6kh3          -> DiceExpr   (keep highest 3)
+//     2d20kl1         -> DiceExpr   (keep lowest 1)
+//
+//   DiceExpr is a first-class type. Variables and fields can hold them:
+//     let x: DiceExpr = 1d20
+//     struct DamageSpec { dice: DiceExpr, type: DamageType }
+//
+//
+// Stage 2: RollResult
+//
+//   Produced ONLY by calling roll(). Contains full roll information.
+
+struct RollResult {
+    expr: DiceExpr
+    dice: list<int>         // individual die outcomes, before filters
+    kept: list<int>         // outcomes after keep/drop filters
+    modifier: int           // sum of constant terms
+    total: int              // sum(kept) + modifier
+    unmodified: int         // sum(kept), WITHOUT modifier
+}
+
+//   Produced by:   roll(expr: DiceExpr) -> RollResult
+//
+//   `unmodified` is the sum of kept dice, excluding constant modifiers.
+//   For a 1d20+5 roll, unmodified = the die face, total = die + 5.
+//   For a 2d6+3 roll, unmodified = sum of both dice, total = sum + 3.
+//
+//   To check individual die faces (e.g., "did any die show a 1?"),
+//   inspect the `kept` list: `1 in result.kept`.
+//   `unmodified` is NOT a single die face — it is the sum of all kept dice.
+//
+//
+// Stage 3: int extraction
+//
+//   RollResult -> int happens in two ways:
+//     Implicit:  comparison operators (>=, <=, ==, !=, >, <)
+//                coerce RollResult to .total on either side.
+//     Explicit:  result.total, result.unmodified
+
+
+// --- DiceExpr algebra ---
+//
+// Operators on DiceExpr values (NOT on resolved numbers):
+//
+//   DiceExpr + DiceExpr  -> DiceExpr     combine pools
+//   DiceExpr + int       -> DiceExpr     add constant modifier
+//   int + DiceExpr       -> DiceExpr     (commutative)
+//   DiceExpr - int       -> DiceExpr     subtract constant modifier
+//
+// `*` and `/` are NOT overloaded for DiceExpr. Using `*` on a
+// DiceExpr is a type error. This avoids a subtle footgun where
+// `(1d8 + 3) * 2` would need to produce `2d8 + 3` (multiplying
+// dice count but not constants) — a non-obvious violation of the
+// distributive property.
+//
+// To multiply dice count (e.g., critical hits), use the builtin:
+//   multiply_dice(expr: DiceExpr, factor: int) -> DiceExpr
+//   multiply_dice(1d8 + 3, 2)  => 2d8 + 3   (dice doubled, modifier kept)
+//   multiply_dice(1d8 + 1d6, 2) => 2d8 + 2d6
+//
+// To double a final numerical total (e.g., a "Double Damage" effect),
+// roll first, then multiply the int result:
+//   let result = roll(weapon.damage.dice + modifier(score))
+//   let doubled = result.total * 2    // int * int, normal arithmetic
+//
+// These are type-system-level operator overloads, NOT special grammar.
+// The expression grammar handles +, -, * uniformly; the type checker
+// dispatches to dice algebra when the operand type is DiceExpr.
+
+
+// --- Coercion rules (exhaustive) ---
+//
+//   From         To          How
+//   ----         --          ---
+//   DiceExpr     RollResult  explicit roll() call ONLY
+//   RollResult   int         implicit in comparison ops; explicit via .total
+//   int          DiceExpr    NEVER
+//   DiceExpr     int         NEVER (must roll() first)
+//
+//   Type errors:
+//     let x: DiceExpr = 1d20 + 5
+//     if x >= 15 { }             // ERROR: DiceExpr cannot compare to int
+//
+//   Correct:
+//     let x: DiceExpr = 1d20 + 5
+//     let r: RollResult = roll(x)
+//     if r >= 15 { }             // OK: RollResult coerces .total for >=
+
+
+// --- Arithmetic rules ---
+//
+//   int + int     -> int
+//   int - int     -> int
+//   int * int     -> int
+//   int / int     -> float     (always float division)
+//   float + int   -> float     (numeric promotion)
+//   int + float   -> float     (commutative)
+//   float - int   -> float
+//   float * int   -> float
+//   float / int   -> float
+//   (likewise for float OP float)
+//
+// `/` ALWAYS produces float, even for int operands. This is why
+// floor() exists: `floor((score - 10) / 2)` computes -0.5 for
+// score 9, then floors to -1. Without float division, the D&D
+// ability modifier formula would be incorrect for odd scores below 10.
+//
+// To get integer division with floor semantics: floor(a / b)
+// To get integer division with truncation: if a / b >= 0 then
+//   floor(a / b) else ceil(a / b)
+
+
+// --- Composite types ---
+//
+//   map<K, V>           key-value mapping
+//   list<T>             ordered sequence
+//   set<T>              unordered unique elements
+//   option<T>           T | none
+//   resource(min..max)  bounded int; all assignments clamp to bounds
+//                        (=, +=, -= all clamp the result to [min, max])
+
+
+// --- Enums ---
+//
+// Named finite sets. Variants optionally carry typed fields.
+//
+//   enum Ability { STR, DEX, CON, INT, WIS, CHA }
+//
+//   enum ResolvedDamage {
+//       miss,
+//       hit(amount: int)
+//   }
+//
+// Static associations (like Skill -> Ability) are expressed via
+// derive functions, NOT overloaded enum syntax:
+//
+//   enum Skill { Acrobatics, Athletics, Arcana, ... }
+//   derive skill_ability(skill: Skill) -> Ability {
+//       match skill {
+//           Acrobatics => DEX,
+//           Athletics  => STR,
+//           ...
+//       }
+//   }
+
+
+// --- Structs ---
+//
+// Product types with named fields. Value semantics (copied, not referenced).
+//
+//   struct DamageSpec {
+//       dice: DiceExpr
+//       type: DamageType
+//   }
+
+
+// --- Entities ---
+//
+// Like structs but with identity and mutable state.
+// Passed by reference. Live on the game board.
+//
+//   entity Character { ... }
+//   entity Weapon { ... }
+
+
+// --- Position ---
+//
+// Opaque runtime-provided type representing a location on the game
+// board. Internal structure (grid coordinates, hex coordinates,
+// theater-of-the-mind tokens, etc.) is determined by the runtime
+// environment, not by the DSL.
+//
+// DSL code interacts with Position only through builtins:
+//   distance(a: Position, b: Position) -> int
+//
+// Position values are obtained from entity fields (e.g., actor.position)
+// and from event payloads (e.g., trigger.from_position). The DSL
+// cannot construct Position values directly in v0.
+
+
+// --- Duration ---
+//
+// Temporal anchor for conditions and temporary effects.
+
+enum Duration {
+    end_of_turn,
+    start_of_next_turn,
+    rounds(count: int),
+    minutes(count: int),
+    indefinite
+}

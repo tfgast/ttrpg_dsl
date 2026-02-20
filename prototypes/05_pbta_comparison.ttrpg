@@ -1,0 +1,94 @@
+// ============================================================
+// Prototype 5: A different system — Powered by the Apocalypse
+// This tests whether the DSL generalizes beyond d20 systems.
+// ============================================================
+
+system "Apocalypse World" {
+
+  // PbtA uses 2d6 + stat, with a 3-tier outcome
+  enum Outcome { strong_hit, weak_hit, miss }
+
+  enum Stat { Cool, Hard, Hot, Sharp, Weird }
+
+  entity Character {
+    name: string
+    stats: map<Stat, int>    // typically -1 to +3
+    HP: resource(0..6)       // called "harm" in PbtA
+    experience: resource(0..5)
+  }
+
+  // --- Moves ---
+  // PbtA's core abstraction: moves triggered by fiction
+
+  // The universal roll
+  mechanic move_roll(stat: Stat) -> Outcome {
+    let roll = 2d6 + self.stats[stat]
+    match {
+      roll >= 10 => strong_hit,
+      roll >= 7  => weak_hit,
+      else       => miss
+    }
+  }
+
+  // --- Basic moves ---
+  // "When you do X, roll +STAT"
+
+  move GoAggro(target: Character) {
+    trigger: "try to get someone to do something using threat or force"
+    roll: +Hard
+
+    on strong_hit {
+      // Target chooses: comply or suffer consequences
+      choose target {
+        "Comply with demand",
+        "Suffer established consequences"
+      }
+    }
+    on weak_hit {
+      // Target can choose a lesser option
+      choose target {
+        "Comply but half-heartedly",
+        "Barricade themselves in",
+        "Give you something they think you want",
+        "Back off calmly, hands where you can see"
+      }
+    }
+    on miss {
+      // MC makes a move
+      gm_decides
+    }
+  }
+
+  move ReadASitch {
+    trigger: "closely study a situation"
+    roll: +Sharp
+
+    on strong_hit { ask 3 from read_questions }
+    on weak_hit { ask 1 from read_questions }
+    on miss { gm_decides }
+  }
+
+  question_list read_questions {
+    "Where's my best escape route?",
+    "Which enemy is most vulnerable?",
+    "What's my best way in?",
+    "Who's in control here?",
+    "What should I be on the lookout for?"
+  }
+
+  // --- Harm ---
+  // PbtA handles damage very differently from D&D
+  mechanic suffer_harm(amount: int) {
+    self.HP -= amount
+    if amount >= 3 {
+      move_roll(Hard)  // "suffer harm" move
+    }
+  }
+
+  // --- Advancement ---
+  // When you fill XP, pick an advance
+  on self.experience == 5 {
+    choose self from advances
+    self.experience = 0
+  }
+}

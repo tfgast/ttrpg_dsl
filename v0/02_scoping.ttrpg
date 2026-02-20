@@ -1,0 +1,284 @@
+// ============================================================
+// v0 Spec — Part 2: Scoping, Mutation, and Modules
+//
+// Who is "self"? What can mutate? How do files compose?
+// ============================================================
+
+
+// --- Block categories ---
+//
+// Category     Dice?   Mutate?   Receiver?   Returns?   Purpose
+// --------     -----   -------   ---------   --------   -------
+// derive       no      no        no          value      pure computation
+// mechanic     yes     no        no          value      dice + logic, returns a value
+// action       yes     yes       yes         unit       game action, changes state
+// reaction     yes     yes       yes         unit       triggered action, changes state
+// condition    no      no        yes         n/a        declarative modifier overlay
+// prompt       no      no        no          value      human decision point
+//
+// "Returns?" indicates whether the block is value-returning.
+// derive/mechanic: last stmt MUST be expr_stmt (its value is the return).
+// action/reaction resolve: no constraint (any block value is discarded).
+// See 03_canonical_grammar.ttrpg "Block value semantics" for details.
+//
+// Key: "Mutate?" means can the block assign to entity fields
+//      (e.g., target.HP -= 5).
+//
+// action and reaction are the ONLY blocks that can mutate entity state.
+// mechanic can call roll() but CANNOT assign to entity fields.
+// condition does NOT mutate — its modify clauses are declarative overlays
+//   that alter computed results, not imperative assignments (see below).
+
+
+// --- Receivers: the `on` keyword ---
+//
+// Blocks that operate on behalf of an entity declare a receiver
+// with the `on` keyword. This replaces implicit `self`.
+//
+// Syntax: `action Name on receiver_name: ReceiverType (params) { ... }`
+//
+// The receiver is just a named parameter with special status:
+// - It's the entity performing the action
+// - It's used for cost deduction (action economy)
+// - condition uses it for the entity bearing the condition
+
+// EXAMPLE: explicit receiver, all field access names its source
+action Attack on attacker: Character (target: Character, weapon: Weapon) {
+    cost { action }
+    requires { distance(attacker.position, target.position) <= weapon.range }
+    resolve {
+        // attacker.abilities, target.AC — always explicit
+    }
+}
+
+// EXAMPLE: derive — no receiver, pure function of its arguments
+derive modifier(score: int) -> int {
+    floor((score - 10) / 2)
+}
+
+// EXAMPLE: mechanic — no receiver, can roll but cannot mutate
+mechanic attack_roll(
+    attacker: Character,
+    target: Character,
+    weapon: Weapon,
+    mode: RollMode = normal
+) -> RollResult {
+    // Can call roll(), but CANNOT write `target.HP -= ...`
+    let ability = choose_attack_ability(attacker, weapon)
+    let expr = d20_expr(
+        score: attacker.abilities[ability],
+        proficiency: proficiency_bonus(attacker.level),
+        mode: mode
+    )
+    roll(expr)
+}
+
+
+// --- Conditions and `modify` ---
+//
+// condition blocks declare modifier overlays. A modify clause says:
+//   "When function X is called and these bindings match,
+//    apply these transformations."
+//
+// This is NOT mutation. The condition doesn't execute imperative code.
+// It declares transformation rules that the runtime applies.
+//
+// Modify operates in two phases:
+//
+//   Phase 1 — Pre-call (parameter rewrite):
+//     Statements of the form `param_name = expr` override input
+//     parameters of the target function BEFORE it executes.
+//     Example: `mode = disadvantage` rewrites the mode parameter
+//     of attack_roll before the roll happens.
+//
+//   Phase 2 — Post-call (result rewrite):
+//     Statements of the form `result.field = expr` modify fields
+//     of the target function's return value AFTER it executes.
+//     Example: `result.movement = result.movement - 15` adjusts
+//     the movement field of initial_budget's returned TurnBudget.
+//
+// Both phases are declarative. Neither phase assigns to entity fields.
+//
+// The modify clause targets a specific mechanic/derive by name and
+// binds its parameters to condition context.
+
+condition Prone on bearer: Character {
+    // When attack_roll is called with attacker == bearer: set mode to disadvantage
+    modify attack_roll(attacker: bearer) {
+        mode = disadvantage
+    }
+
+    // When attack_roll is called with target == bearer: mode depends on distance
+    modify attack_roll(target: bearer) {
+        mode = if distance(attacker.position, bearer.position) <= 5 {
+            advantage
+        } else {
+            disadvantage
+        }
+    }
+
+    // When initial_budget is computed for bearer: halve movement
+    modify initial_budget(actor: bearer) {
+        result.movement = result.movement - floor(bearer.speed / 2)
+    }
+}
+
+// The modify clause binds `attacker: bearer` meaning "this modifier fires
+// when the `attacker` parameter equals the entity bearing Prone."
+// Inside the modify body, other parameters of the target function
+// (e.g., `attacker`, `target`) are in scope as read-only bindings.
+// `result` refers to the output of the target function, for post-modification.
+//
+// `let` statements are allowed in modify bodies for intermediate values:
+//   modify attack_roll(target: bearer) {
+//       let dist = distance(attacker.position, bearer.position)
+//       mode = if dist <= 5 { advantage } else { disadvantage }
+//   }
+
+
+// --- Modify conflict resolution ---
+//
+// When multiple active conditions modify the same parameter of the
+// same function call, modifiers are applied in the order the conditions
+// were gained by the entity (oldest first). Within a single condition,
+// clauses are applied in declaration order.
+//
+// Each modifier sees the parameter value left by the previous modifier
+// (pipeline model, not independent evaluation). Last writer wins.
+//
+// Example: entity has both Prone and Dodging, attacking a target.
+//   1. Prone.modify attack_roll(attacker: bearer) sets mode = disadvantage
+//   2. No other condition modifies this call
+//   Result: mode = disadvantage
+//
+// Game-specific interactions (e.g., D&D 5e "advantage and disadvantage
+// cancel out") are NOT built into the runtime. They should be modeled
+// as a mechanic or derive that checks for conflicting conditions:
+//
+//   derive resolve_roll_mode(actor: Character, base_mode: RollMode) -> RollMode {
+//       let has_adv = /* check conditions granting advantage */
+//       let has_dis = /* check conditions granting disadvantage */
+//       match { has_adv && has_dis => normal, has_adv => advantage,
+//               has_dis => disadvantage, _ => base_mode }
+//   }
+//
+// This keeps the modify system simple (last-writer-wins pipeline)
+// and pushes game-specific cancellation logic into explicit DSL code.
+
+
+// --- Turn state ---
+//
+// The action economy is managed by the runtime. The DSL declares:
+//   1. initial_budget(actor) — derive returning the starting TurnBudget
+//   2. cost { ... } on each action — what the action consumes
+//   3. `turn` keyword in resolve blocks — access to mutable turn state
+//
+// `turn` is a keyword available ONLY inside action/reaction resolve blocks.
+// It refers to the current turn's mutable TurnBudget.
+
+struct TurnBudget {
+    actions: int
+    bonus_actions: int
+    reactions: int
+    movement: int
+    free_interactions: int
+}
+
+derive initial_budget(actor: Character) -> TurnBudget {
+    TurnBudget {
+        actions: 1,
+        bonus_actions: 1,
+        reactions: 1,
+        movement: actor.speed,
+        free_interactions: 1
+    }
+}
+
+// Example: Dash adds movement via the turn keyword
+action Dash on actor: Character () {
+    cost { action }
+    resolve {
+        turn.movement += actor.speed
+    }
+}
+
+
+// --- Events ---
+//
+// Events declare the shape of trigger occurrences. The runtime emits
+// events; reactions listen for them; conditions can suppress them.
+//
+// Syntax:
+//   event entity_leaves_reach(reactor: Character) {
+//       entity: Character
+//       from_position: Position
+//       to_position: Position
+//   }
+//
+// The parameter list defines the matching context (which entity's
+// reach is relevant). The body fields are the event payload.
+// Inside a reaction's resolve block, `trigger` is bound to the
+// event instance, and `trigger.entity`, `trigger.from_position`,
+// etc. are accessible.
+
+
+// --- Builtins ---
+//
+// Functions provided by the runtime, usable based on block permissions:
+//
+// Available everywhere:
+//   floor(x: float) -> int          // round toward negative infinity
+//   ceil(x: float) -> int           // round toward positive infinity
+//   max(a: int, b: int) -> int
+//   min(a: int, b: int) -> int
+//   distance(a: Position, b: Position) -> int   // see Position in 01_type_system.ttrpg
+//   multiply_dice(expr: DiceExpr, factor: int) -> DiceExpr
+//       // multiplies dice count only, constants unchanged
+//       // multiply_dice(1d8 + 3, 2) => 2d8 + 3
+//
+// Available in mechanic, action, reaction (blocks that can roll):
+//   roll(expr: DiceExpr) -> RollResult
+//
+// Available in action, reaction (blocks that can mutate):
+//   apply_condition(target: Character, cond: Condition, duration: Duration)
+//   remove_condition(target: Character, cond: Condition)
+//
+// The `turn` keyword (available in action/reaction resolve blocks):
+//   Refers to the current turn's mutable TurnBudget.
+//   turn.movement, turn.actions, etc. are assignable.
+
+
+// --- Modules and imports ---
+//
+// Each file is a module. A system block is the top-level module.
+// `use` imports all public names from another system.
+//
+// All top-level declarations in a system block are public.
+// No private/public distinction in v0.
+
+// file: dnd5e/core.ttrpg
+system "D&D 5e Core" {
+    // Ability, modifier(), proficiency_bonus(), ...
+}
+
+// file: dnd5e/combat.ttrpg
+use "D&D 5e Core"
+
+system "D&D 5e Combat" {
+    // Can reference Ability, modifier(), etc.
+}
+
+// file: homebrew/flanking.ttrpg
+use "D&D 5e Combat"
+
+option flanking extends "D&D 5e Combat" {
+    description: "Melee attackers on opposite sides gain advantage"
+    default: off
+    when enabled {
+        modify attack_roll(attacker: _, target: _) {
+            if flanking_position(attacker, target) {
+                mode = advantage
+            }
+        }
+    }
+}

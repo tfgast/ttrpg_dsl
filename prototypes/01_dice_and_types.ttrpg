@@ -1,0 +1,65 @@
+// ============================================================
+// Prototype 1: Core primitives — dice, types, and attributes
+// ============================================================
+
+// --- Dice expressions ---
+// Dice are first-class values, not just strings.
+// They represent *potential* rolls, not resolved numbers.
+
+// literal dice
+1d20
+2d6
+4d6kh3              // roll 4d6, keep highest 3
+2d20kl1             // roll 2d20, keep lowest 1 (disadvantage)
+1d12 + 5            // die + constant modifier
+3d8 + 1d6           // dice can combine
+
+// --- Attributes and derived values ---
+
+system "D&D 5e" {
+
+  // Enum-like: define a closed set of named values
+  enum Ability { STR, DEX, CON, INT, WIS, CHA }
+  enum Size { Tiny, Small, Medium, Large, Huge, Gargantuan }
+  enum Skill {
+    Acrobatics(DEX), Athletics(STR), Arcana(INT),
+    Deception(CHA), History(INT), Insight(WIS),
+    Intimidation(CHA), Investigation(INT), Medicine(WIS),
+    Nature(INT), Perception(WIS), Performance(CHA),
+    Persuasion(CHA), Religion(INT), SleightOfHand(DEX),
+    Stealth(DEX), Survival(WIS)
+  }
+
+  // Derived values: pure functions over game state
+  derive modifier(score: int) -> int {
+    floor((score - 10) / 2)
+  }
+
+  derive proficiency_bonus(level: int) -> int {
+    floor((level - 1) / 4) + 2
+  }
+
+  // --- Entity templates ---
+  // Entities are the "nouns" of the game: characters, creatures, items.
+
+  entity Character {
+    name: string
+    level: int = 1
+    size: Size = Medium
+
+    // Ability scores — each is an int with a derived modifier
+    abilities: map<Ability, int>
+
+    // Proficiencies are sets
+    proficient_skills: set<Skill>
+    proficient_saves: set<Ability>
+
+    // Derived: AC, HP, etc.
+    derive AC -> int
+    derive max_HP -> int
+    HP: resource(0..max_HP)
+
+    // Speed in feet
+    speed: int = 30
+  }
+}
