@@ -78,7 +78,11 @@ impl<'a> Checker<'a> {
             return Ty::Condition;
         }
 
-        // Check if it's a type name (for qualified access like EnumType.Variant)
+        // Type names resolve as values to support qualified access (e.g.,
+        // `DamageType.fire`, `ResolvedDamage.miss`). This intentionally allows
+        // bare type names in expression position. A bare type name without
+        // subsequent `.variant` access is semantically questionable but harmless;
+        // a future lint pass could warn on unused bare type-name expressions.
         if let Some(decl) = self.env.types.get(name) {
             return match decl {
                 DeclInfo::Enum(_) => Ty::Enum(name.to_string()),
@@ -904,11 +908,18 @@ impl<'a> Checker<'a> {
         _span: ttrpg_ast::Span,
     ) -> Ty {
         let mut result_ty: Option<Ty> = None;
+        let mut seen_wildcard = false;
 
         for arm in arms {
             // Check guard expression
             match &arm.guard {
                 GuardKind::Expr(expr) => {
+                    if seen_wildcard {
+                        self.warning(
+                            "unreachable match arm: wildcard `_` must be last".to_string(),
+                            expr.span,
+                        );
+                    }
                     let guard_ty = self.check_expr(expr);
                     if !guard_ty.is_error() && guard_ty != Ty::Bool {
                         self.error(
@@ -917,7 +928,15 @@ impl<'a> Checker<'a> {
                         );
                     }
                 }
-                GuardKind::Wildcard => {}
+                GuardKind::Wildcard => {
+                    if seen_wildcard {
+                        self.warning(
+                            "duplicate wildcard `_` in guard match".to_string(),
+                            arm.span,
+                        );
+                    }
+                    seen_wildcard = true;
+                }
             }
 
             let arm_ty = self.check_arm_body(&arm.body);

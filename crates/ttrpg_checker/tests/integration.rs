@@ -55,6 +55,28 @@ fn expect_errors(source: &str, expected_fragments: &[&str]) {
     }
 }
 
+fn expect_warnings(source: &str, expected_fragments: &[&str]) {
+    let result = check_source(source);
+    let warnings: Vec<_> = result
+        .diagnostics
+        .iter()
+        .filter(|d| d.severity == ttrpg_ast::diagnostic::Severity::Warning)
+        .collect();
+
+    for frag in expected_fragments {
+        let found = warnings.iter().any(|w| w.message.contains(frag));
+        if !found {
+            let sm = SourceMap::new(source);
+            let rendered: Vec<_> = warnings.iter().map(|d| sm.render(d)).collect();
+            panic!(
+                "expected warning containing {:?}, but not found in:\n{}",
+                frag,
+                rendered.join("\n\n")
+            );
+        }
+    }
+}
+
 // ═══════════════════════════════════════════════════════════════
 // Full example acceptance test
 // ═══════════════════════════════════════════════════════════════
@@ -879,6 +901,113 @@ system "test" {
         cost { action }
         resolve {
             target.HP += 5
+        }
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Fix #6: Positional trigger binding validation
+// ═══════════════════════════════════════════════════════════════
+
+#[test]
+fn test_positional_trigger_binding_type_mismatch() {
+    let source = r#"
+system "test" {
+    entity Character { name: string }
+    event damage(amount: int) {}
+    reaction Block on actor: Character (trigger: damage(actor)) {
+        cost { reaction }
+        resolve {}
+    }
+}
+"#;
+    expect_errors(source, &["positional trigger binding 0 has type Character, expected int"]);
+}
+
+#[test]
+fn test_positional_trigger_binding_too_many() {
+    let source = r#"
+system "test" {
+    entity Character { name: string }
+    event flee(actor: Character) {}
+    reaction Block on defender: Character (trigger: flee(defender, defender)) {
+        cost { reaction }
+        resolve {}
+    }
+}
+"#;
+    expect_errors(source, &["too many positional trigger bindings for event `flee`"]);
+}
+
+#[test]
+fn test_positional_trigger_binding_ok() {
+    let source = r#"
+system "test" {
+    entity Character { name: string }
+    event flee(actor: Character) {}
+    reaction Block on defender: Character (trigger: flee(defender)) {
+        cost { reaction }
+        resolve {}
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Fix #7: Parameter default type-checking
+// ═══════════════════════════════════════════════════════════════
+
+#[test]
+fn test_param_default_type_mismatch() {
+    let source = r#"
+system "test" {
+    derive foo(x: int = "hello") -> int { x }
+}
+"#;
+    expect_errors(source, &["parameter `x` default has type string, expected int"]);
+}
+
+#[test]
+fn test_param_default_ok() {
+    let source = r#"
+system "test" {
+    derive add(a: int, b: int = 0) -> int { a + b }
+}
+"#;
+    expect_no_errors(source);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Fix #8: Guard match wildcard ordering
+// ═══════════════════════════════════════════════════════════════
+
+#[test]
+fn test_guard_match_wildcard_not_last() {
+    let source = r#"
+system "test" {
+    derive classify(x: int) -> string {
+        match {
+            _ => "default",
+            x > 100 => "high"
+        }
+    }
+}
+"#;
+    expect_warnings(source, &["unreachable match arm: wildcard `_` must be last"]);
+}
+
+#[test]
+fn test_guard_match_wildcard_last_ok() {
+    let source = r#"
+system "test" {
+    derive classify(x: int) -> string {
+        match {
+            x > 100 => "high",
+            _ => "low"
         }
     }
 }

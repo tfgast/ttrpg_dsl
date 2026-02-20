@@ -143,6 +143,7 @@ impl<'a> Checker<'a> {
 
             // Check trigger bindings: validate names match event params/fields and types match.
             let event_info = event_info.clone();
+            let mut positional_index = 0usize;
             for binding in &r.trigger.bindings {
                 if let Some(ref name) = binding.name {
                     let expected_ty = event_info
@@ -180,8 +181,31 @@ impl<'a> Checker<'a> {
                         );
                     }
                 } else {
-                    // Positional binding — still type-check the value
-                    self.check_expr(&binding.value);
+                    // Positional binding — match against event params by position
+                    if positional_index < event_info.params.len() {
+                        let expected = &event_info.params[positional_index].ty;
+                        let param_name = &event_info.params[positional_index].name;
+                        let val_ty = self.check_expr(&binding.value);
+                        if !val_ty.is_error() && !self.types_compatible(&val_ty, expected) {
+                            self.error(
+                                format!(
+                                    "positional trigger binding {} has type {}, expected {} (parameter `{}`)",
+                                    positional_index, val_ty, expected, param_name
+                                ),
+                                binding.value.span,
+                            );
+                        }
+                    } else {
+                        self.check_expr(&binding.value);
+                        self.error(
+                            format!(
+                                "too many positional trigger bindings for event `{}` (expected {})",
+                                r.trigger.event_name, event_info.params.len()
+                            ),
+                            binding.span,
+                        );
+                    }
+                    positional_index += 1;
                 }
             }
         } else {
@@ -271,6 +295,18 @@ impl<'a> Checker<'a> {
     fn bind_params(&mut self, params: &[Param]) {
         for param in params {
             let ty = self.env.resolve_type(&param.ty);
+            if let Some(ref default) = param.default {
+                let def_ty = self.check_expr(default);
+                if !def_ty.is_error() && !self.types_compatible(&def_ty, &ty) {
+                    self.error(
+                        format!(
+                            "parameter `{}` default has type {}, expected {}",
+                            param.name, def_ty, ty
+                        ),
+                        default.span,
+                    );
+                }
+            }
             self.scope.bind(
                 param.name.clone(),
                 VarBinding {
