@@ -58,7 +58,8 @@ impl<'a> Checker<'a> {
             DeclKind::Struct(s) => self.check_struct_defaults(s),
             DeclKind::Entity(e) => self.check_entity_defaults(e),
             DeclKind::Prompt(p) => self.check_prompt(p),
-            DeclKind::Event(_) | DeclKind::Enum(_) => {}
+            DeclKind::Event(e) => self.check_event(e),
+            DeclKind::Enum(_) => {}
             DeclKind::Option(o) => self.check_option(o),
             DeclKind::Move(m) => self.check_move(m),
         }
@@ -377,6 +378,26 @@ impl<'a> Checker<'a> {
             }
         }
 
+        self.scope.pop();
+    }
+
+    fn check_event(&mut self, e: &EventDecl) {
+        self.scope.push(BlockKind::Derive);
+        for param in &e.params {
+            if let Some(ref default) = param.default {
+                let def_ty = self.check_expr(default);
+                let param_ty = self.env.resolve_type(&param.ty);
+                if !def_ty.is_error() && !self.types_compatible(&def_ty, &param_ty) {
+                    self.error(
+                        format!(
+                            "event `{}` parameter `{}` default has type {}, expected {}",
+                            e.name, param.name, def_ty, param_ty
+                        ),
+                        default.span,
+                    );
+                }
+            }
+        }
         self.scope.pop();
     }
 

@@ -67,6 +67,16 @@ fn pass_1a(
             _ => continue,
         };
 
+        // TurnBudget must be a struct — the built-in turn binding and
+        // types_compatible only handle struct TurnBudget.
+        if name == "TurnBudget" && !matches!(&stub, DeclInfo::Struct(_)) {
+            diagnostics.push(Diagnostic::error(
+                "`TurnBudget` must be defined as a struct",
+                decl.span,
+            ));
+            continue;
+        }
+
         if env.types.contains_key(&name) {
             diagnostics.push(Diagnostic::error(
                 format!("duplicate type declaration `{}`", name),
@@ -84,11 +94,27 @@ fn pass_1b(
     env: &mut TypeEnv,
     diagnostics: &mut Vec<Diagnostic>,
 ) {
+    // Track which type names we've already processed so that duplicate
+    // declarations (already reported in pass_1a) don't overwrite the
+    // first valid entry's fields/variants.
+    let mut processed_types = HashSet::new();
     for decl in decls {
         match &decl.node {
-            DeclKind::Enum(e) => collect_enum(e, env, diagnostics),
-            DeclKind::Struct(s) => collect_struct(s, env, diagnostics),
-            DeclKind::Entity(e) => collect_entity(e, env, diagnostics),
+            DeclKind::Enum(e) => {
+                if processed_types.insert(e.name.clone()) {
+                    collect_enum(e, env, diagnostics);
+                }
+            }
+            DeclKind::Struct(s) => {
+                if processed_types.insert(s.name.clone()) {
+                    collect_struct(s, env, diagnostics);
+                }
+            }
+            DeclKind::Entity(e) => {
+                if processed_types.insert(e.name.clone()) {
+                    collect_entity(e, env, diagnostics);
+                }
+            }
             DeclKind::Derive(f) => collect_fn(
                 &f.name,
                 FnKind::Derive,
@@ -275,6 +301,22 @@ fn collect_fn(
             ),
             span,
         ));
+    }
+
+    // `result` is reserved in derive/mechanic signatures because modify
+    // clauses bind it as the implicit return-value override.
+    if kind == FnKind::Derive || kind == FnKind::Mechanic {
+        for p in params {
+            if p.name == "result" {
+                diagnostics.push(Diagnostic::error(
+                    format!(
+                        "`result` is reserved and cannot be used as a parameter name in `{}`",
+                        name
+                    ),
+                    p.span,
+                ));
+            }
+        }
     }
 
     let mut seen_params = HashSet::new();
