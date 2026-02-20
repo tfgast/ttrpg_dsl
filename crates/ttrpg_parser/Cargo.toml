@@ -1,0 +1,8 @@
+[package]
+name = "ttrpg_parser"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ttrpg_ast = { path = "../ttrpg_ast" }
+ttrpg_lexer = { path = "../ttrpg_lexer" }
