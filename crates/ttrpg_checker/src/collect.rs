@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use ttrpg_ast::ast::*;
 use ttrpg_ast::diagnostic::Diagnostic;
 use ttrpg_ast::Span;
@@ -121,16 +123,39 @@ fn pass_1b(
 
 fn collect_enum(e: &EnumDecl, env: &mut TypeEnv, diagnostics: &mut Vec<Diagnostic>) {
     let mut variants = Vec::new();
+    let mut seen_variants = HashSet::new();
 
     for v in &e.variants {
+        // Check for duplicate variant names within this enum
+        if !seen_variants.insert(v.name.clone()) {
+            diagnostics.push(Diagnostic::error(
+                format!("duplicate variant `{}` in enum `{}`", v.name, e.name),
+                v.span,
+            ));
+            continue;
+        }
+
         let fields = match &v.fields {
-            Some(field_entries) => field_entries
-                .iter()
-                .map(|f| {
-                    env.validate_type_names(&f.ty, diagnostics);
-                    (f.name.clone(), env.resolve_type(&f.ty))
-                })
-                .collect(),
+            Some(field_entries) => {
+                let mut seen_fields = HashSet::new();
+                field_entries
+                    .iter()
+                    .filter_map(|f| {
+                        env.validate_type_names(&f.ty, diagnostics);
+                        if !seen_fields.insert(f.name.clone()) {
+                            diagnostics.push(Diagnostic::error(
+                                format!(
+                                    "duplicate field `{}` in variant `{}`",
+                                    f.name, v.name
+                                ),
+                                f.span,
+                            ));
+                            return None;
+                        }
+                        Some((f.name.clone(), env.resolve_type(&f.ty)))
+                    })
+                    .collect()
+            }
             None => Vec::new(),
         };
 
@@ -160,12 +185,24 @@ fn collect_enum(e: &EnumDecl, env: &mut TypeEnv, diagnostics: &mut Vec<Diagnosti
 }
 
 fn collect_struct(s: &StructDecl, env: &mut TypeEnv, diagnostics: &mut Vec<Diagnostic>) {
-    let fields: Vec<(String, Ty)> = s
+    let mut seen = HashSet::new();
+    let fields: Vec<FieldInfo> = s
         .fields
         .iter()
-        .map(|f| {
+        .filter_map(|f| {
             env.validate_type_names(&f.ty, diagnostics);
-            (f.name.clone(), env.resolve_type(&f.ty))
+            if !seen.insert(f.name.clone()) {
+                diagnostics.push(Diagnostic::error(
+                    format!("duplicate field `{}` in struct `{}`", f.name, s.name),
+                    f.span,
+                ));
+                return None;
+            }
+            Some(FieldInfo {
+                name: f.name.clone(),
+                ty: env.resolve_type(&f.ty),
+                has_default: f.default.is_some(),
+            })
         })
         .collect();
 
@@ -175,12 +212,24 @@ fn collect_struct(s: &StructDecl, env: &mut TypeEnv, diagnostics: &mut Vec<Diagn
 }
 
 fn collect_entity(e: &EntityDecl, env: &mut TypeEnv, diagnostics: &mut Vec<Diagnostic>) {
-    let fields: Vec<(String, Ty)> = e
+    let mut seen = HashSet::new();
+    let fields: Vec<FieldInfo> = e
         .fields
         .iter()
-        .map(|f| {
+        .filter_map(|f| {
             env.validate_type_names(&f.ty, diagnostics);
-            (f.name.clone(), env.resolve_type(&f.ty))
+            if !seen.insert(f.name.clone()) {
+                diagnostics.push(Diagnostic::error(
+                    format!("duplicate field `{}` in entity `{}`", f.name, e.name),
+                    f.span,
+                ));
+                return None;
+            }
+            Some(FieldInfo {
+                name: f.name.clone(),
+                ty: env.resolve_type(&f.ty),
+                has_default: f.default.is_some(),
+            })
         })
         .collect();
 
@@ -207,10 +256,17 @@ fn collect_fn(
         return;
     }
 
+    let mut seen_params = HashSet::new();
     let param_infos: Vec<ParamInfo> = params
         .iter()
         .map(|p| {
             env.validate_type_names(&p.ty, diagnostics);
+            if !seen_params.insert(p.name.clone()) {
+                diagnostics.push(Diagnostic::error(
+                    format!("duplicate parameter `{}` in function `{}`", p.name, name),
+                    p.span,
+                ));
+            }
             ParamInfo {
                 name: p.name.clone(),
                 ty: env.resolve_type(&p.ty),
@@ -238,6 +294,9 @@ fn collect_fn(
     );
 }
 
+/// Actions are intentionally stored in `env.functions` and callable as regular
+/// functions. Method-call syntax (`receiver.action()`) is not yet implemented;
+/// when it is, a `FnKind` gate may be added to restrict call sites.
 fn collect_action(
     a: &ActionDecl,
     env: &mut TypeEnv,
@@ -267,6 +326,8 @@ fn collect_action(
     );
 }
 
+/// Reactions are intentionally stored in `env.functions` and callable as regular
+/// functions. See [`collect_action`] for rationale.
 fn collect_reaction(
     r: &ReactionDecl,
     env: &mut TypeEnv,
@@ -367,12 +428,20 @@ fn collect_event(
         })
         .collect();
 
+    let mut seen_fields = HashSet::new();
     let fields: Vec<(String, Ty)> = e
         .fields
         .iter()
-        .map(|f| {
+        .filter_map(|f| {
             env.validate_type_names(&f.ty, diagnostics);
-            (f.name.clone(), env.resolve_type(&f.ty))
+            if !seen_fields.insert(f.name.clone()) {
+                diagnostics.push(Diagnostic::error(
+                    format!("duplicate field `{}` in event `{}`", f.name, e.name),
+                    f.span,
+                ));
+                return None;
+            }
+            Some((f.name.clone(), env.resolve_type(&f.ty)))
         })
         .collect();
 

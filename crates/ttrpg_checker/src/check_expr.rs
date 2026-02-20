@@ -391,8 +391,8 @@ impl<'a> Checker<'a> {
                 }
 
                 if let Some(fields) = self.env.lookup_fields(name) {
-                    if let Some((_, ty)) = fields.iter().find(|(n, _)| n == field) {
-                        return ty.clone();
+                    if let Some(fi) = fields.iter().find(|f| f.name == field) {
+                        return fi.ty.clone();
                     }
                 }
                 self.error(
@@ -664,8 +664,63 @@ impl<'a> Checker<'a> {
                 ),
                 span,
             );
-        } else if !variant.fields.is_empty() {
-            if args.len() != variant.fields.len() {
+            return Ty::Enum(enum_name.to_string());
+        }
+
+        // Track which field indices are satisfied (like check_call)
+        let mut satisfied: HashSet<usize> = HashSet::new();
+        let mut next_positional = 0usize;
+
+        for arg in args {
+            let arg_ty = self.check_expr(&arg.value);
+
+            let field_idx = if let Some(ref name) = arg.name {
+                variant.fields.iter().position(|(n, _)| n == name)
+            } else {
+                // Skip fields already claimed by named args
+                while next_positional < variant.fields.len()
+                    && satisfied.contains(&next_positional)
+                {
+                    next_positional += 1;
+                }
+                if next_positional < variant.fields.len() {
+                    let idx = next_positional;
+                    next_positional += 1;
+                    Some(idx)
+                } else {
+                    None
+                }
+            };
+
+            if let Some(idx) = field_idx {
+                if !satisfied.insert(idx) {
+                    self.error(
+                        format!(
+                            "duplicate argument for variant field `{}`",
+                            variant.fields[idx].0
+                        ),
+                        arg.span,
+                    );
+                }
+
+                if !arg_ty.is_error() {
+                    let (ref fname, ref expected) = variant.fields[idx];
+                    if !self.types_compatible(&arg_ty, expected) {
+                        self.error(
+                            format!(
+                                "variant field `{}` has type {}, found {}",
+                                fname, expected, arg_ty
+                            ),
+                            arg.span,
+                        );
+                    }
+                }
+            } else if let Some(ref name) = arg.name {
+                self.error(
+                    format!("variant `{}` has no field `{}`", variant_name, name),
+                    arg.span,
+                );
+            } else {
                 self.error(
                     format!(
                         "variant `{}` takes {} argument(s), found {}",
@@ -675,45 +730,20 @@ impl<'a> Checker<'a> {
                     ),
                     span,
                 );
+                break;
             }
+        }
 
-            for (i, arg) in args.iter().enumerate() {
-                let arg_ty = self.check_expr(&arg.value);
-                if arg_ty.is_error() {
-                    continue;
-                }
-                if let Some(ref name) = arg.name {
-                    // Named argument: validate against field name
-                    if let Some((_, expected)) = variant.fields.iter().find(|(n, _)| n == name) {
-                        if !self.types_compatible(&arg_ty, expected) {
-                            self.error(
-                                format!(
-                                    "variant field `{}` has type {}, found {}",
-                                    name, expected, arg_ty
-                                ),
-                                arg.span,
-                            );
-                        }
-                    } else {
-                        self.error(
-                            format!(
-                                "variant `{}` has no field `{}`",
-                                variant_name, name
-                            ),
-                            arg.span,
-                        );
-                    }
-                } else if let Some((_, expected)) = variant.fields.get(i) {
-                    if !self.types_compatible(&arg_ty, expected) {
-                        self.error(
-                            format!(
-                                "variant field has type {}, found {}",
-                                expected, arg_ty
-                            ),
-                            arg.span,
-                        );
-                    }
-                }
+        // All variant fields are required (no defaults)
+        for (idx, (fname, _)) in variant.fields.iter().enumerate() {
+            if !satisfied.contains(&idx) {
+                self.error(
+                    format!(
+                        "missing required field `{}` in variant `{}`",
+                        fname, variant_name
+                    ),
+                    span,
+                );
             }
         }
 
@@ -782,17 +812,28 @@ impl<'a> Checker<'a> {
         };
 
         // Check each provided field
+        let mut seen = HashSet::new();
         for field in fields {
             let field_ty = self.check_expr(&field.value);
+
+            // Detect duplicate initializers
+            if !seen.insert(field.name.clone()) {
+                self.error(
+                    format!("duplicate field `{}` in struct literal", field.name),
+                    field.span,
+                );
+                continue;
+            }
+
             if field_ty.is_error() {
                 continue;
             }
-            if let Some((_, expected)) = declared_fields.iter().find(|(n, _)| *n == field.name) {
-                if !self.types_compatible(&field_ty, expected) {
+            if let Some(fi) = declared_fields.iter().find(|f| f.name == field.name) {
+                if !self.types_compatible(&field_ty, &fi.ty) {
                     self.error(
                         format!(
                             "field `{}` has type {}, expected {}",
-                            field.name, field_ty, expected
+                            field.name, field_ty, fi.ty
                         ),
                         field.span,
                     );
@@ -801,6 +842,19 @@ impl<'a> Checker<'a> {
                 self.error(
                     format!("type `{}` has no field `{}`", name, field.name),
                     field.span,
+                );
+            }
+        }
+
+        // Check for missing required fields (no default)
+        for fi in declared_fields.iter() {
+            if !fi.has_default && !seen.contains(&fi.name) {
+                self.error(
+                    format!(
+                        "missing required field `{}` in `{}` literal",
+                        fi.name, name
+                    ),
+                    span,
                 );
             }
         }

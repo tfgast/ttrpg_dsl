@@ -1261,3 +1261,157 @@ system "test" {
 "#;
     expect_errors(source, &["undefined variable `y`"]);
 }
+
+// ═══════════════════════════════════════════════════════════════
+// Duplicate field/param detection
+// ═══════════════════════════════════════════════════════════════
+
+#[test]
+fn test_duplicate_struct_field() {
+    let source = r#"
+system "test" {
+    struct Pair {
+        x: int
+        x: int
+    }
+}
+"#;
+    expect_errors(source, &["duplicate field `x` in struct `Pair`"]);
+}
+
+#[test]
+fn test_duplicate_entity_field() {
+    let source = r#"
+system "test" {
+    entity Character {
+        HP: int
+        HP: int
+    }
+}
+"#;
+    expect_errors(source, &["duplicate field `HP` in entity `Character`"]);
+}
+
+#[test]
+fn test_duplicate_enum_variant_field() {
+    let source = r#"
+system "test" {
+    enum Effect {
+        timed(count: int, count: int),
+        permanent
+    }
+}
+"#;
+    expect_errors(source, &["duplicate field `count` in variant `timed`"]);
+}
+
+#[test]
+fn test_duplicate_event_field() {
+    let source = r#"
+system "test" {
+    entity Character { name: string }
+    event hit(actor: Character) {
+        damage: int
+        damage: int
+    }
+}
+"#;
+    expect_errors(source, &["duplicate field `damage` in event `hit`"]);
+}
+
+#[test]
+fn test_duplicate_function_param() {
+    let source = r#"
+system "test" {
+    derive foo(x: int, x: int) -> int { x }
+}
+"#;
+    expect_errors(source, &["duplicate parameter `x` in function `foo`"]);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Enum constructor: duplicate & missing field validation
+// ═══════════════════════════════════════════════════════════════
+
+#[test]
+fn test_enum_constructor_duplicate_named_arg() {
+    let source = r#"
+system "test" {
+    enum Effect {
+        timed(count: int),
+        permanent
+    }
+    derive foo() -> Effect {
+        Effect.timed(count: 1, count: 2)
+    }
+}
+"#;
+    expect_errors(source, &["duplicate argument for variant field `count`"]);
+}
+
+#[test]
+fn test_enum_constructor_missing_required_field() {
+    let source = r#"
+system "test" {
+    enum Pair {
+        both(a: int, b: int)
+    }
+    derive foo() -> Pair {
+        Pair.both(a: 1)
+    }
+}
+"#;
+    expect_errors(source, &["missing required field `b` in variant `both`"]);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Struct literal: duplicate & missing field validation
+// ═══════════════════════════════════════════════════════════════
+
+#[test]
+fn test_struct_literal_duplicate_field() {
+    let source = r#"
+system "test" {
+    struct Point {
+        x: int
+        y: int
+    }
+    derive foo() -> Point {
+        Point { x: 1, y: 2, x: 3 }
+    }
+}
+"#;
+    expect_errors(source, &["duplicate field `x` in struct literal"]);
+}
+
+#[test]
+fn test_struct_literal_missing_required_field() {
+    let source = r#"
+system "test" {
+    struct Point {
+        x: int
+        y: int
+    }
+    derive foo() -> Point {
+        Point { x: 1 }
+    }
+}
+"#;
+    expect_errors(source, &["missing required field `y` in `Point` literal"]);
+}
+
+#[test]
+fn test_struct_literal_missing_field_with_default_ok() {
+    let source = r#"
+system "test" {
+    struct Config {
+        x: int
+        y: int = 0
+    }
+    derive foo() -> Config {
+        Config { x: 1 }
+    }
+}
+"#;
+    expect_no_errors(source);
+}

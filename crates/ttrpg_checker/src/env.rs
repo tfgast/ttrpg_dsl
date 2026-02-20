@@ -26,15 +26,22 @@ pub struct VariantInfo {
 }
 
 #[derive(Debug, Clone)]
+pub struct FieldInfo {
+    pub name: String,
+    pub ty: Ty,
+    pub has_default: bool,
+}
+
+#[derive(Debug, Clone)]
 pub struct StructInfo {
     pub name: String,
-    pub fields: Vec<(String, Ty)>,
+    pub fields: Vec<FieldInfo>,
 }
 
 #[derive(Debug, Clone)]
 pub struct EntityInfo {
     pub name: String,
-    pub fields: Vec<(String, Ty)>,
+    pub fields: Vec<FieldInfo>,
 }
 
 /// What kind of callable a function name refers to.
@@ -186,7 +193,7 @@ impl TypeEnv {
     }
 
     /// Look up fields of a struct/entity by name.
-    pub fn lookup_fields(&self, name: &str) -> Option<&[(String, Ty)]> {
+    pub fn lookup_fields(&self, name: &str) -> Option<&[FieldInfo]> {
         match self.types.get(name)? {
             DeclInfo::Struct(info) => Some(&info.fields),
             DeclInfo::Entity(info) => Some(&info.fields),
