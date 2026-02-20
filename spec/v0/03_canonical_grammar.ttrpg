@@ -230,7 +230,7 @@ condition_clause = modify_clause | suppress_clause
 
 modify_clause   = "modify" mechanic_ref "(" modify_bindings ")" modify_body
 mechanic_ref    = IDENT                             // name of target mechanic/derive
-modify_bindings = modify_binding ("," modify_binding)*
+modify_bindings = modify_binding ("," modify_binding)* ","?
 modify_binding  = IDENT ":" expr                    // e.g., attacker: bearer
 modify_body     = "{" modify_stmt* "}"
 modify_stmt     = "let" IDENT (":" type)? "=" expr term   // local binding (either phase)
@@ -436,8 +436,8 @@ pattern_arm     = pattern "=>" (expr | block)
 pattern         = "_"                                             // wildcard
                 | INT | STRING | "true" | "false"                 // literal
                 | IDENT "." IDENT                                 // qualified variant
-                | IDENT "." IDENT "(" (pattern ("," pattern)*)? ")" // qualified destructure
-                | IDENT "(" (pattern ("," pattern)*)? ")"         // bare destructure
+                | IDENT "." IDENT "(" (pattern ("," pattern)* ","?)? ")" // qualified destructure
+                | IDENT "(" (pattern ("," pattern)* ","?)? ")"         // bare destructure
                 | IDENT                                           // binding or bare variant
 
 // --- Pattern IDENT disambiguation (static semantic rule) ---

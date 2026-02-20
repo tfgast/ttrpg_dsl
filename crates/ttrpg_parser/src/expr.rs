@@ -435,10 +435,22 @@ impl Parser {
                 break;
             }
             arms.push(self.parse_pattern_arm()?);
-            if matches!(self.peek(), TokenKind::Comma) {
+            let saw_comma = matches!(self.peek(), TokenKind::Comma);
+            if saw_comma {
                 self.advance();
             }
+            let saw_newline = self.skip_newlines();
+            if !saw_comma && !saw_newline && !matches!(self.peek(), TokenKind::RBrace | TokenKind::Eof) {
+                self.error("expected ',' or newline between match arms");
+                return Err(());
+            }
         }
+
+        if arms.is_empty() {
+            self.error("match expression requires at least one arm");
+            return Err(());
+        }
+
         self.expect(&TokenKind::RBrace)?;
 
         Ok(Spanned::new(
@@ -460,10 +472,22 @@ impl Parser {
                 break;
             }
             arms.push(self.parse_guard_arm()?);
-            if matches!(self.peek(), TokenKind::Comma) {
+            let saw_comma = matches!(self.peek(), TokenKind::Comma);
+            if saw_comma {
                 self.advance();
             }
+            let saw_newline = self.skip_newlines();
+            if !saw_comma && !saw_newline && !matches!(self.peek(), TokenKind::RBrace | TokenKind::Eof) {
+                self.error("expected ',' or newline between match arms");
+                return Err(());
+            }
         }
+
+        if arms.is_empty() {
+            self.error("match expression requires at least one arm");
+            return Err(());
+        }
+
         self.expect(&TokenKind::RBrace)?;
 
         Ok(Spanned::new(

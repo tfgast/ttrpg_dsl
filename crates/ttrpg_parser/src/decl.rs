@@ -46,8 +46,14 @@ impl Parser {
                 break;
             }
             variants.push(self.parse_enum_variant()?);
-            if matches!(self.peek(), TokenKind::Comma) {
+            let saw_comma = matches!(self.peek(), TokenKind::Comma);
+            if saw_comma {
                 self.advance();
+            }
+            let saw_newline = self.skip_newlines();
+            if !saw_comma && !saw_newline && !matches!(self.peek(), TokenKind::RBrace | TokenKind::Eof) {
+                self.error("expected ',' or newline between enum variants");
+                return Err(());
             }
         }
 
@@ -477,15 +483,13 @@ impl Parser {
 
     fn parse_modify_bindings(&mut self) -> Result<Vec<ModifyBinding>, ()> {
         let mut bindings = Vec::new();
-        if !matches!(self.peek(), TokenKind::RParen) {
-            bindings.push(self.parse_modify_binding()?);
-            while matches!(self.peek(), TokenKind::Comma) {
-                self.advance();
-                if matches!(self.peek(), TokenKind::RParen) {
-                    break;
-                }
-                bindings.push(self.parse_modify_binding()?);
+        bindings.push(self.parse_modify_binding()?);
+        while matches!(self.peek(), TokenKind::Comma) {
+            self.advance();
+            if matches!(self.peek(), TokenKind::RParen) {
+                break;
             }
+            bindings.push(self.parse_modify_binding()?);
         }
         Ok(bindings)
     }

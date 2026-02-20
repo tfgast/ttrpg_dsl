@@ -137,10 +137,13 @@ impl Parser {
         }
     }
 
-    pub(crate) fn skip_newlines(&mut self) {
+    pub(crate) fn skip_newlines(&mut self) -> bool {
+        let mut found = false;
         while matches!(self.peek(), TokenKind::Newline) {
             self.advance();
+            found = true;
         }
+        found
     }
 
     pub(crate) fn start_span(&self) -> usize {

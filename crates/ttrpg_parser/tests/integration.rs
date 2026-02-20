@@ -228,6 +228,65 @@ fn test_guard_match_newline_separated() {
 }
 
 #[test]
+fn test_empty_pattern_match_rejected() {
+    // Use integer scrutinee to avoid IDENT{} struct-literal disambiguation
+    let source = r#"system "test" {
+    derive f(x: int) -> int {
+        match 1 {}
+    }
+}"#;
+    let (_, diagnostics) = parse(source);
+    assert!(
+        diagnostics.iter().any(|d| d.message.contains("at least one arm")),
+        "should reject empty match, got: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn test_empty_guard_match_rejected() {
+    let source = r#"system "test" {
+    derive f(x: int) -> int {
+        match {}
+    }
+}"#;
+    let (_, diagnostics) = parse(source);
+    assert!(
+        diagnostics.iter().any(|d| d.message.contains("at least one arm")),
+        "should reject empty guard match, got: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn test_enum_comma_separated() {
+    let source = r#"system "test" {
+    enum Result { hit, miss, graze }
+}"#;
+    let (program, diagnostics) = parse(source);
+    assert!(diagnostics.is_empty(), "errors: {:?}", diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>());
+    let system = match &program.items[0].node {
+        TopLevel::System(s) => s,
+        _ => panic!("expected system block"),
+    };
+    match &system.decls[0].node {
+        DeclKind::Enum(e) => assert_eq!(e.variants.len(), 3),
+        _ => panic!("expected enum decl"),
+    }
+}
+
+#[test]
+fn test_match_arms_comma_separated() {
+    let source = r#"system "test" {
+    derive f(x: int) -> int {
+        match x { 1 => 10, 2 => 20, _ => 0 }
+    }
+}"#;
+    let (_, diagnostics) = parse(source);
+    assert!(diagnostics.is_empty(), "errors: {:?}", diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>());
+}
+
+#[test]
 fn test_trailing_comma_in_params() {
     let source = r#"system "test" {
     derive f(x: int, y: int,) -> int {
