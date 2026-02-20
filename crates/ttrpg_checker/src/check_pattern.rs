@@ -78,6 +78,7 @@ impl<'a> Checker<'a> {
                         VarBinding {
                             ty: scrutinee_ty.clone(),
                             mutable: false,
+                            is_local: true,
                         },
                     );
                 }

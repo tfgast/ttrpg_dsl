@@ -49,6 +49,7 @@ impl<'a> Checker<'a> {
             VarBinding {
                 ty: recv_ty,
                 mutable: false,
+                is_local: false,
             },
         );
 
@@ -90,6 +91,7 @@ impl<'a> Checker<'a> {
                 VarBinding {
                     ty: param.ty.clone(),
                     mutable: false,
+                    is_local: false,
                 },
             );
         }
@@ -100,6 +102,7 @@ impl<'a> Checker<'a> {
             VarBinding {
                 ty: fn_info.return_type.clone(),
                 mutable: true,
+                is_local: false,
             },
         );
 
@@ -137,6 +140,7 @@ impl<'a> Checker<'a> {
                         VarBinding {
                             ty: ann_ty,
                             mutable: false,
+                            is_local: true,
                         },
                     );
                 } else {
@@ -145,6 +149,7 @@ impl<'a> Checker<'a> {
                         VarBinding {
                             ty: val_ty,
                             mutable: false,
+                            is_local: true,
                         },
                     );
                 }
@@ -248,6 +253,7 @@ impl<'a> Checker<'a> {
                 VarBinding {
                     ty: recv_ty,
                     mutable: false,
+                    is_local: false,
                 },
             );
 

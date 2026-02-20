@@ -172,6 +172,17 @@ fn collect_enum(e: &EnumDecl, env: &mut TypeEnv, diagnostics: &mut Vec<Diagnosti
             env.variant_to_enum.insert(v.name.clone(), e.name.clone());
         }
 
+        // Warn if variant name shadows a function
+        if env.functions.contains_key(&v.name) || env.builtins.contains_key(&v.name) {
+            diagnostics.push(Diagnostic::warning(
+                format!(
+                    "enum variant `{}` shadows function with the same name; the function will be uncallable in bare form",
+                    v.name
+                ),
+                v.span,
+            ));
+        }
+
         variants.push(VariantInfo {
             name: v.name.clone(),
             fields,
@@ -254,6 +265,17 @@ fn collect_fn(
             span,
         ));
         return;
+    }
+
+    // Warn if function name collides with an enum variant
+    if env.variant_to_enum.contains_key(name) {
+        diagnostics.push(Diagnostic::warning(
+            format!(
+                "function `{}` has the same name as an enum variant; the function will be uncallable in bare form",
+                name
+            ),
+            span,
+        ));
     }
 
     let mut seen_params = HashSet::new();

@@ -43,6 +43,8 @@ impl BlockKind {
 pub struct VarBinding {
     pub ty: Ty,
     pub mutable: bool,
+    /// True for `let`/`let mut` bindings; false for parameters and receivers.
+    pub is_local: bool,
 }
 
 #[derive(Debug)]

@@ -45,6 +45,7 @@ impl<'a> Checker<'a> {
                         VarBinding {
                             ty: ann_ty,
                             mutable: false,
+                            is_local: true,
                         },
                     );
                 } else {
@@ -53,6 +54,7 @@ impl<'a> Checker<'a> {
                         VarBinding {
                             ty: val_ty,
                             mutable: false,
+                            is_local: true,
                         },
                     );
                 }
@@ -95,7 +97,24 @@ impl<'a> Checker<'a> {
                 }
             }
         } else {
-            // Field/index mutation (e.g. `target.HP += 5`): check block-level permission
+            // Field/index mutation (e.g. `target.HP += 5`)
+
+            // Local `let` bindings are always immutable for field/index mutation
+            if let Some(binding) = self.scope.lookup(&target.root) {
+                if binding.is_local && !binding.mutable {
+                    self.error(
+                        format!(
+                            "cannot mutate field/index of immutable binding `{}`",
+                            target.root
+                        ),
+                        span,
+                    );
+                    self.check_expr(value);
+                    return;
+                }
+            }
+
+            // Params/receivers: check block-level permission
             if !self.scope.allows_mutation() {
                 // Special case: "turn" is always mutable in action/reaction
                 let is_turn = target.root == "turn" && self.scope.allows_turn();

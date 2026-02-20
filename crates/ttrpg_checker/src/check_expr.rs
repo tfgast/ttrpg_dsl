@@ -134,8 +134,11 @@ impl<'a> Checker<'a> {
                 }
                 Ty::Bool
             }
-            BinOp::Eq | BinOp::NotEq | BinOp::Lt | BinOp::Gt | BinOp::LtEq | BinOp::GtEq => {
-                self.check_comparison(&lhs_ty, &rhs_ty, lhs, rhs, span)
+            BinOp::Eq | BinOp::NotEq => {
+                self.check_comparison(&lhs_ty, &rhs_ty, lhs, rhs, span, false)
+            }
+            BinOp::Lt | BinOp::Gt | BinOp::LtEq | BinOp::GtEq => {
+                self.check_comparison(&lhs_ty, &rhs_ty, lhs, rhs, span, true)
             }
             BinOp::In => self.check_in_op(&lhs_ty, &rhs_ty, rhs, span),
         }
@@ -234,6 +237,7 @@ impl<'a> Checker<'a> {
         lhs: &Spanned<ExprKind>,
         rhs: &Spanned<ExprKind>,
         span: ttrpg_ast::Span,
+        ordering: bool,
     ) -> Ty {
         // DiceExpr in comparison is always an error
         if *lhs_ty == Ty::DiceExpr {
@@ -263,12 +267,22 @@ impl<'a> Checker<'a> {
             rhs_ty
         };
 
-        // Check comparability
-        if !self.types_comparable(l, r) {
-            self.error(
-                format!("cannot compare {} and {}", lhs_ty, rhs_ty),
-                span,
-            );
+        if ordering {
+            // <, >, <=, >= only for orderable types
+            if !self.types_orderable(l, r) {
+                self.error(
+                    format!("cannot order {} and {}", lhs_ty, rhs_ty),
+                    span,
+                );
+            }
+        } else {
+            // ==, != for any comparable types
+            if !self.types_comparable(l, r) {
+                self.error(
+                    format!("cannot compare {} and {}", lhs_ty, rhs_ty),
+                    span,
+                );
+            }
         }
 
         Ty::Bool
@@ -281,6 +295,19 @@ impl<'a> Checker<'a> {
         // Numeric types are comparable to each other
         if a.is_numeric() && b.is_numeric() {
             return true;
+        }
+        false
+    }
+
+    /// Whether two types support ordering operators (<, >, <=, >=).
+    fn types_orderable(&self, a: &Ty, b: &Ty) -> bool {
+        // Numeric types are orderable with each other
+        if a.is_numeric() && b.is_numeric() {
+            return true;
+        }
+        // Same-type ordering for strings and enums
+        if a == b {
+            return matches!(a, Ty::Int | Ty::Float | Ty::Resource | Ty::String | Ty::Enum(_));
         }
         false
     }

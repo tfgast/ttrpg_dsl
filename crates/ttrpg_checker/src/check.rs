@@ -57,7 +57,8 @@ impl<'a> Checker<'a> {
             DeclKind::Condition(c) => self.check_condition(c),
             DeclKind::Struct(s) => self.check_struct_defaults(s),
             DeclKind::Entity(e) => self.check_entity_defaults(e),
-            DeclKind::Prompt(_) | DeclKind::Event(_) | DeclKind::Enum(_) => {}
+            DeclKind::Prompt(p) => self.check_prompt(p),
+            DeclKind::Event(_) | DeclKind::Enum(_) => {}
             DeclKind::Option(_) | DeclKind::Move(_) => {}
         }
     }
@@ -90,6 +91,7 @@ impl<'a> Checker<'a> {
             VarBinding {
                 ty: recv_ty,
                 mutable: true,
+                is_local: false,
             },
         );
 
@@ -102,6 +104,7 @@ impl<'a> Checker<'a> {
             VarBinding {
                 ty: Ty::TurnBudget,
                 mutable: true,
+                is_local: false,
             },
         );
 
@@ -132,6 +135,7 @@ impl<'a> Checker<'a> {
             VarBinding {
                 ty: recv_ty,
                 mutable: true,
+                is_local: false,
             },
         );
 
@@ -146,6 +150,7 @@ impl<'a> Checker<'a> {
                 VarBinding {
                     ty: Ty::Struct(format!("__event_{}", r.trigger.event_name)),
                     mutable: false,
+                    is_local: false,
                 },
             );
 
@@ -257,6 +262,7 @@ impl<'a> Checker<'a> {
                 VarBinding {
                     ty: Ty::Error,
                     mutable: false,
+                    is_local: false,
                 },
             );
         }
@@ -267,6 +273,7 @@ impl<'a> Checker<'a> {
             VarBinding {
                 ty: Ty::TurnBudget,
                 mutable: true,
+                is_local: false,
             },
         );
 
@@ -287,6 +294,27 @@ impl<'a> Checker<'a> {
                 }
             }
         }
+    }
+
+    fn check_prompt(&mut self, p: &PromptDecl) {
+        self.scope.push(BlockKind::Derive);
+        self.bind_params(&p.params);
+
+        if let Some(ref suggest) = p.suggest {
+            let suggest_ty = self.check_expr(suggest);
+            let ret_ty = self.env.resolve_type(&p.return_type);
+            if !suggest_ty.is_error() && !self.types_compatible(&suggest_ty, &ret_ty) {
+                self.error(
+                    format!(
+                        "suggest expression has type {}, expected {}",
+                        suggest_ty, ret_ty
+                    ),
+                    suggest.span,
+                );
+            }
+        }
+
+        self.scope.pop();
     }
 
     fn check_struct_defaults(&mut self, s: &StructDecl) {
@@ -350,6 +378,7 @@ impl<'a> Checker<'a> {
                 VarBinding {
                     ty,
                     mutable: false,
+                    is_local: false,
                 },
             );
         }

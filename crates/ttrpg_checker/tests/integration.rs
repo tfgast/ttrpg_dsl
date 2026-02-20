@@ -1953,3 +1953,189 @@ system "test" {
 "#;
     expect_no_errors(source);
 }
+
+// ── Issue 1: Immutable let bindings reject field/index mutation ──
+
+#[test]
+fn test_let_field_mutation_rejected_in_action() {
+    let source = r#"
+system "test" {
+    entity Character {
+        HP: int
+    }
+    action Foo on actor: Character () {
+        cost { action }
+        resolve {
+            let s = Character {
+                HP: 10
+            }
+            s.HP = 5
+        }
+    }
+}
+"#;
+    expect_errors(source, &["cannot mutate field/index of immutable binding `s`"]);
+}
+
+#[test]
+fn test_let_index_mutation_rejected() {
+    let source = r#"
+system "test" {
+    derive foo() -> int {
+        let xs = [1, 2, 3]
+        xs[0] = 99
+        0
+    }
+}
+"#;
+    expect_errors(source, &["cannot mutate field/index of immutable binding `xs`"]);
+}
+
+#[test]
+fn test_action_receiver_field_mutation_still_ok() {
+    // Receiver is explicitly mutable — field mutation should work
+    let source = r#"
+system "test" {
+    entity Character { HP: int }
+    action Heal on actor: Character (target: Character) {
+        cost { action }
+        resolve {
+            actor.HP += 5
+            target.HP += 5
+        }
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+// ── Issue 2: Variant/function name collision warning ──
+
+#[test]
+fn test_variant_shadows_function_warning() {
+    let source = r#"
+system "test" {
+    derive foo() -> int { 0 }
+    enum MyEnum { foo }
+}
+"#;
+    expect_warnings(source, &["enum variant `foo` shadows function"]);
+}
+
+#[test]
+fn test_function_shadows_variant_warning() {
+    let source = r#"
+system "test" {
+    enum MyEnum { bar }
+    derive bar() -> int { 0 }
+}
+"#;
+    expect_warnings(source, &["function `bar` has the same name as an enum variant"]);
+}
+
+// ── Issue 3: Ordering ops restricted to orderable types ──
+
+#[test]
+fn test_bool_ordering_rejected() {
+    let source = r#"
+system "test" {
+    derive foo(a: bool, b: bool) -> bool {
+        a < b
+    }
+}
+"#;
+    expect_errors(source, &["cannot order bool and bool"]);
+}
+
+#[test]
+fn test_struct_ordering_rejected() {
+    let source = r#"
+system "test" {
+    struct S { x: int }
+    derive foo(a: S, b: S) -> bool {
+        a < b
+    }
+}
+"#;
+    expect_errors(source, &["cannot order S and S"]);
+}
+
+#[test]
+fn test_bool_equality_still_ok() {
+    let source = r#"
+system "test" {
+    derive foo(a: bool, b: bool) -> bool {
+        a == b
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_int_ordering_still_ok() {
+    let source = r#"
+system "test" {
+    derive foo(a: int, b: int) -> bool {
+        a < b
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_string_ordering_ok() {
+    let source = r#"
+system "test" {
+    derive foo(a: string, b: string) -> bool {
+        a >= b
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+// ── Issue 4: Prompt suggest expressions are checked ──
+
+#[test]
+fn test_prompt_suggest_type_mismatch() {
+    let source = r#"
+system "test" {
+    entity Character { HP: int }
+    prompt ChooseTarget(options: list<Character>) -> Character {
+        hint: "Pick a target"
+        suggest: "not a character"
+    }
+}
+"#;
+    expect_errors(source, &["suggest expression has type string, expected Character"]);
+}
+
+#[test]
+fn test_prompt_suggest_undefined_var() {
+    let source = r#"
+system "test" {
+    entity Character { HP: int }
+    prompt ChooseTarget(options: list<Character>) -> Character {
+        hint: "Pick a target"
+        suggest: nonexistent
+    }
+}
+"#;
+    expect_errors(source, &["undefined variable `nonexistent`"]);
+}
+
+#[test]
+fn test_prompt_suggest_ok() {
+    let source = r#"
+system "test" {
+    entity Character { HP: int }
+    prompt ChooseTarget(options: list<Character>) -> Character {
+        hint: "Pick a target"
+        suggest: options[0]
+    }
+}
+"#;
+    expect_no_errors(source);
+}
