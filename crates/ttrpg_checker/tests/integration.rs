@@ -2763,3 +2763,191 @@ system "test" {
 "#;
     expect_errors(source, &["list element has type string, expected int"]);
 }
+
+// ═══════════════════════════════════════════════════════════════
+// Fix: Enum values must not behave as enum namespaces
+// ═══════════════════════════════════════════════════════════════
+
+#[test]
+fn test_enum_value_field_access_rejected() {
+    // c is a Color value — c.red should be rejected
+    let source = r#"
+system "test" {
+    enum Color { red, green, blue }
+    derive bad(c: Color) -> Color { c.red }
+}
+"#;
+    expect_errors(source, &["cannot access field `red` on enum value"]);
+}
+
+#[test]
+fn test_enum_value_variant_call_rejected() {
+    // c is a Color value — c.red() should be rejected
+    let source = r#"
+system "test" {
+    enum Effect { timed(count: int), permanent }
+    derive bad(e: Effect) -> Effect { e.timed(count: 1) }
+}
+"#;
+    expect_errors(source, &["cannot call a field access expression"]);
+}
+
+#[test]
+fn test_enum_namespace_qualified_access_still_works() {
+    let source = r#"
+system "test" {
+    enum Color { red, green, blue }
+    derive foo() -> Color { Color.red }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_enum_namespace_constructor_still_works() {
+    let source = r#"
+system "test" {
+    enum Effect { timed(count: int), permanent }
+    derive foo() -> Effect { Effect.timed(count: 1) }
+}
+"#;
+    expect_no_errors(source);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Fix: Trigger binding cannot reference trigger itself
+// ═══════════════════════════════════════════════════════════════
+
+#[test]
+fn test_trigger_binding_self_reference_rejected() {
+    let source = r#"
+system "test" {
+    entity Character { name: string }
+    event damage(actor: Character) {}
+    reaction Block on reactor: Character (trigger: damage(actor: trigger.actor)) {
+        cost { reaction }
+        resolve {}
+    }
+}
+"#;
+    expect_errors(source, &["undefined variable `trigger`"]);
+}
+
+#[test]
+fn test_trigger_available_in_resolve_block() {
+    // trigger should still be available in the resolve block
+    let source = r#"
+system "test" {
+    entity Character { HP: int }
+    event damage(actor: Character, target: Character) {}
+    reaction Block on reactor: Character (trigger: damage(reactor)) {
+        cost { reaction }
+        resolve {
+            trigger.target.HP = trigger.target.HP - 1
+        }
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Fix: TurnBudget uses user-defined fields when present
+// ═══════════════════════════════════════════════════════════════
+
+#[test]
+fn test_turn_budget_user_defined_fields() {
+    // User-defined TurnBudget with different fields should be respected
+    let source = r#"
+system "test" {
+    entity Character { HP: int }
+    struct TurnBudget {
+        foo: int
+    }
+    action Foo on actor: Character () {
+        cost { action }
+        resolve {
+            turn.foo += 1
+        }
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_turn_budget_user_defined_rejects_unknown_field() {
+    // When user defines TurnBudget, hardcoded fields should not be available
+    let source = r#"
+system "test" {
+    entity Character { HP: int }
+    struct TurnBudget {
+        foo: int
+    }
+    action Foo on actor: Character () {
+        cost { action }
+        resolve {
+            turn.actions += 1
+        }
+    }
+}
+"#;
+    expect_errors(source, &["TurnBudget has no field `actions`"]);
+}
+
+#[test]
+fn test_turn_budget_hardcoded_fields_without_user_definition() {
+    // Without user-defined TurnBudget, hardcoded fields should work
+    let source = r#"
+system "test" {
+    entity Character { HP: int }
+    action Foo on actor: Character () {
+        cost { action }
+        resolve {
+            turn.actions += 1
+        }
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Fix: none comparison with option<T>
+// ═══════════════════════════════════════════════════════════════
+
+#[test]
+fn test_none_eq_option_int() {
+    let source = r#"
+system "test" {
+    derive foo(x: option<int>) -> bool {
+        x == none
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_none_neq_option_string() {
+    let source = r#"
+system "test" {
+    derive foo(x: option<string>) -> bool {
+        none != x
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_none_eq_int_still_rejected() {
+    let source = r#"
+system "test" {
+    derive foo(x: int) -> bool {
+        x == none
+    }
+}
+"#;
+    expect_errors(source, &["cannot compare"]);
+}

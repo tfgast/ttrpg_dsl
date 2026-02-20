@@ -142,20 +142,10 @@ impl<'a> Checker<'a> {
 
         // Validate trigger event exists and bind trigger
         if let Some(event_info) = self.env.events.get(&r.trigger.event_name) {
-            // Bind `trigger` with event payload fields as a synthetic struct
-            // For simplicity, bind trigger as Entity type that happens to have
-            // the event's payload fields. We'll handle field access resolution
-            // in check_expr by checking event fields directly.
-            self.scope.bind(
-                "trigger".into(),
-                VarBinding {
-                    ty: Ty::Struct(format!("__event_{}", r.trigger.event_name)),
-                    mutable: false,
-                    is_local: false,
-                },
-            );
-
             // Check trigger bindings: validate names match event params/fields and types match.
+            // NOTE: `trigger` is bound AFTER the binding loop so that binding
+            // expressions cannot reference the trigger itself (e.g.
+            // `damage(actor: trigger.actor)` is invalid).
             let event_info = event_info.clone();
             let mut positional_index = 0usize;
             let mut seen_bindings = HashSet::new();
@@ -252,6 +242,18 @@ impl<'a> Checker<'a> {
                     positional_index += 1;
                 }
             }
+
+            // Bind `trigger` with event payload fields as a synthetic struct.
+            // Placed after the binding loop so binding expressions cannot
+            // reference `trigger` itself.
+            self.scope.bind(
+                "trigger".into(),
+                VarBinding {
+                    ty: Ty::Struct(format!("__event_{}", r.trigger.event_name)),
+                    mutable: false,
+                    is_local: false,
+                },
+            );
         } else {
             self.error(
                 format!("undefined event `{}`", r.trigger.event_name),

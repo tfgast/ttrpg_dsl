@@ -85,7 +85,7 @@ impl<'a> Checker<'a> {
         // or function parameters, not from the type name itself.
         if let Some(decl) = self.env.types.get(name) {
             return match decl {
-                DeclInfo::Enum(_) => Ty::Enum(name.to_string()),
+                DeclInfo::Enum(_) => Ty::EnumType(name.to_string()),
                 DeclInfo::Struct(_) | DeclInfo::Entity(_) => {
                     self.error(
                         format!("type `{}` cannot be used as a value", name),
@@ -296,6 +296,16 @@ impl<'a> Checker<'a> {
         if a.is_numeric() && b.is_numeric() {
             return true;
         }
+        // none (Option(Error)) is comparable with any Option(T)
+        match (a, b) {
+            (Ty::Option(inner), _) if inner.is_error() && matches!(b, Ty::Option(_)) => {
+                return true;
+            }
+            (_, Ty::Option(inner)) if inner.is_error() && matches!(a, Ty::Option(_)) => {
+                return true;
+            }
+            _ => {}
+        }
         false
     }
 
@@ -446,6 +456,18 @@ impl<'a> Checker<'a> {
                 Ty::Error
             }
             Ty::TurnBudget => {
+                // Prefer user-defined struct TurnBudget fields if present,
+                // fall back to hardcoded fields otherwise.
+                if let Some(fields) = self.env.lookup_fields("TurnBudget") {
+                    if let Some(fi) = fields.iter().find(|f| f.name == field) {
+                        return fi.ty.clone();
+                    }
+                    self.error(
+                        format!("TurnBudget has no field `{}`", field),
+                        span,
+                    );
+                    return Ty::Error;
+                }
                 for (fname, ref fty) in TypeEnv::turn_budget_fields() {
                     if fname == field {
                         return fty.clone();
@@ -457,8 +479,8 @@ impl<'a> Checker<'a> {
                 );
                 Ty::Error
             }
-            // Qualified enum variant: EnumType.Variant
-            Ty::Enum(enum_name) => {
+            // Qualified enum variant: EnumType.Variant (namespace access)
+            Ty::EnumType(enum_name) => {
                 if let Some(DeclInfo::Enum(info)) = self.env.types.get(enum_name) {
                     if let Some(variant) = info.variants.iter().find(|v| v.name == field) {
                         if !variant.fields.is_empty() {
@@ -476,6 +498,17 @@ impl<'a> Checker<'a> {
                 }
                 self.error(
                     format!("enum `{}` has no variant `{}`", enum_name, field),
+                    span,
+                );
+                Ty::Error
+            }
+            // Runtime enum values do not support field access
+            Ty::Enum(enum_name) => {
+                self.error(
+                    format!(
+                        "cannot access field `{}` on enum value of type `{}`; use pattern matching instead",
+                        field, enum_name
+                    ),
                     span,
                 );
                 Ty::Error
@@ -551,7 +584,7 @@ impl<'a> Checker<'a> {
                 if obj_ty.is_error() {
                     return Ty::Error;
                 }
-                if let Ty::Enum(enum_name) = &obj_ty {
+                if let Ty::EnumType(enum_name) = &obj_ty {
                     return self.check_enum_constructor(enum_name, field, args, span);
                 }
                 // No fallback to env.types here — check_expr already resolved the
