@@ -436,7 +436,7 @@ system "test" {
     derive bad() -> int { add(1) }
 }
 "#;
-    expect_errors(source, &["expects at least 2 argument(s), found 1"]);
+    expect_errors(source, &["missing required argument `b` in call to `add`"]);
 }
 
 #[test]
@@ -669,4 +669,219 @@ system "test" {
 }
 "#;
     expect_errors(source, &["cannot apply `!` to int"]);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Fix #1: Unknown type names emit diagnostics
+// ═══════════════════════════════════════════════════════════════
+
+#[test]
+fn test_unknown_type_in_param() {
+    let source = r#"
+system "test" {
+    derive foo(x: Nonexistent) -> int { 0 }
+}
+"#;
+    expect_errors(source, &["unknown type `Nonexistent`"]);
+}
+
+#[test]
+fn test_unknown_type_in_return() {
+    let source = r#"
+system "test" {
+    derive foo(x: int) -> Nonexistent { x }
+}
+"#;
+    expect_errors(source, &["unknown type `Nonexistent`"]);
+}
+
+#[test]
+fn test_unknown_type_in_struct_field() {
+    let source = r#"
+system "test" {
+    struct Foo {
+        x: Nonexistent
+    }
+}
+"#;
+    expect_errors(source, &["unknown type `Nonexistent`"]);
+}
+
+#[test]
+fn test_unknown_type_in_generic() {
+    let source = r#"
+system "test" {
+    derive foo(x: list<Nonexistent>) -> int { 0 }
+}
+"#;
+    expect_errors(source, &["unknown type `Nonexistent`"]);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Fix #2: Named argument soundness
+// ═══════════════════════════════════════════════════════════════
+
+#[test]
+fn test_duplicate_named_arg() {
+    let source = r#"
+system "test" {
+    derive add(a: int, b: int) -> int { a + b }
+    derive bad() -> int { add(a: 1, a: 2) }
+}
+"#;
+    expect_errors(source, &["duplicate argument for parameter `a`"]);
+}
+
+#[test]
+fn test_missing_required_param_with_named_args() {
+    let source = r#"
+system "test" {
+    derive add(a: int, b: int, c: int = 0) -> int { a + b + c }
+    derive bad() -> int { add(c: 5) }
+}
+"#;
+    expect_errors(source, &["missing required argument `a`", "missing required argument `b`"]);
+}
+
+#[test]
+fn test_too_many_positional_args() {
+    let source = r#"
+system "test" {
+    derive add(a: int, b: int) -> int { a + b }
+    derive bad() -> int { add(1, 2, 3) }
+}
+"#;
+    expect_errors(source, &["expects at most 2 argument(s), found 3"]);
+}
+
+#[test]
+fn test_unknown_named_arg() {
+    let source = r#"
+system "test" {
+    derive add(a: int, b: int) -> int { a + b }
+    derive bad() -> int { add(a: 1, z: 2) }
+}
+"#;
+    expect_errors(source, &["has no parameter `z`"]);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Fix #3: Binding expression type-checking
+// ═══════════════════════════════════════════════════════════════
+
+#[test]
+fn test_suppress_binding_type_mismatch() {
+    let source = r#"
+system "test" {
+    entity Character { name: string }
+    event leave(actor: Character) {
+        target: Character
+    }
+    condition Foo on bearer: Character {
+        suppress leave(target: "not_a_character")
+    }
+}
+"#;
+    expect_errors(source, &["suppress binding `target` has type string, expected Character"]);
+}
+
+#[test]
+fn test_suppress_binding_unknown_param() {
+    let source = r#"
+system "test" {
+    entity Character { name: string }
+    event leave(actor: Character) {
+        target: Character
+    }
+    condition Foo on bearer: Character {
+        suppress leave(nonexistent: bearer)
+    }
+}
+"#;
+    expect_errors(source, &["does not match any parameter or field"]);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Fix #4: Modify targets must be derive or mechanic
+// ═══════════════════════════════════════════════════════════════
+
+#[test]
+fn test_modify_target_action_rejected() {
+    let source = r#"
+system "test" {
+    entity Character { speed: int }
+    action Sprint on actor: Character () {
+        cost { action }
+        resolve {
+            actor.speed += 10
+        }
+    }
+    condition Slow on bearer: Character {
+        modify Sprint(actor: bearer) {
+            result = 0
+        }
+    }
+}
+"#;
+    expect_errors(source, &["modify target `Sprint` must be a derive or mechanic"]);
+}
+
+#[test]
+fn test_modify_target_derive_ok() {
+    let source = r#"
+system "test" {
+    entity Character { speed: int }
+    derive initial_budget(actor: Character) -> int {
+        actor.speed
+    }
+    condition Slow on bearer: Character {
+        modify initial_budget(actor: bearer) {
+            result = result - 10
+        }
+    }
+}
+"#;
+    // Should not error — derive is a valid modify target
+    let _ = check_source(source);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Fix #5: Compound assignment type compatibility
+// ═══════════════════════════════════════════════════════════════
+
+#[test]
+fn test_int_plus_eq_float_rejected() {
+    let source = r#"
+system "test" {
+    entity Character {
+        HP: int
+    }
+    action Heal on actor: Character (target: Character) {
+        cost { action }
+        resolve {
+            target.HP += 3 / 2
+        }
+    }
+}
+"#;
+    // int / int -> float, so int += float should be rejected
+    expect_errors(source, &["cannot use float in += / -= on int"]);
+}
+
+#[test]
+fn test_int_plus_eq_int_ok() {
+    let source = r#"
+system "test" {
+    entity Character {
+        HP: int
+    }
+    action Heal on actor: Character (target: Character) {
+        cost { action }
+        resolve {
+            target.HP += 5
+        }
+    }
+}
+"#;
+    expect_no_errors(source);
 }

@@ -85,8 +85,8 @@ fn pass_1b(
     for decl in decls {
         match &decl.node {
             DeclKind::Enum(e) => collect_enum(e, env, diagnostics),
-            DeclKind::Struct(s) => collect_struct(s, env),
-            DeclKind::Entity(e) => collect_entity(e, env),
+            DeclKind::Struct(s) => collect_struct(s, env, diagnostics),
+            DeclKind::Entity(e) => collect_entity(e, env, diagnostics),
             DeclKind::Derive(f) => collect_fn(
                 &f.name,
                 FnKind::Derive,
@@ -126,7 +126,10 @@ fn collect_enum(e: &EnumDecl, env: &mut TypeEnv, diagnostics: &mut Vec<Diagnosti
         let fields = match &v.fields {
             Some(field_entries) => field_entries
                 .iter()
-                .map(|f| (f.name.clone(), env.resolve_type(&f.ty)))
+                .map(|f| {
+                    env.validate_type_names(&f.ty, diagnostics);
+                    (f.name.clone(), env.resolve_type(&f.ty))
+                })
                 .collect(),
             None => Vec::new(),
         };
@@ -156,11 +159,14 @@ fn collect_enum(e: &EnumDecl, env: &mut TypeEnv, diagnostics: &mut Vec<Diagnosti
     }
 }
 
-fn collect_struct(s: &StructDecl, env: &mut TypeEnv) {
+fn collect_struct(s: &StructDecl, env: &mut TypeEnv, diagnostics: &mut Vec<Diagnostic>) {
     let fields: Vec<(String, Ty)> = s
         .fields
         .iter()
-        .map(|f| (f.name.clone(), env.resolve_type(&f.ty)))
+        .map(|f| {
+            env.validate_type_names(&f.ty, diagnostics);
+            (f.name.clone(), env.resolve_type(&f.ty))
+        })
         .collect();
 
     if let Some(DeclInfo::Struct(info)) = env.types.get_mut(&s.name) {
@@ -168,11 +174,14 @@ fn collect_struct(s: &StructDecl, env: &mut TypeEnv) {
     }
 }
 
-fn collect_entity(e: &EntityDecl, env: &mut TypeEnv) {
+fn collect_entity(e: &EntityDecl, env: &mut TypeEnv, diagnostics: &mut Vec<Diagnostic>) {
     let fields: Vec<(String, Ty)> = e
         .fields
         .iter()
-        .map(|f| (f.name.clone(), env.resolve_type(&f.ty)))
+        .map(|f| {
+            env.validate_type_names(&f.ty, diagnostics);
+            (f.name.clone(), env.resolve_type(&f.ty))
+        })
         .collect();
 
     if let Some(DeclInfo::Entity(info)) = env.types.get_mut(&e.name) {
@@ -200,15 +209,21 @@ fn collect_fn(
 
     let param_infos: Vec<ParamInfo> = params
         .iter()
-        .map(|p| ParamInfo {
-            name: p.name.clone(),
-            ty: env.resolve_type(&p.ty),
-            has_default: p.default.is_some(),
+        .map(|p| {
+            env.validate_type_names(&p.ty, diagnostics);
+            ParamInfo {
+                name: p.name.clone(),
+                ty: env.resolve_type(&p.ty),
+                has_default: p.default.is_some(),
+            }
         })
         .collect();
 
     let ret_ty = return_type
-        .map(|rt| env.resolve_type(rt))
+        .map(|rt| {
+            env.validate_type_names(rt, diagnostics);
+            env.resolve_type(rt)
+        })
         .unwrap_or(Ty::Unit);
 
     env.functions.insert(
@@ -233,6 +248,7 @@ fn collect_action(
         validate_cost_tokens(cost, diagnostics);
     }
 
+    env.validate_type_names(&a.receiver_type, diagnostics);
     let receiver = ParamInfo {
         name: a.receiver_name.clone(),
         ty: env.resolve_type(&a.receiver_type),
@@ -261,6 +277,7 @@ fn collect_reaction(
         validate_cost_tokens(cost, diagnostics);
     }
 
+    env.validate_type_names(&r.receiver_type, diagnostics);
     let receiver = ParamInfo {
         name: r.receiver_name.clone(),
         ty: env.resolve_type(&r.receiver_type),
@@ -294,6 +311,7 @@ fn collect_condition(
         return;
     }
 
+    env.validate_type_names(&c.receiver_type, diagnostics);
     env.conditions.insert(
         name.clone(),
         ConditionInfo {
@@ -339,17 +357,23 @@ fn collect_event(
     let params: Vec<ParamInfo> = e
         .params
         .iter()
-        .map(|p| ParamInfo {
-            name: p.name.clone(),
-            ty: env.resolve_type(&p.ty),
-            has_default: p.default.is_some(),
+        .map(|p| {
+            env.validate_type_names(&p.ty, diagnostics);
+            ParamInfo {
+                name: p.name.clone(),
+                ty: env.resolve_type(&p.ty),
+                has_default: p.default.is_some(),
+            }
         })
         .collect();
 
     let fields: Vec<(String, Ty)> = e
         .fields
         .iter()
-        .map(|f| (f.name.clone(), env.resolve_type(&f.ty)))
+        .map(|f| {
+            env.validate_type_names(&f.ty, diagnostics);
+            (f.name.clone(), env.resolve_type(&f.ty))
+        })
         .collect();
 
     env.events.insert(

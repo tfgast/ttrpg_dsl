@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use crate::ty::Ty;
 use ttrpg_ast::ast::TypeExpr;
+use ttrpg_ast::diagnostic::Diagnostic;
 use ttrpg_ast::Spanned;
 
 /// What kind of declaration a type name refers to.
@@ -150,6 +151,32 @@ impl TypeEnv {
             }
             TypeExpr::OptionType(inner) => Ty::Option(Box::new(self.resolve_type(inner))),
             TypeExpr::Resource(_, _) => Ty::Resource,
+        }
+    }
+
+    /// Emit diagnostics for any unknown Named types in a type expression.
+    pub fn validate_type_names(
+        &self,
+        texpr: &Spanned<TypeExpr>,
+        diagnostics: &mut Vec<Diagnostic>,
+    ) {
+        match &texpr.node {
+            TypeExpr::Named(name) => {
+                if !self.types.contains_key(name) {
+                    diagnostics.push(Diagnostic::error(
+                        format!("unknown type `{}`", name),
+                        texpr.span,
+                    ));
+                }
+            }
+            TypeExpr::List(inner) | TypeExpr::Set(inner) | TypeExpr::OptionType(inner) => {
+                self.validate_type_names(inner, diagnostics);
+            }
+            TypeExpr::Map(k, v) => {
+                self.validate_type_names(k, diagnostics);
+                self.validate_type_names(v, diagnostics);
+            }
+            _ => {}
         }
     }
 

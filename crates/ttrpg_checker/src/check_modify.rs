@@ -26,6 +26,18 @@ impl<'a> Checker<'a> {
             }
         };
 
+        // Modify clauses can only target derive or mechanic functions
+        if fn_info.kind != FnKind::Derive && fn_info.kind != FnKind::Mechanic {
+            self.error(
+                format!(
+                    "modify target `{}` must be a derive or mechanic",
+                    clause.target,
+                ),
+                clause.span,
+            );
+            return;
+        }
+
         self.scope.push(BlockKind::ModifyClause);
 
         // Bind the condition receiver
@@ -38,10 +50,20 @@ impl<'a> Checker<'a> {
             },
         );
 
-        // Validate bindings reference real parameters of the target function
+        // Validate bindings reference real parameters and type-check value expressions
         for binding in &clause.bindings {
-            let param_exists = fn_info.params.iter().any(|p| p.name == binding.name);
-            if !param_exists {
+            if let Some(param) = fn_info.params.iter().find(|p| p.name == binding.name) {
+                let val_ty = self.check_expr(&binding.value);
+                if !val_ty.is_error() && !self.types_compatible(&val_ty, &param.ty) {
+                    self.error(
+                        format!(
+                            "modify binding `{}` has type {}, expected {}",
+                            binding.name, val_ty, param.ty
+                        ),
+                        binding.value.span,
+                    );
+                }
+            } else {
                 self.error(
                     format!(
                         "modify binding `{}` does not match any parameter of `{}`",
@@ -183,8 +205,64 @@ impl<'a> Checker<'a> {
     }
 
     /// Check a suppress clause.
-    pub fn check_suppress_clause(&mut self, clause: &SuppressClause) {
-        if !self.env.events.contains_key(&clause.event_name) {
+    pub fn check_suppress_clause(
+        &mut self,
+        clause: &SuppressClause,
+        receiver_name: &str,
+        receiver_type: &Spanned<TypeExpr>,
+    ) {
+        if let Some(event_info) = self.env.events.get(&clause.event_name).cloned() {
+            // Push scope and bind condition receiver so binding expressions can reference it
+            self.scope.push(BlockKind::ModifyClause);
+            let recv_ty = self.env.resolve_type(receiver_type);
+            self.scope.bind(
+                receiver_name.to_string(),
+                VarBinding {
+                    ty: recv_ty,
+                    mutable: false,
+                },
+            );
+
+            // Validate bindings reference real event params or fields, and type-check values
+            for binding in &clause.bindings {
+                let expected_ty = event_info
+                    .params
+                    .iter()
+                    .find(|p| p.name == binding.name)
+                    .map(|p| &p.ty)
+                    .or_else(|| {
+                        event_info
+                            .fields
+                            .iter()
+                            .find(|(n, _)| *n == binding.name)
+                            .map(|(_, ty)| ty)
+                    })
+                    .cloned();
+
+                if let Some(expected) = expected_ty {
+                    let val_ty = self.check_expr(&binding.value);
+                    if !val_ty.is_error() && !self.types_compatible(&val_ty, &expected) {
+                        self.error(
+                            format!(
+                                "suppress binding `{}` has type {}, expected {}",
+                                binding.name, val_ty, expected
+                            ),
+                            binding.value.span,
+                        );
+                    }
+                } else {
+                    self.error(
+                        format!(
+                            "suppress binding `{}` does not match any parameter or field of event `{}`",
+                            binding.name, clause.event_name
+                        ),
+                        binding.span,
+                    );
+                }
+            }
+
+            self.scope.pop();
+        } else {
             self.error(
                 format!("undefined event `{}`", clause.event_name),
                 clause.span,

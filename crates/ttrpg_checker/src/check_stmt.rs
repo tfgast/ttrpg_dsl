@@ -119,10 +119,18 @@ impl<'a> Checker<'a> {
                         format!("cannot use += / -= on type {}", target_ty),
                         span,
                     );
-                }
-                if !value_ty.is_numeric() && !value_ty.is_int_like() {
+                } else if !value_ty.is_numeric() && !value_ty.is_int_like() {
                     self.error(
                         format!("right side of += / -= must be numeric, found {}", value_ty),
+                        value.span,
+                    );
+                } else if target_ty.is_int_like() && value_ty == Ty::Float {
+                    // Prevent int += float (would silently lose precision)
+                    self.error(
+                        format!(
+                            "cannot use float in += / -= on {}: would lose precision",
+                            target_ty
+                        ),
                         value.span,
                     );
                 }

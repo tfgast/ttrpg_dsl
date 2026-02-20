@@ -141,15 +141,36 @@ impl<'a> Checker<'a> {
                 },
             );
 
-            // Register a synthetic struct for the event payload in scope
-            // so field access works. We check trigger bindings match event params.
+            // Check trigger bindings: validate names match event params/fields and types match.
+            let event_info = event_info.clone();
             for binding in &r.trigger.bindings {
-                // Validate that bindings reference real event params
-                let param_exists = event_info.params.iter().any(|p| {
-                    binding.name.as_deref() == Some(&p.name[..])
-                });
-                if !param_exists {
-                    if let Some(ref name) = binding.name {
+                if let Some(ref name) = binding.name {
+                    let expected_ty = event_info
+                        .params
+                        .iter()
+                        .find(|p| p.name == *name)
+                        .map(|p| &p.ty)
+                        .or_else(|| {
+                            event_info
+                                .fields
+                                .iter()
+                                .find(|(n, _)| n == name)
+                                .map(|(_, ty)| ty)
+                        })
+                        .cloned();
+
+                    if let Some(expected) = expected_ty {
+                        let val_ty = self.check_expr(&binding.value);
+                        if !val_ty.is_error() && !self.types_compatible(&val_ty, &expected) {
+                            self.error(
+                                format!(
+                                    "trigger binding `{}` has type {}, expected {}",
+                                    name, val_ty, expected
+                                ),
+                                binding.value.span,
+                            );
+                        }
+                    } else {
                         self.error(
                             format!(
                                 "trigger binding `{}` does not match any parameter of event `{}`",
@@ -158,6 +179,9 @@ impl<'a> Checker<'a> {
                             binding.span,
                         );
                     }
+                } else {
+                    // Positional binding — still type-check the value
+                    self.check_expr(&binding.value);
                 }
             }
         } else {
@@ -197,7 +221,7 @@ impl<'a> Checker<'a> {
                     self.check_modify_clause(m, &c.receiver_name, &c.receiver_type);
                 }
                 ConditionClause::Suppress(s) => {
-                    self.check_suppress_clause(s);
+                    self.check_suppress_clause(s, &c.receiver_name, &c.receiver_type);
                 }
             }
         }
@@ -258,7 +282,7 @@ impl<'a> Checker<'a> {
     }
 
     fn check_return_type(&mut self, body_ty: &Ty, ret_ty: &Ty, span: Span) {
-        if body_ty.is_error() {
+        if body_ty.is_error() || ret_ty.is_error() {
             return;
         }
         if !self.types_compatible(body_ty, ret_ty) {

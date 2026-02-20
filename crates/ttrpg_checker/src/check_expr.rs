@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use ttrpg_ast::ast::*;
 use ttrpg_ast::Spanned;
 
@@ -539,50 +541,40 @@ impl<'a> Checker<'a> {
             self.check_builtin_permissions(&callee_name, span);
         }
 
-        // Check argument count
-        let required = fn_info.params.iter().filter(|p| !p.has_default).count();
-        let max = fn_info.params.len();
+        // Track which parameters have been satisfied
+        let mut satisfied: HashSet<usize> = HashSet::new();
 
-        if args.len() < required {
-            self.error(
-                format!(
-                    "`{}` expects at least {} argument(s), found {}",
-                    callee_name, required, args.len()
-                ),
-                span,
-            );
-        } else if args.len() > max {
-            self.error(
-                format!(
-                    "`{}` expects at most {} argument(s), found {}",
-                    callee_name, max, args.len()
-                ),
-                span,
-            );
-        }
-
-        // Check argument types
+        // Check argument types and resolve parameter mapping
         for (i, arg) in args.iter().enumerate() {
             let arg_ty = self.check_expr(&arg.value);
-            if arg_ty.is_error() {
-                continue;
-            }
 
             // Resolve which parameter this argument maps to
-            let param = if let Some(ref name) = arg.name {
-                fn_info.params.iter().find(|p| p.name == *name)
+            let param_idx = if let Some(ref name) = arg.name {
+                fn_info.params.iter().position(|p| p.name == *name)
             } else if i < fn_info.params.len() {
-                Some(&fn_info.params[i])
+                Some(i)
             } else {
                 None
             };
 
-            if let Some(param) = param {
-                if !self.types_compatible(&arg_ty, &param.ty) {
+            if let Some(idx) = param_idx {
+                // Check for duplicate named arguments
+                if !satisfied.insert(idx) {
+                    self.error(
+                        format!(
+                            "duplicate argument for parameter `{}`",
+                            fn_info.params[idx].name
+                        ),
+                        arg.span,
+                    );
+                }
+
+                // Check type compatibility
+                if !arg_ty.is_error() && !self.types_compatible(&arg_ty, &fn_info.params[idx].ty) {
                     self.error(
                         format!(
                             "argument `{}` has type {}, expected {}",
-                            param.name, arg_ty, param.ty
+                            fn_info.params[idx].name, arg_ty, fn_info.params[idx].ty
                         ),
                         arg.span,
                     );
@@ -591,6 +583,30 @@ impl<'a> Checker<'a> {
                 self.error(
                     format!("`{}` has no parameter `{}`", callee_name, name),
                     arg.span,
+                );
+            } else {
+                self.error(
+                    format!(
+                        "`{}` expects at most {} argument(s), found {}",
+                        callee_name,
+                        fn_info.params.len(),
+                        args.len()
+                    ),
+                    span,
+                );
+                break;
+            }
+        }
+
+        // Check that all required (non-default) parameters were provided
+        for (idx, param) in fn_info.params.iter().enumerate() {
+            if !param.has_default && !satisfied.contains(&idx) {
+                self.error(
+                    format!(
+                        "missing required argument `{}` in call to `{}`",
+                        param.name, callee_name
+                    ),
+                    span,
                 );
             }
         }
