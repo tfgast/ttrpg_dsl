@@ -90,71 +90,71 @@ Companion to [`interpreter_impl_plan.md`](interpreter_impl_plan.md). Check items
 ## Phase 2: Interpreter Core & Expression Evaluation
 
 ### Interpreter structure (`lib.rs`)
-- [ ] `Interpreter` struct with `program`, `type_env`, `index`
-- [ ] `DeclIndex` struct with 8 `HashMap` fields
-- [ ] `Interpreter::new` — build `DeclIndex`, reject surviving `DeclKind::Move`
-- [ ] `Env` struct with `state`, `handler`, `interp`, `scopes`, `turn_actor`
-- [ ] `Scope` struct with `bindings: HashMap<String, Value>`
+- [x] `Interpreter` struct with `program`, `type_env`, `index`
+- [x] `DeclIndex` struct with 8 `HashMap` fields
+- [x] `Interpreter::new` — build `DeclIndex`, reject surviving `DeclKind::Move`
+- [x] `Env` struct with `state`, `handler`, `interp`, `scopes`, `turn_actor`
+- [x] `Scope` struct with `bindings: HashMap<String, Value>`
 
 ### Expression evaluator (`eval.rs`)
-- [ ] `eval_expr` dispatcher
-- [ ] `IntLit`, `StringLit`, `BoolLit`, `NoneLit`
-- [ ] `DiceLit` → `Value::DiceExpr`
-- [ ] `Paren`
-- [ ] `Ident` — scope lookup + enum type namespace fallback
-- [ ] `UnaryOp` — `Neg` (Int/Float), `Not` (Bool)
-- [ ] `BinOp` — arithmetic (`+`, `-`, `*`, `/`)
-- [ ] `BinOp` — comparison (`<`, `<=`, `>`, `>=`)
-- [ ] `BinOp` — equality (`==`, `!=`) via `value_eq`
-- [ ] `BinOp` — logical (`&&`, `||`)
-- [ ] `BinOp` — `in` operator (List, Set, Map)
-- [ ] `BinOp` — RollResult coercion to Int in arithmetic/comparison
-- [ ] `BinOp` — `Int / Int` → Float promotion
-- [ ] `BinOp` — division by zero → RuntimeError
-- [ ] `BinOp` — checked integer overflow for `+`, `-`, `*`
-- [ ] `FieldAccess` — entity fields via `state.read_field()`
-- [ ] `FieldAccess` — struct fields
-- [ ] `FieldAccess` — enum variant fields
-- [ ] `FieldAccess` — RollResult built-in fields (`.total`, `.unmodified`, `.dice`, `.kept`)
-- [ ] `FieldAccess` — TurnBudget fields
-- [ ] `Index` — List by Int
-- [ ] `Index` — Map by key
-- [ ] `ListLit`
-- [ ] `StructLit`
-- [ ] `If` — condition + branches
-- [ ] `PatternMatch` — scrutinee + arms
-- [ ] `GuardMatch` — guard conditions in order
-- [ ] `Call` — stub returning RuntimeError (real dispatch in Phase 4)
+- [x] `eval_expr` dispatcher
+- [x] `IntLit`, `StringLit`, `BoolLit`, `NoneLit`
+- [x] `DiceLit` → `Value::DiceExpr`
+- [x] `Paren`
+- [x] `Ident` — scope lookup + enum type namespace fallback
+- [x] `UnaryOp` — `Neg` (Int/Float), `Not` (Bool)
+- [x] `BinOp` — arithmetic (`+`, `-`, `*`, `/`)
+- [x] `BinOp` — comparison (`<`, `<=`, `>`, `>=`)
+- [x] `BinOp` — equality (`==`, `!=`) via `value_eq`
+- [x] `BinOp` — logical (`&&`, `||`)
+- [x] `BinOp` — `in` operator (List, Set, Map)
+- [x] `BinOp` — RollResult coercion to Int in arithmetic/comparison
+- [x] `BinOp` — `Int / Int` → Float promotion
+- [x] `BinOp` — division by zero → RuntimeError
+- [x] `BinOp` — checked integer overflow for `+`, `-`, `*`
+- [x] `FieldAccess` — entity fields via `state.read_field()`
+- [x] `FieldAccess` — struct fields
+- [x] `FieldAccess` — enum variant fields
+- [x] `FieldAccess` — RollResult built-in fields (`.total`, `.unmodified`, `.dice`, `.kept`)
+- [x] `FieldAccess` — TurnBudget fields
+- [x] `Index` — List by Int
+- [x] `Index` — Map by key
+- [x] `ListLit`
+- [x] `StructLit`
+- [x] `If` — condition + branches
+- [x] `PatternMatch` — scrutinee + arms
+- [x] `GuardMatch` — guard conditions in order
+- [x] `Call` — stub returning RuntimeError (real dispatch in Phase 4)
 
 ### Semantic equality (`eval.rs`)
-- [ ] `value_eq(env, a, b)` helper
-- [ ] Float: standard `f64 ==` (-0.0 == +0.0)
-- [ ] Position: delegate to `state.position_eq()`
-- [ ] Composite: recursive walk
+- [x] `value_eq(env, a, b)` helper
+- [x] Float: standard `f64 ==` (-0.0 == +0.0)
+- [x] Position: delegate to `state.position_eq()`
+- [x] Composite: recursive walk
 
 ### Pattern matching (`eval.rs`)
-- [ ] `match_pattern` helper
-- [ ] `Wildcard`
-- [ ] `IntLit`, `StringLit`, `BoolLit`
-- [ ] `Ident` (binding)
-- [ ] `QualifiedVariant`
-- [ ] `QualifiedDestructure`
-- [ ] `BareDestructure`
+- [x] `match_pattern` helper
+- [x] `Wildcard`
+- [x] `IntLit`, `StringLit`, `BoolLit`
+- [x] `Ident` (binding)
+- [x] `QualifiedVariant`
+- [x] `QualifiedDestructure`
+- [x] `BareDestructure`
 
 ### Tests
-- [ ] Each literal type evaluates correctly
-- [ ] Arithmetic on Int, Float, mixed
-- [ ] Comparison operators
-- [ ] Equality via `value_eq` (including Float -0.0, Position delegation)
-- [ ] Logical short-circuit
-- [ ] `in` operator on List, Set, Map
-- [ ] Integer overflow produces RuntimeError
-- [ ] Division by zero produces RuntimeError
-- [ ] Field access on entities, structs, RollResult, TurnBudget
-- [ ] Index on List (valid + out-of-bounds), Map (present + absent)
-- [ ] If/else branching
-- [ ] Pattern match: all pattern kinds
-- [ ] Guard match: first-matching semantics
+- [x] Each literal type evaluates correctly
+- [x] Arithmetic on Int, Float, mixed
+- [x] Comparison operators
+- [x] Equality via `value_eq` (including Float -0.0, Position delegation)
+- [x] Logical short-circuit
+- [x] `in` operator on List, Set, Map
+- [x] Integer overflow produces RuntimeError
+- [x] Division by zero produces RuntimeError
+- [x] Field access on entities, structs, RollResult, TurnBudget
+- [x] Index on List (valid + out-of-bounds), Map (present + absent)
+- [x] If/else branching
+- [x] Pattern match: all pattern kinds
+- [x] Guard match: first-matching semantics
 
 ---
 
@@ -392,7 +392,7 @@ Companion to [`interpreter_impl_plan.md`](interpreter_impl_plan.md). Check items
 
 ## Cross-cutting concerns
 
-- [ ] Test infrastructure: `ScriptedHandler` (records effects, replays responses)
-- [ ] Test infrastructure: `TestState` (minimal `StateProvider`)
+- [x] Test infrastructure: `ScriptedHandler` (records effects, replays responses)
+- [x] Test infrastructure: `TestState` (minimal `StateProvider`)
 - [ ] Design doc update: `DeductCost` Layer 1 vs Layer 2 semantics (`interpreter.md` line 104)
 - [x] Crate setup: `ttrpg_interp/Cargo.toml` with deps on `ttrpg_ast` + `ttrpg_checker`

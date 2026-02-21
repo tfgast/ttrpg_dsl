@@ -157,6 +157,11 @@ pub enum Value {
     TurnBudget(TurnBudget),
     Duration(DurationValue),
     Condition(String),
+
+    /// Internal: an enum type name used as a namespace for qualified variant
+    /// access (e.g., `Duration.rounds`). Not a user-facing value — only
+    /// produced by `eval_ident` when an identifier resolves to an enum type.
+    EnumNamespace(String),
 }
 
 // ── Discriminant ordering ───────────────────────────────────────
@@ -182,6 +187,7 @@ fn discriminant(v: &Value) -> u8 {
         Value::TurnBudget(_) => 15,
         Value::Duration(_) => 16,
         Value::Condition(_) => 17,
+        Value::EnumNamespace(_) => 18,
     }
 }
 
@@ -236,6 +242,7 @@ impl PartialEq for Value {
             (Value::TurnBudget(a), Value::TurnBudget(b)) => a == b,
             (Value::Duration(a), Value::Duration(b)) => a == b,
             (Value::Condition(a), Value::Condition(b)) => a == b,
+            (Value::EnumNamespace(a), Value::EnumNamespace(b)) => a == b,
             _ => false,
         }
     }
@@ -306,6 +313,7 @@ impl Ord for Value {
             (Value::TurnBudget(a), Value::TurnBudget(b)) => turn_budget_cmp(a, b),
             (Value::Duration(a), Value::Duration(b)) => a.cmp(b),
             (Value::Condition(a), Value::Condition(b)) => a.cmp(b),
+            (Value::EnumNamespace(a), Value::EnumNamespace(b)) => a.cmp(b),
             // Same discriminant guarantees same variant.
             _ => unreachable!(),
         }
@@ -450,6 +458,7 @@ impl std::hash::Hash for Value {
             }
             Value::Duration(v) => v.hash(state),
             Value::Condition(v) => v.hash(state),
+            Value::EnumNamespace(v) => v.hash(state),
         }
     }
 }
