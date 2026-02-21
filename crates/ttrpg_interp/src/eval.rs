@@ -449,12 +449,11 @@ fn eval_comparison(
         (Value::Float(a), Value::Float(b)) => a
             .partial_cmp(b)
             .ok_or_else(|| RuntimeError::with_span("cannot compare NaN", expr.span))?,
-        (Value::Int(a), Value::Float(b)) => (*a as f64)
-            .partial_cmp(b)
+        (Value::Int(a), Value::Float(b)) => int_float_cmp(*a, *b)
             .ok_or_else(|| RuntimeError::with_span("cannot compare NaN", expr.span))?,
-        (Value::Float(a), Value::Int(b)) => a
-            .partial_cmp(&(*b as f64))
-            .ok_or_else(|| RuntimeError::with_span("cannot compare NaN", expr.span))?,
+        (Value::Float(a), Value::Int(b)) => int_float_cmp(*b, *a)
+            .ok_or_else(|| RuntimeError::with_span("cannot compare NaN", expr.span))?
+            .reverse(),
         (Value::Str(a), Value::Str(b)) => a.cmp(b),
         (
             Value::EnumVariant {
@@ -577,6 +576,7 @@ fn eval_field_access(
             "modifier" => Ok(Value::Int(r.modifier)),
             "dice" => Ok(Value::List(r.dice.iter().map(|d| Value::Int(*d)).collect())),
             "kept" => Ok(Value::List(r.kept.iter().map(|d| Value::Int(*d)).collect())),
+            "expr" => Ok(Value::DiceExpr(r.expr.clone())),
             _ => Err(RuntimeError::with_span(
                 format!("RollResult has no field '{}'", field),
                 expr.span,
@@ -672,12 +672,19 @@ fn eval_index(
                 )
             })
         }
-        (Value::Map(map), key) => map.get(key).cloned().ok_or_else(|| {
-            RuntimeError::with_span(
-                format!("map key {:?} not found", key),
-                expr.span,
-            )
-        }),
+        (Value::Map(map), key) => {
+            // Use semantic equality (value_eq) for lookup so that e.g. none
+            // and option<T>.none are treated as the same key, consistent with `in`.
+            map.iter()
+                .find(|(k, _)| value_eq(env.state, k, key))
+                .map(|(_, v)| v.clone())
+                .ok_or_else(|| {
+                    RuntimeError::with_span(
+                        format!("map key {:?} not found", key),
+                        expr.span,
+                    )
+                })
+        }
         _ => Err(RuntimeError::with_span(
             format!(
                 "cannot index {:?} with {:?}",
@@ -770,6 +777,70 @@ fn eval_arm_body(env: &mut Env, body: &ArmBody) -> Result<Value, RuntimeError> {
     }
 }
 
+// ── Exact cross-type int/float helpers ─────────────────────────
+
+/// Exact equality between i64 and f64 without lossy `i64 as f64` cast.
+/// Returns false when the float has a fractional part, is non-finite, or
+/// falls outside the range exactly representable as i64.
+fn int_float_eq(i: i64, f: f64) -> bool {
+    // Non-finite or fractional → never equal to an integer
+    if !f.is_finite() || f.fract() != 0.0 {
+        return false;
+    }
+    // If f is within the exact-integer range of f64 (|v| <= 2^53),
+    // both directions of cast are lossless.
+    // For larger magnitudes, cast f→i64 instead of i→f64 to avoid rounding.
+    if f >= (i64::MIN as f64) && f <= (i64::MAX as f64) {
+        (f as i64) == i
+    } else {
+        false
+    }
+}
+
+/// Exact ordering between i64 and f64 without lossy `i64 as f64` cast.
+fn int_float_cmp(i: i64, f: f64) -> Option<std::cmp::Ordering> {
+    if !f.is_finite() {
+        // NaN → no ordering
+        if f.is_nan() {
+            return None;
+        }
+        // +inf / -inf
+        return Some(if f == f64::INFINITY {
+            std::cmp::Ordering::Less
+        } else {
+            std::cmp::Ordering::Greater
+        });
+    }
+
+    // Compare integer part first
+    let f_trunc = f.trunc();
+    // Safe range for f64→i64 cast: f_trunc must be within i64 bounds
+    if f_trunc >= (i64::MIN as f64) && f_trunc <= (i64::MAX as f64) {
+        let f_int = f_trunc as i64;
+        match i.cmp(&f_int) {
+            std::cmp::Ordering::Equal => {
+                // Integer parts equal — check fractional part
+                let frac = f - f_trunc;
+                if frac > 0.0 {
+                    Some(std::cmp::Ordering::Less) // i < f because f has positive frac
+                } else if frac < 0.0 {
+                    Some(std::cmp::Ordering::Greater)
+                } else {
+                    Some(std::cmp::Ordering::Equal)
+                }
+            }
+            other => Some(other),
+        }
+    } else {
+        // f is outside i64 range
+        Some(if f_trunc < (i64::MIN as f64) {
+            std::cmp::Ordering::Greater
+        } else {
+            std::cmp::Ordering::Less
+        })
+    }
+}
+
 // ── Semantic value comparison ──────────────────────────────────
 
 /// Semantic equality for runtime comparisons.
@@ -790,8 +861,8 @@ pub(crate) fn value_eq(state: &dyn StateProvider, a: &Value, b: &Value) -> bool 
         (Value::Bool(a), Value::Bool(b)) => a == b,
         (Value::Int(a), Value::Int(b)) => a == b,
         (Value::Float(a), Value::Float(b)) => a == b, // standard f64 ==
-        (Value::Int(a), Value::Float(b)) => (*a as f64) == *b,
-        (Value::Float(a), Value::Int(b)) => *a == (*b as f64),
+        (Value::Int(a), Value::Float(b)) => int_float_eq(*a, *b),
+        (Value::Float(a), Value::Int(b)) => int_float_eq(*b, *a),
         (Value::Str(a), Value::Str(b)) => a == b,
         (Value::DiceExpr(a), Value::DiceExpr(b)) => a == b,
         (Value::RollResult(a), Value::RollResult(b)) => a == b,
@@ -891,11 +962,12 @@ pub(crate) fn match_pattern(
             // Check if this ident is a bare enum variant (via variant_to_enum).
             // If so, match against the variant; otherwise bind as a variable.
             if let Some(enum_name) = env.interp.type_env.variant_to_enum.get(name.as_str()) {
-                // It's a bare enum variant — match only if value is that variant
+                // It's a bare enum variant — match by variant name (checker rejects
+                // bare patterns for payload variants, but we match by name as safety net)
                 matches!(
                     value,
-                    Value::EnumVariant { enum_name: actual_enum, variant, fields }
-                    if actual_enum == enum_name && variant == name && fields.is_empty()
+                    Value::EnumVariant { enum_name: actual_enum, variant, .. }
+                    if actual_enum == enum_name && variant == name
                 )
             } else {
                 bindings.insert(name.clone(), value.clone());
@@ -904,10 +976,12 @@ pub(crate) fn match_pattern(
         }
 
         PatternKind::QualifiedVariant { ty, variant } => {
+            // Match by variant name only (checker rejects bare qualified patterns
+            // for payload variants, but we match by name as safety net)
             matches!(
                 value,
-                Value::EnumVariant { enum_name, variant: v, fields }
-                if enum_name == ty && v == variant && fields.is_empty()
+                Value::EnumVariant { enum_name, variant: v, .. }
+                if enum_name == ty && v == variant
             )
         }
 

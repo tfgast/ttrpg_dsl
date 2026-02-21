@@ -50,10 +50,10 @@ impl<'a> Checker<'a> {
 
             PatternKind::Ident(name) => {
                 // Could be a bare enum variant or a binding variable
-                if let Some(enum_name) = self.env.variant_to_enum.get(name) {
+                if let Some(enum_name) = self.env.variant_to_enum.get(name).cloned() {
                     // It's a variant — check it matches the scrutinee enum
                     if let Ty::Enum(ref s_enum) = scrutinee_ty {
-                        if s_enum != enum_name {
+                        if *s_enum != enum_name {
                             self.error(
                                 format!(
                                     "variant `{}` belongs to enum `{}`, not `{}`",
@@ -70,6 +70,20 @@ impl<'a> Checker<'a> {
                             ),
                             pattern.span,
                         );
+                    }
+                    // Reject bare pattern for variants with payload fields
+                    if let Some(DeclInfo::Enum(info)) = self.env.types.get(&enum_name) {
+                        if let Some(var_info) = info.variants.iter().find(|v| v.name == *name) {
+                            if !var_info.fields.is_empty() {
+                                self.error(
+                                    format!(
+                                        "variant `{}` has {} field(s); use destructuring pattern `{}(...)` or a wildcard",
+                                        name, var_info.fields.len(), name
+                                    ),
+                                    pattern.span,
+                                );
+                            }
+                        }
                     }
                 } else {
                     // It's a binding variable — bind to scrutinee type
@@ -94,7 +108,18 @@ impl<'a> Checker<'a> {
             PatternKind::QualifiedVariant { ty, variant } => {
                 // Type.Variant
                 if let Some(DeclInfo::Enum(info)) = self.env.types.get(ty) {
-                    if !info.variants.iter().any(|v| v.name == *variant) {
+                    if let Some(var_info) = info.variants.iter().find(|v| v.name == *variant) {
+                        // Reject bare qualified pattern for variants with payload fields
+                        if !var_info.fields.is_empty() {
+                            self.error(
+                                format!(
+                                    "variant `{}.{}` has {} field(s); use destructuring pattern `{}.{}(...)` or a wildcard",
+                                    ty, variant, var_info.fields.len(), ty, variant
+                                ),
+                                pattern.span,
+                            );
+                        }
+                    } else {
                         self.error(
                             format!("enum `{}` has no variant `{}`", ty, variant),
                             pattern.span,
