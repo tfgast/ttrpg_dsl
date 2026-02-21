@@ -20,26 +20,21 @@ The interpreter does NOT directly perform side effects. Instead, it describes wh
 
 This is the core architectural decision. Every observable behavior — dice rolls, state mutations, prompts, condition changes — is expressed as an **Effect** that the host intercepts.
 
-### The step loop
+### The callback model
 
-The host drives execution:
+The host provides an `EffectHandler` implementation; the interpreter calls it synchronously whenever an effect is produced:
 
 ```rust
-let exec = interpreter.begin_action("Attack", actor, &[target, weapon]);
-
-loop {
-    match exec.step() {
-        Step::Effect(effect) => {
-            let response = host.handle(effect);
-            exec.respond(response);
-        }
-        Step::Complete(value) => break,
-        Step::Error(err)     => { /* handle */ }
-    }
+trait EffectHandler {
+    fn handle(&mut self, effect: Effect) -> Response;
 }
+
+let result = interpreter.execute_action(
+    &my_state, &mut my_handler, "Attack", actor, vec![target, weapon]
+)?;
 ```
 
-The interpreter runs synchronously until it encounters an effect, then suspends. The host processes the effect (which may involve async UI, network calls, or user input) and resumes the interpreter with a response. This maps naturally onto any concurrency model the host uses.
+The interpreter runs synchronously, calling `handler.handle(effect)` each time it produces an effect. The host processes the effect (which may involve blocking for async UI, network calls, or user input) and returns a response. This keeps the evaluator simple and recursive — no threads, no async, no explicit state machines.
 
 ---
 
@@ -106,7 +101,7 @@ The interpreter wants to spend an action economy token. `token` is the singular 
 | `bonus_action` | `bonus_actions` | `turn.bonus_actions -= 1` |
 | `reaction` | `reactions` | `turn.reactions -= 1` |
 
-On `Acknowledged`, the host decrements `budget_field` by 1. On `Override(Value::Str(replacement_token))`, the replacement token must be a valid token name from the mapping table above — if it is not, the interpreter yields `Step::Error`. On `Vetoed`, the cost is waived entirely.
+On `Acknowledged`, the host decrements `budget_field` by 1. On `Override(Value::Str(replacement_token))`, the replacement token must be a valid token name from the mapping table above — if it is not, the interpreter returns `RuntimeError`. On `Vetoed`, the cost is waived entirely.
 
 #### Gate effects
 
@@ -159,7 +154,7 @@ enum ModifySource {
 | `Override(Value)` | GM substitutes a different value |
 | `Vetoed` | GM blocks the effect |
 
-Both `Override` and `Vetoed` are restricted to specific effect types. Not every effect supports every response. Section 8 is the authoritative reference for which responses are valid on which effects. Sending an unsupported response yields `Step::Error`.
+Both `Override` and `Vetoed` are restricted to specific effect types. Not every effect supports every response. Section 8 is the authoritative reference for which responses are valid on which effects. Sending an unsupported response returns `RuntimeError`.
 
 ---
 
@@ -203,9 +198,9 @@ trait StateProvider {
 }
 ```
 
-**Reads are synchronous** and do not yield effects. Field access like `target.HP` happens inline during expression evaluation without a round trip through the effect loop. This keeps the step loop focused on decisions that actually need host involvement.
+**Reads are synchronous** and do not yield effects. Field access like `target.HP` happens inline during expression evaluation without a round trip through the effect loop. This keeps the effect handler focused on decisions that actually need host involvement.
 
-**Reads are fallible.** If a read returns `None`, the interpreter yields `Step::Error` with a descriptive message. Since the program has passed type-checking, a `None` return indicates the host's state is out of sync with the DSL program (missing entity, missing field), not a user error. This lets the host signal problems cleanly rather than panicking.
+**Reads are fallible.** If a read returns `None`, the interpreter returns `RuntimeError` with a descriptive message. Since the program has passed type-checking, a `None` return indicates the host's state is out of sync with the DSL program (missing entity, missing field), not a user error. This lets the host signal problems cleanly rather than panicking.
 
 **Writes go through effects** (`MutateField`, `ApplyCondition`, etc.) so the host can intercept, confirm, or veto them.
 
@@ -356,7 +351,7 @@ The host can invoke the interpreter in several contexts:
 ### Execute an action
 
 ```rust
-interpreter.begin_action(name, actor, args)
+interpreter.execute_action(state, handler, name, actor, args)
 ```
 
 Runs the full action pipeline:
@@ -374,7 +369,7 @@ Requires is checked **before** cost deduction. If the precondition fails, no res
 ### Execute a reaction
 
 ```rust
-interpreter.begin_reaction(name, reactor, event_payload)
+interpreter.execute_reaction(state, handler, name, reactor, event_payload)
 ```
 
 Same as action but triggered by an event:
@@ -387,7 +382,7 @@ Same as action but triggered by an event:
 ### Evaluate a mechanic
 
 ```rust
-interpreter.evaluate_mechanic(name, args)
+interpreter.evaluate_mechanic(state, handler, name, args)
 ```
 
 Called by the host to compute a value outside of an action. Runs the condition modify pipeline and returns a value. Useful for "what would happen if..." previews.
@@ -395,15 +390,15 @@ Called by the host to compute a value outside of an action. Runs the condition m
 ### Evaluate a derive
 
 ```rust
-interpreter.evaluate_derive(name, args)
+interpreter.evaluate_derive(state, handler, name, args)
 ```
 
-Pure computation. Still runs the modify pipeline (conditions can modify derives). Returns a value.
+Runs the modify pipeline (conditions can modify derives) and returns a value. Takes a handler because the modify pipeline can emit `ModifyApplied` informational effects.
 
 ### Fire an event
 
 ```rust
-interpreter.fire_event(name, payload)
+interpreter.fire_event(state, name, payload, candidates)
 ```
 
 The host tells the interpreter an event occurred. The interpreter checks suppression and returns a single result:
@@ -449,9 +444,8 @@ impl StateProvider for MyVTT {
     fn position_eq(&self, a: &Value, b: &Value) -> bool { /* ... */ }
 }
 
-let interp = Interpreter::new(program, type_env);
-let exec = interp.begin_action_with(&my_vtt, "Attack", actor, &args);
-// ... drive step loop manually ...
+let interp = Interpreter::new(program, type_env)?;
+let result = interp.execute_action(&my_vtt, &mut my_handler, "Attack", actor, args)?;
 ```
 
 ### Layer 2: State Adapter
@@ -507,13 +501,16 @@ state.add_entity("goblin_1", entity_values);
 state.apply_condition("goblin_1", prone_condition);
 state.enable_option("flanking");
 
-let interp = Interpreter::with_state(program, type_env, &mut state);
-let exec = interp.begin_action("Attack", actor, &args);
+let adapter = StateAdapter::new(state);
+let interp = Interpreter::new(program, type_env)?;
+adapter.run(&mut my_handler, |state, handler| {
+    interp.execute_action(state, handler, "Attack", actor, args)
+})?;
 ```
 
-`GameState` implements `WritableState` with `HashMap`s. By default, mutation effects are auto-applied internally. The host handles value effects (`RollDice`, `ResolvePrompt`), the decision effect (`DeductCost`), and gate/informational effects.
+`GameState` implements `WritableState` with `HashMap`s. Used via `StateAdapter`, mutation effects are auto-applied internally by default. The host's handler handles value effects (`RollDice`, `ResolvePrompt`), the decision effect (`DeductCost`), and gate/informational effects.
 
-The same `pass_through` configuration from Layer 2 is available — hosts that need GM review of mutations can opt specific mutation effect kinds into the step loop. `DeductCost` is always passed through regardless of configuration.
+The same `pass_through` configuration from Layer 2 is available — hosts that need GM review of mutations can opt specific mutation effect kinds into the host's handler. `DeductCost` is always passed through regardless of configuration.
 
 **Use when:** Getting started quickly, prototyping, testing, or you don't have an existing entity system.
 
@@ -521,7 +518,7 @@ The same `pass_through` configuration from Layer 2 is available — hosts that n
 
 ## 8. GM Override Protocol
 
-`Override` and `Vetoed` are the mechanisms for GM fiat. **Neither is universally valid** — each effect type defines which responses it accepts. Sending an unsupported response yields `Step::Error`.
+`Override` and `Vetoed` are the mechanisms for GM fiat. **Neither is universally valid** — each effect type defines which responses it accepts. Sending an unsupported response returns `RuntimeError`.
 
 ### Complete response validity table
 
@@ -563,7 +560,7 @@ This is the authoritative reference for all effect/response combinations.
 | **`ActionCompleted`** | continue | — | — | `Acknowledged` |
 | **`ModifyApplied`** | continue | — | — | `Acknowledged` |
 
-**Legend:** "—" means the response is not valid for that effect and yields `Step::Error`.
+**Legend:** "—" means the response is not valid for that effect and returns `RuntimeError`.
 
 ### Override semantics
 
@@ -609,7 +606,7 @@ The host controls automation by how it handles effects:
 ```
 ttrpg_interp/
   src/
-    lib.rs              — public API, Interpreter, Execution handle
+    lib.rs              — public API, Interpreter, EffectHandler trait
     value.rs            — Value enum, runtime type representations
     effect.rs           — Effect and EffectResponse enums
     state.rs            — StateProvider, WritableState traits
