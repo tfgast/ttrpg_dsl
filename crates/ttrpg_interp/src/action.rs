@@ -65,10 +65,22 @@ pub(crate) fn execute_action(
     match response {
         Response::Acknowledged => {}
         Response::Vetoed => {
-            env.handler.handle(Effect::ActionCompleted {
+            let completion_response = env.handler.handle(Effect::ActionCompleted {
                 name: action_name,
                 actor,
             });
+            match completion_response {
+                Response::Acknowledged => {}
+                other => {
+                    return Err(RuntimeError::with_span(
+                        format!(
+                            "protocol error: expected Acknowledged for ActionCompleted, got {:?}",
+                            other
+                        ),
+                        call_span,
+                    ));
+                }
+            }
             return Ok(Value::None);
         }
         other => {
@@ -217,10 +229,22 @@ pub(crate) fn execute_reaction(
     match response {
         Response::Acknowledged => {}
         Response::Vetoed => {
-            env.handler.handle(Effect::ActionCompleted {
+            let completion_response = env.handler.handle(Effect::ActionCompleted {
                 name: reaction_name,
                 actor: reactor,
             });
+            match completion_response {
+                Response::Acknowledged => {}
+                other => {
+                    return Err(RuntimeError::with_span(
+                        format!(
+                            "protocol error: expected Acknowledged for ActionCompleted, got {:?}",
+                            other
+                        ),
+                        call_span,
+                    ));
+                }
+            }
             return Ok(Value::None);
         }
         other => {
@@ -1171,6 +1195,70 @@ mod tests {
         let actor = EntityRef(1);
 
         let result = execute_action(&mut env, &action, actor, vec![], span());
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .message
+            .contains("protocol error"));
+    }
+
+    #[test]
+    fn action_veto_path_completed_invalid_response_errors() {
+        // When ActionStarted is vetoed, the subsequent ActionCompleted
+        // must still validate that only Acknowledged is returned.
+        let action = make_action(
+            "Attack",
+            "actor",
+            vec![],
+            None,
+            None,
+            vec![spanned(StmtKind::Expr(spanned(ExprKind::IntLit(1))))],
+        );
+
+        let program = empty_program();
+        let type_env = empty_type_env();
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = TestState::new();
+        let mut handler = ScriptedHandler::with_responses(vec![
+            Response::Vetoed,        // ActionStarted → veto
+            Response::Vetoed,        // invalid for ActionCompleted on veto path
+        ]);
+        let mut env = make_env(&state, &mut handler, &interp);
+        let actor = EntityRef(1);
+
+        let result = execute_action(&mut env, &action, actor, vec![], span());
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .message
+            .contains("protocol error"));
+    }
+
+    #[test]
+    fn reaction_veto_path_completed_invalid_response_errors() {
+        // When reaction's ActionStarted is vetoed, ActionCompleted
+        // must still validate that only Acknowledged is returned.
+        let reaction = make_reaction(
+            "OpportunityAttack",
+            "entity_leaves_reach",
+            "actor",
+            None,
+            vec![spanned(StmtKind::Expr(spanned(ExprKind::IntLit(1))))],
+        );
+
+        let program = empty_program();
+        let type_env = empty_type_env();
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = TestState::new();
+        let mut handler = ScriptedHandler::with_responses(vec![
+            Response::Vetoed,                    // ActionStarted → veto
+            Response::Override(Value::Int(99)),   // invalid for ActionCompleted
+        ]);
+        let mut env = make_env(&state, &mut handler, &interp);
+        let reactor = EntityRef(1);
+
+        let result =
+            execute_reaction(&mut env, &reaction, reactor, Value::None, span());
         assert!(result.is_err());
         assert!(result
             .unwrap_err()
