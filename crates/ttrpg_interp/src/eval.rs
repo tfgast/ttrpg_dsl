@@ -967,7 +967,7 @@ fn eval_assign_local(
     let eval_segs = eval_segments(env, segments)?;
 
     // Walk the value (read-only) to check for entities in the path
-    let entity_depth = find_entity_depth(env, root_name, &eval_segs, span)?;
+    let entity_depth = find_entity_depth(env, root_name, &eval_segs, span, env.state)?;
 
     if let Some((depth, entity_ref)) = entity_depth {
         // Convert remaining EvalSegments to FieldPathSegments for entity mutation
@@ -998,11 +998,13 @@ fn eval_assign_local(
     }
 
     // Pure local mutation: navigate into the value and apply the op
+    // Copy the shared state reference before taking &mut on env via lookup_mut.
+    let state = env.state;
     let root = env.lookup_mut(root_name).ok_or_else(|| {
         RuntimeError::with_span(format!("undefined variable `{}`", root_name), span)
     })?;
 
-    apply_local_mutation(root, &eval_segs, 0, op, rhs, span)
+    apply_local_mutation(root, &eval_segs, 0, op, rhs, span, state)
 }
 
 /// Pre-evaluate all index expressions in LValue segments.
@@ -1032,6 +1034,7 @@ fn find_entity_depth(
     root_name: &str,
     segments: &[EvalSegment],
     span: ttrpg_ast::Span,
+    state: &dyn StateProvider,
 ) -> Result<Option<(usize, EntityRef)>, RuntimeError> {
     let mut current = env.lookup(root_name).cloned().ok_or_else(|| {
         RuntimeError::with_span(format!("undefined variable `{}`", root_name), span)
@@ -1070,8 +1073,9 @@ fn find_entity_depth(
             }
             Value::Map(map) => {
                 if let EvalSegment::Index(key) = seg {
-                    match map.get(key) {
-                        Some(val) => current = val.clone(),
+                    // Use semantic equality (value_eq) consistent with read indexing.
+                    match map.iter().find(|(k, _)| value_eq(state, k, key)) {
+                        Some((_, val)) => current = val.clone(),
                         // Key not in map — no entity can be deeper, so return None.
                         // The actual mutation code handles insert vs compound-assign errors.
                         None => return Ok(None),
@@ -1103,6 +1107,7 @@ fn apply_local_mutation(
     op: AssignOp,
     rhs: Value,
     span: ttrpg_ast::Span,
+    state: &dyn StateProvider,
 ) -> Result<(), RuntimeError> {
     if depth >= segments.len() {
         // We've reached the target — apply the op
@@ -1119,24 +1124,30 @@ fn apply_local_mutation(
                     span,
                 )
             })?;
-            apply_local_mutation(field, segments, depth + 1, op, rhs, span)
+            apply_local_mutation(field, segments, depth + 1, op, rhs, span, state)
         }
         (EvalSegment::Index(idx_val), Value::List(list)) => {
             let index = resolve_list_index(idx_val, list.len(), span)?;
-            apply_local_mutation(&mut list[index], segments, depth + 1, op, rhs, span)
+            apply_local_mutation(&mut list[index], segments, depth + 1, op, rhs, span, state)
         }
         (EvalSegment::Index(key), Value::Map(map)) => {
+            // Use semantic equality (value_eq) to find the existing key,
+            // consistent with read indexing in eval_index.
+            let existing_key = map.keys().find(|k| value_eq(state, k, key)).cloned();
             if depth + 1 >= segments.len() {
                 // Final segment — apply the op to the map entry
                 match op {
                     AssignOp::Eq => {
-                        // Create or overwrite entry
+                        // Remove existing semantically-equal key (if any) and insert with the new key
+                        if let Some(ref ek) = existing_key {
+                            map.remove(ek);
+                        }
                         map.insert(key.clone(), rhs);
                         Ok(())
                     }
                     AssignOp::PlusEq | AssignOp::MinusEq => {
                         // Entry must exist for compound assignment
-                        let entry = map.get_mut(key).ok_or_else(|| {
+                        let ek = existing_key.ok_or_else(|| {
                             RuntimeError::with_span(
                                 format!(
                                     "cannot apply {} to absent map key {:?}",
@@ -1146,6 +1157,7 @@ fn apply_local_mutation(
                                 span,
                             )
                         })?;
+                        let entry = map.get_mut(&ek).unwrap();
                         let new_val = apply_assign_op(op, entry.clone(), rhs, span)?;
                         *entry = new_val;
                         Ok(())
@@ -1153,13 +1165,14 @@ fn apply_local_mutation(
                 }
             } else {
                 // Navigate deeper into the map value
-                let entry = map.get_mut(key).ok_or_else(|| {
+                let ek = existing_key.ok_or_else(|| {
                     RuntimeError::with_span(
                         format!("map has no key {:?}", key),
                         span,
                     )
                 })?;
-                apply_local_mutation(entry, segments, depth + 1, op, rhs, span)
+                let entry = map.get_mut(&ek).unwrap();
+                apply_local_mutation(entry, segments, depth + 1, op, rhs, span, state)
             }
         }
         (EvalSegment::Field(_), other) => {
@@ -1293,7 +1306,12 @@ fn resolve_list_index(
             let index = if i >= 0 {
                 i as usize
             } else {
-                let positive = (-i) as usize;
+                let positive = i.checked_neg().ok_or_else(|| {
+                    RuntimeError::with_span(
+                        format!("list index {} out of bounds, length {}", i, len),
+                        span,
+                    )
+                })? as usize;
                 if positive > len {
                     return Err(RuntimeError::with_span(
                         format!(
@@ -5327,5 +5345,101 @@ mod tests {
         eval_stmt(&mut env, &stmt).unwrap();
 
         assert!(handler.log.is_empty(), "expected no effects for local mutation");
+    }
+
+    // ── Regression: i64::MIN list index should not panic ────────
+
+    #[test]
+    fn assign_local_list_i64_min_index_error() {
+        let program = empty_program();
+        let type_env = empty_type_env();
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = TestState::new();
+        let mut handler = ScriptedHandler::new();
+        let mut env = make_env(&state, &mut handler, &interp);
+
+        env.bind("nums".to_string(), Value::List(vec![Value::Int(1)]));
+
+        // nums[i64::MIN] = 0 — should produce a RuntimeError, not panic
+        let stmt = make_assign(
+            make_lvalue("nums", vec![
+                LValueSegment::Index(spanned(ExprKind::IntLit(i64::MIN))),
+            ]),
+            AssignOp::Eq,
+            spanned(ExprKind::IntLit(0)),
+        );
+        let err = eval_stmt(&mut env, &stmt).unwrap_err();
+        assert!(err.message.contains("out of bounds"), "got: {}", err.message);
+    }
+
+    // ── Regression: map assignment uses semantic key equality ────
+
+    #[test]
+    fn assign_local_map_semantic_key_overwrite() {
+        // Writing with Option(None) key should overwrite an existing None key
+        let program = empty_program();
+        let type_env = empty_type_env();
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = TestState::new();
+        let mut handler = ScriptedHandler::new();
+        let mut env = make_env(&state, &mut handler, &interp);
+
+        let mut map = BTreeMap::new();
+        map.insert(Value::None, Value::Int(1));
+        env.bind("m".to_string(), Value::Map(map));
+
+        // m[option_none] = 99 — should overwrite the None entry, not create a duplicate
+        let stmt = make_assign(
+            make_lvalue("m", vec![
+                LValueSegment::Index(spanned(ExprKind::NoneLit)),
+            ]),
+            AssignOp::Eq,
+            spanned(ExprKind::IntLit(99)),
+        );
+        eval_stmt(&mut env, &stmt).unwrap();
+
+        match env.lookup("m") {
+            Some(Value::Map(m)) => {
+                assert_eq!(m.len(), 1, "should have 1 entry, not a duplicate; got {:?}", m);
+                // The value should be updated regardless of which structural key remains
+                let val = m.values().next().unwrap();
+                assert_eq!(val, &Value::Int(99));
+            }
+            other => panic!("expected Map, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn assign_local_map_semantic_key_plus_eq() {
+        // Compound assignment should find an existing key via semantic equality
+        let program = empty_program();
+        let type_env = empty_type_env();
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = TestState::new();
+        let mut handler = ScriptedHandler::new();
+        let mut env = make_env(&state, &mut handler, &interp);
+
+        let mut map = BTreeMap::new();
+        map.insert(Value::None, Value::Int(10));
+        env.bind("m".to_string(), Value::Map(map));
+
+        // m[option_none] += 5 — should find the None key semantically
+        let stmt = make_assign(
+            make_lvalue("m", vec![
+                LValueSegment::Index(spanned(ExprKind::NoneLit)),
+            ]),
+            AssignOp::PlusEq,
+            spanned(ExprKind::IntLit(5)),
+        );
+        eval_stmt(&mut env, &stmt).unwrap();
+
+        match env.lookup("m") {
+            Some(Value::Map(m)) => {
+                assert_eq!(m.len(), 1);
+                let val = m.values().next().unwrap();
+                assert_eq!(val, &Value::Int(15));
+            }
+            other => panic!("expected Map, got {:?}", other),
+        }
     }
 }
