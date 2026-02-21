@@ -4,6 +4,7 @@ pub mod state;
 pub mod eval;
 pub mod call;
 pub mod builtins;
+pub mod action;
 
 use std::collections::HashMap;
 

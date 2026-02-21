@@ -257,38 +257,38 @@ Companion to [`interpreter_impl_plan.md`](interpreter_impl_plan.md). Check items
 ## Phase 5: Action/Reaction Pipeline
 
 ### Action execution (`action.rs`)
-- [ ] `execute_action` function
-- [ ] Emit `ActionStarted` (kind: Action)
-- [ ] Handle `Vetoed` → emit `ActionCompleted`, return None
-- [ ] Bind scope: receiver + params
-- [ ] Save/restore `turn_actor`
-- [ ] Requires clause: evaluate, emit `RequiresCheck`
-- [ ] Requires: `Override(true)` forces pass, `Override(false)` forces fail
-- [ ] Requires fail: pop scope, restore turn_actor, emit `ActionCompleted`
-- [ ] Cost deduction: emit `DeductCost` per token
-- [ ] Cost: `Acknowledged` → host decrements
-- [ ] Cost: `Override(replacement)` → validate + apply replacement
-- [ ] Cost: `Vetoed` → waived
-- [ ] Execute resolve block
-- [ ] Emit `ActionCompleted`
+- [x] `execute_action` function
+- [x] Emit `ActionStarted` (kind: Action)
+- [x] Handle `Vetoed` → emit `ActionCompleted`, return None
+- [x] Bind scope: receiver + params
+- [x] Save/restore `turn_actor`
+- [x] Requires clause: evaluate, emit `RequiresCheck`
+- [x] Requires: `Override(true)` forces pass, `Override(false)` forces fail
+- [x] Requires fail: pop scope, restore turn_actor, emit `ActionCompleted`
+- [x] Cost deduction: emit `DeductCost` per token
+- [x] Cost: `Acknowledged` → host decrements
+- [x] Cost: `Override(replacement)` → validate + apply replacement
+- [x] Cost: `Vetoed` → waived
+- [x] Execute resolve block
+- [x] Emit `ActionCompleted`
 
 ### Reaction execution (`action.rs`)
-- [ ] `execute_reaction` function
-- [ ] Emit `ActionStarted` (kind: Reaction)
-- [ ] Bind scope: receiver + trigger payload
-- [ ] Save/restore `turn_actor`
-- [ ] Cost deduction (same as action)
-- [ ] Execute resolve block
-- [ ] Emit `ActionCompleted`
+- [x] `execute_reaction` function
+- [x] Emit `ActionStarted` (kind: Reaction)
+- [x] Bind scope: receiver + trigger payload
+- [x] Save/restore `turn_actor`
+- [x] Cost deduction (same as action)
+- [x] Execute resolve block
+- [x] Emit `ActionCompleted`
 
 ### Tests
-- [ ] Full action: requires pass → cost → resolve
-- [ ] Requires fail: no cost spent, action completed
-- [ ] ActionStarted veto: immediate completion
-- [ ] Cost acknowledged / vetoed / overridden
-- [ ] Nested action calls: turn_actor save/restore
-- [ ] Reaction: trigger payload bound correctly
-- [ ] Reaction: cost deduction works
+- [x] Full action: requires pass → cost → resolve
+- [x] Requires fail: no cost spent, action completed
+- [x] ActionStarted veto: immediate completion
+- [x] Cost acknowledged / vetoed / overridden
+- [x] Nested action calls: turn_actor save/restore
+- [x] Reaction: trigger payload bound correctly
+- [x] Reaction: cost deduction works
 
 ---
 

@@ -7,6 +7,7 @@ use ttrpg_checker::env::{DeclInfo, FnKind, ParamInfo};
 
 use crate::Env;
 use crate::RuntimeError;
+use crate::action::execute_action;
 use crate::builtins::call_builtin;
 use crate::effect::{Effect, Response};
 use crate::eval::{eval_block, eval_expr};
@@ -161,9 +162,7 @@ fn dispatch_derive_or_mechanic(
 /// Dispatch an action call from within DSL code (nested action calls from resolve blocks).
 ///
 /// Extracts the receiver EntityRef from the effective argument list (receiver as first param,
-/// mirroring the checker's effective_params construction) and binds remaining arguments.
-/// The actual action execution pipeline (ActionStarted → requires → cost → resolve →
-/// ActionCompleted) is implemented in Phase 5.
+/// mirroring the checker's effective_params construction) and delegates to the action pipeline.
 fn dispatch_action(
     env: &mut Env,
     fn_info: &ttrpg_checker::env::FnInfo,
@@ -184,6 +183,7 @@ fn dispatch_action(
                 call_span,
             )
         })?;
+    let action_decl = (*action_decl).clone();
     let ast_params = action_decl.params.clone();
     let receiver_type = action_decl.receiver_type.clone();
 
@@ -230,7 +230,7 @@ fn dispatch_action(
     )?;
 
     // Extract receiver EntityRef from the first bound argument
-    let _actor = match &bound[0].1 {
+    let actor = match &bound[0].1 {
         Value::Entity(entity_ref) => entity_ref.clone(),
         other => {
             return Err(RuntimeError::with_span(
@@ -244,14 +244,9 @@ fn dispatch_action(
     };
 
     // Remaining bound arguments (skip receiver) are the action's regular params
-    let _action_args: Vec<Value> = bound[1..].iter().map(|(_, v)| v.clone()).collect();
+    let action_args: Vec<(String, Value)> = bound[1..].to_vec();
 
-    // Action execution pipeline (ActionStarted → requires → cost → resolve → ActionCompleted)
-    // will be implemented in Phase 5. For now, return a stub error.
-    Err(RuntimeError::with_span(
-        "action execution pipeline is not yet implemented (Phase 5)",
-        call_span,
-    ))
+    execute_action(env, &action_decl, actor, action_args, call_span)
 }
 
 // ── Prompt dispatch ────────────────────────────────────────────
@@ -1599,13 +1594,9 @@ mod tests {
             ],
         });
 
-        // Should get the Phase 5 stub error (receiver extraction succeeded)
-        let err = crate::eval::eval_expr(&mut env, &expr).unwrap_err();
-        assert!(
-            err.message.contains("Phase 5"),
-            "Expected Phase 5 stub error, got: {}",
-            err.message
-        );
+        // Action executes: resolve block returns actor entity
+        let result = crate::eval::eval_expr(&mut env, &expr).unwrap();
+        assert_eq!(result, Value::Entity(EntityRef(1)));
     }
 
     #[test]
@@ -1636,12 +1627,9 @@ mod tests {
             ],
         });
 
-        let err = crate::eval::eval_expr(&mut env, &expr).unwrap_err();
-        assert!(
-            err.message.contains("Phase 5"),
-            "Expected Phase 5 stub error, got: {}",
-            err.message
-        );
+        // Action executes: resolve block returns actor entity
+        let result = crate::eval::eval_expr(&mut env, &expr).unwrap();
+        assert_eq!(result, Value::Entity(EntityRef(1)));
     }
 
     #[test]
