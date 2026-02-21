@@ -135,8 +135,8 @@ fn pass_1b(
                 }
             }
             DeclKind::Derive(f) => {
-                if !f.synthetic {
-                    check_reserved_prefix(&f.name, decl.span, diagnostics);
+                if !f.synthetic && check_reserved_prefix(&f.name, decl.span, diagnostics) {
+                    continue;
                 }
                 collect_fn(
                     &f.name,
@@ -150,8 +150,8 @@ fn pass_1b(
                 );
             }
             DeclKind::Mechanic(f) => {
-                if !f.synthetic {
-                    check_reserved_prefix(&f.name, decl.span, diagnostics);
+                if !f.synthetic && check_reserved_prefix(&f.name, decl.span, diagnostics) {
+                    continue;
                 }
                 collect_fn(
                     &f.name,
@@ -165,29 +165,39 @@ fn pass_1b(
                 );
             }
             DeclKind::Action(a) => {
-                if !a.synthetic {
-                    check_reserved_prefix(&a.name, decl.span, diagnostics);
+                if !a.synthetic && check_reserved_prefix(&a.name, decl.span, diagnostics) {
+                    continue;
                 }
                 collect_action(a, env, diagnostics, decl.span);
             }
             DeclKind::Reaction(r) => {
-                check_reserved_prefix(&r.name, decl.span, diagnostics);
+                if check_reserved_prefix(&r.name, decl.span, diagnostics) {
+                    continue;
+                }
                 collect_reaction(r, env, diagnostics, decl.span);
             }
             DeclKind::Condition(c) => {
-                check_reserved_prefix(&c.name, decl.span, diagnostics);
+                if check_reserved_prefix(&c.name, decl.span, diagnostics) {
+                    continue;
+                }
                 collect_condition(c, env, diagnostics, decl.span);
             }
             DeclKind::Prompt(p) => {
-                check_reserved_prefix(&p.name, decl.span, diagnostics);
+                if check_reserved_prefix(&p.name, decl.span, diagnostics) {
+                    continue;
+                }
                 collect_prompt(p, env, diagnostics, decl.span);
             }
             DeclKind::Event(e) => {
-                check_reserved_prefix(&e.name, decl.span, diagnostics);
+                if check_reserved_prefix(&e.name, decl.span, diagnostics) {
+                    continue;
+                }
                 collect_event(e, env, diagnostics, decl.span);
             }
             DeclKind::Option(o) => {
-                check_reserved_prefix(&o.name, decl.span, diagnostics);
+                if check_reserved_prefix(&o.name, decl.span, diagnostics) {
+                    continue;
+                }
                 collect_option(o, env, diagnostics, decl.span);
             }
             DeclKind::Move(_) => {

@@ -17,7 +17,19 @@ impl<'a> Checker<'a> {
             ExprKind::BoolLit(_) => Ty::Bool,
             ExprKind::NoneLit => Ty::Option(Box::new(Ty::Error)),
 
-            ExprKind::DiceLit { .. } => Ty::DiceExpr,
+            ExprKind::DiceLit { .. } => {
+                if matches!(
+                    self.scope.current_block_kind(),
+                    Some(BlockKind::TriggerBinding)
+                ) {
+                    self.error(
+                        "dice literals are not allowed in trigger/suppress binding context"
+                            .to_string(),
+                        expr.span,
+                    );
+                }
+                Ty::DiceExpr
+            }
 
             ExprKind::Ident(name) => self.check_ident(name, expr.span),
 

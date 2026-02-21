@@ -3252,12 +3252,30 @@ system "test" {
 
 #[test]
 fn test_trigger_binding_rejects_effectful_calls() {
+    // Mechanic call in trigger binding should be rejected
     let source = r#"
 system "test" {
     entity Character { hp: int }
     mechanic do_roll(c: Character) -> RollResult {
         roll(2d6)
     }
+    event TakeDamage(target: Character, amount: int) {}
+    reaction Parry on reactor: Character (
+        trigger: TakeDamage(target: reactor, amount: do_roll(reactor).total)
+    ) {
+        resolve {}
+    }
+}
+"#;
+    expect_errors(source, &["cannot be called in trigger/suppress binding context"]);
+}
+
+#[test]
+fn test_trigger_binding_allows_receiver_identity() {
+    // Simple receiver identity in trigger binding should pass
+    let source = r#"
+system "test" {
+    entity Character { hp: int }
     event TakeDamage(target: Character) {}
     reaction Parry on reactor: Character (
         trigger: TakeDamage(target: reactor)
@@ -3266,8 +3284,24 @@ system "test" {
     }
 }
 "#;
-    // This should pass — trigger binding just uses receiver identity
     expect_no_errors(source);
+}
+
+#[test]
+fn test_trigger_binding_rejects_dice_literals() {
+    // Dice literals in trigger binding should be rejected
+    let source = r#"
+system "test" {
+    entity Character { hp: int }
+    event TakeDamage(amount: int) {}
+    reaction Parry on reactor: Character (
+        trigger: TakeDamage(amount: 2d6)
+    ) {
+        resolve {}
+    }
+}
+"#;
+    expect_errors(source, &["dice literals are not allowed in trigger/suppress binding context"]);
 }
 
 #[test]
