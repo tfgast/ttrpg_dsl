@@ -87,14 +87,7 @@ fn dispatch_fn(
             let arg_values: Vec<Value> = bound.into_iter().map(|(_, v)| v).collect();
             call_builtin(env, &fn_info.name, arg_values, call_span)
         }
-        FnKind::Action => {
-            // Action calls from DSL code: dispatched through execute_action (Phase 5).
-            // For now, stub — real dispatch comes in Phase 5.
-            Err(RuntimeError::with_span(
-                "action calls are not yet implemented (Phase 5)",
-                call_span,
-            ))
-        }
+        FnKind::Action => dispatch_action(env, fn_info, args, call_span),
         FnKind::Reaction => {
             // The checker rejects direct reaction calls; this is unreachable.
             Err(RuntimeError::with_span(
@@ -159,6 +152,104 @@ fn dispatch_derive_or_mechanic(
     env.pop_scope();
 
     result
+}
+
+// ── Action dispatch ────────────────────────────────────────────
+
+/// Dispatch an action call from within DSL code (nested action calls from resolve blocks).
+///
+/// Extracts the receiver EntityRef from the effective argument list (receiver as first param,
+/// mirroring the checker's effective_params construction) and binds remaining arguments.
+/// The actual action execution pipeline (ActionStarted → requires → cost → resolve →
+/// ActionCompleted) is implemented in Phase 5.
+fn dispatch_action(
+    env: &mut Env,
+    fn_info: &ttrpg_checker::env::FnInfo,
+    args: &[Arg],
+    call_span: Span,
+) -> Result<Value, RuntimeError> {
+    let name = &fn_info.name;
+
+    // Look up action declaration and clone what we need before borrowing env mutably
+    let action_decl = env
+        .interp
+        .index
+        .actions
+        .get(name.as_str())
+        .ok_or_else(|| {
+            RuntimeError::with_span(
+                format!("internal error: no declaration found for action '{}'", name),
+                call_span,
+            )
+        })?;
+    let ast_params = action_decl.params.clone();
+    let receiver_type = action_decl.receiver_type.clone();
+
+    // Get receiver info (actions always have a receiver)
+    let receiver_info = fn_info
+        .receiver
+        .as_ref()
+        .ok_or_else(|| {
+            RuntimeError::with_span(
+                format!("internal error: action '{}' has no receiver info", name),
+                call_span,
+            )
+        })?
+        .clone();
+
+    // Build effective parameter list: receiver as first param, then regular params.
+    // This mirrors the checker's effective_params construction (check_expr.rs).
+    let effective_params: Vec<ParamInfo> = {
+        let mut params = vec![receiver_info.clone()];
+        params.extend(fn_info.params.iter().cloned());
+        params
+    };
+
+    // Build aligned AST params with placeholder for receiver (for default evaluation).
+    // The receiver has has_default: false, so bind_args won't evaluate a default for it.
+    let effective_ast_params: Vec<Param> = {
+        let mut params = vec![Param {
+            name: receiver_info.name.clone(),
+            ty: receiver_type,
+            default: None,
+            span: call_span,
+        }];
+        params.extend(ast_params);
+        params
+    };
+
+    // Bind all arguments (receiver + regular params)
+    let bound = bind_args(
+        &effective_params,
+        args,
+        Some(&effective_ast_params),
+        env,
+        call_span,
+    )?;
+
+    // Extract receiver EntityRef from the first bound argument
+    let _actor = match &bound[0].1 {
+        Value::Entity(entity_ref) => entity_ref.clone(),
+        other => {
+            return Err(RuntimeError::with_span(
+                format!(
+                    "action '{}' receiver '{}' must be an entity, got {:?}",
+                    name, receiver_info.name, other
+                ),
+                call_span,
+            ));
+        }
+    };
+
+    // Remaining bound arguments (skip receiver) are the action's regular params
+    let _action_args: Vec<Value> = bound[1..].iter().map(|(_, v)| v.clone()).collect();
+
+    // Action execution pipeline (ActionStarted → requires → cost → resolve → ActionCompleted)
+    // will be implemented in Phase 5. For now, return a stub error.
+    Err(RuntimeError::with_span(
+        "action execution pipeline is not yet implemented (Phase 5)",
+        call_span,
+    ))
 }
 
 // ── Prompt dispatch ────────────────────────────────────────────
@@ -1384,5 +1475,188 @@ mod tests {
         });
         let err = crate::eval::eval_expr(&mut env, &expr).unwrap_err();
         assert!(err.message.contains("invalid callee"));
+    }
+
+    // ── Action dispatch tests ─────────────────────────────────────
+
+    /// Helper: build an action declaration and matching FnInfo for testing.
+    fn action_test_setup() -> (Program, TypeEnv) {
+        // action Attack on actor: Character (target: Character) { resolve { actor } }
+        let program = program_with_decls(vec![DeclKind::Action(ActionDecl {
+            name: "Attack".into(),
+            receiver_name: "actor".into(),
+            receiver_type: spanned(TypeExpr::Named("Character".into())),
+            params: vec![Param {
+                name: "target".into(),
+                ty: spanned(TypeExpr::Named("Character".into())),
+                default: None,
+                span: dummy_span(),
+            }],
+            cost: None,
+            requires: None,
+            resolve: spanned(vec![spanned(StmtKind::Expr(spanned(
+                ExprKind::Ident("actor".into()),
+            )))]),
+            trigger_text: None,
+            synthetic: false,
+        })]);
+
+        let mut type_env = TypeEnv::new();
+        type_env.functions.insert(
+            "Attack".into(),
+            FnInfo {
+                name: "Attack".into(),
+                kind: FnKind::Action,
+                params: vec![ParamInfo {
+                    name: "target".into(),
+                    ty: Ty::Entity("Character".into()),
+                    has_default: false,
+                }],
+                return_type: Ty::Unit,
+                receiver: Some(ParamInfo {
+                    name: "actor".into(),
+                    ty: Ty::Entity("Character".into()),
+                    has_default: false,
+                }),
+            },
+        );
+
+        (program, type_env)
+    }
+
+    #[test]
+    fn action_call_extracts_receiver_positional() {
+        let (program, type_env) = action_test_setup();
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = TestState::new();
+        let mut handler = ScriptedHandler::new();
+        let mut env = make_env(&state, &mut handler, &interp);
+
+        env.bind("warrior".into(), Value::Entity(EntityRef(1)));
+        env.bind("goblin".into(), Value::Entity(EntityRef(2)));
+
+        // Call: Attack(warrior, goblin) — positional args
+        let expr = spanned(ExprKind::Call {
+            callee: Box::new(spanned(ExprKind::Ident("Attack".into()))),
+            args: vec![
+                Arg {
+                    name: None,
+                    value: spanned(ExprKind::Ident("warrior".into())),
+                    span: dummy_span(),
+                },
+                Arg {
+                    name: None,
+                    value: spanned(ExprKind::Ident("goblin".into())),
+                    span: dummy_span(),
+                },
+            ],
+        });
+
+        // Should get the Phase 5 stub error (receiver extraction succeeded)
+        let err = crate::eval::eval_expr(&mut env, &expr).unwrap_err();
+        assert!(
+            err.message.contains("Phase 5"),
+            "Expected Phase 5 stub error, got: {}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn action_call_extracts_receiver_named() {
+        let (program, type_env) = action_test_setup();
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = TestState::new();
+        let mut handler = ScriptedHandler::new();
+        let mut env = make_env(&state, &mut handler, &interp);
+
+        env.bind("warrior".into(), Value::Entity(EntityRef(1)));
+        env.bind("goblin".into(), Value::Entity(EntityRef(2)));
+
+        // Call: Attack(target: goblin, actor: warrior) — named args, reversed order
+        let expr = spanned(ExprKind::Call {
+            callee: Box::new(spanned(ExprKind::Ident("Attack".into()))),
+            args: vec![
+                Arg {
+                    name: Some("target".into()),
+                    value: spanned(ExprKind::Ident("goblin".into())),
+                    span: dummy_span(),
+                },
+                Arg {
+                    name: Some("actor".into()),
+                    value: spanned(ExprKind::Ident("warrior".into())),
+                    span: dummy_span(),
+                },
+            ],
+        });
+
+        let err = crate::eval::eval_expr(&mut env, &expr).unwrap_err();
+        assert!(
+            err.message.contains("Phase 5"),
+            "Expected Phase 5 stub error, got: {}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn action_call_missing_receiver_error() {
+        let (program, type_env) = action_test_setup();
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = TestState::new();
+        let mut handler = ScriptedHandler::new();
+        let mut env = make_env(&state, &mut handler, &interp);
+
+        env.bind("goblin".into(), Value::Entity(EntityRef(2)));
+
+        // Call: Attack(target: goblin) — missing receiver
+        let expr = spanned(ExprKind::Call {
+            callee: Box::new(spanned(ExprKind::Ident("Attack".into()))),
+            args: vec![Arg {
+                name: Some("target".into()),
+                value: spanned(ExprKind::Ident("goblin".into())),
+                span: dummy_span(),
+            }],
+        });
+
+        let err = crate::eval::eval_expr(&mut env, &expr).unwrap_err();
+        assert!(
+            err.message.contains("missing required argument"),
+            "Expected missing argument error, got: {}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn action_call_non_entity_receiver_error() {
+        let (program, type_env) = action_test_setup();
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = TestState::new();
+        let mut handler = ScriptedHandler::new();
+        let mut env = make_env(&state, &mut handler, &interp);
+
+        env.bind("goblin".into(), Value::Entity(EntityRef(2)));
+
+        // Call: Attack(42, goblin) — non-entity receiver
+        let expr = spanned(ExprKind::Call {
+            callee: Box::new(spanned(ExprKind::Ident("Attack".into()))),
+            args: vec![
+                Arg {
+                    name: None,
+                    value: spanned(ExprKind::IntLit(42)),
+                    span: dummy_span(),
+                },
+                Arg {
+                    name: None,
+                    value: spanned(ExprKind::Ident("goblin".into())),
+                    span: dummy_span(),
+                },
+            ],
+        });
+
+        let err = crate::eval::eval_expr(&mut env, &expr).unwrap_err();
+        assert!(
+            err.message.contains("must be an entity"),
+            "Expected entity error, got: {}",
+            err.message
+        );
     }
 }

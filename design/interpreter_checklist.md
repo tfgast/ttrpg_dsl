@@ -220,7 +220,7 @@ Companion to [`interpreter_impl_plan.md`](interpreter_impl_plan.md). Check items
 - [x] Dispatch `Mechanic` — same as Derive
 - [x] Dispatch `Prompt` — evaluate hint/suggest, emit `ResolvePrompt`
 - [x] Dispatch `Builtin` — route to builtin impl
-- [ ] Dispatch `Action` — extract receiver, call `execute_action` (stub, deferred to Phase 5)
+- [x] Dispatch `Action` — extract receiver, call `execute_action` (stub, deferred to Phase 5)
 - [x] Dispatch `Reaction` — unreachable (internal error)
 - [x] Qualified enum variant construction
 - [x] Bare enum variant construction (via `variant_to_enum`)
@@ -229,7 +229,7 @@ Companion to [`interpreter_impl_plan.md`](interpreter_impl_plan.md). Check items
 - [x] `bind_args` — positional matching
 - [x] `bind_args` — named matching
 - [x] `bind_args` — default value evaluation for optional params
-- [ ] Receiver handling: extract from first effective argument 
+- [x] Receiver handling: extract from first effective argument
 
 ### Builtins (`builtins.rs`)
 - [x] `floor(Float) -> Int`
