@@ -214,7 +214,7 @@ fn builtin_apply_condition(
                 condition: cond_name.clone(),
                 duration: duration.clone(),
             };
-            env.handler.handle(effect);
+            validate_mutation_response(env.handler.handle(effect), "ApplyCondition", span)?;
             Ok(Value::None)
         }
         (Some(Value::Entity(target)), Some(Value::Str(cond_name)), Some(duration)) => {
@@ -224,7 +224,7 @@ fn builtin_apply_condition(
                 condition: cond_name.clone(),
                 duration: duration.clone(),
             };
-            env.handler.handle(effect);
+            validate_mutation_response(env.handler.handle(effect), "ApplyCondition", span)?;
             Ok(Value::None)
         }
         (Some(a), Some(b), Some(c)) => Err(RuntimeError::with_span(
@@ -259,7 +259,7 @@ fn builtin_remove_condition(
                 target: *target,
                 condition: cond_name.clone(),
             };
-            env.handler.handle(effect);
+            validate_mutation_response(env.handler.handle(effect), "RemoveCondition", span)?;
             Ok(Value::None)
         }
         (Some(Value::Entity(target)), Some(Value::Str(cond_name))) => {
@@ -267,7 +267,7 @@ fn builtin_remove_condition(
                 target: *target,
                 condition: cond_name.clone(),
             };
-            env.handler.handle(effect);
+            validate_mutation_response(env.handler.handle(effect), "RemoveCondition", span)?;
             Ok(Value::None)
         }
         (Some(a), Some(b)) => Err(RuntimeError::with_span(
@@ -286,6 +286,27 @@ fn builtin_remove_condition(
 }
 
 // ── Helpers ────────────────────────────────────────────────────
+
+/// Validate a response to a mutation effect (ApplyCondition, RemoveCondition).
+///
+/// Mutation effects accept `Acknowledged`, `Override(Value)`, and `Vetoed`.
+/// Any other response (e.g., `Rolled`, `PromptResult`) is a protocol error.
+fn validate_mutation_response(
+    response: Response,
+    effect_name: &str,
+    span: Span,
+) -> Result<(), RuntimeError> {
+    match response {
+        Response::Acknowledged | Response::Override(_) | Response::Vetoed => Ok(()),
+        _ => Err(RuntimeError::with_span(
+            format!(
+                "protocol error: unsupported response for {}: {:?}",
+                effect_name, response
+            ),
+            span,
+        )),
+    }
+}
 
 fn type_name(val: &Value) -> &'static str {
     match val {

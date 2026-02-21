@@ -319,9 +319,10 @@ fn dispatch_prompt(
 
     match response {
         Response::PromptResult(val) => Ok(val),
+        Response::Override(val) => Ok(val),
         _ => Err(RuntimeError::with_span(
             format!(
-                "protocol error: expected PromptResult response for ResolvePrompt, got {:?}",
+                "protocol error: expected PromptResult or Override response for ResolvePrompt, got {:?}",
                 response
             ),
             call_span,
@@ -446,8 +447,30 @@ fn bind_args(
         }
     }
 
-    // Pass 3: Fill defaults for unbound optional params
+    // Pass 3: Fill defaults for unbound optional params.
+    // Default expressions may reference earlier parameters (e.g., `f(a: Int, b: Int = a)`),
+    // so we push a temporary scope and bind already-resolved params before evaluating defaults.
     let mut bound = Vec::with_capacity(params.len());
+    let mut needs_default_scope = false;
+
+    // Check if any defaults need evaluating
+    for (i, param) in params.iter().enumerate() {
+        if result[i].is_none() && param.has_default {
+            needs_default_scope = true;
+            break;
+        }
+    }
+
+    if needs_default_scope {
+        env.push_scope();
+        // Bind all already-resolved params into the scope so defaults can reference them
+        for (i, param) in params.iter().enumerate() {
+            if let Some(ref val) = result[i] {
+                env.bind(param.name.clone(), val.clone());
+            }
+        }
+    }
+
     for (i, param) in params.iter().enumerate() {
         match result[i].take() {
             Some(val) => bound.push((param.name.clone(), val)),
@@ -457,8 +480,14 @@ fn bind_args(
                     let default_val = if let Some(ast_ps) = ast_params {
                         if let Some(ast_param) = ast_ps.get(i) {
                             if let Some(ref default_expr) = ast_param.default {
-                                eval_expr(env, default_expr)?
+                                let val = eval_expr(env, default_expr)?;
+                                // Bind this default into scope so later defaults can see it
+                                env.bind(param.name.clone(), val.clone());
+                                val
                             } else {
+                                if needs_default_scope {
+                                    env.pop_scope();
+                                }
                                 return Err(RuntimeError::with_span(
                                     format!(
                                         "internal error: parameter '{}' has_default but no default expression",
@@ -468,6 +497,9 @@ fn bind_args(
                                 ));
                             }
                         } else {
+                            if needs_default_scope {
+                                env.pop_scope();
+                            }
                             return Err(RuntimeError::with_span(
                                 format!(
                                     "internal error: parameter index {} out of range for '{}'",
@@ -477,6 +509,9 @@ fn bind_args(
                             ));
                         }
                     } else {
+                        if needs_default_scope {
+                            env.pop_scope();
+                        }
                         return Err(RuntimeError::with_span(
                             format!(
                                 "internal error: no AST params available to evaluate default for '{}'",
@@ -487,6 +522,9 @@ fn bind_args(
                     };
                     bound.push((param.name.clone(), default_val));
                 } else {
+                    if needs_default_scope {
+                        env.pop_scope();
+                    }
                     return Err(RuntimeError::with_span(
                         format!("missing required argument '{}'", param.name),
                         call_span,
@@ -494,6 +532,10 @@ fn bind_args(
                 }
             }
         }
+    }
+
+    if needs_default_scope {
+        env.pop_scope();
     }
 
     Ok(bound)
@@ -1621,6 +1663,305 @@ mod tests {
         assert!(
             err.message.contains("missing required argument"),
             "Expected missing argument error, got: {}",
+            err.message
+        );
+    }
+
+    // ── Default parameter dependency tests ──────────────────────
+
+    #[test]
+    fn derive_default_references_earlier_param() {
+        // derive add(a: Int, b: Int = a) -> Int { a + b }
+        let program = program_with_decls(vec![DeclKind::Derive(FnDecl {
+            name: "add".into(),
+            params: vec![
+                Param {
+                    name: "a".into(),
+                    ty: spanned(TypeExpr::Int),
+                    default: None,
+                    span: dummy_span(),
+                },
+                Param {
+                    name: "b".into(),
+                    ty: spanned(TypeExpr::Int),
+                    default: Some(spanned(ExprKind::Ident("a".into()))),
+                    span: dummy_span(),
+                },
+            ],
+            return_type: spanned(TypeExpr::Int),
+            body: spanned(vec![spanned(StmtKind::Expr(spanned(ExprKind::BinOp {
+                op: BinOp::Add,
+                lhs: Box::new(spanned(ExprKind::Ident("a".into()))),
+                rhs: Box::new(spanned(ExprKind::Ident("b".into()))),
+            })))]),
+            synthetic: false,
+        })]);
+
+        let mut type_env = TypeEnv::new();
+        type_env.functions.insert(
+            "add".into(),
+            FnInfo {
+                name: "add".into(),
+                kind: FnKind::Derive,
+                params: vec![
+                    ParamInfo { name: "a".into(), ty: Ty::Int, has_default: false },
+                    ParamInfo { name: "b".into(), ty: Ty::Int, has_default: true },
+                ],
+                return_type: Ty::Int,
+                receiver: None,
+            },
+        );
+
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = TestState::new();
+        let mut handler = ScriptedHandler::new();
+        let mut env = make_env(&state, &mut handler, &interp);
+
+        // Call: add(7) — b defaults to a (7), result = 7 + 7 = 14
+        let expr = spanned(ExprKind::Call {
+            callee: Box::new(spanned(ExprKind::Ident("add".into()))),
+            args: vec![
+                Arg { name: None, value: spanned(ExprKind::IntLit(7)), span: dummy_span() },
+            ],
+        });
+        let result = crate::eval::eval_expr(&mut env, &expr).unwrap();
+        assert_eq!(result, Value::Int(14));
+    }
+
+    #[test]
+    fn derive_chained_defaults_reference_earlier_defaults() {
+        // derive f(a: Int, b: Int = a, c: Int = b) -> Int { c }
+        let program = program_with_decls(vec![DeclKind::Derive(FnDecl {
+            name: "f".into(),
+            params: vec![
+                Param {
+                    name: "a".into(),
+                    ty: spanned(TypeExpr::Int),
+                    default: None,
+                    span: dummy_span(),
+                },
+                Param {
+                    name: "b".into(),
+                    ty: spanned(TypeExpr::Int),
+                    default: Some(spanned(ExprKind::Ident("a".into()))),
+                    span: dummy_span(),
+                },
+                Param {
+                    name: "c".into(),
+                    ty: spanned(TypeExpr::Int),
+                    default: Some(spanned(ExprKind::Ident("b".into()))),
+                    span: dummy_span(),
+                },
+            ],
+            return_type: spanned(TypeExpr::Int),
+            body: spanned(vec![spanned(StmtKind::Expr(spanned(ExprKind::Ident("c".into()))))]),
+            synthetic: false,
+        })]);
+
+        let mut type_env = TypeEnv::new();
+        type_env.functions.insert(
+            "f".into(),
+            FnInfo {
+                name: "f".into(),
+                kind: FnKind::Derive,
+                params: vec![
+                    ParamInfo { name: "a".into(), ty: Ty::Int, has_default: false },
+                    ParamInfo { name: "b".into(), ty: Ty::Int, has_default: true },
+                    ParamInfo { name: "c".into(), ty: Ty::Int, has_default: true },
+                ],
+                return_type: Ty::Int,
+                receiver: None,
+            },
+        );
+
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = TestState::new();
+        let mut handler = ScriptedHandler::new();
+        let mut env = make_env(&state, &mut handler, &interp);
+
+        // Call: f(5) — b defaults to a (5), c defaults to b (5)
+        let expr = spanned(ExprKind::Call {
+            callee: Box::new(spanned(ExprKind::Ident("f".into()))),
+            args: vec![
+                Arg { name: None, value: spanned(ExprKind::IntLit(5)), span: dummy_span() },
+            ],
+        });
+        let result = crate::eval::eval_expr(&mut env, &expr).unwrap();
+        assert_eq!(result, Value::Int(5));
+    }
+
+    // ── Prompt Override response tests ──────────────────────────
+
+    #[test]
+    fn prompt_call_accepts_override_response() {
+        let program = program_with_decls(vec![DeclKind::Prompt(PromptDecl {
+            name: "ask_target".into(),
+            params: vec![],
+            return_type: spanned(TypeExpr::Int),
+            hint: Some("Choose a target".into()),
+            suggest: None,
+        })]);
+
+        let mut type_env = TypeEnv::new();
+        type_env.functions.insert(
+            "ask_target".into(),
+            FnInfo {
+                name: "ask_target".into(),
+                kind: FnKind::Prompt,
+                params: vec![],
+                return_type: Ty::Int,
+                receiver: None,
+            },
+        );
+
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = TestState::new();
+        // GM overrides the prompt with a specific value
+        let mut handler = ScriptedHandler::with_responses(vec![
+            Response::Override(Value::Int(99)),
+        ]);
+        let mut env = make_env(&state, &mut handler, &interp);
+
+        let expr = spanned(ExprKind::Call {
+            callee: Box::new(spanned(ExprKind::Ident("ask_target".into()))),
+            args: vec![],
+        });
+        let result = crate::eval::eval_expr(&mut env, &expr).unwrap();
+        assert_eq!(result, Value::Int(99));
+    }
+
+    #[test]
+    fn prompt_call_rejects_invalid_response() {
+        let program = program_with_decls(vec![DeclKind::Prompt(PromptDecl {
+            name: "ask_target".into(),
+            params: vec![],
+            return_type: spanned(TypeExpr::Int),
+            hint: None,
+            suggest: None,
+        })]);
+
+        let mut type_env = TypeEnv::new();
+        type_env.functions.insert(
+            "ask_target".into(),
+            FnInfo {
+                name: "ask_target".into(),
+                kind: FnKind::Prompt,
+                params: vec![],
+                return_type: Ty::Int,
+                receiver: None,
+            },
+        );
+
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = TestState::new();
+        // Invalid: Acknowledged is not valid for ResolvePrompt
+        let mut handler = ScriptedHandler::with_responses(vec![Response::Acknowledged]);
+        let mut env = make_env(&state, &mut handler, &interp);
+
+        let expr = spanned(ExprKind::Call {
+            callee: Box::new(spanned(ExprKind::Ident("ask_target".into()))),
+            args: vec![],
+        });
+        let err = crate::eval::eval_expr(&mut env, &expr).unwrap_err();
+        assert!(
+            err.message.contains("protocol error"),
+            "Expected protocol error, got: {}",
+            err.message
+        );
+    }
+
+    // ── Condition response validation tests ─────────────────────
+
+    #[test]
+    fn apply_condition_rejects_invalid_response() {
+        let program = program_with_decls(vec![]);
+        let type_env = type_env_with_builtins();
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = TestState::new();
+        // Invalid: Rolled is not valid for ApplyCondition
+        let roll_result = RollResult {
+            expr: DiceExpr { count: 1, sides: 20, filter: None, modifier: 0 },
+            dice: vec![10],
+            kept: vec![10],
+            modifier: 0,
+            total: 10,
+            unmodified: 10,
+        };
+        let mut handler = ScriptedHandler::with_responses(vec![
+            Response::Rolled(roll_result),
+        ]);
+        let mut env = make_env(&state, &mut handler, &interp);
+
+        env.bind("target".into(), Value::Entity(EntityRef(1)));
+        env.bind("cond".into(), Value::Condition("Prone".into()));
+        env.bind("dur".into(), Value::Duration(DurationValue::Rounds(3)));
+
+        let expr = spanned(ExprKind::Call {
+            callee: Box::new(spanned(ExprKind::Ident("apply_condition".into()))),
+            args: vec![
+                Arg { name: None, value: spanned(ExprKind::Ident("target".into())), span: dummy_span() },
+                Arg { name: None, value: spanned(ExprKind::Ident("cond".into())), span: dummy_span() },
+                Arg { name: None, value: spanned(ExprKind::Ident("dur".into())), span: dummy_span() },
+            ],
+        });
+        let err = crate::eval::eval_expr(&mut env, &expr).unwrap_err();
+        assert!(
+            err.message.contains("protocol error"),
+            "Expected protocol error, got: {}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn apply_condition_accepts_vetoed_response() {
+        let program = program_with_decls(vec![]);
+        let type_env = type_env_with_builtins();
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = TestState::new();
+        let mut handler = ScriptedHandler::with_responses(vec![Response::Vetoed]);
+        let mut env = make_env(&state, &mut handler, &interp);
+
+        env.bind("target".into(), Value::Entity(EntityRef(1)));
+        env.bind("cond".into(), Value::Condition("Prone".into()));
+        env.bind("dur".into(), Value::Duration(DurationValue::Rounds(3)));
+
+        let expr = spanned(ExprKind::Call {
+            callee: Box::new(spanned(ExprKind::Ident("apply_condition".into()))),
+            args: vec![
+                Arg { name: None, value: spanned(ExprKind::Ident("target".into())), span: dummy_span() },
+                Arg { name: None, value: spanned(ExprKind::Ident("cond".into())), span: dummy_span() },
+                Arg { name: None, value: spanned(ExprKind::Ident("dur".into())), span: dummy_span() },
+            ],
+        });
+        let result = crate::eval::eval_expr(&mut env, &expr).unwrap();
+        assert_eq!(result, Value::None);
+    }
+
+    #[test]
+    fn remove_condition_rejects_invalid_response() {
+        let program = program_with_decls(vec![]);
+        let type_env = type_env_with_builtins();
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = TestState::new();
+        let mut handler = ScriptedHandler::with_responses(vec![
+            Response::PromptResult(Value::Int(42)),
+        ]);
+        let mut env = make_env(&state, &mut handler, &interp);
+
+        env.bind("target".into(), Value::Entity(EntityRef(2)));
+        env.bind("cond".into(), Value::Condition("Stunned".into()));
+
+        let expr = spanned(ExprKind::Call {
+            callee: Box::new(spanned(ExprKind::Ident("remove_condition".into()))),
+            args: vec![
+                Arg { name: None, value: spanned(ExprKind::Ident("target".into())), span: dummy_span() },
+                Arg { name: None, value: spanned(ExprKind::Ident("cond".into())), span: dummy_span() },
+            ],
+        });
+        let err = crate::eval::eval_expr(&mut env, &expr).unwrap_err();
+        assert!(
+            err.message.contains("protocol error"),
+            "Expected protocol error, got: {}",
             err.message
         );
     }
