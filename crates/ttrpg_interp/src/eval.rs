@@ -168,6 +168,11 @@ fn eval_ident(
         }
     }
 
+    // 4. Check if it's a condition name
+    if env.interp.index.conditions.contains_key(name) {
+        return Ok(Value::Condition(name.to_string()));
+    }
+
     Err(RuntimeError::with_span(
         format!("undefined variable '{}'", name),
         expr.span,
@@ -583,19 +588,6 @@ fn eval_field_access(
             )),
         },
 
-        // TurnBudget fields
-        Value::TurnBudget(tb) => match field {
-            "actions" => Ok(Value::Int(tb.actions)),
-            "bonus_actions" => Ok(Value::Int(tb.bonus_actions)),
-            "reactions" => Ok(Value::Int(tb.reactions)),
-            "movement" => Ok(Value::Int(tb.movement)),
-            "free_interactions" => Ok(Value::Int(tb.free_interactions)),
-            _ => Err(RuntimeError::with_span(
-                format!("TurnBudget has no field '{}'", field),
-                expr.span,
-            )),
-        },
-
         // Qualified enum variant access: EnumType.variant
         Value::EnumNamespace(enum_name) => {
             if let Some(DeclInfo::Enum(enum_info)) =
@@ -872,7 +864,6 @@ pub(crate) fn value_eq(state: &dyn StateProvider, a: &Value, b: &Value) -> bool 
         (Value::Entity(a), Value::Entity(b)) => a == b,
         (Value::Condition(a), Value::Condition(b)) => a == b,
         (Value::Duration(a), Value::Duration(b)) => a == b,
-        (Value::TurnBudget(a), Value::TurnBudget(b)) => a == b,
 
         // Position: delegate to host
         (Value::Position(_), Value::Position(_)) => state.position_eq(a, b),
@@ -1131,7 +1122,6 @@ fn type_name(val: &Value) -> &'static str {
         Value::Entity(_) => "Entity",
         Value::EnumVariant { .. } => "EnumVariant",
         Value::Position(_) => "Position",
-        Value::TurnBudget(_) => "TurnBudget",
         Value::Duration(_) => "Duration",
         Value::Condition(_) => "Condition",
         Value::EnumNamespace(_) => "EnumNamespace",
@@ -1150,7 +1140,7 @@ mod tests {
 
     use crate::effect::{Effect, EffectHandler, Response};
     use crate::state::{ActiveCondition, EntityRef, StateProvider};
-    use crate::value::{DiceExpr, PositionValue, RollResult, TurnBudget};
+    use crate::value::{DiceExpr, PositionValue, RollResult, default_turn_budget};
     use crate::Interpreter;
 
     // ── Test infrastructure ────────────────────────────────────
@@ -1181,7 +1171,7 @@ mod tests {
     struct TestState {
         fields: HashMap<(u64, String), Value>,
         conditions: HashMap<u64, Vec<ActiveCondition>>,
-        turn_budgets: HashMap<u64, TurnBudget>,
+        turn_budgets: HashMap<u64, BTreeMap<String, Value>>,
         enabled_options: Vec<String>,
     }
 
@@ -1205,7 +1195,7 @@ mod tests {
             self.conditions.get(&entity.0).cloned()
         }
 
-        fn read_turn_budget(&self, entity: &EntityRef) -> Option<TurnBudget> {
+        fn read_turn_budget(&self, entity: &EntityRef) -> Option<BTreeMap<String, Value>> {
             self.turn_budgets.get(&entity.0).cloned()
         }
 
@@ -2070,10 +2060,7 @@ mod tests {
         let mut handler = ScriptedHandler::new();
         let mut env = make_env(&state, &mut handler, &interp);
 
-        env.bind(
-            "budget".to_string(),
-            Value::TurnBudget(TurnBudget::default()),
-        );
+        env.bind("budget".to_string(), default_turn_budget());
 
         let expr = spanned(ExprKind::FieldAccess {
             object: Box::new(spanned(ExprKind::Ident("budget".to_string()))),
@@ -3803,6 +3790,82 @@ mod tests {
             op: BinOp::NotEq,
             lhs: Box::new(spanned(ExprKind::Ident("x".to_string()))),
             rhs: Box::new(spanned(ExprKind::NoneLit)),
+        });
+        assert_eq!(eval_expr(&mut env, &expr).unwrap(), Value::Bool(false));
+    }
+
+    // ── Condition identifier resolution ───────────────────────
+
+    #[test]
+    fn eval_ident_condition_name() {
+        use ttrpg_ast::ast::{ConditionDecl, TopLevel, SystemBlock};
+
+        let program = Program {
+            items: vec![spanned(TopLevel::System(SystemBlock {
+                name: "Test".to_string(),
+                decls: vec![spanned(DeclKind::Condition(ConditionDecl {
+                    name: "Stunned".to_string(),
+                    receiver_name: "bearer".to_string(),
+                    receiver_type: spanned(TypeExpr::Named("Character".to_string())),
+                    clauses: vec![],
+                }))],
+            }))],
+        };
+        let type_env = empty_type_env();
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = TestState::new();
+        let mut handler = ScriptedHandler::new();
+        let mut env = make_env(&state, &mut handler, &interp);
+
+        let expr = spanned(ExprKind::Ident("Stunned".to_string()));
+        assert_eq!(
+            eval_expr(&mut env, &expr).unwrap(),
+            Value::Condition("Stunned".to_string())
+        );
+    }
+
+    #[test]
+    fn eval_ident_condition_eq() {
+        use ttrpg_ast::ast::{ConditionDecl, TopLevel, SystemBlock};
+
+        let program = Program {
+            items: vec![spanned(TopLevel::System(SystemBlock {
+                name: "Test".to_string(),
+                decls: vec![
+                    spanned(DeclKind::Condition(ConditionDecl {
+                        name: "Stunned".to_string(),
+                        receiver_name: "bearer".to_string(),
+                        receiver_type: spanned(TypeExpr::Named("Character".to_string())),
+                        clauses: vec![],
+                    })),
+                    spanned(DeclKind::Condition(ConditionDecl {
+                        name: "Prone".to_string(),
+                        receiver_name: "bearer".to_string(),
+                        receiver_type: spanned(TypeExpr::Named("Character".to_string())),
+                        clauses: vec![],
+                    })),
+                ],
+            }))],
+        };
+        let type_env = empty_type_env();
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = TestState::new();
+        let mut handler = ScriptedHandler::new();
+        let mut env = make_env(&state, &mut handler, &interp);
+
+        // Same condition == itself
+        let expr = spanned(ExprKind::BinOp {
+            op: BinOp::Eq,
+            lhs: Box::new(spanned(ExprKind::Ident("Stunned".to_string()))),
+            rhs: Box::new(spanned(ExprKind::Ident("Stunned".to_string()))),
+        });
+        assert_eq!(eval_expr(&mut env, &expr).unwrap(), Value::Bool(true));
+
+        // Different conditions != each other
+        let expr = spanned(ExprKind::BinOp {
+            op: BinOp::Eq,
+            lhs: Box::new(spanned(ExprKind::Ident("Stunned".to_string()))),
+            rhs: Box::new(spanned(ExprKind::Ident("Prone".to_string()))),
         });
         assert_eq!(eval_expr(&mut env, &expr).unwrap(), Value::Bool(false));
     }

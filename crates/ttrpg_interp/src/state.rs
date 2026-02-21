@@ -1,5 +1,7 @@
 use crate::effect::FieldPathSegment;
-use crate::value::{TurnBudget, Value};
+use std::collections::BTreeMap;
+
+use crate::value::Value;
 
 // ── EntityRef ───────────────────────────────────────────────────
 
@@ -55,9 +57,9 @@ pub trait StateProvider {
     /// Returns `None` if the entity doesn't exist.
     fn read_conditions(&self, entity: &EntityRef) -> Option<Vec<ActiveCondition>>;
 
-    /// Current turn budget for an entity.
+    /// Current turn budget for an entity as a dynamic field map.
     /// Returns `None` if the entity doesn't exist.
-    fn read_turn_budget(&self, entity: &EntityRef) -> Option<TurnBudget>;
+    fn read_turn_budget(&self, entity: &EntityRef) -> Option<BTreeMap<String, Value>>;
 
     /// Names of currently enabled options.
     fn read_enabled_options(&self) -> Vec<String>;
@@ -93,14 +95,14 @@ pub trait WritableState: StateProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::value::DurationValue;
+    use crate::value::{DurationValue, default_turn_budget};
     use std::collections::HashMap;
 
     // A minimal test implementation of StateProvider.
     struct TestState {
         fields: HashMap<(u64, String), Value>,
         conditions: HashMap<u64, Vec<ActiveCondition>>,
-        turn_budgets: HashMap<u64, TurnBudget>,
+        turn_budgets: HashMap<u64, BTreeMap<String, Value>>,
         enabled_options: Vec<String>,
     }
 
@@ -124,7 +126,7 @@ mod tests {
             self.conditions.get(&entity.0).cloned()
         }
 
-        fn read_turn_budget(&self, entity: &EntityRef) -> Option<TurnBudget> {
+        fn read_turn_budget(&self, entity: &EntityRef) -> Option<BTreeMap<String, Value>> {
             self.turn_budgets.get(&entity.0).cloned()
         }
 
@@ -191,12 +193,17 @@ mod tests {
     fn test_state_read_turn_budget() {
         let mut state = TestState::new();
         let entity = EntityRef(1);
-        state.turn_budgets.insert(1, TurnBudget::default());
+        // Extract the fields from the default turn budget Value::Struct
+        let fields = match default_turn_budget() {
+            Value::Struct { fields, .. } => fields,
+            _ => unreachable!(),
+        };
+        state.turn_budgets.insert(1, fields);
 
         let budget = state.read_turn_budget(&entity).unwrap();
-        assert_eq!(budget.actions, 1);
-        assert_eq!(budget.bonus_actions, 1);
-        assert_eq!(budget.reactions, 1);
+        assert_eq!(budget.get("actions"), Some(&Value::Int(1)));
+        assert_eq!(budget.get("bonus_actions"), Some(&Value::Int(1)));
+        assert_eq!(budget.get("reactions"), Some(&Value::Int(1)));
     }
 
     #[test]

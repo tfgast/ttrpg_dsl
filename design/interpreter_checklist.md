@@ -50,10 +50,10 @@ Companion to [`interpreter_impl_plan.md`](interpreter_impl_plan.md). Check items
 ## Phase 1: Foundation Types
 
 ### Value enum (`value.rs`)
-- [x] `Value` enum with all 17 variants
+- [x] `Value` enum with all 16 variants
 - [x] `DiceExpr` struct
 - [x] `RollResult` struct
-- [x] `TurnBudget` struct
+- [x] ~`TurnBudget` struct~ (removed — turn budgets now use `Value::Struct { name: "TurnBudget", fields }`; `default_turn_budget()` helper creates the default 5e budget)
 - [x] `DurationValue` enum
 - [x] `PositionValue` wrapper (`Arc<dyn Any + Send + Sync>`)
 - [x] `PartialEq`/`Eq` on `Value` (Float via `to_bits`, Position via `Arc::ptr_eq`)
@@ -116,7 +116,7 @@ Companion to [`interpreter_impl_plan.md`](interpreter_impl_plan.md). Check items
 - [x] `FieldAccess` — struct fields
 - [x] `FieldAccess` — enum variant fields
 - [x] `FieldAccess` — RollResult built-in fields (`.total`, `.unmodified`, `.dice`, `.kept`)
-- [x] `FieldAccess` — TurnBudget fields
+- [x] `FieldAccess` — TurnBudget fields (handled by Struct arm — turn budget is `Value::Struct { name: "TurnBudget", .. }`)
 - [x] `Index` — List by Int
 - [x] `Index` — Map by key
 - [x] `ListLit`
@@ -150,7 +150,7 @@ Companion to [`interpreter_impl_plan.md`](interpreter_impl_plan.md). Check items
 - [x] `in` operator on List, Set, Map
 - [x] Integer overflow produces RuntimeError
 - [x] Division by zero produces RuntimeError
-- [x] Field access on entities, structs, RollResult, TurnBudget
+- [x] Field access on entities, structs, RollResult, turn budget (via Struct arm)
 - [x] Index on List (valid + out-of-bounds), Map (present + absent)
 - [x] If/else branching
 - [x] Pattern match: all pattern kinds

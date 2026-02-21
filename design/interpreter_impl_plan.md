@@ -21,7 +21,7 @@ ttrpg_interp/
   src/
     lib.rs              — public API, Interpreter
     lower.rs            — Phase 0: move desugaring (MoveDecl → mechanic + action)
-    value.rs            — Value enum, DiceExpr, RollResult, TurnBudget, DurationValue
+    value.rs            — Value enum, DiceExpr, RollResult, DurationValue
     effect.rs           — Effect, Response, Step, EffectHandler trait
     state.rs            — StateProvider, WritableState, EntityRef, ActiveCondition
     eval.rs             — expression evaluator (tree-walking)
@@ -163,7 +163,6 @@ pub enum Value {
 
     Position(PositionValue),
 
-    TurnBudget(TurnBudget),
     Duration(DurationValue),
     Condition(String),
 }
@@ -186,14 +185,6 @@ pub struct RollResult {
     pub modifier: i64,
     pub total: i64,           // sum(kept) + modifier
     pub unmodified: i64,      // sum(kept), no modifier
-}
-
-pub struct TurnBudget {
-    pub actions: i64,
-    pub bonus_actions: i64,
-    pub reactions: i64,
-    pub movement: i64,
-    pub free_interactions: i64,
 }
 
 pub enum DurationValue {
@@ -267,7 +258,7 @@ pub struct ActiveCondition {
 pub trait StateProvider {
     fn read_field(&self, entity: &EntityRef, field: &str) -> Option<Value>;
     fn read_conditions(&self, entity: &EntityRef) -> Option<Vec<ActiveCondition>>;
-    fn read_turn_budget(&self, entity: &EntityRef) -> Option<TurnBudget>;
+    fn read_turn_budget(&self, entity: &EntityRef) -> Option<BTreeMap<String, Value>>;
     fn read_enabled_options(&self) -> Vec<String>;
     fn position_eq(&self, a: &Value, b: &Value) -> bool;
     fn distance(&self, a: &Value, b: &Value) -> Option<i64>;
@@ -360,8 +351,8 @@ Implementation order, building on dependencies:
 | 4 | `Ident` | Scope lookup; fall through to enum type namespace for qualified access |
 | 5 | `UnaryOp` | `Neg` (Int/Float), `Not` (Bool) |
 | 6 | `BinOp` | Arithmetic, comparison, logical, `in`. Special cases below. |
-| 7 | `FieldAccess` | Entity fields via `state.read_field()`; struct/enum variant fields; RollResult built-in fields; TurnBudget fields |
-| 8 | `Index` | List by Int index; Map by key |
+| 7 | `FieldAccess` | Entity fields via `state.read_field()`; struct/enum variant fields; RollResult built-in fields; turn budget fields (handled by Struct arm — turn budget is `Value::Struct { name: "TurnBudget", .. }`) |
+| 8 | `Index` | List by Int index (negative indexes from end, e.g. `list[-1]` is last element); Map by key |
 | 9 | `ListLit` | Evaluate elements, construct `Value::List` |
 | 10 | `StructLit` | Evaluate field values, construct `Value::Struct` |
 | 11 | `If` | Evaluate condition, branch |
@@ -429,7 +420,7 @@ fn exec_stmt(env: &mut Env, stmt: &Spanned<StmtKind>) -> Result<Value, RuntimeEr
    - **Local path:** Navigate into the local Value in-place. For `Field(f)` on a Struct, mutate `fields[f]`. For `Index(i)` on a List, mutate `list[i]`. For `Index(k)` on a Map, mutate `map[k]`. Apply `AssignOp` (=, +=, -=).
 
    **Error rules for local path mutations:**
-   - List index out of bounds → `RuntimeError` ("list index N out of bounds, length M")
+   - List index out of bounds → `RuntimeError` ("list index N out of bounds, length M"). Negative indices count from the end (`-1` is the last element, `-len` is the first); indices beyond `-len` are out of bounds.
    - Map missing key with `=` → insert new entry (create on assign)
    - Map missing key with `+=` / `-=` → `RuntimeError` ("cannot apply += to absent map key 'K'")
    - Struct missing field → `RuntimeError` (should not occur in checked programs — internal error)
@@ -780,7 +771,7 @@ There are three distinct paths depending on the effect category and pass-through
 pub struct GameState {
     entities: HashMap<u64, EntityState>,
     conditions: HashMap<u64, Vec<ActiveCondition>>,
-    turn_budgets: HashMap<u64, TurnBudget>,
+    turn_budgets: HashMap<u64, BTreeMap<String, Value>>,
     enabled_options: HashSet<String>,
     next_entity_id: u64,
     next_condition_ts: u64,
@@ -798,7 +789,7 @@ Public API:
 impl GameState {
     pub fn new() -> Self;
     pub fn add_entity(&mut self, name: &str, fields: HashMap<String, Value>) -> EntityRef;
-    pub fn set_turn_budget(&mut self, entity: &EntityRef, budget: TurnBudget);
+    pub fn set_turn_budget(&mut self, entity: &EntityRef, budget: BTreeMap<String, Value>);
     pub fn apply_condition(&mut self, entity: &EntityRef, name: &str, duration: Value);
     pub fn enable_option(&mut self, name: &str);
     pub fn disable_option(&mut self, name: &str);
@@ -898,7 +889,7 @@ impl EffectHandler for ScriptedHandler {
 struct TestState {
     fields: HashMap<(u64, String), Value>,
     conditions: HashMap<u64, Vec<ActiveCondition>>,
-    turn_budgets: HashMap<u64, TurnBudget>,
+    turn_budgets: HashMap<u64, BTreeMap<String, Value>>,
     enabled_options: HashSet<String>,
 }
 ```

@@ -29,30 +29,6 @@ pub struct RollResult {
     pub unmodified: i64,
 }
 
-// ── Turn economy ────────────────────────────────────────────────
-
-/// The action economy budget for a single turn.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TurnBudget {
-    pub actions: i64,
-    pub bonus_actions: i64,
-    pub reactions: i64,
-    pub movement: i64,
-    pub free_interactions: i64,
-}
-
-impl Default for TurnBudget {
-    fn default() -> Self {
-        TurnBudget {
-            actions: 1,
-            bonus_actions: 1,
-            reactions: 1,
-            movement: 0,
-            free_interactions: 1,
-        }
-    }
-}
-
 // ── Duration ────────────────────────────────────────────────────
 
 /// Duration values for conditions and effects.
@@ -154,7 +130,6 @@ pub enum Value {
     Position(PositionValue),
 
     // Special
-    TurnBudget(TurnBudget),
     Duration(DurationValue),
     Condition(String),
 
@@ -162,6 +137,22 @@ pub enum Value {
     /// access (e.g., `Duration.rounds`). Not a user-facing value — only
     /// produced by `eval_ident` when an identifier resolves to an enum type.
     EnumNamespace(String),
+}
+
+/// Builds the default 5e turn budget as a `Value::Struct`.
+///
+/// Used by hosts that don't declare a custom `TurnBudget` struct.
+pub fn default_turn_budget() -> Value {
+    let mut fields = BTreeMap::new();
+    fields.insert("actions".to_string(), Value::Int(1));
+    fields.insert("bonus_actions".to_string(), Value::Int(1));
+    fields.insert("reactions".to_string(), Value::Int(1));
+    fields.insert("movement".to_string(), Value::Int(0));
+    fields.insert("free_interactions".to_string(), Value::Int(1));
+    Value::Struct {
+        name: "TurnBudget".to_string(),
+        fields,
+    }
 }
 
 // ── Discriminant ordering ───────────────────────────────────────
@@ -184,10 +175,9 @@ fn discriminant(v: &Value) -> u8 {
         Value::Entity(_) => 12,
         Value::EnumVariant { .. } => 13,
         Value::Position(_) => 14,
-        Value::TurnBudget(_) => 15,
-        Value::Duration(_) => 16,
-        Value::Condition(_) => 17,
-        Value::EnumNamespace(_) => 18,
+        Value::Duration(_) => 15,
+        Value::Condition(_) => 16,
+        Value::EnumNamespace(_) => 17,
     }
 }
 
@@ -239,7 +229,6 @@ impl PartialEq for Value {
                 },
             ) => e1 == e2 && v1 == v2 && f1 == f2,
             (Value::Position(a), Value::Position(b)) => a == b,
-            (Value::TurnBudget(a), Value::TurnBudget(b)) => a == b,
             (Value::Duration(a), Value::Duration(b)) => a == b,
             (Value::Condition(a), Value::Condition(b)) => a == b,
             (Value::EnumNamespace(a), Value::EnumNamespace(b)) => a == b,
@@ -310,7 +299,6 @@ impl Ord for Value {
                 .then_with(|| v1.cmp(v2))
                 .then_with(|| btree_map_cmp(f1, f2)),
             (Value::Position(a), Value::Position(b)) => a.cmp(b),
-            (Value::TurnBudget(a), Value::TurnBudget(b)) => turn_budget_cmp(a, b),
             (Value::Duration(a), Value::Duration(b)) => a.cmp(b),
             (Value::Condition(a), Value::Condition(b)) => a.cmp(b),
             (Value::EnumNamespace(a), Value::EnumNamespace(b)) => a.cmp(b),
@@ -335,15 +323,6 @@ fn roll_result_cmp(a: &RollResult, b: &RollResult) -> std::cmp::Ordering {
         .then_with(|| a.modifier.cmp(&b.modifier))
         .then_with(|| a.total.cmp(&b.total))
         .then_with(|| a.unmodified.cmp(&b.unmodified))
-}
-
-fn turn_budget_cmp(a: &TurnBudget, b: &TurnBudget) -> std::cmp::Ordering {
-    a.actions
-        .cmp(&b.actions)
-        .then_with(|| a.bonus_actions.cmp(&b.bonus_actions))
-        .then_with(|| a.reactions.cmp(&b.reactions))
-        .then_with(|| a.movement.cmp(&b.movement))
-        .then_with(|| a.free_interactions.cmp(&b.free_interactions))
 }
 
 fn btree_map_cmp(a: &BTreeMap<String, Value>, b: &BTreeMap<String, Value>) -> std::cmp::Ordering {
@@ -448,13 +427,6 @@ impl std::hash::Hash for Value {
             }
             Value::Position(v) => {
                 (Arc::as_ptr(&v.0) as *const () as usize).hash(state);
-            }
-            Value::TurnBudget(v) => {
-                v.actions.hash(state);
-                v.bonus_actions.hash(state);
-                v.reactions.hash(state);
-                v.movement.hash(state);
-                v.free_interactions.hash(state);
             }
             Value::Duration(v) => v.hash(state),
             Value::Condition(v) => v.hash(state),
@@ -693,10 +665,18 @@ mod tests {
 
     #[test]
     fn turn_budget_default() {
-        let budget = TurnBudget::default();
-        assert_eq!(budget.actions, 1);
-        assert_eq!(budget.bonus_actions, 1);
-        assert_eq!(budget.reactions, 1);
+        let budget = default_turn_budget();
+        match &budget {
+            Value::Struct { name, fields } => {
+                assert_eq!(name, "TurnBudget");
+                assert_eq!(fields.get("actions"), Some(&Value::Int(1)));
+                assert_eq!(fields.get("bonus_actions"), Some(&Value::Int(1)));
+                assert_eq!(fields.get("reactions"), Some(&Value::Int(1)));
+                assert_eq!(fields.get("movement"), Some(&Value::Int(0)));
+                assert_eq!(fields.get("free_interactions"), Some(&Value::Int(1)));
+            }
+            _ => panic!("expected Value::Struct"),
+        }
     }
 
     // ── DurationValue ───────────────────────────────────────────

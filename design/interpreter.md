@@ -85,7 +85,7 @@ The interpreter wants to remove a condition from an entity.
 
 **`MutateTurnField { actor: EntityRef, field: String, op: AssignOp, value: Value }`**
 
-The interpreter wants to modify a field of the current turn's `TurnBudget` (e.g., `turn.movement += actor.speed` in a Dash action's resolve block). This is distinct from `DeductCost`, which handles the declarative `cost { ... }` clause. `MutateTurnField` handles imperative turn-state mutations in resolve blocks.
+The interpreter wants to modify a field of the current turn's budget (a `Value::Struct { name: "TurnBudget", .. }`, e.g., `turn.movement += actor.speed` in a Dash action's resolve block). This is distinct from `DeductCost`, which handles the declarative `cost { ... }` clause. `MutateTurnField` handles imperative turn-state mutations in resolve blocks.
 
 #### Decision effects
 
@@ -93,7 +93,7 @@ State changes that are **always** passed through to the host, even in Layer 2/3 
 
 **`DeductCost { actor: EntityRef, token: String, budget_field: String }`**
 
-The interpreter wants to spend an action economy token. `token` is the singular cost name from the DSL source (e.g., `action`), and `budget_field` is the corresponding `TurnBudget` field name (e.g., `actions`). The mapping is fixed:
+The interpreter wants to spend an action economy token. `token` is the singular cost name from the DSL source (e.g., `action`), and `budget_field` is the corresponding turn budget field name (e.g., `actions`). Turn budgets are represented as `Value::Struct { name: "TurnBudget", fields }`. The mapping is fixed:
 
 | `token` | `budget_field` | Semantics |
 |---------|---------------|-----------|
@@ -182,9 +182,9 @@ trait StateProvider {
     /// Returns None if the entity doesn't exist.
     fn read_conditions(&self, entity: &EntityRef) -> Option<Vec<ActiveCondition>>;
 
-    /// Current turn budget for an entity.
+    /// Current turn budget for an entity (as a field map).
     /// Returns None if the entity doesn't exist.
-    fn read_turn_budget(&self, entity: &EntityRef) -> Option<TurnBudget>;
+    fn read_turn_budget(&self, entity: &EntityRef) -> Option<BTreeMap<String, Value>>;
 
     /// Names of currently enabled options.
     /// The host is responsible for honoring `default: on/off` from option
@@ -264,7 +264,6 @@ enum Value {
     Position(Box<dyn Any>),
 
     // Special
-    TurnBudget(TurnBudget),
     Duration(DurationValue),
     Condition(String),
 }
@@ -439,7 +438,7 @@ struct MyVTT { /* ... */ }
 impl StateProvider for MyVTT {
     fn read_field(&self, entity: &EntityRef, field: &str) -> Option<Value> { /* ... */ }
     fn read_conditions(&self, entity: &EntityRef) -> Option<Vec<ActiveCondition>> { /* ... */ }
-    fn read_turn_budget(&self, entity: &EntityRef) -> Option<TurnBudget> { /* ... */ }
+    fn read_turn_budget(&self, entity: &EntityRef) -> Option<BTreeMap<String, Value>> { /* ... */ }
     fn read_enabled_options(&self) -> Vec<String> { /* ... */ }
     fn position_eq(&self, a: &Value, b: &Value) -> bool { /* ... */ }
 }
