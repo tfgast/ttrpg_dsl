@@ -122,12 +122,8 @@ pub(crate) fn eval_expr(env: &mut Env, expr: &Spanned<ExprKind>) -> Result<Value
             ))
         }
 
-        ExprKind::Call { .. } => {
-            // Stub — real dispatch in Phase 4
-            Err(RuntimeError::with_span(
-                "function calls are not yet implemented (Phase 4)",
-                expr.span,
-            ))
+        ExprKind::Call { callee, args } => {
+            crate::call::eval_call(env, callee, args, expr.span)
         }
     }
 }
@@ -3165,10 +3161,10 @@ mod tests {
         assert_eq!(outer_x, Value::Int(1));
     }
 
-    // ── Call stub test ─────────────────────────────────────────
+    // ── Call dispatch test ──────────────────────────────────────
 
     #[test]
-    fn eval_call_returns_stub_error() {
+    fn eval_call_undefined_function_error() {
         let program = empty_program();
         let type_env = empty_type_env();
         let interp = Interpreter::new(&program, &type_env).unwrap();
@@ -3181,7 +3177,7 @@ mod tests {
             args: vec![],
         });
         let err = eval_expr(&mut env, &expr).unwrap_err();
-        assert!(err.message.contains("not yet implemented"));
+        assert!(err.message.contains("undefined function"));
     }
 
     // ── value_eq unit tests ────────────────────────────────────

@@ -213,44 +213,44 @@ Companion to [`interpreter_impl_plan.md`](interpreter_impl_plan.md). Check items
 ## Phase 4: Function Calling & Builtins
 
 ### Call dispatch (`call.rs`)
-- [ ] Resolve callee: `Ident` → function lookup
-- [ ] Resolve callee: `FieldAccess` → qualified enum constructor
-- [ ] Resolve callee: other expression → RuntimeError
-- [ ] Dispatch `Derive` — bind params, modify Phase 1, body, modify Phase 2
-- [ ] Dispatch `Mechanic` — same as Derive
-- [ ] Dispatch `Prompt` — evaluate hint/suggest, emit `ResolvePrompt`
-- [ ] Dispatch `Builtin` — route to builtin impl
-- [ ] Dispatch `Action` — extract receiver, call `execute_action`
-- [ ] Dispatch `Reaction` — unreachable (internal error)
-- [ ] Qualified enum variant construction
-- [ ] Bare enum variant construction (via `variant_to_enum`)
+- [x] Resolve callee: `Ident` → function lookup
+- [x] Resolve callee: `FieldAccess` → qualified enum constructor
+- [x] Resolve callee: other expression → RuntimeError
+- [x] Dispatch `Derive` — bind params, body (modify Phase 1/2 deferred to Phase 6)
+- [x] Dispatch `Mechanic` — same as Derive
+- [x] Dispatch `Prompt` — evaluate hint/suggest, emit `ResolvePrompt`
+- [x] Dispatch `Builtin` — route to builtin impl
+- [ ] Dispatch `Action` — extract receiver, call `execute_action` (stub, deferred to Phase 5)
+- [x] Dispatch `Reaction` — unreachable (internal error)
+- [x] Qualified enum variant construction
+- [x] Bare enum variant construction (via `variant_to_enum`)
 
 ### Argument binding (`call.rs`)
-- [ ] `bind_args` — positional matching
-- [ ] `bind_args` — named matching
-- [ ] `bind_args` — default value evaluation for optional params
-- [ ] Receiver handling: extract from first effective argument
+- [x] `bind_args` — positional matching
+- [x] `bind_args` — named matching
+- [x] `bind_args` — default value evaluation for optional params
+- [ ] Receiver handling: extract from first effective argument 
 
 ### Builtins (`builtins.rs`)
-- [ ] `floor(Float) -> Int`
-- [ ] `ceil(Float) -> Int`
-- [ ] `min(Int, Int) -> Int`
-- [ ] `max(Int, Int) -> Int`
-- [ ] `distance(Position, Position) -> Int` via `state.distance()`
-- [ ] `multiply_dice(DiceExpr, Int) -> DiceExpr` (checked, factor > 0)
-- [ ] `roll(DiceExpr)` → emit `RollDice`, process response
-- [ ] `apply_condition(Entity, String, Duration)` → emit `ApplyCondition`
-- [ ] `remove_condition(Entity, String)` → emit `RemoveCondition`
+- [x] `floor(Float) -> Int`
+- [x] `ceil(Float) -> Int`
+- [x] `min(Int, Int) -> Int`
+- [x] `max(Int, Int) -> Int`
+- [x] `distance(Position, Position) -> Int` via `state.distance()`
+- [x] `multiply_dice(DiceExpr, Int) -> DiceExpr` (checked, factor > 0)
+- [x] `roll(DiceExpr)` → emit `RollDice`, process response
+- [x] `apply_condition(Entity, String, Duration)` → emit `ApplyCondition`
+- [x] `remove_condition(Entity, String)` → emit `RemoveCondition`
 
 ### Tests
-- [ ] Derive call: arithmetic body returns correct value
-- [ ] Mechanic call: body with `roll()` emits `RollDice`
-- [ ] Prompt call: emits `ResolvePrompt` with hint/suggest
-- [ ] Named args, positional args, default values
-- [ ] Each builtin: correct result or effect
-- [ ] `multiply_dice`: factor <= 0 → RuntimeError, overflow → RuntimeError
-- [ ] `roll`: processes `Rolled` and `Override` responses
-- [ ] Enum variant construction (qualified + bare)
+- [x] Derive call: arithmetic body returns correct value
+- [x] Mechanic call: body with `roll()` emits `RollDice`
+- [x] Prompt call: emits `ResolvePrompt` with hint/suggest
+- [x] Named args, positional args, default values
+- [x] Each builtin: correct result or effect
+- [x] `multiply_dice`: factor <= 0 → RuntimeError, overflow → RuntimeError
+- [x] `roll`: processes `Rolled` and `Override` responses
+- [x] Enum variant construction (qualified + bare)
 
 ---
 
