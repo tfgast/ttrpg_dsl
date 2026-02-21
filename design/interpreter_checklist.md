@@ -50,40 +50,40 @@ Companion to [`interpreter_impl_plan.md`](interpreter_impl_plan.md). Check items
 ## Phase 1: Foundation Types
 
 ### Value enum (`value.rs`)
-- [ ] `Value` enum with all 17 variants
-- [ ] `DiceExpr` struct
-- [ ] `RollResult` struct
-- [ ] `TurnBudget` struct
-- [ ] `DurationValue` enum
-- [ ] `PositionValue` wrapper (`Arc<dyn Any + Send + Sync>`)
-- [ ] `PartialEq`/`Eq` on `Value` (Float via `to_bits`, Position via `Arc::ptr_eq`)
-- [ ] `PartialOrd`/`Ord` on `Value` (Float via `total_cmp`, Position via pointer)
-- [ ] `Clone`, `Debug` on `Value`
+- [x] `Value` enum with all 17 variants
+- [x] `DiceExpr` struct
+- [x] `RollResult` struct
+- [x] `TurnBudget` struct
+- [x] `DurationValue` enum
+- [x] `PositionValue` wrapper (`Arc<dyn Any + Send + Sync>`)
+- [x] `PartialEq`/`Eq` on `Value` (Float via `to_bits`, Position via `Arc::ptr_eq`)
+- [x] `PartialOrd`/`Ord` on `Value` (Float via `total_cmp`, Position via pointer)
+- [x] `Clone`, `Debug` on `Value`
 
 ### Effects and responses (`effect.rs`)
-- [ ] `Effect` enum (all variants from design doc Section 2)
-- [ ] `Response` enum
-- [ ] `Step` enum
-- [ ] `EffectHandler` trait
-- [ ] `EffectKind` fieldless discriminant enum
-- [ ] Supporting types: `FieldPathSegment`, `ActionKind`, `ModifySource`, `Phase`, `FieldChange`
+- [x] `Effect` enum (all variants from design doc Section 2)
+- [x] `Response` enum
+- [x] `Step` enum
+- [x] `EffectHandler` trait
+- [x] `EffectKind` fieldless discriminant enum
+- [x] Supporting types: `FieldPathSegment`, `ActionKind`, `ModifySource`, `Phase`, `FieldChange`
 
 ### State traits (`state.rs`)
-- [ ] `EntityRef(u64)` struct
-- [ ] `ActiveCondition` struct (with `id: u64`)
-- [ ] `StateProvider` trait (6 methods including `position_eq`, `distance`)
-- [ ] `WritableState` trait (4 methods)
+- [x] `EntityRef(u64)` struct
+- [x] `ActiveCondition` struct (with `id: u64`)
+- [x] `StateProvider` trait (6 methods including `position_eq`, `distance`)
+- [x] `WritableState` trait (4 methods)
 
 ### RuntimeError (`lib.rs`)
-- [ ] `RuntimeError` struct with `message` and `span: Option<Span>`
+- [x] `RuntimeError` struct with `message` and `span: Option<Span>`
 
 ### Tests
-- [ ] Value equality: Int, Float, Bool, Str, None
-- [ ] Value equality: composites (List, Set, Map, Struct, EnumVariant)
-- [ ] Value ordering: cross-variant discriminant ordering
-- [ ] Float `to_bits` equality (NaN == NaN, +0 != -0 for structural)
-- [ ] PositionValue `Arc::ptr_eq` equality
-- [ ] Effect/Response construction
+- [x] Value equality: Int, Float, Bool, Str, None
+- [x] Value equality: composites (List, Set, Map, Struct, EnumVariant)
+- [x] Value ordering: cross-variant discriminant ordering
+- [x] Float `to_bits` equality (NaN == NaN, +0 != -0 for structural)
+- [x] PositionValue `Arc::ptr_eq` equality
+- [x] Effect/Response construction
 
 ---
 
@@ -395,4 +395,4 @@ Companion to [`interpreter_impl_plan.md`](interpreter_impl_plan.md). Check items
 - [ ] Test infrastructure: `ScriptedHandler` (records effects, replays responses)
 - [ ] Test infrastructure: `TestState` (minimal `StateProvider`)
 - [ ] Design doc update: `DeductCost` Layer 1 vs Layer 2 semantics (`interpreter.md` line 104)
-- [ ] Crate setup: `ttrpg_interp/Cargo.toml` with deps on `ttrpg_ast` + `ttrpg_checker`
+- [x] Crate setup: `ttrpg_interp/Cargo.toml` with deps on `ttrpg_ast` + `ttrpg_checker`

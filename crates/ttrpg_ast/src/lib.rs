@@ -6,7 +6,7 @@ pub use span::{Span, Spanned};
 pub use diagnostic::{Diagnostic, Severity, SourceMap};
 
 /// Dice filter type — shared between lexer (token representation) and AST.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum DiceFilter {
     KeepHighest(u32),
     KeepLowest(u32),
