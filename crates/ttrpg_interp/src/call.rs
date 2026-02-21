@@ -11,6 +11,7 @@ use crate::action::execute_action;
 use crate::builtins::call_builtin;
 use crate::effect::{Effect, Response};
 use crate::eval::{eval_block, eval_expr};
+use crate::pipeline::{collect_modifiers_owned, run_phase1, run_phase2};
 use crate::value::Value;
 
 // ── Call dispatch ───────────────────────────────────────────────
@@ -143,18 +144,36 @@ fn dispatch_derive_or_mechanic(
     // Bind arguments (with access to AST params for default expressions)
     let bound = bind_args(&fn_info.params, args, Some(&ast_params), env, call_span)?;
 
-    // Push scope and bind parameters
-    // Note: modify pipeline (Phase 6) will wrap Phase 1 / Phase 2 around body execution.
-    // For now we execute the body directly.
+    // Collect modifiers from conditions and options
+    let modifiers = collect_modifiers_owned(env, name, &fn_info, &bound);
+
+    // Phase 1: rewrite input parameters
+    let bound = if modifiers.is_empty() {
+        bound
+    } else {
+        run_phase1(env, name, &fn_info, bound, &modifiers)?
+    };
+
+    // Push scope and bind (possibly modified) parameters
     env.push_scope();
-    for (param_name, param_val) in bound {
-        env.bind(param_name, param_val);
+    for (param_name, param_val) in &bound {
+        env.bind(param_name.clone(), param_val.clone());
     }
 
     let result = eval_block(env, &body);
     env.pop_scope();
 
-    result
+    // Phase 2: rewrite output result
+    match result {
+        Ok(val) => {
+            if modifiers.is_empty() {
+                Ok(val)
+            } else {
+                run_phase2(env, name, &fn_info, &bound, val, &modifiers)
+            }
+        }
+        Err(e) => Err(e),
+    }
 }
 
 // ── Action dispatch ────────────────────────────────────────────

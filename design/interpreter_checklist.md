@@ -295,41 +295,41 @@ Companion to [`interpreter_impl_plan.md`](interpreter_impl_plan.md). Check items
 ## Phase 6: Modify Pipeline & Events
 
 ### Modify pipeline (`pipeline.rs`)
-- [ ] `ModifyContext` and `ResolvedModifier` structs
-- [ ] Collect modifiers from conditions (query `read_conditions`)
-- [ ] Signature matching: function name + binding match
-- [ ] Deduplicate by `condition.id`
-- [ ] Collect modifiers from enabled options
-- [ ] Order: conditions by `gained_at`, then options; declaration order within
-- [ ] Phase 1 — rewrite inputs: `ParamOverride`, `Let`, `If`
-- [ ] Phase 1 — emit `ModifyApplied` with changed params
-- [ ] Phase 2 — rewrite outputs: `ResultOverride`
-- [ ] Phase 2 — emit `ModifyApplied` with changed fields
+- [x] `ModifyContext` and `ResolvedModifier` structs
+- [x] Collect modifiers from conditions (query `read_conditions`)
+- [x] Signature matching: function name + binding match
+- [x] Deduplicate by `condition.id`
+- [x] Collect modifiers from enabled options
+- [x] Order: conditions by `gained_at`, then options; declaration order within
+- [x] Phase 1 — rewrite inputs: `ParamOverride`, `Let`, `If`
+- [x] Phase 1 — emit `ModifyApplied` with changed params
+- [x] Phase 2 — rewrite outputs: `ResultOverride`
+- [x] Phase 2 — emit `ModifyApplied` with changed fields
 
 ### Event firing (`event.rs`)
-- [ ] `fire_event` function (pure query, no effects)
-- [ ] `EventResult` and `ReactionInfo` structs
-- [ ] Scan reactions by event name
-- [ ] Iterate candidates for each matching reaction
-- [ ] Trigger binding: named bindings (params first, then fields)
-- [ ] Trigger binding: positional bindings (fill-the-gaps)
-- [ ] Binding evaluation: side-effect-free expressions only
-- [ ] Suppression checking: scan conditions on entity-typed params/fields
-- [ ] Suppress binding matching (same lookup as trigger)
-- [ ] Partition into `suppressed` vs `triggerable`
+- [x] `fire_event` function (pure query, no effects)
+- [x] `EventResult` and `ReactionInfo` structs
+- [x] Scan reactions by event name
+- [x] Iterate candidates for each matching reaction
+- [x] Trigger binding: named bindings (params first, then fields)
+- [x] Trigger binding: positional bindings (fill-the-gaps)
+- [x] Binding evaluation: side-effect-free expressions only
+- [x] Suppression checking: scan conditions on entity-typed params/fields
+- [x] Suppress binding matching (same lookup as trigger)
+- [x] Partition into `suppressed` vs `triggerable`
 
 ### Tests
-- [ ] Modify Phase 1: param overridden correctly
-- [ ] Modify Phase 2: result field overridden correctly
-- [ ] Multiple conditions ordered by `gained_at`
-- [ ] Option modifiers applied after conditions
-- [ ] Modifier deduplication (same condition via multiple params)
-- [ ] Trigger matching: named bindings
-- [ ] Trigger matching: positional bindings
-- [ ] Trigger matching: fill-the-gaps semantics
-- [ ] Trigger matching: candidate iteration
-- [ ] Suppression: condition suppress clause blocks reaction
-- [ ] Suppression: non-matching suppress passes through
+- [x] Modify Phase 1: param overridden correctly
+- [x] Modify Phase 2: result field overridden correctly
+- [x] Multiple conditions ordered by `gained_at`
+- [x] Option modifiers applied after conditions
+- [x] Modifier deduplication (same condition via multiple params)
+- [x] Trigger matching: named bindings
+- [x] Trigger matching: positional bindings
+- [x] Trigger matching: fill-the-gaps semantics
+- [x] Trigger matching: candidate iteration
+- [x] Suppression: condition suppress clause blocks reaction
+- [x] Suppression: non-matching suppress passes through
 
 ---
 

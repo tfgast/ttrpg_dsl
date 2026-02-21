@@ -5,6 +5,8 @@ pub mod eval;
 pub mod call;
 pub mod builtins;
 pub mod action;
+pub mod pipeline;
+pub mod event;
 
 use std::collections::HashMap;
 
