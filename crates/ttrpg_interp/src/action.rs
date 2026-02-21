@@ -62,12 +62,24 @@ pub(crate) fn execute_action(
         params: param_values,
     });
 
-    if matches!(response, Response::Vetoed) {
-        env.handler.handle(Effect::ActionCompleted {
-            name: action_name,
-            actor,
-        });
-        return Ok(Value::None);
+    match response {
+        Response::Acknowledged => {}
+        Response::Vetoed => {
+            env.handler.handle(Effect::ActionCompleted {
+                name: action_name,
+                actor,
+            });
+            return Ok(Value::None);
+        }
+        other => {
+            return Err(RuntimeError::with_span(
+                format!(
+                    "protocol error: expected Acknowledged or Vetoed for ActionStarted, got {:?}",
+                    other
+                ),
+                call_span,
+            ));
+        }
     }
 
     // 2. Bind scope: receiver + params. Save previous turn_actor.
@@ -89,11 +101,25 @@ pub(crate) fn execute_action(
     env.pop_scope();
     env.turn_actor = prev_turn_actor;
 
-    // 6. Emit ActionCompleted (always, regardless of success/failure in pipeline)
-    env.handler.handle(Effect::ActionCompleted {
-        name: action_name,
-        actor,
-    });
+    // 6. Emit ActionCompleted (only on success)
+    if result.is_ok() {
+        let response = env.handler.handle(Effect::ActionCompleted {
+            name: action_name,
+            actor,
+        });
+        match response {
+            Response::Acknowledged => {}
+            other => {
+                return Err(RuntimeError::with_span(
+                    format!(
+                        "protocol error: expected Acknowledged for ActionCompleted, got {:?}",
+                        other
+                    ),
+                    call_span,
+                ));
+            }
+        }
+    }
 
     result
 }
@@ -132,7 +158,15 @@ fn execute_action_inner(
         let effective_passed = match response {
             Response::Override(Value::Bool(b)) => b,
             Response::Acknowledged => passed,
-            _ => passed,
+            other => {
+                return Err(RuntimeError::with_span(
+                    format!(
+                        "protocol error: expected Acknowledged or Override(Bool) for RequiresCheck, got {:?}",
+                        other
+                    ),
+                    requires_expr.span,
+                ));
+            }
         };
 
         if !effective_passed {
@@ -180,12 +214,24 @@ pub(crate) fn execute_reaction(
         params: vec![],
     });
 
-    if matches!(response, Response::Vetoed) {
-        env.handler.handle(Effect::ActionCompleted {
-            name: reaction_name,
-            actor: reactor,
-        });
-        return Ok(Value::None);
+    match response {
+        Response::Acknowledged => {}
+        Response::Vetoed => {
+            env.handler.handle(Effect::ActionCompleted {
+                name: reaction_name,
+                actor: reactor,
+            });
+            return Ok(Value::None);
+        }
+        other => {
+            return Err(RuntimeError::with_span(
+                format!(
+                    "protocol error: expected Acknowledged or Vetoed for ActionStarted, got {:?}",
+                    other
+                ),
+                call_span,
+            ));
+        }
     }
 
     // 2. Bind scope: receiver + trigger payload. Save previous turn_actor.
@@ -208,11 +254,25 @@ pub(crate) fn execute_reaction(
     env.pop_scope();
     env.turn_actor = prev_turn_actor;
 
-    // 5. Emit ActionCompleted
-    env.handler.handle(Effect::ActionCompleted {
-        name: reaction_name,
-        actor: reactor,
-    });
+    // 5. Emit ActionCompleted (only on success)
+    if result.is_ok() {
+        let response = env.handler.handle(Effect::ActionCompleted {
+            name: reaction_name,
+            actor: reactor,
+        });
+        match response {
+            Response::Acknowledged => {}
+            other => {
+                return Err(RuntimeError::with_span(
+                    format!(
+                        "protocol error: expected Acknowledged for ActionCompleted, got {:?}",
+                        other
+                    ),
+                    call_span,
+                ));
+            }
+        }
+    }
 
     result
 }
@@ -273,11 +333,11 @@ fn deduct_costs(
                 // Layer 2: adapter handles this
             }
             Response::Override(Value::Str(replacement)) => {
-                // Validate that the replacement is a valid budget field
-                if budget_field_to_token(&replacement).is_none() {
+                // Validate that the replacement is a valid cost token
+                if token_to_budget_field(&replacement).is_none() {
                     return Err(RuntimeError::with_span(
                         format!(
-                            "invalid cost override '{}'; expected one of: actions, bonus_actions, reactions",
+                            "invalid cost override '{}'; expected one of: action, bonus_action, reaction",
                             replacement
                         ),
                         call_span,
@@ -635,7 +695,7 @@ mod tests {
         let state = TestState::new();
         let mut handler = ScriptedHandler::with_responses(vec![
             Response::Acknowledged, // ActionStarted
-            Response::Override(Value::Str("bonus_actions".to_string())), // DeductCost
+            Response::Override(Value::Str("bonus_action".to_string())), // DeductCost
         ]);
         let mut env = make_env(&state, &mut handler, &interp);
         let actor = EntityRef(1);
@@ -1022,5 +1082,99 @@ mod tests {
         let result =
             execute_reaction(&mut env, &reaction, reactor, Value::None, span()).unwrap();
         assert_eq!(result, Value::Entity(EntityRef(7)));
+    }
+
+    // ── Negative protocol tests ──────────────────────────────────
+
+    #[test]
+    fn action_started_invalid_response_errors() {
+        // ActionStarted only accepts Acknowledged or Vetoed
+        let action = make_action(
+            "Attack",
+            "actor",
+            vec![],
+            None,
+            None,
+            vec![spanned(StmtKind::Expr(spanned(ExprKind::IntLit(1))))],
+        );
+
+        let program = empty_program();
+        let type_env = empty_type_env();
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = TestState::new();
+        let mut handler = ScriptedHandler::with_responses(vec![
+            Response::Override(Value::Bool(true)), // invalid for ActionStarted
+        ]);
+        let mut env = make_env(&state, &mut handler, &interp);
+        let actor = EntityRef(1);
+
+        let result = execute_action(&mut env, &action, actor, vec![], span());
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .message
+            .contains("protocol error"));
+    }
+
+    #[test]
+    fn requires_check_invalid_response_errors() {
+        // RequiresCheck only accepts Acknowledged or Override(Bool)
+        let action = make_action(
+            "Attack",
+            "actor",
+            vec![],
+            None,
+            Some(spanned(ExprKind::BoolLit(true))),
+            vec![spanned(StmtKind::Expr(spanned(ExprKind::IntLit(1))))],
+        );
+
+        let program = empty_program();
+        let type_env = empty_type_env();
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = TestState::new();
+        let mut handler = ScriptedHandler::with_responses(vec![
+            Response::Acknowledged,  // ActionStarted
+            Response::Vetoed,        // invalid for RequiresCheck
+        ]);
+        let mut env = make_env(&state, &mut handler, &interp);
+        let actor = EntityRef(1);
+
+        let result = execute_action(&mut env, &action, actor, vec![], span());
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .message
+            .contains("protocol error"));
+    }
+
+    #[test]
+    fn action_completed_invalid_response_errors() {
+        // ActionCompleted only accepts Acknowledged
+        let action = make_action(
+            "Attack",
+            "actor",
+            vec![],
+            None,
+            None,
+            vec![spanned(StmtKind::Expr(spanned(ExprKind::IntLit(1))))],
+        );
+
+        let program = empty_program();
+        let type_env = empty_type_env();
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = TestState::new();
+        let mut handler = ScriptedHandler::with_responses(vec![
+            Response::Acknowledged,  // ActionStarted
+            Response::Vetoed,        // invalid for ActionCompleted
+        ]);
+        let mut env = make_env(&state, &mut handler, &interp);
+        let actor = EntityRef(1);
+
+        let result = execute_action(&mut env, &action, actor, vec![], span());
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .message
+            .contains("protocol error"));
     }
 }
