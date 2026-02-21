@@ -261,17 +261,25 @@ fn eval_binop(
             let lhs = coerce_roll_result(lhs);
             let rhs = coerce_roll_result(rhs);
             match op {
-                BinOp::Lt => eval_comparison(&lhs, &rhs, |o| o.is_lt(), expr),
-                BinOp::LtEq => eval_comparison(&lhs, &rhs, |o| o.is_le(), expr),
-                BinOp::Gt => eval_comparison(&lhs, &rhs, |o| o.is_gt(), expr),
-                BinOp::GtEq => eval_comparison(&lhs, &rhs, |o| o.is_ge(), expr),
+                BinOp::Lt => eval_comparison(&lhs, &rhs, |o| o.is_lt(), env.interp.type_env, expr),
+                BinOp::LtEq => eval_comparison(&lhs, &rhs, |o| o.is_le(), env.interp.type_env, expr),
+                BinOp::Gt => eval_comparison(&lhs, &rhs, |o| o.is_gt(), env.interp.type_env, expr),
+                BinOp::GtEq => eval_comparison(&lhs, &rhs, |o| o.is_ge(), env.interp.type_env, expr),
                 _ => unreachable!(),
             }
         }
 
-        // Equality — no coercion (structural comparison)
-        BinOp::Eq => Ok(Value::Bool(value_eq(env.state, &lhs, &rhs))),
-        BinOp::NotEq => Ok(Value::Bool(!value_eq(env.state, &lhs, &rhs))),
+        // Equality — coerce RollResult to Int (spec: == / != coerce RollResult)
+        BinOp::Eq => {
+            let lhs = coerce_roll_result(lhs);
+            let rhs = coerce_roll_result(rhs);
+            Ok(Value::Bool(value_eq(env.state, &lhs, &rhs)))
+        }
+        BinOp::NotEq => {
+            let lhs = coerce_roll_result(lhs);
+            let rhs = coerce_roll_result(rhs);
+            Ok(Value::Bool(!value_eq(env.state, &lhs, &rhs)))
+        }
 
         // Membership — no coercion
         BinOp::In => eval_in(&lhs, &rhs, env.state, expr),
@@ -433,6 +441,7 @@ fn eval_comparison(
     lhs: &Value,
     rhs: &Value,
     cmp_fn: fn(std::cmp::Ordering) -> bool,
+    type_env: &ttrpg_checker::env::TypeEnv,
     expr: &Spanned<ExprKind>,
 ) -> Result<Value, RuntimeError> {
     let ordering = match (lhs, rhs) {
@@ -447,6 +456,22 @@ fn eval_comparison(
             .partial_cmp(&(*b as f64))
             .ok_or_else(|| RuntimeError::with_span("cannot compare NaN", expr.span))?,
         (Value::Str(a), Value::Str(b)) => a.cmp(b),
+        (
+            Value::EnumVariant {
+                enum_name: e1,
+                variant: v1,
+                ..
+            },
+            Value::EnumVariant {
+                enum_name: e2,
+                variant: v2,
+                ..
+            },
+        ) if e1 == e2 => {
+            let ord1 = variant_ordinal(type_env, e1, v1);
+            let ord2 = variant_ordinal(type_env, e2, v2);
+            ord1.cmp(&ord2)
+        }
         _ => {
             return Err(RuntimeError::with_span(
                 format!(
@@ -459,6 +484,19 @@ fn eval_comparison(
         }
     };
     Ok(Value::Bool(cmp_fn(ordering)))
+}
+
+/// Look up a variant's declaration-order index within its enum.
+fn variant_ordinal(
+    type_env: &ttrpg_checker::env::TypeEnv,
+    enum_name: &str,
+    variant_name: &str,
+) -> Option<usize> {
+    if let Some(DeclInfo::Enum(info)) = type_env.types.get(enum_name) {
+        info.variants.iter().position(|v| v.name == variant_name)
+    } else {
+        None
+    }
 }
 
 fn eval_in(
@@ -747,9 +785,13 @@ fn eval_arm_body(env: &mut Env, body: &ArmBody) -> Result<Value, RuntimeError> {
 pub(crate) fn value_eq(state: &dyn StateProvider, a: &Value, b: &Value) -> bool {
     match (a, b) {
         (Value::None, Value::None) => true,
+        (Value::None, Value::Option(None)) => true,
+        (Value::Option(None), Value::None) => true,
         (Value::Bool(a), Value::Bool(b)) => a == b,
         (Value::Int(a), Value::Int(b)) => a == b,
         (Value::Float(a), Value::Float(b)) => a == b, // standard f64 ==
+        (Value::Int(a), Value::Float(b)) => (*a as f64) == *b,
+        (Value::Float(a), Value::Int(b)) => *a == (*b as f64),
         (Value::Str(a), Value::Str(b)) => a == b,
         (Value::DiceExpr(a), Value::DiceExpr(b)) => a == b,
         (Value::RollResult(a), Value::RollResult(b)) => a == b,
@@ -3422,5 +3464,180 @@ mod tests {
                 modifier: 3,
             })
         );
+    }
+
+    // ── Issue 1: == / != coerce RollResult; Int↔Float equality ──
+
+    #[test]
+    fn eq_coerces_roll_result_to_int() {
+        let program = empty_program();
+        let type_env = empty_type_env();
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = TestState::new();
+        let mut handler = ScriptedHandler::new();
+        let mut env = make_env(&state, &mut handler, &interp);
+
+        // Bind `r` to a RollResult with total=10
+        env.bind(
+            "r".to_string(),
+            Value::RollResult(RollResult {
+                expr: DiceExpr { count: 1, sides: 20, filter: None, modifier: 0 },
+                dice: vec![10],
+                kept: vec![10],
+                modifier: 0,
+                total: 10,
+                unmodified: 10,
+            }),
+        );
+
+        // r == 10 should be true (coerced)
+        let expr = spanned(ExprKind::BinOp {
+            op: BinOp::Eq,
+            lhs: Box::new(spanned(ExprKind::Ident("r".to_string()))),
+            rhs: Box::new(spanned(ExprKind::IntLit(10))),
+        });
+        assert_eq!(eval_expr(&mut env, &expr).unwrap(), Value::Bool(true));
+
+        // r != 10 should be false
+        let expr = spanned(ExprKind::BinOp {
+            op: BinOp::NotEq,
+            lhs: Box::new(spanned(ExprKind::Ident("r".to_string()))),
+            rhs: Box::new(spanned(ExprKind::IntLit(10))),
+        });
+        assert_eq!(eval_expr(&mut env, &expr).unwrap(), Value::Bool(false));
+
+        // r == 99 should be false
+        let expr = spanned(ExprKind::BinOp {
+            op: BinOp::Eq,
+            lhs: Box::new(spanned(ExprKind::Ident("r".to_string()))),
+            rhs: Box::new(spanned(ExprKind::IntLit(99))),
+        });
+        assert_eq!(eval_expr(&mut env, &expr).unwrap(), Value::Bool(false));
+    }
+
+    #[test]
+    fn value_eq_int_float_cross_type() {
+        let state = TestState::new();
+        assert!(value_eq(&state, &Value::Int(1), &Value::Float(1.0)));
+        assert!(value_eq(&state, &Value::Float(1.0), &Value::Int(1)));
+        assert!(!value_eq(&state, &Value::Int(1), &Value::Float(1.5)));
+        assert!(!value_eq(&state, &Value::Float(1.5), &Value::Int(1)));
+    }
+
+    // ── Issue 2: Enum ordering uses declaration order ───────────
+
+    #[test]
+    fn enum_ordering_uses_declaration_order() {
+        let program = empty_program();
+        let mut type_env = empty_type_env();
+
+        // Declare enum Size { small, medium, large }
+        // Declaration order: small=0, medium=1, large=2
+        // Alphabetical would be: large < medium < small — opposite!
+        type_env.types.insert(
+            "Size".to_string(),
+            DeclInfo::Enum(EnumInfo {
+                name: "Size".to_string(),
+                variants: vec![
+                    VariantInfo { name: "small".to_string(), fields: vec![] },
+                    VariantInfo { name: "medium".to_string(), fields: vec![] },
+                    VariantInfo { name: "large".to_string(), fields: vec![] },
+                ],
+            }),
+        );
+        type_env.variant_to_enum.insert("small".to_string(), "Size".to_string());
+        type_env.variant_to_enum.insert("medium".to_string(), "Size".to_string());
+        type_env.variant_to_enum.insert("large".to_string(), "Size".to_string());
+
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = TestState::new();
+        let mut handler = ScriptedHandler::new();
+        let mut env = make_env(&state, &mut handler, &interp);
+
+        env.bind("a".to_string(), Value::EnumVariant {
+            enum_name: "Size".to_string(),
+            variant: "small".to_string(),
+            fields: BTreeMap::new(),
+        });
+        env.bind("b".to_string(), Value::EnumVariant {
+            enum_name: "Size".to_string(),
+            variant: "large".to_string(),
+            fields: BTreeMap::new(),
+        });
+
+        // small < large should be true (declaration order: 0 < 2)
+        let expr = spanned(ExprKind::BinOp {
+            op: BinOp::Lt,
+            lhs: Box::new(spanned(ExprKind::Ident("a".to_string()))),
+            rhs: Box::new(spanned(ExprKind::Ident("b".to_string()))),
+        });
+        assert_eq!(eval_expr(&mut env, &expr).unwrap(), Value::Bool(true));
+
+        // large > small should be true
+        let expr = spanned(ExprKind::BinOp {
+            op: BinOp::Gt,
+            lhs: Box::new(spanned(ExprKind::Ident("b".to_string()))),
+            rhs: Box::new(spanned(ExprKind::Ident("a".to_string()))),
+        });
+        assert_eq!(eval_expr(&mut env, &expr).unwrap(), Value::Bool(true));
+
+        // small >= large should be false
+        let expr = spanned(ExprKind::BinOp {
+            op: BinOp::GtEq,
+            lhs: Box::new(spanned(ExprKind::Ident("a".to_string()))),
+            rhs: Box::new(spanned(ExprKind::Ident("b".to_string()))),
+        });
+        assert_eq!(eval_expr(&mut env, &expr).unwrap(), Value::Bool(false));
+    }
+
+    // ── Issue 3: none == Option(None) ───────────────────────────
+
+    #[test]
+    fn value_eq_none_vs_option_none() {
+        let state = TestState::new();
+
+        // Value::None == Value::Option(None)
+        assert!(value_eq(&state, &Value::None, &Value::Option(None)));
+        assert!(value_eq(&state, &Value::Option(None), &Value::None));
+
+        // Value::None != Value::Option(Some(...))
+        assert!(!value_eq(
+            &state,
+            &Value::None,
+            &Value::Option(Some(Box::new(Value::Int(1))))
+        ));
+        assert!(!value_eq(
+            &state,
+            &Value::Option(Some(Box::new(Value::Int(1)))),
+            &Value::None
+        ));
+    }
+
+    #[test]
+    fn binop_eq_none_vs_option_none() {
+        let program = empty_program();
+        let type_env = empty_type_env();
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = TestState::new();
+        let mut handler = ScriptedHandler::new();
+        let mut env = make_env(&state, &mut handler, &interp);
+
+        env.bind("x".to_string(), Value::Option(None));
+
+        // x == none should be true
+        let expr = spanned(ExprKind::BinOp {
+            op: BinOp::Eq,
+            lhs: Box::new(spanned(ExprKind::Ident("x".to_string()))),
+            rhs: Box::new(spanned(ExprKind::NoneLit)),
+        });
+        assert_eq!(eval_expr(&mut env, &expr).unwrap(), Value::Bool(true));
+
+        // x != none should be false
+        let expr = spanned(ExprKind::BinOp {
+            op: BinOp::NotEq,
+            lhs: Box::new(spanned(ExprKind::Ident("x".to_string()))),
+            rhs: Box::new(spanned(ExprKind::NoneLit)),
+        });
+        assert_eq!(eval_expr(&mut env, &expr).unwrap(), Value::Bool(false));
     }
 }
