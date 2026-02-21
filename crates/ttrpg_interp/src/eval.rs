@@ -787,10 +787,11 @@ fn int_float_eq(i: i64, f: f64) -> bool {
     if !f.is_finite() || f.fract() != 0.0 {
         return false;
     }
-    // If f is within the exact-integer range of f64 (|v| <= 2^53),
-    // both directions of cast are lossless.
-    // For larger magnitudes, cast f→i64 instead of i→f64 to avoid rounding.
-    if f >= (i64::MIN as f64) && f <= (i64::MAX as f64) {
+    // Cast f→i64 instead of i→f64 to avoid rounding large values.
+    // Upper bound uses `<` because `i64::MAX as f64` rounds up to 2^63,
+    // which is outside i64 range; `f as i64` would saturate incorrectly.
+    // Lower bound uses `>=` because `i64::MIN as f64` is exactly -2^63.
+    if f >= (i64::MIN as f64) && f < (i64::MAX as f64) {
         (f as i64) == i
     } else {
         false
@@ -814,8 +815,10 @@ fn int_float_cmp(i: i64, f: f64) -> Option<std::cmp::Ordering> {
 
     // Compare integer part first
     let f_trunc = f.trunc();
-    // Safe range for f64→i64 cast: f_trunc must be within i64 bounds
-    if f_trunc >= (i64::MIN as f64) && f_trunc <= (i64::MAX as f64) {
+    // Upper bound uses `<` because `i64::MAX as f64` rounds up to 2^63,
+    // which is outside i64 range; `f_trunc as i64` would saturate incorrectly.
+    // Lower bound uses `>=` because `i64::MIN as f64` is exactly -2^63.
+    if f_trunc >= (i64::MIN as f64) && f_trunc < (i64::MAX as f64) {
         let f_int = f_trunc as i64;
         match i.cmp(&f_int) {
             std::cmp::Ordering::Equal => {
@@ -3596,6 +3599,95 @@ mod tests {
         assert!(value_eq(&state, &Value::Float(1.0), &Value::Int(1)));
         assert!(!value_eq(&state, &Value::Int(1), &Value::Float(1.5)));
         assert!(!value_eq(&state, &Value::Float(1.5), &Value::Int(1)));
+    }
+
+    #[test]
+    fn value_eq_int_float_boundary() {
+        let state = TestState::new();
+
+        // i64::MAX as f64 rounds up to 2^63 — must NOT equal i64::MAX
+        let max_f = i64::MAX as f64; // 9223372036854775808.0
+        assert!(!value_eq(&state, &Value::Int(i64::MAX), &Value::Float(max_f)));
+        assert!(!value_eq(&state, &Value::Float(max_f), &Value::Int(i64::MAX)));
+
+        // i64::MIN as f64 is exactly -2^63 — SHOULD equal i64::MIN
+        let min_f = i64::MIN as f64; // -9223372036854775808.0
+        assert!(value_eq(&state, &Value::Int(i64::MIN), &Value::Float(min_f)));
+        assert!(value_eq(&state, &Value::Float(min_f), &Value::Int(i64::MIN)));
+
+        // Large float above i64 range
+        assert!(!value_eq(&state, &Value::Int(i64::MAX), &Value::Float(1.0e19)));
+        assert!(!value_eq(&state, &Value::Int(i64::MIN), &Value::Float(-1.0e19)));
+
+        // Largest f64 below 2^63 (still in i64 range) should round-trip correctly
+        let largest_below = 9223372036854774784.0_f64; // 2^63 - 1024
+        assert!(value_eq(
+            &state,
+            &Value::Int(9223372036854774784),
+            &Value::Float(largest_below),
+        ));
+        assert!(!value_eq(
+            &state,
+            &Value::Int(i64::MAX),
+            &Value::Float(largest_below),
+        ));
+    }
+
+    #[test]
+    fn int_float_cmp_boundary() {
+        use std::cmp::Ordering;
+
+        // i64::MAX < (i64::MAX as f64) because the float rounds up to 2^63
+        assert_eq!(int_float_cmp(i64::MAX, i64::MAX as f64), Some(Ordering::Less));
+
+        // i64::MIN == (i64::MIN as f64) because -2^63 is exact
+        assert_eq!(int_float_cmp(i64::MIN, i64::MIN as f64), Some(Ordering::Equal));
+
+        // i64::MAX vs very large float
+        assert_eq!(int_float_cmp(i64::MAX, 1.0e19), Some(Ordering::Less));
+
+        // i64::MIN vs very negative float
+        assert_eq!(int_float_cmp(i64::MIN, -1.0e19), Some(Ordering::Greater));
+
+        // NaN → None
+        assert_eq!(int_float_cmp(0, f64::NAN), None);
+
+        // Infinity
+        assert_eq!(int_float_cmp(i64::MAX, f64::INFINITY), Some(Ordering::Less));
+        assert_eq!(int_float_cmp(i64::MIN, f64::NEG_INFINITY), Some(Ordering::Greater));
+
+        // Largest f64 below 2^63
+        let largest_below = 9223372036854774784.0_f64;
+        assert_eq!(
+            int_float_cmp(9223372036854774784, largest_below),
+            Some(Ordering::Equal),
+        );
+        assert_eq!(
+            int_float_cmp(i64::MAX, largest_below),
+            Some(Ordering::Greater),
+        );
+    }
+
+    #[test]
+    fn int_float_eq_helper_edge_cases() {
+        // Basic exact matches
+        assert!(int_float_eq(0, 0.0));
+        assert!(int_float_eq(0, -0.0)); // -0.0 == +0.0
+        assert!(int_float_eq(-1, -1.0));
+
+        // Fractional → never equal
+        assert!(!int_float_eq(1, 1.5));
+        assert!(!int_float_eq(0, 0.1));
+
+        // Non-finite → never equal
+        assert!(!int_float_eq(0, f64::NAN));
+        assert!(!int_float_eq(0, f64::INFINITY));
+        assert!(!int_float_eq(0, f64::NEG_INFINITY));
+
+        // 2^53 boundary (largest exact integer in f64)
+        let two_53: i64 = 1 << 53;
+        assert!(int_float_eq(two_53, two_53 as f64));
+        assert!(!int_float_eq(two_53 + 1, (two_53 + 1) as f64));
     }
 
     // ── Issue 2: Enum ordering uses declaration order ───────────
