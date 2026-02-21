@@ -632,28 +632,51 @@ impl<'a> Checker<'a> {
             }
         };
 
+        // In TriggerBinding context, only side-effect-free builtins are allowed
+        if !self.scope.allows_calls() {
+            let is_pure_builtin = fn_info.kind == FnKind::Builtin
+                && matches!(
+                    callee_name.as_str(),
+                    "floor" | "ceil" | "min" | "max" | "distance"
+                );
+            if !is_pure_builtin {
+                self.error(
+                    format!(
+                        "`{}` cannot be called in trigger/suppress binding context",
+                        callee_name
+                    ),
+                    span,
+                );
+            }
+        }
+
         // Check permission level for builtins
         if fn_info.kind == FnKind::Builtin {
             self.check_builtin_permissions(&callee_name, span);
         }
 
-        // Check context restrictions for actions/reactions/moves
-        if matches!(fn_info.kind, FnKind::Action | FnKind::Reaction | FnKind::Move) {
+        // Reject direct reaction calls — reactions are triggered by events, not called
+        if fn_info.kind == FnKind::Reaction {
+            self.error(
+                format!(
+                    "reactions cannot be called directly; `{}` is triggered by events",
+                    callee_name
+                ),
+                span,
+            );
+        }
+
+        // Check context restrictions for actions
+        if fn_info.kind == FnKind::Action {
             let current_ctx = self.scope.current_block_kind();
             if !matches!(
                 current_ctx,
                 Some(BlockKind::ActionResolve) | Some(BlockKind::ReactionResolve)
             ) {
-                let kind_name = match fn_info.kind {
-                    FnKind::Action => "an action",
-                    FnKind::Reaction => "a reaction",
-                    FnKind::Move => "a move",
-                    _ => unreachable!(),
-                };
                 self.error(
                     format!(
-                        "`{}` is {} and can only be called from action or reaction context",
-                        callee_name, kind_name
+                        "`{}` is an action and can only be called from action or reaction context",
+                        callee_name
                     ),
                     span,
                 );

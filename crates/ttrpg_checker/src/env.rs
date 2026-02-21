@@ -52,7 +52,6 @@ pub enum FnKind {
     Action,
     Reaction,
     Prompt,
-    Move,
     Builtin,
 }
 
@@ -179,10 +178,25 @@ impl TypeEnv {
                     ));
                 }
             }
-            TypeExpr::List(inner) | TypeExpr::Set(inner) | TypeExpr::OptionType(inner) => {
+            TypeExpr::List(inner) | TypeExpr::OptionType(inner) => {
+                self.validate_type_names(inner, diagnostics);
+            }
+            TypeExpr::Set(inner) => {
+                if matches!(inner.node, TypeExpr::Position) {
+                    diagnostics.push(Diagnostic::error(
+                        "Position cannot be used as a set element type",
+                        inner.span,
+                    ));
+                }
                 self.validate_type_names(inner, diagnostics);
             }
             TypeExpr::Map(k, v) => {
+                if matches!(k.node, TypeExpr::Position) {
+                    diagnostics.push(Diagnostic::error(
+                        "Position cannot be used as a map key type",
+                        k.span,
+                    ));
+                }
                 self.validate_type_names(k, diagnostics);
                 self.validate_type_names(v, diagnostics);
             }

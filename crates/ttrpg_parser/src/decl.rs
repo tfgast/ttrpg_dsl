@@ -195,6 +195,7 @@ impl Parser {
             params,
             return_type,
             body,
+            synthetic: false,
         })
     }
 
@@ -274,6 +275,8 @@ impl Parser {
             cost,
             requires,
             resolve,
+            trigger_text: None,
+            synthetic: false,
         })
     }
 

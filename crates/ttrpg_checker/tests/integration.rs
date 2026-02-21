@@ -1,3 +1,4 @@
+use ttrpg_ast::ast::DeclKind;
 use ttrpg_ast::diagnostic::SourceMap;
 use ttrpg_checker::{check, CheckResult};
 
@@ -13,6 +14,50 @@ fn check_source(source: &str) -> CheckResult {
             .join("\n\n")
     );
     check(&program)
+}
+
+/// Parse, lower moves, then check — the full pipeline for move declarations.
+fn check_lowered(source: &str) -> (ttrpg_ast::ast::Program, CheckResult) {
+    let (program, parse_errors) = ttrpg_parser::parse(source);
+    assert!(
+        parse_errors.is_empty(),
+        "parse errors:\n{}",
+        parse_errors
+            .iter()
+            .map(|d| SourceMap::new(source).render(d))
+            .collect::<Vec<_>>()
+            .join("\n\n")
+    );
+    let mut lower_diags = Vec::new();
+    let program = ttrpg_parser::lower_moves(program, &mut lower_diags);
+    assert!(
+        lower_diags.is_empty(),
+        "lowering errors:\n{}",
+        lower_diags
+            .iter()
+            .map(|d| SourceMap::new(source).render(d))
+            .collect::<Vec<_>>()
+            .join("\n\n")
+    );
+    let result = check(&program);
+    (program, result)
+}
+
+/// Parse and lower, returning lowering diagnostics (does not check).
+fn lower_source(source: &str) -> (ttrpg_ast::ast::Program, Vec<ttrpg_ast::diagnostic::Diagnostic>) {
+    let (program, parse_errors) = ttrpg_parser::parse(source);
+    assert!(
+        parse_errors.is_empty(),
+        "parse errors:\n{}",
+        parse_errors
+            .iter()
+            .map(|d| SourceMap::new(source).render(d))
+            .collect::<Vec<_>>()
+            .join("\n\n")
+    );
+    let mut lower_diags = Vec::new();
+    let program = ttrpg_parser::lower_moves(program, &mut lower_diags);
+    (program, lower_diags)
 }
 
 fn expect_no_errors(source: &str) {
@@ -2598,16 +2643,14 @@ system "test" {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// Move declarations
+// Move declarations (must be lowered before checking)
 // ═══════════════════════════════════════════════════════════════
 
 #[test]
-fn test_move_valid_ok() {
+fn test_unlowered_move_rejected() {
     let source = r#"
 system "test" {
-    entity Character {
-        stat: int
-    }
+    entity Character { stat: int }
     move Hack on actor: Character () {
         trigger: "When you hack and slash"
         roll: 2d6 + actor.stat
@@ -2620,142 +2663,7 @@ system "test" {
     }
 }
 "#;
-    expect_no_errors(source);
-}
-
-#[test]
-fn test_move_receiver_must_be_entity() {
-    let source = r#"
-system "test" {
-    struct Stats { hp: int }
-    move Hack on actor: Stats () {
-        trigger: "When you hack"
-        roll: 2d6
-        on success {}
-    }
-}
-"#;
-    expect_errors(source, &["move `Hack` receiver type must be an entity, found Stats"]);
-}
-
-#[test]
-fn test_move_roll_must_be_dice_expr() {
-    let source = r#"
-system "test" {
-    entity Character { stat: int }
-    move Hack on actor: Character () {
-        trigger: "When you hack"
-        roll: 42
-        on success {}
-    }
-}
-"#;
-    expect_errors(source, &["move `Hack` roll expression must be DiceExpr, found int"]);
-}
-
-#[test]
-fn test_move_outcome_can_mutate_and_roll() {
-    let source = r#"
-system "test" {
-    entity Character { hp: int }
-    move Hack on actor: Character () {
-        trigger: "When you hack"
-        roll: 2d6
-        on success {
-            let r = roll(1d6)
-            actor.hp += r.total
-        }
-        on failure {}
-    }
-}
-"#;
-    expect_no_errors(source);
-}
-
-#[test]
-fn test_move_undefined_variable_in_outcome() {
-    let source = r#"
-system "test" {
-    entity Character { hp: int }
-    move Hack on actor: Character () {
-        trigger: "When you hack"
-        roll: 2d6
-        on success {
-            actor.hp += nonexistent
-        }
-    }
-}
-"#;
-    expect_errors(source, &["undefined variable `nonexistent`"]);
-}
-
-#[test]
-fn test_move_receiver_shadows_turn() {
-    let source = r#"
-system "test" {
-    entity Character { hp: int }
-    move Hack on turn: Character () {
-        trigger: "When you hack"
-        roll: 2d6
-        on success {}
-    }
-}
-"#;
-    expect_errors(source, &["receiver `turn` shadows the implicit turn budget binding"]);
-}
-
-#[test]
-fn test_move_param_shadows_receiver() {
-    let source = r#"
-system "test" {
-    entity Character { hp: int }
-    move Hack on actor: Character (actor: int) {
-        trigger: "When you hack"
-        roll: 2d6
-        on success {}
-    }
-}
-"#;
-    expect_errors(source, &["parameter `actor` shadows the receiver binding"]);
-}
-
-#[test]
-fn test_duplicate_move_name() {
-    let source = r#"
-system "test" {
-    entity Character { hp: int }
-    move Hack on actor: Character () {
-        trigger: "First"
-        roll: 2d6
-        on success {}
-    }
-    move Hack on actor: Character () {
-        trigger: "Second"
-        roll: 2d6
-        on success {}
-    }
-}
-"#;
-    expect_errors(source, &["duplicate function declaration `Hack`"]);
-}
-
-#[test]
-fn test_move_call_from_derive_rejected() {
-    let source = r#"
-system "test" {
-    entity Character { hp: int }
-    move Hack on actor: Character () {
-        trigger: "When you hack"
-        roll: 2d6
-        on success {}
-    }
-    derive foo(c: Character) -> int {
-        Hack(c)
-        0
-    }
-}
-"#;
-    expect_errors(source, &["is a move and can only be called from action or reaction context"]);
+    expect_errors(source, &["move declarations must be lowered before type-checking"]);
 }
 
 // ── Bare-call shadowing by local bindings ────────────────────────────
@@ -3076,4 +2984,347 @@ system "test" {
 }
 "#;
     expect_errors(source, &["cannot compare"]);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Phase 0: Move lowering tests
+// ═══════════════════════════════════════════════════════════════
+
+#[test]
+fn lower_move_roundtrip_no_move_decls_remain() {
+    let source = r#"
+system "test" {
+    entity Character {
+        stat: int
+    }
+    move GoAggro on actor: Character () {
+        trigger: "When you threaten with force"
+        roll: 2d6 + actor.stat
+        on strong_hit {
+            actor.stat += 1
+        }
+        on weak_hit {
+            actor.stat += 0
+        }
+        on miss {
+            actor.stat -= 1
+        }
+    }
+}
+"#;
+    let (program, result) = check_lowered(source);
+    // No checker errors
+    let errors: Vec<_> = result
+        .diagnostics
+        .iter()
+        .filter(|d| d.severity == ttrpg_ast::diagnostic::Severity::Error)
+        .collect();
+    if !errors.is_empty() {
+        let sm = SourceMap::new(source);
+        let rendered: Vec<_> = errors.iter().map(|d| sm.render(d)).collect();
+        panic!(
+            "expected no errors after lowering, found {}:\n{}",
+            errors.len(),
+            rendered.join("\n\n")
+        );
+    }
+    // No DeclKind::Move remains
+    for item in &program.items {
+        if let ttrpg_ast::ast::TopLevel::System(system) = &item.node {
+            for decl in &system.decls {
+                assert!(
+                    !matches!(decl.node, DeclKind::Move(_)),
+                    "DeclKind::Move should not remain after lowering"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn lower_move_preserves_trigger_text() {
+    let source = r#"
+system "test" {
+    entity Character {
+        stat: int
+    }
+    move GoAggro on actor: Character () {
+        trigger: "When you threaten with force"
+        roll: 2d6 + actor.stat
+        on strong_hit {}
+        on weak_hit {}
+        on miss {}
+    }
+}
+"#;
+    let (program, _) = check_lowered(source);
+    // Find the synthesized action and verify trigger_text
+    for item in &program.items {
+        if let ttrpg_ast::ast::TopLevel::System(system) = &item.node {
+            for decl in &system.decls {
+                if let DeclKind::Action(a) = &decl.node {
+                    assert_eq!(a.name, "GoAggro");
+                    assert_eq!(
+                        a.trigger_text,
+                        Some("When you threaten with force".to_string())
+                    );
+                    assert!(a.synthetic);
+                    return;
+                }
+            }
+        }
+    }
+    panic!("synthesized action not found");
+}
+
+#[test]
+fn lower_move_missing_outcome_produces_diagnostic() {
+    let source = r#"
+system "test" {
+    entity Character { stat: int }
+    move Hack on actor: Character () {
+        trigger: "hack"
+        roll: 2d6
+        on strong_hit {}
+        on weak_hit {}
+    }
+}
+"#;
+    let (_, diags) = lower_source(source);
+    assert!(
+        diags.iter().any(|d| d.message.contains("missing required outcome `miss`")),
+        "expected diagnostic about missing 'miss' outcome, got: {:?}",
+        diags.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn lower_move_extra_outcome_produces_diagnostic() {
+    let source = r#"
+system "test" {
+    entity Character { stat: int }
+    move Hack on actor: Character () {
+        trigger: "hack"
+        roll: 2d6
+        on strong_hit {}
+        on weak_hit {}
+        on miss {}
+        on critical {}
+    }
+}
+"#;
+    let (_, diags) = lower_source(source);
+    assert!(
+        diags.iter().any(|d| d.message.contains("invalid outcome `critical`")),
+        "expected diagnostic about invalid outcome, got: {:?}",
+        diags.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn lower_move_duplicate_outcome_produces_diagnostic() {
+    let source = r#"
+system "test" {
+    entity Character { stat: int }
+    move Hack on actor: Character () {
+        trigger: "hack"
+        roll: 2d6
+        on strong_hit {}
+        on strong_hit {}
+        on weak_hit {}
+        on miss {}
+    }
+}
+"#;
+    let (_, diags) = lower_source(source);
+    assert!(
+        diags.iter().any(|d| d.message.contains("duplicate outcome `strong_hit`")),
+        "expected diagnostic about duplicate outcome, got: {:?}",
+        diags.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn lower_move_synthetic_name_collision_produces_diagnostic() {
+    let source = r#"
+system "test" {
+    entity Character { stat: int }
+    mechanic __hack_roll(c: Character) -> RollResult {
+        roll(2d6)
+    }
+    move Hack on actor: Character () {
+        trigger: "hack"
+        roll: 2d6
+        on strong_hit {}
+        on weak_hit {}
+        on miss {}
+    }
+}
+"#;
+    let (_, diags) = lower_source(source);
+    assert!(
+        diags.iter().any(|d| d.message.contains("collides with an existing declaration")),
+        "expected diagnostic about synthetic name collision, got: {:?}",
+        diags.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}
+
+// ── Checker prerequisite tests ──────────────────────────────────
+
+#[test]
+fn test_reserved_prefix_rejected_on_user_declarations() {
+    let source = r#"
+system "test" {
+    derive __my_func() -> int { 0 }
+}
+"#;
+    expect_errors(source, &["names starting with `__` are reserved"]);
+}
+
+#[test]
+fn test_reserved_prefix_accepted_on_synthetic_declarations() {
+    // Moves lower to synthetic names starting with __; these must be accepted
+    let source = r#"
+system "test" {
+    entity Character { stat: int }
+    move GoAggro on actor: Character () {
+        trigger: "threaten"
+        roll: 2d6 + actor.stat
+        on strong_hit {}
+        on weak_hit {}
+        on miss {}
+    }
+}
+"#;
+    let (_, result) = check_lowered(source);
+    let errors: Vec<_> = result
+        .diagnostics
+        .iter()
+        .filter(|d| d.severity == ttrpg_ast::diagnostic::Severity::Error)
+        .collect();
+    assert!(
+        errors.is_empty(),
+        "synthetic __ names should be accepted, but got errors: {:?}",
+        errors.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn test_direct_reaction_call_rejected() {
+    let source = r#"
+system "test" {
+    entity Character { hp: int }
+    event TakeDamage(target: Character) {}
+    reaction Parry on reactor: Character (
+        trigger: TakeDamage(reactor)
+    ) {
+        resolve {}
+    }
+    action Attack on actor: Character () {
+        resolve {
+            Parry(actor)
+        }
+    }
+}
+"#;
+    expect_errors(source, &["reactions cannot be called directly"]);
+}
+
+#[test]
+fn test_set_position_rejected() {
+    let source = r#"
+system "test" {
+    derive foo(s: set<Position>) -> int { 0 }
+}
+"#;
+    expect_errors(source, &["Position cannot be used as a set element type"]);
+}
+
+#[test]
+fn test_map_position_key_rejected() {
+    let source = r#"
+system "test" {
+    derive foo(m: map<Position, int>) -> int { 0 }
+}
+"#;
+    expect_errors(source, &["Position cannot be used as a map key type"]);
+}
+
+#[test]
+fn test_trigger_binding_rejects_effectful_calls() {
+    let source = r#"
+system "test" {
+    entity Character { hp: int }
+    mechanic do_roll(c: Character) -> RollResult {
+        roll(2d6)
+    }
+    event TakeDamage(target: Character) {}
+    reaction Parry on reactor: Character (
+        trigger: TakeDamage(target: reactor)
+    ) {
+        resolve {}
+    }
+}
+"#;
+    // This should pass — trigger binding just uses receiver identity
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_trigger_binding_allows_pure_builtins() {
+    let source = r#"
+system "test" {
+    entity Character { hp: int }
+    event TakeDamage(amount: int) {}
+    reaction Guard on reactor: Character (
+        trigger: TakeDamage(amount: max(0, 1))
+    ) {
+        resolve {}
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn lower_move_with_params_roundtrip() {
+    let source = r#"
+system "test" {
+    entity Character { stat: int }
+    move GoAggro on actor: Character (target: Character) {
+        trigger: "threaten with force"
+        roll: 2d6 + actor.stat
+        on strong_hit {
+            target.stat -= 1
+        }
+        on weak_hit {}
+        on miss {
+            actor.stat -= 1
+        }
+    }
+}
+"#;
+    let (program, result) = check_lowered(source);
+    let errors: Vec<_> = result
+        .diagnostics
+        .iter()
+        .filter(|d| d.severity == ttrpg_ast::diagnostic::Severity::Error)
+        .collect();
+    if !errors.is_empty() {
+        let sm = SourceMap::new(source);
+        let rendered: Vec<_> = errors.iter().map(|d| sm.render(d)).collect();
+        panic!(
+            "expected no errors, found {}:\n{}",
+            errors.len(),
+            rendered.join("\n\n")
+        );
+    }
+    // Verify no DeclKind::Move remains
+    for item in &program.items {
+        if let ttrpg_ast::ast::TopLevel::System(system) = &item.node {
+            for decl in &system.decls {
+                assert!(!matches!(decl.node, DeclKind::Move(_)));
+            }
+        }
+    }
 }

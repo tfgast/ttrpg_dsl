@@ -7,43 +7,43 @@ Companion to [`interpreter_impl_plan.md`](interpreter_impl_plan.md). Check items
 ## Phase 0: Move Lowering (atomic PR)
 
 ### AST prerequisites
-- [ ] Add `synthetic: bool` to `FnDecl` (parser defaults to `false`)
-- [ ] Add `trigger_text: Option<String>` to `ActionDecl` (parser defaults to `None`)
-- [ ] Add `synthetic: bool` to `ActionDecl` (parser defaults to `false`)
+- [x] Add `synthetic: bool` to `FnDecl` (parser defaults to `false`)
+- [x] Add `trigger_text: Option<String>` to `ActionDecl` (parser defaults to `None`)
+- [x] Add `synthetic: bool` to `ActionDecl` (parser defaults to `false`)
 
 ### Checker prerequisites
-- [ ] Reject `__` prefix on declarations where `synthetic == false`
-- [ ] Remove `FnKind::Move` from `FnKind` enum
-- [ ] Replace `DeclKind::Move` handling in `collect.rs` with diagnostic; delete `collect_move`
-- [ ] Replace `DeclKind::Move` handling in `check.rs` with diagnostic; delete `check_move`
-- [ ] Reject direct reaction calls (`FnKind::Reaction` in call position)
-- [ ] Reject `Position` as set element type (`set<Position>`)
-- [ ] Reject `Position` as map key type (`map<Position, _>`)
-- [ ] Add `BlockKind::TriggerBinding` (disallows dice, mutations, turn access, action/reaction/prompt/mechanic calls)
-- [ ] Push `BlockKind::TriggerBinding` around trigger binding checking in `check_reaction`
-- [ ] Push `BlockKind::TriggerBinding` around suppress binding checking in `check_condition`
+- [x] Reject `__` prefix on declarations where `synthetic == false`
+- [x] Remove `FnKind::Move` from `FnKind` enum
+- [x] Replace `DeclKind::Move` handling in `collect.rs` with diagnostic; delete `collect_move`
+- [x] Replace `DeclKind::Move` handling in `check.rs` with diagnostic; delete `check_move`
+- [x] Reject direct reaction calls (`FnKind::Reaction` in call position)
+- [x] Reject `Position` as set element type (`set<Position>`)
+- [x] Reject `Position` as map key type (`map<Position, _>`)
+- [x] Add `BlockKind::TriggerBinding` (disallows dice, mutations, turn access, action/reaction/prompt/mechanic calls)
+- [x] Push `BlockKind::TriggerBinding` around trigger binding checking in `check_reaction`
+- [x] Push `BlockKind::TriggerBinding` around suppress binding checking in `check_condition`
 
 ### Lowering implementation (`lower.rs`)
-- [ ] `lower_moves(program, diags) -> Program` function signature
-- [ ] Validate outcome set is exactly `{strong_hit, weak_hit, miss}`
-- [ ] Check for synthetic name collisions (`__{snake}_roll`)
-- [ ] Synthesize mechanic `FnDecl` with `synthetic: true`
-- [ ] Synthesize `ActionDecl` with `synthetic: true` and `trigger_text`
-- [ ] Build resolve block: let-binding + `GuardMatch` with PbtA thresholds
-- [ ] Replace `DeclKind::Move` with synthesized mechanic + action
-- [ ] Skip malformed moves (leave as `DeclKind::Move` for checker to catch)
+- [x] `lower_moves(program, diags) -> Program` function signature
+- [x] Validate outcome set is exactly `{strong_hit, weak_hit, miss}`
+- [x] Check for synthetic name collisions (`__{snake}_roll`)
+- [x] Synthesize mechanic `FnDecl` with `synthetic: true`
+- [x] Synthesize `ActionDecl` with `synthetic: true` and `trigger_text`
+- [x] Build resolve block: let-binding + `GuardMatch` with PbtA thresholds
+- [x] Replace `DeclKind::Move` with synthesized mechanic + action
+- [x] Skip malformed moves (leave as `DeclKind::Move` for checker to catch)
 
 ### Tests
-- [ ] Round-trip: parse move → lower → check → verify no `DeclKind::Move` remains
-- [ ] Verify trigger text preserved on synthesized action
-- [ ] Missing/extra/duplicate outcomes produce diagnostics
-- [ ] Synthetic name collision produces diagnostic
-- [ ] `__` prefix rejected on user-declared names
-- [ ] `__` prefix accepted on synthetic declarations
-- [ ] Direct reaction call rejected by checker
-- [ ] `set<Position>` rejected by checker
-- [ ] `map<Position, _>` rejected by checker
-- [ ] `BlockKind::TriggerBinding` restricts effectful calls
+- [x] Round-trip: parse move → lower → check → verify no `DeclKind::Move` remains
+- [x] Verify trigger text preserved on synthesized action
+- [x] Missing/extra/duplicate outcomes produce diagnostics
+- [x] Synthetic name collision produces diagnostic
+- [x] `__` prefix rejected on user-declared names
+- [x] `__` prefix accepted on synthetic declarations
+- [x] Direct reaction call rejected by checker
+- [x] `set<Position>` rejected by checker
+- [x] `map<Position, _>` rejected by checker
+- [x] `BlockKind::TriggerBinding` restricts effectful calls
 
 ---
 

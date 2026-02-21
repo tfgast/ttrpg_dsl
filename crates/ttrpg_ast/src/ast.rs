@@ -2,19 +2,23 @@ use crate::{DiceFilter, Span, Spanned};
 
 // ── Program structure ────────────────────────────────────────────
 
+#[derive(Clone)]
 pub struct Program {
     pub items: Vec<Spanned<TopLevel>>,
 }
 
+#[derive(Clone)]
 pub enum TopLevel {
     Use(UseDecl),
     System(SystemBlock),
 }
 
+#[derive(Clone)]
 pub struct UseDecl {
     pub path: String,
 }
 
+#[derive(Clone)]
 pub struct SystemBlock {
     pub name: String,
     pub decls: Vec<Spanned<DeclKind>>,
@@ -22,6 +26,7 @@ pub struct SystemBlock {
 
 // ── Declarations ─────────────────────────────────────────────────
 
+#[derive(Clone)]
 pub enum DeclKind {
     Enum(EnumDecl),
     Struct(StructDecl),
@@ -37,11 +42,13 @@ pub enum DeclKind {
     Move(MoveDecl),
 }
 
+#[derive(Clone)]
 pub struct EnumDecl {
     pub name: String,
     pub variants: Vec<EnumVariant>,
 }
 
+#[derive(Clone)]
 pub struct EnumVariant {
     pub name: String,
     pub fields: Option<Vec<FieldEntry>>,
@@ -49,23 +56,27 @@ pub struct EnumVariant {
 }
 
 /// Inline field in enum variant or param list: `name: type`
+#[derive(Clone)]
 pub struct FieldEntry {
     pub name: String,
     pub ty: Spanned<TypeExpr>,
     pub span: Span,
 }
 
+#[derive(Clone)]
 pub struct StructDecl {
     pub name: String,
     pub fields: Vec<FieldDef>,
 }
 
+#[derive(Clone)]
 pub struct EntityDecl {
     pub name: String,
     pub fields: Vec<FieldDef>,
 }
 
 /// Field definition with optional default: `name: type (= expr)?`
+#[derive(Clone)]
 pub struct FieldDef {
     pub name: String,
     pub ty: Spanned<TypeExpr>,
@@ -74,13 +85,18 @@ pub struct FieldDef {
 }
 
 /// Shared representation for derive and mechanic declarations.
+#[derive(Clone)]
 pub struct FnDecl {
     pub name: String,
     pub params: Vec<Param>,
     pub return_type: Spanned<TypeExpr>,
     pub body: Block,
+    /// True for declarations synthesized by `lower_moves` (e.g., `__{move}_roll`).
+    /// Parser always sets this to `false`.
+    pub synthetic: bool,
 }
 
+#[derive(Clone)]
 pub struct Param {
     pub name: String,
     pub ty: Spanned<TypeExpr>,
@@ -88,6 +104,7 @@ pub struct Param {
     pub span: Span,
 }
 
+#[derive(Clone)]
 pub struct ActionDecl {
     pub name: String,
     pub receiver_name: String,
@@ -96,13 +113,21 @@ pub struct ActionDecl {
     pub cost: Option<CostClause>,
     pub requires: Option<Spanned<ExprKind>>,
     pub resolve: Block,
+    /// Preserved from the originating move declaration's trigger string.
+    /// `None` for user-written actions, `Some(...)` for actions synthesized from moves.
+    pub trigger_text: Option<String>,
+    /// True for actions synthesized by `lower_moves`.
+    /// Parser always sets this to `false`.
+    pub synthetic: bool,
 }
 
+#[derive(Clone)]
 pub struct CostClause {
     pub tokens: Vec<Spanned<String>>,
     pub span: Span,
 }
 
+#[derive(Clone)]
 pub struct ReactionDecl {
     pub name: String,
     pub receiver_name: String,
@@ -112,24 +137,28 @@ pub struct ReactionDecl {
     pub resolve: Block,
 }
 
+#[derive(Clone)]
 pub struct TriggerExpr {
     pub event_name: String,
     pub bindings: Vec<TriggerBinding>,
     pub span: Span,
 }
 
+#[derive(Clone)]
 pub struct TriggerBinding {
     pub name: Option<String>,
     pub value: Spanned<ExprKind>,
     pub span: Span,
 }
 
+#[derive(Clone)]
 pub struct EventDecl {
     pub name: String,
     pub params: Vec<Param>,
     pub fields: Vec<FieldDef>,
 }
 
+#[derive(Clone)]
 pub struct ConditionDecl {
     pub name: String,
     pub receiver_name: String,
@@ -137,11 +166,13 @@ pub struct ConditionDecl {
     pub clauses: Vec<ConditionClause>,
 }
 
+#[derive(Clone)]
 pub enum ConditionClause {
     Modify(ModifyClause),
     Suppress(SuppressClause),
 }
 
+#[derive(Clone)]
 pub struct ModifyClause {
     pub target: String,
     pub bindings: Vec<ModifyBinding>,
@@ -149,12 +180,14 @@ pub struct ModifyClause {
     pub span: Span,
 }
 
+#[derive(Clone)]
 pub struct ModifyBinding {
     pub name: String,
     pub value: Spanned<ExprKind>,
     pub span: Span,
 }
 
+#[derive(Clone)]
 pub enum ModifyStmt {
     Let {
         name: String,
@@ -180,12 +213,14 @@ pub enum ModifyStmt {
     },
 }
 
+#[derive(Clone)]
 pub struct SuppressClause {
     pub event_name: String,
     pub bindings: Vec<ModifyBinding>,
     pub span: Span,
 }
 
+#[derive(Clone)]
 pub struct PromptDecl {
     pub name: String,
     pub params: Vec<Param>,
@@ -194,6 +229,7 @@ pub struct PromptDecl {
     pub suggest: Option<Spanned<ExprKind>>,
 }
 
+#[derive(Clone)]
 pub struct OptionDecl {
     pub name: String,
     pub extends: Option<String>,
@@ -202,6 +238,7 @@ pub struct OptionDecl {
     pub when_enabled: Option<Vec<ModifyClause>>,
 }
 
+#[derive(Clone)]
 pub struct MoveDecl {
     pub name: String,
     pub receiver_name: String,
@@ -212,6 +249,7 @@ pub struct MoveDecl {
     pub outcomes: Vec<OutcomeBlock>,
 }
 
+#[derive(Clone)]
 pub struct OutcomeBlock {
     pub name: String,
     pub body: Block,
@@ -220,6 +258,7 @@ pub struct OutcomeBlock {
 
 // ── Types ────────────────────────────────────────────────────────
 
+#[derive(Clone)]
 pub enum TypeExpr {
     Int,
     Bool,
@@ -243,6 +282,7 @@ pub enum TypeExpr {
 
 pub type Block = Spanned<Vec<Spanned<StmtKind>>>;
 
+#[derive(Clone)]
 pub enum ExprKind {
     IntLit(i64),
     StringLit(std::string::String),
@@ -318,40 +358,47 @@ pub enum UnaryOp {
     Not,
 }
 
+#[derive(Clone)]
 pub struct Arg {
     pub name: Option<std::string::String>,
     pub value: Spanned<ExprKind>,
     pub span: Span,
 }
 
+#[derive(Clone)]
 pub struct StructFieldInit {
     pub name: std::string::String,
     pub value: Spanned<ExprKind>,
     pub span: Span,
 }
 
+#[derive(Clone)]
 pub enum ElseBranch {
     Block(Block),
     If(Box<Spanned<ExprKind>>),
 }
 
+#[derive(Clone)]
 pub struct PatternArm {
     pub pattern: Spanned<PatternKind>,
     pub body: ArmBody,
     pub span: Span,
 }
 
+#[derive(Clone)]
 pub struct GuardArm {
     pub guard: GuardKind,
     pub body: ArmBody,
     pub span: Span,
 }
 
+#[derive(Clone)]
 pub enum GuardKind {
     Wildcard,
     Expr(Spanned<ExprKind>),
 }
 
+#[derive(Clone)]
 pub enum ArmBody {
     Expr(Spanned<ExprKind>),
     Block(Block),
@@ -359,6 +406,7 @@ pub enum ArmBody {
 
 // ── Patterns ─────────────────────────────────────────────────────
 
+#[derive(Clone)]
 pub enum PatternKind {
     Wildcard,
     IntLit(i64),
@@ -382,6 +430,7 @@ pub enum PatternKind {
 
 // ── Statements ───────────────────────────────────────────────────
 
+#[derive(Clone)]
 pub enum StmtKind {
     Let {
         name: std::string::String,
@@ -396,12 +445,14 @@ pub enum StmtKind {
     Expr(Spanned<ExprKind>),
 }
 
+#[derive(Clone)]
 pub struct LValue {
     pub root: std::string::String,
     pub segments: Vec<LValueSegment>,
     pub span: Span,
 }
 
+#[derive(Clone)]
 pub enum LValueSegment {
     Field(std::string::String),
     Index(Spanned<ExprKind>),

@@ -12,6 +12,10 @@ pub enum BlockKind {
     Condition,
     Prompt,
     ModifyClause,
+    /// Trigger/suppress binding expressions — disallows dice, mutations, turn
+    /// access, action/reaction calls, prompts, and mechanic calls. Only
+    /// side-effect-free builtins (floor, ceil, min, max, distance) are permitted.
+    TriggerBinding,
     /// Inner blocks (if, match, etc.) inherit from enclosing real block.
     Inner,
 }
@@ -36,6 +40,12 @@ impl BlockKind {
             self,
             BlockKind::ActionResolve | BlockKind::ReactionResolve
         )
+    }
+
+    /// Whether function calls (derives, mechanics, prompts, actions, reactions)
+    /// are allowed. TriggerBinding only permits side-effect-free builtins.
+    pub fn allows_calls(&self) -> bool {
+        !matches!(self, BlockKind::TriggerBinding)
     }
 }
 
@@ -113,6 +123,11 @@ impl ScopeStack {
     pub fn allows_turn(&self) -> bool {
         self.current_block_kind()
             .map_or(false, |k| k.allows_turn())
+    }
+
+    pub fn allows_calls(&self) -> bool {
+        self.current_block_kind()
+            .map_or(true, |k| k.allows_calls())
     }
 
     /// Check if a name is already bound in the innermost scope.

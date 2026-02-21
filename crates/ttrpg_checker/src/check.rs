@@ -61,7 +61,12 @@ impl<'a> Checker<'a> {
             DeclKind::Event(e) => self.check_event(e),
             DeclKind::Enum(_) => {}
             DeclKind::Option(o) => self.check_option(o),
-            DeclKind::Move(m) => self.check_move(m),
+            DeclKind::Move(_) => {
+                self.error(
+                    "move declarations must be lowered before type-checking",
+                    decl.span,
+                );
+            }
         }
     }
 
@@ -166,6 +171,8 @@ impl<'a> Checker<'a> {
                 .filter_map(|b| b.name.clone())
                 .collect();
 
+            // Trigger binding expressions must be side-effect-free
+            self.scope.push(BlockKind::TriggerBinding);
             for binding in &r.trigger.bindings {
                 if let Some(ref name) = binding.name {
                     if !seen_bindings.insert(name.clone()) {
@@ -245,6 +252,8 @@ impl<'a> Checker<'a> {
                 }
             }
 
+            self.scope.pop(); // TriggerBinding
+
             // Bind `trigger` with event payload fields as a synthetic struct.
             // Placed after the binding loop so binding expressions cannot
             // reference `trigger` itself.
@@ -310,55 +319,6 @@ impl<'a> Checker<'a> {
                 self.check_modify_clause(clause, None);
             }
         }
-    }
-
-    fn check_move(&mut self, m: &MoveDecl) {
-        self.scope.push(BlockKind::ActionResolve);
-
-        // Bind receiver
-        let recv_ty = self.env.resolve_type(&m.receiver_type);
-        self.scope.bind(
-            m.receiver_name.clone(),
-            VarBinding {
-                ty: recv_ty,
-                mutable: false,
-                is_local: false,
-            },
-        );
-
-        // Bind params
-        self.bind_params(&m.params);
-
-        // Bind turn keyword
-        self.scope.bind(
-            "turn".into(),
-            VarBinding {
-                ty: Ty::TurnBudget,
-                mutable: true,
-                is_local: false,
-            },
-        );
-
-        // Check roll expression must be DiceExpr
-        let roll_ty = self.check_expr(&m.roll_expr);
-        if !roll_ty.is_error() && roll_ty != Ty::DiceExpr {
-            self.error(
-                format!(
-                    "move `{}` roll expression must be DiceExpr, found {}",
-                    m.name, roll_ty
-                ),
-                m.roll_expr.span,
-            );
-        }
-
-        // Check each outcome block
-        for outcome in &m.outcomes {
-            self.scope.push(BlockKind::ActionResolve);
-            self.check_block(&outcome.body);
-            self.scope.pop();
-        }
-
-        self.scope.pop();
     }
 
     fn check_prompt(&mut self, p: &PromptDecl) {

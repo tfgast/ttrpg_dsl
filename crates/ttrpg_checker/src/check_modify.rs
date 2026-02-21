@@ -249,8 +249,8 @@ impl<'a> Checker<'a> {
         receiver_type: &Spanned<TypeExpr>,
     ) {
         if let Some(event_info) = self.env.events.get(&clause.event_name).cloned() {
-            // Push scope and bind condition receiver so binding expressions can reference it
-            self.scope.push(BlockKind::ModifyClause);
+            // Push TriggerBinding scope — suppress binding expressions must be side-effect-free
+            self.scope.push(BlockKind::TriggerBinding);
             let recv_ty = self.env.resolve_type(receiver_type);
             self.scope.bind(
                 receiver_name.to_string(),

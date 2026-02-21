@@ -10,6 +10,20 @@ use crate::ty::Ty;
 
 const VALID_COST_TOKENS: &[&str] = &["action", "bonus_action", "reaction"];
 
+/// Check if a name uses the reserved `__` prefix. Returns `true` if the name
+/// is reserved (and emits a diagnostic).
+fn check_reserved_prefix(name: &str, span: Span, diagnostics: &mut Vec<Diagnostic>) -> bool {
+    if name.starts_with("__") {
+        diagnostics.push(Diagnostic::error(
+            format!("names starting with `__` are reserved for internal use: `{}`", name),
+            span,
+        ));
+        true
+    } else {
+        false
+    }
+}
+
 /// Pass 1: Collect all top-level declarations into a TypeEnv.
 pub fn collect(program: &Program) -> (TypeEnv, Vec<Diagnostic>) {
     let mut env = TypeEnv::new();
@@ -67,6 +81,11 @@ fn pass_1a(
             _ => continue,
         };
 
+        // Reject reserved `__` prefix on type declarations
+        if check_reserved_prefix(&name, decl.span, diagnostics) {
+            continue;
+        }
+
         // TurnBudget must be a struct — the built-in turn binding and
         // types_compatible only handle struct TurnBudget.
         if name == "TurnBudget" && !matches!(&stub, DeclInfo::Struct(_)) {
@@ -115,33 +134,68 @@ fn pass_1b(
                     collect_entity(e, env, diagnostics);
                 }
             }
-            DeclKind::Derive(f) => collect_fn(
-                &f.name,
-                FnKind::Derive,
-                &f.params,
-                Some(&f.return_type),
-                None,
-                env,
-                diagnostics,
-                decl.span,
-            ),
-            DeclKind::Mechanic(f) => collect_fn(
-                &f.name,
-                FnKind::Mechanic,
-                &f.params,
-                Some(&f.return_type),
-                None,
-                env,
-                diagnostics,
-                decl.span,
-            ),
-            DeclKind::Action(a) => collect_action(a, env, diagnostics, decl.span),
-            DeclKind::Reaction(r) => collect_reaction(r, env, diagnostics, decl.span),
-            DeclKind::Condition(c) => collect_condition(c, env, diagnostics, decl.span),
-            DeclKind::Prompt(p) => collect_prompt(p, env, diagnostics, decl.span),
-            DeclKind::Event(e) => collect_event(e, env, diagnostics, decl.span),
-            DeclKind::Option(o) => collect_option(o, env, diagnostics, decl.span),
-            DeclKind::Move(m) => collect_move(m, env, diagnostics, decl.span),
+            DeclKind::Derive(f) => {
+                if !f.synthetic {
+                    check_reserved_prefix(&f.name, decl.span, diagnostics);
+                }
+                collect_fn(
+                    &f.name,
+                    FnKind::Derive,
+                    &f.params,
+                    Some(&f.return_type),
+                    None,
+                    env,
+                    diagnostics,
+                    decl.span,
+                );
+            }
+            DeclKind::Mechanic(f) => {
+                if !f.synthetic {
+                    check_reserved_prefix(&f.name, decl.span, diagnostics);
+                }
+                collect_fn(
+                    &f.name,
+                    FnKind::Mechanic,
+                    &f.params,
+                    Some(&f.return_type),
+                    None,
+                    env,
+                    diagnostics,
+                    decl.span,
+                );
+            }
+            DeclKind::Action(a) => {
+                if !a.synthetic {
+                    check_reserved_prefix(&a.name, decl.span, diagnostics);
+                }
+                collect_action(a, env, diagnostics, decl.span);
+            }
+            DeclKind::Reaction(r) => {
+                check_reserved_prefix(&r.name, decl.span, diagnostics);
+                collect_reaction(r, env, diagnostics, decl.span);
+            }
+            DeclKind::Condition(c) => {
+                check_reserved_prefix(&c.name, decl.span, diagnostics);
+                collect_condition(c, env, diagnostics, decl.span);
+            }
+            DeclKind::Prompt(p) => {
+                check_reserved_prefix(&p.name, decl.span, diagnostics);
+                collect_prompt(p, env, diagnostics, decl.span);
+            }
+            DeclKind::Event(e) => {
+                check_reserved_prefix(&e.name, decl.span, diagnostics);
+                collect_event(e, env, diagnostics, decl.span);
+            }
+            DeclKind::Option(o) => {
+                check_reserved_prefix(&o.name, decl.span, diagnostics);
+                collect_option(o, env, diagnostics, decl.span);
+            }
+            DeclKind::Move(_) => {
+                diagnostics.push(Diagnostic::error(
+                    "move declarations must be lowered before type-checking",
+                    decl.span,
+                ));
+            }
         }
     }
 }
@@ -640,74 +694,6 @@ fn collect_option(
             span,
         ));
     }
-}
-
-fn collect_move(
-    m: &MoveDecl,
-    env: &mut TypeEnv,
-    diagnostics: &mut Vec<Diagnostic>,
-    span: Span,
-) {
-    env.validate_type_names(&m.receiver_type, diagnostics);
-    let recv_ty = env.resolve_type(&m.receiver_type);
-    if !recv_ty.is_error() && !recv_ty.is_entity() {
-        diagnostics.push(Diagnostic::error(
-            format!(
-                "move `{}` receiver type must be an entity, found {}",
-                m.name,
-                recv_ty.display()
-            ),
-            m.receiver_type.span,
-        ));
-    }
-
-    // Detect implicit name shadowing
-    if m.receiver_name == "turn" {
-        diagnostics.push(Diagnostic::error(
-            format!(
-                "move `{}` receiver `turn` shadows the implicit turn budget binding",
-                m.name
-            ),
-            span,
-        ));
-    }
-    for p in &m.params {
-        if p.name == "turn" {
-            diagnostics.push(Diagnostic::error(
-                format!(
-                    "move `{}` parameter `turn` shadows the implicit turn budget binding",
-                    m.name
-                ),
-                p.span,
-            ));
-        }
-        if p.name == m.receiver_name {
-            diagnostics.push(Diagnostic::error(
-                format!(
-                    "move `{}` parameter `{}` shadows the receiver binding",
-                    m.name, p.name
-                ),
-                p.span,
-            ));
-        }
-    }
-
-    let receiver = ParamInfo {
-        name: m.receiver_name.clone(),
-        ty: env.resolve_type(&m.receiver_type),
-        has_default: false,
-    };
-
-    collect_fn(
-        &m.name,
-        FnKind::Move,
-        &m.params,
-        None,
-        Some(receiver),
-        env,
-        diagnostics,
-        span,
-    );
 }
 
 /// Register built-in type declarations that exist even without user definitions.
