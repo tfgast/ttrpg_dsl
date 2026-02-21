@@ -25,18 +25,20 @@ pub(crate) fn eval_call(
     call_span: Span,
 ) -> Result<Value, RuntimeError> {
     match &callee.node {
-        // ── Simple identifier: function name or bare enum variant ──
+        // ── Simple identifier: bare enum variant or function name ──
         ExprKind::Ident(name) => {
-            // 1. Check if it's a function (user-defined or builtin)
-            if let Some(fn_info) = env.interp.type_env.lookup_fn(name) {
-                let fn_info = fn_info.clone();
-                return dispatch_fn(env, &fn_info, args, call_span);
-            }
-
-            // 2. Check if it's a bare enum variant with fields (via variant_to_enum)
+            // 1. Check if it's a bare enum variant (via variant_to_enum).
+            //    Variants shadow functions with the same name, matching the
+            //    checker's resolution order (check_expr.rs:630).
             if let Some(enum_name) = env.interp.type_env.variant_to_enum.get(name.as_str()) {
                 let enum_name = enum_name.clone();
                 return construct_enum_variant(env, &enum_name, name, args, call_span);
+            }
+
+            // 2. Check if it's a function (user-defined or builtin)
+            if let Some(fn_info) = env.interp.type_env.lookup_fn(name) {
+                let fn_info = fn_info.clone();
+                return dispatch_fn(env, &fn_info, args, call_span);
             }
 
             Err(RuntimeError::with_span(
@@ -301,9 +303,9 @@ fn dispatch_prompt(
             for (pn, pv) in &bound {
                 env.bind(pn.clone(), pv.clone());
             }
-            let val = eval_expr(env, expr)?;
+            let val = eval_expr(env, expr);
             env.pop_scope();
-            Some(val)
+            Some(val?)
         }
         None => None,
     };
@@ -409,9 +411,11 @@ fn bind_args(
     call_span: Span,
 ) -> Result<Vec<(String, Value)>, RuntimeError> {
     let mut result: Vec<Option<Value>> = vec![None; params.len()];
-    let mut used_positions = vec![false; params.len()];
 
-    // Pass 1: Bind named arguments
+    // Pre-pass: determine which slots are claimed by named args so positional
+    // assignment knows which slots to skip. This must happen before evaluation
+    // so we can evaluate all arguments in source order.
+    let mut named_slots = vec![false; params.len()];
     for arg in args {
         if let Some(ref name) = arg.name {
             let pos = params
@@ -423,22 +427,25 @@ fn bind_args(
                         arg.span,
                     )
                 })?;
-            if result[pos].is_some() {
+            if named_slots[pos] {
                 return Err(RuntimeError::with_span(
                     format!("duplicate argument for parameter '{}'", name),
                     arg.span,
                 ));
             }
-            let val = eval_expr(env, &arg.value)?;
-            result[pos] = Some(val);
-            used_positions[pos] = true;
+            named_slots[pos] = true;
         }
     }
 
-    // Pass 2: Bind positional arguments (fill unclaimed slots left-to-right)
-    let mut pos_iter = (0..params.len()).filter(|i| !used_positions[*i]);
+    // Single pass: evaluate all arguments in source order, assigning each to
+    // its correct parameter slot. This preserves side-effect ordering.
+    let mut pos_iter = (0..params.len()).filter(|i| !named_slots[*i]);
     for arg in args {
-        if arg.name.is_none() {
+        if let Some(ref name) = arg.name {
+            let pos = params.iter().position(|p| p.name == *name).unwrap();
+            let val = eval_expr(env, &arg.value)?;
+            result[pos] = Some(val);
+        } else {
             let pos = pos_iter.next().ok_or_else(|| {
                 RuntimeError::with_span("too many positional arguments", arg.span)
             })?;
@@ -450,16 +457,10 @@ fn bind_args(
     // Pass 3: Fill defaults for unbound optional params.
     // Default expressions may reference earlier parameters (e.g., `f(a: Int, b: Int = a)`),
     // so we push a temporary scope and bind already-resolved params before evaluating defaults.
-    let mut bound = Vec::with_capacity(params.len());
-    let mut needs_default_scope = false;
-
-    // Check if any defaults need evaluating
-    for (i, param) in params.iter().enumerate() {
-        if result[i].is_none() && param.has_default {
-            needs_default_scope = true;
-            break;
-        }
-    }
+    let needs_default_scope = params
+        .iter()
+        .enumerate()
+        .any(|(i, p)| result[i].is_none() && p.has_default);
 
     if needs_default_scope {
         env.push_scope();
@@ -471,12 +472,33 @@ fn bind_args(
         }
     }
 
+    // Collect bound params, popping scope on any exit path.
+    let outcome = fill_defaults(params, &mut result, ast_params, env, call_span);
+
+    if needs_default_scope {
+        env.pop_scope();
+    }
+
+    outcome
+}
+
+/// Inner loop for pass 3 of `bind_args`: fill default values for unbound params.
+///
+/// Extracted so that `bind_args` can unconditionally pop_scope after this returns,
+/// even on error paths.
+fn fill_defaults(
+    params: &[ParamInfo],
+    result: &mut [Option<Value>],
+    ast_params: Option<&[Param]>,
+    env: &mut Env,
+    call_span: Span,
+) -> Result<Vec<(String, Value)>, RuntimeError> {
+    let mut bound = Vec::with_capacity(params.len());
     for (i, param) in params.iter().enumerate() {
         match result[i].take() {
             Some(val) => bound.push((param.name.clone(), val)),
             None => {
                 if param.has_default {
-                    // Look up the default expression from the AST params
                     let default_val = if let Some(ast_ps) = ast_params {
                         if let Some(ast_param) = ast_ps.get(i) {
                             if let Some(ref default_expr) = ast_param.default {
@@ -485,9 +507,6 @@ fn bind_args(
                                 env.bind(param.name.clone(), val.clone());
                                 val
                             } else {
-                                if needs_default_scope {
-                                    env.pop_scope();
-                                }
                                 return Err(RuntimeError::with_span(
                                     format!(
                                         "internal error: parameter '{}' has_default but no default expression",
@@ -497,9 +516,6 @@ fn bind_args(
                                 ));
                             }
                         } else {
-                            if needs_default_scope {
-                                env.pop_scope();
-                            }
                             return Err(RuntimeError::with_span(
                                 format!(
                                     "internal error: parameter index {} out of range for '{}'",
@@ -509,9 +525,6 @@ fn bind_args(
                             ));
                         }
                     } else {
-                        if needs_default_scope {
-                            env.pop_scope();
-                        }
                         return Err(RuntimeError::with_span(
                             format!(
                                 "internal error: no AST params available to evaluate default for '{}'",
@@ -522,9 +535,6 @@ fn bind_args(
                     };
                     bound.push((param.name.clone(), default_val));
                 } else {
-                    if needs_default_scope {
-                        env.pop_scope();
-                    }
                     return Err(RuntimeError::with_span(
                         format!("missing required argument '{}'", param.name),
                         call_span,
@@ -533,11 +543,6 @@ fn bind_args(
             }
         }
     }
-
-    if needs_default_scope {
-        env.pop_scope();
-    }
-
     Ok(bound)
 }
 
@@ -1998,6 +2003,330 @@ mod tests {
             err.message.contains("must be an entity"),
             "Expected entity error, got: {}",
             err.message
+        );
+    }
+
+    // ── Resolution order tests ──────────────────────────────────
+
+    #[test]
+    fn bare_call_prefers_variant_over_function() {
+        // Enum variant "rounds" collides with a function named "rounds".
+        // The interpreter should resolve to the variant, matching the checker.
+        let program = program_with_decls(vec![DeclKind::Derive(FnDecl {
+            name: "rounds".into(),
+            params: vec![Param {
+                name: "n".into(),
+                ty: spanned(TypeExpr::Int),
+                default: None,
+                span: dummy_span(),
+            }],
+            return_type: spanned(TypeExpr::Int),
+            body: spanned(vec![spanned(StmtKind::Expr(spanned(ExprKind::IntLit(999))))]),
+            synthetic: false,
+        })]);
+
+        let mut type_env = TypeEnv::new();
+        type_env.functions.insert(
+            "rounds".into(),
+            FnInfo {
+                name: "rounds".into(),
+                kind: FnKind::Derive,
+                params: vec![ParamInfo { name: "n".into(), ty: Ty::Int, has_default: false }],
+                return_type: Ty::Int,
+                receiver: None,
+            },
+        );
+        type_env.types.insert(
+            "Duration".into(),
+            ttrpg_checker::env::DeclInfo::Enum(EnumInfo {
+                name: "Duration".into(),
+                variants: vec![
+                    VariantInfo { name: "rounds".into(), fields: vec![("value".into(), Ty::Int)] },
+                ],
+            }),
+        );
+        type_env.variant_to_enum.insert("rounds".into(), "Duration".into());
+
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = TestState::new();
+        let mut handler = ScriptedHandler::new();
+        let mut env = make_env(&state, &mut handler, &interp);
+
+        // Call: rounds(5) — should resolve to enum variant, not the function
+        let expr = spanned(ExprKind::Call {
+            callee: Box::new(spanned(ExprKind::Ident("rounds".into()))),
+            args: vec![Arg {
+                name: None,
+                value: spanned(ExprKind::IntLit(5)),
+                span: dummy_span(),
+            }],
+        });
+        let result = crate::eval::eval_expr(&mut env, &expr).unwrap();
+        match result {
+            Value::EnumVariant { enum_name, variant, fields } => {
+                assert_eq!(enum_name, "Duration");
+                assert_eq!(variant, "rounds");
+                assert_eq!(fields.get("value"), Some(&Value::Int(5)));
+            }
+            Value::Int(999) => panic!("resolved to function instead of enum variant"),
+            other => panic!("unexpected result: {:?}", other),
+        }
+    }
+
+    // ── Argument evaluation order tests ─────────────────────────
+
+    #[test]
+    fn mixed_args_evaluated_in_source_order() {
+        // derive add3(a: Int, b: Int, c: Int) -> Int { a + b + c }
+        // Call: add3(roll_a(), c: roll_c(), roll_b())
+        // Effects should be emitted in source order: roll_a, roll_c, roll_b
+        //
+        // We simulate this using mechanic calls that emit RollDice effects.
+        // Instead, we use a simpler approach: bind side-effectful expressions as
+        // variables and verify ordering through a sequenced approach.
+        //
+        // Since we need to verify eval order of arg expressions specifically,
+        // we'll use a derive whose body just returns a + b + c, and pass
+        // expressions that call roll() which emits effects in order.
+
+        let program = program_with_decls(vec![
+            DeclKind::Derive(FnDecl {
+                name: "sum3".into(),
+                params: vec![
+                    Param { name: "a".into(), ty: spanned(TypeExpr::Int), default: None, span: dummy_span() },
+                    Param { name: "b".into(), ty: spanned(TypeExpr::Int), default: None, span: dummy_span() },
+                    Param { name: "c".into(), ty: spanned(TypeExpr::Int), default: None, span: dummy_span() },
+                ],
+                return_type: spanned(TypeExpr::Int),
+                body: spanned(vec![spanned(StmtKind::Expr(spanned(ExprKind::BinOp {
+                    op: BinOp::Add,
+                    lhs: Box::new(spanned(ExprKind::BinOp {
+                        op: BinOp::Add,
+                        lhs: Box::new(spanned(ExprKind::Ident("a".into()))),
+                        rhs: Box::new(spanned(ExprKind::Ident("b".into()))),
+                    })),
+                    rhs: Box::new(spanned(ExprKind::Ident("c".into()))),
+                })))]),
+                synthetic: false,
+            }),
+        ]);
+
+        let mut type_env = type_env_with_builtins();
+        type_env.functions.insert(
+            "sum3".into(),
+            FnInfo {
+                name: "sum3".into(),
+                kind: FnKind::Derive,
+                params: vec![
+                    ParamInfo { name: "a".into(), ty: Ty::Int, has_default: false },
+                    ParamInfo { name: "b".into(), ty: Ty::Int, has_default: false },
+                    ParamInfo { name: "c".into(), ty: Ty::Int, has_default: false },
+                ],
+                return_type: Ty::Int,
+                receiver: None,
+            },
+        );
+
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = TestState::new();
+
+        // Three roll responses: 1d4 -> 1, 1d6 -> 2, 1d8 -> 3
+        // Call: sum3(roll(1d4), c: roll(1d6), roll(1d8))
+        // Source order: roll(1d4), roll(1d6), roll(1d8)
+        // Named c=roll(1d6) is second in source but slot [2].
+        // Positional roll(1d4) fills slot [0], positional roll(1d8) fills slot [1].
+        let mut handler = ScriptedHandler::with_responses(vec![
+            Response::Rolled(RollResult {
+                expr: DiceExpr { count: 1, sides: 4, filter: None, modifier: 0 },
+                dice: vec![1], kept: vec![1], modifier: 0, total: 1, unmodified: 1,
+            }),
+            Response::Rolled(RollResult {
+                expr: DiceExpr { count: 1, sides: 6, filter: None, modifier: 0 },
+                dice: vec![2], kept: vec![2], modifier: 0, total: 2, unmodified: 2,
+            }),
+            Response::Rolled(RollResult {
+                expr: DiceExpr { count: 1, sides: 8, filter: None, modifier: 0 },
+                dice: vec![3], kept: vec![3], modifier: 0, total: 3, unmodified: 3,
+            }),
+        ]);
+        let mut env = make_env(&state, &mut handler, &interp);
+
+        // sum3(roll(1d4), c: roll(1d6), roll(1d8))
+        let expr = spanned(ExprKind::Call {
+            callee: Box::new(spanned(ExprKind::Ident("sum3".into()))),
+            args: vec![
+                Arg {
+                    name: None,
+                    value: spanned(ExprKind::Call {
+                        callee: Box::new(spanned(ExprKind::Ident("roll".into()))),
+                        args: vec![Arg {
+                            name: None,
+                            value: spanned(ExprKind::DiceLit { count: 1, sides: 4, filter: None }),
+                            span: dummy_span(),
+                        }],
+                    }),
+                    span: dummy_span(),
+                },
+                Arg {
+                    name: Some("c".into()),
+                    value: spanned(ExprKind::Call {
+                        callee: Box::new(spanned(ExprKind::Ident("roll".into()))),
+                        args: vec![Arg {
+                            name: None,
+                            value: spanned(ExprKind::DiceLit { count: 1, sides: 6, filter: None }),
+                            span: dummy_span(),
+                        }],
+                    }),
+                    span: dummy_span(),
+                },
+                Arg {
+                    name: None,
+                    value: spanned(ExprKind::Call {
+                        callee: Box::new(spanned(ExprKind::Ident("roll".into()))),
+                        args: vec![Arg {
+                            name: None,
+                            value: spanned(ExprKind::DiceLit { count: 1, sides: 8, filter: None }),
+                            span: dummy_span(),
+                        }],
+                    }),
+                    span: dummy_span(),
+                },
+            ],
+        });
+
+        // RollResult gets coerced to Int when used in arithmetic
+        let result = crate::eval::eval_expr(&mut env, &expr).unwrap();
+        // a=roll(1d4)=1, b=roll(1d8)=3, c=roll(1d6)=2 → 1+3+2 = 6
+        assert_eq!(result, Value::Int(6));
+
+        // Effects emitted in source order: 1d4, 1d6, 1d8
+        assert_eq!(handler.log.len(), 3);
+        match &handler.log[0] {
+            Effect::RollDice { expr } => assert_eq!(expr.sides, 4, "first roll should be 1d4"),
+            e => panic!("expected RollDice, got {:?}", e),
+        }
+        match &handler.log[1] {
+            Effect::RollDice { expr } => assert_eq!(expr.sides, 6, "second roll should be 1d6"),
+            e => panic!("expected RollDice, got {:?}", e),
+        }
+        match &handler.log[2] {
+            Effect::RollDice { expr } => assert_eq!(expr.sides, 8, "third roll should be 1d8"),
+            e => panic!("expected RollDice, got {:?}", e),
+        }
+    }
+
+    // ── Scope balance on error tests ────────────────────────────
+
+    #[test]
+    fn prompt_suggest_error_does_not_leak_scope() {
+        // prompt with suggest that errors — scope should be balanced after
+        let program = program_with_decls(vec![DeclKind::Prompt(PromptDecl {
+            name: "bad_suggest".into(),
+            params: vec![],
+            return_type: spanned(TypeExpr::Int),
+            hint: None,
+            // suggest: undefined_var (will error)
+            suggest: Some(spanned(ExprKind::Ident("undefined_var".into()))),
+        })]);
+
+        let mut type_env = TypeEnv::new();
+        type_env.functions.insert(
+            "bad_suggest".into(),
+            FnInfo {
+                name: "bad_suggest".into(),
+                kind: FnKind::Prompt,
+                params: vec![],
+                return_type: Ty::Int,
+                receiver: None,
+            },
+        );
+
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = TestState::new();
+        let mut handler = ScriptedHandler::new();
+        let mut env = make_env(&state, &mut handler, &interp);
+
+        let scope_depth_before = env.scopes.len();
+
+        let expr = spanned(ExprKind::Call {
+            callee: Box::new(spanned(ExprKind::Ident("bad_suggest".into()))),
+            args: vec![],
+        });
+        let err = crate::eval::eval_expr(&mut env, &expr);
+        assert!(err.is_err(), "should fail due to undefined var in suggest");
+
+        // Scope depth should be restored
+        assert_eq!(
+            env.scopes.len(),
+            scope_depth_before,
+            "scope leaked after suggest evaluation error"
+        );
+    }
+
+    #[test]
+    fn default_eval_error_does_not_leak_scope() {
+        // derive f(a: Int, b: Int = undefined_var) -> Int { a }
+        let program = program_with_decls(vec![DeclKind::Derive(FnDecl {
+            name: "f".into(),
+            params: vec![
+                Param {
+                    name: "a".into(),
+                    ty: spanned(TypeExpr::Int),
+                    default: None,
+                    span: dummy_span(),
+                },
+                Param {
+                    name: "b".into(),
+                    ty: spanned(TypeExpr::Int),
+                    // Default expression references an undefined variable
+                    default: Some(spanned(ExprKind::Ident("undefined_var".into()))),
+                    span: dummy_span(),
+                },
+            ],
+            return_type: spanned(TypeExpr::Int),
+            body: spanned(vec![spanned(StmtKind::Expr(spanned(ExprKind::Ident("a".into()))))]),
+            synthetic: false,
+        })]);
+
+        let mut type_env = TypeEnv::new();
+        type_env.functions.insert(
+            "f".into(),
+            FnInfo {
+                name: "f".into(),
+                kind: FnKind::Derive,
+                params: vec![
+                    ParamInfo { name: "a".into(), ty: Ty::Int, has_default: false },
+                    ParamInfo { name: "b".into(), ty: Ty::Int, has_default: true },
+                ],
+                return_type: Ty::Int,
+                receiver: None,
+            },
+        );
+
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = TestState::new();
+        let mut handler = ScriptedHandler::new();
+        let mut env = make_env(&state, &mut handler, &interp);
+
+        let scope_depth_before = env.scopes.len();
+
+        // Call: f(5) — b defaults to undefined_var which should error
+        let expr = spanned(ExprKind::Call {
+            callee: Box::new(spanned(ExprKind::Ident("f".into()))),
+            args: vec![Arg {
+                name: None,
+                value: spanned(ExprKind::IntLit(5)),
+                span: dummy_span(),
+            }],
+        });
+        let err = crate::eval::eval_expr(&mut env, &expr);
+        assert!(err.is_err(), "should fail due to undefined var in default");
+
+        // Scope depth should be restored
+        assert_eq!(
+            env.scopes.len(),
+            scope_depth_before,
+            "scope leaked after default evaluation error"
         );
     }
 }
