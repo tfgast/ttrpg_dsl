@@ -160,39 +160,53 @@ Companion to [`interpreter_impl_plan.md`](interpreter_impl_plan.md). Check items
 
 ## Phase 3: Statement Execution
 
-### Block and statement execution (`exec.rs`)
-- [ ] `exec_block` — push scope, execute stmts, pop scope, return last value
-- [ ] `exec_stmt` dispatcher
-- [ ] `Let` — evaluate RHS, bind in current scope
-- [ ] `Expr` — evaluate and return
+### Block and statement execution (`eval.rs`)
+- [x] `eval_block` — push scope, execute stmts, pop scope, return last value
+- [x] `eval_stmt` dispatcher
+- [x] `Let` — evaluate RHS, bind in current scope
+- [x] `Expr` — evaluate and return
 
-### Assignment (`exec.rs`)
-- [ ] LValue root resolution (turn / entity / local)
-- [ ] Entity path: convert segments to `FieldPathSegment`, emit `MutateField`
-- [ ] Entity path: include resource bounds from `TypeEnv` in effect
-- [ ] Turn path: emit `MutateTurnField`
-- [ ] Local path: navigate into struct fields
-- [ ] Local path: navigate into list by index
-- [ ] Local path: navigate into map by key
-- [ ] `AssignOp` application (=, +=, -=)
-- [ ] `apply_assign_op` — checked overflow for `+=`, `-=`
+### Assignment (`eval.rs`)
+- [x] LValue root resolution (turn / entity / local)
+- [x] Entity path: convert segments to `FieldPathSegment`, emit `MutateField`
+- [x] Entity path: resource bounds passed as `None` (`Ty::Resource` doesn't carry bounds; evaluating AST bound expressions requires derive calls from Phase 4)
+- [x] Turn path: emit `MutateTurnField`
+- [x] Local path: navigate into struct fields
+- [x] Local path: navigate into list by index (with negative indexing)
+- [x] Local path: navigate into map by key
+- [x] `AssignOp` application (=, +=, -=)
+- [x] `apply_assign_op` — checked overflow for `+=`, `-=`
+- [x] Entity-through-struct path: `trigger.entity.HP -= 5` switches to entity mutation when Entity encountered during local walk
 
 ### Error cases
-- [ ] List index out of bounds → RuntimeError
-- [ ] Map missing key with `=` → insert
-- [ ] Map missing key with `+=`/`-=` → RuntimeError
-- [ ] Struct missing field → RuntimeError (internal)
-- [ ] `+=`/`-=` on incompatible types → RuntimeError
+- [x] List index out of bounds → RuntimeError
+- [x] Map missing key with `=` → insert
+- [x] Map missing key with `+=`/`-=` → RuntimeError
+- [x] Struct missing field → RuntimeError (internal)
+- [x] `+=`/`-=` on incompatible types → RuntimeError
 
 ### Tests
-- [ ] Let bindings visible in scope
-- [ ] Nested scopes: shadowing and isolation
-- [ ] Entity field assignment emits `MutateField`
-- [ ] Turn assignment emits `MutateTurnField`
-- [ ] Local struct field mutation
-- [ ] Local list index mutation
-- [ ] Local map key mutation (insert + update)
-- [ ] All error cases produce correct RuntimeError messages
+- [x] Let bindings visible in scope
+- [x] Nested scopes: shadowing and isolation
+- [x] Entity field assignment emits `MutateField`
+- [x] Entity nested path (e.g. `target.stats[STR]`) emits `MutateField`
+- [x] Entity through struct (e.g. `trigger.entity.HP`) emits `MutateField`
+- [x] Turn assignment emits `MutateTurnField`
+- [x] Turn without actor → RuntimeError
+- [x] Turn with no segments → RuntimeError
+- [x] Local struct field mutation (= and +=)
+- [x] Local list index mutation (positive and negative indices)
+- [x] Local list index out of bounds → RuntimeError
+- [x] Local map key mutation (insert + update + +=)
+- [x] Map missing key with `+=`/`-=` → RuntimeError
+- [x] Direct variable reassignment (=, +=, -=)
+- [x] Undefined variable → RuntimeError
+- [x] Incompatible types in `+=` → RuntimeError
+- [x] Integer overflow in `+=`/`-=` → RuntimeError
+- [x] Float `+=`/`-=` operations
+- [x] RollResult coerced to Int in `+=`
+- [x] Assignment returns `Value::None` as block value
+- [x] Local mutations emit no effects
 
 ---
 

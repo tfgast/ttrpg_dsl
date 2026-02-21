@@ -2,13 +2,15 @@ use std::collections::BTreeMap;
 
 use ttrpg_ast::Spanned;
 use ttrpg_ast::ast::{
-    ArmBody, BinOp, ElseBranch, ExprKind, GuardKind, PatternKind, UnaryOp,
+    ArmBody, AssignOp, BinOp, ElseBranch, ExprKind, GuardKind, LValue, LValueSegment,
+    PatternKind, UnaryOp,
 };
 use ttrpg_checker::env::DeclInfo;
 
 use crate::Env;
 use crate::RuntimeError;
-use crate::state::StateProvider;
+use crate::effect::{Effect, FieldPathSegment};
+use crate::state::{EntityRef, StateProvider};
 use crate::value::{DiceExpr, Value};
 
 // ── Expression evaluator ───────────────────────────────────────
@@ -750,12 +752,9 @@ pub(crate) fn eval_stmt(
             Ok(Value::None)
         }
         StmtKind::Expr(expr) => eval_expr(env, expr),
-        StmtKind::Assign { .. } => {
-            // Stub — full implementation in Phase 3
-            Err(RuntimeError::with_span(
-                "assignments are not yet implemented (Phase 3)",
-                stmt.span,
-            ))
+        StmtKind::Assign { target, op, value } => {
+            eval_assign(env, target, *op, value, stmt.span)?;
+            Ok(Value::None)
         }
     }
 }
@@ -766,6 +765,561 @@ fn eval_arm_body(env: &mut Env, body: &ArmBody) -> Result<Value, RuntimeError> {
     match body {
         ArmBody::Expr(expr) => eval_expr(env, expr),
         ArmBody::Block(block) => eval_block(env, block),
+    }
+}
+
+// ── Assignment ─────────────────────────────────────────────────
+
+/// Execute an assignment statement.
+///
+/// Dispatches to one of three mutation paths:
+/// - **Turn path**: root is `"turn"` → emit `MutateTurnField`
+/// - **Entity path**: root resolves to Entity → emit `MutateField`
+/// - **Local path**: root resolves to local value → mutate in-place
+///
+/// For nested paths (e.g. `trigger.entity.HP -= 5`), the local path
+/// walks into the value until it encounters an Entity, then switches
+/// to the entity mutation path for the remaining segments.
+fn eval_assign(
+    env: &mut Env,
+    target: &LValue,
+    op: AssignOp,
+    value: &Spanned<ExprKind>,
+    span: ttrpg_ast::Span,
+) -> Result<(), RuntimeError> {
+    let rhs = eval_expr(env, value)?;
+
+    // ── Turn budget mutation path ───────────────────────────
+    if target.root == "turn" {
+        return eval_assign_turn(env, target, op, rhs, span);
+    }
+
+    // ── Direct variable reassignment (no segments) ──────────
+    if target.segments.is_empty() {
+        return eval_assign_direct(env, &target.root, op, rhs, span);
+    }
+
+    // ── Look up the root value ──────────────────────────────
+    // We need to check if the root is an entity (entity mutation path)
+    // or a local value (local mutation path).
+    let root_val = env.lookup(&target.root).cloned();
+    match root_val {
+        Some(Value::Entity(entity_ref)) => {
+            // Entity mutation: all segments become FieldPathSegments
+            eval_assign_entity(env, entity_ref, &target.segments, op, rhs, span)
+        }
+        Some(_) => {
+            // Local mutation path: walk segments, switching to entity
+            // mutation if we encounter an Entity along the way
+            eval_assign_local(env, &target.root, &target.segments, op, rhs, span)
+        }
+        None => Err(RuntimeError::with_span(
+            format!("undefined variable `{}`", target.root),
+            span,
+        )),
+    }
+}
+
+/// Turn budget mutation: `turn.actions -= 1`
+fn eval_assign_turn(
+    env: &mut Env,
+    target: &LValue,
+    op: AssignOp,
+    rhs: Value,
+    span: ttrpg_ast::Span,
+) -> Result<(), RuntimeError> {
+    let actor = env.turn_actor.clone().ok_or_else(|| {
+        RuntimeError::with_span(
+            "cannot access `turn` outside of action/reaction context",
+            span,
+        )
+    })?;
+
+    // First segment must be a field name
+    let field = match target.segments.first() {
+        Some(LValueSegment::Field(name)) => name.clone(),
+        Some(LValueSegment::Index(_)) => {
+            return Err(RuntimeError::with_span(
+                "turn budget fields must be accessed by name, not index",
+                span,
+            ));
+        }
+        None => {
+            return Err(RuntimeError::with_span(
+                "cannot reassign `turn` directly; mutate individual fields (e.g. turn.actions -= 1)",
+                span,
+            ));
+        }
+    };
+
+    // Turn path only supports a single field segment
+    if target.segments.len() > 1 {
+        return Err(RuntimeError::with_span(
+            "turn budget fields do not support nested access",
+            span,
+        ));
+    }
+
+    let effect = Effect::MutateTurnField {
+        actor,
+        field,
+        op,
+        value: rhs,
+    };
+    env.handler.handle(effect);
+
+    Ok(())
+}
+
+/// Direct variable reassignment with no segments: `x = 5`, `x += 1`
+fn eval_assign_direct(
+    env: &mut Env,
+    name: &str,
+    op: AssignOp,
+    rhs: Value,
+    span: ttrpg_ast::Span,
+) -> Result<(), RuntimeError> {
+    let var = env.lookup_mut(name).ok_or_else(|| {
+        RuntimeError::with_span(format!("undefined variable `{}`", name), span)
+    })?;
+
+    let new_val = apply_assign_op(op, var.clone(), rhs, span)?;
+    *var = new_val;
+    Ok(())
+}
+
+/// Entity field mutation: convert segments to FieldPathSegments and emit MutateField.
+fn eval_assign_entity(
+    env: &mut Env,
+    entity: EntityRef,
+    segments: &[LValueSegment],
+    op: AssignOp,
+    rhs: Value,
+    span: ttrpg_ast::Span,
+) -> Result<(), RuntimeError> {
+    let path = lvalue_segments_to_field_path(env, segments, span)?;
+
+    // Resource bounds: the plan calls for looking up bounds from TypeEnv,
+    // but Ty::Resource doesn't carry bound values, and evaluating AST bound
+    // expressions may require derive calls (Phase 4). Pass None for now;
+    // the host/adapter is responsible for clamping independently.
+    let bounds = None;
+
+    let effect = Effect::MutateField {
+        entity,
+        path,
+        op,
+        value: rhs,
+        bounds,
+    };
+    env.handler.handle(effect);
+
+    Ok(())
+}
+
+/// Convert LValue segments to FieldPathSegments for entity mutation effects.
+fn lvalue_segments_to_field_path(
+    env: &mut Env,
+    segments: &[LValueSegment],
+    span: ttrpg_ast::Span,
+) -> Result<Vec<FieldPathSegment>, RuntimeError> {
+    let mut path = Vec::with_capacity(segments.len());
+    for seg in segments {
+        match seg {
+            LValueSegment::Field(name) => {
+                path.push(FieldPathSegment::Field(name.clone()));
+            }
+            LValueSegment::Index(idx_expr) => {
+                let idx_val = eval_expr(env, idx_expr)?;
+                path.push(FieldPathSegment::Index(idx_val));
+            }
+        }
+    }
+    if path.is_empty() {
+        return Err(RuntimeError::with_span(
+            "entity mutation requires at least one field segment",
+            span,
+        ));
+    }
+    Ok(path)
+}
+
+/// A pre-evaluated LValue segment (index expressions already resolved to Values).
+enum EvalSegment {
+    Field(String),
+    Index(Value),
+}
+
+/// Local variable mutation path.
+///
+/// Pre-evaluates all index expressions, then walks the local value.
+/// If an Entity is encountered along the way, the remaining segments
+/// become an entity mutation via `eval_assign_entity_from_eval_segs`.
+fn eval_assign_local(
+    env: &mut Env,
+    root_name: &str,
+    segments: &[LValueSegment],
+    op: AssignOp,
+    rhs: Value,
+    span: ttrpg_ast::Span,
+) -> Result<(), RuntimeError> {
+    // Pre-evaluate all index expressions so we don't need env during mutation walk
+    let eval_segs = eval_segments(env, segments)?;
+
+    // Walk the value (read-only) to check for entities in the path
+    let entity_depth = find_entity_depth(env, root_name, &eval_segs, span)?;
+
+    if let Some((depth, entity_ref)) = entity_depth {
+        // Convert remaining EvalSegments to FieldPathSegments for entity mutation
+        let path: Vec<FieldPathSegment> = eval_segs[depth..]
+            .iter()
+            .map(|s| match s {
+                EvalSegment::Field(name) => FieldPathSegment::Field(name.clone()),
+                EvalSegment::Index(val) => FieldPathSegment::Index(val.clone()),
+            })
+            .collect();
+
+        if path.is_empty() {
+            return Err(RuntimeError::with_span(
+                "entity mutation requires at least one field segment",
+                span,
+            ));
+        }
+
+        let effect = Effect::MutateField {
+            entity: entity_ref,
+            path,
+            op,
+            value: rhs,
+            bounds: None,
+        };
+        env.handler.handle(effect);
+        return Ok(());
+    }
+
+    // Pure local mutation: navigate into the value and apply the op
+    let root = env.lookup_mut(root_name).ok_or_else(|| {
+        RuntimeError::with_span(format!("undefined variable `{}`", root_name), span)
+    })?;
+
+    apply_local_mutation(root, &eval_segs, 0, op, rhs, span)
+}
+
+/// Pre-evaluate all index expressions in LValue segments.
+fn eval_segments(
+    env: &mut Env,
+    segments: &[LValueSegment],
+) -> Result<Vec<EvalSegment>, RuntimeError> {
+    let mut result = Vec::with_capacity(segments.len());
+    for seg in segments {
+        match seg {
+            LValueSegment::Field(name) => {
+                result.push(EvalSegment::Field(name.clone()));
+            }
+            LValueSegment::Index(idx_expr) => {
+                let val = eval_expr(env, idx_expr)?;
+                result.push(EvalSegment::Index(val));
+            }
+        }
+    }
+    Ok(result)
+}
+
+/// Find the depth at which an Entity is encountered when walking segments.
+/// Returns Some((depth, entity_ref)) if found, None if the path is pure local.
+fn find_entity_depth(
+    env: &Env,
+    root_name: &str,
+    segments: &[EvalSegment],
+    span: ttrpg_ast::Span,
+) -> Result<Option<(usize, EntityRef)>, RuntimeError> {
+    let mut current = env.lookup(root_name).cloned().ok_or_else(|| {
+        RuntimeError::with_span(format!("undefined variable `{}`", root_name), span)
+    })?;
+
+    for (i, seg) in segments.iter().enumerate() {
+        match &current {
+            Value::Entity(entity_ref) => {
+                return Ok(Some((i, entity_ref.clone())));
+            }
+            Value::Struct { fields, .. } => {
+                if let EvalSegment::Field(name) = seg {
+                    current = fields.get(name.as_str()).cloned().ok_or_else(|| {
+                        RuntimeError::with_span(
+                            format!("struct has no field `{}`", name),
+                            span,
+                        )
+                    })?;
+                } else {
+                    return Err(RuntimeError::with_span(
+                        "cannot index into a struct",
+                        span,
+                    ));
+                }
+            }
+            Value::List(list) => {
+                if let EvalSegment::Index(idx_val) = seg {
+                    let index = resolve_list_index(idx_val, list.len(), span)?;
+                    current = list[index].clone();
+                } else {
+                    return Err(RuntimeError::with_span(
+                        "cannot access field on a list; use index instead",
+                        span,
+                    ));
+                }
+            }
+            Value::Map(map) => {
+                if let EvalSegment::Index(key) = seg {
+                    match map.get(key) {
+                        Some(val) => current = val.clone(),
+                        // Key not in map — no entity can be deeper, so return None.
+                        // The actual mutation code handles insert vs compound-assign errors.
+                        None => return Ok(None),
+                    }
+                } else {
+                    return Err(RuntimeError::with_span(
+                        "cannot access field on a map; use index instead",
+                        span,
+                    ));
+                }
+            }
+            _ => {
+                return Err(RuntimeError::with_span(
+                    format!("cannot navigate into {}", type_name(&current)),
+                    span,
+                ));
+            }
+        }
+    }
+
+    Ok(None)
+}
+
+/// Recursively navigate into a local value and apply the assignment at the final depth.
+fn apply_local_mutation(
+    current: &mut Value,
+    segments: &[EvalSegment],
+    depth: usize,
+    op: AssignOp,
+    rhs: Value,
+    span: ttrpg_ast::Span,
+) -> Result<(), RuntimeError> {
+    if depth >= segments.len() {
+        // We've reached the target — apply the op
+        let new_val = apply_assign_op(op, current.clone(), rhs, span)?;
+        *current = new_val;
+        return Ok(());
+    }
+
+    match (&segments[depth], current) {
+        (EvalSegment::Field(name), Value::Struct { fields, .. }) => {
+            let field = fields.get_mut(name.as_str()).ok_or_else(|| {
+                RuntimeError::with_span(
+                    format!("struct has no field `{}`", name),
+                    span,
+                )
+            })?;
+            apply_local_mutation(field, segments, depth + 1, op, rhs, span)
+        }
+        (EvalSegment::Index(idx_val), Value::List(list)) => {
+            let index = resolve_list_index(idx_val, list.len(), span)?;
+            apply_local_mutation(&mut list[index], segments, depth + 1, op, rhs, span)
+        }
+        (EvalSegment::Index(key), Value::Map(map)) => {
+            if depth + 1 >= segments.len() {
+                // Final segment — apply the op to the map entry
+                match op {
+                    AssignOp::Eq => {
+                        // Create or overwrite entry
+                        map.insert(key.clone(), rhs);
+                        Ok(())
+                    }
+                    AssignOp::PlusEq | AssignOp::MinusEq => {
+                        // Entry must exist for compound assignment
+                        let entry = map.get_mut(key).ok_or_else(|| {
+                            RuntimeError::with_span(
+                                format!(
+                                    "cannot apply {} to absent map key {:?}",
+                                    if op == AssignOp::PlusEq { "+=" } else { "-=" },
+                                    key,
+                                ),
+                                span,
+                            )
+                        })?;
+                        let new_val = apply_assign_op(op, entry.clone(), rhs, span)?;
+                        *entry = new_val;
+                        Ok(())
+                    }
+                }
+            } else {
+                // Navigate deeper into the map value
+                let entry = map.get_mut(key).ok_or_else(|| {
+                    RuntimeError::with_span(
+                        format!("map has no key {:?}", key),
+                        span,
+                    )
+                })?;
+                apply_local_mutation(entry, segments, depth + 1, op, rhs, span)
+            }
+        }
+        (EvalSegment::Field(_), other) => {
+            Err(RuntimeError::with_span(
+                format!("cannot access field on {}", type_name(other)),
+                span,
+            ))
+        }
+        (EvalSegment::Index(_), other) => {
+            Err(RuntimeError::with_span(
+                format!("cannot index into {}", type_name(other)),
+                span,
+            ))
+        }
+    }
+}
+
+/// Apply an assignment operator to produce a new value.
+///
+/// - `Eq` → replace with rhs
+/// - `PlusEq` → current + rhs (Int/Float, checked overflow)
+/// - `MinusEq` → current - rhs (Int/Float, checked overflow)
+pub(crate) fn apply_assign_op(
+    op: AssignOp,
+    current: Value,
+    rhs: Value,
+    span: ttrpg_ast::Span,
+) -> Result<Value, RuntimeError> {
+    match op {
+        AssignOp::Eq => Ok(rhs),
+        AssignOp::PlusEq => {
+            // Coerce RollResult to Int for arithmetic
+            let current = coerce_roll_result(current);
+            let rhs = coerce_roll_result(rhs);
+            match (&current, &rhs) {
+                (Value::Int(a), Value::Int(b)) => a
+                    .checked_add(*b)
+                    .map(Value::Int)
+                    .ok_or_else(|| RuntimeError::with_span("integer overflow in +=", span)),
+                (Value::Float(a), Value::Float(b)) => {
+                    let result = a + b;
+                    if !result.is_finite() {
+                        return Err(RuntimeError::with_span(
+                            "float overflow in +=",
+                            span,
+                        ));
+                    }
+                    Ok(Value::Float(result))
+                }
+                (Value::Int(a), Value::Float(b)) | (Value::Float(b), Value::Int(a)) => {
+                    let result = (*a as f64) + b;
+                    if !result.is_finite() {
+                        return Err(RuntimeError::with_span(
+                            "float overflow in +=",
+                            span,
+                        ));
+                    }
+                    Ok(Value::Float(result))
+                }
+                _ => Err(RuntimeError::with_span(
+                    format!(
+                        "cannot apply += to {} and {}",
+                        type_name(&current),
+                        type_name(&rhs)
+                    ),
+                    span,
+                )),
+            }
+        }
+        AssignOp::MinusEq => {
+            let current = coerce_roll_result(current);
+            let rhs = coerce_roll_result(rhs);
+            match (&current, &rhs) {
+                (Value::Int(a), Value::Int(b)) => a
+                    .checked_sub(*b)
+                    .map(Value::Int)
+                    .ok_or_else(|| RuntimeError::with_span("integer overflow in -=", span)),
+                (Value::Float(a), Value::Float(b)) => {
+                    let result = a - b;
+                    if !result.is_finite() {
+                        return Err(RuntimeError::with_span(
+                            "float overflow in -=",
+                            span,
+                        ));
+                    }
+                    Ok(Value::Float(result))
+                }
+                (Value::Int(a), Value::Float(b)) => {
+                    let result = (*a as f64) - b;
+                    if !result.is_finite() {
+                        return Err(RuntimeError::with_span(
+                            "float overflow in -=",
+                            span,
+                        ));
+                    }
+                    Ok(Value::Float(result))
+                }
+                (Value::Float(a), Value::Int(b)) => {
+                    let result = a - (*b as f64);
+                    if !result.is_finite() {
+                        return Err(RuntimeError::with_span(
+                            "float overflow in -=",
+                            span,
+                        ));
+                    }
+                    Ok(Value::Float(result))
+                }
+                _ => Err(RuntimeError::with_span(
+                    format!(
+                        "cannot apply -= to {} and {}",
+                        type_name(&current),
+                        type_name(&rhs)
+                    ),
+                    span,
+                )),
+            }
+        }
+    }
+}
+
+/// Resolve a list index value to a usize, supporting negative indexing.
+/// Negative indices count from the end: -1 is last, -len is first.
+fn resolve_list_index(
+    idx_val: &Value,
+    len: usize,
+    span: ttrpg_ast::Span,
+) -> Result<usize, RuntimeError> {
+    match idx_val {
+        Value::Int(i) => {
+            let i = *i;
+            let index = if i >= 0 {
+                i as usize
+            } else {
+                let positive = (-i) as usize;
+                if positive > len {
+                    return Err(RuntimeError::with_span(
+                        format!(
+                            "list index {} out of bounds, length {}",
+                            i, len
+                        ),
+                        span,
+                    ));
+                }
+                len - positive
+            };
+            if index >= len {
+                return Err(RuntimeError::with_span(
+                    format!(
+                        "list index {} out of bounds, length {}",
+                        i, len
+                    ),
+                    span,
+                ));
+            }
+            Ok(index)
+        }
+        _ => Err(RuntimeError::with_span(
+            format!("list index must be int, found {}", type_name(idx_val)),
+            span,
+        )),
     }
 }
 
@@ -3868,5 +4422,910 @@ mod tests {
             rhs: Box::new(spanned(ExprKind::Ident("Prone".to_string()))),
         });
         assert_eq!(eval_expr(&mut env, &expr).unwrap(), Value::Bool(false));
+    }
+
+    // ── Phase 3: Statement Execution tests ─────────────────────
+
+    // Helper to build an LValue
+    fn make_lvalue(root: &str, segments: Vec<LValueSegment>) -> LValue {
+        LValue {
+            root: root.to_string(),
+            segments,
+            span: dummy_span(),
+        }
+    }
+
+    // Helper to build an Assign statement
+    fn make_assign(target: LValue, op: AssignOp, value: Spanned<ExprKind>) -> Spanned<StmtKind> {
+        spanned(StmtKind::Assign { target, op, value })
+    }
+
+    // Helper to build a Let statement
+    fn make_let(name: &str, value: Spanned<ExprKind>) -> Spanned<StmtKind> {
+        spanned(StmtKind::Let {
+            name: name.to_string(),
+            ty: None,
+            value,
+        })
+    }
+
+    // ── Let binding tests ──────────────────────────────────────
+
+    #[test]
+    fn assign_let_bindings_visible_in_scope() {
+        let program = empty_program();
+        let type_env = empty_type_env();
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = TestState::new();
+        let mut handler = ScriptedHandler::new();
+        let mut env = make_env(&state, &mut handler, &interp);
+
+        // let x = 42
+        let stmt = make_let("x", spanned(ExprKind::IntLit(42)));
+        eval_stmt(&mut env, &stmt).unwrap();
+        assert_eq!(env.lookup("x"), Some(&Value::Int(42)));
+    }
+
+    #[test]
+    fn assign_nested_scopes_shadowing_and_isolation() {
+        let program = empty_program();
+        let type_env = empty_type_env();
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = TestState::new();
+        let mut handler = ScriptedHandler::new();
+        let mut env = make_env(&state, &mut handler, &interp);
+
+        // Bind x = 10 in outer scope
+        env.bind("x".to_string(), Value::Int(10));
+
+        // Enter a block: let x = 20 (shadows outer x)
+        let block = spanned(vec![
+            make_let("x", spanned(ExprKind::IntLit(20))),
+            spanned(StmtKind::Expr(spanned(ExprKind::Ident("x".to_string())))),
+        ]);
+        let result = eval_block(&mut env, &block).unwrap();
+        assert_eq!(result, Value::Int(20));
+
+        // After block, outer x is still 10
+        assert_eq!(env.lookup("x"), Some(&Value::Int(10)));
+    }
+
+    // ── Direct variable reassignment tests ─────────────────────
+
+    #[test]
+    fn assign_direct_variable_eq() {
+        let program = empty_program();
+        let type_env = empty_type_env();
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = TestState::new();
+        let mut handler = ScriptedHandler::new();
+        let mut env = make_env(&state, &mut handler, &interp);
+
+        // let x = 10; x = 20
+        env.bind("x".to_string(), Value::Int(10));
+        let stmt = make_assign(
+            make_lvalue("x", vec![]),
+            AssignOp::Eq,
+            spanned(ExprKind::IntLit(20)),
+        );
+        eval_stmt(&mut env, &stmt).unwrap();
+        assert_eq!(env.lookup("x"), Some(&Value::Int(20)));
+    }
+
+    #[test]
+    fn assign_direct_variable_plus_eq() {
+        let program = empty_program();
+        let type_env = empty_type_env();
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = TestState::new();
+        let mut handler = ScriptedHandler::new();
+        let mut env = make_env(&state, &mut handler, &interp);
+
+        env.bind("x".to_string(), Value::Int(10));
+        let stmt = make_assign(
+            make_lvalue("x", vec![]),
+            AssignOp::PlusEq,
+            spanned(ExprKind::IntLit(5)),
+        );
+        eval_stmt(&mut env, &stmt).unwrap();
+        assert_eq!(env.lookup("x"), Some(&Value::Int(15)));
+    }
+
+    #[test]
+    fn assign_direct_variable_minus_eq() {
+        let program = empty_program();
+        let type_env = empty_type_env();
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = TestState::new();
+        let mut handler = ScriptedHandler::new();
+        let mut env = make_env(&state, &mut handler, &interp);
+
+        env.bind("x".to_string(), Value::Int(10));
+        let stmt = make_assign(
+            make_lvalue("x", vec![]),
+            AssignOp::MinusEq,
+            spanned(ExprKind::IntLit(3)),
+        );
+        eval_stmt(&mut env, &stmt).unwrap();
+        assert_eq!(env.lookup("x"), Some(&Value::Int(7)));
+    }
+
+    #[test]
+    fn assign_direct_undefined_variable_error() {
+        let program = empty_program();
+        let type_env = empty_type_env();
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = TestState::new();
+        let mut handler = ScriptedHandler::new();
+        let mut env = make_env(&state, &mut handler, &interp);
+
+        let stmt = make_assign(
+            make_lvalue("nonexistent", vec![]),
+            AssignOp::Eq,
+            spanned(ExprKind::IntLit(1)),
+        );
+        let err = eval_stmt(&mut env, &stmt).unwrap_err();
+        assert!(err.message.contains("undefined variable"), "got: {}", err.message);
+    }
+
+    // ── Entity field assignment tests ──────────────────────────
+
+    #[test]
+    fn assign_entity_field_emits_mutate_field() {
+        let program = empty_program();
+        let type_env = empty_type_env();
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = TestState::new();
+        let mut handler = ScriptedHandler::new();
+        let mut env = make_env(&state, &mut handler, &interp);
+
+        let entity_ref = EntityRef(1);
+        env.bind("target".to_string(), Value::Entity(entity_ref.clone()));
+
+        // target.HP -= 5
+        let stmt = make_assign(
+            make_lvalue("target", vec![LValueSegment::Field("HP".to_string())]),
+            AssignOp::MinusEq,
+            spanned(ExprKind::IntLit(5)),
+        );
+        eval_stmt(&mut env, &stmt).unwrap();
+
+        // Verify MutateField was emitted
+        assert_eq!(handler.log.len(), 1);
+        match &handler.log[0] {
+            Effect::MutateField {
+                entity,
+                path,
+                op,
+                value,
+                bounds,
+            } => {
+                assert_eq!(entity.0, 1);
+                assert_eq!(path.len(), 1);
+                match &path[0] {
+                    FieldPathSegment::Field(name) => assert_eq!(name, "HP"),
+                    _ => panic!("expected Field segment"),
+                }
+                assert_eq!(*op, AssignOp::MinusEq);
+                assert_eq!(*value, Value::Int(5));
+                assert!(bounds.is_none());
+            }
+            other => panic!("expected MutateField, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn assign_entity_nested_path_emits_mutate_field() {
+        let program = empty_program();
+        let type_env = empty_type_env();
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = TestState::new();
+        let mut handler = ScriptedHandler::new();
+        let mut env = make_env(&state, &mut handler, &interp);
+
+        let entity_ref = EntityRef(42);
+        env.bind("target".to_string(), Value::Entity(entity_ref.clone()));
+
+        // target.stats[STR] = 18
+        let stmt = make_assign(
+            make_lvalue("target", vec![
+                LValueSegment::Field("stats".to_string()),
+                LValueSegment::Index(spanned(ExprKind::StringLit("STR".to_string()))),
+            ]),
+            AssignOp::Eq,
+            spanned(ExprKind::IntLit(18)),
+        );
+        eval_stmt(&mut env, &stmt).unwrap();
+
+        assert_eq!(handler.log.len(), 1);
+        match &handler.log[0] {
+            Effect::MutateField { entity, path, op, value, .. } => {
+                assert_eq!(entity.0, 42);
+                assert_eq!(path.len(), 2);
+                match &path[0] {
+                    FieldPathSegment::Field(name) => assert_eq!(name, "stats"),
+                    _ => panic!("expected Field segment"),
+                }
+                match &path[1] {
+                    FieldPathSegment::Index(val) => assert_eq!(*val, Value::Str("STR".to_string())),
+                    _ => panic!("expected Index segment"),
+                }
+                assert_eq!(*op, AssignOp::Eq);
+                assert_eq!(*value, Value::Int(18));
+            }
+            other => panic!("expected MutateField, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn assign_entity_through_struct_emits_mutate_field() {
+        // trigger.entity.HP -= 5 where trigger is a struct containing an entity
+        let program = empty_program();
+        let type_env = empty_type_env();
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = TestState::new();
+        let mut handler = ScriptedHandler::new();
+        let mut env = make_env(&state, &mut handler, &interp);
+
+        let entity_ref = EntityRef(7);
+        let trigger_struct = Value::Struct {
+            name: "__event_Attack".to_string(),
+            fields: {
+                let mut f = BTreeMap::new();
+                f.insert("entity".to_string(), Value::Entity(entity_ref.clone()));
+                f
+            },
+        };
+        env.bind("trigger".to_string(), trigger_struct);
+
+        // trigger.entity.HP -= 5
+        let stmt = make_assign(
+            make_lvalue("trigger", vec![
+                LValueSegment::Field("entity".to_string()),
+                LValueSegment::Field("HP".to_string()),
+            ]),
+            AssignOp::MinusEq,
+            spanned(ExprKind::IntLit(5)),
+        );
+        eval_stmt(&mut env, &stmt).unwrap();
+
+        // Should emit MutateField with entity=7, path=[Field("HP")]
+        assert_eq!(handler.log.len(), 1);
+        match &handler.log[0] {
+            Effect::MutateField { entity, path, op, value, .. } => {
+                assert_eq!(entity.0, 7);
+                assert_eq!(path.len(), 1);
+                match &path[0] {
+                    FieldPathSegment::Field(name) => assert_eq!(name, "HP"),
+                    _ => panic!("expected Field segment"),
+                }
+                assert_eq!(*op, AssignOp::MinusEq);
+                assert_eq!(*value, Value::Int(5));
+            }
+            other => panic!("expected MutateField, got {:?}", other),
+        }
+    }
+
+    // ── Turn budget mutation tests ─────────────────────────────
+
+    #[test]
+    fn assign_turn_field_emits_mutate_turn_field() {
+        let program = empty_program();
+        let type_env = empty_type_env();
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = TestState::new();
+        let mut handler = ScriptedHandler::new();
+        let mut env = make_env(&state, &mut handler, &interp);
+
+        env.turn_actor = Some(EntityRef(5));
+
+        // turn.actions -= 1
+        let stmt = make_assign(
+            make_lvalue("turn", vec![LValueSegment::Field("actions".to_string())]),
+            AssignOp::MinusEq,
+            spanned(ExprKind::IntLit(1)),
+        );
+        eval_stmt(&mut env, &stmt).unwrap();
+
+        assert_eq!(handler.log.len(), 1);
+        match &handler.log[0] {
+            Effect::MutateTurnField { actor, field, op, value } => {
+                assert_eq!(actor.0, 5);
+                assert_eq!(field, "actions");
+                assert_eq!(*op, AssignOp::MinusEq);
+                assert_eq!(*value, Value::Int(1));
+            }
+            other => panic!("expected MutateTurnField, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn assign_turn_without_actor_error() {
+        let program = empty_program();
+        let type_env = empty_type_env();
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = TestState::new();
+        let mut handler = ScriptedHandler::new();
+        let mut env = make_env(&state, &mut handler, &interp);
+
+        // No turn_actor set
+        let stmt = make_assign(
+            make_lvalue("turn", vec![LValueSegment::Field("actions".to_string())]),
+            AssignOp::MinusEq,
+            spanned(ExprKind::IntLit(1)),
+        );
+        let err = eval_stmt(&mut env, &stmt).unwrap_err();
+        assert!(err.message.contains("turn"), "got: {}", err.message);
+    }
+
+    #[test]
+    fn assign_turn_no_segments_error() {
+        let program = empty_program();
+        let type_env = empty_type_env();
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = TestState::new();
+        let mut handler = ScriptedHandler::new();
+        let mut env = make_env(&state, &mut handler, &interp);
+
+        env.turn_actor = Some(EntityRef(1));
+
+        // turn = 5 (no field segment)
+        let stmt = make_assign(
+            make_lvalue("turn", vec![]),
+            AssignOp::Eq,
+            spanned(ExprKind::IntLit(5)),
+        );
+        let err = eval_stmt(&mut env, &stmt).unwrap_err();
+        assert!(err.message.contains("turn"), "got: {}", err.message);
+    }
+
+    // ── Local struct field mutation tests ──────────────────────
+
+    #[test]
+    fn assign_local_struct_field() {
+        let program = empty_program();
+        let type_env = empty_type_env();
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = TestState::new();
+        let mut handler = ScriptedHandler::new();
+        let mut env = make_env(&state, &mut handler, &interp);
+
+        let my_struct = Value::Struct {
+            name: "Point".to_string(),
+            fields: {
+                let mut f = BTreeMap::new();
+                f.insert("x".to_string(), Value::Int(1));
+                f.insert("y".to_string(), Value::Int(2));
+                f
+            },
+        };
+        env.bind("p".to_string(), my_struct);
+
+        // p.x = 10
+        let stmt = make_assign(
+            make_lvalue("p", vec![LValueSegment::Field("x".to_string())]),
+            AssignOp::Eq,
+            spanned(ExprKind::IntLit(10)),
+        );
+        eval_stmt(&mut env, &stmt).unwrap();
+
+        match env.lookup("p") {
+            Some(Value::Struct { fields, .. }) => {
+                assert_eq!(fields.get("x"), Some(&Value::Int(10)));
+                assert_eq!(fields.get("y"), Some(&Value::Int(2)));
+            }
+            other => panic!("expected Struct, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn assign_local_struct_field_plus_eq() {
+        let program = empty_program();
+        let type_env = empty_type_env();
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = TestState::new();
+        let mut handler = ScriptedHandler::new();
+        let mut env = make_env(&state, &mut handler, &interp);
+
+        let my_struct = Value::Struct {
+            name: "Stats".to_string(),
+            fields: {
+                let mut f = BTreeMap::new();
+                f.insert("strength".to_string(), Value::Int(10));
+                f
+            },
+        };
+        env.bind("s".to_string(), my_struct);
+
+        // s.strength += 5
+        let stmt = make_assign(
+            make_lvalue("s", vec![LValueSegment::Field("strength".to_string())]),
+            AssignOp::PlusEq,
+            spanned(ExprKind::IntLit(5)),
+        );
+        eval_stmt(&mut env, &stmt).unwrap();
+
+        match env.lookup("s") {
+            Some(Value::Struct { fields, .. }) => {
+                assert_eq!(fields.get("strength"), Some(&Value::Int(15)));
+            }
+            other => panic!("expected Struct, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn assign_local_struct_missing_field_error() {
+        let program = empty_program();
+        let type_env = empty_type_env();
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = TestState::new();
+        let mut handler = ScriptedHandler::new();
+        let mut env = make_env(&state, &mut handler, &interp);
+
+        let my_struct = Value::Struct {
+            name: "Point".to_string(),
+            fields: {
+                let mut f = BTreeMap::new();
+                f.insert("x".to_string(), Value::Int(1));
+                f
+            },
+        };
+        env.bind("p".to_string(), my_struct);
+
+        // p.z = 10 (no field z)
+        let stmt = make_assign(
+            make_lvalue("p", vec![LValueSegment::Field("z".to_string())]),
+            AssignOp::Eq,
+            spanned(ExprKind::IntLit(10)),
+        );
+        let err = eval_stmt(&mut env, &stmt).unwrap_err();
+        assert!(err.message.contains("no field"), "got: {}", err.message);
+    }
+
+    // ── Local list index mutation tests ────────────────────────
+
+    #[test]
+    fn assign_local_list_index() {
+        let program = empty_program();
+        let type_env = empty_type_env();
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = TestState::new();
+        let mut handler = ScriptedHandler::new();
+        let mut env = make_env(&state, &mut handler, &interp);
+
+        env.bind("nums".to_string(), Value::List(vec![
+            Value::Int(10), Value::Int(20), Value::Int(30),
+        ]));
+
+        // nums[1] = 99
+        let stmt = make_assign(
+            make_lvalue("nums", vec![LValueSegment::Index(spanned(ExprKind::IntLit(1)))]),
+            AssignOp::Eq,
+            spanned(ExprKind::IntLit(99)),
+        );
+        eval_stmt(&mut env, &stmt).unwrap();
+
+        match env.lookup("nums") {
+            Some(Value::List(items)) => {
+                assert_eq!(items, &vec![Value::Int(10), Value::Int(99), Value::Int(30)]);
+            }
+            other => panic!("expected List, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn assign_local_list_negative_index() {
+        let program = empty_program();
+        let type_env = empty_type_env();
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = TestState::new();
+        let mut handler = ScriptedHandler::new();
+        let mut env = make_env(&state, &mut handler, &interp);
+
+        env.bind("nums".to_string(), Value::List(vec![
+            Value::Int(1), Value::Int(2), Value::Int(3),
+        ]));
+
+        // nums[-1] = 99 (last element)
+        let stmt = make_assign(
+            make_lvalue("nums", vec![LValueSegment::Index(spanned(ExprKind::IntLit(-1)))]),
+            AssignOp::Eq,
+            spanned(ExprKind::IntLit(99)),
+        );
+        eval_stmt(&mut env, &stmt).unwrap();
+
+        match env.lookup("nums") {
+            Some(Value::List(items)) => {
+                assert_eq!(items, &vec![Value::Int(1), Value::Int(2), Value::Int(99)]);
+            }
+            other => panic!("expected List, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn assign_local_list_index_out_of_bounds_error() {
+        let program = empty_program();
+        let type_env = empty_type_env();
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = TestState::new();
+        let mut handler = ScriptedHandler::new();
+        let mut env = make_env(&state, &mut handler, &interp);
+
+        env.bind("nums".to_string(), Value::List(vec![
+            Value::Int(1), Value::Int(2),
+        ]));
+
+        // nums[5] = 99 (out of bounds)
+        let stmt = make_assign(
+            make_lvalue("nums", vec![LValueSegment::Index(spanned(ExprKind::IntLit(5)))]),
+            AssignOp::Eq,
+            spanned(ExprKind::IntLit(99)),
+        );
+        let err = eval_stmt(&mut env, &stmt).unwrap_err();
+        assert!(err.message.contains("out of bounds"), "got: {}", err.message);
+    }
+
+    #[test]
+    fn assign_local_list_index_plus_eq() {
+        let program = empty_program();
+        let type_env = empty_type_env();
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = TestState::new();
+        let mut handler = ScriptedHandler::new();
+        let mut env = make_env(&state, &mut handler, &interp);
+
+        env.bind("nums".to_string(), Value::List(vec![
+            Value::Int(10), Value::Int(20),
+        ]));
+
+        // nums[0] += 5
+        let stmt = make_assign(
+            make_lvalue("nums", vec![LValueSegment::Index(spanned(ExprKind::IntLit(0)))]),
+            AssignOp::PlusEq,
+            spanned(ExprKind::IntLit(5)),
+        );
+        eval_stmt(&mut env, &stmt).unwrap();
+
+        match env.lookup("nums") {
+            Some(Value::List(items)) => {
+                assert_eq!(items[0], Value::Int(15));
+            }
+            other => panic!("expected List, got {:?}", other),
+        }
+    }
+
+    // ── Local map key mutation tests ───────────────────────────
+
+    #[test]
+    fn assign_local_map_key_insert() {
+        let program = empty_program();
+        let type_env = empty_type_env();
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = TestState::new();
+        let mut handler = ScriptedHandler::new();
+        let mut env = make_env(&state, &mut handler, &interp);
+
+        let mut map = BTreeMap::new();
+        map.insert(Value::Str("a".to_string()), Value::Int(1));
+        env.bind("m".to_string(), Value::Map(map));
+
+        // m["b"] = 2 (insert new entry)
+        let stmt = make_assign(
+            make_lvalue("m", vec![
+                LValueSegment::Index(spanned(ExprKind::StringLit("b".to_string()))),
+            ]),
+            AssignOp::Eq,
+            spanned(ExprKind::IntLit(2)),
+        );
+        eval_stmt(&mut env, &stmt).unwrap();
+
+        match env.lookup("m") {
+            Some(Value::Map(m)) => {
+                assert_eq!(m.get(&Value::Str("a".to_string())), Some(&Value::Int(1)));
+                assert_eq!(m.get(&Value::Str("b".to_string())), Some(&Value::Int(2)));
+            }
+            other => panic!("expected Map, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn assign_local_map_key_update() {
+        let program = empty_program();
+        let type_env = empty_type_env();
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = TestState::new();
+        let mut handler = ScriptedHandler::new();
+        let mut env = make_env(&state, &mut handler, &interp);
+
+        let mut map = BTreeMap::new();
+        map.insert(Value::Str("a".to_string()), Value::Int(1));
+        env.bind("m".to_string(), Value::Map(map));
+
+        // m["a"] = 99 (overwrite)
+        let stmt = make_assign(
+            make_lvalue("m", vec![
+                LValueSegment::Index(spanned(ExprKind::StringLit("a".to_string()))),
+            ]),
+            AssignOp::Eq,
+            spanned(ExprKind::IntLit(99)),
+        );
+        eval_stmt(&mut env, &stmt).unwrap();
+
+        match env.lookup("m") {
+            Some(Value::Map(m)) => {
+                assert_eq!(m.get(&Value::Str("a".to_string())), Some(&Value::Int(99)));
+            }
+            other => panic!("expected Map, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn assign_local_map_key_plus_eq() {
+        let program = empty_program();
+        let type_env = empty_type_env();
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = TestState::new();
+        let mut handler = ScriptedHandler::new();
+        let mut env = make_env(&state, &mut handler, &interp);
+
+        let mut map = BTreeMap::new();
+        map.insert(Value::Str("score".to_string()), Value::Int(100));
+        env.bind("m".to_string(), Value::Map(map));
+
+        // m["score"] += 50
+        let stmt = make_assign(
+            make_lvalue("m", vec![
+                LValueSegment::Index(spanned(ExprKind::StringLit("score".to_string()))),
+            ]),
+            AssignOp::PlusEq,
+            spanned(ExprKind::IntLit(50)),
+        );
+        eval_stmt(&mut env, &stmt).unwrap();
+
+        match env.lookup("m") {
+            Some(Value::Map(m)) => {
+                assert_eq!(m.get(&Value::Str("score".to_string())), Some(&Value::Int(150)));
+            }
+            other => panic!("expected Map, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn assign_local_map_missing_key_plus_eq_error() {
+        let program = empty_program();
+        let type_env = empty_type_env();
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = TestState::new();
+        let mut handler = ScriptedHandler::new();
+        let mut env = make_env(&state, &mut handler, &interp);
+
+        let map = BTreeMap::new();
+        env.bind("m".to_string(), Value::Map(map));
+
+        // m["x"] += 1 (key doesn't exist)
+        let stmt = make_assign(
+            make_lvalue("m", vec![
+                LValueSegment::Index(spanned(ExprKind::StringLit("x".to_string()))),
+            ]),
+            AssignOp::PlusEq,
+            spanned(ExprKind::IntLit(1)),
+        );
+        let err = eval_stmt(&mut env, &stmt).unwrap_err();
+        assert!(err.message.contains("absent map key"), "got: {}", err.message);
+    }
+
+    #[test]
+    fn assign_local_map_missing_key_minus_eq_error() {
+        let program = empty_program();
+        let type_env = empty_type_env();
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = TestState::new();
+        let mut handler = ScriptedHandler::new();
+        let mut env = make_env(&state, &mut handler, &interp);
+
+        let map = BTreeMap::new();
+        env.bind("m".to_string(), Value::Map(map));
+
+        // m["x"] -= 1 (key doesn't exist)
+        let stmt = make_assign(
+            make_lvalue("m", vec![
+                LValueSegment::Index(spanned(ExprKind::StringLit("x".to_string()))),
+            ]),
+            AssignOp::MinusEq,
+            spanned(ExprKind::IntLit(1)),
+        );
+        let err = eval_stmt(&mut env, &stmt).unwrap_err();
+        assert!(err.message.contains("absent map key"), "got: {}", err.message);
+    }
+
+    // ── apply_assign_op error tests ────────────────────────────
+
+    #[test]
+    fn assign_plus_eq_incompatible_types_error() {
+        let program = empty_program();
+        let type_env = empty_type_env();
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = TestState::new();
+        let mut handler = ScriptedHandler::new();
+        let mut env = make_env(&state, &mut handler, &interp);
+
+        env.bind("x".to_string(), Value::Str("hello".to_string()));
+
+        // x += 5 (string += int)
+        let stmt = make_assign(
+            make_lvalue("x", vec![]),
+            AssignOp::PlusEq,
+            spanned(ExprKind::IntLit(5)),
+        );
+        let err = eval_stmt(&mut env, &stmt).unwrap_err();
+        assert!(err.message.contains("cannot apply +="), "got: {}", err.message);
+    }
+
+    #[test]
+    fn assign_integer_overflow_plus_eq_error() {
+        let program = empty_program();
+        let type_env = empty_type_env();
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = TestState::new();
+        let mut handler = ScriptedHandler::new();
+        let mut env = make_env(&state, &mut handler, &interp);
+
+        env.bind("x".to_string(), Value::Int(i64::MAX));
+
+        let stmt = make_assign(
+            make_lvalue("x", vec![]),
+            AssignOp::PlusEq,
+            spanned(ExprKind::IntLit(1)),
+        );
+        let err = eval_stmt(&mut env, &stmt).unwrap_err();
+        assert!(err.message.contains("overflow"), "got: {}", err.message);
+    }
+
+    #[test]
+    fn assign_integer_overflow_minus_eq_error() {
+        let program = empty_program();
+        let type_env = empty_type_env();
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = TestState::new();
+        let mut handler = ScriptedHandler::new();
+        let mut env = make_env(&state, &mut handler, &interp);
+
+        env.bind("x".to_string(), Value::Int(i64::MIN));
+
+        let stmt = make_assign(
+            make_lvalue("x", vec![]),
+            AssignOp::MinusEq,
+            spanned(ExprKind::IntLit(1)),
+        );
+        let err = eval_stmt(&mut env, &stmt).unwrap_err();
+        assert!(err.message.contains("overflow"), "got: {}", err.message);
+    }
+
+    // ── Float assignment tests ─────────────────────────────────
+
+    #[test]
+    fn assign_float_plus_eq() {
+        let program = empty_program();
+        let type_env = empty_type_env();
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = TestState::new();
+        let mut handler = ScriptedHandler::new();
+        let mut env = make_env(&state, &mut handler, &interp);
+
+        env.bind("x".to_string(), Value::Float(1.5));
+
+        let block = spanned(vec![
+            make_assign(
+                make_lvalue("x", vec![]),
+                AssignOp::PlusEq,
+                spanned(ExprKind::IntLit(2)),  // Int + Float works via mixed type
+            ),
+            spanned(StmtKind::Expr(spanned(ExprKind::Ident("x".to_string())))),
+        ]);
+        let result = eval_block(&mut env, &block).unwrap();
+        assert_eq!(result, Value::Float(3.5));
+    }
+
+    #[test]
+    fn assign_float_minus_eq() {
+        let program = empty_program();
+        let type_env = empty_type_env();
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = TestState::new();
+        let mut handler = ScriptedHandler::new();
+        let mut env = make_env(&state, &mut handler, &interp);
+
+        env.bind("x".to_string(), Value::Float(10.0));
+
+        let stmt = make_assign(
+            make_lvalue("x", vec![]),
+            AssignOp::MinusEq,
+            spanned(ExprKind::IntLit(3)),
+        );
+        eval_stmt(&mut env, &stmt).unwrap();
+        assert_eq!(env.lookup("x"), Some(&Value::Float(7.0)));
+    }
+
+    // ── Block returning value after assignment ─────────────────
+
+    #[test]
+    fn assign_returns_none_as_stmt_value() {
+        let program = empty_program();
+        let type_env = empty_type_env();
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = TestState::new();
+        let mut handler = ScriptedHandler::new();
+        let mut env = make_env(&state, &mut handler, &interp);
+
+        env.bind("x".to_string(), Value::Int(0));
+
+        // Block: x = 42 (assign returns None as block value)
+        let block = spanned(vec![
+            make_assign(
+                make_lvalue("x", vec![]),
+                AssignOp::Eq,
+                spanned(ExprKind::IntLit(42)),
+            ),
+        ]);
+        let result = eval_block(&mut env, &block).unwrap();
+        assert_eq!(result, Value::None);
+        // But x was updated
+        assert_eq!(env.lookup("x"), Some(&Value::Int(42)));
+    }
+
+    // ── RollResult coercion in assignment ──────────────────────
+
+    #[test]
+    fn assign_roll_result_coerced_in_plus_eq() {
+        let program = empty_program();
+        let type_env = empty_type_env();
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = TestState::new();
+        let mut handler = ScriptedHandler::new();
+        let mut env = make_env(&state, &mut handler, &interp);
+
+        // RollResult with total=7
+        let rr = Value::RollResult(RollResult {
+            expr: DiceExpr { count: 2, sides: 6, filter: None, modifier: 0 },
+            dice: vec![3, 4],
+            kept: vec![3, 4],
+            modifier: 0,
+            total: 7,
+            unmodified: 7,
+        });
+        env.bind("x".to_string(), rr);
+
+        // x += 3 → RollResult coerced to Int(7), then 7 + 3 = 10
+        let stmt = make_assign(
+            make_lvalue("x", vec![]),
+            AssignOp::PlusEq,
+            spanned(ExprKind::IntLit(3)),
+        );
+        eval_stmt(&mut env, &stmt).unwrap();
+        assert_eq!(env.lookup("x"), Some(&Value::Int(10)));
+    }
+
+    // ── No effects emitted for local mutations ─────────────────
+
+    #[test]
+    fn assign_local_mutation_emits_no_effects() {
+        let program = empty_program();
+        let type_env = empty_type_env();
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = TestState::new();
+        let mut handler = ScriptedHandler::new();
+        let mut env = make_env(&state, &mut handler, &interp);
+
+        env.bind("x".to_string(), Value::Int(10));
+
+        // x += 5 → purely local, no effects
+        let stmt = make_assign(
+            make_lvalue("x", vec![]),
+            AssignOp::PlusEq,
+            spanned(ExprKind::IntLit(5)),
+        );
+        eval_stmt(&mut env, &stmt).unwrap();
+
+        assert!(handler.log.is_empty(), "expected no effects for local mutation");
     }
 }
