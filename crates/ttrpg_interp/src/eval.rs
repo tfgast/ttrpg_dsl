@@ -1684,7 +1684,7 @@ pub(crate) fn match_pattern(
 // ── Helpers ────────────────────────────────────────────────────
 
 /// Returns a human-readable type name for error messages.
-fn type_name(val: &Value) -> &'static str {
+pub(crate) fn type_name(val: &Value) -> &'static str {
     match val {
         Value::Int(_) => "Int",
         Value::Float(_) => "Float",

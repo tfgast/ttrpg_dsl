@@ -191,3 +191,188 @@ system "test" {
         .unwrap();
     assert_eq!(val, Value::Int(-2));
 }
+
+// ── unwrap / unwrap_or tests ─────────────────────────────────────
+
+#[test]
+fn unwrap_on_some_returns_inner() {
+    let source = r#"
+system "test" {
+    derive f(x: option<int>) -> int {
+        x.unwrap()
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NoopHandler;
+
+    let val = interp
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "f",
+            vec![Value::Option(Some(Box::new(Value::Int(42))))],
+        )
+        .unwrap();
+    assert_eq!(val, Value::Int(42));
+}
+
+#[test]
+fn unwrap_on_none_errors() {
+    let source = r#"
+system "test" {
+    derive f(x: option<int>) -> int {
+        x.unwrap()
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NoopHandler;
+
+    let err = interp
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "f",
+            vec![Value::Option(None)],
+        )
+        .unwrap_err();
+    assert!(
+        format!("{}", err).contains("unwrap()"),
+        "expected unwrap error, got: {}",
+        err
+    );
+}
+
+#[test]
+fn unwrap_on_value_none_errors() {
+    let source = r#"
+system "test" {
+    derive f(x: option<int>) -> int {
+        x.unwrap()
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NoopHandler;
+
+    let err = interp
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "f",
+            vec![Value::None],
+        )
+        .unwrap_err();
+    assert!(
+        format!("{}", err).contains("unwrap()"),
+        "expected unwrap error, got: {}",
+        err
+    );
+}
+
+#[test]
+fn unwrap_or_on_some_returns_inner() {
+    let source = r#"
+system "test" {
+    derive f(x: option<int>) -> int {
+        x.unwrap_or(99)
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NoopHandler;
+
+    let val = interp
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "f",
+            vec![Value::Option(Some(Box::new(Value::Int(42))))],
+        )
+        .unwrap();
+    assert_eq!(val, Value::Int(42));
+}
+
+#[test]
+fn unwrap_or_on_none_returns_default() {
+    let source = r#"
+system "test" {
+    derive f(x: option<int>) -> int {
+        x.unwrap_or(99)
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NoopHandler;
+
+    let val = interp
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "f",
+            vec![Value::Option(None)],
+        )
+        .unwrap();
+    assert_eq!(val, Value::Int(99));
+}
+
+#[test]
+fn unwrap_or_on_value_none_returns_default() {
+    let source = r#"
+system "test" {
+    derive f(x: option<int>) -> int {
+        x.unwrap_or(99)
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NoopHandler;
+
+    let val = interp
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "f",
+            vec![Value::None],
+        )
+        .unwrap();
+    assert_eq!(val, Value::Int(99));
+}
+
+#[test]
+fn unwrap_chained_with_arithmetic() {
+    let source = r#"
+system "test" {
+    derive f(x: option<int>) -> int {
+        x.unwrap() + 10
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NoopHandler;
+
+    let val = interp
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "f",
+            vec![Value::Option(Some(Box::new(Value::Int(32))))],
+        )
+        .unwrap();
+    assert_eq!(val, Value::Int(42));
+}

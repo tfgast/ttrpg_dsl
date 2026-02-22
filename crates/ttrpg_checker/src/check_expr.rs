@@ -524,9 +524,112 @@ impl<'a> Checker<'a> {
                 );
                 Ty::Error
             }
+            Ty::Option(_) => {
+                if field == "unwrap" || field == "unwrap_or" {
+                    self.error(
+                        format!(
+                            "`.{}` is a method on option; call it as `.{}()`",
+                            field, field
+                        ),
+                        span,
+                    );
+                } else {
+                    self.error(
+                        format!("option type has no field `{}`", field),
+                        span,
+                    );
+                }
+                Ty::Error
+            }
             _ => {
                 self.error(
                     format!("cannot access field `{}` on type {}", field, obj_ty),
+                    span,
+                );
+                Ty::Error
+            }
+        }
+    }
+
+    fn check_method_call(
+        &mut self,
+        obj_ty: &Ty,
+        method: &str,
+        args: &[Arg],
+        span: ttrpg_ast::Span,
+    ) -> Ty {
+        match obj_ty {
+            Ty::Option(inner) => self.check_option_method(inner, method, args, span),
+            _ => {
+                self.error(
+                    format!("type {} has no methods", obj_ty),
+                    span,
+                );
+                Ty::Error
+            }
+        }
+    }
+
+    fn check_option_method(
+        &mut self,
+        inner_ty: &Ty,
+        method: &str,
+        args: &[Arg],
+        span: ttrpg_ast::Span,
+    ) -> Ty {
+        match method {
+            "unwrap" => {
+                if !args.is_empty() {
+                    self.error(
+                        format!("unwrap() takes no arguments, found {}", args.len()),
+                        span,
+                    );
+                }
+                if inner_ty.is_error() {
+                    // bare `none.unwrap()` — can't determine inner type
+                    Ty::Error
+                } else {
+                    inner_ty.clone()
+                }
+            }
+            "unwrap_or" => {
+                if args.len() != 1 {
+                    self.error(
+                        format!(
+                            "unwrap_or() takes exactly 1 argument, found {}",
+                            args.len()
+                        ),
+                        span,
+                    );
+                    return if inner_ty.is_error() {
+                        Ty::Error
+                    } else {
+                        inner_ty.clone()
+                    };
+                }
+                let arg_ty = self.check_expr(&args[0].value);
+                if inner_ty.is_error() {
+                    // bare `none.unwrap_or(x)` — infer from the default
+                    arg_ty
+                } else {
+                    if !arg_ty.is_error() && !self.types_compatible(&arg_ty, inner_ty) {
+                        self.error(
+                            format!(
+                                "unwrap_or() default has type {}, expected {}",
+                                arg_ty, inner_ty
+                            ),
+                            span,
+                        );
+                    }
+                    inner_ty.clone()
+                }
+            }
+            _ => {
+                self.error(
+                    format!(
+                        "option type has no method `{}`; available methods: unwrap, unwrap_or",
+                        method
+                    ),
                     span,
                 );
                 Ty::Error
@@ -598,11 +701,8 @@ impl<'a> Checker<'a> {
                 if let Ty::EnumType(enum_name) = &obj_ty {
                     return self.check_enum_constructor(enum_name, field, args, span);
                 }
-                // No fallback to env.types here — check_expr already resolved the
-                // identifier through the normal scope chain. If a local variable
-                // shadows an enum name, the local binding wins.
-                self.error("cannot call a field access expression".to_string(), span);
-                return Ty::Error;
+                // Method call: obj.method(args)
+                return self.check_method_call(&obj_ty, field, args, span);
             }
             _ => {
                 self.error("callee must be a function name".to_string(), span);

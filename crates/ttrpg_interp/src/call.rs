@@ -51,19 +51,18 @@ pub(crate) fn eval_call(
 
         // ── Qualified access: enum constructor (e.g. Duration.rounds(3)) ──
         ExprKind::FieldAccess { object, field } => {
-            if let ExprKind::Ident(type_name) = &object.node {
+            if let ExprKind::Ident(obj_name) = &object.node {
                 if let Some(DeclInfo::Enum(_)) =
-                    env.interp.type_env.types.get(type_name.as_str())
+                    env.interp.type_env.types.get(obj_name.as_str())
                 {
                     return construct_enum_variant(
-                        env, type_name, field, args, call_span,
+                        env, obj_name, field, args, call_span,
                     );
                 }
             }
-            Err(RuntimeError::with_span(
-                "invalid callee: only function names and enum constructors can be called",
-                call_span,
-            ))
+            // Method call: evaluate the object and dispatch
+            let object_val = eval_expr(env, object)?;
+            eval_method_call(env, object_val, field, args, call_span)
         }
 
         _ => Err(RuntimeError::with_span(
@@ -668,6 +667,60 @@ fn fill_defaults(
         }
     }
     Ok(bound)
+}
+
+// ── Method dispatch ─────────────────────────────────────────────
+
+fn eval_method_call(
+    env: &mut Env,
+    object: Value,
+    method: &str,
+    args: &[Arg],
+    span: Span,
+) -> Result<Value, RuntimeError> {
+    match &object {
+        Value::Option(_) | Value::None => eval_option_method(env, object, method, args, span),
+        _ => Err(RuntimeError::with_span(
+            format!("type {} has no methods", crate::eval::type_name(&object)),
+            span,
+        )),
+    }
+}
+
+fn eval_option_method(
+    env: &mut Env,
+    value: Value,
+    method: &str,
+    args: &[Arg],
+    span: Span,
+) -> Result<Value, RuntimeError> {
+    match method {
+        "unwrap" => {
+            match value {
+                Value::Option(Some(inner)) => Ok(*inner),
+                Value::Option(None) | Value::None => Err(RuntimeError::with_span(
+                    "called unwrap() on a none value",
+                    span,
+                )),
+                _ => unreachable!(),
+            }
+        }
+        "unwrap_or" => {
+            let default_val = eval_expr(env, &args[0].value)?;
+            match value {
+                Value::Option(Some(inner)) => Ok(*inner),
+                Value::Option(None) | Value::None => Ok(default_val),
+                _ => unreachable!(),
+            }
+        }
+        _ => Err(RuntimeError::with_span(
+            format!(
+                "option type has no method `{}`; available methods: unwrap, unwrap_or",
+                method
+            ),
+            span,
+        )),
+    }
 }
 
 #[cfg(test)]

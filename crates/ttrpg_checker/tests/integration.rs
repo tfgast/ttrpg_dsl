@@ -2035,7 +2035,7 @@ system "test" {
     }
 }
 "#;
-    expect_errors(source, &["cannot call a field access expression"]);
+    expect_errors(source, &["has no methods"]);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -2823,7 +2823,7 @@ system "test" {
     derive bad(e: Effect) -> Effect { e.timed(count: 1) }
 }
 "#;
-    expect_errors(source, &["cannot call a field access expression"]);
+    expect_errors(source, &["has no methods"]);
 }
 
 #[test]
@@ -3391,6 +3391,104 @@ system "test" {
 }
 "#;
     expect_errors(source, &["`some(...)` pattern cannot match type int"]);
+}
+
+// ── option method tests ──────────────────────────────────────────
+
+#[test]
+fn test_option_unwrap_valid() {
+    let source = r#"
+system "test" {
+    derive f(x: option<int>) -> int {
+        x.unwrap()
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_option_unwrap_or_valid() {
+    let source = r#"
+system "test" {
+    derive f(x: option<int>) -> int {
+        x.unwrap_or(0)
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_option_unwrap_wrong_arg_count() {
+    let source = r#"
+system "test" {
+    derive f(x: option<int>) -> int {
+        x.unwrap(42)
+    }
+}
+"#;
+    expect_errors(source, &["unwrap() takes no arguments"]);
+}
+
+#[test]
+fn test_option_unwrap_or_missing_arg() {
+    let source = r#"
+system "test" {
+    derive f(x: option<int>) -> int {
+        x.unwrap_or()
+    }
+}
+"#;
+    expect_errors(source, &["unwrap_or() takes exactly 1 argument"]);
+}
+
+#[test]
+fn test_option_unwrap_or_type_mismatch() {
+    let source = r#"
+system "test" {
+    derive f(x: option<int>) -> int {
+        x.unwrap_or("hello")
+    }
+}
+"#;
+    expect_errors(source, &["unwrap_or() default has type string, expected int"]);
+}
+
+#[test]
+fn test_option_unknown_method() {
+    let source = r#"
+system "test" {
+    derive f(x: option<int>) -> int {
+        x.foo()
+    }
+}
+"#;
+    expect_errors(source, &["option type has no method `foo`"]);
+}
+
+#[test]
+fn test_option_method_no_parens() {
+    let source = r#"
+system "test" {
+    derive f(x: option<int>) -> int {
+        x.unwrap
+    }
+}
+"#;
+    expect_errors(source, &["`.unwrap` is a method on option; call it as `.unwrap()`"]);
+}
+
+#[test]
+fn test_option_unwrap_chained_arithmetic() {
+    let source = r#"
+system "test" {
+    derive f(x: option<int>) -> int {
+        x.unwrap() + 5
+    }
+}
+"#;
+    expect_no_errors(source);
 }
 
 #[test]
