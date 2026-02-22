@@ -196,7 +196,7 @@ impl Parser {
             }
             self.skip_newlines();
         }
-        Program { items }
+        Program { items, ..Default::default() }
     }
 
     fn parse_use_decl(&mut self) -> Result<UseDecl, ()> {

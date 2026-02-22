@@ -116,10 +116,10 @@ pub(crate) fn evaluate_fn_with_values(
 ) -> Result<Value, RuntimeError> {
     let fn_decl = env
         .interp
-        .index
+        .program
         .derives
         .get(name)
-        .or_else(|| env.interp.index.mechanics.get(name))
+        .or_else(|| env.interp.program.mechanics.get(name))
         .ok_or_else(|| {
             RuntimeError::with_span(
                 format!("undefined function '{}'", name),
@@ -220,13 +220,13 @@ fn dispatch_derive_or_mechanic(
     args: &[Arg],
     call_span: Span,
 ) -> Result<Value, RuntimeError> {
-    // Look up the declaration in DeclIndex
+    // Look up the declaration
     let fn_decl = env
         .interp
-        .index
+        .program
         .derives
         .get(name)
-        .or_else(|| env.interp.index.mechanics.get(name))
+        .or_else(|| env.interp.program.mechanics.get(name))
         .ok_or_else(|| {
             RuntimeError::with_span(
                 format!("internal error: no declaration found for function '{}'", name),
@@ -303,7 +303,7 @@ fn dispatch_action(
     // Look up action declaration and clone what we need before borrowing env mutably
     let action_decl = env
         .interp
-        .index
+        .program
         .actions
         .get(name.as_str())
         .ok_or_else(|| {
@@ -312,7 +312,7 @@ fn dispatch_action(
                 call_span,
             )
         })?;
-    let action_decl = (*action_decl).clone();
+    let action_decl = action_decl.clone();
     let ast_params = action_decl.params.clone();
     let receiver_type = action_decl.receiver_type.clone();
 
@@ -388,7 +388,7 @@ fn dispatch_prompt(
 ) -> Result<Value, RuntimeError> {
     let prompt_decl = env
         .interp
-        .index
+        .program
         .prompts
         .get(name)
         .ok_or_else(|| {
@@ -790,12 +790,15 @@ mod tests {
 
     /// Build a program with a single system block containing the given declarations.
     fn program_with_decls(decls: Vec<DeclKind>) -> Program {
-        Program {
+        let mut program = Program {
             items: vec![spanned(TopLevel::System(SystemBlock {
                 name: "Test".into(),
                 decls: decls.into_iter().map(spanned).collect(),
             }))],
-        }
+            ..Default::default()
+        };
+        program.build_index();
+        program
     }
 
     /// Build a type env with builtins registered.

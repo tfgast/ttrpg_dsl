@@ -23,6 +23,7 @@ pub fn lower_moves(mut program: Program, diags: &mut Vec<Diagnostic>) -> Program
             lower_system_moves(system, diags);
         }
     }
+    program.build_index();
     program
 }
 

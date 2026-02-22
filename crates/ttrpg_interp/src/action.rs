@@ -468,7 +468,7 @@ mod tests {
     }
 
     fn empty_program() -> Program {
-        Program { items: vec![] }
+        Program::default()
     }
 
     fn empty_type_env() -> TypeEnv {

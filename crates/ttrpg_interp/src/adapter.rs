@@ -1022,7 +1022,7 @@ mod tests {
 
         // Wrap in StateAdapter (Layer 2)
         let adapter = StateAdapter::new(game_state);
-        let program = Program { items: vec![] };
+        let program = Program::default();
         let type_env = TypeEnv::new();
         let interp = Interpreter::new(&program, &type_env).unwrap();
 

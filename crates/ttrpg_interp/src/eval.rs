@@ -167,7 +167,7 @@ fn eval_ident(
     }
 
     // 4. Check if it's a condition name
-    if env.interp.index.conditions.contains_key(name) {
+    if env.interp.program.conditions.contains_key(name) {
         return Ok(Value::Condition(name.to_string()));
     }
 
@@ -1800,7 +1800,7 @@ mod tests {
     // Helpers to build test environments
 
     fn empty_program() -> Program {
-        Program { items: vec![] }
+        Program::default()
     }
 
     fn empty_type_env() -> TypeEnv {
@@ -3317,6 +3317,7 @@ mod tests {
                     outcomes: vec![],
                 }))],
             }))],
+            ..Default::default()
         };
         let type_env = empty_type_env();
         match Interpreter::new(&program, &type_env) {
@@ -4368,7 +4369,7 @@ mod tests {
     fn eval_ident_condition_name() {
         use ttrpg_ast::ast::{ConditionDecl, TopLevel, SystemBlock};
 
-        let program = Program {
+        let mut program = Program {
             items: vec![spanned(TopLevel::System(SystemBlock {
                 name: "Test".to_string(),
                 decls: vec![spanned(DeclKind::Condition(ConditionDecl {
@@ -4378,7 +4379,9 @@ mod tests {
                     clauses: vec![],
                 }))],
             }))],
+            ..Default::default()
         };
+        program.build_index();
         let type_env = empty_type_env();
         let interp = Interpreter::new(&program, &type_env).unwrap();
         let state = TestState::new();
@@ -4396,7 +4399,7 @@ mod tests {
     fn eval_ident_condition_eq() {
         use ttrpg_ast::ast::{ConditionDecl, TopLevel, SystemBlock};
 
-        let program = Program {
+        let mut program = Program {
             items: vec![spanned(TopLevel::System(SystemBlock {
                 name: "Test".to_string(),
                 decls: vec![
@@ -4414,7 +4417,9 @@ mod tests {
                     })),
                 ],
             }))],
+            ..Default::default()
         };
+        program.build_index();
         let type_env = empty_type_env();
         let interp = Interpreter::new(&program, &type_env).unwrap();
         let state = TestState::new();

@@ -54,8 +54,8 @@ pub(crate) fn collect_modifiers_owned(
             }
 
             // Look up the condition declaration
-            let cond_decl = match env.interp.index.conditions.get(condition.name.as_str()) {
-                Some(decl) => *decl,
+            let cond_decl = match env.interp.program.conditions.get(condition.name.as_str()) {
+                Some(decl) => decl,
                 None => continue,
             };
 
@@ -100,13 +100,13 @@ pub(crate) fn collect_modifiers_owned(
     // 2. Query enabled options and check their modify clauses
     let mut enabled_options = env.state.read_enabled_options();
     // Sort by declaration order for deterministic application
-    let option_order = &env.interp.index.option_order;
+    let option_order = &env.interp.program.option_order;
     enabled_options.sort_by_key(|name| {
         option_order.iter().position(|o| *o == name.as_str()).unwrap_or(usize::MAX)
     });
     for opt_name in &enabled_options {
-        let opt_decl = match env.interp.index.options.get(opt_name.as_str()) {
-            Some(decl) => *decl,
+        let opt_decl = match env.interp.program.options.get(opt_name.as_str()) {
+            Some(decl) => decl,
             None => continue,
         };
 
@@ -161,8 +161,8 @@ fn check_modify_bindings(
     }
 
     // Look up the condition declaration to get receiver name
-    let cond_decl = match env.interp.index.conditions.get(condition.name.as_str()) {
-        Some(decl) => *decl,
+    let cond_decl = match env.interp.program.conditions.get(condition.name.as_str()) {
+        Some(decl) => decl,
         None => return Ok(false),
     };
     let receiver_name = cond_decl.receiver_name.clone();
@@ -722,12 +722,15 @@ mod tests {
 
     /// Build a program with a single system block containing the given declarations.
     fn program_with_decls(decls: Vec<DeclKind>) -> Program {
-        Program {
+        let mut program = Program {
             items: vec![spanned(TopLevel::System(SystemBlock {
                 name: "Test".into(),
                 decls: decls.into_iter().map(spanned).collect(),
             }))],
-        }
+            ..Default::default()
+        };
+        program.build_index();
+        program
     }
 
     // ── Test 1: Modify Phase 1 - param overridden correctly ──

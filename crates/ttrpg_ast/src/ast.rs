@@ -1,10 +1,78 @@
+use std::collections::HashMap;
+
 use crate::{DiceFilter, Span, Spanned};
 
 // ── Program structure ────────────────────────────────────────────
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct Program {
     pub items: Vec<Spanned<TopLevel>>,
+
+    // ── Declaration index (built by `build_index()`) ────────────
+    pub actions: HashMap<String, ActionDecl>,
+    pub derives: HashMap<String, FnDecl>,
+    pub mechanics: HashMap<String, FnDecl>,
+    pub reactions: HashMap<String, ReactionDecl>,
+    pub reaction_order: Vec<String>,
+    pub conditions: HashMap<String, ConditionDecl>,
+    pub events: HashMap<String, EventDecl>,
+    pub prompts: HashMap<String, PromptDecl>,
+    pub options: HashMap<String, OptionDecl>,
+    pub option_order: Vec<String>,
+}
+
+impl Program {
+    /// Build O(1) lookup indices from `self.items`.
+    ///
+    /// Must be called after any mutation of `items` (e.g. after `lower_moves`).
+    pub fn build_index(&mut self) {
+        self.actions.clear();
+        self.derives.clear();
+        self.mechanics.clear();
+        self.reactions.clear();
+        self.reaction_order.clear();
+        self.conditions.clear();
+        self.events.clear();
+        self.prompts.clear();
+        self.options.clear();
+        self.option_order.clear();
+
+        for item in &self.items {
+            if let TopLevel::System(system) = &item.node {
+                for decl in &system.decls {
+                    match &decl.node {
+                        DeclKind::Action(a) => {
+                            self.actions.insert(a.name.clone(), a.clone());
+                        }
+                        DeclKind::Derive(f) => {
+                            self.derives.insert(f.name.clone(), f.clone());
+                        }
+                        DeclKind::Mechanic(f) => {
+                            self.mechanics.insert(f.name.clone(), f.clone());
+                        }
+                        DeclKind::Reaction(r) => {
+                            self.reactions.insert(r.name.clone(), r.clone());
+                            self.reaction_order.push(r.name.clone());
+                        }
+                        DeclKind::Condition(c) => {
+                            self.conditions.insert(c.name.clone(), c.clone());
+                        }
+                        DeclKind::Event(e) => {
+                            self.events.insert(e.name.clone(), e.clone());
+                        }
+                        DeclKind::Prompt(p) => {
+                            self.prompts.insert(p.name.clone(), p.clone());
+                        }
+                        DeclKind::Option(o) => {
+                            self.options.insert(o.name.clone(), o.clone());
+                            self.option_order.push(o.name.clone());
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+    }
 }
 
 #[derive(Clone)]

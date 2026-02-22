@@ -77,8 +77,8 @@ pub fn what_triggers(
     let mut triggerable = Vec::new();
 
     // Scan all reactions in declaration order whose trigger event name matches
-    for reaction_name in &interp.index.reaction_order {
-        let reaction_decl = interp.index.reactions[reaction_name];
+    for reaction_name in &interp.program.reaction_order {
+        let reaction_decl = &interp.program.reactions[reaction_name];
         if reaction_decl.trigger.event_name != event_name {
             continue;
         }
@@ -317,8 +317,8 @@ fn is_suppressed(
                 continue;
             }
 
-            let cond_decl = match env.interp.index.conditions.get(condition.name.as_str()) {
-                Some(decl) => *decl,
+            let cond_decl = match env.interp.program.conditions.get(condition.name.as_str()) {
+                Some(decl) => decl,
                 None => continue,
             };
 
@@ -502,12 +502,15 @@ mod tests {
 
     /// Build a program with a single system block containing the given declarations.
     fn program_with_decls(decls: Vec<DeclKind>) -> Program {
-        Program {
+        let mut program = Program {
             items: vec![spanned(TopLevel::System(SystemBlock {
                 name: "Test".into(),
                 decls: decls.into_iter().map(spanned).collect(),
             }))],
-        }
+            ..Default::default()
+        };
+        program.build_index();
+        program
     }
 
     /// Build a payload struct value from a list of (name, value) pairs.

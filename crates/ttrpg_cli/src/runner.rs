@@ -51,7 +51,7 @@ impl Runner {
     /// Create a new runner with empty program state.
     pub fn new() -> Self {
         Runner {
-            program: Box::new(Program { items: Vec::new() }),
+            program: Box::new(Program::default()),
             type_env: Box::new(TypeEnv::new()),
             game_state: RefCell::new(GameState::new()),
             last_path: None,
@@ -229,7 +229,7 @@ impl Runner {
             Ok(s) => s,
             Err(e) => {
                 // Clear stale state so a previous successful load doesn't linger.
-                *self.program = Program { items: Vec::new() };
+                *self.program = Program::default();
                 *self.type_env = TypeEnv::new();
                 self.game_state = RefCell::new(GameState::new());
                 self.diagnostics = Vec::new();
@@ -274,7 +274,7 @@ impl Runner {
         } else {
             let error_count = errors.len();
             // Clear stale program state so eval cannot use a previous successful load.
-            *self.program = Program { items: Vec::new() };
+            *self.program = Program::default();
             *self.type_env = TypeEnv::new();
             self.game_state = RefCell::new(GameState::new());
             self.diagnostics = all_diags;

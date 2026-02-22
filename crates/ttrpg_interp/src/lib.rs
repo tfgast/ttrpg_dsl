@@ -14,8 +14,7 @@ use std::collections::HashMap;
 
 use ttrpg_ast::{Span, Spanned};
 use ttrpg_ast::ast::{
-    ActionDecl, ConditionDecl, DeclKind, EventDecl, ExprKind, FnDecl, OptionDecl, Program,
-    PromptDecl, ReactionDecl, TopLevel,
+    DeclKind, ExprKind, Program, TopLevel,
 };
 use ttrpg_checker::env::TypeEnv;
 
@@ -66,88 +65,13 @@ impl std::fmt::Display for RuntimeError {
 
 impl std::error::Error for RuntimeError {}
 
-// ── DeclIndex ──────────────────────────────────────────────────
-
-/// O(1) lookup index for declarations, built once at `Interpreter::new`.
-///
-/// Borrows from `Program` with the same lifetime, so no cloning is needed.
-pub(crate) struct DeclIndex<'p> {
-    pub actions: HashMap<&'p str, &'p ActionDecl>,
-    pub derives: HashMap<&'p str, &'p FnDecl>,
-    pub mechanics: HashMap<&'p str, &'p FnDecl>,
-    pub reactions: HashMap<&'p str, &'p ReactionDecl>,
-    pub reaction_order: Vec<&'p str>,
-    pub conditions: HashMap<&'p str, &'p ConditionDecl>,
-    pub events: HashMap<&'p str, &'p EventDecl>,
-    pub prompts: HashMap<&'p str, &'p PromptDecl>,
-    pub options: HashMap<&'p str, &'p OptionDecl>,
-    pub option_order: Vec<&'p str>,
-}
-
-impl<'p> DeclIndex<'p> {
-    fn build(program: &'p Program) -> Self {
-        let mut index = DeclIndex {
-            actions: HashMap::new(),
-            derives: HashMap::new(),
-            mechanics: HashMap::new(),
-            reactions: HashMap::new(),
-            reaction_order: Vec::new(),
-            conditions: HashMap::new(),
-            events: HashMap::new(),
-            prompts: HashMap::new(),
-            options: HashMap::new(),
-            option_order: Vec::new(),
-        };
-
-        for item in &program.items {
-            if let TopLevel::System(system) = &item.node {
-                for decl in &system.decls {
-                    match &decl.node {
-                        DeclKind::Action(a) => {
-                            index.actions.insert(&a.name, a);
-                        }
-                        DeclKind::Derive(f) => {
-                            index.derives.insert(&f.name, f);
-                        }
-                        DeclKind::Mechanic(f) => {
-                            index.mechanics.insert(&f.name, f);
-                        }
-                        DeclKind::Reaction(r) => {
-                            index.reactions.insert(&r.name, r);
-                            index.reaction_order.push(&r.name);
-                        }
-                        DeclKind::Condition(c) => {
-                            index.conditions.insert(&c.name, c);
-                        }
-                        DeclKind::Event(e) => {
-                            index.events.insert(&e.name, e);
-                        }
-                        DeclKind::Prompt(p) => {
-                            index.prompts.insert(&p.name, p);
-                        }
-                        DeclKind::Option(o) => {
-                            index.options.insert(&o.name, o);
-                            index.option_order.push(&o.name);
-                        }
-                        // Structs, enums, entities are accessed via TypeEnv, not DeclIndex.
-                        // Move nodes should not exist after lowering.
-                        _ => {}
-                    }
-                }
-            }
-        }
-
-        index
-    }
-}
-
 // ── Interpreter ────────────────────────────────────────────────
 
 /// The main interpreter. Holds a reference to the checked program and
 /// provides methods for executing actions, evaluating derives, etc.
 pub struct Interpreter<'p> {
     pub(crate) type_env: &'p TypeEnv,
-    pub(crate) index: DeclIndex<'p>,
+    pub(crate) program: &'p Program,
 }
 
 impl<'p> Interpreter<'p> {
@@ -171,11 +95,9 @@ impl<'p> Interpreter<'p> {
             }
         }
 
-        let index = DeclIndex::build(program);
-
         Ok(Interpreter {
             type_env,
-            index,
+            program,
         })
     }
 
@@ -192,11 +114,11 @@ impl<'p> Interpreter<'p> {
         args: Vec<Value>,
     ) -> Result<Value, RuntimeError> {
         let action_decl = self
-            .index
+            .program
             .actions
             .get(name)
             .ok_or_else(|| RuntimeError::new(format!("undefined action '{}'", name)))?;
-        let action_decl = (*action_decl).clone();
+        let action_decl = action_decl.clone();
 
         // Map positional args to param names
         if args.len() > action_decl.params.len() {
@@ -257,11 +179,11 @@ impl<'p> Interpreter<'p> {
         event_payload: Value,
     ) -> Result<Value, RuntimeError> {
         let reaction_decl = self
-            .index
+            .program
             .reactions
             .get(name)
             .ok_or_else(|| RuntimeError::new(format!("undefined reaction '{}'", name)))?;
-        let reaction_decl = (*reaction_decl).clone();
+        let reaction_decl = reaction_decl.clone();
 
         let mut env = Env::new(state, handler, self);
         let span = Span::dummy();
@@ -278,7 +200,7 @@ impl<'p> Interpreter<'p> {
         name: &str,
         args: Vec<Value>,
     ) -> Result<Value, RuntimeError> {
-        if !self.index.mechanics.contains_key(name) {
+        if !self.program.mechanics.contains_key(name) {
             return Err(RuntimeError::new(format!(
                 "undefined mechanic '{}'",
                 name
@@ -299,7 +221,7 @@ impl<'p> Interpreter<'p> {
         name: &str,
         args: Vec<Value>,
     ) -> Result<Value, RuntimeError> {
-        if !self.index.derives.contains_key(name) {
+        if !self.program.derives.contains_key(name) {
             return Err(RuntimeError::new(format!(
                 "undefined derive '{}'",
                 name
@@ -324,17 +246,17 @@ impl<'p> Interpreter<'p> {
 
     /// Check whether a named action exists in the loaded program.
     pub fn has_action(&self, name: &str) -> bool {
-        self.index.actions.contains_key(name)
+        self.program.actions.contains_key(name)
     }
 
     /// Check whether a named derive exists in the loaded program.
     pub fn has_derive(&self, name: &str) -> bool {
-        self.index.derives.contains_key(name)
+        self.program.derives.contains_key(name)
     }
 
     /// Check whether a named mechanic exists in the loaded program.
     pub fn has_mechanic(&self, name: &str) -> bool {
-        self.index.mechanics.contains_key(name)
+        self.program.mechanics.contains_key(name)
     }
 
     /// Query which reactions would trigger for a given event.
