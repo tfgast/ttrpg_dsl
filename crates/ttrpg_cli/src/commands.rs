@@ -10,6 +10,20 @@ pub enum Command {
     Destroy(String),
     Do(String),
     Call(String),
+    // Inspection
+    Inspect(String),
+    State,
+    Types,
+    Actions,
+    Mechanics,
+    Conditions,
+    // Assertions
+    Assert(String),
+    AssertEq(String),
+    AssertErr(String),
+    // Configuration
+    Seed(String),
+    Rolls(String),
     Unknown(String),
 }
 
@@ -87,6 +101,62 @@ pub fn parse_command(line: &str) -> Option<Command> {
                 Some(Command::Unknown("call".into()))
             } else {
                 Some(Command::Call(s.into()))
+            }
+        }
+        // Inspection
+        "inspect" => {
+            let s = strip_comment(tail).trim();
+            if s.is_empty() {
+                Some(Command::Unknown("inspect".into()))
+            } else {
+                Some(Command::Inspect(s.into()))
+            }
+        }
+        "state" => Some(Command::State),
+        "types" => Some(Command::Types),
+        "actions" => Some(Command::Actions),
+        "mechanics" => Some(Command::Mechanics),
+        "conditions" => Some(Command::Conditions),
+        // Assertions
+        "assert" => {
+            let s = strip_comment(tail).trim();
+            if s.is_empty() {
+                Some(Command::Unknown("assert".into()))
+            } else {
+                Some(Command::Assert(s.into()))
+            }
+        }
+        "assert_eq" => {
+            let s = strip_comment(tail).trim();
+            if s.is_empty() {
+                Some(Command::Unknown("assert_eq".into()))
+            } else {
+                Some(Command::AssertEq(s.into()))
+            }
+        }
+        "assert_err" => {
+            let s = tail.trim();
+            if s.is_empty() {
+                Some(Command::Unknown("assert_err".into()))
+            } else {
+                Some(Command::AssertErr(s.into()))
+            }
+        }
+        // Configuration
+        "seed" => {
+            let s = strip_comment(tail).trim();
+            if s.is_empty() {
+                Some(Command::Unknown("seed".into()))
+            } else {
+                Some(Command::Seed(s.into()))
+            }
+        }
+        "rolls" => {
+            let s = strip_comment(tail).trim();
+            if s.is_empty() {
+                Some(Command::Unknown("rolls".into()))
+            } else {
+                Some(Command::Rolls(s.into()))
             }
         }
         _ => Some(Command::Unknown(keyword.into())),
@@ -335,6 +405,141 @@ mod tests {
         assert_eq!(
             parse_command("do Attack(fighter, goblin) // attack!"),
             Some(Command::Do("Attack(fighter, goblin)".into()))
+        );
+    }
+
+    // ── Phase 3: Inspection commands ─────────────────────────────
+
+    #[test]
+    fn parse_inspect() {
+        assert_eq!(
+            parse_command("inspect fighter.HP"),
+            Some(Command::Inspect("fighter.HP".into()))
+        );
+    }
+
+    #[test]
+    fn parse_inspect_empty_is_unknown() {
+        assert_eq!(
+            parse_command("inspect"),
+            Some(Command::Unknown("inspect".into()))
+        );
+    }
+
+    #[test]
+    fn parse_state() {
+        assert_eq!(parse_command("state"), Some(Command::State));
+    }
+
+    #[test]
+    fn parse_types() {
+        assert_eq!(parse_command("types"), Some(Command::Types));
+    }
+
+    #[test]
+    fn parse_actions() {
+        assert_eq!(parse_command("actions"), Some(Command::Actions));
+    }
+
+    #[test]
+    fn parse_mechanics() {
+        assert_eq!(parse_command("mechanics"), Some(Command::Mechanics));
+    }
+
+    #[test]
+    fn parse_conditions() {
+        assert_eq!(parse_command("conditions"), Some(Command::Conditions));
+    }
+
+    // ── Phase 3: Assertion commands ──────────────────────────────
+
+    #[test]
+    fn parse_assert() {
+        assert_eq!(
+            parse_command("assert 2 + 3 == 5"),
+            Some(Command::Assert("2 + 3 == 5".into()))
+        );
+    }
+
+    #[test]
+    fn parse_assert_empty_is_unknown() {
+        assert_eq!(
+            parse_command("assert"),
+            Some(Command::Unknown("assert".into()))
+        );
+    }
+
+    #[test]
+    fn parse_assert_eq() {
+        assert_eq!(
+            parse_command("assert_eq 2 + 3, 5"),
+            Some(Command::AssertEq("2 + 3, 5".into()))
+        );
+    }
+
+    #[test]
+    fn parse_assert_eq_empty_is_unknown() {
+        assert_eq!(
+            parse_command("assert_eq"),
+            Some(Command::Unknown("assert_eq".into()))
+        );
+    }
+
+    #[test]
+    fn parse_assert_err() {
+        assert_eq!(
+            parse_command("assert_err destroy nonexistent"),
+            Some(Command::AssertErr("destroy nonexistent".into()))
+        );
+    }
+
+    #[test]
+    fn parse_assert_err_empty_is_unknown() {
+        assert_eq!(
+            parse_command("assert_err"),
+            Some(Command::Unknown("assert_err".into()))
+        );
+    }
+
+    // ── Phase 3: Configuration commands ──────────────────────────
+
+    #[test]
+    fn parse_seed() {
+        assert_eq!(
+            parse_command("seed 42"),
+            Some(Command::Seed("42".into()))
+        );
+    }
+
+    #[test]
+    fn parse_seed_empty_is_unknown() {
+        assert_eq!(
+            parse_command("seed"),
+            Some(Command::Unknown("seed".into()))
+        );
+    }
+
+    #[test]
+    fn parse_rolls() {
+        assert_eq!(
+            parse_command("rolls 3 5 2"),
+            Some(Command::Rolls("3 5 2".into()))
+        );
+    }
+
+    #[test]
+    fn parse_rolls_empty_is_unknown() {
+        assert_eq!(
+            parse_command("rolls"),
+            Some(Command::Unknown("rolls".into()))
+        );
+    }
+
+    #[test]
+    fn parse_rolls_clear() {
+        assert_eq!(
+            parse_command("rolls clear"),
+            Some(Command::Rolls("clear".into()))
         );
     }
 }

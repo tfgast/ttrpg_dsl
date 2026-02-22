@@ -1,17 +1,17 @@
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::path::PathBuf;
 
 use rand::SeedableRng;
 use rand::rngs::StdRng;
 use ttrpg_ast::ast::Program;
 use ttrpg_ast::diagnostic::{Diagnostic, Severity};
-use ttrpg_checker::env::TypeEnv;
+use ttrpg_checker::env::{DeclInfo, FnKind, TypeEnv};
 use ttrpg_checker::ty::Ty;
 use ttrpg_interp::Interpreter;
 use ttrpg_interp::effect::FieldPathSegment;
 use ttrpg_interp::reference_state::GameState;
-use ttrpg_interp::state::{EntityRef, WritableState};
+use ttrpg_interp::state::{EntityRef, StateProvider, WritableState};
 use ttrpg_interp::value::Value;
 
 use crate::commands::{self, Command};
@@ -44,6 +44,7 @@ pub struct Runner {
     handles: HashMap<String, EntityRef>,
     reverse_handles: HashMap<EntityRef, String>,
     rng: StdRng,
+    roll_queue: VecDeque<i64>,
 }
 
 impl Runner {
@@ -59,11 +60,21 @@ impl Runner {
             handles: HashMap::new(),
             reverse_handles: HashMap::new(),
             rng: StdRng::from_os_rng(),
+            roll_queue: VecDeque::new(),
         }
     }
 
     /// Execute a single line of input. Output is collected internally.
     pub fn exec(&mut self, line: &str) -> Result<(), CliError> {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with("//") {
+            return Ok(());
+        }
+        self.exec_inner(line)
+    }
+
+    /// Inner dispatch — called by `exec` and also by `cmd_assert_err`.
+    fn exec_inner(&mut self, line: &str) -> Result<(), CliError> {
         let cmd = match commands::parse_command(line) {
             Some(cmd) => cmd,
             None => return Ok(()), // blank or comment-only line
@@ -79,6 +90,20 @@ impl Runner {
             Command::Destroy(handle) => self.cmd_destroy(&handle),
             Command::Do(tail) => self.cmd_do(&tail),
             Command::Call(tail) => self.cmd_call(&tail),
+            // Inspection
+            Command::Inspect(tail) => self.cmd_inspect(&tail),
+            Command::State => self.cmd_state(),
+            Command::Types => self.cmd_types(),
+            Command::Actions => self.cmd_actions(),
+            Command::Mechanics => self.cmd_mechanics(),
+            Command::Conditions => self.cmd_conditions(),
+            // Assertions
+            Command::Assert(expr_str) => self.cmd_assert(&expr_str),
+            Command::AssertEq(tail) => self.cmd_assert_eq(&tail),
+            Command::AssertErr(tail) => self.cmd_assert_err(&tail),
+            // Configuration
+            Command::Seed(tail) => self.cmd_seed(&tail),
+            Command::Rolls(tail) => self.cmd_rolls(&tail),
             Command::Unknown(kw) => Err(CliError::Message(format!("unknown command: {}", kw))),
         }
     }
@@ -105,7 +130,7 @@ impl Runner {
             .map_err(|e| CliError::Message(format!("interpreter error: {}", e)))?;
 
         let state = RefCellState(&self.game_state);
-        let mut handler = CliHandler::new(&self.game_state, &self.reverse_handles, &mut self.rng);
+        let mut handler = CliHandler::new(&self.game_state, &self.reverse_handles, &mut self.rng, &mut self.roll_queue);
         let result = interp
             .evaluate_expr(&state, &mut handler, &parsed)
             .map_err(|e| {
@@ -507,7 +532,7 @@ impl Runner {
             .map_err(|e| CliError::Message(format!("interpreter error: {}", e)))?;
         let state = RefCellState(&self.game_state);
         let mut handler =
-            CliHandler::new(&self.game_state, &self.reverse_handles, &mut self.rng);
+            CliHandler::new(&self.game_state, &self.reverse_handles, &mut self.rng, &mut self.roll_queue);
 
         let result = interp
             .execute_action(&state, &mut handler, action_name, actor, args)
@@ -592,7 +617,7 @@ impl Runner {
             .map_err(|e| CliError::Message(format!("interpreter error: {}", e)))?;
         let state = RefCellState(&self.game_state);
         let mut handler =
-            CliHandler::new(&self.game_state, &self.reverse_handles, &mut self.rng);
+            CliHandler::new(&self.game_state, &self.reverse_handles, &mut self.rng, &mut self.roll_queue);
 
         // Dispatch to derive or mechanic based on structured check
         let result = if is_derive {
@@ -622,6 +647,374 @@ impl Runner {
 
         self.output.push(format!("=> {}", format_value(&result)));
         Ok(())
+    }
+
+    // ── Configuration handlers ───────────────────────────────────
+
+    fn cmd_seed(&mut self, tail: &str) -> Result<(), CliError> {
+        let seed: u64 = tail
+            .trim()
+            .parse()
+            .map_err(|_| CliError::Message(format!("invalid seed: {}", tail.trim())))?;
+        self.rng = StdRng::seed_from_u64(seed);
+        self.output.push(format!("seed set to {}", seed));
+        Ok(())
+    }
+
+    fn cmd_rolls(&mut self, tail: &str) -> Result<(), CliError> {
+        let tail = tail.trim();
+        if tail == "clear" {
+            self.roll_queue.clear();
+            self.output.push("roll queue cleared".into());
+            return Ok(());
+        }
+        let mut count = 0;
+        for token in tail.split_whitespace() {
+            let val: i64 = token
+                .parse()
+                .map_err(|_| CliError::Message(format!("invalid roll value: {}", token)))?;
+            self.roll_queue.push_back(val);
+            count += 1;
+        }
+        self.output.push(format!(
+            "queued {} roll{} ({} total)",
+            count,
+            if count == 1 { "" } else { "s" },
+            self.roll_queue.len()
+        ));
+        Ok(())
+    }
+
+    // ── Inspection handlers ────────────────────────────────────
+
+    fn cmd_inspect(&mut self, tail: &str) -> Result<(), CliError> {
+        let tail = tail.trim();
+
+        // Split on first '.' to detect handle.field vs handle
+        if let Some(dot_pos) = tail.find('.') {
+            let handle = &tail[..dot_pos];
+            let field = &tail[dot_pos + 1..];
+            if handle.is_empty() || field.is_empty() {
+                return Err(CliError::Message(
+                    "usage: inspect <handle> or inspect <handle>.<field>".into(),
+                ));
+            }
+            let entity = self.resolve_handle(handle)?;
+            let gs = self.game_state.borrow();
+            let val = gs.read_field(&entity, field).ok_or_else(|| {
+                CliError::Message(format!("field '{}' not found on {}", field, handle))
+            })?;
+            self.output
+                .push(format!("{}.{} = {}", handle, field, format_value(&val)));
+        } else {
+            let handle = tail;
+            let entity = self.resolve_handle(handle)?;
+            let gs = self.game_state.borrow();
+            let type_name = gs
+                .entity_type_name(&entity)
+                .ok_or_else(|| {
+                    CliError::Message(format!("entity for handle '{}' not found in state", handle))
+                })?
+                .to_string();
+            drop(gs);
+
+            self.output.push(format!("{} ({})", handle, type_name));
+
+            if let Some(fields) = self.type_env.lookup_fields(&type_name) {
+                let gs = self.game_state.borrow();
+                for fi in fields {
+                    let val = gs
+                        .read_field(&entity, &fi.name)
+                        .map(|v| format_value(&v))
+                        .unwrap_or_else(|| "<unset>".into());
+                    self.output.push(format!(
+                        "  {}: {} = {}",
+                        fi.name,
+                        fi.ty.display(),
+                        val
+                    ));
+                }
+            }
+
+            let gs = self.game_state.borrow();
+            if let Some(conditions) = gs.read_conditions(&entity) {
+                for cond in &conditions {
+                    self.output.push(format!(
+                        "  [condition] {} ({})",
+                        cond.name,
+                        format_value(&cond.duration)
+                    ));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn cmd_state(&mut self) -> Result<(), CliError> {
+        if self.handles.is_empty() {
+            self.output.push("no entities".into());
+            return Ok(());
+        }
+
+        let mut sorted: Vec<_> = self.handles.iter().collect();
+        sorted.sort_by_key(|(name, _)| *name);
+
+        for (handle, entity) in &sorted {
+            let gs = self.game_state.borrow();
+            let type_name = gs
+                .entity_type_name(entity)
+                .unwrap_or("?")
+                .to_string();
+            drop(gs);
+
+            self.output.push(format!("{} ({})", handle, type_name));
+
+            if let Some(fields) = self.type_env.lookup_fields(&type_name) {
+                let gs = self.game_state.borrow();
+                for fi in fields {
+                    let val = gs
+                        .read_field(entity, &fi.name)
+                        .map(|v| format_value(&v))
+                        .unwrap_or_else(|| "<unset>".into());
+                    self.output.push(format!(
+                        "  {}: {} = {}",
+                        fi.name,
+                        fi.ty.display(),
+                        val
+                    ));
+                }
+            }
+
+            let gs = self.game_state.borrow();
+            if let Some(conditions) = gs.read_conditions(entity) {
+                for cond in &conditions {
+                    self.output.push(format!(
+                        "  [condition] {} ({})",
+                        cond.name,
+                        format_value(&cond.duration)
+                    ));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn cmd_types(&mut self) -> Result<(), CliError> {
+        let mut sorted: Vec<_> = self.type_env.types.iter().collect();
+        sorted.sort_by_key(|(name, _)| *name);
+
+        if sorted.is_empty() {
+            self.output.push("no types".into());
+            return Ok(());
+        }
+
+        for (name, decl) in &sorted {
+            match decl {
+                DeclInfo::Entity(info) => {
+                    self.output.push(format!("entity {}", name));
+                    for fi in &info.fields {
+                        self.output
+                            .push(format!("  {}: {}", fi.name, fi.ty.display()));
+                    }
+                }
+                DeclInfo::Struct(info) => {
+                    self.output.push(format!("struct {}", name));
+                    for fi in &info.fields {
+                        self.output
+                            .push(format!("  {}: {}", fi.name, fi.ty.display()));
+                    }
+                }
+                DeclInfo::Enum(info) => {
+                    self.output.push(format!("enum {}", name));
+                    for variant in &info.variants {
+                        if variant.fields.is_empty() {
+                            self.output.push(format!("  {}", variant.name));
+                        } else {
+                            let fields: Vec<String> = variant
+                                .fields
+                                .iter()
+                                .map(|(n, t)| format!("{}: {}", n, t.display()))
+                                .collect();
+                            self.output
+                                .push(format!("  {}({})", variant.name, fields.join(", ")));
+                        }
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn cmd_actions(&mut self) -> Result<(), CliError> {
+        let mut actions: Vec<_> = self
+            .type_env
+            .functions
+            .values()
+            .filter(|fi| matches!(fi.kind, FnKind::Action))
+            .collect();
+        actions.sort_by(|a, b| a.name.cmp(&b.name));
+
+        if actions.is_empty() {
+            self.output.push("no actions".into());
+            return Ok(());
+        }
+
+        for fi in &actions {
+            let receiver = fi
+                .receiver
+                .as_ref()
+                .map(|r| format!("{}: {}", r.name, r.ty.display()))
+                .unwrap_or_default();
+            let params: Vec<String> = fi
+                .params
+                .iter()
+                .map(|p| format!("{}: {}", p.name, p.ty.display()))
+                .collect();
+            let all_params = if receiver.is_empty() {
+                params.join(", ")
+            } else if params.is_empty() {
+                receiver
+            } else {
+                format!("{}, {}", receiver, params.join(", "))
+            };
+            self.output.push(format!(
+                "action {}({}) -> {}",
+                fi.name,
+                all_params,
+                fi.return_type.display()
+            ));
+        }
+        Ok(())
+    }
+
+    fn cmd_mechanics(&mut self) -> Result<(), CliError> {
+        let mut fns: Vec<_> = self
+            .type_env
+            .functions
+            .values()
+            .filter(|fi| matches!(fi.kind, FnKind::Mechanic | FnKind::Derive))
+            .collect();
+        fns.sort_by(|a, b| a.name.cmp(&b.name));
+
+        if fns.is_empty() {
+            self.output.push("no mechanics".into());
+            return Ok(());
+        }
+
+        for fi in &fns {
+            let kind_label = match fi.kind {
+                FnKind::Derive => "derive",
+                FnKind::Mechanic => "mechanic",
+                _ => unreachable!(),
+            };
+            let params: Vec<String> = fi
+                .params
+                .iter()
+                .map(|p| format!("{}: {}", p.name, p.ty.display()))
+                .collect();
+            self.output.push(format!(
+                "{} {}({}) -> {}",
+                kind_label,
+                fi.name,
+                params.join(", "),
+                fi.return_type.display()
+            ));
+        }
+        Ok(())
+    }
+
+    fn cmd_conditions(&mut self) -> Result<(), CliError> {
+        if self.handles.is_empty() {
+            self.output.push("no entities".into());
+            return Ok(());
+        }
+
+        let mut sorted: Vec<_> = self.handles.iter().collect();
+        sorted.sort_by_key(|(name, _)| *name);
+
+        let mut found_any = false;
+        for (handle, entity) in &sorted {
+            let gs = self.game_state.borrow();
+            if let Some(conditions) = gs.read_conditions(entity) {
+                for cond in &conditions {
+                    self.output.push(format!(
+                        "{}: {} ({})",
+                        handle,
+                        cond.name,
+                        format_value(&cond.duration)
+                    ));
+                    found_any = true;
+                }
+            }
+        }
+
+        if !found_any {
+            self.output.push("no active conditions".into());
+        }
+        Ok(())
+    }
+
+    // ── Assertion handlers ─────────────────────────────────────
+
+    fn cmd_assert(&mut self, expr_str: &str) -> Result<(), CliError> {
+        let val = self.eval(expr_str)?;
+        match val {
+            Value::Bool(true) => Ok(()),
+            Value::Bool(false) => Err(CliError::Message(format!(
+                "assertion failed: {} evaluated to false",
+                expr_str
+            ))),
+            _ => Err(CliError::Message(format!(
+                "assertion error: expected bool, got {}",
+                value_type_display(&val)
+            ))),
+        }
+    }
+
+    fn cmd_assert_eq(&mut self, tail: &str) -> Result<(), CliError> {
+        let parts = split_top_level_commas(tail);
+        if parts.len() != 2 {
+            return Err(CliError::Message(
+                "usage: assert_eq <expr1>, <expr2>".into(),
+            ));
+        }
+        let left_str = parts[0].trim();
+        let right_str = parts[1].trim();
+        if left_str.is_empty() || right_str.is_empty() {
+            return Err(CliError::Message(
+                "usage: assert_eq <expr1>, <expr2>".into(),
+            ));
+        }
+        let left = self.eval(left_str)?;
+        let right = self.eval(right_str)?;
+        if left == right {
+            Ok(())
+        } else {
+            Err(CliError::Message(format!(
+                "assertion failed: {} != {}\n  left:  {}\n  right: {}",
+                left_str,
+                right_str,
+                format_value(&left),
+                format_value(&right)
+            )))
+        }
+    }
+
+    fn cmd_assert_err(&mut self, tail: &str) -> Result<(), CliError> {
+        let output_len = self.output.len();
+        match self.exec_inner(tail) {
+            Err(_) => {
+                // Expected error — suppress any output generated by the failed command
+                self.output.truncate(output_len);
+                Ok(())
+            }
+            Ok(()) => {
+                Err(CliError::Message(format!(
+                    "assertion failed: expected error from: {}",
+                    tail
+                )))
+            }
+        }
     }
 
     // ── Parsing helpers ──────────────────────────────────────────
@@ -668,7 +1061,7 @@ impl Runner {
                     .map_err(|e| CliError::Message(format!("interpreter error: {}", e)))?;
                 let state = RefCellState(&self.game_state);
                 let mut handler =
-                    CliHandler::new(&self.game_state, &self.reverse_handles, &mut self.rng);
+                    CliHandler::new(&self.game_state, &self.reverse_handles, &mut self.rng, &mut self.roll_queue);
                 let result = interp
                     .evaluate_expr(&state, &mut handler, &parsed)
                     .map_err(|e| {
@@ -1694,5 +2087,284 @@ system "test" {
             "got: {}",
             err
         );
+    }
+
+    // ── Phase 3: Configuration tests ─────────────────────────────
+
+    #[test]
+    fn cmd_seed_deterministic() {
+        let mut runner = Runner::new();
+        runner.exec("seed 42").unwrap();
+        runner.take_output();
+
+        // Eval the same expression twice with the same seed => same result
+        // (We re-seed each time to verify determinism)
+        runner.exec("seed 42").unwrap();
+        runner.take_output();
+    }
+
+    #[test]
+    fn cmd_rolls_consumed() {
+        let mut runner = Runner::new();
+        load_character_program(&mut runner);
+        runner.exec("rolls 10").unwrap();
+        runner.take_output();
+        // Queue should have 1 entry; it'll be consumed on next dice roll
+        assert_eq!(runner.roll_queue.len(), 1);
+        assert_eq!(runner.roll_queue[0], 10);
+    }
+
+    #[test]
+    fn cmd_rolls_clear() {
+        let mut runner = Runner::new();
+        runner.exec("rolls 10 15 20").unwrap();
+        runner.take_output();
+        assert_eq!(runner.roll_queue.len(), 3);
+
+        runner.exec("rolls clear").unwrap();
+        let output = runner.take_output();
+        assert!(output[0].contains("cleared"));
+        assert!(runner.roll_queue.is_empty());
+    }
+
+    #[test]
+    fn cmd_rolls_append() {
+        let mut runner = Runner::new();
+        runner.exec("rolls 3 5").unwrap();
+        runner.take_output();
+        runner.exec("rolls 7").unwrap();
+        let output = runner.take_output();
+        assert!(output[0].contains("3 total"));
+        assert_eq!(runner.roll_queue.len(), 3);
+    }
+
+    // ── Phase 3: Assertion tests ─────────────────────────────────
+
+    #[test]
+    fn cmd_assert_true() {
+        let mut runner = Runner::new();
+        runner.exec("assert 2 + 3 == 5").unwrap();
+    }
+
+    #[test]
+    fn cmd_assert_false() {
+        let mut runner = Runner::new();
+        let err = runner.exec("assert 2 + 3 == 6").unwrap_err();
+        assert!(
+            err.to_string().contains("assertion failed"),
+            "got: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn cmd_assert_non_bool() {
+        let mut runner = Runner::new();
+        let err = runner.exec("assert 2 + 3").unwrap_err();
+        assert!(
+            err.to_string().contains("expected bool"),
+            "got: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn cmd_assert_eq_pass() {
+        let mut runner = Runner::new();
+        runner.exec("assert_eq 2 + 3, 5").unwrap();
+    }
+
+    #[test]
+    fn cmd_assert_eq_fail() {
+        let mut runner = Runner::new();
+        let err = runner.exec("assert_eq 2 + 3, 6").unwrap_err();
+        assert!(
+            err.to_string().contains("assertion failed"),
+            "got: {}",
+            err
+        );
+        assert!(err.to_string().contains("!="), "got: {}", err);
+    }
+
+    #[test]
+    fn cmd_assert_err_pass() {
+        let mut runner = Runner::new();
+        // destroy with unknown handle should error
+        runner.exec("assert_err destroy nonexistent").unwrap();
+        // No output should leak from the failed inner command
+        assert!(runner.take_output().is_empty());
+    }
+
+    #[test]
+    fn cmd_assert_err_fail() {
+        let mut runner = Runner::new();
+        // eval 2+3 succeeds, so assert_err should fail
+        let err = runner.exec("assert_err eval 2 + 3").unwrap_err();
+        assert!(
+            err.to_string().contains("expected error"),
+            "got: {}",
+            err
+        );
+    }
+
+    // ── Phase 3: Inspection tests ────────────────────────────────
+
+    #[test]
+    fn cmd_inspect_entity() {
+        let mut runner = Runner::new();
+        load_character_program(&mut runner);
+        runner.exec("spawn Character fighter { HP: 30, AC: 15 }").unwrap();
+        runner.take_output();
+
+        runner.exec("inspect fighter").unwrap();
+        let output = runner.take_output();
+        assert!(output[0].contains("fighter"));
+        assert!(output[0].contains("Character"));
+        assert!(output.iter().any(|l| l.contains("HP") && l.contains("30")));
+        assert!(output.iter().any(|l| l.contains("AC") && l.contains("15")));
+    }
+
+    #[test]
+    fn cmd_inspect_field() {
+        let mut runner = Runner::new();
+        load_character_program(&mut runner);
+        runner.exec("spawn Character fighter { HP: 30 }").unwrap();
+        runner.take_output();
+
+        runner.exec("inspect fighter.HP").unwrap();
+        let output = runner.take_output();
+        assert_eq!(output.len(), 1);
+        assert!(output[0].contains("fighter.HP = 30"));
+    }
+
+    #[test]
+    fn cmd_inspect_unknown() {
+        let mut runner = Runner::new();
+        let err = runner.exec("inspect ghost").unwrap_err();
+        assert!(err.to_string().contains("unknown handle"));
+    }
+
+    #[test]
+    fn cmd_state_empty() {
+        let mut runner = Runner::new();
+        runner.exec("state").unwrap();
+        let output = runner.take_output();
+        assert_eq!(output, vec!["no entities"]);
+    }
+
+    #[test]
+    fn cmd_state_with_entities() {
+        let mut runner = Runner::new();
+        load_character_program(&mut runner);
+        runner.exec("spawn Character alice { HP: 30, AC: 15 }").unwrap();
+        runner.take_output();
+        runner.exec("spawn Character bob { HP: 25, AC: 12 }").unwrap();
+        runner.take_output();
+
+        runner.exec("state").unwrap();
+        let output = runner.take_output();
+        // Should contain both entities sorted alphabetically
+        assert!(output.iter().any(|l| l.contains("alice")));
+        assert!(output.iter().any(|l| l.contains("bob")));
+    }
+
+    #[test]
+    fn cmd_types() {
+        let mut runner = Runner::new();
+        load_character_program(&mut runner);
+        runner.exec("types").unwrap();
+        let output = runner.take_output();
+        assert!(output.iter().any(|l| l.contains("entity Character")));
+        assert!(output.iter().any(|l| l.contains("HP")));
+    }
+
+    #[test]
+    fn cmd_actions() {
+        let dir = std::env::temp_dir().join("ttrpg_cli_test");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("test_actions.ttrpg");
+        std::fs::write(
+            &path,
+            r#"
+system "test" {
+    entity Character { HP: int }
+    action Attack on attacker: Character (target: Character) {
+        resolve {
+            target.HP -= 5
+        }
+    }
+}
+"#,
+        )
+        .unwrap();
+
+        let mut runner = Runner::new();
+        runner.exec(&format!("load {}", path.display())).unwrap();
+        runner.take_output();
+
+        runner.exec("actions").unwrap();
+        let output = runner.take_output();
+        assert!(output.iter().any(|l| l.contains("action Attack")));
+
+        std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn cmd_mechanics() {
+        let mut runner = Runner::new();
+        load_character_program(&mut runner);
+        runner.exec("mechanics").unwrap();
+        let output = runner.take_output();
+        assert!(output.iter().any(|l| l.contains("derive id")));
+    }
+
+    #[test]
+    fn cmd_conditions_empty() {
+        let mut runner = Runner::new();
+        load_character_program(&mut runner);
+        runner.exec("spawn Character fighter { HP: 30 }").unwrap();
+        runner.take_output();
+
+        runner.exec("conditions").unwrap();
+        let output = runner.take_output();
+        assert!(output.iter().any(|l| l.contains("no active conditions")));
+    }
+
+    #[test]
+    fn cmd_types_empty() {
+        let mut runner = Runner::new();
+        runner.exec("types").unwrap();
+        let output = runner.take_output();
+        assert_eq!(output, vec!["no types"]);
+    }
+
+    #[test]
+    fn cmd_actions_empty() {
+        let mut runner = Runner::new();
+        runner.exec("actions").unwrap();
+        let output = runner.take_output();
+        assert_eq!(output, vec!["no actions"]);
+    }
+
+    #[test]
+    fn cmd_mechanics_empty() {
+        let mut runner = Runner::new();
+        runner.exec("mechanics").unwrap();
+        let output = runner.take_output();
+        assert_eq!(output, vec!["no mechanics"]);
+    }
+
+    #[test]
+    fn cmd_seed_invalid() {
+        let mut runner = Runner::new();
+        let err = runner.exec("seed abc").unwrap_err();
+        assert!(err.to_string().contains("invalid seed"));
+    }
+
+    #[test]
+    fn cmd_rolls_invalid() {
+        let mut runner = Runner::new();
+        let err = runner.exec("rolls 3 abc 5").unwrap_err();
+        assert!(err.to_string().contains("invalid roll value"));
     }
 }

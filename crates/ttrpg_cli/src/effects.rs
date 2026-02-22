@@ -1,5 +1,5 @@
 use std::cell::RefCell;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, VecDeque};
 
 use rand::Rng;
 use rand::rngs::StdRng;
@@ -87,6 +87,7 @@ pub struct CliHandler<'a> {
     game_state: &'a RefCell<GameState>,
     reverse_handles: &'a HashMap<EntityRef, String>,
     rng: &'a mut StdRng,
+    roll_queue: &'a mut VecDeque<i64>,
     pub log: Vec<String>,
 }
 
@@ -95,11 +96,13 @@ impl<'a> CliHandler<'a> {
         game_state: &'a RefCell<GameState>,
         reverse_handles: &'a HashMap<EntityRef, String>,
         rng: &'a mut StdRng,
+        roll_queue: &'a mut VecDeque<i64>,
     ) -> Self {
         CliHandler {
             game_state,
             reverse_handles,
             rng,
+            roll_queue,
             log: Vec::new(),
         }
     }
@@ -117,13 +120,30 @@ impl EffectHandler for CliHandler<'_> {
     fn handle(&mut self, effect: Effect) -> Response {
         match effect {
             Effect::RollDice { expr } => {
-                let result = roll_dice(&mut self.rng, &expr);
-                self.log.push(format!(
-                    "[RollDice] {} -> {}",
-                    format_dice_expr(&expr),
-                    result.total,
-                ));
-                Response::Rolled(result)
+                if !self.roll_queue.is_empty() {
+                    match roll_dice_from_queue(self.roll_queue, self.rng, &expr) {
+                        Ok(result) => {
+                            self.log.push(format!(
+                                "[RollDice] {} -> {} (queued)",
+                                format_dice_expr(&expr),
+                                result.total,
+                            ));
+                            Response::Rolled(result)
+                        }
+                        Err(msg) => {
+                            self.log.push(format!("[RollDice] error: {}", msg));
+                            Response::Vetoed
+                        }
+                    }
+                } else {
+                    let result = roll_dice(self.rng, &expr);
+                    self.log.push(format!(
+                        "[RollDice] {} -> {}",
+                        format_dice_expr(&expr),
+                        result.total,
+                    ));
+                    Response::Rolled(result)
+                }
             }
 
             Effect::ResolvePrompt { suggest, name, .. } => {
@@ -351,6 +371,42 @@ pub fn roll_dice(rng: &mut StdRng, expr: &DiceExpr) -> RollResult {
     }
 }
 
+/// Roll a dice expression using queued values, falling back to RNG when
+/// the queue is exhausted mid-roll.
+pub fn roll_dice_from_queue(
+    queue: &mut VecDeque<i64>,
+    rng: &mut StdRng,
+    expr: &DiceExpr,
+) -> Result<RollResult, String> {
+    let mut dice: Vec<i64> = Vec::with_capacity(expr.count as usize);
+    for _ in 0..expr.count {
+        if let Some(val) = queue.pop_front() {
+            if val < 1 || val > expr.sides as i64 {
+                return Err(format!(
+                    "queued value {} out of range for d{} (expected 1..={})",
+                    val, expr.sides, expr.sides
+                ));
+            }
+            dice.push(val);
+        } else {
+            dice.push(rng.random_range(1..=expr.sides as i64));
+        }
+    }
+
+    let kept = apply_dice_filter(&mut dice, &expr.filter);
+    let unmodified: i64 = kept.iter().sum();
+    let total = unmodified + expr.modifier;
+
+    Ok(RollResult {
+        expr: expr.clone(),
+        dice,
+        kept,
+        modifier: expr.modifier,
+        total,
+        unmodified,
+    })
+}
+
 /// Apply a dice filter (keep/drop highest/lowest) and return the kept dice.
 fn apply_dice_filter(dice: &mut Vec<i64>, filter: &Option<DiceFilter>) -> Vec<i64> {
     match filter {
@@ -472,7 +528,8 @@ mod tests {
         let game_state = RefCell::new(GameState::new());
         let reverse_handles = HashMap::new();
         let mut rng = StdRng::seed_from_u64(42);
-        let mut handler = CliHandler::new(&game_state, &reverse_handles, &mut rng);
+        let mut queue = VecDeque::new();
+        let mut handler = CliHandler::new(&game_state, &reverse_handles, &mut rng, &mut queue);
 
         let effect = Effect::RollDice {
             expr: DiceExpr {
@@ -500,7 +557,8 @@ mod tests {
         let mut reverse = HashMap::new();
         reverse.insert(entity, "fighter".to_string());
         let mut rng = StdRng::seed_from_u64(42);
-        let mut handler = CliHandler::new(&game_state, &reverse, &mut rng);
+        let mut queue = VecDeque::new();
+        let mut handler = CliHandler::new(&game_state, &reverse, &mut rng, &mut queue);
 
         let effect = Effect::MutateField {
             entity,
@@ -534,7 +592,8 @@ mod tests {
         let mut reverse = HashMap::new();
         reverse.insert(entity, "fighter".to_string());
         let mut rng = StdRng::seed_from_u64(42);
-        let mut handler = CliHandler::new(&game_state, &reverse, &mut rng);
+        let mut queue = VecDeque::new();
+        let mut handler = CliHandler::new(&game_state, &reverse, &mut rng, &mut queue);
 
         let effect = Effect::MutateField {
             entity,
@@ -562,7 +621,8 @@ mod tests {
         let mut reverse = HashMap::new();
         reverse.insert(entity, "fighter".to_string());
         let mut rng = StdRng::seed_from_u64(42);
-        let mut handler = CliHandler::new(&game_state, &reverse, &mut rng);
+        let mut queue = VecDeque::new();
+        let mut handler = CliHandler::new(&game_state, &reverse, &mut rng, &mut queue);
 
         let effect = Effect::DeductCost {
             actor: entity,
@@ -587,7 +647,8 @@ mod tests {
         let game_state = RefCell::new(GameState::new());
         let reverse_handles = HashMap::new();
         let mut rng = StdRng::seed_from_u64(42);
-        let mut handler = CliHandler::new(&game_state, &reverse_handles, &mut rng);
+        let mut queue = VecDeque::new();
+        let mut handler = CliHandler::new(&game_state, &reverse_handles, &mut rng, &mut queue);
 
         let effect = Effect::ResolvePrompt {
             name: "choose_target".into(),
@@ -604,7 +665,8 @@ mod tests {
         let game_state = RefCell::new(GameState::new());
         let reverse_handles = HashMap::new();
         let mut rng = StdRng::seed_from_u64(42);
-        let mut handler = CliHandler::new(&game_state, &reverse_handles, &mut rng);
+        let mut queue = VecDeque::new();
+        let mut handler = CliHandler::new(&game_state, &reverse_handles, &mut rng, &mut queue);
 
         let effect = Effect::ResolvePrompt {
             name: "choose_target".into(),
@@ -629,5 +691,82 @@ mod tests {
 
         assert_eq!(state.read_field(&entity, "HP"), Some(Value::Int(30)));
         assert_eq!(state.read_field(&entity, "AC"), None);
+    }
+
+    // ── Roll queue tests ─────────────────────────────────────────
+
+    #[test]
+    fn roll_dice_from_queue_basic() {
+        let mut queue = VecDeque::from(vec![3, 5]);
+        let mut rng = StdRng::seed_from_u64(42);
+        let expr = DiceExpr {
+            count: 2,
+            sides: 6,
+            filter: None,
+            modifier: 1,
+        };
+        let result = roll_dice_from_queue(&mut queue, &mut rng, &expr).unwrap();
+        assert_eq!(result.dice, vec![3, 5]);
+        assert_eq!(result.total, 3 + 5 + 1);
+        assert!(queue.is_empty());
+    }
+
+    #[test]
+    fn roll_dice_from_queue_fallback() {
+        // Queue has only 1 value but we need 2 dice
+        let mut queue = VecDeque::from(vec![4]);
+        let mut rng = StdRng::seed_from_u64(42);
+        let expr = DiceExpr {
+            count: 2,
+            sides: 6,
+            filter: None,
+            modifier: 0,
+        };
+        let result = roll_dice_from_queue(&mut queue, &mut rng, &expr).unwrap();
+        assert_eq!(result.dice[0], 4); // from queue
+        assert!(result.dice[1] >= 1 && result.dice[1] <= 6); // from rng
+        assert!(queue.is_empty());
+    }
+
+    #[test]
+    fn roll_dice_from_queue_out_of_range() {
+        let mut queue = VecDeque::from(vec![7]); // out of range for d6
+        let mut rng = StdRng::seed_from_u64(42);
+        let expr = DiceExpr {
+            count: 1,
+            sides: 6,
+            filter: None,
+            modifier: 0,
+        };
+        let result = roll_dice_from_queue(&mut queue, &mut rng, &expr);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("out of range"));
+    }
+
+    #[test]
+    fn cli_handler_rolls_from_queue() {
+        let game_state = RefCell::new(GameState::new());
+        let reverse_handles = HashMap::new();
+        let mut rng = StdRng::seed_from_u64(42);
+        let mut queue = VecDeque::from(vec![15]);
+        let mut handler = CliHandler::new(&game_state, &reverse_handles, &mut rng, &mut queue);
+
+        let effect = Effect::RollDice {
+            expr: DiceExpr {
+                count: 1,
+                sides: 20,
+                filter: None,
+                modifier: 5,
+            },
+        };
+        let response = handler.handle(effect);
+        match response {
+            Response::Rolled(r) => {
+                assert_eq!(r.dice, vec![15]);
+                assert_eq!(r.total, 20);
+            }
+            _ => panic!("expected Rolled"),
+        }
+        assert!(handler.log[0].contains("(queued)"));
     }
 }
