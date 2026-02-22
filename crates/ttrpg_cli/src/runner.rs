@@ -64,6 +64,71 @@ impl Runner {
         }
     }
 
+    /// Returns all handle names (for tab completion).
+    pub fn handle_names(&self) -> Vec<String> {
+        self.handles.keys().cloned().collect()
+    }
+
+    /// Returns all entity type names (for tab completion).
+    pub fn entity_type_names(&self) -> Vec<String> {
+        self.type_env
+            .types
+            .iter()
+            .filter(|(_, info)| matches!(info, DeclInfo::Entity(_)))
+            .map(|(name, _)| name.clone())
+            .collect()
+    }
+
+    /// Returns all action names (for tab completion).
+    pub fn action_names(&self) -> Vec<String> {
+        self.type_env
+            .functions
+            .values()
+            .filter(|fi| matches!(fi.kind, FnKind::Action))
+            .map(|fi| fi.name.clone())
+            .collect()
+    }
+
+    /// Returns all derive names (for tab completion).
+    pub fn derive_names(&self) -> Vec<String> {
+        self.type_env
+            .functions
+            .values()
+            .filter(|fi| matches!(fi.kind, FnKind::Derive))
+            .map(|fi| fi.name.clone())
+            .collect()
+    }
+
+    /// Returns all mechanic names (for tab completion).
+    pub fn mechanic_names(&self) -> Vec<String> {
+        self.type_env
+            .functions
+            .values()
+            .filter(|fi| matches!(fi.kind, FnKind::Mechanic))
+            .map(|fi| fi.name.clone())
+            .collect()
+    }
+
+    /// Returns field names for a given entity type (for tab completion).
+    pub fn field_names(&self, entity_type: &str) -> Vec<String> {
+        self.type_env
+            .lookup_fields(entity_type)
+            .map(|fields| fields.iter().map(|f| f.name.clone()).collect())
+            .unwrap_or_default()
+    }
+
+    /// Returns the entity type name for a given handle (for tab completion).
+    pub fn handle_type(&self, handle: &str) -> Option<String> {
+        let entity = self.handles.get(handle)?;
+        let gs = self.game_state.borrow();
+        gs.entity_type_name(entity).map(|s| s.to_string())
+    }
+
+    /// Returns true if a program has been loaded.
+    pub fn is_loaded(&self) -> bool {
+        !self.program.items.is_empty()
+    }
+
     /// Execute a single line of input. Output is collected internally.
     pub fn exec(&mut self, line: &str) -> Result<(), CliError> {
         let trimmed = line.trim();

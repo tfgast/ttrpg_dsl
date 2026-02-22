@@ -1,4 +1,4 @@
-use std::io::{self, BufRead, IsTerminal, Write};
+use std::io::{self, BufRead, IsTerminal};
 use std::process;
 
 use ttrpg_cli::runner::Runner;
@@ -6,34 +6,38 @@ use ttrpg_cli::runner::Runner;
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
 
-    match args.first().map(|s| s.as_str()) {
+    // Check for --vi flag
+    let vi_mode = args.iter().any(|a| a == "--vi");
+    let args: Vec<&str> = args.iter().filter(|a| *a != "--vi").map(|s| s.as_str()).collect();
+
+    match args.first().copied() {
         Some("run") => {
             if args.len() < 2 {
                 eprintln!("usage: ttrpg run <script.ttrpg-cli>");
                 process::exit(1);
             }
-            run_script(&args[1]);
+            run_script(args[1]);
         }
         Some(other) => {
             eprintln!("unknown subcommand: {}", other);
-            eprintln!("usage: ttrpg [run <script>]");
+            eprintln!("usage: ttrpg [--vi] [run <script>]");
             process::exit(1);
         }
         None => {
-            run_repl();
+            let stdin = io::stdin();
+            if stdin.is_terminal() {
+                ttrpg_cli::repl::run_repl(vi_mode);
+            } else {
+                run_pipe();
+            }
         }
     }
 }
 
-fn run_repl() {
+/// Pipe mode: read raw lines from stdin, no reedline.
+fn run_pipe() {
     let stdin = io::stdin();
-    let is_tty = stdin.is_terminal();
     let mut runner = Runner::new();
-
-    if is_tty {
-        print!("ttrpg> ");
-        io::stdout().flush().ok();
-    }
 
     for line in stdin.lock().lines() {
         let line = match line {
@@ -52,19 +56,8 @@ fn run_repl() {
 
         if let Err(e) = result {
             eprintln!("error: {}", e);
-            if !is_tty {
-                process::exit(1);
-            }
+            process::exit(1);
         }
-
-        if is_tty {
-            print!("ttrpg> ");
-            io::stdout().flush().ok();
-        }
-    }
-
-    if is_tty {
-        println!();
     }
 }
 
