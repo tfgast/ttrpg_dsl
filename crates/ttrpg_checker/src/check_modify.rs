@@ -65,18 +65,22 @@ impl<'a> Checker<'a> {
                 );
             }
             if let Some(param) = fn_info.params.iter().find(|p| p.name == binding.name) {
-                let val_ty = self.check_expr(&binding.value);
-                if !val_ty.is_error() && !self.types_compatible(&val_ty, &param.ty) {
-                    self.error(
-                        format!(
-                            "modify binding `{}` has type {}, expected {}",
-                            binding.name, val_ty, param.ty
-                        ),
-                        binding.value.span,
-                    );
+                if let Some(ref value) = binding.value {
+                    let val_ty = self.check_expr(value);
+                    if !val_ty.is_error() && !self.types_compatible(&val_ty, &param.ty) {
+                        self.error(
+                            format!(
+                                "modify binding `{}` has type {}, expected {}",
+                                binding.name, val_ty, param.ty
+                            ),
+                            value.span,
+                        );
+                    }
                 }
             } else {
-                self.check_expr(&binding.value);
+                if let Some(ref value) = binding.value {
+                    self.check_expr(value);
+                }
                 self.error(
                     format!(
                         "modify binding `{}` does not match any parameter of `{}`",
@@ -285,18 +289,22 @@ impl<'a> Checker<'a> {
                     .cloned();
 
                 if let Some(expected) = expected_ty {
-                    let val_ty = self.check_expr(&binding.value);
-                    if !val_ty.is_error() && !self.types_compatible(&val_ty, &expected) {
-                        self.error(
-                            format!(
-                                "suppress binding `{}` has type {}, expected {}",
-                                binding.name, val_ty, expected
-                            ),
-                            binding.value.span,
-                        );
+                    if let Some(ref value) = binding.value {
+                        let val_ty = self.check_expr(value);
+                        if !val_ty.is_error() && !self.types_compatible(&val_ty, &expected) {
+                            self.error(
+                                format!(
+                                    "suppress binding `{}` has type {}, expected {}",
+                                    binding.name, val_ty, expected
+                                ),
+                                value.span,
+                            );
+                        }
                     }
                 } else {
-                    self.check_expr(&binding.value);
+                    if let Some(ref value) = binding.value {
+                        self.check_expr(value);
+                    }
                     self.error(
                         format!(
                             "suppress binding `{}` does not match any parameter or field of event `{}`",

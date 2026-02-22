@@ -34,6 +34,11 @@ impl Parser {
                 Ok(Spanned::new(PatternKind::BoolLit(false), self.end_span(start)))
             }
 
+            TokenKind::None => {
+                self.advance();
+                Ok(Spanned::new(PatternKind::NoneLit, self.end_span(start)))
+            }
+
             TokenKind::Ident(name) => {
                 let name = name.clone();
                 self.advance();

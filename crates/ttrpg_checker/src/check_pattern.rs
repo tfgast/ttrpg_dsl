@@ -12,6 +12,18 @@ impl<'a> Checker<'a> {
         match &pattern.node {
             PatternKind::Wildcard => {}
 
+            PatternKind::NoneLit => {
+                if !scrutinee_ty.is_error() && !matches!(scrutinee_ty, Ty::Option(_)) {
+                    self.error(
+                        format!(
+                            "`none` pattern cannot match type {}",
+                            scrutinee_ty
+                        ),
+                        pattern.span,
+                    );
+                }
+            }
+
             PatternKind::IntLit(_) => {
                 if !scrutinee_ty.is_error() && !scrutinee_ty.is_int_like() {
                     self.error(

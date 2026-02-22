@@ -251,7 +251,8 @@ pub struct ModifyClause {
 #[derive(Clone)]
 pub struct ModifyBinding {
     pub name: String,
-    pub value: Spanned<ExprKind>,
+    /// `None` means wildcard (`_`) — matches any value.
+    pub value: Option<Spanned<ExprKind>>,
     pub span: Span,
 }
 
@@ -494,6 +495,7 @@ pub enum PatternKind {
         name: std::string::String,
         fields: Vec<Spanned<PatternKind>>,
     },
+    NoneLit,
 }
 
 // ── Statements ───────────────────────────────────────────────────

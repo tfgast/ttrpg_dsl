@@ -507,7 +507,12 @@ impl Parser {
         let start = self.start_span();
         let (name, _) = self.expect_ident()?;
         self.expect(&TokenKind::Colon)?;
-        let value = self.parse_expr()?;
+        let value = if matches!(self.peek(), TokenKind::Underscore) {
+            self.advance();
+            None
+        } else {
+            Some(self.parse_expr()?)
+        };
         Ok(ModifyBinding {
             name,
             value,

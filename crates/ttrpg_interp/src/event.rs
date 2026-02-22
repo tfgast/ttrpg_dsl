@@ -389,7 +389,11 @@ fn check_suppress_bindings_inner(
     payload_fields: &std::collections::BTreeMap<String, Value>,
 ) -> Result<bool, RuntimeError> {
     for binding in bindings {
-        let binding_val = eval_expr(env, &binding.value)?;
+        // Wildcard binding — always matches
+        let binding_val = match binding.value {
+            Some(ref expr) => eval_expr(env, expr)?,
+            None => continue,
+        };
 
         // Look up binding name in event params first, then fields
         let actual_val = if let Some(param_info) =
@@ -969,7 +973,7 @@ mod tests {
                     event_name: "Attacked".into(),
                     bindings: vec![ModifyBinding {
                         name: "target".into(),
-                        value: spanned(ExprKind::Ident("bearer".into())),
+                        value: Some(spanned(ExprKind::Ident("bearer".into()))),
                         span: dummy_span(),
                     }],
                     span: dummy_span(),
@@ -1110,7 +1114,7 @@ mod tests {
                     event_name: "Healed".into(), // different event
                     bindings: vec![ModifyBinding {
                         name: "target".into(),
-                        value: spanned(ExprKind::Ident("bearer".into())),
+                        value: Some(spanned(ExprKind::Ident("bearer".into()))),
                         span: dummy_span(),
                     }],
                     span: dummy_span(),

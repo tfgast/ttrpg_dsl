@@ -181,7 +181,11 @@ fn check_modify_bindings(
             env.bind(name.clone(), val.clone());
         }
 
-        let binding_val = eval_expr(env, &binding.value);
+        // Wildcard binding — always matches
+        let binding_val = match binding.value {
+            Some(ref expr) => eval_expr(env, expr),
+            None => { env.pop_scope(); continue; }
+        };
         env.pop_scope();
 
         let val = binding_val?;
@@ -212,13 +216,19 @@ fn check_option_modify_bindings(
             None => return Ok(false),
         };
 
+        // Wildcard binding — always matches
+        let binding_expr = match binding.value {
+            Some(ref expr) => expr,
+            None => continue,
+        };
+
         // Evaluate binding expression in a temporary scope with params bound
         env.push_scope();
         for (name, val) in bound_params {
             env.bind(name.clone(), val.clone());
         }
 
-        let binding_val = eval_expr(env, &binding.value);
+        let binding_val = eval_expr(env, binding_expr);
         env.pop_scope();
 
         let val = binding_val?;
@@ -783,7 +793,7 @@ mod tests {
                     target: "attack_roll".into(),
                     bindings: vec![ModifyBinding {
                         name: "attacker".into(),
-                        value: spanned(ExprKind::Ident("target".into())),
+                        value: Some(spanned(ExprKind::Ident("target".into()))),
                         span: dummy_span(),
                     }],
                     body: vec![ModifyStmt::ParamOverride {
@@ -939,7 +949,7 @@ mod tests {
                     target: "compute".into(),
                     bindings: vec![ModifyBinding {
                         name: "val".into(),
-                        value: spanned(ExprKind::Ident("target".into())),
+                        value: Some(spanned(ExprKind::Ident("target".into()))),
                         span: dummy_span(),
                     }],
                     body: vec![ModifyStmt::ResultOverride {
@@ -1083,7 +1093,7 @@ mod tests {
                     target: "calc".into(),
                     bindings: vec![ModifyBinding {
                         name: "target".into(),
-                        value: spanned(ExprKind::Ident("t".into())),
+                        value: Some(spanned(ExprKind::Ident("t".into()))),
                         span: dummy_span(),
                     }],
                     body: vec![ModifyStmt::ParamOverride {
@@ -1106,7 +1116,7 @@ mod tests {
                     target: "calc".into(),
                     bindings: vec![ModifyBinding {
                         name: "target".into(),
-                        value: spanned(ExprKind::Ident("t".into())),
+                        value: Some(spanned(ExprKind::Ident("t".into()))),
                         span: dummy_span(),
                     }],
                     body: vec![ModifyStmt::ParamOverride {
@@ -1283,7 +1293,7 @@ mod tests {
                     target: "calc".into(),
                     bindings: vec![ModifyBinding {
                         name: "target".into(),
-                        value: spanned(ExprKind::Ident("t".into())),
+                        value: Some(spanned(ExprKind::Ident("t".into()))),
                         span: dummy_span(),
                     }],
                     body: vec![ModifyStmt::ParamOverride {
@@ -1461,7 +1471,7 @@ mod tests {
                     target: "interact".into(),
                     bindings: vec![ModifyBinding {
                         name: "a".into(),
-                        value: spanned(ExprKind::Ident("t".into())),
+                        value: Some(spanned(ExprKind::Ident("t".into()))),
                         span: dummy_span(),
                     }],
                     // Non-empty body to generate a ModifyApplied effect
@@ -1653,7 +1663,7 @@ mod tests {
                     target: "calc".into(),
                     bindings: vec![ModifyBinding {
                         name: "mode".into(),
-                        value: spanned(ExprKind::StringLit("special".into())),
+                        value: Some(spanned(ExprKind::StringLit("special".into()))),
                         span: dummy_span(),
                     }],
                     body: vec![ModifyStmt::ParamOverride {
@@ -1782,7 +1792,7 @@ mod tests {
                     target: "calc".into(),
                     bindings: vec![ModifyBinding {
                         name: "target".into(),
-                        value: spanned(ExprKind::Ident("t".into())),
+                        value: Some(spanned(ExprKind::Ident("t".into()))),
                         span: dummy_span(),
                     }],
                     body: vec![ModifyStmt::ParamOverride {

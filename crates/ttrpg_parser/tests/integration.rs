@@ -397,6 +397,55 @@ fn test_action_newlines_between_cost_and_requires() {
     );
 }
 
+#[test]
+fn test_modify_binding_wildcard() {
+    // Regression: _ was not supported in modify bindings because
+    // parse_modify_binding() called parse_expr() which rejects Underscore.
+    let source = r#"system "test" {
+    entity Character {
+        HP: int
+    }
+    derive attack_roll(attacker: Character, target: Character) -> int {
+        attacker.HP
+    }
+    option flanking extends "test" {
+        description: "Flanking bonus"
+        default: off
+        when enabled {
+            modify attack_roll(attacker: _, target: _) {
+                result.bonus = 2
+            }
+        }
+    }
+}"#;
+    let (_, diagnostics) = parse(source);
+    assert!(
+        diagnostics.is_empty(),
+        "wildcard _ should be allowed in modify bindings, got: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn test_none_pattern_in_match() {
+    // Regression: `none` was not a valid match pattern because
+    // parse_pattern() did not handle TokenKind::None.
+    let source = r#"system "test" {
+    derive f(x: option<int>) -> int {
+        match x {
+            none => 0
+            _ => 1
+        }
+    }
+}"#;
+    let (_, diagnostics) = parse(source);
+    assert!(
+        diagnostics.is_empty(),
+        "none should be a valid match pattern, got: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}
+
 // ── Error recovery tests ─────────────────────────────────────────
 
 #[test]
