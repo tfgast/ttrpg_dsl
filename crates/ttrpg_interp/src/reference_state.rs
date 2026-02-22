@@ -134,6 +134,9 @@ impl StateProvider for GameState {
     }
 
     fn read_turn_budget(&self, entity: &EntityRef) -> Option<BTreeMap<String, Value>> {
+        if !self.entities.contains_key(&entity.0) {
+            return None;
+        }
         self.turn_budgets.get(&entity.0).cloned()
     }
 
@@ -216,6 +219,9 @@ impl WritableState for GameState {
     }
 
     fn write_turn_field(&mut self, entity: &EntityRef, field: &str, value: Value) {
+        if !self.entities.contains_key(&entity.0) {
+            return;
+        }
         self.turn_budgets
             .entry(entity.0)
             .or_default()

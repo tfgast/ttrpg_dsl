@@ -154,7 +154,9 @@ impl<S: WritableState, H: EffectHandler> EffectHandler for AdaptedHandler<'_, S,
                         // No local mutation
                     }
                     _ => {
-                        // Forward the response as-is (unexpected, but let caller handle)
+                        // Unexpected response type — apply original mutation as safe default.
+                        // The program intended the mutation; a protocol error shouldn't prevent it.
+                        apply_mutation(&mut *self.adapter.state.borrow_mut(), &effect);
                     }
                 }
                 response
@@ -206,7 +208,8 @@ impl<S: WritableState, H: EffectHandler> AdaptedHandler<'_, S, H> {
                 // Cost waived — no mutation
             }
             _ => {
-                // Unexpected response — let the caller handle the protocol error
+                // Unexpected response — apply default deduction as safe default.
+                deduct_budget_field(&mut *self.adapter.state.borrow_mut(), &actor, &budget_field);
             }
         }
 
@@ -264,20 +267,55 @@ fn apply_mutation<S: WritableState>(state: &mut S, effect: &Effect) {
 }
 
 /// Apply a mutation effect with an overridden value.
+///
+/// Override is a *replacement RHS* — the original operator is preserved.
+/// For MutateField/MutateTurnField, the override value replaces the RHS
+/// in the computation. For ApplyCondition, it replaces the duration.
+/// For RemoveCondition, a `Str` override replaces the condition name.
 fn apply_mutation_with_override<S: WritableState>(
     state: &mut S,
     effect: &Effect,
     override_val: &Value,
 ) {
     match effect {
-        Effect::MutateField { entity, path, .. } => {
-            state.write_field(entity, path, override_val.clone());
+        Effect::MutateField {
+            entity,
+            path,
+            op,
+            bounds,
+            ..
+        } => {
+            let final_value = compute_field_value(state, entity, path, *op, override_val, bounds);
+            state.write_field(entity, path, final_value);
         }
-        Effect::MutateTurnField { actor, field, .. } => {
-            state.write_turn_field(actor, field, override_val.clone());
+        Effect::MutateTurnField {
+            actor, field, op, ..
+        } => {
+            let final_value = compute_turn_field_value(state, actor, field, *op, override_val);
+            state.write_turn_field(actor, field, final_value);
         }
-        // For condition effects, override doesn't change the operation —
-        // apply the original mutation.
+        Effect::ApplyCondition {
+            target, condition, ..
+        } => {
+            state.add_condition(
+                target,
+                ActiveCondition {
+                    id: 0,
+                    name: condition.clone(),
+                    bearer: *target,
+                    gained_at: 0,
+                    duration: override_val.clone(),
+                },
+            );
+        }
+        Effect::RemoveCondition { target, condition } => {
+            if let Value::Str(name) = override_val {
+                state.remove_condition(target, name);
+            } else {
+                // Non-string override: fall back to original condition name
+                state.remove_condition(target, condition);
+            }
+        }
         _ => apply_mutation(state, effect),
     }
 }
@@ -865,7 +903,7 @@ mod tests {
         let mut state = TestWritableState::new();
         state.fields.insert((1, "HP".into()), Value::Int(30));
         let adapter = StateAdapter::new(state).pass_through(EffectKind::MutateField);
-        // Host overrides to a specific value
+        // Host overrides the RHS to 42; operator (-=) is preserved
         let mut handler = RecordingHandler::new(vec![Response::Override(Value::Int(42))]);
 
         adapter.run(&mut handler, |_state, handler| {
@@ -879,10 +917,10 @@ mod tests {
         });
 
         let final_state = adapter.into_inner();
-        // Should have the overridden value, not the computed one
+        // Override is replacement RHS: 30 - 42 = -12
         assert_eq!(
             final_state.fields.get(&(1, "HP".into())),
-            Some(&Value::Int(42))
+            Some(&Value::Int(-12))
         );
     }
 
@@ -997,5 +1035,141 @@ mod tests {
         // Other budget fields unchanged
         assert_eq!(budget.get("bonus_actions"), Some(&Value::Int(1)));
         assert_eq!(budget.get("reactions"), Some(&Value::Int(1)));
+    }
+
+    // ── Override: condition duration ──────────────────────────────
+
+    #[test]
+    fn pass_through_apply_condition_override_duration() {
+        let state = TestWritableState::new();
+        let adapter = StateAdapter::new(state).pass_through(EffectKind::ApplyCondition);
+        // Host overrides the duration to Rounds(3)
+        let mut handler = RecordingHandler::new(vec![Response::Override(Value::Duration(
+            DurationValue::Rounds(3),
+        ))]);
+
+        adapter.run(&mut handler, |_state, handler| {
+            handler.handle(Effect::ApplyCondition {
+                target: EntityRef(1),
+                condition: "Prone".into(),
+                duration: Value::Duration(DurationValue::EndOfTurn),
+            })
+        });
+
+        let final_state = adapter.into_inner();
+        let conds = final_state.conditions.get(&1).unwrap();
+        assert_eq!(conds.len(), 1);
+        assert_eq!(conds[0].name, "Prone");
+        // Duration should be the overridden value, not the original
+        assert_eq!(
+            conds[0].duration,
+            Value::Duration(DurationValue::Rounds(3))
+        );
+    }
+
+    // ── Override: condition name for removal ──────────────────────
+
+    #[test]
+    fn pass_through_remove_condition_override_name() {
+        let mut state = TestWritableState::new();
+        // Set up entity with two conditions
+        state.conditions.insert(
+            1,
+            vec![
+                ActiveCondition {
+                    id: 1,
+                    name: "Prone".into(),
+                    bearer: EntityRef(1),
+                    gained_at: 1,
+                    duration: Value::Duration(DurationValue::EndOfTurn),
+                },
+                ActiveCondition {
+                    id: 2,
+                    name: "Frightened".into(),
+                    bearer: EntityRef(1),
+                    gained_at: 2,
+                    duration: Value::Duration(DurationValue::Rounds(1)),
+                },
+            ],
+        );
+        let adapter = StateAdapter::new(state).pass_through(EffectKind::RemoveCondition);
+        // Host overrides: remove "Frightened" instead of "Prone"
+        let mut handler =
+            RecordingHandler::new(vec![Response::Override(Value::Str("Frightened".into()))]);
+
+        adapter.run(&mut handler, |_state, handler| {
+            handler.handle(Effect::RemoveCondition {
+                target: EntityRef(1),
+                condition: "Prone".into(),
+            })
+        });
+
+        let final_state = adapter.into_inner();
+        let conds = final_state.conditions.get(&1).unwrap();
+        // "Frightened" removed, "Prone" remains
+        assert_eq!(conds.len(), 1);
+        assert_eq!(conds[0].name, "Prone");
+    }
+
+    // ── Override: MutateField preserves operator ──────────────────
+
+    #[test]
+    fn pass_through_override_mutate_field_preserves_op() {
+        let mut state = TestWritableState::new();
+        state.fields.insert((1, "HP".into()), Value::Int(30));
+        let adapter = StateAdapter::new(state).pass_through(EffectKind::MutateField);
+        // Override RHS to 10; original op is -=
+        let mut handler = RecordingHandler::new(vec![Response::Override(Value::Int(10))]);
+
+        adapter.run(&mut handler, |_state, handler| {
+            handler.handle(Effect::MutateField {
+                entity: EntityRef(1),
+                path: vec![FieldPathSegment::Field("HP".into())],
+                op: AssignOp::MinusEq,
+                value: Value::Int(15),
+                bounds: None,
+            })
+        });
+
+        let final_state = adapter.into_inner();
+        // 30 - 10 = 20 (operator preserved, override replaces RHS)
+        assert_eq!(
+            final_state.fields.get(&(1, "HP".into())),
+            Some(&Value::Int(20))
+        );
+    }
+
+    // ── Override: MutateTurnField preserves operator ──────────────
+
+    #[test]
+    fn pass_through_override_turn_field_preserves_op() {
+        let mut state = TestWritableState::new();
+        state
+            .turn_budgets
+            .entry(1)
+            .or_default()
+            .insert("movement".into(), Value::Int(10));
+        let adapter = StateAdapter::new(state).pass_through(EffectKind::MutateTurnField);
+        // Override RHS to 5; original op is +=
+        let mut handler = RecordingHandler::new(vec![Response::Override(Value::Int(5))]);
+
+        adapter.run(&mut handler, |_state, handler| {
+            handler.handle(Effect::MutateTurnField {
+                actor: EntityRef(1),
+                field: "movement".into(),
+                op: AssignOp::PlusEq,
+                value: Value::Int(30),
+            })
+        });
+
+        let final_state = adapter.into_inner();
+        // 10 + 5 = 15 (operator preserved, override replaces RHS)
+        assert_eq!(
+            final_state
+                .turn_budgets
+                .get(&1)
+                .and_then(|b| b.get("movement")),
+            Some(&Value::Int(15))
+        );
     }
 }
