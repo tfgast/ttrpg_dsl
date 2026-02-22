@@ -307,7 +307,7 @@ Companion to [`interpreter_impl_plan.md`](interpreter_impl_plan.md). Check items
 - [x] Phase 2 — emit `ModifyApplied` with changed fields
 
 ### Event firing (`event.rs`)
-- [x] `fire_event` function (pure query, no effects)
+- [x] `what_triggers` function (pure query, no effects)
 - [x] `EventResult` and `ReactionInfo` structs
 - [x] Scan reactions by event name
 - [x] Iterate candidates for each matching reaction
@@ -392,7 +392,7 @@ Companion to [`interpreter_impl_plan.md`](interpreter_impl_plan.md). Check items
 - [x] `Interpreter::execute_reaction(state, handler, name, reactor, payload)`
 - [x] `Interpreter::evaluate_mechanic(state, handler, name, args)`
 - [x] `Interpreter::evaluate_derive(state, handler, name, args)`
-- [x] `Interpreter::fire_event(state, name, payload, candidates)`
+- [x] `Interpreter::what_triggers(state, name, payload, candidates)`
 
 ### Tests
 - [x] End-to-end: parse → lower → check → interpret (small program)

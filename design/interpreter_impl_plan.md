@@ -467,7 +467,7 @@ When evaluating `ExprKind::Call { callee, args }`:
 | `Prompt` | Evaluate hint/suggest, emit `ResolvePrompt` effect, return response value |
 | `Builtin` | Dispatch to builtin implementation |
 | `Action` | Resolve receiver from call arguments (see "Receiver handling" below), then dispatch through `execute_action`. Must be inside an action/reaction resolve context — runtime error otherwise (should not occur in checked programs since the checker restricts action calls to resolve blocks). |
-| `Reaction` | Unreachable — the checker rejects direct reaction calls (see "Checker prerequisite" below). Reactions are triggered via `fire_event` + host dispatch, not called from DSL code. If encountered, this is an internal error. |
+| `Reaction` | Unreachable — the checker rejects direct reaction calls (see "Checker prerequisite" below). Reactions are triggered via `what_triggers` + host dispatch, not called from DSL code. If encountered, this is an internal error. |
 
 4. If callee is a qualified enum variant access (e.g., `Duration.rounds(3)`): construct `Value::EnumVariant`.
 5. If callee is a bare enum variant with fields (e.g., `rounds(3)` where `rounds` is unambiguous via `variant_to_enum`): construct `Value::EnumVariant`.
@@ -618,7 +618,7 @@ After the function body executes and produces a result:
 ### 6.2 Event firing (`event.rs`)
 
 ```rust
-pub fn fire_event(
+pub fn what_triggers(
     interp: &Interpreter,
     state: &dyn StateProvider,
     event_name: &str,
@@ -629,7 +629,7 @@ pub fn fire_event(
 
 No effects emitted — this is a pure query. Binding expressions are evaluated during matching and must be side-effect-free.
 
-**Checker prerequisite:** The current checker checks trigger bindings inside `BlockKind::ReactionResolve`, which permits dice rolls and mutations. Before implementing this phase, add a new `BlockKind::TriggerBinding` that disallows dice, mutation, turn access, action/reaction calls, **and all other effectful calls (prompts, mechanics)**. Only side-effect-free builtins (`floor`, `ceil`, `min`, `max`, `distance`) are permitted — no derive or mechanic calls, since derives can transitively call effectful functions and there is no purity analysis in v0. Push this block kind around trigger binding expression checking in `check_reaction` (and similarly for suppress binding checking in `check_condition`). This ensures `fire_event` can remain a pure query by construction — no effect handler is needed and no effects can be emitted during trigger/suppress evaluation.
+**Checker prerequisite:** The current checker checks trigger bindings inside `BlockKind::ReactionResolve`, which permits dice rolls and mutations. Before implementing this phase, add a new `BlockKind::TriggerBinding` that disallows dice, mutation, turn access, action/reaction calls, **and all other effectful calls (prompts, mechanics)**. Only side-effect-free builtins (`floor`, `ceil`, `min`, `max`, `distance`) are permitted — no derive or mechanic calls, since derives can transitively call effectful functions and there is no purity analysis in v0. Push this block kind around trigger binding expression checking in `check_reaction` (and similarly for suppress binding checking in `check_condition`). This ensures `what_triggers` can remain a pure query by construction — no effect handler is needed and no effects can be emitted during trigger/suppress evaluation.
 
 The host provides `candidates` — the set of entities to consider as potential reactors. This keeps entity enumeration in the host's hands (e.g., the host can filter by proximity, initiative order, or other game-specific criteria).
 
@@ -839,14 +839,14 @@ impl<'p> Interpreter<'p> {
         name: &str, args: Vec<Value>,
     ) -> Result<Value, RuntimeError>;
 
-    pub fn fire_event(
+    pub fn what_triggers(
         &self, state: &dyn StateProvider,
         name: &str, payload: Value, candidates: &[EntityRef],
     ) -> Result<EventResult, RuntimeError>;
 }
 ```
 
-All entry points except `fire_event` take a handler because the modify pipeline can emit `ModifyApplied` informational effects even for pure derives. `fire_event` takes `candidates` — the host-provided set of entities to consider as potential reactors (see Phase 6.2).
+All entry points except `what_triggers` take a handler because the modify pipeline can emit `ModifyApplied` informational effects even for pure derives. `what_triggers` takes `candidates` — the host-provided set of entities to consider as potential reactors (see Phase 6.2).
 
 **Layer-2 callers** use `StateAdapter::run()` which provides both the `&dyn StateProvider` and `&mut dyn EffectHandler` to a closure, managing `RefCell` borrow discipline internally (see Phase 7.1).
 
@@ -971,7 +971,7 @@ Building the declaration index once at `Interpreter::new` avoids repeated linear
 
 ### Event reactor enumeration
 
-`fire_event` takes `candidates: &[EntityRef]` from the host rather than enumerating entities itself. This keeps `StateProvider` simple (no `all_entities()` method) and gives hosts control over filtering (e.g., by proximity, initiative order, faction).
+`what_triggers` takes `candidates: &[EntityRef]` from the host rather than enumerating entities itself. This keeps `StateProvider` simple (no `all_entities()` method) and gives hosts control over filtering (e.g., by proximity, initiative order, faction).
 
 ### Reserved `__` prefix
 

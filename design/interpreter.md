@@ -399,7 +399,7 @@ Runs the modify pipeline (conditions can modify derives) and returns a value. Ta
 ### Fire an event
 
 ```rust
-interpreter.fire_event(state, name, payload, candidates)
+interpreter.what_triggers(state, name, payload, candidates)
 ```
 
 The host tells the interpreter an event occurred. The interpreter checks suppression and returns a single result:
