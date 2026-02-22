@@ -154,9 +154,9 @@ impl<S: WritableState, H: EffectHandler> EffectHandler for AdaptedHandler<'_, S,
                         // No local mutation
                     }
                     _ => {
-                        // Unexpected response type — apply original mutation as safe default.
-                        // The program intended the mutation; a protocol error shouldn't prevent it.
-                        apply_mutation(&mut *self.adapter.state.borrow_mut(), &effect);
+                        // Unexpected response type — do not mutate state.
+                        // The interpreter will surface a protocol error for this response,
+                        // so state must remain unchanged to preserve consistency.
                     }
                 }
                 response
@@ -208,8 +208,9 @@ impl<S: WritableState, H: EffectHandler> AdaptedHandler<'_, S, H> {
                 // Cost waived — no mutation
             }
             _ => {
-                // Unexpected response — apply default deduction as safe default.
-                deduct_budget_field(&mut *self.adapter.state.borrow_mut(), &actor, &budget_field);
+                // Unexpected response — do not mutate state.
+                // The interpreter will surface a protocol error for this response,
+                // so state must remain unchanged to preserve consistency.
             }
         }
 
@@ -403,19 +404,40 @@ fn read_at_path<S: StateProvider>(
     Some(current)
 }
 
-/// Apply an assign op to two values. Panics on type mismatch
-/// (mutations from the interpreter are already type-checked).
+/// Apply an assign op to two values. Panics on type mismatch or overflow
+/// (mutations from the interpreter are already type-checked and overflow-checked,
+/// so these conditions should be unreachable).
 fn apply_op(op: AssignOp, current: &Value, rhs: &Value) -> Value {
     match op {
         AssignOp::Eq => rhs.clone(),
         AssignOp::PlusEq => match (current, rhs) {
-            (Value::Int(a), Value::Int(b)) => Value::Int(a.saturating_add(*b)),
-            (Value::Float(a), Value::Float(b)) => Value::Float(a + b),
+            (Value::Int(a), Value::Int(b)) => Value::Int(
+                a.checked_add(*b)
+                    .expect("integer overflow in adapter += (interpreter should have caught this)"),
+            ),
+            (Value::Float(a), Value::Float(b)) => {
+                let result = a + b;
+                assert!(
+                    result.is_finite(),
+                    "non-finite float in adapter += (interpreter should have caught this)"
+                );
+                Value::Float(result)
+            }
             _ => rhs.clone(), // Fallback for type-checked programs
         },
         AssignOp::MinusEq => match (current, rhs) {
-            (Value::Int(a), Value::Int(b)) => Value::Int(a.saturating_sub(*b)),
-            (Value::Float(a), Value::Float(b)) => Value::Float(a - b),
+            (Value::Int(a), Value::Int(b)) => Value::Int(
+                a.checked_sub(*b)
+                    .expect("integer overflow in adapter -= (interpreter should have caught this)"),
+            ),
+            (Value::Float(a), Value::Float(b)) => {
+                let result = a - b;
+                assert!(
+                    result.is_finite(),
+                    "non-finite float in adapter -= (interpreter should have caught this)"
+                );
+                Value::Float(result)
+            }
             _ => rhs.clone(), // Fallback for type-checked programs
         },
     }
