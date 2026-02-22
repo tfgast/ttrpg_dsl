@@ -40,7 +40,7 @@ pub struct ReactionInfo {
 ///
 /// `payload` should be a `Value::Struct` with fields for the event's params
 /// and computed fields. The host constructs this when firing the event.
-pub fn fire_event(
+pub fn what_triggers(
     interp: &Interpreter,
     state: &dyn StateProvider,
     event_name: &str,
@@ -68,7 +68,7 @@ pub fn fire_event(
         }
     };
 
-    // Use a no-op handler since fire_event is a pure query.
+    // Use a no-op handler since what_triggers is a pure query.
     // The checker guarantees no effectful calls in trigger binding expressions.
     let mut noop_handler = NoopHandler;
     let mut env = Env::new(state, &mut noop_handler, interp);
@@ -422,7 +422,7 @@ fn check_suppress_bindings_inner(
 
 // ── No-op handler ───────────────────────────────────────────────
 
-/// A no-op effect handler for pure query operations (fire_event).
+/// A no-op effect handler for pure query operations (what_triggers).
 ///
 /// The checker guarantees that trigger and suppress binding expressions
 /// are side-effect-free (via BlockKind::TriggerBinding), so no effects
@@ -607,7 +607,7 @@ mod tests {
 
         let candidates = vec![EntityRef(1), EntityRef(2)];
 
-        let result = fire_event(&interp, &state, "Attacked", &payload, &candidates).unwrap();
+        let result = what_triggers(&interp, &state, "Attacked", &payload, &candidates).unwrap();
 
         // entity(1) should match (defender=entity(1), target: defender -> entity(1) == target)
         assert_eq!(result.triggerable.len(), 1);
@@ -701,7 +701,7 @@ mod tests {
 
         let candidates = vec![EntityRef(1), EntityRef(2), EntityRef(3)];
 
-        let result = fire_event(&interp, &state, "Attacked", &payload, &candidates).unwrap();
+        let result = what_triggers(&interp, &state, "Attacked", &payload, &candidates).unwrap();
 
         // Positional fills first param slot ("target").
         // entity(1) matches because fighter=entity(1) and target=entity(1).
@@ -817,7 +817,7 @@ mod tests {
 
         let candidates = vec![EntityRef(1), EntityRef(2)];
 
-        let result = fire_event(&interp, &state, "Combat", &payload, &candidates).unwrap();
+        let result = what_triggers(&interp, &state, "Combat", &payload, &candidates).unwrap();
 
         // entity(1): target=entity(1)==me, attacker=entity(1)==me -> MATCH
         assert_eq!(result.triggerable.len(), 1);
@@ -894,7 +894,7 @@ mod tests {
 
         let candidates = vec![EntityRef(1), EntityRef(2), EntityRef(3)];
 
-        let result = fire_event(&interp, &state, "Blast", &payload, &candidates).unwrap();
+        let result = what_triggers(&interp, &state, "Blast", &payload, &candidates).unwrap();
 
         // Only entity(2) matches
         assert_eq!(result.triggerable.len(), 1);
@@ -1025,7 +1025,7 @@ mod tests {
 
         let candidates = vec![EntityRef(1)];
 
-        let result = fire_event(&interp, &state, "Attacked", &payload, &candidates).unwrap();
+        let result = what_triggers(&interp, &state, "Attacked", &payload, &candidates).unwrap();
 
         // Entity(1) matches the trigger but is suppressed by Stunned
         assert_eq!(result.triggerable.len(), 0);
@@ -1178,7 +1178,7 @@ mod tests {
 
         let candidates = vec![EntityRef(1)];
 
-        let result = fire_event(&interp, &state, "Attacked", &payload, &candidates).unwrap();
+        let result = what_triggers(&interp, &state, "Attacked", &payload, &candidates).unwrap();
 
         // Entity(1) matches the trigger, Silenced doesn't suppress Attacked -> triggerable
         assert_eq!(result.triggerable.len(), 1);

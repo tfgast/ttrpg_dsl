@@ -311,19 +311,20 @@ impl<'p> Interpreter<'p> {
         call::evaluate_fn_with_values(&mut env, name, args, Span::dummy())
     }
 
-    /// Fire an event and determine which reactions are triggered.
+    /// Query which reactions would trigger for a given event.
     ///
-    /// This is a **pure query** — no effects are emitted.
+    /// This is a **pure query** — no effects are emitted, no state is modified.
+    /// Returns which reactions are triggerable and which are suppressed by conditions.
     /// `candidates` is the host-provided set of entities to consider as
     /// potential reactors.
-    pub fn fire_event(
+    pub fn what_triggers(
         &self,
         state: &dyn StateProvider,
         name: &str,
         payload: Value,
         candidates: &[EntityRef],
     ) -> Result<EventResult, RuntimeError> {
-        event::fire_event(self, state, name, &payload, candidates)
+        event::what_triggers(self, state, name, &payload, candidates)
     }
 }
 
@@ -800,7 +801,7 @@ system "test" {
         };
 
         let event_result = interp
-            .fire_event(&state, "flee", payload.clone(), &[entity1, entity2])
+            .what_triggers(&state, "flee", payload.clone(), &[entity1, entity2])
             .unwrap();
 
         // entity1 matches (defender=entity1, positional 'defender' fills actor slot)
@@ -1050,7 +1051,7 @@ system "test" {
         };
 
         let err = interp
-            .fire_event(&state, "nonexistent", payload, &[])
+            .what_triggers(&state, "nonexistent", payload, &[])
             .unwrap_err();
         assert!(err.message.contains("undefined event"));
     }
@@ -1251,7 +1252,7 @@ system "test" {
         };
 
         let event_result = interp
-            .fire_event(&state, "flee", payload, &[entity1])
+            .what_triggers(&state, "flee", payload, &[entity1])
             .unwrap();
 
         // Entity 1 matches trigger but is suppressed by Stunned

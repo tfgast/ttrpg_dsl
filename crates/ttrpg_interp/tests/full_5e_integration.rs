@@ -1230,7 +1230,7 @@ fn fire_entity_leaves_reach_triggers_opportunity_attack() {
     };
 
     let event_result = interp
-        .fire_event(&state, "entity_leaves_reach", payload, &[fighter])
+        .what_triggers(&state, "entity_leaves_reach", payload, &[fighter])
         .unwrap();
 
     assert_eq!(event_result.triggerable.len(), 1);
@@ -1317,7 +1317,7 @@ fn fire_entity_leaves_reach_no_match() {
     };
 
     let event_result = interp
-        .fire_event(&state, "entity_leaves_reach", payload, &[goblin])
+        .what_triggers(&state, "entity_leaves_reach", payload, &[goblin])
         .unwrap();
 
     assert!(event_result.triggerable.is_empty());
@@ -1634,7 +1634,7 @@ fn disengaging_suppresses_entity_leaves_reach() {
     };
 
     let event_result = interp
-        .fire_event(&state, "entity_leaves_reach", payload, &[fighter])
+        .what_triggers(&state, "entity_leaves_reach", payload, &[fighter])
         .unwrap();
 
     // Reaction should appear in suppressed, not triggerable
@@ -1663,7 +1663,7 @@ fn no_disengaging_allows_entity_leaves_reach() {
     };
 
     let event_result = interp
-        .fire_event(&state, "entity_leaves_reach", payload, &[fighter])
+        .what_triggers(&state, "entity_leaves_reach", payload, &[fighter])
         .unwrap();
 
     assert_eq!(event_result.triggerable.len(), 1);
