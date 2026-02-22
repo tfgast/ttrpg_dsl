@@ -75,12 +75,24 @@ impl GameState {
     }
 
     /// Set the turn budget for an entity.
+    ///
+    /// Silently does nothing if the entity doesn't exist, consistent
+    /// with read paths that reject unknown entities.
     pub fn set_turn_budget(&mut self, entity: &EntityRef, budget: BTreeMap<String, Value>) {
+        if !self.entities.contains_key(&entity.0) {
+            return;
+        }
         self.turn_budgets.insert(entity.0, budget);
     }
 
     /// Apply a condition to an entity with auto-assigned id and timestamp.
+    ///
+    /// Silently does nothing if the entity doesn't exist, consistent
+    /// with read paths that reject unknown entities.
     pub fn apply_condition(&mut self, entity: &EntityRef, name: &str, duration: Value) {
+        if !self.entities.contains_key(&entity.0) {
+            return;
+        }
         let id = self.next_condition_id;
         self.next_condition_id += 1;
         let cond = ActiveCondition {
@@ -164,8 +176,9 @@ impl StateProvider for GameState {
                 let a_grid = pa.0.downcast_ref::<GridPosition>()?;
                 let b_grid = pb.0.downcast_ref::<GridPosition>()?;
                 // Chebyshev distance: max(|dx|, |dy|)
-                let dx = (a_grid.0 - b_grid.0).abs();
-                let dy = (a_grid.1 - b_grid.1).abs();
+                // Use saturating arithmetic to avoid overflow/panic on extreme coordinates.
+                let dx = a_grid.0.saturating_sub(b_grid.0).saturating_abs();
+                let dy = a_grid.1.saturating_sub(b_grid.1).saturating_abs();
                 Some(dx.max(dy))
             }
             _ => None,
@@ -203,6 +216,9 @@ impl WritableState for GameState {
     }
 
     fn add_condition(&mut self, entity: &EntityRef, mut cond: ActiveCondition) {
+        if !self.entities.contains_key(&entity.0) {
+            return;
+        }
         // Auto-assign id and timestamp if not set (id == 0 indicates adapter-created)
         if cond.id == 0 {
             cond.id = self.next_condition_id;
@@ -579,5 +595,67 @@ mod tests {
             Value::Int(30),
         );
         assert_eq!(state.read_field(&entity, "HP"), Some(Value::Int(30)));
+    }
+
+    // ── Distance: extreme coordinates don't panic ────────────
+
+    #[test]
+    fn distance_extreme_coordinates_no_panic() {
+        let state = GameState::new();
+        let p1 = GridPosition(i64::MIN, 0).to_value();
+        let p2 = GridPosition(i64::MAX, 0).to_value();
+        // Should not panic; saturating arithmetic clamps the result
+        let d = state.distance(&p1, &p2);
+        assert!(d.is_some());
+        assert!(d.unwrap() > 0);
+    }
+
+    #[test]
+    fn distance_i64_min_abs_no_panic() {
+        let state = GameState::new();
+        let p1 = GridPosition(i64::MIN, i64::MIN).to_value();
+        let p2 = GridPosition(0, 0).to_value();
+        let d = state.distance(&p1, &p2);
+        assert!(d.is_some());
+    }
+
+    // ── Orphan data: writes to nonexistent entities are rejected ─
+
+    #[test]
+    fn set_turn_budget_nonexistent_entity_noop() {
+        let mut state = GameState::new();
+        let ghost = EntityRef(999);
+        let mut budget = BTreeMap::new();
+        budget.insert("actions".into(), Value::Int(1));
+        state.set_turn_budget(&ghost, budget);
+        // No orphan data: read returns None
+        assert!(state.read_turn_budget(&ghost).is_none());
+    }
+
+    #[test]
+    fn apply_condition_nonexistent_entity_noop() {
+        let mut state = GameState::new();
+        let ghost = EntityRef(999);
+        state.apply_condition(
+            &ghost,
+            "Prone",
+            Value::Duration(DurationValue::EndOfTurn),
+        );
+        assert!(state.read_conditions(&ghost).is_none());
+    }
+
+    #[test]
+    fn add_condition_nonexistent_entity_noop() {
+        let mut state = GameState::new();
+        let ghost = EntityRef(999);
+        let cond = ActiveCondition {
+            id: 0,
+            name: "Prone".into(),
+            bearer: ghost,
+            gained_at: 0,
+            duration: Value::Duration(DurationValue::EndOfTurn),
+        };
+        state.add_condition(&ghost, cond);
+        assert!(state.read_conditions(&ghost).is_none());
     }
 }
