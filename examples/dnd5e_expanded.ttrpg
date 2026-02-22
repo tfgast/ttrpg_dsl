@@ -385,24 +385,13 @@ system "D&D 5e Expanded" {
 
     derive compute_AC(char: Character) -> int {
         let dex_mod = modifier(char.abilities[DEX])
-        // PAIN POINT: Can't match on option<T> because:
-        //   - `none` is not a valid match pattern (it's a keyword/literal, not a pattern)
-        //   - No `some(x)` destructuring pattern exists
-        //   - No pattern guards (`if` clauses in match arms)
-        // So we can't write:
-        //     match char.equipped_armor {
-        //         none => 10 + dex_mod,
-        //         some(armor) if armor.category == heavy_armor => armor.base_AC,
-        //         some(armor) => armor.base_AC + min(dex_mod, armor.max_dex_bonus),
-        //     }
-        //
-        // Workaround: use guard match with == none comparison.
-        let base = match {
-            char.equipped_armor == none => 10 + dex_mod,
-            // Even with a guard match, we can't access the inner Armor's
-            // fields because we never get a binding to the unwrapped value.
-            // MISSING FEATURE: `if let some(x) = expr { ... }` or `expr.unwrap()`
-            _ => 10 + dex_mod  // simplified — real AC computation impossible without option unwrap
+        // `none` is now a valid match pattern, so we can match on option<T>:
+        let base = match char.equipped_armor {
+            none => 10 + dex_mod,
+            // REMAINING GAP: No `some(x)` destructuring pattern exists yet,
+            // so we can't access the inner Armor's fields here.
+            // MISSING FEATURE: `some(armor) => armor.base_AC + ...`
+            _ => 10 + dex_mod  // simplified — real AC computation needs option unwrap
         }
         if char.shield_equipped { base + 2 } else { base }
     }
@@ -1379,15 +1368,16 @@ system "D&D 5e Expanded" {
         description: "Melee attackers on opposite sides gain advantage"
         default: off
 
-        // PAIN POINT: Can't actually implement flanking in `when enabled`
-        // because:
-        // 1. Wildcard bindings (`_`) in modify clauses are in the spec
-        //    but not implemented. Can't write:
-        //        modify attack_roll(attacker: _, target: _) { ... }
-        // 2. Options don't have a receiver, so there's nothing to bind.
-        // 3. Detecting "opposite sides" requires geometric Position
-        //    calculations that the DSL can't express.
-        // 4. The `when enabled` block is parsed but has no runtime effect.
+        when enabled {
+            // Wildcard bindings now work — options have no receiver,
+            // so `_` means "match any attacker/target".
+            modify attack_roll(attacker: _, target: _) {
+                // REMAINING GAP: Detecting "opposite sides" requires geometric
+                // Position calculations the DSL can't yet express.
+                // For now, just demonstrate the syntax works.
+                mode = "advantage"
+            }
+        }
     }
 
     option critical_fumble extends "D&D 5e Expanded" {
@@ -1395,15 +1385,11 @@ system "D&D 5e Expanded" {
         default: off
 
         when enabled {
-            // PAIN POINT: Can't modify the RESULT of resolve_melee_attack
-            // to add a fumble branch. The option/condition modify system
-            // modifies INPUT parameters, not the control flow inside a
-            // mechanic. We'd want:
-            //     modify resolve_melee_attack(result: _) {
-            //         if atk.unmodified == 1 { trigger fumble_table(attacker) }
-            //     }
-            // But post-call modification only works on struct fields
-            // of the return value, not on control flow.
+            // Wildcard bindings now work, but the remaining gap is that
+            // the modify system modifies INPUT parameters, not control flow.
+            // We can write `modify resolve_melee_attack(result: _) { ... }`
+            // but post-call modification only works on struct fields
+            // of the return value, not on adding new branches.
         }
     }
 
@@ -1483,15 +1469,8 @@ system "D&D 5e Expanded" {
     //
     // PARSER / SYNTAX ISSUES (discovered while making this compile):
     //
-    // 15. `none` IS NOT A VALID PATTERN
-    //     - Can't write: match x { none => ..., _ => ... }
-    //     - Must use guard match: match { x == none => ... }
-    //     - Blocks idiomatic option handling
-    //
-    // 16. NO WILDCARD IN MODIFY BINDINGS
-    //     - Spec shows: modify attack_roll(attacker: _, target: _)
-    //     - Parser rejects `_` — binding value must be an expression
-    //     - Options have no receiver, so there's nothing to bind
+    // 15. (FIXED) `none` is now a valid match pattern
+    // 16. (FIXED) Wildcard `_` now works in modify bindings
     //
     // 17. SINGLE REQUIRES BLOCK PER ACTION
     //     - Can't write multiple `requires { ... }` blocks
@@ -1504,10 +1483,7 @@ system "D&D 5e Expanded" {
     //     - Only `{` suppresses the *next* NL, not all NLs inside braces
     //     - Workaround: put everything on one line, or wrap in parens
     //
-    // 19. COMMENTS BETWEEN COST AND REQUIRES BREAK PARSING
-    //     - Parser bug: no skip_newlines() between cost and requires
-    //     - Comments generate NLs that aren't consumed
-    //     - Workaround: don't put comments between cost/requires blocks
+    // 19. (FIXED) Comments between cost and requires no longer break parsing
     //
     // 20. NO DEFAULT FOR DiceExpr FIELDS
     //     - Can't write: sneak_attack_dice: DiceExpr = 0d6
