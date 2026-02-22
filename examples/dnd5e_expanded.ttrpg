@@ -1477,7 +1477,7 @@ system "D&D 5e Expanded" {
     //     - Must combine with && on a single long line
     //     - Multiline requires expressions hit NL issues (see #18)
     //
-    // 18. MULTILINE EXPRESSIONS IN REQUIRES/COST           (no issue yet)
+    // 18. MULTILINE EXPRESSIONS IN REQUIRES/COST           [ttrpg_dsl-hwf]
     //     - Newlines inside `{ }` are NOT suppressed (unlike `()` and `[]`)
     //     - Multiline requires: `requires { a &&\n b }` fails
     //     - Only `{` suppresses the *next* NL, not all NLs inside braces
@@ -1485,7 +1485,7 @@ system "D&D 5e Expanded" {
     //
     // 19. (FIXED) Comments between cost/requires blocks    [ttrpg_dsl-c2y]
     //
-    // 20. NO DEFAULT FOR DiceExpr FIELDS                   (no issue yet)
+    // 20. NO DEFAULT FOR DiceExpr FIELDS                   [ttrpg_dsl-46i]
     //     - Can't write: sneak_attack_dice: DiceExpr = 0d6
     //     - 0d6 isn't valid (0 count dice literal)
     //     - No "empty dice expression" value exists
