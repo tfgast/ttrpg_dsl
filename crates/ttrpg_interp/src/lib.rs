@@ -146,7 +146,6 @@ impl<'p> DeclIndex<'p> {
 /// The main interpreter. Holds a reference to the checked program and
 /// provides methods for executing actions, evaluating derives, etc.
 pub struct Interpreter<'p> {
-    pub(crate) program: &'p Program,
     pub(crate) type_env: &'p TypeEnv,
     pub(crate) index: DeclIndex<'p>,
 }
@@ -175,7 +174,6 @@ impl<'p> Interpreter<'p> {
         let index = DeclIndex::build(program);
 
         Ok(Interpreter {
-            program,
             type_env,
             index,
         })

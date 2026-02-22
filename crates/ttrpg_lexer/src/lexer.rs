@@ -380,12 +380,6 @@ mod tests {
             .collect()
     }
 
-    fn raw_lex(source: &str) -> Vec<TokenKind> {
-        RawLexer::new(source)
-            .map(|t| t.kind)
-            .collect()
-    }
-
     #[test]
     fn test_simple_int() {
         assert_eq!(lex("42"), vec![TokenKind::Int(42), TokenKind::Eof]);

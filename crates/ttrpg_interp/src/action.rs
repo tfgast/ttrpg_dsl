@@ -23,17 +23,6 @@ fn token_to_budget_field(token: &str) -> Option<&'static str> {
     }
 }
 
-/// Maps a budget field back to the cost token name.
-/// Used to validate Override responses.
-fn budget_field_to_token(field: &str) -> Option<&'static str> {
-    match field {
-        "actions" => Some("action"),
-        "bonus_actions" => Some("bonus_action"),
-        "reactions" => Some("reaction"),
-        _ => None,
-    }
-}
-
 // ── Action execution ───────────────────────────────────────────
 
 /// Execute an action through the full pipeline:
@@ -551,14 +540,6 @@ mod tests {
     fn token_mapping_invalid() {
         assert_eq!(token_to_budget_field("unknown"), None);
         assert_eq!(token_to_budget_field("move"), None);
-    }
-
-    #[test]
-    fn budget_field_reverse_mapping() {
-        assert_eq!(budget_field_to_token("actions"), Some("action"));
-        assert_eq!(budget_field_to_token("bonus_actions"), Some("bonus_action"));
-        assert_eq!(budget_field_to_token("reactions"), Some("reaction"));
-        assert_eq!(budget_field_to_token("unknown"), None);
     }
 
     // ── Action execution tests ─────────────────────────────────

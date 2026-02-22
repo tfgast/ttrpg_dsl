@@ -56,10 +56,6 @@ impl Parser {
         matches!(self.peek(), TokenKind::Ident(s) if s == name)
     }
 
-    pub(crate) fn at_ident_at(&self, offset: usize, name: &str) -> bool {
-        matches!(self.peek_at(offset), TokenKind::Ident(s) if s == name)
-    }
-
     pub(crate) fn advance(&mut self) -> Token {
         let tok = self.tokens
             .get(self.pos)
