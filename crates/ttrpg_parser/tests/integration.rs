@@ -446,6 +446,58 @@ fn test_none_pattern_in_match() {
     );
 }
 
+#[test]
+fn test_requires_multiline_expression() {
+    // Regression: newlines inside requires { } were not suppressed,
+    // so multiline expressions like `a &&\n b` would fail.
+    let source = r#"system "test" {
+    entity Character {
+        HP: int
+        is_alive: bool
+    }
+    action Attack on attacker: Character (target: Character) {
+        requires {
+            attacker.HP > 0
+            && attacker.is_alive
+        }
+        resolve {
+            target.HP -= 5
+        }
+    }
+}"#;
+    let (_, diagnostics) = parse(source);
+    assert!(
+        diagnostics.is_empty(),
+        "multiline expressions inside requires should be allowed, got: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn test_cost_multiline() {
+    // Regression: newlines inside cost { } were not suppressed.
+    let source = r#"system "test" {
+    entity Character {
+        HP: int
+    }
+    action BigMove on actor: Character () {
+        cost {
+            action,
+            bonus
+        }
+        resolve {
+            actor.HP += 1
+        }
+    }
+}"#;
+    let (_, diagnostics) = parse(source);
+    assert!(
+        diagnostics.is_empty(),
+        "multiline cost blocks should be allowed, got: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}
+
 // ── Error recovery tests ─────────────────────────────────────────
 
 #[test]

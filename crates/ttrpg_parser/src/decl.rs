@@ -286,6 +286,7 @@ impl Parser {
         let start = self.start_span();
         self.expect_soft_keyword("cost")?;
         self.expect(&TokenKind::LBrace)?;
+        self.suppress_newlines_in_brace_block();
 
         let mut tokens = Vec::new();
         let tok_start = self.start_span();
@@ -312,6 +313,7 @@ impl Parser {
     fn parse_requires_clause(&mut self) -> Result<Spanned<ExprKind>, ()> {
         self.expect_soft_keyword("requires")?;
         self.expect(&TokenKind::LBrace)?;
+        self.suppress_newlines_in_brace_block();
         let expr = self.parse_expr()?;
         self.expect(&TokenKind::RBrace)?;
         self.expect_term()?;

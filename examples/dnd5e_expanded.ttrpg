@@ -715,11 +715,13 @@ system "D&D 5e Expanded" {
         second_target: Character
     ) {
         cost { action }
-        requires { attacker.has_extra_attack && distance(attacker.position, target.position) <= weapon.range && distance(attacker.position, second_target.position) <= weapon.range }
-        // PAIN POINT: Only one requires block is allowed per action,
-        // so multiple preconditions must be combined with &&.
-        // Also, comments between cost and requires break parsing — the
-        // parser doesn't skip newlines between them (parser bug).
+        requires {
+            attacker.has_extra_attack
+            && distance(attacker.position, target.position) <= weapon.range
+            && distance(attacker.position, second_target.position) <= weapon.range
+        }
+        // NOTE: Only one requires block is allowed per action (#17),
+        // but multiline requires now works (#18).
 
         resolve {
             // First attack
@@ -799,7 +801,10 @@ system "D&D 5e Expanded" {
 
     action Grapple on grappler: Character (target: Character) {
         cost { action }
-        requires { distance(grappler.position, target.position) <= 5 && target.size != gargantuan }
+        requires {
+            distance(grappler.position, target.position) <= 5
+            && target.size != gargantuan
+        }
         // PAIN POINT: requires clause can't express "target.size <= grappler.size + 1"
         // because Size is an enum, not an int, and there's no enum ordering.
         // MISSING FEATURE: Ordered enums or enum-to-int conversion.
@@ -1474,14 +1479,9 @@ system "D&D 5e Expanded" {
     //
     // 17. SINGLE REQUIRES BLOCK PER ACTION                 [ttrpg_dsl-mcy]
     //     - Can't write multiple `requires { ... }` blocks
-    //     - Must combine with && on a single long line
-    //     - Multiline requires expressions hit NL issues (see #18)
+    //     - Must combine with && (multiline now works, see #18)
     //
-    // 18. MULTILINE EXPRESSIONS IN REQUIRES/COST           [ttrpg_dsl-hwf]
-    //     - Newlines inside `{ }` are NOT suppressed (unlike `()` and `[]`)
-    //     - Multiline requires: `requires { a &&\n b }` fails
-    //     - Only `{` suppresses the *next* NL, not all NLs inside braces
-    //     - Workaround: put everything on one line, or wrap in parens
+    // 18. (FIXED) Multiline requires/cost now work          [ttrpg_dsl-hwf]
     //
     // 19. (FIXED) Comments between cost/requires blocks    [ttrpg_dsl-c2y]
     //

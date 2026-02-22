@@ -142,6 +142,38 @@ impl Parser {
         found
     }
 
+    /// Remove all `Newline` tokens between `self.pos` and the matching `}`.
+    /// Call immediately after consuming `{` in expression-brace contexts
+    /// (e.g. `requires { expr }`, `cost { tokens }`) so that multiline
+    /// content is parsed without newline-termination issues.
+    pub(crate) fn suppress_newlines_in_brace_block(&mut self) {
+        let mut depth = 1usize;
+        let mut end = self.pos;
+        while end < self.tokens.len() {
+            match self.tokens[end].kind {
+                TokenKind::LBrace => depth += 1,
+                TokenKind::RBrace => {
+                    depth -= 1;
+                    if depth == 0 {
+                        break;
+                    }
+                }
+                _ => {}
+            }
+            end += 1;
+        }
+        // Remove Newline tokens in [self.pos..end)
+        let mut i = self.pos;
+        while i < end {
+            if self.tokens[i].kind == TokenKind::Newline {
+                self.tokens.remove(i);
+                end -= 1;
+            } else {
+                i += 1;
+            }
+        }
+    }
+
     pub(crate) fn start_span(&self) -> usize {
         self.peek_span().start
     }
