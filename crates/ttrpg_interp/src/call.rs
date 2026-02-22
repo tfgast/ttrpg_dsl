@@ -145,7 +145,7 @@ fn dispatch_derive_or_mechanic(
     let bound = bind_args(&fn_info.params, args, Some(&ast_params), env, call_span)?;
 
     // Collect modifiers from conditions and options
-    let modifiers = collect_modifiers_owned(env, name, &fn_info, &bound);
+    let modifiers = collect_modifiers_owned(env, name, &fn_info, &bound)?;
 
     // Phase 1: rewrite input parameters
     let bound = if modifiers.is_empty() {

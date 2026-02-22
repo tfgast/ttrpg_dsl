@@ -6,7 +6,7 @@ use ttrpg_checker::ty::Ty;
 
 use crate::Env;
 use crate::RuntimeError;
-use crate::effect::{Effect, FieldChange, ModifySource, Phase};
+use crate::effect::{Effect, FieldChange, ModifySource, Phase, Response};
 use crate::eval::{eval_expr, value_eq};
 use crate::state::ActiveCondition;
 use crate::value::Value;
@@ -19,11 +19,11 @@ use crate::value::Value;
 /// - Condition modifiers ordered by `gained_at` (oldest first), declaration order within
 /// - Option modifiers after all conditions, declaration order within
 pub(crate) fn collect_modifiers_owned(
-    env: &Env,
+    env: &mut Env,
     fn_name: &str,
     fn_info: &FnInfo,
     bound_params: &[(String, Value)],
-) -> Vec<OwnedModifier> {
+) -> Result<Vec<OwnedModifier>, RuntimeError> {
     let mut condition_modifiers: Vec<(u64, OwnedModifier)> = Vec::new(); // (gained_at, modifier)
     let mut seen_condition_ids: HashSet<u64> = HashSet::new();
 
@@ -69,7 +69,7 @@ pub(crate) fn collect_modifiers_owned(
                 // Check bindings: each binding maps a param name to an expression.
                 // Evaluate the expression in a scope with the condition receiver bound.
                 // The binding matches if param[binding.name] equals the evaluated value.
-                if check_modify_bindings(env, clause, condition, fn_info, bound_params) {
+                if check_modify_bindings(env, clause, condition, fn_info, bound_params)? {
                     condition_modifiers.push((
                         condition.gained_at,
                         OwnedModifier {
@@ -93,7 +93,12 @@ pub(crate) fn collect_modifiers_owned(
         .collect();
 
     // 2. Query enabled options and check their modify clauses
-    let enabled_options = env.state.read_enabled_options();
+    let mut enabled_options = env.state.read_enabled_options();
+    // Sort by declaration order for deterministic application
+    let option_order = &env.interp.index.option_order;
+    enabled_options.sort_by_key(|name| {
+        option_order.iter().position(|o| *o == name.as_str()).unwrap_or(usize::MAX)
+    });
     for opt_name in &enabled_options {
         let opt_decl = match env.interp.index.options.get(opt_name.as_str()) {
             Some(decl) => *decl,
@@ -111,7 +116,7 @@ pub(crate) fn collect_modifiers_owned(
             }
 
             // Options have no receiver — check bindings without bearer
-            if check_option_modify_bindings(env, clause, fn_info, bound_params) {
+            if check_option_modify_bindings(env, clause, fn_info, bound_params)? {
                 result.push(OwnedModifier {
                     source: ModifySource::Option(opt_name.clone()),
                     clause: clause.clone(),
@@ -122,7 +127,7 @@ pub(crate) fn collect_modifiers_owned(
         }
     }
 
-    result
+    Ok(result)
 }
 
 /// An owned modifier with cloned clause data.
@@ -139,138 +144,85 @@ pub(crate) struct OwnedModifier {
 /// evaluated in a scope with the condition's receiver bound. The binding matches
 /// if the param value equals the evaluated expression.
 fn check_modify_bindings(
-    env: &Env,
+    env: &mut Env,
     clause: &ModifyClause,
     condition: &ActiveCondition,
     _fn_info: &FnInfo,
     bound_params: &[(String, Value)],
-) -> bool {
+) -> Result<bool, RuntimeError> {
     // Empty bindings always match
     if clause.bindings.is_empty() {
-        return true;
+        return Ok(true);
     }
 
     // Look up the condition declaration to get receiver name
     let cond_decl = match env.interp.index.conditions.get(condition.name.as_str()) {
-        Some(decl) => decl,
-        None => return false,
+        Some(decl) => *decl,
+        None => return Ok(false),
     };
+    let receiver_name = cond_decl.receiver_name.clone();
 
     for binding in &clause.bindings {
         // Find the param value for this binding name
         let param_val = match bound_params.iter().find(|(name, _)| *name == binding.name) {
-            Some((_, val)) => val,
-            None => return false,
+            Some((_, val)) => val.clone(),
+            None => return Ok(false),
         };
 
-        // Evaluate binding expression with receiver bound.
-        // We need to evaluate in a temporary scope with the condition receiver.
-        // Since we can't mutably borrow env here (it's passed as &Env), we use
-        // a simple check: if the binding value is an Ident matching the receiver name,
-        // compare param value against the bearer entity.
-        //
-        // For more complex expressions, we'd need a mutable env. Since the checker
-        // guarantees bindings are simple expressions (typically just the receiver name),
-        // and the plan says binding expressions must be side-effect-free, we handle
-        // the common case directly and fall back to expression evaluation for others.
-        let binding_val = eval_binding_expr_simple(
-            env,
-            &binding.value.node,
-            &cond_decl.receiver_name,
-            &Value::Entity(condition.bearer),
-        );
+        // Evaluate binding expression in a temporary scope with receiver + params bound
+        env.push_scope();
+        env.bind(receiver_name.clone(), Value::Entity(condition.bearer));
+        for (name, val) in bound_params {
+            env.bind(name.clone(), val.clone());
+        }
 
-        match binding_val {
-            Some(val) => {
-                if !value_eq(env.state, param_val, &val) {
-                    return false;
-                }
-            }
-            None => {
-                // Complex expression — would need full evaluation.
-                // For now, conservatively don't match.
-                return false;
-            }
+        let binding_val = eval_expr(env, &binding.value);
+        env.pop_scope();
+
+        let val = binding_val?;
+        if !value_eq(env.state, &param_val, &val) {
+            return Ok(false);
         }
     }
 
-    true
+    Ok(true)
 }
 
 /// Check if an option modify clause's bindings match the current call params.
 ///
 /// Options have no receiver — bindings are evaluated in the current param context.
 fn check_option_modify_bindings(
-    env: &Env,
+    env: &mut Env,
     clause: &ModifyClause,
     _fn_info: &FnInfo,
     bound_params: &[(String, Value)],
-) -> bool {
+) -> Result<bool, RuntimeError> {
     if clause.bindings.is_empty() {
-        return true;
+        return Ok(true);
     }
 
     for binding in &clause.bindings {
         let param_val = match bound_params.iter().find(|(name, _)| *name == binding.name) {
-            Some((_, val)) => val,
-            None => return false,
+            Some((_, val)) => val.clone(),
+            None => return Ok(false),
         };
 
-        // For options, evaluate binding expression with just params in scope.
-        // Typically these are just param name references.
-        let binding_val = eval_binding_expr_with_params(
-            env,
-            &binding.value.node,
-            bound_params,
-        );
+        // Evaluate binding expression in a temporary scope with params bound
+        env.push_scope();
+        for (name, val) in bound_params {
+            env.bind(name.clone(), val.clone());
+        }
 
-        match binding_val {
-            Some(val) => {
-                if !value_eq(env.state, param_val, &val) {
-                    return false;
-                }
-            }
-            None => return false,
+        let binding_val = eval_expr(env, &binding.value);
+        env.pop_scope();
+
+        let val = binding_val?;
+        if !value_eq(env.state, &param_val, &val) {
+            return Ok(false);
         }
     }
 
-    true
-}
-
-/// Evaluate a simple binding expression without needing mutable env.
-///
-/// Handles the common cases:
-/// - `Ident(name)` where name matches receiver_name → return bearer value
-/// - `Ident(name)` where name matches a known binding → return that value
-fn eval_binding_expr_simple(
-    _env: &Env,
-    expr: &ttrpg_ast::ast::ExprKind,
-    receiver_name: &str,
-    bearer: &Value,
-) -> Option<Value> {
-    match expr {
-        ttrpg_ast::ast::ExprKind::Ident(name) if name == receiver_name => {
-            Some(bearer.clone())
-        }
-        _ => None,
-    }
-}
-
-/// Evaluate a binding expression with params available.
-fn eval_binding_expr_with_params(
-    _env: &Env,
-    expr: &ttrpg_ast::ast::ExprKind,
-    bound_params: &[(String, Value)],
-) -> Option<Value> {
-    match expr {
-        ttrpg_ast::ast::ExprKind::Ident(name) => {
-            bound_params
-                .iter()
-                .find(|(n, _)| n == name)
-                .map(|(_, v)| v.clone())
-        }
-        _ => None,
-    }
+    Ok(true)
 }
 
 // ── Phase 1: Rewrite inputs ────────────────────────────────────
@@ -318,13 +270,18 @@ pub(crate) fn run_phase1(
         // Collect changes for ModifyApplied effect
         let changes = collect_param_changes(&old_params, &params);
         if !changes.is_empty() {
-            env.handler.handle(Effect::ModifyApplied {
+            let response = env.handler.handle(Effect::ModifyApplied {
                 source: modifier.source.clone(),
                 target_fn: fn_name.to_string(),
                 phase: Phase::Phase1,
                 changes,
             });
-            // ModifyApplied is informational — response is ignored
+            if !matches!(response, Response::Acknowledged) {
+                return Err(RuntimeError::with_span(
+                    format!("protocol error: expected Acknowledged for ModifyApplied, got {:?}", response),
+                    modifier.clause.span,
+                ));
+            }
         }
     }
 
@@ -384,12 +341,18 @@ pub(crate) fn run_phase2(
         // Collect changes for ModifyApplied effect
         let changes = collect_result_changes(&old_result, &result, fn_info);
         if !changes.is_empty() {
-            env.handler.handle(Effect::ModifyApplied {
+            let response = env.handler.handle(Effect::ModifyApplied {
                 source: modifier.source.clone(),
                 target_fn: fn_name.to_string(),
                 phase: Phase::Phase2,
                 changes,
             });
+            if !matches!(response, Response::Acknowledged) {
+                return Err(RuntimeError::with_span(
+                    format!("protocol error: expected Acknowledged for ModifyApplied, got {:?}", response),
+                    modifier.clause.span,
+                ));
+            }
         }
     }
 
@@ -492,6 +455,25 @@ fn exec_modify_stmts_phase2(
                             "modifier" => {
                                 if let Value::Int(n) = val {
                                     rr.modifier = n;
+                                }
+                            }
+                            "expr" => {
+                                if let Value::DiceExpr(de) = val {
+                                    rr.expr = de;
+                                }
+                            }
+                            "dice" => {
+                                if let Value::List(items) = val {
+                                    rr.dice = items.iter().filter_map(|v| {
+                                        if let Value::Int(n) = v { Some(*n) } else { None }
+                                    }).collect();
+                                }
+                            }
+                            "kept" => {
+                                if let Value::List(items) = val {
+                                    rr.kept = items.iter().filter_map(|v| {
+                                        if let Value::Int(n) = v { Some(*n) } else { None }
+                                    }).collect();
                                 }
                             }
                             _ => {}
@@ -1518,7 +1500,7 @@ mod tests {
         );
 
         let handler = &mut ScriptedHandler::new();
-        let env = crate::Env::new(&state, handler, &interp);
+        let mut env = crate::Env::new(&state, handler, &interp);
 
         let fn_info = type_env.lookup_fn("interact").unwrap();
         // Both params point to the same entity
@@ -1527,7 +1509,7 @@ mod tests {
             ("b".to_string(), Value::Entity(EntityRef(1))),
         ];
 
-        let modifiers = collect_modifiers_owned(&env, "interact", fn_info, &bound_params);
+        let modifiers = collect_modifiers_owned(&mut env, "interact", fn_info, &bound_params).unwrap();
 
         // The condition should only be collected once despite both params referencing it
         assert_eq!(
@@ -1607,5 +1589,510 @@ mod tests {
             0,
             "no ModifyApplied effects should be emitted when no modifiers exist"
         );
+    }
+
+    // ── Test 7: Binding with string literal (non-Ident) matches ─
+
+    #[test]
+    fn binding_with_string_literal_matches() {
+        // derive calc(mode: String, x: Int) -> Int { x }
+        // option SpecialMode {
+        //   when_enabled { modify calc(mode: "special") { x = x + 50 } }
+        // }
+        // Call calc("special", 1) → x = 1 + 50 = 51
+
+        let program = program_with_decls(vec![
+            DeclKind::Derive(FnDecl {
+                name: "calc".into(),
+                params: vec![
+                    Param {
+                        name: "mode".into(),
+                        ty: spanned(TypeExpr::String),
+                        default: None,
+                        span: dummy_span(),
+                    },
+                    Param {
+                        name: "x".into(),
+                        ty: spanned(TypeExpr::Int),
+                        default: None,
+                        span: dummy_span(),
+                    },
+                ],
+                return_type: spanned(TypeExpr::Int),
+                body: spanned(vec![spanned(StmtKind::Expr(spanned(ExprKind::Ident(
+                    "x".into(),
+                ))))]),
+                synthetic: false,
+            }),
+            DeclKind::Option(OptionDecl {
+                name: "SpecialMode".into(),
+                extends: None,
+                description: None,
+                default_on: None,
+                when_enabled: Some(vec![ModifyClause {
+                    target: "calc".into(),
+                    bindings: vec![ModifyBinding {
+                        name: "mode".into(),
+                        value: spanned(ExprKind::StringLit("special".into())),
+                        span: dummy_span(),
+                    }],
+                    body: vec![ModifyStmt::ParamOverride {
+                        name: "x".into(),
+                        value: spanned(ExprKind::BinOp {
+                            op: BinOp::Add,
+                            lhs: Box::new(spanned(ExprKind::Ident("x".into()))),
+                            rhs: Box::new(spanned(ExprKind::IntLit(50))),
+                        }),
+                        span: dummy_span(),
+                    }],
+                    span: dummy_span(),
+                }]),
+            }),
+        ]);
+
+        let mut type_env = TypeEnv::new();
+        type_env.functions.insert(
+            "calc".into(),
+            FnInfo {
+                name: "calc".into(),
+                kind: FnKind::Derive,
+                params: vec![
+                    ParamInfo {
+                        name: "mode".into(),
+                        ty: Ty::String,
+                        has_default: false,
+                    },
+                    ParamInfo {
+                        name: "x".into(),
+                        ty: Ty::Int,
+                        has_default: false,
+                    },
+                ],
+                return_type: Ty::Int,
+                receiver: None,
+            },
+        );
+        type_env.options.insert("SpecialMode".into());
+
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let mut state = TestState::new();
+        state.enabled_options.push("SpecialMode".into());
+
+        let mut handler = ScriptedHandler::new();
+        let mut env = make_env(&state, &mut handler, &interp);
+
+        let expr = spanned(ExprKind::Call {
+            callee: Box::new(spanned(ExprKind::Ident("calc".into()))),
+            args: vec![
+                Arg {
+                    name: None,
+                    value: spanned(ExprKind::StringLit("special".into())),
+                    span: dummy_span(),
+                },
+                Arg {
+                    name: None,
+                    value: spanned(ExprKind::IntLit(1)),
+                    span: dummy_span(),
+                },
+            ],
+        });
+
+        let result = crate::eval::eval_expr(&mut env, &expr).unwrap();
+        assert_eq!(result, Value::Int(51), "string literal binding should match");
+
+        // Also verify it does NOT match when mode is different
+        let mut handler2 = ScriptedHandler::new();
+        let mut env2 = make_env(&state, &mut handler2, &interp);
+        let expr2 = spanned(ExprKind::Call {
+            callee: Box::new(spanned(ExprKind::Ident("calc".into()))),
+            args: vec![
+                Arg {
+                    name: None,
+                    value: spanned(ExprKind::StringLit("normal".into())),
+                    span: dummy_span(),
+                },
+                Arg {
+                    name: None,
+                    value: spanned(ExprKind::IntLit(1)),
+                    span: dummy_span(),
+                },
+            ],
+        });
+
+        let result2 = crate::eval::eval_expr(&mut env2, &expr2).unwrap();
+        assert_eq!(result2, Value::Int(1), "non-matching binding should not apply modifier");
+    }
+
+    // ── Test 8: Non-Acknowledged ModifyApplied returns protocol error ─
+
+    #[test]
+    fn modify_applied_non_acknowledged_returns_error() {
+        // derive calc(target: Character, x: Int) -> Int { x }
+        // condition Buff on t: Character { modify calc(target: t) { x = x + 10 } }
+        // Handler returns Vetoed for ModifyApplied → protocol error
+
+        let program = program_with_decls(vec![
+            DeclKind::Derive(FnDecl {
+                name: "calc".into(),
+                params: vec![
+                    Param {
+                        name: "target".into(),
+                        ty: spanned(TypeExpr::Named("Character".into())),
+                        default: None,
+                        span: dummy_span(),
+                    },
+                    Param {
+                        name: "x".into(),
+                        ty: spanned(TypeExpr::Int),
+                        default: None,
+                        span: dummy_span(),
+                    },
+                ],
+                return_type: spanned(TypeExpr::Int),
+                body: spanned(vec![spanned(StmtKind::Expr(spanned(ExprKind::Ident(
+                    "x".into(),
+                ))))]),
+                synthetic: false,
+            }),
+            DeclKind::Condition(ConditionDecl {
+                name: "Buff".into(),
+                receiver_name: "t".into(),
+                receiver_type: spanned(TypeExpr::Named("Character".into())),
+                clauses: vec![ConditionClause::Modify(ModifyClause {
+                    target: "calc".into(),
+                    bindings: vec![ModifyBinding {
+                        name: "target".into(),
+                        value: spanned(ExprKind::Ident("t".into())),
+                        span: dummy_span(),
+                    }],
+                    body: vec![ModifyStmt::ParamOverride {
+                        name: "x".into(),
+                        value: spanned(ExprKind::BinOp {
+                            op: BinOp::Add,
+                            lhs: Box::new(spanned(ExprKind::Ident("x".into()))),
+                            rhs: Box::new(spanned(ExprKind::IntLit(10))),
+                        }),
+                        span: dummy_span(),
+                    }],
+                    span: dummy_span(),
+                })],
+            }),
+        ]);
+
+        let mut type_env = TypeEnv::new();
+        type_env.functions.insert(
+            "calc".into(),
+            FnInfo {
+                name: "calc".into(),
+                kind: FnKind::Derive,
+                params: vec![
+                    ParamInfo {
+                        name: "target".into(),
+                        ty: Ty::Entity("Character".into()),
+                        has_default: false,
+                    },
+                    ParamInfo {
+                        name: "x".into(),
+                        ty: Ty::Int,
+                        has_default: false,
+                    },
+                ],
+                return_type: Ty::Int,
+                receiver: None,
+            },
+        );
+        type_env.conditions.insert(
+            "Buff".into(),
+            ConditionInfo {
+                name: "Buff".into(),
+                receiver_name: "t".into(),
+                receiver_type: Ty::Entity("Character".into()),
+            },
+        );
+
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let mut state = TestState::new();
+        state.conditions.insert(
+            1,
+            vec![ActiveCondition {
+                id: 10,
+                name: "Buff".into(),
+                bearer: EntityRef(1),
+                gained_at: 1,
+                duration: Value::None,
+            }],
+        );
+
+        // Handler returns Vetoed for ModifyApplied
+        let mut handler = ScriptedHandler::with_responses(vec![Response::Vetoed]);
+        let mut env = make_env(&state, &mut handler, &interp);
+
+        env.bind("entity1".into(), Value::Entity(EntityRef(1)));
+
+        let expr = spanned(ExprKind::Call {
+            callee: Box::new(spanned(ExprKind::Ident("calc".into()))),
+            args: vec![
+                Arg {
+                    name: None,
+                    value: spanned(ExprKind::Ident("entity1".into())),
+                    span: dummy_span(),
+                },
+                Arg {
+                    name: None,
+                    value: spanned(ExprKind::IntLit(1)),
+                    span: dummy_span(),
+                },
+            ],
+        });
+
+        let err = crate::eval::eval_expr(&mut env, &expr).unwrap_err();
+        assert!(
+            err.message.contains("protocol error: expected Acknowledged for ModifyApplied"),
+            "expected protocol error, got: {}",
+            err.message
+        );
+    }
+
+    // ── Test 9: Override dice, kept, expr fields on RollResult ─
+
+    #[test]
+    fn modify_phase2_roll_result_dice_kept_expr() {
+        use crate::value::{DiceExpr, RollResult};
+
+        // Test the exec_modify_stmts_phase2 function directly for RollResult fields
+        let state = TestState::new();
+        let program = program_with_decls(vec![]);
+        let mut type_env = TypeEnv::new();
+        type_env.functions.insert(
+            "dummy".into(),
+            FnInfo {
+                name: "dummy".into(),
+                kind: FnKind::Derive,
+                params: vec![],
+                return_type: Ty::Int,
+                receiver: None,
+            },
+        );
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let mut handler = ScriptedHandler::new();
+        let mut env = make_env(&state, &mut handler, &interp);
+
+        let original_expr = DiceExpr {
+            count: 1,
+            sides: 20,
+            filter: None,
+            modifier: 5,
+        };
+
+        let mut result = Value::RollResult(RollResult {
+            expr: original_expr.clone(),
+            dice: vec![10],
+            kept: vec![10],
+            modifier: 5,
+            total: 15,
+            unmodified: 10,
+        });
+
+        env.push_scope();
+        env.bind("result".to_string(), result.clone());
+
+        // Override "dice" field
+        let stmts_dice = vec![ModifyStmt::ResultOverride {
+            field: "dice".into(),
+            value: spanned(ExprKind::ListLit(vec![
+                spanned(ExprKind::IntLit(3)),
+                spanned(ExprKind::IntLit(4)),
+            ])),
+            span: dummy_span(),
+        }];
+        exec_modify_stmts_phase2(&mut env, &stmts_dice, &mut result).unwrap();
+        match &result {
+            Value::RollResult(rr) => {
+                assert_eq!(rr.dice, vec![3, 4], "dice field should be overridden");
+            }
+            _ => panic!("expected RollResult"),
+        }
+
+        // Override "kept" field
+        let stmts_kept = vec![ModifyStmt::ResultOverride {
+            field: "kept".into(),
+            value: spanned(ExprKind::ListLit(vec![
+                spanned(ExprKind::IntLit(4)),
+            ])),
+            span: dummy_span(),
+        }];
+        exec_modify_stmts_phase2(&mut env, &stmts_kept, &mut result).unwrap();
+        match &result {
+            Value::RollResult(rr) => {
+                assert_eq!(rr.kept, vec![4], "kept field should be overridden");
+            }
+            _ => panic!("expected RollResult"),
+        }
+
+        // Override "expr" field — use a DiceExpr literal via a Let + ResultOverride
+        // Since we can't construct a DiceExpr in the DSL directly from ExprKind,
+        // we test by binding a DiceExpr value and referencing it.
+        env.bind("new_expr".to_string(), Value::DiceExpr(DiceExpr {
+            count: 2,
+            sides: 6,
+            filter: None,
+            modifier: 0,
+        }));
+        let stmts_expr = vec![ModifyStmt::ResultOverride {
+            field: "expr".into(),
+            value: spanned(ExprKind::Ident("new_expr".into())),
+            span: dummy_span(),
+        }];
+        exec_modify_stmts_phase2(&mut env, &stmts_expr, &mut result).unwrap();
+        match &result {
+            Value::RollResult(rr) => {
+                assert_eq!(rr.expr.count, 2, "expr.count should be overridden");
+                assert_eq!(rr.expr.sides, 6, "expr.sides should be overridden");
+                assert_eq!(rr.expr.modifier, 0, "expr.modifier should be overridden");
+            }
+            _ => panic!("expected RollResult"),
+        }
+
+        env.pop_scope();
+    }
+
+    // ── Test 10: Options applied in declaration order ─────────
+
+    #[test]
+    fn options_applied_in_declaration_order() {
+        // derive calc(x: Int) -> Int { x }
+        // option Beta { when_enabled { modify calc { x = x * 3 } } }
+        // option Alpha { when_enabled { modify calc { x = x + 10 } } }
+        //
+        // Both enabled. Despite "Alpha" sorting before "Beta" alphabetically,
+        // Beta was declared first, so it applies first.
+        // Expected: x = 1 * 3 = 3, then x = 3 + 10 = 13.
+
+        let program = program_with_decls(vec![
+            DeclKind::Derive(FnDecl {
+                name: "calc".into(),
+                params: vec![Param {
+                    name: "x".into(),
+                    ty: spanned(TypeExpr::Int),
+                    default: None,
+                    span: dummy_span(),
+                }],
+                return_type: spanned(TypeExpr::Int),
+                body: spanned(vec![spanned(StmtKind::Expr(spanned(ExprKind::Ident(
+                    "x".into(),
+                ))))]),
+                synthetic: false,
+            }),
+            // Beta declared first
+            DeclKind::Option(OptionDecl {
+                name: "Beta".into(),
+                extends: None,
+                description: None,
+                default_on: None,
+                when_enabled: Some(vec![ModifyClause {
+                    target: "calc".into(),
+                    bindings: vec![],
+                    body: vec![ModifyStmt::ParamOverride {
+                        name: "x".into(),
+                        value: spanned(ExprKind::BinOp {
+                            op: BinOp::Mul,
+                            lhs: Box::new(spanned(ExprKind::Ident("x".into()))),
+                            rhs: Box::new(spanned(ExprKind::IntLit(3))),
+                        }),
+                        span: dummy_span(),
+                    }],
+                    span: dummy_span(),
+                }]),
+            }),
+            // Alpha declared second
+            DeclKind::Option(OptionDecl {
+                name: "Alpha".into(),
+                extends: None,
+                description: None,
+                default_on: None,
+                when_enabled: Some(vec![ModifyClause {
+                    target: "calc".into(),
+                    bindings: vec![],
+                    body: vec![ModifyStmt::ParamOverride {
+                        name: "x".into(),
+                        value: spanned(ExprKind::BinOp {
+                            op: BinOp::Add,
+                            lhs: Box::new(spanned(ExprKind::Ident("x".into()))),
+                            rhs: Box::new(spanned(ExprKind::IntLit(10))),
+                        }),
+                        span: dummy_span(),
+                    }],
+                    span: dummy_span(),
+                }]),
+            }),
+        ]);
+
+        let mut type_env = TypeEnv::new();
+        type_env.functions.insert(
+            "calc".into(),
+            FnInfo {
+                name: "calc".into(),
+                kind: FnKind::Derive,
+                params: vec![ParamInfo {
+                    name: "x".into(),
+                    ty: Ty::Int,
+                    has_default: false,
+                }],
+                return_type: Ty::Int,
+                receiver: None,
+            },
+        );
+        type_env.options.insert("Beta".into());
+        type_env.options.insert("Alpha".into());
+
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let mut state = TestState::new();
+        // Host returns options in alphabetical order (Alpha before Beta)
+        state.enabled_options.push("Alpha".into());
+        state.enabled_options.push("Beta".into());
+
+        let mut handler = ScriptedHandler::new();
+        let mut env = make_env(&state, &mut handler, &interp);
+
+        let expr = spanned(ExprKind::Call {
+            callee: Box::new(spanned(ExprKind::Ident("calc".into()))),
+            args: vec![Arg {
+                name: None,
+                value: spanned(ExprKind::IntLit(1)),
+                span: dummy_span(),
+            }],
+        });
+
+        let result = crate::eval::eval_expr(&mut env, &expr).unwrap();
+        // Beta (declared first) applies first: x = 1 * 3 = 3
+        // Alpha (declared second) applies second: x = 3 + 10 = 13
+        assert_eq!(result, Value::Int(13), "options should apply in declaration order, not alphabetical");
+
+        // Verify order via effects
+        let modify_effects: Vec<&Effect> = handler
+            .log
+            .iter()
+            .filter(|e| matches!(e, Effect::ModifyApplied { .. }))
+            .collect();
+        assert_eq!(modify_effects.len(), 2);
+
+        match &modify_effects[0] {
+            Effect::ModifyApplied { source, .. } => {
+                assert!(
+                    matches!(source, ModifySource::Option(name) if name == "Beta"),
+                    "first modifier should be Beta (declared first)"
+                );
+            }
+            _ => panic!("expected ModifyApplied"),
+        }
+        match &modify_effects[1] {
+            Effect::ModifyApplied { source, .. } => {
+                assert!(
+                    matches!(source, ModifySource::Option(name) if name == "Alpha"),
+                    "second modifier should be Alpha (declared second)"
+                );
+            }
+            _ => panic!("expected ModifyApplied"),
+        }
     }
 }

@@ -77,6 +77,7 @@ pub(crate) struct DeclIndex<'p> {
     pub events: HashMap<&'p str, &'p EventDecl>,
     pub prompts: HashMap<&'p str, &'p PromptDecl>,
     pub options: HashMap<&'p str, &'p OptionDecl>,
+    pub option_order: Vec<&'p str>,
 }
 
 impl<'p> DeclIndex<'p> {
@@ -90,6 +91,7 @@ impl<'p> DeclIndex<'p> {
             events: HashMap::new(),
             prompts: HashMap::new(),
             options: HashMap::new(),
+            option_order: Vec::new(),
         };
 
         for item in &program.items {
@@ -119,6 +121,7 @@ impl<'p> DeclIndex<'p> {
                         }
                         DeclKind::Option(o) => {
                             index.options.insert(&o.name, o);
+                            index.option_order.push(&o.name);
                         }
                         // Structs, enums, entities are accessed via TypeEnv, not DeclIndex.
                         // Move nodes should not exist after lowering.
