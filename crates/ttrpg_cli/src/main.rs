@@ -38,13 +38,14 @@ fn main() {
 fn run_pipe() {
     let stdin = io::stdin();
     let mut runner = Runner::new();
+    let mut had_error = false;
 
     for line in stdin.lock().lines() {
         let line = match line {
             Ok(l) => l,
             Err(e) => {
                 eprintln!("read error: {}", e);
-                break;
+                process::exit(1);
             }
         };
 
@@ -56,8 +57,12 @@ fn run_pipe() {
 
         if let Err(e) = result {
             eprintln!("error: {}", e);
-            process::exit(1);
+            had_error = true;
         }
+    }
+
+    if had_error {
+        process::exit(1);
     }
 }
 
@@ -71,6 +76,7 @@ fn run_script(path: &str) {
     };
 
     let mut runner = Runner::new();
+    let mut had_error = false;
 
     for (lineno, line) in content.lines().enumerate() {
         let result = runner.exec(line);
@@ -81,7 +87,11 @@ fn run_script(path: &str) {
 
         if let Err(e) = result {
             eprintln!("{}:{}: error: {}", path, lineno + 1, e);
-            process::exit(1);
+            had_error = true;
         }
+    }
+
+    if had_error {
+        process::exit(1);
     }
 }
