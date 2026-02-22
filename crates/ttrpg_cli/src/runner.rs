@@ -107,7 +107,13 @@ impl Runner {
         let mut handler = CliHandler::new(&self.game_state, &self.reverse_handles, &mut self.rng);
         let result = interp
             .evaluate_expr(&state, &mut handler, &parsed)
-            .map_err(|e| CliError::Message(format!("runtime error: {}", e)))?;
+            .map_err(|e| {
+                // Emit any effect log lines even on error
+                for line in handler.log.drain(..) {
+                    self.output.push(line);
+                }
+                CliError::Message(format!("runtime error: {}", e))
+            })?;
 
         // Emit any effect log lines
         for line in handler.log.drain(..) {
@@ -254,6 +260,23 @@ impl Runner {
             )));
         }
 
+        // Validate entity type against loaded declarations
+        match self.type_env.types.get(entity_type) {
+            Some(ttrpg_checker::env::DeclInfo::Entity(_)) => {} // valid
+            Some(_) => {
+                return Err(CliError::Message(format!(
+                    "'{}' is not an entity type",
+                    entity_type
+                )));
+            }
+            None => {
+                return Err(CliError::Message(format!(
+                    "unknown entity type '{}'",
+                    entity_type
+                )));
+            }
+        }
+
         // Parse optional field block
         let rest = rest.trim();
         let fields = if rest.starts_with('{') {
@@ -375,6 +398,25 @@ impl Runner {
             ));
         }
 
+        // Validate no empty args (e.g. "do Act(fighter,,target)")
+        for (i, arg_str) in arg_strs.iter().enumerate() {
+            if i > 0 && arg_str.trim().is_empty() {
+                return Err(CliError::Message("empty argument in do".into()));
+            }
+        }
+
+        // Check that the action exists before evaluating args (avoid side effects)
+        {
+            let interp = Interpreter::new(&self.program, &self.type_env)
+                .map_err(|e| CliError::Message(format!("interpreter error: {}", e)))?;
+            if !interp.has_action(action_name) {
+                return Err(CliError::Message(format!(
+                    "undefined action '{}'",
+                    action_name
+                )));
+            }
+        }
+
         // First arg is the actor handle
         let actor_str = arg_strs[0].trim();
         let actor = self.resolve_handle(actor_str)?;
@@ -393,14 +435,19 @@ impl Runner {
 
         let interp = Interpreter::new(&self.program, &self.type_env)
             .map_err(|e| CliError::Message(format!("interpreter error: {}", e)))?;
-
         let state = RefCellState(&self.game_state);
         let mut handler =
             CliHandler::new(&self.game_state, &self.reverse_handles, &mut self.rng);
 
         let result = interp
             .execute_action(&state, &mut handler, action_name, actor, args)
-            .map_err(|e| CliError::Message(format!("runtime error: {}", e)))?;
+            .map_err(|e| {
+                // Emit effect log even on error
+                for line in handler.log.drain(..) {
+                    self.output.push(line);
+                }
+                CliError::Message(format!("runtime error: {}", e))
+            })?;
 
         // Emit effect log
         for line in handler.log.drain(..) {
@@ -430,39 +477,72 @@ impl Runner {
 
         let arg_strs = split_top_level_commas(args_str);
 
+        // Reject empty positional arguments (e.g. "call f(1,,2)")
+        // Only skip the single-empty-string case from `call f()`
+        let has_args = !(arg_strs.len() == 1 && arg_strs[0].trim().is_empty());
+        if has_args {
+            for arg_str in &arg_strs {
+                if arg_str.trim().is_empty() {
+                    return Err(CliError::Message("empty argument in call".into()));
+                }
+            }
+        }
+
+        // Check that the derive or mechanic exists before evaluating args
+        let is_derive;
+        let is_mechanic;
+        {
+            let interp = Interpreter::new(&self.program, &self.type_env)
+                .map_err(|e| CliError::Message(format!("interpreter error: {}", e)))?;
+            is_derive = interp.has_derive(fn_name);
+            is_mechanic = interp.has_mechanic(fn_name);
+        }
+        if !is_derive && !is_mechanic {
+            return Err(CliError::Message(format!(
+                "undefined function '{}' (no derive or mechanic with that name)",
+                fn_name
+            )));
+        }
+
         // Evaluate arguments: try handle resolution first, then parse as expression
         let mut args = Vec::new();
-        for arg_str in &arg_strs {
-            let arg_str = arg_str.trim();
-            if arg_str.is_empty() {
-                continue;
-            }
-            if let Some(&entity) = self.handles.get(arg_str) {
-                args.push(Value::Entity(entity));
-            } else {
-                let val = self.eval(arg_str)?;
-                args.push(val);
+        if has_args {
+            for arg_str in &arg_strs {
+                let arg_str = arg_str.trim();
+                if let Some(&entity) = self.handles.get(arg_str) {
+                    args.push(Value::Entity(entity));
+                } else {
+                    let val = self.eval(arg_str)?;
+                    args.push(val);
+                }
             }
         }
 
         let interp = Interpreter::new(&self.program, &self.type_env)
             .map_err(|e| CliError::Message(format!("interpreter error: {}", e)))?;
-
         let state = RefCellState(&self.game_state);
         let mut handler =
             CliHandler::new(&self.game_state, &self.reverse_handles, &mut self.rng);
 
-        // Try derive first, fall back to mechanic on "undefined derive" error
-        let result = match interp.evaluate_derive(&state, &mut handler, fn_name, args.clone()) {
-            Ok(val) => val,
-            Err(e) if e.message.contains("undefined derive") => {
-                // Reset handler log since derive attempt may have logged nothing useful
-                handler.log.clear();
-                interp
-                    .evaluate_mechanic(&state, &mut handler, fn_name, args)
-                    .map_err(|e2| CliError::Message(format!("runtime error: {}", e2)))?
-            }
-            Err(e) => return Err(CliError::Message(format!("runtime error: {}", e))),
+        // Dispatch to derive or mechanic based on structured check
+        let result = if is_derive {
+            interp
+                .evaluate_derive(&state, &mut handler, fn_name, args)
+                .map_err(|e| {
+                    for line in handler.log.drain(..) {
+                        self.output.push(line);
+                    }
+                    CliError::Message(format!("runtime error: {}", e))
+                })?
+        } else {
+            interp
+                .evaluate_mechanic(&state, &mut handler, fn_name, args)
+                .map_err(|e| {
+                    for line in handler.log.drain(..) {
+                        self.output.push(line);
+                    }
+                    CliError::Message(format!("runtime error: {}", e))
+                })?
         };
 
         // Emit effect log
@@ -915,11 +995,41 @@ system "test" {
         std::fs::remove_file(&path).ok();
     }
 
+    // ── Helpers ─────────────────────────────────────────────────
+
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    /// Load a program that declares `entity Character { HP: int  AC: int }`.
+    fn load_character_program(runner: &mut Runner) {
+        static COUNTER: AtomicU64 = AtomicU64::new(0);
+        let id = COUNTER.fetch_add(1, Ordering::Relaxed);
+        let dir = std::env::temp_dir().join("ttrpg_cli_test");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join(format!("test_character_{}.ttrpg", id));
+        std::fs::write(
+            &path,
+            r#"
+system "test" {
+    entity Character {
+        HP: int
+        AC: int
+    }
+    derive id(x: int) -> int { x }
+}
+"#,
+        )
+        .unwrap();
+        runner.exec(&format!("load {}", path.display())).unwrap();
+        runner.take_output();
+        std::fs::remove_file(&path).ok();
+    }
+
     // ── Spawn/Set/Destroy tests ─────────────────────────────────
 
     #[test]
     fn spawn_and_eval_handle() {
         let mut runner = Runner::new();
+        load_character_program(&mut runner);
         runner.exec("spawn Character fighter { HP: 30, AC: 15 }").unwrap();
         let output = runner.take_output();
         assert!(output[0].contains("spawned Character fighter"));
@@ -933,6 +1043,7 @@ system "test" {
     #[test]
     fn spawn_duplicate_handle_rejected() {
         let mut runner = Runner::new();
+        load_character_program(&mut runner);
         runner.exec("spawn Character fighter {}").unwrap();
         runner.take_output();
         let err = runner.exec("spawn Character fighter {}").unwrap_err();
@@ -942,14 +1053,24 @@ system "test" {
     #[test]
     fn spawn_no_fields() {
         let mut runner = Runner::new();
+        load_character_program(&mut runner);
         runner.exec("spawn Character fighter").unwrap();
         let output = runner.take_output();
         assert!(output[0].contains("spawned Character fighter"));
     }
 
     #[test]
+    fn spawn_unknown_entity_type() {
+        let mut runner = Runner::new();
+        load_character_program(&mut runner);
+        let err = runner.exec("spawn Goblin g").unwrap_err();
+        assert!(err.to_string().contains("unknown entity type 'Goblin'"));
+    }
+
+    #[test]
     fn set_field() {
         let mut runner = Runner::new();
+        load_character_program(&mut runner);
         runner.exec("spawn Character fighter { AC: 15 }").unwrap();
         runner.take_output();
 
@@ -968,6 +1089,7 @@ system "test" {
     #[test]
     fn destroy_entity() {
         let mut runner = Runner::new();
+        load_character_program(&mut runner);
         runner.exec("spawn Character goblin { HP: 7 }").unwrap();
         runner.take_output();
 
@@ -1041,6 +1163,99 @@ system "test" {
         std::fs::remove_file(&path).ok();
     }
 
+    // ── Issue regression tests ────────────────────────────────────
+
+    #[test]
+    fn call_empty_arg_rejected() {
+        let dir = std::env::temp_dir().join("ttrpg_cli_test");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("test_empty_arg.ttrpg");
+        std::fs::write(
+            &path,
+            r#"
+system "test" {
+    derive add(a: int, b: int) -> int { a + b }
+}
+"#,
+        )
+        .unwrap();
+
+        let mut runner = Runner::new();
+        runner.exec(&format!("load {}", path.display())).unwrap();
+        runner.take_output();
+
+        let err = runner.exec("call add(1,,2)").unwrap_err();
+        assert!(
+            err.to_string().contains("empty argument"),
+            "got: {}",
+            err
+        );
+
+        std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn call_undefined_function_rejected() {
+        let dir = std::env::temp_dir().join("ttrpg_cli_test");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("test_undef_fn.ttrpg");
+        std::fs::write(
+            &path,
+            r#"
+system "test" {
+    derive id(x: int) -> int { x }
+}
+"#,
+        )
+        .unwrap();
+
+        let mut runner = Runner::new();
+        runner.exec(&format!("load {}", path.display())).unwrap();
+        runner.take_output();
+
+        let err = runner.exec("call nonexistent(42)").unwrap_err();
+        assert!(
+            err.to_string().contains("undefined function"),
+            "got: {}",
+            err
+        );
+
+        std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn do_undefined_action_rejected() {
+        let dir = std::env::temp_dir().join("ttrpg_cli_test");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("test_undef_action.ttrpg");
+        std::fs::write(
+            &path,
+            r#"
+system "test" {
+    entity Character { HP: int }
+    derive id(x: int) -> int { x }
+}
+"#,
+        )
+        .unwrap();
+
+        let mut runner = Runner::new();
+        runner.exec(&format!("load {}", path.display())).unwrap();
+        runner.take_output();
+
+        runner.exec("spawn Character fighter { HP: 10 }").unwrap();
+        runner.take_output();
+
+        let err = runner.exec("do NoSuchAction(fighter)").unwrap_err();
+        assert!(
+            err.to_string().contains("undefined action"),
+            "got: {}",
+            err
+        );
+
+        std::fs::remove_file(&path).ok();
+    }
+
     // ── Split helpers tests ──────────────────────────────────────
 
     #[test]
@@ -1078,6 +1293,7 @@ system "test" {
             &path,
             r#"
 system "test" {
+    entity Character { HP: int }
     derive id(x: int) -> int { x }
 }
 "#,

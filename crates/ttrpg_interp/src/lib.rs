@@ -324,6 +324,21 @@ impl<'p> Interpreter<'p> {
         eval::eval_expr(&mut env, expr)
     }
 
+    /// Check whether a named action exists in the loaded program.
+    pub fn has_action(&self, name: &str) -> bool {
+        self.index.actions.contains_key(name)
+    }
+
+    /// Check whether a named derive exists in the loaded program.
+    pub fn has_derive(&self, name: &str) -> bool {
+        self.index.derives.contains_key(name)
+    }
+
+    /// Check whether a named mechanic exists in the loaded program.
+    pub fn has_mechanic(&self, name: &str) -> bool {
+        self.index.mechanics.contains_key(name)
+    }
+
     /// Query which reactions would trigger for a given event.
     ///
     /// This is a **pure query** — no effects are emitted, no state is modified.
