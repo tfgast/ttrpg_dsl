@@ -1400,97 +1400,97 @@ system "D&D 5e Expanded" {
     //
     // Top language gaps exposed by this example:
     //
-    // 1. NO LOOPS / ITERATION
+    // 1. NO LOOPS / ITERATION                              [ttrpg_dsl-dz3]
     //    - Extra Attack (N attacks per action)
     //    - AoE spells (apply to N targets)
     //    - Multi-damage-type processing
     //    - Spell slot deduction (9-branch match instead of indexed access)
     //
-    // 2. NO ENTITY COMPOSITION / TRAITS
+    // 2. NO ENTITY COMPOSITION / TRAITS                    [ttrpg_dsl-s43]
     //    - Class features (Fighter, Rogue, Wizard) as boolean flags
     //    - Spellcasting fields on non-casters
     //    - Huge flat entity with 40+ fields
     //
-    // 3. NO DYNAMIC DICE CONSTRUCTION
+    // 3. NO DYNAMIC DICE CONSTRUCTION                      [ttrpg_dsl-7fv]
     //    - Can't build "Nd8" where N is runtime
     //    - Upcast spells need a match per slot level
     //
-    // 4. NO OPTION DESTRUCTURING / UNWRAPPING
+    // 4. NO OPTION DESTRUCTURING / UNWRAPPING              [ttrpg_dsl-zq1]
     //    - spellcasting_ability: option<Ability> can't be used as map key
     //    - equipped_armor: option<Armor> can't be pattern-matched to access fields
     //    - No `some(x)` pattern, no `.unwrap()`, no `if let`
     //
-    // 5. NO INDEXED / PARAMETERIZED RESOURCES
+    // 5. NO INDEXED / PARAMETERIZED RESOURCES              [ttrpg_dsl-5yt]
     //    - Spell slots: 9 separate fields instead of map<int, resource>
     //    - No runtime field selection (spell_slots[level])
     //
-    // 6. NO PARAMETERIZED CONDITIONS
+    // 6. NO PARAMETERIZED CONDITIONS                       [ttrpg_dsl-iuw]
     //    - Frightened needs a "source" entity
     //    - Exhaustion needs a level (1-6)
     //    - Grappled needs a reference to the grappler
     //
-    // 7. NO CONDITION COMPOSITION / INHERITANCE
+    // 7. NO CONDITION COMPOSITION / INHERITANCE            [ttrpg_dsl-7r4]
     //    - Stunned includes Incapacitated's effects (must duplicate)
     //    - Unconscious includes Prone + Incapacitated (more duplication)
     //
-    // 8. NO AUTO-SUCCEED / AUTO-FAIL
+    // 8. NO AUTO-SUCCEED / AUTO-FAIL                       [ttrpg_dsl-34x]
     //    - Stunned auto-fails STR/DEX saves (not just disadvantage)
     //    - Paralyzed auto-fails STR/DEX saves
     //    - "Advantage/disadvantage" is the only roll modifier
     //
-    // 9. LIMITED DURATION TYPES
+    // 9. LIMITED DURATION TYPES                            [ttrpg_dsl-d3r]
     //    - No "until next use" (Help action)
     //    - No "indefinite / until removed" (Grappled)
     //    - No "until a save is made" (many spell effects)
     //
-    // 10. NO TYPED PROMPTS
+    // 10. NO TYPED PROMPTS                                 [ttrpg_dsl-ctc]
     //     - choose() returns string, not a typed entity reference
     //     - Host must map string -> entity externally
     //
-    // 11. NO COST OVERRIDES / FREE ACTIONS
+    // 11. NO COST OVERRIDES / FREE ACTIONS                 [ttrpg_dsl-xh9]
     //     - Action Surge has no cost (not action/bonus/reaction)
     //     - Cunning Action changes cost of existing actions
     //     - No way to say "this costs nothing"
     //
-    // 12. NO TURN PHASE HOOKS
+    // 12. NO TURN PHASE HOOKS                              [ttrpg_dsl-pzy]
     //     - Death saves happen at start of turn (automatic)
     //     - Regeneration happens at start of turn
     //     - No on_turn_start / on_turn_end triggers
     //
-    // 13. NO AUTOMATIC EVENT EMISSION
+    // 13. NO AUTOMATIC EVENT EMISSION                      [ttrpg_dsl-clo]
     //     - HP reduction doesn't auto-fire takes_damage
     //     - Condition application doesn't auto-fire condition_applied
     //     - Host must manually fire all events
     //
-    // 14. NO POSITION ARITHMETIC
+    // 14. NO POSITION ARITHMETIC                           [ttrpg_dsl-586]
     //     - Can't compute "5 feet away from X toward Y"
     //     - Can't check "is between A and B" (flanking)
     //     - Position is opaque — only distance() is available
     //
     // PARSER / SYNTAX ISSUES (discovered while making this compile):
     //
-    // 15. (FIXED) `none` is now a valid match pattern
-    // 16. (FIXED) Wildcard `_` now works in modify bindings
+    // 15. (FIXED) `none` is now a valid match pattern      [ttrpg_dsl-efg]
+    // 16. (FIXED) Wildcard `_` now works in modify bindings [ttrpg_dsl-9ng]
     //
-    // 17. SINGLE REQUIRES BLOCK PER ACTION
+    // 17. SINGLE REQUIRES BLOCK PER ACTION                 [ttrpg_dsl-mcy]
     //     - Can't write multiple `requires { ... }` blocks
     //     - Must combine with && on a single long line
     //     - Multiline requires expressions hit NL issues (see #18)
     //
-    // 18. MULTILINE EXPRESSIONS IN REQUIRES/COST
+    // 18. MULTILINE EXPRESSIONS IN REQUIRES/COST           (no issue yet)
     //     - Newlines inside `{ }` are NOT suppressed (unlike `()` and `[]`)
     //     - Multiline requires: `requires { a &&\n b }` fails
     //     - Only `{` suppresses the *next* NL, not all NLs inside braces
     //     - Workaround: put everything on one line, or wrap in parens
     //
-    // 19. (FIXED) Comments between cost and requires no longer break parsing
+    // 19. (FIXED) Comments between cost/requires blocks    [ttrpg_dsl-c2y]
     //
-    // 20. NO DEFAULT FOR DiceExpr FIELDS
+    // 20. NO DEFAULT FOR DiceExpr FIELDS                   (no issue yet)
     //     - Can't write: sneak_attack_dice: DiceExpr = 0d6
     //     - 0d6 isn't valid (0 count dice literal)
     //     - No "empty dice expression" value exists
     //
-    // 21. NO STRUCT UPDATE SYNTAX
+    // 21. NO STRUCT UPDATE SYNTAX                          [ttrpg_dsl-kmy]
     //     - Can't write: let upcast = spell { damage: new_dmg, ..spell }
     //     - Must reconstruct the entire struct to change one field
     //     - Relevant for spell upcasting, buff modifications
