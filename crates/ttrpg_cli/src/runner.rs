@@ -15,7 +15,7 @@ use ttrpg_interp::state::{EntityRef, WritableState};
 use ttrpg_interp::value::Value;
 
 use crate::commands::{self, Command};
-use crate::effects::{CliHandler, MinimalHandler, RefCellState};
+use crate::effects::{CliHandler, RefCellState};
 use crate::format::format_value;
 
 /// Errors produced by Runner operations.
@@ -666,13 +666,28 @@ impl Runner {
 
                 let interp = Interpreter::new(&self.program, &self.type_env)
                     .map_err(|e| CliError::Message(format!("interpreter error: {}", e)))?;
-                let mut handler = MinimalHandler;
-                interp
-                    .evaluate_expr(&*self.game_state.borrow(), &mut handler, &parsed)
+                let state = RefCellState(&self.game_state);
+                let mut handler =
+                    CliHandler::new(&self.game_state, &self.reverse_handles, &mut self.rng);
+                let result = interp
+                    .evaluate_expr(&state, &mut handler, &parsed)
                     .map_err(|e| {
+                        for line in handler.log.drain(..) {
+                            self.output.push(line);
+                        }
                         CliError::Message(format!("error evaluating field '{}': {}", key, e))
-                    })?
+                    })?;
+                for line in handler.log.drain(..) {
+                    self.output.push(line);
+                }
+                result
             };
+            if fields.contains_key(key) {
+                return Err(CliError::Message(format!(
+                    "duplicate field '{}' in field block",
+                    key
+                )));
+            }
             fields.insert(key.to_string(), val);
         }
         Ok(fields)
@@ -733,8 +748,8 @@ fn is_valid_handle(s: &str) -> bool {
     chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
 }
 
-/// Shallow check: does the runtime value match the declared type at the
-/// top-level variant? Does not recurse into container element types.
+/// Check that a runtime value matches the declared type, recursing into
+/// container element types (list, set, map, option).
 fn value_matches_ty(val: &Value, ty: &Ty) -> bool {
     match (val, ty) {
         (Value::Int(_), Ty::Int | Ty::Resource) => true,
@@ -742,11 +757,20 @@ fn value_matches_ty(val: &Value, ty: &Ty) -> bool {
         (Value::Bool(_), Ty::Bool) => true,
         (Value::Str(_), Ty::String) => true,
         (Value::None, Ty::Option(_)) => true,
-        (Value::Option(_), Ty::Option(_)) => true,
+        (Value::Option(inner), Ty::Option(inner_ty)) => match inner {
+            Some(v) => value_matches_ty(v, inner_ty),
+            None => true,
+        },
         (Value::Entity(_), Ty::Entity(_) | Ty::AnyEntity) => true,
-        (Value::List(_), Ty::List(_)) => true,
-        (Value::Set(_), Ty::Set(_)) => true,
-        (Value::Map(_), Ty::Map(_, _)) => true,
+        (Value::List(elems), Ty::List(elem_ty)) => {
+            elems.iter().all(|e| value_matches_ty(e, elem_ty))
+        }
+        (Value::Set(elems), Ty::Set(elem_ty)) => {
+            elems.iter().all(|e| value_matches_ty(e, elem_ty))
+        }
+        (Value::Map(entries), Ty::Map(key_ty, val_ty)) => entries
+            .iter()
+            .all(|(k, v)| value_matches_ty(k, key_ty) && value_matches_ty(v, val_ty)),
         (Value::Struct { name, .. }, Ty::Struct(n)) => name == n,
         (Value::Struct { .. }, Ty::RollResult | Ty::TurnBudget) => true,
         (Value::EnumVariant { enum_name, .. }, Ty::Enum(n)) => enum_name == n,
@@ -1132,6 +1156,29 @@ system "test" {
     // ── Helpers ─────────────────────────────────────────────────
 
     use std::sync::atomic::{AtomicU64, Ordering};
+
+    /// Load a program that declares `entity Hero { scores: list<int> }`.
+    fn load_list_program(runner: &mut Runner) {
+        static LIST_COUNTER: AtomicU64 = AtomicU64::new(0);
+        let id = LIST_COUNTER.fetch_add(1, Ordering::Relaxed);
+        let dir = std::env::temp_dir().join("ttrpg_cli_test");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join(format!("test_list_{}.ttrpg", id));
+        std::fs::write(
+            &path,
+            r#"
+system "test" {
+    entity Hero {
+        scores: list<int>
+    }
+}
+"#,
+        )
+        .unwrap();
+        runner.exec(&format!("load {}", path.display())).unwrap();
+        runner.take_output();
+        std::fs::remove_file(&path).ok();
+    }
 
     /// Load a program that declares `entity Character { HP: int  AC: int }`.
     fn load_character_program(runner: &mut Runner) {
@@ -1586,6 +1633,50 @@ system "test" {
         assert!(
             err.to_string().contains("type mismatch"),
             "got: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn spawn_nested_type_mismatch_rejected() {
+        let mut runner = Runner::new();
+        load_list_program(&mut runner);
+        let err = runner
+            .exec(r#"spawn Hero h { scores: [1, "oops", 3] }"#)
+            .unwrap_err();
+        assert!(
+            err.to_string().contains("type mismatch"),
+            "expected type mismatch for nested list element, got: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn set_nested_type_mismatch_rejected() {
+        let mut runner = Runner::new();
+        load_list_program(&mut runner);
+        runner.exec("spawn Hero h { scores: [1, 2] }").unwrap();
+        runner.take_output();
+        let err = runner
+            .exec(r#"set h.scores = ["bad"]"#)
+            .unwrap_err();
+        assert!(
+            err.to_string().contains("type mismatch"),
+            "expected type mismatch for nested list element, got: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn spawn_duplicate_field_rejected() {
+        let mut runner = Runner::new();
+        load_character_program(&mut runner);
+        let err = runner
+            .exec("spawn Character fighter { HP: 30, HP: 40 }")
+            .unwrap_err();
+        assert!(
+            err.to_string().contains("duplicate field"),
+            "expected duplicate field error, got: {}",
             err
         );
     }
