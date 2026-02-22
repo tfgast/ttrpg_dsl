@@ -668,14 +668,17 @@ impl Runner {
             self.output.push("roll queue cleared".into());
             return Ok(());
         }
-        let mut count = 0;
-        for token in tail.split_whitespace() {
-            let val: i64 = token
-                .parse()
-                .map_err(|_| CliError::Message(format!("invalid roll value: {}", token)))?;
-            self.roll_queue.push_back(val);
-            count += 1;
-        }
+        // Parse all values first so a bad token doesn't leave partial state
+        let vals: Vec<i64> = tail
+            .split_whitespace()
+            .map(|token| {
+                token
+                    .parse()
+                    .map_err(|_| CliError::Message(format!("invalid roll value: {}", token)))
+            })
+            .collect::<Result<_, _>>()?;
+        let count = vals.len();
+        self.roll_queue.extend(vals);
         self.output.push(format!(
             "queued {} roll{} ({} total)",
             count,
@@ -701,11 +704,28 @@ impl Runner {
             }
             let entity = self.resolve_handle(handle)?;
             let gs = self.game_state.borrow();
-            let val = gs.read_field(&entity, field).ok_or_else(|| {
-                CliError::Message(format!("field '{}' not found on {}", field, handle))
-            })?;
-            self.output
-                .push(format!("{}.{} = {}", handle, field, format_value(&val)));
+            // Check if the field is declared on this entity type
+            let is_declared = gs
+                .entity_type_name(&entity)
+                .and_then(|tn| self.type_env.lookup_fields(tn))
+                .map(|fields| fields.iter().any(|f| f.name == field))
+                .unwrap_or(false);
+            match gs.read_field(&entity, field) {
+                Some(val) => {
+                    self.output
+                        .push(format!("{}.{} = {}", handle, field, format_value(&val)));
+                }
+                None if is_declared => {
+                    self.output
+                        .push(format!("{}.{} = <unset>", handle, field));
+                }
+                None => {
+                    return Err(CliError::Message(format!(
+                        "field '{}' not found on {}",
+                        field, handle
+                    )));
+                }
+            }
         } else {
             let handle = tail;
             let entity = self.resolve_handle(handle)?;
@@ -2093,14 +2113,19 @@ system "test" {
 
     #[test]
     fn cmd_seed_deterministic() {
-        let mut runner = Runner::new();
-        runner.exec("seed 42").unwrap();
-        runner.take_output();
+        let mut runner1 = Runner::new();
+        runner1.exec("seed 42").unwrap();
+        runner1.take_output();
+        runner1.exec("eval 1d20").unwrap();
+        let out1 = runner1.take_output();
 
-        // Eval the same expression twice with the same seed => same result
-        // (We re-seed each time to verify determinism)
-        runner.exec("seed 42").unwrap();
-        runner.take_output();
+        let mut runner2 = Runner::new();
+        runner2.exec("seed 42").unwrap();
+        runner2.take_output();
+        runner2.exec("eval 1d20").unwrap();
+        let out2 = runner2.take_output();
+
+        assert_eq!(out1, out2, "same seed should produce same dice result");
     }
 
     #[test]
@@ -2366,5 +2391,31 @@ system "test" {
         let mut runner = Runner::new();
         let err = runner.exec("rolls 3 abc 5").unwrap_err();
         assert!(err.to_string().contains("invalid roll value"));
+    }
+
+    #[test]
+    fn cmd_rolls_atomic_on_failure() {
+        let mut runner = Runner::new();
+        runner.exec("rolls 10").unwrap();
+        runner.take_output();
+        assert_eq!(runner.roll_queue.len(), 1);
+
+        // Second call fails at "abc" — the 17 should NOT be queued
+        let _ = runner.exec("rolls 17 abc");
+        assert_eq!(runner.roll_queue.len(), 1, "failed rolls should not leave partial state");
+    }
+
+    #[test]
+    fn cmd_inspect_unset_field() {
+        let mut runner = Runner::new();
+        load_character_program(&mut runner);
+        runner.exec("spawn Character fighter { HP: 30 }").unwrap();
+        runner.take_output();
+
+        // AC is declared but not set — should show <unset>, not error
+        runner.exec("inspect fighter.AC").unwrap();
+        let output = runner.take_output();
+        assert_eq!(output.len(), 1);
+        assert!(output[0].contains("<unset>"), "got: {}", output[0]);
     }
 }
