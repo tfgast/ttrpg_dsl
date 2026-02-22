@@ -798,8 +798,9 @@ fn eval_for(
             for (name, val) in bindings {
                 env.bind(name, val);
             }
-            eval_block(env, body)?;
+            let result = eval_block(env, body);
             env.pop_scope();
+            result?;
         }
     }
 

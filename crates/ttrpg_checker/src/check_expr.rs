@@ -1394,9 +1394,10 @@ impl<'a> Checker<'a> {
         // We push scope, check the pattern (which binds with is_local: true),
         // then mark entity-typed bindings as non-local so field mutation works
         // (e.g. `for target in targets { target.HP -= damage }`).
+        // Non-entity bindings stay local so the immutable-local guard applies.
         self.scope.push(BlockKind::Inner);
         self.check_pattern(pattern, &element_ty);
-        self.scope.mark_current_scope_non_local();
+        self.scope.mark_current_scope_entities_non_local();
         self.check_block(body);
         self.scope.pop();
 

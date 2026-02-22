@@ -3639,3 +3639,40 @@ system "test" {
 "#;
     expect_errors(source, &["expected return type int"]);
 }
+
+#[test]
+fn test_for_entity_binding_allows_field_mutation() {
+    // Entity-typed loop vars should be non-local (field mutation allowed)
+    let source = r#"
+system "test" {
+    entity Character { HP: int }
+    action AoE on caster: Character (targets: list<Character>, damage: int) {
+        resolve {
+            for target in targets {
+                target.HP -= damage
+            }
+        }
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_for_non_entity_binding_rejects_field_mutation() {
+    // Non-entity loop vars (structs) should stay local — field mutation is rejected
+    let source = r#"
+system "test" {
+    entity Character { HP: int }
+    struct Stats { value: int }
+    action Foo on caster: Character (xs: list<Stats>) {
+        resolve {
+            for s in xs {
+                s.value += 1
+            }
+        }
+    }
+}
+"#;
+    expect_errors(source, &["cannot mutate field/index of immutable binding"]);
+}

@@ -143,15 +143,19 @@ impl ScopeStack {
             .is_some_and(|s| s.bindings.contains_key(name))
     }
 
-    /// Mark all bindings in the current scope as non-local.
+    /// Mark entity-typed bindings in the current scope as non-local.
     ///
     /// Used for for-loop pattern bindings so that entity field mutation
     /// works through them (e.g. `for target in targets { target.HP -= 5 }`),
-    /// matching the behavior of function parameters.
-    pub fn mark_current_scope_non_local(&mut self) {
+    /// matching the behavior of function parameters. Only entity-typed
+    /// bindings are promoted — non-entity bindings (structs, lists, etc.)
+    /// remain local so the immutable-local guard still applies.
+    pub fn mark_current_scope_entities_non_local(&mut self) {
         if let Some(scope) = self.scopes.last_mut() {
             for binding in scope.bindings.values_mut() {
-                binding.is_local = false;
+                if binding.ty.is_entity() {
+                    binding.is_local = false;
+                }
             }
         }
     }
