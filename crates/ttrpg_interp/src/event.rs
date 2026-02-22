@@ -76,8 +76,9 @@ pub fn fire_event(
     let mut suppressed = Vec::new();
     let mut triggerable = Vec::new();
 
-    // Scan all reactions whose trigger event name matches
-    for (reaction_name, reaction_decl) in &interp.index.reactions {
+    // Scan all reactions in declaration order whose trigger event name matches
+    for reaction_name in &interp.index.reaction_order {
+        let reaction_decl = interp.index.reactions[reaction_name];
         if reaction_decl.trigger.event_name != event_name {
             continue;
         }
@@ -205,7 +206,12 @@ fn match_bindings_inner(
                         return Ok(false);
                     }
                 }
-                None => return Ok(false),
+                None => {
+                    return Err(RuntimeError::new(format!(
+                        "event payload missing expected field '{}'",
+                        name,
+                    )));
+                }
             }
         } else {
             // Positional binding: fill next unclaimed param slot
@@ -221,7 +227,12 @@ fn match_bindings_inner(
                         return Ok(false);
                     }
                 }
-                None => return Ok(false),
+                None => {
+                    return Err(RuntimeError::new(format!(
+                        "event payload missing expected param '{}'",
+                        param_name,
+                    )));
+                }
             }
         }
     }
@@ -245,16 +256,44 @@ fn is_suppressed(
 
     for param_info in event_params {
         if matches!(param_info.ty, Ty::Entity(_)) {
-            if let Some(Value::Entity(e)) = payload_fields.get(&param_info.name) {
-                entity_values.push((&param_info.name, *e));
+            match payload_fields.get(&param_info.name) {
+                Some(Value::Entity(e)) => {
+                    entity_values.push((&param_info.name, *e));
+                }
+                Some(other) => {
+                    return Err(RuntimeError::new(format!(
+                        "event payload param '{}' should be Entity, got {:?}",
+                        param_info.name, other,
+                    )));
+                }
+                None => {
+                    return Err(RuntimeError::new(format!(
+                        "event payload missing expected entity param '{}'",
+                        param_info.name,
+                    )));
+                }
             }
         }
     }
 
     for (field_name, field_ty) in event_fields {
         if matches!(field_ty, Ty::Entity(_)) {
-            if let Some(Value::Entity(e)) = payload_fields.get(field_name) {
-                entity_values.push((field_name, *e));
+            match payload_fields.get(field_name.as_str()) {
+                Some(Value::Entity(e)) => {
+                    entity_values.push((field_name, *e));
+                }
+                Some(other) => {
+                    return Err(RuntimeError::new(format!(
+                        "event payload field '{}' should be Entity, got {:?}",
+                        field_name, other,
+                    )));
+                }
+                None => {
+                    return Err(RuntimeError::new(format!(
+                        "event payload missing expected entity field '{}'",
+                        field_name,
+                    )));
+                }
             }
         }
     }
@@ -265,7 +304,12 @@ fn is_suppressed(
     for (_param_name, entity_ref) in &entity_values {
         let conditions = match env.state.read_conditions(entity_ref) {
             Some(c) => c,
-            None => continue,
+            None => {
+                return Err(RuntimeError::new(format!(
+                    "read_conditions returned None for entity {:?} — host state out of sync",
+                    entity_ref,
+                )));
+            }
         };
 
         for condition in &conditions {
@@ -364,7 +408,12 @@ fn check_suppress_bindings_inner(
                     return Ok(false);
                 }
             }
-            None => return Ok(false),
+            None => {
+                return Err(RuntimeError::new(format!(
+                    "event payload missing expected field '{}' in suppress binding",
+                    binding.name,
+                )));
+            }
         }
     }
 
@@ -547,7 +596,9 @@ mod tests {
         );
 
         let interp = Interpreter::new(&program, &type_env).unwrap();
-        let state = TestState::new();
+        let mut state = TestState::new();
+        state.conditions.insert(1, vec![]);
+        state.conditions.insert(2, vec![]);
 
         let payload = make_payload(vec![
             ("target", Value::Entity(EntityRef(1))),
@@ -639,7 +690,9 @@ mod tests {
         );
 
         let interp = Interpreter::new(&program, &type_env).unwrap();
-        let state = TestState::new();
+        let mut state = TestState::new();
+        state.conditions.insert(1, vec![]);
+        state.conditions.insert(2, vec![]);
 
         let payload = make_payload(vec![
             ("target", Value::Entity(EntityRef(1))),
@@ -752,7 +805,9 @@ mod tests {
         );
 
         let interp = Interpreter::new(&program, &type_env).unwrap();
-        let state = TestState::new();
+        let mut state = TestState::new();
+        state.conditions.insert(1, vec![]);
+        state.conditions.insert(2, vec![]);
 
         let payload = make_payload(vec![
             ("attacker", Value::Entity(EntityRef(1))),
@@ -832,7 +887,8 @@ mod tests {
         );
 
         let interp = Interpreter::new(&program, &type_env).unwrap();
-        let state = TestState::new();
+        let mut state = TestState::new();
+        state.conditions.insert(2, vec![]);
 
         let payload = make_payload(vec![("target", Value::Entity(EntityRef(2)))]);
 
@@ -960,6 +1016,7 @@ mod tests {
                 duration: Value::None,
             }],
         );
+        state.conditions.insert(2, vec![]);
 
         let payload = make_payload(vec![
             ("target", Value::Entity(EntityRef(1))),
@@ -1112,6 +1169,7 @@ mod tests {
                 duration: Value::None,
             }],
         );
+        state.conditions.insert(2, vec![]);
 
         let payload = make_payload(vec![
             ("target", Value::Entity(EntityRef(1))),

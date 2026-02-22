@@ -39,7 +39,12 @@ pub(crate) fn collect_modifiers_owned(
 
         let conditions = match env.state.read_conditions(&entity_ref) {
             Some(c) => c,
-            None => continue,
+            None => {
+                return Err(RuntimeError::new(format!(
+                    "read_conditions returned None for entity {:?} — host state out of sync",
+                    entity_ref,
+                )));
+            }
         };
 
         for condition in &conditions {
@@ -394,11 +399,17 @@ fn exec_modify_stmts_phase1(
                 let cond = eval_expr(env, condition)?;
                 match cond {
                     Value::Bool(true) => {
-                        exec_modify_stmts_phase1(env, then_body, params)?;
+                        env.push_scope();
+                        let r = exec_modify_stmts_phase1(env, then_body, params);
+                        env.pop_scope();
+                        r?;
                     }
                     Value::Bool(false) => {
                         if let Some(else_stmts) = else_body {
-                            exec_modify_stmts_phase1(env, else_stmts, params)?;
+                            env.push_scope();
+                            let r = exec_modify_stmts_phase1(env, else_stmts, params);
+                            env.pop_scope();
+                            r?;
                         }
                     }
                     _ => {
@@ -499,11 +510,17 @@ fn exec_modify_stmts_phase2(
                 let cond = eval_expr(env, condition)?;
                 match cond {
                     Value::Bool(true) => {
-                        exec_modify_stmts_phase2(env, then_body, result)?;
+                        env.push_scope();
+                        let r = exec_modify_stmts_phase2(env, then_body, result);
+                        env.pop_scope();
+                        r?;
                     }
                     Value::Bool(false) => {
                         if let Some(else_stmts) = else_body {
-                            exec_modify_stmts_phase2(env, else_stmts, result)?;
+                            env.push_scope();
+                            let r = exec_modify_stmts_phase2(env, else_stmts, result);
+                            env.pop_scope();
+                            r?;
                         }
                     }
                     _ => {

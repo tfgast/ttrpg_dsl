@@ -73,6 +73,7 @@ pub(crate) struct DeclIndex<'p> {
     pub derives: HashMap<&'p str, &'p FnDecl>,
     pub mechanics: HashMap<&'p str, &'p FnDecl>,
     pub reactions: HashMap<&'p str, &'p ReactionDecl>,
+    pub reaction_order: Vec<&'p str>,
     pub conditions: HashMap<&'p str, &'p ConditionDecl>,
     pub events: HashMap<&'p str, &'p EventDecl>,
     pub prompts: HashMap<&'p str, &'p PromptDecl>,
@@ -87,6 +88,7 @@ impl<'p> DeclIndex<'p> {
             derives: HashMap::new(),
             mechanics: HashMap::new(),
             reactions: HashMap::new(),
+            reaction_order: Vec::new(),
             conditions: HashMap::new(),
             events: HashMap::new(),
             prompts: HashMap::new(),
@@ -109,6 +111,7 @@ impl<'p> DeclIndex<'p> {
                         }
                         DeclKind::Reaction(r) => {
                             index.reactions.insert(&r.name, r);
+                            index.reaction_order.push(&r.name);
                         }
                         DeclKind::Condition(c) => {
                             index.conditions.insert(&c.name, c);
