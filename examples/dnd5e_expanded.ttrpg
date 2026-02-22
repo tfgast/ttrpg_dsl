@@ -1,0 +1,1521 @@
+// ============================================================
+// Expanded D&D 5e Example
+//
+// Goal: model a meaningful slice of 5e beyond basic melee combat.
+// This file doubles as a language stress test — comments marked
+// PAIN POINT or MISSING FEATURE flag places where the DSL is
+// awkward or insufficient.
+// ============================================================
+
+system "D&D 5e Expanded" {
+
+    // ========================================================
+    //  ENUMS
+    // ========================================================
+
+    enum Ability { STR, DEX, CON, INT, WIS, CHA }
+
+    enum Skill {
+        acrobatics, animal_handling, arcana, athletics,
+        deception, history, insight, intimidation,
+        investigation, medicine, nature, perception,
+        performance, persuasion, religion, sleight_of_hand,
+        stealth, survival
+    }
+
+    enum RollMode { normal, advantage, disadvantage }
+
+    enum DamageType {
+        slashing, piercing, bludgeoning,
+        fire, cold, lightning, thunder, poison,
+        acid, necrotic, radiant, psychic, force
+    }
+
+    enum WeaponProperty {
+        light, heavy, finesse, thrown, versatile,
+        reach, two_handed, loading, ammunition
+    }
+
+    // PAIN POINT: No way to express "ranged vs melee" at the type level.
+    // A weapon is either melee or ranged (or both for thrown), but the
+    // enum approach forces us to use a bool or a separate enum, neither
+    // of which composes well with the property set.
+    enum WeaponCategory { simple_melee, simple_ranged, martial_melee, martial_ranged }
+
+    enum ArmorCategory { light_armor, medium_armor, heavy_armor, shield }
+
+    enum Size { tiny, small, medium, large, huge, gargantuan }
+
+    // PAIN POINT: No union / sum type beyond enums with payloads.
+    // In 5e, a "damage source" could be a weapon, a spell, an
+    // environmental hazard, etc. We can't express that cleanly —
+    // we'd want something like:
+    //     type DamageSource = Weapon | Spell | Environment
+    // Instead we have to either use separate actions or an enum
+    // with payloads large enough to cover all cases.
+
+    enum ResolvedDamage {
+        miss,
+        hit(amount: int)
+    }
+
+    enum SaveResult {
+        success,
+        failure
+    }
+
+    // PAIN POINT: Can't represent the 5e condition "levels" (Exhaustion
+    // has 6 tiers). A condition is binary — you have it or you don't.
+    // Exhaustion would need something like:
+    //     condition Exhaustion(level: int) on bearer: Character { ... }
+    // but conditions can't take parameters.
+
+    // PAIN POINT: Enums can't have associated data beyond variant payloads.
+    // In 5e, each Skill has a corresponding Ability. We'd like to write:
+    //     enum Skill { athletics(ability: STR), acrobatics(ability: DEX), ... }
+    // or have a derive that maps Skill -> Ability. The derive works but is
+    // verbose (see skill_ability below).
+
+    enum SpellSchool {
+        abjuration, conjuration, divination, enchantment,
+        evocation, illusion, necromancy, transmutation
+    }
+
+    // MISSING FEATURE: No integer range or "level" type.
+    // Spell slots are keyed by level 1-9, but we can't express
+    // `int(1..9)` as a type. We just use plain int.
+
+    enum RestType { short_rest, long_rest }
+
+    enum CoverType { no_cover, half_cover, three_quarters_cover, full_cover }
+
+
+    // ========================================================
+    //  STRUCTS
+    // ========================================================
+
+    struct TurnBudget {
+        actions: int
+        bonus_actions: int
+        reactions: int
+        movement: int
+        free_interactions: int
+    }
+
+    struct DamageSpec {
+        dice: DiceExpr
+        type: DamageType
+    }
+
+    // PAIN POINT: No way to express "list of DamageSpec" returns
+    // from a mechanic where each element needs separate resistance
+    // processing. A spell like Flame Strike deals fire + radiant
+    // damage — two separate DamageSpecs that each need their own
+    // resistance check. We can model it with a list, but the caller
+    // needs a loop to process them.
+    //
+    // MISSING FEATURE: No loops or list iteration. We can't write:
+    //     for spec in damage_list { ... }
+    // So multi-damage-type spells have to be manually unrolled or
+    // handled as a single combined DamageSpec (losing type fidelity).
+
+    struct SpellInfo {
+        name: string
+        level: int          // 0 = cantrip
+        school: SpellSchool
+        range: int
+        // PAIN POINT: No way to express complex spell targeting.
+        // Some spells target a point (AoE), some target a creature,
+        // some target self. The type system can't express this
+        // polymorphism. We'd want something like:
+        //     targeting: TargetSelf | TargetCreature(count: int) | TargetPoint(radius: int)
+        // Enum payloads could work but can't be used as types for
+        // action parameters without unwrapping boilerplate.
+        save_ability: option<Ability>  // none = no save (auto-hit or attack roll)
+        damage: option<DamageSpec>     // none = non-damage spell
+        healing: option<DiceExpr>      // none = non-healing spell
+        concentration: bool
+    }
+
+    // PAIN POINT: Structs have value semantics and are immutable once
+    // created. This means we can't build up a struct piecewise:
+    //     let info = SpellInfo { name: "Fireball", ... }
+    //     info.level = 3  // ERROR — structs are immutable
+    // This is fine for most cases but awkward for spells where we
+    // want to modify damage based on upcasting (higher slot level).
+    // We need to create a whole new struct to change one field.
+    //
+    // MISSING FEATURE: No struct update syntax like:
+    //     let upcast_spell = spell { damage: new_damage, ..spell }
+
+
+    // ========================================================
+    //  ENTITIES
+    // ========================================================
+
+    entity Weapon {
+        name: string
+        category: WeaponCategory
+        damage: DamageSpec
+        ability: Ability
+        properties: set<WeaponProperty>
+        range: int             // normal range in feet
+        long_range: option<int>
+    }
+
+    entity Armor {
+        name: string
+        category: ArmorCategory
+        base_AC: int
+        max_dex_bonus: option<int>  // none = no cap (light armor)
+        stealth_disadvantage: bool
+        strength_requirement: option<int>
+    }
+
+    entity Character {
+        name: string
+        level: int = 1
+
+        // Core attributes
+        abilities: map<Ability, int>
+        proficiency_skills: set<Skill>
+        proficient_saves: set<Ability>
+        size: Size = medium
+
+        // Defense
+        AC: int
+        HP: resource(0..max_HP)
+        max_HP: int
+        temp_HP: int = 0
+        // PAIN POINT: Temporary HP in 5e doesn't stack — you pick
+        // the higher value. This is a policy rule, not expressible
+        // in the type system. We'd need either:
+        //   - A custom setter: `temp_HP.set = max(new, old)`
+        //   - A "no-stack resource" type
+        // Instead we have to enforce this in every action that
+        // grants temp HP.
+
+        // Movement
+        speed: int = 30
+        position: Position
+
+        // Equipment
+        // PAIN POINT: No way to express "list of equipped weapons"
+        // or "loadout slots" (main hand / off hand). An entity can
+        // only hold one equipped_weapon — two-weapon fighting needs
+        // a main_hand + off_hand, but the type system doesn't
+        // provide slot-based composition.
+        equipped_weapon: Weapon
+        equipped_armor: option<Armor>
+        shield_equipped: bool = false
+
+        // Spellcasting
+        // PAIN POINT: Not all characters are spellcasters. We can't
+        // conditionally include fields based on "class" — every
+        // Character gets these fields even if they're a Fighter.
+        // Would love either:
+        //   - Trait/mixin system: `entity Character with Spellcaster { ... }`
+        //   - Optional field groups
+        //   - Entity inheritance
+        spellcasting_ability: option<Ability>
+        spell_save_DC: int = 0
+        spell_attack_bonus: int = 0
+
+        // MISSING FEATURE: No array/map of resources.
+        // Spell slots in 5e are: level 1 through 9, each with a count.
+        // Ideally: spell_slots: map<int, resource(0..max_slots)>
+        // But resource types can't be values in a map.
+        // We have to use plain ints and manually clamp.
+        spell_slots_1: int = 0
+        spell_slots_2: int = 0
+        spell_slots_3: int = 0
+        spell_slots_4: int = 0
+        spell_slots_5: int = 0
+        spell_slots_6: int = 0
+        spell_slots_7: int = 0
+        spell_slots_8: int = 0
+        spell_slots_9: int = 0
+        // That's 9 fields for what should be a single indexed resource.
+        // This is a major pain point for any system with tiered resources.
+
+        // Known/prepared spells
+        // PAIN POINT: `list<SpellInfo>` is a value type. But SpellInfo
+        // contains DiceExpr fields. Can we put dice exprs in a list?
+        // The spec says DiceExpr is a value type, so yes — but it's
+        // unclear if the interpreter handles nested collections with
+        // dice inside.
+        known_spells: list<SpellInfo>
+
+        // Death saves (tracked externally; 5e uses 3 successes/failures)
+        death_save_successes: int = 0
+        death_save_failures: int = 0
+
+        // Class features
+        // PAIN POINT: No inheritance, mixins, or traits.
+        // A Fighter has Action Surge, Second Wind, Extra Attack.
+        // A Rogue has Sneak Attack, Cunning Action, Evasion.
+        // We can't express "this Character has Feature X" in a
+        // type-safe way. Options:
+        //   (a) Boolean flags: has_action_surge: bool = false
+        //   (b) A set: features: set<Feature> (but Feature is just
+        //       an enum tag — no associated data)
+        //   (c) Separate entity types per class — but then actions
+        //       that work on "any character" need a union type.
+        // None of these are great. We go with (a) for now.
+        has_extra_attack: bool = false
+        has_sneak_attack: bool = false
+        sneak_attack_dice: int = 0  // PAIN POINT: Can't default DiceExpr fields.
+        // Would like: sneak_attack_dice: DiceExpr = 0d6
+        // but there's no "zero dice" literal. Changed to int
+        // representing number of d6s — loses type safety.
+        has_action_surge: bool = false
+        action_surge_uses: int = 0
+        has_second_wind: bool = false
+        second_wind_uses: int = 0
+        has_cunning_action: bool = false
+
+        // Concentration
+        concentrating_on: option<string>  // name of the concentration spell
+
+        // Misc
+        conditions: set<Condition>
+        resistances: set<DamageType>
+        immunities: set<DamageType>
+        vulnerabilities: set<DamageType>
+    }
+
+    // PAIN POINT: The entity is getting enormous. In a real 5e
+    // implementation, Character would have 50+ fields. There's no
+    // way to split it into composable pieces (traits, components,
+    // mixins). Every Character carries every field even if most
+    // are defaulted/unused.
+    //
+    // MISSING FEATURE: No entity composition. Would love:
+    //     trait Spellcaster {
+    //         spellcasting_ability: Ability
+    //         spell_save_DC: int
+    //         spell_slots: map<int, resource(0..max_slots)>
+    //     }
+    //     entity Wizard: Character with Spellcaster { ... }
+
+
+    // ========================================================
+    //  DERIVES (pure computations)
+    // ========================================================
+
+    derive modifier(score: int) -> int {
+        floor((score - 10) / 2)
+    }
+
+    derive proficiency_bonus(level: int) -> int {
+        floor((level - 1) / 4) + 2
+    }
+
+    derive initial_budget(actor: Character) -> TurnBudget {
+        TurnBudget {
+            actions: 1,
+            bonus_actions: 1,
+            reactions: 1,
+            movement: actor.speed,
+            free_interactions: 1
+        }
+    }
+
+    derive apply_resistances(
+        target: Character,
+        raw_damage: int,
+        damage_type: DamageType
+    ) -> int {
+        match {
+            damage_type in target.immunities      => 0,
+            damage_type in target.resistances     => floor(raw_damage / 2),
+            damage_type in target.vulnerabilities => raw_damage * 2,
+            _ => raw_damage
+        }
+    }
+
+    // Map each skill to its governing ability.
+    // PAIN POINT: This is a 18-branch match for what is essentially
+    // static data. No way to express a lookup table or associated
+    // enum data. In a general-purpose language this would be:
+    //     SKILL_ABILITIES: Map<Skill, Ability> = { ... }
+    // or derived from the enum definition itself.
+    derive skill_ability(skill: Skill) -> Ability {
+        match skill {
+            athletics       => STR,
+            acrobatics      => DEX,
+            sleight_of_hand => DEX,
+            stealth         => DEX,
+            arcana          => INT,
+            history         => INT,
+            investigation   => INT,
+            nature          => INT,
+            religion        => INT,
+            animal_handling => WIS,
+            insight         => WIS,
+            medicine        => WIS,
+            perception      => WIS,
+            survival        => WIS,
+            deception       => CHA,
+            intimidation    => CHA,
+            performance     => CHA,
+            persuasion      => CHA
+        }
+    }
+
+    // Armor class calculation
+    // PAIN POINT: 5e AC is computed from armor type, DEX modifier,
+    // shield, spells, magic items, class features (Unarmored Defense),
+    // etc. The logic is:
+    //   - No armor: 10 + DEX mod
+    //   - Light armor: base + DEX mod
+    //   - Medium armor: base + min(DEX mod, 2)
+    //   - Heavy armor: base (no DEX)
+    //   - Shield: +2
+    //   - Monk Unarmored: 10 + DEX mod + WIS mod
+    //   - Barbarian Unarmored: 10 + DEX mod + CON mod
+    //
+    // This is deeply polymorphic — the formula depends on class,
+    // equipment, and features. The condition/modify system could
+    // overlay some of this, but the base calculation already needs
+    // branching that doesn't fit cleanly.
+    //
+    // For now, AC is a flat field on Character set at creation time.
+    // A "compute_AC" derive would be possible but fragile.
+
+    derive compute_AC(char: Character) -> int {
+        let dex_mod = modifier(char.abilities[DEX])
+        // PAIN POINT: Can't match on option<T> because:
+        //   - `none` is not a valid match pattern (it's a keyword/literal, not a pattern)
+        //   - No `some(x)` destructuring pattern exists
+        //   - No pattern guards (`if` clauses in match arms)
+        // So we can't write:
+        //     match char.equipped_armor {
+        //         none => 10 + dex_mod,
+        //         some(armor) if armor.category == heavy_armor => armor.base_AC,
+        //         some(armor) => armor.base_AC + min(dex_mod, armor.max_dex_bonus),
+        //     }
+        //
+        // Workaround: use guard match with == none comparison.
+        let base = match {
+            char.equipped_armor == none => 10 + dex_mod,
+            // Even with a guard match, we can't access the inner Armor's
+            // fields because we never get a binding to the unwrapped value.
+            // MISSING FEATURE: `if let some(x) = expr { ... }` or `expr.unwrap()`
+            _ => 10 + dex_mod  // simplified — real AC computation impossible without option unwrap
+        }
+        if char.shield_equipped { base + 2 } else { base }
+    }
+
+    // Cover bonus
+    derive cover_AC_bonus(cover: CoverType) -> int {
+        match cover {
+            no_cover            => 0,
+            half_cover          => 2,
+            three_quarters_cover => 5,
+            full_cover          => 0  // can't be targeted at all
+        }
+    }
+
+    derive cover_save_bonus(cover: CoverType) -> int {
+        match cover {
+            no_cover            => 0,
+            half_cover          => 2,
+            three_quarters_cover => 5,
+            full_cover          => 0
+        }
+    }
+
+    // PAIN POINT: These two derives have identical bodies. No way
+    // to alias a derive or extract the shared logic without another
+    // derive call. In a general-purpose language we'd just use one
+    // function. Here, the semantic distinction (AC vs save) matters
+    // for the condition/modify system — a condition might modify
+    // cover_AC_bonus but not cover_save_bonus. So we need both,
+    // but duplicating is ugly.
+
+
+    // ========================================================
+    //  MECHANICS (can roll dice, no mutation)
+    // ========================================================
+
+    mechanic d20_expr(
+        score: int,
+        proficiency: int = 0,
+        bonus: int = 0,
+        mode: RollMode = normal
+    ) -> DiceExpr {
+        let base: DiceExpr = match mode {
+            normal       => 1d20,
+            advantage    => 2d20kh1,
+            disadvantage => 2d20kl1
+        }
+        base + modifier(score) + proficiency + bonus
+    }
+
+    mechanic choose_attack_ability(
+        attacker: Character,
+        weapon: Weapon
+    ) -> Ability {
+        if finesse in weapon.properties {
+            let str_mod = modifier(attacker.abilities[STR])
+            let dex_mod = modifier(attacker.abilities[DEX])
+            if dex_mod > str_mod { DEX } else { weapon.ability }
+        } else {
+            weapon.ability
+        }
+    }
+
+    // --- Attack rolls ---
+
+    mechanic attack_roll(
+        attacker: Character,
+        target: Character,
+        weapon: Weapon,
+        mode: RollMode = normal,
+        bonus: int = 0      // situational bonuses (cover, etc.)
+    ) -> RollResult {
+        let ability = choose_attack_ability(attacker, weapon)
+        let expr = d20_expr(
+            score: attacker.abilities[ability],
+            proficiency: proficiency_bonus(attacker.level),
+            bonus: bonus,
+            mode: mode
+        )
+        roll(expr)
+    }
+
+    mechanic spell_attack_roll(
+        caster: Character,
+        target: Character,
+        mode: RollMode = normal,
+        bonus: int = 0
+    ) -> RollResult {
+        // PAIN POINT: The spell attack bonus on Character is a
+        // precomputed field. Ideally we'd derive it from
+        // spellcasting_ability + proficiency, but spellcasting_ability
+        // is option<Ability> — we can't index into abilities[] with
+        // an option without unwrapping it first.
+        let expr: DiceExpr = match mode {
+            normal       => 1d20,
+            advantage    => 2d20kh1,
+            disadvantage => 2d20kl1
+        }
+        roll(expr + caster.spell_attack_bonus + bonus)
+    }
+
+    // --- Damage rolls ---
+
+    mechanic damage_expr(
+        attacker: Character,
+        weapon: Weapon,
+        critical: bool = false
+    ) -> DiceExpr {
+        let ability = choose_attack_ability(attacker, weapon)
+        let dice: DiceExpr = if critical {
+            multiply_dice(weapon.damage.dice, 2)
+        } else {
+            weapon.damage.dice
+        }
+        dice + modifier(attacker.abilities[ability])
+    }
+
+    mechanic resolve_melee_attack(
+        attacker: Character,
+        target: Character,
+        weapon: Weapon,
+        mode: RollMode = normal,
+        attack_bonus: int = 0
+    ) -> ResolvedDamage {
+        let atk: RollResult = attack_roll(
+            attacker, target, weapon, mode, attack_bonus
+        )
+        match {
+            atk.unmodified == 1 => ResolvedDamage.miss,
+            atk.unmodified == 20 => {
+                let dmg: RollResult = roll(damage_expr(attacker, weapon, critical: true))
+                let final_dmg = apply_resistances(target, dmg.total, weapon.damage.type)
+                ResolvedDamage.hit(final_dmg)
+            },
+            atk >= target.AC => {
+                let dmg: RollResult = roll(damage_expr(attacker, weapon, critical: false))
+                let final_dmg = apply_resistances(target, dmg.total, weapon.damage.type)
+                ResolvedDamage.hit(final_dmg)
+            },
+            _ => ResolvedDamage.miss
+        }
+    }
+
+    // --- Saving throws ---
+
+    mechanic saving_throw(
+        target: Character,
+        ability: Ability,
+        DC: int,
+        mode: RollMode = normal,
+        bonus: int = 0
+    ) -> SaveResult {
+        let prof = if ability in target.proficient_saves {
+            proficiency_bonus(target.level)
+        } else {
+            0
+        }
+        let expr = d20_expr(
+            score: target.abilities[ability],
+            proficiency: prof,
+            bonus: bonus,
+            mode: mode
+        )
+        let result = roll(expr)
+        if result >= DC { SaveResult.success } else { SaveResult.failure }
+    }
+
+    // --- Skill checks ---
+
+    mechanic skill_check(
+        actor: Character,
+        skill: Skill,
+        DC: int,
+        mode: RollMode = normal
+    ) -> SaveResult {
+        let ability = skill_ability(skill)
+        let prof = if skill in actor.proficiency_skills {
+            proficiency_bonus(actor.level)
+        } else {
+            0
+        }
+        // PAIN POINT: No "expertise" (double proficiency). Would need
+        // another field on Character like expertise_skills: set<Skill>
+        // and then: if skill in actor.expertise_skills { prof * 2 } ...
+        // The boolean flag approach doesn't scale. Ideally:
+        //     proficiency_level: map<Skill, ProficiencyLevel>
+        //     enum ProficiencyLevel { none, half, proficient, expertise }
+        // But then we need to convert ProfLevel to a multiplier, which
+        // needs yet another match/derive.
+        let expr = d20_expr(
+            score: actor.abilities[ability],
+            proficiency: prof,
+            mode: mode
+        )
+        let result = roll(expr)
+        if result >= DC { SaveResult.success } else { SaveResult.failure }
+    }
+
+    // --- Contested checks ---
+
+    // PAIN POINT: Contested checks (grapple, shove) involve two
+    // rolls — one from each side — and comparing results. The
+    // "who wins" question is simple, but structuring the return
+    // type is awkward. We return a bool but lose information about
+    // what each side rolled.
+    //
+    // MISSING FEATURE: No tuple type. Would love:
+    //     -> (attacker_roll: RollResult, defender_roll: RollResult, winner: bool)
+    // Or multiple return values.
+    mechanic contested_check(
+        actor: Character,
+        actor_skill: Skill,
+        target: Character,
+        target_skill: Skill
+    ) -> bool {
+        let actor_ability = skill_ability(actor_skill)
+        let actor_prof = if actor_skill in actor.proficiency_skills {
+            proficiency_bonus(actor.level)
+        } else {
+            0
+        }
+        let target_ability = skill_ability(target_skill)
+        let target_prof = if target_skill in target.proficiency_skills {
+            proficiency_bonus(target.level)
+        } else {
+            0
+        }
+        let actor_roll = roll(d20_expr(
+            score: actor.abilities[actor_ability],
+            proficiency: actor_prof
+        ))
+        let target_roll = roll(d20_expr(
+            score: target.abilities[target_ability],
+            proficiency: target_prof
+        ))
+        actor_roll >= target_roll
+    }
+
+    // --- Initiative ---
+
+    mechanic initiative_roll(combatant: Character) -> RollResult {
+        let expr = d20_expr(score: combatant.abilities[DEX])
+        roll(expr)
+    }
+
+    // MISSING FEATURE: No way to sort combatants by initiative.
+    // The DSL provides per-character rolls but has no list sorting,
+    // no map/filter/reduce, no way to produce an ordered list from
+    // a collection of rolls. The host (VTT/CLI) must do this.
+
+    // --- Concentration ---
+
+    mechanic concentration_check_DC(damage_taken: int) -> int {
+        let half = floor(damage_taken / 2)
+        if half > 10 { half } else { 10 }
+    }
+
+
+    // ========================================================
+    //  PROMPTS (human decision points)
+    // ========================================================
+
+    prompt choose(chooser: Character, options: list<string>) -> string {
+        hint: "The player or GM selects one option from the list"
+    }
+
+    prompt gm_decides(context: string) -> string {
+        hint: "The GM determines the outcome based on the fiction"
+    }
+
+    // PAIN POINT: No way to express a prompt that returns a typed
+    // value (e.g., a Character, a Weapon, a Position). Prompts
+    // always return string. For "choose a target", the host has to
+    // map the string back to an entity reference. Would be nice to
+    // have typed prompts:
+    //     prompt choose_target(chooser: Character, candidates: list<Character>) -> Character
+
+
+    // ========================================================
+    //  ACTIONS (can roll + mutate)
+    // ========================================================
+
+    // --- Basic melee attack ---
+
+    action Attack on attacker: Character (target: Character, weapon: Weapon) {
+        cost { action }
+        requires { distance(attacker.position, target.position) <= weapon.range }
+
+        resolve {
+            let result = resolve_melee_attack(attacker, target, weapon)
+            match result {
+                hit(amount) => { target.HP -= amount },
+                miss => {}
+            }
+        }
+    }
+
+    // PAIN POINT: Extra Attack. In 5e, at level 5, fighters and
+    // other martial classes can make TWO attacks as part of the
+    // Attack action. This is fundamentally a "repeat N times"
+    // pattern that the DSL can't express.
+    //
+    // We can't write:
+    //     let num_attacks = if attacker.has_extra_attack { 2 } else { 1 }
+    //     repeat num_attacks {
+    //         let result = resolve_melee_attack(...)
+    //         ...
+    //     }
+    //
+    // Workaround: Define separate actions for single vs multi-attack.
+    // This is the fundamental "no loops" limitation.
+
+    action AttackWithExtraAttack on attacker: Character (
+        target: Character,
+        weapon: Weapon,
+        // PAIN POINT: What if the second attack targets a different
+        // creature? We need a second target parameter. But what about
+        // 3 attacks (Fighter 11)? 4 attacks (Fighter 20)?
+        // The number of parameters grows with attack count, and we
+        // can't do optional/variadic parameters.
+        second_target: Character
+    ) {
+        cost { action }
+        requires { attacker.has_extra_attack && distance(attacker.position, target.position) <= weapon.range && distance(attacker.position, second_target.position) <= weapon.range }
+        // PAIN POINT: Only one requires block is allowed per action,
+        // so multiple preconditions must be combined with &&.
+        // Also, comments between cost and requires break parsing — the
+        // parser doesn't skip newlines between them (parser bug).
+
+        resolve {
+            // First attack
+            let result1 = resolve_melee_attack(attacker, target, weapon)
+            match result1 {
+                hit(amount) => { target.HP -= amount },
+                miss => {}
+            }
+            // Second attack
+            let result2 = resolve_melee_attack(attacker, second_target, weapon)
+            match result2 {
+                hit(amount) => { second_target.HP -= amount },
+                miss => {}
+            }
+        }
+    }
+
+    // PAIN POINT: The above is clearly wrong — it hard-codes exactly
+    // 2 attacks. A level 11 Fighter gets 3, a level 20 Fighter gets 4.
+    // We'd need AttackWith3Attacks, AttackWith4Attacks, etc. This is
+    // the single biggest ergonomic problem for modeling 5e.
+    //
+    // MISSING FEATURE: Some form of bounded iteration:
+    //     let n = attack_count(attacker)
+    //     for i in 1..n {
+    //         let target = prompt choose_target(attacker, enemies)
+    //         ...
+    //     }
+
+    // --- Dash, Dodge, Disengage (same as spec example) ---
+
+    action Dash on actor: Character () {
+        cost { action }
+        resolve {
+            turn.movement += actor.speed
+        }
+    }
+
+    action Dodge on actor: Character () {
+        cost { action }
+        resolve {
+            apply_condition(actor, Dodging, Duration.start_of_next_turn)
+        }
+    }
+
+    action Disengage on actor: Character () {
+        cost { action }
+        resolve {
+            apply_condition(actor, Disengaging, Duration.end_of_turn)
+        }
+    }
+
+    // --- Help action ---
+
+    action Help on helper: Character (target: Character) {
+        cost { action }
+        requires { distance(helper.position, target.position) <= 5 }
+        resolve {
+            // PAIN POINT: The Help action grants advantage on the
+            // target's next ability check or attack roll. This is a
+            // "next use" duration — not "until end of turn" or "until
+            // start of next turn". The condition system doesn't support
+            // "until next use" durations.
+            //
+            // MISSING FEATURE: Duration.next_use — a condition that
+            // automatically removes itself after it applies once.
+            //
+            // Workaround: apply a condition that gives advantage and
+            // have the runtime track that it should be removed after
+            // one application. But Duration only has fixed time-based
+            // options.
+            apply_condition(target, Helped, Duration.start_of_next_turn)
+        }
+    }
+
+    // --- Grapple (contested check as an action) ---
+
+    action Grapple on grappler: Character (target: Character) {
+        cost { action }
+        requires { distance(grappler.position, target.position) <= 5 && target.size != gargantuan }
+        // PAIN POINT: requires clause can't express "target.size <= grappler.size + 1"
+        // because Size is an enum, not an int, and there's no enum ordering.
+        // MISSING FEATURE: Ordered enums or enum-to-int conversion.
+
+        resolve {
+            let success = contested_check(
+                grappler, athletics,
+                target, athletics  // target can choose athletics or acrobatics
+                // PAIN POINT: In 5e, the DEFENDER chooses which skill
+                // to use (athletics or acrobatics). This is a prompt/
+                // choice that should happen mid-resolution, but we
+                // can't call a prompt inside a contested_check mechanic
+                // because prompts aren't callable from mechanics.
+                // Actually — prompts are callable, but contested_check
+                // is a mechanic (no mutation), and the target choosing
+                // is a decision point. This is fine if prompts work
+                // in mechanics.
+            )
+            if success {
+                apply_condition(target, Grappled, Duration.indefinite)
+                // PAIN POINT: Duration.indefinite doesn't exist.
+                // Some conditions persist until explicitly removed
+                // (grappled until the grappler releases or escapes).
+                // MISSING FEATURE: Duration.indefinite or Duration.indefinite
+            }
+        }
+    }
+
+    // --- Shove ---
+
+    action Shove on shover: Character (target: Character) {
+        cost { action }
+        requires { distance(shover.position, target.position) <= 5 }
+
+        resolve {
+            let success = contested_check(
+                shover, athletics,
+                target, athletics  // again, target should choose
+            )
+            if success {
+                // PAIN POINT: Shove lets the shover choose between
+                // knocking prone or pushing 5 feet away. This requires
+                // a decision AFTER the contested check succeeds.
+                // We can use a prompt here, which works.
+                let choice = choose(shover, ["prone", "push"])
+                match choice {
+                    "prone" => {
+                        apply_condition(target, Prone, Duration.indefinite)
+                    },
+                    "push" => {
+                        // PAIN POINT: No way to express "move the target
+                        // 5 feet away from the shover" — would need vector
+                        // math on Positions. Position is opaque.
+                        // MISSING FEATURE: Position arithmetic.
+                        //   target.position = target.position + direction_away(shover, target, 5)
+                    },
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    // --- Healing (Cure Wounds) ---
+
+    action CureWounds on caster: Character (target: Character, slot_level: int) {
+        cost { action }
+        requires { distance(caster.position, target.position) <= 5 && slot_level >= 1 }
+        // PAIN POINT: How do we check that the caster has a spell slot
+        // of the given level? We'd need:
+        //     requires { caster.spell_slots[slot_level] > 0 }
+        // But spell slots are separate fields (spell_slots_1, etc.),
+        // not an indexed resource.
+        //
+        // We also can't express "decrement spell_slots[slot_level]"
+        // generically. We'd need a 9-branch match:
+        //     match slot_level {
+        //         1 => { caster.spell_slots_1 -= 1 },
+        //         2 => { caster.spell_slots_2 -= 1 },
+        //         ...
+        //     }
+        // MISSING FEATURE: Indexed resources or a way to use a
+        // runtime int to select a field.
+
+        resolve {
+            // Upcast: 1d8 per slot level + spellcasting modifier
+            // PAIN POINT: Can't construct a DiceExpr dynamically.
+            // We'd want: `slot_level d8` but DiceExpr literals are
+            // compile-time only. No way to say "roll N dice" where
+            // N is a runtime value.
+            //
+            // MISSING FEATURE: Dynamic dice construction.
+            //     let healing_dice: DiceExpr = dice(slot_level, 8)
+            //     // or: slot_level d 8
+            //
+            // Workaround: match on slot_level for each possible value.
+            let base_dice: DiceExpr = match slot_level {
+                1 => 1d8,
+                2 => 2d8,
+                3 => 3d8,
+                4 => 4d8,
+                5 => 5d8,
+                // PAIN POINT: match must be exhaustive, but we can't
+                // enumerate all possible ints. Need a _ arm.
+                _ => 5d8
+            }
+            // PAIN POINT: spellcasting_ability is option<Ability>.
+            // We need to unwrap it to use it. Can't do:
+            //     modifier(caster.abilities[caster.spellcasting_ability])
+            // because the index is option<Ability>, not Ability.
+            // MISSING FEATURE: option unwrap / expect.
+            let healing = roll(base_dice + caster.spell_attack_bonus)
+            target.HP += healing.total
+            // Spell slot deduction (verbose but functional)
+            match slot_level {
+                1 => { caster.spell_slots_1 -= 1 },
+                2 => { caster.spell_slots_2 -= 1 },
+                3 => { caster.spell_slots_3 -= 1 },
+                _ => {}
+            }
+        }
+    }
+
+    // --- Fireball (area damage spell) ---
+
+    // PAIN POINT: Fireball targets every creature in a 20-foot radius
+    // sphere. The DSL has no concept of area targeting. We can't write
+    // "for each creature within 20 feet of target point".
+    //
+    // Compromise: target a single creature. The host (VTT) is
+    // responsible for determining all targets and calling this action
+    // once per target. But that means the saving throw DC is checked
+    // N times, and the damage should be rolled ONCE and shared.
+    //
+    // MISSING FEATURE: Area-of-effect targeting. Something like:
+    //     action Fireball on caster: Character (
+    //         center: Position,
+    //         targets: list<Character>  // auto-populated by radius
+    //     ) { ... }
+    //
+    // MISSING FEATURE: Roll-once-apply-many pattern. A single damage
+    // roll that applies to all targets (with individual saves).
+
+    action Fireball on caster: Character (target: Character, slot_level: int) {
+        cost { action }
+        requires { slot_level >= 3 }
+
+        resolve {
+            let base_dice: DiceExpr = match slot_level {
+                3 => 8d6,
+                4 => 9d6,
+                5 => 10d6,
+                6 => 11d6,
+                7 => 12d6,
+                8 => 13d6,
+                9 => 14d6,
+                _ => 8d6
+            }
+            let damage_roll: RollResult = roll(base_dice)
+            let save = saving_throw(
+                target, DEX, caster.spell_save_DC
+            )
+            let raw_damage = match save {
+                success => floor(damage_roll.total / 2),
+                failure => damage_roll.total
+            }
+            let final_damage = apply_resistances(target, raw_damage, fire)
+            target.HP -= final_damage
+
+            // Spell slot deduction
+            match slot_level {
+                3 => { caster.spell_slots_3 -= 1 },
+                4 => { caster.spell_slots_4 -= 1 },
+                5 => { caster.spell_slots_5 -= 1 },
+                6 => { caster.spell_slots_6 -= 1 },
+                7 => { caster.spell_slots_7 -= 1 },
+                8 => { caster.spell_slots_8 -= 1 },
+                9 => { caster.spell_slots_9 -= 1 },
+                _ => {}
+            }
+        }
+    }
+
+    // --- Second Wind (Fighter feature) ---
+
+    action SecondWind on fighter: Character () {
+        cost { bonus_action }
+        requires { fighter.has_second_wind && fighter.second_wind_uses > 0 }
+
+        resolve {
+            let healing = roll(1d10 + fighter.level)
+            fighter.HP += healing.total
+            fighter.second_wind_uses -= 1
+        }
+    }
+
+    // --- Action Surge (Fighter feature) ---
+    // PAIN POINT: Action Surge grants an additional action on your
+    // turn. In game terms, this modifies the TurnBudget. But
+    // TurnBudget is managed by the runtime, not directly accessible
+    // as a mutable entity field. We need to use `turn.actions += 1`
+    // which interacts with the built-in turn budget system.
+
+    action ActionSurge on fighter: Character () {
+        // Note: Action Surge has no action cost — the cost block is
+        // simply omitted. This works because cost is optional in the
+        // parser. However, this means there's no difference between
+        // "free" and "forgot to declare a cost" — a potential footgun.
+        requires { fighter.has_action_surge && fighter.action_surge_uses > 0 }
+
+        resolve {
+            turn.actions += 1
+            fighter.action_surge_uses -= 1
+        }
+    }
+
+    // --- Cunning Action (Rogue feature) ---
+    // Lets a Rogue use Dash, Disengage, or Hide as a bonus action.
+    // PAIN POINT: "Do X as a bonus action instead of an action" is
+    // a common 5e pattern. The DSL would need:
+    //   (a) Separate bonus-action versions of Dash/Disengage/Hide
+    //   (b) A way to override the cost of an existing action
+    //   (c) A condition that modifies action costs
+    // None of these are great. (a) duplicates actions, (b) doesn't
+    // exist, (c) the condition modify system targets parameters/results,
+    // not the cost block.
+    //
+    // MISSING FEATURE: Cost overrides via conditions or features.
+    //     condition CunningAction on bearer: Character {
+    //         modify Dash.cost(actor: bearer) { action -> bonus_action }
+    //     }
+
+    action CunningDash on rogue: Character () {
+        cost { bonus_action }
+        requires { rogue.has_cunning_action }
+        resolve {
+            turn.movement += rogue.speed
+        }
+    }
+
+    action CunningDisengage on rogue: Character () {
+        cost { bonus_action }
+        requires { rogue.has_cunning_action }
+        resolve {
+            apply_condition(rogue, Disengaging, Duration.end_of_turn)
+        }
+    }
+
+    // --- Death saving throws ---
+
+    action DeathSave on dying: Character () {
+        // PAIN POINT: Death saves happen at the start of your turn
+        // when you're at 0 HP. The DSL has no "start of turn" trigger
+        // for the active character — events/reactions are for other
+        // characters reacting to things.
+        //
+        // MISSING FEATURE: Turn phase hooks.
+        //     on_turn_start(actor: Character) {
+        //         if actor.HP == 0 { do DeathSave on actor () }
+        //     }
+        cost { action }
+
+        resolve {
+            let result = roll(1d20)
+            match {
+                result.total == 20 => {
+                    // Nat 20: regain 1 HP, regain consciousness
+                    dying.HP += 1
+                    dying.death_save_successes = 0
+                    dying.death_save_failures = 0
+                },
+                result.total >= 10 => {
+                    dying.death_save_successes += 1
+                    // PAIN POINT: If successes reach 3, the character
+                    // stabilizes. But we can't check a condition AFTER
+                    // the mutation and trigger a side effect. We'd need:
+                    //     if dying.death_save_successes >= 3 {
+                    //         apply_condition(dying, Stable, ...)
+                    //     }
+                    // This actually DOES work — we can put an if after
+                    // the assignment. But stabilization means "stop
+                    // making death saves" which is a state machine
+                    // transition the DSL doesn't model.
+                    if dying.death_save_successes >= 3 {
+                        apply_condition(dying, Stable, Duration.indefinite)
+                    }
+                },
+                result.total == 1 => {
+                    // Nat 1: count as two failures
+                    dying.death_save_failures += 2
+                },
+                _ => {
+                    dying.death_save_failures += 1
+                }
+            }
+            // 3 failures = death
+            // PAIN POINT: "Death" isn't a condition in 5e, it's the
+            // permanent removal of the character. The DSL has
+            // no concept of destroying/removing entities.
+            //
+            // MISSING FEATURE: Entity lifecycle management.
+            //     if dying.death_save_failures >= 3 { destroy(dying) }
+        }
+    }
+
+
+    // ========================================================
+    //  EVENTS
+    // ========================================================
+
+    event entity_leaves_reach(reactor: Character) {
+        entity: Character
+        from_position: Position
+        to_position: Position
+    }
+
+    event takes_damage(reactor: Character) {
+        source: Character
+        amount: int
+        damage_type: DamageType
+    }
+
+    // PAIN POINT: The takes_damage event is declared but there's no
+    // automatic way to fire it. When target.HP -= amount happens in
+    // an action, the runtime doesn't automatically emit a
+    // takes_damage event. The host has to manually fire events.
+    //
+    // MISSING FEATURE: Automatic event emission from mutations.
+    //     entity Character {
+    //         HP: resource(0..max_HP) {
+    //             on_decrease => emit takes_damage(...)
+    //         }
+    //     }
+
+
+    // ========================================================
+    //  REACTIONS
+    // ========================================================
+
+    reaction OpportunityAttack on reactor: Character (
+        trigger: entity_leaves_reach(reactor: reactor)
+    ) {
+        cost { reaction }
+
+        resolve {
+            let result = resolve_melee_attack(
+                reactor, trigger.entity, reactor.equipped_weapon
+            )
+            match result {
+                hit(amount) => { trigger.entity.HP -= amount },
+                miss => {}
+            }
+        }
+    }
+
+    // Concentration check when taking damage
+    reaction ConcentrationCheck on caster: Character (
+        trigger: takes_damage(reactor: caster)
+    ) {
+        // PAIN POINT: This reaction should only fire if the caster
+        // is concentrating. But `requires` can't check option<string>
+        // for some-ness (is it none or not?).
+        //
+        // MISSING FEATURE: option checking in requires:
+        //     requires { caster.concentrating_on != none }
+        cost { reaction }
+
+        resolve {
+            let dc = concentration_check_DC(trigger.amount)
+            let save = saving_throw(caster, CON, dc)
+            match save {
+                failure => {
+                    // Drop concentration
+                    caster.concentrating_on = none
+                    // PAIN POINT: Dropping concentration should remove
+                    // the spell's effects. But we don't track which
+                    // conditions/effects came from which spell. There's
+                    // no "spell instance" concept.
+                },
+                success => {}
+            }
+        }
+    }
+
+
+    // ========================================================
+    //  CONDITIONS
+    // ========================================================
+
+    condition Prone on bearer: Character {
+        modify attack_roll(attacker: bearer) {
+            mode = disadvantage
+        }
+        modify attack_roll(target: bearer) {
+            mode = if distance(attacker.position, bearer.position) <= 5 {
+                advantage
+            } else {
+                disadvantage
+            }
+        }
+        modify initial_budget(actor: bearer) {
+            result.movement = result.movement - floor(bearer.speed / 2)
+        }
+    }
+
+    condition Dodging on bearer: Character {
+        modify attack_roll(target: bearer) {
+            mode = disadvantage
+        }
+        modify saving_throw(target: bearer, ability: DEX) {
+            mode = advantage
+        }
+    }
+
+    condition Disengaging on bearer: Character {
+        suppress entity_leaves_reach(entity: bearer)
+    }
+
+    condition Helped on bearer: Character {
+        modify attack_roll(attacker: bearer) {
+            mode = advantage
+        }
+        // PAIN POINT: Helped should also apply to the next ability
+        // check, not just attack rolls. But modify targets a specific
+        // mechanic name — we'd need:
+        //     modify skill_check(actor: bearer) { mode = advantage }
+        // This is fine, but we have to list every mechanic that should
+        // be affected. There's no "modify all d20 rolls" wildcard.
+    }
+
+    // Grappled condition
+    condition Grappled on bearer: Character {
+        modify initial_budget(actor: bearer) {
+            result.movement = 0
+        }
+        // PAIN POINT: Grappled also means the grappler's speed is 0
+        // (unless they're dragging). But a condition applies to ONE
+        // bearer — the grappled creature. The grappler's speed
+        // reduction is a separate effect that the DSL can't easily
+        // model. Would need a "Grappling" condition on the grappler
+        // too, applied simultaneously.
+    }
+
+    condition Frightened on bearer: Character {
+        modify attack_roll(attacker: bearer) {
+            mode = disadvantage
+        }
+        modify skill_check(actor: bearer) {
+            mode = disadvantage
+        }
+        // PAIN POINT: Frightened also says "can't willingly move
+        // closer to the source of fear". This is a movement
+        // constraint that depends on a specific entity (the source).
+        // Conditions don't have parameters (like "source: Character"),
+        // so we can't express this.
+        //
+        // MISSING FEATURE: Parameterized conditions.
+        //     condition Frightened(source: Character) on bearer: Character {
+        //         suppress move_toward(entity: bearer, target: source)
+        //     }
+    }
+
+    condition Poisoned on bearer: Character {
+        modify attack_roll(attacker: bearer) {
+            mode = disadvantage
+        }
+        modify skill_check(actor: bearer) {
+            mode = disadvantage
+        }
+    }
+
+    // PAIN POINT: Blinded, Deafened, Incapacitated, Invisible,
+    // Paralyzed, Petrified, Restrained, Stunned, Unconscious —
+    // each has unique rules. Many conditions COMBINE effects from
+    // other conditions (e.g., Stunned includes Incapacitated).
+    // There's no condition inheritance:
+    //     condition Stunned extends Incapacitated on bearer: Character { ... }
+    //
+    // MISSING FEATURE: Condition composition/inheritance.
+
+    condition Blinded on bearer: Character {
+        modify attack_roll(attacker: bearer) {
+            mode = disadvantage
+        }
+        modify attack_roll(target: bearer) {
+            mode = advantage
+        }
+        // PAIN POINT: Blinded also means auto-fail any check that
+        // requires sight. The DSL has no concept of "requires sight"
+        // on a skill check — sight is a narrative concept, not a
+        // mechanical tag on the skill_check mechanic.
+    }
+
+    condition Invisible on bearer: Character {
+        modify attack_roll(attacker: bearer) {
+            mode = advantage
+        }
+        modify attack_roll(target: bearer) {
+            mode = disadvantage
+        }
+        // PAIN POINT: Invisible is kind of the opposite of Blinded
+        // for combat purposes, but it also affects hiding, targeting,
+        // etc. Same issue — narrative effects can't be modeled.
+    }
+
+    condition Restrained on bearer: Character {
+        modify attack_roll(attacker: bearer) {
+            mode = disadvantage
+        }
+        modify attack_roll(target: bearer) {
+            mode = advantage
+        }
+        modify saving_throw(target: bearer, ability: DEX) {
+            mode = disadvantage
+        }
+        modify initial_budget(actor: bearer) {
+            result.movement = 0
+        }
+    }
+
+    condition Stunned on bearer: Character {
+        // Includes effects of Incapacitated (can't take actions/reactions)
+        // PAIN POINT: "Can't take actions" is a budget constraint —
+        // set actions to 0, bonus_actions to 0. But it also means
+        // "automatically fail STR and DEX saving throws" which is
+        // not disadvantage — it's auto-fail. The modify system can
+        // set mode to disadvantage but can't express "auto-fail".
+        //
+        // MISSING FEATURE: Auto-fail / auto-succeed for saves.
+        //     modify saving_throw(target: bearer) {
+        //         if ability == STR || ability == DEX {
+        //             result = SaveResult.failure  // override result entirely
+        //         }
+        //     }
+        modify attack_roll(target: bearer) {
+            mode = advantage
+        }
+        modify initial_budget(actor: bearer) {
+            result.actions = 0
+            result.bonus_actions = 0
+            result.reactions = 0
+            result.movement = 0
+        }
+        modify saving_throw(target: bearer, ability: STR) {
+            mode = disadvantage  // should be auto-fail, but we can't express that
+        }
+        modify saving_throw(target: bearer, ability: DEX) {
+            mode = disadvantage  // should be auto-fail
+        }
+    }
+
+    // Stable (stabilized at 0 HP, no longer making death saves)
+    condition Stable on bearer: Character {
+        // PAIN POINT: Stable doesn't modify any mechanics — it's
+        // purely a state flag that the turn-start logic checks.
+        // The condition system expects modify/suppress clauses;
+        // a condition with no clauses is technically valid but
+        // feels like misuse.
+    }
+
+
+    // ========================================================
+    //  OPTIONS (variant rules)
+    // ========================================================
+
+    option flanking extends "D&D 5e Expanded" {
+        description: "Melee attackers on opposite sides gain advantage"
+        default: off
+
+        // PAIN POINT: Can't actually implement flanking in `when enabled`
+        // because:
+        // 1. Wildcard bindings (`_`) in modify clauses are in the spec
+        //    but not implemented. Can't write:
+        //        modify attack_roll(attacker: _, target: _) { ... }
+        // 2. Options don't have a receiver, so there's nothing to bind.
+        // 3. Detecting "opposite sides" requires geometric Position
+        //    calculations that the DSL can't express.
+        // 4. The `when enabled` block is parsed but has no runtime effect.
+    }
+
+    option critical_fumble extends "D&D 5e Expanded" {
+        description: "Natural 1 on attack roll causes a fumble effect"
+        default: off
+
+        when enabled {
+            // PAIN POINT: Can't modify the RESULT of resolve_melee_attack
+            // to add a fumble branch. The option/condition modify system
+            // modifies INPUT parameters, not the control flow inside a
+            // mechanic. We'd want:
+            //     modify resolve_melee_attack(result: _) {
+            //         if atk.unmodified == 1 { trigger fumble_table(attacker) }
+            //     }
+            // But post-call modification only works on struct fields
+            // of the return value, not on control flow.
+        }
+    }
+
+
+    // ========================================================
+    //  PAIN POINT SUMMARY
+    // ========================================================
+    //
+    // Top language gaps exposed by this example:
+    //
+    // 1. NO LOOPS / ITERATION
+    //    - Extra Attack (N attacks per action)
+    //    - AoE spells (apply to N targets)
+    //    - Multi-damage-type processing
+    //    - Spell slot deduction (9-branch match instead of indexed access)
+    //
+    // 2. NO ENTITY COMPOSITION / TRAITS
+    //    - Class features (Fighter, Rogue, Wizard) as boolean flags
+    //    - Spellcasting fields on non-casters
+    //    - Huge flat entity with 40+ fields
+    //
+    // 3. NO DYNAMIC DICE CONSTRUCTION
+    //    - Can't build "Nd8" where N is runtime
+    //    - Upcast spells need a match per slot level
+    //
+    // 4. NO OPTION DESTRUCTURING / UNWRAPPING
+    //    - spellcasting_ability: option<Ability> can't be used as map key
+    //    - equipped_armor: option<Armor> can't be pattern-matched to access fields
+    //    - No `some(x)` pattern, no `.unwrap()`, no `if let`
+    //
+    // 5. NO INDEXED / PARAMETERIZED RESOURCES
+    //    - Spell slots: 9 separate fields instead of map<int, resource>
+    //    - No runtime field selection (spell_slots[level])
+    //
+    // 6. NO PARAMETERIZED CONDITIONS
+    //    - Frightened needs a "source" entity
+    //    - Exhaustion needs a level (1-6)
+    //    - Grappled needs a reference to the grappler
+    //
+    // 7. NO CONDITION COMPOSITION / INHERITANCE
+    //    - Stunned includes Incapacitated's effects (must duplicate)
+    //    - Unconscious includes Prone + Incapacitated (more duplication)
+    //
+    // 8. NO AUTO-SUCCEED / AUTO-FAIL
+    //    - Stunned auto-fails STR/DEX saves (not just disadvantage)
+    //    - Paralyzed auto-fails STR/DEX saves
+    //    - "Advantage/disadvantage" is the only roll modifier
+    //
+    // 9. LIMITED DURATION TYPES
+    //    - No "until next use" (Help action)
+    //    - No "indefinite / until removed" (Grappled)
+    //    - No "until a save is made" (many spell effects)
+    //
+    // 10. NO TYPED PROMPTS
+    //     - choose() returns string, not a typed entity reference
+    //     - Host must map string -> entity externally
+    //
+    // 11. NO COST OVERRIDES / FREE ACTIONS
+    //     - Action Surge has no cost (not action/bonus/reaction)
+    //     - Cunning Action changes cost of existing actions
+    //     - No way to say "this costs nothing"
+    //
+    // 12. NO TURN PHASE HOOKS
+    //     - Death saves happen at start of turn (automatic)
+    //     - Regeneration happens at start of turn
+    //     - No on_turn_start / on_turn_end triggers
+    //
+    // 13. NO AUTOMATIC EVENT EMISSION
+    //     - HP reduction doesn't auto-fire takes_damage
+    //     - Condition application doesn't auto-fire condition_applied
+    //     - Host must manually fire all events
+    //
+    // 14. NO POSITION ARITHMETIC
+    //     - Can't compute "5 feet away from X toward Y"
+    //     - Can't check "is between A and B" (flanking)
+    //     - Position is opaque — only distance() is available
+    //
+    // PARSER / SYNTAX ISSUES (discovered while making this compile):
+    //
+    // 15. `none` IS NOT A VALID PATTERN
+    //     - Can't write: match x { none => ..., _ => ... }
+    //     - Must use guard match: match { x == none => ... }
+    //     - Blocks idiomatic option handling
+    //
+    // 16. NO WILDCARD IN MODIFY BINDINGS
+    //     - Spec shows: modify attack_roll(attacker: _, target: _)
+    //     - Parser rejects `_` — binding value must be an expression
+    //     - Options have no receiver, so there's nothing to bind
+    //
+    // 17. SINGLE REQUIRES BLOCK PER ACTION
+    //     - Can't write multiple `requires { ... }` blocks
+    //     - Must combine with && on a single long line
+    //     - Multiline requires expressions hit NL issues (see #18)
+    //
+    // 18. MULTILINE EXPRESSIONS IN REQUIRES/COST
+    //     - Newlines inside `{ }` are NOT suppressed (unlike `()` and `[]`)
+    //     - Multiline requires: `requires { a &&\n b }` fails
+    //     - Only `{` suppresses the *next* NL, not all NLs inside braces
+    //     - Workaround: put everything on one line, or wrap in parens
+    //
+    // 19. COMMENTS BETWEEN COST AND REQUIRES BREAK PARSING
+    //     - Parser bug: no skip_newlines() between cost and requires
+    //     - Comments generate NLs that aren't consumed
+    //     - Workaround: don't put comments between cost/requires blocks
+    //
+    // 20. NO DEFAULT FOR DiceExpr FIELDS
+    //     - Can't write: sneak_attack_dice: DiceExpr = 0d6
+    //     - 0d6 isn't valid (0 count dice literal)
+    //     - No "empty dice expression" value exists
+    //
+    // 21. NO STRUCT UPDATE SYNTAX
+    //     - Can't write: let upcast = spell { damage: new_dmg, ..spell }
+    //     - Must reconstruct the entire struct to change one field
+    //     - Relevant for spell upcasting, buff modifications
+}
