@@ -395,6 +395,12 @@ pub enum ExprKind {
         then_block: Block,
         else_branch: Option<ElseBranch>,
     },
+    IfLet {
+        pattern: Box<Spanned<PatternKind>>,
+        scrutinee: Box<Spanned<ExprKind>>,
+        then_block: Block,
+        else_branch: Option<ElseBranch>,
+    },
     PatternMatch {
         scrutinee: Box<Spanned<ExprKind>>,
         arms: Vec<PatternArm>,

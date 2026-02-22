@@ -381,20 +381,15 @@ impl Parser {
     pub(crate) fn parse_if_expr(&mut self) -> Result<Spanned<ExprKind>, ()> {
         let start = self.start_span();
         self.expect(&TokenKind::If)?;
+
+        // if let pattern = expr { ... } else { ... }
+        if matches!(self.peek(), TokenKind::Let) {
+            return self.parse_if_let_expr(start);
+        }
+
         let condition = self.parse_expr()?;
         let then_block = self.parse_block()?;
-        let else_branch = if matches!(self.peek(), TokenKind::Else) {
-            self.advance();
-            if matches!(self.peek(), TokenKind::If) {
-                let if_expr = self.parse_if_expr()?;
-                Some(ElseBranch::If(Box::new(if_expr)))
-            } else {
-                let block = self.parse_block()?;
-                Some(ElseBranch::Block(block))
-            }
-        } else {
-            None
-        };
+        let else_branch = self.parse_else_branch()?;
         Ok(Spanned::new(
             ExprKind::If {
                 condition: Box::new(condition),
@@ -403,6 +398,39 @@ impl Parser {
             },
             self.end_span(start),
         ))
+    }
+
+    fn parse_if_let_expr(&mut self, start: usize) -> Result<Spanned<ExprKind>, ()> {
+        self.expect(&TokenKind::Let)?;
+        let pattern = self.parse_pattern()?;
+        self.expect(&TokenKind::Eq)?;
+        let scrutinee = self.parse_expr()?;
+        let then_block = self.parse_block()?;
+        let else_branch = self.parse_else_branch()?;
+        Ok(Spanned::new(
+            ExprKind::IfLet {
+                pattern: Box::new(pattern),
+                scrutinee: Box::new(scrutinee),
+                then_block,
+                else_branch,
+            },
+            self.end_span(start),
+        ))
+    }
+
+    fn parse_else_branch(&mut self) -> Result<Option<ElseBranch>, ()> {
+        if matches!(self.peek(), TokenKind::Else) {
+            self.advance();
+            if matches!(self.peek(), TokenKind::If) {
+                let if_expr = self.parse_if_expr()?;
+                Ok(Some(ElseBranch::If(Box::new(if_expr))))
+            } else {
+                let block = self.parse_block()?;
+                Ok(Some(ElseBranch::Block(block)))
+            }
+        } else {
+            Ok(None)
+        }
     }
 
     pub(crate) fn parse_match_expr(&mut self) -> Result<Spanned<ExprKind>, ()> {

@@ -376,3 +376,198 @@ system "test" {
         .unwrap();
     assert_eq!(val, Value::Int(42));
 }
+
+// ── if let some(x) tests ────────────────────────────────────────
+
+#[test]
+fn if_let_some_matches() {
+    let source = r#"
+system "test" {
+    derive f(x: option<int>) -> int {
+        if let some(n) = x { n + 1 } else { 0 }
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NoopHandler;
+
+    let val = interp
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "f",
+            vec![Value::Option(Some(Box::new(Value::Int(42))))],
+        )
+        .unwrap();
+    assert_eq!(val, Value::Int(43));
+}
+
+#[test]
+fn if_let_some_no_match_takes_else() {
+    let source = r#"
+system "test" {
+    derive f(x: option<int>) -> int {
+        if let some(n) = x { n + 1 } else { 0 }
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NoopHandler;
+
+    let val = interp
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "f",
+            vec![Value::Option(None)],
+        )
+        .unwrap();
+    assert_eq!(val, Value::Int(0));
+}
+
+#[test]
+fn if_let_no_else_branch() {
+    // if-let without else is a unit expression; test it as a statement
+    // followed by a concrete return value
+    let source = r#"
+system "test" {
+    derive f(x: option<int>) -> int {
+        if let some(n) = x { n + 1 } else { -1 }
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NoopHandler;
+
+    // Matches — returns bound value
+    let val = interp
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "f",
+            vec![Value::Option(Some(Box::new(Value::Int(5))))],
+        )
+        .unwrap();
+    assert_eq!(val, Value::Int(6));
+
+    // Doesn't match — takes else
+    let val = interp
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "f",
+            vec![Value::Option(None)],
+        )
+        .unwrap();
+    assert_eq!(val, Value::Int(-1));
+}
+
+#[test]
+fn if_let_else_if_let_chain() {
+    let source = r#"
+system "test" {
+    derive f(x: option<int>, y: option<int>) -> int {
+        if let some(n) = x { n } else if let some(m) = y { m } else { -1 }
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NoopHandler;
+
+    // First matches
+    let val = interp
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "f",
+            vec![
+                Value::Option(Some(Box::new(Value::Int(10)))),
+                Value::Option(Some(Box::new(Value::Int(20)))),
+            ],
+        )
+        .unwrap();
+    assert_eq!(val, Value::Int(10));
+
+    // First none, second matches
+    let val = interp
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "f",
+            vec![
+                Value::Option(None),
+                Value::Option(Some(Box::new(Value::Int(20)))),
+            ],
+        )
+        .unwrap();
+    assert_eq!(val, Value::Int(20));
+
+    // Both none
+    let val = interp
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "f",
+            vec![Value::Option(None), Value::Option(None)],
+        )
+        .unwrap();
+    assert_eq!(val, Value::Int(-1));
+}
+
+#[test]
+fn if_let_nested_some() {
+    let source = r#"
+system "test" {
+    derive f(x: option<option<int>>) -> int {
+        if let some(some(n)) = x { n } else { -1 }
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NoopHandler;
+
+    // some(some(5)) -> 5
+    let val = interp
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "f",
+            vec![Value::Option(Some(Box::new(Value::Option(Some(Box::new(
+                Value::Int(5),
+            ))))))],
+        )
+        .unwrap();
+    assert_eq!(val, Value::Int(5));
+
+    // some(none) -> -1
+    let val = interp
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "f",
+            vec![Value::Option(Some(Box::new(Value::Option(None))))],
+        )
+        .unwrap();
+    assert_eq!(val, Value::Int(-1));
+
+    // none -> -1
+    let val = interp
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "f",
+            vec![Value::Option(None)],
+        )
+        .unwrap();
+    assert_eq!(val, Value::Int(-1));
+}

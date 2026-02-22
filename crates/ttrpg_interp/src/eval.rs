@@ -72,6 +72,13 @@ pub(crate) fn eval_expr(env: &mut Env, expr: &Spanned<ExprKind>) -> Result<Value
             else_branch,
         } => eval_if(env, condition, then_block, else_branch),
 
+        ExprKind::IfLet {
+            pattern,
+            scrutinee,
+            then_block,
+            else_branch,
+        } => eval_if_let(env, pattern, scrutinee, then_block, else_branch),
+
         ExprKind::PatternMatch { scrutinee, arms } => {
             let scrutinee_val = eval_expr(env, scrutinee)?;
             for arm in arms {
@@ -706,6 +713,33 @@ fn eval_if(
             "if condition must be Bool",
             condition.span,
         )),
+    }
+}
+
+fn eval_if_let(
+    env: &mut Env,
+    pattern: &Spanned<PatternKind>,
+    scrutinee: &Spanned<ExprKind>,
+    then_block: &ttrpg_ast::ast::Block,
+    else_branch: &Option<ElseBranch>,
+) -> Result<Value, RuntimeError> {
+    let scrutinee_val = eval_expr(env, scrutinee)?;
+    let mut bindings = std::collections::HashMap::new();
+
+    if match_pattern(env, &pattern.node, &scrutinee_val, &mut bindings) {
+        env.push_scope();
+        for (name, val) in bindings {
+            env.bind(name, val);
+        }
+        let result = eval_block(env, then_block);
+        env.pop_scope();
+        result
+    } else {
+        match else_branch {
+            Some(ElseBranch::Block(block)) => eval_block(env, block),
+            Some(ElseBranch::If(if_expr)) => eval_expr(env, if_expr),
+            None => Ok(Value::None),
+        }
     }
 }
 

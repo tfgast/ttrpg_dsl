@@ -59,6 +59,13 @@ impl<'a> Checker<'a> {
                 else_branch,
             } => self.check_if(condition, then_block, else_branch.as_ref(), expr.span),
 
+            ExprKind::IfLet {
+                pattern,
+                scrutinee,
+                then_block,
+                else_branch,
+            } => self.check_if_let(pattern, scrutinee, then_block, else_branch.as_ref(), expr.span),
+
             ExprKind::PatternMatch { scrutinee, arms } => {
                 self.check_pattern_match(scrutinee, arms, expr.span)
             }
@@ -1163,11 +1170,38 @@ impl<'a> Checker<'a> {
         }
 
         let then_ty = self.check_block(then_block);
+        self.check_else_branch_type(&then_ty, else_branch, span)
+    }
 
+    fn check_if_let(
+        &mut self,
+        pattern: &Spanned<PatternKind>,
+        scrutinee: &Spanned<ExprKind>,
+        then_block: &Block,
+        else_branch: Option<&ElseBranch>,
+        span: ttrpg_ast::Span,
+    ) -> Ty {
+        let scrutinee_ty = self.check_expr(scrutinee);
+
+        // Pattern bindings are scoped to the then-block
+        self.scope.push(BlockKind::Inner);
+        self.check_pattern(pattern, &scrutinee_ty);
+        let then_ty = self.check_block(then_block);
+        self.scope.pop();
+
+        self.check_else_branch_type(&then_ty, else_branch, span)
+    }
+
+    fn check_else_branch_type(
+        &mut self,
+        then_ty: &Ty,
+        else_branch: Option<&ElseBranch>,
+        span: ttrpg_ast::Span,
+    ) -> Ty {
         match else_branch {
             Some(ElseBranch::Block(else_block)) => {
                 let else_ty = self.check_block(else_block);
-                match self.unify_branch_types(&then_ty, &else_ty) {
+                match self.unify_branch_types(then_ty, &else_ty) {
                     Some(ty) => ty,
                     None => {
                         self.error(
@@ -1183,7 +1217,7 @@ impl<'a> Checker<'a> {
             }
             Some(ElseBranch::If(if_expr)) => {
                 let else_ty = self.check_expr(if_expr);
-                match self.unify_branch_types(&then_ty, &else_ty) {
+                match self.unify_branch_types(then_ty, &else_ty) {
                     Some(ty) => ty,
                     None => {
                         self.error(
@@ -1197,10 +1231,7 @@ impl<'a> Checker<'a> {
                     }
                 }
             }
-            None => {
-                // if-without-else: type is Unit (the then branch value is discarded)
-                Ty::Unit
-            }
+            None => Ty::Unit,
         }
     }
 
