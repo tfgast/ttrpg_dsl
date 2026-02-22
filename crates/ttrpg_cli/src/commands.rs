@@ -43,12 +43,30 @@ pub fn parse_command(line: &str) -> Option<Command> {
     }
 }
 
-/// Strip a `//` line comment, naive (does not handle `//` inside string literals).
+/// Strip a `//` line comment, skipping `//` inside string literals.
 fn strip_comment(line: &str) -> &str {
-    match line.find("//") {
-        Some(pos) => &line[..pos],
-        None => line,
+    let bytes = line.as_bytes();
+    let mut in_string = false;
+    let mut i = 0;
+    while i < bytes.len() {
+        if in_string {
+            if bytes[i] == b'\\' {
+                i += 2; // skip escaped character
+                continue;
+            }
+            if bytes[i] == b'"' {
+                in_string = false;
+            }
+        } else {
+            if bytes[i] == b'"' {
+                in_string = true;
+            } else if bytes[i] == b'/' && i + 1 < bytes.len() && bytes[i + 1] == b'/' {
+                return &line[..i];
+            }
+        }
+        i += 1;
     }
+    line
 }
 
 /// Split a trimmed line into the first whitespace-delimited token and the rest.
@@ -129,6 +147,31 @@ mod tests {
         assert_eq!(
             parse_command("eval"),
             Some(Command::Unknown("eval".into()))
+        );
+    }
+
+    #[test]
+    fn comment_inside_string_preserved() {
+        // `//` inside a string literal should NOT be treated as a comment
+        assert_eq!(
+            parse_command(r#"eval "https://example.com""#),
+            Some(Command::Eval(r#""https://example.com""#.into()))
+        );
+    }
+
+    #[test]
+    fn comment_after_string_with_slashes() {
+        assert_eq!(
+            parse_command(r#"eval "a//b" // real comment"#),
+            Some(Command::Eval(r#""a//b""#.into()))
+        );
+    }
+
+    #[test]
+    fn escaped_quote_in_string() {
+        assert_eq!(
+            parse_command(r#"eval "say \"hi//there\"" // comment"#),
+            Some(Command::Eval(r#""say \"hi//there\"""#.into()))
         );
     }
 }

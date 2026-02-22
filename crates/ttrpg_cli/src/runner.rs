@@ -121,17 +121,20 @@ impl Runner {
             Ok(())
         } else {
             let error_count = errors.len();
+            // Clear stale program state so eval cannot use a previous successful load.
+            self.program = Box::new(Program { items: Vec::new() });
+            self.type_env = Box::new(TypeEnv::new());
+            self.game_state = GameState::new();
             self.diagnostics = all_diags;
             self.last_path = Some(PathBuf::from(path));
-            self.output.push(format!(
+            self.output
+                .push("use 'errors' to see diagnostics".into());
+            Err(CliError::Message(format!(
                 "failed to load '{}': {} error{}",
                 path,
                 error_count,
                 if error_count == 1 { "" } else { "s" }
-            ));
-            self.output
-                .push("use 'errors' to see diagnostics".into());
-            Ok(())
+            )))
         }
     }
 
@@ -323,11 +326,13 @@ system "test" {
         .unwrap();
 
         let mut runner = Runner::new();
-        runner
+        let err = runner
             .exec(&format!("load {}", path.display()))
-            .unwrap();
+            .unwrap_err();
+        assert!(err.to_string().contains("error"));
+        // Output hint should still be available
         let output = runner.take_output();
-        assert!(output[0].contains("error"));
+        assert!(output.iter().any(|l| l.contains("errors")));
 
         runner.exec("errors").unwrap();
         let output = runner.take_output();
@@ -373,5 +378,88 @@ system "test" {
             val,
             Value::List(vec![Value::Int(1), Value::Int(2), Value::Int(3)])
         );
+    }
+
+    #[test]
+    fn failed_load_clears_stale_state() {
+        let dir = std::env::temp_dir().join("ttrpg_cli_test");
+        std::fs::create_dir_all(&dir).unwrap();
+
+        // First, load a good file
+        let good = dir.join("good_stale.ttrpg");
+        std::fs::write(
+            &good,
+            r#"
+system "test" {
+    derive add(a: int, b: int) -> int { a + b }
+}
+"#,
+        )
+        .unwrap();
+
+        let mut runner = Runner::new();
+        runner
+            .exec(&format!("load {}", good.display()))
+            .unwrap();
+        runner.take_output();
+
+        // Eval should work
+        runner.exec("eval 1 + 2").unwrap();
+        assert_eq!(runner.take_output(), vec!["3"]);
+
+        // Now load a bad file
+        let bad = dir.join("bad_stale.ttrpg");
+        std::fs::write(
+            &bad,
+            r#"
+system "test" {
+    derive bad() -> int { undefined_var }
+}
+"#,
+        )
+        .unwrap();
+
+        let err = runner
+            .exec(&format!("load {}", bad.display()))
+            .unwrap_err();
+        assert!(err.to_string().contains("failed to load"));
+        runner.take_output();
+
+        // Eval should no longer work — stale state was cleared
+        runner.exec("eval 1 + 2").unwrap();
+        // Arithmetic still works (no program needed), but reload should
+        // re-attempt the bad file, confirming state was cleared
+        runner.take_output();
+
+        std::fs::remove_file(&good).ok();
+        std::fs::remove_file(&bad).ok();
+    }
+
+    #[test]
+    fn failed_load_returns_err() {
+        let dir = std::env::temp_dir().join("ttrpg_cli_test");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("test_load_err.ttrpg");
+        std::fs::write(
+            &path,
+            r#"
+system "test" {
+    derive bad() -> int { undefined_var }
+}
+"#,
+        )
+        .unwrap();
+
+        let mut runner = Runner::new();
+        let result = runner.exec(&format!("load {}", path.display()));
+        assert!(result.is_err(), "load with errors should return Err");
+        let err = result.unwrap_err();
+        assert!(
+            err.to_string().contains("failed to load"),
+            "got: {}",
+            err
+        );
+
+        std::fs::remove_file(&path).ok();
     }
 }
