@@ -2,8 +2,8 @@ use std::collections::BTreeMap;
 
 use ttrpg_ast::Spanned;
 use ttrpg_ast::ast::{
-    ArmBody, AssignOp, BinOp, ElseBranch, ExprKind, GuardKind, LValue, LValueSegment,
-    PatternKind, UnaryOp,
+    ArmBody, AssignOp, BinOp, ElseBranch, ExprKind, ForIterable, GuardKind, LValue,
+    LValueSegment, PatternKind, UnaryOp,
 };
 use ttrpg_checker::env::DeclInfo;
 
@@ -132,6 +132,12 @@ pub(crate) fn eval_expr(env: &mut Env, expr: &Spanned<ExprKind>) -> Result<Value
         ExprKind::Call { callee, args } => {
             crate::call::eval_call(env, callee, args, expr.span)
         }
+
+        ExprKind::For {
+            pattern,
+            iterable,
+            body,
+        } => eval_for(env, pattern, iterable, body),
     }
 }
 
@@ -741,6 +747,63 @@ fn eval_if_let(
             None => Ok(Value::None),
         }
     }
+}
+
+// ── For-loop evaluation ───────────────────────────────────────
+
+fn eval_for(
+    env: &mut Env,
+    pattern: &Spanned<PatternKind>,
+    iterable: &ForIterable,
+    body: &ttrpg_ast::ast::Block,
+) -> Result<Value, RuntimeError> {
+    let items: Vec<Value> = match iterable {
+        ForIterable::Collection(expr) => match eval_expr(env, expr)? {
+            Value::List(items) => items,
+            Value::Set(items) => items.into_iter().collect(),
+            other => {
+                return Err(RuntimeError::with_span(
+                    format!("expected list or set, got {}", type_name(&other)),
+                    expr.span,
+                ));
+            }
+        },
+        ForIterable::Range { start, end } => {
+            let s = match eval_expr(env, start)? {
+                Value::Int(n) => n,
+                other => {
+                    return Err(RuntimeError::with_span(
+                        format!("range start must be int, got {}", type_name(&other)),
+                        start.span,
+                    ));
+                }
+            };
+            let e = match eval_expr(env, end)? {
+                Value::Int(n) => n,
+                other => {
+                    return Err(RuntimeError::with_span(
+                        format!("range end must be int, got {}", type_name(&other)),
+                        end.span,
+                    ));
+                }
+            };
+            (s..e).map(Value::Int).collect()
+        }
+    };
+
+    for item in items {
+        let mut bindings = std::collections::HashMap::new();
+        if match_pattern(env, &pattern.node, &item, &mut bindings) {
+            env.push_scope();
+            for (name, val) in bindings {
+                env.bind(name, val);
+            }
+            eval_block(env, body)?;
+            env.pop_scope();
+        }
+    }
+
+    Ok(Value::None)
 }
 
 // ── Block evaluation ───────────────────────────────────────────

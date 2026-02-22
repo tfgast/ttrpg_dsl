@@ -59,7 +59,7 @@ fn test_parse_full_example() {
     assert_eq!(entities, 2, "entity count");
     assert_eq!(derives, 4, "derive count");
     assert_eq!(mechanics, 6, "mechanic count");
-    assert_eq!(actions, 4, "action count");
+    assert_eq!(actions, 6, "action count");
     assert_eq!(reactions, 1, "reaction count");
     assert_eq!(conditions, 3, "condition count");
     assert_eq!(prompts, 2, "prompt count");
@@ -632,4 +632,121 @@ fn test_error_severity() {
     for d in &diagnostics {
         assert_eq!(d.severity, Severity::Error);
     }
+}
+
+// ── For-loop parsing tests ──────────────────────────────────────
+
+#[test]
+fn test_for_collection_simple() {
+    let source = r#"system "test" {
+    entity Character { HP: int }
+    mechanic apply_damage(targets: list<Character>, damage: int) -> int {
+        for target in targets {
+            target.HP -= damage
+        }
+        0
+    }
+}"#;
+    let (_, diagnostics) = parse(source);
+    assert!(
+        diagnostics.is_empty(),
+        "for-each over collection should parse, got: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn test_for_range() {
+    let source = r#"system "test" {
+    derive sum_range(n: int) -> int {
+        let total = 0
+        for i in 0..n {
+            total += i
+        }
+        total
+    }
+}"#;
+    let (_, diagnostics) = parse(source);
+    assert!(
+        diagnostics.is_empty(),
+        "for-range should parse, got: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn test_for_with_pattern() {
+    let source = r#"system "test" {
+    enum Result { hit(amount: int), miss }
+    derive count_hits(results: list<Result>) -> int {
+        let total = 0
+        for hit(amount) in results {
+            total += amount
+        }
+        total
+    }
+}"#;
+    let (_, diagnostics) = parse(source);
+    assert!(
+        diagnostics.is_empty(),
+        "for-loop with destructuring pattern should parse, got: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn test_for_expr_standalone_collection() {
+    let (expr, diagnostics) = ttrpg_parser::parse_expr("for x in items { x }");
+    assert!(
+        diagnostics.is_empty(),
+        "standalone for-collection should parse, got: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+    let expr = expr.unwrap();
+    assert!(
+        matches!(expr.node, ExprKind::For { ref iterable, .. } if matches!(iterable, ForIterable::Collection(_))),
+        "expected For with Collection iterable"
+    );
+}
+
+#[test]
+fn test_for_expr_standalone_range() {
+    let (expr, diagnostics) = ttrpg_parser::parse_expr("for i in 0..10 { i }");
+    assert!(
+        diagnostics.is_empty(),
+        "standalone for-range should parse, got: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+    let expr = expr.unwrap();
+    assert!(
+        matches!(expr.node, ExprKind::For { ref iterable, .. } if matches!(iterable, ForIterable::Range { .. })),
+        "expected For with Range iterable"
+    );
+}
+
+#[test]
+fn test_for_range_with_expressions() {
+    // Range bounds can be arbitrary expressions
+    let (expr, diagnostics) = ttrpg_parser::parse_expr("for i in 1..n + 1 { i }");
+    assert!(
+        diagnostics.is_empty(),
+        "for-range with expr bounds should parse, got: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+    let expr = expr.unwrap();
+    assert!(
+        matches!(expr.node, ExprKind::For { ref iterable, .. } if matches!(iterable, ForIterable::Range { .. })),
+        "expected For with Range iterable"
+    );
+}
+
+#[test]
+fn test_for_wildcard_pattern() {
+    let (expr, diagnostics) = ttrpg_parser::parse_expr("for _ in items { 0 }");
+    assert!(
+        diagnostics.is_empty(),
+        "for with wildcard pattern should parse, got: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+    assert!(expr.is_some());
 }

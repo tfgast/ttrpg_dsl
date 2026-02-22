@@ -49,7 +49,7 @@
 // Keywords fall into two categories:
 //
 //   Reserved (always keyword tokens, never IDENT):
-//     let  if  else  match  true  false  none  in
+//     let  if  else  match  true  false  none  in  for
 //
 //   Contextual / soft (lexed as IDENT, recognized by parser in position):
 //     system  use  enum  struct  entity  derive  mechanic  action
@@ -398,6 +398,7 @@ primary_expr    = INT | STRING
                 | "(" expr ")"
                 | if_expr
                 | match_expr
+                | for_expr
 
 // --- Dice literals ---
 dice_lit        = INT "d" INT filter?
@@ -468,6 +469,24 @@ guard_match     = "match" "{" guard_arm (("," | NL) guard_arm)* ","? "}"
 guard_arm       = guard "=>" (expr | block)
 guard           = "_"                                // always matches (must be last)
                 | expr                               // boolean expression
+
+// --- For expression ---
+//
+// `for` is always an expression. Its type is always unit — for-loops
+// exist for side-effectful iteration (dealing damage, applying
+// conditions). Supports collection iteration and integer ranges.
+//
+// Pattern matching reuses the pattern infrastructure from match
+// expressions. Non-matching patterns silently skip the iteration
+// (built-in filtering without a separate construct).
+//
+// The `..` range operator produces a half-open range: `0..3` iterates
+// over `0, 1, 2`. Since `..` is not a binary expression operator,
+// the expression parser naturally stops before it, disambiguating
+// range from collection forms without lookahead.
+for_expr        = "for" pattern "in" for_source block
+for_source      = expr ".." expr                        // range (half-open)
+                | expr                                  // collection (list or set)
 
 // --- Call arguments ---
 arg_list        = arg ("," arg)* ","?

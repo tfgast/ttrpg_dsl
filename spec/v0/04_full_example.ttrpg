@@ -228,6 +228,43 @@ system "D&D 5e Combat" {
         }
     }
 
+    // AoE damage — iterates over a list of targets
+    action BurningHands on caster: Character (targets: list<Character>) {
+        cost { action }
+
+        resolve {
+            let damage: RollResult = roll(3d6)
+            for target in targets {
+                let save: RollResult = roll(d20_expr(score: target.abilities[DEX]))
+                if save.total >= 13 {
+                    target.HP -= floor(damage.total / 2)
+                } else {
+                    target.HP -= damage.total
+                }
+            }
+        }
+    }
+
+    // Extra Attack — range-based iteration for multiple attacks
+    action ExtraAttack on attacker: Character (
+        target: Character,
+        weapon: Weapon,
+        num_attacks: int
+    ) {
+        cost { action }
+        requires { distance(attacker.position, target.position) <= weapon.range }
+
+        resolve {
+            for i in 0..num_attacks {
+                let result = resolve_melee_attack(attacker, target, weapon)
+                match result {
+                    hit(amount) => { target.HP -= amount },
+                    miss => {}
+                }
+            }
+        }
+    }
+
     action Dash on actor: Character () {
         cost { action }
 

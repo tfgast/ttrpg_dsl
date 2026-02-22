@@ -3506,3 +3506,136 @@ system "test" {
 "#;
     expect_no_errors(source);
 }
+
+// ── For-loop type checking ──────────────────────────────────────
+
+#[test]
+fn test_for_over_list() {
+    let source = r#"
+system "test" {
+    entity Character { HP: int }
+    action AoE on caster: Character (targets: list<Character>, damage: int) {
+        resolve {
+            for target in targets {
+                target.HP -= damage
+            }
+        }
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_for_over_set() {
+    let source = r#"
+system "test" {
+    enum DamageType { fire, cold }
+    derive f(types: set<DamageType>) -> int {
+        for _ in types {
+            0
+        }
+        0
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_for_range() {
+    let source = r#"
+system "test" {
+    derive f(n: int) -> int {
+        for i in 0..n {
+            i
+        }
+        0
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_for_range_with_expressions() {
+    let source = r#"
+system "test" {
+    derive f(a: int, b: int) -> int {
+        for i in a + 1..b * 2 {
+            i
+        }
+        0
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_for_pattern_destructure() {
+    let source = r#"
+system "test" {
+    enum Outcome { hit(amount: int), miss }
+    derive f(results: list<Outcome>) -> int {
+        for hit(amount) in results {
+            amount
+        }
+        0
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_for_error_not_iterable() {
+    let source = r#"
+system "test" {
+    derive f(x: int) -> int {
+        for i in x { i }
+        0
+    }
+}
+"#;
+    expect_errors(source, &["expected list or set, found int"]);
+}
+
+#[test]
+fn test_for_error_map_not_iterable() {
+    let source = r#"
+system "test" {
+    enum Ability { STR, DEX }
+    derive f(m: map<Ability, int>) -> int {
+        for x in m { 0 }
+        0
+    }
+}
+"#;
+    expect_errors(source, &["map iteration is not supported"]);
+}
+
+#[test]
+fn test_for_error_range_not_int() {
+    let source = r#"
+system "test" {
+    derive f(x: bool) -> int {
+        for i in x..10 { i }
+        0
+    }
+}
+"#;
+    expect_errors(source, &["range start must be int, found bool"]);
+}
+
+#[test]
+fn test_for_returns_unit() {
+    let source = r#"
+system "test" {
+    derive f(xs: list<int>) -> int {
+        for x in xs { x }
+    }
+}
+"#;
+    expect_errors(source, &["expected return type int"]);
+}

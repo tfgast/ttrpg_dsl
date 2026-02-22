@@ -31,6 +31,7 @@ pub enum TokenKind {
     False,
     None,
     In,
+    For,
 
     // Punctuation
     LParen,    // (

@@ -71,6 +71,10 @@ impl<'a> Checker<'a> {
             }
 
             ExprKind::GuardMatch { arms } => self.check_guard_match(arms, expr.span),
+
+            ExprKind::For { pattern, iterable, body } => {
+                self.check_for(pattern, iterable, body, expr.span)
+            }
         }
     }
 
@@ -1336,6 +1340,67 @@ impl<'a> Checker<'a> {
         }
 
         result_ty.unwrap_or(Ty::Unit)
+    }
+
+    fn check_for(
+        &mut self,
+        pattern: &Spanned<PatternKind>,
+        iterable: &ForIterable,
+        body: &Block,
+        span: ttrpg_ast::Span,
+    ) -> Ty {
+        let element_ty = match iterable {
+            ForIterable::Collection(expr) => {
+                let coll_ty = self.check_expr(expr);
+                match coll_ty {
+                    Ty::List(inner) | Ty::Set(inner) => *inner,
+                    Ty::Map(_, _) => {
+                        self.error(
+                            "map iteration is not supported; use keys() or values()".to_string(),
+                            span,
+                        );
+                        Ty::Error
+                    }
+                    Ty::Error => Ty::Error,
+                    other => {
+                        self.error(
+                            format!("expected list or set, found {}", other),
+                            span,
+                        );
+                        Ty::Error
+                    }
+                }
+            }
+            ForIterable::Range { start, end } => {
+                let start_ty = self.check_expr(start);
+                let end_ty = self.check_expr(end);
+                if !start_ty.is_error() && !start_ty.is_int_like() {
+                    self.error(
+                        format!("range start must be int, found {}", start_ty),
+                        start.span,
+                    );
+                }
+                if !end_ty.is_error() && !end_ty.is_int_like() {
+                    self.error(
+                        format!("range end must be int, found {}", end_ty),
+                        end.span,
+                    );
+                }
+                Ty::Int
+            }
+        };
+
+        // Pattern bindings are scoped to the loop body.
+        // We push scope, check the pattern (which binds with is_local: true),
+        // then mark entity-typed bindings as non-local so field mutation works
+        // (e.g. `for target in targets { target.HP -= damage }`).
+        self.scope.push(BlockKind::Inner);
+        self.check_pattern(pattern, &element_ty);
+        self.scope.mark_current_scope_non_local();
+        self.check_block(body);
+        self.scope.pop();
+
+        Ty::Unit
     }
 
     fn check_arm_body(&mut self, body: &ArmBody) -> Ty {

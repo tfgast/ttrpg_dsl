@@ -310,6 +310,8 @@ impl Parser {
 
             TokenKind::Match => self.parse_match_expr(),
 
+            TokenKind::For => self.parse_for_expr(),
+
             _ => {
                 self.error(format!("expected expression, found {:?}", self.peek()));
                 Err(())
@@ -547,6 +549,39 @@ impl Parser {
             body,
             span: self.end_span(start),
         })
+    }
+
+    fn parse_for_expr(&mut self) -> Result<Spanned<ExprKind>, ()> {
+        let start = self.start_span();
+        self.expect(&TokenKind::For)?;
+        let pattern = self.parse_pattern()?;
+        self.expect(&TokenKind::In)?;
+
+        // Parse the first expression. Since `..` is not an expression
+        // operator, parse_expr() naturally stops before it.
+        let first = self.parse_expr()?;
+
+        let iterable = if matches!(self.peek(), TokenKind::DotDot) {
+            self.advance();
+            let end = self.parse_expr()?;
+            ForIterable::Range {
+                start: Box::new(first),
+                end: Box::new(end),
+            }
+        } else {
+            ForIterable::Collection(Box::new(first))
+        };
+
+        let body = self.parse_block()?;
+
+        Ok(Spanned::new(
+            ExprKind::For {
+                pattern: Box::new(pattern),
+                iterable,
+                body,
+            },
+            self.end_span(start),
+        ))
     }
 
     fn parse_arm_body(&mut self) -> Result<ArmBody, ()> {

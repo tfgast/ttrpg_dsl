@@ -92,7 +92,7 @@ fn token_style(kind: &TokenKind, is_first_cli_command: bool) -> Style {
         TokenKind::Ident(_) if is_first_cli_command => Color::Cyan.bold(),
 
         // DSL keywords
-        TokenKind::If | TokenKind::Else | TokenKind::Match | TokenKind::Let | TokenKind::In => {
+        TokenKind::If | TokenKind::Else | TokenKind::Match | TokenKind::Let | TokenKind::In | TokenKind::For => {
             Color::Blue.bold()
         }
 

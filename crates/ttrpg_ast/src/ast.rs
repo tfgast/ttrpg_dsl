@@ -408,6 +408,20 @@ pub enum ExprKind {
     GuardMatch {
         arms: Vec<GuardArm>,
     },
+    For {
+        pattern: Box<Spanned<PatternKind>>,
+        iterable: ForIterable,
+        body: Block,
+    },
+}
+
+#[derive(Clone)]
+pub enum ForIterable {
+    Collection(Box<Spanned<ExprKind>>),
+    Range {
+        start: Box<Spanned<ExprKind>>,
+        end: Box<Spanned<ExprKind>>,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

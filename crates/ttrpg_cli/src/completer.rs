@@ -13,7 +13,7 @@ const ALL_COMMANDS: &[&str] = &[
 
 /// DSL keywords useful in expression contexts.
 const DSL_KEYWORDS: &[&str] = &[
-    "if", "else", "match", "let", "in",
+    "if", "else", "match", "let", "in", "for",
     "true", "false", "none",
 ];
 
