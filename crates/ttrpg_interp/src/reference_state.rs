@@ -25,7 +25,6 @@ impl GridPosition {
 // ── EntityState ────────────────────────────────────────────────
 
 struct EntityState {
-    #[allow(dead_code)]
     name: String,
     fields: HashMap<String, Value>,
 }
@@ -103,6 +102,11 @@ impl GameState {
             duration,
         };
         self.conditions.entry(entity.0).or_default().push(cond);
+    }
+
+    /// Get the type name (as passed to `add_entity`) for an entity.
+    pub fn entity_type_name(&self, entity: &EntityRef) -> Option<&str> {
+        self.entities.get(&entity.0).map(|e| e.name.as_str())
     }
 
     /// Remove an entity and all associated data (conditions, turn budgets).

@@ -7,6 +7,7 @@ use rand::rngs::StdRng;
 use ttrpg_ast::ast::Program;
 use ttrpg_ast::diagnostic::{Diagnostic, Severity};
 use ttrpg_checker::env::TypeEnv;
+use ttrpg_checker::ty::Ty;
 use ttrpg_interp::Interpreter;
 use ttrpg_interp::effect::FieldPathSegment;
 use ttrpg_interp::reference_state::GameState;
@@ -253,6 +254,13 @@ impl Runner {
             ));
         }
 
+        if !is_valid_handle(handle) {
+            return Err(CliError::Message(format!(
+                "invalid handle '{}': must be a bare identifier",
+                handle
+            )));
+        }
+
         if self.handles.contains_key(handle) {
             return Err(CliError::Message(format!(
                 "handle '{}' already exists",
@@ -295,6 +303,30 @@ impl Runner {
             )));
         };
 
+        // Validate field names and types against entity schema
+        if let Some(schema_fields) = self.type_env.lookup_fields(entity_type) {
+            for (field_name, field_val) in &fields {
+                match schema_fields.iter().find(|f| f.name == *field_name) {
+                    None => {
+                        return Err(CliError::Message(format!(
+                            "unknown field '{}' on entity type '{}'",
+                            field_name, entity_type
+                        )));
+                    }
+                    Some(fi) => {
+                        if !value_matches_ty(field_val, &fi.ty) {
+                            return Err(CliError::Message(format!(
+                                "type mismatch for field '{}': expected {}, got {}",
+                                field_name,
+                                fi.ty.display(),
+                                value_type_display(field_val)
+                            )));
+                        }
+                    }
+                }
+            }
+        }
+
         let entity = self.game_state.borrow_mut().add_entity(entity_type, fields);
         self.handles.insert(handle.to_string(), entity);
         self.reverse_handles.insert(entity, handle.to_string());
@@ -335,8 +367,46 @@ impl Runner {
 
         let entity = self.resolve_handle(handle)?;
 
-        // Parse and evaluate the RHS expression
-        let val = self.eval(rhs)?;
+        // Validate field name against entity schema (borrow scoped before eval)
+        let expected_ty = {
+            let gs = self.game_state.borrow();
+            if let Some(type_name) = gs.entity_type_name(&entity) {
+                if let Some(schema_fields) = self.type_env.lookup_fields(type_name) {
+                    match schema_fields.iter().find(|f| f.name == field) {
+                        Some(fi) => Some(fi.ty.clone()),
+                        None => {
+                            return Err(CliError::Message(format!(
+                                "unknown field '{}' on entity type '{}'",
+                                field, type_name
+                            )));
+                        }
+                    }
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        };
+
+        // Parse and evaluate the RHS expression (try handle resolution first)
+        let val = if let Some(&ent) = self.handles.get(rhs) {
+            Value::Entity(ent)
+        } else {
+            self.eval(rhs)?
+        };
+
+        // Validate type compatibility
+        if let Some(ref ty) = expected_ty {
+            if !value_matches_ty(&val, ty) {
+                return Err(CliError::Message(format!(
+                    "type mismatch for field '{}': expected {}, got {}",
+                    field,
+                    ty.display(),
+                    value_type_display(&val)
+                )));
+            }
+        }
 
         // Write directly to GameState
         self.game_state.borrow_mut().write_field(
@@ -577,28 +647,32 @@ impl Runner {
                 )));
             }
 
-            // Evaluate value expression with MinimalHandler (spawn fields are literal values)
-            let (parsed, diags) = ttrpg_parser::parse_expr(val_str);
-            if !diags.is_empty() {
-                let msgs: Vec<_> = diags.iter().map(|d| d.message.as_str()).collect();
-                return Err(CliError::Message(format!(
-                    "parse error in field '{}': {}",
-                    key,
-                    msgs.join("; ")
-                )));
-            }
-            let parsed = parsed.ok_or_else(|| {
-                CliError::Message(format!("failed to parse value for field '{}'", key))
-            })?;
-
-            let interp = Interpreter::new(&self.program, &self.type_env)
-                .map_err(|e| CliError::Message(format!("interpreter error: {}", e)))?;
-            let mut handler = MinimalHandler;
-            let val = interp
-                .evaluate_expr(&*self.game_state.borrow(), &mut handler, &parsed)
-                .map_err(|e| {
-                    CliError::Message(format!("error evaluating field '{}': {}", key, e))
+            // Try handle resolution first, then fall back to expression eval
+            let val = if let Some(&ent) = self.handles.get(val_str) {
+                Value::Entity(ent)
+            } else {
+                let (parsed, diags) = ttrpg_parser::parse_expr(val_str);
+                if !diags.is_empty() {
+                    let msgs: Vec<_> = diags.iter().map(|d| d.message.as_str()).collect();
+                    return Err(CliError::Message(format!(
+                        "parse error in field '{}': {}",
+                        key,
+                        msgs.join("; ")
+                    )));
+                }
+                let parsed = parsed.ok_or_else(|| {
+                    CliError::Message(format!("failed to parse value for field '{}'", key))
                 })?;
+
+                let interp = Interpreter::new(&self.program, &self.type_env)
+                    .map_err(|e| CliError::Message(format!("interpreter error: {}", e)))?;
+                let mut handler = MinimalHandler;
+                interp
+                    .evaluate_expr(&*self.game_state.borrow(), &mut handler, &parsed)
+                    .map_err(|e| {
+                        CliError::Message(format!("error evaluating field '{}': {}", key, e))
+                    })?
+            };
             fields.insert(key.to_string(), val);
         }
         Ok(fields)
@@ -647,6 +721,66 @@ fn split_top_level_commas(s: &str) -> Vec<&str> {
     }
     result.push(&s[start..]);
     result
+}
+
+/// Check that a handle name is a bare identifier: `[a-zA-Z_][a-zA-Z0-9_]*`.
+fn is_valid_handle(s: &str) -> bool {
+    let mut chars = s.chars();
+    match chars.next() {
+        Some(c) if c.is_ascii_alphabetic() || c == '_' => {}
+        _ => return false,
+    }
+    chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
+}
+
+/// Shallow check: does the runtime value match the declared type at the
+/// top-level variant? Does not recurse into container element types.
+fn value_matches_ty(val: &Value, ty: &Ty) -> bool {
+    match (val, ty) {
+        (Value::Int(_), Ty::Int | Ty::Resource) => true,
+        (Value::Float(_), Ty::Float) => true,
+        (Value::Bool(_), Ty::Bool) => true,
+        (Value::Str(_), Ty::String) => true,
+        (Value::None, Ty::Option(_)) => true,
+        (Value::Option(_), Ty::Option(_)) => true,
+        (Value::Entity(_), Ty::Entity(_) | Ty::AnyEntity) => true,
+        (Value::List(_), Ty::List(_)) => true,
+        (Value::Set(_), Ty::Set(_)) => true,
+        (Value::Map(_), Ty::Map(_, _)) => true,
+        (Value::Struct { name, .. }, Ty::Struct(n)) => name == n,
+        (Value::Struct { .. }, Ty::RollResult | Ty::TurnBudget) => true,
+        (Value::EnumVariant { enum_name, .. }, Ty::Enum(n)) => enum_name == n,
+        (Value::DiceExpr(_), Ty::DiceExpr) => true,
+        (Value::RollResult(_), Ty::RollResult) => true,
+        (Value::Position(_), Ty::Position) => true,
+        (Value::Duration(_), Ty::Duration) => true,
+        (Value::Condition(_), Ty::Condition) => true,
+        _ => false,
+    }
+}
+
+/// Human-readable type name for a runtime value (used in error messages).
+fn value_type_display(val: &Value) -> String {
+    match val {
+        Value::Int(_) => "int".into(),
+        Value::Float(_) => "float".into(),
+        Value::Bool(_) => "bool".into(),
+        Value::Str(_) => "string".into(),
+        Value::None => "none".into(),
+        Value::Option(_) => "option".into(),
+        Value::Entity(_) => "entity".into(),
+        Value::List(_) => "list".into(),
+        Value::Set(_) => "set".into(),
+        Value::Map(_) => "map".into(),
+        Value::Struct { name, .. } => name.clone(),
+        Value::EnumVariant { enum_name, .. } => enum_name.clone(),
+        Value::DiceExpr(_) => "DiceExpr".into(),
+        Value::RollResult(_) => "RollResult".into(),
+        Value::Position(_) => "Position".into(),
+        Value::Duration(_) => "Duration".into(),
+        Value::Condition(_) => "Condition".into(),
+        Value::EnumNamespace(name) => format!("{}(namespace)", name),
+    }
 }
 
 impl Default for Runner {
@@ -1316,5 +1450,158 @@ system "test" {
         assert!(err.to_string().contains("unknown handle"));
 
         std::fs::remove_file(&path).ok();
+    }
+
+    // ── Handle validation tests (Issue 3) ────────────────────────
+
+    #[test]
+    fn spawn_dotted_handle_rejected() {
+        let mut runner = Runner::new();
+        load_character_program(&mut runner);
+        let err = runner.exec("spawn Character foo.bar").unwrap_err();
+        assert!(
+            err.to_string().contains("invalid handle"),
+            "got: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn spawn_numeric_handle_rejected() {
+        let mut runner = Runner::new();
+        load_character_program(&mut runner);
+        let err = runner.exec("spawn Character 123abc").unwrap_err();
+        assert!(
+            err.to_string().contains("invalid handle"),
+            "got: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn spawn_underscore_handle_ok() {
+        let mut runner = Runner::new();
+        load_character_program(&mut runner);
+        runner.exec("spawn Character _fighter").unwrap();
+        let output = runner.take_output();
+        assert!(output[0].contains("spawned Character _fighter"));
+    }
+
+    // ── Handle resolution in RHS tests (Issue 1) ────────────────
+
+    /// Load a program with entity-typed fields for handle resolution tests.
+    fn load_party_program(runner: &mut Runner) {
+        static COUNTER: AtomicU64 = AtomicU64::new(0);
+        let id = COUNTER.fetch_add(1, Ordering::Relaxed);
+        let dir = std::env::temp_dir().join("ttrpg_cli_test");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join(format!("test_party_{}.ttrpg", id));
+        std::fs::write(
+            &path,
+            r#"
+system "test" {
+    entity Character {
+        HP: int
+        AC: int
+        ally: Character
+    }
+    derive id(x: int) -> int { x }
+}
+"#,
+        )
+        .unwrap();
+        runner.exec(&format!("load {}", path.display())).unwrap();
+        runner.take_output();
+        std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn spawn_field_handle_resolution() {
+        let mut runner = Runner::new();
+        load_party_program(&mut runner);
+
+        runner.exec("spawn Character alice { HP: 30, AC: 15 }").unwrap();
+        runner.take_output();
+
+        // Spawn bob with ally: alice (handle resolves to entity value)
+        runner.exec("spawn Character bob { HP: 25, ally: alice }").unwrap();
+        let output = runner.take_output();
+        assert!(output[0].contains("spawned Character bob"));
+    }
+
+    #[test]
+    fn set_handle_rhs_resolves() {
+        let mut runner = Runner::new();
+        load_party_program(&mut runner);
+
+        runner.exec("spawn Character alice { HP: 30 }").unwrap();
+        runner.take_output();
+        runner.exec("spawn Character bob { HP: 25 }").unwrap();
+        runner.take_output();
+
+        // Set bob.ally = alice (handle resolves to entity value)
+        runner.exec("set bob.ally = alice").unwrap();
+        let output = runner.take_output();
+        assert!(output[0].contains("bob.ally ="));
+    }
+
+    // ── Schema validation tests (Issue 2) ────────────────────────
+
+    #[test]
+    fn spawn_unknown_field_rejected() {
+        let mut runner = Runner::new();
+        load_character_program(&mut runner);
+        let err = runner
+            .exec("spawn Character fighter { HP: 30, STR: 16 }")
+            .unwrap_err();
+        assert!(
+            err.to_string().contains("unknown field 'STR'"),
+            "got: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn set_unknown_field_rejected() {
+        let mut runner = Runner::new();
+        load_character_program(&mut runner);
+        runner.exec("spawn Character fighter { HP: 30 }").unwrap();
+        runner.take_output();
+
+        let err = runner.exec("set fighter.STR = 16").unwrap_err();
+        assert!(
+            err.to_string().contains("unknown field 'STR'"),
+            "got: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn spawn_type_mismatch_rejected() {
+        let mut runner = Runner::new();
+        load_character_program(&mut runner);
+        let err = runner
+            .exec(r#"spawn Character fighter { HP: "thirty" }"#)
+            .unwrap_err();
+        assert!(
+            err.to_string().contains("type mismatch"),
+            "got: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn set_type_mismatch_rejected() {
+        let mut runner = Runner::new();
+        load_character_program(&mut runner);
+        runner.exec("spawn Character fighter { HP: 30 }").unwrap();
+        runner.take_output();
+
+        let err = runner.exec(r#"set fighter.HP = "thirty""#).unwrap_err();
+        assert!(
+            err.to_string().contains("type mismatch"),
+            "got: {}",
+            err
+        );
     }
 }
