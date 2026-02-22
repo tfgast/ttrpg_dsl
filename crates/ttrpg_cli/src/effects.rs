@@ -408,11 +408,11 @@ pub fn roll_dice_from_queue(
 }
 
 /// Apply a dice filter (keep/drop highest/lowest) and return the kept dice.
-fn apply_dice_filter(dice: &mut Vec<i64>, filter: &Option<DiceFilter>) -> Vec<i64> {
+fn apply_dice_filter(dice: &mut [i64], filter: &Option<DiceFilter>) -> Vec<i64> {
     match filter {
-        None => dice.clone(),
+        None => dice.to_owned(),
         Some(f) => {
-            let mut sorted = dice.clone();
+            let mut sorted = dice.to_owned();
             sorted.sort();
             match f {
                 DiceFilter::KeepHighest(n) => {
@@ -482,7 +482,7 @@ mod tests {
         };
         let result = roll_dice(&mut rng, &expr);
         assert_eq!(result.dice.len(), 2);
-        assert!(result.dice.iter().all(|&d| d >= 1 && d <= 6));
+        assert!(result.dice.iter().all(|&d| (1..=6).contains(&d)));
         assert_eq!(result.kept.len(), 2);
         assert_eq!(result.total, result.unmodified + 3);
     }

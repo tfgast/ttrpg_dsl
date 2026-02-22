@@ -68,7 +68,7 @@ impl<'a> RawLexer<'a> {
         // The 'd' must immediately follow the number (no whitespace)
         if self.cursor.peek() == Some('d') {
             // Peek further: next char after 'd' must be a digit for this to be a dice literal
-            if self.cursor.peek_at_offset(1).map_or(false, |ch| ch.is_ascii_digit()) {
+            if self.cursor.peek_at_offset(1).is_some_and(|ch| ch.is_ascii_digit()) {
                 self.cursor.advance(); // consume 'd'
                 let sides_start = self.cursor.pos();
                 self.cursor.eat_while(|ch| ch.is_ascii_digit());
@@ -110,7 +110,7 @@ impl<'a> RawLexer<'a> {
         };
 
         // Check that the third char is a digit
-        if !self.cursor.peek_at_offset(2).map_or(false, |ch| ch.is_ascii_digit()) {
+        if !self.cursor.peek_at_offset(2).is_some_and(|ch| ch.is_ascii_digit()) {
             return None;
         }
 
@@ -252,7 +252,7 @@ impl<'a> RawLexer<'a> {
                     Token::new(TokenKind::AmpAmp, Span::new(start, self.cursor.pos()))
                 } else {
                     Token::new(
-                        TokenKind::Error(format!("unexpected character '&'")),
+                        TokenKind::Error("unexpected character '&'".to_string()),
                         Span::new(start, self.cursor.pos()),
                     )
                 }
@@ -264,7 +264,7 @@ impl<'a> RawLexer<'a> {
                     Token::new(TokenKind::PipePipe, Span::new(start, self.cursor.pos()))
                 } else {
                     Token::new(
-                        TokenKind::Error(format!("unexpected character '|'")),
+                        TokenKind::Error("unexpected character '|'".to_string()),
                         Span::new(start, self.cursor.pos()),
                     )
                 }
@@ -277,7 +277,7 @@ impl<'a> RawLexer<'a> {
 
             '_' => {
                 // Underscore: if followed by alphanumeric or _, it's an identifier
-                if self.cursor.peek().map_or(false, |ch| ch.is_ascii_alphanumeric() || ch == '_') {
+                if self.cursor.peek().is_some_and(|ch| ch.is_ascii_alphanumeric() || ch == '_') {
                     self.lex_ident_or_keyword(start)
                 } else {
                     Token::new(TokenKind::Underscore, Span::new(start, self.cursor.pos()))

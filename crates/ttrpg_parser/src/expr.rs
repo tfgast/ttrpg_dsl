@@ -4,6 +4,7 @@ use ttrpg_ast::Spanned;
 use ttrpg_lexer::TokenKind;
 
 impl Parser {
+    #[allow(clippy::result_unit_err)]
     pub fn parse_expr(&mut self) -> Result<Spanned<ExprKind>, ()> {
         self.parse_or_expr()
     }

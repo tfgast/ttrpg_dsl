@@ -47,7 +47,7 @@ pub(crate) fn execute_action(
     let response = env.handler.handle(Effect::ActionStarted {
         name: action_name.clone(),
         kind: ActionKind::Action,
-        actor: actor.clone(),
+        actor,
         params: param_values,
     });
 
@@ -85,11 +85,11 @@ pub(crate) fn execute_action(
 
     // 2. Bind scope: receiver + params. Save previous turn_actor.
     let prev_turn_actor = env.turn_actor.take();
-    env.turn_actor = Some(actor.clone());
+    env.turn_actor = Some(actor);
     env.push_scope();
 
     // Bind receiver
-    env.bind(action.receiver_name.clone(), Value::Entity(actor.clone()));
+    env.bind(action.receiver_name.clone(), Value::Entity(actor));
 
     // Bind regular params
     for (name, value) in &args {
@@ -211,7 +211,7 @@ pub(crate) fn execute_reaction(
             event: reaction.trigger.event_name.clone(),
             trigger: event_payload.clone(),
         },
-        actor: reactor.clone(),
+        actor: reactor,
         params: vec![],
     });
 
@@ -249,13 +249,13 @@ pub(crate) fn execute_reaction(
 
     // 2. Bind scope: receiver + trigger payload. Save previous turn_actor.
     let prev_turn_actor = env.turn_actor.take();
-    env.turn_actor = Some(reactor.clone());
+    env.turn_actor = Some(reactor);
     env.push_scope();
 
     // Bind receiver
     env.bind(
         reaction.receiver_name.clone(),
-        Value::Entity(reactor.clone()),
+        Value::Entity(reactor),
     );
 
     // Bind trigger payload as "trigger"
@@ -335,7 +335,7 @@ fn deduct_costs(
         })?;
 
         let response = env.handler.handle(Effect::DeductCost {
-            actor: actor.clone(),
+            actor: *actor,
             token: token.node.clone(),
             budget_field: budget_field.to_string(),
         });
@@ -857,7 +857,7 @@ mod tests {
             &mut env,
             &action,
             actor,
-            vec![("target".to_string(), Value::Entity(target.clone()))],
+            vec![("target".to_string(), Value::Entity(target))],
             span(),
         )
         .unwrap();

@@ -163,7 +163,7 @@ pub(crate) fn evaluate_fn_with_values(
     // Fill defaults for missing optional params
     for i in bound.len()..fn_info.params.len() {
         if fn_info.params[i].has_default {
-            if let Some(ref default_expr) = ast_params.get(i).and_then(|p| p.default.as_ref()) {
+            if let Some(default_expr) = ast_params.get(i).and_then(|p| p.default.as_ref()) {
                 env.push_scope();
                 for (pname, pval) in &bound {
                     env.bind(pname.clone(), pval.clone());
@@ -360,7 +360,7 @@ fn dispatch_action(
 
     // Extract receiver EntityRef from the first bound argument
     let actor = match &bound[0].1 {
-        Value::Entity(entity_ref) => entity_ref.clone(),
+        Value::Entity(entity_ref) => *entity_ref,
         other => {
             return Err(RuntimeError::with_span(
                 format!(
@@ -793,7 +793,7 @@ mod tests {
         Program {
             items: vec![spanned(TopLevel::System(SystemBlock {
                 name: "Test".into(),
-                decls: decls.into_iter().map(|d| spanned(d)).collect(),
+                decls: decls.into_iter().map(spanned).collect(),
             }))],
         }
     }

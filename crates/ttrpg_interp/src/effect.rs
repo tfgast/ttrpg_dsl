@@ -148,7 +148,7 @@ pub enum Response {
 #[derive(Debug, Clone)]
 pub enum Step {
     /// The interpreter has yielded an effect and needs a response.
-    Yielded(Effect),
+    Yielded(Box<Effect>),
     /// The interpreter has completed execution.
     Done(Value),
 }

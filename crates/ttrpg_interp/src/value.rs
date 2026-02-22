@@ -454,7 +454,7 @@ mod tests {
         // +0 != -0 for structural purposes
         assert_ne!(Value::Float(0.0), Value::Float(-0.0));
         // Normal equality
-        assert_eq!(Value::Float(3.14), Value::Float(3.14));
+        assert_eq!(Value::Float(3.125), Value::Float(3.125));
     }
 
     #[test]
@@ -760,7 +760,7 @@ mod tests {
             (Value::None, Value::None, Value::Int(0)),
             (Value::Bool(true), Value::Bool(true), Value::Bool(false)),
             (Value::Int(42), Value::Int(42), Value::Int(43)),
-            (Value::Float(3.14), Value::Float(3.14), Value::Float(2.71)),
+            (Value::Float(3.125), Value::Float(3.125), Value::Float(2.5)),
             (
                 Value::Str("a".into()),
                 Value::Str("a".into()),

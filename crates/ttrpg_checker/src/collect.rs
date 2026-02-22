@@ -96,13 +96,17 @@ fn pass_1a(
             continue;
         }
 
-        if env.types.contains_key(&name) {
-            diagnostics.push(Diagnostic::error(
-                format!("duplicate type declaration `{}`", name),
-                decl.span,
-            ));
-        } else {
-            env.types.insert(name, stub);
+        use std::collections::hash_map::Entry;
+        match env.types.entry(name) {
+            Entry::Occupied(e) => {
+                diagnostics.push(Diagnostic::error(
+                    format!("duplicate type declaration `{}`", e.key()),
+                    decl.span,
+                ));
+            }
+            Entry::Vacant(e) => {
+                e.insert(stub);
+            }
         }
     }
 }
@@ -338,6 +342,7 @@ fn collect_entity(e: &EntityDecl, env: &mut TypeEnv, diagnostics: &mut Vec<Diagn
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn collect_fn(
     name: &str,
     kind: FnKind,

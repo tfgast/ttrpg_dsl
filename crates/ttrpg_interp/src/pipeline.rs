@@ -549,7 +549,7 @@ fn has_phase2_stmts(stmts: &[ModifyStmt]) -> bool {
             has_phase2_stmts(then_body)
                 || else_body
                     .as_ref()
-                    .map_or(false, |e| has_phase2_stmts(e))
+                    .is_some_and(|e| has_phase2_stmts(e))
         }
         _ => false,
     })
@@ -725,7 +725,7 @@ mod tests {
         Program {
             items: vec![spanned(TopLevel::System(SystemBlock {
                 name: "Test".into(),
-                decls: decls.into_iter().map(|d| spanned(d)).collect(),
+                decls: decls.into_iter().map(spanned).collect(),
             }))],
         }
     }

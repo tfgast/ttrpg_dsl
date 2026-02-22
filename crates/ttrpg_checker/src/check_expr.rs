@@ -422,8 +422,7 @@ impl<'a> Checker<'a> {
         match obj_ty {
             Ty::Struct(name) | Ty::Entity(name) => {
                 // Check for event payload synthetic structs
-                if name.starts_with("__event_") {
-                    let event_name = &name["__event_".len()..];
+                if let Some(event_name) = name.strip_prefix("__event_") {
                     if let Some(event_info) = self.env.events.get(event_name) {
                         if let Some((_, ty)) =
                             event_info.fields.iter().find(|(n, _)| n == field)
@@ -709,7 +708,7 @@ impl<'a> Checker<'a> {
         let mut next_positional = 0usize;
 
         // Check argument types and resolve parameter mapping
-        for (_i, arg) in args.iter().enumerate() {
+        for arg in args.iter() {
             let arg_ty = self.check_expr(&arg.value);
 
             // Resolve which parameter this argument maps to

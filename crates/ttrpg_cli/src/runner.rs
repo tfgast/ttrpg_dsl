@@ -229,8 +229,8 @@ impl Runner {
             Ok(s) => s,
             Err(e) => {
                 // Clear stale state so a previous successful load doesn't linger.
-                self.program = Box::new(Program { items: Vec::new() });
-                self.type_env = Box::new(TypeEnv::new());
+                *self.program = Program { items: Vec::new() };
+                *self.type_env = TypeEnv::new();
                 self.game_state = RefCell::new(GameState::new());
                 self.diagnostics = Vec::new();
                 self.last_path = Some(PathBuf::from(path));
@@ -262,8 +262,8 @@ impl Runner {
             .collect();
 
         if errors.is_empty() {
-            self.program = Box::new(program);
-            self.type_env = Box::new(check_result.env);
+            *self.program = program;
+            *self.type_env = check_result.env;
             self.game_state = RefCell::new(GameState::new());
             self.diagnostics = all_diags;
             self.last_path = Some(PathBuf::from(path));
@@ -274,8 +274,8 @@ impl Runner {
         } else {
             let error_count = errors.len();
             // Clear stale program state so eval cannot use a previous successful load.
-            self.program = Box::new(Program { items: Vec::new() });
-            self.type_env = Box::new(TypeEnv::new());
+            *self.program = Program { items: Vec::new() };
+            *self.type_env = TypeEnv::new();
             self.game_state = RefCell::new(GameState::new());
             self.diagnostics = all_diags;
             self.last_path = Some(PathBuf::from(path));

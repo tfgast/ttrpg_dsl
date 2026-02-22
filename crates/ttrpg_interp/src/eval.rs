@@ -824,7 +824,7 @@ fn eval_assign_turn(
     rhs: Value,
     span: ttrpg_ast::Span,
 ) -> Result<(), RuntimeError> {
-    let actor = env.turn_actor.clone().ok_or_else(|| {
+    let actor = env.turn_actor.ok_or_else(|| {
         RuntimeError::with_span(
             "cannot access `turn` outside of action/reaction context",
             span,
@@ -1039,7 +1039,7 @@ fn find_entity_depth(
     for (i, seg) in segments.iter().enumerate() {
         match &current {
             Value::Entity(entity_ref) => {
-                return Ok(Some((i, entity_ref.clone())));
+                return Ok(Some((i, *entity_ref)));
             }
             Value::Struct { fields, .. } => {
                 if let EvalSegment::Field(name) = seg {
@@ -4594,7 +4594,7 @@ mod tests {
         let mut env = make_env(&state, &mut handler, &interp);
 
         let entity_ref = EntityRef(1);
-        env.bind("target".to_string(), Value::Entity(entity_ref.clone()));
+        env.bind("target".to_string(), Value::Entity(entity_ref));
 
         // target.HP -= 5
         let stmt = make_assign(
@@ -4638,7 +4638,7 @@ mod tests {
         let mut env = make_env(&state, &mut handler, &interp);
 
         let entity_ref = EntityRef(42);
-        env.bind("target".to_string(), Value::Entity(entity_ref.clone()));
+        env.bind("target".to_string(), Value::Entity(entity_ref));
 
         // target.stats[STR] = 18
         let stmt = make_assign(
@@ -4686,7 +4686,7 @@ mod tests {
             name: "__event_Attack".to_string(),
             fields: {
                 let mut f = BTreeMap::new();
-                f.insert("entity".to_string(), Value::Entity(entity_ref.clone()));
+                f.insert("entity".to_string(), Value::Entity(entity_ref));
                 f
             },
         };

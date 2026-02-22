@@ -505,7 +505,7 @@ mod tests {
         Program {
             items: vec![spanned(TopLevel::System(SystemBlock {
                 name: "Test".into(),
-                decls: decls.into_iter().map(|d| spanned(d)).collect(),
+                decls: decls.into_iter().map(spanned).collect(),
             }))],
         }
     }

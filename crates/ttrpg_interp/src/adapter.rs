@@ -181,7 +181,7 @@ impl<S: WritableState, H: EffectHandler> AdaptedHandler<'_, S, H> {
                 actor,
                 budget_field,
                 ..
-            } => (actor.clone(), budget_field.clone()),
+            } => (*actor, budget_field.clone()),
             _ => unreachable!(),
         };
 

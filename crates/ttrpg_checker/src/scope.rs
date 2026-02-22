@@ -68,6 +68,12 @@ pub struct ScopeStack {
     scopes: Vec<Scope>,
 }
 
+impl Default for ScopeStack {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ScopeStack {
     pub fn new() -> Self {
         Self { scopes: Vec::new() }
@@ -112,28 +118,28 @@ impl ScopeStack {
 
     pub fn allows_dice(&self) -> bool {
         self.current_block_kind()
-            .map_or(false, |k| k.allows_dice())
+            .is_some_and(|k| k.allows_dice())
     }
 
     pub fn allows_mutation(&self) -> bool {
         self.current_block_kind()
-            .map_or(false, |k| k.allows_mutation())
+            .is_some_and(|k| k.allows_mutation())
     }
 
     pub fn allows_turn(&self) -> bool {
         self.current_block_kind()
-            .map_or(false, |k| k.allows_turn())
+            .is_some_and(|k| k.allows_turn())
     }
 
     pub fn allows_calls(&self) -> bool {
         self.current_block_kind()
-            .map_or(true, |k| k.allows_calls())
+            .is_none_or(|k| k.allows_calls())
     }
 
     /// Check if a name is already bound in the innermost scope.
     pub fn has_in_current_scope(&self, name: &str) -> bool {
         self.scopes
             .last()
-            .map_or(false, |s| s.bindings.contains_key(name))
+            .is_some_and(|s| s.bindings.contains_key(name))
     }
 }
