@@ -24,6 +24,26 @@ impl<'a> Checker<'a> {
                 }
             }
 
+            PatternKind::Some(inner) => {
+                match scrutinee_ty {
+                    Ty::Option(inner_ty) => {
+                        self.check_pattern(inner, inner_ty);
+                    }
+                    _ if scrutinee_ty.is_error() => {
+                        self.check_pattern(inner, &Ty::Error);
+                    }
+                    _ => {
+                        self.error(
+                            format!(
+                                "`some(...)` pattern cannot match type {}",
+                                scrutinee_ty
+                            ),
+                            pattern.span,
+                        );
+                    }
+                }
+            }
+
             PatternKind::IntLit(_) => {
                 if !scrutinee_ty.is_error() && !scrutinee_ty.is_int_like() {
                     self.error(

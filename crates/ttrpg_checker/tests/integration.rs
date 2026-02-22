@@ -3362,3 +3362,49 @@ system "test" {
         }
     }
 }
+
+#[test]
+fn test_some_pattern_type_checks() {
+    let source = r#"
+system "test" {
+    derive f(x: option<int>) -> int {
+        match x {
+            some(n) => n,
+            none => 0
+        }
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_some_pattern_wrong_scrutinee() {
+    let source = r#"
+system "test" {
+    derive f(x: int) -> int {
+        match x {
+            some(n) => n,
+            _ => 0
+        }
+    }
+}
+"#;
+    expect_errors(source, &["`some(...)` pattern cannot match type int"]);
+}
+
+#[test]
+fn test_some_pattern_nested_option() {
+    let source = r#"
+system "test" {
+    derive f(x: option<option<int>>) -> int {
+        match x {
+            some(some(n)) => n,
+            some(none) => -1,
+            none => 0
+        }
+    }
+}
+"#;
+    expect_no_errors(source);
+}

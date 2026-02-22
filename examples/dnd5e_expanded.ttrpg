@@ -385,13 +385,15 @@ system "D&D 5e Expanded" {
 
     derive compute_AC(char: Character) -> int {
         let dex_mod = modifier(char.abilities[DEX])
-        // `none` is now a valid match pattern, so we can match on option<T>:
         let base = match char.equipped_armor {
             none => 10 + dex_mod,
-            // REMAINING GAP: No `some(x)` destructuring pattern exists yet,
-            // so we can't access the inner Armor's fields here.
-            // MISSING FEATURE: `some(armor) => armor.base_AC + ...`
-            _ => 10 + dex_mod  // simplified — real AC computation needs option unwrap
+            some(armor) => {
+                let dex_bonus = match armor.max_dex_bonus {
+                    none => dex_mod,
+                    some(cap) => if dex_mod < cap { dex_mod } else { cap }
+                }
+                armor.base_AC + dex_bonus
+            }
         }
         if char.shield_equipped { base + 2 } else { base }
     }
@@ -1420,10 +1422,10 @@ system "D&D 5e Expanded" {
     //    - Can't build "Nd8" where N is runtime
     //    - Upcast spells need a match per slot level
     //
-    // 4. NO OPTION DESTRUCTURING / UNWRAPPING              [ttrpg_dsl-zq1]
-    //    - spellcasting_ability: option<Ability> can't be used as map key
-    //    - equipped_armor: option<Armor> can't be pattern-matched to access fields
-    //    - No `some(x)` pattern, no `.unwrap()`, no `if let`
+    // 4. PARTIAL OPTION SUPPORT                             [ttrpg_dsl-zq1]
+    //    - `some(x)` pattern matching works (compute_AC uses it)
+    //    - spellcasting_ability: option<Ability> still can't be used as map key
+    //    - No `.unwrap()` / `.unwrap_or()`, no `if let`
     //
     // 5. NO INDEXED / PARAMETERIZED RESOURCES              [ttrpg_dsl-5yt]
     //    - Spell slots: 9 separate fields instead of map<int, resource>

@@ -496,6 +496,7 @@ pub enum PatternKind {
         fields: Vec<Spanned<PatternKind>>,
     },
     NoneLit,
+    Some(Box<Spanned<PatternKind>>),
 }
 
 // ── Statements ───────────────────────────────────────────────────

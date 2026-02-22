@@ -1,0 +1,193 @@
+//! Tests for `some(x)` / `none` pattern matching on `option<T>` values.
+
+use ttrpg_ast::diagnostic::Severity;
+use ttrpg_interp::effect::{Effect, EffectHandler, Response};
+use ttrpg_interp::reference_state::GameState;
+use ttrpg_interp::value::Value;
+use ttrpg_interp::Interpreter;
+
+struct NoopHandler;
+impl EffectHandler for NoopHandler {
+    fn handle(&mut self, _: Effect) -> Response {
+        Response::Acknowledged
+    }
+}
+
+fn setup(source: &str) -> (ttrpg_ast::ast::Program, ttrpg_checker::CheckResult) {
+    let (program, parse_errors) = ttrpg_parser::parse(source);
+    assert!(
+        parse_errors.is_empty(),
+        "parse errors: {:?}",
+        parse_errors.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+    let mut lower_diags = Vec::new();
+    let program = ttrpg_parser::lower_moves(program, &mut lower_diags);
+    assert!(
+        lower_diags.is_empty(),
+        "lowering errors: {:?}",
+        lower_diags.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+    let result = ttrpg_checker::check(&program);
+    let errors: Vec<_> = result
+        .diagnostics
+        .iter()
+        .filter(|d| d.severity == Severity::Error)
+        .collect();
+    assert!(
+        errors.is_empty(),
+        "checker errors: {:?}",
+        errors.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+    (program, result)
+}
+
+#[test]
+fn some_pattern_binds_inner_value() {
+    let source = r#"
+system "test" {
+    derive f(x: option<int>) -> int {
+        match x {
+            some(n) => n + 1,
+            none => 0
+        }
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NoopHandler;
+
+    // some(42) → 42 + 1 = 43
+    let val = interp
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "f",
+            vec![Value::Option(Some(Box::new(Value::Int(42))))],
+        )
+        .unwrap();
+    assert_eq!(val, Value::Int(43));
+}
+
+#[test]
+fn none_matches_option_none() {
+    let source = r#"
+system "test" {
+    derive f(x: option<int>) -> int {
+        match x {
+            some(n) => n + 1,
+            none => 0
+        }
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NoopHandler;
+
+    // Value::Option(None) should match `none` pattern (bug fix regression)
+    let val = interp
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "f",
+            vec![Value::Option(None)],
+        )
+        .unwrap();
+    assert_eq!(val, Value::Int(0));
+
+    // Value::None should also still match `none` pattern
+    let val = interp
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "f",
+            vec![Value::None],
+        )
+        .unwrap();
+    assert_eq!(val, Value::Int(0));
+}
+
+#[test]
+fn some_wildcard_pattern() {
+    let source = r#"
+system "test" {
+    derive f(x: option<int>) -> int {
+        match x {
+            some(_) => 1,
+            none => 0
+        }
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NoopHandler;
+
+    let val = interp
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "f",
+            vec![Value::Option(Some(Box::new(Value::Int(99))))],
+        )
+        .unwrap();
+    assert_eq!(val, Value::Int(1));
+}
+
+#[test]
+fn nested_some_pattern() {
+    let source = r#"
+system "test" {
+    derive f(x: option<option<int>>) -> int {
+        match x {
+            some(some(n)) => n,
+            some(none) => -1,
+            none => -2
+        }
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NoopHandler;
+
+    // some(some(5)) → 5
+    let val = interp
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "f",
+            vec![Value::Option(Some(Box::new(Value::Option(Some(Box::new(
+                Value::Int(5),
+            ))))))],
+        )
+        .unwrap();
+    assert_eq!(val, Value::Int(5));
+
+    // some(none) → -1
+    let val = interp
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "f",
+            vec![Value::Option(Some(Box::new(Value::Option(None))))],
+        )
+        .unwrap();
+    assert_eq!(val, Value::Int(-1));
+
+    // none → -2
+    let val = interp
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "f",
+            vec![Value::Option(None)],
+        )
+        .unwrap();
+    assert_eq!(val, Value::Int(-2));
+}

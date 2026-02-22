@@ -43,6 +43,17 @@ impl Parser {
                 let name = name.clone();
                 self.advance();
 
+                // some(pattern) — option destructuring
+                if name == "some" && matches!(self.peek(), TokenKind::LParen) {
+                    self.advance(); // consume '('
+                    let inner = self.parse_pattern()?;
+                    self.expect(&TokenKind::RParen)?;
+                    return Ok(Spanned::new(
+                        PatternKind::Some(Box::new(inner)),
+                        self.end_span(start),
+                    ));
+                }
+
                 // Check for qualified: IDENT.IDENT or IDENT.IDENT(...)
                 if matches!(self.peek(), TokenKind::Dot) {
                     self.advance();

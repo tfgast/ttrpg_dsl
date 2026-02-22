@@ -447,6 +447,42 @@ fn test_none_pattern_in_match() {
 }
 
 #[test]
+fn test_some_pattern_in_match() {
+    let source = r#"system "test" {
+    derive f(x: option<int>) -> int {
+        match x {
+            some(n) => n,
+            none => 0
+        }
+    }
+}"#;
+    let (_, diagnostics) = parse(source);
+    assert!(
+        diagnostics.is_empty(),
+        "some(n) should be a valid match pattern, got: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn test_some_wildcard_pattern_in_match() {
+    let source = r#"system "test" {
+    derive f(x: option<int>) -> int {
+        match x {
+            some(_) => 1,
+            none => 0
+        }
+    }
+}"#;
+    let (_, diagnostics) = parse(source);
+    assert!(
+        diagnostics.is_empty(),
+        "some(_) should be a valid match pattern, got: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
 fn test_requires_multiline_expression() {
     // Regression: newlines inside requires { } were not suppressed,
     // so multiline expressions like `a &&\n b` would fail.

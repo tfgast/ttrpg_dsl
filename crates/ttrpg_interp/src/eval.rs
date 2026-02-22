@@ -1520,7 +1520,16 @@ pub(crate) fn match_pattern(
 
         PatternKind::BoolLit(b) => matches!(value, Value::Bool(v) if v == b),
 
-        PatternKind::NoneLit => matches!(value, Value::None),
+        PatternKind::NoneLit => matches!(value, Value::None | Value::Option(None)),
+
+        PatternKind::Some(inner_pattern) => {
+            match value {
+                Value::Option(Some(inner_val)) => {
+                    match_pattern(env, &inner_pattern.node, inner_val, bindings)
+                }
+                _ => false,
+            }
+        }
 
         PatternKind::Ident(name) => {
             // Check if this ident is a bare enum variant (via variant_to_enum).
