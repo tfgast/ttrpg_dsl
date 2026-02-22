@@ -367,6 +367,36 @@ fn test_underscore_rejected_in_expr() {
     assert!(!diagnostics.is_empty(), "_ should be rejected in expression context");
 }
 
+// ── Regression tests ─────────────────────────────────────────────
+
+#[test]
+fn test_action_newlines_between_cost_and_requires() {
+    // Regression: blank lines or comments between cost {} and requires {}
+    // caused the parser to skip requires and fail with 'expected resolve'.
+    let source = r#"system "test" {
+    entity Character {
+        HP: int
+        position: int
+    }
+    action Attack on attacker: Character (target: Character) {
+        cost { action }
+
+        // check range
+        requires { attacker.HP > 0 }
+
+        resolve {
+            target.HP -= 5
+        }
+    }
+}"#;
+    let (_, diagnostics) = parse(source);
+    assert!(
+        diagnostics.is_empty(),
+        "newlines between cost and requires should be allowed, got: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}
+
 // ── Error recovery tests ─────────────────────────────────────────
 
 #[test]

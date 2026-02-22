@@ -256,6 +256,8 @@ impl Parser {
             None
         };
 
+        self.skip_newlines();
+
         let requires = if self.at_ident("requires") {
             Some(self.parse_requires_clause()?)
         } else {
