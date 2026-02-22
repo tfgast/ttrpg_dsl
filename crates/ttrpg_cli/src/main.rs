@@ -44,20 +44,17 @@ fn run_repl() {
             }
         };
 
-        match runner.exec(&line) {
-            Ok(()) => {}
-            Err(e) => {
-                if is_tty {
-                    eprintln!("error: {}", e);
-                } else {
-                    eprintln!("error: {}", e);
-                    process::exit(1);
-                }
-            }
+        let result = runner.exec(&line);
+
+        for out in runner.take_output() {
+            println!("{}", out);
         }
 
-        for line in runner.take_output() {
-            println!("{}", line);
+        if let Err(e) = result {
+            eprintln!("error: {}", e);
+            if !is_tty {
+                process::exit(1);
+            }
         }
 
         if is_tty {
@@ -83,16 +80,15 @@ fn run_script(path: &str) {
     let mut runner = Runner::new();
 
     for (lineno, line) in content.lines().enumerate() {
-        match runner.exec(line) {
-            Ok(()) => {}
-            Err(e) => {
-                eprintln!("{}:{}: error: {}", path, lineno + 1, e);
-                process::exit(1);
-            }
-        }
+        let result = runner.exec(line);
 
         for out in runner.take_output() {
             println!("{}", out);
+        }
+
+        if let Err(e) = result {
+            eprintln!("{}:{}: error: {}", path, lineno + 1, e);
+            process::exit(1);
         }
     }
 }

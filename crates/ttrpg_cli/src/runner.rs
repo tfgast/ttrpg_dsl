@@ -90,8 +90,21 @@ impl Runner {
     // ── Command handlers ────────────────────────────────────────
 
     fn cmd_load(&mut self, path: &str) -> Result<(), CliError> {
-        let source = std::fs::read_to_string(path)
-            .map_err(|e| CliError::Message(format!("cannot read '{}': {}", path, e)))?;
+        let source = match std::fs::read_to_string(path) {
+            Ok(s) => s,
+            Err(e) => {
+                // Clear stale state so a previous successful load doesn't linger.
+                self.program = Box::new(Program { items: Vec::new() });
+                self.type_env = Box::new(TypeEnv::new());
+                self.game_state = GameState::new();
+                self.diagnostics = Vec::new();
+                self.last_path = Some(PathBuf::from(path));
+                return Err(CliError::Message(format!(
+                    "cannot read '{}': {}",
+                    path, e
+                )));
+            }
+        };
 
         let (program, parse_diags) = ttrpg_parser::parse(&source);
 
@@ -425,14 +438,68 @@ system "test" {
         assert!(err.to_string().contains("failed to load"));
         runner.take_output();
 
-        // Eval should no longer work — stale state was cleared
+        // Arithmetic still works (no program needed for basic eval)
         runner.exec("eval 1 + 2").unwrap();
-        // Arithmetic still works (no program needed), but reload should
-        // re-attempt the bad file, confirming state was cleared
+        runner.take_output();
+
+        // Reload should re-attempt the bad file, not the good one
+        let err = runner.exec("reload").unwrap_err();
+        assert!(
+            err.to_string().contains("failed to load"),
+            "reload should target the bad file, got: {}",
+            err
+        );
         runner.take_output();
 
         std::fs::remove_file(&good).ok();
         std::fs::remove_file(&bad).ok();
+    }
+
+    #[test]
+    fn io_failure_clears_stale_state() {
+        let dir = std::env::temp_dir().join("ttrpg_cli_test");
+        std::fs::create_dir_all(&dir).unwrap();
+
+        // Load a good file first
+        let good = dir.join("good_io.ttrpg");
+        std::fs::write(
+            &good,
+            r#"
+system "test" {
+    derive add(a: int, b: int) -> int { a + b }
+}
+"#,
+        )
+        .unwrap();
+
+        let mut runner = Runner::new();
+        runner
+            .exec(&format!("load {}", good.display()))
+            .unwrap();
+        runner.take_output();
+
+        // Now try to load a nonexistent file (I/O failure)
+        let err = runner
+            .exec("load /nonexistent/path.ttrpg")
+            .unwrap_err();
+        assert!(err.to_string().contains("cannot read"));
+        runner.take_output();
+
+        // Diagnostics should be cleared (I/O failure has no parse diagnostics)
+        runner.exec("errors").unwrap();
+        let output = runner.take_output();
+        assert_eq!(output, vec!["no diagnostics"]);
+
+        // Reload should target the nonexistent file, not the good one
+        let err = runner.exec("reload").unwrap_err();
+        assert!(
+            err.to_string().contains("cannot read"),
+            "reload should target the failed path, got: {}",
+            err
+        );
+        runner.take_output();
+
+        std::fs::remove_file(&good).ok();
     }
 
     #[test]

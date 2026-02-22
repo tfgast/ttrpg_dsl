@@ -10,19 +10,24 @@ pub enum Command {
 
 /// Parse a line of input into a command.
 ///
-/// Strips `//` comments, skips blank lines (returns `None`),
-/// and splits on the first whitespace token.
+/// Skips blank lines and `//`-only lines (returns `None`).
+/// Comment stripping is applied per-command: `eval` expressions
+/// have trailing `//` comments removed, while `load` paths are
+/// taken as the first whitespace-delimited token (preserving `//`
+/// that may appear in valid file paths).
 pub fn parse_command(line: &str) -> Option<Command> {
-    let stripped = strip_comment(line);
-    let trimmed = stripped.trim();
-    if trimmed.is_empty() {
+    let trimmed = line.trim();
+    if trimmed.is_empty() || trimmed.starts_with("//") {
         return None;
     }
 
     let (keyword, tail) = split_first_token(trimmed);
     match keyword {
         "load" => {
-            let path = tail.trim();
+            // Take the first token as the path — paths don't contain
+            // unquoted spaces, and this avoids mangling `//` in paths.
+            let tail_trimmed = tail.trim_start();
+            let (path, _) = split_first_token(tail_trimmed);
             if path.is_empty() {
                 Some(Command::Unknown("load".into()))
             } else {
@@ -30,7 +35,7 @@ pub fn parse_command(line: &str) -> Option<Command> {
             }
         }
         "eval" => {
-            let expr = tail.trim();
+            let expr = strip_comment(tail).trim();
             if expr.is_empty() {
                 Some(Command::Unknown("eval".into()))
             } else {
@@ -164,6 +169,23 @@ mod tests {
         assert_eq!(
             parse_command(r#"eval "a//b" // real comment"#),
             Some(Command::Eval(r#""a//b""#.into()))
+        );
+    }
+
+    #[test]
+    fn load_path_with_double_slash() {
+        // `//` in a file path should NOT be treated as a comment
+        assert_eq!(
+            parse_command("load /tmp//file.ttrpg"),
+            Some(Command::Load("/tmp//file.ttrpg".into()))
+        );
+    }
+
+    #[test]
+    fn load_path_with_trailing_comment() {
+        assert_eq!(
+            parse_command("load /some/path // comment"),
+            Some(Command::Load("/some/path".into()))
         );
     }
 
