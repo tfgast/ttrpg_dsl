@@ -102,6 +102,116 @@ fn dispatch_fn(
     }
 }
 
+// ── Public entry point for derive/mechanic with pre-evaluated args ──
+
+/// Evaluate a derive or mechanic function with pre-evaluated positional arguments.
+///
+/// Used by the public API (`Interpreter::evaluate_derive`, `Interpreter::evaluate_mechanic`)
+/// where arguments are already `Value`s rather than AST expressions.
+pub(crate) fn evaluate_fn_with_values(
+    env: &mut Env,
+    name: &str,
+    args: Vec<Value>,
+    call_span: Span,
+) -> Result<Value, RuntimeError> {
+    let fn_decl = env
+        .interp
+        .index
+        .derives
+        .get(name)
+        .or_else(|| env.interp.index.mechanics.get(name))
+        .ok_or_else(|| {
+            RuntimeError::with_span(
+                format!("undefined function '{}'", name),
+                call_span,
+            )
+        })?;
+
+    let ast_params = fn_decl.params.clone();
+    let body = fn_decl.body.clone();
+
+    let fn_info = env
+        .interp
+        .type_env
+        .lookup_fn(name)
+        .ok_or_else(|| {
+            RuntimeError::with_span(
+                format!("internal error: no type info for function '{}'", name),
+                call_span,
+            )
+        })?
+        .clone();
+
+    // Map positional args to param names
+    if args.len() > fn_info.params.len() {
+        return Err(RuntimeError::with_span(
+            format!(
+                "too many arguments: '{}' takes {} params, got {}",
+                name,
+                fn_info.params.len(),
+                args.len()
+            ),
+            call_span,
+        ));
+    }
+
+    let mut bound: Vec<(String, Value)> = Vec::new();
+    for (i, val) in args.into_iter().enumerate() {
+        bound.push((fn_info.params[i].name.clone(), val));
+    }
+
+    // Fill defaults for missing optional params
+    for i in bound.len()..fn_info.params.len() {
+        if fn_info.params[i].has_default {
+            if let Some(ref default_expr) = ast_params.get(i).and_then(|p| p.default.as_ref()) {
+                env.push_scope();
+                for (pname, pval) in &bound {
+                    env.bind(pname.clone(), pval.clone());
+                }
+                let default_val = eval_expr(env, default_expr)?;
+                env.pop_scope();
+                bound.push((fn_info.params[i].name.clone(), default_val));
+            }
+        } else {
+            return Err(RuntimeError::with_span(
+                format!(
+                    "missing required argument '{}' for '{}'",
+                    fn_info.params[i].name, name
+                ),
+                call_span,
+            ));
+        }
+    }
+
+    // Collect modifiers, Phase 1, execute body, Phase 2
+    let modifiers = collect_modifiers_owned(env, name, &fn_info, &bound)?;
+
+    let bound = if modifiers.is_empty() {
+        bound
+    } else {
+        run_phase1(env, name, &fn_info, bound, &modifiers)?
+    };
+
+    env.push_scope();
+    for (param_name, param_val) in &bound {
+        env.bind(param_name.clone(), param_val.clone());
+    }
+
+    let result = eval_block(env, &body);
+    env.pop_scope();
+
+    match result {
+        Ok(val) => {
+            if modifiers.is_empty() {
+                Ok(val)
+            } else {
+                run_phase2(env, name, &fn_info, &bound, val, &modifiers)
+            }
+        }
+        Err(e) => Err(e),
+    }
+}
+
 // ── Derive / Mechanic dispatch ─────────────────────────────────
 
 fn dispatch_derive_or_mechanic(

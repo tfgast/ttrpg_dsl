@@ -20,6 +20,7 @@ use ttrpg_ast::ast::{
 use ttrpg_checker::env::TypeEnv;
 
 use crate::effect::EffectHandler;
+use crate::event::EventResult;
 use crate::state::{EntityRef, StateProvider};
 use crate::value::Value;
 
@@ -179,6 +180,151 @@ impl<'p> Interpreter<'p> {
             index,
         })
     }
+
+    /// Execute a named action through the full pipeline.
+    ///
+    /// `actor` is the entity performing the action. `args` are positional
+    /// values for the action's declared parameters (excluding the receiver).
+    pub fn execute_action(
+        &self,
+        state: &dyn StateProvider,
+        handler: &mut dyn EffectHandler,
+        name: &str,
+        actor: EntityRef,
+        args: Vec<Value>,
+    ) -> Result<Value, RuntimeError> {
+        let action_decl = self
+            .index
+            .actions
+            .get(name)
+            .ok_or_else(|| RuntimeError::new(format!("undefined action '{}'", name)))?;
+        let action_decl = (*action_decl).clone();
+
+        // Map positional args to param names
+        if args.len() > action_decl.params.len() {
+            return Err(RuntimeError::new(format!(
+                "too many arguments: action '{}' takes {} params, got {}",
+                name,
+                action_decl.params.len(),
+                args.len()
+            )));
+        }
+        if args.len() < action_decl.params.len() {
+            // Check if the missing ones have defaults
+            for i in args.len()..action_decl.params.len() {
+                if action_decl.params[i].default.is_none() {
+                    return Err(RuntimeError::new(format!(
+                        "missing required argument '{}' for action '{}'",
+                        action_decl.params[i].name, name
+                    )));
+                }
+            }
+        }
+
+        let mut named_args: Vec<(String, Value)> = Vec::new();
+        for (i, val) in args.into_iter().enumerate() {
+            named_args.push((action_decl.params[i].name.clone(), val));
+        }
+
+        // Fill defaults for missing optional params
+        let mut env = Env::new(state, handler, self);
+        for i in named_args.len()..action_decl.params.len() {
+            if let Some(ref default_expr) = action_decl.params[i].default {
+                env.push_scope();
+                // Bind receiver so defaults can reference it
+                env.bind(action_decl.receiver_name.clone(), Value::Entity(actor));
+                for (pname, pval) in &named_args {
+                    env.bind(pname.clone(), pval.clone());
+                }
+                let default_val = eval::eval_expr(&mut env, default_expr)?;
+                env.pop_scope();
+                named_args.push((action_decl.params[i].name.clone(), default_val));
+            }
+        }
+
+        let span = Span::dummy();
+        action::execute_action(&mut env, &action_decl, actor, named_args, span)
+    }
+
+    /// Execute a named reaction through the full pipeline.
+    ///
+    /// `reactor` is the entity performing the reaction. `event_payload`
+    /// is the event struct value that triggered the reaction.
+    pub fn execute_reaction(
+        &self,
+        state: &dyn StateProvider,
+        handler: &mut dyn EffectHandler,
+        name: &str,
+        reactor: EntityRef,
+        event_payload: Value,
+    ) -> Result<Value, RuntimeError> {
+        let reaction_decl = self
+            .index
+            .reactions
+            .get(name)
+            .ok_or_else(|| RuntimeError::new(format!("undefined reaction '{}'", name)))?;
+        let reaction_decl = (*reaction_decl).clone();
+
+        let mut env = Env::new(state, handler, self);
+        let span = Span::dummy();
+        action::execute_reaction(&mut env, &reaction_decl, reactor, event_payload, span)
+    }
+
+    /// Evaluate a named mechanic function with pre-evaluated arguments.
+    ///
+    /// Mechanics can produce dice effects during execution.
+    pub fn evaluate_mechanic(
+        &self,
+        state: &dyn StateProvider,
+        handler: &mut dyn EffectHandler,
+        name: &str,
+        args: Vec<Value>,
+    ) -> Result<Value, RuntimeError> {
+        if !self.index.mechanics.contains_key(name) {
+            return Err(RuntimeError::new(format!(
+                "undefined mechanic '{}'",
+                name
+            )));
+        }
+        let mut env = Env::new(state, handler, self);
+        call::evaluate_fn_with_values(&mut env, name, args, Span::dummy())
+    }
+
+    /// Evaluate a named derive function with pre-evaluated arguments.
+    ///
+    /// Derives compute values from entity state. The modify pipeline
+    /// (condition/option modifiers) runs automatically.
+    pub fn evaluate_derive(
+        &self,
+        state: &dyn StateProvider,
+        handler: &mut dyn EffectHandler,
+        name: &str,
+        args: Vec<Value>,
+    ) -> Result<Value, RuntimeError> {
+        if !self.index.derives.contains_key(name) {
+            return Err(RuntimeError::new(format!(
+                "undefined derive '{}'",
+                name
+            )));
+        }
+        let mut env = Env::new(state, handler, self);
+        call::evaluate_fn_with_values(&mut env, name, args, Span::dummy())
+    }
+
+    /// Fire an event and determine which reactions are triggered.
+    ///
+    /// This is a **pure query** — no effects are emitted.
+    /// `candidates` is the host-provided set of entities to consider as
+    /// potential reactors.
+    pub fn fire_event(
+        &self,
+        state: &dyn StateProvider,
+        name: &str,
+        payload: Value,
+        candidates: &[EntityRef],
+    ) -> Result<EventResult, RuntimeError> {
+        event::fire_event(self, state, name, &payload, candidates)
+    }
 }
 
 // ── Env (execution environment) ────────────────────────────────
@@ -255,5 +401,921 @@ impl Scope {
         Scope {
             bindings: HashMap::new(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::{BTreeMap, VecDeque};
+
+    use ttrpg_ast::diagnostic::Severity;
+
+    use crate::effect::{ActionKind, Effect, Response};
+    use crate::state::ActiveCondition;
+    use crate::value::{DiceExpr, RollResult};
+
+    // ── Test infrastructure ────────────────────────────────────
+
+    /// Parse → lower → check → build interpreter. Panics on any error.
+    fn setup(source: &str) -> (ttrpg_ast::ast::Program, ttrpg_checker::CheckResult) {
+        let (program, parse_errors) = ttrpg_parser::parse(source);
+        assert!(
+            parse_errors.is_empty(),
+            "parse errors: {:?}",
+            parse_errors.iter().map(|d| &d.message).collect::<Vec<_>>()
+        );
+        let mut lower_diags = Vec::new();
+        let program = ttrpg_parser::lower_moves(program, &mut lower_diags);
+        assert!(
+            lower_diags.is_empty(),
+            "lowering errors: {:?}",
+            lower_diags.iter().map(|d| &d.message).collect::<Vec<_>>()
+        );
+        let result = ttrpg_checker::check(&program);
+        let errors: Vec<_> = result
+            .diagnostics
+            .iter()
+            .filter(|d| d.severity == Severity::Error)
+            .collect();
+        assert!(
+            errors.is_empty(),
+            "checker errors: {:?}",
+            errors.iter().map(|d| &d.message).collect::<Vec<_>>()
+        );
+        (program, result)
+    }
+
+    struct ScriptedHandler {
+        script: VecDeque<Response>,
+        log: Vec<Effect>,
+    }
+
+    impl ScriptedHandler {
+        fn new() -> Self {
+            ScriptedHandler {
+                script: VecDeque::new(),
+                log: Vec::new(),
+            }
+        }
+
+        fn with_responses(responses: Vec<Response>) -> Self {
+            ScriptedHandler {
+                script: responses.into(),
+                log: Vec::new(),
+            }
+        }
+    }
+
+    impl EffectHandler for ScriptedHandler {
+        fn handle(&mut self, effect: Effect) -> Response {
+            self.log.push(effect);
+            self.script.pop_front().unwrap_or(Response::Acknowledged)
+        }
+    }
+
+    struct TestState {
+        fields: HashMap<(u64, String), Value>,
+        conditions: HashMap<u64, Vec<ActiveCondition>>,
+        turn_budgets: HashMap<u64, BTreeMap<String, Value>>,
+        enabled_options: Vec<String>,
+    }
+
+    impl TestState {
+        fn new() -> Self {
+            TestState {
+                fields: HashMap::new(),
+                conditions: HashMap::new(),
+                turn_budgets: HashMap::new(),
+                enabled_options: Vec::new(),
+            }
+        }
+    }
+
+    impl StateProvider for TestState {
+        fn read_field(&self, entity: &EntityRef, field: &str) -> Option<Value> {
+            self.fields.get(&(entity.0, field.to_string())).cloned()
+        }
+        fn read_conditions(&self, entity: &EntityRef) -> Option<Vec<ActiveCondition>> {
+            self.conditions.get(&entity.0).cloned()
+        }
+        fn read_turn_budget(&self, entity: &EntityRef) -> Option<BTreeMap<String, Value>> {
+            self.turn_budgets.get(&entity.0).cloned()
+        }
+        fn read_enabled_options(&self) -> Vec<String> {
+            self.enabled_options.clone()
+        }
+        fn position_eq(&self, _a: &Value, _b: &Value) -> bool {
+            false
+        }
+        fn distance(&self, _a: &Value, _b: &Value) -> Option<i64> {
+            None
+        }
+    }
+
+    // ── End-to-end: parse → lower → check → interpret (small program) ──
+
+    #[test]
+    fn e2e_simple_derive() {
+        let source = r#"
+system "test" {
+    derive add(a: int, b: int) -> int { a + b }
+}
+"#;
+        let (program, result) = setup(source);
+        let interp = Interpreter::new(&program, &result.env).unwrap();
+        let state = TestState::new();
+        let mut handler = ScriptedHandler::new();
+
+        let val = interp
+            .evaluate_derive(&state, &mut handler, "add", vec![Value::Int(3), Value::Int(4)])
+            .unwrap();
+        assert_eq!(val, Value::Int(7));
+    }
+
+    #[test]
+    fn e2e_derive_with_pattern_match() {
+        let source = r#"
+system "test" {
+    derive classify(x: int) -> string {
+        match {
+            x > 100 => "high",
+            x > 50 => "medium",
+            _ => "low"
+        }
+    }
+}
+"#;
+        let (program, result) = setup(source);
+        let interp = Interpreter::new(&program, &result.env).unwrap();
+        let state = TestState::new();
+        let mut handler = ScriptedHandler::new();
+
+        assert_eq!(
+            interp
+                .evaluate_derive(&state, &mut handler, "classify", vec![Value::Int(150)])
+                .unwrap(),
+            Value::Str("high".into())
+        );
+        assert_eq!(
+            interp
+                .evaluate_derive(&state, &mut handler, "classify", vec![Value::Int(75)])
+                .unwrap(),
+            Value::Str("medium".into())
+        );
+        assert_eq!(
+            interp
+                .evaluate_derive(&state, &mut handler, "classify", vec![Value::Int(10)])
+                .unwrap(),
+            Value::Str("low".into())
+        );
+    }
+
+    // ── End-to-end: action with requires + cost + resolve ──
+
+    #[test]
+    fn e2e_action_requires_cost_resolve() {
+        let source = r#"
+system "test" {
+    entity Character {
+        HP: int
+    }
+    action Heal on actor: Character (target: Character) {
+        cost { action }
+        requires { actor != target }
+        resolve {
+            target.HP += 10
+        }
+    }
+}
+"#;
+        let (program, result) = setup(source);
+        let interp = Interpreter::new(&program, &result.env).unwrap();
+        let mut state = TestState::new();
+        let actor = EntityRef(1);
+        let target = EntityRef(2);
+        state.fields.insert((1, "HP".into()), Value::Int(20));
+        state.fields.insert((2, "HP".into()), Value::Int(15));
+        state.conditions.insert(1, vec![]);
+        state.conditions.insert(2, vec![]);
+
+        let mut handler = ScriptedHandler::new();
+
+        let val = interp
+            .execute_action(
+                &state,
+                &mut handler,
+                "Heal",
+                actor,
+                vec![Value::Entity(target)],
+            )
+            .unwrap();
+        // Resolve block ends with assignment (returns None)
+        assert_eq!(val, Value::None);
+
+        // Verify effect sequence: ActionStarted, RequiresCheck, DeductCost, MutateField, ActionCompleted
+        assert_eq!(handler.log.len(), 5);
+        assert!(matches!(
+            &handler.log[0],
+            Effect::ActionStarted { name, kind: ActionKind::Action, .. } if name == "Heal"
+        ));
+        assert!(matches!(
+            &handler.log[1],
+            Effect::RequiresCheck { action, passed: true, .. } if action == "Heal"
+        ));
+        assert!(matches!(
+            &handler.log[2],
+            Effect::DeductCost { token, budget_field, .. }
+            if token == "action" && budget_field == "actions"
+        ));
+        assert!(matches!(
+            &handler.log[3],
+            Effect::MutateField { entity, path, .. } if entity.0 == 2 && path[0] == crate::effect::FieldPathSegment::Field("HP".into())
+        ));
+        assert!(matches!(
+            &handler.log[4],
+            Effect::ActionCompleted { name, .. } if name == "Heal"
+        ));
+    }
+
+    #[test]
+    fn e2e_action_requires_fails() {
+        let source = r#"
+system "test" {
+    entity Character {
+        HP: int
+    }
+    action SelfHeal on actor: Character () {
+        requires { false }
+        resolve {
+            actor.HP += 5
+        }
+    }
+}
+"#;
+        let (program, result) = setup(source);
+        let interp = Interpreter::new(&program, &result.env).unwrap();
+        let mut state = TestState::new();
+        let actor = EntityRef(1);
+        state.fields.insert((1, "HP".into()), Value::Int(20));
+        state.conditions.insert(1, vec![]);
+
+        let mut handler = ScriptedHandler::new();
+        let val = interp
+            .execute_action(&state, &mut handler, "SelfHeal", actor, vec![])
+            .unwrap();
+        assert_eq!(val, Value::None);
+
+        // ActionStarted, RequiresCheck (failed), ActionCompleted — no MutateField
+        assert_eq!(handler.log.len(), 3);
+        assert!(matches!(&handler.log[1], Effect::RequiresCheck { passed: false, .. }));
+        // No mutation effects
+        assert!(!handler.log.iter().any(|e| matches!(e, Effect::MutateField { .. })));
+    }
+
+    // ── End-to-end: derive with modify pipeline ──
+
+    #[test]
+    fn e2e_derive_with_condition_modifier() {
+        let source = r#"
+system "test" {
+    entity Character {
+        speed: int
+    }
+    derive get_speed(actor: Character) -> int {
+        actor.speed
+    }
+    condition Slow on bearer: Character {
+        modify get_speed(actor: bearer) {
+            result = result - 10
+        }
+    }
+}
+"#;
+        let (program, result) = setup(source);
+        let interp = Interpreter::new(&program, &result.env).unwrap();
+        let mut state = TestState::new();
+        let entity = EntityRef(1);
+        state.fields.insert((1, "speed".into()), Value::Int(30));
+        state.conditions.insert(
+            1,
+            vec![ActiveCondition {
+                id: 100,
+                name: "Slow".into(),
+                bearer: entity,
+                gained_at: 1,
+                duration: Value::None,
+            }],
+        );
+
+        let mut handler = ScriptedHandler::new();
+        let val = interp
+            .evaluate_derive(
+                &state,
+                &mut handler,
+                "get_speed",
+                vec![Value::Entity(entity)],
+            )
+            .unwrap();
+        // 30 - 10 = 20
+        assert_eq!(val, Value::Int(20));
+
+        // Should have ModifyApplied effects
+        assert!(handler.log.iter().any(|e| matches!(e, Effect::ModifyApplied { .. })));
+    }
+
+    #[test]
+    fn e2e_derive_without_modifier() {
+        let source = r#"
+system "test" {
+    entity Character {
+        speed: int
+    }
+    derive get_speed(actor: Character) -> int {
+        actor.speed
+    }
+    condition Slow on bearer: Character {
+        modify get_speed(actor: bearer) {
+            result = result - 10
+        }
+    }
+}
+"#;
+        let (program, result) = setup(source);
+        let interp = Interpreter::new(&program, &result.env).unwrap();
+        let mut state = TestState::new();
+        let entity = EntityRef(1);
+        state.fields.insert((1, "speed".into()), Value::Int(30));
+        // No conditions — modifier should not apply
+        state.conditions.insert(1, vec![]);
+
+        let mut handler = ScriptedHandler::new();
+        let val = interp
+            .evaluate_derive(
+                &state,
+                &mut handler,
+                "get_speed",
+                vec![Value::Entity(entity)],
+            )
+            .unwrap();
+        assert_eq!(val, Value::Int(30));
+    }
+
+    // ── End-to-end: event fire + reaction execution ──
+
+    #[test]
+    fn e2e_event_fire_and_reaction() {
+        let source = r#"
+system "test" {
+    entity Character {
+        name: string
+    }
+    event flee(actor: Character) {}
+    reaction Intercept on defender: Character (trigger: flee(defender)) {
+        cost { reaction }
+        resolve {
+            0
+        }
+    }
+}
+"#;
+        let (program, result) = setup(source);
+        let interp = Interpreter::new(&program, &result.env).unwrap();
+        let mut state = TestState::new();
+        let entity1 = EntityRef(1);
+        let entity2 = EntityRef(2);
+        state.fields.insert((1, "name".into()), Value::Str("Alice".into()));
+        state.fields.insert((2, "name".into()), Value::Str("Bob".into()));
+        state.conditions.insert(1, vec![]);
+        state.conditions.insert(2, vec![]);
+
+        // Fire event: flee(actor=entity1)
+        let payload = Value::Struct {
+            name: "__event_flee".into(),
+            fields: {
+                let mut f = BTreeMap::new();
+                f.insert("actor".to_string(), Value::Entity(entity1));
+                f
+            },
+        };
+
+        let event_result = interp
+            .fire_event(&state, "flee", payload.clone(), &[entity1, entity2])
+            .unwrap();
+
+        // entity1 matches (defender=entity1, positional 'defender' fills actor slot)
+        assert_eq!(event_result.triggerable.len(), 1);
+        assert_eq!(event_result.triggerable[0].name, "Intercept");
+        assert_eq!(event_result.triggerable[0].reactor, entity1);
+
+        // Now execute the matched reaction
+        let mut handler = ScriptedHandler::new();
+        let val = interp
+            .execute_reaction(&state, &mut handler, "Intercept", entity1, payload)
+            .unwrap();
+        assert_eq!(val, Value::Int(0));
+
+        // Verify effect sequence: ActionStarted (Reaction), DeductCost, ActionCompleted
+        assert_eq!(handler.log.len(), 3);
+        assert!(matches!(
+            &handler.log[0],
+            Effect::ActionStarted { kind: ActionKind::Reaction { event, .. }, .. }
+            if event == "flee"
+        ));
+        assert!(matches!(&handler.log[1], Effect::DeductCost { .. }));
+        assert!(matches!(&handler.log[2], Effect::ActionCompleted { .. }));
+    }
+
+    // ── End-to-end: mechanic with roll ──
+
+    #[test]
+    fn e2e_mechanic_with_roll() {
+        let source = r#"
+system "test" {
+    mechanic attack_roll(bonus: int) -> RollResult {
+        roll(1d20 + bonus)
+    }
+}
+"#;
+        let (program, result) = setup(source);
+        let interp = Interpreter::new(&program, &result.env).unwrap();
+        let state = TestState::new();
+
+        let roll_result = RollResult {
+            expr: DiceExpr {
+                count: 1,
+                sides: 20,
+                filter: None,
+                modifier: 5,
+            },
+            dice: vec![15],
+            kept: vec![15],
+            modifier: 5,
+            total: 20,
+            unmodified: 15,
+        };
+        let mut handler =
+            ScriptedHandler::with_responses(vec![Response::Rolled(roll_result.clone())]);
+
+        let val = interp
+            .evaluate_mechanic(&state, &mut handler, "attack_roll", vec![Value::Int(5)])
+            .unwrap();
+        assert_eq!(val, Value::RollResult(roll_result));
+
+        // Should have emitted RollDice
+        assert!(matches!(&handler.log[0], Effect::RollDice { .. }));
+    }
+
+    // ── Response-validity matrix: invalid response → RuntimeError ──
+
+    #[test]
+    fn e2e_roll_dice_vetoed_is_error() {
+        let source = r#"
+system "test" {
+    mechanic roll_it() -> RollResult {
+        roll(1d6)
+    }
+}
+"#;
+        let (program, result) = setup(source);
+        let interp = Interpreter::new(&program, &result.env).unwrap();
+        let state = TestState::new();
+        // Send Vetoed for RollDice — invalid, should produce RuntimeError
+        let mut handler = ScriptedHandler::with_responses(vec![Response::Vetoed]);
+
+        let err = interp
+            .evaluate_mechanic(&state, &mut handler, "roll_it", vec![])
+            .unwrap_err();
+        assert!(
+            err.message.contains("protocol error"),
+            "expected protocol error, got: {}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn e2e_action_started_override_is_error() {
+        let source = r#"
+system "test" {
+    entity Character {
+        HP: int
+    }
+    action Noop on actor: Character () {
+        resolve { 0 }
+    }
+}
+"#;
+        let (program, result) = setup(source);
+        let interp = Interpreter::new(&program, &result.env).unwrap();
+        let mut state = TestState::new();
+        state.fields.insert((1, "HP".into()), Value::Int(10));
+        state.conditions.insert(1, vec![]);
+
+        // Send Override for ActionStarted — invalid
+        let mut handler =
+            ScriptedHandler::with_responses(vec![Response::Override(Value::Bool(true))]);
+
+        let err = interp
+            .execute_action(&state, &mut handler, "Noop", EntityRef(1), vec![])
+            .unwrap_err();
+        assert!(
+            err.message.contains("protocol error"),
+            "expected protocol error, got: {}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn e2e_deduct_cost_wrong_type_override_is_error() {
+        let source = r#"
+system "test" {
+    entity Character {
+        HP: int
+    }
+    action CostAction on actor: Character () {
+        cost { action }
+        resolve { 0 }
+    }
+}
+"#;
+        let (program, result) = setup(source);
+        let interp = Interpreter::new(&program, &result.env).unwrap();
+        let mut state = TestState::new();
+        state.fields.insert((1, "HP".into()), Value::Int(10));
+        state.conditions.insert(1, vec![]);
+
+        // ActionStarted → Acknowledged, DeductCost → Override(Int) — wrong type
+        let mut handler = ScriptedHandler::with_responses(vec![
+            Response::Acknowledged,
+            Response::Override(Value::Int(42)),
+        ]);
+
+        let err = interp
+            .execute_action(&state, &mut handler, "CostAction", EntityRef(1), vec![])
+            .unwrap_err();
+        assert!(
+            err.message.contains("protocol error"),
+            "expected protocol error, got: {}",
+            err.message
+        );
+    }
+
+    // ── Undefined names produce errors ──
+
+    #[test]
+    fn e2e_undefined_action_errors() {
+        let source = r#"
+system "test" {
+    entity Character { HP: int }
+}
+"#;
+        let (program, result) = setup(source);
+        let interp = Interpreter::new(&program, &result.env).unwrap();
+        let state = TestState::new();
+        let mut handler = ScriptedHandler::new();
+
+        let err = interp
+            .execute_action(&state, &mut handler, "Nonexistent", EntityRef(1), vec![])
+            .unwrap_err();
+        assert!(err.message.contains("undefined action"));
+    }
+
+    #[test]
+    fn e2e_undefined_derive_errors() {
+        let source = r#"
+system "test" {
+    entity Character { HP: int }
+}
+"#;
+        let (program, result) = setup(source);
+        let interp = Interpreter::new(&program, &result.env).unwrap();
+        let state = TestState::new();
+        let mut handler = ScriptedHandler::new();
+
+        let err = interp
+            .evaluate_derive(&state, &mut handler, "nonexistent", vec![])
+            .unwrap_err();
+        assert!(err.message.contains("undefined derive"));
+    }
+
+    #[test]
+    fn e2e_undefined_mechanic_errors() {
+        let source = r#"
+system "test" {
+    entity Character { HP: int }
+}
+"#;
+        let (program, result) = setup(source);
+        let interp = Interpreter::new(&program, &result.env).unwrap();
+        let state = TestState::new();
+        let mut handler = ScriptedHandler::new();
+
+        let err = interp
+            .evaluate_mechanic(&state, &mut handler, "nonexistent", vec![])
+            .unwrap_err();
+        assert!(err.message.contains("undefined mechanic"));
+    }
+
+    #[test]
+    fn e2e_undefined_reaction_errors() {
+        let source = r#"
+system "test" {
+    entity Character { HP: int }
+}
+"#;
+        let (program, result) = setup(source);
+        let interp = Interpreter::new(&program, &result.env).unwrap();
+        let state = TestState::new();
+        let mut handler = ScriptedHandler::new();
+
+        let err = interp
+            .execute_reaction(&state, &mut handler, "Nonexistent", EntityRef(1), Value::None)
+            .unwrap_err();
+        assert!(err.message.contains("undefined reaction"));
+    }
+
+    #[test]
+    fn e2e_undefined_event_errors() {
+        let source = r#"
+system "test" {
+    entity Character { HP: int }
+}
+"#;
+        let (program, result) = setup(source);
+        let interp = Interpreter::new(&program, &result.env).unwrap();
+        let state = TestState::new();
+        let payload = Value::Struct {
+            name: "test".into(),
+            fields: BTreeMap::new(),
+        };
+
+        let err = interp
+            .fire_event(&state, "nonexistent", payload, &[])
+            .unwrap_err();
+        assert!(err.message.contains("undefined event"));
+    }
+
+    // ── Integration with D&D 5e patterns ──
+
+    #[test]
+    fn e2e_d5e_attack_with_damage() {
+        // Simplified D&D 5e attack pattern:
+        // mechanic attack_roll → roll 1d20 + modifier
+        // action Attack → call mechanic, apply damage on hit
+        let source = r#"
+system "test" {
+    entity Character {
+        HP: int
+        AC: int
+        attack_bonus: int
+    }
+    mechanic roll_attack(attacker: Character) -> RollResult {
+        roll(1d20 + attacker.attack_bonus)
+    }
+    action Attack on attacker: Character (target: Character) {
+        cost { action }
+        resolve {
+            let result = roll_attack(attacker)
+            if result.total >= target.AC {
+                target.HP -= 8
+            }
+        }
+    }
+}
+"#;
+        let (program, result) = setup(source);
+        let interp = Interpreter::new(&program, &result.env).unwrap();
+        let mut state = TestState::new();
+        let attacker = EntityRef(1);
+        let target = EntityRef(2);
+        state.fields.insert((1, "HP".into()), Value::Int(30));
+        state.fields.insert((1, "AC".into()), Value::Int(15));
+        state.fields.insert((1, "attack_bonus".into()), Value::Int(5));
+        state.fields.insert((2, "HP".into()), Value::Int(25));
+        state.fields.insert((2, "AC".into()), Value::Int(12));
+        state.fields.insert((2, "attack_bonus".into()), Value::Int(3));
+        state.conditions.insert(1, vec![]);
+        state.conditions.insert(2, vec![]);
+
+        // Script: ActionStarted → Ack, RequiresCheck (none), DeductCost → Ack,
+        // RollDice → roll 15+5=20 (hits AC 12)
+        let roll_result = RollResult {
+            expr: DiceExpr {
+                count: 1,
+                sides: 20,
+                filter: None,
+                modifier: 5,
+            },
+            dice: vec![15],
+            kept: vec![15],
+            modifier: 5,
+            total: 20,
+            unmodified: 15,
+        };
+        let mut handler = ScriptedHandler::with_responses(vec![
+            Response::Acknowledged, // ActionStarted
+            Response::Acknowledged, // DeductCost
+            Response::Rolled(roll_result), // RollDice (from roll_attack)
+        ]);
+
+        let val = interp
+            .execute_action(
+                &state,
+                &mut handler,
+                "Attack",
+                attacker,
+                vec![Value::Entity(target)],
+            )
+            .unwrap();
+        assert_eq!(val, Value::None); // resolve block ends with if-then (assignment)
+
+        // Verify RollDice was emitted
+        assert!(handler.log.iter().any(|e| matches!(e, Effect::RollDice { .. })));
+        // Verify MutateField was emitted (HP damage)
+        assert!(handler.log.iter().any(|e| matches!(e, Effect::MutateField { .. })));
+    }
+
+    #[test]
+    fn e2e_d5e_attack_misses() {
+        let source = r#"
+system "test" {
+    entity Character {
+        HP: int
+        AC: int
+        attack_bonus: int
+    }
+    mechanic roll_attack(attacker: Character) -> RollResult {
+        roll(1d20 + attacker.attack_bonus)
+    }
+    action Attack on attacker: Character (target: Character) {
+        cost { action }
+        resolve {
+            let result = roll_attack(attacker)
+            if result.total >= target.AC {
+                target.HP -= 8
+            }
+        }
+    }
+}
+"#;
+        let (program, result) = setup(source);
+        let interp = Interpreter::new(&program, &result.env).unwrap();
+        let mut state = TestState::new();
+        let attacker = EntityRef(1);
+        let target = EntityRef(2);
+        state.fields.insert((1, "HP".into()), Value::Int(30));
+        state.fields.insert((1, "AC".into()), Value::Int(15));
+        state.fields.insert((1, "attack_bonus".into()), Value::Int(5));
+        state.fields.insert((2, "HP".into()), Value::Int(25));
+        state.fields.insert((2, "AC".into()), Value::Int(18));
+        state.fields.insert((2, "attack_bonus".into()), Value::Int(3));
+        state.conditions.insert(1, vec![]);
+        state.conditions.insert(2, vec![]);
+
+        // Roll 3+5=8, misses AC 18
+        let roll_result = RollResult {
+            expr: DiceExpr {
+                count: 1,
+                sides: 20,
+                filter: None,
+                modifier: 5,
+            },
+            dice: vec![3],
+            kept: vec![3],
+            modifier: 5,
+            total: 8,
+            unmodified: 3,
+        };
+        let mut handler = ScriptedHandler::with_responses(vec![
+            Response::Acknowledged,        // ActionStarted
+            Response::Acknowledged,        // DeductCost
+            Response::Rolled(roll_result), // RollDice — miss
+        ]);
+
+        interp
+            .execute_action(
+                &state,
+                &mut handler,
+                "Attack",
+                attacker,
+                vec![Value::Entity(target)],
+            )
+            .unwrap();
+
+        // No MutateField — attack missed
+        assert!(!handler.log.iter().any(|e| matches!(e, Effect::MutateField { .. })));
+    }
+
+    #[test]
+    fn e2e_d5e_condition_suppresses_event() {
+        // Test suppression: Stunned condition suppresses reactions
+        let source = r#"
+system "test" {
+    entity Character {
+        name: string
+    }
+    event flee(actor: Character) {}
+    reaction Intercept on defender: Character (trigger: flee(actor: defender)) {
+        cost { reaction }
+        resolve { 0 }
+    }
+    condition Stunned on bearer: Character {
+        suppress flee(actor: bearer)
+    }
+}
+"#;
+        let (program, result) = setup(source);
+        let interp = Interpreter::new(&program, &result.env).unwrap();
+        let mut state = TestState::new();
+        let entity1 = EntityRef(1);
+        state.fields.insert((1, "name".into()), Value::Str("Alice".into()));
+        // Entity 1 has Stunned condition
+        state.conditions.insert(
+            1,
+            vec![ActiveCondition {
+                id: 1,
+                name: "Stunned".into(),
+                bearer: entity1,
+                gained_at: 1,
+                duration: Value::None,
+            }],
+        );
+
+        let payload = Value::Struct {
+            name: "__event_flee".into(),
+            fields: {
+                let mut f = BTreeMap::new();
+                f.insert("actor".into(), Value::Entity(entity1));
+                f
+            },
+        };
+
+        let event_result = interp
+            .fire_event(&state, "flee", payload, &[entity1])
+            .unwrap();
+
+        // Entity 1 matches trigger but is suppressed by Stunned
+        assert_eq!(event_result.triggerable.len(), 0);
+        assert_eq!(event_result.suppressed.len(), 1);
+        assert_eq!(event_result.suppressed[0].name, "Intercept");
+    }
+
+    // ── Move lowering integration ──
+
+    #[test]
+    fn e2e_move_lowered_and_executed() {
+        let source = r#"
+system "test" {
+    entity Character {
+        stat: int
+    }
+    move TestMove on actor: Character () {
+        trigger: "make a test"
+        roll: 2d6 + actor.stat
+        on strong_hit {
+            100
+        }
+        on weak_hit {
+            50
+        }
+        on miss {
+            0
+        }
+    }
+}
+"#;
+        let (program, result) = setup(source);
+        let interp = Interpreter::new(&program, &result.env).unwrap();
+        let mut state = TestState::new();
+        let actor = EntityRef(1);
+        state.fields.insert((1, "stat".into()), Value::Int(2));
+        state.conditions.insert(1, vec![]);
+
+        // Script for action execution:
+        // ActionStarted → Ack, DeductCost → Ack, RollDice → strong hit (total=12)
+        let roll_result = RollResult {
+            expr: DiceExpr {
+                count: 2,
+                sides: 6,
+                filter: None,
+                modifier: 2,
+            },
+            dice: vec![5, 5],
+            kept: vec![5, 5],
+            modifier: 2,
+            total: 12,
+            unmodified: 10,
+        };
+        let mut handler = ScriptedHandler::with_responses(vec![
+            Response::Acknowledged,        // ActionStarted
+            Response::Acknowledged,        // DeductCost
+            Response::Rolled(roll_result), // RollDice
+        ]);
+
+        let val = interp
+            .execute_action(&state, &mut handler, "TestMove", actor, vec![])
+            .unwrap();
+        // Strong hit (total 12 >= 10) → 100
+        assert_eq!(val, Value::Int(100));
     }
 }

@@ -101,7 +101,9 @@ The interpreter wants to spend an action economy token. `token` is the singular 
 | `bonus_action` | `bonus_actions` | `turn.bonus_actions -= 1` |
 | `reaction` | `reactions` | `turn.reactions -= 1` |
 
-On `Acknowledged`, the host decrements `budget_field` by 1. On `Override(Value::Str(replacement_token))`, the replacement token must be a valid token name from the mapping table above — if it is not, the interpreter returns `RuntimeError`. On `Vetoed`, the cost is waived entirely.
+On `Acknowledged`, the cost is accepted. On `Override(Value::Str(replacement_token))`, the replacement token must be a valid token name from the mapping table above — if it is not, the interpreter returns `RuntimeError`. On `Vetoed`, the cost is waived entirely.
+
+At **Layer 1** (bare `EffectHandler`, no adapter), the host is responsible for applying the budget decrement itself. At **Layer 2** (`StateAdapter`), the adapter owns the `WritableState` and applies the decrement via `write_turn_field` — the host's inner handler only makes the decision (acknowledge/override/veto) and must not also decrement.
 
 #### Gate effects
 

@@ -9,7 +9,7 @@ use crate::value::{DiceExpr, RollResult, Value};
 ///
 /// A simple field access like `target.HP` is `[Field("HP")]`.
 /// A nested access like `target.stats[STR]` is `[Field("stats"), Index(Value::Str("STR"))]`.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum FieldPathSegment {
     Field(String),
     Index(Value),

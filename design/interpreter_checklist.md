@@ -387,20 +387,20 @@ Companion to [`interpreter_impl_plan.md`](interpreter_impl_plan.md). Check items
 ## Phase 8: Public API
 
 ### API surface (`lib.rs`)
-- [ ] `Interpreter::new(program, type_env) -> Result<Self, RuntimeError>`
-- [ ] `Interpreter::execute_action(state, handler, name, actor, args)`
-- [ ] `Interpreter::execute_reaction(state, handler, name, reactor, payload)`
-- [ ] `Interpreter::evaluate_mechanic(state, handler, name, args)`
-- [ ] `Interpreter::evaluate_derive(state, handler, name, args)`
-- [ ] `Interpreter::fire_event(state, name, payload, candidates)`
+- [x] `Interpreter::new(program, type_env) -> Result<Self, RuntimeError>`
+- [x] `Interpreter::execute_action(state, handler, name, actor, args)`
+- [x] `Interpreter::execute_reaction(state, handler, name, reactor, payload)`
+- [x] `Interpreter::evaluate_mechanic(state, handler, name, args)`
+- [x] `Interpreter::evaluate_derive(state, handler, name, args)`
+- [x] `Interpreter::fire_event(state, name, payload, candidates)`
 
 ### Tests
-- [ ] End-to-end: parse → lower → check → interpret (small program)
-- [ ] End-to-end: action with requires + cost + resolve
-- [ ] End-to-end: derive with modify pipeline
-- [ ] End-to-end: event fire + reaction execution
-- [ ] Response-validity matrix: invalid response → RuntimeError
-- [ ] Integration with D&D 5e patterns from spec
+- [x] End-to-end: parse → lower → check → interpret (small program)
+- [x] End-to-end: action with requires + cost + resolve
+- [x] End-to-end: derive with modify pipeline
+- [x] End-to-end: event fire + reaction execution
+- [x] Response-validity matrix: invalid response → RuntimeError
+- [x] Integration with D&D 5e patterns from spec
 
 ---
 
@@ -408,5 +408,5 @@ Companion to [`interpreter_impl_plan.md`](interpreter_impl_plan.md). Check items
 
 - [x] Test infrastructure: `ScriptedHandler` (records effects, replays responses)
 - [x] Test infrastructure: `TestState` (minimal `StateProvider`)
-- [ ] Design doc update: `DeductCost` Layer 1 vs Layer 2 semantics (`interpreter.md` line 104)
+- [x] Design doc update: `DeductCost` Layer 1 vs Layer 2 semantics (`interpreter.md` line 104)
 - [x] Crate setup: `ttrpg_interp/Cargo.toml` with deps on `ttrpg_ast` + `ttrpg_checker`
