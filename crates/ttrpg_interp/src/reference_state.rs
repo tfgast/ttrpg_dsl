@@ -105,6 +105,17 @@ impl GameState {
         self.conditions.entry(entity.0).or_default().push(cond);
     }
 
+    /// Remove an entity and all associated data (conditions, turn budgets).
+    /// Returns `true` if the entity existed and was removed.
+    pub fn remove_entity(&mut self, entity: &EntityRef) -> bool {
+        let existed = self.entities.remove(&entity.0).is_some();
+        if existed {
+            self.conditions.remove(&entity.0);
+            self.turn_budgets.remove(&entity.0);
+        }
+        existed
+    }
+
     /// Enable an option by name.
     pub fn enable_option(&mut self, name: &str) {
         self.enabled_options.insert(name.to_string());
@@ -642,6 +653,38 @@ mod tests {
             Value::Duration(DurationValue::EndOfTurn),
         );
         assert!(state.read_conditions(&ghost).is_none());
+    }
+
+    // ── GameState: remove_entity ──────────────────────────────
+
+    #[test]
+    fn remove_entity_cleans_all_maps() {
+        let mut state = GameState::new();
+        let mut fields = HashMap::new();
+        fields.insert("HP".into(), Value::Int(30));
+        let entity = state.add_entity("Fighter", fields);
+
+        state.apply_condition(
+            &entity,
+            "Prone",
+            Value::Duration(DurationValue::EndOfTurn),
+        );
+        let mut budget = BTreeMap::new();
+        budget.insert("actions".into(), Value::Int(1));
+        state.set_turn_budget(&entity, budget);
+
+        assert!(state.remove_entity(&entity));
+
+        // All reads should return None
+        assert_eq!(state.read_field(&entity, "HP"), None);
+        assert!(state.read_conditions(&entity).is_none());
+        assert!(state.read_turn_budget(&entity).is_none());
+    }
+
+    #[test]
+    fn remove_entity_nonexistent_returns_false() {
+        let mut state = GameState::new();
+        assert!(!state.remove_entity(&EntityRef(999)));
     }
 
     #[test]

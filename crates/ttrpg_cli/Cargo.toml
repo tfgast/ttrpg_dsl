@@ -17,3 +17,4 @@ ttrpg_lexer = { path = "../ttrpg_lexer" }
 ttrpg_parser = { path = "../ttrpg_parser" }
 ttrpg_checker = { path = "../ttrpg_checker" }
 ttrpg_interp = { path = "../ttrpg_interp" }
+rand = "0.9"

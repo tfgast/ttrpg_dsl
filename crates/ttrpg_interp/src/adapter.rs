@@ -322,7 +322,7 @@ fn apply_mutation_with_override<S: WritableState>(
 }
 
 /// Compute the final field value after applying op + bounds clamping.
-fn compute_field_value<S: StateProvider>(
+pub fn compute_field_value<S: StateProvider>(
     state: &S,
     entity: &EntityRef,
     path: &[FieldPathSegment],
@@ -344,7 +344,7 @@ fn compute_field_value<S: StateProvider>(
 }
 
 /// Compute the final turn field value after applying op.
-fn compute_turn_field_value<S: StateProvider>(
+pub fn compute_turn_field_value<S: StateProvider>(
     state: &S,
     actor: &EntityRef,
     field: &str,
@@ -364,7 +364,7 @@ fn compute_turn_field_value<S: StateProvider>(
 }
 
 /// Read a value at a nested path from an entity.
-fn read_at_path<S: StateProvider>(
+pub fn read_at_path<S: StateProvider>(
     state: &S,
     entity: &EntityRef,
     path: &[FieldPathSegment],
@@ -407,7 +407,7 @@ fn read_at_path<S: StateProvider>(
 /// Apply an assign op to two values. Panics on type mismatch or overflow
 /// (mutations from the interpreter are already type-checked and overflow-checked,
 /// so these conditions should be unreachable).
-fn apply_op(op: AssignOp, current: &Value, rhs: &Value) -> Value {
+pub fn apply_op(op: AssignOp, current: &Value, rhs: &Value) -> Value {
     match op {
         AssignOp::Eq => rhs.clone(),
         AssignOp::PlusEq => match (current, rhs) {
@@ -444,7 +444,7 @@ fn apply_op(op: AssignOp, current: &Value, rhs: &Value) -> Value {
 }
 
 /// Clamp a value between lo and hi (inclusive). Only applies to Int and Float.
-fn clamp_value(val: Value, lo: &Value, hi: &Value) -> Value {
+pub fn clamp_value(val: Value, lo: &Value, hi: &Value) -> Value {
     match (&val, lo, hi) {
         (Value::Int(v), Value::Int(l), Value::Int(h)) => Value::Int((*v).clamp(*l, *h)),
         (Value::Float(v), Value::Float(l), Value::Float(h)) => Value::Float(v.clamp(*l, *h)),
@@ -453,7 +453,7 @@ fn clamp_value(val: Value, lo: &Value, hi: &Value) -> Value {
 }
 
 /// Decrement a turn budget field by 1.
-fn deduct_budget_field<S: WritableState>(state: &mut S, actor: &EntityRef, field: &str) {
+pub fn deduct_budget_field<S: WritableState>(state: &mut S, actor: &EntityRef, field: &str) {
     let current = state
         .read_turn_budget(actor)
         .and_then(|b| b.get(field).cloned())
@@ -466,7 +466,7 @@ fn deduct_budget_field<S: WritableState>(state: &mut S, actor: &EntityRef, field
 }
 
 /// Maps a cost token to its budget field name.
-fn token_to_budget_field(token: &str) -> Option<&'static str> {
+pub fn token_to_budget_field(token: &str) -> Option<&'static str> {
     match token {
         "action" => Some("actions"),
         "bonus_action" => Some("bonus_actions"),

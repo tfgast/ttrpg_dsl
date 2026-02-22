@@ -1,4 +1,5 @@
 use ttrpg_ast::DiceFilter;
+use ttrpg_interp::effect::FieldPathSegment;
 use ttrpg_interp::value::{DiceExpr, Value};
 
 /// Format a runtime Value for human-readable CLI output.
@@ -81,7 +82,28 @@ pub fn format_value(val: &Value) -> String {
     }
 }
 
-fn format_dice_expr(expr: &DiceExpr) -> String {
+/// Format a field path for effect logging (e.g., `HP` or `stats["STR"]`).
+pub fn format_path(path: &[FieldPathSegment]) -> String {
+    let mut s = String::new();
+    for (i, seg) in path.iter().enumerate() {
+        match seg {
+            FieldPathSegment::Field(f) => {
+                if i > 0 {
+                    s.push('.');
+                }
+                s.push_str(f);
+            }
+            FieldPathSegment::Index(key) => {
+                s.push('[');
+                s.push_str(&format_value(key));
+                s.push(']');
+            }
+        }
+    }
+    s
+}
+
+pub fn format_dice_expr(expr: &DiceExpr) -> String {
     let mut s = format!("{}d{}", expr.count, expr.sides);
     if let Some(filter) = &expr.filter {
         match filter {

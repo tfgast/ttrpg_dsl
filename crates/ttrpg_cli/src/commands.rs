@@ -5,6 +5,11 @@ pub enum Command {
     Eval(String),
     Reload,
     Errors,
+    Spawn(String),
+    Set(String),
+    Destroy(String),
+    Do(String),
+    Call(String),
     Unknown(String),
 }
 
@@ -44,6 +49,46 @@ pub fn parse_command(line: &str) -> Option<Command> {
         }
         "reload" => Some(Command::Reload),
         "errors" => Some(Command::Errors),
+        "spawn" => {
+            let s = strip_comment(tail).trim();
+            if s.is_empty() {
+                Some(Command::Unknown("spawn".into()))
+            } else {
+                Some(Command::Spawn(s.into()))
+            }
+        }
+        "set" => {
+            let s = strip_comment(tail).trim();
+            if s.is_empty() {
+                Some(Command::Unknown("set".into()))
+            } else {
+                Some(Command::Set(s.into()))
+            }
+        }
+        "destroy" => {
+            let s = strip_comment(tail).trim();
+            if s.is_empty() {
+                Some(Command::Unknown("destroy".into()))
+            } else {
+                Some(Command::Destroy(s.into()))
+            }
+        }
+        "do" => {
+            let s = strip_comment(tail).trim();
+            if s.is_empty() {
+                Some(Command::Unknown("do".into()))
+            } else {
+                Some(Command::Do(s.into()))
+            }
+        }
+        "call" => {
+            let s = strip_comment(tail).trim();
+            if s.is_empty() {
+                Some(Command::Unknown("call".into()))
+            } else {
+                Some(Command::Call(s.into()))
+            }
+        }
         _ => Some(Command::Unknown(keyword.into())),
     }
 }
@@ -194,6 +239,102 @@ mod tests {
         assert_eq!(
             parse_command(r#"eval "say \"hi//there\"" // comment"#),
             Some(Command::Eval(r#""say \"hi//there\"""#.into()))
+        );
+    }
+
+    #[test]
+    fn parse_spawn() {
+        assert_eq!(
+            parse_command("spawn Character fighter { HP: 30 }"),
+            Some(Command::Spawn("Character fighter { HP: 30 }".into()))
+        );
+    }
+
+    #[test]
+    fn parse_spawn_empty_is_unknown() {
+        assert_eq!(
+            parse_command("spawn"),
+            Some(Command::Unknown("spawn".into()))
+        );
+    }
+
+    #[test]
+    fn parse_set() {
+        assert_eq!(
+            parse_command("set fighter.AC = 18"),
+            Some(Command::Set("fighter.AC = 18".into()))
+        );
+    }
+
+    #[test]
+    fn parse_set_empty_is_unknown() {
+        assert_eq!(
+            parse_command("set"),
+            Some(Command::Unknown("set".into()))
+        );
+    }
+
+    #[test]
+    fn parse_destroy() {
+        assert_eq!(
+            parse_command("destroy goblin"),
+            Some(Command::Destroy("goblin".into()))
+        );
+    }
+
+    #[test]
+    fn parse_destroy_empty_is_unknown() {
+        assert_eq!(
+            parse_command("destroy"),
+            Some(Command::Unknown("destroy".into()))
+        );
+    }
+
+    #[test]
+    fn parse_do() {
+        assert_eq!(
+            parse_command("do Attack(fighter, goblin)"),
+            Some(Command::Do("Attack(fighter, goblin)".into()))
+        );
+    }
+
+    #[test]
+    fn parse_do_empty_is_unknown() {
+        assert_eq!(
+            parse_command("do"),
+            Some(Command::Unknown("do".into()))
+        );
+    }
+
+    #[test]
+    fn parse_call() {
+        assert_eq!(
+            parse_command("call modifier(16)"),
+            Some(Command::Call("modifier(16)".into()))
+        );
+    }
+
+    #[test]
+    fn parse_call_empty_is_unknown() {
+        assert_eq!(
+            parse_command("call"),
+            Some(Command::Unknown("call".into()))
+        );
+    }
+
+    #[test]
+    fn parse_spawn_with_comment() {
+        assert_eq!(
+            parse_command("spawn Character fighter { HP: 30 } // create fighter"),
+            Some(Command::Spawn("Character fighter { HP: 30 }".into()))
+        );
+    }
+
+    #[test]
+    fn parse_do_with_comment() {
+        assert_eq!(
+            parse_command("do Attack(fighter, goblin) // attack!"),
+            Some(Command::Do("Attack(fighter, goblin)".into()))
         );
     }
 }

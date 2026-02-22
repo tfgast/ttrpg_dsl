@@ -1,14 +1,20 @@
+use std::cell::RefCell;
+use std::collections::HashMap;
 use std::path::PathBuf;
 
+use rand::SeedableRng;
+use rand::rngs::StdRng;
 use ttrpg_ast::ast::Program;
 use ttrpg_ast::diagnostic::{Diagnostic, Severity};
 use ttrpg_checker::env::TypeEnv;
 use ttrpg_interp::Interpreter;
+use ttrpg_interp::effect::FieldPathSegment;
 use ttrpg_interp::reference_state::GameState;
+use ttrpg_interp::state::{EntityRef, WritableState};
 use ttrpg_interp::value::Value;
 
 use crate::commands::{self, Command};
-use crate::effects::MinimalHandler;
+use crate::effects::{CliHandler, MinimalHandler, RefCellState};
 use crate::format::format_value;
 
 /// Errors produced by Runner operations.
@@ -30,10 +36,13 @@ impl std::fmt::Display for CliError {
 pub struct Runner {
     program: Box<Program>,
     type_env: Box<TypeEnv>,
-    game_state: GameState,
+    game_state: RefCell<GameState>,
     last_path: Option<PathBuf>,
     diagnostics: Vec<Diagnostic>,
     output: Vec<String>,
+    handles: HashMap<String, EntityRef>,
+    reverse_handles: HashMap<EntityRef, String>,
+    rng: StdRng,
 }
 
 impl Runner {
@@ -42,10 +51,13 @@ impl Runner {
         Runner {
             program: Box::new(Program { items: Vec::new() }),
             type_env: Box::new(TypeEnv::new()),
-            game_state: GameState::new(),
+            game_state: RefCell::new(GameState::new()),
             last_path: None,
             diagnostics: Vec::new(),
             output: Vec::new(),
+            handles: HashMap::new(),
+            reverse_handles: HashMap::new(),
+            rng: StdRng::from_os_rng(),
         }
     }
 
@@ -61,6 +73,11 @@ impl Runner {
             Command::Eval(expr_str) => self.cmd_eval(&expr_str),
             Command::Reload => self.cmd_reload(),
             Command::Errors => self.cmd_errors(),
+            Command::Spawn(tail) => self.cmd_spawn(&tail),
+            Command::Set(tail) => self.cmd_set(&tail),
+            Command::Destroy(handle) => self.cmd_destroy(&handle),
+            Command::Do(tail) => self.cmd_do(&tail),
+            Command::Call(tail) => self.cmd_call(&tail),
             Command::Unknown(kw) => Err(CliError::Message(format!("unknown command: {}", kw))),
         }
     }
@@ -75,16 +92,37 @@ impl Runner {
         let (parsed, diags) = ttrpg_parser::parse_expr(expr);
         if !diags.is_empty() {
             let msgs: Vec<_> = diags.iter().map(|d| d.message.as_str()).collect();
-            return Err(CliError::Message(format!("parse error: {}", msgs.join("; "))));
+            return Err(CliError::Message(format!(
+                "parse error: {}",
+                msgs.join("; ")
+            )));
         }
-        let parsed = parsed.ok_or_else(|| CliError::Message("failed to parse expression".into()))?;
+        let parsed =
+            parsed.ok_or_else(|| CliError::Message("failed to parse expression".into()))?;
 
         let interp = Interpreter::new(&self.program, &self.type_env)
             .map_err(|e| CliError::Message(format!("interpreter error: {}", e)))?;
-        let mut handler = MinimalHandler;
-        interp
-            .evaluate_expr(&self.game_state, &mut handler, &parsed)
-            .map_err(|e| CliError::Message(format!("runtime error: {}", e)))
+
+        let state = RefCellState(&self.game_state);
+        let mut handler = CliHandler::new(&self.game_state, &self.reverse_handles, &mut self.rng);
+        let result = interp
+            .evaluate_expr(&state, &mut handler, &parsed)
+            .map_err(|e| CliError::Message(format!("runtime error: {}", e)))?;
+
+        // Emit any effect log lines
+        for line in handler.log.drain(..) {
+            self.output.push(line);
+        }
+
+        Ok(result)
+    }
+
+    /// Resolve a handle name to an EntityRef.
+    fn resolve_handle(&self, name: &str) -> Result<EntityRef, CliError> {
+        self.handles
+            .get(name)
+            .copied()
+            .ok_or_else(|| CliError::Message(format!("unknown handle: {}", name)))
     }
 
     // ── Command handlers ────────────────────────────────────────
@@ -96,9 +134,11 @@ impl Runner {
                 // Clear stale state so a previous successful load doesn't linger.
                 self.program = Box::new(Program { items: Vec::new() });
                 self.type_env = Box::new(TypeEnv::new());
-                self.game_state = GameState::new();
+                self.game_state = RefCell::new(GameState::new());
                 self.diagnostics = Vec::new();
                 self.last_path = Some(PathBuf::from(path));
+                self.handles.clear();
+                self.reverse_handles.clear();
                 return Err(CliError::Message(format!(
                     "cannot read '{}': {}",
                     path, e
@@ -127,9 +167,11 @@ impl Runner {
         if errors.is_empty() {
             self.program = Box::new(program);
             self.type_env = Box::new(check_result.env);
-            self.game_state = GameState::new();
+            self.game_state = RefCell::new(GameState::new());
             self.diagnostics = all_diags;
             self.last_path = Some(PathBuf::from(path));
+            self.handles.clear();
+            self.reverse_handles.clear();
             self.output.push(format!("loaded {}", path));
             Ok(())
         } else {
@@ -137,9 +179,11 @@ impl Runner {
             // Clear stale program state so eval cannot use a previous successful load.
             self.program = Box::new(Program { items: Vec::new() });
             self.type_env = Box::new(TypeEnv::new());
-            self.game_state = GameState::new();
+            self.game_state = RefCell::new(GameState::new());
             self.diagnostics = all_diags;
             self.last_path = Some(PathBuf::from(path));
+            self.handles.clear();
+            self.reverse_handles.clear();
             self.output
                 .push("use 'errors' to see diagnostics".into());
             Err(CliError::Message(format!(
@@ -182,6 +226,347 @@ impl Runner {
         }
         Ok(())
     }
+
+    /// `spawn <EntityType> <handle> { field: value, ... }`
+    fn cmd_spawn(&mut self, tail: &str) -> Result<(), CliError> {
+        // Extract entity type and handle
+        let tail = tail.trim();
+
+        // Split into: type, handle, optional { ... }
+        let (entity_type, rest) = split_first_token(tail);
+        if entity_type.is_empty() {
+            return Err(CliError::Message(
+                "usage: spawn <EntityType> <handle> [{ field: value, ... }]".into(),
+            ));
+        }
+        let rest = rest.trim();
+        let (handle, rest) = split_first_token(rest);
+        if handle.is_empty() {
+            return Err(CliError::Message(
+                "usage: spawn <EntityType> <handle> [{ field: value, ... }]".into(),
+            ));
+        }
+
+        if self.handles.contains_key(handle) {
+            return Err(CliError::Message(format!(
+                "handle '{}' already exists",
+                handle
+            )));
+        }
+
+        // Parse optional field block
+        let rest = rest.trim();
+        let fields = if rest.starts_with('{') {
+            // Find matching closing brace
+            let block = rest
+                .strip_prefix('{')
+                .and_then(|s| s.strip_suffix('}'))
+                .ok_or_else(|| CliError::Message("unmatched '{' in spawn".into()))?;
+            self.parse_field_block(block)?
+        } else if rest.is_empty() {
+            HashMap::new()
+        } else {
+            return Err(CliError::Message(format!(
+                "unexpected text after handle: {}",
+                rest
+            )));
+        };
+
+        let entity = self.game_state.borrow_mut().add_entity(entity_type, fields);
+        self.handles.insert(handle.to_string(), entity);
+        self.reverse_handles.insert(entity, handle.to_string());
+        self.output.push(format!(
+            "spawned {} {} ({})",
+            entity_type,
+            handle,
+            entity.0
+        ));
+        Ok(())
+    }
+
+    /// `set <handle>.<field> = <value>`
+    fn cmd_set(&mut self, tail: &str) -> Result<(), CliError> {
+        let tail = tail.trim();
+
+        // Split on '='
+        let eq_pos = tail
+            .find('=')
+            .ok_or_else(|| CliError::Message("usage: set <handle>.<field> = <value>".into()))?;
+        let lhs = tail[..eq_pos].trim();
+        let rhs = tail[eq_pos + 1..].trim();
+
+        if rhs.is_empty() {
+            return Err(CliError::Message("missing value after '='".into()));
+        }
+
+        // Split lhs on first '.'
+        let dot_pos = lhs
+            .find('.')
+            .ok_or_else(|| CliError::Message("usage: set <handle>.<field> = <value>".into()))?;
+        let handle = &lhs[..dot_pos];
+        let field = &lhs[dot_pos + 1..];
+
+        if handle.is_empty() || field.is_empty() {
+            return Err(CliError::Message("usage: set <handle>.<field> = <value>".into()));
+        }
+
+        let entity = self.resolve_handle(handle)?;
+
+        // Parse and evaluate the RHS expression
+        let val = self.eval(rhs)?;
+
+        // Write directly to GameState
+        self.game_state.borrow_mut().write_field(
+            &entity,
+            &[FieldPathSegment::Field(field.to_string())],
+            val.clone(),
+        );
+        self.output.push(format!(
+            "{}.{} = {}",
+            handle,
+            field,
+            format_value(&val)
+        ));
+        Ok(())
+    }
+
+    /// `destroy <handle>`
+    fn cmd_destroy(&mut self, tail: &str) -> Result<(), CliError> {
+        let handle = tail.trim();
+        if handle.is_empty() {
+            return Err(CliError::Message("usage: destroy <handle>".into()));
+        }
+
+        let entity = self.resolve_handle(handle)?;
+        let removed = self.game_state.borrow_mut().remove_entity(&entity);
+        if !removed {
+            return Err(CliError::Message(format!(
+                "entity for handle '{}' not found in state",
+                handle
+            )));
+        }
+        self.handles.remove(handle);
+        self.reverse_handles.remove(&entity);
+        self.output.push(format!("destroyed {}", handle));
+        Ok(())
+    }
+
+    /// `do <Action>(actor, args...)`
+    fn cmd_do(&mut self, tail: &str) -> Result<(), CliError> {
+        let tail = tail.trim();
+
+        // Parse: Name(arg1, arg2, ...)
+        let paren_pos = tail
+            .find('(')
+            .ok_or_else(|| CliError::Message("usage: do <Action>(actor, args...)".into()))?;
+        let action_name = tail[..paren_pos].trim();
+        if action_name.is_empty() {
+            return Err(CliError::Message("missing action name".into()));
+        }
+
+        let args_str = tail[paren_pos + 1..]
+            .strip_suffix(')')
+            .ok_or_else(|| CliError::Message("unmatched '(' in do".into()))?;
+
+        let arg_strs = split_top_level_commas(args_str);
+        if arg_strs.is_empty() || arg_strs[0].trim().is_empty() {
+            return Err(CliError::Message(
+                "do requires at least an actor argument".into(),
+            ));
+        }
+
+        // First arg is the actor handle
+        let actor_str = arg_strs[0].trim();
+        let actor = self.resolve_handle(actor_str)?;
+
+        // Remaining args: try handle resolution first, then parse as expression
+        let mut args = Vec::new();
+        for arg_str in &arg_strs[1..] {
+            let arg_str = arg_str.trim();
+            if let Some(&entity) = self.handles.get(arg_str) {
+                args.push(Value::Entity(entity));
+            } else {
+                let val = self.eval(arg_str)?;
+                args.push(val);
+            }
+        }
+
+        let interp = Interpreter::new(&self.program, &self.type_env)
+            .map_err(|e| CliError::Message(format!("interpreter error: {}", e)))?;
+
+        let state = RefCellState(&self.game_state);
+        let mut handler =
+            CliHandler::new(&self.game_state, &self.reverse_handles, &mut self.rng);
+
+        let result = interp
+            .execute_action(&state, &mut handler, action_name, actor, args)
+            .map_err(|e| CliError::Message(format!("runtime error: {}", e)))?;
+
+        // Emit effect log
+        for line in handler.log.drain(..) {
+            self.output.push(line);
+        }
+
+        self.output.push(format!("=> {}", format_value(&result)));
+        Ok(())
+    }
+
+    /// `call <fn>(args...)`
+    fn cmd_call(&mut self, tail: &str) -> Result<(), CliError> {
+        let tail = tail.trim();
+
+        // Parse: Name(arg1, arg2, ...)
+        let paren_pos = tail
+            .find('(')
+            .ok_or_else(|| CliError::Message("usage: call <fn>(args...)".into()))?;
+        let fn_name = tail[..paren_pos].trim();
+        if fn_name.is_empty() {
+            return Err(CliError::Message("missing function name".into()));
+        }
+
+        let args_str = tail[paren_pos + 1..]
+            .strip_suffix(')')
+            .ok_or_else(|| CliError::Message("unmatched '(' in call".into()))?;
+
+        let arg_strs = split_top_level_commas(args_str);
+
+        // Evaluate arguments: try handle resolution first, then parse as expression
+        let mut args = Vec::new();
+        for arg_str in &arg_strs {
+            let arg_str = arg_str.trim();
+            if arg_str.is_empty() {
+                continue;
+            }
+            if let Some(&entity) = self.handles.get(arg_str) {
+                args.push(Value::Entity(entity));
+            } else {
+                let val = self.eval(arg_str)?;
+                args.push(val);
+            }
+        }
+
+        let interp = Interpreter::new(&self.program, &self.type_env)
+            .map_err(|e| CliError::Message(format!("interpreter error: {}", e)))?;
+
+        let state = RefCellState(&self.game_state);
+        let mut handler =
+            CliHandler::new(&self.game_state, &self.reverse_handles, &mut self.rng);
+
+        // Try derive first, fall back to mechanic on "undefined derive" error
+        let result = match interp.evaluate_derive(&state, &mut handler, fn_name, args.clone()) {
+            Ok(val) => val,
+            Err(e) if e.message.contains("undefined derive") => {
+                // Reset handler log since derive attempt may have logged nothing useful
+                handler.log.clear();
+                interp
+                    .evaluate_mechanic(&state, &mut handler, fn_name, args)
+                    .map_err(|e2| CliError::Message(format!("runtime error: {}", e2)))?
+            }
+            Err(e) => return Err(CliError::Message(format!("runtime error: {}", e))),
+        };
+
+        // Emit effect log
+        for line in handler.log.drain(..) {
+            self.output.push(line);
+        }
+
+        self.output.push(format!("=> {}", format_value(&result)));
+        Ok(())
+    }
+
+    // ── Parsing helpers ──────────────────────────────────────────
+
+    /// Parse a field block like `key: expr, key: expr` into a HashMap.
+    fn parse_field_block(&mut self, block: &str) -> Result<HashMap<String, Value>, CliError> {
+        let mut fields = HashMap::new();
+        let entries = split_top_level_commas(block);
+        for entry in entries {
+            let entry = entry.trim();
+            if entry.is_empty() {
+                continue;
+            }
+            let colon_pos = entry
+                .find(':')
+                .ok_or_else(|| CliError::Message(format!("expected 'key: value' in field block, got: {}", entry)))?;
+            let key = entry[..colon_pos].trim();
+            let val_str = entry[colon_pos + 1..].trim();
+            if key.is_empty() || val_str.is_empty() {
+                return Err(CliError::Message(format!(
+                    "invalid field entry: {}",
+                    entry
+                )));
+            }
+
+            // Evaluate value expression with MinimalHandler (spawn fields are literal values)
+            let (parsed, diags) = ttrpg_parser::parse_expr(val_str);
+            if !diags.is_empty() {
+                let msgs: Vec<_> = diags.iter().map(|d| d.message.as_str()).collect();
+                return Err(CliError::Message(format!(
+                    "parse error in field '{}': {}",
+                    key,
+                    msgs.join("; ")
+                )));
+            }
+            let parsed = parsed.ok_or_else(|| {
+                CliError::Message(format!("failed to parse value for field '{}'", key))
+            })?;
+
+            let interp = Interpreter::new(&self.program, &self.type_env)
+                .map_err(|e| CliError::Message(format!("interpreter error: {}", e)))?;
+            let mut handler = MinimalHandler;
+            let val = interp
+                .evaluate_expr(&*self.game_state.borrow(), &mut handler, &parsed)
+                .map_err(|e| {
+                    CliError::Message(format!("error evaluating field '{}': {}", key, e))
+                })?;
+            fields.insert(key.to_string(), val);
+        }
+        Ok(fields)
+    }
+}
+
+/// Split a trimmed line into the first whitespace-delimited token and the rest.
+fn split_first_token(s: &str) -> (&str, &str) {
+    match s.find(char::is_whitespace) {
+        Some(pos) => (&s[..pos], &s[pos + 1..]),
+        None => (s, ""),
+    }
+}
+
+/// Split on commas, respecting `()`, `[]`, `{}`, and `""` nesting.
+fn split_top_level_commas(s: &str) -> Vec<&str> {
+    let mut result = Vec::new();
+    let mut depth = 0i32;
+    let mut in_string = false;
+    let mut start = 0;
+    let bytes = s.as_bytes();
+    let mut i = 0;
+
+    while i < bytes.len() {
+        if in_string {
+            if bytes[i] == b'\\' {
+                i += 2;
+                continue;
+            }
+            if bytes[i] == b'"' {
+                in_string = false;
+            }
+        } else {
+            match bytes[i] {
+                b'"' => in_string = true,
+                b'(' | b'[' | b'{' => depth += 1,
+                b')' | b']' | b'}' => depth -= 1,
+                b',' if depth == 0 => {
+                    result.push(&s[start..i]);
+                    start = i + 1;
+                }
+                _ => {}
+            }
+        }
+        i += 1;
+    }
+    result.push(&s[start..]);
+    result
 }
 
 impl Default for Runner {
@@ -526,6 +911,193 @@ system "test" {
             "got: {}",
             err
         );
+
+        std::fs::remove_file(&path).ok();
+    }
+
+    // ── Spawn/Set/Destroy tests ─────────────────────────────────
+
+    #[test]
+    fn spawn_and_eval_handle() {
+        let mut runner = Runner::new();
+        runner.exec("spawn Character fighter { HP: 30, AC: 15 }").unwrap();
+        let output = runner.take_output();
+        assert!(output[0].contains("spawned Character fighter"));
+
+        // Eval the handle — should show Entity(...)
+        runner.exec("eval fighter").unwrap_err();
+        // Handle is not an eval-visible variable, that's expected for Phase 2
+        // The handle registry is used by do/call/set/destroy, not eval
+    }
+
+    #[test]
+    fn spawn_duplicate_handle_rejected() {
+        let mut runner = Runner::new();
+        runner.exec("spawn Character fighter {}").unwrap();
+        runner.take_output();
+        let err = runner.exec("spawn Character fighter {}").unwrap_err();
+        assert!(err.to_string().contains("already exists"));
+    }
+
+    #[test]
+    fn spawn_no_fields() {
+        let mut runner = Runner::new();
+        runner.exec("spawn Character fighter").unwrap();
+        let output = runner.take_output();
+        assert!(output[0].contains("spawned Character fighter"));
+    }
+
+    #[test]
+    fn set_field() {
+        let mut runner = Runner::new();
+        runner.exec("spawn Character fighter { AC: 15 }").unwrap();
+        runner.take_output();
+
+        runner.exec("set fighter.AC = 18").unwrap();
+        let output = runner.take_output();
+        assert!(output.iter().any(|l| l.contains("fighter.AC = 18")));
+    }
+
+    #[test]
+    fn set_unknown_handle() {
+        let mut runner = Runner::new();
+        let err = runner.exec("set ghost.HP = 10").unwrap_err();
+        assert!(err.to_string().contains("unknown handle"));
+    }
+
+    #[test]
+    fn destroy_entity() {
+        let mut runner = Runner::new();
+        runner.exec("spawn Character goblin { HP: 7 }").unwrap();
+        runner.take_output();
+
+        runner.exec("destroy goblin").unwrap();
+        let output = runner.take_output();
+        assert_eq!(output, vec!["destroyed goblin"]);
+
+        // Handle should no longer exist
+        let err = runner.exec("set goblin.HP = 10").unwrap_err();
+        assert!(err.to_string().contains("unknown handle"));
+    }
+
+    #[test]
+    fn destroy_unknown_handle() {
+        let mut runner = Runner::new();
+        let err = runner.exec("destroy ghost").unwrap_err();
+        assert!(err.to_string().contains("unknown handle"));
+    }
+
+    // ── Call tests ──────────────────────────────────────────────
+
+    #[test]
+    fn call_derive() {
+        let dir = std::env::temp_dir().join("ttrpg_cli_test");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("test_call_derive.ttrpg");
+        std::fs::write(
+            &path,
+            r#"
+system "test" {
+    derive double(x: int) -> int { x * 2 }
+}
+"#,
+        )
+        .unwrap();
+
+        let mut runner = Runner::new();
+        runner.exec(&format!("load {}", path.display())).unwrap();
+        runner.take_output();
+
+        runner.exec("call double(16)").unwrap();
+        let output = runner.take_output();
+        assert!(output.iter().any(|l| l.contains("=> 32")));
+
+        std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn call_mechanic_fallback() {
+        let dir = std::env::temp_dir().join("ttrpg_cli_test");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("test_call_mechanic.ttrpg");
+        std::fs::write(
+            &path,
+            r#"
+system "test" {
+    mechanic add(a: int, b: int) -> int { a + b }
+}
+"#,
+        )
+        .unwrap();
+
+        let mut runner = Runner::new();
+        runner.exec(&format!("load {}", path.display())).unwrap();
+        runner.take_output();
+
+        runner.exec("call add(10, 20)").unwrap();
+        let output = runner.take_output();
+        assert!(output.iter().any(|l| l.contains("=> 30")));
+
+        std::fs::remove_file(&path).ok();
+    }
+
+    // ── Split helpers tests ──────────────────────────────────────
+
+    #[test]
+    fn split_top_level_commas_basic() {
+        let parts = split_top_level_commas("a, b, c");
+        assert_eq!(parts, vec!["a", " b", " c"]);
+    }
+
+    #[test]
+    fn split_top_level_commas_nested() {
+        let parts = split_top_level_commas("f(a, b), c");
+        assert_eq!(parts, vec!["f(a, b)", " c"]);
+    }
+
+    #[test]
+    fn split_top_level_commas_string() {
+        let parts = split_top_level_commas(r#""a, b", c"#);
+        assert_eq!(parts, vec![r#""a, b""#, " c"]);
+    }
+
+    #[test]
+    fn split_top_level_commas_empty() {
+        let parts = split_top_level_commas("");
+        assert_eq!(parts, vec![""]);
+    }
+
+    // ── Load clears handles ──────────────────────────────────────
+
+    #[test]
+    fn load_clears_handles() {
+        let dir = std::env::temp_dir().join("ttrpg_cli_test");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("test_load_clears.ttrpg");
+        std::fs::write(
+            &path,
+            r#"
+system "test" {
+    derive id(x: int) -> int { x }
+}
+"#,
+        )
+        .unwrap();
+
+        let mut runner = Runner::new();
+        runner.exec(&format!("load {}", path.display())).unwrap();
+        runner.take_output();
+
+        runner.exec("spawn Character fighter { HP: 30 }").unwrap();
+        runner.take_output();
+
+        // Reload clears handles
+        runner.exec("reload").unwrap();
+        runner.take_output();
+
+        // Handle should no longer exist
+        let err = runner.exec("set fighter.HP = 10").unwrap_err();
+        assert!(err.to_string().contains("unknown handle"));
 
         std::fs::remove_file(&path).ok();
     }
