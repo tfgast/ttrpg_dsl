@@ -12,10 +12,10 @@ pub mod reference_state;
 
 use std::collections::HashMap;
 
-use ttrpg_ast::Span;
+use ttrpg_ast::{Span, Spanned};
 use ttrpg_ast::ast::{
-    ActionDecl, ConditionDecl, DeclKind, EventDecl, FnDecl, OptionDecl, Program, PromptDecl,
-    ReactionDecl, TopLevel,
+    ActionDecl, ConditionDecl, DeclKind, EventDecl, ExprKind, FnDecl, OptionDecl, Program,
+    PromptDecl, ReactionDecl, TopLevel,
 };
 use ttrpg_checker::env::TypeEnv;
 
@@ -309,6 +309,19 @@ impl<'p> Interpreter<'p> {
         }
         let mut env = Env::new(state, handler, self);
         call::evaluate_fn_with_values(&mut env, name, args, Span::dummy())
+    }
+
+    /// Evaluate a standalone expression against the current program state.
+    ///
+    /// Used by the CLI `eval` command for ad-hoc expression evaluation.
+    pub fn evaluate_expr(
+        &self,
+        state: &dyn StateProvider,
+        handler: &mut dyn EffectHandler,
+        expr: &Spanned<ExprKind>,
+    ) -> Result<Value, RuntimeError> {
+        let mut env = Env::new(state, handler, self);
+        eval::eval_expr(&mut env, expr)
     }
 
     /// Query which reactions would trigger for a given event.

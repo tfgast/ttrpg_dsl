@@ -21,7 +21,7 @@ impl Parser {
 
     // ── Token helpers ────────────────────────────────────────────
 
-    pub(crate) fn peek(&self) -> &TokenKind {
+    pub fn peek(&self) -> &TokenKind {
         self.tokens
             .get(self.pos)
             .map(|t| &t.kind)
@@ -159,7 +159,7 @@ impl Parser {
         Span::new(start, end)
     }
 
-    pub(crate) fn error(&mut self, message: impl Into<String>) {
+    pub fn error(&mut self, message: impl Into<String>) {
         let span = self.peek_span();
         self.diagnostics.push(Diagnostic::error(message, span));
     }
@@ -169,6 +169,11 @@ impl Parser {
     pub fn parse(mut self) -> (Program, Vec<Diagnostic>) {
         let program = self.parse_program();
         (program, self.diagnostics)
+    }
+
+    /// Consume the parser and return its collected diagnostics.
+    pub fn into_diagnostics(self) -> Vec<Diagnostic> {
+        self.diagnostics
     }
 
     fn parse_program(&mut self) -> Program {

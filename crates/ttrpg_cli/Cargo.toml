@@ -1,0 +1,19 @@
+[package]
+name = "ttrpg_cli"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "ttrpg_cli"
+path = "src/lib.rs"
+
+[[bin]]
+name = "ttrpg"
+path = "src/main.rs"
+
+[dependencies]
+ttrpg_ast = { path = "../ttrpg_ast" }
+ttrpg_lexer = { path = "../ttrpg_lexer" }
+ttrpg_parser = { path = "../ttrpg_parser" }
+ttrpg_checker = { path = "../ttrpg_checker" }
+ttrpg_interp = { path = "../ttrpg_interp" }

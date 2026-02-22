@@ -15,6 +15,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "ttrpg_cli"
+version = "0.1.0"
+dependencies = [
+ "ttrpg_ast",
+ "ttrpg_checker",
+ "ttrpg_interp",
+ "ttrpg_lexer",
+ "ttrpg_parser",
+]
+
+[[package]]
 name = "ttrpg_interp"
 version = "0.1.0"
 dependencies = [
