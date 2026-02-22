@@ -1382,7 +1382,7 @@ system "D&D 5e Expanded" {
                 // REMAINING GAP: Detecting "opposite sides" requires geometric
                 // Position calculations the DSL can't yet express.
                 // For now, just demonstrate the syntax works.
-                mode = "advantage"
+                mode = advantage
             }
         }
     }
