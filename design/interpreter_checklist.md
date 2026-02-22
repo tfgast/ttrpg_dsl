@@ -336,51 +336,51 @@ Companion to [`interpreter_impl_plan.md`](interpreter_impl_plan.md). Check items
 ## Phase 7: Integration Layers
 
 ### StateAdapter — Layer 2 (`adapter.rs`)
-- [ ] `StateAdapter<S: WritableState>` struct with `RefCell<S>` + `HashSet<EffectKind>`
-- [ ] `StateProvider` impl for `StateAdapter` (per-call `borrow()`)
-- [ ] `AdaptedHandler` struct
-- [ ] `EffectHandler` impl for `AdaptedHandler`
-- [ ] `StateAdapter::new(state)`
-- [ ] `StateAdapter::pass_through(kind)` builder
-- [ ] `StateAdapter::run(inner, closure)` — borrow discipline
-- [ ] `StateAdapter::into_inner()`
-- [ ] Intercepted mutation: apply locally, return `Acknowledged`
-- [ ] Pass-through mutation: forward, then sync on `Acknowledged`/`Override`
-- [ ] Pass-through mutation: `Vetoed` → no local mutation
-- [ ] Non-mutation effects: always forwarded
-- [ ] `DeductCost`: always passed through; adapter applies mutation based on response
-- [ ] `apply_mutation` dispatch: `MutateField` → `write_field`
-- [ ] `apply_mutation` dispatch: `ApplyCondition` → `add_condition`
-- [ ] `apply_mutation` dispatch: `RemoveCondition` → `remove_condition`
-- [ ] `apply_mutation` dispatch: `MutateTurnField` → `write_turn_field`
+- [x] `StateAdapter<S: WritableState>` struct with `RefCell<S>` + `HashSet<EffectKind>`
+- [x] `StateProvider` impl for `StateAdapter` (per-call `borrow()`)
+- [x] `AdaptedHandler` struct
+- [x] `EffectHandler` impl for `AdaptedHandler`
+- [x] `StateAdapter::new(state)`
+- [x] `StateAdapter::pass_through(kind)` builder
+- [x] `StateAdapter::run(inner, closure)` — borrow discipline
+- [x] `StateAdapter::into_inner()`
+- [x] Intercepted mutation: apply locally, return `Acknowledged`
+- [x] Pass-through mutation: forward, then sync on `Acknowledged`/`Override`
+- [x] Pass-through mutation: `Vetoed` → no local mutation
+- [x] Non-mutation effects: always forwarded
+- [x] `DeductCost`: always passed through; adapter applies mutation based on response
+- [x] `apply_mutation` dispatch: `MutateField` → `write_field`
+- [x] `apply_mutation` dispatch: `ApplyCondition` → `add_condition`
+- [x] `apply_mutation` dispatch: `RemoveCondition` → `remove_condition`
+- [x] `apply_mutation` dispatch: `MutateTurnField` → `write_turn_field`
 
 ### GameState — Layer 3 (`reference_state.rs`)
-- [ ] `GameState` struct (entities, conditions, turn_budgets, options, counters)
-- [ ] `EntityState` struct
-- [ ] `GameState::new()`
-- [ ] `GameState::add_entity(name, fields) -> EntityRef`
-- [ ] `GameState::set_turn_budget(entity, budget)`
-- [ ] `GameState::apply_condition(entity, name, duration)` (auto-assign `id`)
-- [ ] `GameState::enable_option(name)` / `disable_option(name)`
-- [ ] `StateProvider` impl for `GameState`
-- [ ] `WritableState` impl for `GameState`
-- [ ] Grid position `(i64, i64)` concrete type
-- [ ] `position_eq`: downcast + structural equality
-- [ ] `distance`: Chebyshev (`max(|dx|, |dy|)`)
+- [x] `GameState` struct (entities, conditions, turn_budgets, options, counters)
+- [x] `EntityState` struct
+- [x] `GameState::new()`
+- [x] `GameState::add_entity(name, fields) -> EntityRef`
+- [x] `GameState::set_turn_budget(entity, budget)`
+- [x] `GameState::apply_condition(entity, name, duration)` (auto-assign `id`)
+- [x] `GameState::enable_option(name)` / `disable_option(name)`
+- [x] `StateProvider` impl for `GameState`
+- [x] `WritableState` impl for `GameState`
+- [x] Grid position `(i64, i64)` concrete type
+- [x] `position_eq`: downcast + structural equality
+- [x] `distance`: Chebyshev (`max(|dx|, |dy|)`)
 
 ### Tests
-- [ ] Adapter: intercepted mutation applies locally
-- [ ] Adapter: pass-through mutation forwards + syncs
-- [ ] Adapter: pass-through vetoed → no local change
-- [ ] Adapter: non-mutation effects forwarded
-- [ ] Adapter: `DeductCost` decision + mutation
-- [ ] GameState: add entity, read fields
-- [ ] GameState: write field, read back
-- [ ] GameState: condition add/remove/query
-- [ ] GameState: turn budget set/read/write
-- [ ] GameState: option enable/disable/query
-- [ ] GameState: position equality and Chebyshev distance
-- [ ] Integration: full action via `GameState` + `StateAdapter`
+- [x] Adapter: intercepted mutation applies locally
+- [x] Adapter: pass-through mutation forwards + syncs
+- [x] Adapter: pass-through vetoed → no local change
+- [x] Adapter: non-mutation effects forwarded
+- [x] Adapter: `DeductCost` decision + mutation
+- [x] GameState: add entity, read fields
+- [x] GameState: write field, read back
+- [x] GameState: condition add/remove/query
+- [x] GameState: turn budget set/read/write
+- [x] GameState: option enable/disable/query
+- [x] GameState: position equality and Chebyshev distance
+- [x] Integration: full action via `GameState` + `StateAdapter`
 
 ---
 

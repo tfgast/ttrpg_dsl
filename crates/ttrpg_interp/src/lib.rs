@@ -7,6 +7,8 @@ pub mod builtins;
 pub mod action;
 pub mod pipeline;
 pub mod event;
+pub mod adapter;
+pub mod reference_state;
 
 use std::collections::HashMap;
 
