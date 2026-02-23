@@ -221,8 +221,13 @@ impl Runner {
 
         let state = RefCellState(&self.game_state);
         let mut handler = CliHandler::new(&self.game_state, &self.reverse_handles, &mut self.rng, &mut self.roll_queue);
+        let bindings: std::collections::HashMap<String, Value> = self
+            .handles
+            .iter()
+            .map(|(name, entity)| (name.clone(), Value::Entity(*entity)))
+            .collect();
         let result = interp
-            .evaluate_expr(&state, &mut handler, &parsed)
+            .evaluate_expr_with_bindings(&state, &mut handler, &parsed, bindings)
             .map_err(|e| {
                 // Emit any effect log lines even on error
                 for line in handler.log.drain(..) {
@@ -2395,10 +2400,19 @@ system "test" {
         let output = runner.take_output();
         assert!(output[0].contains("spawned Character fighter"));
 
-        // Eval the handle — should show Entity(...)
-        runner.exec("eval fighter").unwrap_err();
-        // Handle is not an eval-visible variable, that's expected for Phase 2
-        // The handle registry is used by do/call/set/destroy, not eval
+        // Eval a handle field — should resolve the handle and read the field
+        runner.exec("eval fighter.HP").unwrap();
+        let output = runner.take_output();
+        assert_eq!(output[0], "30");
+
+        runner.exec("eval fighter.AC").unwrap();
+        let output = runner.take_output();
+        assert_eq!(output[0], "15");
+
+        // Handles work in compound expressions
+        runner.exec("eval fighter.HP + fighter.AC").unwrap();
+        let output = runner.take_output();
+        assert_eq!(output[0], "45");
     }
 
     #[test]

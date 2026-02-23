@@ -244,6 +244,25 @@ impl<'p> Interpreter<'p> {
         eval::eval_expr(&mut env, expr)
     }
 
+    /// Evaluate a standalone expression with pre-populated variable bindings.
+    ///
+    /// Like [`evaluate_expr`], but injects the given bindings into the initial
+    /// scope before evaluation. Used by the CLI to make handle names resolvable
+    /// as entity references (e.g. `eval hero.HP`).
+    pub fn evaluate_expr_with_bindings(
+        &self,
+        state: &dyn StateProvider,
+        handler: &mut dyn EffectHandler,
+        expr: &Spanned<ExprKind>,
+        bindings: HashMap<String, Value>,
+    ) -> Result<Value, RuntimeError> {
+        let mut env = Env::new(state, handler, self);
+        for (name, value) in bindings {
+            env.bind(name, value);
+        }
+        eval::eval_expr(&mut env, expr)
+    }
+
     /// Check whether a named action exists in the loaded program.
     pub fn has_action(&self, name: &str) -> bool {
         self.program.actions.contains_key(name)
