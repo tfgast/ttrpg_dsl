@@ -319,7 +319,7 @@ fn write_nested(current: &mut Value, path: &[FieldPathSegment], value: Value) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::value::DurationValue;
+    use crate::value::{duration_variant, duration_variant_with};
 
     // ── GameState: add entity, read fields ─────────────────────
 
@@ -398,7 +398,7 @@ mod tests {
         state.apply_condition(
             &entity,
             "Prone",
-            Value::Duration(DurationValue::EndOfTurn),
+            duration_variant("end_of_turn"),
         );
 
         let conds = state.read_conditions(&entity).unwrap();
@@ -416,12 +416,12 @@ mod tests {
         state.apply_condition(
             &entity,
             "Prone",
-            Value::Duration(DurationValue::EndOfTurn),
+            duration_variant("end_of_turn"),
         );
         state.apply_condition(
             &entity,
             "Stunned",
-            Value::Duration(DurationValue::Rounds(1)),
+            duration_variant("rounds"),
         );
 
         state.remove_condition(&entity, "Prone");
@@ -598,7 +598,7 @@ mod tests {
             name: "Prone".into(),
             bearer: entity,
             gained_at: 0,
-            duration: Value::Duration(DurationValue::EndOfTurn),
+            duration: duration_variant("end_of_turn"),
         };
         state.add_condition(&entity, cond);
 
@@ -664,7 +664,7 @@ mod tests {
         state.apply_condition(
             &ghost,
             "Prone",
-            Value::Duration(DurationValue::EndOfTurn),
+            duration_variant("end_of_turn"),
         );
         assert!(state.read_conditions(&ghost).is_none());
     }
@@ -681,7 +681,7 @@ mod tests {
         state.apply_condition(
             &entity,
             "Prone",
-            Value::Duration(DurationValue::EndOfTurn),
+            duration_variant("end_of_turn"),
         );
         let mut budget = BTreeMap::new();
         budget.insert("actions".into(), Value::Int(1));
@@ -710,7 +710,7 @@ mod tests {
             name: "Prone".into(),
             bearer: ghost,
             gained_at: 0,
-            duration: Value::Duration(DurationValue::EndOfTurn),
+            duration: duration_variant("end_of_turn"),
         };
         state.add_condition(&ghost, cond);
         assert!(state.read_conditions(&ghost).is_none());

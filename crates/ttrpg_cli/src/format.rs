@@ -76,7 +76,6 @@ pub fn format_value(val: &Value) -> String {
 
         Value::Position(_) => "Position(...)".into(),
 
-        Value::Duration(d) => format!("{:?}", d),
         Value::Condition(name) => format!("Condition({})", name),
         Value::EnumNamespace(name) => format!("<enum {}>", name),
     }

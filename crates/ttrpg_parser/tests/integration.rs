@@ -54,7 +54,7 @@ fn test_parse_full_example() {
         }
     }
 
-    assert_eq!(enums, 5, "enum count");
+    assert_eq!(enums, 6, "enum count");
     assert_eq!(structs, 2, "struct count");
     assert_eq!(entities, 2, "entity count");
     assert_eq!(derives, 4, "derive count");
@@ -63,7 +63,7 @@ fn test_parse_full_example() {
     assert_eq!(reactions, 1, "reaction count");
     assert_eq!(conditions, 3, "condition count");
     assert_eq!(prompts, 2, "prompt count");
-    assert_eq!(events, 1, "event count");
+    assert_eq!(events, 3, "event count");
 }
 
 #[test]

@@ -739,7 +739,7 @@ mod tests {
 
     use crate::effect::{Effect, EffectHandler, Response};
     use crate::state::{ActiveCondition, EntityRef, StateProvider};
-    use crate::value::{DiceExpr, DurationValue, PositionValue, RollResult};
+    use crate::value::{DiceExpr, PositionValue, RollResult, duration_variant_with};
     use crate::Interpreter;
 
     // ── Test infrastructure ────────────────────────────────────
@@ -1485,7 +1485,11 @@ mod tests {
 
         env.bind("target".into(), Value::Entity(EntityRef(1)));
         env.bind("cond".into(), Value::Condition("Prone".into()));
-        env.bind("dur".into(), Value::Duration(DurationValue::Rounds(3)));
+        env.bind("dur".into(), {
+            let mut f = BTreeMap::new();
+            f.insert("count".into(), Value::Int(3));
+            duration_variant_with("rounds", f)
+        });
 
         let expr = spanned(ExprKind::Call {
             callee: Box::new(spanned(ExprKind::Ident("apply_condition".into()))),
@@ -2220,7 +2224,11 @@ mod tests {
 
         env.bind("target".into(), Value::Entity(EntityRef(1)));
         env.bind("cond".into(), Value::Condition("Prone".into()));
-        env.bind("dur".into(), Value::Duration(DurationValue::Rounds(3)));
+        env.bind("dur".into(), {
+            let mut f = BTreeMap::new();
+            f.insert("count".into(), Value::Int(3));
+            duration_variant_with("rounds", f)
+        });
 
         let expr = spanned(ExprKind::Call {
             callee: Box::new(spanned(ExprKind::Ident("apply_condition".into()))),
@@ -2249,7 +2257,11 @@ mod tests {
 
         env.bind("target".into(), Value::Entity(EntityRef(1)));
         env.bind("cond".into(), Value::Condition("Prone".into()));
-        env.bind("dur".into(), Value::Duration(DurationValue::Rounds(3)));
+        env.bind("dur".into(), {
+            let mut f = BTreeMap::new();
+            f.insert("count".into(), Value::Int(3));
+            duration_variant_with("rounds", f)
+        });
 
         let expr = spanned(ExprKind::Call {
             callee: Box::new(spanned(ExprKind::Ident("apply_condition".into()))),

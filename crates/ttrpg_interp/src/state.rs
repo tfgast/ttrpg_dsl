@@ -33,7 +33,7 @@ pub struct ActiveCondition {
     pub bearer: EntityRef,
     /// Ordering timestamp (oldest first).
     pub gained_at: u64,
-    /// Duration value (e.g., `Value::Duration(DurationValue::Rounds(3))`).
+    /// Duration value (e.g., `duration_variant("rounds")` or any ruleset-defined Duration variant).
     pub duration: Value,
 }
 
@@ -104,7 +104,7 @@ pub trait WritableState: StateProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::value::{DurationValue, default_turn_budget};
+    use crate::value::{default_turn_budget, duration_variant};
     use std::collections::HashMap;
 
     // A minimal test implementation of StateProvider.
@@ -187,7 +187,7 @@ mod tests {
                 name: "Prone".into(),
                 bearer: entity,
                 gained_at: 5,
-                duration: Value::Duration(DurationValue::EndOfTurn),
+                duration: duration_variant("end_of_turn"),
             }],
         );
 
@@ -233,7 +233,7 @@ mod tests {
             name: "Stunned".into(),
             bearer: EntityRef(1),
             gained_at: 10,
-            duration: Value::Duration(DurationValue::Rounds(1)),
+            duration: duration_variant("rounds"),
         };
         assert_eq!(cond.id, 42);
         assert_eq!(cond.name, "Stunned");

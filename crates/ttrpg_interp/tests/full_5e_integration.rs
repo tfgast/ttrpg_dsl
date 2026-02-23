@@ -12,7 +12,7 @@ use ttrpg_interp::adapter::StateAdapter;
 use ttrpg_interp::effect::{ActionKind, Effect, EffectHandler, Response};
 use ttrpg_interp::reference_state::{GameState, GridPosition};
 use ttrpg_interp::state::{EntityRef, StateProvider};
-use ttrpg_interp::value::{DiceExpr, DurationValue, RollResult, Value};
+use ttrpg_interp::value::{DiceExpr, RollResult, Value, duration_variant};
 use ttrpg_interp::Interpreter;
 
 // ── Setup ──────────────────────────────────────────────────────
@@ -1341,7 +1341,7 @@ fn prone_on_attacker_disadvantage() {
     state.apply_condition(
         &fighter,
         "Prone",
-        Value::Duration(DurationValue::Indefinite),
+        duration_variant("indefinite"),
     );
 
     // Call attack_roll — should have disadvantage (2d20kl1)
@@ -1406,7 +1406,7 @@ fn prone_on_target_melee_advantage() {
     state.apply_condition(
         &goblin,
         "Prone",
-        Value::Duration(DurationValue::Indefinite),
+        duration_variant("indefinite"),
     );
 
     // Fighter is at (0,0), Goblin at (1,0) → distance=1 <= 5 → advantage
@@ -1519,7 +1519,7 @@ fn prone_on_target_ranged_disadvantage() {
     state.apply_condition(
         &goblin,
         "Prone",
-        Value::Duration(DurationValue::Indefinite),
+        duration_variant("indefinite"),
     );
 
     // Responses consumed: ModifyApplied(Ack), RollDice(roll)
@@ -1575,7 +1575,7 @@ fn prone_modifies_initial_budget() {
     state.apply_condition(
         &fighter,
         "Prone",
-        Value::Duration(DurationValue::Indefinite),
+        duration_variant("indefinite"),
     );
 
     let mut handler = ScriptedHandler::new();
@@ -1620,7 +1620,7 @@ fn disengaging_suppresses_entity_leaves_reach() {
     state.apply_condition(
         &goblin,
         "Disengaging",
-        Value::Duration(DurationValue::EndOfTurn),
+        duration_variant("end_of_turn"),
     );
 
     let payload = Value::Struct {

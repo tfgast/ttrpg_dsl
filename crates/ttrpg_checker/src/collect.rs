@@ -34,14 +34,20 @@ pub fn collect(program: &Program) -> (TypeEnv, Vec<Diagnostic>) {
         env.builtins.insert(builtin.name.clone(), builtin);
     }
 
-    // Register built-in types (Duration enum, RollResult fields, etc.)
-    register_builtin_types(&mut env);
-
+    // Pass 1a: register all type names as stubs (across all systems)
     for item in &program.items {
         if let TopLevel::System(system) = &item.node {
-            // Pass 1a: register all type names as stubs
             pass_1a(&system.decls, &mut env, &mut diagnostics);
-            // Pass 1b: resolve all signatures
+        }
+    }
+
+    // Register built-in types AFTER pass_1a so user-defined types take
+    // precedence (e.g., `enum Duration { ... }` overrides the builtin).
+    register_builtin_types(&mut env);
+
+    // Pass 1b: resolve all signatures
+    for item in &program.items {
+        if let TopLevel::System(system) = &item.node {
             pass_1b(&system.decls, &mut env, &mut diagnostics);
         }
     }
@@ -92,6 +98,16 @@ fn pass_1a(
         if name == "TurnBudget" && !matches!(&stub, DeclInfo::Struct(_)) {
             diagnostics.push(Diagnostic::error(
                 "`TurnBudget` must be defined as a struct",
+                decl.span,
+            ));
+            continue;
+        }
+
+        // Duration must be an enum — rulesets define duration variants
+        // as enum members (e.g., `rounds(count: int)`, `indefinite`).
+        if name == "Duration" && !matches!(&stub, DeclInfo::Enum(_)) {
+            diagnostics.push(Diagnostic::error(
+                "`Duration` must be defined as an enum",
                 decl.span,
             ));
             continue;
@@ -839,30 +855,15 @@ fn collect_option(
 
 /// Register built-in type declarations that exist even without user definitions.
 fn register_builtin_types(env: &mut TypeEnv) {
-    // Duration enum (built-in)
+    // Duration enum (built-in fallback).
+    // Rulesets are expected to define their own `enum Duration { ... }` with
+    // system-appropriate variants. This minimal fallback provides only
+    // `indefinite` — the one truly universal duration concept.
     if !env.types.contains_key("Duration") {
-        let variants = vec![
-            VariantInfo {
-                name: "end_of_turn".into(),
-                fields: vec![],
-            },
-            VariantInfo {
-                name: "start_of_next_turn".into(),
-                fields: vec![],
-            },
-            VariantInfo {
-                name: "rounds".into(),
-                fields: vec![("count".into(), Ty::Int)],
-            },
-            VariantInfo {
-                name: "minutes".into(),
-                fields: vec![("count".into(), Ty::Int)],
-            },
-            VariantInfo {
-                name: "indefinite".into(),
-                fields: vec![],
-            },
-        ];
+        let variants = vec![VariantInfo {
+            name: "indefinite".into(),
+            fields: vec![],
+        }];
         for v in &variants {
             env.variant_to_enum
                 .entry(v.name.clone())

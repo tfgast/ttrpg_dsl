@@ -1634,7 +1634,6 @@ pub(crate) fn value_eq(state: &dyn StateProvider, a: &Value, b: &Value) -> bool 
         (Value::RollResult(a), Value::RollResult(b)) => a == b,
         (Value::Entity(a), Value::Entity(b)) => a == b,
         (Value::Condition(a), Value::Condition(b)) => a == b,
-        (Value::Duration(a), Value::Duration(b)) => a == b,
 
         // Position: delegate to host
         (Value::Position(_), Value::Position(_)) => state.position_eq(a, b),
@@ -1904,7 +1903,6 @@ pub(crate) fn type_name(val: &Value) -> &'static str {
         Value::Entity(_) => "Entity",
         Value::EnumVariant { .. } => "EnumVariant",
         Value::Position(_) => "Position",
-        Value::Duration(_) => "Duration",
         Value::Condition(_) => "Condition",
         Value::EnumNamespace(_) => "EnumNamespace",
     }

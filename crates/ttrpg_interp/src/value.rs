@@ -29,18 +29,6 @@ pub struct RollResult {
     pub unmodified: i64,
 }
 
-// ── Duration ────────────────────────────────────────────────────
-
-/// Duration values for conditions and effects.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum DurationValue {
-    EndOfTurn,
-    StartOfNextTurn,
-    Rounds(i64),
-    Minutes(i64),
-    Indefinite,
-}
-
 // ── Position ────────────────────────────────────────────────────
 
 /// An opaque position value owned by the host.
@@ -130,7 +118,6 @@ pub enum Value {
     Position(PositionValue),
 
     // Special
-    Duration(DurationValue),
     Condition(String),
 
     /// Internal: an enum type name used as a namespace for qualified variant
@@ -155,6 +142,27 @@ pub fn default_turn_budget() -> Value {
     }
 }
 
+/// Convenience: construct a Duration enum variant with no fields.
+///
+/// Used by hosts and tests that need to create Duration values
+/// without going through the DSL.
+pub fn duration_variant(variant: &str) -> Value {
+    Value::EnumVariant {
+        enum_name: "Duration".into(),
+        variant: variant.into(),
+        fields: BTreeMap::new(),
+    }
+}
+
+/// Convenience: construct a Duration enum variant with fields.
+pub fn duration_variant_with(variant: &str, fields: BTreeMap<String, Value>) -> Value {
+    Value::EnumVariant {
+        enum_name: "Duration".into(),
+        variant: variant.into(),
+        fields,
+    }
+}
+
 // ── Discriminant ordering ───────────────────────────────────────
 
 /// Returns a numeric discriminant for cross-variant ordering.
@@ -175,9 +183,8 @@ fn discriminant(v: &Value) -> u8 {
         Value::Entity(_) => 12,
         Value::EnumVariant { .. } => 13,
         Value::Position(_) => 14,
-        Value::Duration(_) => 15,
-        Value::Condition(_) => 16,
-        Value::EnumNamespace(_) => 17,
+        Value::Condition(_) => 15,
+        Value::EnumNamespace(_) => 16,
     }
 }
 
@@ -229,7 +236,6 @@ impl PartialEq for Value {
                 },
             ) => e1 == e2 && v1 == v2 && f1 == f2,
             (Value::Position(a), Value::Position(b)) => a == b,
-            (Value::Duration(a), Value::Duration(b)) => a == b,
             (Value::Condition(a), Value::Condition(b)) => a == b,
             (Value::EnumNamespace(a), Value::EnumNamespace(b)) => a == b,
             _ => false,
@@ -299,7 +305,6 @@ impl Ord for Value {
                 .then_with(|| v1.cmp(v2))
                 .then_with(|| btree_map_cmp(f1, f2)),
             (Value::Position(a), Value::Position(b)) => a.cmp(b),
-            (Value::Duration(a), Value::Duration(b)) => a.cmp(b),
             (Value::Condition(a), Value::Condition(b)) => a.cmp(b),
             (Value::EnumNamespace(a), Value::EnumNamespace(b)) => a.cmp(b),
             // Same discriminant guarantees same variant.
@@ -428,7 +433,6 @@ impl std::hash::Hash for Value {
             Value::Position(v) => {
                 (Arc::as_ptr(&v.0) as *const () as usize).hash(state);
             }
-            Value::Duration(v) => v.hash(state),
             Value::Condition(v) => v.hash(state),
             Value::EnumNamespace(v) => v.hash(state),
         }
@@ -679,15 +683,6 @@ mod tests {
         }
     }
 
-    // ── DurationValue ───────────────────────────────────────────
-
-    #[test]
-    fn duration_equality() {
-        assert_eq!(DurationValue::Rounds(3), DurationValue::Rounds(3));
-        assert_ne!(DurationValue::Rounds(3), DurationValue::Minutes(3));
-        assert_eq!(DurationValue::Indefinite, DurationValue::Indefinite);
-    }
-
     // ── Option variant ──────────────────────────────────────────
 
     #[test]
@@ -814,11 +809,6 @@ mod tests {
                 Value::Position(PositionValue(Arc::new(99i64))),
             ),
             (Value::Condition("Prone".into()), Value::Condition("Prone".into()), Value::Condition("Stunned".into())),
-            (
-                Value::Duration(DurationValue::Rounds(3)),
-                Value::Duration(DurationValue::Rounds(3)),
-                Value::Duration(DurationValue::Rounds(5)),
-            ),
         ];
 
         for (a, b_eq, b_ne) in &pairs {

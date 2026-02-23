@@ -519,7 +519,7 @@ mod tests {
     use super::*;
     use crate::effect::{Effect, Response};
     use crate::state::ActiveCondition;
-    use crate::value::DurationValue;
+    use crate::value::{duration_variant, duration_variant_with};
     use std::collections::{BTreeMap, HashMap};
 
     // ── Test WritableState impl ────────────────────────────────
@@ -861,7 +861,7 @@ mod tests {
             handler.handle(Effect::ApplyCondition {
                 target: EntityRef(1),
                 condition: "Prone".into(),
-                duration: Value::Duration(DurationValue::EndOfTurn),
+                duration: duration_variant("end_of_turn"),
             })
         });
 
@@ -884,7 +884,7 @@ mod tests {
                 name: "Prone".into(),
                 bearer: EntityRef(1),
                 gained_at: 1,
-                duration: Value::Duration(DurationValue::EndOfTurn),
+                duration: duration_variant("end_of_turn"),
             }],
         );
         let adapter = StateAdapter::new(state);
@@ -1110,15 +1110,16 @@ mod tests {
         let state = TestWritableState::new();
         let adapter = StateAdapter::new(state).pass_through(EffectKind::ApplyCondition);
         // Host overrides the duration to Rounds(3)
-        let mut handler = RecordingHandler::new(vec![Response::Override(Value::Duration(
-            DurationValue::Rounds(3),
-        ))]);
+        let mut fields = BTreeMap::new();
+        fields.insert("count".into(), Value::Int(3));
+        let mut handler =
+            RecordingHandler::new(vec![Response::Override(duration_variant_with("rounds", fields))]);
 
         adapter.run(&mut handler, |_state, handler| {
             handler.handle(Effect::ApplyCondition {
                 target: EntityRef(1),
                 condition: "Prone".into(),
-                duration: Value::Duration(DurationValue::EndOfTurn),
+                duration: duration_variant("end_of_turn"),
             })
         });
 
@@ -1129,7 +1130,11 @@ mod tests {
         // Duration should be the overridden value, not the original
         assert_eq!(
             conds[0].duration,
-            Value::Duration(DurationValue::Rounds(3))
+            {
+                let mut f = BTreeMap::new();
+                f.insert("count".into(), Value::Int(3));
+                duration_variant_with("rounds", f)
+            }
         );
     }
 
@@ -1147,14 +1152,14 @@ mod tests {
                     name: "Prone".into(),
                     bearer: EntityRef(1),
                     gained_at: 1,
-                    duration: Value::Duration(DurationValue::EndOfTurn),
+                    duration: duration_variant("end_of_turn"),
                 },
                 ActiveCondition {
                     id: 2,
                     name: "Frightened".into(),
                     bearer: EntityRef(1),
                     gained_at: 2,
-                    duration: Value::Duration(DurationValue::Rounds(1)),
+                    duration: duration_variant("rounds"),
                 },
             ],
         );

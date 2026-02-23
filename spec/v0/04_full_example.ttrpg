@@ -25,6 +25,14 @@ system "D&D 5e Combat" {
 
     enum WeaponProperty { light, heavy, finesse, thrown, versatile, reach }
 
+    enum Duration {
+        end_of_turn,
+        start_of_next_turn,
+        rounds(count: int),
+        minutes(count: int),
+        indefinite
+    }
+
     enum ResolvedDamage {
         miss,
         hit(amount: int)
