@@ -44,6 +44,9 @@ pub(crate) fn eval_call(
             if name == "from_ordinal" {
                 return eval_from_ordinal(env, args, call_span);
             }
+            if name == "try_from_ordinal" {
+                return eval_try_from_ordinal(env, args, call_span);
+            }
 
             // 3. Check if it's a condition with parameters (e.g., Frightened(source: attacker))
             if let Some(cond_decl) = env.interp.program.conditions.get(name.as_str()) {
@@ -183,6 +186,65 @@ fn eval_from_ordinal(
             ),
             call_span,
         ));
+    }
+
+    Ok(Value::EnumVariant {
+        enum_name,
+        variant: variant.name.clone(),
+        fields: BTreeMap::new(),
+    })
+}
+
+fn eval_try_from_ordinal(
+    env: &mut Env,
+    args: &[Arg],
+    call_span: Span,
+) -> Result<Value, RuntimeError> {
+    let ns_val = eval_expr(env, &args[0].value)?;
+    let idx_val = eval_expr(env, &args[1].value)?;
+
+    let enum_name = match &ns_val {
+        Value::EnumNamespace(name) => name.clone(),
+        _ => {
+            return Err(RuntimeError::with_span(
+                format!("try_from_ordinal() first argument must be an enum type, got {}", type_name(&ns_val)),
+                call_span,
+            ));
+        }
+    };
+
+    let idx = match &idx_val {
+        Value::Int(n) => *n,
+        _ => {
+            return Err(RuntimeError::with_span(
+                format!("try_from_ordinal() second argument must be int, got {}", type_name(&idx_val)),
+                call_span,
+            ));
+        }
+    };
+
+    if idx < 0 {
+        return Ok(Value::None);
+    }
+
+    let info = match env.interp.type_env.types.get(enum_name.as_str()) {
+        Some(DeclInfo::Enum(info)) => info,
+        _ => {
+            return Err(RuntimeError::with_span(
+                format!("unknown enum `{}`", enum_name),
+                call_span,
+            ));
+        }
+    };
+
+    let idx_usize = idx as usize;
+    if idx_usize >= info.variants.len() {
+        return Ok(Value::None);
+    }
+
+    let variant = &info.variants[idx_usize];
+    if !variant.fields.is_empty() {
+        return Ok(Value::None);
     }
 
     Ok(Value::EnumVariant {

@@ -5289,3 +5289,42 @@ system "test" {
 "#;
     expect_errors(source, &["expects 2 arguments"]);
 }
+
+#[test]
+fn test_try_from_ordinal_returns_option() {
+    let source = r#"
+system "test" {
+    enum Size ordered { small, medium, large }
+    derive maybe_size(i: int) -> option<Size> {
+        try_from_ordinal(Size, i)
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_try_from_ordinal_rejects_non_ordered() {
+    let source = r#"
+system "test" {
+    enum Color { red, green, blue }
+    derive bad(i: int) -> option<Color> {
+        try_from_ordinal(Color, i)
+    }
+}
+"#;
+    expect_errors(source, &["not ordered"]);
+}
+
+#[test]
+fn test_try_from_ordinal_arity_error() {
+    let source = r#"
+system "test" {
+    enum Size ordered { small, medium, large }
+    derive bad() -> option<Size> {
+        try_from_ordinal(Size)
+    }
+}
+"#;
+    expect_errors(source, &["expects 2 arguments"]);
+}

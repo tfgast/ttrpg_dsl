@@ -4989,6 +4989,141 @@ mod tests {
         assert!(err.message.contains("non-negative"), "got: {}", err.message);
     }
 
+    #[test]
+    fn try_from_ordinal_returns_some_on_valid_index() {
+        let program = empty_program();
+        let mut type_env = empty_type_env();
+
+        type_env.types.insert(
+            "Size".to_string(),
+            DeclInfo::Enum(EnumInfo {
+                name: "Size".to_string(),
+                ordered: true,
+                variants: vec![
+                    VariantInfo { name: "small".to_string(), fields: vec![] },
+                    VariantInfo { name: "medium".to_string(), fields: vec![] },
+                    VariantInfo { name: "large".to_string(), fields: vec![] },
+                ],
+            }),
+        );
+
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = TestState::new();
+        let mut handler = ScriptedHandler::new();
+        let mut env = make_env(&state, &mut handler, &interp);
+
+        env.bind("ns".to_string(), Value::EnumNamespace("Size".to_string()));
+        env.bind("idx".to_string(), Value::Int(2));
+
+        let expr = spanned(ExprKind::Call {
+            callee: Box::new(spanned(ExprKind::Ident("try_from_ordinal".to_string()))),
+            args: vec![
+                ttrpg_ast::ast::Arg {
+                    name: None,
+                    value: spanned(ExprKind::Ident("ns".to_string())),
+                    span: dummy_span(),
+                },
+                ttrpg_ast::ast::Arg {
+                    name: None,
+                    value: spanned(ExprKind::Ident("idx".to_string())),
+                    span: dummy_span(),
+                },
+            ],
+        });
+        assert_eq!(
+            eval_expr(&mut env, &expr).unwrap(),
+            Value::EnumVariant {
+                enum_name: "Size".to_string(),
+                variant: "large".to_string(),
+                fields: BTreeMap::new(),
+            }
+        );
+    }
+
+    #[test]
+    fn try_from_ordinal_returns_none_on_out_of_bounds() {
+        let program = empty_program();
+        let mut type_env = empty_type_env();
+
+        type_env.types.insert(
+            "Size".to_string(),
+            DeclInfo::Enum(EnumInfo {
+                name: "Size".to_string(),
+                ordered: true,
+                variants: vec![
+                    VariantInfo { name: "small".to_string(), fields: vec![] },
+                ],
+            }),
+        );
+
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = TestState::new();
+        let mut handler = ScriptedHandler::new();
+        let mut env = make_env(&state, &mut handler, &interp);
+
+        env.bind("ns".to_string(), Value::EnumNamespace("Size".to_string()));
+        env.bind("idx".to_string(), Value::Int(5));
+
+        let expr = spanned(ExprKind::Call {
+            callee: Box::new(spanned(ExprKind::Ident("try_from_ordinal".to_string()))),
+            args: vec![
+                ttrpg_ast::ast::Arg {
+                    name: None,
+                    value: spanned(ExprKind::Ident("ns".to_string())),
+                    span: dummy_span(),
+                },
+                ttrpg_ast::ast::Arg {
+                    name: None,
+                    value: spanned(ExprKind::Ident("idx".to_string())),
+                    span: dummy_span(),
+                },
+            ],
+        });
+        assert_eq!(eval_expr(&mut env, &expr).unwrap(), Value::None);
+    }
+
+    #[test]
+    fn try_from_ordinal_returns_none_on_negative() {
+        let program = empty_program();
+        let mut type_env = empty_type_env();
+
+        type_env.types.insert(
+            "Size".to_string(),
+            DeclInfo::Enum(EnumInfo {
+                name: "Size".to_string(),
+                ordered: true,
+                variants: vec![
+                    VariantInfo { name: "small".to_string(), fields: vec![] },
+                ],
+            }),
+        );
+
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = TestState::new();
+        let mut handler = ScriptedHandler::new();
+        let mut env = make_env(&state, &mut handler, &interp);
+
+        env.bind("ns".to_string(), Value::EnumNamespace("Size".to_string()));
+        env.bind("idx".to_string(), Value::Int(-1));
+
+        let expr = spanned(ExprKind::Call {
+            callee: Box::new(spanned(ExprKind::Ident("try_from_ordinal".to_string()))),
+            args: vec![
+                ttrpg_ast::ast::Arg {
+                    name: None,
+                    value: spanned(ExprKind::Ident("ns".to_string())),
+                    span: dummy_span(),
+                },
+                ttrpg_ast::ast::Arg {
+                    name: None,
+                    value: spanned(ExprKind::Ident("idx".to_string())),
+                    span: dummy_span(),
+                },
+            ],
+        });
+        assert_eq!(eval_expr(&mut env, &expr).unwrap(), Value::None);
+    }
+
     // ── Issue 3: none == Option(None) ───────────────────────────
 
     #[test]
