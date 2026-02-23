@@ -4957,3 +4957,98 @@ system "test" {
 "#;
     expect_errors(source, &["accepts at most 1 argument"]);
 }
+
+#[test]
+fn test_parameterized_condition_named_arg_wrong_name() {
+    // Named arg with wrong name should produce a clear error
+    let source = r#"
+system "test" {
+    entity Character {
+        HP: int
+    }
+    condition Frightened(source: Character) on bearer: Character {}
+    mechanic scare(actor: Character) -> Condition {
+        Frightened(src: actor)
+    }
+}
+"#;
+    expect_errors(source, &["has no parameter `src`"]);
+}
+
+#[test]
+fn test_parameterized_condition_named_arg_valid() {
+    // Named arg with correct name should pass
+    let source = r#"
+system "test" {
+    entity Character {
+        HP: int
+    }
+    condition Frightened(source: Character) on bearer: Character {}
+    mechanic scare(actor: Character) -> Condition {
+        Frightened(source: actor)
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_parameterized_condition_duplicate_named_arg() {
+    let source = r#"
+system "test" {
+    entity Character {
+        HP: int
+    }
+    condition Frightened(source: Character) on bearer: Character {}
+    mechanic scare(actor: Character) -> Condition {
+        Frightened(source: actor, source: actor)
+    }
+}
+"#;
+    expect_errors(source, &["duplicate argument for parameter `source`"]);
+}
+
+#[test]
+fn test_parameterized_condition_with_default() {
+    // Condition with default param should allow bare use and call use
+    let source = r#"
+system "test" {
+    entity Character {
+        HP: int
+    }
+    derive speed(actor: Character) -> int { 30 }
+    condition Weakened(level: int = 1) on bearer: Character {
+        modify speed(actor: bearer) {
+            result = result - level
+        }
+    }
+    mechanic weaken(actor: Character) -> Condition {
+        Weakened
+    }
+    mechanic weaken_hard(actor: Character) -> Condition {
+        Weakened(3)
+    }
+    mechanic weaken_named(actor: Character) -> Condition {
+        Weakened(level: 2)
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_parameterized_condition_missing_required_arg() {
+    // Calling with too few args should report the missing required param by name
+    let source = r#"
+system "test" {
+    entity Character {
+        HP: int
+    }
+    condition Frightened(source: Character) on bearer: Character {}
+    mechanic scare() -> Condition {
+        Frightened()
+    }
+}
+"#;
+    expect_errors(source, &["missing required argument `source`"]);
+}

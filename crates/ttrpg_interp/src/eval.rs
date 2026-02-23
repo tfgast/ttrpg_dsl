@@ -159,7 +159,7 @@ pub(crate) fn eval_expr(env: &mut Env, expr: &Spanned<ExprKind>) -> Result<Value
 // ── Identifier evaluation ──────────────────────────────────────
 
 fn eval_ident(
-    env: &Env,
+    env: &mut Env,
     name: &str,
     expr: &Spanned<ExprKind>,
 ) -> Result<Value, RuntimeError> {
@@ -194,9 +194,18 @@ fn eval_ident(
         }
     }
 
-    // 4. Check if it's a condition name (bare use = no args)
-    if env.interp.program.conditions.contains_key(name) {
-        return Ok(Value::Condition { name: name.to_string(), args: BTreeMap::new() });
+    // 4. Check if it's a condition name (bare use = no args, but materialize defaults)
+    if let Some(cond_decl) = env.interp.program.conditions.get(name) {
+        let cond_decl = cond_decl.clone();
+        let mut args = BTreeMap::new();
+        // Evaluate default expressions for all params (checker ensures all have defaults)
+        for param in &cond_decl.params {
+            if let Some(ref default_expr) = param.default {
+                let val = eval_expr(env, default_expr)?;
+                args.insert(param.name.clone(), val);
+            }
+        }
+        return Ok(Value::Condition { name: name.to_string(), args });
     }
 
     Err(RuntimeError::with_span(

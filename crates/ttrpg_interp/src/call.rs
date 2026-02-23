@@ -40,21 +40,12 @@ pub(crate) fn eval_call(
             // 2. Check if it's a condition with parameters (e.g., Frightened(source: attacker))
             if let Some(cond_decl) = env.interp.program.conditions.get(name.as_str()) {
                 let cond_decl = cond_decl.clone();
-                let mut cond_args = BTreeMap::new();
-                // Match positional args to declared params
-                for (i, arg) in args.iter().enumerate() {
-                    let param_name = match &arg.name {
-                        Some(n) => n.clone(),
-                        None => cond_decl.params.get(i)
-                            .map(|p| p.name.clone())
-                            .ok_or_else(|| RuntimeError::with_span(
-                                format!("condition '{}' expects {} parameters, got {}", name, cond_decl.params.len(), args.len()),
-                                call_span,
-                            ))?,
-                    };
-                    let val = eval_expr(env, &arg.value)?;
-                    cond_args.insert(param_name, val);
-                }
+                // Reuse bind_args for named arg resolution + default materialization
+                let param_infos = env.interp.type_env.conditions.get(name.as_str())
+                    .map(|ci| ci.params.clone())
+                    .unwrap_or_default();
+                let bound = bind_args(&param_infos, args, Some(&cond_decl.params), env, call_span)?;
+                let cond_args: BTreeMap<String, Value> = bound.into_iter().collect();
                 return Ok(Value::Condition { name: name.to_string(), args: cond_args });
             }
 

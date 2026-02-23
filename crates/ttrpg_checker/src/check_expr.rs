@@ -797,39 +797,89 @@ impl<'a> Checker<'a> {
 
         // Check if it's a condition call (e.g., Frightened(source: attacker))
         if let Some(cond_info) = self.env.conditions.get(&callee_name).cloned() {
-            // Type-check args against declared params
-            let required = cond_info.params.iter().filter(|p| !p.has_default).count();
-            if args.len() < required {
-                self.error(
-                    format!(
-                        "condition `{}` requires {} argument(s), got {}",
-                        callee_name, required, args.len()
-                    ),
-                    span,
-                );
-            } else if args.len() > cond_info.params.len() {
-                self.error(
-                    format!(
-                        "condition `{}` accepts at most {} argument(s), got {}",
-                        callee_name, cond_info.params.len(), args.len()
-                    ),
-                    span,
-                );
-            }
-            for (i, arg) in args.iter().enumerate() {
+            let params = &cond_info.params;
+
+            // Two-pass named/positional resolution (mirrors function call checking)
+            let mut satisfied: HashSet<usize> = HashSet::new();
+            let mut next_positional = 0usize;
+
+            for arg in args.iter() {
                 let arg_ty = self.check_expr(&arg.value);
-                if let Some(param) = cond_info.params.get(i) {
-                    if !arg_ty.is_error() && !self.types_compatible(&arg_ty, &param.ty) {
+
+                let param_idx = if let Some(ref name) = arg.name {
+                    params.iter().position(|p| p.name == *name)
+                } else {
+                    while next_positional < params.len()
+                        && satisfied.contains(&next_positional)
+                    {
+                        next_positional += 1;
+                    }
+                    if next_positional < params.len() {
+                        let idx = next_positional;
+                        next_positional += 1;
+                        Some(idx)
+                    } else {
+                        None
+                    }
+                };
+
+                if let Some(idx) = param_idx {
+                    if !satisfied.insert(idx) {
+                        self.error(
+                            format!(
+                                "duplicate argument for parameter `{}`",
+                                params[idx].name
+                            ),
+                            arg.span,
+                        );
+                    }
+
+                    if !arg_ty.is_error()
+                        && !self.types_compatible(&arg_ty, &params[idx].ty)
+                    {
                         self.error(
                             format!(
                                 "condition `{}` parameter `{}` has type {}, got {}",
-                                callee_name, param.name, param.ty, arg_ty
+                                callee_name, params[idx].name, params[idx].ty, arg_ty
                             ),
                             arg.value.span,
                         );
                     }
+                } else if let Some(ref name) = arg.name {
+                    self.error(
+                        format!(
+                            "condition `{}` has no parameter `{}`",
+                            callee_name, name
+                        ),
+                        arg.span,
+                    );
+                } else {
+                    self.error(
+                        format!(
+                            "condition `{}` accepts at most {} argument(s), found {}",
+                            callee_name,
+                            params.len(),
+                            args.len()
+                        ),
+                        span,
+                    );
+                    break;
                 }
             }
+
+            // Check that all required (non-default) parameters were provided
+            for (idx, param) in params.iter().enumerate() {
+                if !param.has_default && !satisfied.contains(&idx) {
+                    self.error(
+                        format!(
+                            "missing required argument `{}` in call to condition `{}`",
+                            param.name, callee_name
+                        ),
+                        span,
+                    );
+                }
+            }
+
             return Ty::Condition;
         }
 
