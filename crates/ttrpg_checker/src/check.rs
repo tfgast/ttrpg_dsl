@@ -347,6 +347,25 @@ impl<'a> Checker<'a> {
     }
 
     fn check_condition(&mut self, c: &ConditionDecl) {
+        // Type-check default expressions for condition parameters
+        self.scope.push(BlockKind::Derive);
+        for param in &c.params {
+            if let Some(ref default) = param.default {
+                let def_ty = self.check_expr(default);
+                let param_ty = self.env.resolve_type(&param.ty);
+                if !def_ty.is_error() && !self.types_compatible(&def_ty, &param_ty) {
+                    self.error(
+                        format!(
+                            "condition `{}` parameter `{}` default has type {}, expected {}",
+                            c.name, param.name, def_ty, param_ty
+                        ),
+                        default.span,
+                    );
+                }
+            }
+        }
+        self.scope.pop();
+
         for clause in &c.clauses {
             match clause {
                 ConditionClause::Modify(m) => {

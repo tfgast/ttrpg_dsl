@@ -722,8 +722,18 @@ fn collect_condition(
 
     // Validate and resolve condition params
     let mut param_infos = Vec::new();
+    let mut seen_params = HashSet::new();
     for param in &c.params {
         env.validate_type_names(&param.ty, diagnostics);
+        if !seen_params.insert(param.name.clone()) {
+            diagnostics.push(Diagnostic::error(
+                format!(
+                    "duplicate parameter `{}` in condition `{}`",
+                    param.name, name
+                ),
+                param.span,
+            ));
+        }
         let ty = env.resolve_type(&param.ty);
         param_infos.push(ParamInfo {
             name: param.name.clone(),

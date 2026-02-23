@@ -5052,3 +5052,93 @@ system "test" {
 "#;
     expect_errors(source, &["missing required argument `source`"]);
 }
+
+// ── P2: Duplicate condition parameter names ──────────────────────────────
+
+#[test]
+fn test_parameterized_condition_duplicate_param_names() {
+    let source = r#"
+system "test" {
+    entity Character { HP: int }
+    condition Cursed(level: int, level: int) on bearer: Character {}
+}
+"#;
+    expect_errors(source, &["duplicate parameter `level` in condition `Cursed`"]);
+}
+
+// ── P2: Condition parameter default type mismatch ────────────────────────
+
+#[test]
+fn test_parameterized_condition_default_type_mismatch() {
+    let source = r#"
+system "test" {
+    entity Character { HP: int }
+    condition Weakened(level: int = "oops") on bearer: Character {}
+}
+"#;
+    expect_errors(source, &["default has type string, expected int"]);
+}
+
+#[test]
+fn test_parameterized_condition_default_type_valid() {
+    let source = r#"
+system "test" {
+    entity Character { HP: int }
+    condition Weakened(level: int = 1) on bearer: Character {}
+}
+"#;
+    expect_no_errors(source);
+}
+
+// ── P2: With-group enforcement on condition call args ────────────────────
+
+#[test]
+fn test_parameterized_condition_with_group_not_proven() {
+    let source = r#"
+system "test" {
+    entity Character {
+        HP: int
+        optional Spellcasting { dc: int }
+    }
+    condition Hexed(source: Character with Spellcasting) on bearer: Character {}
+    mechanic hex(actor: Character) -> Condition {
+        Hexed(source: actor)
+    }
+}
+"#;
+    expect_errors(source, &["requires `actor` to have group `Spellcasting` proven active"]);
+}
+
+#[test]
+fn test_parameterized_condition_with_group_proven() {
+    let source = r#"
+system "test" {
+    entity Character {
+        HP: int
+        optional Spellcasting { dc: int }
+    }
+    condition Hexed(source: Character with Spellcasting) on bearer: Character {}
+    mechanic hex(actor: Character with Spellcasting) -> Condition {
+        Hexed(source: actor)
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_parameterized_condition_with_group_positional() {
+    let source = r#"
+system "test" {
+    entity Character {
+        HP: int
+        optional Spellcasting { dc: int }
+    }
+    condition Hexed(source: Character with Spellcasting) on bearer: Character {}
+    mechanic hex(actor: Character) -> Condition {
+        Hexed(actor)
+    }
+}
+"#;
+    expect_errors(source, &["requires `actor` to have group `Spellcasting` proven active"]);
+}
