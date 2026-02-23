@@ -75,7 +75,7 @@ system "D&D 5e Expanded" {
         evocation, illusion, necromancy, transmutation
     }
 
-    // MISSING FEATURE: No integer range or "level" type.
+    // MISSING FEATURE: No integer range or "level" type.             [ttrpg_dsl-3v8]
     // Spell slots are keyed by level 1-9, but we can't express
     // `int(1..9)` as a type. We just use plain int.
 
@@ -296,7 +296,7 @@ system "D&D 5e Expanded" {
     }
 
     // Map each skill to its governing ability.
-    // PAIN POINT: This is a 18-branch match for what is essentially
+    // PAIN POINT: This is a 18-branch match for what is essentially   [ttrpg_dsl-8tu]
     // static data. No way to express a lookup table or associated
     // enum data.
     derive skill_ability(skill: Skill) -> Ability {
@@ -573,9 +573,9 @@ system "D&D 5e Expanded" {
         roll(expr)
     }
 
-    // MISSING FEATURE: No list sorting / map / reduce. The host must
-    // sort combatants by initiative. For-loops help iterate but don't
-    // produce ordered collections.
+    // MISSING FEATURE: No list sorting / map / reduce.               [ttrpg_dsl-4km]
+    // The host must sort combatants by initiative. For-loops help
+    // iterate but don't produce ordered collections.
 
     // --- Concentration ---
 
@@ -677,11 +677,10 @@ system "D&D 5e Expanded" {
         cost { action }
         requires { distance(helper.position, target.position) <= 5 }
         resolve {
-            // PAIN POINT: Help grants advantage on the target's NEXT
+            // PAIN POINT: Help grants advantage on the target's NEXT     [ttrpg_dsl-rh4]
             // ability check or attack roll — a "next use" duration.
             // Our Duration enum doesn't have a "next_use" variant;
-            // we approximate with start_of_next_turn. The host would
-            // need to track single-use expiration.
+            // we approximate with start_of_next_turn.
             apply_condition(target, Helped, Duration.start_of_next_turn)
         }
     }
@@ -939,7 +938,7 @@ system "D&D 5e Expanded" {
                 }
             }
             // 3 failures = death
-            // PAIN POINT: "Death" is permanent removal of the entity.
+            // PAIN POINT: "Death" is permanent removal of the entity.  [ttrpg_dsl-bcc]
             // The DSL has no concept of destroying entities.
             //     if dying.death_save_failures >= 3 { destroy(dying) }
         }
@@ -985,7 +984,7 @@ system "D&D 5e Expanded" {
                     match save {
                         failure => {
                             caster.Spellcasting.concentrating_on = none
-                            // PAIN POINT: Dropping concentration should remove
+                            // PAIN POINT: Dropping concentration should remove  [ttrpg_dsl-5kb]
                             // the spell's effects. No "spell instance" concept.
                         },
                         success => {}
@@ -1033,7 +1032,7 @@ system "D&D 5e Expanded" {
         modify attack_roll(attacker: bearer) {
             mode = advantage
         }
-        // PAIN POINT: Helped should also apply to skill checks.
+        // PAIN POINT: Helped should also apply to skill checks.       [ttrpg_dsl-wus]
         // No "modify all d20 rolls" wildcard — must list each mechanic.
     }
 
@@ -1267,4 +1266,25 @@ system "D&D 5e Expanded" {
     //
     // 13. NO ORDERED ENUMS                                        [ttrpg_dsl-hpg]
     //     - Size enum has no ordering — can't compare sizes
+    //
+    // 14. NO LIST SORTING / MAP / FILTER / REDUCE                 [ttrpg_dsl-4km]
+    //     - Host must sort initiative; no ordered collection output
+    //
+    // 15. NO ENTITY DESTRUCTION / LIFECYCLE                       [ttrpg_dsl-bcc]
+    //     - Can't destroy(dying) — death removes entities permanently
+    //
+    // 16. NO ENUM-ASSOCIATED DATA / LOOKUP TABLES                 [ttrpg_dsl-8tu]
+    //     - skill_ability is 18-branch match for static data
+    //
+    // 17. NO EVENT-TRIGGERED DURATIONS                            [ttrpg_dsl-rh4]
+    //     - "Until next use" (Help) and "until save" (spell effects)
+    //
+    // 18. NO SPELL INSTANCE / EFFECT TRACKING                     [ttrpg_dsl-5kb]
+    //     - Dropping concentration can't auto-remove spell effects
+    //
+    // 19. NO INTEGER RANGE / BOUNDED INT TYPES                    [ttrpg_dsl-3v8]
+    //     - Can't express int(1..9) for spell slot levels
+    //
+    // 20. NO WILDCARD MODIFY TARGETS                              [ttrpg_dsl-wus]
+    //     - Can't "modify all d20 rolls" — must list each mechanic
 }
