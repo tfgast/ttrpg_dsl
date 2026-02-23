@@ -45,7 +45,7 @@ system "D&D 5e Expanded" {
 
     enum ArmorCategory { light_armor, medium_armor, heavy_armor, shield }
 
-    enum Size { tiny, small, medium, large, huge, gargantuan }
+    enum Size ordered { tiny, small, medium, large, huge, gargantuan }
 
     // PAIN POINT: No union / sum type beyond enums with payloads.     [ttrpg_dsl-q5l]
     // In 5e, a "damage source" could be a weapon, a spell, an
@@ -680,12 +680,13 @@ system "D&D 5e Expanded" {
 
     action Grapple on grappler: Character (target: Character) {
         cost { action }
+        // RESOLVED: Ordered enums + ordinal/from_ordinal enable size   [ttrpg_dsl-hpg]
+        // comparison. target.size <= grappler.size + 1 means "at most
+        // one size category larger than the grappler".
         requires {
             distance(grappler.position, target.position) <= 5
-            && target.size != gargantuan
+            && ordinal(target.size) <= ordinal(grappler.size) + 1
         }
-        // PAIN POINT: Can't express "target.size <= grappler.size + 1" [ttrpg_dsl-hpg]
-        // because Size is an enum with no ordering.
 
         resolve {
             let success = contested_check(
@@ -1181,6 +1182,12 @@ system "D&D 5e Expanded" {
     //    - spell_slots[slot_level] -= 1 replaces 9-branch match
     //    - Resource bounds auto-clamp (can't go below 0 or above 9)
     //
+    //  [RESOLVED] ORDERED ENUMS                                  [ttrpg_dsl-hpg]
+    //    - `enum Size ordered { ... }` — opt-in declaration-order comparison
+    //    - ordinal(variant) -> int, from_ordinal(Type, int) -> variant
+    //    - try_from_ordinal(Type, int) -> option<variant> (safe version)
+    //    - Grapple requires block uses ordinal() for size comparison
+    //
     //  [RESOLVED] Parser / syntax issues:
     //    - `none` is a valid match pattern                        [ttrpg_dsl-efg]
     //    - Wildcard `_` works in modify bindings                  [ttrpg_dsl-9ng]
@@ -1231,9 +1238,6 @@ system "D&D 5e Expanded" {
     //
     // 11. NO STRUCT UPDATE SYNTAX                                 [ttrpg_dsl-kmy]
     //     - Must reconstruct entire struct to change one field
-    //
-    // 12. NO ORDERED ENUMS                                        [ttrpg_dsl-hpg]
-    //     - Size enum has no ordering — can't compare sizes
     //
     // 13. NO LIST SORTING / MAP / FILTER / REDUCE                 [ttrpg_dsl-4km]
     //     - Host must sort initiative; no ordered collection output
