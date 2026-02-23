@@ -322,6 +322,38 @@ system "D&D 5e Combat" {
     }
 
 
+    // --- Hooks (mandatory triggered actions, no cost) ---
+    //
+    // Hooks fire automatically when their trigger event matches.
+    // Unlike reactions, they have no cost and cannot be suppressed.
+
+    // Turn phase events — declared by the game system, fired by the host.
+    // These are not built-in; the game designer defines them like any event.
+    event turn_start(actor: Character) {}
+    event turn_end(actor: Character) {}
+
+    // Death save at start of turn: mandatory when at 0 HP
+    hook DeathSaveCheck on actor: Character (
+        trigger: turn_start(actor: actor)
+    ) {
+        if actor.HP == 0 {
+            let save: RollResult = roll(1d20)
+            match {
+                save.unmodified == 20 => { actor.HP += 1 },
+                save.unmodified == 1 => {
+                    // Critical fail on death save — game-specific handling
+                },
+                save.total >= 10 => {
+                    // Success — tracking save counts is left to the host
+                },
+                _ => {
+                    // Failure
+                }
+            }
+        }
+    }
+
+
     // --- Conditions (declarative modifiers, no mutation) ---
 
     condition Prone on bearer: Character {

@@ -53,7 +53,7 @@
 //
 //   Contextual / soft (lexed as IDENT, recognized by parser in position):
 //     system  use  enum  struct  entity  derive  mechanic  action
-//     reaction  condition  prompt  option  event  move  cost
+//     reaction  hook  condition  prompt  option  event  move  cost
 //     requires  resolve  modify  suppress  trigger  roll  on
 //     when  enabled  hint  suggest  description  default  result
 //
@@ -135,6 +135,7 @@ decl            = enum_decl
                 | mechanic_decl
                 | action_decl
                 | reaction_decl
+                | hook_decl
                 | condition_decl
                 | prompt_decl
                 | option_decl
@@ -217,6 +218,17 @@ trigger_expr    = IDENT "(" trigger_bindings ")"
 trigger_bindings = trigger_binding ("," trigger_binding)* ","?
 trigger_binding  = IDENT ":" expr                   // e.g., reactor: reactor
                  | IDENT                             // positional
+
+// --- Hook (mandatory triggered action, no cost, not suppressible) ---
+hook_decl       = "hook" IDENT "on" IDENT ":" type
+                      "(" "trigger" ":" trigger_expr ")" "{"
+                      resolve_block
+                  "}"
+
+// Hooks share the trigger_expr syntax with reactions.
+// Unlike reactions, hooks have NO cost clause and cannot be
+// suppressed by conditions. When the trigger event fires and
+// the trigger bindings match, the hook always executes.
 
 // --- Event (declares the shape of a trigger event) ---
 event_decl      = "event" IDENT "(" params ")" "{" field_def* "}"

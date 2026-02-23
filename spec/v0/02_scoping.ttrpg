@@ -13,6 +13,7 @@
 // mechanic     yes     no        no          value      dice + logic, returns a value
 // action       yes     yes       yes         unit       game action, changes state
 // reaction     yes     yes       yes         unit       triggered action, changes state
+// hook         yes     yes       yes         unit       mandatory triggered action, always fires
 // condition    no      no        yes         n/a        declarative modifier overlay
 // prompt       no      no        no          value      human decision point
 //
@@ -24,7 +25,7 @@
 // Key: "Mutate?" means can the block assign to entity fields
 //      (e.g., target.HP -= 5).
 //
-// action and reaction are the ONLY blocks that can mutate entity state.
+// action, reaction, and hook are the ONLY blocks that can mutate entity state.
 // mechanic can call roll() but CANNOT assign to entity fields.
 // condition does NOT mutate — its modify clauses are declarative overlays
 //   that alter computed results, not imperative assignments (see below).
@@ -206,7 +207,8 @@ action Dash on actor: Character () {
 // --- Events ---
 //
 // Events declare the shape of trigger occurrences. The runtime emits
-// events; reactions listen for them; conditions can suppress them.
+// events; reactions and hooks listen for them; conditions can suppress
+// reactions (but not hooks).
 //
 // Syntax:
 //   event entity_leaves_reach(reactor: Character) {
@@ -220,6 +222,55 @@ action Dash on actor: Character () {
 // Inside a reaction's resolve block, `trigger` is bound to the
 // event instance, and `trigger.entity`, `trigger.from_position`,
 // etc. are accessible.
+
+
+// --- Hooks (mandatory triggered actions) ---
+//
+// A hook is like a reaction that always fires and never costs resources.
+// Where a reaction is an optional response (the player may choose to use
+// their reaction), a hook is automatic — if the trigger matches, it runs.
+//
+// Hooks use the same trigger syntax as reactions. They have a receiver
+// (the entity the hook acts on behalf of) and a trigger expression
+// (the event to listen for). They have a resolve block that can roll
+// dice, mutate entity fields, and access the turn budget.
+//
+// Key differences from reactions:
+//   - No cost clause: hooks never consume action economy resources.
+//   - Not suppressible: conditions cannot suppress hook triggers.
+//   - Automatic: the host fires all matching hooks without player choice.
+//
+// Use hooks for mechanics that must happen whenever an event occurs:
+//   - Death saves at start of turn when at 0 HP
+//   - Regeneration at start of turn
+//   - Condition saves at end of turn
+//   - Auras that trigger when an entity enters range
+//
+// Syntax: `hook Name on receiver: Type (trigger: event(bindings)) { ... }`
+//
+// Inside the resolve block, `trigger` is bound to the event instance
+// (same as reactions), and `turn` refers to the mutable turn budget.
+
+// EXAMPLE: death save hook — fires at start of every turn for downed characters
+hook DeathSaveCheck on actor: Character (
+    trigger: turn_start(actor: actor)
+) {
+    if actor.HP == 0 {
+        let save: RollResult = roll(1d20)
+        if save.unmodified == 20 {
+            actor.HP += 1
+        }
+    }
+}
+
+// EXAMPLE: regeneration — fires at start of turn
+hook Regenerate on creature: Character (
+    trigger: turn_start(actor: creature)
+) {
+    if creature.HP > 0 {
+        creature.HP += 10
+    }
+}
 
 
 // --- Builtins ---
@@ -236,14 +287,14 @@ action Dash on actor: Character () {
 //       // multiplies dice count only, constants unchanged
 //       // multiply_dice(1d8 + 3, 2) => 2d8 + 3
 //
-// Available in mechanic, action, reaction (blocks that can roll):
+// Available in mechanic, action, reaction, hook (blocks that can roll):
 //   roll(expr: DiceExpr) -> RollResult
 //
-// Available in action, reaction (blocks that can mutate):
+// Available in action, reaction, hook (blocks that can mutate):
 //   apply_condition(target: Character, cond: Condition, duration: Duration)
 //   remove_condition(target: Character, cond: Condition)
 //
-// The `turn` keyword (available in action/reaction resolve blocks):
+// The `turn` keyword (available in action/reaction/hook resolve blocks):
 //   Refers to the current turn's mutable TurnBudget.
 //   turn.movement, turn.actions, etc. are assignable.
 
