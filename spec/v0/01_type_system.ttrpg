@@ -85,6 +85,13 @@ struct RollResult {
 // dice count but not constants) — a non-obvious violation of the
 // distributive property.
 //
+// To construct a DiceExpr from runtime values, use the builtin:
+//   dice(count: int, sides: int) -> DiceExpr
+//   dice(slot_level, 8)           => slot_level d8
+//   dice(2, 6) + 3                => 2d6 + 3
+// count must be >= 0, sides must be >= 1. filter is always None;
+// use dice literals (e.g. 4d6kh3) when filters are needed at compile time.
+//
 // To multiply dice count (e.g., critical hits), use the builtin:
 //   multiply_dice(expr: DiceExpr, factor: int) -> DiceExpr
 //   multiply_dice(1d8 + 3, 2)  => 2d8 + 3   (dice doubled, modifier kept)

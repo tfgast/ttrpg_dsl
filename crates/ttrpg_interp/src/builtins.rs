@@ -22,6 +22,7 @@ pub(crate) fn call_builtin(
         "min" => builtin_min(&args, span),
         "max" => builtin_max(&args, span),
         "distance" => builtin_distance(env, &args, span),
+        "dice" => builtin_dice(&args, span),
         "multiply_dice" => builtin_multiply_dice(&args, span),
         "roll" => builtin_roll(env, &args, span),
         "apply_condition" => builtin_apply_condition(env, &args, span),
@@ -119,6 +120,61 @@ fn builtin_distance(env: &Env, args: &[Value], span: Span) -> Result<Value, Runt
         )),
         _ => Err(RuntimeError::with_span(
             "distance() requires 2 arguments",
+            span,
+        )),
+    }
+}
+
+// ── dice ────────────────────────────────────────────────────────
+
+/// `dice(count: Int, sides: Int) -> DiceExpr`
+///
+/// Constructs a DiceExpr from runtime integer values.
+/// count must be >= 0, sides must be >= 1, both must fit in u32.
+fn builtin_dice(args: &[Value], span: Span) -> Result<Value, RuntimeError> {
+    match (args.first(), args.get(1)) {
+        (Some(Value::Int(count)), Some(Value::Int(sides))) => {
+            if *count < 0 {
+                return Err(RuntimeError::with_span(
+                    format!("dice() count must be non-negative, got {}", count),
+                    span,
+                ));
+            }
+            if *sides < 1 {
+                return Err(RuntimeError::with_span(
+                    format!("dice() sides must be at least 1, got {}", sides),
+                    span,
+                ));
+            }
+            let count_u32 = u32::try_from(*count).map_err(|_| {
+                RuntimeError::with_span(
+                    format!("dice() count {} overflows u32", count),
+                    span,
+                )
+            })?;
+            let sides_u32 = u32::try_from(*sides).map_err(|_| {
+                RuntimeError::with_span(
+                    format!("dice() sides {} overflows u32", sides),
+                    span,
+                )
+            })?;
+            Ok(Value::DiceExpr(DiceExpr {
+                count: count_u32,
+                sides: sides_u32,
+                filter: None,
+                modifier: 0,
+            }))
+        }
+        (Some(a), Some(b)) => Err(RuntimeError::with_span(
+            format!(
+                "dice() expects (Int, Int), got ({}, {})",
+                type_name(a),
+                type_name(b)
+            ),
+            span,
+        )),
+        _ => Err(RuntimeError::with_span(
+            "dice() requires 2 arguments",
             span,
         )),
     }

@@ -1698,6 +1698,134 @@ mod tests {
     }
 
     #[test]
+    fn builtin_dice_basic() {
+        let program = program_with_decls(vec![]);
+        let type_env = type_env_with_builtins();
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = TestState::new();
+        let mut handler = ScriptedHandler::new();
+        let mut env = make_env(&state, &mut handler, &interp);
+
+        // dice(2, 6) → 2d6
+        let expr = spanned(ExprKind::Call {
+            callee: Box::new(spanned(ExprKind::Ident("dice".into()))),
+            args: vec![
+                Arg { name: None, value: spanned(ExprKind::IntLit(2)), span: dummy_span() },
+                Arg { name: None, value: spanned(ExprKind::IntLit(6)), span: dummy_span() },
+            ],
+        });
+        let result = crate::eval::eval_expr(&mut env, &expr).unwrap();
+        match result {
+            Value::DiceExpr(d) => {
+                assert_eq!(d.count, 2);
+                assert_eq!(d.sides, 6);
+                assert!(d.filter.is_none());
+                assert_eq!(d.modifier, 0);
+            }
+            _ => panic!("expected DiceExpr, got {:?}", result),
+        }
+    }
+
+    #[test]
+    fn builtin_dice_zero_count() {
+        let program = program_with_decls(vec![]);
+        let type_env = type_env_with_builtins();
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = TestState::new();
+        let mut handler = ScriptedHandler::new();
+        let mut env = make_env(&state, &mut handler, &interp);
+
+        // dice(0, 8) → 0d8 (valid)
+        let expr = spanned(ExprKind::Call {
+            callee: Box::new(spanned(ExprKind::Ident("dice".into()))),
+            args: vec![
+                Arg { name: None, value: spanned(ExprKind::IntLit(0)), span: dummy_span() },
+                Arg { name: None, value: spanned(ExprKind::IntLit(8)), span: dummy_span() },
+            ],
+        });
+        let result = crate::eval::eval_expr(&mut env, &expr).unwrap();
+        match result {
+            Value::DiceExpr(d) => {
+                assert_eq!(d.count, 0);
+                assert_eq!(d.sides, 8);
+            }
+            _ => panic!("expected DiceExpr, got {:?}", result),
+        }
+    }
+
+    #[test]
+    fn builtin_dice_negative_count_error() {
+        let program = program_with_decls(vec![]);
+        let type_env = type_env_with_builtins();
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = TestState::new();
+        let mut handler = ScriptedHandler::new();
+        let mut env = make_env(&state, &mut handler, &interp);
+
+        let expr = spanned(ExprKind::Call {
+            callee: Box::new(spanned(ExprKind::Ident("dice".into()))),
+            args: vec![
+                Arg { name: None, value: spanned(ExprKind::IntLit(-1)), span: dummy_span() },
+                Arg { name: None, value: spanned(ExprKind::IntLit(6)), span: dummy_span() },
+            ],
+        });
+        let err = crate::eval::eval_expr(&mut env, &expr).unwrap_err();
+        assert!(err.message.contains("non-negative"));
+    }
+
+    #[test]
+    fn builtin_dice_zero_sides_error() {
+        let program = program_with_decls(vec![]);
+        let type_env = type_env_with_builtins();
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = TestState::new();
+        let mut handler = ScriptedHandler::new();
+        let mut env = make_env(&state, &mut handler, &interp);
+
+        let expr = spanned(ExprKind::Call {
+            callee: Box::new(spanned(ExprKind::Ident("dice".into()))),
+            args: vec![
+                Arg { name: None, value: spanned(ExprKind::IntLit(2)), span: dummy_span() },
+                Arg { name: None, value: spanned(ExprKind::IntLit(0)), span: dummy_span() },
+            ],
+        });
+        let err = crate::eval::eval_expr(&mut env, &expr).unwrap_err();
+        assert!(err.message.contains("at least 1"));
+    }
+
+    #[test]
+    fn builtin_dice_composable_with_modifier() {
+        let program = program_with_decls(vec![]);
+        let type_env = type_env_with_builtins();
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = TestState::new();
+        let mut handler = ScriptedHandler::new();
+        let mut env = make_env(&state, &mut handler, &interp);
+
+        // dice(3, 8) + 5 → 3d8+5
+        let expr = spanned(ExprKind::BinOp {
+            op: BinOp::Add,
+            lhs: Box::new(spanned(ExprKind::Call {
+                callee: Box::new(spanned(ExprKind::Ident("dice".into()))),
+                args: vec![
+                    Arg { name: None, value: spanned(ExprKind::IntLit(3)), span: dummy_span() },
+                    Arg { name: None, value: spanned(ExprKind::IntLit(8)), span: dummy_span() },
+                ],
+            })),
+            rhs: Box::new(spanned(ExprKind::IntLit(5))),
+        });
+        let result = crate::eval::eval_expr(&mut env, &expr).unwrap();
+        match result {
+            Value::DiceExpr(d) => {
+                assert_eq!(d.count, 3);
+                assert_eq!(d.sides, 8);
+                assert_eq!(d.modifier, 5);
+            }
+            _ => panic!("expected DiceExpr, got {:?}", result),
+        }
+    }
+
+    #[test]
     fn invalid_callee_expression_error() {
         let program = program_with_decls(vec![]);
         let type_env = TypeEnv::new();

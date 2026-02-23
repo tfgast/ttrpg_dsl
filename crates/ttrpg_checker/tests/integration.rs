@@ -282,6 +282,42 @@ system "test" {
 }
 
 #[test]
+fn test_dice_constructor_ok() {
+    let source = r#"
+system "test" {
+    derive foo(n: int) -> DiceExpr {
+        dice(n, 8)
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_dice_constructor_with_modifier_ok() {
+    let source = r#"
+system "test" {
+    derive foo(n: int, bonus: int) -> DiceExpr {
+        dice(n, 8) + bonus
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_dice_constructor_literal_args_ok() {
+    let source = r#"
+system "test" {
+    derive foo() -> DiceExpr {
+        dice(3, 6)
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
 fn test_int_division_yields_float() {
     let source = r#"
 system "test" {

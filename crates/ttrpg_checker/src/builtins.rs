@@ -90,6 +90,26 @@ pub fn register_builtins() -> Vec<FnInfo> {
             receiver: None,
         },
         FnInfo {
+            name: "dice".into(),
+            kind: FnKind::Builtin,
+            params: vec![
+                ParamInfo {
+                    name: "count".into(),
+                    ty: Ty::Int,
+                    has_default: false,
+                    with_groups: vec![],
+                },
+                ParamInfo {
+                    name: "sides".into(),
+                    ty: Ty::Int,
+                    has_default: false,
+                    with_groups: vec![],
+                },
+            ],
+            return_type: Ty::DiceExpr,
+            receiver: None,
+        },
+        FnInfo {
             name: "multiply_dice".into(),
             kind: FnKind::Builtin,
             params: vec![
