@@ -1993,9 +1993,14 @@ fn find_field_def_and_remaining<'a>(
 ///
 /// For `map<int, resource(0..9)>` with path `[Index(3)]`, this returns the resource
 /// bounds `(0, 9)` expressions. For non-resource leaves, returns `None`.
+///
+/// Also traverses `Named` struct types by looking up their field definitions in the
+/// program, so paths like `stats.spell_slots[1]` resolve correctly when `stats` is a
+/// user-defined struct containing a resource map.
 fn extract_resource_bounds_from_type<'a>(
     ty: &'a TypeExpr,
     path: &[FieldPathSegment],
+    items: &'a [Spanned<TopLevel>],
 ) -> Option<(&'a Spanned<ExprKind>, &'a Spanned<ExprKind>)> {
     if path.is_empty() {
         if let TypeExpr::Resource(min, max) = ty {
@@ -2005,13 +2010,38 @@ fn extract_resource_bounds_from_type<'a>(
     }
     match (&path[0], ty) {
         (FieldPathSegment::Index(_), TypeExpr::Map(_, val_type)) => {
-            extract_resource_bounds_from_type(&val_type.node, &path[1..])
+            extract_resource_bounds_from_type(&val_type.node, &path[1..], items)
         }
         (FieldPathSegment::Index(_), TypeExpr::List(elem_type)) => {
-            extract_resource_bounds_from_type(&elem_type.node, &path[1..])
+            extract_resource_bounds_from_type(&elem_type.node, &path[1..], items)
+        }
+        (FieldPathSegment::Field(field_name), TypeExpr::Named(struct_name)) => {
+            // Look up the struct declaration and find the field's type
+            let field = find_struct_field(items, struct_name, field_name)?;
+            extract_resource_bounds_from_type(&field.ty.node, &path[1..], items)
         }
         _ => None,
     }
+}
+
+/// Find a field definition within a named struct declaration.
+fn find_struct_field<'a>(
+    items: &'a [Spanned<TopLevel>],
+    struct_name: &str,
+    field_name: &str,
+) -> Option<&'a FieldDef> {
+    for item in items {
+        if let TopLevel::System(system) = &item.node {
+            for decl in &system.decls {
+                if let DeclKind::Struct(s) = &decl.node {
+                    if s.name == struct_name {
+                        return s.fields.iter().find(|f| f.name == field_name);
+                    }
+                }
+            }
+        }
+    }
+    None
 }
 
 /// Collect all identifier names referenced in an expression tree.
@@ -2102,8 +2132,11 @@ fn resolve_resource_bounds(
     let bound_exprs = {
         let (field_def, consumed) = find_field_def_and_remaining(env, &entity_type, path)?;
         let remaining = &path[consumed..];
-        let (min_expr, max_expr) =
-            extract_resource_bounds_from_type(&field_def.ty.node, remaining)?;
+        let (min_expr, max_expr) = extract_resource_bounds_from_type(
+            &field_def.ty.node,
+            remaining,
+            &env.interp.program.items,
+        )?;
         (min_expr.clone(), max_expr.clone())
     };
     let min_val = eval_bound_expr(env, entity, &bound_exprs.0)?;

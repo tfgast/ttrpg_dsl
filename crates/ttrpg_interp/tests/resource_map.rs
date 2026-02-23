@@ -932,6 +932,114 @@ fn complex_bound_expression_effect_has_bounds() {
     }
 }
 
+// ── Struct field traversal for bound extraction ────────────────
+
+const STRUCT_FIELD_SYSTEM: &str = r#"
+system "test" {
+    struct Stats {
+        spell_slots: map<int, resource(0..9)>
+    }
+    entity Character {
+        stats: Stats
+    }
+    action CastSpell on actor: Character (level: int) {
+        cost { action }
+        resolve {
+            actor.stats.spell_slots[level] -= 1
+        }
+    }
+}
+"#;
+
+#[test]
+fn struct_field_traversal_resolves_bounds() {
+    let (program, result) = compile(STRUCT_FIELD_SYSTEM);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+
+    let mut state = GameState::new();
+    let mut slots = BTreeMap::new();
+    slots.insert(Value::Int(1), Value::Int(0)); // at min
+    let stats = Value::Struct {
+        name: "Stats".to_string(),
+        fields: {
+            let mut f = BTreeMap::new();
+            f.insert("spell_slots".to_string(), Value::Map(slots));
+            f
+        },
+    };
+    let mut fields = HashMap::new();
+    fields.insert("stats".into(), stats);
+    let hero = state.add_entity("Character", fields);
+    state.set_turn_budget(&hero, standard_turn_budget());
+
+    let adapter = StateAdapter::new(state);
+    let mut handler = ScriptedHandler::with_responses(vec![
+        Response::Acknowledged, // ActionStarted
+    ]);
+    adapter.run(&mut handler, |s, h| {
+        interp
+            .execute_action(s, h, "CastSpell", hero, vec![Value::Int(1)])
+            .unwrap();
+    });
+
+    // Should clamp at 0, not go to -1
+    let stats_val = adapter.read_field(&hero, "stats");
+    let spell_slots = match stats_val {
+        Some(Value::Struct { fields, .. }) => fields.get("spell_slots").cloned().unwrap(),
+        other => panic!("expected Struct, got {:?}", other),
+    };
+    let map = match spell_slots {
+        Value::Map(m) => m,
+        other => panic!("expected Map, got {:?}", other),
+    };
+    assert_eq!(
+        map.get(&Value::Int(1)),
+        Some(&Value::Int(0)),
+        "resource bounds through struct field should be resolved and clamped"
+    );
+}
+
+#[test]
+fn struct_field_traversal_effect_has_bounds() {
+    let (program, result) = compile(STRUCT_FIELD_SYSTEM);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+
+    let mut state = GameState::new();
+    let mut slots = BTreeMap::new();
+    slots.insert(Value::Int(1), Value::Int(4));
+    let stats = Value::Struct {
+        name: "Stats".to_string(),
+        fields: {
+            let mut f = BTreeMap::new();
+            f.insert("spell_slots".to_string(), Value::Map(slots));
+            f
+        },
+    };
+    let mut fields = HashMap::new();
+    fields.insert("stats".into(), stats);
+    let hero = state.add_entity("Character", fields);
+    state.set_turn_budget(&hero, standard_turn_budget());
+
+    // Record raw effects
+    let mut handler = ScriptedHandler::with_responses(vec![
+        Response::Acknowledged, // ActionStarted
+    ]);
+    let _ = interp.execute_action(&state, &mut handler, "CastSpell", hero, vec![Value::Int(1)]);
+
+    let mutate = handler
+        .log
+        .iter()
+        .find(|e| matches!(e, Effect::MutateField { .. }));
+    assert!(mutate.is_some(), "expected MutateField effect");
+    if let Effect::MutateField { bounds, .. } = mutate.unwrap() {
+        assert_eq!(
+            *bounds,
+            Some((Value::Int(0), Value::Int(9))),
+            "resource bounds should be resolved through struct field traversal"
+        );
+    }
+}
+
 // ── Direct resource field (not map) also gets bounds ───────────
 
 const DIRECT_RESOURCE_SYSTEM: &str = r#"
