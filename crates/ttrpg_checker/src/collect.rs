@@ -344,6 +344,16 @@ fn collect_entity(e: &EntityDecl, env: &mut TypeEnv, diagnostics: &mut Vec<Diagn
         .optional_groups
         .iter()
         .filter_map(|g| {
+            if seen.contains(&g.name) {
+                diagnostics.push(Diagnostic::error(
+                    format!(
+                        "optional group `{}` conflicts with field of the same name in entity `{}`",
+                        g.name, e.name
+                    ),
+                    g.span,
+                ));
+                return None;
+            }
             if !seen_groups.insert(g.name.clone()) {
                 diagnostics.push(Diagnostic::error(
                     format!(

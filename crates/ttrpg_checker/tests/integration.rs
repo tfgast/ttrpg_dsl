@@ -3760,6 +3760,44 @@ system "test" {
     expect_errors(source, &["default has type string, expected int"]);
 }
 
+#[test]
+fn test_optional_group_name_conflicts_with_field() {
+    let source = r#"
+system "test" {
+    entity Character {
+        Spellcasting: int
+        optional Spellcasting {
+            dc: int
+        }
+    }
+}
+"#;
+    expect_errors(
+        source,
+        &["optional group `Spellcasting` conflicts with field of the same name in entity `Character`"],
+    );
+}
+
+#[test]
+fn test_optional_group_name_conflicts_with_field_reverse_order() {
+    // Group declared before field in source — still caught because
+    // the parser separates fields and groups into two vecs.
+    let source = r#"
+system "test" {
+    entity Character {
+        optional HP {
+            recovery: int
+        }
+        HP: int
+    }
+}
+"#;
+    expect_errors(
+        source,
+        &["optional group `HP` conflicts with field of the same name in entity `Character`"],
+    );
+}
+
 // ═══════════════════════════════════════════════════════════════
 // Optional groups: `has` expression type checking
 // ═══════════════════════════════════════════════════════════════
