@@ -76,6 +76,7 @@ fn pass_1a(
                 DeclInfo::Entity(EntityInfo {
                     name: e.name.clone(),
                     fields: Vec::new(),
+                    optional_groups: Vec::new(),
                 }),
             ),
             _ => continue,
@@ -337,8 +338,55 @@ fn collect_entity(e: &EntityDecl, env: &mut TypeEnv, diagnostics: &mut Vec<Diagn
         })
         .collect();
 
+    // Collect optional groups
+    let mut seen_groups = HashSet::new();
+    let optional_groups: Vec<OptionalGroupInfo> = e
+        .optional_groups
+        .iter()
+        .filter_map(|g| {
+            if !seen_groups.insert(g.name.clone()) {
+                diagnostics.push(Diagnostic::error(
+                    format!(
+                        "duplicate optional group `{}` in entity `{}`",
+                        g.name, e.name
+                    ),
+                    g.span,
+                ));
+                return None;
+            }
+            let mut seen_fields = HashSet::new();
+            let group_fields: Vec<FieldInfo> = g
+                .fields
+                .iter()
+                .filter_map(|f| {
+                    env.validate_type_names(&f.ty, diagnostics);
+                    if !seen_fields.insert(f.name.clone()) {
+                        diagnostics.push(Diagnostic::error(
+                            format!(
+                                "duplicate field `{}` in optional group `{}`",
+                                f.name, g.name
+                            ),
+                            f.span,
+                        ));
+                        return None;
+                    }
+                    Some(FieldInfo {
+                        name: f.name.clone(),
+                        ty: env.resolve_type(&f.ty),
+                        has_default: f.default.is_some(),
+                    })
+                })
+                .collect();
+            Some(OptionalGroupInfo {
+                name: g.name.clone(),
+                fields: group_fields,
+            })
+        })
+        .collect();
+
     if let Some(DeclInfo::Entity(info)) = env.types.get_mut(&e.name) {
         info.fields = fields;
+        info.optional_groups = optional_groups;
     }
 }
 

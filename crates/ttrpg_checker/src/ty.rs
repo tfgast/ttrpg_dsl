@@ -42,6 +42,9 @@ pub enum Ty {
     // Unit: for action/reaction return, if-without-else
     Unit,
 
+    // Reference to an optional group's field namespace (entity.Group)
+    OptionalGroupRef(std::string::String, std::string::String), // (entity_type, group_name)
+
     // Sentinel: suppresses cascading errors
     Error,
 }
@@ -90,6 +93,7 @@ impl Ty {
             Ty::Set(inner) => format!("set<{}>", inner.display()),
             Ty::Map(k, v) => format!("map<{}, {}>", k.display(), v.display()),
             Ty::Option(inner) => format!("option<{}>", inner.display()),
+            Ty::OptionalGroupRef(entity, group) => format!("{}.{}", entity, group),
             Ty::Resource => "resource".into(),
             Ty::Unit => "unit".into(),
             Ty::Error => "<error>".into(),

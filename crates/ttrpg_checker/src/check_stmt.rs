@@ -23,7 +23,7 @@ impl<'a> Checker<'a> {
         last_ty
     }
 
-    fn check_stmt(&mut self, stmt: &Spanned<StmtKind>, is_last: bool) -> Ty {
+    pub(crate) fn check_stmt(&mut self, stmt: &Spanned<StmtKind>, is_last: bool) -> Ty {
         match &stmt.node {
             StmtKind::Let { name, ty, value } => {
                 let val_ty = self.check_expr(value);
@@ -73,8 +73,19 @@ impl<'a> Checker<'a> {
                     Ty::Unit
                 }
             }
-            StmtKind::Grant { .. } | StmtKind::Revoke { .. } => {
-                // TODO(ttrpg_dsl-8j9): type check grant/revoke statements
+            StmtKind::Grant {
+                entity,
+                group_name,
+                fields,
+            } => {
+                self.check_grant(entity, group_name, fields, stmt.span);
+                Ty::Unit
+            }
+            StmtKind::Revoke {
+                entity,
+                group_name,
+            } => {
+                self.check_revoke(entity, group_name, stmt.span);
                 Ty::Unit
             }
         }
@@ -216,6 +227,18 @@ impl<'a> Checker<'a> {
             match seg {
                 LValueSegment::Field(name) => {
                     current = self.resolve_field(&current, name, lvalue.span);
+                    // Check narrowing for optional group access
+                    if let Ty::OptionalGroupRef(_, ref group_name) = current {
+                        if !self.scope.is_group_narrowed(&lvalue.root, group_name) {
+                            self.error(
+                                format!(
+                                    "access to optional group `{}` on `{}` requires a `has` guard or `with` constraint",
+                                    group_name, lvalue.root
+                                ),
+                                lvalue.span,
+                            );
+                        }
+                    }
                 }
                 LValueSegment::Index(idx_expr) => {
                     let idx_ty = self.check_expr(idx_expr);
@@ -254,5 +277,143 @@ impl<'a> Checker<'a> {
         }
 
         current
+    }
+
+    fn check_grant(
+        &mut self,
+        entity: &Spanned<ExprKind>,
+        group_name: &str,
+        fields: &[StructFieldInit],
+        span: ttrpg_ast::Span,
+    ) {
+        // grant/revoke only allowed in action/reaction context
+        if !self.scope.allows_mutation() {
+            self.error(
+                "grant is only allowed in action or reaction context".to_string(),
+                span,
+            );
+        }
+
+        let entity_ty = self.check_expr(entity);
+        if entity_ty.is_error() {
+            return;
+        }
+
+        let entity_name = match &entity_ty {
+            Ty::Entity(name) => name.clone(),
+            _ => {
+                self.error(
+                    format!("grant requires an entity, found {}", entity_ty),
+                    span,
+                );
+                return;
+            }
+        };
+
+        let group = match self.env.lookup_optional_group(&entity_name, group_name) {
+            Some(g) => g.clone(),
+            None => {
+                self.error(
+                    format!(
+                        "entity `{}` has no optional group `{}`",
+                        entity_name, group_name
+                    ),
+                    span,
+                );
+                return;
+            }
+        };
+
+        // Validate field initializers
+        let mut seen = std::collections::HashSet::new();
+        for field in fields {
+            let field_ty = self.check_expr(&field.value);
+
+            if !seen.insert(field.name.clone()) {
+                self.error(
+                    format!("duplicate field `{}` in grant", field.name),
+                    field.span,
+                );
+                continue;
+            }
+
+            if field_ty.is_error() {
+                continue;
+            }
+
+            if let Some(fi) = group.fields.iter().find(|f| f.name == field.name) {
+                if !self.types_compatible(&field_ty, &fi.ty) {
+                    self.error(
+                        format!(
+                            "field `{}` has type {}, expected {}",
+                            field.name, field_ty, fi.ty
+                        ),
+                        field.span,
+                    );
+                }
+            } else {
+                self.error(
+                    format!(
+                        "optional group `{}` has no field `{}`",
+                        group_name, field.name
+                    ),
+                    field.span,
+                );
+            }
+        }
+
+        // Check for missing required fields (no default)
+        for fi in &group.fields {
+            if !fi.has_default && !seen.contains(&fi.name) {
+                self.error(
+                    format!(
+                        "missing required field `{}` in grant of `{}`",
+                        fi.name, group_name
+                    ),
+                    span,
+                );
+            }
+        }
+    }
+
+    fn check_revoke(
+        &mut self,
+        entity: &Spanned<ExprKind>,
+        group_name: &str,
+        span: ttrpg_ast::Span,
+    ) {
+        // grant/revoke only allowed in action/reaction context
+        if !self.scope.allows_mutation() {
+            self.error(
+                "revoke is only allowed in action or reaction context".to_string(),
+                span,
+            );
+        }
+
+        let entity_ty = self.check_expr(entity);
+        if entity_ty.is_error() {
+            return;
+        }
+
+        let entity_name = match &entity_ty {
+            Ty::Entity(name) => name.clone(),
+            _ => {
+                self.error(
+                    format!("revoke requires an entity, found {}", entity_ty),
+                    span,
+                );
+                return;
+            }
+        };
+
+        if self.env.lookup_optional_group(&entity_name, group_name).is_none() {
+            self.error(
+                format!(
+                    "entity `{}` has no optional group `{}`",
+                    entity_name, group_name
+                ),
+                span,
+            );
+        }
     }
 }

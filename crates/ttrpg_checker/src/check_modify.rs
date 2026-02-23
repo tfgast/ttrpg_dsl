@@ -14,7 +14,7 @@ impl<'a> Checker<'a> {
     pub fn check_modify_clause(
         &mut self,
         clause: &ModifyClause,
-        receiver: Option<(&str, &Spanned<TypeExpr>)>,
+        receiver: Option<(&str, &Spanned<TypeExpr>, &[String])>,
     ) {
         // Look up the target function
         let fn_info = match self.env.lookup_fn(&clause.target) {
@@ -43,15 +43,22 @@ impl<'a> Checker<'a> {
         self.scope.push(BlockKind::ModifyClause);
 
         // Bind the receiver if present (conditions have one, options don't)
-        if let Some((receiver_name, receiver_type)) = receiver {
+        if let Some((receiver_name, receiver_type, with_groups)) = receiver {
             let recv_ty = self.env.resolve_type(receiver_type);
             self.scope.bind(
                 receiver_name.to_string(),
                 VarBinding {
-                    ty: recv_ty,
+                    ty: recv_ty.clone(),
                     mutable: false,
                     is_local: false,
                 },
+            );
+            // Add narrowings for receiver with_groups
+            self.validate_with_groups(
+                receiver_name,
+                &recv_ty,
+                with_groups,
+                receiver_type.span,
             );
         }
 

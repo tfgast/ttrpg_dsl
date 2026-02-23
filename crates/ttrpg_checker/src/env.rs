@@ -42,6 +42,13 @@ pub struct StructInfo {
 pub struct EntityInfo {
     pub name: String,
     pub fields: Vec<FieldInfo>,
+    pub optional_groups: Vec<OptionalGroupInfo>,
+}
+
+#[derive(Debug, Clone)]
+pub struct OptionalGroupInfo {
+    pub name: String,
+    pub fields: Vec<FieldInfo>,
 }
 
 /// What kind of callable a function name refers to.
@@ -226,6 +233,14 @@ impl TypeEnv {
             DeclInfo::Struct(info) => Some(&info.fields),
             DeclInfo::Entity(info) => Some(&info.fields),
             DeclInfo::Enum(_) => None,
+        }
+    }
+
+    /// Look up an optional group on an entity by name.
+    pub fn lookup_optional_group(&self, entity_name: &str, group_name: &str) -> Option<&OptionalGroupInfo> {
+        match self.types.get(entity_name)? {
+            DeclInfo::Entity(info) => info.optional_groups.iter().find(|g| g.name == group_name),
+            _ => None,
         }
     }
 

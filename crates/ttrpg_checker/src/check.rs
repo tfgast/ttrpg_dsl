@@ -96,10 +96,18 @@ impl<'a> Checker<'a> {
         self.scope.bind(
             a.receiver_name.clone(),
             VarBinding {
-                ty: recv_ty,
+                ty: recv_ty.clone(),
                 mutable: false,
                 is_local: false,
             },
+        );
+
+        // Validate and narrow receiver with_groups
+        self.validate_with_groups(
+            &a.receiver_name,
+            &recv_ty,
+            &a.receiver_with_groups,
+            a.receiver_type.span,
         );
 
         // Bind params
@@ -140,10 +148,18 @@ impl<'a> Checker<'a> {
         self.scope.bind(
             r.receiver_name.clone(),
             VarBinding {
-                ty: recv_ty,
+                ty: recv_ty.clone(),
                 mutable: false,
                 is_local: false,
             },
+        );
+
+        // Validate and narrow receiver with_groups
+        self.validate_with_groups(
+            &r.receiver_name,
+            &recv_ty,
+            &r.receiver_with_groups,
+            r.receiver_type.span,
         );
 
         // Validate trigger event exists and bind trigger
@@ -303,7 +319,7 @@ impl<'a> Checker<'a> {
                 ConditionClause::Modify(m) => {
                     self.check_modify_clause(
                         m,
-                        Some((&c.receiver_name, &c.receiver_type)),
+                        Some((&c.receiver_name, &c.receiver_type, &c.receiver_with_groups)),
                     );
                 }
                 ConditionClause::Suppress(s) => {
@@ -400,6 +416,24 @@ impl<'a> Checker<'a> {
                 }
             }
         }
+        // Check optional group field defaults
+        for group in &e.optional_groups {
+            for field in &group.fields {
+                if let Some(ref default) = field.default {
+                    let def_ty = self.check_expr(default);
+                    let field_ty = self.env.resolve_type(&field.ty);
+                    if !def_ty.is_error() && !self.types_compatible(&def_ty, &field_ty) {
+                        self.error(
+                            format!(
+                                "field `{}` in group `{}` default has type {}, expected {}",
+                                field.name, group.name, def_ty, field_ty
+                            ),
+                            default.span,
+                        );
+                    }
+                }
+            }
+        }
         self.scope.pop();
     }
 
@@ -421,11 +455,13 @@ impl<'a> Checker<'a> {
             self.scope.bind(
                 param.name.clone(),
                 VarBinding {
-                    ty,
+                    ty: ty.clone(),
                     mutable: false,
                     is_local: false,
                 },
             );
+            // Validate and narrow with_groups
+            self.validate_with_groups(&param.name, &ty, &param.with_groups, param.span);
         }
     }
 
@@ -442,6 +478,63 @@ impl<'a> Checker<'a> {
                 span,
             );
         }
+    }
+
+    /// Validate `with` group constraints on a parameter or receiver, and add narrowings.
+    pub fn validate_with_groups(
+        &mut self,
+        var_name: &str,
+        ty: &Ty,
+        with_groups: &[String],
+        span: Span,
+    ) {
+        for group_name in with_groups {
+            if let Ty::Entity(ref entity_name) = ty {
+                if self
+                    .env
+                    .lookup_optional_group(entity_name, group_name)
+                    .is_none()
+                {
+                    self.error(
+                        format!(
+                            "entity `{}` has no optional group `{}`",
+                            entity_name, group_name
+                        ),
+                        span,
+                    );
+                }
+            } else if !ty.is_error() {
+                self.error(
+                    format!(
+                        "`with` constraint on `{}` requires entity type, found {}",
+                        var_name, ty
+                    ),
+                    span,
+                );
+            }
+            self.scope
+                .narrow_group(var_name.to_string(), group_name.clone());
+        }
+    }
+
+    /// Check a block with additional narrowings injected into the scope.
+    pub fn check_block_with_narrowings(
+        &mut self,
+        block: &Block,
+        narrowings: &[(String, String)],
+    ) -> Ty {
+        self.scope.push(BlockKind::Inner);
+        for (var, group) in narrowings {
+            self.scope.narrow_group(var.clone(), group.clone());
+        }
+        let stmts = &block.node;
+        let mut last_ty = Ty::Unit;
+        for (i, stmt) in stmts.iter().enumerate() {
+            let is_last = i == stmts.len() - 1;
+            last_ty = self.check_stmt(stmt, is_last);
+        }
+        self.scope.pop();
+        last_ty
     }
 
     /// Check type compatibility. Allows Resource <-> Int coercion

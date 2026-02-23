@@ -76,9 +76,8 @@ impl<'a> Checker<'a> {
                 self.check_for(pattern, iterable, body, expr.span)
             }
 
-            ExprKind::Has { .. } => {
-                // TODO(ttrpg_dsl-8j9): type check has expression
-                Ty::Bool
+            ExprKind::Has { entity, group_name } => {
+                self.check_has(entity, group_name, expr.span)
             }
         }
     }
@@ -431,7 +430,33 @@ impl<'a> Checker<'a> {
             return Ty::Error;
         }
 
-        self.resolve_field(&obj_ty, field, span)
+        let result_ty = self.resolve_field(&obj_ty, field, span);
+
+        // If this resolved to an optional group reference, check narrowing
+        if let Ty::OptionalGroupRef(_, ref group_name) = result_ty {
+            let group_name = group_name.clone();
+            if let Some(var_name) = self.extract_root_var(object) {
+                if !self.scope.is_group_narrowed(&var_name, &group_name) {
+                    self.error(
+                        format!(
+                            "access to optional group `{}` on `{}` requires a `has` guard or `with` constraint",
+                            group_name, var_name
+                        ),
+                        span,
+                    );
+                }
+            } else {
+                self.error(
+                    format!(
+                        "access to optional group `{}` requires a `has` guard or `with` constraint",
+                        group_name
+                    ),
+                    span,
+                );
+            }
+        }
+
+        result_ty
     }
 
     pub fn resolve_field(&mut self, obj_ty: &Ty, field: &str, span: ttrpg_ast::Span) -> Ty {
@@ -459,6 +484,13 @@ impl<'a> Checker<'a> {
                     }
                 }
 
+                // Check for optional group access on entities
+                if matches!(obj_ty, Ty::Entity(_)) {
+                    if self.env.lookup_optional_group(name, field).is_some() {
+                        return Ty::OptionalGroupRef(name.clone(), field.to_string());
+                    }
+                }
+
                 if let Some(fields) = self.env.lookup_fields(name) {
                     if let Some(fi) = fields.iter().find(|f| f.name == field) {
                         return fi.ty.clone();
@@ -466,6 +498,18 @@ impl<'a> Checker<'a> {
                 }
                 self.error(
                     format!("type `{}` has no field `{}`", name, field),
+                    span,
+                );
+                Ty::Error
+            }
+            Ty::OptionalGroupRef(entity_name, group_name) => {
+                if let Some(group) = self.env.lookup_optional_group(entity_name, group_name) {
+                    if let Some(fi) = group.fields.iter().find(|f| f.name == field) {
+                        return fi.ty.clone();
+                    }
+                }
+                self.error(
+                    format!("optional group `{}` has no field `{}`", group_name, field),
                     span,
                 );
                 Ty::Error
@@ -1178,7 +1222,13 @@ impl<'a> Checker<'a> {
             );
         }
 
-        let then_ty = self.check_block(then_block);
+        // Extract narrowings from `has` conditions for the then-block
+        let narrowings = self.extract_has_narrowings(condition);
+        let then_ty = if narrowings.is_empty() {
+            self.check_block(then_block)
+        } else {
+            self.check_block_with_narrowings(then_block, &narrowings)
+        };
         self.check_else_branch_type(&then_ty, else_branch, span)
     }
 
@@ -1413,6 +1463,75 @@ impl<'a> Checker<'a> {
         match body {
             ArmBody::Expr(expr) => self.check_expr(expr),
             ArmBody::Block(block) => self.check_block(block),
+        }
+    }
+
+    fn check_has(
+        &mut self,
+        entity: &Spanned<ExprKind>,
+        group_name: &str,
+        span: ttrpg_ast::Span,
+    ) -> Ty {
+        let entity_ty = self.check_expr(entity);
+        if entity_ty.is_error() {
+            return Ty::Bool;
+        }
+        if let Ty::Entity(ref name) = entity_ty {
+            if self.env.lookup_optional_group(name, group_name).is_none() {
+                self.error(
+                    format!(
+                        "entity `{}` has no optional group `{}`",
+                        name, group_name
+                    ),
+                    span,
+                );
+            }
+        } else {
+            self.error(
+                format!(
+                    "`has` can only be used with entity types, found {}",
+                    entity_ty
+                ),
+                span,
+            );
+        }
+        Ty::Bool
+    }
+
+    /// Extract the root variable name from an expression chain.
+    /// Returns `Some("actor")` for `actor`, `actor.foo`, `actor.foo.bar[0]`, etc.
+    fn extract_root_var(&self, expr: &Spanned<ExprKind>) -> Option<String> {
+        match &expr.node {
+            ExprKind::Ident(name) => Some(name.clone()),
+            ExprKind::FieldAccess { object, .. } => self.extract_root_var(object),
+            ExprKind::Index { object, .. } => self.extract_root_var(object),
+            ExprKind::Paren(inner) => self.extract_root_var(inner),
+            _ => None,
+        }
+    }
+
+    /// Extract `(variable_name, group_name)` narrowing pairs from a `has` condition.
+    /// Supports `entity has Group`, `a and b` composition, and parenthesized expressions.
+    fn extract_has_narrowings(&self, expr: &Spanned<ExprKind>) -> Vec<(String, String)> {
+        match &expr.node {
+            ExprKind::Has { entity, group_name } => {
+                if let Some(var) = self.extract_root_var(entity) {
+                    vec![(var, group_name.clone())]
+                } else {
+                    vec![]
+                }
+            }
+            ExprKind::BinOp {
+                op: BinOp::And,
+                lhs,
+                rhs,
+            } => {
+                let mut narrowings = self.extract_has_narrowings(lhs);
+                narrowings.extend(self.extract_has_narrowings(rhs));
+                narrowings
+            }
+            ExprKind::Paren(inner) => self.extract_has_narrowings(inner),
+            _ => vec![],
         }
     }
 }

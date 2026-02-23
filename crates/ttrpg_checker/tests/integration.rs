@@ -3676,3 +3676,638 @@ system "test" {
 "#;
     expect_errors(source, &["cannot mutate field/index of immutable binding"]);
 }
+
+// ═══════════════════════════════════════════════════════════════
+// Optional groups: collection & declaration validation
+// ═══════════════════════════════════════════════════════════════
+
+#[test]
+fn test_optional_group_basic_declaration() {
+    let source = r#"
+system "test" {
+    entity Character {
+        HP: int
+        optional Spellcasting {
+            spell_save_DC: int
+        }
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_optional_group_duplicate_group_name() {
+    let source = r#"
+system "test" {
+    entity Character {
+        HP: int
+        optional Rage {
+            uses: int
+        }
+        optional Rage {
+            damage: int
+        }
+    }
+}
+"#;
+    expect_errors(source, &["duplicate optional group `Rage` in entity `Character`"]);
+}
+
+#[test]
+fn test_optional_group_duplicate_field_in_group() {
+    let source = r#"
+system "test" {
+    entity Character {
+        HP: int
+        optional Spellcasting {
+            dc: int
+            dc: int
+        }
+    }
+}
+"#;
+    expect_errors(source, &["duplicate field `dc` in optional group `Spellcasting`"]);
+}
+
+#[test]
+fn test_optional_group_field_default() {
+    let source = r#"
+system "test" {
+    entity Character {
+        HP: int
+        optional Rage {
+            damage: int = 2
+        }
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_optional_group_field_default_type_mismatch() {
+    let source = r#"
+system "test" {
+    entity Character {
+        HP: int
+        optional Rage {
+            damage: int = "not a number"
+        }
+    }
+}
+"#;
+    expect_errors(source, &["default has type string, expected int"]);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Optional groups: `has` expression type checking
+// ═══════════════════════════════════════════════════════════════
+
+#[test]
+fn test_has_returns_bool() {
+    let source = r#"
+system "test" {
+    entity Character {
+        HP: int
+        optional Spellcasting {
+            dc: int
+        }
+    }
+    derive check(actor: Character) -> bool {
+        actor has Spellcasting
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_has_unknown_group_rejected() {
+    let source = r#"
+system "test" {
+    entity Character {
+        HP: int
+    }
+    derive check(actor: Character) -> bool {
+        actor has Nonexistent
+    }
+}
+"#;
+    expect_errors(source, &["entity `Character` has no optional group `Nonexistent`"]);
+}
+
+#[test]
+fn test_has_on_non_entity_rejected() {
+    let source = r#"
+system "test" {
+    derive check(x: int) -> bool {
+        x has Something
+    }
+}
+"#;
+    expect_errors(source, &["`has` can only be used with entity types, found int"]);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Optional groups: field access requires narrowing
+// ═══════════════════════════════════════════════════════════════
+
+#[test]
+fn test_unguarded_group_access_rejected() {
+    let source = r#"
+system "test" {
+    entity Character {
+        HP: int
+        optional Spellcasting {
+            dc: int
+        }
+    }
+    derive check(actor: Character) -> int {
+        actor.Spellcasting.dc
+    }
+}
+"#;
+    expect_errors(source, &["access to optional group `Spellcasting` on `actor` requires a `has` guard or `with` constraint"]);
+}
+
+#[test]
+fn test_guarded_group_access_with_has() {
+    let source = r#"
+system "test" {
+    entity Character {
+        HP: int
+        optional Spellcasting {
+            dc: int
+        }
+    }
+    derive check(actor: Character) -> int {
+        if actor has Spellcasting {
+            actor.Spellcasting.dc
+        } else {
+            0
+        }
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_guarded_group_access_with_constraint() {
+    let source = r#"
+system "test" {
+    entity Character {
+        HP: int
+        optional Spellcasting {
+            dc: int
+        }
+    }
+    derive spell_dc(actor: Character with Spellcasting) -> int {
+        actor.Spellcasting.dc
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_guard_and_composition() {
+    let source = r#"
+system "test" {
+    entity Character {
+        HP: int
+        optional Spellcasting {
+            dc: int
+        }
+        optional Rage {
+            damage: int
+        }
+    }
+    derive check(actor: Character) -> int {
+        if actor has Spellcasting && actor has Rage {
+            actor.Spellcasting.dc + actor.Rage.damage
+        } else {
+            0
+        }
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_group_field_not_found() {
+    let source = r#"
+system "test" {
+    entity Character {
+        HP: int
+        optional Spellcasting {
+            dc: int
+        }
+    }
+    derive check(actor: Character with Spellcasting) -> int {
+        actor.Spellcasting.nonexistent
+    }
+}
+"#;
+    expect_errors(source, &["optional group `Spellcasting` has no field `nonexistent`"]);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Optional groups: `with` constraint validation
+// ═══════════════════════════════════════════════════════════════
+
+#[test]
+fn test_with_constraint_unknown_group() {
+    let source = r#"
+system "test" {
+    entity Character {
+        HP: int
+    }
+    derive check(actor: Character with Nonexistent) -> int {
+        0
+    }
+}
+"#;
+    expect_errors(source, &["entity `Character` has no optional group `Nonexistent`"]);
+}
+
+#[test]
+fn test_with_constraint_on_non_entity() {
+    let source = r#"
+system "test" {
+    derive check(x: int with Something) -> int {
+        0
+    }
+}
+"#;
+    expect_errors(source, &["`with` constraint on `x` requires entity type, found int"]);
+}
+
+#[test]
+fn test_with_constraint_multiple_groups() {
+    let source = r#"
+system "test" {
+    entity Character {
+        HP: int
+        optional Spellcasting {
+            dc: int
+        }
+        optional Rage {
+            damage: int
+        }
+    }
+    derive check(actor: Character with Spellcasting, Rage) -> int {
+        actor.Spellcasting.dc + actor.Rage.damage
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_with_constraint_on_action_receiver() {
+    let source = r#"
+system "test" {
+    entity Character {
+        HP: int
+        optional Spellcasting {
+            dc: int
+        }
+    }
+    action CastSpell on caster: Character with Spellcasting () {
+        resolve {
+            caster.Spellcasting.dc += 1
+        }
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_with_constraint_on_reaction_receiver() {
+    let source = r#"
+system "test" {
+    entity Character {
+        HP: int
+        optional Spellcasting {
+            dc: int
+        }
+    }
+    event attack(attacker: Character) {}
+    reaction Counterspell on caster: Character with Spellcasting (trigger: attack(caster)) {
+        cost { reaction }
+        resolve {
+            caster.Spellcasting.dc += 1
+        }
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_with_constraint_on_action_param() {
+    let source = r#"
+system "test" {
+    entity Character {
+        HP: int
+        optional Spellcasting {
+            dc: int
+        }
+    }
+    action Dispel on caster: Character (target: Character with Spellcasting) {
+        resolve {
+            target.Spellcasting.dc -= 1
+        }
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Optional groups: grant/revoke type checking
+// ═══════════════════════════════════════════════════════════════
+
+#[test]
+fn test_grant_in_action_ok() {
+    let source = r#"
+system "test" {
+    entity Character {
+        HP: int
+        optional Spellcasting {
+            dc: int
+        }
+    }
+    action GainMagic on actor: Character () {
+        resolve {
+            grant actor.Spellcasting { dc: 15 }
+        }
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_revoke_in_action_ok() {
+    let source = r#"
+system "test" {
+    entity Character {
+        HP: int
+        optional Spellcasting {
+            dc: int
+        }
+    }
+    action LoseMagic on actor: Character () {
+        resolve {
+            revoke actor.Spellcasting
+        }
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_grant_in_derive_rejected() {
+    let source = r#"
+system "test" {
+    entity Character {
+        HP: int
+        optional Spellcasting {
+            dc: int
+        }
+    }
+    derive bad(actor: Character) -> int {
+        grant actor.Spellcasting { dc: 15 }
+        0
+    }
+}
+"#;
+    expect_errors(source, &["grant is only allowed in action or reaction context"]);
+}
+
+#[test]
+fn test_revoke_in_derive_rejected() {
+    let source = r#"
+system "test" {
+    entity Character {
+        HP: int
+        optional Spellcasting {
+            dc: int
+        }
+    }
+    derive bad(actor: Character) -> int {
+        revoke actor.Spellcasting
+        0
+    }
+}
+"#;
+    expect_errors(source, &["revoke is only allowed in action or reaction context"]);
+}
+
+#[test]
+fn test_grant_unknown_group_rejected() {
+    let source = r#"
+system "test" {
+    entity Character {
+        HP: int
+    }
+    action Bad on actor: Character () {
+        resolve {
+            grant actor.Nonexistent { x: 1 }
+        }
+    }
+}
+"#;
+    expect_errors(source, &["entity `Character` has no optional group `Nonexistent`"]);
+}
+
+#[test]
+fn test_grant_field_type_mismatch() {
+    let source = r#"
+system "test" {
+    entity Character {
+        HP: int
+        optional Spellcasting {
+            dc: int
+        }
+    }
+    action GainMagic on actor: Character () {
+        resolve {
+            grant actor.Spellcasting { dc: "not a number" }
+        }
+    }
+}
+"#;
+    expect_errors(source, &["field `dc` has type string, expected int"]);
+}
+
+#[test]
+fn test_grant_missing_required_field() {
+    let source = r#"
+system "test" {
+    entity Character {
+        HP: int
+        optional Spellcasting {
+            dc: int
+            ability: string
+        }
+    }
+    action GainMagic on actor: Character () {
+        resolve {
+            grant actor.Spellcasting { dc: 15 }
+        }
+    }
+}
+"#;
+    expect_errors(source, &["missing required field `ability` in grant of `Spellcasting`"]);
+}
+
+#[test]
+fn test_grant_unknown_field_rejected() {
+    let source = r#"
+system "test" {
+    entity Character {
+        HP: int
+        optional Spellcasting {
+            dc: int
+        }
+    }
+    action GainMagic on actor: Character () {
+        resolve {
+            grant actor.Spellcasting { dc: 15, nonexistent: 1 }
+        }
+    }
+}
+"#;
+    expect_errors(source, &["optional group `Spellcasting` has no field `nonexistent`"]);
+}
+
+#[test]
+fn test_grant_with_default_field_ok() {
+    let source = r#"
+system "test" {
+    entity Character {
+        HP: int
+        optional Rage {
+            damage: int = 2
+            uses: int
+        }
+    }
+    action Enrage on actor: Character () {
+        resolve {
+            grant actor.Rage { uses: 3 }
+        }
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_grant_on_non_entity_rejected() {
+    let source = r#"
+system "test" {
+    entity Character { HP: int }
+    action Bad on actor: Character () {
+        resolve {
+            let x = 5
+            grant x.Something { a: 1 }
+        }
+    }
+}
+"#;
+    expect_errors(source, &["grant requires an entity, found int"]);
+}
+
+#[test]
+fn test_revoke_on_non_entity_rejected() {
+    let source = r#"
+system "test" {
+    entity Character { HP: int }
+    action Bad on actor: Character () {
+        resolve {
+            let x = 5
+            revoke x.Something
+        }
+    }
+}
+"#;
+    expect_errors(source, &["revoke requires an entity, found int"]);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Optional groups: lvalue narrowing
+// ═══════════════════════════════════════════════════════════════
+
+#[test]
+fn test_lvalue_group_access_with_constraint() {
+    let source = r#"
+system "test" {
+    entity Character {
+        HP: int
+        optional Spellcasting {
+            dc: int
+        }
+    }
+    action BoostDC on caster: Character with Spellcasting () {
+        resolve {
+            caster.Spellcasting.dc += 1
+        }
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_lvalue_group_access_unguarded_rejected() {
+    let source = r#"
+system "test" {
+    entity Character {
+        HP: int
+        optional Spellcasting {
+            dc: int
+        }
+    }
+    action Bad on caster: Character () {
+        resolve {
+            caster.Spellcasting.dc += 1
+        }
+    }
+}
+"#;
+    expect_errors(source, &["access to optional group `Spellcasting` on `caster` requires a `has` guard or `with` constraint"]);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Optional groups: condition with_groups on receiver
+// ═══════════════════════════════════════════════════════════════
+
+#[test]
+fn test_condition_with_groups_on_receiver() {
+    let source = r#"
+system "test" {
+    entity Character {
+        HP: int
+        optional Spellcasting {
+            dc: int
+        }
+    }
+    derive spell_dc(actor: Character with Spellcasting) -> int {
+        actor.Spellcasting.dc
+    }
+    condition Silenced on bearer: Character with Spellcasting {
+        modify spell_dc(actor: bearer) {
+            result = 0
+        }
+    }
+}
+"#;
+    expect_no_errors(source);
+}

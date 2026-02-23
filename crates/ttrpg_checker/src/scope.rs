@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::ty::Ty;
 
@@ -61,6 +61,9 @@ pub struct VarBinding {
 struct Scope {
     block_kind: BlockKind,
     bindings: HashMap<String, VarBinding>,
+    /// Optional groups proven active for a given variable in this scope.
+    /// Maps variable name → set of group names that are narrowed as active.
+    narrowed_groups: HashMap<String, HashSet<String>>,
 }
 
 #[derive(Debug)]
@@ -83,6 +86,7 @@ impl ScopeStack {
         self.scopes.push(Scope {
             block_kind,
             bindings: HashMap::new(),
+            narrowed_groups: HashMap::new(),
         });
     }
 
@@ -158,5 +162,29 @@ impl ScopeStack {
                 }
             }
         }
+    }
+
+    /// Record that a variable's optional group is proven active in the current scope.
+    pub fn narrow_group(&mut self, var: String, group: String) {
+        if let Some(scope) = self.scopes.last_mut() {
+            scope
+                .narrowed_groups
+                .entry(var)
+                .or_default()
+                .insert(group);
+        }
+    }
+
+    /// Check whether an optional group is narrowed as active for a variable,
+    /// walking scopes innermost to outermost.
+    pub fn is_group_narrowed(&self, var: &str, group: &str) -> bool {
+        for scope in self.scopes.iter().rev() {
+            if let Some(groups) = scope.narrowed_groups.get(var) {
+                if groups.contains(group) {
+                    return true;
+                }
+            }
+        }
+        false
     }
 }
