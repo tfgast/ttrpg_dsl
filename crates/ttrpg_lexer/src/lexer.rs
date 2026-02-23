@@ -178,7 +178,12 @@ impl<'a> RawLexer<'a> {
             '.' => {
                 if self.cursor.peek() == Some('.') {
                     self.cursor.advance();
-                    Token::new(TokenKind::DotDot, Span::new(start, self.cursor.pos()))
+                    if self.cursor.peek() == Some('=') {
+                        self.cursor.advance();
+                        Token::new(TokenKind::DotDotEq, Span::new(start, self.cursor.pos()))
+                    } else {
+                        Token::new(TokenKind::DotDot, Span::new(start, self.cursor.pos()))
+                    }
                 } else {
                     Token::new(TokenKind::Dot, Span::new(start, self.cursor.pos()))
                 }
@@ -666,7 +671,7 @@ mod tests {
 
     #[test]
     fn test_operators() {
-        let result = lex("+ - * / -> => .. == != >= <= += -=");
+        let result = lex("+ - * / -> => .. ..= == != >= <= += -=");
         assert_eq!(
             result,
             vec![
@@ -677,6 +682,7 @@ mod tests {
                 TokenKind::Arrow,
                 TokenKind::FatArrow,
                 TokenKind::DotDot,
+                TokenKind::DotDotEq,
                 TokenKind::EqEq,
                 TokenKind::BangEq,
                 TokenKind::GtEq,

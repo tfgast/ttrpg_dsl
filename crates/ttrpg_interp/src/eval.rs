@@ -792,7 +792,7 @@ fn eval_for(
                 ));
             }
         },
-        ForIterable::Range { start, end } => {
+        ForIterable::Range { start, end, inclusive } => {
             let s = match eval_expr(env, start)? {
                 Value::Int(n) => n,
                 other => {
@@ -811,7 +811,11 @@ fn eval_for(
                     ));
                 }
             };
-            (s..e).map(Value::Int).collect()
+            if *inclusive {
+                (s..=e).map(Value::Int).collect()
+            } else {
+                (s..e).map(Value::Int).collect()
+            }
         }
     };
 
@@ -1108,8 +1112,8 @@ fn eval_assign_entity(
     let path = lvalue_segments_to_field_path(env, segments, span)?;
 
     // Look up resource bounds from the entity's field declaration.
-    // Handles direct resource fields (e.g. HP: resource(0..max_HP)) and
-    // resource-valued maps (e.g. spell_slots: map<int, resource(0..9)>).
+    // Handles direct resource fields (e.g. HP: resource(0..=max_HP)) and
+    // resource-valued maps (e.g. spell_slots: map<int, resource(0..=9)>).
     let bounds = resolve_resource_bounds(env, &entity, &path);
 
     let effect = Effect::MutateField {
@@ -2005,7 +2009,7 @@ fn find_field_def_and_remaining<'a>(
 
 /// Walk remaining path segments through a `TypeExpr` to find resource bounds at the leaf.
 ///
-/// For `map<int, resource(0..9)>` with path `[Index(3)]`, this returns the resource
+/// For `map<int, resource(0..=9)>` with path `[Index(3)]`, this returns the resource
 /// bounds `(0, 9)` expressions. For non-resource leaves, returns `None`.
 ///
 /// Also traverses `Named` struct types by looking up their field definitions in the

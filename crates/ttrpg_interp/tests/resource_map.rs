@@ -1,4 +1,4 @@
-//! Integration tests for resource-valued maps: `map<K, resource(min..max)>`.
+//! Integration tests for resource-valued maps: `map<K, resource(min..=max)>`.
 //!
 //! Tests the full pipeline: parse → lower → check → interpret, verifying
 //! that resource bounds are properly resolved and clamped for map entries.
@@ -88,7 +88,7 @@ impl EffectHandler for ScriptedHandler {
 const RESOURCE_MAP_SYSTEM: &str = r#"
 system "test" {
     entity Character {
-        spell_slots: map<int, resource(0..9)>
+        spell_slots: map<int, resource(0..=9)>
     }
     action CastSpell on actor: Character (level: int) {
         cost { action }
@@ -283,7 +283,7 @@ const DYNAMIC_BOUNDS_SYSTEM: &str = r#"
 system "test" {
     entity Character {
         max_slots: int = 4
-        spell_slots: map<int, resource(0..max_slots)>
+        spell_slots: map<int, resource(0..=max_slots)>
     }
     action GainSlot on actor: Character (level: int) {
         cost { action }
@@ -333,7 +333,7 @@ const GROUP_RESOURCE_MAP_SYSTEM: &str = r#"
 system "test" {
     entity Character {
         optional Spellcasting {
-            spell_slots: map<int, resource(0..9)>
+            spell_slots: map<int, resource(0..=9)>
         }
     }
     action CastSpell on actor: Character with Spellcasting (level: int) {
@@ -394,7 +394,7 @@ fn resource_map_in_optional_group_is_clamped() {
 const NONZERO_MIN_SYSTEM: &str = r#"
 system "test" {
     entity Character {
-        abilities: map<int, resource(1..20)>
+        abilities: map<int, resource(1..=20)>
     }
     action Buff on actor: Character (stat: int) {
         cost { action }
@@ -520,7 +520,7 @@ fn resource_map_nonzero_min_auto_init_missing_key() {
 const MULTI_MUTATE_SYSTEM: &str = r#"
 system "test" {
     entity Character {
-        spell_slots: map<int, resource(0..9)>
+        spell_slots: map<int, resource(0..=9)>
     }
     action MultiCast on actor: Character (level1: int, level2: int) {
         cost { action }
@@ -570,7 +570,7 @@ fn resource_map_multiple_keys_mutated_in_one_action() {
 const DERIVE_READS_MAP_SYSTEM: &str = r#"
 system "test" {
     entity Character {
-        spell_slots: map<int, resource(0..9)>
+        spell_slots: map<int, resource(0..=9)>
     }
     derive slots_at(actor: Character, level: int) -> int {
         actor.spell_slots[level]
@@ -629,7 +629,7 @@ const ENUM_KEY_SYSTEM: &str = r#"
 system "test" {
     enum Ability { STR, DEX, CON, INT, WIS, CHA }
     entity Character {
-        abilities: map<Ability, resource(1..20)>
+        abilities: map<Ability, resource(1..=20)>
     }
     action Buff on actor: Character (stat: Ability) {
         cost { action }
@@ -732,7 +732,7 @@ fn resource_map_enum_key_clamped_at_max() {
 const LOCAL_TO_ENTITY_SYSTEM: &str = r#"
 system "test" {
     entity Character {
-        spell_slots: map<int, resource(0..9)>
+        spell_slots: map<int, resource(0..=9)>
     }
     event spell_cast(caster: Character, level: int) {}
     reaction CounterSpell on reactor: Character (trigger: spell_cast(reactor)) {
@@ -850,7 +850,7 @@ const COMPLEX_BOUNDS_SYSTEM: &str = r#"
 system "test" {
     entity Character {
         max_slots: int = 4
-        spell_slots: map<int, resource(0..max_slots + 1)>
+        spell_slots: map<int, resource(0..=max_slots + 1)>
     }
     action GainSlot on actor: Character (level: int) {
         cost { action }
@@ -937,7 +937,7 @@ fn complex_bound_expression_effect_has_bounds() {
 const STRUCT_FIELD_SYSTEM: &str = r#"
 system "test" {
     struct Stats {
-        spell_slots: map<int, resource(0..9)>
+        spell_slots: map<int, resource(0..=9)>
     }
     entity Character {
         stats: Stats
@@ -1046,7 +1046,7 @@ const DIRECT_RESOURCE_SYSTEM: &str = r#"
 system "test" {
     entity Character {
         max_HP: int = 100
-        HP: resource(0..max_HP)
+        HP: resource(0..=max_HP)
     }
     action Damage on target: Character (amount: int) {
         cost { action }

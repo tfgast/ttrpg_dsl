@@ -62,7 +62,12 @@ impl Parser {
                         self.advance();
                         self.expect(&TokenKind::LParen)?;
                         let lo = self.parse_expr()?;
-                        self.expect(&TokenKind::DotDot)?;
+                        if matches!(self.peek(), TokenKind::DotDot) {
+                            self.advance();
+                            self.error("resource bounds are inclusive; use `..=` instead of `..`");
+                        } else {
+                            self.expect(&TokenKind::DotDotEq)?;
+                        }
                         let hi = self.parse_expr()?;
                         self.expect(&TokenKind::RParen)?;
                         TypeExpr::Resource(Box::new(lo), Box::new(hi))

@@ -155,7 +155,7 @@ struct RollResult {
 //   list<T>             ordered sequence
 //   set<T>              unordered unique elements
 //   option<T>           T | none
-//   resource(min..max)  bounded int; all assignments clamp to bounds
+//   resource(min..=max) bounded int; all assignments clamp to bounds
 //                        (=, +=, -= all clamp the result to [min, max])
 
 

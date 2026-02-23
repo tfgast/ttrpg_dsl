@@ -571,12 +571,14 @@ impl Parser {
         // operator, parse_expr() naturally stops before it.
         let first = self.parse_expr()?;
 
-        let iterable = if matches!(self.peek(), TokenKind::DotDot) {
+        let iterable = if matches!(self.peek(), TokenKind::DotDot | TokenKind::DotDotEq) {
+            let inclusive = matches!(self.peek(), TokenKind::DotDotEq);
             self.advance();
             let end = self.parse_expr()?;
             ForIterable::Range {
                 start: Box::new(first),
                 end: Box::new(end),
+                inclusive,
             }
         } else {
             ForIterable::Collection(Box::new(first))

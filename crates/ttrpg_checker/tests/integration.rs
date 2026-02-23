@@ -4666,7 +4666,7 @@ fn test_resource_map_declaration() {
 system "test" {
     entity Character {
         max_slots: int = 4
-        spell_slots: map<int, resource(0..max_slots)>
+        spell_slots: map<int, resource(0..=max_slots)>
     }
 }
 "#;
@@ -4678,7 +4678,7 @@ fn test_resource_map_read_is_int_like() {
     let source = r#"
 system "test" {
     entity Character {
-        spell_slots: map<int, resource(0..9)>
+        spell_slots: map<int, resource(0..=9)>
     }
     derive check(actor: Character) -> int {
         let x: int = actor.spell_slots[1]
@@ -4694,7 +4694,7 @@ fn test_resource_map_mutation() {
     let source = r#"
 system "test" {
     entity Character {
-        spell_slots: map<int, resource(0..9)>
+        spell_slots: map<int, resource(0..=9)>
     }
     action CastSpell on caster: Character (level: int) {
         cost { action }
@@ -4713,7 +4713,7 @@ fn test_resource_map_in_optional_group() {
 system "test" {
     entity Character {
         optional Spellcasting {
-            spell_slots: map<int, resource(0..9)>
+            spell_slots: map<int, resource(0..=9)>
         }
     }
     action CastSpell on caster: Character with Spellcasting (level: int) {
@@ -4732,7 +4732,7 @@ fn test_resource_map_wrong_key_type() {
     let source = r#"
 system "test" {
     entity Character {
-        spell_slots: map<int, resource(0..9)>
+        spell_slots: map<int, resource(0..=9)>
     }
     action Bad on actor: Character () {
         cost { action }
@@ -4750,7 +4750,7 @@ fn test_resource_map_assign_string_to_entry() {
     let source = r#"
 system "test" {
     entity Character {
-        spell_slots: map<int, resource(0..9)>
+        spell_slots: map<int, resource(0..=9)>
     }
     action Bad on actor: Character () {
         cost { action }
@@ -4768,7 +4768,7 @@ fn test_resource_map_pluseq_with_string() {
     let source = r#"
 system "test" {
     entity Character {
-        spell_slots: map<int, resource(0..9)>
+        spell_slots: map<int, resource(0..=9)>
     }
     action Bad on actor: Character () {
         cost { action }
@@ -4786,7 +4786,7 @@ fn test_resource_map_pluseq_with_float() {
     let source = r#"
 system "test" {
     entity Character {
-        spell_slots: map<int, resource(0..9)>
+        spell_slots: map<int, resource(0..=9)>
     }
     action Bad on actor: Character () {
         cost { action }
@@ -4805,7 +4805,7 @@ fn test_resource_map_enum_key_type() {
 system "test" {
     enum Ability { STR, DEX, CON, INT, WIS, CHA }
     entity Character {
-        abilities: map<Ability, resource(1..20)>
+        abilities: map<Ability, resource(1..=20)>
     }
     action Buff on actor: Character (stat: Ability) {
         cost { action }
@@ -4826,7 +4826,7 @@ fn test_resource_map_entry_in_arithmetic() {
     let source = r#"
 system "test" {
     entity Character {
-        spell_slots: map<int, resource(0..9)>
+        spell_slots: map<int, resource(0..=9)>
     }
     derive total_low_slots(c: Character) -> int {
         c.spell_slots[1] + c.spell_slots[2] + c.spell_slots[3]
@@ -4841,7 +4841,7 @@ fn test_resource_map_entry_in_comparison() {
     let source = r#"
 system "test" {
     entity Character {
-        spell_slots: map<int, resource(0..9)>
+        spell_slots: map<int, resource(0..=9)>
     }
     derive has_slots(c: Character, level: int) -> bool {
         c.spell_slots[level] > 0
@@ -4856,7 +4856,7 @@ fn test_resource_map_nonzero_min_declaration() {
     let source = r#"
 system "test" {
     entity Character {
-        abilities: map<int, resource(1..20)>
+        abilities: map<int, resource(1..=20)>
     }
     derive modifier(c: Character, stat: int) -> float {
         (c.abilities[stat] - 10) / 2

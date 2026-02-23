@@ -73,7 +73,7 @@ enum FieldPathSegment {
 }
 ```
 
-For resource fields (e.g., `HP: resource(0..max_HP)`), `bounds` contains `Some((min, max))`. The host must clamp the final field value to this range after applying the operation. For non-resource fields, `bounds` is `None`.
+For resource fields (e.g., `HP: resource(0..=max_HP)`), `bounds` contains `Some((min, max))`. The host must clamp the final field value to this range after applying the operation. For non-resource fields, `bounds` is `None`.
 
 **`ApplyCondition { target: EntityRef, condition: String, duration: Value }`**
 

@@ -470,6 +470,7 @@ pub enum ForIterable {
     Range {
         start: Box<Spanned<ExprKind>>,
         end: Box<Spanned<ExprKind>>,
+        inclusive: bool,
     },
 }
 

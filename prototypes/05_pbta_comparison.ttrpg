@@ -13,8 +13,8 @@ system "Apocalypse World" {
   entity Character {
     name: string
     stats: map<Stat, int>    // typically -1 to +3
-    HP: resource(0..6)       // called "harm" in PbtA
-    experience: resource(0..5)
+    HP: resource(0..=6)       // called "harm" in PbtA
+    experience: resource(0..=5)
   }
 
   // --- Moves ---

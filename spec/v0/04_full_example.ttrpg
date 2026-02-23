@@ -72,7 +72,7 @@ system "D&D 5e Combat" {
         abilities: map<Ability, int>
         proficient_saves: set<Ability>
         AC: int
-        HP: resource(0..max_HP)
+        HP: resource(0..=max_HP)
         max_HP: int
         speed: int = 30
         resistances: set<DamageType>

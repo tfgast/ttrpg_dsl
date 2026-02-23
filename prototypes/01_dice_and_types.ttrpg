@@ -57,7 +57,7 @@ system "D&D 5e" {
     // Derived: AC, HP, etc.
     derive AC -> int
     derive max_HP -> int
-    HP: resource(0..max_HP)
+    HP: resource(0..=max_HP)
 
     // Speed in feet
     speed: int = 30

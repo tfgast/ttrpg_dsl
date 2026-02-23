@@ -387,3 +387,80 @@ system "test" {
         .unwrap();
     assert_eq!(val, Value::Int(42));
 }
+
+// ── Inclusive range (..=) tests ──────────────────────────────
+
+#[test]
+fn for_inclusive_range_iteration() {
+    let source = r#"
+system "test" {
+    derive count(n: int) -> int {
+        let acc = 0
+        for i in 0..=n {
+            acc + 1
+        }
+        // for-loop discards body value; just return n + 1 to verify iteration count
+        n + 1
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NoopHandler;
+
+    // 0..=4 should iterate 5 times (0,1,2,3,4)
+    let val = interp
+        .evaluate_derive(&state, &mut handler, "count", vec![Value::Int(4)])
+        .unwrap();
+    assert_eq!(val, Value::Int(5));
+}
+
+#[test]
+fn for_inclusive_empty_range() {
+    let source = r#"
+system "test" {
+    derive f() -> int {
+        for i in 5..=3 {
+            i
+        }
+        99
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NoopHandler;
+
+    // 5..=3 is empty — zero iterations
+    let val = interp
+        .evaluate_derive(&state, &mut handler, "f", vec![])
+        .unwrap();
+    assert_eq!(val, Value::Int(99));
+}
+
+#[test]
+fn for_inclusive_single_element() {
+    let source = r#"
+system "test" {
+    derive f() -> int {
+        let acc = 0
+        for i in 3..=3 {
+            acc + i
+        }
+        3
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NoopHandler;
+
+    // 3..=3 should iterate exactly once (just the value 3)
+    let val = interp
+        .evaluate_derive(&state, &mut handler, "f", vec![])
+        .unwrap();
+    assert_eq!(val, Value::Int(3));
+}

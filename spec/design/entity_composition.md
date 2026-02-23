@@ -288,14 +288,14 @@ accept trait bounds for polymorphic dispatch.
 ```ttrpg
 trait Combatant {
     AC: int
-    HP: resource(0..max_HP)
+    HP: resource(0..=max_HP)
     max_HP: int
 }
 
 trait Spellcaster {
     spellcasting_ability: Ability
     spell_save_DC: int
-    spell_slots: map<int, resource(0..max)>
+    spell_slots: map<int, resource(0..=max)>
 }
 
 entity Character with Combatant {
@@ -329,7 +329,7 @@ Entities can extend other entities, inheriting all fields.
 entity Creature {
     name: string
     AC: int
-    HP: resource(0..max_HP)
+    HP: resource(0..=max_HP)
     max_HP: int
     abilities: map<Ability, int>
 }
@@ -361,7 +361,7 @@ polymorphism — purely a convenience for avoiding repetition.
 ```ttrpg
 mixin Combatant {
     AC: int
-    HP: resource(0..max_HP)
+    HP: resource(0..=max_HP)
     max_HP: int
 }
 
@@ -396,17 +396,17 @@ entity Character {
     level: int = 1
     abilities: map<Ability, int>
     AC: int
-    HP: resource(0..max_HP)
+    HP: resource(0..=max_HP)
     max_HP: int
 
     optional Spellcasting {
         spellcasting_ability: Ability
         spell_save_DC: int
-        spell_slots: map<int, resource(0..max)>
+        spell_slots: map<int, resource(0..=max)>
     }
 
     optional KiPowers {
-        ki_points: resource(0..max_ki)
+        ki_points: resource(0..=max_ki)
         max_ki: int
         martial_arts_die: DiceExpr
     }
@@ -697,23 +697,23 @@ entity Character {
     level: int = 1
     abilities: map<Ability, int>
     AC: int
-    HP: resource(0..max_HP)
+    HP: resource(0..=max_HP)
     max_HP: int
 
     optional Spellcasting {
         spellcasting_ability: Ability
         spell_save_DC: int
-        spell_slots: map<int, resource(0..max)>
+        spell_slots: map<int, resource(0..=max)>
     }
 
     optional KiPowers {
-        ki_points: resource(0..max_ki)
+        ki_points: resource(0..=max_ki)
         max_ki: int
         martial_arts_die: DiceExpr
     }
 
     optional Rage {
-        rage_uses: resource(0..max_rage)
+        rage_uses: resource(0..=max_rage)
         max_rage: int
         rage_damage: int
     }
@@ -955,7 +955,7 @@ resource bounds are checked when the group is active and ignored when inactive.
 
 ```ttrpg
 optional KiPowers {
-    ki_points: resource(0..max_ki)
+    ki_points: resource(0..=max_ki)
     max_ki: int
 }
 // ki_points is clamped to [0, max_ki] when KiPowers is active

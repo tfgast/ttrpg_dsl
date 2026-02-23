@@ -312,7 +312,7 @@ type            = "int" | "bool" | "string" | "float"
                 | "list" "<" type ">"
                 | "set" "<" type ">"
                 | "option" "<" type ">"
-                | "resource" "(" expr ".." expr ")"
+                | "resource" "(" expr "..=" expr ")"
 
 
 // =========================
@@ -492,12 +492,16 @@ guard           = "_"                                // always matches (must be 
 // expressions. Non-matching patterns silently skip the iteration
 // (built-in filtering without a separate construct).
 //
-// The `..` range operator produces a half-open range: `0..3` iterates
-// over `0, 1, 2`. Since `..` is not a binary expression operator,
-// the expression parser naturally stops before it, disambiguating
+// Two range operators:
+//   `..`  produces a half-open range: `0..3` iterates over `0, 1, 2`.
+//   `..=` produces an inclusive range: `0..=3` iterates over `0, 1, 2, 3`.
+//
+// Since `..` and `..=` are not binary expression operators, the
+// expression parser naturally stops before them, disambiguating
 // range from collection forms without lookahead.
 for_expr        = "for" pattern "in" for_source block
-for_source      = expr ".." expr                        // range (half-open)
+for_source      = expr "..=" expr                       // range (inclusive)
+                | expr ".." expr                        // range (half-open)
                 | expr                                  // collection (list or set)
 
 // --- Call arguments ---

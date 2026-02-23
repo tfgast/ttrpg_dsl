@@ -2047,7 +2047,7 @@ impl<'a> Checker<'a> {
                     }
                 }
             }
-            ForIterable::Range { start, end } => {
+            ForIterable::Range { start, end, inclusive: _ } => {
                 let start_ty = self.check_expr(start);
                 let end_ty = self.check_expr(end);
                 if !start_ty.is_error() && !start_ty.is_int_like() {

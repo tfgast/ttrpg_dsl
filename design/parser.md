@@ -280,7 +280,7 @@ pub enum TypeExprKind {
     List(Box<TypeExpr>),
     Set(Box<TypeExpr>),
     Option_(Box<TypeExpr>),
-    Resource(Box<Expr>, Box<Expr>),       // resource(min..max)
+    Resource(Box<Expr>, Box<Expr>),       // resource(min..=max)
 }
 ```
 

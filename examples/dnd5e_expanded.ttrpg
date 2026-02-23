@@ -183,7 +183,7 @@ system "D&D 5e Expanded" {
 
         // Defense
         AC: int
-        HP: resource(0..max_HP)
+        HP: resource(0..=max_HP)
         max_HP: int
         temp_HP: int = 0
         // PAIN POINT: Temporary HP in 5e doesn't stack — you pick
@@ -214,8 +214,8 @@ system "D&D 5e Expanded" {
             spell_save_DC: int
             spell_attack_bonus: int
             // RESOLVED: Resource-valued maps replace 9 separate fields. [ttrpg_dsl-5yt]
-            // map<int, resource(0..9)> gives clamped, per-level slots.
-            spell_slots: map<int, resource(0..9)>
+            // map<int, resource(0..=9)> gives clamped, per-level slots.
+            spell_slots: map<int, resource(0..=9)>
             known_spells: list<SpellInfo>
             concentrating_on: option<string>
         }
@@ -1178,7 +1178,7 @@ system "D&D 5e Expanded" {
     //    - No longer need DeathSave as an action costing an action
     //
     //  [RESOLVED] RESOURCE-VALUED MAPS                            [ttrpg_dsl-5yt]
-    //    - map<int, resource(0..9)> replaces 9 separate spell_slots fields
+    //    - map<int, resource(0..=9)> replaces 9 separate spell_slots fields
     //    - spell_slots[slot_level] -= 1 replaces 9-branch match
     //    - Resource bounds auto-clamp (can't go below 0 or above 9)
     //
