@@ -199,6 +199,10 @@ impl StateProvider for GameState {
             _ => None,
         }
     }
+
+    fn entity_type_name(&self, entity: &EntityRef) -> Option<String> {
+        self.entities.get(&entity.0).map(|e| e.name.clone())
+    }
 }
 
 // ── WritableState impl ─────────────────────────────────────────

@@ -451,6 +451,7 @@ fn collect_fn(
                 name: p.name.clone(),
                 ty: env.resolve_type(&p.ty),
                 has_default: p.default.is_some(),
+                with_groups: p.with_groups.clone(),
             }
         })
         .collect();
@@ -535,6 +536,7 @@ fn collect_action(
         name: a.receiver_name.clone(),
         ty: env.resolve_type(&a.receiver_type),
         has_default: false,
+        with_groups: a.receiver_with_groups.clone(),
     };
 
     collect_fn(
@@ -598,6 +600,7 @@ fn collect_reaction(
         name: r.receiver_name.clone(),
         ty: env.resolve_type(&r.receiver_type),
         has_default: false,
+        with_groups: r.receiver_with_groups.clone(),
     };
 
     collect_fn(
@@ -697,6 +700,7 @@ fn collect_event(
                 name: p.name.clone(),
                 ty: env.resolve_type(&p.ty),
                 has_default: p.default.is_some(),
+                with_groups: p.with_groups.clone(),
             }
         })
         .collect();

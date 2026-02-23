@@ -77,6 +77,8 @@ pub struct ParamInfo {
     pub name: String,
     pub ty: Ty,
     pub has_default: bool,
+    /// Optional group constraints from `with` clauses, enforced at call sites.
+    pub with_groups: Vec<String>,
 }
 
 #[derive(Debug, Clone)]

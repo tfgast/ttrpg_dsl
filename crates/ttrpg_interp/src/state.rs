@@ -71,6 +71,12 @@ pub trait StateProvider {
     /// Compute the distance between two opaque Position values.
     /// Returns `None` if the inputs are not valid positions.
     fn distance(&self, a: &Value, b: &Value) -> Option<i64>;
+
+    /// Get the entity's declared type name (e.g. "Character", "Monster").
+    /// Returns `None` if unknown. Used by `grant` to resolve group defaults.
+    fn entity_type_name(&self, _entity: &EntityRef) -> Option<String> {
+        None
+    }
 }
 
 // ── WritableState trait ─────────────────────────────────────────

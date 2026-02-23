@@ -502,6 +502,7 @@ fn construct_enum_variant(
             name: name.clone(),
             ty: ty.clone(),
             has_default: false,
+            with_groups: vec![],
         })
         .collect();
 
@@ -903,8 +904,8 @@ mod tests {
                 name: "add_bonus".into(),
                 kind: FnKind::Derive,
                 params: vec![
-                    ParamInfo { name: "base".into(), ty: Ty::Int, has_default: false },
-                    ParamInfo { name: "bonus".into(), ty: Ty::Int, has_default: false },
+                    ParamInfo { name: "base".into(), ty: Ty::Int, has_default: false, with_groups: vec![] },
+                    ParamInfo { name: "bonus".into(), ty: Ty::Int, has_default: false, with_groups: vec![] },
                 ],
                 return_type: Ty::Int,
                 receiver: None,
@@ -965,8 +966,8 @@ mod tests {
                 name: "add_bonus".into(),
                 kind: FnKind::Derive,
                 params: vec![
-                    ParamInfo { name: "base".into(), ty: Ty::Int, has_default: false },
-                    ParamInfo { name: "bonus".into(), ty: Ty::Int, has_default: false },
+                    ParamInfo { name: "base".into(), ty: Ty::Int, has_default: false, with_groups: vec![] },
+                    ParamInfo { name: "bonus".into(), ty: Ty::Int, has_default: false, with_groups: vec![] },
                 ],
                 return_type: Ty::Int,
                 receiver: None,
@@ -1027,8 +1028,8 @@ mod tests {
                 name: "add_bonus".into(),
                 kind: FnKind::Derive,
                 params: vec![
-                    ParamInfo { name: "base".into(), ty: Ty::Int, has_default: false },
-                    ParamInfo { name: "bonus".into(), ty: Ty::Int, has_default: true },
+                    ParamInfo { name: "base".into(), ty: Ty::Int, has_default: false, with_groups: vec![] },
+                    ParamInfo { name: "bonus".into(), ty: Ty::Int, has_default: true, with_groups: vec![] },
                 ],
                 return_type: Ty::Int,
                 receiver: None,
@@ -1200,6 +1201,7 @@ mod tests {
                     name: "default_val".into(),
                     ty: Ty::Int,
                     has_default: false,
+                    with_groups: vec![],
                 }],
                 return_type: Ty::Int,
                 receiver: None,
@@ -1651,7 +1653,7 @@ mod tests {
             FnInfo {
                 name: "identity".into(),
                 kind: FnKind::Derive,
-                params: vec![ParamInfo { name: "x".into(), ty: Ty::Int, has_default: false }],
+                params: vec![ParamInfo { name: "x".into(), ty: Ty::Int, has_default: false, with_groups: vec![] }],
                 return_type: Ty::Int,
                 receiver: None,
             },
@@ -1749,12 +1751,14 @@ mod tests {
                     name: "target".into(),
                     ty: Ty::Entity("Character".into()),
                     has_default: false,
+                    with_groups: vec![],
                 }],
                 return_type: Ty::Unit,
                 receiver: Some(ParamInfo {
                     name: "actor".into(),
                     ty: Ty::Entity("Character".into()),
                     has_default: false,
+                    with_groups: vec![],
                 }),
             },
         );
@@ -1895,8 +1899,8 @@ mod tests {
                 name: "add".into(),
                 kind: FnKind::Derive,
                 params: vec![
-                    ParamInfo { name: "a".into(), ty: Ty::Int, has_default: false },
-                    ParamInfo { name: "b".into(), ty: Ty::Int, has_default: true },
+                    ParamInfo { name: "a".into(), ty: Ty::Int, has_default: false, with_groups: vec![] },
+                    ParamInfo { name: "b".into(), ty: Ty::Int, has_default: true, with_groups: vec![] },
                 ],
                 return_type: Ty::Int,
                 receiver: None,
@@ -1959,9 +1963,9 @@ mod tests {
                 name: "f".into(),
                 kind: FnKind::Derive,
                 params: vec![
-                    ParamInfo { name: "a".into(), ty: Ty::Int, has_default: false },
-                    ParamInfo { name: "b".into(), ty: Ty::Int, has_default: true },
-                    ParamInfo { name: "c".into(), ty: Ty::Int, has_default: true },
+                    ParamInfo { name: "a".into(), ty: Ty::Int, has_default: false, with_groups: vec![] },
+                    ParamInfo { name: "b".into(), ty: Ty::Int, has_default: true, with_groups: vec![] },
+                    ParamInfo { name: "c".into(), ty: Ty::Int, has_default: true, with_groups: vec![] },
                 ],
                 return_type: Ty::Int,
                 receiver: None,
@@ -2221,7 +2225,7 @@ mod tests {
             FnInfo {
                 name: "rounds".into(),
                 kind: FnKind::Derive,
-                params: vec![ParamInfo { name: "n".into(), ty: Ty::Int, has_default: false }],
+                params: vec![ParamInfo { name: "n".into(), ty: Ty::Int, has_default: false, with_groups: vec![] }],
                 return_type: Ty::Int,
                 receiver: None,
             },
@@ -2308,9 +2312,9 @@ mod tests {
                 name: "sum3".into(),
                 kind: FnKind::Derive,
                 params: vec![
-                    ParamInfo { name: "a".into(), ty: Ty::Int, has_default: false },
-                    ParamInfo { name: "b".into(), ty: Ty::Int, has_default: false },
-                    ParamInfo { name: "c".into(), ty: Ty::Int, has_default: false },
+                    ParamInfo { name: "a".into(), ty: Ty::Int, has_default: false, with_groups: vec![] },
+                    ParamInfo { name: "b".into(), ty: Ty::Int, has_default: false, with_groups: vec![] },
+                    ParamInfo { name: "c".into(), ty: Ty::Int, has_default: false, with_groups: vec![] },
                 ],
                 return_type: Ty::Int,
                 receiver: None,
@@ -2487,8 +2491,8 @@ mod tests {
                 name: "f".into(),
                 kind: FnKind::Derive,
                 params: vec![
-                    ParamInfo { name: "a".into(), ty: Ty::Int, has_default: false },
-                    ParamInfo { name: "b".into(), ty: Ty::Int, has_default: true },
+                    ParamInfo { name: "a".into(), ty: Ty::Int, has_default: false, with_groups: vec![] },
+                    ParamInfo { name: "b".into(), ty: Ty::Int, has_default: true, with_groups: vec![] },
                 ],
                 return_type: Ty::Int,
                 receiver: None,

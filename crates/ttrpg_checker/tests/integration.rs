@@ -4311,3 +4311,139 @@ system "test" {
 "#;
     expect_no_errors(source);
 }
+
+// ═══════════════════════════════════════════════════════════════
+// Bug fix: `has` narrowing keyed by full path (ttrpg_dsl-x0y)
+// Previously extract_root_var collapsed `actor.friend` to `actor`,
+// so narrowing on one path leaked to another. Now extract_path_key
+// returns the full dot-separated path.
+// ═══════════════════════════════════════════════════════════════
+
+#[test]
+fn test_has_narrowing_different_paths_no_leak() {
+    // Narrowing `actor.friend has Spellcasting` should NOT allow access via
+    // `actor.target.Spellcasting` — these are different paths.
+    let source = r#"
+system "test" {
+    entity Character {
+        HP: int
+        optional Spellcasting {
+            spell_slots: int = 3
+            dc: int
+        }
+    }
+    entity Monster {
+        HP: int
+        friend: Character
+        target: Character
+    }
+    derive bad(actor: Monster) -> int {
+        if actor.friend has Spellcasting {
+            actor.target.Spellcasting.dc
+        } else {
+            0
+        }
+    }
+}
+"#;
+    expect_errors(
+        source,
+        &["access to optional group `Spellcasting` on `actor.target` requires a `has` guard or `with` constraint"],
+    );
+}
+
+#[test]
+fn test_has_narrowing_full_path_works() {
+    // Narrowing `actor.friend has Spellcasting` should allow access via
+    // `actor.friend.Spellcasting` — same full path.
+    let source = r#"
+system "test" {
+    entity Character {
+        HP: int
+        optional Spellcasting {
+            spell_slots: int = 3
+            dc: int
+        }
+    }
+    entity Monster {
+        HP: int
+        friend: Character
+        target: Character
+    }
+    derive good(actor: Monster) -> int {
+        if actor.friend has Spellcasting {
+            actor.friend.Spellcasting.dc
+        } else {
+            0
+        }
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Bug fix: `with` constraints enforced at call sites (ttrpg_dsl-gwr)
+// Previously `with` on action receivers was only used for body
+// narrowing, not checked at call sites.
+// ═══════════════════════════════════════════════════════════════
+
+#[test]
+fn test_with_constraint_enforced_at_call_site() {
+    // Calling an action `with Spellcasting` on a receiver that has not
+    // been proven to have the group should produce an error.
+    let source = r#"
+system "test" {
+    entity Character {
+        HP: int
+        optional Spellcasting {
+            spell_slots: int = 3
+            dc: int
+        }
+    }
+    action CastSpell on caster: Character with Spellcasting () {
+        resolve {
+            caster.Spellcasting.spell_slots -= 1
+        }
+    }
+    action Orchestrate on actor: Character (target: Character) {
+        resolve {
+            CastSpell(target)
+        }
+    }
+}
+"#;
+    expect_errors(
+        source,
+        &["requires `target` to have group `Spellcasting` proven active"],
+    );
+}
+
+#[test]
+fn test_with_constraint_satisfied_at_call_site() {
+    // Calling an action `with Spellcasting` after a `has` guard should pass.
+    let source = r#"
+system "test" {
+    entity Character {
+        HP: int
+        optional Spellcasting {
+            spell_slots: int = 3
+            dc: int
+        }
+    }
+    action CastSpell on caster: Character with Spellcasting () {
+        resolve {
+            caster.Spellcasting.spell_slots -= 1
+        }
+    }
+    action Orchestrate on actor: Character (target: Character) {
+        resolve {
+            if target has Spellcasting {
+                CastSpell(target)
+            }
+        }
+    }
+}
+"#;
+    expect_no_errors(source);
+}

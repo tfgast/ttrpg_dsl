@@ -75,6 +75,11 @@ impl StateProvider for RefCellState<'_> {
     fn distance(&self, a: &Value, b: &Value) -> Option<i64> {
         self.0.borrow().distance(a, b)
     }
+
+    fn entity_type_name(&self, entity: &EntityRef) -> Option<String> {
+        let gs = self.0.borrow();
+        gs.entity_type_name(entity).map(|s| s.to_string())
+    }
 }
 
 // ── CliHandler ──────────────────────────────────────────────────

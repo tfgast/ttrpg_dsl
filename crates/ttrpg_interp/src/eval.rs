@@ -890,7 +890,8 @@ pub(crate) fn eval_stmt(
 
             // Collect defaults from the entity declaration's optional group.
             // Clone the data first to avoid borrow conflict with eval_expr.
-            let defaults: Vec<_> = find_optional_group(env, group_name)
+            let entity_type = env.state.entity_type_name(&entity_ref);
+            let defaults: Vec<_> = find_optional_group(env, entity_type.as_deref(), group_name)
                 .into_iter()
                 .flat_map(|g| g.fields.iter())
                 .filter(|fd| !fields.contains_key(&fd.name) && fd.default.is_some())
@@ -1909,22 +1910,34 @@ pub(crate) fn type_name(val: &Value) -> &'static str {
     }
 }
 
-/// Walk `program.items` to find the `OptionalGroup` definition with the given name.
-fn find_optional_group<'a>(env: &'a Env, group_name: &str) -> Option<&'a OptionalGroup> {
+/// Walk `program.items` to find the `OptionalGroup` definition with the given name,
+/// scoped to a specific entity type. Falls back to first global match if no entity
+/// type is provided.
+fn find_optional_group<'a>(
+    env: &'a Env,
+    entity_type: Option<&str>,
+    group_name: &str,
+) -> Option<&'a OptionalGroup> {
+    let mut fallback: Option<&'a OptionalGroup> = None;
     for item in &env.interp.program.items {
         if let TopLevel::System(system) = &item.node {
             for decl in &system.decls {
                 if let DeclKind::Entity(entity_decl) = &decl.node {
                     for group in &entity_decl.optional_groups {
                         if group.name == group_name {
-                            return Some(group);
+                            if entity_type == Some(entity_decl.name.as_str()) {
+                                return Some(group);
+                            }
+                            if fallback.is_none() {
+                                fallback = Some(group);
+                            }
                         }
                     }
                 }
             }
         }
     }
-    None
+    fallback
 }
 
 #[cfg(test)]
@@ -1972,6 +1985,7 @@ mod tests {
         conditions: HashMap<u64, Vec<ActiveCondition>>,
         turn_budgets: HashMap<u64, BTreeMap<String, Value>>,
         enabled_options: Vec<String>,
+        entity_type: Option<String>,
     }
 
     impl TestState {
@@ -1981,6 +1995,7 @@ mod tests {
                 conditions: HashMap::new(),
                 turn_budgets: HashMap::new(),
                 enabled_options: Vec::new(),
+                entity_type: None,
             }
         }
     }
@@ -2025,6 +2040,10 @@ mod tests {
                 }
             }
             None
+        }
+
+        fn entity_type_name(&self, _entity: &EntityRef) -> Option<String> {
+            self.entity_type.clone()
         }
     }
 
@@ -6047,5 +6066,215 @@ mod tests {
         });
         let err = eval_stmt(&mut env, &stmt).unwrap_err();
         assert!(err.message.contains("vetoed"), "got: {}", err.message);
+    }
+
+    #[test]
+    fn grant_defaults_scoped_to_entity_type() {
+        // Two entity types share the same optional group name but with different defaults.
+        // When granting on a Monster, `spell_slots` should default to 1 (Monster's), not 3.
+        let mut program = Program {
+            items: vec![spanned(TopLevel::System(SystemBlock {
+                name: "test".into(),
+                decls: vec![
+                    spanned(DeclKind::Entity(EntityDecl {
+                        name: "Character".into(),
+                        fields: vec![FieldDef {
+                            name: "HP".into(),
+                            ty: spanned(TypeExpr::Int),
+                            default: None,
+                            span: dummy_span(),
+                        }],
+                        optional_groups: vec![OptionalGroup {
+                            name: "Spellcasting".into(),
+                            fields: vec![
+                                FieldDef {
+                                    name: "spell_slots".into(),
+                                    ty: spanned(TypeExpr::Int),
+                                    default: Some(spanned(ExprKind::IntLit(3))),
+                                    span: dummy_span(),
+                                },
+                                FieldDef {
+                                    name: "dc".into(),
+                                    ty: spanned(TypeExpr::Int),
+                                    default: None,
+                                    span: dummy_span(),
+                                },
+                            ],
+                            span: dummy_span(),
+                        }],
+                    })),
+                    spanned(DeclKind::Entity(EntityDecl {
+                        name: "Monster".into(),
+                        fields: vec![FieldDef {
+                            name: "HP".into(),
+                            ty: spanned(TypeExpr::Int),
+                            default: None,
+                            span: dummy_span(),
+                        }],
+                        optional_groups: vec![OptionalGroup {
+                            name: "Spellcasting".into(),
+                            fields: vec![
+                                FieldDef {
+                                    name: "spell_slots".into(),
+                                    ty: spanned(TypeExpr::Int),
+                                    default: Some(spanned(ExprKind::IntLit(1))),
+                                    span: dummy_span(),
+                                },
+                                FieldDef {
+                                    name: "dc".into(),
+                                    ty: spanned(TypeExpr::Int),
+                                    default: None,
+                                    span: dummy_span(),
+                                },
+                            ],
+                            span: dummy_span(),
+                        }],
+                    })),
+                ],
+            }))],
+            ..Default::default()
+        };
+        program.build_index();
+
+        let type_env = empty_type_env();
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let mut state = TestState::new();
+        state.entity_type = Some("Monster".into());
+        let mut handler = ScriptedHandler::new();
+        let mut env = make_env(&state, &mut handler, &interp);
+        env.bind("actor".into(), Value::Entity(EntityRef(1)));
+
+        // Grant with only dc provided; spell_slots should use Monster's default (1)
+        let stmt = spanned(StmtKind::Grant {
+            entity: Box::new(spanned(ExprKind::Ident("actor".into()))),
+            group_name: "Spellcasting".into(),
+            fields: vec![StructFieldInit {
+                name: "dc".into(),
+                value: spanned(ExprKind::IntLit(15)),
+                span: dummy_span(),
+            }],
+        });
+        eval_stmt(&mut env, &stmt).unwrap();
+
+        assert_eq!(handler.log.len(), 1);
+        match &handler.log[0] {
+            Effect::GrantGroup { fields, .. } => match fields {
+                Value::Struct { fields, .. } => {
+                    assert_eq!(fields.get("dc"), Some(&Value::Int(15)));
+                    assert_eq!(
+                        fields.get("spell_slots"),
+                        Some(&Value::Int(1)),
+                        "spell_slots should default to Monster's 1, not Character's 3"
+                    );
+                }
+                _ => panic!("expected Struct"),
+            },
+            _ => panic!("expected GrantGroup"),
+        }
+    }
+
+    #[test]
+    fn grant_defaults_fallback_when_entity_type_unknown() {
+        // When entity_type_name returns None, find_optional_group falls back to
+        // the first matching group (Character's default of 3).
+        let mut program = Program {
+            items: vec![spanned(TopLevel::System(SystemBlock {
+                name: "test".into(),
+                decls: vec![
+                    spanned(DeclKind::Entity(EntityDecl {
+                        name: "Character".into(),
+                        fields: vec![FieldDef {
+                            name: "HP".into(),
+                            ty: spanned(TypeExpr::Int),
+                            default: None,
+                            span: dummy_span(),
+                        }],
+                        optional_groups: vec![OptionalGroup {
+                            name: "Spellcasting".into(),
+                            fields: vec![
+                                FieldDef {
+                                    name: "spell_slots".into(),
+                                    ty: spanned(TypeExpr::Int),
+                                    default: Some(spanned(ExprKind::IntLit(3))),
+                                    span: dummy_span(),
+                                },
+                                FieldDef {
+                                    name: "dc".into(),
+                                    ty: spanned(TypeExpr::Int),
+                                    default: None,
+                                    span: dummy_span(),
+                                },
+                            ],
+                            span: dummy_span(),
+                        }],
+                    })),
+                    spanned(DeclKind::Entity(EntityDecl {
+                        name: "Monster".into(),
+                        fields: vec![FieldDef {
+                            name: "HP".into(),
+                            ty: spanned(TypeExpr::Int),
+                            default: None,
+                            span: dummy_span(),
+                        }],
+                        optional_groups: vec![OptionalGroup {
+                            name: "Spellcasting".into(),
+                            fields: vec![
+                                FieldDef {
+                                    name: "spell_slots".into(),
+                                    ty: spanned(TypeExpr::Int),
+                                    default: Some(spanned(ExprKind::IntLit(1))),
+                                    span: dummy_span(),
+                                },
+                                FieldDef {
+                                    name: "dc".into(),
+                                    ty: spanned(TypeExpr::Int),
+                                    default: None,
+                                    span: dummy_span(),
+                                },
+                            ],
+                            span: dummy_span(),
+                        }],
+                    })),
+                ],
+            }))],
+            ..Default::default()
+        };
+        program.build_index();
+
+        let type_env = empty_type_env();
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        // entity_type is None — simulates unknown entity type
+        let state = TestState::new();
+        let mut handler = ScriptedHandler::new();
+        let mut env = make_env(&state, &mut handler, &interp);
+        env.bind("actor".into(), Value::Entity(EntityRef(1)));
+
+        // Grant with only dc provided; spell_slots should fall back to first match (Character's 3)
+        let stmt = spanned(StmtKind::Grant {
+            entity: Box::new(spanned(ExprKind::Ident("actor".into()))),
+            group_name: "Spellcasting".into(),
+            fields: vec![StructFieldInit {
+                name: "dc".into(),
+                value: spanned(ExprKind::IntLit(15)),
+                span: dummy_span(),
+            }],
+        });
+        eval_stmt(&mut env, &stmt).unwrap();
+
+        assert_eq!(handler.log.len(), 1);
+        match &handler.log[0] {
+            Effect::GrantGroup { fields, .. } => match fields {
+                Value::Struct { fields, .. } => {
+                    assert_eq!(fields.get("dc"), Some(&Value::Int(15)));
+                    assert_eq!(
+                        fields.get("spell_slots"),
+                        Some(&Value::Int(3)),
+                        "spell_slots should fall back to first match (Character's 3)"
+                    );
+                }
+                _ => panic!("expected Struct"),
+            },
+            _ => panic!("expected GrantGroup"),
+        }
     }
 }

@@ -220,6 +220,7 @@ impl<'a> Checker<'a> {
         };
 
         let mut current = root_ty;
+        let mut path_key = lvalue.root.clone();
         for seg in &lvalue.segments {
             if current.is_error() {
                 return Ty::Error;
@@ -229,22 +230,25 @@ impl<'a> Checker<'a> {
                     current = self.resolve_field(&current, name, lvalue.span);
                     // Check narrowing for optional group access
                     if let Ty::OptionalGroupRef(_, ref group_name) = current {
-                        if !self.scope.is_group_narrowed(&lvalue.root, group_name) {
+                        if !self.scope.is_group_narrowed(&path_key, group_name) {
                             self.error(
                                 format!(
                                     "access to optional group `{}` on `{}` requires a `has` guard or `with` constraint",
-                                    group_name, lvalue.root
+                                    group_name, path_key
                                 ),
                                 lvalue.span,
                             );
                         }
                     }
+                    path_key = format!("{}.{}", path_key, name);
                 }
                 LValueSegment::Index(idx_expr) => {
                     let idx_ty = self.check_expr(idx_expr);
                     if idx_ty.is_error() || current.is_error() {
                         return Ty::Error;
                     }
+                    // Narrowing cannot be tracked through dynamic indexing
+                    path_key.clear();
                     match &current {
                         Ty::List(inner) => {
                             if !idx_ty.is_int_like() {

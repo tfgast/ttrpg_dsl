@@ -435,12 +435,12 @@ impl<'a> Checker<'a> {
         // If this resolved to an optional group reference, check narrowing
         if let Ty::OptionalGroupRef(_, ref group_name) = result_ty {
             let group_name = group_name.clone();
-            if let Some(var_name) = self.extract_root_var(object) {
-                if !self.scope.is_group_narrowed(&var_name, &group_name) {
+            if let Some(path_key) = self.extract_path_key(object) {
+                if !self.scope.is_group_narrowed(&path_key, &group_name) {
                     self.error(
                         format!(
                             "access to optional group `{}` on `{}` requires a `has` guard or `with` constraint",
-                            group_name, var_name
+                            group_name, path_key
                         ),
                         span,
                     );
@@ -913,6 +913,33 @@ impl<'a> Checker<'a> {
                         ),
                         arg.span,
                     );
+                }
+
+                // Check `with` group constraints at call site
+                if !effective_params[idx].with_groups.is_empty() {
+                    if let Some(path_key) = self.extract_path_key(&arg.value) {
+                        for group in &effective_params[idx].with_groups {
+                            if !self.scope.is_group_narrowed(&path_key, group) {
+                                self.error(
+                                    format!(
+                                        "argument `{}` requires `{}` to have group `{}` proven active via `has` guard or `with` constraint",
+                                        effective_params[idx].name, path_key, group
+                                    ),
+                                    arg.span,
+                                );
+                            }
+                        }
+                    } else {
+                        for group in &effective_params[idx].with_groups {
+                            self.error(
+                                format!(
+                                    "argument `{}` requires group `{}` proven active, but the expression cannot be statically tracked",
+                                    effective_params[idx].name, group
+                                ),
+                                arg.span,
+                            );
+                        }
+                    }
                 }
             } else if let Some(ref name) = arg.name {
                 self.error(
@@ -1498,25 +1525,28 @@ impl<'a> Checker<'a> {
         Ty::Bool
     }
 
-    /// Extract the root variable name from an expression chain.
-    /// Returns `Some("actor")` for `actor`, `actor.foo`, `actor.foo.bar[0]`, etc.
-    fn extract_root_var(&self, expr: &Spanned<ExprKind>) -> Option<String> {
+    /// Extract the full dot-separated path key from an expression chain.
+    /// Returns `Some("actor")` for `actor`, `Some("actor.foo")` for `actor.foo`, etc.
+    /// Returns `None` for expressions involving indexing or non-variable roots,
+    /// since narrowing cannot be statically tracked through dynamic access.
+    fn extract_path_key(&self, expr: &Spanned<ExprKind>) -> Option<String> {
         match &expr.node {
             ExprKind::Ident(name) => Some(name.clone()),
-            ExprKind::FieldAccess { object, .. } => self.extract_root_var(object),
-            ExprKind::Index { object, .. } => self.extract_root_var(object),
-            ExprKind::Paren(inner) => self.extract_root_var(inner),
+            ExprKind::FieldAccess { object, field } => {
+                self.extract_path_key(object).map(|p| format!("{}.{}", p, field))
+            }
+            ExprKind::Paren(inner) => self.extract_path_key(inner),
             _ => None,
         }
     }
 
-    /// Extract `(variable_name, group_name)` narrowing pairs from a `has` condition.
+    /// Extract `(path_key, group_name)` narrowing pairs from a `has` condition.
     /// Supports `entity has Group`, `a and b` composition, and parenthesized expressions.
     fn extract_has_narrowings(&self, expr: &Spanned<ExprKind>) -> Vec<(String, String)> {
         match &expr.node {
             ExprKind::Has { entity, group_name } => {
-                if let Some(var) = self.extract_root_var(entity) {
-                    vec![(var, group_name.clone())]
+                if let Some(path_key) = self.extract_path_key(entity) {
+                    vec![(path_key, group_name.clone())]
                 } else {
                     vec![]
                 }

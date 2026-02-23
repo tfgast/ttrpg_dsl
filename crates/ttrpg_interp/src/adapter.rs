@@ -101,6 +101,10 @@ impl<S: WritableState> StateProvider for StateAdapter<S> {
     fn distance(&self, a: &Value, b: &Value) -> Option<i64> {
         self.state.borrow().distance(a, b)
     }
+
+    fn entity_type_name(&self, entity: &EntityRef) -> Option<String> {
+        self.state.borrow().entity_type_name(entity)
+    }
 }
 
 // ── AdaptedHandler ─────────────────────────────────────────────
