@@ -4485,3 +4485,139 @@ system "test" {
 "#;
     expect_no_errors(source);
 }
+
+// ── Hook declaration checker tests ──────────────────────────────
+
+#[test]
+fn test_hook_basic_valid() {
+    let source = r#"
+system "test" {
+    entity Character { HP: int }
+    event damage(actor: Character, target: Character) {}
+    hook OnDamage on target: Character (trigger: damage(target: target)) {
+        target.HP -= 1
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_hook_undefined_event() {
+    let source = r#"
+system "test" {
+    entity Character { HP: int }
+    hook OnFoo on actor: Character (trigger: nonexistent_event(actor: actor)) {
+        0
+    }
+}
+"#;
+    expect_errors(source, &["undefined event `nonexistent_event`"]);
+}
+
+#[test]
+fn test_hook_receiver_shadows_trigger() {
+    let source = r#"
+system "test" {
+    entity Character { HP: int }
+    event damage(actor: Character) {}
+    hook OnDamage on trigger: Character (trigger: damage(trigger)) {
+        0
+    }
+}
+"#;
+    expect_errors(source, &["receiver `trigger` shadows the implicit trigger binding"]);
+}
+
+#[test]
+fn test_hook_receiver_shadows_turn() {
+    let source = r#"
+system "test" {
+    entity Character { HP: int }
+    event damage(actor: Character) {}
+    hook OnDamage on turn: Character (trigger: damage(turn)) {
+        0
+    }
+}
+"#;
+    expect_errors(source, &["receiver `turn` shadows the implicit turn budget binding"]);
+}
+
+#[test]
+fn test_hook_struct_receiver_rejected() {
+    let source = r#"
+system "test" {
+    struct Stats { hp: int }
+    entity Character { HP: int }
+    event damage(actor: Character) {}
+    hook OnDamage on actor: Stats (trigger: damage(actor)) {
+        0
+    }
+}
+"#;
+    expect_errors(source, &["hook `OnDamage` receiver type must be an entity, found Stats"]);
+}
+
+#[test]
+fn test_hook_direct_call_rejected() {
+    let source = r#"
+system "test" {
+    entity Character { HP: int }
+    event damage(actor: Character) {}
+    hook OnDamage on actor: Character (trigger: damage(actor: actor)) {
+        0
+    }
+    derive test_call(c: Character) -> int {
+        OnDamage(c)
+    }
+}
+"#;
+    expect_errors(source, &["hooks cannot be called directly"]);
+}
+
+#[test]
+fn test_hook_trigger_binding_type_mismatch() {
+    let source = r#"
+system "test" {
+    entity Character { HP: int }
+    event damage(actor: Character, amount: int) {}
+    hook OnDamage on target: Character (trigger: damage(amount: target)) {
+        0
+    }
+}
+"#;
+    expect_errors(source, &["trigger binding `amount` has type Character, expected int"]);
+}
+
+#[test]
+fn test_hook_trigger_available_in_resolve() {
+    let source = r#"
+system "test" {
+    entity Character { HP: int }
+    event damage(actor: Character, target: Character) {}
+    hook OnDamage on reactor: Character (trigger: damage(target: reactor)) {
+        trigger.actor.HP -= 1
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_hook_with_group_constraint() {
+    let source = r#"
+system "test" {
+    entity Character {
+        HP: int
+        optional Spellcasting { dc: int }
+    }
+    event spell_cast(caster: Character) {}
+    hook TrackCasting on caster: Character with Spellcasting (
+        trigger: spell_cast(caster: caster)
+    ) {
+        caster.Spellcasting.dc
+    }
+}
+"#;
+    expect_no_errors(source);
+}

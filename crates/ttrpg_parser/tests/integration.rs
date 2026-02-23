@@ -1059,6 +1059,79 @@ fn test_reaction_receiver_with_group() {
     );
 }
 
+// ── `hook` declaration tests ──────────────────────────────────────
+
+#[test]
+fn test_parse_basic_hook() {
+    let source = r#"system "test" {
+    entity Character { HP: int }
+    event damage(actor: Character, target: Character) {}
+    hook OnDamage on target: Character (
+        trigger: damage(target: target)
+    ) {
+        target.HP -= 1
+    }
+}"#;
+    let (program, diagnostics) = parse(source);
+    assert!(
+        diagnostics.is_empty(),
+        "basic hook should parse, got: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+    // Verify the hook was indexed
+    program.items.iter().for_each(|item| {
+        if let ttrpg_ast::ast::TopLevel::System(sys) = &item.node {
+            assert!(
+                sys.decls.iter().any(|d| matches!(&d.node, ttrpg_ast::ast::DeclKind::Hook(h) if h.name == "OnDamage")),
+                "hook decl should be present in system block"
+            );
+        }
+    });
+}
+
+#[test]
+fn test_parse_hook_with_groups() {
+    let source = r#"system "test" {
+    entity Character {
+        HP: int
+        optional Spellcasting { dc: int }
+    }
+    event spell_cast(caster: Character) {}
+    hook TrackCasting on caster: Character with Spellcasting (
+        trigger: spell_cast(caster: caster)
+    ) {
+        0
+    }
+}"#;
+    let (_, diagnostics) = parse(source);
+    assert!(
+        diagnostics.is_empty(),
+        "hook with receiver constraint should parse, got: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn test_parse_hook_soft_keyword() {
+    // "hook" is a soft keyword — should still be usable as identifier elsewhere
+    let source = r#"system "test" {
+    entity Character { HP: int }
+    event damage(actor: Character) {}
+    hook OnDamage on actor: Character (
+        trigger: damage(actor: actor)
+    ) {
+        let hook = 42
+        hook
+    }
+}"#;
+    let (_, diagnostics) = parse(source);
+    assert!(
+        diagnostics.is_empty(),
+        "hook as variable name should parse, got: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}
+
 // ── `grant` / `revoke` statement tests ──────────────────────────
 
 #[test]
