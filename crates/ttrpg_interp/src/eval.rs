@@ -2,14 +2,14 @@ use std::collections::BTreeMap;
 
 use ttrpg_ast::Spanned;
 use ttrpg_ast::ast::{
-    ArmBody, AssignOp, BinOp, ElseBranch, ExprKind, ForIterable, GuardKind, LValue,
-    LValueSegment, PatternKind, UnaryOp,
+    ArmBody, AssignOp, BinOp, DeclKind, ElseBranch, ExprKind, ForIterable, GuardKind, LValue,
+    LValueSegment, OptionalGroup, PatternKind, TopLevel, UnaryOp,
 };
 use ttrpg_checker::env::DeclInfo;
 
 use crate::Env;
 use crate::RuntimeError;
-use crate::effect::{Effect, FieldPathSegment};
+use crate::effect::{Effect, FieldPathSegment, Response};
 use crate::state::{EntityRef, StateProvider};
 use crate::value::{DiceExpr, Value};
 
@@ -139,12 +139,19 @@ pub(crate) fn eval_expr(env: &mut Env, expr: &Spanned<ExprKind>) -> Result<Value
             body,
         } => eval_for(env, pattern, iterable, body),
 
-        ExprKind::Has { .. } => {
-            // TODO(ttrpg_dsl-5ho): runtime has expression
-            Err(RuntimeError::with_span(
-                "'has' expression not yet implemented",
-                expr.span,
-            ))
+        ExprKind::Has { entity, group_name } => {
+            let entity_val = eval_expr(env, entity)?;
+            let entity_ref = match entity_val {
+                Value::Entity(r) => r,
+                _ => {
+                    return Err(RuntimeError::with_span(
+                        "has: expected entity value",
+                        entity.span,
+                    ))
+                }
+            };
+            let has = env.state.read_field(&entity_ref, group_name).is_some();
+            Ok(Value::Bool(has))
         }
     }
 }
@@ -858,12 +865,94 @@ pub(crate) fn eval_stmt(
             eval_assign(env, target, *op, value, stmt.span)?;
             Ok(Value::None)
         }
-        StmtKind::Grant { .. } | StmtKind::Revoke { .. } => {
-            // TODO(ttrpg_dsl-5ho): runtime grant/revoke
-            Err(RuntimeError::with_span(
-                "grant/revoke not yet implemented",
-                stmt.span,
-            ))
+        StmtKind::Grant {
+            entity,
+            group_name,
+            fields: field_inits,
+        } => {
+            let entity_val = eval_expr(env, entity)?;
+            let entity_ref = match entity_val {
+                Value::Entity(r) => r,
+                _ => {
+                    return Err(RuntimeError::with_span(
+                        "grant: expected entity value",
+                        entity.span,
+                    ))
+                }
+            };
+
+            // Evaluate explicit field initializers
+            let mut fields = BTreeMap::new();
+            for init in field_inits {
+                let val = eval_expr(env, &init.value)?;
+                fields.insert(init.name.clone(), val);
+            }
+
+            // Collect defaults from the entity declaration's optional group.
+            // Clone the data first to avoid borrow conflict with eval_expr.
+            let defaults: Vec<_> = find_optional_group(env, group_name)
+                .into_iter()
+                .flat_map(|g| g.fields.iter())
+                .filter(|fd| !fields.contains_key(&fd.name) && fd.default.is_some())
+                .map(|fd| (fd.name.clone(), fd.default.clone().unwrap()))
+                .collect();
+            for (name, default_expr) in &defaults {
+                let val = eval_expr(env, default_expr)?;
+                fields.insert(name.clone(), val);
+            }
+
+            let struct_val = Value::Struct {
+                name: group_name.clone(),
+                fields,
+            };
+
+            let effect = Effect::GrantGroup {
+                entity: entity_ref,
+                group_name: group_name.clone(),
+                fields: struct_val,
+            };
+            let response = env.handler.handle(effect);
+            match response {
+                Response::Vetoed => {
+                    return Err(RuntimeError::with_span(
+                        format!("grant {} was vetoed by host", group_name),
+                        stmt.span,
+                    ))
+                }
+                _ => {}
+            }
+            Ok(Value::None)
+        }
+        StmtKind::Revoke {
+            entity,
+            group_name,
+        } => {
+            let entity_val = eval_expr(env, entity)?;
+            let entity_ref = match entity_val {
+                Value::Entity(r) => r,
+                _ => {
+                    return Err(RuntimeError::with_span(
+                        "revoke: expected entity value",
+                        entity.span,
+                    ))
+                }
+            };
+
+            let effect = Effect::RevokeGroup {
+                entity: entity_ref,
+                group_name: group_name.clone(),
+            };
+            let response = env.handler.handle(effect);
+            match response {
+                Response::Vetoed => {
+                    return Err(RuntimeError::with_span(
+                        format!("revoke {} was vetoed by host", group_name),
+                        stmt.span,
+                    ))
+                }
+                _ => {}
+            }
+            Ok(Value::None)
         }
     }
 }
@@ -1818,6 +1907,24 @@ pub(crate) fn type_name(val: &Value) -> &'static str {
         Value::Condition(_) => "Condition",
         Value::EnumNamespace(_) => "EnumNamespace",
     }
+}
+
+/// Walk `program.items` to find the `OptionalGroup` definition with the given name.
+fn find_optional_group<'a>(env: &'a Env, group_name: &str) -> Option<&'a OptionalGroup> {
+    for item in &env.interp.program.items {
+        if let TopLevel::System(system) = &item.node {
+            for decl in &system.decls {
+                if let DeclKind::Entity(entity_decl) = &decl.node {
+                    for group in &entity_decl.optional_groups {
+                        if group.name == group_name {
+                            return Some(group);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    None
 }
 
 #[cfg(test)]

@@ -258,6 +258,12 @@ impl WritableState for GameState {
             .or_default()
             .insert(field.to_string(), value);
     }
+
+    fn remove_field(&mut self, entity: &EntityRef, field: &str) {
+        if let Some(entity_state) = self.entities.get_mut(&entity.0) {
+            entity_state.fields.remove(field);
+        }
+    }
 }
 
 /// Navigate a nested path and write the value at the leaf.

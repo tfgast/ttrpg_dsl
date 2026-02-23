@@ -114,12 +114,14 @@ pub struct AdaptedHandler<'a, S: WritableState, H: EffectHandler> {
     inner: &'a mut H,
 }
 
-/// The four mutation effect kinds.
-const MUTATION_KINDS: [EffectKind; 4] = [
+/// The six mutation effect kinds.
+const MUTATION_KINDS: [EffectKind; 6] = [
     EffectKind::MutateField,
     EffectKind::ApplyCondition,
     EffectKind::RemoveCondition,
     EffectKind::MutateTurnField,
+    EffectKind::GrantGroup,
+    EffectKind::RevokeGroup,
 ];
 
 fn is_mutation(kind: EffectKind) -> bool {
@@ -263,6 +265,23 @@ fn apply_mutation<S: WritableState>(state: &mut S, effect: &Effect) {
             let final_value = compute_turn_field_value(state, actor, field, *op, value);
             state.write_turn_field(actor, field, final_value);
         }
+        Effect::GrantGroup {
+            entity,
+            group_name,
+            fields,
+        } => {
+            state.write_field(
+                entity,
+                &[FieldPathSegment::Field(group_name.clone())],
+                fields.clone(),
+            );
+        }
+        Effect::RevokeGroup {
+            entity,
+            group_name,
+        } => {
+            state.remove_field(entity, group_name);
+        }
         _ => {} // Not a mutation effect
     }
 }
@@ -316,6 +335,22 @@ fn apply_mutation_with_override<S: WritableState>(
                 // Non-string override: fall back to original condition name
                 state.remove_condition(target, condition);
             }
+        }
+        Effect::GrantGroup {
+            entity,
+            group_name,
+            ..
+        } => {
+            // Override replaces the entire struct value
+            state.write_field(
+                entity,
+                &[FieldPathSegment::Field(group_name.clone())],
+                override_val.clone(),
+            );
+        }
+        Effect::RevokeGroup { .. } => {
+            // No meaningful override for revoke; fall through to normal
+            apply_mutation(state, effect);
         }
         _ => apply_mutation(state, effect),
     }
@@ -559,6 +594,10 @@ mod tests {
                 .entry(entity.0)
                 .or_default()
                 .insert(field.to_string(), value);
+        }
+
+        fn remove_field(&mut self, entity: &EntityRef, field: &str) {
+            self.fields.remove(&(entity.0, field.to_string()));
         }
     }
 

@@ -90,6 +90,15 @@ pub enum Effect {
         op: AssignOp,
         value: Value,
     },
+    GrantGroup {
+        entity: EntityRef,
+        group_name: String,
+        fields: Value,
+    },
+    RevokeGroup {
+        entity: EntityRef,
+        group_name: String,
+    },
 
     // ── Decision effects ────────────────────────────────────
     DeductCost {
@@ -179,6 +188,8 @@ pub enum EffectKind {
     ApplyCondition,
     RemoveCondition,
     MutateTurnField,
+    GrantGroup,
+    RevokeGroup,
     DeductCost,
     ActionStarted,
     RequiresCheck,
@@ -196,6 +207,8 @@ impl EffectKind {
             Effect::ApplyCondition { .. } => EffectKind::ApplyCondition,
             Effect::RemoveCondition { .. } => EffectKind::RemoveCondition,
             Effect::MutateTurnField { .. } => EffectKind::MutateTurnField,
+            Effect::GrantGroup { .. } => EffectKind::GrantGroup,
+            Effect::RevokeGroup { .. } => EffectKind::RevokeGroup,
             Effect::DeductCost { .. } => EffectKind::DeductCost,
             Effect::ActionStarted { .. } => EffectKind::ActionStarted,
             Effect::RequiresCheck { .. } => EffectKind::RequiresCheck,

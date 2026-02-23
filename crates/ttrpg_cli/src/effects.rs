@@ -314,6 +314,41 @@ impl EffectHandler for CliHandler<'_> {
                 Response::Acknowledged
             }
 
+            Effect::GrantGroup {
+                entity,
+                group_name,
+                fields,
+            } => {
+                let name = self.entity_name(&entity);
+                self.game_state.borrow_mut().write_field(
+                    &entity,
+                    &[ttrpg_interp::effect::FieldPathSegment::Field(
+                        group_name.clone(),
+                    )],
+                    fields.clone(),
+                );
+                self.log.push(format!(
+                    "[GrantGroup] {}.{}: {}",
+                    name,
+                    group_name,
+                    format_value(&fields),
+                ));
+                Response::Acknowledged
+            }
+
+            Effect::RevokeGroup {
+                entity,
+                group_name,
+            } => {
+                let name = self.entity_name(&entity);
+                self.game_state
+                    .borrow_mut()
+                    .remove_field(&entity, &group_name);
+                self.log
+                    .push(format!("[RevokeGroup] {}.{}", name, group_name));
+                Response::Acknowledged
+            }
+
             Effect::ModifyApplied {
                 source,
                 target_fn,

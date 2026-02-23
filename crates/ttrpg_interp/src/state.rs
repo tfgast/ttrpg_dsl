@@ -90,6 +90,9 @@ pub trait WritableState: StateProvider {
 
     /// Write a value to a turn budget field.
     fn write_turn_field(&mut self, entity: &EntityRef, field: &str, value: Value);
+
+    /// Remove a field from an entity (used by `RevokeGroup`).
+    fn remove_field(&mut self, entity: &EntityRef, field: &str);
 }
 
 #[cfg(test)]
