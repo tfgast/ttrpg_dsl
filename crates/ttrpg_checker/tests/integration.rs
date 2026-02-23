@@ -166,8 +166,8 @@ fn test_collect_counts() {
     assert_eq!(result.env.types.values().filter(|d| matches!(d, ttrpg_checker::env::DeclInfo::Struct(_))).count(), 2);
     // Entities: Weapon, Character
     assert_eq!(result.env.types.values().filter(|d| matches!(d, ttrpg_checker::env::DeclInfo::Entity(_))).count(), 2);
-    // Events: entity_leaves_reach
-    assert_eq!(result.env.events.len(), 1);
+    // Events: entity_leaves_reach, turn_start, turn_end
+    assert_eq!(result.env.events.len(), 3);
     // Conditions: Prone, Dodging, Disengaging
     assert_eq!(result.env.conditions.len(), 3);
 }
