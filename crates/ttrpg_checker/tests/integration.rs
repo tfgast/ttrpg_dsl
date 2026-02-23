@@ -4657,3 +4657,72 @@ system "test" {
 "#;
     expect_no_errors(source);
 }
+
+// ── resource-valued maps ──────────────────────────────────────────────
+
+#[test]
+fn test_resource_map_declaration() {
+    let source = r#"
+system "test" {
+    entity Character {
+        max_slots: int = 4
+        spell_slots: map<int, resource(0..max_slots)>
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_resource_map_read_is_int_like() {
+    let source = r#"
+system "test" {
+    entity Character {
+        spell_slots: map<int, resource(0..9)>
+    }
+    derive check(actor: Character) -> int {
+        let x: int = actor.spell_slots[1]
+        x + actor.spell_slots[2]
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_resource_map_mutation() {
+    let source = r#"
+system "test" {
+    entity Character {
+        spell_slots: map<int, resource(0..9)>
+    }
+    action CastSpell on caster: Character (level: int) {
+        cost { action }
+        resolve {
+            caster.spell_slots[level] -= 1
+        }
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_resource_map_in_optional_group() {
+    let source = r#"
+system "test" {
+    entity Character {
+        optional Spellcasting {
+            spell_slots: map<int, resource(0..9)>
+        }
+    }
+    action CastSpell on caster: Character with Spellcasting (level: int) {
+        cost { action }
+        resolve {
+            caster.Spellcasting.spell_slots[level] -= 1
+        }
+    }
+}
+"#;
+    expect_no_errors(source);
+}

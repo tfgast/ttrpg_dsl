@@ -2,8 +2,8 @@ use std::collections::BTreeMap;
 
 use ttrpg_ast::Spanned;
 use ttrpg_ast::ast::{
-    ArmBody, AssignOp, BinOp, DeclKind, ElseBranch, ExprKind, ForIterable, GuardKind, LValue,
-    LValueSegment, OptionalGroup, PatternKind, TopLevel, UnaryOp,
+    ArmBody, AssignOp, BinOp, DeclKind, ElseBranch, ExprKind, FieldDef, ForIterable, GuardKind,
+    LValue, LValueSegment, OptionalGroup, PatternKind, TopLevel, TypeExpr, UnaryOp,
 };
 use ttrpg_checker::env::DeclInfo;
 
@@ -1098,11 +1098,10 @@ fn eval_assign_entity(
 ) -> Result<(), RuntimeError> {
     let path = lvalue_segments_to_field_path(env, segments, span)?;
 
-    // Resource bounds: the plan calls for looking up bounds from TypeEnv,
-    // but Ty::Resource doesn't carry bound values, and evaluating AST bound
-    // expressions may require derive calls (Phase 4). Pass None for now;
-    // the host/adapter is responsible for clamping independently.
-    let bounds = None;
+    // Look up resource bounds from the entity's field declaration.
+    // Handles direct resource fields (e.g. HP: resource(0..max_HP)) and
+    // resource-valued maps (e.g. spell_slots: map<int, resource(0..9)>).
+    let bounds = resolve_resource_bounds(env, &entity, &path);
 
     let effect = Effect::MutateField {
         entity,
@@ -1933,6 +1932,129 @@ fn find_optional_group<'a>(
         }
     }
     None
+}
+
+/// Look up the `FieldDef` for the first field segment of a mutation path on an entity.
+///
+/// Handles both base fields and fields inside optional groups. For a path like
+/// `[Field("Spellcasting"), Field("spell_slots"), Index(3)]`, this returns the
+/// `FieldDef` for `spell_slots` inside the `Spellcasting` group and the remaining
+/// path `[Index(3)]`.
+fn find_field_def_and_remaining<'a>(
+    env: &'a Env,
+    entity_type: &str,
+    path: &[FieldPathSegment],
+) -> Option<(&'a FieldDef, usize)> {
+    if path.is_empty() {
+        return None;
+    }
+    let first_name = match &path[0] {
+        FieldPathSegment::Field(name) => name,
+        _ => return None,
+    };
+
+    for item in &env.interp.program.items {
+        if let TopLevel::System(system) = &item.node {
+            for decl in &system.decls {
+                if let DeclKind::Entity(entity_decl) = &decl.node {
+                    if entity_decl.name != entity_type {
+                        continue;
+                    }
+                    // Check base fields
+                    if let Some(field) = entity_decl.fields.iter().find(|f| f.name == *first_name)
+                    {
+                        return Some((field, 1));
+                    }
+                    // Check if first segment is a group name
+                    if let Some(group) = entity_decl
+                        .optional_groups
+                        .iter()
+                        .find(|g| g.name == *first_name)
+                    {
+                        // Next segment should be a field within the group
+                        if let Some(FieldPathSegment::Field(field_name)) = path.get(1) {
+                            if let Some(field) =
+                                group.fields.iter().find(|f| f.name == *field_name)
+                            {
+                                return Some((field, 2));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Walk remaining path segments through a `TypeExpr` to find resource bounds at the leaf.
+///
+/// For `map<int, resource(0..9)>` with path `[Index(3)]`, this returns the resource
+/// bounds `(0, 9)` expressions. For non-resource leaves, returns `None`.
+fn extract_resource_bounds_from_type<'a>(
+    ty: &'a TypeExpr,
+    path: &[FieldPathSegment],
+) -> Option<(&'a Spanned<ExprKind>, &'a Spanned<ExprKind>)> {
+    if path.is_empty() {
+        if let TypeExpr::Resource(min, max) = ty {
+            return Some((min, max));
+        }
+        return None;
+    }
+    match (&path[0], ty) {
+        (FieldPathSegment::Index(_), TypeExpr::Map(_, val_type)) => {
+            extract_resource_bounds_from_type(&val_type.node, &path[1..])
+        }
+        (FieldPathSegment::Index(_), TypeExpr::List(elem_type)) => {
+            extract_resource_bounds_from_type(&elem_type.node, &path[1..])
+        }
+        _ => None,
+    }
+}
+
+/// Try to evaluate a resource bound expression to a Value.
+///
+/// First attempts normal expression evaluation (handles literals and in-scope vars).
+/// If that fails and the expression is a bare identifier, reads it as an entity field.
+fn eval_bound_expr(
+    env: &mut Env,
+    entity: &EntityRef,
+    expr: &Spanned<ExprKind>,
+) -> Option<Value> {
+    // Try normal evaluation first (handles literals, in-scope variables, derives)
+    if let Ok(val) = eval_expr(env, expr) {
+        return Some(val);
+    }
+    // If that failed and it's a bare identifier, try reading from entity state
+    if let ExprKind::Ident(name) = &expr.node {
+        return env.state.read_field(entity, name);
+    }
+    None
+}
+
+/// Look up resource bounds for a mutation path on an entity.
+///
+/// Returns evaluated `(min, max)` Values if the leaf of the path is a resource type.
+/// Clones bound expressions before evaluation to avoid borrow conflicts with `env`.
+fn resolve_resource_bounds(
+    env: &mut Env,
+    entity: &EntityRef,
+    path: &[FieldPathSegment],
+) -> Option<(Value, Value)> {
+    let entity_type = env.state.entity_type_name(entity)?;
+    // Look up the field def and extract resource bounds from the type expression.
+    // Clone the bound expressions so we can release the borrow on env.interp.program
+    // before calling eval_bound_expr (which needs &mut env).
+    let bound_exprs = {
+        let (field_def, consumed) = find_field_def_and_remaining(env, &entity_type, path)?;
+        let remaining = &path[consumed..];
+        let (min_expr, max_expr) =
+            extract_resource_bounds_from_type(&field_def.ty.node, remaining)?;
+        (min_expr.clone(), max_expr.clone())
+    };
+    let min_val = eval_bound_expr(env, entity, &bound_exprs.0)?;
+    let max_val = eval_bound_expr(env, entity, &bound_exprs.1)?;
+    Some((min_val, max_val))
 }
 
 #[cfg(test)]
