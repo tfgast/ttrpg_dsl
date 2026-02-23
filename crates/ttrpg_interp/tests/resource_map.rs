@@ -389,6 +389,344 @@ fn resource_map_in_optional_group_is_clamped() {
     assert_eq!(map.get(&Value::Int(1)), Some(&Value::Int(0)));
 }
 
+// ── Non-zero min bounds ────────────────────────────────────────
+
+const NONZERO_MIN_SYSTEM: &str = r#"
+system "test" {
+    entity Character {
+        abilities: map<int, resource(1..20)>
+    }
+    action Buff on actor: Character (stat: int) {
+        cost { action }
+        resolve {
+            actor.abilities[stat] += 1
+        }
+    }
+    action Drain on actor: Character (stat: int) {
+        cost { action }
+        resolve {
+            actor.abilities[stat] -= 1
+        }
+    }
+    action SetStat on actor: Character (stat: int, val: int) {
+        cost { action }
+        resolve {
+            actor.abilities[stat] = val
+        }
+    }
+}
+"#;
+
+#[test]
+fn resource_map_nonzero_min_prevents_underflow() {
+    let (program, result) = compile(NONZERO_MIN_SYSTEM);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+
+    let mut state = GameState::new();
+    let mut abilities = BTreeMap::new();
+    abilities.insert(Value::Int(1), Value::Int(1)); // STR at min
+    let mut fields = HashMap::new();
+    fields.insert("abilities".into(), Value::Map(abilities));
+    let hero = state.add_entity("Character", fields);
+    state.set_turn_budget(&hero, standard_turn_budget());
+
+    let adapter = StateAdapter::new(state);
+    let mut handler = ScriptedHandler::with_responses(vec![
+        Response::Acknowledged, // ActionStarted
+    ]);
+    adapter.run(&mut handler, |s, h| {
+        interp
+            .execute_action(s, h, "Drain", hero, vec![Value::Int(1)])
+            .unwrap();
+    });
+
+    // Should be clamped at 1 (the min), not 0
+    let val = adapter.read_field(&hero, "abilities");
+    let map = match val {
+        Some(Value::Map(m)) => m,
+        other => panic!("expected Map, got {:?}", other),
+    };
+    assert_eq!(map.get(&Value::Int(1)), Some(&Value::Int(1)));
+}
+
+#[test]
+fn resource_map_nonzero_min_set_below_clamps_up() {
+    let (program, result) = compile(NONZERO_MIN_SYSTEM);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+
+    let mut state = GameState::new();
+    let mut abilities = BTreeMap::new();
+    abilities.insert(Value::Int(1), Value::Int(10));
+    let mut fields = HashMap::new();
+    fields.insert("abilities".into(), Value::Map(abilities));
+    let hero = state.add_entity("Character", fields);
+    state.set_turn_budget(&hero, standard_turn_budget());
+
+    let adapter = StateAdapter::new(state);
+    let mut handler = ScriptedHandler::with_responses(vec![
+        Response::Acknowledged, // ActionStarted
+    ]);
+    adapter.run(&mut handler, |s, h| {
+        interp
+            .execute_action(s, h, "SetStat", hero, vec![Value::Int(1), Value::Int(-5)])
+            .unwrap();
+    });
+
+    // Setting to -5 should clamp up to 1 (the min)
+    let val = adapter.read_field(&hero, "abilities");
+    let map = match val {
+        Some(Value::Map(m)) => m,
+        other => panic!("expected Map, got {:?}", other),
+    };
+    assert_eq!(map.get(&Value::Int(1)), Some(&Value::Int(1)));
+}
+
+#[test]
+fn resource_map_nonzero_min_auto_init_missing_key() {
+    let (program, result) = compile(NONZERO_MIN_SYSTEM);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+
+    let mut state = GameState::new();
+    let mut fields = HashMap::new();
+    fields.insert("abilities".into(), Value::Map(BTreeMap::new())); // empty map
+    let hero = state.add_entity("Character", fields);
+    state.set_turn_budget(&hero, standard_turn_budget());
+
+    let adapter = StateAdapter::new(state);
+    let mut handler = ScriptedHandler::with_responses(vec![
+        Response::Acknowledged, // ActionStarted
+    ]);
+    // Buff on missing key 1: current defaults to 0, 0+1=1, clamped to [1..20] → 1
+    adapter.run(&mut handler, |s, h| {
+        interp
+            .execute_action(s, h, "Buff", hero, vec![Value::Int(1)])
+            .unwrap();
+    });
+
+    let val = adapter.read_field(&hero, "abilities");
+    let map = match val {
+        Some(Value::Map(m)) => m,
+        other => panic!("expected Map, got {:?}", other),
+    };
+    assert_eq!(
+        map.get(&Value::Int(1)),
+        Some(&Value::Int(1)),
+        "missing key: 0+1=1, within [1..20]"
+    );
+}
+
+// ── Multiple mutations in one action ──────────────────────────
+
+const MULTI_MUTATE_SYSTEM: &str = r#"
+system "test" {
+    entity Character {
+        spell_slots: map<int, resource(0..9)>
+    }
+    action MultiCast on actor: Character (level1: int, level2: int) {
+        cost { action }
+        resolve {
+            actor.spell_slots[level1] -= 1
+            actor.spell_slots[level2] -= 1
+        }
+    }
+}
+"#;
+
+#[test]
+fn resource_map_multiple_keys_mutated_in_one_action() {
+    let (program, result) = compile(MULTI_MUTATE_SYSTEM);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+
+    let mut state = GameState::new();
+    let mut slots = BTreeMap::new();
+    slots.insert(Value::Int(1), Value::Int(4));
+    slots.insert(Value::Int(3), Value::Int(2));
+    let mut fields = HashMap::new();
+    fields.insert("spell_slots".into(), Value::Map(slots));
+    let hero = state.add_entity("Character", fields);
+    state.set_turn_budget(&hero, standard_turn_budget());
+
+    let adapter = StateAdapter::new(state);
+    let mut handler = ScriptedHandler::with_responses(vec![
+        Response::Acknowledged, // ActionStarted
+    ]);
+    adapter.run(&mut handler, |s, h| {
+        interp
+            .execute_action(s, h, "MultiCast", hero, vec![Value::Int(1), Value::Int(3)])
+            .unwrap();
+    });
+
+    let slot_val = adapter.read_field(&hero, "spell_slots");
+    let map = match slot_val {
+        Some(Value::Map(m)) => m,
+        other => panic!("expected Map, got {:?}", other),
+    };
+    assert_eq!(map.get(&Value::Int(1)), Some(&Value::Int(3)), "level 1: 4-1=3");
+    assert_eq!(map.get(&Value::Int(3)), Some(&Value::Int(1)), "level 3: 2-1=1");
+}
+
+// ── Derive reads from resource map ─────────────────────────────
+
+const DERIVE_READS_MAP_SYSTEM: &str = r#"
+system "test" {
+    entity Character {
+        spell_slots: map<int, resource(0..9)>
+    }
+    derive slots_at(actor: Character, level: int) -> int {
+        actor.spell_slots[level]
+    }
+    derive total_low_slots(actor: Character) -> int {
+        actor.spell_slots[1] + actor.spell_slots[2] + actor.spell_slots[3]
+    }
+}
+"#;
+
+#[test]
+fn resource_map_derive_reads_present_key() {
+    let (program, result) = compile(DERIVE_READS_MAP_SYSTEM);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+
+    let mut state = GameState::new();
+    let mut slots = BTreeMap::new();
+    slots.insert(Value::Int(1), Value::Int(4));
+    slots.insert(Value::Int(2), Value::Int(3));
+    slots.insert(Value::Int(3), Value::Int(2));
+    let mut fields = HashMap::new();
+    fields.insert("spell_slots".into(), Value::Map(slots));
+    let hero = state.add_entity("Character", fields);
+
+    let mut handler = ScriptedHandler::new();
+    let result_val = interp
+        .evaluate_derive(&state, &mut handler, "slots_at", vec![Value::Entity(hero), Value::Int(2)])
+        .unwrap();
+    assert_eq!(result_val, Value::Int(3));
+}
+
+#[test]
+fn resource_map_derive_sums_multiple_keys() {
+    let (program, result) = compile(DERIVE_READS_MAP_SYSTEM);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+
+    let mut state = GameState::new();
+    let mut slots = BTreeMap::new();
+    slots.insert(Value::Int(1), Value::Int(4));
+    slots.insert(Value::Int(2), Value::Int(3));
+    slots.insert(Value::Int(3), Value::Int(2));
+    let mut fields = HashMap::new();
+    fields.insert("spell_slots".into(), Value::Map(slots));
+    let hero = state.add_entity("Character", fields);
+
+    let mut handler = ScriptedHandler::new();
+    let result_val = interp
+        .evaluate_derive(&state, &mut handler, "total_low_slots", vec![Value::Entity(hero)])
+        .unwrap();
+    assert_eq!(result_val, Value::Int(9), "4+3+2=9");
+}
+
+// ── Enum-keyed resource map ────────────────────────────────────
+
+const ENUM_KEY_SYSTEM: &str = r#"
+system "test" {
+    enum Ability { STR, DEX, CON, INT, WIS, CHA }
+    entity Character {
+        abilities: map<Ability, resource(1..20)>
+    }
+    action Buff on actor: Character (stat: Ability) {
+        cost { action }
+        resolve {
+            actor.abilities[stat] += 1
+        }
+    }
+    derive get_stat(actor: Character, stat: Ability) -> int {
+        actor.abilities[stat]
+    }
+}
+"#;
+
+fn ability_variant(variant: &str) -> Value {
+    Value::EnumVariant {
+        enum_name: "Ability".to_string(),
+        variant: variant.to_string(),
+        fields: BTreeMap::new(),
+    }
+}
+
+#[test]
+fn resource_map_enum_key_read_and_mutate() {
+    let (program, result) = compile(ENUM_KEY_SYSTEM);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+
+    let mut state = GameState::new();
+    let mut abilities = BTreeMap::new();
+    abilities.insert(ability_variant("STR"), Value::Int(18));
+    abilities.insert(ability_variant("DEX"), Value::Int(14));
+    let mut fields = HashMap::new();
+    fields.insert("abilities".into(), Value::Map(abilities));
+    let hero = state.add_entity("Character", fields);
+    state.set_turn_budget(&hero, standard_turn_budget());
+
+    // Read via derive
+    let mut handler = ScriptedHandler::new();
+    let str_val = interp
+        .evaluate_derive(&state, &mut handler, "get_stat", vec![Value::Entity(hero), ability_variant("STR")])
+        .unwrap();
+    assert_eq!(str_val, Value::Int(18));
+
+    // Buff STR (18 → 19)
+    let adapter = StateAdapter::new(state);
+    let mut handler = ScriptedHandler::with_responses(vec![
+        Response::Acknowledged, // ActionStarted
+    ]);
+    adapter.run(&mut handler, |s, h| {
+        interp
+            .execute_action(s, h, "Buff", hero, vec![ability_variant("STR")])
+            .unwrap();
+    });
+
+    let val = adapter.read_field(&hero, "abilities");
+    let map = match val {
+        Some(Value::Map(m)) => m,
+        other => panic!("expected Map, got {:?}", other),
+    };
+    assert_eq!(map.get(&ability_variant("STR")), Some(&Value::Int(19)));
+    assert_eq!(map.get(&ability_variant("DEX")), Some(&Value::Int(14)), "DEX unchanged");
+}
+
+#[test]
+fn resource_map_enum_key_clamped_at_max() {
+    let (program, result) = compile(ENUM_KEY_SYSTEM);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+
+    let mut state = GameState::new();
+    let mut abilities = BTreeMap::new();
+    abilities.insert(ability_variant("STR"), Value::Int(20)); // at max
+    let mut fields = HashMap::new();
+    fields.insert("abilities".into(), Value::Map(abilities));
+    let hero = state.add_entity("Character", fields);
+    state.set_turn_budget(&hero, standard_turn_budget());
+
+    let adapter = StateAdapter::new(state);
+    let mut handler = ScriptedHandler::with_responses(vec![
+        Response::Acknowledged, // ActionStarted
+    ]);
+    adapter.run(&mut handler, |s, h| {
+        interp
+            .execute_action(s, h, "Buff", hero, vec![ability_variant("STR")])
+            .unwrap();
+    });
+
+    let val = adapter.read_field(&hero, "abilities");
+    let map = match val {
+        Some(Value::Map(m)) => m,
+        other => panic!("expected Map, got {:?}", other),
+    };
+    assert_eq!(
+        map.get(&ability_variant("STR")),
+        Some(&Value::Int(20)),
+        "should be clamped at max 20"
+    );
+}
+
 // ── Direct resource field (not map) also gets bounds ───────────
 
 const DIRECT_RESOURCE_SYSTEM: &str = r#"

@@ -4726,3 +4726,142 @@ system "test" {
 "#;
     expect_no_errors(source);
 }
+
+#[test]
+fn test_resource_map_wrong_key_type() {
+    let source = r#"
+system "test" {
+    entity Character {
+        spell_slots: map<int, resource(0..9)>
+    }
+    action Bad on actor: Character () {
+        cost { action }
+        resolve {
+            actor.spell_slots["abc"] -= 1
+        }
+    }
+}
+"#;
+    expect_errors(source, &["map key type is int, found string"]);
+}
+
+#[test]
+fn test_resource_map_assign_string_to_entry() {
+    let source = r#"
+system "test" {
+    entity Character {
+        spell_slots: map<int, resource(0..9)>
+    }
+    action Bad on actor: Character () {
+        cost { action }
+        resolve {
+            actor.spell_slots[1] = "hello"
+        }
+    }
+}
+"#;
+    expect_errors(source, &["cannot assign string to resource"]);
+}
+
+#[test]
+fn test_resource_map_pluseq_with_string() {
+    let source = r#"
+system "test" {
+    entity Character {
+        spell_slots: map<int, resource(0..9)>
+    }
+    action Bad on actor: Character () {
+        cost { action }
+        resolve {
+            actor.spell_slots[1] += "x"
+        }
+    }
+}
+"#;
+    expect_errors(source, &["right side of += / -= must be numeric"]);
+}
+
+#[test]
+fn test_resource_map_pluseq_with_float() {
+    let source = r#"
+system "test" {
+    entity Character {
+        spell_slots: map<int, resource(0..9)>
+    }
+    action Bad on actor: Character () {
+        cost { action }
+        resolve {
+            actor.spell_slots[1] += 3 / 2
+        }
+    }
+}
+"#;
+    expect_errors(source, &["cannot use float in += / -= on resource"]);
+}
+
+#[test]
+fn test_resource_map_enum_key_type() {
+    let source = r#"
+system "test" {
+    enum Ability { STR, DEX, CON, INT, WIS, CHA }
+    entity Character {
+        abilities: map<Ability, resource(1..20)>
+    }
+    action Buff on actor: Character (stat: Ability) {
+        cost { action }
+        resolve {
+            actor.abilities[stat] += 1
+        }
+    }
+    derive check_stat(actor: Character, stat: Ability) -> int {
+        actor.abilities[stat] + 0
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_resource_map_entry_in_arithmetic() {
+    let source = r#"
+system "test" {
+    entity Character {
+        spell_slots: map<int, resource(0..9)>
+    }
+    derive total_low_slots(c: Character) -> int {
+        c.spell_slots[1] + c.spell_slots[2] + c.spell_slots[3]
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_resource_map_entry_in_comparison() {
+    let source = r#"
+system "test" {
+    entity Character {
+        spell_slots: map<int, resource(0..9)>
+    }
+    derive has_slots(c: Character, level: int) -> bool {
+        c.spell_slots[level] > 0
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_resource_map_nonzero_min_declaration() {
+    let source = r#"
+system "test" {
+    entity Character {
+        abilities: map<int, resource(1..20)>
+    }
+    derive modifier(c: Character, stat: int) -> float {
+        (c.abilities[stat] - 10) / 2
+    }
+}
+"#;
+    expect_no_errors(source);
+}

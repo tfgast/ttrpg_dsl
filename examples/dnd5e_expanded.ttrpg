@@ -213,18 +213,9 @@ system "D&D 5e Expanded" {
             spellcasting_ability: Ability
             spell_save_DC: int
             spell_attack_bonus: int
-            // PAIN POINT: Spell slots still need 9 separate fields.   [ttrpg_dsl-5yt]
-            // Indexed resources (map<int, resource>) aren't available.
-            // Can't write: spell_slots: map<int, resource(0..max_slots)>
-            spell_slots_1: int = 0
-            spell_slots_2: int = 0
-            spell_slots_3: int = 0
-            spell_slots_4: int = 0
-            spell_slots_5: int = 0
-            spell_slots_6: int = 0
-            spell_slots_7: int = 0
-            spell_slots_8: int = 0
-            spell_slots_9: int = 0
+            // RESOLVED: Resource-valued maps replace 9 separate fields. [ttrpg_dsl-5yt]
+            // map<int, resource(0..9)> gives clamped, per-level slots.
+            spell_slots: map<int, resource(0..9)>
             known_spells: list<SpellInfo>
             concentrating_on: option<string>
         }
@@ -762,21 +753,8 @@ system "D&D 5e Expanded" {
             let healing = roll(healing_dice + spell_mod)
             target.HP += healing.total
 
-            // Spell slot deduction — PAIN POINT REMAINS:              [ttrpg_dsl-5yt]
-            // Still need per-level match because spell slots are
-            // separate fields, not an indexed resource.
-            match slot_level {
-                1 => { caster.Spellcasting.spell_slots_1 -= 1 },
-                2 => { caster.Spellcasting.spell_slots_2 -= 1 },
-                3 => { caster.Spellcasting.spell_slots_3 -= 1 },
-                4 => { caster.Spellcasting.spell_slots_4 -= 1 },
-                5 => { caster.Spellcasting.spell_slots_5 -= 1 },
-                6 => { caster.Spellcasting.spell_slots_6 -= 1 },
-                7 => { caster.Spellcasting.spell_slots_7 -= 1 },
-                8 => { caster.Spellcasting.spell_slots_8 -= 1 },
-                9 => { caster.Spellcasting.spell_slots_9 -= 1 },
-                _ => {}
-            }
+            // RESOLVED: Resource-valued map replaces 9-branch match.   [ttrpg_dsl-5yt]
+            caster.Spellcasting.spell_slots[slot_level] -= 1
         }
     }
 
@@ -813,17 +791,8 @@ system "D&D 5e Expanded" {
                 target.HP -= final_damage
             }
 
-            // Spell slot deduction (same indexed resource pain point)
-            match slot_level {
-                3 => { caster.Spellcasting.spell_slots_3 -= 1 },
-                4 => { caster.Spellcasting.spell_slots_4 -= 1 },
-                5 => { caster.Spellcasting.spell_slots_5 -= 1 },
-                6 => { caster.Spellcasting.spell_slots_6 -= 1 },
-                7 => { caster.Spellcasting.spell_slots_7 -= 1 },
-                8 => { caster.Spellcasting.spell_slots_8 -= 1 },
-                9 => { caster.Spellcasting.spell_slots_9 -= 1 },
-                _ => {}
-            }
+            // RESOLVED: Resource-valued map replaces 7-branch match.   [ttrpg_dsl-5yt]
+            caster.Spellcasting.spell_slots[slot_level] -= 1
         }
     }
 
@@ -1177,7 +1146,6 @@ system "D&D 5e Expanded" {
     //    - Extra Attack now uses for-loop over target list
     //    - Fireball rolls once, iterates over targets
     //    - Multi-damage-type spells can iterate DamageSpec lists
-    //    (Spell slot 9-branch match remains — indexed resources needed)
     //
     //  [RESOLVED] ENTITY COMPOSITION / OPTIONAL GROUPS            [ttrpg_dsl-s43]
     //    - optional Spellcasting { ... } / FighterFeatures / RogueFeatures
@@ -1209,6 +1177,11 @@ system "D&D 5e Expanded" {
     //    - DeathSaveCheck fires automatically at turn_start
     //    - No longer need DeathSave as an action costing an action
     //
+    //  [RESOLVED] RESOURCE-VALUED MAPS                            [ttrpg_dsl-5yt]
+    //    - map<int, resource(0..9)> replaces 9 separate spell_slots fields
+    //    - spell_slots[slot_level] -= 1 replaces 9-branch match
+    //    - Resource bounds auto-clamp (can't go below 0 or above 9)
+    //
     //  [RESOLVED] Parser / syntax issues:
     //    - `none` is a valid match pattern                        [ttrpg_dsl-efg]
     //    - Wildcard `_` works in modify bindings                  [ttrpg_dsl-9ng]
@@ -1218,73 +1191,69 @@ system "D&D 5e Expanded" {
     //
     //  REMAINING language gaps:
     //
-    //  1. NO INDEXED / PARAMETERIZED RESOURCES                    [ttrpg_dsl-5yt]
-    //     - Spell slots: 9 separate fields instead of map<int, resource>
-    //     - No runtime field selection (spell_slots[level])
-    //
-    //  2. NO PARAMETERIZED CONDITIONS                             [ttrpg_dsl-iuw]
+    //  1. NO PARAMETERIZED CONDITIONS                             [ttrpg_dsl-iuw]
     //     - Frightened needs a "source" entity
     //     - Exhaustion needs a level (1-6)
     //     - Grappled needs a reference to the grappler
     //
-    //  3. NO CONDITION COMPOSITION / INHERITANCE                  [ttrpg_dsl-7r4]
+    //  2. NO CONDITION COMPOSITION / INHERITANCE                  [ttrpg_dsl-7r4]
     //     - Stunned includes Incapacitated's effects (must duplicate)
     //     - Unconscious includes Prone + Incapacitated
     //
-    //  4. NO AUTO-SUCCEED / AUTO-FAIL                             [ttrpg_dsl-34x]
+    //  3. NO AUTO-SUCCEED / AUTO-FAIL                             [ttrpg_dsl-34x]
     //     - Stunned auto-fails STR/DEX saves (not just disadvantage)
     //     - "Advantage/disadvantage" is the only roll modifier
     //
-    //  5. NO TYPED PROMPTS                                        [ttrpg_dsl-ctc]
+    //  4. NO TYPED PROMPTS                                        [ttrpg_dsl-ctc]
     //     - choose() returns string, not a typed entity reference
     //
-    //  6. NO COST OVERRIDES / FREE ACTIONS                        [ttrpg_dsl-xh9]
+    //  5. NO COST OVERRIDES / FREE ACTIONS                        [ttrpg_dsl-xh9]
     //     - Cunning Action changes cost of existing actions
     //     - No way to say "this costs nothing" explicitly
     //
-    //  7. NO AUTOMATIC EVENT EMISSION                             [ttrpg_dsl-clo]
+    //  6. NO AUTOMATIC EVENT EMISSION                             [ttrpg_dsl-clo]
     //     - HP changes don't auto-fire takes_damage
     //     - Host must manually fire all events
     //
-    //  8. NO POSITION ARITHMETIC                                  [ttrpg_dsl-586]
+    //  7. NO POSITION ARITHMETIC                                  [ttrpg_dsl-586]
     //     - Can't compute "5 feet away from X toward Y"
     //     - Can't check "is between A and B" (flanking)
     //     - Position is opaque — only distance() is available
     //
-    //  9. NO UNION TYPES                                          [ttrpg_dsl-q5l]
+    //  8. NO UNION TYPES                                          [ttrpg_dsl-q5l]
     //     - Can't express DamageSource = Weapon | Spell | Environment
     //     - No tuple or multiple return values
     //
-    // 10. SINGLE REQUIRES BLOCK PER ACTION                        [ttrpg_dsl-mcy]
+    //  9. SINGLE REQUIRES BLOCK PER ACTION                        [ttrpg_dsl-mcy]
     //     - Must combine with && (multiline works, but verbose)
     //
-    // 11. NO DEFAULT FOR DiceExpr FIELDS                          [ttrpg_dsl-46i]
+    // 10. NO DEFAULT FOR DiceExpr FIELDS                          [ttrpg_dsl-46i]
     //     - sneak_attack_dice uses int (number of d6s) instead
     //
-    // 12. NO STRUCT UPDATE SYNTAX                                 [ttrpg_dsl-kmy]
+    // 11. NO STRUCT UPDATE SYNTAX                                 [ttrpg_dsl-kmy]
     //     - Must reconstruct entire struct to change one field
     //
-    // 13. NO ORDERED ENUMS                                        [ttrpg_dsl-hpg]
+    // 12. NO ORDERED ENUMS                                        [ttrpg_dsl-hpg]
     //     - Size enum has no ordering — can't compare sizes
     //
-    // 14. NO LIST SORTING / MAP / FILTER / REDUCE                 [ttrpg_dsl-4km]
+    // 13. NO LIST SORTING / MAP / FILTER / REDUCE                 [ttrpg_dsl-4km]
     //     - Host must sort initiative; no ordered collection output
     //
-    // 15. NO ENTITY DESTRUCTION / LIFECYCLE                       [ttrpg_dsl-bcc]
+    // 14. NO ENTITY DESTRUCTION / LIFECYCLE                       [ttrpg_dsl-bcc]
     //     - Can't destroy(dying) — death removes entities permanently
     //
-    // 16. NO ENUM-ASSOCIATED DATA / LOOKUP TABLES                 [ttrpg_dsl-8tu]
+    // 15. NO ENUM-ASSOCIATED DATA / LOOKUP TABLES                 [ttrpg_dsl-8tu]
     //     - skill_ability is 18-branch match for static data
     //
-    // 17. NO EVENT-TRIGGERED DURATIONS                            [ttrpg_dsl-rh4]
+    // 16. NO EVENT-TRIGGERED DURATIONS                            [ttrpg_dsl-rh4]
     //     - "Until next use" (Help) and "until save" (spell effects)
     //
-    // 18. NO SPELL INSTANCE / EFFECT TRACKING                     [ttrpg_dsl-5kb]
+    // 17. NO SPELL INSTANCE / EFFECT TRACKING                     [ttrpg_dsl-5kb]
     //     - Dropping concentration can't auto-remove spell effects
     //
-    // 19. NO INTEGER RANGE / BOUNDED INT TYPES                    [ttrpg_dsl-3v8]
+    // 18. NO INTEGER RANGE / BOUNDED INT TYPES                    [ttrpg_dsl-3v8]
     //     - Can't express int(1..9) for spell slot levels
     //
-    // 20. NO WILDCARD MODIFY TARGETS                              [ttrpg_dsl-wus]
+    // 19. NO WILDCARD MODIFY TARGETS                              [ttrpg_dsl-wus]
     //     - Can't "modify all d20 rolls" — must list each mechanic
 }
