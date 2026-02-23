@@ -441,11 +441,10 @@ impl Runner {
             }
         }
 
-        let entity = self.game_state.borrow_mut().add_entity(entity_type, fields);
-        self.handles.insert(handle.to_string(), entity);
-        self.reverse_handles.insert(entity, handle.to_string());
-
-        // Process inline groups after entity creation
+        // Validate and prepare inline groups BEFORE mutating state.
+        // This ensures spawn is atomic: if any group validation fails,
+        // no entity or handles are created.
+        let mut prepared_groups = Vec::new();
         for (group_name, group_fields) in inline_groups {
             let group_info = self
                 .type_env
@@ -498,9 +497,18 @@ impl Runner {
                 name: group_name.clone(),
                 fields: btree_fields,
             };
+            prepared_groups.push((group_name, struct_val));
+        }
+
+        // All validation passed — now apply mutations (cannot fail).
+        let entity = self.game_state.borrow_mut().add_entity(entity_type, fields);
+        self.handles.insert(handle.to_string(), entity);
+        self.reverse_handles.insert(entity, handle.to_string());
+
+        for (group_name, struct_val) in prepared_groups {
             self.game_state.borrow_mut().write_field(
                 &entity,
-                &[FieldPathSegment::Field(group_name.to_string())],
+                &[FieldPathSegment::Field(group_name)],
                 struct_val,
             );
         }
@@ -3500,6 +3508,30 @@ system "test" {
             err.to_string().contains("unknown optional group"),
             "got: {}",
             err
+        );
+    }
+
+    #[test]
+    fn spawn_inline_group_error_is_atomic() {
+        let mut runner = Runner::new();
+        load_group_program(&mut runner);
+
+        // Spawn with an inline group that has a type error — should fail
+        let err = runner
+            .exec("spawn Character hero { HP: 20, Spellcasting { spell_slots: \"bad\" } }")
+            .unwrap_err();
+        assert!(
+            err.to_string().contains("type mismatch"),
+            "got: {}",
+            err
+        );
+
+        // The handle should NOT exist — spawn was rolled back
+        let err2 = runner.exec("eval hero.HP").unwrap_err();
+        assert!(
+            err2.to_string().contains("undefined variable") || err2.to_string().contains("unknown handle"),
+            "entity should not exist after failed spawn, got: {}",
+            err2
         );
     }
 
