@@ -266,6 +266,9 @@ pub struct EventDecl {
 #[derive(Clone)]
 pub struct ConditionDecl {
     pub name: String,
+    /// Optional parameters: `condition Frightened(source: Character) on ...`.
+    /// Empty vec means no parameters.
+    pub params: Vec<Param>,
     pub receiver_name: String,
     pub receiver_type: Spanned<TypeExpr>,
     /// Optional group constraints on the bearer: `on bearer: Entity with Group`.

@@ -284,6 +284,7 @@ system "test" {
         vec![ActiveCondition {
             id: 100,
             name: "Stunned".into(),
+            params: BTreeMap::new(),
             bearer: EntityRef(1),
             gained_at: 1,
             duration: Value::None,

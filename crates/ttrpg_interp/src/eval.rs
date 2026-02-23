@@ -194,9 +194,9 @@ fn eval_ident(
         }
     }
 
-    // 4. Check if it's a condition name
+    // 4. Check if it's a condition name (bare use = no args)
     if env.interp.program.conditions.contains_key(name) {
-        return Ok(Value::Condition(name.to_string()));
+        return Ok(Value::Condition { name: name.to_string(), args: BTreeMap::new() });
     }
 
     Err(RuntimeError::with_span(
@@ -1634,7 +1634,12 @@ pub(crate) fn value_eq(state: &dyn StateProvider, a: &Value, b: &Value) -> bool 
         (Value::DiceExpr(a), Value::DiceExpr(b)) => a == b,
         (Value::RollResult(a), Value::RollResult(b)) => a == b,
         (Value::Entity(a), Value::Entity(b)) => a == b,
-        (Value::Condition(a), Value::Condition(b)) => a == b,
+        (Value::Condition { name: n1, args: a1 }, Value::Condition { name: n2, args: a2 }) => {
+            n1 == n2 && a1.len() == a2.len()
+                && a1.iter().zip(a2.iter()).all(|((k1, v1), (k2, v2))| {
+                    k1 == k2 && value_eq(state, v1, v2)
+                })
+        }
 
         // Position: delegate to host
         (Value::Position(_), Value::Position(_)) => state.position_eq(a, b),
@@ -1904,7 +1909,7 @@ pub(crate) fn type_name(val: &Value) -> &'static str {
         Value::Entity(_) => "Entity",
         Value::EnumVariant { .. } => "EnumVariant",
         Value::Position(_) => "Position",
-        Value::Condition(_) => "Condition",
+        Value::Condition { .. } => "Condition",
         Value::EnumNamespace(_) => "EnumNamespace",
     }
 }
@@ -4828,6 +4833,7 @@ mod tests {
                 name: "Test".to_string(),
                 decls: vec![spanned(DeclKind::Condition(ConditionDecl {
                     name: "Stunned".to_string(),
+                    params: vec![],
                     receiver_name: "bearer".to_string(),
                     receiver_type: spanned(TypeExpr::Named("Character".to_string())),
                     receiver_with_groups: vec![],
@@ -4846,7 +4852,7 @@ mod tests {
         let expr = spanned(ExprKind::Ident("Stunned".to_string()));
         assert_eq!(
             eval_expr(&mut env, &expr).unwrap(),
-            Value::Condition("Stunned".to_string())
+            Value::Condition { name: "Stunned".to_string(), args: BTreeMap::new() }
         );
     }
 
@@ -4860,6 +4866,7 @@ mod tests {
                 decls: vec![
                     spanned(DeclKind::Condition(ConditionDecl {
                         name: "Stunned".to_string(),
+                        params: vec![],
                         receiver_name: "bearer".to_string(),
                         receiver_type: spanned(TypeExpr::Named("Character".to_string())),
                         receiver_with_groups: vec![],
@@ -4867,6 +4874,7 @@ mod tests {
                     })),
                     spanned(DeclKind::Condition(ConditionDecl {
                         name: "Prone".to_string(),
+                        params: vec![],
                         receiver_name: "bearer".to_string(),
                         receiver_type: spanned(TypeExpr::Named("Character".to_string())),
                         receiver_with_groups: vec![],

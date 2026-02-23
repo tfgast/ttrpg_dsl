@@ -4865,3 +4865,95 @@ system "test" {
 "#;
     expect_no_errors(source);
 }
+
+// ═══════════════════════════════════════════════════════════════
+// Parameterized conditions
+// ═══════════════════════════════════════════════════════════════
+
+#[test]
+fn test_parameterized_condition_basic() {
+    let source = r#"
+system "test" {
+    entity Character {
+        HP: int
+    }
+    derive skill_check(actor: Character) -> string { "normal" }
+    condition Frightened(source: Character) on bearer: Character {
+        modify skill_check(actor: bearer) {
+            result = "disadvantage"
+        }
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_parameterized_condition_params_in_scope() {
+    // Condition params should be accessible in modify clause bodies
+    let source = r#"
+system "test" {
+    entity Character {
+        HP: int
+    }
+    derive speed(actor: Character) -> int { 30 }
+    condition Frightened(source: Character) on bearer: Character {
+        modify speed(actor: bearer) {
+            let src: Character = source
+            result = 0
+        }
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_parameterized_condition_call_type_checks() {
+    // Calling a parameterized condition with wrong type should error
+    let source = r#"
+system "test" {
+    entity Character {
+        HP: int
+    }
+    condition Frightened(source: Character) on bearer: Character {}
+    mechanic scare(actor: Character) -> Condition {
+        Frightened(42)
+    }
+}
+"#;
+    expect_errors(source, &["parameter `source` has type Character, got int"]);
+}
+
+#[test]
+fn test_parameterized_condition_bare_use_errors() {
+    // Using a parameterized condition bare should error
+    let source = r#"
+system "test" {
+    entity Character {
+        HP: int
+    }
+    condition Frightened(source: Character) on bearer: Character {}
+    mechanic scare(actor: Character) -> Condition {
+        Frightened
+    }
+}
+"#;
+    expect_errors(source, &["requires 1 parameter"]);
+}
+
+#[test]
+fn test_parameterized_condition_too_many_args() {
+    let source = r#"
+system "test" {
+    entity Character {
+        HP: int
+    }
+    condition Frightened(source: Character) on bearer: Character {}
+    mechanic scare(actor: Character) -> Condition {
+        Frightened(actor, actor)
+    }
+}
+"#;
+    expect_errors(source, &["accepts at most 1 argument"]);
+}

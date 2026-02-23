@@ -1034,6 +1034,64 @@ fn test_condition_receiver_with_group() {
 }
 
 #[test]
+fn test_condition_with_params() {
+    let source = r#"system "test" {
+    entity Character { name: string }
+    condition Frightened(source: Character) on bearer: Character {
+        modify skill_check(actor: bearer) {
+            mode = "disadvantage"
+        }
+    }
+}"#;
+    let (program, diagnostics) = parse(source);
+    assert!(
+        diagnostics.is_empty(),
+        "parameterized condition should parse, got: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+    let system = match &program.items[0].node {
+        TopLevel::System(s) => s,
+        _ => panic!("expected system block"),
+    };
+    let cond = system.decls.iter().find_map(|d| match &d.node {
+        DeclKind::Condition(c) => Some(c),
+        _ => None,
+    }).unwrap();
+    assert_eq!(cond.name, "Frightened");
+    assert_eq!(cond.params.len(), 1);
+    assert_eq!(cond.params[0].name, "source");
+    assert_eq!(cond.receiver_name, "bearer");
+}
+
+#[test]
+fn test_condition_no_params_still_works() {
+    let source = r#"system "test" {
+    entity Character { name: string }
+    condition Prone on bearer: Character {
+        modify skill_check(actor: bearer) {
+            mode = "disadvantage"
+        }
+    }
+}"#;
+    let (program, diagnostics) = parse(source);
+    assert!(
+        diagnostics.is_empty(),
+        "condition without params should parse, got: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+    let system = match &program.items[0].node {
+        TopLevel::System(s) => s,
+        _ => panic!("expected system block"),
+    };
+    let cond = system.decls.iter().find_map(|d| match &d.node {
+        DeclKind::Condition(c) => Some(c),
+        _ => None,
+    }).unwrap();
+    assert_eq!(cond.name, "Prone");
+    assert!(cond.params.is_empty());
+}
+
+#[test]
 fn test_reaction_receiver_with_group() {
     let source = r#"system "test" {
     entity Character {

@@ -11,10 +11,12 @@ use crate::ty::Ty;
 impl<'a> Checker<'a> {
     /// Check a modify clause. `receiver` is `Some` for conditions (which have
     /// a receiver binding) and `None` for options (which have no receiver).
+    /// `condition_params` are the condition's declared parameters (empty for options).
     pub fn check_modify_clause(
         &mut self,
         clause: &ModifyClause,
         receiver: Option<(&str, &Spanned<TypeExpr>, &[String])>,
+        condition_params: &[Param],
     ) {
         // Look up the target function
         let fn_info = match self.env.lookup_fn(&clause.target) {
@@ -59,6 +61,19 @@ impl<'a> Checker<'a> {
                 &recv_ty,
                 with_groups,
                 receiver_type.span,
+            );
+        }
+
+        // Bind condition parameters in scope (accessible in clause body)
+        for param in condition_params {
+            let ty = self.env.resolve_type(&param.ty);
+            self.scope.bind(
+                param.name.clone(),
+                VarBinding {
+                    ty,
+                    mutable: false,
+                    is_local: false,
+                },
             );
         }
 
@@ -258,6 +273,7 @@ impl<'a> Checker<'a> {
         clause: &SuppressClause,
         receiver_name: &str,
         receiver_type: &Spanned<TypeExpr>,
+        condition_params: &[Param],
     ) {
         if let Some(event_info) = self.env.events.get(&clause.event_name).cloned() {
             // Push TriggerBinding scope — suppress binding expressions must be side-effect-free
@@ -271,6 +287,19 @@ impl<'a> Checker<'a> {
                     is_local: false,
                 },
             );
+
+            // Bind condition parameters in scope
+            for param in condition_params {
+                let ty = self.env.resolve_type(&param.ty);
+                self.scope.bind(
+                    param.name.clone(),
+                    VarBinding {
+                        ty,
+                        mutable: false,
+                        is_local: false,
+                    },
+                );
+            }
 
             // Validate bindings reference real event params or fields, and type-check values
             let mut seen_bindings = HashSet::new();

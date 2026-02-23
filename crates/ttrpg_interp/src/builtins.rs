@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use ttrpg_ast::Span;
 
 use crate::Env;
@@ -264,10 +265,11 @@ fn builtin_apply_condition(
     span: Span,
 ) -> Result<Value, RuntimeError> {
     match (args.first(), args.get(1), args.get(2)) {
-        (Some(Value::Entity(target)), Some(Value::Condition(cond_name)), Some(duration)) => {
+        (Some(Value::Entity(target)), Some(Value::Condition { name: cond_name, args: cond_args }), Some(duration)) => {
             let effect = Effect::ApplyCondition {
                 target: *target,
                 condition: cond_name.clone(),
+                params: cond_args.clone(),
                 duration: duration.clone(),
             };
             validate_mutation_response(env.handler.handle(effect), "ApplyCondition", span)?;
@@ -278,6 +280,7 @@ fn builtin_apply_condition(
             let effect = Effect::ApplyCondition {
                 target: *target,
                 condition: cond_name.clone(),
+                params: BTreeMap::new(),
                 duration: duration.clone(),
             };
             validate_mutation_response(env.handler.handle(effect), "ApplyCondition", span)?;
@@ -310,10 +313,11 @@ fn builtin_remove_condition(
     span: Span,
 ) -> Result<Value, RuntimeError> {
     match (args.first(), args.get(1)) {
-        (Some(Value::Entity(target)), Some(Value::Condition(cond_name))) => {
+        (Some(Value::Entity(target)), Some(Value::Condition { name: cond_name, args: cond_args })) => {
             let effect = Effect::RemoveCondition {
                 target: *target,
                 condition: cond_name.clone(),
+                params: if cond_args.is_empty() { None } else { Some(cond_args.clone()) },
             };
             validate_mutation_response(env.handler.handle(effect), "RemoveCondition", span)?;
             Ok(Value::None)
@@ -322,6 +326,7 @@ fn builtin_remove_condition(
             let effect = Effect::RemoveCondition {
                 target: *target,
                 condition: cond_name.clone(),
+                params: None,
             };
             validate_mutation_response(env.handler.handle(effect), "RemoveCondition", span)?;
             Ok(Value::None)
@@ -381,7 +386,7 @@ fn type_name(val: &Value) -> &'static str {
         Value::Entity(_) => "Entity",
         Value::EnumVariant { .. } => "EnumVariant",
         Value::Position(_) => "Position",
-        Value::Condition(_) => "Condition",
+        Value::Condition { .. } => "Condition",
         Value::EnumNamespace(_) => "EnumNamespace",
     }
 }

@@ -62,9 +62,9 @@ system "D&D 5e Expanded" {
         failure
     }
 
-    // PAIN POINT: Can't represent the 5e condition "levels" (Exhaustion
-    // has 6 tiers). Conditions are binary — parameterized conditions
-    // are still missing.                                               [ttrpg_dsl-iuw]
+    // RESOLVED: Parameterized conditions now support Exhaustion levels:
+    //     condition Exhaustion(level: int) on bearer: Character { ... }
+    // Apply with: apply_condition(target, Exhaustion(level: 3), dur)
 
     // PAIN POINT: Enums can't have associated data beyond variant payloads.
     // Each Skill has a corresponding Ability — the derive approach works
@@ -1014,18 +1014,17 @@ system "D&D 5e Expanded" {
         // "Grappling" condition on the grappler.
     }
 
-    condition Frightened on bearer: Character {
+    condition Frightened(source: Character) on bearer: Character {
         modify attack_roll(attacker: bearer) {
             mode = disadvantage
         }
         modify skill_check(actor: bearer) {
             mode = disadvantage
         }
-        // PAIN POINT: Frightened says "can't willingly move closer to    [ttrpg_dsl-iuw]
-        // the source of fear". Needs parameterized conditions:
-        //     condition Frightened(source: Character) on bearer: Character {
-        //         suppress move_toward(entity: bearer, target: source)
-        //     }
+        // RESOLVED: Parameterized conditions now allow expressing
+        // "can't willingly move closer to the source of fear":
+        //     suppress move_toward(entity: bearer, target: source)
+        // (Requires move_toward event definition — not yet in this example)
     }
 
     condition Poisoned on bearer: Character {
@@ -1191,43 +1190,43 @@ system "D&D 5e Expanded" {
     //
     //  REMAINING language gaps:
     //
-    //  1. NO PARAMETERIZED CONDITIONS                             [ttrpg_dsl-iuw]
-    //     - Frightened needs a "source" entity
-    //     - Exhaustion needs a level (1-6)
-    //     - Grappled needs a reference to the grappler
+    //  [RESOLVED] PARAMETERIZED CONDITIONS                        [ttrpg_dsl-iuw]
+    //     - Frightened(source: Character), Exhaustion(level: int), etc.
+    //     - Condition params accessible in modify/suppress clause bodies
+    //     - Targeted removal: remove_condition(target, Frightened(source: x))
     //
-    //  2. NO CONDITION COMPOSITION / INHERITANCE                  [ttrpg_dsl-7r4]
+    //  1. NO CONDITION COMPOSITION / INHERITANCE                  [ttrpg_dsl-7r4]
     //     - Stunned includes Incapacitated's effects (must duplicate)
     //     - Unconscious includes Prone + Incapacitated
     //
-    //  3. NO AUTO-SUCCEED / AUTO-FAIL                             [ttrpg_dsl-34x]
+    //  2. NO AUTO-SUCCEED / AUTO-FAIL                             [ttrpg_dsl-34x]
     //     - Stunned auto-fails STR/DEX saves (not just disadvantage)
     //     - "Advantage/disadvantage" is the only roll modifier
     //
-    //  4. NO TYPED PROMPTS                                        [ttrpg_dsl-ctc]
+    //  3. NO TYPED PROMPTS                                        [ttrpg_dsl-ctc]
     //     - choose() returns string, not a typed entity reference
     //
-    //  5. NO COST OVERRIDES / FREE ACTIONS                        [ttrpg_dsl-xh9]
+    //  4. NO COST OVERRIDES / FREE ACTIONS                        [ttrpg_dsl-xh9]
     //     - Cunning Action changes cost of existing actions
     //     - No way to say "this costs nothing" explicitly
     //
-    //  6. NO AUTOMATIC EVENT EMISSION                             [ttrpg_dsl-clo]
+    //  5. NO AUTOMATIC EVENT EMISSION                             [ttrpg_dsl-clo]
     //     - HP changes don't auto-fire takes_damage
     //     - Host must manually fire all events
     //
-    //  7. NO POSITION ARITHMETIC                                  [ttrpg_dsl-586]
+    //  6. NO POSITION ARITHMETIC                                  [ttrpg_dsl-586]
     //     - Can't compute "5 feet away from X toward Y"
     //     - Can't check "is between A and B" (flanking)
     //     - Position is opaque — only distance() is available
     //
-    //  8. NO UNION TYPES                                          [ttrpg_dsl-q5l]
+    //  7. NO UNION TYPES                                          [ttrpg_dsl-q5l]
     //     - Can't express DamageSource = Weapon | Spell | Environment
     //     - No tuple or multiple return values
     //
-    //  9. SINGLE REQUIRES BLOCK PER ACTION                        [ttrpg_dsl-mcy]
+    //  8. SINGLE REQUIRES BLOCK PER ACTION                        [ttrpg_dsl-mcy]
     //     - Must combine with && (multiline works, but verbose)
     //
-    // 10. NO DEFAULT FOR DiceExpr FIELDS                          [ttrpg_dsl-46i]
+    //  9. NO DEFAULT FOR DiceExpr FIELDS                          [ttrpg_dsl-46i]
     //     - sneak_attack_dice uses int (number of d6s) instead
     //
     // 11. NO STRUCT UPDATE SYNTAX                                 [ttrpg_dsl-kmy]

@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 
 use ttrpg_ast::ast::ConditionClause;
 use ttrpg_checker::ty::Ty;
@@ -417,6 +417,7 @@ fn is_suppressed(
                     &suppress.bindings,
                     &cond_decl.receiver_name,
                     &Value::Entity(condition.bearer),
+                    &condition.params,
                     event_params,
                     event_fields,
                     payload_fields,
@@ -440,12 +441,17 @@ fn check_suppress_bindings(
     bindings: &[ttrpg_ast::ast::ModifyBinding],
     receiver_name: &str,
     bearer: &Value,
+    condition_params: &BTreeMap<String, Value>,
     event_params: &[ttrpg_checker::env::ParamInfo],
     event_fields: &[(String, Ty)],
     payload_fields: &std::collections::BTreeMap<String, Value>,
 ) -> Result<bool, RuntimeError> {
     env.push_scope();
     env.bind(receiver_name.to_string(), bearer.clone());
+    // Bind condition params (e.g., source, level)
+    for (name, val) in condition_params {
+        env.bind(name.clone(), val.clone());
+    }
 
     let result = check_suppress_bindings_inner(
         env,
@@ -1069,6 +1075,7 @@ mod tests {
             }),
             DeclKind::Condition(ConditionDecl {
                 name: "Stunned".into(),
+                params: vec![],
                 receiver_name: "bearer".into(),
                 receiver_type: spanned(TypeExpr::Named("Character".into())),
                 receiver_with_groups: vec![],
@@ -1110,6 +1117,7 @@ mod tests {
             "Stunned".into(),
             ConditionInfo {
                 name: "Stunned".into(),
+                params: vec![],
                 receiver_name: "bearer".into(),
                 receiver_type: Ty::Entity("Character".into()),
             },
@@ -1123,6 +1131,7 @@ mod tests {
             vec![ActiveCondition {
                 id: 500,
                 name: "Stunned".into(),
+                params: BTreeMap::new(),
                 bearer: EntityRef(1),
                 gained_at: 1,
                 duration: Value::None,
@@ -1217,6 +1226,7 @@ mod tests {
             }),
             DeclKind::Condition(ConditionDecl {
                 name: "Silenced".into(),
+                params: vec![],
                 receiver_name: "bearer".into(),
                 receiver_type: spanned(TypeExpr::Named("Character".into())),
                 receiver_with_groups: vec![],
@@ -1271,6 +1281,7 @@ mod tests {
             "Silenced".into(),
             ConditionInfo {
                 name: "Silenced".into(),
+                params: vec![],
                 receiver_name: "bearer".into(),
                 receiver_type: Ty::Entity("Character".into()),
             },
@@ -1284,6 +1295,7 @@ mod tests {
             vec![ActiveCondition {
                 id: 600,
                 name: "Silenced".into(),
+                params: BTreeMap::new(),
                 bearer: EntityRef(1),
                 gained_at: 1,
                 duration: Value::None,

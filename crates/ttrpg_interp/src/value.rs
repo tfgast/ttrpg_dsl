@@ -118,7 +118,10 @@ pub enum Value {
     Position(PositionValue),
 
     // Special
-    Condition(String),
+    Condition {
+        name: String,
+        args: BTreeMap<String, Value>,
+    },
 
     /// Internal: an enum type name used as a namespace for qualified variant
     /// access (e.g., `Duration.rounds`). Not a user-facing value — only
@@ -183,7 +186,7 @@ fn discriminant(v: &Value) -> u8 {
         Value::Entity(_) => 12,
         Value::EnumVariant { .. } => 13,
         Value::Position(_) => 14,
-        Value::Condition(_) => 15,
+        Value::Condition { .. } => 15,
         Value::EnumNamespace(_) => 16,
     }
 }
@@ -236,7 +239,10 @@ impl PartialEq for Value {
                 },
             ) => e1 == e2 && v1 == v2 && f1 == f2,
             (Value::Position(a), Value::Position(b)) => a == b,
-            (Value::Condition(a), Value::Condition(b)) => a == b,
+            (
+                Value::Condition { name: n1, args: a1 },
+                Value::Condition { name: n2, args: a2 },
+            ) => n1 == n2 && a1 == a2,
             (Value::EnumNamespace(a), Value::EnumNamespace(b)) => a == b,
             _ => false,
         }
@@ -305,7 +311,10 @@ impl Ord for Value {
                 .then_with(|| v1.cmp(v2))
                 .then_with(|| btree_map_cmp(f1, f2)),
             (Value::Position(a), Value::Position(b)) => a.cmp(b),
-            (Value::Condition(a), Value::Condition(b)) => a.cmp(b),
+            (
+                Value::Condition { name: n1, args: a1 },
+                Value::Condition { name: n2, args: a2 },
+            ) => n1.cmp(n2).then_with(|| btree_map_cmp(a1, a2)),
             (Value::EnumNamespace(a), Value::EnumNamespace(b)) => a.cmp(b),
             // Same discriminant guarantees same variant.
             _ => unreachable!(),
@@ -433,7 +442,13 @@ impl std::hash::Hash for Value {
             Value::Position(v) => {
                 (Arc::as_ptr(&v.0) as *const () as usize).hash(state);
             }
-            Value::Condition(v) => v.hash(state),
+            Value::Condition { name, args } => {
+                name.hash(state);
+                for (k, v) in args {
+                    k.hash(state);
+                    v.hash(state);
+                }
+            }
             Value::EnumNamespace(v) => v.hash(state),
         }
     }
@@ -808,7 +823,7 @@ mod tests {
                 Value::Position(PositionValue(Arc::clone(&pos))),
                 Value::Position(PositionValue(Arc::new(99i64))),
             ),
-            (Value::Condition("Prone".into()), Value::Condition("Prone".into()), Value::Condition("Stunned".into())),
+            (Value::Condition { name: "Prone".into(), args: BTreeMap::new() }, Value::Condition { name: "Prone".into(), args: BTreeMap::new() }, Value::Condition { name: "Stunned".into(), args: BTreeMap::new() }),
         ];
 
         for (a, b_eq, b_ne) in &pairs {

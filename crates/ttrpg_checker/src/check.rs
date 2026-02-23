@@ -353,10 +353,11 @@ impl<'a> Checker<'a> {
                     self.check_modify_clause(
                         m,
                         Some((&c.receiver_name, &c.receiver_type, &c.receiver_with_groups)),
+                        &c.params,
                     );
                 }
                 ConditionClause::Suppress(s) => {
-                    self.check_suppress_clause(s, &c.receiver_name, &c.receiver_type);
+                    self.check_suppress_clause(s, &c.receiver_name, &c.receiver_type, &c.params);
                 }
             }
         }
@@ -365,7 +366,7 @@ impl<'a> Checker<'a> {
     fn check_option(&mut self, o: &OptionDecl) {
         if let Some(ref clauses) = o.when_enabled {
             for clause in clauses {
-                self.check_modify_clause(clause, None);
+                self.check_modify_clause(clause, None, &[]);
             }
         }
     }

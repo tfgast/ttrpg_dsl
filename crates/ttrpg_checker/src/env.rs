@@ -85,6 +85,7 @@ pub struct ParamInfo {
 #[derive(Debug, Clone)]
 pub struct ConditionInfo {
     pub name: String,
+    pub params: Vec<ParamInfo>,
     pub receiver_name: String,
     pub receiver_type: Ty,
 }

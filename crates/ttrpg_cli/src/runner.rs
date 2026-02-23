@@ -1963,7 +1963,7 @@ fn value_matches_ty(val: &Value, ty: &Ty) -> bool {
         (Value::RollResult(_), Ty::RollResult) => true,
         (Value::Position(_), Ty::Position) => true,
         (Value::EnumVariant { enum_name, .. }, Ty::Duration) => enum_name == "Duration",
-        (Value::Condition(_), Ty::Condition) => true,
+        (Value::Condition { .. }, Ty::Condition) => true,
         _ => false,
     }
 }
@@ -1986,7 +1986,7 @@ fn value_type_display(val: &Value) -> String {
         Value::DiceExpr(_) => "DiceExpr".into(),
         Value::RollResult(_) => "RollResult".into(),
         Value::Position(_) => "Position".into(),
-        Value::Condition(_) => "Condition".into(),
+        Value::Condition { .. } => "Condition".into(),
         Value::EnumNamespace(name) => format!("{}(namespace)", name),
     }
 }

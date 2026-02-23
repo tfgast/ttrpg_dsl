@@ -1341,6 +1341,7 @@ fn prone_on_attacker_disadvantage() {
     state.apply_condition(
         &fighter,
         "Prone",
+        BTreeMap::new(),
         duration_variant("indefinite"),
     );
 
@@ -1406,6 +1407,7 @@ fn prone_on_target_melee_advantage() {
     state.apply_condition(
         &goblin,
         "Prone",
+        BTreeMap::new(),
         duration_variant("indefinite"),
     );
 
@@ -1519,6 +1521,7 @@ fn prone_on_target_ranged_disadvantage() {
     state.apply_condition(
         &goblin,
         "Prone",
+        BTreeMap::new(),
         duration_variant("indefinite"),
     );
 
@@ -1575,6 +1578,7 @@ fn prone_modifies_initial_budget() {
     state.apply_condition(
         &fighter,
         "Prone",
+        BTreeMap::new(),
         duration_variant("indefinite"),
     );
 
@@ -1620,6 +1624,7 @@ fn disengaging_suppresses_entity_leaves_reach() {
     state.apply_condition(
         &goblin,
         "Disengaging",
+        BTreeMap::new(),
         duration_variant("end_of_turn"),
     );
 

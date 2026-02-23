@@ -212,28 +212,43 @@ impl EffectHandler for CliHandler<'_> {
             Effect::ApplyCondition {
                 target,
                 condition,
+                params,
                 duration,
             } => {
                 let name = self.entity_name(&target);
                 self.game_state
                     .borrow_mut()
-                    .apply_condition(&target, &condition, duration.clone());
-                self.log.push(format!(
-                    "[ApplyCondition] {} gains {} ({:?})",
-                    name, condition, duration,
-                ));
+                    .apply_condition(&target, &condition, params.clone(), duration.clone());
+                if params.is_empty() {
+                    self.log.push(format!(
+                        "[ApplyCondition] {} gains {} ({:?})",
+                        name, condition, duration,
+                    ));
+                } else {
+                    self.log.push(format!(
+                        "[ApplyCondition] {} gains {}({:?}) ({:?})",
+                        name, condition, params, duration,
+                    ));
+                }
                 Response::Acknowledged
             }
 
-            Effect::RemoveCondition { target, condition } => {
+            Effect::RemoveCondition { target, condition, params } => {
                 let name = self.entity_name(&target);
                 self.game_state
                     .borrow_mut()
-                    .remove_condition(&target, &condition);
-                self.log.push(format!(
-                    "[RemoveCondition] {} loses {}",
-                    name, condition,
-                ));
+                    .remove_condition(&target, &condition, params.as_ref());
+                if let Some(ref p) = params {
+                    self.log.push(format!(
+                        "[RemoveCondition] {} loses {}({:?})",
+                        name, condition, p,
+                    ));
+                } else {
+                    self.log.push(format!(
+                        "[RemoveCondition] {} loses {}",
+                        name, condition,
+                    ));
+                }
                 Response::Acknowledged
             }
 

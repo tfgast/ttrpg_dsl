@@ -101,7 +101,17 @@ impl<'a> Checker<'a> {
         }
 
         // Check if it's a condition name
-        if self.env.conditions.contains_key(name) {
+        if let Some(cond_info) = self.env.conditions.get(name) {
+            let required_params = cond_info.params.iter().filter(|p| !p.has_default).count();
+            if required_params > 0 {
+                self.error(
+                    format!(
+                        "condition `{}` requires {} parameter(s); use `{}(...)` to supply them",
+                        name, required_params, name
+                    ),
+                    span,
+                );
+            }
             return Ty::Condition;
         }
 
@@ -783,6 +793,44 @@ impl<'a> Checker<'a> {
                 self.check_expr(&arg.value);
             }
             return Ty::Error;
+        }
+
+        // Check if it's a condition call (e.g., Frightened(source: attacker))
+        if let Some(cond_info) = self.env.conditions.get(&callee_name).cloned() {
+            // Type-check args against declared params
+            let required = cond_info.params.iter().filter(|p| !p.has_default).count();
+            if args.len() < required {
+                self.error(
+                    format!(
+                        "condition `{}` requires {} argument(s), got {}",
+                        callee_name, required, args.len()
+                    ),
+                    span,
+                );
+            } else if args.len() > cond_info.params.len() {
+                self.error(
+                    format!(
+                        "condition `{}` accepts at most {} argument(s), got {}",
+                        callee_name, cond_info.params.len(), args.len()
+                    ),
+                    span,
+                );
+            }
+            for (i, arg) in args.iter().enumerate() {
+                let arg_ty = self.check_expr(&arg.value);
+                if let Some(param) = cond_info.params.get(i) {
+                    if !arg_ty.is_error() && !self.types_compatible(&arg_ty, &param.ty) {
+                        self.error(
+                            format!(
+                                "condition `{}` parameter `{}` has type {}, got {}",
+                                callee_name, param.name, param.ty, arg_ty
+                            ),
+                            arg.value.span,
+                        );
+                    }
+                }
+            }
+            return Ty::Condition;
         }
 
         // Check if it's an enum variant constructor (bare name)

@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use ttrpg_ast::ast::AssignOp;
 
 use crate::state::EntityRef;
@@ -79,11 +80,14 @@ pub enum Effect {
     ApplyCondition {
         target: EntityRef,
         condition: String,
+        params: BTreeMap<String, Value>,
         duration: Value,
     },
     RemoveCondition {
         target: EntityRef,
         condition: String,
+        /// `None` = remove all matching the name. `Some(params)` = remove only matching params.
+        params: Option<BTreeMap<String, Value>>,
     },
     MutateTurnField {
         actor: EntityRef,

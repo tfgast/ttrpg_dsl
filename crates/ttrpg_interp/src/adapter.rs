@@ -242,6 +242,7 @@ fn apply_mutation<S: WritableState>(state: &mut S, effect: &Effect) {
         Effect::ApplyCondition {
             target,
             condition,
+            params,
             duration,
         } => {
             // The adapter creates an ActiveCondition. The host assigns a unique id
@@ -251,14 +252,15 @@ fn apply_mutation<S: WritableState>(state: &mut S, effect: &Effect) {
                 ActiveCondition {
                     id: 0, // WritableState impl is responsible for assigning a unique id
                     name: condition.clone(),
+                    params: params.clone(),
                     bearer: *target,
                     gained_at: 0, // WritableState impl assigns ordering timestamp
                     duration: duration.clone(),
                 },
             );
         }
-        Effect::RemoveCondition { target, condition } => {
-            state.remove_condition(target, condition);
+        Effect::RemoveCondition { target, condition, params } => {
+            state.remove_condition(target, condition, params.as_ref());
         }
         Effect::MutateTurnField {
             actor,
@@ -319,25 +321,26 @@ fn apply_mutation_with_override<S: WritableState>(
             state.write_turn_field(actor, field, final_value);
         }
         Effect::ApplyCondition {
-            target, condition, ..
+            target, condition, params, ..
         } => {
             state.add_condition(
                 target,
                 ActiveCondition {
                     id: 0,
                     name: condition.clone(),
+                    params: params.clone(),
                     bearer: *target,
                     gained_at: 0,
                     duration: override_val.clone(),
                 },
             );
         }
-        Effect::RemoveCondition { target, condition } => {
+        Effect::RemoveCondition { target, condition, params } => {
             if let Value::Str(name) = override_val {
-                state.remove_condition(target, name);
+                state.remove_condition(target, name, None);
             } else {
                 // Non-string override: fall back to original condition name
-                state.remove_condition(target, condition);
+                state.remove_condition(target, condition, params.as_ref());
             }
         }
         Effect::GrantGroup {
@@ -587,9 +590,17 @@ mod tests {
             self.conditions.entry(entity.0).or_default().push(cond);
         }
 
-        fn remove_condition(&mut self, entity: &EntityRef, name: &str) {
+        fn remove_condition(&mut self, entity: &EntityRef, name: &str, params: Option<&BTreeMap<String, Value>>) {
             if let Some(conds) = self.conditions.get_mut(&entity.0) {
-                conds.retain(|c| c.name != name);
+                conds.retain(|c| {
+                    if c.name != name {
+                        return true;
+                    }
+                    match params {
+                        None => false,
+                        Some(p) => &c.params != p,
+                    }
+                });
             }
         }
 
@@ -861,6 +872,7 @@ mod tests {
             handler.handle(Effect::ApplyCondition {
                 target: EntityRef(1),
                 condition: "Prone".into(),
+                params: BTreeMap::new(),
                 duration: duration_variant("end_of_turn"),
             })
         });
@@ -882,6 +894,7 @@ mod tests {
             vec![ActiveCondition {
                 id: 1,
                 name: "Prone".into(),
+                params: BTreeMap::new(),
                 bearer: EntityRef(1),
                 gained_at: 1,
                 duration: duration_variant("end_of_turn"),
@@ -894,6 +907,7 @@ mod tests {
             handler.handle(Effect::RemoveCondition {
                 target: EntityRef(1),
                 condition: "Prone".into(),
+                params: None,
             })
         });
 
@@ -1119,6 +1133,7 @@ mod tests {
             handler.handle(Effect::ApplyCondition {
                 target: EntityRef(1),
                 condition: "Prone".into(),
+                params: BTreeMap::new(),
                 duration: duration_variant("end_of_turn"),
             })
         });
@@ -1150,6 +1165,7 @@ mod tests {
                 ActiveCondition {
                     id: 1,
                     name: "Prone".into(),
+                    params: BTreeMap::new(),
                     bearer: EntityRef(1),
                     gained_at: 1,
                     duration: duration_variant("end_of_turn"),
@@ -1157,6 +1173,7 @@ mod tests {
                 ActiveCondition {
                     id: 2,
                     name: "Frightened".into(),
+                    params: BTreeMap::new(),
                     bearer: EntityRef(1),
                     gained_at: 2,
                     duration: duration_variant("rounds"),
@@ -1172,6 +1189,7 @@ mod tests {
             handler.handle(Effect::RemoveCondition {
                 target: EntityRef(1),
                 condition: "Prone".into(),
+                params: None,
             })
         });
 

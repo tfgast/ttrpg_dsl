@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 
 use ttrpg_ast::ast::{ConditionClause, ModifyClause, ModifyStmt};
 use ttrpg_checker::env::FnInfo;
@@ -82,6 +82,7 @@ pub(crate) fn collect_modifiers_owned(
                             clause: clause.clone(),
                             bearer: Some(Value::Entity(condition.bearer)),
                             receiver_name: Some(cond_decl.receiver_name.clone()),
+                            condition_params: condition.params.clone(),
                         },
                     ));
                 }
@@ -127,6 +128,7 @@ pub(crate) fn collect_modifiers_owned(
                     clause: clause.clone(),
                     bearer: None,
                     receiver_name: None,
+                    condition_params: BTreeMap::new(),
                 });
             }
         }
@@ -141,6 +143,8 @@ pub(crate) struct OwnedModifier {
     pub clause: ModifyClause,
     pub bearer: Option<Value>,
     pub receiver_name: Option<String>,
+    /// Condition parameters (e.g., source: Entity(1) for Frightened(source: attacker)).
+    pub condition_params: BTreeMap<String, Value>,
 }
 
 /// Check if a condition modify clause's bindings match the current call params.
@@ -174,9 +178,13 @@ fn check_modify_bindings(
             None => return Ok(false),
         };
 
-        // Evaluate binding expression in a temporary scope with receiver + params bound
+        // Evaluate binding expression in a temporary scope with receiver + condition params + fn params bound
         env.push_scope();
         env.bind(receiver_name.clone(), Value::Entity(condition.bearer));
+        // Bind condition params (e.g., source, level)
+        for (name, val) in &condition.params {
+            env.bind(name.clone(), val.clone());
+        }
         for (name, val) in bound_params {
             env.bind(name.clone(), val.clone());
         }
@@ -269,6 +277,11 @@ pub(crate) fn run_phase1(
             env.bind(recv_name.clone(), bearer.clone());
         }
 
+        // Bind condition params (e.g., source, level)
+        for (name, val) in &modifier.condition_params {
+            env.bind(name.clone(), val.clone());
+        }
+
         // Bind all params of the target function (read-only access for expressions)
         for (name, val) in &params {
             env.bind(name.clone(), val.clone());
@@ -335,6 +348,11 @@ pub(crate) fn run_phase2(
             (&modifier.bearer, &modifier.receiver_name)
         {
             env.bind(recv_name.clone(), bearer.clone());
+        }
+
+        // Bind condition params (e.g., source, level)
+        for (name, val) in &modifier.condition_params {
+            env.bind(name.clone(), val.clone());
         }
 
         // Bind all params of the target function
@@ -789,6 +807,7 @@ mod tests {
             }),
             DeclKind::Condition(ConditionDecl {
                 name: "Prone".into(),
+                params: vec![],
                 receiver_name: "target".into(),
                 receiver_type: spanned(TypeExpr::Named("Character".into())),
                 receiver_with_groups: vec![],
@@ -837,6 +856,7 @@ mod tests {
             "Prone".into(),
             ConditionInfo {
                 name: "Prone".into(),
+                params: vec![],
                 receiver_name: "target".into(),
                 receiver_type: Ty::Entity("Character".into()),
             },
@@ -850,6 +870,7 @@ mod tests {
             vec![ActiveCondition {
                 id: 100,
                 name: "Prone".into(),
+                params: BTreeMap::new(),
                 bearer: EntityRef(1),
                 gained_at: 5,
                 duration: Value::None,
@@ -949,6 +970,7 @@ mod tests {
             }),
             DeclKind::Condition(ConditionDecl {
                 name: "Boosted".into(),
+                params: vec![],
                 receiver_name: "target".into(),
                 receiver_type: spanned(TypeExpr::Named("Character".into())),
                 receiver_with_groups: vec![],
@@ -989,6 +1011,7 @@ mod tests {
             "Boosted".into(),
             ConditionInfo {
                 name: "Boosted".into(),
+                params: vec![],
                 receiver_name: "target".into(),
                 receiver_type: Ty::Entity("Character".into()),
             },
@@ -1001,6 +1024,7 @@ mod tests {
             vec![ActiveCondition {
                 id: 200,
                 name: "Boosted".into(),
+                params: BTreeMap::new(),
                 bearer: EntityRef(1),
                 gained_at: 3,
                 duration: Value::None,
@@ -1097,6 +1121,7 @@ mod tests {
             }),
             DeclKind::Condition(ConditionDecl {
                 name: "Alpha".into(),
+                params: vec![],
                 receiver_name: "t".into(),
                 receiver_type: spanned(TypeExpr::Named("Character".into())),
                 receiver_with_groups: vec![],
@@ -1121,6 +1146,7 @@ mod tests {
             }),
             DeclKind::Condition(ConditionDecl {
                 name: "Beta".into(),
+                params: vec![],
                 receiver_name: "t".into(),
                 receiver_type: spanned(TypeExpr::Named("Character".into())),
                 receiver_with_groups: vec![],
@@ -1173,6 +1199,7 @@ mod tests {
             "Alpha".into(),
             ConditionInfo {
                 name: "Alpha".into(),
+                params: vec![],
                 receiver_name: "t".into(),
                 receiver_type: Ty::Entity("Character".into()),
             },
@@ -1181,6 +1208,7 @@ mod tests {
             "Beta".into(),
             ConditionInfo {
                 name: "Beta".into(),
+                params: vec![],
                 receiver_name: "t".into(),
                 receiver_type: Ty::Entity("Character".into()),
             },
@@ -1195,6 +1223,7 @@ mod tests {
                 ActiveCondition {
                     id: 1,
                     name: "Alpha".into(),
+                    params: BTreeMap::new(),
                     bearer: EntityRef(1),
                     gained_at: 10,
                     duration: Value::None,
@@ -1202,6 +1231,7 @@ mod tests {
                 ActiveCondition {
                     id: 2,
                     name: "Beta".into(),
+                    params: BTreeMap::new(),
                     bearer: EntityRef(1),
                     gained_at: 5,
                     duration: Value::None,
@@ -1303,6 +1333,7 @@ mod tests {
             }),
             DeclKind::Condition(ConditionDecl {
                 name: "Buff".into(),
+                params: vec![],
                 receiver_name: "t".into(),
                 receiver_type: spanned(TypeExpr::Named("Character".into())),
                 receiver_with_groups: vec![],
@@ -1375,6 +1406,7 @@ mod tests {
             "Buff".into(),
             ConditionInfo {
                 name: "Buff".into(),
+                params: vec![],
                 receiver_name: "t".into(),
                 receiver_type: Ty::Entity("Character".into()),
             },
@@ -1388,6 +1420,7 @@ mod tests {
             vec![ActiveCondition {
                 id: 10,
                 name: "Buff".into(),
+                params: BTreeMap::new(),
                 bearer: EntityRef(1),
                 gained_at: 1,
                 duration: Value::None,
@@ -1486,6 +1519,7 @@ mod tests {
             }),
             DeclKind::Condition(ConditionDecl {
                 name: "Shared".into(),
+                params: vec![],
                 receiver_name: "t".into(),
                 receiver_type: spanned(TypeExpr::Named("Character".into())),
                 receiver_with_groups: vec![],
@@ -1534,6 +1568,7 @@ mod tests {
             "Shared".into(),
             ConditionInfo {
                 name: "Shared".into(),
+                params: vec![],
                 receiver_name: "t".into(),
                 receiver_type: Ty::Entity("Character".into()),
             },
@@ -1547,6 +1582,7 @@ mod tests {
             vec![ActiveCondition {
                 id: 42,
                 name: "Shared".into(),
+                params: BTreeMap::new(),
                 bearer: EntityRef(1),
                 gained_at: 1,
                 duration: Value::None,
@@ -1818,6 +1854,7 @@ mod tests {
             }),
             DeclKind::Condition(ConditionDecl {
                 name: "Buff".into(),
+                params: vec![],
                 receiver_name: "t".into(),
                 receiver_type: spanned(TypeExpr::Named("Character".into())),
                 receiver_with_groups: vec![],
@@ -1870,6 +1907,7 @@ mod tests {
             "Buff".into(),
             ConditionInfo {
                 name: "Buff".into(),
+                params: vec![],
                 receiver_name: "t".into(),
                 receiver_type: Ty::Entity("Character".into()),
             },
@@ -1882,6 +1920,7 @@ mod tests {
             vec![ActiveCondition {
                 id: 10,
                 name: "Buff".into(),
+                params: BTreeMap::new(),
                 bearer: EntityRef(1),
                 gained_at: 1,
                 duration: Value::None,

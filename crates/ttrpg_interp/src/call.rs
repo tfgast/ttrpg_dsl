@@ -37,7 +37,28 @@ pub(crate) fn eval_call(
                 return construct_enum_variant(env, &enum_name, name, args, call_span);
             }
 
-            // 2. Check if it's a function (user-defined or builtin)
+            // 2. Check if it's a condition with parameters (e.g., Frightened(source: attacker))
+            if let Some(cond_decl) = env.interp.program.conditions.get(name.as_str()) {
+                let cond_decl = cond_decl.clone();
+                let mut cond_args = BTreeMap::new();
+                // Match positional args to declared params
+                for (i, arg) in args.iter().enumerate() {
+                    let param_name = match &arg.name {
+                        Some(n) => n.clone(),
+                        None => cond_decl.params.get(i)
+                            .map(|p| p.name.clone())
+                            .ok_or_else(|| RuntimeError::with_span(
+                                format!("condition '{}' expects {} parameters, got {}", name, cond_decl.params.len(), args.len()),
+                                call_span,
+                            ))?,
+                    };
+                    let val = eval_expr(env, &arg.value)?;
+                    cond_args.insert(param_name, val);
+                }
+                return Ok(Value::Condition { name: name.to_string(), args: cond_args });
+            }
+
+            // 3. Check if it's a function (user-defined or builtin)
             if let Some(fn_info) = env.interp.type_env.lookup_fn(name) {
                 let fn_info = fn_info.clone();
                 return dispatch_fn(env, &fn_info, args, call_span);
@@ -1484,7 +1505,7 @@ mod tests {
         let mut env = make_env(&state, &mut handler, &interp);
 
         env.bind("target".into(), Value::Entity(EntityRef(1)));
-        env.bind("cond".into(), Value::Condition("Prone".into()));
+        env.bind("cond".into(), Value::Condition { name: "Prone".into(), args: BTreeMap::new() });
         env.bind("dur".into(), {
             let mut f = BTreeMap::new();
             f.insert("count".into(), Value::Int(3));
@@ -1522,7 +1543,7 @@ mod tests {
         let mut env = make_env(&state, &mut handler, &interp);
 
         env.bind("target".into(), Value::Entity(EntityRef(2)));
-        env.bind("cond".into(), Value::Condition("Stunned".into()));
+        env.bind("cond".into(), Value::Condition { name: "Stunned".into(), args: BTreeMap::new() });
 
         let expr = spanned(ExprKind::Call {
             callee: Box::new(spanned(ExprKind::Ident("remove_condition".into()))),
@@ -1536,7 +1557,7 @@ mod tests {
 
         assert_eq!(handler.log.len(), 1);
         match &handler.log[0] {
-            Effect::RemoveCondition { target, condition } => {
+            Effect::RemoveCondition { target, condition, .. } => {
                 assert_eq!(target.0, 2);
                 assert_eq!(condition, "Stunned");
             }
@@ -2223,7 +2244,7 @@ mod tests {
         let mut env = make_env(&state, &mut handler, &interp);
 
         env.bind("target".into(), Value::Entity(EntityRef(1)));
-        env.bind("cond".into(), Value::Condition("Prone".into()));
+        env.bind("cond".into(), Value::Condition { name: "Prone".into(), args: BTreeMap::new() });
         env.bind("dur".into(), {
             let mut f = BTreeMap::new();
             f.insert("count".into(), Value::Int(3));
@@ -2256,7 +2277,7 @@ mod tests {
         let mut env = make_env(&state, &mut handler, &interp);
 
         env.bind("target".into(), Value::Entity(EntityRef(1)));
-        env.bind("cond".into(), Value::Condition("Prone".into()));
+        env.bind("cond".into(), Value::Condition { name: "Prone".into(), args: BTreeMap::new() });
         env.bind("dur".into(), {
             let mut f = BTreeMap::new();
             f.insert("count".into(), Value::Int(3));
@@ -2287,7 +2308,7 @@ mod tests {
         let mut env = make_env(&state, &mut handler, &interp);
 
         env.bind("target".into(), Value::Entity(EntityRef(2)));
-        env.bind("cond".into(), Value::Condition("Stunned".into()));
+        env.bind("cond".into(), Value::Condition { name: "Stunned".into(), args: BTreeMap::new() });
 
         let expr = spanned(ExprKind::Call {
             callee: Box::new(spanned(ExprKind::Ident("remove_condition".into()))),

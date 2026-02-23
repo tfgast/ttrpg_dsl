@@ -720,6 +720,19 @@ fn collect_condition(
         return;
     }
 
+    // Validate and resolve condition params
+    let mut param_infos = Vec::new();
+    for param in &c.params {
+        env.validate_type_names(&param.ty, diagnostics);
+        let ty = env.resolve_type(&param.ty);
+        param_infos.push(ParamInfo {
+            name: param.name.clone(),
+            ty,
+            has_default: param.default.is_some(),
+            with_groups: param.with_groups.clone(),
+        });
+    }
+
     env.validate_type_names(&c.receiver_type, diagnostics);
     let recv_ty = env.resolve_type(&c.receiver_type);
     if !recv_ty.is_error() && !recv_ty.is_entity() {
@@ -736,6 +749,7 @@ fn collect_condition(
         name.clone(),
         ConditionInfo {
             name: name.clone(),
+            params: param_infos,
             receiver_name: c.receiver_name.clone(),
             receiver_type: env.resolve_type(&c.receiver_type),
         },

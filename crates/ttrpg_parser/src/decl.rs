@@ -527,6 +527,15 @@ impl Parser {
     fn parse_condition_decl(&mut self) -> Result<ConditionDecl, ()> {
         self.expect_soft_keyword("condition")?;
         let (name, _) = self.expect_ident()?;
+        // Optional parameters: condition Frightened(source: Character) on ...
+        let params = if matches!(self.peek(), TokenKind::LParen) {
+            self.expect(&TokenKind::LParen)?;
+            let params = self.parse_params()?;
+            self.expect(&TokenKind::RParen)?;
+            params
+        } else {
+            Vec::new()
+        };
         self.expect_soft_keyword("on")?;
         let (receiver_name, _) = self.expect_ident()?;
         self.expect(&TokenKind::Colon)?;
@@ -554,6 +563,7 @@ impl Parser {
         self.expect(&TokenKind::RBrace)?;
         Ok(ConditionDecl {
             name,
+            params,
             receiver_name,
             receiver_type,
             receiver_with_groups,

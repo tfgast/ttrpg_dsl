@@ -738,6 +738,7 @@ system "test" {
             vec![ActiveCondition {
                 id: 100,
                 name: "Slow".into(),
+                params: BTreeMap::new(),
                 bearer: entity,
                 gained_at: 1,
                 duration: Value::None,
@@ -1271,6 +1272,7 @@ system "test" {
             vec![ActiveCondition {
                 id: 1,
                 name: "Stunned".into(),
+                params: BTreeMap::new(),
                 bearer: entity1,
                 gained_at: 1,
                 duration: Value::None,

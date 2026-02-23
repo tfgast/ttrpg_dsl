@@ -29,6 +29,9 @@ pub struct ActiveCondition {
     pub id: u64,
     /// Condition name (e.g., "Prone").
     pub name: String,
+    /// Condition parameters (e.g., `source: Entity(1)` for `Frightened(source: attacker)`).
+    /// Empty map for conditions with no parameters.
+    pub params: BTreeMap<String, Value>,
     /// Entity bearing this condition.
     pub bearer: EntityRef,
     /// Ordering timestamp (oldest first).
@@ -92,7 +95,9 @@ pub trait WritableState: StateProvider {
     fn add_condition(&mut self, entity: &EntityRef, cond: ActiveCondition);
 
     /// Remove a condition from an entity by name.
-    fn remove_condition(&mut self, entity: &EntityRef, name: &str);
+    /// If `params` is `Some`, only remove conditions whose params match.
+    /// If `params` is `None`, remove all conditions with the given name.
+    fn remove_condition(&mut self, entity: &EntityRef, name: &str, params: Option<&BTreeMap<String, Value>>);
 
     /// Write a value to a turn budget field.
     fn write_turn_field(&mut self, entity: &EntityRef, field: &str, value: Value);
@@ -185,6 +190,7 @@ mod tests {
             vec![ActiveCondition {
                 id: 100,
                 name: "Prone".into(),
+                params: BTreeMap::new(),
                 bearer: entity,
                 gained_at: 5,
                 duration: duration_variant("end_of_turn"),
@@ -231,6 +237,7 @@ mod tests {
         let cond = ActiveCondition {
             id: 42,
             name: "Stunned".into(),
+            params: BTreeMap::new(),
             bearer: EntityRef(1),
             gained_at: 10,
             duration: duration_variant("rounds"),

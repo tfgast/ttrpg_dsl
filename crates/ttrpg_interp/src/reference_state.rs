@@ -88,7 +88,7 @@ impl GameState {
     ///
     /// Silently does nothing if the entity doesn't exist, consistent
     /// with read paths that reject unknown entities.
-    pub fn apply_condition(&mut self, entity: &EntityRef, name: &str, duration: Value) {
+    pub fn apply_condition(&mut self, entity: &EntityRef, name: &str, params: BTreeMap<String, Value>, duration: Value) {
         if !self.entities.contains_key(&entity.0) {
             return;
         }
@@ -97,6 +97,7 @@ impl GameState {
         let cond = ActiveCondition {
             id,
             name: name.to_string(),
+            params,
             bearer: *entity,
             gained_at: id, // Use id as ordering timestamp for simplicity
             duration,
@@ -247,9 +248,17 @@ impl WritableState for GameState {
         self.conditions.entry(entity.0).or_default().push(cond);
     }
 
-    fn remove_condition(&mut self, entity: &EntityRef, name: &str) {
+    fn remove_condition(&mut self, entity: &EntityRef, name: &str, params: Option<&BTreeMap<String, Value>>) {
         if let Some(conds) = self.conditions.get_mut(&entity.0) {
-            conds.retain(|c| c.name != name);
+            conds.retain(|c| {
+                if c.name != name {
+                    return true; // different condition, keep
+                }
+                match params {
+                    None => false, // remove all with this name
+                    Some(p) => &c.params != p, // keep if params don't match
+                }
+            });
         }
     }
 
@@ -398,6 +407,7 @@ mod tests {
         state.apply_condition(
             &entity,
             "Prone",
+            BTreeMap::new(),
             duration_variant("end_of_turn"),
         );
 
@@ -416,15 +426,17 @@ mod tests {
         state.apply_condition(
             &entity,
             "Prone",
+            BTreeMap::new(),
             duration_variant("end_of_turn"),
         );
         state.apply_condition(
             &entity,
             "Stunned",
+            BTreeMap::new(),
             duration_variant("rounds"),
         );
 
-        state.remove_condition(&entity, "Prone");
+        state.remove_condition(&entity, "Prone", None);
 
         let conds = state.read_conditions(&entity).unwrap();
         assert_eq!(conds.len(), 1);
@@ -596,6 +608,7 @@ mod tests {
         let cond = ActiveCondition {
             id: 0,
             name: "Prone".into(),
+            params: BTreeMap::new(),
             bearer: entity,
             gained_at: 0,
             duration: duration_variant("end_of_turn"),
@@ -664,6 +677,7 @@ mod tests {
         state.apply_condition(
             &ghost,
             "Prone",
+            BTreeMap::new(),
             duration_variant("end_of_turn"),
         );
         assert!(state.read_conditions(&ghost).is_none());
@@ -681,6 +695,7 @@ mod tests {
         state.apply_condition(
             &entity,
             "Prone",
+            BTreeMap::new(),
             duration_variant("end_of_turn"),
         );
         let mut budget = BTreeMap::new();
@@ -708,6 +723,7 @@ mod tests {
         let cond = ActiveCondition {
             id: 0,
             name: "Prone".into(),
+            params: BTreeMap::new(),
             bearer: ghost,
             gained_at: 0,
             duration: duration_variant("end_of_turn"),

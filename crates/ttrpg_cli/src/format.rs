@@ -76,7 +76,17 @@ pub fn format_value(val: &Value) -> String {
 
         Value::Position(_) => "Position(...)".into(),
 
-        Value::Condition(name) => format!("Condition({})", name),
+        Value::Condition { name, args } => {
+            if args.is_empty() {
+                format!("Condition({})", name)
+            } else {
+                let inner: Vec<String> = args
+                    .iter()
+                    .map(|(k, v)| format!("{}: {}", k, format_value(v)))
+                    .collect();
+                format!("Condition({}({}))", name, inner.join(", "))
+            }
+        }
         Value::EnumNamespace(name) => format!("<enum {}>", name),
     }
 }
