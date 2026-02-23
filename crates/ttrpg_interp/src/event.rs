@@ -27,6 +27,19 @@ pub struct ReactionInfo {
     pub reactor: EntityRef,
 }
 
+/// Result of querying which hooks match an event.
+#[derive(Debug, Clone)]
+pub struct HookResult {
+    pub hooks: Vec<HookInfo>,
+}
+
+/// A matched hook with its target entity.
+#[derive(Debug, Clone)]
+pub struct HookInfo {
+    pub name: String,
+    pub target: EntityRef,
+}
+
 // ── Event firing ────────────────────────────────────────────────
 
 /// Fire an event and determine which reactions are triggered.
@@ -121,6 +134,72 @@ pub fn what_triggers(
         suppressed,
         triggerable,
     })
+}
+
+// ── Hook matching ────────────────────────────────────────────────
+
+/// Find all hooks that match an event.
+///
+/// Like `what_triggers`, this is a **pure query** — no effects are emitted.
+/// Hooks have no suppression logic: if the trigger bindings match, the hook fires.
+pub fn find_matching_hooks(
+    interp: &Interpreter,
+    state: &dyn StateProvider,
+    event_name: &str,
+    payload: &Value,
+    candidates: &[EntityRef],
+) -> Result<HookResult, RuntimeError> {
+    let event_info = match interp.type_env.events.get(event_name) {
+        Some(info) => info.clone(),
+        None => {
+            return Err(RuntimeError::new(format!(
+                "undefined event '{}'",
+                event_name
+            )));
+        }
+    };
+
+    let payload_fields = match payload {
+        Value::Struct { fields, .. } => fields,
+        _ => {
+            return Err(RuntimeError::new(
+                "event payload must be a Struct value",
+            ));
+        }
+    };
+
+    let mut noop_handler = NoopHandler;
+    let mut env = Env::new(state, &mut noop_handler, interp);
+
+    let mut hooks = Vec::new();
+
+    for hook_name in &interp.program.hook_order {
+        let hook_decl = &interp.program.hooks[hook_name];
+        if hook_decl.trigger.event_name != event_name {
+            continue;
+        }
+
+        for candidate in candidates {
+            if !match_trigger_bindings(
+                &mut env,
+                &hook_decl.trigger.bindings,
+                &hook_decl.receiver_name,
+                *candidate,
+                &event_info.params,
+                &event_info.fields,
+                payload_fields,
+            )? {
+                continue;
+            }
+
+            hooks.push(HookInfo {
+                name: hook_name.to_string(),
+                target: *candidate,
+            });
+        }
+    }
+
+    Ok(HookResult { hooks })
 }
 
 // ── Trigger matching ────────────────────────────────────────────

@@ -20,6 +20,7 @@ pub enum FieldPathSegment {
 pub enum ActionKind {
     Action,
     Reaction { event: String, trigger: Value },
+    Hook { event: String, trigger: Value },
 }
 
 /// Identifies the source of a modifier.

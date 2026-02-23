@@ -19,7 +19,7 @@ use ttrpg_ast::ast::{
 use ttrpg_checker::env::TypeEnv;
 
 use crate::effect::EffectHandler;
-use crate::event::EventResult;
+use crate::event::{EventResult, HookResult};
 use crate::state::{EntityRef, StateProvider};
 use crate::value::Value;
 
@@ -273,6 +273,74 @@ impl<'p> Interpreter<'p> {
         candidates: &[EntityRef],
     ) -> Result<EventResult, RuntimeError> {
         event::what_triggers(self, state, name, &payload, candidates)
+    }
+
+    /// Query which hooks would match for a given event.
+    ///
+    /// This is a **pure query** — no effects are emitted, no state is modified.
+    /// Hooks have no suppression logic; all matching hooks are returned.
+    /// `candidates` is the host-provided set of entities to consider.
+    pub fn what_hooks(
+        &self,
+        state: &dyn StateProvider,
+        name: &str,
+        payload: Value,
+        candidates: &[EntityRef],
+    ) -> Result<HookResult, RuntimeError> {
+        event::find_matching_hooks(self, state, name, &payload, candidates)
+    }
+
+    /// Execute a named hook through the full pipeline.
+    ///
+    /// `target` is the entity the hook is bound to. `event_payload`
+    /// is the event struct value that triggered the hook.
+    pub fn execute_hook(
+        &self,
+        state: &dyn StateProvider,
+        handler: &mut dyn EffectHandler,
+        name: &str,
+        target: EntityRef,
+        event_payload: Value,
+    ) -> Result<Value, RuntimeError> {
+        let hook_decl = self
+            .program
+            .hooks
+            .get(name)
+            .ok_or_else(|| RuntimeError::new(format!("undefined hook '{}'", name)))?;
+        let hook_decl = hook_decl.clone();
+
+        let mut env = Env::new(state, handler, self);
+        let span = Span::dummy();
+        action::execute_hook(&mut env, &hook_decl, target, event_payload, span)
+    }
+
+    /// Fire all hooks that match an event, executing each one.
+    ///
+    /// This is the convenience method that combines `what_hooks` + `execute_hook`
+    /// for each match. Returns the list of hook results in execution order.
+    pub fn fire_hooks(
+        &self,
+        state: &dyn StateProvider,
+        handler: &mut dyn EffectHandler,
+        event_name: &str,
+        payload: Value,
+        candidates: &[EntityRef],
+    ) -> Result<Vec<(String, EntityRef, Value)>, RuntimeError> {
+        let hook_result = self.what_hooks(state, event_name, payload.clone(), candidates)?;
+
+        let mut results = Vec::new();
+        for hook_info in hook_result.hooks {
+            let val = self.execute_hook(
+                state,
+                handler,
+                &hook_info.name,
+                hook_info.target,
+                payload.clone(),
+            )?;
+            results.push((hook_info.name, hook_info.target, val));
+        }
+
+        Ok(results)
     }
 }
 

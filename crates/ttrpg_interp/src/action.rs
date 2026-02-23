@@ -1,5 +1,5 @@
 use ttrpg_ast::Span;
-use ttrpg_ast::ast::{ActionDecl, ReactionDecl};
+use ttrpg_ast::ast::{ActionDecl, HookDecl, ReactionDecl};
 
 use crate::Env;
 use crate::RuntimeError;
@@ -307,6 +307,107 @@ fn execute_reaction_inner(
     // 4. Execute resolve block
     let resolve = reaction.resolve.clone();
     eval_block(env, &resolve)
+}
+
+// ── Hook execution ────────────────────────────────────────────
+
+/// Execute a hook through the pipeline:
+///
+/// 1. Emit `ActionStarted` with kind: Hook (veto → early return)
+/// 2. Bind scope: receiver + trigger payload, save/restore `turn_actor`
+/// 3. Execute resolve block (no cost deduction for hooks)
+/// 4. Emit `ActionCompleted`
+pub(crate) fn execute_hook(
+    env: &mut Env,
+    hook: &HookDecl,
+    target: EntityRef,
+    event_payload: Value,
+    call_span: Span,
+) -> Result<Value, RuntimeError> {
+    let hook_name = hook.name.clone();
+
+    // 1. Emit ActionStarted with Hook kind
+    let response = env.handler.handle(Effect::ActionStarted {
+        name: hook_name.clone(),
+        kind: ActionKind::Hook {
+            event: hook.trigger.event_name.clone(),
+            trigger: event_payload.clone(),
+        },
+        actor: target,
+        params: vec![],
+    });
+
+    match response {
+        Response::Acknowledged => {}
+        Response::Vetoed => {
+            let completion_response = env.handler.handle(Effect::ActionCompleted {
+                name: hook_name,
+                actor: target,
+            });
+            match completion_response {
+                Response::Acknowledged => {}
+                other => {
+                    return Err(RuntimeError::with_span(
+                        format!(
+                            "protocol error: expected Acknowledged for ActionCompleted, got {:?}",
+                            other
+                        ),
+                        call_span,
+                    ));
+                }
+            }
+            return Ok(Value::None);
+        }
+        other => {
+            return Err(RuntimeError::with_span(
+                format!(
+                    "protocol error: expected Acknowledged or Vetoed for ActionStarted, got {:?}",
+                    other
+                ),
+                call_span,
+            ));
+        }
+    }
+
+    // 2. Bind scope: receiver + trigger payload. Save previous turn_actor.
+    let prev_turn_actor = env.turn_actor.take();
+    env.turn_actor = Some(target);
+    env.push_scope();
+
+    // Bind receiver
+    env.bind(hook.receiver_name.clone(), Value::Entity(target));
+
+    // Bind trigger payload as "trigger"
+    env.bind("trigger".to_string(), event_payload);
+
+    // 3. Execute resolve block (no cost deduction for hooks)
+    let resolve = hook.resolve.clone();
+    let result = eval_block(env, &resolve);
+
+    env.pop_scope();
+    env.turn_actor = prev_turn_actor;
+
+    // 4. Emit ActionCompleted (only on success)
+    if result.is_ok() {
+        let response = env.handler.handle(Effect::ActionCompleted {
+            name: hook_name,
+            actor: target,
+        });
+        match response {
+            Response::Acknowledged => {}
+            other => {
+                return Err(RuntimeError::with_span(
+                    format!(
+                        "protocol error: expected Acknowledged for ActionCompleted, got {:?}",
+                        other
+                    ),
+                    call_span,
+                ));
+            }
+        }
+    }
+
+    result
 }
 
 // ── Cost deduction ─────────────────────────────────────────────

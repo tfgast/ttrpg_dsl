@@ -826,11 +826,13 @@ impl<'a> Checker<'a> {
             self.check_builtin_permissions(&callee_name, span);
         }
 
-        // Reject direct reaction calls — reactions are triggered by events, not called
-        if fn_info.kind == FnKind::Reaction {
+        // Reject direct reaction/hook calls — they are triggered by events, not called
+        if fn_info.kind == FnKind::Reaction || fn_info.kind == FnKind::Hook {
+            let kind_name = if fn_info.kind == FnKind::Reaction { "reactions" } else { "hooks" };
             self.error(
                 format!(
-                    "reactions cannot be called directly; `{}` is triggered by events",
+                    "{} cannot be called directly; `{}` is triggered by events",
+                    kind_name,
                     callee_name
                 ),
                 span,
