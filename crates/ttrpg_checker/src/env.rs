@@ -58,6 +58,7 @@ pub enum FnKind {
     Mechanic,
     Action,
     Reaction,
+    Hook,
     Prompt,
     Builtin,
 }

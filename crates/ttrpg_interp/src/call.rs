@@ -91,10 +91,10 @@ fn dispatch_fn(
             call_builtin(env, &fn_info.name, arg_values, call_span)
         }
         FnKind::Action => dispatch_action(env, fn_info, args, call_span),
-        FnKind::Reaction => {
-            // The checker rejects direct reaction calls; this is unreachable.
+        FnKind::Reaction | FnKind::Hook => {
+            // The checker rejects direct reaction/hook calls; this is unreachable.
             Err(RuntimeError::with_span(
-                "internal error: reactions cannot be called directly",
+                "internal error: reactions and hooks cannot be called directly",
                 call_span,
             ))
         }

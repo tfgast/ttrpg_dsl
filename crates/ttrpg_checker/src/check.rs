@@ -61,7 +61,7 @@ impl<'a> Checker<'a> {
             DeclKind::Event(e) => self.check_event(e),
             DeclKind::Enum(_) => {}
             DeclKind::Option(o) => self.check_option(o),
-            DeclKind::Hook(_) => {} // TODO: check_hook
+            DeclKind::Hook(h) => self.check_hook(h),
             DeclKind::Move(_) => {
                 self.error(
                     "move declarations must be lowered before type-checking",
@@ -163,8 +163,43 @@ impl<'a> Checker<'a> {
             r.receiver_type.span,
         );
 
+        self.check_trigger_and_body(&r.trigger, &r.resolve);
+
+        self.scope.pop();
+    }
+
+    fn check_hook(&mut self, h: &HookDecl) {
+        self.scope.push(BlockKind::HookResolve);
+
+        // Bind receiver
+        let recv_ty = self.env.resolve_type(&h.receiver_type);
+        self.scope.bind(
+            h.receiver_name.clone(),
+            VarBinding {
+                ty: recv_ty.clone(),
+                mutable: false,
+                is_local: false,
+            },
+        );
+
+        // Validate and narrow receiver with_groups
+        self.validate_with_groups(
+            &h.receiver_name,
+            &recv_ty,
+            &h.receiver_with_groups,
+            h.receiver_type.span,
+        );
+
+        self.check_trigger_and_body(&h.trigger, &h.resolve);
+
+        self.scope.pop();
+    }
+
+    /// Shared logic for reaction and hook: validate trigger event, check
+    /// bindings, bind `trigger` and `turn`, then type-check the body block.
+    fn check_trigger_and_body(&mut self, trigger: &TriggerExpr, body: &Block) {
         // Validate trigger event exists and bind trigger
-        if let Some(event_info) = self.env.events.get(&r.trigger.event_name) {
+        if let Some(event_info) = self.env.events.get(&trigger.event_name) {
             // Check trigger bindings: validate names match event params/fields and types match.
             // NOTE: `trigger` is bound AFTER the binding loop so that binding
             // expressions cannot reference the trigger itself (e.g.
@@ -181,8 +216,7 @@ impl<'a> Checker<'a> {
             // keyword) but keeps the implementation simple and the behavior predictable:
             // named bindings always claim their slot, positional bindings always fill
             // the leftmost unclaimed slot.
-            let named_param_names: HashSet<String> = r
-                .trigger
+            let named_param_names: HashSet<String> = trigger
                 .bindings
                 .iter()
                 .filter_map(|b| b.name.clone())
@@ -190,7 +224,7 @@ impl<'a> Checker<'a> {
 
             // Trigger binding expressions must be side-effect-free
             self.scope.push(BlockKind::TriggerBinding);
-            for binding in &r.trigger.bindings {
+            for binding in &trigger.bindings {
                 if let Some(ref name) = binding.name {
                     if !seen_bindings.insert(name.clone()) {
                         self.error(
@@ -228,7 +262,7 @@ impl<'a> Checker<'a> {
                         self.error(
                             format!(
                                 "trigger binding `{}` does not match any parameter of event `{}`",
-                                name, r.trigger.event_name
+                                name, trigger.event_name
                             ),
                             binding.span,
                         );
@@ -260,7 +294,7 @@ impl<'a> Checker<'a> {
                         self.error(
                             format!(
                                 "too many positional trigger bindings for event `{}` (expected {})",
-                                r.trigger.event_name, event_info.params.len()
+                                trigger.event_name, event_info.params.len()
                             ),
                             binding.span,
                         );
@@ -277,15 +311,15 @@ impl<'a> Checker<'a> {
             self.scope.bind(
                 "trigger".into(),
                 VarBinding {
-                    ty: Ty::Struct(format!("__event_{}", r.trigger.event_name)),
+                    ty: Ty::Struct(format!("__event_{}", trigger.event_name)),
                     mutable: false,
                     is_local: false,
                 },
             );
         } else {
             self.error(
-                format!("undefined event `{}`", r.trigger.event_name),
-                r.trigger.span,
+                format!("undefined event `{}`", trigger.event_name),
+                trigger.span,
             );
             // Still bind trigger as error so body doesn't cascade
             self.scope.bind(
@@ -308,10 +342,8 @@ impl<'a> Checker<'a> {
             },
         );
 
-        // Check resolve block
-        self.check_block(&r.resolve);
-
-        self.scope.pop();
+        // Check body
+        self.check_block(body);
     }
 
     fn check_condition(&mut self, c: &ConditionDecl) {

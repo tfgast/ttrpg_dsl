@@ -205,8 +205,11 @@ fn pass_1b(
                 }
                 collect_option(o, env, diagnostics, decl.span);
             }
-            DeclKind::Hook(_) => {
-                // TODO: collect_hook — checker support in a later pass
+            DeclKind::Hook(h) => {
+                if check_reserved_prefix(&h.name, decl.span, diagnostics) {
+                    continue;
+                }
+                collect_hook(h, env, diagnostics, decl.span);
             }
             DeclKind::Move(_) => {
                 diagnostics.push(Diagnostic::error(
@@ -619,6 +622,64 @@ fn collect_reaction(
     collect_fn(
         &r.name,
         FnKind::Reaction,
+        &[],
+        None,
+        Some(receiver),
+        env,
+        diagnostics,
+        span,
+    );
+}
+
+fn collect_hook(
+    h: &HookDecl,
+    env: &mut TypeEnv,
+    diagnostics: &mut Vec<Diagnostic>,
+    span: Span,
+) {
+    env.validate_type_names(&h.receiver_type, diagnostics);
+    let recv_ty = env.resolve_type(&h.receiver_type);
+    if !recv_ty.is_error() && !recv_ty.is_entity() {
+        diagnostics.push(Diagnostic::error(
+            format!(
+                "hook `{}` receiver type must be an entity, found {}",
+                h.name,
+                recv_ty.display()
+            ),
+            h.receiver_type.span,
+        ));
+    }
+
+    // Detect implicit name shadowing
+    if h.receiver_name == "trigger" {
+        diagnostics.push(Diagnostic::error(
+            format!(
+                "hook `{}` receiver `trigger` shadows the implicit trigger binding",
+                h.name
+            ),
+            span,
+        ));
+    }
+    if h.receiver_name == "turn" {
+        diagnostics.push(Diagnostic::error(
+            format!(
+                "hook `{}` receiver `turn` shadows the implicit turn budget binding",
+                h.name
+            ),
+            span,
+        ));
+    }
+
+    let receiver = ParamInfo {
+        name: h.receiver_name.clone(),
+        ty: env.resolve_type(&h.receiver_type),
+        has_default: false,
+        with_groups: h.receiver_with_groups.clone(),
+    };
+
+    collect_fn(
+        &h.name,
+        FnKind::Hook,
         &[],
         None,
         Some(receiver),

@@ -842,7 +842,7 @@ impl<'a> Checker<'a> {
             let current_ctx = self.scope.current_block_kind();
             if !matches!(
                 current_ctx,
-                Some(BlockKind::ActionResolve) | Some(BlockKind::ReactionResolve)
+                Some(BlockKind::ActionResolve) | Some(BlockKind::ReactionResolve) | Some(BlockKind::HookResolve)
             ) {
                 self.error(
                     format!(

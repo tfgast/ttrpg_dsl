@@ -9,6 +9,7 @@ pub enum BlockKind {
     Mechanic,
     ActionResolve,
     ReactionResolve,
+    HookResolve,
     Condition,
     Prompt,
     ModifyClause,
@@ -24,21 +25,21 @@ impl BlockKind {
     pub fn allows_dice(&self) -> bool {
         matches!(
             self,
-            BlockKind::Mechanic | BlockKind::ActionResolve | BlockKind::ReactionResolve
+            BlockKind::Mechanic | BlockKind::ActionResolve | BlockKind::ReactionResolve | BlockKind::HookResolve
         )
     }
 
     pub fn allows_mutation(&self) -> bool {
         matches!(
             self,
-            BlockKind::ActionResolve | BlockKind::ReactionResolve
+            BlockKind::ActionResolve | BlockKind::ReactionResolve | BlockKind::HookResolve
         )
     }
 
     pub fn allows_turn(&self) -> bool {
         matches!(
             self,
-            BlockKind::ActionResolve | BlockKind::ReactionResolve
+            BlockKind::ActionResolve | BlockKind::ReactionResolve | BlockKind::HookResolve
         )
     }
 
