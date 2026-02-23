@@ -5142,3 +5142,150 @@ system "test" {
 "#;
     expect_errors(source, &["requires `actor` to have group `Spellcasting` proven active"]);
 }
+
+// ── Ordered enums ────────────────────────────────────────────────
+
+#[test]
+fn test_ordered_enum_comparison_accepted() {
+    let source = r#"
+system "test" {
+    enum Size ordered { small, medium, large }
+    entity Character { size: Size }
+    derive bigger(a: Character, b: Character) -> bool {
+        a.size > b.size
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_plain_enum_comparison_rejected() {
+    let source = r#"
+system "test" {
+    enum Color { red, green, blue }
+    entity Character { color: Color }
+    derive brighter(a: Character, b: Character) -> bool {
+        a.color > b.color
+    }
+}
+"#;
+    expect_errors(source, &["cannot order"]);
+}
+
+#[test]
+fn test_plain_enum_equality_still_works() {
+    let source = r#"
+system "test" {
+    enum Color { red, green, blue }
+    entity Character { color: Color }
+    derive same_color(a: Character, b: Character) -> bool {
+        a.color == b.color
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_ordinal_type_checked() {
+    let source = r#"
+system "test" {
+    enum Size ordered { small, medium, large }
+    derive size_index(s: Size) -> int {
+        ordinal(s)
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_ordinal_rejects_non_ordered() {
+    let source = r#"
+system "test" {
+    enum Color { red, green, blue }
+    derive color_index(c: Color) -> int {
+        ordinal(c)
+    }
+}
+"#;
+    expect_errors(source, &["not ordered"]);
+}
+
+#[test]
+fn test_ordinal_rejects_non_enum() {
+    let source = r#"
+system "test" {
+    derive bad(x: int) -> int {
+        ordinal(x)
+    }
+}
+"#;
+    expect_errors(source, &["expects an enum value"]);
+}
+
+#[test]
+fn test_ordinal_arity_error() {
+    let source = r#"
+system "test" {
+    enum Size ordered { small, medium, large }
+    derive bad(a: Size, b: Size) -> int {
+        ordinal(a, b)
+    }
+}
+"#;
+    expect_errors(source, &["expects 1 argument"]);
+}
+
+#[test]
+fn test_from_ordinal_type_checked() {
+    let source = r#"
+system "test" {
+    enum Size ordered { small, medium, large }
+    derive size_at(i: int) -> Size {
+        from_ordinal(Size, i)
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_from_ordinal_rejects_non_ordered() {
+    let source = r#"
+system "test" {
+    enum Color { red, green, blue }
+    derive bad(i: int) -> Color {
+        from_ordinal(Color, i)
+    }
+}
+"#;
+    expect_errors(source, &["not ordered"]);
+}
+
+#[test]
+fn test_from_ordinal_rejects_wrong_types() {
+    let source = r#"
+system "test" {
+    enum Size ordered { small, medium, large }
+    derive bad(s: Size) -> Size {
+        from_ordinal(s, 0)
+    }
+}
+"#;
+    expect_errors(source, &["must be an enum type"]);
+}
+
+#[test]
+fn test_from_ordinal_arity_error() {
+    let source = r#"
+system "test" {
+    enum Size ordered { small, medium, large }
+    derive bad() -> Size {
+        from_ordinal(Size)
+    }
+}
+"#;
+    expect_errors(source, &["expects 2 arguments"]);
+}

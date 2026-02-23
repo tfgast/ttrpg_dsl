@@ -37,6 +37,12 @@ impl Parser {
     fn parse_enum_decl(&mut self) -> Result<EnumDecl, ()> {
         self.expect_soft_keyword("enum")?;
         let (name, _) = self.expect_ident()?;
+        let ordered = if self.at_ident("ordered") {
+            self.advance();
+            true
+        } else {
+            false
+        };
         self.expect(&TokenKind::LBrace)?;
         self.skip_newlines();
 
@@ -64,7 +70,7 @@ impl Parser {
         }
 
         self.expect(&TokenKind::RBrace)?;
-        Ok(EnumDecl { name, variants })
+        Ok(EnumDecl { name, ordered, variants })
     }
 
     fn parse_enum_variant(&mut self) -> Result<EnumVariant, ()> {

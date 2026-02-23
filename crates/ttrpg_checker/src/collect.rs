@@ -67,6 +67,7 @@ fn pass_1a(
                 e.name.clone(),
                 DeclInfo::Enum(EnumInfo {
                     name: e.name.clone(),
+                    ordered: e.ordered,
                     variants: Vec::new(),
                 }),
             ),
@@ -897,6 +898,7 @@ fn register_builtin_types(env: &mut TypeEnv) {
             "Duration".into(),
             DeclInfo::Enum(EnumInfo {
                 name: "Duration".into(),
+                ordered: false,
                 variants,
             }),
         );

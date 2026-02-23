@@ -1331,3 +1331,54 @@ fn test_revoke_error_without_field_access() {
         diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
     );
 }
+
+// ── Ordered enums ────────────────────────────────────────────────
+
+#[test]
+fn test_ordered_enum_parsed() {
+    let source = r#"system "test" {
+    enum Size ordered {
+        small,
+        medium,
+        large
+    }
+}"#;
+    let (program, diagnostics) = parse(source);
+    assert!(diagnostics.is_empty(), "unexpected errors: {:?}", diagnostics);
+
+    let system = match &program.items[0].node {
+        TopLevel::System(s) => s,
+        _ => panic!("expected system block"),
+    };
+    let decl = match &system.decls[0].node {
+        DeclKind::Enum(e) => e,
+        _ => panic!("expected enum decl"),
+    };
+    assert_eq!(decl.name, "Size");
+    assert!(decl.ordered, "expected ordered flag to be true");
+    assert_eq!(decl.variants.len(), 3);
+}
+
+#[test]
+fn test_non_ordered_enum_parsed() {
+    let source = r#"system "test" {
+    enum Color {
+        red,
+        green,
+        blue
+    }
+}"#;
+    let (program, diagnostics) = parse(source);
+    assert!(diagnostics.is_empty(), "unexpected errors: {:?}", diagnostics);
+
+    let system = match &program.items[0].node {
+        TopLevel::System(s) => s,
+        _ => panic!("expected system block"),
+    };
+    let decl = match &system.decls[0].node {
+        DeclKind::Enum(e) => e,
+        _ => panic!("expected enum decl"),
+    };
+    assert_eq!(decl.name, "Color");
+    assert!(!decl.ordered, "expected ordered flag to be false");
+}

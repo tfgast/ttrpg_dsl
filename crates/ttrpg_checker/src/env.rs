@@ -16,6 +16,7 @@ pub enum DeclInfo {
 #[derive(Debug, Clone)]
 pub struct EnumInfo {
     pub name: String,
+    pub ordered: bool,
     pub variants: Vec<VariantInfo>,
 }
 

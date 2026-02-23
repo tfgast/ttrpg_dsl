@@ -352,9 +352,15 @@ impl<'a> Checker<'a> {
         if a.is_numeric() && b.is_numeric() {
             return true;
         }
-        // Same-type ordering for strings and enums
+        // Same-type ordering for strings, and ordered enums
         if a == b {
-            return matches!(a, Ty::Int | Ty::Float | Ty::Resource | Ty::String | Ty::Enum(_));
+            if let Ty::Enum(name) = a {
+                if let Some(DeclInfo::Enum(info)) = self.env.types.get(name.as_str()) {
+                    return info.ordered;
+                }
+                return false;
+            }
+            return matches!(a, Ty::Int | Ty::Float | Ty::Resource | Ty::String);
         }
         false
     }
@@ -910,6 +916,14 @@ impl<'a> Checker<'a> {
             return Ty::Condition;
         }
 
+        // Check ordinal() / from_ordinal() builtins for ordered enums
+        if callee_name == "ordinal" {
+            return self.check_ordinal_call(args, span);
+        }
+        if callee_name == "from_ordinal" {
+            return self.check_from_ordinal_call(args, span);
+        }
+
         // Check if it's an enum variant constructor (bare name)
         if let Some(enum_name) = self.env.variant_to_enum.get(&callee_name) {
             let enum_name = enum_name.clone();
@@ -1101,6 +1115,104 @@ impl<'a> Checker<'a> {
         }
 
         fn_info.return_type.clone()
+    }
+
+    fn check_ordinal_call(
+        &mut self,
+        args: &[Arg],
+        span: ttrpg_ast::Span,
+    ) -> Ty {
+        if args.len() != 1 {
+            self.error(
+                format!("`ordinal` expects 1 argument, found {}", args.len()),
+                span,
+            );
+            for arg in args {
+                self.check_expr(&arg.value);
+            }
+            return Ty::Error;
+        }
+        let arg_ty = self.check_expr(&args[0].value);
+        if arg_ty.is_error() {
+            return Ty::Error;
+        }
+        if let Ty::Enum(ref name) = arg_ty {
+            if let Some(DeclInfo::Enum(info)) = self.env.types.get(name.as_str()) {
+                if !info.ordered {
+                    self.error(
+                        format!(
+                            "`ordinal` requires an ordered enum, but `{}` is not ordered",
+                            name
+                        ),
+                        span,
+                    );
+                }
+            }
+            return Ty::Int;
+        }
+        self.error(
+            format!(
+                "`ordinal` expects an enum value, found {}",
+                arg_ty
+            ),
+            span,
+        );
+        Ty::Error
+    }
+
+    fn check_from_ordinal_call(
+        &mut self,
+        args: &[Arg],
+        span: ttrpg_ast::Span,
+    ) -> Ty {
+        if args.len() != 2 {
+            self.error(
+                format!("`from_ordinal` expects 2 arguments, found {}", args.len()),
+                span,
+            );
+            for arg in args {
+                self.check_expr(&arg.value);
+            }
+            return Ty::Error;
+        }
+        let enum_ty = self.check_expr(&args[0].value);
+        let idx_ty = self.check_expr(&args[1].value);
+        if enum_ty.is_error() || idx_ty.is_error() {
+            return Ty::Error;
+        }
+        let enum_name = if let Ty::EnumType(ref name) = enum_ty {
+            name.clone()
+        } else {
+            self.error(
+                format!(
+                    "`from_ordinal` first argument must be an enum type, found {}",
+                    enum_ty
+                ),
+                span,
+            );
+            return Ty::Error;
+        };
+        if let Some(DeclInfo::Enum(info)) = self.env.types.get(enum_name.as_str()) {
+            if !info.ordered {
+                self.error(
+                    format!(
+                        "`from_ordinal` requires an ordered enum, but `{}` is not ordered",
+                        enum_name
+                    ),
+                    span,
+                );
+            }
+        }
+        if !idx_ty.is_int_like() {
+            self.error(
+                format!(
+                    "`from_ordinal` second argument must be int, found {}",
+                    idx_ty
+                ),
+                span,
+            );
+        }
+        Ty::Enum(enum_name)
     }
 
     fn check_enum_constructor(

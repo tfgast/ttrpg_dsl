@@ -122,6 +122,7 @@ pub enum DeclKind {
 #[derive(Clone)]
 pub struct EnumDecl {
     pub name: String,
+    pub ordered: bool,
     pub variants: Vec<EnumVariant>,
 }
 

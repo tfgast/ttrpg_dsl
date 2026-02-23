@@ -10,7 +10,7 @@ use crate::RuntimeError;
 use crate::action::execute_action;
 use crate::builtins::call_builtin;
 use crate::effect::{Effect, Response};
-use crate::eval::{eval_block, eval_expr};
+use crate::eval::{eval_block, eval_expr, type_name};
 use crate::pipeline::{collect_modifiers_owned, run_phase1, run_phase2};
 use crate::value::Value;
 
@@ -37,7 +37,15 @@ pub(crate) fn eval_call(
                 return construct_enum_variant(env, &enum_name, name, args, call_span);
             }
 
-            // 2. Check if it's a condition with parameters (e.g., Frightened(source: attacker))
+            // 2. Check ordinal() / from_ordinal() builtins
+            if name == "ordinal" {
+                return eval_ordinal(env, args, call_span);
+            }
+            if name == "from_ordinal" {
+                return eval_from_ordinal(env, args, call_span);
+            }
+
+            // 3. Check if it's a condition with parameters (e.g., Frightened(source: attacker))
             if let Some(cond_decl) = env.interp.program.conditions.get(name.as_str()) {
                 let cond_decl = cond_decl.clone();
                 // Reuse bind_args for named arg resolution + default materialization
@@ -49,7 +57,7 @@ pub(crate) fn eval_call(
                 return Ok(Value::Condition { name: name.to_string(), args: cond_args });
             }
 
-            // 3. Check if it's a function (user-defined or builtin)
+            // 4. Check if it's a function (user-defined or builtin)
             if let Some(fn_info) = env.interp.type_env.lookup_fn(name) {
                 let fn_info = fn_info.clone();
                 return dispatch_fn(env, &fn_info, args, call_span);
@@ -82,6 +90,106 @@ pub(crate) fn eval_call(
             call_span,
         )),
     }
+}
+
+// ── ordinal / from_ordinal builtins ────────────────────────────
+
+fn eval_ordinal(
+    env: &mut Env,
+    args: &[Arg],
+    call_span: Span,
+) -> Result<Value, RuntimeError> {
+    let val = eval_expr(env, &args[0].value)?;
+    match &val {
+        Value::EnumVariant { enum_name, variant, .. } => {
+            let ordinal = crate::eval::variant_ordinal(env.interp.type_env, enum_name, variant)
+                .ok_or_else(|| {
+                    RuntimeError::with_span(
+                        format!("unknown variant `{}` of enum `{}`", variant, enum_name),
+                        call_span,
+                    )
+                })?;
+            Ok(Value::Int(ordinal as i64))
+        }
+        _ => Err(RuntimeError::with_span(
+            format!("ordinal() expects an enum variant, got {}", type_name(&val)),
+            call_span,
+        )),
+    }
+}
+
+fn eval_from_ordinal(
+    env: &mut Env,
+    args: &[Arg],
+    call_span: Span,
+) -> Result<Value, RuntimeError> {
+    let ns_val = eval_expr(env, &args[0].value)?;
+    let idx_val = eval_expr(env, &args[1].value)?;
+
+    let enum_name = match &ns_val {
+        Value::EnumNamespace(name) => name.clone(),
+        _ => {
+            return Err(RuntimeError::with_span(
+                format!("from_ordinal() first argument must be an enum type, got {}", type_name(&ns_val)),
+                call_span,
+            ));
+        }
+    };
+
+    let idx = match &idx_val {
+        Value::Int(n) => *n,
+        _ => {
+            return Err(RuntimeError::with_span(
+                format!("from_ordinal() second argument must be int, got {}", type_name(&idx_val)),
+                call_span,
+            ));
+        }
+    };
+
+    if idx < 0 {
+        return Err(RuntimeError::with_span(
+            format!("from_ordinal() index must be non-negative, got {}", idx),
+            call_span,
+        ));
+    }
+
+    let info = match env.interp.type_env.types.get(enum_name.as_str()) {
+        Some(DeclInfo::Enum(info)) => info,
+        _ => {
+            return Err(RuntimeError::with_span(
+                format!("unknown enum `{}`", enum_name),
+                call_span,
+            ));
+        }
+    };
+
+    let idx_usize = idx as usize;
+    if idx_usize >= info.variants.len() {
+        return Err(RuntimeError::with_span(
+            format!(
+                "from_ordinal() index {} out of range for enum `{}` (0..{})",
+                idx, enum_name, info.variants.len()
+            ),
+            call_span,
+        ));
+    }
+
+    let variant = &info.variants[idx_usize];
+    if !variant.fields.is_empty() {
+        return Err(RuntimeError::with_span(
+            format!(
+                "from_ordinal() cannot construct variant `{}` of `{}` — it has payload fields",
+                variant.name, enum_name
+            ),
+            call_span,
+        ));
+    }
+
+    Ok(Value::EnumVariant {
+        enum_name,
+        variant: variant.name.clone(),
+        fields: BTreeMap::new(),
+    })
 }
 
 // ── Function dispatch by kind ──────────────────────────────────
@@ -1566,6 +1674,7 @@ mod tests {
             "Duration".into(),
             ttrpg_checker::env::DeclInfo::Enum(EnumInfo {
                 name: "Duration".into(),
+                ordered: false,
                 variants: vec![
                     VariantInfo { name: "rounds".into(), fields: vec![("value".into(), Ty::Int)] },
                     VariantInfo { name: "indefinite".into(), fields: vec![] },
@@ -1611,6 +1720,7 @@ mod tests {
             "Duration".into(),
             ttrpg_checker::env::DeclInfo::Enum(EnumInfo {
                 name: "Duration".into(),
+                ordered: false,
                 variants: vec![
                     VariantInfo { name: "rounds".into(), fields: vec![("value".into(), Ty::Int)] },
                     VariantInfo { name: "indefinite".into(), fields: vec![] },
@@ -2386,6 +2496,7 @@ mod tests {
             "Duration".into(),
             ttrpg_checker::env::DeclInfo::Enum(EnumInfo {
                 name: "Duration".into(),
+                ordered: false,
                 variants: vec![
                     VariantInfo { name: "rounds".into(), fields: vec![("value".into(), Ty::Int)] },
                 ],

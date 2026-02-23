@@ -526,7 +526,7 @@ fn eval_comparison(
 }
 
 /// Look up a variant's declaration-order index within its enum.
-fn variant_ordinal(
+pub(crate) fn variant_ordinal(
     type_env: &ttrpg_checker::env::TypeEnv,
     enum_name: &str,
     variant_name: &str,
@@ -3479,6 +3479,7 @@ mod tests {
             "Duration".to_string(),
             DeclInfo::Enum(EnumInfo {
                 name: "Duration".to_string(),
+                ordered: false,
                 variants: vec![
                     VariantInfo {
                         name: "end_of_turn".to_string(),
@@ -3537,6 +3538,7 @@ mod tests {
             "Duration".to_string(),
             DeclInfo::Enum(EnumInfo {
                 name: "Duration".to_string(),
+                ordered: false,
                 variants: vec![VariantInfo {
                     name: "rounds".to_string(),
                     fields: vec![("n".to_string(), ttrpg_checker::ty::Ty::Int)],
@@ -3692,6 +3694,7 @@ mod tests {
             "Color".to_string(),
             DeclInfo::Enum(EnumInfo {
                 name: "Color".to_string(),
+                ordered: false,
                 variants: vec![
                     VariantInfo {
                         name: "red".to_string(),
@@ -3739,6 +3742,7 @@ mod tests {
             "Color".to_string(),
             DeclInfo::Enum(EnumInfo {
                 name: "Color".to_string(),
+                ordered: false,
                 variants: vec![VariantInfo {
                     name: "red".to_string(),
                     fields: vec![],
@@ -3891,6 +3895,7 @@ mod tests {
             "Color".to_string(),
             ttrpg_checker::env::DeclInfo::Enum(EnumInfo {
                 name: "Color".to_string(),
+                ordered: false,
                 variants: vec![
                     VariantInfo { name: "red".to_string(), fields: vec![] },
                     VariantInfo { name: "blue".to_string(), fields: vec![] },
@@ -3940,6 +3945,7 @@ mod tests {
             "Color".to_string(),
             ttrpg_checker::env::DeclInfo::Enum(EnumInfo {
                 name: "Color".to_string(),
+                ordered: false,
                 variants: vec![
                     VariantInfo { name: "red".to_string(), fields: vec![] },
                 ],
@@ -4196,6 +4202,7 @@ mod tests {
             "Color".to_string(),
             DeclInfo::Enum(EnumInfo {
                 name: "Color".to_string(),
+                ordered: false,
                 variants: vec![
                     VariantInfo {
                         name: "red".to_string(),
@@ -4241,6 +4248,7 @@ mod tests {
             "Color".to_string(),
             DeclInfo::Enum(EnumInfo {
                 name: "Color".to_string(),
+                ordered: false,
                 variants: vec![
                     VariantInfo {
                         name: "red".to_string(),
@@ -4288,6 +4296,7 @@ mod tests {
             "Color".to_string(),
             DeclInfo::Enum(EnumInfo {
                 name: "Color".to_string(),
+                ordered: false,
                 variants: vec![],
             }),
         );
@@ -4728,6 +4737,7 @@ mod tests {
             "Size".to_string(),
             DeclInfo::Enum(EnumInfo {
                 name: "Size".to_string(),
+                ordered: false,
                 variants: vec![
                     VariantInfo { name: "small".to_string(), fields: vec![] },
                     VariantInfo { name: "medium".to_string(), fields: vec![] },
@@ -4778,6 +4788,205 @@ mod tests {
             rhs: Box::new(spanned(ExprKind::Ident("b".to_string()))),
         });
         assert_eq!(eval_expr(&mut env, &expr).unwrap(), Value::Bool(false));
+    }
+
+    // ── ordinal / from_ordinal ──────────────────────────────────
+
+    #[test]
+    fn ordinal_returns_declaration_index() {
+        let program = empty_program();
+        let mut type_env = empty_type_env();
+
+        type_env.types.insert(
+            "Size".to_string(),
+            DeclInfo::Enum(EnumInfo {
+                name: "Size".to_string(),
+                ordered: true,
+                variants: vec![
+                    VariantInfo { name: "small".to_string(), fields: vec![] },
+                    VariantInfo { name: "medium".to_string(), fields: vec![] },
+                    VariantInfo { name: "large".to_string(), fields: vec![] },
+                ],
+            }),
+        );
+        type_env.variant_to_enum.insert("small".to_string(), "Size".to_string());
+        type_env.variant_to_enum.insert("medium".to_string(), "Size".to_string());
+        type_env.variant_to_enum.insert("large".to_string(), "Size".to_string());
+
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = TestState::new();
+        let mut handler = ScriptedHandler::new();
+        let mut env = make_env(&state, &mut handler, &interp);
+
+        // ordinal(small) == 0
+        env.bind("s".to_string(), Value::EnumVariant {
+            enum_name: "Size".to_string(),
+            variant: "small".to_string(),
+            fields: BTreeMap::new(),
+        });
+        let expr = spanned(ExprKind::Call {
+            callee: Box::new(spanned(ExprKind::Ident("ordinal".to_string()))),
+            args: vec![ttrpg_ast::ast::Arg {
+                name: None,
+                value: spanned(ExprKind::Ident("s".to_string())),
+                span: dummy_span(),
+            }],
+        });
+        assert_eq!(eval_expr(&mut env, &expr).unwrap(), Value::Int(0));
+
+        // ordinal(large) == 2
+        env.bind("l".to_string(), Value::EnumVariant {
+            enum_name: "Size".to_string(),
+            variant: "large".to_string(),
+            fields: BTreeMap::new(),
+        });
+        let expr = spanned(ExprKind::Call {
+            callee: Box::new(spanned(ExprKind::Ident("ordinal".to_string()))),
+            args: vec![ttrpg_ast::ast::Arg {
+                name: None,
+                value: spanned(ExprKind::Ident("l".to_string())),
+                span: dummy_span(),
+            }],
+        });
+        assert_eq!(eval_expr(&mut env, &expr).unwrap(), Value::Int(2));
+    }
+
+    #[test]
+    fn from_ordinal_returns_correct_variant() {
+        let program = empty_program();
+        let mut type_env = empty_type_env();
+
+        type_env.types.insert(
+            "Size".to_string(),
+            DeclInfo::Enum(EnumInfo {
+                name: "Size".to_string(),
+                ordered: true,
+                variants: vec![
+                    VariantInfo { name: "small".to_string(), fields: vec![] },
+                    VariantInfo { name: "medium".to_string(), fields: vec![] },
+                    VariantInfo { name: "large".to_string(), fields: vec![] },
+                ],
+            }),
+        );
+
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = TestState::new();
+        let mut handler = ScriptedHandler::new();
+        let mut env = make_env(&state, &mut handler, &interp);
+
+        env.bind("ns".to_string(), Value::EnumNamespace("Size".to_string()));
+        env.bind("idx".to_string(), Value::Int(1));
+
+        let expr = spanned(ExprKind::Call {
+            callee: Box::new(spanned(ExprKind::Ident("from_ordinal".to_string()))),
+            args: vec![
+                ttrpg_ast::ast::Arg {
+                    name: None,
+                    value: spanned(ExprKind::Ident("ns".to_string())),
+                    span: dummy_span(),
+                },
+                ttrpg_ast::ast::Arg {
+                    name: None,
+                    value: spanned(ExprKind::Ident("idx".to_string())),
+                    span: dummy_span(),
+                },
+            ],
+        });
+        assert_eq!(
+            eval_expr(&mut env, &expr).unwrap(),
+            Value::EnumVariant {
+                enum_name: "Size".to_string(),
+                variant: "medium".to_string(),
+                fields: BTreeMap::new(),
+            }
+        );
+    }
+
+    #[test]
+    fn from_ordinal_out_of_bounds_error() {
+        let program = empty_program();
+        let mut type_env = empty_type_env();
+
+        type_env.types.insert(
+            "Size".to_string(),
+            DeclInfo::Enum(EnumInfo {
+                name: "Size".to_string(),
+                ordered: true,
+                variants: vec![
+                    VariantInfo { name: "small".to_string(), fields: vec![] },
+                    VariantInfo { name: "medium".to_string(), fields: vec![] },
+                ],
+            }),
+        );
+
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = TestState::new();
+        let mut handler = ScriptedHandler::new();
+        let mut env = make_env(&state, &mut handler, &interp);
+
+        env.bind("ns".to_string(), Value::EnumNamespace("Size".to_string()));
+        env.bind("idx".to_string(), Value::Int(5));
+
+        let expr = spanned(ExprKind::Call {
+            callee: Box::new(spanned(ExprKind::Ident("from_ordinal".to_string()))),
+            args: vec![
+                ttrpg_ast::ast::Arg {
+                    name: None,
+                    value: spanned(ExprKind::Ident("ns".to_string())),
+                    span: dummy_span(),
+                },
+                ttrpg_ast::ast::Arg {
+                    name: None,
+                    value: spanned(ExprKind::Ident("idx".to_string())),
+                    span: dummy_span(),
+                },
+            ],
+        });
+        let err = eval_expr(&mut env, &expr).unwrap_err();
+        assert!(err.message.contains("out of range"), "got: {}", err.message);
+    }
+
+    #[test]
+    fn from_ordinal_negative_index_error() {
+        let program = empty_program();
+        let mut type_env = empty_type_env();
+
+        type_env.types.insert(
+            "Size".to_string(),
+            DeclInfo::Enum(EnumInfo {
+                name: "Size".to_string(),
+                ordered: true,
+                variants: vec![
+                    VariantInfo { name: "small".to_string(), fields: vec![] },
+                ],
+            }),
+        );
+
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = TestState::new();
+        let mut handler = ScriptedHandler::new();
+        let mut env = make_env(&state, &mut handler, &interp);
+
+        env.bind("ns".to_string(), Value::EnumNamespace("Size".to_string()));
+        env.bind("idx".to_string(), Value::Int(-1));
+
+        let expr = spanned(ExprKind::Call {
+            callee: Box::new(spanned(ExprKind::Ident("from_ordinal".to_string()))),
+            args: vec![
+                ttrpg_ast::ast::Arg {
+                    name: None,
+                    value: spanned(ExprKind::Ident("ns".to_string())),
+                    span: dummy_span(),
+                },
+                ttrpg_ast::ast::Arg {
+                    name: None,
+                    value: spanned(ExprKind::Ident("idx".to_string())),
+                    span: dummy_span(),
+                },
+            ],
+        });
+        let err = eval_expr(&mut env, &expr).unwrap_err();
+        assert!(err.message.contains("non-negative"), "got: {}", err.message);
     }
 
     // ── Issue 3: none == Option(None) ───────────────────────────
