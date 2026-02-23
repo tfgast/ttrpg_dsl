@@ -1184,12 +1184,14 @@ fn eval_assign_local(
             ));
         }
 
+        let bounds = resolve_resource_bounds(env, &entity_ref, &path);
+
         let effect = Effect::MutateField {
             entity: entity_ref,
             path,
             op,
             value: rhs,
-            bounds: None,
+            bounds,
         };
         env.handler.handle(effect);
         return Ok(());
@@ -2012,10 +2014,43 @@ fn extract_resource_bounds_from_type<'a>(
     }
 }
 
+/// Collect all identifier names referenced in an expression tree.
+fn collect_idents(expr: &Spanned<ExprKind>, out: &mut Vec<String>) {
+    match &expr.node {
+        ExprKind::Ident(name) => out.push(name.clone()),
+        ExprKind::UnaryOp { operand, .. } => collect_idents(operand, out),
+        ExprKind::BinOp { lhs, rhs, .. } => {
+            collect_idents(lhs, out);
+            collect_idents(rhs, out);
+        }
+        ExprKind::FieldAccess { object, .. } => collect_idents(object, out),
+        ExprKind::Index { object, index } => {
+            collect_idents(object, out);
+            collect_idents(index, out);
+        }
+        ExprKind::Call { callee, args } => {
+            collect_idents(callee, out);
+            for arg in args {
+                collect_idents(&arg.value, out);
+            }
+        }
+        ExprKind::Paren(inner) => collect_idents(inner, out),
+        ExprKind::ListLit(elems) => {
+            for elem in elems {
+                collect_idents(elem, out);
+            }
+        }
+        ExprKind::If { condition, .. } => collect_idents(condition, out),
+        ExprKind::Has { entity, .. } => collect_idents(entity, out),
+        _ => {}
+    }
+}
+
 /// Try to evaluate a resource bound expression to a Value.
 ///
 /// First attempts normal expression evaluation (handles literals and in-scope vars).
-/// If that fails and the expression is a bare identifier, reads it as an entity field.
+/// If that fails, collects all identifiers from the expression, resolves any that are
+/// entity fields, injects them into a temporary scope, and retries evaluation.
 fn eval_bound_expr(
     env: &mut Env,
     entity: &EntityRef,
@@ -2025,11 +2060,30 @@ fn eval_bound_expr(
     if let Ok(val) = eval_expr(env, expr) {
         return Some(val);
     }
-    // If that failed and it's a bare identifier, try reading from entity state
-    if let ExprKind::Ident(name) = &expr.node {
-        return env.state.read_field(entity, name);
+    // Collect identifiers and try to resolve them as entity fields
+    let mut idents = Vec::new();
+    collect_idents(expr, &mut idents);
+
+    let mut bindings = Vec::new();
+    for name in &idents {
+        if env.lookup(name).is_none() {
+            if let Some(val) = env.state.read_field(entity, name) {
+                bindings.push((name.clone(), val));
+            }
+        }
     }
-    None
+    if bindings.is_empty() {
+        return None;
+    }
+
+    // Push a temporary scope with entity field values and retry
+    env.push_scope();
+    for (name, val) in bindings {
+        env.bind(name, val);
+    }
+    let result = eval_expr(env, expr).ok();
+    env.pop_scope();
+    result
 }
 
 /// Look up resource bounds for a mutation path on an entity.
