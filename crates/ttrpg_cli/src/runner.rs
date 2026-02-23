@@ -4,7 +4,9 @@ use std::path::PathBuf;
 
 use rand::SeedableRng;
 use rand::rngs::StdRng;
-use ttrpg_ast::ast::Program;
+use std::collections::BTreeMap;
+
+use ttrpg_ast::ast::{DeclKind, OptionalGroup, Program, TopLevel};
 use ttrpg_ast::diagnostic::{Diagnostic, Severity};
 use ttrpg_checker::env::{DeclInfo, FnKind, TypeEnv};
 use ttrpg_checker::ty::Ty;
@@ -17,6 +19,9 @@ use ttrpg_interp::value::Value;
 use crate::commands::{self, Command};
 use crate::effects::{CliHandler, RefCellState};
 use crate::format::format_value;
+
+/// Base fields + inline optional groups parsed from a spawn block.
+type SpawnBlock = (HashMap<String, Value>, Vec<(String, HashMap<String, Value>)>);
 
 /// Errors produced by Runner operations.
 #[derive(Debug)]
@@ -124,6 +129,24 @@ impl Runner {
         gs.entity_type_name(entity).map(|s| s.to_string())
     }
 
+    /// Returns optional group names for a given entity type (for tab completion).
+    pub fn group_names(&self, entity_type: &str) -> Vec<String> {
+        match self.type_env.types.get(entity_type) {
+            Some(DeclInfo::Entity(info)) => {
+                info.optional_groups.iter().map(|g| g.name.clone()).collect()
+            }
+            _ => Vec::new(),
+        }
+    }
+
+    /// Returns field names within an optional group (for tab completion).
+    pub fn group_field_names(&self, entity_type: &str, group_name: &str) -> Vec<String> {
+        self.type_env
+            .lookup_optional_group(entity_type, group_name)
+            .map(|g| g.fields.iter().map(|f| f.name.clone()).collect())
+            .unwrap_or_default()
+    }
+
     /// Returns true if a program has been loaded.
     pub fn is_loaded(&self) -> bool {
         !self.program.items.is_empty()
@@ -155,6 +178,8 @@ impl Runner {
             Command::Destroy(handle) => self.cmd_destroy(&handle),
             Command::Do(tail) => self.cmd_do(&tail),
             Command::Call(tail) => self.cmd_call(&tail),
+            Command::Grant(tail) => self.cmd_grant(&tail),
+            Command::Revoke(tail) => self.cmd_revoke(&tail),
             // Inspection
             Command::Inspect(tail) => self.cmd_inspect(&tail),
             Command::State => self.cmd_state(),
@@ -324,7 +349,7 @@ impl Runner {
         Ok(())
     }
 
-    /// `spawn <EntityType> <handle> { field: value, ... }`
+    /// `spawn <EntityType> <handle> { field: value, ..., GroupName { ... } }`
     fn cmd_spawn(&mut self, tail: &str) -> Result<(), CliError> {
         // Extract entity type and handle
         let tail = tail.trim();
@@ -375,17 +400,16 @@ impl Runner {
             }
         }
 
-        // Parse optional field block
+        // Parse optional field block (may contain inline groups)
         let rest = rest.trim();
-        let fields = if rest.starts_with('{') {
-            // Find matching closing brace
+        let (fields, inline_groups) = if rest.starts_with('{') {
             let block = rest
                 .strip_prefix('{')
                 .and_then(|s| s.strip_suffix('}'))
                 .ok_or_else(|| CliError::Message("unmatched '{' in spawn".into()))?;
-            self.parse_field_block(block)?
+            self.parse_spawn_block(block, entity_type)?
         } else if rest.is_empty() {
-            HashMap::new()
+            (HashMap::new(), Vec::new())
         } else {
             return Err(CliError::Message(format!(
                 "unexpected text after handle: {}",
@@ -420,6 +444,67 @@ impl Runner {
         let entity = self.game_state.borrow_mut().add_entity(entity_type, fields);
         self.handles.insert(handle.to_string(), entity);
         self.reverse_handles.insert(entity, handle.to_string());
+
+        // Process inline groups after entity creation
+        for (group_name, group_fields) in inline_groups {
+            let group_info = self
+                .type_env
+                .lookup_optional_group(entity_type, &group_name)
+                .ok_or_else(|| {
+                    CliError::Message(format!(
+                        "unknown optional group '{}' on entity type '{}'",
+                        group_name, entity_type
+                    ))
+                })?
+                .clone();
+
+            // Validate field names and types in the group
+            for (field_name, field_val) in &group_fields {
+                match group_info.fields.iter().find(|f| f.name == *field_name) {
+                    None => {
+                        return Err(CliError::Message(format!(
+                            "unknown field '{}' in optional group '{}'",
+                            field_name, group_name
+                        )));
+                    }
+                    Some(fi) => {
+                        if !value_matches_ty(field_val, &fi.ty) {
+                            return Err(CliError::Message(format!(
+                                "type mismatch for field '{}': expected {}, got {}",
+                                field_name,
+                                fi.ty.display(),
+                                value_type_display(field_val)
+                            )));
+                        }
+                    }
+                }
+            }
+
+            let mut all_fields = group_fields;
+            self.fill_group_defaults(&group_name, entity_type, &mut all_fields)?;
+
+            // Check required fields
+            for fi in &group_info.fields {
+                if !fi.has_default && !all_fields.contains_key(&fi.name) {
+                    return Err(CliError::Message(format!(
+                        "missing required field '{}' in optional group '{}'",
+                        fi.name, group_name
+                    )));
+                }
+            }
+
+            let btree_fields: BTreeMap<String, Value> = all_fields.into_iter().collect();
+            let struct_val = Value::Struct {
+                name: group_name.clone(),
+                fields: btree_fields,
+            };
+            self.game_state.borrow_mut().write_field(
+                &entity,
+                &[FieldPathSegment::Field(group_name.to_string())],
+                struct_val,
+            );
+        }
+
         self.output.push(format!(
             "spawned {} {} ({})",
             entity_type,
@@ -429,7 +514,7 @@ impl Runner {
         Ok(())
     }
 
-    /// `set <handle>.<field> = <value>`
+    /// `set <handle>.<field> = <value>` or `set <handle>.<GroupName>.<field> = <value>`
     fn cmd_set(&mut self, tail: &str) -> Result<(), CliError> {
         let tail = tail.trim();
 
@@ -449,35 +534,104 @@ impl Runner {
             .find('.')
             .ok_or_else(|| CliError::Message("usage: set <handle>.<field> = <value>".into()))?;
         let handle = &lhs[..dot_pos];
-        let field = &lhs[dot_pos + 1..];
+        let field_path = &lhs[dot_pos + 1..];
 
-        if handle.is_empty() || field.is_empty() {
+        if handle.is_empty() || field_path.is_empty() {
             return Err(CliError::Message("usage: set <handle>.<field> = <value>".into()));
         }
 
         let entity = self.resolve_handle(handle)?;
 
-        // Validate field name against entity schema (borrow scoped before eval)
-        let expected_ty = {
-            let gs = self.game_state.borrow();
-            if let Some(type_name) = gs.entity_type_name(&entity) {
-                if let Some(schema_fields) = self.type_env.lookup_fields(type_name) {
-                    match schema_fields.iter().find(|f| f.name == field) {
-                        Some(fi) => Some(fi.ty.clone()),
-                        None => {
-                            return Err(CliError::Message(format!(
-                                "unknown field '{}' on entity type '{}'",
-                                field, type_name
-                            )));
-                        }
-                    }
-                } else {
-                    None
+        // Check if the path has a second '.' (GroupName.field)
+        let (path_segments, expected_ty, display_path) =
+            if let Some(inner_dot) = field_path.find('.') {
+                let group_name = &field_path[..inner_dot];
+                let field_name = &field_path[inner_dot + 1..];
+                if group_name.is_empty() || field_name.is_empty() {
+                    return Err(CliError::Message(
+                        "usage: set <handle>.<GroupName>.<field> = <value>".into(),
+                    ));
                 }
+
+                // Validate it's an optional group
+                let type_name = {
+                    let gs = self.game_state.borrow();
+                    gs.entity_type_name(&entity)
+                        .map(|s| s.to_string())
+                        .unwrap_or_default()
+                };
+                let group_info = self
+                    .type_env
+                    .lookup_optional_group(&type_name, group_name)
+                    .ok_or_else(|| {
+                        CliError::Message(format!(
+                            "unknown optional group '{}' on entity type '{}'",
+                            group_name, type_name
+                        ))
+                    })?;
+
+                // Check the group is granted
+                {
+                    let gs = self.game_state.borrow();
+                    if gs.read_field(&entity, group_name).is_none() {
+                        return Err(CliError::Message(format!(
+                            "{}.{} is not currently granted",
+                            handle, group_name
+                        )));
+                    }
+                }
+
+                // Validate field within group
+                let ty = group_info
+                    .fields
+                    .iter()
+                    .find(|f| f.name == field_name)
+                    .map(|f| f.ty.clone())
+                    .ok_or_else(|| {
+                        CliError::Message(format!(
+                            "unknown field '{}' in optional group '{}'",
+                            field_name, group_name
+                        ))
+                    })?;
+
+                let segments = vec![
+                    FieldPathSegment::Field(group_name.to_string()),
+                    FieldPathSegment::Field(field_name.to_string()),
+                ];
+                (
+                    segments,
+                    Some(ty),
+                    format!("{}.{}.{}", handle, group_name, field_name),
+                )
             } else {
-                None
-            }
-        };
+                // Simple field path
+                let field = field_path;
+                let expected_ty = {
+                    let gs = self.game_state.borrow();
+                    if let Some(type_name) = gs.entity_type_name(&entity) {
+                        if let Some(schema_fields) = self.type_env.lookup_fields(type_name) {
+                            match schema_fields.iter().find(|f| f.name == field) {
+                                Some(fi) => Some(fi.ty.clone()),
+                                None => {
+                                    return Err(CliError::Message(format!(
+                                        "unknown field '{}' on entity type '{}'",
+                                        field, type_name
+                                    )));
+                                }
+                            }
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                };
+                (
+                    vec![FieldPathSegment::Field(field.to_string())],
+                    expected_ty,
+                    format!("{}.{}", handle, field),
+                )
+            };
 
         // Parse and evaluate the RHS expression (try handle resolution first)
         let val = if let Some(&ent) = self.handles.get(rhs) {
@@ -491,7 +645,7 @@ impl Runner {
             if !value_matches_ty(&val, ty) {
                 return Err(CliError::Message(format!(
                     "type mismatch for field '{}': expected {}, got {}",
-                    field,
+                    display_path.split('.').next_back().unwrap_or("?"),
                     ty.display(),
                     value_type_display(&val)
                 )));
@@ -499,17 +653,11 @@ impl Runner {
         }
 
         // Write directly to GameState
-        self.game_state.borrow_mut().write_field(
-            &entity,
-            &[FieldPathSegment::Field(field.to_string())],
-            val.clone(),
-        );
-        self.output.push(format!(
-            "{}.{} = {}",
-            handle,
-            field,
-            format_value(&val)
-        ));
+        self.game_state
+            .borrow_mut()
+            .write_field(&entity, &path_segments, val.clone());
+        self.output
+            .push(format!("{} = {}", display_path, format_value(&val)));
         Ok(())
     }
 
@@ -714,6 +862,265 @@ impl Runner {
         Ok(())
     }
 
+    // ── Grant/Revoke handlers ─────────────────────────────────────
+
+    /// `revoke handle.GroupName`
+    fn cmd_revoke(&mut self, tail: &str) -> Result<(), CliError> {
+        let tail = tail.trim();
+        let dot_pos = tail
+            .find('.')
+            .ok_or_else(|| CliError::Message("usage: revoke <handle>.<GroupName>".into()))?;
+        let handle = &tail[..dot_pos];
+        let group_name = &tail[dot_pos + 1..];
+        if handle.is_empty() || group_name.is_empty() {
+            return Err(CliError::Message(
+                "usage: revoke <handle>.<GroupName>".into(),
+            ));
+        }
+
+        let entity = self.resolve_handle(handle)?;
+
+        // Validate group exists in the type schema
+        let type_name = {
+            let gs = self.game_state.borrow();
+            gs.entity_type_name(&entity)
+                .ok_or_else(|| {
+                    CliError::Message(format!(
+                        "entity for handle '{}' not found in state",
+                        handle
+                    ))
+                })?
+                .to_string()
+        };
+        if self
+            .type_env
+            .lookup_optional_group(&type_name, group_name)
+            .is_none()
+        {
+            return Err(CliError::Message(format!(
+                "unknown optional group '{}' on entity type '{}'",
+                group_name, type_name
+            )));
+        }
+
+        // Check it's currently granted
+        {
+            let gs = self.game_state.borrow();
+            if gs.read_field(&entity, group_name).is_none() {
+                return Err(CliError::Message(format!(
+                    "{}.{} is not currently granted",
+                    handle, group_name
+                )));
+            }
+        }
+
+        self.game_state
+            .borrow_mut()
+            .remove_field(&entity, group_name);
+        self.output
+            .push(format!("revoked {}.{}", handle, group_name));
+        Ok(())
+    }
+
+    /// `grant handle.GroupName { field: val, ... }` or `grant handle.GroupName`
+    fn cmd_grant(&mut self, tail: &str) -> Result<(), CliError> {
+        let tail = tail.trim();
+        let dot_pos = tail
+            .find('.')
+            .ok_or_else(|| CliError::Message("usage: grant <handle>.<GroupName> [{ ... }]".into()))?;
+        let handle = &tail[..dot_pos];
+        let after_dot = &tail[dot_pos + 1..];
+        if handle.is_empty() || after_dot.is_empty() {
+            return Err(CliError::Message(
+                "usage: grant <handle>.<GroupName> [{ ... }]".into(),
+            ));
+        }
+
+        // Split group_name from optional { ... } block
+        let (group_name, rest) = split_first_token(after_dot);
+        let rest = rest.trim();
+
+        let entity = self.resolve_handle(handle)?;
+
+        // Validate group exists
+        let type_name = {
+            let gs = self.game_state.borrow();
+            gs.entity_type_name(&entity)
+                .ok_or_else(|| {
+                    CliError::Message(format!(
+                        "entity for handle '{}' not found in state",
+                        handle
+                    ))
+                })?
+                .to_string()
+        };
+        let group_info = self
+            .type_env
+            .lookup_optional_group(&type_name, group_name)
+            .ok_or_else(|| {
+                CliError::Message(format!(
+                    "unknown optional group '{}' on entity type '{}'",
+                    group_name, type_name
+                ))
+            })?
+            .clone();
+
+        // Check not already granted
+        {
+            let gs = self.game_state.borrow();
+            if gs.read_field(&entity, group_name).is_some() {
+                return Err(CliError::Message(format!(
+                    "{}.{} is already granted",
+                    handle, group_name
+                )));
+            }
+        }
+
+        // Parse optional { ... } block
+        let mut fields = if rest.starts_with('{') {
+            let block = rest
+                .strip_prefix('{')
+                .and_then(|s| s.strip_suffix('}'))
+                .ok_or_else(|| CliError::Message("unmatched '{' in grant".into()))?;
+            self.parse_field_block(block)?
+        } else if rest.is_empty() {
+            HashMap::new()
+        } else {
+            return Err(CliError::Message(format!(
+                "unexpected text after group name: {}",
+                rest
+            )));
+        };
+
+        // Validate supplied field names against group schema
+        for (field_name, field_val) in &fields {
+            match group_info.fields.iter().find(|f| f.name == *field_name) {
+                None => {
+                    return Err(CliError::Message(format!(
+                        "unknown field '{}' in optional group '{}'",
+                        field_name, group_name
+                    )));
+                }
+                Some(fi) => {
+                    if !value_matches_ty(field_val, &fi.ty) {
+                        return Err(CliError::Message(format!(
+                            "type mismatch for field '{}': expected {}, got {}",
+                            field_name,
+                            fi.ty.display(),
+                            value_type_display(field_val)
+                        )));
+                    }
+                }
+            }
+        }
+
+        // Fill defaults for missing fields
+        self.fill_group_defaults(group_name, &type_name, &mut fields)?;
+
+        // Validate all required fields (no default) are present
+        for fi in &group_info.fields {
+            if !fi.has_default && !fields.contains_key(&fi.name) {
+                return Err(CliError::Message(format!(
+                    "missing required field '{}' in optional group '{}'",
+                    fi.name, group_name
+                )));
+            }
+        }
+
+        // Build struct value and write
+        let btree_fields: BTreeMap<String, Value> = fields.into_iter().collect();
+        let struct_val = Value::Struct {
+            name: group_name.to_string(),
+            fields: btree_fields,
+        };
+        self.game_state.borrow_mut().write_field(
+            &entity,
+            &[FieldPathSegment::Field(group_name.to_string())],
+            struct_val.clone(),
+        );
+        self.output.push(format!(
+            "granted {}.{}: {}",
+            handle,
+            group_name,
+            format_value(&struct_val)
+        ));
+        Ok(())
+    }
+
+    /// Find an AST OptionalGroup by entity type and group name.
+    fn find_optional_group_ast(
+        &self,
+        entity_type: &str,
+        group_name: &str,
+    ) -> Option<OptionalGroup> {
+        let mut fallback: Option<OptionalGroup> = None;
+        for item in &self.program.items {
+            if let TopLevel::System(system) = &item.node {
+                for decl in &system.decls {
+                    if let DeclKind::Entity(entity_decl) = &decl.node {
+                        for group in &entity_decl.optional_groups {
+                            if group.name == group_name {
+                                if entity_decl.name == entity_type {
+                                    return Some(group.clone());
+                                }
+                                if fallback.is_none() {
+                                    fallback = Some(group.clone());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        fallback
+    }
+
+    /// Fill default values for missing fields in a group.
+    fn fill_group_defaults(
+        &mut self,
+        group_name: &str,
+        entity_type: &str,
+        fields: &mut HashMap<String, Value>,
+    ) -> Result<(), CliError> {
+        let group = match self.find_optional_group_ast(entity_type, group_name) {
+            Some(g) => g,
+            None => return Ok(()),
+        };
+
+        for field_def in &group.fields {
+            if fields.contains_key(&field_def.name) {
+                continue;
+            }
+            if let Some(ref default_expr) = field_def.default {
+                let interp = Interpreter::new(&self.program, &self.type_env)
+                    .map_err(|e| CliError::Message(format!("interpreter error: {}", e)))?;
+                let state = RefCellState(&self.game_state);
+                let mut handler = CliHandler::new(
+                    &self.game_state,
+                    &self.reverse_handles,
+                    &mut self.rng,
+                    &mut self.roll_queue,
+                );
+                let val = interp
+                    .evaluate_expr(&state, &mut handler, default_expr)
+                    .map_err(|e| {
+                        for line in handler.log.drain(..) {
+                            self.output.push(line);
+                        }
+                        CliError::Message(format!(
+                            "error evaluating default for field '{}': {}",
+                            field_def.name, e
+                        ))
+                    })?;
+                for line in handler.log.drain(..) {
+                    self.output.push(line);
+                }
+                fields.insert(field_def.name.clone(), val);
+            }
+        }
+        Ok(())
+    }
+
     // ── Configuration handlers ───────────────────────────────────
 
     fn cmd_seed(&mut self, tail: &str) -> Result<(), CliError> {
@@ -761,34 +1168,109 @@ impl Runner {
         // Split on first '.' to detect handle.field vs handle
         if let Some(dot_pos) = tail.find('.') {
             let handle = &tail[..dot_pos];
-            let field = &tail[dot_pos + 1..];
-            if handle.is_empty() || field.is_empty() {
+            let rest = &tail[dot_pos + 1..];
+            if handle.is_empty() || rest.is_empty() {
                 return Err(CliError::Message(
                     "usage: inspect <handle> or inspect <handle>.<field>".into(),
                 ));
             }
             let entity = self.resolve_handle(handle)?;
-            let gs = self.game_state.borrow();
-            // Check if the field is declared on this entity type
-            let is_declared = gs
-                .entity_type_name(&entity)
-                .and_then(|tn| self.type_env.lookup_fields(tn))
-                .map(|fields| fields.iter().any(|f| f.name == field))
-                .unwrap_or(false);
-            match gs.read_field(&entity, field) {
-                Some(val) => {
-                    self.output
-                        .push(format!("{}.{} = {}", handle, field, format_value(&val)));
+
+            // Check for a second dot: handle.GroupName.field
+            if let Some(inner_dot) = rest.find('.') {
+                let group_name = &rest[..inner_dot];
+                let field_name = &rest[inner_dot + 1..];
+                if group_name.is_empty() || field_name.is_empty() {
+                    return Err(CliError::Message(
+                        "usage: inspect <handle>.<GroupName>.<field>".into(),
+                    ));
                 }
-                None if is_declared => {
-                    self.output
-                        .push(format!("{}.{} = <unset>", handle, field));
+
+                let gs = self.game_state.borrow();
+                match gs.read_field(&entity, group_name) {
+                    Some(Value::Struct { fields, .. }) => {
+                        match fields.get(field_name) {
+                            Some(val) => {
+                                self.output.push(format!(
+                                    "{}.{}.{} = {}",
+                                    handle, group_name, field_name,
+                                    format_value(val)
+                                ));
+                            }
+                            None => {
+                                return Err(CliError::Message(format!(
+                                    "field '{}' not found in group '{}'",
+                                    field_name, group_name
+                                )));
+                            }
+                        }
+                    }
+                    Some(_) => {
+                        return Err(CliError::Message(format!(
+                            "field '{}' is not a group on {}",
+                            group_name, handle
+                        )));
+                    }
+                    None => {
+                        return Err(CliError::Message(format!(
+                            "{}.{} is not currently granted",
+                            handle, group_name
+                        )));
+                    }
                 }
-                None => {
-                    return Err(CliError::Message(format!(
-                        "field '{}' not found on {}",
-                        field, handle
-                    )));
+            } else {
+                let field = rest;
+
+                // Check if it's an optional group name
+                let type_name = {
+                    let gs = self.game_state.borrow();
+                    gs.entity_type_name(&entity).map(|s| s.to_string())
+                };
+                let is_group = type_name.as_ref().and_then(|tn| {
+                    self.type_env.lookup_optional_group(tn, field)
+                }).is_some();
+
+                if is_group {
+                    let gs = self.game_state.borrow();
+                    match gs.read_field(&entity, field) {
+                        Some(val) => {
+                            self.output.push(format!(
+                                "{}.{} = {}",
+                                handle, field, format_value(&val)
+                            ));
+                        }
+                        None => {
+                            self.output.push(format!(
+                                "{}.{} = <not granted>",
+                                handle, field
+                            ));
+                        }
+                    }
+                } else {
+                    let gs = self.game_state.borrow();
+                    let is_declared = type_name
+                        .as_ref()
+                        .and_then(|tn| self.type_env.lookup_fields(tn))
+                        .map(|fields| fields.iter().any(|f| f.name == field))
+                        .unwrap_or(false);
+                    match gs.read_field(&entity, field) {
+                        Some(val) => {
+                            self.output.push(format!(
+                                "{}.{} = {}",
+                                handle, field, format_value(&val)
+                            ));
+                        }
+                        None if is_declared => {
+                            self.output
+                                .push(format!("{}.{} = <unset>", handle, field));
+                        }
+                        None => {
+                            return Err(CliError::Message(format!(
+                                "field '{}' not found on {}",
+                                field, handle
+                            )));
+                        }
+                    }
                 }
             }
         } else {
@@ -818,6 +1300,31 @@ impl Runner {
                         fi.ty.display(),
                         val
                     ));
+                }
+            }
+
+            // Show granted optional groups
+            if let Some(DeclInfo::Entity(info)) = self.type_env.types.get(&type_name) {
+                let gs = self.game_state.borrow();
+                for group_info in &info.optional_groups {
+                    if let Some(Value::Struct { fields, .. }) =
+                        gs.read_field(&entity, &group_info.name)
+                    {
+                        self.output
+                            .push(format!("  [group] {} (granted)", group_info.name));
+                        for fi in &group_info.fields {
+                            let val = fields
+                                .get(&fi.name)
+                                .map(format_value)
+                                .unwrap_or_else(|| "<unset>".into());
+                            self.output.push(format!(
+                                "    {}: {} = {}",
+                                fi.name,
+                                fi.ty.display(),
+                                val
+                            ));
+                        }
+                    }
                 }
             }
 
@@ -870,6 +1377,31 @@ impl Runner {
                 }
             }
 
+            // Show granted optional groups
+            if let Some(DeclInfo::Entity(info)) = self.type_env.types.get(&type_name) {
+                let gs = self.game_state.borrow();
+                for group_info in &info.optional_groups {
+                    if let Some(Value::Struct { fields, .. }) =
+                        gs.read_field(entity, &group_info.name)
+                    {
+                        self.output
+                            .push(format!("  [group] {} (granted)", group_info.name));
+                        for fi in &group_info.fields {
+                            let val = fields
+                                .get(&fi.name)
+                                .map(format_value)
+                                .unwrap_or_else(|| "<unset>".into());
+                            self.output.push(format!(
+                                "    {}: {} = {}",
+                                fi.name,
+                                fi.ty.display(),
+                                val
+                            ));
+                        }
+                    }
+                }
+            }
+
             let gs = self.game_state.borrow();
             if let Some(conditions) = gs.read_conditions(entity) {
                 for cond in &conditions {
@@ -900,6 +1432,14 @@ impl Runner {
                     for fi in &info.fields {
                         self.output
                             .push(format!("  {}: {}", fi.name, fi.ty.display()));
+                    }
+                    for group in &info.optional_groups {
+                        self.output
+                            .push(format!("  optional {}", group.name));
+                        for fi in &group.fields {
+                            self.output
+                                .push(format!("    {}: {}", fi.name, fi.ty.display()));
+                        }
                     }
                 }
                 DeclInfo::Struct(info) => {
@@ -1104,6 +1644,139 @@ impl Runner {
 
     // ── Parsing helpers ──────────────────────────────────────────
 
+    /// Parse a spawn block that may contain both fields and inline groups.
+    ///
+    /// Entries are split by top-level commas. Each entry is classified as:
+    /// - field: `key: value` (has `:` before any `{`)
+    /// - group: `GroupName { ... }` (has `{` before any `:`)
+    fn parse_spawn_block(
+        &mut self,
+        block: &str,
+        entity_type: &str,
+    ) -> Result<SpawnBlock, CliError> {
+        let mut fields = HashMap::new();
+        let mut groups = Vec::new();
+        let entries = split_top_level_commas(block);
+
+        for entry in entries {
+            let entry = entry.trim();
+            if entry.is_empty() {
+                continue;
+            }
+
+            // Classify: find first ':' and first '{' outside strings
+            let colon_pos = find_unquoted(entry, ':');
+            let brace_pos = find_unquoted(entry, '{');
+
+            let is_group = match (colon_pos, brace_pos) {
+                (None, Some(_)) => true,       // only { found
+                (Some(_), None) => false,      // only : found
+                (Some(c), Some(b)) => b < c,   // { comes before :
+                (None, None) => false,         // treat as field (will error in parse)
+            };
+
+            if is_group {
+                // Group: Name { field: val, ... }
+                let brace_start = brace_pos.unwrap();
+                let group_name = entry[..brace_start].trim();
+                let inner_block = entry[brace_start..]
+                    .strip_prefix('{')
+                    .and_then(|s| s.strip_suffix('}'))
+                    .ok_or_else(|| {
+                        CliError::Message(format!(
+                            "unmatched '{{' in inline group '{}'",
+                            group_name
+                        ))
+                    })?;
+
+                if group_name.is_empty() {
+                    return Err(CliError::Message(
+                        "empty group name in spawn block".into(),
+                    ));
+                }
+
+                // Validate this is actually an optional group
+                if self
+                    .type_env
+                    .lookup_optional_group(entity_type, group_name)
+                    .is_none()
+                {
+                    return Err(CliError::Message(format!(
+                        "unknown optional group '{}' on entity type '{}'",
+                        group_name, entity_type
+                    )));
+                }
+
+                let group_fields = self.parse_field_block(inner_block)?;
+                groups.push((group_name.to_string(), group_fields));
+            } else {
+                // Field: key: value
+                let cp = colon_pos.ok_or_else(|| {
+                    CliError::Message(format!(
+                        "expected 'key: value' in field block, got: {}",
+                        entry
+                    ))
+                })?;
+                let key = entry[..cp].trim();
+                let val_str = entry[cp + 1..].trim();
+                if key.is_empty() || val_str.is_empty() {
+                    return Err(CliError::Message(format!(
+                        "invalid field entry: {}",
+                        entry
+                    )));
+                }
+
+                let val = if let Some(&ent) = self.handles.get(val_str) {
+                    Value::Entity(ent)
+                } else {
+                    let (parsed, diags) = ttrpg_parser::parse_expr(val_str);
+                    if !diags.is_empty() {
+                        let msgs: Vec<_> = diags.iter().map(|d| d.message.as_str()).collect();
+                        return Err(CliError::Message(format!(
+                            "parse error in field '{}': {}",
+                            key,
+                            msgs.join("; ")
+                        )));
+                    }
+                    let parsed = parsed.ok_or_else(|| {
+                        CliError::Message(format!("failed to parse value for field '{}'", key))
+                    })?;
+
+                    let interp = Interpreter::new(&self.program, &self.type_env)
+                        .map_err(|e| CliError::Message(format!("interpreter error: {}", e)))?;
+                    let state = RefCellState(&self.game_state);
+                    let mut handler = CliHandler::new(
+                        &self.game_state,
+                        &self.reverse_handles,
+                        &mut self.rng,
+                        &mut self.roll_queue,
+                    );
+                    let result = interp
+                        .evaluate_expr(&state, &mut handler, &parsed)
+                        .map_err(|e| {
+                            for line in handler.log.drain(..) {
+                                self.output.push(line);
+                            }
+                            CliError::Message(format!("error evaluating field '{}': {}", key, e))
+                        })?;
+                    for line in handler.log.drain(..) {
+                        self.output.push(line);
+                    }
+                    result
+                };
+                if fields.contains_key(key) {
+                    return Err(CliError::Message(format!(
+                        "duplicate field '{}' in field block",
+                        key
+                    )));
+                }
+                fields.insert(key.to_string(), val);
+            }
+        }
+
+        Ok((fields, groups))
+    }
+
     /// Parse a field block like `key: expr, key: expr` into a HashMap.
     fn parse_field_block(&mut self, block: &str) -> Result<HashMap<String, Value>, CliError> {
         let mut fields = HashMap::new();
@@ -1214,6 +1887,31 @@ fn split_top_level_commas(s: &str) -> Vec<&str> {
     }
     result.push(&s[start..]);
     result
+}
+
+/// Find the first unquoted occurrence of a character in a string.
+fn find_unquoted(s: &str, needle: char) -> Option<usize> {
+    let bytes = s.as_bytes();
+    let needle_byte = needle as u8;
+    let mut in_string = false;
+    let mut i = 0;
+    while i < bytes.len() {
+        if in_string {
+            if bytes[i] == b'\\' {
+                i += 2;
+                continue;
+            }
+            if bytes[i] == b'"' {
+                in_string = false;
+            }
+        } else if bytes[i] == b'"' {
+            in_string = true;
+        } else if bytes[i] == needle_byte {
+            return Some(i);
+        }
+        i += 1;
+    }
+    None
 }
 
 /// Check that a handle name is a bare identifier: `[a-zA-Z_][a-zA-Z0-9_]*`.
@@ -2482,5 +3180,383 @@ system "test" {
         let output = runner.take_output();
         assert_eq!(output.len(), 1);
         assert!(output[0].contains("<unset>"), "got: {}", output[0]);
+    }
+
+    // ── Grant/Revoke tests ──────────────────────────────────────
+
+    /// Load a program with optional groups for grant/revoke tests.
+    fn load_group_program(runner: &mut Runner) {
+        static COUNTER: AtomicU64 = AtomicU64::new(0);
+        let id = COUNTER.fetch_add(1, Ordering::Relaxed);
+        let dir = std::env::temp_dir().join("ttrpg_cli_test");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join(format!("test_group_{}.ttrpg", id));
+        std::fs::write(
+            &path,
+            r#"
+system "test" {
+    entity Character {
+        HP: int
+        AC: int
+        optional Spellcasting {
+            spell_slots: int
+            spell_dc: int = 10
+        }
+        optional Rage {
+            rage_count: int
+        }
+    }
+    derive id(x: int) -> int { x }
+}
+"#,
+        )
+        .unwrap();
+        runner.exec(&format!("load {}", path.display())).unwrap();
+        runner.take_output();
+        std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn grant_and_revoke_basic() {
+        let mut runner = Runner::new();
+        load_group_program(&mut runner);
+        runner.exec("spawn Character hero { HP: 30, AC: 15 }").unwrap();
+        runner.take_output();
+
+        // Grant with explicit fields
+        runner.exec("grant hero.Spellcasting { spell_slots: 5 }").unwrap();
+        let output = runner.take_output();
+        assert!(output[0].contains("granted hero.Spellcasting"), "got: {:?}", output);
+
+        // Revoke
+        runner.exec("revoke hero.Spellcasting").unwrap();
+        let output = runner.take_output();
+        assert_eq!(output, vec!["revoked hero.Spellcasting"]);
+    }
+
+    #[test]
+    fn grant_defaults_filled() {
+        let mut runner = Runner::new();
+        load_group_program(&mut runner);
+        runner.exec("spawn Character hero { HP: 30 }").unwrap();
+        runner.take_output();
+
+        // spell_dc has default=10, so we only need spell_slots
+        runner.exec("grant hero.Spellcasting { spell_slots: 3 }").unwrap();
+        let output = runner.take_output();
+        assert!(output[0].contains("spell_dc"), "default should be filled, got: {:?}", output);
+    }
+
+    #[test]
+    fn grant_missing_required_field() {
+        let mut runner = Runner::new();
+        load_group_program(&mut runner);
+        runner.exec("spawn Character hero { HP: 30 }").unwrap();
+        runner.take_output();
+
+        // spell_slots is required (no default)
+        let err = runner.exec("grant hero.Spellcasting").unwrap_err();
+        assert!(
+            err.to_string().contains("missing required field"),
+            "got: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn grant_unknown_group() {
+        let mut runner = Runner::new();
+        load_group_program(&mut runner);
+        runner.exec("spawn Character hero { HP: 30 }").unwrap();
+        runner.take_output();
+
+        let err = runner.exec("grant hero.Flying").unwrap_err();
+        assert!(
+            err.to_string().contains("unknown optional group"),
+            "got: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn grant_already_granted() {
+        let mut runner = Runner::new();
+        load_group_program(&mut runner);
+        runner.exec("spawn Character hero { HP: 30 }").unwrap();
+        runner.take_output();
+
+        runner.exec("grant hero.Rage { rage_count: 3 }").unwrap();
+        runner.take_output();
+
+        let err = runner.exec("grant hero.Rage { rage_count: 2 }").unwrap_err();
+        assert!(
+            err.to_string().contains("already granted"),
+            "got: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn revoke_not_granted() {
+        let mut runner = Runner::new();
+        load_group_program(&mut runner);
+        runner.exec("spawn Character hero { HP: 30 }").unwrap();
+        runner.take_output();
+
+        let err = runner.exec("revoke hero.Spellcasting").unwrap_err();
+        assert!(
+            err.to_string().contains("not currently granted"),
+            "got: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn set_group_field() {
+        let mut runner = Runner::new();
+        load_group_program(&mut runner);
+        runner.exec("spawn Character hero { HP: 30 }").unwrap();
+        runner.take_output();
+        runner.exec("grant hero.Spellcasting { spell_slots: 5 }").unwrap();
+        runner.take_output();
+
+        runner.exec("set hero.Spellcasting.spell_slots = 3").unwrap();
+        let output = runner.take_output();
+        assert!(
+            output[0].contains("hero.Spellcasting.spell_slots = 3"),
+            "got: {:?}",
+            output
+        );
+    }
+
+    #[test]
+    fn set_group_field_not_granted() {
+        let mut runner = Runner::new();
+        load_group_program(&mut runner);
+        runner.exec("spawn Character hero { HP: 30 }").unwrap();
+        runner.take_output();
+
+        let err = runner.exec("set hero.Spellcasting.spell_slots = 3").unwrap_err();
+        assert!(
+            err.to_string().contains("not currently granted"),
+            "got: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn inspect_group() {
+        let mut runner = Runner::new();
+        load_group_program(&mut runner);
+        runner.exec("spawn Character hero { HP: 30 }").unwrap();
+        runner.take_output();
+        runner.exec("grant hero.Spellcasting { spell_slots: 5 }").unwrap();
+        runner.take_output();
+
+        // Inspect group
+        runner.exec("inspect hero.Spellcasting").unwrap();
+        let output = runner.take_output();
+        assert!(output[0].contains("hero.Spellcasting"), "got: {:?}", output);
+    }
+
+    #[test]
+    fn inspect_group_not_granted() {
+        let mut runner = Runner::new();
+        load_group_program(&mut runner);
+        runner.exec("spawn Character hero { HP: 30 }").unwrap();
+        runner.take_output();
+
+        runner.exec("inspect hero.Spellcasting").unwrap();
+        let output = runner.take_output();
+        assert!(
+            output[0].contains("<not granted>"),
+            "got: {:?}",
+            output
+        );
+    }
+
+    #[test]
+    fn inspect_group_field() {
+        let mut runner = Runner::new();
+        load_group_program(&mut runner);
+        runner.exec("spawn Character hero { HP: 30 }").unwrap();
+        runner.take_output();
+        runner.exec("grant hero.Spellcasting { spell_slots: 5 }").unwrap();
+        runner.take_output();
+
+        runner.exec("inspect hero.Spellcasting.spell_slots").unwrap();
+        let output = runner.take_output();
+        assert!(
+            output[0].contains("hero.Spellcasting.spell_slots = 5"),
+            "got: {:?}",
+            output
+        );
+    }
+
+    #[test]
+    fn inspect_entity_shows_groups() {
+        let mut runner = Runner::new();
+        load_group_program(&mut runner);
+        runner.exec("spawn Character hero { HP: 30 }").unwrap();
+        runner.take_output();
+        runner.exec("grant hero.Spellcasting { spell_slots: 5 }").unwrap();
+        runner.take_output();
+
+        runner.exec("inspect hero").unwrap();
+        let output = runner.take_output();
+        assert!(
+            output.iter().any(|l| l.contains("[group] Spellcasting")),
+            "should show granted group, got: {:?}",
+            output
+        );
+        assert!(
+            output.iter().any(|l| l.contains("spell_slots") && l.contains("5")),
+            "should show group field value, got: {:?}",
+            output
+        );
+    }
+
+    #[test]
+    fn types_shows_optional_groups() {
+        let mut runner = Runner::new();
+        load_group_program(&mut runner);
+
+        runner.exec("types").unwrap();
+        let output = runner.take_output();
+        assert!(
+            output.iter().any(|l| l.contains("optional Spellcasting")),
+            "types should show optional groups, got: {:?}",
+            output
+        );
+        assert!(
+            output.iter().any(|l| l.contains("spell_slots")),
+            "types should show group fields, got: {:?}",
+            output
+        );
+    }
+
+    #[test]
+    fn state_shows_granted_groups() {
+        let mut runner = Runner::new();
+        load_group_program(&mut runner);
+        runner.exec("spawn Character hero { HP: 30 }").unwrap();
+        runner.take_output();
+        runner.exec("grant hero.Rage { rage_count: 3 }").unwrap();
+        runner.take_output();
+
+        runner.exec("state").unwrap();
+        let output = runner.take_output();
+        assert!(
+            output.iter().any(|l| l.contains("[group] Rage")),
+            "state should show granted group, got: {:?}",
+            output
+        );
+    }
+
+    #[test]
+    fn spawn_inline_group() {
+        let mut runner = Runner::new();
+        load_group_program(&mut runner);
+
+        runner.exec("spawn Character wizard { HP: 20, Spellcasting { spell_slots: 5 } }").unwrap();
+        let output = runner.take_output();
+        assert!(output[0].contains("spawned Character wizard"), "got: {:?}", output);
+
+        // Verify the group was granted
+        runner.exec("inspect wizard.Spellcasting.spell_slots").unwrap();
+        let output = runner.take_output();
+        assert!(
+            output[0].contains("5"),
+            "inline group should set field, got: {:?}",
+            output
+        );
+    }
+
+    #[test]
+    fn spawn_inline_group_with_defaults() {
+        let mut runner = Runner::new();
+        load_group_program(&mut runner);
+
+        // Spellcasting has spell_dc default=10
+        runner.exec("spawn Character wizard { HP: 20, Spellcasting { spell_slots: 3 } }").unwrap();
+        runner.take_output();
+
+        runner.exec("inspect wizard.Spellcasting.spell_dc").unwrap();
+        let output = runner.take_output();
+        assert!(
+            output[0].contains("10"),
+            "default should be filled, got: {:?}",
+            output
+        );
+    }
+
+    #[test]
+    fn spawn_inline_group_unknown_rejected() {
+        let mut runner = Runner::new();
+        load_group_program(&mut runner);
+
+        let err = runner.exec("spawn Character hero { HP: 20, Flying { speed: 60 } }").unwrap_err();
+        assert!(
+            err.to_string().contains("unknown optional group"),
+            "got: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn grant_unknown_field_in_group() {
+        let mut runner = Runner::new();
+        load_group_program(&mut runner);
+        runner.exec("spawn Character hero { HP: 30 }").unwrap();
+        runner.take_output();
+
+        let err = runner.exec("grant hero.Spellcasting { spell_slots: 5, nonexistent: 1 }").unwrap_err();
+        assert!(
+            err.to_string().contains("unknown field 'nonexistent'"),
+            "got: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn revoke_unknown_group() {
+        let mut runner = Runner::new();
+        load_group_program(&mut runner);
+        runner.exec("spawn Character hero { HP: 30 }").unwrap();
+        runner.take_output();
+
+        let err = runner.exec("revoke hero.Flying").unwrap_err();
+        assert!(
+            err.to_string().contains("unknown optional group"),
+            "got: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn assert_err_grant_revoke() {
+        let mut runner = Runner::new();
+        load_group_program(&mut runner);
+        runner.exec("spawn Character hero { HP: 30 }").unwrap();
+        runner.take_output();
+
+        // Revoke when not granted should error
+        runner.exec("assert_err revoke hero.Spellcasting").unwrap();
+        // Grant with unknown group should error
+        runner.exec("assert_err grant hero.Flying").unwrap();
+    }
+
+    #[test]
+    fn group_accessor_methods() {
+        let mut runner = Runner::new();
+        load_group_program(&mut runner);
+
+        let groups = runner.group_names("Character");
+        assert!(groups.contains(&"Spellcasting".to_string()));
+        assert!(groups.contains(&"Rage".to_string()));
+
+        let fields = runner.group_field_names("Character", "Spellcasting");
+        assert!(fields.contains(&"spell_slots".to_string()));
+        assert!(fields.contains(&"spell_dc".to_string()));
     }
 }

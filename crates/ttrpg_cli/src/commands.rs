@@ -10,6 +10,8 @@ pub enum Command {
     Destroy(String),
     Do(String),
     Call(String),
+    Grant(String),
+    Revoke(String),
     // Inspection
     Inspect(String),
     State,
@@ -101,6 +103,22 @@ pub fn parse_command(line: &str) -> Option<Command> {
                 Some(Command::Unknown("call".into()))
             } else {
                 Some(Command::Call(s.into()))
+            }
+        }
+        "grant" => {
+            let s = strip_comment(tail).trim();
+            if s.is_empty() {
+                Some(Command::Unknown("grant".into()))
+            } else {
+                Some(Command::Grant(s.into()))
+            }
+        }
+        "revoke" => {
+            let s = strip_comment(tail).trim();
+            if s.is_empty() {
+                Some(Command::Unknown("revoke".into()))
+            } else {
+                Some(Command::Revoke(s.into()))
             }
         }
         // Inspection
@@ -403,6 +421,56 @@ mod tests {
         assert_eq!(
             parse_command("do Attack(fighter, goblin) // attack!"),
             Some(Command::Do("Attack(fighter, goblin)".into()))
+        );
+    }
+
+    // ── Grant/Revoke commands ─────────────────────────────────────
+
+    #[test]
+    fn parse_grant() {
+        assert_eq!(
+            parse_command("grant hero.Spellcasting { spell_slots: 5 }"),
+            Some(Command::Grant("hero.Spellcasting { spell_slots: 5 }".into()))
+        );
+    }
+
+    #[test]
+    fn parse_grant_no_fields() {
+        assert_eq!(
+            parse_command("grant hero.Spellcasting"),
+            Some(Command::Grant("hero.Spellcasting".into()))
+        );
+    }
+
+    #[test]
+    fn parse_grant_empty_is_unknown() {
+        assert_eq!(
+            parse_command("grant"),
+            Some(Command::Unknown("grant".into()))
+        );
+    }
+
+    #[test]
+    fn parse_revoke() {
+        assert_eq!(
+            parse_command("revoke hero.Spellcasting"),
+            Some(Command::Revoke("hero.Spellcasting".into()))
+        );
+    }
+
+    #[test]
+    fn parse_revoke_empty_is_unknown() {
+        assert_eq!(
+            parse_command("revoke"),
+            Some(Command::Unknown("revoke".into()))
+        );
+    }
+
+    #[test]
+    fn parse_grant_with_comment() {
+        assert_eq!(
+            parse_command("grant hero.Spellcasting // give spells"),
+            Some(Command::Grant("hero.Spellcasting".into()))
         );
     }
 

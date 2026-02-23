@@ -62,6 +62,32 @@ fn refresh_completions(runner: &Runner, ctx: &Arc<Mutex<CompletionContext>>) {
     c.action_names = runner.action_names();
     c.derive_names = runner.derive_names();
     c.mechanic_names = runner.mechanic_names();
+
+    // Populate handle→type, type→groups, type→fields, and (type,group)→fields maps
+    c.handle_types.clear();
+    c.type_groups.clear();
+    c.group_fields.clear();
+    c.type_fields.clear();
+
+    let handles: Vec<String> = c.handles.clone();
+    for handle in &handles {
+        if let Some(entity_type) = runner.handle_type(handle) {
+            c.handle_types.insert(handle.clone(), entity_type);
+        }
+    }
+
+    let entity_types: Vec<String> = c.entity_types.clone();
+    for entity_type in &entity_types {
+        c.type_fields
+            .insert(entity_type.clone(), runner.field_names(entity_type));
+        let groups = runner.group_names(entity_type);
+        for group_name in &groups {
+            let key = (entity_type.clone(), group_name.clone());
+            c.group_fields
+                .insert(key, runner.group_field_names(entity_type, group_name));
+        }
+        c.type_groups.insert(entity_type.clone(), groups);
+    }
 }
 
 /// Build the history file path, creating parent directories if needed.

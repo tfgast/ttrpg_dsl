@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use reedline::{Completer, Suggestion, Span};
@@ -6,6 +7,7 @@ use reedline::{Completer, Suggestion, Span};
 const ALL_COMMANDS: &[&str] = &[
     "load", "eval", "reload", "errors",
     "spawn", "set", "destroy", "do", "call",
+    "grant", "revoke",
     "inspect", "state", "types", "actions", "mechanics", "conditions",
     "assert", "assert_eq", "assert_err",
     "seed", "rolls",
@@ -25,6 +27,14 @@ pub struct CompletionContext {
     pub action_names: Vec<String>,
     pub derive_names: Vec<String>,
     pub mechanic_names: Vec<String>,
+    /// Maps handle name → entity type name.
+    pub handle_types: HashMap<String, String>,
+    /// Maps entity type name → optional group names.
+    pub type_groups: HashMap<String, Vec<String>>,
+    /// Maps (entity type, group name) → field names within the group.
+    pub group_fields: HashMap<(String, String), Vec<String>>,
+    /// Maps entity type name → base field names.
+    pub type_fields: HashMap<String, Vec<String>>,
 }
 
 /// Context-aware tab completer for the TTRPG REPL.
@@ -112,14 +122,53 @@ impl Completer for TtrpgCompleter {
                     .map(|s| suggestion(s, Span::new(word_start, pos), false))
                     .collect()
             }
-            "set" | "inspect" | "destroy" => {
-                // Complete handle names
+            "set" | "inspect" | "destroy" | "grant" | "revoke" => {
+                // Complete handle names, group names, and group field names
                 let current_word = last_word(rest);
                 let word_start = pos - current_word.len();
 
-                if current_word.contains('.') {
-                    // After handle.field — no completions for now
-                    Vec::new()
+                if let Some(dot_pos) = current_word.find('.') {
+                    let handle = &current_word[..dot_pos];
+                    let after_dot = &current_word[dot_pos + 1..];
+
+                    // Check for second dot: handle.GroupName.field
+                    if let Some(inner_dot) = after_dot.find('.') {
+                        let group_name = &after_dot[..inner_dot];
+                        let field_prefix = &after_dot[inner_dot + 1..];
+                        let prefix_str = format!("{}.{}.", handle, group_name);
+                        let field_start = word_start + prefix_str.len();
+
+                        if let Some(entity_type) = ctx.handle_types.get(handle) {
+                            let key = (entity_type.clone(), group_name.to_string());
+                            if let Some(field_names) = ctx.group_fields.get(&key) {
+                                return prefix_matches_owned(field_names, field_prefix)
+                                    .into_iter()
+                                    .map(|s| suggestion(s, Span::new(field_start, pos), true))
+                                    .collect();
+                            }
+                        }
+                        Vec::new()
+                    } else {
+                        // After handle. — complete base fields + group names
+                        let prefix_str = format!("{}.", handle);
+                        let field_start = word_start + prefix_str.len();
+
+                        if let Some(entity_type) = ctx.handle_types.get(handle) {
+                            let mut candidates = Vec::new();
+                            if let Some(fields) = ctx.type_fields.get(entity_type.as_str()) {
+                                candidates.extend(fields.iter().cloned());
+                            }
+                            if let Some(groups) = ctx.type_groups.get(entity_type.as_str()) {
+                                candidates.extend(groups.iter().cloned());
+                            }
+                            prefix_matches_owned(&candidates, after_dot)
+                                .into_iter()
+                                .map(|s| suggestion(s, Span::new(field_start, pos), true))
+                                .collect()
+                        } else {
+                            Vec::new()
+                        }
+                    }
                 } else {
                     prefix_matches_owned(&ctx.handles, current_word)
                         .into_iter()
@@ -199,6 +248,10 @@ mod tests {
             action_names: vec!["Attack".into(), "Heal".into()],
             derive_names: vec!["modifier".into()],
             mechanic_names: vec!["add".into()],
+            handle_types: HashMap::new(),
+            type_groups: HashMap::new(),
+            group_fields: HashMap::new(),
+            type_fields: HashMap::new(),
         }))
     }
 

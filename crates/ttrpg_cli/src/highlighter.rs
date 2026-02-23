@@ -7,6 +7,7 @@ use ttrpg_lexer::token::TokenKind;
 const CLI_COMMANDS: &[&str] = &[
     "load", "eval", "reload", "errors",
     "spawn", "set", "destroy", "do", "call",
+    "grant", "revoke",
     "inspect", "state", "types", "actions", "mechanics", "conditions",
     "assert", "assert_eq", "assert_err",
     "seed", "rolls",
