@@ -205,6 +205,9 @@ fn pass_1b(
                 }
                 collect_option(o, env, diagnostics, decl.span);
             }
+            DeclKind::Hook(_) => {
+                // TODO: collect_hook — checker support in a later pass
+            }
             DeclKind::Move(_) => {
                 diagnostics.push(Diagnostic::error(
                     "move declarations must be lowered before type-checking",

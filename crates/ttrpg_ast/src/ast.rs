@@ -19,6 +19,8 @@ pub struct Program {
     pub prompts: HashMap<String, PromptDecl>,
     pub options: HashMap<String, OptionDecl>,
     pub option_order: Vec<String>,
+    pub hooks: HashMap<String, HookDecl>,
+    pub hook_order: Vec<String>,
 }
 
 impl Program {
@@ -36,6 +38,8 @@ impl Program {
         self.prompts.clear();
         self.options.clear();
         self.option_order.clear();
+        self.hooks.clear();
+        self.hook_order.clear();
 
         for item in &self.items {
             if let TopLevel::System(system) = &item.node {
@@ -66,6 +70,10 @@ impl Program {
                         DeclKind::Option(o) => {
                             self.options.insert(o.name.clone(), o.clone());
                             self.option_order.push(o.name.clone());
+                        }
+                        DeclKind::Hook(h) => {
+                            self.hooks.insert(h.name.clone(), h.clone());
+                            self.hook_order.push(h.name.clone());
                         }
                         _ => {}
                     }
@@ -103,6 +111,7 @@ pub enum DeclKind {
     Mechanic(FnDecl),
     Action(ActionDecl),
     Reaction(ReactionDecl),
+    Hook(HookDecl),
     Condition(ConditionDecl),
     Prompt(PromptDecl),
     Option(OptionDecl),
@@ -219,6 +228,17 @@ pub struct ReactionDecl {
     pub receiver_with_groups: Vec<String>,
     pub trigger: TriggerExpr,
     pub cost: Option<CostClause>,
+    pub resolve: Block,
+}
+
+#[derive(Clone)]
+pub struct HookDecl {
+    pub name: String,
+    pub receiver_name: String,
+    pub receiver_type: Spanned<TypeExpr>,
+    /// Optional group constraints on the receiver: `on target: Entity with Group`.
+    pub receiver_with_groups: Vec<String>,
+    pub trigger: TriggerExpr,
     pub resolve: Block,
 }
 

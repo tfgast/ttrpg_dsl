@@ -61,6 +61,7 @@ impl<'a> Checker<'a> {
             DeclKind::Event(e) => self.check_event(e),
             DeclKind::Enum(_) => {}
             DeclKind::Option(o) => self.check_option(o),
+            DeclKind::Hook(_) => {} // TODO: check_hook
             DeclKind::Move(_) => {
                 self.error(
                     "move declarations must be lowered before type-checking",
