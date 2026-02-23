@@ -73,6 +73,10 @@ impl<'a> Checker<'a> {
                     Ty::Unit
                 }
             }
+            StmtKind::Grant { .. } | StmtKind::Revoke { .. } => {
+                // TODO(ttrpg_dsl-8j9): type check grant/revoke statements
+                Ty::Unit
+            }
         }
     }
 

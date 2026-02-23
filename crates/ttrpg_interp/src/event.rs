@@ -550,12 +550,14 @@ mod tests {
                         name: "target".into(),
                         ty: spanned(TypeExpr::Named("Character".into())),
                         default: None,
+                        with_groups: vec![],
                         span: dummy_span(),
                     },
                     Param {
                         name: "attacker".into(),
                         ty: spanned(TypeExpr::Named("Character".into())),
                         default: None,
+                        with_groups: vec![],
                         span: dummy_span(),
                     },
                 ],
@@ -565,6 +567,7 @@ mod tests {
                 name: "Parry".into(),
                 receiver_name: "defender".into(),
                 receiver_type: spanned(TypeExpr::Named("Character".into())),
+                receiver_with_groups: vec![],
                 trigger: TriggerExpr {
                     event_name: "Attacked".into(),
                     bindings: vec![TriggerBinding {
@@ -644,12 +647,14 @@ mod tests {
                         name: "target".into(),
                         ty: spanned(TypeExpr::Named("Character".into())),
                         default: None,
+                        with_groups: vec![],
                         span: dummy_span(),
                     },
                     Param {
                         name: "attacker".into(),
                         ty: spanned(TypeExpr::Named("Character".into())),
                         default: None,
+                        with_groups: vec![],
                         span: dummy_span(),
                     },
                 ],
@@ -659,6 +664,7 @@ mod tests {
                 name: "CounterStrike".into(),
                 receiver_name: "fighter".into(),
                 receiver_type: spanned(TypeExpr::Named("Character".into())),
+                receiver_with_groups: vec![],
                 trigger: TriggerExpr {
                     event_name: "Attacked".into(),
                     bindings: vec![TriggerBinding {
@@ -741,18 +747,21 @@ mod tests {
                         name: "attacker".into(),
                         ty: spanned(TypeExpr::Named("Character".into())),
                         default: None,
+                        with_groups: vec![],
                         span: dummy_span(),
                     },
                     Param {
                         name: "target".into(),
                         ty: spanned(TypeExpr::Named("Character".into())),
                         default: None,
+                        with_groups: vec![],
                         span: dummy_span(),
                     },
                     Param {
                         name: "weapon".into(),
                         ty: spanned(TypeExpr::Named("Character".into())),
                         default: None,
+                        with_groups: vec![],
                         span: dummy_span(),
                     },
                 ],
@@ -762,6 +771,7 @@ mod tests {
                 name: "Dodge".into(),
                 receiver_name: "me".into(),
                 receiver_type: spanned(TypeExpr::Named("Character".into())),
+                receiver_with_groups: vec![],
                 trigger: TriggerExpr {
                     event_name: "Combat".into(),
                     bindings: vec![
@@ -855,6 +865,7 @@ mod tests {
                     name: "target".into(),
                     ty: spanned(TypeExpr::Named("Character".into())),
                     default: None,
+                    with_groups: vec![],
                     span: dummy_span(),
                 }],
                 fields: vec![],
@@ -863,6 +874,7 @@ mod tests {
                 name: "Shield".into(),
                 receiver_name: "defender".into(),
                 receiver_type: spanned(TypeExpr::Named("Character".into())),
+                receiver_with_groups: vec![],
                 trigger: TriggerExpr {
                     event_name: "Blast".into(),
                     bindings: vec![TriggerBinding {
@@ -936,12 +948,14 @@ mod tests {
                         name: "target".into(),
                         ty: spanned(TypeExpr::Named("Character".into())),
                         default: None,
+                        with_groups: vec![],
                         span: dummy_span(),
                     },
                     Param {
                         name: "attacker".into(),
                         ty: spanned(TypeExpr::Named("Character".into())),
                         default: None,
+                        with_groups: vec![],
                         span: dummy_span(),
                     },
                 ],
@@ -951,6 +965,7 @@ mod tests {
                 name: "Parry".into(),
                 receiver_name: "defender".into(),
                 receiver_type: spanned(TypeExpr::Named("Character".into())),
+                receiver_with_groups: vec![],
                 trigger: TriggerExpr {
                     event_name: "Attacked".into(),
                     bindings: vec![TriggerBinding {
@@ -969,6 +984,7 @@ mod tests {
                 name: "Stunned".into(),
                 receiver_name: "bearer".into(),
                 receiver_type: spanned(TypeExpr::Named("Character".into())),
+                receiver_with_groups: vec![],
                 clauses: vec![ConditionClause::Suppress(SuppressClause {
                     event_name: "Attacked".into(),
                     bindings: vec![ModifyBinding {
@@ -1067,12 +1083,14 @@ mod tests {
                         name: "target".into(),
                         ty: spanned(TypeExpr::Named("Character".into())),
                         default: None,
+                        with_groups: vec![],
                         span: dummy_span(),
                     },
                     Param {
                         name: "attacker".into(),
                         ty: spanned(TypeExpr::Named("Character".into())),
                         default: None,
+                        with_groups: vec![],
                         span: dummy_span(),
                     },
                 ],
@@ -1084,6 +1102,7 @@ mod tests {
                     name: "target".into(),
                     ty: spanned(TypeExpr::Named("Character".into())),
                     default: None,
+                    with_groups: vec![],
                     span: dummy_span(),
                 }],
                 fields: vec![],
@@ -1092,6 +1111,7 @@ mod tests {
                 name: "Parry".into(),
                 receiver_name: "defender".into(),
                 receiver_type: spanned(TypeExpr::Named("Character".into())),
+                receiver_with_groups: vec![],
                 trigger: TriggerExpr {
                     event_name: "Attacked".into(),
                     bindings: vec![TriggerBinding {
@@ -1110,6 +1130,7 @@ mod tests {
                 name: "Silenced".into(),
                 receiver_name: "bearer".into(),
                 receiver_type: spanned(TypeExpr::Named("Character".into())),
+                receiver_with_groups: vec![],
                 clauses: vec![ConditionClause::Suppress(SuppressClause {
                     event_name: "Healed".into(), // different event
                     bindings: vec![ModifyBinding {

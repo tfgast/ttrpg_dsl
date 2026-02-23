@@ -136,7 +136,7 @@ impl Parser {
         self.skip_newlines();
         let fields = self.parse_field_defs()?;
         self.expect(&TokenKind::RBrace)?;
-        Ok(EntityDecl { name, fields })
+        Ok(EntityDecl { name, fields, optional_groups: vec![] })
     }
 
     pub(crate) fn parse_field_defs(&mut self) -> Result<Vec<FieldDef>, ()> {
@@ -231,6 +231,7 @@ impl Parser {
             name,
             ty,
             default,
+            with_groups: vec![],
             span: self.end_span(start),
         })
     }
@@ -273,6 +274,7 @@ impl Parser {
             name,
             receiver_name,
             receiver_type,
+            receiver_with_groups: vec![],
             params,
             cost,
             requires,
@@ -357,6 +359,7 @@ impl Parser {
             name,
             receiver_name,
             receiver_type,
+            receiver_with_groups: vec![],
             trigger,
             cost,
             resolve,
@@ -468,6 +471,7 @@ impl Parser {
             name,
             receiver_name,
             receiver_type,
+            receiver_with_groups: vec![],
             clauses,
         })
     }

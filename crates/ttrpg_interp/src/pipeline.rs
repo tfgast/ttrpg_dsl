@@ -761,12 +761,14 @@ mod tests {
                         name: "attacker".into(),
                         ty: spanned(TypeExpr::Named("Character".into())),
                         default: None,
+                        with_groups: vec![],
                         span: dummy_span(),
                     },
                     Param {
                         name: "mode".into(),
                         ty: spanned(TypeExpr::String),
                         default: None,
+                        with_groups: vec![],
                         span: dummy_span(),
                     },
                 ],
@@ -789,6 +791,7 @@ mod tests {
                 name: "Prone".into(),
                 receiver_name: "target".into(),
                 receiver_type: spanned(TypeExpr::Named("Character".into())),
+                receiver_with_groups: vec![],
                 clauses: vec![ConditionClause::Modify(ModifyClause {
                     target: "attack_roll".into(),
                     bindings: vec![ModifyBinding {
@@ -926,6 +929,7 @@ mod tests {
                     name: "val".into(),
                     ty: spanned(TypeExpr::Named("Character".into())),
                     default: None,
+                    with_groups: vec![],
                     span: dummy_span(),
                 }],
                 return_type: spanned(TypeExpr::Named("Outcome".into())),
@@ -945,6 +949,7 @@ mod tests {
                 name: "Boosted".into(),
                 receiver_name: "target".into(),
                 receiver_type: spanned(TypeExpr::Named("Character".into())),
+                receiver_with_groups: vec![],
                 clauses: vec![ConditionClause::Modify(ModifyClause {
                     target: "compute".into(),
                     bindings: vec![ModifyBinding {
@@ -1070,12 +1075,14 @@ mod tests {
                         name: "target".into(),
                         ty: spanned(TypeExpr::Named("Character".into())),
                         default: None,
+                        with_groups: vec![],
                         span: dummy_span(),
                     },
                     Param {
                         name: "x".into(),
                         ty: spanned(TypeExpr::Int),
                         default: None,
+                        with_groups: vec![],
                         span: dummy_span(),
                     },
                 ],
@@ -1089,6 +1096,7 @@ mod tests {
                 name: "Alpha".into(),
                 receiver_name: "t".into(),
                 receiver_type: spanned(TypeExpr::Named("Character".into())),
+                receiver_with_groups: vec![],
                 clauses: vec![ConditionClause::Modify(ModifyClause {
                     target: "calc".into(),
                     bindings: vec![ModifyBinding {
@@ -1112,6 +1120,7 @@ mod tests {
                 name: "Beta".into(),
                 receiver_name: "t".into(),
                 receiver_type: spanned(TypeExpr::Named("Character".into())),
+                receiver_with_groups: vec![],
                 clauses: vec![ConditionClause::Modify(ModifyClause {
                     target: "calc".into(),
                     bindings: vec![ModifyBinding {
@@ -1270,12 +1279,14 @@ mod tests {
                         name: "target".into(),
                         ty: spanned(TypeExpr::Named("Character".into())),
                         default: None,
+                        with_groups: vec![],
                         span: dummy_span(),
                     },
                     Param {
                         name: "x".into(),
                         ty: spanned(TypeExpr::Int),
                         default: None,
+                        with_groups: vec![],
                         span: dummy_span(),
                     },
                 ],
@@ -1289,6 +1300,7 @@ mod tests {
                 name: "Buff".into(),
                 receiver_name: "t".into(),
                 receiver_type: spanned(TypeExpr::Named("Character".into())),
+                receiver_with_groups: vec![],
                 clauses: vec![ConditionClause::Modify(ModifyClause {
                     target: "calc".into(),
                     bindings: vec![ModifyBinding {
@@ -1448,12 +1460,14 @@ mod tests {
                         name: "a".into(),
                         ty: spanned(TypeExpr::Named("Character".into())),
                         default: None,
+                        with_groups: vec![],
                         span: dummy_span(),
                     },
                     Param {
                         name: "b".into(),
                         ty: spanned(TypeExpr::Named("Character".into())),
                         default: None,
+                        with_groups: vec![],
                         span: dummy_span(),
                     },
                 ],
@@ -1467,6 +1481,7 @@ mod tests {
                 name: "Shared".into(),
                 receiver_name: "t".into(),
                 receiver_type: spanned(TypeExpr::Named("Character".into())),
+                receiver_with_groups: vec![],
                 clauses: vec![ConditionClause::Modify(ModifyClause {
                     target: "interact".into(),
                     bindings: vec![ModifyBinding {
@@ -1564,6 +1579,7 @@ mod tests {
                 name: "x".into(),
                 ty: spanned(TypeExpr::Int),
                 default: None,
+                with_groups: vec![],
                 span: dummy_span(),
             }],
             return_type: spanned(TypeExpr::Int),
@@ -1639,12 +1655,14 @@ mod tests {
                         name: "mode".into(),
                         ty: spanned(TypeExpr::String),
                         default: None,
+                        with_groups: vec![],
                         span: dummy_span(),
                     },
                     Param {
                         name: "x".into(),
                         ty: spanned(TypeExpr::Int),
                         default: None,
+                        with_groups: vec![],
                         span: dummy_span(),
                     },
                 ],
@@ -1769,12 +1787,14 @@ mod tests {
                         name: "target".into(),
                         ty: spanned(TypeExpr::Named("Character".into())),
                         default: None,
+                        with_groups: vec![],
                         span: dummy_span(),
                     },
                     Param {
                         name: "x".into(),
                         ty: spanned(TypeExpr::Int),
                         default: None,
+                        with_groups: vec![],
                         span: dummy_span(),
                     },
                 ],
@@ -1788,6 +1808,7 @@ mod tests {
                 name: "Buff".into(),
                 receiver_name: "t".into(),
                 receiver_type: spanned(TypeExpr::Named("Character".into())),
+                receiver_with_groups: vec![],
                 clauses: vec![ConditionClause::Modify(ModifyClause {
                     target: "calc".into(),
                     bindings: vec![ModifyBinding {
@@ -2005,6 +2026,7 @@ mod tests {
                     name: "x".into(),
                     ty: spanned(TypeExpr::Int),
                     default: None,
+                    with_groups: vec![],
                     span: dummy_span(),
                 }],
                 return_type: spanned(TypeExpr::Int),

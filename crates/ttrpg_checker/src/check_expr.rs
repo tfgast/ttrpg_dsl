@@ -75,6 +75,11 @@ impl<'a> Checker<'a> {
             ExprKind::For { pattern, iterable, body } => {
                 self.check_for(pattern, iterable, body, expr.span)
             }
+
+            ExprKind::Has { .. } => {
+                // TODO(ttrpg_dsl-8j9): type check has expression
+                Ty::Bool
+            }
         }
     }
 

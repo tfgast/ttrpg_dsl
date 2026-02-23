@@ -496,6 +496,7 @@ mod tests {
             name: name.to_string(),
             receiver_name: receiver_name.to_string(),
             receiver_type: spanned(TypeExpr::Named("Character".to_string())),
+            receiver_with_groups: vec![],
             params,
             cost,
             requires,
@@ -517,6 +518,7 @@ mod tests {
             name: name.to_string(),
             receiver_name: receiver_name.to_string(),
             receiver_type: spanned(TypeExpr::Named("Character".to_string())),
+            receiver_with_groups: vec![],
             trigger: TriggerExpr {
                 event_name: event_name.to_string(),
                 bindings: vec![],
@@ -835,6 +837,7 @@ mod tests {
                 name: "target".to_string(),
                 ty: spanned(TypeExpr::Named("Character".to_string())),
                 default: None,
+                with_groups: vec![],
                 span: span(),
             }],
             None,

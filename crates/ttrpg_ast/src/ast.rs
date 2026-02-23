@@ -141,6 +141,16 @@ pub struct StructDecl {
 pub struct EntityDecl {
     pub name: String,
     pub fields: Vec<FieldDef>,
+    pub optional_groups: Vec<OptionalGroup>,
+}
+
+/// An optional field group declared inside an entity with `optional GroupName { ... }`.
+/// Groups can be granted/revoked at runtime; fields are only accessible when active.
+#[derive(Clone)]
+pub struct OptionalGroup {
+    pub name: String,
+    pub fields: Vec<FieldDef>,
+    pub span: Span,
 }
 
 /// Field definition with optional default: `name: type (= expr)?`
@@ -169,6 +179,9 @@ pub struct Param {
     pub name: String,
     pub ty: Spanned<TypeExpr>,
     pub default: Option<Spanned<ExprKind>>,
+    /// Optional group constraints: `param: Entity with Group1, Group2`.
+    /// The checker narrows these groups as active within the function body.
+    pub with_groups: Vec<String>,
     pub span: Span,
 }
 
@@ -177,6 +190,8 @@ pub struct ActionDecl {
     pub name: String,
     pub receiver_name: String,
     pub receiver_type: Spanned<TypeExpr>,
+    /// Optional group constraints on the receiver: `on actor: Entity with Group1, Group2`.
+    pub receiver_with_groups: Vec<String>,
     pub params: Vec<Param>,
     pub cost: Option<CostClause>,
     pub requires: Option<Spanned<ExprKind>>,
@@ -200,6 +215,8 @@ pub struct ReactionDecl {
     pub name: String,
     pub receiver_name: String,
     pub receiver_type: Spanned<TypeExpr>,
+    /// Optional group constraints on the receiver: `on reactor: Entity with Group`.
+    pub receiver_with_groups: Vec<String>,
     pub trigger: TriggerExpr,
     pub cost: Option<CostClause>,
     pub resolve: Block,
@@ -231,6 +248,8 @@ pub struct ConditionDecl {
     pub name: String,
     pub receiver_name: String,
     pub receiver_type: Spanned<TypeExpr>,
+    /// Optional group constraints on the bearer: `on bearer: Entity with Group`.
+    pub receiver_with_groups: Vec<String>,
     pub clauses: Vec<ConditionClause>,
 }
 
@@ -413,6 +432,12 @@ pub enum ExprKind {
         iterable: ForIterable,
         body: Block,
     },
+    /// `entity has GroupName` — tests whether an optional group is active.
+    /// Produces a bool and enables flow-sensitive type narrowing.
+    Has {
+        entity: Box<Spanned<ExprKind>>,
+        group_name: String,
+    },
 }
 
 #[derive(Clone)]
@@ -534,6 +559,17 @@ pub enum StmtKind {
         value: Spanned<ExprKind>,
     },
     Expr(Spanned<ExprKind>),
+    /// `grant entity.GroupName { field: value, ... }` — activates an optional group.
+    Grant {
+        entity: Box<Spanned<ExprKind>>,
+        group_name: String,
+        fields: Vec<StructFieldInit>,
+    },
+    /// `revoke entity.GroupName` — deactivates an optional group, discarding field values.
+    Revoke {
+        entity: Box<Spanned<ExprKind>>,
+        group_name: String,
+    },
 }
 
 #[derive(Clone)]

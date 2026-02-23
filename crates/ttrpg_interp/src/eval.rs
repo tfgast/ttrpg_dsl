@@ -138,6 +138,14 @@ pub(crate) fn eval_expr(env: &mut Env, expr: &Spanned<ExprKind>) -> Result<Value
             iterable,
             body,
         } => eval_for(env, pattern, iterable, body),
+
+        ExprKind::Has { .. } => {
+            // TODO(ttrpg_dsl-5ho): runtime has expression
+            Err(RuntimeError::with_span(
+                "'has' expression not yet implemented",
+                expr.span,
+            ))
+        }
     }
 }
 
@@ -849,6 +857,13 @@ pub(crate) fn eval_stmt(
         StmtKind::Assign { target, op, value } => {
             eval_assign(env, target, *op, value, stmt.span)?;
             Ok(Value::None)
+        }
+        StmtKind::Grant { .. } | StmtKind::Revoke { .. } => {
+            // TODO(ttrpg_dsl-5ho): runtime grant/revoke
+            Err(RuntimeError::with_span(
+                "grant/revoke not yet implemented",
+                stmt.span,
+            ))
         }
     }
 }
@@ -4485,6 +4500,7 @@ mod tests {
                     name: "Stunned".to_string(),
                     receiver_name: "bearer".to_string(),
                     receiver_type: spanned(TypeExpr::Named("Character".to_string())),
+                    receiver_with_groups: vec![],
                     clauses: vec![],
                 }))],
             }))],
@@ -4516,12 +4532,14 @@ mod tests {
                         name: "Stunned".to_string(),
                         receiver_name: "bearer".to_string(),
                         receiver_type: spanned(TypeExpr::Named("Character".to_string())),
+                        receiver_with_groups: vec![],
                         clauses: vec![],
                     })),
                     spanned(DeclKind::Condition(ConditionDecl {
                         name: "Prone".to_string(),
                         receiver_name: "bearer".to_string(),
                         receiver_type: spanned(TypeExpr::Named("Character".to_string())),
+                        receiver_with_groups: vec![],
                         clauses: vec![],
                     })),
                 ],

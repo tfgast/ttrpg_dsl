@@ -160,6 +160,7 @@ fn lower_one_move(
         name: m.receiver_name.clone(),
         ty: m.receiver_type.clone(),
         default: None,
+        with_groups: vec![],
         span,
     }];
     mechanic_params.extend(m.params.iter().cloned());
@@ -305,6 +306,7 @@ fn lower_one_move(
         name: m.name.clone(),
         receiver_name: m.receiver_name.clone(),
         receiver_type: m.receiver_type.clone(),
+        receiver_with_groups: vec![],
         params: m.params.clone(),
         cost: Some(cost),
         requires: None,
