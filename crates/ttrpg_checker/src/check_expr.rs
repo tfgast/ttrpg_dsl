@@ -927,6 +927,19 @@ impl<'a> Checker<'a> {
             return self.check_try_from_ordinal_call(args, span);
         }
 
+        // Check collection builtins (polymorphic — can't use FnInfo)
+        match callee_name.as_str() {
+            "len" => return self.check_len_call(args, span),
+            "keys" => return self.check_keys_call(args, span),
+            "values" => return self.check_values_call(args, span),
+            "first" => return self.check_first_call(args, span),
+            "last" => return self.check_last_call(args, span),
+            "append" => return self.check_append_call(args, span),
+            "concat" => return self.check_concat_call(args, span),
+            "reverse" => return self.check_reverse_call(args, span),
+            _ => {}
+        }
+
         // Check if it's an enum variant constructor (bare name)
         if let Some(enum_name) = self.env.variant_to_enum.get(&callee_name) {
             let enum_name = enum_name.clone();
@@ -1271,6 +1284,290 @@ impl<'a> Checker<'a> {
             );
         }
         Ty::Option(Box::new(Ty::Enum(enum_name)))
+    }
+
+    // ── Collection builtins ─────────────────────────────────────
+
+    fn check_len_call(
+        &mut self,
+        args: &[Arg],
+        span: ttrpg_ast::Span,
+    ) -> Ty {
+        if args.len() != 1 {
+            self.error(
+                format!("`len` expects 1 argument, found {}", args.len()),
+                span,
+            );
+            for arg in args {
+                self.check_expr(&arg.value);
+            }
+            return Ty::Error;
+        }
+        let arg_ty = self.check_expr(&args[0].value);
+        if arg_ty.is_error() {
+            return Ty::Error;
+        }
+        match arg_ty {
+            Ty::List(_) | Ty::Set(_) | Ty::Map(_, _) => Ty::Int,
+            _ => {
+                self.error(
+                    format!(
+                        "`len` expects a list, set, or map, found {}",
+                        arg_ty
+                    ),
+                    span,
+                );
+                Ty::Error
+            }
+        }
+    }
+
+    fn check_keys_call(
+        &mut self,
+        args: &[Arg],
+        span: ttrpg_ast::Span,
+    ) -> Ty {
+        if args.len() != 1 {
+            self.error(
+                format!("`keys` expects 1 argument, found {}", args.len()),
+                span,
+            );
+            for arg in args {
+                self.check_expr(&arg.value);
+            }
+            return Ty::Error;
+        }
+        let arg_ty = self.check_expr(&args[0].value);
+        if arg_ty.is_error() {
+            return Ty::Error;
+        }
+        match arg_ty {
+            Ty::Map(k, _) => Ty::List(k),
+            _ => {
+                self.error(
+                    format!("`keys` expects a map, found {}", arg_ty),
+                    span,
+                );
+                Ty::Error
+            }
+        }
+    }
+
+    fn check_values_call(
+        &mut self,
+        args: &[Arg],
+        span: ttrpg_ast::Span,
+    ) -> Ty {
+        if args.len() != 1 {
+            self.error(
+                format!("`values` expects 1 argument, found {}", args.len()),
+                span,
+            );
+            for arg in args {
+                self.check_expr(&arg.value);
+            }
+            return Ty::Error;
+        }
+        let arg_ty = self.check_expr(&args[0].value);
+        if arg_ty.is_error() {
+            return Ty::Error;
+        }
+        match arg_ty {
+            Ty::Map(_, v) => Ty::List(v),
+            _ => {
+                self.error(
+                    format!("`values` expects a map, found {}", arg_ty),
+                    span,
+                );
+                Ty::Error
+            }
+        }
+    }
+
+    fn check_first_call(
+        &mut self,
+        args: &[Arg],
+        span: ttrpg_ast::Span,
+    ) -> Ty {
+        if args.len() != 1 {
+            self.error(
+                format!("`first` expects 1 argument, found {}", args.len()),
+                span,
+            );
+            for arg in args {
+                self.check_expr(&arg.value);
+            }
+            return Ty::Error;
+        }
+        let arg_ty = self.check_expr(&args[0].value);
+        if arg_ty.is_error() {
+            return Ty::Error;
+        }
+        match arg_ty {
+            Ty::List(inner) => Ty::Option(inner),
+            _ => {
+                self.error(
+                    format!("`first` expects a list, found {}", arg_ty),
+                    span,
+                );
+                Ty::Error
+            }
+        }
+    }
+
+    fn check_last_call(
+        &mut self,
+        args: &[Arg],
+        span: ttrpg_ast::Span,
+    ) -> Ty {
+        if args.len() != 1 {
+            self.error(
+                format!("`last` expects 1 argument, found {}", args.len()),
+                span,
+            );
+            for arg in args {
+                self.check_expr(&arg.value);
+            }
+            return Ty::Error;
+        }
+        let arg_ty = self.check_expr(&args[0].value);
+        if arg_ty.is_error() {
+            return Ty::Error;
+        }
+        match arg_ty {
+            Ty::List(inner) => Ty::Option(inner),
+            _ => {
+                self.error(
+                    format!("`last` expects a list, found {}", arg_ty),
+                    span,
+                );
+                Ty::Error
+            }
+        }
+    }
+
+    fn check_append_call(
+        &mut self,
+        args: &[Arg],
+        span: ttrpg_ast::Span,
+    ) -> Ty {
+        if args.len() != 2 {
+            self.error(
+                format!("`append` expects 2 arguments, found {}", args.len()),
+                span,
+            );
+            for arg in args {
+                self.check_expr(&arg.value);
+            }
+            return Ty::Error;
+        }
+        let list_ty = self.check_expr(&args[0].value);
+        let elem_ty = self.check_expr(&args[1].value);
+        if list_ty.is_error() || elem_ty.is_error() {
+            return Ty::Error;
+        }
+        match list_ty {
+            Ty::List(ref inner) => {
+                if !self.types_compatible(inner, &elem_ty) {
+                    self.error(
+                        format!(
+                            "`append` element type mismatch: list is {}, but got {}",
+                            list_ty, elem_ty
+                        ),
+                        span,
+                    );
+                }
+                list_ty
+            }
+            _ => {
+                self.error(
+                    format!("`append` first argument must be a list, found {}", list_ty),
+                    span,
+                );
+                Ty::Error
+            }
+        }
+    }
+
+    fn check_concat_call(
+        &mut self,
+        args: &[Arg],
+        span: ttrpg_ast::Span,
+    ) -> Ty {
+        if args.len() != 2 {
+            self.error(
+                format!("`concat` expects 2 arguments, found {}", args.len()),
+                span,
+            );
+            for arg in args {
+                self.check_expr(&arg.value);
+            }
+            return Ty::Error;
+        }
+        let first_ty = self.check_expr(&args[0].value);
+        let second_ty = self.check_expr(&args[1].value);
+        if first_ty.is_error() || second_ty.is_error() {
+            return Ty::Error;
+        }
+        match (&first_ty, &second_ty) {
+            (Ty::List(_), Ty::List(_)) => {
+                if !self.types_compatible(&first_ty, &second_ty) {
+                    self.error(
+                        format!(
+                            "`concat` list type mismatch: {} vs {}",
+                            first_ty, second_ty
+                        ),
+                        span,
+                    );
+                }
+                first_ty
+            }
+            (Ty::List(_), _) => {
+                self.error(
+                    format!("`concat` second argument must be a list, found {}", second_ty),
+                    span,
+                );
+                Ty::Error
+            }
+            _ => {
+                self.error(
+                    format!("`concat` expects two lists, found {} and {}", first_ty, second_ty),
+                    span,
+                );
+                Ty::Error
+            }
+        }
+    }
+
+    fn check_reverse_call(
+        &mut self,
+        args: &[Arg],
+        span: ttrpg_ast::Span,
+    ) -> Ty {
+        if args.len() != 1 {
+            self.error(
+                format!("`reverse` expects 1 argument, found {}", args.len()),
+                span,
+            );
+            for arg in args {
+                self.check_expr(&arg.value);
+            }
+            return Ty::Error;
+        }
+        let arg_ty = self.check_expr(&args[0].value);
+        if arg_ty.is_error() {
+            return Ty::Error;
+        }
+        match arg_ty {
+            Ty::List(_) => arg_ty,
+            _ => {
+                self.error(
+                    format!("`reverse` expects a list, found {}", arg_ty),
+                    span,
+                );
+                Ty::Error
+            }
+        }
     }
 
     fn check_enum_constructor(

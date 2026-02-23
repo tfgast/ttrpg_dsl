@@ -13,10 +13,13 @@ const ALL_COMMANDS: &[&str] = &[
     "seed", "rolls",
 ];
 
-/// DSL keywords useful in expression contexts.
+/// DSL keywords and builtins useful in expression contexts.
 const DSL_KEYWORDS: &[&str] = &[
     "if", "else", "match", "let", "in", "for",
     "true", "false", "none",
+    // collection builtins
+    "len", "keys", "values", "first", "last",
+    "append", "concat", "reverse",
 ];
 
 /// Dynamic completion data refreshed after each command execution.

@@ -48,7 +48,20 @@ pub(crate) fn eval_call(
                 return eval_try_from_ordinal(env, args, call_span);
             }
 
-            // 3. Check if it's a condition with parameters (e.g., Frightened(source: attacker))
+            // 3. Check collection builtins
+            match name.as_str() {
+                "len" => return eval_len(env, args, call_span),
+                "keys" => return eval_keys(env, args, call_span),
+                "values" => return eval_values(env, args, call_span),
+                "first" => return eval_first(env, args, call_span),
+                "last" => return eval_last(env, args, call_span),
+                "append" => return eval_append(env, args, call_span),
+                "concat" => return eval_concat(env, args, call_span),
+                "reverse" => return eval_reverse(env, args, call_span),
+                _ => {}
+            }
+
+            // 4. Check if it's a condition with parameters (e.g., Frightened(source: attacker))
             if let Some(cond_decl) = env.interp.program.conditions.get(name.as_str()) {
                 let cond_decl = cond_decl.clone();
                 // Reuse bind_args for named arg resolution + default materialization
@@ -252,6 +265,149 @@ fn eval_try_from_ordinal(
         variant: variant.name.clone(),
         fields: BTreeMap::new(),
     })
+}
+
+// ── Collection builtins ─────────────────────────────────────────
+
+fn eval_len(
+    env: &mut Env,
+    args: &[Arg],
+    call_span: Span,
+) -> Result<Value, RuntimeError> {
+    let val = eval_expr(env, &args[0].value)?;
+    match &val {
+        Value::List(v) => Ok(Value::Int(v.len() as i64)),
+        Value::Set(s) => Ok(Value::Int(s.len() as i64)),
+        Value::Map(m) => Ok(Value::Int(m.len() as i64)),
+        _ => Err(RuntimeError::with_span(
+            format!("len() expects a list, set, or map, got {}", type_name(&val)),
+            call_span,
+        )),
+    }
+}
+
+fn eval_keys(
+    env: &mut Env,
+    args: &[Arg],
+    call_span: Span,
+) -> Result<Value, RuntimeError> {
+    let val = eval_expr(env, &args[0].value)?;
+    match val {
+        Value::Map(m) => Ok(Value::List(m.into_keys().collect())),
+        _ => Err(RuntimeError::with_span(
+            format!("keys() expects a map, got {}", type_name(&val)),
+            call_span,
+        )),
+    }
+}
+
+fn eval_values(
+    env: &mut Env,
+    args: &[Arg],
+    call_span: Span,
+) -> Result<Value, RuntimeError> {
+    let val = eval_expr(env, &args[0].value)?;
+    match val {
+        Value::Map(m) => Ok(Value::List(m.into_values().collect())),
+        _ => Err(RuntimeError::with_span(
+            format!("values() expects a map, got {}", type_name(&val)),
+            call_span,
+        )),
+    }
+}
+
+fn eval_first(
+    env: &mut Env,
+    args: &[Arg],
+    call_span: Span,
+) -> Result<Value, RuntimeError> {
+    let val = eval_expr(env, &args[0].value)?;
+    match val {
+        Value::List(v) => Ok(v.into_iter().next()
+            .map(|v| Value::Option(Some(Box::new(v))))
+            .unwrap_or(Value::None)),
+        _ => Err(RuntimeError::with_span(
+            format!("first() expects a list, got {}", type_name(&val)),
+            call_span,
+        )),
+    }
+}
+
+fn eval_last(
+    env: &mut Env,
+    args: &[Arg],
+    call_span: Span,
+) -> Result<Value, RuntimeError> {
+    let val = eval_expr(env, &args[0].value)?;
+    match val {
+        Value::List(v) => Ok(v.into_iter().next_back()
+            .map(|v| Value::Option(Some(Box::new(v))))
+            .unwrap_or(Value::None)),
+        _ => Err(RuntimeError::with_span(
+            format!("last() expects a list, got {}", type_name(&val)),
+            call_span,
+        )),
+    }
+}
+
+fn eval_append(
+    env: &mut Env,
+    args: &[Arg],
+    call_span: Span,
+) -> Result<Value, RuntimeError> {
+    let list_val = eval_expr(env, &args[0].value)?;
+    let elem_val = eval_expr(env, &args[1].value)?;
+    match list_val {
+        Value::List(mut v) => {
+            v.push(elem_val);
+            Ok(Value::List(v))
+        }
+        _ => Err(RuntimeError::with_span(
+            format!("append() first argument must be a list, got {}", type_name(&list_val)),
+            call_span,
+        )),
+    }
+}
+
+fn eval_concat(
+    env: &mut Env,
+    args: &[Arg],
+    call_span: Span,
+) -> Result<Value, RuntimeError> {
+    let first_val = eval_expr(env, &args[0].value)?;
+    let second_val = eval_expr(env, &args[1].value)?;
+    match (first_val, &second_val) {
+        (Value::List(mut a), Value::List(b)) => {
+            a.extend(b.iter().cloned());
+            Ok(Value::List(a))
+        }
+        (Value::List(_), _) => Err(RuntimeError::with_span(
+            format!("concat() second argument must be a list, got {}", type_name(&second_val)),
+            call_span,
+        )),
+        (ref other, _) => Err(RuntimeError::with_span(
+            format!("concat() expects two lists, got {} and {}", type_name(other), type_name(&second_val)),
+            call_span,
+        )),
+    }
+}
+
+fn eval_reverse(
+    env: &mut Env,
+    args: &[Arg],
+    call_span: Span,
+) -> Result<Value, RuntimeError> {
+    let val = eval_expr(env, &args[0].value)?;
+    match val {
+        Value::List(mut v) => {
+            v.reverse();
+            Ok(Value::List(v))
+        }
+        _ => Err(RuntimeError::with_span(
+            format!("reverse() expects a list, got {}", type_name(&val)),
+            call_span,
+        )),
+    }
 }
 
 // ── Function dispatch by kind ──────────────────────────────────
