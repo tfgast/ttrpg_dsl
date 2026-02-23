@@ -1234,4 +1234,188 @@ mod tests {
             Some(&Value::Int(15))
         );
     }
+
+    // ── Adapter: GrantGroup intercepted ────────────────────────────
+
+    #[test]
+    fn intercepted_grant_group() {
+        let state = TestWritableState::new();
+        let adapter = StateAdapter::new(state);
+        let mut handler = RecordingHandler::acknowledged();
+
+        let struct_val = Value::Struct {
+            name: "Spellcasting".into(),
+            fields: {
+                let mut f = BTreeMap::new();
+                f.insert("spell_slots".into(), Value::Int(3));
+                f
+            },
+        };
+
+        adapter.run(&mut handler, |_state, handler| {
+            handler.handle(Effect::GrantGroup {
+                entity: EntityRef(1),
+                group_name: "Spellcasting".into(),
+                fields: struct_val.clone(),
+            })
+        });
+
+        assert_eq!(handler.log.len(), 0); // Intercepted
+        let final_state = adapter.into_inner();
+        assert_eq!(
+            final_state.fields.get(&(1, "Spellcasting".into())),
+            Some(&struct_val),
+        );
+    }
+
+    // ── Adapter: RevokeGroup intercepted ───────────────────────────
+
+    #[test]
+    fn intercepted_revoke_group() {
+        let mut state = TestWritableState::new();
+        state.fields.insert(
+            (1, "Spellcasting".into()),
+            Value::Struct {
+                name: "Spellcasting".into(),
+                fields: BTreeMap::new(),
+            },
+        );
+        let adapter = StateAdapter::new(state);
+        let mut handler = RecordingHandler::acknowledged();
+
+        adapter.run(&mut handler, |_state, handler| {
+            handler.handle(Effect::RevokeGroup {
+                entity: EntityRef(1),
+                group_name: "Spellcasting".into(),
+            })
+        });
+
+        assert_eq!(handler.log.len(), 0); // Intercepted
+        let final_state = adapter.into_inner();
+        assert_eq!(
+            final_state.fields.get(&(1, "Spellcasting".into())),
+            None,
+        );
+    }
+
+    // ── Adapter: GrantGroup pass-through ───────────────────────────
+
+    #[test]
+    fn pass_through_grant_group_acknowledged() {
+        let state = TestWritableState::new();
+        let adapter = StateAdapter::new(state).pass_through(EffectKind::GrantGroup);
+        let mut handler = RecordingHandler::new(vec![Response::Acknowledged]);
+
+        let struct_val = Value::Struct {
+            name: "Flight".into(),
+            fields: BTreeMap::new(),
+        };
+
+        adapter.run(&mut handler, |_state, handler| {
+            handler.handle(Effect::GrantGroup {
+                entity: EntityRef(1),
+                group_name: "Flight".into(),
+                fields: struct_val.clone(),
+            })
+        });
+
+        assert_eq!(handler.log.len(), 1);
+        assert!(matches!(handler.log[0], Effect::GrantGroup { .. }));
+        let final_state = adapter.into_inner();
+        assert_eq!(
+            final_state.fields.get(&(1, "Flight".into())),
+            Some(&struct_val),
+        );
+    }
+
+    // ── Adapter: GrantGroup pass-through vetoed ────────────────────
+
+    #[test]
+    fn pass_through_grant_group_vetoed() {
+        let state = TestWritableState::new();
+        let adapter = StateAdapter::new(state).pass_through(EffectKind::GrantGroup);
+        let mut handler = RecordingHandler::new(vec![Response::Vetoed]);
+
+        adapter.run(&mut handler, |_state, handler| {
+            handler.handle(Effect::GrantGroup {
+                entity: EntityRef(1),
+                group_name: "Flight".into(),
+                fields: Value::Struct {
+                    name: "Flight".into(),
+                    fields: BTreeMap::new(),
+                },
+            })
+        });
+
+        let final_state = adapter.into_inner();
+        // Vetoed — no field should be written
+        assert_eq!(final_state.fields.get(&(1, "Flight".into())), None);
+    }
+
+    // ── Adapter: RevokeGroup pass-through ──────────────────────────
+
+    #[test]
+    fn pass_through_revoke_group_acknowledged() {
+        let mut state = TestWritableState::new();
+        state.fields.insert(
+            (1, "Flight".into()),
+            Value::Struct {
+                name: "Flight".into(),
+                fields: BTreeMap::new(),
+            },
+        );
+        let adapter = StateAdapter::new(state).pass_through(EffectKind::RevokeGroup);
+        let mut handler = RecordingHandler::new(vec![Response::Acknowledged]);
+
+        adapter.run(&mut handler, |_state, handler| {
+            handler.handle(Effect::RevokeGroup {
+                entity: EntityRef(1),
+                group_name: "Flight".into(),
+            })
+        });
+
+        assert_eq!(handler.log.len(), 1);
+        let final_state = adapter.into_inner();
+        assert_eq!(final_state.fields.get(&(1, "Flight".into())), None);
+    }
+
+    // ── Adapter: GrantGroup pass-through override ──────────────────
+
+    #[test]
+    fn pass_through_grant_group_override() {
+        let state = TestWritableState::new();
+        let adapter = StateAdapter::new(state).pass_through(EffectKind::GrantGroup);
+
+        let override_val = Value::Struct {
+            name: "Flight".into(),
+            fields: {
+                let mut f = BTreeMap::new();
+                f.insert("speed".into(), Value::Int(60));
+                f
+            },
+        };
+        let mut handler = RecordingHandler::new(vec![Response::Override(override_val.clone())]);
+
+        adapter.run(&mut handler, |_state, handler| {
+            handler.handle(Effect::GrantGroup {
+                entity: EntityRef(1),
+                group_name: "Flight".into(),
+                fields: Value::Struct {
+                    name: "Flight".into(),
+                    fields: {
+                        let mut f = BTreeMap::new();
+                        f.insert("speed".into(), Value::Int(30));
+                        f
+                    },
+                },
+            })
+        });
+
+        let final_state = adapter.into_inner();
+        // Override replaces the entire struct
+        assert_eq!(
+            final_state.fields.get(&(1, "Flight".into())),
+            Some(&override_val),
+        );
+    }
 }

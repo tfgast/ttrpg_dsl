@@ -711,4 +711,44 @@ mod tests {
         state.add_condition(&ghost, cond);
         assert!(state.read_conditions(&ghost).is_none());
     }
+
+    // ── GameState: remove_field ──────────────────────────────
+
+    #[test]
+    fn remove_field_removes_existing() {
+        let mut state = GameState::new();
+        let mut fields = HashMap::new();
+        fields.insert("HP".into(), Value::Int(30));
+        fields.insert("Spellcasting".into(), Value::Struct {
+            name: "Spellcasting".into(),
+            fields: {
+                let mut f = BTreeMap::new();
+                f.insert("spell_slots".into(), Value::Int(3));
+                f
+            },
+        });
+        let entity = state.add_entity("Character", fields);
+
+        state.remove_field(&entity, "Spellcasting");
+
+        assert_eq!(state.read_field(&entity, "Spellcasting"), None);
+        // Other fields are untouched
+        assert_eq!(state.read_field(&entity, "HP"), Some(Value::Int(30)));
+    }
+
+    #[test]
+    fn remove_field_nonexistent_field_noop() {
+        let mut state = GameState::new();
+        let entity = state.add_entity("Character", HashMap::new());
+        // Should not panic
+        state.remove_field(&entity, "DoesNotExist");
+        assert_eq!(state.read_field(&entity, "DoesNotExist"), None);
+    }
+
+    #[test]
+    fn remove_field_nonexistent_entity_noop() {
+        let mut state = GameState::new();
+        // Should not panic
+        state.remove_field(&EntityRef(999), "HP");
+    }
 }

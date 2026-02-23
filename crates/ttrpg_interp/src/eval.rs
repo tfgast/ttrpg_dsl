@@ -5677,4 +5677,375 @@ mod tests {
             other => panic!("expected Map, got {:?}", other),
         }
     }
+
+    // ── Has / Grant / Revoke tests ────────────────────────────
+
+    #[test]
+    fn has_returns_true_when_group_field_present() {
+        let program = empty_program();
+        let type_env = empty_type_env();
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let mut state = TestState::new();
+        // Entity 1 has a "Spellcasting" field (simulating a granted group)
+        state.fields.insert(
+            (1, "Spellcasting".into()),
+            Value::Struct {
+                name: "Spellcasting".into(),
+                fields: {
+                    let mut f = BTreeMap::new();
+                    f.insert("spell_slots".into(), Value::Int(3));
+                    f
+                },
+            },
+        );
+        let mut handler = ScriptedHandler::new();
+        let mut env = make_env(&state, &mut handler, &interp);
+        env.bind("actor".into(), Value::Entity(EntityRef(1)));
+
+        let expr = spanned(ExprKind::Has {
+            entity: Box::new(spanned(ExprKind::Ident("actor".into()))),
+            group_name: "Spellcasting".into(),
+        });
+        assert_eq!(eval_expr(&mut env, &expr).unwrap(), Value::Bool(true));
+    }
+
+    #[test]
+    fn has_returns_false_when_group_field_absent() {
+        let program = empty_program();
+        let type_env = empty_type_env();
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = TestState::new(); // Entity 1 has no fields
+        let mut handler = ScriptedHandler::new();
+        let mut env = make_env(&state, &mut handler, &interp);
+        env.bind("actor".into(), Value::Entity(EntityRef(1)));
+
+        let expr = spanned(ExprKind::Has {
+            entity: Box::new(spanned(ExprKind::Ident("actor".into()))),
+            group_name: "Spellcasting".into(),
+        });
+        assert_eq!(eval_expr(&mut env, &expr).unwrap(), Value::Bool(false));
+    }
+
+    #[test]
+    fn has_on_non_entity_is_error() {
+        let program = empty_program();
+        let type_env = empty_type_env();
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = TestState::new();
+        let mut handler = ScriptedHandler::new();
+        let mut env = make_env(&state, &mut handler, &interp);
+        env.bind("x".into(), Value::Int(42));
+
+        let expr = spanned(ExprKind::Has {
+            entity: Box::new(spanned(ExprKind::Ident("x".into()))),
+            group_name: "Spellcasting".into(),
+        });
+        let err = eval_expr(&mut env, &expr).unwrap_err();
+        assert!(err.message.contains("expected entity"), "got: {}", err.message);
+    }
+
+    #[test]
+    fn grant_emits_grant_group_effect_with_fields() {
+        let program = empty_program();
+        let type_env = empty_type_env();
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = TestState::new();
+        let mut handler = ScriptedHandler::new();
+        let mut env = make_env(&state, &mut handler, &interp);
+        env.bind("actor".into(), Value::Entity(EntityRef(1)));
+
+        let stmt = spanned(StmtKind::Grant {
+            entity: Box::new(spanned(ExprKind::Ident("actor".into()))),
+            group_name: "Spellcasting".into(),
+            fields: vec![
+                StructFieldInit {
+                    name: "spell_slots".into(),
+                    value: spanned(ExprKind::IntLit(3)),
+                    span: dummy_span(),
+                },
+                StructFieldInit {
+                    name: "cantrips".into(),
+                    value: spanned(ExprKind::IntLit(2)),
+                    span: dummy_span(),
+                },
+            ],
+        });
+        eval_stmt(&mut env, &stmt).unwrap();
+
+        // Should have emitted exactly one GrantGroup effect
+        assert_eq!(handler.log.len(), 1);
+        match &handler.log[0] {
+            Effect::GrantGroup {
+                entity,
+                group_name,
+                fields,
+            } => {
+                assert_eq!(entity.0, 1);
+                assert_eq!(group_name, "Spellcasting");
+                match fields {
+                    Value::Struct { name, fields } => {
+                        assert_eq!(name, "Spellcasting");
+                        assert_eq!(fields.get("spell_slots"), Some(&Value::Int(3)));
+                        assert_eq!(fields.get("cantrips"), Some(&Value::Int(2)));
+                    }
+                    _ => panic!("expected Struct value, got {:?}", fields),
+                }
+            }
+            _ => panic!("expected GrantGroup effect, got {:?}", handler.log[0]),
+        }
+    }
+
+    #[test]
+    fn grant_with_no_fields_emits_empty_struct() {
+        let program = empty_program();
+        let type_env = empty_type_env();
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = TestState::new();
+        let mut handler = ScriptedHandler::new();
+        let mut env = make_env(&state, &mut handler, &interp);
+        env.bind("actor".into(), Value::Entity(EntityRef(1)));
+
+        let stmt = spanned(StmtKind::Grant {
+            entity: Box::new(spanned(ExprKind::Ident("actor".into()))),
+            group_name: "Flight".into(),
+            fields: vec![],
+        });
+        eval_stmt(&mut env, &stmt).unwrap();
+
+        assert_eq!(handler.log.len(), 1);
+        match &handler.log[0] {
+            Effect::GrantGroup { fields, .. } => match fields {
+                Value::Struct { fields, .. } => {
+                    assert!(fields.is_empty());
+                }
+                _ => panic!("expected Struct"),
+            },
+            _ => panic!("expected GrantGroup"),
+        }
+    }
+
+    #[test]
+    fn grant_fills_defaults_from_entity_decl() {
+        // Build a program with an entity that has an optional group with defaults
+        let mut program = Program {
+            items: vec![spanned(TopLevel::System(SystemBlock {
+                name: "test".into(),
+                decls: vec![spanned(DeclKind::Entity(EntityDecl {
+                    name: "Character".into(),
+                    fields: vec![],
+                    optional_groups: vec![OptionalGroup {
+                        name: "Spellcasting".into(),
+                        fields: vec![
+                            FieldDef {
+                                name: "spell_slots".into(),
+                                ty: spanned(TypeExpr::Int),
+                                default: None, // no default
+                                span: dummy_span(),
+                            },
+                            FieldDef {
+                                name: "cantrips".into(),
+                                ty: spanned(TypeExpr::Int),
+                                default: Some(spanned(ExprKind::IntLit(4))), // default = 4
+                                span: dummy_span(),
+                            },
+                        ],
+                        span: dummy_span(),
+                    }],
+                }))],
+            }))],
+            ..Default::default()
+        };
+        program.build_index();
+
+        let type_env = empty_type_env();
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = TestState::new();
+        let mut handler = ScriptedHandler::new();
+        let mut env = make_env(&state, &mut handler, &interp);
+        env.bind("actor".into(), Value::Entity(EntityRef(1)));
+
+        // Grant with only spell_slots provided; cantrips should get default 4
+        let stmt = spanned(StmtKind::Grant {
+            entity: Box::new(spanned(ExprKind::Ident("actor".into()))),
+            group_name: "Spellcasting".into(),
+            fields: vec![StructFieldInit {
+                name: "spell_slots".into(),
+                value: spanned(ExprKind::IntLit(3)),
+                span: dummy_span(),
+            }],
+        });
+        eval_stmt(&mut env, &stmt).unwrap();
+
+        assert_eq!(handler.log.len(), 1);
+        match &handler.log[0] {
+            Effect::GrantGroup { fields, .. } => match fields {
+                Value::Struct { fields, .. } => {
+                    assert_eq!(fields.get("spell_slots"), Some(&Value::Int(3)));
+                    assert_eq!(fields.get("cantrips"), Some(&Value::Int(4)));
+                }
+                _ => panic!("expected Struct"),
+            },
+            _ => panic!("expected GrantGroup"),
+        }
+    }
+
+    #[test]
+    fn grant_explicit_field_overrides_default() {
+        // Build a program with an entity that has default=4 for cantrips
+        let mut program = Program {
+            items: vec![spanned(TopLevel::System(SystemBlock {
+                name: "test".into(),
+                decls: vec![spanned(DeclKind::Entity(EntityDecl {
+                    name: "Character".into(),
+                    fields: vec![],
+                    optional_groups: vec![OptionalGroup {
+                        name: "Spellcasting".into(),
+                        fields: vec![FieldDef {
+                            name: "cantrips".into(),
+                            ty: spanned(TypeExpr::Int),
+                            default: Some(spanned(ExprKind::IntLit(4))),
+                            span: dummy_span(),
+                        }],
+                        span: dummy_span(),
+                    }],
+                }))],
+            }))],
+            ..Default::default()
+        };
+        program.build_index();
+
+        let type_env = empty_type_env();
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = TestState::new();
+        let mut handler = ScriptedHandler::new();
+        let mut env = make_env(&state, &mut handler, &interp);
+        env.bind("actor".into(), Value::Entity(EntityRef(1)));
+
+        // Grant with cantrips=10 — should override the default of 4
+        let stmt = spanned(StmtKind::Grant {
+            entity: Box::new(spanned(ExprKind::Ident("actor".into()))),
+            group_name: "Spellcasting".into(),
+            fields: vec![StructFieldInit {
+                name: "cantrips".into(),
+                value: spanned(ExprKind::IntLit(10)),
+                span: dummy_span(),
+            }],
+        });
+        eval_stmt(&mut env, &stmt).unwrap();
+
+        match &handler.log[0] {
+            Effect::GrantGroup { fields, .. } => match fields {
+                Value::Struct { fields, .. } => {
+                    assert_eq!(fields.get("cantrips"), Some(&Value::Int(10)));
+                }
+                _ => panic!("expected Struct"),
+            },
+            _ => panic!("expected GrantGroup"),
+        }
+    }
+
+    #[test]
+    fn grant_on_non_entity_is_error() {
+        let program = empty_program();
+        let type_env = empty_type_env();
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = TestState::new();
+        let mut handler = ScriptedHandler::new();
+        let mut env = make_env(&state, &mut handler, &interp);
+        env.bind("x".into(), Value::Int(42));
+
+        let stmt = spanned(StmtKind::Grant {
+            entity: Box::new(spanned(ExprKind::Ident("x".into()))),
+            group_name: "Spellcasting".into(),
+            fields: vec![],
+        });
+        let err = eval_stmt(&mut env, &stmt).unwrap_err();
+        assert!(err.message.contains("expected entity"), "got: {}", err.message);
+    }
+
+    #[test]
+    fn grant_vetoed_by_host_is_error() {
+        let program = empty_program();
+        let type_env = empty_type_env();
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = TestState::new();
+        let mut handler = ScriptedHandler::new();
+        handler.script.push_back(Response::Vetoed);
+        let mut env = make_env(&state, &mut handler, &interp);
+        env.bind("actor".into(), Value::Entity(EntityRef(1)));
+
+        let stmt = spanned(StmtKind::Grant {
+            entity: Box::new(spanned(ExprKind::Ident("actor".into()))),
+            group_name: "Spellcasting".into(),
+            fields: vec![],
+        });
+        let err = eval_stmt(&mut env, &stmt).unwrap_err();
+        assert!(err.message.contains("vetoed"), "got: {}", err.message);
+    }
+
+    #[test]
+    fn revoke_emits_revoke_group_effect() {
+        let program = empty_program();
+        let type_env = empty_type_env();
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = TestState::new();
+        let mut handler = ScriptedHandler::new();
+        let mut env = make_env(&state, &mut handler, &interp);
+        env.bind("actor".into(), Value::Entity(EntityRef(1)));
+
+        let stmt = spanned(StmtKind::Revoke {
+            entity: Box::new(spanned(ExprKind::Ident("actor".into()))),
+            group_name: "Spellcasting".into(),
+        });
+        eval_stmt(&mut env, &stmt).unwrap();
+
+        assert_eq!(handler.log.len(), 1);
+        match &handler.log[0] {
+            Effect::RevokeGroup {
+                entity,
+                group_name,
+            } => {
+                assert_eq!(entity.0, 1);
+                assert_eq!(group_name, "Spellcasting");
+            }
+            _ => panic!("expected RevokeGroup effect, got {:?}", handler.log[0]),
+        }
+    }
+
+    #[test]
+    fn revoke_on_non_entity_is_error() {
+        let program = empty_program();
+        let type_env = empty_type_env();
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = TestState::new();
+        let mut handler = ScriptedHandler::new();
+        let mut env = make_env(&state, &mut handler, &interp);
+        env.bind("x".into(), Value::Str("not entity".into()));
+
+        let stmt = spanned(StmtKind::Revoke {
+            entity: Box::new(spanned(ExprKind::Ident("x".into()))),
+            group_name: "Spellcasting".into(),
+        });
+        let err = eval_stmt(&mut env, &stmt).unwrap_err();
+        assert!(err.message.contains("expected entity"), "got: {}", err.message);
+    }
+
+    #[test]
+    fn revoke_vetoed_by_host_is_error() {
+        let program = empty_program();
+        let type_env = empty_type_env();
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = TestState::new();
+        let mut handler = ScriptedHandler::new();
+        handler.script.push_back(Response::Vetoed);
+        let mut env = make_env(&state, &mut handler, &interp);
+        env.bind("actor".into(), Value::Entity(EntityRef(1)));
+
+        let stmt = spanned(StmtKind::Revoke {
+            entity: Box::new(spanned(ExprKind::Ident("actor".into()))),
+            group_name: "Spellcasting".into(),
+        });
+        let err = eval_stmt(&mut env, &stmt).unwrap_err();
+        assert!(err.message.contains("vetoed"), "got: {}", err.message);
+    }
 }

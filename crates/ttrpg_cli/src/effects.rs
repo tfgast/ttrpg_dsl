@@ -804,4 +804,87 @@ mod tests {
         }
         assert!(handler.log[0].contains("(queued)"));
     }
+
+    #[test]
+    fn cli_handler_grant_group() {
+        let mut gs = GameState::new();
+        let entity = gs.add_entity("Character", HashMap::new());
+        let game_state = RefCell::new(gs);
+        let mut reverse = HashMap::new();
+        reverse.insert(entity, "wizard".to_string());
+        let mut rng = StdRng::seed_from_u64(42);
+        let mut queue = VecDeque::new();
+        let mut handler = CliHandler::new(&game_state, &reverse, &mut rng, &mut queue);
+
+        let struct_val = Value::Struct {
+            name: "Spellcasting".into(),
+            fields: {
+                let mut f = std::collections::BTreeMap::new();
+                f.insert("spell_slots".into(), Value::Int(3));
+                f
+            },
+        };
+        let effect = Effect::GrantGroup {
+            entity,
+            group_name: "Spellcasting".into(),
+            fields: struct_val.clone(),
+        };
+        let response = handler.handle(effect);
+        assert!(matches!(response, Response::Acknowledged));
+        assert_eq!(handler.log.len(), 1);
+        assert!(handler.log[0].contains("[GrantGroup]"));
+        assert!(handler.log[0].contains("wizard.Spellcasting"));
+
+        // Verify state was updated
+        assert_eq!(
+            game_state.borrow().read_field(&entity, "Spellcasting"),
+            Some(struct_val),
+        );
+    }
+
+    #[test]
+    fn cli_handler_revoke_group() {
+        let mut gs = GameState::new();
+        let entity = gs.add_entity("Character", {
+            let mut f = HashMap::new();
+            f.insert("HP".into(), Value::Int(30));
+            f
+        });
+        // Simulate a granted group by writing a field directly
+        gs.write_field(
+            &entity,
+            &[FieldPathSegment::Field("Spellcasting".into())],
+            Value::Struct {
+                name: "Spellcasting".into(),
+                fields: std::collections::BTreeMap::new(),
+            },
+        );
+        let game_state = RefCell::new(gs);
+        let mut reverse = HashMap::new();
+        reverse.insert(entity, "wizard".to_string());
+        let mut rng = StdRng::seed_from_u64(42);
+        let mut queue = VecDeque::new();
+        let mut handler = CliHandler::new(&game_state, &reverse, &mut rng, &mut queue);
+
+        let effect = Effect::RevokeGroup {
+            entity,
+            group_name: "Spellcasting".into(),
+        };
+        let response = handler.handle(effect);
+        assert!(matches!(response, Response::Acknowledged));
+        assert_eq!(handler.log.len(), 1);
+        assert!(handler.log[0].contains("[RevokeGroup]"));
+        assert!(handler.log[0].contains("wizard.Spellcasting"));
+
+        // Verify field was removed
+        assert_eq!(
+            game_state.borrow().read_field(&entity, "Spellcasting"),
+            None,
+        );
+        // Other fields untouched
+        assert_eq!(
+            game_state.borrow().read_field(&entity, "HP"),
+            Some(Value::Int(30)),
+        );
+    }
 }
