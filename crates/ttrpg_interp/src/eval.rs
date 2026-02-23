@@ -1918,18 +1918,15 @@ fn find_optional_group<'a>(
     entity_type: Option<&str>,
     group_name: &str,
 ) -> Option<&'a OptionalGroup> {
-    let mut fallback: Option<&'a OptionalGroup> = None;
+    let entity_type = entity_type?;
     for item in &env.interp.program.items {
         if let TopLevel::System(system) = &item.node {
             for decl in &system.decls {
                 if let DeclKind::Entity(entity_decl) = &decl.node {
-                    for group in &entity_decl.optional_groups {
-                        if group.name == group_name {
-                            if entity_type == Some(entity_decl.name.as_str()) {
+                    if entity_decl.name == entity_type {
+                        for group in &entity_decl.optional_groups {
+                            if group.name == group_name {
                                 return Some(group);
-                            }
-                            if fallback.is_none() {
-                                fallback = Some(group);
                             }
                         }
                     }
@@ -1937,7 +1934,7 @@ fn find_optional_group<'a>(
             }
         }
     }
-    fallback
+    None
 }
 
 #[cfg(test)]
@@ -5878,7 +5875,8 @@ mod tests {
 
         let type_env = empty_type_env();
         let interp = Interpreter::new(&program, &type_env).unwrap();
-        let state = TestState::new();
+        let mut state = TestState::new();
+        state.entity_type = Some("Character".into());
         let mut handler = ScriptedHandler::new();
         let mut env = make_env(&state, &mut handler, &interp);
         env.bind("actor".into(), Value::Entity(EntityRef(1)));
@@ -5935,7 +5933,8 @@ mod tests {
 
         let type_env = empty_type_env();
         let interp = Interpreter::new(&program, &type_env).unwrap();
-        let state = TestState::new();
+        let mut state = TestState::new();
+        state.entity_type = Some("Character".into());
         let mut handler = ScriptedHandler::new();
         let mut env = make_env(&state, &mut handler, &interp);
         env.bind("actor".into(), Value::Entity(EntityRef(1)));
@@ -6174,9 +6173,9 @@ mod tests {
     }
 
     #[test]
-    fn grant_defaults_fallback_when_entity_type_unknown() {
-        // When entity_type_name returns None, find_optional_group falls back to
-        // the first matching group (Character's default of 3).
+    fn grant_no_defaults_when_entity_type_unknown() {
+        // When entity_type_name returns None, find_optional_group should NOT
+        // fall back to a different entity's group — no defaults are filled.
         let mut program = Program {
             items: vec![spanned(TopLevel::System(SystemBlock {
                 name: "test".into(),
@@ -6249,7 +6248,8 @@ mod tests {
         let mut env = make_env(&state, &mut handler, &interp);
         env.bind("actor".into(), Value::Entity(EntityRef(1)));
 
-        // Grant with only dc provided; spell_slots should fall back to first match (Character's 3)
+        // Grant with only dc provided; spell_slots should NOT be filled
+        // because entity type is unknown and we don't fall back.
         let stmt = spanned(StmtKind::Grant {
             entity: Box::new(spanned(ExprKind::Ident("actor".into()))),
             group_name: "Spellcasting".into(),
@@ -6268,8 +6268,8 @@ mod tests {
                     assert_eq!(fields.get("dc"), Some(&Value::Int(15)));
                     assert_eq!(
                         fields.get("spell_slots"),
-                        Some(&Value::Int(3)),
-                        "spell_slots should fall back to first match (Character's 3)"
+                        None,
+                        "spell_slots should not be filled when entity type is unknown"
                     );
                 }
                 _ => panic!("expected Struct"),

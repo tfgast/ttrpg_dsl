@@ -1061,18 +1061,14 @@ impl Runner {
         entity_type: &str,
         group_name: &str,
     ) -> Option<OptionalGroup> {
-        let mut fallback: Option<OptionalGroup> = None;
         for item in &self.program.items {
             if let TopLevel::System(system) = &item.node {
                 for decl in &system.decls {
                     if let DeclKind::Entity(entity_decl) = &decl.node {
-                        for group in &entity_decl.optional_groups {
-                            if group.name == group_name {
-                                if entity_decl.name == entity_type {
+                        if entity_decl.name == entity_type {
+                            for group in &entity_decl.optional_groups {
+                                if group.name == group_name {
                                     return Some(group.clone());
-                                }
-                                if fallback.is_none() {
-                                    fallback = Some(group.clone());
                                 }
                             }
                         }
@@ -1080,7 +1076,7 @@ impl Runner {
                 }
             }
         }
-        fallback
+        None
     }
 
     /// Fill default values for missing fields in a group.
