@@ -40,6 +40,16 @@ impl Parser {
             return self.parse_let_stmt();
         }
 
+        // grant entity.Group { field: val, ... }
+        if self.at_ident("grant") {
+            return self.parse_grant_stmt();
+        }
+
+        // revoke entity.Group
+        if self.at_ident("revoke") {
+            return self.parse_revoke_stmt();
+        }
+
         // Parse as expression first, then check if it's an assignment
         let expr = self.parse_expr()?;
 
@@ -82,6 +92,67 @@ impl Parser {
         self.expect_term()?;
 
         Ok(StmtKind::Let { name, ty, value })
+    }
+
+    /// Parse `grant entity.Group { field: val, ... }`
+    fn parse_grant_stmt(&mut self) -> Result<StmtKind, ()> {
+        self.expect_soft_keyword("grant")?;
+        let entity_expr = self.parse_expr()?;
+
+        // Decompose trailing FieldAccess into entity + group_name
+        let (entity, group_name) = match entity_expr.node {
+            ExprKind::FieldAccess { object, field } => (*object, field),
+            _ => {
+                self.error("expected 'entity.GroupName' after 'grant'");
+                return Err(());
+            }
+        };
+
+        // Parse the field initializer block { field: val, ... }
+        self.expect(&TokenKind::LBrace)?;
+        self.skip_newlines();
+        let mut fields = Vec::new();
+        if !matches!(self.peek(), TokenKind::RBrace) {
+            fields.push(self.parse_struct_field_init()?);
+            while matches!(self.peek(), TokenKind::Comma) {
+                self.advance();
+                self.skip_newlines();
+                if matches!(self.peek(), TokenKind::RBrace) {
+                    break;
+                }
+                fields.push(self.parse_struct_field_init()?);
+            }
+        }
+        self.skip_newlines();
+        self.expect(&TokenKind::RBrace)?;
+        self.expect_term()?;
+
+        Ok(StmtKind::Grant {
+            entity: Box::new(entity),
+            group_name,
+            fields,
+        })
+    }
+
+    /// Parse `revoke entity.Group`
+    fn parse_revoke_stmt(&mut self) -> Result<StmtKind, ()> {
+        self.expect_soft_keyword("revoke")?;
+        let entity_expr = self.parse_expr()?;
+
+        // Decompose trailing FieldAccess into entity + group_name
+        let (entity, group_name) = match entity_expr.node {
+            ExprKind::FieldAccess { object, field } => (*object, field),
+            _ => {
+                self.error("expected 'entity.GroupName' after 'revoke'");
+                return Err(());
+            }
+        };
+
+        self.expect_term()?;
+        Ok(StmtKind::Revoke {
+            entity: Box::new(entity),
+            group_name,
+        })
     }
 
     fn expr_to_lvalue(&mut self, expr: Spanned<ExprKind>) -> Result<LValue, ()> {

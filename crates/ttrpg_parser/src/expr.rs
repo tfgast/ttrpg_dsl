@@ -91,6 +91,16 @@ impl Parser {
                 },
                 self.end_span(start),
             ))
+        } else if self.at_ident("has") {
+            self.advance();
+            let (group_name, _) = self.expect_ident()?;
+            Ok(Spanned::new(
+                ExprKind::Has {
+                    entity: Box::new(lhs),
+                    group_name,
+                },
+                self.end_span(start),
+            ))
         } else {
             Ok(lhs)
         }
@@ -367,7 +377,7 @@ impl Parser {
         ))
     }
 
-    fn parse_struct_field_init(&mut self) -> Result<StructFieldInit, ()> {
+    pub(crate) fn parse_struct_field_init(&mut self) -> Result<StructFieldInit, ()> {
         let start = self.start_span();
         let (name, _) = self.expect_ident()?;
         self.expect(&TokenKind::Colon)?;

@@ -750,3 +750,453 @@ fn test_for_wildcard_pattern() {
     );
     assert!(expr.is_some());
 }
+
+// ── Optional groups parsing tests ────────────────────────────────
+
+#[test]
+fn test_entity_with_optional_groups() {
+    let source = r#"system "test" {
+    entity Character {
+        name: string
+        level: int = 1
+        AC: int
+
+        optional Spellcasting {
+            spellcasting_ability: int
+            spell_save_DC: int
+        }
+
+        optional KiPowers {
+            ki_points: int
+            max_ki: int
+        }
+    }
+}"#;
+    let (program, diagnostics) = parse(source);
+    assert!(
+        diagnostics.is_empty(),
+        "entity with optional groups should parse, got: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+    let system = match &program.items[0].node {
+        TopLevel::System(s) => s,
+        _ => panic!("expected system block"),
+    };
+    match &system.decls[0].node {
+        DeclKind::Entity(e) => {
+            assert_eq!(e.name, "Character");
+            assert_eq!(e.fields.len(), 3, "base fields");
+            assert_eq!(e.optional_groups.len(), 2, "optional groups");
+            assert_eq!(e.optional_groups[0].name, "Spellcasting");
+            assert_eq!(e.optional_groups[0].fields.len(), 2);
+            assert_eq!(e.optional_groups[1].name, "KiPowers");
+            assert_eq!(e.optional_groups[1].fields.len(), 2);
+        }
+        _ => panic!("expected entity decl"),
+    }
+}
+
+#[test]
+fn test_entity_optional_group_with_defaults() {
+    let source = r#"system "test" {
+    entity Character {
+        name: string
+
+        optional Rage {
+            rage_damage: int = 2
+            max_rage: int
+        }
+    }
+}"#;
+    let (program, diagnostics) = parse(source);
+    assert!(
+        diagnostics.is_empty(),
+        "optional group fields with defaults should parse, got: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+    let system = match &program.items[0].node {
+        TopLevel::System(s) => s,
+        _ => panic!("expected system block"),
+    };
+    match &system.decls[0].node {
+        DeclKind::Entity(e) => {
+            assert_eq!(e.optional_groups.len(), 1);
+            let group = &e.optional_groups[0];
+            assert_eq!(group.name, "Rage");
+            assert!(group.fields[0].default.is_some(), "rage_damage should have default");
+            assert!(group.fields[1].default.is_none(), "max_rage should not have default");
+        }
+        _ => panic!("expected entity decl"),
+    }
+}
+
+#[test]
+fn test_entity_fields_before_and_after_optional() {
+    // Optional groups can be interleaved with regular fields
+    let source = r#"system "test" {
+    entity Character {
+        name: string
+        optional Spellcasting {
+            dc: int
+        }
+        HP: int
+    }
+}"#;
+    let (program, diagnostics) = parse(source);
+    assert!(
+        diagnostics.is_empty(),
+        "fields after optional groups should parse, got: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+    let system = match &program.items[0].node {
+        TopLevel::System(s) => s,
+        _ => panic!("expected system block"),
+    };
+    match &system.decls[0].node {
+        DeclKind::Entity(e) => {
+            // "name" comes before optional, "HP" after — both parsed as base fields
+            assert_eq!(e.fields.len(), 2);
+            assert_eq!(e.optional_groups.len(), 1);
+        }
+        _ => panic!("expected entity decl"),
+    }
+}
+
+// ── `has` expression tests ──────────────────────────────────────
+
+#[test]
+fn test_has_expression() {
+    let (expr, diagnostics) = ttrpg_parser::parse_expr("actor has Spellcasting");
+    assert!(
+        diagnostics.is_empty(),
+        "has expression should parse, got: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+    let expr = expr.unwrap();
+    match expr.node {
+        ExprKind::Has { ref entity, ref group_name } => {
+            assert!(matches!(entity.node, ExprKind::Ident(ref n) if n == "actor"));
+            assert_eq!(group_name, "Spellcasting");
+        }
+        _ => panic!("expected Has expression, got {:?}", std::mem::discriminant(&expr.node)),
+    }
+}
+
+#[test]
+fn test_has_in_if_condition() {
+    let source = r#"system "test" {
+    entity Character {
+        name: string
+        optional Spellcasting {
+            dc: int
+        }
+    }
+    derive get_dc(actor: Character) -> int {
+        if actor has Spellcasting {
+            actor.Spellcasting.dc
+        } else {
+            0
+        }
+    }
+}"#;
+    let (_, diagnostics) = parse(source);
+    assert!(
+        diagnostics.is_empty(),
+        "has in if condition should parse, got: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn test_has_composes_with_and() {
+    let (expr, diagnostics) = ttrpg_parser::parse_expr("actor has Spellcasting && actor has KiPowers");
+    assert!(
+        diagnostics.is_empty(),
+        "has with && should parse, got: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+    let expr = expr.unwrap();
+    assert!(matches!(expr.node, ExprKind::BinOp { op: BinOp::And, .. }));
+}
+
+#[test]
+fn test_has_composes_with_not() {
+    // `!` binds tighter than `has` (same as `in`), so parens are needed
+    let (expr, diagnostics) = ttrpg_parser::parse_expr("!(actor has Spellcasting)");
+    assert!(
+        diagnostics.is_empty(),
+        "!(has) should parse, got: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+    let expr = expr.unwrap();
+    match expr.node {
+        ExprKind::UnaryOp { op: UnaryOp::Not, ref operand } => {
+            match operand.node {
+                ExprKind::Paren(ref inner) => {
+                    assert!(matches!(inner.node, ExprKind::Has { .. }));
+                }
+                _ => panic!("expected Paren(Has)"),
+            }
+        }
+        _ => panic!("expected UnaryOp(Not, Paren(Has))"),
+    }
+}
+
+// ── `with` constraint tests ─────────────────────────────────────
+
+#[test]
+fn test_action_receiver_with_group() {
+    let source = r#"system "test" {
+    entity Character {
+        name: string
+        optional Spellcasting { dc: int }
+    }
+    action CastSpell on caster: Character with Spellcasting () {
+        resolve {
+            caster.Spellcasting.dc
+        }
+    }
+}"#;
+    let (program, diagnostics) = parse(source);
+    assert!(
+        diagnostics.is_empty(),
+        "action with receiver constraint should parse, got: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+    let system = match &program.items[0].node {
+        TopLevel::System(s) => s,
+        _ => panic!("expected system block"),
+    };
+    let action = system.decls.iter().find_map(|d| match &d.node {
+        DeclKind::Action(a) => Some(a),
+        _ => None,
+    }).unwrap();
+    assert_eq!(action.receiver_with_groups, vec!["Spellcasting"]);
+}
+
+#[test]
+fn test_param_with_group() {
+    let source = r#"system "test" {
+    entity Character {
+        name: string
+        optional Spellcasting { dc: int }
+    }
+    derive spell_dc(caster: Character with Spellcasting) -> int {
+        caster.Spellcasting.dc
+    }
+}"#;
+    let (program, diagnostics) = parse(source);
+    assert!(
+        diagnostics.is_empty(),
+        "param with group constraint should parse, got: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+    let system = match &program.items[0].node {
+        TopLevel::System(s) => s,
+        _ => panic!("expected system block"),
+    };
+    let derive = system.decls.iter().find_map(|d| match &d.node {
+        DeclKind::Derive(f) => Some(f),
+        _ => None,
+    }).unwrap();
+    assert_eq!(derive.params[0].with_groups, vec!["Spellcasting"]);
+}
+
+#[test]
+fn test_condition_receiver_with_group() {
+    let source = r#"system "test" {
+    entity Character {
+        name: string
+        optional Spellcasting { dc: int }
+    }
+    derive spell_dc(caster: Character) -> int { 0 }
+    condition Silenced on bearer: Character with Spellcasting {
+        modify spell_dc(caster: bearer) {
+            result.dc = 0
+        }
+    }
+}"#;
+    let (program, diagnostics) = parse(source);
+    assert!(
+        diagnostics.is_empty(),
+        "condition with receiver constraint should parse, got: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+    let system = match &program.items[0].node {
+        TopLevel::System(s) => s,
+        _ => panic!("expected system block"),
+    };
+    let cond = system.decls.iter().find_map(|d| match &d.node {
+        DeclKind::Condition(c) => Some(c),
+        _ => None,
+    }).unwrap();
+    assert_eq!(cond.receiver_with_groups, vec!["Spellcasting"]);
+}
+
+#[test]
+fn test_reaction_receiver_with_group() {
+    let source = r#"system "test" {
+    entity Character {
+        name: string
+        optional Spellcasting { dc: int }
+    }
+    event spell_cast(reactor: Character) {
+        caster: Character
+    }
+    reaction Counterspell on reactor: Character with Spellcasting (
+        trigger: spell_cast(reactor: reactor)
+    ) {
+        resolve {
+            reactor.Spellcasting.dc
+        }
+    }
+}"#;
+    let (_, diagnostics) = parse(source);
+    assert!(
+        diagnostics.is_empty(),
+        "reaction with receiver constraint should parse, got: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}
+
+// ── `grant` / `revoke` statement tests ──────────────────────────
+
+#[test]
+fn test_grant_statement() {
+    let source = r#"system "test" {
+    entity Character {
+        name: string
+        optional Spellcasting {
+            ability: int
+            dc: int
+        }
+    }
+    action GainSpellcasting on actor: Character () {
+        resolve {
+            grant actor.Spellcasting {
+                ability: 3,
+                dc: 15
+            }
+        }
+    }
+}"#;
+    let (program, diagnostics) = parse(source);
+    assert!(
+        diagnostics.is_empty(),
+        "grant statement should parse, got: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+    let system = match &program.items[0].node {
+        TopLevel::System(s) => s,
+        _ => panic!("expected system block"),
+    };
+    let action = system.decls.iter().find_map(|d| match &d.node {
+        DeclKind::Action(a) => Some(a),
+        _ => None,
+    }).unwrap();
+    let stmt = &action.resolve.node[0].node;
+    match stmt {
+        StmtKind::Grant { group_name, fields, .. } => {
+            assert_eq!(group_name, "Spellcasting");
+            assert_eq!(fields.len(), 2);
+            assert_eq!(fields[0].name, "ability");
+            assert_eq!(fields[1].name, "dc");
+        }
+        _ => panic!("expected Grant statement, got {:?}", std::mem::discriminant(stmt)),
+    }
+}
+
+#[test]
+fn test_grant_multiline() {
+    let source = r#"system "test" {
+    entity Character {
+        name: string
+        optional Rage { damage: int }
+    }
+    action Enrage on actor: Character () {
+        resolve {
+            grant actor.Rage {
+                damage: 2
+            }
+        }
+    }
+}"#;
+    let (_, diagnostics) = parse(source);
+    assert!(
+        diagnostics.is_empty(),
+        "multiline grant should parse, got: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn test_revoke_statement() {
+    let source = r#"system "test" {
+    entity Character {
+        name: string
+        optional Spellcasting { dc: int }
+    }
+    action LoseSpellcasting on actor: Character () {
+        resolve {
+            revoke actor.Spellcasting
+        }
+    }
+}"#;
+    let (program, diagnostics) = parse(source);
+    assert!(
+        diagnostics.is_empty(),
+        "revoke statement should parse, got: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+    let system = match &program.items[0].node {
+        TopLevel::System(s) => s,
+        _ => panic!("expected system block"),
+    };
+    let action = system.decls.iter().find_map(|d| match &d.node {
+        DeclKind::Action(a) => Some(a),
+        _ => None,
+    }).unwrap();
+    let stmt = &action.resolve.node[0].node;
+    match stmt {
+        StmtKind::Revoke { group_name, .. } => {
+            assert_eq!(group_name, "Spellcasting");
+        }
+        _ => panic!("expected Revoke statement, got {:?}", std::mem::discriminant(stmt)),
+    }
+}
+
+#[test]
+fn test_grant_error_without_field_access() {
+    let source = r#"system "test" {
+    entity Character { name: string }
+    action Bad on actor: Character () {
+        resolve {
+            grant actor { x: 1 }
+        }
+    }
+}"#;
+    let (_, diagnostics) = parse(source);
+    assert!(
+        diagnostics.iter().any(|d| d.message.contains("entity.GroupName")),
+        "grant without .Group should error, got: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn test_revoke_error_without_field_access() {
+    let source = r#"system "test" {
+    entity Character { name: string }
+    action Bad on actor: Character () {
+        resolve {
+            revoke actor
+        }
+    }
+}"#;
+    let (_, diagnostics) = parse(source);
+    assert!(
+        diagnostics.iter().any(|d| d.message.contains("entity.GroupName")),
+        "revoke without .Group should error, got: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}

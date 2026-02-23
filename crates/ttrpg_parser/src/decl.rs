@@ -134,9 +134,36 @@ impl Parser {
         let (name, _) = self.expect_ident()?;
         self.expect(&TokenKind::LBrace)?;
         self.skip_newlines();
+
+        let mut fields = Vec::new();
+        let mut optional_groups = Vec::new();
+
+        while !matches!(self.peek(), TokenKind::RBrace | TokenKind::Eof) {
+            if self.at_ident("optional") {
+                optional_groups.push(self.parse_optional_group()?);
+            } else {
+                fields.push(self.parse_field_def()?);
+            }
+            self.skip_newlines();
+        }
+
+        self.expect(&TokenKind::RBrace)?;
+        Ok(EntityDecl { name, fields, optional_groups })
+    }
+
+    fn parse_optional_group(&mut self) -> Result<OptionalGroup, ()> {
+        let start = self.start_span();
+        self.expect_soft_keyword("optional")?;
+        let (name, _) = self.expect_ident()?;
+        self.expect(&TokenKind::LBrace)?;
+        self.skip_newlines();
         let fields = self.parse_field_defs()?;
         self.expect(&TokenKind::RBrace)?;
-        Ok(EntityDecl { name, fields, optional_groups: vec![] })
+        Ok(OptionalGroup {
+            name,
+            fields,
+            span: self.end_span(start),
+        })
     }
 
     pub(crate) fn parse_field_defs(&mut self) -> Result<Vec<FieldDef>, ()> {
@@ -220,6 +247,8 @@ impl Parser {
         self.expect(&TokenKind::Colon)?;
         let ty = self.parse_type()?;
 
+        let with_groups = self.parse_with_groups()?;
+
         let default = if matches!(self.peek(), TokenKind::Eq) {
             self.advance();
             Some(self.parse_expr()?)
@@ -231,9 +260,34 @@ impl Parser {
             name,
             ty,
             default,
-            with_groups: vec![],
+            with_groups,
             span: self.end_span(start),
         })
+    }
+
+    /// Parse an optional `with Group1, Group2` constraint list.
+    /// Returns an empty vec if no `with` keyword is present.
+    fn parse_with_groups(&mut self) -> Result<Vec<String>, ()> {
+        if !self.at_ident("with") {
+            return Ok(vec![]);
+        }
+        self.advance(); // consume 'with'
+        let mut groups = Vec::new();
+        let (name, _) = self.expect_ident()?;
+        groups.push(name);
+        while matches!(self.peek(), TokenKind::Comma) {
+            // Peek ahead: if the next token after comma is IDENT followed by
+            // colon or rparen, it's the next param, not another group name.
+            if matches!(self.peek_at(1), TokenKind::Ident(_))
+                && matches!(self.peek_at(2), TokenKind::Colon)
+            {
+                break;
+            }
+            self.advance(); // consume ','
+            let (name, _) = self.expect_ident()?;
+            groups.push(name);
+        }
+        Ok(groups)
     }
 
     // ── Action ───────────────────────────────────────────────────
@@ -245,6 +299,7 @@ impl Parser {
         let (receiver_name, _) = self.expect_ident()?;
         self.expect(&TokenKind::Colon)?;
         let receiver_type = self.parse_type()?;
+        let receiver_with_groups = self.parse_with_groups()?;
         self.expect(&TokenKind::LParen)?;
         let params = self.parse_params()?;
         self.expect(&TokenKind::RParen)?;
@@ -274,7 +329,7 @@ impl Parser {
             name,
             receiver_name,
             receiver_type,
-            receiver_with_groups: vec![],
+            receiver_with_groups,
             params,
             cost,
             requires,
@@ -336,6 +391,7 @@ impl Parser {
         let (receiver_name, _) = self.expect_ident()?;
         self.expect(&TokenKind::Colon)?;
         let receiver_type = self.parse_type()?;
+        let receiver_with_groups = self.parse_with_groups()?;
         self.expect(&TokenKind::LParen)?;
         self.skip_newlines();
         let trigger = self.parse_trigger_param()?;
@@ -359,7 +415,7 @@ impl Parser {
             name,
             receiver_name,
             receiver_type,
-            receiver_with_groups: vec![],
+            receiver_with_groups,
             trigger,
             cost,
             resolve,
@@ -447,6 +503,7 @@ impl Parser {
         let (receiver_name, _) = self.expect_ident()?;
         self.expect(&TokenKind::Colon)?;
         let receiver_type = self.parse_type()?;
+        let receiver_with_groups = self.parse_with_groups()?;
         self.expect(&TokenKind::LBrace)?;
         self.skip_newlines();
 
@@ -471,7 +528,7 @@ impl Parser {
             name,
             receiver_name,
             receiver_type,
-            receiver_with_groups: vec![],
+            receiver_with_groups,
             clauses,
         })
     }
