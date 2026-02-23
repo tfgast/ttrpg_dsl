@@ -14,6 +14,7 @@ impl Parser {
                 "mechanic" => self.parse_mechanic_decl().map(DeclKind::Mechanic),
                 "action" => self.parse_action_decl().map(DeclKind::Action),
                 "reaction" => self.parse_reaction_decl().map(DeclKind::Reaction),
+                "hook" => self.parse_hook_decl().map(DeclKind::Hook),
                 "condition" => self.parse_condition_decl().map(DeclKind::Condition),
                 "prompt" => self.parse_prompt_decl().map(DeclKind::Prompt),
                 "option" => self.parse_option_decl().map(DeclKind::Option),
@@ -418,6 +419,33 @@ impl Parser {
             receiver_with_groups,
             trigger,
             cost,
+            resolve,
+        })
+    }
+
+    // ── Hook ─────────────────────────────────────────────────────
+
+    fn parse_hook_decl(&mut self) -> Result<HookDecl, ()> {
+        self.expect_soft_keyword("hook")?;
+        let (name, _) = self.expect_ident()?;
+        self.expect_soft_keyword("on")?;
+        let (receiver_name, _) = self.expect_ident()?;
+        self.expect(&TokenKind::Colon)?;
+        let receiver_type = self.parse_type()?;
+        let receiver_with_groups = self.parse_with_groups()?;
+        self.expect(&TokenKind::LParen)?;
+        self.skip_newlines();
+        let trigger = self.parse_trigger_param()?;
+        self.skip_newlines();
+        self.expect(&TokenKind::RParen)?;
+        let resolve = self.parse_block()?;
+
+        Ok(HookDecl {
+            name,
+            receiver_name,
+            receiver_type,
+            receiver_with_groups,
+            trigger,
             resolve,
         })
     }
