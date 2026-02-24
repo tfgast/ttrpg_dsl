@@ -2292,12 +2292,27 @@ impl<'a> Checker<'a> {
                         .collect();
                     let enum_name = if matching.len() == 1 {
                         matching[0]
-                    } else if !matching.is_empty() {
-                        // Multiple enums in same system share variant — use first
-                        matching[0]
+                    } else if matching.len() > 1 {
+                        let qualified: Vec<String> = matching.iter()
+                            .map(|e| format!("{}.{}.{}", alias, e, field))
+                            .collect();
+                        self.error(
+                            format!(
+                                "variant `{}` is ambiguous in system \"{}\" (alias `{}`); use a qualified form: {}",
+                                field, target, alias, qualified.join(", ")
+                            ),
+                            span,
+                        );
+                        return Ty::Error;
                     } else {
-                        // Fallback: variant exists but not in this system's types
-                        owners.first().unwrap()
+                        self.error(
+                            format!(
+                                "variant `{}` is not defined by any enum in system \"{}\" (alias `{}`)",
+                                field, target, alias
+                            ),
+                            span,
+                        );
+                        return Ty::Error;
                     };
                     if let Some(DeclInfo::Enum(info)) = self.env.types.get(enum_name.as_str()) {
                         if let Some(variant) = info.variants.iter().find(|v| v.name == field) {
@@ -2392,10 +2407,33 @@ impl<'a> Checker<'a> {
                         .collect();
                     let enum_name = if matching.len() == 1 {
                         matching[0].clone()
-                    } else if !matching.is_empty() {
-                        matching[0].clone()
+                    } else if matching.len() > 1 {
+                        let qualified: Vec<String> = matching.iter()
+                            .map(|e| format!("{}.{}.{}", alias, e, field))
+                            .collect();
+                        self.error(
+                            format!(
+                                "variant `{}` is ambiguous in system \"{}\" (alias `{}`); use a qualified form: {}",
+                                field, target, alias, qualified.join(", ")
+                            ),
+                            span,
+                        );
+                        for arg in args {
+                            self.check_expr(&arg.value);
+                        }
+                        return Ty::Error;
                     } else {
-                        owners[0].clone()
+                        self.error(
+                            format!(
+                                "variant `{}` is not defined by any enum in system \"{}\" (alias `{}`)",
+                                field, target, alias
+                            ),
+                            span,
+                        );
+                        for arg in args {
+                            self.check_expr(&arg.value);
+                        }
+                        return Ty::Error;
                     };
                     return self.check_enum_constructor(&enum_name, field, args, span);
                 }

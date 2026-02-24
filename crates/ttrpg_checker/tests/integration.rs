@@ -6004,6 +6004,99 @@ system "Main" {
     ]);
 }
 
+// ── Alias-qualified variant ambiguity (beads-rw6) ──────────────────────
+
+#[test]
+fn test_alias_bare_variant_not_in_target_system() {
+    // Variant exists globally but not in the aliased system — must error (not resolve to wrong enum)
+    expect_multi_errors(
+        &[
+            ("core.ttrpg", r#"
+system "Core" {
+    enum Ability { STR, DEX }
+}
+"#),
+            ("combat.ttrpg", r#"
+system "Combat" {
+    enum DamageType { fire, cold }
+}
+"#),
+            ("main.ttrpg", r#"
+use "Core" as Core
+use "Combat" as Combat
+system "Main" {
+    derive pick() -> DamageType { Core.fire }
+}
+"#),
+        ],
+        &["no type, variant, or condition `fire` in system \"Core\""],
+    );
+}
+
+#[test]
+fn test_alias_variant_constructor_not_in_target_system() {
+    // Variant constructor exists globally but not in the aliased system
+    expect_multi_errors(
+        &[
+            ("core.ttrpg", r#"
+system "Core" {
+    enum Ability { STR, DEX }
+}
+"#),
+            ("combat.ttrpg", r#"
+system "Combat" {
+    enum Effect { damage(amount: int) }
+}
+"#),
+            ("main.ttrpg", r#"
+use "Core" as Core
+use "Combat" as Combat
+system "Main" {
+    derive pick() -> Effect { Core.damage(amount: 5) }
+}
+"#),
+        ],
+        &["no function, condition, or variant `damage` in system \"Core\""],
+    );
+}
+
+#[test]
+fn test_alias_bare_variant_unique_in_system_ok() {
+    // Variant is unique within the aliased system — should resolve fine
+    expect_multi_no_errors(&[
+        ("core.ttrpg", r#"
+system "Core" {
+    enum Color { red, blue }
+    enum Alert { yellow, green }
+}
+"#),
+        ("main.ttrpg", r#"
+use "Core" as Core
+system "Main" {
+    derive pick() -> Color { Core.red }
+}
+"#),
+    ]);
+}
+
+#[test]
+fn test_alias_variant_constructor_in_target_system_ok() {
+    // Variant constructor from correct aliased system — should resolve fine
+    expect_multi_no_errors(&[
+        ("core.ttrpg", r#"
+system "Core" {
+    enum Effect { damage(amount: int), heal(amount: int) }
+}
+"#),
+        ("main.ttrpg", r#"
+use "Core" as Core
+system "Main" {
+    derive pick() -> Effect { Core.damage(amount: 5) }
+}
+"#),
+    ]);
+}
+
 // ── Type visibility in signatures ──────────────────────────────────────
 
 #[test]
