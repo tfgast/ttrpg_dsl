@@ -433,6 +433,7 @@ pub enum ExprKind {
     StructLit {
         name: std::string::String,
         fields: Vec<StructFieldInit>,
+        base: Option<Box<Spanned<ExprKind>>>,
     },
     ListLit(Vec<Spanned<ExprKind>>),
     Paren(Box<Spanned<ExprKind>>),

@@ -54,7 +54,7 @@ pub(crate) fn eval_expr(env: &mut Env, expr: &Spanned<ExprKind>) -> Result<Value
             Ok(Value::List(vals?))
         }
 
-        ExprKind::StructLit { name, fields } => {
+        ExprKind::StructLit { name, fields, base: _ } => {
             let mut field_map = BTreeMap::new();
             for f in fields {
                 let val = eval_expr(env, &f.value)?;
@@ -3273,6 +3273,7 @@ mod tests {
                     span: dummy_span(),
                 },
             ],
+            base: None,
         });
         let result = eval_expr(&mut env, &expr).unwrap();
         match &result {
@@ -3338,6 +3339,7 @@ mod tests {
                     span: dummy_span(),
                 },
             ],
+            base: None,
         });
         let result = eval_expr(&mut env, &expr).unwrap();
         match &result {

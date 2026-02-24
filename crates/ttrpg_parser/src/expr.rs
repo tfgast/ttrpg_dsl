@@ -372,7 +372,7 @@ impl Parser {
         self.skip_newlines();
         self.expect(&TokenKind::RBrace)?;
         Ok(Spanned::new(
-            ExprKind::StructLit { name, fields },
+            ExprKind::StructLit { name, fields, base: None },
             self.end_span(start),
         ))
     }

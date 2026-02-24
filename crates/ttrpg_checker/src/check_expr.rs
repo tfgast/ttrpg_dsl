@@ -45,7 +45,7 @@ impl<'a> Checker<'a> {
 
             ExprKind::Call { callee, args } => self.check_call(callee, args, expr.span),
 
-            ExprKind::StructLit { name, fields } => {
+            ExprKind::StructLit { name, fields, base: _ } => {
                 self.check_struct_lit(name, fields, expr.span)
             }
 

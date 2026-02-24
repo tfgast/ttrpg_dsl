@@ -964,6 +964,7 @@ mod tests {
                             value: spanned(ExprKind::IntLit(10)),
                             span: dummy_span(),
                         }],
+                        base: None,
                     },
                 )))]),
                 synthetic: false,

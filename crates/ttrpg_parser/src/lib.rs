@@ -497,7 +497,10 @@ fn rebase_expr(expr: &mut Spanned<ExprKind>, base: usize) {
                 rebase_expr(&mut a.value, base);
             }
         }
-        ExprKind::StructLit { fields, .. } => {
+        ExprKind::StructLit { fields, base: base_expr, .. } => {
+            if let Some(b) = base_expr {
+                rebase_expr(b, base);
+            }
             for f in fields {
                 f.span = rebase_span(f.span, base);
                 rebase_expr(&mut f.value, base);
