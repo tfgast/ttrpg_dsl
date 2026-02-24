@@ -54,8 +54,23 @@ pub(crate) fn eval_expr(env: &mut Env, expr: &Spanned<ExprKind>) -> Result<Value
             Ok(Value::List(vals?))
         }
 
-        ExprKind::StructLit { name, fields, base: _ } => {
-            let mut field_map = BTreeMap::new();
+        ExprKind::StructLit { name, fields, base } => {
+            // Start from base fields if ..base spread was provided.
+            let mut field_map = if let Some(base_expr) = base {
+                match eval_expr(env, base_expr)? {
+                    Value::Struct { fields: base_fields, .. } => base_fields,
+                    other => {
+                        return Err(RuntimeError::with_span(
+                            format!("expected struct in ..base, got {}", type_name(&other)),
+                            base_expr.span,
+                        ));
+                    }
+                }
+            } else {
+                BTreeMap::new()
+            };
+
+            // Explicit fields override base values.
             for f in fields {
                 let val = eval_expr(env, &f.value)?;
                 field_map.insert(f.name.clone(), val);
