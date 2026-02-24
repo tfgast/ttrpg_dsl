@@ -1,0 +1,420 @@
+// ============================================================
+// OSE Class Definitions & XP Tables — class data and advancement
+//
+// Static class definitions for all 22 OSE classes, XP progression
+// tables, ability requirements, prime requisite XP modifiers.
+//
+// Reference: oag/src/rules/class.rs (631 lines),
+//            oag/src/rules/xp.rs (235 lines)
+// ============================================================
+
+use "OSE"
+
+system "OSE Classes" {
+
+    // --- XP progression groups ---
+    // Multiple classes share the same XP table. This enum identifies
+    // each unique progression to avoid duplicating table rows.
+    // 13 groups covering all 22 classes.
+
+    enum XpGroup {
+        xp_fighter,
+        xp_thief,
+        xp_cleric,
+        xp_magic_user,
+        xp_dwarf,
+        xp_elf,
+        xp_halfling,
+        xp_half_elf,
+        xp_paladin,
+        xp_ranger,
+        xp_gnome,
+        xp_half_orc,
+        xp_svirfneblin
+    }
+
+
+    // ========================================================
+    //  CLASS DEFINITION
+    //
+    //  Static class data for all 22 classes. Returns a ClassDef
+    //  struct with hit_die, combat_aptitude, armour, saves, etc.
+    //
+    //  Per OSE Reference Booklet p12, p19 and Players Tomes.
+    // ========================================================
+
+    derive class_def(class: Class) -> ClassDef {
+        match class {
+            Acrobat => ClassDef { class: Acrobat, hit_die: 4, combat_aptitude: semi_martial, max_level: 14, armour: no_armour, weapons_any: true, weapons_blunt_only: false, save_category: save_thief, spell_progression: non_caster, spell_list: no_list, is_demihuman: false },
+            Assassin => ClassDef { class: Assassin, hit_die: 4, combat_aptitude: semi_martial, max_level: 14, armour: leather_only, weapons_any: true, weapons_blunt_only: false, save_category: save_thief, spell_progression: non_caster, spell_list: no_list, is_demihuman: false },
+            Barbarian => ClassDef { class: Barbarian, hit_die: 8, combat_aptitude: martial, max_level: 14, armour: any_armour, weapons_any: true, weapons_blunt_only: false, save_category: save_barbarian, spell_progression: non_caster, spell_list: no_list, is_demihuman: false },
+            Bard => ClassDef { class: Bard, hit_die: 6, combat_aptitude: semi_martial, max_level: 14, armour: leather_shield, weapons_any: true, weapons_blunt_only: false, save_category: save_thief, spell_progression: prog_bard, spell_list: list_druid, is_demihuman: false },
+            Cleric => ClassDef { class: Cleric, hit_die: 6, combat_aptitude: semi_martial, max_level: 14, armour: any_armour, weapons_any: false, weapons_blunt_only: true, save_category: save_cleric, spell_progression: prog_cleric, spell_list: list_cleric, is_demihuman: false },
+            Drow => ClassDef { class: Drow, hit_die: 6, combat_aptitude: martial, max_level: 10, armour: any_armour, weapons_any: true, weapons_blunt_only: false, save_category: save_drow, spell_progression: prog_drow, spell_list: list_drow_arcane_divine, is_demihuman: true },
+            Druid => ClassDef { class: Druid, hit_die: 6, combat_aptitude: semi_martial, max_level: 14, armour: leather_only, weapons_any: false, weapons_blunt_only: true, save_category: save_cleric, spell_progression: prog_druid, spell_list: list_druid, is_demihuman: false },
+            Duergar => ClassDef { class: Duergar, hit_die: 8, combat_aptitude: martial, max_level: 10, armour: any_armour, weapons_any: true, weapons_blunt_only: false, save_category: save_dwarf, spell_progression: non_caster, spell_list: no_list, is_demihuman: true },
+            Dwarf => ClassDef { class: Dwarf, hit_die: 8, combat_aptitude: martial, max_level: 12, armour: any_armour, weapons_any: true, weapons_blunt_only: false, save_category: save_dwarf, spell_progression: non_caster, spell_list: no_list, is_demihuman: true },
+            Elf => ClassDef { class: Elf, hit_die: 6, combat_aptitude: martial, max_level: 10, armour: any_armour, weapons_any: true, weapons_blunt_only: false, save_category: save_elf, spell_progression: prog_arcane_full, spell_list: list_magic_user, is_demihuman: true },
+            Fighter => ClassDef { class: Fighter, hit_die: 8, combat_aptitude: martial, max_level: 14, armour: any_armour, weapons_any: true, weapons_blunt_only: false, save_category: save_fighter, spell_progression: non_caster, spell_list: no_list, is_demihuman: false },
+            Gnome => ClassDef { class: Gnome, hit_die: 6, combat_aptitude: non_martial, max_level: 8, armour: leather_only, weapons_any: true, weapons_blunt_only: false, save_category: save_gnome, spell_progression: prog_arcane_full, spell_list: list_illusionist, is_demihuman: true },
+            HalfElf => ClassDef { class: HalfElf, hit_die: 6, combat_aptitude: martial, max_level: 12, armour: any_armour, weapons_any: true, weapons_blunt_only: false, save_category: save_half_elf, spell_progression: prog_half_elf, spell_list: list_magic_user, is_demihuman: true },
+            Halfling => ClassDef { class: Halfling, hit_die: 6, combat_aptitude: martial, max_level: 8, armour: any_armour, weapons_any: true, weapons_blunt_only: false, save_category: save_dwarf, spell_progression: non_caster, spell_list: no_list, is_demihuman: true },
+            HalfOrc => ClassDef { class: HalfOrc, hit_die: 6, combat_aptitude: semi_martial, max_level: 8, armour: leather_only, weapons_any: true, weapons_blunt_only: false, save_category: save_half_orc, spell_progression: non_caster, spell_list: no_list, is_demihuman: true },
+            Illusionist => ClassDef { class: Illusionist, hit_die: 4, combat_aptitude: non_martial, max_level: 14, armour: no_armour, weapons_any: false, weapons_blunt_only: false, save_category: save_magic_user, spell_progression: prog_arcane_full, spell_list: list_illusionist, is_demihuman: false },
+            Knight => ClassDef { class: Knight, hit_die: 8, combat_aptitude: martial, max_level: 14, armour: any_armour, weapons_any: true, weapons_blunt_only: false, save_category: save_fighter, spell_progression: non_caster, spell_list: no_list, is_demihuman: false },
+            MagicUser => ClassDef { class: MagicUser, hit_die: 4, combat_aptitude: non_martial, max_level: 14, armour: no_armour, weapons_any: false, weapons_blunt_only: false, save_category: save_magic_user, spell_progression: prog_arcane_full, spell_list: list_magic_user, is_demihuman: false },
+            Paladin => ClassDef { class: Paladin, hit_die: 8, combat_aptitude: martial, max_level: 14, armour: any_armour, weapons_any: true, weapons_blunt_only: false, save_category: save_paladin, spell_progression: prog_paladin, spell_list: list_cleric, is_demihuman: false },
+            Ranger => ClassDef { class: Ranger, hit_die: 8, combat_aptitude: martial, max_level: 14, armour: any_armour, weapons_any: true, weapons_blunt_only: false, save_category: save_fighter, spell_progression: prog_ranger, spell_list: list_druid, is_demihuman: false },
+            Svirfneblin => ClassDef { class: Svirfneblin, hit_die: 6, combat_aptitude: martial, max_level: 8, armour: leather_only, weapons_any: true, weapons_blunt_only: false, save_category: save_svirfneblin, spell_progression: prog_arcane_full, spell_list: list_illusionist, is_demihuman: true },
+            Thief => ClassDef { class: Thief, hit_die: 4, combat_aptitude: semi_martial, max_level: 14, armour: leather_only, weapons_any: true, weapons_blunt_only: false, save_category: save_thief, spell_progression: non_caster, spell_list: no_list, is_demihuman: false }
+        }
+    }
+
+
+    // ========================================================
+    //  XP PROGRESSION TABLES
+    //
+    //  13 unique progressions covering 22 classes.
+    //  xp_group maps Class -> XpGroup, xp_table looks up the XP
+    //  required, and xp_for_level wraps both for the public API.
+    //
+    //  Per OSE Rules Tome XP tables.
+    // ========================================================
+
+    derive xp_group(class: Class) -> XpGroup {
+        match class {
+            Fighter    => xp_fighter,
+            Knight     => xp_fighter,
+            Bard       => xp_fighter,
+            Barbarian  => xp_fighter,
+            Thief      => xp_thief,
+            Acrobat    => xp_thief,
+            Assassin   => xp_thief,
+            Cleric     => xp_cleric,
+            Druid      => xp_cleric,
+            MagicUser  => xp_magic_user,
+            Illusionist => xp_magic_user,
+            Dwarf      => xp_dwarf,
+            Duergar    => xp_dwarf,
+            Elf        => xp_elf,
+            Drow       => xp_elf,
+            Halfling   => xp_halfling,
+            HalfElf    => xp_half_elf,
+            Paladin    => xp_paladin,
+            Ranger     => xp_ranger,
+            Gnome      => xp_gnome,
+            HalfOrc    => xp_half_orc,
+            Svirfneblin => xp_svirfneblin
+        }
+    }
+
+    table xp_table(group: XpGroup, level: int) -> int {
+
+        // --- Fighter / Knight / Bard / Barbarian (14 levels) ---
+        [xp_fighter, 1]  => 0,
+        [xp_fighter, 2]  => 2000,
+        [xp_fighter, 3]  => 4000,
+        [xp_fighter, 4]  => 8000,
+        [xp_fighter, 5]  => 16000,
+        [xp_fighter, 6]  => 32000,
+        [xp_fighter, 7]  => 64000,
+        [xp_fighter, 8]  => 120000,
+        [xp_fighter, 9]  => 240000,
+        [xp_fighter, 10] => 360000,
+        [xp_fighter, 11] => 480000,
+        [xp_fighter, 12] => 600000,
+        [xp_fighter, 13] => 720000,
+        [xp_fighter, 14] => 840000,
+
+        // --- Thief / Acrobat / Assassin (14 levels) ---
+        [xp_thief, 1]  => 0,
+        [xp_thief, 2]  => 1200,
+        [xp_thief, 3]  => 2400,
+        [xp_thief, 4]  => 4800,
+        [xp_thief, 5]  => 9600,
+        [xp_thief, 6]  => 20000,
+        [xp_thief, 7]  => 40000,
+        [xp_thief, 8]  => 80000,
+        [xp_thief, 9]  => 160000,
+        [xp_thief, 10] => 280000,
+        [xp_thief, 11] => 400000,
+        [xp_thief, 12] => 520000,
+        [xp_thief, 13] => 640000,
+        [xp_thief, 14] => 760000,
+
+        // --- Cleric / Druid (14 levels) ---
+        [xp_cleric, 1]  => 0,
+        [xp_cleric, 2]  => 1500,
+        [xp_cleric, 3]  => 3000,
+        [xp_cleric, 4]  => 6000,
+        [xp_cleric, 5]  => 12000,
+        [xp_cleric, 6]  => 25000,
+        [xp_cleric, 7]  => 50000,
+        [xp_cleric, 8]  => 100000,
+        [xp_cleric, 9]  => 200000,
+        [xp_cleric, 10] => 300000,
+        [xp_cleric, 11] => 400000,
+        [xp_cleric, 12] => 500000,
+        [xp_cleric, 13] => 600000,
+        [xp_cleric, 14] => 700000,
+
+        // --- Magic-User / Illusionist (14 levels) ---
+        [xp_magic_user, 1]  => 0,
+        [xp_magic_user, 2]  => 2500,
+        [xp_magic_user, 3]  => 5000,
+        [xp_magic_user, 4]  => 10000,
+        [xp_magic_user, 5]  => 20000,
+        [xp_magic_user, 6]  => 40000,
+        [xp_magic_user, 7]  => 80000,
+        [xp_magic_user, 8]  => 150000,
+        [xp_magic_user, 9]  => 300000,
+        [xp_magic_user, 10] => 450000,
+        [xp_magic_user, 11] => 600000,
+        [xp_magic_user, 12] => 750000,
+        [xp_magic_user, 13] => 900000,
+        [xp_magic_user, 14] => 1050000,
+
+        // --- Dwarf / Duergar (12 levels) ---
+        [xp_dwarf, 1]  => 0,
+        [xp_dwarf, 2]  => 2200,
+        [xp_dwarf, 3]  => 4400,
+        [xp_dwarf, 4]  => 8800,
+        [xp_dwarf, 5]  => 17000,
+        [xp_dwarf, 6]  => 35000,
+        [xp_dwarf, 7]  => 70000,
+        [xp_dwarf, 8]  => 140000,
+        [xp_dwarf, 9]  => 270000,
+        [xp_dwarf, 10] => 400000,
+        [xp_dwarf, 11] => 530000,
+        [xp_dwarf, 12] => 660000,
+
+        // --- Elf / Drow (10 levels) ---
+        [xp_elf, 1]  => 0,
+        [xp_elf, 2]  => 4000,
+        [xp_elf, 3]  => 8000,
+        [xp_elf, 4]  => 16000,
+        [xp_elf, 5]  => 32000,
+        [xp_elf, 6]  => 64000,
+        [xp_elf, 7]  => 120000,
+        [xp_elf, 8]  => 250000,
+        [xp_elf, 9]  => 400000,
+        [xp_elf, 10] => 600000,
+
+        // --- Halfling (8 levels) ---
+        [xp_halfling, 1] => 0,
+        [xp_halfling, 2] => 2000,
+        [xp_halfling, 3] => 4000,
+        [xp_halfling, 4] => 8000,
+        [xp_halfling, 5] => 16000,
+        [xp_halfling, 6] => 32000,
+        [xp_halfling, 7] => 64000,
+        [xp_halfling, 8] => 120000,
+
+        // --- Half-Elf (12 levels) ---
+        [xp_half_elf, 1]  => 0,
+        [xp_half_elf, 2]  => 2500,
+        [xp_half_elf, 3]  => 5000,
+        [xp_half_elf, 4]  => 10000,
+        [xp_half_elf, 5]  => 20000,
+        [xp_half_elf, 6]  => 40000,
+        [xp_half_elf, 7]  => 80000,
+        [xp_half_elf, 8]  => 150000,
+        [xp_half_elf, 9]  => 300000,
+        [xp_half_elf, 10] => 400000,
+        [xp_half_elf, 11] => 500000,
+        [xp_half_elf, 12] => 600000,
+
+        // --- Paladin (14 levels) ---
+        [xp_paladin, 1]  => 0,
+        [xp_paladin, 2]  => 2750,
+        [xp_paladin, 3]  => 5500,
+        [xp_paladin, 4]  => 12000,
+        [xp_paladin, 5]  => 24000,
+        [xp_paladin, 6]  => 45000,
+        [xp_paladin, 7]  => 95000,
+        [xp_paladin, 8]  => 175000,
+        [xp_paladin, 9]  => 350000,
+        [xp_paladin, 10] => 500000,
+        [xp_paladin, 11] => 650000,
+        [xp_paladin, 12] => 800000,
+        [xp_paladin, 13] => 950000,
+        [xp_paladin, 14] => 1100000,
+
+        // --- Ranger (14 levels) ---
+        [xp_ranger, 1]  => 0,
+        [xp_ranger, 2]  => 2250,
+        [xp_ranger, 3]  => 4500,
+        [xp_ranger, 4]  => 10000,
+        [xp_ranger, 5]  => 20000,
+        [xp_ranger, 6]  => 40000,
+        [xp_ranger, 7]  => 90000,
+        [xp_ranger, 8]  => 150000,
+        [xp_ranger, 9]  => 325000,
+        [xp_ranger, 10] => 475000,
+        [xp_ranger, 11] => 625000,
+        [xp_ranger, 12] => 775000,
+        [xp_ranger, 13] => 925000,
+        [xp_ranger, 14] => 1075000,
+
+        // --- Gnome (8 levels) ---
+        [xp_gnome, 1] => 0,
+        [xp_gnome, 2] => 3000,
+        [xp_gnome, 3] => 6000,
+        [xp_gnome, 4] => 12000,
+        [xp_gnome, 5] => 25000,
+        [xp_gnome, 6] => 50000,
+        [xp_gnome, 7] => 100000,
+        [xp_gnome, 8] => 200000,
+
+        // --- Half-Orc (8 levels) ---
+        [xp_half_orc, 1] => 0,
+        [xp_half_orc, 2] => 1500,
+        [xp_half_orc, 3] => 3000,
+        [xp_half_orc, 4] => 6000,
+        [xp_half_orc, 5] => 12000,
+        [xp_half_orc, 6] => 25000,
+        [xp_half_orc, 7] => 50000,
+        [xp_half_orc, 8] => 100000,
+
+        // --- Svirfneblin (8 levels) ---
+        [xp_svirfneblin, 1] => 0,
+        [xp_svirfneblin, 2] => 3000,
+        [xp_svirfneblin, 3] => 6000,
+        [xp_svirfneblin, 4] => 12000,
+        [xp_svirfneblin, 5] => 24000,
+        [xp_svirfneblin, 6] => 48000,
+        [xp_svirfneblin, 7] => 100000,
+        [xp_svirfneblin, 8] => 200000
+    }
+
+    // User-facing API: XP required for a given class and level.
+    derive xp_for_level(class: Class, level: int) -> int {
+        xp_table(xp_group(class), level)
+    }
+
+
+    // ========================================================
+    //  LEVEL ADVANCEMENT
+    //
+    //  Returns true if the character has enough XP to reach
+    //  the next level and hasn't hit the class maximum.
+    // ========================================================
+
+    derive check_level_up(class: Class, current_level: int, xp: int) -> bool {
+        let def = class_def(class)
+        let next_level = current_level + 1
+        if next_level > def.max_level {
+            false
+        } else {
+            xp >= xp_for_level(class, next_level)
+        }
+    }
+
+
+    // ========================================================
+    //  PRIME REQUISITE XP MODIFIER
+    //
+    //  OSE XP modifier based on prime requisite score:
+    //    3-5: -20%,  6-8: -10%,  9-12: 0%,  13-15: +5%,  16-18: +10%
+    //
+    //  For classes with multiple prime requisites, the lowest
+    //  score is used (per OSE Rules Tome).
+    // ========================================================
+
+    derive prime_req_xp_modifier(class: Class, abilities: map<Ability, int>) -> int {
+        let min_score = match class {
+            // Single prime requisite: STR
+            Fighter   => abilities[STR],
+            Knight    => abilities[STR],
+            Barbarian => abilities[STR],
+            Paladin   => abilities[STR],
+            Ranger    => abilities[STR],
+            Dwarf     => abilities[STR],
+            Duergar   => abilities[STR],
+            // Single: WIS
+            Cleric => abilities[WIS],
+            Druid  => abilities[WIS],
+            // Single: DEX
+            Thief    => abilities[DEX],
+            Acrobat  => abilities[DEX],
+            Assassin => abilities[DEX],
+            // Single: CHA
+            Bard => abilities[CHA],
+            // Single: INT
+            MagicUser   => abilities[INT],
+            Illusionist => abilities[INT],
+            // Dual: STR + INT (use lowest)
+            Elf     => if abilities[STR] < abilities[INT] { abilities[STR] } else { abilities[INT] },
+            Drow    => if abilities[STR] < abilities[INT] { abilities[STR] } else { abilities[INT] },
+            HalfElf => if abilities[STR] < abilities[INT] { abilities[STR] } else { abilities[INT] },
+            // Dual: STR + DEX (use lowest)
+            Halfling => if abilities[STR] < abilities[DEX] { abilities[STR] } else { abilities[DEX] },
+            HalfOrc  => if abilities[STR] < abilities[DEX] { abilities[STR] } else { abilities[DEX] },
+            // Dual: DEX + INT (use lowest)
+            Gnome       => if abilities[DEX] < abilities[INT] { abilities[DEX] } else { abilities[INT] },
+            Svirfneblin => if abilities[DEX] < abilities[INT] { abilities[DEX] } else { abilities[INT] }
+        }
+        match {
+            min_score <= 5  => -20,
+            min_score <= 8  => -10,
+            min_score <= 12 => 0,
+            min_score <= 15 => 5,
+            _               => 10
+        }
+    }
+
+
+    // ========================================================
+    //  ABILITY REQUIREMENTS
+    //
+    //  Returns true if the given ability scores qualify for the
+    //  class. Abilities should be post-racial-modifier values.
+    // ========================================================
+
+    derive meets_requirements(class: Class, abilities: map<Ability, int>) -> bool {
+        match class {
+            // No requirements
+            Fighter   => true,
+            Cleric    => true,
+            MagicUser => true,
+            Thief     => true,
+            Druid     => true,
+            HalfOrc   => true,
+            // Single requirement
+            Acrobat     => abilities[DEX] >= 9,
+            Assassin    => abilities[DEX] >= 9,
+            Drow        => abilities[INT] >= 9,
+            Dwarf       => abilities[CON] >= 9,
+            Elf         => abilities[INT] >= 9,
+            Paladin     => abilities[CHA] >= 9,
+            Svirfneblin => abilities[CON] >= 9,
+            // Two requirements
+            Bard        => abilities[DEX] >= 9 && abilities[CHA] >= 9,
+            Duergar     => abilities[INT] >= 9 && abilities[CON] >= 9,
+            Gnome       => abilities[INT] >= 9 && abilities[CON] >= 9,
+            HalfElf     => abilities[CON] >= 9 && abilities[CHA] >= 9,
+            Halfling    => abilities[CON] >= 9 && abilities[DEX] >= 9,
+            Illusionist => abilities[DEX] >= 9 && abilities[INT] >= 9,
+            Knight      => abilities[STR] >= 9 && abilities[CHA] >= 9,
+            Ranger      => abilities[STR] >= 9 && abilities[WIS] >= 9,
+            // Three requirements
+            Barbarian => abilities[STR] >= 9 && abilities[DEX] >= 9 && abilities[CON] >= 9
+        }
+    }
+
+
+    // ========================================================
+    //  XP ADJUSTMENT
+    //
+    //  Apply a percentage modifier to base XP.
+    //  modifier_pct is -20, -10, 0, 5, or 10.
+    // ========================================================
+
+    derive adjust_xp(base_xp: int, modifier_pct: int) -> int {
+        if modifier_pct == 0 {
+            base_xp
+        } else {
+            floor(base_xp * (100 + modifier_pct) / 100)
+        }
+    }
+}
