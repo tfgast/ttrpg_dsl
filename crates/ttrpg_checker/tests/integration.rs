@@ -5624,3 +5624,201 @@ system "Main" {
         &[r#"`max_hp` is defined in system "Core""#],
     );
 }
+
+// ── Alias-qualified expression tests ───────────────────────────────────
+
+#[test]
+fn test_alias_qualified_enum_type() {
+    // Core.Ability → EnumType
+    expect_multi_no_errors(&[
+        ("core.ttrpg", r#"
+system "Core" {
+    enum Ability { STR, DEX, CON }
+}
+"#),
+        ("main.ttrpg", r#"
+use "Core" as Core
+system "Main" {
+    derive get_ability() -> Ability { Core.Ability.STR }
+}
+"#),
+    ]);
+}
+
+#[test]
+fn test_alias_qualified_enum_variant() {
+    // Core.Ability.STR → enum variant through alias
+    expect_multi_no_errors(&[
+        ("core.ttrpg", r#"
+system "Core" {
+    enum DamageType { fire, cold, lightning }
+}
+"#),
+        ("main.ttrpg", r#"
+use "Core" as Core
+system "Main" {
+    derive get_dmg() -> DamageType { Core.DamageType.fire }
+}
+"#),
+    ]);
+}
+
+#[test]
+fn test_alias_qualified_bare_variant() {
+    // Core.fire → bare variant through alias
+    expect_multi_no_errors(&[
+        ("core.ttrpg", r#"
+system "Core" {
+    enum DamageType { fire, cold, lightning }
+}
+"#),
+        ("main.ttrpg", r#"
+use "Core" as Core
+system "Main" {
+    derive get_dmg() -> DamageType { Core.fire }
+}
+"#),
+    ]);
+}
+
+#[test]
+fn test_alias_qualified_function_call() {
+    // Core.modifier(10) → function call through alias
+    expect_multi_no_errors(&[
+        ("core.ttrpg", r#"
+system "Core" {
+    derive modifier(score: int) -> float { (score - 10) / 2 }
+}
+"#),
+        ("main.ttrpg", r#"
+use "Core" as Core
+system "Main" {
+    derive double_mod(score: int) -> float { Core.modifier(score) * 2 }
+}
+"#),
+    ]);
+}
+
+#[test]
+fn test_alias_qualified_condition_ref() {
+    // Core.Prone → condition reference through alias
+    expect_multi_no_errors(&[
+        ("core.ttrpg", r#"
+system "Core" {
+    entity Character { HP: int = 10 }
+    condition Prone on bearer: Character { }
+}
+"#),
+        ("main.ttrpg", r#"
+use "Core" as Core
+system "Main" {
+    derive get_cond() -> Condition { Core.Prone }
+}
+"#),
+    ]);
+}
+
+#[test]
+fn test_alias_qualified_condition_call() {
+    // Core.Frightened(source: attacker) → parameterized condition through alias
+    expect_multi_no_errors(&[
+        ("core.ttrpg", r#"
+system "Core" {
+    entity Character { HP: int = 10 }
+    condition Frightened(source: Character) on bearer: Character { }
+}
+"#),
+        ("main.ttrpg", r#"
+use "Core" as Core
+system "Main" {
+    derive get_scared(attacker: Character) -> Condition {
+        Core.Frightened(source: attacker)
+    }
+}
+"#),
+    ]);
+}
+
+#[test]
+fn test_alias_qualified_nonexistent_name() {
+    // Core.nonexistent → error
+    expect_multi_errors(
+        &[
+            ("core.ttrpg", r#"
+system "Core" {
+    enum Ability { STR, DEX }
+}
+"#),
+            ("main.ttrpg", r#"
+use "Core" as Core
+system "Main" {
+    derive bad() -> int { Core.nonexistent }
+}
+"#),
+        ],
+        &["no type, variant, or condition `nonexistent`"],
+    );
+}
+
+#[test]
+fn test_alias_qualified_nonexistent_call() {
+    // Core.nonexistent(1) → error
+    expect_multi_errors(
+        &[
+            ("core.ttrpg", r#"
+system "Core" {
+    enum Ability { STR, DEX }
+}
+"#),
+            ("main.ttrpg", r#"
+use "Core" as Core
+system "Main" {
+    derive bad() -> int { Core.nonexistent(1) }
+}
+"#),
+        ],
+        &["no function, condition, or variant `nonexistent`"],
+    );
+}
+
+#[test]
+fn test_alias_qualified_struct_not_value() {
+    // Core.Stats → error (structs cannot be used as values)
+    expect_multi_errors(
+        &[
+            ("core.ttrpg", r#"
+system "Core" {
+    struct Stats { strength: int }
+}
+"#),
+            ("main.ttrpg", r#"
+use "Core" as Core
+system "Main" {
+    derive bad() -> int { Core.Stats }
+}
+"#),
+        ],
+        &["cannot be used as a value"],
+    );
+}
+
+#[test]
+fn test_alias_qualified_function_type_error() {
+    // Core.modifier("string") → type error
+    expect_multi_errors(
+        &[
+            ("core.ttrpg", r#"
+system "Core" {
+    derive modifier(score: int) -> int { (score - 10) / 2 }
+}
+"#),
+            ("main.ttrpg", r#"
+use "Core" as Core
+system "Main" {
+    derive bad() -> float { Core.modifier("hello") }
+}
+"#),
+        ],
+        &["has type string, expected int"],
+    );
+}

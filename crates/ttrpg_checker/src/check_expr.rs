@@ -136,6 +136,15 @@ impl<'a> Checker<'a> {
             };
         }
 
+        // Check if it's a module alias (e.g., `Core` from `use "Core" as Core`)
+        if let Some(ref current) = self.current_system {
+            if let Some(aliases) = self.env.system_aliases.get(current) {
+                if aliases.contains_key(name) {
+                    return Ty::ModuleAlias(name.to_string());
+                }
+            }
+        }
+
         self.error(format!("undefined variable `{}`", name), span);
         Ty::Error
     }
@@ -592,6 +601,10 @@ impl<'a> Checker<'a> {
                 );
                 Ty::Error
             }
+            // Module alias: resolve through alias to the target system
+            Ty::ModuleAlias(alias_name) => {
+                return self.resolve_alias_field(alias_name, field, span);
+            }
             // Runtime enum values do not support field access
             Ty::Enum(enum_name) => {
                 self.error(
@@ -779,6 +792,10 @@ impl<'a> Checker<'a> {
                 }
                 if let Ty::EnumType(enum_name) = &obj_ty {
                     return self.check_enum_constructor(enum_name, field, args, span);
+                }
+                // Alias-qualified call: Alias.function(args)
+                if let Ty::ModuleAlias(alias_name) = &obj_ty {
+                    return self.resolve_alias_call(alias_name, field, args, span);
                 }
                 // Method call: obj.method(args)
                 return self.check_method_call(&obj_ty, field, args, span);
@@ -2169,5 +2186,380 @@ impl<'a> Checker<'a> {
             ExprKind::Paren(inner) => self.extract_has_narrowings(inner),
             _ => vec![],
         }
+    }
+
+    // ── Alias-qualified expression resolution ──────────────────────
+
+    /// Resolve the target system for a module alias in the current system.
+    /// Returns the target system name, or emits an error and returns `None`.
+    fn resolve_alias_target(&mut self, alias: &str, _span: ttrpg_ast::Span) -> Option<String> {
+        let current = self.current_system.as_ref()?;
+        let aliases = self.env.system_aliases.get(current)?;
+        aliases.get(alias).cloned()
+    }
+
+    /// Resolve field access on a module alias: `Alias.Name`.
+    /// Handles enum types, enum variants, and conditions from the target system.
+    fn resolve_alias_field(
+        &mut self,
+        alias: &str,
+        field: &str,
+        span: ttrpg_ast::Span,
+    ) -> Ty {
+        let target = match self.resolve_alias_target(alias, span) {
+            Some(t) => t,
+            None => {
+                self.error(
+                    format!("unknown module alias `{}`", alias),
+                    span,
+                );
+                return Ty::Error;
+            }
+        };
+
+        // Check if the field is a type in the target system
+        if let Some(sys_info) = self.modules.and_then(|m| m.systems.get(&target)) {
+            if sys_info.types.contains(field) {
+                if let Some(decl) = self.env.types.get(field) {
+                    return match decl {
+                        DeclInfo::Enum(_) => Ty::EnumType(field.to_string()),
+                        DeclInfo::Struct(_) | DeclInfo::Entity(_) => {
+                            self.error(
+                                format!("type `{}` cannot be used as a value", field),
+                                span,
+                            );
+                            Ty::Error
+                        }
+                    };
+                }
+            }
+
+            // Check if the field is a bare enum variant in the target system
+            if sys_info.variants.contains(field) {
+                if let Some(enum_name) = self.env.variant_to_enum.get(field) {
+                    if let Some(DeclInfo::Enum(info)) = self.env.types.get(enum_name) {
+                        if let Some(variant) = info.variants.iter().find(|v| v.name == field) {
+                            if variant.fields.is_empty() {
+                                return Ty::Enum(enum_name.clone());
+                            } else {
+                                self.error(
+                                    format!(
+                                        "variant `{}` has payload fields and must be called as a constructor",
+                                        field
+                                    ),
+                                    span,
+                                );
+                                return Ty::Error;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Check if the field is a condition in the target system
+            if sys_info.conditions.contains(field) {
+                if let Some(cond_info) = self.env.conditions.get(field) {
+                    let required_params = cond_info.params.iter().filter(|p| !p.has_default).count();
+                    if required_params > 0 {
+                        self.error(
+                            format!(
+                                "condition `{}` requires {} parameter(s); use `{}.{}(...)` to supply them",
+                                field, required_params, alias, field
+                            ),
+                            span,
+                        );
+                    }
+                    return Ty::Condition;
+                }
+            }
+        }
+
+        self.error(
+            format!(
+                "no type, variant, or condition `{}` in system \"{}\" (alias `{}`)",
+                field, target, alias
+            ),
+            span,
+        );
+        Ty::Error
+    }
+
+    /// Resolve a call through a module alias: `Alias.name(args)`.
+    /// Handles function calls, condition calls, and enum constructors.
+    fn resolve_alias_call(
+        &mut self,
+        alias: &str,
+        field: &str,
+        args: &[Arg],
+        span: ttrpg_ast::Span,
+    ) -> Ty {
+        let target = match self.resolve_alias_target(alias, span) {
+            Some(t) => t,
+            None => {
+                self.error(
+                    format!("unknown module alias `{}`", alias),
+                    span,
+                );
+                for arg in args {
+                    self.check_expr(&arg.value);
+                }
+                return Ty::Error;
+            }
+        };
+
+        if let Some(sys_info) = self.modules.and_then(|m| m.systems.get(&target)) {
+            // Check if it's a condition call
+            if sys_info.conditions.contains(field) {
+                if let Some(cond_info) = self.env.conditions.get(field).cloned() {
+                    return self.check_alias_condition_call(field, &cond_info.params, args, span);
+                }
+            }
+
+            // Check if it's a function call
+            if sys_info.functions.contains(field) {
+                // Delegate to normal function checking with the resolved name
+                return self.check_alias_function_call(field, args, span);
+            }
+
+            // Check if it's an enum variant constructor
+            if sys_info.variants.contains(field) {
+                if let Some(enum_name) = self.env.variant_to_enum.get(field) {
+                    let enum_name = enum_name.clone();
+                    return self.check_enum_constructor(&enum_name, field, args, span);
+                }
+            }
+        }
+
+        self.error(
+            format!(
+                "no function, condition, or variant `{}` in system \"{}\" (alias `{}`)",
+                field, target, alias
+            ),
+            span,
+        );
+        for arg in args {
+            self.check_expr(&arg.value);
+        }
+        Ty::Error
+    }
+
+    /// Type-check a condition call reached through an alias (reuses condition checking logic).
+    fn check_alias_condition_call(
+        &mut self,
+        name: &str,
+        params: &[ParamInfo],
+        args: &[Arg],
+        span: ttrpg_ast::Span,
+    ) -> Ty {
+        let mut satisfied: HashSet<usize> = HashSet::new();
+        let mut next_positional = 0usize;
+
+        for arg in args.iter() {
+            let arg_ty = self.check_expr(&arg.value);
+
+            let param_idx = if let Some(ref arg_name) = arg.name {
+                params.iter().position(|p| p.name == *arg_name)
+            } else {
+                while next_positional < params.len() && satisfied.contains(&next_positional) {
+                    next_positional += 1;
+                }
+                if next_positional < params.len() {
+                    let idx = next_positional;
+                    next_positional += 1;
+                    Some(idx)
+                } else {
+                    None
+                }
+            };
+
+            if let Some(idx) = param_idx {
+                if !satisfied.insert(idx) {
+                    self.error(
+                        format!("duplicate argument for parameter `{}`", params[idx].name),
+                        arg.span,
+                    );
+                }
+                if !arg_ty.is_error() && !self.types_compatible(&arg_ty, &params[idx].ty) {
+                    self.error(
+                        format!(
+                            "condition `{}` parameter `{}` has type {}, got {}",
+                            name, params[idx].name, params[idx].ty, arg_ty
+                        ),
+                        arg.value.span,
+                    );
+                }
+            } else if let Some(ref arg_name) = arg.name {
+                self.error(
+                    format!("condition `{}` has no parameter `{}`", name, arg_name),
+                    arg.span,
+                );
+            } else {
+                self.error(
+                    format!(
+                        "condition `{}` accepts at most {} argument(s), found {}",
+                        name, params.len(), args.len()
+                    ),
+                    span,
+                );
+                break;
+            }
+        }
+
+        for (idx, param) in params.iter().enumerate() {
+            if !param.has_default && !satisfied.contains(&idx) {
+                self.error(
+                    format!("missing required argument `{}` in call to condition `{}`", param.name, name),
+                    span,
+                );
+            }
+        }
+
+        Ty::Condition
+    }
+
+    /// Type-check a function call reached through an alias (delegates to normal function checking).
+    fn check_alias_function_call(
+        &mut self,
+        name: &str,
+        args: &[Arg],
+        span: ttrpg_ast::Span,
+    ) -> Ty {
+        let fn_info = match self.env.lookup_fn(name) {
+            Some(info) => info.clone(),
+            None => {
+                self.error(format!("undefined function `{}`", name), span);
+                for arg in args {
+                    self.check_expr(&arg.value);
+                }
+                return Ty::Error;
+            }
+        };
+
+        // In TriggerBinding context, only side-effect-free builtins are allowed
+        if !self.scope.allows_calls() {
+            let is_pure_builtin = fn_info.kind == FnKind::Builtin
+                && matches!(
+                    name,
+                    "floor" | "ceil" | "min" | "max" | "distance"
+                );
+            if !is_pure_builtin {
+                self.error(
+                    format!("`{}` cannot be called in trigger/suppress binding context", name),
+                    span,
+                );
+            }
+        }
+
+        // Check permission level for builtins
+        if fn_info.kind == FnKind::Builtin {
+            self.check_builtin_permissions(name, span);
+        }
+
+        // Reject direct reaction/hook calls
+        if fn_info.kind == FnKind::Reaction || fn_info.kind == FnKind::Hook {
+            let kind_name = if fn_info.kind == FnKind::Reaction { "reactions" } else { "hooks" };
+            self.error(
+                format!("{} cannot be called directly; `{}` is triggered by events", kind_name, name),
+                span,
+            );
+        }
+
+        // Check context restrictions for actions
+        if fn_info.kind == FnKind::Action {
+            let current_ctx = self.scope.current_block_kind();
+            if !matches!(
+                current_ctx,
+                Some(BlockKind::ActionResolve) | Some(BlockKind::ReactionResolve) | Some(BlockKind::HookResolve)
+            ) {
+                self.error(
+                    format!(
+                        "`{}` is an action and can only be called from action or reaction context",
+                        name
+                    ),
+                    span,
+                );
+            }
+        }
+
+        // Build effective params
+        let effective_params: Vec<ParamInfo> = if let Some(ref receiver) = fn_info.receiver {
+            let mut params = vec![receiver.clone()];
+            params.extend(fn_info.params.iter().cloned());
+            params
+        } else {
+            fn_info.params.clone()
+        };
+
+        let mut satisfied: HashSet<usize> = HashSet::new();
+        let mut next_positional = 0usize;
+
+        for arg in args.iter() {
+            let arg_ty = self.check_expr(&arg.value);
+
+            let param_idx = if let Some(ref arg_name) = arg.name {
+                effective_params.iter().position(|p| p.name == *arg_name)
+            } else {
+                while next_positional < effective_params.len()
+                    && satisfied.contains(&next_positional)
+                {
+                    next_positional += 1;
+                }
+                if next_positional < effective_params.len() {
+                    let idx = next_positional;
+                    next_positional += 1;
+                    Some(idx)
+                } else {
+                    None
+                }
+            };
+
+            if let Some(idx) = param_idx {
+                if !satisfied.insert(idx) {
+                    self.error(
+                        format!(
+                            "duplicate argument for parameter `{}`",
+                            effective_params[idx].name
+                        ),
+                        arg.span,
+                    );
+                }
+                if !arg_ty.is_error()
+                    && !self.types_compatible(&arg_ty, &effective_params[idx].ty)
+                {
+                    self.error(
+                        format!(
+                            "argument `{}` has type {}, expected {}",
+                            effective_params[idx].name, arg_ty, effective_params[idx].ty
+                        ),
+                        arg.span,
+                    );
+                }
+            } else if let Some(ref arg_name) = arg.name {
+                self.error(
+                    format!("`{}` has no parameter `{}`", name, arg_name),
+                    arg.span,
+                );
+            } else {
+                self.error(
+                    format!(
+                        "`{}` expects at most {} argument(s), found {}",
+                        name, effective_params.len(), args.len()
+                    ),
+                    span,
+                );
+                break;
+            }
+        }
+
+        for (idx, param) in effective_params.iter().enumerate() {
+            if !param.has_default && !satisfied.contains(&idx) {
+                self.error(
+                    format!("missing required argument `{}` in call to `{}`", param.name, name),
+                    span,
+                );
+            }
+        }
+
+        fn_info.return_type.clone()
     }
 }
