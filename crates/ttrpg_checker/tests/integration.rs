@@ -6645,3 +6645,101 @@ system "test" {
 }
 "#);
 }
+
+// ── Default expression type hint disambiguation ──────────────────────
+
+#[test]
+fn hint_struct_field_default_disambiguates_bare_variant() {
+    expect_no_errors(r#"
+system "test" {
+    enum Color { red, blue }
+    enum Alert { red, yellow }
+    struct Brush { color: Color = red }
+}
+"#);
+}
+
+#[test]
+fn hint_entity_field_default_disambiguates_bare_variant() {
+    expect_no_errors(r#"
+system "test" {
+    enum Color { red, blue }
+    enum Alert { red, yellow }
+    entity Painter { color: Color = red }
+}
+"#);
+}
+
+#[test]
+fn hint_entity_optional_group_default_disambiguates_bare_variant() {
+    expect_no_errors(r#"
+system "test" {
+    enum Color { red, blue }
+    enum Alert { red, yellow }
+    entity Painter {
+        HP: int
+        optional appearance {
+            color: Color = red
+        }
+    }
+}
+"#);
+}
+
+#[test]
+fn hint_param_default_disambiguates_bare_variant() {
+    expect_no_errors(r#"
+system "test" {
+    enum Color { red, blue }
+    enum Alert { red, yellow }
+    derive paint(c: Color = red) -> int { 1 }
+}
+"#);
+}
+
+#[test]
+fn hint_condition_param_default_disambiguates_bare_variant() {
+    expect_no_errors(r#"
+system "test" {
+    entity Character { HP: int }
+    enum Color { red, blue }
+    enum Alert { red, yellow }
+    condition Painted(c: Color = red) on bearer: Character {
+    }
+}
+"#);
+}
+
+#[test]
+fn hint_event_param_default_disambiguates_bare_variant() {
+    expect_no_errors(r#"
+system "test" {
+    enum Color { red, blue }
+    enum Alert { red, yellow }
+    event Splash(c: Color = red) {
+    }
+}
+"#);
+}
+
+#[test]
+fn default_wrong_type_still_errors_with_hint() {
+    expect_errors(r#"
+system "test" {
+    enum Color { red, blue }
+    enum Alert { red, yellow }
+    struct Brush { color: Color = yellow }
+}
+"#, &["default has type Alert, expected Color"]);
+}
+
+#[test]
+fn qualified_variant_in_default_works() {
+    expect_no_errors(r#"
+system "test" {
+    enum Color { red, blue }
+    enum Alert { red, yellow }
+    struct Brush { color: Color = Color.red }
+}
+"#);
+}

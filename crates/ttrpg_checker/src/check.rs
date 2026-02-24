@@ -651,8 +651,8 @@ impl<'a> Checker<'a> {
         self.scope.push(BlockKind::Derive);
         for param in &c.params {
             if let Some(ref default) = param.default {
-                let def_ty = self.check_expr(default);
                 let param_ty = self.env.resolve_type(&param.ty);
+                let def_ty = self.check_expr_expecting(default, Some(&param_ty));
                 if !def_ty.is_error() && !self.types_compatible(&def_ty, &param_ty) {
                     self.error(
                         format!(
@@ -724,8 +724,8 @@ impl<'a> Checker<'a> {
         self.scope.push(BlockKind::Derive);
         for param in &e.params {
             if let Some(ref default) = param.default {
-                let def_ty = self.check_expr(default);
                 let param_ty = self.env.resolve_type(&param.ty);
+                let def_ty = self.check_expr_expecting(default, Some(&param_ty));
                 if !def_ty.is_error() && !self.types_compatible(&def_ty, &param_ty) {
                     self.error(
                         format!(
@@ -750,8 +750,8 @@ impl<'a> Checker<'a> {
         self.scope.push(BlockKind::Derive);
         for field in &s.fields {
             if let Some(ref default) = field.default {
-                let def_ty = self.check_expr(default);
                 let field_ty = self.env.resolve_type(&field.ty);
+                let def_ty = self.check_expr_expecting(default, Some(&field_ty));
                 if !def_ty.is_error() && !self.types_compatible(&def_ty, &field_ty) {
                     self.error(
                         format!(
@@ -780,8 +780,8 @@ impl<'a> Checker<'a> {
         self.scope.push(BlockKind::Derive);
         for field in &e.fields {
             if let Some(ref default) = field.default {
-                let def_ty = self.check_expr(default);
                 let field_ty = self.env.resolve_type(&field.ty);
+                let def_ty = self.check_expr_expecting(default, Some(&field_ty));
                 if !def_ty.is_error() && !self.types_compatible(&def_ty, &field_ty) {
                     self.error(
                         format!(
@@ -797,8 +797,8 @@ impl<'a> Checker<'a> {
         for group in &e.optional_groups {
             for field in &group.fields {
                 if let Some(ref default) = field.default {
-                    let def_ty = self.check_expr(default);
                     let field_ty = self.env.resolve_type(&field.ty);
+                    let def_ty = self.check_expr_expecting(default, Some(&field_ty));
                     if !def_ty.is_error() && !self.types_compatible(&def_ty, &field_ty) {
                         self.error(
                             format!(
@@ -819,7 +819,7 @@ impl<'a> Checker<'a> {
             self.check_type_visible(&param.ty);
             let ty = self.env.resolve_type(&param.ty);
             if let Some(ref default) = param.default {
-                let def_ty = self.check_expr(default);
+                let def_ty = self.check_expr_expecting(default, Some(&ty));
                 if !def_ty.is_error() && !self.types_compatible(&def_ty, &ty) {
                     self.error(
                         format!(
