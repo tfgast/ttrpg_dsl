@@ -326,99 +326,66 @@ impl Runner {
             }
         }
 
-        // Single file: use the original fast path (no module overhead)
-        if sources.len() == 1 {
-            let filename = sources[0].0.clone();
-            let (program, parse_diags) = ttrpg_parser::parse(&sources[0].1);
+        // Always use parse_multi + check_with_modules so module resolution
+        // works even for single-file programs.
+        let result = ttrpg_parser::parse_multi(&sources);
 
-            let mut lower_diags = Vec::new();
-            let program = ttrpg_parser::lower_moves(program, &mut lower_diags);
+        let mut all_diags = result.diagnostics;
 
-            let check_result = ttrpg_checker::check(&program);
+        // Run checker (module-aware)
+        let check_result =
+            ttrpg_checker::check_with_modules(&result.program, &result.module_map);
+        all_diags.extend(check_result.diagnostics);
 
-            let mut all_diags = Vec::new();
-            all_diags.extend(parse_diags);
-            all_diags.extend(lower_diags);
-            all_diags.extend(check_result.diagnostics);
+        let error_count = all_diags
+            .iter()
+            .filter(|d| d.severity == Severity::Error)
+            .count();
 
-            let error_count = all_diags
-                .iter()
-                .filter(|d| d.severity == Severity::Error)
-                .count();
-
-            if error_count == 0 {
-                *self.program = program;
-                *self.type_env = check_result.env;
-                self.module_map = ModuleMap::default();
-                self.game_state = RefCell::new(GameState::new());
-                self.diagnostics = all_diags;
-                self.source_map = Some(MultiSourceMap::new(sources));
-                self.last_paths = resolved_paths;
-                self.handles.clear();
-                self.reverse_handles.clear();
-                self.output.push(format!("loaded {}", filename));
-                Ok(())
-            } else {
-                clear_state(self, resolved_paths);
-                self.diagnostics = all_diags;
-                self.source_map = Some(MultiSourceMap::new(sources));
-                self.output
-                    .push("use 'errors' to see diagnostics".into());
-                Err(CliError::Message(format!(
-                    "failed to load '{}': {} error{}",
-                    filename,
-                    error_count,
-                    if error_count == 1 { "" } else { "s" }
-                )))
-            }
+        let loaded_label = if sources.len() == 1 {
+            format!("loaded {}", sources[0].0)
         } else {
-            // Multi-file: use parse_multi + check_with_modules
-            let result = ttrpg_parser::parse_multi(&sources);
-
-            let mut all_diags = result.diagnostics;
-
-            // Run checker (module-aware)
-            let check_result =
-                ttrpg_checker::check_with_modules(&result.program, &result.module_map);
-            all_diags.extend(check_result.diagnostics);
-
-            let error_count = all_diags
-                .iter()
-                .filter(|d| d.severity == Severity::Error)
-                .count();
-
             let file_list: Vec<_> = resolved_paths
                 .iter()
                 .map(|p| p.to_string_lossy().into_owned())
                 .collect();
-            let file_list_str = file_list.join(", ");
+            format!("loaded {} files: {}", file_list.len(), file_list.join(", "))
+        };
 
-            if error_count == 0 && !result.has_errors {
-                *self.program = result.program;
-                *self.type_env = check_result.env;
-                self.module_map = result.module_map;
-                self.game_state = RefCell::new(GameState::new());
-                self.diagnostics = all_diags;
-                self.source_map = Some(MultiSourceMap::new(sources));
-                self.last_paths = resolved_paths;
-                self.handles.clear();
-                self.reverse_handles.clear();
-                self.output
-                    .push(format!("loaded {} files: {}", file_list.len(), file_list_str));
-                Ok(())
-            } else {
-                clear_state(self, resolved_paths);
-                self.diagnostics = all_diags;
-                self.source_map = Some(MultiSourceMap::new(sources));
-                self.output
-                    .push("use 'errors' to see diagnostics".into());
-                Err(CliError::Message(format!(
-                    "failed to load {}: {} error{}",
-                    file_list_str,
-                    error_count,
-                    if error_count == 1 { "" } else { "s" }
-                )))
-            }
+        let error_label = if sources.len() == 1 {
+            format!("'{}'", sources[0].0)
+        } else {
+            resolved_paths
+                .iter()
+                .map(|p| p.to_string_lossy().into_owned())
+                .collect::<Vec<_>>()
+                .join(", ")
+        };
+
+        if error_count == 0 && !result.has_errors {
+            *self.program = result.program;
+            *self.type_env = check_result.env;
+            self.module_map = result.module_map;
+            self.game_state = RefCell::new(GameState::new());
+            self.diagnostics = all_diags;
+            self.source_map = Some(MultiSourceMap::new(sources));
+            self.last_paths = resolved_paths;
+            self.handles.clear();
+            self.reverse_handles.clear();
+            self.output.push(loaded_label);
+            Ok(())
+        } else {
+            clear_state(self, resolved_paths);
+            self.diagnostics = all_diags;
+            self.source_map = Some(MultiSourceMap::new(sources));
+            self.output
+                .push("use 'errors' to see diagnostics".into());
+            Err(CliError::Message(format!(
+                "failed to load {}: {} error{}",
+                error_label,
+                error_count,
+                if error_count == 1 { "" } else { "s" }
+            )))
         }
     }
 
@@ -3954,5 +3921,81 @@ system \"test\" {
         assert!(output[0].starts_with("loaded"));
 
         std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn single_file_with_module_syntax() {
+        // Regression: single-file mode used to bypass module resolution,
+        // so `use` + qualified types would fail.
+        let dir = multi_file_dir();
+        let core = dir.join("core.ttrpg");
+        std::fs::write(
+            &core,
+            "\
+system \"Core\" {
+    entity Character {
+        HP: int
+    }
+}
+",
+        )
+        .unwrap();
+
+        let main = dir.join("main.ttrpg");
+        std::fs::write(
+            &main,
+            "\
+use \"Core\"
+
+system \"Main\" {
+    derive greet(c: Character) -> int { c.HP }
+}
+",
+        )
+        .unwrap();
+
+        // Multi-file should work (baseline)
+        let mut runner = Runner::new();
+        runner
+            .exec(&format!("load {} {}", core.display(), main.display()))
+            .unwrap();
+
+        // Now test single file with use + qualified access
+        let single = dir.join("single_mod.ttrpg");
+        std::fs::write(
+            &single,
+            "\
+use \"Core\"
+
+system \"Core\" {
+    entity Character {
+        HP: int
+    }
+}
+
+system \"Game\" {
+    derive greet(c: Character) -> int { c.HP }
+}
+",
+        )
+        .unwrap();
+
+        let mut runner = Runner::new();
+        runner
+            .exec(&format!("load {}", single.display()))
+            .unwrap();
+
+        runner
+            .exec("spawn Character hero { HP: 10 }")
+            .unwrap();
+        runner.take_output();
+
+        runner.exec("eval greet(hero)").unwrap();
+        let output = runner.take_output();
+        assert_eq!(output, vec!["10"]);
+
+        std::fs::remove_file(&core).ok();
+        std::fs::remove_file(&main).ok();
+        std::fs::remove_file(&single).ok();
     }
 }
