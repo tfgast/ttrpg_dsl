@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use ttrpg_ast::ast::*;
 use ttrpg_ast::Spanned;
 
-use crate::check::Checker;
+use crate::check::{Checker, Namespace};
 use crate::env::*;
 use crate::scope::BlockKind;
 use crate::ty::Ty;
@@ -94,6 +94,7 @@ impl<'a> Checker<'a> {
             if let Some(DeclInfo::Enum(info)) = self.env.types.get(enum_name) {
                 if let Some(variant) = info.variants.iter().find(|v| v.name == name) {
                     if variant.fields.is_empty() {
+                        self.check_name_visible(name, Namespace::Variant, span);
                         return Ty::Enum(enum_name.clone());
                     }
                 }
@@ -102,6 +103,7 @@ impl<'a> Checker<'a> {
 
         // Check if it's a condition name
         if let Some(cond_info) = self.env.conditions.get(name) {
+            self.check_name_visible(name, Namespace::Condition, span);
             let required_params = cond_info.params.iter().filter(|p| !p.has_default).count();
             if required_params > 0 {
                 self.error(
@@ -121,6 +123,7 @@ impl<'a> Checker<'a> {
         // expression position is an error; instances come from struct literals
         // or function parameters, not from the type name itself.
         if let Some(decl) = self.env.types.get(name) {
+            self.check_name_visible(name, Namespace::Type, span);
             return match decl {
                 DeclInfo::Enum(_) => Ty::EnumType(name.to_string()),
                 DeclInfo::Struct(_) | DeclInfo::Entity(_) => {
@@ -803,6 +806,7 @@ impl<'a> Checker<'a> {
 
         // Check if it's a condition call (e.g., Frightened(source: attacker))
         if let Some(cond_info) = self.env.conditions.get(&callee_name).cloned() {
+            self.check_name_visible(&callee_name, Namespace::Condition, span);
             let params = &cond_info.params;
 
             // Two-pass named/positional resolution (mirrors function call checking)
@@ -942,6 +946,7 @@ impl<'a> Checker<'a> {
 
         // Check if it's an enum variant constructor (bare name)
         if let Some(enum_name) = self.env.variant_to_enum.get(&callee_name) {
+            self.check_name_visible(&callee_name, Namespace::Variant, span);
             let enum_name = enum_name.clone();
             return self.check_enum_constructor(&enum_name, &callee_name, args, span);
         }
@@ -957,6 +962,11 @@ impl<'a> Checker<'a> {
                 return Ty::Error;
             }
         };
+
+        // Check module visibility (builtins are always visible — they have no owner)
+        if fn_info.kind != FnKind::Builtin {
+            self.check_name_visible(&callee_name, Namespace::Function, span);
+        }
 
         // In TriggerBinding context, only side-effect-free builtins are allowed
         if !self.scope.allows_calls() {
@@ -1730,6 +1740,8 @@ impl<'a> Checker<'a> {
                 return Ty::Error;
             }
         };
+
+        self.check_name_visible(name, Namespace::Type, span);
 
         let (declared_fields, result_ty) = match &decl {
             DeclInfo::Struct(info) => (&info.fields, Ty::Struct(name.to_string())),

@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use ttrpg_ast::ast::*;
 use ttrpg_ast::Spanned;
 
-use crate::check::Checker;
+use crate::check::{Checker, Namespace};
 use crate::env::*;
 use crate::scope::*;
 use crate::ty::Ty;
@@ -29,6 +29,11 @@ impl<'a> Checker<'a> {
                 return;
             }
         };
+
+        // Check module visibility for modify target (builtins have no owner)
+        if fn_info.kind != FnKind::Builtin {
+            self.check_name_visible(&clause.target, Namespace::Function, clause.span);
+        }
 
         // Modify clauses can only target derive or mechanic functions
         if fn_info.kind != FnKind::Derive && fn_info.kind != FnKind::Mechanic {
@@ -276,6 +281,7 @@ impl<'a> Checker<'a> {
         condition_params: &[Param],
     ) {
         if let Some(event_info) = self.env.events.get(&clause.event_name).cloned() {
+            self.check_name_visible(&clause.event_name, Namespace::Event, clause.span);
             // Push TriggerBinding scope — suppress binding expressions must be side-effect-free
             self.scope.push(BlockKind::TriggerBinding);
             let recv_ty = self.env.resolve_type(receiver_type);

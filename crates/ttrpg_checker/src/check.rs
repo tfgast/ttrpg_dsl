@@ -9,6 +9,17 @@ use crate::env::*;
 use crate::scope::*;
 use crate::ty::Ty;
 
+/// Namespace for visibility checks — which owner map to consult.
+#[derive(Debug, Clone, Copy)]
+pub enum Namespace {
+    Type,
+    Function,
+    Condition,
+    Event,
+    Variant,
+    Option,
+}
+
 pub struct Checker<'a> {
     pub env: &'a TypeEnv,
     pub scope: ScopeStack,
@@ -36,6 +47,56 @@ impl<'a> Checker<'a> {
 
     pub fn warning(&mut self, message: impl Into<String>, span: Span) {
         self.diagnostics.push(Diagnostic::warning(message, span));
+    }
+
+    /// Check whether `name` is visible in the current system.
+    ///
+    /// No-op when `current_system` is `None` (single-file mode) or when the
+    /// name has no owner (builtins, fallback types). Emits a diagnostic but
+    /// does NOT return `Ty::Error` — callers continue with the real type so
+    /// that a missing import doesn't cascade into phantom type errors.
+    pub fn check_name_visible(&mut self, name: &str, ns: Namespace, span: Span) {
+        let current = match &self.current_system {
+            Some(s) => s.clone(),
+            None => return,
+        };
+
+        // Look up the owning system for this name in the appropriate namespace
+        let owner = match ns {
+            Namespace::Type => self.env.type_owner.get(name),
+            Namespace::Function => self.env.function_owner.get(name),
+            Namespace::Condition => self.env.condition_owner.get(name),
+            Namespace::Event => self.env.event_owner.get(name),
+            Namespace::Variant => self.env.variant_owner.get(name),
+            Namespace::Option => self.env.option_owner.get(name),
+        };
+
+        // No owner → builtin or fallback type, always visible
+        let owner = match owner {
+            Some(o) => o,
+            None => return,
+        };
+
+        // Check the visibility set for the current system
+        if let Some(vis) = self.env.system_visibility.get(&current) {
+            let visible = match ns {
+                Namespace::Type => vis.types.contains(name),
+                Namespace::Function => vis.functions.contains(name),
+                Namespace::Condition => vis.conditions.contains(name),
+                Namespace::Event => vis.events.contains(name),
+                Namespace::Variant => vis.variants.contains(name),
+                Namespace::Option => vis.options.contains(name),
+            };
+            if !visible {
+                self.error(
+                    format!(
+                        "`{}` is defined in system \"{}\"; add `use \"{}\"` to access it from \"{}\"",
+                        name, owner, owner, current
+                    ),
+                    span,
+                );
+            }
+        }
     }
 
     /// Validate type names in a type expression, emitting diagnostics for unknowns.
@@ -213,6 +274,7 @@ impl<'a> Checker<'a> {
     fn check_trigger_and_body(&mut self, trigger: &TriggerExpr, body: &Block) {
         // Validate trigger event exists and bind trigger
         if let Some(event_info) = self.env.events.get(&trigger.event_name) {
+            self.check_name_visible(&trigger.event_name, Namespace::Event, trigger.span);
             // Check trigger bindings: validate names match event params/fields and types match.
             // NOTE: `trigger` is bound AFTER the binding loop so that binding
             // expressions cannot reference the trigger itself (e.g.

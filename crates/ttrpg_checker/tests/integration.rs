@@ -1,6 +1,6 @@
 use ttrpg_ast::ast::DeclKind;
 use ttrpg_ast::diagnostic::SourceMap;
-use ttrpg_checker::{check, CheckResult};
+use ttrpg_checker::{check, check_with_modules, CheckResult};
 
 fn check_source(source: &str) -> CheckResult {
     let (program, parse_errors) = ttrpg_parser::parse(source);
@@ -5344,4 +5344,283 @@ system "test" {
 }
 "#;
     expect_errors(source, &["expects 2 arguments"]);
+}
+
+// ── Module visibility tests ────────────────────────────────────────────
+
+/// Parse multiple source files and run the module-aware checker.
+fn check_multi_source(sources: &[(&str, &str)]) -> CheckResult {
+    let owned: Vec<(String, String)> = sources
+        .iter()
+        .map(|(name, src)| (name.to_string(), src.to_string()))
+        .collect();
+    let result = ttrpg_parser::parse_multi(&owned);
+    assert!(
+        !result.has_errors,
+        "parse errors:\n{}",
+        result
+            .diagnostics
+            .iter()
+            .map(|d| format!("{:?}", d))
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
+    check_with_modules(&result.program, &result.module_map)
+}
+
+/// Helper: check that multi-source produces no errors.
+fn expect_multi_no_errors(sources: &[(&str, &str)]) {
+    let result = check_multi_source(sources);
+    let errors: Vec<_> = result
+        .diagnostics
+        .iter()
+        .filter(|d| d.severity == ttrpg_ast::diagnostic::Severity::Error)
+        .collect();
+    if !errors.is_empty() {
+        let rendered: Vec<_> = errors.iter().map(|d| format!("{:?}: {}", d.span, d.message)).collect();
+        panic!(
+            "expected no errors, found {}:\n{}",
+            errors.len(),
+            rendered.join("\n")
+        );
+    }
+}
+
+/// Helper: check that multi-source produces errors containing the given fragments.
+fn expect_multi_errors(sources: &[(&str, &str)], expected_fragments: &[&str]) {
+    let result = check_multi_source(sources);
+    let errors: Vec<_> = result
+        .diagnostics
+        .iter()
+        .filter(|d| d.severity == ttrpg_ast::diagnostic::Severity::Error)
+        .collect();
+
+    for frag in expected_fragments {
+        let found = errors.iter().any(|e| e.message.contains(frag));
+        if !found {
+            let rendered: Vec<_> = errors.iter().map(|d| format!("{:?}: {}", d.span, d.message)).collect();
+            panic!(
+                "expected error containing {:?}, but not found in:\n{}",
+                frag,
+                rendered.join("\n")
+            );
+        }
+    }
+}
+
+#[test]
+fn test_visibility_own_system_visible() {
+    // A derive defined in Core is visible from within Core
+    expect_multi_no_errors(&[
+        ("core.ttrpg", r#"
+system "Core" {
+    entity Character { HP: int = 10 }
+    derive max_hp(c: Character) -> int { c.HP }
+    derive double_hp(c: Character) -> int { max_hp(c) * 2 }
+}
+"#),
+    ]);
+}
+
+#[test]
+fn test_visibility_imported_system_visible() {
+    // Core defines a derive; Main imports Core and calls it
+    expect_multi_no_errors(&[
+        ("core.ttrpg", r#"
+system "Core" {
+    entity Character { HP: int = 10 }
+    derive max_hp(c: Character) -> int { c.HP }
+}
+"#),
+        ("main.ttrpg", r#"
+use "Core"
+system "Main" {
+    derive double_hp(c: Character) -> int { max_hp(c) * 2 }
+}
+"#),
+    ]);
+}
+
+#[test]
+fn test_visibility_missing_import_function() {
+    // Core defines a derive; Main does NOT import Core — should error
+    expect_multi_errors(
+        &[
+            ("core.ttrpg", r#"
+system "Core" {
+    entity Character { HP: int = 10 }
+    derive helper(c: Character) -> int { c.HP }
+}
+"#),
+            ("main.ttrpg", r#"
+system "Main" {
+    derive caller(c: Character) -> int { helper(c) }
+}
+"#),
+        ],
+        &[r#"`helper` is defined in system "Core""#],
+    );
+}
+
+#[test]
+fn test_visibility_builtins_always_visible() {
+    // Builtins like floor() work without any imports
+    expect_multi_no_errors(&[
+        ("main.ttrpg", r#"
+system "Main" {
+    derive rounded(x: float) -> int { floor(x) }
+}
+"#),
+    ]);
+}
+
+#[test]
+fn test_visibility_single_file_no_op() {
+    // Single-file check() never produces visibility errors
+    expect_no_errors(r#"
+system "Core" {
+    entity Character { HP: int = 10 }
+    derive helper(c: Character) -> int { c.HP }
+}
+system "Main" {
+    derive caller(c: Character) -> int { helper(c) }
+}
+"#);
+}
+
+#[test]
+fn test_visibility_variant_missing_import() {
+    // Bare variant from non-imported system → error
+    expect_multi_errors(
+        &[
+            ("core.ttrpg", r#"
+system "Core" {
+    enum DamageType { fire, cold, lightning }
+}
+"#),
+            ("main.ttrpg", r#"
+system "Main" {
+    derive get_type() -> DamageType { fire }
+}
+"#),
+        ],
+        &[r#"`fire` is defined in system "Core""#],
+    );
+}
+
+#[test]
+fn test_visibility_condition_missing_import() {
+    // Condition from non-imported system → error
+    expect_multi_errors(
+        &[
+            ("core.ttrpg", r#"
+system "Core" {
+    entity Character { HP: int = 10 }
+    condition Frightened on bearer: Character { }
+}
+"#),
+            ("main.ttrpg", r#"
+system "Main" {
+    derive is_scared() -> Condition { Frightened }
+}
+"#),
+        ],
+        &[r#"`Frightened` is defined in system "Core""#],
+    );
+}
+
+#[test]
+fn test_visibility_type_in_struct_lit_missing_import() {
+    // Struct literal construction from non-imported system → error
+    expect_multi_errors(
+        &[
+            ("core.ttrpg", r#"
+system "Core" {
+    struct Stats {
+        strength: int
+        dexterity: int
+    }
+}
+"#),
+            ("main.ttrpg", r#"
+system "Main" {
+    derive make_stats() -> Stats { Stats { strength: 10, dexterity: 12 } }
+}
+"#),
+        ],
+        &[r#"`Stats` is defined in system "Core""#],
+    );
+}
+
+#[test]
+fn test_visibility_event_in_trigger_missing_import() {
+    // Hook in "Events" system references event from "Core" without importing → error
+    expect_multi_errors(
+        &[
+            ("core.ttrpg", r#"
+system "Core" {
+    entity Character { HP: int = 10 }
+    event damage(target: Character) { amount: int }
+}
+"#),
+            ("events.ttrpg", r#"
+system "Events" {
+    hook on_damage on self: Character (trigger: damage(target: self)) {
+        resolve {}
+    }
+}
+"#),
+        ],
+        &[r#"`damage` is defined in system "Core""#],
+    );
+}
+
+#[test]
+fn test_visibility_variant_in_pattern_missing_import() {
+    // Variant used in pattern from non-imported system → error
+    expect_multi_errors(
+        &[
+            ("core.ttrpg", r#"
+system "Core" {
+    enum Color { red, green, blue }
+}
+"#),
+            ("main.ttrpg", r#"
+system "Main" {
+    derive is_red(c: Color) -> bool {
+        match c {
+            red => true
+            _ => false
+        }
+    }
+}
+"#),
+        ],
+        &[r#"`red` is defined in system "Core""#],
+    );
+}
+
+#[test]
+fn test_visibility_modify_target_missing_import() {
+    // Modify clause targeting a derive from non-imported system → error
+    expect_multi_errors(
+        &[
+            ("core.ttrpg", r#"
+system "Core" {
+    entity Character { HP: int = 10 }
+    derive max_hp(c: Character) -> int { c.HP }
+}
+"#),
+            ("main.ttrpg", r#"
+system "Main" {
+    condition Strong on bearer: Character {
+        modify max_hp(c: bearer) {
+            result = result + 5
+        }
+    }
+}
+"#),
+        ],
+        &[r#"`max_hp` is defined in system "Core""#],
+    );
 }

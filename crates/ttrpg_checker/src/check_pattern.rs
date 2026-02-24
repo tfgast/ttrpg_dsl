@@ -1,7 +1,7 @@
 use ttrpg_ast::ast::*;
 use ttrpg_ast::Spanned;
 
-use crate::check::Checker;
+use crate::check::{Checker, Namespace};
 use crate::env::DeclInfo;
 use crate::scope::VarBinding;
 use crate::ty::Ty;
@@ -83,6 +83,7 @@ impl<'a> Checker<'a> {
             PatternKind::Ident(name) => {
                 // Could be a bare enum variant or a binding variable
                 if let Some(enum_name) = self.env.variant_to_enum.get(name).cloned() {
+                    self.check_name_visible(name, Namespace::Variant, pattern.span);
                     // It's a variant — check it matches the scrutinee enum
                     if let Ty::Enum(ref s_enum) = scrutinee_ty {
                         if *s_enum != enum_name {
@@ -140,6 +141,7 @@ impl<'a> Checker<'a> {
             PatternKind::QualifiedVariant { ty, variant } => {
                 // Type.Variant
                 if let Some(DeclInfo::Enum(info)) = self.env.types.get(ty) {
+                    self.check_name_visible(ty, Namespace::Type, pattern.span);
                     if let Some(var_info) = info.variants.iter().find(|v| v.name == *variant) {
                         // Reject bare qualified pattern for variants with payload fields
                         if !var_info.fields.is_empty() {
@@ -189,6 +191,7 @@ impl<'a> Checker<'a> {
             } => {
                 // Type.Variant(patterns)
                 if let Some(DeclInfo::Enum(info)) = self.env.types.get(ty) {
+                    self.check_name_visible(ty, Namespace::Type, pattern.span);
                     if let Some(var_info) = info.variants.iter().find(|v| v.name == *variant) {
                         // Check scrutinee type
                         if let Ty::Enum(ref s_enum) = scrutinee_ty {
@@ -244,6 +247,7 @@ impl<'a> Checker<'a> {
             } => {
                 // Variant(patterns) — unqualified
                 if let Some(enum_name) = self.env.variant_to_enum.get(name).cloned() {
+                    self.check_name_visible(name, Namespace::Variant, pattern.span);
                     if let Some(DeclInfo::Enum(info)) = self.env.types.get(&enum_name) {
                         if let Some(var_info) = info.variants.iter().find(|v| v.name == *name) {
                             // Check scrutinee type

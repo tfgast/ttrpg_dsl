@@ -42,7 +42,7 @@ pub fn check(program: &Program) -> CheckResult {
 ///
 /// Same as `check`, but uses the `ModuleMap` to populate ownership maps
 /// and visibility constraints. The checker gates name lookups via
-/// `is_name_visible` using the `current_system` context.
+/// `check_name_visible` using the `current_system` context.
 pub fn check_with_modules(program: &Program, modules: &ModuleMap) -> CheckResult {
     // Pass 1: collect declarations with module ownership
     let (env, mut diagnostics) = collect_with_modules(program, modules);
