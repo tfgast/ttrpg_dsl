@@ -152,7 +152,7 @@ fn fighter_level_1_saves() {
     let state = GameState::new();
     let mut handler = NullHandler;
 
-    let cat = save_category("save_fighter");
+    let cat = save_category("Fighter");
     let lvl = Value::Int(1);
 
     let death = interp
@@ -190,7 +190,7 @@ fn fighter_level_7_saves() {
     let state = GameState::new();
     let mut handler = NullHandler;
 
-    let cat = save_category("save_fighter");
+    let cat = save_category("Fighter");
     let lvl = Value::Int(7);
 
     assert_eq!(
@@ -224,7 +224,7 @@ fn magic_user_level_11_saves() {
     let state = GameState::new();
     let mut handler = NullHandler;
 
-    let cat = save_category("save_magic_user");
+    let cat = save_category("MagicUser");
     let lvl = Value::Int(11);
 
     assert_eq!(
@@ -250,7 +250,7 @@ fn dwarf_level_10_saves() {
     let state = GameState::new();
     let mut handler = NullHandler;
 
-    let cat = save_category("save_dwarf");
+    let cat = save_category("Dwarf");
     let lvl = Value::Int(10);
 
     assert_eq!(
@@ -284,7 +284,7 @@ fn thief_saves_tier_transitions() {
     let state = GameState::new();
     let mut handler = NullHandler;
 
-    let cat = save_category("save_thief");
+    let cat = save_category("Thief");
 
     // Level 4 (tier 1): death=13
     assert_eq!(
@@ -314,7 +314,7 @@ fn out_of_range_level_errors() {
             &state,
             &mut handler,
             "get_save_death",
-            vec![save_category("save_elf"), Value::Int(11)],
+            vec![save_category("Elf"), Value::Int(11)],
         )
         .unwrap_err();
     assert!(

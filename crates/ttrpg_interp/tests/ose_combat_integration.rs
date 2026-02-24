@@ -443,14 +443,14 @@ fn reaction_outcome_all_tiers() {
     let mut handler = NullHandler;
 
     let cases = vec![
-        (2, "rx_hostile"),
-        (3, "rx_unfriendly"),
-        (5, "rx_unfriendly"),
-        (6, "rx_neutral"),
-        (8, "rx_neutral"),
-        (9, "rx_indifferent"),
-        (11, "rx_indifferent"),
-        (12, "rx_friendly"),
+        (2, "Hostile"),
+        (3, "Unfriendly"),
+        (5, "Unfriendly"),
+        (6, "Neutral"),
+        (8, "Neutral"),
+        (9, "Indifferent"),
+        (11, "Indifferent"),
+        (12, "Friendly"),
     ];
 
     for (roll, expected_variant) in cases {
@@ -487,7 +487,7 @@ fn attack_roll_natural_1_always_misses() {
             vec![Value::Int(19), Value::Int(9), Value::Int(10)], // thac0=19, ac=9, mod=+10
         )
         .unwrap();
-    assert_eq!(val, enum_variant("AttackOutcome", "atk_miss"));
+    assert_eq!(val, enum_variant("AttackOutcome", "Miss"));
 }
 
 #[test]
@@ -508,7 +508,7 @@ fn attack_roll_natural_20_always_hits() {
             vec![Value::Int(19), Value::Int(-10), Value::Int(-5)], // thac0=19, ac=-10, mod=-5
         )
         .unwrap();
-    assert_eq!(val, enum_variant("AttackOutcome", "atk_hit"));
+    assert_eq!(val, enum_variant("AttackOutcome", "Hit"));
 }
 
 #[test]
@@ -529,7 +529,7 @@ fn attack_roll_standard_hit() {
             vec![Value::Int(19), Value::Int(5), Value::Int(0)],
         )
         .unwrap();
-    assert_eq!(val, enum_variant("AttackOutcome", "atk_hit"));
+    assert_eq!(val, enum_variant("AttackOutcome", "Hit"));
 }
 
 #[test]
@@ -550,7 +550,7 @@ fn attack_roll_standard_miss() {
             vec![Value::Int(19), Value::Int(5), Value::Int(0)],
         )
         .unwrap();
-    assert_eq!(val, enum_variant("AttackOutcome", "atk_miss"));
+    assert_eq!(val, enum_variant("AttackOutcome", "Miss"));
 }
 
 #[test]
@@ -571,7 +571,7 @@ fn attack_roll_with_str_modifier() {
             vec![Value::Int(19), Value::Int(5), Value::Int(2)],
         )
         .unwrap();
-    assert_eq!(val, enum_variant("AttackOutcome", "atk_hit"));
+    assert_eq!(val, enum_variant("AttackOutcome", "Hit"));
 }
 
 #[test]
@@ -592,7 +592,7 @@ fn morale_check_hold() {
             vec![Value::Int(7)],
         )
         .unwrap();
-    assert_eq!(val, enum_variant("MoraleOutcome", "morale_hold"));
+    assert_eq!(val, enum_variant("MoraleOutcome", "Hold"));
 }
 
 #[test]
@@ -613,7 +613,7 @@ fn morale_check_fail() {
             vec![Value::Int(7)],
         )
         .unwrap();
-    assert_eq!(val, enum_variant("MoraleOutcome", "morale_fail"));
+    assert_eq!(val, enum_variant("MoraleOutcome", "Fail"));
 }
 
 #[test]
@@ -634,7 +634,7 @@ fn morale_check_exact_score_holds() {
             vec![Value::Int(7)],
         )
         .unwrap();
-    assert_eq!(val, enum_variant("MoraleOutcome", "morale_hold"));
+    assert_eq!(val, enum_variant("MoraleOutcome", "Hold"));
 }
 
 #[test]
@@ -655,7 +655,7 @@ fn reaction_roll_neutral() {
             vec![Value::Int(0)],
         )
         .unwrap();
-    assert_eq!(val, enum_variant("ReactionOutcome", "rx_neutral"));
+    assert_eq!(val, enum_variant("ReactionOutcome", "Neutral"));
 }
 
 #[test]
@@ -676,7 +676,7 @@ fn reaction_roll_with_cha_bonus() {
             vec![Value::Int(2)],
         )
         .unwrap();
-    assert_eq!(val, enum_variant("ReactionOutcome", "rx_indifferent"));
+    assert_eq!(val, enum_variant("ReactionOutcome", "Indifferent"));
 }
 
 #[test]
@@ -697,7 +697,7 @@ fn reaction_roll_clamped_low() {
             vec![Value::Int(-3)],
         )
         .unwrap();
-    assert_eq!(val, enum_variant("ReactionOutcome", "rx_hostile"));
+    assert_eq!(val, enum_variant("ReactionOutcome", "Hostile"));
 }
 
 #[test]
@@ -718,5 +718,5 @@ fn reaction_roll_clamped_high() {
             vec![Value::Int(3)],
         )
         .unwrap();
-    assert_eq!(val, enum_variant("ReactionOutcome", "rx_friendly"));
+    assert_eq!(val, enum_variant("ReactionOutcome", "Friendly"));
 }

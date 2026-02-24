@@ -58,7 +58,12 @@ pub fn resolve_modules(
 
         for owned in decl_list {
             for (ns, name) in &owned.names {
-                if let Some(&prev_span) = seen_names.get(&(*ns, name.clone())) {
+                // Variants allow multi-owner: the same variant name can appear
+                // in multiple enums and the checker resolves via expected-type
+                // hints or qualified syntax.
+                if *ns == Namespace::Variant {
+                    info.variants.insert(name.clone());
+                } else if let Some(&prev_span) = seen_names.get(&(*ns, name.clone())) {
                     diagnostics.push(Diagnostic::error(
                         format!(
                             "duplicate declaration `{}` in system \"{}\"",
@@ -79,7 +84,7 @@ pub fn resolve_modules(
                         Namespace::Condition => { info.conditions.insert(name.clone()); }
                         Namespace::Event => { info.events.insert(name.clone()); }
                         Namespace::Option => { info.options.insert(name.clone()); }
-                        Namespace::Variant => { info.variants.insert(name.clone()); }
+                        Namespace::Variant => unreachable!(),
                     }
                 }
             }
@@ -306,13 +311,14 @@ fn detect_cross_system_collisions(
     // For each namespace, collect: name → Vec<(system_name)>
     // We can't track spans here easily since ModuleMap doesn't store them,
     // but the error message names both systems which is sufficient.
+    // Variants are excluded: multi-owner variants are allowed across systems
+    // and disambiguated by the checker via expected-type hints or qualified syntax.
     let namespaces: &[(Namespace, &str)] = &[
         (Namespace::Type, "type"),
         (Namespace::Function, "function"),
         (Namespace::Condition, "condition"),
         (Namespace::Event, "event"),
         (Namespace::Option, "option"),
-        (Namespace::Variant, "enum variant"),
     ];
 
     for &(ns, ns_label) in namespaces {
@@ -658,7 +664,10 @@ mod tests {
     }
 
     #[test]
-    fn cross_system_duplicate_variant_detected() {
+    fn cross_system_shared_variant_allowed() {
+        // Multi-owner variants: same variant name in different enums across
+        // systems is allowed — the checker disambiguates via expected-type
+        // hints or qualified syntax.
         let mut program = make_program(vec![
             make_system("A", vec![make_enum("Ability", &["STR"])]),
             make_system("B", vec![make_enum("Stat", &["STR"])]),
@@ -670,7 +679,7 @@ mod tests {
 
         let (_map, diags) = resolve_modules(&mut program, &file_systems);
         let errors: Vec<_> = diags.iter().filter(|d| d.severity == Severity::Error).collect();
-        assert!(errors.iter().any(|d| d.message.contains("duplicate enum variant \"STR\"")));
+        assert!(errors.is_empty(), "multi-owner variants should not be errors: {:?}", errors);
     }
 
     #[test]

@@ -164,7 +164,7 @@ fn non_caster_has_no_spells() {
             &state,
             &mut handler,
             "test_spell_slots",
-            vec![spell_prog("non_caster"), Value::Int(14)],
+            vec![spell_prog("NonCaster"), Value::Int(14)],
         )
         .unwrap();
     assert_eq!(val, int_list(&[0, 0, 0, 0, 0, 0]));
@@ -182,7 +182,7 @@ fn cleric_no_spells_level_1() {
             &state,
             &mut handler,
             "can_cast",
-            vec![spell_prog("prog_cleric"), Value::Int(1)],
+            vec![spell_prog("Cleric"), Value::Int(1)],
         )
         .unwrap();
     assert_eq!(val, Value::Bool(false));
@@ -200,7 +200,7 @@ fn cleric_gets_spells_level_2() {
             &state,
             &mut handler,
             "test_spell_slots",
-            vec![spell_prog("prog_cleric"), Value::Int(2)],
+            vec![spell_prog("Cleric"), Value::Int(2)],
         )
         .unwrap();
     assert_eq!(val, int_list(&[1, 0, 0, 0, 0, 0]));
@@ -210,7 +210,7 @@ fn cleric_gets_spells_level_2() {
             &state,
             &mut handler,
             "can_cast",
-            vec![spell_prog("prog_cleric"), Value::Int(2)],
+            vec![spell_prog("Cleric"), Value::Int(2)],
         )
         .unwrap();
     assert_eq!(can, Value::Bool(true));
@@ -228,7 +228,7 @@ fn cleric_level_14() {
             &state,
             &mut handler,
             "test_spell_slots",
-            vec![spell_prog("prog_cleric"), Value::Int(14)],
+            vec![spell_prog("Cleric"), Value::Int(14)],
         )
         .unwrap();
     assert_eq!(val, int_list(&[6, 5, 5, 5, 4, 0]));
@@ -246,7 +246,7 @@ fn magic_user_level_1() {
             &state,
             &mut handler,
             "test_spell_slots",
-            vec![spell_prog("prog_arcane_full"), Value::Int(1)],
+            vec![spell_prog("ArcaneFull"), Value::Int(1)],
         )
         .unwrap();
     assert_eq!(val, int_list(&[1, 0, 0, 0, 0, 0]));
@@ -264,7 +264,7 @@ fn magic_user_level_14() {
             &state,
             &mut handler,
             "test_spell_slots",
-            vec![spell_prog("prog_arcane_full"), Value::Int(14)],
+            vec![spell_prog("ArcaneFull"), Value::Int(14)],
         )
         .unwrap();
     assert_eq!(val, int_list(&[4, 4, 4, 4, 3, 3]));
@@ -282,7 +282,7 @@ fn druid_level_7() {
             &state,
             &mut handler,
             "test_spell_slots",
-            vec![spell_prog("prog_druid"), Value::Int(7)],
+            vec![spell_prog("Druid"), Value::Int(7)],
         )
         .unwrap();
     assert_eq!(val, int_list(&[3, 3, 2, 2, 1, 0]));
@@ -300,7 +300,7 @@ fn bard_level_2() {
             &state,
             &mut handler,
             "test_spell_slots",
-            vec![spell_prog("prog_bard"), Value::Int(2)],
+            vec![spell_prog("Bard"), Value::Int(2)],
         )
         .unwrap();
     assert_eq!(val, int_list(&[1, 0, 0, 0, 0, 0]));
@@ -318,7 +318,7 @@ fn bard_level_14() {
             &state,
             &mut handler,
             "test_spell_slots",
-            vec![spell_prog("prog_bard"), Value::Int(14)],
+            vec![spell_prog("Bard"), Value::Int(14)],
         )
         .unwrap();
     assert_eq!(val, int_list(&[4, 4, 3, 3, 0, 0]));
@@ -336,7 +336,7 @@ fn half_elf_level_8() {
             &state,
             &mut handler,
             "test_spell_slots",
-            vec![spell_prog("prog_half_elf"), Value::Int(8)],
+            vec![spell_prog("HalfElf"), Value::Int(8)],
         )
         .unwrap();
     assert_eq!(val, int_list(&[2, 2, 1, 0, 0, 0]));
@@ -354,7 +354,7 @@ fn paladin_no_spells_level_8() {
             &state,
             &mut handler,
             "can_cast",
-            vec![spell_prog("prog_paladin"), Value::Int(8)],
+            vec![spell_prog("Paladin"), Value::Int(8)],
         )
         .unwrap();
     assert_eq!(can, Value::Bool(false));
@@ -372,7 +372,7 @@ fn paladin_gets_spells_level_9() {
             &state,
             &mut handler,
             "test_spell_slots",
-            vec![spell_prog("prog_paladin"), Value::Int(9)],
+            vec![spell_prog("Paladin"), Value::Int(9)],
         )
         .unwrap();
     assert_eq!(val, int_list(&[1, 0, 0, 0, 0, 0]));
@@ -390,7 +390,7 @@ fn ranger_level_10() {
             &state,
             &mut handler,
             "test_spell_slots",
-            vec![spell_prog("prog_ranger"), Value::Int(10)],
+            vec![spell_prog("Ranger"), Value::Int(10)],
         )
         .unwrap();
     assert_eq!(val, int_list(&[2, 1, 0, 0, 0, 0]));
@@ -408,7 +408,7 @@ fn drow_level_1() {
             &state,
             &mut handler,
             "test_spell_slots",
-            vec![spell_prog("prog_drow"), Value::Int(1)],
+            vec![spell_prog("Drow"), Value::Int(1)],
         )
         .unwrap();
     assert_eq!(val, int_list(&[1, 0, 0, 0, 0, 0]));
@@ -426,7 +426,7 @@ fn drow_level_10() {
             &state,
             &mut handler,
             "test_spell_slots",
-            vec![spell_prog("prog_drow"), Value::Int(10)],
+            vec![spell_prog("Drow"), Value::Int(10)],
         )
         .unwrap();
     assert_eq!(val, int_list(&[4, 4, 4, 3, 3, 0]));
@@ -444,7 +444,7 @@ fn total_slots_magic_user_5() {
             &state,
             &mut handler,
             "total_spell_slots",
-            vec![spell_prog("prog_arcane_full"), Value::Int(5)],
+            vec![spell_prog("ArcaneFull"), Value::Int(5)],
         )
         .unwrap();
     assert_eq!(val, Value::Int(5));

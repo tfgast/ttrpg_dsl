@@ -32,91 +32,91 @@ system "OSE Saves" {
 
         // --- Thief (also: Acrobat, Assassin, Bard) ---
         // Max level 14. 4 tiers.
-        [save_thief, 1..=4]   => SavingThrows { death: 13, wands: 14, paralysis: 13, breath: 16, spells: 15 },
-        [save_thief, 5..=8]   => SavingThrows { death: 12, wands: 13, paralysis: 11, breath: 14, spells: 13 },
-        [save_thief, 9..=12]  => SavingThrows { death: 10, wands: 11, paralysis:  9, breath: 12, spells: 10 },
-        [save_thief, 13..=14] => SavingThrows { death:  8, wands:  9, paralysis:  7, breath: 10, spells:  8 },
+        [Thief, 1..=4]   => SavingThrows { death: 13, wands: 14, paralysis: 13, breath: 16, spells: 15 },
+        [Thief, 5..=8]   => SavingThrows { death: 12, wands: 13, paralysis: 11, breath: 14, spells: 13 },
+        [Thief, 9..=12]  => SavingThrows { death: 10, wands: 11, paralysis:  9, breath: 12, spells: 10 },
+        [Thief, 13..=14] => SavingThrows { death:  8, wands:  9, paralysis:  7, breath: 10, spells:  8 },
 
         // --- Barbarian ---
         // Max level 14. 5 tiers. Unique table (improved death/paralysis).
-        [save_barbarian, 1..=3]   => SavingThrows { death: 10, wands: 13, paralysis: 12, breath: 15, spells: 16 },
-        [save_barbarian, 4..=6]   => SavingThrows { death:  8, wands: 11, paralysis: 10, breath: 13, spells: 13 },
-        [save_barbarian, 7..=9]   => SavingThrows { death:  6, wands:  9, paralysis:  8, breath: 10, spells: 10 },
-        [save_barbarian, 10..=12] => SavingThrows { death:  4, wands:  7, paralysis:  6, breath:  8, spells:  7 },
-        [save_barbarian, 13..=14] => SavingThrows { death:  3, wands:  5, paralysis:  4, breath:  5, spells:  5 },
+        [Barbarian, 1..=3]   => SavingThrows { death: 10, wands: 13, paralysis: 12, breath: 15, spells: 16 },
+        [Barbarian, 4..=6]   => SavingThrows { death:  8, wands: 11, paralysis: 10, breath: 13, spells: 13 },
+        [Barbarian, 7..=9]   => SavingThrows { death:  6, wands:  9, paralysis:  8, breath: 10, spells: 10 },
+        [Barbarian, 10..=12] => SavingThrows { death:  4, wands:  7, paralysis:  6, breath:  8, spells:  7 },
+        [Barbarian, 13..=14] => SavingThrows { death:  3, wands:  5, paralysis:  4, breath:  5, spells:  5 },
 
         // --- Cleric (also: Druid) ---
         // Max level 14. 4 tiers.
-        [save_cleric, 1..=4]   => SavingThrows { death: 11, wands: 12, paralysis: 14, breath: 16, spells: 15 },
-        [save_cleric, 5..=8]   => SavingThrows { death:  9, wands: 10, paralysis: 12, breath: 14, spells: 12 },
-        [save_cleric, 9..=12]  => SavingThrows { death:  6, wands:  7, paralysis:  9, breath: 11, spells:  9 },
-        [save_cleric, 13..=14] => SavingThrows { death:  3, wands:  5, paralysis:  7, breath:  8, spells:  7 },
+        [Cleric, 1..=4]   => SavingThrows { death: 11, wands: 12, paralysis: 14, breath: 16, spells: 15 },
+        [Cleric, 5..=8]   => SavingThrows { death:  9, wands: 10, paralysis: 12, breath: 14, spells: 12 },
+        [Cleric, 9..=12]  => SavingThrows { death:  6, wands:  7, paralysis:  9, breath: 11, spells:  9 },
+        [Cleric, 13..=14] => SavingThrows { death:  3, wands:  5, paralysis:  7, breath:  8, spells:  7 },
 
         // --- Drow ---
         // Max level 10. 4 tiers. Elf-based with improved spells save.
-        [save_drow, 1..=3]  => SavingThrows { death: 12, wands: 13, paralysis: 13, breath: 15, spells: 12 },
-        [save_drow, 4..=6]  => SavingThrows { death: 10, wands: 11, paralysis: 11, breath: 13, spells: 10 },
-        [save_drow, 7..=9]  => SavingThrows { death:  8, wands:  9, paralysis:  9, breath: 10, spells:  8 },
-        [save_drow, 10..=10] => SavingThrows { death:  6, wands:  7, paralysis:  8, breath:  8, spells:  6 },
+        [Drow, 1..=3]  => SavingThrows { death: 12, wands: 13, paralysis: 13, breath: 15, spells: 12 },
+        [Drow, 4..=6]  => SavingThrows { death: 10, wands: 11, paralysis: 11, breath: 13, spells: 10 },
+        [Drow, 7..=9]  => SavingThrows { death:  8, wands:  9, paralysis:  9, breath: 10, spells:  8 },
+        [Drow, 10..=10] => SavingThrows { death:  6, wands:  7, paralysis:  8, breath:  8, spells:  6 },
 
         // --- Dwarf (also: Duergar) ---
         // Max level 12. 4 tiers.
-        [save_dwarf, 1..=3]   => SavingThrows { death:  8, wands:  9, paralysis: 10, breath: 13, spells: 12 },
-        [save_dwarf, 4..=6]   => SavingThrows { death:  6, wands:  7, paralysis:  8, breath: 10, spells: 10 },
-        [save_dwarf, 7..=9]   => SavingThrows { death:  4, wands:  5, paralysis:  6, breath:  7, spells:  8 },
-        [save_dwarf, 10..=12] => SavingThrows { death:  2, wands:  3, paralysis:  4, breath:  4, spells:  6 },
+        [Dwarf, 1..=3]   => SavingThrows { death:  8, wands:  9, paralysis: 10, breath: 13, spells: 12 },
+        [Dwarf, 4..=6]   => SavingThrows { death:  6, wands:  7, paralysis:  8, breath: 10, spells: 10 },
+        [Dwarf, 7..=9]   => SavingThrows { death:  4, wands:  5, paralysis:  6, breath:  7, spells:  8 },
+        [Dwarf, 10..=12] => SavingThrows { death:  2, wands:  3, paralysis:  4, breath:  4, spells:  6 },
 
         // --- Elf ---
         // Max level 10. 4 tiers.
-        [save_elf, 1..=3]   => SavingThrows { death: 12, wands: 13, paralysis: 13, breath: 15, spells: 15 },
-        [save_elf, 4..=6]   => SavingThrows { death: 10, wands: 11, paralysis: 11, breath: 13, spells: 12 },
-        [save_elf, 7..=9]   => SavingThrows { death:  8, wands:  9, paralysis:  9, breath: 10, spells: 10 },
-        [save_elf, 10..=10] => SavingThrows { death:  6, wands:  7, paralysis:  8, breath:  8, spells:  8 },
+        [Elf, 1..=3]   => SavingThrows { death: 12, wands: 13, paralysis: 13, breath: 15, spells: 15 },
+        [Elf, 4..=6]   => SavingThrows { death: 10, wands: 11, paralysis: 11, breath: 13, spells: 12 },
+        [Elf, 7..=9]   => SavingThrows { death:  8, wands:  9, paralysis:  9, breath: 10, spells: 10 },
+        [Elf, 10..=10] => SavingThrows { death:  6, wands:  7, paralysis:  8, breath:  8, spells:  8 },
 
         // --- Fighter (also: Knight, Ranger) ---
         // Max level 14. 5 tiers.
-        [save_fighter, 1..=3]   => SavingThrows { death: 12, wands: 13, paralysis: 14, breath: 15, spells: 16 },
-        [save_fighter, 4..=6]   => SavingThrows { death: 10, wands: 11, paralysis: 12, breath: 13, spells: 14 },
-        [save_fighter, 7..=9]   => SavingThrows { death:  8, wands:  9, paralysis: 10, breath: 10, spells: 12 },
-        [save_fighter, 10..=12] => SavingThrows { death:  6, wands:  7, paralysis:  8, breath:  8, spells: 10 },
-        [save_fighter, 13..=14] => SavingThrows { death:  4, wands:  5, paralysis:  6, breath:  5, spells:  8 },
+        [Fighter, 1..=3]   => SavingThrows { death: 12, wands: 13, paralysis: 14, breath: 15, spells: 16 },
+        [Fighter, 4..=6]   => SavingThrows { death: 10, wands: 11, paralysis: 12, breath: 13, spells: 14 },
+        [Fighter, 7..=9]   => SavingThrows { death:  8, wands:  9, paralysis: 10, breath: 10, spells: 12 },
+        [Fighter, 10..=12] => SavingThrows { death:  6, wands:  7, paralysis:  8, breath:  8, spells: 10 },
+        [Fighter, 13..=14] => SavingThrows { death:  4, wands:  5, paralysis:  6, breath:  5, spells:  8 },
 
         // --- Gnome ---
         // Max level 8. 2 tiers. Halfling-based (+1 breath, -1 spells).
-        [save_gnome, 1..=5] => SavingThrows { death: 8, wands: 9, paralysis: 10, breath: 14, spells: 11 },
-        [save_gnome, 6..=8] => SavingThrows { death: 6, wands: 7, paralysis:  8, breath: 11, spells:  9 },
+        [Gnome, 1..=5] => SavingThrows { death: 8, wands: 9, paralysis: 10, breath: 14, spells: 11 },
+        [Gnome, 6..=8] => SavingThrows { death: 6, wands: 7, paralysis:  8, breath: 11, spells:  9 },
 
         // --- Half-Elf ---
         // Max level 12. 4 tiers. Elf-based, extended to level 12.
-        [save_half_elf, 1..=3]   => SavingThrows { death: 12, wands: 13, paralysis: 13, breath: 15, spells: 15 },
-        [save_half_elf, 4..=6]   => SavingThrows { death: 10, wands: 11, paralysis: 11, breath: 13, spells: 12 },
-        [save_half_elf, 7..=9]   => SavingThrows { death:  8, wands:  9, paralysis:  9, breath: 10, spells: 10 },
-        [save_half_elf, 10..=12] => SavingThrows { death:  6, wands:  7, paralysis:  8, breath:  8, spells:  8 },
+        [HalfElf, 1..=3]   => SavingThrows { death: 12, wands: 13, paralysis: 13, breath: 15, spells: 15 },
+        [HalfElf, 4..=6]   => SavingThrows { death: 10, wands: 11, paralysis: 11, breath: 13, spells: 12 },
+        [HalfElf, 7..=9]   => SavingThrows { death:  8, wands:  9, paralysis:  9, breath: 10, spells: 10 },
+        [HalfElf, 10..=12] => SavingThrows { death:  6, wands:  7, paralysis:  8, breath:  8, spells:  8 },
 
         // --- Half-Orc ---
         // Max level 8. 2 tiers. Saves as Thief.
-        [save_half_orc, 1..=4] => SavingThrows { death: 13, wands: 14, paralysis: 13, breath: 16, spells: 15 },
-        [save_half_orc, 5..=8] => SavingThrows { death: 12, wands: 13, paralysis: 11, breath: 14, spells: 13 },
+        [HalfOrc, 1..=4] => SavingThrows { death: 13, wands: 14, paralysis: 13, breath: 16, spells: 15 },
+        [HalfOrc, 5..=8] => SavingThrows { death: 12, wands: 13, paralysis: 11, breath: 14, spells: 13 },
 
         // --- Magic-User (also: Illusionist) ---
         // Max level 14. 3 tiers.
-        [save_magic_user, 1..=5]   => SavingThrows { death: 13, wands: 14, paralysis: 13, breath: 16, spells: 15 },
-        [save_magic_user, 6..=10]  => SavingThrows { death: 11, wands: 12, paralysis: 11, breath: 14, spells: 12 },
-        [save_magic_user, 11..=14] => SavingThrows { death:  8, wands:  9, paralysis:  8, breath: 11, spells:  8 },
+        [MagicUser, 1..=5]   => SavingThrows { death: 13, wands: 14, paralysis: 13, breath: 16, spells: 15 },
+        [MagicUser, 6..=10]  => SavingThrows { death: 11, wands: 12, paralysis: 11, breath: 14, spells: 12 },
+        [MagicUser, 11..=14] => SavingThrows { death:  8, wands:  9, paralysis:  8, breath: 11, spells:  8 },
 
         // --- Paladin ---
         // Max level 14. 5 tiers. Fighter -2 across the board.
-        [save_paladin, 1..=3]   => SavingThrows { death: 10, wands: 11, paralysis: 12, breath: 13, spells: 14 },
-        [save_paladin, 4..=6]   => SavingThrows { death:  8, wands:  9, paralysis: 10, breath: 11, spells: 12 },
-        [save_paladin, 7..=9]   => SavingThrows { death:  6, wands:  7, paralysis:  8, breath:  8, spells: 10 },
-        [save_paladin, 10..=12] => SavingThrows { death:  4, wands:  5, paralysis:  6, breath:  6, spells:  8 },
-        [save_paladin, 13..=14] => SavingThrows { death:  2, wands:  3, paralysis:  4, breath:  3, spells:  6 },
+        [Paladin, 1..=3]   => SavingThrows { death: 10, wands: 11, paralysis: 12, breath: 13, spells: 14 },
+        [Paladin, 4..=6]   => SavingThrows { death:  8, wands:  9, paralysis: 10, breath: 11, spells: 12 },
+        [Paladin, 7..=9]   => SavingThrows { death:  6, wands:  7, paralysis:  8, breath:  8, spells: 10 },
+        [Paladin, 10..=12] => SavingThrows { death:  4, wands:  5, paralysis:  6, breath:  6, spells:  8 },
+        [Paladin, 13..=14] => SavingThrows { death:  2, wands:  3, paralysis:  4, breath:  3, spells:  6 },
 
         // --- Svirfneblin ---
         // Max level 8. 3 tiers. Gnome-like with deeper progression.
-        [save_svirfneblin, 1..=3] => SavingThrows { death: 8, wands: 9, paralysis: 10, breath: 14, spells: 11 },
-        [save_svirfneblin, 4..=6] => SavingThrows { death: 6, wands: 7, paralysis:  8, breath: 11, spells:  9 },
-        [save_svirfneblin, 7..=8] => SavingThrows { death: 4, wands: 5, paralysis:  6, breath:  9, spells:  7 }
+        [Svirfneblin, 1..=3] => SavingThrows { death: 8, wands: 9, paralysis: 10, breath: 14, spells: 11 },
+        [Svirfneblin, 4..=6] => SavingThrows { death: 6, wands: 7, paralysis:  8, breath: 11, spells:  9 },
+        [Svirfneblin, 7..=8] => SavingThrows { death: 4, wands: 5, paralysis:  6, breath:  9, spells:  7 }
     }
 
 
@@ -129,7 +129,7 @@ system "OSE Saves" {
     //  The caller looks up the specific save value from the
     //  saving_throws table and passes it here:
     //
-    //    let saves = saving_throws(save_fighter, 5)
+    //    let saves = saving_throws(SaveCategory.Fighter, 5)
     //    let passed = saving_throw_check(saves.death)
     //    let passed_with_bonus = saving_throw_check(saves.spells, bonus: 2)
     // ========================================================

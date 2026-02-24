@@ -11,16 +11,16 @@ system "OSE Combat" {
 
     // --- Enums ---
 
-    enum AttackOutcome { atk_miss, atk_hit }
+    enum AttackOutcome { Miss, Hit }
 
-    enum MoraleOutcome { morale_hold, morale_fail }
+    enum MoraleOutcome { Hold, Fail }
 
     enum ReactionOutcome {
-        rx_hostile,
-        rx_unfriendly,
-        rx_neutral,
-        rx_indifferent,
-        rx_friendly
+        Hostile,
+        Unfriendly,
+        Neutral,
+        Indifferent,
+        Friendly
     }
 
 
@@ -43,11 +43,11 @@ system "OSE Combat" {
     // Reaction roll outcome table (2d6 + CHA modifier).
     // Applied when encountering wandering monsters or NPCs.
     table reaction_outcome(roll: int) -> ReactionOutcome {
-        2       => rx_hostile,
-        3..=5   => rx_unfriendly,
-        6..=8   => rx_neutral,
-        9..=11  => rx_indifferent,
-        12      => rx_friendly
+        2       => Hostile,
+        3..=5   => Unfriendly,
+        6..=8   => Neutral,
+        9..=11  => Indifferent,
+        12      => Friendly
     }
 
 
@@ -99,10 +99,10 @@ system "OSE Combat" {
         let target = target_number(thac0, target_ac)
         let result = roll(1d20)
         match {
-            result.unmodified == 1  => AttackOutcome.atk_miss,
-            result.unmodified == 20 => AttackOutcome.atk_hit,
-            result.total + attack_mod >= target => AttackOutcome.atk_hit,
-            _ => AttackOutcome.atk_miss
+            result.unmodified == 1  => AttackOutcome.Miss,
+            result.unmodified == 20 => AttackOutcome.Hit,
+            result.total + attack_mod >= target => AttackOutcome.Hit,
+            _ => AttackOutcome.Miss
         }
     }
 
@@ -112,9 +112,9 @@ system "OSE Combat" {
     mechanic morale_check(morale: int) -> MoraleOutcome {
         let result = roll(2d6)
         if result > morale {
-            MoraleOutcome.morale_fail
+            MoraleOutcome.Fail
         } else {
-            MoraleOutcome.morale_hold
+            MoraleOutcome.Hold
         }
     }
 
