@@ -494,6 +494,64 @@ fn table_type_error_value_mismatch() {
     );
 }
 
+// ── Wildcard-not-last produces warning ────────────────────────
+
+#[test]
+fn table_wildcard_not_last_warns() {
+    let source = r#"
+    system "test" {
+        table bad(x: int) -> int {
+            _ => 0,
+            1 => 10
+        }
+    }
+    "#;
+
+    let (program, parse_errors) = ttrpg_parser::parse(source);
+    assert!(parse_errors.is_empty());
+    let mut lower_diags = Vec::new();
+    let program = ttrpg_parser::lower_moves(program, &mut lower_diags);
+    let result = ttrpg_checker::check(&program);
+    let warnings: Vec<_> = result
+        .diagnostics
+        .iter()
+        .filter(|d| d.severity == Severity::Warning)
+        .collect();
+    assert!(
+        warnings.iter().any(|d| d.message.contains("unreachable table entry")),
+        "expected 'unreachable table entry' warning, got: {:?}",
+        warnings.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn table_wildcard_last_no_warning() {
+    let source = r#"
+    system "test" {
+        table ok(x: int) -> int {
+            1 => 10,
+            _ => 0
+        }
+    }
+    "#;
+
+    let (program, parse_errors) = ttrpg_parser::parse(source);
+    assert!(parse_errors.is_empty());
+    let mut lower_diags = Vec::new();
+    let program = ttrpg_parser::lower_moves(program, &mut lower_diags);
+    let result = ttrpg_checker::check(&program);
+    let warnings: Vec<_> = result
+        .diagnostics
+        .iter()
+        .filter(|d| d.severity == Severity::Warning)
+        .collect();
+    assert!(
+        warnings.is_empty(),
+        "expected no warnings for wildcard-last table, got: {:?}",
+        warnings.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}
+
 // ── Type checker rejects range on non-int param ───────────────
 
 #[test]

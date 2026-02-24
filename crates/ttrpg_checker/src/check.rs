@@ -211,11 +211,27 @@ impl<'a> Checker<'a> {
         self.scope.push(BlockKind::Derive);
         self.check_type_visible(&t.return_type);
 
+        // Check param type visibility (matching derive/mechanic behavior)
+        for param in &t.params {
+            self.check_type_visible(&param.ty);
+        }
+
         // Resolve param types
         let param_tys: Vec<Ty> = t.params.iter().map(|p| self.env.resolve_type(&p.ty)).collect();
         let ret_ty = self.env.resolve_type(&t.return_type);
 
+        // Track wildcard position for unreachable-entry warnings
+        let mut seen_wildcard = false;
+
         for entry in &t.entries {
+            // Warn if this entry follows a full wildcard (all keys are wildcards)
+            if seen_wildcard {
+                self.warning(
+                    "unreachable table entry: wildcard `_` entry must be last".to_string(),
+                    entry.span,
+                );
+            }
+
             // Check key count matches param count
             if entry.keys.len() != t.params.len() {
                 self.error(
@@ -227,6 +243,11 @@ impl<'a> Checker<'a> {
                     entry.span,
                 );
                 continue;
+            }
+
+            // Detect full-wildcard entries (every key is `_`)
+            if entry.keys.iter().all(|k| matches!(k.node, TableKey::Wildcard)) {
+                seen_wildcard = true;
             }
 
             // Type-check each key against its corresponding param type
