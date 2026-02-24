@@ -2,7 +2,7 @@
 //!
 //! Verifies that ose/ose_ability.ttrpg parses, lowers, and type-checks
 //! through the full multi-file pipeline. Also tests all ability modifier
-//! derives and encumbrance derives at runtime.
+//! tables and encumbrance tables at runtime.
 
 use std::collections::BTreeMap;
 
@@ -88,10 +88,10 @@ fn ose_ability_parses_and_typechecks() {
 // ── Declaration structure ──────────────────────────────────────
 
 #[test]
-fn ose_ability_has_all_derives() {
+fn ose_ability_has_all_tables() {
     let (program, _) = compile_ose_ability();
 
-    let derive_names: Vec<_> = program
+    let table_names: Vec<_> = program
         .items
         .iter()
         .filter_map(|item| match &item.node {
@@ -99,7 +99,7 @@ fn ose_ability_has_all_derives() {
                 sys.decls
                     .iter()
                     .filter_map(|d| match &d.node {
-                        DeclKind::Derive(f) => Some(f.name.as_str()),
+                        DeclKind::Table(t) => Some(t.name.as_str()),
                         _ => None,
                     })
                     .collect::<Vec<_>>(),
@@ -127,14 +127,14 @@ fn ose_ability_has_all_derives() {
 
     for name in &expected {
         assert!(
-            derive_names.contains(name),
-            "missing derive: {name}"
+            table_names.contains(name),
+            "missing table: {name}"
         );
     }
 
-    assert_eq!(derive_names.len(), expected.len(),
-        "expected {} derives, got {}: {:?}",
-        expected.len(), derive_names.len(), derive_names);
+    assert_eq!(table_names.len(), expected.len(),
+        "expected {} tables, got {}: {:?}",
+        expected.len(), table_names.len(), table_names);
 }
 
 // ── STR modifiers ──────────────────────────────────────────────

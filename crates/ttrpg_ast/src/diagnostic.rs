@@ -11,6 +11,8 @@ pub struct Diagnostic {
     pub severity: Severity,
     pub message: String,
     pub span: Span,
+    /// Optional help text rendered as `= help: ...` after the caret line.
+    pub help: Option<String>,
 }
 
 impl Diagnostic {
@@ -19,6 +21,7 @@ impl Diagnostic {
             severity: Severity::Error,
             message: message.into(),
             span,
+            help: None,
         }
     }
 
@@ -27,7 +30,14 @@ impl Diagnostic {
             severity: Severity::Warning,
             message: message.into(),
             span,
+            help: None,
         }
+    }
+
+    /// Attach a help message to this diagnostic.
+    pub fn with_help(mut self, help: impl Into<String>) -> Self {
+        self.help = Some(help.into());
+        self
     }
 }
 
@@ -112,7 +122,7 @@ fn render_diagnostic(
     let caret_len = (local_end - local_start).max(1);
     let carets: String = "^".repeat(caret_len);
 
-    format!(
+    let mut result = format!(
         "{severity}: {msg}\n\
          {pad} --> {prefix} {line}:{col}\n\
          {pad} |\n\
@@ -128,7 +138,17 @@ fn render_diagnostic(
         text = line_text,
         spaces = " ".repeat(col_1indexed - 1),
         carets = carets,
-    )
+    );
+
+    if let Some(ref help) = diag.help {
+        result.push_str(&format!(
+            "\n{pad} = help: {help}",
+            pad = " ".repeat(line_num_width),
+            help = help,
+        ));
+    }
+
+    result
 }
 
 /// Renders diagnostics across multiple source files.

@@ -210,10 +210,11 @@ impl<'p> Interpreter<'p> {
         call::evaluate_fn_with_values(&mut env, name, args, Span::dummy())
     }
 
-    /// Evaluate a named derive function with pre-evaluated arguments.
+    /// Evaluate a named derive or table with pre-evaluated arguments.
     ///
     /// Derives compute values from entity state. The modify pipeline
-    /// (condition/option modifiers) runs automatically.
+    /// (condition/option modifiers) runs automatically. Tables are
+    /// static lookups that match arguments against entry keys.
     pub fn evaluate_derive(
         &self,
         state: &dyn StateProvider,
@@ -221,14 +222,18 @@ impl<'p> Interpreter<'p> {
         name: &str,
         args: Vec<Value>,
     ) -> Result<Value, RuntimeError> {
-        if !self.program.derives.contains_key(name) {
-            return Err(RuntimeError::new(format!(
-                "undefined derive '{}'",
-                name
-            )));
+        if self.program.derives.contains_key(name) {
+            let mut env = Env::new(state, handler, self);
+            return call::evaluate_fn_with_values(&mut env, name, args, Span::dummy());
         }
-        let mut env = Env::new(state, handler, self);
-        call::evaluate_fn_with_values(&mut env, name, args, Span::dummy())
+        if self.program.tables.contains_key(name) {
+            let mut env = Env::new(state, handler, self);
+            return call::dispatch_table_with_values(&mut env, name, args, Span::dummy());
+        }
+        Err(RuntimeError::new(format!(
+            "undefined derive or table '{}'",
+            name
+        )))
     }
 
     /// Evaluate a standalone expression against the current program state.

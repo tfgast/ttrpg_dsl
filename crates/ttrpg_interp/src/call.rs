@@ -635,8 +635,6 @@ fn dispatch_table(
     args: &[Arg],
     call_span: Span,
 ) -> Result<Value, RuntimeError> {
-    use ttrpg_ast::ast::TableKey;
-
     // Look up the table declaration
     let table_decl = env
         .interp
@@ -649,12 +647,52 @@ fn dispatch_table(
                 call_span,
             )
         })?;
-    let entries = table_decl.entries.clone();
     let ast_params: Vec<Param> = table_decl.params.clone();
 
     // Bind arguments
     let bound = bind_args(param_infos, args, Some(&ast_params), env, call_span)?;
     let arg_values: Vec<Value> = bound.iter().map(|(_, v)| v.clone()).collect();
+
+    dispatch_table_core(env, name, arg_values, call_span)
+}
+
+/// Evaluate a table lookup with pre-evaluated argument values.
+pub(crate) fn dispatch_table_with_values(
+    env: &mut Env,
+    name: &str,
+    args: Vec<Value>,
+    call_span: Span,
+) -> Result<Value, RuntimeError> {
+    if !env.interp.program.tables.contains_key(name) {
+        return Err(RuntimeError::with_span(
+            format!("undefined table '{}'", name),
+            call_span,
+        ));
+    }
+    dispatch_table_core(env, name, args, call_span)
+}
+
+/// Core table matching logic shared by both dispatch paths.
+fn dispatch_table_core(
+    env: &mut Env,
+    name: &str,
+    arg_values: Vec<Value>,
+    call_span: Span,
+) -> Result<Value, RuntimeError> {
+    use ttrpg_ast::ast::TableKey;
+
+    let table_decl = env
+        .interp
+        .program
+        .tables
+        .get(name)
+        .ok_or_else(|| {
+            RuntimeError::with_span(
+                format!("internal error: no declaration found for table '{}'", name),
+                call_span,
+            )
+        })?;
+    let entries = table_decl.entries.clone();
 
     // Try each entry in order
     for entry in &entries {

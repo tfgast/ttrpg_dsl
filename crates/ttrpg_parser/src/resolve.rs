@@ -139,7 +139,11 @@ pub fn resolve_modules(
                 diagnostics.push(Diagnostic::error(
                     format!("unknown system \"{}\"", import.system_name),
                     import.span,
-                ));
+                ).with_help(format!(
+                    "\"{}\" is not defined in the loaded files; \
+                     load the file that defines it in the same `load` command",
+                    import.system_name
+                )));
                 continue;
             }
 
