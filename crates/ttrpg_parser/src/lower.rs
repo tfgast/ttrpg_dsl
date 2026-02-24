@@ -74,7 +74,7 @@ fn synthetic_mechanic_name(move_name: &str) -> String {
         if ch.is_uppercase() && i > 0 {
             snake.push('_');
         }
-        snake.push(ch.to_lowercase().next().unwrap());
+        snake.push(ch.to_lowercase().next().unwrap_or(ch));
     }
     format!("__{}_roll", snake)
 }
@@ -231,26 +231,23 @@ fn lower_one_move(
         span,
     );
 
-    // Find outcome bodies by name
+    // Find outcome bodies by name (validated above; `?` is defensive)
     let strong_hit_body = m
         .outcomes
         .iter()
-        .find(|o| o.name == "strong_hit")
-        .unwrap()
+        .find(|o| o.name == "strong_hit")?
         .body
         .clone();
     let weak_hit_body = m
         .outcomes
         .iter()
-        .find(|o| o.name == "weak_hit")
-        .unwrap()
+        .find(|o| o.name == "weak_hit")?
         .body
         .clone();
     let miss_body = m
         .outcomes
         .iter()
-        .find(|o| o.name == "miss")
-        .unwrap()
+        .find(|o| o.name == "miss")?
         .body
         .clone();
 

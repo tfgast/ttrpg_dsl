@@ -56,7 +56,9 @@ impl Prompt for TtrpgPrompt {
 
 /// Refresh the completion context from the current runner state.
 fn refresh_completions(runner: &Runner, ctx: &Arc<Mutex<CompletionContext>>) {
-    let mut c = ctx.lock().unwrap();
+    let Ok(mut c) = ctx.lock() else {
+        return;
+    };
     c.handles = runner.handle_names();
     c.entity_types = runner.entity_type_names();
     c.action_names = runner.action_names();

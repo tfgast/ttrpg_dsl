@@ -947,8 +947,12 @@ pub(crate) fn eval_stmt(
             let defaults: Vec<_> = find_optional_group(env, entity_type.as_deref(), group_name)
                 .into_iter()
                 .flat_map(|g| g.fields.iter())
-                .filter(|fd| !fields.contains_key(&fd.name) && fd.default.is_some())
-                .map(|fd| (fd.name.clone(), fd.default.clone().unwrap()))
+                .filter_map(|fd| {
+                    if fields.contains_key(&fd.name) {
+                        return None;
+                    }
+                    fd.default.clone().map(|d| (fd.name.clone(), d))
+                })
                 .collect();
             for (name, default_expr) in &defaults {
                 let val = eval_expr(env, default_expr)?;
@@ -1410,7 +1414,9 @@ fn apply_local_mutation(
                                 span,
                             )
                         })?;
-                        let entry = map.get_mut(&ek).unwrap();
+                        let entry = map.get_mut(&ek).ok_or_else(|| {
+                            RuntimeError::with_span("internal: validated map key missing", span)
+                        })?;
                         let new_val = apply_assign_op(op, entry.clone(), rhs, span)?;
                         *entry = new_val;
                         Ok(())
@@ -1424,7 +1430,9 @@ fn apply_local_mutation(
                         span,
                     )
                 })?;
-                let entry = map.get_mut(&ek).unwrap();
+                let entry = map.get_mut(&ek).ok_or_else(|| {
+                    RuntimeError::with_span("internal: validated map key missing", span)
+                })?;
                 apply_local_mutation(entry, segments, depth + 1, op, rhs, span, state)
             }
         }

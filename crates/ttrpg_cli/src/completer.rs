@@ -89,8 +89,12 @@ impl Completer for TtrpgCompleter {
                 .collect();
         }
 
-        let rest = after_first.unwrap();
-        let ctx = self.ctx.lock().unwrap();
+        let Some(rest) = after_first else {
+            return Vec::new();
+        };
+        let Ok(ctx) = self.ctx.lock() else {
+            return Vec::new();
+        };
 
         match first_word {
             "spawn" => {

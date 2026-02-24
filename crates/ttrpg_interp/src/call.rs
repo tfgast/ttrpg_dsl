@@ -994,7 +994,12 @@ fn bind_args(
     let mut pos_iter = (0..params.len()).filter(|i| !named_slots[*i]);
     for arg in args {
         if let Some(ref name) = arg.name {
-            let pos = params.iter().position(|p| p.name == *name).unwrap();
+            let pos = params.iter().position(|p| p.name == *name).ok_or_else(|| {
+                RuntimeError::with_span(
+                    format!("internal: named arg '{}' not found after validation", name),
+                    arg.span,
+                )
+            })?;
             let val = eval_expr(env, &arg.value)?;
             result[pos] = Some(val);
         } else {

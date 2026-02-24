@@ -161,7 +161,9 @@ impl<'a> RawLexer<'a> {
         }
 
         let start = self.cursor.pos();
-        let ch = self.cursor.advance().unwrap();
+        let Some(ch) = self.cursor.advance() else {
+            return Token::new(TokenKind::Eof, Span::new(start, start));
+        };
 
         match ch {
             '\n' => Token::new(TokenKind::Newline, Span::new(start, self.cursor.pos())),

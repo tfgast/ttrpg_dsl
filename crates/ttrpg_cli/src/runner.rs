@@ -1760,7 +1760,12 @@ impl Runner {
 
             if is_group {
                 // Group: Name { field: val, ... }
-                let brace_start = brace_pos.unwrap();
+                let Some(brace_start) = brace_pos else {
+                    return Err(CliError::Message(format!(
+                        "internal: is_group set but brace_pos is None in '{}'",
+                        entry.trim(),
+                    )));
+                };
                 let group_name = entry[..brace_start].trim();
                 let inner_block = entry[brace_start..]
                     .strip_prefix('{')
