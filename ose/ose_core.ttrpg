@@ -1,0 +1,206 @@
+// ============================================================
+// OSE Core Types — shared enums, structs, entity definitions
+//
+// Foundation types for Old-School Essentials (B/X + Advanced Fantasy).
+// All other OSE files import from this module.
+//
+// Reference: osr_ai_gm/src/rules/class.rs, model/mod.rs
+//
+// NOTE: The TTRPG DSL registers enum variants in a global namespace,
+// so variant names must be unique across ALL enums in the system.
+// Class variants use PascalCase; classification enums use prefixed
+// snake_case to avoid collisions (save_*, prog_*, list_*).
+// ============================================================
+
+system "OSE" {
+
+    // --- Ability scores ---
+
+    enum Ability { STR, DEX, CON, INT, WIS, CHA }
+
+    // --- Alignment (B/X three-fold) ---
+
+    enum Alignment { Lawful, Neutral, Chaotic }
+
+    // --- Character classes (7 B/X + 15 Advanced Fantasy = 22) ---
+
+    enum Class {
+        Acrobat,
+        Assassin,
+        Barbarian,
+        Bard,
+        Cleric,
+        Drow,
+        Druid,
+        Duergar,
+        Dwarf,
+        Elf,
+        Fighter,
+        Gnome,
+        HalfElf,
+        Halfling,
+        HalfOrc,
+        Illusionist,
+        Knight,
+        MagicUser,
+        Paladin,
+        Ranger,
+        Svirfneblin,
+        Thief
+    }
+
+    // --- Saving throw categories (one per class group, 13 total) ---
+    // Prefixed save_ to avoid collision with Class variants.
+
+    enum SaveCategory {
+        save_thief,
+        save_barbarian,
+        save_cleric,
+        save_drow,
+        save_dwarf,
+        save_elf,
+        save_fighter,
+        save_gnome,
+        save_half_elf,
+        save_half_orc,
+        save_magic_user,
+        save_paladin,
+        save_svirfneblin
+    }
+
+    // --- Combat aptitude tiers ---
+
+    enum CombatAptitude { martial, semi_martial, non_martial }
+
+    // --- Armour permission levels ---
+
+    enum ArmourPermission {
+        any_armour,
+        any_no_shield,
+        leather_only,
+        leather_shield,
+        no_armour
+    }
+
+    // --- Spell progression categories (9 total) ---
+    // Prefixed prog_ to avoid collision with Class variants.
+
+    enum SpellProgression {
+        prog_bard,
+        prog_cleric,
+        prog_drow,
+        prog_druid,
+        prog_arcane_full,
+        prog_half_elf,
+        prog_paladin,
+        prog_ranger,
+        non_caster
+    }
+
+    // --- Spell list types ---
+    // Prefixed list_ to avoid collision with Class variants.
+
+    enum SpellListType {
+        no_list,
+        list_cleric,
+        list_druid,
+        list_illusionist,
+        list_magic_user,
+        list_drow_arcane_divine
+    }
+
+    // --- Encumbrance levels ---
+
+    enum EncumbranceLevel {
+        unencumbered,
+        light,
+        heavy,
+        severe,
+        overloaded
+    }
+
+    // --- Thief skills (8 total) ---
+
+    enum ThiefSkill {
+        climb_walls,
+        find_traps,
+        hear_noise,
+        hide_shadows,
+        move_silently,
+        open_locks,
+        pick_pockets,
+        read_languages
+    }
+
+    // --- Turn undead results ---
+
+    enum TurnResult {
+        Impossible,
+        Roll(target: int),
+        Turned,
+        Destroyed
+    }
+
+    // --- Saving throw values (five categories: D/W/P/B/S) ---
+
+    struct SavingThrows {
+        death: int
+        wands: int
+        paralysis: int
+        breath: int
+        spells: int
+    }
+
+    // --- Static class definition ---
+
+    struct ClassDef {
+        class: Class
+        hit_die: int
+        combat_aptitude: CombatAptitude
+        max_level: int
+        armour: ArmourPermission
+        weapons_any: bool
+        weapons_blunt_only: bool
+        save_category: SaveCategory
+        spell_progression: SpellProgression
+        spell_list: SpellListType
+        is_demihuman: bool
+    }
+
+    // --- Character entity ---
+
+    entity Character {
+        name: string
+        class: Class
+        level: int = 1
+        alignment: Alignment = Neutral
+        abilities: map<Ability, int>
+        hp: int
+        max_hp: int
+        ac: int = 9
+        xp: int = 0
+        thac0: int = 19
+        movement_rate: int = 120
+        gold_gp: int = 0
+        saving_throws: option<SavingThrows>
+        spell_slots_used: list<int>
+    }
+
+    // --- Monster entity ---
+
+    entity Monster {
+        name: string
+        hit_dice: int
+        hp: int
+        max_hp: int
+        ac: int = 9
+        morale: int = 7
+        xp_value: int = 0
+        undead: bool = false
+        helpless: bool = false
+        turned: bool = false
+        immune_to_normal_weapons: bool = false
+        attacks: list<string>
+        damage: string
+    }
+}
