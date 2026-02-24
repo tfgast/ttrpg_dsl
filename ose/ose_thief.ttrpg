@@ -1,0 +1,172 @@
+// ============================================================
+// OSE Thief Skills — skill tables, checks, and class abilities
+//
+// Thief-specific mechanics for Old-School Essentials (B/X).
+// Requires types from ose/ose_core.ttrpg (ThiefSkill, Class).
+//
+// Reference: OSE SRD, B/X Expert Set thief skill tables
+// ============================================================
+
+system "OSE" {
+
+    // --- Thief skill chance table (2D: skill × level) ---
+    //
+    // Returns the target number for a skill check at the given level.
+    //   d100 skills: percentage chance (roll d100, succeed if <= value)
+    //   hear_noise:  d6 target (roll 1d6, succeed if <= value)
+
+    table skill_chance(skill: ThiefSkill, level: int) -> int {
+        // Climb Walls (d100) — starts high, +1/level
+        [climb_walls, 1]       => 87,
+        [climb_walls, 2]       => 88,
+        [climb_walls, 3]       => 89,
+        [climb_walls, 4]       => 90,
+        [climb_walls, 5]       => 91,
+        [climb_walls, 6]       => 92,
+        [climb_walls, 7]       => 93,
+        [climb_walls, 8]       => 94,
+        [climb_walls, 9]       => 95,
+        [climb_walls, 10]      => 96,
+        [climb_walls, 11]      => 97,
+        [climb_walls, 12]      => 98,
+        [climb_walls, 13..=14] => 99,
+
+        // Find or Remove Traps (d100)
+        [find_traps, 1]  => 10,
+        [find_traps, 2]  => 15,
+        [find_traps, 3]  => 20,
+        [find_traps, 4]  => 25,
+        [find_traps, 5]  => 30,
+        [find_traps, 6]  => 40,
+        [find_traps, 7]  => 50,
+        [find_traps, 8]  => 60,
+        [find_traps, 9]  => 70,
+        [find_traps, 10] => 80,
+        [find_traps, 11] => 90,
+        [find_traps, 12] => 95,
+        [find_traps, 13] => 97,
+        [find_traps, 14] => 99,
+
+        // Hear Noise (d6 target — NOT d100)
+        [hear_noise, 1..=2]   => 2,
+        [hear_noise, 3..=6]   => 3,
+        [hear_noise, 7..=10]  => 4,
+        [hear_noise, 11..=14] => 5,
+
+        // Hide in Shadows (d100)
+        [hide_shadows, 1]  => 10,
+        [hide_shadows, 2]  => 15,
+        [hide_shadows, 3]  => 20,
+        [hide_shadows, 4]  => 25,
+        [hide_shadows, 5]  => 30,
+        [hide_shadows, 6]  => 36,
+        [hide_shadows, 7]  => 45,
+        [hide_shadows, 8]  => 55,
+        [hide_shadows, 9]  => 65,
+        [hide_shadows, 10] => 75,
+        [hide_shadows, 11] => 85,
+        [hide_shadows, 12] => 90,
+        [hide_shadows, 13] => 95,
+        [hide_shadows, 14] => 99,
+
+        // Move Silently (d100)
+        [move_silently, 1]  => 20,
+        [move_silently, 2]  => 25,
+        [move_silently, 3]  => 30,
+        [move_silently, 4]  => 35,
+        [move_silently, 5]  => 40,
+        [move_silently, 6]  => 45,
+        [move_silently, 7]  => 55,
+        [move_silently, 8]  => 65,
+        [move_silently, 9]  => 75,
+        [move_silently, 10] => 85,
+        [move_silently, 11] => 95,
+        [move_silently, 12] => 96,
+        [move_silently, 13] => 98,
+        [move_silently, 14] => 99,
+
+        // Open Locks (d100)
+        [open_locks, 1]  => 15,
+        [open_locks, 2]  => 20,
+        [open_locks, 3]  => 25,
+        [open_locks, 4]  => 30,
+        [open_locks, 5]  => 35,
+        [open_locks, 6]  => 45,
+        [open_locks, 7]  => 55,
+        [open_locks, 8]  => 65,
+        [open_locks, 9]  => 75,
+        [open_locks, 10] => 85,
+        [open_locks, 11] => 95,
+        [open_locks, 12] => 96,
+        [open_locks, 13] => 97,
+        [open_locks, 14] => 99,
+
+        // Pick Pockets (d100 — can exceed 100%)
+        [pick_pockets, 1]  => 20,
+        [pick_pockets, 2]  => 25,
+        [pick_pockets, 3]  => 30,
+        [pick_pockets, 4]  => 35,
+        [pick_pockets, 5]  => 40,
+        [pick_pockets, 6]  => 45,
+        [pick_pockets, 7]  => 55,
+        [pick_pockets, 8]  => 65,
+        [pick_pockets, 9]  => 75,
+        [pick_pockets, 10] => 85,
+        [pick_pockets, 11] => 95,
+        [pick_pockets, 12] => 105,
+        [pick_pockets, 13] => 115,
+        [pick_pockets, 14] => 125,
+
+        // Read Languages (d100 — available from level 4)
+        [read_languages, 1..=3]  => 0,
+        [read_languages, 4..=14] => 80
+    }
+
+    // --- Thief skill check (d100 roll-under) ---
+    // For all skills except hear_noise — use hear_noise() for that.
+
+    mechanic thief_skill_check(skill: ThiefSkill, level: int) -> bool {
+        let chance = skill_chance(skill, level)
+        let result = roll(1d100)
+        result.total <= chance
+    }
+
+    // --- Hear noise (d6 roll-under variant) ---
+    // Hear noise uses 1d6 instead of d100. Succeed if roll <= target.
+
+    mechanic hear_noise(level: int) -> bool {
+        let target = skill_chance(hear_noise, level)
+        let result = roll(1d6)
+        result.total <= target
+    }
+
+    // --- Backstab damage multiplier by level ---
+
+    derive backstab_multiplier(level: int) -> int {
+        match {
+            level <= 4  => 2,
+            level <= 8  => 3,
+            level <= 12 => 4,
+            _           => 5
+        }
+    }
+
+    // --- Class ability queries ---
+
+    derive has_thief_skills(class: Class) -> bool {
+        match class {
+            Thief    => true,
+            Acrobat  => true,
+            Assassin => true,
+            _        => false
+        }
+    }
+
+    derive can_backstab(class: Class) -> bool {
+        match class {
+            Thief    => true,
+            Assassin => true,
+            _        => false
+        }
+    }
+}
