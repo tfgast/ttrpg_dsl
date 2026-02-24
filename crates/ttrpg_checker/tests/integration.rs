@@ -5822,3 +5822,107 @@ system "Main" {
         &["has type string, expected int"],
     );
 }
+
+// ── Alias-qualified with-group enforcement ─────────────────────────────
+
+#[test]
+fn test_alias_qualified_condition_call_with_group_not_proven() {
+    // Core.Hexed(source: actor) should error when actor lacks Spellcasting
+    expect_multi_errors(
+        &[
+            ("core.ttrpg", r#"
+system "Core" {
+    entity Character {
+        HP: int
+        optional Spellcasting { dc: int }
+    }
+    condition Hexed(source: Character with Spellcasting) on bearer: Character {}
+}
+"#),
+            ("main.ttrpg", r#"
+use "Core" as Core
+system "Main" {
+    mechanic hex(actor: Character) -> Condition {
+        Core.Hexed(source: actor)
+    }
+}
+"#),
+        ],
+        &["requires `actor` to have group `Spellcasting` proven active"],
+    );
+}
+
+#[test]
+fn test_alias_qualified_condition_call_with_group_proven() {
+    // Core.Hexed(source: actor) should pass when actor has Spellcasting
+    expect_multi_no_errors(&[
+        ("core.ttrpg", r#"
+system "Core" {
+    entity Character {
+        HP: int
+        optional Spellcasting { dc: int }
+    }
+    condition Hexed(source: Character with Spellcasting) on bearer: Character {}
+}
+"#),
+        ("main.ttrpg", r#"
+use "Core" as Core
+system "Main" {
+    mechanic hex(actor: Character with Spellcasting) -> Condition {
+        Core.Hexed(source: actor)
+    }
+}
+"#),
+    ]);
+}
+
+#[test]
+fn test_alias_qualified_function_call_with_group_not_proven() {
+    // Core.needs_rage(c) should error when c lacks Rage
+    expect_multi_errors(
+        &[
+            ("core.ttrpg", r#"
+system "Core" {
+    entity Character {
+        HP: int
+        optional Rage { damage_bonus: int }
+    }
+    derive needs_rage(c: Character with Rage) -> int { c.HP }
+}
+"#),
+            ("main.ttrpg", r#"
+use "Core" as Core
+system "Main" {
+    derive try_rage(c: Character) -> int {
+        Core.needs_rage(c)
+    }
+}
+"#),
+        ],
+        &["requires `c` to have group `Rage` proven active"],
+    );
+}
+
+#[test]
+fn test_alias_qualified_function_call_with_group_proven() {
+    // Core.needs_rage(c) should pass when c has Rage
+    expect_multi_no_errors(&[
+        ("core.ttrpg", r#"
+system "Core" {
+    entity Character {
+        HP: int
+        optional Rage { damage_bonus: int }
+    }
+    derive needs_rage(c: Character with Rage) -> int { c.HP }
+}
+"#),
+        ("main.ttrpg", r#"
+use "Core" as Core
+system "Main" {
+    derive try_rage(c: Character with Rage) -> int {
+        Core.needs_rage(c)
+    }
+}
+"#),
+    ]);
+}

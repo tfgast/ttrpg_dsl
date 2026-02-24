@@ -2388,6 +2388,33 @@ impl<'a> Checker<'a> {
                         arg.value.span,
                     );
                 }
+
+                // Check `with` group constraints at call site
+                if !params[idx].with_groups.is_empty() {
+                    if let Some(path_key) = self.extract_path_key(&arg.value) {
+                        for group in &params[idx].with_groups {
+                            if !self.scope.is_group_narrowed(&path_key, group) {
+                                self.error(
+                                    format!(
+                                        "argument `{}` requires `{}` to have group `{}` proven active via `has` guard or `with` constraint",
+                                        params[idx].name, path_key, group
+                                    ),
+                                    arg.span,
+                                );
+                            }
+                        }
+                    } else {
+                        for group in &params[idx].with_groups {
+                            self.error(
+                                format!(
+                                    "argument `{}` requires group `{}` proven active, but the expression cannot be statically tracked",
+                                    params[idx].name, group
+                                ),
+                                arg.span,
+                            );
+                        }
+                    }
+                }
             } else if let Some(ref arg_name) = arg.name {
                 self.error(
                     format!("condition `{}` has no parameter `{}`", name, arg_name),
@@ -2533,6 +2560,33 @@ impl<'a> Checker<'a> {
                         ),
                         arg.span,
                     );
+                }
+
+                // Check `with` group constraints at call site
+                if !effective_params[idx].with_groups.is_empty() {
+                    if let Some(path_key) = self.extract_path_key(&arg.value) {
+                        for group in &effective_params[idx].with_groups {
+                            if !self.scope.is_group_narrowed(&path_key, group) {
+                                self.error(
+                                    format!(
+                                        "argument `{}` requires `{}` to have group `{}` proven active via `has` guard or `with` constraint",
+                                        effective_params[idx].name, path_key, group
+                                    ),
+                                    arg.span,
+                                );
+                            }
+                        }
+                    } else {
+                        for group in &effective_params[idx].with_groups {
+                            self.error(
+                                format!(
+                                    "argument `{}` requires group `{}` proven active, but the expression cannot be statically tracked",
+                                    effective_params[idx].name, group
+                                ),
+                                arg.span,
+                            );
+                        }
+                    }
                 }
             } else if let Some(ref arg_name) = arg.name {
                 self.error(
