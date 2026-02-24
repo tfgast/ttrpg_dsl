@@ -321,11 +321,7 @@ impl Parser {
 
         self.skip_newlines();
 
-        let requires = if self.at_ident("requires") {
-            Some(self.parse_requires_clause()?)
-        } else {
-            None
-        };
+        let requires = self.parse_multiple_requires_clauses()?;
 
         self.skip_newlines();
         let resolve = self.parse_resolve_block()?;
@@ -382,6 +378,29 @@ impl Parser {
         self.expect(&TokenKind::RBrace)?;
         self.expect_term()?;
         Ok(expr)
+    }
+
+    fn parse_multiple_requires_clauses(&mut self) -> Result<Option<Spanned<ExprKind>>, ()> {
+        if !self.at_ident("requires") {
+            return Ok(None);
+        }
+
+        let mut combined = self.parse_requires_clause()?;
+        self.skip_newlines();
+        while self.at_ident("requires") {
+            let next = self.parse_requires_clause()?;
+            self.skip_newlines();
+            let span = combined.span.merge(next.span);
+            combined = Spanned::new(
+                ExprKind::BinOp {
+                    op: BinOp::And,
+                    lhs: Box::new(combined),
+                    rhs: Box::new(next),
+                },
+                span,
+            );
+        }
+        Ok(Some(combined))
     }
 
     fn parse_resolve_block(&mut self) -> Result<Block, ()> {

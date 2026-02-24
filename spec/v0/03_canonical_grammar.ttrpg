@@ -170,13 +170,13 @@ mechanic_decl   = "mechanic" IDENT "(" params ")" "->" type block
 action_decl     = "action" IDENT "on" IDENT ":" type
                       "(" params ")" "{"
                       cost_clause?
-                      requires_clause?
+                      requires_clause*
                       resolve_block
                   "}"
 
 cost_clause     = "cost" "{" cost_entry ("," cost_entry)* "}" term
 cost_entry      = IDENT                              // a cost token (see mapping below)
-requires_clause = "requires" "{" expr "}" term
+requires_clause = "requires" "{" expr "}" term       // multiple blocks are combined with &&
 resolve_block   = "resolve" block
 
 // --- Cost token → budget field mapping ---

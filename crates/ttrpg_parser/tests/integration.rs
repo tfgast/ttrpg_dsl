@@ -510,6 +510,89 @@ fn test_requires_multiline_expression() {
 }
 
 #[test]
+fn test_multiple_requires_blocks() {
+    let source = r#"system "test" {
+    entity Character {
+        HP: int
+        is_alive: bool
+    }
+    action Attack on attacker: Character (target: Character) {
+        requires { attacker.HP > 0 }
+        requires { attacker.is_alive }
+        resolve {
+            target.HP -= 5
+        }
+    }
+}"#;
+    let (mut program, diagnostics) = parse(source);
+    assert!(
+        diagnostics.is_empty(),
+        "multiple requires blocks should be allowed, got: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+    program.build_index();
+    let action = &program.actions["Attack"];
+    assert!(
+        action.requires.is_some(),
+        "combined requires should be present"
+    );
+    // The two requires blocks should be combined with &&
+    match &action.requires.as_ref().unwrap().node {
+        ttrpg_ast::ast::ExprKind::BinOp { op, .. } => {
+            assert_eq!(*op, ttrpg_ast::ast::BinOp::And);
+        }
+        _ => panic!("expected BinOp(And)"),
+    }
+}
+
+#[test]
+fn test_multiple_requires_with_blank_lines() {
+    let source = r#"system "test" {
+    entity Character {
+        HP: int
+        is_alive: bool
+        can_attack: bool
+    }
+    action Attack on attacker: Character (target: Character) {
+        cost { action }
+
+        requires { attacker.HP > 0 }
+
+        requires { attacker.is_alive }
+
+        requires { attacker.can_attack }
+
+        resolve {
+            target.HP -= 5
+        }
+    }
+}"#;
+    let (mut program, diagnostics) = parse(source);
+    assert!(
+        diagnostics.is_empty(),
+        "multiple requires with blank lines should work, got: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+    program.build_index();
+    let action = &program.actions["Attack"];
+    assert!(action.requires.is_some());
+    // Three requires -> two && nodes (left-associative)
+    match &action.requires.as_ref().unwrap().node {
+        ttrpg_ast::ast::ExprKind::BinOp { op, lhs, .. } => {
+            assert_eq!(*op, ttrpg_ast::ast::BinOp::And);
+            // lhs should also be a BinOp(And) from the first two
+            match &lhs.node {
+                ttrpg_ast::ast::ExprKind::BinOp { op, .. } => {
+                    assert_eq!(*op, ttrpg_ast::ast::BinOp::And);
+                }
+                _ => panic!("expected nested BinOp(And)"),
+            }
+        }
+        _ => panic!("expected BinOp(And)"),
+    }
+}
+
+#[test]
 fn test_cost_multiline() {
     // Regression: newlines inside cost { } were not suppressed.
     let source = r#"system "test" {
