@@ -1,0 +1,212 @@
+// ============================================================
+// OSE Magic & Turn Undead — spell slots and turning mechanics
+//
+// Spell slots: 2D table lookup (SpellProgression × level → list<int>).
+// 9 progression categories × up to 14 levels.
+// Each entry is a 6-element list: slots for spell levels 1–6.
+//
+// Turn undead: algorithmic derive based on cleric_level − undead_rank.
+// Follows the diagonal pattern from OSE Reference Booklet p18.
+//
+// Reference: oag/src/rules/spell.rs (spell progressions),
+//            oag/src/rules/turn.rs (turn undead formula).
+// ============================================================
+
+use "OSE"
+
+system "OSE Magic" {
+
+    // ========================================================
+    //  SPELL SLOT TABLE
+    //
+    //  2D lookup: (SpellProgression, level) → list<int>
+    //  Returns a 6-element list of spell slots for levels 1–6.
+    //  A 0 means no spells of that level available.
+    //
+    //  OSE Reference Booklet p16-17.
+    // ========================================================
+
+    table spell_slots(progression: SpellProgression, level: int) -> list<int> {
+
+        // --- NonCaster (Fighter, Thief, etc.) ---
+        // No spells at any level.
+        [non_caster, _] => [0, 0, 0, 0, 0, 0],
+
+        // --- Bard: druid spell list, up to 4th level spells ---
+        [prog_bard, 1]       => [0, 0, 0, 0, 0, 0],
+        [prog_bard, 2]       => [1, 0, 0, 0, 0, 0],
+        [prog_bard, 3]       => [2, 0, 0, 0, 0, 0],
+        [prog_bard, 4]       => [3, 0, 0, 0, 0, 0],
+        [prog_bard, 5]       => [3, 1, 0, 0, 0, 0],
+        [prog_bard, 6]       => [3, 2, 0, 0, 0, 0],
+        [prog_bard, 7]       => [3, 3, 0, 0, 0, 0],
+        [prog_bard, 8]       => [3, 3, 1, 0, 0, 0],
+        [prog_bard, 9]       => [3, 3, 2, 0, 0, 0],
+        [prog_bard, 10]      => [3, 3, 3, 0, 0, 0],
+        [prog_bard, 11]      => [3, 3, 3, 1, 0, 0],
+        [prog_bard, 12]      => [3, 3, 3, 2, 0, 0],
+        [prog_bard, 13]      => [3, 3, 3, 3, 0, 0],
+        [prog_bard, 14]      => [4, 4, 3, 3, 0, 0],
+
+        // --- Cleric: cleric spell list, up to 5th level spells ---
+        [prog_cleric, 1]     => [0, 0, 0, 0, 0, 0],
+        [prog_cleric, 2]     => [1, 0, 0, 0, 0, 0],
+        [prog_cleric, 3]     => [2, 0, 0, 0, 0, 0],
+        [prog_cleric, 4]     => [2, 1, 0, 0, 0, 0],
+        [prog_cleric, 5]     => [2, 2, 0, 0, 0, 0],
+        [prog_cleric, 6]     => [2, 2, 1, 1, 0, 0],
+        [prog_cleric, 7]     => [2, 2, 2, 1, 1, 0],
+        [prog_cleric, 8]     => [3, 3, 2, 2, 1, 0],
+        [prog_cleric, 9]     => [3, 3, 3, 2, 2, 0],
+        [prog_cleric, 10]    => [4, 4, 3, 3, 2, 0],
+        [prog_cleric, 11]    => [4, 4, 4, 3, 3, 0],
+        [prog_cleric, 12]    => [5, 5, 4, 4, 3, 0],
+        [prog_cleric, 13]    => [5, 5, 5, 4, 4, 0],
+        [prog_cleric, 14]    => [6, 5, 5, 5, 4, 0],
+
+        // --- Drow: arcane+divine spell list, up to 5th level spells ---
+        [prog_drow, 1]       => [1, 0, 0, 0, 0, 0],
+        [prog_drow, 2]       => [2, 0, 0, 0, 0, 0],
+        [prog_drow, 3]       => [2, 1, 0, 0, 0, 0],
+        [prog_drow, 4]       => [2, 2, 0, 0, 0, 0],
+        [prog_drow, 5]       => [2, 2, 1, 0, 0, 0],
+        [prog_drow, 6]       => [2, 2, 2, 1, 0, 0],
+        [prog_drow, 7]       => [3, 3, 2, 2, 1, 0],
+        [prog_drow, 8]       => [3, 3, 3, 2, 2, 0],
+        [prog_drow, 9]       => [4, 4, 3, 3, 2, 0],
+        [prog_drow, 10]      => [4, 4, 4, 3, 3, 0],
+
+        // --- Druid: druid spell list, up to 5th level spells ---
+        [prog_druid, 1]      => [1, 0, 0, 0, 0, 0],
+        [prog_druid, 2]      => [2, 0, 0, 0, 0, 0],
+        [prog_druid, 3]      => [2, 1, 0, 0, 0, 0],
+        [prog_druid, 4]      => [2, 2, 0, 0, 0, 0],
+        [prog_druid, 5]      => [2, 2, 1, 1, 0, 0],
+        [prog_druid, 6]      => [2, 2, 2, 1, 1, 0],
+        [prog_druid, 7]      => [3, 3, 2, 2, 1, 0],
+        [prog_druid, 8]      => [3, 3, 3, 2, 2, 0],
+        [prog_druid, 9]      => [4, 4, 3, 3, 2, 0],
+        [prog_druid, 10]     => [4, 4, 4, 3, 3, 0],
+        [prog_druid, 11]     => [5, 5, 4, 4, 3, 0],
+        [prog_druid, 12]     => [5, 5, 5, 4, 4, 0],
+        [prog_druid, 13]     => [6, 5, 5, 5, 4, 0],
+        [prog_druid, 14]     => [6, 6, 5, 5, 5, 0],
+
+        // --- Arcane Full Caster (Elf, Gnome, Illusionist, Magic-User) ---
+        // Up to 6th level spells.
+        [prog_arcane_full, 1]  => [1, 0, 0, 0, 0, 0],
+        [prog_arcane_full, 2]  => [2, 0, 0, 0, 0, 0],
+        [prog_arcane_full, 3]  => [2, 1, 0, 0, 0, 0],
+        [prog_arcane_full, 4]  => [2, 2, 0, 0, 0, 0],
+        [prog_arcane_full, 5]  => [2, 2, 1, 0, 0, 0],
+        [prog_arcane_full, 6]  => [2, 2, 2, 0, 0, 0],
+        [prog_arcane_full, 7]  => [3, 2, 2, 1, 0, 0],
+        [prog_arcane_full, 8]  => [3, 3, 2, 2, 0, 0],
+        [prog_arcane_full, 9]  => [3, 3, 3, 2, 1, 0],
+        [prog_arcane_full, 10] => [3, 3, 3, 3, 2, 0],
+        [prog_arcane_full, 11] => [4, 3, 3, 3, 2, 1],
+        [prog_arcane_full, 12] => [4, 4, 3, 3, 3, 2],
+        [prog_arcane_full, 13] => [4, 4, 4, 3, 3, 3],
+        [prog_arcane_full, 14] => [4, 4, 4, 4, 3, 3],
+
+        // --- Half-Elf: magic-user spell list, up to 4th level spells ---
+        [prog_half_elf, 1]   => [0, 0, 0, 0, 0, 0],
+        [prog_half_elf, 2]   => [1, 0, 0, 0, 0, 0],
+        [prog_half_elf, 3]   => [2, 0, 0, 0, 0, 0],
+        [prog_half_elf, 4]   => [2, 0, 0, 0, 0, 0],
+        [prog_half_elf, 5]   => [2, 1, 0, 0, 0, 0],
+        [prog_half_elf, 6]   => [2, 2, 0, 0, 0, 0],
+        [prog_half_elf, 7]   => [2, 2, 0, 0, 0, 0],
+        [prog_half_elf, 8]   => [2, 2, 1, 0, 0, 0],
+        [prog_half_elf, 9]   => [3, 2, 1, 0, 0, 0],
+        [prog_half_elf, 10]  => [3, 2, 2, 0, 0, 0],
+        [prog_half_elf, 11]  => [3, 2, 2, 1, 0, 0],
+        [prog_half_elf, 12]  => [3, 3, 2, 1, 0, 0],
+
+        // --- Paladin: cleric spell list, up to 3rd level spells ---
+        // No spells until level 9.
+        [prog_paladin, 1..=8]  => [0, 0, 0, 0, 0, 0],
+        [prog_paladin, 9]      => [1, 0, 0, 0, 0, 0],
+        [prog_paladin, 10]     => [2, 0, 0, 0, 0, 0],
+        [prog_paladin, 11]     => [2, 1, 0, 0, 0, 0],
+        [prog_paladin, 12]     => [2, 2, 0, 0, 0, 0],
+        [prog_paladin, 13]     => [2, 2, 1, 0, 0, 0],
+        [prog_paladin, 14]     => [3, 2, 1, 0, 0, 0],
+
+        // --- Ranger: druid spell list, up to 3rd level spells ---
+        // No spells until level 8.
+        [prog_ranger, 1..=7]   => [0, 0, 0, 0, 0, 0],
+        [prog_ranger, 8]       => [1, 0, 0, 0, 0, 0],
+        [prog_ranger, 9]       => [2, 0, 0, 0, 0, 0],
+        [prog_ranger, 10]      => [2, 1, 0, 0, 0, 0],
+        [prog_ranger, 11]      => [2, 2, 0, 0, 0, 0],
+        [prog_ranger, 12]      => [2, 2, 1, 0, 0, 0],
+        [prog_ranger, 13]      => [3, 2, 1, 0, 0, 0],
+        [prog_ranger, 14]      => [3, 2, 2, 0, 0, 0]
+    }
+
+
+    // ========================================================
+    //  SPELL SLOT DERIVES
+    // ========================================================
+
+    // Check if a class has any spell slots at a given level.
+    derive can_cast(progression: SpellProgression, level: int) -> bool {
+        let slots = spell_slots(progression, level)
+        slots[0] > 0 || slots[1] > 0 || slots[2] > 0 ||
+        slots[3] > 0 || slots[4] > 0 || slots[5] > 0
+    }
+
+    // Total number of spell slots across all spell levels.
+    derive total_spell_slots(progression: SpellProgression, level: int) -> int {
+        let slots = spell_slots(progression, level)
+        slots[0] + slots[1] + slots[2] + slots[3] + slots[4] + slots[5]
+    }
+
+
+    // ========================================================
+    //  TURN UNDEAD
+    //
+    //  Algorithmic: result depends on (cleric_level − undead_rank).
+    //  Follows the diagonal pattern from OSE Reference Booklet p18.
+    //
+    //  Undead ranks (1–9):
+    //    1=Skeleton  2=Zombie  3=Ghoul   4=Wight   5=Wraith
+    //    6=Mummy     7=Spectre 8=Vampire 9=Infernal (9+ HD)
+    //
+    //  diff ≤ -3: Impossible
+    //  diff = -2: Roll(11) — need 11+ on 2d6
+    //  diff = -1: Roll(9)  — need 9+ on 2d6
+    //  diff =  0: Roll(7)  — need 7+ on 2d6
+    //  diff 1–2:  Turned   — automatic turn
+    //  diff ≥ 3:  Destroyed — automatic destroy
+    // ========================================================
+
+    // Convert undead Hit Dice to a turn undead rank (1–9).
+    // HD 1–8 map directly; HD 9+ all map to rank 9.
+    derive undead_rank_from_hd(hd: int) -> int {
+        match {
+            hd < 1 => 1,
+            hd > 9 => 9,
+            _      => hd
+        }
+    }
+
+    // Look up the turn undead result for a given cleric level and undead rank.
+    derive turn_undead_result(cleric_level: int, undead_rank: int) -> TurnResult {
+        let rank = match {
+            undead_rank < 1 => 1,
+            undead_rank > 9 => 9,
+            _               => undead_rank
+        }
+        let diff = cleric_level - rank
+        match {
+            diff <= -3 => TurnResult.Impossible,
+            diff == -2 => TurnResult.Roll(11),
+            diff == -1 => TurnResult.Roll(9),
+            diff == 0  => TurnResult.Roll(7),
+            diff <= 2  => TurnResult.Turned,
+            _          => TurnResult.Destroyed
+        }
+    }
+}
