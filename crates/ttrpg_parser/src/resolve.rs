@@ -599,17 +599,6 @@ mod tests {
         )
     }
 
-    fn make_event(name: &str) -> Spanned<DeclKind> {
-        Spanned::new(
-            DeclKind::Event(EventDecl {
-                name: name.to_string(),
-                params: vec![],
-                fields: vec![],
-            }),
-            Span::dummy(),
-        )
-    }
-
     fn make_condition(name: &str) -> Spanned<DeclKind> {
         Spanned::new(
             DeclKind::Condition(ConditionDecl {

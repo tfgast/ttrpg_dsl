@@ -970,14 +970,11 @@ pub(crate) fn eval_stmt(
                 fields: struct_val,
             };
             let response = env.handler.handle(effect);
-            match response {
-                Response::Vetoed => {
-                    return Err(RuntimeError::with_span(
-                        format!("grant {} was vetoed by host", group_name),
-                        stmt.span,
-                    ))
-                }
-                _ => {}
+            if let Response::Vetoed = response {
+                return Err(RuntimeError::with_span(
+                    format!("grant {} was vetoed by host", group_name),
+                    stmt.span,
+                ));
             }
             Ok(Value::None)
         }
@@ -1001,14 +998,11 @@ pub(crate) fn eval_stmt(
                 group_name: group_name.clone(),
             };
             let response = env.handler.handle(effect);
-            match response {
-                Response::Vetoed => {
-                    return Err(RuntimeError::with_span(
-                        format!("revoke {} was vetoed by host", group_name),
-                        stmt.span,
-                    ))
-                }
-                _ => {}
+            if let Response::Vetoed = response {
+                return Err(RuntimeError::with_span(
+                    format!("revoke {} was vetoed by host", group_name),
+                    stmt.span,
+                ));
             }
             Ok(Value::None)
         }

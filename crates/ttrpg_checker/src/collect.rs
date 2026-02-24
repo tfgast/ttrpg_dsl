@@ -143,7 +143,7 @@ fn populate_module_metadata(
 
     // Alias-vs-builtin validation (eager, declaration-site check)
     for (sys_name, aliases) in &env.system_aliases.clone() {
-        for (alias, _target) in aliases {
+        for alias in aliases.keys() {
             if env.builtins.contains_key(alias) {
                 diagnostics.push(Diagnostic::error(
                     format!(
@@ -1015,7 +1015,7 @@ pub fn validate_option_extends(
     }
 
     // Check for circular extends
-    for (start_name, _) in &extends_map {
+    for start_name in extends_map.keys() {
         let mut visited = HashSet::new();
         let mut current = start_name.clone();
         loop {
@@ -1023,16 +1023,12 @@ pub fn validate_option_extends(
                 // Circular — build the chain for the error message
                 let mut chain = vec![start_name.clone()];
                 let mut c = start_name.clone();
-                loop {
-                    if let Some((parent, _)) = extends_map.get(&c) {
-                        chain.push(parent.clone());
-                        if parent == start_name {
-                            break;
-                        }
-                        c = parent.clone();
-                    } else {
+                while let Some((parent, _)) = extends_map.get(&c) {
+                    chain.push(parent.clone());
+                    if parent == start_name {
                         break;
                     }
+                    c = parent.clone();
                 }
                 let (_, span) = &extends_map[start_name];
                 diagnostics.push(Diagnostic::error(

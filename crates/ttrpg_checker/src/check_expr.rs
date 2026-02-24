@@ -531,10 +531,10 @@ impl<'a> Checker<'a> {
                 }
 
                 // Check for optional group access on entities
-                if matches!(obj_ty, Ty::Entity(_)) {
-                    if self.env.lookup_optional_group(name, field).is_some() {
-                        return Ty::OptionalGroupRef(name.clone(), field.to_string());
-                    }
+                if matches!(obj_ty, Ty::Entity(_))
+                    && self.env.lookup_optional_group(name, field).is_some()
+                {
+                    return Ty::OptionalGroupRef(name.clone(), field.to_string());
                 }
 
                 if let Some(fields) = self.env.lookup_fields(name) {
@@ -621,7 +621,7 @@ impl<'a> Checker<'a> {
             }
             // Module alias: resolve through alias to the target system
             Ty::ModuleAlias(alias_name) => {
-                return self.resolve_alias_field(alias_name, field, span);
+                self.resolve_alias_field(alias_name, field, span)
             }
             // Runtime enum values do not support field access
             Ty::Enum(enum_name) => {

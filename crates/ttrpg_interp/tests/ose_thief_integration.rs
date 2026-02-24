@@ -99,6 +99,7 @@ fn enum_variant(enum_name: &str, variant: &str) -> Value {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn scripted_roll(
     count: u32,
     sides: u32,
