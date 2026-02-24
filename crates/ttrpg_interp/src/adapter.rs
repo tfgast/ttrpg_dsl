@@ -3,6 +3,7 @@ use std::collections::HashSet;
 
 use ttrpg_ast::ast::AssignOp;
 
+use crate::RuntimeError;
 use crate::effect::{Effect, EffectHandler, EffectKind, Response};
 use crate::state::{ActiveCondition, EntityRef, StateProvider, WritableState};
 use crate::value::Value;
@@ -236,8 +237,10 @@ fn apply_mutation<S: WritableState>(state: &mut S, effect: &Effect) {
             value,
             bounds,
         } => {
-            let final_value = compute_field_value(state, entity, path, *op, value, bounds);
-            state.write_field(entity, path, final_value);
+            if let Ok(final_value) = compute_field_value(state, entity, path, *op, value, bounds) {
+                state.write_field(entity, path, final_value);
+            }
+            // On arithmetic error, skip mutation — state remains unchanged.
         }
         Effect::ApplyCondition {
             target,
@@ -268,8 +271,10 @@ fn apply_mutation<S: WritableState>(state: &mut S, effect: &Effect) {
             op,
             value,
         } => {
-            let final_value = compute_turn_field_value(state, actor, field, *op, value);
-            state.write_turn_field(actor, field, final_value);
+            if let Ok(final_value) = compute_turn_field_value(state, actor, field, *op, value) {
+                state.write_turn_field(actor, field, final_value);
+            }
+            // On arithmetic error, skip mutation — state remains unchanged.
         }
         Effect::GrantGroup {
             entity,
@@ -311,14 +316,16 @@ fn apply_mutation_with_override<S: WritableState>(
             bounds,
             ..
         } => {
-            let final_value = compute_field_value(state, entity, path, *op, override_val, bounds);
-            state.write_field(entity, path, final_value);
+            if let Ok(final_value) = compute_field_value(state, entity, path, *op, override_val, bounds) {
+                state.write_field(entity, path, final_value);
+            }
         }
         Effect::MutateTurnField {
             actor, field, op, ..
         } => {
-            let final_value = compute_turn_field_value(state, actor, field, *op, override_val);
-            state.write_turn_field(actor, field, final_value);
+            if let Ok(final_value) = compute_turn_field_value(state, actor, field, *op, override_val) {
+                state.write_turn_field(actor, field, final_value);
+            }
         }
         Effect::ApplyCondition {
             target, condition, params, ..
@@ -371,18 +378,18 @@ pub fn compute_field_value<S: StateProvider>(
     op: AssignOp,
     rhs: &Value,
     bounds: &Option<(Value, Value)>,
-) -> Value {
+) -> Result<Value, RuntimeError> {
     let new_val = match op {
         AssignOp::Eq => rhs.clone(),
         AssignOp::PlusEq | AssignOp::MinusEq => {
             let current = read_at_path(state, entity, path).unwrap_or(Value::Int(0));
-            apply_op(op, &current, rhs)
+            apply_op(op, &current, rhs)?
         }
     };
-    match bounds {
+    Ok(match bounds {
         Some((lo, hi)) => clamp_value(new_val, lo, hi),
         None => new_val,
-    }
+    })
 }
 
 /// Compute the final turn field value after applying op.
@@ -392,9 +399,9 @@ pub fn compute_turn_field_value<S: StateProvider>(
     field: &str,
     op: AssignOp,
     rhs: &Value,
-) -> Value {
+) -> Result<Value, RuntimeError> {
     match op {
-        AssignOp::Eq => rhs.clone(),
+        AssignOp::Eq => Ok(rhs.clone()),
         AssignOp::PlusEq | AssignOp::MinusEq => {
             let current = state
                 .read_turn_budget(actor)
@@ -446,41 +453,48 @@ pub fn read_at_path<S: StateProvider>(
     Some(current)
 }
 
-/// Apply an assign op to two values. Panics on type mismatch or overflow
-/// (mutations from the interpreter are already type-checked and overflow-checked,
-/// so these conditions should be unreachable).
-pub fn apply_op(op: AssignOp, current: &Value, rhs: &Value) -> Value {
+/// Apply an assign op to two values. Returns `Err` on integer overflow or
+/// non-finite float result instead of panicking.
+pub fn apply_op(op: AssignOp, current: &Value, rhs: &Value) -> Result<Value, RuntimeError> {
     match op {
-        AssignOp::Eq => rhs.clone(),
+        AssignOp::Eq => Ok(rhs.clone()),
         AssignOp::PlusEq => match (current, rhs) {
-            (Value::Int(a), Value::Int(b)) => Value::Int(
-                a.checked_add(*b)
-                    .expect("integer overflow in adapter += (interpreter should have caught this)"),
-            ),
+            (Value::Int(a), Value::Int(b)) => a
+                .checked_add(*b)
+                .map(Value::Int)
+                .ok_or_else(|| RuntimeError::new(format!(
+                    "integer overflow in += ({} + {})", a, b
+                ))),
             (Value::Float(a), Value::Float(b)) => {
                 let result = a + b;
-                assert!(
-                    result.is_finite(),
-                    "non-finite float in adapter += (interpreter should have caught this)"
-                );
-                Value::Float(result)
+                if result.is_finite() {
+                    Ok(Value::Float(result))
+                } else {
+                    Err(RuntimeError::new(format!(
+                        "non-finite float result in += ({} + {})", a, b
+                    )))
+                }
             }
-            _ => rhs.clone(), // Fallback for type-checked programs
+            _ => Ok(rhs.clone()), // Fallback for type-checked programs
         },
         AssignOp::MinusEq => match (current, rhs) {
-            (Value::Int(a), Value::Int(b)) => Value::Int(
-                a.checked_sub(*b)
-                    .expect("integer overflow in adapter -= (interpreter should have caught this)"),
-            ),
+            (Value::Int(a), Value::Int(b)) => a
+                .checked_sub(*b)
+                .map(Value::Int)
+                .ok_or_else(|| RuntimeError::new(format!(
+                    "integer overflow in -= ({} - {})", a, b
+                ))),
             (Value::Float(a), Value::Float(b)) => {
                 let result = a - b;
-                assert!(
-                    result.is_finite(),
-                    "non-finite float in adapter -= (interpreter should have caught this)"
-                );
-                Value::Float(result)
+                if result.is_finite() {
+                    Ok(Value::Float(result))
+                } else {
+                    Err(RuntimeError::new(format!(
+                        "non-finite float result in -= ({} - {})", a, b
+                    )))
+                }
             }
-            _ => rhs.clone(), // Fallback for type-checked programs
+            _ => Ok(rhs.clone()), // Fallback for type-checked programs
         },
     }
 }
@@ -1443,6 +1457,85 @@ mod tests {
         assert_eq!(
             final_state.fields.get(&(1, "Flight".into())),
             Some(&override_val),
+        );
+    }
+
+    // ── Overflow / non-finite error tests ──────────────────────
+
+    #[test]
+    fn apply_op_int_overflow_plus_returns_error() {
+        let result = apply_op(AssignOp::PlusEq, &Value::Int(i64::MAX), &Value::Int(1));
+        assert!(result.is_err());
+        assert!(result.unwrap_err().message.contains("integer overflow"));
+    }
+
+    #[test]
+    fn apply_op_int_overflow_minus_returns_error() {
+        let result = apply_op(AssignOp::MinusEq, &Value::Int(i64::MIN), &Value::Int(1));
+        assert!(result.is_err());
+        assert!(result.unwrap_err().message.contains("integer overflow"));
+    }
+
+    #[test]
+    fn apply_op_float_non_finite_plus_returns_error() {
+        let result = apply_op(AssignOp::PlusEq, &Value::Float(f64::MAX), &Value::Float(f64::MAX));
+        assert!(result.is_err());
+        assert!(result.unwrap_err().message.contains("non-finite"));
+    }
+
+    #[test]
+    fn apply_op_float_non_finite_minus_returns_error() {
+        let result = apply_op(AssignOp::MinusEq, &Value::Float(f64::NEG_INFINITY), &Value::Float(f64::NEG_INFINITY));
+        assert!(result.is_err());
+        assert!(result.unwrap_err().message.contains("non-finite"));
+    }
+
+    #[test]
+    fn apply_op_normal_arithmetic_succeeds() {
+        assert_eq!(apply_op(AssignOp::PlusEq, &Value::Int(10), &Value::Int(5)).unwrap(), Value::Int(15));
+        assert_eq!(apply_op(AssignOp::MinusEq, &Value::Int(10), &Value::Int(5)).unwrap(), Value::Int(5));
+        assert_eq!(apply_op(AssignOp::PlusEq, &Value::Float(1.5), &Value::Float(2.5)).unwrap(), Value::Float(4.0));
+        assert_eq!(apply_op(AssignOp::MinusEq, &Value::Float(5.0), &Value::Float(2.0)).unwrap(), Value::Float(3.0));
+        assert_eq!(apply_op(AssignOp::Eq, &Value::Int(0), &Value::Int(42)).unwrap(), Value::Int(42));
+    }
+
+    #[test]
+    fn compute_field_value_overflow_returns_error() {
+        let state = TestWritableState::new();
+        let entity = EntityRef(1);
+        let path = [FieldPathSegment::Field("hp".into())];
+        // No field set → defaults to Int(0), adding i64::MAX should succeed
+        let result = compute_field_value(&state, &entity, &path, AssignOp::PlusEq, &Value::Int(i64::MAX), &None);
+        assert!(result.is_ok());
+        // Now with the field at MAX, adding 1 more should overflow
+        let mut state = TestWritableState::new();
+        state.fields.insert((1, "hp".into()), Value::Int(i64::MAX));
+        let result = compute_field_value(&state, &entity, &path, AssignOp::PlusEq, &Value::Int(1), &None);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn intercepted_mutation_overflow_skips_state_change() {
+        let mut state = TestWritableState::new();
+        state.fields.insert((1, "hp".into()), Value::Int(i64::MAX));
+        let adapter = StateAdapter::new(state);
+        let mut handler = RecordingHandler::acknowledged();
+
+        adapter.run(&mut handler, |_state, handler| {
+            handler.handle(Effect::MutateField {
+                entity: EntityRef(1),
+                path: vec![FieldPathSegment::Field("hp".into())],
+                op: AssignOp::PlusEq,
+                value: Value::Int(1),
+                bounds: None,
+            })
+        });
+
+        let final_state = adapter.into_inner();
+        // State should remain unchanged — overflow is silently skipped
+        assert_eq!(
+            final_state.fields.get(&(1, "hp".into())),
+            Some(&Value::Int(i64::MAX)),
         );
     }
 }

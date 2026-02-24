@@ -174,14 +174,23 @@ impl EffectHandler for CliHandler<'_> {
                 let field_str = format_path(&path);
                 let old = adapter::read_at_path(&*self.game_state.borrow(), &entity, &path)
                     .unwrap_or(Value::None);
-                let new_val = adapter::compute_field_value(
+                let new_val = match adapter::compute_field_value(
                     &*self.game_state.borrow(),
                     &entity,
                     &path,
                     op,
                     &value,
                     &bounds,
-                );
+                ) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        self.log.push(format!(
+                            "[MutateField] {}.{}: error: {}",
+                            name, field_str, e.message,
+                        ));
+                        return Response::Vetoed;
+                    }
+                };
                 // Write to state
                 self.game_state
                     .borrow_mut()
@@ -192,7 +201,10 @@ impl EffectHandler for CliHandler<'_> {
                     let unclamped = match op {
                         AssignOp::Eq => value.clone(),
                         AssignOp::PlusEq | AssignOp::MinusEq => {
-                            adapter::apply_op(op, &old, &value)
+                            match adapter::apply_op(op, &old, &value) {
+                                Ok(v) => v,
+                                Err(_) => return Response::Vetoed,
+                            }
                         }
                     };
                     unclamped != new_val
@@ -265,13 +277,22 @@ impl EffectHandler for CliHandler<'_> {
                     .read_turn_budget(&actor)
                     .and_then(|b| b.get(&field).cloned())
                     .unwrap_or(Value::Int(0));
-                let new_val = adapter::compute_turn_field_value(
+                let new_val = match adapter::compute_turn_field_value(
                     &*self.game_state.borrow(),
                     &actor,
                     &field,
                     op,
                     &value,
-                );
+                ) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        self.log.push(format!(
+                            "[MutateTurnField] {}.{}: error: {}",
+                            name, field, e.message,
+                        ));
+                        return Response::Vetoed;
+                    }
+                };
                 self.game_state
                     .borrow_mut()
                     .write_turn_field(&actor, &field, new_val.clone());
