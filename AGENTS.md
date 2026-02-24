@@ -9,7 +9,7 @@ bd ready              # Find available work
 bd show <id>          # View issue details
 bd update <id> --status in_progress  # Claim work
 bd close <id>         # Complete work
-bd sync               # Sync with git
+bd sync               # Sync with git (stages changes)
 ```
 
 ## Landing the Plane (Session Completion)
@@ -25,6 +25,7 @@ bd sync               # Sync with git
    ```bash
    git pull --rebase
    bd sync
+   git commit
    git push
    git status  # MUST show "up to date with origin"
    ```
