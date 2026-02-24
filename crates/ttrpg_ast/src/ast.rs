@@ -21,6 +21,7 @@ pub struct Program {
     pub option_order: Vec<String>,
     pub hooks: HashMap<String, HookDecl>,
     pub hook_order: Vec<String>,
+    pub tables: HashMap<String, TableDecl>,
 }
 
 impl Program {
@@ -40,6 +41,7 @@ impl Program {
         self.option_order.clear();
         self.hooks.clear();
         self.hook_order.clear();
+        self.tables.clear();
 
         for item in &self.items {
             if let TopLevel::System(system) = &item.node {
@@ -74,6 +76,9 @@ impl Program {
                         DeclKind::Hook(h) => {
                             self.hooks.insert(h.name.clone(), h.clone());
                             self.hook_order.push(h.name.clone());
+                        }
+                        DeclKind::Table(t) => {
+                            self.tables.insert(t.name.clone(), t.clone());
                         }
                         _ => {}
                     }
@@ -119,6 +124,7 @@ pub enum DeclKind {
     Option(OptionDecl),
     Event(EventDecl),
     Move(MoveDecl),
+    Table(TableDecl),
 }
 
 #[derive(Clone)]
@@ -368,6 +374,53 @@ pub struct OutcomeBlock {
     pub name: String,
     pub body: Block,
     pub span: Span,
+}
+
+/// A `table` declaration: static lookup function with compact syntax.
+///
+/// Syntax:
+///   table name(key1: Type1, key2: Type2) -> ReturnType {
+///       [key1_val, key2_val] => return_val,
+///       [key1_val, range]    => return_val,
+///       ...
+///   }
+///
+/// For single-key tables:
+///   table name(key: Type) -> ReturnType {
+///       key_val => return_val,
+///       ...
+///   }
+///
+/// Tables are registered as callable functions (like derives), invoked as:
+///   let val = name(arg1, arg2)
+#[derive(Clone)]
+pub struct TableDecl {
+    pub name: String,
+    pub params: Vec<Param>,
+    pub return_type: Spanned<TypeExpr>,
+    pub entries: Vec<TableEntry>,
+}
+
+/// A single entry in a table: keys => value.
+#[derive(Clone)]
+pub struct TableEntry {
+    pub keys: Vec<Spanned<TableKey>>,
+    pub value: Spanned<ExprKind>,
+    pub span: Span,
+}
+
+/// A key in a table entry — can be a literal, enum variant, range, or wildcard.
+#[derive(Clone)]
+pub enum TableKey {
+    /// An expression used as a key (int literal, string literal, enum variant, etc.)
+    Expr(ExprKind),
+    /// An inclusive range: `1..=3`
+    Range {
+        start: Box<Spanned<ExprKind>>,
+        end: Box<Spanned<ExprKind>>,
+    },
+    /// Wildcard `_` — matches anything (must be the last entry).
+    Wildcard,
 }
 
 // ── Types ────────────────────────────────────────────────────────

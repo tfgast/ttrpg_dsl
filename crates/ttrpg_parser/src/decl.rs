@@ -20,6 +20,7 @@ impl Parser {
                 "option" => self.parse_option_decl().map(DeclKind::Option),
                 "event" => self.parse_event_decl().map(DeclKind::Event),
                 "move" => self.parse_move_decl().map(DeclKind::Move),
+                "table" => self.parse_table_decl().map(DeclKind::Table),
                 _ => {
                     self.error(format!("unexpected identifier '{}' in declaration position", name));
                     Err(())
@@ -950,5 +951,110 @@ impl Parser {
             roll_expr,
             outcomes,
         })
+    }
+
+    // ── Table ─────────────────────────────────────────────────────
+
+    fn parse_table_decl(&mut self) -> Result<TableDecl, ()> {
+        self.expect_soft_keyword("table")?;
+        let (name, _) = self.expect_ident()?;
+        self.expect(&TokenKind::LParen)?;
+        let params = self.parse_params()?;
+        self.expect(&TokenKind::RParen)?;
+        self.expect(&TokenKind::Arrow)?;
+        let return_type = self.parse_type()?;
+        self.expect(&TokenKind::LBrace)?;
+        self.skip_newlines();
+
+        let mut entries = Vec::new();
+        loop {
+            self.skip_newlines();
+            if matches!(self.peek(), TokenKind::RBrace | TokenKind::Eof) {
+                break;
+            }
+            entries.push(self.parse_table_entry(params.len())?);
+            // Consume optional comma between entries
+            if matches!(self.peek(), TokenKind::Comma) {
+                self.advance();
+            }
+            self.skip_newlines();
+        }
+
+        if entries.is_empty() {
+            self.error("table declaration requires at least one entry");
+            return Err(());
+        }
+
+        self.expect(&TokenKind::RBrace)?;
+        Ok(TableDecl {
+            name,
+            params,
+            return_type,
+            entries,
+        })
+    }
+
+    /// Parse a single table entry: `key => value` or `[key1, key2] => value`.
+    fn parse_table_entry(&mut self, param_count: usize) -> Result<TableEntry, ()> {
+        let start = self.start_span();
+
+        let keys = if param_count == 1 {
+            // Single-key table: `key => value`
+            vec![self.parse_table_key()?]
+        } else {
+            // Multi-key table: `[key1, key2, ...] => value`
+            self.expect(&TokenKind::LBracket)?;
+            let mut keys = Vec::new();
+            keys.push(self.parse_table_key()?);
+            while matches!(self.peek(), TokenKind::Comma) {
+                self.advance();
+                if matches!(self.peek(), TokenKind::RBracket) {
+                    break;
+                }
+                keys.push(self.parse_table_key()?);
+            }
+            self.expect(&TokenKind::RBracket)?;
+            keys
+        };
+
+        self.expect(&TokenKind::FatArrow)?;
+        let value = self.parse_expr()?;
+
+        let span = self.end_span(start);
+        Ok(TableEntry { keys, value, span })
+    }
+
+    /// Parse a single table key: expression, range (`1..=3`), or wildcard (`_`).
+    fn parse_table_key(&mut self) -> Result<Spanned<TableKey>, ()> {
+        let start = self.start_span();
+
+        // Wildcard
+        if matches!(self.peek(), TokenKind::Underscore) {
+            self.advance();
+            let span = self.end_span(start);
+            return Ok(Spanned { node: TableKey::Wildcard, span });
+        }
+
+        // Parse the expression (might be followed by `..=` for a range)
+        let expr = self.parse_expr()?;
+
+        if matches!(self.peek(), TokenKind::DotDotEq) {
+            self.advance();
+            let end_expr = self.parse_expr()?;
+            let span = self.end_span(start);
+            Ok(Spanned {
+                node: TableKey::Range {
+                    start: Box::new(expr),
+                    end: Box::new(end_expr),
+                },
+                span,
+            })
+        } else {
+            let span = self.end_span(start);
+            Ok(Spanned {
+                node: TableKey::Expr(expr.node),
+                span,
+            })
+        }
     }
 }

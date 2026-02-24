@@ -373,6 +373,32 @@ fn rebase_decl(decl: &mut Spanned<DeclKind>, base: usize) {
                 rebase_block(&mut o.body, base);
             }
         }
+        DeclKind::Table(t) => {
+            rebase_type_expr(&mut t.return_type, base);
+            for p in &mut t.params {
+                rebase_param(p, base);
+            }
+            for entry in &mut t.entries {
+                entry.span = rebase_span(entry.span, base);
+                for key in &mut entry.keys {
+                    key.span = rebase_span(key.span, base);
+                    match &mut key.node {
+                        TableKey::Expr(expr_kind) => {
+                            // Wrap in a temporary Spanned for rebasing
+                            let mut spanned = Spanned { node: expr_kind.clone(), span: key.span };
+                            rebase_expr(&mut spanned, base);
+                            *expr_kind = spanned.node;
+                        }
+                        TableKey::Range { start, end } => {
+                            rebase_expr(start, base);
+                            rebase_expr(end, base);
+                        }
+                        TableKey::Wildcard => {}
+                    }
+                }
+                rebase_expr(&mut entry.value, base);
+            }
+        }
     }
 }
 

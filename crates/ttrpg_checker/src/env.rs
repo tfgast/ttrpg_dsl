@@ -62,6 +62,7 @@ pub enum FnKind {
     Hook,
     Prompt,
     Builtin,
+    Table,
 }
 
 #[derive(Debug, Clone)]

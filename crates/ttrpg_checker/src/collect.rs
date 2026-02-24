@@ -331,6 +331,21 @@ fn pass_1b(
                 }
                 collect_hook(h, env, diagnostics, decl.span);
             }
+            DeclKind::Table(t) => {
+                if check_reserved_prefix(&t.name, decl.span, diagnostics) {
+                    continue;
+                }
+                collect_fn(
+                    &t.name,
+                    FnKind::Table,
+                    &t.params,
+                    Some(&t.return_type),
+                    None,
+                    env,
+                    diagnostics,
+                    decl.span,
+                );
+            }
             DeclKind::Move(_) => {
                 diagnostics.push(Diagnostic::error(
                     "move declarations must be lowered before type-checking",
@@ -556,9 +571,9 @@ fn collect_fn(
         ));
     }
 
-    // `result` is reserved in derive/mechanic signatures because modify
+    // `result` is reserved in derive/mechanic/table signatures because modify
     // clauses bind it as the implicit return-value override.
-    if kind == FnKind::Derive || kind == FnKind::Mechanic {
+    if kind == FnKind::Derive || kind == FnKind::Mechanic || kind == FnKind::Table {
         for p in params {
             if p.name == "result" {
                 diagnostics.push(Diagnostic::error(

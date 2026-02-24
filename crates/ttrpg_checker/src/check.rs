@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use ttrpg_ast::ast::*;
 use ttrpg_ast::diagnostic::Diagnostic;
 use ttrpg_ast::module::ModuleMap;
-use ttrpg_ast::Span;
+use ttrpg_ast::{Span, Spanned};
 
 use crate::env::*;
 use crate::scope::*;
@@ -166,6 +166,7 @@ impl<'a> Checker<'a> {
             DeclKind::Enum(e) => self.check_enum_visibility(e),
             DeclKind::Option(o) => self.check_option(o),
             DeclKind::Hook(h) => self.check_hook(h),
+            DeclKind::Table(t) => self.check_table(t),
             DeclKind::Move(_) => {
                 self.error(
                     "move declarations must be lowered before type-checking",
@@ -202,6 +203,102 @@ impl<'a> Checker<'a> {
         let body_ty = self.check_block(&f.body);
         let ret_ty = self.env.resolve_type(&f.return_type);
         self.check_return_type(&body_ty, &ret_ty, f.body.span);
+        self.scope.pop();
+    }
+
+    fn check_table(&mut self, t: &TableDecl) {
+        // Tables are pure — use Derive scope (no dice, no mutation)
+        self.scope.push(BlockKind::Derive);
+        self.check_type_visible(&t.return_type);
+
+        // Resolve param types
+        let param_tys: Vec<Ty> = t.params.iter().map(|p| self.env.resolve_type(&p.ty)).collect();
+        let ret_ty = self.env.resolve_type(&t.return_type);
+
+        for entry in &t.entries {
+            // Check key count matches param count
+            if entry.keys.len() != t.params.len() {
+                self.error(
+                    format!(
+                        "table entry has {} key(s), expected {} (one per parameter)",
+                        entry.keys.len(),
+                        t.params.len()
+                    ),
+                    entry.span,
+                );
+                continue;
+            }
+
+            // Type-check each key against its corresponding param type
+            for (key, expected_ty) in entry.keys.iter().zip(param_tys.iter()) {
+                match &key.node {
+                    TableKey::Expr(expr_kind) => {
+                        let key_expr = Spanned {
+                            node: expr_kind.clone(),
+                            span: key.span,
+                        };
+                        let key_ty = self.check_expr(&key_expr);
+                        if !key_ty.is_error()
+                            && !expected_ty.is_error()
+                            && !self.types_compatible(&key_ty, expected_ty)
+                        {
+                            self.error(
+                                format!(
+                                    "table key has type {}, expected {}",
+                                    key_ty, expected_ty
+                                ),
+                                key.span,
+                            );
+                        }
+                    }
+                    TableKey::Range { start, end } => {
+                        // Ranges are only valid for int keys
+                        if !expected_ty.is_error() && *expected_ty != Ty::Int {
+                            self.error(
+                                format!(
+                                    "range keys are only valid for int parameters, found {}",
+                                    expected_ty
+                                ),
+                                key.span,
+                            );
+                        }
+                        let start_ty = self.check_expr(start);
+                        if !start_ty.is_error() && start_ty != Ty::Int {
+                            self.error(
+                                format!("range start must be int, found {}", start_ty),
+                                start.span,
+                            );
+                        }
+                        let end_ty = self.check_expr(end);
+                        if !end_ty.is_error() && end_ty != Ty::Int {
+                            self.error(
+                                format!("range end must be int, found {}", end_ty),
+                                end.span,
+                            );
+                        }
+                    }
+                    TableKey::Wildcard => {
+                        // Wildcard matches any type — always valid
+                    }
+                }
+            }
+
+            // Type-check the value expression
+            let val_ty = self.check_expr(&entry.value);
+            if !val_ty.is_error()
+                && !ret_ty.is_error()
+                && !self.types_compatible(&val_ty, &ret_ty)
+            {
+                self.error(
+                    format!(
+                        "table entry value has type {}, expected {}",
+                        val_ty, ret_ty
+                    ),
+                    entry.value.span,
+                );
+            }
+        }
+
         self.scope.pop();
     }
 

@@ -428,6 +428,7 @@ fn dispatch_fn(
             let arg_values: Vec<Value> = bound.into_iter().map(|(_, v)| v).collect();
             call_builtin(env, &fn_info.name, arg_values, call_span)
         }
+        FnKind::Table => dispatch_table(env, &fn_info.name, &fn_info.params, args, call_span),
         FnKind::Action => dispatch_action(env, fn_info, args, call_span),
         FnKind::Reaction | FnKind::Hook => {
             // The checker rejects direct reaction/hook calls; this is unreachable.
@@ -621,6 +622,93 @@ fn dispatch_derive_or_mechanic(
         }
         Err(e) => Err(e),
     }
+}
+
+// ── Table dispatch ─────────────────────────────────────────────
+
+/// Evaluate a table lookup by matching arguments against table entry keys.
+fn dispatch_table(
+    env: &mut Env,
+    name: &str,
+    param_infos: &[ParamInfo],
+    args: &[Arg],
+    call_span: Span,
+) -> Result<Value, RuntimeError> {
+    use ttrpg_ast::ast::TableKey;
+
+    // Look up the table declaration
+    let table_decl = env
+        .interp
+        .program
+        .tables
+        .get(name)
+        .ok_or_else(|| {
+            RuntimeError::with_span(
+                format!("internal error: no declaration found for table '{}'", name),
+                call_span,
+            )
+        })?;
+    let entries = table_decl.entries.clone();
+    let ast_params: Vec<Param> = table_decl.params.clone();
+
+    // Bind arguments
+    let bound = bind_args(param_infos, args, Some(&ast_params), env, call_span)?;
+    let arg_values: Vec<Value> = bound.iter().map(|(_, v)| v.clone()).collect();
+
+    // Try each entry in order
+    for entry in &entries {
+        let mut matches = true;
+        for (key, arg_val) in entry.keys.iter().zip(arg_values.iter()) {
+            match &key.node {
+                TableKey::Wildcard => {
+                    // Always matches
+                }
+                TableKey::Expr(expr_kind) => {
+                    let key_expr = Spanned {
+                        node: expr_kind.clone(),
+                        span: key.span,
+                    };
+                    let key_val = eval_expr(env, &key_expr)?;
+                    if !crate::eval::value_eq(env.state, &key_val, arg_val) {
+                        matches = false;
+                        break;
+                    }
+                }
+                TableKey::Range { start, end } => {
+                    let start_val = eval_expr(env, start)?;
+                    let end_val = eval_expr(env, end)?;
+                    match (arg_val, &start_val, &end_val) {
+                        (Value::Int(v), Value::Int(lo), Value::Int(hi)) => {
+                            if *v < *lo || *v > *hi {
+                                matches = false;
+                                break;
+                            }
+                        }
+                        _ => {
+                            matches = false;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        if matches {
+            return eval_expr(env, &entry.value);
+        }
+    }
+
+    Err(RuntimeError::with_span(
+        format!(
+            "no matching entry in table '{}' for arguments: {}",
+            name,
+            arg_values
+                .iter()
+                .map(|v| format!("{:?}", v))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
+        call_span,
+    ))
 }
 
 // ── Action dispatch ────────────────────────────────────────────
