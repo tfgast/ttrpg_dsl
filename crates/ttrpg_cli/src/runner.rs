@@ -3677,15 +3677,17 @@ system "test" {
 
     // ── Multi-file loading tests ───────────────────────────────────
 
-    fn multi_file_dir() -> PathBuf {
-        let dir = std::env::temp_dir().join("ttrpg_multi_test");
+    fn multi_file_dir(test_name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("ttrpg_test_{}", test_name));
+        // Clean any stale directory from a previous run, then create fresh
+        let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         dir
     }
 
     #[test]
     fn multi_file_load_basic() {
-        let dir = multi_file_dir();
+        let dir = multi_file_dir("load_basic");
         let core = dir.join("core.ttrpg");
         let extras = dir.join("extras.ttrpg");
 
@@ -3729,13 +3731,12 @@ system \"Extras\" {
         let output = runner.take_output();
         assert_eq!(output, vec!["15"]);
 
-        std::fs::remove_file(&core).ok();
-        std::fs::remove_file(&extras).ok();
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]
     fn multi_file_reload() {
-        let dir = multi_file_dir();
+        let dir = multi_file_dir("reload");
         let a = dir.join("reload_a.ttrpg");
         let b = dir.join("reload_b.ttrpg");
 
@@ -3752,13 +3753,12 @@ system \"Extras\" {
         let output = runner.take_output();
         assert!(output[0].contains("loaded 2 files"));
 
-        std::fs::remove_file(&a).ok();
-        std::fs::remove_file(&b).ok();
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]
     fn multi_file_cross_system_duplicate_error() {
-        let dir = multi_file_dir();
+        let dir = multi_file_dir("dup_error");
         let a = dir.join("dup_a.ttrpg");
         let b = dir.join("dup_b.ttrpg");
 
@@ -3784,13 +3784,12 @@ system \"B\" { entity Character { AC: int } }
             output
         );
 
-        std::fs::remove_file(&a).ok();
-        std::fs::remove_file(&b).ok();
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]
     fn multi_file_errors_command_renders() {
-        let dir = multi_file_dir();
+        let dir = multi_file_dir("errors_render");
         let a = dir.join("render_a.ttrpg");
         let b = dir.join("render_b.ttrpg");
 
@@ -3829,13 +3828,12 @@ system "B" {
             output
         );
 
-        std::fs::remove_file(&a).ok();
-        std::fs::remove_file(&b).ok();
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]
     fn multi_file_glob_expansion() {
-        let dir = multi_file_dir();
+        let dir = multi_file_dir("glob");
         let sub = dir.join("glob_test");
         std::fs::create_dir_all(&sub).unwrap();
 
@@ -3854,14 +3852,12 @@ system "B" {
             output
         );
 
-        std::fs::remove_file(sub.join("sys_a.ttrpg")).ok();
-        std::fs::remove_file(sub.join("sys_b.ttrpg")).ok();
-        std::fs::remove_dir(&sub).ok();
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]
     fn multi_file_nonexistent_file_error() {
-        let dir = multi_file_dir();
+        let dir = multi_file_dir("nonexistent");
         let a = dir.join("exists.ttrpg");
         std::fs::write(&a, "system \"A\" { entity Foo { x: int } }\n").unwrap();
 
@@ -3871,7 +3867,7 @@ system "B" {
             .unwrap_err();
         assert!(err.to_string().contains("cannot read"));
 
-        std::fs::remove_file(&a).ok();
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]
@@ -3886,7 +3882,7 @@ system "B" {
     #[test]
     fn single_file_backward_compat() {
         // Single-file load should still work exactly as before
-        let dir = multi_file_dir();
+        let dir = multi_file_dir("backward_compat");
         let path = dir.join("single.ttrpg");
         std::fs::write(&path, "\
 system \"test\" {
@@ -3920,14 +3916,14 @@ system \"test\" {
         let output = runner.take_output();
         assert!(output[0].starts_with("loaded"));
 
-        std::fs::remove_file(&path).ok();
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]
     fn single_file_with_module_syntax() {
         // Regression: single-file mode used to bypass module resolution,
         // so `use` + qualified types would fail.
-        let dir = multi_file_dir();
+        let dir = multi_file_dir("module_syntax");
         let core = dir.join("core.ttrpg");
         std::fs::write(
             &core,
@@ -3994,8 +3990,6 @@ system \"Game\" {
         let output = runner.take_output();
         assert_eq!(output, vec!["10"]);
 
-        std::fs::remove_file(&core).ok();
-        std::fs::remove_file(&main).ok();
-        std::fs::remove_file(&single).ok();
+        std::fs::remove_dir_all(&dir).ok();
     }
 }
