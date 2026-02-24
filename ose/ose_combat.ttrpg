@@ -1,0 +1,206 @@
+// ============================================================
+// OSE Combat & Morale — attack resolution, AC, morale, reactions
+//
+// Core combat mechanics for Old-School Essentials (B/X).
+// Uses THAC0 (descending AC) attack system, morale checks,
+// and reaction rolls.
+//
+// Requires types from ose/ose_core.ttrpg (Monster entity).
+//
+// Reference: osr_ai_gm/src/rules/attack.rs (532 lines),
+// OSE Reference Booklet p19 (monster attack table).
+//
+// NOTE: All inputs are primitives (int). No cross-file derive
+// calls. OSE uses descending AC (lower = better).
+// ============================================================
+
+system "OSE" {
+
+    // ========================================================
+    //  MONSTER THAC0
+    //
+    //  Monsters fight as martial (Fighter) combatants of
+    //  equivalent HD level. 0 HD (normal humans) use THAC0 20.
+    //
+    //  8 tiers per OSE Reference Booklet p19.
+    // ========================================================
+
+    derive monster_thac0(hd: int) -> int {
+        match {
+            hd == 0   => 20,
+            hd <= 3   => 19,
+            hd <= 6   => 17,
+            hd <= 9   => 14,
+            hd <= 12  => 12,
+            hd <= 15  => 10,
+            hd <= 18  => 8,
+            _         => 6
+        }
+    }
+
+
+    // ========================================================
+    //  TARGET NUMBER
+    //
+    //  The number needed on d20 (before modifiers) to hit a
+    //  given AC. Formula: THAC0 - target_AC.
+    //
+    //  Example: THAC0 19 vs AC 5 (chain mail) = need 14.
+    // ========================================================
+
+    derive target_number(thac0: int, target_ac: int) -> int {
+        thac0 - target_ac
+    }
+
+
+    // ========================================================
+    //  ATTACK RESOLUTION
+    //
+    //  Roll d20, add modifiers, compare to target number.
+    //  Natural 1 always misses. Natural 20 always hits.
+    //
+    //  Parameters:
+    //    thac0      — attacker's THAC0 value
+    //    target_ac  — defender's AC (descending: lower=better)
+    //    modifier   — sum of all attack modifiers (STR/DEX/magic)
+    // ========================================================
+
+    mechanic attack_roll(
+        thac0: int,
+        target_ac: int,
+        modifier: int = 0
+    ) -> bool {
+        let result = roll(1d20)
+        match {
+            result.total == 1  => false,
+            result.total == 20 => true,
+            _ => (result.total + modifier) >= target_number(thac0, target_ac)
+        }
+    }
+
+
+    // ========================================================
+    //  MISSILE RANGE MODIFIERS
+    //
+    //  OSE missile weapons have three range bands:
+    //    Short:  +1 to hit
+    //    Medium:  0 (no modifier)
+    //    Long:   -1 to hit
+    //
+    //  Returns the attack modifier for the given distance.
+    //  Caller must check distance <= long_range before calling
+    //  (beyond long range = out of range, cannot fire).
+    // ========================================================
+
+    derive missile_range_modifier(
+        distance: int,
+        short_range: int,
+        medium_range: int,
+        long_range: int
+    ) -> int {
+        match {
+            distance <= short_range  => 1,
+            distance <= medium_range => 0,
+            distance <= long_range   => -1,
+            _                        => -99
+        }
+    }
+
+    derive is_in_range(distance: int, long_range: int) -> bool {
+        distance > 0 && distance <= long_range
+    }
+
+
+    // ========================================================
+    //  ARMOUR CLASS CALCULATION
+    //
+    //  OSE descending AC. Base unarmoured AC = 9.
+    //  Shield grants -1 AC. DEX modifier applies.
+    //
+    //  Parameters:
+    //    armour_ac  — AC granted by armour (9=none, 7=leather,
+    //                 5=chain, 3=plate)
+    //    has_shield — shield grants -1 AC
+    //    dex_mod    — DEX modifier (positive = penalty in
+    //                 descending AC, negative = bonus)
+    //
+    //  NOTE: In descending AC, LOWER is better. DEX modifier
+    //  is subtracted (a +1 DEX mod gives -1 to AC = better).
+    // ========================================================
+
+    derive calc_ac(
+        armour_ac: int,
+        has_shield: bool,
+        dex_mod: int
+    ) -> int {
+        let base = armour_ac - dex_mod
+        match has_shield {
+            true  => base - 1,
+            false => base
+        }
+    }
+
+
+    // ========================================================
+    //  MORALE CHECK
+    //
+    //  Roll 2d6 vs monster's morale score. If the roll exceeds
+    //  the morale score, the monster flees/surrenders.
+    //
+    //  Morale checks occur when:
+    //    - First death on the monster's side
+    //    - Half the group is incapacitated
+    //
+    //  Returns true if morale holds (monster stays), false if
+    //  morale breaks (monster flees).
+    // ========================================================
+
+    mechanic morale_check(morale_score: int) -> bool {
+        let result = roll(2d6)
+        result.total <= morale_score
+    }
+
+
+    // ========================================================
+    //  REACTION ROLL
+    //
+    //  2d6 roll to determine NPC/monster initial reaction.
+    //  Used for first encounters when disposition is uncertain.
+    //
+    //  OSE reaction table:
+    //    2      — Hostile, attacks
+    //    3–5    — Unfriendly, may attack
+    //    6–8    — Neutral, uncertain
+    //    9–11   — Indifferent, uninterested
+    //    12     — Friendly, helpful
+    //
+    //  CHA modifier of party spokesperson is added to the roll.
+    //  Returns the adjusted 2d6 result for the caller to
+    //  interpret against the table above.
+    // ========================================================
+
+    mechanic reaction_roll(cha_mod: int = 0) -> int {
+        let result = roll(2d6)
+        result.total + cha_mod
+    }
+
+    derive reaction_hostile(roll_result: int) -> bool {
+        roll_result <= 2
+    }
+
+    derive reaction_unfriendly(roll_result: int) -> bool {
+        roll_result >= 3 && roll_result <= 5
+    }
+
+    derive reaction_neutral(roll_result: int) -> bool {
+        roll_result >= 6 && roll_result <= 8
+    }
+
+    derive reaction_indifferent(roll_result: int) -> bool {
+        roll_result >= 9 && roll_result <= 11
+    }
+
+    derive reaction_friendly(roll_result: int) -> bool {
+        roll_result >= 12
+    }
+}
