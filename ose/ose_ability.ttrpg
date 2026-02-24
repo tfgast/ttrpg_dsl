@@ -1,0 +1,216 @@
+// ============================================================
+// OSE Ability Modifiers & Encumbrance
+//
+// Pure derives for all B/X ability score modifier functions
+// plus encumbrance level from carried weight and movement
+// rate from encumbrance level.
+//
+// All derives take an int score (3–18) and return the modifier.
+// Encumbrance derives use EncumbranceLevel from ose_core.
+//
+// Reference: OSE SRD ability score tables, B/X Expert Set
+// ============================================================
+
+use "OSE"
+
+system "OSE Ability" {
+
+    // ========================================================
+    //  STRENGTH MODIFIERS
+    // ========================================================
+
+    // Melee attack and damage modifier.
+    derive str_melee_mod(score: int) -> int {
+        match {
+            score <= 3  => -3,
+            score <= 5  => -2,
+            score <= 8  => -1,
+            score <= 12 =>  0,
+            score <= 15 =>  1,
+            score <= 17 =>  2,
+            _           =>  3
+        }
+    }
+
+    // Open doors chance (X-in-6 on 1d6).
+    derive str_open_doors(score: int) -> int {
+        match {
+            score <= 8  => 1,
+            score <= 12 => 2,
+            score <= 15 => 3,
+            score <= 17 => 4,
+            _           => 5
+        }
+    }
+
+
+    // ========================================================
+    //  DEXTERITY MODIFIERS
+    // ========================================================
+
+    // AC and missile attack modifier.
+    derive dex_mod(score: int) -> int {
+        match {
+            score <= 3  => -3,
+            score <= 5  => -2,
+            score <= 8  => -1,
+            score <= 12 =>  0,
+            score <= 15 =>  1,
+            score <= 17 =>  2,
+            _           =>  3
+        }
+    }
+
+    // Optional individual initiative modifier.
+    derive dex_init_mod(score: int) -> int {
+        match {
+            score <= 3  => -2,
+            score <= 5  => -1,
+            score <= 8  => -1,
+            score <= 12 =>  0,
+            score <= 15 =>  1,
+            score <= 17 =>  1,
+            _           =>  2
+        }
+    }
+
+
+    // ========================================================
+    //  CONSTITUTION MODIFIER
+    // ========================================================
+
+    // Hit point modifier per Hit Die.
+    derive con_hp_mod(score: int) -> int {
+        match {
+            score <= 3  => -3,
+            score <= 5  => -2,
+            score <= 8  => -1,
+            score <= 12 =>  0,
+            score <= 15 =>  1,
+            score <= 17 =>  2,
+            _           =>  3
+        }
+    }
+
+
+    // ========================================================
+    //  INTELLIGENCE MODIFIER
+    // ========================================================
+
+    // Number of additional languages the character can learn.
+    derive int_extra_languages(score: int) -> int {
+        match {
+            score <= 12 => 0,
+            score <= 15 => 1,
+            score <= 17 => 2,
+            _           => 3
+        }
+    }
+
+
+    // ========================================================
+    //  WISDOM MODIFIER
+    // ========================================================
+
+    // Saving throw modifier vs magic (applied to spells save).
+    derive wis_magic_save_mod(score: int) -> int {
+        match {
+            score <= 3  => -3,
+            score <= 5  => -2,
+            score <= 8  => -1,
+            score <= 12 =>  0,
+            score <= 15 =>  1,
+            score <= 17 =>  2,
+            _           =>  3
+        }
+    }
+
+
+    // ========================================================
+    //  CHARISMA MODIFIERS
+    // ========================================================
+
+    // NPC reaction adjustment (applied to 2d6 reaction roll).
+    derive cha_reaction_mod(score: int) -> int {
+        match {
+            score <= 3  => -2,
+            score <= 5  => -1,
+            score <= 8  => -1,
+            score <= 12 =>  0,
+            score <= 15 =>  1,
+            score <= 17 =>  1,
+            _           =>  2
+        }
+    }
+
+    // Maximum number of retainers the character can hire.
+    derive cha_max_retainers(score: int) -> int {
+        match {
+            score <= 3  => 1,
+            score <= 5  => 2,
+            score <= 8  => 3,
+            score <= 12 => 4,
+            score <= 15 => 5,
+            score <= 17 => 6,
+            _           => 7
+        }
+    }
+
+    // Retainer morale/loyalty base (2d6 morale score).
+    derive cha_loyalty(score: int) -> int {
+        match {
+            score <= 3  => 4,
+            score <= 5  => 5,
+            score <= 8  => 6,
+            score <= 12 => 7,
+            score <= 15 => 8,
+            score <= 17 => 9,
+            _           => 10
+        }
+    }
+
+
+    // ========================================================
+    //  PRIME REQUISITE XP MODIFIER
+    // ========================================================
+
+    // XP adjustment based on prime requisite score.
+    // Returns percentage modifier: -20, -10, 0, +5, or +10.
+    derive prime_req_xp_mod(score: int) -> int {
+        match {
+            score <= 5  => -20,
+            score <= 8  => -10,
+            score <= 12 =>   0,
+            score <= 15 =>   5,
+            _           =>  10
+        }
+    }
+
+
+    // ========================================================
+    //  ENCUMBRANCE
+    // ========================================================
+
+    // Encumbrance level from carried weight (in coins/cn).
+    // OSE uses coins as the weight unit (1 cn = 1/10 lb).
+    derive encumbrance_level(weight: int) -> EncumbranceLevel {
+        match {
+            weight <= 400  => EncumbranceLevel.unencumbered,
+            weight <= 600  => EncumbranceLevel.light,
+            weight <= 800  => EncumbranceLevel.heavy,
+            weight <= 1600 => EncumbranceLevel.severe,
+            _              => EncumbranceLevel.overloaded
+        }
+    }
+
+    // Base movement rate (feet/turn) from encumbrance level.
+    derive movement_rate(enc: EncumbranceLevel) -> int {
+        match enc {
+            unencumbered => 120,
+            light        =>  90,
+            heavy        =>  60,
+            severe       =>  30,
+            overloaded   =>   0
+        }
+    }
+}
