@@ -60,6 +60,17 @@ pub(crate) fn eval_expr(env: &mut Env, expr: &Spanned<ExprKind>) -> Result<Value
                 let val = eval_expr(env, &f.value)?;
                 field_map.insert(f.name.clone(), val);
             }
+
+            // Fill in defaults for any omitted fields.
+            let defaults: Vec<_> = find_struct_defaults(env, name)
+                .into_iter()
+                .filter(|(n, _)| !field_map.contains_key(n))
+                .collect();
+            for (fname, default_expr) in &defaults {
+                let val = eval_expr(env, default_expr)?;
+                field_map.insert(fname.clone(), val);
+            }
+
             Ok(Value::Struct {
                 name: name.clone(),
                 fields: field_map,
@@ -2042,6 +2053,30 @@ fn extract_resource_bounds_from_type<'a>(
     }
 }
 
+/// Collect `(field_name, default_expr)` pairs for all fields with defaults in a struct.
+fn find_struct_defaults(env: &Env, struct_name: &str) -> Vec<(String, Spanned<ExprKind>)> {
+    for item in &env.interp.program.items {
+        if let TopLevel::System(system) = &item.node {
+            for decl in &system.decls {
+                if let DeclKind::Struct(s) = &decl.node {
+                    if s.name == struct_name {
+                        return s
+                            .fields
+                            .iter()
+                            .filter_map(|f| {
+                                f.default
+                                    .as_ref()
+                                    .map(|d| (f.name.clone(), d.clone()))
+                            })
+                            .collect();
+                    }
+                }
+            }
+        }
+    }
+    Vec::new()
+}
+
 /// Find a field definition within a named struct declaration.
 fn find_struct_field<'a>(
     items: &'a [Spanned<TopLevel>],
@@ -3245,6 +3280,72 @@ mod tests {
                 assert_eq!(name, "Point");
                 assert_eq!(fields.get("x"), Some(&Value::Int(10)));
                 assert_eq!(fields.get("y"), Some(&Value::Int(20)));
+            }
+            _ => panic!("expected Struct, got {:?}", result),
+        }
+    }
+
+    #[test]
+    fn eval_struct_lit_fills_defaults() {
+        let mut program = Program {
+            items: vec![spanned(TopLevel::System(SystemBlock {
+                name: "test".into(),
+                decls: vec![spanned(DeclKind::Struct(StructDecl {
+                    name: "Config".into(),
+                    fields: vec![
+                        FieldDef {
+                            name: "x".into(),
+                            ty: spanned(TypeExpr::Int),
+                            default: None,
+                            span: dummy_span(),
+                        },
+                        FieldDef {
+                            name: "y".into(),
+                            ty: spanned(TypeExpr::Int),
+                            default: Some(spanned(ExprKind::IntLit(42))),
+                            span: dummy_span(),
+                        },
+                        FieldDef {
+                            name: "z".into(),
+                            ty: spanned(TypeExpr::Int),
+                            default: Some(spanned(ExprKind::IntLit(99))),
+                            span: dummy_span(),
+                        },
+                    ],
+                }))],
+            }))],
+            ..Default::default()
+        };
+        program.build_index();
+        let type_env = empty_type_env();
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = TestState::new();
+        let mut handler = ScriptedHandler::new();
+        let mut env = make_env(&state, &mut handler, &interp);
+
+        // Provide only x and z — y should get its default of 42
+        let expr = spanned(ExprKind::StructLit {
+            name: "Config".to_string(),
+            fields: vec![
+                StructFieldInit {
+                    name: "x".into(),
+                    value: spanned(ExprKind::IntLit(1)),
+                    span: dummy_span(),
+                },
+                StructFieldInit {
+                    name: "z".into(),
+                    value: spanned(ExprKind::IntLit(7)),
+                    span: dummy_span(),
+                },
+            ],
+        });
+        let result = eval_expr(&mut env, &expr).unwrap();
+        match &result {
+            Value::Struct { name, fields } => {
+                assert_eq!(name, "Config");
+                assert_eq!(fields.get("x"), Some(&Value::Int(1)));
+                assert_eq!(fields.get("y"), Some(&Value::Int(42)), "default should be filled");
+                assert_eq!(fields.get("z"), Some(&Value::Int(7)));
             }
             _ => panic!("expected Struct, got {:?}", result),
         }
