@@ -5926,3 +5926,259 @@ system "Main" {
 "#),
     ]);
 }
+
+// ── Type visibility in signatures ──────────────────────────────────────
+
+#[test]
+fn test_visibility_type_in_param_missing_import() {
+    // Parameter type from non-imported system → error
+    expect_multi_errors(
+        &[
+            ("core.ttrpg", r#"
+system "Core" {
+    entity Character { HP: int = 10 }
+}
+"#),
+            ("main.ttrpg", r#"
+system "Main" {
+    derive get_hp(c: Character) -> int { 0 }
+}
+"#),
+        ],
+        &["add `use \"Core\"`"],
+    );
+}
+
+#[test]
+fn test_visibility_type_in_return_missing_import() {
+    // Return type from non-imported system → error
+    expect_multi_errors(
+        &[
+            ("core.ttrpg", r#"
+system "Core" {
+    struct Stats { hp: int }
+}
+"#),
+            ("main.ttrpg", r#"
+system "Main" {
+    derive make_stats() -> Stats { Stats { hp: 10 } }
+}
+"#),
+        ],
+        &["add `use \"Core\"`"],
+    );
+}
+
+#[test]
+fn test_visibility_type_in_receiver_missing_import() {
+    // Action receiver type from non-imported system → error
+    expect_multi_errors(
+        &[
+            ("core.ttrpg", r#"
+system "Core" {
+    entity Character { HP: int = 10 }
+}
+"#),
+            ("main.ttrpg", r#"
+system "Main" {
+    action attack on attacker: Character () {
+        resolve { }
+    }
+}
+"#),
+        ],
+        &["add `use \"Core\"`"],
+    );
+}
+
+#[test]
+fn test_visibility_type_in_struct_field_missing_import() {
+    // Struct field type from non-imported system → error
+    expect_multi_errors(
+        &[
+            ("core.ttrpg", r#"
+system "Core" {
+    enum Color { red, green, blue }
+}
+"#),
+            ("main.ttrpg", r#"
+system "Main" {
+    struct Item { color: Color }
+}
+"#),
+        ],
+        &["add `use \"Core\"`"],
+    );
+}
+
+#[test]
+fn test_visibility_type_in_entity_field_missing_import() {
+    // Entity field type from non-imported system → error
+    expect_multi_errors(
+        &[
+            ("core.ttrpg", r#"
+system "Core" {
+    enum Size ordered { small, medium, large }
+}
+"#),
+            ("main.ttrpg", r#"
+system "Main" {
+    entity Monster { size: Size = small }
+}
+"#),
+        ],
+        &["add `use \"Core\"`"],
+    );
+}
+
+#[test]
+fn test_visibility_type_in_enum_variant_field_missing_import() {
+    // Enum variant field type from non-imported system → error
+    expect_multi_errors(
+        &[
+            ("core.ttrpg", r#"
+system "Core" {
+    entity Character { HP: int = 10 }
+}
+"#),
+            ("main.ttrpg", r#"
+system "Main" {
+    enum Effect { damage(target: Character, amount: int) }
+}
+"#),
+        ],
+        &["add `use \"Core\"`"],
+    );
+}
+
+#[test]
+fn test_visibility_type_in_condition_receiver_missing_import() {
+    // Condition receiver type from non-imported system → error
+    expect_multi_errors(
+        &[
+            ("core.ttrpg", r#"
+system "Core" {
+    entity Character { HP: int = 10 }
+}
+"#),
+            ("main.ttrpg", r#"
+system "Main" {
+    condition Stunned on bearer: Character { }
+}
+"#),
+        ],
+        &["add `use \"Core\"`"],
+    );
+}
+
+#[test]
+fn test_visibility_type_in_event_param_missing_import() {
+    // Event parameter type from non-imported system → error
+    expect_multi_errors(
+        &[
+            ("core.ttrpg", r#"
+system "Core" {
+    entity Character { HP: int = 10 }
+}
+"#),
+            ("main.ttrpg", r#"
+system "Main" {
+    event attack(attacker: Character, target: Character) {}
+}
+"#),
+        ],
+        &["add `use \"Core\"`"],
+    );
+}
+
+#[test]
+fn test_visibility_type_in_let_annotation_missing_import() {
+    // Type annotation on let binding from non-imported system → error
+    expect_multi_errors(
+        &[
+            ("core.ttrpg", r#"
+system "Core" {
+    struct Stats { hp: int }
+}
+"#),
+            ("main.ttrpg", r#"
+system "Main" {
+    derive test() -> int {
+        let s: Stats = Stats { hp: 5 }
+        s.hp
+    }
+}
+"#),
+        ],
+        &["add `use \"Core\"`"],
+    );
+}
+
+#[test]
+fn test_visibility_container_inner_type_missing_import() {
+    // Named type inside a container (list<T>) from non-imported system → error
+    expect_multi_errors(
+        &[
+            ("core.ttrpg", r#"
+system "Core" {
+    struct Item { name: string }
+}
+"#),
+            ("main.ttrpg", r#"
+system "Main" {
+    derive count_items(items: list<Item>) -> int { 0 }
+}
+"#),
+        ],
+        &["add `use \"Core\"`"],
+    );
+}
+
+#[test]
+fn test_visibility_type_in_signature_with_import_ok() {
+    // Same scenario as param test but WITH import → no error
+    expect_multi_no_errors(&[
+        ("core.ttrpg", r#"
+system "Core" {
+    entity Character { HP: int = 10 }
+    struct Stats { hp: int }
+    enum Color { red, green, blue }
+}
+"#),
+        ("main.ttrpg", r#"
+use "Core"
+system "Main" {
+    derive get_hp(c: Character) -> int { c.HP }
+    derive make_stats() -> Stats { Stats { hp: 10 } }
+    struct Palette { primary: Color }
+}
+"#),
+    ]);
+}
+
+#[test]
+fn test_visibility_own_type_in_signature_ok() {
+    // Types defined in the same system are always visible
+    expect_multi_no_errors(&[
+        ("main.ttrpg", r#"
+system "Main" {
+    entity Character { HP: int = 10 }
+    struct Stats { hp: int }
+    derive get_hp(c: Character) -> Stats { Stats { hp: c.HP } }
+}
+"#),
+    ]);
+}
+
+#[test]
+fn test_visibility_builtin_types_in_signature_always_ok() {
+    // Builtin type keywords (int, float, bool, string, etc.) need no imports
+    expect_multi_no_errors(&[
+        ("main.ttrpg", r#"
+system "Main" {
+    derive identity(x: int) -> int { x }
+    derive to_string(x: float) -> string { "hello" }
+}
+"#),
+    ]);
+}

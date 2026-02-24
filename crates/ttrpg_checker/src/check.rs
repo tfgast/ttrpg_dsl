@@ -105,6 +105,36 @@ impl<'a> Checker<'a> {
             .validate_type_names(texpr, &mut self.diagnostics);
     }
 
+    /// Check visibility of all named types referenced in a type expression.
+    ///
+    /// Walks the `TypeExpr` tree and calls [`check_name_visible`] for each
+    /// user-defined or overridable type it finds. Builtins with no owner
+    /// (e.g. the default `Duration`) are handled gracefully — `check_name_visible`
+    /// is a no-op when the name has no registered owner.
+    pub fn check_type_visible(&mut self, texpr: &ttrpg_ast::Spanned<TypeExpr>) {
+        match &texpr.node {
+            TypeExpr::Named(name) => {
+                self.check_name_visible(name, Namespace::Type, texpr.span);
+            }
+            // TurnBudget/Duration keywords may resolve to user-defined types
+            TypeExpr::TurnBudget => {
+                self.check_name_visible("TurnBudget", Namespace::Type, texpr.span);
+            }
+            TypeExpr::Duration => {
+                self.check_name_visible("Duration", Namespace::Type, texpr.span);
+            }
+            TypeExpr::List(inner) | TypeExpr::Set(inner) | TypeExpr::OptionType(inner) => {
+                self.check_type_visible(inner);
+            }
+            TypeExpr::Map(k, v) => {
+                self.check_type_visible(k);
+                self.check_type_visible(v);
+            }
+            // Builtins (Int, Float, Bool, etc.), Resource bounds, Qualified — nothing to check
+            _ => {}
+        }
+    }
+
     /// Check all declarations in the program.
     pub fn check_program(&mut self, program: &Program) {
         for item in &program.items {
@@ -133,7 +163,7 @@ impl<'a> Checker<'a> {
             DeclKind::Entity(e) => self.check_entity_defaults(e),
             DeclKind::Prompt(p) => self.check_prompt(p),
             DeclKind::Event(e) => self.check_event(e),
-            DeclKind::Enum(_) => {}
+            DeclKind::Enum(e) => self.check_enum_visibility(e),
             DeclKind::Option(o) => self.check_option(o),
             DeclKind::Hook(h) => self.check_hook(h),
             DeclKind::Move(_) => {
@@ -145,8 +175,19 @@ impl<'a> Checker<'a> {
         }
     }
 
+    fn check_enum_visibility(&mut self, e: &EnumDecl) {
+        for variant in &e.variants {
+            if let Some(ref fields) = variant.fields {
+                for field in fields {
+                    self.check_type_visible(&field.ty);
+                }
+            }
+        }
+    }
+
     fn check_derive(&mut self, f: &FnDecl) {
         self.scope.push(BlockKind::Derive);
+        self.check_type_visible(&f.return_type);
         self.bind_params(&f.params);
         let body_ty = self.check_block(&f.body);
         let ret_ty = self.env.resolve_type(&f.return_type);
@@ -156,6 +197,7 @@ impl<'a> Checker<'a> {
 
     fn check_mechanic(&mut self, f: &FnDecl) {
         self.scope.push(BlockKind::Mechanic);
+        self.check_type_visible(&f.return_type);
         self.bind_params(&f.params);
         let body_ty = self.check_block(&f.body);
         let ret_ty = self.env.resolve_type(&f.return_type);
@@ -167,6 +209,7 @@ impl<'a> Checker<'a> {
         self.scope.push(BlockKind::ActionResolve);
 
         // Bind receiver (field-mutable via action context, but not rebindable)
+        self.check_type_visible(&a.receiver_type);
         let recv_ty = self.env.resolve_type(&a.receiver_type);
         self.scope.bind(
             a.receiver_name.clone(),
@@ -219,6 +262,7 @@ impl<'a> Checker<'a> {
         self.scope.push(BlockKind::ReactionResolve);
 
         // Bind receiver (field-mutable via reaction context, but not rebindable)
+        self.check_type_visible(&r.receiver_type);
         let recv_ty = self.env.resolve_type(&r.receiver_type);
         self.scope.bind(
             r.receiver_name.clone(),
@@ -246,6 +290,7 @@ impl<'a> Checker<'a> {
         self.scope.push(BlockKind::HookResolve);
 
         // Bind receiver
+        self.check_type_visible(&h.receiver_type);
         let recv_ty = self.env.resolve_type(&h.receiver_type);
         self.scope.bind(
             h.receiver_name.clone(),
@@ -422,6 +467,12 @@ impl<'a> Checker<'a> {
     }
 
     fn check_condition(&mut self, c: &ConditionDecl) {
+        // Check visibility of receiver and parameter types
+        self.check_type_visible(&c.receiver_type);
+        for param in &c.params {
+            self.check_type_visible(&param.ty);
+        }
+
         // Type-check default expressions for condition parameters
         self.scope.push(BlockKind::Derive);
         for param in &c.params {
@@ -467,6 +518,7 @@ impl<'a> Checker<'a> {
 
     fn check_prompt(&mut self, p: &PromptDecl) {
         self.scope.push(BlockKind::Derive);
+        self.check_type_visible(&p.return_type);
         self.bind_params(&p.params);
 
         if let Some(ref suggest) = p.suggest {
@@ -487,6 +539,14 @@ impl<'a> Checker<'a> {
     }
 
     fn check_event(&mut self, e: &EventDecl) {
+        // Check visibility of parameter and field types
+        for param in &e.params {
+            self.check_type_visible(&param.ty);
+        }
+        for field in &e.fields {
+            self.check_type_visible(&field.ty);
+        }
+
         self.scope.push(BlockKind::Derive);
         for param in &e.params {
             if let Some(ref default) = param.default {
@@ -507,6 +567,11 @@ impl<'a> Checker<'a> {
     }
 
     fn check_struct_defaults(&mut self, s: &StructDecl) {
+        // Check visibility of field types
+        for field in &s.fields {
+            self.check_type_visible(&field.ty);
+        }
+
         // Check default expressions for fields
         self.scope.push(BlockKind::Derive);
         for field in &s.fields {
@@ -528,6 +593,16 @@ impl<'a> Checker<'a> {
     }
 
     fn check_entity_defaults(&mut self, e: &EntityDecl) {
+        // Check visibility of field types (including optional groups)
+        for field in &e.fields {
+            self.check_type_visible(&field.ty);
+        }
+        for group in &e.optional_groups {
+            for field in &group.fields {
+                self.check_type_visible(&field.ty);
+            }
+        }
+
         self.scope.push(BlockKind::Derive);
         for field in &e.fields {
             if let Some(ref default) = field.default {
@@ -567,6 +642,7 @@ impl<'a> Checker<'a> {
 
     fn bind_params(&mut self, params: &[Param]) {
         for param in params {
+            self.check_type_visible(&param.ty);
             let ty = self.env.resolve_type(&param.ty);
             if let Some(ref default) = param.default {
                 let def_ty = self.check_expr(default);
