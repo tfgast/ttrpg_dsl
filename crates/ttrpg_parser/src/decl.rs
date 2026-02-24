@@ -151,7 +151,15 @@ impl Parser {
             } else {
                 fields.push(self.parse_field_def()?);
             }
-            self.skip_newlines();
+            let saw_comma = matches!(self.peek(), TokenKind::Comma);
+            if saw_comma {
+                self.advance();
+            }
+            let saw_newline = self.skip_newlines();
+            if !saw_comma && !saw_newline && !matches!(self.peek(), TokenKind::RBrace | TokenKind::Eof) {
+                self.error("expected ',' or newline between fields");
+                return Err(());
+            }
         }
 
         self.expect(&TokenKind::RBrace)?;
@@ -177,7 +185,15 @@ impl Parser {
         let mut fields = Vec::new();
         while !matches!(self.peek(), TokenKind::RBrace | TokenKind::Eof) {
             fields.push(self.parse_field_def()?);
-            self.skip_newlines();
+            let saw_comma = matches!(self.peek(), TokenKind::Comma);
+            if saw_comma {
+                self.advance();
+            }
+            let saw_newline = self.skip_newlines();
+            if !saw_comma && !saw_newline && !matches!(self.peek(), TokenKind::RBrace | TokenKind::Eof) {
+                self.error("expected ',' or newline between fields");
+                return Err(());
+            }
         }
         Ok(fields)
     }
@@ -195,7 +211,6 @@ impl Parser {
             None
         };
 
-        self.expect_term()?;
         Ok(FieldDef {
             name,
             ty,

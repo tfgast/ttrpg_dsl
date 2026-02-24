@@ -149,16 +149,17 @@ enum_variant    = IDENT                             // no data:  STR, miss
                 | IDENT "(" field_list ")"          // with data: hit(amount: int)
 
 // --- Struct ---
-struct_decl     = "struct" IDENT "{" field_def* "}"
+struct_decl     = "struct" IDENT "{" field_defs "}"
 
 // --- Entity ---
-entity_decl     = "entity" IDENT "{" field_def* "}"
+entity_decl     = "entity" IDENT "{" field_defs "}"
 
 // --- Field definitions ---
 field_list      = field_entry ("," field_entry)* ","?
 field_entry     = IDENT ":" type
 
-field_def       = IDENT ":" type ("=" expr)? term
+field_defs      = field_def (("," | NL) field_def)* ","?
+field_def       = IDENT ":" type ("=" expr)?
 
 // --- Derive (pure, no dice, no mutation, no receiver) ---
 derive_decl     = "derive" IDENT "(" params ")" "->" type block
@@ -320,7 +321,7 @@ type            = "int" | "bool" | "string" | "float"
 // =========================
 
 term            = NL | &"}" | EOF
-// `term` terminates statements, field definitions, and clauses.
+// `term` terminates statements and clauses.
 // NL is a real newline. &"}" is a lookahead that succeeds when
 // the next token is "}" but does NOT consume it. EOF handles
 // top-level productions (use_decl, the last decl in a system

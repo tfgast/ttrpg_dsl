@@ -1465,3 +1465,44 @@ fn test_non_ordered_enum_parsed() {
     assert_eq!(decl.name, "Color");
     assert!(!decl.ordered, "expected ordered flag to be false");
 }
+
+// ── Struct field separator tests ────────────────────────────────
+
+#[test]
+fn test_struct_fields_comma_separated_single_line() {
+    let source = r#"system "test" {
+    struct Point { x: int, y: int }
+}"#;
+    let (_, diagnostics) = parse(source);
+    assert!(diagnostics.is_empty(), "comma-separated fields should parse: {:?}", diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>());
+}
+
+#[test]
+fn test_struct_fields_newline_separated() {
+    let source = r#"system "test" {
+    struct Point {
+        x: int
+        y: int
+    }
+}"#;
+    let (_, diagnostics) = parse(source);
+    assert!(diagnostics.is_empty(), "newline-separated fields should parse: {:?}", diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>());
+}
+
+#[test]
+fn test_struct_fields_trailing_comma() {
+    let source = r#"system "test" {
+    struct Point { x: int, y: int, }
+}"#;
+    let (_, diagnostics) = parse(source);
+    assert!(diagnostics.is_empty(), "trailing comma should parse: {:?}", diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>());
+}
+
+#[test]
+fn test_struct_fields_missing_separator() {
+    let source = r#"system "test" {
+    struct Point { x: int y: int }
+}"#;
+    let (_, diagnostics) = parse(source);
+    assert!(!diagnostics.is_empty(), "missing separator should produce an error");
+}
