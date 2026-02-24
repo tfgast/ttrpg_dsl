@@ -1,0 +1,276 @@
+// ============================================================
+// v0 Spec — Part 5: Unit Types
+//
+// Dimensioned numeric types with optional literal suffix syntax.
+// Provides type-safe arithmetic for physical quantities
+// (distance, weight, currency, etc.) without implicit conversion.
+// ============================================================
+
+
+// --- Declaration ---
+//
+// A unit type is a named wrapper around a single int field.
+// The `suffix` modifier is optional — without it, the type
+// can only be constructed via struct syntax.
+//
+// Grammar:
+//
+//   unit_decl = "unit" IDENT ("suffix" IDENT)? "{" field_def "}"
+//
+// `unit` and `suffix` are soft keywords, recognized by parser
+// position. `unit` starts a declaration (same position as `enum`,
+// `struct`, etc.). `suffix` is recognized only between the unit
+// name and the opening brace (same position as `ordered` on enums).
+//
+// The body must contain exactly one field of type int. The checker
+// rejects unit declarations with zero fields, multiple fields,
+// or non-int field types.
+//
+// Suffix constraints (checked during semantic analysis):
+//
+//   - The suffix must match ALPHA_IDENT: [a-zA-Z][a-zA-Z0-9_]*
+//     (i.e., must start with a letter, not underscore or digit).
+//     This ensures the suffix can appear in unit literals, where
+//     the lexer requires an alphabetic start after digits.
+//     A suffix like `_x` is rejected because `30_x` would be
+//     lexed as Int(30) followed by Ident("_x"), not as a unit literal.
+//
+//   - Suffixes must be unique across the entire loaded program.
+//     Two unit types declaring the same suffix is a checker error:
+//
+//       error: duplicate unit suffix `ft`
+//         --> weapons.ttrpg:3:20
+//         | unit Range suffix ft { value: int }
+//         |                    ^^ suffix `ft` already declared
+//         --> movement.ttrpg:1:20
+//         | unit Feet suffix ft { value: int }
+//         |                   ^^ first declaration here
+
+unit Feet suffix ft {
+    value: int
+}
+
+unit Pounds suffix lbs {
+    pounds: int          // field name is free — doesn't have to be "value"
+}
+
+unit GoldPieces suffix gp {
+    value: int
+}
+
+unit SilverPieces suffix sp {
+    value: int
+}
+
+// Without suffix — struct construction only:
+unit AbstractDistance {
+    value: int
+}
+
+
+// --- Construction ---
+//
+// Two forms:
+//
+//   1. Literal suffix (requires suffix declaration):
+//        30ft              -> Feet { value: 30 }
+//        5gp               -> GoldPieces { value: 5 }
+//
+//   2. Struct construction (always available):
+//        Feet { value: 30 }
+//        Pounds { pounds: computed_weight }
+//
+// The literal form is syntactic sugar: `30ft` desugars to
+// the struct form, setting the single field to the literal value.
+
+
+// --- Lexer: unit literals ---
+//
+// A unit literal is an integer immediately followed (no whitespace)
+// by an alphabetic identifier. Both dice literals and unit literals
+// are composite lexer tokens — the lexer resolves them, not the parser.
+//
+// Token production rules (applied in order when digits are followed
+// by alpha characters with no intervening whitespace):
+//
+//   1. <digits> "d" <digits> (optionally kh/kl/dh/dl <digits>)
+//      -> Dice { count, sides, filter }
+//
+//   2. <digits> <ALPHA_IDENT>   where ALPHA_IDENT = [a-zA-Z][a-zA-Z0-9_]*
+//      -> UnitLiteral { value: i64, suffix: String }
+//
+//   3. <digits> followed by whitespace or non-alpha
+//      -> Int(i64)
+//
+// Rule 1 takes priority: `2d6` is always a dice literal, never a
+// unit literal with suffix "d6". The dice pattern is unambiguous
+// because it requires "d" followed by more digits.
+//
+// Edge cases:
+//   "2d6"    -> Dice (rule 1: digits + "d" + digits)
+//   "4d6kh3" -> Dice (rule 1: with filter)
+//   "30ft"   -> UnitLiteral (rule 2: digits + alpha, not dice)
+//   "30d"    -> UnitLiteral (rule 2: "d" NOT followed by digits)
+//   "30"     -> Int (rule 3: no trailing alpha)
+//
+// The suffix string is validated by the checker, not the lexer.
+// An unrecognized suffix (e.g., 30xyz) is a lexer-valid token
+// that produces a checker error:
+//
+//   error: unknown unit suffix `xyz`
+//     --> file.ttrpg:5:12
+//     | let x = 30xyz
+//     |            ^^^ no unit type declares this suffix
+//
+// NOTE: The canonical grammar (03_canonical_grammar.ttrpg) models
+// dice_lit as `INT "d" INT filter?` for spec clarity. In practice,
+// both dice and unit literals are resolved at the lexer level as
+// composite tokens. The grammar production `dice_lit` and the new
+// `unit_lit` should both be read as references to their respective
+// lexer tokens, not as parser-level compositions of INT and IDENT.
+
+
+// --- Field access ---
+//
+// The declared field is accessible via dot notation:
+//
+//   let speed: Feet = 30ft
+//   speed.value              // -> 30 (type: int)
+//
+//   let weight: Pounds = Pounds { pounds: 50 }
+//   weight.pounds            // -> 50 (type: int)
+
+
+// --- Arithmetic rules ---
+//
+//   Operation              Result    Notes
+//   ---------              ------    -----
+//   unit + unit (same)     unit      field values added
+//   unit - unit (same)     unit      field values subtracted
+//   int * unit             unit      scales the field value
+//   unit * int             unit      scales the field value (commutative)
+//   unit / unit (same)     float     dimensionless ratio
+//   -unit                  unit      negates the field value
+//
+//   unit + different_unit  ERROR     type mismatch
+//   unit - different_unit  ERROR     type mismatch
+//   unit + int             ERROR     cannot add raw int to unit
+//   unit - int             ERROR     cannot subtract raw int from unit
+//   int + unit             ERROR     cannot add unit to raw int
+//   int - unit             ERROR     cannot subtract unit from raw int
+//   unit * unit            ERROR     no squared units
+//   unit / int             ERROR     use field access for explicit rounding
+//   int / unit             ERROR     meaningless
+//
+// The prohibition on unit / int is deliberate: RPG systems define
+// their own rounding conventions (floor, ceil, round-toward-zero,
+// round-half-up). Forcing the author to write:
+//
+//   Feet { value: floor(speed.value / 2) }
+//
+// makes the rounding explicit and system-appropriate.
+
+// Examples:
+//   30ft + 10ft            // -> 40ft
+//   30ft - 10ft            // -> 20ft
+//   3 * 10ft               // -> 30ft
+//   10ft * 3               // -> 30ft
+//   60ft / 30ft            // -> 2.0 (float)
+//   -30ft                  // -> Feet { value: -30 }
+//
+//   30ft + 5gp             // ERROR: cannot add Feet to GoldPieces
+//   30ft + 10              // ERROR: cannot add Feet to int
+//   30ft / 2               // ERROR: use floor(speed.value / 2)
+//   30ft * 10ft            // ERROR: cannot multiply Feet by Feet
+
+
+// --- Comparison rules ---
+//
+//   unit == unit (same)    bool
+//   unit != unit (same)    bool
+//   unit <  unit (same)    bool
+//   unit >  unit (same)    bool
+//   unit <= unit (same)    bool
+//   unit >= unit (same)    bool
+//
+//   unit CMP different_unit   ERROR
+//   unit CMP int              ERROR     no implicit conversion
+//   int  CMP unit             ERROR
+
+// Examples:
+//   30ft > 20ft            // -> true
+//   30ft == 30ft           // -> true
+//   30ft > 5gp             // ERROR: cannot compare Feet to GoldPieces
+//   30ft > 30              // ERROR: cannot compare Feet to int
+
+
+// --- Containers ---
+//
+// Unit types can appear in all container types:
+//
+//   let distances: list<Feet> = [30ft, 60ft, 120ft]
+//   let prices: map<string, GoldPieces> = ["sword": 15gp, "shield": 10gp]
+//   let range: option<Feet> = 30ft
+//   let weights: set<Pounds> = [Pounds { pounds: 5 }, Pounds { pounds: 10 }]
+
+
+// --- Entity fields ---
+//
+// Unit types work as entity fields, including with defaults:
+
+entity Character {
+    name: string
+    speed: Feet = 30ft
+    carry_capacity: Pounds = Pounds { pounds: 150 }
+    gold: GoldPieces = 0gp
+    silver: SilverPieces = 0sp
+}
+
+// Unit fields can be assigned and mutated in resolve blocks:
+//
+//   actor.speed += 10ft
+//   actor.gold -= 5gp
+
+
+// --- Derives and mechanics ---
+//
+// Unit types can be parameters and return types:
+
+derive half_speed(speed: Feet) -> Feet {
+    Feet { value: floor(speed.value / 2) }
+}
+
+derive encumbrance_from_coins(character: Character) -> Pounds {
+    // OSE: 10 coins = 1 pound, regardless of denomination.
+    // The ruleset controls conversion, not the language.
+    let total_coins = character.gold.value + character.silver.value
+    Pounds { pounds: floor(total_coins / 10) }
+}
+
+
+// --- Grammar additions ---
+//
+// To the `decl` production (section 2 of 03_canonical_grammar.ttrpg):
+//
+//   decl = ... | unit_decl
+//   unit_decl = "unit" IDENT ("suffix" IDENT)? "{" field_def "}"
+//
+// To the `primary_expr` production (section 6):
+//
+//   primary_expr = ... | unit_lit
+//   unit_lit = UNIT_LIT                // composite lexer token
+//
+// New lexer token:
+//
+//   UNIT_LIT = <digits> ALPHA_IDENT   // no whitespace between
+//   ALPHA_IDENT = [a-zA-Z][a-zA-Z0-9_]*
+//
+// Both Dice and UnitLiteral are composite lexer tokens. The grammar
+// productions `dice_lit` and `unit_lit` reference these tokens;
+// the lexer resolves the digit+alpha patterns, not the parser.
+// See "Lexer: unit literals" above for the priority rules.
+//
+// New soft keywords: `unit`, `suffix`. Both are lexed as IDENT
+// and recognized by parser position. `unit` joins the declaration-
+// starting keywords (enum, struct, entity, ...). `suffix` is
+// recognized only between a unit name and the opening brace.
