@@ -45,8 +45,8 @@ impl<'a> Checker<'a> {
 
             ExprKind::Call { callee, args } => self.check_call(callee, args, expr.span),
 
-            ExprKind::StructLit { name, fields, base: _ } => {
-                self.check_struct_lit(name, fields, expr.span)
+            ExprKind::StructLit { name, fields, base } => {
+                self.check_struct_lit(name, fields, base.as_deref(), expr.span)
             }
 
             ExprKind::ListLit(elems) => self.check_list_lit(elems, expr.span),
@@ -1748,6 +1748,7 @@ impl<'a> Checker<'a> {
         &mut self,
         name: &str,
         fields: &[StructFieldInit],
+        base: Option<&Spanned<ExprKind>>,
         span: ttrpg_ast::Span,
     ) -> Ty {
         let decl = match self.env.types.get(name) {
@@ -1779,6 +1780,23 @@ impl<'a> Checker<'a> {
                 );
                 return Ty::Error;
             }
+        };
+
+        // Validate base expression if present
+        let has_base = if let Some(base_expr) = base {
+            let base_ty = self.check_expr(base_expr);
+            if !base_ty.is_error() && base_ty != result_ty {
+                self.error(
+                    format!(
+                        "base expression has type {}, expected {}",
+                        base_ty, result_ty
+                    ),
+                    base_expr.span,
+                );
+            }
+            true
+        } else {
+            false
         };
 
         // Check each provided field
@@ -1816,16 +1834,18 @@ impl<'a> Checker<'a> {
             }
         }
 
-        // Check for missing required fields (no default)
-        for fi in declared_fields.iter() {
-            if !fi.has_default && !seen.contains(&fi.name) {
-                self.error(
-                    format!(
-                        "missing required field `{}` in `{}` literal",
-                        fi.name, name
-                    ),
-                    span,
-                );
+        // Check for missing required fields (no default) — skip when base provides them
+        if !has_base {
+            for fi in declared_fields.iter() {
+                if !fi.has_default && !seen.contains(&fi.name) {
+                    self.error(
+                        format!(
+                            "missing required field `{}` in `{}` literal",
+                            fi.name, name
+                        ),
+                        span,
+                    );
+                }
             }
         }
 

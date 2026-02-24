@@ -1536,6 +1536,83 @@ system "test" {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// Struct spread / base expression (..base)
+// ═══════════════════════════════════════════════════════════════
+
+#[test]
+fn test_struct_spread_base_valid() {
+    let source = r#"
+system "test" {
+    struct Point {
+        x: int
+        y: int
+    }
+    derive shifted(p: Point) -> Point {
+        Point { x: p.x + 1, ..p }
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_struct_spread_base_suppresses_missing_fields() {
+    let source = r#"
+system "test" {
+    struct Point {
+        x: int
+        y: int
+        z: int
+    }
+    derive update_x(p: Point) -> Point {
+        Point { x: 99, ..p }
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_struct_spread_base_wrong_type() {
+    let source = r#"
+system "test" {
+    struct Point { x: int, y: int }
+    struct Color { r: int, g: int }
+    derive bad(c: Color) -> Point {
+        Point { x: 1, ..c }
+    }
+}
+"#;
+    expect_errors(source, &["base expression has type Color, expected Point"]);
+}
+
+#[test]
+fn test_struct_spread_base_no_fields_ok() {
+    let source = r#"
+system "test" {
+    struct Point { x: int, y: int }
+    derive clone(p: Point) -> Point {
+        Point { ..p }
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_struct_spread_base_field_type_still_checked() {
+    let source = r#"
+system "test" {
+    struct Point { x: int, y: int }
+    derive bad(p: Point) -> Point {
+        Point { x: "oops", ..p }
+    }
+}
+"#;
+    expect_errors(source, &["field `x` has type string, expected int"]);
+}
+
+// ═══════════════════════════════════════════════════════════════
 // Payload enum variant without constructor args
 // ═══════════════════════════════════════════════════════════════
 
