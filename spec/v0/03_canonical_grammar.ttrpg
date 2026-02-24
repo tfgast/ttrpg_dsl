@@ -423,7 +423,9 @@ filter          = ("kh" | "kl" | "dh" | "dl") INT
 // the type checker handles it.
 
 // --- Struct construction ---
-struct_lit      = IDENT "{" (struct_field ("," struct_field)* ","?)? "}"
+struct_lit      = IDENT "{" struct_body? "}"
+struct_body     = struct_field ("," struct_field)* ("," ".." expr)? ","?
+                | ".." expr ","?
 struct_field    = IDENT ":" expr
 
 // --- List literal ---

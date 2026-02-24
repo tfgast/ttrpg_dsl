@@ -3368,6 +3368,92 @@ mod tests {
         }
     }
 
+    // ── Struct spread (..base) tests ─────────────────────────────
+
+    #[test]
+    fn eval_struct_spread_override_one_field() {
+        let program = empty_program();
+        let type_env = empty_type_env();
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = TestState::new();
+        let mut handler = ScriptedHandler::new();
+        let mut env = make_env(&state, &mut handler, &interp);
+
+        // Bind a base struct value: Point { x: 1, y: 2 }
+        env.bind(
+            "base".into(),
+            Value::Struct {
+                name: "Point".into(),
+                fields: {
+                    let mut m = BTreeMap::new();
+                    m.insert("x".into(), Value::Int(1));
+                    m.insert("y".into(), Value::Int(2));
+                    m
+                },
+            },
+        );
+
+        // Point { x: 99, ..base } — override x, keep y from base
+        let expr = spanned(ExprKind::StructLit {
+            name: "Point".to_string(),
+            fields: vec![StructFieldInit {
+                name: "x".into(),
+                value: spanned(ExprKind::IntLit(99)),
+                span: dummy_span(),
+            }],
+            base: Some(Box::new(spanned(ExprKind::Ident("base".into())))),
+        });
+        let result = eval_expr(&mut env, &expr).unwrap();
+        match &result {
+            Value::Struct { name, fields } => {
+                assert_eq!(name, "Point");
+                assert_eq!(fields.get("x"), Some(&Value::Int(99)), "explicit field overrides base");
+                assert_eq!(fields.get("y"), Some(&Value::Int(2)), "base field preserved");
+            }
+            _ => panic!("expected Struct, got {:?}", result),
+        }
+    }
+
+    #[test]
+    fn eval_struct_spread_base_only() {
+        let program = empty_program();
+        let type_env = empty_type_env();
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = TestState::new();
+        let mut handler = ScriptedHandler::new();
+        let mut env = make_env(&state, &mut handler, &interp);
+
+        // Bind a base struct value: Point { x: 10, y: 20 }
+        env.bind(
+            "p".into(),
+            Value::Struct {
+                name: "Point".into(),
+                fields: {
+                    let mut m = BTreeMap::new();
+                    m.insert("x".into(), Value::Int(10));
+                    m.insert("y".into(), Value::Int(20));
+                    m
+                },
+            },
+        );
+
+        // Point { ..p } — clone via spread with no explicit fields
+        let expr = spanned(ExprKind::StructLit {
+            name: "Point".to_string(),
+            fields: vec![],
+            base: Some(Box::new(spanned(ExprKind::Ident("p".into())))),
+        });
+        let result = eval_expr(&mut env, &expr).unwrap();
+        match &result {
+            Value::Struct { name, fields } => {
+                assert_eq!(name, "Point");
+                assert_eq!(fields.get("x"), Some(&Value::Int(10)));
+                assert_eq!(fields.get("y"), Some(&Value::Int(20)));
+            }
+            _ => panic!("expected Struct, got {:?}", result),
+        }
+    }
+
     // ── If expression tests ────────────────────────────────────
 
     #[test]

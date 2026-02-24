@@ -1356,4 +1356,84 @@ system "test" {
         // Strong hit (total 12 >= 10) → 100
         assert_eq!(val, Value::Int(100));
     }
+
+    // ── End-to-end: struct spread (..base) ──
+
+    #[test]
+    fn e2e_struct_spread_override() {
+        let source = r#"
+system "test" {
+    struct Point {
+        x: int
+        y: int
+        z: int
+    }
+    derive shifted(p: Point) -> Point {
+        Point { x: p.x + 10, ..p }
+    }
+}
+"#;
+        let (program, result) = setup(source);
+        let interp = Interpreter::new(&program, &result.env).unwrap();
+        let state = TestState::new();
+        let mut handler = ScriptedHandler::new();
+
+        let base = Value::Struct {
+            name: "Point".into(),
+            fields: {
+                let mut m = BTreeMap::new();
+                m.insert("x".into(), Value::Int(1));
+                m.insert("y".into(), Value::Int(2));
+                m.insert("z".into(), Value::Int(3));
+                m
+            },
+        };
+
+        let val = interp
+            .evaluate_derive(&state, &mut handler, "shifted", vec![base])
+            .unwrap();
+        match &val {
+            Value::Struct { name, fields } => {
+                assert_eq!(name, "Point");
+                assert_eq!(fields.get("x"), Some(&Value::Int(11)), "x overridden to p.x + 10");
+                assert_eq!(fields.get("y"), Some(&Value::Int(2)), "y from base");
+                assert_eq!(fields.get("z"), Some(&Value::Int(3)), "z from base");
+            }
+            _ => panic!("expected Struct, got {:?}", val),
+        }
+    }
+
+    #[test]
+    fn e2e_struct_spread_clone() {
+        let source = r#"
+system "test" {
+    struct Point {
+        x: int
+        y: int
+    }
+    derive clone_point(p: Point) -> Point {
+        Point { ..p }
+    }
+}
+"#;
+        let (program, result) = setup(source);
+        let interp = Interpreter::new(&program, &result.env).unwrap();
+        let state = TestState::new();
+        let mut handler = ScriptedHandler::new();
+
+        let base = Value::Struct {
+            name: "Point".into(),
+            fields: {
+                let mut m = BTreeMap::new();
+                m.insert("x".into(), Value::Int(5));
+                m.insert("y".into(), Value::Int(7));
+                m
+            },
+        };
+
+        let val = interp
+            .evaluate_derive(&state, &mut handler, "clone_point", vec![base.clone()])
+            .unwrap();
+        assert_eq!(val, base);
+    }
 }
