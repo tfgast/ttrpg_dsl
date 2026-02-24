@@ -2666,7 +2666,7 @@ system "test" {
 }
 
 #[test]
-fn test_option_extends_warns() {
+fn test_option_extends_unknown_parent() {
     let source = r#"
 system "test" {
     option flanking extends "Some System" {
@@ -2675,7 +2675,24 @@ system "test" {
     }
 }
 "#;
-    expect_warnings(source, &["option `extends` is not yet validated"]);
+    expect_errors(source, &["option \"flanking\" extends unknown option \"Some System\""]);
+}
+
+#[test]
+fn test_option_extends_valid_parent() {
+    let source = r#"
+system "test" {
+    option base_flanking {
+        description: "Base flanking rules"
+        default: on
+    }
+    option flanking extends "base_flanking" {
+        description: "Extended flanking"
+        default: on
+    }
+}
+"#;
+    expect_no_errors(source);
 }
 
 // ═══════════════════════════════════════════════════════════════

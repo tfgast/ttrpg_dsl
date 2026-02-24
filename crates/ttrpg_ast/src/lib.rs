@@ -1,9 +1,10 @@
 pub mod span;
 pub mod ast;
 pub mod diagnostic;
+pub mod module;
 
 pub use span::{Span, Spanned};
-pub use diagnostic::{Diagnostic, Severity, SourceMap};
+pub use diagnostic::{Diagnostic, MultiSourceMap, Severity, SourceMap};
 
 /// Dice filter type — shared between lexer (token representation) and AST.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]

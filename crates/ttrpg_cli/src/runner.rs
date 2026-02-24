@@ -7,7 +7,8 @@ use rand::rngs::StdRng;
 use std::collections::BTreeMap;
 
 use ttrpg_ast::ast::{DeclKind, OptionalGroup, Program, TopLevel};
-use ttrpg_ast::diagnostic::{Diagnostic, Severity};
+use ttrpg_ast::diagnostic::{Diagnostic, MultiSourceMap, Severity};
+use ttrpg_ast::module::ModuleMap;
 use ttrpg_checker::env::{DeclInfo, FnKind, TypeEnv};
 use ttrpg_checker::ty::Ty;
 use ttrpg_interp::Interpreter;
@@ -42,9 +43,11 @@ impl std::fmt::Display for CliError {
 pub struct Runner {
     program: Box<Program>,
     type_env: Box<TypeEnv>,
+    module_map: ModuleMap,
     game_state: RefCell<GameState>,
-    last_path: Option<PathBuf>,
+    last_paths: Vec<PathBuf>,
     diagnostics: Vec<Diagnostic>,
+    source_map: Option<MultiSourceMap>,
     output: Vec<String>,
     handles: HashMap<String, EntityRef>,
     reverse_handles: HashMap<EntityRef, String>,
@@ -58,9 +61,11 @@ impl Runner {
         Runner {
             program: Box::new(Program::default()),
             type_env: Box::new(TypeEnv::new()),
+            module_map: ModuleMap::default(),
             game_state: RefCell::new(GameState::new()),
-            last_path: None,
+            last_paths: Vec::new(),
             diagnostics: Vec::new(),
+            source_map: None,
             output: Vec::new(),
             handles: HashMap::new(),
             reverse_handles: HashMap::new(),
@@ -254,71 +259,166 @@ impl Runner {
 
     // ── Command handlers ────────────────────────────────────────
 
-    fn cmd_load(&mut self, path: &str) -> Result<(), CliError> {
-        let source = match std::fs::read_to_string(path) {
-            Ok(s) => s,
-            Err(e) => {
-                // Clear stale state so a previous successful load doesn't linger.
-                *self.program = Program::default();
-                *self.type_env = TypeEnv::new();
+    fn cmd_load(&mut self, paths_str: &str) -> Result<(), CliError> {
+        // Split on whitespace and expand globs
+        let tokens: Vec<&str> = paths_str.split_whitespace().collect();
+        let mut resolved_paths: Vec<PathBuf> = Vec::new();
+        for token in &tokens {
+            if token.contains('*') || token.contains('?') || token.contains('[') {
+                // Glob expansion
+                let entries = glob::glob(token).map_err(|e| {
+                    CliError::Message(format!("invalid glob pattern '{}': {}", token, e))
+                })?;
+                let mut found = false;
+                for entry in entries {
+                    match entry {
+                        Ok(path) => {
+                            resolved_paths.push(path);
+                            found = true;
+                        }
+                        Err(e) => {
+                            return Err(CliError::Message(format!(
+                                "glob error for '{}': {}",
+                                token, e
+                            )));
+                        }
+                    }
+                }
+                if !found {
+                    return Err(CliError::Message(format!(
+                        "no files matched pattern '{}'",
+                        token
+                    )));
+                }
+            } else {
+                resolved_paths.push(PathBuf::from(token));
+            }
+        }
+
+        if resolved_paths.is_empty() {
+            return Err(CliError::Message("no files specified".into()));
+        }
+
+        // Helper to clear stale state
+        fn clear_state(runner: &mut Runner, paths: Vec<PathBuf>) {
+            *runner.program = Program::default();
+            *runner.type_env = TypeEnv::new();
+            runner.module_map = ModuleMap::default();
+            runner.game_state = RefCell::new(GameState::new());
+            runner.last_paths = paths;
+            runner.handles.clear();
+            runner.reverse_handles.clear();
+            runner.source_map = None;
+        }
+
+        // Read all files
+        let mut sources: Vec<(String, String)> = Vec::new();
+        for path in &resolved_paths {
+            let path_str = path.to_string_lossy();
+            match std::fs::read_to_string(path) {
+                Ok(s) => sources.push((path_str.into_owned(), s)),
+                Err(e) => {
+                    let msg = format!("cannot read '{}': {}", path_str, e);
+                    clear_state(self, resolved_paths);
+                    self.diagnostics = Vec::new();
+                    return Err(CliError::Message(msg));
+                }
+            }
+        }
+
+        // Single file: use the original fast path (no module overhead)
+        if sources.len() == 1 {
+            let filename = sources[0].0.clone();
+            let (program, parse_diags) = ttrpg_parser::parse(&sources[0].1);
+
+            let mut lower_diags = Vec::new();
+            let program = ttrpg_parser::lower_moves(program, &mut lower_diags);
+
+            let check_result = ttrpg_checker::check(&program);
+
+            let mut all_diags = Vec::new();
+            all_diags.extend(parse_diags);
+            all_diags.extend(lower_diags);
+            all_diags.extend(check_result.diagnostics);
+
+            let error_count = all_diags
+                .iter()
+                .filter(|d| d.severity == Severity::Error)
+                .count();
+
+            if error_count == 0 {
+                *self.program = program;
+                *self.type_env = check_result.env;
+                self.module_map = ModuleMap::default();
                 self.game_state = RefCell::new(GameState::new());
-                self.diagnostics = Vec::new();
-                self.last_path = Some(PathBuf::from(path));
+                self.diagnostics = all_diags;
+                self.source_map = Some(MultiSourceMap::new(sources));
+                self.last_paths = resolved_paths;
                 self.handles.clear();
                 self.reverse_handles.clear();
-                return Err(CliError::Message(format!(
-                    "cannot read '{}': {}",
-                    path, e
-                )));
+                self.output.push(format!("loaded {}", filename));
+                Ok(())
+            } else {
+                clear_state(self, resolved_paths);
+                self.diagnostics = all_diags;
+                self.source_map = Some(MultiSourceMap::new(sources));
+                self.output
+                    .push("use 'errors' to see diagnostics".into());
+                Err(CliError::Message(format!(
+                    "failed to load '{}': {} error{}",
+                    filename,
+                    error_count,
+                    if error_count == 1 { "" } else { "s" }
+                )))
             }
-        };
-
-        let (program, parse_diags) = ttrpg_parser::parse(&source);
-
-        let mut lower_diags = Vec::new();
-        let program = ttrpg_parser::lower_moves(program, &mut lower_diags);
-
-        let check_result = ttrpg_checker::check(&program);
-
-        // Merge all diagnostics
-        let mut all_diags = Vec::new();
-        all_diags.extend(parse_diags);
-        all_diags.extend(lower_diags);
-        all_diags.extend(check_result.diagnostics);
-
-        let errors: Vec<_> = all_diags
-            .iter()
-            .filter(|d| d.severity == Severity::Error)
-            .collect();
-
-        if errors.is_empty() {
-            *self.program = program;
-            *self.type_env = check_result.env;
-            self.game_state = RefCell::new(GameState::new());
-            self.diagnostics = all_diags;
-            self.last_path = Some(PathBuf::from(path));
-            self.handles.clear();
-            self.reverse_handles.clear();
-            self.output.push(format!("loaded {}", path));
-            Ok(())
         } else {
-            let error_count = errors.len();
-            // Clear stale program state so eval cannot use a previous successful load.
-            *self.program = Program::default();
-            *self.type_env = TypeEnv::new();
-            self.game_state = RefCell::new(GameState::new());
-            self.diagnostics = all_diags;
-            self.last_path = Some(PathBuf::from(path));
-            self.handles.clear();
-            self.reverse_handles.clear();
-            self.output
-                .push("use 'errors' to see diagnostics".into());
-            Err(CliError::Message(format!(
-                "failed to load '{}': {} error{}",
-                path,
-                error_count,
-                if error_count == 1 { "" } else { "s" }
-            )))
+            // Multi-file: use parse_multi + check_with_modules
+            let result = ttrpg_parser::parse_multi(&sources);
+
+            let mut all_diags = result.diagnostics;
+
+            // Run checker (module-aware)
+            let check_result =
+                ttrpg_checker::check_with_modules(&result.program, &result.module_map);
+            all_diags.extend(check_result.diagnostics);
+
+            let error_count = all_diags
+                .iter()
+                .filter(|d| d.severity == Severity::Error)
+                .count();
+
+            let file_list: Vec<_> = resolved_paths
+                .iter()
+                .map(|p| p.to_string_lossy().into_owned())
+                .collect();
+            let file_list_str = file_list.join(", ");
+
+            if error_count == 0 && !result.has_errors {
+                *self.program = result.program;
+                *self.type_env = check_result.env;
+                self.module_map = result.module_map;
+                self.game_state = RefCell::new(GameState::new());
+                self.diagnostics = all_diags;
+                self.source_map = Some(MultiSourceMap::new(sources));
+                self.last_paths = resolved_paths;
+                self.handles.clear();
+                self.reverse_handles.clear();
+                self.output
+                    .push(format!("loaded {} files: {}", file_list.len(), file_list_str));
+                Ok(())
+            } else {
+                clear_state(self, resolved_paths);
+                self.diagnostics = all_diags;
+                self.source_map = Some(MultiSourceMap::new(sources));
+                self.output
+                    .push("use 'errors' to see diagnostics".into());
+                Err(CliError::Message(format!(
+                    "failed to load {}: {} error{}",
+                    file_list_str,
+                    error_count,
+                    if error_count == 1 { "" } else { "s" }
+                )))
+            }
         }
     }
 
@@ -329,13 +429,16 @@ impl Runner {
     }
 
     fn cmd_reload(&mut self) -> Result<(), CliError> {
-        match &self.last_path {
-            Some(path) => {
-                let path = path.to_string_lossy().to_string();
-                self.cmd_load(&path)
-            }
-            None => Err(CliError::Message("no file loaded yet".into())),
+        if self.last_paths.is_empty() {
+            return Err(CliError::Message("no file loaded yet".into()));
         }
+        let paths_str = self
+            .last_paths
+            .iter()
+            .map(|p| p.to_string_lossy().into_owned())
+            .collect::<Vec<_>>()
+            .join(" ");
+        self.cmd_load(&paths_str)
     }
 
     fn cmd_errors(&mut self) -> Result<(), CliError> {
@@ -343,12 +446,16 @@ impl Runner {
             self.output.push("no diagnostics".into());
         } else {
             for diag in &self.diagnostics {
-                let severity = match diag.severity {
-                    Severity::Error => "error",
-                    Severity::Warning => "warning",
-                };
-                self.output
-                    .push(format!("[{}] {}", severity, diag.message));
+                if let Some(ref map) = self.source_map {
+                    self.output.push(map.render(diag));
+                } else {
+                    let severity = match diag.severity {
+                        Severity::Error => "error",
+                        Severity::Warning => "warning",
+                    };
+                    self.output
+                        .push(format!("[{}] {}", severity, diag.message));
+                }
             }
         }
         Ok(())
@@ -2157,7 +2264,7 @@ system "test" {
         runner.exec("errors").unwrap();
         let output = runner.take_output();
         assert!(!output.is_empty());
-        assert!(output.iter().any(|l| l.contains("[error]")));
+        assert!(output.iter().any(|l| l.contains("error")));
 
         std::fs::remove_file(&path).ok();
     }
@@ -3599,5 +3706,253 @@ system "test" {
         let fields = runner.group_field_names("Character", "Spellcasting");
         assert!(fields.contains(&"spell_slots".to_string()));
         assert!(fields.contains(&"spell_dc".to_string()));
+    }
+
+    // ── Multi-file loading tests ───────────────────────────────────
+
+    fn multi_file_dir() -> PathBuf {
+        let dir = std::env::temp_dir().join("ttrpg_multi_test");
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn multi_file_load_basic() {
+        let dir = multi_file_dir();
+        let core = dir.join("core.ttrpg");
+        let extras = dir.join("extras.ttrpg");
+
+        std::fs::write(&core, "\
+system \"Core\" {
+    entity Character {
+        HP: int
+        AC: int
+    }
+    derive double(x: int) -> int { x * 2 }
+}
+").unwrap();
+
+        std::fs::write(&extras, "\
+system \"Extras\" {
+    derive triple(x: int) -> int { x * 3 }
+}
+").unwrap();
+
+        let mut runner = Runner::new();
+        runner
+            .exec(&format!("load {} {}", core.display(), extras.display()))
+            .unwrap();
+        let output = runner.take_output();
+        assert!(output[0].contains("loaded 2 files"));
+
+        // Can spawn entities from the merged program
+        runner.exec("spawn Character hero { HP: 30, AC: 15 }").unwrap();
+        runner.take_output();
+
+        runner.exec("eval hero.HP").unwrap();
+        let output = runner.take_output();
+        assert_eq!(output, vec!["30"]);
+
+        // Both systems' derives are accessible
+        runner.exec("eval double(5)").unwrap();
+        let output = runner.take_output();
+        assert_eq!(output, vec!["10"]);
+
+        runner.exec("eval triple(5)").unwrap();
+        let output = runner.take_output();
+        assert_eq!(output, vec!["15"]);
+
+        std::fs::remove_file(&core).ok();
+        std::fs::remove_file(&extras).ok();
+    }
+
+    #[test]
+    fn multi_file_reload() {
+        let dir = multi_file_dir();
+        let a = dir.join("reload_a.ttrpg");
+        let b = dir.join("reload_b.ttrpg");
+
+        std::fs::write(&a, "system \"A\" { entity Foo { x: int } }\n").unwrap();
+        std::fs::write(&b, "system \"B\" { derive add(a: int, b: int) -> int { a + b } }\n").unwrap();
+
+        let mut runner = Runner::new();
+        runner
+            .exec(&format!("load {} {}", a.display(), b.display()))
+            .unwrap();
+        runner.take_output();
+
+        runner.exec("reload").unwrap();
+        let output = runner.take_output();
+        assert!(output[0].contains("loaded 2 files"));
+
+        std::fs::remove_file(&a).ok();
+        std::fs::remove_file(&b).ok();
+    }
+
+    #[test]
+    fn multi_file_cross_system_duplicate_error() {
+        let dir = multi_file_dir();
+        let a = dir.join("dup_a.ttrpg");
+        let b = dir.join("dup_b.ttrpg");
+
+        std::fs::write(&a, "\
+system \"A\" { entity Character { HP: int } }
+").unwrap();
+        std::fs::write(&b, "\
+system \"B\" { entity Character { AC: int } }
+").unwrap();
+
+        let mut runner = Runner::new();
+        let err = runner
+            .exec(&format!("load {} {}", a.display(), b.display()))
+            .unwrap_err();
+        assert!(err.to_string().contains("error"));
+
+        // errors command should mention the duplicate
+        runner.exec("errors").unwrap();
+        let output = runner.take_output();
+        assert!(
+            output.iter().any(|l| l.contains("Character")),
+            "expected duplicate name 'Character' in errors, got: {:?}",
+            output
+        );
+
+        std::fs::remove_file(&a).ok();
+        std::fs::remove_file(&b).ok();
+    }
+
+    #[test]
+    fn multi_file_errors_command_renders() {
+        let dir = multi_file_dir();
+        let a = dir.join("render_a.ttrpg");
+        let b = dir.join("render_b.ttrpg");
+
+        std::fs::write(
+            &a,
+            r#"
+system "A" {
+    derive bad() -> int { undefined_var }
+}
+"#,
+        )
+        .unwrap();
+        std::fs::write(
+            &b,
+            r#"
+system "B" {
+    derive ok(x: int) -> int { x }
+}
+"#,
+        )
+        .unwrap();
+
+        let mut runner = Runner::new();
+        let _err = runner
+            .exec(&format!("load {} {}", a.display(), b.display()))
+            .unwrap_err();
+        runner.take_output();
+
+        runner.exec("errors").unwrap();
+        let output = runner.take_output();
+        assert!(!output.is_empty());
+        // MultiSourceMap renders with filename prefix
+        assert!(
+            output.iter().any(|l| l.contains("render_a.ttrpg")),
+            "expected filename in diagnostic, got: {:?}",
+            output
+        );
+
+        std::fs::remove_file(&a).ok();
+        std::fs::remove_file(&b).ok();
+    }
+
+    #[test]
+    fn multi_file_glob_expansion() {
+        let dir = multi_file_dir();
+        let sub = dir.join("glob_test");
+        std::fs::create_dir_all(&sub).unwrap();
+
+        std::fs::write(sub.join("sys_a.ttrpg"), "system \"A\" { entity Foo { x: int } }\n").unwrap();
+        std::fs::write(sub.join("sys_b.ttrpg"), "system \"B\" { derive id(x: int) -> int { x } }\n").unwrap();
+
+        let mut runner = Runner::new();
+        let glob_pattern = sub.join("*.ttrpg");
+        runner
+            .exec(&format!("load {}", glob_pattern.display()))
+            .unwrap();
+        let output = runner.take_output();
+        assert!(
+            output[0].contains("loaded 2 files"),
+            "expected 2 files loaded, got: {:?}",
+            output
+        );
+
+        std::fs::remove_file(sub.join("sys_a.ttrpg")).ok();
+        std::fs::remove_file(sub.join("sys_b.ttrpg")).ok();
+        std::fs::remove_dir(&sub).ok();
+    }
+
+    #[test]
+    fn multi_file_nonexistent_file_error() {
+        let dir = multi_file_dir();
+        let a = dir.join("exists.ttrpg");
+        std::fs::write(&a, "system \"A\" { entity Foo { x: int } }\n").unwrap();
+
+        let mut runner = Runner::new();
+        let err = runner
+            .exec(&format!("load {} /nonexistent/file.ttrpg", a.display()))
+            .unwrap_err();
+        assert!(err.to_string().contains("cannot read"));
+
+        std::fs::remove_file(&a).ok();
+    }
+
+    #[test]
+    fn multi_file_glob_no_match_error() {
+        let mut runner = Runner::new();
+        let err = runner
+            .exec("load /tmp/ttrpg_definitely_no_match_*.ttrpg")
+            .unwrap_err();
+        assert!(err.to_string().contains("no files matched"));
+    }
+
+    #[test]
+    fn single_file_backward_compat() {
+        // Single-file load should still work exactly as before
+        let dir = multi_file_dir();
+        let path = dir.join("single.ttrpg");
+        std::fs::write(&path, "\
+system \"test\" {
+    entity Character {
+        HP: int
+    }
+    derive double(x: int) -> int { x * 2 }
+}
+").unwrap();
+
+        let mut runner = Runner::new();
+        runner
+            .exec(&format!("load {}", path.display()))
+            .unwrap();
+        let output = runner.take_output();
+        // Single file says "loaded <path>" not "loaded N files"
+        assert!(
+            output[0].starts_with("loaded") && !output[0].contains("files"),
+            "single file should say 'loaded <path>', got: {:?}",
+            output
+        );
+
+        runner.exec("spawn Character hero { HP: 20 }").unwrap();
+        runner.take_output();
+
+        runner.exec("eval double(hero.HP)").unwrap();
+        let output = runner.take_output();
+        assert_eq!(output, vec!["40"]);
+
+        runner.exec("reload").unwrap();
+        let output = runner.take_output();
+        assert!(output[0].starts_with("loaded"));
+
+        std::fs::remove_file(&path).ok();
     }
 }

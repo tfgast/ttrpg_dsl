@@ -301,11 +301,67 @@ hook Regenerate on creature: Character (
 
 // --- Modules and imports ---
 //
-// Each file is a module. A system block is the top-level module.
-// `use` imports all public names from another system.
-//
+// Each file can contain `use` declarations and `system` blocks.
+// `use` imports all public names from another system by name.
 // All top-level declarations in a system block are public.
 // No private/public distinction in v0.
+//
+// Grammar:
+//   use_decl    = "use" STRING ("as" IDENT)? TERM
+//   top_level   = use_decl | system_decl
+//
+// `as` is a soft keyword — it is only treated as a keyword after
+// the `use` string literal. Identifiers named `as` are valid
+// elsewhere in the language.
+//
+// Multiple files are loaded via the CLI:
+//   load core.ttrpg combat.ttrpg
+//   load systems/*.ttrpg          // glob expansion
+//
+// Files are parsed independently, then spans are rebased into a
+// single unified offset space (with 1-byte sentinel gaps between
+// files). Programs are merged into a single Program and checked
+// with module-aware visibility.
+//
+// --- Global name uniqueness (v0) ---
+//
+// In v0, no two loaded systems may define the same declaration
+// name in the same namespace. This is enforced at module resolution
+// time (before the checker runs).
+//
+// Namespaces checked:
+//   - Types (enums, structs, entities)
+//   - Functions (derives, mechanics, actions, reactions, hooks, prompts)
+//   - Conditions
+//   - Events
+//   - Options
+//   - Enum variants (two enums with overlapping variant names collide)
+//
+// Same name in different namespaces is fine (e.g., type Foo and
+// function Foo coexist).
+//
+// --- System merging ---
+//
+// Multiple blocks with the same system name are merged additively:
+//
+//   // file: core_types.ttrpg
+//   system "Core" { entity Character { HP: int } }
+//
+//   // file: core_functions.ttrpg
+//   system "Core" { derive modifier(score: int) -> int { (score - 10) / 2 } }
+//
+// After loading both files, system "Core" contains both Character
+// and modifier(). Duplicate declarations within a merged system
+// are an error.
+//
+// --- Import semantics ---
+//
+// `use` is a top-level declaration, not inside a system block.
+// All `use` declarations in a file apply to all system blocks
+// in that same file.
+//
+// Imports are NOT transitive: if A uses B and B uses C, A cannot
+// see C's declarations without an explicit `use "C"`.
 
 // file: dnd5e/core.ttrpg
 system "D&D 5e Core" {
@@ -316,8 +372,31 @@ system "D&D 5e Core" {
 use "D&D 5e Core"
 
 system "D&D 5e Combat" {
-    // Can reference Ability, modifier(), etc.
+    // Can reference Ability, modifier(), etc. from Core
 }
+
+// --- Qualified access via aliases ---
+//
+// The `as` clause creates an alias for disambiguation:
+//
+//   use "D&D 5e Core" as Core
+//
+// Qualified type position (desugared before checking):
+//   entity Foo { ability: Core.Ability }
+//   // TypeExpr::Qualified { qualifier: "Core", name: "Ability" }
+//   // desugared to TypeExpr::Named("Ability") after validation
+//
+// Qualified expression position:
+//   Core.Ability       → Ty::EnumType (namespace access)
+//   Core.Ability.STR   → enum variant through alias
+//   Core.modifier(10)  → function call through alias
+//   Core.Prone         → condition reference through alias
+//
+// Alias rules:
+//   - Same alias for same target in different files: idempotent (ok)
+//   - Same alias for different targets: error
+//   - Alias collides with own declaration name: error
+//   - Alias collides with builtin function name: error
 
 // file: homebrew/flanking.ttrpg
 use "D&D 5e Combat"

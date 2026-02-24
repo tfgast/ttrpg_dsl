@@ -92,6 +92,8 @@ pub enum TopLevel {
 #[derive(Clone)]
 pub struct UseDecl {
     pub path: String,
+    pub alias: Option<String>,
+    pub span: Span,
 }
 
 #[derive(Clone)]
@@ -383,6 +385,7 @@ pub enum TypeExpr {
     Position,
     Condition,
     Named(std::string::String),
+    Qualified { qualifier: String, name: String },
     Map(Box<Spanned<TypeExpr>>, Box<Spanned<TypeExpr>>),
     List(Box<Spanned<TypeExpr>>),
     Set(Box<Spanned<TypeExpr>>),

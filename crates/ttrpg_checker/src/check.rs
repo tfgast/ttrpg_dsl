@@ -2,6 +2,7 @@ use std::collections::HashSet;
 
 use ttrpg_ast::ast::*;
 use ttrpg_ast::diagnostic::Diagnostic;
+use ttrpg_ast::module::ModuleMap;
 use ttrpg_ast::Span;
 
 use crate::env::*;
@@ -12,14 +13,20 @@ pub struct Checker<'a> {
     pub env: &'a TypeEnv,
     pub scope: ScopeStack,
     pub diagnostics: Vec<Diagnostic>,
+    /// The ModuleMap, if module-aware checking is enabled.
+    pub modules: Option<&'a ModuleMap>,
+    /// The system currently being checked (set during check_program iteration).
+    pub current_system: Option<String>,
 }
 
 impl<'a> Checker<'a> {
-    pub fn new(env: &'a TypeEnv) -> Self {
+    pub fn new(env: &'a TypeEnv, modules: Option<&'a ModuleMap>) -> Self {
         Self {
             env,
             scope: ScopeStack::new(),
             diagnostics: Vec::new(),
+            modules,
+            current_system: None,
         }
     }
 
@@ -41,11 +48,17 @@ impl<'a> Checker<'a> {
     pub fn check_program(&mut self, program: &Program) {
         for item in &program.items {
             if let TopLevel::System(system) = &item.node {
+                self.current_system = if self.modules.is_some() {
+                    Some(system.name.clone())
+                } else {
+                    None
+                };
                 for decl in &system.decls {
                     self.check_decl(decl);
                 }
             }
         }
+        self.current_system = None;
     }
 
     fn check_decl(&mut self, decl: &ttrpg_ast::Spanned<DeclKind>) {

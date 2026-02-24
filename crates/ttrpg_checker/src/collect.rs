@@ -2,6 +2,7 @@ use std::collections::HashSet;
 
 use ttrpg_ast::ast::*;
 use ttrpg_ast::diagnostic::Diagnostic;
+use ttrpg_ast::module::ModuleMap;
 use ttrpg_ast::Span;
 
 use crate::builtins::register_builtins;
@@ -26,6 +27,15 @@ fn check_reserved_prefix(name: &str, span: Span, diagnostics: &mut Vec<Diagnosti
 
 /// Pass 1: Collect all top-level declarations into a TypeEnv.
 pub fn collect(program: &Program) -> (TypeEnv, Vec<Diagnostic>) {
+    collect_inner(program, None)
+}
+
+/// Pass 1 with module awareness: populate ownership maps and visibility.
+pub fn collect_with_modules(program: &Program, modules: &ModuleMap) -> (TypeEnv, Vec<Diagnostic>) {
+    collect_inner(program, Some(modules))
+}
+
+fn collect_inner(program: &Program, modules: Option<&ModuleMap>) -> (TypeEnv, Vec<Diagnostic>) {
     let mut env = TypeEnv::new();
     let mut diagnostics = Vec::new();
 
@@ -52,7 +62,100 @@ pub fn collect(program: &Program) -> (TypeEnv, Vec<Diagnostic>) {
         }
     }
 
+    // Validate option extends chains (circular detection)
+    validate_option_extends(program, &env, &mut diagnostics);
+
+    // If module map provided, populate ownership and visibility
+    if let Some(modules) = modules {
+        populate_module_metadata(&mut env, modules, &mut diagnostics);
+    }
+
     (env, diagnostics)
+}
+
+/// Populate ownership maps, visibility, and aliases from the ModuleMap.
+fn populate_module_metadata(
+    env: &mut TypeEnv,
+    modules: &ModuleMap,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    // Populate ownership maps from ModuleMap system info
+    for (sys_name, sys_info) in &modules.systems {
+        for name in &sys_info.types {
+            env.type_owner.insert(name.clone(), sys_name.clone());
+        }
+        for name in &sys_info.functions {
+            env.function_owner.insert(name.clone(), sys_name.clone());
+        }
+        for name in &sys_info.conditions {
+            env.condition_owner.insert(name.clone(), sys_name.clone());
+        }
+        for name in &sys_info.events {
+            env.event_owner.insert(name.clone(), sys_name.clone());
+        }
+        for name in &sys_info.options {
+            env.option_owner.insert(name.clone(), sys_name.clone());
+        }
+        for name in &sys_info.variants {
+            env.variant_owner.insert(name.clone(), sys_name.clone());
+        }
+    }
+
+    // Compute per-system visibility (own + imported)
+    for (sys_name, sys_info) in &modules.systems {
+        let mut vis = VisibleNames::default();
+
+        // Own declarations
+        vis.types.extend(sys_info.types.iter().cloned());
+        vis.functions.extend(sys_info.functions.iter().cloned());
+        vis.conditions.extend(sys_info.conditions.iter().cloned());
+        vis.events.extend(sys_info.events.iter().cloned());
+        vis.variants.extend(sys_info.variants.iter().cloned());
+        vis.options.extend(sys_info.options.iter().cloned());
+
+        // Imported declarations
+        for import in &sys_info.imports {
+            if let Some(imported_sys) = modules.systems.get(&import.system_name) {
+                vis.types.extend(imported_sys.types.iter().cloned());
+                vis.functions.extend(imported_sys.functions.iter().cloned());
+                vis.conditions.extend(imported_sys.conditions.iter().cloned());
+                vis.events.extend(imported_sys.events.iter().cloned());
+                vis.variants.extend(imported_sys.variants.iter().cloned());
+                vis.options.extend(imported_sys.options.iter().cloned());
+            }
+        }
+
+        env.system_visibility.insert(sys_name.clone(), vis);
+    }
+
+    // Compute per-system aliases
+    for (sys_name, sys_info) in &modules.systems {
+        let mut aliases = std::collections::HashMap::new();
+        for import in &sys_info.imports {
+            if let Some(ref alias) = import.alias {
+                aliases.insert(alias.clone(), import.system_name.clone());
+            }
+        }
+        if !aliases.is_empty() {
+            env.system_aliases.insert(sys_name.clone(), aliases);
+        }
+    }
+
+    // Alias-vs-builtin validation (eager, declaration-site check)
+    for (sys_name, aliases) in &env.system_aliases.clone() {
+        for (alias, _target) in aliases {
+            if env.builtins.contains_key(alias) {
+                diagnostics.push(Diagnostic::error(
+                    format!(
+                        "alias \"{}\" shadows builtin function \"{}\"",
+                        alias, alias
+                    ),
+                    ttrpg_ast::Span::dummy(),
+                ));
+            }
+        }
+        let _ = sys_name; // used for context if we add spans later
+    }
 }
 
 /// Pass 1a: Register type names (enums, structs, entities) as stubs.
@@ -870,11 +973,77 @@ fn collect_option(
         ));
     }
 
-    if o.extends.is_some() {
-        diagnostics.push(Diagnostic::warning(
-            "option `extends` is not yet validated (requires module resolution)".to_string(),
-            span,
-        ));
+    if let Some(ref parent_name) = o.extends {
+        if !env.options.contains(parent_name) {
+            diagnostics.push(Diagnostic::error(
+                format!(
+                    "option \"{}\" extends unknown option \"{}\"",
+                    o.name, parent_name
+                ),
+                span,
+            ));
+        }
+    }
+}
+
+/// Validate option extends chains after all options are collected.
+/// Detects circular extends (A→B→A).
+pub fn validate_option_extends(
+    program: &Program,
+    _env: &TypeEnv,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    use std::collections::HashMap;
+
+    // Collect all extends relationships
+    let mut extends_map: HashMap<String, (String, Span)> = HashMap::new();
+    for item in &program.items {
+        if let TopLevel::System(system) = &item.node {
+            for decl in &system.decls {
+                if let DeclKind::Option(o) = &decl.node {
+                    if let Some(ref parent) = o.extends {
+                        extends_map.insert(o.name.clone(), (parent.clone(), decl.span));
+                    }
+                }
+            }
+        }
+    }
+
+    // Check for circular extends
+    for (start_name, _) in &extends_map {
+        let mut visited = HashSet::new();
+        let mut current = start_name.clone();
+        loop {
+            if !visited.insert(current.clone()) {
+                // Circular — build the chain for the error message
+                let mut chain = vec![start_name.clone()];
+                let mut c = start_name.clone();
+                loop {
+                    if let Some((parent, _)) = extends_map.get(&c) {
+                        chain.push(parent.clone());
+                        if parent == start_name {
+                            break;
+                        }
+                        c = parent.clone();
+                    } else {
+                        break;
+                    }
+                }
+                let (_, span) = &extends_map[start_name];
+                diagnostics.push(Diagnostic::error(
+                    format!(
+                        "circular option extends: {}",
+                        chain.join(" → ")
+                    ),
+                    *span,
+                ));
+                break;
+            }
+            match extends_map.get(&current) {
+                Some((parent, _)) => current = parent.clone(),
+                None => break,
+            }
+        }
     }
 }
 

@@ -75,7 +75,18 @@ impl Parser {
                     _ => {
                         let name = name.clone();
                         self.advance();
-                        TypeExpr::Named(name)
+                        // Check for qualified type: IDENT.IDENT
+                        if matches!(self.peek(), TokenKind::Dot) {
+                            if let TokenKind::Ident(_) = self.peek_at(1) {
+                                self.advance(); // consume dot
+                                let (qualified_name, _) = self.expect_ident()?;
+                                TypeExpr::Qualified { qualifier: name, name: qualified_name }
+                            } else {
+                                TypeExpr::Named(name)
+                            }
+                        } else {
+                            TypeExpr::Named(name)
+                        }
                     }
                 };
                 Ok(Spanned::new(ty, self.end_span(start)))

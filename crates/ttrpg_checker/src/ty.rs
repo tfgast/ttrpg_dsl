@@ -45,6 +45,10 @@ pub enum Ty {
     // Reference to an optional group's field namespace (entity.Group)
     OptionalGroupRef(std::string::String, std::string::String), // (entity_type, group_name)
 
+    // Module alias: intermediate marker for `use "..." as Alias` identifiers.
+    // Consumed by resolve_field and check_call; cannot appear in signatures.
+    ModuleAlias(std::string::String),
+
     // Sentinel: suppresses cascading errors
     Error,
 }
@@ -96,6 +100,7 @@ impl Ty {
             Ty::OptionalGroupRef(entity, group) => format!("{}.{}", entity, group),
             Ty::Resource => "resource".into(),
             Ty::Unit => "unit".into(),
+            Ty::ModuleAlias(name) => format!("module \"{}\"", name),
             Ty::Error => "<error>".into(),
         }
     }

@@ -328,7 +328,7 @@ fn write_nested(current: &mut Value, path: &[FieldPathSegment], value: Value) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::value::{duration_variant, duration_variant_with};
+    use crate::value::duration_variant;
 
     // ── GameState: add entity, read fields ─────────────────────
 

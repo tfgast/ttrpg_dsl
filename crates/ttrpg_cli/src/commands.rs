@@ -45,14 +45,22 @@ pub fn parse_command(line: &str) -> Option<Command> {
     let (keyword, tail) = split_first_token(trimmed);
     match keyword {
         "load" => {
-            // Take the first token as the path — paths don't contain
-            // unquoted spaces, and this avoids mangling `//` in paths.
+            // Collect all whitespace-delimited tokens until one starts with "//"
             let tail_trimmed = tail.trim_start();
-            let (path, _) = split_first_token(tail_trimmed);
-            if path.is_empty() {
+            let mut paths = String::new();
+            for token in tail_trimmed.split_whitespace() {
+                if token.starts_with("//") {
+                    break; // rest is a comment
+                }
+                if !paths.is_empty() {
+                    paths.push(' ');
+                }
+                paths.push_str(token);
+            }
+            if paths.is_empty() {
                 Some(Command::Unknown("load".into()))
             } else {
-                Some(Command::Load(path.into()))
+                Some(Command::Load(paths))
             }
         }
         "eval" => {

@@ -232,10 +232,18 @@ impl Parser {
     }
 
     fn parse_use_decl(&mut self) -> Result<UseDecl, ()> {
+        let start = self.start_span();
         self.expect_soft_keyword("use")?;
         let (path, _) = self.expect_string()?;
+        let alias = if self.at_ident("as") {
+            self.advance();
+            let (name, _) = self.expect_ident()?;
+            Some(name)
+        } else {
+            None
+        };
         self.expect_term()?;
-        Ok(UseDecl { path })
+        Ok(UseDecl { path, alias, span: self.end_span(start) })
     }
 
     fn parse_system_block(&mut self) -> Result<SystemBlock, ()> {

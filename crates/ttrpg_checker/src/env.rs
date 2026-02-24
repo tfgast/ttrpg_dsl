@@ -108,6 +108,31 @@ pub struct TypeEnv {
     pub variant_to_enum: HashMap<String, String>,
     pub builtins: HashMap<String, FnInfo>,
     pub options: HashSet<String>,
+
+    // ── Module awareness (populated when ModuleMap is provided) ───
+    /// Declaration name → owning system name, per namespace.
+    pub type_owner: HashMap<String, String>,
+    pub function_owner: HashMap<String, String>,
+    pub condition_owner: HashMap<String, String>,
+    pub event_owner: HashMap<String, String>,
+    pub option_owner: HashMap<String, String>,
+    pub variant_owner: HashMap<String, String>,
+
+    /// Per-system: which names are visible (own + imported).
+    pub system_visibility: HashMap<String, VisibleNames>,
+    /// Per-system: alias → target system name.
+    pub system_aliases: HashMap<String, HashMap<String, String>>,
+}
+
+/// Names visible to a system (own declarations + imported declarations).
+#[derive(Debug, Clone, Default)]
+pub struct VisibleNames {
+    pub types: HashSet<String>,
+    pub functions: HashSet<String>,
+    pub conditions: HashSet<String>,
+    pub events: HashSet<String>,
+    pub variants: HashSet<String>,
+    pub options: HashSet<String>,
 }
 
 impl Default for TypeEnv {
@@ -126,6 +151,14 @@ impl TypeEnv {
             variant_to_enum: HashMap::new(),
             builtins: HashMap::new(),
             options: HashSet::new(),
+            type_owner: HashMap::new(),
+            function_owner: HashMap::new(),
+            condition_owner: HashMap::new(),
+            event_owner: HashMap::new(),
+            option_owner: HashMap::new(),
+            variant_owner: HashMap::new(),
+            system_visibility: HashMap::new(),
+            system_aliases: HashMap::new(),
         }
     }
 
@@ -171,6 +204,9 @@ impl TypeEnv {
                     Ty::Error
                 }
             }
+            // Qualified types are desugared to Named by module resolution before checking.
+            // If one reaches the checker, it's an internal error — resolve to Error.
+            TypeExpr::Qualified { .. } => Ty::Error,
             TypeExpr::List(inner) => Ty::List(Box::new(self.resolve_type(inner))),
             TypeExpr::Set(inner) => Ty::Set(Box::new(self.resolve_type(inner))),
             TypeExpr::Map(k, v) => {
@@ -217,6 +253,12 @@ impl TypeEnv {
                 }
                 self.validate_type_names(k, diagnostics);
                 self.validate_type_names(v, diagnostics);
+            }
+            TypeExpr::Qualified { qualifier, name } => {
+                diagnostics.push(Diagnostic::error(
+                    format!("qualified type `{}.{}` requires module resolution", qualifier, name),
+                    texpr.span,
+                ));
             }
             _ => {}
         }
