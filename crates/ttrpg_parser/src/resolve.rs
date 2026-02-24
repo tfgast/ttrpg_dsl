@@ -171,14 +171,9 @@ pub fn resolve_modules(
                     continue;
                 }
 
-                // Check alias vs own declaration
+                // Check alias vs own declaration (all namespaces including variants)
                 if let Some(sys_info) = module_map.systems.get(sys_name) {
-                    if sys_info.types.contains(alias)
-                        || sys_info.functions.contains(alias)
-                        || sys_info.conditions.contains(alias)
-                        || sys_info.events.contains(alias)
-                        || sys_info.options.contains(alias)
-                    {
+                    if system_has_name(sys_info, alias) {
                         diagnostics.push(Diagnostic::error(
                             format!(
                                 "alias \"{}\" conflicts with declaration \"{}\"",
@@ -191,26 +186,27 @@ pub fn resolve_modules(
                 }
 
                 // Check alias vs imported names
-                // (names from all systems this system imports)
-                let imported_target = module_map.systems.get(&import.system_name);
-                if let Some(target_info) = imported_target {
-                    // Check if alias shadows a name from the target system
-                    if target_info.types.contains(alias)
-                        || target_info.functions.contains(alias)
-                        || target_info.conditions.contains(alias)
-                        || target_info.events.contains(alias)
-                        || target_info.options.contains(alias)
-                        || target_info.variants.contains(alias)
-                    {
-                        diagnostics.push(Diagnostic::error(
-                            format!(
-                                "alias \"{}\" shadows imported declaration \"{}\"",
-                                alias, alias
-                            ),
-                            import.span,
-                        ));
-                        continue;
+                // (names from the current target AND all previously accepted imports)
+                let mut shadowed_system = None;
+                let all_systems = std::iter::once(import.system_name.as_str())
+                    .chain(deduped_imports.iter().map(|i| i.system_name.as_str()));
+                for check_sys in all_systems {
+                    if let Some(sys_info) = module_map.systems.get(check_sys) {
+                        if system_has_name(sys_info, alias) {
+                            shadowed_system = Some(check_sys.to_string());
+                            break;
+                        }
                     }
+                }
+                if let Some(source_system) = shadowed_system {
+                    diagnostics.push(Diagnostic::error(
+                        format!(
+                            "alias \"{}\" shadows declaration \"{}\" imported from \"{}\"",
+                            alias, alias, source_system
+                        ),
+                        import.span,
+                    ));
+                    continue;
                 }
 
                 aliases.insert(alias.clone(), (import.system_name.clone(), import.span));
@@ -233,6 +229,16 @@ pub fn resolve_modules(
     desugar_qualified_types(program, &module_map, file_systems, &mut diagnostics);
 
     (module_map, diagnostics)
+}
+
+/// Check whether a system exports a name in any namespace.
+fn system_has_name(info: &SystemInfo, name: &str) -> bool {
+    info.types.contains(name)
+        || info.functions.contains(name)
+        || info.conditions.contains(name)
+        || info.events.contains(name)
+        || info.options.contains(name)
+        || info.variants.contains(name)
 }
 
 /// Ownership info for a single declaration.
@@ -846,5 +852,146 @@ mod tests {
 
         let (_map, diags) = resolve_modules(&mut program, &file_systems);
         assert!(diags.iter().any(|d| d.message.contains("duplicate declaration `modifier`")));
+    }
+
+    #[test]
+    fn alias_conflicts_with_own_variant() {
+        // Bug fix: alias vs own enum variant should be detected
+        let mut program = make_program(vec![
+            make_system("Other", vec![make_derive("bar")]),
+            make_system("Main", vec![make_enum("DamageType", &["fire", "cold"])]),
+        ]);
+        let file_systems = vec![FileSystemInfo {
+            system_names: vec!["Main".into()],
+            use_decls: vec![UseDecl {
+                path: "Other".into(),
+                alias: Some("fire".into()),
+                span: Span::new(0, 10),
+            }],
+        }];
+
+        let (_map, diags) = resolve_modules(&mut program, &file_systems);
+        assert!(
+            diags.iter().any(|d| d.message.contains("alias \"fire\" conflicts with declaration")),
+            "alias should conflict with own variant: {:?}", diags
+        );
+    }
+
+    #[test]
+    fn alias_shadows_cross_import_name() {
+        // Bug fix: alias should be checked against ALL imported systems, not just the current target
+        // use "A" (A exports type Foo) + use "B" as Foo → alias Foo shadows A's Foo
+        let mut program = make_program(vec![
+            make_system("A", vec![make_enum("Foo", &["X"])]),
+            make_system("B", vec![make_derive("bar")]),
+            make_system("Main", vec![make_derive("main_fn")]),
+        ]);
+        let file_systems = vec![FileSystemInfo {
+            system_names: vec!["Main".into()],
+            use_decls: vec![
+                UseDecl { path: "A".into(), alias: None, span: Span::new(0, 5) },
+                UseDecl { path: "B".into(), alias: Some("Foo".into()), span: Span::new(10, 25) },
+            ],
+        }];
+
+        let (_map, diags) = resolve_modules(&mut program, &file_systems);
+        let errors: Vec<_> = diags.iter().filter(|d| d.severity == Severity::Error).collect();
+        assert!(
+            errors.iter().any(|d| d.message.contains("alias \"Foo\" shadows")),
+            "alias Foo should shadow imported type Foo from A: {:?}", errors
+        );
+    }
+
+    #[test]
+    fn alias_shadows_cross_import_variant() {
+        // Alias shadows an enum variant from a different imported system
+        let mut program = make_program(vec![
+            make_system("A", vec![make_enum("DamageType", &["fire", "cold"])]),
+            make_system("B", vec![make_derive("bar")]),
+            make_system("Main", vec![make_derive("main_fn")]),
+        ]);
+        let file_systems = vec![FileSystemInfo {
+            system_names: vec!["Main".into()],
+            use_decls: vec![
+                UseDecl { path: "A".into(), alias: None, span: Span::new(0, 5) },
+                UseDecl { path: "B".into(), alias: Some("fire".into()), span: Span::new(10, 25) },
+            ],
+        }];
+
+        let (_map, diags) = resolve_modules(&mut program, &file_systems);
+        let errors: Vec<_> = diags.iter().filter(|d| d.severity == Severity::Error).collect();
+        assert!(
+            errors.iter().any(|d| d.message.contains("alias \"fire\" shadows")),
+            "alias fire should shadow imported variant fire from A: {:?}", errors
+        );
+    }
+
+    #[test]
+    fn alias_shadows_cross_import_condition() {
+        // Alias shadows a condition from a different imported system
+        let mut program = make_program(vec![
+            make_system("A", vec![make_condition("Stunned")]),
+            make_system("B", vec![make_derive("bar")]),
+            make_system("Main", vec![make_derive("main_fn")]),
+        ]);
+        let file_systems = vec![FileSystemInfo {
+            system_names: vec!["Main".into()],
+            use_decls: vec![
+                UseDecl { path: "A".into(), alias: None, span: Span::new(0, 5) },
+                UseDecl { path: "B".into(), alias: Some("Stunned".into()), span: Span::new(10, 25) },
+            ],
+        }];
+
+        let (_map, diags) = resolve_modules(&mut program, &file_systems);
+        let errors: Vec<_> = diags.iter().filter(|d| d.severity == Severity::Error).collect();
+        assert!(
+            errors.iter().any(|d| d.message.contains("alias \"Stunned\" shadows")),
+            "alias Stunned should shadow imported condition from A: {:?}", errors
+        );
+    }
+
+    #[test]
+    fn alias_shadows_target_system_name() {
+        // Original behavior preserved: alias shadows name from the target system itself
+        let mut program = make_program(vec![
+            make_system("A", vec![make_enum("Foo", &["X"]), make_derive("bar")]),
+            make_system("Main", vec![make_derive("main_fn")]),
+        ]);
+        let file_systems = vec![FileSystemInfo {
+            system_names: vec!["Main".into()],
+            use_decls: vec![UseDecl {
+                path: "A".into(),
+                alias: Some("Foo".into()),
+                span: Span::new(0, 10),
+            }],
+        }];
+
+        let (_map, diags) = resolve_modules(&mut program, &file_systems);
+        let errors: Vec<_> = diags.iter().filter(|d| d.severity == Severity::Error).collect();
+        assert!(
+            errors.iter().any(|d| d.message.contains("alias \"Foo\" shadows")),
+            "alias Foo should shadow type Foo from target system A: {:?}", errors
+        );
+    }
+
+    #[test]
+    fn alias_no_conflict_with_unrelated_names() {
+        // Alias that doesn't conflict with anything should work fine
+        let mut program = make_program(vec![
+            make_system("A", vec![make_enum("Foo", &["X"])]),
+            make_system("B", vec![make_derive("bar")]),
+            make_system("Main", vec![make_derive("main_fn")]),
+        ]);
+        let file_systems = vec![FileSystemInfo {
+            system_names: vec!["Main".into()],
+            use_decls: vec![
+                UseDecl { path: "A".into(), alias: None, span: Span::new(0, 5) },
+                UseDecl { path: "B".into(), alias: Some("Bsys".into()), span: Span::new(10, 25) },
+            ],
+        }];
+
+        let (_map, diags) = resolve_modules(&mut program, &file_systems);
+        let errors: Vec<_> = diags.iter().filter(|d| d.severity == Severity::Error).collect();
+        assert!(errors.is_empty(), "no conflicts expected: {:?}", errors);
     }
 }
