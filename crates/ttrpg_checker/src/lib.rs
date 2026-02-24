@@ -28,12 +28,15 @@ pub struct CheckResult {
 /// Pass 2: check all function/action/reaction/condition bodies.
 pub fn check(program: &Program) -> CheckResult {
     // Pass 1: collect declarations
-    let (env, mut diagnostics) = collect(program);
+    let (mut env, mut diagnostics) = collect(program);
 
     // Pass 2: check bodies
     let mut checker = Checker::new(&env, None);
     checker.check_program(program);
     diagnostics.extend(checker.diagnostics);
+
+    // Transfer resolution table from checker to env for interpreter use
+    env.resolved_variants = checker.resolved_variants;
 
     CheckResult { diagnostics, env }
 }
@@ -45,12 +48,15 @@ pub fn check(program: &Program) -> CheckResult {
 /// `check_name_visible` using the `current_system` context.
 pub fn check_with_modules(program: &Program, modules: &ModuleMap) -> CheckResult {
     // Pass 1: collect declarations with module ownership
-    let (env, mut diagnostics) = collect_with_modules(program, modules);
+    let (mut env, mut diagnostics) = collect_with_modules(program, modules);
 
     // Pass 2: check bodies with module-aware visibility
     let mut checker = Checker::new(&env, Some(modules));
     checker.check_program(program);
     diagnostics.extend(checker.diagnostics);
+
+    // Transfer resolution table from checker to env for interpreter use
+    env.resolved_variants = checker.resolved_variants;
 
     CheckResult { diagnostics, env }
 }

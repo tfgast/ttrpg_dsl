@@ -88,17 +88,20 @@ impl<'a> Checker<'a> {
             return binding.ty.clone();
         }
 
-        // Check if it's an enum variant
-        if let Some(enum_name) = self.env.variant_to_enum.get(name) {
+        // Check if it's an enum variant (may be unique or ambiguous)
+        if let Some(enum_name) = self.resolve_bare_variant(name, span) {
             // Only bare (no-payload) variants can be used as identifiers
-            if let Some(DeclInfo::Enum(info)) = self.env.types.get(enum_name) {
+            if let Some(DeclInfo::Enum(info)) = self.env.types.get(&enum_name) {
                 if let Some(variant) = info.variants.iter().find(|v| v.name == name) {
                     if variant.fields.is_empty() {
                         self.check_name_visible(name, Namespace::Variant, span);
-                        return Ty::Enum(enum_name.clone());
+                        return Ty::Enum(enum_name);
                     }
                 }
             }
+        } else if self.is_known_variant(name) {
+            // Ambiguity error was already emitted by resolve_bare_variant
+            return Ty::Error;
         }
 
         // Check if it's a condition name
@@ -962,10 +965,15 @@ impl<'a> Checker<'a> {
         }
 
         // Check if it's an enum variant constructor (bare name)
-        if let Some(enum_name) = self.env.variant_to_enum.get(&callee_name) {
+        if let Some(enum_name) = self.resolve_bare_variant(&callee_name, callee.span) {
             self.check_name_visible(&callee_name, Namespace::Variant, span);
-            let enum_name = enum_name.clone();
             return self.check_enum_constructor(&enum_name, &callee_name, args, span);
+        } else if self.is_known_variant(&callee_name) {
+            // Ambiguity error already emitted
+            for arg in args {
+                self.check_expr(&arg.value);
+            }
+            return Ty::Error;
         }
 
         // Look up function
@@ -2256,8 +2264,21 @@ impl<'a> Checker<'a> {
 
             // Check if the field is a bare enum variant in the target system
             if sys_info.variants.contains(field) {
-                if let Some(enum_name) = self.env.variant_to_enum.get(field) {
-                    if let Some(DeclInfo::Enum(info)) = self.env.types.get(enum_name) {
+                if let Some(owners) = self.env.variant_to_enums.get(field) {
+                    // Filter to enums that belong to this system
+                    let matching: Vec<&String> = owners.iter()
+                        .filter(|e| sys_info.types.contains(e.as_str()))
+                        .collect();
+                    let enum_name = if matching.len() == 1 {
+                        matching[0]
+                    } else if !matching.is_empty() {
+                        // Multiple enums in same system share variant — use first
+                        matching[0]
+                    } else {
+                        // Fallback: variant exists but not in this system's types
+                        owners.first().unwrap()
+                    };
+                    if let Some(DeclInfo::Enum(info)) = self.env.types.get(enum_name.as_str()) {
                         if let Some(variant) = info.variants.iter().find(|v| v.name == field) {
                             if variant.fields.is_empty() {
                                 return Ty::Enum(enum_name.clone());
@@ -2343,8 +2364,18 @@ impl<'a> Checker<'a> {
 
             // Check if it's an enum variant constructor
             if sys_info.variants.contains(field) {
-                if let Some(enum_name) = self.env.variant_to_enum.get(field) {
-                    let enum_name = enum_name.clone();
+                if let Some(owners) = self.env.variant_to_enums.get(field) {
+                    // Filter to enums that belong to this system
+                    let matching: Vec<&String> = owners.iter()
+                        .filter(|e| sys_info.types.contains(e.as_str()))
+                        .collect();
+                    let enum_name = if matching.len() == 1 {
+                        matching[0].clone()
+                    } else if !matching.is_empty() {
+                        matching[0].clone()
+                    } else {
+                        owners[0].clone()
+                    };
                     return self.check_enum_constructor(&enum_name, field, args, span);
                 }
             }

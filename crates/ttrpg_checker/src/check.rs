@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use ttrpg_ast::ast::*;
 use ttrpg_ast::diagnostic::Diagnostic;
@@ -28,6 +28,9 @@ pub struct Checker<'a> {
     pub modules: Option<&'a ModuleMap>,
     /// The system currently being checked (set during check_program iteration).
     pub current_system: Option<String>,
+    /// Maps each bare variant expression span to its resolved owning enum.
+    /// Transferred to `TypeEnv` after checking for use by the interpreter.
+    pub resolved_variants: HashMap<Span, String>,
 }
 
 impl<'a> Checker<'a> {
@@ -38,6 +41,7 @@ impl<'a> Checker<'a> {
             diagnostics: Vec::new(),
             modules,
             current_system: None,
+            resolved_variants: HashMap::new(),
         }
     }
 
@@ -47,6 +51,40 @@ impl<'a> Checker<'a> {
 
     pub fn warning(&mut self, message: impl Into<String>, span: Span) {
         self.diagnostics.push(Diagnostic::warning(message, span));
+    }
+
+    /// Try to resolve a bare variant name to its unique owning enum.
+    ///
+    /// - 1 owner: records the resolution and returns the enum name.
+    /// - >1 owners: emits an ambiguity error listing qualified forms, returns `None`.
+    /// - 0 owners: returns `None` (not a variant at all).
+    pub fn resolve_bare_variant(&mut self, variant: &str, span: Span) -> Option<String> {
+        match self.env.variant_to_enums.get(variant) {
+            Some(owners) if owners.len() == 1 => {
+                let enum_name = owners[0].clone();
+                self.resolved_variants.insert(span, enum_name.clone());
+                Some(enum_name)
+            }
+            Some(owners) if owners.len() > 1 => {
+                let qualified: Vec<String> = owners.iter().map(|e| format!("{}.{}", e, variant)).collect();
+                self.error(
+                    format!(
+                        "ambiguous variant `{}`; could belong to: {}. Use qualified form: {}",
+                        variant,
+                        owners.join(", "),
+                        qualified.join(" or "),
+                    ),
+                    span,
+                );
+                None
+            }
+            _ => None,
+        }
+    }
+
+    /// Check whether a name is a known enum variant (regardless of how many enums own it).
+    pub fn is_known_variant(&self, name: &str) -> bool {
+        self.env.variant_to_enums.contains_key(name)
     }
 
     /// Check whether `name` is visible in the current system.

@@ -200,8 +200,12 @@ fn eval_ident(
         return Ok(Value::EnumNamespace(name.to_string()));
     }
 
-    // 3. Check if it's a bare enum variant name (unambiguous via variant_to_enum)
-    if let Some(enum_name) = env.interp.type_env.variant_to_enum.get(name) {
+    // 3. Check if it's a bare enum variant name
+    //    Use the resolution table (populated by the checker) first, then fall back to
+    //    unique_variant_owner for CLI eval expressions that weren't checker-resolved.
+    let resolved = env.interp.type_env.resolved_variants.get(&expr.span).cloned()
+        .or_else(|| env.interp.type_env.unique_variant_owner(name).map(|s| s.to_string()));
+    if let Some(enum_name) = resolved {
         // Look up the variant info to check if it has fields
         if let Some(DeclInfo::Enum(enum_info)) = env.interp.type_env.types.get(enum_name.as_str())
         {
@@ -1779,15 +1783,15 @@ pub(crate) fn match_pattern(
         }
 
         PatternKind::Ident(name) => {
-            // Check if this ident is a bare enum variant (via variant_to_enum).
+            // Check if this ident is a known enum variant.
             // If so, match against the variant; otherwise bind as a variable.
-            if let Some(enum_name) = env.interp.type_env.variant_to_enum.get(name.as_str()) {
-                // It's a bare enum variant — match by variant name (checker rejects
-                // bare patterns for payload variants, but we match by name as safety net)
+            if env.interp.type_env.variant_to_enums.contains_key(name.as_str()) {
+                // It's a bare enum variant — the runtime value carries its own enum_name,
+                // so we match by variant name (checker guarantees correctness).
                 matches!(
                     value,
-                    Value::EnumVariant { enum_name: actual_enum, variant, .. }
-                    if actual_enum == enum_name && variant == name
+                    Value::EnumVariant { variant, .. }
+                    if variant == name
                 )
             } else {
                 bindings.insert(name.clone(), value.clone());
@@ -1854,20 +1858,20 @@ pub(crate) fn match_pattern(
             name,
             fields: patterns,
         } => {
-            // Check if this is an enum variant via variant_to_enum
-            if let Some(enum_name) = env.interp.type_env.variant_to_enum.get(name.as_str()) {
+            // Check if this is a known enum variant
+            if env.interp.type_env.variant_to_enums.contains_key(name.as_str()) {
                 if let Value::EnumVariant {
                     enum_name: actual_enum,
                     variant,
                     fields,
                 } = value
                 {
-                    if actual_enum != enum_name || variant != name {
+                    if variant != name {
                         return false;
                     }
-                    // Match fields positionally using variant field info
+                    // Use the value's own enum_name for field info lookup
                     if let Some(DeclInfo::Enum(enum_info)) =
-                        env.interp.type_env.types.get(enum_name.as_str())
+                        env.interp.type_env.types.get(actual_enum.as_str())
                     {
                         if let Some(variant_info) =
                             enum_info.variants.iter().find(|vi| vi.name == *name)
@@ -3915,12 +3919,8 @@ mod tests {
                 ],
             }),
         );
-        type_env
-            .variant_to_enum
-            .insert("red".to_string(), "Color".to_string());
-        type_env
-            .variant_to_enum
-            .insert("blue".to_string(), "Color".to_string());
+        type_env.variant_to_enums.entry("red".to_string()).or_default().push("Color".to_string());
+        type_env.variant_to_enums.entry("blue".to_string()).or_default().push("Color".to_string());
 
         let interp = Interpreter::new(&program, &type_env).unwrap();
         let state = TestState::new();
@@ -4110,8 +4110,8 @@ mod tests {
                 ],
             }),
         );
-        type_env.variant_to_enum.insert("red".to_string(), "Color".to_string());
-        type_env.variant_to_enum.insert("blue".to_string(), "Color".to_string());
+        type_env.variant_to_enums.entry("red".to_string()).or_default().push("Color".to_string());
+        type_env.variant_to_enums.entry("blue".to_string()).or_default().push("Color".to_string());
 
         let interp = Interpreter::new(&program, &type_env).unwrap();
         let state = TestState::new();
@@ -4159,7 +4159,7 @@ mod tests {
                 ],
             }),
         );
-        type_env.variant_to_enum.insert("red".to_string(), "Color".to_string());
+        type_env.variant_to_enums.entry("red".to_string()).or_default().push("Color".to_string());
 
         let interp = Interpreter::new(&program, &type_env).unwrap();
         let state = TestState::new();
@@ -4419,9 +4419,7 @@ mod tests {
                 ],
             }),
         );
-        type_env
-            .variant_to_enum
-            .insert("red".to_string(), "Color".to_string());
+        type_env.variant_to_enums.entry("red".to_string()).or_default().push("Color".to_string());
 
         let interp = Interpreter::new(&program, &type_env).unwrap();
         let state = TestState::new();
@@ -4465,9 +4463,7 @@ mod tests {
                 ],
             }),
         );
-        type_env
-            .variant_to_enum
-            .insert("red".to_string(), "Color".to_string());
+        type_env.variant_to_enums.entry("red".to_string()).or_default().push("Color".to_string());
 
         let interp = Interpreter::new(&program, &type_env).unwrap();
         let state = TestState::new();
@@ -4953,9 +4949,9 @@ mod tests {
                 ],
             }),
         );
-        type_env.variant_to_enum.insert("small".to_string(), "Size".to_string());
-        type_env.variant_to_enum.insert("medium".to_string(), "Size".to_string());
-        type_env.variant_to_enum.insert("large".to_string(), "Size".to_string());
+        type_env.variant_to_enums.entry("small".to_string()).or_default().push("Size".to_string());
+        type_env.variant_to_enums.entry("medium".to_string()).or_default().push("Size".to_string());
+        type_env.variant_to_enums.entry("large".to_string()).or_default().push("Size".to_string());
 
         let interp = Interpreter::new(&program, &type_env).unwrap();
         let state = TestState::new();
@@ -5017,9 +5013,9 @@ mod tests {
                 ],
             }),
         );
-        type_env.variant_to_enum.insert("small".to_string(), "Size".to_string());
-        type_env.variant_to_enum.insert("medium".to_string(), "Size".to_string());
-        type_env.variant_to_enum.insert("large".to_string(), "Size".to_string());
+        type_env.variant_to_enums.entry("small".to_string()).or_default().push("Size".to_string());
+        type_env.variant_to_enums.entry("medium".to_string()).or_default().push("Size".to_string());
+        type_env.variant_to_enums.entry("large".to_string()).or_default().push("Size".to_string());
 
         let interp = Interpreter::new(&program, &type_env).unwrap();
         let state = TestState::new();

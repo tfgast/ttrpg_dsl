@@ -29,11 +29,12 @@ pub(crate) fn eval_call(
     match &callee.node {
         // ── Simple identifier: bare enum variant or function name ──
         ExprKind::Ident(name) => {
-            // 1. Check if it's a bare enum variant (via variant_to_enum).
+            // 1. Check if it's a bare enum variant (via resolution table or unique owner).
             //    Variants shadow functions with the same name, matching the
             //    checker's resolution order (check_expr.rs:630).
-            if let Some(enum_name) = env.interp.type_env.variant_to_enum.get(name.as_str()) {
-                let enum_name = enum_name.clone();
+            let resolved = env.interp.type_env.resolved_variants.get(&callee.span).cloned()
+                .or_else(|| env.interp.type_env.unique_variant_owner(name).map(|s| s.to_string()));
+            if let Some(enum_name) = resolved {
                 return construct_enum_variant(env, &enum_name, name, args, call_span);
             }
 
@@ -1987,8 +1988,8 @@ mod tests {
                 ],
             }),
         );
-        type_env.variant_to_enum.insert("rounds".into(), "Duration".into());
-        type_env.variant_to_enum.insert("indefinite".into(), "Duration".into());
+        type_env.variant_to_enums.entry("rounds".into()).or_default().push("Duration".into());
+        type_env.variant_to_enums.entry("indefinite".into()).or_default().push("Duration".into());
 
         let interp = Interpreter::new(&program, &type_env).unwrap();
         let state = TestState::new();
@@ -2033,8 +2034,8 @@ mod tests {
                 ],
             }),
         );
-        type_env.variant_to_enum.insert("rounds".into(), "Duration".into());
-        type_env.variant_to_enum.insert("indefinite".into(), "Duration".into());
+        type_env.variant_to_enums.entry("rounds".into()).or_default().push("Duration".into());
+        type_env.variant_to_enums.entry("indefinite".into()).or_default().push("Duration".into());
 
         let interp = Interpreter::new(&program, &type_env).unwrap();
         let state = TestState::new();
@@ -2808,7 +2809,7 @@ mod tests {
                 ],
             }),
         );
-        type_env.variant_to_enum.insert("rounds".into(), "Duration".into());
+        type_env.variant_to_enums.entry("rounds".into()).or_default().push("Duration".into());
 
         let interp = Interpreter::new(&program, &type_env).unwrap();
         let state = TestState::new();

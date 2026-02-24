@@ -6259,3 +6259,111 @@ system "Main" {
 "#),
     ]);
 }
+
+// ═══════════════════════════════════════════════════════════════
+// Multi-owner enum variants
+// ═══════════════════════════════════════════════════════════════
+
+#[test]
+fn shared_variant_ambiguous_bare_use_is_error() {
+    expect_errors(r#"
+system "test" {
+    enum Color { red, blue }
+    enum Alert { red, yellow }
+    derive test() -> Color { red }
+}
+"#, &["ambiguous variant `red`"]);
+}
+
+#[test]
+fn shared_variant_qualified_form_works() {
+    expect_no_errors(r#"
+system "test" {
+    enum Color { red, blue }
+    enum Alert { red, yellow }
+    derive test() -> Color { Color.red }
+}
+"#);
+}
+
+#[test]
+fn shared_variant_unique_still_bare_accessible() {
+    // `blue` belongs only to Color, `yellow` belongs only to Alert — both should work bare
+    expect_no_errors(r#"
+system "test" {
+    enum Color { red, blue }
+    enum Alert { red, yellow }
+    derive test_blue() -> Color { blue }
+    derive test_yellow() -> Alert { yellow }
+}
+"#);
+}
+
+#[test]
+fn shared_variant_pattern_scrutinee_disambiguates() {
+    expect_no_errors(r#"
+system "test" {
+    enum Color { red, blue }
+    enum Alert { red, yellow }
+    derive test(c: Color) -> int {
+        match c {
+            red => 1,
+            blue => 2,
+        }
+    }
+}
+"#);
+}
+
+#[test]
+fn shared_variant_pattern_wrong_enum_is_error() {
+    expect_errors(r#"
+system "test" {
+    enum Color { red, blue }
+    enum Alert { red, yellow }
+    derive test(a: Alert) -> int {
+        match a {
+            blue => 1,
+            _ => 0,
+        }
+    }
+}
+"#, &["variant `blue` belongs to"]);
+}
+
+#[test]
+fn shared_variant_constructor_ambiguous_is_error() {
+    expect_errors(r#"
+system "test" {
+    enum Color { red(intensity: int) }
+    enum Alert { red(level: int) }
+    derive test() -> Color { red(intensity: 5) }
+}
+"#, &["ambiguous variant `red`"]);
+}
+
+#[test]
+fn shared_variant_constructor_qualified_works() {
+    expect_no_errors(r#"
+system "test" {
+    enum Color { red(intensity: int) }
+    enum Alert { red(level: int) }
+    derive test() -> Color { Color.red(intensity: 5) }
+}
+"#);
+}
+
+#[test]
+fn shared_variant_bare_destructure_scrutinee_disambiguates() {
+    expect_no_errors(r#"
+system "test" {
+    enum Color { red(intensity: int) }
+    enum Alert { red(level: int) }
+    derive test(c: Color) -> int {
+        match c {
+            red(i) => i,
+        }
+    }
+}
+"#);
+}

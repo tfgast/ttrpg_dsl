@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::ty::Ty;
+use ttrpg_ast::Span;
 use ttrpg_ast::ast::TypeExpr;
 use ttrpg_ast::diagnostic::Diagnostic;
 use ttrpg_ast::Spanned;
@@ -106,7 +107,8 @@ pub struct TypeEnv {
     pub functions: HashMap<String, FnInfo>,
     pub conditions: HashMap<String, ConditionInfo>,
     pub events: HashMap<String, EventInfo>,
-    pub variant_to_enum: HashMap<String, String>,
+    pub variant_to_enums: HashMap<String, Vec<String>>,
+    pub resolved_variants: HashMap<Span, String>,
     pub builtins: HashMap<String, FnInfo>,
     pub options: HashSet<String>,
 
@@ -149,7 +151,8 @@ impl TypeEnv {
             functions: HashMap::new(),
             conditions: HashMap::new(),
             events: HashMap::new(),
-            variant_to_enum: HashMap::new(),
+            variant_to_enums: HashMap::new(),
+            resolved_variants: HashMap::new(),
             builtins: HashMap::new(),
             options: HashSet::new(),
             type_owner: HashMap::new(),
@@ -160,6 +163,14 @@ impl TypeEnv {
             variant_owner: HashMap::new(),
             system_visibility: HashMap::new(),
             system_aliases: HashMap::new(),
+        }
+    }
+
+    /// If exactly one enum owns this variant, return that enum's name.
+    pub fn unique_variant_owner(&self, variant: &str) -> Option<&str> {
+        match self.variant_to_enums.get(variant) {
+            Some(owners) if owners.len() == 1 => Some(&owners[0]),
+            _ => None,
         }
     }
 

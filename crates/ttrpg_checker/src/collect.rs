@@ -394,18 +394,8 @@ fn collect_enum(e: &EnumDecl, env: &mut TypeEnv, diagnostics: &mut Vec<Diagnosti
             None => Vec::new(),
         };
 
-        // Register variant → enum mapping
-        if let Some(existing) = env.variant_to_enum.get(&v.name) {
-            diagnostics.push(Diagnostic::error(
-                format!(
-                    "variant `{}` already defined in enum `{}`",
-                    v.name, existing
-                ),
-                v.span,
-            ));
-        } else {
-            env.variant_to_enum.insert(v.name.clone(), e.name.clone());
-        }
+        // Register variant → enum mapping (multiple enums may share a variant name)
+        env.variant_to_enums.entry(v.name.clone()).or_default().push(e.name.clone());
 
         // Warn if variant name shadows a function
         if env.functions.contains_key(&v.name) || env.builtins.contains_key(&v.name) {
@@ -561,7 +551,7 @@ fn collect_fn(
     }
 
     // Warn if function name collides with an enum variant
-    if env.variant_to_enum.contains_key(name) {
+    if env.variant_to_enums.contains_key(name) {
         diagnostics.push(Diagnostic::warning(
             format!(
                 "function `{}` has the same name as an enum variant; the function will be uncallable in bare form",
@@ -1074,9 +1064,10 @@ fn register_builtin_types(env: &mut TypeEnv) {
             fields: vec![],
         }];
         for v in &variants {
-            env.variant_to_enum
-                .entry(v.name.clone())
-                .or_insert_with(|| "Duration".into());
+            let owners = env.variant_to_enums.entry(v.name.clone()).or_default();
+            if !owners.contains(&"Duration".to_string()) {
+                owners.push("Duration".into());
+            }
         }
         env.types.insert(
             "Duration".into(),

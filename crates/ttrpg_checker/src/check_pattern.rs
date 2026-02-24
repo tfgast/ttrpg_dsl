@@ -81,20 +81,32 @@ impl<'a> Checker<'a> {
             }
 
             PatternKind::Ident(name) => {
-                // Could be a bare enum variant or a binding variable
-                if let Some(enum_name) = self.env.variant_to_enum.get(name).cloned() {
-                    self.check_name_visible(name, Namespace::Variant, pattern.span);
-                    // It's a variant — check it matches the scrutinee enum
-                    if let Ty::Enum(ref s_enum) = scrutinee_ty {
-                        if *s_enum != enum_name {
+                // Could be a bare enum variant or a binding variable.
+                // Use scrutinee type to disambiguate multi-owner variants.
+                if let Some(owners) = self.env.variant_to_enums.get(name).cloned() {
+                    // Determine which enum this variant belongs to in context
+                    let enum_name = if let Ty::Enum(ref s_enum) = scrutinee_ty {
+                        // Scrutinee type disambiguates
+                        if owners.contains(s_enum) {
+                            Some(s_enum.clone())
+                        } else {
+                            // Variant doesn't belong to the scrutinee's enum
+                            let owner_list: Vec<String> = owners.iter()
+                                .map(|e| format!("`{}`", e))
+                                .collect();
                             self.error(
                                 format!(
-                                    "variant `{}` belongs to enum `{}`, not `{}`",
-                                    name, enum_name, s_enum
+                                    "variant `{}` belongs to {}, not `{}`",
+                                    name,
+                                    owner_list.join(" and "),
+                                    s_enum,
                                 ),
                                 pattern.span,
                             );
+                            None
                         }
+                    } else if owners.len() == 1 {
+                        Some(owners[0].clone())
                     } else if !scrutinee_ty.is_error() {
                         self.error(
                             format!(
@@ -103,18 +115,26 @@ impl<'a> Checker<'a> {
                             ),
                             pattern.span,
                         );
-                    }
-                    // Reject bare pattern for variants with payload fields
-                    if let Some(DeclInfo::Enum(info)) = self.env.types.get(&enum_name) {
-                        if let Some(var_info) = info.variants.iter().find(|v| v.name == *name) {
-                            if !var_info.fields.is_empty() {
-                                self.error(
-                                    format!(
-                                        "variant `{}` has {} field(s); use destructuring pattern `{}(...)` or a wildcard",
-                                        name, var_info.fields.len(), name
-                                    ),
-                                    pattern.span,
-                                );
+                        None
+                    } else {
+                        None
+                    };
+
+                    if let Some(ref resolved) = enum_name {
+                        self.check_name_visible(name, Namespace::Variant, pattern.span);
+                        self.resolved_variants.insert(pattern.span, resolved.clone());
+                        // Reject bare pattern for variants with payload fields
+                        if let Some(DeclInfo::Enum(info)) = self.env.types.get(resolved) {
+                            if let Some(var_info) = info.variants.iter().find(|v| v.name == *name) {
+                                if !var_info.fields.is_empty() {
+                                    self.error(
+                                        format!(
+                                            "variant `{}` has {} field(s); use destructuring pattern `{}(...)` or a wildcard",
+                                            name, var_info.fields.len(), name
+                                        ),
+                                        pattern.span,
+                                    );
+                                }
                             }
                         }
                     }
@@ -245,45 +265,61 @@ impl<'a> Checker<'a> {
                 name,
                 fields: sub_patterns,
             } => {
-                // Variant(patterns) — unqualified
-                if let Some(enum_name) = self.env.variant_to_enum.get(name).cloned() {
-                    self.check_name_visible(name, Namespace::Variant, pattern.span);
-                    if let Some(DeclInfo::Enum(info)) = self.env.types.get(&enum_name) {
-                        if let Some(var_info) = info.variants.iter().find(|v| v.name == *name) {
-                            // Check scrutinee type
-                            if let Ty::Enum(ref s_enum) = scrutinee_ty {
-                                if *s_enum != enum_name {
+                // Variant(patterns) — unqualified, disambiguate via scrutinee type
+                if let Some(owners) = self.env.variant_to_enums.get(name).cloned() {
+                    // Determine which enum this variant belongs to
+                    let enum_name = if let Ty::Enum(ref s_enum) = scrutinee_ty {
+                        if owners.contains(s_enum) {
+                            Some(s_enum.clone())
+                        } else {
+                            let owner_list: Vec<String> = owners.iter()
+                                .map(|e| format!("`{}`", e))
+                                .collect();
+                            self.error(
+                                format!(
+                                    "variant `{}` belongs to {}, not `{}`",
+                                    name,
+                                    owner_list.join(" and "),
+                                    s_enum,
+                                ),
+                                pattern.span,
+                            );
+                            None
+                        }
+                    } else if owners.len() == 1 {
+                        Some(owners[0].clone())
+                    } else if !scrutinee_ty.is_error() {
+                        self.error(
+                            format!(
+                                "variant pattern `{}` cannot match type {}",
+                                name, scrutinee_ty
+                            ),
+                            pattern.span,
+                        );
+                        None
+                    } else {
+                        None
+                    };
+
+                    if let Some(ref resolved) = enum_name {
+                        self.check_name_visible(name, Namespace::Variant, pattern.span);
+                        self.resolved_variants.insert(pattern.span, resolved.clone());
+                        if let Some(DeclInfo::Enum(info)) = self.env.types.get(resolved) {
+                            if let Some(var_info) = info.variants.iter().find(|v| v.name == *name) {
+                                if sub_patterns.len() != var_info.fields.len() {
                                     self.error(
                                         format!(
-                                            "variant `{}` belongs to enum `{}`, not `{}`",
-                                            name, enum_name, s_enum
+                                            "variant `{}` has {} field(s), found {} in pattern",
+                                            name,
+                                            var_info.fields.len(),
+                                            sub_patterns.len()
                                         ),
                                         pattern.span,
                                     );
                                 }
-                            } else if !scrutinee_ty.is_error() {
-                                self.error(
-                                    format!(
-                                        "variant pattern `{}` cannot match type {}",
-                                        name, scrutinee_ty
-                                    ),
-                                    pattern.span,
-                                );
-                            }
-
-                            if sub_patterns.len() != var_info.fields.len() {
-                                self.error(
-                                    format!(
-                                        "variant `{}` has {} field(s), found {} in pattern",
-                                        name,
-                                        var_info.fields.len(),
-                                        sub_patterns.len()
-                                    ),
-                                    pattern.span,
-                                );
-                            }
-                            for (sub, field) in sub_patterns.iter().zip(var_info.fields.iter()) {
-                                self.check_pattern(sub, &field.1);
+                                for (sub, field) in sub_patterns.iter().zip(var_info.fields.iter()) {
+                                    self.check_pattern(sub, &field.1);
+                                }
                             }
                         }
                     }
