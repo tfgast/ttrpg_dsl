@@ -91,6 +91,18 @@ impl<'a> RawLexer<'a> {
             }
         }
 
+        // Check for unit literal: INT followed immediately by alpha chars (e.g., 30ft)
+        if self.cursor.peek().is_some_and(|ch| ch.is_ascii_alphabetic()) {
+            let suffix_start = self.cursor.pos();
+            self.cursor.eat_while(|ch| ch.is_ascii_alphanumeric() || ch == '_');
+            let suffix_end = self.cursor.pos();
+            let suffix = self.cursor.slice(suffix_start, suffix_end).to_string();
+            return Token::new(
+                TokenKind::UnitLiteral { value: count, suffix },
+                Span::new(first_digit_start, suffix_end),
+            );
+        }
+
         Token::new(
             TokenKind::Int(count),
             Span::new(first_digit_start, num_end),

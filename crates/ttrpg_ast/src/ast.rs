@@ -125,6 +125,7 @@ pub enum DeclKind {
     Event(EventDecl),
     Move(MoveDecl),
     Table(TableDecl),
+    Unit(UnitDecl),
 }
 
 #[derive(Clone)]
@@ -423,6 +424,14 @@ pub enum TableKey {
     Wildcard,
 }
 
+/// A `unit` declaration: dimensioned numeric type with optional suffix.
+#[derive(Clone)]
+pub struct UnitDecl {
+    pub name: String,
+    pub suffix: Option<String>,
+    pub fields: Vec<FieldDef>,
+}
+
 // ── Types ────────────────────────────────────────────────────────
 
 #[derive(Clone)]
@@ -460,6 +469,10 @@ pub enum ExprKind {
         count: u32,
         sides: u32,
         filter: Option<DiceFilter>,
+    },
+    UnitLit {
+        value: i64,
+        suffix: std::string::String,
     },
     Ident(std::string::String),
     BinOp {

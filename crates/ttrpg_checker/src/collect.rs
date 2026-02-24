@@ -189,6 +189,14 @@ fn pass_1a(
                     optional_groups: Vec::new(),
                 }),
             ),
+            DeclKind::Unit(u) => (
+                u.name.clone(),
+                DeclInfo::Unit(UnitInfo {
+                    name: u.name.clone(),
+                    fields: Vec::new(),
+                    suffix: None,
+                }),
+            ),
             _ => continue,
         };
 
@@ -345,6 +353,11 @@ fn pass_1b(
                     diagnostics,
                     decl.span,
                 );
+            }
+            DeclKind::Unit(u) => {
+                if processed_types.insert(u.name.clone()) {
+                    collect_unit(u, env, diagnostics, decl.span);
+                }
             }
             DeclKind::Move(_) => {
                 diagnostics.push(Diagnostic::error(
@@ -528,6 +541,84 @@ fn collect_entity(e: &EntityDecl, env: &mut TypeEnv, diagnostics: &mut Vec<Diagn
     if let Some(DeclInfo::Entity(info)) = env.types.get_mut(&e.name) {
         info.fields = fields;
         info.optional_groups = optional_groups;
+    }
+}
+
+fn collect_unit(
+    u: &ttrpg_ast::ast::UnitDecl,
+    env: &mut TypeEnv,
+    diagnostics: &mut Vec<Diagnostic>,
+    span: Span,
+) {
+    // Validate: exactly one field, must be int
+    if u.fields.is_empty() {
+        diagnostics.push(Diagnostic::error(
+            format!("unit type `{}` must have exactly one field", u.name),
+            span,
+        ));
+        return;
+    }
+    if u.fields.len() > 1 {
+        diagnostics.push(Diagnostic::error(
+            format!(
+                "unit type `{}` must have exactly one field, found {}",
+                u.name,
+                u.fields.len()
+            ),
+            span,
+        ));
+        return;
+    }
+
+    let field = &u.fields[0];
+    env.validate_type_names(&field.ty, diagnostics);
+    let field_ty = env.resolve_type(&field.ty);
+    if field_ty != Ty::Int {
+        diagnostics.push(Diagnostic::error(
+            format!(
+                "unit type `{}` field `{}` must be int, found {}",
+                u.name, field.name, field_ty
+            ),
+            field.span,
+        ));
+    }
+
+    // Validate suffix if present
+    if let Some(ref suffix) = u.suffix {
+        // Must start with a letter
+        if !suffix.starts_with(|c: char| c.is_ascii_alphabetic()) {
+            diagnostics.push(Diagnostic::error(
+                format!(
+                    "unit suffix `{}` must start with a letter",
+                    suffix
+                ),
+                span,
+            ));
+        }
+
+        // Check uniqueness
+        if let Some(existing) = env.suffix_to_unit.get(suffix) {
+            diagnostics.push(Diagnostic::error(
+                format!(
+                    "duplicate unit suffix `{}`; already declared by `{}`",
+                    suffix, existing
+                ),
+                span,
+            ));
+        } else {
+            env.suffix_to_unit.insert(suffix.clone(), u.name.clone());
+        }
+    }
+
+    // Update the stub with resolved info
+    let field_info = FieldInfo {
+        name: field.name.clone(),
+        ty: field_ty,
+        has_default: field.default.is_some(),
+    };
+    if let Some(DeclInfo::Unit(info)) = env.types.get_mut(&u.name) {
+        info.fields = vec![field_info];
+        info.suffix = u.suffix.clone();
     }
 }
 

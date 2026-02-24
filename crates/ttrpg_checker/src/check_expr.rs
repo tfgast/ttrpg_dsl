@@ -39,6 +39,18 @@ impl<'a> Checker<'a> {
                 Ty::DiceExpr
             }
 
+            ExprKind::UnitLit { suffix, .. } => {
+                if let Some(unit_name) = self.env.suffix_to_unit.get(suffix.as_str()).cloned() {
+                    Ty::UnitType(unit_name)
+                } else {
+                    self.error(
+                        format!("unknown unit suffix `{}`", suffix),
+                        expr.span,
+                    );
+                    Ty::Error
+                }
+            }
+
             ExprKind::Ident(name) => self.check_ident(name, expr.span, hint),
 
             ExprKind::BinOp { op, lhs, rhs } => self.check_binop(*op, lhs, rhs, expr.span),
@@ -139,7 +151,7 @@ impl<'a> Checker<'a> {
             self.check_name_visible(name, Namespace::Type, span);
             return match decl {
                 DeclInfo::Enum(_) => Ty::EnumType(name.to_string()),
-                DeclInfo::Struct(_) | DeclInfo::Entity(_) => {
+                DeclInfo::Struct(_) | DeclInfo::Entity(_) | DeclInfo::Unit(_) => {
                     self.error(
                         format!("type `{}` cannot be used as a value", name),
                         span,
@@ -223,6 +235,8 @@ impl<'a> Checker<'a> {
             (Ty::Float, t) | (t, Ty::Float) if t.is_numeric() => Ty::Float,
             // String concatenation
             (Ty::String, Ty::String) => Ty::String,
+            // Unit types: same-type addition
+            (Ty::UnitType(a), Ty::UnitType(b)) if a == b => Ty::UnitType(a.clone()),
             _ => {
                 self.error(
                     format!("cannot add {} and {}", lhs, rhs),
@@ -240,6 +254,8 @@ impl<'a> Checker<'a> {
             // Numeric
             (l, r) if l.is_int_like() && r.is_int_like() => Ty::Int,
             (Ty::Float, t) | (t, Ty::Float) if t.is_numeric() => Ty::Float,
+            // Unit types: same-type subtraction
+            (Ty::UnitType(a), Ty::UnitType(b)) if a == b => Ty::UnitType(a.clone()),
             _ => {
                 self.error(
                     format!("cannot subtract {} from {}", rhs, lhs),
@@ -263,6 +279,8 @@ impl<'a> Checker<'a> {
         match (lhs, rhs) {
             (l, r) if l.is_int_like() && r.is_int_like() => Ty::Int,
             (Ty::Float, t) | (t, Ty::Float) if t.is_numeric() => Ty::Float,
+            // Unit types: int * unit or unit * int
+            (Ty::Int, Ty::UnitType(a)) | (Ty::UnitType(a), Ty::Int) => Ty::UnitType(a.clone()),
             _ => {
                 self.error(
                     format!("cannot multiply {} and {}", lhs, rhs),
@@ -287,6 +305,8 @@ impl<'a> Checker<'a> {
             // int / int -> float (always)
             (l, r) if l.is_int_like() && r.is_int_like() => Ty::Float,
             (Ty::Float, t) | (t, Ty::Float) if t.is_numeric() => Ty::Float,
+            // Unit types: same-type division produces float (dimensionless ratio)
+            (Ty::UnitType(a), Ty::UnitType(b)) if a == b => Ty::Float,
             _ => {
                 self.error(
                     format!("cannot divide {} by {}", lhs, rhs),
@@ -363,6 +383,12 @@ impl<'a> Checker<'a> {
         if a.is_numeric() && b.is_numeric() {
             return true;
         }
+        // Same-type unit types are comparable
+        if let (Ty::UnitType(na), Ty::UnitType(nb)) = (a, b) {
+            if na == nb {
+                return true;
+            }
+        }
         // none (Option(Error)) is comparable with any Option(T)
         match (a, b) {
             (Ty::Option(inner), _) if inner.is_error() && matches!(b, Ty::Option(_)) => {
@@ -382,13 +408,16 @@ impl<'a> Checker<'a> {
         if a.is_numeric() && b.is_numeric() {
             return true;
         }
-        // Same-type ordering for strings, and ordered enums
+        // Same-type ordering for strings, ordered enums, and unit types
         if a == b {
             if let Ty::Enum(name) = a {
                 if let Some(DeclInfo::Enum(info)) = self.env.types.get(name.as_str()) {
                     return info.ordered;
                 }
                 return false;
+            }
+            if matches!(a, Ty::UnitType(_)) {
+                return true;
             }
             return matches!(a, Ty::Int | Ty::Float | Ty::Resource | Ty::String);
         }
@@ -447,7 +476,7 @@ impl<'a> Checker<'a> {
 
         match op {
             UnaryOp::Neg => {
-                if ty.is_numeric() {
+                if ty.is_numeric() || matches!(ty, Ty::UnitType(_)) {
                     ty
                 } else {
                     self.error(format!("cannot negate {}", ty), span);
@@ -507,7 +536,7 @@ impl<'a> Checker<'a> {
 
     pub fn resolve_field(&mut self, obj_ty: &Ty, field: &str, span: ttrpg_ast::Span) -> Ty {
         match obj_ty {
-            Ty::Struct(name) | Ty::Entity(name) => {
+            Ty::Struct(name) | Ty::Entity(name) | Ty::UnitType(name) => {
                 // Check for event payload synthetic structs
                 if let Some(event_name) = name.strip_prefix("__event_") {
                     if let Some(event_info) = self.env.events.get(event_name) {
@@ -1791,6 +1820,7 @@ impl<'a> Checker<'a> {
 
         let (declared_fields, result_ty) = match &decl {
             DeclInfo::Struct(info) => (&info.fields, Ty::Struct(name.to_string())),
+            DeclInfo::Unit(info) => (&info.fields, Ty::UnitType(name.to_string())),
             DeclInfo::Entity(_) => {
                 self.error(
                     format!(
@@ -2319,7 +2349,7 @@ impl<'a> Checker<'a> {
                 if let Some(decl) = self.env.types.get(field) {
                     return match decl {
                         DeclInfo::Enum(_) => Ty::EnumType(field.to_string()),
-                        DeclInfo::Struct(_) | DeclInfo::Entity(_) => {
+                        DeclInfo::Struct(_) | DeclInfo::Entity(_) | DeclInfo::Unit(_) => {
                             self.error(
                                 format!("type `{}` cannot be used as a value", field),
                                 span,

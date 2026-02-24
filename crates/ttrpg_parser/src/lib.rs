@@ -399,6 +399,11 @@ fn rebase_decl(decl: &mut Spanned<DeclKind>, base: usize) {
                 rebase_expr(&mut entry.value, base);
             }
         }
+        DeclKind::Unit(u) => {
+            for f in &mut u.fields {
+                rebase_field_def(f, base);
+            }
+        }
     }
 }
 
@@ -501,6 +506,7 @@ fn rebase_expr(expr: &mut Spanned<ExprKind>, base: usize) {
         | ExprKind::BoolLit(_)
         | ExprKind::NoneLit
         | ExprKind::DiceLit { .. }
+        | ExprKind::UnitLit { .. }
         | ExprKind::Ident(_) => {}
         ExprKind::BinOp { lhs, rhs, .. } => {
             rebase_expr(lhs, base);

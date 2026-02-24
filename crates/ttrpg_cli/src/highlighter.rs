@@ -101,7 +101,7 @@ fn token_style(kind: &TokenKind, is_first_cli_command: bool) -> Style {
         TokenKind::True | TokenKind::False | TokenKind::None => Color::Yellow.normal(),
         TokenKind::Int(_) => Color::Magenta.normal(),
         TokenKind::String(_) => Color::Green.normal(),
-        TokenKind::Dice { .. } => Color::Magenta.bold(),
+        TokenKind::Dice { .. } | TokenKind::UnitLiteral { .. } => Color::Magenta.bold(),
 
         // Errors
         TokenKind::Error(_) => Color::Red.bold(),

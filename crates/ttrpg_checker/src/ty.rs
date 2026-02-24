@@ -21,6 +21,7 @@ pub enum Ty {
     Enum(std::string::String),
     Struct(std::string::String),
     Entity(std::string::String),
+    UnitType(std::string::String),
 
     // Enum type namespace — only produced when an enum name is used bare in
     // expression position (e.g. `DamageType`).  Allows `.Variant` qualified
@@ -92,6 +93,7 @@ impl Ty {
             Ty::Enum(name) | Ty::EnumType(name) => name.clone(),
             Ty::Struct(name) => name.clone(),
             Ty::Entity(name) => name.clone(),
+            Ty::UnitType(name) => name.clone(),
             Ty::AnyEntity => "entity".into(),
             Ty::List(inner) => format!("list<{}>", inner.display()),
             Ty::Set(inner) => format!("set<{}>", inner.display()),

@@ -302,6 +302,9 @@ impl DeclOwnership {
             DeclKind::Table(t) => {
                 names.push((Namespace::Function, t.name.clone()));
             }
+            DeclKind::Unit(u) => {
+                names.push((Namespace::Type, u.name.clone()));
+            }
         }
         Self { names, span }
     }
@@ -467,6 +470,11 @@ fn desugar_decl_types(
             desugar_type_expr(&mut t.return_type, current_system, aliases, module_map, diagnostics);
             for p in &mut t.params {
                 desugar_type_expr(&mut p.ty, current_system, aliases, module_map, diagnostics);
+            }
+        }
+        DeclKind::Unit(u) => {
+            for f in &mut u.fields {
+                desugar_type_expr(&mut f.ty, current_system, aliases, module_map, diagnostics);
             }
         }
         DeclKind::Option(_) | DeclKind::Move(_) => {}

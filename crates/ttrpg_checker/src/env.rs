@@ -12,6 +12,7 @@ pub enum DeclInfo {
     Enum(EnumInfo),
     Struct(StructInfo),
     Entity(EntityInfo),
+    Unit(UnitInfo),
 }
 
 #[derive(Debug, Clone)]
@@ -45,6 +46,13 @@ pub struct EntityInfo {
     pub name: String,
     pub fields: Vec<FieldInfo>,
     pub optional_groups: Vec<OptionalGroupInfo>,
+}
+
+#[derive(Debug, Clone)]
+pub struct UnitInfo {
+    pub name: String,
+    pub fields: Vec<FieldInfo>,
+    pub suffix: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -110,6 +118,7 @@ pub struct TypeEnv {
     pub variant_to_enums: HashMap<String, Vec<String>>,
     pub resolved_variants: HashMap<Span, String>,
     pub builtins: HashMap<String, FnInfo>,
+    pub suffix_to_unit: HashMap<String, String>,
     pub options: HashSet<String>,
 
     // ── Module awareness (populated when ModuleMap is provided) ───
@@ -154,6 +163,7 @@ impl TypeEnv {
             variant_to_enums: HashMap::new(),
             resolved_variants: HashMap::new(),
             builtins: HashMap::new(),
+            suffix_to_unit: HashMap::new(),
             options: HashSet::new(),
             type_owner: HashMap::new(),
             function_owner: HashMap::new(),
@@ -181,6 +191,7 @@ impl TypeEnv {
                 DeclInfo::Enum(_) => Ty::Enum(name.to_string()),
                 DeclInfo::Struct(_) => Ty::Struct(name.to_string()),
                 DeclInfo::Entity(_) => Ty::Entity(name.to_string()),
+                DeclInfo::Unit(_) => Ty::UnitType(name.to_string()),
             }
         } else {
             fallback
@@ -211,6 +222,7 @@ impl TypeEnv {
                         DeclInfo::Enum(_) => Ty::Enum(name.clone()),
                         DeclInfo::Struct(_) => Ty::Struct(name.clone()),
                         DeclInfo::Entity(_) => Ty::Entity(name.clone()),
+                        DeclInfo::Unit(_) => Ty::UnitType(name.clone()),
                     }
                 } else {
                     Ty::Error
@@ -291,6 +303,7 @@ impl TypeEnv {
         match self.types.get(name)? {
             DeclInfo::Struct(info) => Some(&info.fields),
             DeclInfo::Entity(info) => Some(&info.fields),
+            DeclInfo::Unit(info) => Some(&info.fields),
             DeclInfo::Enum(_) => None,
         }
     }

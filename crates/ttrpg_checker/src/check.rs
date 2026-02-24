@@ -223,6 +223,7 @@ impl<'a> Checker<'a> {
             DeclKind::Option(o) => self.check_option(o),
             DeclKind::Hook(h) => self.check_hook(h),
             DeclKind::Table(t) => self.check_table(t),
+            DeclKind::Unit(u) => self.check_unit_defaults(u),
             DeclKind::Move(_) => {
                 self.error(
                     "move declarations must be lowered before type-checking",
@@ -749,6 +750,29 @@ impl<'a> Checker<'a> {
         // Check default expressions for fields
         self.scope.push(BlockKind::Derive);
         for field in &s.fields {
+            if let Some(ref default) = field.default {
+                let field_ty = self.env.resolve_type(&field.ty);
+                let def_ty = self.check_expr_expecting(default, Some(&field_ty));
+                if !def_ty.is_error() && !self.types_compatible(&def_ty, &field_ty) {
+                    self.error(
+                        format!(
+                            "field `{}` default has type {}, expected {}",
+                            field.name, def_ty, field_ty
+                        ),
+                        default.span,
+                    );
+                }
+            }
+        }
+        self.scope.pop();
+    }
+
+    fn check_unit_defaults(&mut self, u: &UnitDecl) {
+        for field in &u.fields {
+            self.check_type_visible(&field.ty);
+        }
+        self.scope.push(BlockKind::Derive);
+        for field in &u.fields {
             if let Some(ref default) = field.default {
                 let field_ty = self.env.resolve_type(&field.ty);
                 let def_ty = self.check_expr_expecting(default, Some(&field_ty));

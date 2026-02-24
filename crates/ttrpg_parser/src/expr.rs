@@ -241,14 +241,19 @@ impl Parser {
         let start = self.start_span();
 
         match self.peek().clone() {
-            TokenKind::Int(_) | TokenKind::Dice { .. } => {
-                // Need to handle dice and int
+            TokenKind::Int(_) | TokenKind::Dice { .. } | TokenKind::UnitLiteral { .. } => {
                 let tok = self.advance();
                 match tok.kind {
                     TokenKind::Int(n) => Ok(Spanned::new(ExprKind::IntLit(n), tok.span)),
                     TokenKind::Dice { count, sides, filter } => {
                         Ok(Spanned::new(
                             ExprKind::DiceLit { count, sides, filter },
+                            tok.span,
+                        ))
+                    }
+                    TokenKind::UnitLiteral { value, suffix } => {
+                        Ok(Spanned::new(
+                            ExprKind::UnitLit { value, suffix },
                             tok.span,
                         ))
                     }

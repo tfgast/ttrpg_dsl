@@ -189,6 +189,37 @@ pub(crate) fn eval_expr(env: &mut Env, expr: &Spanned<ExprKind>) -> Result<Value
             let has = env.state.read_field(&entity_ref, group_name).is_some();
             Ok(Value::Bool(has))
         }
+
+        ExprKind::UnitLit { value, suffix } => {
+            // Look up suffix → unit type name, then find the field name
+            let unit_name = env
+                .interp
+                .type_env
+                .suffix_to_unit
+                .get(suffix.as_str())
+                .ok_or_else(|| {
+                    RuntimeError::with_span(
+                        format!("unknown unit suffix `{}`", suffix),
+                        expr.span,
+                    )
+                })?
+                .clone();
+            let field_name = match env.interp.type_env.types.get(&unit_name) {
+                Some(DeclInfo::Unit(info)) => info.fields[0].name.clone(),
+                _ => {
+                    return Err(RuntimeError::with_span(
+                        format!("unit type `{}` not found", unit_name),
+                        expr.span,
+                    ))
+                }
+            };
+            let mut fields = BTreeMap::new();
+            fields.insert(field_name, Value::Int(*value));
+            Ok(Value::Struct {
+                name: unit_name,
+                fields,
+            })
+        }
     }
 }
 
@@ -263,6 +294,14 @@ fn eval_unary(
     expr: &Spanned<ExprKind>,
 ) -> Result<Value, RuntimeError> {
     let val = eval_expr(env, operand)?;
+    // Unit type negation
+    if op == UnaryOp::Neg {
+        if let Some((name, field, n)) = as_unit_value(&val, env.interp.type_env) {
+            let result = n.checked_neg()
+                .ok_or_else(|| RuntimeError::with_span("integer overflow in unit negation", expr.span))?;
+            return Ok(make_unit_value(name, field, result));
+        }
+    }
     match (op, &val) {
         (UnaryOp::Neg, Value::Int(n)) => n
             .checked_neg()
@@ -328,10 +367,10 @@ fn eval_binop(
             let lhs = coerce_roll_result(lhs);
             let rhs = coerce_roll_result(rhs);
             match op {
-                BinOp::Add => eval_add(&lhs, &rhs, expr),
-                BinOp::Sub => eval_sub(&lhs, &rhs, expr),
-                BinOp::Mul => eval_mul(&lhs, &rhs, expr),
-                BinOp::Div => eval_div(&lhs, &rhs, expr),
+                BinOp::Add => eval_add(&lhs, &rhs, env.interp.type_env, expr),
+                BinOp::Sub => eval_sub(&lhs, &rhs, env.interp.type_env, expr),
+                BinOp::Mul => eval_mul(&lhs, &rhs, env.interp.type_env, expr),
+                BinOp::Div => eval_div(&lhs, &rhs, env.interp.type_env, expr),
                 _ => unreachable!(),
             }
         }
@@ -377,7 +416,34 @@ fn coerce_roll_result(val: Value) -> Value {
     }
 }
 
-fn eval_add(lhs: &Value, rhs: &Value, expr: &Spanned<ExprKind>) -> Result<Value, RuntimeError> {
+/// If `val` is a `Value::Struct` whose name is registered as a unit type in the
+/// type environment, return `(unit_type_name, field_name, int_value)`.
+fn as_unit_value(
+    val: &Value,
+    type_env: &ttrpg_checker::env::TypeEnv,
+) -> Option<(String, String, i64)> {
+    if let Value::Struct { name, fields } = val {
+        if let Some(DeclInfo::Unit(info)) = type_env.types.get(name) {
+            let field_name = &info.fields[0].name;
+            if let Some(Value::Int(n)) = fields.get(field_name) {
+                return Some((name.clone(), field_name.clone(), *n));
+            }
+        }
+    }
+    None
+}
+
+/// Construct a unit-type Value::Struct from its type name, field name, and int value.
+fn make_unit_value(unit_name: String, field_name: String, int_val: i64) -> Value {
+    let mut fields = BTreeMap::new();
+    fields.insert(field_name, Value::Int(int_val));
+    Value::Struct {
+        name: unit_name,
+        fields,
+    }
+}
+
+fn eval_add(lhs: &Value, rhs: &Value, type_env: &ttrpg_checker::env::TypeEnv, expr: &Spanned<ExprKind>) -> Result<Value, RuntimeError> {
     match (lhs, rhs) {
         (Value::Int(a), Value::Int(b)) => a
             .checked_add(*b)
@@ -420,6 +486,18 @@ fn eval_add(lhs: &Value, rhs: &Value, expr: &Spanned<ExprKind>) -> Result<Value,
                 modifier,
             }))
         }
+        // Unit type addition: same-type → same-type
+        _ if {
+            let lu = as_unit_value(lhs, type_env);
+            let ru = as_unit_value(rhs, type_env);
+            matches!((&lu, &ru), (Some((n1, _, _)), Some((n2, _, _))) if n1 == n2)
+        } => {
+            let (name, field, a) = as_unit_value(lhs, type_env).unwrap();
+            let (_, _, b) = as_unit_value(rhs, type_env).unwrap();
+            let result = a.checked_add(b)
+                .ok_or_else(|| RuntimeError::with_span("integer overflow in unit addition", expr.span))?;
+            Ok(make_unit_value(name, field, result))
+        }
         _ => Err(RuntimeError::with_span(
             format!("cannot add {:?} and {:?}", type_name(lhs), type_name(rhs)),
             expr.span,
@@ -427,7 +505,7 @@ fn eval_add(lhs: &Value, rhs: &Value, expr: &Spanned<ExprKind>) -> Result<Value,
     }
 }
 
-fn eval_sub(lhs: &Value, rhs: &Value, expr: &Spanned<ExprKind>) -> Result<Value, RuntimeError> {
+fn eval_sub(lhs: &Value, rhs: &Value, type_env: &ttrpg_checker::env::TypeEnv, expr: &Spanned<ExprKind>) -> Result<Value, RuntimeError> {
     match (lhs, rhs) {
         (Value::Int(a), Value::Int(b)) => a
             .checked_sub(*b)
@@ -442,6 +520,18 @@ fn eval_sub(lhs: &Value, rhs: &Value, expr: &Spanned<ExprKind>) -> Result<Value,
                 .ok_or_else(|| RuntimeError::with_span("dice modifier overflow in subtraction", expr.span))?;
             Ok(Value::DiceExpr(DiceExpr { modifier, ..d.clone() }))
         }
+        // Unit type subtraction: same-type → same-type
+        _ if {
+            let lu = as_unit_value(lhs, type_env);
+            let ru = as_unit_value(rhs, type_env);
+            matches!((&lu, &ru), (Some((n1, _, _)), Some((n2, _, _))) if n1 == n2)
+        } => {
+            let (name, field, a) = as_unit_value(lhs, type_env).unwrap();
+            let (_, _, b) = as_unit_value(rhs, type_env).unwrap();
+            let result = a.checked_sub(b)
+                .ok_or_else(|| RuntimeError::with_span("integer overflow in unit subtraction", expr.span))?;
+            Ok(make_unit_value(name, field, result))
+        }
         _ => Err(RuntimeError::with_span(
             format!(
                 "cannot subtract {:?} from {:?}",
@@ -453,7 +543,22 @@ fn eval_sub(lhs: &Value, rhs: &Value, expr: &Spanned<ExprKind>) -> Result<Value,
     }
 }
 
-fn eval_mul(lhs: &Value, rhs: &Value, expr: &Spanned<ExprKind>) -> Result<Value, RuntimeError> {
+fn eval_mul(lhs: &Value, rhs: &Value, type_env: &ttrpg_checker::env::TypeEnv, expr: &Spanned<ExprKind>) -> Result<Value, RuntimeError> {
+    // Unit type scaling: Int * unit or unit * Int
+    if let Some((name, field, uval)) = as_unit_value(lhs, type_env) {
+        if let Value::Int(n) = rhs {
+            let result = uval.checked_mul(*n)
+                .ok_or_else(|| RuntimeError::with_span("integer overflow in unit multiplication", expr.span))?;
+            return Ok(make_unit_value(name, field, result));
+        }
+    }
+    if let Some((name, field, uval)) = as_unit_value(rhs, type_env) {
+        if let Value::Int(n) = lhs {
+            let result = n.checked_mul(uval)
+                .ok_or_else(|| RuntimeError::with_span("integer overflow in unit multiplication", expr.span))?;
+            return Ok(make_unit_value(name, field, result));
+        }
+    }
     match (lhs, rhs) {
         (Value::Int(a), Value::Int(b)) => a
             .checked_mul(*b)
@@ -475,7 +580,18 @@ fn eval_mul(lhs: &Value, rhs: &Value, expr: &Spanned<ExprKind>) -> Result<Value,
     }
 }
 
-fn eval_div(lhs: &Value, rhs: &Value, expr: &Spanned<ExprKind>) -> Result<Value, RuntimeError> {
+fn eval_div(lhs: &Value, rhs: &Value, type_env: &ttrpg_checker::env::TypeEnv, expr: &Spanned<ExprKind>) -> Result<Value, RuntimeError> {
+    // Unit type division: same-type → Float
+    if let (Some((n1, _, a)), Some((n2, _, b))) =
+        (as_unit_value(lhs, type_env), as_unit_value(rhs, type_env))
+    {
+        if n1 == n2 {
+            if b == 0 {
+                return Err(RuntimeError::with_span("division by zero", expr.span));
+            }
+            return Ok(Value::Float(a as f64 / b as f64));
+        }
+    }
     match (lhs, rhs) {
         // Int / Int → Float (not integer division)
         (Value::Int(a), Value::Int(b)) => {
@@ -550,6 +666,15 @@ fn eval_comparison(
             let ord1 = variant_ordinal(type_env, e1, v1);
             let ord2 = variant_ordinal(type_env, e2, v2);
             ord1.cmp(&ord2)
+        }
+        _ if {
+            let lu = as_unit_value(lhs, type_env);
+            let ru = as_unit_value(rhs, type_env);
+            matches!((&lu, &ru), (Some((n1, _, _)), Some((n2, _, _))) if n1 == n2)
+        } => {
+            let (_, _, a) = as_unit_value(lhs, type_env).unwrap();
+            let (_, _, b) = as_unit_value(rhs, type_env).unwrap();
+            a.cmp(&b)
         }
         _ => {
             return Err(RuntimeError::with_span(
@@ -2089,19 +2214,19 @@ fn find_struct_defaults(env: &Env, struct_name: &str) -> Vec<(String, Spanned<Ex
     for item in &env.interp.program.items {
         if let TopLevel::System(system) = &item.node {
             for decl in &system.decls {
-                if let DeclKind::Struct(s) = &decl.node {
-                    if s.name == struct_name {
-                        return s
-                            .fields
-                            .iter()
-                            .filter_map(|f| {
-                                f.default
-                                    .as_ref()
-                                    .map(|d| (f.name.clone(), d.clone()))
-                            })
-                            .collect();
-                    }
-                }
+                let fields = match &decl.node {
+                    DeclKind::Struct(s) if s.name == struct_name => &s.fields,
+                    DeclKind::Unit(u) if u.name == struct_name => &u.fields,
+                    _ => continue,
+                };
+                return fields
+                    .iter()
+                    .filter_map(|f| {
+                        f.default
+                            .as_ref()
+                            .map(|d| (f.name.clone(), d.clone()))
+                    })
+                    .collect();
             }
         }
     }

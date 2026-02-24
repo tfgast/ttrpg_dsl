@@ -18,6 +18,7 @@ pub enum TokenKind {
     Int(i64),
     String(String),
     Dice { count: u32, sides: u32, filter: Option<DiceFilter> },
+    UnitLiteral { value: i64, suffix: String },
 
     // Identifier (includes soft keywords)
     Ident(String),

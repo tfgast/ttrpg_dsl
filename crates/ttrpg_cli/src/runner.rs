@@ -1548,6 +1548,17 @@ impl Runner {
                         }
                     }
                 }
+                DeclInfo::Unit(info) => {
+                    let suffix_str = match &info.suffix {
+                        Some(s) => format!(" suffix {}", s),
+                        None => String::new(),
+                    };
+                    self.output.push(format!("unit {}{}", name, suffix_str));
+                    for fi in &info.fields {
+                        self.output
+                            .push(format!("  {}: {}", fi.name, fi.ty.display()));
+                    }
+                }
             }
         }
         Ok(())

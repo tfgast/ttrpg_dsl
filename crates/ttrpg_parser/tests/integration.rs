@@ -50,7 +50,7 @@ fn test_parse_full_example() {
             DeclKind::Condition(_) => conditions += 1,
             DeclKind::Prompt(_) => prompts += 1,
             DeclKind::Event(_) => events += 1,
-            DeclKind::Hook(_) | DeclKind::Option(_) | DeclKind::Move(_) | DeclKind::Table(_) => {}
+            DeclKind::Hook(_) | DeclKind::Option(_) | DeclKind::Move(_) | DeclKind::Table(_) | DeclKind::Unit(_) => {}
         }
     }
 

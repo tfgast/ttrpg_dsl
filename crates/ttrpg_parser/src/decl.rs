@@ -21,6 +21,7 @@ impl Parser {
                 "event" => self.parse_event_decl().map(DeclKind::Event),
                 "move" => self.parse_move_decl().map(DeclKind::Move),
                 "table" => self.parse_table_decl().map(DeclKind::Table),
+                "unit" => self.parse_unit_decl().map(DeclKind::Unit),
                 _ => {
                     self.error(format!("unexpected identifier '{}' in declaration position", name));
                     Err(())
@@ -1022,6 +1023,25 @@ impl Parser {
 
         let span = self.end_span(start);
         Ok(TableEntry { keys, value, span })
+    }
+
+    // ── Unit ─────────────────────────────────────────────────────
+
+    fn parse_unit_decl(&mut self) -> Result<UnitDecl, ()> {
+        self.expect_soft_keyword("unit")?;
+        let (name, _) = self.expect_ident()?;
+        let suffix = if self.at_ident("suffix") {
+            self.advance();
+            let (s, _) = self.expect_ident()?;
+            Some(s)
+        } else {
+            None
+        };
+        self.expect(&TokenKind::LBrace)?;
+        self.skip_newlines();
+        let fields = self.parse_field_defs()?;
+        self.expect(&TokenKind::RBrace)?;
+        Ok(UnitDecl { name, suffix, fields })
     }
 
     /// Parse a single table key: expression, range (`1..=3`), or wildcard (`_`).
