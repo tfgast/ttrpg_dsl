@@ -59,6 +59,17 @@ impl<'a> Checker<'a> {
     /// - >1 owners: emits an ambiguity error listing qualified forms, returns `None`.
     /// - 0 owners: returns `None` (not a variant at all).
     pub fn resolve_bare_variant(&mut self, variant: &str, span: Span) -> Option<String> {
+        self.resolve_bare_variant_with_hint(variant, span, None)
+    }
+
+    /// Like `resolve_bare_variant`, but uses an expected-type hint to
+    /// disambiguate when multiple enums share the variant name.
+    pub fn resolve_bare_variant_with_hint(
+        &mut self,
+        variant: &str,
+        span: Span,
+        hint: Option<&Ty>,
+    ) -> Option<String> {
         match self.env.variant_to_enums.get(variant) {
             Some(owners) if owners.len() == 1 => {
                 let enum_name = owners[0].clone();
@@ -66,6 +77,13 @@ impl<'a> Checker<'a> {
                 Some(enum_name)
             }
             Some(owners) if owners.len() > 1 => {
+                // Try to disambiguate via expected-type hint
+                if let Some(hinted) = enum_name_from_hint(hint) {
+                    if owners.iter().any(|o| o == hinted) {
+                        self.resolved_variants.insert(span, hinted.to_string());
+                        return Some(hinted.to_string());
+                    }
+                }
                 let qualified: Vec<String> = owners.iter().map(|e| format!("{}.{}", e, variant)).collect();
                 self.error(
                     format!(
@@ -296,7 +314,7 @@ impl<'a> Checker<'a> {
                             node: expr_kind.clone(),
                             span: key.span,
                         };
-                        let key_ty = self.check_expr(&key_expr);
+                        let key_ty = self.check_expr_expecting(&key_expr, Some(expected_ty));
                         if !key_ty.is_error()
                             && !expected_ty.is_error()
                             && !self.types_compatible(&key_ty, expected_ty)
@@ -343,7 +361,7 @@ impl<'a> Checker<'a> {
             }
 
             // Type-check the value expression
-            let val_ty = self.check_expr(&entry.value);
+            let val_ty = self.check_expr_expecting(&entry.value, Some(&ret_ty));
             if !val_ty.is_error()
                 && !ret_ty.is_error()
                 && !self.types_compatible(&val_ty, &ret_ty)
@@ -968,5 +986,14 @@ impl<'a> Checker<'a> {
             return Some(b.clone());
         }
         None
+    }
+}
+
+/// Extract an enum name from a type hint, if it refers to an enum.
+fn enum_name_from_hint(hint: Option<&Ty>) -> Option<&str> {
+    match hint? {
+        Ty::Enum(name) => Some(name.as_str()),
+        Ty::Duration => Some("Duration"),
+        _ => None,
     }
 }

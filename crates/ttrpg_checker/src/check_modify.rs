@@ -93,7 +93,7 @@ impl<'a> Checker<'a> {
             }
             if let Some(param) = fn_info.params.iter().find(|p| p.name == binding.name) {
                 if let Some(ref value) = binding.value {
-                    let val_ty = self.check_expr(value);
+                    let val_ty = self.check_expr_expecting(value, Some(&param.ty));
                     if !val_ty.is_error() && !self.types_compatible(&val_ty, &param.ty) {
                         self.error(
                             format!(
@@ -156,10 +156,10 @@ impl<'a> Checker<'a> {
                 value,
                 span: _,
             } => {
-                let val_ty = self.check_expr(value);
-                if let Some(ref type_ann) = ty {
+                let bind_ty = if let Some(ref type_ann) = ty {
                     self.validate_type(type_ann);
                     let ann_ty = self.env.resolve_type(type_ann);
+                    let val_ty = self.check_expr_expecting(value, Some(&ann_ty));
                     if !val_ty.is_error() && !ann_ty.is_error() && !self.types_compatible(&val_ty, &ann_ty) {
                         self.error(
                             format!(
@@ -169,29 +169,24 @@ impl<'a> Checker<'a> {
                             value.span,
                         );
                     }
-                    self.scope.bind(
-                        name.clone(),
-                        VarBinding {
-                            ty: ann_ty,
-                            mutable: false,
-                            is_local: true,
-                        },
-                    );
+                    ann_ty
                 } else {
-                    self.scope.bind(
-                        name.clone(),
-                        VarBinding {
-                            ty: val_ty,
-                            mutable: false,
-                            is_local: true,
-                        },
-                    );
-                }
+                    self.check_expr(value)
+                };
+
+                self.scope.bind(
+                    name.clone(),
+                    VarBinding {
+                        ty: bind_ty,
+                        mutable: false,
+                        is_local: true,
+                    },
+                );
             }
             ModifyStmt::ParamOverride { name, value, span } => {
                 if name == "result" {
                     // Direct result assignment: `result = expr`
-                    let val_ty = self.check_expr(value);
+                    let val_ty = self.check_expr_expecting(value, Some(&fn_info.return_type));
                     if !val_ty.is_error()
                         && !self.types_compatible(&val_ty, &fn_info.return_type)
                     {
@@ -205,7 +200,7 @@ impl<'a> Checker<'a> {
                     }
                 } else if let Some(param) = fn_info.params.iter().find(|p| p.name == *name) {
                     // Check that the param exists and types match
-                    let val_ty = self.check_expr(value);
+                    let val_ty = self.check_expr_expecting(value, Some(&param.ty));
                     if !val_ty.is_error() && !self.types_compatible(&val_ty, &param.ty) {
                         self.error(
                             format!(
@@ -230,7 +225,7 @@ impl<'a> Checker<'a> {
                 // Resolve the field type from the return type
                 let result_ty = &fn_info.return_type;
                 let field_ty = self.resolve_field(result_ty, field, *span);
-                let val_ty = self.check_expr(value);
+                let val_ty = self.check_expr_expecting(value, Some(&field_ty));
                 if !val_ty.is_error() && !field_ty.is_error()
                     && !self.types_compatible(&val_ty, &field_ty)
                 {
@@ -332,7 +327,7 @@ impl<'a> Checker<'a> {
 
                 if let Some(expected) = expected_ty {
                     if let Some(ref value) = binding.value {
-                        let val_ty = self.check_expr(value);
+                        let val_ty = self.check_expr_expecting(value, Some(&expected));
                         if !val_ty.is_error() && !self.types_compatible(&val_ty, &expected) {
                             self.error(
                                 format!(

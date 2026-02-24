@@ -26,12 +26,11 @@ impl<'a> Checker<'a> {
     pub(crate) fn check_stmt(&mut self, stmt: &Spanned<StmtKind>, is_last: bool) -> Ty {
         match &stmt.node {
             StmtKind::Let { name, ty, value } => {
-                let val_ty = self.check_expr(value);
-
-                if let Some(ref type_ann) = ty {
+                let bind_ty = if let Some(ref type_ann) = ty {
                     self.validate_type(type_ann);
                     self.check_type_visible(type_ann);
                     let ann_ty = self.env.resolve_type(type_ann);
+                    let val_ty = self.check_expr_expecting(value, Some(&ann_ty));
                     if !val_ty.is_error() && !ann_ty.is_error() && !self.types_compatible(&val_ty, &ann_ty) {
                         self.error(
                             format!(
@@ -41,24 +40,19 @@ impl<'a> Checker<'a> {
                             value.span,
                         );
                     }
-                    self.scope.bind(
-                        name.clone(),
-                        VarBinding {
-                            ty: ann_ty,
-                            mutable: false,
-                            is_local: true,
-                        },
-                    );
+                    ann_ty
                 } else {
-                    self.scope.bind(
-                        name.clone(),
-                        VarBinding {
-                            ty: val_ty,
-                            mutable: false,
-                            is_local: true,
-                        },
-                    );
-                }
+                    self.check_expr(value)
+                };
+
+                self.scope.bind(
+                    name.clone(),
+                    VarBinding {
+                        ty: bind_ty,
+                        mutable: false,
+                        is_local: true,
+                    },
+                );
 
                 Ty::Unit
             }
@@ -164,7 +158,8 @@ impl<'a> Checker<'a> {
 
         // Resolve target type
         let target_ty = self.resolve_lvalue_type(target);
-        let value_ty = self.check_expr(value);
+        let hint = if matches!(op, AssignOp::Eq) { Some(&target_ty) } else { None };
+        let value_ty = self.check_expr_expecting(value, hint);
 
         if target_ty.is_error() || value_ty.is_error() {
             return;
@@ -332,7 +327,10 @@ impl<'a> Checker<'a> {
         // Validate field initializers
         let mut seen = std::collections::HashSet::new();
         for field in fields {
-            let field_ty = self.check_expr(&field.value);
+            let field_hint = group.fields.iter()
+                .find(|f| f.name == field.name)
+                .map(|fi| &fi.ty);
+            let field_ty = self.check_expr_expecting(&field.value, field_hint);
 
             if !seen.insert(field.name.clone()) {
                 self.error(

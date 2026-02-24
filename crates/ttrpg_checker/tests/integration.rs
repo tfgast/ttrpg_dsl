@@ -6367,3 +6367,188 @@ system "test" {
 }
 "#);
 }
+
+// ═══════════════════════════════════════════════════════════════
+// Phase B: Expected-type hint disambiguation
+// ═══════════════════════════════════════════════════════════════
+
+#[test]
+fn hint_function_param_disambiguates_bare_variant() {
+    expect_no_errors(r#"
+system "test" {
+    enum Color { red, blue }
+    enum Alert { red, yellow }
+    derive paint(c: Color) -> int { 1 }
+    derive test() -> int { paint(red) }
+}
+"#);
+}
+
+#[test]
+fn hint_named_param_disambiguates_bare_variant() {
+    expect_no_errors(r#"
+system "test" {
+    enum Color { red, blue }
+    enum Alert { red, yellow }
+    derive paint(c: Color) -> int { 1 }
+    derive test() -> int { paint(c: red) }
+}
+"#);
+}
+
+#[test]
+fn hint_condition_param_disambiguates_bare_variant() {
+    expect_no_errors(r#"
+system "test" {
+    entity Character { HP: int }
+    enum Color { red, blue }
+    enum Alert { red, yellow }
+    condition Painted(c: Color) on bearer: Character {
+    }
+    derive test() -> Condition { Painted(red) }
+}
+"#);
+}
+
+#[test]
+fn hint_enum_constructor_field_disambiguates_bare_variant() {
+    expect_no_errors(r#"
+system "test" {
+    enum Color { red, blue }
+    enum Alert { red, yellow }
+    enum Painted { colored(c: Color) }
+    derive test() -> Painted { colored(c: red) }
+}
+"#);
+}
+
+#[test]
+fn hint_struct_field_disambiguates_bare_variant() {
+    expect_no_errors(r#"
+system "test" {
+    enum Color { red, blue }
+    enum Alert { red, yellow }
+    struct Brush { color: Color }
+    derive test() -> Brush { Brush { color: red } }
+}
+"#);
+}
+
+#[test]
+fn hint_comparison_rhs_disambiguates_bare_variant() {
+    expect_no_errors(r#"
+system "test" {
+    enum Color { red, blue }
+    enum Alert { red, yellow }
+    derive test(c: Color) -> bool { c == red }
+}
+"#);
+}
+
+#[test]
+fn hint_let_annotation_disambiguates_bare_variant() {
+    expect_no_errors(r#"
+system "test" {
+    enum Color { red, blue }
+    enum Alert { red, yellow }
+    derive test() -> int {
+        let c: Color = red
+        1
+    }
+}
+"#);
+}
+
+#[test]
+fn hint_assignment_disambiguates_bare_variant() {
+    expect_no_errors(r#"
+system "test" {
+    entity Character { HP: int, color: Color }
+    enum Color { red, blue }
+    enum Alert { red, yellow }
+    action paint on self: Character () {
+        cost { action }
+        resolve {
+            self.color = red
+        }
+    }
+}
+"#);
+}
+
+#[test]
+fn hint_list_element_disambiguates_bare_variant() {
+    expect_no_errors(r#"
+system "test" {
+    enum Color { red, blue }
+    enum Alert { red, yellow }
+    derive test() -> list<Color> { [blue, red] }
+}
+"#);
+}
+
+#[test]
+fn hint_no_match_still_errors() {
+    // `red` is ambiguous between Color and Alert; hint is `Size` which matches neither
+    expect_errors(r#"
+system "test" {
+    enum Color { red, blue }
+    enum Alert { red, yellow }
+    enum Size { small, large }
+    derive paint(s: Size) -> int { 1 }
+    derive test() -> int { paint(red) }
+}
+"#, &["ambiguous variant `red`"]);
+}
+
+#[test]
+fn hint_existing_unique_variant_still_works() {
+    // `blue` is unique to Color — no hint needed, should work as before
+    expect_no_errors(r#"
+system "test" {
+    enum Color { red, blue }
+    enum Alert { red, yellow }
+    derive test() -> Color { blue }
+}
+"#);
+}
+
+#[test]
+fn hint_paren_passes_through() {
+    expect_no_errors(r#"
+system "test" {
+    enum Color { red, blue }
+    enum Alert { red, yellow }
+    derive paint(c: Color) -> int { 1 }
+    derive test() -> int { paint((red)) }
+}
+"#);
+}
+
+#[test]
+fn hint_table_key_disambiguates_bare_variant() {
+    expect_no_errors(r#"
+system "test" {
+    enum Color { red, blue }
+    enum Alert { red, yellow }
+    table paint(c: Color) -> int {
+        red => 1,
+        blue => 2,
+    }
+}
+"#);
+}
+
+#[test]
+fn hint_table_value_disambiguates_bare_variant() {
+    expect_no_errors(r#"
+system "test" {
+    enum Color { red, blue }
+    enum Alert { red, yellow }
+    table pick(x: int) -> Color {
+        1 => red,
+        _ => blue,
+    }
+}
+"#);
+}

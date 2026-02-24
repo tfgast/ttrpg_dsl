@@ -11,6 +11,14 @@ use crate::ty::Ty;
 impl<'a> Checker<'a> {
     /// Type-check an expression, returning its resolved type.
     pub fn check_expr(&mut self, expr: &Spanned<ExprKind>) -> Ty {
+        self.check_expr_expecting(expr, None)
+    }
+
+    /// Type-check an expression with an optional expected-type hint.
+    ///
+    /// The hint is used to disambiguate bare enum variants when multiple
+    /// enums share the same variant name.
+    pub fn check_expr_expecting(&mut self, expr: &Spanned<ExprKind>, hint: Option<&Ty>) -> Ty {
         match &expr.node {
             ExprKind::IntLit(_) => Ty::Int,
             ExprKind::StringLit(_) => Ty::String,
@@ -31,7 +39,7 @@ impl<'a> Checker<'a> {
                 Ty::DiceExpr
             }
 
-            ExprKind::Ident(name) => self.check_ident(name, expr.span),
+            ExprKind::Ident(name) => self.check_ident(name, expr.span, hint),
 
             ExprKind::BinOp { op, lhs, rhs } => self.check_binop(*op, lhs, rhs, expr.span),
 
@@ -43,7 +51,7 @@ impl<'a> Checker<'a> {
 
             ExprKind::Index { object, index } => self.check_index(object, index, expr.span),
 
-            ExprKind::Call { callee, args } => self.check_call(callee, args, expr.span),
+            ExprKind::Call { callee, args } => self.check_call(callee, args, expr.span, hint),
 
             ExprKind::StructLit { name, fields, base } => {
                 self.check_struct_lit(name, fields, base.as_deref(), expr.span)
@@ -51,7 +59,7 @@ impl<'a> Checker<'a> {
 
             ExprKind::ListLit(elems) => self.check_list_lit(elems, expr.span),
 
-            ExprKind::Paren(inner) => self.check_expr(inner),
+            ExprKind::Paren(inner) => self.check_expr_expecting(inner, hint),
 
             ExprKind::If {
                 condition,
@@ -82,14 +90,14 @@ impl<'a> Checker<'a> {
         }
     }
 
-    fn check_ident(&mut self, name: &str, span: ttrpg_ast::Span) -> Ty {
+    fn check_ident(&mut self, name: &str, span: ttrpg_ast::Span, hint: Option<&Ty>) -> Ty {
         // Check scope first
         if let Some(binding) = self.scope.lookup(name) {
             return binding.ty.clone();
         }
 
         // Check if it's an enum variant (may be unique or ambiguous)
-        if let Some(enum_name) = self.resolve_bare_variant(name, span) {
+        if let Some(enum_name) = self.resolve_bare_variant_with_hint(name, span, hint) {
             // Only bare (no-payload) variants can be used as identifiers
             if let Some(DeclInfo::Enum(info)) = self.env.types.get(&enum_name) {
                 if let Some(variant) = info.variants.iter().find(|v| v.name == name) {
@@ -160,7 +168,12 @@ impl<'a> Checker<'a> {
         span: ttrpg_ast::Span,
     ) -> Ty {
         let lhs_ty = self.check_expr(lhs);
-        let rhs_ty = self.check_expr(rhs);
+        let rhs_hint = match op {
+            BinOp::Eq | BinOp::NotEq | BinOp::Lt | BinOp::Gt | BinOp::LtEq | BinOp::GtEq
+                => Some(&lhs_ty),
+            _ => None,
+        };
+        let rhs_ty = self.check_expr_expecting(rhs, rhs_hint);
 
         if lhs_ty.is_error() || rhs_ty.is_error() {
             return Ty::Error;
@@ -783,6 +796,7 @@ impl<'a> Checker<'a> {
         callee: &Spanned<ExprKind>,
         args: &[Arg],
         span: ttrpg_ast::Span,
+        hint: Option<&Ty>,
     ) -> Ty {
         // Resolve the callee name
         let callee_name = match &callee.node {
@@ -834,8 +848,6 @@ impl<'a> Checker<'a> {
             let mut next_positional = 0usize;
 
             for arg in args.iter() {
-                let arg_ty = self.check_expr(&arg.value);
-
                 let param_idx = if let Some(ref name) = arg.name {
                     params.iter().position(|p| p.name == *name)
                 } else {
@@ -852,6 +864,9 @@ impl<'a> Checker<'a> {
                         None
                     }
                 };
+
+                let param_hint = param_idx.map(|idx| &params[idx].ty);
+                let arg_ty = self.check_expr_expecting(&arg.value, param_hint);
 
                 if let Some(idx) = param_idx {
                     if !satisfied.insert(idx) {
@@ -965,7 +980,7 @@ impl<'a> Checker<'a> {
         }
 
         // Check if it's an enum variant constructor (bare name)
-        if let Some(enum_name) = self.resolve_bare_variant(&callee_name, callee.span) {
+        if let Some(enum_name) = self.resolve_bare_variant_with_hint(&callee_name, callee.span, hint) {
             self.check_name_visible(&callee_name, Namespace::Variant, span);
             return self.check_enum_constructor(&enum_name, &callee_name, args, span);
         } else if self.is_known_variant(&callee_name) {
@@ -1061,9 +1076,8 @@ impl<'a> Checker<'a> {
 
         // Check argument types and resolve parameter mapping
         for arg in args.iter() {
-            let arg_ty = self.check_expr(&arg.value);
-
-            // Resolve which parameter this argument maps to
+            // Resolve which parameter this argument maps to BEFORE checking the
+            // value expression so we can supply an expected-type hint.
             let param_idx = if let Some(ref name) = arg.name {
                 effective_params.iter().position(|p| p.name == *name)
             } else {
@@ -1081,6 +1095,9 @@ impl<'a> Checker<'a> {
                     None
                 }
             };
+
+            let param_hint = param_idx.map(|idx| &effective_params[idx].ty);
+            let arg_ty = self.check_expr_expecting(&arg.value, param_hint);
 
             if let Some(idx) = param_idx {
                 // Check for duplicate named arguments
@@ -1648,8 +1665,6 @@ impl<'a> Checker<'a> {
         let mut next_positional = 0usize;
 
         for arg in args {
-            let arg_ty = self.check_expr(&arg.value);
-
             let field_idx = if let Some(ref name) = arg.name {
                 variant.fields.iter().position(|(n, _)| n == name)
             } else {
@@ -1667,6 +1682,9 @@ impl<'a> Checker<'a> {
                     None
                 }
             };
+
+            let field_hint = field_idx.map(|idx| &variant.fields[idx].1);
+            let arg_ty = self.check_expr_expecting(&arg.value, field_hint);
 
             if let Some(idx) = field_idx {
                 if !satisfied.insert(idx) {
@@ -1810,7 +1828,10 @@ impl<'a> Checker<'a> {
         // Check each provided field
         let mut seen = HashSet::new();
         for field in fields {
-            let field_ty = self.check_expr(&field.value);
+            let field_hint = declared_fields.iter()
+                .find(|f| f.name == field.name)
+                .map(|fi| &fi.ty);
+            let field_ty = self.check_expr_expecting(&field.value, field_hint);
 
             // Detect duplicate initializers
             if !seen.insert(field.name.clone()) {
@@ -1867,7 +1888,7 @@ impl<'a> Checker<'a> {
 
         let mut unified_ty = self.check_expr(&elems[0]);
         for elem in &elems[1..] {
-            let elem_ty = self.check_expr(elem);
+            let elem_ty = self.check_expr_expecting(elem, Some(&unified_ty));
             match self.unify_branch_types(&unified_ty, &elem_ty) {
                 Some(ty) => unified_ty = ty,
                 None => {
@@ -2406,8 +2427,6 @@ impl<'a> Checker<'a> {
         let mut next_positional = 0usize;
 
         for arg in args.iter() {
-            let arg_ty = self.check_expr(&arg.value);
-
             let param_idx = if let Some(ref arg_name) = arg.name {
                 params.iter().position(|p| p.name == *arg_name)
             } else {
@@ -2422,6 +2441,9 @@ impl<'a> Checker<'a> {
                     None
                 }
             };
+
+            let param_hint = param_idx.map(|idx| &params[idx].ty);
+            let arg_ty = self.check_expr_expecting(&arg.value, param_hint);
 
             if let Some(idx) = param_idx {
                 if !satisfied.insert(idx) {
@@ -2572,8 +2594,6 @@ impl<'a> Checker<'a> {
         let mut next_positional = 0usize;
 
         for arg in args.iter() {
-            let arg_ty = self.check_expr(&arg.value);
-
             let param_idx = if let Some(ref arg_name) = arg.name {
                 effective_params.iter().position(|p| p.name == *arg_name)
             } else {
@@ -2590,6 +2610,9 @@ impl<'a> Checker<'a> {
                     None
                 }
             };
+
+            let param_hint = param_idx.map(|idx| &effective_params[idx].ty);
+            let arg_ty = self.check_expr_expecting(&arg.value, param_hint);
 
             if let Some(idx) = param_idx {
                 if !satisfied.insert(idx) {
