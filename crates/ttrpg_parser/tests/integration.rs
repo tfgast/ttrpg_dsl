@@ -1506,3 +1506,54 @@ fn test_struct_fields_missing_separator() {
     let (_, diagnostics) = parse(source);
     assert!(!diagnostics.is_empty(), "missing separator should produce an error");
 }
+
+#[test]
+fn struct_lit_with_base_only() {
+    let (expr, diags) = ttrpg_parser::parse_expr("Point { ..other }");
+    assert!(diags.is_empty(), "unexpected diagnostics: {:?}", diags.iter().map(|d| &d.message).collect::<Vec<_>>());
+    let expr = expr.unwrap();
+    match &expr.node {
+        ExprKind::StructLit { name, fields, base } => {
+            assert_eq!(name, "Point");
+            assert!(fields.is_empty());
+            assert!(base.is_some(), "expected base expression");
+            match &base.as_ref().unwrap().node {
+                ExprKind::Ident(n) => assert_eq!(n, "other"),
+                _ => panic!("expected Ident base"),
+            }
+        }
+        _ => panic!("expected StructLit"),
+    }
+}
+
+#[test]
+fn struct_lit_with_fields_and_base() {
+    let (expr, diags) = ttrpg_parser::parse_expr("Point { x: 1, y: 2, ..defaults }");
+    assert!(diags.is_empty(), "unexpected diagnostics: {:?}", diags.iter().map(|d| &d.message).collect::<Vec<_>>());
+    let expr = expr.unwrap();
+    match &expr.node {
+        ExprKind::StructLit { name, fields, base } => {
+            assert_eq!(name, "Point");
+            assert_eq!(fields.len(), 2);
+            assert_eq!(fields[0].name, "x");
+            assert_eq!(fields[1].name, "y");
+            assert!(base.is_some(), "expected base expression");
+        }
+        _ => panic!("expected StructLit"),
+    }
+}
+
+#[test]
+fn struct_lit_with_base_trailing_comma() {
+    let (expr, diags) = ttrpg_parser::parse_expr("Point { x: 1, ..defaults, }");
+    assert!(diags.is_empty(), "unexpected diagnostics: {:?}", diags.iter().map(|d| &d.message).collect::<Vec<_>>());
+    let expr = expr.unwrap();
+    match &expr.node {
+        ExprKind::StructLit { name, fields, base } => {
+            assert_eq!(name, "Point");
+            assert_eq!(fields.len(), 1);
+            assert!(base.is_some());
+        }
+        _ => panic!("expected StructLit"),
+    }
+}

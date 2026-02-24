@@ -348,6 +348,10 @@ impl Parser {
         {
             return true;
         }
+        // IDENT { .. → struct lit with base
+        if matches!(self.peek_at(2), TokenKind::DotDot) {
+            return true;
+        }
         false
     }
 
@@ -358,21 +362,38 @@ impl Parser {
         self.skip_newlines();
 
         let mut fields = Vec::new();
+        let mut base = None;
         if !matches!(self.peek(), TokenKind::RBrace) {
-            fields.push(self.parse_struct_field_init()?);
-            while matches!(self.peek(), TokenKind::Comma) {
+            // Check for leading ..base (no fields before it)
+            if matches!(self.peek(), TokenKind::DotDot) {
                 self.advance();
-                self.skip_newlines();
-                if matches!(self.peek(), TokenKind::RBrace) {
-                    break; // trailing comma
-                }
+                base = Some(Box::new(self.parse_expr()?));
+            } else {
                 fields.push(self.parse_struct_field_init()?);
+                while matches!(self.peek(), TokenKind::Comma) {
+                    self.advance();
+                    self.skip_newlines();
+                    if matches!(self.peek(), TokenKind::RBrace) {
+                        break; // trailing comma
+                    }
+                    // ..base after fields
+                    if matches!(self.peek(), TokenKind::DotDot) {
+                        self.advance();
+                        base = Some(Box::new(self.parse_expr()?));
+                        // Allow trailing comma after ..base
+                        if matches!(self.peek(), TokenKind::Comma) {
+                            self.advance();
+                        }
+                        break;
+                    }
+                    fields.push(self.parse_struct_field_init()?);
+                }
             }
         }
         self.skip_newlines();
         self.expect(&TokenKind::RBrace)?;
         Ok(Spanned::new(
-            ExprKind::StructLit { name, fields, base: None },
+            ExprKind::StructLit { name, fields, base },
             self.end_span(start),
         ))
     }
