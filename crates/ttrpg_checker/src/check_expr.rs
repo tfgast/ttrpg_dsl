@@ -59,6 +59,8 @@ impl<'a> Checker<'a> {
 
             ExprKind::ListLit(elems) => self.check_list_lit(elems, expr.span),
 
+            ExprKind::MapLit(entries) => self.check_map_lit(entries, expr.span),
+
             ExprKind::Paren(inner) => self.check_expr_expecting(inner, hint),
 
             ExprKind::If {
@@ -1904,6 +1906,51 @@ impl<'a> Checker<'a> {
         }
 
         Ty::List(Box::new(unified_ty))
+    }
+
+    fn check_map_lit(
+        &mut self,
+        entries: &[(Spanned<ExprKind>, Spanned<ExprKind>)],
+        _span: ttrpg_ast::Span,
+    ) -> Ty {
+        if entries.is_empty() {
+            return Ty::Map(Box::new(Ty::Error), Box::new(Ty::Error));
+        }
+
+        let mut unified_key = self.check_expr(&entries[0].0);
+        let mut unified_val = self.check_expr_expecting(&entries[0].1, None);
+
+        for (key, value) in &entries[1..] {
+            let key_ty = self.check_expr_expecting(key, Some(&unified_key));
+            match self.unify_branch_types(&unified_key, &key_ty) {
+                Some(ty) => unified_key = ty,
+                None => {
+                    self.error(
+                        format!(
+                            "map key has type {}, expected {}",
+                            key_ty, unified_key
+                        ),
+                        key.span,
+                    );
+                }
+            }
+
+            let val_ty = self.check_expr_expecting(value, Some(&unified_val));
+            match self.unify_branch_types(&unified_val, &val_ty) {
+                Some(ty) => unified_val = ty,
+                None => {
+                    self.error(
+                        format!(
+                            "map value has type {}, expected {}",
+                            val_ty, unified_val
+                        ),
+                        value.span,
+                    );
+                }
+            }
+        }
+
+        Ty::Map(Box::new(unified_key), Box::new(unified_val))
     }
 
     fn check_if(

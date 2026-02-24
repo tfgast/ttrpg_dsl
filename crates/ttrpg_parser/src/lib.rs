@@ -537,6 +537,12 @@ fn rebase_expr(expr: &mut Spanned<ExprKind>, base: usize) {
                 rebase_expr(item, base);
             }
         }
+        ExprKind::MapLit(entries) => {
+            for (key, value) in entries {
+                rebase_expr(key, base);
+                rebase_expr(value, base);
+            }
+        }
         ExprKind::Paren(inner) => {
             rebase_expr(inner, base);
         }

@@ -54,6 +54,16 @@ pub(crate) fn eval_expr(env: &mut Env, expr: &Spanned<ExprKind>) -> Result<Value
             Ok(Value::List(vals?))
         }
 
+        ExprKind::MapLit(entries) => {
+            let mut map = std::collections::BTreeMap::new();
+            for (key_expr, val_expr) in entries {
+                let key = eval_expr(env, key_expr)?;
+                let val = eval_expr(env, val_expr)?;
+                map.insert(key, val);
+            }
+            Ok(Value::Map(map))
+        }
+
         ExprKind::StructLit { name, fields, base } => {
             // Start from base fields if ..base spread was provided.
             let mut field_map = if let Some(base_expr) = base {
@@ -2140,6 +2150,12 @@ fn collect_idents(expr: &Spanned<ExprKind>, out: &mut Vec<String>) {
         ExprKind::ListLit(elems) => {
             for elem in elems {
                 collect_idents(elem, out);
+            }
+        }
+        ExprKind::MapLit(entries) => {
+            for (key, value) in entries {
+                collect_idents(key, out);
+                collect_idents(value, out);
             }
         }
         ExprKind::If { condition, .. } => collect_idents(condition, out),

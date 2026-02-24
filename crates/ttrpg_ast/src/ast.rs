@@ -489,6 +489,7 @@ pub enum ExprKind {
         base: Option<Box<Spanned<ExprKind>>>,
     },
     ListLit(Vec<Spanned<ExprKind>>),
+    MapLit(Vec<(Spanned<ExprKind>, Spanned<ExprKind>)>),
     Paren(Box<Spanned<ExprKind>>),
     If {
         condition: Box<Spanned<ExprKind>>,

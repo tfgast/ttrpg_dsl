@@ -305,6 +305,35 @@ impl Parser {
                 Ok(Spanned::new(ExprKind::ListLit(items), self.end_span(start)))
             }
 
+            TokenKind::LBrace => {
+                // Map literal: { key: value, ... }
+                self.advance();
+                self.skip_newlines();
+                let mut entries = Vec::new();
+                if !matches!(self.peek(), TokenKind::RBrace) {
+                    let key = self.parse_expr()?;
+                    self.expect(&TokenKind::Colon)?;
+                    let value = self.parse_expr()?;
+                    self.skip_newlines();
+                    entries.push((key, value));
+                    while matches!(self.peek(), TokenKind::Comma) {
+                        self.advance();
+                        self.skip_newlines();
+                        if matches!(self.peek(), TokenKind::RBrace) {
+                            break; // trailing comma
+                        }
+                        let key = self.parse_expr()?;
+                        self.expect(&TokenKind::Colon)?;
+                        let value = self.parse_expr()?;
+                        self.skip_newlines();
+                        entries.push((key, value));
+                    }
+                }
+                self.skip_newlines();
+                self.expect(&TokenKind::RBrace)?;
+                Ok(Spanned::new(ExprKind::MapLit(entries), self.end_span(start)))
+            }
+
             TokenKind::LParen => {
                 // Parenthesized expr
                 self.advance();
