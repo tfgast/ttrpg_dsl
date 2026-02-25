@@ -129,7 +129,6 @@ pub struct TypeEnv {
     pub condition_owner: HashMap<Name, Name>,
     pub event_owner: HashMap<Name, Name>,
     pub option_owner: HashMap<Name, Name>,
-    pub variant_owner: HashMap<Name, Name>,
 
     /// Per-system: which names are visible (own + imported).
     pub system_visibility: HashMap<Name, VisibleNames>,
@@ -171,7 +170,6 @@ impl TypeEnv {
             condition_owner: HashMap::new(),
             event_owner: HashMap::new(),
             option_owner: HashMap::new(),
-            variant_owner: HashMap::new(),
             system_visibility: HashMap::new(),
             system_aliases: HashMap::new(),
         }

@@ -100,9 +100,6 @@ fn populate_module_metadata(
         for name in &sys_info.options {
             env.option_owner.insert(name.clone(), sys_name.clone());
         }
-        for name in &sys_info.variants {
-            env.variant_owner.insert(name.clone(), sys_name.clone());
-        }
     }
 
     // Compute per-system visibility (own + imported)

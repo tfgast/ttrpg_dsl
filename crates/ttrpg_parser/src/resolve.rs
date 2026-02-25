@@ -15,6 +15,7 @@ use ttrpg_ast::{Span, Spanned};
 use ttrpg_ast::FileId;
 
 /// Per-file metadata extracted by `parse_multi` before calling `resolve_modules`.
+#[derive(Clone)]
 pub struct FileSystemInfo {
     /// Systems defined in this file (by name).
     pub system_names: Vec<String>,
@@ -137,6 +138,16 @@ pub fn resolve_modules(
         let mut aliases: HashMap<Name, (Name, Span)> = HashMap::new();
         let mut deduped_imports: Vec<ImportInfo> = Vec::new();
 
+        // Pre-collect ALL valid import target systems so alias shadow
+        // checking is order-independent (not just "previously accepted").
+        let all_import_targets: HashSet<Name> = imports.iter()
+            .filter_map(|(import, _)| {
+                if !module_map.systems.contains_key(&import.system_name) { return None; }
+                if import.system_name == *sys_name { return None; }
+                Some(import.system_name.clone())
+            })
+            .collect();
+
         for (import, _span) in imports {
             // Check target exists
             if !module_map.systems.contains_key(&import.system_name) {
@@ -198,15 +209,14 @@ pub fn resolve_modules(
                     }
                 }
 
-                // Check alias vs imported names
-                // (names from the current target AND all previously accepted imports)
+                // Check alias vs imported names from ALL import targets
+                // (order-independent: uses pre-collected target set, not
+                // just previously processed imports)
                 let mut shadowed_system = None;
-                let all_systems = std::iter::once(import.system_name.as_str())
-                    .chain(deduped_imports.iter().map(|i| i.system_name.as_str()));
-                for check_sys in all_systems {
-                    if let Some(sys_info) = module_map.systems.get(check_sys) {
+                for target in &all_import_targets {
+                    if let Some(sys_info) = module_map.systems.get(target.as_str()) {
                         if system_has_name(sys_info, alias) {
-                            shadowed_system = Some(check_sys.to_string());
+                            shadowed_system = Some(target.to_string());
                             break;
                         }
                     }
@@ -1077,5 +1087,212 @@ mod tests {
         let (_map, diags) = resolve_modules(&mut program, &file_systems);
         let errors: Vec<_> = diags.iter().filter(|d| d.severity == Severity::Error).collect();
         assert!(errors.is_empty(), "no conflicts expected: {:?}", errors);
+    }
+
+    // ── Load order independence tests ──────────────────────────────────
+
+    /// Helper: run resolve_modules with the given file_systems and return
+    /// whether any errors were produced (ignoring message text / ordering).
+    fn has_errors(program: &mut Program, file_systems: &[FileSystemInfo]) -> bool {
+        let (_map, diags) = resolve_modules(program, file_systems);
+        diags.iter().any(|d| d.severity == Severity::Error)
+    }
+
+    #[test]
+    fn alias_shadow_cross_file_order_independent() {
+        // Regression: alias shadow check must detect conflict regardless of
+        // which file's use-declaration is processed first.
+        //
+        // File A: use "Lib" as foo  +  system "Main" { ... }
+        // File B: use "Utils"       +  system "Main" { ... }
+        // Utils exports function "foo" → alias "foo" shadows it.
+        let program_items = vec![
+            make_system("Lib", vec![make_derive("bar")]),
+            make_system("Utils", vec![make_derive("foo")]),
+            make_system("Main", vec![make_derive("main_fn")]),
+        ];
+
+        // Order A: alias file first, bare import second
+        let mut p1 = make_program(program_items.clone());
+        let fs_order_a = vec![
+            FileSystemInfo {
+                system_names: vec!["Main".into()],
+                use_decls: vec![UseDecl {
+                    path: "Lib".into(),
+                    alias: Some("foo".into()),
+                    span: Span::new(FileId(0), 0, 10),
+                }],
+            },
+            FileSystemInfo {
+                system_names: vec!["Main".into()],
+                use_decls: vec![UseDecl {
+                    path: "Utils".into(),
+                    alias: None,
+                    span: Span::new(FileId(1), 0, 10),
+                }],
+            },
+        ];
+        let has_a = has_errors(&mut p1, &fs_order_a);
+
+        // Order B: bare import first, alias file second
+        let mut p2 = make_program(program_items.clone());
+        let fs_order_b = vec![
+            FileSystemInfo {
+                system_names: vec!["Main".into()],
+                use_decls: vec![UseDecl {
+                    path: "Utils".into(),
+                    alias: None,
+                    span: Span::new(FileId(0), 0, 10),
+                }],
+            },
+            FileSystemInfo {
+                system_names: vec!["Main".into()],
+                use_decls: vec![UseDecl {
+                    path: "Lib".into(),
+                    alias: Some("foo".into()),
+                    span: Span::new(FileId(1), 0, 10),
+                }],
+            },
+        ];
+        let has_b = has_errors(&mut p2, &fs_order_b);
+
+        assert!(has_a, "order A (alias first) should detect shadow");
+        assert!(has_b, "order B (alias second) should detect shadow");
+    }
+
+    #[test]
+    fn alias_shadow_cross_file_both_aliased() {
+        // Both imports are aliased and come from different files.
+        // use "A" as foo  (file 1)  — A has no "foo"
+        // use "B" as bar  (file 2)  — B exports "foo"
+        // Alias "foo" shadows B's function "foo".
+        let program_items = vec![
+            make_system("A", vec![make_derive("alpha")]),
+            make_system("B", vec![make_derive("foo")]),
+            make_system("Main", vec![make_derive("main_fn")]),
+        ];
+
+        // Order: alias "foo" first, alias "bar" second
+        let mut p1 = make_program(program_items.clone());
+        let fs1 = vec![
+            FileSystemInfo {
+                system_names: vec!["Main".into()],
+                use_decls: vec![UseDecl {
+                    path: "A".into(),
+                    alias: Some("foo".into()),
+                    span: Span::new(FileId(0), 0, 10),
+                }],
+            },
+            FileSystemInfo {
+                system_names: vec!["Main".into()],
+                use_decls: vec![UseDecl {
+                    path: "B".into(),
+                    alias: Some("bar".into()),
+                    span: Span::new(FileId(1), 0, 10),
+                }],
+            },
+        ];
+        let has1 = has_errors(&mut p1, &fs1);
+
+        // Reversed order
+        let mut p2 = make_program(program_items.clone());
+        let fs2 = vec![
+            FileSystemInfo {
+                system_names: vec!["Main".into()],
+                use_decls: vec![UseDecl {
+                    path: "B".into(),
+                    alias: Some("bar".into()),
+                    span: Span::new(FileId(0), 0, 10),
+                }],
+            },
+            FileSystemInfo {
+                system_names: vec!["Main".into()],
+                use_decls: vec![UseDecl {
+                    path: "A".into(),
+                    alias: Some("foo".into()),
+                    span: Span::new(FileId(1), 0, 10),
+                }],
+            },
+        ];
+        let has2 = has_errors(&mut p2, &fs2);
+
+        assert!(has1, "order 1 should detect alias 'foo' shadows B's function");
+        assert!(has2, "order 2 should detect alias 'foo' shadows B's function");
+    }
+
+    #[test]
+    fn alias_shadow_variant_cross_file_order_independent() {
+        // Alias shadows an enum variant from another imported system,
+        // regardless of file order.
+        let program_items = vec![
+            make_system("Lib", vec![make_derive("bar")]),
+            make_system("Types", vec![make_enum("DamageType", &["fire", "cold"])]),
+            make_system("Main", vec![make_derive("main_fn")]),
+        ];
+
+        let make_fs = |alias_first: bool| -> Vec<FileSystemInfo> {
+            let alias_file = FileSystemInfo {
+                system_names: vec!["Main".into()],
+                use_decls: vec![UseDecl {
+                    path: "Lib".into(),
+                    alias: Some("fire".into()),
+                    span: Span::new(FileId(0), 0, 10),
+                }],
+            };
+            let bare_file = FileSystemInfo {
+                system_names: vec!["Main".into()],
+                use_decls: vec![UseDecl {
+                    path: "Types".into(),
+                    alias: None,
+                    span: Span::new(FileId(1), 0, 10),
+                }],
+            };
+            if alias_first {
+                vec![alias_file, bare_file]
+            } else {
+                vec![bare_file, alias_file]
+            }
+        };
+
+        let mut p1 = make_program(program_items.clone());
+        let mut p2 = make_program(program_items.clone());
+        assert!(has_errors(&mut p1, &make_fs(true)), "alias first: should detect shadow");
+        assert!(has_errors(&mut p2, &make_fs(false)), "alias second: should detect shadow");
+    }
+
+    #[test]
+    fn no_false_positive_when_alias_is_clean() {
+        // Alias doesn't match any imported name — no error regardless of order.
+        let program_items = vec![
+            make_system("Lib", vec![make_derive("bar")]),
+            make_system("Utils", vec![make_derive("baz")]),
+            make_system("Main", vec![make_derive("main_fn")]),
+        ];
+
+        let mut p1 = make_program(program_items.clone());
+        let fs1 = vec![
+            FileSystemInfo {
+                system_names: vec!["Main".into()],
+                use_decls: vec![UseDecl {
+                    path: "Lib".into(),
+                    alias: Some("L".into()),
+                    span: Span::new(FileId(0), 0, 10),
+                }],
+            },
+            FileSystemInfo {
+                system_names: vec!["Main".into()],
+                use_decls: vec![UseDecl {
+                    path: "Utils".into(),
+                    alias: None,
+                    span: Span::new(FileId(1), 0, 10),
+                }],
+            },
+        ];
+        assert!(!has_errors(&mut p1, &fs1), "clean alias should not produce errors");
+
+        // Reversed
+        let mut p2 = make_program(program_items.clone());
+        let fs2 = vec![fs1[1].clone(), fs1[0].clone()];
+        assert!(!has_errors(&mut p2, &fs2), "reversed clean alias should not produce errors");
     }
 }
