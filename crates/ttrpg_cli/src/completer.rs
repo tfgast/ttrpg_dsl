@@ -193,7 +193,7 @@ impl Completer for TtrpgCompleter {
                         .collect()
                 }
             }
-            "eval" | "assert" | "assert_eq" => {
+            "eval" | "assert" | "assert_eq" | "assert_err" => {
                 // Complete handles + DSL keywords
                 let current_word = last_word(rest);
                 let word_start = pos - current_word.len();
@@ -356,6 +356,18 @@ mod tests {
                 r.span.start, r.span.end,
             );
         }
+    }
+
+    // ── Regression: tdsl-uid — assert_err gets expression completions ──
+
+    #[test]
+    fn complete_assert_err_handles_and_keywords() {
+        let ctx = make_ctx();
+        let mut c = TtrpgCompleter::new(ctx);
+        let results = c.complete("assert_err f", 12);
+        let values: Vec<_> = results.iter().map(|s| s.value.as_str()).collect();
+        assert!(values.contains(&"fighter"), "assert_err should complete handles");
+        assert!(values.contains(&"false"), "assert_err should complete DSL keywords");
     }
 
     #[test]

@@ -1558,6 +1558,23 @@ fn struct_lit_with_base_trailing_comma() {
     }
 }
 
+// ── Regression: tdsl-cd7 — leading ..base with trailing comma ──
+
+#[test]
+fn struct_lit_leading_base_trailing_comma() {
+    let (expr, diags) = ttrpg_parser::parse_expr("Point { ..other, }");
+    assert!(diags.is_empty(), "trailing comma after leading ..base should parse: {:?}", diags.iter().map(|d| &d.message).collect::<Vec<_>>());
+    let expr = expr.unwrap();
+    match &expr.node {
+        ExprKind::StructLit { name, fields, base } => {
+            assert_eq!(name, "Point");
+            assert!(fields.is_empty(), "expected no fields");
+            assert!(base.is_some(), "expected base expression");
+        }
+        _ => panic!("expected StructLit"),
+    }
+}
+
 // ── Bug repro tests (P1) ──────────────────────────────────────────
 
 /// Bug tdsl-srpf: bare 'some' in pattern is parsed as PatternKind::Ident

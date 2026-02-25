@@ -402,6 +402,10 @@ impl Parser {
             if matches!(self.peek(), TokenKind::DotDot) {
                 self.advance();
                 base = Some(Box::new(self.parse_expr()?));
+                // Allow trailing comma after leading ..base
+                if matches!(self.peek(), TokenKind::Comma) {
+                    self.advance();
+                }
             } else {
                 fields.push(self.parse_struct_field_init()?);
                 while matches!(self.peek(), TokenKind::Comma) {

@@ -33,6 +33,7 @@ impl Highlighter for TtrpgHighlighter {
         let is_cli_cmd = CLI_COMMANDS.contains(&first_word);
 
         let mut last_end = 0;
+        let mut is_first_token = true;
 
         for token in RawLexer::new(line) {
             let start = token.span.start;
@@ -61,7 +62,8 @@ impl Highlighter for TtrpgHighlighter {
             }
 
             let text = &line[start..end];
-            let style = token_style(&token.kind, is_cli_cmd && start == 0);
+            let style = token_style(&token.kind, is_cli_cmd && is_first_token);
+            is_first_token = false;
 
             styled.push((style, text.to_string()));
             last_end = end;
@@ -175,6 +177,19 @@ mod tests {
         let (style, text) = &result.buffer[0];
         assert_eq!(text, "2d6");
         assert_eq!(*style, Color::Magenta.bold());
+    }
+
+    // ── Regression: tdsl-d51v / tdsl-i0i — leading whitespace highlighting ──
+
+    #[test]
+    fn highlight_cli_command_with_leading_whitespace() {
+        let h = TtrpgHighlighter;
+        let result = h.highlight("  eval 2 + 3", 0);
+        // First segment is leading whitespace, second should be the command
+        let cmd_segment = result.buffer.iter().find(|(_, text)| text == "eval");
+        assert!(cmd_segment.is_some(), "eval should appear in output");
+        let (style, _) = cmd_segment.unwrap();
+        assert_eq!(*style, Color::Cyan.bold(), "eval should be highlighted as CLI command even with leading whitespace");
     }
 
     #[test]
