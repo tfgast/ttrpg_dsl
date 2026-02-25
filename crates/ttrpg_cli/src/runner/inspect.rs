@@ -1,0 +1,431 @@
+use super::*;
+
+impl Runner {
+    pub(super) fn cmd_inspect(&mut self, tail: &str) -> Result<(), CliError> {
+        let tail = tail.trim();
+
+        // Split on first '.' to detect handle.field vs handle
+        if let Some(dot_pos) = tail.find('.') {
+            let handle = &tail[..dot_pos];
+            let rest = &tail[dot_pos + 1..];
+            if handle.is_empty() || rest.is_empty() {
+                return Err(CliError::Message(
+                    "usage: inspect <handle> or inspect <handle>.<field>".into(),
+                ));
+            }
+            let entity = self.resolve_handle(handle)?;
+
+            // Check for a second dot: handle.GroupName.field
+            if let Some(inner_dot) = rest.find('.') {
+                let group_name = &rest[..inner_dot];
+                let field_name = &rest[inner_dot + 1..];
+                if group_name.is_empty() || field_name.is_empty() {
+                    return Err(CliError::Message(
+                        "usage: inspect <handle>.<GroupName>.<field>".into(),
+                    ));
+                }
+
+                let gs = self.game_state.borrow();
+                match gs.read_field(&entity, group_name) {
+                    Some(Value::Struct { fields, .. }) => {
+                        match fields.get(field_name) {
+                            Some(val) => {
+                                self.output.push(format!(
+                                    "{}.{}.{} = {}",
+                                    handle, group_name, field_name,
+                                    format_value(val)
+                                ));
+                            }
+                            None => {
+                                return Err(CliError::Message(format!(
+                                    "field '{}' not found in group '{}'",
+                                    field_name, group_name
+                                )));
+                            }
+                        }
+                    }
+                    Some(_) => {
+                        return Err(CliError::Message(format!(
+                            "field '{}' is not a group on {}",
+                            group_name, handle
+                        )));
+                    }
+                    None => {
+                        return Err(CliError::Message(format!(
+                            "{}.{} is not currently granted",
+                            handle, group_name
+                        )));
+                    }
+                }
+            } else {
+                let field = rest;
+
+                // Check if it's an optional group name
+                let type_name = {
+                    let gs = self.game_state.borrow();
+                    gs.entity_type_name(&entity).map(|s| s.to_string())
+                };
+                let is_group = type_name.as_ref().and_then(|tn| {
+                    self.type_env.lookup_optional_group(tn, field)
+                }).is_some();
+
+                if is_group {
+                    let gs = self.game_state.borrow();
+                    match gs.read_field(&entity, field) {
+                        Some(val) => {
+                            self.output.push(format!(
+                                "{}.{} = {}",
+                                handle, field, format_value(&val)
+                            ));
+                        }
+                        None => {
+                            self.output.push(format!(
+                                "{}.{} = <not granted>",
+                                handle, field
+                            ));
+                        }
+                    }
+                } else {
+                    let gs = self.game_state.borrow();
+                    let is_declared = type_name
+                        .as_ref()
+                        .and_then(|tn| self.type_env.lookup_fields(tn))
+                        .map(|fields| fields.iter().any(|f| f.name == field))
+                        .unwrap_or(false);
+                    match gs.read_field(&entity, field) {
+                        Some(val) => {
+                            self.output.push(format!(
+                                "{}.{} = {}",
+                                handle, field, format_value(&val)
+                            ));
+                        }
+                        None if is_declared => {
+                            self.output
+                                .push(format!("{}.{} = <unset>", handle, field));
+                        }
+                        None => {
+                            return Err(CliError::Message(format!(
+                                "field '{}' not found on {}",
+                                field, handle
+                            )));
+                        }
+                    }
+                }
+            }
+        } else {
+            let handle = tail;
+            let entity = self.resolve_handle(handle)?;
+            let gs = self.game_state.borrow();
+            let type_name = gs
+                .entity_type_name(&entity)
+                .ok_or_else(|| {
+                    CliError::Message(format!("entity for handle '{}' not found in state", handle))
+                })?
+                .to_string();
+            drop(gs);
+
+            self.output.push(format!("{} ({})", handle, type_name));
+
+            if let Some(fields) = self.type_env.lookup_fields(&type_name) {
+                let gs = self.game_state.borrow();
+                for fi in fields {
+                    let val = gs
+                        .read_field(&entity, &fi.name)
+                        .map(|v| format_value(&v))
+                        .unwrap_or_else(|| "<unset>".into());
+                    self.output.push(format!(
+                        "  {}: {} = {}",
+                        fi.name,
+                        fi.ty.display(),
+                        val
+                    ));
+                }
+            }
+
+            // Show granted optional groups
+            if let Some(DeclInfo::Entity(info)) = self.type_env.types.get(&type_name) {
+                let gs = self.game_state.borrow();
+                for group_info in &info.optional_groups {
+                    if let Some(Value::Struct { fields, .. }) =
+                        gs.read_field(&entity, &group_info.name)
+                    {
+                        self.output
+                            .push(format!("  [group] {} (granted)", group_info.name));
+                        for fi in &group_info.fields {
+                            let val = fields
+                                .get(&fi.name)
+                                .map(format_value)
+                                .unwrap_or_else(|| "<unset>".into());
+                            self.output.push(format!(
+                                "    {}: {} = {}",
+                                fi.name,
+                                fi.ty.display(),
+                                val
+                            ));
+                        }
+                    }
+                }
+            }
+
+            let gs = self.game_state.borrow();
+            if let Some(conditions) = gs.read_conditions(&entity) {
+                for cond in &conditions {
+                    self.output.push(format!(
+                        "  [condition] {} ({})",
+                        cond.name,
+                        format_value(&cond.duration)
+                    ));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub(super) fn cmd_state(&mut self) -> Result<(), CliError> {
+        if self.handles.is_empty() {
+            self.output.push("no entities".into());
+            return Ok(());
+        }
+
+        let mut sorted: Vec<_> = self.handles.iter().collect();
+        sorted.sort_by_key(|(name, _)| *name);
+
+        for (handle, entity) in &sorted {
+            let gs = self.game_state.borrow();
+            let type_name = gs
+                .entity_type_name(entity)
+                .unwrap_or("?")
+                .to_string();
+            drop(gs);
+
+            self.output.push(format!("{} ({})", handle, type_name));
+
+            if let Some(fields) = self.type_env.lookup_fields(&type_name) {
+                let gs = self.game_state.borrow();
+                for fi in fields {
+                    let val = gs
+                        .read_field(entity, &fi.name)
+                        .map(|v| format_value(&v))
+                        .unwrap_or_else(|| "<unset>".into());
+                    self.output.push(format!(
+                        "  {}: {} = {}",
+                        fi.name,
+                        fi.ty.display(),
+                        val
+                    ));
+                }
+            }
+
+            // Show granted optional groups
+            if let Some(DeclInfo::Entity(info)) = self.type_env.types.get(&type_name) {
+                let gs = self.game_state.borrow();
+                for group_info in &info.optional_groups {
+                    if let Some(Value::Struct { fields, .. }) =
+                        gs.read_field(entity, &group_info.name)
+                    {
+                        self.output
+                            .push(format!("  [group] {} (granted)", group_info.name));
+                        for fi in &group_info.fields {
+                            let val = fields
+                                .get(&fi.name)
+                                .map(format_value)
+                                .unwrap_or_else(|| "<unset>".into());
+                            self.output.push(format!(
+                                "    {}: {} = {}",
+                                fi.name,
+                                fi.ty.display(),
+                                val
+                            ));
+                        }
+                    }
+                }
+            }
+
+            let gs = self.game_state.borrow();
+            if let Some(conditions) = gs.read_conditions(entity) {
+                for cond in &conditions {
+                    self.output.push(format!(
+                        "  [condition] {} ({})",
+                        cond.name,
+                        format_value(&cond.duration)
+                    ));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub(super) fn cmd_types(&mut self) -> Result<(), CliError> {
+        let mut sorted: Vec<_> = self.type_env.types.iter().collect();
+        sorted.sort_by_key(|(name, _)| *name);
+
+        if sorted.is_empty() {
+            self.output.push("no types".into());
+            return Ok(());
+        }
+
+        for (name, decl) in &sorted {
+            match decl {
+                DeclInfo::Entity(info) => {
+                    self.output.push(format!("entity {}", name));
+                    for fi in &info.fields {
+                        self.output
+                            .push(format!("  {}: {}", fi.name, fi.ty.display()));
+                    }
+                    for group in &info.optional_groups {
+                        self.output
+                            .push(format!("  optional {}", group.name));
+                        for fi in &group.fields {
+                            self.output
+                                .push(format!("    {}: {}", fi.name, fi.ty.display()));
+                        }
+                    }
+                }
+                DeclInfo::Struct(info) => {
+                    self.output.push(format!("struct {}", name));
+                    for fi in &info.fields {
+                        self.output
+                            .push(format!("  {}: {}", fi.name, fi.ty.display()));
+                    }
+                }
+                DeclInfo::Enum(info) => {
+                    self.output.push(format!("enum {}", name));
+                    for variant in &info.variants {
+                        if variant.fields.is_empty() {
+                            self.output.push(format!("  {}", variant.name));
+                        } else {
+                            let fields: Vec<String> = variant
+                                .fields
+                                .iter()
+                                .map(|(n, t)| format!("{}: {}", n, t.display()))
+                                .collect();
+                            self.output
+                                .push(format!("  {}({})", variant.name, fields.join(", ")));
+                        }
+                    }
+                }
+                DeclInfo::Unit(info) => {
+                    let suffix_str = match &info.suffix {
+                        Some(s) => format!(" suffix {}", s),
+                        None => String::new(),
+                    };
+                    self.output.push(format!("unit {}{}", name, suffix_str));
+                    for fi in &info.fields {
+                        self.output
+                            .push(format!("  {}: {}", fi.name, fi.ty.display()));
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub(super) fn cmd_actions(&mut self) -> Result<(), CliError> {
+        let mut actions: Vec<_> = self
+            .type_env
+            .functions
+            .values()
+            .filter(|fi| matches!(fi.kind, FnKind::Action))
+            .collect();
+        actions.sort_by(|a, b| a.name.cmp(&b.name));
+
+        if actions.is_empty() {
+            self.output.push("no actions".into());
+            return Ok(());
+        }
+
+        for fi in &actions {
+            let receiver = fi
+                .receiver
+                .as_ref()
+                .map(|r| format!("{}: {}", r.name, r.ty.display()))
+                .unwrap_or_default();
+            let params: Vec<String> = fi
+                .params
+                .iter()
+                .map(|p| format!("{}: {}", p.name, p.ty.display()))
+                .collect();
+            let all_params = if receiver.is_empty() {
+                params.join(", ")
+            } else if params.is_empty() {
+                receiver
+            } else {
+                format!("{}, {}", receiver, params.join(", "))
+            };
+            self.output.push(format!(
+                "action {}({}) -> {}",
+                fi.name,
+                all_params,
+                fi.return_type.display()
+            ));
+        }
+        Ok(())
+    }
+
+    pub(super) fn cmd_mechanics(&mut self) -> Result<(), CliError> {
+        let mut fns: Vec<_> = self
+            .type_env
+            .functions
+            .values()
+            .filter(|fi| matches!(fi.kind, FnKind::Mechanic | FnKind::Derive))
+            .collect();
+        fns.sort_by(|a, b| a.name.cmp(&b.name));
+
+        if fns.is_empty() {
+            self.output.push("no mechanics".into());
+            return Ok(());
+        }
+
+        for fi in &fns {
+            let kind_label = match fi.kind {
+                FnKind::Derive => "derive",
+                FnKind::Mechanic => "mechanic",
+                _ => unreachable!(),
+            };
+            let params: Vec<String> = fi
+                .params
+                .iter()
+                .map(|p| format!("{}: {}", p.name, p.ty.display()))
+                .collect();
+            self.output.push(format!(
+                "{} {}({}) -> {}",
+                kind_label,
+                fi.name,
+                params.join(", "),
+                fi.return_type.display()
+            ));
+        }
+        Ok(())
+    }
+
+    pub(super) fn cmd_conditions(&mut self) -> Result<(), CliError> {
+        if self.handles.is_empty() {
+            self.output.push("no entities".into());
+            return Ok(());
+        }
+
+        let mut sorted: Vec<_> = self.handles.iter().collect();
+        sorted.sort_by_key(|(name, _)| *name);
+
+        let mut found_any = false;
+        for (handle, entity) in &sorted {
+            let gs = self.game_state.borrow();
+            if let Some(conditions) = gs.read_conditions(entity) {
+                for cond in &conditions {
+                    self.output.push(format!(
+                        "{}: {} ({})",
+                        handle,
+                        cond.name,
+                        format_value(&cond.duration)
+                    ));
+                    found_any = true;
+                }
+            }
+        }
+
+        if !found_any {
+            self.output.push("no active conditions".into());
+        }
+        Ok(())
+    }
+}
