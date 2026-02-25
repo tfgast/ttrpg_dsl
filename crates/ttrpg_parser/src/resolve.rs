@@ -349,10 +349,15 @@ fn detect_cross_system_collisions(
             if owners.len() > 1 {
                 let mut sorted_owners = owners.clone();
                 sorted_owners.sort();
+                let owners_list = sorted_owners
+                    .iter()
+                    .map(|o| format!("\"{}\"", o))
+                    .collect::<Vec<_>>()
+                    .join(", ");
                 diagnostics.push(Diagnostic::error(
                     format!(
-                        "duplicate {} \"{}\": defined in \"{}\" and \"{}\"",
-                        ns_label, name, sorted_owners[0], sorted_owners[1]
+                        "duplicate {} \"{}\": defined in {}",
+                        ns_label, name, owners_list
                     ),
                     Span::dummy(),
                 ));
@@ -681,6 +686,27 @@ mod tests {
         let (_map, diags) = resolve_modules(&mut program, &file_systems);
         let errors: Vec<_> = diags.iter().filter(|d| d.severity == Severity::Error).collect();
         assert!(errors.is_empty(), "multi-owner variants should not be errors: {:?}", errors);
+    }
+
+    #[test]
+    fn cross_system_three_way_collision_lists_all_owners() {
+        let mut program = make_program(vec![
+            make_system("A", vec![make_enum("Ability", &["STR"])]),
+            make_system("B", vec![make_enum("Ability", &["DEX"])]),
+            make_system("C", vec![make_enum("Ability", &["CON"])]),
+        ]);
+        let file_systems = vec![FileSystemInfo {
+            system_names: vec!["A".into(), "B".into(), "C".into()],
+            use_decls: vec![],
+        }];
+
+        let (_map, diags) = resolve_modules(&mut program, &file_systems);
+        let errors: Vec<_> = diags.iter().filter(|d| d.severity == Severity::Error).collect();
+        assert_eq!(errors.len(), 1);
+        let msg = &errors[0].message;
+        assert!(msg.contains("\"A\""), "should mention system A: {}", msg);
+        assert!(msg.contains("\"B\""), "should mention system B: {}", msg);
+        assert!(msg.contains("\"C\""), "should mention system C: {}", msg);
     }
 
     #[test]

@@ -169,7 +169,9 @@ impl StateProvider for GameState {
     }
 
     fn read_enabled_options(&self) -> Vec<String> {
-        self.enabled_options.iter().cloned().collect()
+        let mut opts: Vec<String> = self.enabled_options.iter().cloned().collect();
+        opts.sort();
+        opts
     }
 
     fn position_eq(&self, a: &Value, b: &Value) -> bool {
@@ -521,6 +523,17 @@ mod tests {
         let opts = state.read_enabled_options();
         assert_eq!(opts.len(), 1);
         assert!(opts.contains(&"critical_fumbles".to_string()));
+    }
+
+    #[test]
+    fn read_enabled_options_returns_sorted() {
+        let mut state = GameState::new();
+        state.enable_option("flanking");
+        state.enable_option("critical_fumbles");
+        state.enable_option("advanced_cover");
+
+        let opts = state.read_enabled_options();
+        assert_eq!(opts, vec!["advanced_cover", "critical_fumbles", "flanking"]);
     }
 
     // ── GameState: position equality and Chebyshev distance ────

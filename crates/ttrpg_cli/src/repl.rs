@@ -152,6 +152,9 @@ pub fn run_repl(vi_mode: bool) {
 
     let prompt = TtrpgPrompt;
 
+    // Initialize completions before first prompt
+    refresh_completions(&runner, &completion_ctx);
+
     loop {
         match editor.read_line(&prompt) {
             Ok(Signal::Success(buffer)) => {

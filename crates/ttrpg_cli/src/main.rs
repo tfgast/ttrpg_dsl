@@ -12,7 +12,7 @@ fn main() {
 
     match args.first().copied() {
         Some("run") => {
-            if args.len() < 2 {
+            if args.len() != 2 {
                 eprintln!("usage: ttrpg run <script.ttrpg-cli>");
                 process::exit(1);
             }
