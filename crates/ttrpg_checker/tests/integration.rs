@@ -7218,3 +7218,64 @@ system "B" {
         errors.iter().map(|e| &e.message).collect::<Vec<_>>()
     );
 }
+
+// ── Regression: tdsl-24qg — variant visibility error can point to wrong owner system ──
+
+#[test]
+fn test_variant_visibility_reports_correct_owner_system() {
+    // Two systems define a variant with the same name ("small").
+    // System C uses "small" without importing either.
+    // The error should point to the correct system (the one whose enum is first),
+    // NOT an arbitrary last-write winner.
+    let result = check_multi_source(&[
+        ("a.ttrpg", r#"
+system "A" {
+    enum Size { small, medium, large }
+}
+"#),
+        ("b.ttrpg", r#"
+system "B" {
+    enum Priority { small, normal, high }
+}
+"#),
+        ("c.ttrpg", r#"
+use "A"
+system "C" {
+    derive get_size() -> Size { small }
+}
+"#),
+    ]);
+    let errors: Vec<_> = result
+        .diagnostics
+        .iter()
+        .filter(|d| d.severity == ttrpg_ast::diagnostic::Severity::Error)
+        .collect();
+    // "small" is visible via import of A, so there should be no visibility error
+    let has_visibility_err = errors.iter().any(|e| e.message.contains("is defined in system"));
+    assert!(
+        !has_visibility_err,
+        "variant 'small' should be visible via import of A; errors: {:?}",
+        errors.iter().map(|e| &e.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn test_variant_visibility_error_names_correct_system() {
+    // System B defines enum with variant "fire". System C uses "fire" without import.
+    // The error should mention system "B", not any other system.
+    expect_multi_errors(
+        &[
+            ("b.ttrpg", r#"
+system "B" {
+    enum DamageType { fire, cold }
+}
+"#),
+            ("c.ttrpg", r#"
+system "C" {
+    derive get_type() -> DamageType { fire }
+}
+"#),
+        ],
+        &[r#"`fire` is defined in system "B""#],
+    );
+}

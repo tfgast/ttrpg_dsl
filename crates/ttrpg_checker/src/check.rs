@@ -142,7 +142,12 @@ impl<'a> Checker<'a> {
             Namespace::Function => self.env.function_owner.get(name),
             Namespace::Condition => self.env.condition_owner.get(name),
             Namespace::Event => self.env.event_owner.get(name),
-            Namespace::Variant => self.env.variant_owner.get(name),
+            Namespace::Variant => {
+                // Derive owner from enum's type_owner to avoid single-owner
+                // overwrite when multiple systems share a variant name.
+                self.env.variant_to_enums.get(name)
+                    .and_then(|enums| enums.iter().find_map(|e| self.env.type_owner.get(e.as_str())))
+            }
             Namespace::Option => self.env.option_owner.get(name),
         };
 

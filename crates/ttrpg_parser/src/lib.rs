@@ -76,62 +76,10 @@ impl ParseMultiResult {
 /// 6. Return merged Program + ModuleMap + all diagnostics
 pub fn parse_multi(sources: &[(String, String)]) -> ParseMultiResult {
     let mut all_diagnostics: Vec<Diagnostic> = Vec::new();
-    let mut file_programs: Vec<Program> = Vec::new();
     let mut file_systems_info: Vec<FileSystemInfo> = Vec::new();
-    let mut base_offsets: Vec<usize> = Vec::new();
+    let mut programs: Vec<Program> = Vec::new();
 
-    // Step 1-2: Parse and lower each file
-    let mut current_offset: usize = 0;
-    for (filename, source) in sources {
-        base_offsets.push(current_offset);
-
-        let (program, mut diags) = parse(source);
-        let program = lower_moves(program, &mut diags);
-
-        // Extract file-system info before rebasing
-        let mut system_names = Vec::new();
-        let mut use_decls = Vec::new();
-        for item in &program.items {
-            match &item.node {
-                TopLevel::System(s) => system_names.push(s.name.clone()),
-                TopLevel::Use(u) => use_decls.push(u.clone()),
-            }
-        }
-
-        file_programs.push(program);
-        // Diagnostics will be rebased below
-        all_diagnostics.extend(diags.into_iter().map(|mut d| {
-            // Will be rebased in step 3
-            d.span = Span::new(d.span.start, d.span.end);
-            d
-        }));
-
-        // Store pre-rebase file system info (use_decl spans will be rebased)
-        file_systems_info.push(FileSystemInfo {
-            system_names,
-            use_decls,
-        });
-
-        // 1-byte sentinel gap between files
-        current_offset += source.len() + 1;
-        let _ = filename; // filename used for error reporting in future phases
-    }
-
-    // Step 3: Rebase all spans to global offsets
-    let diag_start_index = {
-        // We need to rebase diagnostics per-file. Let's redo: collect diags per-file first.
-        // Actually, we already pushed them above — let's recount.
-        // Re-approach: track diag counts per file.
-        0 // We'll rebase in-place below
-    };
-    let _ = diag_start_index;
-
-    // Re-do: parse again with proper per-file tracking
-    // (the approach above mixed diagnostic collection and rebasing; let's clean it up)
-    all_diagnostics.clear();
-    let mut rebased_programs: Vec<Program> = Vec::new();
-    file_systems_info.clear();
-
+    // Parse, lower, and rebase each file
     let mut current_offset: usize = 0;
     for (_filename, source) in sources {
         let base = current_offset;
@@ -167,7 +115,7 @@ pub fn parse_multi(sources: &[(String, String)]) -> ParseMultiResult {
             })
             .collect();
 
-        rebased_programs.push(program);
+        programs.push(program);
         file_systems_info.push(FileSystemInfo {
             system_names,
             use_decls,
@@ -176,9 +124,9 @@ pub fn parse_multi(sources: &[(String, String)]) -> ParseMultiResult {
         current_offset += source.len() + 1;
     }
 
-    // Step 4: Merge programs into single Program
+    // Merge programs into single Program
     let mut merged = Program::default();
-    for p in rebased_programs {
+    for p in programs {
         merged.items.extend(p.items);
     }
     merged.build_index();
@@ -785,6 +733,48 @@ system "Core" {
                         item.span.start >= expected_base,
                         "expected span.start >= {}, got {}",
                         expected_base,
+                        item.span.start,
+                    );
+                }
+            }
+        }
+    }
+
+    // ── Regression: tdsl-vpk — parse_multi should not double-parse ──
+
+    #[test]
+    fn parse_multi_diagnostics_correctly_rebased() {
+        // Ensures the single-loop implementation correctly rebases diagnostics
+        // from the second file. Previously, a redundant first loop parsed all
+        // files twice and discarded the first results.
+        let source1 = r#"system "A" {
+    derive foo() -> int { 1 }
+}"#;
+        let source2 = r#"system "B" {
+    derive bar() -> int { 2 }
+}"#;
+        let sources = vec![
+            ("a.ttrpg".to_string(), source1.to_string()),
+            ("b.ttrpg".to_string(), source2.to_string()),
+        ];
+
+        let result = parse_multi(&sources);
+        let expected_base = source1.len() + 1;
+
+        // Both systems should be present in the merged program
+        let system_names: Vec<_> = result.program.items.iter().filter_map(|item| {
+            if let TopLevel::System(s) = &item.node { Some(s.name.as_str()) } else { None }
+        }).collect();
+        assert!(system_names.contains(&"A"), "system A missing");
+        assert!(system_names.contains(&"B"), "system B missing");
+
+        // Spans from file B should be rebased by expected_base
+        for item in &result.program.items {
+            if let TopLevel::System(sys) = &item.node {
+                if sys.name == "B" {
+                    assert!(
+                        item.span.start >= expected_base,
+                        "B's span should be rebased; got start={}",
                         item.span.start,
                     );
                 }

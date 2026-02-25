@@ -299,6 +299,12 @@ impl Runner {
             return Err(CliError::Message("no files specified".into()));
         }
 
+        self.load_paths(resolved_paths)
+    }
+
+    /// Load from already-resolved paths. Used by both `cmd_load` and `cmd_reload`
+    /// so that reload doesn't need to round-trip paths through string tokenization.
+    fn load_paths(&mut self, resolved_paths: Vec<PathBuf>) -> Result<(), CliError> {
         // Helper to clear stale state
         fn clear_state(runner: &mut Runner, paths: Vec<PathBuf>) {
             *runner.program = Program::default();
@@ -399,13 +405,8 @@ impl Runner {
         if self.last_paths.is_empty() {
             return Err(CliError::Message("no file loaded yet".into()));
         }
-        let paths_str = self
-            .last_paths
-            .iter()
-            .map(|p| p.to_string_lossy().into_owned())
-            .collect::<Vec<_>>()
-            .join(" ");
-        self.cmd_load(&paths_str)
+        let paths = self.last_paths.clone();
+        self.load_paths(paths)
     }
 
     fn cmd_errors(&mut self) -> Result<(), CliError> {
@@ -2278,6 +2279,43 @@ system "test" {
         assert!(output[0].starts_with("loaded"));
 
         std::fs::remove_file(&path).ok();
+    }
+
+    // ── Regression: tdsl-3zv — reload breaks paths with spaces ──
+
+    #[test]
+    fn exec_reload_path_with_spaces() {
+        // Create a temp directory with a space in the name
+        let dir = std::env::temp_dir().join("ttrpg cli test dir");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("test file.ttrpg");
+        std::fs::write(
+            &path,
+            r#"
+system "test" {
+    derive add(a: int, b: int) -> int { a + b }
+}
+"#,
+        )
+        .unwrap();
+
+        let mut runner = Runner::new();
+        // Load directly via load_paths to simulate a path with spaces
+        runner.load_paths(vec![path.clone()]).unwrap();
+        let output = runner.take_output();
+        assert!(output[0].starts_with("loaded"), "initial load failed");
+
+        // Reload should succeed — it uses last_paths directly, not string round-trip
+        runner.exec("reload").unwrap();
+        let output = runner.take_output();
+        assert!(
+            output[0].starts_with("loaded"),
+            "reload should succeed for paths with spaces; got: {:?}",
+            output
+        );
+
+        std::fs::remove_file(&path).ok();
+        std::fs::remove_dir(&dir).ok();
     }
 
     #[test]
