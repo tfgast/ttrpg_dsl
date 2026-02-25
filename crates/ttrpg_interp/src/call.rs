@@ -507,9 +507,9 @@ pub(crate) fn evaluate_fn_with_values(
                 for (pname, pval) in &bound {
                     env.bind(pname.clone(), pval.clone());
                 }
-                let default_val = eval_expr(env, default_expr)?;
+                let result = eval_expr(env, default_expr);
                 env.pop_scope();
-                bound.push((fn_info.params[i].name.clone(), default_val));
+                bound.push((fn_info.params[i].name.clone(), result?));
             }
         } else {
             return Err(RuntimeError::with_span(

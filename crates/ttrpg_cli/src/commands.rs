@@ -216,7 +216,10 @@ fn strip_comment(line: &str) -> &str {
 /// Split a trimmed line into the first whitespace-delimited token and the rest.
 fn split_first_token(s: &str) -> (&str, &str) {
     match s.find(char::is_whitespace) {
-        Some(pos) => (&s[..pos], &s[pos + 1..]),
+        Some(pos) => {
+            let ws_char = s[pos..].chars().next().unwrap();
+            (&s[..pos], &s[pos + ws_char.len_utf8()..])
+        }
         None => (s, ""),
     }
 }

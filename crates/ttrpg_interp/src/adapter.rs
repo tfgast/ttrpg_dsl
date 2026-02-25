@@ -502,8 +502,20 @@ pub fn apply_op(op: AssignOp, current: &Value, rhs: &Value) -> Result<Value, Run
 /// Clamp a value between lo and hi (inclusive). Only applies to Int and Float.
 pub fn clamp_value(val: Value, lo: &Value, hi: &Value) -> Value {
     match (&val, lo, hi) {
-        (Value::Int(v), Value::Int(l), Value::Int(h)) => Value::Int((*v).clamp(*l, *h)),
-        (Value::Float(v), Value::Float(l), Value::Float(h)) => Value::Float(v.clamp(*l, *h)),
+        (Value::Int(v), Value::Int(l), Value::Int(h)) => {
+            let (lo, hi) = if l <= h { (*l, *h) } else { (*h, *l) };
+            Value::Int((*v).clamp(lo, hi))
+        }
+        (Value::Float(v), Value::Float(l), Value::Float(h)) => {
+            let (lo, hi) = if l.is_nan() || h.is_nan() {
+                return val; // Can't clamp with NaN bounds
+            } else if l <= h {
+                (*l, *h)
+            } else {
+                (*h, *l)
+            };
+            Value::Float(v.clamp(lo, hi))
+        }
         _ => val,
     }
 }

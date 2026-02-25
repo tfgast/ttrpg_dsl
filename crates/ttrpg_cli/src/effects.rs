@@ -429,8 +429,9 @@ impl EffectHandler for CliHandler<'_> {
 
 /// Roll a dice expression using the given RNG.
 pub fn roll_dice(rng: &mut StdRng, expr: &DiceExpr) -> RollResult {
+    let sides = (expr.sides as i64).max(1);
     let mut dice: Vec<i64> = (0..expr.count)
-        .map(|_| rng.random_range(1..=expr.sides as i64))
+        .map(|_| rng.random_range(1..=sides))
         .collect();
 
     let kept = apply_dice_filter(&mut dice, &expr.filter);
@@ -465,7 +466,8 @@ pub fn roll_dice_from_queue(
             }
             dice.push(val);
         } else {
-            dice.push(rng.random_range(1..=expr.sides as i64));
+            let sides = (expr.sides as i64).max(1);
+            dice.push(rng.random_range(1..=sides));
         }
     }
 

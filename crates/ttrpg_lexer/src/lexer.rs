@@ -76,6 +76,14 @@ impl<'a> RawLexer<'a> {
                 let sides_str = self.cursor.slice(sides_start, sides_end);
                 let sides: u32 = sides_str.parse().unwrap_or(0);
 
+                if sides == 0 {
+                    let span = Span::new(first_digit_start, self.cursor.pos());
+                    return Token::new(
+                        TokenKind::Error("dice sides must be at least 1 (e.g. 1d0 is invalid)".into()),
+                        span,
+                    );
+                }
+
                 // Check for filter: kh, kl, dh, dl followed by digits
                 let filter = self.try_lex_dice_filter();
 
