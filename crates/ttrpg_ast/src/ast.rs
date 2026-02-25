@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use crate::name::Name;
 use crate::{DiceFilter, Span, Spanned};
 
 // ── Program structure ────────────────────────────────────────────
@@ -9,19 +10,19 @@ pub struct Program {
     pub items: Vec<Spanned<TopLevel>>,
 
     // ── Declaration index (built by `build_index()`) ────────────
-    pub actions: HashMap<String, ActionDecl>,
-    pub derives: HashMap<String, FnDecl>,
-    pub mechanics: HashMap<String, FnDecl>,
-    pub reactions: HashMap<String, ReactionDecl>,
-    pub reaction_order: Vec<String>,
-    pub conditions: HashMap<String, ConditionDecl>,
-    pub events: HashMap<String, EventDecl>,
-    pub prompts: HashMap<String, PromptDecl>,
-    pub options: HashMap<String, OptionDecl>,
-    pub option_order: Vec<String>,
-    pub hooks: HashMap<String, HookDecl>,
-    pub hook_order: Vec<String>,
-    pub tables: HashMap<String, TableDecl>,
+    pub actions: HashMap<Name, ActionDecl>,
+    pub derives: HashMap<Name, FnDecl>,
+    pub mechanics: HashMap<Name, FnDecl>,
+    pub reactions: HashMap<Name, ReactionDecl>,
+    pub reaction_order: Vec<Name>,
+    pub conditions: HashMap<Name, ConditionDecl>,
+    pub events: HashMap<Name, EventDecl>,
+    pub prompts: HashMap<Name, PromptDecl>,
+    pub options: HashMap<Name, OptionDecl>,
+    pub option_order: Vec<Name>,
+    pub hooks: HashMap<Name, HookDecl>,
+    pub hook_order: Vec<Name>,
+    pub tables: HashMap<Name, TableDecl>,
 }
 
 impl Program {
@@ -97,13 +98,13 @@ pub enum TopLevel {
 #[derive(Clone)]
 pub struct UseDecl {
     pub path: String,
-    pub alias: Option<String>,
+    pub alias: Option<Name>,
     pub span: Span,
 }
 
 #[derive(Clone)]
 pub struct SystemBlock {
-    pub name: String,
+    pub name: Name,
     pub decls: Vec<Spanned<DeclKind>>,
 }
 
@@ -130,14 +131,14 @@ pub enum DeclKind {
 
 #[derive(Clone)]
 pub struct EnumDecl {
-    pub name: String,
+    pub name: Name,
     pub ordered: bool,
     pub variants: Vec<EnumVariant>,
 }
 
 #[derive(Clone)]
 pub struct EnumVariant {
-    pub name: String,
+    pub name: Name,
     pub fields: Option<Vec<FieldEntry>>,
     pub span: Span,
 }
@@ -145,20 +146,20 @@ pub struct EnumVariant {
 /// Inline field in enum variant or param list: `name: type`
 #[derive(Clone)]
 pub struct FieldEntry {
-    pub name: String,
+    pub name: Name,
     pub ty: Spanned<TypeExpr>,
     pub span: Span,
 }
 
 #[derive(Clone)]
 pub struct StructDecl {
-    pub name: String,
+    pub name: Name,
     pub fields: Vec<FieldDef>,
 }
 
 #[derive(Clone)]
 pub struct EntityDecl {
-    pub name: String,
+    pub name: Name,
     pub fields: Vec<FieldDef>,
     pub optional_groups: Vec<OptionalGroup>,
 }
@@ -167,7 +168,7 @@ pub struct EntityDecl {
 /// Groups can be granted/revoked at runtime; fields are only accessible when active.
 #[derive(Clone)]
 pub struct OptionalGroup {
-    pub name: String,
+    pub name: Name,
     pub fields: Vec<FieldDef>,
     pub span: Span,
 }
@@ -175,7 +176,7 @@ pub struct OptionalGroup {
 /// Field definition with optional default: `name: type (= expr)?`
 #[derive(Clone)]
 pub struct FieldDef {
-    pub name: String,
+    pub name: Name,
     pub ty: Spanned<TypeExpr>,
     pub default: Option<Spanned<ExprKind>>,
     pub span: Span,
@@ -184,7 +185,7 @@ pub struct FieldDef {
 /// Shared representation for derive and mechanic declarations.
 #[derive(Clone)]
 pub struct FnDecl {
-    pub name: String,
+    pub name: Name,
     pub params: Vec<Param>,
     pub return_type: Spanned<TypeExpr>,
     pub body: Block,
@@ -195,22 +196,22 @@ pub struct FnDecl {
 
 #[derive(Clone)]
 pub struct Param {
-    pub name: String,
+    pub name: Name,
     pub ty: Spanned<TypeExpr>,
     pub default: Option<Spanned<ExprKind>>,
     /// Optional group constraints: `param: Entity with Group1, Group2`.
     /// The checker narrows these groups as active within the function body.
-    pub with_groups: Vec<String>,
+    pub with_groups: Vec<Name>,
     pub span: Span,
 }
 
 #[derive(Clone)]
 pub struct ActionDecl {
-    pub name: String,
-    pub receiver_name: String,
+    pub name: Name,
+    pub receiver_name: Name,
     pub receiver_type: Spanned<TypeExpr>,
     /// Optional group constraints on the receiver: `on actor: Entity with Group1, Group2`.
-    pub receiver_with_groups: Vec<String>,
+    pub receiver_with_groups: Vec<Name>,
     pub params: Vec<Param>,
     pub cost: Option<CostClause>,
     pub requires: Option<Spanned<ExprKind>>,
@@ -225,17 +226,17 @@ pub struct ActionDecl {
 
 #[derive(Clone)]
 pub struct CostClause {
-    pub tokens: Vec<Spanned<String>>,
+    pub tokens: Vec<Spanned<Name>>,
     pub span: Span,
 }
 
 #[derive(Clone)]
 pub struct ReactionDecl {
-    pub name: String,
-    pub receiver_name: String,
+    pub name: Name,
+    pub receiver_name: Name,
     pub receiver_type: Spanned<TypeExpr>,
     /// Optional group constraints on the receiver: `on reactor: Entity with Group`.
-    pub receiver_with_groups: Vec<String>,
+    pub receiver_with_groups: Vec<Name>,
     pub trigger: TriggerExpr,
     pub cost: Option<CostClause>,
     pub resolve: Block,
@@ -243,46 +244,46 @@ pub struct ReactionDecl {
 
 #[derive(Clone)]
 pub struct HookDecl {
-    pub name: String,
-    pub receiver_name: String,
+    pub name: Name,
+    pub receiver_name: Name,
     pub receiver_type: Spanned<TypeExpr>,
     /// Optional group constraints on the receiver: `on target: Entity with Group`.
-    pub receiver_with_groups: Vec<String>,
+    pub receiver_with_groups: Vec<Name>,
     pub trigger: TriggerExpr,
     pub resolve: Block,
 }
 
 #[derive(Clone)]
 pub struct TriggerExpr {
-    pub event_name: String,
+    pub event_name: Name,
     pub bindings: Vec<TriggerBinding>,
     pub span: Span,
 }
 
 #[derive(Clone)]
 pub struct TriggerBinding {
-    pub name: Option<String>,
+    pub name: Option<Name>,
     pub value: Spanned<ExprKind>,
     pub span: Span,
 }
 
 #[derive(Clone)]
 pub struct EventDecl {
-    pub name: String,
+    pub name: Name,
     pub params: Vec<Param>,
     pub fields: Vec<FieldDef>,
 }
 
 #[derive(Clone)]
 pub struct ConditionDecl {
-    pub name: String,
+    pub name: Name,
     /// Optional parameters: `condition Frightened(source: Character) on ...`.
     /// Empty vec means no parameters.
     pub params: Vec<Param>,
-    pub receiver_name: String,
+    pub receiver_name: Name,
     pub receiver_type: Spanned<TypeExpr>,
     /// Optional group constraints on the bearer: `on bearer: Entity with Group`.
-    pub receiver_with_groups: Vec<String>,
+    pub receiver_with_groups: Vec<Name>,
     pub clauses: Vec<ConditionClause>,
 }
 
@@ -294,7 +295,7 @@ pub enum ConditionClause {
 
 #[derive(Clone)]
 pub struct ModifyClause {
-    pub target: String,
+    pub target: Name,
     pub bindings: Vec<ModifyBinding>,
     pub body: Vec<ModifyStmt>,
     pub span: Span,
@@ -302,7 +303,7 @@ pub struct ModifyClause {
 
 #[derive(Clone)]
 pub struct ModifyBinding {
-    pub name: String,
+    pub name: Name,
     /// `None` means wildcard (`_`) — matches any value.
     pub value: Option<Spanned<ExprKind>>,
     pub span: Span,
@@ -311,18 +312,18 @@ pub struct ModifyBinding {
 #[derive(Clone)]
 pub enum ModifyStmt {
     Let {
-        name: String,
+        name: Name,
         ty: Option<Spanned<TypeExpr>>,
         value: Spanned<ExprKind>,
         span: Span,
     },
     ParamOverride {
-        name: String,
+        name: Name,
         value: Spanned<ExprKind>,
         span: Span,
     },
     ResultOverride {
-        field: String,
+        field: Name,
         value: Spanned<ExprKind>,
         span: Span,
     },
@@ -336,14 +337,14 @@ pub enum ModifyStmt {
 
 #[derive(Clone)]
 pub struct SuppressClause {
-    pub event_name: String,
+    pub event_name: Name,
     pub bindings: Vec<ModifyBinding>,
     pub span: Span,
 }
 
 #[derive(Clone)]
 pub struct PromptDecl {
-    pub name: String,
+    pub name: Name,
     pub params: Vec<Param>,
     pub return_type: Spanned<TypeExpr>,
     pub hint: Option<String>,
@@ -352,8 +353,8 @@ pub struct PromptDecl {
 
 #[derive(Clone)]
 pub struct OptionDecl {
-    pub name: String,
-    pub extends: Option<String>,
+    pub name: Name,
+    pub extends: Option<Name>,
     pub description: Option<String>,
     pub default_on: Option<bool>,
     pub when_enabled: Option<Vec<ModifyClause>>,
@@ -361,8 +362,8 @@ pub struct OptionDecl {
 
 #[derive(Clone)]
 pub struct MoveDecl {
-    pub name: String,
-    pub receiver_name: String,
+    pub name: Name,
+    pub receiver_name: Name,
     pub receiver_type: Spanned<TypeExpr>,
     pub params: Vec<Param>,
     pub trigger_text: String,
@@ -372,7 +373,7 @@ pub struct MoveDecl {
 
 #[derive(Clone)]
 pub struct OutcomeBlock {
-    pub name: String,
+    pub name: Name,
     pub body: Block,
     pub span: Span,
 }
@@ -396,7 +397,7 @@ pub struct OutcomeBlock {
 ///   let val = name(arg1, arg2)
 #[derive(Clone)]
 pub struct TableDecl {
-    pub name: String,
+    pub name: Name,
     pub params: Vec<Param>,
     pub return_type: Spanned<TypeExpr>,
     pub entries: Vec<TableEntry>,
@@ -427,7 +428,7 @@ pub enum TableKey {
 /// A `unit` declaration: dimensioned numeric type with optional suffix.
 #[derive(Clone)]
 pub struct UnitDecl {
-    pub name: String,
+    pub name: Name,
     pub suffix: Option<String>,
     pub fields: Vec<FieldDef>,
 }
@@ -446,8 +447,8 @@ pub enum TypeExpr {
     Duration,
     Position,
     Condition,
-    Named(std::string::String),
-    Qualified { qualifier: String, name: String },
+    Named(Name),
+    Qualified { qualifier: Name, name: Name },
     Map(Box<Spanned<TypeExpr>>, Box<Spanned<TypeExpr>>),
     List(Box<Spanned<TypeExpr>>),
     Set(Box<Spanned<TypeExpr>>),
@@ -474,7 +475,7 @@ pub enum ExprKind {
         value: i64,
         suffix: std::string::String,
     },
-    Ident(std::string::String),
+    Ident(Name),
     BinOp {
         op: BinOp,
         lhs: Box<Spanned<ExprKind>>,
@@ -486,7 +487,7 @@ pub enum ExprKind {
     },
     FieldAccess {
         object: Box<Spanned<ExprKind>>,
-        field: std::string::String,
+        field: Name,
     },
     Index {
         object: Box<Spanned<ExprKind>>,
@@ -497,7 +498,7 @@ pub enum ExprKind {
         args: Vec<Arg>,
     },
     StructLit {
-        name: std::string::String,
+        name: Name,
         fields: Vec<StructFieldInit>,
         base: Option<Box<Spanned<ExprKind>>>,
     },
@@ -531,7 +532,7 @@ pub enum ExprKind {
     /// Produces a bool and enables flow-sensitive type narrowing.
     Has {
         entity: Box<Spanned<ExprKind>>,
-        group_name: String,
+        group_name: Name,
     },
 }
 
@@ -570,14 +571,14 @@ pub enum UnaryOp {
 
 #[derive(Clone)]
 pub struct Arg {
-    pub name: Option<std::string::String>,
+    pub name: Option<Name>,
     pub value: Spanned<ExprKind>,
     pub span: Span,
 }
 
 #[derive(Clone)]
 pub struct StructFieldInit {
-    pub name: std::string::String,
+    pub name: Name,
     pub value: Spanned<ExprKind>,
     pub span: Span,
 }
@@ -622,18 +623,18 @@ pub enum PatternKind {
     IntLit(i64),
     StringLit(std::string::String),
     BoolLit(bool),
-    Ident(std::string::String),
+    Ident(Name),
     QualifiedVariant {
-        ty: std::string::String,
-        variant: std::string::String,
+        ty: Name,
+        variant: Name,
     },
     QualifiedDestructure {
-        ty: std::string::String,
-        variant: std::string::String,
+        ty: Name,
+        variant: Name,
         fields: Vec<Spanned<PatternKind>>,
     },
     BareDestructure {
-        name: std::string::String,
+        name: Name,
         fields: Vec<Spanned<PatternKind>>,
     },
     NoneLit,
@@ -645,7 +646,7 @@ pub enum PatternKind {
 #[derive(Clone)]
 pub enum StmtKind {
     Let {
-        name: std::string::String,
+        name: Name,
         ty: Option<Spanned<TypeExpr>>,
         value: Spanned<ExprKind>,
     },
@@ -658,26 +659,26 @@ pub enum StmtKind {
     /// `grant entity.GroupName { field: value, ... }` — activates an optional group.
     Grant {
         entity: Box<Spanned<ExprKind>>,
-        group_name: String,
+        group_name: Name,
         fields: Vec<StructFieldInit>,
     },
     /// `revoke entity.GroupName` — deactivates an optional group, discarding field values.
     Revoke {
         entity: Box<Spanned<ExprKind>>,
-        group_name: String,
+        group_name: Name,
     },
 }
 
 #[derive(Clone)]
 pub struct LValue {
-    pub root: std::string::String,
+    pub root: Name,
     pub segments: Vec<LValueSegment>,
     pub span: Span,
 }
 
 #[derive(Clone)]
 pub enum LValueSegment {
-    Field(std::string::String),
+    Field(Name),
     Index(Spanned<ExprKind>),
 }
 

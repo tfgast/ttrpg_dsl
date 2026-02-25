@@ -1,28 +1,29 @@
 use std::collections::{HashMap, HashSet};
 
+use crate::name::Name;
 use crate::Span;
 
 /// Maps system names to their declaration metadata and import relationships.
 #[derive(Clone, Debug, Default)]
 pub struct ModuleMap {
-    pub systems: HashMap<String, SystemInfo>,
+    pub systems: HashMap<Name, SystemInfo>,
 }
 
 /// Per-system declaration ownership and import list.
 #[derive(Clone, Debug, Default)]
 pub struct SystemInfo {
     /// Type names (enums, structs, entities) defined in this system.
-    pub types: HashSet<String>,
+    pub types: HashSet<Name>,
     /// Function names (derives, mechanics, actions, reactions, hooks, prompts) defined in this system.
-    pub functions: HashSet<String>,
+    pub functions: HashSet<Name>,
     /// Condition names defined in this system.
-    pub conditions: HashSet<String>,
+    pub conditions: HashSet<Name>,
     /// Event names defined in this system.
-    pub events: HashSet<String>,
+    pub events: HashSet<Name>,
     /// Option names defined in this system.
-    pub options: HashSet<String>,
+    pub options: HashSet<Name>,
     /// Enum variant names defined in this system (via owning enum).
-    pub variants: HashSet<String>,
+    pub variants: HashSet<Name>,
 
     /// Imports declared for this system (union of `use` decls across all files containing it).
     pub imports: Vec<ImportInfo>,
@@ -31,7 +32,7 @@ pub struct SystemInfo {
 /// A single `use "system_name" as Alias` import.
 #[derive(Clone, Debug)]
 pub struct ImportInfo {
-    pub system_name: String,
-    pub alias: Option<String>,
+    pub system_name: Name,
+    pub alias: Option<Name>,
     pub span: Span,
 }

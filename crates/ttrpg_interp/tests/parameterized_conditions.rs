@@ -70,10 +70,10 @@ impl StateProvider for TestState {
     fn read_conditions(&self, entity: &EntityRef) -> Option<Vec<ActiveCondition>> {
         self.conditions.get(&entity.0).cloned()
     }
-    fn read_turn_budget(&self, _entity: &EntityRef) -> Option<BTreeMap<String, Value>> {
+    fn read_turn_budget(&self, _entity: &EntityRef) -> Option<BTreeMap<ttrpg_ast::Name, Value>> {
         None
     }
-    fn read_enabled_options(&self) -> Vec<String> {
+    fn read_enabled_options(&self) -> Vec<ttrpg_ast::Name> {
         vec![]
     }
     fn position_eq(&self, _a: &Value, _b: &Value) -> bool {

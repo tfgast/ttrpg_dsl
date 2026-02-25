@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use ttrpg_ast::Spanned;
+use ttrpg_ast::{Name, Spanned};
 use ttrpg_ast::ast::{
     ArmBody, AssignOp, BinOp, DeclKind, ElseBranch, ExprKind, FieldDef, ForIterable, GuardKind,
     LValue, LValueSegment, OptionalGroup, PatternKind, TopLevel, TypeExpr, UnaryOp,
@@ -238,14 +238,14 @@ fn eval_ident(
     // 2. Check if it's an enum type name (for qualified access like `Duration.rounds`)
     //    Returns EnumNamespace so field access can resolve variants via eval_expr.
     if let Some(DeclInfo::Enum(_)) = env.interp.type_env.types.get(name) {
-        return Ok(Value::EnumNamespace(name.to_string()));
+        return Ok(Value::EnumNamespace(Name::from(name)));
     }
 
     // 3. Check if it's a bare enum variant name
     //    Use the resolution table (populated by the checker) first, then fall back to
     //    unique_variant_owner for CLI eval expressions that weren't checker-resolved.
     let resolved = env.interp.type_env.resolved_variants.get(&expr.span).cloned()
-        .or_else(|| env.interp.type_env.unique_variant_owner(name).map(|s| s.to_string()));
+        .or_else(|| env.interp.type_env.unique_variant_owner(name).cloned());
     if let Some(enum_name) = resolved {
         // Look up the variant info to check if it has fields
         if let Some(DeclInfo::Enum(enum_info)) = env.interp.type_env.types.get(enum_name.as_str())
@@ -255,7 +255,7 @@ fn eval_ident(
                     // Fieldless variant — can be used as a value directly
                     return Ok(Value::EnumVariant {
                         enum_name: enum_name.clone(),
-                        variant: name.to_string(),
+                        variant: Name::from(name),
                         fields: BTreeMap::new(),
                     });
                 }
@@ -276,7 +276,7 @@ fn eval_ident(
                 args.insert(param.name.clone(), val);
             }
         }
-        return Ok(Value::Condition { name: name.to_string(), args });
+        return Ok(Value::Condition { name: Name::from(name), args });
     }
 
     Err(RuntimeError::with_span(
@@ -421,11 +421,11 @@ fn coerce_roll_result(val: Value) -> Value {
 fn as_unit_value(
     val: &Value,
     type_env: &ttrpg_checker::env::TypeEnv,
-) -> Option<(String, String, i64)> {
+) -> Option<(Name, Name, i64)> {
     if let Value::Struct { name, fields } = val {
-        if let Some(DeclInfo::Unit(info)) = type_env.types.get(name) {
+        if let Some(DeclInfo::Unit(info)) = type_env.types.get(name.as_str()) {
             let field_name = &info.fields[0].name;
-            if let Some(Value::Int(n)) = fields.get(field_name) {
+            if let Some(Value::Int(n)) = fields.get(field_name.as_str()) {
                 return Some((name.clone(), field_name.clone(), *n));
             }
         }
@@ -434,7 +434,7 @@ fn as_unit_value(
 }
 
 /// Construct a unit-type Value::Struct from its type name, field name, and int value.
-fn make_unit_value(unit_name: String, field_name: String, int_val: i64) -> Value {
+fn make_unit_value(unit_name: Name, field_name: Name, int_val: i64) -> Value {
     let mut fields = BTreeMap::new();
     fields.insert(field_name, Value::Int(int_val));
     Value::Struct {
@@ -796,7 +796,7 @@ fn eval_field_access(
                     if variant.fields.is_empty() {
                         return Ok(Value::EnumVariant {
                             enum_name: enum_name.clone(),
-                            variant: field.to_string(),
+                            variant: Name::from(field),
                             fields: BTreeMap::new(),
                         });
                     }
@@ -1319,7 +1319,7 @@ fn lvalue_segments_to_field_path(
 
 /// A pre-evaluated LValue segment (index expressions already resolved to Values).
 enum EvalSegment {
-    Field(String),
+    Field(Name),
     Index(Value),
 }
 
@@ -1896,7 +1896,7 @@ pub(crate) fn match_pattern(
     env: &Env,
     pattern: &PatternKind,
     value: &Value,
-    bindings: &mut std::collections::HashMap<String, Value>,
+    bindings: &mut std::collections::HashMap<Name, Value>,
 ) -> bool {
     match pattern {
         PatternKind::Wildcard => true,
@@ -2209,7 +2209,7 @@ fn extract_resource_bounds_from_type<'a>(
 }
 
 /// Collect `(field_name, default_expr)` pairs for all fields with defaults in a struct.
-fn find_struct_defaults(env: &Env, struct_name: &str) -> Vec<(String, Spanned<ExprKind>)> {
+fn find_struct_defaults(env: &Env, struct_name: &str) -> Vec<(Name, Spanned<ExprKind>)> {
     for item in &env.interp.program.items {
         if let TopLevel::System(system) = &item.node {
             for decl in &system.decls {
@@ -2253,7 +2253,7 @@ fn find_struct_field<'a>(
 }
 
 /// Collect all identifier names referenced in an expression tree.
-fn collect_idents(expr: &Spanned<ExprKind>, out: &mut Vec<String>) {
+fn collect_idents(expr: &Spanned<ExprKind>, out: &mut Vec<Name>) {
     match &expr.node {
         ExprKind::Ident(name) => out.push(name.clone()),
         ExprKind::UnaryOp { operand, .. } => collect_idents(operand, out),
@@ -2341,7 +2341,7 @@ fn collect_idents(expr: &Spanned<ExprKind>, out: &mut Vec<String>) {
     }
 }
 
-fn collect_idents_block(block: &ttrpg_ast::ast::Block, out: &mut Vec<String>) {
+fn collect_idents_block(block: &ttrpg_ast::ast::Block, out: &mut Vec<Name>) {
     use ttrpg_ast::ast::StmtKind;
     for stmt in &block.node {
         match &stmt.node {
@@ -2354,7 +2354,7 @@ fn collect_idents_block(block: &ttrpg_ast::ast::Block, out: &mut Vec<String>) {
     }
 }
 
-fn collect_idents_arm_body(body: &ArmBody, out: &mut Vec<String>) {
+fn collect_idents_arm_body(body: &ArmBody, out: &mut Vec<Name>) {
     match body {
         ArmBody::Expr(expr) => collect_idents(expr, out),
         ArmBody::Block(block) => collect_idents_block(block, out),
@@ -2472,9 +2472,9 @@ mod tests {
     struct TestState {
         fields: HashMap<(u64, String), Value>,
         conditions: HashMap<u64, Vec<ActiveCondition>>,
-        turn_budgets: HashMap<u64, BTreeMap<String, Value>>,
-        enabled_options: Vec<String>,
-        entity_type: Option<String>,
+        turn_budgets: HashMap<u64, BTreeMap<Name, Value>>,
+        enabled_options: Vec<Name>,
+        entity_type: Option<Name>,
     }
 
     impl TestState {
@@ -2498,11 +2498,11 @@ mod tests {
             self.conditions.get(&entity.0).cloned()
         }
 
-        fn read_turn_budget(&self, entity: &EntityRef) -> Option<BTreeMap<String, Value>> {
+        fn read_turn_budget(&self, entity: &EntityRef) -> Option<BTreeMap<Name, Value>> {
             self.turn_budgets.get(&entity.0).cloned()
         }
 
-        fn read_enabled_options(&self) -> Vec<String> {
+        fn read_enabled_options(&self) -> Vec<Name> {
             self.enabled_options.clone()
         }
 
@@ -2531,7 +2531,7 @@ mod tests {
             None
         }
 
-        fn entity_type_name(&self, _entity: &EntityRef) -> Option<String> {
+        fn entity_type_name(&self, _entity: &EntityRef) -> Option<Name> {
             self.entity_type.clone()
         }
     }
@@ -2669,9 +2669,9 @@ mod tests {
         let mut handler = ScriptedHandler::new();
         let mut env = make_env(&state, &mut handler, &interp);
 
-        env.bind("x".to_string(), Value::Int(10));
+        env.bind(Name::from("x"), Value::Int(10));
 
-        let expr = spanned(ExprKind::Ident("x".to_string()));
+        let expr = spanned(ExprKind::Ident("x".into()));
         assert_eq!(eval_expr(&mut env, &expr).unwrap(), Value::Int(10));
     }
 
@@ -2684,7 +2684,7 @@ mod tests {
         let mut handler = ScriptedHandler::new();
         let mut env = make_env(&state, &mut handler, &interp);
 
-        let expr = spanned(ExprKind::Ident("unknown".to_string()));
+        let expr = spanned(ExprKind::Ident("unknown".into()));
         let err = eval_expr(&mut env, &expr).unwrap_err();
         assert!(err.message.contains("undefined variable 'unknown'"));
     }
@@ -2840,13 +2840,13 @@ mod tests {
         let mut env = make_env(&state, &mut handler, &interp);
 
         // Int + Float promotes to Float
-        env.bind("x".to_string(), Value::Int(3));
-        env.bind("y".to_string(), Value::Float(1.5));
+        env.bind(Name::from("x"), Value::Int(3));
+        env.bind(Name::from("y"), Value::Float(1.5));
 
         let expr = spanned(ExprKind::BinOp {
             op: BinOp::Add,
-            lhs: Box::new(spanned(ExprKind::Ident("x".to_string()))),
-            rhs: Box::new(spanned(ExprKind::Ident("y".to_string()))),
+            lhs: Box::new(spanned(ExprKind::Ident("x".into()))),
+            rhs: Box::new(spanned(ExprKind::Ident("y".into()))),
         });
         assert_eq!(eval_expr(&mut env, &expr).unwrap(), Value::Float(4.5));
     }
@@ -3024,13 +3024,13 @@ mod tests {
         let mut handler = ScriptedHandler::new();
         let mut env = make_env(&state, &mut handler, &interp);
 
-        env.bind("a".to_string(), Value::Float(-0.0));
-        env.bind("b".to_string(), Value::Float(0.0));
+        env.bind(Name::from("a"), Value::Float(-0.0));
+        env.bind(Name::from("b"), Value::Float(0.0));
 
         let expr = spanned(ExprKind::BinOp {
             op: BinOp::Eq,
-            lhs: Box::new(spanned(ExprKind::Ident("a".to_string()))),
-            rhs: Box::new(spanned(ExprKind::Ident("b".to_string()))),
+            lhs: Box::new(spanned(ExprKind::Ident("a".into()))),
+            rhs: Box::new(spanned(ExprKind::Ident("b".into()))),
         });
         assert_eq!(eval_expr(&mut env, &expr).unwrap(), Value::Bool(true));
     }
@@ -3048,13 +3048,13 @@ mod tests {
         let pos1 = Value::Position(PositionValue(Arc::new((1i64, 2i64))));
         let pos2 = Value::Position(PositionValue(Arc::new((1i64, 2i64))));
 
-        env.bind("p1".to_string(), pos1);
-        env.bind("p2".to_string(), pos2);
+        env.bind(Name::from("p1"), pos1);
+        env.bind(Name::from("p2"), pos2);
 
         let expr = spanned(ExprKind::BinOp {
             op: BinOp::Eq,
-            lhs: Box::new(spanned(ExprKind::Ident("p1".to_string()))),
-            rhs: Box::new(spanned(ExprKind::Ident("p2".to_string()))),
+            lhs: Box::new(spanned(ExprKind::Ident("p1".into()))),
+            rhs: Box::new(spanned(ExprKind::Ident("p2".into()))),
         });
         // TestState's position_eq compares the underlying (i64, i64)
         assert_eq!(eval_expr(&mut env, &expr).unwrap(), Value::Bool(true));
@@ -3075,7 +3075,7 @@ mod tests {
         let expr = spanned(ExprKind::BinOp {
             op: BinOp::And,
             lhs: Box::new(spanned(ExprKind::BoolLit(false))),
-            rhs: Box::new(spanned(ExprKind::Ident("undefined_var".to_string()))),
+            rhs: Box::new(spanned(ExprKind::Ident("undefined_var".into()))),
         });
         assert_eq!(eval_expr(&mut env, &expr).unwrap(), Value::Bool(false));
     }
@@ -3093,7 +3093,7 @@ mod tests {
         let expr = spanned(ExprKind::BinOp {
             op: BinOp::Or,
             lhs: Box::new(spanned(ExprKind::BoolLit(true))),
-            rhs: Box::new(spanned(ExprKind::Ident("undefined_var".to_string()))),
+            rhs: Box::new(spanned(ExprKind::Ident("undefined_var".into()))),
         });
         assert_eq!(eval_expr(&mut env, &expr).unwrap(), Value::Bool(true));
     }
@@ -3127,7 +3127,7 @@ mod tests {
         let mut env = make_env(&state, &mut handler, &interp);
 
         env.bind(
-            "items".to_string(),
+            "items".into(),
             Value::List(vec![Value::Int(1), Value::Int(2), Value::Int(3)]),
         );
 
@@ -3135,7 +3135,7 @@ mod tests {
         let expr = spanned(ExprKind::BinOp {
             op: BinOp::In,
             lhs: Box::new(spanned(ExprKind::IntLit(2))),
-            rhs: Box::new(spanned(ExprKind::Ident("items".to_string()))),
+            rhs: Box::new(spanned(ExprKind::Ident("items".into()))),
         });
         assert_eq!(eval_expr(&mut env, &expr).unwrap(), Value::Bool(true));
 
@@ -3143,7 +3143,7 @@ mod tests {
         let expr = spanned(ExprKind::BinOp {
             op: BinOp::In,
             lhs: Box::new(spanned(ExprKind::IntLit(5))),
-            rhs: Box::new(spanned(ExprKind::Ident("items".to_string()))),
+            rhs: Box::new(spanned(ExprKind::Ident("items".into()))),
         });
         assert_eq!(eval_expr(&mut env, &expr).unwrap(), Value::Bool(false));
     }
@@ -3160,12 +3160,12 @@ mod tests {
         let mut s = std::collections::BTreeSet::new();
         s.insert(Value::Str("a".into()));
         s.insert(Value::Str("b".into()));
-        env.bind("my_set".to_string(), Value::Set(s));
+        env.bind(Name::from("my_set"), Value::Set(s));
 
         let expr = spanned(ExprKind::BinOp {
             op: BinOp::In,
             lhs: Box::new(spanned(ExprKind::StringLit("a".to_string()))),
-            rhs: Box::new(spanned(ExprKind::Ident("my_set".to_string()))),
+            rhs: Box::new(spanned(ExprKind::Ident("my_set".into()))),
         });
         assert_eq!(eval_expr(&mut env, &expr).unwrap(), Value::Bool(true));
     }
@@ -3181,13 +3181,13 @@ mod tests {
 
         let mut m = BTreeMap::new();
         m.insert(Value::Str("key".into()), Value::Int(1));
-        env.bind("my_map".to_string(), Value::Map(m));
+        env.bind(Name::from("my_map"), Value::Map(m));
 
         // "key" in my_map => true
         let expr = spanned(ExprKind::BinOp {
             op: BinOp::In,
             lhs: Box::new(spanned(ExprKind::StringLit("key".to_string()))),
-            rhs: Box::new(spanned(ExprKind::Ident("my_map".to_string()))),
+            rhs: Box::new(spanned(ExprKind::Ident("my_map".into()))),
         });
         assert_eq!(eval_expr(&mut env, &expr).unwrap(), Value::Bool(true));
     }
@@ -3216,12 +3216,12 @@ mod tests {
             total: 20,
             unmodified: 15,
         });
-        env.bind("roll".to_string(), rr);
+        env.bind(Name::from("roll"), rr);
 
         // roll + 2 should coerce RollResult to 20, then add 2
         let expr = spanned(ExprKind::BinOp {
             op: BinOp::Add,
-            lhs: Box::new(spanned(ExprKind::Ident("roll".to_string()))),
+            lhs: Box::new(spanned(ExprKind::Ident("roll".into()))),
             rhs: Box::new(spanned(ExprKind::IntLit(2))),
         });
         assert_eq!(eval_expr(&mut env, &expr).unwrap(), Value::Int(22));
@@ -3249,12 +3249,12 @@ mod tests {
             total: 20,
             unmodified: 15,
         });
-        env.bind("roll".to_string(), rr);
+        env.bind(Name::from("roll"), rr);
 
         // roll >= 10 should be true (20 >= 10)
         let expr = spanned(ExprKind::BinOp {
             op: BinOp::GtEq,
-            lhs: Box::new(spanned(ExprKind::Ident("roll".to_string()))),
+            lhs: Box::new(spanned(ExprKind::Ident("roll".into()))),
             rhs: Box::new(spanned(ExprKind::IntLit(10))),
         });
         assert_eq!(eval_expr(&mut env, &expr).unwrap(), Value::Bool(true));
@@ -3273,11 +3273,11 @@ mod tests {
         let mut handler = ScriptedHandler::new();
         let mut env = make_env(&state, &mut handler, &interp);
 
-        env.bind("target".to_string(), Value::Entity(EntityRef(1)));
+        env.bind(Name::from("target"), Value::Entity(EntityRef(1)));
 
         let expr = spanned(ExprKind::FieldAccess {
-            object: Box::new(spanned(ExprKind::Ident("target".to_string()))),
-            field: "HP".to_string(),
+            object: Box::new(spanned(ExprKind::Ident("target".into()))),
+            field: "HP".into(),
         });
         assert_eq!(eval_expr(&mut env, &expr).unwrap(), Value::Int(30));
     }
@@ -3292,19 +3292,19 @@ mod tests {
         let mut env = make_env(&state, &mut handler, &interp);
 
         let mut fields = BTreeMap::new();
-        fields.insert("x".to_string(), Value::Int(10));
-        fields.insert("y".to_string(), Value::Int(20));
+        fields.insert("x".into(), Value::Int(10));
+        fields.insert("y".into(), Value::Int(20));
         env.bind(
-            "point".to_string(),
+            "point".into(),
             Value::Struct {
-                name: "Point".to_string(),
+                name: "Point".into(),
                 fields,
             },
         );
 
         let expr = spanned(ExprKind::FieldAccess {
-            object: Box::new(spanned(ExprKind::Ident("point".to_string()))),
-            field: "x".to_string(),
+            object: Box::new(spanned(ExprKind::Ident("point".into()))),
+            field: "x".into(),
         });
         assert_eq!(eval_expr(&mut env, &expr).unwrap(), Value::Int(10));
     }
@@ -3331,26 +3331,26 @@ mod tests {
             total: 12,
             unmodified: 9,
         });
-        env.bind("result".to_string(), rr);
+        env.bind(Name::from("result"), rr);
 
         // .total
         let expr = spanned(ExprKind::FieldAccess {
-            object: Box::new(spanned(ExprKind::Ident("result".to_string()))),
-            field: "total".to_string(),
+            object: Box::new(spanned(ExprKind::Ident("result".into()))),
+            field: "total".into(),
         });
         assert_eq!(eval_expr(&mut env, &expr).unwrap(), Value::Int(12));
 
         // .unmodified
         let expr = spanned(ExprKind::FieldAccess {
-            object: Box::new(spanned(ExprKind::Ident("result".to_string()))),
-            field: "unmodified".to_string(),
+            object: Box::new(spanned(ExprKind::Ident("result".into()))),
+            field: "unmodified".into(),
         });
         assert_eq!(eval_expr(&mut env, &expr).unwrap(), Value::Int(9));
 
         // .dice
         let expr = spanned(ExprKind::FieldAccess {
-            object: Box::new(spanned(ExprKind::Ident("result".to_string()))),
-            field: "dice".to_string(),
+            object: Box::new(spanned(ExprKind::Ident("result".into()))),
+            field: "dice".into(),
         });
         assert_eq!(
             eval_expr(&mut env, &expr).unwrap(),
@@ -3367,11 +3367,11 @@ mod tests {
         let mut handler = ScriptedHandler::new();
         let mut env = make_env(&state, &mut handler, &interp);
 
-        env.bind("budget".to_string(), default_turn_budget());
+        env.bind(Name::from("budget"), default_turn_budget());
 
         let expr = spanned(ExprKind::FieldAccess {
-            object: Box::new(spanned(ExprKind::Ident("budget".to_string()))),
-            field: "actions".to_string(),
+            object: Box::new(spanned(ExprKind::Ident("budget".into()))),
+            field: "actions".into(),
         });
         assert_eq!(eval_expr(&mut env, &expr).unwrap(), Value::Int(1));
     }
@@ -3388,12 +3388,12 @@ mod tests {
         let mut env = make_env(&state, &mut handler, &interp);
 
         env.bind(
-            "items".to_string(),
+            "items".into(),
             Value::List(vec![Value::Int(10), Value::Int(20), Value::Int(30)]),
         );
 
         let expr = spanned(ExprKind::Index {
-            object: Box::new(spanned(ExprKind::Ident("items".to_string()))),
+            object: Box::new(spanned(ExprKind::Ident("items".into()))),
             index: Box::new(spanned(ExprKind::IntLit(1))),
         });
         assert_eq!(eval_expr(&mut env, &expr).unwrap(), Value::Int(20));
@@ -3408,10 +3408,10 @@ mod tests {
         let mut handler = ScriptedHandler::new();
         let mut env = make_env(&state, &mut handler, &interp);
 
-        env.bind("items".to_string(), Value::List(vec![Value::Int(10)]));
+        env.bind(Name::from("items"), Value::List(vec![Value::Int(10)]));
 
         let expr = spanned(ExprKind::Index {
-            object: Box::new(spanned(ExprKind::Ident("items".to_string()))),
+            object: Box::new(spanned(ExprKind::Ident("items".into()))),
             index: Box::new(spanned(ExprKind::IntLit(5))),
         });
         let err = eval_expr(&mut env, &expr).unwrap_err();
@@ -3429,10 +3429,10 @@ mod tests {
 
         let mut m = BTreeMap::new();
         m.insert(Value::Str("STR".into()), Value::Int(18));
-        env.bind("stats".to_string(), Value::Map(m));
+        env.bind(Name::from("stats"), Value::Map(m));
 
         let expr = spanned(ExprKind::Index {
-            object: Box::new(spanned(ExprKind::Ident("stats".to_string()))),
+            object: Box::new(spanned(ExprKind::Ident("stats".into()))),
             index: Box::new(spanned(ExprKind::StringLit("STR".to_string()))),
         });
         assert_eq!(eval_expr(&mut env, &expr).unwrap(), Value::Int(18));
@@ -3448,10 +3448,10 @@ mod tests {
         let mut env = make_env(&state, &mut handler, &interp);
 
         let m = BTreeMap::new();
-        env.bind("stats".to_string(), Value::Map(m));
+        env.bind(Name::from("stats"), Value::Map(m));
 
         let expr = spanned(ExprKind::Index {
-            object: Box::new(spanned(ExprKind::Ident("stats".to_string()))),
+            object: Box::new(spanned(ExprKind::Ident("stats".into()))),
             index: Box::new(spanned(ExprKind::StringLit("DEX".to_string()))),
         });
         let err = eval_expr(&mut env, &expr).unwrap_err();
@@ -3492,15 +3492,15 @@ mod tests {
         let mut env = make_env(&state, &mut handler, &interp);
 
         let expr = spanned(ExprKind::StructLit {
-            name: "Point".to_string(),
+            name: "Point".into(),
             fields: vec![
                 StructFieldInit {
-                    name: "x".to_string(),
+                    name: "x".into(),
                     value: spanned(ExprKind::IntLit(10)),
                     span: dummy_span(),
                 },
                 StructFieldInit {
-                    name: "y".to_string(),
+                    name: "y".into(),
                     value: spanned(ExprKind::IntLit(20)),
                     span: dummy_span(),
                 },
@@ -3558,7 +3558,7 @@ mod tests {
 
         // Provide only x and z — y should get its default of 42
         let expr = spanned(ExprKind::StructLit {
-            name: "Config".to_string(),
+            name: "Config".into(),
             fields: vec![
                 StructFieldInit {
                     name: "x".into(),
@@ -3612,7 +3612,7 @@ mod tests {
 
         // Point { x: 99, ..base } — override x, keep y from base
         let expr = spanned(ExprKind::StructLit {
-            name: "Point".to_string(),
+            name: "Point".into(),
             fields: vec![StructFieldInit {
                 name: "x".into(),
                 value: spanned(ExprKind::IntLit(99)),
@@ -3656,7 +3656,7 @@ mod tests {
 
         // Point { ..p } — clone via spread with no explicit fields
         let expr = spanned(ExprKind::StructLit {
-            name: "Point".to_string(),
+            name: "Point".into(),
             fields: vec![],
             base: Some(Box::new(spanned(ExprKind::Ident("p".into())))),
         });
@@ -3739,14 +3739,14 @@ mod tests {
         let mut handler = ScriptedHandler::new();
         let mut env = make_env(&state, &mut handler, &interp);
 
-        env.bind("x".to_string(), Value::Int(15));
+        env.bind(Name::from("x"), Value::Int(15));
 
         let expr = spanned(ExprKind::GuardMatch {
             arms: vec![
                 GuardArm {
                     guard: GuardKind::Expr(spanned(ExprKind::BinOp {
                         op: BinOp::GtEq,
-                        lhs: Box::new(spanned(ExprKind::Ident("x".to_string()))),
+                        lhs: Box::new(spanned(ExprKind::Ident("x".into()))),
                         rhs: Box::new(spanned(ExprKind::IntLit(10))),
                     })),
                     body: ArmBody::Expr(spanned(ExprKind::StringLit("high".to_string()))),
@@ -3755,7 +3755,7 @@ mod tests {
                 GuardArm {
                     guard: GuardKind::Expr(spanned(ExprKind::BinOp {
                         op: BinOp::GtEq,
-                        lhs: Box::new(spanned(ExprKind::Ident("x".to_string()))),
+                        lhs: Box::new(spanned(ExprKind::Ident("x".into()))),
                         rhs: Box::new(spanned(ExprKind::IntLit(7))),
                     })),
                     body: ArmBody::Expr(spanned(ExprKind::StringLit("medium".to_string()))),
@@ -3783,14 +3783,14 @@ mod tests {
         let mut handler = ScriptedHandler::new();
         let mut env = make_env(&state, &mut handler, &interp);
 
-        env.bind("x".to_string(), Value::Int(3));
+        env.bind(Name::from("x"), Value::Int(3));
 
         let expr = spanned(ExprKind::GuardMatch {
             arms: vec![
                 GuardArm {
                     guard: GuardKind::Expr(spanned(ExprKind::BinOp {
                         op: BinOp::GtEq,
-                        lhs: Box::new(spanned(ExprKind::Ident("x".to_string()))),
+                        lhs: Box::new(spanned(ExprKind::Ident("x".into()))),
                         rhs: Box::new(spanned(ExprKind::IntLit(10))),
                     })),
                     body: ArmBody::Expr(spanned(ExprKind::StringLit("high".to_string()))),
@@ -3859,10 +3859,10 @@ mod tests {
         let expr = spanned(ExprKind::PatternMatch {
             scrutinee: Box::new(spanned(ExprKind::IntLit(42))),
             arms: vec![PatternArm {
-                pattern: spanned(PatternKind::Ident("x".to_string())),
+                pattern: spanned(PatternKind::Ident("x".into())),
                 body: ArmBody::Expr(spanned(ExprKind::BinOp {
                     op: BinOp::Add,
-                    lhs: Box::new(spanned(ExprKind::Ident("x".to_string()))),
+                    lhs: Box::new(spanned(ExprKind::Ident("x".into()))),
                     rhs: Box::new(spanned(ExprKind::IntLit(1))),
                 })),
                 span: dummy_span(),
@@ -3901,17 +3901,17 @@ mod tests {
 
         // Register Duration enum with fieldless variants
         type_env.types.insert(
-            "Duration".to_string(),
+            "Duration".into(),
             DeclInfo::Enum(EnumInfo {
-                name: "Duration".to_string(),
+                name: "Duration".into(),
                 ordered: false,
                 variants: vec![
                     VariantInfo {
-                        name: "end_of_turn".to_string(),
+                        name: "end_of_turn".into(),
                         fields: vec![],
                     },
                     VariantInfo {
-                        name: "indefinite".to_string(),
+                        name: "indefinite".into(),
                         fields: vec![],
                     },
                 ],
@@ -3924,19 +3924,19 @@ mod tests {
         let mut env = make_env(&state, &mut handler, &interp);
 
         let val = Value::EnumVariant {
-            enum_name: "Duration".to_string(),
-            variant: "end_of_turn".to_string(),
+            enum_name: "Duration".into(),
+            variant: "end_of_turn".into(),
             fields: BTreeMap::new(),
         };
-        env.bind("dur".to_string(), val);
+        env.bind(Name::from("dur"), val);
 
         let expr = spanned(ExprKind::PatternMatch {
-            scrutinee: Box::new(spanned(ExprKind::Ident("dur".to_string()))),
+            scrutinee: Box::new(spanned(ExprKind::Ident("dur".into()))),
             arms: vec![
                 PatternArm {
                     pattern: spanned(PatternKind::QualifiedVariant {
-                        ty: "Duration".to_string(),
-                        variant: "end_of_turn".to_string(),
+                        ty: "Duration".into(),
+                        variant: "end_of_turn".into(),
                     }),
                     body: ArmBody::Expr(spanned(ExprKind::StringLit("eot".to_string()))),
                     span: dummy_span(),
@@ -3960,13 +3960,13 @@ mod tests {
         let mut type_env = empty_type_env();
 
         type_env.types.insert(
-            "Duration".to_string(),
+            "Duration".into(),
             DeclInfo::Enum(EnumInfo {
-                name: "Duration".to_string(),
+                name: "Duration".into(),
                 ordered: false,
                 variants: vec![VariantInfo {
-                    name: "rounds".to_string(),
-                    fields: vec![("n".to_string(), ttrpg_checker::ty::Ty::Int)],
+                    name: "rounds".into(),
+                    fields: vec![("n".into(), ttrpg_checker::ty::Ty::Int)],
                 }],
             }),
         );
@@ -3977,24 +3977,24 @@ mod tests {
         let mut env = make_env(&state, &mut handler, &interp);
 
         let mut fields = BTreeMap::new();
-        fields.insert("n".to_string(), Value::Int(3));
+        fields.insert("n".into(), Value::Int(3));
         let val = Value::EnumVariant {
-            enum_name: "Duration".to_string(),
-            variant: "rounds".to_string(),
+            enum_name: "Duration".into(),
+            variant: "rounds".into(),
             fields,
         };
-        env.bind("dur".to_string(), val);
+        env.bind(Name::from("dur"), val);
 
         // match dur { Duration.rounds(count) => count }
         let expr = spanned(ExprKind::PatternMatch {
-            scrutinee: Box::new(spanned(ExprKind::Ident("dur".to_string()))),
+            scrutinee: Box::new(spanned(ExprKind::Ident("dur".into()))),
             arms: vec![PatternArm {
                 pattern: spanned(PatternKind::QualifiedDestructure {
-                    ty: "Duration".to_string(),
-                    variant: "rounds".to_string(),
-                    fields: vec![spanned(PatternKind::Ident("count".to_string()))],
+                    ty: "Duration".into(),
+                    variant: "rounds".into(),
+                    fields: vec![spanned(PatternKind::Ident("count".into()))],
                 }),
-                body: ArmBody::Expr(spanned(ExprKind::Ident("count".to_string()))),
+                body: ArmBody::Expr(spanned(ExprKind::Ident("count".into()))),
                 span: dummy_span(),
             }],
         });
@@ -4015,13 +4015,13 @@ mod tests {
         // Simulate: let x = 42; x + 1
         let block = spanned(vec![
             spanned(StmtKind::Let {
-                name: "x".to_string(),
+                name: "x".into(),
                 ty: None,
                 value: spanned(ExprKind::IntLit(42)),
             }),
             spanned(StmtKind::Expr(spanned(ExprKind::BinOp {
                 op: BinOp::Add,
-                lhs: Box::new(spanned(ExprKind::Ident("x".to_string()))),
+                lhs: Box::new(spanned(ExprKind::Ident("x".into()))),
                 rhs: Box::new(spanned(ExprKind::IntLit(1))),
             }))),
         ]);
@@ -4039,14 +4039,14 @@ mod tests {
 
         // let x = 1; { let x = 2; x } + x should be 3
         // But we need to use two block evaluations to test scope isolation
-        env.bind("x".to_string(), Value::Int(1));
+        env.bind(Name::from("x"), Value::Int(1));
         let inner_block = spanned(vec![
             spanned(StmtKind::Let {
-                name: "x".to_string(),
+                name: "x".into(),
                 ty: None,
                 value: spanned(ExprKind::IntLit(2)),
             }),
-            spanned(StmtKind::Expr(spanned(ExprKind::Ident("x".to_string())))),
+            spanned(StmtKind::Expr(spanned(ExprKind::Ident("x".into())))),
         ]);
         let inner_result = eval_block(&mut env, &inner_block).unwrap();
         assert_eq!(inner_result, Value::Int(2));
@@ -4068,7 +4068,7 @@ mod tests {
         let mut env = make_env(&state, &mut handler, &interp);
 
         let expr = spanned(ExprKind::Call {
-            callee: Box::new(spanned(ExprKind::Ident("foo".to_string()))),
+            callee: Box::new(spanned(ExprKind::Ident("foo".into()))),
             args: vec![],
         });
         let err = eval_expr(&mut env, &expr).unwrap_err();
@@ -4116,37 +4116,37 @@ mod tests {
         let mut type_env = empty_type_env();
 
         type_env.types.insert(
-            "Color".to_string(),
+            "Color".into(),
             DeclInfo::Enum(EnumInfo {
-                name: "Color".to_string(),
+                name: "Color".into(),
                 ordered: false,
                 variants: vec![
                     VariantInfo {
-                        name: "red".to_string(),
+                        name: "red".into(),
                         fields: vec![],
                     },
                     VariantInfo {
-                        name: "blue".to_string(),
+                        name: "blue".into(),
                         fields: vec![],
                     },
                 ],
             }),
         );
-        type_env.variant_to_enums.entry("red".to_string()).or_default().push("Color".to_string());
-        type_env.variant_to_enums.entry("blue".to_string()).or_default().push("Color".to_string());
+        type_env.variant_to_enums.entry("red".into()).or_default().push("Color".into());
+        type_env.variant_to_enums.entry("blue".into()).or_default().push("Color".into());
 
         let interp = Interpreter::new(&program, &type_env).unwrap();
         let state = TestState::new();
         let mut handler = ScriptedHandler::new();
         let mut env = make_env(&state, &mut handler, &interp);
 
-        let expr = spanned(ExprKind::Ident("red".to_string()));
+        let expr = spanned(ExprKind::Ident("red".into()));
         let result = eval_expr(&mut env, &expr).unwrap();
         assert_eq!(
             result,
             Value::EnumVariant {
-                enum_name: "Color".to_string(),
-                variant: "red".to_string(),
+                enum_name: "Color".into(),
+                variant: "red".into(),
                 fields: BTreeMap::new(),
             }
         );
@@ -4160,12 +4160,12 @@ mod tests {
         let mut type_env = empty_type_env();
 
         type_env.types.insert(
-            "Color".to_string(),
+            "Color".into(),
             DeclInfo::Enum(EnumInfo {
-                name: "Color".to_string(),
+                name: "Color".into(),
                 ordered: false,
                 variants: vec![VariantInfo {
-                    name: "red".to_string(),
+                    name: "red".into(),
                     fields: vec![],
                 }],
             }),
@@ -4178,14 +4178,14 @@ mod tests {
 
         // Color.red
         let expr = spanned(ExprKind::FieldAccess {
-            object: Box::new(spanned(ExprKind::Ident("Color".to_string()))),
-            field: "red".to_string(),
+            object: Box::new(spanned(ExprKind::Ident("Color".into()))),
+            field: "red".into(),
         });
         assert_eq!(
             eval_expr(&mut env, &expr).unwrap(),
             Value::EnumVariant {
-                enum_name: "Color".to_string(),
-                variant: "red".to_string(),
+                enum_name: "Color".into(),
+                variant: "red".into(),
                 fields: BTreeMap::new(),
             }
         );
@@ -4199,13 +4199,13 @@ mod tests {
 
         let program = Program {
             items: vec![spanned(TopLevel::System(SystemBlock {
-                name: "Test".to_string(),
+                name: "Test".into(),
                 decls: vec![spanned(DeclKind::Move(MoveDecl {
-                    name: "TestMove".to_string(),
-                    receiver_name: "actor".to_string(),
-                    receiver_type: spanned(ttrpg_ast::ast::TypeExpr::Named("Character".to_string())),
+                    name: "TestMove".into(),
+                    receiver_name: "actor".into(),
+                    receiver_type: spanned(ttrpg_ast::ast::TypeExpr::Named("Character".into())),
                     params: vec![],
-                    trigger_text: "test".to_string(),
+                    trigger_text: "test".into(),
                     roll_expr: spanned(ExprKind::IntLit(0)),
                     outcomes: vec![],
                 }))],
@@ -4231,19 +4231,19 @@ mod tests {
         let mut env = make_env(&state, &mut handler, &interp);
 
         let mut fields = BTreeMap::new();
-        fields.insert("n".to_string(), Value::Int(5));
+        fields.insert("n".into(), Value::Int(5));
         env.bind(
-            "d".to_string(),
+            "d".into(),
             Value::EnumVariant {
-                enum_name: "Duration".to_string(),
-                variant: "rounds".to_string(),
+                enum_name: "Duration".into(),
+                variant: "rounds".into(),
                 fields,
             },
         );
 
         let expr = spanned(ExprKind::FieldAccess {
-            object: Box::new(spanned(ExprKind::Ident("d".to_string()))),
-            field: "n".to_string(),
+            object: Box::new(spanned(ExprKind::Ident("d".into()))),
+            field: "n".into(),
         });
         assert_eq!(eval_expr(&mut env, &expr).unwrap(), Value::Int(5));
     }
@@ -4313,18 +4313,18 @@ mod tests {
         let program = empty_program();
         let mut type_env = empty_type_env();
         type_env.types.insert(
-            "Color".to_string(),
+            "Color".into(),
             ttrpg_checker::env::DeclInfo::Enum(EnumInfo {
-                name: "Color".to_string(),
+                name: "Color".into(),
                 ordered: false,
                 variants: vec![
-                    VariantInfo { name: "red".to_string(), fields: vec![] },
-                    VariantInfo { name: "blue".to_string(), fields: vec![] },
+                    VariantInfo { name: "red".into(), fields: vec![] },
+                    VariantInfo { name: "blue".into(), fields: vec![] },
                 ],
             }),
         );
-        type_env.variant_to_enums.entry("red".to_string()).or_default().push("Color".to_string());
-        type_env.variant_to_enums.entry("blue".to_string()).or_default().push("Color".to_string());
+        type_env.variant_to_enums.entry("red".into()).or_default().push("Color".into());
+        type_env.variant_to_enums.entry("blue".into()).or_default().push("Color".into());
 
         let interp = Interpreter::new(&program, &type_env).unwrap();
         let state = TestState::new();
@@ -4333,22 +4333,22 @@ mod tests {
 
         // Pattern match with bare variant idents: match val { red => 1, blue => 2 }
         let val = Value::EnumVariant {
-            enum_name: "Color".to_string(),
-            variant: "blue".to_string(),
+            enum_name: "Color".into(),
+            variant: "blue".into(),
             fields: BTreeMap::new(),
         };
-        env.bind("val".to_string(), val);
+        env.bind(Name::from("val"), val);
 
         let expr = spanned(ExprKind::PatternMatch {
-            scrutinee: Box::new(spanned(ExprKind::Ident("val".to_string()))),
+            scrutinee: Box::new(spanned(ExprKind::Ident("val".into()))),
             arms: vec![
                 PatternArm {
-                    pattern: spanned(PatternKind::Ident("red".to_string())),
+                    pattern: spanned(PatternKind::Ident("red".into())),
                     body: ArmBody::Expr(spanned(ExprKind::IntLit(1))),
                     span: dummy_span(),
                 },
                 PatternArm {
-                    pattern: spanned(PatternKind::Ident("blue".to_string())),
+                    pattern: spanned(PatternKind::Ident("blue".into())),
                     body: ArmBody::Expr(spanned(ExprKind::IntLit(2))),
                     span: dummy_span(),
                 },
@@ -4363,16 +4363,16 @@ mod tests {
         let program = empty_program();
         let mut type_env = empty_type_env();
         type_env.types.insert(
-            "Color".to_string(),
+            "Color".into(),
             ttrpg_checker::env::DeclInfo::Enum(EnumInfo {
-                name: "Color".to_string(),
+                name: "Color".into(),
                 ordered: false,
                 variants: vec![
-                    VariantInfo { name: "red".to_string(), fields: vec![] },
+                    VariantInfo { name: "red".into(), fields: vec![] },
                 ],
             }),
         );
-        type_env.variant_to_enums.entry("red".to_string()).or_default().push("Color".to_string());
+        type_env.variant_to_enums.entry("red".into()).or_default().push("Color".into());
 
         let interp = Interpreter::new(&program, &type_env).unwrap();
         let state = TestState::new();
@@ -4383,7 +4383,7 @@ mod tests {
         let mut bindings = HashMap::new();
         let result = match_pattern(
             &env,
-            &PatternKind::Ident("red".to_string()),
+            &PatternKind::Ident("red".into()),
             &Value::Int(42),
             &mut bindings,
         );
@@ -4404,7 +4404,7 @@ mod tests {
         let mut bindings = HashMap::new();
         let result = match_pattern(
             &env,
-            &PatternKind::Ident("x".to_string()),
+            &PatternKind::Ident("x".into()),
             &Value::Int(42),
             &mut bindings,
         );
@@ -4424,14 +4424,14 @@ mod tests {
         let mut env = make_env(&state, &mut handler, &interp);
 
         env.bind(
-            "d".to_string(),
+            "d".into(),
             Value::DiceExpr(DiceExpr { count: 1, sides: 20, filter: None, modifier: 0 }),
         );
 
         // d + 5
         let expr = spanned(ExprKind::BinOp {
             op: BinOp::Add,
-            lhs: Box::new(spanned(ExprKind::Ident("d".to_string()))),
+            lhs: Box::new(spanned(ExprKind::Ident("d".into()))),
             rhs: Box::new(spanned(ExprKind::IntLit(5))),
         });
         match eval_expr(&mut env, &expr).unwrap() {
@@ -4454,7 +4454,7 @@ mod tests {
         let mut env = make_env(&state, &mut handler, &interp);
 
         env.bind(
-            "d".to_string(),
+            "d".into(),
             Value::DiceExpr(DiceExpr { count: 2, sides: 6, filter: None, modifier: 3 }),
         );
 
@@ -4462,7 +4462,7 @@ mod tests {
         let expr = spanned(ExprKind::BinOp {
             op: BinOp::Add,
             lhs: Box::new(spanned(ExprKind::IntLit(10))),
-            rhs: Box::new(spanned(ExprKind::Ident("d".to_string()))),
+            rhs: Box::new(spanned(ExprKind::Ident("d".into()))),
         });
         match eval_expr(&mut env, &expr).unwrap() {
             Value::DiceExpr(de) => {
@@ -4484,19 +4484,19 @@ mod tests {
         let mut env = make_env(&state, &mut handler, &interp);
 
         env.bind(
-            "a".to_string(),
+            "a".into(),
             Value::DiceExpr(DiceExpr { count: 2, sides: 6, filter: None, modifier: 1 }),
         );
         env.bind(
-            "b".to_string(),
+            "b".into(),
             Value::DiceExpr(DiceExpr { count: 3, sides: 6, filter: None, modifier: 2 }),
         );
 
         // a + b → 5d6 with modifier 3
         let expr = spanned(ExprKind::BinOp {
             op: BinOp::Add,
-            lhs: Box::new(spanned(ExprKind::Ident("a".to_string()))),
-            rhs: Box::new(spanned(ExprKind::Ident("b".to_string()))),
+            lhs: Box::new(spanned(ExprKind::Ident("a".into()))),
+            rhs: Box::new(spanned(ExprKind::Ident("b".into()))),
         });
         match eval_expr(&mut env, &expr).unwrap() {
             Value::DiceExpr(de) => {
@@ -4518,14 +4518,14 @@ mod tests {
         let mut env = make_env(&state, &mut handler, &interp);
 
         env.bind(
-            "d".to_string(),
+            "d".into(),
             Value::DiceExpr(DiceExpr { count: 1, sides: 20, filter: None, modifier: 5 }),
         );
 
         // d - 3
         let expr = spanned(ExprKind::BinOp {
             op: BinOp::Sub,
-            lhs: Box::new(spanned(ExprKind::Ident("d".to_string()))),
+            lhs: Box::new(spanned(ExprKind::Ident("d".into()))),
             rhs: Box::new(spanned(ExprKind::IntLit(3))),
         });
         match eval_expr(&mut env, &expr).unwrap() {
@@ -4576,7 +4576,7 @@ mod tests {
 
         // Block that contains an error (undefined variable)
         let block: ttrpg_ast::ast::Block = spanned(vec![
-            spanned(StmtKind::Expr(spanned(ExprKind::Ident("undefined_var".to_string())))),
+            spanned(StmtKind::Expr(spanned(ExprKind::Ident("undefined_var".into())))),
         ]);
         let result = eval_block(&mut env, &block);
         assert!(result.is_err());
@@ -4601,7 +4601,7 @@ mod tests {
             scrutinee: Box::new(spanned(ExprKind::IntLit(1))),
             arms: vec![PatternArm {
                 pattern: spanned(PatternKind::Wildcard),
-                body: ArmBody::Expr(spanned(ExprKind::Ident("undefined_var".to_string()))),
+                body: ArmBody::Expr(spanned(ExprKind::Ident("undefined_var".into()))),
                 span: dummy_span(),
             }],
         });
@@ -4620,19 +4620,19 @@ mod tests {
         let program = empty_program();
         let mut type_env = empty_type_env();
         type_env.types.insert(
-            "Color".to_string(),
+            "Color".into(),
             DeclInfo::Enum(EnumInfo {
-                name: "Color".to_string(),
+                name: "Color".into(),
                 ordered: false,
                 variants: vec![
                     VariantInfo {
-                        name: "red".to_string(),
+                        name: "red".into(),
                         fields: vec![],
                     },
                 ],
             }),
         );
-        type_env.variant_to_enums.entry("red".to_string()).or_default().push("Color".to_string());
+        type_env.variant_to_enums.entry("red".into()).or_default().push("Color".into());
 
         let interp = Interpreter::new(&program, &type_env).unwrap();
         let state = TestState::new();
@@ -4642,16 +4642,16 @@ mod tests {
         // (Color).red — parenthesized
         let expr = spanned(ExprKind::FieldAccess {
             object: Box::new(spanned(ExprKind::Paren(Box::new(spanned(
-                ExprKind::Ident("Color".to_string()),
+                ExprKind::Ident("Color".into()),
             ))))),
-            field: "red".to_string(),
+            field: "red".into(),
         });
         let result = eval_expr(&mut env, &expr).unwrap();
         assert_eq!(
             result,
             Value::EnumVariant {
-                enum_name: "Color".to_string(),
-                variant: "red".to_string(),
+                enum_name: "Color".into(),
+                variant: "red".into(),
                 fields: BTreeMap::new(),
             }
         );
@@ -4664,19 +4664,19 @@ mod tests {
         let program = empty_program();
         let mut type_env = empty_type_env();
         type_env.types.insert(
-            "Color".to_string(),
+            "Color".into(),
             DeclInfo::Enum(EnumInfo {
-                name: "Color".to_string(),
+                name: "Color".into(),
                 ordered: false,
                 variants: vec![
                     VariantInfo {
-                        name: "red".to_string(),
+                        name: "red".into(),
                         fields: vec![],
                     },
                 ],
             }),
         );
-        type_env.variant_to_enums.entry("red".to_string()).or_default().push("Color".to_string());
+        type_env.variant_to_enums.entry("red".into()).or_default().push("Color".into());
 
         let interp = Interpreter::new(&program, &type_env).unwrap();
         let state = TestState::new();
@@ -4685,19 +4685,19 @@ mod tests {
 
         // Bind "Color" as a local struct value
         let mut struct_fields = BTreeMap::new();
-        struct_fields.insert("name".to_string(), Value::Str("my_color".to_string()));
+        struct_fields.insert("name".into(), Value::Str("my_color".to_string()));
         env.bind(
-            "Color".to_string(),
+            "Color".into(),
             Value::Struct {
-                name: "MyStruct".to_string(),
+                name: "MyStruct".into(),
                 fields: struct_fields,
             },
         );
 
         // Color.name should resolve local struct, not enum namespace
         let expr = spanned(ExprKind::FieldAccess {
-            object: Box::new(spanned(ExprKind::Ident("Color".to_string()))),
-            field: "name".to_string(),
+            object: Box::new(spanned(ExprKind::Ident("Color".into()))),
+            field: "name".into(),
         });
         let result = eval_expr(&mut env, &expr).unwrap();
         assert_eq!(result, Value::Str("my_color".to_string()));
@@ -4710,9 +4710,9 @@ mod tests {
         let program = empty_program();
         let mut type_env = empty_type_env();
         type_env.types.insert(
-            "Color".to_string(),
+            "Color".into(),
             DeclInfo::Enum(EnumInfo {
-                name: "Color".to_string(),
+                name: "Color".into(),
                 ordered: false,
                 variants: vec![],
             }),
@@ -4723,7 +4723,7 @@ mod tests {
         let mut handler = ScriptedHandler::new();
         let mut env = make_env(&state, &mut handler, &interp);
 
-        let expr = spanned(ExprKind::Ident("Color".to_string()));
+        let expr = spanned(ExprKind::Ident("Color".into()));
         let result = eval_expr(&mut env, &expr).unwrap();
         assert!(matches!(result, Value::EnumNamespace(ref s) if s == "Color"));
     }
@@ -4755,13 +4755,13 @@ mod tests {
             unmodified: 15,
         });
 
-        env.bind("r".to_string(), roll.clone());
-        env.bind("rolls".to_string(), Value::List(vec![roll]));
+        env.bind(Name::from("r"), roll.clone());
+        env.bind(Name::from("rolls"), Value::List(vec![roll]));
 
         let expr = spanned(ExprKind::BinOp {
             op: BinOp::In,
-            lhs: Box::new(spanned(ExprKind::Ident("r".to_string()))),
-            rhs: Box::new(spanned(ExprKind::Ident("rolls".to_string()))),
+            lhs: Box::new(spanned(ExprKind::Ident("r".into()))),
+            rhs: Box::new(spanned(ExprKind::Ident("rolls".into()))),
         });
         assert_eq!(eval_expr(&mut env, &expr).unwrap(), Value::Bool(true));
     }
@@ -4791,14 +4791,14 @@ mod tests {
             unmodified: 15,
         });
 
-        env.bind("r".to_string(), roll);
+        env.bind(Name::from("r"), roll);
         // List contains Int(15) — same total but different type
-        env.bind("ints".to_string(), Value::List(vec![Value::Int(15)]));
+        env.bind(Name::from("ints"), Value::List(vec![Value::Int(15)]));
 
         let expr = spanned(ExprKind::BinOp {
             op: BinOp::In,
-            lhs: Box::new(spanned(ExprKind::Ident("r".to_string()))),
-            rhs: Box::new(spanned(ExprKind::Ident("ints".to_string()))),
+            lhs: Box::new(spanned(ExprKind::Ident("r".into()))),
+            rhs: Box::new(spanned(ExprKind::Ident("ints".into()))),
         });
         // Should be false — RollResult != Int even though total matches
         assert_eq!(eval_expr(&mut env, &expr).unwrap(), Value::Bool(false));
@@ -4817,7 +4817,7 @@ mod tests {
         let mut env = make_env(&state, &mut handler, &interp);
 
         env.bind(
-            "a".to_string(),
+            "a".into(),
             Value::DiceExpr(DiceExpr {
                 count: 2,
                 sides: 6,
@@ -4826,7 +4826,7 @@ mod tests {
             }),
         );
         env.bind(
-            "b".to_string(),
+            "b".into(),
             Value::DiceExpr(DiceExpr {
                 count: 3,
                 sides: 8,
@@ -4837,8 +4837,8 @@ mod tests {
 
         let expr = spanned(ExprKind::BinOp {
             op: BinOp::Add,
-            lhs: Box::new(spanned(ExprKind::Ident("a".to_string()))),
-            rhs: Box::new(spanned(ExprKind::Ident("b".to_string()))),
+            lhs: Box::new(spanned(ExprKind::Ident("a".into()))),
+            rhs: Box::new(spanned(ExprKind::Ident("b".into()))),
         });
         let result = eval_expr(&mut env, &expr);
         assert!(result.is_err());
@@ -4859,7 +4859,7 @@ mod tests {
         let mut env = make_env(&state, &mut handler, &interp);
 
         env.bind(
-            "d".to_string(),
+            "d".into(),
             Value::DiceExpr(DiceExpr {
                 count: 1,
                 sides: 20,
@@ -4870,7 +4870,7 @@ mod tests {
 
         let expr = spanned(ExprKind::BinOp {
             op: BinOp::Add,
-            lhs: Box::new(spanned(ExprKind::Ident("d".to_string()))),
+            lhs: Box::new(spanned(ExprKind::Ident("d".into()))),
             rhs: Box::new(spanned(ExprKind::IntLit(1))),
         });
         let result = eval_expr(&mut env, &expr);
@@ -4889,7 +4889,7 @@ mod tests {
         let mut env = make_env(&state, &mut handler, &interp);
 
         env.bind(
-            "d".to_string(),
+            "d".into(),
             Value::DiceExpr(DiceExpr {
                 count: 1,
                 sides: 20,
@@ -4900,7 +4900,7 @@ mod tests {
 
         let expr = spanned(ExprKind::BinOp {
             op: BinOp::Sub,
-            lhs: Box::new(spanned(ExprKind::Ident("d".to_string()))),
+            lhs: Box::new(spanned(ExprKind::Ident("d".into()))),
             rhs: Box::new(spanned(ExprKind::IntLit(1))),
         });
         let result = eval_expr(&mut env, &expr);
@@ -4919,7 +4919,7 @@ mod tests {
         let mut env = make_env(&state, &mut handler, &interp);
 
         env.bind(
-            "a".to_string(),
+            "a".into(),
             Value::DiceExpr(DiceExpr {
                 count: u32::MAX,
                 sides: 6,
@@ -4928,7 +4928,7 @@ mod tests {
             }),
         );
         env.bind(
-            "b".to_string(),
+            "b".into(),
             Value::DiceExpr(DiceExpr {
                 count: 1,
                 sides: 6,
@@ -4939,8 +4939,8 @@ mod tests {
 
         let expr = spanned(ExprKind::BinOp {
             op: BinOp::Add,
-            lhs: Box::new(spanned(ExprKind::Ident("a".to_string()))),
-            rhs: Box::new(spanned(ExprKind::Ident("b".to_string()))),
+            lhs: Box::new(spanned(ExprKind::Ident("a".into()))),
+            rhs: Box::new(spanned(ExprKind::Ident("b".into()))),
         });
         let result = eval_expr(&mut env, &expr);
         assert!(result.is_err());
@@ -4958,7 +4958,7 @@ mod tests {
         let mut env = make_env(&state, &mut handler, &interp);
 
         env.bind(
-            "a".to_string(),
+            "a".into(),
             Value::DiceExpr(DiceExpr {
                 count: 2,
                 sides: 6,
@@ -4967,7 +4967,7 @@ mod tests {
             }),
         );
         env.bind(
-            "b".to_string(),
+            "b".into(),
             Value::DiceExpr(DiceExpr {
                 count: 3,
                 sides: 6,
@@ -4978,8 +4978,8 @@ mod tests {
 
         let expr = spanned(ExprKind::BinOp {
             op: BinOp::Add,
-            lhs: Box::new(spanned(ExprKind::Ident("a".to_string()))),
-            rhs: Box::new(spanned(ExprKind::Ident("b".to_string()))),
+            lhs: Box::new(spanned(ExprKind::Ident("a".into()))),
+            rhs: Box::new(spanned(ExprKind::Ident("b".into()))),
         });
         let result = eval_expr(&mut env, &expr).unwrap();
         assert_eq!(
@@ -5006,7 +5006,7 @@ mod tests {
 
         // Bind `r` to a RollResult with total=10
         env.bind(
-            "r".to_string(),
+            "r".into(),
             Value::RollResult(RollResult {
                 expr: DiceExpr { count: 1, sides: 20, filter: None, modifier: 0 },
                 dice: vec![10],
@@ -5020,7 +5020,7 @@ mod tests {
         // r == 10 should be true (coerced)
         let expr = spanned(ExprKind::BinOp {
             op: BinOp::Eq,
-            lhs: Box::new(spanned(ExprKind::Ident("r".to_string()))),
+            lhs: Box::new(spanned(ExprKind::Ident("r".into()))),
             rhs: Box::new(spanned(ExprKind::IntLit(10))),
         });
         assert_eq!(eval_expr(&mut env, &expr).unwrap(), Value::Bool(true));
@@ -5028,7 +5028,7 @@ mod tests {
         // r != 10 should be false
         let expr = spanned(ExprKind::BinOp {
             op: BinOp::NotEq,
-            lhs: Box::new(spanned(ExprKind::Ident("r".to_string()))),
+            lhs: Box::new(spanned(ExprKind::Ident("r".into()))),
             rhs: Box::new(spanned(ExprKind::IntLit(10))),
         });
         assert_eq!(eval_expr(&mut env, &expr).unwrap(), Value::Bool(false));
@@ -5036,7 +5036,7 @@ mod tests {
         // r == 99 should be false
         let expr = spanned(ExprKind::BinOp {
             op: BinOp::Eq,
-            lhs: Box::new(spanned(ExprKind::Ident("r".to_string()))),
+            lhs: Box::new(spanned(ExprKind::Ident("r".into()))),
             rhs: Box::new(spanned(ExprKind::IntLit(99))),
         });
         assert_eq!(eval_expr(&mut env, &expr).unwrap(), Value::Bool(false));
@@ -5151,58 +5151,58 @@ mod tests {
         // Declaration order: small=0, medium=1, large=2
         // Alphabetical would be: large < medium < small — opposite!
         type_env.types.insert(
-            "Size".to_string(),
+            "Size".into(),
             DeclInfo::Enum(EnumInfo {
-                name: "Size".to_string(),
+                name: "Size".into(),
                 ordered: false,
                 variants: vec![
-                    VariantInfo { name: "small".to_string(), fields: vec![] },
-                    VariantInfo { name: "medium".to_string(), fields: vec![] },
-                    VariantInfo { name: "large".to_string(), fields: vec![] },
+                    VariantInfo { name: "small".into(), fields: vec![] },
+                    VariantInfo { name: "medium".into(), fields: vec![] },
+                    VariantInfo { name: "large".into(), fields: vec![] },
                 ],
             }),
         );
-        type_env.variant_to_enums.entry("small".to_string()).or_default().push("Size".to_string());
-        type_env.variant_to_enums.entry("medium".to_string()).or_default().push("Size".to_string());
-        type_env.variant_to_enums.entry("large".to_string()).or_default().push("Size".to_string());
+        type_env.variant_to_enums.entry("small".into()).or_default().push("Size".into());
+        type_env.variant_to_enums.entry("medium".into()).or_default().push("Size".into());
+        type_env.variant_to_enums.entry("large".into()).or_default().push("Size".into());
 
         let interp = Interpreter::new(&program, &type_env).unwrap();
         let state = TestState::new();
         let mut handler = ScriptedHandler::new();
         let mut env = make_env(&state, &mut handler, &interp);
 
-        env.bind("a".to_string(), Value::EnumVariant {
-            enum_name: "Size".to_string(),
-            variant: "small".to_string(),
+        env.bind(Name::from("a"), Value::EnumVariant {
+            enum_name: "Size".into(),
+            variant: "small".into(),
             fields: BTreeMap::new(),
         });
-        env.bind("b".to_string(), Value::EnumVariant {
-            enum_name: "Size".to_string(),
-            variant: "large".to_string(),
+        env.bind(Name::from("b"), Value::EnumVariant {
+            enum_name: "Size".into(),
+            variant: "large".into(),
             fields: BTreeMap::new(),
         });
 
         // small < large should be true (declaration order: 0 < 2)
         let expr = spanned(ExprKind::BinOp {
             op: BinOp::Lt,
-            lhs: Box::new(spanned(ExprKind::Ident("a".to_string()))),
-            rhs: Box::new(spanned(ExprKind::Ident("b".to_string()))),
+            lhs: Box::new(spanned(ExprKind::Ident("a".into()))),
+            rhs: Box::new(spanned(ExprKind::Ident("b".into()))),
         });
         assert_eq!(eval_expr(&mut env, &expr).unwrap(), Value::Bool(true));
 
         // large > small should be true
         let expr = spanned(ExprKind::BinOp {
             op: BinOp::Gt,
-            lhs: Box::new(spanned(ExprKind::Ident("b".to_string()))),
-            rhs: Box::new(spanned(ExprKind::Ident("a".to_string()))),
+            lhs: Box::new(spanned(ExprKind::Ident("b".into()))),
+            rhs: Box::new(spanned(ExprKind::Ident("a".into()))),
         });
         assert_eq!(eval_expr(&mut env, &expr).unwrap(), Value::Bool(true));
 
         // small >= large should be false
         let expr = spanned(ExprKind::BinOp {
             op: BinOp::GtEq,
-            lhs: Box::new(spanned(ExprKind::Ident("a".to_string()))),
-            rhs: Box::new(spanned(ExprKind::Ident("b".to_string()))),
+            lhs: Box::new(spanned(ExprKind::Ident("a".into()))),
+            rhs: Box::new(spanned(ExprKind::Ident("b".into()))),
         });
         assert_eq!(eval_expr(&mut env, &expr).unwrap(), Value::Bool(false));
     }
@@ -5215,20 +5215,20 @@ mod tests {
         let mut type_env = empty_type_env();
 
         type_env.types.insert(
-            "Size".to_string(),
+            "Size".into(),
             DeclInfo::Enum(EnumInfo {
-                name: "Size".to_string(),
+                name: "Size".into(),
                 ordered: true,
                 variants: vec![
-                    VariantInfo { name: "small".to_string(), fields: vec![] },
-                    VariantInfo { name: "medium".to_string(), fields: vec![] },
-                    VariantInfo { name: "large".to_string(), fields: vec![] },
+                    VariantInfo { name: "small".into(), fields: vec![] },
+                    VariantInfo { name: "medium".into(), fields: vec![] },
+                    VariantInfo { name: "large".into(), fields: vec![] },
                 ],
             }),
         );
-        type_env.variant_to_enums.entry("small".to_string()).or_default().push("Size".to_string());
-        type_env.variant_to_enums.entry("medium".to_string()).or_default().push("Size".to_string());
-        type_env.variant_to_enums.entry("large".to_string()).or_default().push("Size".to_string());
+        type_env.variant_to_enums.entry("small".into()).or_default().push("Size".into());
+        type_env.variant_to_enums.entry("medium".into()).or_default().push("Size".into());
+        type_env.variant_to_enums.entry("large".into()).or_default().push("Size".into());
 
         let interp = Interpreter::new(&program, &type_env).unwrap();
         let state = TestState::new();
@@ -5236,32 +5236,32 @@ mod tests {
         let mut env = make_env(&state, &mut handler, &interp);
 
         // ordinal(small) == 0
-        env.bind("s".to_string(), Value::EnumVariant {
-            enum_name: "Size".to_string(),
-            variant: "small".to_string(),
+        env.bind(Name::from("s"), Value::EnumVariant {
+            enum_name: "Size".into(),
+            variant: "small".into(),
             fields: BTreeMap::new(),
         });
         let expr = spanned(ExprKind::Call {
-            callee: Box::new(spanned(ExprKind::Ident("ordinal".to_string()))),
+            callee: Box::new(spanned(ExprKind::Ident("ordinal".into()))),
             args: vec![ttrpg_ast::ast::Arg {
                 name: None,
-                value: spanned(ExprKind::Ident("s".to_string())),
+                value: spanned(ExprKind::Ident("s".into())),
                 span: dummy_span(),
             }],
         });
         assert_eq!(eval_expr(&mut env, &expr).unwrap(), Value::Int(0));
 
         // ordinal(large) == 2
-        env.bind("l".to_string(), Value::EnumVariant {
-            enum_name: "Size".to_string(),
-            variant: "large".to_string(),
+        env.bind(Name::from("l"), Value::EnumVariant {
+            enum_name: "Size".into(),
+            variant: "large".into(),
             fields: BTreeMap::new(),
         });
         let expr = spanned(ExprKind::Call {
-            callee: Box::new(spanned(ExprKind::Ident("ordinal".to_string()))),
+            callee: Box::new(spanned(ExprKind::Ident("ordinal".into()))),
             args: vec![ttrpg_ast::ast::Arg {
                 name: None,
-                value: spanned(ExprKind::Ident("l".to_string())),
+                value: spanned(ExprKind::Ident("l".into())),
                 span: dummy_span(),
             }],
         });
@@ -5274,14 +5274,14 @@ mod tests {
         let mut type_env = empty_type_env();
 
         type_env.types.insert(
-            "Size".to_string(),
+            "Size".into(),
             DeclInfo::Enum(EnumInfo {
-                name: "Size".to_string(),
+                name: "Size".into(),
                 ordered: true,
                 variants: vec![
-                    VariantInfo { name: "small".to_string(), fields: vec![] },
-                    VariantInfo { name: "medium".to_string(), fields: vec![] },
-                    VariantInfo { name: "large".to_string(), fields: vec![] },
+                    VariantInfo { name: "small".into(), fields: vec![] },
+                    VariantInfo { name: "medium".into(), fields: vec![] },
+                    VariantInfo { name: "large".into(), fields: vec![] },
                 ],
             }),
         );
@@ -5291,20 +5291,20 @@ mod tests {
         let mut handler = ScriptedHandler::new();
         let mut env = make_env(&state, &mut handler, &interp);
 
-        env.bind("ns".to_string(), Value::EnumNamespace("Size".to_string()));
-        env.bind("idx".to_string(), Value::Int(1));
+        env.bind(Name::from("ns"), Value::EnumNamespace("Size".into()));
+        env.bind(Name::from("idx"), Value::Int(1));
 
         let expr = spanned(ExprKind::Call {
-            callee: Box::new(spanned(ExprKind::Ident("from_ordinal".to_string()))),
+            callee: Box::new(spanned(ExprKind::Ident("from_ordinal".into()))),
             args: vec![
                 ttrpg_ast::ast::Arg {
                     name: None,
-                    value: spanned(ExprKind::Ident("ns".to_string())),
+                    value: spanned(ExprKind::Ident("ns".into())),
                     span: dummy_span(),
                 },
                 ttrpg_ast::ast::Arg {
                     name: None,
-                    value: spanned(ExprKind::Ident("idx".to_string())),
+                    value: spanned(ExprKind::Ident("idx".into())),
                     span: dummy_span(),
                 },
             ],
@@ -5312,8 +5312,8 @@ mod tests {
         assert_eq!(
             eval_expr(&mut env, &expr).unwrap(),
             Value::EnumVariant {
-                enum_name: "Size".to_string(),
-                variant: "medium".to_string(),
+                enum_name: "Size".into(),
+                variant: "medium".into(),
                 fields: BTreeMap::new(),
             }
         );
@@ -5325,13 +5325,13 @@ mod tests {
         let mut type_env = empty_type_env();
 
         type_env.types.insert(
-            "Size".to_string(),
+            "Size".into(),
             DeclInfo::Enum(EnumInfo {
-                name: "Size".to_string(),
+                name: "Size".into(),
                 ordered: true,
                 variants: vec![
-                    VariantInfo { name: "small".to_string(), fields: vec![] },
-                    VariantInfo { name: "medium".to_string(), fields: vec![] },
+                    VariantInfo { name: "small".into(), fields: vec![] },
+                    VariantInfo { name: "medium".into(), fields: vec![] },
                 ],
             }),
         );
@@ -5341,20 +5341,20 @@ mod tests {
         let mut handler = ScriptedHandler::new();
         let mut env = make_env(&state, &mut handler, &interp);
 
-        env.bind("ns".to_string(), Value::EnumNamespace("Size".to_string()));
-        env.bind("idx".to_string(), Value::Int(5));
+        env.bind(Name::from("ns"), Value::EnumNamespace("Size".into()));
+        env.bind(Name::from("idx"), Value::Int(5));
 
         let expr = spanned(ExprKind::Call {
-            callee: Box::new(spanned(ExprKind::Ident("from_ordinal".to_string()))),
+            callee: Box::new(spanned(ExprKind::Ident("from_ordinal".into()))),
             args: vec![
                 ttrpg_ast::ast::Arg {
                     name: None,
-                    value: spanned(ExprKind::Ident("ns".to_string())),
+                    value: spanned(ExprKind::Ident("ns".into())),
                     span: dummy_span(),
                 },
                 ttrpg_ast::ast::Arg {
                     name: None,
-                    value: spanned(ExprKind::Ident("idx".to_string())),
+                    value: spanned(ExprKind::Ident("idx".into())),
                     span: dummy_span(),
                 },
             ],
@@ -5369,12 +5369,12 @@ mod tests {
         let mut type_env = empty_type_env();
 
         type_env.types.insert(
-            "Size".to_string(),
+            "Size".into(),
             DeclInfo::Enum(EnumInfo {
-                name: "Size".to_string(),
+                name: "Size".into(),
                 ordered: true,
                 variants: vec![
-                    VariantInfo { name: "small".to_string(), fields: vec![] },
+                    VariantInfo { name: "small".into(), fields: vec![] },
                 ],
             }),
         );
@@ -5384,20 +5384,20 @@ mod tests {
         let mut handler = ScriptedHandler::new();
         let mut env = make_env(&state, &mut handler, &interp);
 
-        env.bind("ns".to_string(), Value::EnumNamespace("Size".to_string()));
-        env.bind("idx".to_string(), Value::Int(-1));
+        env.bind(Name::from("ns"), Value::EnumNamespace("Size".into()));
+        env.bind(Name::from("idx"), Value::Int(-1));
 
         let expr = spanned(ExprKind::Call {
-            callee: Box::new(spanned(ExprKind::Ident("from_ordinal".to_string()))),
+            callee: Box::new(spanned(ExprKind::Ident("from_ordinal".into()))),
             args: vec![
                 ttrpg_ast::ast::Arg {
                     name: None,
-                    value: spanned(ExprKind::Ident("ns".to_string())),
+                    value: spanned(ExprKind::Ident("ns".into())),
                     span: dummy_span(),
                 },
                 ttrpg_ast::ast::Arg {
                     name: None,
-                    value: spanned(ExprKind::Ident("idx".to_string())),
+                    value: spanned(ExprKind::Ident("idx".into())),
                     span: dummy_span(),
                 },
             ],
@@ -5412,14 +5412,14 @@ mod tests {
         let mut type_env = empty_type_env();
 
         type_env.types.insert(
-            "Size".to_string(),
+            "Size".into(),
             DeclInfo::Enum(EnumInfo {
-                name: "Size".to_string(),
+                name: "Size".into(),
                 ordered: true,
                 variants: vec![
-                    VariantInfo { name: "small".to_string(), fields: vec![] },
-                    VariantInfo { name: "medium".to_string(), fields: vec![] },
-                    VariantInfo { name: "large".to_string(), fields: vec![] },
+                    VariantInfo { name: "small".into(), fields: vec![] },
+                    VariantInfo { name: "medium".into(), fields: vec![] },
+                    VariantInfo { name: "large".into(), fields: vec![] },
                 ],
             }),
         );
@@ -5429,20 +5429,20 @@ mod tests {
         let mut handler = ScriptedHandler::new();
         let mut env = make_env(&state, &mut handler, &interp);
 
-        env.bind("ns".to_string(), Value::EnumNamespace("Size".to_string()));
-        env.bind("idx".to_string(), Value::Int(2));
+        env.bind(Name::from("ns"), Value::EnumNamespace("Size".into()));
+        env.bind(Name::from("idx"), Value::Int(2));
 
         let expr = spanned(ExprKind::Call {
-            callee: Box::new(spanned(ExprKind::Ident("try_from_ordinal".to_string()))),
+            callee: Box::new(spanned(ExprKind::Ident("try_from_ordinal".into()))),
             args: vec![
                 ttrpg_ast::ast::Arg {
                     name: None,
-                    value: spanned(ExprKind::Ident("ns".to_string())),
+                    value: spanned(ExprKind::Ident("ns".into())),
                     span: dummy_span(),
                 },
                 ttrpg_ast::ast::Arg {
                     name: None,
-                    value: spanned(ExprKind::Ident("idx".to_string())),
+                    value: spanned(ExprKind::Ident("idx".into())),
                     span: dummy_span(),
                 },
             ],
@@ -5450,8 +5450,8 @@ mod tests {
         assert_eq!(
             eval_expr(&mut env, &expr).unwrap(),
             Value::EnumVariant {
-                enum_name: "Size".to_string(),
-                variant: "large".to_string(),
+                enum_name: "Size".into(),
+                variant: "large".into(),
                 fields: BTreeMap::new(),
             }
         );
@@ -5463,12 +5463,12 @@ mod tests {
         let mut type_env = empty_type_env();
 
         type_env.types.insert(
-            "Size".to_string(),
+            "Size".into(),
             DeclInfo::Enum(EnumInfo {
-                name: "Size".to_string(),
+                name: "Size".into(),
                 ordered: true,
                 variants: vec![
-                    VariantInfo { name: "small".to_string(), fields: vec![] },
+                    VariantInfo { name: "small".into(), fields: vec![] },
                 ],
             }),
         );
@@ -5478,20 +5478,20 @@ mod tests {
         let mut handler = ScriptedHandler::new();
         let mut env = make_env(&state, &mut handler, &interp);
 
-        env.bind("ns".to_string(), Value::EnumNamespace("Size".to_string()));
-        env.bind("idx".to_string(), Value::Int(5));
+        env.bind(Name::from("ns"), Value::EnumNamespace("Size".into()));
+        env.bind(Name::from("idx"), Value::Int(5));
 
         let expr = spanned(ExprKind::Call {
-            callee: Box::new(spanned(ExprKind::Ident("try_from_ordinal".to_string()))),
+            callee: Box::new(spanned(ExprKind::Ident("try_from_ordinal".into()))),
             args: vec![
                 ttrpg_ast::ast::Arg {
                     name: None,
-                    value: spanned(ExprKind::Ident("ns".to_string())),
+                    value: spanned(ExprKind::Ident("ns".into())),
                     span: dummy_span(),
                 },
                 ttrpg_ast::ast::Arg {
                     name: None,
-                    value: spanned(ExprKind::Ident("idx".to_string())),
+                    value: spanned(ExprKind::Ident("idx".into())),
                     span: dummy_span(),
                 },
             ],
@@ -5505,12 +5505,12 @@ mod tests {
         let mut type_env = empty_type_env();
 
         type_env.types.insert(
-            "Size".to_string(),
+            "Size".into(),
             DeclInfo::Enum(EnumInfo {
-                name: "Size".to_string(),
+                name: "Size".into(),
                 ordered: true,
                 variants: vec![
-                    VariantInfo { name: "small".to_string(), fields: vec![] },
+                    VariantInfo { name: "small".into(), fields: vec![] },
                 ],
             }),
         );
@@ -5520,20 +5520,20 @@ mod tests {
         let mut handler = ScriptedHandler::new();
         let mut env = make_env(&state, &mut handler, &interp);
 
-        env.bind("ns".to_string(), Value::EnumNamespace("Size".to_string()));
-        env.bind("idx".to_string(), Value::Int(-1));
+        env.bind(Name::from("ns"), Value::EnumNamespace("Size".into()));
+        env.bind(Name::from("idx"), Value::Int(-1));
 
         let expr = spanned(ExprKind::Call {
-            callee: Box::new(spanned(ExprKind::Ident("try_from_ordinal".to_string()))),
+            callee: Box::new(spanned(ExprKind::Ident("try_from_ordinal".into()))),
             args: vec![
                 ttrpg_ast::ast::Arg {
                     name: None,
-                    value: spanned(ExprKind::Ident("ns".to_string())),
+                    value: spanned(ExprKind::Ident("ns".into())),
                     span: dummy_span(),
                 },
                 ttrpg_ast::ast::Arg {
                     name: None,
-                    value: spanned(ExprKind::Ident("idx".to_string())),
+                    value: spanned(ExprKind::Ident("idx".into())),
                     span: dummy_span(),
                 },
             ],
@@ -5573,12 +5573,12 @@ mod tests {
         let mut handler = ScriptedHandler::new();
         let mut env = make_env(&state, &mut handler, &interp);
 
-        env.bind("x".to_string(), Value::Option(None));
+        env.bind(Name::from("x"), Value::Option(None));
 
         // x == none should be true
         let expr = spanned(ExprKind::BinOp {
             op: BinOp::Eq,
-            lhs: Box::new(spanned(ExprKind::Ident("x".to_string()))),
+            lhs: Box::new(spanned(ExprKind::Ident("x".into()))),
             rhs: Box::new(spanned(ExprKind::NoneLit)),
         });
         assert_eq!(eval_expr(&mut env, &expr).unwrap(), Value::Bool(true));
@@ -5586,7 +5586,7 @@ mod tests {
         // x != none should be false
         let expr = spanned(ExprKind::BinOp {
             op: BinOp::NotEq,
-            lhs: Box::new(spanned(ExprKind::Ident("x".to_string()))),
+            lhs: Box::new(spanned(ExprKind::Ident("x".into()))),
             rhs: Box::new(spanned(ExprKind::NoneLit)),
         });
         assert_eq!(eval_expr(&mut env, &expr).unwrap(), Value::Bool(false));
@@ -5600,12 +5600,12 @@ mod tests {
 
         let mut program = Program {
             items: vec![spanned(TopLevel::System(SystemBlock {
-                name: "Test".to_string(),
+                name: "Test".into(),
                 decls: vec![spanned(DeclKind::Condition(ConditionDecl {
-                    name: "Stunned".to_string(),
+                    name: "Stunned".into(),
                     params: vec![],
-                    receiver_name: "bearer".to_string(),
-                    receiver_type: spanned(TypeExpr::Named("Character".to_string())),
+                    receiver_name: "bearer".into(),
+                    receiver_type: spanned(TypeExpr::Named("Character".into())),
                     receiver_with_groups: vec![],
                     clauses: vec![],
                 }))],
@@ -5619,10 +5619,10 @@ mod tests {
         let mut handler = ScriptedHandler::new();
         let mut env = make_env(&state, &mut handler, &interp);
 
-        let expr = spanned(ExprKind::Ident("Stunned".to_string()));
+        let expr = spanned(ExprKind::Ident("Stunned".into()));
         assert_eq!(
             eval_expr(&mut env, &expr).unwrap(),
-            Value::Condition { name: "Stunned".to_string(), args: BTreeMap::new() }
+            Value::Condition { name: "Stunned".into(), args: BTreeMap::new() }
         );
     }
 
@@ -5632,21 +5632,21 @@ mod tests {
 
         let mut program = Program {
             items: vec![spanned(TopLevel::System(SystemBlock {
-                name: "Test".to_string(),
+                name: "Test".into(),
                 decls: vec![
                     spanned(DeclKind::Condition(ConditionDecl {
-                        name: "Stunned".to_string(),
+                        name: "Stunned".into(),
                         params: vec![],
-                        receiver_name: "bearer".to_string(),
-                        receiver_type: spanned(TypeExpr::Named("Character".to_string())),
+                        receiver_name: "bearer".into(),
+                        receiver_type: spanned(TypeExpr::Named("Character".into())),
                         receiver_with_groups: vec![],
                         clauses: vec![],
                     })),
                     spanned(DeclKind::Condition(ConditionDecl {
-                        name: "Prone".to_string(),
+                        name: "Prone".into(),
                         params: vec![],
-                        receiver_name: "bearer".to_string(),
-                        receiver_type: spanned(TypeExpr::Named("Character".to_string())),
+                        receiver_name: "bearer".into(),
+                        receiver_type: spanned(TypeExpr::Named("Character".into())),
                         receiver_with_groups: vec![],
                         clauses: vec![],
                     })),
@@ -5664,16 +5664,16 @@ mod tests {
         // Same condition == itself
         let expr = spanned(ExprKind::BinOp {
             op: BinOp::Eq,
-            lhs: Box::new(spanned(ExprKind::Ident("Stunned".to_string()))),
-            rhs: Box::new(spanned(ExprKind::Ident("Stunned".to_string()))),
+            lhs: Box::new(spanned(ExprKind::Ident("Stunned".into()))),
+            rhs: Box::new(spanned(ExprKind::Ident("Stunned".into()))),
         });
         assert_eq!(eval_expr(&mut env, &expr).unwrap(), Value::Bool(true));
 
         // Different conditions != each other
         let expr = spanned(ExprKind::BinOp {
             op: BinOp::Eq,
-            lhs: Box::new(spanned(ExprKind::Ident("Stunned".to_string()))),
-            rhs: Box::new(spanned(ExprKind::Ident("Prone".to_string()))),
+            lhs: Box::new(spanned(ExprKind::Ident("Stunned".into()))),
+            rhs: Box::new(spanned(ExprKind::Ident("Prone".into()))),
         });
         assert_eq!(eval_expr(&mut env, &expr).unwrap(), Value::Bool(false));
     }
@@ -5683,7 +5683,7 @@ mod tests {
     // Helper to build an LValue
     fn make_lvalue(root: &str, segments: Vec<LValueSegment>) -> LValue {
         LValue {
-            root: root.to_string(),
+            root: Name::from(root),
             segments,
             span: dummy_span(),
         }
@@ -5697,7 +5697,7 @@ mod tests {
     // Helper to build a Let statement
     fn make_let(name: &str, value: Spanned<ExprKind>) -> Spanned<StmtKind> {
         spanned(StmtKind::Let {
-            name: name.to_string(),
+            name: Name::from(name),
             ty: None,
             value,
         })
@@ -5730,12 +5730,12 @@ mod tests {
         let mut env = make_env(&state, &mut handler, &interp);
 
         // Bind x = 10 in outer scope
-        env.bind("x".to_string(), Value::Int(10));
+        env.bind(Name::from("x"), Value::Int(10));
 
         // Enter a block: let x = 20 (shadows outer x)
         let block = spanned(vec![
             make_let("x", spanned(ExprKind::IntLit(20))),
-            spanned(StmtKind::Expr(spanned(ExprKind::Ident("x".to_string())))),
+            spanned(StmtKind::Expr(spanned(ExprKind::Ident("x".into())))),
         ]);
         let result = eval_block(&mut env, &block).unwrap();
         assert_eq!(result, Value::Int(20));
@@ -5756,7 +5756,7 @@ mod tests {
         let mut env = make_env(&state, &mut handler, &interp);
 
         // let x = 10; x = 20
-        env.bind("x".to_string(), Value::Int(10));
+        env.bind(Name::from("x"), Value::Int(10));
         let stmt = make_assign(
             make_lvalue("x", vec![]),
             AssignOp::Eq,
@@ -5775,7 +5775,7 @@ mod tests {
         let mut handler = ScriptedHandler::new();
         let mut env = make_env(&state, &mut handler, &interp);
 
-        env.bind("x".to_string(), Value::Int(10));
+        env.bind(Name::from("x"), Value::Int(10));
         let stmt = make_assign(
             make_lvalue("x", vec![]),
             AssignOp::PlusEq,
@@ -5794,7 +5794,7 @@ mod tests {
         let mut handler = ScriptedHandler::new();
         let mut env = make_env(&state, &mut handler, &interp);
 
-        env.bind("x".to_string(), Value::Int(10));
+        env.bind(Name::from("x"), Value::Int(10));
         let stmt = make_assign(
             make_lvalue("x", vec![]),
             AssignOp::MinusEq,
@@ -5834,11 +5834,11 @@ mod tests {
         let mut env = make_env(&state, &mut handler, &interp);
 
         let entity_ref = EntityRef(1);
-        env.bind("target".to_string(), Value::Entity(entity_ref));
+        env.bind(Name::from("target"), Value::Entity(entity_ref));
 
         // target.HP -= 5
         let stmt = make_assign(
-            make_lvalue("target", vec![LValueSegment::Field("HP".to_string())]),
+            make_lvalue("target", vec![LValueSegment::Field("HP".into())]),
             AssignOp::MinusEq,
             spanned(ExprKind::IntLit(5)),
         );
@@ -5878,12 +5878,12 @@ mod tests {
         let mut env = make_env(&state, &mut handler, &interp);
 
         let entity_ref = EntityRef(42);
-        env.bind("target".to_string(), Value::Entity(entity_ref));
+        env.bind(Name::from("target"), Value::Entity(entity_ref));
 
         // target.stats[STR] = 18
         let stmt = make_assign(
             make_lvalue("target", vec![
-                LValueSegment::Field("stats".to_string()),
+                LValueSegment::Field("stats".into()),
                 LValueSegment::Index(spanned(ExprKind::StringLit("STR".to_string()))),
             ]),
             AssignOp::Eq,
@@ -5923,20 +5923,20 @@ mod tests {
 
         let entity_ref = EntityRef(7);
         let trigger_struct = Value::Struct {
-            name: "__event_Attack".to_string(),
+            name: "__event_Attack".into(),
             fields: {
                 let mut f = BTreeMap::new();
-                f.insert("entity".to_string(), Value::Entity(entity_ref));
+                f.insert("entity".into(), Value::Entity(entity_ref));
                 f
             },
         };
-        env.bind("trigger".to_string(), trigger_struct);
+        env.bind(Name::from("trigger"), trigger_struct);
 
         // trigger.entity.HP -= 5
         let stmt = make_assign(
             make_lvalue("trigger", vec![
-                LValueSegment::Field("entity".to_string()),
-                LValueSegment::Field("HP".to_string()),
+                LValueSegment::Field("entity".into()),
+                LValueSegment::Field("HP".into()),
             ]),
             AssignOp::MinusEq,
             spanned(ExprKind::IntLit(5)),
@@ -5975,7 +5975,7 @@ mod tests {
 
         // turn.actions -= 1
         let stmt = make_assign(
-            make_lvalue("turn", vec![LValueSegment::Field("actions".to_string())]),
+            make_lvalue("turn", vec![LValueSegment::Field("actions".into())]),
             AssignOp::MinusEq,
             spanned(ExprKind::IntLit(1)),
         );
@@ -6004,7 +6004,7 @@ mod tests {
 
         // No turn_actor set
         let stmt = make_assign(
-            make_lvalue("turn", vec![LValueSegment::Field("actions".to_string())]),
+            make_lvalue("turn", vec![LValueSegment::Field("actions".into())]),
             AssignOp::MinusEq,
             spanned(ExprKind::IntLit(1)),
         );
@@ -6045,19 +6045,19 @@ mod tests {
         let mut env = make_env(&state, &mut handler, &interp);
 
         let my_struct = Value::Struct {
-            name: "Point".to_string(),
+            name: "Point".into(),
             fields: {
                 let mut f = BTreeMap::new();
-                f.insert("x".to_string(), Value::Int(1));
-                f.insert("y".to_string(), Value::Int(2));
+                f.insert("x".into(), Value::Int(1));
+                f.insert("y".into(), Value::Int(2));
                 f
             },
         };
-        env.bind("p".to_string(), my_struct);
+        env.bind(Name::from("p"), my_struct);
 
         // p.x = 10
         let stmt = make_assign(
-            make_lvalue("p", vec![LValueSegment::Field("x".to_string())]),
+            make_lvalue("p", vec![LValueSegment::Field("x".into())]),
             AssignOp::Eq,
             spanned(ExprKind::IntLit(10)),
         );
@@ -6082,18 +6082,18 @@ mod tests {
         let mut env = make_env(&state, &mut handler, &interp);
 
         let my_struct = Value::Struct {
-            name: "Stats".to_string(),
+            name: "Stats".into(),
             fields: {
                 let mut f = BTreeMap::new();
-                f.insert("strength".to_string(), Value::Int(10));
+                f.insert("strength".into(), Value::Int(10));
                 f
             },
         };
-        env.bind("s".to_string(), my_struct);
+        env.bind(Name::from("s"), my_struct);
 
         // s.strength += 5
         let stmt = make_assign(
-            make_lvalue("s", vec![LValueSegment::Field("strength".to_string())]),
+            make_lvalue("s", vec![LValueSegment::Field("strength".into())]),
             AssignOp::PlusEq,
             spanned(ExprKind::IntLit(5)),
         );
@@ -6117,18 +6117,18 @@ mod tests {
         let mut env = make_env(&state, &mut handler, &interp);
 
         let my_struct = Value::Struct {
-            name: "Point".to_string(),
+            name: "Point".into(),
             fields: {
                 let mut f = BTreeMap::new();
-                f.insert("x".to_string(), Value::Int(1));
+                f.insert("x".into(), Value::Int(1));
                 f
             },
         };
-        env.bind("p".to_string(), my_struct);
+        env.bind(Name::from("p"), my_struct);
 
         // p.z = 10 (no field z)
         let stmt = make_assign(
-            make_lvalue("p", vec![LValueSegment::Field("z".to_string())]),
+            make_lvalue("p", vec![LValueSegment::Field("z".into())]),
             AssignOp::Eq,
             spanned(ExprKind::IntLit(10)),
         );
@@ -6147,7 +6147,7 @@ mod tests {
         let mut handler = ScriptedHandler::new();
         let mut env = make_env(&state, &mut handler, &interp);
 
-        env.bind("nums".to_string(), Value::List(vec![
+        env.bind(Name::from("nums"), Value::List(vec![
             Value::Int(10), Value::Int(20), Value::Int(30),
         ]));
 
@@ -6176,7 +6176,7 @@ mod tests {
         let mut handler = ScriptedHandler::new();
         let mut env = make_env(&state, &mut handler, &interp);
 
-        env.bind("nums".to_string(), Value::List(vec![
+        env.bind(Name::from("nums"), Value::List(vec![
             Value::Int(1), Value::Int(2), Value::Int(3),
         ]));
 
@@ -6205,7 +6205,7 @@ mod tests {
         let mut handler = ScriptedHandler::new();
         let mut env = make_env(&state, &mut handler, &interp);
 
-        env.bind("nums".to_string(), Value::List(vec![
+        env.bind(Name::from("nums"), Value::List(vec![
             Value::Int(1), Value::Int(2),
         ]));
 
@@ -6228,7 +6228,7 @@ mod tests {
         let mut handler = ScriptedHandler::new();
         let mut env = make_env(&state, &mut handler, &interp);
 
-        env.bind("nums".to_string(), Value::List(vec![
+        env.bind(Name::from("nums"), Value::List(vec![
             Value::Int(10), Value::Int(20),
         ]));
 
@@ -6261,7 +6261,7 @@ mod tests {
 
         let mut map = BTreeMap::new();
         map.insert(Value::Str("a".to_string()), Value::Int(1));
-        env.bind("m".to_string(), Value::Map(map));
+        env.bind(Name::from("m"), Value::Map(map));
 
         // m["b"] = 2 (insert new entry)
         let stmt = make_assign(
@@ -6293,7 +6293,7 @@ mod tests {
 
         let mut map = BTreeMap::new();
         map.insert(Value::Str("a".to_string()), Value::Int(1));
-        env.bind("m".to_string(), Value::Map(map));
+        env.bind(Name::from("m"), Value::Map(map));
 
         // m["a"] = 99 (overwrite)
         let stmt = make_assign(
@@ -6324,7 +6324,7 @@ mod tests {
 
         let mut map = BTreeMap::new();
         map.insert(Value::Str("score".to_string()), Value::Int(100));
-        env.bind("m".to_string(), Value::Map(map));
+        env.bind(Name::from("m"), Value::Map(map));
 
         // m["score"] += 50
         let stmt = make_assign(
@@ -6354,7 +6354,7 @@ mod tests {
         let mut env = make_env(&state, &mut handler, &interp);
 
         let map = BTreeMap::new();
-        env.bind("m".to_string(), Value::Map(map));
+        env.bind(Name::from("m"), Value::Map(map));
 
         // m["x"] += 1 (key doesn't exist)
         let stmt = make_assign(
@@ -6378,7 +6378,7 @@ mod tests {
         let mut env = make_env(&state, &mut handler, &interp);
 
         let map = BTreeMap::new();
-        env.bind("m".to_string(), Value::Map(map));
+        env.bind(Name::from("m"), Value::Map(map));
 
         // m["x"] -= 1 (key doesn't exist)
         let stmt = make_assign(
@@ -6403,7 +6403,7 @@ mod tests {
         let mut handler = ScriptedHandler::new();
         let mut env = make_env(&state, &mut handler, &interp);
 
-        env.bind("x".to_string(), Value::Str("hello".to_string()));
+        env.bind(Name::from("x"), Value::Str("hello".to_string()));
 
         // x += 5 (string += int)
         let stmt = make_assign(
@@ -6424,7 +6424,7 @@ mod tests {
         let mut handler = ScriptedHandler::new();
         let mut env = make_env(&state, &mut handler, &interp);
 
-        env.bind("x".to_string(), Value::Int(i64::MAX));
+        env.bind(Name::from("x"), Value::Int(i64::MAX));
 
         let stmt = make_assign(
             make_lvalue("x", vec![]),
@@ -6444,7 +6444,7 @@ mod tests {
         let mut handler = ScriptedHandler::new();
         let mut env = make_env(&state, &mut handler, &interp);
 
-        env.bind("x".to_string(), Value::Int(i64::MIN));
+        env.bind(Name::from("x"), Value::Int(i64::MIN));
 
         let stmt = make_assign(
             make_lvalue("x", vec![]),
@@ -6466,7 +6466,7 @@ mod tests {
         let mut handler = ScriptedHandler::new();
         let mut env = make_env(&state, &mut handler, &interp);
 
-        env.bind("x".to_string(), Value::Float(1.5));
+        env.bind(Name::from("x"), Value::Float(1.5));
 
         let block = spanned(vec![
             make_assign(
@@ -6474,7 +6474,7 @@ mod tests {
                 AssignOp::PlusEq,
                 spanned(ExprKind::IntLit(2)),  // Int + Float works via mixed type
             ),
-            spanned(StmtKind::Expr(spanned(ExprKind::Ident("x".to_string())))),
+            spanned(StmtKind::Expr(spanned(ExprKind::Ident("x".into())))),
         ]);
         let result = eval_block(&mut env, &block).unwrap();
         assert_eq!(result, Value::Float(3.5));
@@ -6489,7 +6489,7 @@ mod tests {
         let mut handler = ScriptedHandler::new();
         let mut env = make_env(&state, &mut handler, &interp);
 
-        env.bind("x".to_string(), Value::Float(10.0));
+        env.bind(Name::from("x"), Value::Float(10.0));
 
         let stmt = make_assign(
             make_lvalue("x", vec![]),
@@ -6511,7 +6511,7 @@ mod tests {
         let mut handler = ScriptedHandler::new();
         let mut env = make_env(&state, &mut handler, &interp);
 
-        env.bind("x".to_string(), Value::Int(0));
+        env.bind(Name::from("x"), Value::Int(0));
 
         // Block: x = 42 (assign returns None as block value)
         let block = spanned(vec![
@@ -6547,7 +6547,7 @@ mod tests {
             total: 7,
             unmodified: 7,
         });
-        env.bind("x".to_string(), rr);
+        env.bind(Name::from("x"), rr);
 
         // x += 3 → RollResult coerced to Int(7), then 7 + 3 = 10
         let stmt = make_assign(
@@ -6570,7 +6570,7 @@ mod tests {
         let mut handler = ScriptedHandler::new();
         let mut env = make_env(&state, &mut handler, &interp);
 
-        env.bind("x".to_string(), Value::Int(10));
+        env.bind(Name::from("x"), Value::Int(10));
 
         // x += 5 → purely local, no effects
         let stmt = make_assign(
@@ -6594,7 +6594,7 @@ mod tests {
         let mut handler = ScriptedHandler::new();
         let mut env = make_env(&state, &mut handler, &interp);
 
-        env.bind("nums".to_string(), Value::List(vec![Value::Int(1)]));
+        env.bind(Name::from("nums"), Value::List(vec![Value::Int(1)]));
 
         // nums[i64::MIN] = 0 — should produce a RuntimeError, not panic
         let stmt = make_assign(
@@ -6622,7 +6622,7 @@ mod tests {
 
         let mut map = BTreeMap::new();
         map.insert(Value::None, Value::Int(1));
-        env.bind("m".to_string(), Value::Map(map));
+        env.bind(Name::from("m"), Value::Map(map));
 
         // m[option_none] = 99 — should overwrite the None entry, not create a duplicate
         let stmt = make_assign(
@@ -6657,7 +6657,7 @@ mod tests {
 
         let mut map = BTreeMap::new();
         map.insert(Value::None, Value::Int(10));
-        env.bind("m".to_string(), Value::Map(map));
+        env.bind(Name::from("m"), Value::Map(map));
 
         // m[option_none] += 5 — should find the None key semantically
         let stmt = make_assign(

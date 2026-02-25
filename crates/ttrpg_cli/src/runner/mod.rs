@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use rand::SeedableRng;
 use rand::rngs::StdRng;
 
+use ttrpg_ast::Name;
 use ttrpg_ast::ast::{DeclKind, OptionalGroup, Program, TopLevel};
 use ttrpg_ast::diagnostic::{Diagnostic, MultiSourceMap, Severity};
 use ttrpg_ast::module::ModuleMap;
@@ -94,7 +95,7 @@ impl Runner {
             .types
             .iter()
             .filter(|(_, info)| matches!(info, DeclInfo::Entity(_)))
-            .map(|(name, _)| name.clone())
+            .map(|(name, _)| name.to_string())
             .collect()
     }
 
@@ -104,7 +105,7 @@ impl Runner {
             .functions
             .values()
             .filter(|fi| matches!(fi.kind, FnKind::Action))
-            .map(|fi| fi.name.clone())
+            .map(|fi| fi.name.to_string())
             .collect()
     }
 
@@ -114,7 +115,7 @@ impl Runner {
             .functions
             .values()
             .filter(|fi| matches!(fi.kind, FnKind::Derive))
-            .map(|fi| fi.name.clone())
+            .map(|fi| fi.name.to_string())
             .collect()
     }
 
@@ -124,7 +125,7 @@ impl Runner {
             .functions
             .values()
             .filter(|fi| matches!(fi.kind, FnKind::Mechanic))
-            .map(|fi| fi.name.clone())
+            .map(|fi| fi.name.to_string())
             .collect()
     }
 
@@ -132,7 +133,7 @@ impl Runner {
     pub fn field_names(&self, entity_type: &str) -> Vec<String> {
         self.type_env
             .lookup_fields(entity_type)
-            .map(|fields| fields.iter().map(|f| f.name.clone()).collect())
+            .map(|fields| fields.iter().map(|f| f.name.to_string()).collect())
             .unwrap_or_default()
     }
 
@@ -147,7 +148,7 @@ impl Runner {
     pub fn group_names(&self, entity_type: &str) -> Vec<String> {
         match self.type_env.types.get(entity_type) {
             Some(DeclInfo::Entity(info)) => {
-                info.optional_groups.iter().map(|g| g.name.clone()).collect()
+                info.optional_groups.iter().map(|g| g.name.to_string()).collect()
             }
             _ => Vec::new(),
         }
@@ -157,7 +158,7 @@ impl Runner {
     pub fn group_field_names(&self, entity_type: &str, group_name: &str) -> Vec<String> {
         self.type_env
             .lookup_optional_group(entity_type, group_name)
-            .map(|g| g.fields.iter().map(|f| f.name.clone()).collect())
+            .map(|g| g.fields.iter().map(|f| f.name.to_string()).collect())
             .unwrap_or_default()
     }
 
@@ -235,10 +236,10 @@ impl Runner {
 
         let state = RefCellState(&self.game_state);
         let mut handler = CliHandler::new(&self.game_state, &self.reverse_handles, &mut self.rng, &mut self.roll_queue);
-        let bindings: std::collections::HashMap<String, Value> = self
+        let bindings: HashMap<Name, Value> = self
             .handles
             .iter()
-            .map(|(name, entity)| (name.clone(), Value::Entity(*entity)))
+            .map(|(name, entity)| (Name::from(name.as_str()), Value::Entity(*entity)))
             .collect();
         let result = interp
             .evaluate_expr_with_bindings(&state, &mut handler, &parsed, bindings)

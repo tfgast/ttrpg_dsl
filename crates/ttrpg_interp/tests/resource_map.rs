@@ -43,7 +43,7 @@ fn compile(source: &str) -> (ttrpg_ast::ast::Program, ttrpg_checker::CheckResult
     (program, result)
 }
 
-fn standard_turn_budget() -> BTreeMap<String, Value> {
+fn standard_turn_budget() -> BTreeMap<ttrpg_ast::Name, Value> {
     let mut b = BTreeMap::new();
     b.insert("actions".into(), Value::Int(1));
     b.insert("bonus_actions".into(), Value::Int(1));
@@ -354,10 +354,10 @@ fn resource_map_in_optional_group_is_clamped() {
     let mut slots = BTreeMap::new();
     slots.insert(Value::Int(1), Value::Int(0)); // at min
     let group_struct = Value::Struct {
-        name: "Spellcasting".to_string(),
+        name: "Spellcasting".into(),
         fields: {
             let mut f = BTreeMap::new();
-            f.insert("spell_slots".to_string(), Value::Map(slots));
+            f.insert("spell_slots".into(), Value::Map(slots));
             f
         },
     };
@@ -645,8 +645,8 @@ system "test" {
 
 fn ability_variant(variant: &str) -> Value {
     Value::EnumVariant {
-        enum_name: "Ability".to_string(),
-        variant: variant.to_string(),
+        enum_name: "Ability".into(),
+        variant: ttrpg_ast::Name::from(variant),
         fields: BTreeMap::new(),
     }
 }
@@ -765,11 +765,11 @@ fn local_to_entity_mutation_carries_bounds() {
 
     // Build event payload struct: { caster: Entity, level: Int }
     let payload = Value::Struct {
-        name: "__event_spell_cast".to_string(),
+        name: "__event_spell_cast".into(),
         fields: {
             let mut f = BTreeMap::new();
-            f.insert("caster".to_string(), Value::Entity(caster));
-            f.insert("level".to_string(), Value::Int(1));
+            f.insert("caster".into(), Value::Entity(caster));
+            f.insert("level".into(), Value::Int(1));
             f
         },
     };
@@ -815,11 +815,11 @@ fn local_to_entity_mutation_effect_has_bounds() {
     state.set_turn_budget(&reactor, standard_turn_budget());
 
     let payload = Value::Struct {
-        name: "__event_spell_cast".to_string(),
+        name: "__event_spell_cast".into(),
         fields: {
             let mut f = BTreeMap::new();
-            f.insert("caster".to_string(), Value::Entity(caster));
-            f.insert("level".to_string(), Value::Int(1));
+            f.insert("caster".into(), Value::Entity(caster));
+            f.insert("level".into(), Value::Int(1));
             f
         },
     };
@@ -960,10 +960,10 @@ fn struct_field_traversal_resolves_bounds() {
     let mut slots = BTreeMap::new();
     slots.insert(Value::Int(1), Value::Int(0)); // at min
     let stats = Value::Struct {
-        name: "Stats".to_string(),
+        name: "Stats".into(),
         fields: {
             let mut f = BTreeMap::new();
-            f.insert("spell_slots".to_string(), Value::Map(slots));
+            f.insert("spell_slots".into(), Value::Map(slots));
             f
         },
     };
@@ -1008,10 +1008,10 @@ fn struct_field_traversal_effect_has_bounds() {
     let mut slots = BTreeMap::new();
     slots.insert(Value::Int(1), Value::Int(4));
     let stats = Value::Struct {
-        name: "Stats".to_string(),
+        name: "Stats".into(),
         fields: {
             let mut f = BTreeMap::new();
-            f.insert("spell_slots".to_string(), Value::Map(slots));
+            f.insert("spell_slots".into(), Value::Map(slots));
             f
         },
     };

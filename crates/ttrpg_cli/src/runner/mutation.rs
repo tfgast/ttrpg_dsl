@@ -72,7 +72,7 @@ impl Runner {
         // Validate field names and types against entity schema
         if let Some(schema_fields) = self.type_env.lookup_fields(entity_type) {
             for (field_name, field_val) in &fields {
-                match schema_fields.iter().find(|f| f.name == *field_name) {
+                match schema_fields.iter().find(|f| f.name == field_name.as_str()) {
                     None => {
                         return Err(CliError::Message(format!(
                             "unknown field '{}' on entity type '{}'",
@@ -104,6 +104,7 @@ impl Runner {
         }
 
         // All validation passed — now apply mutations (cannot fail).
+        let fields: HashMap<Name, Value> = fields.into_iter().map(|(k, v)| (Name::from(k), v)).collect();
         let entity = self.game_state.borrow_mut().add_entity(entity_type, fields);
         self.handles.insert(handle.to_string(), entity);
         self.reverse_handles.insert(entity, handle.to_string());
@@ -111,7 +112,7 @@ impl Runner {
         for (group_name, struct_val) in prepared_groups {
             self.game_state.borrow_mut().write_field(
                 &entity,
-                &[FieldPathSegment::Field(group_name)],
+                &[FieldPathSegment::Field(Name::from(group_name))],
                 struct_val,
             );
         }
@@ -206,8 +207,8 @@ impl Runner {
                     })?;
 
                 let segments = vec![
-                    FieldPathSegment::Field(group_name.to_string()),
-                    FieldPathSegment::Field(field_name.to_string()),
+                    FieldPathSegment::Field(Name::from(group_name)),
+                    FieldPathSegment::Field(Name::from(field_name)),
                 ];
                 (
                     segments,
@@ -238,7 +239,7 @@ impl Runner {
                     }
                 };
                 (
-                    vec![FieldPathSegment::Field(field.to_string())],
+                    vec![FieldPathSegment::Field(Name::from(field))],
                     expected_ty,
                     format!("{}.{}", handle, field),
                 )
@@ -595,7 +596,7 @@ impl Runner {
         let struct_val = self.validate_and_prepare_group(group_name, &type_name, fields)?;
         self.game_state.borrow_mut().write_field(
             &entity,
-            &[FieldPathSegment::Field(group_name.to_string())],
+            &[FieldPathSegment::Field(Name::from(group_name))],
             struct_val.clone(),
         );
         self.output.push(format!(

@@ -457,7 +457,7 @@ fn turn_result(variant: &str, target: Option<i64>) -> Value {
     let fields = match target {
         Some(t) => {
             let mut m = BTreeMap::new();
-            m.insert("target".to_string(), Value::Int(t));
+            m.insert("target".into(), Value::Int(t));
             m
         }
         None => BTreeMap::new(),

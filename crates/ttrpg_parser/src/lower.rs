@@ -8,6 +8,7 @@ use std::collections::HashSet;
 
 use ttrpg_ast::ast::*;
 use ttrpg_ast::diagnostic::Diagnostic;
+use ttrpg_ast::name::Name;
 use ttrpg_ast::Span;
 use ttrpg_ast::Spanned;
 
@@ -29,10 +30,10 @@ pub fn lower_moves(mut program: Program, diags: &mut Vec<Diagnostic>) -> Program
 
 fn lower_system_moves(system: &mut SystemBlock, diags: &mut Vec<Diagnostic>) {
     // Collect synthetic names used by moves in this block to detect collisions.
-    let mut synthetic_names: HashSet<String> = HashSet::new();
+    let mut synthetic_names: HashSet<Name> = HashSet::new();
 
     // Also collect existing declaration names to check for collisions.
-    let existing_names: HashSet<String> = system
+    let existing_names: HashSet<Name> = system
         .decls
         .iter()
         .filter_map(|d| match &d.node {
@@ -70,7 +71,7 @@ fn lower_system_moves(system: &mut SystemBlock, diags: &mut Vec<Diagnostic>) {
 }
 
 /// Convert a move name to its synthetic mechanic name: `__{snake_case}_roll`.
-fn synthetic_mechanic_name(move_name: &str) -> String {
+fn synthetic_mechanic_name(move_name: &str) -> Name {
     let mut snake = String::new();
     for (i, ch) in move_name.chars().enumerate() {
         if ch.is_uppercase() && i > 0 {
@@ -78,14 +79,14 @@ fn synthetic_mechanic_name(move_name: &str) -> String {
         }
         snake.push(ch.to_lowercase().next().unwrap_or(ch));
     }
-    format!("__{}_roll", snake)
+    Name::from(format!("__{}_roll", snake))
 }
 
 fn lower_one_move(
     m: &MoveDecl,
     span: Span,
-    existing_names: &HashSet<String>,
-    synthetic_names: &mut HashSet<String>,
+    existing_names: &HashSet<Name>,
+    synthetic_names: &mut HashSet<Name>,
     diags: &mut Vec<Diagnostic>,
 ) -> Option<(FnDecl, ActionDecl)> {
     // 1. Validate outcomes: must be exactly {strong_hit, weak_hit, miss}
@@ -396,7 +397,7 @@ mod tests {
             decls: vec![table_decl, hook_decl],
         };
 
-        let existing: std::collections::HashSet<String> = system
+        let existing: std::collections::HashSet<Name> = system
             .decls
             .iter()
             .filter_map(|d| match &d.node {

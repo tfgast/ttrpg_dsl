@@ -22,7 +22,7 @@ impl Runner {
             .clone();
 
         for (field_name, field_val) in &fields {
-            match group_info.fields.iter().find(|f| f.name == *field_name) {
+            match group_info.fields.iter().find(|f| f.name == field_name.as_str()) {
                 None => {
                     return Err(CliError::Message(format!(
                         "unknown field '{}' in optional group '{}'",
@@ -45,7 +45,7 @@ impl Runner {
         self.fill_group_defaults(group_name, entity_type, &mut fields)?;
 
         for fi in &group_info.fields {
-            if !fi.has_default && !fields.contains_key(&fi.name) {
+            if !fi.has_default && !fields.contains_key(fi.name.as_str()) {
                 return Err(CliError::Message(format!(
                     "missing required field '{}' in optional group '{}'",
                     fi.name, group_name
@@ -53,9 +53,9 @@ impl Runner {
             }
         }
 
-        let btree_fields: BTreeMap<String, Value> = fields.into_iter().collect();
+        let btree_fields: BTreeMap<Name, Value> = fields.into_iter().map(|(k, v)| (Name::from(k), v)).collect();
         Ok(Value::Struct {
-            name: group_name.to_string(),
+            name: Name::from(group_name),
             fields: btree_fields,
         })
     }
@@ -97,7 +97,7 @@ impl Runner {
         };
 
         for field_def in &group.fields {
-            if fields.contains_key(&field_def.name) {
+            if fields.contains_key(field_def.name.as_str()) {
                 continue;
             }
             if let Some(ref default_expr) = field_def.default {
@@ -124,7 +124,7 @@ impl Runner {
                 for line in handler.log.drain(..) {
                     self.output.push(line);
                 }
-                fields.insert(field_def.name.clone(), val);
+                fields.insert(field_def.name.to_string(), val);
             }
         }
         Ok(())

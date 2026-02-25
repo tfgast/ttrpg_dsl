@@ -168,7 +168,7 @@ fn add_character(state: &mut GameState, name: &str, level: i64, hp: i64) -> Enti
     state.add_entity("Character", fields)
 }
 
-fn standard_turn_budget() -> BTreeMap<String, Value> {
+fn standard_turn_budget() -> BTreeMap<ttrpg_ast::Name, Value> {
     let mut b = BTreeMap::new();
     b.insert("actions".into(), Value::Int(1));
     b.insert("bonus_actions".into(), Value::Int(1));

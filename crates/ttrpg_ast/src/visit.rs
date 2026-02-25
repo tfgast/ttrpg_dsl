@@ -1,4 +1,5 @@
 use crate::ast::*;
+use crate::name::Name;
 use crate::{Span, Spanned};
 
 /// Trait for recursively visiting and mutating every [`Span`] inside an AST node.
@@ -48,6 +49,10 @@ impl<T: VisitSpansMut> VisitSpansMut for Box<T> {
 }
 
 impl VisitSpansMut for String {
+    fn visit_spans_mut(&mut self, _f: &mut dyn FnMut(&mut Span)) {}
+}
+
+impl VisitSpansMut for Name {
     fn visit_spans_mut(&mut self, _f: &mut dyn FnMut(&mut Span)) {}
 }
 

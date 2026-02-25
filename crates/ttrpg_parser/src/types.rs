@@ -82,7 +82,7 @@ impl Parser {
                         TypeExpr::Resource(Box::new(lo), Box::new(hi))
                     }
                     _ => {
-                        let name = name.clone();
+                        let name = ttrpg_ast::Name::from(name.clone());
                         self.advance();
                         // Check for qualified type: IDENT.IDENT
                         if matches!(self.peek(), TokenKind::Dot) {

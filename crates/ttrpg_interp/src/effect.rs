@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 use ttrpg_ast::ast::AssignOp;
+use ttrpg_ast::Name;
 
 use crate::state::EntityRef;
 use crate::value::{DiceExpr, RollResult, Value};
@@ -12,7 +13,7 @@ use crate::value::{DiceExpr, RollResult, Value};
 /// A nested access like `target.stats[STR]` is `[Field("stats"), Index(Value::Str("STR"))]`.
 #[derive(Debug, Clone, PartialEq)]
 pub enum FieldPathSegment {
-    Field(String),
+    Field(Name),
     Index(Value),
 }
 
@@ -20,15 +21,15 @@ pub enum FieldPathSegment {
 #[derive(Debug, Clone)]
 pub enum ActionKind {
     Action,
-    Reaction { event: String, trigger: Value },
-    Hook { event: String, trigger: Value },
+    Reaction { event: Name, trigger: Value },
+    Hook { event: Name, trigger: Value },
 }
 
 /// Identifies the source of a modifier.
 #[derive(Debug, Clone)]
 pub enum ModifySource {
-    Condition(String),
-    Option(String),
+    Condition(Name),
+    Option(Name),
 }
 
 /// Which phase of the modify pipeline produced a change.
@@ -41,7 +42,7 @@ pub enum Phase {
 /// A single field change recorded by the modify pipeline.
 #[derive(Debug, Clone)]
 pub struct FieldChange {
-    pub name: String,
+    pub name: Name,
     pub old: Value,
     pub new: Value,
 }
@@ -63,7 +64,7 @@ pub enum Effect {
         expr: DiceExpr,
     },
     ResolvePrompt {
-        name: String,
+        name: Name,
         params: Vec<Value>,
         hint: Option<String>,
         suggest: Option<Value>,
@@ -79,60 +80,60 @@ pub enum Effect {
     },
     ApplyCondition {
         target: EntityRef,
-        condition: String,
-        params: BTreeMap<String, Value>,
+        condition: Name,
+        params: BTreeMap<Name, Value>,
         duration: Value,
     },
     RemoveCondition {
         target: EntityRef,
-        condition: String,
+        condition: Name,
         /// `None` = remove all matching the name. `Some(params)` = remove only matching params.
-        params: Option<BTreeMap<String, Value>>,
+        params: Option<BTreeMap<Name, Value>>,
     },
     MutateTurnField {
         actor: EntityRef,
-        field: String,
+        field: Name,
         op: AssignOp,
         value: Value,
     },
     GrantGroup {
         entity: EntityRef,
-        group_name: String,
+        group_name: Name,
         fields: Value,
     },
     RevokeGroup {
         entity: EntityRef,
-        group_name: String,
+        group_name: Name,
     },
 
     // ── Decision effects ────────────────────────────────────
     DeductCost {
         actor: EntityRef,
-        token: String,
-        budget_field: String,
+        token: Name,
+        budget_field: Name,
     },
 
     // ── Gate effects ────────────────────────────────────────
     ActionStarted {
-        name: String,
+        name: Name,
         kind: ActionKind,
         actor: EntityRef,
         params: Vec<Value>,
     },
     RequiresCheck {
-        action: String,
+        action: Name,
         passed: bool,
         reason: Option<String>,
     },
 
     // ── Informational effects ───────────────────────────────
     ActionCompleted {
-        name: String,
+        name: Name,
         actor: EntityRef,
     },
     ModifyApplied {
         source: ModifySource,
-        target_fn: String,
+        target_fn: Name,
         phase: Phase,
         changes: Vec<FieldChange>,
     },

@@ -54,8 +54,8 @@ fn get_decls(program: &ttrpg_ast::ast::Program) -> &[ttrpg_ast::Spanned<DeclKind
 
 fn enum_variant(enum_name: &str, variant: &str) -> Value {
     Value::EnumVariant {
-        enum_name: enum_name.to_string(),
-        variant: variant.to_string(),
+        enum_name: ttrpg_ast::Name::from(enum_name),
+        variant: ttrpg_ast::Name::from(variant),
         fields: BTreeMap::new(),
     }
 }

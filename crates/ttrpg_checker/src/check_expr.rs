@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 
 use ttrpg_ast::ast::*;
+use ttrpg_ast::Name;
 use ttrpg_ast::Spanned;
 
 use crate::check::{Checker, Namespace};
@@ -162,7 +163,7 @@ impl<'a> Checker<'a> {
         if let Some(decl) = self.env.types.get(name) {
             self.check_name_visible(name, Namespace::Type, span);
             return match decl {
-                DeclInfo::Enum(_) => Ty::EnumType(name.to_string()),
+                DeclInfo::Enum(_) => Ty::EnumType(Name::from(name)),
                 DeclInfo::Struct(_) | DeclInfo::Entity(_) | DeclInfo::Unit(_) => {
                     self.error(
                         format!("type `{}` cannot be used as a value", name),
@@ -177,7 +178,7 @@ impl<'a> Checker<'a> {
         if let Some(ref current) = self.current_system {
             if let Some(aliases) = self.env.system_aliases.get(current) {
                 if aliases.contains_key(name) {
-                    return Ty::ModuleAlias(name.to_string());
+                    return Ty::ModuleAlias(Name::from(name));
                 }
             }
         }
@@ -575,7 +576,7 @@ impl<'a> Checker<'a> {
                 if matches!(obj_ty, Ty::Entity(_))
                     && self.env.lookup_optional_group(name, field).is_some()
                 {
-                    return Ty::OptionalGroupRef(name.clone(), field.to_string());
+                    return Ty::OptionalGroupRef(name.clone(), Name::from(field));
                 }
 
                 if let Some(fields) = self.env.lookup_fields(name) {
@@ -1487,7 +1488,7 @@ impl<'a> Checker<'a> {
                 ),
                 span,
             );
-            return Ty::Enum(enum_name.to_string());
+            return Ty::Enum(Name::from(enum_name));
         }
 
         // Track which field indices are satisfied (like check_call)
@@ -1571,7 +1572,7 @@ impl<'a> Checker<'a> {
             }
         }
 
-        Ty::Enum(enum_name.to_string())
+        Ty::Enum(Name::from(enum_name))
     }
 
     fn check_builtin_permissions(&mut self, name: &str, span: ttrpg_ast::Span) {
@@ -1618,8 +1619,8 @@ impl<'a> Checker<'a> {
         self.check_name_visible(name, Namespace::Type, span);
 
         let (declared_fields, result_ty) = match &decl {
-            DeclInfo::Struct(info) => (&info.fields, Ty::Struct(name.to_string())),
-            DeclInfo::Unit(info) => (&info.fields, Ty::UnitType(name.to_string())),
+            DeclInfo::Struct(info) => (&info.fields, Ty::Struct(Name::from(name))),
+            DeclInfo::Unit(info) => (&info.fields, Ty::UnitType(Name::from(name))),
             DeclInfo::Entity(_) => {
                 self.error(
                     format!(
@@ -2077,11 +2078,11 @@ impl<'a> Checker<'a> {
     /// Returns `Some("actor")` for `actor`, `Some("actor.foo")` for `actor.foo`, etc.
     /// Returns `None` for expressions involving indexing or non-variable roots,
     /// since narrowing cannot be statically tracked through dynamic access.
-    fn extract_path_key(&self, expr: &Spanned<ExprKind>) -> Option<String> {
+    fn extract_path_key(&self, expr: &Spanned<ExprKind>) -> Option<Name> {
         match &expr.node {
             ExprKind::Ident(name) => Some(name.clone()),
             ExprKind::FieldAccess { object, field } => {
-                self.extract_path_key(object).map(|p| format!("{}.{}", p, field))
+                self.extract_path_key(object).map(|p| Name::from(format!("{}.{}", p, field)))
             }
             ExprKind::Paren(inner) => self.extract_path_key(inner),
             _ => None,
@@ -2090,7 +2091,7 @@ impl<'a> Checker<'a> {
 
     /// Extract `(path_key, group_name)` narrowing pairs from a `has` condition.
     /// Supports `entity has Group`, `a and b` composition, and parenthesized expressions.
-    fn extract_has_narrowings(&self, expr: &Spanned<ExprKind>) -> Vec<(String, String)> {
+    fn extract_has_narrowings(&self, expr: &Spanned<ExprKind>) -> Vec<(Name, Name)> {
         match &expr.node {
             ExprKind::Has { entity, group_name } => {
                 if let Some(path_key) = self.extract_path_key(entity) {
@@ -2117,7 +2118,7 @@ impl<'a> Checker<'a> {
 
     /// Resolve the target system for a module alias in the current system.
     /// Returns the target system name, or emits an error and returns `None`.
-    fn resolve_alias_target(&mut self, alias: &str, _span: ttrpg_ast::Span) -> Option<String> {
+    fn resolve_alias_target(&mut self, alias: &str, _span: ttrpg_ast::Span) -> Option<Name> {
         let current = self.current_system.as_ref()?;
         let aliases = self.env.system_aliases.get(current)?;
         aliases.get(alias).cloned()
@@ -2147,7 +2148,7 @@ impl<'a> Checker<'a> {
             if sys_info.types.contains(field) {
                 if let Some(decl) = self.env.types.get(field) {
                     return match decl {
-                        DeclInfo::Enum(_) => Ty::EnumType(field.to_string()),
+                        DeclInfo::Enum(_) => Ty::EnumType(Name::from(field)),
                         DeclInfo::Struct(_) | DeclInfo::Entity(_) | DeclInfo::Unit(_) => {
                             self.error(
                                 format!("type `{}` cannot be used as a value", field),
@@ -2163,7 +2164,7 @@ impl<'a> Checker<'a> {
             if sys_info.variants.contains(field) {
                 if let Some(owners) = self.env.variant_to_enums.get(field) {
                     // Filter to enums that belong to this system
-                    let matching: Vec<&String> = owners.iter()
+                    let matching: Vec<&Name> = owners.iter()
                         .filter(|e| sys_info.types.contains(e.as_str()))
                         .collect();
                     let enum_name = if matching.len() == 1 {
@@ -2278,7 +2279,7 @@ impl<'a> Checker<'a> {
             if sys_info.variants.contains(field) {
                 if let Some(owners) = self.env.variant_to_enums.get(field) {
                     // Filter to enums that belong to this system
-                    let matching: Vec<&String> = owners.iter()
+                    let matching: Vec<&Name> = owners.iter()
                         .filter(|e| sys_info.types.contains(e.as_str()))
                         .collect();
                     let enum_name = if matching.len() == 1 {

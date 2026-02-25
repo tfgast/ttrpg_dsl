@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::ty::Ty;
+use ttrpg_ast::Name;
 use ttrpg_ast::Span;
 use ttrpg_ast::ast::TypeExpr;
 use ttrpg_ast::diagnostic::Diagnostic;
@@ -17,47 +18,47 @@ pub enum DeclInfo {
 
 #[derive(Debug, Clone)]
 pub struct EnumInfo {
-    pub name: String,
+    pub name: Name,
     pub ordered: bool,
     pub variants: Vec<VariantInfo>,
 }
 
 #[derive(Debug, Clone)]
 pub struct VariantInfo {
-    pub name: String,
-    pub fields: Vec<(String, Ty)>,
+    pub name: Name,
+    pub fields: Vec<(Name, Ty)>,
 }
 
 #[derive(Debug, Clone)]
 pub struct FieldInfo {
-    pub name: String,
+    pub name: Name,
     pub ty: Ty,
     pub has_default: bool,
 }
 
 #[derive(Debug, Clone)]
 pub struct StructInfo {
-    pub name: String,
+    pub name: Name,
     pub fields: Vec<FieldInfo>,
 }
 
 #[derive(Debug, Clone)]
 pub struct EntityInfo {
-    pub name: String,
+    pub name: Name,
     pub fields: Vec<FieldInfo>,
     pub optional_groups: Vec<OptionalGroupInfo>,
 }
 
 #[derive(Debug, Clone)]
 pub struct UnitInfo {
-    pub name: String,
+    pub name: Name,
     pub fields: Vec<FieldInfo>,
     pub suffix: Option<String>,
 }
 
 #[derive(Debug, Clone)]
 pub struct OptionalGroupInfo {
-    pub name: String,
+    pub name: Name,
     pub fields: Vec<FieldInfo>,
 }
 
@@ -76,7 +77,7 @@ pub enum FnKind {
 
 #[derive(Debug, Clone)]
 pub struct FnInfo {
-    pub name: String,
+    pub name: Name,
     pub kind: FnKind,
     pub params: Vec<ParamInfo>,
     pub return_type: Ty,
@@ -86,65 +87,65 @@ pub struct FnInfo {
 
 #[derive(Debug, Clone)]
 pub struct ParamInfo {
-    pub name: String,
+    pub name: Name,
     pub ty: Ty,
     pub has_default: bool,
     /// Optional group constraints from `with` clauses, enforced at call sites.
-    pub with_groups: Vec<String>,
+    pub with_groups: Vec<Name>,
 }
 
 #[derive(Debug, Clone)]
 pub struct ConditionInfo {
-    pub name: String,
+    pub name: Name,
     pub params: Vec<ParamInfo>,
-    pub receiver_name: String,
+    pub receiver_name: Name,
     pub receiver_type: Ty,
 }
 
 #[derive(Debug, Clone)]
 pub struct EventInfo {
-    pub name: String,
+    pub name: Name,
     pub params: Vec<ParamInfo>,
-    pub fields: Vec<(String, Ty)>,
+    pub fields: Vec<(Name, Ty)>,
 }
 
 /// The populated symbol table — built by Pass 1, consumed by Pass 2.
 #[derive(Debug, Clone)]
 pub struct TypeEnv {
-    pub types: HashMap<String, DeclInfo>,
-    pub functions: HashMap<String, FnInfo>,
-    pub conditions: HashMap<String, ConditionInfo>,
-    pub events: HashMap<String, EventInfo>,
-    pub variant_to_enums: HashMap<String, Vec<String>>,
-    pub resolved_variants: HashMap<Span, String>,
-    pub builtins: HashMap<String, FnInfo>,
-    pub suffix_to_unit: HashMap<String, String>,
-    pub options: HashSet<String>,
+    pub types: HashMap<Name, DeclInfo>,
+    pub functions: HashMap<Name, FnInfo>,
+    pub conditions: HashMap<Name, ConditionInfo>,
+    pub events: HashMap<Name, EventInfo>,
+    pub variant_to_enums: HashMap<Name, Vec<Name>>,
+    pub resolved_variants: HashMap<Span, Name>,
+    pub builtins: HashMap<Name, FnInfo>,
+    pub suffix_to_unit: HashMap<String, Name>,
+    pub options: HashSet<Name>,
 
     // ── Module awareness (populated when ModuleMap is provided) ───
     /// Declaration name → owning system name, per namespace.
-    pub type_owner: HashMap<String, String>,
-    pub function_owner: HashMap<String, String>,
-    pub condition_owner: HashMap<String, String>,
-    pub event_owner: HashMap<String, String>,
-    pub option_owner: HashMap<String, String>,
-    pub variant_owner: HashMap<String, String>,
+    pub type_owner: HashMap<Name, Name>,
+    pub function_owner: HashMap<Name, Name>,
+    pub condition_owner: HashMap<Name, Name>,
+    pub event_owner: HashMap<Name, Name>,
+    pub option_owner: HashMap<Name, Name>,
+    pub variant_owner: HashMap<Name, Name>,
 
     /// Per-system: which names are visible (own + imported).
-    pub system_visibility: HashMap<String, VisibleNames>,
+    pub system_visibility: HashMap<Name, VisibleNames>,
     /// Per-system: alias → target system name.
-    pub system_aliases: HashMap<String, HashMap<String, String>>,
+    pub system_aliases: HashMap<Name, HashMap<Name, Name>>,
 }
 
 /// Names visible to a system (own declarations + imported declarations).
 #[derive(Debug, Clone, Default)]
 pub struct VisibleNames {
-    pub types: HashSet<String>,
-    pub functions: HashSet<String>,
-    pub conditions: HashSet<String>,
-    pub events: HashSet<String>,
-    pub variants: HashSet<String>,
-    pub options: HashSet<String>,
+    pub types: HashSet<Name>,
+    pub functions: HashSet<Name>,
+    pub conditions: HashSet<Name>,
+    pub events: HashSet<Name>,
+    pub variants: HashSet<Name>,
+    pub options: HashSet<Name>,
 }
 
 impl Default for TypeEnv {
@@ -177,7 +178,7 @@ impl TypeEnv {
     }
 
     /// If exactly one enum owns this variant, return that enum's name.
-    pub fn unique_variant_owner(&self, variant: &str) -> Option<&str> {
+    pub fn unique_variant_owner(&self, variant: &str) -> Option<&Name> {
         match self.variant_to_enums.get(variant) {
             Some(owners) if owners.len() == 1 => Some(&owners[0]),
             _ => None,
@@ -187,11 +188,12 @@ impl TypeEnv {
     /// If a user-defined type with `name` exists, resolve to it; otherwise use the fallback.
     fn resolve_named_or(&self, name: &str, fallback: Ty) -> Ty {
         if let Some(decl) = self.types.get(name) {
+            let n = Name::from(name);
             match decl {
-                DeclInfo::Enum(_) => Ty::Enum(name.to_string()),
-                DeclInfo::Struct(_) => Ty::Struct(name.to_string()),
-                DeclInfo::Entity(_) => Ty::Entity(name.to_string()),
-                DeclInfo::Unit(_) => Ty::UnitType(name.to_string()),
+                DeclInfo::Enum(_) => Ty::Enum(n),
+                DeclInfo::Struct(_) => Ty::Struct(n),
+                DeclInfo::Entity(_) => Ty::Entity(n),
+                DeclInfo::Unit(_) => Ty::UnitType(n),
             }
         } else {
             fallback

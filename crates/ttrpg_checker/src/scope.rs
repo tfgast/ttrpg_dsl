@@ -1,5 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
+use ttrpg_ast::Name;
+
 use crate::ty::Ty;
 
 /// What kind of block we're inside — determines permissions.
@@ -61,10 +63,10 @@ pub struct VarBinding {
 #[derive(Debug)]
 struct Scope {
     block_kind: BlockKind,
-    bindings: HashMap<String, VarBinding>,
+    bindings: HashMap<Name, VarBinding>,
     /// Optional groups proven active for a given variable in this scope.
     /// Maps variable name → set of group names that are narrowed as active.
-    narrowed_groups: HashMap<String, HashSet<String>>,
+    narrowed_groups: HashMap<Name, HashSet<Name>>,
 }
 
 #[derive(Debug)]
@@ -96,7 +98,7 @@ impl ScopeStack {
         self.scopes.pop();
     }
 
-    pub fn bind(&mut self, name: String, binding: VarBinding) {
+    pub fn bind(&mut self, name: Name, binding: VarBinding) {
         debug_assert!(!self.scopes.is_empty(), "ScopeStack::bind called on empty stack");
         if let Some(scope) = self.scopes.last_mut() {
             scope.bindings.insert(name, binding);
@@ -169,7 +171,7 @@ impl ScopeStack {
     }
 
     /// Record that a variable's optional group is proven active in the current scope.
-    pub fn narrow_group(&mut self, var: String, group: String) {
+    pub fn narrow_group(&mut self, var: Name, group: Name) {
         debug_assert!(!self.scopes.is_empty(), "ScopeStack::narrow_group called on empty stack");
         if let Some(scope) = self.scopes.last_mut() {
             scope

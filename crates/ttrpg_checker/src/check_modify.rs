@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 
 use ttrpg_ast::ast::*;
+use ttrpg_ast::Name;
 use ttrpg_ast::Spanned;
 
 use crate::check::{Checker, Namespace};
@@ -13,13 +14,13 @@ impl<'a> Checker<'a> {
     /// Used by both modify and suppress clauses to set up their shared context.
     fn bind_condition_context(
         &mut self,
-        receiver: Option<(&str, &Spanned<TypeExpr>, &[String])>,
+        receiver: Option<(&Name, &Spanned<TypeExpr>, &[Name])>,
         condition_params: &[Param],
     ) {
         if let Some((receiver_name, receiver_type, with_groups)) = receiver {
             let recv_ty = self.env.resolve_type(receiver_type);
             self.scope.bind(
-                receiver_name.to_string(),
+                receiver_name.clone(),
                 VarBinding {
                     ty: recv_ty.clone(),
                     mutable: false,
@@ -102,7 +103,7 @@ impl<'a> Checker<'a> {
     pub fn check_modify_clause(
         &mut self,
         clause: &ModifyClause,
-        receiver: Option<(&str, &Spanned<TypeExpr>, &[String])>,
+        receiver: Option<(&Name, &Spanned<TypeExpr>, &[Name])>,
         condition_params: &[Param],
     ) {
         // Look up the target function
@@ -161,7 +162,7 @@ impl<'a> Checker<'a> {
 
         // Bring `result` into scope with the target's return type (mutable for post-call modification)
         self.scope.bind(
-            "result".to_string(),
+            Name::from("result"),
             VarBinding {
                 ty: fn_info.return_type.clone(),
                 mutable: true,
@@ -299,9 +300,9 @@ impl<'a> Checker<'a> {
     pub fn check_suppress_clause(
         &mut self,
         clause: &SuppressClause,
-        receiver_name: &str,
+        receiver_name: &Name,
         receiver_type: &Spanned<TypeExpr>,
-        receiver_with_groups: &[String],
+        receiver_with_groups: &[Name],
         condition_params: &[Param],
     ) {
         if let Some(event_info) = self.env.events.get(&clause.event_name).cloned() {

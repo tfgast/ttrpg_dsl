@@ -1,5 +1,6 @@
 use crate::parser::Parser;
 use ttrpg_ast::ast::*;
+use ttrpg_ast::name::Name;
 use ttrpg_ast::Spanned;
 use ttrpg_lexer::TokenKind;
 
@@ -54,11 +55,11 @@ impl Parser {
             }
 
             TokenKind::Ident(name) => {
-                let name = name.clone();
+                let raw_name = name.clone();
                 self.advance();
 
                 // some(pattern) — option destructuring
-                if name == "some" && matches!(self.peek(), TokenKind::LParen) {
+                if raw_name == "some" && matches!(self.peek(), TokenKind::LParen) {
                     self.advance(); // consume '('
                     let inner = self.parse_pattern()?;
                     self.expect(&TokenKind::RParen)?;
@@ -69,7 +70,7 @@ impl Parser {
                 }
 
                 // Bare `some` without parens — recover as some(_) with diagnostic
-                if name == "some" {
+                if raw_name == "some" {
                     self.error(
                         "bare `some` in pattern position — use `some(x)` to match or `_` for wildcard"
                     );
@@ -79,6 +80,8 @@ impl Parser {
                         self.end_span(start),
                     ));
                 }
+
+                let name = Name::from(raw_name);
 
                 // Check for qualified: IDENT.IDENT or IDENT.IDENT(...)
                 if matches!(self.peek(), TokenKind::Dot) {

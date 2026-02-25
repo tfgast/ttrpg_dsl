@@ -143,7 +143,7 @@ impl Runner {
             }
 
             // Show granted optional groups
-            if let Some(DeclInfo::Entity(info)) = self.type_env.types.get(&type_name) {
+            if let Some(DeclInfo::Entity(info)) = self.type_env.types.get(type_name.as_str()) {
                 let gs = self.game_state.borrow();
                 for group_info in &info.optional_groups {
                     if let Some(Value::Struct { fields, .. }) =
@@ -194,8 +194,8 @@ impl Runner {
             let gs = self.game_state.borrow();
             let type_name = gs
                 .entity_type_name(entity)
-                .unwrap_or("?")
-                .to_string();
+                .map(|n| n.to_string())
+                .unwrap_or_else(|| "?".to_string());
             drop(gs);
 
             self.output.push(format!("{} ({})", handle, type_name));
@@ -217,7 +217,7 @@ impl Runner {
             }
 
             // Show granted optional groups
-            if let Some(DeclInfo::Entity(info)) = self.type_env.types.get(&type_name) {
+            if let Some(DeclInfo::Entity(info)) = self.type_env.types.get(type_name.as_str()) {
                 let gs = self.game_state.borrow();
                 for group_info in &info.optional_groups {
                     if let Some(Value::Struct { fields, .. }) =

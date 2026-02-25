@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
+use ttrpg_ast::Name;
 use ttrpg_ast::ast::*;
 use ttrpg_ast::diagnostic::Diagnostic;
 use ttrpg_ast::module::ModuleMap;
@@ -27,10 +28,10 @@ pub struct Checker<'a> {
     /// The ModuleMap, if module-aware checking is enabled.
     pub modules: Option<&'a ModuleMap>,
     /// The system currently being checked (set during check_program iteration).
-    pub current_system: Option<String>,
+    pub current_system: Option<Name>,
     /// Maps each bare variant expression span to its resolved owning enum.
     /// Transferred to `TypeEnv` after checking for use by the interpreter.
-    pub resolved_variants: HashMap<Span, String>,
+    pub resolved_variants: HashMap<Span, Name>,
 }
 
 impl<'a> Checker<'a> {
@@ -58,7 +59,7 @@ impl<'a> Checker<'a> {
     /// - 1 owner: records the resolution and returns the enum name.
     /// - >1 owners: emits an ambiguity error listing qualified forms, returns `None`.
     /// - 0 owners: returns `None` (not a variant at all).
-    pub fn resolve_bare_variant(&mut self, variant: &str, span: Span) -> Option<String> {
+    pub fn resolve_bare_variant(&mut self, variant: &str, span: Span) -> Option<Name> {
         self.resolve_bare_variant_with_hint(variant, span, None)
     }
 
@@ -69,14 +70,14 @@ impl<'a> Checker<'a> {
         variant: &str,
         span: Span,
         hint: Option<&Ty>,
-    ) -> Option<String> {
+    ) -> Option<Name> {
         let all_owners = match self.env.variant_to_enums.get(variant) {
             Some(owners) => owners.clone(),
             None => return None,
         };
 
         // Filter owners by system visibility when in module-aware mode
-        let owners: Vec<String> = if let Some(ref current) = self.current_system {
+        let owners: Vec<Name> = if let Some(ref current) = self.current_system {
             if let Some(vis) = self.env.system_visibility.get(current) {
                 all_owners.iter().filter(|o| vis.types.contains(o.as_str())).cloned().collect()
             } else {
@@ -101,16 +102,18 @@ impl<'a> Checker<'a> {
             // Try to disambiguate via expected-type hint
             if let Some(hinted) = enum_name_from_hint(hint) {
                 if owners.iter().any(|o| o == hinted) {
-                    self.resolved_variants.insert(span, hinted.to_string());
-                    return Some(hinted.to_string());
+                    let n = Name::from(hinted);
+                    self.resolved_variants.insert(span, n.clone());
+                    return Some(n);
                 }
             }
             let qualified: Vec<String> = owners.iter().map(|e| format!("{}.{}", e, variant)).collect();
+            let owners_display: Vec<&str> = owners.iter().map(|o| o.as_str()).collect();
             self.error(
                 format!(
                     "ambiguous variant `{}`; could belong to: {}. Use qualified form: {}",
                     variant,
-                    owners.join(", "),
+                    owners_display.join(", "),
                     qualified.join(" or "),
                 ),
                 span,
@@ -542,7 +545,7 @@ impl<'a> Checker<'a> {
             // keyword) but keeps the implementation simple and the behavior predictable:
             // named bindings always claim their slot, positional bindings always fill
             // the leftmost unclaimed slot.
-            let named_param_names: HashSet<String> = trigger
+            let named_param_names: HashSet<Name> = trigger
                 .bindings
                 .iter()
                 .filter_map(|b| b.name.clone())
@@ -637,7 +640,7 @@ impl<'a> Checker<'a> {
             self.scope.bind(
                 "trigger".into(),
                 VarBinding {
-                    ty: Ty::Struct(format!("__event_{}", trigger.event_name)),
+                    ty: Ty::Struct(Name::from(format!("__event_{}", trigger.event_name))),
                     mutable: false,
                     is_local: false,
                 },
@@ -916,9 +919,9 @@ impl<'a> Checker<'a> {
     /// Validate `with` group constraints on a parameter or receiver, and add narrowings.
     pub fn validate_with_groups(
         &mut self,
-        var_name: &str,
+        var_name: &Name,
         ty: &Ty,
-        with_groups: &[String],
+        with_groups: &[Name],
         span: Span,
     ) {
         for group_name in with_groups {
@@ -946,7 +949,7 @@ impl<'a> Checker<'a> {
                 );
             }
             self.scope
-                .narrow_group(var_name.to_string(), group_name.clone());
+                .narrow_group(var_name.clone(), group_name.clone());
         }
     }
 
@@ -954,7 +957,7 @@ impl<'a> Checker<'a> {
     pub fn check_block_with_narrowings(
         &mut self,
         block: &Block,
-        narrowings: &[(String, String)],
+        narrowings: &[(Name, Name)],
     ) -> Ty {
         self.scope.push(BlockKind::Inner);
         for (var, group) in narrowings {

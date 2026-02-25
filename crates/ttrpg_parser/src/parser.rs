@@ -1,5 +1,6 @@
 use crate::diagnostic::Diagnostic;
 use ttrpg_ast::ast::*;
+use ttrpg_ast::name::Name;
 use ttrpg_ast::{Span, Spanned};
 use ttrpg_lexer::{Lexer, Token, TokenKind};
 
@@ -80,11 +81,11 @@ impl Parser {
         }
     }
 
-    pub(crate) fn expect_ident(&mut self) -> Result<(String, Span), ()> {
+    pub(crate) fn expect_ident(&mut self) -> Result<(Name, Span), ()> {
         match self.peek().clone() {
             TokenKind::Ident(name) => {
                 let tok = self.advance();
-                Ok((name, tok.span))
+                Ok((Name::from(name), tok.span))
             }
             _ => {
                 self.error(format!("expected identifier, found {:?}", self.peek()));
@@ -252,7 +253,8 @@ impl Parser {
 
     fn parse_system_block(&mut self) -> Result<SystemBlock, ()> {
         self.expect_soft_keyword("system")?;
-        let (name, _) = self.expect_string()?;
+        let (name_str, _) = self.expect_string()?;
+        let name: Name = name_str.into();
         self.expect(&TokenKind::LBrace)?;
         self.skip_newlines();
 

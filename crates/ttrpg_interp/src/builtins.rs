@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use ttrpg_ast::Name;
 use ttrpg_ast::Span;
 
 use crate::Env;
@@ -309,7 +310,7 @@ fn builtin_apply_condition(
             // Also accept String for condition name (common in DSL)
             let effect = Effect::ApplyCondition {
                 target: *target,
-                condition: cond_name.clone(),
+                condition: Name::from(cond_name.as_str()),
                 params: BTreeMap::new(),
                 duration: duration.clone(),
             };
@@ -355,7 +356,7 @@ fn builtin_remove_condition(
         (Some(Value::Entity(target)), Some(Value::Str(cond_name))) => {
             let effect = Effect::RemoveCondition {
                 target: *target,
-                condition: cond_name.clone(),
+                condition: Name::from(cond_name.as_str()),
                 params: None,
             };
             validate_mutation_response(env.handler.handle(effect), "RemoveCondition", span)?;

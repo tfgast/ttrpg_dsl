@@ -88,11 +88,11 @@ pub fn parse_multi(sources: &[(String, String)]) -> ParseMultiResult {
         let program = lower_moves(program, &mut diags);
 
         // Extract file-system info
-        let mut system_names = Vec::new();
+        let mut system_names: Vec<String> = Vec::new();
         let mut use_decls = Vec::new();
         for item in &program.items {
             match &item.node {
-                TopLevel::System(s) => system_names.push(s.name.clone()),
+                TopLevel::System(s) => system_names.push(s.name.to_string()),
                 TopLevel::Use(u) => use_decls.push(u.clone()),
             }
         }

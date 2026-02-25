@@ -224,7 +224,7 @@ impl<'a> Checker<'a> {
         };
 
         let mut current = root_ty;
-        let mut path_key = lvalue.root.clone();
+        let mut path_key = lvalue.root.to_string();
         for seg in &lvalue.segments {
             if current.is_error() {
                 return Ty::Error;

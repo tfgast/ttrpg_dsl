@@ -291,7 +291,7 @@ impl Parser {
 
     /// Parse an optional `with Group1, Group2` constraint list.
     /// Returns an empty vec if no `with` keyword is present.
-    fn parse_with_groups(&mut self) -> Result<Vec<String>, ()> {
+    fn parse_with_groups(&mut self) -> Result<Vec<ttrpg_ast::Name>, ()> {
         if !self.at_ident("with") {
             return Ok(vec![]);
         }
@@ -831,7 +831,7 @@ impl Parser {
         let extends = if self.at_ident("extends") {
             self.advance();
             let (s, _) = self.expect_string()?;
-            Some(s)
+            Some(ttrpg_ast::Name::from(s))
         } else {
             None
         };
@@ -1037,7 +1037,7 @@ impl Parser {
         let suffix = if self.at_ident("suffix") {
             self.advance();
             let (s, _) = self.expect_ident()?;
-            Some(s)
+            Some(s.into_inner())
         } else {
             None
         };

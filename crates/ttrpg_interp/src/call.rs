@@ -1,7 +1,6 @@
 use std::collections::BTreeMap;
 
-use ttrpg_ast::Span;
-use ttrpg_ast::Spanned;
+use ttrpg_ast::{Name, Span, Spanned};
 use ttrpg_ast::ast::{Arg, ExprKind, Param};
 use ttrpg_checker::env::{DeclInfo, FnKind, ParamInfo};
 
@@ -33,7 +32,7 @@ pub(crate) fn eval_call(
             //    Variants shadow functions with the same name, matching the
             //    checker's resolution order (check_expr.rs:630).
             let resolved = env.interp.type_env.resolved_variants.get(&callee.span).cloned()
-                .or_else(|| env.interp.type_env.unique_variant_owner(name).map(|s| s.to_string()));
+                .or_else(|| env.interp.type_env.unique_variant_owner(name).cloned());
             if let Some(enum_name) = resolved {
                 return construct_enum_variant(env, &enum_name, name, args, call_span);
             }
@@ -70,8 +69,8 @@ pub(crate) fn eval_call(
                     .map(|ci| ci.params.clone())
                     .unwrap_or_default();
                 let bound = bind_args(&param_infos, args, Some(&cond_decl.params), env, call_span)?;
-                let cond_args: BTreeMap<String, Value> = bound.into_iter().collect();
-                return Ok(Value::Condition { name: name.to_string(), args: cond_args });
+                let cond_args: BTreeMap<Name, Value> = bound.into_iter().collect();
+                return Ok(Value::Condition { name: name.clone(), args: cond_args });
             }
 
             // 4. Check if it's a function (user-defined or builtin)
@@ -527,7 +526,7 @@ pub(crate) fn evaluate_fn_with_values(
         ));
     }
 
-    let mut bound: Vec<(String, Value)> = Vec::new();
+    let mut bound: Vec<(Name, Value)> = Vec::new();
     for (i, val) in args.into_iter().enumerate() {
         bound.push((fn_info.params[i].name.clone(), val));
     }
@@ -871,7 +870,7 @@ fn dispatch_action(
     };
 
     // Remaining bound arguments (skip receiver) are the action's regular params
-    let action_args: Vec<(String, Value)> = bound[1..].to_vec();
+    let action_args: Vec<(Name, Value)> = bound[1..].to_vec();
 
     execute_action(env, &action_decl, actor, action_args, call_span)
 }
@@ -934,7 +933,7 @@ fn dispatch_prompt(
 
     // Emit ResolvePrompt effect
     let effect = Effect::ResolvePrompt {
-        name: name.to_string(),
+        name: Name::from(name),
         params: param_values,
         hint,
         suggest,
@@ -986,8 +985,8 @@ fn construct_enum_variant(
 
     if variant_info.fields.is_empty() && args.is_empty() {
         return Ok(Value::EnumVariant {
-            enum_name: enum_name.to_string(),
-            variant: variant_name.to_string(),
+            enum_name: Name::from(enum_name),
+            variant: Name::from(variant_name),
             fields: BTreeMap::new(),
         });
     }
@@ -1012,8 +1011,8 @@ fn construct_enum_variant(
     }
 
     Ok(Value::EnumVariant {
-        enum_name: enum_name.to_string(),
-        variant: variant_name.to_string(),
+        enum_name: Name::from(enum_name),
+        variant: Name::from(variant_name),
         fields,
     })
 }
@@ -1032,7 +1031,7 @@ fn bind_args(
     ast_params: Option<&[Param]>,
     env: &mut Env,
     call_span: Span,
-) -> Result<Vec<(String, Value)>, RuntimeError> {
+) -> Result<Vec<(Name, Value)>, RuntimeError> {
     let mut result: Vec<Option<Value>> = vec![None; params.len()];
 
     // Pre-pass: determine which slots are claimed by named args so positional
@@ -1120,7 +1119,7 @@ fn fill_defaults(
     ast_params: Option<&[Param]>,
     env: &mut Env,
     call_span: Span,
-) -> Result<Vec<(String, Value)>, RuntimeError> {
+) -> Result<Vec<(Name, Value)>, RuntimeError> {
     let mut bound = Vec::with_capacity(params.len());
     for (i, param) in params.iter().enumerate() {
         match result[i].take() {
@@ -1281,8 +1280,8 @@ mod tests {
     struct TestState {
         fields: HashMap<(u64, String), Value>,
         conditions: HashMap<u64, Vec<ActiveCondition>>,
-        turn_budgets: HashMap<u64, BTreeMap<String, Value>>,
-        enabled_options: Vec<String>,
+        turn_budgets: HashMap<u64, BTreeMap<Name, Value>>,
+        enabled_options: Vec<Name>,
     }
 
     impl TestState {
@@ -1303,10 +1302,10 @@ mod tests {
         fn read_conditions(&self, entity: &EntityRef) -> Option<Vec<ActiveCondition>> {
             self.conditions.get(&entity.0).cloned()
         }
-        fn read_turn_budget(&self, entity: &EntityRef) -> Option<BTreeMap<String, Value>> {
+        fn read_turn_budget(&self, entity: &EntityRef) -> Option<BTreeMap<Name, Value>> {
             self.turn_budgets.get(&entity.0).cloned()
         }
-        fn read_enabled_options(&self) -> Vec<String> {
+        fn read_enabled_options(&self) -> Vec<Name> {
             self.enabled_options.clone()
         }
         fn position_eq(&self, a: &Value, b: &Value) -> bool {

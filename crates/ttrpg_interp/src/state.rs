@@ -1,6 +1,8 @@
 use crate::effect::FieldPathSegment;
 use std::collections::BTreeMap;
 
+use ttrpg_ast::Name;
+
 use crate::value::Value;
 
 // ── EntityRef ───────────────────────────────────────────────────
@@ -28,10 +30,10 @@ pub struct ActiveCondition {
     /// through multiple entity-typed parameters.
     pub id: u64,
     /// Condition name (e.g., "Prone").
-    pub name: String,
+    pub name: Name,
     /// Condition parameters (e.g., `source: Entity(1)` for `Frightened(source: attacker)`).
     /// Empty map for conditions with no parameters.
-    pub params: BTreeMap<String, Value>,
+    pub params: BTreeMap<Name, Value>,
     /// Entity bearing this condition.
     pub bearer: EntityRef,
     /// Ordering timestamp (oldest first).
@@ -62,10 +64,10 @@ pub trait StateProvider {
 
     /// Current turn budget for an entity as a dynamic field map.
     /// Returns `None` if the entity doesn't exist.
-    fn read_turn_budget(&self, entity: &EntityRef) -> Option<BTreeMap<String, Value>>;
+    fn read_turn_budget(&self, entity: &EntityRef) -> Option<BTreeMap<Name, Value>>;
 
     /// Names of currently enabled options.
-    fn read_enabled_options(&self) -> Vec<String>;
+    fn read_enabled_options(&self) -> Vec<Name>;
 
     /// Test equality of two opaque Position values.
     /// The interpreter calls this when evaluating `==` or `!=` on Positions.
@@ -77,7 +79,7 @@ pub trait StateProvider {
 
     /// Get the entity's declared type name (e.g. "Character", "Monster").
     /// Returns `None` if unknown. Used by `grant` to resolve group defaults.
-    fn entity_type_name(&self, _entity: &EntityRef) -> Option<String> {
+    fn entity_type_name(&self, _entity: &EntityRef) -> Option<Name> {
         None
     }
 }
@@ -97,7 +99,7 @@ pub trait WritableState: StateProvider {
     /// Remove a condition from an entity by name.
     /// If `params` is `Some`, only remove conditions whose params match.
     /// If `params` is `None`, remove all conditions with the given name.
-    fn remove_condition(&mut self, entity: &EntityRef, name: &str, params: Option<&BTreeMap<String, Value>>);
+    fn remove_condition(&mut self, entity: &EntityRef, name: &str, params: Option<&BTreeMap<Name, Value>>);
 
     /// Write a value to a turn budget field.
     fn write_turn_field(&mut self, entity: &EntityRef, field: &str, value: Value);
@@ -116,8 +118,8 @@ mod tests {
     struct TestState {
         fields: HashMap<(u64, String), Value>,
         conditions: HashMap<u64, Vec<ActiveCondition>>,
-        turn_budgets: HashMap<u64, BTreeMap<String, Value>>,
-        enabled_options: Vec<String>,
+        turn_budgets: HashMap<u64, BTreeMap<Name, Value>>,
+        enabled_options: Vec<Name>,
     }
 
     impl TestState {
@@ -140,11 +142,11 @@ mod tests {
             self.conditions.get(&entity.0).cloned()
         }
 
-        fn read_turn_budget(&self, entity: &EntityRef) -> Option<BTreeMap<String, Value>> {
+        fn read_turn_budget(&self, entity: &EntityRef) -> Option<BTreeMap<Name, Value>> {
             self.turn_budgets.get(&entity.0).cloned()
         }
 
-        fn read_enabled_options(&self) -> Vec<String> {
+        fn read_enabled_options(&self) -> Vec<Name> {
             self.enabled_options.clone()
         }
 
@@ -229,7 +231,7 @@ mod tests {
 
         let opts = state.read_enabled_options();
         assert_eq!(opts.len(), 2);
-        assert!(opts.contains(&"flanking".to_string()));
+        assert!(opts.contains(&Name::from("flanking")));
     }
 
     #[test]

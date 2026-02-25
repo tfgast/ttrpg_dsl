@@ -1,6 +1,7 @@
 use std::cell::RefCell;
 use std::collections::HashSet;
 
+use ttrpg_ast::Name;
 use ttrpg_ast::ast::AssignOp;
 
 use crate::RuntimeError;
@@ -87,11 +88,11 @@ impl<S: WritableState> StateProvider for StateAdapter<S> {
     fn read_turn_budget(
         &self,
         entity: &EntityRef,
-    ) -> Option<std::collections::BTreeMap<String, Value>> {
+    ) -> Option<std::collections::BTreeMap<Name, Value>> {
         self.state.borrow().read_turn_budget(entity)
     }
 
-    fn read_enabled_options(&self) -> Vec<String> {
+    fn read_enabled_options(&self) -> Vec<Name> {
         self.state.borrow().read_enabled_options()
     }
 
@@ -103,7 +104,7 @@ impl<S: WritableState> StateProvider for StateAdapter<S> {
         self.state.borrow().distance(a, b)
     }
 
-    fn entity_type_name(&self, entity: &EntityRef) -> Option<String> {
+    fn entity_type_name(&self, entity: &EntityRef) -> Option<Name> {
         self.state.borrow().entity_type_name(entity)
     }
 }
@@ -596,8 +597,8 @@ mod tests {
     struct TestWritableState {
         fields: HashMap<(u64, String), Value>,
         conditions: HashMap<u64, Vec<ActiveCondition>>,
-        turn_budgets: HashMap<u64, BTreeMap<String, Value>>,
-        enabled_options: Vec<String>,
+        turn_budgets: HashMap<u64, BTreeMap<Name, Value>>,
+        enabled_options: Vec<Name>,
         next_condition_id: u64,
     }
 
@@ -622,11 +623,11 @@ mod tests {
             self.conditions.get(&entity.0).cloned()
         }
 
-        fn read_turn_budget(&self, entity: &EntityRef) -> Option<BTreeMap<String, Value>> {
+        fn read_turn_budget(&self, entity: &EntityRef) -> Option<BTreeMap<Name, Value>> {
             self.turn_budgets.get(&entity.0).cloned()
         }
 
-        fn read_enabled_options(&self) -> Vec<String> {
+        fn read_enabled_options(&self) -> Vec<Name> {
             self.enabled_options.clone()
         }
 
@@ -643,7 +644,7 @@ mod tests {
         fn write_field(&mut self, entity: &EntityRef, path: &[FieldPathSegment], value: Value) {
             if let Some(FieldPathSegment::Field(f)) = path.first() {
                 if path.len() == 1 {
-                    self.fields.insert((entity.0, f.clone()), value);
+                    self.fields.insert((entity.0, f.to_string()), value);
                 }
                 // Nested paths: simplified for tests
             }
@@ -656,7 +657,7 @@ mod tests {
             self.conditions.entry(entity.0).or_default().push(cond);
         }
 
-        fn remove_condition(&mut self, entity: &EntityRef, name: &str, params: Option<&BTreeMap<String, Value>>) {
+        fn remove_condition(&mut self, entity: &EntityRef, name: &str, params: Option<&BTreeMap<Name, Value>>) {
             if let Some(conds) = self.conditions.get_mut(&entity.0) {
                 conds.retain(|c| {
                     if c.name != name {
@@ -674,7 +675,7 @@ mod tests {
             self.turn_budgets
                 .entry(entity.0)
                 .or_default()
-                .insert(field.to_string(), value);
+                .insert(Name::from(field), value);
         }
 
         fn remove_field(&mut self, entity: &EntityRef, field: &str) {
@@ -1118,13 +1119,13 @@ mod tests {
         // 1. Costs one action
         // 2. Has a resolve block returning the literal 42
         let action = ActionDecl {
-            name: "SimpleAttack".to_string(),
-            receiver_name: "actor".to_string(),
-            receiver_type: spanned(TypeExpr::Named("Character".to_string())),
+            name: "SimpleAttack".into(),
+            receiver_name: "actor".into(),
+            receiver_type: spanned(TypeExpr::Named("Character".into())),
             receiver_with_groups: vec![],
             params: vec![],
             cost: Some(CostClause {
-                tokens: vec![spanned("action".to_string())],
+                tokens: vec![spanned(Name::from("action"))],
                 span: span(),
             }),
             requires: None,

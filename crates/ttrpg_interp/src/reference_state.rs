@@ -2,6 +2,8 @@ use std::any::Any;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
 
+use ttrpg_ast::Name;
+
 use crate::effect::FieldPathSegment;
 use crate::state::{ActiveCondition, EntityRef, StateProvider, WritableState};
 use crate::value::{PositionValue, Value};
@@ -25,8 +27,8 @@ impl GridPosition {
 // ── EntityState ────────────────────────────────────────────────
 
 struct EntityState {
-    name: String,
-    fields: HashMap<String, Value>,
+    name: Name,
+    fields: HashMap<Name, Value>,
 }
 
 // ── GameState ──────────────────────────────────────────────────
@@ -39,8 +41,8 @@ struct EntityState {
 pub struct GameState {
     entities: HashMap<u64, EntityState>,
     conditions: HashMap<u64, Vec<ActiveCondition>>,
-    turn_budgets: HashMap<u64, BTreeMap<String, Value>>,
-    enabled_options: HashSet<String>,
+    turn_budgets: HashMap<u64, BTreeMap<Name, Value>>,
+    enabled_options: HashSet<Name>,
     next_entity_id: u64,
     next_condition_id: u64,
 }
@@ -60,13 +62,13 @@ impl GameState {
 
     /// Add a new entity with the given name and fields.
     /// Returns a reference to the new entity.
-    pub fn add_entity(&mut self, name: &str, fields: HashMap<String, Value>) -> EntityRef {
+    pub fn add_entity(&mut self, name: &str, fields: HashMap<Name, Value>) -> EntityRef {
         let id = self.next_entity_id;
         self.next_entity_id += 1;
         self.entities.insert(
             id,
             EntityState {
-                name: name.to_string(),
+                name: Name::from(name),
                 fields,
             },
         );
@@ -77,7 +79,7 @@ impl GameState {
     ///
     /// Silently does nothing if the entity doesn't exist, consistent
     /// with read paths that reject unknown entities.
-    pub fn set_turn_budget(&mut self, entity: &EntityRef, budget: BTreeMap<String, Value>) {
+    pub fn set_turn_budget(&mut self, entity: &EntityRef, budget: BTreeMap<Name, Value>) {
         if !self.entities.contains_key(&entity.0) {
             return;
         }
@@ -88,7 +90,7 @@ impl GameState {
     ///
     /// Silently does nothing if the entity doesn't exist, consistent
     /// with read paths that reject unknown entities.
-    pub fn apply_condition(&mut self, entity: &EntityRef, name: &str, params: BTreeMap<String, Value>, duration: Value) {
+    pub fn apply_condition(&mut self, entity: &EntityRef, name: &str, params: BTreeMap<Name, Value>, duration: Value) {
         if !self.entities.contains_key(&entity.0) {
             return;
         }
@@ -96,7 +98,7 @@ impl GameState {
         self.next_condition_id += 1;
         let cond = ActiveCondition {
             id,
-            name: name.to_string(),
+            name: Name::from(name),
             params,
             bearer: *entity,
             gained_at: id, // Use id as ordering timestamp for simplicity
@@ -106,8 +108,8 @@ impl GameState {
     }
 
     /// Get the type name (as passed to `add_entity`) for an entity.
-    pub fn entity_type_name(&self, entity: &EntityRef) -> Option<&str> {
-        self.entities.get(&entity.0).map(|e| e.name.as_str())
+    pub fn entity_type_name(&self, entity: &EntityRef) -> Option<&Name> {
+        self.entities.get(&entity.0).map(|e| &e.name)
     }
 
     /// Remove an entity and all associated data (conditions, turn budgets).
@@ -123,7 +125,7 @@ impl GameState {
 
     /// Enable an option by name.
     pub fn enable_option(&mut self, name: &str) {
-        self.enabled_options.insert(name.to_string());
+        self.enabled_options.insert(Name::from(name));
     }
 
     /// Disable an option by name.
@@ -161,15 +163,15 @@ impl StateProvider for GameState {
         )
     }
 
-    fn read_turn_budget(&self, entity: &EntityRef) -> Option<BTreeMap<String, Value>> {
+    fn read_turn_budget(&self, entity: &EntityRef) -> Option<BTreeMap<Name, Value>> {
         if !self.entities.contains_key(&entity.0) {
             return None;
         }
         self.turn_budgets.get(&entity.0).cloned()
     }
 
-    fn read_enabled_options(&self) -> Vec<String> {
-        let mut opts: Vec<String> = self.enabled_options.iter().cloned().collect();
+    fn read_enabled_options(&self) -> Vec<Name> {
+        let mut opts: Vec<Name> = self.enabled_options.iter().cloned().collect();
         opts.sort();
         opts
     }
@@ -203,7 +205,7 @@ impl StateProvider for GameState {
         }
     }
 
-    fn entity_type_name(&self, entity: &EntityRef) -> Option<String> {
+    fn entity_type_name(&self, entity: &EntityRef) -> Option<Name> {
         self.entities.get(&entity.0).map(|e| e.name.clone())
     }
 }
@@ -250,7 +252,7 @@ impl WritableState for GameState {
         self.conditions.entry(entity.0).or_default().push(cond);
     }
 
-    fn remove_condition(&mut self, entity: &EntityRef, name: &str, params: Option<&BTreeMap<String, Value>>) {
+    fn remove_condition(&mut self, entity: &EntityRef, name: &str, params: Option<&BTreeMap<Name, Value>>) {
         if let Some(conds) = self.conditions.get_mut(&entity.0) {
             conds.retain(|c| {
                 if c.name != name {
@@ -271,7 +273,7 @@ impl WritableState for GameState {
         self.turn_budgets
             .entry(entity.0)
             .or_default()
-            .insert(field.to_string(), value);
+            .insert(Name::from(field), value);
     }
 
     fn remove_field(&mut self, entity: &EntityRef, field: &str) {
@@ -508,8 +510,8 @@ mod tests {
 
         let opts = state.read_enabled_options();
         assert_eq!(opts.len(), 2);
-        assert!(opts.contains(&"flanking".to_string()));
-        assert!(opts.contains(&"critical_fumbles".to_string()));
+        assert!(opts.contains(&Name::from("flanking")));
+        assert!(opts.contains(&Name::from("critical_fumbles")));
     }
 
     #[test]
@@ -522,7 +524,7 @@ mod tests {
 
         let opts = state.read_enabled_options();
         assert_eq!(opts.len(), 1);
-        assert!(opts.contains(&"critical_fumbles".to_string()));
+        assert!(opts.contains(&Name::from("critical_fumbles")));
     }
 
     #[test]
@@ -533,7 +535,7 @@ mod tests {
         state.enable_option("advanced_cover");
 
         let opts = state.read_enabled_options();
-        assert_eq!(opts, vec!["advanced_cover", "critical_fumbles", "flanking"]);
+        assert_eq!(opts, vec![Name::from("advanced_cover"), Name::from("critical_fumbles"), Name::from("flanking")]);
     }
 
     // ── GameState: position equality and Chebyshev distance ────

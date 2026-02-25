@@ -8,6 +8,7 @@ use std::collections::{HashMap, HashSet};
 use ttrpg_ast::ast::*;
 use ttrpg_ast::diagnostic::Diagnostic;
 use ttrpg_ast::module::{ImportInfo, ModuleMap, SystemInfo};
+use ttrpg_ast::name::Name;
 use ttrpg_ast::{Span, Spanned};
 
 /// Per-file metadata extracted by `parse_multi` before calling `resolve_modules`.
@@ -38,7 +39,7 @@ pub fn resolve_modules(
     let mut diagnostics = Vec::new();
 
     // Step 1: Build system registry — which declarations belong to which system
-    let mut system_decls: HashMap<String, Vec<DeclOwnership>> = HashMap::new();
+    let mut system_decls: HashMap<Name, Vec<DeclOwnership>> = HashMap::new();
 
     for item in program.items.iter() {
         if let TopLevel::System(system) = &item.node {
@@ -54,7 +55,7 @@ pub fn resolve_modules(
 
     for (sys_name, decl_list) in &system_decls {
         let mut info = SystemInfo::default();
-        let mut seen_names: HashMap<(Namespace, String), Span> = HashMap::new();
+        let mut seen_names: HashMap<(Namespace, Name), Span> = HashMap::new();
 
         for owned in decl_list {
             for (ns, name) in &owned.names {
@@ -96,18 +97,18 @@ pub fn resolve_modules(
     // Step 3: Collect per-file use declarations and associate with systems
     // All uses in a file apply to ALL system blocks in that file.
     // Per-system imports = union of uses from all files containing it.
-    let mut system_imports: HashMap<String, Vec<(ImportInfo, Span)>> = HashMap::new();
+    let mut system_imports: HashMap<Name, Vec<(ImportInfo, Span)>> = HashMap::new();
 
     for file_info in file_systems {
         for use_decl in &file_info.use_decls {
             let import = ImportInfo {
-                system_name: use_decl.path.clone(),
+                system_name: Name::from(use_decl.path.clone()),
                 alias: use_decl.alias.clone(),
                 span: use_decl.span,
             };
             for sys_name in &file_info.system_names {
                 system_imports
-                    .entry(sys_name.clone())
+                    .entry(Name::from(sys_name.clone()))
                     .or_default()
                     .push((import.clone(), use_decl.span));
             }
@@ -130,7 +131,7 @@ pub fn resolve_modules(
     // Step 4: Validate imports
     for (sys_name, imports) in &system_imports {
         // Track aliases: alias_name → (target_system, span)
-        let mut aliases: HashMap<String, (String, Span)> = HashMap::new();
+        let mut aliases: HashMap<Name, (Name, Span)> = HashMap::new();
         let mut deduped_imports: Vec<ImportInfo> = Vec::new();
 
         for (import, _span) in imports {
@@ -252,7 +253,7 @@ fn system_has_name(info: &SystemInfo, name: &str) -> bool {
 
 /// Ownership info for a single declaration.
 struct DeclOwnership {
-    names: Vec<(Namespace, String)>,
+    names: Vec<(Namespace, Name)>,
     span: Span,
 }
 
@@ -332,7 +333,7 @@ fn detect_cross_system_collisions(
         let mut name_owners: HashMap<&str, Vec<&str>> = HashMap::new();
 
         for (sys_name, sys_info) in &module_map.systems {
-            let names: &HashSet<String> = match ns {
+            let names: &HashSet<Name> = match ns {
                 Namespace::Type => &sys_info.types,
                 Namespace::Function => &sys_info.functions,
                 Namespace::Condition => &sys_info.conditions,
@@ -374,7 +375,7 @@ fn desugar_qualified_types(
     diagnostics: &mut Vec<Diagnostic>,
 ) {
     // Build alias → system_name map per system from validated imports
-    let mut system_aliases: HashMap<String, HashMap<String, String>> = HashMap::new();
+    let mut system_aliases: HashMap<Name, HashMap<Name, Name>> = HashMap::new();
     for (sys_name, sys_info) in &module_map.systems {
         for import in &sys_info.imports {
             if let Some(ref alias) = import.alias {
@@ -400,8 +401,8 @@ fn desugar_qualified_types(
 /// Desugar qualified types in a single declaration.
 fn desugar_decl_types(
     decl: &mut DeclKind,
-    current_system: &str,
-    aliases: Option<&HashMap<String, String>>,
+    current_system: &Name,
+    aliases: Option<&HashMap<Name, Name>>,
     module_map: &ModuleMap,
     diagnostics: &mut Vec<Diagnostic>,
 ) {
@@ -498,8 +499,8 @@ fn desugar_decl_types(
 /// Desugar qualified types inside modify statement bodies (recursing into if branches).
 fn desugar_modify_stmts(
     stmts: &mut [ModifyStmt],
-    current_system: &str,
-    aliases: Option<&HashMap<String, String>>,
+    current_system: &Name,
+    aliases: Option<&HashMap<Name, Name>>,
     module_map: &ModuleMap,
     diagnostics: &mut Vec<Diagnostic>,
 ) {
@@ -524,8 +525,8 @@ fn desugar_modify_stmts(
 /// Desugar a single `TypeExpr::Qualified` to `TypeExpr::Named`.
 fn desugar_type_expr(
     texpr: &mut Spanned<TypeExpr>,
-    current_system: &str,
-    aliases: Option<&HashMap<String, String>>,
+    current_system: &Name,
+    aliases: Option<&HashMap<Name, Name>>,
     module_map: &ModuleMap,
     diagnostics: &mut Vec<Diagnostic>,
 ) {
@@ -613,7 +614,7 @@ mod tests {
     fn make_system(name: &str, decls: Vec<Spanned<DeclKind>>) -> Spanned<TopLevel> {
         Spanned::new(
             TopLevel::System(SystemBlock {
-                name: name.to_string(),
+                name: Name::from(name),
                 decls,
             }),
             Span::dummy(),
@@ -623,12 +624,12 @@ mod tests {
     fn make_enum(name: &str, variants: &[&str]) -> Spanned<DeclKind> {
         Spanned::new(
             DeclKind::Enum(EnumDecl {
-                name: name.to_string(),
+                name: Name::from(name),
                 ordered: false,
                 variants: variants
                     .iter()
                     .map(|v| EnumVariant {
-                        name: v.to_string(),
+                        name: Name::from(*v),
                         fields: None,
                         span: Span::dummy(),
                     })
@@ -641,7 +642,7 @@ mod tests {
     fn make_derive(name: &str) -> Spanned<DeclKind> {
         Spanned::new(
             DeclKind::Derive(FnDecl {
-                name: name.to_string(),
+                name: Name::from(name),
                 params: vec![],
                 return_type: Spanned::new(TypeExpr::Int, Span::dummy()),
                 body: Spanned::new(vec![], Span::dummy()),
@@ -654,9 +655,9 @@ mod tests {
     fn make_condition(name: &str) -> Spanned<DeclKind> {
         Spanned::new(
             DeclKind::Condition(ConditionDecl {
-                name: name.to_string(),
+                name: Name::from(name),
                 params: vec![],
-                receiver_name: "bearer".to_string(),
+                receiver_name: Name::from("bearer"),
                 receiver_type: Spanned::new(TypeExpr::Named("Character".into()), Span::dummy()),
                 receiver_with_groups: vec![],
                 clauses: vec![],

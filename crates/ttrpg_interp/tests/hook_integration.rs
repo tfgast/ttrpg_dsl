@@ -76,8 +76,8 @@ impl EffectHandler for ScriptedHandler {
 struct TestState {
     fields: HashMap<(u64, String), Value>,
     conditions: HashMap<u64, Vec<ActiveCondition>>,
-    turn_budgets: HashMap<u64, BTreeMap<String, Value>>,
-    enabled_options: Vec<String>,
+    turn_budgets: HashMap<u64, BTreeMap<ttrpg_ast::Name, Value>>,
+    enabled_options: Vec<ttrpg_ast::Name>,
 }
 
 impl TestState {
@@ -98,10 +98,10 @@ impl StateProvider for TestState {
     fn read_conditions(&self, entity: &EntityRef) -> Option<Vec<ActiveCondition>> {
         self.conditions.get(&entity.0).cloned()
     }
-    fn read_turn_budget(&self, entity: &EntityRef) -> Option<BTreeMap<String, Value>> {
+    fn read_turn_budget(&self, entity: &EntityRef) -> Option<BTreeMap<ttrpg_ast::Name, Value>> {
         self.turn_budgets.get(&entity.0).cloned()
     }
-    fn read_enabled_options(&self) -> Vec<String> {
+    fn read_enabled_options(&self) -> Vec<ttrpg_ast::Name> {
         self.enabled_options.clone()
     }
     fn position_eq(&self, _a: &Value, _b: &Value) -> bool {
@@ -115,10 +115,10 @@ impl StateProvider for TestState {
 fn make_payload(event_name: &str, fields: Vec<(&str, Value)>) -> Value {
     let mut map = BTreeMap::new();
     for (name, val) in fields {
-        map.insert(name.to_string(), val);
+        map.insert(ttrpg_ast::Name::from(name), val);
     }
     Value::Struct {
-        name: format!("__event_{}", event_name),
+        name: format!("__event_{}", event_name).into(),
         fields: map,
     }
 }

@@ -5,6 +5,7 @@ use rand::Rng;
 use rand::rngs::StdRng;
 use ttrpg_ast::DiceFilter;
 use ttrpg_ast::ast::AssignOp;
+use ttrpg_ast::Name;
 use ttrpg_interp::adapter;
 use ttrpg_interp::effect::{Effect, EffectHandler, Response};
 use ttrpg_interp::reference_state::GameState;
@@ -60,11 +61,11 @@ impl StateProvider for RefCellState<'_> {
         self.0.borrow().read_conditions(entity)
     }
 
-    fn read_turn_budget(&self, entity: &EntityRef) -> Option<BTreeMap<String, Value>> {
+    fn read_turn_budget(&self, entity: &EntityRef) -> Option<BTreeMap<Name, Value>> {
         self.0.borrow().read_turn_budget(entity)
     }
 
-    fn read_enabled_options(&self) -> Vec<String> {
+    fn read_enabled_options(&self) -> Vec<Name> {
         self.0.borrow().read_enabled_options()
     }
 
@@ -76,9 +77,8 @@ impl StateProvider for RefCellState<'_> {
         self.0.borrow().distance(a, b)
     }
 
-    fn entity_type_name(&self, entity: &EntityRef) -> Option<String> {
-        let gs = self.0.borrow();
-        gs.entity_type_name(entity).map(|s| s.to_string())
+    fn entity_type_name(&self, entity: &EntityRef) -> Option<Name> {
+        self.0.borrow().entity_type_name(entity).cloned()
     }
 }
 

@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, HashSet};
 
+use ttrpg_ast::Name;
 use ttrpg_ast::ast::ConditionClause;
 use ttrpg_checker::ty::Ty;
 
@@ -23,7 +24,7 @@ pub struct EventResult {
 /// A matched reaction with its reactor entity.
 #[derive(Debug, Clone)]
 pub struct ReactionInfo {
-    pub name: String,
+    pub name: Name,
     pub reactor: EntityRef,
 }
 
@@ -36,7 +37,7 @@ pub struct HookResult {
 /// A matched hook with its target entity.
 #[derive(Debug, Clone)]
 pub struct HookInfo {
-    pub name: String,
+    pub name: Name,
     pub target: EntityRef,
 }
 
@@ -111,7 +112,7 @@ pub fn what_triggers(
             }
 
             let info = ReactionInfo {
-                name: reaction_name.to_string(),
+                name: reaction_name.clone(),
                 reactor: *candidate,
             };
 
@@ -193,7 +194,7 @@ pub fn find_matching_hooks(
             }
 
             hooks.push(HookInfo {
-                name: hook_name.to_string(),
+                name: hook_name.clone(),
                 target: *candidate,
             });
         }
@@ -217,12 +218,12 @@ fn match_trigger_bindings(
     receiver_name: &str,
     candidate: EntityRef,
     event_params: &[ttrpg_checker::env::ParamInfo],
-    event_fields: &[(String, Ty)],
-    payload_fields: &std::collections::BTreeMap<String, Value>,
+    event_fields: &[(Name, Ty)],
+    payload_fields: &BTreeMap<Name, Value>,
 ) -> Result<bool, RuntimeError> {
     // Push scope with candidate bound as receiver
     env.push_scope();
-    env.bind(receiver_name.to_string(), Value::Entity(candidate));
+    env.bind(Name::from(receiver_name), Value::Entity(candidate));
 
     let result = match_bindings_inner(
         env,
@@ -242,8 +243,8 @@ fn match_bindings_inner(
     env: &mut Env,
     bindings: &[ttrpg_ast::ast::TriggerBinding],
     event_params: &[ttrpg_checker::env::ParamInfo],
-    event_fields: &[(String, Ty)],
-    payload_fields: &std::collections::BTreeMap<String, Value>,
+    event_fields: &[(Name, Ty)],
+    payload_fields: &BTreeMap<Name, Value>,
 ) -> Result<bool, RuntimeError> {
     // Track which param slots are claimed by named bindings
     let mut claimed_params: HashSet<usize> = HashSet::new();
@@ -327,8 +328,8 @@ fn is_suppressed(
     env: &mut Env,
     event_name: &str,
     event_params: &[ttrpg_checker::env::ParamInfo],
-    event_fields: &[(String, Ty)],
-    payload_fields: &std::collections::BTreeMap<String, Value>,
+    event_fields: &[(Name, Ty)],
+    payload_fields: &BTreeMap<Name, Value>,
 ) -> Result<bool, RuntimeError> {
     // Collect all entity-typed values from event params and fields
     let mut entity_values: Vec<(&str, EntityRef)> = Vec::new();
@@ -357,7 +358,7 @@ fn is_suppressed(
 
     for (field_name, field_ty) in event_fields {
         if matches!(field_ty, Ty::Entity(_)) {
-            match payload_fields.get(field_name.as_str()) {
+            match payload_fields.get(field_name) {
                 Some(Value::Entity(e)) => {
                     entity_values.push((field_name, *e));
                 }
@@ -442,13 +443,13 @@ fn check_suppress_bindings(
     bindings: &[ttrpg_ast::ast::ModifyBinding],
     receiver_name: &str,
     bearer: &Value,
-    condition_params: &BTreeMap<String, Value>,
+    condition_params: &BTreeMap<Name, Value>,
     event_params: &[ttrpg_checker::env::ParamInfo],
-    event_fields: &[(String, Ty)],
-    payload_fields: &std::collections::BTreeMap<String, Value>,
+    event_fields: &[(Name, Ty)],
+    payload_fields: &BTreeMap<Name, Value>,
 ) -> Result<bool, RuntimeError> {
     env.push_scope();
-    env.bind(receiver_name.to_string(), bearer.clone());
+    env.bind(Name::from(receiver_name), bearer.clone());
     // Bind condition params (e.g., source, level)
     for (name, val) in condition_params {
         env.bind(name.clone(), val.clone());
@@ -471,8 +472,8 @@ fn check_suppress_bindings_inner(
     env: &mut Env,
     bindings: &[ttrpg_ast::ast::ModifyBinding],
     event_params: &[ttrpg_checker::env::ParamInfo],
-    event_fields: &[(String, Ty)],
-    payload_fields: &std::collections::BTreeMap<String, Value>,
+    event_fields: &[(Name, Ty)],
+    payload_fields: &BTreeMap<Name, Value>,
 ) -> Result<bool, RuntimeError> {
     for binding in bindings {
         // Wildcard binding — always matches
@@ -531,7 +532,7 @@ mod tests {
     use super::*;
     use std::collections::{BTreeMap, HashMap};
 
-    use ttrpg_ast::{Span, Spanned};
+    use ttrpg_ast::{Name, Span, Spanned};
     use ttrpg_ast::ast::*;
     use ttrpg_checker::env::{
         ConditionInfo, EventInfo, ParamInfo, TypeEnv,
@@ -546,8 +547,8 @@ mod tests {
     struct TestState {
         fields: HashMap<(u64, String), Value>,
         conditions: HashMap<u64, Vec<ActiveCondition>>,
-        turn_budgets: HashMap<u64, BTreeMap<String, Value>>,
-        enabled_options: Vec<String>,
+        turn_budgets: HashMap<u64, BTreeMap<Name, Value>>,
+        enabled_options: Vec<Name>,
     }
 
     impl TestState {
@@ -568,10 +569,10 @@ mod tests {
         fn read_conditions(&self, entity: &EntityRef) -> Option<Vec<ActiveCondition>> {
             self.conditions.get(&entity.0).cloned()
         }
-        fn read_turn_budget(&self, entity: &EntityRef) -> Option<BTreeMap<String, Value>> {
+        fn read_turn_budget(&self, entity: &EntityRef) -> Option<BTreeMap<Name, Value>> {
             self.turn_budgets.get(&entity.0).cloned()
         }
-        fn read_enabled_options(&self) -> Vec<String> {
+        fn read_enabled_options(&self) -> Vec<Name> {
             self.enabled_options.clone()
         }
         fn position_eq(&self, _a: &Value, _b: &Value) -> bool {
@@ -607,7 +608,7 @@ mod tests {
     fn make_payload(fields: Vec<(&str, Value)>) -> Value {
         let mut map = BTreeMap::new();
         for (name, val) in fields {
-            map.insert(name.to_string(), val);
+            map.insert(Name::from(name), val);
         }
         Value::Struct {
             name: "EventPayload".into(),

@@ -80,8 +80,8 @@ impl EffectHandler for ScriptedHandler {
 
 fn enum_variant(enum_name: &str, variant: &str) -> Value {
     Value::EnumVariant {
-        enum_name: enum_name.to_string(),
-        variant: variant.to_string(),
+        enum_name: ttrpg_ast::Name::from(enum_name),
+        variant: ttrpg_ast::Name::from(variant),
         fields: BTreeMap::new(),
     }
 }
@@ -115,11 +115,11 @@ fn damage_type_set(types: &[&str]) -> Value {
 
 fn damage_spec(count: u32, sides: u32, damage_type: &str) -> Value {
     Value::Struct {
-        name: "DamageSpec".to_string(),
+        name: "DamageSpec".into(),
         fields: {
             let mut f = BTreeMap::new();
             f.insert(
-                "dice".to_string(),
+                "dice".into(),
                 Value::DiceExpr(DiceExpr {
                     count,
                     sides,
@@ -127,7 +127,7 @@ fn damage_spec(count: u32, sides: u32, damage_type: &str) -> Value {
                     modifier: 0,
                 }),
             );
-            f.insert("type".to_string(), enum_variant("DamageType", damage_type));
+            f.insert("type".into(), enum_variant("DamageType", damage_type));
             f
         },
     }
@@ -194,7 +194,7 @@ fn add_character(
     state.add_entity(name, fields)
 }
 
-fn standard_turn_budget() -> BTreeMap<String, Value> {
+fn standard_turn_budget() -> BTreeMap<ttrpg_ast::Name, Value> {
     let mut b = BTreeMap::new();
     b.insert("actions".into(), Value::Int(1));
     b.insert("bonus_actions".into(), Value::Int(1));

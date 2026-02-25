@@ -1,5 +1,6 @@
 use std::collections::HashSet;
 
+use ttrpg_ast::Name;
 use ttrpg_ast::ast::*;
 use ttrpg_ast::diagnostic::Diagnostic;
 use ttrpg_ast::module::ModuleMap;
@@ -58,7 +59,7 @@ fn collect_inner(program: &Program, modules: Option<&ModuleMap>) -> (TypeEnv, Ve
     // Pass 1b: resolve all signatures
     // `processed_types` is shared across all systems so that a duplicate type
     // declaration in a later system doesn't overwrite the first definition.
-    let mut processed_types = HashSet::new();
+    let mut processed_types: HashSet<Name> = HashSet::new();
     for item in &program.items {
         if let TopLevel::System(system) = &item.node {
             pass_1b(&system.decls, &mut env, &mut diagnostics, &mut processed_types);
@@ -248,7 +249,7 @@ fn pass_1b(
     decls: &[ttrpg_ast::Spanned<DeclKind>],
     env: &mut TypeEnv,
     diagnostics: &mut Vec<Diagnostic>,
-    processed_types: &mut HashSet<String>,
+    processed_types: &mut HashSet<Name>,
 ) {
     for decl in decls {
         match &decl.node {
@@ -687,9 +688,9 @@ fn collect_fn(
         .unwrap_or(Ty::Unit);
 
     env.functions.insert(
-        name.to_string(),
+        Name::from(name),
         FnInfo {
-            name: name.to_string(),
+            name: Name::from(name),
             kind,
             params: param_infos,
             return_type: ret_ty,
@@ -1005,7 +1006,7 @@ fn collect_event(
         .collect();
 
     let mut seen_fields = HashSet::new();
-    let fields: Vec<(String, Ty)> = e
+    let fields: Vec<(Name, Ty)> = e
         .fields
         .iter()
         .filter_map(|f| {
@@ -1067,7 +1068,7 @@ pub fn validate_option_extends(
     use std::collections::HashMap;
 
     // Collect all extends relationships
-    let mut extends_map: HashMap<String, (String, Span)> = HashMap::new();
+    let mut extends_map: HashMap<Name, (Name, Span)> = HashMap::new();
     for item in &program.items {
         if let TopLevel::System(system) = &item.node {
             for decl in &system.decls {
@@ -1082,7 +1083,7 @@ pub fn validate_option_extends(
 
     // Check for unknown parent references
     for (child, (parent, span)) in &extends_map {
-        if !env.options.contains(parent) {
+        if !env.options.contains(parent.as_str()) {
             diagnostics.push(Diagnostic::error(
                 format!(
                     "option \"{}\" extends unknown option \"{}\"",
@@ -1100,10 +1101,10 @@ pub fn validate_option_extends(
         loop {
             if !visited.insert(current.clone()) {
                 // Circular — build the chain for the error message
-                let mut chain = vec![start_name.clone()];
+                let mut chain: Vec<String> = vec![start_name.to_string()];
                 let mut c = start_name.clone();
                 while let Some((parent, _)) = extends_map.get(&c) {
-                    chain.push(parent.clone());
+                    chain.push(parent.to_string());
                     if parent == start_name {
                         break;
                     }
@@ -1113,7 +1114,7 @@ pub fn validate_option_extends(
                 diagnostics.push(Diagnostic::error(
                     format!(
                         "circular option extends: {}",
-                        chain.join(" → ")
+                        chain.join(" \u{2192} ")
                     ),
                     *span,
                 ));
@@ -1134,20 +1135,21 @@ fn register_builtin_types(env: &mut TypeEnv) {
     // system-appropriate variants. This minimal fallback provides only
     // `indefinite` — the one truly universal duration concept.
     if !env.types.contains_key("Duration") {
+        let duration_name = Name::from("Duration");
         let variants = vec![VariantInfo {
             name: "indefinite".into(),
             fields: vec![],
         }];
         for v in &variants {
             let owners = env.variant_to_enums.entry(v.name.clone()).or_default();
-            if !owners.contains(&"Duration".to_string()) {
-                owners.push("Duration".into());
+            if !owners.iter().any(|o| o == "Duration") {
+                owners.push(duration_name.clone());
             }
         }
         env.types.insert(
-            "Duration".into(),
+            duration_name.clone(),
             DeclInfo::Enum(EnumInfo {
-                name: "Duration".into(),
+                name: duration_name,
                 ordered: false,
                 variants,
             }),

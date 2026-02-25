@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, HashSet};
 
+use ttrpg_ast::Name;
 use ttrpg_ast::ast::{ConditionClause, ModifyClause, ModifyStmt};
 use ttrpg_checker::env::FnInfo;
 use ttrpg_checker::ty::Ty;
@@ -22,7 +23,7 @@ pub(crate) fn collect_modifiers_owned(
     env: &mut Env,
     fn_name: &str,
     fn_info: &FnInfo,
-    bound_params: &[(String, Value)],
+    bound_params: &[(Name, Value)],
 ) -> Result<Vec<OwnedModifier>, RuntimeError> {
     let mut condition_modifiers: Vec<(u64, OwnedModifier)> = Vec::new(); // (gained_at, modifier)
     let mut seen_condition_ids: HashSet<u64> = HashSet::new();
@@ -142,9 +143,9 @@ pub(crate) struct OwnedModifier {
     pub source: ModifySource,
     pub clause: ModifyClause,
     pub bearer: Option<Value>,
-    pub receiver_name: Option<String>,
+    pub receiver_name: Option<Name>,
     /// Condition parameters (e.g., source: Entity(1) for Frightened(source: attacker)).
-    pub condition_params: BTreeMap<String, Value>,
+    pub condition_params: BTreeMap<Name, Value>,
 }
 
 /// Check if a condition modify clause's bindings match the current call params.
@@ -157,7 +158,7 @@ fn check_modify_bindings(
     clause: &ModifyClause,
     condition: &ActiveCondition,
     _fn_info: &FnInfo,
-    bound_params: &[(String, Value)],
+    bound_params: &[(Name, Value)],
 ) -> Result<bool, RuntimeError> {
     // Empty bindings always match
     if clause.bindings.is_empty() {
@@ -212,7 +213,7 @@ fn check_option_modify_bindings(
     env: &mut Env,
     clause: &ModifyClause,
     _fn_info: &FnInfo,
-    bound_params: &[(String, Value)],
+    bound_params: &[(Name, Value)],
 ) -> Result<bool, RuntimeError> {
     if clause.bindings.is_empty() {
         return Ok(true);
@@ -261,11 +262,11 @@ pub(crate) fn run_phase1(
     env: &mut Env,
     fn_name: &str,
     _fn_info: &FnInfo,
-    mut params: Vec<(String, Value)>,
+    mut params: Vec<(Name, Value)>,
     modifiers: &[OwnedModifier],
-) -> Result<Vec<(String, Value)>, RuntimeError> {
+) -> Result<Vec<(Name, Value)>, RuntimeError> {
     for modifier in modifiers {
-        let old_params: Vec<(String, Value)> = params.clone();
+        let old_params: Vec<(Name, Value)> = params.clone();
 
         // Push temporary scope for this modifier
         env.push_scope();
@@ -300,7 +301,7 @@ pub(crate) fn run_phase1(
         if !changes.is_empty() {
             let response = env.handler.handle(Effect::ModifyApplied {
                 source: modifier.source.clone(),
-                target_fn: fn_name.to_string(),
+                target_fn: Name::from(fn_name),
                 phase: Phase::Phase1,
                 changes,
             });
@@ -328,7 +329,7 @@ pub(crate) fn run_phase2(
     env: &mut Env,
     fn_name: &str,
     fn_info: &FnInfo,
-    params: &[(String, Value)],
+    params: &[(Name, Value)],
     mut result: Value,
     modifiers: &[OwnedModifier],
 ) -> Result<Value, RuntimeError> {
@@ -361,7 +362,7 @@ pub(crate) fn run_phase2(
         }
 
         // Bind result
-        env.bind("result".to_string(), result.clone());
+        env.bind(Name::from("result"), result.clone());
 
         // Execute modify stmts (Phase 2: result overrides only)
         let exec_result = exec_modify_stmts_phase2(env, &modifier.clause.body, &mut result);
@@ -376,7 +377,7 @@ pub(crate) fn run_phase2(
         if !changes.is_empty() {
             let response = env.handler.handle(Effect::ModifyApplied {
                 source: modifier.source.clone(),
-                target_fn: fn_name.to_string(),
+                target_fn: Name::from(fn_name),
                 phase: Phase::Phase2,
                 changes,
             });
@@ -397,7 +398,7 @@ pub(crate) fn run_phase2(
 fn exec_modify_stmts_phase1(
     env: &mut Env,
     stmts: &[ModifyStmt],
-    params: &mut Vec<(String, Value)>,
+    params: &mut Vec<(Name, Value)>,
 ) -> Result<(), RuntimeError> {
     for stmt in stmts {
         match stmt {
@@ -476,7 +477,7 @@ fn exec_modify_stmts_phase2(
                     // Whole-result override in Phase 2
                     let val = eval_expr(env, value)?;
                     *result = val;
-                    env.bind("result".to_string(), result.clone());
+                    env.bind(Name::from("result"), result.clone());
                 }
                 // Skip non-result param overrides in Phase 2
             }
@@ -531,7 +532,7 @@ fn exec_modify_stmts_phase2(
                         // but the checker should have caught it
                     }
                 }
-                env.bind("result".to_string(), result.clone());
+                env.bind(Name::from("result"), result.clone());
             }
             ModifyStmt::Let { name, value, .. } => {
                 let val = eval_expr(env, value)?;
@@ -550,7 +551,7 @@ fn exec_modify_stmts_phase2(
                         let r = exec_modify_stmts_phase2(env, then_body, result);
                         env.pop_scope();
                         // Re-sync result binding into the outer scope after branch
-                        env.bind("result".to_string(), result.clone());
+                        env.bind(Name::from("result"), result.clone());
                         r?;
                     }
                     Value::Bool(false) => {
@@ -559,7 +560,7 @@ fn exec_modify_stmts_phase2(
                             let r = exec_modify_stmts_phase2(env, else_stmts, result);
                             env.pop_scope();
                             // Re-sync result binding into the outer scope after branch
-                            env.bind("result".to_string(), result.clone());
+                            env.bind(Name::from("result"), result.clone());
                             r?;
                         }
                     }
@@ -598,8 +599,8 @@ fn has_phase2_stmts(stmts: &[ModifyStmt]) -> bool {
 // ── Change tracking ─────────────────────────────────────────────
 
 fn collect_param_changes(
-    old: &[(String, Value)],
-    new: &[(String, Value)],
+    old: &[(Name, Value)],
+    new: &[(Name, Value)],
 ) -> Vec<FieldChange> {
     let mut changes = Vec::new();
     for (i, (name, old_val)) in old.iter().enumerate() {
@@ -651,7 +652,7 @@ fn collect_result_changes(
 
     // For non-struct results, report as a single "result" change
     vec![FieldChange {
-        name: "result".to_string(),
+        name: Name::from("result"),
         old: old.clone(),
         new: new.clone(),
     }]
@@ -708,8 +709,8 @@ mod tests {
     struct TestState {
         fields: HashMap<(u64, String), Value>,
         conditions: HashMap<u64, Vec<ActiveCondition>>,
-        turn_budgets: HashMap<u64, BTreeMap<String, Value>>,
-        enabled_options: Vec<String>,
+        turn_budgets: HashMap<u64, BTreeMap<Name, Value>>,
+        enabled_options: Vec<Name>,
     }
 
     impl TestState {
@@ -730,10 +731,10 @@ mod tests {
         fn read_conditions(&self, entity: &EntityRef) -> Option<Vec<ActiveCondition>> {
             self.conditions.get(&entity.0).cloned()
         }
-        fn read_turn_budget(&self, entity: &EntityRef) -> Option<BTreeMap<String, Value>> {
+        fn read_turn_budget(&self, entity: &EntityRef) -> Option<BTreeMap<Name, Value>> {
             self.turn_budgets.get(&entity.0).cloned()
         }
-        fn read_enabled_options(&self) -> Vec<String> {
+        fn read_enabled_options(&self) -> Vec<Name> {
             self.enabled_options.clone()
         }
         fn position_eq(&self, _a: &Value, _b: &Value) -> bool {
@@ -1608,8 +1609,8 @@ mod tests {
         let fn_info = type_env.lookup_fn("interact").unwrap();
         // Both params point to the same entity
         let bound_params = vec![
-            ("a".to_string(), Value::Entity(EntityRef(1))),
-            ("b".to_string(), Value::Entity(EntityRef(1))),
+            (Name::from("a"), Value::Entity(EntityRef(1))),
+            (Name::from("b"), Value::Entity(EntityRef(1))),
         ];
 
         let modifiers = collect_modifiers_owned(&mut env, "interact", fn_info, &bound_params).unwrap();
@@ -2011,7 +2012,7 @@ mod tests {
         });
 
         env.push_scope();
-        env.bind("result".to_string(), result.clone());
+        env.bind(Name::from("result"), result.clone());
 
         // Override "dice" field
         let stmts_dice = vec![ModifyStmt::ResultOverride {
@@ -2049,7 +2050,7 @@ mod tests {
         // Override "expr" field — use a DiceExpr literal via a Let + ResultOverride
         // Since we can't construct a DiceExpr in the DSL directly from ExprKind,
         // we test by binding a DiceExpr value and referencing it.
-        env.bind("new_expr".to_string(), Value::DiceExpr(DiceExpr {
+        env.bind(Name::from("new_expr"), Value::DiceExpr(DiceExpr {
             count: 2,
             sides: 6,
             filter: None,

@@ -1,4 +1,5 @@
 use ttrpg_ast::ast::*;
+use ttrpg_ast::Name;
 use ttrpg_ast::Span;
 use ttrpg_ast::Spanned;
 
@@ -288,7 +289,7 @@ impl<'a> Checker<'a> {
         name: &str,
         scrutinee_ty: &Ty,
         span: Span,
-    ) -> Option<String> {
+    ) -> Option<Name> {
         let owners = self
             .env
             .variant_to_enums

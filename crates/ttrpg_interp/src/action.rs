@@ -1,5 +1,4 @@
-use ttrpg_ast::Span;
-use ttrpg_ast::Spanned;
+use ttrpg_ast::{Name, Span, Spanned};
 use ttrpg_ast::ast::{ActionDecl, Block, CostClause, ExprKind, HookDecl, ReactionDecl};
 
 use crate::Env;
@@ -68,7 +67,7 @@ fn emit_action_completed(
     call_span: Span,
 ) -> Result<(), RuntimeError> {
     let response = env.handler.handle(Effect::ActionCompleted {
-        name: name.to_string(),
+        name: Name::from(name),
         actor,
     });
     match response {
@@ -138,7 +137,7 @@ fn execute_pipeline(
         };
 
         let response = env.handler.handle(Effect::RequiresCheck {
-            action: action_name.to_string(),
+            action: Name::from(action_name),
             passed,
             reason: None,
         });
@@ -187,7 +186,7 @@ pub(crate) fn execute_action(
     env: &mut Env,
     action: &ActionDecl,
     actor: EntityRef,
-    mut args: Vec<(String, Value)>,
+    mut args: Vec<(Name, Value)>,
     call_span: Span,
 ) -> Result<Value, RuntimeError> {
     let action_name = action.name.clone();
@@ -280,7 +279,7 @@ pub(crate) fn execute_reaction(
     // 2–4. Scoped execution with lifecycle completion
     scoped_execute(env, &reaction_name, reactor, call_span, |env| {
         env.bind(reaction.receiver_name.clone(), Value::Entity(reactor));
-        env.bind("trigger".to_string(), event_payload);
+        env.bind(Name::from("trigger"), event_payload);
         execute_pipeline(
             env,
             &reactor,
@@ -332,7 +331,7 @@ pub(crate) fn execute_hook(
     // 2–4. Scoped execution with lifecycle completion
     scoped_execute(env, &hook_name, target, call_span, |env| {
         env.bind(hook.receiver_name.clone(), Value::Entity(target));
-        env.bind("trigger".to_string(), event_payload);
+        env.bind(Name::from("trigger"), event_payload);
         let resolve = hook.resolve.clone();
         eval_block(env, &resolve)
     })
@@ -366,7 +365,7 @@ fn deduct_costs(
         let response = env.handler.handle(Effect::DeductCost {
             actor: *actor,
             token: token.node.clone(),
-            budget_field: budget_field.to_string(),
+            budget_field: Name::from(budget_field),
         });
 
         match response {
@@ -410,8 +409,7 @@ mod tests {
     use super::*;
     use std::collections::{BTreeMap, HashMap};
 
-    use ttrpg_ast::Span;
-    use ttrpg_ast::Spanned;
+    use ttrpg_ast::{Name, Span, Spanned};
     use ttrpg_ast::ast::*;
     use ttrpg_checker::env::TypeEnv;
 
@@ -460,8 +458,8 @@ mod tests {
     struct TestState {
         fields: HashMap<(u64, String), Value>,
         conditions: HashMap<u64, Vec<ActiveCondition>>,
-        turn_budgets: HashMap<u64, BTreeMap<String, Value>>,
-        enabled_options: Vec<String>,
+        turn_budgets: HashMap<u64, BTreeMap<Name, Value>>,
+        enabled_options: Vec<Name>,
     }
 
     impl TestState {
@@ -482,10 +480,10 @@ mod tests {
         fn read_conditions(&self, entity: &EntityRef) -> Option<Vec<ActiveCondition>> {
             self.conditions.get(&entity.0).cloned()
         }
-        fn read_turn_budget(&self, entity: &EntityRef) -> Option<BTreeMap<String, Value>> {
+        fn read_turn_budget(&self, entity: &EntityRef) -> Option<BTreeMap<Name, Value>> {
             self.turn_budgets.get(&entity.0).cloned()
         }
-        fn read_enabled_options(&self) -> Vec<String> {
+        fn read_enabled_options(&self) -> Vec<Name> {
             self.enabled_options.clone()
         }
         fn position_eq(&self, _a: &Value, _b: &Value) -> bool {
@@ -522,9 +520,9 @@ mod tests {
         resolve_stmts: Vec<Spanned<StmtKind>>,
     ) -> ActionDecl {
         ActionDecl {
-            name: name.to_string(),
-            receiver_name: receiver_name.to_string(),
-            receiver_type: spanned(TypeExpr::Named("Character".to_string())),
+            name: Name::from(name),
+            receiver_name: Name::from(receiver_name),
+            receiver_type: spanned(TypeExpr::Named("Character".into())),
             receiver_with_groups: vec![],
             params,
             cost,
@@ -544,12 +542,12 @@ mod tests {
         resolve_stmts: Vec<Spanned<StmtKind>>,
     ) -> ReactionDecl {
         ReactionDecl {
-            name: name.to_string(),
-            receiver_name: receiver_name.to_string(),
-            receiver_type: spanned(TypeExpr::Named("Character".to_string())),
+            name: Name::from(name),
+            receiver_name: Name::from(receiver_name),
+            receiver_type: spanned(TypeExpr::Named("Character".into())),
             receiver_with_groups: vec![],
             trigger: TriggerExpr {
-                event_name: event_name.to_string(),
+                event_name: Name::from(event_name),
                 bindings: vec![],
                 span: span(),
             },
@@ -583,7 +581,7 @@ mod tests {
             "actor",
             vec![],
             Some(CostClause {
-                tokens: vec![spanned("action".to_string())],
+                tokens: vec![spanned(Name::from("action"))],
                 span: span(),
             }),
             Some(spanned(ExprKind::BoolLit(true))),
@@ -617,7 +615,7 @@ mod tests {
             "actor",
             vec![],
             Some(CostClause {
-                tokens: vec![spanned("action".to_string())],
+                tokens: vec![spanned(Name::from("action"))],
                 span: span(),
             }),
             Some(spanned(ExprKind::BoolLit(false))),
@@ -650,7 +648,7 @@ mod tests {
             "actor",
             vec![],
             Some(CostClause {
-                tokens: vec![spanned("action".to_string())],
+                tokens: vec![spanned(Name::from("action"))],
                 span: span(),
             }),
             Some(spanned(ExprKind::BoolLit(true))),
@@ -682,7 +680,7 @@ mod tests {
             "actor",
             vec![],
             Some(CostClause {
-                tokens: vec![spanned("action".to_string())],
+                tokens: vec![spanned(Name::from("action"))],
                 span: span(),
             }),
             None, // no requires
@@ -718,7 +716,7 @@ mod tests {
             "actor",
             vec![],
             Some(CostClause {
-                tokens: vec![spanned("action".to_string())],
+                tokens: vec![spanned(Name::from("action"))],
                 span: span(),
             }),
             None,
@@ -748,7 +746,7 @@ mod tests {
             "actor",
             vec![],
             Some(CostClause {
-                tokens: vec![spanned("action".to_string())],
+                tokens: vec![spanned(Name::from("action"))],
                 span: span(),
             }),
             None,
@@ -863,8 +861,8 @@ mod tests {
             "Attack",
             "actor",
             vec![Param {
-                name: "target".to_string(),
-                ty: spanned(TypeExpr::Named("Character".to_string())),
+                name: "target".into(),
+                ty: spanned(TypeExpr::Named("Character".into())),
                 default: None,
                 with_groups: vec![],
                 span: span(),
@@ -872,7 +870,7 @@ mod tests {
             None,
             None,
             vec![spanned(StmtKind::Expr(spanned(ExprKind::Ident(
-                "target".to_string(),
+                "target".into(),
             ))))],
         );
 
@@ -889,7 +887,7 @@ mod tests {
             &mut env,
             &action,
             actor,
-            vec![("target".to_string(), Value::Entity(target))],
+            vec![(Name::from("target"), Value::Entity(target))],
             span(),
         )
         .unwrap();
@@ -935,8 +933,8 @@ mod tests {
             vec![],
             Some(CostClause {
                 tokens: vec![
-                    spanned("action".to_string()),
-                    spanned("bonus_action".to_string()),
+                    spanned(Name::from("action")),
+                    spanned(Name::from("bonus_action")),
                 ],
                 span: span(),
             }),
@@ -979,7 +977,7 @@ mod tests {
             "entity_leaves_reach",
             None,
             vec![spanned(StmtKind::Expr(spanned(ExprKind::Ident(
-                "trigger".to_string(),
+                "trigger".into(),
             ))))],
         );
 
@@ -991,10 +989,10 @@ mod tests {
         let mut env = make_env(&state, &mut handler, &interp);
         let reactor = EntityRef(1);
         let payload = Value::Struct {
-            name: "__event_entity_leaves_reach".to_string(),
+            name: "__event_entity_leaves_reach".into(),
             fields: {
                 let mut f = BTreeMap::new();
-                f.insert("entity".to_string(), Value::Entity(EntityRef(2)));
+                f.insert("entity".into(), Value::Entity(EntityRef(2)));
                 f
             },
         };
@@ -1047,7 +1045,7 @@ mod tests {
             "reactor",
             "entity_leaves_reach",
             Some(CostClause {
-                tokens: vec![spanned("reaction".to_string())],
+                tokens: vec![spanned(Name::from("reaction"))],
                 span: span(),
             }),
             vec![spanned(StmtKind::Expr(spanned(ExprKind::IntLit(1))))],
@@ -1104,7 +1102,7 @@ mod tests {
             "entity_leaves_reach",
             None,
             vec![spanned(StmtKind::Expr(spanned(ExprKind::Ident(
-                "reactor".to_string(),
+                "reactor".into(),
             ))))],
         );
 

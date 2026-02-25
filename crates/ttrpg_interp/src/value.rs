@@ -4,6 +4,7 @@ use std::fmt;
 use std::sync::Arc;
 
 use ttrpg_ast::DiceFilter;
+use ttrpg_ast::Name;
 
 use crate::state::EntityRef;
 
@@ -104,14 +105,14 @@ pub enum Value {
 
     // Structured
     Struct {
-        name: String,
-        fields: BTreeMap<String, Value>,
+        name: Name,
+        fields: BTreeMap<Name, Value>,
     },
     Entity(EntityRef),
     EnumVariant {
-        enum_name: String,
-        variant: String,
-        fields: BTreeMap<String, Value>,
+        enum_name: Name,
+        variant: Name,
+        fields: BTreeMap<Name, Value>,
     },
 
     // Opaque
@@ -119,14 +120,14 @@ pub enum Value {
 
     // Special
     Condition {
-        name: String,
-        args: BTreeMap<String, Value>,
+        name: Name,
+        args: BTreeMap<Name, Value>,
     },
 
     /// Internal: an enum type name used as a namespace for qualified variant
     /// access (e.g., `Duration.rounds`). Not a user-facing value — only
     /// produced by `eval_ident` when an identifier resolves to an enum type.
-    EnumNamespace(String),
+    EnumNamespace(Name),
 }
 
 /// Builds the default 5e turn budget as a `Value::Struct`.
@@ -134,13 +135,13 @@ pub enum Value {
 /// Used by hosts that don't declare a custom `TurnBudget` struct.
 pub fn default_turn_budget() -> Value {
     let mut fields = BTreeMap::new();
-    fields.insert("actions".to_string(), Value::Int(1));
-    fields.insert("bonus_actions".to_string(), Value::Int(1));
-    fields.insert("reactions".to_string(), Value::Int(1));
-    fields.insert("movement".to_string(), Value::Int(0));
-    fields.insert("free_interactions".to_string(), Value::Int(1));
+    fields.insert(Name::from("actions"), Value::Int(1));
+    fields.insert(Name::from("bonus_actions"), Value::Int(1));
+    fields.insert(Name::from("reactions"), Value::Int(1));
+    fields.insert(Name::from("movement"), Value::Int(0));
+    fields.insert(Name::from("free_interactions"), Value::Int(1));
     Value::Struct {
-        name: "TurnBudget".to_string(),
+        name: Name::from("TurnBudget"),
         fields,
     }
 }
@@ -151,17 +152,17 @@ pub fn default_turn_budget() -> Value {
 /// without going through the DSL.
 pub fn duration_variant(variant: &str) -> Value {
     Value::EnumVariant {
-        enum_name: "Duration".into(),
-        variant: variant.into(),
+        enum_name: Name::from("Duration"),
+        variant: Name::from(variant),
         fields: BTreeMap::new(),
     }
 }
 
 /// Convenience: construct a Duration enum variant with fields.
-pub fn duration_variant_with(variant: &str, fields: BTreeMap<String, Value>) -> Value {
+pub fn duration_variant_with(variant: &str, fields: BTreeMap<Name, Value>) -> Value {
     Value::EnumVariant {
-        enum_name: "Duration".into(),
-        variant: variant.into(),
+        enum_name: Name::from("Duration"),
+        variant: Name::from(variant),
         fields,
     }
 }

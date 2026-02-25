@@ -12,7 +12,7 @@ pub mod reference_state;
 
 use std::collections::HashMap;
 
-use ttrpg_ast::{Span, Spanned};
+use ttrpg_ast::{Name, Span, Spanned};
 use ttrpg_ast::ast::{
     DeclKind, ExprKind, Program, TopLevel,
 };
@@ -141,7 +141,7 @@ impl<'p> Interpreter<'p> {
             }
         }
 
-        let mut named_args: Vec<(String, Value)> = Vec::new();
+        let mut named_args: Vec<(Name, Value)> = Vec::new();
         for (i, val) in args.into_iter().enumerate() {
             named_args.push((action_decl.params[i].name.clone(), val));
         }
@@ -244,7 +244,7 @@ impl<'p> Interpreter<'p> {
         state: &dyn StateProvider,
         handler: &mut dyn EffectHandler,
         expr: &Spanned<ExprKind>,
-        bindings: HashMap<String, Value>,
+        bindings: HashMap<Name, Value>,
     ) -> Result<Value, RuntimeError> {
         let mut env = Env::new(state, handler, self);
         for (name, value) in bindings {
@@ -334,7 +334,7 @@ impl<'p> Interpreter<'p> {
         event_name: &str,
         payload: Value,
         candidates: &[EntityRef],
-    ) -> Result<Vec<(String, EntityRef, Value)>, RuntimeError> {
+    ) -> Result<Vec<(Name, EntityRef, Value)>, RuntimeError> {
         let hook_result = self.what_hooks(state, event_name, payload.clone(), candidates)?;
 
         let mut results = Vec::new();
@@ -390,7 +390,7 @@ impl<'a, 'p> Env<'a, 'p> {
     }
 
     /// Bind a variable in the current (innermost) scope.
-    pub fn bind(&mut self, name: String, value: Value) {
+    pub fn bind(&mut self, name: Name, value: Value) {
         if let Some(scope) = self.scopes.last_mut() {
             scope.bindings.insert(name, value);
         }
@@ -419,7 +419,7 @@ impl<'a, 'p> Env<'a, 'p> {
 
 /// A single lexical scope containing variable bindings.
 pub(crate) struct Scope {
-    pub bindings: HashMap<String, Value>,
+    pub bindings: HashMap<Name, Value>,
 }
 
 impl Scope {
@@ -503,8 +503,8 @@ mod tests {
     struct TestState {
         fields: HashMap<(u64, String), Value>,
         conditions: HashMap<u64, Vec<ActiveCondition>>,
-        turn_budgets: HashMap<u64, BTreeMap<String, Value>>,
-        enabled_options: Vec<String>,
+        turn_budgets: HashMap<u64, BTreeMap<Name, Value>>,
+        enabled_options: Vec<Name>,
     }
 
     impl TestState {
@@ -525,10 +525,10 @@ mod tests {
         fn read_conditions(&self, entity: &EntityRef) -> Option<Vec<ActiveCondition>> {
             self.conditions.get(&entity.0).cloned()
         }
-        fn read_turn_budget(&self, entity: &EntityRef) -> Option<BTreeMap<String, Value>> {
+        fn read_turn_budget(&self, entity: &EntityRef) -> Option<BTreeMap<Name, Value>> {
             self.turn_budgets.get(&entity.0).cloned()
         }
-        fn read_enabled_options(&self) -> Vec<String> {
+        fn read_enabled_options(&self) -> Vec<Name> {
             self.enabled_options.clone()
         }
         fn position_eq(&self, _a: &Value, _b: &Value) -> bool {
@@ -821,7 +821,7 @@ system "test" {
             name: "__event_flee".into(),
             fields: {
                 let mut f = BTreeMap::new();
-                f.insert("actor".to_string(), Value::Entity(entity1));
+                f.insert("actor".into(), Value::Entity(entity1));
                 f
             },
         };
