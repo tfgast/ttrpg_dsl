@@ -1261,6 +1261,136 @@ mod tests {
     }
 
     #[test]
+    fn collision_detection_both_system_orderings() {
+        // Hazard: detect_cross_system_collisions iterates a HashMap.
+        // This test ensures collision is detected regardless of which
+        // system is iterated first (by testing both program orderings).
+        let items_ab = vec![
+            make_system("Alpha", vec![make_enum("Color", &["red"])]),
+            make_system("Beta", vec![make_enum("Color", &["blue"])]),
+        ];
+        let items_ba = vec![
+            make_system("Beta", vec![make_enum("Color", &["blue"])]),
+            make_system("Alpha", vec![make_enum("Color", &["red"])]),
+        ];
+
+        let mut p1 = make_program(items_ab);
+        let mut p2 = make_program(items_ba);
+        let fs = vec![FileSystemInfo {
+            system_names: vec!["Alpha".into(), "Beta".into()],
+            use_decls: vec![],
+        }];
+
+        assert!(has_errors(&mut p1, &fs), "A-then-B ordering should detect collision");
+        assert!(has_errors(&mut p2, &fs), "B-then-A ordering should detect collision");
+    }
+
+    #[test]
+    fn collision_detection_across_files_order_independent() {
+        // Systems defined in separate files — collision must fire
+        // regardless of which file comes first.
+        let items = vec![
+            make_system("X", vec![make_derive("shared_fn")]),
+            make_system("Y", vec![make_derive("shared_fn")]),
+        ];
+
+        let mut p1 = make_program(items.clone());
+        let fs_xy = vec![
+            FileSystemInfo { system_names: vec!["X".into()], use_decls: vec![] },
+            FileSystemInfo { system_names: vec!["Y".into()], use_decls: vec![] },
+        ];
+        let mut p2 = make_program(items.clone());
+        let fs_yx = vec![fs_xy[1].clone(), fs_xy[0].clone()];
+
+        assert!(has_errors(&mut p1, &fs_xy), "X-first should detect function collision");
+        assert!(has_errors(&mut p2, &fs_yx), "Y-first should detect function collision");
+    }
+
+    #[test]
+    fn merged_system_file_order_collects_all_decls() {
+        // Hazard: if the system registry iterates files in order and
+        // short-circuits, a later file's declarations could be missed.
+        // System "Core" is split across two files. Verify both orderings
+        // produce the same SystemInfo.
+        let items = vec![
+            make_system("Core", vec![make_enum("Ability", &["STR", "DEX"])]),
+            make_system("Core", vec![make_derive("modifier")]),
+        ];
+
+        let mut p1 = make_program(items.clone());
+        let fs1 = vec![
+            FileSystemInfo { system_names: vec!["Core".into()], use_decls: vec![] },
+            FileSystemInfo { system_names: vec!["Core".into()], use_decls: vec![] },
+        ];
+        let (map1, _) = resolve_modules(&mut p1, &fs1);
+
+        let mut p2 = make_program(vec![items[1].clone(), items[0].clone()]);
+        let fs2 = vec![fs1[1].clone(), fs1[0].clone()];
+        let (map2, _) = resolve_modules(&mut p2, &fs2);
+
+        let core1 = map1.systems.get("Core").unwrap();
+        let core2 = map2.systems.get("Core").unwrap();
+
+        assert!(core1.types.contains("Ability") && core1.functions.contains("modifier"),
+            "order 1 should have both type and function");
+        assert!(core2.types.contains("Ability") && core2.functions.contains("modifier"),
+            "order 2 should have both type and function");
+        assert_eq!(core1.variants, core2.variants,
+            "variants should be identical regardless of file order");
+    }
+
+    #[test]
+    fn visibility_union_order_independent() {
+        // Hazard: if visibility computation short-circuits or depends on
+        // import processing order, some names could be invisible.
+        // System "Main" imports "Lib" (types) and "Utils" (functions)
+        // from separate files.
+        let items = vec![
+            make_system("Lib", vec![make_enum("Color", &["red", "blue"])]),
+            make_system("Utils", vec![make_derive("helper")]),
+            make_system("Main", vec![make_derive("main_fn")]),
+        ];
+
+        let make_fs = |lib_first: bool| -> Vec<FileSystemInfo> {
+            let lib_file = FileSystemInfo {
+                system_names: vec!["Main".into()],
+                use_decls: vec![UseDecl {
+                    path: "Lib".into(),
+                    alias: None,
+                    span: Span::new(FileId(0), 0, 10),
+                }],
+            };
+            let utils_file = FileSystemInfo {
+                system_names: vec!["Main".into()],
+                use_decls: vec![UseDecl {
+                    path: "Utils".into(),
+                    alias: None,
+                    span: Span::new(FileId(1), 0, 10),
+                }],
+            };
+            if lib_first {
+                vec![lib_file, utils_file]
+            } else {
+                vec![utils_file, lib_file]
+            }
+        };
+
+        // Both orderings must produce the same visibility
+        let mut p1 = make_program(items.clone());
+        let (map1, d1) = resolve_modules(&mut p1, &make_fs(true));
+        assert!(!d1.iter().any(|d| d.severity == Severity::Error), "lib-first: {:?}", d1);
+
+        let mut p2 = make_program(items.clone());
+        let (map2, d2) = resolve_modules(&mut p2, &make_fs(false));
+        assert!(!d2.iter().any(|d| d.severity == Severity::Error), "utils-first: {:?}", d2);
+
+        let main1 = map1.systems.get("Main").unwrap();
+        let main2 = map2.systems.get("Main").unwrap();
+        assert_eq!(main1.imports.len(), main2.imports.len(),
+            "import count should be the same regardless of file order");
+    }
+
+    #[test]
     fn no_false_positive_when_alias_is_clean() {
         // Alias doesn't match any imported name — no error regardless of order.
         let program_items = vec![

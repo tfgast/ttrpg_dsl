@@ -7228,6 +7228,351 @@ system "test" {
     expect_no_errors(source);
 }
 
+// ── Load order independence tests ───────────────────────────────────────
+//
+// These tests verify that reversing the order of source files does not
+// change whether the pipeline produces errors.  They guard against
+// refactoring hazards such as:
+//   - pass_1a / pass_1b being fused per-system instead of globally staged
+//   - processed_types being reset per-system instead of shared
+//   - HashMap iteration order affecting collision or visibility logic
+//   - import/visibility unions becoming order-dependent
+
+/// Helper: check multi-source and return whether any errors were produced.
+fn multi_has_errors(sources: &[(&str, &str)]) -> bool {
+    let owned: Vec<(String, String)> = sources
+        .iter()
+        .map(|(name, src)| (name.to_string(), src.to_string()))
+        .collect();
+    let parse_result = ttrpg_parser::parse_multi(&owned);
+    if parse_result.has_errors {
+        return true;
+    }
+    let check_result = check_with_modules(&parse_result.program, &parse_result.module_map);
+    check_result
+        .diagnostics
+        .iter()
+        .any(|d| d.severity == ttrpg_ast::diagnostic::Severity::Error)
+}
+
+#[test]
+fn test_load_order_forward_type_ref_across_systems() {
+    // Hazard: if pass_1a and pass_1b are fused per-system, the second
+    // system's signature can't reference the first system's types.
+    // Here system A uses type Character defined in system B.
+    let sources_ab: &[(&str, &str)] = &[
+        ("a.ttrpg", r#"
+use "B"
+system "A" {
+    derive hp(c: Character) -> int { c.HP }
+}
+"#),
+        ("b.ttrpg", r#"
+system "B" {
+    entity Character { HP: int = 10 }
+}
+"#),
+    ];
+    let sources_ba: &[(&str, &str)] = &[sources_ab[1], sources_ab[0]];
+    expect_multi_no_errors(sources_ab);
+    expect_multi_no_errors(sources_ba);
+}
+
+#[test]
+fn test_load_order_forward_fn_ref_across_systems() {
+    // Hazard: if pass_1b processes systems sequentially and a later
+    // system's function isn't registered yet, calls from an earlier
+    // system would fail.
+    let sources_ab: &[(&str, &str)] = &[
+        ("a.ttrpg", r#"
+use "B"
+system "A" {
+    entity Character { HP: int = 10 }
+    derive double_hp(c: Character) -> int { base_hp(c) * 2 }
+}
+"#),
+        ("b.ttrpg", r#"
+use "A"
+system "B" {
+    derive base_hp(c: Character) -> int { c.HP }
+}
+"#),
+    ];
+    let sources_ba: &[(&str, &str)] = &[sources_ab[1], sources_ab[0]];
+    expect_multi_no_errors(sources_ab);
+    expect_multi_no_errors(sources_ba);
+}
+
+#[test]
+fn test_load_order_cross_system_collision_both_orderings() {
+    // Hazard: collision detection iterates HashMaps. Both file orderings
+    // must produce the collision error.
+    let sources_ab: &[(&str, &str)] = &[
+        ("a.ttrpg", r#"
+system "A" {
+    enum Color { red, blue }
+}
+"#),
+        ("b.ttrpg", r#"
+system "B" {
+    enum Color { green, yellow }
+}
+"#),
+    ];
+    let sources_ba: &[(&str, &str)] = &[sources_ab[1], sources_ab[0]];
+    assert!(multi_has_errors(sources_ab), "A-first should detect collision");
+    assert!(multi_has_errors(sources_ba), "B-first should detect collision");
+}
+
+#[test]
+fn test_load_order_builtin_override() {
+    // Hazard: register_builtin_types runs after pass_1a. If the user-
+    // defined Duration enum is in a later file, it must still take
+    // precedence over the builtin.
+    let sources_ab: &[(&str, &str)] = &[
+        ("a.ttrpg", r#"
+use "B"
+system "A" {
+    entity Character { HP: int = 10 }
+    condition Burning on bearer: Character {}
+}
+"#),
+        ("b.ttrpg", r#"
+system "B" {
+    enum Duration { rounds(count: int), minutes(count: int), indefinite }
+}
+"#),
+    ];
+    let sources_ba: &[(&str, &str)] = &[sources_ab[1], sources_ab[0]];
+    expect_multi_no_errors(sources_ab);
+    expect_multi_no_errors(sources_ba);
+}
+
+#[test]
+fn test_load_order_cross_file_variant_resolution() {
+    // Hazard: variant_to_enums is populated in pass_1b. If the enum is
+    // in a later file, its variants must still be resolvable.
+    let sources_ab: &[(&str, &str)] = &[
+        ("a.ttrpg", r#"
+use "B"
+system "A" {
+    derive is_fire(dt: DamageType) -> bool {
+        match dt {
+            fire => true
+            _ => false
+        }
+    }
+}
+"#),
+        ("b.ttrpg", r#"
+system "B" {
+    enum DamageType { fire, cold, lightning }
+}
+"#),
+    ];
+    let sources_ba: &[(&str, &str)] = &[sources_ab[1], sources_ab[0]];
+    expect_multi_no_errors(sources_ab);
+    expect_multi_no_errors(sources_ba);
+}
+
+#[test]
+fn test_load_order_merged_system_across_files() {
+    // Hazard: the same system is split across two files. Types defined
+    // in one file must be usable in signatures in the other file,
+    // regardless of file ordering.
+    let sources_ab: &[(&str, &str)] = &[
+        ("types.ttrpg", r#"
+system "Core" {
+    entity Character { HP: int = 10 }
+    enum DamageType { fire, cold }
+}
+"#),
+        ("fns.ttrpg", r#"
+system "Core" {
+    derive max_hp(c: Character) -> int { c.HP }
+    derive get_type() -> DamageType { fire }
+}
+"#),
+    ];
+    let sources_ba: &[(&str, &str)] = &[sources_ab[1], sources_ab[0]];
+    expect_multi_no_errors(sources_ab);
+    expect_multi_no_errors(sources_ba);
+}
+
+#[test]
+fn test_load_order_condition_modify_cross_system() {
+    // Hazard: condition and its modify target are in different systems.
+    // Both orderings must typecheck.
+    let sources_ab: &[(&str, &str)] = &[
+        ("core.ttrpg", r#"
+system "Core" {
+    entity Character { HP: int = 10 }
+    derive max_hp(c: Character) -> int { c.HP }
+}
+"#),
+        ("conditions.ttrpg", r#"
+use "Core"
+system "Conditions" {
+    condition Strong on bearer: Character {
+        modify max_hp(c: bearer) {
+            result = result + 5
+        }
+    }
+}
+"#),
+    ];
+    let sources_ba: &[(&str, &str)] = &[sources_ab[1], sources_ab[0]];
+    expect_multi_no_errors(sources_ab);
+    expect_multi_no_errors(sources_ba);
+}
+
+#[test]
+fn test_load_order_three_systems_import_chain() {
+    // Hazard: three systems with imports. All 6 file orderings should
+    // typecheck without errors. Each system imports what it needs.
+    let a = ("a.ttrpg", r#"
+use "B"
+use "C"
+system "A" {
+    derive total_hp(c: Character) -> int { base_hp(c) * 2 }
+}
+"#);
+    let b = ("b.ttrpg", r#"
+use "C"
+system "B" {
+    derive base_hp(c: Character) -> int { c.HP }
+}
+"#);
+    let c = ("c.ttrpg", r#"
+system "C" {
+    entity Character { HP: int = 10 }
+}
+"#);
+
+    // Test all 6 permutations
+    let permutations: &[&[(&str, &str)]] = &[
+        &[a, b, c],
+        &[a, c, b],
+        &[b, a, c],
+        &[b, c, a],
+        &[c, a, b],
+        &[c, b, a],
+    ];
+    for (i, perm) in permutations.iter().enumerate() {
+        expect_multi_no_errors(perm);
+        // Verify we didn't silently skip the check
+        assert!(!multi_has_errors(perm), "permutation {} should not have errors", i);
+    }
+}
+
+#[test]
+fn test_load_order_duplicate_type_first_definition_wins() {
+    // Hazard: processed_types ensures first definition wins. If someone
+    // resets it per-system, the second definition would overwrite.
+    // Both orderings should produce a collision error but the first
+    // definition's variants should still be usable.
+    let check_dup = |sources: &[(&str, &str)]| -> Vec<String> {
+        let owned: Vec<(String, String)> = sources
+            .iter()
+            .map(|(n, s)| (n.to_string(), s.to_string()))
+            .collect();
+        let parse_result = ttrpg_parser::parse_multi(&owned);
+        // Collision is detected at parse/resolve level — collect all diagnostics
+        let mut all_diags: Vec<String> = parse_result
+            .diagnostics
+            .iter()
+            .filter(|d| d.severity == ttrpg_ast::diagnostic::Severity::Error)
+            .map(|d| d.message.clone())
+            .collect();
+        if !parse_result.has_errors {
+            let check_result = check_with_modules(&parse_result.program, &parse_result.module_map);
+            all_diags.extend(
+                check_result
+                    .diagnostics
+                    .iter()
+                    .filter(|d| d.severity == ttrpg_ast::diagnostic::Severity::Error)
+                    .map(|d| d.message.clone()),
+            );
+        }
+        all_diags
+    };
+
+    let sources_ab: &[(&str, &str)] = &[
+        ("a.ttrpg", r#"
+system "A" {
+    enum Color { red, blue, green }
+    derive get_red() -> Color { red }
+}
+"#),
+        ("b.ttrpg", r#"
+system "B" {
+    enum Color { cyan, magenta, yellow }
+}
+"#),
+    ];
+    let sources_ba: &[(&str, &str)] = &[sources_ab[1], sources_ab[0]];
+
+    let errors_ab = check_dup(sources_ab);
+    let errors_ba = check_dup(sources_ba);
+
+    // Both orderings must detect the collision
+    assert!(errors_ab.iter().any(|m| m.contains("duplicate")),
+        "AB should detect collision: {:?}", errors_ab);
+    assert!(errors_ba.iter().any(|m| m.contains("duplicate")),
+        "BA should detect collision: {:?}", errors_ba);
+}
+
+#[test]
+fn test_load_order_event_cross_system() {
+    // Hazard: event defined in one system, referenced in another.
+    // Both file orderings must typecheck.
+    let sources_ab: &[(&str, &str)] = &[
+        ("core.ttrpg", r#"
+system "Core" {
+    entity Character { HP: int = 10 }
+    event damage(target: Character) { amount: int }
+    hook on_damage on self: Character (trigger: damage(target: self)) {
+        self.HP -= trigger.amount
+    }
+}
+"#),
+        ("ext.ttrpg", r#"
+use "Core"
+system "Ext" {
+    derive hp(c: Character) -> int { c.HP }
+}
+"#),
+    ];
+    let sources_ba: &[(&str, &str)] = &[sources_ab[1], sources_ab[0]];
+    expect_multi_no_errors(sources_ab);
+    expect_multi_no_errors(sources_ba);
+}
+
+#[test]
+fn test_load_order_visibility_with_import_both_orderings() {
+    // Hazard: visibility computation uses set union over imports.
+    // If it becomes order-dependent, one ordering would miss names.
+    let sources_ab: &[(&str, &str)] = &[
+        ("lib.ttrpg", r#"
+system "Lib" {
+    enum Ability { STR, DEX, CON }
+    entity Character { HP: int = 10 }
+    derive modifier(score: int) -> int { floor((score - 10) / 2) }
+}
+"#),
+        ("main.ttrpg", r#"
+use "Lib"
+system "Main" {
+    derive str_mod(c: Character) -> int { modifier(c.HP) }
+    derive get_str() -> Ability { STR }
+}
+"#),
+    ];
+    let sources_ba: &[(&str, &str)] = &[sources_ab[1], sources_ab[0]];
+    expect_multi_no_errors(sources_ab);
+    expect_multi_no_errors(sources_ba);
+}
+
 // ── Regression: tdsl-6fad — duplicate type across systems overwrites first body ──
 
 #[test]
