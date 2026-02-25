@@ -1696,11 +1696,14 @@ fn test_error_recovery_finds_hook_declaration() {
     // so the subsequent hook declaration is parsed.
     let source = r#"system "test" {
     entity Character { HP: int }
+    event Damage(amount: int) {}
     derive bad_fn( -> int {
         42
     }
-    hook on_damage on actor: Character {
-        resolve {}
+    hook OnDamage on actor: Character (
+        trigger: Damage(amount: amount)
+    ) {
+        actor.HP -= amount
     }
 }"#;
     let (program, diagnostics) = parse(source);
@@ -1726,7 +1729,9 @@ fn test_error_recovery_finds_unit_declaration() {
     derive bad_fn( -> int {
         42
     }
-    unit Distance(ft)
+    unit Distance {
+        base: int
+    }
 }"#;
     let (program, diagnostics) = parse(source);
     assert!(!diagnostics.is_empty(), "should have errors from bad_fn");

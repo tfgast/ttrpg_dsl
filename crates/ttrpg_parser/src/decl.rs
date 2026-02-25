@@ -307,6 +307,10 @@ impl Parser {
             {
                 break;
             }
+            // Trailing comma: comma followed by ')' ends the param list.
+            if matches!(self.peek_at(1), TokenKind::RParen) {
+                break;
+            }
             self.advance(); // consume ','
             let (name, _) = self.expect_ident()?;
             groups.push(name);

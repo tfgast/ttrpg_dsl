@@ -16,10 +16,19 @@ impl Parser {
                     "float" => { self.advance(); TypeExpr::Float }
                     "DiceExpr" => { self.advance(); TypeExpr::DiceExpr }
                     "RollResult" => { self.advance(); TypeExpr::RollResult }
-                    "TurnBudget" => { self.advance(); TypeExpr::TurnBudget }
-                    "Duration" => { self.advance(); TypeExpr::Duration }
-                    "Position" => { self.advance(); TypeExpr::Position }
-                    "Condition" => { self.advance(); TypeExpr::Condition }
+                    "TurnBudget" | "Duration" | "Position" | "Condition"
+                        if !matches!(self.peek_at(1), TokenKind::Dot) =>
+                    {
+                        let ty = match name.as_str() {
+                            "TurnBudget" => TypeExpr::TurnBudget,
+                            "Duration" => TypeExpr::Duration,
+                            "Position" => TypeExpr::Position,
+                            "Condition" => TypeExpr::Condition,
+                            _ => unreachable!(),
+                        };
+                        self.advance();
+                        ty
+                    }
 
                     "map" => {
                         self.advance();

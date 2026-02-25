@@ -18,6 +18,17 @@ impl Parser {
                 Ok(Spanned::new(PatternKind::IntLit(n), self.end_span(start)))
             }
 
+            TokenKind::Minus => {
+                self.advance();
+                if let TokenKind::Int(n) = self.peek().clone() {
+                    self.advance();
+                    Ok(Spanned::new(PatternKind::IntLit(-n), self.end_span(start)))
+                } else {
+                    self.error(format!("expected integer after '-' in pattern, found {:?}", self.peek()));
+                    Err(())
+                }
+            }
+
             TokenKind::String(s) => {
                 let s = s.clone();
                 self.advance();
