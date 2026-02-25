@@ -1108,7 +1108,7 @@ mod tests {
         use ttrpg_checker::env::TypeEnv;
 
         fn span() -> Span {
-            Span { start: 0, end: 0 }
+            Span::dummy()
         }
         fn spanned<T>(node: T) -> Spanned<T> {
             Spanned { node, span: span() }

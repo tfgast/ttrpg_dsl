@@ -508,7 +508,7 @@ mod tests {
     // ── Test infrastructure ────────────────────────────────────
 
     fn span() -> Span {
-        Span { start: 0, end: 0 }
+        Span::dummy()
     }
 
     fn spanned<T>(node: T) -> Spanned<T> {

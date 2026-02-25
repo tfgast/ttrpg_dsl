@@ -363,7 +363,7 @@ mod tests {
         use ttrpg_ast::ast::*;
         use ttrpg_ast::Spanned;
 
-        let dummy_span = ttrpg_ast::Span { start: 0, end: 0 };
+        let dummy_span = ttrpg_ast::Span::dummy();
 
         let table_decl = Spanned::new(
             DeclKind::Table(TableDecl {

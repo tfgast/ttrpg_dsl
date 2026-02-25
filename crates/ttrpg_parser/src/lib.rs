@@ -153,7 +153,7 @@ fn rebase_span(span: Span, base: usize) -> Span {
         return span;
     }
     // Don't rebase dummy spans
-    if span.start == 0 && span.end == 0 {
+    if span.is_dummy() {
         return span;
     }
     Span::new(span.start + base, span.end + base)

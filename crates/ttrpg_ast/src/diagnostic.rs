@@ -206,8 +206,8 @@ impl MultiSourceMap {
 
     /// Render a diagnostic with filename:line:col location.
     pub fn render(&self, diag: &Diagnostic) -> String {
-        // Handle dummy spans (0,0) — no file attribution
-        if diag.span.start == 0 && diag.span.end == 0 && self.files.len() > 1 {
+        // Dummy spans have no source location — render without file attribution
+        if diag.span.is_dummy() {
             let severity_str = match diag.severity {
                 Severity::Error => "error",
                 Severity::Warning => "warning",
@@ -257,6 +257,43 @@ mod tests {
         assert!(
             entry.is_none(),
             "span at sentinel gap (pos 5) should not match any file",
+        );
+    }
+
+    // ── Regression: tdsl-rsdi — (0,0) span at BOF should not lose filename ──
+
+    #[test]
+    fn multi_source_map_zero_span_renders_with_filename() {
+        // A (0,0) span at BOF of the first file should render with filename
+        // attribution, not be treated as a dummy/no-file span.
+        let msm = MultiSourceMap::new(vec![
+            ("a.ttrpg".into(), "let x = 1\n".into()),
+            ("b.ttrpg".into(), "let y = 2\n".into()),
+        ]);
+        let diag = Diagnostic::error("unexpected token", Span { start: 0, end: 0 });
+        let rendered = msm.render(&diag);
+        assert!(
+            rendered.contains("a.ttrpg"),
+            "diagnostic at BOF should include filename, got: {rendered}",
+        );
+    }
+
+    #[test]
+    fn multi_source_map_dummy_span_no_attribution() {
+        // Dummy spans (Span::dummy()) should render without file attribution.
+        let msm = MultiSourceMap::new(vec![
+            ("a.ttrpg".into(), "let x = 1\n".into()),
+            ("b.ttrpg".into(), "let y = 2\n".into()),
+        ]);
+        let diag = Diagnostic::error("type error", Span::dummy());
+        let rendered = msm.render(&diag);
+        assert!(
+            rendered.contains("[error]"),
+            "dummy span should use no-attribution format, got: {rendered}",
+        );
+        assert!(
+            !rendered.contains("a.ttrpg") && !rendered.contains("b.ttrpg"),
+            "dummy span should not attribute to any file, got: {rendered}",
         );
     }
 

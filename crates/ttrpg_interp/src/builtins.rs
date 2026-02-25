@@ -426,7 +426,7 @@ mod tests {
     use super::*;
 
     fn dummy_span() -> Span {
-        Span { start: 0, end: 0 }
+        Span::dummy()
     }
 
     // ── Regression: tdsl-0s0y — floor/ceil with NaN, infinity, out-of-range ──
