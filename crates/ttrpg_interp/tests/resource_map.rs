@@ -1083,3 +1083,52 @@ fn direct_resource_field_is_clamped() {
     let hp = adapter.read_field(&hero, "HP");
     assert_eq!(hp, Some(Value::Int(0)), "HP should be clamped at 0");
 }
+
+// ── If-expression in resource bounds (tdsl-e4u) ───────────────
+
+const IF_BOUND_SYSTEM: &str = r#"
+system "test" {
+    entity Character {
+        cap: int = 10
+        hp: resource(0..=if true { cap } else { 0 })
+    }
+    action Damage on target: Character (amount: int) {
+        cost { action }
+        resolve {
+            target.hp -= amount
+        }
+    }
+}
+"#;
+
+#[test]
+fn if_expr_bound_idents_are_collected() {
+    let (program, result) = compile(IF_BOUND_SYSTEM);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+
+    let mut state = GameState::new();
+    let mut fields = HashMap::new();
+    fields.insert("cap".into(), Value::Int(10));
+    fields.insert("hp".into(), Value::Int(3));
+    let hero = state.add_entity("Character", fields);
+    state.set_turn_budget(&hero, standard_turn_budget());
+
+    let adapter = StateAdapter::new(state);
+    let mut handler = ScriptedHandler::with_responses(vec![
+        Response::Acknowledged, // ActionStarted
+    ]);
+    adapter.run(&mut handler, |s, h| {
+        interp
+            .execute_action(s, h, "Damage", hero, vec![Value::Int(50)])
+            .unwrap();
+    });
+
+    // `cap` is inside the if-then branch; collect_idents must traverse it
+    // for bounds to resolve. Without the fix, bounds are None and hp goes to -47.
+    let hp = adapter.read_field(&hero, "hp");
+    assert_eq!(
+        hp,
+        Some(Value::Int(0)),
+        "if-expression bound should resolve (cap=10), clamping hp at 0"
+    );
+}

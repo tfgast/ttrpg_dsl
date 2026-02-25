@@ -2285,9 +2285,80 @@ fn collect_idents(expr: &Spanned<ExprKind>, out: &mut Vec<String>) {
                 collect_idents(value, out);
             }
         }
-        ExprKind::If { condition, .. } => collect_idents(condition, out),
+        ExprKind::If { condition, then_block, else_branch } => {
+            collect_idents(condition, out);
+            collect_idents_block(then_block, out);
+            if let Some(eb) = else_branch {
+                match eb {
+                    ElseBranch::Block(block) => collect_idents_block(block, out),
+                    ElseBranch::If(expr) => collect_idents(expr, out),
+                }
+            }
+        }
+        ExprKind::IfLet { scrutinee, then_block, else_branch, .. } => {
+            collect_idents(scrutinee, out);
+            collect_idents_block(then_block, out);
+            if let Some(eb) = else_branch {
+                match eb {
+                    ElseBranch::Block(block) => collect_idents_block(block, out),
+                    ElseBranch::If(expr) => collect_idents(expr, out),
+                }
+            }
+        }
+        ExprKind::PatternMatch { scrutinee, arms } => {
+            collect_idents(scrutinee, out);
+            for arm in arms {
+                collect_idents_arm_body(&arm.body, out);
+            }
+        }
+        ExprKind::GuardMatch { arms } => {
+            for arm in arms {
+                if let GuardKind::Expr(expr) = &arm.guard {
+                    collect_idents(expr, out);
+                }
+                collect_idents_arm_body(&arm.body, out);
+            }
+        }
+        ExprKind::StructLit { fields, base, .. } => {
+            for field in fields {
+                collect_idents(&field.value, out);
+            }
+            if let Some(base) = base {
+                collect_idents(base, out);
+            }
+        }
+        ExprKind::For { iterable, body, .. } => {
+            match iterable {
+                ForIterable::Collection(expr) => collect_idents(expr, out),
+                ForIterable::Range { start, end, .. } => {
+                    collect_idents(start, out);
+                    collect_idents(end, out);
+                }
+            }
+            collect_idents_block(body, out);
+        }
         ExprKind::Has { entity, .. } => collect_idents(entity, out),
         _ => {}
+    }
+}
+
+fn collect_idents_block(block: &ttrpg_ast::ast::Block, out: &mut Vec<String>) {
+    use ttrpg_ast::ast::StmtKind;
+    for stmt in &block.node {
+        match &stmt.node {
+            StmtKind::Let { value, .. } => collect_idents(value, out),
+            StmtKind::Assign { value, .. } => collect_idents(value, out),
+            StmtKind::Expr(expr) => collect_idents(expr, out),
+            StmtKind::Grant { entity, .. } => collect_idents(entity, out),
+            StmtKind::Revoke { entity, .. } => collect_idents(entity, out),
+        }
+    }
+}
+
+fn collect_idents_arm_body(body: &ArmBody, out: &mut Vec<String>) {
+    match body {
+        ArmBody::Expr(expr) => collect_idents(expr, out),
+        ArmBody::Block(block) => collect_idents_block(block, out),
     }
 }
 
