@@ -526,57 +526,8 @@ impl Runner {
         // no entity or handles are created.
         let mut prepared_groups = Vec::new();
         for (group_name, group_fields) in inline_groups {
-            let group_info = self
-                .type_env
-                .lookup_optional_group(entity_type, &group_name)
-                .ok_or_else(|| {
-                    CliError::Message(format!(
-                        "unknown optional group '{}' on entity type '{}'",
-                        group_name, entity_type
-                    ))
-                })?
-                .clone();
-
-            // Validate field names and types in the group
-            for (field_name, field_val) in &group_fields {
-                match group_info.fields.iter().find(|f| f.name == *field_name) {
-                    None => {
-                        return Err(CliError::Message(format!(
-                            "unknown field '{}' in optional group '{}'",
-                            field_name, group_name
-                        )));
-                    }
-                    Some(fi) => {
-                        if !value_matches_ty(field_val, &fi.ty, Some(&*self.game_state.borrow())) {
-                            return Err(CliError::Message(format!(
-                                "type mismatch for field '{}': expected {}, got {}",
-                                field_name,
-                                fi.ty.display(),
-                                value_type_display(field_val)
-                            )));
-                        }
-                    }
-                }
-            }
-
-            let mut all_fields = group_fields;
-            self.fill_group_defaults(&group_name, entity_type, &mut all_fields)?;
-
-            // Check required fields
-            for fi in &group_info.fields {
-                if !fi.has_default && !all_fields.contains_key(&fi.name) {
-                    return Err(CliError::Message(format!(
-                        "missing required field '{}' in optional group '{}'",
-                        fi.name, group_name
-                    )));
-                }
-            }
-
-            let btree_fields: BTreeMap<String, Value> = all_fields.into_iter().collect();
-            let struct_val = Value::Struct {
-                name: group_name.clone(),
-                fields: btree_fields,
-            };
+            let struct_val =
+                self.validate_and_prepare_group(&group_name, entity_type, group_fields)?;
             prepared_groups.push((group_name, struct_val));
         }
 
@@ -1042,17 +993,6 @@ impl Runner {
                 })?
                 .to_string()
         };
-        let group_info = self
-            .type_env
-            .lookup_optional_group(&type_name, group_name)
-            .ok_or_else(|| {
-                CliError::Message(format!(
-                    "unknown optional group '{}' on entity type '{}'",
-                    group_name, type_name
-                ))
-            })?
-            .clone();
-
         // Check not already granted
         {
             let gs = self.game_state.borrow();
@@ -1065,7 +1005,7 @@ impl Runner {
         }
 
         // Parse optional { ... } block
-        let mut fields = if rest.starts_with('{') {
+        let fields = if rest.starts_with('{') {
             let block = rest
                 .strip_prefix('{')
                 .and_then(|s| s.strip_suffix('}'))
@@ -1080,7 +1020,41 @@ impl Runner {
             )));
         };
 
-        // Validate supplied field names against group schema
+        let struct_val = self.validate_and_prepare_group(group_name, &type_name, fields)?;
+        self.game_state.borrow_mut().write_field(
+            &entity,
+            &[FieldPathSegment::Field(group_name.to_string())],
+            struct_val.clone(),
+        );
+        self.output.push(format!(
+            "granted {}.{}: {}",
+            handle,
+            group_name,
+            format_value(&struct_val)
+        ));
+        Ok(())
+    }
+
+    /// Validate supplied fields against the optional-group schema, fill
+    /// defaults for missing fields, check all required fields are present,
+    /// and return the built `Value::Struct`.
+    fn validate_and_prepare_group(
+        &mut self,
+        group_name: &str,
+        entity_type: &str,
+        mut fields: HashMap<String, Value>,
+    ) -> Result<Value, CliError> {
+        let group_info = self
+            .type_env
+            .lookup_optional_group(entity_type, group_name)
+            .ok_or_else(|| {
+                CliError::Message(format!(
+                    "unknown optional group '{}' on entity type '{}'",
+                    group_name, entity_type
+                ))
+            })?
+            .clone();
+
         for (field_name, field_val) in &fields {
             match group_info.fields.iter().find(|f| f.name == *field_name) {
                 None => {
@@ -1102,10 +1076,8 @@ impl Runner {
             }
         }
 
-        // Fill defaults for missing fields
-        self.fill_group_defaults(group_name, &type_name, &mut fields)?;
+        self.fill_group_defaults(group_name, entity_type, &mut fields)?;
 
-        // Validate all required fields (no default) are present
         for fi in &group_info.fields {
             if !fi.has_default && !fields.contains_key(&fi.name) {
                 return Err(CliError::Message(format!(
@@ -1115,24 +1087,11 @@ impl Runner {
             }
         }
 
-        // Build struct value and write
         let btree_fields: BTreeMap<String, Value> = fields.into_iter().collect();
-        let struct_val = Value::Struct {
+        Ok(Value::Struct {
             name: group_name.to_string(),
             fields: btree_fields,
-        };
-        self.game_state.borrow_mut().write_field(
-            &entity,
-            &[FieldPathSegment::Field(group_name.to_string())],
-            struct_val.clone(),
-        );
-        self.output.push(format!(
-            "granted {}.{}: {}",
-            handle,
-            group_name,
-            format_value(&struct_val)
-        ));
-        Ok(())
+        })
     }
 
     /// Find an AST OptionalGroup by entity type and group name.
