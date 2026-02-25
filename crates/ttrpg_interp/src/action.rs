@@ -37,7 +37,7 @@ pub(crate) fn execute_action(
     env: &mut Env,
     action: &ActionDecl,
     actor: EntityRef,
-    args: Vec<(String, Value)>,
+    mut args: Vec<(String, Value)>,
     call_span: Span,
 ) -> Result<Value, RuntimeError> {
     let action_name = action.name.clone();
@@ -80,6 +80,20 @@ pub(crate) fn execute_action(
                 ),
                 call_span,
             ));
+        }
+    }
+
+    // 1b. Fill defaults for missing optional params (after veto check)
+    for i in args.len()..action.params.len() {
+        if let Some(ref default_expr) = action.params[i].default {
+            env.push_scope();
+            env.bind(action.receiver_name.clone(), Value::Entity(actor));
+            for (pname, pval) in &args {
+                env.bind(pname.clone(), pval.clone());
+            }
+            let result = eval_expr(env, default_expr);
+            env.pop_scope();
+            args.push((action.params[i].name.clone(), result?));
         }
     }
 

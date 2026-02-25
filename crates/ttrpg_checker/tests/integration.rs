@@ -6743,3 +6743,50 @@ system "test" {
 }
 "#);
 }
+
+// ── Single-owner variant pattern vs non-enum scrutinee (tdsl-65cb) ──
+
+#[test]
+fn single_owner_variant_pattern_rejects_non_enum_scrutinee() {
+    expect_errors(r#"
+system "test" {
+    enum Status { active, inactive }
+    derive test(x: int) -> int {
+        match x {
+            active => 1,
+            _ => 0,
+        }
+    }
+}
+"#, &["cannot match type"]);
+}
+
+#[test]
+fn single_owner_variant_destructure_rejects_non_enum_scrutinee() {
+    expect_errors(r#"
+system "test" {
+    enum Result { success(val: int), failure(code: int) }
+    derive test(x: string) -> int {
+        match x {
+            success(v) => v,
+            _ => 0,
+        }
+    }
+}
+"#, &["cannot match type"]);
+}
+
+#[test]
+fn single_owner_variant_pattern_still_works_with_correct_enum() {
+    expect_no_errors(r#"
+system "test" {
+    enum Status { active, inactive }
+    derive test(x: Status) -> int {
+        match x {
+            active => 1,
+            inactive => 0,
+        }
+    }
+}
+"#);
+}

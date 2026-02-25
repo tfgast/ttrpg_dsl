@@ -146,22 +146,7 @@ impl<'p> Interpreter<'p> {
             named_args.push((action_decl.params[i].name.clone(), val));
         }
 
-        // Fill defaults for missing optional params
         let mut env = Env::new(state, handler, self);
-        for i in named_args.len()..action_decl.params.len() {
-            if let Some(ref default_expr) = action_decl.params[i].default {
-                env.push_scope();
-                // Bind receiver so defaults can reference it
-                env.bind(action_decl.receiver_name.clone(), Value::Entity(actor));
-                for (pname, pval) in &named_args {
-                    env.bind(pname.clone(), pval.clone());
-                }
-                let default_val = eval::eval_expr(&mut env, default_expr)?;
-                env.pop_scope();
-                named_args.push((action_decl.params[i].name.clone(), default_val));
-            }
-        }
-
         let span = Span::dummy();
         action::execute_action(&mut env, &action_decl, actor, named_args, span)
     }

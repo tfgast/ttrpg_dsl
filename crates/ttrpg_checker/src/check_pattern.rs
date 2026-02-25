@@ -106,7 +106,18 @@ impl<'a> Checker<'a> {
                             None
                         }
                     } else if owners.len() == 1 {
-                        Some(owners[0].clone())
+                        if scrutinee_ty.is_error() {
+                            Some(owners[0].clone())
+                        } else {
+                            self.error(
+                                format!(
+                                    "variant pattern `{}` cannot match type {}",
+                                    name, scrutinee_ty
+                                ),
+                                pattern.span,
+                            );
+                            None
+                        }
                     } else if !scrutinee_ty.is_error() {
                         self.error(
                             format!(
@@ -287,7 +298,18 @@ impl<'a> Checker<'a> {
                             None
                         }
                     } else if owners.len() == 1 {
-                        Some(owners[0].clone())
+                        if scrutinee_ty.is_error() {
+                            Some(owners[0].clone())
+                        } else {
+                            self.error(
+                                format!(
+                                    "variant pattern `{}` cannot match type {}",
+                                    name, scrutinee_ty
+                                ),
+                                pattern.span,
+                            );
+                            None
+                        }
                     } else if !scrutinee_ty.is_error() {
                         self.error(
                             format!(

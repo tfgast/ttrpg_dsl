@@ -2014,6 +2014,84 @@ mod tests {
         }
     }
 
+    // ── remove_condition param semantics (tdsl-3av) ────────────
+
+    #[test]
+    fn remove_condition_empty_args_preserves_exact_match() {
+        // When passing a Condition value with empty args, the effect should
+        // have params=Some(empty_map), NOT params=None (which means "remove all").
+        let program = program_with_decls(vec![]);
+        let type_env = type_env_with_builtins();
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = TestState::new();
+        let mut handler = ScriptedHandler::new();
+        let mut env = make_env(&state, &mut handler, &interp);
+
+        env.bind("target".into(), Value::Entity(EntityRef(1)));
+        env.bind(
+            "cond".into(),
+            Value::Condition {
+                name: "Stunned".into(),
+                args: BTreeMap::new(),
+            },
+        );
+
+        let expr = spanned(ExprKind::Call {
+            callee: Box::new(spanned(ExprKind::Ident("remove_condition".into()))),
+            args: vec![
+                Arg { name: None, value: spanned(ExprKind::Ident("target".into())), span: dummy_span() },
+                Arg { name: None, value: spanned(ExprKind::Ident("cond".into())), span: dummy_span() },
+            ],
+        });
+        crate::eval::eval_expr(&mut env, &expr).unwrap();
+
+        assert_eq!(handler.log.len(), 1);
+        match &handler.log[0] {
+            Effect::RemoveCondition { params, .. } => {
+                assert_eq!(
+                    *params,
+                    Some(BTreeMap::new()),
+                    "empty Condition args should produce Some(empty_map), not None"
+                );
+            }
+            _ => panic!("expected RemoveCondition effect"),
+        }
+    }
+
+    #[test]
+    fn remove_condition_string_form_uses_none_params() {
+        // When passing a String (not Condition), params should be None (remove all).
+        let program = program_with_decls(vec![]);
+        let type_env = type_env_with_builtins();
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = TestState::new();
+        let mut handler = ScriptedHandler::new();
+        let mut env = make_env(&state, &mut handler, &interp);
+
+        env.bind("target".into(), Value::Entity(EntityRef(1)));
+        env.bind("name".into(), Value::Str("Stunned".into()));
+
+        let expr = spanned(ExprKind::Call {
+            callee: Box::new(spanned(ExprKind::Ident("remove_condition".into()))),
+            args: vec![
+                Arg { name: None, value: spanned(ExprKind::Ident("target".into())), span: dummy_span() },
+                Arg { name: None, value: spanned(ExprKind::Ident("name".into())), span: dummy_span() },
+            ],
+        });
+        crate::eval::eval_expr(&mut env, &expr).unwrap();
+
+        assert_eq!(handler.log.len(), 1);
+        match &handler.log[0] {
+            Effect::RemoveCondition { params, .. } => {
+                assert!(
+                    params.is_none(),
+                    "String form should produce params=None (remove all)"
+                );
+            }
+            _ => panic!("expected RemoveCondition effect"),
+        }
+    }
+
     // ── Enum variant construction tests ────────────────────────
 
     #[test]

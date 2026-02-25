@@ -430,6 +430,10 @@ fn exec_modify_stmts_phase1(
                         env.push_scope();
                         let r = exec_modify_stmts_phase1(env, then_body, params);
                         env.pop_scope();
+                        // Re-sync param bindings into the outer scope after branch
+                        for (name, val) in params.iter() {
+                            env.bind(name.clone(), val.clone());
+                        }
                         r?;
                     }
                     Value::Bool(false) => {
@@ -437,6 +441,10 @@ fn exec_modify_stmts_phase1(
                             env.push_scope();
                             let r = exec_modify_stmts_phase1(env, else_stmts, params);
                             env.pop_scope();
+                            // Re-sync param bindings into the outer scope after branch
+                            for (name, val) in params.iter() {
+                                env.bind(name.clone(), val.clone());
+                            }
                             r?;
                         }
                     }
@@ -541,6 +549,8 @@ fn exec_modify_stmts_phase2(
                         env.push_scope();
                         let r = exec_modify_stmts_phase2(env, then_body, result);
                         env.pop_scope();
+                        // Re-sync result binding into the outer scope after branch
+                        env.bind("result".to_string(), result.clone());
                         r?;
                     }
                     Value::Bool(false) => {
@@ -548,6 +558,8 @@ fn exec_modify_stmts_phase2(
                             env.push_scope();
                             let r = exec_modify_stmts_phase2(env, else_stmts, result);
                             env.pop_scope();
+                            // Re-sync result binding into the outer scope after branch
+                            env.bind("result".to_string(), result.clone());
                             r?;
                         }
                     }
@@ -2201,5 +2213,281 @@ mod tests {
             }
             _ => panic!("expected ModifyApplied"),
         }
+    }
+
+    // ── If-branch param override visibility (tdsl-lm6) ──────
+
+    #[test]
+    fn modify_phase1_if_branch_override_visible_after_branch() {
+        // derive f(actor: Character, x: int) -> int { x }
+        // condition C on target: Character {
+        //   modify f(actor: target) { if true { x = 10 }; x = x + 1 }
+        // }
+        // Entity 1 has C. Call: f(entity(1), 1).
+        // Expected: x overridden to 10 in if-branch, then x = x + 1 = 11.
+
+        let program = program_with_decls(vec![
+            DeclKind::Derive(FnDecl {
+                name: "f".into(),
+                params: vec![
+                    Param {
+                        name: "actor".into(),
+                        ty: spanned(TypeExpr::Named("Character".into())),
+                        default: None,
+                        with_groups: vec![],
+                        span: dummy_span(),
+                    },
+                    Param {
+                        name: "x".into(),
+                        ty: spanned(TypeExpr::Int),
+                        default: None,
+                        with_groups: vec![],
+                        span: dummy_span(),
+                    },
+                ],
+                return_type: spanned(TypeExpr::Int),
+                body: spanned(vec![spanned(StmtKind::Expr(spanned(
+                    ExprKind::Ident("x".into()),
+                )))]),
+                synthetic: false,
+            }),
+            DeclKind::Condition(ConditionDecl {
+                name: "C".into(),
+                params: vec![],
+                receiver_name: "target".into(),
+                receiver_type: spanned(TypeExpr::Named("Character".into())),
+                receiver_with_groups: vec![],
+                clauses: vec![ConditionClause::Modify(ModifyClause {
+                    target: "f".into(),
+                    bindings: vec![ModifyBinding {
+                        name: "actor".into(),
+                        value: Some(spanned(ExprKind::Ident("target".into()))),
+                        span: dummy_span(),
+                    }],
+                    body: vec![
+                        ModifyStmt::If {
+                            condition: spanned(ExprKind::BoolLit(true)),
+                            then_body: vec![ModifyStmt::ParamOverride {
+                                name: "x".into(),
+                                value: spanned(ExprKind::IntLit(10)),
+                                span: dummy_span(),
+                            }],
+                            else_body: None,
+                            span: dummy_span(),
+                        },
+                        ModifyStmt::ParamOverride {
+                            name: "x".into(),
+                            value: spanned(ExprKind::BinOp {
+                                op: BinOp::Add,
+                                lhs: Box::new(spanned(ExprKind::Ident("x".into()))),
+                                rhs: Box::new(spanned(ExprKind::IntLit(1))),
+                            }),
+                            span: dummy_span(),
+                        },
+                    ],
+                    span: dummy_span(),
+                })],
+            }),
+        ]);
+
+        let mut type_env = TypeEnv::new();
+        type_env.functions.insert(
+            "f".into(),
+            FnInfo {
+                name: "f".into(),
+                kind: FnKind::Derive,
+                params: vec![
+                    ParamInfo {
+                        name: "actor".into(),
+                        ty: Ty::Entity("Character".into()),
+                        has_default: false,
+                        with_groups: vec![],
+                    },
+                    ParamInfo {
+                        name: "x".into(),
+                        ty: Ty::Int,
+                        has_default: false,
+                        with_groups: vec![],
+                    },
+                ],
+                return_type: Ty::Int,
+                receiver: None,
+            },
+        );
+        type_env.conditions.insert(
+            "C".into(),
+            ConditionInfo {
+                name: "C".into(),
+                receiver_name: "target".into(),
+                receiver_type: Ty::Entity("Character".into()),
+                params: vec![],
+            },
+        );
+
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+
+        let mut state = TestState::new();
+        state.conditions.insert(
+            1,
+            vec![ActiveCondition {
+                id: 1,
+                name: "C".into(),
+                params: BTreeMap::new(),
+                bearer: EntityRef(1),
+                gained_at: 0,
+                duration: Value::None,
+            }],
+        );
+
+        let mut handler = ScriptedHandler::new();
+        let mut env = make_env(&state, &mut handler, &interp);
+
+        env.bind("e".into(), Value::Entity(EntityRef(1)));
+        let expr = spanned(ExprKind::Call {
+            callee: Box::new(spanned(ExprKind::Ident("f".into()))),
+            args: vec![
+                Arg { name: None, value: spanned(ExprKind::Ident("e".into())), span: dummy_span() },
+                Arg { name: None, value: spanned(ExprKind::IntLit(1)), span: dummy_span() },
+            ],
+        });
+        let result = crate::eval::eval_expr(&mut env, &expr).unwrap();
+
+        // x=1, if-branch sets x=10, then x = x + 1 = 11
+        assert_eq!(result, Value::Int(11));
+    }
+
+    #[test]
+    fn modify_phase1_false_branch_does_not_override() {
+        // Same setup as above but if false { x = 10 }; x = x + 1
+        // Expected: x = 1 + 1 = 2 (branch not taken)
+
+        let program = program_with_decls(vec![
+            DeclKind::Derive(FnDecl {
+                name: "f".into(),
+                params: vec![
+                    Param {
+                        name: "actor".into(),
+                        ty: spanned(TypeExpr::Named("Character".into())),
+                        default: None,
+                        with_groups: vec![],
+                        span: dummy_span(),
+                    },
+                    Param {
+                        name: "x".into(),
+                        ty: spanned(TypeExpr::Int),
+                        default: None,
+                        with_groups: vec![],
+                        span: dummy_span(),
+                    },
+                ],
+                return_type: spanned(TypeExpr::Int),
+                body: spanned(vec![spanned(StmtKind::Expr(spanned(
+                    ExprKind::Ident("x".into()),
+                )))]),
+                synthetic: false,
+            }),
+            DeclKind::Condition(ConditionDecl {
+                name: "C".into(),
+                params: vec![],
+                receiver_name: "target".into(),
+                receiver_type: spanned(TypeExpr::Named("Character".into())),
+                receiver_with_groups: vec![],
+                clauses: vec![ConditionClause::Modify(ModifyClause {
+                    target: "f".into(),
+                    bindings: vec![ModifyBinding {
+                        name: "actor".into(),
+                        value: Some(spanned(ExprKind::Ident("target".into()))),
+                        span: dummy_span(),
+                    }],
+                    body: vec![
+                        ModifyStmt::If {
+                            condition: spanned(ExprKind::BoolLit(false)),
+                            then_body: vec![ModifyStmt::ParamOverride {
+                                name: "x".into(),
+                                value: spanned(ExprKind::IntLit(10)),
+                                span: dummy_span(),
+                            }],
+                            else_body: None,
+                            span: dummy_span(),
+                        },
+                        ModifyStmt::ParamOverride {
+                            name: "x".into(),
+                            value: spanned(ExprKind::BinOp {
+                                op: BinOp::Add,
+                                lhs: Box::new(spanned(ExprKind::Ident("x".into()))),
+                                rhs: Box::new(spanned(ExprKind::IntLit(1))),
+                            }),
+                            span: dummy_span(),
+                        },
+                    ],
+                    span: dummy_span(),
+                })],
+            }),
+        ]);
+
+        let mut type_env = TypeEnv::new();
+        type_env.functions.insert(
+            "f".into(),
+            FnInfo {
+                name: "f".into(),
+                kind: FnKind::Derive,
+                params: vec![
+                    ParamInfo {
+                        name: "actor".into(),
+                        ty: Ty::Entity("Character".into()),
+                        has_default: false,
+                        with_groups: vec![],
+                    },
+                    ParamInfo {
+                        name: "x".into(),
+                        ty: Ty::Int,
+                        has_default: false,
+                        with_groups: vec![],
+                    },
+                ],
+                return_type: Ty::Int,
+                receiver: None,
+            },
+        );
+        type_env.conditions.insert(
+            "C".into(),
+            ConditionInfo {
+                name: "C".into(),
+                receiver_name: "target".into(),
+                receiver_type: Ty::Entity("Character".into()),
+                params: vec![],
+            },
+        );
+
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+
+        let mut state = TestState::new();
+        state.conditions.insert(
+            1,
+            vec![ActiveCondition {
+                id: 1,
+                name: "C".into(),
+                params: BTreeMap::new(),
+                bearer: EntityRef(1),
+                gained_at: 0,
+                duration: Value::None,
+            }],
+        );
+
+        let mut handler = ScriptedHandler::new();
+        let mut env = make_env(&state, &mut handler, &interp);
+
+        env.bind("e".into(), Value::Entity(EntityRef(1)));
+        let expr = spanned(ExprKind::Call {
+            callee: Box::new(spanned(ExprKind::Ident("f".into()))),
+            args: vec![
+                Arg { name: None, value: spanned(ExprKind::Ident("e".into())), span: dummy_span() },
+                Arg { name: None, value: spanned(ExprKind::IntLit(1)), span: dummy_span() },
+            ],
+        });
+        let result = crate::eval::eval_expr(&mut env, &expr).unwrap();
+
+        // x=1, branch not taken, x = 1 + 1 = 2
+        assert_eq!(result, Value::Int(2));
     }
 }

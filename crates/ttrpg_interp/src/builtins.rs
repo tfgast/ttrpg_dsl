@@ -317,7 +317,7 @@ fn builtin_remove_condition(
             let effect = Effect::RemoveCondition {
                 target: *target,
                 condition: cond_name.clone(),
-                params: if cond_args.is_empty() { None } else { Some(cond_args.clone()) },
+                params: Some(cond_args.clone()),
             };
             validate_mutation_response(env.handler.handle(effect), "RemoveCondition", span)?;
             Ok(Value::None)
