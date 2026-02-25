@@ -9,6 +9,93 @@ use crate::scope::*;
 use crate::ty::Ty;
 
 impl<'a> Checker<'a> {
+    /// Bind the receiver (if present) and condition parameters into the current scope.
+    /// Used by both modify and suppress clauses to set up their shared context.
+    fn bind_condition_context(
+        &mut self,
+        receiver: Option<(&str, &Spanned<TypeExpr>, &[String])>,
+        condition_params: &[Param],
+    ) {
+        if let Some((receiver_name, receiver_type, with_groups)) = receiver {
+            let recv_ty = self.env.resolve_type(receiver_type);
+            self.scope.bind(
+                receiver_name.to_string(),
+                VarBinding {
+                    ty: recv_ty.clone(),
+                    mutable: false,
+                    is_local: false,
+                },
+            );
+            self.validate_with_groups(
+                receiver_name,
+                &recv_ty,
+                with_groups,
+                receiver_type.span,
+            );
+        }
+
+        for param in condition_params {
+            let ty = self.env.resolve_type(&param.ty);
+            self.scope.bind(
+                param.name.clone(),
+                VarBinding {
+                    ty,
+                    mutable: false,
+                    is_local: false,
+                },
+            );
+        }
+    }
+
+    /// Validate clause bindings: check for duplicates, look up expected types via
+    /// `lookup_expected`, type-check value expressions, and report errors.
+    ///
+    /// - `clause_kind`: "modify" or "suppress" (used in duplicate error messages)
+    /// - `not_found_msg`: suffix for the unknown-binding error, e.g.
+    ///   `"does not match any parameter of \`foo\`"`
+    fn validate_clause_bindings(
+        &mut self,
+        bindings: &[ModifyBinding],
+        lookup_expected: impl Fn(&str) -> Option<Ty>,
+        clause_kind: &str,
+        not_found_msg: &str,
+    ) {
+        let mut seen_bindings = HashSet::new();
+        for binding in bindings {
+            if !seen_bindings.insert(binding.name.clone()) {
+                self.error(
+                    format!("duplicate {} binding `{}`", clause_kind, binding.name),
+                    binding.span,
+                );
+            }
+            if let Some(expected) = lookup_expected(&binding.name) {
+                if let Some(ref value) = binding.value {
+                    let val_ty = self.check_expr_expecting(value, Some(&expected));
+                    if !val_ty.is_error() && !self.types_compatible(&val_ty, &expected) {
+                        self.error(
+                            format!(
+                                "{} binding `{}` has type {}, expected {}",
+                                clause_kind, binding.name, val_ty, expected
+                            ),
+                            value.span,
+                        );
+                    }
+                }
+            } else {
+                if let Some(ref value) = binding.value {
+                    self.check_expr(value);
+                }
+                self.error(
+                    format!(
+                        "{} binding `{}` {}",
+                        clause_kind, binding.name, not_found_msg
+                    ),
+                    binding.span,
+                );
+            }
+        }
+    }
+
     /// Check a modify clause. `receiver` is `Some` for conditions (which have
     /// a receiver binding) and `None` for options (which have no receiver).
     /// `condition_params` are the condition's declared parameters (empty for options).
@@ -49,74 +136,16 @@ impl<'a> Checker<'a> {
 
         self.scope.push(BlockKind::ModifyClause);
 
-        // Bind the receiver if present (conditions have one, options don't)
-        if let Some((receiver_name, receiver_type, with_groups)) = receiver {
-            let recv_ty = self.env.resolve_type(receiver_type);
-            self.scope.bind(
-                receiver_name.to_string(),
-                VarBinding {
-                    ty: recv_ty.clone(),
-                    mutable: false,
-                    is_local: false,
-                },
-            );
-            // Add narrowings for receiver with_groups
-            self.validate_with_groups(
-                receiver_name,
-                &recv_ty,
-                with_groups,
-                receiver_type.span,
-            );
-        }
-
-        // Bind condition parameters in scope (accessible in clause body)
-        for param in condition_params {
-            let ty = self.env.resolve_type(&param.ty);
-            self.scope.bind(
-                param.name.clone(),
-                VarBinding {
-                    ty,
-                    mutable: false,
-                    is_local: false,
-                },
-            );
-        }
+        // Bind receiver and condition params into scope
+        self.bind_condition_context(receiver, condition_params);
 
         // Validate bindings reference real parameters and type-check value expressions
-        let mut seen_bindings = HashSet::new();
-        for binding in &clause.bindings {
-            if !seen_bindings.insert(binding.name.clone()) {
-                self.error(
-                    format!("duplicate modify binding `{}`", binding.name),
-                    binding.span,
-                );
-            }
-            if let Some(param) = fn_info.params.iter().find(|p| p.name == binding.name) {
-                if let Some(ref value) = binding.value {
-                    let val_ty = self.check_expr_expecting(value, Some(&param.ty));
-                    if !val_ty.is_error() && !self.types_compatible(&val_ty, &param.ty) {
-                        self.error(
-                            format!(
-                                "modify binding `{}` has type {}, expected {}",
-                                binding.name, val_ty, param.ty
-                            ),
-                            value.span,
-                        );
-                    }
-                }
-            } else {
-                if let Some(ref value) = binding.value {
-                    self.check_expr(value);
-                }
-                self.error(
-                    format!(
-                        "modify binding `{}` does not match any parameter of `{}`",
-                        binding.name, clause.target
-                    ),
-                    binding.span,
-                );
-            }
-        }
+        self.validate_clause_bindings(
+            &clause.bindings,
+            |name| fn_info.params.iter().find(|p| p.name == name).map(|p| p.ty.clone()),
+            "modify",
+            &format!("does not match any parameter of `{}`", clause.target),
+        );
 
         // Bring target function's params into scope as read-only
         for param in &fn_info.params {
@@ -279,85 +308,37 @@ impl<'a> Checker<'a> {
             self.check_name_visible(&clause.event_name, Namespace::Event, clause.span);
             // Push TriggerBinding scope — suppress binding expressions must be side-effect-free
             self.scope.push(BlockKind::TriggerBinding);
-            let recv_ty = self.env.resolve_type(receiver_type);
-            self.scope.bind(
-                receiver_name.to_string(),
-                VarBinding {
-                    ty: recv_ty.clone(),
-                    mutable: false,
-                    is_local: false,
-                },
-            );
-            // Validate and narrow receiver with-groups (same as modify clauses)
-            self.validate_with_groups(
-                receiver_name,
-                &recv_ty,
-                receiver_with_groups,
-                receiver_type.span,
-            );
 
-            // Bind condition parameters in scope
-            for param in condition_params {
-                let ty = self.env.resolve_type(&param.ty);
-                self.scope.bind(
-                    param.name.clone(),
-                    VarBinding {
-                        ty,
-                        mutable: false,
-                        is_local: false,
-                    },
-                );
-            }
+            // Bind receiver and condition params into scope
+            self.bind_condition_context(
+                Some((receiver_name, receiver_type, receiver_with_groups)),
+                condition_params,
+            );
 
             // Validate bindings reference real event params or fields, and type-check values
-            let mut seen_bindings = HashSet::new();
-            for binding in &clause.bindings {
-                if !seen_bindings.insert(binding.name.clone()) {
-                    self.error(
-                        format!("duplicate suppress binding `{}`", binding.name),
-                        binding.span,
-                    );
-                }
-                let expected_ty = event_info
-                    .params
-                    .iter()
-                    .find(|p| p.name == binding.name)
-                    .map(|p| &p.ty)
-                    .or_else(|| {
-                        event_info
-                            .fields
-                            .iter()
-                            .find(|(n, _)| *n == binding.name)
-                            .map(|(_, ty)| ty)
-                    })
-                    .cloned();
-
-                if let Some(expected) = expected_ty {
-                    if let Some(ref value) = binding.value {
-                        let val_ty = self.check_expr_expecting(value, Some(&expected));
-                        if !val_ty.is_error() && !self.types_compatible(&val_ty, &expected) {
-                            self.error(
-                                format!(
-                                    "suppress binding `{}` has type {}, expected {}",
-                                    binding.name, val_ty, expected
-                                ),
-                                value.span,
-                            );
-                        }
-                    }
-                } else {
-                    if let Some(ref value) = binding.value {
-                        self.check_expr(value);
-                    }
-                    self.error(
-                        format!(
-                            "suppress binding `{}` does not match any parameter or field of event `{}`",
-                            binding.name, clause.event_name
-                        ),
-                        binding.span,
-                    );
-                }
-            }
+            self.validate_clause_bindings(
+                &clause.bindings,
+                |name| {
+                    event_info
+                        .params
+                        .iter()
+                        .find(|p| p.name == name)
+                        .map(|p| &p.ty)
+                        .or_else(|| {
+                            event_info
+                                .fields
+                                .iter()
+                                .find(|(n, _)| *n == name)
+                                .map(|(_, ty)| ty)
+                        })
+                        .cloned()
+                },
+                "suppress",
+                &format!(
+                    "does not match any parameter or field of event `{}`",
+                    clause.event_name
+                ),
+            );
 
             self.scope.pop();
         } else {
