@@ -158,6 +158,7 @@ impl<'a> Checker<'a> {
             } => {
                 let bind_ty = if let Some(ref type_ann) = ty {
                     self.validate_type(type_ann);
+                    self.check_type_visible(type_ann);
                     let ann_ty = self.env.resolve_type(type_ann);
                     let val_ty = self.check_expr_expecting(value, Some(&ann_ty));
                     if !val_ty.is_error() && !ann_ty.is_error() && !self.types_compatible(&val_ty, &ann_ty) {
@@ -273,6 +274,7 @@ impl<'a> Checker<'a> {
         clause: &SuppressClause,
         receiver_name: &str,
         receiver_type: &Spanned<TypeExpr>,
+        receiver_with_groups: &[String],
         condition_params: &[Param],
     ) {
         if let Some(event_info) = self.env.events.get(&clause.event_name).cloned() {
@@ -283,10 +285,17 @@ impl<'a> Checker<'a> {
             self.scope.bind(
                 receiver_name.to_string(),
                 VarBinding {
-                    ty: recv_ty,
+                    ty: recv_ty.clone(),
                     mutable: false,
                     is_local: false,
                 },
+            );
+            // Validate and narrow receiver with-groups (same as modify clauses)
+            self.validate_with_groups(
+                receiver_name,
+                &recv_ty,
+                receiver_with_groups,
+                receiver_type.span,
             );
 
             // Bind condition parameters in scope

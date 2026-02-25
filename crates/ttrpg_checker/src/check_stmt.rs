@@ -94,6 +94,16 @@ impl<'a> Checker<'a> {
         span: ttrpg_ast::Span,
     ) {
         if target.segments.is_empty() {
+            // The implicit `turn` binding is mutable for field mutation
+            // (turn.actions -= 1), but direct reassignment (turn = ...) is not allowed.
+            if target.root == "turn" && self.scope.allows_turn() {
+                self.error(
+                    "cannot reassign `turn` directly; mutate its fields instead (e.g. `turn.actions -= 1`)".to_string(),
+                    span,
+                );
+                self.check_expr(value);
+                return;
+            }
             // Direct variable reassignment (e.g. `x = 2`): binding must be mutable
             if let Some(binding) = self.scope.lookup(&target.root) {
                 if !binding.mutable {

@@ -677,7 +677,7 @@ impl<'a> Checker<'a> {
                     );
                 }
                 ConditionClause::Suppress(s) => {
-                    self.check_suppress_clause(s, &c.receiver_name, &c.receiver_type, &c.params);
+                    self.check_suppress_clause(s, &c.receiver_name, &c.receiver_type, &c.receiver_with_groups, &c.params);
                 }
             }
         }

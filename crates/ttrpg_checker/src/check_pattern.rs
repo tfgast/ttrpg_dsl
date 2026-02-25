@@ -210,6 +210,11 @@ impl<'a> Checker<'a> {
                             pattern.span,
                         );
                     }
+                } else if self.env.types.contains_key(ty) {
+                    self.error(
+                        format!("`{}` is not an enum; qualified variant patterns require an enum type", ty),
+                        pattern.span,
+                    );
                 } else {
                     self.error(format!("undefined type `{}`", ty), pattern.span);
                 }
@@ -267,6 +272,11 @@ impl<'a> Checker<'a> {
                             pattern.span,
                         );
                     }
+                } else if self.env.types.contains_key(ty) {
+                    self.error(
+                        format!("`{}` is not an enum; qualified variant patterns require an enum type", ty),
+                        pattern.span,
+                    );
                 } else {
                     self.error(format!("undefined type `{}`", ty), pattern.span);
                 }
