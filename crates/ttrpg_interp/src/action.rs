@@ -1,5 +1,6 @@
 use ttrpg_ast::Span;
-use ttrpg_ast::ast::{ActionDecl, HookDecl, ReactionDecl};
+use ttrpg_ast::Spanned;
+use ttrpg_ast::ast::{ActionDecl, Block, CostClause, ExprKind, HookDecl, ReactionDecl};
 
 use crate::Env;
 use crate::RuntimeError;
@@ -23,132 +24,105 @@ fn token_to_budget_field(token: &str) -> Option<&'static str> {
     }
 }
 
-// ── Action execution ───────────────────────────────────────────
+// ── Shared lifecycle helpers ──────────────────────────────────
 
-/// Execute an action through the full pipeline:
+/// Whether the action lifecycle should proceed or was vetoed at start.
+enum LifecycleStart {
+    Proceed,
+    Vetoed,
+}
+
+/// Emit `ActionStarted` and handle the response.
 ///
-/// 1. Emit `ActionStarted` (veto → early return)
-/// 2. Bind scope: receiver + params, save/restore `turn_actor`
-/// 3. Requires clause (if present): evaluate, emit `RequiresCheck`
-/// 4. Cost deduction: emit `DeductCost` per token
-/// 5. Execute resolve block
-/// 6. Emit `ActionCompleted`
-pub(crate) fn execute_action(
+/// On `Vetoed`, emits `ActionCompleted` (with protocol validation) and returns
+/// `LifecycleStart::Vetoed` — the caller should return `Ok(Value::None)`.
+fn emit_action_started(
     env: &mut Env,
-    action: &ActionDecl,
+    name: &str,
+    effect: Effect,
     actor: EntityRef,
-    mut args: Vec<(String, Value)>,
     call_span: Span,
-) -> Result<Value, RuntimeError> {
-    let action_name = action.name.clone();
-    let param_values: Vec<Value> = args.iter().map(|(_, v)| v.clone()).collect();
-
-    // 1. Emit ActionStarted
-    let response = env.handler.handle(Effect::ActionStarted {
-        name: action_name.clone(),
-        kind: ActionKind::Action,
-        actor,
-        params: param_values,
-    });
-
+) -> Result<LifecycleStart, RuntimeError> {
+    let response = env.handler.handle(effect);
     match response {
-        Response::Acknowledged => {}
+        Response::Acknowledged => Ok(LifecycleStart::Proceed),
         Response::Vetoed => {
-            let completion_response = env.handler.handle(Effect::ActionCompleted {
-                name: action_name,
-                actor,
-            });
-            match completion_response {
-                Response::Acknowledged => {}
-                other => {
-                    return Err(RuntimeError::with_span(
-                        format!(
-                            "protocol error: expected Acknowledged for ActionCompleted, got {:?}",
-                            other
-                        ),
-                        call_span,
-                    ));
-                }
-            }
-            return Ok(Value::None);
+            emit_action_completed(env, name, actor, call_span)?;
+            Ok(LifecycleStart::Vetoed)
         }
-        other => {
-            return Err(RuntimeError::with_span(
-                format!(
-                    "protocol error: expected Acknowledged or Vetoed for ActionStarted, got {:?}",
-                    other
-                ),
-                call_span,
-            ));
-        }
+        other => Err(RuntimeError::with_span(
+            format!(
+                "protocol error: expected Acknowledged or Vetoed for ActionStarted, got {:?}",
+                other
+            ),
+            call_span,
+        )),
     }
+}
 
-    // 1b. Fill defaults for missing optional params (after veto check)
-    for i in args.len()..action.params.len() {
-        if let Some(ref default_expr) = action.params[i].default {
-            env.push_scope();
-            env.bind(action.receiver_name.clone(), Value::Entity(actor));
-            for (pname, pval) in &args {
-                env.bind(pname.clone(), pval.clone());
-            }
-            let result = eval_expr(env, default_expr);
-            env.pop_scope();
-            args.push((action.params[i].name.clone(), result?));
-        }
+/// Emit `ActionCompleted` with protocol validation (only `Acknowledged` is valid).
+fn emit_action_completed(
+    env: &mut Env,
+    name: &str,
+    actor: EntityRef,
+    call_span: Span,
+) -> Result<(), RuntimeError> {
+    let response = env.handler.handle(Effect::ActionCompleted {
+        name: name.to_string(),
+        actor,
+    });
+    match response {
+        Response::Acknowledged => Ok(()),
+        other => Err(RuntimeError::with_span(
+            format!(
+                "protocol error: expected Acknowledged for ActionCompleted, got {:?}",
+                other
+            ),
+            call_span,
+        )),
     }
+}
 
-    // 2. Bind scope: receiver + params. Save previous turn_actor.
+/// Run `body` inside a scoped environment with `turn_actor` set to `actor`.
+///
+/// Handles: save/restore `turn_actor`, push/pop scope, and emit
+/// `ActionCompleted` on success.
+fn scoped_execute(
+    env: &mut Env,
+    name: &str,
+    actor: EntityRef,
+    call_span: Span,
+    body: impl FnOnce(&mut Env) -> Result<Value, RuntimeError>,
+) -> Result<Value, RuntimeError> {
     let prev_turn_actor = env.turn_actor.take();
     env.turn_actor = Some(actor);
     env.push_scope();
 
-    // Bind receiver
-    env.bind(action.receiver_name.clone(), Value::Entity(actor));
-
-    // Bind regular params
-    for (name, value) in &args {
-        env.bind(name.clone(), value.clone());
-    }
-
-    // Run the rest of the pipeline with scope cleanup on all exit paths
-    let result = execute_action_inner(env, action, &actor, call_span);
+    let result = body(env);
 
     env.pop_scope();
     env.turn_actor = prev_turn_actor;
 
-    // 6. Emit ActionCompleted (only on success)
     if result.is_ok() {
-        let response = env.handler.handle(Effect::ActionCompleted {
-            name: action_name,
-            actor,
-        });
-        match response {
-            Response::Acknowledged => {}
-            other => {
-                return Err(RuntimeError::with_span(
-                    format!(
-                        "protocol error: expected Acknowledged for ActionCompleted, got {:?}",
-                        other
-                    ),
-                    call_span,
-                ));
-            }
-        }
+        emit_action_completed(env, name, actor, call_span)?;
     }
 
     result
 }
 
-/// Inner pipeline after scope is established. Separated so that cleanup
-/// (pop_scope, restore turn_actor, ActionCompleted) is unconditional.
-fn execute_action_inner(
+/// Inner pipeline shared by actions and reactions: optional requires → optional
+/// cost → resolve block.
+fn execute_pipeline(
     env: &mut Env,
-    action: &ActionDecl,
     actor: &EntityRef,
+    action_name: &str,
+    requires: Option<&Spanned<ExprKind>>,
+    cost: Option<&CostClause>,
+    resolve: &Block,
     call_span: Span,
 ) -> Result<Value, RuntimeError> {
-    // 3. Requires clause (if present)
-    if let Some(ref requires_expr) = action.requires {
+    // Requires clause (if present)
+    if let Some(requires_expr) = requires {
         let requires_val = eval_expr(env, requires_expr)?;
         let passed = match &requires_val {
             Value::Bool(b) => *b,
@@ -164,7 +138,7 @@ fn execute_action_inner(
         };
 
         let response = env.handler.handle(Effect::RequiresCheck {
-            action: action.name.clone(),
+            action: action_name.to_string(),
             passed,
             reason: None,
         });
@@ -190,14 +164,81 @@ fn execute_action_inner(
         }
     }
 
-    // 4. Cost deduction
-    if let Some(ref cost) = action.cost {
+    // Cost deduction
+    if let Some(cost) = cost {
         deduct_costs(env, actor, cost, call_span)?;
     }
 
-    // 5. Execute resolve block
-    let resolve = action.resolve.clone();
+    // Execute resolve block
+    let resolve = resolve.clone();
     eval_block(env, &resolve)
+}
+
+// ── Action execution ───────────────────────────────────────────
+
+/// Execute an action through the full pipeline:
+///
+/// 1. Emit `ActionStarted` (veto → early return)
+/// 2. Fill defaults for missing optional params
+/// 3. Bind scope: receiver + params, save/restore `turn_actor`
+/// 4. Requires clause → cost deduction → resolve block
+/// 5. Emit `ActionCompleted`
+pub(crate) fn execute_action(
+    env: &mut Env,
+    action: &ActionDecl,
+    actor: EntityRef,
+    mut args: Vec<(String, Value)>,
+    call_span: Span,
+) -> Result<Value, RuntimeError> {
+    let action_name = action.name.clone();
+    let param_values: Vec<Value> = args.iter().map(|(_, v)| v.clone()).collect();
+
+    // 1. Emit ActionStarted (veto → early return)
+    if let LifecycleStart::Vetoed = emit_action_started(
+        env,
+        &action_name,
+        Effect::ActionStarted {
+            name: action_name.clone(),
+            kind: ActionKind::Action,
+            actor,
+            params: param_values,
+        },
+        actor,
+        call_span,
+    )? {
+        return Ok(Value::None);
+    }
+
+    // 2. Fill defaults for missing optional params (after veto check)
+    for i in args.len()..action.params.len() {
+        if let Some(ref default_expr) = action.params[i].default {
+            env.push_scope();
+            env.bind(action.receiver_name.clone(), Value::Entity(actor));
+            for (pname, pval) in &args {
+                env.bind(pname.clone(), pval.clone());
+            }
+            let result = eval_expr(env, default_expr);
+            env.pop_scope();
+            args.push((action.params[i].name.clone(), result?));
+        }
+    }
+
+    // 3–5. Scoped execution with lifecycle completion
+    scoped_execute(env, &action_name, actor, call_span, |env| {
+        env.bind(action.receiver_name.clone(), Value::Entity(actor));
+        for (name, value) in &args {
+            env.bind(name.clone(), value.clone());
+        }
+        execute_pipeline(
+            env,
+            &actor,
+            &action.name,
+            action.requires.as_ref(),
+            action.cost.as_ref(),
+            &action.resolve,
+            call_span,
+        )
+    })
 }
 
 // ── Reaction execution ─────────────────────────────────────────
@@ -206,9 +247,8 @@ fn execute_action_inner(
 ///
 /// 1. Emit `ActionStarted` with kind: Reaction (veto → early return)
 /// 2. Bind scope: receiver + trigger payload, save/restore `turn_actor`
-/// 3. Cost deduction
-/// 4. Execute resolve block
-/// 5. Emit `ActionCompleted`
+/// 3. Cost deduction → resolve block
+/// 4. Emit `ActionCompleted`
 pub(crate) fn execute_reaction(
     env: &mut Env,
     reaction: &ReactionDecl,
@@ -218,109 +258,39 @@ pub(crate) fn execute_reaction(
 ) -> Result<Value, RuntimeError> {
     let reaction_name = reaction.name.clone();
 
-    // 1. Emit ActionStarted with Reaction kind
-    let response = env.handler.handle(Effect::ActionStarted {
-        name: reaction_name.clone(),
-        kind: ActionKind::Reaction {
-            event: reaction.trigger.event_name.clone(),
-            trigger: event_payload.clone(),
-        },
-        actor: reactor,
-        params: vec![],
-    });
-
-    match response {
-        Response::Acknowledged => {}
-        Response::Vetoed => {
-            let completion_response = env.handler.handle(Effect::ActionCompleted {
-                name: reaction_name,
-                actor: reactor,
-            });
-            match completion_response {
-                Response::Acknowledged => {}
-                other => {
-                    return Err(RuntimeError::with_span(
-                        format!(
-                            "protocol error: expected Acknowledged for ActionCompleted, got {:?}",
-                            other
-                        ),
-                        call_span,
-                    ));
-                }
-            }
-            return Ok(Value::None);
-        }
-        other => {
-            return Err(RuntimeError::with_span(
-                format!(
-                    "protocol error: expected Acknowledged or Vetoed for ActionStarted, got {:?}",
-                    other
-                ),
-                call_span,
-            ));
-        }
-    }
-
-    // 2. Bind scope: receiver + trigger payload. Save previous turn_actor.
-    let prev_turn_actor = env.turn_actor.take();
-    env.turn_actor = Some(reactor);
-    env.push_scope();
-
-    // Bind receiver
-    env.bind(
-        reaction.receiver_name.clone(),
-        Value::Entity(reactor),
-    );
-
-    // Bind trigger payload as "trigger"
-    env.bind("trigger".to_string(), event_payload);
-
-    // Run the rest of the pipeline with scope cleanup on all exit paths
-    let result = execute_reaction_inner(env, reaction, &reactor, call_span);
-
-    env.pop_scope();
-    env.turn_actor = prev_turn_actor;
-
-    // 5. Emit ActionCompleted (only on success)
-    if result.is_ok() {
-        let response = env.handler.handle(Effect::ActionCompleted {
-            name: reaction_name,
+    // 1. Emit ActionStarted (veto → early return)
+    if let LifecycleStart::Vetoed = emit_action_started(
+        env,
+        &reaction_name,
+        Effect::ActionStarted {
+            name: reaction_name.clone(),
+            kind: ActionKind::Reaction {
+                event: reaction.trigger.event_name.clone(),
+                trigger: event_payload.clone(),
+            },
             actor: reactor,
-        });
-        match response {
-            Response::Acknowledged => {}
-            other => {
-                return Err(RuntimeError::with_span(
-                    format!(
-                        "protocol error: expected Acknowledged for ActionCompleted, got {:?}",
-                        other
-                    ),
-                    call_span,
-                ));
-            }
-        }
+            params: vec![],
+        },
+        reactor,
+        call_span,
+    )? {
+        return Ok(Value::None);
     }
 
-    result
-}
-
-/// Inner pipeline after scope is established.
-fn execute_reaction_inner(
-    env: &mut Env,
-    reaction: &ReactionDecl,
-    reactor: &EntityRef,
-    call_span: Span,
-) -> Result<Value, RuntimeError> {
-    // No requires clause for reactions
-
-    // 3. Cost deduction
-    if let Some(ref cost) = reaction.cost {
-        deduct_costs(env, reactor, cost, call_span)?;
-    }
-
-    // 4. Execute resolve block
-    let resolve = reaction.resolve.clone();
-    eval_block(env, &resolve)
+    // 2–4. Scoped execution with lifecycle completion
+    scoped_execute(env, &reaction_name, reactor, call_span, |env| {
+        env.bind(reaction.receiver_name.clone(), Value::Entity(reactor));
+        env.bind("trigger".to_string(), event_payload);
+        execute_pipeline(
+            env,
+            &reactor,
+            &reaction.name,
+            None,
+            reaction.cost.as_ref(),
+            &reaction.resolve,
+            call_span,
+        )
+    })
 }
 
 // ── Hook execution ────────────────────────────────────────────
@@ -340,88 +310,32 @@ pub(crate) fn execute_hook(
 ) -> Result<Value, RuntimeError> {
     let hook_name = hook.name.clone();
 
-    // 1. Emit ActionStarted with Hook kind
-    let response = env.handler.handle(Effect::ActionStarted {
-        name: hook_name.clone(),
-        kind: ActionKind::Hook {
-            event: hook.trigger.event_name.clone(),
-            trigger: event_payload.clone(),
-        },
-        actor: target,
-        params: vec![],
-    });
-
-    match response {
-        Response::Acknowledged => {}
-        Response::Vetoed => {
-            let completion_response = env.handler.handle(Effect::ActionCompleted {
-                name: hook_name,
-                actor: target,
-            });
-            match completion_response {
-                Response::Acknowledged => {}
-                other => {
-                    return Err(RuntimeError::with_span(
-                        format!(
-                            "protocol error: expected Acknowledged for ActionCompleted, got {:?}",
-                            other
-                        ),
-                        call_span,
-                    ));
-                }
-            }
-            return Ok(Value::None);
-        }
-        other => {
-            return Err(RuntimeError::with_span(
-                format!(
-                    "protocol error: expected Acknowledged or Vetoed for ActionStarted, got {:?}",
-                    other
-                ),
-                call_span,
-            ));
-        }
-    }
-
-    // 2. Bind scope: receiver + trigger payload. Save previous turn_actor.
-    let prev_turn_actor = env.turn_actor.take();
-    env.turn_actor = Some(target);
-    env.push_scope();
-
-    // Bind receiver
-    env.bind(hook.receiver_name.clone(), Value::Entity(target));
-
-    // Bind trigger payload as "trigger"
-    env.bind("trigger".to_string(), event_payload);
-
-    // 3. Execute resolve block (no cost deduction for hooks)
-    let resolve = hook.resolve.clone();
-    let result = eval_block(env, &resolve);
-
-    env.pop_scope();
-    env.turn_actor = prev_turn_actor;
-
-    // 4. Emit ActionCompleted (only on success)
-    if result.is_ok() {
-        let response = env.handler.handle(Effect::ActionCompleted {
-            name: hook_name,
+    // 1. Emit ActionStarted (veto → early return)
+    if let LifecycleStart::Vetoed = emit_action_started(
+        env,
+        &hook_name,
+        Effect::ActionStarted {
+            name: hook_name.clone(),
+            kind: ActionKind::Hook {
+                event: hook.trigger.event_name.clone(),
+                trigger: event_payload.clone(),
+            },
             actor: target,
-        });
-        match response {
-            Response::Acknowledged => {}
-            other => {
-                return Err(RuntimeError::with_span(
-                    format!(
-                        "protocol error: expected Acknowledged for ActionCompleted, got {:?}",
-                        other
-                    ),
-                    call_span,
-                ));
-            }
-        }
+            params: vec![],
+        },
+        target,
+        call_span,
+    )? {
+        return Ok(Value::None);
     }
 
-    result
+    // 2–4. Scoped execution with lifecycle completion
+    scoped_execute(env, &hook_name, target, call_span, |env| {
+        env.bind(hook.receiver_name.clone(), Value::Entity(target));
+        env.bind("trigger".to_string(), event_payload);
+        let resolve = hook.resolve.clone();
+        eval_block(env, &resolve)
+    })
 }
 
 // ── Cost deduction ─────────────────────────────────────────────
