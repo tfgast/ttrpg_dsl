@@ -456,6 +456,11 @@ fn desugar_decl_types(
             for p in &mut c.params {
                 desugar_type_expr(&mut p.ty, current_system, aliases, module_map, diagnostics);
             }
+            for clause in &mut c.clauses {
+                if let ConditionClause::Modify(m) = clause {
+                    desugar_modify_stmts(&mut m.body, current_system, aliases, module_map, diagnostics);
+                }
+            }
         }
         DeclKind::Prompt(p) => {
             desugar_type_expr(&mut p.return_type, current_system, aliases, module_map, diagnostics);
@@ -482,7 +487,40 @@ fn desugar_decl_types(
                 desugar_type_expr(&mut f.ty, current_system, aliases, module_map, diagnostics);
             }
         }
-        DeclKind::Option(_) | DeclKind::Move(_) => {}
+        DeclKind::Option(o) => {
+            if let Some(ref mut clauses) = o.when_enabled {
+                for m in clauses {
+                    desugar_modify_stmts(&mut m.body, current_system, aliases, module_map, diagnostics);
+                }
+            }
+        }
+        DeclKind::Move(_) => {}
+    }
+}
+
+/// Desugar qualified types inside modify statement bodies (recursing into if branches).
+fn desugar_modify_stmts(
+    stmts: &mut [ModifyStmt],
+    current_system: &str,
+    aliases: Option<&HashMap<String, String>>,
+    module_map: &ModuleMap,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    for stmt in stmts {
+        match stmt {
+            ModifyStmt::Let { ty, .. } => {
+                if let Some(ref mut ty_expr) = ty {
+                    desugar_type_expr(ty_expr, current_system, aliases, module_map, diagnostics);
+                }
+            }
+            ModifyStmt::If { then_body, else_body, .. } => {
+                desugar_modify_stmts(then_body, current_system, aliases, module_map, diagnostics);
+                if let Some(ref mut else_stmts) = else_body {
+                    desugar_modify_stmts(else_stmts, current_system, aliases, module_map, diagnostics);
+                }
+            }
+            ModifyStmt::ParamOverride { .. } | ModifyStmt::ResultOverride { .. } => {}
+        }
     }
 }
 

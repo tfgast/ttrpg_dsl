@@ -7327,3 +7327,37 @@ system "C" {
         &[r#"`fire` is defined in system "B""#],
     );
 }
+
+// ── Regression: tdsl-rw0 — qualified types in modify let annotations ──
+
+#[test]
+fn test_qualified_type_in_condition_modify_let_annotation() {
+    // A condition modify clause uses `let x: Alias.Type = ...` with a
+    // qualified type annotation.  The resolver must desugar this to a
+    // Named type; if it doesn't, the checker rejects the unresolved
+    // qualified type.
+    expect_multi_no_errors(&[
+        ("core.ttrpg", r#"
+system "Core" {
+    enum DamageType { fire, cold, lightning }
+    entity Character {
+        HP: int
+    }
+    derive initial_budget(actor: Character) -> int {
+        actor.HP
+    }
+}
+"#),
+        ("main.ttrpg", r#"
+use "Core" as Core
+system "Main" {
+    condition Focused on bearer: Character {
+        modify initial_budget(actor: bearer) {
+            let dt: Core.DamageType = fire
+            result = result + 1
+        }
+    }
+}
+"#),
+    ]);
+}
