@@ -92,10 +92,12 @@ impl ScopeStack {
     }
 
     pub fn pop(&mut self) {
+        debug_assert!(!self.scopes.is_empty(), "ScopeStack::pop called on empty stack");
         self.scopes.pop();
     }
 
     pub fn bind(&mut self, name: String, binding: VarBinding) {
+        debug_assert!(!self.scopes.is_empty(), "ScopeStack::bind called on empty stack");
         if let Some(scope) = self.scopes.last_mut() {
             scope.bindings.insert(name, binding);
         }
@@ -156,6 +158,7 @@ impl ScopeStack {
     /// bindings are promoted — non-entity bindings (structs, lists, etc.)
     /// remain local so the immutable-local guard still applies.
     pub fn mark_current_scope_entities_non_local(&mut self) {
+        debug_assert!(!self.scopes.is_empty(), "ScopeStack::mark_current_scope_entities_non_local called on empty stack");
         if let Some(scope) = self.scopes.last_mut() {
             for binding in scope.bindings.values_mut() {
                 if binding.ty.is_entity() {
@@ -167,6 +170,7 @@ impl ScopeStack {
 
     /// Record that a variable's optional group is proven active in the current scope.
     pub fn narrow_group(&mut self, var: String, group: String) {
+        debug_assert!(!self.scopes.is_empty(), "ScopeStack::narrow_group called on empty stack");
         if let Some(scope) = self.scopes.last_mut() {
             scope
                 .narrowed_groups
