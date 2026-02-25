@@ -422,6 +422,70 @@ primary_expr    = INT | STRING
 // Semantic dispatch for this form is type-driven (not grammar-driven):
 // enum constructors and module-qualified calls are resolved first;
 // otherwise it is treated as a receiver-style method call.
+//
+// --- Method-call syntax for actions ---
+//
+// Actions declared with `on receiver: Type` can be invoked using
+// method-call syntax on the receiver entity:
+//
+//   entity.ActionName(remaining_args)
+//
+// This is syntactic sugar for the function-call form:
+//
+//   ActionName(entity, remaining_args)
+//
+// Both forms are equivalent. The method form desugars to the function
+// form during type checking — the receiver expression becomes the
+// first (implicit) argument in the effective parameter list.
+//
+// RESOLUTION ORDER for `obj.Name(args)`:
+//   1. Enum constructor:  if obj resolves to Ty::EnumType
+//   2. Module-qualified:  if obj resolves to Ty::ModuleAlias
+//   3. Action dispatch:   if Name matches an action whose receiver
+//                         type is compatible with typeof(obj)
+//   4. Builtin method:    type-specific methods (len, append, etc.)
+//   5. Error:             "type T has no method Name"
+//
+// Action methods are checked BEFORE builtin methods because:
+//   - Builtin method names are lowercase (len, append, first, ...)
+//   - Action names are PascalCase by convention (Attack, Dash, ...)
+//   - Name collision is unlikely, but actions take priority since
+//     they are user-defined and more specific
+//
+// TYPE CHECKING:
+//   - The receiver expression must have an entity type (struct with
+//     entity semantics) that matches the action's declared receiver
+//     type. Entity subtype/group constraints are checked normally.
+//   - Remaining args are checked against the action's params (not
+//     including the receiver) — same as the function-call path.
+//   - Context restrictions still apply: action method calls are only
+//     valid in action, reaction, or hook resolve blocks.
+//
+// EXAMPLE:
+//
+//   action Attack on attacker: Character (target: Character, weapon: Weapon) {
+//       cost { action }
+//       resolve { ... }
+//   }
+//
+//   // In an action/reaction resolve block:
+//   let hero = ...   // some Character entity
+//   let foe  = ...   // some Character entity
+//   let sword = ...  // some Weapon entity
+//
+//   // These two calls are identical:
+//   Attack(hero, foe, sword)
+//   hero.Attack(foe, sword)
+//
+//   // Named arguments work in both forms:
+//   Attack(attacker: hero, target: foe, weapon: sword)
+//   hero.Attack(target: foe, weapon: sword)
+//
+// NOTE: This syntax extends naturally to reactions and hooks, which
+// also have receivers. However, reactions and hooks are typically
+// system-invoked (via triggers), not called directly by user code.
+// If direct invocation of reactions/hooks is added in a future
+// version, the same method syntax would apply.
 
 // --- Dice literals ---
 dice_lit        = INT "d" INT filter?

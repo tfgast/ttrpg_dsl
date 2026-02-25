@@ -42,6 +42,14 @@
 // - It's the entity performing the action
 // - It's used for cost deduction (action economy)
 // - condition uses it for the entity bearing the condition
+//
+// Actions can be invoked in two equivalent ways:
+//   Attack(attacker_entity, target, weapon)   // function-call form
+//   attacker_entity.Attack(target, weapon)    // method-call form
+//
+// The method form desugars to the function form — the receiver
+// becomes the first argument. See 03_canonical_grammar.ttrpg for
+// the full resolution rules.
 
 // EXAMPLE: explicit receiver, all field access names its source
 action Attack on attacker: Character (target: Character, weapon: Weapon) {
