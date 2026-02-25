@@ -158,6 +158,12 @@ struct RollResult {
 //   resource(min..=max) bounded int; all assignments clamp to bounds
 //                        (=, +=, -= all clamp the result to [min, max])
 
+// Option values support receiver-style methods:
+//   x.unwrap()               -> T
+//       returns inner value; runtime error if x is none
+//   x.unwrap_or(default: T)  -> T
+//       returns inner value when present, otherwise default
+
 
 // --- Enums ---
 //

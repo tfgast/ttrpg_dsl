@@ -413,6 +413,16 @@ primary_expr    = INT | STRING
                 | match_expr
                 | for_expr
 
+// Method-call chaining is represented by postfix composition:
+//   obj.method(args)  parses as:
+//     primary_expr `obj`
+//     postfix_op   "." IDENT      (field access: `method`)
+//     postfix_op   "(" arg_list ")" (call)
+//
+// Semantic dispatch for this form is type-driven (not grammar-driven):
+// enum constructors and module-qualified calls are resolved first;
+// otherwise it is treated as a receiver-style method call.
+
 // --- Dice literals ---
 dice_lit        = INT "d" INT filter?
 filter          = ("kh" | "kl" | "dh" | "dl") INT

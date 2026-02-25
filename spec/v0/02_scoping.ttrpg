@@ -283,9 +283,29 @@ hook Regenerate on creature: Character (
 //   max(a: int, b: int) -> int
 //   min(a: int, b: int) -> int
 //   distance(a: Position, b: Position) -> int   // see Position in 01_type_system.ttrpg
+//   dice(count: int, sides: int) -> DiceExpr
 //   multiply_dice(expr: DiceExpr, factor: int) -> DiceExpr
 //       // multiplies dice count only, constants unchanged
 //       // multiply_dice(1d8 + 3, 2) => 2d8 + 3
+//   ordinal(v: E) -> int
+//       // E must be an enum value (returns its declaration order index)
+//   from_ordinal(E, index: int) -> E
+//       // E must be an ordered enum type; errors if out of range or payload variant
+//   try_from_ordinal(E, index: int) -> option<E>
+//       // E must be an ordered enum type; returns none for out-of-range/payload variant
+//   len(xs: list<T> | set<T> | map<K, V>) -> int
+//   keys(m: map<K, V>) -> list<K>
+//   values(m: map<K, V>) -> list<V>
+//   first(xs: list<T>) -> option<T>
+//   last(xs: list<T>) -> option<T>
+//   append(xs: list<T>, item: T) -> list<T>
+//   concat(a: list<T>, b: list<T>) -> list<T>
+//   reverse(xs: list<T>) -> list<T>
+//
+// Option methods (receiver syntax):
+//   x.unwrap() -> T
+//   x.unwrap_or(default: T) -> T
+// These are methods, not free functions.
 //
 // Available in mechanic, action, reaction, hook (blocks that can roll):
 //   roll(expr: DiceExpr) -> RollResult
