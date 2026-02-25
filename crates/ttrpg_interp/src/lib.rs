@@ -445,7 +445,7 @@ mod tests {
 
     /// Parse → lower → check → build interpreter. Panics on any error.
     fn setup(source: &str) -> (ttrpg_ast::ast::Program, ttrpg_checker::CheckResult) {
-        let (program, parse_errors) = ttrpg_parser::parse(source);
+        let (program, parse_errors) = ttrpg_parser::parse(source, ttrpg_ast::FileId::SYNTH);
         assert!(
             parse_errors.is_empty(),
             "parse errors: {:?}",

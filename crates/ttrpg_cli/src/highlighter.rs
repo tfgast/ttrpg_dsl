@@ -1,5 +1,6 @@
 use reedline::{Highlighter, StyledText};
 use nu_ansi_term::{Color, Style};
+use ttrpg_ast::FileId;
 use ttrpg_lexer::RawLexer;
 use ttrpg_lexer::token::TokenKind;
 
@@ -35,7 +36,7 @@ impl Highlighter for TtrpgHighlighter {
         let mut last_end = 0;
         let mut is_first_token = true;
 
-        for token in RawLexer::new(line) {
+        for token in RawLexer::new(line, FileId::SYNTH) {
             let start = token.span.start;
             let end = token.span.end;
 

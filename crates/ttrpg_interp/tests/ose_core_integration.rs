@@ -3,12 +3,13 @@
 //! Verifies that ose/ose_core.ttrpg parses, lowers, and type-checks
 //! through the full pipeline without errors.
 
+use ttrpg_ast::FileId;
 use ttrpg_ast::ast::{DeclKind, TopLevel};
 use ttrpg_ast::diagnostic::Severity;
 
 fn compile_ose_core() -> (ttrpg_ast::ast::Program, ttrpg_checker::CheckResult) {
     let source = include_str!("../../../ose/ose_core.ttrpg");
-    let (program, parse_errors) = ttrpg_parser::parse(source);
+    let (program, parse_errors) = ttrpg_parser::parse(source, FileId::SYNTH);
     assert!(
         parse_errors.is_empty(),
         "parse errors: {:?}",

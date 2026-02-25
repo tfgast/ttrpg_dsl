@@ -78,7 +78,6 @@ impl<'a> SourceMap<'a> {
             "line",
             self.source,
             &self.line_starts,
-            0, // no base offset
         )
     }
 }
@@ -89,10 +88,9 @@ fn render_diagnostic(
     location_prefix: &str,
     source: &str,
     line_starts: &[usize],
-    base_offset: usize,
 ) -> String {
-    let local_start = diag.span.start - base_offset;
-    let local_end = diag.span.end - base_offset;
+    let local_start = diag.span.start;
+    let local_end = diag.span.end;
 
     let line = line_starts
         .partition_point(|&start| start <= local_start)
@@ -159,49 +157,32 @@ pub struct MultiSourceMap {
 
 struct FileEntry {
     filename: String,
-    base_offset: usize,
-    /// Half-open upper bound: base_offset + source.len().
-    /// The 1-byte sentinel gap guarantees end_exclusive < next file's base_offset.
-    end_exclusive: usize,
     source: String,
     line_starts: Vec<usize>,
 }
 
 impl MultiSourceMap {
-    /// Construct from sources + their base offsets (as computed by parse_multi).
+    /// Construct from `(filename, source_text)` pairs.
+    /// Files are indexed by position: the first file is `FileId(0)`, etc.
     pub fn new(sources: Vec<(String, String)>) -> Self {
-        let mut files = Vec::with_capacity(sources.len());
-        let mut current_offset: usize = 0;
-
-        for (filename, source) in sources {
-            let mut line_starts = vec![0];
-            for (i, ch) in source.char_indices() {
-                if ch == '\n' {
-                    line_starts.push(i + 1);
+        let files = sources
+            .into_iter()
+            .map(|(filename, source)| {
+                let mut line_starts = vec![0];
+                for (i, ch) in source.char_indices() {
+                    if ch == '\n' {
+                        line_starts.push(i + 1);
+                    }
                 }
-            }
-
-            let end_exclusive = current_offset + source.len();
-            files.push(FileEntry {
-                filename,
-                base_offset: current_offset,
-                end_exclusive,
-                source,
-                line_starts,
-            });
-
-            // 1-byte sentinel gap
-            current_offset = end_exclusive + 1;
-        }
+                FileEntry {
+                    filename,
+                    source,
+                    line_starts,
+                }
+            })
+            .collect();
 
         Self { files }
-    }
-
-    /// Find which file owns a span.
-    fn find_file(&self, span_start: usize) -> Option<&FileEntry> {
-        self.files.iter().find(|f| {
-            f.base_offset <= span_start && span_start < f.end_exclusive
-        })
     }
 
     /// Render a diagnostic with filename:line:col location.
@@ -215,7 +196,8 @@ impl MultiSourceMap {
             return format!("[{}] {}", severity_str, diag.message);
         }
 
-        match self.find_file(diag.span.start) {
+        let file_idx = diag.span.file.0 as usize;
+        match self.files.get(file_idx) {
             Some(file) => {
                 let prefix = format!("{}:", file.filename);
                 render_diagnostic(
@@ -223,11 +205,10 @@ impl MultiSourceMap {
                     &prefix,
                     &file.source,
                     &file.line_starts,
-                    file.base_offset,
                 )
             }
             None => {
-                // Fallback — span doesn't map to any file
+                // Fallback — FileId doesn't map to any file
                 let severity_str = match diag.severity {
                     Severity::Error => "error",
                     Severity::Warning => "warning",
@@ -241,22 +222,34 @@ impl MultiSourceMap {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::span::FileId;
 
-    // ── Regression: tdsl-9fm8 — boundary span should not match wrong file ──
+    // ── FileId-based lookup ──
 
     #[test]
-    fn multi_source_map_boundary_span_falls_through() {
-        // Two files: "hello" (5 bytes) at offset 0, "world" (5 bytes) at offset 6.
-        // A span at position 5 (the sentinel gap) should NOT match file A.
+    fn multi_source_map_file_id_lookup() {
+        // FileId(0) → "a.ttrpg", FileId(1) → "b.ttrpg"
         let msm = MultiSourceMap::new(vec![
             ("a.ttrpg".into(), "hello".into()),
             ("b.ttrpg".into(), "world".into()),
         ]);
-        // Position 5 is the sentinel gap — should not be found in any file
-        let entry = msm.find_file(5);
+        let diag_a = Diagnostic::error("err in a", Span::new(FileId(0), 0, 3));
+        let diag_b = Diagnostic::error("err in b", Span::new(FileId(1), 0, 3));
+        assert!(msm.render(&diag_a).contains("a.ttrpg"));
+        assert!(msm.render(&diag_b).contains("b.ttrpg"));
+    }
+
+    #[test]
+    fn multi_source_map_out_of_range_file_id() {
+        // A FileId beyond the file list should fall through gracefully
+        let msm = MultiSourceMap::new(vec![
+            ("a.ttrpg".into(), "hello".into()),
+        ]);
+        let diag = Diagnostic::error("oops", Span::new(FileId(99), 0, 3));
+        let rendered = msm.render(&diag);
         assert!(
-            entry.is_none(),
-            "span at sentinel gap (pos 5) should not match any file",
+            rendered.contains("[error]"),
+            "unknown FileId should use no-attribution format, got: {rendered}",
         );
     }
 
@@ -264,13 +257,11 @@ mod tests {
 
     #[test]
     fn multi_source_map_zero_span_renders_with_filename() {
-        // A (0,0) span at BOF of the first file should render with filename
-        // attribution, not be treated as a dummy/no-file span.
         let msm = MultiSourceMap::new(vec![
             ("a.ttrpg".into(), "let x = 1\n".into()),
             ("b.ttrpg".into(), "let y = 2\n".into()),
         ]);
-        let diag = Diagnostic::error("unexpected token", Span { start: 0, end: 0 });
+        let diag = Diagnostic::error("unexpected token", Span::new(FileId(0), 0, 0));
         let rendered = msm.render(&diag);
         assert!(
             rendered.contains("a.ttrpg"),
@@ -280,7 +271,6 @@ mod tests {
 
     #[test]
     fn multi_source_map_dummy_span_no_attribution() {
-        // Dummy spans (Span::dummy()) should render without file attribution.
         let msm = MultiSourceMap::new(vec![
             ("a.ttrpg".into(), "let x = 1\n".into()),
             ("b.ttrpg".into(), "let y = 2\n".into()),
@@ -302,7 +292,7 @@ mod tests {
     #[test]
     fn render_inverted_span_does_not_panic() {
         let sm = SourceMap::new("hello world");
-        let diag = Diagnostic::error("test", Span { start: 5, end: 3 });
+        let diag = Diagnostic::error("test", Span::new(FileId::SYNTH, 5, 3));
         // Should not panic despite start > end (saturating_sub guards it)
         let rendered = sm.render(&diag);
         assert!(rendered.contains("test"), "should still contain the message");

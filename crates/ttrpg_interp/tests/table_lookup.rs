@@ -5,6 +5,7 @@
 
 use std::collections::{BTreeMap, HashMap};
 
+use ttrpg_ast::FileId;
 use ttrpg_ast::diagnostic::Severity;
 use ttrpg_interp::effect::{Effect, EffectHandler, Response};
 use ttrpg_interp::reference_state::GameState;
@@ -14,7 +15,7 @@ use ttrpg_interp::Interpreter;
 // ── Setup ──────────────────────────────────────────────────────
 
 fn compile(source: &str) -> (ttrpg_ast::ast::Program, ttrpg_checker::CheckResult) {
-    let (program, parse_errors) = ttrpg_parser::parse(source);
+    let (program, parse_errors) = ttrpg_parser::parse(source, FileId::SYNTH);
     assert!(
         parse_errors.is_empty(),
         "parse errors: {:?}",
@@ -440,7 +441,7 @@ fn table_type_error_key_mismatch() {
     }
     "#;
 
-    let (program, parse_errors) = ttrpg_parser::parse(source);
+    let (program, parse_errors) = ttrpg_parser::parse(source, FileId::SYNTH);
     assert!(parse_errors.is_empty());
     let mut lower_diags = Vec::new();
     let program = ttrpg_parser::lower_moves(program, &mut lower_diags);
@@ -473,7 +474,7 @@ fn table_type_error_value_mismatch() {
     }
     "#;
 
-    let (program, parse_errors) = ttrpg_parser::parse(source);
+    let (program, parse_errors) = ttrpg_parser::parse(source, FileId::SYNTH);
     assert!(parse_errors.is_empty());
     let mut lower_diags = Vec::new();
     let program = ttrpg_parser::lower_moves(program, &mut lower_diags);
@@ -507,7 +508,7 @@ fn table_wildcard_not_last_warns() {
     }
     "#;
 
-    let (program, parse_errors) = ttrpg_parser::parse(source);
+    let (program, parse_errors) = ttrpg_parser::parse(source, FileId::SYNTH);
     assert!(parse_errors.is_empty());
     let mut lower_diags = Vec::new();
     let program = ttrpg_parser::lower_moves(program, &mut lower_diags);
@@ -535,7 +536,7 @@ fn table_wildcard_last_no_warning() {
     }
     "#;
 
-    let (program, parse_errors) = ttrpg_parser::parse(source);
+    let (program, parse_errors) = ttrpg_parser::parse(source, FileId::SYNTH);
     assert!(parse_errors.is_empty());
     let mut lower_diags = Vec::new();
     let program = ttrpg_parser::lower_moves(program, &mut lower_diags);
@@ -565,7 +566,7 @@ fn table_type_error_range_on_non_int() {
     }
     "#;
 
-    let (program, parse_errors) = ttrpg_parser::parse(source);
+    let (program, parse_errors) = ttrpg_parser::parse(source, FileId::SYNTH);
     assert!(parse_errors.is_empty());
     let mut lower_diags = Vec::new();
     let program = ttrpg_parser::lower_moves(program, &mut lower_diags);

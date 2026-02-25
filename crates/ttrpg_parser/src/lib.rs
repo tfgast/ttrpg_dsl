@@ -13,12 +13,12 @@ pub use lower::lower_moves;
 pub use resolve::FileSystemInfo;
 use ttrpg_ast::ast::*;
 use ttrpg_ast::module::ModuleMap;
-use ttrpg_ast::{Span, Spanned, VisitSpansMut};
+use ttrpg_ast::{FileId, Spanned};
 use ttrpg_lexer::TokenKind;
 use parser::Parser;
 
-pub fn parse(source: &str) -> (Program, Vec<Diagnostic>) {
-    Parser::new(source).parse()
+pub fn parse(source: &str, file: FileId) -> (Program, Vec<Diagnostic>) {
+    Parser::new(source, file).parse()
 }
 
 /// Parse a standalone expression from source text.
@@ -26,7 +26,7 @@ pub fn parse(source: &str) -> (Program, Vec<Diagnostic>) {
 /// Returns the parsed expression (if successful) and any diagnostics.
 /// Emits a diagnostic if there are trailing tokens after the expression.
 pub fn parse_expr(source: &str) -> (Option<Spanned<ExprKind>>, Vec<Diagnostic>) {
-    let mut parser = Parser::new(source);
+    let mut parser = Parser::new(source, FileId::SYNTH);
     let result = parser.parse_expr();
     match result {
         Ok(expr) => {
@@ -63,28 +63,26 @@ impl ParseMultiResult {
     }
 }
 
-/// Parse multiple source files, lower moves, rebase spans, merge, and resolve modules.
+/// Parse multiple source files, lower moves, merge, and resolve modules.
 ///
 /// Each source is a `(filename, source_text)` pair.
+/// Files are assigned `FileId(0)`, `FileId(1)`, etc.
 ///
 /// Steps:
-/// 1. Parse each file independently
+/// 1. Parse each file with its FileId (spans embed the file identity)
 /// 2. Lower moves per file (so synthetic decls are visible to resolver)
-/// 3. Compute base offsets and rebase all spans + diagnostics to global offsets
-/// 4. Merge programs into single Program
-/// 5. Resolve modules (registry, validation, collision detection, visibility, desugar)
-/// 6. Return merged Program + ModuleMap + all diagnostics
+/// 3. Merge programs into single Program
+/// 4. Resolve modules (registry, validation, collision detection, visibility, desugar)
+/// 5. Return merged Program + ModuleMap + all diagnostics
 pub fn parse_multi(sources: &[(String, String)]) -> ParseMultiResult {
     let mut all_diagnostics: Vec<Diagnostic> = Vec::new();
     let mut file_systems_info: Vec<FileSystemInfo> = Vec::new();
     let mut programs: Vec<Program> = Vec::new();
 
-    // Parse, lower, and rebase each file
-    let mut current_offset: usize = 0;
-    for (_filename, source) in sources {
-        let base = current_offset;
+    for (i, (_filename, source)) in sources.iter().enumerate() {
+        let file = FileId(i as u32);
 
-        let (program, mut diags) = parse(source);
+        let (program, mut diags) = parse(source, file);
         let program = lower_moves(program, &mut diags);
 
         // Extract file-system info
@@ -97,32 +95,13 @@ pub fn parse_multi(sources: &[(String, String)]) -> ParseMultiResult {
             }
         }
 
-        // Rebase diagnostics
-        for d in &mut diags {
-            d.span = rebase_span(d.span, base);
-        }
         all_diagnostics.extend(diags);
-
-        // Rebase program spans
-        let mut program = program;
-        rebase_program(&mut program, base);
-
-        // Rebase use_decls for file_systems_info
-        let use_decls: Vec<UseDecl> = use_decls
-            .into_iter()
-            .map(|mut u| {
-                u.span = rebase_span(u.span, base);
-                u
-            })
-            .collect();
 
         programs.push(program);
         file_systems_info.push(FileSystemInfo {
             system_names,
             use_decls,
         });
-
-        current_offset += source.len() + 1;
     }
 
     // Merge programs into single Program
@@ -132,7 +111,7 @@ pub fn parse_multi(sources: &[(String, String)]) -> ParseMultiResult {
     }
     merged.build_index();
 
-    // Step 5: Resolve modules
+    // Resolve modules
     let (module_map, resolve_diags) = resolve::resolve_modules(&mut merged, &file_systems_info);
     all_diagnostics.extend(resolve_diags);
 
@@ -146,31 +125,6 @@ pub fn parse_multi(sources: &[(String, String)]) -> ParseMultiResult {
         diagnostics: all_diagnostics,
         has_errors,
     }
-}
-
-/// Rebase a span by adding a base offset.
-fn rebase_span(span: Span, base: usize) -> Span {
-    if base == 0 {
-        return span;
-    }
-    // Don't rebase dummy spans
-    if span.is_dummy() {
-        return span;
-    }
-    Span::new(span.start + base, span.end + base)
-}
-
-/// Rebase all spans in a Program by adding a base offset.
-fn rebase_program(program: &mut Program, base: usize) {
-    if base == 0 {
-        return;
-    }
-    program.visit_spans_mut(&mut |span| {
-        if !span.is_dummy() {
-            span.start += base;
-            span.end += base;
-        }
-    });
 }
 
 #[cfg(test)]
@@ -271,73 +225,72 @@ system "Core" {
     }
 
     #[test]
-    fn parse_multi_span_rebasing() {
-        // Two files — errors in second file should have rebased spans
-        let source1 = r#"system "A" {
-    derive foo() -> int { 1 }
-}"#;
-        let source2 = r#"system "B" {
-    derive bar() -> int { unknown_var }
-}"#;
+    fn parse_multi_file_ids_assigned() {
+        // Items from each file should carry the correct FileId
         let sources = vec![
-            ("a.ttrpg".to_string(), source1.to_string()),
-            ("b.ttrpg".to_string(), source2.to_string()),
+            (
+                "a.ttrpg".to_string(),
+                r#"system "A" {
+    derive foo() -> int { 1 }
+}"#.to_string(),
+            ),
+            (
+                "b.ttrpg".to_string(),
+                r#"system "B" {
+    derive bar() -> int { 2 }
+}"#.to_string(),
+            ),
         ];
 
         let result = parse_multi(&sources);
-        // Parse itself won't error on unknown_var (that's a checker concern),
-        // but spans in the second file should be rebased
-        let expected_base = source1.len() + 1; // +1 for sentinel
+
         for item in &result.program.items {
             if let TopLevel::System(sys) = &item.node {
+                if sys.name == "A" {
+                    assert_eq!(
+                        item.span.file, FileId(0),
+                        "system A should have FileId(0), got {:?}",
+                        item.span.file,
+                    );
+                }
                 if sys.name == "B" {
-                    // Spans from file B should be >= expected_base
-                    assert!(
-                        item.span.start >= expected_base,
-                        "expected span.start >= {}, got {}",
-                        expected_base,
-                        item.span.start,
+                    assert_eq!(
+                        item.span.file, FileId(1),
+                        "system B should have FileId(1), got {:?}",
+                        item.span.file,
                     );
                 }
             }
         }
     }
 
-    // ── Regression: tdsl-vpk — parse_multi should not double-parse ──
-
     #[test]
-    fn parse_multi_diagnostics_correctly_rebased() {
-        // Ensures the single-loop implementation correctly rebases diagnostics
-        // from the second file. Previously, a redundant first loop parsed all
-        // files twice and discarded the first results.
-        let source1 = r#"system "A" {
-    derive foo() -> int { 1 }
-}"#;
-        let source2 = r#"system "B" {
-    derive bar() -> int { 2 }
-}"#;
+    fn parse_multi_local_offsets_not_rebased() {
+        // Spans should have local (file-relative) byte offsets, not rebased global ones
         let sources = vec![
-            ("a.ttrpg".to_string(), source1.to_string()),
-            ("b.ttrpg".to_string(), source2.to_string()),
+            (
+                "a.ttrpg".to_string(),
+                r#"system "A" {
+    derive foo() -> int { 1 }
+}"#.to_string(),
+            ),
+            (
+                "b.ttrpg".to_string(),
+                r#"system "B" {
+    derive bar() -> int { 2 }
+}"#.to_string(),
+            ),
         ];
 
         let result = parse_multi(&sources);
-        let expected_base = source1.len() + 1;
 
-        // Both systems should be present in the merged program
-        let system_names: Vec<_> = result.program.items.iter().filter_map(|item| {
-            if let TopLevel::System(s) = &item.node { Some(s.name.as_str()) } else { None }
-        }).collect();
-        assert!(system_names.contains(&"A"), "system A missing");
-        assert!(system_names.contains(&"B"), "system B missing");
-
-        // Spans from file B should be rebased by expected_base
         for item in &result.program.items {
             if let TopLevel::System(sys) = &item.node {
                 if sys.name == "B" {
-                    assert!(
-                        item.span.start >= expected_base,
-                        "B's span should be rebased; got start={}",
+                    // B's span should start at 0, not at some rebased offset
+                    assert_eq!(
+                        item.span.start, 0,
+                        "system B's span.start should be 0 (local offset), got {}",
                         item.span.start,
                     );
                 }

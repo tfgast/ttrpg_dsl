@@ -1,19 +1,26 @@
 use crate::cursor::Cursor;
 use crate::token::{Token, TokenKind};
-use ttrpg_ast::{DiceFilter, Span};
+use ttrpg_ast::{DiceFilter, FileId, Span};
 
 /// Raw lexer: produces all tokens including newlines.
 pub struct RawLexer<'a> {
     cursor: Cursor<'a>,
+    file: FileId,
     done: bool,
 }
 
 impl<'a> RawLexer<'a> {
-    pub fn new(source: &'a str) -> Self {
+    pub fn new(source: &'a str, file: FileId) -> Self {
         Self {
             cursor: Cursor::new(source),
+            file,
             done: false,
         }
+    }
+
+    /// Convenience: build a span in this file.
+    fn span(&self, start: usize, end: usize) -> Span {
+        Span::new(self.file, start, end)
     }
 
     fn skip_whitespace_and_comments(&mut self) {
@@ -80,7 +87,7 @@ impl<'a> RawLexer<'a> {
                     Ok(c) if c >= 0 && c <= u32::MAX as i64 => c as u32,
                     _ => {
                         let _ = self.try_lex_dice_filter();
-                        let span = Span::new(first_digit_start, self.cursor.pos());
+                        let span = self.span(first_digit_start, self.cursor.pos());
                         return Token::new(
                             TokenKind::Error("dice count too large (overflow)".into()),
                             span,
@@ -93,7 +100,7 @@ impl<'a> RawLexer<'a> {
                     Ok(s) => s,
                     Err(_) => {
                         let _ = self.try_lex_dice_filter();
-                        let span = Span::new(first_digit_start, self.cursor.pos());
+                        let span = self.span(first_digit_start, self.cursor.pos());
                         return Token::new(
                             TokenKind::Error("dice sides too large (overflow)".into()),
                             span,
@@ -102,7 +109,7 @@ impl<'a> RawLexer<'a> {
                 };
 
                 if sides == 0 {
-                    let span = Span::new(first_digit_start, self.cursor.pos());
+                    let span = self.span(first_digit_start, self.cursor.pos());
                     return Token::new(
                         TokenKind::Error("dice sides must be at least 1 (e.g. 1d0 is invalid)".into()),
                         span,
@@ -113,12 +120,12 @@ impl<'a> RawLexer<'a> {
                 let filter = match self.try_lex_dice_filter() {
                     Ok(f) => f,
                     Err(msg) => {
-                        let span = Span::new(first_digit_start, self.cursor.pos());
+                        let span = self.span(first_digit_start, self.cursor.pos());
                         return Token::new(TokenKind::Error(msg), span);
                     }
                 };
 
-                let span = Span::new(first_digit_start, self.cursor.pos());
+                let span = self.span(first_digit_start, self.cursor.pos());
                 return Token::new(
                     TokenKind::Dice {
                         count,
@@ -138,7 +145,7 @@ impl<'a> RawLexer<'a> {
                 if self.cursor.peek().is_some_and(|ch| ch.is_ascii_alphabetic()) {
                     self.cursor.eat_while(|ch| ch.is_ascii_alphanumeric() || ch == '_');
                 }
-                let span = Span::new(first_digit_start, self.cursor.pos());
+                let span = self.span(first_digit_start, self.cursor.pos());
                 return Token::new(
                     TokenKind::Error("numeric literal too large (overflow)".into()),
                     span,
@@ -154,13 +161,13 @@ impl<'a> RawLexer<'a> {
             let suffix = self.cursor.slice(suffix_start, suffix_end).to_string();
             return Token::new(
                 TokenKind::UnitLiteral { value: count, suffix },
-                Span::new(first_digit_start, suffix_end),
+                self.span(first_digit_start, suffix_end),
             );
         }
 
         Token::new(
             TokenKind::Int(count),
-            Span::new(first_digit_start, num_end),
+            self.span(first_digit_start, num_end),
         )
     }
 
@@ -203,7 +210,7 @@ impl<'a> RawLexer<'a> {
             .eat_while(|ch| ch.is_ascii_alphanumeric() || ch == '_');
         let end = self.cursor.pos();
         let text = self.cursor.slice(start, end);
-        let span = Span::new(start, end);
+        let span = self.span(start, end);
 
         let kind = match text {
             "let" => TokenKind::Let,
@@ -225,111 +232,111 @@ impl<'a> RawLexer<'a> {
         self.skip_whitespace_and_comments();
 
         if self.cursor.is_eof() {
-            return Token::new(TokenKind::Eof, Span::new(self.cursor.pos(), self.cursor.pos()));
+            return Token::new(TokenKind::Eof, self.span(self.cursor.pos(), self.cursor.pos()));
         }
 
         let start = self.cursor.pos();
         let Some(ch) = self.cursor.advance() else {
-            return Token::new(TokenKind::Eof, Span::new(start, start));
+            return Token::new(TokenKind::Eof, self.span(start, start));
         };
 
         match ch {
-            '\n' => Token::new(TokenKind::Newline, Span::new(start, self.cursor.pos())),
+            '\n' => Token::new(TokenKind::Newline, self.span(start, self.cursor.pos())),
 
-            '(' => Token::new(TokenKind::LParen, Span::new(start, self.cursor.pos())),
-            ')' => Token::new(TokenKind::RParen, Span::new(start, self.cursor.pos())),
-            '{' => Token::new(TokenKind::LBrace, Span::new(start, self.cursor.pos())),
-            '}' => Token::new(TokenKind::RBrace, Span::new(start, self.cursor.pos())),
-            '[' => Token::new(TokenKind::LBracket, Span::new(start, self.cursor.pos())),
-            ']' => Token::new(TokenKind::RBracket, Span::new(start, self.cursor.pos())),
-            ',' => Token::new(TokenKind::Comma, Span::new(start, self.cursor.pos())),
-            ':' => Token::new(TokenKind::Colon, Span::new(start, self.cursor.pos())),
+            '(' => Token::new(TokenKind::LParen, self.span(start, self.cursor.pos())),
+            ')' => Token::new(TokenKind::RParen, self.span(start, self.cursor.pos())),
+            '{' => Token::new(TokenKind::LBrace, self.span(start, self.cursor.pos())),
+            '}' => Token::new(TokenKind::RBrace, self.span(start, self.cursor.pos())),
+            '[' => Token::new(TokenKind::LBracket, self.span(start, self.cursor.pos())),
+            ']' => Token::new(TokenKind::RBracket, self.span(start, self.cursor.pos())),
+            ',' => Token::new(TokenKind::Comma, self.span(start, self.cursor.pos())),
+            ':' => Token::new(TokenKind::Colon, self.span(start, self.cursor.pos())),
 
             '.' => {
                 if self.cursor.peek() == Some('.') {
                     self.cursor.advance();
                     if self.cursor.peek() == Some('=') {
                         self.cursor.advance();
-                        Token::new(TokenKind::DotDotEq, Span::new(start, self.cursor.pos()))
+                        Token::new(TokenKind::DotDotEq, self.span(start, self.cursor.pos()))
                     } else {
-                        Token::new(TokenKind::DotDot, Span::new(start, self.cursor.pos()))
+                        Token::new(TokenKind::DotDot, self.span(start, self.cursor.pos()))
                     }
                 } else {
-                    Token::new(TokenKind::Dot, Span::new(start, self.cursor.pos()))
+                    Token::new(TokenKind::Dot, self.span(start, self.cursor.pos()))
                 }
             }
 
             '+' => {
                 if self.cursor.peek() == Some('=') {
                     self.cursor.advance();
-                    Token::new(TokenKind::PlusEq, Span::new(start, self.cursor.pos()))
+                    Token::new(TokenKind::PlusEq, self.span(start, self.cursor.pos()))
                 } else {
-                    Token::new(TokenKind::Plus, Span::new(start, self.cursor.pos()))
+                    Token::new(TokenKind::Plus, self.span(start, self.cursor.pos()))
                 }
             }
 
             '-' => {
                 if self.cursor.peek() == Some('>') {
                     self.cursor.advance();
-                    Token::new(TokenKind::Arrow, Span::new(start, self.cursor.pos()))
+                    Token::new(TokenKind::Arrow, self.span(start, self.cursor.pos()))
                 } else if self.cursor.peek() == Some('=') {
                     self.cursor.advance();
-                    Token::new(TokenKind::MinusEq, Span::new(start, self.cursor.pos()))
+                    Token::new(TokenKind::MinusEq, self.span(start, self.cursor.pos()))
                 } else {
-                    Token::new(TokenKind::Minus, Span::new(start, self.cursor.pos()))
+                    Token::new(TokenKind::Minus, self.span(start, self.cursor.pos()))
                 }
             }
 
-            '*' => Token::new(TokenKind::Star, Span::new(start, self.cursor.pos())),
-            '/' => Token::new(TokenKind::Slash, Span::new(start, self.cursor.pos())),
+            '*' => Token::new(TokenKind::Star, self.span(start, self.cursor.pos())),
+            '/' => Token::new(TokenKind::Slash, self.span(start, self.cursor.pos())),
 
             '!' => {
                 if self.cursor.peek() == Some('=') {
                     self.cursor.advance();
-                    Token::new(TokenKind::BangEq, Span::new(start, self.cursor.pos()))
+                    Token::new(TokenKind::BangEq, self.span(start, self.cursor.pos()))
                 } else {
-                    Token::new(TokenKind::Bang, Span::new(start, self.cursor.pos()))
+                    Token::new(TokenKind::Bang, self.span(start, self.cursor.pos()))
                 }
             }
 
             '=' => {
                 if self.cursor.peek() == Some('=') {
                     self.cursor.advance();
-                    Token::new(TokenKind::EqEq, Span::new(start, self.cursor.pos()))
+                    Token::new(TokenKind::EqEq, self.span(start, self.cursor.pos()))
                 } else if self.cursor.peek() == Some('>') {
                     self.cursor.advance();
-                    Token::new(TokenKind::FatArrow, Span::new(start, self.cursor.pos()))
+                    Token::new(TokenKind::FatArrow, self.span(start, self.cursor.pos()))
                 } else {
-                    Token::new(TokenKind::Eq, Span::new(start, self.cursor.pos()))
+                    Token::new(TokenKind::Eq, self.span(start, self.cursor.pos()))
                 }
             }
 
             '<' => {
                 if self.cursor.peek() == Some('=') {
                     self.cursor.advance();
-                    Token::new(TokenKind::LtEq, Span::new(start, self.cursor.pos()))
+                    Token::new(TokenKind::LtEq, self.span(start, self.cursor.pos()))
                 } else {
-                    Token::new(TokenKind::Lt, Span::new(start, self.cursor.pos()))
+                    Token::new(TokenKind::Lt, self.span(start, self.cursor.pos()))
                 }
             }
 
             '>' => {
                 if self.cursor.peek() == Some('=') {
                     self.cursor.advance();
-                    Token::new(TokenKind::GtEq, Span::new(start, self.cursor.pos()))
+                    Token::new(TokenKind::GtEq, self.span(start, self.cursor.pos()))
                 } else {
-                    Token::new(TokenKind::Gt, Span::new(start, self.cursor.pos()))
+                    Token::new(TokenKind::Gt, self.span(start, self.cursor.pos()))
                 }
             }
 
             '&' => {
                 if self.cursor.peek() == Some('&') {
                     self.cursor.advance();
-                    Token::new(TokenKind::AmpAmp, Span::new(start, self.cursor.pos()))
+                    Token::new(TokenKind::AmpAmp, self.span(start, self.cursor.pos()))
                 } else {
                     Token::new(
                         TokenKind::Error("unexpected character '&'".to_string()),
-                        Span::new(start, self.cursor.pos()),
+                        self.span(start, self.cursor.pos()),
                     )
                 }
             }
@@ -337,18 +344,18 @@ impl<'a> RawLexer<'a> {
             '|' => {
                 if self.cursor.peek() == Some('|') {
                     self.cursor.advance();
-                    Token::new(TokenKind::PipePipe, Span::new(start, self.cursor.pos()))
+                    Token::new(TokenKind::PipePipe, self.span(start, self.cursor.pos()))
                 } else {
                     Token::new(
                         TokenKind::Error("unexpected character '|'".to_string()),
-                        Span::new(start, self.cursor.pos()),
+                        self.span(start, self.cursor.pos()),
                     )
                 }
             }
 
             '"' => {
                 let kind = self.lex_string();
-                Token::new(kind, Span::new(start, self.cursor.pos()))
+                Token::new(kind, self.span(start, self.cursor.pos()))
             }
 
             '_' => {
@@ -356,7 +363,7 @@ impl<'a> RawLexer<'a> {
                 if self.cursor.peek().is_some_and(|ch| ch.is_ascii_alphanumeric() || ch == '_') {
                     self.lex_ident_or_keyword(start)
                 } else {
-                    Token::new(TokenKind::Underscore, Span::new(start, self.cursor.pos()))
+                    Token::new(TokenKind::Underscore, self.span(start, self.cursor.pos()))
                 }
             }
 
@@ -366,7 +373,7 @@ impl<'a> RawLexer<'a> {
 
             _ => Token::new(
                 TokenKind::Error(format!("unexpected character '{ch}'")),
-                Span::new(start, self.cursor.pos()),
+                self.span(start, self.cursor.pos()),
             ),
         }
     }
@@ -401,9 +408,9 @@ pub struct Lexer<'a> {
 }
 
 impl<'a> Lexer<'a> {
-    pub fn new(source: &'a str) -> Self {
+    pub fn new(source: &'a str, file: FileId) -> Self {
         Self {
-            raw: RawLexer::new(source),
+            raw: RawLexer::new(source, file),
             paren_depth: 0,
             bracket_depth: 0,
             suppress_next_nl: false,
@@ -451,7 +458,7 @@ mod tests {
     use super::*;
 
     fn lex(source: &str) -> Vec<TokenKind> {
-        Lexer::new(source)
+        Lexer::new(source, FileId::SYNTH)
             .map(|t| t.kind)
             .collect()
     }
@@ -518,21 +525,6 @@ mod tests {
 
     #[test]
     fn test_int_vs_dice_disambiguation() {
-        // "4 d6" should be int 4, ident d6 (no, d6 is not valid ident —
-        // actually d6 starts with letter 'd', so it could be ident)
-        // But the plan says: no-whitespace-before-d rule
-        // "4d6" is dice, "4 d6" is int 4, ident "d6"
-        // Wait: after whitespace skip, the cursor is past spaces. Let me think...
-        // Actually RawLexer skips whitespace before each token. So "4 d6" would be:
-        // Token 1: starts at '4', consumes '4', peeks 'd' but there was whitespace.
-        // Hmm, the problem is the cursor already skipped whitespace when it sees '4'.
-        // Actually no — we skip whitespace in next_token(), then read '4', then check
-        // if cursor.peek() == 'd'. At that point cursor is at ' ' (the space), so
-        // peek returns ' ', not 'd'. So "4 d6" -> Int(4).
-        // Wait, no. After consuming '4', cursor is at the space character.
-        // lex_number_or_dice checks cursor.peek() which is ' ', not 'd'. So it returns Int(4).
-        // Then next call to next_token skips the space and reads 'd', producing Ident("d6").
-        // This is correct!
         let result = lex("4 d6");
         assert_eq!(
             result,

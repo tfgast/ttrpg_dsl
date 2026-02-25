@@ -2,6 +2,7 @@
 
 use std::collections::BTreeMap;
 
+use ttrpg_ast::FileId;
 use ttrpg_ast::diagnostic::Severity;
 use ttrpg_interp::effect::{Effect, EffectHandler, Response};
 use ttrpg_interp::reference_state::GameState;
@@ -16,7 +17,7 @@ impl EffectHandler for NoopHandler {
 }
 
 fn setup(source: &str) -> (ttrpg_ast::ast::Program, ttrpg_checker::CheckResult) {
-    let (program, parse_errors) = ttrpg_parser::parse(source);
+    let (program, parse_errors) = ttrpg_parser::parse(source, FileId::SYNTH);
     assert!(
         parse_errors.is_empty(),
         "parse errors: {:?}",

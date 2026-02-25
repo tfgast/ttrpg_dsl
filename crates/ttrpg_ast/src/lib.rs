@@ -5,7 +5,7 @@ pub mod module;
 pub mod name;
 pub mod visit;
 
-pub use span::{Span, Spanned};
+pub use span::{FileId, Span, Spanned};
 pub use diagnostic::{Diagnostic, MultiSourceMap, Severity, SourceMap};
 pub use name::Name;
 pub use visit::VisitSpansMut;

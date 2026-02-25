@@ -7,6 +7,7 @@
 use std::collections::{BTreeMap, VecDeque};
 
 use ttrpg_ast::DiceFilter;
+use ttrpg_ast::FileId;
 use ttrpg_ast::ast::{DeclKind, TopLevel};
 use ttrpg_ast::diagnostic::Severity;
 use ttrpg_interp::effect::{Effect, EffectHandler, Response};
@@ -34,7 +35,7 @@ fn compile_ose_thief() -> (ttrpg_ast::ast::Program, ttrpg_checker::CheckResult) 
     let thief_source = include_str!("../../../ose/ose_thief.ttrpg");
     let source = format!("{}\n{}\n{}", core_source, thief_source, TEST_HARNESS);
 
-    let (program, parse_errors) = ttrpg_parser::parse(&source);
+    let (program, parse_errors) = ttrpg_parser::parse(&source, FileId::SYNTH);
     assert!(
         parse_errors.is_empty(),
         "parse errors: {:?}",

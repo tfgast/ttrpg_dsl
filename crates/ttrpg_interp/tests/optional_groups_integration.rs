@@ -12,6 +12,7 @@
 
 use std::collections::{BTreeMap, HashMap, VecDeque};
 
+use ttrpg_ast::FileId;
 use ttrpg_ast::diagnostic::Severity;
 use ttrpg_interp::adapter::StateAdapter;
 use ttrpg_interp::effect::{Effect, EffectHandler, Response};
@@ -101,7 +102,7 @@ system "OptionalGroupsTest" {
 // ── Setup ────────────────────────────────────────────────────
 
 fn setup() -> (ttrpg_ast::ast::Program, ttrpg_checker::CheckResult) {
-    let (program, parse_errors) = ttrpg_parser::parse(PROGRAM_SOURCE);
+    let (program, parse_errors) = ttrpg_parser::parse(PROGRAM_SOURCE, FileId::SYNTH);
     assert!(
         parse_errors.is_empty(),
         "parse errors: {:?}",

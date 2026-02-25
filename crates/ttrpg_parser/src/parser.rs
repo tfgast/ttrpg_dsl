@@ -1,21 +1,23 @@
 use crate::diagnostic::Diagnostic;
 use ttrpg_ast::ast::*;
 use ttrpg_ast::name::Name;
-use ttrpg_ast::{Span, Spanned};
+use ttrpg_ast::{FileId, Span, Spanned};
 use ttrpg_lexer::{Lexer, Token, TokenKind};
 
 pub struct Parser {
     tokens: Vec<Token>,
     pos: usize,
+    file: FileId,
     diagnostics: Vec<Diagnostic>,
 }
 
 impl Parser {
-    pub fn new(source: &str) -> Self {
-        let tokens: Vec<Token> = Lexer::new(source).collect();
+    pub fn new(source: &str, file: FileId) -> Self {
+        let tokens: Vec<Token> = Lexer::new(source, file).collect();
         Self {
             tokens,
             pos: 0,
+            file,
             diagnostics: Vec::new(),
         }
     }
@@ -44,7 +46,7 @@ impl Parser {
                 // Use end of last token or 0
                 self.tokens
                     .last()
-                    .map(|t| Span::new(t.span.end, t.span.end))
+                    .map(|t| Span::new(self.file, t.span.end, t.span.end))
                     .unwrap_or(Span::dummy())
             })
     }
@@ -189,7 +191,7 @@ impl Parser {
         } else {
             start
         };
-        Span::new(start, end)
+        Span::new(self.file, start, end)
     }
 
     pub fn error(&mut self, message: impl Into<String>) {

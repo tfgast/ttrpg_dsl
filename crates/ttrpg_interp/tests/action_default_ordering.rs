@@ -3,6 +3,7 @@
 
 use std::collections::{HashMap, VecDeque};
 
+use ttrpg_ast::FileId;
 use ttrpg_interp::effect::{Effect, EffectHandler, Response};
 use ttrpg_interp::reference_state::GameState;
 use ttrpg_interp::value::Value;
@@ -52,7 +53,7 @@ impl EffectHandler for ScriptedHandler {
 }
 
 fn setup() -> (ttrpg_ast::ast::Program, ttrpg_checker::env::TypeEnv) {
-    let (program, parse_errors) = ttrpg_parser::parse(PROGRAM_SOURCE);
+    let (program, parse_errors) = ttrpg_parser::parse(PROGRAM_SOURCE, FileId::SYNTH);
     assert!(parse_errors.is_empty(), "parse errors: {:?}", parse_errors);
     let mut lower_diags = Vec::new();
     let program = ttrpg_parser::lower_moves(program, &mut lower_diags);

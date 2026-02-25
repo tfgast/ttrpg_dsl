@@ -1,9 +1,10 @@
+use ttrpg_ast::FileId;
 use ttrpg_lexer::{Lexer, RawLexer, TokenKind};
 
 #[test]
 fn test_lex_full_example_no_errors() {
     let source = include_str!("../../../spec/v0/04_full_example.ttrpg");
-    let tokens: Vec<_> = Lexer::new(source).collect();
+    let tokens: Vec<_> = Lexer::new(source, FileId::SYNTH).collect();
     let errors: Vec<_> = tokens
         .iter()
         .filter(|t| matches!(&t.kind, TokenKind::Error(_)))
@@ -22,7 +23,7 @@ fn test_lex_full_example_no_errors() {
 fn test_overflow_int_literal_produces_error() {
     // A number that overflows i64 should produce an error token, not Int(0)
     let source = "99999999999999999999";
-    let tokens: Vec<_> = RawLexer::new(source).collect();
+    let tokens: Vec<_> = RawLexer::new(source, FileId::SYNTH).collect();
     let has_error = tokens.iter().any(|t| matches!(&t.kind, TokenKind::Error(_)));
     let has_zero = tokens.iter().any(|t| matches!(&t.kind, TokenKind::Int(0)));
     assert!(
@@ -37,7 +38,7 @@ fn test_overflow_dice_sides_gives_misleading_error() {
     // 1d followed by a number that overflows u32 currently produces "dice sides
     // must be at least 1" because overflow → 0. It should instead report overflow.
     let source = "1d99999999999";
-    let tokens: Vec<_> = RawLexer::new(source).collect();
+    let tokens: Vec<_> = RawLexer::new(source, FileId::SYNTH).collect();
     let error_msgs: Vec<_> = tokens
         .iter()
         .filter_map(|t| match &t.kind {
@@ -58,7 +59,7 @@ fn test_overflow_dice_sides_gives_misleading_error() {
 fn test_overflow_dice_count_produces_error() {
     // A count that overflows u32 when cast: 4294967296d6 should error, not become 0d6
     let source = "4294967296d6";
-    let tokens: Vec<_> = RawLexer::new(source).collect();
+    let tokens: Vec<_> = RawLexer::new(source, FileId::SYNTH).collect();
     let has_zero_count = tokens.iter().any(|t| matches!(&t.kind, TokenKind::Dice { count: 0, .. }));
     assert!(
         !has_zero_count,
@@ -71,7 +72,7 @@ fn test_overflow_dice_count_produces_error() {
 fn test_overflow_unit_literal_produces_error() {
     // A unit literal with overflowing numeric part should error, not become 0ft
     let source = "99999999999999999999ft";
-    let tokens: Vec<_> = RawLexer::new(source).collect();
+    let tokens: Vec<_> = RawLexer::new(source, FileId::SYNTH).collect();
     let has_error = tokens.iter().any(|t| matches!(&t.kind, TokenKind::Error(_)));
     let has_zero_unit = tokens.iter().any(|t| matches!(&t.kind, TokenKind::UnitLiteral { value: 0, .. }));
     assert!(

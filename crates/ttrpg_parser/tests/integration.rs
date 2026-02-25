@@ -1,10 +1,11 @@
 use ttrpg_parser::{parse, Severity, SourceMap};
 use ttrpg_ast::ast::*;
+use ttrpg_ast::FileId;
 
 #[test]
 fn test_parse_full_example() {
     let source = include_str!("../../../spec/v0/04_full_example.ttrpg");
-    let (program, diagnostics) = parse(source);
+    let (program, diagnostics) = parse(source, FileId::SYNTH);
 
     if !diagnostics.is_empty() {
         let sm = SourceMap::new(source);
@@ -73,7 +74,7 @@ fn test_parse_simple_derive() {
         floor((score - 10) / 2)
     }
 }"#;
-    let (program, diagnostics) = parse(source);
+    let (program, diagnostics) = parse(source, FileId::SYNTH);
     assert!(diagnostics.is_empty(), "errors: {:?}", diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>());
     assert_eq!(program.items.len(), 1);
 }
@@ -93,7 +94,7 @@ fn test_parse_option_decl() {
         }
     }
 }"#;
-    let (_program, diagnostics) = parse(source);
+    let (_program, diagnostics) = parse(source, FileId::SYNTH);
     assert!(diagnostics.is_empty(), "errors: {:?}", diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>());
 }
 
@@ -114,7 +115,7 @@ fn test_parse_move_decl() {
         }
     }
 }"#;
-    let (program, diagnostics) = parse(source);
+    let (program, diagnostics) = parse(source, FileId::SYNTH);
     assert!(diagnostics.is_empty(), "errors: {:?}", diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>());
     let system = match &program.items[0].node {
         TopLevel::System(s) => s,
@@ -139,7 +140,7 @@ fn test_invalid_lvalue_produces_error() {
         x
     }
 }"#;
-    let (_, diagnostics) = parse(source);
+    let (_, diagnostics) = parse(source, FileId::SYNTH);
     assert!(
         diagnostics.iter().any(|d| d.message.contains("invalid assignment target")),
         "should report invalid assignment target, got: {:?}",
@@ -155,7 +156,7 @@ fn test_move_requires_outcome_blocks() {
         roll: 2d6 + actor.stats[Hard]
     }
 }"#;
-    let (_, diagnostics) = parse(source);
+    let (_, diagnostics) = parse(source, FileId::SYNTH);
     assert!(
         diagnostics.iter().any(|d| d.message.contains("outcome")),
         "should report missing outcome blocks, got: {:?}",
@@ -168,7 +169,7 @@ fn test_enum_requires_at_least_one_variant() {
     let source = r#"system "test" {
     enum Empty {}
 }"#;
-    let (_, diagnostics) = parse(source);
+    let (_, diagnostics) = parse(source, FileId::SYNTH);
     assert!(
         diagnostics.iter().any(|d| d.message.contains("at least one variant")),
         "should report empty enum, got: {:?}",
@@ -185,7 +186,7 @@ fn test_enum_newline_separated_variants() {
         graze
     }
 }"#;
-    let (program, diagnostics) = parse(source);
+    let (program, diagnostics) = parse(source, FileId::SYNTH);
     assert!(diagnostics.is_empty(), "errors: {:?}", diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>());
     let system = match &program.items[0].node {
         TopLevel::System(s) => s,
@@ -205,7 +206,7 @@ fn test_enum_empty_payload_rejected() {
         miss()
     }
 }"#;
-    let (_, diagnostics) = parse(source);
+    let (_, diagnostics) = parse(source, FileId::SYNTH);
     assert!(
         diagnostics.iter().any(|d| d.message.contains("at least one field")),
         "should reject empty enum variant payload, got: {:?}",
@@ -224,7 +225,7 @@ fn test_match_arms_newline_separated() {
         }
     }
 }"#;
-    let (_, diagnostics) = parse(source);
+    let (_, diagnostics) = parse(source, FileId::SYNTH);
     assert!(diagnostics.is_empty(), "errors: {:?}", diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>());
 }
 
@@ -239,7 +240,7 @@ fn test_guard_match_newline_separated() {
         }
     }
 }"#;
-    let (_, diagnostics) = parse(source);
+    let (_, diagnostics) = parse(source, FileId::SYNTH);
     assert!(diagnostics.is_empty(), "errors: {:?}", diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>());
 }
 
@@ -251,7 +252,7 @@ fn test_empty_pattern_match_rejected() {
         match 1 {}
     }
 }"#;
-    let (_, diagnostics) = parse(source);
+    let (_, diagnostics) = parse(source, FileId::SYNTH);
     assert!(
         diagnostics.iter().any(|d| d.message.contains("at least one arm")),
         "should reject empty match, got: {:?}",
@@ -266,7 +267,7 @@ fn test_empty_guard_match_rejected() {
         match {}
     }
 }"#;
-    let (_, diagnostics) = parse(source);
+    let (_, diagnostics) = parse(source, FileId::SYNTH);
     assert!(
         diagnostics.iter().any(|d| d.message.contains("at least one arm")),
         "should reject empty guard match, got: {:?}",
@@ -279,7 +280,7 @@ fn test_enum_comma_separated() {
     let source = r#"system "test" {
     enum Result { hit, miss, graze }
 }"#;
-    let (program, diagnostics) = parse(source);
+    let (program, diagnostics) = parse(source, FileId::SYNTH);
     assert!(diagnostics.is_empty(), "errors: {:?}", diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>());
     let system = match &program.items[0].node {
         TopLevel::System(s) => s,
@@ -298,7 +299,7 @@ fn test_match_arms_comma_separated() {
         match x { 1 => 10, 2 => 20, _ => 0 }
     }
 }"#;
-    let (_, diagnostics) = parse(source);
+    let (_, diagnostics) = parse(source, FileId::SYNTH);
     assert!(diagnostics.is_empty(), "errors: {:?}", diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>());
 }
 
@@ -309,7 +310,7 @@ fn test_trailing_comma_in_params() {
         x + y
     }
 }"#;
-    let (_, diagnostics) = parse(source);
+    let (_, diagnostics) = parse(source, FileId::SYNTH);
     assert!(diagnostics.is_empty(), "errors: {:?}", diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>());
 }
 
@@ -320,7 +321,7 @@ fn test_trailing_comma_in_args() {
         f(x,)
     }
 }"#;
-    let (_, diagnostics) = parse(source);
+    let (_, diagnostics) = parse(source, FileId::SYNTH);
     assert!(diagnostics.is_empty(), "errors: {:?}", diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>());
 }
 
@@ -337,7 +338,7 @@ fn test_colon_nl_suppression() {
             int
     }
 }"#;
-    let (_, diagnostics) = parse(source);
+    let (_, diagnostics) = parse(source, FileId::SYNTH);
     assert!(diagnostics.is_empty(), "colon should suppress NL: {:?}", diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>());
 }
 
@@ -350,7 +351,7 @@ fn test_arrow_nl_suppression() {
         floor((score - 10) / 2)
     }
 }"#;
-    let (_, diagnostics) = parse(source);
+    let (_, diagnostics) = parse(source, FileId::SYNTH);
     assert!(diagnostics.is_empty(), "-> should suppress NL: {:?}", diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>());
 }
 
@@ -363,7 +364,7 @@ fn test_underscore_rejected_in_expr() {
         y
     }
 }"#;
-    let (_, diagnostics) = parse(source);
+    let (_, diagnostics) = parse(source, FileId::SYNTH);
     assert!(!diagnostics.is_empty(), "_ should be rejected in expression context");
 }
 
@@ -389,7 +390,7 @@ fn test_action_newlines_between_cost_and_requires() {
         }
     }
 }"#;
-    let (_, diagnostics) = parse(source);
+    let (_, diagnostics) = parse(source, FileId::SYNTH);
     assert!(
         diagnostics.is_empty(),
         "newlines between cost and requires should be allowed, got: {:?}",
@@ -418,7 +419,7 @@ fn test_modify_binding_wildcard() {
         }
     }
 }"#;
-    let (_, diagnostics) = parse(source);
+    let (_, diagnostics) = parse(source, FileId::SYNTH);
     assert!(
         diagnostics.is_empty(),
         "wildcard _ should be allowed in modify bindings, got: {:?}",
@@ -438,7 +439,7 @@ fn test_none_pattern_in_match() {
         }
     }
 }"#;
-    let (_, diagnostics) = parse(source);
+    let (_, diagnostics) = parse(source, FileId::SYNTH);
     assert!(
         diagnostics.is_empty(),
         "none should be a valid match pattern, got: {:?}",
@@ -456,7 +457,7 @@ fn test_some_pattern_in_match() {
         }
     }
 }"#;
-    let (_, diagnostics) = parse(source);
+    let (_, diagnostics) = parse(source, FileId::SYNTH);
     assert!(
         diagnostics.is_empty(),
         "some(n) should be a valid match pattern, got: {:?}",
@@ -474,7 +475,7 @@ fn test_some_wildcard_pattern_in_match() {
         }
     }
 }"#;
-    let (_, diagnostics) = parse(source);
+    let (_, diagnostics) = parse(source, FileId::SYNTH);
     assert!(
         diagnostics.is_empty(),
         "some(_) should be a valid match pattern, got: {:?}",
@@ -501,7 +502,7 @@ fn test_requires_multiline_expression() {
         }
     }
 }"#;
-    let (_, diagnostics) = parse(source);
+    let (_, diagnostics) = parse(source, FileId::SYNTH);
     assert!(
         diagnostics.is_empty(),
         "multiline expressions inside requires should be allowed, got: {:?}",
@@ -524,7 +525,7 @@ fn test_multiple_requires_blocks() {
         }
     }
 }"#;
-    let (mut program, diagnostics) = parse(source);
+    let (mut program, diagnostics) = parse(source, FileId::SYNTH);
     assert!(
         diagnostics.is_empty(),
         "multiple requires blocks should be allowed, got: {:?}",
@@ -567,7 +568,7 @@ fn test_multiple_requires_with_blank_lines() {
         }
     }
 }"#;
-    let (mut program, diagnostics) = parse(source);
+    let (mut program, diagnostics) = parse(source, FileId::SYNTH);
     assert!(
         diagnostics.is_empty(),
         "multiple requires with blank lines should work, got: {:?}",
@@ -609,7 +610,7 @@ fn test_cost_multiline() {
         }
     }
 }"#;
-    let (_, diagnostics) = parse(source);
+    let (_, diagnostics) = parse(source, FileId::SYNTH);
     assert!(
         diagnostics.is_empty(),
         "multiline cost blocks should be allowed, got: {:?}",
@@ -627,7 +628,7 @@ fn test_error_missing_colon_in_field() {
         y: int
     }
 }"#;
-    let (program, diagnostics) = parse(source);
+    let (program, diagnostics) = parse(source, FileId::SYNTH);
     // Should report error but still parse something
     assert!(!diagnostics.is_empty(), "should have at least one diagnostic");
     assert!(diagnostics.iter().any(|d| d.message.contains("expected")));
@@ -644,7 +645,7 @@ fn test_error_missing_brace() {
         x: int
     }
 }"#;
-    let (program, diagnostics) = parse(source);
+    let (program, diagnostics) = parse(source, FileId::SYNTH);
     // Should report errors but recover
     assert!(!diagnostics.is_empty());
     // Should still produce a system block
@@ -661,7 +662,7 @@ fn test_error_recovery_continues_past_bad_decl() {
         x + 1
     }
 }"#;
-    let (program, diagnostics) = parse(source);
+    let (program, diagnostics) = parse(source, FileId::SYNTH);
     assert!(!diagnostics.is_empty(), "should report errors for bad decl");
 
     let system = match &program.items[0].node {
@@ -692,7 +693,7 @@ fn test_source_map_line_col() {
 fn test_diagnostic_rendering() {
     let source = "let x = 42\nlet y foo\nlet z = 1";
     let sm = SourceMap::new(source);
-    let diag = ttrpg_parser::Diagnostic::error("expected '=', found identifier", ttrpg_ast::Span::new(17, 20));
+    let diag = ttrpg_parser::Diagnostic::error("expected '=', found identifier", ttrpg_ast::Span::new(ttrpg_ast::FileId::SYNTH, 17, 20));
     let rendered = sm.render(&diag);
 
     assert!(rendered.contains("error:"), "should contain severity");
@@ -709,7 +710,7 @@ fn test_error_severity() {
         x int
     }
 }"#;
-    let (_, diagnostics) = parse(source);
+    let (_, diagnostics) = parse(source, FileId::SYNTH);
     assert!(!diagnostics.is_empty());
     // All diagnostics from the parser should be errors
     for d in &diagnostics {
@@ -730,7 +731,7 @@ fn test_for_collection_simple() {
         0
     }
 }"#;
-    let (_, diagnostics) = parse(source);
+    let (_, diagnostics) = parse(source, FileId::SYNTH);
     assert!(
         diagnostics.is_empty(),
         "for-each over collection should parse, got: {:?}",
@@ -749,7 +750,7 @@ fn test_for_range() {
         total
     }
 }"#;
-    let (_, diagnostics) = parse(source);
+    let (_, diagnostics) = parse(source, FileId::SYNTH);
     assert!(
         diagnostics.is_empty(),
         "for-range should parse, got: {:?}",
@@ -769,7 +770,7 @@ fn test_for_with_pattern() {
         total
     }
 }"#;
-    let (_, diagnostics) = parse(source);
+    let (_, diagnostics) = parse(source, FileId::SYNTH);
     assert!(
         diagnostics.is_empty(),
         "for-loop with destructuring pattern should parse, got: {:?}",
@@ -855,7 +856,7 @@ fn test_entity_with_optional_groups() {
         }
     }
 }"#;
-    let (program, diagnostics) = parse(source);
+    let (program, diagnostics) = parse(source, FileId::SYNTH);
     assert!(
         diagnostics.is_empty(),
         "entity with optional groups should parse, got: {:?}",
@@ -891,7 +892,7 @@ fn test_entity_optional_group_with_defaults() {
         }
     }
 }"#;
-    let (program, diagnostics) = parse(source);
+    let (program, diagnostics) = parse(source, FileId::SYNTH);
     assert!(
         diagnostics.is_empty(),
         "optional group fields with defaults should parse, got: {:?}",
@@ -925,7 +926,7 @@ fn test_entity_fields_before_and_after_optional() {
         HP: int
     }
 }"#;
-    let (program, diagnostics) = parse(source);
+    let (program, diagnostics) = parse(source, FileId::SYNTH);
     assert!(
         diagnostics.is_empty(),
         "fields after optional groups should parse, got: {:?}",
@@ -982,7 +983,7 @@ fn test_has_in_if_condition() {
         }
     }
 }"#;
-    let (_, diagnostics) = parse(source);
+    let (_, diagnostics) = parse(source, FileId::SYNTH);
     assert!(
         diagnostics.is_empty(),
         "has in if condition should parse, got: {:?}",
@@ -1040,7 +1041,7 @@ fn test_action_receiver_with_group() {
         }
     }
 }"#;
-    let (program, diagnostics) = parse(source);
+    let (program, diagnostics) = parse(source, FileId::SYNTH);
     assert!(
         diagnostics.is_empty(),
         "action with receiver constraint should parse, got: {:?}",
@@ -1068,7 +1069,7 @@ fn test_param_with_group() {
         caster.Spellcasting.dc
     }
 }"#;
-    let (program, diagnostics) = parse(source);
+    let (program, diagnostics) = parse(source, FileId::SYNTH);
     assert!(
         diagnostics.is_empty(),
         "param with group constraint should parse, got: {:?}",
@@ -1099,7 +1100,7 @@ fn test_condition_receiver_with_group() {
         }
     }
 }"#;
-    let (program, diagnostics) = parse(source);
+    let (program, diagnostics) = parse(source, FileId::SYNTH);
     assert!(
         diagnostics.is_empty(),
         "condition with receiver constraint should parse, got: {:?}",
@@ -1126,7 +1127,7 @@ fn test_condition_with_params() {
         }
     }
 }"#;
-    let (program, diagnostics) = parse(source);
+    let (program, diagnostics) = parse(source, FileId::SYNTH);
     assert!(
         diagnostics.is_empty(),
         "parameterized condition should parse, got: {:?}",
@@ -1156,7 +1157,7 @@ fn test_condition_no_params_still_works() {
         }
     }
 }"#;
-    let (program, diagnostics) = parse(source);
+    let (program, diagnostics) = parse(source, FileId::SYNTH);
     assert!(
         diagnostics.is_empty(),
         "condition without params should parse, got: {:?}",
@@ -1192,7 +1193,7 @@ fn test_reaction_receiver_with_group() {
         }
     }
 }"#;
-    let (_, diagnostics) = parse(source);
+    let (_, diagnostics) = parse(source, FileId::SYNTH);
     assert!(
         diagnostics.is_empty(),
         "reaction with receiver constraint should parse, got: {:?}",
@@ -1213,7 +1214,7 @@ fn test_parse_basic_hook() {
         target.HP -= 1
     }
 }"#;
-    let (program, diagnostics) = parse(source);
+    let (program, diagnostics) = parse(source, FileId::SYNTH);
     assert!(
         diagnostics.is_empty(),
         "basic hook should parse, got: {:?}",
@@ -1244,7 +1245,7 @@ fn test_parse_hook_with_groups() {
         0
     }
 }"#;
-    let (_, diagnostics) = parse(source);
+    let (_, diagnostics) = parse(source, FileId::SYNTH);
     assert!(
         diagnostics.is_empty(),
         "hook with receiver constraint should parse, got: {:?}",
@@ -1265,7 +1266,7 @@ fn test_parse_hook_soft_keyword() {
         hook
     }
 }"#;
-    let (_, diagnostics) = parse(source);
+    let (_, diagnostics) = parse(source, FileId::SYNTH);
     assert!(
         diagnostics.is_empty(),
         "hook as variable name should parse, got: {:?}",
@@ -1294,7 +1295,7 @@ fn test_grant_statement() {
         }
     }
 }"#;
-    let (program, diagnostics) = parse(source);
+    let (program, diagnostics) = parse(source, FileId::SYNTH);
     assert!(
         diagnostics.is_empty(),
         "grant statement should parse, got: {:?}",
@@ -1335,7 +1336,7 @@ fn test_grant_multiline() {
         }
     }
 }"#;
-    let (_, diagnostics) = parse(source);
+    let (_, diagnostics) = parse(source, FileId::SYNTH);
     assert!(
         diagnostics.is_empty(),
         "multiline grant should parse, got: {:?}",
@@ -1356,7 +1357,7 @@ fn test_revoke_statement() {
         }
     }
 }"#;
-    let (program, diagnostics) = parse(source);
+    let (program, diagnostics) = parse(source, FileId::SYNTH);
     assert!(
         diagnostics.is_empty(),
         "revoke statement should parse, got: {:?}",
@@ -1389,7 +1390,7 @@ fn test_grant_error_without_field_access() {
         }
     }
 }"#;
-    let (_, diagnostics) = parse(source);
+    let (_, diagnostics) = parse(source, FileId::SYNTH);
     assert!(
         diagnostics.iter().any(|d| d.message.contains("entity.GroupName")),
         "grant without .Group should error, got: {:?}",
@@ -1407,7 +1408,7 @@ fn test_revoke_error_without_field_access() {
         }
     }
 }"#;
-    let (_, diagnostics) = parse(source);
+    let (_, diagnostics) = parse(source, FileId::SYNTH);
     assert!(
         diagnostics.iter().any(|d| d.message.contains("entity.GroupName")),
         "revoke without .Group should error, got: {:?}",
@@ -1426,7 +1427,7 @@ fn test_ordered_enum_parsed() {
         large
     }
 }"#;
-    let (program, diagnostics) = parse(source);
+    let (program, diagnostics) = parse(source, FileId::SYNTH);
     assert!(diagnostics.is_empty(), "unexpected errors: {:?}", diagnostics);
 
     let system = match &program.items[0].node {
@@ -1451,7 +1452,7 @@ fn test_non_ordered_enum_parsed() {
         blue
     }
 }"#;
-    let (program, diagnostics) = parse(source);
+    let (program, diagnostics) = parse(source, FileId::SYNTH);
     assert!(diagnostics.is_empty(), "unexpected errors: {:?}", diagnostics);
 
     let system = match &program.items[0].node {
@@ -1473,7 +1474,7 @@ fn test_struct_fields_comma_separated_single_line() {
     let source = r#"system "test" {
     struct Point { x: int, y: int }
 }"#;
-    let (_, diagnostics) = parse(source);
+    let (_, diagnostics) = parse(source, FileId::SYNTH);
     assert!(diagnostics.is_empty(), "comma-separated fields should parse: {:?}", diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>());
 }
 
@@ -1485,7 +1486,7 @@ fn test_struct_fields_newline_separated() {
         y: int
     }
 }"#;
-    let (_, diagnostics) = parse(source);
+    let (_, diagnostics) = parse(source, FileId::SYNTH);
     assert!(diagnostics.is_empty(), "newline-separated fields should parse: {:?}", diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>());
 }
 
@@ -1494,7 +1495,7 @@ fn test_struct_fields_trailing_comma() {
     let source = r#"system "test" {
     struct Point { x: int, y: int, }
 }"#;
-    let (_, diagnostics) = parse(source);
+    let (_, diagnostics) = parse(source, FileId::SYNTH);
     assert!(diagnostics.is_empty(), "trailing comma should parse: {:?}", diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>());
 }
 
@@ -1503,7 +1504,7 @@ fn test_struct_fields_missing_separator() {
     let source = r#"system "test" {
     struct Point { x: int y: int }
 }"#;
-    let (_, diagnostics) = parse(source);
+    let (_, diagnostics) = parse(source, FileId::SYNTH);
     assert!(!diagnostics.is_empty(), "missing separator should produce an error");
 }
 
@@ -1618,7 +1619,7 @@ system "B" {
     derive ok() -> int { 42 }
 }
 "#;
-    let (program, diagnostics) = parse(source);
+    let (program, diagnostics) = parse(source, FileId::SYNTH);
     // We expect parse errors for the malformed first system, but the second
     // system should still be recovered. The bug causes all of "B" to be lost.
     let system_names: Vec<&str> = program.items.iter().filter_map(|item| {
@@ -1650,7 +1651,7 @@ fn test_negative_int_pattern_in_match() {
         }
     }
 }"#;
-    let (_, diagnostics) = parse(source);
+    let (_, diagnostics) = parse(source, FileId::SYNTH);
     assert!(
         diagnostics.is_empty(),
         "negative integer patterns should be parseable; got: {:?}",
@@ -1673,7 +1674,7 @@ fn test_trailing_comma_after_param_with_group() {
         actor.Spellcasting.dc
     }
 }"#;
-    let (_, diagnostics) = parse(source);
+    let (_, diagnostics) = parse(source, FileId::SYNTH);
     assert!(
         diagnostics.is_empty(),
         "trailing comma after param with-group should parse; got: {:?}",
@@ -1694,7 +1695,7 @@ system "test" {
         0
     }
 }"#;
-    let (_, diagnostics) = parse(source);
+    let (_, diagnostics) = parse(source, FileId::SYNTH);
     let has_unexpected = diagnostics.iter().any(|d| {
         d.message.contains("unexpected") || d.message.contains("expected")
     });
@@ -1723,7 +1724,7 @@ fn test_error_recovery_finds_hook_declaration() {
         actor.HP -= amount
     }
 }"#;
-    let (program, diagnostics) = parse(source);
+    let (program, diagnostics) = parse(source, FileId::SYNTH);
     assert!(!diagnostics.is_empty(), "should have errors from bad_fn");
 
     let system = match &program.items[0].node {
@@ -1750,7 +1751,7 @@ fn test_error_recovery_finds_unit_declaration() {
         base: int
     }
 }"#;
-    let (program, diagnostics) = parse(source);
+    let (program, diagnostics) = parse(source, FileId::SYNTH);
     assert!(!diagnostics.is_empty(), "should have errors from bad_fn");
 
     let system = match &program.items[0].node {
@@ -1782,7 +1783,7 @@ fn negative_pattern_max_value_does_not_panic() {
         }
     }
 }"#;
-    let (prog, diags) = ttrpg_parser::parse(src);
+    let (prog, diags) = ttrpg_parser::parse(src, FileId::SYNTH);
     let parse_errors: Vec<_> = diags
         .iter()
         .filter(|d| d.severity == ttrpg_ast::diagnostic::Severity::Error)

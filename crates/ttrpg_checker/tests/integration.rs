@@ -1,9 +1,10 @@
+use ttrpg_ast::FileId;
 use ttrpg_ast::ast::DeclKind;
 use ttrpg_ast::diagnostic::SourceMap;
 use ttrpg_checker::{check, check_with_modules, CheckResult};
 
 fn check_source(source: &str) -> CheckResult {
-    let (program, parse_errors) = ttrpg_parser::parse(source);
+    let (program, parse_errors) = ttrpg_parser::parse(source, FileId::SYNTH);
     assert!(
         parse_errors.is_empty(),
         "parse errors:\n{}",
@@ -18,7 +19,7 @@ fn check_source(source: &str) -> CheckResult {
 
 /// Parse, lower moves, then check — the full pipeline for move declarations.
 fn check_lowered(source: &str) -> (ttrpg_ast::ast::Program, CheckResult) {
-    let (program, parse_errors) = ttrpg_parser::parse(source);
+    let (program, parse_errors) = ttrpg_parser::parse(source, FileId::SYNTH);
     assert!(
         parse_errors.is_empty(),
         "parse errors:\n{}",
@@ -45,7 +46,7 @@ fn check_lowered(source: &str) -> (ttrpg_ast::ast::Program, CheckResult) {
 
 /// Parse and lower, returning lowering diagnostics (does not check).
 fn lower_source(source: &str) -> (ttrpg_ast::ast::Program, Vec<ttrpg_ast::diagnostic::Diagnostic>) {
-    let (program, parse_errors) = ttrpg_parser::parse(source);
+    let (program, parse_errors) = ttrpg_parser::parse(source, FileId::SYNTH);
     assert!(
         parse_errors.is_empty(),
         "parse errors:\n{}",

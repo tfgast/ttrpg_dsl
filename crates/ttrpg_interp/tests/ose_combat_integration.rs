@@ -5,6 +5,7 @@
 
 use std::collections::{BTreeMap, VecDeque};
 
+use ttrpg_ast::FileId;
 use ttrpg_ast::ast::{DeclKind, TopLevel};
 use ttrpg_ast::diagnostic::Severity;
 use ttrpg_interp::effect::{Effect, EffectHandler, Response};
@@ -16,7 +17,7 @@ use ttrpg_interp::Interpreter;
 
 fn compile_ose_combat() -> (ttrpg_ast::ast::Program, ttrpg_checker::CheckResult) {
     let source = include_str!("../../../ose/ose_combat.ttrpg");
-    let (program, parse_errors) = ttrpg_parser::parse(source);
+    let (program, parse_errors) = ttrpg_parser::parse(source, FileId::SYNTH);
     assert!(
         parse_errors.is_empty(),
         "parse errors: {:?}",
@@ -362,7 +363,7 @@ fn compile_table_test() -> (ttrpg_ast::ast::Program, ttrpg_checker::CheckResult)
 }
 "#,
     );
-    let (program, parse_errors) = ttrpg_parser::parse(&source);
+    let (program, parse_errors) = ttrpg_parser::parse(&source, FileId::SYNTH);
     assert!(
         parse_errors.is_empty(),
         "parse errors: {:?}",

@@ -1,7 +1,7 @@
 //! Module resolution: validates imports, detects global name collisions,
 //! computes per-system visibility, and desugars `TypeExpr::Qualified`.
 //!
-//! Runs after parsing/lowering and span rebasing, before checking.
+//! Runs after parsing/lowering, before checking.
 
 use std::collections::{HashMap, HashSet};
 
@@ -10,6 +10,9 @@ use ttrpg_ast::diagnostic::Diagnostic;
 use ttrpg_ast::module::{ImportInfo, ModuleMap, SystemInfo};
 use ttrpg_ast::name::Name;
 use ttrpg_ast::{Span, Spanned};
+
+#[cfg(test)]
+use ttrpg_ast::FileId;
 
 /// Per-file metadata extracted by `parse_multi` before calling `resolve_modules`.
 pub struct FileSystemInfo {
@@ -771,7 +774,7 @@ mod tests {
             use_decls: vec![UseDecl {
                 path: "Unknown".into(),
                 alias: None,
-                span: Span::new(0, 7),
+                span: Span::new(FileId(0), 0, 7),
             }],
         }];
 
@@ -789,7 +792,7 @@ mod tests {
             use_decls: vec![UseDecl {
                 path: "Core".into(),
                 alias: None,
-                span: Span::new(0, 4),
+                span: Span::new(FileId(0), 0, 4),
             }],
         }];
 
@@ -808,8 +811,8 @@ mod tests {
         let file_systems = vec![FileSystemInfo {
             system_names: vec!["Main".into()],
             use_decls: vec![
-                UseDecl { path: "A".into(), alias: Some("X".into()), span: Span::new(0, 10) },
-                UseDecl { path: "B".into(), alias: Some("X".into()), span: Span::new(20, 30) },
+                UseDecl { path: "A".into(), alias: Some("X".into()), span: Span::new(FileId(0), 0, 10) },
+                UseDecl { path: "B".into(), alias: Some("X".into()), span: Span::new(FileId(0), 20, 30) },
             ],
         }];
 
@@ -828,13 +831,13 @@ mod tests {
             FileSystemInfo {
                 system_names: vec!["Main".into()],
                 use_decls: vec![
-                    UseDecl { path: "A".into(), alias: Some("X".into()), span: Span::new(0, 10) },
+                    UseDecl { path: "A".into(), alias: Some("X".into()), span: Span::new(FileId(0), 0, 10) },
                 ],
             },
             FileSystemInfo {
                 system_names: vec!["Main".into()],
                 use_decls: vec![
-                    UseDecl { path: "A".into(), alias: Some("X".into()), span: Span::new(50, 60) },
+                    UseDecl { path: "A".into(), alias: Some("X".into()), span: Span::new(FileId(0), 50, 60) },
                 ],
             },
         ];
@@ -855,7 +858,7 @@ mod tests {
             use_decls: vec![UseDecl {
                 path: "Other".into(),
                 alias: Some("Foo".into()),
-                span: Span::new(0, 10),
+                span: Span::new(FileId(0), 0, 10),
             }],
         }];
 
@@ -878,7 +881,7 @@ mod tests {
                 use_decls: vec![UseDecl {
                     path: "Other".into(),
                     alias: None,
-                    span: Span::new(0, 5),
+                    span: Span::new(FileId(0), 0, 5),
                 }],
             },
         ];
@@ -901,7 +904,7 @@ mod tests {
             use_decls: vec![UseDecl {
                 path: "Core".into(),
                 alias: Some("C".into()),
-                span: Span::new(0, 10),
+                span: Span::new(FileId(0), 0, 10),
             }],
         }];
 
@@ -947,7 +950,7 @@ mod tests {
             use_decls: vec![UseDecl {
                 path: "Other".into(),
                 alias: Some("fire".into()),
-                span: Span::new(0, 10),
+                span: Span::new(FileId(0), 0, 10),
             }],
         }];
 
@@ -970,8 +973,8 @@ mod tests {
         let file_systems = vec![FileSystemInfo {
             system_names: vec!["Main".into()],
             use_decls: vec![
-                UseDecl { path: "A".into(), alias: None, span: Span::new(0, 5) },
-                UseDecl { path: "B".into(), alias: Some("Foo".into()), span: Span::new(10, 25) },
+                UseDecl { path: "A".into(), alias: None, span: Span::new(FileId(0), 0, 5) },
+                UseDecl { path: "B".into(), alias: Some("Foo".into()), span: Span::new(FileId(0), 10, 25) },
             ],
         }];
 
@@ -994,8 +997,8 @@ mod tests {
         let file_systems = vec![FileSystemInfo {
             system_names: vec!["Main".into()],
             use_decls: vec![
-                UseDecl { path: "A".into(), alias: None, span: Span::new(0, 5) },
-                UseDecl { path: "B".into(), alias: Some("fire".into()), span: Span::new(10, 25) },
+                UseDecl { path: "A".into(), alias: None, span: Span::new(FileId(0), 0, 5) },
+                UseDecl { path: "B".into(), alias: Some("fire".into()), span: Span::new(FileId(0), 10, 25) },
             ],
         }];
 
@@ -1018,8 +1021,8 @@ mod tests {
         let file_systems = vec![FileSystemInfo {
             system_names: vec!["Main".into()],
             use_decls: vec![
-                UseDecl { path: "A".into(), alias: None, span: Span::new(0, 5) },
-                UseDecl { path: "B".into(), alias: Some("Stunned".into()), span: Span::new(10, 25) },
+                UseDecl { path: "A".into(), alias: None, span: Span::new(FileId(0), 0, 5) },
+                UseDecl { path: "B".into(), alias: Some("Stunned".into()), span: Span::new(FileId(0), 10, 25) },
             ],
         }];
 
@@ -1043,7 +1046,7 @@ mod tests {
             use_decls: vec![UseDecl {
                 path: "A".into(),
                 alias: Some("Foo".into()),
-                span: Span::new(0, 10),
+                span: Span::new(FileId(0), 0, 10),
             }],
         }];
 
@@ -1066,8 +1069,8 @@ mod tests {
         let file_systems = vec![FileSystemInfo {
             system_names: vec!["Main".into()],
             use_decls: vec![
-                UseDecl { path: "A".into(), alias: None, span: Span::new(0, 5) },
-                UseDecl { path: "B".into(), alias: Some("Bsys".into()), span: Span::new(10, 25) },
+                UseDecl { path: "A".into(), alias: None, span: Span::new(FileId(0), 0, 5) },
+                UseDecl { path: "B".into(), alias: Some("Bsys".into()), span: Span::new(FileId(0), 10, 25) },
             ],
         }];
 

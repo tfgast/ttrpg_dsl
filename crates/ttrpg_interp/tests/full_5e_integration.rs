@@ -7,6 +7,7 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 
 use ttrpg_ast::DiceFilter;
+use ttrpg_ast::FileId;
 use ttrpg_ast::diagnostic::Severity;
 use ttrpg_interp::adapter::StateAdapter;
 use ttrpg_interp::effect::{ActionKind, Effect, EffectHandler, Response};
@@ -19,7 +20,7 @@ use ttrpg_interp::Interpreter;
 
 fn setup() -> (ttrpg_ast::ast::Program, ttrpg_checker::CheckResult) {
     let source = include_str!("../../../spec/v0/04_full_example.ttrpg");
-    let (program, parse_errors) = ttrpg_parser::parse(source);
+    let (program, parse_errors) = ttrpg_parser::parse(source, FileId::SYNTH);
     assert!(
         parse_errors.is_empty(),
         "parse errors: {:?}",
