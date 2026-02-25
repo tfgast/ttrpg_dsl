@@ -8,6 +8,12 @@ use crate::env::*;
 use crate::scope::BlockKind;
 use crate::ty::Ty;
 
+/// Controls error message phrasing for condition vs function calls.
+enum CallKind {
+    Condition,
+    Function,
+}
+
 impl<'a> Checker<'a> {
     /// Type-check an expression, returning its resolved type.
     pub fn check_expr(&mut self, expr: &Spanned<ExprKind>) -> Ty {
@@ -882,117 +888,7 @@ impl<'a> Checker<'a> {
         // Check if it's a condition call (e.g., Frightened(source: attacker))
         if let Some(cond_info) = self.env.conditions.get(&callee_name).cloned() {
             self.check_name_visible(&callee_name, Namespace::Condition, span);
-            let params = &cond_info.params;
-
-            // Two-pass named/positional resolution (mirrors function call checking)
-            let mut satisfied: HashSet<usize> = HashSet::new();
-            let mut next_positional = 0usize;
-
-            for arg in args.iter() {
-                let param_idx = if let Some(ref name) = arg.name {
-                    params.iter().position(|p| p.name == *name)
-                } else {
-                    while next_positional < params.len()
-                        && satisfied.contains(&next_positional)
-                    {
-                        next_positional += 1;
-                    }
-                    if next_positional < params.len() {
-                        let idx = next_positional;
-                        next_positional += 1;
-                        Some(idx)
-                    } else {
-                        None
-                    }
-                };
-
-                let param_hint = param_idx.map(|idx| &params[idx].ty);
-                let arg_ty = self.check_expr_expecting(&arg.value, param_hint);
-
-                if let Some(idx) = param_idx {
-                    if !satisfied.insert(idx) {
-                        self.error(
-                            format!(
-                                "duplicate argument for parameter `{}`",
-                                params[idx].name
-                            ),
-                            arg.span,
-                        );
-                    }
-
-                    if !arg_ty.is_error()
-                        && !self.types_compatible(&arg_ty, &params[idx].ty)
-                    {
-                        self.error(
-                            format!(
-                                "condition `{}` parameter `{}` has type {}, got {}",
-                                callee_name, params[idx].name, params[idx].ty, arg_ty
-                            ),
-                            arg.value.span,
-                        );
-                    }
-
-                    // Check `with` group constraints at call site
-                    if !params[idx].with_groups.is_empty() {
-                        if let Some(path_key) = self.extract_path_key(&arg.value) {
-                            for group in &params[idx].with_groups {
-                                if !self.scope.is_group_narrowed(&path_key, group) {
-                                    self.error(
-                                        format!(
-                                            "argument `{}` requires `{}` to have group `{}` proven active via `has` guard or `with` constraint",
-                                            params[idx].name, path_key, group
-                                        ),
-                                        arg.span,
-                                    );
-                                }
-                            }
-                        } else {
-                            for group in &params[idx].with_groups {
-                                self.error(
-                                    format!(
-                                        "argument `{}` requires group `{}` proven active, but the expression cannot be statically tracked",
-                                        params[idx].name, group
-                                    ),
-                                    arg.span,
-                                );
-                            }
-                        }
-                    }
-                } else if let Some(ref name) = arg.name {
-                    self.error(
-                        format!(
-                            "condition `{}` has no parameter `{}`",
-                            callee_name, name
-                        ),
-                        arg.span,
-                    );
-                } else {
-                    self.error(
-                        format!(
-                            "condition `{}` accepts at most {} argument(s), found {}",
-                            callee_name,
-                            params.len(),
-                            args.len()
-                        ),
-                        span,
-                    );
-                    break;
-                }
-            }
-
-            // Check that all required (non-default) parameters were provided
-            for (idx, param) in params.iter().enumerate() {
-                if !param.has_default && !satisfied.contains(&idx) {
-                    self.error(
-                        format!(
-                            "missing required argument `{}` in call to condition `{}`",
-                            param.name, callee_name
-                        ),
-                        span,
-                    );
-                }
-            }
-
+            self.check_args(&callee_name, CallKind::Condition, &cond_info.params, args, span);
             return Ty::Condition;
         }
 
@@ -1111,118 +1007,7 @@ impl<'a> Checker<'a> {
             fn_info.params.clone()
         };
 
-        // Track which parameters have been satisfied
-        let mut satisfied: HashSet<usize> = HashSet::new();
-        let mut next_positional = 0usize;
-
-        // Check argument types and resolve parameter mapping
-        for arg in args.iter() {
-            // Resolve which parameter this argument maps to BEFORE checking the
-            // value expression so we can supply an expected-type hint.
-            let param_idx = if let Some(ref name) = arg.name {
-                effective_params.iter().position(|p| p.name == *name)
-            } else {
-                // Skip params already claimed by named args
-                while next_positional < effective_params.len()
-                    && satisfied.contains(&next_positional)
-                {
-                    next_positional += 1;
-                }
-                if next_positional < effective_params.len() {
-                    let idx = next_positional;
-                    next_positional += 1;
-                    Some(idx)
-                } else {
-                    None
-                }
-            };
-
-            let param_hint = param_idx.map(|idx| &effective_params[idx].ty);
-            let arg_ty = self.check_expr_expecting(&arg.value, param_hint);
-
-            if let Some(idx) = param_idx {
-                // Check for duplicate named arguments
-                if !satisfied.insert(idx) {
-                    self.error(
-                        format!(
-                            "duplicate argument for parameter `{}`",
-                            effective_params[idx].name
-                        ),
-                        arg.span,
-                    );
-                }
-
-                // Check type compatibility
-                if !arg_ty.is_error()
-                    && !self.types_compatible(&arg_ty, &effective_params[idx].ty)
-                {
-                    self.error(
-                        format!(
-                            "argument `{}` has type {}, expected {}",
-                            effective_params[idx].name, arg_ty, effective_params[idx].ty
-                        ),
-                        arg.span,
-                    );
-                }
-
-                // Check `with` group constraints at call site
-                if !effective_params[idx].with_groups.is_empty() {
-                    if let Some(path_key) = self.extract_path_key(&arg.value) {
-                        for group in &effective_params[idx].with_groups {
-                            if !self.scope.is_group_narrowed(&path_key, group) {
-                                self.error(
-                                    format!(
-                                        "argument `{}` requires `{}` to have group `{}` proven active via `has` guard or `with` constraint",
-                                        effective_params[idx].name, path_key, group
-                                    ),
-                                    arg.span,
-                                );
-                            }
-                        }
-                    } else {
-                        for group in &effective_params[idx].with_groups {
-                            self.error(
-                                format!(
-                                    "argument `{}` requires group `{}` proven active, but the expression cannot be statically tracked",
-                                    effective_params[idx].name, group
-                                ),
-                                arg.span,
-                            );
-                        }
-                    }
-                }
-            } else if let Some(ref name) = arg.name {
-                self.error(
-                    format!("`{}` has no parameter `{}`", callee_name, name),
-                    arg.span,
-                );
-            } else {
-                self.error(
-                    format!(
-                        "`{}` expects at most {} argument(s), found {}",
-                        callee_name,
-                        effective_params.len(),
-                        args.len()
-                    ),
-                    span,
-                );
-                break;
-            }
-        }
-
-        // Check that all required (non-default) parameters were provided
-        for (idx, param) in effective_params.iter().enumerate() {
-            if !param.has_default && !satisfied.contains(&idx) {
-                self.error(
-                    format!(
-                        "missing required argument `{}` in call to `{}`",
-                        param.name, callee_name
-                    ),
-                    span,
-                );
-            }
-        }
-
+        self.check_args(&callee_name, CallKind::Function, &effective_params, args, span);
         fn_info.return_type.clone()
     }
 
@@ -2544,22 +2329,26 @@ impl<'a> Checker<'a> {
         Ty::Error
     }
 
-    /// Type-check a condition call reached through an alias (reuses condition checking logic).
-    fn check_alias_condition_call(
+    /// Validate arguments against a parameter list. Handles named/positional resolution,
+    /// duplicate detection, type compatibility, with-group constraints, and required parameters.
+    fn check_args(
         &mut self,
-        name: &str,
+        callee_name: &str,
+        kind: CallKind,
         params: &[ParamInfo],
         args: &[Arg],
         span: ttrpg_ast::Span,
-    ) -> Ty {
+    ) {
         let mut satisfied: HashSet<usize> = HashSet::new();
         let mut next_positional = 0usize;
 
         for arg in args.iter() {
-            let param_idx = if let Some(ref arg_name) = arg.name {
-                params.iter().position(|p| p.name == *arg_name)
+            let param_idx = if let Some(ref name) = arg.name {
+                params.iter().position(|p| p.name == *name)
             } else {
-                while next_positional < params.len() && satisfied.contains(&next_positional) {
+                while next_positional < params.len()
+                    && satisfied.contains(&next_positional)
+                {
                     next_positional += 1;
                 }
                 if next_positional < params.len() {
@@ -2577,18 +2366,37 @@ impl<'a> Checker<'a> {
             if let Some(idx) = param_idx {
                 if !satisfied.insert(idx) {
                     self.error(
-                        format!("duplicate argument for parameter `{}`", params[idx].name),
+                        format!(
+                            "duplicate argument for parameter `{}`",
+                            params[idx].name
+                        ),
                         arg.span,
                     );
                 }
-                if !arg_ty.is_error() && !self.types_compatible(&arg_ty, &params[idx].ty) {
-                    self.error(
-                        format!(
-                            "condition `{}` parameter `{}` has type {}, got {}",
-                            name, params[idx].name, params[idx].ty, arg_ty
-                        ),
-                        arg.value.span,
-                    );
+
+                if !arg_ty.is_error()
+                    && !self.types_compatible(&arg_ty, &params[idx].ty)
+                {
+                    match kind {
+                        CallKind::Condition => {
+                            self.error(
+                                format!(
+                                    "condition `{}` parameter `{}` has type {}, got {}",
+                                    callee_name, params[idx].name, params[idx].ty, arg_ty
+                                ),
+                                arg.value.span,
+                            );
+                        }
+                        CallKind::Function => {
+                            self.error(
+                                format!(
+                                    "argument `{}` has type {}, expected {}",
+                                    params[idx].name, arg_ty, params[idx].ty
+                                ),
+                                arg.span,
+                            );
+                        }
+                    }
                 }
 
                 // Check `with` group constraints at call site
@@ -2617,32 +2425,89 @@ impl<'a> Checker<'a> {
                         }
                     }
                 }
-            } else if let Some(ref arg_name) = arg.name {
-                self.error(
-                    format!("condition `{}` has no parameter `{}`", name, arg_name),
-                    arg.span,
-                );
+            } else if let Some(ref name) = arg.name {
+                match kind {
+                    CallKind::Condition => {
+                        self.error(
+                            format!(
+                                "condition `{}` has no parameter `{}`",
+                                callee_name, name
+                            ),
+                            arg.span,
+                        );
+                    }
+                    CallKind::Function => {
+                        self.error(
+                            format!("`{}` has no parameter `{}`", callee_name, name),
+                            arg.span,
+                        );
+                    }
+                }
             } else {
-                self.error(
-                    format!(
-                        "condition `{}` accepts at most {} argument(s), found {}",
-                        name, params.len(), args.len()
-                    ),
-                    span,
-                );
+                match kind {
+                    CallKind::Condition => {
+                        self.error(
+                            format!(
+                                "condition `{}` accepts at most {} argument(s), found {}",
+                                callee_name,
+                                params.len(),
+                                args.len()
+                            ),
+                            span,
+                        );
+                    }
+                    CallKind::Function => {
+                        self.error(
+                            format!(
+                                "`{}` expects at most {} argument(s), found {}",
+                                callee_name,
+                                params.len(),
+                                args.len()
+                            ),
+                            span,
+                        );
+                    }
+                }
                 break;
             }
         }
 
+        // Check that all required (non-default) parameters were provided
         for (idx, param) in params.iter().enumerate() {
             if !param.has_default && !satisfied.contains(&idx) {
-                self.error(
-                    format!("missing required argument `{}` in call to condition `{}`", param.name, name),
-                    span,
-                );
+                match kind {
+                    CallKind::Condition => {
+                        self.error(
+                            format!(
+                                "missing required argument `{}` in call to condition `{}`",
+                                param.name, callee_name
+                            ),
+                            span,
+                        );
+                    }
+                    CallKind::Function => {
+                        self.error(
+                            format!(
+                                "missing required argument `{}` in call to `{}`",
+                                param.name, callee_name
+                            ),
+                            span,
+                        );
+                    }
+                }
             }
         }
+    }
 
+    /// Type-check a condition call reached through an alias (reuses condition checking logic).
+    fn check_alias_condition_call(
+        &mut self,
+        name: &str,
+        params: &[ParamInfo],
+        args: &[Arg],
+        span: ttrpg_ast::Span,
+    ) -> Ty {
+        self.check_args(name, CallKind::Condition, params, args, span);
         Ty::Condition
     }
 
@@ -2719,104 +2584,7 @@ impl<'a> Checker<'a> {
             fn_info.params.clone()
         };
 
-        let mut satisfied: HashSet<usize> = HashSet::new();
-        let mut next_positional = 0usize;
-
-        for arg in args.iter() {
-            let param_idx = if let Some(ref arg_name) = arg.name {
-                effective_params.iter().position(|p| p.name == *arg_name)
-            } else {
-                while next_positional < effective_params.len()
-                    && satisfied.contains(&next_positional)
-                {
-                    next_positional += 1;
-                }
-                if next_positional < effective_params.len() {
-                    let idx = next_positional;
-                    next_positional += 1;
-                    Some(idx)
-                } else {
-                    None
-                }
-            };
-
-            let param_hint = param_idx.map(|idx| &effective_params[idx].ty);
-            let arg_ty = self.check_expr_expecting(&arg.value, param_hint);
-
-            if let Some(idx) = param_idx {
-                if !satisfied.insert(idx) {
-                    self.error(
-                        format!(
-                            "duplicate argument for parameter `{}`",
-                            effective_params[idx].name
-                        ),
-                        arg.span,
-                    );
-                }
-                if !arg_ty.is_error()
-                    && !self.types_compatible(&arg_ty, &effective_params[idx].ty)
-                {
-                    self.error(
-                        format!(
-                            "argument `{}` has type {}, expected {}",
-                            effective_params[idx].name, arg_ty, effective_params[idx].ty
-                        ),
-                        arg.span,
-                    );
-                }
-
-                // Check `with` group constraints at call site
-                if !effective_params[idx].with_groups.is_empty() {
-                    if let Some(path_key) = self.extract_path_key(&arg.value) {
-                        for group in &effective_params[idx].with_groups {
-                            if !self.scope.is_group_narrowed(&path_key, group) {
-                                self.error(
-                                    format!(
-                                        "argument `{}` requires `{}` to have group `{}` proven active via `has` guard or `with` constraint",
-                                        effective_params[idx].name, path_key, group
-                                    ),
-                                    arg.span,
-                                );
-                            }
-                        }
-                    } else {
-                        for group in &effective_params[idx].with_groups {
-                            self.error(
-                                format!(
-                                    "argument `{}` requires group `{}` proven active, but the expression cannot be statically tracked",
-                                    effective_params[idx].name, group
-                                ),
-                                arg.span,
-                            );
-                        }
-                    }
-                }
-            } else if let Some(ref arg_name) = arg.name {
-                self.error(
-                    format!("`{}` has no parameter `{}`", name, arg_name),
-                    arg.span,
-                );
-            } else {
-                self.error(
-                    format!(
-                        "`{}` expects at most {} argument(s), found {}",
-                        name, effective_params.len(), args.len()
-                    ),
-                    span,
-                );
-                break;
-            }
-        }
-
-        for (idx, param) in effective_params.iter().enumerate() {
-            if !param.has_default && !satisfied.contains(&idx) {
-                self.error(
-                    format!("missing required argument `{}` in call to `{}`", param.name, name),
-                    span,
-                );
-            }
-        }
-
+        self.check_args(name, CallKind::Function, &effective_params, args, span);
         fn_info.return_type.clone()
     }
 }
