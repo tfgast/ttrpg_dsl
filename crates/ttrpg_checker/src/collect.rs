@@ -389,7 +389,6 @@ fn collect_enum(e: &EnumDecl, env: &mut TypeEnv, diagnostics: &mut Vec<Diagnosti
                 field_entries
                     .iter()
                     .filter_map(|f| {
-                        env.validate_type_names(&f.ty, diagnostics);
                         if !seen_fields.insert(f.name.clone()) {
                             diagnostics.push(Diagnostic::error(
                                 format!(
@@ -400,7 +399,7 @@ fn collect_enum(e: &EnumDecl, env: &mut TypeEnv, diagnostics: &mut Vec<Diagnosti
                             ));
                             return None;
                         }
-                        Some((f.name.clone(), env.resolve_type(&f.ty)))
+                        Some((f.name.clone(), env.resolve_type_validated(&f.ty, diagnostics)))
                     })
                     .collect()
             }
@@ -439,7 +438,6 @@ fn collect_struct(s: &StructDecl, env: &mut TypeEnv, diagnostics: &mut Vec<Diagn
         .fields
         .iter()
         .filter_map(|f| {
-            env.validate_type_names(&f.ty, diagnostics);
             if !seen.insert(f.name.clone()) {
                 diagnostics.push(Diagnostic::error(
                     format!("duplicate field `{}` in struct `{}`", f.name, s.name),
@@ -449,7 +447,7 @@ fn collect_struct(s: &StructDecl, env: &mut TypeEnv, diagnostics: &mut Vec<Diagn
             }
             Some(FieldInfo {
                 name: f.name.clone(),
-                ty: env.resolve_type(&f.ty),
+                ty: env.resolve_type_validated(&f.ty, diagnostics),
                 has_default: f.default.is_some(),
             })
         })
@@ -466,7 +464,6 @@ fn collect_entity(e: &EntityDecl, env: &mut TypeEnv, diagnostics: &mut Vec<Diagn
         .fields
         .iter()
         .filter_map(|f| {
-            env.validate_type_names(&f.ty, diagnostics);
             if !seen.insert(f.name.clone()) {
                 diagnostics.push(Diagnostic::error(
                     format!("duplicate field `{}` in entity `{}`", f.name, e.name),
@@ -476,7 +473,7 @@ fn collect_entity(e: &EntityDecl, env: &mut TypeEnv, diagnostics: &mut Vec<Diagn
             }
             Some(FieldInfo {
                 name: f.name.clone(),
-                ty: env.resolve_type(&f.ty),
+                ty: env.resolve_type_validated(&f.ty, diagnostics),
                 has_default: f.default.is_some(),
             })
         })
@@ -513,7 +510,6 @@ fn collect_entity(e: &EntityDecl, env: &mut TypeEnv, diagnostics: &mut Vec<Diagn
                 .fields
                 .iter()
                 .filter_map(|f| {
-                    env.validate_type_names(&f.ty, diagnostics);
                     if !seen_fields.insert(f.name.clone()) {
                         diagnostics.push(Diagnostic::error(
                             format!(
@@ -526,7 +522,7 @@ fn collect_entity(e: &EntityDecl, env: &mut TypeEnv, diagnostics: &mut Vec<Diagn
                     }
                     Some(FieldInfo {
                         name: f.name.clone(),
-                        ty: env.resolve_type(&f.ty),
+                        ty: env.resolve_type_validated(&f.ty, diagnostics),
                         has_default: f.default.is_some(),
                     })
                 })
@@ -571,8 +567,7 @@ fn collect_unit(
     }
 
     let field = &u.fields[0];
-    env.validate_type_names(&field.ty, diagnostics);
-    let field_ty = env.resolve_type(&field.ty);
+    let field_ty = env.resolve_type_validated(&field.ty, diagnostics);
     if field_ty != Ty::Int {
         diagnostics.push(Diagnostic::error(
             format!(
@@ -672,7 +667,6 @@ fn collect_fn(
     let param_infos: Vec<ParamInfo> = params
         .iter()
         .map(|p| {
-            env.validate_type_names(&p.ty, diagnostics);
             if !seen_params.insert(p.name.clone()) {
                 diagnostics.push(Diagnostic::error(
                     format!("duplicate parameter `{}` in function `{}`", p.name, name),
@@ -681,7 +675,7 @@ fn collect_fn(
             }
             ParamInfo {
                 name: p.name.clone(),
-                ty: env.resolve_type(&p.ty),
+                ty: env.resolve_type_validated(&p.ty, diagnostics),
                 has_default: p.default.is_some(),
                 with_groups: p.with_groups.clone(),
             }
@@ -689,10 +683,7 @@ fn collect_fn(
         .collect();
 
     let ret_ty = return_type
-        .map(|rt| {
-            env.validate_type_names(rt, diagnostics);
-            env.resolve_type(rt)
-        })
+        .map(|rt| env.resolve_type_validated(rt, diagnostics))
         .unwrap_or(Ty::Unit);
 
     env.functions.insert(
@@ -720,8 +711,7 @@ fn collect_action(
         validate_cost_tokens(cost, diagnostics);
     }
 
-    env.validate_type_names(&a.receiver_type, diagnostics);
-    let recv_ty = env.resolve_type(&a.receiver_type);
+    let recv_ty = env.resolve_type_validated(&a.receiver_type, diagnostics);
     if !recv_ty.is_error() && !recv_ty.is_entity() {
         diagnostics.push(Diagnostic::error(
             format!(
@@ -795,8 +785,7 @@ fn collect_reaction(
         validate_cost_tokens(cost, diagnostics);
     }
 
-    env.validate_type_names(&r.receiver_type, diagnostics);
-    let recv_ty = env.resolve_type(&r.receiver_type);
+    let recv_ty = env.resolve_type_validated(&r.receiver_type, diagnostics);
     if !recv_ty.is_error() && !recv_ty.is_entity() {
         diagnostics.push(Diagnostic::error(
             format!(
@@ -853,8 +842,7 @@ fn collect_hook(
     diagnostics: &mut Vec<Diagnostic>,
     span: Span,
 ) {
-    env.validate_type_names(&h.receiver_type, diagnostics);
-    let recv_ty = env.resolve_type(&h.receiver_type);
+    let recv_ty = env.resolve_type_validated(&h.receiver_type, diagnostics);
     if !recv_ty.is_error() && !recv_ty.is_entity() {
         diagnostics.push(Diagnostic::error(
             format!(
@@ -924,7 +912,6 @@ fn collect_condition(
     let mut param_infos = Vec::new();
     let mut seen_params = HashSet::new();
     for param in &c.params {
-        env.validate_type_names(&param.ty, diagnostics);
         if !seen_params.insert(param.name.clone()) {
             diagnostics.push(Diagnostic::error(
                 format!(
@@ -934,7 +921,7 @@ fn collect_condition(
                 param.span,
             ));
         }
-        let ty = env.resolve_type(&param.ty);
+        let ty = env.resolve_type_validated(&param.ty, diagnostics);
         param_infos.push(ParamInfo {
             name: param.name.clone(),
             ty,
@@ -943,8 +930,7 @@ fn collect_condition(
         });
     }
 
-    env.validate_type_names(&c.receiver_type, diagnostics);
-    let recv_ty = env.resolve_type(&c.receiver_type);
+    let recv_ty = env.resolve_type_validated(&c.receiver_type, diagnostics);
     if !recv_ty.is_error() && !recv_ty.is_entity() {
         diagnostics.push(Diagnostic::error(
             format!(
@@ -1003,7 +989,6 @@ fn collect_event(
         .params
         .iter()
         .map(|p| {
-            env.validate_type_names(&p.ty, diagnostics);
             if !seen_params.insert(p.name.clone()) {
                 diagnostics.push(Diagnostic::error(
                     format!("duplicate parameter `{}` in event `{}`", p.name, e.name),
@@ -1012,7 +997,7 @@ fn collect_event(
             }
             ParamInfo {
                 name: p.name.clone(),
-                ty: env.resolve_type(&p.ty),
+                ty: env.resolve_type_validated(&p.ty, diagnostics),
                 has_default: p.default.is_some(),
                 with_groups: p.with_groups.clone(),
             }
@@ -1024,7 +1009,6 @@ fn collect_event(
         .fields
         .iter()
         .filter_map(|f| {
-            env.validate_type_names(&f.ty, diagnostics);
             if seen_params.contains(&f.name) {
                 diagnostics.push(Diagnostic::error(
                     format!(
@@ -1042,7 +1026,7 @@ fn collect_event(
                 ));
                 return None;
             }
-            Some((f.name.clone(), env.resolve_type(&f.ty)))
+            Some((f.name.clone(), env.resolve_type_validated(&f.ty, diagnostics)))
         })
         .collect();
 

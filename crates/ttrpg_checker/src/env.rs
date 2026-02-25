@@ -199,7 +199,22 @@ impl TypeEnv {
     }
 
     /// Resolve a syntactic TypeExpr to a semantic Ty.
+    ///
+    /// Precondition: `validate_type_names` (or `resolve_type_validated`) must
+    /// have been called on this type expression previously. Unknown names
+    /// resolve to `Ty::Error` without emitting diagnostics.
     pub fn resolve_type(&self, texpr: &Spanned<TypeExpr>) -> Ty {
+        self.resolve_type_inner(&texpr.node)
+    }
+
+    /// Validate and resolve a type expression in one step.
+    /// Emits diagnostics for unknown types, then resolves to a semantic Ty.
+    pub fn resolve_type_validated(
+        &self,
+        texpr: &Spanned<TypeExpr>,
+        diagnostics: &mut Vec<Diagnostic>,
+    ) -> Ty {
+        self.validate_type_names(texpr, diagnostics);
         self.resolve_type_inner(&texpr.node)
     }
 

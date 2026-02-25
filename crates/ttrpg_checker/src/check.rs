@@ -185,6 +185,13 @@ impl<'a> Checker<'a> {
             .validate_type_names(texpr, &mut self.diagnostics);
     }
 
+    /// Validate, check visibility, and resolve a type expression in one step.
+    pub(crate) fn resolve_type_validated(&mut self, texpr: &ttrpg_ast::Spanned<TypeExpr>) -> Ty {
+        self.validate_type(texpr);
+        self.check_type_visible(texpr);
+        self.env.resolve_type(texpr)
+    }
+
     /// Check visibility of all named types referenced in a type expression.
     ///
     /// Walks the `TypeExpr` tree and calls [`check_name_visible`] for each

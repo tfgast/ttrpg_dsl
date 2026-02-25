@@ -157,9 +157,7 @@ impl<'a> Checker<'a> {
                 span: _,
             } => {
                 let bind_ty = if let Some(ref type_ann) = ty {
-                    self.validate_type(type_ann);
-                    self.check_type_visible(type_ann);
-                    let ann_ty = self.env.resolve_type(type_ann);
+                    let ann_ty = self.resolve_type_validated(type_ann);
                     let val_ty = self.check_expr_expecting(value, Some(&ann_ty));
                     if !val_ty.is_error() && !ann_ty.is_error() && !self.types_compatible(&val_ty, &ann_ty) {
                         self.error(
