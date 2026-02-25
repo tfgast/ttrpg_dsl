@@ -235,7 +235,7 @@ pub fn resolve_modules(
 
     // Step 6: Desugar TypeExpr::Qualified → TypeExpr::Named
     // Walk all AST nodes and replace qualified types after validation
-    desugar_qualified_types(program, &module_map, file_systems, &mut diagnostics);
+    desugar_qualified_types(program, &module_map, &mut diagnostics);
 
     (module_map, diagnostics)
 }
@@ -371,20 +371,17 @@ fn detect_cross_system_collisions(
 fn desugar_qualified_types(
     program: &mut Program,
     module_map: &ModuleMap,
-    file_systems: &[FileSystemInfo],
     diagnostics: &mut Vec<Diagnostic>,
 ) {
-    // Build alias → system_name map per system
+    // Build alias → system_name map per system from validated imports
     let mut system_aliases: HashMap<String, HashMap<String, String>> = HashMap::new();
-    for file_info in file_systems {
-        for use_decl in &file_info.use_decls {
-            if let Some(ref alias) = use_decl.alias {
-                for sys_name in &file_info.system_names {
-                    system_aliases
-                        .entry(sys_name.clone())
-                        .or_default()
-                        .insert(alias.clone(), use_decl.path.clone());
-                }
+    for (sys_name, sys_info) in &module_map.systems {
+        for import in &sys_info.imports {
+            if let Some(ref alias) = import.alias {
+                system_aliases
+                    .entry(sys_name.clone())
+                    .or_default()
+                    .insert(alias.clone(), import.system_name.clone());
             }
         }
     }
