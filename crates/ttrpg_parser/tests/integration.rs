@@ -1618,3 +1618,129 @@ system "B" {
         diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
     );
 }
+
+// ── Regression: tdsl-99qw — pattern parser rejects negative int patterns ──
+
+#[test]
+fn test_negative_int_pattern_in_match() {
+    // `-1` should be a valid match pattern for integer scrutinees.
+    let source = r#"system "test" {
+    derive f(x: int) -> int {
+        match x {
+            -1 => 10
+            0 => 0
+            _ => 1
+        }
+    }
+}"#;
+    let (_, diagnostics) = parse(source);
+    assert!(
+        diagnostics.is_empty(),
+        "negative integer patterns should be parseable; got: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}
+
+// ── Regression: tdsl-a7a — trailing comma after param with-groups ──
+
+#[test]
+fn test_trailing_comma_after_param_with_group() {
+    // Trailing comma works for plain params; it should also work when the
+    // last param has with-group constraints.
+    let source = r#"system "test" {
+    entity Character {
+        HP: int
+        optional Spellcasting { dc: int }
+    }
+    derive f(actor: Character with Spellcasting,) -> int {
+        actor.Spellcasting.dc
+    }
+}"#;
+    let (_, diagnostics) = parse(source);
+    assert!(
+        diagnostics.is_empty(),
+        "trailing comma after param with-group should parse; got: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}
+
+// ── Regression: tdsl-v13 — qualified type breaks for aliases matching soft keywords ──
+
+#[test]
+fn test_qualified_type_with_soft_keyword_alias() {
+    // When an import alias matches a soft type keyword like "Duration",
+    // qualified types like `Duration.CustomType` should parse as Qualified,
+    // not as the builtin Duration leaving `.CustomType` unconsumed.
+    let source = r#"use "other_system" as Duration
+system "test" {
+    derive f() -> Duration.CustomType {
+        0
+    }
+}"#;
+    let (_, diagnostics) = parse(source);
+    let has_unexpected = diagnostics.iter().any(|d| {
+        d.message.contains("unexpected") || d.message.contains("expected")
+    });
+    assert!(
+        !has_unexpected,
+        "qualified type with soft keyword alias should parse; got: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}
+
+// ── Regression: tdsl-q2p — recover_to_decl misses hook/table/unit starts ──
+
+#[test]
+fn test_error_recovery_finds_hook_declaration() {
+    // After a malformed derive, recovery should stop at a 'hook' keyword
+    // so the subsequent hook declaration is parsed.
+    let source = r#"system "test" {
+    entity Character { HP: int }
+    derive bad_fn( -> int {
+        42
+    }
+    hook on_damage on actor: Character {
+        resolve {}
+    }
+}"#;
+    let (program, diagnostics) = parse(source);
+    assert!(!diagnostics.is_empty(), "should have errors from bad_fn");
+
+    let system = match &program.items[0].node {
+        TopLevel::System(s) => s,
+        _ => panic!("expected system block"),
+    };
+
+    let has_hook = system.decls.iter().any(|d| matches!(&d.node, DeclKind::Hook(_)));
+    assert!(
+        has_hook,
+        "error recovery should find hook declaration after bad derive; found {} decl(s)",
+        system.decls.len(),
+    );
+}
+
+#[test]
+fn test_error_recovery_finds_unit_declaration() {
+    // After a malformed derive, recovery should stop at a 'unit' keyword.
+    let source = r#"system "test" {
+    derive bad_fn( -> int {
+        42
+    }
+    unit Distance(ft)
+}"#;
+    let (program, diagnostics) = parse(source);
+    assert!(!diagnostics.is_empty(), "should have errors from bad_fn");
+
+    let system = match &program.items[0].node {
+        TopLevel::System(s) => s,
+        _ => panic!("expected system block"),
+    };
+
+    let has_unit = system.decls.iter().any(|d| matches!(&d.node, DeclKind::Unit(_)));
+    assert!(
+        has_unit,
+        "error recovery should find unit declaration after bad derive; found {} decl(s)",
+        system.decls.len(),
+    );
+}
+

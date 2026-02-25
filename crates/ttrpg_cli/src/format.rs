@@ -269,4 +269,51 @@ mod tests {
         });
         assert_eq!(format_value(&val), "RollResult { dice: [3, 5], total: 8 }");
     }
+
+    // ── Regression: tdsl-t3c — format_value should escape strings ──
+
+    #[test]
+    fn format_str_with_embedded_quote() {
+        // A string containing a double quote should be escaped so the output
+        // is unambiguous. Bug: raw interpolation produces "a"b" (broken).
+        let val = Value::Str("a\"b".into());
+        let formatted = format_value(&val);
+        // Should produce something like "a\"b" — the inner quote must be escaped
+        assert!(
+            !formatted.contains("a\"b\"") || formatted.matches('"').count() == 2,
+            "embedded quote should be escaped; got: {}",
+            formatted,
+        );
+        // More direct: the output should have exactly 2 unescaped outer quotes
+        assert_eq!(
+            formatted.matches('"').count() - formatted.matches("\\\"").count(),
+            2,
+            "should have exactly 2 unescaped quotes (open/close); got: {}",
+            formatted,
+        );
+    }
+
+    #[test]
+    fn format_str_with_backslash() {
+        let val = Value::Str("a\\b".into());
+        let formatted = format_value(&val);
+        // The backslash should be escaped in the output
+        assert!(
+            formatted.contains("\\\\"),
+            "backslash should be escaped; got: {}",
+            formatted,
+        );
+    }
+
+    #[test]
+    fn format_str_with_newline() {
+        let val = Value::Str("line1\nline2".into());
+        let formatted = format_value(&val);
+        // The newline should be escaped, not a literal newline in the output
+        assert!(
+            !formatted.contains('\n') || formatted.contains("\\n"),
+            "newline should be escaped; got: {:?}",
+            formatted,
+        );
+    }
 }

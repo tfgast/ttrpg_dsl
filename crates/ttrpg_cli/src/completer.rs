@@ -327,4 +327,42 @@ mod tests {
         assert!(values.contains(&"fighter"));
         assert!(values.contains(&"false"));
     }
+
+    // ── Regression: tdsl-1k4 — wrong replacement span after extra input ──
+
+    #[test]
+    fn complete_spawn_extra_input_replacement_span() {
+        // "spawn Character hero" — extra text after the entity type.
+        // The replacement span should only cover the entity type word,
+        // not extend into the handle name.
+        let ctx = make_ctx();
+        let mut c = TtrpgCompleter::new(ctx);
+        let results = c.complete("spawn Character hero", 20);
+        for r in &results {
+            assert!(
+                r.span.end <= 15,
+                "spawn completion span should only cover entity type word, not subsequent text; \
+                 got span ({}, {})",
+                r.span.start, r.span.end,
+            );
+        }
+    }
+
+    #[test]
+    fn complete_do_after_paren_replacement_span() {
+        // "do Attack(fighter" — cursor after '(' inside args.
+        // The replacement span should only cover the action name before '(',
+        // not extend into the argument text.
+        let ctx = make_ctx();
+        let mut c = TtrpgCompleter::new(ctx);
+        let results = c.complete("do Attack(fighter", 17);
+        for r in &results {
+            assert!(
+                r.span.end <= 9,
+                "do completion span should only cover action name, not args after '('; \
+                 got span ({}, {})",
+                r.span.start, r.span.end,
+            );
+        }
+    }
 }

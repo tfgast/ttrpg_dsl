@@ -167,4 +167,25 @@ mod tests {
             ValidationResult::Complete
         ));
     }
+
+    // ── Regression: tdsl-6me — stray closer + opener should be Incomplete ──
+
+    #[test]
+    fn stray_closer_then_opener_is_incomplete() {
+        // `) {` should be Incomplete because `{` is unclosed.
+        // Bug: depth goes -1 then 0, returning Complete instead.
+        let v = TtrpgValidator;
+        assert!(
+            matches!(v.validate(") {"), ValidationResult::Incomplete),
+            "') {{' has unclosed '{{' — should be Incomplete",
+        );
+    }
+
+    #[test]
+    fn stray_closer_alone_is_complete() {
+        // A bare `)` with no open delimiters is considered Complete
+        // (it's a syntax error, but not an incomplete expression).
+        let v = TtrpgValidator;
+        assert!(matches!(v.validate(")"), ValidationResult::Complete));
+    }
 }

@@ -7015,3 +7015,206 @@ system "test" {
 "#;
     expect_no_errors(source);
 }
+
+// ── Regression: tdsl-ky7v — direct turn reassignment should be rejected ──
+
+#[test]
+fn test_turn_direct_reassignment_rejected() {
+    // turn = ... should be a checker error. Only turn.field mutations are allowed.
+    // Bug: check_assign allows this because turn binding is mutable; it should
+    // specifically forbid direct reassignment of the implicit turn binding.
+    let source = r#"
+system "test" {
+    entity Character { HP: int }
+    action Reset on actor: Character () {
+        cost { action }
+        resolve {
+            turn = turn
+        }
+    }
+}
+"#;
+    expect_errors(source, &["cannot reassign `turn`"]);
+}
+
+// ── Regression: tdsl-nmfv — variant ambiguity ignores system visibility ──
+
+#[test]
+fn test_variant_ambiguity_respects_system_visibility() {
+    // A defines 'short' in Size, B defines 'short' in Length.
+    // C imports only A. Using bare 'short' should resolve to A's Size::short
+    // (unique within C's visibility), not report ambiguous.
+    expect_multi_no_errors(&[
+        ("a.ttrpg", r#"
+system "A" {
+    enum Size { short, tall }
+}
+"#),
+        ("b.ttrpg", r#"
+system "B" {
+    enum Length { short, long }
+}
+"#),
+        ("c.ttrpg", r#"
+use "A"
+system "C" {
+    derive get_size() -> Size { short }
+}
+"#),
+    ]);
+}
+
+// ── Regression: tdsl-5vjs — qualified pattern on non-enum type says "undefined" ──
+
+#[test]
+fn test_qualified_pattern_non_enum_says_not_enum() {
+    // Using a struct type in a qualified variant pattern should say the type
+    // is not an enum, not that it's "undefined".
+    let source = r#"
+system "test" {
+    struct Point { x: int, y: int }
+    derive test(v: int) -> int {
+        match v {
+            Point.origin => 1
+            _ => 0
+        }
+    }
+}
+"#;
+    expect_errors(source, &["not an enum"]);
+}
+
+// ── Regression: tdsl-ysqd — typed let in modify body skips visibility check ──
+
+#[test]
+fn test_modify_body_typed_let_checks_type_visibility() {
+    // Ext does NOT import Core. A typed let `let r: Rarity = ...` inside a
+    // modify body should error about Rarity not being visible, just like a
+    // regular let statement would.
+    expect_multi_errors(
+        &[
+            ("core.ttrpg", r#"
+system "Core" {
+    enum Rarity { common, rare }
+}
+"#),
+            ("ext.ttrpg", r#"
+system "Ext" {
+    entity Character { HP: int }
+    derive base_hp(c: Character) -> int { c.HP }
+    condition Buff on bearer: Character {
+        modify base_hp(actor: bearer) {
+            let r: Rarity = common
+            result = result + 1
+        }
+    }
+}
+"#),
+        ],
+        &[r#"`Rarity` is defined in system "Core""#],
+    );
+}
+
+// ── Regression: tdsl-p0bd — suppress clauses skip receiver with-group narrowing ──
+
+#[test]
+fn test_suppress_clause_narrows_receiver_with_groups() {
+    // A condition with `on bearer: Character with Spellcasting` should narrow
+    // the bearer's Spellcasting group in suppress clause bindings, allowing
+    // access to optional group fields.
+    let source = r#"
+system "test" {
+    entity Character {
+        HP: int
+        optional Spellcasting {
+            spell_slots: int
+        }
+    }
+    event cast_spell(actor: Character) {
+        slots_used: int
+    }
+    condition Silenced on bearer: Character with Spellcasting {
+        suppress cast_spell(slots_used: bearer.Spellcasting.spell_slots)
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_suppress_clause_validates_invalid_with_group() {
+    // A condition-only suppress clause with an invalid with-group name
+    // should produce a diagnostic about the invalid group.
+    let source = r#"
+system "test" {
+    entity Character {
+        HP: int
+    }
+    event take_damage(actor: Character) {
+        amount: int
+    }
+    condition Protected on bearer: Character with NonexistentGroup {
+        suppress take_damage(actor: bearer)
+    }
+}
+"#;
+    expect_errors(source, &["NonexistentGroup"]);
+}
+
+// ── Regression: tdsl-1cyf — concat second list misses element type hint ──
+
+#[test]
+fn test_concat_second_arg_gets_element_type_hint() {
+    // The second argument to concat should use the first list's element type
+    // as a hint, so ambiguous bare variants can be disambiguated.
+    let source = r#"
+system "test" {
+    enum DamageType { fire, cold, lightning }
+    enum Element { fire, water, earth }
+    derive combined() -> list<DamageType> {
+        concat([DamageType.fire], [fire])
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+// ── Regression: tdsl-6fad — duplicate type across systems overwrites first body ──
+
+#[test]
+fn test_duplicate_type_across_systems_preserves_first_body() {
+    // System A defines Color with {red, blue, green}. System B also defines Color
+    // with {cyan, magenta, yellow}. pass_1a reports duplicate, but pass_1b
+    // should NOT overwrite A's variants with B's. Using 'red' should still work.
+    let source = r#"
+system "A" {
+    enum Color { red, blue, green }
+    derive get_red() -> Color { red }
+}
+system "B" {
+    enum Color { cyan, magenta, yellow }
+}
+"#;
+    let result = check_source(source);
+    let errors: Vec<_> = result
+        .diagnostics
+        .iter()
+        .filter(|d| d.severity == ttrpg_ast::diagnostic::Severity::Error)
+        .collect();
+    // We expect the "duplicate type" error but NOT a "red is undefined" error
+    let has_duplicate = errors.iter().any(|e| e.message.contains("duplicate"));
+    let has_undefined_red = errors.iter().any(|e| {
+        e.message.contains("red")
+            && (e.message.contains("undefined") || e.message.contains("unknown"))
+    });
+    assert!(
+        has_duplicate,
+        "should report duplicate type declaration; errors: {:?}",
+        errors.iter().map(|e| &e.message).collect::<Vec<_>>()
+    );
+    assert!(
+        !has_undefined_red,
+        "variant 'red' from A's definition should still be valid after duplicate; errors: {:?}",
+        errors.iter().map(|e| &e.message).collect::<Vec<_>>()
+    );
+}
