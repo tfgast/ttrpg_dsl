@@ -283,7 +283,7 @@ impl<'a> Checker<'a> {
         // DiceExpr * anything is an error
         if *lhs == Ty::DiceExpr || *rhs == Ty::DiceExpr {
             self.error(
-                "cannot multiply DiceExpr; use multiply_dice() instead".to_string(),
+                "cannot multiply DiceExpr; use multiply_dice() or .multiply() instead".to_string(),
                 span,
             );
             return Ty::Error;
@@ -308,7 +308,7 @@ impl<'a> Checker<'a> {
         // DiceExpr / anything is an error
         if *lhs == Ty::DiceExpr || *rhs == Ty::DiceExpr {
             self.error(
-                "cannot divide DiceExpr; use multiply_dice() instead".to_string(),
+                "cannot divide DiceExpr; use multiply_dice() or .multiply() instead".to_string(),
                 span,
             );
             return Ty::Error;
@@ -712,6 +712,10 @@ impl<'a> Checker<'a> {
     ) -> Ty {
         match obj_ty {
             Ty::Option(inner) => self.check_option_method(inner, method, args, span),
+            Ty::List(inner) => self.check_list_method(inner.clone(), method, args, span),
+            Ty::Set(inner) => self.check_set_method(inner, method, args, span),
+            Ty::Map(k, v) => self.check_map_method(k.clone(), v.clone(), method, args, span),
+            Ty::DiceExpr => self.check_dice_method(method, args, span),
             _ => {
                 self.error(
                     format!("type {} has no methods", obj_ty),
@@ -776,10 +780,210 @@ impl<'a> Checker<'a> {
                     inner_ty.clone()
                 }
             }
+            "is_some" | "is_none" => {
+                if !args.is_empty() {
+                    self.error(
+                        format!("{}() takes no arguments, found {}", method, args.len()),
+                        span,
+                    );
+                }
+                Ty::Bool
+            }
             _ => {
                 self.error(
                     format!(
-                        "option type has no method `{}`; available methods: unwrap, unwrap_or",
+                        "option type has no method `{}`; available methods: unwrap, unwrap_or, is_some, is_none",
+                        method
+                    ),
+                    span,
+                );
+                Ty::Error
+            }
+        }
+    }
+
+    fn check_list_method(
+        &mut self,
+        inner: Box<Ty>,
+        method: &str,
+        args: &[Arg],
+        span: ttrpg_ast::Span,
+    ) -> Ty {
+        match method {
+            "len" => {
+                if !args.is_empty() {
+                    self.error(format!("len() takes no arguments, found {}", args.len()), span);
+                }
+                Ty::Int
+            }
+            "first" | "last" => {
+                if !args.is_empty() {
+                    self.error(format!("{}() takes no arguments, found {}", method, args.len()), span);
+                }
+                Ty::Option(inner)
+            }
+            "reverse" => {
+                if !args.is_empty() {
+                    self.error(format!("reverse() takes no arguments, found {}", args.len()), span);
+                }
+                Ty::List(inner)
+            }
+            "append" => {
+                if args.len() != 1 {
+                    self.error(
+                        format!("append() takes 1 argument, found {}", args.len()),
+                        span,
+                    );
+                    for arg in args { self.check_expr(&arg.value); }
+                    return Ty::Error;
+                }
+                let elem_ty = self.check_expr_expecting(&args[0].value, Some(&inner));
+                if !elem_ty.is_error() && !self.types_compatible(&inner, &elem_ty) {
+                    self.error(
+                        format!(".append() element type mismatch: list is list<{}>, but got {}", inner, elem_ty),
+                        span,
+                    );
+                }
+                Ty::List(inner)
+            }
+            "concat" => {
+                if args.len() != 1 {
+                    self.error(
+                        format!("concat() takes 1 argument, found {}", args.len()),
+                        span,
+                    );
+                    for arg in args { self.check_expr(&arg.value); }
+                    return Ty::Error;
+                }
+                let list_ty = Ty::List(inner.clone());
+                let arg_ty = self.check_expr_expecting(&args[0].value, Some(&list_ty));
+                if !arg_ty.is_error() && !self.types_compatible(&list_ty, &arg_ty) {
+                    self.error(
+                        format!(".concat() type mismatch: list<{}> vs {}", inner, arg_ty),
+                        span,
+                    );
+                }
+                Ty::List(inner)
+            }
+            _ => {
+                self.error(
+                    format!(
+                        "list type has no method `{}`; available methods: len, first, last, reverse, append, concat",
+                        method
+                    ),
+                    span,
+                );
+                Ty::Error
+            }
+        }
+    }
+
+    fn check_set_method(
+        &mut self,
+        _inner: &Ty,
+        method: &str,
+        args: &[Arg],
+        span: ttrpg_ast::Span,
+    ) -> Ty {
+        match method {
+            "len" => {
+                if !args.is_empty() {
+                    self.error(format!("len() takes no arguments, found {}", args.len()), span);
+                }
+                Ty::Int
+            }
+            _ => {
+                self.error(
+                    format!("set type has no method `{}`; available methods: len", method),
+                    span,
+                );
+                Ty::Error
+            }
+        }
+    }
+
+    fn check_map_method(
+        &mut self,
+        k: Box<Ty>,
+        v: Box<Ty>,
+        method: &str,
+        args: &[Arg],
+        span: ttrpg_ast::Span,
+    ) -> Ty {
+        match method {
+            "len" => {
+                if !args.is_empty() {
+                    self.error(format!("len() takes no arguments, found {}", args.len()), span);
+                }
+                Ty::Int
+            }
+            "keys" => {
+                if !args.is_empty() {
+                    self.error(format!("keys() takes no arguments, found {}", args.len()), span);
+                }
+                Ty::List(k)
+            }
+            "values" => {
+                if !args.is_empty() {
+                    self.error(format!("values() takes no arguments, found {}", args.len()), span);
+                }
+                Ty::List(v)
+            }
+            _ => {
+                self.error(
+                    format!(
+                        "map type has no method `{}`; available methods: len, keys, values",
+                        method
+                    ),
+                    span,
+                );
+                Ty::Error
+            }
+        }
+    }
+
+    fn check_dice_method(
+        &mut self,
+        method: &str,
+        args: &[Arg],
+        span: ttrpg_ast::Span,
+    ) -> Ty {
+        match method {
+            "multiply" => {
+                if args.len() != 1 {
+                    self.error(
+                        format!("multiply() takes 1 argument, found {}", args.len()),
+                        span,
+                    );
+                    for arg in args { self.check_expr(&arg.value); }
+                    return Ty::Error;
+                }
+                let factor_ty = self.check_expr_expecting(&args[0].value, Some(&Ty::Int));
+                if !factor_ty.is_error() && factor_ty != Ty::Int {
+                    self.error(
+                        format!("multiply() factor must be int, found {}", factor_ty),
+                        span,
+                    );
+                }
+                Ty::DiceExpr
+            }
+            "roll" => {
+                if !args.is_empty() {
+                    self.error(format!("roll() takes no arguments, found {}", args.len()), span);
+                }
+                if !self.scope.allows_dice() {
+                    self.error(
+                        ".roll() can only be called in mechanic, action, or reaction blocks"
+                            .to_string(),
+                        span,
+                    );
+                }
+                Ty::RollResult
+            }
+            _ => {
+                self.error(
+                    format!(
+                        "DiceExpr type has no method `{}`; available methods: multiply, roll",
                         method
                     ),
                     span,
