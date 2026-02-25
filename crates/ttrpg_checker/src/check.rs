@@ -70,33 +70,52 @@ impl<'a> Checker<'a> {
         span: Span,
         hint: Option<&Ty>,
     ) -> Option<String> {
-        match self.env.variant_to_enums.get(variant) {
-            Some(owners) if owners.len() == 1 => {
-                let enum_name = owners[0].clone();
-                self.resolved_variants.insert(span, enum_name.clone());
-                Some(enum_name)
+        let all_owners = match self.env.variant_to_enums.get(variant) {
+            Some(owners) => owners.clone(),
+            None => return None,
+        };
+
+        // Filter owners by system visibility when in module-aware mode
+        let owners: Vec<String> = if let Some(ref current) = self.current_system {
+            if let Some(vis) = self.env.system_visibility.get(current) {
+                all_owners.iter().filter(|o| vis.types.contains(o.as_str())).cloned().collect()
+            } else {
+                all_owners
             }
-            Some(owners) if owners.len() > 1 => {
-                // Try to disambiguate via expected-type hint
-                if let Some(hinted) = enum_name_from_hint(hint) {
-                    if owners.iter().any(|o| o == hinted) {
-                        self.resolved_variants.insert(span, hinted.to_string());
-                        return Some(hinted.to_string());
-                    }
+        } else {
+            all_owners
+        };
+
+        if owners.is_empty() {
+            // Variant exists globally but no owning enum is visible — emit visibility error
+            // using the first global owner for the error message
+            self.check_name_visible(variant, Namespace::Variant, span);
+            return None;
+        }
+
+        if owners.len() == 1 {
+            let enum_name = owners[0].clone();
+            self.resolved_variants.insert(span, enum_name.clone());
+            Some(enum_name)
+        } else {
+            // Try to disambiguate via expected-type hint
+            if let Some(hinted) = enum_name_from_hint(hint) {
+                if owners.iter().any(|o| o == hinted) {
+                    self.resolved_variants.insert(span, hinted.to_string());
+                    return Some(hinted.to_string());
                 }
-                let qualified: Vec<String> = owners.iter().map(|e| format!("{}.{}", e, variant)).collect();
-                self.error(
-                    format!(
-                        "ambiguous variant `{}`; could belong to: {}. Use qualified form: {}",
-                        variant,
-                        owners.join(", "),
-                        qualified.join(" or "),
-                    ),
-                    span,
-                );
-                None
             }
-            _ => None,
+            let qualified: Vec<String> = owners.iter().map(|e| format!("{}.{}", e, variant)).collect();
+            self.error(
+                format!(
+                    "ambiguous variant `{}`; could belong to: {}. Use qualified form: {}",
+                    variant,
+                    owners.join(", "),
+                    qualified.join(" or "),
+                ),
+                span,
+            );
+            None
         }
     }
 

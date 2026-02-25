@@ -56,9 +56,12 @@ fn collect_inner(program: &Program, modules: Option<&ModuleMap>) -> (TypeEnv, Ve
     register_builtin_types(&mut env);
 
     // Pass 1b: resolve all signatures
+    // `processed_types` is shared across all systems so that a duplicate type
+    // declaration in a later system doesn't overwrite the first definition.
+    let mut processed_types = HashSet::new();
     for item in &program.items {
         if let TopLevel::System(system) = &item.node {
-            pass_1b(&system.decls, &mut env, &mut diagnostics);
+            pass_1b(&system.decls, &mut env, &mut diagnostics, &mut processed_types);
         }
     }
 
@@ -245,11 +248,8 @@ fn pass_1b(
     decls: &[ttrpg_ast::Spanned<DeclKind>],
     env: &mut TypeEnv,
     diagnostics: &mut Vec<Diagnostic>,
+    processed_types: &mut HashSet<String>,
 ) {
-    // Track which type names we've already processed so that duplicate
-    // declarations (already reported in pass_1a) don't overwrite the
-    // first valid entry's fields/variants.
-    let mut processed_types = HashSet::new();
     for decl in decls {
         match &decl.node {
             DeclKind::Enum(e) => {

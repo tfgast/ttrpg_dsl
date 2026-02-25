@@ -69,7 +69,13 @@ impl<'a> Checker<'a> {
                 self.check_struct_lit(name, fields, base.as_deref(), expr.span)
             }
 
-            ExprKind::ListLit(elems) => self.check_list_lit(elems, expr.span),
+            ExprKind::ListLit(elems) => {
+                let elem_hint = match hint {
+                    Some(Ty::List(inner)) => Some(inner.as_ref()),
+                    _ => None,
+                };
+                self.check_list_lit(elems, expr.span, elem_hint)
+            }
 
             ExprKind::MapLit(entries) => self.check_map_lit(entries, expr.span),
 
@@ -1588,7 +1594,7 @@ impl<'a> Checker<'a> {
             return Ty::Error;
         }
         let first_ty = self.check_expr(&args[0].value);
-        let second_ty = self.check_expr(&args[1].value);
+        let second_ty = self.check_expr_expecting(&args[1].value, Some(&first_ty));
         if first_ty.is_error() || second_ty.is_error() {
             return Ty::Error;
         }
@@ -1913,12 +1919,12 @@ impl<'a> Checker<'a> {
         result_ty
     }
 
-    fn check_list_lit(&mut self, elems: &[Spanned<ExprKind>], _span: ttrpg_ast::Span) -> Ty {
+    fn check_list_lit(&mut self, elems: &[Spanned<ExprKind>], _span: ttrpg_ast::Span, elem_hint: Option<&Ty>) -> Ty {
         if elems.is_empty() {
             return Ty::List(Box::new(Ty::Error));
         }
 
-        let mut unified_ty = self.check_expr(&elems[0]);
+        let mut unified_ty = self.check_expr_expecting(&elems[0], elem_hint);
         for elem in &elems[1..] {
             let elem_ty = self.check_expr_expecting(elem, Some(&unified_ty));
             match self.unify_branch_types(&unified_ty, &elem_ty) {
