@@ -282,7 +282,7 @@ impl Ord for Value {
             (Value::RollResult(a), Value::RollResult(b)) => roll_result_cmp(a, b),
             (Value::List(a), Value::List(b)) => a.cmp(b),
             (Value::Set(a), Value::Set(b)) => a.cmp(b),
-            (Value::Map(a), Value::Map(b)) => map_cmp(a, b),
+            (Value::Map(a), Value::Map(b)) => ordered_map_cmp(a, b),
             (Value::Option(a), Value::Option(b)) => a.cmp(b),
             (
                 Value::Struct {
@@ -293,7 +293,7 @@ impl Ord for Value {
                     name: n2,
                     fields: f2,
                 },
-            ) => n1.cmp(n2).then_with(|| btree_map_cmp(f1, f2)),
+            ) => n1.cmp(n2).then_with(|| ordered_map_cmp(f1, f2)),
             (Value::Entity(a), Value::Entity(b)) => a.0.cmp(&b.0),
             (
                 Value::EnumVariant {
@@ -309,12 +309,12 @@ impl Ord for Value {
             ) => e1
                 .cmp(e2)
                 .then_with(|| v1.cmp(v2))
-                .then_with(|| btree_map_cmp(f1, f2)),
+                .then_with(|| ordered_map_cmp(f1, f2)),
             (Value::Position(a), Value::Position(b)) => a.cmp(b),
             (
                 Value::Condition { name: n1, args: a1 },
                 Value::Condition { name: n2, args: a2 },
-            ) => n1.cmp(n2).then_with(|| btree_map_cmp(a1, a2)),
+            ) => n1.cmp(n2).then_with(|| ordered_map_cmp(a1, a2)),
             (Value::EnumNamespace(a), Value::EnumNamespace(b)) => a.cmp(b),
             // Same discriminant guarantees same variant.
             _ => unreachable!(),
@@ -339,25 +339,7 @@ fn roll_result_cmp(a: &RollResult, b: &RollResult) -> std::cmp::Ordering {
         .then_with(|| a.unmodified.cmp(&b.unmodified))
 }
 
-fn btree_map_cmp(a: &BTreeMap<String, Value>, b: &BTreeMap<String, Value>) -> std::cmp::Ordering {
-    let mut ai = a.iter();
-    let mut bi = b.iter();
-    loop {
-        match (ai.next(), bi.next()) {
-            (None, None) => return std::cmp::Ordering::Equal,
-            (None, Some(_)) => return std::cmp::Ordering::Less,
-            (Some(_), None) => return std::cmp::Ordering::Greater,
-            (Some((ak, av)), Some((bk, bv))) => {
-                let c = ak.cmp(bk).then_with(|| av.cmp(bv));
-                if c != std::cmp::Ordering::Equal {
-                    return c;
-                }
-            }
-        }
-    }
-}
-
-fn map_cmp(a: &BTreeMap<Value, Value>, b: &BTreeMap<Value, Value>) -> std::cmp::Ordering {
+fn ordered_map_cmp<K: Ord, V: Ord>(a: &BTreeMap<K, V>, b: &BTreeMap<K, V>) -> std::cmp::Ordering {
     let mut ai = a.iter();
     let mut bi = b.iter();
     loop {

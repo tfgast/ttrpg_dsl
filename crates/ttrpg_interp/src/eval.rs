@@ -487,21 +487,24 @@ fn eval_add(lhs: &Value, rhs: &Value, type_env: &ttrpg_checker::env::TypeEnv, ex
             }))
         }
         // Unit type addition: same-type → same-type
-        _ if {
-            let lu = as_unit_value(lhs, type_env);
-            let ru = as_unit_value(rhs, type_env);
-            matches!((&lu, &ru), (Some((n1, _, _)), Some((n2, _, _))) if n1 == n2)
-        } => {
-            let (name, field, a) = as_unit_value(lhs, type_env).unwrap();
-            let (_, _, b) = as_unit_value(rhs, type_env).unwrap();
+        _ => if let (Some((n1, field, a)), Some((n2, _, b))) =
+            (as_unit_value(lhs, type_env), as_unit_value(rhs, type_env))
+        {
+            if n1 != n2 {
+                return Err(RuntimeError::with_span(
+                    format!("cannot add {:?} and {:?}", type_name(lhs), type_name(rhs)),
+                    expr.span,
+                ));
+            }
             let result = a.checked_add(b)
                 .ok_or_else(|| RuntimeError::with_span("integer overflow in unit addition", expr.span))?;
-            Ok(make_unit_value(name, field, result))
+            Ok(make_unit_value(n1, field, result))
+        } else {
+            Err(RuntimeError::with_span(
+                format!("cannot add {:?} and {:?}", type_name(lhs), type_name(rhs)),
+                expr.span,
+            ))
         }
-        _ => Err(RuntimeError::with_span(
-            format!("cannot add {:?} and {:?}", type_name(lhs), type_name(rhs)),
-            expr.span,
-        )),
     }
 }
 
@@ -521,25 +524,24 @@ fn eval_sub(lhs: &Value, rhs: &Value, type_env: &ttrpg_checker::env::TypeEnv, ex
             Ok(Value::DiceExpr(DiceExpr { modifier, ..d.clone() }))
         }
         // Unit type subtraction: same-type → same-type
-        _ if {
-            let lu = as_unit_value(lhs, type_env);
-            let ru = as_unit_value(rhs, type_env);
-            matches!((&lu, &ru), (Some((n1, _, _)), Some((n2, _, _))) if n1 == n2)
-        } => {
-            let (name, field, a) = as_unit_value(lhs, type_env).unwrap();
-            let (_, _, b) = as_unit_value(rhs, type_env).unwrap();
+        _ => if let (Some((n1, field, a)), Some((n2, _, b))) =
+            (as_unit_value(lhs, type_env), as_unit_value(rhs, type_env))
+        {
+            if n1 != n2 {
+                return Err(RuntimeError::with_span(
+                    format!("cannot subtract {:?} from {:?}", type_name(rhs), type_name(lhs)),
+                    expr.span,
+                ));
+            }
             let result = a.checked_sub(b)
                 .ok_or_else(|| RuntimeError::with_span("integer overflow in unit subtraction", expr.span))?;
-            Ok(make_unit_value(name, field, result))
+            Ok(make_unit_value(n1, field, result))
+        } else {
+            Err(RuntimeError::with_span(
+                format!("cannot subtract {:?} from {:?}", type_name(rhs), type_name(lhs)),
+                expr.span,
+            ))
         }
-        _ => Err(RuntimeError::with_span(
-            format!(
-                "cannot subtract {:?} from {:?}",
-                type_name(rhs),
-                type_name(lhs)
-            ),
-            expr.span,
-        )),
     }
 }
 
@@ -667,22 +669,19 @@ fn eval_comparison(
             let ord2 = variant_ordinal(type_env, e2, v2);
             ord1.cmp(&ord2)
         }
-        _ if {
-            let lu = as_unit_value(lhs, type_env);
-            let ru = as_unit_value(rhs, type_env);
-            matches!((&lu, &ru), (Some((n1, _, _)), Some((n2, _, _))) if n1 == n2)
-        } => {
-            let (_, _, a) = as_unit_value(lhs, type_env).unwrap();
-            let (_, _, b) = as_unit_value(rhs, type_env).unwrap();
+        _ => if let (Some((n1, _, a)), Some((n2, _, b))) =
+            (as_unit_value(lhs, type_env), as_unit_value(rhs, type_env))
+        {
+            if n1 != n2 {
+                return Err(RuntimeError::with_span(
+                    format!("cannot compare {:?} and {:?}", type_name(lhs), type_name(rhs)),
+                    expr.span,
+                ));
+            }
             a.cmp(&b)
-        }
-        _ => {
+        } else {
             return Err(RuntimeError::with_span(
-                format!(
-                    "cannot compare {:?} and {:?}",
-                    type_name(lhs),
-                    type_name(rhs)
-                ),
+                format!("cannot compare {:?} and {:?}", type_name(lhs), type_name(rhs)),
                 expr.span,
             ));
         }

@@ -161,7 +161,7 @@ pub fn parse_command(line: &str) -> Option<Command> {
             }
         }
         "assert_err" => {
-            let s = tail.trim();
+            let s = strip_comment(tail).trim();
             if s.is_empty() {
                 Some(Command::Unknown("assert_err".into()))
             } else {
@@ -575,6 +575,14 @@ mod tests {
         assert_eq!(
             parse_command("assert_err"),
             Some(Command::Unknown("assert_err".into()))
+        );
+    }
+
+    #[test]
+    fn parse_assert_err_strips_comment() {
+        assert_eq!(
+            parse_command("assert_err destroy nonexistent // should fail"),
+            Some(Command::AssertErr("destroy nonexistent".into()))
         );
     }
 
