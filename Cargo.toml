@@ -7,4 +7,5 @@ members = [
     "crates/ttrpg_checker",
     "crates/ttrpg_interp",
     "crates/ttrpg_cli",
+    "crates/ttrpg_ose_data",
 ]
