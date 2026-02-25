@@ -7161,6 +7161,54 @@ system "test" {
     expect_errors(source, &["NonexistentGroup"]);
 }
 
+// ── Regression: tdsl-qkkn — map index key gets map key type hint ──
+
+#[test]
+fn hint_map_index_key_disambiguates_bare_variant() {
+    let source = r#"
+system "test" {
+    enum Color { red, blue }
+    enum Alert { red, yellow }
+    derive lookup(m: map<Color, int>) -> int {
+        m[red]
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+// ── Regression: tdsl-6ut3 — append element gets list element type hint ──
+
+#[test]
+fn hint_append_element_disambiguates_bare_variant() {
+    let source = r#"
+system "test" {
+    enum Color { red, blue }
+    enum Alert { red, yellow }
+    derive add_color(colors: list<Color>) -> list<Color> {
+        append(colors, red)
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+// ── Regression: tdsl-1qvb — unwrap_or default gets option inner type hint ──
+
+#[test]
+fn hint_unwrap_or_default_disambiguates_bare_variant() {
+    let source = r#"
+system "test" {
+    enum Color { red, blue }
+    enum Alert { red, yellow }
+    derive get_color(opt: option<Color>) -> Color {
+        opt.unwrap_or(red)
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
 // ── Regression: tdsl-1cyf — concat second list misses element type hint ──
 
 #[test]

@@ -752,7 +752,7 @@ impl<'a> Checker<'a> {
                         inner_ty.clone()
                     };
                 }
-                let arg_ty = self.check_expr(&args[0].value);
+                let arg_ty = self.check_expr_expecting(&args[0].value, Some(inner_ty));
                 if inner_ty.is_error() {
                     // bare `none.unwrap_or(x)` — infer from the default
                     arg_ty
@@ -789,7 +789,11 @@ impl<'a> Checker<'a> {
         span: ttrpg_ast::Span,
     ) -> Ty {
         let obj_ty = self.check_expr(object);
-        let idx_ty = self.check_expr(index);
+        let key_hint = match &obj_ty {
+            Ty::Map(key, _) => Some(key.as_ref()),
+            _ => None,
+        };
+        let idx_ty = self.check_expr_expecting(index, key_hint);
 
         if obj_ty.is_error() || idx_ty.is_error() {
             return Ty::Error;
@@ -1551,7 +1555,11 @@ impl<'a> Checker<'a> {
             return Ty::Error;
         }
         let list_ty = self.check_expr(&args[0].value);
-        let elem_ty = self.check_expr(&args[1].value);
+        let elem_hint = match &list_ty {
+            Ty::List(inner) => Some(inner.as_ref()),
+            _ => None,
+        };
+        let elem_ty = self.check_expr_expecting(&args[1].value, elem_hint);
         if list_ty.is_error() || elem_ty.is_error() {
             return Ty::Error;
         }

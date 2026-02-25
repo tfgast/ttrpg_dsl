@@ -40,6 +40,8 @@ fn lower_system_moves(system: &mut SystemBlock, diags: &mut Vec<Diagnostic>) {
             DeclKind::Action(a) => Some(a.name.clone()),
             DeclKind::Reaction(r) => Some(r.name.clone()),
             DeclKind::Prompt(p) => Some(p.name.clone()),
+            DeclKind::Table(t) => Some(t.name.clone()),
+            DeclKind::Hook(h) => Some(h.name.clone()),
             _ => None,
         })
         .collect();
@@ -352,5 +354,63 @@ mod tests {
         assert_eq!(synthetic_mechanic_name("GoAggro"), "__go_aggro_roll");
         assert_eq!(synthetic_mechanic_name("Attack"), "__attack_roll");
         assert_eq!(synthetic_mechanic_name("HackAndSlash"), "__hack_and_slash_roll");
+    }
+
+    // ── Regression: tdsl-t4c — synthetic mechanic collision includes table/hook ──
+
+    #[test]
+    fn existing_names_includes_tables_and_hooks() {
+        use ttrpg_ast::ast::*;
+        use ttrpg_ast::Spanned;
+
+        let dummy_span = ttrpg_ast::Span { start: 0, end: 0 };
+
+        let table_decl = Spanned::new(
+            DeclKind::Table(TableDecl {
+                name: "__attack_roll".into(),
+                params: vec![],
+                return_type: Spanned::new(TypeExpr::Named("int".into()), dummy_span),
+                entries: vec![],
+            }),
+            dummy_span,
+        );
+
+        let hook_decl = Spanned::new(
+            DeclKind::Hook(HookDecl {
+                name: "__defend_roll".into(),
+                receiver_name: "e".into(),
+                receiver_type: Spanned::new(TypeExpr::Named("Character".into()), dummy_span),
+                receiver_with_groups: vec![],
+                trigger: TriggerExpr {
+                    event_name: "test".into(),
+                    bindings: vec![],
+                    span: dummy_span,
+                },
+                resolve: Spanned::new(vec![], dummy_span),
+            }),
+            dummy_span,
+        );
+
+        let system = SystemBlock {
+            name: "test".into(),
+            decls: vec![table_decl, hook_decl],
+        };
+
+        let existing: std::collections::HashSet<String> = system
+            .decls
+            .iter()
+            .filter_map(|d| match &d.node {
+                DeclKind::Derive(f) | DeclKind::Mechanic(f) => Some(f.name.clone()),
+                DeclKind::Action(a) => Some(a.name.clone()),
+                DeclKind::Reaction(r) => Some(r.name.clone()),
+                DeclKind::Prompt(p) => Some(p.name.clone()),
+                DeclKind::Table(t) => Some(t.name.clone()),
+                DeclKind::Hook(h) => Some(h.name.clone()),
+                _ => None,
+            })
+            .collect();
+
+        assert!(existing.contains("__attack_roll"), "table name should be in existing_names");
+        assert!(existing.contains("__defend_roll"), "hook name should be in existing_names");
     }
 }

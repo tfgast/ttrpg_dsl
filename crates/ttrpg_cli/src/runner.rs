@@ -2048,7 +2048,8 @@ fn value_matches_ty(val: &Value, ty: &Ty) -> bool {
             .iter()
             .all(|(k, v)| value_matches_ty(k, key_ty) && value_matches_ty(v, val_ty)),
         (Value::Struct { name, .. }, Ty::Struct(n)) => name == n,
-        (Value::Struct { .. }, Ty::RollResult | Ty::TurnBudget) => true,
+        (Value::Struct { name, .. }, Ty::RollResult) => name == "RollResult",
+        (Value::Struct { name, .. }, Ty::TurnBudget) => name == "TurnBudget",
         (Value::EnumVariant { enum_name, .. }, Ty::Enum(n)) => enum_name == n,
         (Value::DiceExpr(_), Ty::DiceExpr) => true,
         (Value::RollResult(_), Ty::RollResult) => true,
@@ -4088,5 +4089,43 @@ system \"Game\" {
         // Should either succeed with a clamped value or error — not silently wrong
         // The key thing is it doesn't panic
         let _ = result;
+    }
+
+    // ── Regression: tdsl-vlw — value_matches_ty rejects wrong struct for TurnBudget/RollResult ──
+
+    #[test]
+    fn value_matches_ty_rejects_wrong_struct_for_rollresult() {
+        let wrong = Value::Struct {
+            name: "Damage".into(),
+            fields: std::collections::BTreeMap::new(),
+        };
+        assert!(!value_matches_ty(&wrong, &Ty::RollResult));
+    }
+
+    #[test]
+    fn value_matches_ty_rejects_wrong_struct_for_turn_budget() {
+        let wrong = Value::Struct {
+            name: "Damage".into(),
+            fields: std::collections::BTreeMap::new(),
+        };
+        assert!(!value_matches_ty(&wrong, &Ty::TurnBudget));
+    }
+
+    #[test]
+    fn value_matches_ty_accepts_correct_struct_for_rollresult() {
+        let correct = Value::Struct {
+            name: "RollResult".into(),
+            fields: std::collections::BTreeMap::new(),
+        };
+        assert!(value_matches_ty(&correct, &Ty::RollResult));
+    }
+
+    #[test]
+    fn value_matches_ty_accepts_correct_struct_for_turn_budget() {
+        let correct = Value::Struct {
+            name: "TurnBudget".into(),
+            fields: std::collections::BTreeMap::new(),
+        };
+        assert!(value_matches_ty(&correct, &Ty::TurnBudget));
     }
 }
