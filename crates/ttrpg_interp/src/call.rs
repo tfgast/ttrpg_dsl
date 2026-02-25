@@ -96,6 +96,14 @@ pub(crate) fn eval_call(
                     );
                 }
             }
+            // Action method call: entity.Action(args)
+            if let Some(fn_info) = env.interp.type_env.lookup_fn(field) {
+                if fn_info.kind == FnKind::Action {
+                    let fn_info = fn_info.clone();
+                    let object_val = eval_expr(env, object)?;
+                    return dispatch_action_method(env, &fn_info, object_val, args, call_span);
+                }
+            }
             // Method call: evaluate the object and dispatch
             let object_val = eval_expr(env, object)?;
             eval_method_call(env, object_val, field, args, call_span)
@@ -873,6 +881,60 @@ fn dispatch_action(
     let action_args: Vec<(Name, Value)> = bound[1..].to_vec();
 
     execute_action(env, &action_decl, actor, action_args, call_span)
+}
+
+/// Dispatch an action via method-call syntax: `entity.ActionName(args)`.
+///
+/// The receiver entity is already evaluated (the `object` value). Remaining
+/// arguments are bound against the action's declared params (not including
+/// the receiver). This desugars to the same `execute_action` pipeline.
+fn dispatch_action_method(
+    env: &mut Env,
+    fn_info: &ttrpg_checker::env::FnInfo,
+    receiver: Value,
+    args: &[Arg],
+    call_span: Span,
+) -> Result<Value, RuntimeError> {
+    let name = &fn_info.name;
+
+    let action_decl = env
+        .interp
+        .program
+        .actions
+        .get(name.as_str())
+        .ok_or_else(|| {
+            RuntimeError::with_span(
+                format!("internal error: no declaration found for action '{}'", name),
+                call_span,
+            )
+        })?
+        .clone();
+    let ast_params = action_decl.params.clone();
+
+    // Extract EntityRef from receiver value
+    let actor = match &receiver {
+        Value::Entity(entity_ref) => *entity_ref,
+        other => {
+            return Err(RuntimeError::with_span(
+                format!(
+                    "action '{}' receiver must be an entity, got {:?}",
+                    name, other
+                ),
+                call_span,
+            ));
+        }
+    };
+
+    // Bind remaining arguments against the action's regular params (not receiver)
+    let bound = bind_args(
+        &fn_info.params,
+        args,
+        Some(&ast_params),
+        env,
+        call_span,
+    )?;
+
+    execute_action(env, &action_decl, actor, bound, call_span)
 }
 
 // ── Prompt dispatch ────────────────────────────────────────────

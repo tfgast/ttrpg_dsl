@@ -1111,6 +1111,46 @@ impl<'a> Checker<'a> {
                 if let Ty::ModuleAlias(alias_name) = &obj_ty {
                     return self.resolve_alias_call(alias_name, field, args, span);
                 }
+                // Action method call: entity.Action(args)
+                if obj_ty.is_entity() {
+                    if let Some(fn_info) = self.env.lookup_fn(field).cloned() {
+                        if fn_info.kind == FnKind::Action {
+                            // Verify receiver type compatibility
+                            if let Some(ref receiver) = fn_info.receiver {
+                                if !self.types_compatible(&obj_ty, &receiver.ty) {
+                                    self.error(
+                                        format!(
+                                            "action `{}` expects receiver of type {}, found {}",
+                                            field,
+                                            receiver.ty.display(),
+                                            obj_ty.display()
+                                        ),
+                                        span,
+                                    );
+                                }
+                            }
+
+                            // Check context restrictions (same as function-call path)
+                            let current_ctx = self.scope.current_block_kind();
+                            if !matches!(
+                                current_ctx,
+                                Some(BlockKind::ActionResolve) | Some(BlockKind::ReactionResolve) | Some(BlockKind::HookResolve)
+                            ) {
+                                self.error(
+                                    format!(
+                                        "`{}` is an action and can only be called from action or reaction context",
+                                        field
+                                    ),
+                                    span,
+                                );
+                            }
+
+                            // Check args against action params (without receiver — it's the object)
+                            self.check_args(field, CallKind::Function, &fn_info.params, args, span);
+                            return fn_info.return_type.clone();
+                        }
+                    }
+                }
                 // Method call: obj.method(args)
                 return self.check_method_call(&obj_ty, field, args, span);
             }
