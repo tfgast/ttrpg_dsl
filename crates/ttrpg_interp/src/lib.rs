@@ -253,6 +253,22 @@ impl<'p> Interpreter<'p> {
         eval::eval_expr(&mut env, expr)
     }
 
+    /// Access the type environment for direct introspection.
+    pub fn type_env(&self) -> &TypeEnv {
+        self.type_env
+    }
+
+    /// Return the variant names for a given enum type.
+    ///
+    /// Returns `None` if `enum_name` doesn't refer to a defined enum.
+    /// This is the primary API for building data-driven registries from
+    /// DSL enum definitions at startup.
+    pub fn enum_variants(&self, enum_name: &str) -> Option<Vec<String>> {
+        self.type_env
+            .enum_variants(enum_name)
+            .map(|v| v.into_iter().map(|s| s.to_owned()).collect())
+    }
+
     /// Check whether a named action exists in the loaded program.
     pub fn has_action(&self, name: &str) -> bool {
         self.program.actions.contains_key(name)

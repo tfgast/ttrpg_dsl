@@ -303,6 +303,22 @@ impl TypeEnv {
         }
     }
 
+    /// Look up an enum by name.
+    pub fn get_enum(&self, name: &str) -> Option<&EnumInfo> {
+        match self.types.get(name)? {
+            DeclInfo::Enum(info) => Some(info),
+            _ => None,
+        }
+    }
+
+    /// Return the variant names for a given enum type.
+    ///
+    /// Returns `None` if `enum_name` doesn't refer to a defined enum.
+    pub fn enum_variants(&self, enum_name: &str) -> Option<Vec<&str>> {
+        self.get_enum(enum_name)
+            .map(|info| info.variants.iter().map(|v| v.name.as_ref()).collect())
+    }
+
     /// Look up a function by name (user-defined or builtin).
     ///
     /// By design, user-defined functions shadow builtins. This is consistent
