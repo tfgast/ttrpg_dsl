@@ -466,6 +466,170 @@ system "test" {
     }
 }
 
+// ── string methods ────────────────────────────────────────────
+
+#[test]
+fn string_len_method() {
+    let source = r#"
+system "test" {
+    derive f(s: string) -> int {
+        s.len()
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NoopHandler;
+
+    let val = interp
+        .evaluate_derive(&state, &mut handler, "f", vec![Value::Str("hello".into())])
+        .unwrap();
+    assert_eq!(val, Value::Int(5));
+
+    // Empty string
+    let val = interp
+        .evaluate_derive(&state, &mut handler, "f", vec![Value::Str("".into())])
+        .unwrap();
+    assert_eq!(val, Value::Int(0));
+}
+
+#[test]
+fn string_contains_method() {
+    let source = r#"
+system "test" {
+    derive f(s: string, sub: string) -> bool {
+        s.contains(sub)
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NoopHandler;
+
+    let val = interp
+        .evaluate_derive(&state, &mut handler, "f", vec![
+            Value::Str("hello world".into()),
+            Value::Str("world".into()),
+        ])
+        .unwrap();
+    assert_eq!(val, Value::Bool(true));
+
+    let val = interp
+        .evaluate_derive(&state, &mut handler, "f", vec![
+            Value::Str("hello".into()),
+            Value::Str("xyz".into()),
+        ])
+        .unwrap();
+    assert_eq!(val, Value::Bool(false));
+}
+
+#[test]
+fn string_starts_with_method() {
+    let source = r#"
+system "test" {
+    derive f(s: string, prefix: string) -> bool {
+        s.starts_with(prefix)
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NoopHandler;
+
+    let val = interp
+        .evaluate_derive(&state, &mut handler, "f", vec![
+            Value::Str("hello world".into()),
+            Value::Str("hello".into()),
+        ])
+        .unwrap();
+    assert_eq!(val, Value::Bool(true));
+
+    let val = interp
+        .evaluate_derive(&state, &mut handler, "f", vec![
+            Value::Str("hello".into()),
+            Value::Str("world".into()),
+        ])
+        .unwrap();
+    assert_eq!(val, Value::Bool(false));
+}
+
+#[test]
+fn string_ends_with_method() {
+    let source = r#"
+system "test" {
+    derive f(s: string, suffix: string) -> bool {
+        s.ends_with(suffix)
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NoopHandler;
+
+    let val = interp
+        .evaluate_derive(&state, &mut handler, "f", vec![
+            Value::Str("hello world".into()),
+            Value::Str("world".into()),
+        ])
+        .unwrap();
+    assert_eq!(val, Value::Bool(true));
+
+    let val = interp
+        .evaluate_derive(&state, &mut handler, "f", vec![
+            Value::Str("hello".into()),
+            Value::Str("xyz".into()),
+        ])
+        .unwrap();
+    assert_eq!(val, Value::Bool(false));
+}
+
+#[test]
+fn string_method_chaining_with_contains() {
+    // Test using string method result in a larger expression
+    let source = r#"
+system "test" {
+    derive f(s: string) -> int {
+        if s.starts_with("fire") { 1 } else { 0 }
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NoopHandler;
+
+    let val = interp
+        .evaluate_derive(&state, &mut handler, "f", vec![Value::Str("fireball".into())])
+        .unwrap();
+    assert_eq!(val, Value::Int(1));
+
+    let val = interp
+        .evaluate_derive(&state, &mut handler, "f", vec![Value::Str("icebolt".into())])
+        .unwrap();
+    assert_eq!(val, Value::Int(0));
+}
+
+#[test]
+fn unknown_method_on_string_error() {
+    let errors = setup_with_errors(r#"
+system "test" {
+    derive f(s: string) -> int {
+        s.foobar()
+    }
+}
+"#);
+    assert!(!errors.is_empty());
+    assert!(
+        errors[0].contains("no method"),
+        "expected 'no method' error, got: {}",
+        errors[0]
+    );
+}
+
 // ── chaining ──────────────────────────────────────────────────
 
 #[test]

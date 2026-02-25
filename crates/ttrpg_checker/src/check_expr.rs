@@ -716,6 +716,7 @@ impl<'a> Checker<'a> {
             Ty::Set(inner) => self.check_set_method(inner, method, args, span),
             Ty::Map(k, v) => self.check_map_method(k.clone(), v.clone(), method, args, span),
             Ty::DiceExpr => self.check_dice_method(method, args, span),
+            Ty::String => self.check_string_method(method, args, span),
             _ => {
                 self.error(
                     format!("type {} has no methods", obj_ty),
@@ -984,6 +985,50 @@ impl<'a> Checker<'a> {
                 self.error(
                     format!(
                         "DiceExpr type has no method `{}`; available methods: multiply, roll",
+                        method
+                    ),
+                    span,
+                );
+                Ty::Error
+            }
+        }
+    }
+
+    fn check_string_method(
+        &mut self,
+        method: &str,
+        args: &[Arg],
+        span: ttrpg_ast::Span,
+    ) -> Ty {
+        match method {
+            "len" => {
+                if !args.is_empty() {
+                    self.error(format!("len() takes no arguments, found {}", args.len()), span);
+                }
+                Ty::Int
+            }
+            "contains" | "starts_with" | "ends_with" => {
+                if args.len() != 1 {
+                    self.error(
+                        format!("{}() takes exactly 1 argument, found {}", method, args.len()),
+                        span,
+                    );
+                    for arg in args { self.check_expr(&arg.value); }
+                    return Ty::Bool;
+                }
+                let arg_ty = self.check_expr_expecting(&args[0].value, Some(&Ty::String));
+                if !arg_ty.is_error() && !self.types_compatible(&arg_ty, &Ty::String) {
+                    self.error(
+                        format!("{}() argument must be string, found {}", method, arg_ty),
+                        span,
+                    );
+                }
+                Ty::Bool
+            }
+            _ => {
+                self.error(
+                    format!(
+                        "string type has no method `{}`; available methods: len, contains, starts_with, ends_with",
                         method
                     ),
                     span,

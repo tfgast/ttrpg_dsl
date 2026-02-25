@@ -1188,6 +1188,7 @@ fn eval_method_call(
         Value::Set(_) => eval_set_method(object, method, span),
         Value::Map(_) => eval_map_method(object, method, span),
         Value::DiceExpr(_) => eval_dice_method(env, object, method, args, span),
+        Value::Str(_) => eval_string_method(env, object, method, args, span),
         _ => Err(RuntimeError::with_span(
             format!("type {} has no methods", crate::eval::type_name(&object)),
             span,
@@ -1396,6 +1397,52 @@ fn eval_dice_method(
         _ => Err(RuntimeError::with_span(
             format!(
                 "DiceExpr type has no method `{}`; available methods: multiply, roll",
+                method
+            ),
+            span,
+        )),
+    }
+}
+
+fn eval_string_method(
+    env: &mut Env,
+    object: Value,
+    method: &str,
+    args: &[Arg],
+    span: Span,
+) -> Result<Value, RuntimeError> {
+    let Value::Str(s) = object else { unreachable!() };
+    match method {
+        "len" => Ok(Value::Int(s.len() as i64)),
+        "contains" | "starts_with" | "ends_with" => {
+            if args.is_empty() {
+                return Err(RuntimeError::with_span(
+                    format!("{}() requires 1 argument", method),
+                    span,
+                ));
+            }
+            let arg_val = eval_expr(env, &args[0].value)?;
+            let Value::Str(substr) = arg_val else {
+                return Err(RuntimeError::with_span(
+                    format!(
+                        "{}() argument must be string, got {}",
+                        method,
+                        type_name(&arg_val)
+                    ),
+                    span,
+                ));
+            };
+            let result = match method {
+                "contains" => s.contains(substr.as_str()),
+                "starts_with" => s.starts_with(substr.as_str()),
+                "ends_with" => s.ends_with(substr.as_str()),
+                _ => unreachable!(),
+            };
+            Ok(Value::Bool(result))
+        }
+        _ => Err(RuntimeError::with_span(
+            format!(
+                "string type has no method `{}`; available methods: len, contains, starts_with, ends_with",
                 method
             ),
             span,

@@ -22,6 +22,23 @@ const DSL_KEYWORDS: &[&str] = &[
     "append", "concat", "reverse",
 ];
 
+/// Method names available after a dot, grouped by type.
+/// Since we don't track variable types, we offer all methods after any dot.
+const DOT_METHODS: &[&str] = &[
+    // list
+    "len", "first", "last", "reverse", "append", "concat",
+    // set
+    // (len already listed)
+    // map
+    "keys", "values",
+    // option
+    "unwrap", "unwrap_or", "is_some", "is_none",
+    // dice
+    "multiply", "roll",
+    // string
+    "contains", "starts_with", "ends_with",
+];
+
 /// Dynamic completion data refreshed after each command execution.
 #[derive(Default)]
 pub struct CompletionContext {
@@ -194,9 +211,20 @@ impl Completer for TtrpgCompleter {
                 }
             }
             "eval" | "assert" | "assert_eq" | "assert_err" => {
-                // Complete handles + DSL keywords
                 let current_word = last_word(rest);
                 let word_start = pos - current_word.len();
+
+                // After a dot: complete method names
+                if let Some(dot_pos) = current_word.rfind('.') {
+                    let method_prefix = &current_word[dot_pos + 1..];
+                    let method_start = word_start + dot_pos + 1;
+                    return prefix_matches(DOT_METHODS, method_prefix)
+                        .into_iter()
+                        .map(|m| suggestion(m.to_string(), Span::new(method_start, pos), false))
+                        .collect();
+                }
+
+                // Complete handles + DSL keywords
                 let mut suggestions: Vec<Suggestion> = Vec::new();
 
                 for s in prefix_matches_owned(&ctx.handles, current_word) {
@@ -368,6 +396,32 @@ mod tests {
         let values: Vec<_> = results.iter().map(|s| s.value.as_str()).collect();
         assert!(values.contains(&"fighter"), "assert_err should complete handles");
         assert!(values.contains(&"false"), "assert_err should complete DSL keywords");
+    }
+
+    #[test]
+    fn complete_eval_dot_methods() {
+        let ctx = make_ctx();
+        let mut c = TtrpgCompleter::new(ctx);
+        // "eval xs." should suggest all method names
+        let results = c.complete("eval xs.", 8);
+        let values: Vec<_> = results.iter().map(|s| s.value.as_str()).collect();
+        assert!(values.contains(&"len"), "should suggest len");
+        assert!(values.contains(&"first"), "should suggest first");
+        assert!(values.contains(&"unwrap"), "should suggest unwrap");
+        assert!(values.contains(&"roll"), "should suggest roll");
+        assert!(values.contains(&"contains"), "should suggest contains");
+        assert!(values.contains(&"starts_with"), "should suggest starts_with");
+    }
+
+    #[test]
+    fn complete_eval_dot_methods_prefix() {
+        let ctx = make_ctx();
+        let mut c = TtrpgCompleter::new(ctx);
+        // "eval xs.le" should suggest "len" only
+        let results = c.complete("eval xs.le", 10);
+        let values: Vec<_> = results.iter().map(|s| s.value.as_str()).collect();
+        assert!(values.contains(&"len"), "should suggest len");
+        assert!(!values.contains(&"first"), "should not suggest first");
     }
 
     #[test]
