@@ -133,7 +133,8 @@ pub fn format_dice_expr(expr: &DiceExpr) -> String {
     if expr.modifier > 0 {
         s.push_str(&format!(" + {}", expr.modifier));
     } else if expr.modifier < 0 {
-        s.push_str(&format!(" - {}", expr.modifier.abs()));
+        // Use wrapping_abs to avoid panic on i64::MIN, then format as unsigned
+        s.push_str(&format!(" - {}", (expr.modifier as i128).unsigned_abs()));
     }
     s
 }
@@ -310,6 +311,24 @@ mod tests {
             formatted.contains("\\\\"),
             "backslash should be escaped; got: {}",
             formatted,
+        );
+    }
+
+    // ── Regression: tdsl-tsn2 — i64::MIN modifier must not panic ──
+
+    #[test]
+    fn format_dice_expr_i64_min_modifier() {
+        let expr = DiceExpr {
+            count: 1,
+            sides: 20,
+            filter: None,
+            modifier: i64::MIN,
+        };
+        let result = format_dice_expr(&expr);
+        assert!(
+            result.contains(" - 9223372036854775808"),
+            "i64::MIN modifier should format without panic; got: {}",
+            result,
         );
     }
 

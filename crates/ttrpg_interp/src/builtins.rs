@@ -40,7 +40,22 @@ pub(crate) fn call_builtin(
 /// `floor(x: Float) -> Int`
 fn builtin_floor(args: &[Value], span: Span) -> Result<Value, RuntimeError> {
     match args.first() {
-        Some(Value::Float(f)) => Ok(Value::Int(f.floor() as i64)),
+        Some(Value::Float(f)) => {
+            if f.is_nan() {
+                return Err(RuntimeError::with_span("floor() received NaN", span));
+            }
+            if f.is_infinite() {
+                return Err(RuntimeError::with_span("floor() received infinity", span));
+            }
+            let floored = f.floor();
+            if floored < (i64::MIN as f64) || floored > (i64::MAX as f64) {
+                return Err(RuntimeError::with_span(
+                    format!("floor({}) overflows integer range", f),
+                    span,
+                ));
+            }
+            Ok(Value::Int(floored as i64))
+        }
         Some(other) => Err(RuntimeError::with_span(
             format!("floor() expects Float, got {}", type_name(other)),
             span,
@@ -54,7 +69,22 @@ fn builtin_floor(args: &[Value], span: Span) -> Result<Value, RuntimeError> {
 /// `ceil(x: Float) -> Int`
 fn builtin_ceil(args: &[Value], span: Span) -> Result<Value, RuntimeError> {
     match args.first() {
-        Some(Value::Float(f)) => Ok(Value::Int(f.ceil() as i64)),
+        Some(Value::Float(f)) => {
+            if f.is_nan() {
+                return Err(RuntimeError::with_span("ceil() received NaN", span));
+            }
+            if f.is_infinite() {
+                return Err(RuntimeError::with_span("ceil() received infinity", span));
+            }
+            let ceiled = f.ceil();
+            if ceiled < (i64::MIN as f64) || ceiled > (i64::MAX as f64) {
+                return Err(RuntimeError::with_span(
+                    format!("ceil({}) overflows integer range", f),
+                    span,
+                ));
+            }
+            Ok(Value::Int(ceiled as i64))
+        }
         Some(other) => Err(RuntimeError::with_span(
             format!("ceil() expects Float, got {}", type_name(other)),
             span,
@@ -388,5 +418,70 @@ fn type_name(val: &Value) -> &'static str {
         Value::Position(_) => "Position",
         Value::Condition { .. } => "Condition",
         Value::EnumNamespace(_) => "EnumNamespace",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn dummy_span() -> Span {
+        Span { start: 0, end: 0 }
+    }
+
+    // ── Regression: tdsl-0s0y — floor/ceil with NaN, infinity, out-of-range ──
+
+    #[test]
+    fn floor_nan_returns_error() {
+        let result = builtin_floor(&[Value::Float(f64::NAN)], dummy_span());
+        assert!(result.is_err());
+        assert!(result.unwrap_err().message.contains("NaN"));
+    }
+
+    #[test]
+    fn floor_infinity_returns_error() {
+        let result = builtin_floor(&[Value::Float(f64::INFINITY)], dummy_span());
+        assert!(result.is_err());
+        assert!(result.unwrap_err().message.contains("infinity"));
+    }
+
+    #[test]
+    fn floor_neg_infinity_returns_error() {
+        let result = builtin_floor(&[Value::Float(f64::NEG_INFINITY)], dummy_span());
+        assert!(result.is_err());
+        assert!(result.unwrap_err().message.contains("infinity"));
+    }
+
+    #[test]
+    fn floor_out_of_range_returns_error() {
+        let result = builtin_floor(&[Value::Float(1e19)], dummy_span());
+        assert!(result.is_err());
+        assert!(result.unwrap_err().message.contains("overflow"));
+    }
+
+    #[test]
+    fn ceil_nan_returns_error() {
+        let result = builtin_ceil(&[Value::Float(f64::NAN)], dummy_span());
+        assert!(result.is_err());
+        assert!(result.unwrap_err().message.contains("NaN"));
+    }
+
+    #[test]
+    fn ceil_infinity_returns_error() {
+        let result = builtin_ceil(&[Value::Float(f64::INFINITY)], dummy_span());
+        assert!(result.is_err());
+        assert!(result.unwrap_err().message.contains("infinity"));
+    }
+
+    #[test]
+    fn floor_normal_value_works() {
+        let result = builtin_floor(&[Value::Float(3.7)], dummy_span());
+        assert_eq!(result.unwrap(), Value::Int(3));
+    }
+
+    #[test]
+    fn ceil_normal_value_works() {
+        let result = builtin_ceil(&[Value::Float(3.2)], dummy_span());
+        assert_eq!(result.unwrap(), Value::Int(4));
     }
 }

@@ -118,8 +118,8 @@ fn render_diagnostic(
 
     let line_num_width = line_1indexed.to_string().len();
 
-    // Caret underline
-    let caret_len = (local_end - local_start).max(1);
+    // Caret underline (saturating_sub guards against inverted spans)
+    let caret_len = local_end.saturating_sub(local_start).max(1);
     let carets: String = "^".repeat(caret_len);
 
     let mut result = format!(
@@ -200,7 +200,7 @@ impl MultiSourceMap {
     /// Find which file owns a span.
     fn find_file(&self, span_start: usize) -> Option<&FileEntry> {
         self.files.iter().find(|f| {
-            f.base_offset <= span_start && span_start <= f.end_exclusive
+            f.base_offset <= span_start && span_start < f.end_exclusive
         })
     }
 
@@ -235,5 +235,40 @@ impl MultiSourceMap {
                 format!("[{}] {}", severity_str, diag.message)
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── Regression: tdsl-9fm8 — boundary span should not match wrong file ──
+
+    #[test]
+    fn multi_source_map_boundary_span_falls_through() {
+        // Two files: "hello" (5 bytes) at offset 0, "world" (5 bytes) at offset 6.
+        // A span at position 5 (the sentinel gap) should NOT match file A.
+        let msm = MultiSourceMap::new(vec![
+            ("a.ttrpg".into(), "hello".into()),
+            ("b.ttrpg".into(), "world".into()),
+        ]);
+        // Position 5 is the sentinel gap — should not be found in any file
+        let entry = msm.find_file(5);
+        assert!(
+            entry.is_none(),
+            "span at sentinel gap (pos 5) should not match any file",
+        );
+    }
+
+    // ── Regression: tdsl-li9m — inverted span should not panic in renderer ──
+
+    #[test]
+    fn render_inverted_span_does_not_panic() {
+        let sm = SourceMap::new("hello world");
+        let diag = Diagnostic::error("test", Span { start: 5, end: 3 });
+        // Should not panic despite start > end (saturating_sub guards it)
+        let rendered = sm.render(&diag);
+        assert!(rendered.contains("test"), "should still contain the message");
+        assert!(rendered.contains("^"), "should still have caret(s)");
     }
 }

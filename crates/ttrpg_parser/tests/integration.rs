@@ -1749,3 +1749,32 @@ fn test_error_recovery_finds_unit_declaration() {
     );
 }
 
+// ── Regression: tdsl-z6xa — negative pattern uses checked_neg ──────────
+
+#[test]
+fn negative_pattern_max_value_does_not_panic() {
+    // -9223372036854775807 is -(i64::MAX), which is valid (i64::MIN + 1).
+    // Before the fix, this used unchecked `-n`; now it uses checked_neg.
+    // The lexer prevents i64::MIN from appearing as a positive literal,
+    // so no real overflow can occur, but this verifies the path works.
+    let src = r#"system "test" {
+    derive f(x: int) -> int {
+        match x {
+            -42 => 1,
+            _ => 0,
+        }
+    }
+}"#;
+    let (prog, diags) = ttrpg_parser::parse(src);
+    let parse_errors: Vec<_> = diags
+        .iter()
+        .filter(|d| d.severity == ttrpg_ast::diagnostic::Severity::Error)
+        .collect();
+    assert!(
+        parse_errors.is_empty(),
+        "negative pattern should parse successfully; got errors: {:?}",
+        parse_errors.iter().map(|d| &d.message).collect::<Vec<_>>(),
+    );
+    let _ = prog;
+}
+

@@ -116,6 +116,9 @@ fn eval_ordinal(
     args: &[Arg],
     call_span: Span,
 ) -> Result<Value, RuntimeError> {
+    if args.is_empty() {
+        return Err(RuntimeError::with_span("ordinal() requires 1 argument", call_span));
+    }
     let val = eval_expr(env, &args[0].value)?;
     match &val {
         Value::EnumVariant { enum_name, variant, .. } => {
@@ -140,6 +143,9 @@ fn eval_from_ordinal(
     args: &[Arg],
     call_span: Span,
 ) -> Result<Value, RuntimeError> {
+    if args.len() < 2 {
+        return Err(RuntimeError::with_span("from_ordinal() requires 2 arguments", call_span));
+    }
     let ns_val = eval_expr(env, &args[0].value)?;
     let idx_val = eval_expr(env, &args[1].value)?;
 
@@ -214,6 +220,9 @@ fn eval_try_from_ordinal(
     args: &[Arg],
     call_span: Span,
 ) -> Result<Value, RuntimeError> {
+    if args.len() < 2 {
+        return Err(RuntimeError::with_span("try_from_ordinal() requires 2 arguments", call_span));
+    }
     let ns_val = eval_expr(env, &args[0].value)?;
     let idx_val = eval_expr(env, &args[1].value)?;
 
@@ -275,6 +284,9 @@ fn eval_len(
     args: &[Arg],
     call_span: Span,
 ) -> Result<Value, RuntimeError> {
+    if args.is_empty() {
+        return Err(RuntimeError::with_span("len() requires 1 argument", call_span));
+    }
     let val = eval_expr(env, &args[0].value)?;
     match &val {
         Value::List(v) => Ok(Value::Int(v.len() as i64)),
@@ -292,6 +304,9 @@ fn eval_keys(
     args: &[Arg],
     call_span: Span,
 ) -> Result<Value, RuntimeError> {
+    if args.is_empty() {
+        return Err(RuntimeError::with_span("keys() requires 1 argument", call_span));
+    }
     let val = eval_expr(env, &args[0].value)?;
     match val {
         Value::Map(m) => Ok(Value::List(m.into_keys().collect())),
@@ -307,6 +322,9 @@ fn eval_values(
     args: &[Arg],
     call_span: Span,
 ) -> Result<Value, RuntimeError> {
+    if args.is_empty() {
+        return Err(RuntimeError::with_span("values() requires 1 argument", call_span));
+    }
     let val = eval_expr(env, &args[0].value)?;
     match val {
         Value::Map(m) => Ok(Value::List(m.into_values().collect())),
@@ -322,6 +340,9 @@ fn eval_first(
     args: &[Arg],
     call_span: Span,
 ) -> Result<Value, RuntimeError> {
+    if args.is_empty() {
+        return Err(RuntimeError::with_span("first() requires 1 argument", call_span));
+    }
     let val = eval_expr(env, &args[0].value)?;
     match val {
         Value::List(v) => Ok(v.into_iter().next()
@@ -339,6 +360,9 @@ fn eval_last(
     args: &[Arg],
     call_span: Span,
 ) -> Result<Value, RuntimeError> {
+    if args.is_empty() {
+        return Err(RuntimeError::with_span("last() requires 1 argument", call_span));
+    }
     let val = eval_expr(env, &args[0].value)?;
     match val {
         Value::List(v) => Ok(v.into_iter().next_back()
@@ -356,6 +380,9 @@ fn eval_append(
     args: &[Arg],
     call_span: Span,
 ) -> Result<Value, RuntimeError> {
+    if args.len() < 2 {
+        return Err(RuntimeError::with_span("append() requires 2 arguments", call_span));
+    }
     let list_val = eval_expr(env, &args[0].value)?;
     let elem_val = eval_expr(env, &args[1].value)?;
     match list_val {
@@ -375,6 +402,9 @@ fn eval_concat(
     args: &[Arg],
     call_span: Span,
 ) -> Result<Value, RuntimeError> {
+    if args.len() < 2 {
+        return Err(RuntimeError::with_span("concat() requires 2 arguments", call_span));
+    }
     let first_val = eval_expr(env, &args[0].value)?;
     let second_val = eval_expr(env, &args[1].value)?;
     match (first_val, &second_val) {
@@ -398,6 +428,9 @@ fn eval_reverse(
     args: &[Arg],
     call_span: Span,
 ) -> Result<Value, RuntimeError> {
+    if args.is_empty() {
+        return Err(RuntimeError::with_span("reverse() requires 1 argument", call_span));
+    }
     let val = eval_expr(env, &args[0].value)?;
     match val {
         Value::List(mut v) => {
@@ -1178,6 +1211,9 @@ fn eval_option_method(
             }
         }
         "unwrap_or" => {
+            if args.is_empty() {
+                return Err(RuntimeError::with_span("unwrap_or() requires 1 argument", span));
+            }
             let default_val = eval_expr(env, &args[0].value)?;
             match value {
                 Value::Option(Some(inner)) => Ok(*inner),

@@ -22,7 +22,10 @@ impl Parser {
                 self.advance();
                 if let TokenKind::Int(n) = self.peek().clone() {
                     self.advance();
-                    Ok(Spanned::new(PatternKind::IntLit(-n), self.end_span(start)))
+                    let negated = n.checked_neg().ok_or_else(|| {
+                        self.error(format!("integer overflow in pattern: -{}", n));
+                    })?;
+                    Ok(Spanned::new(PatternKind::IntLit(negated), self.end_span(start)))
                 } else {
                     self.error(format!("expected integer after '-' in pattern, found {:?}", self.peek()));
                     Err(())
