@@ -54,6 +54,18 @@ impl Parser {
                     ));
                 }
 
+                // Bare `some` without parens — recover as some(_) with diagnostic
+                if name == "some" {
+                    self.error(
+                        "bare `some` in pattern position — use `some(x)` to match or `_` for wildcard"
+                    );
+                    let wildcard = Spanned::new(PatternKind::Wildcard, self.end_span(start));
+                    return Ok(Spanned::new(
+                        PatternKind::Some(Box::new(wildcard)),
+                        self.end_span(start),
+                    ));
+                }
+
                 // Check for qualified: IDENT.IDENT or IDENT.IDENT(...)
                 if matches!(self.peek(), TokenKind::Dot) {
                     self.advance();

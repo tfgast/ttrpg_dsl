@@ -162,6 +162,10 @@ impl Parser {
             }
             end += 1;
         }
+        // If no matching `}` was found, bail out without mutating
+        if depth != 0 {
+            return;
+        }
         // Remove Newline tokens in [self.pos..end)
         let mut i = self.pos;
         while i < end {
@@ -254,6 +258,10 @@ impl Parser {
 
         let mut decls = Vec::new();
         while !matches!(self.peek(), TokenKind::RBrace | TokenKind::Eof) {
+            // If we see a top-level keyword, this system block is missing its closing brace
+            if self.at_ident("system") || self.at_ident("use") {
+                break;
+            }
             let start = self.start_span();
             match self.parse_decl() {
                 Ok(d) => decls.push(Spanned::new(d, self.end_span(start))),
@@ -286,6 +294,9 @@ impl Parser {
                 TokenKind::RBrace if depth > 0 => { depth -= 1; self.advance(); }
                 TokenKind::RBrace => return, // system block's closing brace
                 _ if depth == 0 && self.is_decl_start() => return,
+                // Stop at top-level keywords so an unclosed system block
+                // doesn't consume subsequent system declarations.
+                _ if depth == 0 && (self.at_ident("system") || self.at_ident("use")) => return,
                 _ => { self.advance(); }
             }
         }

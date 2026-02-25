@@ -1557,3 +1557,64 @@ fn struct_lit_with_base_trailing_comma() {
         _ => panic!("expected StructLit"),
     }
 }
+
+// ── Bug repro tests (P1) ──────────────────────────────────────────
+
+/// Bug tdsl-srpf: bare 'some' in pattern is parsed as PatternKind::Ident
+/// (a catch-all binding) instead of being recognized as the option constructor.
+/// match x { some => 10, none => 0 } matches EVERYTHING on the first arm.
+#[test]
+fn bare_some_pattern_is_not_ident_binding() {
+    let (expr, diags) = ttrpg_parser::parse_expr("match x { some => 10, none => 0 }");
+    // After fix: bare `some` emits a diagnostic and recovers as Some(wildcard)
+    assert!(!diags.is_empty(), "expected a diagnostic about bare `some`");
+    let expr = expr.unwrap();
+    match &expr.node {
+        ExprKind::PatternMatch { arms, .. } => {
+            // The first arm pattern should NOT be an ident binding named "some".
+            // It should either be PatternKind::Some (constructor) or produce a diagnostic.
+            match &arms[0].pattern.node {
+                PatternKind::Ident(name) if name == "some" => {
+                    panic!("bare 'some' was parsed as Ident binding — this is bug tdsl-srpf");
+                }
+                _ => {} // any other treatment is acceptable
+            }
+        }
+        _ => panic!("expected PatternMatch"),
+    }
+}
+
+/// Bug tdsl-9h5: when a closing brace is missing, suppress_newlines_in_brace_block
+/// removes ALL newlines to EOF, corrupting the token stream and losing subsequent
+/// declarations.
+#[test]
+fn missing_brace_does_not_corrupt_subsequent_decls() {
+    // First system has a missing closing brace in the derive body.
+    // Second system should still be parseable.
+    let source = r#"system "A" {
+    derive broken() -> int {
+        let x = 1
+        // missing closing brace for derive
+}
+
+system "B" {
+    derive ok() -> int { 42 }
+}
+"#;
+    let (program, diagnostics) = parse(source);
+    // We expect parse errors for the malformed first system, but the second
+    // system should still be recovered. The bug causes all of "B" to be lost.
+    let system_names: Vec<&str> = program.items.iter().filter_map(|item| {
+        match &item.node {
+            TopLevel::System(s) => Some(s.name.as_str()),
+            _ => None,
+        }
+    }).collect();
+    assert!(
+        system_names.contains(&"B"),
+        "system B was lost due to token stream corruption — bug tdsl-9h5.\n\
+         Found systems: {:?}\nDiagnostics: {:?}",
+        system_names,
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}

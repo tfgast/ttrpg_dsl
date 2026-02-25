@@ -131,7 +131,35 @@ fn lower_one_move(
         return None;
     }
 
-    // 2. Check for synthetic name collision
+    // 2. Check for parameter names that conflict with synthesized names
+    const RESERVED_NAMES: &[&str] = &["roll", "result"];
+    for reserved in RESERVED_NAMES {
+        if m.receiver_name == *reserved {
+            diags.push(Diagnostic::error(
+                format!(
+                    "move `{}` receiver '{}' conflicts with synthesized name used in lowering",
+                    m.name, reserved
+                ),
+                span,
+            ));
+            return None;
+        }
+        for p in &m.params {
+            if p.name == *reserved {
+                diags.push(Diagnostic::error(
+                    format!(
+                        "move `{}` parameter '{}' conflicts with synthesized name used in lowering",
+                        m.name, reserved
+                    ),
+                    span,
+                ),
+                );
+                return None;
+            }
+        }
+    }
+
+    // 3. Check for synthetic name collision
     let mechanic_name = synthetic_mechanic_name(&m.name);
     if existing_names.contains(&mechanic_name) {
         diags.push(Diagnostic::error(
@@ -154,7 +182,7 @@ fn lower_one_move(
         return None;
     }
 
-    // 3. Synthesize mechanic FnDecl
+    // 4. Synthesize mechanic FnDecl
     // Parameters: receiver + all move params
     let mut mechanic_params = vec![Param {
         name: m.receiver_name.clone(),
@@ -191,7 +219,7 @@ fn lower_one_move(
         synthetic: true,
     };
 
-    // 4. Synthesize action
+    // 5. Synthesize action
     // Build the resolve block:
     //   let result = __move_roll(receiver, param1, param2, ...)
     //   match {

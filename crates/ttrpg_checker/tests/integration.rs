@@ -6790,3 +6790,109 @@ system "test" {
 }
 "#);
 }
+
+// ═══════════════════════════════════════════════════════════════
+// P1 Bug repro tests
+// ═══════════════════════════════════════════════════════════════
+
+/// Bug tdsl-ehjf: option extends validation checks env.options.contains()
+/// at insert time, so a child option declared before its parent is rejected
+/// with "extends unknown option" even though the parent is defined later in
+/// the same system. The later validate_option_extends only checks circularity.
+#[test]
+fn option_extends_forward_reference_accepted() {
+    // Child declared before parent — should be valid.
+    expect_no_errors(r#"
+system "test" {
+    option flanking extends "base_flanking" {
+        description: "Extended flanking"
+        default: on
+    }
+    option base_flanking {
+        description: "Base flanking rules"
+        default: on
+    }
+}
+"#);
+}
+
+/// Bug tdsl-01n: move lowering synthesizes bare calls to `roll(...)` and to
+/// the generated mechanic name. If a move parameter is named `roll`, the
+/// local binding shadows the builtin, making the generated mechanic body
+/// uncallable after lowering.
+#[test]
+fn move_with_param_named_roll_does_not_shadow_builtin() {
+    let source = r#"
+system "test" {
+    entity Character {
+        stat: int
+    }
+    move GoAggro on actor: Character (roll: int) {
+        trigger: "When you threaten with force"
+        roll: 2d6 + actor.stat
+        on strong_hit {
+            actor.stat += 1
+        }
+        on weak_hit {
+            actor.stat += 0
+        }
+        on miss {
+            actor.stat -= 1
+        }
+    }
+}
+"#;
+    // Fix: lowering now rejects moves with params that conflict with
+    // synthesized names ('roll', 'result').
+    let (_, lower_diags) = lower_source(source);
+    assert!(
+        !lower_diags.is_empty(),
+        "expected a lowering diagnostic about 'roll' parameter conflict"
+    );
+    assert!(
+        lower_diags.iter().any(|d| d.message.contains("roll") && d.message.contains("conflicts")),
+        "expected diagnostic mentioning 'roll' conflict, got: {:?}",
+        lower_diags.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}
+
+/// Bug tdsl-bw0: move lowering introduces a hard-coded `let result = ...`
+/// binding and references it in guard arms. If a move parameter is named
+/// `result`, the synthetic `let result = __mechanic(...)` shadows it, so
+/// outcome bodies that try to use the `result` parameter get the roll result
+/// instead, silently changing behavior or causing type errors.
+#[test]
+fn move_param_named_result_not_captured_by_lowering() {
+    let source = r#"
+system "test" {
+    entity Character {
+        stat: int
+    }
+    move GoAggro on actor: Character (result: int) {
+        trigger: "When you threaten"
+        roll: 2d6 + actor.stat
+        on strong_hit {
+            actor.stat += result
+        }
+        on weak_hit {
+            actor.stat += 0
+        }
+        on miss {
+            actor.stat -= result
+        }
+    }
+}
+"#;
+    // Fix: lowering now rejects moves with params that conflict with
+    // synthesized names ('roll', 'result').
+    let (_, lower_diags) = lower_source(source);
+    assert!(
+        !lower_diags.is_empty(),
+        "expected a lowering diagnostic about 'result' parameter conflict"
+    );
+    assert!(
+        lower_diags.iter().any(|d| d.message.contains("result") && d.message.contains("conflicts")),
+        "expected diagnostic mentioning 'result' conflict, got: {:?}",
+        lower_diags.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}

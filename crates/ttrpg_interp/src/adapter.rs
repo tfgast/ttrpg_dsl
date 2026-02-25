@@ -344,7 +344,7 @@ fn apply_mutation_with_override<S: WritableState>(
         }
         Effect::RemoveCondition { target, condition, params } => {
             if let Value::Str(name) = override_val {
-                state.remove_condition(target, name, None);
+                state.remove_condition(target, name, params.as_ref());
             } else {
                 // Non-string override: fall back to original condition name
                 state.remove_condition(target, condition, params.as_ref());
@@ -475,6 +475,26 @@ pub fn apply_op(op: AssignOp, current: &Value, rhs: &Value) -> Result<Value, Run
                     )))
                 }
             }
+            (Value::Int(a), Value::Float(b)) => {
+                let result = *a as f64 + b;
+                if result.is_finite() {
+                    Ok(Value::Float(result))
+                } else {
+                    Err(RuntimeError::new(format!(
+                        "non-finite float result in += ({} + {})", a, b
+                    )))
+                }
+            }
+            (Value::Float(a), Value::Int(b)) => {
+                let result = a + *b as f64;
+                if result.is_finite() {
+                    Ok(Value::Float(result))
+                } else {
+                    Err(RuntimeError::new(format!(
+                        "non-finite float result in += ({} + {})", a, b
+                    )))
+                }
+            }
             _ => Ok(rhs.clone()), // Fallback for type-checked programs
         },
         AssignOp::MinusEq => match (current, rhs) {
@@ -486,6 +506,26 @@ pub fn apply_op(op: AssignOp, current: &Value, rhs: &Value) -> Result<Value, Run
                 ))),
             (Value::Float(a), Value::Float(b)) => {
                 let result = a - b;
+                if result.is_finite() {
+                    Ok(Value::Float(result))
+                } else {
+                    Err(RuntimeError::new(format!(
+                        "non-finite float result in -= ({} - {})", a, b
+                    )))
+                }
+            }
+            (Value::Int(a), Value::Float(b)) => {
+                let result = *a as f64 - b;
+                if result.is_finite() {
+                    Ok(Value::Float(result))
+                } else {
+                    Err(RuntimeError::new(format!(
+                        "non-finite float result in -= ({} - {})", a, b
+                    )))
+                }
+            }
+            (Value::Float(a), Value::Int(b)) => {
+                let result = a - *b as f64;
                 if result.is_finite() {
                     Ok(Value::Float(result))
                 } else {
@@ -1549,5 +1589,74 @@ mod tests {
             final_state.fields.get(&(1, "hp".into())),
             Some(&Value::Int(i64::MAX)),
         );
+    }
+
+    // ── Bug repro tests (P1) ──────────────────────────────────────
+
+    /// Bug tdsl-jgk: when a float field is unset, -= uses Int(0) default.
+    /// apply_op(MinusEq, Int(0), Float(2.5)) hits the fallback branch and
+    /// returns Float(2.5) instead of the correct Float(-2.5).
+    #[test]
+    fn missing_field_minus_eq_float_gives_correct_result() {
+        let state = TestWritableState::new(); // no fields set
+        let entity = EntityRef(1);
+        let path = [FieldPathSegment::Field("speed".into())];
+
+        let result = compute_field_value(
+            &state, &entity, &path,
+            AssignOp::MinusEq,
+            &Value::Float(2.5),
+            &None,
+        ).unwrap();
+
+        // Correct: 0 - 2.5 = -2.5
+        // Bug: returns Float(2.5) because (Int(0), Float(2.5)) hits fallback
+        assert_eq!(result, Value::Float(-2.5),
+            "bug tdsl-jgk: expected 0 - 2.5 = -2.5, got {:?}", result);
+    }
+
+    /// Bug tdsl-18k: RemoveCondition override with Str replaces condition name
+    /// but drops params, passing None instead of the original params filter.
+    /// This removes ALL conditions with that name instead of just the matching one.
+    #[test]
+    fn remove_condition_override_preserves_params() {
+        let mut state = TestWritableState::new();
+        let entity = EntityRef(1);
+
+        // Add two conditions with same name but different params
+        let mut params_a = BTreeMap::new();
+        params_a.insert("source".into(), Value::Str("fire".into()));
+        let mut params_b = BTreeMap::new();
+        params_b.insert("source".into(), Value::Str("ice".into()));
+
+        state.add_condition(&entity, ActiveCondition {
+            id: 0, name: "Burning".into(), params: params_a.clone(),
+            bearer: entity, gained_at: 0,
+            duration: duration_variant("indefinite"),
+        });
+        state.add_condition(&entity, ActiveCondition {
+            id: 0, name: "Burning".into(), params: params_b.clone(),
+            bearer: entity, gained_at: 0,
+            duration: duration_variant("indefinite"),
+        });
+
+        // Override replaces condition name with "Burning" (same name, Str override).
+        // Original effect has params_a as filter — should only remove the fire one.
+        let effect = Effect::RemoveCondition {
+            target: entity,
+            condition: "Burning".into(),
+            params: Some(params_a.clone()),
+        };
+        let override_val = Value::Str("Burning".into());
+
+        apply_mutation_with_override(&mut state, &effect, &override_val);
+
+        let remaining = state.conditions.get(&entity.0).unwrap();
+        // Bug: None is passed instead of params_a, so BOTH conditions are removed.
+        // Correct: only the fire one should be removed, ice one should remain.
+        assert_eq!(remaining.len(), 1,
+            "bug tdsl-18k: expected 1 remaining condition, got {}", remaining.len());
+        assert_eq!(remaining[0].params, params_b,
+            "the ice condition should remain");
     }
 }

@@ -1069,24 +1069,15 @@ fn collect_option(
         ));
     }
 
-    if let Some(ref parent_name) = o.extends {
-        if !env.options.contains(parent_name) {
-            diagnostics.push(Diagnostic::error(
-                format!(
-                    "option \"{}\" extends unknown option \"{}\"",
-                    o.name, parent_name
-                ),
-                span,
-            ));
-        }
-    }
+    // Note: forward references are allowed — parent validation is deferred
+    // to validate_option_extends() which runs after all options are collected.
 }
 
 /// Validate option extends chains after all options are collected.
-/// Detects circular extends (A→B→A).
+/// Detects unknown parent references and circular extends (A→B→A).
 pub fn validate_option_extends(
     program: &Program,
-    _env: &TypeEnv,
+    env: &TypeEnv,
     diagnostics: &mut Vec<Diagnostic>,
 ) {
     use std::collections::HashMap;
@@ -1102,6 +1093,19 @@ pub fn validate_option_extends(
                     }
                 }
             }
+        }
+    }
+
+    // Check for unknown parent references
+    for (child, (parent, span)) in &extends_map {
+        if !env.options.contains(parent) {
+            diagnostics.push(Diagnostic::error(
+                format!(
+                    "option \"{}\" extends unknown option \"{}\"",
+                    child, parent
+                ),
+                *span,
+            ));
         }
     }
 
