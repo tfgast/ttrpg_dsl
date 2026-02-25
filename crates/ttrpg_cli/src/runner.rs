@@ -508,7 +508,7 @@ impl Runner {
                         )));
                     }
                     Some(fi) => {
-                        if !value_matches_ty(field_val, &fi.ty) {
+                        if !value_matches_ty(field_val, &fi.ty, Some(&*self.game_state.borrow())) {
                             return Err(CliError::Message(format!(
                                 "type mismatch for field '{}': expected {}, got {}",
                                 field_name,
@@ -547,7 +547,7 @@ impl Runner {
                         )));
                     }
                     Some(fi) => {
-                        if !value_matches_ty(field_val, &fi.ty) {
+                        if !value_matches_ty(field_val, &fi.ty, Some(&*self.game_state.borrow())) {
                             return Err(CliError::Message(format!(
                                 "type mismatch for field '{}': expected {}, got {}",
                                 field_name,
@@ -730,7 +730,7 @@ impl Runner {
 
         // Validate type compatibility
         if let Some(ref ty) = expected_ty {
-            if !value_matches_ty(&val, ty) {
+            if !value_matches_ty(&val, ty, Some(&*self.game_state.borrow())) {
                 return Err(CliError::Message(format!(
                     "type mismatch for field '{}': expected {}, got {}",
                     display_path.split('.').next_back().unwrap_or("?"),
@@ -1090,7 +1090,7 @@ impl Runner {
                     )));
                 }
                 Some(fi) => {
-                    if !value_matches_ty(field_val, &fi.ty) {
+                    if !value_matches_ty(field_val, &fi.ty, Some(&*self.game_state.borrow())) {
                         return Err(CliError::Message(format!(
                             "type mismatch for field '{}': expected {}, got {}",
                             field_name,
@@ -2026,7 +2026,10 @@ fn is_valid_handle(s: &str) -> bool {
 
 /// Check that a runtime value matches the declared type, recursing into
 /// container element types (list, set, map, option).
-fn value_matches_ty(val: &Value, ty: &Ty) -> bool {
+///
+/// When `gs` is provided, entity values are checked against their concrete
+/// type (e.g. a `Character` entity won't match a `Monster` field).
+fn value_matches_ty(val: &Value, ty: &Ty, gs: Option<&GameState>) -> bool {
     match (val, ty) {
         (Value::Int(_), Ty::Int | Ty::Resource) => true,
         (Value::Float(_), Ty::Float) => true,
@@ -2034,19 +2037,26 @@ fn value_matches_ty(val: &Value, ty: &Ty) -> bool {
         (Value::Str(_), Ty::String) => true,
         (Value::None, Ty::Option(_)) => true,
         (Value::Option(inner), Ty::Option(inner_ty)) => match inner {
-            Some(v) => value_matches_ty(v, inner_ty),
+            Some(v) => value_matches_ty(v, inner_ty, gs),
             None => true,
         },
-        (Value::Entity(_), Ty::Entity(_) | Ty::AnyEntity) => true,
+        (Value::Entity(_), Ty::AnyEntity) => true,
+        (Value::Entity(eref), Ty::Entity(expected)) => {
+            match gs.and_then(|g| g.entity_type_name(eref)) {
+                Some(actual) => actual == expected.as_str(),
+                // If we can't resolve the entity type, accept it (best-effort)
+                None => true,
+            }
+        }
         (Value::List(elems), Ty::List(elem_ty)) => {
-            elems.iter().all(|e| value_matches_ty(e, elem_ty))
+            elems.iter().all(|e| value_matches_ty(e, elem_ty, gs))
         }
         (Value::Set(elems), Ty::Set(elem_ty)) => {
-            elems.iter().all(|e| value_matches_ty(e, elem_ty))
+            elems.iter().all(|e| value_matches_ty(e, elem_ty, gs))
         }
         (Value::Map(entries), Ty::Map(key_ty, val_ty)) => entries
             .iter()
-            .all(|(k, v)| value_matches_ty(k, key_ty) && value_matches_ty(v, val_ty)),
+            .all(|(k, v)| value_matches_ty(k, key_ty, gs) && value_matches_ty(v, val_ty, gs)),
         (Value::Struct { name, .. }, Ty::Struct(n)) => name == n,
         (Value::Struct { name, .. }, Ty::RollResult) => name == "RollResult",
         (Value::Struct { name, .. }, Ty::TurnBudget) => name == "TurnBudget",
@@ -4099,7 +4109,7 @@ system \"Game\" {
             name: "Damage".into(),
             fields: std::collections::BTreeMap::new(),
         };
-        assert!(!value_matches_ty(&wrong, &Ty::RollResult));
+        assert!(!value_matches_ty(&wrong, &Ty::RollResult, None));
     }
 
     #[test]
@@ -4108,7 +4118,7 @@ system \"Game\" {
             name: "Damage".into(),
             fields: std::collections::BTreeMap::new(),
         };
-        assert!(!value_matches_ty(&wrong, &Ty::TurnBudget));
+        assert!(!value_matches_ty(&wrong, &Ty::TurnBudget, None));
     }
 
     #[test]
@@ -4117,7 +4127,7 @@ system \"Game\" {
             name: "RollResult".into(),
             fields: std::collections::BTreeMap::new(),
         };
-        assert!(value_matches_ty(&correct, &Ty::RollResult));
+        assert!(value_matches_ty(&correct, &Ty::RollResult, None));
     }
 
     #[test]
@@ -4126,6 +4136,56 @@ system \"Game\" {
             name: "TurnBudget".into(),
             fields: std::collections::BTreeMap::new(),
         };
-        assert!(value_matches_ty(&correct, &Ty::TurnBudget));
+        assert!(value_matches_ty(&correct, &Ty::TurnBudget, None));
+    }
+
+    // ── Regression: tdsl-hof — value_matches_ty checks entity concrete type ──
+
+    #[test]
+    fn value_matches_ty_rejects_wrong_entity_type() {
+        let mut gs = GameState::new();
+        let monster = gs.add_entity("Monster", std::collections::HashMap::new());
+
+        // A Monster entity should not match a field typed as Character
+        assert!(!value_matches_ty(
+            &Value::Entity(monster),
+            &Ty::Entity("Character".into()),
+            Some(&gs)
+        ));
+    }
+
+    #[test]
+    fn value_matches_ty_accepts_correct_entity_type() {
+        let mut gs = GameState::new();
+        let character = gs.add_entity("Character", std::collections::HashMap::new());
+
+        assert!(value_matches_ty(
+            &Value::Entity(character),
+            &Ty::Entity("Character".into()),
+            Some(&gs)
+        ));
+    }
+
+    #[test]
+    fn value_matches_ty_entity_any_accepts_all() {
+        let mut gs = GameState::new();
+        let monster = gs.add_entity("Monster", std::collections::HashMap::new());
+
+        // AnyEntity should accept any entity regardless of type
+        assert!(value_matches_ty(
+            &Value::Entity(monster),
+            &Ty::AnyEntity,
+            Some(&gs)
+        ));
+    }
+
+    #[test]
+    fn value_matches_ty_entity_without_state_accepts() {
+        // Without GameState, entity type matching is best-effort (accepts)
+        assert!(value_matches_ty(
+            &Value::Entity(EntityRef(42)),
+            &Ty::Entity("Whatever".into()),
+            None
+        ));
     }
 }
