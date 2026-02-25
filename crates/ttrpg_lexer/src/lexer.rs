@@ -62,7 +62,7 @@ impl<'a> RawLexer<'a> {
         self.cursor.eat_while(|ch| ch.is_ascii_digit());
         let num_end = self.cursor.pos();
         let num_str = self.cursor.slice(first_digit_start, num_end);
-        let count: i64 = num_str.parse().unwrap_or(0);
+        let count_result: Result<i64, _> = num_str.parse();
 
         // Check for dice literal: INT d INT filter?
         // The 'd' must immediately follow the number (no whitespace)
@@ -74,7 +74,32 @@ impl<'a> RawLexer<'a> {
                 self.cursor.eat_while(|ch| ch.is_ascii_digit());
                 let sides_end = self.cursor.pos();
                 let sides_str = self.cursor.slice(sides_start, sides_end);
-                let sides: u32 = sides_str.parse().unwrap_or(0);
+
+                // Validate count fits in u32
+                let count: u32 = match count_result {
+                    Ok(c) if c >= 0 && c <= u32::MAX as i64 => c as u32,
+                    _ => {
+                        let _ = self.try_lex_dice_filter();
+                        let span = Span::new(first_digit_start, self.cursor.pos());
+                        return Token::new(
+                            TokenKind::Error("dice count too large (overflow)".into()),
+                            span,
+                        );
+                    }
+                };
+
+                // Validate sides fits in u32
+                let sides: u32 = match sides_str.parse() {
+                    Ok(s) => s,
+                    Err(_) => {
+                        let _ = self.try_lex_dice_filter();
+                        let span = Span::new(first_digit_start, self.cursor.pos());
+                        return Token::new(
+                            TokenKind::Error("dice sides too large (overflow)".into()),
+                            span,
+                        );
+                    }
+                };
 
                 if sides == 0 {
                     let span = Span::new(first_digit_start, self.cursor.pos());
@@ -85,12 +110,18 @@ impl<'a> RawLexer<'a> {
                 }
 
                 // Check for filter: kh, kl, dh, dl followed by digits
-                let filter = self.try_lex_dice_filter();
+                let filter = match self.try_lex_dice_filter() {
+                    Ok(f) => f,
+                    Err(msg) => {
+                        let span = Span::new(first_digit_start, self.cursor.pos());
+                        return Token::new(TokenKind::Error(msg), span);
+                    }
+                };
 
                 let span = Span::new(first_digit_start, self.cursor.pos());
                 return Token::new(
                     TokenKind::Dice {
-                        count: count as u32,
+                        count,
                         sides,
                         filter,
                     },
@@ -98,6 +129,22 @@ impl<'a> RawLexer<'a> {
                 );
             }
         }
+
+        // Non-dice paths require a valid i64 count
+        let count: i64 = match count_result {
+            Ok(c) => c,
+            Err(_) => {
+                // Consume unit suffix if present so the lexer stays in sync
+                if self.cursor.peek().is_some_and(|ch| ch.is_ascii_alphabetic()) {
+                    self.cursor.eat_while(|ch| ch.is_ascii_alphanumeric() || ch == '_');
+                }
+                let span = Span::new(first_digit_start, self.cursor.pos());
+                return Token::new(
+                    TokenKind::Error("numeric literal too large (overflow)".into()),
+                    span,
+                );
+            }
+        };
 
         // Check for unit literal: INT followed immediately by alpha chars (e.g., 30ft)
         if self.cursor.peek().is_some_and(|ch| ch.is_ascii_alphabetic()) {
@@ -117,21 +164,21 @@ impl<'a> RawLexer<'a> {
         )
     }
 
-    fn try_lex_dice_filter(&mut self) -> Option<DiceFilter> {
-        let first = self.cursor.peek()?;
-        let second = self.cursor.peek_at_offset(1)?;
+    fn try_lex_dice_filter(&mut self) -> Result<Option<DiceFilter>, String> {
+        let Some(first) = self.cursor.peek() else { return Ok(None) };
+        let Some(second) = self.cursor.peek_at_offset(1) else { return Ok(None) };
 
         let filter_kind = match (first, second) {
             ('k', 'h') => 0,
             ('k', 'l') => 1,
             ('d', 'h') => 2,
             ('d', 'l') => 3,
-            _ => return None,
+            _ => return Ok(None),
         };
 
         // Check that the third char is a digit
         if !self.cursor.peek_at_offset(2).is_some_and(|ch| ch.is_ascii_digit()) {
-            return None;
+            return Ok(None);
         }
 
         self.cursor.advance(); // k/d
@@ -139,15 +186,16 @@ impl<'a> RawLexer<'a> {
         let start = self.cursor.pos();
         self.cursor.eat_while(|ch| ch.is_ascii_digit());
         let end = self.cursor.pos();
-        let n: u32 = self.cursor.slice(start, end).parse().unwrap_or(0);
+        let n: u32 = self.cursor.slice(start, end).parse()
+            .map_err(|_| "dice filter count too large (overflow)".to_string())?;
 
-        Some(match filter_kind {
+        Ok(Some(match filter_kind {
             0 => DiceFilter::KeepHighest(n),
             1 => DiceFilter::KeepLowest(n),
             2 => DiceFilter::DropHighest(n),
             3 => DiceFilter::DropLowest(n),
             _ => unreachable!(),
-        })
+        }))
     }
 
     fn lex_ident_or_keyword(&mut self, start: usize) -> Token {

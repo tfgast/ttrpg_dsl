@@ -214,8 +214,8 @@ impl TypeEnv {
             // For TurnBudget and Duration: prefer user-defined types if they exist
             TypeExpr::TurnBudget => self.resolve_named_or("TurnBudget", Ty::TurnBudget),
             TypeExpr::Duration => self.resolve_named_or("Duration", Ty::Duration),
-            TypeExpr::Position => Ty::Position,
-            TypeExpr::Condition => Ty::Condition,
+            TypeExpr::Position => self.resolve_named_or("Position", Ty::Position),
+            TypeExpr::Condition => self.resolve_named_or("Condition", Ty::Condition),
             TypeExpr::Named(name) => {
                 if let Some(decl) = self.types.get(name) {
                     match decl {

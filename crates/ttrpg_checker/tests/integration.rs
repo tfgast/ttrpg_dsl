@@ -6896,3 +6896,122 @@ system "test" {
         lower_diags.iter().map(|d| &d.message).collect::<Vec<_>>()
     );
 }
+
+// ── Regression: tdsl-7rw — narrowing leaks across shadowed bindings ──
+
+#[test]
+fn test_narrowing_does_not_leak_across_shadowed_binding() {
+    // The parameter `actor` is narrowed with Spellcasting. The for-loop
+    // rebinds `actor` to each Character from `targets` (no narrowing proof).
+    // Accessing actor.Spellcasting inside the for-loop should be an error
+    // because the inner `actor` has no proof. The bug in is_group_narrowed
+    // causes it to find the outer scope's proof for the shadowed name.
+    let source = r#"
+system "test" {
+    entity Character {
+        HP: int
+        optional Spellcasting {
+            spell_slots: int
+        }
+    }
+    action Buff on actor: Character with Spellcasting (targets: list<Character>) {
+        resolve {
+            for actor in targets {
+                actor.Spellcasting.spell_slots
+            }
+        }
+    }
+}
+"#;
+    expect_errors(source, &["requires a `has` guard"]);
+}
+
+#[test]
+fn test_narrowing_valid_with_proof_still_works() {
+    // Sanity check: narrowing via `has` guard should allow access
+    let source = r#"
+system "test" {
+    entity Character {
+        HP: int
+        optional Spellcasting {
+            spell_slots: int
+        }
+    }
+    derive check_narrowing(actor: Character) -> int {
+        if actor has Spellcasting {
+            actor.Spellcasting.spell_slots
+        } else {
+            0
+        }
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+// ── Regression: tdsl-a623 — Position/Condition type override ─────────
+
+#[test]
+fn test_user_defined_position_type_accepted() {
+    // User declares their own Position type. It should be usable in annotations,
+    // just like TurnBudget and Duration can be overridden.
+    let source = r#"
+system "test" {
+    entity Character { HP: int }
+
+    struct Position {
+        x: int
+        y: int
+    }
+
+    derive get_origin() -> Position {
+        Position { x: 0, y: 0 }
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_user_defined_position_rejects_unknown_field() {
+    // User overrides Position — accessing a non-existent field should error
+    let source = r#"
+system "test" {
+    entity Character { HP: int }
+
+    struct Position {
+        x: int
+        y: int
+    }
+
+    derive bad_access() -> int {
+        let p = Position { x: 0, y: 0 }
+        p.z
+    }
+}
+"#;
+    expect_errors(source, &["no field `z`"]);
+}
+
+#[test]
+fn test_user_defined_condition_enum_field_type() {
+    // User declares an enum named Condition. Using it as a field type
+    // should resolve to the user-defined enum, not the builtin Ty::Condition.
+    // If the bug is present, the return type `Condition` resolves to
+    // Ty::Condition (builtin) while the body produces Ty::Enum("Condition"),
+    // causing a type mismatch.
+    let source = r#"
+system "test" {
+    entity Character { HP: int }
+    enum Condition {
+        poisoned
+        paralyzed
+        stunned
+    }
+    derive get_status() -> Condition {
+        poisoned
+    }
+}
+"#;
+    expect_no_errors(source);
+}

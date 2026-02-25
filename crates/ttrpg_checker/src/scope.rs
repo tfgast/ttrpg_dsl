@@ -185,6 +185,11 @@ impl ScopeStack {
                     return true;
                 }
             }
+            // Stop at the scope that binds this variable — narrowing from
+            // outer scopes applies to the outer binding, not a shadowed one.
+            if scope.bindings.contains_key(var) {
+                return false;
+            }
         }
         false
     }

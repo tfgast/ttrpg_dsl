@@ -173,7 +173,10 @@ impl EffectHandler for CliHandler<'_> {
                 let name = self.entity_name(&entity);
                 let field_str = format_path(&path);
                 let old = adapter::read_at_path(&*self.game_state.borrow(), &entity, &path)
-                    .unwrap_or(Value::None);
+                    .unwrap_or_else(|| match op {
+                        AssignOp::PlusEq | AssignOp::MinusEq => Value::Int(0),
+                        AssignOp::Eq => Value::None,
+                    });
                 let new_val = match adapter::compute_field_value(
                     &*self.game_state.borrow(),
                     &entity,
@@ -928,6 +931,86 @@ mod tests {
         assert_eq!(
             game_state.borrow().read_field(&entity, "HP"),
             Some(Value::Int(30)),
+        );
+    }
+
+    // ── Regression: tdsl-4uk — MutateField audit on missing field with bounds ──
+
+    #[test]
+    fn cli_handler_mutate_missing_field_plus_eq_log_shows_zero_baseline() {
+        // When a field doesn't exist, compute_field_value uses Int(0) as baseline
+        // for +=. The audit log should show "0 -> 5", not "none -> 5".
+        let mut gs = GameState::new();
+        let entity = gs.add_entity("Fighter", HashMap::new());
+        let game_state = RefCell::new(gs);
+        let mut reverse = HashMap::new();
+        reverse.insert(entity, "fighter".to_string());
+        let mut rng = StdRng::seed_from_u64(42);
+        let mut queue = VecDeque::new();
+        let mut handler = CliHandler::new(&game_state, &reverse, &mut rng, &mut queue);
+
+        let effect = Effect::MutateField {
+            entity,
+            path: vec![FieldPathSegment::Field("HP".into())],
+            op: AssignOp::PlusEq,
+            value: Value::Int(5),
+            bounds: Some((Value::Int(0), Value::Int(100))),
+        };
+        let response = handler.handle(effect);
+        assert!(matches!(response, Response::Acknowledged));
+        assert_eq!(handler.log.len(), 1);
+
+        // Log should show 0 as baseline (matching compute_field_value), not "none"
+        assert!(
+            handler.log[0].contains("0 -> 5"),
+            "expected log to show '0 -> 5' (the compute baseline), got: {}",
+            handler.log[0],
+        );
+        assert!(
+            !handler.log[0].contains("none"),
+            "log should not show 'none' as old value; got: {}",
+            handler.log[0],
+        );
+    }
+
+    #[test]
+    fn cli_handler_mutate_missing_field_minus_eq_log_shows_zero_baseline() {
+        // -= on missing field: compute baseline is 0, so 0 - 10 = -10, clamped to 0.
+        // Log should show "0 -> 0 (clamped)", not "none -> 0 (clamped)".
+        let mut gs = GameState::new();
+        let entity = gs.add_entity("Fighter", HashMap::new());
+        let game_state = RefCell::new(gs);
+        let mut reverse = HashMap::new();
+        reverse.insert(entity, "fighter".to_string());
+        let mut rng = StdRng::seed_from_u64(42);
+        let mut queue = VecDeque::new();
+        let mut handler = CliHandler::new(&game_state, &reverse, &mut rng, &mut queue);
+
+        let effect = Effect::MutateField {
+            entity,
+            path: vec![FieldPathSegment::Field("HP".into())],
+            op: AssignOp::MinusEq,
+            value: Value::Int(10),
+            bounds: Some((Value::Int(0), Value::Int(100))),
+        };
+        let response = handler.handle(effect);
+        assert!(matches!(response, Response::Acknowledged));
+        assert_eq!(handler.log.len(), 1);
+
+        assert!(
+            handler.log[0].contains("0 -> 0"),
+            "expected log to show '0 -> 0' (the compute baseline), got: {}",
+            handler.log[0],
+        );
+        assert!(
+            handler.log[0].contains("(clamped)"),
+            "expected (clamped) in log; got: {}",
+            handler.log[0],
+        );
+        assert!(
+            !handler.log[0].contains("none"),
+            "log should not show 'none' as old value; got: {}",
+            handler.log[0],
         );
     }
 }
