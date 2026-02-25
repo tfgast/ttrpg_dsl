@@ -175,6 +175,13 @@ pub(crate) fn eval_expr(env: &mut Env, expr: &Spanned<ExprKind>) -> Result<Value
             body,
         } => eval_for(env, pattern, iterable, body),
 
+        ExprKind::ListComprehension {
+            element,
+            pattern,
+            iterable,
+            filter,
+        } => eval_list_comprehension(env, element, pattern, iterable, filter.as_deref()),
+
         ExprKind::Has { entity, group_name } => {
             let entity_val = eval_expr(env, entity)?;
             let entity_ref = match entity_val {
@@ -997,6 +1004,86 @@ fn eval_for(
     }
 
     Ok(Value::None)
+}
+
+fn eval_list_comprehension(
+    env: &mut Env,
+    element: &Spanned<ExprKind>,
+    pattern: &Spanned<PatternKind>,
+    iterable: &ForIterable,
+    filter: Option<&Spanned<ExprKind>>,
+) -> Result<Value, RuntimeError> {
+    let items: Vec<Value> = match iterable {
+        ForIterable::Collection(expr) => match eval_expr(env, expr)? {
+            Value::List(items) => items,
+            Value::Set(items) => items.into_iter().collect(),
+            other => {
+                return Err(RuntimeError::with_span(
+                    format!("expected list or set, got {}", type_name(&other)),
+                    expr.span,
+                ));
+            }
+        },
+        ForIterable::Range { start, end, inclusive } => {
+            let s = match eval_expr(env, start)? {
+                Value::Int(n) => n,
+                other => {
+                    return Err(RuntimeError::with_span(
+                        format!("range start must be int, got {}", type_name(&other)),
+                        start.span,
+                    ));
+                }
+            };
+            let e = match eval_expr(env, end)? {
+                Value::Int(n) => n,
+                other => {
+                    return Err(RuntimeError::with_span(
+                        format!("range end must be int, got {}", type_name(&other)),
+                        end.span,
+                    ));
+                }
+            };
+            if *inclusive {
+                (s..=e).map(Value::Int).collect()
+            } else {
+                (s..e).map(Value::Int).collect()
+            }
+        }
+    };
+
+    let mut collected = Vec::new();
+    for item in items {
+        let mut bindings = std::collections::HashMap::new();
+        if match_pattern(env, &pattern.node, &item, &mut bindings) {
+            env.push_scope();
+            for (name, val) in bindings {
+                env.bind(name, val);
+            }
+
+            let include = if let Some(filter_expr) = filter {
+                match eval_expr(env, filter_expr)? {
+                    Value::Bool(b) => b,
+                    _ => {
+                        env.pop_scope();
+                        return Err(RuntimeError::with_span(
+                            "list comprehension filter must be bool",
+                            filter_expr.span,
+                        ));
+                    }
+                }
+            } else {
+                true
+            };
+
+            if include {
+                let val = eval_expr(env, element)?;
+                collected.push(val);
+            }
+            env.pop_scope();
+        }
+    }
+
+    Ok(Value::List(collected))
 }
 
 // ── Block evaluation ───────────────────────────────────────────
@@ -2335,6 +2422,19 @@ fn collect_idents(expr: &Spanned<ExprKind>, out: &mut Vec<Name>) {
                 }
             }
             collect_idents_block(body, out);
+        }
+        ExprKind::ListComprehension { element, iterable, filter, .. } => {
+            match iterable {
+                ForIterable::Collection(expr) => collect_idents(expr, out),
+                ForIterable::Range { start, end, .. } => {
+                    collect_idents(start, out);
+                    collect_idents(end, out);
+                }
+            }
+            collect_idents(element, out);
+            if let Some(f) = filter {
+                collect_idents(f, out);
+            }
         }
         ExprKind::Has { entity, .. } => collect_idents(entity, out),
         _ => {}

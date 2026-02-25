@@ -459,6 +459,14 @@ impl VisitSpansMut for ExprKind {
                 iterable.visit_spans_mut(f);
                 body.visit_spans_mut(f);
             }
+            ExprKind::ListComprehension { element, pattern, iterable, filter } => {
+                element.visit_spans_mut(f);
+                pattern.visit_spans_mut(f);
+                iterable.visit_spans_mut(f);
+                if let Some(f_expr) = filter {
+                    f_expr.visit_spans_mut(f);
+                }
+            }
             ExprKind::Has { entity, .. } => {
                 entity.visit_spans_mut(f);
             }

@@ -502,3 +502,494 @@ system "test" {
         .unwrap();
     assert_eq!(val, Value::Option(Some(Box::new(Value::Int(3)))));
 }
+
+// ── sum ─────────────────────────────────────────────────────────
+
+#[test]
+fn sum_of_ints() {
+    let source = r#"
+system "test" {
+    derive f(xs: list<int>) -> int {
+        sum(xs)
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NoopHandler;
+
+    let val = interp
+        .evaluate_derive(&state, &mut handler, "f", vec![
+            Value::List(vec![Value::Int(1), Value::Int(2), Value::Int(3)]),
+        ])
+        .unwrap();
+    assert_eq!(val, Value::Int(6));
+}
+
+#[test]
+fn sum_of_empty_list() {
+    let source = r#"
+system "test" {
+    derive f(xs: list<int>) -> int {
+        sum(xs)
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NoopHandler;
+
+    let val = interp
+        .evaluate_derive(&state, &mut handler, "f", vec![Value::List(vec![])])
+        .unwrap();
+    assert_eq!(val, Value::Int(0));
+}
+
+#[test]
+fn sum_method_on_list() {
+    let source = r#"
+system "test" {
+    derive f(xs: list<int>) -> int {
+        xs.sum()
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NoopHandler;
+
+    let val = interp
+        .evaluate_derive(&state, &mut handler, "f", vec![
+            Value::List(vec![Value::Int(1), Value::Int(2), Value::Int(3)]),
+        ])
+        .unwrap();
+    assert_eq!(val, Value::Int(6));
+}
+
+// ── any / all ───────────────────────────────────────────────────
+
+#[test]
+fn any_with_true() {
+    let source = r#"
+system "test" {
+    derive f(xs: list<bool>) -> bool {
+        any(xs)
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NoopHandler;
+
+    let val = interp
+        .evaluate_derive(&state, &mut handler, "f", vec![
+            Value::List(vec![Value::Bool(false), Value::Bool(true)]),
+        ])
+        .unwrap();
+    assert_eq!(val, Value::Bool(true));
+}
+
+#[test]
+fn any_all_false() {
+    let source = r#"
+system "test" {
+    derive f(xs: list<bool>) -> bool {
+        any(xs)
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NoopHandler;
+
+    let val = interp
+        .evaluate_derive(&state, &mut handler, "f", vec![
+            Value::List(vec![Value::Bool(false), Value::Bool(false)]),
+        ])
+        .unwrap();
+    assert_eq!(val, Value::Bool(false));
+}
+
+#[test]
+fn any_empty() {
+    let source = r#"
+system "test" {
+    derive f(xs: list<bool>) -> bool {
+        any(xs)
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NoopHandler;
+
+    let val = interp
+        .evaluate_derive(&state, &mut handler, "f", vec![Value::List(vec![])])
+        .unwrap();
+    assert_eq!(val, Value::Bool(false));
+}
+
+#[test]
+fn all_true() {
+    let source = r#"
+system "test" {
+    derive f(xs: list<bool>) -> bool {
+        all(xs)
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NoopHandler;
+
+    let val = interp
+        .evaluate_derive(&state, &mut handler, "f", vec![
+            Value::List(vec![Value::Bool(true), Value::Bool(true)]),
+        ])
+        .unwrap();
+    assert_eq!(val, Value::Bool(true));
+}
+
+#[test]
+fn all_with_false() {
+    let source = r#"
+system "test" {
+    derive f(xs: list<bool>) -> bool {
+        all(xs)
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NoopHandler;
+
+    let val = interp
+        .evaluate_derive(&state, &mut handler, "f", vec![
+            Value::List(vec![Value::Bool(true), Value::Bool(false)]),
+        ])
+        .unwrap();
+    assert_eq!(val, Value::Bool(false));
+}
+
+#[test]
+fn all_empty() {
+    let source = r#"
+system "test" {
+    derive f(xs: list<bool>) -> bool {
+        all(xs)
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NoopHandler;
+
+    let val = interp
+        .evaluate_derive(&state, &mut handler, "f", vec![Value::List(vec![])])
+        .unwrap();
+    assert_eq!(val, Value::Bool(true));
+}
+
+#[test]
+fn any_method_on_list() {
+    let source = r#"
+system "test" {
+    derive f(xs: list<bool>) -> bool {
+        xs.any()
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NoopHandler;
+
+    let val = interp
+        .evaluate_derive(&state, &mut handler, "f", vec![
+            Value::List(vec![Value::Bool(false), Value::Bool(true)]),
+        ])
+        .unwrap();
+    assert_eq!(val, Value::Bool(true));
+}
+
+#[test]
+fn all_method_on_list() {
+    let source = r#"
+system "test" {
+    derive f(xs: list<bool>) -> bool {
+        xs.all()
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NoopHandler;
+
+    let val = interp
+        .evaluate_derive(&state, &mut handler, "f", vec![
+            Value::List(vec![Value::Bool(true), Value::Bool(true)]),
+        ])
+        .unwrap();
+    assert_eq!(val, Value::Bool(true));
+}
+
+// ── sort ────────────────────────────────────────────────────────
+
+#[test]
+fn sort_ints() {
+    let source = r#"
+system "test" {
+    derive f(xs: list<int>) -> list<int> {
+        sort(xs)
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NoopHandler;
+
+    let val = interp
+        .evaluate_derive(&state, &mut handler, "f", vec![
+            Value::List(vec![Value::Int(3), Value::Int(1), Value::Int(2)]),
+        ])
+        .unwrap();
+    assert_eq!(val, Value::List(vec![Value::Int(1), Value::Int(2), Value::Int(3)]));
+}
+
+#[test]
+fn sort_method_on_list() {
+    let source = r#"
+system "test" {
+    derive f(xs: list<int>) -> list<int> {
+        xs.sort()
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NoopHandler;
+
+    let val = interp
+        .evaluate_derive(&state, &mut handler, "f", vec![
+            Value::List(vec![Value::Int(3), Value::Int(1), Value::Int(2)]),
+        ])
+        .unwrap();
+    assert_eq!(val, Value::List(vec![Value::Int(1), Value::Int(2), Value::Int(3)]));
+}
+
+// ── list comprehension ──────────────────────────────────────────
+
+#[test]
+fn list_comprehension_basic_transform() {
+    let source = r#"
+system "test" {
+    derive f(xs: list<int>) -> list<int> {
+        [x + 1 for x in xs]
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NoopHandler;
+
+    let val = interp
+        .evaluate_derive(&state, &mut handler, "f", vec![
+            Value::List(vec![Value::Int(1), Value::Int(2), Value::Int(3)]),
+        ])
+        .unwrap();
+    assert_eq!(val, Value::List(vec![Value::Int(2), Value::Int(3), Value::Int(4)]));
+}
+
+#[test]
+fn list_comprehension_with_filter() {
+    let source = r#"
+system "test" {
+    derive f(xs: list<int>) -> list<int> {
+        [x for x in xs if x > 0]
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NoopHandler;
+
+    let val = interp
+        .evaluate_derive(&state, &mut handler, "f", vec![
+            Value::List(vec![Value::Int(-1), Value::Int(0), Value::Int(2), Value::Int(3)]),
+        ])
+        .unwrap();
+    assert_eq!(val, Value::List(vec![Value::Int(2), Value::Int(3)]));
+}
+
+#[test]
+fn list_comprehension_range() {
+    let source = r#"
+system "test" {
+    derive f() -> list<int> {
+        [i * 2 for i in 0..5]
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NoopHandler;
+
+    let val = interp
+        .evaluate_derive(&state, &mut handler, "f", vec![])
+        .unwrap();
+    assert_eq!(val, Value::List(vec![
+        Value::Int(0), Value::Int(2), Value::Int(4), Value::Int(6), Value::Int(8),
+    ]));
+}
+
+#[test]
+fn list_comprehension_inclusive_range() {
+    let source = r#"
+system "test" {
+    derive f() -> list<int> {
+        [i for i in 1..=3]
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NoopHandler;
+
+    let val = interp
+        .evaluate_derive(&state, &mut handler, "f", vec![])
+        .unwrap();
+    assert_eq!(val, Value::List(vec![Value::Int(1), Value::Int(2), Value::Int(3)]));
+}
+
+#[test]
+fn list_comprehension_pattern_filtering() {
+    let source = r#"
+system "test" {
+    derive f(opts: list<option<int>>) -> list<int> {
+        [x for some(x) in opts]
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NoopHandler;
+
+    let val = interp
+        .evaluate_derive(&state, &mut handler, "f", vec![
+            Value::List(vec![
+                Value::Option(Some(Box::new(Value::Int(1)))),
+                Value::None,
+                Value::Option(Some(Box::new(Value::Int(3)))),
+            ]),
+        ])
+        .unwrap();
+    assert_eq!(val, Value::List(vec![Value::Int(1), Value::Int(3)]));
+}
+
+#[test]
+fn list_comprehension_empty_result() {
+    let source = r#"
+system "test" {
+    derive f(xs: list<int>) -> list<int> {
+        [x for x in xs if x > 100]
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NoopHandler;
+
+    let val = interp
+        .evaluate_derive(&state, &mut handler, "f", vec![
+            Value::List(vec![Value::Int(1), Value::Int(2), Value::Int(3)]),
+        ])
+        .unwrap();
+    assert_eq!(val, Value::List(vec![]));
+}
+
+// ── composition: comprehension + aggregation ────────────────────
+
+#[test]
+fn sum_of_comprehension() {
+    let source = r#"
+system "test" {
+    derive f(xs: list<int>) -> int {
+        sum([x * x for x in xs])
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NoopHandler;
+
+    let val = interp
+        .evaluate_derive(&state, &mut handler, "f", vec![
+            Value::List(vec![Value::Int(1), Value::Int(2), Value::Int(3)]),
+        ])
+        .unwrap();
+    // 1 + 4 + 9 = 14
+    assert_eq!(val, Value::Int(14));
+}
+
+#[test]
+fn sort_of_comprehension() {
+    let source = r#"
+system "test" {
+    derive f(xs: list<int>) -> list<int> {
+        sort([x * 2 for x in xs])
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NoopHandler;
+
+    let val = interp
+        .evaluate_derive(&state, &mut handler, "f", vec![
+            Value::List(vec![Value::Int(3), Value::Int(1), Value::Int(2)]),
+        ])
+        .unwrap();
+    assert_eq!(val, Value::List(vec![Value::Int(2), Value::Int(4), Value::Int(6)]));
+}
+
+#[test]
+fn comprehension_range_with_filter() {
+    let source = r#"
+system "test" {
+    derive f() -> list<int> {
+        [i for i in 0..10 if i > 5]
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NoopHandler;
+
+    let val = interp
+        .evaluate_derive(&state, &mut handler, "f", vec![])
+        .unwrap();
+    assert_eq!(val, Value::List(vec![
+        Value::Int(6), Value::Int(7), Value::Int(8), Value::Int(9),
+    ]));
+}

@@ -7707,3 +7707,133 @@ system "Main" {
 "#),
     ]);
 }
+
+// ── aggregation builtins type checking ──────────────────────────
+
+#[test]
+fn test_sum_type_checks_int_list() {
+    expect_no_errors(r#"
+system "test" {
+    derive f(xs: list<int>) -> int { sum(xs) }
+}
+"#);
+}
+
+#[test]
+fn test_sum_rejects_non_numeric_list() {
+    expect_errors(r#"
+system "test" {
+    derive f(xs: list<bool>) -> int { sum(xs) }
+}
+"#, &["`sum` requires list<int> or list<float>"]);
+}
+
+#[test]
+fn test_any_type_checks_bool_list() {
+    expect_no_errors(r#"
+system "test" {
+    derive f(xs: list<bool>) -> bool { any(xs) }
+}
+"#);
+}
+
+#[test]
+fn test_any_rejects_non_bool_list() {
+    expect_errors(r#"
+system "test" {
+    derive f(xs: list<int>) -> bool { any(xs) }
+}
+"#, &["`any` requires list<bool>"]);
+}
+
+#[test]
+fn test_all_rejects_non_bool_list() {
+    expect_errors(r#"
+system "test" {
+    derive f(xs: list<int>) -> bool { all(xs) }
+}
+"#, &["`all` requires list<bool>"]);
+}
+
+#[test]
+fn test_sort_type_checks() {
+    expect_no_errors(r#"
+system "test" {
+    derive f(xs: list<int>) -> list<int> { sort(xs) }
+}
+"#);
+}
+
+// ── list comprehension type checking ────────────────────────────
+
+#[test]
+fn test_list_comprehension_type_checks() {
+    expect_no_errors(r#"
+system "test" {
+    derive f(xs: list<int>) -> list<int> { [x + 1 for x in xs] }
+}
+"#);
+}
+
+#[test]
+fn test_list_comprehension_filter_type_checks() {
+    expect_no_errors(r#"
+system "test" {
+    derive f(xs: list<int>) -> list<int> { [x for x in xs if x > 0] }
+}
+"#);
+}
+
+#[test]
+fn test_list_comprehension_filter_non_bool_error() {
+    expect_errors(r#"
+system "test" {
+    derive f(xs: list<int>) -> list<int> { [x for x in xs if x + 1] }
+}
+"#, &["list comprehension filter must be bool"]);
+}
+
+#[test]
+fn test_list_comprehension_non_iterable_error() {
+    expect_errors(r#"
+system "test" {
+    derive f(x: int) -> list<int> { [x for x in x] }
+}
+"#, &["expected list or set"]);
+}
+
+#[test]
+fn test_list_comprehension_range() {
+    expect_no_errors(r#"
+system "test" {
+    derive f() -> list<int> { [i * 2 for i in 0..5] }
+}
+"#);
+}
+
+#[test]
+fn test_sum_of_comprehension_type_checks() {
+    expect_no_errors(r#"
+system "test" {
+    derive f(xs: list<int>) -> int { sum([x * x for x in xs]) }
+}
+"#);
+}
+
+#[test]
+fn test_list_comprehension_method_sum() {
+    expect_no_errors(r#"
+system "test" {
+    derive f(xs: list<int>) -> int { [x * x for x in xs].sum() }
+}
+"#);
+}
+
+#[test]
+fn test_list_comprehension_with_option_pattern() {
+    expect_no_errors(r#"
+system "test" {
+    derive f(xs: list<option<int>>) -> list<int> { [x for some(x) in xs] }
+}
+"#);
+}

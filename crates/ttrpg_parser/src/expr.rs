@@ -293,11 +293,51 @@ impl Parser {
             }
 
             TokenKind::LBracket => {
-                // List literal: [ expr, ... ]
+                // List literal or list comprehension: [ expr, ... ] or [ expr for pattern in iterable if cond ]
                 self.advance();
-                let mut items = Vec::new();
-                if !matches!(self.peek(), TokenKind::RBracket) {
-                    items.push(self.parse_expr()?);
+                if matches!(self.peek(), TokenKind::RBracket) {
+                    // Empty list: []
+                    self.advance();
+                    return Ok(Spanned::new(ExprKind::ListLit(vec![]), self.end_span(start)));
+                }
+                let first = self.parse_expr()?;
+                if matches!(self.peek(), TokenKind::For) {
+                    // List comprehension: [expr for pattern in iterable (if cond)?]
+                    self.advance(); // consume `for`
+                    let pattern = self.parse_pattern()?;
+                    self.expect(&TokenKind::In)?;
+                    let iter_first = self.parse_expr()?;
+                    let iterable = if matches!(self.peek(), TokenKind::DotDot | TokenKind::DotDotEq) {
+                        let inclusive = matches!(self.peek(), TokenKind::DotDotEq);
+                        self.advance();
+                        let end = self.parse_expr()?;
+                        ForIterable::Range {
+                            start: Box::new(iter_first),
+                            end: Box::new(end),
+                            inclusive,
+                        }
+                    } else {
+                        ForIterable::Collection(Box::new(iter_first))
+                    };
+                    let filter = if matches!(self.peek(), TokenKind::If) {
+                        self.advance();
+                        Some(Box::new(self.parse_expr()?))
+                    } else {
+                        None
+                    };
+                    self.expect(&TokenKind::RBracket)?;
+                    Ok(Spanned::new(
+                        ExprKind::ListComprehension {
+                            element: Box::new(first),
+                            pattern: Box::new(pattern),
+                            iterable,
+                            filter,
+                        },
+                        self.end_span(start),
+                    ))
+                } else {
+                    // Regular list literal
+                    let mut items = vec![first];
                     while matches!(self.peek(), TokenKind::Comma) {
                         self.advance();
                         if matches!(self.peek(), TokenKind::RBracket) {
@@ -305,9 +345,9 @@ impl Parser {
                         }
                         items.push(self.parse_expr()?);
                     }
+                    self.expect(&TokenKind::RBracket)?;
+                    Ok(Spanned::new(ExprKind::ListLit(items), self.end_span(start)))
                 }
-                self.expect(&TokenKind::RBracket)?;
-                Ok(Spanned::new(ExprKind::ListLit(items), self.end_span(start)))
             }
 
             TokenKind::LBrace => {

@@ -20,6 +20,7 @@ const DSL_KEYWORDS: &[&str] = &[
     // collection builtins
     "len", "keys", "values", "first", "last",
     "append", "concat", "reverse",
+    "sum", "any", "all", "sort",
 ];
 
 /// Method names available after a dot, grouped by type.
@@ -27,6 +28,7 @@ const DSL_KEYWORDS: &[&str] = &[
 const DOT_METHODS: &[&str] = &[
     // list
     "len", "first", "last", "reverse", "append", "concat",
+    "sum", "any", "all", "sort",
     // set
     // (len already listed)
     // map

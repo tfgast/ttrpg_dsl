@@ -502,8 +502,10 @@ struct_body     = struct_field ("," struct_field)* ("," ".." expr)? ","?
                 | ".." expr ","?
 struct_field    = IDENT ":" expr
 
-// --- List literal ---
-list_lit        = "[" (expr ("," expr)* ","?)? "]"
+// --- List literal / list comprehension ---
+list_lit            = "[" (list_comprehension | list_elements)? "]"
+list_elements       = expr ("," expr)* ","?
+list_comprehension  = expr "for" pattern "in" for_source ("if" expr)?
 
 // --- If expression ---
 //

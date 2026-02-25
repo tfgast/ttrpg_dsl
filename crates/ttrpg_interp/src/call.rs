@@ -58,6 +58,10 @@ pub(crate) fn eval_call(
                 "append" => return eval_append(env, args, call_span),
                 "concat" => return eval_concat(env, args, call_span),
                 "reverse" => return eval_reverse(env, args, call_span),
+                "sum" => return eval_sum(env, args, call_span),
+                "any" => return eval_any(env, args, call_span),
+                "all" => return eval_all(env, args, call_span),
+                "sort" => return eval_sort(env, args, call_span),
                 _ => {}
             }
 
@@ -446,6 +450,145 @@ fn eval_reverse(
         }
         _ => Err(RuntimeError::with_span(
             format!("reverse() expects a list, got {}", type_name(&val)),
+            call_span,
+        )),
+    }
+}
+
+fn eval_sum(
+    env: &mut Env,
+    args: &[Arg],
+    call_span: Span,
+) -> Result<Value, RuntimeError> {
+    if args.is_empty() {
+        return Err(RuntimeError::with_span("sum() requires 1 argument", call_span));
+    }
+    let val = eval_expr(env, &args[0].value)?;
+    match val {
+        Value::List(v) => {
+            if v.is_empty() {
+                return Ok(Value::Int(0));
+            }
+            let mut int_sum: i64 = 0;
+            let mut float_sum: f64 = 0.0;
+            let mut is_float = false;
+            for item in &v {
+                match item {
+                    Value::Int(n) => {
+                        if is_float {
+                            float_sum += *n as f64;
+                        } else {
+                            int_sum += n;
+                        }
+                    }
+                    Value::Float(f) => {
+                        if !is_float {
+                            is_float = true;
+                            float_sum = int_sum as f64;
+                        }
+                        float_sum += f;
+                    }
+                    _ => {
+                        return Err(RuntimeError::with_span(
+                            format!("sum() requires list of int or float, got {}", type_name(item)),
+                            call_span,
+                        ));
+                    }
+                }
+            }
+            if is_float {
+                Ok(Value::Float(float_sum))
+            } else {
+                Ok(Value::Int(int_sum))
+            }
+        }
+        _ => Err(RuntimeError::with_span(
+            format!("sum() expects a list, got {}", type_name(&val)),
+            call_span,
+        )),
+    }
+}
+
+fn eval_any(
+    env: &mut Env,
+    args: &[Arg],
+    call_span: Span,
+) -> Result<Value, RuntimeError> {
+    if args.is_empty() {
+        return Err(RuntimeError::with_span("any() requires 1 argument", call_span));
+    }
+    let val = eval_expr(env, &args[0].value)?;
+    match val {
+        Value::List(v) => {
+            for item in &v {
+                match item {
+                    Value::Bool(true) => return Ok(Value::Bool(true)),
+                    Value::Bool(false) => {}
+                    _ => {
+                        return Err(RuntimeError::with_span(
+                            format!("any() requires list of bool, got {}", type_name(item)),
+                            call_span,
+                        ));
+                    }
+                }
+            }
+            Ok(Value::Bool(false))
+        }
+        _ => Err(RuntimeError::with_span(
+            format!("any() expects a list, got {}", type_name(&val)),
+            call_span,
+        )),
+    }
+}
+
+fn eval_all(
+    env: &mut Env,
+    args: &[Arg],
+    call_span: Span,
+) -> Result<Value, RuntimeError> {
+    if args.is_empty() {
+        return Err(RuntimeError::with_span("all() requires 1 argument", call_span));
+    }
+    let val = eval_expr(env, &args[0].value)?;
+    match val {
+        Value::List(v) => {
+            for item in &v {
+                match item {
+                    Value::Bool(false) => return Ok(Value::Bool(false)),
+                    Value::Bool(true) => {}
+                    _ => {
+                        return Err(RuntimeError::with_span(
+                            format!("all() requires list of bool, got {}", type_name(item)),
+                            call_span,
+                        ));
+                    }
+                }
+            }
+            Ok(Value::Bool(true))
+        }
+        _ => Err(RuntimeError::with_span(
+            format!("all() expects a list, got {}", type_name(&val)),
+            call_span,
+        )),
+    }
+}
+
+fn eval_sort(
+    env: &mut Env,
+    args: &[Arg],
+    call_span: Span,
+) -> Result<Value, RuntimeError> {
+    if args.is_empty() {
+        return Err(RuntimeError::with_span("sort() requires 1 argument", call_span));
+    }
+    let val = eval_expr(env, &args[0].value)?;
+    match val {
+        Value::List(mut v) => {
+            v.sort();
+            Ok(Value::List(v))
+        }
+        _ => Err(RuntimeError::with_span(
+            format!("sort() expects a list, got {}", type_name(&val)),
             call_span,
         )),
     }
@@ -1358,9 +1501,70 @@ fn eval_list_method(
                 )),
             }
         }
+        "sum" => {
+            if list.is_empty() {
+                return Ok(Value::Int(0));
+            }
+            let mut int_sum: i64 = 0;
+            let mut float_sum: f64 = 0.0;
+            let mut is_float = false;
+            for item in &list {
+                match item {
+                    Value::Int(n) => {
+                        if is_float { float_sum += *n as f64; } else { int_sum += n; }
+                    }
+                    Value::Float(f) => {
+                        if !is_float { is_float = true; float_sum = int_sum as f64; }
+                        float_sum += f;
+                    }
+                    _ => {
+                        return Err(RuntimeError::with_span(
+                            format!("sum() requires list of int or float, got {}", type_name(item)),
+                            span,
+                        ));
+                    }
+                }
+            }
+            if is_float { Ok(Value::Float(float_sum)) } else { Ok(Value::Int(int_sum)) }
+        }
+        "any" => {
+            for item in &list {
+                match item {
+                    Value::Bool(true) => return Ok(Value::Bool(true)),
+                    Value::Bool(false) => {}
+                    _ => {
+                        return Err(RuntimeError::with_span(
+                            format!("any() requires list of bool, got {}", type_name(item)),
+                            span,
+                        ));
+                    }
+                }
+            }
+            Ok(Value::Bool(false))
+        }
+        "all" => {
+            for item in &list {
+                match item {
+                    Value::Bool(false) => return Ok(Value::Bool(false)),
+                    Value::Bool(true) => {}
+                    _ => {
+                        return Err(RuntimeError::with_span(
+                            format!("all() requires list of bool, got {}", type_name(item)),
+                            span,
+                        ));
+                    }
+                }
+            }
+            Ok(Value::Bool(true))
+        }
+        "sort" => {
+            let mut v = list;
+            v.sort();
+            Ok(Value::List(v))
+        }
         _ => Err(RuntimeError::with_span(
             format!(
-                "list type has no method `{}`; available methods: len, first, last, reverse, append, concat",
+                "list type has no method `{}`; available methods: len, first, last, reverse, append, concat, sum, any, all, sort",
                 method
             ),
             span,

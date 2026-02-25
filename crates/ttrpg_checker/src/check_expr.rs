@@ -111,6 +111,10 @@ impl<'a> Checker<'a> {
                 self.check_for(pattern, iterable, body, expr.span)
             }
 
+            ExprKind::ListComprehension { element, pattern, iterable, filter } => {
+                self.check_list_comprehension(element, pattern, iterable, filter.as_deref(), expr.span)
+            }
+
             ExprKind::Has { entity, group_name } => {
                 self.check_has(entity, group_name, expr.span)
             }
@@ -866,10 +870,44 @@ impl<'a> Checker<'a> {
                 }
                 Ty::List(inner)
             }
+            "sum" => {
+                if !args.is_empty() {
+                    self.error(format!("sum() takes no arguments, found {}", args.len()), span);
+                }
+                match *inner {
+                    Ty::Int => Ty::Int,
+                    Ty::Float => Ty::Float,
+                    _ => {
+                        self.error(
+                            format!("sum() requires list<int> or list<float>, found list<{}>", inner),
+                            span,
+                        );
+                        Ty::Error
+                    }
+                }
+            }
+            "any" | "all" => {
+                if !args.is_empty() {
+                    self.error(format!("{}() takes no arguments, found {}", method, args.len()), span);
+                }
+                if *inner != Ty::Bool && *inner != Ty::Error {
+                    self.error(
+                        format!("{}() requires list<bool>, found list<{}>", method, inner),
+                        span,
+                    );
+                }
+                Ty::Bool
+            }
+            "sort" => {
+                if !args.is_empty() {
+                    self.error(format!("sort() takes no arguments, found {}", args.len()), span);
+                }
+                Ty::List(inner)
+            }
             _ => {
                 self.error(
                     format!(
-                        "list type has no method `{}`; available methods: len, first, last, reverse, append, concat",
+                        "list type has no method `{}`; available methods: len, first, last, reverse, append, concat, sum, any, all, sort",
                         method
                     ),
                     span,
@@ -1203,6 +1241,10 @@ impl<'a> Checker<'a> {
             "append" => return self.check_append_call(args, span),
             "concat" => return self.check_concat_call(args, span),
             "reverse" => return self.check_reverse_call(args, span),
+            "sum" => return self.check_sum_call(args, span),
+            "any" => return self.check_any_call(args, span),
+            "all" => return self.check_all_call(args, span),
+            "sort" => return self.check_sort_call(args, span),
             _ => {}
         }
 
@@ -1735,6 +1777,154 @@ impl<'a> Checker<'a> {
             _ => {
                 self.error(
                     format!("`reverse` expects a list, found {}", arg_ty),
+                    span,
+                );
+                Ty::Error
+            }
+        }
+    }
+
+    fn check_sum_call(
+        &mut self,
+        args: &[Arg],
+        span: ttrpg_ast::Span,
+    ) -> Ty {
+        if args.len() != 1 {
+            self.error(
+                format!("`sum` expects 1 argument, found {}", args.len()),
+                span,
+            );
+            for arg in args {
+                self.check_expr(&arg.value);
+            }
+            return Ty::Error;
+        }
+        let arg_ty = self.check_expr(&args[0].value);
+        if arg_ty.is_error() {
+            return Ty::Error;
+        }
+        match arg_ty {
+            Ty::List(ref inner) => match inner.as_ref() {
+                Ty::Int => Ty::Int,
+                Ty::Float => Ty::Float,
+                _ => {
+                    self.error(
+                        format!("`sum` requires list<int> or list<float>, found {}", arg_ty),
+                        span,
+                    );
+                    Ty::Error
+                }
+            },
+            _ => {
+                self.error(
+                    format!("`sum` expects a list, found {}", arg_ty),
+                    span,
+                );
+                Ty::Error
+            }
+        }
+    }
+
+    fn check_any_call(
+        &mut self,
+        args: &[Arg],
+        span: ttrpg_ast::Span,
+    ) -> Ty {
+        if args.len() != 1 {
+            self.error(
+                format!("`any` expects 1 argument, found {}", args.len()),
+                span,
+            );
+            for arg in args {
+                self.check_expr(&arg.value);
+            }
+            return Ty::Error;
+        }
+        let arg_ty = self.check_expr(&args[0].value);
+        if arg_ty.is_error() {
+            return Ty::Error;
+        }
+        match arg_ty {
+            Ty::List(ref inner) if **inner == Ty::Bool => Ty::Bool,
+            Ty::List(_) => {
+                self.error(
+                    format!("`any` requires list<bool>, found {}", arg_ty),
+                    span,
+                );
+                Ty::Error
+            }
+            _ => {
+                self.error(
+                    format!("`any` expects a list, found {}", arg_ty),
+                    span,
+                );
+                Ty::Error
+            }
+        }
+    }
+
+    fn check_all_call(
+        &mut self,
+        args: &[Arg],
+        span: ttrpg_ast::Span,
+    ) -> Ty {
+        if args.len() != 1 {
+            self.error(
+                format!("`all` expects 1 argument, found {}", args.len()),
+                span,
+            );
+            for arg in args {
+                self.check_expr(&arg.value);
+            }
+            return Ty::Error;
+        }
+        let arg_ty = self.check_expr(&args[0].value);
+        if arg_ty.is_error() {
+            return Ty::Error;
+        }
+        match arg_ty {
+            Ty::List(ref inner) if **inner == Ty::Bool => Ty::Bool,
+            Ty::List(_) => {
+                self.error(
+                    format!("`all` requires list<bool>, found {}", arg_ty),
+                    span,
+                );
+                Ty::Error
+            }
+            _ => {
+                self.error(
+                    format!("`all` expects a list, found {}", arg_ty),
+                    span,
+                );
+                Ty::Error
+            }
+        }
+    }
+
+    fn check_sort_call(
+        &mut self,
+        args: &[Arg],
+        span: ttrpg_ast::Span,
+    ) -> Ty {
+        if args.len() != 1 {
+            self.error(
+                format!("`sort` expects 1 argument, found {}", args.len()),
+                span,
+            );
+            for arg in args {
+                self.check_expr(&arg.value);
+            }
+            return Ty::Error;
+        }
+        let arg_ty = self.check_expr(&args[0].value);
+        if arg_ty.is_error() {
+            return Ty::Error;
+        }
+        match arg_ty {
+            Ty::List(_) => arg_ty,
+            _ => {
+                self.error(
+                    format!("`sort` expects a list, found {}", arg_ty),
                     span,
                 );
                 Ty::Error
@@ -2322,6 +2512,78 @@ impl<'a> Checker<'a> {
         self.scope.pop();
 
         Ty::Unit
+    }
+
+    fn check_list_comprehension(
+        &mut self,
+        element: &Spanned<ExprKind>,
+        pattern: &Spanned<PatternKind>,
+        iterable: &ForIterable,
+        filter: Option<&Spanned<ExprKind>>,
+        span: ttrpg_ast::Span,
+    ) -> Ty {
+        // Resolve element type from iterable (same logic as check_for)
+        let iter_elem_ty = match iterable {
+            ForIterable::Collection(expr) => {
+                let coll_ty = self.check_expr(expr);
+                match coll_ty {
+                    Ty::List(inner) | Ty::Set(inner) => *inner,
+                    Ty::Map(_, _) => {
+                        self.error(
+                            "map iteration is not supported; use keys() or values()".to_string(),
+                            span,
+                        );
+                        Ty::Error
+                    }
+                    Ty::Error => Ty::Error,
+                    other => {
+                        self.error(
+                            format!("expected list or set, found {}", other),
+                            span,
+                        );
+                        Ty::Error
+                    }
+                }
+            }
+            ForIterable::Range { start, end, inclusive: _ } => {
+                let start_ty = self.check_expr(start);
+                let end_ty = self.check_expr(end);
+                if !start_ty.is_error() && !start_ty.is_int_like() {
+                    self.error(
+                        format!("range start must be int, found {}", start_ty),
+                        start.span,
+                    );
+                }
+                if !end_ty.is_error() && !end_ty.is_int_like() {
+                    self.error(
+                        format!("range end must be int, found {}", end_ty),
+                        end.span,
+                    );
+                }
+                Ty::Int
+            }
+        };
+
+        // Push scope and bind pattern
+        self.scope.push(BlockKind::Inner);
+        self.check_pattern(pattern, &iter_elem_ty);
+
+        // Check filter if present
+        if let Some(filter_expr) = filter {
+            let filter_ty = self.check_expr(filter_expr);
+            if !filter_ty.is_error() && filter_ty != Ty::Bool {
+                self.error(
+                    format!("list comprehension filter must be bool, found {}", filter_ty),
+                    filter_expr.span,
+                );
+            }
+        }
+
+        // Check element expression
+        let elem_ty = self.check_expr(element);
+        self.scope.pop();
+
+        Ty::List(Box::new(elem_ty))
     }
 
     fn check_arm_body(&mut self, body: &ArmBody) -> Ty {

@@ -528,6 +528,12 @@ pub enum ExprKind {
         iterable: ForIterable,
         body: Block,
     },
+    ListComprehension {
+        element: Box<Spanned<ExprKind>>,
+        pattern: Box<Spanned<PatternKind>>,
+        iterable: ForIterable,
+        filter: Option<Box<Spanned<ExprKind>>>,
+    },
     /// `entity has GroupName` — tests whether an optional group is active.
     /// Produces a bool and enables flow-sensitive type narrowing.
     Has {

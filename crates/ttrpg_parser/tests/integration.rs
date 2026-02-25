@@ -1796,3 +1796,113 @@ fn negative_pattern_max_value_does_not_panic() {
     let _ = prog;
 }
 
+// ── list comprehension parsing ──────────────────────────────────
+
+#[test]
+fn test_list_comprehension_basic() {
+    let (expr, diagnostics) = ttrpg_parser::parse_expr("[x + 1 for x in xs]");
+    assert!(
+        diagnostics.is_empty(),
+        "list comprehension should parse, got: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+    let expr = expr.unwrap();
+    assert!(
+        matches!(expr.node, ExprKind::ListComprehension { ref iterable, ref filter, .. }
+            if matches!(iterable, ForIterable::Collection(_)) && filter.is_none()),
+        "expected ListComprehension with Collection iterable and no filter"
+    );
+}
+
+#[test]
+fn test_list_comprehension_with_filter() {
+    let (expr, diagnostics) = ttrpg_parser::parse_expr("[x for x in xs if x > 0]");
+    assert!(
+        diagnostics.is_empty(),
+        "list comprehension with filter should parse, got: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+    let expr = expr.unwrap();
+    assert!(
+        matches!(expr.node, ExprKind::ListComprehension { ref iterable, ref filter, .. }
+            if matches!(iterable, ForIterable::Collection(_)) && filter.is_some()),
+        "expected ListComprehension with Collection iterable and filter"
+    );
+}
+
+#[test]
+fn test_list_comprehension_range() {
+    let (expr, diagnostics) = ttrpg_parser::parse_expr("[i * 2 for i in 0..10]");
+    assert!(
+        diagnostics.is_empty(),
+        "list comprehension with range should parse, got: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+    let expr = expr.unwrap();
+    assert!(
+        matches!(expr.node, ExprKind::ListComprehension { ref iterable, .. }
+            if matches!(iterable, ForIterable::Range { .. })),
+        "expected ListComprehension with Range iterable"
+    );
+}
+
+#[test]
+fn test_list_comprehension_inclusive_range_with_filter() {
+    let (expr, diagnostics) = ttrpg_parser::parse_expr("[i for i in 1..=10 if i > 5]");
+    assert!(
+        diagnostics.is_empty(),
+        "list comprehension with inclusive range and filter should parse, got: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+    let expr = expr.unwrap();
+    assert!(
+        matches!(expr.node, ExprKind::ListComprehension { ref iterable, ref filter, .. }
+            if matches!(iterable, ForIterable::Range { inclusive: true, .. }) && filter.is_some()),
+        "expected ListComprehension with inclusive Range and filter"
+    );
+}
+
+#[test]
+fn test_empty_list_still_parses() {
+    let (expr, diagnostics) = ttrpg_parser::parse_expr("[]");
+    assert!(
+        diagnostics.is_empty(),
+        "empty list should parse, got: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+    let expr = expr.unwrap();
+    assert!(
+        matches!(expr.node, ExprKind::ListLit(ref items) if items.is_empty()),
+        "expected empty ListLit"
+    );
+}
+
+#[test]
+fn test_single_element_list_not_comprehension() {
+    let (expr, diagnostics) = ttrpg_parser::parse_expr("[42]");
+    assert!(
+        diagnostics.is_empty(),
+        "single element list should parse, got: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+    let expr = expr.unwrap();
+    assert!(
+        matches!(expr.node, ExprKind::ListLit(ref items) if items.len() == 1),
+        "expected single-element ListLit"
+    );
+}
+
+#[test]
+fn test_list_comprehension_with_pattern() {
+    let (expr, diagnostics) = ttrpg_parser::parse_expr("[x for some(x) in opts]");
+    assert!(
+        diagnostics.is_empty(),
+        "list comprehension with pattern should parse, got: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+    let expr = expr.unwrap();
+    assert!(
+        matches!(expr.node, ExprKind::ListComprehension { .. }),
+        "expected ListComprehension"
+    );
+}
