@@ -17,8 +17,13 @@ impl Validator for TtrpgValidator {
 }
 
 /// Counts unmatched `{`, `(`, `[` (respecting string literals).
+///
+/// Uses separate counters per delimiter type so that a stray closer
+/// (e.g. `)`) never cancels an unrelated opener (e.g. `{`).
 fn has_unclosed_delimiters(line: &str) -> bool {
-    let mut depth = 0i32;
+    let mut parens = 0u32;
+    let mut brackets = 0u32;
+    let mut braces = 0u32;
     let mut in_string = false;
     let bytes = line.as_bytes();
     let mut i = 0;
@@ -35,8 +40,12 @@ fn has_unclosed_delimiters(line: &str) -> bool {
         } else {
             match bytes[i] {
                 b'"' => in_string = true,
-                b'(' | b'[' | b'{' => depth += 1,
-                b')' | b']' | b'}' => depth -= 1,
+                b'(' => parens += 1,
+                b')' => { parens = parens.saturating_sub(1); }
+                b'[' => brackets += 1,
+                b']' => { brackets = brackets.saturating_sub(1); }
+                b'{' => braces += 1,
+                b'}' => { braces = braces.saturating_sub(1); }
                 b'/' if i + 1 < bytes.len() && bytes[i + 1] == b'/' => {
                     // Line comment — skip to end of line
                     while i < bytes.len() && bytes[i] != b'\n' {
@@ -51,7 +60,7 @@ fn has_unclosed_delimiters(line: &str) -> bool {
     }
 
     // Also incomplete if we're inside an unterminated string
-    in_string || depth > 0
+    in_string || parens > 0 || brackets > 0 || braces > 0
 }
 
 #[cfg(test)]

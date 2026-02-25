@@ -8,7 +8,15 @@ pub fn format_value(val: &Value) -> String {
         Value::Int(n) => n.to_string(),
         Value::Float(f) => format!("{}", f),
         Value::Bool(b) => b.to_string(),
-        Value::Str(s) => format!("\"{}\"", s),
+        Value::Str(s) => {
+            let escaped = s
+                .replace('\\', "\\\\")
+                .replace('"', "\\\"")
+                .replace('\n', "\\n")
+                .replace('\r', "\\r")
+                .replace('\t', "\\t");
+            format!("\"{}\"", escaped)
+        }
         Value::None => "none".into(),
 
         Value::DiceExpr(expr) => format_dice_expr(expr),

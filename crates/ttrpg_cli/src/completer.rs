@@ -98,8 +98,12 @@ impl Completer for TtrpgCompleter {
 
         match first_word {
             "spawn" => {
-                // After spawn: complete entity type names
-                let (current, _) = split_first_word(rest);
+                // After spawn: complete entity type names (only while typing the first arg)
+                let (current, extra) = split_first_word(rest);
+                if extra.is_some() {
+                    // Cursor is past the entity type — no entity type completions
+                    return Vec::new();
+                }
                 let word_start = pos - current.len();
                 prefix_matches_owned(&ctx.entity_types, current)
                     .into_iter()
@@ -107,9 +111,12 @@ impl Completer for TtrpgCompleter {
                     .collect()
             }
             "do" => {
-                // After do: complete action names (before '(')
-                let before_paren = rest.split('(').next().unwrap_or(rest);
-                let current = before_paren.trim();
+                // After do: complete action names (only before '(')
+                if rest.contains('(') {
+                    // Cursor is inside arguments — no action name completions
+                    return Vec::new();
+                }
+                let current = rest.trim();
                 let word_start = pos - current.len();
                 prefix_matches_owned(&ctx.action_names, current)
                     .into_iter()
@@ -117,9 +124,12 @@ impl Completer for TtrpgCompleter {
                     .collect()
             }
             "call" => {
-                // After call: complete derive + mechanic names (before '(')
-                let before_paren = rest.split('(').next().unwrap_or(rest);
-                let current = before_paren.trim();
+                // After call: complete derive + mechanic names (only before '(')
+                if rest.contains('(') {
+                    // Cursor is inside arguments — no function name completions
+                    return Vec::new();
+                }
+                let current = rest.trim();
                 let word_start = pos - current.len();
                 let mut candidates: Vec<String> = Vec::new();
                 candidates.extend(ctx.derive_names.iter().cloned());
