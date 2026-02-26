@@ -640,6 +640,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "ttrpg_ose_data"
+version = "0.1.0"
+
+[[package]]
 name = "ttrpg_parser"
 version = "0.1.0"
 dependencies = [
