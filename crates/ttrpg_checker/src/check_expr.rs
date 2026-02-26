@@ -2217,7 +2217,10 @@ impl<'a> Checker<'a> {
 
     fn check_list_lit(&mut self, elems: &[Spanned<ExprKind>], _span: ttrpg_ast::Span, elem_hint: Option<&Ty>) -> Ty {
         if elems.is_empty() {
-            return Ty::List(Box::new(Ty::Error));
+            // Use the expected element type hint if available (e.g. from return type),
+            // otherwise fall back to Error which will produce a type mismatch.
+            let elem_ty = elem_hint.cloned().unwrap_or(Ty::Error);
+            return Ty::List(Box::new(elem_ty));
         }
 
         let mut unified_ty = self.check_expr_expecting(&elems[0], elem_hint);
