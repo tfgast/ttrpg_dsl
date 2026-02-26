@@ -206,6 +206,36 @@ struct RollResult {
 //
 //   entity Character { ... }
 //   entity Weapon { ... }
+//
+// Entities may declare optional groups (conditionally active field sets):
+//
+//   group Spellcasting {
+//       spell_slots: int
+//       spell_dc: int = 10
+//   }
+//
+//   entity Character {
+//       name: string
+//       HP: int
+//       optional Spellcasting        // attach top-level group
+//       optional KiPowers { ... }    // inline group declaration
+//   }
+//
+// Optional groups are accessed via namespaced paths (entity.Group.field) and
+// guarded by `has`/`with` checks in the checker.
+
+// Polymorphic entity alias:
+//
+//   entity
+//
+// In type position, `entity` is a built-in alias for "any entity type"
+// (checker internal type: AnyEntity). This is useful for generic helpers:
+//
+//   derive has_magic(x: entity) -> bool { x has Spellcasting }
+//   action StripMagic on target: entity with Spellcasting () { ... }
+//
+// `with GroupName` constraints are allowed on `entity`, and `has` checks on
+// `entity` are valid as long as the group name exists in scope.
 
 
 // --- Position ---

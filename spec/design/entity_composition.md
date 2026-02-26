@@ -655,9 +655,9 @@ enough for game designers.
 
 Category A (shared structure + polymorphism) is deferred. It can be addressed
 later with traits or inheritance if the need proves strong enough in practice.
-For now, shared structure can be achieved by convention (declaring the same
-fields on multiple entity types), and polymorphic actions can use concrete
-entity types.
+For now, reusable optional-group schemas are handled by top-level `group`
+declarations (attached with `optional GroupName`), while polymorphic actions
+still use concrete entity types.
 
 ---
 
@@ -687,11 +687,18 @@ entity types.
 
 ### Declaration
 
-Optional groups are declared inside entity definitions using the `optional`
-keyword. Each group has a name and contains field definitions, following the
-same syntax as regular entity fields.
+Optional groups can be declared in two ways:
+- Inline inside an entity: `optional GroupName { ... }`
+- As reusable top-level schemas: `group GroupName { ... }`, then attached with
+  `optional GroupName`
 
 ```ttrpg
+group Spellcasting {
+    spellcasting_ability: Ability
+    spell_save_DC: int
+    spell_slots: map<int, resource(0..=max)>
+}
+
 entity Character {
     name: string
     level: int = 1
@@ -700,11 +707,7 @@ entity Character {
     HP: resource(0..=max_HP)
     max_HP: int
 
-    optional Spellcasting {
-        spellcasting_ability: Ability
-        spell_save_DC: int
-        spell_slots: map<int, resource(0..=max)>
-    }
+    optional Spellcasting     // attaches top-level group schema
 
     optional KiPowers {
         ki_points: resource(0..=max_ki)
@@ -724,6 +727,9 @@ entity Character {
 - Group names must be unique within an entity.
 - Group names occupy a separate namespace from field names (no conflict between
   a field named `rage` and a group named `Rage`).
+- Top-level `group` names are unique per system (and follow import visibility
+  rules like other declarations).
+- `optional GroupName` must resolve to a visible top-level `group`.
 - Fields inside optional groups can have defaults, same as regular fields.
 - Fields inside optional groups can reference fields from the entity's base
   (e.g., a resource bounded by a base field).
@@ -856,6 +862,17 @@ action Counterspell on caster: Character with Spellcasting (
 }
 ```
 
+The same constraint syntax works with the polymorphic entity alias:
+
+```ttrpg
+derive spell_dc_if_any(x: entity with Spellcasting) -> int {
+    x.Spellcasting.spell_save_DC
+}
+```
+
+Here `entity` means "any entity type". The `with Spellcasting` clause narrows
+the parameter so group access is type-safe.
+
 **Constraint checking**: The runtime checks that the optional group is active
 when an action is invoked. If not, it produces a runtime error (analogous to
 calling an action on an entity that doesn't exist). The checker ensures that
@@ -899,54 +916,30 @@ condition Silenced on bearer: Character with Spellcasting {
 
 ### Cross-Entity Group Reuse
 
-Without traits or mixins, optional groups cannot be shared across entity types.
-If both `Character` and `Monster` need a `Spellcasting` group, each must
-declare it independently:
+Optional-group schemas can be shared across entity types using top-level
+`group` declarations:
 
 ```ttrpg
-entity Character {
-    // ... base fields ...
-    optional Spellcasting {
-        spellcasting_ability: Ability
-        spell_save_DC: int
-    }
-}
-
-entity Monster {
-    // ... base fields ...
-    optional Spellcasting {
-        spellcasting_ability: Ability
-        spell_save_DC: int
-    }
-}
-```
-
-This is intentional repetition — the two `Spellcasting` groups are structurally
-identical but semantically independent. An action `on caster: Character with
-Spellcasting` does not accept a Monster, even if its Spellcasting group has the
-same fields.
-
-**Future direction**: If this repetition becomes burdensome, mixins or traits
-could be introduced later to define reusable group templates. Optional groups
-are designed to compose well with either mechanism:
-
-```ttrpg
-// Hypothetical future: mixin defines the group template
-mixin Spellcasting {
+group Spellcasting {
     spellcasting_ability: Ability
     spell_save_DC: int
 }
 
 entity Character {
-    optional Spellcasting  // inlines the mixin as an optional group
+    // ... base fields ...
+    optional Spellcasting
 }
 
 entity Monster {
-    optional Spellcasting  // same template, independent group
+    // ... base fields ...
+    optional Spellcasting
 }
 ```
 
-This is explicitly deferred — not designed now, but the door is left open.
+Sharing schema does not imply receiver polymorphism: an action
+`on caster: Character with Spellcasting` still does not accept a `Monster`.
+Traits/mixins remain a possible future addition for broader behavioral
+composition.
 
 ### Interaction with Existing Features
 
@@ -1018,8 +1011,10 @@ Or inline at spawn time:
 | Access inside `if entity has Group { ... }` | Allowed |
 | Access inside action `on x: Entity with Group` | Allowed |
 | Access inside derive with `param: Entity with Group` | Allowed |
+| Access inside derive/action with `x: entity with Group` | Allowed if `Group` is known |
 | `grant`/`revoke` in derive or mechanic | Compile error (no mutation) |
 | `grant`/`revoke` in action resolve block | Allowed |
+| `grant`/`revoke` on `x: entity` when group schema is ambiguous | Compile error (use concrete entity type) |
 | Duplicate group names in one entity | Compile error |
 | Optional group on a struct (not entity) | Compile error |
 
@@ -1035,5 +1030,5 @@ Or inline at spawn time:
 | Deactivation semantics | Discard field values on `revoke` | Optional groups model structural identity, not toggles. Stale preserved state would be wrong more often than right |
 | Action/derive constraints | `with GroupName` on parameters | Lightweight polymorphism, checker narrows within body |
 | Nesting | Disallowed (no optional-within-optional) | Simplicity |
-| Cross-entity sharing | Deferred (manual repetition for now) | Door open for future mixins/traits |
+| Cross-entity sharing | Supported via top-level `group` declarations + `optional GroupName` attachment | Reuse schema without introducing traits/mixins |
 | Structs | Cannot have optional groups (entities only) | Optional groups require identity and mutable state |

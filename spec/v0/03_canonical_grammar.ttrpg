@@ -52,10 +52,11 @@
 //     let  if  else  match  true  false  none  in  for
 //
 //   Contextual / soft (lexed as IDENT, recognized by parser in position):
-//     system  use  enum  struct  entity  derive  mechanic  action
+//     system  use  group  enum  struct  entity  derive  mechanic  action
 //     reaction  hook  condition  prompt  option  event  move  cost
 //     requires  resolve  modify  suppress  trigger  roll  on
 //     when  enabled  hint  suggest  description  default  result
+//     with  has
 //
 // Soft keywords CAN be used as field names, variable names, and
 // enum variants. The parser distinguishes based on position:
@@ -129,6 +130,7 @@ system_block    = "system" STRING "{" decl* "}"
 // =========================
 
 decl            = enum_decl
+                | group_decl
                 | struct_decl
                 | entity_decl
                 | derive_decl
@@ -151,14 +153,25 @@ enum_variant    = IDENT                             // no data:  STR, miss
 // --- Struct ---
 struct_decl     = "struct" IDENT "{" field_defs "}"
 
+// --- Group (reusable optional-group schema) ---
+group_decl      = "group" IDENT "{" field_defs "}"
+
 // --- Entity ---
-entity_decl     = "entity" IDENT "{" field_defs "}"
+entity_decl     = "entity" IDENT "{" entity_members? "}"
+
+entity_members  = entity_member (("," | NL) entity_member)* ","?
+entity_member   = field_def | optional_group_decl
+
+optional_group_decl = "optional" IDENT ("{" field_defs "}")?
+// Two forms:
+//   optional Spellcasting { ... }   inline group schema
+//   optional Spellcasting           attach top-level `group Spellcasting`
 
 // --- Field definitions ---
 field_list      = field_entry ("," field_entry)* ","?
 field_entry     = IDENT ":" type
 
-field_defs      = field_def (("," | NL) field_def)* ","?
+field_defs      = (field_def (("," | NL) field_def)* ","?)?
 field_def       = IDENT ":" type ("=" expr)?
 
 // --- Derive (pure, no dice, no mutation, no receiver) ---
@@ -168,7 +181,7 @@ derive_decl     = "derive" IDENT "(" params ")" "->" type block
 mechanic_decl   = "mechanic" IDENT "(" params ")" "->" type block
 
 // --- Action (can roll, can mutate, has receiver) ---
-action_decl     = "action" IDENT "on" IDENT ":" type
+action_decl     = "action" IDENT "on" IDENT ":" constrained_type
                       "(" params ")" "{"
                       cost_clause?
                       requires_clause*
@@ -209,7 +222,7 @@ resolve_block   = "resolve" block
 // may allow systems to extend the cost vocabulary.
 
 // --- Reaction (can roll, can mutate, has receiver + trigger) ---
-reaction_decl   = "reaction" IDENT "on" IDENT ":" type
+reaction_decl   = "reaction" IDENT "on" IDENT ":" constrained_type
                       "(" "trigger" ":" trigger_expr ")" "{"
                       cost_clause?
                       resolve_block
@@ -221,7 +234,7 @@ trigger_binding  = IDENT ":" expr                   // e.g., reactor: reactor
                  | IDENT                             // positional
 
 // --- Hook (mandatory triggered action, no cost, not suppressible) ---
-hook_decl       = "hook" IDENT "on" IDENT ":" type
+hook_decl       = "hook" IDENT "on" IDENT ":" constrained_type
                       "(" "trigger" ":" trigger_expr ")" "{"
                       resolve_block
                   "}"
@@ -235,7 +248,7 @@ hook_decl       = "hook" IDENT "on" IDENT ":" type
 event_decl      = "event" IDENT "(" params ")" "{" field_def* "}"
 
 // --- Condition (declarative modifiers, has receiver, no mutation) ---
-condition_decl  = "condition" IDENT "on" IDENT ":" type "{"
+condition_decl  = "condition" IDENT "on" IDENT ":" constrained_type "{"
                       condition_clause*
                   "}"
 
@@ -297,7 +310,12 @@ when_clause        = "when" "enabled" "{" modify_clause* "}"
 // =========================
 
 params          = (param ("," param)* ","?)?
-param           = IDENT ":" type ("=" expr)?
+param           = IDENT ":" constrained_type ("=" expr)?
+constrained_type = type with_clause?
+with_clause     = "with" IDENT ("," IDENT)*
+// Example:
+//   target: Character with Spellcasting
+//   x: entity with Spellcasting
 
 
 // =========================
@@ -308,12 +326,17 @@ type            = "int" | "bool" | "string" | "float"
                 | "DiceExpr" | "RollResult"
                 | "TurnBudget" | "Duration" | "Position"
                 | "Condition"
+                | "entity"                           // polymorphic any-entity type alias
                 | IDENT                              // user-defined type
                 | "map" "<" type "," type ">"
                 | "list" "<" type ">"
                 | "set" "<" type ">"
                 | "option" "<" type ">"
                 | "resource" "(" expr "..=" expr ")"
+
+// `entity` is a checker-resolved alias for "any entity type" (Ty::AnyEntity).
+// It is useful for polymorphic parameters/receivers and can be combined with
+// with-constraints to require optional groups.
 
 
 // =========================
