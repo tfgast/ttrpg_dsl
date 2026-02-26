@@ -102,10 +102,10 @@ impl<'a> Checker<'a> {
             } => self.check_if_let(pattern, scrutinee, then_block, else_branch.as_ref(), expr.span),
 
             ExprKind::PatternMatch { scrutinee, arms } => {
-                self.check_pattern_match(scrutinee, arms, expr.span)
+                self.check_pattern_match(scrutinee, arms, expr.span, hint)
             }
 
-            ExprKind::GuardMatch { arms } => self.check_guard_match(arms, expr.span),
+            ExprKind::GuardMatch { arms } => self.check_guard_match(arms, expr.span, hint),
 
             ExprKind::For { pattern, iterable, body } => {
                 self.check_for(pattern, iterable, body, expr.span)
@@ -2380,6 +2380,7 @@ impl<'a> Checker<'a> {
         scrutinee: &Spanned<ExprKind>,
         arms: &[PatternArm],
         _span: ttrpg_ast::Span,
+        hint: Option<&Ty>,
     ) -> Ty {
         let scrutinee_ty = self.check_expr(scrutinee);
 
@@ -2388,7 +2389,8 @@ impl<'a> Checker<'a> {
         for arm in arms {
             self.scope.push(BlockKind::Inner);
             self.check_pattern(&arm.pattern, &scrutinee_ty);
-            let arm_ty = self.check_arm_body(&arm.body);
+            let arm_hint = result_ty.as_ref().or(hint);
+            let arm_ty = self.check_arm_body(&arm.body, arm_hint);
             self.scope.pop();
 
             if !arm_ty.is_error() {
@@ -2419,6 +2421,7 @@ impl<'a> Checker<'a> {
         &mut self,
         arms: &[GuardArm],
         _span: ttrpg_ast::Span,
+        hint: Option<&Ty>,
     ) -> Ty {
         let mut result_ty: Option<Ty> = None;
         let mut seen_wildcard = false;
@@ -2452,7 +2455,8 @@ impl<'a> Checker<'a> {
                 }
             }
 
-            let arm_ty = self.check_arm_body(&arm.body);
+            let arm_hint = result_ty.as_ref().or(hint);
+            let arm_ty = self.check_arm_body(&arm.body, arm_hint);
 
             if !arm_ty.is_error() {
                 match result_ty {
@@ -2612,9 +2616,9 @@ impl<'a> Checker<'a> {
         Ty::List(Box::new(elem_ty))
     }
 
-    fn check_arm_body(&mut self, body: &ArmBody) -> Ty {
+    fn check_arm_body(&mut self, body: &ArmBody, hint: Option<&Ty>) -> Ty {
         match body {
-            ArmBody::Expr(expr) => self.check_expr(expr),
+            ArmBody::Expr(expr) => self.check_expr_expecting(expr, hint),
             ArmBody::Block(block) => self.check_block(block),
         }
     }
