@@ -524,27 +524,29 @@ impl<'a> Checker<'a> {
 
         let result_ty = self.resolve_field(&obj_ty, field, span);
 
-        // If this resolved to an optional group reference, check narrowing
-        if let Ty::OptionalGroupRef(_, ref group_name) = result_ty {
-            let group_name = group_name.clone();
-            if let Some(path_key) = self.extract_path_key(object) {
-                if !self.scope.is_group_narrowed(&path_key, &group_name) {
+        // If this resolved to a group reference, check narrowing for optional groups.
+        if let Ty::OptionalGroupRef(ref entity_name, ref group_name) = result_ty {
+            if !self.env.is_group_required(entity_name, group_name) {
+                let group_name = group_name.clone();
+                if let Some(path_key) = self.extract_path_key(object) {
+                    if !self.scope.is_group_narrowed(&path_key, &group_name) {
+                        self.error(
+                            format!(
+                                "access to optional group `{}` on `{}` requires a `has` guard or `with` constraint",
+                                group_name, path_key
+                            ),
+                            span,
+                        );
+                    }
+                } else {
                     self.error(
                         format!(
-                            "access to optional group `{}` on `{}` requires a `has` guard or `with` constraint",
-                            group_name, path_key
+                            "access to optional group `{}` requires a `has` guard or `with` constraint",
+                            group_name
                         ),
                         span,
                     );
                 }
-            } else {
-                self.error(
-                    format!(
-                        "access to optional group `{}` requires a `has` guard or `with` constraint",
-                        group_name
-                    ),
-                    span,
-                );
             }
         }
 

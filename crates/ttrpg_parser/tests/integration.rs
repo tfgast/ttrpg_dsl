@@ -873,9 +873,11 @@ fn test_entity_with_optional_groups() {
             assert_eq!(e.optional_groups.len(), 2, "optional groups");
             assert_eq!(e.optional_groups[0].name, "Spellcasting");
             assert!(!e.optional_groups[0].is_external_ref);
+            assert!(!e.optional_groups[0].is_required);
             assert_eq!(e.optional_groups[0].fields.len(), 2);
             assert_eq!(e.optional_groups[1].name, "KiPowers");
             assert!(!e.optional_groups[1].is_external_ref);
+            assert!(!e.optional_groups[1].is_required);
             assert_eq!(e.optional_groups[1].fields.len(), 2);
         }
         _ => panic!("expected entity decl"),
@@ -910,7 +912,42 @@ fn test_top_level_group_and_external_attachment_parse() {
             assert_eq!(e.optional_groups.len(), 1);
             assert_eq!(e.optional_groups[0].name, "Spellcasting");
             assert!(e.optional_groups[0].is_external_ref);
+            assert!(!e.optional_groups[0].is_required);
             assert!(e.optional_groups[0].fields.is_empty());
+        }
+        _ => panic!("expected entity decl"),
+    }
+}
+
+#[test]
+fn test_entity_with_included_group_parse() {
+    let source = r#"system "test" {
+    group CombatStats {
+        AC: int
+    }
+    entity Monster {
+        HP: int
+        include CombatStats
+    }
+}"#;
+    let (program, diagnostics) = parse(source, FileId::SYNTH);
+    assert!(
+        diagnostics.is_empty(),
+        "entity include group should parse, got: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+    let system = match &program.items[0].node {
+        TopLevel::System(s) => s,
+        _ => panic!("expected system block"),
+    };
+    match &system.decls[1].node {
+        DeclKind::Entity(e) => {
+            assert_eq!(e.optional_groups.len(), 1);
+            let group = &e.optional_groups[0];
+            assert_eq!(group.name, "CombatStats");
+            assert!(group.is_external_ref);
+            assert!(group.is_required);
+            assert!(group.fields.is_empty());
         }
         _ => panic!("expected entity decl"),
     }

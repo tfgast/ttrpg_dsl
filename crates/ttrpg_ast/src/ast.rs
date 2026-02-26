@@ -169,11 +169,18 @@ pub struct StructDecl {
 pub struct EntityDecl {
     pub name: Name,
     pub fields: Vec<FieldDef>,
+    /// Group attachments on the entity:
+    /// - `optional GroupName { ... }` / `optional GroupName`
+    /// - `include GroupName` (required, always present)
     pub optional_groups: Vec<OptionalGroup>,
 }
 
-/// An optional field group declared inside an entity with `optional GroupName { ... }`.
-/// Groups can be granted/revoked at runtime; fields are only accessible when active.
+/// A group attachment declared inside an entity.
+///
+/// Forms:
+/// - `optional GroupName { ... }` (inline optional schema)
+/// - `optional GroupName` (external optional schema)
+/// - `include GroupName` (external required schema)
 #[derive(Clone)]
 pub struct OptionalGroup {
     pub name: Name,
@@ -181,6 +188,8 @@ pub struct OptionalGroup {
     /// True when declared as `optional GroupName` (attached external group),
     /// false when declared inline as `optional GroupName { ... }`.
     pub is_external_ref: bool,
+    /// True when declared as `include GroupName` (required group).
+    pub is_required: bool,
     pub span: Span,
 }
 

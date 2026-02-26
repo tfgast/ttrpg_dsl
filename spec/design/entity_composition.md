@@ -687,16 +687,21 @@ still use concrete entity types.
 
 ### Declaration
 
-Optional groups can be declared in two ways:
+Optional groups can be declared in three ways:
 - Inline inside an entity: `optional GroupName { ... }`
 - As reusable top-level schemas: `group GroupName { ... }`, then attached with
   `optional GroupName`
+- As required attachments: `include GroupName` (always active)
 
 ```ttrpg
 group Spellcasting {
     spellcasting_ability: Ability
     spell_save_DC: int
     spell_slots: map<int, resource(0..=max)>
+}
+
+group CombatStats {
+    ac_bonus: int = 0
 }
 
 entity Character {
@@ -708,6 +713,7 @@ entity Character {
     max_HP: int
 
     optional Spellcasting     // attaches top-level group schema
+    include CombatStats       // required attachment
 
     optional KiPowers {
         ki_points: resource(0..=max_ki)
@@ -730,6 +736,7 @@ entity Character {
 - Top-level `group` names are unique per system (and follow import visibility
   rules like other declarations).
 - `optional GroupName` must resolve to a visible top-level `group`.
+- `include GroupName` must resolve to a visible top-level `group`.
 - Fields inside optional groups can have defaults, same as regular fields.
 - Fields inside optional groups can reference fields from the entity's base
   (e.g., a resource bounded by a base field).
@@ -749,8 +756,9 @@ spawn Character hero {
 }
 ```
 
-Groups not mentioned at spawn are inactive. Groups mentioned must have all
-required fields provided (fields without defaults).
+Optional groups not mentioned at spawn are inactive. Included groups are always
+active. Any active group must have all required fields provided (or filled by
+defaults).
 
 **At runtime** — activation/deactivation happens through effects:
 
@@ -1012,9 +1020,11 @@ Or inline at spawn time:
 | Access inside action `on x: Entity with Group` | Allowed |
 | Access inside derive with `param: Entity with Group` | Allowed |
 | Access inside derive/action with `x: entity with Group` | Allowed if `Group` is known |
+| Access to included group field (`entity.Included.field`) without `has` | Allowed |
 | `grant`/`revoke` in derive or mechanic | Compile error (no mutation) |
 | `grant`/`revoke` in action resolve block | Allowed |
 | `grant`/`revoke` on `x: entity` when group schema is ambiguous | Compile error (use concrete entity type) |
+| `grant`/`revoke` on included group | Compile error |
 | Duplicate group names in one entity | Compile error |
 | Optional group on a struct (not entity) | Compile error |
 
@@ -1027,6 +1037,7 @@ Or inline at spawn time:
 | Guard syntax | `has` as composable boolean expression | Composes with `and`/`or`/`not`, flow-sensitive narrowing, no new block types |
 | Activation keywords | `grant` / `revoke` | TTRPG-natural ("granted spellcasting"), implies structural change not momentary toggle |
 | Runtime activation | Supported via `grant`/`revoke` in actions | Enables multiclassing, edge-activated subsystems, mid-campaign transformation |
+| Required attachment | `include GroupName` | Always-active group composition without grant/revoke lifecycle |
 | Deactivation semantics | Discard field values on `revoke` | Optional groups model structural identity, not toggles. Stale preserved state would be wrong more often than right |
 | Action/derive constraints | `with GroupName` on parameters | Lightweight polymorphism, checker narrows within body |
 | Nesting | Disallowed (no optional-within-optional) | Simplicity |

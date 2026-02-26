@@ -64,7 +64,7 @@ impl Runner {
                     .is_none()
                 {
                     return Err(CliError::Message(format!(
-                        "unknown optional group '{}' on entity type '{}'",
+                        "unknown group '{}' on entity type '{}'",
                         group_name, entity_type
                     )));
                 }

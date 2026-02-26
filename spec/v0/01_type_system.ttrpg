@@ -218,11 +218,15 @@ struct RollResult {
 //       name: string
 //       HP: int
 //       optional Spellcasting        // attach top-level group
+//       include CombatStats          // attach top-level required group
 //       optional KiPowers { ... }    // inline group declaration
 //   }
 //
 // Optional groups are accessed via namespaced paths (entity.Group.field) and
 // guarded by `has`/`with` checks in the checker.
+//
+// Included groups (`include GroupName`) are required/always-present and cannot
+// be granted or revoked.
 
 // Polymorphic entity alias:
 //

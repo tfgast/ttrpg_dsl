@@ -56,7 +56,7 @@
 //     reaction  hook  condition  prompt  option  event  move  cost
 //     requires  resolve  modify  suppress  trigger  roll  on
 //     when  enabled  hint  suggest  description  default  result
-//     with  has
+//     with  has  include
 //
 // Soft keywords CAN be used as field names, variable names, and
 // enum variants. The parser distinguishes based on position:
@@ -160,12 +160,14 @@ group_decl      = "group" IDENT "{" field_defs "}"
 entity_decl     = "entity" IDENT "{" entity_members? "}"
 
 entity_members  = entity_member (("," | NL) entity_member)* ","?
-entity_member   = field_def | optional_group_decl
+entity_member   = field_def | optional_group_decl | include_group_decl
 
 optional_group_decl = "optional" IDENT ("{" field_defs "}")?
+include_group_decl  = "include" IDENT
 // Two forms:
 //   optional Spellcasting { ... }   inline group schema
 //   optional Spellcasting           attach top-level `group Spellcasting`
+//   include CombatStats             attach top-level required group
 
 // --- Field definitions ---
 field_list      = field_entry ("," field_entry)* ","?

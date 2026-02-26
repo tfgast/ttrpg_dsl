@@ -513,6 +513,7 @@ fn collect_group(
         OptionalGroupInfo {
             name: g.name.clone(),
             fields,
+            required: false,
         },
     );
 }
@@ -547,7 +548,7 @@ fn collect_entity(e: &EntityDecl, env: &mut TypeEnv, diagnostics: &mut Vec<Diagn
             if seen.contains(&g.name) {
                 diagnostics.push(Diagnostic::error(
                     format!(
-                        "optional group `{}` conflicts with field of the same name in entity `{}`",
+                        "group `{}` conflicts with field of the same name in entity `{}`",
                         g.name, e.name
                     ),
                     g.span,
@@ -557,7 +558,7 @@ fn collect_entity(e: &EntityDecl, env: &mut TypeEnv, diagnostics: &mut Vec<Diagn
             if !seen_groups.insert(g.name.clone()) {
                 diagnostics.push(Diagnostic::error(
                     format!(
-                        "duplicate optional group `{}` in entity `{}`",
+                        "duplicate group `{}` in entity `{}`",
                         g.name, e.name
                     ),
                     g.span,
@@ -566,12 +567,16 @@ fn collect_entity(e: &EntityDecl, env: &mut TypeEnv, diagnostics: &mut Vec<Diagn
             }
             if g.is_external_ref {
                 return match env.lookup_group(&g.name).cloned() {
-                    Some(schema) => Some(schema),
+                    Some(mut schema) => {
+                        schema.required = g.is_required;
+                        Some(schema)
+                    }
                     None => {
+                        let kind = if g.is_required { "included" } else { "attached" };
                         diagnostics.push(Diagnostic::error(
                             format!(
-                                "unknown group `{}` attached to entity `{}`",
-                                g.name, e.name
+                                "unknown group `{}` {} to entity `{}`",
+                                g.name, kind, e.name
                             ),
                             g.span,
                         ));
@@ -587,7 +592,7 @@ fn collect_entity(e: &EntityDecl, env: &mut TypeEnv, diagnostics: &mut Vec<Diagn
                     if !seen_fields.insert(f.name.clone()) {
                         diagnostics.push(Diagnostic::error(
                             format!(
-                                "duplicate field `{}` in optional group `{}`",
+                                "duplicate field `{}` in group `{}`",
                                 f.name, g.name
                             ),
                             f.span,
@@ -604,6 +609,7 @@ fn collect_entity(e: &EntityDecl, env: &mut TypeEnv, diagnostics: &mut Vec<Diagn
             Some(OptionalGroupInfo {
                 name: g.name.clone(),
                 fields: group_fields,
+                required: g.is_required,
             })
         })
         .collect();

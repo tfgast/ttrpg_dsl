@@ -3859,6 +3859,22 @@ system "test" {
 }
 
 #[test]
+fn test_top_level_group_include_attachment() {
+    let source = r#"
+system "test" {
+    group CombatStats {
+        ac: int = 10
+    }
+    entity Monster {
+        HP: int
+        include CombatStats
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
 fn test_external_attachment_unknown_group_rejected() {
     let source = r#"
 system "test" {
@@ -3886,7 +3902,7 @@ system "test" {
     }
 }
 "#;
-    expect_errors(source, &["duplicate optional group `Rage` in entity `Character`"]);
+    expect_errors(source, &["duplicate group `Rage` in entity `Character`"]);
 }
 
 #[test]
@@ -3902,7 +3918,7 @@ system "test" {
     }
 }
 "#;
-    expect_errors(source, &["duplicate field `dc` in optional group `Spellcasting`"]);
+    expect_errors(source, &["duplicate field `dc` in group `Spellcasting`"]);
 }
 
 #[test]
@@ -3949,7 +3965,7 @@ system "test" {
 "#;
     expect_errors(
         source,
-        &["optional group `Spellcasting` conflicts with field of the same name in entity `Character`"],
+        &["group `Spellcasting` conflicts with field of the same name in entity `Character`"],
     );
 }
 
@@ -3969,7 +3985,7 @@ system "test" {
 "#;
     expect_errors(
         source,
-        &["optional group `HP` conflicts with field of the same name in entity `Character`"],
+        &["group `HP` conflicts with field of the same name in entity `Character`"],
     );
 }
 
@@ -4093,6 +4109,25 @@ system "test" {
     }
     derive spell_dc(actor: Character with Spellcasting) -> int {
         actor.Spellcasting.dc
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_included_group_access_without_guard_allowed() {
+    let source = r#"
+system "test" {
+    group CombatStats {
+        ac: int
+    }
+    entity Monster {
+        HP: int
+        include CombatStats
+    }
+    derive ac_of(mon: Monster) -> int {
+        mon.CombatStats.ac
     }
 }
 "#;
@@ -4315,6 +4350,72 @@ system "test" {
 }
 "#;
     expect_no_errors(source);
+}
+
+#[test]
+fn test_grant_required_group_rejected() {
+    let source = r#"
+system "test" {
+    group CombatStats {
+        ac: int = 10
+    }
+    entity Monster {
+        HP: int
+        include CombatStats
+    }
+    action Touch on actor: Monster () {
+        resolve {
+            grant actor.CombatStats { ac: 12 }
+        }
+    }
+}
+"#;
+    expect_errors(source, &["group `CombatStats` is required on this entity and cannot be granted"]);
+}
+
+#[test]
+fn test_revoke_required_group_rejected() {
+    let source = r#"
+system "test" {
+    group CombatStats {
+        ac: int = 10
+    }
+    entity Monster {
+        HP: int
+        include CombatStats
+    }
+    action Touch on actor: Monster () {
+        resolve {
+            revoke actor.CombatStats
+        }
+    }
+}
+"#;
+    expect_errors(source, &["group `CombatStats` is required on this entity and cannot be revoked"]);
+}
+
+#[test]
+fn test_grant_required_group_on_any_entity_rejected() {
+    let source = r#"
+system "test" {
+    group CombatStats {
+        ac: int = 10
+    }
+    entity Monster {
+        HP: int
+        include CombatStats
+    }
+    action Touch on actor: entity () {
+        resolve {
+            grant actor.CombatStats { ac: 12 }
+        }
+    }
+}
+"#;
+    expect_errors(
+        source,
+        &["group `CombatStats` is required on some entity types and cannot be granted on type `entity`; use a concrete entity type"],
+    );
 }
 
 #[test]

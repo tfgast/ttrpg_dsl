@@ -161,6 +161,8 @@ impl Parser {
         while !matches!(self.peek(), TokenKind::RBrace | TokenKind::Eof) {
             if self.at_ident("optional") {
                 optional_groups.push(self.parse_optional_group()?);
+            } else if self.at_ident("include") {
+                optional_groups.push(self.parse_include_group()?);
             } else {
                 fields.push(self.parse_field_def()?);
             }
@@ -196,6 +198,20 @@ impl Parser {
             name,
             fields,
             is_external_ref,
+            is_required: false,
+            span: self.end_span(start),
+        })
+    }
+
+    fn parse_include_group(&mut self) -> Result<OptionalGroup, ()> {
+        let start = self.start_span();
+        self.expect_soft_keyword("include")?;
+        let (name, _) = self.expect_ident()?;
+        Ok(OptionalGroup {
+            name,
+            fields: Vec::new(),
+            is_external_ref: true,
+            is_required: true,
             span: self.end_span(start),
         })
     }

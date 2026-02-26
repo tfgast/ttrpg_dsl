@@ -1249,9 +1249,13 @@ fn load_group_program(runner: &mut Runner) {
         &path,
         r#"
 system "test" {
+    group CombatStats {
+        base_ac: int = 10
+    }
     entity Character {
         HP: int
         AC: int
+        include CombatStats
         optional Spellcasting {
             spell_slots: int
             spell_dc: int = 10
@@ -1326,7 +1330,22 @@ fn grant_unknown_group() {
 
     let err = runner.exec("grant hero.Flying").unwrap_err();
     assert!(
-        err.to_string().contains("unknown optional group"),
+        err.to_string().contains("unknown group"),
+        "got: {}",
+        err
+    );
+}
+
+#[test]
+fn grant_required_group_rejected() {
+    let mut runner = Runner::new();
+    load_group_program(&mut runner);
+    runner.exec("spawn Character hero { HP: 30 }").unwrap();
+    runner.take_output();
+
+    let err = runner.exec("grant hero.CombatStats").unwrap_err();
+    assert!(
+        err.to_string().contains("required and cannot be granted"),
         "got: {}",
         err
     );
@@ -1360,6 +1379,21 @@ fn revoke_not_granted() {
     let err = runner.exec("revoke hero.Spellcasting").unwrap_err();
     assert!(
         err.to_string().contains("not currently granted"),
+        "got: {}",
+        err
+    );
+}
+
+#[test]
+fn revoke_required_group_rejected() {
+    let mut runner = Runner::new();
+    load_group_program(&mut runner);
+    runner.exec("spawn Character hero { HP: 30 }").unwrap();
+    runner.take_output();
+
+    let err = runner.exec("revoke hero.CombatStats").unwrap_err();
+    assert!(
+        err.to_string().contains("required and cannot be revoked"),
         "got: {}",
         err
     );
@@ -1483,8 +1517,30 @@ fn types_shows_optional_groups() {
         output
     );
     assert!(
+        output.iter().any(|l| l.contains("include CombatStats")),
+        "types should show include groups, got: {:?}",
+        output
+    );
+    assert!(
         output.iter().any(|l| l.contains("spell_slots")),
         "types should show group fields, got: {:?}",
+        output
+    );
+}
+
+#[test]
+fn spawn_auto_materializes_included_group() {
+    let mut runner = Runner::new();
+    load_group_program(&mut runner);
+
+    runner.exec("spawn Character hero { HP: 30 }").unwrap();
+    runner.take_output();
+
+    runner.exec("inspect hero.CombatStats.base_ac").unwrap();
+    let output = runner.take_output();
+    assert!(
+        output[0].contains("10"),
+        "included group defaults should be materialized, got: {:?}",
         output
     );
 }
@@ -1551,7 +1607,7 @@ fn spawn_inline_group_unknown_rejected() {
 
     let err = runner.exec("spawn Character hero { HP: 20, Flying { speed: 60 } }").unwrap_err();
     assert!(
-        err.to_string().contains("unknown optional group"),
+        err.to_string().contains("unknown group"),
         "got: {}",
         err
     );
@@ -1605,7 +1661,7 @@ fn revoke_unknown_group() {
 
     let err = runner.exec("revoke hero.Flying").unwrap_err();
     assert!(
-        err.to_string().contains("unknown optional group"),
+        err.to_string().contains("unknown group"),
         "got: {}",
         err
     );
@@ -1630,6 +1686,7 @@ fn group_accessor_methods() {
     load_group_program(&mut runner);
 
     let groups = runner.group_names("Character");
+    assert!(groups.contains(&"CombatStats".to_string()));
     assert!(groups.contains(&"Spellcasting".to_string()));
     assert!(groups.contains(&"Rage".to_string()));
 

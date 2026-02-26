@@ -15,7 +15,7 @@ impl Runner {
             .lookup_optional_group(entity_type, group_name)
             .ok_or_else(|| {
                 CliError::Message(format!(
-                    "unknown optional group '{}' on entity type '{}'",
+                    "unknown group '{}' on entity type '{}'",
                     group_name, entity_type
                 ))
             })?
@@ -25,7 +25,7 @@ impl Runner {
             match group_info.fields.iter().find(|f| f.name == field_name.as_str()) {
                 None => {
                     return Err(CliError::Message(format!(
-                        "unknown field '{}' in optional group '{}'",
+                        "unknown field '{}' in group '{}'",
                         field_name, group_name
                     )));
                 }
@@ -47,7 +47,7 @@ impl Runner {
         for fi in &group_info.fields {
             if !fi.has_default && !fields.contains_key(fi.name.as_str()) {
                 return Err(CliError::Message(format!(
-                    "missing required field '{}' in optional group '{}'",
+                    "missing required field '{}' in group '{}'",
                     fi.name, group_name
                 )));
             }

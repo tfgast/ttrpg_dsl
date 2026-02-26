@@ -51,9 +51,17 @@ impl Runner {
                         )));
                     }
                     None => {
+                        let type_name = gs.entity_type_name(&entity).map(|s| s.to_string());
+                        let group_info = type_name
+                            .as_deref()
+                            .and_then(|tn| self.type_env.lookup_optional_group(tn, group_name));
+                        let suffix = match group_info {
+                            Some(info) if info.required => "is required but missing in state",
+                            _ => "is not currently granted",
+                        };
                         return Err(CliError::Message(format!(
-                            "{}.{} is not currently granted",
-                            handle, group_name
+                            "{}.{} {}",
+                            handle, group_name, suffix
                         )));
                     }
                 }
@@ -149,8 +157,9 @@ impl Runner {
                     if let Some(Value::Struct { fields, .. }) =
                         gs.read_field(&entity, &group_info.name)
                     {
+                        let status = if group_info.required { "included" } else { "granted" };
                         self.output
-                            .push(format!("  [group] {} (granted)", group_info.name));
+                            .push(format!("  [group] {} ({})", group_info.name, status));
                         for fi in &group_info.fields {
                             let val = fields
                                 .get(&fi.name)
@@ -223,8 +232,9 @@ impl Runner {
                     if let Some(Value::Struct { fields, .. }) =
                         gs.read_field(entity, &group_info.name)
                     {
+                        let status = if group_info.required { "included" } else { "granted" };
                         self.output
-                            .push(format!("  [group] {} (granted)", group_info.name));
+                            .push(format!("  [group] {} ({})", group_info.name, status));
                         for fi in &group_info.fields {
                             let val = fields
                                 .get(&fi.name)
@@ -273,8 +283,9 @@ impl Runner {
                             .push(format!("  {}: {}", fi.name, fi.ty.display()));
                     }
                     for group in &info.optional_groups {
+                        let decl_kw = if group.required { "include" } else { "optional" };
                         self.output
-                            .push(format!("  optional {}", group.name));
+                            .push(format!("  {} {}", decl_kw, group.name));
                         for fi in &group.fields {
                             self.output
                                 .push(format!("    {}: {}", fi.name, fi.ty.display()));

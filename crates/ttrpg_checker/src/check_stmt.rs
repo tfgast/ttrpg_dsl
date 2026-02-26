@@ -233,15 +233,17 @@ impl<'a> Checker<'a> {
                 LValueSegment::Field(name) => {
                     current = self.resolve_field(&current, name, lvalue.span);
                     // Check narrowing for optional group access
-                    if let Ty::OptionalGroupRef(_, ref group_name) = current {
-                        if !self.scope.is_group_narrowed(&path_key, group_name) {
-                            self.error(
-                                format!(
-                                    "access to optional group `{}` on `{}` requires a `has` guard or `with` constraint",
-                                    group_name, path_key
-                                ),
-                                lvalue.span,
-                            );
+                    if let Ty::OptionalGroupRef(ref entity_name, ref group_name) = current {
+                        if !self.env.is_group_required(entity_name, group_name)
+                            && !self.scope.is_group_narrowed(&path_key, group_name)
+                        {
+                                self.error(
+                                    format!(
+                                        "access to optional group `{}` on `{}` requires a `has` guard or `with` constraint",
+                                        group_name, path_key
+                                    ),
+                                    lvalue.span,
+                                );
                         }
                     }
                     path_key = format!("{}.{}", path_key, name);
@@ -323,26 +325,38 @@ impl<'a> Checker<'a> {
                     return;
                 }
             },
-            Ty::AnyEntity => match self.env.unique_optional_group_owner(group_name) {
-                Some((_, g)) => g.clone(),
-                None if self.env.has_optional_group_named(group_name) => {
+            Ty::AnyEntity => {
+                if self.env.is_group_required_somewhere(group_name) {
                     self.error(
                         format!(
-                            "optional group `{}` is ambiguous on type `entity`; use a concrete entity type",
+                            "group `{}` is required on some entity types and cannot be granted on type `entity`; use a concrete entity type",
                             group_name
                         ),
                         span,
                     );
                     return;
                 }
-                None => {
-                    self.error(
-                        format!("unknown optional group `{}` for type `entity`", group_name),
-                        span,
-                    );
-                    return;
+                match self.env.unique_optional_group_owner(group_name) {
+                    Some((_, g)) => g.clone(),
+                    None if self.env.has_optional_group_named(group_name) => {
+                        self.error(
+                            format!(
+                                "optional group `{}` is ambiguous on type `entity`; use a concrete entity type",
+                                group_name
+                            ),
+                            span,
+                        );
+                        return;
+                    }
+                    None => {
+                        self.error(
+                            format!("unknown optional group `{}` for type `entity`", group_name),
+                            span,
+                        );
+                        return;
+                    }
                 }
-            },
+            }
             _ => {
                 self.error(
                     format!("grant requires an entity, found {}", entity_ty),
@@ -351,6 +365,17 @@ impl<'a> Checker<'a> {
                 return;
             }
         };
+
+        if group.required {
+            self.error(
+                format!(
+                    "group `{}` is required on this entity and cannot be granted",
+                    group_name
+                ),
+                span,
+            );
+            return;
+        }
 
         // Validate field initializers
         let mut seen = std::collections::HashSet::new();
@@ -429,32 +454,62 @@ impl<'a> Checker<'a> {
 
         match &entity_ty {
             Ty::Entity(entity_name) => {
-                if self.env.lookup_optional_group(entity_name, group_name).is_none() {
-                    self.error(
-                        format!(
-                            "entity `{}` has no optional group `{}`",
-                            entity_name, group_name
-                        ),
-                        span,
-                    );
-                }
-            }
-            Ty::AnyEntity => {
-                if self.env.unique_optional_group_owner(group_name).is_none() {
-                    if self.env.has_optional_group_named(group_name) {
+                match self.env.lookup_optional_group(entity_name, group_name) {
+                    Some(group) if group.required => {
                         self.error(
                             format!(
-                                "optional group `{}` is ambiguous on type `entity`; use a concrete entity type",
+                                "group `{}` is required on this entity and cannot be revoked",
                                 group_name
                             ),
                             span,
                         );
-                    } else {
+                    }
+                    Some(_) => {}
+                    None => {
                         self.error(
-                            format!("unknown optional group `{}` for type `entity`", group_name),
+                            format!(
+                                "entity `{}` has no optional group `{}`",
+                                entity_name, group_name
+                            ),
                             span,
                         );
                     }
+                }
+            }
+            Ty::AnyEntity => {
+                if self.env.is_group_required_somewhere(group_name) {
+                    self.error(
+                        format!(
+                            "group `{}` is required on some entity types and cannot be revoked on type `entity`; use a concrete entity type",
+                            group_name
+                        ),
+                        span,
+                    );
+                    return;
+                }
+                if let Some((_, group)) = self.env.unique_optional_group_owner(group_name) {
+                    if group.required {
+                        self.error(
+                            format!(
+                                "group `{}` is required on this entity and cannot be revoked",
+                                group_name
+                            ),
+                            span,
+                        );
+                    }
+                } else if self.env.has_optional_group_named(group_name) {
+                    self.error(
+                        format!(
+                            "optional group `{}` is ambiguous on type `entity`; use a concrete entity type",
+                            group_name
+                        ),
+                        span,
+                    );
+                } else {
+                    self.error(
+                        format!("unknown optional group `{}` for type `entity`", group_name),
+                        span,
+                    );
                 }
             }
             _ => {

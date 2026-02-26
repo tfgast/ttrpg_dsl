@@ -60,6 +60,7 @@ pub struct UnitInfo {
 pub struct OptionalGroupInfo {
     pub name: Name,
     pub fields: Vec<FieldInfo>,
+    pub required: bool,
 }
 
 /// What kind of callable a function name refers to.
@@ -358,6 +359,13 @@ impl TypeEnv {
         }
     }
 
+    /// Return whether a group attached to an entity is required (`include`) vs optional.
+    pub fn is_group_required(&self, entity_name: &str, group_name: &str) -> bool {
+        self.lookup_optional_group(entity_name, group_name)
+            .map(|g| g.required)
+            .unwrap_or(false)
+    }
+
     /// Look up a top-level group declaration by name.
     pub fn lookup_group(&self, group_name: &str) -> Option<&OptionalGroupInfo> {
         self.groups.get(group_name)
@@ -395,6 +403,17 @@ impl TypeEnv {
             }
         }
         found
+    }
+
+    /// Return true if any entity declares `group_name` as required (`include`).
+    pub fn is_group_required_somewhere(&self, group_name: &str) -> bool {
+        self.types.values().any(|decl| match decl {
+            DeclInfo::Entity(info) => info
+                .optional_groups
+                .iter()
+                .any(|g| g.name == group_name && g.required),
+            _ => false,
+        })
     }
 
     /// Get the RollResult struct fields.

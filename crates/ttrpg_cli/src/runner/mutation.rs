@@ -103,6 +103,24 @@ impl Runner {
             prepared_groups.push((group_name, struct_val));
         }
 
+        // Included groups are required and always active.
+        // Materialize any omitted included group using defaults.
+        if let Some(DeclInfo::Entity(info)) = self.type_env.types.get(entity_type) {
+            let already_prepared: std::collections::HashSet<String> =
+                prepared_groups.iter().map(|(n, _)| n.clone()).collect();
+            let required_groups: Vec<String> = info
+                .optional_groups
+                .iter()
+                .filter(|g| g.required && !already_prepared.contains(g.name.as_str()))
+                .map(|g| g.name.to_string())
+                .collect();
+            for group_name in required_groups {
+                let struct_val =
+                    self.validate_and_prepare_group(&group_name, entity_type, HashMap::new())?;
+                prepared_groups.push((group_name, struct_val));
+            }
+        }
+
         // All validation passed — now apply mutations (cannot fail).
         let fields: HashMap<Name, Value> = fields.into_iter().map(|(k, v)| (Name::from(k), v)).collect();
         let entity = self.game_state.borrow_mut().add_entity(entity_type, fields);
@@ -177,18 +195,23 @@ impl Runner {
                     .lookup_optional_group(&type_name, group_name)
                     .ok_or_else(|| {
                         CliError::Message(format!(
-                            "unknown optional group '{}' on entity type '{}'",
+                            "unknown group '{}' on entity type '{}'",
                             group_name, type_name
                         ))
                     })?;
 
-                // Check the group is granted
+                // Check the group is active/present
                 {
                     let gs = self.game_state.borrow();
                     if gs.read_field(&entity, group_name).is_none() {
+                        let status = if group_info.required {
+                            "is required but missing in state"
+                        } else {
+                            "is not currently granted"
+                        };
                         return Err(CliError::Message(format!(
-                            "{}.{} is not currently granted",
-                            handle, group_name
+                            "{}.{} {}",
+                            handle, group_name, status
                         )));
                     }
                 }
@@ -504,14 +527,19 @@ impl Runner {
                 })?
                 .to_string()
         };
-        if self
+        let group_info = self
             .type_env
             .lookup_optional_group(&type_name, group_name)
-            .is_none()
-        {
+            .ok_or_else(|| {
+                CliError::Message(format!(
+                    "unknown group '{}' on entity type '{}'",
+                    group_name, type_name
+                ))
+            })?;
+        if group_info.required {
             return Err(CliError::Message(format!(
-                "unknown optional group '{}' on entity type '{}'",
-                group_name, type_name
+                "{}.{} is required and cannot be revoked",
+                handle, group_name
             )));
         }
 
@@ -566,6 +594,22 @@ impl Runner {
                 })?
                 .to_string()
         };
+        let group_info = self
+            .type_env
+            .lookup_optional_group(&type_name, group_name)
+            .ok_or_else(|| {
+                CliError::Message(format!(
+                    "unknown group '{}' on entity type '{}'",
+                    group_name, type_name
+                ))
+            })?;
+        if group_info.required {
+            return Err(CliError::Message(format!(
+                "{}.{} is required and cannot be granted",
+                handle, group_name
+            )));
+        }
+
         // Check not already granted
         {
             let gs = self.game_state.borrow();
