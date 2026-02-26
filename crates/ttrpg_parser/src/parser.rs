@@ -60,7 +60,8 @@ impl Parser {
     }
 
     pub(crate) fn advance(&mut self) -> Token {
-        let tok = self.tokens
+        let tok = self
+            .tokens
             .get(self.pos)
             .cloned()
             .unwrap_or_else(|| Token::new(TokenKind::Eof, Span::dummy()));
@@ -74,11 +75,7 @@ impl Parser {
         if self.at(expected) {
             Ok(self.advance())
         } else {
-            self.error(format!(
-                "expected {:?}, found {:?}",
-                expected,
-                self.peek()
-            ));
+            self.error(format!("expected {:?}, found {:?}", expected, self.peek()));
             Err(())
         }
     }
@@ -127,10 +124,7 @@ impl Parser {
             }
             TokenKind::RBrace | TokenKind::Eof => Ok(()),
             _ => {
-                self.error(format!(
-                    "expected newline or '}}', found {:?}",
-                    self.peek()
-                ));
+                self.error(format!("expected newline or '}}', found {:?}", self.peek()));
                 Err(())
             }
         }
@@ -235,7 +229,10 @@ impl Parser {
             }
             self.skip_newlines();
         }
-        Program { items, ..Default::default() }
+        Program {
+            items,
+            ..Default::default()
+        }
     }
 
     fn parse_use_decl(&mut self) -> Result<UseDecl, ()> {
@@ -250,7 +247,11 @@ impl Parser {
             None
         };
         self.expect_term()?;
-        Ok(UseDecl { path, alias, span: self.end_span(start) })
+        Ok(UseDecl {
+            path,
+            alias,
+            span: self.end_span(start),
+        })
     }
 
     fn parse_system_block(&mut self) -> Result<SystemBlock, ()> {
@@ -294,14 +295,22 @@ impl Parser {
         loop {
             match self.peek() {
                 TokenKind::Eof => return,
-                TokenKind::LBrace => { depth += 1; self.advance(); }
-                TokenKind::RBrace if depth > 0 => { depth -= 1; self.advance(); }
+                TokenKind::LBrace => {
+                    depth += 1;
+                    self.advance();
+                }
+                TokenKind::RBrace if depth > 0 => {
+                    depth -= 1;
+                    self.advance();
+                }
                 TokenKind::RBrace => return, // system block's closing brace
                 _ if depth == 0 && self.is_decl_start() => return,
                 // Stop at top-level keywords so an unclosed system block
                 // doesn't consume subsequent system declarations.
                 _ if depth == 0 && (self.at_ident("system") || self.at_ident("use")) => return,
-                _ => { self.advance(); }
+                _ => {
+                    self.advance();
+                }
             }
         }
     }

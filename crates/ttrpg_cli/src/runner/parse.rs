@@ -26,10 +26,10 @@ impl Runner {
             let brace_pos = find_unquoted(entry, '{');
 
             let is_group = match (colon_pos, brace_pos) {
-                (None, Some(_)) => true,       // only { found
-                (Some(_), None) => false,      // only : found
-                (Some(c), Some(b)) => b < c,   // { comes before :
-                (None, None) => false,         // treat as field (will error in parse)
+                (None, Some(_)) => true,     // only { found
+                (Some(_), None) => false,    // only : found
+                (Some(c), Some(b)) => b < c, // { comes before :
+                (None, None) => false,       // treat as field (will error in parse)
             };
 
             if is_group {
@@ -52,9 +52,7 @@ impl Runner {
                     })?;
 
                 if group_name.is_empty() {
-                    return Err(CliError::Message(
-                        "empty group name in spawn block".into(),
-                    ));
+                    return Err(CliError::Message("empty group name in spawn block".into()));
                 }
 
                 // Validate this is actually an optional group
@@ -82,10 +80,7 @@ impl Runner {
                 let key = entry[..cp].trim();
                 let val_str = entry[cp + 1..].trim();
                 if key.is_empty() || val_str.is_empty() {
-                    return Err(CliError::Message(format!(
-                        "invalid field entry: {}",
-                        entry
-                    )));
+                    return Err(CliError::Message(format!("invalid field entry: {}", entry)));
                 }
 
                 let val = if let Some(&ent) = self.handles.get(val_str) {
@@ -140,7 +135,10 @@ impl Runner {
     }
 
     /// Parse a field block like `key: expr, key: expr` into a HashMap.
-    pub(super) fn parse_field_block(&mut self, block: &str) -> Result<HashMap<String, Value>, CliError> {
+    pub(super) fn parse_field_block(
+        &mut self,
+        block: &str,
+    ) -> Result<HashMap<String, Value>, CliError> {
         let mut fields = HashMap::new();
         let entries = split_top_level_commas(block);
         for entry in entries {
@@ -148,16 +146,16 @@ impl Runner {
             if entry.is_empty() {
                 continue;
             }
-            let colon_pos = entry
-                .find(':')
-                .ok_or_else(|| CliError::Message(format!("expected 'key: value' in field block, got: {}", entry)))?;
+            let colon_pos = entry.find(':').ok_or_else(|| {
+                CliError::Message(format!(
+                    "expected 'key: value' in field block, got: {}",
+                    entry
+                ))
+            })?;
             let key = entry[..colon_pos].trim();
             let val_str = entry[colon_pos + 1..].trim();
             if key.is_empty() || val_str.is_empty() {
-                return Err(CliError::Message(format!(
-                    "invalid field entry: {}",
-                    entry
-                )));
+                return Err(CliError::Message(format!("invalid field entry: {}", entry)));
             }
 
             // Try handle resolution first, then fall back to expression eval
@@ -180,8 +178,12 @@ impl Runner {
                 let interp = Interpreter::new(&self.program, &self.type_env)
                     .map_err(|e| CliError::Message(format!("interpreter error: {}", e)))?;
                 let state = RefCellState(&self.game_state);
-                let mut handler =
-                    CliHandler::new(&self.game_state, &self.reverse_handles, &mut self.rng, &mut self.roll_queue);
+                let mut handler = CliHandler::new(
+                    &self.game_state,
+                    &self.reverse_handles,
+                    &mut self.rng,
+                    &mut self.roll_queue,
+                );
                 let result = interp
                     .evaluate_expr(&state, &mut handler, &parsed)
                     .map_err(|e| {

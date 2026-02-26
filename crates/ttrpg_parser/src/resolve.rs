@@ -85,12 +85,24 @@ pub fn resolve_modules(
                 } else {
                     seen_names.insert((*ns, name.clone()), owned.span);
                     match ns {
-                        Namespace::Group => { info.groups.insert(name.clone()); }
-                        Namespace::Type => { info.types.insert(name.clone()); }
-                        Namespace::Function => { info.functions.insert(name.clone()); }
-                        Namespace::Condition => { info.conditions.insert(name.clone()); }
-                        Namespace::Event => { info.events.insert(name.clone()); }
-                        Namespace::Option => { info.options.insert(name.clone()); }
+                        Namespace::Group => {
+                            info.groups.insert(name.clone());
+                        }
+                        Namespace::Type => {
+                            info.types.insert(name.clone());
+                        }
+                        Namespace::Function => {
+                            info.functions.insert(name.clone());
+                        }
+                        Namespace::Condition => {
+                            info.conditions.insert(name.clone());
+                        }
+                        Namespace::Event => {
+                            info.events.insert(name.clone());
+                        }
+                        Namespace::Option => {
+                            info.options.insert(name.clone());
+                        }
                         Namespace::Variant => unreachable!(),
                     }
                 }
@@ -142,10 +154,15 @@ pub fn resolve_modules(
 
         // Pre-collect ALL valid import target systems so alias shadow
         // checking is order-independent (not just "previously accepted").
-        let all_import_targets: HashSet<Name> = imports.iter()
+        let all_import_targets: HashSet<Name> = imports
+            .iter()
             .filter_map(|(import, _)| {
-                if !module_map.systems.contains_key(&import.system_name) { return None; }
-                if import.system_name == *sys_name { return None; }
+                if !module_map.systems.contains_key(&import.system_name) {
+                    return None;
+                }
+                if import.system_name == *sys_name {
+                    return None;
+                }
                 Some(import.system_name.clone())
             })
             .collect();
@@ -153,24 +170,24 @@ pub fn resolve_modules(
         for (import, _span) in imports {
             // Check target exists
             if !module_map.systems.contains_key(&import.system_name) {
-                diagnostics.push(Diagnostic::error(
-                    format!("unknown system \"{}\"", import.system_name),
-                    import.span,
-                ).with_help(format!(
-                    "\"{}\" is not defined in the loaded files; \
+                diagnostics.push(
+                    Diagnostic::error(
+                        format!("unknown system \"{}\"", import.system_name),
+                        import.span,
+                    )
+                    .with_help(format!(
+                        "\"{}\" is not defined in the loaded files; \
                      load the file that defines it in the same `load` command",
-                    import.system_name
-                )));
+                        import.system_name
+                    )),
+                );
                 continue;
             }
 
             // Check self-import
             if import.system_name == *sys_name {
                 diagnostics.push(Diagnostic::warning(
-                    format!(
-                        "system \"{}\" imports itself (no effect)",
-                        sys_name
-                    ),
+                    format!("system \"{}\" imports itself (no effect)", sys_name),
                     import.span,
                 ));
                 continue;
@@ -331,10 +348,7 @@ impl DeclOwnership {
 }
 
 /// Detect cross-system duplicate declarations in each namespace.
-fn detect_cross_system_collisions(
-    module_map: &ModuleMap,
-    diagnostics: &mut Vec<Diagnostic>,
-) {
+fn detect_cross_system_collisions(module_map: &ModuleMap, diagnostics: &mut Vec<Diagnostic>) {
     // For each namespace, collect: name → Vec<(system_name)>
     // We can't track spans here easily since ModuleMap doesn't store them,
     // but the error message names both systems which is sufficient.
@@ -363,7 +377,10 @@ fn detect_cross_system_collisions(
                 Namespace::Variant => &sys_info.variants,
             };
             for name in names {
-                name_owners.entry(name.as_str()).or_default().push(sys_name.as_str());
+                name_owners
+                    .entry(name.as_str())
+                    .or_default()
+                    .push(sys_name.as_str());
             }
         }
 
@@ -413,7 +430,13 @@ fn desugar_qualified_types(
         if let TopLevel::System(system) = &mut item.node {
             let aliases = system_aliases.get(&system.name);
             for decl in &mut system.decls {
-                desugar_decl_types(&mut decl.node, &system.name, aliases, module_map, diagnostics);
+                desugar_decl_types(
+                    &mut decl.node,
+                    &system.name,
+                    aliases,
+                    module_map,
+                    diagnostics,
+                );
             }
         }
     }
@@ -437,7 +460,13 @@ fn desugar_decl_types(
             for v in &mut e.variants {
                 if let Some(ref mut fields) = v.fields {
                     for f in fields {
-                        desugar_type_expr(&mut f.ty, current_system, aliases, module_map, diagnostics);
+                        desugar_type_expr(
+                            &mut f.ty,
+                            current_system,
+                            aliases,
+                            module_map,
+                            diagnostics,
+                        );
                     }
                 }
             }
@@ -458,38 +487,86 @@ fn desugar_decl_types(
             }
         }
         DeclKind::Derive(f) | DeclKind::Mechanic(f) => {
-            desugar_type_expr(&mut f.return_type, current_system, aliases, module_map, diagnostics);
+            desugar_type_expr(
+                &mut f.return_type,
+                current_system,
+                aliases,
+                module_map,
+                diagnostics,
+            );
             for p in &mut f.params {
                 desugar_type_expr(&mut p.ty, current_system, aliases, module_map, diagnostics);
             }
         }
         DeclKind::Action(a) => {
-            desugar_type_expr(&mut a.receiver_type, current_system, aliases, module_map, diagnostics);
+            desugar_type_expr(
+                &mut a.receiver_type,
+                current_system,
+                aliases,
+                module_map,
+                diagnostics,
+            );
             for p in &mut a.params {
                 desugar_type_expr(&mut p.ty, current_system, aliases, module_map, diagnostics);
             }
         }
         DeclKind::Reaction(r) => {
-            desugar_type_expr(&mut r.receiver_type, current_system, aliases, module_map, diagnostics);
+            desugar_type_expr(
+                &mut r.receiver_type,
+                current_system,
+                aliases,
+                module_map,
+                diagnostics,
+            );
         }
         DeclKind::Hook(h) => {
-            desugar_type_expr(&mut h.receiver_type, current_system, aliases, module_map, diagnostics);
+            desugar_type_expr(
+                &mut h.receiver_type,
+                current_system,
+                aliases,
+                module_map,
+                diagnostics,
+            );
         }
         DeclKind::Condition(c) => {
-            desugar_type_expr(&mut c.receiver_type, current_system, aliases, module_map, diagnostics);
+            desugar_type_expr(
+                &mut c.receiver_type,
+                current_system,
+                aliases,
+                module_map,
+                diagnostics,
+            );
             for p in &mut c.params {
                 desugar_type_expr(&mut p.ty, current_system, aliases, module_map, diagnostics);
             }
             for clause in &mut c.clauses {
                 if let ConditionClause::Modify(m) = clause {
-                    desugar_modify_stmts(&mut m.body, current_system, aliases, module_map, diagnostics);
+                    desugar_modify_stmts(
+                        &mut m.body,
+                        current_system,
+                        aliases,
+                        module_map,
+                        diagnostics,
+                    );
                 }
             }
         }
         DeclKind::Prompt(p) => {
-            desugar_type_expr(&mut p.return_type, current_system, aliases, module_map, diagnostics);
+            desugar_type_expr(
+                &mut p.return_type,
+                current_system,
+                aliases,
+                module_map,
+                diagnostics,
+            );
             for param in &mut p.params {
-                desugar_type_expr(&mut param.ty, current_system, aliases, module_map, diagnostics);
+                desugar_type_expr(
+                    &mut param.ty,
+                    current_system,
+                    aliases,
+                    module_map,
+                    diagnostics,
+                );
             }
         }
         DeclKind::Event(e) => {
@@ -501,7 +578,13 @@ fn desugar_decl_types(
             }
         }
         DeclKind::Table(t) => {
-            desugar_type_expr(&mut t.return_type, current_system, aliases, module_map, diagnostics);
+            desugar_type_expr(
+                &mut t.return_type,
+                current_system,
+                aliases,
+                module_map,
+                diagnostics,
+            );
             for p in &mut t.params {
                 desugar_type_expr(&mut p.ty, current_system, aliases, module_map, diagnostics);
             }
@@ -514,7 +597,13 @@ fn desugar_decl_types(
         DeclKind::Option(o) => {
             if let Some(ref mut clauses) = o.when_enabled {
                 for m in clauses {
-                    desugar_modify_stmts(&mut m.body, current_system, aliases, module_map, diagnostics);
+                    desugar_modify_stmts(
+                        &mut m.body,
+                        current_system,
+                        aliases,
+                        module_map,
+                        diagnostics,
+                    );
                 }
             }
         }
@@ -537,10 +626,20 @@ fn desugar_modify_stmts(
                     desugar_type_expr(ty_expr, current_system, aliases, module_map, diagnostics);
                 }
             }
-            ModifyStmt::If { then_body, else_body, .. } => {
+            ModifyStmt::If {
+                then_body,
+                else_body,
+                ..
+            } => {
                 desugar_modify_stmts(then_body, current_system, aliases, module_map, diagnostics);
                 if let Some(ref mut else_stmts) = else_body {
-                    desugar_modify_stmts(else_stmts, current_system, aliases, module_map, diagnostics);
+                    desugar_modify_stmts(
+                        else_stmts,
+                        current_system,
+                        aliases,
+                        module_map,
+                        diagnostics,
+                    );
                 }
             }
             ModifyStmt::ParamOverride { .. } | ModifyStmt::ResultOverride { .. } => {}
@@ -601,11 +700,17 @@ fn desugar_type_expr(
             // Need to recurse into nested types — but we have an immutable borrow.
             // Extract, desugar, put back via unsafe-free pattern.
             let mut inner_clone = inner.as_ref().clone();
-            desugar_type_expr(&mut inner_clone, current_system, aliases, module_map, diagnostics);
+            desugar_type_expr(
+                &mut inner_clone,
+                current_system,
+                aliases,
+                module_map,
+                diagnostics,
+            );
             match &mut texpr.node {
-                TypeExpr::List(ref mut inner) |
-                TypeExpr::Set(ref mut inner) |
-                TypeExpr::OptionType(ref mut inner) => {
+                TypeExpr::List(ref mut inner)
+                | TypeExpr::Set(ref mut inner)
+                | TypeExpr::OptionType(ref mut inner) => {
                     **inner = inner_clone;
                 }
                 _ => unreachable!(),
@@ -614,8 +719,20 @@ fn desugar_type_expr(
         TypeExpr::Map(k, v) => {
             let mut k_clone = k.as_ref().clone();
             let mut v_clone = v.as_ref().clone();
-            desugar_type_expr(&mut k_clone, current_system, aliases, module_map, diagnostics);
-            desugar_type_expr(&mut v_clone, current_system, aliases, module_map, diagnostics);
+            desugar_type_expr(
+                &mut k_clone,
+                current_system,
+                aliases,
+                module_map,
+                diagnostics,
+            );
+            desugar_type_expr(
+                &mut v_clone,
+                current_system,
+                aliases,
+                module_map,
+                diagnostics,
+            );
             if let TypeExpr::Map(ref mut k, ref mut v) = &mut texpr.node {
                 **k = k_clone;
                 **v = v_clone;
@@ -632,7 +749,10 @@ mod tests {
     use ttrpg_ast::Spanned;
 
     fn make_program(items: Vec<Spanned<TopLevel>>) -> Program {
-        let mut p = Program { items, ..Default::default() };
+        let mut p = Program {
+            items,
+            ..Default::default()
+        };
         p.build_index();
         p
     }
@@ -694,12 +814,13 @@ mod tests {
 
     #[test]
     fn single_system_no_imports() {
-        let mut program = make_program(vec![
-            make_system("Core", vec![
+        let mut program = make_program(vec![make_system(
+            "Core",
+            vec![
                 make_enum("Ability", &["STR", "DEX"]),
                 make_derive("modifier"),
-            ]),
-        ]);
+            ],
+        )]);
         let file_systems = vec![FileSystemInfo {
             system_names: vec!["Core".into()],
             use_decls: vec![],
@@ -726,9 +847,14 @@ mod tests {
         }];
 
         let (_map, diags) = resolve_modules(&mut program, &file_systems);
-        let errors: Vec<_> = diags.iter().filter(|d| d.severity == Severity::Error).collect();
+        let errors: Vec<_> = diags
+            .iter()
+            .filter(|d| d.severity == Severity::Error)
+            .collect();
         assert!(!errors.is_empty(), "expected collision error");
-        assert!(errors.iter().any(|d| d.message.contains("duplicate type \"Ability\"")));
+        assert!(errors
+            .iter()
+            .any(|d| d.message.contains("duplicate type \"Ability\"")));
     }
 
     #[test]
@@ -746,8 +872,15 @@ mod tests {
         }];
 
         let (_map, diags) = resolve_modules(&mut program, &file_systems);
-        let errors: Vec<_> = diags.iter().filter(|d| d.severity == Severity::Error).collect();
-        assert!(errors.is_empty(), "multi-owner variants should not be errors: {:?}", errors);
+        let errors: Vec<_> = diags
+            .iter()
+            .filter(|d| d.severity == Severity::Error)
+            .collect();
+        assert!(
+            errors.is_empty(),
+            "multi-owner variants should not be errors: {:?}",
+            errors
+        );
     }
 
     #[test]
@@ -763,7 +896,10 @@ mod tests {
         }];
 
         let (_map, diags) = resolve_modules(&mut program, &file_systems);
-        let errors: Vec<_> = diags.iter().filter(|d| d.severity == Severity::Error).collect();
+        let errors: Vec<_> = diags
+            .iter()
+            .filter(|d| d.severity == Severity::Error)
+            .collect();
         assert_eq!(errors.len(), 1);
         let msg = &errors[0].message;
         assert!(msg.contains("\"A\""), "should mention system A: {}", msg);
@@ -783,15 +919,20 @@ mod tests {
         }];
 
         let (_map, diags) = resolve_modules(&mut program, &file_systems);
-        let errors: Vec<_> = diags.iter().filter(|d| d.severity == Severity::Error).collect();
-        assert!(errors.is_empty(), "type Foo and function Foo should not collide: {:?}", errors);
+        let errors: Vec<_> = diags
+            .iter()
+            .filter(|d| d.severity == Severity::Error)
+            .collect();
+        assert!(
+            errors.is_empty(),
+            "type Foo and function Foo should not collide: {:?}",
+            errors
+        );
     }
 
     #[test]
     fn unknown_import_target() {
-        let mut program = make_program(vec![
-            make_system("Core", vec![make_derive("modifier")]),
-        ]);
+        let mut program = make_program(vec![make_system("Core", vec![make_derive("modifier")])]);
         let file_systems = vec![FileSystemInfo {
             system_names: vec!["Core".into()],
             use_decls: vec![UseDecl {
@@ -802,14 +943,14 @@ mod tests {
         }];
 
         let (_map, diags) = resolve_modules(&mut program, &file_systems);
-        assert!(diags.iter().any(|d| d.message.contains("unknown system \"Unknown\"")));
+        assert!(diags
+            .iter()
+            .any(|d| d.message.contains("unknown system \"Unknown\"")));
     }
 
     #[test]
     fn self_import_warning() {
-        let mut program = make_program(vec![
-            make_system("Core", vec![make_derive("modifier")]),
-        ]);
+        let mut program = make_program(vec![make_system("Core", vec![make_derive("modifier")])]);
         let file_systems = vec![FileSystemInfo {
             system_names: vec!["Core".into()],
             use_decls: vec![UseDecl {
@@ -820,8 +961,13 @@ mod tests {
         }];
 
         let (_map, diags) = resolve_modules(&mut program, &file_systems);
-        let warnings: Vec<_> = diags.iter().filter(|d| d.severity == Severity::Warning).collect();
-        assert!(warnings.iter().any(|d| d.message.contains("imports itself")));
+        let warnings: Vec<_> = diags
+            .iter()
+            .filter(|d| d.severity == Severity::Warning)
+            .collect();
+        assert!(warnings
+            .iter()
+            .any(|d| d.message.contains("imports itself")));
     }
 
     #[test]
@@ -834,13 +980,23 @@ mod tests {
         let file_systems = vec![FileSystemInfo {
             system_names: vec!["Main".into()],
             use_decls: vec![
-                UseDecl { path: "A".into(), alias: Some("X".into()), span: Span::new(FileId(0), 0, 10) },
-                UseDecl { path: "B".into(), alias: Some("X".into()), span: Span::new(FileId(0), 20, 30) },
+                UseDecl {
+                    path: "A".into(),
+                    alias: Some("X".into()),
+                    span: Span::new(FileId(0), 0, 10),
+                },
+                UseDecl {
+                    path: "B".into(),
+                    alias: Some("X".into()),
+                    span: Span::new(FileId(0), 20, 30),
+                },
             ],
         }];
 
         let (_map, diags) = resolve_modules(&mut program, &file_systems);
-        assert!(diags.iter().any(|d| d.message.contains("duplicate alias \"X\"")));
+        assert!(diags
+            .iter()
+            .any(|d| d.message.contains("duplicate alias \"X\"")));
     }
 
     #[test]
@@ -853,21 +1009,32 @@ mod tests {
         let file_systems = vec![
             FileSystemInfo {
                 system_names: vec!["Main".into()],
-                use_decls: vec![
-                    UseDecl { path: "A".into(), alias: Some("X".into()), span: Span::new(FileId(0), 0, 10) },
-                ],
+                use_decls: vec![UseDecl {
+                    path: "A".into(),
+                    alias: Some("X".into()),
+                    span: Span::new(FileId(0), 0, 10),
+                }],
             },
             FileSystemInfo {
                 system_names: vec!["Main".into()],
-                use_decls: vec![
-                    UseDecl { path: "A".into(), alias: Some("X".into()), span: Span::new(FileId(0), 50, 60) },
-                ],
+                use_decls: vec![UseDecl {
+                    path: "A".into(),
+                    alias: Some("X".into()),
+                    span: Span::new(FileId(0), 50, 60),
+                }],
             },
         ];
 
         let (_map, diags) = resolve_modules(&mut program, &file_systems);
-        let errors: Vec<_> = diags.iter().filter(|d| d.severity == Severity::Error).collect();
-        assert!(errors.is_empty(), "same alias→same target should be idempotent: {:?}", errors);
+        let errors: Vec<_> = diags
+            .iter()
+            .filter(|d| d.severity == Severity::Error)
+            .collect();
+        assert!(
+            errors.is_empty(),
+            "same alias→same target should be idempotent: {:?}",
+            errors
+        );
     }
 
     #[test]
@@ -886,14 +1053,14 @@ mod tests {
         }];
 
         let (_map, diags) = resolve_modules(&mut program, &file_systems);
-        assert!(diags.iter().any(|d| d.message.contains("alias \"Foo\" conflicts with declaration")));
+        assert!(diags.iter().any(|d| d
+            .message
+            .contains("alias \"Foo\" conflicts with declaration")));
     }
 
     #[test]
     fn use_with_no_system_block_warning() {
-        let mut program = make_program(vec![
-            make_system("Other", vec![make_derive("bar")]),
-        ]);
+        let mut program = make_program(vec![make_system("Other", vec![make_derive("bar")])]);
         let file_systems = vec![
             FileSystemInfo {
                 system_names: vec!["Other".into()],
@@ -910,16 +1077,18 @@ mod tests {
         ];
 
         let (_map, diags) = resolve_modules(&mut program, &file_systems);
-        assert!(diags.iter().any(|d| d.message.contains("no system blocks in this file")));
+        assert!(diags
+            .iter()
+            .any(|d| d.message.contains("no system blocks in this file")));
     }
 
     #[test]
     fn valid_import_recorded() {
         let mut program = make_program(vec![
-            make_system("Core", vec![
-                make_enum("Ability", &["STR"]),
-                make_derive("modifier"),
-            ]),
+            make_system(
+                "Core",
+                vec![make_enum("Ability", &["STR"]), make_derive("modifier")],
+            ),
             make_system("Homebrew", vec![make_derive("custom")]),
         ]);
         let file_systems = vec![FileSystemInfo {
@@ -932,7 +1101,10 @@ mod tests {
         }];
 
         let (map, diags) = resolve_modules(&mut program, &file_systems);
-        let errors: Vec<_> = diags.iter().filter(|d| d.severity == Severity::Error).collect();
+        let errors: Vec<_> = diags
+            .iter()
+            .filter(|d| d.severity == Severity::Error)
+            .collect();
         assert!(errors.is_empty(), "unexpected errors: {:?}", errors);
 
         // Homebrew should have Core as an import (use decl applies to all systems in file)
@@ -958,7 +1130,9 @@ mod tests {
         }];
 
         let (_map, diags) = resolve_modules(&mut program, &file_systems);
-        assert!(diags.iter().any(|d| d.message.contains("duplicate declaration `modifier`")));
+        assert!(diags
+            .iter()
+            .any(|d| d.message.contains("duplicate declaration `modifier`")));
     }
 
     #[test]
@@ -979,8 +1153,11 @@ mod tests {
 
         let (_map, diags) = resolve_modules(&mut program, &file_systems);
         assert!(
-            diags.iter().any(|d| d.message.contains("alias \"fire\" conflicts with declaration")),
-            "alias should conflict with own variant: {:?}", diags
+            diags.iter().any(|d| d
+                .message
+                .contains("alias \"fire\" conflicts with declaration")),
+            "alias should conflict with own variant: {:?}",
+            diags
         );
     }
 
@@ -996,16 +1173,30 @@ mod tests {
         let file_systems = vec![FileSystemInfo {
             system_names: vec!["Main".into()],
             use_decls: vec![
-                UseDecl { path: "A".into(), alias: None, span: Span::new(FileId(0), 0, 5) },
-                UseDecl { path: "B".into(), alias: Some("Foo".into()), span: Span::new(FileId(0), 10, 25) },
+                UseDecl {
+                    path: "A".into(),
+                    alias: None,
+                    span: Span::new(FileId(0), 0, 5),
+                },
+                UseDecl {
+                    path: "B".into(),
+                    alias: Some("Foo".into()),
+                    span: Span::new(FileId(0), 10, 25),
+                },
             ],
         }];
 
         let (_map, diags) = resolve_modules(&mut program, &file_systems);
-        let errors: Vec<_> = diags.iter().filter(|d| d.severity == Severity::Error).collect();
+        let errors: Vec<_> = diags
+            .iter()
+            .filter(|d| d.severity == Severity::Error)
+            .collect();
         assert!(
-            errors.iter().any(|d| d.message.contains("alias \"Foo\" shadows")),
-            "alias Foo should shadow imported type Foo from A: {:?}", errors
+            errors
+                .iter()
+                .any(|d| d.message.contains("alias \"Foo\" shadows")),
+            "alias Foo should shadow imported type Foo from A: {:?}",
+            errors
         );
     }
 
@@ -1020,16 +1211,30 @@ mod tests {
         let file_systems = vec![FileSystemInfo {
             system_names: vec!["Main".into()],
             use_decls: vec![
-                UseDecl { path: "A".into(), alias: None, span: Span::new(FileId(0), 0, 5) },
-                UseDecl { path: "B".into(), alias: Some("fire".into()), span: Span::new(FileId(0), 10, 25) },
+                UseDecl {
+                    path: "A".into(),
+                    alias: None,
+                    span: Span::new(FileId(0), 0, 5),
+                },
+                UseDecl {
+                    path: "B".into(),
+                    alias: Some("fire".into()),
+                    span: Span::new(FileId(0), 10, 25),
+                },
             ],
         }];
 
         let (_map, diags) = resolve_modules(&mut program, &file_systems);
-        let errors: Vec<_> = diags.iter().filter(|d| d.severity == Severity::Error).collect();
+        let errors: Vec<_> = diags
+            .iter()
+            .filter(|d| d.severity == Severity::Error)
+            .collect();
         assert!(
-            errors.iter().any(|d| d.message.contains("alias \"fire\" shadows")),
-            "alias fire should shadow imported variant fire from A: {:?}", errors
+            errors
+                .iter()
+                .any(|d| d.message.contains("alias \"fire\" shadows")),
+            "alias fire should shadow imported variant fire from A: {:?}",
+            errors
         );
     }
 
@@ -1044,16 +1249,30 @@ mod tests {
         let file_systems = vec![FileSystemInfo {
             system_names: vec!["Main".into()],
             use_decls: vec![
-                UseDecl { path: "A".into(), alias: None, span: Span::new(FileId(0), 0, 5) },
-                UseDecl { path: "B".into(), alias: Some("Stunned".into()), span: Span::new(FileId(0), 10, 25) },
+                UseDecl {
+                    path: "A".into(),
+                    alias: None,
+                    span: Span::new(FileId(0), 0, 5),
+                },
+                UseDecl {
+                    path: "B".into(),
+                    alias: Some("Stunned".into()),
+                    span: Span::new(FileId(0), 10, 25),
+                },
             ],
         }];
 
         let (_map, diags) = resolve_modules(&mut program, &file_systems);
-        let errors: Vec<_> = diags.iter().filter(|d| d.severity == Severity::Error).collect();
+        let errors: Vec<_> = diags
+            .iter()
+            .filter(|d| d.severity == Severity::Error)
+            .collect();
         assert!(
-            errors.iter().any(|d| d.message.contains("alias \"Stunned\" shadows")),
-            "alias Stunned should shadow imported condition from A: {:?}", errors
+            errors
+                .iter()
+                .any(|d| d.message.contains("alias \"Stunned\" shadows")),
+            "alias Stunned should shadow imported condition from A: {:?}",
+            errors
         );
     }
 
@@ -1074,10 +1293,16 @@ mod tests {
         }];
 
         let (_map, diags) = resolve_modules(&mut program, &file_systems);
-        let errors: Vec<_> = diags.iter().filter(|d| d.severity == Severity::Error).collect();
+        let errors: Vec<_> = diags
+            .iter()
+            .filter(|d| d.severity == Severity::Error)
+            .collect();
         assert!(
-            errors.iter().any(|d| d.message.contains("alias \"Foo\" shadows")),
-            "alias Foo should shadow type Foo from target system A: {:?}", errors
+            errors
+                .iter()
+                .any(|d| d.message.contains("alias \"Foo\" shadows")),
+            "alias Foo should shadow type Foo from target system A: {:?}",
+            errors
         );
     }
 
@@ -1092,13 +1317,24 @@ mod tests {
         let file_systems = vec![FileSystemInfo {
             system_names: vec!["Main".into()],
             use_decls: vec![
-                UseDecl { path: "A".into(), alias: None, span: Span::new(FileId(0), 0, 5) },
-                UseDecl { path: "B".into(), alias: Some("Bsys".into()), span: Span::new(FileId(0), 10, 25) },
+                UseDecl {
+                    path: "A".into(),
+                    alias: None,
+                    span: Span::new(FileId(0), 0, 5),
+                },
+                UseDecl {
+                    path: "B".into(),
+                    alias: Some("Bsys".into()),
+                    span: Span::new(FileId(0), 10, 25),
+                },
             ],
         }];
 
         let (_map, diags) = resolve_modules(&mut program, &file_systems);
-        let errors: Vec<_> = diags.iter().filter(|d| d.severity == Severity::Error).collect();
+        let errors: Vec<_> = diags
+            .iter()
+            .filter(|d| d.severity == Severity::Error)
+            .collect();
         assert!(errors.is_empty(), "no conflicts expected: {:?}", errors);
     }
 
@@ -1229,8 +1465,14 @@ mod tests {
         ];
         let has2 = has_errors(&mut p2, &fs2);
 
-        assert!(has1, "order 1 should detect alias 'foo' shadows B's function");
-        assert!(has2, "order 2 should detect alias 'foo' shadows B's function");
+        assert!(
+            has1,
+            "order 1 should detect alias 'foo' shadows B's function"
+        );
+        assert!(
+            has2,
+            "order 2 should detect alias 'foo' shadows B's function"
+        );
     }
 
     #[test]
@@ -1269,8 +1511,14 @@ mod tests {
 
         let mut p1 = make_program(program_items.clone());
         let mut p2 = make_program(program_items.clone());
-        assert!(has_errors(&mut p1, &make_fs(true)), "alias first: should detect shadow");
-        assert!(has_errors(&mut p2, &make_fs(false)), "alias second: should detect shadow");
+        assert!(
+            has_errors(&mut p1, &make_fs(true)),
+            "alias first: should detect shadow"
+        );
+        assert!(
+            has_errors(&mut p2, &make_fs(false)),
+            "alias second: should detect shadow"
+        );
     }
 
     #[test]
@@ -1294,8 +1542,14 @@ mod tests {
             use_decls: vec![],
         }];
 
-        assert!(has_errors(&mut p1, &fs), "A-then-B ordering should detect collision");
-        assert!(has_errors(&mut p2, &fs), "B-then-A ordering should detect collision");
+        assert!(
+            has_errors(&mut p1, &fs),
+            "A-then-B ordering should detect collision"
+        );
+        assert!(
+            has_errors(&mut p2, &fs),
+            "B-then-A ordering should detect collision"
+        );
     }
 
     #[test]
@@ -1309,14 +1563,26 @@ mod tests {
 
         let mut p1 = make_program(items.clone());
         let fs_xy = vec![
-            FileSystemInfo { system_names: vec!["X".into()], use_decls: vec![] },
-            FileSystemInfo { system_names: vec!["Y".into()], use_decls: vec![] },
+            FileSystemInfo {
+                system_names: vec!["X".into()],
+                use_decls: vec![],
+            },
+            FileSystemInfo {
+                system_names: vec!["Y".into()],
+                use_decls: vec![],
+            },
         ];
         let mut p2 = make_program(items.clone());
         let fs_yx = vec![fs_xy[1].clone(), fs_xy[0].clone()];
 
-        assert!(has_errors(&mut p1, &fs_xy), "X-first should detect function collision");
-        assert!(has_errors(&mut p2, &fs_yx), "Y-first should detect function collision");
+        assert!(
+            has_errors(&mut p1, &fs_xy),
+            "X-first should detect function collision"
+        );
+        assert!(
+            has_errors(&mut p2, &fs_yx),
+            "Y-first should detect function collision"
+        );
     }
 
     #[test]
@@ -1332,8 +1598,14 @@ mod tests {
 
         let mut p1 = make_program(items.clone());
         let fs1 = vec![
-            FileSystemInfo { system_names: vec!["Core".into()], use_decls: vec![] },
-            FileSystemInfo { system_names: vec!["Core".into()], use_decls: vec![] },
+            FileSystemInfo {
+                system_names: vec!["Core".into()],
+                use_decls: vec![],
+            },
+            FileSystemInfo {
+                system_names: vec!["Core".into()],
+                use_decls: vec![],
+            },
         ];
         let (map1, _) = resolve_modules(&mut p1, &fs1);
 
@@ -1344,12 +1616,18 @@ mod tests {
         let core1 = map1.systems.get("Core").unwrap();
         let core2 = map2.systems.get("Core").unwrap();
 
-        assert!(core1.types.contains("Ability") && core1.functions.contains("modifier"),
-            "order 1 should have both type and function");
-        assert!(core2.types.contains("Ability") && core2.functions.contains("modifier"),
-            "order 2 should have both type and function");
-        assert_eq!(core1.variants, core2.variants,
-            "variants should be identical regardless of file order");
+        assert!(
+            core1.types.contains("Ability") && core1.functions.contains("modifier"),
+            "order 1 should have both type and function"
+        );
+        assert!(
+            core2.types.contains("Ability") && core2.functions.contains("modifier"),
+            "order 2 should have both type and function"
+        );
+        assert_eq!(
+            core1.variants, core2.variants,
+            "variants should be identical regardless of file order"
+        );
     }
 
     #[test]
@@ -1391,16 +1669,27 @@ mod tests {
         // Both orderings must produce the same visibility
         let mut p1 = make_program(items.clone());
         let (map1, d1) = resolve_modules(&mut p1, &make_fs(true));
-        assert!(!d1.iter().any(|d| d.severity == Severity::Error), "lib-first: {:?}", d1);
+        assert!(
+            !d1.iter().any(|d| d.severity == Severity::Error),
+            "lib-first: {:?}",
+            d1
+        );
 
         let mut p2 = make_program(items.clone());
         let (map2, d2) = resolve_modules(&mut p2, &make_fs(false));
-        assert!(!d2.iter().any(|d| d.severity == Severity::Error), "utils-first: {:?}", d2);
+        assert!(
+            !d2.iter().any(|d| d.severity == Severity::Error),
+            "utils-first: {:?}",
+            d2
+        );
 
         let main1 = map1.systems.get("Main").unwrap();
         let main2 = map2.systems.get("Main").unwrap();
-        assert_eq!(main1.imports.len(), main2.imports.len(),
-            "import count should be the same regardless of file order");
+        assert_eq!(
+            main1.imports.len(),
+            main2.imports.len(),
+            "import count should be the same regardless of file order"
+        );
     }
 
     #[test]
@@ -1431,11 +1720,17 @@ mod tests {
                 }],
             },
         ];
-        assert!(!has_errors(&mut p1, &fs1), "clean alias should not produce errors");
+        assert!(
+            !has_errors(&mut p1, &fs1),
+            "clean alias should not produce errors"
+        );
 
         // Reversed
         let mut p2 = make_program(program_items.clone());
         let fs2 = vec![fs1[1].clone(), fs1[0].clone()];
-        assert!(!has_errors(&mut p2, &fs2), "reversed clean alias should not produce errors");
+        assert!(
+            !has_errors(&mut p2, &fs2),
+            "reversed clean alias should not produce errors"
+        );
     }
 }

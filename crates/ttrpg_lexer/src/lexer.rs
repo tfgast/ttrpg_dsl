@@ -26,7 +26,8 @@ impl<'a> RawLexer<'a> {
     fn skip_whitespace_and_comments(&mut self) {
         loop {
             // Skip horizontal whitespace (not newlines)
-            self.cursor.eat_while(|ch| ch == ' ' || ch == '\t' || ch == '\r');
+            self.cursor
+                .eat_while(|ch| ch == ' ' || ch == '\t' || ch == '\r');
 
             // Check for line comments
             if self.cursor.peek() == Some('/') && self.cursor.peek_next() == Some('/') {
@@ -75,7 +76,11 @@ impl<'a> RawLexer<'a> {
         // The 'd' must immediately follow the number (no whitespace)
         if self.cursor.peek() == Some('d') {
             // Peek further: next char after 'd' must be a digit for this to be a dice literal
-            if self.cursor.peek_at_offset(1).is_some_and(|ch| ch.is_ascii_digit()) {
+            if self
+                .cursor
+                .peek_at_offset(1)
+                .is_some_and(|ch| ch.is_ascii_digit())
+            {
                 self.cursor.advance(); // consume 'd'
                 let sides_start = self.cursor.pos();
                 self.cursor.eat_while(|ch| ch.is_ascii_digit());
@@ -111,7 +116,9 @@ impl<'a> RawLexer<'a> {
                 if sides == 0 {
                     let span = self.span(first_digit_start, self.cursor.pos());
                     return Token::new(
-                        TokenKind::Error("dice sides must be at least 1 (e.g. 1d0 is invalid)".into()),
+                        TokenKind::Error(
+                            "dice sides must be at least 1 (e.g. 1d0 is invalid)".into(),
+                        ),
                         span,
                     );
                 }
@@ -142,8 +149,13 @@ impl<'a> RawLexer<'a> {
             Ok(c) => c,
             Err(_) => {
                 // Consume unit suffix if present so the lexer stays in sync
-                if self.cursor.peek().is_some_and(|ch| ch.is_ascii_alphabetic()) {
-                    self.cursor.eat_while(|ch| ch.is_ascii_alphanumeric() || ch == '_');
+                if self
+                    .cursor
+                    .peek()
+                    .is_some_and(|ch| ch.is_ascii_alphabetic())
+                {
+                    self.cursor
+                        .eat_while(|ch| ch.is_ascii_alphanumeric() || ch == '_');
                 }
                 let span = self.span(first_digit_start, self.cursor.pos());
                 return Token::new(
@@ -154,26 +166,35 @@ impl<'a> RawLexer<'a> {
         };
 
         // Check for unit literal: INT followed immediately by alpha chars (e.g., 30ft)
-        if self.cursor.peek().is_some_and(|ch| ch.is_ascii_alphabetic()) {
+        if self
+            .cursor
+            .peek()
+            .is_some_and(|ch| ch.is_ascii_alphabetic())
+        {
             let suffix_start = self.cursor.pos();
-            self.cursor.eat_while(|ch| ch.is_ascii_alphanumeric() || ch == '_');
+            self.cursor
+                .eat_while(|ch| ch.is_ascii_alphanumeric() || ch == '_');
             let suffix_end = self.cursor.pos();
             let suffix = self.cursor.slice(suffix_start, suffix_end).to_string();
             return Token::new(
-                TokenKind::UnitLiteral { value: count, suffix },
+                TokenKind::UnitLiteral {
+                    value: count,
+                    suffix,
+                },
                 self.span(first_digit_start, suffix_end),
             );
         }
 
-        Token::new(
-            TokenKind::Int(count),
-            self.span(first_digit_start, num_end),
-        )
+        Token::new(TokenKind::Int(count), self.span(first_digit_start, num_end))
     }
 
     fn try_lex_dice_filter(&mut self) -> Result<Option<DiceFilter>, String> {
-        let Some(first) = self.cursor.peek() else { return Ok(None) };
-        let Some(second) = self.cursor.peek_at_offset(1) else { return Ok(None) };
+        let Some(first) = self.cursor.peek() else {
+            return Ok(None);
+        };
+        let Some(second) = self.cursor.peek_at_offset(1) else {
+            return Ok(None);
+        };
 
         let filter_kind = match (first, second) {
             ('k', 'h') => 0,
@@ -184,7 +205,11 @@ impl<'a> RawLexer<'a> {
         };
 
         // Check that the third char is a digit
-        if !self.cursor.peek_at_offset(2).is_some_and(|ch| ch.is_ascii_digit()) {
+        if !self
+            .cursor
+            .peek_at_offset(2)
+            .is_some_and(|ch| ch.is_ascii_digit())
+        {
             return Ok(None);
         }
 
@@ -193,7 +218,10 @@ impl<'a> RawLexer<'a> {
         let start = self.cursor.pos();
         self.cursor.eat_while(|ch| ch.is_ascii_digit());
         let end = self.cursor.pos();
-        let n: u32 = self.cursor.slice(start, end).parse()
+        let n: u32 = self
+            .cursor
+            .slice(start, end)
+            .parse()
             .map_err(|_| "dice filter count too large (overflow)".to_string())?;
 
         Ok(Some(match filter_kind {
@@ -232,7 +260,10 @@ impl<'a> RawLexer<'a> {
         self.skip_whitespace_and_comments();
 
         if self.cursor.is_eof() {
-            return Token::new(TokenKind::Eof, self.span(self.cursor.pos(), self.cursor.pos()));
+            return Token::new(
+                TokenKind::Eof,
+                self.span(self.cursor.pos(), self.cursor.pos()),
+            );
         }
 
         let start = self.cursor.pos();
@@ -360,7 +391,11 @@ impl<'a> RawLexer<'a> {
 
             '_' => {
                 // Underscore: if followed by alphanumeric or _, it's an identifier
-                if self.cursor.peek().is_some_and(|ch| ch.is_ascii_alphanumeric() || ch == '_') {
+                if self
+                    .cursor
+                    .peek()
+                    .is_some_and(|ch| ch.is_ascii_alphanumeric() || ch == '_')
+                {
                     self.lex_ident_or_keyword(start)
                 } else {
                     Token::new(TokenKind::Underscore, self.span(start, self.cursor.pos()))
@@ -458,9 +493,7 @@ mod tests {
     use super::*;
 
     fn lex(source: &str) -> Vec<TokenKind> {
-        Lexer::new(source, FileId::SYNTH)
-            .map(|t| t.kind)
-            .collect()
+        Lexer::new(source, FileId::SYNTH).map(|t| t.kind).collect()
     }
 
     #[test]
@@ -473,7 +506,11 @@ mod tests {
         assert_eq!(
             lex("4d6kh3"),
             vec![
-                TokenKind::Dice { count: 4, sides: 6, filter: Some(DiceFilter::KeepHighest(3)) },
+                TokenKind::Dice {
+                    count: 4,
+                    sides: 6,
+                    filter: Some(DiceFilter::KeepHighest(3))
+                },
                 TokenKind::Eof,
             ]
         );
@@ -484,7 +521,11 @@ mod tests {
         assert_eq!(
             lex("1d20"),
             vec![
-                TokenKind::Dice { count: 1, sides: 20, filter: None },
+                TokenKind::Dice {
+                    count: 1,
+                    sides: 20,
+                    filter: None
+                },
                 TokenKind::Eof,
             ]
         );
@@ -495,7 +536,11 @@ mod tests {
         assert_eq!(
             lex("2d20kl1"),
             vec![
-                TokenKind::Dice { count: 2, sides: 20, filter: Some(DiceFilter::KeepLowest(1)) },
+                TokenKind::Dice {
+                    count: 2,
+                    sides: 20,
+                    filter: Some(DiceFilter::KeepLowest(1))
+                },
                 TokenKind::Eof,
             ]
         );
@@ -506,7 +551,11 @@ mod tests {
         assert_eq!(
             lex("4d6dh1"),
             vec![
-                TokenKind::Dice { count: 4, sides: 6, filter: Some(DiceFilter::DropHighest(1)) },
+                TokenKind::Dice {
+                    count: 4,
+                    sides: 6,
+                    filter: Some(DiceFilter::DropHighest(1))
+                },
                 TokenKind::Eof,
             ]
         );
@@ -517,7 +566,11 @@ mod tests {
         assert_eq!(
             lex("4d6dl1"),
             vec![
-                TokenKind::Dice { count: 4, sides: 6, filter: Some(DiceFilter::DropLowest(1)) },
+                TokenKind::Dice {
+                    count: 4,
+                    sides: 6,
+                    filter: Some(DiceFilter::DropLowest(1))
+                },
                 TokenKind::Eof,
             ]
         );

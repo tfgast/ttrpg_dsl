@@ -47,11 +47,7 @@ fn eval_complex_arithmetic() {
 fn eval_parse_error() {
     let mut runner = Runner::new();
     let err = runner.eval("2 +").unwrap_err();
-    assert!(
-        err.to_string().contains("parse error"),
-        "got: {}",
-        err
-    );
+    assert!(err.to_string().contains("parse error"), "got: {}", err);
 }
 
 #[test]
@@ -117,9 +113,7 @@ system "test" {
     .unwrap();
 
     let mut runner = Runner::new();
-    runner
-        .exec(&format!("load {}", path.display()))
-        .unwrap();
+    runner.exec(&format!("load {}", path.display())).unwrap();
     let output = runner.take_output();
     assert_eq!(output.len(), 1);
     assert!(output[0].starts_with("loaded"));
@@ -180,9 +174,7 @@ system "test" {
     .unwrap();
 
     let mut runner = Runner::new();
-    runner
-        .exec(&format!("load {}", path.display()))
-        .unwrap();
+    runner.exec(&format!("load {}", path.display())).unwrap();
     runner.take_output();
 
     runner.exec("reload").unwrap();
@@ -257,9 +249,7 @@ system "test" {
     .unwrap();
 
     let mut runner = Runner::new();
-    runner
-        .exec(&format!("load {}", good.display()))
-        .unwrap();
+    runner.exec(&format!("load {}", good.display())).unwrap();
     runner.take_output();
 
     // Eval should work
@@ -278,9 +268,7 @@ system "test" {
     )
     .unwrap();
 
-    let err = runner
-        .exec(&format!("load {}", bad.display()))
-        .unwrap_err();
+    let err = runner.exec(&format!("load {}", bad.display())).unwrap_err();
     assert!(err.to_string().contains("failed to load"));
     runner.take_output();
 
@@ -319,15 +307,11 @@ system "test" {
     .unwrap();
 
     let mut runner = Runner::new();
-    runner
-        .exec(&format!("load {}", good.display()))
-        .unwrap();
+    runner.exec(&format!("load {}", good.display())).unwrap();
     runner.take_output();
 
     // Now try to load a nonexistent file (I/O failure)
-    let err = runner
-        .exec("load /nonexistent/path.ttrpg")
-        .unwrap_err();
+    let err = runner.exec("load /nonexistent/path.ttrpg").unwrap_err();
     assert!(err.to_string().contains("cannot read"));
     runner.take_output();
 
@@ -367,11 +351,7 @@ system "test" {
     let result = runner.exec(&format!("load {}", path.display()));
     assert!(result.is_err(), "load with errors should return Err");
     let err = result.unwrap_err();
-    assert!(
-        err.to_string().contains("failed to load"),
-        "got: {}",
-        err
-    );
+    assert!(err.to_string().contains("failed to load"), "got: {}", err);
 
     std::fs::remove_file(&path).ok();
 }
@@ -432,7 +412,9 @@ system "test" {
 fn spawn_and_eval_handle() {
     let mut runner = Runner::new();
     load_character_program(&mut runner);
-    runner.exec("spawn Character fighter { HP: 30, AC: 15 }").unwrap();
+    runner
+        .exec("spawn Character fighter { HP: 30, AC: 15 }")
+        .unwrap();
     let output = runner.take_output();
     assert!(output[0].contains("spawned Character fighter"));
 
@@ -596,11 +578,7 @@ system "test" {
     runner.take_output();
 
     let err = runner.exec("call add(1,,2)").unwrap_err();
-    assert!(
-        err.to_string().contains("empty argument"),
-        "got: {}",
-        err
-    );
+    assert!(err.to_string().contains("empty argument"), "got: {}", err);
 
     std::fs::remove_file(&path).ok();
 }
@@ -658,11 +636,7 @@ system "test" {
     runner.take_output();
 
     let err = runner.exec("do NoSuchAction(fighter)").unwrap_err();
-    assert!(
-        err.to_string().contains("undefined action"),
-        "got: {}",
-        err
-    );
+    assert!(err.to_string().contains("undefined action"), "got: {}", err);
 
     std::fs::remove_file(&path).ok();
 }
@@ -736,11 +710,7 @@ fn spawn_dotted_handle_rejected() {
     let mut runner = Runner::new();
     load_character_program(&mut runner);
     let err = runner.exec("spawn Character foo.bar").unwrap_err();
-    assert!(
-        err.to_string().contains("invalid handle"),
-        "got: {}",
-        err
-    );
+    assert!(err.to_string().contains("invalid handle"), "got: {}", err);
 }
 
 #[test]
@@ -748,11 +718,7 @@ fn spawn_numeric_handle_rejected() {
     let mut runner = Runner::new();
     load_character_program(&mut runner);
     let err = runner.exec("spawn Character 123abc").unwrap_err();
-    assert!(
-        err.to_string().contains("invalid handle"),
-        "got: {}",
-        err
-    );
+    assert!(err.to_string().contains("invalid handle"), "got: {}", err);
 }
 
 #[test]
@@ -797,11 +763,15 @@ fn spawn_field_handle_resolution() {
     let mut runner = Runner::new();
     load_party_program(&mut runner);
 
-    runner.exec("spawn Character alice { HP: 30, AC: 15 }").unwrap();
+    runner
+        .exec("spawn Character alice { HP: 30, AC: 15 }")
+        .unwrap();
     runner.take_output();
 
     // Spawn bob with ally: alice (handle resolves to entity value)
-    runner.exec("spawn Character bob { HP: 25, ally: alice }").unwrap();
+    runner
+        .exec("spawn Character bob { HP: 25, ally: alice }")
+        .unwrap();
     let output = runner.take_output();
     assert!(output[0].contains("spawned Character bob"));
 }
@@ -860,11 +830,7 @@ fn spawn_type_mismatch_rejected() {
     let err = runner
         .exec(r#"spawn Character fighter { HP: "thirty" }"#)
         .unwrap_err();
-    assert!(
-        err.to_string().contains("type mismatch"),
-        "got: {}",
-        err
-    );
+    assert!(err.to_string().contains("type mismatch"), "got: {}", err);
 }
 
 #[test]
@@ -887,9 +853,7 @@ fn set_nested_type_mismatch_rejected() {
     load_list_program(&mut runner);
     runner.exec("spawn Hero h { scores: [1, 2] }").unwrap();
     runner.take_output();
-    let err = runner
-        .exec(r#"set h.scores = ["bad"]"#)
-        .unwrap_err();
+    let err = runner.exec(r#"set h.scores = ["bad"]"#).unwrap_err();
     assert!(
         err.to_string().contains("type mismatch"),
         "expected type mismatch for nested list element, got: {}",
@@ -919,11 +883,7 @@ fn set_type_mismatch_rejected() {
     runner.take_output();
 
     let err = runner.exec(r#"set fighter.HP = "thirty""#).unwrap_err();
-    assert!(
-        err.to_string().contains("type mismatch"),
-        "got: {}",
-        err
-    );
+    assert!(err.to_string().contains("type mismatch"), "got: {}", err);
 }
 
 // ── Phase 3: Configuration tests ─────────────────────────────
@@ -992,22 +952,14 @@ fn cmd_assert_true() {
 fn cmd_assert_false() {
     let mut runner = Runner::new();
     let err = runner.exec("assert 2 + 3 == 6").unwrap_err();
-    assert!(
-        err.to_string().contains("assertion failed"),
-        "got: {}",
-        err
-    );
+    assert!(err.to_string().contains("assertion failed"), "got: {}", err);
 }
 
 #[test]
 fn cmd_assert_non_bool() {
     let mut runner = Runner::new();
     let err = runner.exec("assert 2 + 3").unwrap_err();
-    assert!(
-        err.to_string().contains("expected bool"),
-        "got: {}",
-        err
-    );
+    assert!(err.to_string().contains("expected bool"), "got: {}", err);
 }
 
 #[test]
@@ -1020,11 +972,7 @@ fn cmd_assert_eq_pass() {
 fn cmd_assert_eq_fail() {
     let mut runner = Runner::new();
     let err = runner.exec("assert_eq 2 + 3, 6").unwrap_err();
-    assert!(
-        err.to_string().contains("assertion failed"),
-        "got: {}",
-        err
-    );
+    assert!(err.to_string().contains("assertion failed"), "got: {}", err);
     assert!(err.to_string().contains("!="), "got: {}", err);
 }
 
@@ -1042,11 +990,7 @@ fn cmd_assert_err_fail() {
     let mut runner = Runner::new();
     // eval 2+3 succeeds, so assert_err should fail
     let err = runner.exec("assert_err eval 2 + 3").unwrap_err();
-    assert!(
-        err.to_string().contains("expected error"),
-        "got: {}",
-        err
-    );
+    assert!(err.to_string().contains("expected error"), "got: {}", err);
 }
 
 // ── Phase 3: Inspection tests ────────────────────────────────
@@ -1055,7 +999,9 @@ fn cmd_assert_err_fail() {
 fn cmd_inspect_entity() {
     let mut runner = Runner::new();
     load_character_program(&mut runner);
-    runner.exec("spawn Character fighter { HP: 30, AC: 15 }").unwrap();
+    runner
+        .exec("spawn Character fighter { HP: 30, AC: 15 }")
+        .unwrap();
     runner.take_output();
 
     runner.exec("inspect fighter").unwrap();
@@ -1098,9 +1044,13 @@ fn cmd_state_empty() {
 fn cmd_state_with_entities() {
     let mut runner = Runner::new();
     load_character_program(&mut runner);
-    runner.exec("spawn Character alice { HP: 30, AC: 15 }").unwrap();
+    runner
+        .exec("spawn Character alice { HP: 30, AC: 15 }")
+        .unwrap();
     runner.take_output();
-    runner.exec("spawn Character bob { HP: 25, AC: 12 }").unwrap();
+    runner
+        .exec("spawn Character bob { HP: 25, AC: 12 }")
+        .unwrap();
     runner.take_output();
 
     runner.exec("state").unwrap();
@@ -1219,7 +1169,11 @@ fn cmd_rolls_atomic_on_failure() {
 
     // Second call fails at "abc" — the 17 should NOT be queued
     let _ = runner.exec("rolls 17 abc");
-    assert_eq!(runner.roll_queue.len(), 1, "failed rolls should not leave partial state");
+    assert_eq!(
+        runner.roll_queue.len(),
+        1,
+        "failed rolls should not leave partial state"
+    );
 }
 
 #[test]
@@ -1278,13 +1232,21 @@ system "test" {
 fn grant_and_revoke_basic() {
     let mut runner = Runner::new();
     load_group_program(&mut runner);
-    runner.exec("spawn Character hero { HP: 30, AC: 15 }").unwrap();
+    runner
+        .exec("spawn Character hero { HP: 30, AC: 15 }")
+        .unwrap();
     runner.take_output();
 
     // Grant with explicit fields
-    runner.exec("grant hero.Spellcasting { spell_slots: 5 }").unwrap();
+    runner
+        .exec("grant hero.Spellcasting { spell_slots: 5 }")
+        .unwrap();
     let output = runner.take_output();
-    assert!(output[0].contains("granted hero.Spellcasting"), "got: {:?}", output);
+    assert!(
+        output[0].contains("granted hero.Spellcasting"),
+        "got: {:?}",
+        output
+    );
 
     // Revoke
     runner.exec("revoke hero.Spellcasting").unwrap();
@@ -1300,9 +1262,15 @@ fn grant_defaults_filled() {
     runner.take_output();
 
     // spell_dc has default=10, so we only need spell_slots
-    runner.exec("grant hero.Spellcasting { spell_slots: 3 }").unwrap();
+    runner
+        .exec("grant hero.Spellcasting { spell_slots: 3 }")
+        .unwrap();
     let output = runner.take_output();
-    assert!(output[0].contains("spell_dc"), "default should be filled, got: {:?}", output);
+    assert!(
+        output[0].contains("spell_dc"),
+        "default should be filled, got: {:?}",
+        output
+    );
 }
 
 #[test]
@@ -1329,11 +1297,7 @@ fn grant_unknown_group() {
     runner.take_output();
 
     let err = runner.exec("grant hero.Flying").unwrap_err();
-    assert!(
-        err.to_string().contains("unknown group"),
-        "got: {}",
-        err
-    );
+    assert!(err.to_string().contains("unknown group"), "got: {}", err);
 }
 
 #[test]
@@ -1361,12 +1325,10 @@ fn grant_already_granted() {
     runner.exec("grant hero.Rage { rage_count: 3 }").unwrap();
     runner.take_output();
 
-    let err = runner.exec("grant hero.Rage { rage_count: 2 }").unwrap_err();
-    assert!(
-        err.to_string().contains("already granted"),
-        "got: {}",
-        err
-    );
+    let err = runner
+        .exec("grant hero.Rage { rage_count: 2 }")
+        .unwrap_err();
+    assert!(err.to_string().contains("already granted"), "got: {}", err);
 }
 
 #[test]
@@ -1405,10 +1367,14 @@ fn set_group_field() {
     load_group_program(&mut runner);
     runner.exec("spawn Character hero { HP: 30 }").unwrap();
     runner.take_output();
-    runner.exec("grant hero.Spellcasting { spell_slots: 5 }").unwrap();
+    runner
+        .exec("grant hero.Spellcasting { spell_slots: 5 }")
+        .unwrap();
     runner.take_output();
 
-    runner.exec("set hero.Spellcasting.spell_slots = 3").unwrap();
+    runner
+        .exec("set hero.Spellcasting.spell_slots = 3")
+        .unwrap();
     let output = runner.take_output();
     assert!(
         output[0].contains("hero.Spellcasting.spell_slots = 3"),
@@ -1424,7 +1390,9 @@ fn set_group_field_not_granted() {
     runner.exec("spawn Character hero { HP: 30 }").unwrap();
     runner.take_output();
 
-    let err = runner.exec("set hero.Spellcasting.spell_slots = 3").unwrap_err();
+    let err = runner
+        .exec("set hero.Spellcasting.spell_slots = 3")
+        .unwrap_err();
     assert!(
         err.to_string().contains("not currently granted"),
         "got: {}",
@@ -1438,7 +1406,9 @@ fn inspect_group() {
     load_group_program(&mut runner);
     runner.exec("spawn Character hero { HP: 30 }").unwrap();
     runner.take_output();
-    runner.exec("grant hero.Spellcasting { spell_slots: 5 }").unwrap();
+    runner
+        .exec("grant hero.Spellcasting { spell_slots: 5 }")
+        .unwrap();
     runner.take_output();
 
     // Inspect group
@@ -1456,11 +1426,7 @@ fn inspect_group_not_granted() {
 
     runner.exec("inspect hero.Spellcasting").unwrap();
     let output = runner.take_output();
-    assert!(
-        output[0].contains("<not granted>"),
-        "got: {:?}",
-        output
-    );
+    assert!(output[0].contains("<not granted>"), "got: {:?}", output);
 }
 
 #[test]
@@ -1469,10 +1435,14 @@ fn inspect_group_field() {
     load_group_program(&mut runner);
     runner.exec("spawn Character hero { HP: 30 }").unwrap();
     runner.take_output();
-    runner.exec("grant hero.Spellcasting { spell_slots: 5 }").unwrap();
+    runner
+        .exec("grant hero.Spellcasting { spell_slots: 5 }")
+        .unwrap();
     runner.take_output();
 
-    runner.exec("inspect hero.Spellcasting.spell_slots").unwrap();
+    runner
+        .exec("inspect hero.Spellcasting.spell_slots")
+        .unwrap();
     let output = runner.take_output();
     assert!(
         output[0].contains("hero.Spellcasting.spell_slots = 5"),
@@ -1487,7 +1457,9 @@ fn inspect_entity_shows_groups() {
     load_group_program(&mut runner);
     runner.exec("spawn Character hero { HP: 30 }").unwrap();
     runner.take_output();
-    runner.exec("grant hero.Spellcasting { spell_slots: 5 }").unwrap();
+    runner
+        .exec("grant hero.Spellcasting { spell_slots: 5 }")
+        .unwrap();
     runner.take_output();
 
     runner.exec("inspect hero").unwrap();
@@ -1498,7 +1470,9 @@ fn inspect_entity_shows_groups() {
         output
     );
     assert!(
-        output.iter().any(|l| l.contains("spell_slots") && l.contains("5")),
+        output
+            .iter()
+            .any(|l| l.contains("spell_slots") && l.contains("5")),
         "should show group field value, got: {:?}",
         output
     );
@@ -1568,12 +1542,20 @@ fn spawn_inline_group() {
     let mut runner = Runner::new();
     load_group_program(&mut runner);
 
-    runner.exec("spawn Character wizard { HP: 20, Spellcasting { spell_slots: 5 } }").unwrap();
+    runner
+        .exec("spawn Character wizard { HP: 20, Spellcasting { spell_slots: 5 } }")
+        .unwrap();
     let output = runner.take_output();
-    assert!(output[0].contains("spawned Character wizard"), "got: {:?}", output);
+    assert!(
+        output[0].contains("spawned Character wizard"),
+        "got: {:?}",
+        output
+    );
 
     // Verify the group was granted
-    runner.exec("inspect wizard.Spellcasting.spell_slots").unwrap();
+    runner
+        .exec("inspect wizard.Spellcasting.spell_slots")
+        .unwrap();
     let output = runner.take_output();
     assert!(
         output[0].contains("5"),
@@ -1588,7 +1570,9 @@ fn spawn_inline_group_with_defaults() {
     load_group_program(&mut runner);
 
     // Spellcasting has spell_dc default=10
-    runner.exec("spawn Character wizard { HP: 20, Spellcasting { spell_slots: 3 } }").unwrap();
+    runner
+        .exec("spawn Character wizard { HP: 20, Spellcasting { spell_slots: 3 } }")
+        .unwrap();
     runner.take_output();
 
     runner.exec("inspect wizard.Spellcasting.spell_dc").unwrap();
@@ -1605,12 +1589,10 @@ fn spawn_inline_group_unknown_rejected() {
     let mut runner = Runner::new();
     load_group_program(&mut runner);
 
-    let err = runner.exec("spawn Character hero { HP: 20, Flying { speed: 60 } }").unwrap_err();
-    assert!(
-        err.to_string().contains("unknown group"),
-        "got: {}",
-        err
-    );
+    let err = runner
+        .exec("spawn Character hero { HP: 20, Flying { speed: 60 } }")
+        .unwrap_err();
+    assert!(err.to_string().contains("unknown group"), "got: {}", err);
 }
 
 #[test]
@@ -1622,16 +1604,13 @@ fn spawn_inline_group_error_is_atomic() {
     let err = runner
         .exec("spawn Character hero { HP: 20, Spellcasting { spell_slots: \"bad\" } }")
         .unwrap_err();
-    assert!(
-        err.to_string().contains("type mismatch"),
-        "got: {}",
-        err
-    );
+    assert!(err.to_string().contains("type mismatch"), "got: {}", err);
 
     // The handle should NOT exist — spawn was rolled back
     let err2 = runner.exec("eval hero.HP").unwrap_err();
     assert!(
-        err2.to_string().contains("undefined variable") || err2.to_string().contains("unknown handle"),
+        err2.to_string().contains("undefined variable")
+            || err2.to_string().contains("unknown handle"),
         "entity should not exist after failed spawn, got: {}",
         err2
     );
@@ -1644,7 +1623,9 @@ fn grant_unknown_field_in_group() {
     runner.exec("spawn Character hero { HP: 30 }").unwrap();
     runner.take_output();
 
-    let err = runner.exec("grant hero.Spellcasting { spell_slots: 5, nonexistent: 1 }").unwrap_err();
+    let err = runner
+        .exec("grant hero.Spellcasting { spell_slots: 5, nonexistent: 1 }")
+        .unwrap_err();
     assert!(
         err.to_string().contains("unknown field 'nonexistent'"),
         "got: {}",
@@ -1660,11 +1641,7 @@ fn revoke_unknown_group() {
     runner.take_output();
 
     let err = runner.exec("revoke hero.Flying").unwrap_err();
-    assert!(
-        err.to_string().contains("unknown group"),
-        "got: {}",
-        err
-    );
+    assert!(err.to_string().contains("unknown group"), "got: {}", err);
 }
 
 #[test]
@@ -1711,7 +1688,9 @@ fn multi_file_load_basic() {
     let core = dir.join("core.ttrpg");
     let extras = dir.join("extras.ttrpg");
 
-    std::fs::write(&core, "\
+    std::fs::write(
+        &core,
+        "\
 system \"Core\" {
     entity Character {
         HP: int
@@ -1719,13 +1698,19 @@ system \"Core\" {
     }
     derive double(x: int) -> int { x * 2 }
 }
-").unwrap();
+",
+    )
+    .unwrap();
 
-    std::fs::write(&extras, "\
+    std::fs::write(
+        &extras,
+        "\
 system \"Extras\" {
     derive triple(x: int) -> int { x * 3 }
 }
-").unwrap();
+",
+    )
+    .unwrap();
 
     let mut runner = Runner::new();
     runner
@@ -1735,7 +1720,9 @@ system \"Extras\" {
     assert!(output[0].contains("loaded 2 files"));
 
     // Can spawn entities from the merged program
-    runner.exec("spawn Character hero { HP: 30, AC: 15 }").unwrap();
+    runner
+        .exec("spawn Character hero { HP: 30, AC: 15 }")
+        .unwrap();
     runner.take_output();
 
     runner.exec("eval hero.HP").unwrap();
@@ -1761,7 +1748,11 @@ fn multi_file_reload() {
     let b = dir.join("reload_b.ttrpg");
 
     std::fs::write(&a, "system \"A\" { entity Foo { x: int } }\n").unwrap();
-    std::fs::write(&b, "system \"B\" { derive add(a: int, b: int) -> int { a + b } }\n").unwrap();
+    std::fs::write(
+        &b,
+        "system \"B\" { derive add(a: int, b: int) -> int { a + b } }\n",
+    )
+    .unwrap();
 
     let mut runner = Runner::new();
     runner
@@ -1782,12 +1773,20 @@ fn multi_file_cross_system_duplicate_error() {
     let a = dir.join("dup_a.ttrpg");
     let b = dir.join("dup_b.ttrpg");
 
-    std::fs::write(&a, "\
+    std::fs::write(
+        &a,
+        "\
 system \"A\" { entity Character { HP: int } }
-").unwrap();
-    std::fs::write(&b, "\
+",
+    )
+    .unwrap();
+    std::fs::write(
+        &b,
+        "\
 system \"B\" { entity Character { AC: int } }
-").unwrap();
+",
+    )
+    .unwrap();
 
     let mut runner = Runner::new();
     let err = runner
@@ -1857,8 +1856,16 @@ fn multi_file_glob_expansion() {
     let sub = dir.join("glob_test");
     std::fs::create_dir_all(&sub).unwrap();
 
-    std::fs::write(sub.join("sys_a.ttrpg"), "system \"A\" { entity Foo { x: int } }\n").unwrap();
-    std::fs::write(sub.join("sys_b.ttrpg"), "system \"B\" { derive id(x: int) -> int { x } }\n").unwrap();
+    std::fs::write(
+        sub.join("sys_a.ttrpg"),
+        "system \"A\" { entity Foo { x: int } }\n",
+    )
+    .unwrap();
+    std::fs::write(
+        sub.join("sys_b.ttrpg"),
+        "system \"B\" { derive id(x: int) -> int { x } }\n",
+    )
+    .unwrap();
 
     let mut runner = Runner::new();
     let glob_pattern = sub.join("*.ttrpg");
@@ -1904,19 +1911,21 @@ fn single_file_backward_compat() {
     // Single-file load should still work exactly as before
     let dir = multi_file_dir("backward_compat");
     let path = dir.join("single.ttrpg");
-    std::fs::write(&path, "\
+    std::fs::write(
+        &path,
+        "\
 system \"test\" {
     entity Character {
         HP: int
     }
     derive double(x: int) -> int { x * 2 }
 }
-").unwrap();
+",
+    )
+    .unwrap();
 
     let mut runner = Runner::new();
-    runner
-        .exec(&format!("load {}", path.display()))
-        .unwrap();
+    runner.exec(&format!("load {}", path.display())).unwrap();
     let output = runner.take_output();
     // Single file says "loaded <path>" not "loaded N files"
     assert!(
@@ -1997,13 +2006,9 @@ system \"Game\" {
     .unwrap();
 
     let mut runner = Runner::new();
-    runner
-        .exec(&format!("load {}", single.display()))
-        .unwrap();
+    runner.exec(&format!("load {}", single.display())).unwrap();
 
-    runner
-        .exec("spawn Character hero { HP: 10 }")
-        .unwrap();
+    runner.exec("spawn Character hero { HP: 10 }").unwrap();
     runner.take_output();
 
     runner.exec("eval greet(hero)").unwrap();
@@ -2019,28 +2024,40 @@ system \"Game\" {
 fn eval_len_no_args_returns_error() {
     let mut runner = Runner::new();
     let result = runner.eval("len()");
-    assert!(result.is_err(), "len() with no args should error, not panic");
+    assert!(
+        result.is_err(),
+        "len() with no args should error, not panic"
+    );
 }
 
 #[test]
 fn eval_append_one_arg_returns_error() {
     let mut runner = Runner::new();
     let result = runner.eval("append([1])");
-    assert!(result.is_err(), "append() with 1 arg should error, not panic");
+    assert!(
+        result.is_err(),
+        "append() with 1 arg should error, not panic"
+    );
 }
 
 #[test]
 fn eval_keys_no_args_returns_error() {
     let mut runner = Runner::new();
     let result = runner.eval("keys()");
-    assert!(result.is_err(), "keys() with no args should error, not panic");
+    assert!(
+        result.is_err(),
+        "keys() with no args should error, not panic"
+    );
 }
 
 #[test]
 fn eval_reverse_no_args_returns_error() {
     let mut runner = Runner::new();
     let result = runner.eval("reverse()");
-    assert!(result.is_err(), "reverse() with no args should error, not panic");
+    assert!(
+        result.is_err(),
+        "reverse() with no args should error, not panic"
+    );
 }
 
 // ── Regression: tdsl-0s0y — floor/ceil with non-finite floats ──

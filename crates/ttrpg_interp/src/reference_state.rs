@@ -90,7 +90,13 @@ impl GameState {
     ///
     /// Silently does nothing if the entity doesn't exist, consistent
     /// with read paths that reject unknown entities.
-    pub fn apply_condition(&mut self, entity: &EntityRef, name: &str, params: BTreeMap<Name, Value>, duration: Value) {
+    pub fn apply_condition(
+        &mut self,
+        entity: &EntityRef,
+        name: &str,
+        params: BTreeMap<Name, Value>,
+        duration: Value,
+    ) {
         if !self.entities.contains_key(&entity.0) {
             return;
         }
@@ -144,23 +150,14 @@ impl Default for GameState {
 
 impl StateProvider for GameState {
     fn read_field(&self, entity: &EntityRef, field: &str) -> Option<Value> {
-        self.entities
-            .get(&entity.0)?
-            .fields
-            .get(field)
-            .cloned()
+        self.entities.get(&entity.0)?.fields.get(field).cloned()
     }
 
     fn read_conditions(&self, entity: &EntityRef) -> Option<Vec<ActiveCondition>> {
         if !self.entities.contains_key(&entity.0) {
             return None;
         }
-        Some(
-            self.conditions
-                .get(&entity.0)
-                .cloned()
-                .unwrap_or_default(),
-        )
+        Some(self.conditions.get(&entity.0).cloned().unwrap_or_default())
     }
 
     fn read_turn_budget(&self, entity: &EntityRef) -> Option<BTreeMap<Name, Value>> {
@@ -252,14 +249,19 @@ impl WritableState for GameState {
         self.conditions.entry(entity.0).or_default().push(cond);
     }
 
-    fn remove_condition(&mut self, entity: &EntityRef, name: &str, params: Option<&BTreeMap<Name, Value>>) {
+    fn remove_condition(
+        &mut self,
+        entity: &EntityRef,
+        name: &str,
+        params: Option<&BTreeMap<Name, Value>>,
+    ) {
         if let Some(conds) = self.conditions.get_mut(&entity.0) {
             conds.retain(|c| {
                 if c.name != name {
                     return true; // different condition, keep
                 }
                 match params {
-                    None => false, // remove all with this name
+                    None => false,             // remove all with this name
                     Some(p) => &c.params != p, // keep if params don't match
                 }
             });
@@ -535,7 +537,14 @@ mod tests {
         state.enable_option("advanced_cover");
 
         let opts = state.read_enabled_options();
-        assert_eq!(opts, vec![Name::from("advanced_cover"), Name::from("critical_fumbles"), Name::from("flanking")]);
+        assert_eq!(
+            opts,
+            vec![
+                Name::from("advanced_cover"),
+                Name::from("critical_fumbles"),
+                Name::from("flanking")
+            ]
+        );
     }
 
     // ── GameState: position equality and Chebyshev distance ────
@@ -754,14 +763,17 @@ mod tests {
         let mut state = GameState::new();
         let mut fields = HashMap::new();
         fields.insert("HP".into(), Value::Int(30));
-        fields.insert("Spellcasting".into(), Value::Struct {
-            name: "Spellcasting".into(),
-            fields: {
-                let mut f = BTreeMap::new();
-                f.insert("spell_slots".into(), Value::Int(3));
-                f
+        fields.insert(
+            "Spellcasting".into(),
+            Value::Struct {
+                name: "Spellcasting".into(),
+                fields: {
+                    let mut f = BTreeMap::new();
+                    f.insert("spell_slots".into(), Value::Int(3));
+                    f
+                },
             },
-        });
+        );
         let entity = state.add_entity("Character", fields);
 
         state.remove_field(&entity, "Spellcasting");

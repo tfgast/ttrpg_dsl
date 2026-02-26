@@ -92,7 +92,13 @@ fn action_default_not_evaluated_on_veto() {
     // Call Heal without providing amount (should use default = actor.HP)
     // But since action is vetoed, default should never be evaluated
     let result = interp
-        .execute_action(&gs, &mut handler, "Heal", actor, vec![Value::Entity(target)])
+        .execute_action(
+            &gs,
+            &mut handler,
+            "Heal",
+            actor,
+            vec![Value::Entity(target)],
+        )
         .unwrap();
 
     assert_eq!(result, Value::None, "vetoed action should return None");
@@ -130,7 +136,13 @@ fn action_default_evaluated_after_acknowledgement() {
     let mut handler = ScriptedHandler::new(); // all acknowledged
 
     let result = interp
-        .execute_action(&gs, &mut handler, "Heal", actor, vec![Value::Entity(target)])
+        .execute_action(
+            &gs,
+            &mut handler,
+            "Heal",
+            actor,
+            vec![Value::Entity(target)],
+        )
         .unwrap();
 
     // Default amount = actor.HP = 100. target.HP = 5 + 100 = 105
@@ -146,7 +158,10 @@ fn action_default_evaluated_after_acknowledgement() {
                 saw_action_started = true;
             }
             Effect::MutateField { .. } => {
-                assert!(saw_action_started, "MutateField should come after ActionStarted");
+                assert!(
+                    saw_action_started,
+                    "MutateField should come after ActionStarted"
+                );
                 saw_mutate = true;
             }
             _ => {}

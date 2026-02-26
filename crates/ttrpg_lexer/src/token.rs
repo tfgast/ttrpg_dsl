@@ -17,8 +17,15 @@ pub enum TokenKind {
     // Literals
     Int(i64),
     String(String),
-    Dice { count: u32, sides: u32, filter: Option<DiceFilter> },
-    UnitLiteral { value: i64, suffix: String },
+    Dice {
+        count: u32,
+        sides: u32,
+        filter: Option<DiceFilter>,
+    },
+    UnitLiteral {
+        value: i64,
+        suffix: String,
+    },
 
     // Identifier (includes soft keywords)
     Ident(String),
@@ -35,38 +42,38 @@ pub enum TokenKind {
     For,
 
     // Punctuation
-    LParen,    // (
-    RParen,    // )
-    LBrace,    // {
-    RBrace,    // }
-    LBracket,  // [
-    RBracket,  // ]
-    Comma,     // ,
-    Colon,     // :
-    Dot,       // .
-    DotDot,    // ..
-    DotDotEq,  // ..=
-    Arrow,     // ->
-    FatArrow,  // =>
+    LParen,     // (
+    RParen,     // )
+    LBrace,     // {
+    RBrace,     // }
+    LBracket,   // [
+    RBracket,   // ]
+    Comma,      // ,
+    Colon,      // :
+    Dot,        // .
+    DotDot,     // ..
+    DotDotEq,   // ..=
+    Arrow,      // ->
+    FatArrow,   // =>
     Underscore, // _ (standalone)
 
     // Operators
-    Plus,      // +
-    Minus,     // -
-    Star,      // *
-    Slash,     // /
-    Bang,      // !
-    Eq,        // =
-    PlusEq,    // +=
-    MinusEq,   // -=
-    EqEq,      // ==
-    BangEq,    // !=
-    Lt,        // <
-    Gt,        // >
+    Plus,     // +
+    Minus,    // -
+    Star,     // *
+    Slash,    // /
+    Bang,     // !
+    Eq,       // =
+    PlusEq,   // +=
+    MinusEq,  // -=
+    EqEq,     // ==
+    BangEq,   // !=
+    Lt,       // <
+    Gt,       // >
     LtEq,     // <=
     GtEq,     // >=
     AmpAmp,   // &&
-    PipePipe,  // ||
+    PipePipe, // ||
 
     // Whitespace / structure
     Newline,

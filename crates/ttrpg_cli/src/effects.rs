@@ -1,10 +1,10 @@
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap, VecDeque};
 
-use rand::Rng;
 use rand::rngs::StdRng;
-use ttrpg_ast::DiceFilter;
+use rand::Rng;
 use ttrpg_ast::ast::AssignOp;
+use ttrpg_ast::DiceFilter;
 use ttrpg_ast::Name;
 use ttrpg_interp::adapter;
 use ttrpg_interp::effect::{Effect, EffectHandler, Response};
@@ -153,12 +153,17 @@ impl EffectHandler for CliHandler<'_> {
 
             Effect::ResolvePrompt { suggest, name, .. } => {
                 if let Some(val) = suggest {
-                    self.log
-                        .push(format!("[ResolvePrompt] {} -> auto: {}", name, format_value(&val)));
+                    self.log.push(format!(
+                        "[ResolvePrompt] {} -> auto: {}",
+                        name,
+                        format_value(&val)
+                    ));
                     Response::PromptResult(val)
                 } else {
-                    self.log
-                        .push(format!("[ResolvePrompt] {} -> vetoed (no suggestion)", name));
+                    self.log.push(format!(
+                        "[ResolvePrompt] {} -> vetoed (no suggestion)",
+                        name
+                    ));
                     Response::Vetoed
                 }
             }
@@ -231,9 +236,12 @@ impl EffectHandler for CliHandler<'_> {
                 duration,
             } => {
                 let name = self.entity_name(&target);
-                self.game_state
-                    .borrow_mut()
-                    .apply_condition(&target, &condition, params.clone(), duration.clone());
+                self.game_state.borrow_mut().apply_condition(
+                    &target,
+                    &condition,
+                    params.clone(),
+                    duration.clone(),
+                );
                 if params.is_empty() {
                     self.log.push(format!(
                         "[ApplyCondition] {} gains {} ({:?})",
@@ -248,7 +256,11 @@ impl EffectHandler for CliHandler<'_> {
                 Response::Acknowledged
             }
 
-            Effect::RemoveCondition { target, condition, params } => {
+            Effect::RemoveCondition {
+                target,
+                condition,
+                params,
+            } => {
                 let name = self.entity_name(&target);
                 self.game_state
                     .borrow_mut()
@@ -259,10 +271,8 @@ impl EffectHandler for CliHandler<'_> {
                         name, condition, p,
                     ));
                 } else {
-                    self.log.push(format!(
-                        "[RemoveCondition] {} loses {}",
-                        name, condition,
-                    ));
+                    self.log
+                        .push(format!("[RemoveCondition] {} loses {}", name, condition,));
                 }
                 Response::Acknowledged
             }
@@ -315,9 +325,12 @@ impl EffectHandler for CliHandler<'_> {
                 token,
             } => {
                 let name = self.entity_name(&actor);
-                adapter::deduct_budget_field(&mut *self.game_state.borrow_mut(), &actor, &budget_field);
-                self.log
-                    .push(format!("[DeductCost] {}: {}", name, token));
+                adapter::deduct_budget_field(
+                    &mut *self.game_state.borrow_mut(),
+                    &actor,
+                    &budget_field,
+                );
+                self.log.push(format!("[DeductCost] {}: {}", name, token));
                 Response::Acknowledged
             }
 
@@ -338,9 +351,7 @@ impl EffectHandler for CliHandler<'_> {
                 reason,
             } => {
                 let status = if passed { "passed" } else { "failed" };
-                let reason_str = reason
-                    .map(|r| format!(" ({})", r))
-                    .unwrap_or_default();
+                let reason_str = reason.map(|r| format!(" ({})", r)).unwrap_or_default();
                 self.log.push(format!(
                     "[RequiresCheck] {}: {}{}",
                     action, status, reason_str,
@@ -380,10 +391,7 @@ impl EffectHandler for CliHandler<'_> {
                 Response::Acknowledged
             }
 
-            Effect::RevokeGroup {
-                entity,
-                group_name,
-            } => {
+            Effect::RevokeGroup { entity, group_name } => {
                 let name = self.entity_name(&entity);
                 self.game_state
                     .borrow_mut()

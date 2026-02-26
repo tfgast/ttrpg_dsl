@@ -1,7 +1,7 @@
 //! Tests for `some(x)` / `none` pattern matching on `option<T>` values.
 
-use ttrpg_ast::FileId;
 use ttrpg_ast::diagnostic::Severity;
+use ttrpg_ast::FileId;
 use ttrpg_interp::effect::{Effect, EffectHandler, Response};
 use ttrpg_interp::reference_state::GameState;
 use ttrpg_interp::value::Value;
@@ -90,23 +90,13 @@ system "test" {
 
     // Value::Option(None) should match `none` pattern (bug fix regression)
     let val = interp
-        .evaluate_derive(
-            &state,
-            &mut handler,
-            "f",
-            vec![Value::Option(None)],
-        )
+        .evaluate_derive(&state, &mut handler, "f", vec![Value::Option(None)])
         .unwrap();
     assert_eq!(val, Value::Int(0));
 
     // Value::None should also still match `none` pattern
     let val = interp
-        .evaluate_derive(
-            &state,
-            &mut handler,
-            "f",
-            vec![Value::None],
-        )
+        .evaluate_derive(&state, &mut handler, "f", vec![Value::None])
         .unwrap();
     assert_eq!(val, Value::Int(0));
 }
@@ -163,9 +153,9 @@ system "test" {
             &state,
             &mut handler,
             "f",
-            vec![Value::Option(Some(Box::new(Value::Option(Some(Box::new(
-                Value::Int(5),
-            ))))))],
+            vec![Value::Option(Some(Box::new(Value::Option(Some(
+                Box::new(Value::Int(5)),
+            )))))],
         )
         .unwrap();
     assert_eq!(val, Value::Int(5));
@@ -183,12 +173,7 @@ system "test" {
 
     // none → -2
     let val = interp
-        .evaluate_derive(
-            &state,
-            &mut handler,
-            "f",
-            vec![Value::Option(None)],
-        )
+        .evaluate_derive(&state, &mut handler, "f", vec![Value::Option(None)])
         .unwrap();
     assert_eq!(val, Value::Int(-2));
 }
@@ -235,12 +220,7 @@ system "test" {
     let mut handler = NoopHandler;
 
     let err = interp
-        .evaluate_derive(
-            &state,
-            &mut handler,
-            "f",
-            vec![Value::Option(None)],
-        )
+        .evaluate_derive(&state, &mut handler, "f", vec![Value::Option(None)])
         .unwrap_err();
     assert!(
         format!("{}", err).contains("unwrap()"),
@@ -264,12 +244,7 @@ system "test" {
     let mut handler = NoopHandler;
 
     let err = interp
-        .evaluate_derive(
-            &state,
-            &mut handler,
-            "f",
-            vec![Value::None],
-        )
+        .evaluate_derive(&state, &mut handler, "f", vec![Value::None])
         .unwrap_err();
     assert!(
         format!("{}", err).contains("unwrap()"),
@@ -318,12 +293,7 @@ system "test" {
     let mut handler = NoopHandler;
 
     let val = interp
-        .evaluate_derive(
-            &state,
-            &mut handler,
-            "f",
-            vec![Value::Option(None)],
-        )
+        .evaluate_derive(&state, &mut handler, "f", vec![Value::Option(None)])
         .unwrap();
     assert_eq!(val, Value::Int(99));
 }
@@ -343,12 +313,7 @@ system "test" {
     let mut handler = NoopHandler;
 
     let val = interp
-        .evaluate_derive(
-            &state,
-            &mut handler,
-            "f",
-            vec![Value::None],
-        )
+        .evaluate_derive(&state, &mut handler, "f", vec![Value::None])
         .unwrap();
     assert_eq!(val, Value::Int(99));
 }
@@ -420,12 +385,7 @@ system "test" {
     let mut handler = NoopHandler;
 
     let val = interp
-        .evaluate_derive(
-            &state,
-            &mut handler,
-            "f",
-            vec![Value::Option(None)],
-        )
+        .evaluate_derive(&state, &mut handler, "f", vec![Value::Option(None)])
         .unwrap();
     assert_eq!(val, Value::Int(0));
 }
@@ -459,12 +419,7 @@ system "test" {
 
     // Doesn't match — takes else
     let val = interp
-        .evaluate_derive(
-            &state,
-            &mut handler,
-            "f",
-            vec![Value::Option(None)],
-        )
+        .evaluate_derive(&state, &mut handler, "f", vec![Value::Option(None)])
         .unwrap();
     assert_eq!(val, Value::Int(-1));
 }
@@ -543,9 +498,9 @@ system "test" {
             &state,
             &mut handler,
             "f",
-            vec![Value::Option(Some(Box::new(Value::Option(Some(Box::new(
-                Value::Int(5),
-            ))))))],
+            vec![Value::Option(Some(Box::new(Value::Option(Some(
+                Box::new(Value::Int(5)),
+            )))))],
         )
         .unwrap();
     assert_eq!(val, Value::Int(5));
@@ -563,12 +518,7 @@ system "test" {
 
     // none -> -1
     let val = interp
-        .evaluate_derive(
-            &state,
-            &mut handler,
-            "f",
-            vec![Value::Option(None)],
-        )
+        .evaluate_derive(&state, &mut handler, "f", vec![Value::Option(None)])
         .unwrap();
     assert_eq!(val, Value::Int(-1));
 }

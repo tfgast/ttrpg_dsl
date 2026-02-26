@@ -1,6 +1,6 @@
-use ttrpg_parser::{parse, Severity, SourceMap};
 use ttrpg_ast::ast::*;
 use ttrpg_ast::FileId;
+use ttrpg_parser::{parse, Severity, SourceMap};
 
 #[test]
 fn test_parse_full_example() {
@@ -51,7 +51,12 @@ fn test_parse_full_example() {
             DeclKind::Condition(_) => conditions += 1,
             DeclKind::Prompt(_) => prompts += 1,
             DeclKind::Event(_) => events += 1,
-            DeclKind::Group(_) | DeclKind::Hook(_) | DeclKind::Option(_) | DeclKind::Move(_) | DeclKind::Table(_) | DeclKind::Unit(_) => {}
+            DeclKind::Group(_)
+            | DeclKind::Hook(_)
+            | DeclKind::Option(_)
+            | DeclKind::Move(_)
+            | DeclKind::Table(_)
+            | DeclKind::Unit(_) => {}
         }
     }
 
@@ -75,7 +80,11 @@ fn test_parse_simple_derive() {
     }
 }"#;
     let (program, diagnostics) = parse(source, FileId::SYNTH);
-    assert!(diagnostics.is_empty(), "errors: {:?}", diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>());
+    assert!(
+        diagnostics.is_empty(),
+        "errors: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
     assert_eq!(program.items.len(), 1);
 }
 
@@ -95,7 +104,11 @@ fn test_parse_option_decl() {
     }
 }"#;
     let (_program, diagnostics) = parse(source, FileId::SYNTH);
-    assert!(diagnostics.is_empty(), "errors: {:?}", diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>());
+    assert!(
+        diagnostics.is_empty(),
+        "errors: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
 }
 
 #[test]
@@ -116,7 +129,11 @@ fn test_parse_move_decl() {
     }
 }"#;
     let (program, diagnostics) = parse(source, FileId::SYNTH);
-    assert!(diagnostics.is_empty(), "errors: {:?}", diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>());
+    assert!(
+        diagnostics.is_empty(),
+        "errors: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
     let system = match &program.items[0].node {
         TopLevel::System(s) => s,
         _ => panic!("expected system block"),
@@ -142,7 +159,9 @@ fn test_invalid_lvalue_produces_error() {
 }"#;
     let (_, diagnostics) = parse(source, FileId::SYNTH);
     assert!(
-        diagnostics.iter().any(|d| d.message.contains("invalid assignment target")),
+        diagnostics
+            .iter()
+            .any(|d| d.message.contains("invalid assignment target")),
         "should report invalid assignment target, got: {:?}",
         diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
     );
@@ -171,7 +190,9 @@ fn test_enum_requires_at_least_one_variant() {
 }"#;
     let (_, diagnostics) = parse(source, FileId::SYNTH);
     assert!(
-        diagnostics.iter().any(|d| d.message.contains("at least one variant")),
+        diagnostics
+            .iter()
+            .any(|d| d.message.contains("at least one variant")),
         "should report empty enum, got: {:?}",
         diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
     );
@@ -187,7 +208,11 @@ fn test_enum_newline_separated_variants() {
     }
 }"#;
     let (program, diagnostics) = parse(source, FileId::SYNTH);
-    assert!(diagnostics.is_empty(), "errors: {:?}", diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>());
+    assert!(
+        diagnostics.is_empty(),
+        "errors: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
     let system = match &program.items[0].node {
         TopLevel::System(s) => s,
         _ => panic!("expected system block"),
@@ -208,7 +233,9 @@ fn test_enum_empty_payload_rejected() {
 }"#;
     let (_, diagnostics) = parse(source, FileId::SYNTH);
     assert!(
-        diagnostics.iter().any(|d| d.message.contains("at least one field")),
+        diagnostics
+            .iter()
+            .any(|d| d.message.contains("at least one field")),
         "should reject empty enum variant payload, got: {:?}",
         diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
     );
@@ -226,7 +253,11 @@ fn test_match_arms_newline_separated() {
     }
 }"#;
     let (_, diagnostics) = parse(source, FileId::SYNTH);
-    assert!(diagnostics.is_empty(), "errors: {:?}", diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>());
+    assert!(
+        diagnostics.is_empty(),
+        "errors: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
 }
 
 #[test]
@@ -241,7 +272,11 @@ fn test_guard_match_newline_separated() {
     }
 }"#;
     let (_, diagnostics) = parse(source, FileId::SYNTH);
-    assert!(diagnostics.is_empty(), "errors: {:?}", diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>());
+    assert!(
+        diagnostics.is_empty(),
+        "errors: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
 }
 
 #[test]
@@ -254,7 +289,9 @@ fn test_empty_pattern_match_rejected() {
 }"#;
     let (_, diagnostics) = parse(source, FileId::SYNTH);
     assert!(
-        diagnostics.iter().any(|d| d.message.contains("at least one arm")),
+        diagnostics
+            .iter()
+            .any(|d| d.message.contains("at least one arm")),
         "should reject empty match, got: {:?}",
         diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
     );
@@ -269,7 +306,9 @@ fn test_empty_guard_match_rejected() {
 }"#;
     let (_, diagnostics) = parse(source, FileId::SYNTH);
     assert!(
-        diagnostics.iter().any(|d| d.message.contains("at least one arm")),
+        diagnostics
+            .iter()
+            .any(|d| d.message.contains("at least one arm")),
         "should reject empty guard match, got: {:?}",
         diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
     );
@@ -281,7 +320,11 @@ fn test_enum_comma_separated() {
     enum Result { hit, miss, graze }
 }"#;
     let (program, diagnostics) = parse(source, FileId::SYNTH);
-    assert!(diagnostics.is_empty(), "errors: {:?}", diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>());
+    assert!(
+        diagnostics.is_empty(),
+        "errors: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
     let system = match &program.items[0].node {
         TopLevel::System(s) => s,
         _ => panic!("expected system block"),
@@ -300,7 +343,11 @@ fn test_match_arms_comma_separated() {
     }
 }"#;
     let (_, diagnostics) = parse(source, FileId::SYNTH);
-    assert!(diagnostics.is_empty(), "errors: {:?}", diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>());
+    assert!(
+        diagnostics.is_empty(),
+        "errors: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
 }
 
 #[test]
@@ -311,7 +358,11 @@ fn test_trailing_comma_in_params() {
     }
 }"#;
     let (_, diagnostics) = parse(source, FileId::SYNTH);
-    assert!(diagnostics.is_empty(), "errors: {:?}", diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>());
+    assert!(
+        diagnostics.is_empty(),
+        "errors: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
 }
 
 #[test]
@@ -322,7 +373,11 @@ fn test_trailing_comma_in_args() {
     }
 }"#;
     let (_, diagnostics) = parse(source, FileId::SYNTH);
-    assert!(diagnostics.is_empty(), "errors: {:?}", diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>());
+    assert!(
+        diagnostics.is_empty(),
+        "errors: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
 }
 
 // ── NL suppression tests ────────────────────────────────────────
@@ -339,7 +394,11 @@ fn test_colon_nl_suppression() {
     }
 }"#;
     let (_, diagnostics) = parse(source, FileId::SYNTH);
-    assert!(diagnostics.is_empty(), "colon should suppress NL: {:?}", diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>());
+    assert!(
+        diagnostics.is_empty(),
+        "colon should suppress NL: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
 }
 
 #[test]
@@ -352,7 +411,11 @@ fn test_arrow_nl_suppression() {
     }
 }"#;
     let (_, diagnostics) = parse(source, FileId::SYNTH);
-    assert!(diagnostics.is_empty(), "-> should suppress NL: {:?}", diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>());
+    assert!(
+        diagnostics.is_empty(),
+        "-> should suppress NL: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
 }
 
 #[test]
@@ -365,7 +428,10 @@ fn test_underscore_rejected_in_expr() {
     }
 }"#;
     let (_, diagnostics) = parse(source, FileId::SYNTH);
-    assert!(!diagnostics.is_empty(), "_ should be rejected in expression context");
+    assert!(
+        !diagnostics.is_empty(),
+        "_ should be rejected in expression context"
+    );
 }
 
 // ── Regression tests ─────────────────────────────────────────────
@@ -630,7 +696,10 @@ fn test_error_missing_colon_in_field() {
 }"#;
     let (program, diagnostics) = parse(source, FileId::SYNTH);
     // Should report error but still parse something
-    assert!(!diagnostics.is_empty(), "should have at least one diagnostic");
+    assert!(
+        !diagnostics.is_empty(),
+        "should have at least one diagnostic"
+    );
     assert!(diagnostics.iter().any(|d| d.message.contains("expected")));
 
     // System block should still be present
@@ -671,9 +740,11 @@ fn test_error_recovery_continues_past_bad_decl() {
     };
 
     // Recovery should allow the second derive to be parsed
-    let good_count = system.decls.iter().filter(|d| {
-        matches!(&d.node, DeclKind::Derive(f) if f.name == "good_fn")
-    }).count();
+    let good_count = system
+        .decls
+        .iter()
+        .filter(|d| matches!(&d.node, DeclKind::Derive(f) if f.name == "good_fn"))
+        .count();
     assert_eq!(good_count, 1, "recovery should parse good_fn after bad_fn");
 }
 
@@ -683,21 +754,27 @@ fn test_error_recovery_continues_past_bad_decl() {
 fn test_source_map_line_col() {
     let source = "line1\nline2\nline3";
     let sm = SourceMap::new(source);
-    assert_eq!(sm.line_col(0), (1, 1));   // 'l' in line1
-    assert_eq!(sm.line_col(5), (1, 6));   // '\n' after line1
-    assert_eq!(sm.line_col(6), (2, 1));   // 'l' in line2
-    assert_eq!(sm.line_col(12), (3, 1));  // 'l' in line3
+    assert_eq!(sm.line_col(0), (1, 1)); // 'l' in line1
+    assert_eq!(sm.line_col(5), (1, 6)); // '\n' after line1
+    assert_eq!(sm.line_col(6), (2, 1)); // 'l' in line2
+    assert_eq!(sm.line_col(12), (3, 1)); // 'l' in line3
 }
 
 #[test]
 fn test_diagnostic_rendering() {
     let source = "let x = 42\nlet y foo\nlet z = 1";
     let sm = SourceMap::new(source);
-    let diag = ttrpg_parser::Diagnostic::error("expected '=', found identifier", ttrpg_ast::Span::new(ttrpg_ast::FileId::SYNTH, 17, 20));
+    let diag = ttrpg_parser::Diagnostic::error(
+        "expected '=', found identifier",
+        ttrpg_ast::Span::new(ttrpg_ast::FileId::SYNTH, 17, 20),
+    );
     let rendered = sm.render(&diag);
 
     assert!(rendered.contains("error:"), "should contain severity");
-    assert!(rendered.contains("expected '=', found identifier"), "should contain message");
+    assert!(
+        rendered.contains("expected '=', found identifier"),
+        "should contain message"
+    );
     assert!(rendered.contains("line 2:"), "should reference line 2");
     assert!(rendered.contains("let y foo"), "should show source line");
     assert!(rendered.contains("^^^"), "should have carets");
@@ -906,7 +983,9 @@ fn test_top_level_group_and_external_attachment_parse() {
         TopLevel::System(s) => s,
         _ => panic!("expected system block"),
     };
-    assert!(matches!(&system.decls[0].node, DeclKind::Group(g) if g.name == "Spellcasting" && g.fields.len() == 2));
+    assert!(
+        matches!(&system.decls[0].node, DeclKind::Group(g) if g.name == "Spellcasting" && g.fields.len() == 2)
+    );
     match &system.decls[1].node {
         DeclKind::Entity(e) => {
             assert_eq!(e.optional_groups.len(), 1);
@@ -980,8 +1059,14 @@ fn test_entity_optional_group_with_defaults() {
             assert_eq!(e.optional_groups.len(), 1);
             let group = &e.optional_groups[0];
             assert_eq!(group.name, "Rage");
-            assert!(group.fields[0].default.is_some(), "rage_damage should have default");
-            assert!(group.fields[1].default.is_none(), "max_rage should not have default");
+            assert!(
+                group.fields[0].default.is_some(),
+                "rage_damage should have default"
+            );
+            assert!(
+                group.fields[1].default.is_none(),
+                "max_rage should not have default"
+            );
         }
         _ => panic!("expected entity decl"),
     }
@@ -1031,11 +1116,17 @@ fn test_has_expression() {
     );
     let expr = expr.unwrap();
     match expr.node {
-        ExprKind::Has { ref entity, ref group_name } => {
+        ExprKind::Has {
+            ref entity,
+            ref group_name,
+        } => {
             assert!(matches!(entity.node, ExprKind::Ident(ref n) if n == "actor"));
             assert_eq!(group_name, "Spellcasting");
         }
-        _ => panic!("expected Has expression, got {:?}", std::mem::discriminant(&expr.node)),
+        _ => panic!(
+            "expected Has expression, got {:?}",
+            std::mem::discriminant(&expr.node)
+        ),
     }
 }
 
@@ -1066,7 +1157,8 @@ fn test_has_in_if_condition() {
 
 #[test]
 fn test_has_composes_with_and() {
-    let (expr, diagnostics) = ttrpg_parser::parse_expr("actor has Spellcasting && actor has KiPowers");
+    let (expr, diagnostics) =
+        ttrpg_parser::parse_expr("actor has Spellcasting && actor has KiPowers");
     assert!(
         diagnostics.is_empty(),
         "has with && should parse, got: {:?}",
@@ -1087,14 +1179,15 @@ fn test_has_composes_with_not() {
     );
     let expr = expr.unwrap();
     match expr.node {
-        ExprKind::UnaryOp { op: UnaryOp::Not, ref operand } => {
-            match operand.node {
-                ExprKind::Paren(ref inner) => {
-                    assert!(matches!(inner.node, ExprKind::Has { .. }));
-                }
-                _ => panic!("expected Paren(Has)"),
+        ExprKind::UnaryOp {
+            op: UnaryOp::Not,
+            ref operand,
+        } => match operand.node {
+            ExprKind::Paren(ref inner) => {
+                assert!(matches!(inner.node, ExprKind::Has { .. }));
             }
-        }
+            _ => panic!("expected Paren(Has)"),
+        },
         _ => panic!("expected UnaryOp(Not, Paren(Has))"),
     }
 }
@@ -1124,10 +1217,14 @@ fn test_action_receiver_with_group() {
         TopLevel::System(s) => s,
         _ => panic!("expected system block"),
     };
-    let action = system.decls.iter().find_map(|d| match &d.node {
-        DeclKind::Action(a) => Some(a),
-        _ => None,
-    }).unwrap();
+    let action = system
+        .decls
+        .iter()
+        .find_map(|d| match &d.node {
+            DeclKind::Action(a) => Some(a),
+            _ => None,
+        })
+        .unwrap();
     assert_eq!(action.receiver_with_groups, vec!["Spellcasting"]);
 }
 
@@ -1152,10 +1249,14 @@ fn test_param_with_group() {
         TopLevel::System(s) => s,
         _ => panic!("expected system block"),
     };
-    let derive = system.decls.iter().find_map(|d| match &d.node {
-        DeclKind::Derive(f) => Some(f),
-        _ => None,
-    }).unwrap();
+    let derive = system
+        .decls
+        .iter()
+        .find_map(|d| match &d.node {
+            DeclKind::Derive(f) => Some(f),
+            _ => None,
+        })
+        .unwrap();
     assert_eq!(derive.params[0].with_groups, vec!["Spellcasting"]);
 }
 
@@ -1214,10 +1315,14 @@ fn test_condition_receiver_with_group() {
         TopLevel::System(s) => s,
         _ => panic!("expected system block"),
     };
-    let cond = system.decls.iter().find_map(|d| match &d.node {
-        DeclKind::Condition(c) => Some(c),
-        _ => None,
-    }).unwrap();
+    let cond = system
+        .decls
+        .iter()
+        .find_map(|d| match &d.node {
+            DeclKind::Condition(c) => Some(c),
+            _ => None,
+        })
+        .unwrap();
     assert_eq!(cond.receiver_with_groups, vec!["Spellcasting"]);
 }
 
@@ -1241,10 +1346,14 @@ fn test_condition_with_params() {
         TopLevel::System(s) => s,
         _ => panic!("expected system block"),
     };
-    let cond = system.decls.iter().find_map(|d| match &d.node {
-        DeclKind::Condition(c) => Some(c),
-        _ => None,
-    }).unwrap();
+    let cond = system
+        .decls
+        .iter()
+        .find_map(|d| match &d.node {
+            DeclKind::Condition(c) => Some(c),
+            _ => None,
+        })
+        .unwrap();
     assert_eq!(cond.name, "Frightened");
     assert_eq!(cond.params.len(), 1);
     assert_eq!(cond.params[0].name, "source");
@@ -1271,10 +1380,14 @@ fn test_condition_no_params_still_works() {
         TopLevel::System(s) => s,
         _ => panic!("expected system block"),
     };
-    let cond = system.decls.iter().find_map(|d| match &d.node {
-        DeclKind::Condition(c) => Some(c),
-        _ => None,
-    }).unwrap();
+    let cond = system
+        .decls
+        .iter()
+        .find_map(|d| match &d.node {
+            DeclKind::Condition(c) => Some(c),
+            _ => None,
+        })
+        .unwrap();
     assert_eq!(cond.name, "Prone");
     assert!(cond.params.is_empty());
 }
@@ -1328,7 +1441,9 @@ fn test_parse_basic_hook() {
     program.items.iter().for_each(|item| {
         if let ttrpg_ast::ast::TopLevel::System(sys) = &item.node {
             assert!(
-                sys.decls.iter().any(|d| matches!(&d.node, ttrpg_ast::ast::DeclKind::Hook(h) if h.name == "OnDamage")),
+                sys.decls.iter().any(
+                    |d| matches!(&d.node, ttrpg_ast::ast::DeclKind::Hook(h) if h.name == "OnDamage")
+                ),
                 "hook decl should be present in system block"
             );
         }
@@ -1409,19 +1524,28 @@ fn test_grant_statement() {
         TopLevel::System(s) => s,
         _ => panic!("expected system block"),
     };
-    let action = system.decls.iter().find_map(|d| match &d.node {
-        DeclKind::Action(a) => Some(a),
-        _ => None,
-    }).unwrap();
+    let action = system
+        .decls
+        .iter()
+        .find_map(|d| match &d.node {
+            DeclKind::Action(a) => Some(a),
+            _ => None,
+        })
+        .unwrap();
     let stmt = &action.resolve.node[0].node;
     match stmt {
-        StmtKind::Grant { group_name, fields, .. } => {
+        StmtKind::Grant {
+            group_name, fields, ..
+        } => {
             assert_eq!(group_name, "Spellcasting");
             assert_eq!(fields.len(), 2);
             assert_eq!(fields[0].name, "ability");
             assert_eq!(fields[1].name, "dc");
         }
-        _ => panic!("expected Grant statement, got {:?}", std::mem::discriminant(stmt)),
+        _ => panic!(
+            "expected Grant statement, got {:?}",
+            std::mem::discriminant(stmt)
+        ),
     }
 }
 
@@ -1471,16 +1595,23 @@ fn test_revoke_statement() {
         TopLevel::System(s) => s,
         _ => panic!("expected system block"),
     };
-    let action = system.decls.iter().find_map(|d| match &d.node {
-        DeclKind::Action(a) => Some(a),
-        _ => None,
-    }).unwrap();
+    let action = system
+        .decls
+        .iter()
+        .find_map(|d| match &d.node {
+            DeclKind::Action(a) => Some(a),
+            _ => None,
+        })
+        .unwrap();
     let stmt = &action.resolve.node[0].node;
     match stmt {
         StmtKind::Revoke { group_name, .. } => {
             assert_eq!(group_name, "Spellcasting");
         }
-        _ => panic!("expected Revoke statement, got {:?}", std::mem::discriminant(stmt)),
+        _ => panic!(
+            "expected Revoke statement, got {:?}",
+            std::mem::discriminant(stmt)
+        ),
     }
 }
 
@@ -1496,7 +1627,9 @@ fn test_grant_error_without_field_access() {
 }"#;
     let (_, diagnostics) = parse(source, FileId::SYNTH);
     assert!(
-        diagnostics.iter().any(|d| d.message.contains("entity.GroupName")),
+        diagnostics
+            .iter()
+            .any(|d| d.message.contains("entity.GroupName")),
         "grant without .Group should error, got: {:?}",
         diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
     );
@@ -1514,7 +1647,9 @@ fn test_revoke_error_without_field_access() {
 }"#;
     let (_, diagnostics) = parse(source, FileId::SYNTH);
     assert!(
-        diagnostics.iter().any(|d| d.message.contains("entity.GroupName")),
+        diagnostics
+            .iter()
+            .any(|d| d.message.contains("entity.GroupName")),
         "revoke without .Group should error, got: {:?}",
         diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
     );
@@ -1532,7 +1667,11 @@ fn test_ordered_enum_parsed() {
     }
 }"#;
     let (program, diagnostics) = parse(source, FileId::SYNTH);
-    assert!(diagnostics.is_empty(), "unexpected errors: {:?}", diagnostics);
+    assert!(
+        diagnostics.is_empty(),
+        "unexpected errors: {:?}",
+        diagnostics
+    );
 
     let system = match &program.items[0].node {
         TopLevel::System(s) => s,
@@ -1557,7 +1696,11 @@ fn test_non_ordered_enum_parsed() {
     }
 }"#;
     let (program, diagnostics) = parse(source, FileId::SYNTH);
-    assert!(diagnostics.is_empty(), "unexpected errors: {:?}", diagnostics);
+    assert!(
+        diagnostics.is_empty(),
+        "unexpected errors: {:?}",
+        diagnostics
+    );
 
     let system = match &program.items[0].node {
         TopLevel::System(s) => s,
@@ -1579,7 +1722,11 @@ fn test_struct_fields_comma_separated_single_line() {
     struct Point { x: int, y: int }
 }"#;
     let (_, diagnostics) = parse(source, FileId::SYNTH);
-    assert!(diagnostics.is_empty(), "comma-separated fields should parse: {:?}", diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>());
+    assert!(
+        diagnostics.is_empty(),
+        "comma-separated fields should parse: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
 }
 
 #[test]
@@ -1591,7 +1738,11 @@ fn test_struct_fields_newline_separated() {
     }
 }"#;
     let (_, diagnostics) = parse(source, FileId::SYNTH);
-    assert!(diagnostics.is_empty(), "newline-separated fields should parse: {:?}", diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>());
+    assert!(
+        diagnostics.is_empty(),
+        "newline-separated fields should parse: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
 }
 
 #[test]
@@ -1600,7 +1751,11 @@ fn test_struct_fields_trailing_comma() {
     struct Point { x: int, y: int, }
 }"#;
     let (_, diagnostics) = parse(source, FileId::SYNTH);
-    assert!(diagnostics.is_empty(), "trailing comma should parse: {:?}", diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>());
+    assert!(
+        diagnostics.is_empty(),
+        "trailing comma should parse: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
 }
 
 #[test]
@@ -1609,13 +1764,20 @@ fn test_struct_fields_missing_separator() {
     struct Point { x: int y: int }
 }"#;
     let (_, diagnostics) = parse(source, FileId::SYNTH);
-    assert!(!diagnostics.is_empty(), "missing separator should produce an error");
+    assert!(
+        !diagnostics.is_empty(),
+        "missing separator should produce an error"
+    );
 }
 
 #[test]
 fn struct_lit_with_base_only() {
     let (expr, diags) = ttrpg_parser::parse_expr("Point { ..other }");
-    assert!(diags.is_empty(), "unexpected diagnostics: {:?}", diags.iter().map(|d| &d.message).collect::<Vec<_>>());
+    assert!(
+        diags.is_empty(),
+        "unexpected diagnostics: {:?}",
+        diags.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
     let expr = expr.unwrap();
     match &expr.node {
         ExprKind::StructLit { name, fields, base } => {
@@ -1634,7 +1796,11 @@ fn struct_lit_with_base_only() {
 #[test]
 fn struct_lit_with_fields_and_base() {
     let (expr, diags) = ttrpg_parser::parse_expr("Point { x: 1, y: 2, ..defaults }");
-    assert!(diags.is_empty(), "unexpected diagnostics: {:?}", diags.iter().map(|d| &d.message).collect::<Vec<_>>());
+    assert!(
+        diags.is_empty(),
+        "unexpected diagnostics: {:?}",
+        diags.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
     let expr = expr.unwrap();
     match &expr.node {
         ExprKind::StructLit { name, fields, base } => {
@@ -1651,7 +1817,11 @@ fn struct_lit_with_fields_and_base() {
 #[test]
 fn struct_lit_with_base_trailing_comma() {
     let (expr, diags) = ttrpg_parser::parse_expr("Point { x: 1, ..defaults, }");
-    assert!(diags.is_empty(), "unexpected diagnostics: {:?}", diags.iter().map(|d| &d.message).collect::<Vec<_>>());
+    assert!(
+        diags.is_empty(),
+        "unexpected diagnostics: {:?}",
+        diags.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
     let expr = expr.unwrap();
     match &expr.node {
         ExprKind::StructLit { name, fields, base } => {
@@ -1668,7 +1838,11 @@ fn struct_lit_with_base_trailing_comma() {
 #[test]
 fn struct_lit_leading_base_trailing_comma() {
     let (expr, diags) = ttrpg_parser::parse_expr("Point { ..other, }");
-    assert!(diags.is_empty(), "trailing comma after leading ..base should parse: {:?}", diags.iter().map(|d| &d.message).collect::<Vec<_>>());
+    assert!(
+        diags.is_empty(),
+        "trailing comma after leading ..base should parse: {:?}",
+        diags.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
     let expr = expr.unwrap();
     match &expr.node {
         ExprKind::StructLit { name, fields, base } => {
@@ -1726,12 +1900,14 @@ system "B" {
     let (program, diagnostics) = parse(source, FileId::SYNTH);
     // We expect parse errors for the malformed first system, but the second
     // system should still be recovered. The bug causes all of "B" to be lost.
-    let system_names: Vec<&str> = program.items.iter().filter_map(|item| {
-        match &item.node {
+    let system_names: Vec<&str> = program
+        .items
+        .iter()
+        .filter_map(|item| match &item.node {
             TopLevel::System(s) => Some(s.name.as_str()),
             _ => None,
-        }
-    }).collect();
+        })
+        .collect();
     assert!(
         system_names.contains(&"B"),
         "system B was lost due to token stream corruption — bug tdsl-9h5.\n\
@@ -1800,9 +1976,9 @@ system "test" {
     }
 }"#;
     let (_, diagnostics) = parse(source, FileId::SYNTH);
-    let has_unexpected = diagnostics.iter().any(|d| {
-        d.message.contains("unexpected") || d.message.contains("expected")
-    });
+    let has_unexpected = diagnostics
+        .iter()
+        .any(|d| d.message.contains("unexpected") || d.message.contains("expected"));
     assert!(
         !has_unexpected,
         "qualified type with soft keyword alias should parse; got: {:?}",
@@ -1836,7 +2012,10 @@ fn test_error_recovery_finds_hook_declaration() {
         _ => panic!("expected system block"),
     };
 
-    let has_hook = system.decls.iter().any(|d| matches!(&d.node, DeclKind::Hook(_)));
+    let has_hook = system
+        .decls
+        .iter()
+        .any(|d| matches!(&d.node, DeclKind::Hook(_)));
     assert!(
         has_hook,
         "error recovery should find hook declaration after bad derive; found {} decl(s)",
@@ -1863,7 +2042,10 @@ fn test_error_recovery_finds_unit_declaration() {
         _ => panic!("expected system block"),
     };
 
-    let has_unit = system.decls.iter().any(|d| matches!(&d.node, DeclKind::Unit(_)));
+    let has_unit = system
+        .decls
+        .iter()
+        .any(|d| matches!(&d.node, DeclKind::Unit(_)));
     assert!(
         has_unit,
         "error recovery should find unit declaration after bad derive; found {} decl(s)",

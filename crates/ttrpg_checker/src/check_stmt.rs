@@ -29,7 +29,10 @@ impl<'a> Checker<'a> {
                 let bind_ty = if let Some(ref type_ann) = ty {
                     let ann_ty = self.resolve_type_validated(type_ann);
                     let val_ty = self.check_expr_expecting(value, Some(&ann_ty));
-                    if !val_ty.is_error() && !ann_ty.is_error() && !self.types_compatible(&val_ty, &ann_ty) {
+                    if !val_ty.is_error()
+                        && !ann_ty.is_error()
+                        && !self.types_compatible(&val_ty, &ann_ty)
+                    {
                         self.error(
                             format!(
                                 "let `{}`: value has type {}, annotation says {}",
@@ -74,10 +77,7 @@ impl<'a> Checker<'a> {
                 self.check_grant(entity, group_name, fields, stmt.span);
                 Ty::Unit
             }
-            StmtKind::Revoke {
-                entity,
-                group_name,
-            } => {
+            StmtKind::Revoke { entity, group_name } => {
                 self.check_revoke(entity, group_name, stmt.span);
                 Ty::Unit
             }
@@ -137,10 +137,7 @@ impl<'a> Checker<'a> {
                     if let Ty::Struct(ref s) = binding.ty {
                         if s.starts_with("__event_") && target.segments.len() <= 1 {
                             self.error(
-                                format!(
-                                    "cannot mutate field of trigger payload `{}`",
-                                    target.root
-                                ),
+                                format!("cannot mutate field of trigger payload `{}`", target.root),
                                 span,
                             );
                             self.check_expr(value);
@@ -166,7 +163,11 @@ impl<'a> Checker<'a> {
 
         // Resolve target type
         let target_ty = self.resolve_lvalue_type(target);
-        let hint = if matches!(op, AssignOp::Eq) { Some(&target_ty) } else { None };
+        let hint = if matches!(op, AssignOp::Eq) {
+            Some(&target_ty)
+        } else {
+            None
+        };
         let value_ty = self.check_expr_expecting(value, hint);
 
         if target_ty.is_error() || value_ty.is_error() {
@@ -177,10 +178,7 @@ impl<'a> Checker<'a> {
             AssignOp::Eq => {
                 if !self.types_compatible(&value_ty, &target_ty) {
                     self.error(
-                        format!(
-                            "cannot assign {} to {}",
-                            value_ty, target_ty
-                        ),
+                        format!("cannot assign {} to {}", value_ty, target_ty),
                         value.span,
                     );
                 }
@@ -188,10 +186,7 @@ impl<'a> Checker<'a> {
             AssignOp::PlusEq | AssignOp::MinusEq => {
                 // Target must be numeric
                 if !target_ty.is_numeric() && !target_ty.is_int_like() {
-                    self.error(
-                        format!("cannot use += / -= on type {}", target_ty),
-                        span,
-                    );
+                    self.error(format!("cannot use += / -= on type {}", target_ty), span);
                 } else if !value_ty.is_numeric() && !value_ty.is_int_like() {
                     self.error(
                         format!("right side of += / -= must be numeric, found {}", value_ty),
@@ -215,10 +210,7 @@ impl<'a> Checker<'a> {
         let root_ty = match self.scope.lookup(&lvalue.root) {
             Some(binding) => binding.ty.clone(),
             None => {
-                self.error(
-                    format!("undefined variable `{}`", lvalue.root),
-                    lvalue.span,
-                );
+                self.error(format!("undefined variable `{}`", lvalue.root), lvalue.span);
                 return Ty::Error;
             }
         };
@@ -237,7 +229,7 @@ impl<'a> Checker<'a> {
                         if !self.env.is_group_required(entity_name, group_name)
                             && !self.scope.is_group_narrowed(&path_key, group_name)
                         {
-                                self.error(
+                            self.error(
                                     format!(
                                         "access to optional group `{}` on `{}` requires a `has` guard or `with` constraint",
                                         group_name, path_key
@@ -275,10 +267,7 @@ impl<'a> Checker<'a> {
                             current = *val.clone();
                         }
                         _ => {
-                            self.error(
-                                format!("cannot index into {}", current),
-                                lvalue.span,
-                            );
+                            self.error(format!("cannot index into {}", current), lvalue.span);
                             return Ty::Error;
                         }
                     }
@@ -311,20 +300,21 @@ impl<'a> Checker<'a> {
         }
 
         let group = match &entity_ty {
-            Ty::Entity(entity_name) => match self.env.lookup_optional_group(entity_name, group_name)
-            {
-                Some(g) => g.clone(),
-                None => {
-                    self.error(
-                        format!(
-                            "entity `{}` has no optional group `{}`",
-                            entity_name, group_name
-                        ),
-                        span,
-                    );
-                    return;
+            Ty::Entity(entity_name) => {
+                match self.env.lookup_optional_group(entity_name, group_name) {
+                    Some(g) => g.clone(),
+                    None => {
+                        self.error(
+                            format!(
+                                "entity `{}` has no optional group `{}`",
+                                entity_name, group_name
+                            ),
+                            span,
+                        );
+                        return;
+                    }
                 }
-            },
+            }
             Ty::AnyEntity => {
                 if self.env.is_group_required_somewhere(group_name) {
                     self.error(
@@ -380,7 +370,9 @@ impl<'a> Checker<'a> {
         // Validate field initializers
         let mut seen = std::collections::HashSet::new();
         for field in fields {
-            let field_hint = group.fields.iter()
+            let field_hint = group
+                .fields
+                .iter()
                 .find(|f| f.name == field.name)
                 .map(|fi| &fi.ty);
             let field_ty = self.check_expr_expecting(&field.value, field_hint);

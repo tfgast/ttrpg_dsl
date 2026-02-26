@@ -22,7 +22,10 @@ fn compile_ose_ability() -> (ttrpg_ast::ast::Program, ttrpg_checker::CheckResult
 
     let sources = vec![
         ("ose/ose_core.ttrpg".to_string(), core_source.to_string()),
-        ("ose/ose_ability.ttrpg".to_string(), ability_source.to_string()),
+        (
+            "ose/ose_ability.ttrpg".to_string(),
+            ability_source.to_string(),
+        ),
     ];
 
     let parse_result = ttrpg_parser::parse_multi(&sources);
@@ -126,15 +129,17 @@ fn ose_ability_has_all_tables() {
     ];
 
     for name in &expected {
-        assert!(
-            table_names.contains(name),
-            "missing table: {name}"
-        );
+        assert!(table_names.contains(name), "missing table: {name}");
     }
 
-    assert_eq!(table_names.len(), expected.len(),
+    assert_eq!(
+        table_names.len(),
+        expected.len(),
         "expected {} tables, got {}: {:?}",
-        expected.len(), table_names.len(), table_names);
+        expected.len(),
+        table_names.len(),
+        table_names
+    );
 }
 
 // ── STR modifiers ──────────────────────────────────────────────
@@ -147,13 +152,27 @@ fn str_melee_mod_values() {
     let mut handler = NullHandler;
 
     let cases: Vec<(i64, i64)> = vec![
-        (3, -3), (4, -2), (5, -2), (6, -1), (8, -1),
-        (9, 0), (12, 0), (13, 1), (15, 1), (16, 2),
-        (17, 2), (18, 3),
+        (3, -3),
+        (4, -2),
+        (5, -2),
+        (6, -1),
+        (8, -1),
+        (9, 0),
+        (12, 0),
+        (13, 1),
+        (15, 1),
+        (16, 2),
+        (17, 2),
+        (18, 3),
     ];
     for (score, expected) in cases {
         let val = interp
-            .evaluate_derive(&state, &mut handler, "str_melee_mod", vec![Value::Int(score)])
+            .evaluate_derive(
+                &state,
+                &mut handler,
+                "str_melee_mod",
+                vec![Value::Int(score)],
+            )
             .unwrap();
         assert_eq!(val, Value::Int(expected), "str_melee_mod({score})");
     }
@@ -167,12 +186,25 @@ fn str_open_doors_values() {
     let mut handler = NullHandler;
 
     let cases: Vec<(i64, i64)> = vec![
-        (3, 1), (5, 1), (8, 1), (9, 2), (12, 2),
-        (13, 3), (15, 3), (16, 4), (17, 4), (18, 5),
+        (3, 1),
+        (5, 1),
+        (8, 1),
+        (9, 2),
+        (12, 2),
+        (13, 3),
+        (15, 3),
+        (16, 4),
+        (17, 4),
+        (18, 5),
     ];
     for (score, expected) in cases {
         let val = interp
-            .evaluate_derive(&state, &mut handler, "str_open_doors", vec![Value::Int(score)])
+            .evaluate_derive(
+                &state,
+                &mut handler,
+                "str_open_doors",
+                vec![Value::Int(score)],
+            )
             .unwrap();
         assert_eq!(val, Value::Int(expected), "str_open_doors({score})");
     }
@@ -188,7 +220,13 @@ fn dex_mod_values() {
     let mut handler = NullHandler;
 
     let cases: Vec<(i64, i64)> = vec![
-        (3, -3), (5, -2), (7, -1), (10, 0), (14, 1), (17, 2), (18, 3),
+        (3, -3),
+        (5, -2),
+        (7, -1),
+        (10, 0),
+        (14, 1),
+        (17, 2),
+        (18, 3),
     ];
     for (score, expected) in cases {
         let val = interp
@@ -206,11 +244,22 @@ fn dex_init_mod_values() {
     let mut handler = NullHandler;
 
     let cases: Vec<(i64, i64)> = vec![
-        (3, -2), (5, -1), (7, -1), (10, 0), (14, 1), (17, 1), (18, 2),
+        (3, -2),
+        (5, -1),
+        (7, -1),
+        (10, 0),
+        (14, 1),
+        (17, 1),
+        (18, 2),
     ];
     for (score, expected) in cases {
         let val = interp
-            .evaluate_derive(&state, &mut handler, "dex_init_mod", vec![Value::Int(score)])
+            .evaluate_derive(
+                &state,
+                &mut handler,
+                "dex_init_mod",
+                vec![Value::Int(score)],
+            )
             .unwrap();
         assert_eq!(val, Value::Int(expected), "dex_init_mod({score})");
     }
@@ -225,9 +274,7 @@ fn con_hp_mod_values() {
     let state = GameState::new();
     let mut handler = NullHandler;
 
-    let cases: Vec<(i64, i64)> = vec![
-        (3, -3), (4, -2), (6, -1), (9, 0), (13, 1), (16, 2), (18, 3),
-    ];
+    let cases: Vec<(i64, i64)> = vec![(3, -3), (4, -2), (6, -1), (9, 0), (13, 1), (16, 2), (18, 3)];
     for (score, expected) in cases {
         let val = interp
             .evaluate_derive(&state, &mut handler, "con_hp_mod", vec![Value::Int(score)])
@@ -246,11 +293,23 @@ fn int_extra_languages_values() {
     let mut handler = NullHandler;
 
     let cases: Vec<(i64, i64)> = vec![
-        (3, 0), (8, 0), (12, 0), (13, 1), (15, 1), (16, 2), (17, 2), (18, 3),
+        (3, 0),
+        (8, 0),
+        (12, 0),
+        (13, 1),
+        (15, 1),
+        (16, 2),
+        (17, 2),
+        (18, 3),
     ];
     for (score, expected) in cases {
         let val = interp
-            .evaluate_derive(&state, &mut handler, "int_extra_languages", vec![Value::Int(score)])
+            .evaluate_derive(
+                &state,
+                &mut handler,
+                "int_extra_languages",
+                vec![Value::Int(score)],
+            )
             .unwrap();
         assert_eq!(val, Value::Int(expected), "int_extra_languages({score})");
     }
@@ -266,11 +325,22 @@ fn wis_magic_save_mod_values() {
     let mut handler = NullHandler;
 
     let cases: Vec<(i64, i64)> = vec![
-        (3, -3), (5, -2), (7, -1), (10, 0), (14, 1), (17, 2), (18, 3),
+        (3, -3),
+        (5, -2),
+        (7, -1),
+        (10, 0),
+        (14, 1),
+        (17, 2),
+        (18, 3),
     ];
     for (score, expected) in cases {
         let val = interp
-            .evaluate_derive(&state, &mut handler, "wis_magic_save_mod", vec![Value::Int(score)])
+            .evaluate_derive(
+                &state,
+                &mut handler,
+                "wis_magic_save_mod",
+                vec![Value::Int(score)],
+            )
             .unwrap();
         assert_eq!(val, Value::Int(expected), "wis_magic_save_mod({score})");
     }
@@ -286,11 +356,22 @@ fn cha_reaction_mod_values() {
     let mut handler = NullHandler;
 
     let cases: Vec<(i64, i64)> = vec![
-        (3, -2), (5, -1), (7, -1), (10, 0), (14, 1), (17, 1), (18, 2),
+        (3, -2),
+        (5, -1),
+        (7, -1),
+        (10, 0),
+        (14, 1),
+        (17, 1),
+        (18, 2),
     ];
     for (score, expected) in cases {
         let val = interp
-            .evaluate_derive(&state, &mut handler, "cha_reaction_mod", vec![Value::Int(score)])
+            .evaluate_derive(
+                &state,
+                &mut handler,
+                "cha_reaction_mod",
+                vec![Value::Int(score)],
+            )
             .unwrap();
         assert_eq!(val, Value::Int(expected), "cha_reaction_mod({score})");
     }
@@ -303,12 +384,15 @@ fn cha_max_retainers_values() {
     let state = GameState::new();
     let mut handler = NullHandler;
 
-    let cases: Vec<(i64, i64)> = vec![
-        (3, 1), (5, 2), (7, 3), (10, 4), (14, 5), (17, 6), (18, 7),
-    ];
+    let cases: Vec<(i64, i64)> = vec![(3, 1), (5, 2), (7, 3), (10, 4), (14, 5), (17, 6), (18, 7)];
     for (score, expected) in cases {
         let val = interp
-            .evaluate_derive(&state, &mut handler, "cha_max_retainers", vec![Value::Int(score)])
+            .evaluate_derive(
+                &state,
+                &mut handler,
+                "cha_max_retainers",
+                vec![Value::Int(score)],
+            )
             .unwrap();
         assert_eq!(val, Value::Int(expected), "cha_max_retainers({score})");
     }
@@ -321,9 +405,7 @@ fn cha_loyalty_values() {
     let state = GameState::new();
     let mut handler = NullHandler;
 
-    let cases: Vec<(i64, i64)> = vec![
-        (3, 4), (5, 5), (7, 6), (10, 7), (14, 8), (17, 9), (18, 10),
-    ];
+    let cases: Vec<(i64, i64)> = vec![(3, 4), (5, 5), (7, 6), (10, 7), (14, 8), (17, 9), (18, 10)];
     for (score, expected) in cases {
         let val = interp
             .evaluate_derive(&state, &mut handler, "cha_loyalty", vec![Value::Int(score)])
@@ -342,12 +424,25 @@ fn prime_req_xp_mod_values() {
     let mut handler = NullHandler;
 
     let cases: Vec<(i64, i64)> = vec![
-        (3, -20), (5, -20), (6, -10), (8, -10),
-        (9, 0), (12, 0), (13, 5), (15, 5), (16, 10), (18, 10),
+        (3, -20),
+        (5, -20),
+        (6, -10),
+        (8, -10),
+        (9, 0),
+        (12, 0),
+        (13, 5),
+        (15, 5),
+        (16, 10),
+        (18, 10),
     ];
     for (score, expected) in cases {
         let val = interp
-            .evaluate_derive(&state, &mut handler, "prime_req_xp_mod", vec![Value::Int(score)])
+            .evaluate_derive(
+                &state,
+                &mut handler,
+                "prime_req_xp_mod",
+                vec![Value::Int(score)],
+            )
             .unwrap();
         assert_eq!(val, Value::Int(expected), "prime_req_xp_mod({score})");
     }
@@ -376,7 +471,12 @@ fn encumbrance_level_values() {
     ];
     for (weight, expected) in cases {
         let val = interp
-            .evaluate_derive(&state, &mut handler, "encumbrance_level", vec![Value::Int(weight)])
+            .evaluate_derive(
+                &state,
+                &mut handler,
+                "encumbrance_level",
+                vec![Value::Int(weight)],
+            )
             .unwrap();
         assert_eq!(
             val,
@@ -424,7 +524,12 @@ fn standard_modifier_boundaries() {
     let state = GameState::new();
     let mut handler = NullHandler;
 
-    let standard_derives = ["str_melee_mod", "dex_mod", "con_hp_mod", "wis_magic_save_mod"];
+    let standard_derives = [
+        "str_melee_mod",
+        "dex_mod",
+        "con_hp_mod",
+        "wis_magic_save_mod",
+    ];
 
     for derive_name in &standard_derives {
         // Boundary: 3 → -3, then 4 → -2

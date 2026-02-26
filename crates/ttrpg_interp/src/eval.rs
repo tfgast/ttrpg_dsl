@@ -1,17 +1,17 @@
 use std::collections::BTreeMap;
 
-use ttrpg_ast::{Name, Spanned};
 use ttrpg_ast::ast::{
     ArmBody, AssignOp, BinOp, DeclKind, ElseBranch, ExprKind, FieldDef, ForIterable, GuardKind,
     LValue, LValueSegment, PatternKind, TopLevel, TypeExpr, UnaryOp,
 };
+use ttrpg_ast::{Name, Spanned};
 use ttrpg_checker::env::DeclInfo;
 
-use crate::Env;
-use crate::RuntimeError;
 use crate::effect::{Effect, FieldPathSegment, Response};
 use crate::state::{EntityRef, StateProvider};
 use crate::value::{DiceExpr, Value};
+use crate::Env;
+use crate::RuntimeError;
 
 // ── Expression evaluator ───────────────────────────────────────
 
@@ -68,7 +68,10 @@ pub(crate) fn eval_expr(env: &mut Env, expr: &Spanned<ExprKind>) -> Result<Value
             // Start from base fields if ..base spread was provided.
             let mut field_map = if let Some(base_expr) = base {
                 match eval_expr(env, base_expr)? {
-                    Value::Struct { fields: base_fields, .. } => base_fields,
+                    Value::Struct {
+                        fields: base_fields,
+                        ..
+                    } => base_fields,
                     other => {
                         return Err(RuntimeError::with_span(
                             format!("expected struct in ..base, got {}", type_name(&other)),
@@ -165,9 +168,7 @@ pub(crate) fn eval_expr(env: &mut Env, expr: &Spanned<ExprKind>) -> Result<Value
             ))
         }
 
-        ExprKind::Call { callee, args } => {
-            crate::call::eval_call(env, callee, args, expr.span)
-        }
+        ExprKind::Call { callee, args } => crate::call::eval_call(env, callee, args, expr.span),
 
         ExprKind::For {
             pattern,
@@ -205,10 +206,7 @@ pub(crate) fn eval_expr(env: &mut Env, expr: &Spanned<ExprKind>) -> Result<Value
                 .suffix_to_unit
                 .get(suffix.as_str())
                 .ok_or_else(|| {
-                    RuntimeError::with_span(
-                        format!("unknown unit suffix `{}`", suffix),
-                        expr.span,
-                    )
+                    RuntimeError::with_span(format!("unknown unit suffix `{}`", suffix), expr.span)
                 })?
                 .clone();
             let field_name = match env.interp.type_env.types.get(&unit_name) {
@@ -232,11 +230,7 @@ pub(crate) fn eval_expr(env: &mut Env, expr: &Spanned<ExprKind>) -> Result<Value
 
 // ── Identifier evaluation ──────────────────────────────────────
 
-fn eval_ident(
-    env: &mut Env,
-    name: &str,
-    expr: &Spanned<ExprKind>,
-) -> Result<Value, RuntimeError> {
+fn eval_ident(env: &mut Env, name: &str, expr: &Spanned<ExprKind>) -> Result<Value, RuntimeError> {
     // 1. Check local scopes
     if let Some(val) = env.lookup(name) {
         return Ok(val.clone());
@@ -251,12 +245,16 @@ fn eval_ident(
     // 3. Check if it's a bare enum variant name
     //    Use the resolution table (populated by the checker) first, then fall back to
     //    unique_variant_owner for CLI eval expressions that weren't checker-resolved.
-    let resolved = env.interp.type_env.resolved_variants.get(&expr.span).cloned()
+    let resolved = env
+        .interp
+        .type_env
+        .resolved_variants
+        .get(&expr.span)
+        .cloned()
         .or_else(|| env.interp.type_env.unique_variant_owner(name).cloned());
     if let Some(enum_name) = resolved {
         // Look up the variant info to check if it has fields
-        if let Some(DeclInfo::Enum(enum_info)) = env.interp.type_env.types.get(enum_name.as_str())
-        {
+        if let Some(DeclInfo::Enum(enum_info)) = env.interp.type_env.types.get(enum_name.as_str()) {
             if let Some(variant) = enum_info.variants.iter().find(|v| v.name == name) {
                 if variant.fields.is_empty() {
                     // Fieldless variant — can be used as a value directly
@@ -283,7 +281,10 @@ fn eval_ident(
                 args.insert(param.name.clone(), val);
             }
         }
-        return Ok(Value::Condition { name: Name::from(name), args });
+        return Ok(Value::Condition {
+            name: Name::from(name),
+            args,
+        });
     }
 
     Err(RuntimeError::with_span(
@@ -304,8 +305,9 @@ fn eval_unary(
     // Unit type negation
     if op == UnaryOp::Neg {
         if let Some((name, field, n)) = as_unit_value(&val, env.interp.type_env) {
-            let result = n.checked_neg()
-                .ok_or_else(|| RuntimeError::with_span("integer overflow in unit negation", expr.span))?;
+            let result = n.checked_neg().ok_or_else(|| {
+                RuntimeError::with_span("integer overflow in unit negation", expr.span)
+            })?;
             return Ok(make_unit_value(name, field, result));
         }
     }
@@ -341,10 +343,16 @@ fn eval_binop(
                 let rhs = eval_expr(env, rhs_expr)?;
                 match rhs {
                     Value::Bool(b) => Ok(Value::Bool(b)),
-                    _ => Err(RuntimeError::with_span("&& requires Bool operands", expr.span)),
+                    _ => Err(RuntimeError::with_span(
+                        "&& requires Bool operands",
+                        expr.span,
+                    )),
                 }
             }
-            _ => Err(RuntimeError::with_span("&& requires Bool operands", expr.span)),
+            _ => Err(RuntimeError::with_span(
+                "&& requires Bool operands",
+                expr.span,
+            )),
         };
     }
     if op == BinOp::Or {
@@ -355,10 +363,16 @@ fn eval_binop(
                 let rhs = eval_expr(env, rhs_expr)?;
                 match rhs {
                     Value::Bool(b) => Ok(Value::Bool(b)),
-                    _ => Err(RuntimeError::with_span("|| requires Bool operands", expr.span)),
+                    _ => Err(RuntimeError::with_span(
+                        "|| requires Bool operands",
+                        expr.span,
+                    )),
                 }
             }
-            _ => Err(RuntimeError::with_span("|| requires Bool operands", expr.span)),
+            _ => Err(RuntimeError::with_span(
+                "|| requires Bool operands",
+                expr.span,
+            )),
         };
     }
 
@@ -388,9 +402,13 @@ fn eval_binop(
             let rhs = coerce_roll_result(rhs);
             match op {
                 BinOp::Lt => eval_comparison(&lhs, &rhs, |o| o.is_lt(), env.interp.type_env, expr),
-                BinOp::LtEq => eval_comparison(&lhs, &rhs, |o| o.is_le(), env.interp.type_env, expr),
+                BinOp::LtEq => {
+                    eval_comparison(&lhs, &rhs, |o| o.is_le(), env.interp.type_env, expr)
+                }
                 BinOp::Gt => eval_comparison(&lhs, &rhs, |o| o.is_gt(), env.interp.type_env, expr),
-                BinOp::GtEq => eval_comparison(&lhs, &rhs, |o| o.is_ge(), env.interp.type_env, expr),
+                BinOp::GtEq => {
+                    eval_comparison(&lhs, &rhs, |o| o.is_ge(), env.interp.type_env, expr)
+                }
                 _ => unreachable!(),
             }
         }
@@ -425,10 +443,7 @@ fn coerce_roll_result(val: Value) -> Value {
 
 /// If `val` is a `Value::Struct` whose name is registered as a unit type in the
 /// type environment, return `(unit_type_name, field_name, int_value)`.
-fn as_unit_value(
-    val: &Value,
-    type_env: &ttrpg_checker::env::TypeEnv,
-) -> Option<(Name, Name, i64)> {
+fn as_unit_value(val: &Value, type_env: &ttrpg_checker::env::TypeEnv) -> Option<(Name, Name, i64)> {
     if let Value::Struct { name, fields } = val {
         if let Some(DeclInfo::Unit(info)) = type_env.types.get(name.as_str()) {
             let field_name = &info.fields[0].name;
@@ -450,7 +465,12 @@ fn make_unit_value(unit_name: Name, field_name: Name, int_val: i64) -> Value {
     }
 }
 
-fn eval_add(lhs: &Value, rhs: &Value, type_env: &ttrpg_checker::env::TypeEnv, expr: &Spanned<ExprKind>) -> Result<Value, RuntimeError> {
+fn eval_add(
+    lhs: &Value,
+    rhs: &Value,
+    type_env: &ttrpg_checker::env::TypeEnv,
+    expr: &Spanned<ExprKind>,
+) -> Result<Value, RuntimeError> {
     match (lhs, rhs) {
         (Value::Int(a), Value::Int(b)) => a
             .checked_add(*b)
@@ -462,14 +482,22 @@ fn eval_add(lhs: &Value, rhs: &Value, type_env: &ttrpg_checker::env::TypeEnv, ex
         (Value::Str(a), Value::Str(b)) => Ok(Value::Str(format!("{}{}", a, b))),
         // DiceExpr algebra: DiceExpr + Int → adjust modifier
         (Value::DiceExpr(d), Value::Int(n)) => {
-            let modifier = d.modifier.checked_add(*n)
-                .ok_or_else(|| RuntimeError::with_span("dice modifier overflow in addition", expr.span))?;
-            Ok(Value::DiceExpr(DiceExpr { modifier, ..d.clone() }))
+            let modifier = d.modifier.checked_add(*n).ok_or_else(|| {
+                RuntimeError::with_span("dice modifier overflow in addition", expr.span)
+            })?;
+            Ok(Value::DiceExpr(DiceExpr {
+                modifier,
+                ..d.clone()
+            }))
         }
         (Value::Int(n), Value::DiceExpr(d)) => {
-            let modifier = d.modifier.checked_add(*n)
-                .ok_or_else(|| RuntimeError::with_span("dice modifier overflow in addition", expr.span))?;
-            Ok(Value::DiceExpr(DiceExpr { modifier, ..d.clone() }))
+            let modifier = d.modifier.checked_add(*n).ok_or_else(|| {
+                RuntimeError::with_span("dice modifier overflow in addition", expr.span)
+            })?;
+            Ok(Value::DiceExpr(DiceExpr {
+                modifier,
+                ..d.clone()
+            }))
         }
         // DiceExpr + DiceExpr → merge counts and modifiers (must have same dice spec)
         (Value::DiceExpr(a), Value::DiceExpr(b)) => {
@@ -482,10 +510,12 @@ fn eval_add(lhs: &Value, rhs: &Value, type_env: &ttrpg_checker::env::TypeEnv, ex
                     expr.span,
                 ));
             }
-            let count = a.count.checked_add(b.count)
-                .ok_or_else(|| RuntimeError::with_span("dice count overflow in addition", expr.span))?;
-            let modifier = a.modifier.checked_add(b.modifier)
-                .ok_or_else(|| RuntimeError::with_span("dice modifier overflow in addition", expr.span))?;
+            let count = a.count.checked_add(b.count).ok_or_else(|| {
+                RuntimeError::with_span("dice count overflow in addition", expr.span)
+            })?;
+            let modifier = a.modifier.checked_add(b.modifier).ok_or_else(|| {
+                RuntimeError::with_span("dice modifier overflow in addition", expr.span)
+            })?;
             Ok(Value::DiceExpr(DiceExpr {
                 count,
                 sides: a.sides,
@@ -494,28 +524,36 @@ fn eval_add(lhs: &Value, rhs: &Value, type_env: &ttrpg_checker::env::TypeEnv, ex
             }))
         }
         // Unit type addition: same-type → same-type
-        _ => if let (Some((n1, field, a)), Some((n2, _, b))) =
-            (as_unit_value(lhs, type_env), as_unit_value(rhs, type_env))
-        {
-            if n1 != n2 {
-                return Err(RuntimeError::with_span(
+        _ => {
+            if let (Some((n1, field, a)), Some((n2, _, b))) =
+                (as_unit_value(lhs, type_env), as_unit_value(rhs, type_env))
+            {
+                if n1 != n2 {
+                    return Err(RuntimeError::with_span(
+                        format!("cannot add {:?} and {:?}", type_name(lhs), type_name(rhs)),
+                        expr.span,
+                    ));
+                }
+                let result = a.checked_add(b).ok_or_else(|| {
+                    RuntimeError::with_span("integer overflow in unit addition", expr.span)
+                })?;
+                Ok(make_unit_value(n1, field, result))
+            } else {
+                Err(RuntimeError::with_span(
                     format!("cannot add {:?} and {:?}", type_name(lhs), type_name(rhs)),
                     expr.span,
-                ));
+                ))
             }
-            let result = a.checked_add(b)
-                .ok_or_else(|| RuntimeError::with_span("integer overflow in unit addition", expr.span))?;
-            Ok(make_unit_value(n1, field, result))
-        } else {
-            Err(RuntimeError::with_span(
-                format!("cannot add {:?} and {:?}", type_name(lhs), type_name(rhs)),
-                expr.span,
-            ))
         }
     }
 }
 
-fn eval_sub(lhs: &Value, rhs: &Value, type_env: &ttrpg_checker::env::TypeEnv, expr: &Spanned<ExprKind>) -> Result<Value, RuntimeError> {
+fn eval_sub(
+    lhs: &Value,
+    rhs: &Value,
+    type_env: &ttrpg_checker::env::TypeEnv,
+    expr: &Spanned<ExprKind>,
+) -> Result<Value, RuntimeError> {
     match (lhs, rhs) {
         (Value::Int(a), Value::Int(b)) => a
             .checked_sub(*b)
@@ -526,55 +564,74 @@ fn eval_sub(lhs: &Value, rhs: &Value, type_env: &ttrpg_checker::env::TypeEnv, ex
         (Value::Float(a), Value::Int(b)) => Ok(Value::Float(a - *b as f64)),
         // DiceExpr - Int → adjust modifier
         (Value::DiceExpr(d), Value::Int(n)) => {
-            let modifier = d.modifier.checked_sub(*n)
-                .ok_or_else(|| RuntimeError::with_span("dice modifier overflow in subtraction", expr.span))?;
-            Ok(Value::DiceExpr(DiceExpr { modifier, ..d.clone() }))
+            let modifier = d.modifier.checked_sub(*n).ok_or_else(|| {
+                RuntimeError::with_span("dice modifier overflow in subtraction", expr.span)
+            })?;
+            Ok(Value::DiceExpr(DiceExpr {
+                modifier,
+                ..d.clone()
+            }))
         }
         // Unit type subtraction: same-type → same-type
-        _ => if let (Some((n1, field, a)), Some((n2, _, b))) =
-            (as_unit_value(lhs, type_env), as_unit_value(rhs, type_env))
-        {
-            if n1 != n2 {
-                return Err(RuntimeError::with_span(
-                    format!("cannot subtract {:?} from {:?}", type_name(rhs), type_name(lhs)),
+        _ => {
+            if let (Some((n1, field, a)), Some((n2, _, b))) =
+                (as_unit_value(lhs, type_env), as_unit_value(rhs, type_env))
+            {
+                if n1 != n2 {
+                    return Err(RuntimeError::with_span(
+                        format!(
+                            "cannot subtract {:?} from {:?}",
+                            type_name(rhs),
+                            type_name(lhs)
+                        ),
+                        expr.span,
+                    ));
+                }
+                let result = a.checked_sub(b).ok_or_else(|| {
+                    RuntimeError::with_span("integer overflow in unit subtraction", expr.span)
+                })?;
+                Ok(make_unit_value(n1, field, result))
+            } else {
+                Err(RuntimeError::with_span(
+                    format!(
+                        "cannot subtract {:?} from {:?}",
+                        type_name(rhs),
+                        type_name(lhs)
+                    ),
                     expr.span,
-                ));
+                ))
             }
-            let result = a.checked_sub(b)
-                .ok_or_else(|| RuntimeError::with_span("integer overflow in unit subtraction", expr.span))?;
-            Ok(make_unit_value(n1, field, result))
-        } else {
-            Err(RuntimeError::with_span(
-                format!("cannot subtract {:?} from {:?}", type_name(rhs), type_name(lhs)),
-                expr.span,
-            ))
         }
     }
 }
 
-fn eval_mul(lhs: &Value, rhs: &Value, type_env: &ttrpg_checker::env::TypeEnv, expr: &Spanned<ExprKind>) -> Result<Value, RuntimeError> {
+fn eval_mul(
+    lhs: &Value,
+    rhs: &Value,
+    type_env: &ttrpg_checker::env::TypeEnv,
+    expr: &Spanned<ExprKind>,
+) -> Result<Value, RuntimeError> {
     // Unit type scaling: Int * unit or unit * Int
     if let Some((name, field, uval)) = as_unit_value(lhs, type_env) {
         if let Value::Int(n) = rhs {
-            let result = uval.checked_mul(*n)
-                .ok_or_else(|| RuntimeError::with_span("integer overflow in unit multiplication", expr.span))?;
+            let result = uval.checked_mul(*n).ok_or_else(|| {
+                RuntimeError::with_span("integer overflow in unit multiplication", expr.span)
+            })?;
             return Ok(make_unit_value(name, field, result));
         }
     }
     if let Some((name, field, uval)) = as_unit_value(rhs, type_env) {
         if let Value::Int(n) = lhs {
-            let result = n.checked_mul(uval)
-                .ok_or_else(|| RuntimeError::with_span("integer overflow in unit multiplication", expr.span))?;
+            let result = n.checked_mul(uval).ok_or_else(|| {
+                RuntimeError::with_span("integer overflow in unit multiplication", expr.span)
+            })?;
             return Ok(make_unit_value(name, field, result));
         }
     }
     match (lhs, rhs) {
-        (Value::Int(a), Value::Int(b)) => a
-            .checked_mul(*b)
-            .map(Value::Int)
-            .ok_or_else(|| {
-                RuntimeError::with_span("integer overflow in multiplication", expr.span)
-            }),
+        (Value::Int(a), Value::Int(b)) => a.checked_mul(*b).map(Value::Int).ok_or_else(|| {
+            RuntimeError::with_span("integer overflow in multiplication", expr.span)
+        }),
         (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a * b)),
         (Value::Int(a), Value::Float(b)) => Ok(Value::Float(*a as f64 * b)),
         (Value::Float(a), Value::Int(b)) => Ok(Value::Float(a * *b as f64)),
@@ -589,7 +646,12 @@ fn eval_mul(lhs: &Value, rhs: &Value, type_env: &ttrpg_checker::env::TypeEnv, ex
     }
 }
 
-fn eval_div(lhs: &Value, rhs: &Value, type_env: &ttrpg_checker::env::TypeEnv, expr: &Spanned<ExprKind>) -> Result<Value, RuntimeError> {
+fn eval_div(
+    lhs: &Value,
+    rhs: &Value,
+    type_env: &ttrpg_checker::env::TypeEnv,
+    expr: &Spanned<ExprKind>,
+) -> Result<Value, RuntimeError> {
     // Unit type division: same-type → Float
     if let (Some((n1, _, a)), Some((n2, _, b))) =
         (as_unit_value(lhs, type_env), as_unit_value(rhs, type_env))
@@ -632,11 +694,7 @@ fn eval_div(lhs: &Value, rhs: &Value, type_env: &ttrpg_checker::env::TypeEnv, ex
             }
         }
         _ => Err(RuntimeError::with_span(
-            format!(
-                "cannot divide {:?} by {:?}",
-                type_name(lhs),
-                type_name(rhs)
-            ),
+            format!("cannot divide {:?} by {:?}", type_name(lhs), type_name(rhs)),
             expr.span,
         )),
     }
@@ -676,21 +734,31 @@ fn eval_comparison(
             let ord2 = variant_ordinal(type_env, e2, v2);
             ord1.cmp(&ord2)
         }
-        _ => if let (Some((n1, _, a)), Some((n2, _, b))) =
-            (as_unit_value(lhs, type_env), as_unit_value(rhs, type_env))
-        {
-            if n1 != n2 {
+        _ => {
+            if let (Some((n1, _, a)), Some((n2, _, b))) =
+                (as_unit_value(lhs, type_env), as_unit_value(rhs, type_env))
+            {
+                if n1 != n2 {
+                    return Err(RuntimeError::with_span(
+                        format!(
+                            "cannot compare {:?} and {:?}",
+                            type_name(lhs),
+                            type_name(rhs)
+                        ),
+                        expr.span,
+                    ));
+                }
+                a.cmp(&b)
+            } else {
                 return Err(RuntimeError::with_span(
-                    format!("cannot compare {:?} and {:?}", type_name(lhs), type_name(rhs)),
+                    format!(
+                        "cannot compare {:?} and {:?}",
+                        type_name(lhs),
+                        type_name(rhs)
+                    ),
                     expr.span,
                 ));
             }
-            a.cmp(&b)
-        } else {
-            return Err(RuntimeError::with_span(
-                format!("cannot compare {:?} and {:?}", type_name(lhs), type_name(rhs)),
-                expr.span,
-            ));
         }
     };
     Ok(Value::Bool(cmp_fn(ordering)))
@@ -729,7 +797,10 @@ fn eval_in(
             Ok(Value::Bool(found))
         }
         _ => Err(RuntimeError::with_span(
-            format!("'in' requires List, Set, or Map on right side, got {:?}", type_name(rhs)),
+            format!(
+                "'in' requires List, Set, or Map on right side, got {:?}",
+                type_name(rhs)
+            ),
             expr.span,
         )),
     }
@@ -747,26 +818,20 @@ fn eval_field_access(
 
     match &object {
         // Entity fields via StateProvider
-        Value::Entity(entity_ref) => {
-            env.state
-                .read_field(entity_ref, field)
-                .ok_or_else(|| {
-                    RuntimeError::with_span(
-                        format!("entity {} has no field '{}'", entity_ref.0, field),
-                        expr.span,
-                    )
-                })
-        }
+        Value::Entity(entity_ref) => env.state.read_field(entity_ref, field).ok_or_else(|| {
+            RuntimeError::with_span(
+                format!("entity {} has no field '{}'", entity_ref.0, field),
+                expr.span,
+            )
+        }),
 
         // Struct fields
-        Value::Struct { fields, name, .. } => {
-            fields.get(field).cloned().ok_or_else(|| {
-                RuntimeError::with_span(
-                    format!("struct '{}' has no field '{}'", name, field),
-                    expr.span,
-                )
-            })
-        }
+        Value::Struct { fields, name, .. } => fields.get(field).cloned().ok_or_else(|| {
+            RuntimeError::with_span(
+                format!("struct '{}' has no field '{}'", name, field),
+                expr.span,
+            )
+        }),
 
         // Enum variant fields
         Value::EnumVariant {
@@ -775,7 +840,10 @@ fn eval_field_access(
             fields,
         } => fields.get(field).cloned().ok_or_else(|| {
             RuntimeError::with_span(
-                format!("variant '{}.{}' has no field '{}'", enum_name, variant, field),
+                format!(
+                    "variant '{}.{}' has no field '{}'",
+                    enum_name, variant, field
+                ),
                 expr.span,
             )
         }),
@@ -823,7 +891,11 @@ fn eval_field_access(
         }
 
         _ => Err(RuntimeError::with_span(
-            format!("cannot access field '{}' on {:?}", field, type_name(&object)),
+            format!(
+                "cannot access field '{}' on {:?}",
+                field,
+                type_name(&object)
+            ),
             expr.span,
         )),
     }
@@ -847,11 +919,7 @@ fn eval_index(
                 let positive = items.len() as i64 + i;
                 if positive < 0 {
                     return Err(RuntimeError::with_span(
-                        format!(
-                            "list index {} out of bounds, length {}",
-                            i,
-                            items.len()
-                        ),
+                        format!("list index {} out of bounds, length {}", i, items.len()),
                         expr.span,
                     ));
                 }
@@ -861,11 +929,7 @@ fn eval_index(
             };
             items.get(idx).cloned().ok_or_else(|| {
                 RuntimeError::with_span(
-                    format!(
-                        "list index {} out of bounds, length {}",
-                        i,
-                        items.len()
-                    ),
+                    format!("list index {} out of bounds, length {}", i, items.len()),
                     expr.span,
                 )
             })
@@ -877,10 +941,7 @@ fn eval_index(
                 .find(|(k, _)| value_eq(env.state, k, key))
                 .map(|(_, v)| v.clone())
                 .ok_or_else(|| {
-                    RuntimeError::with_span(
-                        format!("map key {:?} not found", key),
-                        expr.span,
-                    )
+                    RuntimeError::with_span(format!("map key {:?} not found", key), expr.span)
                 })
         }
         _ => Err(RuntimeError::with_span(
@@ -963,7 +1024,11 @@ fn eval_for(
                 ));
             }
         },
-        ForIterable::Range { start, end, inclusive } => {
+        ForIterable::Range {
+            start,
+            end,
+            inclusive,
+        } => {
             let s = match eval_expr(env, start)? {
                 Value::Int(n) => n,
                 other => {
@@ -1024,7 +1089,11 @@ fn eval_list_comprehension(
                 ));
             }
         },
-        ForIterable::Range { start, end, inclusive } => {
+        ForIterable::Range {
+            start,
+            end,
+            inclusive,
+        } => {
             let s = match eval_expr(env, start)? {
                 Value::Int(n) => n,
                 other => {
@@ -1155,16 +1224,17 @@ pub(crate) fn eval_stmt(
             // Collect defaults from the entity declaration's optional group.
             // Clone the data first to avoid borrow conflict with eval_expr.
             let entity_type = env.state.entity_type_name(&entity_ref);
-            let defaults: Vec<_> = find_optional_group_fields(env, entity_type.as_deref(), group_name)
-                .into_iter()
-                .flatten()
-                .filter_map(|fd| {
-                    if fields.contains_key(&fd.name) {
-                        return None;
-                    }
-                    fd.default.clone().map(|d| (fd.name.clone(), d))
-                })
-                .collect();
+            let defaults: Vec<_> =
+                find_optional_group_fields(env, entity_type.as_deref(), group_name)
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|fd| {
+                        if fields.contains_key(&fd.name) {
+                            return None;
+                        }
+                        fd.default.clone().map(|d| (fd.name.clone(), d))
+                    })
+                    .collect();
             for (name, default_expr) in &defaults {
                 let val = eval_expr(env, default_expr)?;
                 fields.insert(name.clone(), val);
@@ -1189,10 +1259,7 @@ pub(crate) fn eval_stmt(
             }
             Ok(Value::None)
         }
-        StmtKind::Revoke {
-            entity,
-            group_name,
-        } => {
+        StmtKind::Revoke { entity, group_name } => {
             let entity_val = eval_expr(env, entity)?;
             let entity_ref = match entity_val {
                 Value::Entity(r) => r,
@@ -1340,9 +1407,9 @@ fn eval_assign_direct(
     rhs: Value,
     span: ttrpg_ast::Span,
 ) -> Result<(), RuntimeError> {
-    let var = env.lookup_mut(name).ok_or_else(|| {
-        RuntimeError::with_span(format!("undefined variable `{}`", name), span)
-    })?;
+    let var = env
+        .lookup_mut(name)
+        .ok_or_else(|| RuntimeError::with_span(format!("undefined variable `{}`", name), span))?;
 
     let new_val = apply_assign_op(op, var.clone(), rhs, span)?;
     *var = new_val;
@@ -1510,16 +1577,10 @@ fn find_entity_depth(
             Value::Struct { fields, .. } => {
                 if let EvalSegment::Field(name) = seg {
                     current = fields.get(name.as_str()).cloned().ok_or_else(|| {
-                        RuntimeError::with_span(
-                            format!("struct has no field `{}`", name),
-                            span,
-                        )
+                        RuntimeError::with_span(format!("struct has no field `{}`", name), span)
                     })?;
                 } else {
-                    return Err(RuntimeError::with_span(
-                        "cannot index into a struct",
-                        span,
-                    ));
+                    return Err(RuntimeError::with_span("cannot index into a struct", span));
                 }
             }
             Value::List(list) => {
@@ -1581,10 +1642,7 @@ fn apply_local_mutation(
     match (&segments[depth], current) {
         (EvalSegment::Field(name), Value::Struct { fields, .. }) => {
             let field = fields.get_mut(name.as_str()).ok_or_else(|| {
-                RuntimeError::with_span(
-                    format!("struct has no field `{}`", name),
-                    span,
-                )
+                RuntimeError::with_span(format!("struct has no field `{}`", name), span)
             })?;
             apply_local_mutation(field, segments, depth + 1, op, rhs, span, state)
         }
@@ -1630,10 +1688,7 @@ fn apply_local_mutation(
             } else {
                 // Navigate deeper into the map value
                 let ek = existing_key.ok_or_else(|| {
-                    RuntimeError::with_span(
-                        format!("map has no key {:?}", key),
-                        span,
-                    )
+                    RuntimeError::with_span(format!("map has no key {:?}", key), span)
                 })?;
                 let entry = map.get_mut(&ek).ok_or_else(|| {
                     RuntimeError::with_span("internal: validated map key missing", span)
@@ -1641,18 +1696,14 @@ fn apply_local_mutation(
                 apply_local_mutation(entry, segments, depth + 1, op, rhs, span, state)
             }
         }
-        (EvalSegment::Field(_), other) => {
-            Err(RuntimeError::with_span(
-                format!("cannot access field on {}", type_name(other)),
-                span,
-            ))
-        }
-        (EvalSegment::Index(_), other) => {
-            Err(RuntimeError::with_span(
-                format!("cannot index into {}", type_name(other)),
-                span,
-            ))
-        }
+        (EvalSegment::Field(_), other) => Err(RuntimeError::with_span(
+            format!("cannot access field on {}", type_name(other)),
+            span,
+        )),
+        (EvalSegment::Index(_), other) => Err(RuntimeError::with_span(
+            format!("cannot index into {}", type_name(other)),
+            span,
+        )),
     }
 }
 
@@ -1681,20 +1732,14 @@ pub(crate) fn apply_assign_op(
                 (Value::Float(a), Value::Float(b)) => {
                     let result = a + b;
                     if !result.is_finite() {
-                        return Err(RuntimeError::with_span(
-                            "float overflow in +=",
-                            span,
-                        ));
+                        return Err(RuntimeError::with_span("float overflow in +=", span));
                     }
                     Ok(Value::Float(result))
                 }
                 (Value::Int(a), Value::Float(b)) | (Value::Float(b), Value::Int(a)) => {
                     let result = (*a as f64) + b;
                     if !result.is_finite() {
-                        return Err(RuntimeError::with_span(
-                            "float overflow in +=",
-                            span,
-                        ));
+                        return Err(RuntimeError::with_span("float overflow in +=", span));
                     }
                     Ok(Value::Float(result))
                 }
@@ -1719,30 +1764,21 @@ pub(crate) fn apply_assign_op(
                 (Value::Float(a), Value::Float(b)) => {
                     let result = a - b;
                     if !result.is_finite() {
-                        return Err(RuntimeError::with_span(
-                            "float overflow in -=",
-                            span,
-                        ));
+                        return Err(RuntimeError::with_span("float overflow in -=", span));
                     }
                     Ok(Value::Float(result))
                 }
                 (Value::Int(a), Value::Float(b)) => {
                     let result = (*a as f64) - b;
                     if !result.is_finite() {
-                        return Err(RuntimeError::with_span(
-                            "float overflow in -=",
-                            span,
-                        ));
+                        return Err(RuntimeError::with_span("float overflow in -=", span));
                     }
                     Ok(Value::Float(result))
                 }
                 (Value::Float(a), Value::Int(b)) => {
                     let result = a - (*b as f64);
                     if !result.is_finite() {
-                        return Err(RuntimeError::with_span(
-                            "float overflow in -=",
-                            span,
-                        ));
+                        return Err(RuntimeError::with_span("float overflow in -=", span));
                     }
                     Ok(Value::Float(result))
                 }
@@ -1780,10 +1816,7 @@ fn resolve_list_index(
                 })? as usize;
                 if positive > len {
                     return Err(RuntimeError::with_span(
-                        format!(
-                            "list index {} out of bounds, length {}",
-                            i, len
-                        ),
+                        format!("list index {} out of bounds, length {}", i, len),
                         span,
                     ));
                 }
@@ -1791,10 +1824,7 @@ fn resolve_list_index(
             };
             if index >= len {
                 return Err(RuntimeError::with_span(
-                    format!(
-                        "list index {} out of bounds, length {}",
-                        i, len
-                    ),
+                    format!("list index {} out of bounds, length {}", i, len),
                     span,
                 ));
             }
@@ -1901,10 +1931,12 @@ pub(crate) fn value_eq(state: &dyn StateProvider, a: &Value, b: &Value) -> bool 
         (Value::RollResult(a), Value::RollResult(b)) => a == b,
         (Value::Entity(a), Value::Entity(b)) => a == b,
         (Value::Condition { name: n1, args: a1 }, Value::Condition { name: n2, args: a2 }) => {
-            n1 == n2 && a1.len() == a2.len()
-                && a1.iter().zip(a2.iter()).all(|((k1, v1), (k2, v2))| {
-                    k1 == k2 && value_eq(state, v1, v2)
-                })
+            n1 == n2
+                && a1.len() == a2.len()
+                && a1
+                    .iter()
+                    .zip(a2.iter())
+                    .all(|((k1, v1), (k2, v2))| k1 == k2 && value_eq(state, v1, v2))
         }
 
         // Position: delegate to host
@@ -1916,16 +1948,13 @@ pub(crate) fn value_eq(state: &dyn StateProvider, a: &Value, b: &Value) -> bool 
         }
         (Value::Set(a), Value::Set(b)) => {
             // Sets use structural equality since elements are ordered
-            a.len() == b.len()
-                && a.iter()
-                    .zip(b.iter())
-                    .all(|(x, y)| value_eq(state, x, y))
+            a.len() == b.len() && a.iter().zip(b.iter()).all(|(x, y)| value_eq(state, x, y))
         }
         (Value::Map(a), Value::Map(b)) => {
             a.len() == b.len()
-                && a.iter().zip(b.iter()).all(|((k1, v1), (k2, v2))| {
-                    value_eq(state, k1, k2) && value_eq(state, v1, v2)
-                })
+                && a.iter()
+                    .zip(b.iter())
+                    .all(|((k1, v1), (k2, v2))| value_eq(state, k1, k2) && value_eq(state, v1, v2))
         }
         (Value::Option(a), Value::Option(b)) => match (a, b) {
             (Some(a), Some(b)) => value_eq(state, a, b),
@@ -1944,9 +1973,10 @@ pub(crate) fn value_eq(state: &dyn StateProvider, a: &Value, b: &Value) -> bool 
         ) => {
             n1 == n2
                 && f1.len() == f2.len()
-                && f1.iter().zip(f2.iter()).all(|((k1, v1), (k2, v2))| {
-                    k1 == k2 && value_eq(state, v1, v2)
-                })
+                && f1
+                    .iter()
+                    .zip(f2.iter())
+                    .all(|((k1, v1), (k2, v2))| k1 == k2 && value_eq(state, v1, v2))
         }
         (
             Value::EnumVariant {
@@ -1963,9 +1993,10 @@ pub(crate) fn value_eq(state: &dyn StateProvider, a: &Value, b: &Value) -> bool 
             e1 == e2
                 && v1 == v2
                 && f1.len() == f2.len()
-                && f1.iter().zip(f2.iter()).all(|((k1, v1), (k2, v2))| {
-                    k1 == k2 && value_eq(state, v1, v2)
-                })
+                && f1
+                    .iter()
+                    .zip(f2.iter())
+                    .all(|((k1, v1), (k2, v2))| k1 == k2 && value_eq(state, v1, v2))
         }
 
         // Different variants are not equal
@@ -1996,19 +2027,22 @@ pub(crate) fn match_pattern(
 
         PatternKind::NoneLit => matches!(value, Value::None | Value::Option(None)),
 
-        PatternKind::Some(inner_pattern) => {
-            match value {
-                Value::Option(Some(inner_val)) => {
-                    match_pattern(env, &inner_pattern.node, inner_val, bindings)
-                }
-                _ => false,
+        PatternKind::Some(inner_pattern) => match value {
+            Value::Option(Some(inner_val)) => {
+                match_pattern(env, &inner_pattern.node, inner_val, bindings)
             }
-        }
+            _ => false,
+        },
 
         PatternKind::Ident(name) => {
             // Check if this ident is a known enum variant.
             // If so, match against the variant; otherwise bind as a variable.
-            if env.interp.type_env.variant_to_enums.contains_key(name.as_str()) {
+            if env
+                .interp
+                .type_env
+                .variant_to_enums
+                .contains_key(name.as_str())
+            {
                 // It's a bare enum variant — the runtime value carries its own enum_name,
                 // so we match by variant name (checker guarantees correctness).
                 matches!(
@@ -2048,8 +2082,7 @@ pub(crate) fn match_pattern(
                 }
                 // Match field patterns positionally against variant field values
                 // Look up variant field names from type env
-                if let Some(DeclInfo::Enum(enum_info)) =
-                    env.interp.type_env.types.get(ty.as_str())
+                if let Some(DeclInfo::Enum(enum_info)) = env.interp.type_env.types.get(ty.as_str())
                 {
                     if let Some(variant_info) =
                         enum_info.variants.iter().find(|vi| vi.name == *variant)
@@ -2082,7 +2115,12 @@ pub(crate) fn match_pattern(
             fields: patterns,
         } => {
             // Check if this is a known enum variant
-            if env.interp.type_env.variant_to_enums.contains_key(name.as_str()) {
+            if env
+                .interp
+                .type_env
+                .variant_to_enums
+                .contains_key(name.as_str())
+            {
                 if let Value::EnumVariant {
                     enum_name: actual_enum,
                     variant,
@@ -2135,9 +2173,7 @@ pub(crate) fn match_pattern(
                         if patterns.len() != struct_info.fields.len() {
                             return false;
                         }
-                        for (pat, field_info) in
-                            patterns.iter().zip(struct_info.fields.iter())
-                        {
+                        for (pat, field_info) in patterns.iter().zip(struct_info.fields.iter()) {
                             if let Some(field_val) = fields.get(&field_info.name) {
                                 if !match_pattern(env, &pat.node, field_val, bindings) {
                                     return false;
@@ -2251,8 +2287,7 @@ fn find_field_def_and_remaining<'a>(
                         continue;
                     }
                     // Check base fields
-                    if let Some(field) = entity_decl.fields.iter().find(|f| f.name == *first_name)
-                    {
+                    if let Some(field) = entity_decl.fields.iter().find(|f| f.name == *first_name) {
                         return Some((field, 1));
                     }
                     // Check if first segment is a group name
@@ -2271,7 +2306,8 @@ fn find_field_def_and_remaining<'a>(
                         };
                         // Next segment should be a field within the group
                         if let Some(FieldPathSegment::Field(field_name)) = path.get(1) {
-                            if let Some(field) = group_fields.iter().find(|f| f.name == *field_name) {
+                            if let Some(field) = group_fields.iter().find(|f| f.name == *field_name)
+                            {
                                 return Some((field, 2));
                             }
                         }
@@ -2330,11 +2366,7 @@ fn find_struct_defaults(env: &Env, struct_name: &str) -> Vec<(Name, Spanned<Expr
                 };
                 return fields
                     .iter()
-                    .filter_map(|f| {
-                        f.default
-                            .as_ref()
-                            .map(|d| (f.name.clone(), d.clone()))
-                    })
+                    .filter_map(|f| f.default.as_ref().map(|d| (f.name.clone(), d.clone())))
                     .collect();
             }
         }
@@ -2394,7 +2426,11 @@ fn collect_idents(expr: &Spanned<ExprKind>, out: &mut Vec<Name>) {
                 collect_idents(value, out);
             }
         }
-        ExprKind::If { condition, then_block, else_branch } => {
+        ExprKind::If {
+            condition,
+            then_block,
+            else_branch,
+        } => {
             collect_idents(condition, out);
             collect_idents_block(then_block, out);
             if let Some(eb) = else_branch {
@@ -2404,7 +2440,12 @@ fn collect_idents(expr: &Spanned<ExprKind>, out: &mut Vec<Name>) {
                 }
             }
         }
-        ExprKind::IfLet { scrutinee, then_block, else_branch, .. } => {
+        ExprKind::IfLet {
+            scrutinee,
+            then_block,
+            else_branch,
+            ..
+        } => {
             collect_idents(scrutinee, out);
             collect_idents_block(then_block, out);
             if let Some(eb) = else_branch {
@@ -2446,7 +2487,12 @@ fn collect_idents(expr: &Spanned<ExprKind>, out: &mut Vec<Name>) {
             }
             collect_idents_block(body, out);
         }
-        ExprKind::ListComprehension { element, iterable, filter, .. } => {
+        ExprKind::ListComprehension {
+            element,
+            iterable,
+            filter,
+            ..
+        } => {
             match iterable {
                 ForIterable::Collection(expr) => collect_idents(expr, out),
                 ForIterable::Range { start, end, .. } => {
@@ -2489,11 +2535,7 @@ fn collect_idents_arm_body(body: &ArmBody, out: &mut Vec<Name>) {
 /// First attempts normal expression evaluation (handles literals and in-scope vars).
 /// If that fails, collects all identifiers from the expression, resolves any that are
 /// entity fields, injects them into a temporary scope, and retries evaluation.
-fn eval_bound_expr(
-    env: &mut Env,
-    entity: &EntityRef,
-    expr: &Spanned<ExprKind>,
-) -> Option<Value> {
+fn eval_bound_expr(env: &mut Env, entity: &EntityRef, expr: &Spanned<ExprKind>) -> Option<Value> {
     // Try normal evaluation first (handles literals, in-scope variables, derives)
     if let Ok(val) = eval_expr(env, expr) {
         return Some(val);
@@ -2558,13 +2600,13 @@ mod tests {
     use std::collections::{BTreeMap, HashMap};
     use std::sync::Arc;
 
-    use ttrpg_ast::Span;
     use ttrpg_ast::ast::*;
+    use ttrpg_ast::Span;
     use ttrpg_checker::env::{EnumInfo, TypeEnv, VariantInfo};
 
     use crate::effect::{Effect, EffectHandler, Response};
     use crate::state::{ActiveCondition, EntityRef, StateProvider};
-    use crate::value::{DiceExpr, PositionValue, RollResult, default_turn_budget};
+    use crate::value::{default_turn_budget, DiceExpr, PositionValue, RollResult};
     use crate::Interpreter;
 
     // ── Test infrastructure ────────────────────────────────────
@@ -2710,7 +2752,10 @@ mod tests {
         let mut env = make_env(&state, &mut handler, &interp);
 
         let expr = spanned(ExprKind::StringLit("hello".to_string()));
-        assert_eq!(eval_expr(&mut env, &expr).unwrap(), Value::Str("hello".to_string()));
+        assert_eq!(
+            eval_expr(&mut env, &expr).unwrap(),
+            Value::Str("hello".to_string())
+        );
     }
 
     #[test]
@@ -3701,7 +3746,11 @@ mod tests {
             Value::Struct { name, fields } => {
                 assert_eq!(name, "Config");
                 assert_eq!(fields.get("x"), Some(&Value::Int(1)));
-                assert_eq!(fields.get("y"), Some(&Value::Int(42)), "default should be filled");
+                assert_eq!(
+                    fields.get("y"),
+                    Some(&Value::Int(42)),
+                    "default should be filled"
+                );
                 assert_eq!(fields.get("z"), Some(&Value::Int(7)));
             }
             _ => panic!("expected Struct, got {:?}", result),
@@ -3747,8 +3796,16 @@ mod tests {
         match &result {
             Value::Struct { name, fields } => {
                 assert_eq!(name, "Point");
-                assert_eq!(fields.get("x"), Some(&Value::Int(99)), "explicit field overrides base");
-                assert_eq!(fields.get("y"), Some(&Value::Int(2)), "base field preserved");
+                assert_eq!(
+                    fields.get("x"),
+                    Some(&Value::Int(99)),
+                    "explicit field overrides base"
+                );
+                assert_eq!(
+                    fields.get("y"),
+                    Some(&Value::Int(2)),
+                    "base field preserved"
+                );
             }
             _ => panic!("expected Struct, got {:?}", result),
         }
@@ -3808,9 +3865,9 @@ mod tests {
         let expr = spanned(ExprKind::If {
             condition: Box::new(spanned(ExprKind::BoolLit(true))),
             then_block: spanned(vec![spanned(StmtKind::Expr(spanned(ExprKind::IntLit(1))))]),
-            else_branch: Some(ElseBranch::Block(spanned(vec![spanned(
-                StmtKind::Expr(spanned(ExprKind::IntLit(2))),
-            )]))),
+            else_branch: Some(ElseBranch::Block(spanned(vec![spanned(StmtKind::Expr(
+                spanned(ExprKind::IntLit(2)),
+            ))]))),
         });
         assert_eq!(eval_expr(&mut env, &expr).unwrap(), Value::Int(1));
     }
@@ -3827,9 +3884,9 @@ mod tests {
         let expr = spanned(ExprKind::If {
             condition: Box::new(spanned(ExprKind::BoolLit(false))),
             then_block: spanned(vec![spanned(StmtKind::Expr(spanned(ExprKind::IntLit(1))))]),
-            else_branch: Some(ElseBranch::Block(spanned(vec![spanned(
-                StmtKind::Expr(spanned(ExprKind::IntLit(2))),
-            )]))),
+            else_branch: Some(ElseBranch::Block(spanned(vec![spanned(StmtKind::Expr(
+                spanned(ExprKind::IntLit(2)),
+            ))]))),
         });
         assert_eq!(eval_expr(&mut env, &expr).unwrap(), Value::Int(2));
     }
@@ -4209,7 +4266,11 @@ mod tests {
     #[test]
     fn value_eq_float_nan() {
         let state = TestState::new();
-        assert!(!value_eq(&state, &Value::Float(f64::NAN), &Value::Float(f64::NAN)));
+        assert!(!value_eq(
+            &state,
+            &Value::Float(f64::NAN),
+            &Value::Float(f64::NAN)
+        ));
     }
 
     #[test]
@@ -4255,8 +4316,16 @@ mod tests {
                 ],
             }),
         );
-        type_env.variant_to_enums.entry("red".into()).or_default().push("Color".into());
-        type_env.variant_to_enums.entry("blue".into()).or_default().push("Color".into());
+        type_env
+            .variant_to_enums
+            .entry("red".into())
+            .or_default()
+            .push("Color".into());
+        type_env
+            .variant_to_enums
+            .entry("blue".into())
+            .or_default()
+            .push("Color".into());
 
         let interp = Interpreter::new(&program, &type_env).unwrap();
         let state = TestState::new();
@@ -4318,7 +4387,7 @@ mod tests {
 
     #[test]
     fn interpreter_rejects_surviving_move() {
-        use ttrpg_ast::ast::{MoveDecl, TopLevel, SystemBlock};
+        use ttrpg_ast::ast::{MoveDecl, SystemBlock, TopLevel};
 
         let program = Program {
             items: vec![spanned(TopLevel::System(SystemBlock {
@@ -4418,12 +4487,10 @@ mod tests {
             then_block: spanned(vec![spanned(StmtKind::Expr(spanned(ExprKind::IntLit(1))))]),
             else_branch: Some(ElseBranch::If(Box::new(spanned(ExprKind::If {
                 condition: Box::new(spanned(ExprKind::BoolLit(true))),
-                then_block: spanned(vec![spanned(StmtKind::Expr(spanned(
-                    ExprKind::IntLit(2),
-                )))]),
-                else_branch: Some(ElseBranch::Block(spanned(vec![spanned(
-                    StmtKind::Expr(spanned(ExprKind::IntLit(3))),
-                )]))),
+                then_block: spanned(vec![spanned(StmtKind::Expr(spanned(ExprKind::IntLit(2))))]),
+                else_branch: Some(ElseBranch::Block(spanned(vec![spanned(StmtKind::Expr(
+                    spanned(ExprKind::IntLit(3)),
+                ))]))),
             })))),
         });
         assert_eq!(eval_expr(&mut env, &expr).unwrap(), Value::Int(2));
@@ -4441,13 +4508,27 @@ mod tests {
                 name: "Color".into(),
                 ordered: false,
                 variants: vec![
-                    VariantInfo { name: "red".into(), fields: vec![] },
-                    VariantInfo { name: "blue".into(), fields: vec![] },
+                    VariantInfo {
+                        name: "red".into(),
+                        fields: vec![],
+                    },
+                    VariantInfo {
+                        name: "blue".into(),
+                        fields: vec![],
+                    },
                 ],
             }),
         );
-        type_env.variant_to_enums.entry("red".into()).or_default().push("Color".into());
-        type_env.variant_to_enums.entry("blue".into()).or_default().push("Color".into());
+        type_env
+            .variant_to_enums
+            .entry("red".into())
+            .or_default()
+            .push("Color".into());
+        type_env
+            .variant_to_enums
+            .entry("blue".into())
+            .or_default()
+            .push("Color".into());
 
         let interp = Interpreter::new(&program, &type_env).unwrap();
         let state = TestState::new();
@@ -4490,12 +4571,17 @@ mod tests {
             ttrpg_checker::env::DeclInfo::Enum(EnumInfo {
                 name: "Color".into(),
                 ordered: false,
-                variants: vec![
-                    VariantInfo { name: "red".into(), fields: vec![] },
-                ],
+                variants: vec![VariantInfo {
+                    name: "red".into(),
+                    fields: vec![],
+                }],
             }),
         );
-        type_env.variant_to_enums.entry("red".into()).or_default().push("Color".into());
+        type_env
+            .variant_to_enums
+            .entry("red".into())
+            .or_default()
+            .push("Color".into());
 
         let interp = Interpreter::new(&program, &type_env).unwrap();
         let state = TestState::new();
@@ -4548,7 +4634,12 @@ mod tests {
 
         env.bind(
             "d".into(),
-            Value::DiceExpr(DiceExpr { count: 1, sides: 20, filter: None, modifier: 0 }),
+            Value::DiceExpr(DiceExpr {
+                count: 1,
+                sides: 20,
+                filter: None,
+                modifier: 0,
+            }),
         );
 
         // d + 5
@@ -4578,7 +4669,12 @@ mod tests {
 
         env.bind(
             "d".into(),
-            Value::DiceExpr(DiceExpr { count: 2, sides: 6, filter: None, modifier: 3 }),
+            Value::DiceExpr(DiceExpr {
+                count: 2,
+                sides: 6,
+                filter: None,
+                modifier: 3,
+            }),
         );
 
         // 10 + d
@@ -4608,11 +4704,21 @@ mod tests {
 
         env.bind(
             "a".into(),
-            Value::DiceExpr(DiceExpr { count: 2, sides: 6, filter: None, modifier: 1 }),
+            Value::DiceExpr(DiceExpr {
+                count: 2,
+                sides: 6,
+                filter: None,
+                modifier: 1,
+            }),
         );
         env.bind(
             "b".into(),
-            Value::DiceExpr(DiceExpr { count: 3, sides: 6, filter: None, modifier: 2 }),
+            Value::DiceExpr(DiceExpr {
+                count: 3,
+                sides: 6,
+                filter: None,
+                modifier: 2,
+            }),
         );
 
         // a + b → 5d6 with modifier 3
@@ -4642,7 +4748,12 @@ mod tests {
 
         env.bind(
             "d".into(),
-            Value::DiceExpr(DiceExpr { count: 1, sides: 20, filter: None, modifier: 5 }),
+            Value::DiceExpr(DiceExpr {
+                count: 1,
+                sides: 20,
+                filter: None,
+                modifier: 5,
+            }),
         );
 
         // d - 3
@@ -4698,9 +4809,9 @@ mod tests {
         let scope_depth_before = env.scopes.len();
 
         // Block that contains an error (undefined variable)
-        let block: ttrpg_ast::ast::Block = spanned(vec![
-            spanned(StmtKind::Expr(spanned(ExprKind::Ident("undefined_var".into())))),
-        ]);
+        let block: ttrpg_ast::ast::Block = spanned(vec![spanned(StmtKind::Expr(spanned(
+            ExprKind::Ident("undefined_var".into()),
+        )))]);
         let result = eval_block(&mut env, &block);
         assert!(result.is_err());
 
@@ -4747,15 +4858,17 @@ mod tests {
             DeclInfo::Enum(EnumInfo {
                 name: "Color".into(),
                 ordered: false,
-                variants: vec![
-                    VariantInfo {
-                        name: "red".into(),
-                        fields: vec![],
-                    },
-                ],
+                variants: vec![VariantInfo {
+                    name: "red".into(),
+                    fields: vec![],
+                }],
             }),
         );
-        type_env.variant_to_enums.entry("red".into()).or_default().push("Color".into());
+        type_env
+            .variant_to_enums
+            .entry("red".into())
+            .or_default()
+            .push("Color".into());
 
         let interp = Interpreter::new(&program, &type_env).unwrap();
         let state = TestState::new();
@@ -4791,15 +4904,17 @@ mod tests {
             DeclInfo::Enum(EnumInfo {
                 name: "Color".into(),
                 ordered: false,
-                variants: vec![
-                    VariantInfo {
-                        name: "red".into(),
-                        fields: vec![],
-                    },
-                ],
+                variants: vec![VariantInfo {
+                    name: "red".into(),
+                    fields: vec![],
+                }],
             }),
         );
-        type_env.variant_to_enums.entry("red".into()).or_default().push("Color".into());
+        type_env
+            .variant_to_enums
+            .entry("red".into())
+            .or_default()
+            .push("Color".into());
 
         let interp = Interpreter::new(&program, &type_env).unwrap();
         let state = TestState::new();
@@ -4965,10 +5080,7 @@ mod tests {
         });
         let result = eval_expr(&mut env, &expr);
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .message
-            .contains("different specs"));
+        assert!(result.unwrap_err().message.contains("different specs"));
     }
 
     #[test]
@@ -5131,7 +5243,12 @@ mod tests {
         env.bind(
             "r".into(),
             Value::RollResult(RollResult {
-                expr: DiceExpr { count: 1, sides: 20, filter: None, modifier: 0 },
+                expr: DiceExpr {
+                    count: 1,
+                    sides: 20,
+                    filter: None,
+                    modifier: 0,
+                },
                 dice: vec![10],
                 kept: vec![10],
                 modifier: 0,
@@ -5180,17 +5297,41 @@ mod tests {
 
         // i64::MAX as f64 rounds up to 2^63 — must NOT equal i64::MAX
         let max_f = i64::MAX as f64; // 9223372036854775808.0
-        assert!(!value_eq(&state, &Value::Int(i64::MAX), &Value::Float(max_f)));
-        assert!(!value_eq(&state, &Value::Float(max_f), &Value::Int(i64::MAX)));
+        assert!(!value_eq(
+            &state,
+            &Value::Int(i64::MAX),
+            &Value::Float(max_f)
+        ));
+        assert!(!value_eq(
+            &state,
+            &Value::Float(max_f),
+            &Value::Int(i64::MAX)
+        ));
 
         // i64::MIN as f64 is exactly -2^63 — SHOULD equal i64::MIN
         let min_f = i64::MIN as f64; // -9223372036854775808.0
-        assert!(value_eq(&state, &Value::Int(i64::MIN), &Value::Float(min_f)));
-        assert!(value_eq(&state, &Value::Float(min_f), &Value::Int(i64::MIN)));
+        assert!(value_eq(
+            &state,
+            &Value::Int(i64::MIN),
+            &Value::Float(min_f)
+        ));
+        assert!(value_eq(
+            &state,
+            &Value::Float(min_f),
+            &Value::Int(i64::MIN)
+        ));
 
         // Large float above i64 range
-        assert!(!value_eq(&state, &Value::Int(i64::MAX), &Value::Float(1.0e19)));
-        assert!(!value_eq(&state, &Value::Int(i64::MIN), &Value::Float(-1.0e19)));
+        assert!(!value_eq(
+            &state,
+            &Value::Int(i64::MAX),
+            &Value::Float(1.0e19)
+        ));
+        assert!(!value_eq(
+            &state,
+            &Value::Int(i64::MIN),
+            &Value::Float(-1.0e19)
+        ));
 
         // Largest f64 below 2^63 (still in i64 range) should round-trip correctly
         let largest_below = 9223372036854774784.0_f64; // 2^63 - 1024
@@ -5211,10 +5352,16 @@ mod tests {
         use std::cmp::Ordering;
 
         // i64::MAX < (i64::MAX as f64) because the float rounds up to 2^63
-        assert_eq!(int_float_cmp(i64::MAX, i64::MAX as f64), Some(Ordering::Less));
+        assert_eq!(
+            int_float_cmp(i64::MAX, i64::MAX as f64),
+            Some(Ordering::Less)
+        );
 
         // i64::MIN == (i64::MIN as f64) because -2^63 is exact
-        assert_eq!(int_float_cmp(i64::MIN, i64::MIN as f64), Some(Ordering::Equal));
+        assert_eq!(
+            int_float_cmp(i64::MIN, i64::MIN as f64),
+            Some(Ordering::Equal)
+        );
 
         // i64::MAX vs very large float
         assert_eq!(int_float_cmp(i64::MAX, 1.0e19), Some(Ordering::Less));
@@ -5227,7 +5374,10 @@ mod tests {
 
         // Infinity
         assert_eq!(int_float_cmp(i64::MAX, f64::INFINITY), Some(Ordering::Less));
-        assert_eq!(int_float_cmp(i64::MIN, f64::NEG_INFINITY), Some(Ordering::Greater));
+        assert_eq!(
+            int_float_cmp(i64::MIN, f64::NEG_INFINITY),
+            Some(Ordering::Greater)
+        );
 
         // Largest f64 below 2^63
         let largest_below = 9223372036854774784.0_f64;
@@ -5279,31 +5429,58 @@ mod tests {
                 name: "Size".into(),
                 ordered: false,
                 variants: vec![
-                    VariantInfo { name: "small".into(), fields: vec![] },
-                    VariantInfo { name: "medium".into(), fields: vec![] },
-                    VariantInfo { name: "large".into(), fields: vec![] },
+                    VariantInfo {
+                        name: "small".into(),
+                        fields: vec![],
+                    },
+                    VariantInfo {
+                        name: "medium".into(),
+                        fields: vec![],
+                    },
+                    VariantInfo {
+                        name: "large".into(),
+                        fields: vec![],
+                    },
                 ],
             }),
         );
-        type_env.variant_to_enums.entry("small".into()).or_default().push("Size".into());
-        type_env.variant_to_enums.entry("medium".into()).or_default().push("Size".into());
-        type_env.variant_to_enums.entry("large".into()).or_default().push("Size".into());
+        type_env
+            .variant_to_enums
+            .entry("small".into())
+            .or_default()
+            .push("Size".into());
+        type_env
+            .variant_to_enums
+            .entry("medium".into())
+            .or_default()
+            .push("Size".into());
+        type_env
+            .variant_to_enums
+            .entry("large".into())
+            .or_default()
+            .push("Size".into());
 
         let interp = Interpreter::new(&program, &type_env).unwrap();
         let state = TestState::new();
         let mut handler = ScriptedHandler::new();
         let mut env = make_env(&state, &mut handler, &interp);
 
-        env.bind(Name::from("a"), Value::EnumVariant {
-            enum_name: "Size".into(),
-            variant: "small".into(),
-            fields: BTreeMap::new(),
-        });
-        env.bind(Name::from("b"), Value::EnumVariant {
-            enum_name: "Size".into(),
-            variant: "large".into(),
-            fields: BTreeMap::new(),
-        });
+        env.bind(
+            Name::from("a"),
+            Value::EnumVariant {
+                enum_name: "Size".into(),
+                variant: "small".into(),
+                fields: BTreeMap::new(),
+            },
+        );
+        env.bind(
+            Name::from("b"),
+            Value::EnumVariant {
+                enum_name: "Size".into(),
+                variant: "large".into(),
+                fields: BTreeMap::new(),
+            },
+        );
 
         // small < large should be true (declaration order: 0 < 2)
         let expr = spanned(ExprKind::BinOp {
@@ -5343,15 +5520,36 @@ mod tests {
                 name: "Size".into(),
                 ordered: true,
                 variants: vec![
-                    VariantInfo { name: "small".into(), fields: vec![] },
-                    VariantInfo { name: "medium".into(), fields: vec![] },
-                    VariantInfo { name: "large".into(), fields: vec![] },
+                    VariantInfo {
+                        name: "small".into(),
+                        fields: vec![],
+                    },
+                    VariantInfo {
+                        name: "medium".into(),
+                        fields: vec![],
+                    },
+                    VariantInfo {
+                        name: "large".into(),
+                        fields: vec![],
+                    },
                 ],
             }),
         );
-        type_env.variant_to_enums.entry("small".into()).or_default().push("Size".into());
-        type_env.variant_to_enums.entry("medium".into()).or_default().push("Size".into());
-        type_env.variant_to_enums.entry("large".into()).or_default().push("Size".into());
+        type_env
+            .variant_to_enums
+            .entry("small".into())
+            .or_default()
+            .push("Size".into());
+        type_env
+            .variant_to_enums
+            .entry("medium".into())
+            .or_default()
+            .push("Size".into());
+        type_env
+            .variant_to_enums
+            .entry("large".into())
+            .or_default()
+            .push("Size".into());
 
         let interp = Interpreter::new(&program, &type_env).unwrap();
         let state = TestState::new();
@@ -5359,11 +5557,14 @@ mod tests {
         let mut env = make_env(&state, &mut handler, &interp);
 
         // ordinal(small) == 0
-        env.bind(Name::from("s"), Value::EnumVariant {
-            enum_name: "Size".into(),
-            variant: "small".into(),
-            fields: BTreeMap::new(),
-        });
+        env.bind(
+            Name::from("s"),
+            Value::EnumVariant {
+                enum_name: "Size".into(),
+                variant: "small".into(),
+                fields: BTreeMap::new(),
+            },
+        );
         let expr = spanned(ExprKind::Call {
             callee: Box::new(spanned(ExprKind::Ident("ordinal".into()))),
             args: vec![ttrpg_ast::ast::Arg {
@@ -5375,11 +5576,14 @@ mod tests {
         assert_eq!(eval_expr(&mut env, &expr).unwrap(), Value::Int(0));
 
         // ordinal(large) == 2
-        env.bind(Name::from("l"), Value::EnumVariant {
-            enum_name: "Size".into(),
-            variant: "large".into(),
-            fields: BTreeMap::new(),
-        });
+        env.bind(
+            Name::from("l"),
+            Value::EnumVariant {
+                enum_name: "Size".into(),
+                variant: "large".into(),
+                fields: BTreeMap::new(),
+            },
+        );
         let expr = spanned(ExprKind::Call {
             callee: Box::new(spanned(ExprKind::Ident("ordinal".into()))),
             args: vec![ttrpg_ast::ast::Arg {
@@ -5402,9 +5606,18 @@ mod tests {
                 name: "Size".into(),
                 ordered: true,
                 variants: vec![
-                    VariantInfo { name: "small".into(), fields: vec![] },
-                    VariantInfo { name: "medium".into(), fields: vec![] },
-                    VariantInfo { name: "large".into(), fields: vec![] },
+                    VariantInfo {
+                        name: "small".into(),
+                        fields: vec![],
+                    },
+                    VariantInfo {
+                        name: "medium".into(),
+                        fields: vec![],
+                    },
+                    VariantInfo {
+                        name: "large".into(),
+                        fields: vec![],
+                    },
                 ],
             }),
         );
@@ -5453,8 +5666,14 @@ mod tests {
                 name: "Size".into(),
                 ordered: true,
                 variants: vec![
-                    VariantInfo { name: "small".into(), fields: vec![] },
-                    VariantInfo { name: "medium".into(), fields: vec![] },
+                    VariantInfo {
+                        name: "small".into(),
+                        fields: vec![],
+                    },
+                    VariantInfo {
+                        name: "medium".into(),
+                        fields: vec![],
+                    },
                 ],
             }),
         );
@@ -5496,9 +5715,10 @@ mod tests {
             DeclInfo::Enum(EnumInfo {
                 name: "Size".into(),
                 ordered: true,
-                variants: vec![
-                    VariantInfo { name: "small".into(), fields: vec![] },
-                ],
+                variants: vec![VariantInfo {
+                    name: "small".into(),
+                    fields: vec![],
+                }],
             }),
         );
 
@@ -5540,9 +5760,18 @@ mod tests {
                 name: "Size".into(),
                 ordered: true,
                 variants: vec![
-                    VariantInfo { name: "small".into(), fields: vec![] },
-                    VariantInfo { name: "medium".into(), fields: vec![] },
-                    VariantInfo { name: "large".into(), fields: vec![] },
+                    VariantInfo {
+                        name: "small".into(),
+                        fields: vec![],
+                    },
+                    VariantInfo {
+                        name: "medium".into(),
+                        fields: vec![],
+                    },
+                    VariantInfo {
+                        name: "large".into(),
+                        fields: vec![],
+                    },
                 ],
             }),
         );
@@ -5590,9 +5819,10 @@ mod tests {
             DeclInfo::Enum(EnumInfo {
                 name: "Size".into(),
                 ordered: true,
-                variants: vec![
-                    VariantInfo { name: "small".into(), fields: vec![] },
-                ],
+                variants: vec![VariantInfo {
+                    name: "small".into(),
+                    fields: vec![],
+                }],
             }),
         );
 
@@ -5632,9 +5862,10 @@ mod tests {
             DeclInfo::Enum(EnumInfo {
                 name: "Size".into(),
                 ordered: true,
-                variants: vec![
-                    VariantInfo { name: "small".into(), fields: vec![] },
-                ],
+                variants: vec![VariantInfo {
+                    name: "small".into(),
+                    fields: vec![],
+                }],
             }),
         );
 
@@ -5719,7 +5950,7 @@ mod tests {
 
     #[test]
     fn eval_ident_condition_name() {
-        use ttrpg_ast::ast::{ConditionDecl, TopLevel, SystemBlock};
+        use ttrpg_ast::ast::{ConditionDecl, SystemBlock, TopLevel};
 
         let mut program = Program {
             items: vec![spanned(TopLevel::System(SystemBlock {
@@ -5745,13 +5976,16 @@ mod tests {
         let expr = spanned(ExprKind::Ident("Stunned".into()));
         assert_eq!(
             eval_expr(&mut env, &expr).unwrap(),
-            Value::Condition { name: "Stunned".into(), args: BTreeMap::new() }
+            Value::Condition {
+                name: "Stunned".into(),
+                args: BTreeMap::new()
+            }
         );
     }
 
     #[test]
     fn eval_ident_condition_eq() {
-        use ttrpg_ast::ast::{ConditionDecl, TopLevel, SystemBlock};
+        use ttrpg_ast::ast::{ConditionDecl, SystemBlock, TopLevel};
 
         let mut program = Program {
             items: vec![spanned(TopLevel::System(SystemBlock {
@@ -5942,7 +6176,11 @@ mod tests {
             spanned(ExprKind::IntLit(1)),
         );
         let err = eval_stmt(&mut env, &stmt).unwrap_err();
-        assert!(err.message.contains("undefined variable"), "got: {}", err.message);
+        assert!(
+            err.message.contains("undefined variable"),
+            "got: {}",
+            err.message
+        );
     }
 
     // ── Entity field assignment tests ──────────────────────────
@@ -6005,10 +6243,13 @@ mod tests {
 
         // target.stats[STR] = 18
         let stmt = make_assign(
-            make_lvalue("target", vec![
-                LValueSegment::Field("stats".into()),
-                LValueSegment::Index(spanned(ExprKind::StringLit("STR".to_string()))),
-            ]),
+            make_lvalue(
+                "target",
+                vec![
+                    LValueSegment::Field("stats".into()),
+                    LValueSegment::Index(spanned(ExprKind::StringLit("STR".to_string()))),
+                ],
+            ),
             AssignOp::Eq,
             spanned(ExprKind::IntLit(18)),
         );
@@ -6016,7 +6257,13 @@ mod tests {
 
         assert_eq!(handler.log.len(), 1);
         match &handler.log[0] {
-            Effect::MutateField { entity, path, op, value, .. } => {
+            Effect::MutateField {
+                entity,
+                path,
+                op,
+                value,
+                ..
+            } => {
                 assert_eq!(entity.0, 42);
                 assert_eq!(path.len(), 2);
                 match &path[0] {
@@ -6057,10 +6304,13 @@ mod tests {
 
         // trigger.entity.HP -= 5
         let stmt = make_assign(
-            make_lvalue("trigger", vec![
-                LValueSegment::Field("entity".into()),
-                LValueSegment::Field("HP".into()),
-            ]),
+            make_lvalue(
+                "trigger",
+                vec![
+                    LValueSegment::Field("entity".into()),
+                    LValueSegment::Field("HP".into()),
+                ],
+            ),
             AssignOp::MinusEq,
             spanned(ExprKind::IntLit(5)),
         );
@@ -6069,7 +6319,13 @@ mod tests {
         // Should emit MutateField with entity=7, path=[Field("HP")]
         assert_eq!(handler.log.len(), 1);
         match &handler.log[0] {
-            Effect::MutateField { entity, path, op, value, .. } => {
+            Effect::MutateField {
+                entity,
+                path,
+                op,
+                value,
+                ..
+            } => {
                 assert_eq!(entity.0, 7);
                 assert_eq!(path.len(), 1);
                 match &path[0] {
@@ -6106,7 +6362,12 @@ mod tests {
 
         assert_eq!(handler.log.len(), 1);
         match &handler.log[0] {
-            Effect::MutateTurnField { actor, field, op, value } => {
+            Effect::MutateTurnField {
+                actor,
+                field,
+                op,
+                value,
+            } => {
                 assert_eq!(actor.0, 5);
                 assert_eq!(field, "actions");
                 assert_eq!(*op, AssignOp::MinusEq);
@@ -6270,13 +6531,17 @@ mod tests {
         let mut handler = ScriptedHandler::new();
         let mut env = make_env(&state, &mut handler, &interp);
 
-        env.bind(Name::from("nums"), Value::List(vec![
-            Value::Int(10), Value::Int(20), Value::Int(30),
-        ]));
+        env.bind(
+            Name::from("nums"),
+            Value::List(vec![Value::Int(10), Value::Int(20), Value::Int(30)]),
+        );
 
         // nums[1] = 99
         let stmt = make_assign(
-            make_lvalue("nums", vec![LValueSegment::Index(spanned(ExprKind::IntLit(1)))]),
+            make_lvalue(
+                "nums",
+                vec![LValueSegment::Index(spanned(ExprKind::IntLit(1)))],
+            ),
             AssignOp::Eq,
             spanned(ExprKind::IntLit(99)),
         );
@@ -6299,13 +6564,17 @@ mod tests {
         let mut handler = ScriptedHandler::new();
         let mut env = make_env(&state, &mut handler, &interp);
 
-        env.bind(Name::from("nums"), Value::List(vec![
-            Value::Int(1), Value::Int(2), Value::Int(3),
-        ]));
+        env.bind(
+            Name::from("nums"),
+            Value::List(vec![Value::Int(1), Value::Int(2), Value::Int(3)]),
+        );
 
         // nums[-1] = 99 (last element)
         let stmt = make_assign(
-            make_lvalue("nums", vec![LValueSegment::Index(spanned(ExprKind::IntLit(-1)))]),
+            make_lvalue(
+                "nums",
+                vec![LValueSegment::Index(spanned(ExprKind::IntLit(-1)))],
+            ),
             AssignOp::Eq,
             spanned(ExprKind::IntLit(99)),
         );
@@ -6328,18 +6597,26 @@ mod tests {
         let mut handler = ScriptedHandler::new();
         let mut env = make_env(&state, &mut handler, &interp);
 
-        env.bind(Name::from("nums"), Value::List(vec![
-            Value::Int(1), Value::Int(2),
-        ]));
+        env.bind(
+            Name::from("nums"),
+            Value::List(vec![Value::Int(1), Value::Int(2)]),
+        );
 
         // nums[5] = 99 (out of bounds)
         let stmt = make_assign(
-            make_lvalue("nums", vec![LValueSegment::Index(spanned(ExprKind::IntLit(5)))]),
+            make_lvalue(
+                "nums",
+                vec![LValueSegment::Index(spanned(ExprKind::IntLit(5)))],
+            ),
             AssignOp::Eq,
             spanned(ExprKind::IntLit(99)),
         );
         let err = eval_stmt(&mut env, &stmt).unwrap_err();
-        assert!(err.message.contains("out of bounds"), "got: {}", err.message);
+        assert!(
+            err.message.contains("out of bounds"),
+            "got: {}",
+            err.message
+        );
     }
 
     #[test]
@@ -6351,13 +6628,17 @@ mod tests {
         let mut handler = ScriptedHandler::new();
         let mut env = make_env(&state, &mut handler, &interp);
 
-        env.bind(Name::from("nums"), Value::List(vec![
-            Value::Int(10), Value::Int(20),
-        ]));
+        env.bind(
+            Name::from("nums"),
+            Value::List(vec![Value::Int(10), Value::Int(20)]),
+        );
 
         // nums[0] += 5
         let stmt = make_assign(
-            make_lvalue("nums", vec![LValueSegment::Index(spanned(ExprKind::IntLit(0)))]),
+            make_lvalue(
+                "nums",
+                vec![LValueSegment::Index(spanned(ExprKind::IntLit(0)))],
+            ),
             AssignOp::PlusEq,
             spanned(ExprKind::IntLit(5)),
         );
@@ -6388,9 +6669,12 @@ mod tests {
 
         // m["b"] = 2 (insert new entry)
         let stmt = make_assign(
-            make_lvalue("m", vec![
-                LValueSegment::Index(spanned(ExprKind::StringLit("b".to_string()))),
-            ]),
+            make_lvalue(
+                "m",
+                vec![LValueSegment::Index(spanned(ExprKind::StringLit(
+                    "b".to_string(),
+                )))],
+            ),
             AssignOp::Eq,
             spanned(ExprKind::IntLit(2)),
         );
@@ -6420,9 +6704,12 @@ mod tests {
 
         // m["a"] = 99 (overwrite)
         let stmt = make_assign(
-            make_lvalue("m", vec![
-                LValueSegment::Index(spanned(ExprKind::StringLit("a".to_string()))),
-            ]),
+            make_lvalue(
+                "m",
+                vec![LValueSegment::Index(spanned(ExprKind::StringLit(
+                    "a".to_string(),
+                )))],
+            ),
             AssignOp::Eq,
             spanned(ExprKind::IntLit(99)),
         );
@@ -6451,9 +6738,12 @@ mod tests {
 
         // m["score"] += 50
         let stmt = make_assign(
-            make_lvalue("m", vec![
-                LValueSegment::Index(spanned(ExprKind::StringLit("score".to_string()))),
-            ]),
+            make_lvalue(
+                "m",
+                vec![LValueSegment::Index(spanned(ExprKind::StringLit(
+                    "score".to_string(),
+                )))],
+            ),
             AssignOp::PlusEq,
             spanned(ExprKind::IntLit(50)),
         );
@@ -6461,7 +6751,10 @@ mod tests {
 
         match env.lookup("m") {
             Some(Value::Map(m)) => {
-                assert_eq!(m.get(&Value::Str("score".to_string())), Some(&Value::Int(150)));
+                assert_eq!(
+                    m.get(&Value::Str("score".to_string())),
+                    Some(&Value::Int(150))
+                );
             }
             other => panic!("expected Map, got {:?}", other),
         }
@@ -6481,14 +6774,21 @@ mod tests {
 
         // m["x"] += 1 (key doesn't exist)
         let stmt = make_assign(
-            make_lvalue("m", vec![
-                LValueSegment::Index(spanned(ExprKind::StringLit("x".to_string()))),
-            ]),
+            make_lvalue(
+                "m",
+                vec![LValueSegment::Index(spanned(ExprKind::StringLit(
+                    "x".to_string(),
+                )))],
+            ),
             AssignOp::PlusEq,
             spanned(ExprKind::IntLit(1)),
         );
         let err = eval_stmt(&mut env, &stmt).unwrap_err();
-        assert!(err.message.contains("absent map key"), "got: {}", err.message);
+        assert!(
+            err.message.contains("absent map key"),
+            "got: {}",
+            err.message
+        );
     }
 
     #[test]
@@ -6505,14 +6805,21 @@ mod tests {
 
         // m["x"] -= 1 (key doesn't exist)
         let stmt = make_assign(
-            make_lvalue("m", vec![
-                LValueSegment::Index(spanned(ExprKind::StringLit("x".to_string()))),
-            ]),
+            make_lvalue(
+                "m",
+                vec![LValueSegment::Index(spanned(ExprKind::StringLit(
+                    "x".to_string(),
+                )))],
+            ),
             AssignOp::MinusEq,
             spanned(ExprKind::IntLit(1)),
         );
         let err = eval_stmt(&mut env, &stmt).unwrap_err();
-        assert!(err.message.contains("absent map key"), "got: {}", err.message);
+        assert!(
+            err.message.contains("absent map key"),
+            "got: {}",
+            err.message
+        );
     }
 
     // ── apply_assign_op error tests ────────────────────────────
@@ -6535,7 +6842,11 @@ mod tests {
             spanned(ExprKind::IntLit(5)),
         );
         let err = eval_stmt(&mut env, &stmt).unwrap_err();
-        assert!(err.message.contains("cannot apply +="), "got: {}", err.message);
+        assert!(
+            err.message.contains("cannot apply +="),
+            "got: {}",
+            err.message
+        );
     }
 
     #[test]
@@ -6595,7 +6906,7 @@ mod tests {
             make_assign(
                 make_lvalue("x", vec![]),
                 AssignOp::PlusEq,
-                spanned(ExprKind::IntLit(2)),  // Int + Float works via mixed type
+                spanned(ExprKind::IntLit(2)), // Int + Float works via mixed type
             ),
             spanned(StmtKind::Expr(spanned(ExprKind::Ident("x".into())))),
         ]);
@@ -6637,13 +6948,11 @@ mod tests {
         env.bind(Name::from("x"), Value::Int(0));
 
         // Block: x = 42 (assign returns None as block value)
-        let block = spanned(vec![
-            make_assign(
-                make_lvalue("x", vec![]),
-                AssignOp::Eq,
-                spanned(ExprKind::IntLit(42)),
-            ),
-        ]);
+        let block = spanned(vec![make_assign(
+            make_lvalue("x", vec![]),
+            AssignOp::Eq,
+            spanned(ExprKind::IntLit(42)),
+        )]);
         let result = eval_block(&mut env, &block).unwrap();
         assert_eq!(result, Value::None);
         // But x was updated
@@ -6663,7 +6972,12 @@ mod tests {
 
         // RollResult with total=7
         let rr = Value::RollResult(RollResult {
-            expr: DiceExpr { count: 2, sides: 6, filter: None, modifier: 0 },
+            expr: DiceExpr {
+                count: 2,
+                sides: 6,
+                filter: None,
+                modifier: 0,
+            },
             dice: vec![3, 4],
             kept: vec![3, 4],
             modifier: 0,
@@ -6703,7 +7017,10 @@ mod tests {
         );
         eval_stmt(&mut env, &stmt).unwrap();
 
-        assert!(handler.log.is_empty(), "expected no effects for local mutation");
+        assert!(
+            handler.log.is_empty(),
+            "expected no effects for local mutation"
+        );
     }
 
     // ── Regression: i64::MIN list index should not panic ────────
@@ -6721,14 +7038,19 @@ mod tests {
 
         // nums[i64::MIN] = 0 — should produce a RuntimeError, not panic
         let stmt = make_assign(
-            make_lvalue("nums", vec![
-                LValueSegment::Index(spanned(ExprKind::IntLit(i64::MIN))),
-            ]),
+            make_lvalue(
+                "nums",
+                vec![LValueSegment::Index(spanned(ExprKind::IntLit(i64::MIN)))],
+            ),
             AssignOp::Eq,
             spanned(ExprKind::IntLit(0)),
         );
         let err = eval_stmt(&mut env, &stmt).unwrap_err();
-        assert!(err.message.contains("out of bounds"), "got: {}", err.message);
+        assert!(
+            err.message.contains("out of bounds"),
+            "got: {}",
+            err.message
+        );
     }
 
     // ── Regression: map assignment uses semantic key equality ────
@@ -6749,9 +7071,7 @@ mod tests {
 
         // m[option_none] = 99 — should overwrite the None entry, not create a duplicate
         let stmt = make_assign(
-            make_lvalue("m", vec![
-                LValueSegment::Index(spanned(ExprKind::NoneLit)),
-            ]),
+            make_lvalue("m", vec![LValueSegment::Index(spanned(ExprKind::NoneLit))]),
             AssignOp::Eq,
             spanned(ExprKind::IntLit(99)),
         );
@@ -6759,7 +7079,12 @@ mod tests {
 
         match env.lookup("m") {
             Some(Value::Map(m)) => {
-                assert_eq!(m.len(), 1, "should have 1 entry, not a duplicate; got {:?}", m);
+                assert_eq!(
+                    m.len(),
+                    1,
+                    "should have 1 entry, not a duplicate; got {:?}",
+                    m
+                );
                 // The value should be updated regardless of which structural key remains
                 let val = m.values().next().unwrap();
                 assert_eq!(val, &Value::Int(99));
@@ -6784,9 +7109,7 @@ mod tests {
 
         // m[option_none] += 5 — should find the None key semantically
         let stmt = make_assign(
-            make_lvalue("m", vec![
-                LValueSegment::Index(spanned(ExprKind::NoneLit)),
-            ]),
+            make_lvalue("m", vec![LValueSegment::Index(spanned(ExprKind::NoneLit))]),
             AssignOp::PlusEq,
             spanned(ExprKind::IntLit(5)),
         );
@@ -6865,7 +7188,11 @@ mod tests {
             group_name: "Spellcasting".into(),
         });
         let err = eval_expr(&mut env, &expr).unwrap_err();
-        assert!(err.message.contains("expected entity"), "got: {}", err.message);
+        assert!(
+            err.message.contains("expected entity"),
+            "got: {}",
+            err.message
+        );
     }
 
     #[test]
@@ -7090,7 +7417,11 @@ mod tests {
             fields: vec![],
         });
         let err = eval_stmt(&mut env, &stmt).unwrap_err();
-        assert!(err.message.contains("expected entity"), "got: {}", err.message);
+        assert!(
+            err.message.contains("expected entity"),
+            "got: {}",
+            err.message
+        );
     }
 
     #[test]
@@ -7131,10 +7462,7 @@ mod tests {
 
         assert_eq!(handler.log.len(), 1);
         match &handler.log[0] {
-            Effect::RevokeGroup {
-                entity,
-                group_name,
-            } => {
+            Effect::RevokeGroup { entity, group_name } => {
                 assert_eq!(entity.0, 1);
                 assert_eq!(group_name, "Spellcasting");
             }
@@ -7157,7 +7485,11 @@ mod tests {
             group_name: "Spellcasting".into(),
         });
         let err = eval_stmt(&mut env, &stmt).unwrap_err();
-        assert!(err.message.contains("expected entity"), "got: {}", err.message);
+        assert!(
+            err.message.contains("expected entity"),
+            "got: {}",
+            err.message
+        );
     }
 
     #[test]

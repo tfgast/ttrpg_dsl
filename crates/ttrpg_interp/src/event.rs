@@ -1,16 +1,16 @@
 use std::collections::{BTreeMap, HashSet};
 
-use ttrpg_ast::Name;
 use ttrpg_ast::ast::ConditionClause;
+use ttrpg_ast::Name;
 use ttrpg_checker::ty::Ty;
 
-use crate::Env;
-use crate::RuntimeError;
-use crate::effect::{EffectHandler, Response, Effect};
+use crate::effect::{Effect, EffectHandler, Response};
 use crate::eval::{eval_expr, value_eq};
 use crate::state::{EntityRef, StateProvider};
 use crate::value::Value;
+use crate::Env;
 use crate::Interpreter;
+use crate::RuntimeError;
 
 // ── Result types ────────────────────────────────────────────────
 
@@ -76,9 +76,7 @@ pub fn what_triggers(
     let payload_fields = match payload {
         Value::Struct { fields, .. } => fields,
         _ => {
-            return Err(RuntimeError::new(
-                "event payload must be a Struct value",
-            ));
+            return Err(RuntimeError::new("event payload must be a Struct value"));
         }
     };
 
@@ -163,9 +161,7 @@ pub fn find_matching_hooks(
     let payload_fields = match payload {
         Value::Struct { fields, .. } => fields,
         _ => {
-            return Err(RuntimeError::new(
-                "event payload must be a Struct value",
-            ));
+            return Err(RuntimeError::new("event payload must be a Struct value"));
         }
     };
 
@@ -225,13 +221,7 @@ fn match_trigger_bindings(
     env.push_scope();
     env.bind(Name::from(receiver_name), Value::Entity(candidate));
 
-    let result = match_bindings_inner(
-        env,
-        bindings,
-        event_params,
-        event_fields,
-        payload_fields,
-    );
+    let result = match_bindings_inner(env, bindings, event_params, event_fields, payload_fields);
 
     env.pop_scope();
 
@@ -269,8 +259,7 @@ fn match_bindings_inner(
 
         if let Some(ref name) = binding.name {
             // Named binding: look up name in event params first, then fields
-            let actual_val = if let Some(param_info) =
-                event_params.iter().find(|p| p.name == *name)
+            let actual_val = if let Some(param_info) = event_params.iter().find(|p| p.name == *name)
             {
                 payload_fields.get(&param_info.name)
             } else if event_fields.iter().any(|(n, _)| n == name) {
@@ -455,13 +444,8 @@ fn check_suppress_bindings(
         env.bind(name.clone(), val.clone());
     }
 
-    let result = check_suppress_bindings_inner(
-        env,
-        bindings,
-        event_params,
-        event_fields,
-        payload_fields,
-    );
+    let result =
+        check_suppress_bindings_inner(env, bindings, event_params, event_fields, payload_fields);
 
     env.pop_scope();
 
@@ -483,15 +467,14 @@ fn check_suppress_bindings_inner(
         };
 
         // Look up binding name in event params first, then fields
-        let actual_val = if let Some(param_info) =
-            event_params.iter().find(|p| p.name == binding.name)
-        {
-            payload_fields.get(&param_info.name)
-        } else if event_fields.iter().any(|(n, _)| *n == binding.name) {
-            payload_fields.get(&binding.name)
-        } else {
-            return Ok(false);
-        };
+        let actual_val =
+            if let Some(param_info) = event_params.iter().find(|p| p.name == binding.name) {
+                payload_fields.get(&param_info.name)
+            } else if event_fields.iter().any(|(n, _)| *n == binding.name) {
+                payload_fields.get(&binding.name)
+            } else {
+                return Ok(false);
+            };
 
         match actual_val {
             Some(val) => {
@@ -532,11 +515,9 @@ mod tests {
     use super::*;
     use std::collections::{BTreeMap, HashMap};
 
-    use ttrpg_ast::{Name, Span, Spanned};
     use ttrpg_ast::ast::*;
-    use ttrpg_checker::env::{
-        ConditionInfo, EventInfo, ParamInfo, TypeEnv,
-    };
+    use ttrpg_ast::{Name, Span, Spanned};
+    use ttrpg_checker::env::{ConditionInfo, EventInfo, ParamInfo, TypeEnv};
     use ttrpg_checker::ty::Ty;
 
     use crate::state::ActiveCondition;
@@ -665,9 +646,7 @@ mod tests {
                     span: dummy_span(),
                 },
                 cost: None,
-                resolve: spanned(vec![spanned(StmtKind::Expr(spanned(
-                    ExprKind::IntLit(0),
-                )))]),
+                resolve: spanned(vec![spanned(StmtKind::Expr(spanned(ExprKind::IntLit(0))))]),
             }),
         ]);
 
@@ -764,9 +743,7 @@ mod tests {
                     span: dummy_span(),
                 },
                 cost: None,
-                resolve: spanned(vec![spanned(StmtKind::Expr(spanned(
-                    ExprKind::IntLit(0),
-                )))]),
+                resolve: spanned(vec![spanned(StmtKind::Expr(spanned(ExprKind::IntLit(0))))]),
             }),
         ]);
 
@@ -880,9 +857,7 @@ mod tests {
                     span: dummy_span(),
                 },
                 cost: None,
-                resolve: spanned(vec![spanned(StmtKind::Expr(spanned(
-                    ExprKind::IntLit(0),
-                )))]),
+                resolve: spanned(vec![spanned(StmtKind::Expr(spanned(ExprKind::IntLit(0))))]),
             }),
         ]);
 
@@ -979,9 +954,7 @@ mod tests {
                     span: dummy_span(),
                 },
                 cost: None,
-                resolve: spanned(vec![spanned(StmtKind::Expr(spanned(
-                    ExprKind::IntLit(0),
-                )))]),
+                resolve: spanned(vec![spanned(StmtKind::Expr(spanned(ExprKind::IntLit(0))))]),
             }),
         ]);
 
@@ -1071,9 +1044,7 @@ mod tests {
                     span: dummy_span(),
                 },
                 cost: None,
-                resolve: spanned(vec![spanned(StmtKind::Expr(spanned(
-                    ExprKind::IntLit(0),
-                )))]),
+                resolve: spanned(vec![spanned(StmtKind::Expr(spanned(ExprKind::IntLit(0))))]),
             }),
             DeclKind::Condition(ConditionDecl {
                 name: "Stunned".into(),
@@ -1222,9 +1193,7 @@ mod tests {
                     span: dummy_span(),
                 },
                 cost: None,
-                resolve: spanned(vec![spanned(StmtKind::Expr(spanned(
-                    ExprKind::IntLit(0),
-                )))]),
+                resolve: spanned(vec![spanned(StmtKind::Expr(spanned(ExprKind::IntLit(0))))]),
             }),
             DeclKind::Condition(ConditionDecl {
                 name: "Silenced".into(),

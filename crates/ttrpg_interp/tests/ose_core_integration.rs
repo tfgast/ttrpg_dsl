@@ -3,9 +3,9 @@
 //! Verifies that ose/ose_core.ttrpg parses, lowers, and type-checks
 //! through the full pipeline without errors.
 
-use ttrpg_ast::FileId;
 use ttrpg_ast::ast::{DeclKind, TopLevel};
 use ttrpg_ast::diagnostic::Severity;
+use ttrpg_ast::FileId;
 
 fn compile_ose_core() -> (ttrpg_ast::ast::Program, ttrpg_checker::CheckResult) {
     let source = include_str!("../../../ose/ose_core.ttrpg");
@@ -50,9 +50,10 @@ fn get_decls(program: &ttrpg_ast::ast::Program) -> &[ttrpg_ast::Spanned<DeclKind
 fn ose_core_parses_and_typechecks() {
     let (program, _result) = compile_ose_core();
     // Should have one system block named "OSE"
-    let has_ose = program.items.iter().any(|item| {
-        matches!(&item.node, TopLevel::System(sys) if sys.name == "OSE")
-    });
+    let has_ose = program
+        .items
+        .iter()
+        .any(|item| matches!(&item.node, TopLevel::System(sys) if sys.name == "OSE"));
     assert!(has_ose, "expected system named 'OSE'");
 }
 

@@ -1,16 +1,16 @@
 use std::collections::{BTreeMap, HashSet};
 
-use ttrpg_ast::Name;
 use ttrpg_ast::ast::{ConditionClause, ModifyClause, ModifyStmt};
+use ttrpg_ast::Name;
 use ttrpg_checker::env::FnInfo;
 use ttrpg_checker::ty::Ty;
 
-use crate::Env;
-use crate::RuntimeError;
 use crate::effect::{Effect, FieldChange, ModifySource, Phase, Response};
 use crate::eval::{eval_expr, value_eq};
 use crate::state::ActiveCondition;
 use crate::value::Value;
+use crate::Env;
+use crate::RuntimeError;
 
 // ── Supporting types ────────────────────────────────────────────
 
@@ -94,17 +94,17 @@ pub(crate) fn collect_modifiers_owned(
     // Sort condition modifiers by gained_at (stable sort preserves declaration order)
     condition_modifiers.sort_by_key(|(gained_at, _)| *gained_at);
 
-    let mut result: Vec<OwnedModifier> = condition_modifiers
-        .into_iter()
-        .map(|(_, m)| m)
-        .collect();
+    let mut result: Vec<OwnedModifier> = condition_modifiers.into_iter().map(|(_, m)| m).collect();
 
     // 2. Query enabled options and check their modify clauses
     let mut enabled_options = env.state.read_enabled_options();
     // Sort by declaration order for deterministic application
     let option_order = &env.interp.program.option_order;
     enabled_options.sort_by_key(|name| {
-        option_order.iter().position(|o| *o == name.as_str()).unwrap_or(usize::MAX)
+        option_order
+            .iter()
+            .position(|o| *o == name.as_str())
+            .unwrap_or(usize::MAX)
     });
     for opt_name in &enabled_options {
         let opt_decl = match env.interp.program.options.get(opt_name.as_str()) {
@@ -193,7 +193,10 @@ fn check_modify_bindings(
         // Wildcard binding — always matches
         let binding_val = match binding.value {
             Some(ref expr) => eval_expr(env, expr),
-            None => { env.pop_scope(); continue; }
+            None => {
+                env.pop_scope();
+                continue;
+            }
         };
         env.pop_scope();
 
@@ -272,8 +275,7 @@ pub(crate) fn run_phase1(
         env.push_scope();
 
         // Bind receiver if condition modifier
-        if let (Some(ref bearer), Some(ref recv_name)) =
-            (&modifier.bearer, &modifier.receiver_name)
+        if let (Some(ref bearer), Some(ref recv_name)) = (&modifier.bearer, &modifier.receiver_name)
         {
             env.bind(recv_name.clone(), bearer.clone());
         }
@@ -307,7 +309,10 @@ pub(crate) fn run_phase1(
             });
             if !matches!(response, Response::Acknowledged) {
                 return Err(RuntimeError::with_span(
-                    format!("protocol error: expected Acknowledged for ModifyApplied, got {:?}", response),
+                    format!(
+                        "protocol error: expected Acknowledged for ModifyApplied, got {:?}",
+                        response
+                    ),
                     modifier.clause.span,
                 ));
             }
@@ -345,8 +350,7 @@ pub(crate) fn run_phase2(
         env.push_scope();
 
         // Bind receiver if condition modifier
-        if let (Some(ref bearer), Some(ref recv_name)) =
-            (&modifier.bearer, &modifier.receiver_name)
+        if let (Some(ref bearer), Some(ref recv_name)) = (&modifier.bearer, &modifier.receiver_name)
         {
             env.bind(recv_name.clone(), bearer.clone());
         }
@@ -383,7 +387,10 @@ pub(crate) fn run_phase2(
             });
             if !matches!(response, Response::Acknowledged) {
                 return Err(RuntimeError::with_span(
-                    format!("protocol error: expected Acknowledged for ModifyApplied, got {:?}", response),
+                    format!(
+                        "protocol error: expected Acknowledged for ModifyApplied, got {:?}",
+                        response
+                    ),
                     modifier.clause.span,
                 ));
             }
@@ -488,45 +495,57 @@ fn exec_modify_stmts_phase2(
                     Value::Struct { fields, .. } => {
                         fields.insert(field.clone(), val);
                     }
-                    Value::RollResult(ref mut rr) => {
-                        match field.as_str() {
-                            "total" => {
-                                if let Value::Int(n) = val {
-                                    rr.total = n;
-                                }
+                    Value::RollResult(ref mut rr) => match field.as_str() {
+                        "total" => {
+                            if let Value::Int(n) = val {
+                                rr.total = n;
                             }
-                            "unmodified" => {
-                                if let Value::Int(n) = val {
-                                    rr.unmodified = n;
-                                }
-                            }
-                            "modifier" => {
-                                if let Value::Int(n) = val {
-                                    rr.modifier = n;
-                                }
-                            }
-                            "expr" => {
-                                if let Value::DiceExpr(de) = val {
-                                    rr.expr = de;
-                                }
-                            }
-                            "dice" => {
-                                if let Value::List(items) = val {
-                                    rr.dice = items.iter().filter_map(|v| {
-                                        if let Value::Int(n) = v { Some(*n) } else { None }
-                                    }).collect();
-                                }
-                            }
-                            "kept" => {
-                                if let Value::List(items) = val {
-                                    rr.kept = items.iter().filter_map(|v| {
-                                        if let Value::Int(n) = v { Some(*n) } else { None }
-                                    }).collect();
-                                }
-                            }
-                            _ => {}
                         }
-                    }
+                        "unmodified" => {
+                            if let Value::Int(n) = val {
+                                rr.unmodified = n;
+                            }
+                        }
+                        "modifier" => {
+                            if let Value::Int(n) = val {
+                                rr.modifier = n;
+                            }
+                        }
+                        "expr" => {
+                            if let Value::DiceExpr(de) = val {
+                                rr.expr = de;
+                            }
+                        }
+                        "dice" => {
+                            if let Value::List(items) = val {
+                                rr.dice = items
+                                    .iter()
+                                    .filter_map(|v| {
+                                        if let Value::Int(n) = v {
+                                            Some(*n)
+                                        } else {
+                                            None
+                                        }
+                                    })
+                                    .collect();
+                            }
+                        }
+                        "kept" => {
+                            if let Value::List(items) = val {
+                                rr.kept = items
+                                    .iter()
+                                    .filter_map(|v| {
+                                        if let Value::Int(n) = v {
+                                            Some(*n)
+                                        } else {
+                                            None
+                                        }
+                                    })
+                                    .collect();
+                            }
+                        }
+                        _ => {}
+                    },
                     _ => {
                         // If result is not a struct/RollResult, this is unexpected
                         // but the checker should have caught it
@@ -586,22 +605,14 @@ fn has_phase2_stmts(stmts: &[ModifyStmt]) -> bool {
             then_body,
             else_body,
             ..
-        } => {
-            has_phase2_stmts(then_body)
-                || else_body
-                    .as_ref()
-                    .is_some_and(|e| has_phase2_stmts(e))
-        }
+        } => has_phase2_stmts(then_body) || else_body.as_ref().is_some_and(|e| has_phase2_stmts(e)),
         _ => false,
     })
 }
 
 // ── Change tracking ─────────────────────────────────────────────
 
-fn collect_param_changes(
-    old: &[(Name, Value)],
-    new: &[(Name, Value)],
-) -> Vec<FieldChange> {
+fn collect_param_changes(old: &[(Name, Value)], new: &[(Name, Value)]) -> Vec<FieldChange> {
     let mut changes = Vec::new();
     for (i, (name, old_val)) in old.iter().enumerate() {
         let new_val = &new[i].1;
@@ -616,11 +627,7 @@ fn collect_param_changes(
     changes
 }
 
-fn collect_result_changes(
-    old: &Value,
-    new: &Value,
-    _fn_info: &FnInfo,
-) -> Vec<FieldChange> {
+fn collect_result_changes(old: &Value, new: &Value, _fn_info: &FnInfo) -> Vec<FieldChange> {
     if old == new {
         return Vec::new();
     }
@@ -663,11 +670,9 @@ mod tests {
     use super::*;
     use std::collections::{BTreeMap, HashMap};
 
-    use ttrpg_ast::{Span, Spanned};
     use ttrpg_ast::ast::*;
-    use ttrpg_checker::env::{
-        ConditionInfo, FnInfo, FnKind, ParamInfo, TypeEnv,
-    };
+    use ttrpg_ast::{Span, Spanned};
+    use ttrpg_checker::env::{ConditionInfo, FnInfo, FnKind, ParamInfo, TypeEnv};
     use ttrpg_checker::ty::Ty;
 
     use crate::effect::{Effect, EffectHandler, Response};
@@ -813,8 +818,12 @@ mod tests {
                         lhs: Box::new(spanned(ExprKind::Ident("mode".into()))),
                         rhs: Box::new(spanned(ExprKind::StringLit("disadvantage".into()))),
                     })),
-                    then_block: spanned(vec![spanned(StmtKind::Expr(spanned(ExprKind::IntLit(1))))]),
-                    else_branch: Some(ElseBranch::Block(spanned(vec![spanned(StmtKind::Expr(spanned(ExprKind::IntLit(0))))]))),
+                    then_block: spanned(vec![spanned(StmtKind::Expr(spanned(ExprKind::IntLit(
+                        1,
+                    ))))]),
+                    else_branch: Some(ElseBranch::Block(spanned(vec![spanned(StmtKind::Expr(
+                        spanned(ExprKind::IntLit(0)),
+                    ))]))),
                 })))]),
                 synthetic: false,
             }),
@@ -923,7 +932,11 @@ mod tests {
             .iter()
             .filter(|e| matches!(e, Effect::ModifyApplied { .. }))
             .collect();
-        assert_eq!(modify_effects.len(), 1, "expected exactly one ModifyApplied effect");
+        assert_eq!(
+            modify_effects.len(),
+            1,
+            "expected exactly one ModifyApplied effect"
+        );
 
         match &modify_effects[0] {
             Effect::ModifyApplied {
@@ -1075,7 +1088,11 @@ mod tests {
             .iter()
             .filter(|e| matches!(e, Effect::ModifyApplied { .. }))
             .collect();
-        assert_eq!(modify_effects.len(), 1, "expected exactly one ModifyApplied effect");
+        assert_eq!(
+            modify_effects.len(),
+            1,
+            "expected exactly one ModifyApplied effect"
+        );
 
         match &modify_effects[0] {
             Effect::ModifyApplied {
@@ -1613,7 +1630,8 @@ mod tests {
             (Name::from("b"), Value::Entity(EntityRef(1))),
         ];
 
-        let modifiers = collect_modifiers_owned(&mut env, "interact", fn_info, &bound_params).unwrap();
+        let modifiers =
+            collect_modifiers_owned(&mut env, "interact", fn_info, &bound_params).unwrap();
 
         // The condition should only be collected once despite both params referencing it
         assert_eq!(
@@ -1808,7 +1826,11 @@ mod tests {
         });
 
         let result = crate::eval::eval_expr(&mut env, &expr).unwrap();
-        assert_eq!(result, Value::Int(51), "string literal binding should match");
+        assert_eq!(
+            result,
+            Value::Int(51),
+            "string literal binding should match"
+        );
 
         // Also verify it does NOT match when mode is different
         let mut handler2 = ScriptedHandler::new();
@@ -1830,7 +1852,11 @@ mod tests {
         });
 
         let result2 = crate::eval::eval_expr(&mut env2, &expr2).unwrap();
-        assert_eq!(result2, Value::Int(1), "non-matching binding should not apply modifier");
+        assert_eq!(
+            result2,
+            Value::Int(1),
+            "non-matching binding should not apply modifier"
+        );
     }
 
     // ── Test 8: Non-Acknowledged ModifyApplied returns protocol error ─
@@ -1965,7 +1991,8 @@ mod tests {
 
         let err = crate::eval::eval_expr(&mut env, &expr).unwrap_err();
         assert!(
-            err.message.contains("protocol error: expected Acknowledged for ModifyApplied"),
+            err.message
+                .contains("protocol error: expected Acknowledged for ModifyApplied"),
             "expected protocol error, got: {}",
             err.message
         );
@@ -2034,9 +2061,7 @@ mod tests {
         // Override "kept" field
         let stmts_kept = vec![ModifyStmt::ResultOverride {
             field: "kept".into(),
-            value: spanned(ExprKind::ListLit(vec![
-                spanned(ExprKind::IntLit(4)),
-            ])),
+            value: spanned(ExprKind::ListLit(vec![spanned(ExprKind::IntLit(4))])),
             span: dummy_span(),
         }];
         exec_modify_stmts_phase2(&mut env, &stmts_kept, &mut result).unwrap();
@@ -2050,12 +2075,15 @@ mod tests {
         // Override "expr" field — use a DiceExpr literal via a Let + ResultOverride
         // Since we can't construct a DiceExpr in the DSL directly from ExprKind,
         // we test by binding a DiceExpr value and referencing it.
-        env.bind(Name::from("new_expr"), Value::DiceExpr(DiceExpr {
-            count: 2,
-            sides: 6,
-            filter: None,
-            modifier: 0,
-        }));
+        env.bind(
+            Name::from("new_expr"),
+            Value::DiceExpr(DiceExpr {
+                count: 2,
+                sides: 6,
+                filter: None,
+                modifier: 0,
+            }),
+        );
         let stmts_expr = vec![ModifyStmt::ResultOverride {
             field: "expr".into(),
             value: spanned(ExprKind::Ident("new_expr".into())),
@@ -2186,7 +2214,11 @@ mod tests {
         let result = crate::eval::eval_expr(&mut env, &expr).unwrap();
         // Beta (declared first) applies first: x = 1 * 3 = 3
         // Alpha (declared second) applies second: x = 3 + 10 = 13
-        assert_eq!(result, Value::Int(13), "options should apply in declaration order, not alphabetical");
+        assert_eq!(
+            result,
+            Value::Int(13),
+            "options should apply in declaration order, not alphabetical"
+        );
 
         // Verify order via effects
         let modify_effects: Vec<&Effect> = handler
@@ -2247,9 +2279,9 @@ mod tests {
                     },
                 ],
                 return_type: spanned(TypeExpr::Int),
-                body: spanned(vec![spanned(StmtKind::Expr(spanned(
-                    ExprKind::Ident("x".into()),
-                )))]),
+                body: spanned(vec![spanned(StmtKind::Expr(spanned(ExprKind::Ident(
+                    "x".into(),
+                ))))]),
                 synthetic: false,
             }),
             DeclKind::Condition(ConditionDecl {
@@ -2347,8 +2379,16 @@ mod tests {
         let expr = spanned(ExprKind::Call {
             callee: Box::new(spanned(ExprKind::Ident("f".into()))),
             args: vec![
-                Arg { name: None, value: spanned(ExprKind::Ident("e".into())), span: dummy_span() },
-                Arg { name: None, value: spanned(ExprKind::IntLit(1)), span: dummy_span() },
+                Arg {
+                    name: None,
+                    value: spanned(ExprKind::Ident("e".into())),
+                    span: dummy_span(),
+                },
+                Arg {
+                    name: None,
+                    value: spanned(ExprKind::IntLit(1)),
+                    span: dummy_span(),
+                },
             ],
         });
         let result = crate::eval::eval_expr(&mut env, &expr).unwrap();
@@ -2382,9 +2422,9 @@ mod tests {
                     },
                 ],
                 return_type: spanned(TypeExpr::Int),
-                body: spanned(vec![spanned(StmtKind::Expr(spanned(
-                    ExprKind::Ident("x".into()),
-                )))]),
+                body: spanned(vec![spanned(StmtKind::Expr(spanned(ExprKind::Ident(
+                    "x".into(),
+                ))))]),
                 synthetic: false,
             }),
             DeclKind::Condition(ConditionDecl {
@@ -2482,8 +2522,16 @@ mod tests {
         let expr = spanned(ExprKind::Call {
             callee: Box::new(spanned(ExprKind::Ident("f".into()))),
             args: vec![
-                Arg { name: None, value: spanned(ExprKind::Ident("e".into())), span: dummy_span() },
-                Arg { name: None, value: spanned(ExprKind::IntLit(1)), span: dummy_span() },
+                Arg {
+                    name: None,
+                    value: spanned(ExprKind::Ident("e".into())),
+                    span: dummy_span(),
+                },
+                Arg {
+                    name: None,
+                    value: spanned(ExprKind::IntLit(1)),
+                    span: dummy_span(),
+                },
             ],
         });
         let result = crate::eval::eval_expr(&mut env, &expr).unwrap();

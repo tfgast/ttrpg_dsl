@@ -147,7 +147,10 @@ fn ose_magic_has_expected_declarations() {
     assert!(has_can_cast, "expected can_cast derive");
     assert!(has_total_spell_slots, "expected total_spell_slots derive");
     assert!(has_turn_undead_result, "expected turn_undead_result derive");
-    assert!(has_undead_rank_from_hd, "expected undead_rank_from_hd derive");
+    assert!(
+        has_undead_rank_from_hd,
+        "expected undead_rank_from_hd derive"
+    );
 }
 
 // ── Spell slot table lookups ───────────────────────────────────

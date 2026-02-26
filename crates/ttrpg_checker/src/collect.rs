@@ -1,23 +1,24 @@
 use std::collections::HashSet;
 
-use ttrpg_ast::Name;
 use ttrpg_ast::ast::*;
 use ttrpg_ast::diagnostic::Diagnostic;
 use ttrpg_ast::module::ModuleMap;
+use ttrpg_ast::Name;
 use ttrpg_ast::Span;
 
 use crate::builtins::register_builtins;
 use crate::env::*;
 use crate::ty::Ty;
 
-const VALID_COST_TOKENS: &[&str] = &["action", "bonus_action", "reaction"];
-
 /// Check if a name uses the reserved `__` prefix. Returns `true` if the name
 /// is reserved (and emits a diagnostic).
 fn check_reserved_prefix(name: &str, span: Span, diagnostics: &mut Vec<Diagnostic>) -> bool {
     if name.starts_with("__") {
         diagnostics.push(Diagnostic::error(
-            format!("names starting with `__` are reserved for internal use: `{}`", name),
+            format!(
+                "names starting with `__` are reserved for internal use: `{}`",
+                name
+            ),
             span,
         ));
         true
@@ -62,9 +63,18 @@ fn collect_inner(program: &Program, modules: Option<&ModuleMap>) -> (TypeEnv, Ve
     let mut processed_types: HashSet<Name> = HashSet::new();
     for item in &program.items {
         if let TopLevel::System(system) = &item.node {
-            pass_1b(&system.decls, &mut env, &mut diagnostics, &mut processed_types);
+            pass_1b(
+                &system.decls,
+                &mut env,
+                &mut diagnostics,
+                &mut processed_types,
+            );
         }
     }
+
+    // Validate cost clauses after all types are collected so TurnBudget-driven
+    // custom tokens are resolved correctly regardless of declaration order.
+    validate_all_cost_tokens(program, &env, &mut diagnostics);
 
     // Validate option extends chains (circular detection)
     validate_option_extends(program, &env, &mut diagnostics);
@@ -124,7 +134,8 @@ fn populate_module_metadata(
                 vis.groups.extend(imported_sys.groups.iter().cloned());
                 vis.types.extend(imported_sys.types.iter().cloned());
                 vis.functions.extend(imported_sys.functions.iter().cloned());
-                vis.conditions.extend(imported_sys.conditions.iter().cloned());
+                vis.conditions
+                    .extend(imported_sys.conditions.iter().cloned());
                 vis.events.extend(imported_sys.events.iter().cloned());
                 vis.variants.extend(imported_sys.variants.iter().cloned());
                 vis.options.extend(imported_sys.options.iter().cloned());
@@ -152,10 +163,7 @@ fn populate_module_metadata(
         for alias in aliases.keys() {
             if env.builtins.contains_key(alias) {
                 diagnostics.push(Diagnostic::error(
-                    format!(
-                        "alias \"{}\" shadows builtin function \"{}\"",
-                        alias, alias
-                    ),
+                    format!("alias \"{}\" shadows builtin function \"{}\"", alias, alias),
                     ttrpg_ast::Span::dummy(),
                 ));
             }
@@ -407,15 +415,15 @@ fn collect_enum(e: &EnumDecl, env: &mut TypeEnv, diagnostics: &mut Vec<Diagnosti
                     .filter_map(|f| {
                         if !seen_fields.insert(f.name.clone()) {
                             diagnostics.push(Diagnostic::error(
-                                format!(
-                                    "duplicate field `{}` in variant `{}`",
-                                    f.name, v.name
-                                ),
+                                format!("duplicate field `{}` in variant `{}`", f.name, v.name),
                                 f.span,
                             ));
                             return None;
                         }
-                        Some((f.name.clone(), env.resolve_type_validated(&f.ty, diagnostics)))
+                        Some((
+                            f.name.clone(),
+                            env.resolve_type_validated(&f.ty, diagnostics),
+                        ))
                     })
                     .collect()
             }
@@ -423,7 +431,10 @@ fn collect_enum(e: &EnumDecl, env: &mut TypeEnv, diagnostics: &mut Vec<Diagnosti
         };
 
         // Register variant → enum mapping (multiple enums may share a variant name)
-        env.variant_to_enums.entry(v.name.clone()).or_default().push(e.name.clone());
+        env.variant_to_enums
+            .entry(v.name.clone())
+            .or_default()
+            .push(e.name.clone());
 
         // Warn if variant name shadows a function
         if env.functions.contains_key(&v.name) || env.builtins.contains_key(&v.name) {
@@ -474,12 +485,7 @@ fn collect_struct(s: &StructDecl, env: &mut TypeEnv, diagnostics: &mut Vec<Diagn
     }
 }
 
-fn collect_group(
-    g: &GroupDecl,
-    env: &mut TypeEnv,
-    diagnostics: &mut Vec<Diagnostic>,
-    span: Span,
-) {
+fn collect_group(g: &GroupDecl, env: &mut TypeEnv, diagnostics: &mut Vec<Diagnostic>, span: Span) {
     if env.groups.contains_key(&g.name) {
         diagnostics.push(Diagnostic::error(
             format!("duplicate group declaration `{}`", g.name),
@@ -557,10 +563,7 @@ fn collect_entity(e: &EntityDecl, env: &mut TypeEnv, diagnostics: &mut Vec<Diagn
             }
             if !seen_groups.insert(g.name.clone()) {
                 diagnostics.push(Diagnostic::error(
-                    format!(
-                        "duplicate group `{}` in entity `{}`",
-                        g.name, e.name
-                    ),
+                    format!("duplicate group `{}` in entity `{}`", g.name, e.name),
                     g.span,
                 ));
                 return None;
@@ -572,12 +575,13 @@ fn collect_entity(e: &EntityDecl, env: &mut TypeEnv, diagnostics: &mut Vec<Diagn
                         Some(schema)
                     }
                     None => {
-                        let kind = if g.is_required { "included" } else { "attached" };
+                        let kind = if g.is_required {
+                            "included"
+                        } else {
+                            "attached"
+                        };
                         diagnostics.push(Diagnostic::error(
-                            format!(
-                                "unknown group `{}` {} to entity `{}`",
-                                g.name, kind, e.name
-                            ),
+                            format!("unknown group `{}` {} to entity `{}`", g.name, kind, e.name),
                             g.span,
                         ));
                         None
@@ -591,10 +595,7 @@ fn collect_entity(e: &EntityDecl, env: &mut TypeEnv, diagnostics: &mut Vec<Diagn
                 .filter_map(|f| {
                     if !seen_fields.insert(f.name.clone()) {
                         diagnostics.push(Diagnostic::error(
-                            format!(
-                                "duplicate field `{}` in group `{}`",
-                                f.name, g.name
-                            ),
+                            format!("duplicate field `{}` in group `{}`", f.name, g.name),
                             f.span,
                         ));
                         return None;
@@ -663,10 +664,7 @@ fn collect_unit(
         // Must start with a letter
         if !suffix.starts_with(|c: char| c.is_ascii_alphabetic()) {
             diagnostics.push(Diagnostic::error(
-                format!(
-                    "unit suffix `{}` must start with a letter",
-                    suffix
-                ),
+                format!("unit suffix `{}` must start with a letter", suffix),
                 span,
             ));
         }
@@ -787,10 +785,6 @@ fn collect_action(
     diagnostics: &mut Vec<Diagnostic>,
     span: Span,
 ) {
-    if let Some(ref cost) = a.cost {
-        validate_cost_tokens(cost, diagnostics);
-    }
-
     let recv_ty = env.resolve_type_validated(&a.receiver_type, diagnostics);
     if !recv_ty.is_error() && !recv_ty.is_entity() {
         diagnostics.push(Diagnostic::error(
@@ -861,10 +855,6 @@ fn collect_reaction(
     diagnostics: &mut Vec<Diagnostic>,
     span: Span,
 ) {
-    if let Some(ref cost) = r.cost {
-        validate_cost_tokens(cost, diagnostics);
-    }
-
     let recv_ty = env.resolve_type_validated(&r.receiver_type, diagnostics);
     if !recv_ty.is_error() && !recv_ty.is_entity() {
         diagnostics.push(Diagnostic::error(
@@ -916,12 +906,7 @@ fn collect_reaction(
     );
 }
 
-fn collect_hook(
-    h: &HookDecl,
-    env: &mut TypeEnv,
-    diagnostics: &mut Vec<Diagnostic>,
-    span: Span,
-) {
+fn collect_hook(h: &HookDecl, env: &mut TypeEnv, diagnostics: &mut Vec<Diagnostic>, span: Span) {
     let recv_ty = env.resolve_type_validated(&h.receiver_type, diagnostics);
     if !recv_ty.is_error() && !recv_ty.is_entity() {
         diagnostics.push(Diagnostic::error(
@@ -1050,12 +1035,7 @@ fn collect_prompt(
     );
 }
 
-fn collect_event(
-    e: &EventDecl,
-    env: &mut TypeEnv,
-    diagnostics: &mut Vec<Diagnostic>,
-    span: Span,
-) {
+fn collect_event(e: &EventDecl, env: &mut TypeEnv, diagnostics: &mut Vec<Diagnostic>, span: Span) {
     if env.events.contains_key(&e.name) {
         diagnostics.push(Diagnostic::error(
             format!("duplicate event declaration `{}`", e.name),
@@ -1106,7 +1086,10 @@ fn collect_event(
                 ));
                 return None;
             }
-            Some((f.name.clone(), env.resolve_type_validated(&f.ty, diagnostics)))
+            Some((
+                f.name.clone(),
+                env.resolve_type_validated(&f.ty, diagnostics),
+            ))
         })
         .collect();
 
@@ -1164,10 +1147,7 @@ pub fn validate_option_extends(
     for (child, (parent, span)) in &extends_map {
         if !env.options.contains(parent.as_str()) {
             diagnostics.push(Diagnostic::error(
-                format!(
-                    "option \"{}\" extends unknown option \"{}\"",
-                    child, parent
-                ),
+                format!("option \"{}\" extends unknown option \"{}\"", child, parent),
                 *span,
             ));
         }
@@ -1191,10 +1171,7 @@ pub fn validate_option_extends(
                 }
                 let (_, span) = &extends_map[start_name];
                 diagnostics.push(Diagnostic::error(
-                    format!(
-                        "circular option extends: {}",
-                        chain.join(" \u{2192} ")
-                    ),
+                    format!("circular option extends: {}", chain.join(" \u{2192} ")),
                     *span,
                 ));
                 break;
@@ -1236,14 +1213,44 @@ fn register_builtin_types(env: &mut TypeEnv) {
     }
 }
 
-fn validate_cost_tokens(cost: &CostClause, diagnostics: &mut Vec<Diagnostic>) {
+fn validate_all_cost_tokens(program: &Program, env: &TypeEnv, diagnostics: &mut Vec<Diagnostic>) {
+    for item in &program.items {
+        if let TopLevel::System(system) = &item.node {
+            for decl in &system.decls {
+                match &decl.node {
+                    DeclKind::Action(a) => {
+                        if let Some(ref cost) = a.cost {
+                            validate_cost_tokens(cost, env, diagnostics);
+                        }
+                    }
+                    DeclKind::Reaction(r) => {
+                        if let Some(ref cost) = r.cost {
+                            validate_cost_tokens(cost, env, diagnostics);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+}
+
+fn validate_cost_tokens(cost: &CostClause, env: &TypeEnv, diagnostics: &mut Vec<Diagnostic>) {
+    let expected = env
+        .valid_cost_tokens()
+        .into_iter()
+        .map(|n| n.to_string())
+        .collect::<Vec<_>>();
+
     for token in &cost.tokens {
-        if !VALID_COST_TOKENS.contains(&token.node.as_str()) {
+        if env.resolve_cost_token(&token.node).is_none() {
+            let suffix = if expected.is_empty() {
+                "no valid cost tokens are available".to_string()
+            } else {
+                format!("expected one of: {}", expected.join(", "))
+            };
             diagnostics.push(Diagnostic::error(
-                format!(
-                    "invalid cost token `{}`; expected one of: action, bonus_action, reaction",
-                    token.node
-                ),
+                format!("invalid cost token `{}`; {}", token.node, suffix),
                 token.span,
             ));
         }

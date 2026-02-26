@@ -5,8 +5,8 @@
 
 use std::collections::{BTreeMap, HashMap, VecDeque};
 
-use ttrpg_ast::FileId;
 use ttrpg_ast::diagnostic::Severity;
+use ttrpg_ast::FileId;
 use ttrpg_interp::effect::{ActionKind, Effect, EffectHandler, Response};
 use ttrpg_interp::state::{ActiveCondition, EntityRef, StateProvider};
 use ttrpg_interp::value::Value;
@@ -222,7 +222,10 @@ system "test" {
         .unwrap();
 
     // Should have MutateField effect
-    assert!(handler.log.iter().any(|e| matches!(e, Effect::MutateField { .. })));
+    assert!(handler
+        .log
+        .iter()
+        .any(|e| matches!(e, Effect::MutateField { .. })));
 }
 
 #[test]
@@ -362,7 +365,10 @@ system "test" {
     assert_eq!(val, Value::Int(42));
 
     // Verify no DeductCost
-    assert!(!handler.log.iter().any(|e| matches!(e, Effect::DeductCost { .. })));
+    assert!(!handler
+        .log
+        .iter()
+        .any(|e| matches!(e, Effect::DeductCost { .. })));
     // Only ActionStarted + ActionCompleted
     assert_eq!(handler.log.len(), 2);
 }
@@ -447,7 +453,13 @@ system "test" {
     let mut handler = ScriptedHandler::new();
 
     let err = interp
-        .execute_hook(&state, &mut handler, "Nonexistent", EntityRef(1), Value::None)
+        .execute_hook(
+            &state,
+            &mut handler,
+            "Nonexistent",
+            EntityRef(1),
+            Value::None,
+        )
         .unwrap_err();
     assert!(err.message.contains("undefined hook"));
 }

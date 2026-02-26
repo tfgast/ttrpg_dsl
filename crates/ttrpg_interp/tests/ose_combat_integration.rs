@@ -5,9 +5,9 @@
 
 use std::collections::{BTreeMap, VecDeque};
 
-use ttrpg_ast::FileId;
 use ttrpg_ast::ast::{DeclKind, TopLevel};
 use ttrpg_ast::diagnostic::Severity;
+use ttrpg_ast::FileId;
 use ttrpg_interp::effect::{Effect, EffectHandler, Response};
 use ttrpg_interp::reference_state::GameState;
 use ttrpg_interp::value::{DiceExpr, RollResult, Value};
@@ -132,9 +132,10 @@ fn scripted_roll(
 #[test]
 fn ose_combat_parses_and_typechecks() {
     let (program, _) = compile_ose_combat();
-    let has_system = program.items.iter().any(|item| {
-        matches!(&item.node, TopLevel::System(sys) if sys.name == "OSE Combat")
-    });
+    let has_system = program
+        .items
+        .iter()
+        .any(|item| matches!(&item.node, TopLevel::System(sys) if sys.name == "OSE Combat"));
     assert!(has_system, "expected system named 'OSE Combat'");
 }
 
@@ -219,7 +220,12 @@ fn target_number_unarmoured() {
 
     // THAC0 19 vs AC 9 = need 10
     let val = interp
-        .evaluate_derive(&state, &mut handler, "target_number", vec![Value::Int(19), Value::Int(9)])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "target_number",
+            vec![Value::Int(19), Value::Int(9)],
+        )
         .unwrap();
     assert_eq!(val, Value::Int(10));
 }
@@ -233,7 +239,12 @@ fn target_number_chain_mail() {
 
     // THAC0 19 vs AC 5 = need 14
     let val = interp
-        .evaluate_derive(&state, &mut handler, "target_number", vec![Value::Int(19), Value::Int(5)])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "target_number",
+            vec![Value::Int(19), Value::Int(5)],
+        )
         .unwrap();
     assert_eq!(val, Value::Int(14));
 }
@@ -247,7 +258,12 @@ fn target_number_negative_ac() {
 
     // THAC0 19 vs AC -3 = need 22 (very hard)
     let val = interp
-        .evaluate_derive(&state, &mut handler, "target_number", vec![Value::Int(19), Value::Int(-3)])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "target_number",
+            vec![Value::Int(19), Value::Int(-3)],
+        )
         .unwrap();
     assert_eq!(val, Value::Int(22));
 }
@@ -261,7 +277,12 @@ fn calc_ac_unarmoured() {
 
     // AC 9 (unarmoured), no shield, DEX mod 0
     let val = interp
-        .evaluate_derive(&state, &mut handler, "calc_ac", vec![Value::Int(9), Value::Int(0), Value::Int(0)])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "calc_ac",
+            vec![Value::Int(9), Value::Int(0), Value::Int(0)],
+        )
         .unwrap();
     assert_eq!(val, Value::Int(9));
 }
@@ -275,7 +296,12 @@ fn calc_ac_chain_with_shield_and_dex() {
 
     // Chain mail AC 5, shield (1), DEX mod +1 → 5 - 1 - 1 = 3
     let val = interp
-        .evaluate_derive(&state, &mut handler, "calc_ac", vec![Value::Int(5), Value::Int(1), Value::Int(1)])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "calc_ac",
+            vec![Value::Int(5), Value::Int(1), Value::Int(1)],
+        )
         .unwrap();
     assert_eq!(val, Value::Int(3));
 }
@@ -289,7 +315,12 @@ fn calc_ac_negative_dex() {
 
     // Leather AC 7, no shield, DEX mod -1 → 7 - 0 - (-1) = 8
     let val = interp
-        .evaluate_derive(&state, &mut handler, "calc_ac", vec![Value::Int(7), Value::Int(0), Value::Int(-1)])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "calc_ac",
+            vec![Value::Int(7), Value::Int(0), Value::Int(-1)],
+        )
         .unwrap();
     assert_eq!(val, Value::Int(8));
 }
@@ -304,8 +335,15 @@ fn missile_range_short() {
     // Short bow: 50/100/150, distance 30 → +1
     let val = interp
         .evaluate_derive(
-            &state, &mut handler, "missile_range_mod",
-            vec![Value::Int(30), Value::Int(50), Value::Int(100), Value::Int(150)],
+            &state,
+            &mut handler,
+            "missile_range_mod",
+            vec![
+                Value::Int(30),
+                Value::Int(50),
+                Value::Int(100),
+                Value::Int(150),
+            ],
         )
         .unwrap();
     assert_eq!(val, Value::Int(1));
@@ -321,8 +359,15 @@ fn missile_range_short_boundary() {
     // Exactly at short range boundary → +1
     let val = interp
         .evaluate_derive(
-            &state, &mut handler, "missile_range_mod",
-            vec![Value::Int(50), Value::Int(50), Value::Int(100), Value::Int(150)],
+            &state,
+            &mut handler,
+            "missile_range_mod",
+            vec![
+                Value::Int(50),
+                Value::Int(50),
+                Value::Int(100),
+                Value::Int(150),
+            ],
         )
         .unwrap();
     assert_eq!(val, Value::Int(1));
@@ -338,8 +383,15 @@ fn missile_range_medium() {
     // distance 75, medium range → 0
     let val = interp
         .evaluate_derive(
-            &state, &mut handler, "missile_range_mod",
-            vec![Value::Int(75), Value::Int(50), Value::Int(100), Value::Int(150)],
+            &state,
+            &mut handler,
+            "missile_range_mod",
+            vec![
+                Value::Int(75),
+                Value::Int(50),
+                Value::Int(100),
+                Value::Int(150),
+            ],
         )
         .unwrap();
     assert_eq!(val, Value::Int(0));
@@ -355,8 +407,15 @@ fn missile_range_long() {
     // distance 120, long range → -1
     let val = interp
         .evaluate_derive(
-            &state, &mut handler, "missile_range_mod",
-            vec![Value::Int(120), Value::Int(50), Value::Int(100), Value::Int(150)],
+            &state,
+            &mut handler,
+            "missile_range_mod",
+            vec![
+                Value::Int(120),
+                Value::Int(50),
+                Value::Int(100),
+                Value::Int(150),
+            ],
         )
         .unwrap();
     assert_eq!(val, Value::Int(-1));
@@ -414,7 +473,10 @@ fn phase_actor_order_uses_enum_inputs_and_outputs() {
         .unwrap();
     assert_eq!(
         melee_party_first,
-        Value::List(vec![phase_actor_slot("Party"), phase_actor_slot("Monsters")])
+        Value::List(vec![
+            phase_actor_slot("Party"),
+            phase_actor_slot("Monsters")
+        ])
     );
 }
 
@@ -505,20 +567,20 @@ fn monster_thac0_all_tiers() {
     let mut handler = NullHandler;
 
     let cases = vec![
-        (0, 20),  // Normal Human
-        (1, 19),  // HD 1-3
+        (0, 20), // Normal Human
+        (1, 19), // HD 1-3
         (3, 19),
-        (4, 17),  // HD 4-6
+        (4, 17), // HD 4-6
         (6, 17),
-        (7, 14),  // HD 7-9
+        (7, 14), // HD 7-9
         (9, 14),
         (10, 12), // HD 10-12
         (12, 12),
         (13, 10), // HD 13-15
         (15, 10),
-        (16, 8),  // HD 16-18
+        (16, 8), // HD 16-18
         (18, 8),
-        (19, 6),  // HD 19+ (wildcard)
+        (19, 6), // HD 19+ (wildcard)
         (25, 6),
     ];
 
@@ -526,7 +588,13 @@ fn monster_thac0_all_tiers() {
         let val = interp
             .evaluate_derive(&state, &mut handler, "test_thac0", vec![Value::Int(hd)])
             .unwrap();
-        assert_eq!(val, Value::Int(expected_thac0), "HD {} should have THAC0 {}", hd, expected_thac0);
+        assert_eq!(
+            val,
+            Value::Int(expected_thac0),
+            "HD {} should have THAC0 {}",
+            hd,
+            expected_thac0
+        );
     }
 }
 
@@ -550,7 +618,12 @@ fn reaction_outcome_all_tiers() {
 
     for (roll, expected_variant) in cases {
         let val = interp
-            .evaluate_derive(&state, &mut handler, "test_reaction", vec![Value::Int(roll)])
+            .evaluate_derive(
+                &state,
+                &mut handler,
+                "test_reaction",
+                vec![Value::Int(roll)],
+            )
             .unwrap();
         assert_eq!(
             val,
@@ -680,12 +753,7 @@ fn morale_check_hold() {
     let mut handler = ScriptedHandler::with_responses(vec![roll]);
 
     let val = interp
-        .evaluate_mechanic(
-            &state,
-            &mut handler,
-            "morale_check",
-            vec![Value::Int(7)],
-        )
+        .evaluate_mechanic(&state, &mut handler, "morale_check", vec![Value::Int(7)])
         .unwrap();
     assert_eq!(val, enum_variant("MoraleOutcome", "Hold"));
 }
@@ -701,12 +769,7 @@ fn morale_check_fail() {
     let mut handler = ScriptedHandler::with_responses(vec![roll]);
 
     let val = interp
-        .evaluate_mechanic(
-            &state,
-            &mut handler,
-            "morale_check",
-            vec![Value::Int(7)],
-        )
+        .evaluate_mechanic(&state, &mut handler, "morale_check", vec![Value::Int(7)])
         .unwrap();
     assert_eq!(val, enum_variant("MoraleOutcome", "Fail"));
 }
@@ -722,12 +785,7 @@ fn morale_check_exact_score_holds() {
     let mut handler = ScriptedHandler::with_responses(vec![roll]);
 
     let val = interp
-        .evaluate_mechanic(
-            &state,
-            &mut handler,
-            "morale_check",
-            vec![Value::Int(7)],
-        )
+        .evaluate_mechanic(&state, &mut handler, "morale_check", vec![Value::Int(7)])
         .unwrap();
     assert_eq!(val, enum_variant("MoraleOutcome", "Hold"));
 }
@@ -743,12 +801,7 @@ fn reaction_roll_neutral() {
     let mut handler = ScriptedHandler::with_responses(vec![roll]);
 
     let val = interp
-        .evaluate_mechanic(
-            &state,
-            &mut handler,
-            "reaction_roll",
-            vec![Value::Int(0)],
-        )
+        .evaluate_mechanic(&state, &mut handler, "reaction_roll", vec![Value::Int(0)])
         .unwrap();
     assert_eq!(val, enum_variant("ReactionOutcome", "Neutral"));
 }
@@ -764,12 +817,7 @@ fn reaction_roll_with_cha_bonus() {
     let mut handler = ScriptedHandler::with_responses(vec![roll]);
 
     let val = interp
-        .evaluate_mechanic(
-            &state,
-            &mut handler,
-            "reaction_roll",
-            vec![Value::Int(2)],
-        )
+        .evaluate_mechanic(&state, &mut handler, "reaction_roll", vec![Value::Int(2)])
         .unwrap();
     assert_eq!(val, enum_variant("ReactionOutcome", "Indifferent"));
 }
@@ -785,12 +833,7 @@ fn reaction_roll_clamped_low() {
     let mut handler = ScriptedHandler::with_responses(vec![roll]);
 
     let val = interp
-        .evaluate_mechanic(
-            &state,
-            &mut handler,
-            "reaction_roll",
-            vec![Value::Int(-3)],
-        )
+        .evaluate_mechanic(&state, &mut handler, "reaction_roll", vec![Value::Int(-3)])
         .unwrap();
     assert_eq!(val, enum_variant("ReactionOutcome", "Hostile"));
 }
@@ -806,12 +849,7 @@ fn reaction_roll_clamped_high() {
     let mut handler = ScriptedHandler::with_responses(vec![roll]);
 
     let val = interp
-        .evaluate_mechanic(
-            &state,
-            &mut handler,
-            "reaction_roll",
-            vec![Value::Int(3)],
-        )
+        .evaluate_mechanic(&state, &mut handler, "reaction_roll", vec![Value::Int(3)])
         .unwrap();
     assert_eq!(val, enum_variant("ReactionOutcome", "Friendly"));
 }

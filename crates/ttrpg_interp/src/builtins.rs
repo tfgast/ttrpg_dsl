@@ -2,10 +2,10 @@ use std::collections::BTreeMap;
 use ttrpg_ast::Name;
 use ttrpg_ast::Span;
 
-use crate::Env;
-use crate::RuntimeError;
 use crate::effect::{Effect, Response};
 use crate::value::{DiceExpr, Value};
+use crate::Env;
+use crate::RuntimeError;
 
 // ── Builtin dispatch ───────────────────────────────────────────
 
@@ -26,6 +26,7 @@ pub(crate) fn call_builtin(
         "distance" => builtin_distance(env, &args, span),
         "dice" => builtin_dice(&args, span),
         "multiply_dice" => builtin_multiply_dice(&args, span),
+        "error" => builtin_error(&args, span),
         "roll" => builtin_roll(env, &args, span),
         "apply_condition" => builtin_apply_condition(env, &args, span),
         "remove_condition" => builtin_remove_condition(env, &args, span),
@@ -33,6 +34,22 @@ pub(crate) fn call_builtin(
             format!("unknown builtin function '{}'", name),
             span,
         )),
+    }
+}
+
+// ── error ─────────────────────────────────────────────────────
+
+/// `error(message: String) -> <never>`
+///
+/// Always aborts evaluation with the provided message.
+fn builtin_error(args: &[Value], span: Span) -> Result<Value, RuntimeError> {
+    match args.first() {
+        Some(Value::Str(message)) => Err(RuntimeError::with_span(message.clone(), span)),
+        Some(other) => Err(RuntimeError::with_span(
+            format!("error() expects String, got {}", type_name(other)),
+            span,
+        )),
+        None => Err(RuntimeError::with_span("error() requires 1 argument", span)),
     }
 }
 
@@ -179,16 +196,10 @@ fn builtin_dice(args: &[Value], span: Span) -> Result<Value, RuntimeError> {
                 ));
             }
             let count_u32 = u32::try_from(*count).map_err(|_| {
-                RuntimeError::with_span(
-                    format!("dice() count {} overflows u32", count),
-                    span,
-                )
+                RuntimeError::with_span(format!("dice() count {} overflows u32", count), span)
             })?;
             let sides_u32 = u32::try_from(*sides).map_err(|_| {
-                RuntimeError::with_span(
-                    format!("dice() sides {} overflows u32", sides),
-                    span,
-                )
+                RuntimeError::with_span(format!("dice() sides {} overflows u32", sides), span)
             })?;
             Ok(Value::DiceExpr(DiceExpr {
                 count: count_u32,
@@ -205,10 +216,7 @@ fn builtin_dice(args: &[Value], span: Span) -> Result<Value, RuntimeError> {
             ),
             span,
         )),
-        _ => Err(RuntimeError::with_span(
-            "dice() requires 2 arguments",
-            span,
-        )),
+        _ => Err(RuntimeError::with_span("dice() requires 2 arguments", span)),
     }
 }
 
@@ -296,7 +304,14 @@ fn builtin_apply_condition(
     span: Span,
 ) -> Result<Value, RuntimeError> {
     match (args.first(), args.get(1), args.get(2)) {
-        (Some(Value::Entity(target)), Some(Value::Condition { name: cond_name, args: cond_args }), Some(duration)) => {
+        (
+            Some(Value::Entity(target)),
+            Some(Value::Condition {
+                name: cond_name,
+                args: cond_args,
+            }),
+            Some(duration),
+        ) => {
             let effect = Effect::ApplyCondition {
                 target: *target,
                 condition: cond_name.clone(),
@@ -344,7 +359,13 @@ fn builtin_remove_condition(
     span: Span,
 ) -> Result<Value, RuntimeError> {
     match (args.first(), args.get(1)) {
-        (Some(Value::Entity(target)), Some(Value::Condition { name: cond_name, args: cond_args })) => {
+        (
+            Some(Value::Entity(target)),
+            Some(Value::Condition {
+                name: cond_name,
+                args: cond_args,
+            }),
+        ) => {
             let effect = Effect::RemoveCondition {
                 target: *target,
                 condition: cond_name.clone(),
@@ -484,5 +505,19 @@ mod tests {
     fn ceil_normal_value_works() {
         let result = builtin_ceil(&[Value::Float(3.2)], dummy_span());
         assert_eq!(result.unwrap(), Value::Int(4));
+    }
+
+    #[test]
+    fn error_builtin_returns_runtime_error_with_message() {
+        let result = builtin_error(&[Value::Str("boom".into())], dummy_span());
+        let err = result.unwrap_err();
+        assert!(err.message.contains("boom"));
+    }
+
+    #[test]
+    fn error_builtin_rejects_non_string_argument() {
+        let result = builtin_error(&[Value::Int(42)], dummy_span());
+        let err = result.unwrap_err();
+        assert!(err.message.contains("expects String"));
     }
 }

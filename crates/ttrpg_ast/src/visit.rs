@@ -270,7 +270,9 @@ impl VisitSpansMut for ModifyBinding {
 impl VisitSpansMut for ModifyStmt {
     fn visit_spans_mut(&mut self, f: &mut dyn FnMut(&mut Span)) {
         match self {
-            ModifyStmt::Let { ty, value, span, .. } => {
+            ModifyStmt::Let {
+                ty, value, span, ..
+            } => {
                 span.visit_spans_mut(f);
                 ty.visit_spans_mut(f);
                 value.visit_spans_mut(f);
@@ -283,7 +285,12 @@ impl VisitSpansMut for ModifyStmt {
                 span.visit_spans_mut(f);
                 value.visit_spans_mut(f);
             }
-            ModifyStmt::If { condition, then_body, else_body, span } => {
+            ModifyStmt::If {
+                condition,
+                then_body,
+                else_body,
+                span,
+            } => {
                 span.visit_spans_mut(f);
                 condition.visit_spans_mut(f);
                 then_body.visit_spans_mut(f);
@@ -443,12 +450,21 @@ impl VisitSpansMut for ExprKind {
             ExprKind::Paren(inner) => {
                 inner.visit_spans_mut(f);
             }
-            ExprKind::If { condition, then_block, else_branch } => {
+            ExprKind::If {
+                condition,
+                then_block,
+                else_branch,
+            } => {
                 condition.visit_spans_mut(f);
                 then_block.visit_spans_mut(f);
                 else_branch.visit_spans_mut(f);
             }
-            ExprKind::IfLet { pattern, scrutinee, then_block, else_branch } => {
+            ExprKind::IfLet {
+                pattern,
+                scrutinee,
+                then_block,
+                else_branch,
+            } => {
                 pattern.visit_spans_mut(f);
                 scrutinee.visit_spans_mut(f);
                 then_block.visit_spans_mut(f);
@@ -461,12 +477,21 @@ impl VisitSpansMut for ExprKind {
             ExprKind::GuardMatch { arms } => {
                 arms.visit_spans_mut(f);
             }
-            ExprKind::For { pattern, iterable, body } => {
+            ExprKind::For {
+                pattern,
+                iterable,
+                body,
+            } => {
                 pattern.visit_spans_mut(f);
                 iterable.visit_spans_mut(f);
                 body.visit_spans_mut(f);
             }
-            ExprKind::ListComprehension { element, pattern, iterable, filter } => {
+            ExprKind::ListComprehension {
+                element,
+                pattern,
+                iterable,
+                filter,
+            } => {
                 element.visit_spans_mut(f);
                 pattern.visit_spans_mut(f);
                 iterable.visit_spans_mut(f);

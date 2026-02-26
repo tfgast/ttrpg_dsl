@@ -1,17 +1,17 @@
 use std::collections::BTreeMap;
 
-use ttrpg_ast::{Name, Span, Spanned};
 use ttrpg_ast::ast::{Arg, ExprKind, Param};
+use ttrpg_ast::{Name, Span, Spanned};
 use ttrpg_checker::env::{DeclInfo, FnKind, ParamInfo};
 
-use crate::Env;
-use crate::RuntimeError;
 use crate::action::execute_action;
 use crate::builtins::call_builtin;
 use crate::effect::{Effect, Response};
 use crate::eval::{eval_block, eval_expr, type_name};
 use crate::pipeline::{collect_modifiers_owned, run_phase1, run_phase2};
 use crate::value::{DiceExpr, Value};
+use crate::Env;
+use crate::RuntimeError;
 
 // ── Call dispatch ───────────────────────────────────────────────
 
@@ -31,7 +31,12 @@ pub(crate) fn eval_call(
             // 1. Check if it's a bare enum variant (via resolution table or unique owner).
             //    Variants shadow functions with the same name, matching the
             //    checker's resolution order (check_expr.rs:630).
-            let resolved = env.interp.type_env.resolved_variants.get(&callee.span).cloned()
+            let resolved = env
+                .interp
+                .type_env
+                .resolved_variants
+                .get(&callee.span)
+                .cloned()
                 .or_else(|| env.interp.type_env.unique_variant_owner(name).cloned());
             if let Some(enum_name) = resolved {
                 return construct_enum_variant(env, &enum_name, name, args, call_span);
@@ -70,12 +75,19 @@ pub(crate) fn eval_call(
             if let Some(cond_decl) = env.interp.program.conditions.get(name.as_str()) {
                 let cond_decl = cond_decl.clone();
                 // Reuse bind_args for named arg resolution + default materialization
-                let param_infos = env.interp.type_env.conditions.get(name.as_str())
+                let param_infos = env
+                    .interp
+                    .type_env
+                    .conditions
+                    .get(name.as_str())
                     .map(|ci| ci.params.clone())
                     .unwrap_or_default();
                 let bound = bind_args(&param_infos, args, Some(&cond_decl.params), env, call_span)?;
                 let cond_args: BTreeMap<Name, Value> = bound.into_iter().collect();
-                return Ok(Value::Condition { name: name.clone(), args: cond_args });
+                return Ok(Value::Condition {
+                    name: name.clone(),
+                    args: cond_args,
+                });
             }
 
             // 4. Check if it's a function (user-defined or builtin)
@@ -93,12 +105,8 @@ pub(crate) fn eval_call(
         // ── Qualified access: enum constructor (e.g. Duration.rounds(3)) ──
         ExprKind::FieldAccess { object, field } => {
             if let ExprKind::Ident(obj_name) = &object.node {
-                if let Some(DeclInfo::Enum(_)) =
-                    env.interp.type_env.types.get(obj_name.as_str())
-                {
-                    return construct_enum_variant(
-                        env, obj_name, field, args, call_span,
-                    );
+                if let Some(DeclInfo::Enum(_)) = env.interp.type_env.types.get(obj_name.as_str()) {
+                    return construct_enum_variant(env, obj_name, field, args, call_span);
                 }
             }
             // Action method call: entity.Action(args)
@@ -123,17 +131,18 @@ pub(crate) fn eval_call(
 
 // ── ordinal / from_ordinal builtins ────────────────────────────
 
-fn eval_ordinal(
-    env: &mut Env,
-    args: &[Arg],
-    call_span: Span,
-) -> Result<Value, RuntimeError> {
+fn eval_ordinal(env: &mut Env, args: &[Arg], call_span: Span) -> Result<Value, RuntimeError> {
     if args.is_empty() {
-        return Err(RuntimeError::with_span("ordinal() requires 1 argument", call_span));
+        return Err(RuntimeError::with_span(
+            "ordinal() requires 1 argument",
+            call_span,
+        ));
     }
     let val = eval_expr(env, &args[0].value)?;
     match &val {
-        Value::EnumVariant { enum_name, variant, .. } => {
+        Value::EnumVariant {
+            enum_name, variant, ..
+        } => {
             let ordinal = crate::eval::variant_ordinal(env.interp.type_env, enum_name, variant)
                 .ok_or_else(|| {
                     RuntimeError::with_span(
@@ -150,13 +159,12 @@ fn eval_ordinal(
     }
 }
 
-fn eval_from_ordinal(
-    env: &mut Env,
-    args: &[Arg],
-    call_span: Span,
-) -> Result<Value, RuntimeError> {
+fn eval_from_ordinal(env: &mut Env, args: &[Arg], call_span: Span) -> Result<Value, RuntimeError> {
     if args.len() < 2 {
-        return Err(RuntimeError::with_span("from_ordinal() requires 2 arguments", call_span));
+        return Err(RuntimeError::with_span(
+            "from_ordinal() requires 2 arguments",
+            call_span,
+        ));
     }
     let ns_val = eval_expr(env, &args[0].value)?;
     let idx_val = eval_expr(env, &args[1].value)?;
@@ -165,7 +173,10 @@ fn eval_from_ordinal(
         Value::EnumNamespace(name) => name.clone(),
         _ => {
             return Err(RuntimeError::with_span(
-                format!("from_ordinal() first argument must be an enum type, got {}", type_name(&ns_val)),
+                format!(
+                    "from_ordinal() first argument must be an enum type, got {}",
+                    type_name(&ns_val)
+                ),
                 call_span,
             ));
         }
@@ -175,7 +186,10 @@ fn eval_from_ordinal(
         Value::Int(n) => *n,
         _ => {
             return Err(RuntimeError::with_span(
-                format!("from_ordinal() second argument must be int, got {}", type_name(&idx_val)),
+                format!(
+                    "from_ordinal() second argument must be int, got {}",
+                    type_name(&idx_val)
+                ),
                 call_span,
             ));
         }
@@ -203,7 +217,9 @@ fn eval_from_ordinal(
         return Err(RuntimeError::with_span(
             format!(
                 "from_ordinal() index {} out of range for enum `{}` (0..{})",
-                idx, enum_name, info.variants.len()
+                idx,
+                enum_name,
+                info.variants.len()
             ),
             call_span,
         ));
@@ -233,7 +249,10 @@ fn eval_try_from_ordinal(
     call_span: Span,
 ) -> Result<Value, RuntimeError> {
     if args.len() < 2 {
-        return Err(RuntimeError::with_span("try_from_ordinal() requires 2 arguments", call_span));
+        return Err(RuntimeError::with_span(
+            "try_from_ordinal() requires 2 arguments",
+            call_span,
+        ));
     }
     let ns_val = eval_expr(env, &args[0].value)?;
     let idx_val = eval_expr(env, &args[1].value)?;
@@ -242,7 +261,10 @@ fn eval_try_from_ordinal(
         Value::EnumNamespace(name) => name.clone(),
         _ => {
             return Err(RuntimeError::with_span(
-                format!("try_from_ordinal() first argument must be an enum type, got {}", type_name(&ns_val)),
+                format!(
+                    "try_from_ordinal() first argument must be an enum type, got {}",
+                    type_name(&ns_val)
+                ),
                 call_span,
             ));
         }
@@ -252,7 +274,10 @@ fn eval_try_from_ordinal(
         Value::Int(n) => *n,
         _ => {
             return Err(RuntimeError::with_span(
-                format!("try_from_ordinal() second argument must be int, got {}", type_name(&idx_val)),
+                format!(
+                    "try_from_ordinal() second argument must be int, got {}",
+                    type_name(&idx_val)
+                ),
                 call_span,
             ));
         }
@@ -291,13 +316,12 @@ fn eval_try_from_ordinal(
 
 // ── Collection builtins ─────────────────────────────────────────
 
-fn eval_len(
-    env: &mut Env,
-    args: &[Arg],
-    call_span: Span,
-) -> Result<Value, RuntimeError> {
+fn eval_len(env: &mut Env, args: &[Arg], call_span: Span) -> Result<Value, RuntimeError> {
     if args.is_empty() {
-        return Err(RuntimeError::with_span("len() requires 1 argument", call_span));
+        return Err(RuntimeError::with_span(
+            "len() requires 1 argument",
+            call_span,
+        ));
     }
     let val = eval_expr(env, &args[0].value)?;
     match &val {
@@ -311,13 +335,12 @@ fn eval_len(
     }
 }
 
-fn eval_keys(
-    env: &mut Env,
-    args: &[Arg],
-    call_span: Span,
-) -> Result<Value, RuntimeError> {
+fn eval_keys(env: &mut Env, args: &[Arg], call_span: Span) -> Result<Value, RuntimeError> {
     if args.is_empty() {
-        return Err(RuntimeError::with_span("keys() requires 1 argument", call_span));
+        return Err(RuntimeError::with_span(
+            "keys() requires 1 argument",
+            call_span,
+        ));
     }
     let val = eval_expr(env, &args[0].value)?;
     match val {
@@ -329,13 +352,12 @@ fn eval_keys(
     }
 }
 
-fn eval_values(
-    env: &mut Env,
-    args: &[Arg],
-    call_span: Span,
-) -> Result<Value, RuntimeError> {
+fn eval_values(env: &mut Env, args: &[Arg], call_span: Span) -> Result<Value, RuntimeError> {
     if args.is_empty() {
-        return Err(RuntimeError::with_span("values() requires 1 argument", call_span));
+        return Err(RuntimeError::with_span(
+            "values() requires 1 argument",
+            call_span,
+        ));
     }
     let val = eval_expr(env, &args[0].value)?;
     match val {
@@ -347,17 +369,18 @@ fn eval_values(
     }
 }
 
-fn eval_first(
-    env: &mut Env,
-    args: &[Arg],
-    call_span: Span,
-) -> Result<Value, RuntimeError> {
+fn eval_first(env: &mut Env, args: &[Arg], call_span: Span) -> Result<Value, RuntimeError> {
     if args.is_empty() {
-        return Err(RuntimeError::with_span("first() requires 1 argument", call_span));
+        return Err(RuntimeError::with_span(
+            "first() requires 1 argument",
+            call_span,
+        ));
     }
     let val = eval_expr(env, &args[0].value)?;
     match val {
-        Value::List(v) => Ok(v.into_iter().next()
+        Value::List(v) => Ok(v
+            .into_iter()
+            .next()
             .map(|v| Value::Option(Some(Box::new(v))))
             .unwrap_or(Value::None)),
         _ => Err(RuntimeError::with_span(
@@ -367,17 +390,18 @@ fn eval_first(
     }
 }
 
-fn eval_last(
-    env: &mut Env,
-    args: &[Arg],
-    call_span: Span,
-) -> Result<Value, RuntimeError> {
+fn eval_last(env: &mut Env, args: &[Arg], call_span: Span) -> Result<Value, RuntimeError> {
     if args.is_empty() {
-        return Err(RuntimeError::with_span("last() requires 1 argument", call_span));
+        return Err(RuntimeError::with_span(
+            "last() requires 1 argument",
+            call_span,
+        ));
     }
     let val = eval_expr(env, &args[0].value)?;
     match val {
-        Value::List(v) => Ok(v.into_iter().next_back()
+        Value::List(v) => Ok(v
+            .into_iter()
+            .next_back()
             .map(|v| Value::Option(Some(Box::new(v))))
             .unwrap_or(Value::None)),
         _ => Err(RuntimeError::with_span(
@@ -387,13 +411,12 @@ fn eval_last(
     }
 }
 
-fn eval_append(
-    env: &mut Env,
-    args: &[Arg],
-    call_span: Span,
-) -> Result<Value, RuntimeError> {
+fn eval_append(env: &mut Env, args: &[Arg], call_span: Span) -> Result<Value, RuntimeError> {
     if args.len() < 2 {
-        return Err(RuntimeError::with_span("append() requires 2 arguments", call_span));
+        return Err(RuntimeError::with_span(
+            "append() requires 2 arguments",
+            call_span,
+        ));
     }
     let list_val = eval_expr(env, &args[0].value)?;
     let elem_val = eval_expr(env, &args[1].value)?;
@@ -403,19 +426,21 @@ fn eval_append(
             Ok(Value::List(v))
         }
         _ => Err(RuntimeError::with_span(
-            format!("append() first argument must be a list, got {}", type_name(&list_val)),
+            format!(
+                "append() first argument must be a list, got {}",
+                type_name(&list_val)
+            ),
             call_span,
         )),
     }
 }
 
-fn eval_concat(
-    env: &mut Env,
-    args: &[Arg],
-    call_span: Span,
-) -> Result<Value, RuntimeError> {
+fn eval_concat(env: &mut Env, args: &[Arg], call_span: Span) -> Result<Value, RuntimeError> {
     if args.len() < 2 {
-        return Err(RuntimeError::with_span("concat() requires 2 arguments", call_span));
+        return Err(RuntimeError::with_span(
+            "concat() requires 2 arguments",
+            call_span,
+        ));
     }
     let first_val = eval_expr(env, &args[0].value)?;
     let second_val = eval_expr(env, &args[1].value)?;
@@ -425,23 +450,29 @@ fn eval_concat(
             Ok(Value::List(a))
         }
         (Value::List(_), _) => Err(RuntimeError::with_span(
-            format!("concat() second argument must be a list, got {}", type_name(&second_val)),
+            format!(
+                "concat() second argument must be a list, got {}",
+                type_name(&second_val)
+            ),
             call_span,
         )),
         (ref other, _) => Err(RuntimeError::with_span(
-            format!("concat() expects two lists, got {} and {}", type_name(other), type_name(&second_val)),
+            format!(
+                "concat() expects two lists, got {} and {}",
+                type_name(other),
+                type_name(&second_val)
+            ),
             call_span,
         )),
     }
 }
 
-fn eval_reverse(
-    env: &mut Env,
-    args: &[Arg],
-    call_span: Span,
-) -> Result<Value, RuntimeError> {
+fn eval_reverse(env: &mut Env, args: &[Arg], call_span: Span) -> Result<Value, RuntimeError> {
     if args.is_empty() {
-        return Err(RuntimeError::with_span("reverse() requires 1 argument", call_span));
+        return Err(RuntimeError::with_span(
+            "reverse() requires 1 argument",
+            call_span,
+        ));
     }
     let val = eval_expr(env, &args[0].value)?;
     match val {
@@ -456,13 +487,12 @@ fn eval_reverse(
     }
 }
 
-fn eval_sum(
-    env: &mut Env,
-    args: &[Arg],
-    call_span: Span,
-) -> Result<Value, RuntimeError> {
+fn eval_sum(env: &mut Env, args: &[Arg], call_span: Span) -> Result<Value, RuntimeError> {
     if args.is_empty() {
-        return Err(RuntimeError::with_span("sum() requires 1 argument", call_span));
+        return Err(RuntimeError::with_span(
+            "sum() requires 1 argument",
+            call_span,
+        ));
     }
     let val = eval_expr(env, &args[0].value)?;
     match val {
@@ -491,7 +521,10 @@ fn eval_sum(
                     }
                     _ => {
                         return Err(RuntimeError::with_span(
-                            format!("sum() requires list of int or float, got {}", type_name(item)),
+                            format!(
+                                "sum() requires list of int or float, got {}",
+                                type_name(item)
+                            ),
                             call_span,
                         ));
                     }
@@ -510,13 +543,12 @@ fn eval_sum(
     }
 }
 
-fn eval_any(
-    env: &mut Env,
-    args: &[Arg],
-    call_span: Span,
-) -> Result<Value, RuntimeError> {
+fn eval_any(env: &mut Env, args: &[Arg], call_span: Span) -> Result<Value, RuntimeError> {
     if args.is_empty() {
-        return Err(RuntimeError::with_span("any() requires 1 argument", call_span));
+        return Err(RuntimeError::with_span(
+            "any() requires 1 argument",
+            call_span,
+        ));
     }
     let val = eval_expr(env, &args[0].value)?;
     match val {
@@ -542,13 +574,12 @@ fn eval_any(
     }
 }
 
-fn eval_all(
-    env: &mut Env,
-    args: &[Arg],
-    call_span: Span,
-) -> Result<Value, RuntimeError> {
+fn eval_all(env: &mut Env, args: &[Arg], call_span: Span) -> Result<Value, RuntimeError> {
     if args.is_empty() {
-        return Err(RuntimeError::with_span("all() requires 1 argument", call_span));
+        return Err(RuntimeError::with_span(
+            "all() requires 1 argument",
+            call_span,
+        ));
     }
     let val = eval_expr(env, &args[0].value)?;
     match val {
@@ -574,13 +605,12 @@ fn eval_all(
     }
 }
 
-fn eval_sort(
-    env: &mut Env,
-    args: &[Arg],
-    call_span: Span,
-) -> Result<Value, RuntimeError> {
+fn eval_sort(env: &mut Env, args: &[Arg], call_span: Span) -> Result<Value, RuntimeError> {
     if args.is_empty() {
-        return Err(RuntimeError::with_span("sort() requires 1 argument", call_span));
+        return Err(RuntimeError::with_span(
+            "sort() requires 1 argument",
+            call_span,
+        ));
     }
     let val = eval_expr(env, &args[0].value)?;
     match val {
@@ -595,11 +625,7 @@ fn eval_sort(
     }
 }
 
-fn eval_some(
-    env: &mut Env,
-    args: &[Arg],
-    call_span: Span,
-) -> Result<Value, RuntimeError> {
+fn eval_some(env: &mut Env, args: &[Arg], call_span: Span) -> Result<Value, RuntimeError> {
     if args.len() != 1 {
         return Err(RuntimeError::with_span(
             format!("some() requires 1 argument, got {}", args.len()),
@@ -659,10 +685,7 @@ pub(crate) fn evaluate_fn_with_values(
         .get(name)
         .or_else(|| env.interp.program.mechanics.get(name))
         .ok_or_else(|| {
-            RuntimeError::with_span(
-                format!("undefined function '{}'", name),
-                call_span,
-            )
+            RuntimeError::with_span(format!("undefined function '{}'", name), call_span)
         })?;
 
     let ast_params = fn_decl.params.clone();
@@ -767,7 +790,10 @@ fn dispatch_derive_or_mechanic(
         .or_else(|| env.interp.program.mechanics.get(name))
         .ok_or_else(|| {
             RuntimeError::with_span(
-                format!("internal error: no declaration found for function '{}'", name),
+                format!(
+                    "internal error: no declaration found for function '{}'",
+                    name
+                ),
                 call_span,
             )
         })?;
@@ -835,17 +861,12 @@ fn dispatch_table(
     call_span: Span,
 ) -> Result<Value, RuntimeError> {
     // Look up the table declaration
-    let table_decl = env
-        .interp
-        .program
-        .tables
-        .get(name)
-        .ok_or_else(|| {
-            RuntimeError::with_span(
-                format!("internal error: no declaration found for table '{}'", name),
-                call_span,
-            )
-        })?;
+    let table_decl = env.interp.program.tables.get(name).ok_or_else(|| {
+        RuntimeError::with_span(
+            format!("internal error: no declaration found for table '{}'", name),
+            call_span,
+        )
+    })?;
     let ast_params: Vec<Param> = table_decl.params.clone();
 
     // Bind arguments
@@ -880,17 +901,12 @@ fn dispatch_table_core(
 ) -> Result<Value, RuntimeError> {
     use ttrpg_ast::ast::TableKey;
 
-    let table_decl = env
-        .interp
-        .program
-        .tables
-        .get(name)
-        .ok_or_else(|| {
-            RuntimeError::with_span(
-                format!("internal error: no declaration found for table '{}'", name),
-                call_span,
-            )
-        })?;
+    let table_decl = env.interp.program.tables.get(name).ok_or_else(|| {
+        RuntimeError::with_span(
+            format!("internal error: no declaration found for table '{}'", name),
+            call_span,
+        )
+    })?;
     let entries = table_decl.entries.clone();
 
     // Try each entry in order
@@ -1085,13 +1101,7 @@ fn dispatch_action_method(
     };
 
     // Bind remaining arguments against the action's regular params (not receiver)
-    let bound = bind_args(
-        &fn_info.params,
-        args,
-        Some(&ast_params),
-        env,
-        call_span,
-    )?;
+    let bound = bind_args(&fn_info.params, args, Some(&ast_params), env, call_span)?;
 
     execute_action(env, &action_decl, actor, bound, call_span)
 }
@@ -1104,17 +1114,12 @@ fn dispatch_prompt(
     args: &[Arg],
     call_span: Span,
 ) -> Result<Value, RuntimeError> {
-    let prompt_decl = env
-        .interp
-        .program
-        .prompts
-        .get(name)
-        .ok_or_else(|| {
-            RuntimeError::with_span(
-                format!("internal error: no declaration found for prompt '{}'", name),
-                call_span,
-            )
-        })?;
+    let prompt_decl = env.interp.program.prompts.get(name).ok_or_else(|| {
+        RuntimeError::with_span(
+            format!("internal error: no declaration found for prompt '{}'", name),
+            call_span,
+        )
+    })?;
 
     let hint = prompt_decl.hint.clone();
     let suggest_expr = prompt_decl.suggest.clone();
@@ -1261,15 +1266,9 @@ fn bind_args(
     let mut named_slots = vec![false; params.len()];
     for arg in args {
         if let Some(ref name) = arg.name {
-            let pos = params
-                .iter()
-                .position(|p| p.name == *name)
-                .ok_or_else(|| {
-                    RuntimeError::with_span(
-                        format!("unknown parameter '{}'", name),
-                        arg.span,
-                    )
-                })?;
+            let pos = params.iter().position(|p| p.name == *name).ok_or_else(|| {
+                RuntimeError::with_span(format!("unknown parameter '{}'", name), arg.span)
+            })?;
             if named_slots[pos] {
                 return Err(RuntimeError::with_span(
                     format!("duplicate argument for parameter '{}'", name),
@@ -1477,7 +1476,9 @@ fn eval_list_method(
     args: &[Arg],
     span: Span,
 ) -> Result<Value, RuntimeError> {
-    let Value::List(list) = object else { unreachable!() };
+    let Value::List(list) = object else {
+        unreachable!()
+    };
     match method {
         "len" => Ok(Value::Int(list.len() as i64)),
         "first" => Ok(list.into_iter().next()
@@ -1588,33 +1589,35 @@ fn eval_list_method(
     }
 }
 
-fn eval_set_method(
-    object: Value,
-    method: &str,
-    span: Span,
-) -> Result<Value, RuntimeError> {
-    let Value::Set(set) = object else { unreachable!() };
+fn eval_set_method(object: Value, method: &str, span: Span) -> Result<Value, RuntimeError> {
+    let Value::Set(set) = object else {
+        unreachable!()
+    };
     match method {
         "len" => Ok(Value::Int(set.len() as i64)),
         _ => Err(RuntimeError::with_span(
-            format!("set type has no method `{}`; available methods: len", method),
+            format!(
+                "set type has no method `{}`; available methods: len",
+                method
+            ),
             span,
         )),
     }
 }
 
-fn eval_map_method(
-    object: Value,
-    method: &str,
-    span: Span,
-) -> Result<Value, RuntimeError> {
-    let Value::Map(map) = object else { unreachable!() };
+fn eval_map_method(object: Value, method: &str, span: Span) -> Result<Value, RuntimeError> {
+    let Value::Map(map) = object else {
+        unreachable!()
+    };
     match method {
         "len" => Ok(Value::Int(map.len() as i64)),
         "keys" => Ok(Value::List(map.into_keys().collect())),
         "values" => Ok(Value::List(map.into_values().collect())),
         _ => Err(RuntimeError::with_span(
-            format!("map type has no method `{}`; available methods: len, keys, values", method),
+            format!(
+                "map type has no method `{}`; available methods: len, keys, values",
+                method
+            ),
             span,
         )),
     }
@@ -1627,11 +1630,16 @@ fn eval_dice_method(
     args: &[Arg],
     span: Span,
 ) -> Result<Value, RuntimeError> {
-    let Value::DiceExpr(expr) = object else { unreachable!() };
+    let Value::DiceExpr(expr) = object else {
+        unreachable!()
+    };
     match method {
         "multiply" => {
             if args.is_empty() {
-                return Err(RuntimeError::with_span("multiply() requires 1 argument", span));
+                return Err(RuntimeError::with_span(
+                    "multiply() requires 1 argument",
+                    span,
+                ));
             }
             let factor_val = eval_expr(env, &args[0].value)?;
             match factor_val {
@@ -1656,7 +1664,10 @@ fn eval_dice_method(
                     }))
                 }
                 _ => Err(RuntimeError::with_span(
-                    format!("multiply() factor must be int, got {}", type_name(&factor_val)),
+                    format!(
+                        "multiply() factor must be int, got {}",
+                        type_name(&factor_val)
+                    ),
                     span,
                 )),
             }
@@ -1693,7 +1704,9 @@ fn eval_string_method(
     args: &[Arg],
     span: Span,
 ) -> Result<Value, RuntimeError> {
-    let Value::Str(s) = object else { unreachable!() };
+    let Value::Str(s) = object else {
+        unreachable!()
+    };
     match method {
         "len" => Ok(Value::Int(s.len() as i64)),
         "contains" | "starts_with" | "ends_with" => {
@@ -1737,16 +1750,14 @@ mod tests {
     use super::*;
     use std::collections::{BTreeMap, HashMap};
 
-    use ttrpg_ast::Span;
     use ttrpg_ast::ast::*;
-    use ttrpg_checker::env::{
-        EnumInfo, FnInfo, FnKind, ParamInfo, TypeEnv, VariantInfo,
-    };
+    use ttrpg_ast::Span;
+    use ttrpg_checker::env::{EnumInfo, FnInfo, FnKind, ParamInfo, TypeEnv, VariantInfo};
     use ttrpg_checker::ty::Ty;
 
     use crate::effect::{Effect, EffectHandler, Response};
     use crate::state::{ActiveCondition, EntityRef, StateProvider};
-    use crate::value::{DiceExpr, PositionValue, RollResult, duration_variant_with};
+    use crate::value::{duration_variant_with, DiceExpr, PositionValue, RollResult};
     use crate::Interpreter;
 
     // ── Test infrastructure ────────────────────────────────────
@@ -1911,8 +1922,18 @@ mod tests {
                 name: "add_bonus".into(),
                 kind: FnKind::Derive,
                 params: vec![
-                    ParamInfo { name: "base".into(), ty: Ty::Int, has_default: false, with_groups: vec![] },
-                    ParamInfo { name: "bonus".into(), ty: Ty::Int, has_default: false, with_groups: vec![] },
+                    ParamInfo {
+                        name: "base".into(),
+                        ty: Ty::Int,
+                        has_default: false,
+                        with_groups: vec![],
+                    },
+                    ParamInfo {
+                        name: "bonus".into(),
+                        ty: Ty::Int,
+                        has_default: false,
+                        with_groups: vec![],
+                    },
                 ],
                 return_type: Ty::Int,
                 receiver: None,
@@ -1928,8 +1949,16 @@ mod tests {
         let expr = spanned(ExprKind::Call {
             callee: Box::new(spanned(ExprKind::Ident("add_bonus".into()))),
             args: vec![
-                Arg { name: None, value: spanned(ExprKind::IntLit(10)), span: dummy_span() },
-                Arg { name: None, value: spanned(ExprKind::IntLit(5)), span: dummy_span() },
+                Arg {
+                    name: None,
+                    value: spanned(ExprKind::IntLit(10)),
+                    span: dummy_span(),
+                },
+                Arg {
+                    name: None,
+                    value: spanned(ExprKind::IntLit(5)),
+                    span: dummy_span(),
+                },
             ],
         });
         let result = crate::eval::eval_expr(&mut env, &expr).unwrap();
@@ -1973,8 +2002,18 @@ mod tests {
                 name: "add_bonus".into(),
                 kind: FnKind::Derive,
                 params: vec![
-                    ParamInfo { name: "base".into(), ty: Ty::Int, has_default: false, with_groups: vec![] },
-                    ParamInfo { name: "bonus".into(), ty: Ty::Int, has_default: false, with_groups: vec![] },
+                    ParamInfo {
+                        name: "base".into(),
+                        ty: Ty::Int,
+                        has_default: false,
+                        with_groups: vec![],
+                    },
+                    ParamInfo {
+                        name: "bonus".into(),
+                        ty: Ty::Int,
+                        has_default: false,
+                        with_groups: vec![],
+                    },
                 ],
                 return_type: Ty::Int,
                 receiver: None,
@@ -1990,8 +2029,16 @@ mod tests {
         let expr = spanned(ExprKind::Call {
             callee: Box::new(spanned(ExprKind::Ident("add_bonus".into()))),
             args: vec![
-                Arg { name: Some("bonus".into()), value: spanned(ExprKind::IntLit(3)), span: dummy_span() },
-                Arg { name: Some("base".into()), value: spanned(ExprKind::IntLit(7)), span: dummy_span() },
+                Arg {
+                    name: Some("bonus".into()),
+                    value: spanned(ExprKind::IntLit(3)),
+                    span: dummy_span(),
+                },
+                Arg {
+                    name: Some("base".into()),
+                    value: spanned(ExprKind::IntLit(7)),
+                    span: dummy_span(),
+                },
             ],
         });
         let result = crate::eval::eval_expr(&mut env, &expr).unwrap();
@@ -2035,8 +2082,18 @@ mod tests {
                 name: "add_bonus".into(),
                 kind: FnKind::Derive,
                 params: vec![
-                    ParamInfo { name: "base".into(), ty: Ty::Int, has_default: false, with_groups: vec![] },
-                    ParamInfo { name: "bonus".into(), ty: Ty::Int, has_default: true, with_groups: vec![] },
+                    ParamInfo {
+                        name: "base".into(),
+                        ty: Ty::Int,
+                        has_default: false,
+                        with_groups: vec![],
+                    },
+                    ParamInfo {
+                        name: "bonus".into(),
+                        ty: Ty::Int,
+                        has_default: true,
+                        with_groups: vec![],
+                    },
                 ],
                 return_type: Ty::Int,
                 receiver: None,
@@ -2051,9 +2108,11 @@ mod tests {
         // Call: add_bonus(10) — bonus defaults to 5
         let expr = spanned(ExprKind::Call {
             callee: Box::new(spanned(ExprKind::Ident("add_bonus".into()))),
-            args: vec![
-                Arg { name: None, value: spanned(ExprKind::IntLit(10)), span: dummy_span() },
-            ],
+            args: vec![Arg {
+                name: None,
+                value: spanned(ExprKind::IntLit(10)),
+                span: dummy_span(),
+            }],
         });
         let result = crate::eval::eval_expr(&mut env, &expr).unwrap();
         assert_eq!(result, Value::Int(15));
@@ -2104,16 +2163,20 @@ mod tests {
         let state = TestState::new();
 
         let roll_result = RollResult {
-            expr: DiceExpr { count: 2, sides: 6, filter: None, modifier: 0 },
+            expr: DiceExpr {
+                count: 2,
+                sides: 6,
+                filter: None,
+                modifier: 0,
+            },
             dice: vec![4, 5],
             kept: vec![4, 5],
             modifier: 0,
             total: 9,
             unmodified: 9,
         };
-        let mut handler = ScriptedHandler::with_responses(vec![
-            Response::Rolled(roll_result.clone()),
-        ]);
+        let mut handler =
+            ScriptedHandler::with_responses(vec![Response::Rolled(roll_result.clone())]);
         let mut env = make_env(&state, &mut handler, &interp);
 
         let expr = spanned(ExprKind::Call {
@@ -2125,7 +2188,9 @@ mod tests {
 
         // Verify that RollDice effect was emitted
         assert_eq!(handler.log.len(), 1);
-        assert!(matches!(&handler.log[0], Effect::RollDice { expr } if expr.count == 2 && expr.sides == 6));
+        assert!(
+            matches!(&handler.log[0], Effect::RollDice { expr } if expr.count == 2 && expr.sides == 6)
+        );
     }
 
     // ── Prompt call tests ──────────────────────────────────────
@@ -2154,9 +2219,8 @@ mod tests {
 
         let interp = Interpreter::new(&program, &type_env).unwrap();
         let state = TestState::new();
-        let mut handler = ScriptedHandler::with_responses(vec![
-            Response::PromptResult(Value::Int(42)),
-        ]);
+        let mut handler =
+            ScriptedHandler::with_responses(vec![Response::PromptResult(Value::Int(42))]);
         let mut env = make_env(&state, &mut handler, &interp);
 
         let expr = spanned(ExprKind::Call {
@@ -2217,9 +2281,8 @@ mod tests {
 
         let interp = Interpreter::new(&program, &type_env).unwrap();
         let state = TestState::new();
-        let mut handler = ScriptedHandler::with_responses(vec![
-            Response::PromptResult(Value::Int(100)),
-        ]);
+        let mut handler =
+            ScriptedHandler::with_responses(vec![Response::PromptResult(Value::Int(100))]);
         let mut env = make_env(&state, &mut handler, &interp);
 
         let expr = spanned(ExprKind::Call {
@@ -2235,7 +2298,9 @@ mod tests {
 
         // Verify suggest was evaluated: default_val(10) + 1 = 11
         match &handler.log[0] {
-            Effect::ResolvePrompt { suggest, params, .. } => {
+            Effect::ResolvePrompt {
+                suggest, params, ..
+            } => {
                 assert_eq!(*suggest, Some(Value::Int(11)));
                 assert_eq!(params, &[Value::Int(10)]);
             }
@@ -2308,21 +2373,43 @@ mod tests {
         let expr = spanned(ExprKind::Call {
             callee: Box::new(spanned(ExprKind::Ident("min".into()))),
             args: vec![
-                Arg { name: None, value: spanned(ExprKind::IntLit(3)), span: dummy_span() },
-                Arg { name: None, value: spanned(ExprKind::IntLit(7)), span: dummy_span() },
+                Arg {
+                    name: None,
+                    value: spanned(ExprKind::IntLit(3)),
+                    span: dummy_span(),
+                },
+                Arg {
+                    name: None,
+                    value: spanned(ExprKind::IntLit(7)),
+                    span: dummy_span(),
+                },
             ],
         });
-        assert_eq!(crate::eval::eval_expr(&mut env, &expr).unwrap(), Value::Int(3));
+        assert_eq!(
+            crate::eval::eval_expr(&mut env, &expr).unwrap(),
+            Value::Int(3)
+        );
 
         // max(3, 7)
         let expr = spanned(ExprKind::Call {
             callee: Box::new(spanned(ExprKind::Ident("max".into()))),
             args: vec![
-                Arg { name: None, value: spanned(ExprKind::IntLit(3)), span: dummy_span() },
-                Arg { name: None, value: spanned(ExprKind::IntLit(7)), span: dummy_span() },
+                Arg {
+                    name: None,
+                    value: spanned(ExprKind::IntLit(3)),
+                    span: dummy_span(),
+                },
+                Arg {
+                    name: None,
+                    value: spanned(ExprKind::IntLit(7)),
+                    span: dummy_span(),
+                },
             ],
         });
-        assert_eq!(crate::eval::eval_expr(&mut env, &expr).unwrap(), Value::Int(7));
+        assert_eq!(
+            crate::eval::eval_expr(&mut env, &expr).unwrap(),
+            Value::Int(7)
+        );
     }
 
     #[test]
@@ -2346,8 +2433,16 @@ mod tests {
         let expr = spanned(ExprKind::Call {
             callee: Box::new(spanned(ExprKind::Ident("distance".into()))),
             args: vec![
-                Arg { name: None, value: spanned(ExprKind::Ident("pos_a".into())), span: dummy_span() },
-                Arg { name: None, value: spanned(ExprKind::Ident("pos_b".into())), span: dummy_span() },
+                Arg {
+                    name: None,
+                    value: spanned(ExprKind::Ident("pos_a".into())),
+                    span: dummy_span(),
+                },
+                Arg {
+                    name: None,
+                    value: spanned(ExprKind::Ident("pos_b".into())),
+                    span: dummy_span(),
+                },
             ],
         });
         let result = crate::eval::eval_expr(&mut env, &expr).unwrap();
@@ -2364,15 +2459,29 @@ mod tests {
         let mut env = make_env(&state, &mut handler, &interp);
 
         // multiply_dice(2d6, 3) → 6d6
-        env.bind("dice".into(), Value::DiceExpr(DiceExpr {
-            count: 2, sides: 6, filter: None, modifier: 0,
-        }));
+        env.bind(
+            "dice".into(),
+            Value::DiceExpr(DiceExpr {
+                count: 2,
+                sides: 6,
+                filter: None,
+                modifier: 0,
+            }),
+        );
 
         let expr = spanned(ExprKind::Call {
             callee: Box::new(spanned(ExprKind::Ident("multiply_dice".into()))),
             args: vec![
-                Arg { name: None, value: spanned(ExprKind::Ident("dice".into())), span: dummy_span() },
-                Arg { name: None, value: spanned(ExprKind::IntLit(3)), span: dummy_span() },
+                Arg {
+                    name: None,
+                    value: spanned(ExprKind::Ident("dice".into())),
+                    span: dummy_span(),
+                },
+                Arg {
+                    name: None,
+                    value: spanned(ExprKind::IntLit(3)),
+                    span: dummy_span(),
+                },
             ],
         });
         let result = crate::eval::eval_expr(&mut env, &expr).unwrap();
@@ -2394,19 +2503,54 @@ mod tests {
         let mut handler = ScriptedHandler::new();
         let mut env = make_env(&state, &mut handler, &interp);
 
-        env.bind("dice".into(), Value::DiceExpr(DiceExpr {
-            count: 2, sides: 6, filter: None, modifier: 0,
-        }));
+        env.bind(
+            "dice".into(),
+            Value::DiceExpr(DiceExpr {
+                count: 2,
+                sides: 6,
+                filter: None,
+                modifier: 0,
+            }),
+        );
 
         let expr = spanned(ExprKind::Call {
             callee: Box::new(spanned(ExprKind::Ident("multiply_dice".into()))),
             args: vec![
-                Arg { name: None, value: spanned(ExprKind::Ident("dice".into())), span: dummy_span() },
-                Arg { name: None, value: spanned(ExprKind::IntLit(0)), span: dummy_span() },
+                Arg {
+                    name: None,
+                    value: spanned(ExprKind::Ident("dice".into())),
+                    span: dummy_span(),
+                },
+                Arg {
+                    name: None,
+                    value: spanned(ExprKind::IntLit(0)),
+                    span: dummy_span(),
+                },
             ],
         });
         let err = crate::eval::eval_expr(&mut env, &expr).unwrap_err();
         assert!(err.message.contains("positive"));
+    }
+
+    #[test]
+    fn builtin_error_test() {
+        let program = program_with_decls(vec![]);
+        let type_env = type_env_with_builtins();
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = TestState::new();
+        let mut handler = ScriptedHandler::new();
+        let mut env = make_env(&state, &mut handler, &interp);
+
+        let expr = spanned(ExprKind::Call {
+            callee: Box::new(spanned(ExprKind::Ident("error".into()))),
+            args: vec![Arg {
+                name: None,
+                value: spanned(ExprKind::StringLit("explicit failure".into())),
+                span: dummy_span(),
+            }],
+        });
+        let err = crate::eval::eval_expr(&mut env, &expr).unwrap_err();
+        assert!(err.message.contains("explicit failure"));
     }
 
     #[test]
@@ -2417,21 +2561,31 @@ mod tests {
         let state = TestState::new();
 
         let roll_result = RollResult {
-            expr: DiceExpr { count: 1, sides: 20, filter: None, modifier: 5 },
+            expr: DiceExpr {
+                count: 1,
+                sides: 20,
+                filter: None,
+                modifier: 5,
+            },
             dice: vec![15],
             kept: vec![15],
             modifier: 5,
             total: 20,
             unmodified: 15,
         };
-        let mut handler = ScriptedHandler::with_responses(vec![
-            Response::Rolled(roll_result.clone()),
-        ]);
+        let mut handler =
+            ScriptedHandler::with_responses(vec![Response::Rolled(roll_result.clone())]);
         let mut env = make_env(&state, &mut handler, &interp);
 
-        env.bind("dice".into(), Value::DiceExpr(DiceExpr {
-            count: 1, sides: 20, filter: None, modifier: 5,
-        }));
+        env.bind(
+            "dice".into(),
+            Value::DiceExpr(DiceExpr {
+                count: 1,
+                sides: 20,
+                filter: None,
+                modifier: 5,
+            }),
+        );
 
         let expr = spanned(ExprKind::Call {
             callee: Box::new(spanned(ExprKind::Ident("roll".into()))),
@@ -2453,21 +2607,32 @@ mod tests {
         let state = TestState::new();
 
         let override_result = RollResult {
-            expr: DiceExpr { count: 1, sides: 20, filter: None, modifier: 0 },
+            expr: DiceExpr {
+                count: 1,
+                sides: 20,
+                filter: None,
+                modifier: 0,
+            },
             dice: vec![20],
             kept: vec![20],
             modifier: 0,
             total: 20,
             unmodified: 20,
         };
-        let mut handler = ScriptedHandler::with_responses(vec![
-            Response::Override(Value::RollResult(override_result.clone())),
-        ]);
+        let mut handler = ScriptedHandler::with_responses(vec![Response::Override(
+            Value::RollResult(override_result.clone()),
+        )]);
         let mut env = make_env(&state, &mut handler, &interp);
 
-        env.bind("dice".into(), Value::DiceExpr(DiceExpr {
-            count: 1, sides: 20, filter: None, modifier: 0,
-        }));
+        env.bind(
+            "dice".into(),
+            Value::DiceExpr(DiceExpr {
+                count: 1,
+                sides: 20,
+                filter: None,
+                modifier: 0,
+            }),
+        );
 
         let expr = spanned(ExprKind::Call {
             callee: Box::new(spanned(ExprKind::Ident("roll".into()))),
@@ -2491,7 +2656,13 @@ mod tests {
         let mut env = make_env(&state, &mut handler, &interp);
 
         env.bind("target".into(), Value::Entity(EntityRef(1)));
-        env.bind("cond".into(), Value::Condition { name: "Prone".into(), args: BTreeMap::new() });
+        env.bind(
+            "cond".into(),
+            Value::Condition {
+                name: "Prone".into(),
+                args: BTreeMap::new(),
+            },
+        );
         env.bind("dur".into(), {
             let mut f = BTreeMap::new();
             f.insert("count".into(), Value::Int(3));
@@ -2501,9 +2672,21 @@ mod tests {
         let expr = spanned(ExprKind::Call {
             callee: Box::new(spanned(ExprKind::Ident("apply_condition".into()))),
             args: vec![
-                Arg { name: None, value: spanned(ExprKind::Ident("target".into())), span: dummy_span() },
-                Arg { name: None, value: spanned(ExprKind::Ident("cond".into())), span: dummy_span() },
-                Arg { name: None, value: spanned(ExprKind::Ident("dur".into())), span: dummy_span() },
+                Arg {
+                    name: None,
+                    value: spanned(ExprKind::Ident("target".into())),
+                    span: dummy_span(),
+                },
+                Arg {
+                    name: None,
+                    value: spanned(ExprKind::Ident("cond".into())),
+                    span: dummy_span(),
+                },
+                Arg {
+                    name: None,
+                    value: spanned(ExprKind::Ident("dur".into())),
+                    span: dummy_span(),
+                },
             ],
         });
         let result = crate::eval::eval_expr(&mut env, &expr).unwrap();
@@ -2511,7 +2694,9 @@ mod tests {
 
         assert_eq!(handler.log.len(), 1);
         match &handler.log[0] {
-            Effect::ApplyCondition { target, condition, .. } => {
+            Effect::ApplyCondition {
+                target, condition, ..
+            } => {
                 assert_eq!(target.0, 1);
                 assert_eq!(condition, "Prone");
             }
@@ -2529,13 +2714,27 @@ mod tests {
         let mut env = make_env(&state, &mut handler, &interp);
 
         env.bind("target".into(), Value::Entity(EntityRef(2)));
-        env.bind("cond".into(), Value::Condition { name: "Stunned".into(), args: BTreeMap::new() });
+        env.bind(
+            "cond".into(),
+            Value::Condition {
+                name: "Stunned".into(),
+                args: BTreeMap::new(),
+            },
+        );
 
         let expr = spanned(ExprKind::Call {
             callee: Box::new(spanned(ExprKind::Ident("remove_condition".into()))),
             args: vec![
-                Arg { name: None, value: spanned(ExprKind::Ident("target".into())), span: dummy_span() },
-                Arg { name: None, value: spanned(ExprKind::Ident("cond".into())), span: dummy_span() },
+                Arg {
+                    name: None,
+                    value: spanned(ExprKind::Ident("target".into())),
+                    span: dummy_span(),
+                },
+                Arg {
+                    name: None,
+                    value: spanned(ExprKind::Ident("cond".into())),
+                    span: dummy_span(),
+                },
             ],
         });
         let result = crate::eval::eval_expr(&mut env, &expr).unwrap();
@@ -2543,7 +2742,9 @@ mod tests {
 
         assert_eq!(handler.log.len(), 1);
         match &handler.log[0] {
-            Effect::RemoveCondition { target, condition, .. } => {
+            Effect::RemoveCondition {
+                target, condition, ..
+            } => {
                 assert_eq!(target.0, 2);
                 assert_eq!(condition, "Stunned");
             }
@@ -2576,8 +2777,16 @@ mod tests {
         let expr = spanned(ExprKind::Call {
             callee: Box::new(spanned(ExprKind::Ident("remove_condition".into()))),
             args: vec![
-                Arg { name: None, value: spanned(ExprKind::Ident("target".into())), span: dummy_span() },
-                Arg { name: None, value: spanned(ExprKind::Ident("cond".into())), span: dummy_span() },
+                Arg {
+                    name: None,
+                    value: spanned(ExprKind::Ident("target".into())),
+                    span: dummy_span(),
+                },
+                Arg {
+                    name: None,
+                    value: spanned(ExprKind::Ident("cond".into())),
+                    span: dummy_span(),
+                },
             ],
         });
         crate::eval::eval_expr(&mut env, &expr).unwrap();
@@ -2611,8 +2820,16 @@ mod tests {
         let expr = spanned(ExprKind::Call {
             callee: Box::new(spanned(ExprKind::Ident("remove_condition".into()))),
             args: vec![
-                Arg { name: None, value: spanned(ExprKind::Ident("target".into())), span: dummy_span() },
-                Arg { name: None, value: spanned(ExprKind::Ident("name".into())), span: dummy_span() },
+                Arg {
+                    name: None,
+                    value: spanned(ExprKind::Ident("target".into())),
+                    span: dummy_span(),
+                },
+                Arg {
+                    name: None,
+                    value: spanned(ExprKind::Ident("name".into())),
+                    span: dummy_span(),
+                },
             ],
         });
         crate::eval::eval_expr(&mut env, &expr).unwrap();
@@ -2641,13 +2858,27 @@ mod tests {
                 name: "Duration".into(),
                 ordered: false,
                 variants: vec![
-                    VariantInfo { name: "rounds".into(), fields: vec![("value".into(), Ty::Int)] },
-                    VariantInfo { name: "indefinite".into(), fields: vec![] },
+                    VariantInfo {
+                        name: "rounds".into(),
+                        fields: vec![("value".into(), Ty::Int)],
+                    },
+                    VariantInfo {
+                        name: "indefinite".into(),
+                        fields: vec![],
+                    },
                 ],
             }),
         );
-        type_env.variant_to_enums.entry("rounds".into()).or_default().push("Duration".into());
-        type_env.variant_to_enums.entry("indefinite".into()).or_default().push("Duration".into());
+        type_env
+            .variant_to_enums
+            .entry("rounds".into())
+            .or_default()
+            .push("Duration".into());
+        type_env
+            .variant_to_enums
+            .entry("indefinite".into())
+            .or_default()
+            .push("Duration".into());
 
         let interp = Interpreter::new(&program, &type_env).unwrap();
         let state = TestState::new();
@@ -2668,7 +2899,11 @@ mod tests {
         });
         let result = crate::eval::eval_expr(&mut env, &expr).unwrap();
         match result {
-            Value::EnumVariant { enum_name, variant, fields } => {
+            Value::EnumVariant {
+                enum_name,
+                variant,
+                fields,
+            } => {
                 assert_eq!(enum_name, "Duration");
                 assert_eq!(variant, "rounds");
                 assert_eq!(fields.get("value"), Some(&Value::Int(3)));
@@ -2687,13 +2922,27 @@ mod tests {
                 name: "Duration".into(),
                 ordered: false,
                 variants: vec![
-                    VariantInfo { name: "rounds".into(), fields: vec![("value".into(), Ty::Int)] },
-                    VariantInfo { name: "indefinite".into(), fields: vec![] },
+                    VariantInfo {
+                        name: "rounds".into(),
+                        fields: vec![("value".into(), Ty::Int)],
+                    },
+                    VariantInfo {
+                        name: "indefinite".into(),
+                        fields: vec![],
+                    },
                 ],
             }),
         );
-        type_env.variant_to_enums.entry("rounds".into()).or_default().push("Duration".into());
-        type_env.variant_to_enums.entry("indefinite".into()).or_default().push("Duration".into());
+        type_env
+            .variant_to_enums
+            .entry("rounds".into())
+            .or_default()
+            .push("Duration".into());
+        type_env
+            .variant_to_enums
+            .entry("indefinite".into())
+            .or_default()
+            .push("Duration".into());
 
         let interp = Interpreter::new(&program, &type_env).unwrap();
         let state = TestState::new();
@@ -2711,7 +2960,11 @@ mod tests {
         });
         let result = crate::eval::eval_expr(&mut env, &expr).unwrap();
         match result {
-            Value::EnumVariant { enum_name, variant, fields } => {
+            Value::EnumVariant {
+                enum_name,
+                variant,
+                fields,
+            } => {
                 assert_eq!(enum_name, "Duration");
                 assert_eq!(variant, "rounds");
                 assert_eq!(fields.get("value"), Some(&Value::Int(5)));
@@ -2734,7 +2987,9 @@ mod tests {
                 span: dummy_span(),
             }],
             return_type: spanned(TypeExpr::Int),
-            body: spanned(vec![spanned(StmtKind::Expr(spanned(ExprKind::Ident("x".into()))))]),
+            body: spanned(vec![spanned(StmtKind::Expr(spanned(ExprKind::Ident(
+                "x".into(),
+            ))))]),
             synthetic: false,
         })]);
 
@@ -2744,7 +2999,12 @@ mod tests {
             FnInfo {
                 name: "identity".into(),
                 kind: FnKind::Derive,
-                params: vec![ParamInfo { name: "x".into(), ty: Ty::Int, has_default: false, with_groups: vec![] }],
+                params: vec![ParamInfo {
+                    name: "x".into(),
+                    ty: Ty::Int,
+                    has_default: false,
+                    with_groups: vec![],
+                }],
                 return_type: Ty::Int,
                 receiver: None,
             },
@@ -2773,15 +3033,29 @@ mod tests {
         let mut handler = ScriptedHandler::new();
         let mut env = make_env(&state, &mut handler, &interp);
 
-        env.bind("dice".into(), Value::DiceExpr(DiceExpr {
-            count: u32::MAX, sides: 6, filter: None, modifier: 0,
-        }));
+        env.bind(
+            "dice".into(),
+            Value::DiceExpr(DiceExpr {
+                count: u32::MAX,
+                sides: 6,
+                filter: None,
+                modifier: 0,
+            }),
+        );
 
         let expr = spanned(ExprKind::Call {
             callee: Box::new(spanned(ExprKind::Ident("multiply_dice".into()))),
             args: vec![
-                Arg { name: None, value: spanned(ExprKind::Ident("dice".into())), span: dummy_span() },
-                Arg { name: None, value: spanned(ExprKind::IntLit(2)), span: dummy_span() },
+                Arg {
+                    name: None,
+                    value: spanned(ExprKind::Ident("dice".into())),
+                    span: dummy_span(),
+                },
+                Arg {
+                    name: None,
+                    value: spanned(ExprKind::IntLit(2)),
+                    span: dummy_span(),
+                },
             ],
         });
         let err = crate::eval::eval_expr(&mut env, &expr).unwrap_err();
@@ -2801,8 +3075,16 @@ mod tests {
         let expr = spanned(ExprKind::Call {
             callee: Box::new(spanned(ExprKind::Ident("dice".into()))),
             args: vec![
-                Arg { name: None, value: spanned(ExprKind::IntLit(2)), span: dummy_span() },
-                Arg { name: None, value: spanned(ExprKind::IntLit(6)), span: dummy_span() },
+                Arg {
+                    name: None,
+                    value: spanned(ExprKind::IntLit(2)),
+                    span: dummy_span(),
+                },
+                Arg {
+                    name: None,
+                    value: spanned(ExprKind::IntLit(6)),
+                    span: dummy_span(),
+                },
             ],
         });
         let result = crate::eval::eval_expr(&mut env, &expr).unwrap();
@@ -2830,8 +3112,16 @@ mod tests {
         let expr = spanned(ExprKind::Call {
             callee: Box::new(spanned(ExprKind::Ident("dice".into()))),
             args: vec![
-                Arg { name: None, value: spanned(ExprKind::IntLit(0)), span: dummy_span() },
-                Arg { name: None, value: spanned(ExprKind::IntLit(8)), span: dummy_span() },
+                Arg {
+                    name: None,
+                    value: spanned(ExprKind::IntLit(0)),
+                    span: dummy_span(),
+                },
+                Arg {
+                    name: None,
+                    value: spanned(ExprKind::IntLit(8)),
+                    span: dummy_span(),
+                },
             ],
         });
         let result = crate::eval::eval_expr(&mut env, &expr).unwrap();
@@ -2856,8 +3146,16 @@ mod tests {
         let expr = spanned(ExprKind::Call {
             callee: Box::new(spanned(ExprKind::Ident("dice".into()))),
             args: vec![
-                Arg { name: None, value: spanned(ExprKind::IntLit(-1)), span: dummy_span() },
-                Arg { name: None, value: spanned(ExprKind::IntLit(6)), span: dummy_span() },
+                Arg {
+                    name: None,
+                    value: spanned(ExprKind::IntLit(-1)),
+                    span: dummy_span(),
+                },
+                Arg {
+                    name: None,
+                    value: spanned(ExprKind::IntLit(6)),
+                    span: dummy_span(),
+                },
             ],
         });
         let err = crate::eval::eval_expr(&mut env, &expr).unwrap_err();
@@ -2876,8 +3174,16 @@ mod tests {
         let expr = spanned(ExprKind::Call {
             callee: Box::new(spanned(ExprKind::Ident("dice".into()))),
             args: vec![
-                Arg { name: None, value: spanned(ExprKind::IntLit(2)), span: dummy_span() },
-                Arg { name: None, value: spanned(ExprKind::IntLit(0)), span: dummy_span() },
+                Arg {
+                    name: None,
+                    value: spanned(ExprKind::IntLit(2)),
+                    span: dummy_span(),
+                },
+                Arg {
+                    name: None,
+                    value: spanned(ExprKind::IntLit(0)),
+                    span: dummy_span(),
+                },
             ],
         });
         let err = crate::eval::eval_expr(&mut env, &expr).unwrap_err();
@@ -2899,8 +3205,16 @@ mod tests {
             lhs: Box::new(spanned(ExprKind::Call {
                 callee: Box::new(spanned(ExprKind::Ident("dice".into()))),
                 args: vec![
-                    Arg { name: None, value: spanned(ExprKind::IntLit(3)), span: dummy_span() },
-                    Arg { name: None, value: spanned(ExprKind::IntLit(8)), span: dummy_span() },
+                    Arg {
+                        name: None,
+                        value: spanned(ExprKind::IntLit(3)),
+                        span: dummy_span(),
+                    },
+                    Arg {
+                        name: None,
+                        value: spanned(ExprKind::IntLit(8)),
+                        span: dummy_span(),
+                    },
                 ],
             })),
             rhs: Box::new(spanned(ExprKind::IntLit(5))),
@@ -2953,9 +3267,9 @@ mod tests {
             }],
             cost: None,
             requires: None,
-            resolve: spanned(vec![spanned(StmtKind::Expr(spanned(
-                ExprKind::Ident("actor".into()),
-            )))]),
+            resolve: spanned(vec![spanned(StmtKind::Expr(spanned(ExprKind::Ident(
+                "actor".into(),
+            ))))]),
             trigger_text: None,
             synthetic: false,
         })]);
@@ -3118,8 +3432,18 @@ mod tests {
                 name: "add".into(),
                 kind: FnKind::Derive,
                 params: vec![
-                    ParamInfo { name: "a".into(), ty: Ty::Int, has_default: false, with_groups: vec![] },
-                    ParamInfo { name: "b".into(), ty: Ty::Int, has_default: true, with_groups: vec![] },
+                    ParamInfo {
+                        name: "a".into(),
+                        ty: Ty::Int,
+                        has_default: false,
+                        with_groups: vec![],
+                    },
+                    ParamInfo {
+                        name: "b".into(),
+                        ty: Ty::Int,
+                        has_default: true,
+                        with_groups: vec![],
+                    },
                 ],
                 return_type: Ty::Int,
                 receiver: None,
@@ -3134,9 +3458,11 @@ mod tests {
         // Call: add(7) — b defaults to a (7), result = 7 + 7 = 14
         let expr = spanned(ExprKind::Call {
             callee: Box::new(spanned(ExprKind::Ident("add".into()))),
-            args: vec![
-                Arg { name: None, value: spanned(ExprKind::IntLit(7)), span: dummy_span() },
-            ],
+            args: vec![Arg {
+                name: None,
+                value: spanned(ExprKind::IntLit(7)),
+                span: dummy_span(),
+            }],
         });
         let result = crate::eval::eval_expr(&mut env, &expr).unwrap();
         assert_eq!(result, Value::Int(14));
@@ -3171,7 +3497,9 @@ mod tests {
                 },
             ],
             return_type: spanned(TypeExpr::Int),
-            body: spanned(vec![spanned(StmtKind::Expr(spanned(ExprKind::Ident("c".into()))))]),
+            body: spanned(vec![spanned(StmtKind::Expr(spanned(ExprKind::Ident(
+                "c".into(),
+            ))))]),
             synthetic: false,
         })]);
 
@@ -3182,9 +3510,24 @@ mod tests {
                 name: "f".into(),
                 kind: FnKind::Derive,
                 params: vec![
-                    ParamInfo { name: "a".into(), ty: Ty::Int, has_default: false, with_groups: vec![] },
-                    ParamInfo { name: "b".into(), ty: Ty::Int, has_default: true, with_groups: vec![] },
-                    ParamInfo { name: "c".into(), ty: Ty::Int, has_default: true, with_groups: vec![] },
+                    ParamInfo {
+                        name: "a".into(),
+                        ty: Ty::Int,
+                        has_default: false,
+                        with_groups: vec![],
+                    },
+                    ParamInfo {
+                        name: "b".into(),
+                        ty: Ty::Int,
+                        has_default: true,
+                        with_groups: vec![],
+                    },
+                    ParamInfo {
+                        name: "c".into(),
+                        ty: Ty::Int,
+                        has_default: true,
+                        with_groups: vec![],
+                    },
                 ],
                 return_type: Ty::Int,
                 receiver: None,
@@ -3199,9 +3542,11 @@ mod tests {
         // Call: f(5) — b defaults to a (5), c defaults to b (5)
         let expr = spanned(ExprKind::Call {
             callee: Box::new(spanned(ExprKind::Ident("f".into()))),
-            args: vec![
-                Arg { name: None, value: spanned(ExprKind::IntLit(5)), span: dummy_span() },
-            ],
+            args: vec![Arg {
+                name: None,
+                value: spanned(ExprKind::IntLit(5)),
+                span: dummy_span(),
+            }],
         });
         let result = crate::eval::eval_expr(&mut env, &expr).unwrap();
         assert_eq!(result, Value::Int(5));
@@ -3234,9 +3579,7 @@ mod tests {
         let interp = Interpreter::new(&program, &type_env).unwrap();
         let state = TestState::new();
         // GM overrides the prompt with a specific value
-        let mut handler = ScriptedHandler::with_responses(vec![
-            Response::Override(Value::Int(99)),
-        ]);
+        let mut handler = ScriptedHandler::with_responses(vec![Response::Override(Value::Int(99))]);
         let mut env = make_env(&state, &mut handler, &interp);
 
         let expr = spanned(ExprKind::Call {
@@ -3297,20 +3640,29 @@ mod tests {
         let state = TestState::new();
         // Invalid: Rolled is not valid for ApplyCondition
         let roll_result = RollResult {
-            expr: DiceExpr { count: 1, sides: 20, filter: None, modifier: 0 },
+            expr: DiceExpr {
+                count: 1,
+                sides: 20,
+                filter: None,
+                modifier: 0,
+            },
             dice: vec![10],
             kept: vec![10],
             modifier: 0,
             total: 10,
             unmodified: 10,
         };
-        let mut handler = ScriptedHandler::with_responses(vec![
-            Response::Rolled(roll_result),
-        ]);
+        let mut handler = ScriptedHandler::with_responses(vec![Response::Rolled(roll_result)]);
         let mut env = make_env(&state, &mut handler, &interp);
 
         env.bind("target".into(), Value::Entity(EntityRef(1)));
-        env.bind("cond".into(), Value::Condition { name: "Prone".into(), args: BTreeMap::new() });
+        env.bind(
+            "cond".into(),
+            Value::Condition {
+                name: "Prone".into(),
+                args: BTreeMap::new(),
+            },
+        );
         env.bind("dur".into(), {
             let mut f = BTreeMap::new();
             f.insert("count".into(), Value::Int(3));
@@ -3320,9 +3672,21 @@ mod tests {
         let expr = spanned(ExprKind::Call {
             callee: Box::new(spanned(ExprKind::Ident("apply_condition".into()))),
             args: vec![
-                Arg { name: None, value: spanned(ExprKind::Ident("target".into())), span: dummy_span() },
-                Arg { name: None, value: spanned(ExprKind::Ident("cond".into())), span: dummy_span() },
-                Arg { name: None, value: spanned(ExprKind::Ident("dur".into())), span: dummy_span() },
+                Arg {
+                    name: None,
+                    value: spanned(ExprKind::Ident("target".into())),
+                    span: dummy_span(),
+                },
+                Arg {
+                    name: None,
+                    value: spanned(ExprKind::Ident("cond".into())),
+                    span: dummy_span(),
+                },
+                Arg {
+                    name: None,
+                    value: spanned(ExprKind::Ident("dur".into())),
+                    span: dummy_span(),
+                },
             ],
         });
         let err = crate::eval::eval_expr(&mut env, &expr).unwrap_err();
@@ -3343,7 +3707,13 @@ mod tests {
         let mut env = make_env(&state, &mut handler, &interp);
 
         env.bind("target".into(), Value::Entity(EntityRef(1)));
-        env.bind("cond".into(), Value::Condition { name: "Prone".into(), args: BTreeMap::new() });
+        env.bind(
+            "cond".into(),
+            Value::Condition {
+                name: "Prone".into(),
+                args: BTreeMap::new(),
+            },
+        );
         env.bind("dur".into(), {
             let mut f = BTreeMap::new();
             f.insert("count".into(), Value::Int(3));
@@ -3353,9 +3723,21 @@ mod tests {
         let expr = spanned(ExprKind::Call {
             callee: Box::new(spanned(ExprKind::Ident("apply_condition".into()))),
             args: vec![
-                Arg { name: None, value: spanned(ExprKind::Ident("target".into())), span: dummy_span() },
-                Arg { name: None, value: spanned(ExprKind::Ident("cond".into())), span: dummy_span() },
-                Arg { name: None, value: spanned(ExprKind::Ident("dur".into())), span: dummy_span() },
+                Arg {
+                    name: None,
+                    value: spanned(ExprKind::Ident("target".into())),
+                    span: dummy_span(),
+                },
+                Arg {
+                    name: None,
+                    value: spanned(ExprKind::Ident("cond".into())),
+                    span: dummy_span(),
+                },
+                Arg {
+                    name: None,
+                    value: spanned(ExprKind::Ident("dur".into())),
+                    span: dummy_span(),
+                },
             ],
         });
         let result = crate::eval::eval_expr(&mut env, &expr).unwrap();
@@ -3368,19 +3750,32 @@ mod tests {
         let type_env = type_env_with_builtins();
         let interp = Interpreter::new(&program, &type_env).unwrap();
         let state = TestState::new();
-        let mut handler = ScriptedHandler::with_responses(vec![
-            Response::PromptResult(Value::Int(42)),
-        ]);
+        let mut handler =
+            ScriptedHandler::with_responses(vec![Response::PromptResult(Value::Int(42))]);
         let mut env = make_env(&state, &mut handler, &interp);
 
         env.bind("target".into(), Value::Entity(EntityRef(2)));
-        env.bind("cond".into(), Value::Condition { name: "Stunned".into(), args: BTreeMap::new() });
+        env.bind(
+            "cond".into(),
+            Value::Condition {
+                name: "Stunned".into(),
+                args: BTreeMap::new(),
+            },
+        );
 
         let expr = spanned(ExprKind::Call {
             callee: Box::new(spanned(ExprKind::Ident("remove_condition".into()))),
             args: vec![
-                Arg { name: None, value: spanned(ExprKind::Ident("target".into())), span: dummy_span() },
-                Arg { name: None, value: spanned(ExprKind::Ident("cond".into())), span: dummy_span() },
+                Arg {
+                    name: None,
+                    value: spanned(ExprKind::Ident("target".into())),
+                    span: dummy_span(),
+                },
+                Arg {
+                    name: None,
+                    value: spanned(ExprKind::Ident("cond".into())),
+                    span: dummy_span(),
+                },
             ],
         });
         let err = crate::eval::eval_expr(&mut env, &expr).unwrap_err();
@@ -3442,7 +3837,9 @@ mod tests {
                 span: dummy_span(),
             }],
             return_type: spanned(TypeExpr::Int),
-            body: spanned(vec![spanned(StmtKind::Expr(spanned(ExprKind::IntLit(999))))]),
+            body: spanned(vec![spanned(StmtKind::Expr(spanned(ExprKind::IntLit(
+                999,
+            ))))]),
             synthetic: false,
         })]);
 
@@ -3452,7 +3849,12 @@ mod tests {
             FnInfo {
                 name: "rounds".into(),
                 kind: FnKind::Derive,
-                params: vec![ParamInfo { name: "n".into(), ty: Ty::Int, has_default: false, with_groups: vec![] }],
+                params: vec![ParamInfo {
+                    name: "n".into(),
+                    ty: Ty::Int,
+                    has_default: false,
+                    with_groups: vec![],
+                }],
                 return_type: Ty::Int,
                 receiver: None,
             },
@@ -3462,12 +3864,17 @@ mod tests {
             ttrpg_checker::env::DeclInfo::Enum(EnumInfo {
                 name: "Duration".into(),
                 ordered: false,
-                variants: vec![
-                    VariantInfo { name: "rounds".into(), fields: vec![("value".into(), Ty::Int)] },
-                ],
+                variants: vec![VariantInfo {
+                    name: "rounds".into(),
+                    fields: vec![("value".into(), Ty::Int)],
+                }],
             }),
         );
-        type_env.variant_to_enums.entry("rounds".into()).or_default().push("Duration".into());
+        type_env
+            .variant_to_enums
+            .entry("rounds".into())
+            .or_default()
+            .push("Duration".into());
 
         let interp = Interpreter::new(&program, &type_env).unwrap();
         let state = TestState::new();
@@ -3485,7 +3892,11 @@ mod tests {
         });
         let result = crate::eval::eval_expr(&mut env, &expr).unwrap();
         match result {
-            Value::EnumVariant { enum_name, variant, fields } => {
+            Value::EnumVariant {
+                enum_name,
+                variant,
+                fields,
+            } => {
                 assert_eq!(enum_name, "Duration");
                 assert_eq!(variant, "rounds");
                 assert_eq!(fields.get("value"), Some(&Value::Int(5)));
@@ -3511,27 +3922,43 @@ mod tests {
         // we'll use a derive whose body just returns a + b + c, and pass
         // expressions that call roll() which emits effects in order.
 
-        let program = program_with_decls(vec![
-            DeclKind::Derive(FnDecl {
-                name: "sum3".into(),
-                params: vec![
-                    Param { name: "a".into(), ty: spanned(TypeExpr::Int), default: None, with_groups: vec![], span: dummy_span() },
-                    Param { name: "b".into(), ty: spanned(TypeExpr::Int), default: None, with_groups: vec![], span: dummy_span() },
-                    Param { name: "c".into(), ty: spanned(TypeExpr::Int), default: None, with_groups: vec![], span: dummy_span() },
-                ],
-                return_type: spanned(TypeExpr::Int),
-                body: spanned(vec![spanned(StmtKind::Expr(spanned(ExprKind::BinOp {
+        let program = program_with_decls(vec![DeclKind::Derive(FnDecl {
+            name: "sum3".into(),
+            params: vec![
+                Param {
+                    name: "a".into(),
+                    ty: spanned(TypeExpr::Int),
+                    default: None,
+                    with_groups: vec![],
+                    span: dummy_span(),
+                },
+                Param {
+                    name: "b".into(),
+                    ty: spanned(TypeExpr::Int),
+                    default: None,
+                    with_groups: vec![],
+                    span: dummy_span(),
+                },
+                Param {
+                    name: "c".into(),
+                    ty: spanned(TypeExpr::Int),
+                    default: None,
+                    with_groups: vec![],
+                    span: dummy_span(),
+                },
+            ],
+            return_type: spanned(TypeExpr::Int),
+            body: spanned(vec![spanned(StmtKind::Expr(spanned(ExprKind::BinOp {
+                op: BinOp::Add,
+                lhs: Box::new(spanned(ExprKind::BinOp {
                     op: BinOp::Add,
-                    lhs: Box::new(spanned(ExprKind::BinOp {
-                        op: BinOp::Add,
-                        lhs: Box::new(spanned(ExprKind::Ident("a".into()))),
-                        rhs: Box::new(spanned(ExprKind::Ident("b".into()))),
-                    })),
-                    rhs: Box::new(spanned(ExprKind::Ident("c".into()))),
-                })))]),
-                synthetic: false,
-            }),
-        ]);
+                    lhs: Box::new(spanned(ExprKind::Ident("a".into()))),
+                    rhs: Box::new(spanned(ExprKind::Ident("b".into()))),
+                })),
+                rhs: Box::new(spanned(ExprKind::Ident("c".into()))),
+            })))]),
+            synthetic: false,
+        })]);
 
         let mut type_env = type_env_with_builtins();
         type_env.functions.insert(
@@ -3540,9 +3967,24 @@ mod tests {
                 name: "sum3".into(),
                 kind: FnKind::Derive,
                 params: vec![
-                    ParamInfo { name: "a".into(), ty: Ty::Int, has_default: false, with_groups: vec![] },
-                    ParamInfo { name: "b".into(), ty: Ty::Int, has_default: false, with_groups: vec![] },
-                    ParamInfo { name: "c".into(), ty: Ty::Int, has_default: false, with_groups: vec![] },
+                    ParamInfo {
+                        name: "a".into(),
+                        ty: Ty::Int,
+                        has_default: false,
+                        with_groups: vec![],
+                    },
+                    ParamInfo {
+                        name: "b".into(),
+                        ty: Ty::Int,
+                        has_default: false,
+                        with_groups: vec![],
+                    },
+                    ParamInfo {
+                        name: "c".into(),
+                        ty: Ty::Int,
+                        has_default: false,
+                        with_groups: vec![],
+                    },
                 ],
                 return_type: Ty::Int,
                 receiver: None,
@@ -3559,16 +4001,43 @@ mod tests {
         // Positional roll(1d4) fills slot [0], positional roll(1d8) fills slot [1].
         let mut handler = ScriptedHandler::with_responses(vec![
             Response::Rolled(RollResult {
-                expr: DiceExpr { count: 1, sides: 4, filter: None, modifier: 0 },
-                dice: vec![1], kept: vec![1], modifier: 0, total: 1, unmodified: 1,
+                expr: DiceExpr {
+                    count: 1,
+                    sides: 4,
+                    filter: None,
+                    modifier: 0,
+                },
+                dice: vec![1],
+                kept: vec![1],
+                modifier: 0,
+                total: 1,
+                unmodified: 1,
             }),
             Response::Rolled(RollResult {
-                expr: DiceExpr { count: 1, sides: 6, filter: None, modifier: 0 },
-                dice: vec![2], kept: vec![2], modifier: 0, total: 2, unmodified: 2,
+                expr: DiceExpr {
+                    count: 1,
+                    sides: 6,
+                    filter: None,
+                    modifier: 0,
+                },
+                dice: vec![2],
+                kept: vec![2],
+                modifier: 0,
+                total: 2,
+                unmodified: 2,
             }),
             Response::Rolled(RollResult {
-                expr: DiceExpr { count: 1, sides: 8, filter: None, modifier: 0 },
-                dice: vec![3], kept: vec![3], modifier: 0, total: 3, unmodified: 3,
+                expr: DiceExpr {
+                    count: 1,
+                    sides: 8,
+                    filter: None,
+                    modifier: 0,
+                },
+                dice: vec![3],
+                kept: vec![3],
+                modifier: 0,
+                total: 3,
+                unmodified: 3,
             }),
         ]);
         let mut env = make_env(&state, &mut handler, &interp);
@@ -3583,7 +4052,11 @@ mod tests {
                         callee: Box::new(spanned(ExprKind::Ident("roll".into()))),
                         args: vec![Arg {
                             name: None,
-                            value: spanned(ExprKind::DiceLit { count: 1, sides: 4, filter: None }),
+                            value: spanned(ExprKind::DiceLit {
+                                count: 1,
+                                sides: 4,
+                                filter: None,
+                            }),
                             span: dummy_span(),
                         }],
                     }),
@@ -3595,7 +4068,11 @@ mod tests {
                         callee: Box::new(spanned(ExprKind::Ident("roll".into()))),
                         args: vec![Arg {
                             name: None,
-                            value: spanned(ExprKind::DiceLit { count: 1, sides: 6, filter: None }),
+                            value: spanned(ExprKind::DiceLit {
+                                count: 1,
+                                sides: 6,
+                                filter: None,
+                            }),
                             span: dummy_span(),
                         }],
                     }),
@@ -3607,7 +4084,11 @@ mod tests {
                         callee: Box::new(spanned(ExprKind::Ident("roll".into()))),
                         args: vec![Arg {
                             name: None,
-                            value: spanned(ExprKind::DiceLit { count: 1, sides: 8, filter: None }),
+                            value: spanned(ExprKind::DiceLit {
+                                count: 1,
+                                sides: 8,
+                                filter: None,
+                            }),
                             span: dummy_span(),
                         }],
                     }),
@@ -3708,7 +4189,9 @@ mod tests {
                 },
             ],
             return_type: spanned(TypeExpr::Int),
-            body: spanned(vec![spanned(StmtKind::Expr(spanned(ExprKind::Ident("a".into()))))]),
+            body: spanned(vec![spanned(StmtKind::Expr(spanned(ExprKind::Ident(
+                "a".into(),
+            ))))]),
             synthetic: false,
         })]);
 
@@ -3719,8 +4202,18 @@ mod tests {
                 name: "f".into(),
                 kind: FnKind::Derive,
                 params: vec![
-                    ParamInfo { name: "a".into(), ty: Ty::Int, has_default: false, with_groups: vec![] },
-                    ParamInfo { name: "b".into(), ty: Ty::Int, has_default: true, with_groups: vec![] },
+                    ParamInfo {
+                        name: "a".into(),
+                        ty: Ty::Int,
+                        has_default: false,
+                        with_groups: vec![],
+                    },
+                    ParamInfo {
+                        name: "b".into(),
+                        ty: Ty::Int,
+                        has_default: true,
+                        with_groups: vec![],
+                    },
                 ],
                 return_type: Ty::Int,
                 receiver: None,

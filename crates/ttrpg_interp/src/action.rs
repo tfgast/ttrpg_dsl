@@ -1,27 +1,12 @@
-use ttrpg_ast::{Name, Span, Spanned};
 use ttrpg_ast::ast::{ActionDecl, Block, CostClause, ExprKind, HookDecl, ReactionDecl};
+use ttrpg_ast::{Name, Span, Spanned};
 
-use crate::Env;
-use crate::RuntimeError;
 use crate::effect::{ActionKind, Effect, Response};
 use crate::eval::{eval_block, eval_expr};
 use crate::state::EntityRef;
 use crate::value::Value;
-
-// ── Cost token → budget field mapping ──────────────────────────
-
-/// Maps a cost token (e.g., "action") to its TurnBudget field name (e.g., "actions").
-///
-/// The singular token is the DSL-facing name (matches D&D terminology).
-/// The plural field is the counter in TurnBudget.
-fn token_to_budget_field(token: &str) -> Option<&'static str> {
-    match token {
-        "action" => Some("actions"),
-        "bonus_action" => Some("bonus_actions"),
-        "reaction" => Some("reactions"),
-        _ => None,
-    }
-}
+use crate::Env;
+use crate::RuntimeError;
 
 // ── Shared lifecycle helpers ──────────────────────────────────
 
@@ -351,21 +336,34 @@ fn deduct_costs(
     cost: &ttrpg_ast::ast::CostClause,
     call_span: Span,
 ) -> Result<(), RuntimeError> {
+    let expected_tokens = env
+        .interp
+        .type_env
+        .valid_cost_tokens()
+        .into_iter()
+        .map(|n| n.to_string())
+        .collect::<Vec<_>>();
+
     for token in &cost.tokens {
-        let budget_field = token_to_budget_field(&token.node).ok_or_else(|| {
-            RuntimeError::with_span(
-                format!(
-                    "internal error: unknown cost token '{}' (should have been caught by checker)",
-                    token.node
-                ),
-                token.span,
-            )
-        })?;
+        let budget_field = env
+            .interp
+            .type_env
+            .resolve_cost_token(&token.node)
+            .ok_or_else(|| {
+                RuntimeError::with_span(
+                    format!(
+                        "internal error: unknown cost token '{}'; expected one of: {}",
+                        token.node,
+                        expected_tokens.join(", ")
+                    ),
+                    token.span,
+                )
+            })?;
 
         let response = env.handler.handle(Effect::DeductCost {
             actor: *actor,
             token: token.node.clone(),
-            budget_field: Name::from(budget_field),
+            budget_field: budget_field.clone(),
         });
 
         match response {
@@ -375,11 +373,17 @@ fn deduct_costs(
             }
             Response::Override(Value::Str(replacement)) => {
                 // Validate that the replacement is a valid cost token
-                if token_to_budget_field(&replacement).is_none() {
+                if env
+                    .interp
+                    .type_env
+                    .resolve_cost_token(&replacement)
+                    .is_none()
+                {
                     return Err(RuntimeError::with_span(
                         format!(
-                            "invalid cost override '{}'; expected one of: action, bonus_action, reaction",
-                            replacement
+                            "invalid cost override '{}'; expected one of: {}",
+                            replacement,
+                            expected_tokens.join(", ")
                         ),
                         call_span,
                     ));
@@ -409,8 +413,8 @@ mod tests {
     use super::*;
     use std::collections::{BTreeMap, HashMap};
 
-    use ttrpg_ast::{Name, Span, Spanned};
     use ttrpg_ast::ast::*;
+    use ttrpg_ast::{Name, Span, Spanned};
     use ttrpg_checker::env::TypeEnv;
 
     use crate::effect::{EffectHandler, Response};
@@ -556,19 +560,53 @@ mod tests {
         }
     }
 
-    // ── Token to budget field tests ────────────────────────────
+    // ── Token resolution tests ─────────────────────────────────
 
-    #[test]
-    fn token_mapping_valid() {
-        assert_eq!(token_to_budget_field("action"), Some("actions"));
-        assert_eq!(token_to_budget_field("bonus_action"), Some("bonus_actions"));
-        assert_eq!(token_to_budget_field("reaction"), Some("reactions"));
+    fn type_env_with_turn_budget(fields: &[&str]) -> TypeEnv {
+        let mut env = TypeEnv::new();
+        env.types.insert(
+            "TurnBudget".into(),
+            ttrpg_checker::env::DeclInfo::Struct(ttrpg_checker::env::StructInfo {
+                name: "TurnBudget".into(),
+                fields: fields
+                    .iter()
+                    .map(|name| ttrpg_checker::env::FieldInfo {
+                        name: Name::from(*name),
+                        ty: ttrpg_checker::ty::Ty::Int,
+                        has_default: false,
+                    })
+                    .collect(),
+            }),
+        );
+        env
     }
 
     #[test]
-    fn token_mapping_invalid() {
-        assert_eq!(token_to_budget_field("unknown"), None);
-        assert_eq!(token_to_budget_field("move"), None);
+    fn token_resolution_legacy_aliases() {
+        let env = TypeEnv::new();
+        assert_eq!(
+            env.resolve_cost_token("action"),
+            Some(Name::from("actions"))
+        );
+        assert_eq!(
+            env.resolve_cost_token("bonus_action"),
+            Some(Name::from("bonus_actions"))
+        );
+        assert_eq!(
+            env.resolve_cost_token("reaction"),
+            Some(Name::from("reactions"))
+        );
+    }
+
+    #[test]
+    fn token_resolution_custom_turn_budget_fields() {
+        let env = type_env_with_turn_budget(&["attack", "movement"]);
+        assert_eq!(env.resolve_cost_token("attack"), Some(Name::from("attack")));
+        assert_eq!(
+            env.resolve_cost_token("movement"),
+            Some(Name::from("movement"))
+        );
+        assert_eq!(env.resolve_cost_token("action"), None);
     }
 
     // ── Action execution tests ─────────────────────────────────
@@ -601,10 +639,18 @@ mod tests {
 
         // Check effect sequence: ActionStarted, RequiresCheck, DeductCost, ActionCompleted
         assert_eq!(handler.log.len(), 4);
-        assert!(matches!(&handler.log[0], Effect::ActionStarted { name, kind: ActionKind::Action, .. } if name == "Attack"));
-        assert!(matches!(&handler.log[1], Effect::RequiresCheck { action, passed: true, .. } if action == "Attack"));
-        assert!(matches!(&handler.log[2], Effect::DeductCost { token, budget_field, .. } if token == "action" && budget_field == "actions"));
-        assert!(matches!(&handler.log[3], Effect::ActionCompleted { name, .. } if name == "Attack"));
+        assert!(
+            matches!(&handler.log[0], Effect::ActionStarted { name, kind: ActionKind::Action, .. } if name == "Attack")
+        );
+        assert!(
+            matches!(&handler.log[1], Effect::RequiresCheck { action, passed: true, .. } if action == "Attack")
+        );
+        assert!(
+            matches!(&handler.log[2], Effect::DeductCost { token, budget_field, .. } if token == "action" && budget_field == "actions")
+        );
+        assert!(
+            matches!(&handler.log[3], Effect::ActionCompleted { name, .. } if name == "Attack")
+        );
     }
 
     #[test]
@@ -636,7 +682,10 @@ mod tests {
         // Effect sequence: ActionStarted, RequiresCheck, ActionCompleted (no DeductCost!)
         assert_eq!(handler.log.len(), 3);
         assert!(matches!(&handler.log[0], Effect::ActionStarted { .. }));
-        assert!(matches!(&handler.log[1], Effect::RequiresCheck { passed: false, .. }));
+        assert!(matches!(
+            &handler.log[1],
+            Effect::RequiresCheck { passed: false, .. }
+        ));
         assert!(matches!(&handler.log[2], Effect::ActionCompleted { .. }));
     }
 
@@ -692,10 +741,8 @@ mod tests {
         let interp = Interpreter::new(&program, &type_env).unwrap();
         let state = TestState::new();
         // ActionStarted → Acknowledged, DeductCost → Vetoed
-        let mut handler = ScriptedHandler::with_responses(vec![
-            Response::Acknowledged,
-            Response::Vetoed,
-        ]);
+        let mut handler =
+            ScriptedHandler::with_responses(vec![Response::Acknowledged, Response::Vetoed]);
         let mut env = make_env(&state, &mut handler, &interp);
         let actor = EntityRef(1);
 
@@ -728,7 +775,7 @@ mod tests {
         let interp = Interpreter::new(&program, &type_env).unwrap();
         let state = TestState::new();
         let mut handler = ScriptedHandler::with_responses(vec![
-            Response::Acknowledged, // ActionStarted
+            Response::Acknowledged,                                     // ActionStarted
             Response::Override(Value::Str("bonus_action".to_string())), // DeductCost
         ]);
         let mut env = make_env(&state, &mut handler, &interp);
@@ -766,7 +813,10 @@ mod tests {
 
         let result = execute_action(&mut env, &action, actor, vec![], span());
         assert!(result.is_err());
-        assert!(result.unwrap_err().message.contains("invalid cost override"));
+        assert!(result
+            .unwrap_err()
+            .message
+            .contains("invalid cost override"));
     }
 
     #[test]
@@ -813,8 +863,8 @@ mod tests {
         let interp = Interpreter::new(&program, &type_env).unwrap();
         let state = TestState::new();
         let mut handler = ScriptedHandler::with_responses(vec![
-            Response::Acknowledged,                   // ActionStarted
-            Response::Override(Value::Bool(true)),     // RequiresCheck — force pass
+            Response::Acknowledged,                // ActionStarted
+            Response::Override(Value::Bool(true)), // RequiresCheck — force pass
         ]);
         let mut env = make_env(&state, &mut handler, &interp);
         let actor = EntityRef(1);
@@ -840,8 +890,8 @@ mod tests {
         let interp = Interpreter::new(&program, &type_env).unwrap();
         let state = TestState::new();
         let mut handler = ScriptedHandler::with_responses(vec![
-            Response::Acknowledged,                    // ActionStarted
-            Response::Override(Value::Bool(false)),     // RequiresCheck — force fail
+            Response::Acknowledged,                 // ActionStarted
+            Response::Override(Value::Bool(false)), // RequiresCheck — force fail
         ]);
         let mut env = make_env(&state, &mut handler, &interp);
         let actor = EntityRef(1);
@@ -966,6 +1016,37 @@ mod tests {
         ));
     }
 
+    #[test]
+    fn action_custom_cost_token_uses_matching_turn_budget_field() {
+        let action = make_action(
+            "Advance",
+            "actor",
+            vec![],
+            Some(CostClause {
+                tokens: vec![spanned(Name::from("movement"))],
+                span: span(),
+            }),
+            None,
+            vec![spanned(StmtKind::Expr(spanned(ExprKind::IntLit(1))))],
+        );
+
+        let program = empty_program();
+        let type_env = type_env_with_turn_budget(&["movement"]);
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = TestState::new();
+        let mut handler = ScriptedHandler::new();
+        let mut env = make_env(&state, &mut handler, &interp);
+        let actor = EntityRef(1);
+
+        execute_action(&mut env, &action, actor, vec![], span()).unwrap();
+
+        assert!(matches!(
+            handler.log.get(1),
+            Some(Effect::DeductCost { token, budget_field, .. })
+                if token == "movement" && budget_field == "movement"
+        ));
+    }
+
     // ── Reaction execution tests ───────────────────────────────
 
     #[test]
@@ -1030,8 +1111,7 @@ mod tests {
         let mut env = make_env(&state, &mut handler, &interp);
         let reactor = EntityRef(1);
 
-        let result =
-            execute_reaction(&mut env, &reaction, reactor, Value::None, span()).unwrap();
+        let result = execute_reaction(&mut env, &reaction, reactor, Value::None, span()).unwrap();
         assert_eq!(result, Value::None);
 
         // Only ActionStarted + ActionCompleted
@@ -1114,8 +1194,7 @@ mod tests {
         let mut env = make_env(&state, &mut handler, &interp);
         let reactor = EntityRef(7);
 
-        let result =
-            execute_reaction(&mut env, &reaction, reactor, Value::None, span()).unwrap();
+        let result = execute_reaction(&mut env, &reaction, reactor, Value::None, span()).unwrap();
         assert_eq!(result, Value::Entity(EntityRef(7)));
     }
 
@@ -1145,10 +1224,7 @@ mod tests {
 
         let result = execute_action(&mut env, &action, actor, vec![], span());
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .message
-            .contains("protocol error"));
+        assert!(result.unwrap_err().message.contains("protocol error"));
     }
 
     #[test]
@@ -1168,18 +1244,15 @@ mod tests {
         let interp = Interpreter::new(&program, &type_env).unwrap();
         let state = TestState::new();
         let mut handler = ScriptedHandler::with_responses(vec![
-            Response::Acknowledged,  // ActionStarted
-            Response::Vetoed,        // invalid for RequiresCheck
+            Response::Acknowledged, // ActionStarted
+            Response::Vetoed,       // invalid for RequiresCheck
         ]);
         let mut env = make_env(&state, &mut handler, &interp);
         let actor = EntityRef(1);
 
         let result = execute_action(&mut env, &action, actor, vec![], span());
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .message
-            .contains("protocol error"));
+        assert!(result.unwrap_err().message.contains("protocol error"));
     }
 
     #[test]
@@ -1199,18 +1272,15 @@ mod tests {
         let interp = Interpreter::new(&program, &type_env).unwrap();
         let state = TestState::new();
         let mut handler = ScriptedHandler::with_responses(vec![
-            Response::Acknowledged,  // ActionStarted
-            Response::Vetoed,        // invalid for ActionCompleted
+            Response::Acknowledged, // ActionStarted
+            Response::Vetoed,       // invalid for ActionCompleted
         ]);
         let mut env = make_env(&state, &mut handler, &interp);
         let actor = EntityRef(1);
 
         let result = execute_action(&mut env, &action, actor, vec![], span());
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .message
-            .contains("protocol error"));
+        assert!(result.unwrap_err().message.contains("protocol error"));
     }
 
     #[test]
@@ -1231,18 +1301,15 @@ mod tests {
         let interp = Interpreter::new(&program, &type_env).unwrap();
         let state = TestState::new();
         let mut handler = ScriptedHandler::with_responses(vec![
-            Response::Vetoed,        // ActionStarted → veto
-            Response::Vetoed,        // invalid for ActionCompleted on veto path
+            Response::Vetoed, // ActionStarted → veto
+            Response::Vetoed, // invalid for ActionCompleted on veto path
         ]);
         let mut env = make_env(&state, &mut handler, &interp);
         let actor = EntityRef(1);
 
         let result = execute_action(&mut env, &action, actor, vec![], span());
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .message
-            .contains("protocol error"));
+        assert!(result.unwrap_err().message.contains("protocol error"));
     }
 
     #[test]
@@ -1262,18 +1329,14 @@ mod tests {
         let interp = Interpreter::new(&program, &type_env).unwrap();
         let state = TestState::new();
         let mut handler = ScriptedHandler::with_responses(vec![
-            Response::Vetoed,                    // ActionStarted → veto
-            Response::Override(Value::Int(99)),   // invalid for ActionCompleted
+            Response::Vetoed,                   // ActionStarted → veto
+            Response::Override(Value::Int(99)), // invalid for ActionCompleted
         ]);
         let mut env = make_env(&state, &mut handler, &interp);
         let reactor = EntityRef(1);
 
-        let result =
-            execute_reaction(&mut env, &reaction, reactor, Value::None, span());
+        let result = execute_reaction(&mut env, &reaction, reactor, Value::None, span());
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .message
-            .contains("protocol error"));
+        assert!(result.unwrap_err().message.contains("protocol error"));
     }
 }

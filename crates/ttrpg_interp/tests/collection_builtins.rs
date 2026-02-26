@@ -2,8 +2,8 @@
 
 use std::collections::BTreeMap;
 
-use ttrpg_ast::FileId;
 use ttrpg_ast::diagnostic::Severity;
+use ttrpg_ast::FileId;
 use ttrpg_interp::effect::{Effect, EffectHandler, Response};
 use ttrpg_interp::reference_state::GameState;
 use ttrpg_interp::value::Value;
@@ -61,9 +61,16 @@ system "test" {
     let mut handler = NoopHandler;
 
     let val = interp
-        .evaluate_derive(&state, &mut handler, "f", vec![
-            Value::List(vec![Value::Int(1), Value::Int(2), Value::Int(3)]),
-        ])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "f",
+            vec![Value::List(vec![
+                Value::Int(1),
+                Value::Int(2),
+                Value::Int(3),
+            ])],
+        )
         .unwrap();
     assert_eq!(val, Value::Int(3));
 }
@@ -103,9 +110,12 @@ system "test" {
     let mut handler = NoopHandler;
 
     let val = interp
-        .evaluate_derive(&state, &mut handler, "f", vec![
-            Value::Set([Value::Int(1), Value::Int(2)].into()),
-        ])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "f",
+            vec![Value::Set([Value::Int(1), Value::Int(2)].into())],
+        )
         .unwrap();
     assert_eq!(val, Value::Int(2));
 }
@@ -158,7 +168,10 @@ system "test" {
         .evaluate_derive(&state, &mut handler, "f", vec![Value::Map(m)])
         .unwrap();
     // BTreeMap keys come out sorted
-    assert_eq!(val, Value::List(vec![Value::Str("a".into()), Value::Str("b".into())]));
+    assert_eq!(
+        val,
+        Value::List(vec![Value::Str("a".into()), Value::Str("b".into())])
+    );
 }
 
 #[test]
@@ -223,9 +236,12 @@ system "test" {
     let mut handler = NoopHandler;
 
     let val = interp
-        .evaluate_derive(&state, &mut handler, "f", vec![
-            Value::List(vec![Value::Int(10), Value::Int(20)]),
-        ])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "f",
+            vec![Value::List(vec![Value::Int(10), Value::Int(20)])],
+        )
         .unwrap();
     assert_eq!(val, Value::Option(Some(Box::new(Value::Int(10)))));
 }
@@ -265,9 +281,12 @@ system "test" {
     let mut handler = NoopHandler;
 
     let val = interp
-        .evaluate_derive(&state, &mut handler, "f", vec![
-            Value::List(vec![Value::Int(10), Value::Int(20)]),
-        ])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "f",
+            vec![Value::List(vec![Value::Int(10), Value::Int(20)])],
+        )
         .unwrap();
     assert_eq!(val, Value::Option(Some(Box::new(Value::Int(20)))));
 }
@@ -309,12 +328,20 @@ system "test" {
     let mut handler = NoopHandler;
 
     let val = interp
-        .evaluate_derive(&state, &mut handler, "f", vec![
-            Value::List(vec![Value::Int(1), Value::Int(2)]),
-            Value::Int(3),
-        ])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "f",
+            vec![
+                Value::List(vec![Value::Int(1), Value::Int(2)]),
+                Value::Int(3),
+            ],
+        )
         .unwrap();
-    assert_eq!(val, Value::List(vec![Value::Int(1), Value::Int(2), Value::Int(3)]));
+    assert_eq!(
+        val,
+        Value::List(vec![Value::Int(1), Value::Int(2), Value::Int(3)])
+    );
 }
 
 #[test]
@@ -332,10 +359,12 @@ system "test" {
     let mut handler = NoopHandler;
 
     let val = interp
-        .evaluate_derive(&state, &mut handler, "f", vec![
-            Value::List(vec![]),
-            Value::Int(42),
-        ])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "f",
+            vec![Value::List(vec![]), Value::Int(42)],
+        )
         .unwrap();
     assert_eq!(val, Value::List(vec![Value::Int(42)]));
 }
@@ -357,14 +386,25 @@ system "test" {
     let mut handler = NoopHandler;
 
     let val = interp
-        .evaluate_derive(&state, &mut handler, "f", vec![
-            Value::List(vec![Value::Int(1), Value::Int(2)]),
-            Value::List(vec![Value::Int(3), Value::Int(4)]),
-        ])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "f",
+            vec![
+                Value::List(vec![Value::Int(1), Value::Int(2)]),
+                Value::List(vec![Value::Int(3), Value::Int(4)]),
+            ],
+        )
         .unwrap();
-    assert_eq!(val, Value::List(vec![
-        Value::Int(1), Value::Int(2), Value::Int(3), Value::Int(4),
-    ]));
+    assert_eq!(
+        val,
+        Value::List(vec![
+            Value::Int(1),
+            Value::Int(2),
+            Value::Int(3),
+            Value::Int(4),
+        ])
+    );
 }
 
 #[test]
@@ -382,10 +422,15 @@ system "test" {
     let mut handler = NoopHandler;
 
     let val = interp
-        .evaluate_derive(&state, &mut handler, "f", vec![
-            Value::List(vec![Value::Int(1), Value::Int(2)]),
-            Value::List(vec![]),
-        ])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "f",
+            vec![
+                Value::List(vec![Value::Int(1), Value::Int(2)]),
+                Value::List(vec![]),
+            ],
+        )
         .unwrap();
     assert_eq!(val, Value::List(vec![Value::Int(1), Value::Int(2)]));
 }
@@ -407,11 +452,21 @@ system "test" {
     let mut handler = NoopHandler;
 
     let val = interp
-        .evaluate_derive(&state, &mut handler, "f", vec![
-            Value::List(vec![Value::Int(1), Value::Int(2), Value::Int(3)]),
-        ])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "f",
+            vec![Value::List(vec![
+                Value::Int(1),
+                Value::Int(2),
+                Value::Int(3),
+            ])],
+        )
         .unwrap();
-    assert_eq!(val, Value::List(vec![Value::Int(3), Value::Int(2), Value::Int(1)]));
+    assert_eq!(
+        val,
+        Value::List(vec![Value::Int(3), Value::Int(2), Value::Int(1)])
+    );
 }
 
 #[test]
@@ -496,9 +551,16 @@ system "test" {
     let mut handler = NoopHandler;
 
     let val = interp
-        .evaluate_derive(&state, &mut handler, "f", vec![
-            Value::List(vec![Value::Int(1), Value::Int(2), Value::Int(3)]),
-        ])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "f",
+            vec![Value::List(vec![
+                Value::Int(1),
+                Value::Int(2),
+                Value::Int(3),
+            ])],
+        )
         .unwrap();
     assert_eq!(val, Value::Option(Some(Box::new(Value::Int(3)))));
 }
@@ -520,9 +582,16 @@ system "test" {
     let mut handler = NoopHandler;
 
     let val = interp
-        .evaluate_derive(&state, &mut handler, "f", vec![
-            Value::List(vec![Value::Int(1), Value::Int(2), Value::Int(3)]),
-        ])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "f",
+            vec![Value::List(vec![
+                Value::Int(1),
+                Value::Int(2),
+                Value::Int(3),
+            ])],
+        )
         .unwrap();
     assert_eq!(val, Value::Int(6));
 }
@@ -562,9 +631,16 @@ system "test" {
     let mut handler = NoopHandler;
 
     let val = interp
-        .evaluate_derive(&state, &mut handler, "f", vec![
-            Value::List(vec![Value::Int(1), Value::Int(2), Value::Int(3)]),
-        ])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "f",
+            vec![Value::List(vec![
+                Value::Int(1),
+                Value::Int(2),
+                Value::Int(3),
+            ])],
+        )
         .unwrap();
     assert_eq!(val, Value::Int(6));
 }
@@ -586,9 +662,12 @@ system "test" {
     let mut handler = NoopHandler;
 
     let val = interp
-        .evaluate_derive(&state, &mut handler, "f", vec![
-            Value::List(vec![Value::Bool(false), Value::Bool(true)]),
-        ])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "f",
+            vec![Value::List(vec![Value::Bool(false), Value::Bool(true)])],
+        )
         .unwrap();
     assert_eq!(val, Value::Bool(true));
 }
@@ -608,9 +687,12 @@ system "test" {
     let mut handler = NoopHandler;
 
     let val = interp
-        .evaluate_derive(&state, &mut handler, "f", vec![
-            Value::List(vec![Value::Bool(false), Value::Bool(false)]),
-        ])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "f",
+            vec![Value::List(vec![Value::Bool(false), Value::Bool(false)])],
+        )
         .unwrap();
     assert_eq!(val, Value::Bool(false));
 }
@@ -650,9 +732,12 @@ system "test" {
     let mut handler = NoopHandler;
 
     let val = interp
-        .evaluate_derive(&state, &mut handler, "f", vec![
-            Value::List(vec![Value::Bool(true), Value::Bool(true)]),
-        ])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "f",
+            vec![Value::List(vec![Value::Bool(true), Value::Bool(true)])],
+        )
         .unwrap();
     assert_eq!(val, Value::Bool(true));
 }
@@ -672,9 +757,12 @@ system "test" {
     let mut handler = NoopHandler;
 
     let val = interp
-        .evaluate_derive(&state, &mut handler, "f", vec![
-            Value::List(vec![Value::Bool(true), Value::Bool(false)]),
-        ])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "f",
+            vec![Value::List(vec![Value::Bool(true), Value::Bool(false)])],
+        )
         .unwrap();
     assert_eq!(val, Value::Bool(false));
 }
@@ -714,9 +802,12 @@ system "test" {
     let mut handler = NoopHandler;
 
     let val = interp
-        .evaluate_derive(&state, &mut handler, "f", vec![
-            Value::List(vec![Value::Bool(false), Value::Bool(true)]),
-        ])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "f",
+            vec![Value::List(vec![Value::Bool(false), Value::Bool(true)])],
+        )
         .unwrap();
     assert_eq!(val, Value::Bool(true));
 }
@@ -736,9 +827,12 @@ system "test" {
     let mut handler = NoopHandler;
 
     let val = interp
-        .evaluate_derive(&state, &mut handler, "f", vec![
-            Value::List(vec![Value::Bool(true), Value::Bool(true)]),
-        ])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "f",
+            vec![Value::List(vec![Value::Bool(true), Value::Bool(true)])],
+        )
         .unwrap();
     assert_eq!(val, Value::Bool(true));
 }
@@ -760,11 +854,21 @@ system "test" {
     let mut handler = NoopHandler;
 
     let val = interp
-        .evaluate_derive(&state, &mut handler, "f", vec![
-            Value::List(vec![Value::Int(3), Value::Int(1), Value::Int(2)]),
-        ])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "f",
+            vec![Value::List(vec![
+                Value::Int(3),
+                Value::Int(1),
+                Value::Int(2),
+            ])],
+        )
         .unwrap();
-    assert_eq!(val, Value::List(vec![Value::Int(1), Value::Int(2), Value::Int(3)]));
+    assert_eq!(
+        val,
+        Value::List(vec![Value::Int(1), Value::Int(2), Value::Int(3)])
+    );
 }
 
 #[test]
@@ -782,11 +886,21 @@ system "test" {
     let mut handler = NoopHandler;
 
     let val = interp
-        .evaluate_derive(&state, &mut handler, "f", vec![
-            Value::List(vec![Value::Int(3), Value::Int(1), Value::Int(2)]),
-        ])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "f",
+            vec![Value::List(vec![
+                Value::Int(3),
+                Value::Int(1),
+                Value::Int(2),
+            ])],
+        )
         .unwrap();
-    assert_eq!(val, Value::List(vec![Value::Int(1), Value::Int(2), Value::Int(3)]));
+    assert_eq!(
+        val,
+        Value::List(vec![Value::Int(1), Value::Int(2), Value::Int(3)])
+    );
 }
 
 // ── list comprehension ──────────────────────────────────────────
@@ -806,11 +920,21 @@ system "test" {
     let mut handler = NoopHandler;
 
     let val = interp
-        .evaluate_derive(&state, &mut handler, "f", vec![
-            Value::List(vec![Value::Int(1), Value::Int(2), Value::Int(3)]),
-        ])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "f",
+            vec![Value::List(vec![
+                Value::Int(1),
+                Value::Int(2),
+                Value::Int(3),
+            ])],
+        )
         .unwrap();
-    assert_eq!(val, Value::List(vec![Value::Int(2), Value::Int(3), Value::Int(4)]));
+    assert_eq!(
+        val,
+        Value::List(vec![Value::Int(2), Value::Int(3), Value::Int(4)])
+    );
 }
 
 #[test]
@@ -828,9 +952,17 @@ system "test" {
     let mut handler = NoopHandler;
 
     let val = interp
-        .evaluate_derive(&state, &mut handler, "f", vec![
-            Value::List(vec![Value::Int(-1), Value::Int(0), Value::Int(2), Value::Int(3)]),
-        ])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "f",
+            vec![Value::List(vec![
+                Value::Int(-1),
+                Value::Int(0),
+                Value::Int(2),
+                Value::Int(3),
+            ])],
+        )
         .unwrap();
     assert_eq!(val, Value::List(vec![Value::Int(2), Value::Int(3)]));
 }
@@ -852,9 +984,16 @@ system "test" {
     let val = interp
         .evaluate_derive(&state, &mut handler, "f", vec![])
         .unwrap();
-    assert_eq!(val, Value::List(vec![
-        Value::Int(0), Value::Int(2), Value::Int(4), Value::Int(6), Value::Int(8),
-    ]));
+    assert_eq!(
+        val,
+        Value::List(vec![
+            Value::Int(0),
+            Value::Int(2),
+            Value::Int(4),
+            Value::Int(6),
+            Value::Int(8),
+        ])
+    );
 }
 
 #[test]
@@ -874,7 +1013,10 @@ system "test" {
     let val = interp
         .evaluate_derive(&state, &mut handler, "f", vec![])
         .unwrap();
-    assert_eq!(val, Value::List(vec![Value::Int(1), Value::Int(2), Value::Int(3)]));
+    assert_eq!(
+        val,
+        Value::List(vec![Value::Int(1), Value::Int(2), Value::Int(3)])
+    );
 }
 
 #[test]
@@ -892,13 +1034,16 @@ system "test" {
     let mut handler = NoopHandler;
 
     let val = interp
-        .evaluate_derive(&state, &mut handler, "f", vec![
-            Value::List(vec![
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "f",
+            vec![Value::List(vec![
                 Value::Option(Some(Box::new(Value::Int(1)))),
                 Value::None,
                 Value::Option(Some(Box::new(Value::Int(3)))),
-            ]),
-        ])
+            ])],
+        )
         .unwrap();
     assert_eq!(val, Value::List(vec![Value::Int(1), Value::Int(3)]));
 }
@@ -918,9 +1063,16 @@ system "test" {
     let mut handler = NoopHandler;
 
     let val = interp
-        .evaluate_derive(&state, &mut handler, "f", vec![
-            Value::List(vec![Value::Int(1), Value::Int(2), Value::Int(3)]),
-        ])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "f",
+            vec![Value::List(vec![
+                Value::Int(1),
+                Value::Int(2),
+                Value::Int(3),
+            ])],
+        )
         .unwrap();
     assert_eq!(val, Value::List(vec![]));
 }
@@ -942,9 +1094,16 @@ system "test" {
     let mut handler = NoopHandler;
 
     let val = interp
-        .evaluate_derive(&state, &mut handler, "f", vec![
-            Value::List(vec![Value::Int(1), Value::Int(2), Value::Int(3)]),
-        ])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "f",
+            vec![Value::List(vec![
+                Value::Int(1),
+                Value::Int(2),
+                Value::Int(3),
+            ])],
+        )
         .unwrap();
     // 1 + 4 + 9 = 14
     assert_eq!(val, Value::Int(14));
@@ -965,11 +1124,21 @@ system "test" {
     let mut handler = NoopHandler;
 
     let val = interp
-        .evaluate_derive(&state, &mut handler, "f", vec![
-            Value::List(vec![Value::Int(3), Value::Int(1), Value::Int(2)]),
-        ])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "f",
+            vec![Value::List(vec![
+                Value::Int(3),
+                Value::Int(1),
+                Value::Int(2),
+            ])],
+        )
         .unwrap();
-    assert_eq!(val, Value::List(vec![Value::Int(2), Value::Int(4), Value::Int(6)]));
+    assert_eq!(
+        val,
+        Value::List(vec![Value::Int(2), Value::Int(4), Value::Int(6)])
+    );
 }
 
 #[test]
@@ -989,7 +1158,13 @@ system "test" {
     let val = interp
         .evaluate_derive(&state, &mut handler, "f", vec![])
         .unwrap();
-    assert_eq!(val, Value::List(vec![
-        Value::Int(6), Value::Int(7), Value::Int(8), Value::Int(9),
-    ]));
+    assert_eq!(
+        val,
+        Value::List(vec![
+            Value::Int(6),
+            Value::Int(7),
+            Value::Int(8),
+            Value::Int(9),
+        ])
+    );
 }

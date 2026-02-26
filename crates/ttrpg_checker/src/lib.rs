@@ -1,13 +1,13 @@
-pub mod ty;
-pub mod env;
-pub mod scope;
 pub mod builtins;
-pub mod collect;
 pub mod check;
 mod check_expr;
-mod check_stmt;
-mod check_pattern;
 mod check_modify;
+mod check_pattern;
+mod check_stmt;
+pub mod collect;
+pub mod env;
+pub mod scope;
+pub mod ty;
 
 use ttrpg_ast::ast::Program;
 use ttrpg_ast::diagnostic::Diagnostic;

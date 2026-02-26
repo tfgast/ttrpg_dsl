@@ -1,10 +1,10 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::ty::Ty;
-use ttrpg_ast::Name;
-use ttrpg_ast::Span;
 use ttrpg_ast::ast::TypeExpr;
 use ttrpg_ast::diagnostic::Diagnostic;
+use ttrpg_ast::Name;
+use ttrpg_ast::Span;
 use ttrpg_ast::Spanned;
 
 /// What kind of declaration a type name refers to.
@@ -257,9 +257,10 @@ impl TypeEnv {
             TypeExpr::Qualified { .. } => Ty::Error,
             TypeExpr::List(inner) => Ty::List(Box::new(self.resolve_type(inner))),
             TypeExpr::Set(inner) => Ty::Set(Box::new(self.resolve_type(inner))),
-            TypeExpr::Map(k, v) => {
-                Ty::Map(Box::new(self.resolve_type(k)), Box::new(self.resolve_type(v)))
-            }
+            TypeExpr::Map(k, v) => Ty::Map(
+                Box::new(self.resolve_type(k)),
+                Box::new(self.resolve_type(v)),
+            ),
             TypeExpr::OptionType(inner) => Ty::Option(Box::new(self.resolve_type(inner))),
             TypeExpr::Resource(_, _) => Ty::Resource,
         }
@@ -307,7 +308,10 @@ impl TypeEnv {
             }
             TypeExpr::Qualified { qualifier, name } => {
                 diagnostics.push(Diagnostic::error(
-                    format!("qualified type `{}.{}` requires module resolution", qualifier, name),
+                    format!(
+                        "qualified type `{}.{}` requires module resolution",
+                        qualifier, name
+                    ),
                     texpr.span,
                 ));
             }
@@ -352,7 +356,11 @@ impl TypeEnv {
     }
 
     /// Look up an optional group on an entity by name.
-    pub fn lookup_optional_group(&self, entity_name: &str, group_name: &str) -> Option<&OptionalGroupInfo> {
+    pub fn lookup_optional_group(
+        &self,
+        entity_name: &str,
+        group_name: &str,
+    ) -> Option<&OptionalGroupInfo> {
         match self.types.get(entity_name)? {
             DeclInfo::Entity(info) => info.optional_groups.iter().find(|g| g.name == group_name),
             _ => None,
@@ -437,5 +445,68 @@ impl TypeEnv {
             ("movement", Ty::Int),
             ("free_interactions", Ty::Int),
         ]
+    }
+
+    /// Return the active TurnBudget field names.
+    ///
+    /// If the program defines `struct TurnBudget`, those fields are used.
+    /// Otherwise, the built-in fallback schema is returned.
+    pub fn turn_budget_field_names(&self) -> Vec<Name> {
+        if let Some(fields) = self.lookup_fields("TurnBudget") {
+            fields.iter().map(|f| f.name.clone()).collect()
+        } else {
+            Self::turn_budget_fields()
+                .into_iter()
+                .map(|(name, _)| Name::from(name))
+                .collect()
+        }
+    }
+
+    /// Resolve a DSL cost token (from `cost { ... }`) to a TurnBudget field name.
+    ///
+    /// Supports:
+    /// - Legacy aliases: `action`, `bonus_action`, `reaction`
+    /// - Direct field-name tokens for any TurnBudget field (e.g. `movement`, `attack`)
+    pub fn resolve_cost_token(&self, token: &str) -> Option<Name> {
+        let fields: HashSet<Name> = self.turn_budget_field_names().into_iter().collect();
+
+        let alias_field = match token {
+            "action" => Some("actions"),
+            "bonus_action" => Some("bonus_actions"),
+            "reaction" => Some("reactions"),
+            _ => None,
+        };
+
+        if let Some(field) = alias_field {
+            if fields.contains(field) {
+                return Some(Name::from(field));
+            }
+        }
+
+        if fields.contains(token) {
+            return Some(Name::from(token));
+        }
+
+        None
+    }
+
+    /// Return valid cost tokens for diagnostics and tooling.
+    pub fn valid_cost_tokens(&self) -> Vec<Name> {
+        let fields: HashSet<Name> = self.turn_budget_field_names().into_iter().collect();
+        let mut tokens = fields.clone();
+
+        if fields.contains("actions") {
+            tokens.insert(Name::from("action"));
+        }
+        if fields.contains("bonus_actions") {
+            tokens.insert(Name::from("bonus_action"));
+        }
+        if fields.contains("reactions") {
+            tokens.insert(Name::from("reaction"));
+        }
+
+        let mut out: Vec<Name> = tokens.into_iter().collect();
+        out.sort_by(|a, b| a.as_str().cmp(b.as_str()));
+        out
     }
 }

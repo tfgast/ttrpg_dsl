@@ -27,23 +27,23 @@ impl Runner {
 
                 let gs = self.game_state.borrow();
                 match gs.read_field(&entity, group_name) {
-                    Some(Value::Struct { fields, .. }) => {
-                        match fields.get(field_name) {
-                            Some(val) => {
-                                self.output.push(format!(
-                                    "{}.{}.{} = {}",
-                                    handle, group_name, field_name,
-                                    format_value(val)
-                                ));
-                            }
-                            None => {
-                                return Err(CliError::Message(format!(
-                                    "field '{}' not found in group '{}'",
-                                    field_name, group_name
-                                )));
-                            }
+                    Some(Value::Struct { fields, .. }) => match fields.get(field_name) {
+                        Some(val) => {
+                            self.output.push(format!(
+                                "{}.{}.{} = {}",
+                                handle,
+                                group_name,
+                                field_name,
+                                format_value(val)
+                            ));
                         }
-                    }
+                        None => {
+                            return Err(CliError::Message(format!(
+                                "field '{}' not found in group '{}'",
+                                field_name, group_name
+                            )));
+                        }
+                    },
                     Some(_) => {
                         return Err(CliError::Message(format!(
                             "field '{}' is not a group on {}",
@@ -73,9 +73,10 @@ impl Runner {
                     let gs = self.game_state.borrow();
                     gs.entity_type_name(&entity).map(|s| s.to_string())
                 };
-                let is_group = type_name.as_ref().and_then(|tn| {
-                    self.type_env.lookup_optional_group(tn, field)
-                }).is_some();
+                let is_group = type_name
+                    .as_ref()
+                    .and_then(|tn| self.type_env.lookup_optional_group(tn, field))
+                    .is_some();
 
                 if is_group {
                     let gs = self.game_state.borrow();
@@ -83,14 +84,14 @@ impl Runner {
                         Some(val) => {
                             self.output.push(format!(
                                 "{}.{} = {}",
-                                handle, field, format_value(&val)
+                                handle,
+                                field,
+                                format_value(&val)
                             ));
                         }
                         None => {
-                            self.output.push(format!(
-                                "{}.{} = <not granted>",
-                                handle, field
-                            ));
+                            self.output
+                                .push(format!("{}.{} = <not granted>", handle, field));
                         }
                     }
                 } else {
@@ -104,12 +105,13 @@ impl Runner {
                         Some(val) => {
                             self.output.push(format!(
                                 "{}.{} = {}",
-                                handle, field, format_value(&val)
+                                handle,
+                                field,
+                                format_value(&val)
                             ));
                         }
                         None if is_declared => {
-                            self.output
-                                .push(format!("{}.{} = <unset>", handle, field));
+                            self.output.push(format!("{}.{} = <unset>", handle, field));
                         }
                         None => {
                             return Err(CliError::Message(format!(
@@ -141,12 +143,8 @@ impl Runner {
                         .read_field(&entity, &fi.name)
                         .map(|v| format_value(&v))
                         .unwrap_or_else(|| "<unset>".into());
-                    self.output.push(format!(
-                        "  {}: {} = {}",
-                        fi.name,
-                        fi.ty.display(),
-                        val
-                    ));
+                    self.output
+                        .push(format!("  {}: {} = {}", fi.name, fi.ty.display(), val));
                 }
             }
 
@@ -157,7 +155,11 @@ impl Runner {
                     if let Some(Value::Struct { fields, .. }) =
                         gs.read_field(&entity, &group_info.name)
                     {
-                        let status = if group_info.required { "included" } else { "granted" };
+                        let status = if group_info.required {
+                            "included"
+                        } else {
+                            "granted"
+                        };
                         self.output
                             .push(format!("  [group] {} ({})", group_info.name, status));
                         for fi in &group_info.fields {
@@ -216,12 +218,8 @@ impl Runner {
                         .read_field(entity, &fi.name)
                         .map(|v| format_value(&v))
                         .unwrap_or_else(|| "<unset>".into());
-                    self.output.push(format!(
-                        "  {}: {} = {}",
-                        fi.name,
-                        fi.ty.display(),
-                        val
-                    ));
+                    self.output
+                        .push(format!("  {}: {} = {}", fi.name, fi.ty.display(), val));
                 }
             }
 
@@ -232,7 +230,11 @@ impl Runner {
                     if let Some(Value::Struct { fields, .. }) =
                         gs.read_field(entity, &group_info.name)
                     {
-                        let status = if group_info.required { "included" } else { "granted" };
+                        let status = if group_info.required {
+                            "included"
+                        } else {
+                            "granted"
+                        };
                         self.output
                             .push(format!("  [group] {} ({})", group_info.name, status));
                         for fi in &group_info.fields {
@@ -283,9 +285,12 @@ impl Runner {
                             .push(format!("  {}: {}", fi.name, fi.ty.display()));
                     }
                     for group in &info.optional_groups {
-                        let decl_kw = if group.required { "include" } else { "optional" };
-                        self.output
-                            .push(format!("  {} {}", decl_kw, group.name));
+                        let decl_kw = if group.required {
+                            "include"
+                        } else {
+                            "optional"
+                        };
+                        self.output.push(format!("  {} {}", decl_kw, group.name));
                         for fi in &group.fields {
                             self.output
                                 .push(format!("    {}: {}", fi.name, fi.ty.display()));

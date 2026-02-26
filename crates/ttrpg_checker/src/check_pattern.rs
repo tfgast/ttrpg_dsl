@@ -17,42 +17,31 @@ impl<'a> Checker<'a> {
             PatternKind::NoneLit => {
                 if !scrutinee_ty.is_error() && !matches!(scrutinee_ty, Ty::Option(_)) {
                     self.error(
-                        format!(
-                            "`none` pattern cannot match type {}",
-                            scrutinee_ty
-                        ),
+                        format!("`none` pattern cannot match type {}", scrutinee_ty),
                         pattern.span,
                     );
                 }
             }
 
-            PatternKind::Some(inner) => {
-                match scrutinee_ty {
-                    Ty::Option(inner_ty) => {
-                        self.check_pattern(inner, inner_ty);
-                    }
-                    _ if scrutinee_ty.is_error() => {
-                        self.check_pattern(inner, &Ty::Error);
-                    }
-                    _ => {
-                        self.error(
-                            format!(
-                                "`some(...)` pattern cannot match type {}",
-                                scrutinee_ty
-                            ),
-                            pattern.span,
-                        );
-                    }
+            PatternKind::Some(inner) => match scrutinee_ty {
+                Ty::Option(inner_ty) => {
+                    self.check_pattern(inner, inner_ty);
                 }
-            }
+                _ if scrutinee_ty.is_error() => {
+                    self.check_pattern(inner, &Ty::Error);
+                }
+                _ => {
+                    self.error(
+                        format!("`some(...)` pattern cannot match type {}", scrutinee_ty),
+                        pattern.span,
+                    );
+                }
+            },
 
             PatternKind::IntLit(_) => {
                 if !scrutinee_ty.is_error() && !scrutinee_ty.is_int_like() {
                     self.error(
-                        format!(
-                            "integer pattern cannot match type {}",
-                            scrutinee_ty
-                        ),
+                        format!("integer pattern cannot match type {}", scrutinee_ty),
                         pattern.span,
                     );
                 }
@@ -61,10 +50,7 @@ impl<'a> Checker<'a> {
             PatternKind::StringLit(_) => {
                 if !scrutinee_ty.is_error() && *scrutinee_ty != Ty::String {
                     self.error(
-                        format!(
-                            "string pattern cannot match type {}",
-                            scrutinee_ty
-                        ),
+                        format!("string pattern cannot match type {}", scrutinee_ty),
                         pattern.span,
                     );
                 }
@@ -73,10 +59,7 @@ impl<'a> Checker<'a> {
             PatternKind::BoolLit(_) => {
                 if !scrutinee_ty.is_error() && *scrutinee_ty != Ty::Bool {
                     self.error(
-                        format!(
-                            "bool pattern cannot match type {}",
-                            scrutinee_ty
-                        ),
+                        format!("bool pattern cannot match type {}", scrutinee_ty),
                         pattern.span,
                     );
                 }
@@ -86,7 +69,9 @@ impl<'a> Checker<'a> {
                 // Could be a bare enum variant or a binding variable.
                 // Use scrutinee type to disambiguate multi-owner variants.
                 if self.env.variant_to_enums.contains_key(name) {
-                    if let Some(ref resolved) = self.resolve_bare_variant_in_pattern(name, scrutinee_ty, pattern.span) {
+                    if let Some(ref resolved) =
+                        self.resolve_bare_variant_in_pattern(name, scrutinee_ty, pattern.span)
+                    {
                         // Reject bare pattern for variants with payload fields
                         if let Some(DeclInfo::Enum(info)) = self.env.types.get(resolved) {
                             if let Some(var_info) = info.variants.iter().find(|v| v.name == *name) {
@@ -165,7 +150,10 @@ impl<'a> Checker<'a> {
                     }
                 } else if self.env.types.contains_key(ty) {
                     self.error(
-                        format!("`{}` is not an enum; qualified variant patterns require an enum type", ty),
+                        format!(
+                            "`{}` is not an enum; qualified variant patterns require an enum type",
+                            ty
+                        ),
                         pattern.span,
                     );
                 } else {
@@ -227,7 +215,10 @@ impl<'a> Checker<'a> {
                     }
                 } else if self.env.types.contains_key(ty) {
                     self.error(
-                        format!("`{}` is not an enum; qualified variant patterns require an enum type", ty),
+                        format!(
+                            "`{}` is not an enum; qualified variant patterns require an enum type",
+                            ty
+                        ),
                         pattern.span,
                     );
                 } else {
@@ -241,7 +232,9 @@ impl<'a> Checker<'a> {
             } => {
                 // Variant(patterns) — unqualified, disambiguate via scrutinee type
                 if self.env.variant_to_enums.contains_key(name) {
-                    if let Some(ref resolved) = self.resolve_bare_variant_in_pattern(name, scrutinee_ty, pattern.span) {
+                    if let Some(ref resolved) =
+                        self.resolve_bare_variant_in_pattern(name, scrutinee_ty, pattern.span)
+                    {
                         if let Some(DeclInfo::Enum(info)) = self.env.types.get(resolved) {
                             if let Some(var_info) = info.variants.iter().find(|v| v.name == *name) {
                                 if sub_patterns.len() != var_info.fields.len() {
@@ -255,17 +248,15 @@ impl<'a> Checker<'a> {
                                         pattern.span,
                                     );
                                 }
-                                for (sub, field) in sub_patterns.iter().zip(var_info.fields.iter()) {
+                                for (sub, field) in sub_patterns.iter().zip(var_info.fields.iter())
+                                {
                                     self.check_pattern(sub, &field.1);
                                 }
                             }
                         }
                     }
                 } else {
-                    self.error(
-                        format!("undefined variant `{}`", name),
-                        pattern.span,
-                    );
+                    self.error(format!("undefined variant `{}`", name), pattern.span);
                 }
             }
         }
@@ -303,8 +294,7 @@ impl<'a> Checker<'a> {
                 Some(s_enum.clone())
             } else {
                 // Variant doesn't belong to the scrutinee's enum
-                let owner_list: Vec<String> =
-                    owners.iter().map(|e| format!("`{}`", e)).collect();
+                let owner_list: Vec<String> = owners.iter().map(|e| format!("`{}`", e)).collect();
                 self.error(
                     format!(
                         "variant `{}` belongs to {}, not `{}`",

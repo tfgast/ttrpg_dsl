@@ -138,7 +138,11 @@ mod tests {
             let on_disk = std::fs::read_to_string(path).unwrap();
             let name = path.file_name().unwrap().to_str().unwrap();
             let bundled = read_file(name).unwrap();
-            assert_eq!(on_disk, bundled, "on-disk content should match bundled for {}", name);
+            assert_eq!(
+                on_disk, bundled,
+                "on-disk content should match bundled for {}",
+                name
+            );
         }
 
         let _ = std::fs::remove_dir_all(&dir);

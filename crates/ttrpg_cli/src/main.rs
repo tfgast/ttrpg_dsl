@@ -8,7 +8,11 @@ fn main() {
 
     // Check for --vi flag
     let vi_mode = args.iter().any(|a| a == "--vi");
-    let args: Vec<&str> = args.iter().filter(|a| *a != "--vi").map(|s| s.as_str()).collect();
+    let args: Vec<&str> = args
+        .iter()
+        .filter(|a| *a != "--vi")
+        .map(|s| s.as_str())
+        .collect();
 
     match args.first().copied() {
         Some("run") => {

@@ -41,11 +41,17 @@ fn has_unclosed_delimiters(line: &str) -> bool {
             match bytes[i] {
                 b'"' => in_string = true,
                 b'(' => parens += 1,
-                b')' => { parens = parens.saturating_sub(1); }
+                b')' => {
+                    parens = parens.saturating_sub(1);
+                }
                 b'[' => brackets += 1,
-                b']' => { brackets = brackets.saturating_sub(1); }
+                b']' => {
+                    brackets = brackets.saturating_sub(1);
+                }
                 b'{' => braces += 1,
-                b'}' => { braces = braces.saturating_sub(1); }
+                b'}' => {
+                    braces = braces.saturating_sub(1);
+                }
                 b'/' if i + 1 < bytes.len() && bytes[i + 1] == b'/' => {
                     // Line comment — skip to end of line
                     while i < bytes.len() && bytes[i] != b'\n' {
@@ -69,7 +75,10 @@ mod tests {
     #[test]
     fn complete_simple() {
         let v = TtrpgValidator;
-        assert!(matches!(v.validate("eval 2 + 3"), ValidationResult::Complete));
+        assert!(matches!(
+            v.validate("eval 2 + 3"),
+            ValidationResult::Complete
+        ));
     }
 
     #[test]

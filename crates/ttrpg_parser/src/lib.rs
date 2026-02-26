@@ -1,21 +1,21 @@
+mod decl;
 pub mod diagnostic;
+mod expr;
 pub mod lower;
 pub mod parser;
-pub mod resolve;
-mod decl;
-mod expr;
 mod pattern;
+pub mod resolve;
 mod stmt;
 mod types;
 
 pub use diagnostic::{Diagnostic, Severity, SourceMap};
 pub use lower::lower_moves;
+use parser::Parser;
 pub use resolve::FileSystemInfo;
 use ttrpg_ast::ast::*;
 use ttrpg_ast::module::ModuleMap;
 use ttrpg_ast::{FileId, Spanned};
 use ttrpg_lexer::TokenKind;
-use parser::Parser;
 
 pub fn parse(source: &str, file: FileId) -> (Program, Vec<Diagnostic>) {
     Parser::new(source, file).parse()
@@ -140,11 +140,16 @@ mod tests {
     derive modifier(score: int) -> int {
         floor((score - 10) / 2)
     }
-}"#.to_string(),
+}"#
+            .to_string(),
         )];
 
         let result = parse_multi(&sources);
-        assert!(!result.has_errors, "unexpected errors: {:?}", result.diagnostics);
+        assert!(
+            !result.has_errors,
+            "unexpected errors: {:?}",
+            result.diagnostics
+        );
         assert!(result.ok().is_some());
 
         let (program, map) = result.ok().unwrap();
@@ -161,18 +166,24 @@ mod tests {
                 "core.ttrpg".to_string(),
                 r#"system "Core" {
     enum Ability { STR, DEX }
-}"#.to_string(),
+}"#
+                .to_string(),
             ),
             (
                 "extra.ttrpg".to_string(),
                 r#"system "Extra" {
     enum Size { small, medium, large }
-}"#.to_string(),
+}"#
+                .to_string(),
             ),
         ];
 
         let result = parse_multi(&sources);
-        assert!(!result.has_errors, "unexpected errors: {:?}", result.diagnostics);
+        assert!(
+            !result.has_errors,
+            "unexpected errors: {:?}",
+            result.diagnostics
+        );
 
         let (_, map) = result.ok().unwrap();
         assert!(map.systems.contains_key("Core"));
@@ -186,13 +197,15 @@ mod tests {
                 "a.ttrpg".to_string(),
                 r#"system "A" {
     enum Ability { STR }
-}"#.to_string(),
+}"#
+                .to_string(),
             ),
             (
                 "b.ttrpg".to_string(),
                 r#"system "B" {
     enum Ability { DEX }
-}"#.to_string(),
+}"#
+                .to_string(),
             ),
         ];
 
@@ -211,11 +224,16 @@ system "Main" {
 }
 system "Core" {
     derive bar() -> int { 2 }
-}"#.to_string(),
+}"#
+            .to_string(),
         )];
 
         let result = parse_multi(&sources);
-        assert!(!result.has_errors, "unexpected errors: {:?}", result.diagnostics);
+        assert!(
+            !result.has_errors,
+            "unexpected errors: {:?}",
+            result.diagnostics
+        );
 
         let (_, map) = result.ok().unwrap();
         let main_info = map.systems.get("Main").unwrap();
@@ -232,13 +250,15 @@ system "Core" {
                 "a.ttrpg".to_string(),
                 r#"system "A" {
     derive foo() -> int { 1 }
-}"#.to_string(),
+}"#
+                .to_string(),
             ),
             (
                 "b.ttrpg".to_string(),
                 r#"system "B" {
     derive bar() -> int { 2 }
-}"#.to_string(),
+}"#
+                .to_string(),
             ),
         ];
 
@@ -248,14 +268,16 @@ system "Core" {
             if let TopLevel::System(sys) = &item.node {
                 if sys.name == "A" {
                     assert_eq!(
-                        item.span.file, FileId(0),
+                        item.span.file,
+                        FileId(0),
                         "system A should have FileId(0), got {:?}",
                         item.span.file,
                     );
                 }
                 if sys.name == "B" {
                     assert_eq!(
-                        item.span.file, FileId(1),
+                        item.span.file,
+                        FileId(1),
                         "system B should have FileId(1), got {:?}",
                         item.span.file,
                     );
@@ -272,13 +294,15 @@ system "Core" {
                 "a.ttrpg".to_string(),
                 r#"system "A" {
     derive foo() -> int { 1 }
-}"#.to_string(),
+}"#
+                .to_string(),
             ),
             (
                 "b.ttrpg".to_string(),
                 r#"system "B" {
     derive bar() -> int { 2 }
-}"#.to_string(),
+}"#
+                .to_string(),
             ),
         ];
 

@@ -99,7 +99,12 @@ pub trait WritableState: StateProvider {
     /// Remove a condition from an entity by name.
     /// If `params` is `Some`, only remove conditions whose params match.
     /// If `params` is `None`, remove all conditions with the given name.
-    fn remove_condition(&mut self, entity: &EntityRef, name: &str, params: Option<&BTreeMap<Name, Value>>);
+    fn remove_condition(
+        &mut self,
+        entity: &EntityRef,
+        name: &str,
+        params: Option<&BTreeMap<Name, Value>>,
+    );
 
     /// Write a value to a turn budget field.
     fn write_turn_field(&mut self, entity: &EntityRef, field: &str, value: Value);
@@ -174,9 +179,7 @@ mod tests {
     fn test_state_read_field() {
         let mut state = TestState::new();
         let entity = EntityRef(1);
-        state
-            .fields
-            .insert((1, "HP".into()), Value::Int(30));
+        state.fields.insert((1, "HP".into()), Value::Int(30));
 
         assert_eq!(state.read_field(&entity, "HP"), Some(Value::Int(30)));
         assert_eq!(state.read_field(&entity, "AC"), None);

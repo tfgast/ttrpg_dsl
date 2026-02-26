@@ -1,7 +1,7 @@
 //! Integration tests for for-loop evaluation.
 
-use ttrpg_ast::FileId;
 use ttrpg_ast::diagnostic::Severity;
+use ttrpg_ast::FileId;
 use ttrpg_interp::effect::{Effect, EffectHandler, Response};
 use ttrpg_interp::reference_state::GameState;
 use ttrpg_interp::value::Value;
@@ -65,7 +65,11 @@ system "test" {
             &state,
             &mut handler,
             "f",
-            vec![Value::List(vec![Value::Int(1), Value::Int(2), Value::Int(3)])],
+            vec![Value::List(vec![
+                Value::Int(1),
+                Value::Int(2),
+                Value::Int(3),
+            ])],
         )
         .unwrap();
     // for-loop returns unit; the derive body ends with 42
@@ -116,12 +120,7 @@ system "test" {
 
     // Empty list — zero iterations, body never runs
     let val = interp
-        .evaluate_derive(
-            &state,
-            &mut handler,
-            "f",
-            vec![Value::List(vec![])],
-        )
+        .evaluate_derive(&state, &mut handler, "f", vec![Value::List(vec![])])
         .unwrap();
     assert_eq!(val, Value::Int(99));
 }
@@ -207,12 +206,7 @@ system "test" {
     set.insert(Value::Int(20));
 
     let val = interp
-        .evaluate_derive(
-            &state,
-            &mut handler,
-            "f",
-            vec![Value::Set(set)],
-        )
+        .evaluate_derive(&state, &mut handler, "f", vec![Value::Set(set)])
         .unwrap();
     assert_eq!(val, Value::Int(42));
 }

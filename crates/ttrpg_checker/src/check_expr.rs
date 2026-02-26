@@ -50,10 +50,7 @@ impl<'a> Checker<'a> {
                 if let Some(unit_name) = self.env.suffix_to_unit.get(suffix.as_str()).cloned() {
                     Ty::UnitType(unit_name)
                 } else {
-                    self.error(
-                        format!("unknown unit suffix `{}`", suffix),
-                        expr.span,
-                    );
+                    self.error(format!("unknown unit suffix `{}`", suffix), expr.span);
                     Ty::Error
                 }
             }
@@ -99,7 +96,13 @@ impl<'a> Checker<'a> {
                 scrutinee,
                 then_block,
                 else_branch,
-            } => self.check_if_let(pattern, scrutinee, then_block, else_branch.as_ref(), expr.span),
+            } => self.check_if_let(
+                pattern,
+                scrutinee,
+                then_block,
+                else_branch.as_ref(),
+                expr.span,
+            ),
 
             ExprKind::PatternMatch { scrutinee, arms } => {
                 self.check_pattern_match(scrutinee, arms, expr.span, hint)
@@ -107,17 +110,26 @@ impl<'a> Checker<'a> {
 
             ExprKind::GuardMatch { arms } => self.check_guard_match(arms, expr.span, hint),
 
-            ExprKind::For { pattern, iterable, body } => {
-                self.check_for(pattern, iterable, body, expr.span)
-            }
+            ExprKind::For {
+                pattern,
+                iterable,
+                body,
+            } => self.check_for(pattern, iterable, body, expr.span),
 
-            ExprKind::ListComprehension { element, pattern, iterable, filter } => {
-                self.check_list_comprehension(element, pattern, iterable, filter.as_deref(), expr.span)
-            }
+            ExprKind::ListComprehension {
+                element,
+                pattern,
+                iterable,
+                filter,
+            } => self.check_list_comprehension(
+                element,
+                pattern,
+                iterable,
+                filter.as_deref(),
+                expr.span,
+            ),
 
-            ExprKind::Has { entity, group_name } => {
-                self.check_has(entity, group_name, expr.span)
-            }
+            ExprKind::Has { entity, group_name } => self.check_has(entity, group_name, expr.span),
         }
     }
 
@@ -169,10 +181,7 @@ impl<'a> Checker<'a> {
             return match decl {
                 DeclInfo::Enum(_) => Ty::EnumType(Name::from(name)),
                 DeclInfo::Struct(_) | DeclInfo::Entity(_) | DeclInfo::Unit(_) => {
-                    self.error(
-                        format!("type `{}` cannot be used as a value", name),
-                        span,
-                    );
+                    self.error(format!("type `{}` cannot be used as a value", name), span);
                     Ty::Error
                 }
             };
@@ -200,8 +209,9 @@ impl<'a> Checker<'a> {
     ) -> Ty {
         let lhs_ty = self.check_expr(lhs);
         let rhs_hint = match op {
-            BinOp::Eq | BinOp::NotEq | BinOp::Lt | BinOp::Gt | BinOp::LtEq | BinOp::GtEq
-                => Some(&lhs_ty),
+            BinOp::Eq | BinOp::NotEq | BinOp::Lt | BinOp::Gt | BinOp::LtEq | BinOp::GtEq => {
+                Some(&lhs_ty)
+            }
             _ => None,
         };
         let rhs_ty = self.check_expr_expecting(rhs, rhs_hint);
@@ -247,7 +257,9 @@ impl<'a> Checker<'a> {
             (Ty::DiceExpr, t) if t.is_int_like() => Ty::DiceExpr,
             (t, Ty::DiceExpr) if t.is_int_like() => Ty::DiceExpr,
             // Numeric
-            (Ty::Int, Ty::Int) | (Ty::Resource, Ty::Int) | (Ty::Int, Ty::Resource)
+            (Ty::Int, Ty::Int)
+            | (Ty::Resource, Ty::Int)
+            | (Ty::Int, Ty::Resource)
             | (Ty::Resource, Ty::Resource) => Ty::Int,
             (Ty::Float, t) | (t, Ty::Float) if t.is_numeric() => Ty::Float,
             // String concatenation
@@ -255,10 +267,7 @@ impl<'a> Checker<'a> {
             // Unit types: same-type addition
             (Ty::UnitType(a), Ty::UnitType(b)) if a == b => Ty::UnitType(a.clone()),
             _ => {
-                self.error(
-                    format!("cannot add {} and {}", lhs, rhs),
-                    span,
-                );
+                self.error(format!("cannot add {} and {}", lhs, rhs), span);
                 Ty::Error
             }
         }
@@ -274,10 +283,7 @@ impl<'a> Checker<'a> {
             // Unit types: same-type subtraction
             (Ty::UnitType(a), Ty::UnitType(b)) if a == b => Ty::UnitType(a.clone()),
             _ => {
-                self.error(
-                    format!("cannot subtract {} from {}", rhs, lhs),
-                    span,
-                );
+                self.error(format!("cannot subtract {} from {}", rhs, lhs), span);
                 Ty::Error
             }
         }
@@ -299,10 +305,7 @@ impl<'a> Checker<'a> {
             // Unit types: int * unit or unit * int
             (Ty::Int, Ty::UnitType(a)) | (Ty::UnitType(a), Ty::Int) => Ty::UnitType(a.clone()),
             _ => {
-                self.error(
-                    format!("cannot multiply {} and {}", lhs, rhs),
-                    span,
-                );
+                self.error(format!("cannot multiply {} and {}", lhs, rhs), span);
                 Ty::Error
             }
         }
@@ -325,10 +328,7 @@ impl<'a> Checker<'a> {
             // Unit types: same-type division produces float (dimensionless ratio)
             (Ty::UnitType(a), Ty::UnitType(b)) if a == b => Ty::Float,
             _ => {
-                self.error(
-                    format!("cannot divide {} by {}", lhs, rhs),
-                    span,
-                );
+                self.error(format!("cannot divide {} by {}", lhs, rhs), span);
                 Ty::Error
             }
         }
@@ -374,18 +374,12 @@ impl<'a> Checker<'a> {
         if ordering {
             // <, >, <=, >= only for orderable types
             if !self.types_orderable(l, r) {
-                self.error(
-                    format!("cannot order {} and {}", lhs_ty, rhs_ty),
-                    span,
-                );
+                self.error(format!("cannot order {} and {}", lhs_ty, rhs_ty), span);
             }
         } else {
             // ==, != for any comparable types
             if !self.types_comparable(l, r) {
-                self.error(
-                    format!("cannot compare {} and {}", lhs_ty, rhs_ty),
-                    span,
-                );
+                self.error(format!("cannot compare {} and {}", lhs_ty, rhs_ty), span);
             }
         }
 
@@ -451,19 +445,13 @@ impl<'a> Checker<'a> {
         match rhs {
             Ty::List(inner) | Ty::Set(inner) => {
                 if !self.types_compatible(lhs, inner) {
-                    self.error(
-                        format!("cannot check if {} is in {}", lhs, rhs),
-                        span,
-                    );
+                    self.error(format!("cannot check if {} is in {}", lhs, rhs), span);
                 }
                 Ty::Bool
             }
             Ty::Map(key, _) => {
                 if !self.types_compatible(lhs, key) {
-                    self.error(
-                        format!("cannot check if {} is in {}", lhs, rhs),
-                        span,
-                    );
+                    self.error(format!("cannot check if {} is in {}", lhs, rhs), span);
                 }
                 Ty::Bool
             }
@@ -559,15 +547,11 @@ impl<'a> Checker<'a> {
                 // Check for event payload synthetic structs
                 if let Some(event_name) = name.strip_prefix("__event_") {
                     if let Some(event_info) = self.env.events.get(event_name) {
-                        if let Some((_, ty)) =
-                            event_info.fields.iter().find(|(n, _)| n == field)
-                        {
+                        if let Some((_, ty)) = event_info.fields.iter().find(|(n, _)| n == field) {
                             return ty.clone();
                         }
                         // Also check event params
-                        if let Some(param) =
-                            event_info.params.iter().find(|p| p.name == field)
-                        {
+                        if let Some(param) = event_info.params.iter().find(|p| p.name == field) {
                             return param.ty.clone();
                         }
                         self.error(
@@ -590,10 +574,7 @@ impl<'a> Checker<'a> {
                         return fi.ty.clone();
                     }
                 }
-                self.error(
-                    format!("type `{}` has no field `{}`", name, field),
-                    span,
-                );
+                self.error(format!("type `{}` has no field `{}`", name, field), span);
                 Ty::Error
             }
             Ty::AnyEntity => {
@@ -638,10 +619,7 @@ impl<'a> Checker<'a> {
                         return fty.clone();
                     }
                 }
-                self.error(
-                    format!("RollResult has no field `{}`", field),
-                    span,
-                );
+                self.error(format!("RollResult has no field `{}`", field), span);
                 Ty::Error
             }
             Ty::TurnBudget => {
@@ -651,10 +629,7 @@ impl<'a> Checker<'a> {
                     if let Some(fi) = fields.iter().find(|f| f.name == field) {
                         return fi.ty.clone();
                     }
-                    self.error(
-                        format!("TurnBudget has no field `{}`", field),
-                        span,
-                    );
+                    self.error(format!("TurnBudget has no field `{}`", field), span);
                     return Ty::Error;
                 }
                 for (fname, ref fty) in TypeEnv::turn_budget_fields() {
@@ -662,10 +637,7 @@ impl<'a> Checker<'a> {
                         return fty.clone();
                     }
                 }
-                self.error(
-                    format!("TurnBudget has no field `{}`", field),
-                    span,
-                );
+                self.error(format!("TurnBudget has no field `{}`", field), span);
                 Ty::Error
             }
             // Qualified enum variant: EnumType.Variant (namespace access)
@@ -692,9 +664,7 @@ impl<'a> Checker<'a> {
                 Ty::Error
             }
             // Module alias: resolve through alias to the target system
-            Ty::ModuleAlias(alias_name) => {
-                self.resolve_alias_field(alias_name, field, span)
-            }
+            Ty::ModuleAlias(alias_name) => self.resolve_alias_field(alias_name, field, span),
             // Runtime enum values do not support field access
             Ty::Enum(enum_name) => {
                 self.error(
@@ -716,10 +686,7 @@ impl<'a> Checker<'a> {
                         span,
                     );
                 } else {
-                    self.error(
-                        format!("option type has no field `{}`", field),
-                        span,
-                    );
+                    self.error(format!("option type has no field `{}`", field), span);
                 }
                 Ty::Error
             }
@@ -748,10 +715,7 @@ impl<'a> Checker<'a> {
             Ty::DiceExpr => self.check_dice_method(method, args, span),
             Ty::String => self.check_string_method(method, args, span),
             _ => {
-                self.error(
-                    format!("type {} has no methods", obj_ty),
-                    span,
-                );
+                self.error(format!("type {} has no methods", obj_ty), span);
                 Ty::Error
             }
         }
@@ -782,10 +746,7 @@ impl<'a> Checker<'a> {
             "unwrap_or" => {
                 if args.len() != 1 {
                     self.error(
-                        format!(
-                            "unwrap_or() takes exactly 1 argument, found {}",
-                            args.len()
-                        ),
+                        format!("unwrap_or() takes exactly 1 argument, found {}", args.len()),
                         span,
                     );
                     return if inner_ty.is_error() {
@@ -843,19 +804,28 @@ impl<'a> Checker<'a> {
         match method {
             "len" => {
                 if !args.is_empty() {
-                    self.error(format!("len() takes no arguments, found {}", args.len()), span);
+                    self.error(
+                        format!("len() takes no arguments, found {}", args.len()),
+                        span,
+                    );
                 }
                 Ty::Int
             }
             "first" | "last" => {
                 if !args.is_empty() {
-                    self.error(format!("{}() takes no arguments, found {}", method, args.len()), span);
+                    self.error(
+                        format!("{}() takes no arguments, found {}", method, args.len()),
+                        span,
+                    );
                 }
                 Ty::Option(inner)
             }
             "reverse" => {
                 if !args.is_empty() {
-                    self.error(format!("reverse() takes no arguments, found {}", args.len()), span);
+                    self.error(
+                        format!("reverse() takes no arguments, found {}", args.len()),
+                        span,
+                    );
                 }
                 Ty::List(inner)
             }
@@ -865,13 +835,18 @@ impl<'a> Checker<'a> {
                         format!("append() takes 1 argument, found {}", args.len()),
                         span,
                     );
-                    for arg in args { self.check_expr(&arg.value); }
+                    for arg in args {
+                        self.check_expr(&arg.value);
+                    }
                     return Ty::Error;
                 }
                 let elem_ty = self.check_expr_expecting(&args[0].value, Some(&inner));
                 if !elem_ty.is_error() && !self.types_compatible(&inner, &elem_ty) {
                     self.error(
-                        format!(".append() element type mismatch: list is list<{}>, but got {}", inner, elem_ty),
+                        format!(
+                            ".append() element type mismatch: list is list<{}>, but got {}",
+                            inner, elem_ty
+                        ),
                         span,
                     );
                 }
@@ -883,7 +858,9 @@ impl<'a> Checker<'a> {
                         format!("concat() takes 1 argument, found {}", args.len()),
                         span,
                     );
-                    for arg in args { self.check_expr(&arg.value); }
+                    for arg in args {
+                        self.check_expr(&arg.value);
+                    }
                     return Ty::Error;
                 }
                 let list_ty = Ty::List(inner.clone());
@@ -898,14 +875,20 @@ impl<'a> Checker<'a> {
             }
             "sum" => {
                 if !args.is_empty() {
-                    self.error(format!("sum() takes no arguments, found {}", args.len()), span);
+                    self.error(
+                        format!("sum() takes no arguments, found {}", args.len()),
+                        span,
+                    );
                 }
                 match *inner {
                     Ty::Int => Ty::Int,
                     Ty::Float => Ty::Float,
                     _ => {
                         self.error(
-                            format!("sum() requires list<int> or list<float>, found list<{}>", inner),
+                            format!(
+                                "sum() requires list<int> or list<float>, found list<{}>",
+                                inner
+                            ),
                             span,
                         );
                         Ty::Error
@@ -914,7 +897,10 @@ impl<'a> Checker<'a> {
             }
             "any" | "all" => {
                 if !args.is_empty() {
-                    self.error(format!("{}() takes no arguments, found {}", method, args.len()), span);
+                    self.error(
+                        format!("{}() takes no arguments, found {}", method, args.len()),
+                        span,
+                    );
                 }
                 if *inner != Ty::Bool && *inner != Ty::Error {
                     self.error(
@@ -926,7 +912,10 @@ impl<'a> Checker<'a> {
             }
             "sort" => {
                 if !args.is_empty() {
-                    self.error(format!("sort() takes no arguments, found {}", args.len()), span);
+                    self.error(
+                        format!("sort() takes no arguments, found {}", args.len()),
+                        span,
+                    );
                 }
                 Ty::List(inner)
             }
@@ -953,13 +942,19 @@ impl<'a> Checker<'a> {
         match method {
             "len" => {
                 if !args.is_empty() {
-                    self.error(format!("len() takes no arguments, found {}", args.len()), span);
+                    self.error(
+                        format!("len() takes no arguments, found {}", args.len()),
+                        span,
+                    );
                 }
                 Ty::Int
             }
             _ => {
                 self.error(
-                    format!("set type has no method `{}`; available methods: len", method),
+                    format!(
+                        "set type has no method `{}`; available methods: len",
+                        method
+                    ),
                     span,
                 );
                 Ty::Error
@@ -978,19 +973,28 @@ impl<'a> Checker<'a> {
         match method {
             "len" => {
                 if !args.is_empty() {
-                    self.error(format!("len() takes no arguments, found {}", args.len()), span);
+                    self.error(
+                        format!("len() takes no arguments, found {}", args.len()),
+                        span,
+                    );
                 }
                 Ty::Int
             }
             "keys" => {
                 if !args.is_empty() {
-                    self.error(format!("keys() takes no arguments, found {}", args.len()), span);
+                    self.error(
+                        format!("keys() takes no arguments, found {}", args.len()),
+                        span,
+                    );
                 }
                 Ty::List(k)
             }
             "values" => {
                 if !args.is_empty() {
-                    self.error(format!("values() takes no arguments, found {}", args.len()), span);
+                    self.error(
+                        format!("values() takes no arguments, found {}", args.len()),
+                        span,
+                    );
                 }
                 Ty::List(v)
             }
@@ -1007,12 +1011,7 @@ impl<'a> Checker<'a> {
         }
     }
 
-    fn check_dice_method(
-        &mut self,
-        method: &str,
-        args: &[Arg],
-        span: ttrpg_ast::Span,
-    ) -> Ty {
+    fn check_dice_method(&mut self, method: &str, args: &[Arg], span: ttrpg_ast::Span) -> Ty {
         match method {
             "multiply" => {
                 if args.len() != 1 {
@@ -1020,7 +1019,9 @@ impl<'a> Checker<'a> {
                         format!("multiply() takes 1 argument, found {}", args.len()),
                         span,
                     );
-                    for arg in args { self.check_expr(&arg.value); }
+                    for arg in args {
+                        self.check_expr(&arg.value);
+                    }
                     return Ty::Error;
                 }
                 let factor_ty = self.check_expr_expecting(&args[0].value, Some(&Ty::Int));
@@ -1034,7 +1035,10 @@ impl<'a> Checker<'a> {
             }
             "roll" => {
                 if !args.is_empty() {
-                    self.error(format!("roll() takes no arguments, found {}", args.len()), span);
+                    self.error(
+                        format!("roll() takes no arguments, found {}", args.len()),
+                        span,
+                    );
                 }
                 if !self.scope.allows_dice() {
                     self.error(
@@ -1058,26 +1062,30 @@ impl<'a> Checker<'a> {
         }
     }
 
-    fn check_string_method(
-        &mut self,
-        method: &str,
-        args: &[Arg],
-        span: ttrpg_ast::Span,
-    ) -> Ty {
+    fn check_string_method(&mut self, method: &str, args: &[Arg], span: ttrpg_ast::Span) -> Ty {
         match method {
             "len" => {
                 if !args.is_empty() {
-                    self.error(format!("len() takes no arguments, found {}", args.len()), span);
+                    self.error(
+                        format!("len() takes no arguments, found {}", args.len()),
+                        span,
+                    );
                 }
                 Ty::Int
             }
             "contains" | "starts_with" | "ends_with" => {
                 if args.len() != 1 {
                     self.error(
-                        format!("{}() takes exactly 1 argument, found {}", method, args.len()),
+                        format!(
+                            "{}() takes exactly 1 argument, found {}",
+                            method,
+                            args.len()
+                        ),
                         span,
                     );
-                    for arg in args { self.check_expr(&arg.value); }
+                    for arg in args {
+                        self.check_expr(&arg.value);
+                    }
                     return Ty::Bool;
                 }
                 let arg_ty = self.check_expr_expecting(&args[0].value, Some(&Ty::String));
@@ -1143,10 +1151,7 @@ impl<'a> Checker<'a> {
                 *val.clone()
             }
             _ => {
-                self.error(
-                    format!("cannot index into {}", obj_ty),
-                    span,
-                );
+                self.error(format!("cannot index into {}", obj_ty), span);
                 Ty::Error
             }
         }
@@ -1198,7 +1203,9 @@ impl<'a> Checker<'a> {
                             let current_ctx = self.scope.current_block_kind();
                             if !matches!(
                                 current_ctx,
-                                Some(BlockKind::ActionResolve) | Some(BlockKind::ReactionResolve) | Some(BlockKind::HookResolve)
+                                Some(BlockKind::ActionResolve)
+                                    | Some(BlockKind::ReactionResolve)
+                                    | Some(BlockKind::HookResolve)
                             ) {
                                 self.error(
                                     format!(
@@ -1242,7 +1249,13 @@ impl<'a> Checker<'a> {
         // Check if it's a condition call (e.g., Frightened(source: attacker))
         if let Some(cond_info) = self.env.conditions.get(&callee_name).cloned() {
             self.check_name_visible(&callee_name, Namespace::Condition, span);
-            self.check_args(&callee_name, CallKind::Condition, &cond_info.params, args, span);
+            self.check_args(
+                &callee_name,
+                CallKind::Condition,
+                &cond_info.params,
+                args,
+                span,
+            );
             return Ty::Condition;
         }
 
@@ -1276,7 +1289,9 @@ impl<'a> Checker<'a> {
         }
 
         // Check if it's an enum variant constructor (bare name)
-        if let Some(enum_name) = self.resolve_bare_variant_with_hint(&callee_name, callee.span, hint) {
+        if let Some(enum_name) =
+            self.resolve_bare_variant_with_hint(&callee_name, callee.span, hint)
+        {
             self.check_name_visible(&callee_name, Namespace::Variant, span);
             return self.check_enum_constructor(&enum_name, &callee_name, args, span);
         } else if self.is_known_variant(&callee_name) {
@@ -1309,7 +1324,7 @@ impl<'a> Checker<'a> {
             let is_pure_builtin = fn_info.kind == FnKind::Builtin
                 && matches!(
                     callee_name.as_str(),
-                    "floor" | "ceil" | "min" | "max" | "distance"
+                    "floor" | "ceil" | "min" | "max" | "distance" | "error"
                 );
             if !is_pure_builtin {
                 self.error(
@@ -1329,12 +1344,15 @@ impl<'a> Checker<'a> {
 
         // Reject direct reaction/hook calls — they are triggered by events, not called
         if fn_info.kind == FnKind::Reaction || fn_info.kind == FnKind::Hook {
-            let kind_name = if fn_info.kind == FnKind::Reaction { "reactions" } else { "hooks" };
+            let kind_name = if fn_info.kind == FnKind::Reaction {
+                "reactions"
+            } else {
+                "hooks"
+            };
             self.error(
                 format!(
                     "{} cannot be called directly; `{}` is triggered by events",
-                    kind_name,
-                    callee_name
+                    kind_name, callee_name
                 ),
                 span,
             );
@@ -1345,7 +1363,9 @@ impl<'a> Checker<'a> {
             let current_ctx = self.scope.current_block_kind();
             if !matches!(
                 current_ctx,
-                Some(BlockKind::ActionResolve) | Some(BlockKind::ReactionResolve) | Some(BlockKind::HookResolve)
+                Some(BlockKind::ActionResolve)
+                    | Some(BlockKind::ReactionResolve)
+                    | Some(BlockKind::HookResolve)
             ) {
                 self.error(
                     format!(
@@ -1366,15 +1386,17 @@ impl<'a> Checker<'a> {
             fn_info.params.clone()
         };
 
-        self.check_args(&callee_name, CallKind::Function, &effective_params, args, span);
+        self.check_args(
+            &callee_name,
+            CallKind::Function,
+            &effective_params,
+            args,
+            span,
+        );
         fn_info.return_type.clone()
     }
 
-    fn check_ordinal_call(
-        &mut self,
-        args: &[Arg],
-        span: ttrpg_ast::Span,
-    ) -> Ty {
+    fn check_ordinal_call(&mut self, args: &[Arg], span: ttrpg_ast::Span) -> Ty {
         if args.len() != 1 {
             self.error(
                 format!("`ordinal` expects 1 argument, found {}", args.len()),
@@ -1404,20 +1426,13 @@ impl<'a> Checker<'a> {
             return Ty::Int;
         }
         self.error(
-            format!(
-                "`ordinal` expects an enum value, found {}",
-                arg_ty
-            ),
+            format!("`ordinal` expects an enum value, found {}", arg_ty),
             span,
         );
         Ty::Error
     }
 
-    fn check_from_ordinal_call(
-        &mut self,
-        args: &[Arg],
-        span: ttrpg_ast::Span,
-    ) -> Ty {
+    fn check_from_ordinal_call(&mut self, args: &[Arg], span: ttrpg_ast::Span) -> Ty {
         if args.len() != 2 {
             self.error(
                 format!("`from_ordinal` expects 2 arguments, found {}", args.len()),
@@ -1468,14 +1483,13 @@ impl<'a> Checker<'a> {
         Ty::Enum(enum_name)
     }
 
-    fn check_try_from_ordinal_call(
-        &mut self,
-        args: &[Arg],
-        span: ttrpg_ast::Span,
-    ) -> Ty {
+    fn check_try_from_ordinal_call(&mut self, args: &[Arg], span: ttrpg_ast::Span) -> Ty {
         if args.len() != 2 {
             self.error(
-                format!("`try_from_ordinal` expects 2 arguments, found {}", args.len()),
+                format!(
+                    "`try_from_ordinal` expects 2 arguments, found {}",
+                    args.len()
+                ),
                 span,
             );
             for arg in args {
@@ -1525,11 +1539,7 @@ impl<'a> Checker<'a> {
 
     // ── Collection builtins ─────────────────────────────────────
 
-    fn check_len_call(
-        &mut self,
-        args: &[Arg],
-        span: ttrpg_ast::Span,
-    ) -> Ty {
+    fn check_len_call(&mut self, args: &[Arg], span: ttrpg_ast::Span) -> Ty {
         if args.len() != 1 {
             self.error(
                 format!("`len` expects 1 argument, found {}", args.len()),
@@ -1548,10 +1558,7 @@ impl<'a> Checker<'a> {
             Ty::List(_) | Ty::Set(_) | Ty::Map(_, _) => Ty::Int,
             _ => {
                 self.error(
-                    format!(
-                        "`len` expects a list, set, or map, found {}",
-                        arg_ty
-                    ),
+                    format!("`len` expects a list, set, or map, found {}", arg_ty),
                     span,
                 );
                 Ty::Error
@@ -1559,11 +1566,7 @@ impl<'a> Checker<'a> {
         }
     }
 
-    fn check_keys_call(
-        &mut self,
-        args: &[Arg],
-        span: ttrpg_ast::Span,
-    ) -> Ty {
+    fn check_keys_call(&mut self, args: &[Arg], span: ttrpg_ast::Span) -> Ty {
         if args.len() != 1 {
             self.error(
                 format!("`keys` expects 1 argument, found {}", args.len()),
@@ -1581,20 +1584,13 @@ impl<'a> Checker<'a> {
         match arg_ty {
             Ty::Map(k, _) => Ty::List(k),
             _ => {
-                self.error(
-                    format!("`keys` expects a map, found {}", arg_ty),
-                    span,
-                );
+                self.error(format!("`keys` expects a map, found {}", arg_ty), span);
                 Ty::Error
             }
         }
     }
 
-    fn check_values_call(
-        &mut self,
-        args: &[Arg],
-        span: ttrpg_ast::Span,
-    ) -> Ty {
+    fn check_values_call(&mut self, args: &[Arg], span: ttrpg_ast::Span) -> Ty {
         if args.len() != 1 {
             self.error(
                 format!("`values` expects 1 argument, found {}", args.len()),
@@ -1612,20 +1608,13 @@ impl<'a> Checker<'a> {
         match arg_ty {
             Ty::Map(_, v) => Ty::List(v),
             _ => {
-                self.error(
-                    format!("`values` expects a map, found {}", arg_ty),
-                    span,
-                );
+                self.error(format!("`values` expects a map, found {}", arg_ty), span);
                 Ty::Error
             }
         }
     }
 
-    fn check_first_call(
-        &mut self,
-        args: &[Arg],
-        span: ttrpg_ast::Span,
-    ) -> Ty {
+    fn check_first_call(&mut self, args: &[Arg], span: ttrpg_ast::Span) -> Ty {
         if args.len() != 1 {
             self.error(
                 format!("`first` expects 1 argument, found {}", args.len()),
@@ -1643,20 +1632,13 @@ impl<'a> Checker<'a> {
         match arg_ty {
             Ty::List(inner) => Ty::Option(inner),
             _ => {
-                self.error(
-                    format!("`first` expects a list, found {}", arg_ty),
-                    span,
-                );
+                self.error(format!("`first` expects a list, found {}", arg_ty), span);
                 Ty::Error
             }
         }
     }
 
-    fn check_last_call(
-        &mut self,
-        args: &[Arg],
-        span: ttrpg_ast::Span,
-    ) -> Ty {
+    fn check_last_call(&mut self, args: &[Arg], span: ttrpg_ast::Span) -> Ty {
         if args.len() != 1 {
             self.error(
                 format!("`last` expects 1 argument, found {}", args.len()),
@@ -1674,20 +1656,13 @@ impl<'a> Checker<'a> {
         match arg_ty {
             Ty::List(inner) => Ty::Option(inner),
             _ => {
-                self.error(
-                    format!("`last` expects a list, found {}", arg_ty),
-                    span,
-                );
+                self.error(format!("`last` expects a list, found {}", arg_ty), span);
                 Ty::Error
             }
         }
     }
 
-    fn check_append_call(
-        &mut self,
-        args: &[Arg],
-        span: ttrpg_ast::Span,
-    ) -> Ty {
+    fn check_append_call(&mut self, args: &[Arg], span: ttrpg_ast::Span) -> Ty {
         if args.len() != 2 {
             self.error(
                 format!("`append` expects 2 arguments, found {}", args.len()),
@@ -1730,11 +1705,7 @@ impl<'a> Checker<'a> {
         }
     }
 
-    fn check_concat_call(
-        &mut self,
-        args: &[Arg],
-        span: ttrpg_ast::Span,
-    ) -> Ty {
+    fn check_concat_call(&mut self, args: &[Arg], span: ttrpg_ast::Span) -> Ty {
         if args.len() != 2 {
             self.error(
                 format!("`concat` expects 2 arguments, found {}", args.len()),
@@ -1754,10 +1725,7 @@ impl<'a> Checker<'a> {
             (Ty::List(_), Ty::List(_)) => {
                 if !self.types_compatible(&first_ty, &second_ty) {
                     self.error(
-                        format!(
-                            "`concat` list type mismatch: {} vs {}",
-                            first_ty, second_ty
-                        ),
+                        format!("`concat` list type mismatch: {} vs {}", first_ty, second_ty),
                         span,
                     );
                 }
@@ -1765,14 +1733,20 @@ impl<'a> Checker<'a> {
             }
             (Ty::List(_), _) => {
                 self.error(
-                    format!("`concat` second argument must be a list, found {}", second_ty),
+                    format!(
+                        "`concat` second argument must be a list, found {}",
+                        second_ty
+                    ),
                     span,
                 );
                 Ty::Error
             }
             _ => {
                 self.error(
-                    format!("`concat` expects two lists, found {} and {}", first_ty, second_ty),
+                    format!(
+                        "`concat` expects two lists, found {} and {}",
+                        first_ty, second_ty
+                    ),
                     span,
                 );
                 Ty::Error
@@ -1780,11 +1754,7 @@ impl<'a> Checker<'a> {
         }
     }
 
-    fn check_reverse_call(
-        &mut self,
-        args: &[Arg],
-        span: ttrpg_ast::Span,
-    ) -> Ty {
+    fn check_reverse_call(&mut self, args: &[Arg], span: ttrpg_ast::Span) -> Ty {
         if args.len() != 1 {
             self.error(
                 format!("`reverse` expects 1 argument, found {}", args.len()),
@@ -1802,20 +1772,13 @@ impl<'a> Checker<'a> {
         match arg_ty {
             Ty::List(_) => arg_ty,
             _ => {
-                self.error(
-                    format!("`reverse` expects a list, found {}", arg_ty),
-                    span,
-                );
+                self.error(format!("`reverse` expects a list, found {}", arg_ty), span);
                 Ty::Error
             }
         }
     }
 
-    fn check_sum_call(
-        &mut self,
-        args: &[Arg],
-        span: ttrpg_ast::Span,
-    ) -> Ty {
+    fn check_sum_call(&mut self, args: &[Arg], span: ttrpg_ast::Span) -> Ty {
         if args.len() != 1 {
             self.error(
                 format!("`sum` expects 1 argument, found {}", args.len()),
@@ -1843,20 +1806,13 @@ impl<'a> Checker<'a> {
                 }
             },
             _ => {
-                self.error(
-                    format!("`sum` expects a list, found {}", arg_ty),
-                    span,
-                );
+                self.error(format!("`sum` expects a list, found {}", arg_ty), span);
                 Ty::Error
             }
         }
     }
 
-    fn check_any_call(
-        &mut self,
-        args: &[Arg],
-        span: ttrpg_ast::Span,
-    ) -> Ty {
+    fn check_any_call(&mut self, args: &[Arg], span: ttrpg_ast::Span) -> Ty {
         if args.len() != 1 {
             self.error(
                 format!("`any` expects 1 argument, found {}", args.len()),
@@ -1874,27 +1830,17 @@ impl<'a> Checker<'a> {
         match arg_ty {
             Ty::List(ref inner) if **inner == Ty::Bool => Ty::Bool,
             Ty::List(_) => {
-                self.error(
-                    format!("`any` requires list<bool>, found {}", arg_ty),
-                    span,
-                );
+                self.error(format!("`any` requires list<bool>, found {}", arg_ty), span);
                 Ty::Error
             }
             _ => {
-                self.error(
-                    format!("`any` expects a list, found {}", arg_ty),
-                    span,
-                );
+                self.error(format!("`any` expects a list, found {}", arg_ty), span);
                 Ty::Error
             }
         }
     }
 
-    fn check_all_call(
-        &mut self,
-        args: &[Arg],
-        span: ttrpg_ast::Span,
-    ) -> Ty {
+    fn check_all_call(&mut self, args: &[Arg], span: ttrpg_ast::Span) -> Ty {
         if args.len() != 1 {
             self.error(
                 format!("`all` expects 1 argument, found {}", args.len()),
@@ -1912,27 +1858,17 @@ impl<'a> Checker<'a> {
         match arg_ty {
             Ty::List(ref inner) if **inner == Ty::Bool => Ty::Bool,
             Ty::List(_) => {
-                self.error(
-                    format!("`all` requires list<bool>, found {}", arg_ty),
-                    span,
-                );
+                self.error(format!("`all` requires list<bool>, found {}", arg_ty), span);
                 Ty::Error
             }
             _ => {
-                self.error(
-                    format!("`all` expects a list, found {}", arg_ty),
-                    span,
-                );
+                self.error(format!("`all` expects a list, found {}", arg_ty), span);
                 Ty::Error
             }
         }
     }
 
-    fn check_sort_call(
-        &mut self,
-        args: &[Arg],
-        span: ttrpg_ast::Span,
-    ) -> Ty {
+    fn check_sort_call(&mut self, args: &[Arg], span: ttrpg_ast::Span) -> Ty {
         if args.len() != 1 {
             self.error(
                 format!("`sort` expects 1 argument, found {}", args.len()),
@@ -1950,20 +1886,13 @@ impl<'a> Checker<'a> {
         match arg_ty {
             Ty::List(_) => arg_ty,
             _ => {
-                self.error(
-                    format!("`sort` expects a list, found {}", arg_ty),
-                    span,
-                );
+                self.error(format!("`sort` expects a list, found {}", arg_ty), span);
                 Ty::Error
             }
         }
     }
 
-    fn check_some_call(
-        &mut self,
-        args: &[Arg],
-        span: ttrpg_ast::Span,
-    ) -> Ty {
+    fn check_some_call(&mut self, args: &[Arg], span: ttrpg_ast::Span) -> Ty {
         if args.len() != 1 {
             self.error(
                 format!("`some` expects 1 argument, found {}", args.len()),
@@ -2028,8 +1957,7 @@ impl<'a> Checker<'a> {
                 variant.fields.iter().position(|(n, _)| n == name)
             } else {
                 // Skip fields already claimed by named args
-                while next_positional < variant.fields.len()
-                    && satisfied.contains(&next_positional)
+                while next_positional < variant.fields.len() && satisfied.contains(&next_positional)
                 {
                     next_positional += 1;
                 }
@@ -2117,10 +2045,7 @@ impl<'a> Checker<'a> {
             "apply_condition" | "remove_condition" => {
                 if !self.scope.allows_mutation() {
                     self.error(
-                        format!(
-                            "{}() can only be called in action or reaction blocks",
-                            name
-                        ),
+                        format!("{}() can only be called in action or reaction blocks", name),
                         span,
                     );
                 }
@@ -2161,7 +2086,10 @@ impl<'a> Checker<'a> {
             }
             DeclInfo::Enum(_) => {
                 self.error(
-                    format!("cannot construct enum `{}` with struct literal syntax", name),
+                    format!(
+                        "cannot construct enum `{}` with struct literal syntax",
+                        name
+                    ),
                     span,
                 );
                 return Ty::Error;
@@ -2188,7 +2116,8 @@ impl<'a> Checker<'a> {
         // Check each provided field
         let mut seen = HashSet::new();
         for field in fields {
-            let field_hint = declared_fields.iter()
+            let field_hint = declared_fields
+                .iter()
                 .find(|f| f.name == field.name)
                 .map(|fi| &fi.ty);
             let field_ty = self.check_expr_expecting(&field.value, field_hint);
@@ -2228,10 +2157,7 @@ impl<'a> Checker<'a> {
             for fi in declared_fields.iter() {
                 if !fi.has_default && !seen.contains(&fi.name) {
                     self.error(
-                        format!(
-                            "missing required field `{}` in `{}` literal",
-                            fi.name, name
-                        ),
+                        format!("missing required field `{}` in `{}` literal", fi.name, name),
                         span,
                     );
                 }
@@ -2241,7 +2167,12 @@ impl<'a> Checker<'a> {
         result_ty
     }
 
-    fn check_list_lit(&mut self, elems: &[Spanned<ExprKind>], _span: ttrpg_ast::Span, elem_hint: Option<&Ty>) -> Ty {
+    fn check_list_lit(
+        &mut self,
+        elems: &[Spanned<ExprKind>],
+        _span: ttrpg_ast::Span,
+        elem_hint: Option<&Ty>,
+    ) -> Ty {
         if elems.is_empty() {
             // Use the expected element type hint if available (e.g. from return type),
             // otherwise fall back to Error which will produce a type mismatch.
@@ -2256,10 +2187,7 @@ impl<'a> Checker<'a> {
                 Some(ty) => unified_ty = ty,
                 None => {
                     self.error(
-                        format!(
-                            "list element has type {}, expected {}",
-                            elem_ty, unified_ty
-                        ),
+                        format!("list element has type {}, expected {}", elem_ty, unified_ty),
                         elem.span,
                     );
                 }
@@ -2287,10 +2215,7 @@ impl<'a> Checker<'a> {
                 Some(ty) => unified_key = ty,
                 None => {
                     self.error(
-                        format!(
-                            "map key has type {}, expected {}",
-                            key_ty, unified_key
-                        ),
+                        format!("map key has type {}, expected {}", key_ty, unified_key),
                         key.span,
                     );
                 }
@@ -2301,10 +2226,7 @@ impl<'a> Checker<'a> {
                 Some(ty) => unified_val = ty,
                 None => {
                     self.error(
-                        format!(
-                            "map value has type {}, expected {}",
-                            val_ty, unified_val
-                        ),
+                        format!("map value has type {}, expected {}", val_ty, unified_val),
                         value.span,
                     );
                 }
@@ -2421,20 +2343,15 @@ impl<'a> Checker<'a> {
 
             if !arm_ty.is_error() {
                 match result_ty {
-                    Some(ref existing) => {
-                        match self.unify_branch_types(existing, &arm_ty) {
-                            Some(unified) => result_ty = Some(unified),
-                            None => {
-                                self.error(
-                                    format!(
-                                        "match arm has type {}, expected {}",
-                                        arm_ty, existing
-                                    ),
-                                    arm.span,
-                                );
-                            }
+                    Some(ref existing) => match self.unify_branch_types(existing, &arm_ty) {
+                        Some(unified) => result_ty = Some(unified),
+                        None => {
+                            self.error(
+                                format!("match arm has type {}, expected {}", arm_ty, existing),
+                                arm.span,
+                            );
                         }
-                    }
+                    },
                     None => result_ty = Some(arm_ty),
                 }
             }
@@ -2486,20 +2403,15 @@ impl<'a> Checker<'a> {
 
             if !arm_ty.is_error() {
                 match result_ty {
-                    Some(ref existing) => {
-                        match self.unify_branch_types(existing, &arm_ty) {
-                            Some(unified) => result_ty = Some(unified),
-                            None => {
-                                self.error(
-                                    format!(
-                                        "match arm has type {}, expected {}",
-                                        arm_ty, existing
-                                    ),
-                                    arm.span,
-                                );
-                            }
+                    Some(ref existing) => match self.unify_branch_types(existing, &arm_ty) {
+                        Some(unified) => result_ty = Some(unified),
+                        None => {
+                            self.error(
+                                format!("match arm has type {}, expected {}", arm_ty, existing),
+                                arm.span,
+                            );
                         }
-                    }
+                    },
                     None => result_ty = Some(arm_ty),
                 }
             }
@@ -2529,15 +2441,16 @@ impl<'a> Checker<'a> {
                     }
                     Ty::Error => Ty::Error,
                     other => {
-                        self.error(
-                            format!("expected list or set, found {}", other),
-                            span,
-                        );
+                        self.error(format!("expected list or set, found {}", other), span);
                         Ty::Error
                     }
                 }
             }
-            ForIterable::Range { start, end, inclusive: _ } => {
+            ForIterable::Range {
+                start,
+                end,
+                inclusive: _,
+            } => {
                 let start_ty = self.check_expr(start);
                 let end_ty = self.check_expr(end);
                 if !start_ty.is_error() && !start_ty.is_int_like() {
@@ -2547,10 +2460,7 @@ impl<'a> Checker<'a> {
                     );
                 }
                 if !end_ty.is_error() && !end_ty.is_int_like() {
-                    self.error(
-                        format!("range end must be int, found {}", end_ty),
-                        end.span,
-                    );
+                    self.error(format!("range end must be int, found {}", end_ty), end.span);
                 }
                 Ty::Int
             }
@@ -2593,15 +2503,16 @@ impl<'a> Checker<'a> {
                     }
                     Ty::Error => Ty::Error,
                     other => {
-                        self.error(
-                            format!("expected list or set, found {}", other),
-                            span,
-                        );
+                        self.error(format!("expected list or set, found {}", other), span);
                         Ty::Error
                     }
                 }
             }
-            ForIterable::Range { start, end, inclusive: _ } => {
+            ForIterable::Range {
+                start,
+                end,
+                inclusive: _,
+            } => {
                 let start_ty = self.check_expr(start);
                 let end_ty = self.check_expr(end);
                 if !start_ty.is_error() && !start_ty.is_int_like() {
@@ -2611,10 +2522,7 @@ impl<'a> Checker<'a> {
                     );
                 }
                 if !end_ty.is_error() && !end_ty.is_int_like() {
-                    self.error(
-                        format!("range end must be int, found {}", end_ty),
-                        end.span,
-                    );
+                    self.error(format!("range end must be int, found {}", end_ty), end.span);
                 }
                 Ty::Int
             }
@@ -2629,7 +2537,10 @@ impl<'a> Checker<'a> {
             let filter_ty = self.check_expr(filter_expr);
             if !filter_ty.is_error() && filter_ty != Ty::Bool {
                 self.error(
-                    format!("list comprehension filter must be bool, found {}", filter_ty),
+                    format!(
+                        "list comprehension filter must be bool, found {}",
+                        filter_ty
+                    ),
                     filter_expr.span,
                 );
             }
@@ -2664,10 +2575,7 @@ impl<'a> Checker<'a> {
             Ty::Entity(name) => {
                 if self.env.lookup_optional_group(name, group_name).is_none() {
                     self.error(
-                        format!(
-                            "entity `{}` has no optional group `{}`",
-                            name, group_name
-                        ),
+                        format!("entity `{}` has no optional group `{}`", name, group_name),
                         span,
                     );
                 }
@@ -2702,9 +2610,9 @@ impl<'a> Checker<'a> {
     fn extract_path_key(&self, expr: &Spanned<ExprKind>) -> Option<Name> {
         match &expr.node {
             ExprKind::Ident(name) => Some(name.clone()),
-            ExprKind::FieldAccess { object, field } => {
-                self.extract_path_key(object).map(|p| Name::from(format!("{}.{}", p, field)))
-            }
+            ExprKind::FieldAccess { object, field } => self
+                .extract_path_key(object)
+                .map(|p| Name::from(format!("{}.{}", p, field))),
             ExprKind::Paren(inner) => self.extract_path_key(inner),
             _ => None,
         }
@@ -2747,19 +2655,11 @@ impl<'a> Checker<'a> {
 
     /// Resolve field access on a module alias: `Alias.Name`.
     /// Handles enum types, enum variants, and conditions from the target system.
-    fn resolve_alias_field(
-        &mut self,
-        alias: &str,
-        field: &str,
-        span: ttrpg_ast::Span,
-    ) -> Ty {
+    fn resolve_alias_field(&mut self, alias: &str, field: &str, span: ttrpg_ast::Span) -> Ty {
         let target = match self.resolve_alias_target(alias, span) {
             Some(t) => t,
             None => {
-                self.error(
-                    format!("unknown module alias `{}`", alias),
-                    span,
-                );
+                self.error(format!("unknown module alias `{}`", alias), span);
                 return Ty::Error;
             }
         };
@@ -2771,10 +2671,7 @@ impl<'a> Checker<'a> {
                     return match decl {
                         DeclInfo::Enum(_) => Ty::EnumType(Name::from(field)),
                         DeclInfo::Struct(_) | DeclInfo::Entity(_) | DeclInfo::Unit(_) => {
-                            self.error(
-                                format!("type `{}` cannot be used as a value", field),
-                                span,
-                            );
+                            self.error(format!("type `{}` cannot be used as a value", field), span);
                             Ty::Error
                         }
                     };
@@ -2785,13 +2682,15 @@ impl<'a> Checker<'a> {
             if sys_info.variants.contains(field) {
                 if let Some(owners) = self.env.variant_to_enums.get(field) {
                     // Filter to enums that belong to this system
-                    let matching: Vec<&Name> = owners.iter()
+                    let matching: Vec<&Name> = owners
+                        .iter()
                         .filter(|e| sys_info.types.contains(e.as_str()))
                         .collect();
                     let enum_name = if matching.len() == 1 {
                         matching[0]
                     } else if matching.len() > 1 {
-                        let qualified: Vec<String> = matching.iter()
+                        let qualified: Vec<String> = matching
+                            .iter()
                             .map(|e| format!("{}.{}.{}", alias, e, field))
                             .collect();
                         self.error(
@@ -2834,7 +2733,8 @@ impl<'a> Checker<'a> {
             // Check if the field is a condition in the target system
             if sys_info.conditions.contains(field) {
                 if let Some(cond_info) = self.env.conditions.get(field) {
-                    let required_params = cond_info.params.iter().filter(|p| !p.has_default).count();
+                    let required_params =
+                        cond_info.params.iter().filter(|p| !p.has_default).count();
                     if required_params > 0 {
                         self.error(
                             format!(
@@ -2871,10 +2771,7 @@ impl<'a> Checker<'a> {
         let target = match self.resolve_alias_target(alias, span) {
             Some(t) => t,
             None => {
-                self.error(
-                    format!("unknown module alias `{}`", alias),
-                    span,
-                );
+                self.error(format!("unknown module alias `{}`", alias), span);
                 for arg in args {
                     self.check_expr(&arg.value);
                 }
@@ -2900,13 +2797,15 @@ impl<'a> Checker<'a> {
             if sys_info.variants.contains(field) {
                 if let Some(owners) = self.env.variant_to_enums.get(field) {
                     // Filter to enums that belong to this system
-                    let matching: Vec<&Name> = owners.iter()
+                    let matching: Vec<&Name> = owners
+                        .iter()
                         .filter(|e| sys_info.types.contains(e.as_str()))
                         .collect();
                     let enum_name = if matching.len() == 1 {
                         matching[0].clone()
                     } else if matching.len() > 1 {
-                        let qualified: Vec<String> = matching.iter()
+                        let qualified: Vec<String> = matching
+                            .iter()
                             .map(|e| format!("{}.{}.{}", alias, e, field))
                             .collect();
                         self.error(
@@ -2968,9 +2867,7 @@ impl<'a> Checker<'a> {
             let param_idx = if let Some(ref name) = arg.name {
                 params.iter().position(|p| p.name == *name)
             } else {
-                while next_positional < params.len()
-                    && satisfied.contains(&next_positional)
-                {
+                while next_positional < params.len() && satisfied.contains(&next_positional) {
                     next_positional += 1;
                 }
                 if next_positional < params.len() {
@@ -2988,17 +2885,12 @@ impl<'a> Checker<'a> {
             if let Some(idx) = param_idx {
                 if !satisfied.insert(idx) {
                     self.error(
-                        format!(
-                            "duplicate argument for parameter `{}`",
-                            params[idx].name
-                        ),
+                        format!("duplicate argument for parameter `{}`", params[idx].name),
                         arg.span,
                     );
                 }
 
-                if !arg_ty.is_error()
-                    && !self.types_compatible(&arg_ty, &params[idx].ty)
-                {
+                if !arg_ty.is_error() && !self.types_compatible(&arg_ty, &params[idx].ty) {
                     match kind {
                         CallKind::Condition => {
                             self.error(
@@ -3051,10 +2943,7 @@ impl<'a> Checker<'a> {
                 match kind {
                     CallKind::Condition => {
                         self.error(
-                            format!(
-                                "condition `{}` has no parameter `{}`",
-                                callee_name, name
-                            ),
+                            format!("condition `{}` has no parameter `{}`", callee_name, name),
                             arg.span,
                         );
                     }
@@ -3134,12 +3023,7 @@ impl<'a> Checker<'a> {
     }
 
     /// Type-check a function call reached through an alias (delegates to normal function checking).
-    fn check_alias_function_call(
-        &mut self,
-        name: &str,
-        args: &[Arg],
-        span: ttrpg_ast::Span,
-    ) -> Ty {
+    fn check_alias_function_call(&mut self, name: &str, args: &[Arg], span: ttrpg_ast::Span) -> Ty {
         let fn_info = match self.env.lookup_fn(name) {
             Some(info) => info.clone(),
             None => {
@@ -3156,11 +3040,14 @@ impl<'a> Checker<'a> {
             let is_pure_builtin = fn_info.kind == FnKind::Builtin
                 && matches!(
                     name,
-                    "floor" | "ceil" | "min" | "max" | "distance"
+                    "floor" | "ceil" | "min" | "max" | "distance" | "error"
                 );
             if !is_pure_builtin {
                 self.error(
-                    format!("`{}` cannot be called in trigger/suppress binding context", name),
+                    format!(
+                        "`{}` cannot be called in trigger/suppress binding context",
+                        name
+                    ),
                     span,
                 );
             }
@@ -3173,9 +3060,16 @@ impl<'a> Checker<'a> {
 
         // Reject direct reaction/hook calls
         if fn_info.kind == FnKind::Reaction || fn_info.kind == FnKind::Hook {
-            let kind_name = if fn_info.kind == FnKind::Reaction { "reactions" } else { "hooks" };
+            let kind_name = if fn_info.kind == FnKind::Reaction {
+                "reactions"
+            } else {
+                "hooks"
+            };
             self.error(
-                format!("{} cannot be called directly; `{}` is triggered by events", kind_name, name),
+                format!(
+                    "{} cannot be called directly; `{}` is triggered by events",
+                    kind_name, name
+                ),
                 span,
             );
         }
@@ -3185,7 +3079,9 @@ impl<'a> Checker<'a> {
             let current_ctx = self.scope.current_block_kind();
             if !matches!(
                 current_ctx,
-                Some(BlockKind::ActionResolve) | Some(BlockKind::ReactionResolve) | Some(BlockKind::HookResolve)
+                Some(BlockKind::ActionResolve)
+                    | Some(BlockKind::ReactionResolve)
+                    | Some(BlockKind::HookResolve)
             ) {
                 self.error(
                     format!(

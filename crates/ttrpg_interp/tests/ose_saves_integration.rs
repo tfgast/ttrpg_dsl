@@ -156,27 +156,52 @@ fn fighter_level_1_saves() {
     let lvl = Value::Int(1);
 
     let death = interp
-        .evaluate_derive(&state, &mut handler, "get_save_death", vec![cat.clone(), lvl.clone()])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "get_save_death",
+            vec![cat.clone(), lvl.clone()],
+        )
         .unwrap();
     assert_eq!(death, Value::Int(12));
 
     let wands = interp
-        .evaluate_derive(&state, &mut handler, "get_save_wands", vec![cat.clone(), lvl.clone()])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "get_save_wands",
+            vec![cat.clone(), lvl.clone()],
+        )
         .unwrap();
     assert_eq!(wands, Value::Int(13));
 
     let paralysis = interp
-        .evaluate_derive(&state, &mut handler, "get_save_paralysis", vec![cat.clone(), lvl.clone()])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "get_save_paralysis",
+            vec![cat.clone(), lvl.clone()],
+        )
         .unwrap();
     assert_eq!(paralysis, Value::Int(14));
 
     let breath = interp
-        .evaluate_derive(&state, &mut handler, "get_save_breath", vec![cat.clone(), lvl.clone()])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "get_save_breath",
+            vec![cat.clone(), lvl.clone()],
+        )
         .unwrap();
     assert_eq!(breath, Value::Int(15));
 
     let spells = interp
-        .evaluate_derive(&state, &mut handler, "get_save_spells", vec![cat.clone(), lvl.clone()])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "get_save_spells",
+            vec![cat.clone(), lvl.clone()],
+        )
         .unwrap();
     assert_eq!(spells, Value::Int(16));
 }
@@ -194,23 +219,58 @@ fn fighter_level_7_saves() {
     let lvl = Value::Int(7);
 
     assert_eq!(
-        interp.evaluate_derive(&state, &mut handler, "get_save_death", vec![cat.clone(), lvl.clone()]).unwrap(),
+        interp
+            .evaluate_derive(
+                &state,
+                &mut handler,
+                "get_save_death",
+                vec![cat.clone(), lvl.clone()]
+            )
+            .unwrap(),
         Value::Int(8)
     );
     assert_eq!(
-        interp.evaluate_derive(&state, &mut handler, "get_save_wands", vec![cat.clone(), lvl.clone()]).unwrap(),
+        interp
+            .evaluate_derive(
+                &state,
+                &mut handler,
+                "get_save_wands",
+                vec![cat.clone(), lvl.clone()]
+            )
+            .unwrap(),
         Value::Int(9)
     );
     assert_eq!(
-        interp.evaluate_derive(&state, &mut handler, "get_save_paralysis", vec![cat.clone(), lvl.clone()]).unwrap(),
+        interp
+            .evaluate_derive(
+                &state,
+                &mut handler,
+                "get_save_paralysis",
+                vec![cat.clone(), lvl.clone()]
+            )
+            .unwrap(),
         Value::Int(10)
     );
     assert_eq!(
-        interp.evaluate_derive(&state, &mut handler, "get_save_breath", vec![cat.clone(), lvl.clone()]).unwrap(),
+        interp
+            .evaluate_derive(
+                &state,
+                &mut handler,
+                "get_save_breath",
+                vec![cat.clone(), lvl.clone()]
+            )
+            .unwrap(),
         Value::Int(10)
     );
     assert_eq!(
-        interp.evaluate_derive(&state, &mut handler, "get_save_spells", vec![cat.clone(), lvl.clone()]).unwrap(),
+        interp
+            .evaluate_derive(
+                &state,
+                &mut handler,
+                "get_save_spells",
+                vec![cat.clone(), lvl.clone()]
+            )
+            .unwrap(),
         Value::Int(12)
     );
 }
@@ -228,15 +288,36 @@ fn magic_user_level_11_saves() {
     let lvl = Value::Int(11);
 
     assert_eq!(
-        interp.evaluate_derive(&state, &mut handler, "get_save_death", vec![cat.clone(), lvl.clone()]).unwrap(),
+        interp
+            .evaluate_derive(
+                &state,
+                &mut handler,
+                "get_save_death",
+                vec![cat.clone(), lvl.clone()]
+            )
+            .unwrap(),
         Value::Int(8)
     );
     assert_eq!(
-        interp.evaluate_derive(&state, &mut handler, "get_save_spells", vec![cat.clone(), lvl.clone()]).unwrap(),
+        interp
+            .evaluate_derive(
+                &state,
+                &mut handler,
+                "get_save_spells",
+                vec![cat.clone(), lvl.clone()]
+            )
+            .unwrap(),
         Value::Int(8)
     );
     assert_eq!(
-        interp.evaluate_derive(&state, &mut handler, "get_save_breath", vec![cat.clone(), lvl.clone()]).unwrap(),
+        interp
+            .evaluate_derive(
+                &state,
+                &mut handler,
+                "get_save_breath",
+                vec![cat.clone(), lvl.clone()]
+            )
+            .unwrap(),
         Value::Int(11)
     );
 }
@@ -254,23 +335,58 @@ fn dwarf_level_10_saves() {
     let lvl = Value::Int(10);
 
     assert_eq!(
-        interp.evaluate_derive(&state, &mut handler, "get_save_death", vec![cat.clone(), lvl.clone()]).unwrap(),
+        interp
+            .evaluate_derive(
+                &state,
+                &mut handler,
+                "get_save_death",
+                vec![cat.clone(), lvl.clone()]
+            )
+            .unwrap(),
         Value::Int(2)
     );
     assert_eq!(
-        interp.evaluate_derive(&state, &mut handler, "get_save_wands", vec![cat.clone(), lvl.clone()]).unwrap(),
+        interp
+            .evaluate_derive(
+                &state,
+                &mut handler,
+                "get_save_wands",
+                vec![cat.clone(), lvl.clone()]
+            )
+            .unwrap(),
         Value::Int(3)
     );
     assert_eq!(
-        interp.evaluate_derive(&state, &mut handler, "get_save_paralysis", vec![cat.clone(), lvl.clone()]).unwrap(),
+        interp
+            .evaluate_derive(
+                &state,
+                &mut handler,
+                "get_save_paralysis",
+                vec![cat.clone(), lvl.clone()]
+            )
+            .unwrap(),
         Value::Int(4)
     );
     assert_eq!(
-        interp.evaluate_derive(&state, &mut handler, "get_save_breath", vec![cat.clone(), lvl.clone()]).unwrap(),
+        interp
+            .evaluate_derive(
+                &state,
+                &mut handler,
+                "get_save_breath",
+                vec![cat.clone(), lvl.clone()]
+            )
+            .unwrap(),
         Value::Int(4)
     );
     assert_eq!(
-        interp.evaluate_derive(&state, &mut handler, "get_save_spells", vec![cat.clone(), lvl.clone()]).unwrap(),
+        interp
+            .evaluate_derive(
+                &state,
+                &mut handler,
+                "get_save_spells",
+                vec![cat.clone(), lvl.clone()]
+            )
+            .unwrap(),
         Value::Int(6)
     );
 }
@@ -288,13 +404,27 @@ fn thief_saves_tier_transitions() {
 
     // Level 4 (tier 1): death=13
     assert_eq!(
-        interp.evaluate_derive(&state, &mut handler, "get_save_death", vec![cat.clone(), Value::Int(4)]).unwrap(),
+        interp
+            .evaluate_derive(
+                &state,
+                &mut handler,
+                "get_save_death",
+                vec![cat.clone(), Value::Int(4)]
+            )
+            .unwrap(),
         Value::Int(13)
     );
 
     // Level 5 (tier 2): death=12
     assert_eq!(
-        interp.evaluate_derive(&state, &mut handler, "get_save_death", vec![cat.clone(), Value::Int(5)]).unwrap(),
+        interp
+            .evaluate_derive(
+                &state,
+                &mut handler,
+                "get_save_death",
+                vec![cat.clone(), Value::Int(5)]
+            )
+            .unwrap(),
         Value::Int(12)
     );
 }

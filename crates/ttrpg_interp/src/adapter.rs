@@ -1,14 +1,14 @@
 use std::cell::RefCell;
 use std::collections::HashSet;
 
-use ttrpg_ast::Name;
 use ttrpg_ast::ast::AssignOp;
+use ttrpg_ast::Name;
 
-use crate::RuntimeError;
+use crate::effect::FieldPathSegment;
 use crate::effect::{Effect, EffectHandler, EffectKind, Response};
 use crate::state::{ActiveCondition, EntityRef, StateProvider, WritableState};
 use crate::value::Value;
-use crate::effect::FieldPathSegment;
+use crate::RuntimeError;
 
 // ── StateAdapter ───────────────────────────────────────────────
 
@@ -201,16 +201,14 @@ impl<S: WritableState, H: EffectHandler> AdaptedHandler<'_, S, H> {
                 deduct_budget_field(&mut *self.adapter.state.borrow_mut(), &actor, &budget_field);
             }
             Response::Override(Value::Str(replacement)) => {
-                // Map replacement token to budget field and decrement
-                if let Some(replacement_field) = token_to_budget_field(replacement) {
-                    deduct_budget_field(
-                        &mut *self.adapter.state.borrow_mut(),
-                        &actor,
-                        replacement_field,
-                    );
-                }
-                // If mapping fails, the interpreter's action.rs already validated this,
-                // so it shouldn't happen. The adapter doesn't duplicate the validation.
+                // Legacy aliases map to TurnBudget field names; custom tokens are
+                // direct field names validated by the interpreter.
+                let replacement_field = token_to_budget_field(replacement).unwrap_or(replacement);
+                deduct_budget_field(
+                    &mut *self.adapter.state.borrow_mut(),
+                    &actor,
+                    replacement_field,
+                );
             }
             Response::Vetoed => {
                 // Cost waived — no mutation
@@ -263,7 +261,11 @@ fn apply_mutation<S: WritableState>(state: &mut S, effect: &Effect) {
                 },
             );
         }
-        Effect::RemoveCondition { target, condition, params } => {
+        Effect::RemoveCondition {
+            target,
+            condition,
+            params,
+        } => {
             state.remove_condition(target, condition, params.as_ref());
         }
         Effect::MutateTurnField {
@@ -288,10 +290,7 @@ fn apply_mutation<S: WritableState>(state: &mut S, effect: &Effect) {
                 fields.clone(),
             );
         }
-        Effect::RevokeGroup {
-            entity,
-            group_name,
-        } => {
+        Effect::RevokeGroup { entity, group_name } => {
             state.remove_field(entity, group_name);
         }
         _ => {} // Not a mutation effect
@@ -317,19 +316,26 @@ fn apply_mutation_with_override<S: WritableState>(
             bounds,
             ..
         } => {
-            if let Ok(final_value) = compute_field_value(state, entity, path, *op, override_val, bounds) {
+            if let Ok(final_value) =
+                compute_field_value(state, entity, path, *op, override_val, bounds)
+            {
                 state.write_field(entity, path, final_value);
             }
         }
         Effect::MutateTurnField {
             actor, field, op, ..
         } => {
-            if let Ok(final_value) = compute_turn_field_value(state, actor, field, *op, override_val) {
+            if let Ok(final_value) =
+                compute_turn_field_value(state, actor, field, *op, override_val)
+            {
                 state.write_turn_field(actor, field, final_value);
             }
         }
         Effect::ApplyCondition {
-            target, condition, params, ..
+            target,
+            condition,
+            params,
+            ..
         } => {
             state.add_condition(
                 target,
@@ -343,7 +349,11 @@ fn apply_mutation_with_override<S: WritableState>(
                 },
             );
         }
-        Effect::RemoveCondition { target, condition, params } => {
+        Effect::RemoveCondition {
+            target,
+            condition,
+            params,
+        } => {
             if let Value::Str(name) = override_val {
                 state.remove_condition(target, name, params.as_ref());
             } else {
@@ -352,9 +362,7 @@ fn apply_mutation_with_override<S: WritableState>(
             }
         }
         Effect::GrantGroup {
-            entity,
-            group_name,
-            ..
+            entity, group_name, ..
         } => {
             // Override replaces the entire struct value
             state.write_field(
@@ -460,19 +468,17 @@ pub fn apply_op(op: AssignOp, current: &Value, rhs: &Value) -> Result<Value, Run
     match op {
         AssignOp::Eq => Ok(rhs.clone()),
         AssignOp::PlusEq => match (current, rhs) {
-            (Value::Int(a), Value::Int(b)) => a
-                .checked_add(*b)
-                .map(Value::Int)
-                .ok_or_else(|| RuntimeError::new(format!(
-                    "integer overflow in += ({} + {})", a, b
-                ))),
+            (Value::Int(a), Value::Int(b)) => a.checked_add(*b).map(Value::Int).ok_or_else(|| {
+                RuntimeError::new(format!("integer overflow in += ({} + {})", a, b))
+            }),
             (Value::Float(a), Value::Float(b)) => {
                 let result = a + b;
                 if result.is_finite() {
                     Ok(Value::Float(result))
                 } else {
                     Err(RuntimeError::new(format!(
-                        "non-finite float result in += ({} + {})", a, b
+                        "non-finite float result in += ({} + {})",
+                        a, b
                     )))
                 }
             }
@@ -482,7 +488,8 @@ pub fn apply_op(op: AssignOp, current: &Value, rhs: &Value) -> Result<Value, Run
                     Ok(Value::Float(result))
                 } else {
                     Err(RuntimeError::new(format!(
-                        "non-finite float result in += ({} + {})", a, b
+                        "non-finite float result in += ({} + {})",
+                        a, b
                     )))
                 }
             }
@@ -492,26 +499,25 @@ pub fn apply_op(op: AssignOp, current: &Value, rhs: &Value) -> Result<Value, Run
                     Ok(Value::Float(result))
                 } else {
                     Err(RuntimeError::new(format!(
-                        "non-finite float result in += ({} + {})", a, b
+                        "non-finite float result in += ({} + {})",
+                        a, b
                     )))
                 }
             }
             _ => Ok(rhs.clone()), // Fallback for type-checked programs
         },
         AssignOp::MinusEq => match (current, rhs) {
-            (Value::Int(a), Value::Int(b)) => a
-                .checked_sub(*b)
-                .map(Value::Int)
-                .ok_or_else(|| RuntimeError::new(format!(
-                    "integer overflow in -= ({} - {})", a, b
-                ))),
+            (Value::Int(a), Value::Int(b)) => a.checked_sub(*b).map(Value::Int).ok_or_else(|| {
+                RuntimeError::new(format!("integer overflow in -= ({} - {})", a, b))
+            }),
             (Value::Float(a), Value::Float(b)) => {
                 let result = a - b;
                 if result.is_finite() {
                     Ok(Value::Float(result))
                 } else {
                     Err(RuntimeError::new(format!(
-                        "non-finite float result in -= ({} - {})", a, b
+                        "non-finite float result in -= ({} - {})",
+                        a, b
                     )))
                 }
             }
@@ -521,7 +527,8 @@ pub fn apply_op(op: AssignOp, current: &Value, rhs: &Value) -> Result<Value, Run
                     Ok(Value::Float(result))
                 } else {
                     Err(RuntimeError::new(format!(
-                        "non-finite float result in -= ({} - {})", a, b
+                        "non-finite float result in -= ({} - {})",
+                        a, b
                     )))
                 }
             }
@@ -531,7 +538,8 @@ pub fn apply_op(op: AssignOp, current: &Value, rhs: &Value) -> Result<Value, Run
                     Ok(Value::Float(result))
                 } else {
                     Err(RuntimeError::new(format!(
-                        "non-finite float result in -= ({} - {})", a, b
+                        "non-finite float result in -= ({} - {})",
+                        a, b
                     )))
                 }
             }
@@ -574,7 +582,7 @@ pub fn deduct_budget_field<S: WritableState>(state: &mut S, actor: &EntityRef, f
     state.write_turn_field(actor, field, new_val);
 }
 
-/// Maps a cost token to its budget field name.
+/// Maps legacy cost-token aliases to budget field names.
 pub fn token_to_budget_field(token: &str) -> Option<&'static str> {
     match token {
         "action" => Some("actions"),
@@ -657,7 +665,12 @@ mod tests {
             self.conditions.entry(entity.0).or_default().push(cond);
         }
 
-        fn remove_condition(&mut self, entity: &EntityRef, name: &str, params: Option<&BTreeMap<Name, Value>>) {
+        fn remove_condition(
+            &mut self,
+            entity: &EntityRef,
+            name: &str,
+            params: Option<&BTreeMap<Name, Value>>,
+        ) {
             if let Some(conds) = self.conditions.get_mut(&entity.0) {
                 conds.retain(|c| {
                     if c.name != name {
@@ -853,7 +866,10 @@ mod tests {
         // Budget should be decremented
         let final_state = adapter.into_inner();
         assert_eq!(
-            final_state.turn_budgets.get(&1).and_then(|b| b.get("actions")),
+            final_state
+                .turn_budgets
+                .get(&1)
+                .and_then(|b| b.get("actions")),
             Some(&Value::Int(0))
         );
     }
@@ -887,7 +903,10 @@ mod tests {
         let final_state = adapter.into_inner();
         // actions should be unchanged (original not deducted)
         assert_eq!(
-            final_state.turn_budgets.get(&1).and_then(|b| b.get("actions")),
+            final_state
+                .turn_budgets
+                .get(&1)
+                .and_then(|b| b.get("actions")),
             Some(&Value::Int(1))
         );
         // bonus_actions should be decremented
@@ -896,6 +915,49 @@ mod tests {
                 .turn_budgets
                 .get(&1)
                 .and_then(|b| b.get("bonus_actions")),
+            Some(&Value::Int(0))
+        );
+    }
+
+    #[test]
+    fn deduct_cost_overridden_custom_field_name() {
+        let mut state = TestWritableState::new();
+        state
+            .turn_budgets
+            .entry(1)
+            .or_default()
+            .insert("movement".into(), Value::Int(1));
+        state
+            .turn_budgets
+            .entry(1)
+            .or_default()
+            .insert("attack".into(), Value::Int(1));
+        let adapter = StateAdapter::new(state);
+        // Host says: switch to custom token/field `attack`
+        let mut handler =
+            RecordingHandler::new(vec![Response::Override(Value::Str("attack".into()))]);
+
+        adapter.run(&mut handler, |_state, handler| {
+            handler.handle(Effect::DeductCost {
+                actor: EntityRef(1),
+                token: "movement".into(),
+                budget_field: "movement".into(),
+            })
+        });
+
+        let final_state = adapter.into_inner();
+        assert_eq!(
+            final_state
+                .turn_budgets
+                .get(&1)
+                .and_then(|b| b.get("movement")),
+            Some(&Value::Int(1))
+        );
+        assert_eq!(
+            final_state
+                .turn_budgets
+                .get(&1)
+                .and_then(|b| b.get("attack")),
             Some(&Value::Int(0))
         );
     }
@@ -922,7 +984,10 @@ mod tests {
         // Budget should be unchanged
         let final_state = adapter.into_inner();
         assert_eq!(
-            final_state.turn_budgets.get(&1).and_then(|b| b.get("actions")),
+            final_state
+                .turn_budgets
+                .get(&1)
+                .and_then(|b| b.get("actions")),
             Some(&Value::Int(1))
         );
     }
@@ -1075,7 +1140,9 @@ mod tests {
     #[test]
     fn intercepted_eq_assignment() {
         let mut state = TestWritableState::new();
-        state.fields.insert((1, "name".into()), Value::Str("old".into()));
+        state
+            .fields
+            .insert((1, "name".into()), Value::Str("old".into()));
         let adapter = StateAdapter::new(state);
         let mut handler = RecordingHandler::acknowledged();
 
@@ -1103,9 +1170,9 @@ mod tests {
         use crate::action::execute_action;
         use crate::reference_state::GameState;
         use crate::Interpreter;
+        use ttrpg_ast::ast::*;
         use ttrpg_ast::Span;
         use ttrpg_ast::Spanned;
-        use ttrpg_ast::ast::*;
         use ttrpg_checker::env::TypeEnv;
 
         fn span() -> Span {
@@ -1129,9 +1196,7 @@ mod tests {
                 span: span(),
             }),
             requires: None,
-            resolve: spanned(vec![spanned(StmtKind::Expr(spanned(ExprKind::IntLit(
-                42,
-            ))))]),
+            resolve: spanned(vec![spanned(StmtKind::Expr(spanned(ExprKind::IntLit(42))))]),
             trigger_text: None,
             synthetic: false,
         };
@@ -1168,10 +1233,7 @@ mod tests {
         //   (DeductCost is always passed through)
         assert!(host_handler.log.len() >= 2);
         // ActionStarted is non-mutation → forwarded
-        assert!(matches!(
-            &host_handler.log[0],
-            Effect::ActionStarted { .. }
-        ));
+        assert!(matches!(&host_handler.log[0], Effect::ActionStarted { .. }));
         // DeductCost is always passed through
         assert!(matches!(&host_handler.log[1], Effect::DeductCost { .. }));
 
@@ -1193,8 +1255,9 @@ mod tests {
         // Host overrides the duration to Rounds(3)
         let mut fields = BTreeMap::new();
         fields.insert("count".into(), Value::Int(3));
-        let mut handler =
-            RecordingHandler::new(vec![Response::Override(duration_variant_with("rounds", fields))]);
+        let mut handler = RecordingHandler::new(vec![Response::Override(duration_variant_with(
+            "rounds", fields,
+        ))]);
 
         adapter.run(&mut handler, |_state, handler| {
             handler.handle(Effect::ApplyCondition {
@@ -1210,14 +1273,11 @@ mod tests {
         assert_eq!(conds.len(), 1);
         assert_eq!(conds[0].name, "Prone");
         // Duration should be the overridden value, not the original
-        assert_eq!(
-            conds[0].duration,
-            {
-                let mut f = BTreeMap::new();
-                f.insert("count".into(), Value::Int(3));
-                duration_variant_with("rounds", f)
-            }
-        );
+        assert_eq!(conds[0].duration, {
+            let mut f = BTreeMap::new();
+            f.insert("count".into(), Value::Int(3));
+            duration_variant_with("rounds", f)
+        });
     }
 
     // ── Override: condition name for removal ──────────────────────
@@ -1386,10 +1446,7 @@ mod tests {
 
         assert_eq!(handler.log.len(), 0); // Intercepted
         let final_state = adapter.into_inner();
-        assert_eq!(
-            final_state.fields.get(&(1, "Spellcasting".into())),
-            None,
-        );
+        assert_eq!(final_state.fields.get(&(1, "Spellcasting".into())), None,);
     }
 
     // ── Adapter: GrantGroup pass-through ───────────────────────────
@@ -1531,25 +1588,48 @@ mod tests {
 
     #[test]
     fn apply_op_float_non_finite_plus_returns_error() {
-        let result = apply_op(AssignOp::PlusEq, &Value::Float(f64::MAX), &Value::Float(f64::MAX));
+        let result = apply_op(
+            AssignOp::PlusEq,
+            &Value::Float(f64::MAX),
+            &Value::Float(f64::MAX),
+        );
         assert!(result.is_err());
         assert!(result.unwrap_err().message.contains("non-finite"));
     }
 
     #[test]
     fn apply_op_float_non_finite_minus_returns_error() {
-        let result = apply_op(AssignOp::MinusEq, &Value::Float(f64::NEG_INFINITY), &Value::Float(f64::NEG_INFINITY));
+        let result = apply_op(
+            AssignOp::MinusEq,
+            &Value::Float(f64::NEG_INFINITY),
+            &Value::Float(f64::NEG_INFINITY),
+        );
         assert!(result.is_err());
         assert!(result.unwrap_err().message.contains("non-finite"));
     }
 
     #[test]
     fn apply_op_normal_arithmetic_succeeds() {
-        assert_eq!(apply_op(AssignOp::PlusEq, &Value::Int(10), &Value::Int(5)).unwrap(), Value::Int(15));
-        assert_eq!(apply_op(AssignOp::MinusEq, &Value::Int(10), &Value::Int(5)).unwrap(), Value::Int(5));
-        assert_eq!(apply_op(AssignOp::PlusEq, &Value::Float(1.5), &Value::Float(2.5)).unwrap(), Value::Float(4.0));
-        assert_eq!(apply_op(AssignOp::MinusEq, &Value::Float(5.0), &Value::Float(2.0)).unwrap(), Value::Float(3.0));
-        assert_eq!(apply_op(AssignOp::Eq, &Value::Int(0), &Value::Int(42)).unwrap(), Value::Int(42));
+        assert_eq!(
+            apply_op(AssignOp::PlusEq, &Value::Int(10), &Value::Int(5)).unwrap(),
+            Value::Int(15)
+        );
+        assert_eq!(
+            apply_op(AssignOp::MinusEq, &Value::Int(10), &Value::Int(5)).unwrap(),
+            Value::Int(5)
+        );
+        assert_eq!(
+            apply_op(AssignOp::PlusEq, &Value::Float(1.5), &Value::Float(2.5)).unwrap(),
+            Value::Float(4.0)
+        );
+        assert_eq!(
+            apply_op(AssignOp::MinusEq, &Value::Float(5.0), &Value::Float(2.0)).unwrap(),
+            Value::Float(3.0)
+        );
+        assert_eq!(
+            apply_op(AssignOp::Eq, &Value::Int(0), &Value::Int(42)).unwrap(),
+            Value::Int(42)
+        );
     }
 
     #[test]
@@ -1558,12 +1638,26 @@ mod tests {
         let entity = EntityRef(1);
         let path = [FieldPathSegment::Field("hp".into())];
         // No field set → defaults to Int(0), adding i64::MAX should succeed
-        let result = compute_field_value(&state, &entity, &path, AssignOp::PlusEq, &Value::Int(i64::MAX), &None);
+        let result = compute_field_value(
+            &state,
+            &entity,
+            &path,
+            AssignOp::PlusEq,
+            &Value::Int(i64::MAX),
+            &None,
+        );
         assert!(result.is_ok());
         // Now with the field at MAX, adding 1 more should overflow
         let mut state = TestWritableState::new();
         state.fields.insert((1, "hp".into()), Value::Int(i64::MAX));
-        let result = compute_field_value(&state, &entity, &path, AssignOp::PlusEq, &Value::Int(1), &None);
+        let result = compute_field_value(
+            &state,
+            &entity,
+            &path,
+            AssignOp::PlusEq,
+            &Value::Int(1),
+            &None,
+        );
         assert!(result.is_err());
     }
 
@@ -1604,16 +1698,23 @@ mod tests {
         let path = [FieldPathSegment::Field("speed".into())];
 
         let result = compute_field_value(
-            &state, &entity, &path,
+            &state,
+            &entity,
+            &path,
             AssignOp::MinusEq,
             &Value::Float(2.5),
             &None,
-        ).unwrap();
+        )
+        .unwrap();
 
         // Correct: 0 - 2.5 = -2.5
         // Bug: returns Float(2.5) because (Int(0), Float(2.5)) hits fallback
-        assert_eq!(result, Value::Float(-2.5),
-            "bug tdsl-jgk: expected 0 - 2.5 = -2.5, got {:?}", result);
+        assert_eq!(
+            result,
+            Value::Float(-2.5),
+            "bug tdsl-jgk: expected 0 - 2.5 = -2.5, got {:?}",
+            result
+        );
     }
 
     /// Bug tdsl-18k: RemoveCondition override with Str replaces condition name
@@ -1630,16 +1731,28 @@ mod tests {
         let mut params_b = BTreeMap::new();
         params_b.insert("source".into(), Value::Str("ice".into()));
 
-        state.add_condition(&entity, ActiveCondition {
-            id: 0, name: "Burning".into(), params: params_a.clone(),
-            bearer: entity, gained_at: 0,
-            duration: duration_variant("indefinite"),
-        });
-        state.add_condition(&entity, ActiveCondition {
-            id: 0, name: "Burning".into(), params: params_b.clone(),
-            bearer: entity, gained_at: 0,
-            duration: duration_variant("indefinite"),
-        });
+        state.add_condition(
+            &entity,
+            ActiveCondition {
+                id: 0,
+                name: "Burning".into(),
+                params: params_a.clone(),
+                bearer: entity,
+                gained_at: 0,
+                duration: duration_variant("indefinite"),
+            },
+        );
+        state.add_condition(
+            &entity,
+            ActiveCondition {
+                id: 0,
+                name: "Burning".into(),
+                params: params_b.clone(),
+                bearer: entity,
+                gained_at: 0,
+                duration: duration_variant("indefinite"),
+            },
+        );
 
         // Override replaces condition name with "Burning" (same name, Str override).
         // Original effect has params_a as filter — should only remove the fire one.
@@ -1655,9 +1768,15 @@ mod tests {
         let remaining = state.conditions.get(&entity.0).unwrap();
         // Bug: None is passed instead of params_a, so BOTH conditions are removed.
         // Correct: only the fire one should be removed, ice one should remain.
-        assert_eq!(remaining.len(), 1,
-            "bug tdsl-18k: expected 1 remaining condition, got {}", remaining.len());
-        assert_eq!(remaining[0].params, params_b,
-            "the ice condition should remain");
+        assert_eq!(
+            remaining.len(),
+            1,
+            "bug tdsl-18k: expected 1 remaining condition, got {}",
+            remaining.len()
+        );
+        assert_eq!(
+            remaining[0].params, params_b,
+            "the ice condition should remain"
+        );
     }
 }

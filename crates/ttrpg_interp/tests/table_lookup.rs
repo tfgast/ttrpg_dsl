@@ -5,8 +5,8 @@
 
 use std::collections::{BTreeMap, HashMap};
 
-use ttrpg_ast::FileId;
 use ttrpg_ast::diagnostic::Severity;
+use ttrpg_ast::FileId;
 use ttrpg_interp::effect::{Effect, EffectHandler, Response};
 use ttrpg_interp::reference_state::GameState;
 use ttrpg_interp::value::Value;
@@ -210,40 +210,56 @@ fn table_2d_with_ranges() {
 
     // Fighter levels 1-3 → 19
     assert_eq!(
-        interp.evaluate_derive(&state, &mut handler, "test_fighter_1", vec![]).unwrap(),
+        interp
+            .evaluate_derive(&state, &mut handler, "test_fighter_1", vec![])
+            .unwrap(),
         Value::Int(19)
     );
     assert_eq!(
-        interp.evaluate_derive(&state, &mut handler, "test_fighter_3", vec![]).unwrap(),
+        interp
+            .evaluate_derive(&state, &mut handler, "test_fighter_3", vec![])
+            .unwrap(),
         Value::Int(19)
     );
     // Fighter levels 4-6 → 17
     assert_eq!(
-        interp.evaluate_derive(&state, &mut handler, "test_fighter_5", vec![]).unwrap(),
+        interp
+            .evaluate_derive(&state, &mut handler, "test_fighter_5", vec![])
+            .unwrap(),
         Value::Int(17)
     );
     // Fighter levels 7-9 → 14
     assert_eq!(
-        interp.evaluate_derive(&state, &mut handler, "test_fighter_7", vec![]).unwrap(),
+        interp
+            .evaluate_derive(&state, &mut handler, "test_fighter_7", vec![])
+            .unwrap(),
         Value::Int(14)
     );
     // Cleric levels 1-4 → 19
     assert_eq!(
-        interp.evaluate_derive(&state, &mut handler, "test_cleric_3", vec![]).unwrap(),
+        interp
+            .evaluate_derive(&state, &mut handler, "test_cleric_3", vec![])
+            .unwrap(),
         Value::Int(19)
     );
     // Cleric levels 5-8 → 17
     assert_eq!(
-        interp.evaluate_derive(&state, &mut handler, "test_cleric_6", vec![]).unwrap(),
+        interp
+            .evaluate_derive(&state, &mut handler, "test_cleric_6", vec![])
+            .unwrap(),
         Value::Int(17)
     );
     // MagicUser levels 1-5 → 19, 6-10 → 17
     assert_eq!(
-        interp.evaluate_derive(&state, &mut handler, "test_mu_1", vec![]).unwrap(),
+        interp
+            .evaluate_derive(&state, &mut handler, "test_mu_1", vec![])
+            .unwrap(),
         Value::Int(19)
     );
     assert_eq!(
-        interp.evaluate_derive(&state, &mut handler, "test_mu_10", vec![]).unwrap(),
+        interp
+            .evaluate_derive(&state, &mut handler, "test_mu_10", vec![])
+            .unwrap(),
         Value::Int(17)
     );
 }
@@ -276,20 +292,28 @@ fn table_wildcard_default() {
     let mut handler = NullHandler;
 
     assert_eq!(
-        interp.evaluate_derive(&state, &mut handler, "test_level_1", vec![]).unwrap(),
+        interp
+            .evaluate_derive(&state, &mut handler, "test_level_1", vec![])
+            .unwrap(),
         Value::Int(2)
     );
     assert_eq!(
-        interp.evaluate_derive(&state, &mut handler, "test_level_10", vec![]).unwrap(),
+        interp
+            .evaluate_derive(&state, &mut handler, "test_level_10", vec![])
+            .unwrap(),
         Value::Int(4)
     );
     assert_eq!(
-        interp.evaluate_derive(&state, &mut handler, "test_level_20", vec![]).unwrap(),
+        interp
+            .evaluate_derive(&state, &mut handler, "test_level_20", vec![])
+            .unwrap(),
         Value::Int(6)
     );
     // Out-of-range → wildcard default
     assert_eq!(
-        interp.evaluate_derive(&state, &mut handler, "test_level_99", vec![]).unwrap(),
+        interp
+            .evaluate_derive(&state, &mut handler, "test_level_99", vec![])
+            .unwrap(),
         Value::Int(0)
     );
 }
@@ -333,13 +357,23 @@ fn table_struct_values() {
 
     // Fighter level 2 → death save 12
     let val = interp
-        .evaluate_derive(&state, &mut handler, "fighter_death_save", vec![Value::Int(2)])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "fighter_death_save",
+            vec![Value::Int(2)],
+        )
         .unwrap();
     assert_eq!(val, Value::Int(12));
 
     // Fighter level 5 → death save 10
     let val = interp
-        .evaluate_derive(&state, &mut handler, "fighter_death_save", vec![Value::Int(5)])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "fighter_death_save",
+            vec![Value::Int(5)],
+        )
         .unwrap();
     assert_eq!(val, Value::Int(10));
 
@@ -423,7 +457,12 @@ fn table_with_dynamic_entity_keys() {
     let mut handler = NullHandler;
 
     let val = interp
-        .evaluate_derive(&state, &mut handler, "get_proficiency", vec![Value::Entity(hero)])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "get_proficiency",
+            vec![Value::Entity(hero)],
+        )
         .unwrap();
     assert_eq!(val, Value::Int(3));
 }
@@ -456,7 +495,9 @@ fn table_type_error_key_mismatch() {
         "expected type error for int key on Ability param"
     );
     assert!(
-        errors.iter().any(|d| d.message.contains("table key has type")),
+        errors
+            .iter()
+            .any(|d| d.message.contains("table key has type")),
         "expected 'table key has type' error, got: {:?}",
         errors.iter().map(|d| &d.message).collect::<Vec<_>>()
     );
@@ -489,7 +530,9 @@ fn table_type_error_value_mismatch() {
         "expected type error for string value on int return"
     );
     assert!(
-        errors.iter().any(|d| d.message.contains("table entry value has type")),
+        errors
+            .iter()
+            .any(|d| d.message.contains("table entry value has type")),
         "expected 'table entry value has type' error, got: {:?}",
         errors.iter().map(|d| &d.message).collect::<Vec<_>>()
     );
@@ -519,7 +562,9 @@ fn table_wildcard_not_last_warns() {
         .filter(|d| d.severity == Severity::Warning)
         .collect();
     assert!(
-        warnings.iter().any(|d| d.message.contains("unreachable table entry")),
+        warnings
+            .iter()
+            .any(|d| d.message.contains("unreachable table entry")),
         "expected 'unreachable table entry' warning, got: {:?}",
         warnings.iter().map(|d| &d.message).collect::<Vec<_>>()
     );
@@ -581,7 +626,9 @@ fn table_type_error_range_on_non_int() {
         "expected type error for range on Ability param"
     );
     assert!(
-        errors.iter().any(|d| d.message.contains("range keys are only valid for int")),
+        errors
+            .iter()
+            .any(|d| d.message.contains("range keys are only valid for int")),
         "expected 'range keys are only valid for int' error, got: {:?}",
         errors.iter().map(|d| &d.message).collect::<Vec<_>>()
     );

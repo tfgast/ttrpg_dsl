@@ -1,44 +1,73 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use reedline::{Completer, Suggestion, Span};
+use reedline::{Completer, Span, Suggestion};
 
 /// All CLI command names.
 const ALL_COMMANDS: &[&str] = &[
-    "load", "eval", "reload", "errors",
-    "spawn", "set", "destroy", "do", "call",
-    "grant", "revoke",
-    "inspect", "state", "types", "actions", "mechanics", "conditions",
-    "assert", "assert_eq", "assert_err",
-    "seed", "rolls",
+    "load",
+    "eval",
+    "reload",
+    "errors",
+    "spawn",
+    "set",
+    "destroy",
+    "do",
+    "call",
+    "grant",
+    "revoke",
+    "inspect",
+    "state",
+    "types",
+    "actions",
+    "mechanics",
+    "conditions",
+    "assert",
+    "assert_eq",
+    "assert_err",
+    "seed",
+    "rolls",
 ];
 
 /// DSL keywords and builtins useful in expression contexts.
 const DSL_KEYWORDS: &[&str] = &[
-    "if", "else", "match", "let", "in", "for",
-    "true", "false", "none",
+    "if", "else", "match", "let", "in", "for", "true", "false", "none",
     // collection builtins
-    "len", "keys", "values", "first", "last",
-    "append", "concat", "reverse",
-    "sum", "any", "all", "sort",
+    "len", "keys", "values", "first", "last", "append", "concat", "reverse", "sum", "any", "all",
+    "sort",
 ];
 
 /// Method names available after a dot, grouped by type.
 /// Since we don't track variable types, we offer all methods after any dot.
 const DOT_METHODS: &[&str] = &[
     // list
-    "len", "first", "last", "reverse", "append", "concat",
-    "sum", "any", "all", "sort",
+    "len",
+    "first",
+    "last",
+    "reverse",
+    "append",
+    "concat",
+    "sum",
+    "any",
+    "all",
+    "sort",
     // set
     // (len already listed)
     // map
-    "keys", "values",
+    "keys",
+    "values",
     // option
-    "unwrap", "unwrap_or", "is_some", "is_none",
+    "unwrap",
+    "unwrap_or",
+    "is_some",
+    "is_none",
     // dice
-    "multiply", "roll",
+    "multiply",
+    "roll",
     // string
-    "contains", "starts_with", "ends_with",
+    "contains",
+    "starts_with",
+    "ends_with",
 ];
 
 /// Dynamic completion data refreshed after each command execution.
@@ -383,7 +412,8 @@ mod tests {
                 r.span.end <= 15,
                 "spawn completion span should only cover entity type word, not subsequent text; \
                  got span ({}, {})",
-                r.span.start, r.span.end,
+                r.span.start,
+                r.span.end,
             );
         }
     }
@@ -396,8 +426,14 @@ mod tests {
         let mut c = TtrpgCompleter::new(ctx);
         let results = c.complete("assert_err f", 12);
         let values: Vec<_> = results.iter().map(|s| s.value.as_str()).collect();
-        assert!(values.contains(&"fighter"), "assert_err should complete handles");
-        assert!(values.contains(&"false"), "assert_err should complete DSL keywords");
+        assert!(
+            values.contains(&"fighter"),
+            "assert_err should complete handles"
+        );
+        assert!(
+            values.contains(&"false"),
+            "assert_err should complete DSL keywords"
+        );
     }
 
     #[test]
@@ -412,7 +448,10 @@ mod tests {
         assert!(values.contains(&"unwrap"), "should suggest unwrap");
         assert!(values.contains(&"roll"), "should suggest roll");
         assert!(values.contains(&"contains"), "should suggest contains");
-        assert!(values.contains(&"starts_with"), "should suggest starts_with");
+        assert!(
+            values.contains(&"starts_with"),
+            "should suggest starts_with"
+        );
     }
 
     #[test]
@@ -439,7 +478,8 @@ mod tests {
                 r.span.end <= 9,
                 "do completion span should only cover action name, not args after '('; \
                  got span ({}, {})",
-                r.span.start, r.span.end,
+                r.span.start,
+                r.span.end,
             );
         }
     }

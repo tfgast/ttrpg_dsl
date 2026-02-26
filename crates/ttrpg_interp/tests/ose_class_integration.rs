@@ -176,7 +176,12 @@ fn class_def_fighter() {
     let mut handler = NullHandler;
 
     let def = interp
-        .evaluate_derive(&state, &mut handler, "class_def", vec![class_val("Fighter")])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "class_def",
+            vec![class_val("Fighter")],
+        )
         .unwrap();
 
     if let Value::Struct { name, fields } = &def {
@@ -198,7 +203,12 @@ fn class_def_magic_user() {
     let mut handler = NullHandler;
 
     let def = interp
-        .evaluate_derive(&state, &mut handler, "class_def", vec![class_val("MagicUser")])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "class_def",
+            vec![class_val("MagicUser")],
+        )
         .unwrap();
 
     if let Value::Struct { name, fields } = &def {
@@ -244,22 +254,50 @@ fn xp_for_level_fighter() {
 
     // Level 1 = 0 XP
     assert_eq!(
-        interp.evaluate_derive(&state, &mut handler, "xp_for_level", vec![class_val("Fighter"), Value::Int(1)]).unwrap(),
+        interp
+            .evaluate_derive(
+                &state,
+                &mut handler,
+                "xp_for_level",
+                vec![class_val("Fighter"), Value::Int(1)]
+            )
+            .unwrap(),
         Value::Int(0)
     );
     // Level 2 = 2000 XP
     assert_eq!(
-        interp.evaluate_derive(&state, &mut handler, "xp_for_level", vec![class_val("Fighter"), Value::Int(2)]).unwrap(),
+        interp
+            .evaluate_derive(
+                &state,
+                &mut handler,
+                "xp_for_level",
+                vec![class_val("Fighter"), Value::Int(2)]
+            )
+            .unwrap(),
         Value::Int(2000)
     );
     // Level 9 = 240000 XP
     assert_eq!(
-        interp.evaluate_derive(&state, &mut handler, "xp_for_level", vec![class_val("Fighter"), Value::Int(9)]).unwrap(),
+        interp
+            .evaluate_derive(
+                &state,
+                &mut handler,
+                "xp_for_level",
+                vec![class_val("Fighter"), Value::Int(9)]
+            )
+            .unwrap(),
         Value::Int(240000)
     );
     // Level 14 = 840000 XP
     assert_eq!(
-        interp.evaluate_derive(&state, &mut handler, "xp_for_level", vec![class_val("Fighter"), Value::Int(14)]).unwrap(),
+        interp
+            .evaluate_derive(
+                &state,
+                &mut handler,
+                "xp_for_level",
+                vec![class_val("Fighter"), Value::Int(14)]
+            )
+            .unwrap(),
         Value::Int(840000)
     );
 }
@@ -273,19 +311,40 @@ fn xp_for_level_shared_tables() {
 
     // Knight shares Fighter table
     assert_eq!(
-        interp.evaluate_derive(&state, &mut handler, "xp_for_level", vec![class_val("Knight"), Value::Int(2)]).unwrap(),
+        interp
+            .evaluate_derive(
+                &state,
+                &mut handler,
+                "xp_for_level",
+                vec![class_val("Knight"), Value::Int(2)]
+            )
+            .unwrap(),
         Value::Int(2000)
     );
 
     // Acrobat shares Thief table
     assert_eq!(
-        interp.evaluate_derive(&state, &mut handler, "xp_for_level", vec![class_val("Acrobat"), Value::Int(2)]).unwrap(),
+        interp
+            .evaluate_derive(
+                &state,
+                &mut handler,
+                "xp_for_level",
+                vec![class_val("Acrobat"), Value::Int(2)]
+            )
+            .unwrap(),
         Value::Int(1200)
     );
 
     // Duergar shares Dwarf table
     assert_eq!(
-        interp.evaluate_derive(&state, &mut handler, "xp_for_level", vec![class_val("Duergar"), Value::Int(5)]).unwrap(),
+        interp
+            .evaluate_derive(
+                &state,
+                &mut handler,
+                "xp_for_level",
+                vec![class_val("Duergar"), Value::Int(5)]
+            )
+            .unwrap(),
         Value::Int(17000)
     );
 }
@@ -299,19 +358,40 @@ fn xp_for_level_demihuman_tables() {
 
     // Elf level 2 = 4000
     assert_eq!(
-        interp.evaluate_derive(&state, &mut handler, "xp_for_level", vec![class_val("Elf"), Value::Int(2)]).unwrap(),
+        interp
+            .evaluate_derive(
+                &state,
+                &mut handler,
+                "xp_for_level",
+                vec![class_val("Elf"), Value::Int(2)]
+            )
+            .unwrap(),
         Value::Int(4000)
     );
 
     // Halfling level 8 = 120000
     assert_eq!(
-        interp.evaluate_derive(&state, &mut handler, "xp_for_level", vec![class_val("Halfling"), Value::Int(8)]).unwrap(),
+        interp
+            .evaluate_derive(
+                &state,
+                &mut handler,
+                "xp_for_level",
+                vec![class_val("Halfling"), Value::Int(8)]
+            )
+            .unwrap(),
         Value::Int(120000)
     );
 
     // Gnome level 4 = 12000
     assert_eq!(
-        interp.evaluate_derive(&state, &mut handler, "xp_for_level", vec![class_val("Gnome"), Value::Int(4)]).unwrap(),
+        interp
+            .evaluate_derive(
+                &state,
+                &mut handler,
+                "xp_for_level",
+                vec![class_val("Gnome"), Value::Int(4)]
+            )
+            .unwrap(),
         Value::Int(12000)
     );
 }
@@ -350,19 +430,27 @@ fn check_level_up_ready() {
 
     // Fighter level 1 with 2000 XP can advance to level 2
     assert_eq!(
-        interp.evaluate_derive(
-            &state, &mut handler, "check_level_up",
-            vec![class_val("Fighter"), Value::Int(1), Value::Int(2000)]
-        ).unwrap(),
+        interp
+            .evaluate_derive(
+                &state,
+                &mut handler,
+                "check_level_up",
+                vec![class_val("Fighter"), Value::Int(1), Value::Int(2000)]
+            )
+            .unwrap(),
         Value::Bool(true)
     );
 
     // Fighter level 1 with 3000 XP also can advance
     assert_eq!(
-        interp.evaluate_derive(
-            &state, &mut handler, "check_level_up",
-            vec![class_val("Fighter"), Value::Int(1), Value::Int(3000)]
-        ).unwrap(),
+        interp
+            .evaluate_derive(
+                &state,
+                &mut handler,
+                "check_level_up",
+                vec![class_val("Fighter"), Value::Int(1), Value::Int(3000)]
+            )
+            .unwrap(),
         Value::Bool(true)
     );
 }
@@ -376,10 +464,14 @@ fn check_level_up_not_ready() {
 
     // Fighter level 1 with 1999 XP cannot advance
     assert_eq!(
-        interp.evaluate_derive(
-            &state, &mut handler, "check_level_up",
-            vec![class_val("Fighter"), Value::Int(1), Value::Int(1999)]
-        ).unwrap(),
+        interp
+            .evaluate_derive(
+                &state,
+                &mut handler,
+                "check_level_up",
+                vec![class_val("Fighter"), Value::Int(1), Value::Int(1999)]
+            )
+            .unwrap(),
         Value::Bool(false)
     );
 }
@@ -393,10 +485,14 @@ fn check_level_up_at_max() {
 
     // Halfling at max level 8, cannot advance regardless of XP
     assert_eq!(
-        interp.evaluate_derive(
-            &state, &mut handler, "check_level_up",
-            vec![class_val("Halfling"), Value::Int(8), Value::Int(999999)]
-        ).unwrap(),
+        interp
+            .evaluate_derive(
+                &state,
+                &mut handler,
+                "check_level_up",
+                vec![class_val("Halfling"), Value::Int(8), Value::Int(999999)]
+            )
+            .unwrap(),
         Value::Bool(false)
     );
 }
@@ -412,10 +508,14 @@ fn meets_requirements_fighter_always() {
 
     // Fighter has no requirements — all abilities at 3 should work
     assert_eq!(
-        interp.evaluate_derive(
-            &state, &mut handler, "meets_requirements",
-            vec![class_val("Fighter"), abilities_map(3, 3, 3, 3, 3, 3)]
-        ).unwrap(),
+        interp
+            .evaluate_derive(
+                &state,
+                &mut handler,
+                "meets_requirements",
+                vec![class_val("Fighter"), abilities_map(3, 3, 3, 3, 3, 3)]
+            )
+            .unwrap(),
         Value::Bool(true)
     );
 }
@@ -429,28 +529,40 @@ fn meets_requirements_barbarian() {
 
     // Barbarian needs STR 9, DEX 9, CON 9
     assert_eq!(
-        interp.evaluate_derive(
-            &state, &mut handler, "meets_requirements",
-            vec![class_val("Barbarian"), abilities_map(9, 9, 9, 10, 10, 10)]
-        ).unwrap(),
+        interp
+            .evaluate_derive(
+                &state,
+                &mut handler,
+                "meets_requirements",
+                vec![class_val("Barbarian"), abilities_map(9, 9, 9, 10, 10, 10)]
+            )
+            .unwrap(),
         Value::Bool(true)
     );
 
     // STR too low
     assert_eq!(
-        interp.evaluate_derive(
-            &state, &mut handler, "meets_requirements",
-            vec![class_val("Barbarian"), abilities_map(8, 9, 9, 10, 10, 10)]
-        ).unwrap(),
+        interp
+            .evaluate_derive(
+                &state,
+                &mut handler,
+                "meets_requirements",
+                vec![class_val("Barbarian"), abilities_map(8, 9, 9, 10, 10, 10)]
+            )
+            .unwrap(),
         Value::Bool(false)
     );
 
     // DEX too low
     assert_eq!(
-        interp.evaluate_derive(
-            &state, &mut handler, "meets_requirements",
-            vec![class_val("Barbarian"), abilities_map(9, 8, 9, 10, 10, 10)]
-        ).unwrap(),
+        interp
+            .evaluate_derive(
+                &state,
+                &mut handler,
+                "meets_requirements",
+                vec![class_val("Barbarian"), abilities_map(9, 8, 9, 10, 10, 10)]
+            )
+            .unwrap(),
         Value::Bool(false)
     );
 }
@@ -464,18 +576,26 @@ fn meets_requirements_dwarf() {
 
     // Dwarf needs CON 9
     assert_eq!(
-        interp.evaluate_derive(
-            &state, &mut handler, "meets_requirements",
-            vec![class_val("Dwarf"), abilities_map(10, 10, 9, 10, 10, 10)]
-        ).unwrap(),
+        interp
+            .evaluate_derive(
+                &state,
+                &mut handler,
+                "meets_requirements",
+                vec![class_val("Dwarf"), abilities_map(10, 10, 9, 10, 10, 10)]
+            )
+            .unwrap(),
         Value::Bool(true)
     );
 
     assert_eq!(
-        interp.evaluate_derive(
-            &state, &mut handler, "meets_requirements",
-            vec![class_val("Dwarf"), abilities_map(10, 10, 8, 10, 10, 10)]
-        ).unwrap(),
+        interp
+            .evaluate_derive(
+                &state,
+                &mut handler,
+                "meets_requirements",
+                vec![class_val("Dwarf"), abilities_map(10, 10, 8, 10, 10, 10)]
+            )
+            .unwrap(),
         Value::Bool(false)
     );
 }
@@ -491,10 +611,14 @@ fn prime_req_fighter_high_str() {
 
     // Fighter prime req is STR. STR 16 → +10%
     assert_eq!(
-        interp.evaluate_derive(
-            &state, &mut handler, "prime_req_xp_modifier",
-            vec![class_val("Fighter"), abilities_map(16, 10, 10, 10, 10, 10)]
-        ).unwrap(),
+        interp
+            .evaluate_derive(
+                &state,
+                &mut handler,
+                "prime_req_xp_modifier",
+                vec![class_val("Fighter"), abilities_map(16, 10, 10, 10, 10, 10)]
+            )
+            .unwrap(),
         Value::Int(10)
     );
 }
@@ -508,10 +632,14 @@ fn prime_req_fighter_low_str() {
 
     // Fighter STR 5 → -20%
     assert_eq!(
-        interp.evaluate_derive(
-            &state, &mut handler, "prime_req_xp_modifier",
-            vec![class_val("Fighter"), abilities_map(5, 10, 10, 10, 10, 10)]
-        ).unwrap(),
+        interp
+            .evaluate_derive(
+                &state,
+                &mut handler,
+                "prime_req_xp_modifier",
+                vec![class_val("Fighter"), abilities_map(5, 10, 10, 10, 10, 10)]
+            )
+            .unwrap(),
         Value::Int(-20)
     );
 }
@@ -526,10 +654,14 @@ fn prime_req_elf_dual() {
     // Elf has STR + INT prime requisites, uses lowest.
     // STR 16, INT 10 → min is 10 → 0%
     assert_eq!(
-        interp.evaluate_derive(
-            &state, &mut handler, "prime_req_xp_modifier",
-            vec![class_val("Elf"), abilities_map(16, 10, 10, 10, 10, 10)]
-        ).unwrap(),
+        interp
+            .evaluate_derive(
+                &state,
+                &mut handler,
+                "prime_req_xp_modifier",
+                vec![class_val("Elf"), abilities_map(16, 10, 10, 10, 10, 10)]
+            )
+            .unwrap(),
         Value::Int(0)
     );
 }
@@ -544,18 +676,26 @@ fn adjust_xp_bonus() {
     let mut handler = NullHandler;
 
     assert_eq!(
-        interp.evaluate_derive(
-            &state, &mut handler, "adjust_xp",
-            vec![Value::Int(1000), Value::Int(10)]
-        ).unwrap(),
+        interp
+            .evaluate_derive(
+                &state,
+                &mut handler,
+                "adjust_xp",
+                vec![Value::Int(1000), Value::Int(10)]
+            )
+            .unwrap(),
         Value::Int(1100)
     );
 
     assert_eq!(
-        interp.evaluate_derive(
-            &state, &mut handler, "adjust_xp",
-            vec![Value::Int(1000), Value::Int(5)]
-        ).unwrap(),
+        interp
+            .evaluate_derive(
+                &state,
+                &mut handler,
+                "adjust_xp",
+                vec![Value::Int(1000), Value::Int(5)]
+            )
+            .unwrap(),
         Value::Int(1050)
     );
 }
@@ -568,18 +708,26 @@ fn adjust_xp_penalty() {
     let mut handler = NullHandler;
 
     assert_eq!(
-        interp.evaluate_derive(
-            &state, &mut handler, "adjust_xp",
-            vec![Value::Int(1000), Value::Int(-10)]
-        ).unwrap(),
+        interp
+            .evaluate_derive(
+                &state,
+                &mut handler,
+                "adjust_xp",
+                vec![Value::Int(1000), Value::Int(-10)]
+            )
+            .unwrap(),
         Value::Int(900)
     );
 
     assert_eq!(
-        interp.evaluate_derive(
-            &state, &mut handler, "adjust_xp",
-            vec![Value::Int(1000), Value::Int(-20)]
-        ).unwrap(),
+        interp
+            .evaluate_derive(
+                &state,
+                &mut handler,
+                "adjust_xp",
+                vec![Value::Int(1000), Value::Int(-20)]
+            )
+            .unwrap(),
         Value::Int(800)
     );
 }
@@ -592,10 +740,14 @@ fn adjust_xp_zero_mod() {
     let mut handler = NullHandler;
 
     assert_eq!(
-        interp.evaluate_derive(
-            &state, &mut handler, "adjust_xp",
-            vec![Value::Int(1000), Value::Int(0)]
-        ).unwrap(),
+        interp
+            .evaluate_derive(
+                &state,
+                &mut handler,
+                "adjust_xp",
+                vec![Value::Int(1000), Value::Int(0)]
+            )
+            .unwrap(),
         Value::Int(1000)
     );
 }

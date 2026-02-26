@@ -123,7 +123,10 @@ fn ose_equipment_has_expected_decls() {
         has_equipment_package_table,
         "expected equipment_package table"
     );
-    assert!(has_random_weapon_table, "expected random_starting_weapon table");
+    assert!(
+        has_random_weapon_table,
+        "expected random_starting_weapon table"
+    );
 }
 
 #[test]

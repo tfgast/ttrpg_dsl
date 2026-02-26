@@ -5,8 +5,8 @@
 
 use std::collections::{BTreeMap, HashMap};
 
-use ttrpg_ast::FileId;
 use ttrpg_ast::diagnostic::Severity;
+use ttrpg_ast::FileId;
 use ttrpg_interp::effect::{Effect, EffectHandler, Response};
 use ttrpg_interp::state::{ActiveCondition, EntityRef, StateProvider};
 use ttrpg_interp::value::Value;
@@ -106,7 +106,12 @@ system "test" {
     let mut handler = MinimalHandler;
 
     let val = interp
-        .evaluate_mechanic(&state, &mut handler, "scare", vec![Value::Entity(EntityRef(1))])
+        .evaluate_mechanic(
+            &state,
+            &mut handler,
+            "scare",
+            vec![Value::Entity(EntityRef(1))],
+        )
         .unwrap();
 
     // The condition should have args keyed by the declared param name "source"
@@ -138,7 +143,12 @@ system "test" {
     let mut handler = MinimalHandler;
 
     let val = interp
-        .evaluate_mechanic(&state, &mut handler, "scare", vec![Value::Entity(EntityRef(1))])
+        .evaluate_mechanic(
+            &state,
+            &mut handler,
+            "scare",
+            vec![Value::Entity(EntityRef(1))],
+        )
         .unwrap();
 
     match val {
@@ -237,7 +247,12 @@ system "test" {
 
     // Only required arg — default should be filled
     let val = interp
-        .evaluate_mechanic(&state, &mut handler, "curse", vec![Value::Entity(EntityRef(1))])
+        .evaluate_mechanic(
+            &state,
+            &mut handler,
+            "curse",
+            vec![Value::Entity(EntityRef(1))],
+        )
         .unwrap();
     match val {
         Value::Condition { args, .. } => {
@@ -249,7 +264,12 @@ system "test" {
 
     // Both args positional
     let val = interp
-        .evaluate_mechanic(&state, &mut handler, "curse_hard", vec![Value::Entity(EntityRef(1))])
+        .evaluate_mechanic(
+            &state,
+            &mut handler,
+            "curse_hard",
+            vec![Value::Entity(EntityRef(1))],
+        )
         .unwrap();
     match val {
         Value::Condition { args, .. } => {
@@ -261,7 +281,12 @@ system "test" {
 
     // Both args named
     let val = interp
-        .evaluate_mechanic(&state, &mut handler, "curse_named", vec![Value::Entity(EntityRef(1))])
+        .evaluate_mechanic(
+            &state,
+            &mut handler,
+            "curse_named",
+            vec![Value::Entity(EntityRef(1))],
+        )
         .unwrap();
     match val {
         Value::Condition { args, .. } => {

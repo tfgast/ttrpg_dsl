@@ -73,12 +73,7 @@ impl<'a> SourceMap<'a> {
 
     /// Render a diagnostic in rustc-style format.
     pub fn render(&self, diag: &Diagnostic) -> String {
-        render_diagnostic(
-            diag,
-            "line",
-            self.source,
-            &self.line_starts,
-        )
+        render_diagnostic(diag, "line", self.source, &self.line_starts)
     }
 }
 
@@ -106,10 +101,7 @@ fn render_diagnostic(
 
     // Get line text
     let line_text_start = line_starts[line];
-    let line_text_end = line_starts
-        .get(line + 1)
-        .copied()
-        .unwrap_or(source.len());
+    let line_text_end = line_starts.get(line + 1).copied().unwrap_or(source.len());
     let line_text = source[line_text_start..line_text_end]
         .trim_end_matches('\n')
         .trim_end_matches('\r');
@@ -200,12 +192,7 @@ impl MultiSourceMap {
         match self.files.get(file_idx) {
             Some(file) => {
                 let prefix = format!("{}:", file.filename);
-                render_diagnostic(
-                    diag,
-                    &prefix,
-                    &file.source,
-                    &file.line_starts,
-                )
+                render_diagnostic(diag, &prefix, &file.source, &file.line_starts)
             }
             None => {
                 // Fallback — FileId doesn't map to any file
@@ -242,9 +229,7 @@ mod tests {
     #[test]
     fn multi_source_map_out_of_range_file_id() {
         // A FileId beyond the file list should fall through gracefully
-        let msm = MultiSourceMap::new(vec![
-            ("a.ttrpg".into(), "hello".into()),
-        ]);
+        let msm = MultiSourceMap::new(vec![("a.ttrpg".into(), "hello".into())]);
         let diag = Diagnostic::error("oops", Span::new(FileId(99), 0, 3));
         let rendered = msm.render(&diag);
         assert!(
@@ -295,7 +280,10 @@ mod tests {
         let diag = Diagnostic::error("test", Span::new(FileId::SYNTH, 5, 3));
         // Should not panic despite start > end (saturating_sub guards it)
         let rendered = sm.render(&diag);
-        assert!(rendered.contains("test"), "should still contain the message");
+        assert!(
+            rendered.contains("test"),
+            "should still contain the message"
+        );
         assert!(rendered.contains("^"), "should still have caret(s)");
     }
 }

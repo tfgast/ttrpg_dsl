@@ -1,9 +1,9 @@
 use std::collections::{HashMap, HashSet};
 
-use ttrpg_ast::Name;
 use ttrpg_ast::ast::*;
 use ttrpg_ast::diagnostic::Diagnostic;
 use ttrpg_ast::module::ModuleMap;
+use ttrpg_ast::Name;
 use ttrpg_ast::{Span, Spanned};
 
 use crate::env::*;
@@ -80,7 +80,11 @@ impl<'a> Checker<'a> {
         // Filter owners by system visibility when in module-aware mode
         let owners: Vec<Name> = if let Some(ref current) = self.current_system {
             if let Some(vis) = self.env.system_visibility.get(current) {
-                all_owners.iter().filter(|o| vis.types.contains(o.as_str())).cloned().collect()
+                all_owners
+                    .iter()
+                    .filter(|o| vis.types.contains(o.as_str()))
+                    .cloned()
+                    .collect()
             } else {
                 all_owners
             }
@@ -108,7 +112,10 @@ impl<'a> Checker<'a> {
                     return Some(n);
                 }
             }
-            let qualified: Vec<String> = owners.iter().map(|e| format!("{}.{}", e, variant)).collect();
+            let qualified: Vec<String> = owners
+                .iter()
+                .map(|e| format!("{}.{}", e, variant))
+                .collect();
             let owners_display: Vec<&str> = owners.iter().map(|o| o.as_str()).collect();
             self.error(
                 format!(
@@ -150,8 +157,11 @@ impl<'a> Checker<'a> {
             Namespace::Variant => {
                 // Derive owner from enum's type_owner to avoid single-owner
                 // overwrite when multiple systems share a variant name.
-                self.env.variant_to_enums.get(name)
-                    .and_then(|enums| enums.iter().find_map(|e| self.env.type_owner.get(e.as_str())))
+                self.env.variant_to_enums.get(name).and_then(|enums| {
+                    enums
+                        .iter()
+                        .find_map(|e| self.env.type_owner.get(e.as_str()))
+                })
             }
             Namespace::Option => self.env.option_owner.get(name),
         };
@@ -187,8 +197,7 @@ impl<'a> Checker<'a> {
 
     /// Validate type names in a type expression, emitting diagnostics for unknowns.
     pub fn validate_type(&mut self, texpr: &ttrpg_ast::Spanned<TypeExpr>) {
-        self.env
-            .validate_type_names(texpr, &mut self.diagnostics);
+        self.env.validate_type_names(texpr, &mut self.diagnostics);
     }
 
     /// Validate, check visibility, and resolve a type expression in one step.
@@ -315,7 +324,11 @@ impl<'a> Checker<'a> {
         }
 
         // Resolve param types
-        let param_tys: Vec<Ty> = t.params.iter().map(|p| self.env.resolve_type(&p.ty)).collect();
+        let param_tys: Vec<Ty> = t
+            .params
+            .iter()
+            .map(|p| self.env.resolve_type(&p.ty))
+            .collect();
         let ret_ty = self.env.resolve_type(&t.return_type);
 
         // Track wildcard position for unreachable-entry warnings
@@ -344,7 +357,11 @@ impl<'a> Checker<'a> {
             }
 
             // Detect full-wildcard entries (every key is `_`)
-            if entry.keys.iter().all(|k| matches!(k.node, TableKey::Wildcard)) {
+            if entry
+                .keys
+                .iter()
+                .all(|k| matches!(k.node, TableKey::Wildcard))
+            {
                 seen_wildcard = true;
             }
 
@@ -362,10 +379,7 @@ impl<'a> Checker<'a> {
                             && !self.types_compatible(&key_ty, expected_ty)
                         {
                             self.error(
-                                format!(
-                                    "table key has type {}, expected {}",
-                                    key_ty, expected_ty
-                                ),
+                                format!("table key has type {}, expected {}", key_ty, expected_ty),
                                 key.span,
                             );
                         }
@@ -404,15 +418,10 @@ impl<'a> Checker<'a> {
 
             // Type-check the value expression
             let val_ty = self.check_expr_expecting(&entry.value, Some(&ret_ty));
-            if !val_ty.is_error()
-                && !ret_ty.is_error()
-                && !self.types_compatible(&val_ty, &ret_ty)
+            if !val_ty.is_error() && !ret_ty.is_error() && !self.types_compatible(&val_ty, &ret_ty)
             {
                 self.error(
-                    format!(
-                        "table entry value has type {}, expected {}",
-                        val_ty, ret_ty
-                    ),
+                    format!("table entry value has type {}, expected {}", val_ty, ret_ty),
                     entry.value.span,
                 );
             }
@@ -607,8 +616,7 @@ impl<'a> Checker<'a> {
                     // Positional binding — match against event params by position,
                     // skipping params already bound by name
                     while positional_index < event_info.params.len()
-                        && named_param_names
-                            .contains(&event_info.params[positional_index].name)
+                        && named_param_names.contains(&event_info.params[positional_index].name)
                     {
                         positional_index += 1;
                     }
@@ -630,7 +638,8 @@ impl<'a> Checker<'a> {
                         self.error(
                             format!(
                                 "too many positional trigger bindings for event `{}` (expected {})",
-                                trigger.event_name, event_info.params.len()
+                                trigger.event_name,
+                                event_info.params.len()
                             ),
                             binding.span,
                         );
@@ -718,7 +727,13 @@ impl<'a> Checker<'a> {
                     );
                 }
                 ConditionClause::Suppress(s) => {
-                    self.check_suppress_clause(s, &c.receiver_name, &c.receiver_type, &c.receiver_with_groups, &c.params);
+                    self.check_suppress_clause(
+                        s,
+                        &c.receiver_name,
+                        &c.receiver_type,
+                        &c.receiver_with_groups,
+                        &c.params,
+                    );
                 }
             }
         }
@@ -863,10 +878,7 @@ impl<'a> Checker<'a> {
             self.check_name_visible(&group.name, Namespace::Group, group.span);
             if group.is_external_ref {
                 if self.env.lookup_group(&group.name).is_none() {
-                    self.error(
-                        format!("unknown group `{}`", group.name),
-                        group.span,
-                    );
+                    self.error(format!("unknown group `{}`", group.name), group.span);
                 }
             } else {
                 for field in &group.fields {

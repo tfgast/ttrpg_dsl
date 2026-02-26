@@ -5,7 +5,10 @@ use ttrpg_interp::reference_state::GameState;
 use ttrpg_interp::value::Value;
 
 /// Base fields + inline optional groups parsed from a spawn block.
-pub(super) type SpawnBlock = (HashMap<String, Value>, Vec<(String, HashMap<String, Value>)>);
+pub(super) type SpawnBlock = (
+    HashMap<String, Value>,
+    Vec<(String, HashMap<String, Value>)>,
+);
 
 /// Split a trimmed line into the first whitespace-delimited token and the rest.
 pub(super) fn split_first_token(s: &str) -> (&str, &str) {

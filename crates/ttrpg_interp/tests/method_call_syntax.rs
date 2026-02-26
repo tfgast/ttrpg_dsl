@@ -1,7 +1,7 @@
 //! Integration tests for method call syntax on collections, options, and dice.
 
-use ttrpg_ast::FileId;
 use ttrpg_ast::diagnostic::Severity;
+use ttrpg_ast::FileId;
 use ttrpg_interp::effect::{Effect, EffectHandler, Response};
 use ttrpg_interp::reference_state::GameState;
 use ttrpg_interp::value::{DiceExpr, RollResult, Value};
@@ -98,9 +98,12 @@ system "test" {
     let mut handler = NoopHandler;
 
     let val = interp
-        .evaluate_derive(&state, &mut handler, "f", vec![
-            Value::List(vec![Value::Int(10), Value::Int(20)]),
-        ])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "f",
+            vec![Value::List(vec![Value::Int(10), Value::Int(20)])],
+        )
         .unwrap();
     assert_eq!(val, Value::Int(2));
 }
@@ -120,9 +123,12 @@ system "test" {
     let mut handler = NoopHandler;
 
     let val = interp
-        .evaluate_derive(&state, &mut handler, "f", vec![
-            Value::List(vec![Value::Int(42), Value::Int(99)]),
-        ])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "f",
+            vec![Value::List(vec![Value::Int(42), Value::Int(99)])],
+        )
         .unwrap();
     assert_eq!(val, Value::Option(Some(Box::new(Value::Int(42)))));
 
@@ -148,9 +154,16 @@ system "test" {
     let mut handler = NoopHandler;
 
     let val = interp
-        .evaluate_derive(&state, &mut handler, "f", vec![
-            Value::List(vec![Value::Int(1), Value::Int(2), Value::Int(3)]),
-        ])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "f",
+            vec![Value::List(vec![
+                Value::Int(1),
+                Value::Int(2),
+                Value::Int(3),
+            ])],
+        )
         .unwrap();
     assert_eq!(val, Value::Option(Some(Box::new(Value::Int(3)))));
 }
@@ -170,9 +183,16 @@ system "test" {
     let mut handler = NoopHandler;
 
     let val = interp
-        .evaluate_derive(&state, &mut handler, "f", vec![
-            Value::List(vec![Value::Int(3), Value::Int(1), Value::Int(2)]),
-        ])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "f",
+            vec![Value::List(vec![
+                Value::Int(3),
+                Value::Int(1),
+                Value::Int(2),
+            ])],
+        )
         .unwrap();
     assert_eq!(
         val,
@@ -195,10 +215,12 @@ system "test" {
     let mut handler = NoopHandler;
 
     let val = interp
-        .evaluate_derive(&state, &mut handler, "f", vec![
-            Value::List(vec![Value::Int(1)]),
-            Value::Int(2),
-        ])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "f",
+            vec![Value::List(vec![Value::Int(1)]), Value::Int(2)],
+        )
         .unwrap();
     assert_eq!(val, Value::List(vec![Value::Int(1), Value::Int(2)]));
 }
@@ -218,10 +240,15 @@ system "test" {
     let mut handler = NoopHandler;
 
     let val = interp
-        .evaluate_derive(&state, &mut handler, "f", vec![
-            Value::List(vec![Value::Int(1), Value::Int(2)]),
-            Value::List(vec![Value::Int(3), Value::Int(4)]),
-        ])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "f",
+            vec![
+                Value::List(vec![Value::Int(1), Value::Int(2)]),
+                Value::List(vec![Value::Int(3), Value::Int(4)]),
+            ],
+        )
         .unwrap();
     assert_eq!(
         val,
@@ -251,9 +278,16 @@ system "test" {
     let mut handler = NoopHandler;
 
     let val = interp
-        .evaluate_derive(&state, &mut handler, "f", vec![
-            Value::Set(vec![Value::Int(1), Value::Int(2), Value::Int(3)].into_iter().collect()),
-        ])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "f",
+            vec![Value::Set(
+                vec![Value::Int(1), Value::Int(2), Value::Int(3)]
+                    .into_iter()
+                    .collect(),
+            )],
+        )
         .unwrap();
     assert_eq!(val, Value::Int(3));
 }
@@ -276,16 +310,33 @@ system "test" {
     let mut handler = NoopHandler;
 
     let val = interp
-        .evaluate_derive(&state, &mut handler, "f", vec![
-            Value::Map(
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "f",
+            vec![Value::Map(
                 vec![
-                    (Value::EnumVariant { enum_name: "Color".into(), variant: "red".into(), fields: Default::default() }, Value::Int(10)),
-                    (Value::EnumVariant { enum_name: "Color".into(), variant: "blue".into(), fields: Default::default() }, Value::Int(20)),
+                    (
+                        Value::EnumVariant {
+                            enum_name: "Color".into(),
+                            variant: "red".into(),
+                            fields: Default::default(),
+                        },
+                        Value::Int(10),
+                    ),
+                    (
+                        Value::EnumVariant {
+                            enum_name: "Color".into(),
+                            variant: "blue".into(),
+                            fields: Default::default(),
+                        },
+                        Value::Int(20),
+                    ),
                 ]
                 .into_iter()
                 .collect(),
-            ),
-        ])
+            )],
+        )
         .unwrap();
     assert_eq!(val, Value::Int(2));
 }
@@ -306,15 +357,23 @@ system "test" {
     let mut handler = NoopHandler;
 
     let val = interp
-        .evaluate_derive(&state, &mut handler, "f", vec![
-            Value::Map(
-                vec![
-                    (Value::EnumVariant { enum_name: "Color".into(), variant: "red".into(), fields: Default::default() }, Value::Int(10)),
-                ]
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "f",
+            vec![Value::Map(
+                vec![(
+                    Value::EnumVariant {
+                        enum_name: "Color".into(),
+                        variant: "red".into(),
+                        fields: Default::default(),
+                    },
+                    Value::Int(10),
+                )]
                 .into_iter()
                 .collect(),
-            ),
-        ])
+            )],
+        )
         .unwrap();
     match val {
         Value::List(items) => {
@@ -344,15 +403,23 @@ system "test" {
     let mut handler = NoopHandler;
 
     let val = interp
-        .evaluate_derive(&state, &mut handler, "f", vec![
-            Value::Map(
-                vec![
-                    (Value::EnumVariant { enum_name: "Color".into(), variant: "red".into(), fields: Default::default() }, Value::Int(42)),
-                ]
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "f",
+            vec![Value::Map(
+                vec![(
+                    Value::EnumVariant {
+                        enum_name: "Color".into(),
+                        variant: "red".into(),
+                        fields: Default::default(),
+                    },
+                    Value::Int(42),
+                )]
                 .into_iter()
                 .collect(),
-            ),
-        ])
+            )],
+        )
         .unwrap();
     assert_eq!(val, Value::List(vec![Value::Int(42)]));
 }
@@ -374,9 +441,12 @@ system "test" {
     let mut handler = NoopHandler;
 
     let val = interp
-        .evaluate_derive(&state, &mut handler, "f", vec![
-            Value::List(vec![Value::Int(1)]),
-        ])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "f",
+            vec![Value::List(vec![Value::Int(1)])],
+        )
         .unwrap();
     assert_eq!(val, Value::Bool(true));
 
@@ -406,9 +476,12 @@ system "test" {
     assert_eq!(val, Value::Bool(true));
 
     let val = interp
-        .evaluate_derive(&state, &mut handler, "f", vec![
-            Value::List(vec![Value::Int(1)]),
-        ])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "f",
+            vec![Value::List(vec![Value::Int(1)])],
+        )
         .unwrap();
     assert_eq!(val, Value::Bool(false));
 }
@@ -430,13 +503,26 @@ system "test" {
     let mut handler = NoopHandler;
 
     let val = interp
-        .evaluate_mechanic(&state, &mut handler, "f", vec![
-            Value::DiceExpr(DiceExpr { count: 2, sides: 6, filter: None, modifier: 0 }),
-        ])
+        .evaluate_mechanic(
+            &state,
+            &mut handler,
+            "f",
+            vec![Value::DiceExpr(DiceExpr {
+                count: 2,
+                sides: 6,
+                filter: None,
+                modifier: 0,
+            })],
+        )
         .unwrap();
     assert_eq!(
         val,
-        Value::DiceExpr(DiceExpr { count: 6, sides: 6, filter: None, modifier: 0 })
+        Value::DiceExpr(DiceExpr {
+            count: 6,
+            sides: 6,
+            filter: None,
+            modifier: 0
+        })
     );
 }
 
@@ -455,9 +541,17 @@ system "test" {
     let mut handler = RollHandler;
 
     let val = interp
-        .evaluate_mechanic(&state, &mut handler, "f", vec![
-            Value::DiceExpr(DiceExpr { count: 2, sides: 6, filter: None, modifier: 0 }),
-        ])
+        .evaluate_mechanic(
+            &state,
+            &mut handler,
+            "f",
+            vec![Value::DiceExpr(DiceExpr {
+                count: 2,
+                sides: 6,
+                filter: None,
+                modifier: 0,
+            })],
+        )
         .unwrap();
     // RollHandler rolls max on each die: 2d6 → 6+6 = 12
     match val {
@@ -509,18 +603,22 @@ system "test" {
     let mut handler = NoopHandler;
 
     let val = interp
-        .evaluate_derive(&state, &mut handler, "f", vec![
-            Value::Str("hello world".into()),
-            Value::Str("world".into()),
-        ])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "f",
+            vec![Value::Str("hello world".into()), Value::Str("world".into())],
+        )
         .unwrap();
     assert_eq!(val, Value::Bool(true));
 
     let val = interp
-        .evaluate_derive(&state, &mut handler, "f", vec![
-            Value::Str("hello".into()),
-            Value::Str("xyz".into()),
-        ])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "f",
+            vec![Value::Str("hello".into()), Value::Str("xyz".into())],
+        )
         .unwrap();
     assert_eq!(val, Value::Bool(false));
 }
@@ -540,18 +638,22 @@ system "test" {
     let mut handler = NoopHandler;
 
     let val = interp
-        .evaluate_derive(&state, &mut handler, "f", vec![
-            Value::Str("hello world".into()),
-            Value::Str("hello".into()),
-        ])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "f",
+            vec![Value::Str("hello world".into()), Value::Str("hello".into())],
+        )
         .unwrap();
     assert_eq!(val, Value::Bool(true));
 
     let val = interp
-        .evaluate_derive(&state, &mut handler, "f", vec![
-            Value::Str("hello".into()),
-            Value::Str("world".into()),
-        ])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "f",
+            vec![Value::Str("hello".into()), Value::Str("world".into())],
+        )
         .unwrap();
     assert_eq!(val, Value::Bool(false));
 }
@@ -571,18 +673,22 @@ system "test" {
     let mut handler = NoopHandler;
 
     let val = interp
-        .evaluate_derive(&state, &mut handler, "f", vec![
-            Value::Str("hello world".into()),
-            Value::Str("world".into()),
-        ])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "f",
+            vec![Value::Str("hello world".into()), Value::Str("world".into())],
+        )
         .unwrap();
     assert_eq!(val, Value::Bool(true));
 
     let val = interp
-        .evaluate_derive(&state, &mut handler, "f", vec![
-            Value::Str("hello".into()),
-            Value::Str("xyz".into()),
-        ])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "f",
+            vec![Value::Str("hello".into()), Value::Str("xyz".into())],
+        )
         .unwrap();
     assert_eq!(val, Value::Bool(false));
 }
@@ -603,25 +709,37 @@ system "test" {
     let mut handler = NoopHandler;
 
     let val = interp
-        .evaluate_derive(&state, &mut handler, "f", vec![Value::Str("fireball".into())])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "f",
+            vec![Value::Str("fireball".into())],
+        )
         .unwrap();
     assert_eq!(val, Value::Int(1));
 
     let val = interp
-        .evaluate_derive(&state, &mut handler, "f", vec![Value::Str("icebolt".into())])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "f",
+            vec![Value::Str("icebolt".into())],
+        )
         .unwrap();
     assert_eq!(val, Value::Int(0));
 }
 
 #[test]
 fn unknown_method_on_string_error() {
-    let errors = setup_with_errors(r#"
+    let errors = setup_with_errors(
+        r#"
 system "test" {
     derive f(s: string) -> int {
         s.foobar()
     }
 }
-"#);
+"#,
+    );
     assert!(!errors.is_empty());
     assert!(
         errors[0].contains("no method"),
@@ -647,9 +765,16 @@ system "test" {
     let mut handler = NoopHandler;
 
     let val = interp
-        .evaluate_derive(&state, &mut handler, "f", vec![
-            Value::List(vec![Value::Int(1), Value::Int(2), Value::Int(3)]),
-        ])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "f",
+            vec![Value::List(vec![
+                Value::Int(1),
+                Value::Int(2),
+                Value::Int(3),
+            ])],
+        )
         .unwrap();
     // reverse → [3,2,1], first → some(3), unwrap → 3
     assert_eq!(val, Value::Int(3));
@@ -670,10 +795,15 @@ system "test" {
     let mut handler = NoopHandler;
 
     let val = interp
-        .evaluate_derive(&state, &mut handler, "f", vec![
-            Value::List(vec![Value::Int(1), Value::Int(2)]),
-            Value::List(vec![Value::Int(3)]),
-        ])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "f",
+            vec![
+                Value::List(vec![Value::Int(1), Value::Int(2)]),
+                Value::List(vec![Value::Int(3)]),
+            ],
+        )
         .unwrap();
     assert_eq!(val, Value::Int(3));
 }
@@ -695,9 +825,12 @@ system "test" {
     let mut handler = NoopHandler;
 
     let val = interp
-        .evaluate_derive(&state, &mut handler, "f", vec![
-            Value::List(vec![Value::Int(1), Value::Int(2)]),
-        ])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "f",
+            vec![Value::List(vec![Value::Int(1), Value::Int(2)])],
+        )
         .unwrap();
     assert_eq!(val, Value::Int(2));
 }
@@ -706,13 +839,15 @@ system "test" {
 
 #[test]
 fn unknown_method_on_list_error() {
-    let errors = setup_with_errors(r#"
+    let errors = setup_with_errors(
+        r#"
 system "test" {
     derive f(xs: list<int>) -> int {
         xs.foobar()
     }
 }
-"#);
+"#,
+    );
     assert!(!errors.is_empty());
     assert!(
         errors[0].contains("no method"),
@@ -723,13 +858,15 @@ system "test" {
 
 #[test]
 fn unknown_method_on_int_error() {
-    let errors = setup_with_errors(r#"
+    let errors = setup_with_errors(
+        r#"
 system "test" {
     derive f(x: int) -> int {
         x.len()
     }
 }
-"#);
+"#,
+    );
     assert!(!errors.is_empty());
     assert!(
         errors[0].contains("has no methods"),
@@ -741,13 +878,15 @@ system "test" {
 #[test]
 fn dice_multiply_method_in_derive_rejected() {
     // .roll() should be rejected in derive context (no dice allowed)
-    let errors = setup_with_errors(r#"
+    let errors = setup_with_errors(
+        r#"
 system "test" {
     derive f(d: DiceExpr) -> RollResult {
         d.roll()
     }
 }
-"#);
+"#,
+    );
     assert!(!errors.is_empty());
     assert!(
         errors[0].contains("can only be called in mechanic"),

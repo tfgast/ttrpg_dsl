@@ -2,19 +2,19 @@ use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::path::PathBuf;
 
-use rand::SeedableRng;
 use rand::rngs::StdRng;
+use rand::SeedableRng;
 
-use ttrpg_ast::Name;
 use ttrpg_ast::ast::{DeclKind, FieldDef, Program, TopLevel};
 use ttrpg_ast::diagnostic::{Diagnostic, MultiSourceMap, Severity};
 use ttrpg_ast::module::ModuleMap;
+use ttrpg_ast::Name;
 use ttrpg_checker::env::{DeclInfo, FnKind, TypeEnv};
-use ttrpg_interp::Interpreter;
 use ttrpg_interp::effect::FieldPathSegment;
 use ttrpg_interp::reference_state::GameState;
 use ttrpg_interp::state::{EntityRef, StateProvider, WritableState};
 use ttrpg_interp::value::Value;
+use ttrpg_interp::Interpreter;
 
 use crate::commands::{self, Command};
 use crate::effects::{CliHandler, RefCellState};
@@ -147,9 +147,11 @@ impl Runner {
     /// Returns optional group names for a given entity type (for tab completion).
     pub fn group_names(&self, entity_type: &str) -> Vec<String> {
         match self.type_env.types.get(entity_type) {
-            Some(DeclInfo::Entity(info)) => {
-                info.optional_groups.iter().map(|g| g.name.to_string()).collect()
-            }
+            Some(DeclInfo::Entity(info)) => info
+                .optional_groups
+                .iter()
+                .map(|g| g.name.to_string())
+                .collect(),
             _ => Vec::new(),
         }
     }
@@ -235,7 +237,12 @@ impl Runner {
             .map_err(|e| CliError::Message(format!("interpreter error: {}", e)))?;
 
         let state = RefCellState(&self.game_state);
-        let mut handler = CliHandler::new(&self.game_state, &self.reverse_handles, &mut self.rng, &mut self.roll_queue);
+        let mut handler = CliHandler::new(
+            &self.game_state,
+            &self.reverse_handles,
+            &mut self.rng,
+            &mut self.roll_queue,
+        );
         let bindings: HashMap<Name, Value> = self
             .handles
             .iter()

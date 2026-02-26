@@ -27,7 +27,10 @@ impl BlockKind {
     pub fn allows_dice(&self) -> bool {
         matches!(
             self,
-            BlockKind::Mechanic | BlockKind::ActionResolve | BlockKind::ReactionResolve | BlockKind::HookResolve
+            BlockKind::Mechanic
+                | BlockKind::ActionResolve
+                | BlockKind::ReactionResolve
+                | BlockKind::HookResolve
         )
     }
 
@@ -94,12 +97,18 @@ impl ScopeStack {
     }
 
     pub fn pop(&mut self) {
-        debug_assert!(!self.scopes.is_empty(), "ScopeStack::pop called on empty stack");
+        debug_assert!(
+            !self.scopes.is_empty(),
+            "ScopeStack::pop called on empty stack"
+        );
         self.scopes.pop();
     }
 
     pub fn bind(&mut self, name: Name, binding: VarBinding) {
-        debug_assert!(!self.scopes.is_empty(), "ScopeStack::bind called on empty stack");
+        debug_assert!(
+            !self.scopes.is_empty(),
+            "ScopeStack::bind called on empty stack"
+        );
         if let Some(scope) = self.scopes.last_mut() {
             scope.bindings.insert(name, binding);
         }
@@ -126,8 +135,7 @@ impl ScopeStack {
     }
 
     pub fn allows_dice(&self) -> bool {
-        self.current_block_kind()
-            .is_some_and(|k| k.allows_dice())
+        self.current_block_kind().is_some_and(|k| k.allows_dice())
     }
 
     pub fn allows_mutation(&self) -> bool {
@@ -136,13 +144,11 @@ impl ScopeStack {
     }
 
     pub fn allows_turn(&self) -> bool {
-        self.current_block_kind()
-            .is_some_and(|k| k.allows_turn())
+        self.current_block_kind().is_some_and(|k| k.allows_turn())
     }
 
     pub fn allows_calls(&self) -> bool {
-        self.current_block_kind()
-            .is_none_or(|k| k.allows_calls())
+        self.current_block_kind().is_none_or(|k| k.allows_calls())
     }
 
     /// Check if a name is already bound in the innermost scope.
@@ -160,7 +166,10 @@ impl ScopeStack {
     /// bindings are promoted — non-entity bindings (structs, lists, etc.)
     /// remain local so the immutable-local guard still applies.
     pub fn mark_current_scope_entities_non_local(&mut self) {
-        debug_assert!(!self.scopes.is_empty(), "ScopeStack::mark_current_scope_entities_non_local called on empty stack");
+        debug_assert!(
+            !self.scopes.is_empty(),
+            "ScopeStack::mark_current_scope_entities_non_local called on empty stack"
+        );
         if let Some(scope) = self.scopes.last_mut() {
             for binding in scope.bindings.values_mut() {
                 if binding.ty.is_entity() {
@@ -172,13 +181,12 @@ impl ScopeStack {
 
     /// Record that a variable's optional group is proven active in the current scope.
     pub fn narrow_group(&mut self, var: Name, group: Name) {
-        debug_assert!(!self.scopes.is_empty(), "ScopeStack::narrow_group called on empty stack");
+        debug_assert!(
+            !self.scopes.is_empty(),
+            "ScopeStack::narrow_group called on empty stack"
+        );
         if let Some(scope) = self.scopes.last_mut() {
-            scope
-                .narrowed_groups
-                .entry(var)
-                .or_default()
-                .insert(group);
+            scope.narrowed_groups.entry(var).or_default().insert(group);
         }
     }
 

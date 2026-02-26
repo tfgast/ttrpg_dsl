@@ -12,8 +12,8 @@
 
 use std::collections::{BTreeMap, HashMap, VecDeque};
 
-use ttrpg_ast::FileId;
 use ttrpg_ast::diagnostic::Severity;
+use ttrpg_ast::FileId;
 use ttrpg_interp::adapter::StateAdapter;
 use ttrpg_interp::effect::{Effect, EffectHandler, Response};
 use ttrpg_interp::reference_state::GameState;
@@ -221,7 +221,11 @@ fn standard_turn_budget() -> BTreeMap<ttrpg_ast::Name, Value> {
 fn pipeline_parses_checks_and_builds_interpreter() {
     let (program, result) = setup();
     let interp = Interpreter::new(&program, &result.env);
-    assert!(interp.is_ok(), "interpreter creation failed: {:?}", interp.err());
+    assert!(
+        interp.is_ok(),
+        "interpreter creation failed: {:?}",
+        interp.err()
+    );
 }
 
 #[test]
@@ -267,7 +271,12 @@ fn external_group_attachment_grant_uses_group_defaults() {
 
     let mut handler = ScriptedHandler::new();
     let dc = interp
-        .evaluate_derive(&state, &mut handler, "spell_dc", vec![Value::Entity(wizard)])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "spell_dc",
+            vec![Value::Entity(wizard)],
+        )
         .unwrap();
     assert_eq!(dc, Value::Int(11));
 }
@@ -286,7 +295,12 @@ fn has_returns_false_when_no_group_granted() {
     // effective_spell_dc should return 0 when no Spellcasting granted
     let mut handler = ScriptedHandler::new();
     let val = interp
-        .evaluate_derive(&state, &mut handler, "effective_spell_dc", vec![Value::Entity(wizard)])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "effective_spell_dc",
+            vec![Value::Entity(wizard)],
+        )
         .unwrap();
     assert_eq!(val, Value::Int(0));
 }
@@ -311,14 +325,21 @@ fn has_returns_true_when_group_is_granted() {
     };
     state.write_field(
         &wizard,
-        &[ttrpg_interp::effect::FieldPathSegment::Field("Spellcasting".into())],
+        &[ttrpg_interp::effect::FieldPathSegment::Field(
+            "Spellcasting".into(),
+        )],
         group_val,
     );
 
     // effective_spell_dc should return the spell_dc value
     let mut handler = ScriptedHandler::new();
     let val = interp
-        .evaluate_derive(&state, &mut handler, "effective_spell_dc", vec![Value::Entity(wizard)])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "effective_spell_dc",
+            vec![Value::Entity(wizard)],
+        )
         .unwrap();
     assert_eq!(val, Value::Int(15));
 }
@@ -445,7 +466,9 @@ fn revoke_action_removes_group_from_state() {
     };
     state.write_field(
         &wizard,
-        &[ttrpg_interp::effect::FieldPathSegment::Field("Spellcasting".into())],
+        &[ttrpg_interp::effect::FieldPathSegment::Field(
+            "Spellcasting".into(),
+        )],
         group_val,
     );
 
@@ -496,7 +519,12 @@ fn full_grant_use_revoke_lifecycle() {
     // Step 1: Verify no groups — total_resources should be 0
     let mut handler = ScriptedHandler::new();
     let val = interp
-        .evaluate_derive(&state, &mut handler, "total_resources", vec![Value::Entity(wizard)])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "total_resources",
+            vec![Value::Entity(wizard)],
+        )
         .unwrap();
     assert_eq!(val, Value::Int(0), "no groups means 0 resources");
 
@@ -521,12 +549,22 @@ fn full_grant_use_revoke_lifecycle() {
     // Step 3: Verify has expression + derive reads group fields
     let mut handler = ScriptedHandler::new();
     let val = interp
-        .evaluate_derive(&state, &mut handler, "effective_spell_dc", vec![Value::Entity(wizard)])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "effective_spell_dc",
+            vec![Value::Entity(wizard)],
+        )
         .unwrap();
     assert_eq!(val, Value::Int(15), "spell_dc should be 15");
 
     let val = interp
-        .evaluate_derive(&state, &mut handler, "total_resources", vec![Value::Entity(wizard)])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "total_resources",
+            vec![Value::Entity(wizard)],
+        )
         .unwrap();
     assert_eq!(val, Value::Int(4), "only Spellcasting with 4 slots");
 
@@ -551,7 +589,12 @@ fn full_grant_use_revoke_lifecycle() {
     // Step 5: Both groups active — total_resources = 4 + 3 = 7
     let mut handler = ScriptedHandler::new();
     let val = interp
-        .evaluate_derive(&state, &mut handler, "total_resources", vec![Value::Entity(wizard)])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "total_resources",
+            vec![Value::Entity(wizard)],
+        )
         .unwrap();
     assert_eq!(val, Value::Int(7), "4 spell slots + 3 ki points");
 
@@ -577,12 +620,22 @@ fn full_grant_use_revoke_lifecycle() {
 
     let mut handler = ScriptedHandler::new();
     let val = interp
-        .evaluate_derive(&state, &mut handler, "total_resources", vec![Value::Entity(wizard)])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "total_resources",
+            vec![Value::Entity(wizard)],
+        )
         .unwrap();
     assert_eq!(val, Value::Int(3), "only ki points remain");
 
     let val = interp
-        .evaluate_derive(&state, &mut handler, "effective_spell_dc", vec![Value::Entity(wizard)])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "effective_spell_dc",
+            vec![Value::Entity(wizard)],
+        )
         .unwrap();
     assert_eq!(val, Value::Int(0), "no Spellcasting means dc=0");
 }
@@ -612,7 +665,9 @@ fn with_constrained_action_succeeds_when_group_granted() {
     };
     state.write_field(
         &wizard,
-        &[ttrpg_interp::effect::FieldPathSegment::Field("Spellcasting".into())],
+        &[ttrpg_interp::effect::FieldPathSegment::Field(
+            "Spellcasting".into(),
+        )],
         group_val,
     );
 
@@ -621,13 +676,7 @@ fn with_constrained_action_succeeds_when_group_granted() {
     let mut handler = ScriptedHandler::with_responses(vec![Response::Acknowledged]);
     adapter.run(&mut handler, |state, eff_handler| {
         interp
-            .execute_action(
-                state,
-                eff_handler,
-                "CastSpell",
-                wizard,
-                vec![Value::Int(1)],
-            )
+            .execute_action(state, eff_handler, "CastSpell", wizard, vec![Value::Int(1)])
             .unwrap();
     });
 
@@ -656,7 +705,12 @@ fn spell_save_dc_uses_level_and_group() {
     // Without Spellcasting: dc should be 0
     let mut handler = ScriptedHandler::new();
     let val = interp
-        .evaluate_derive(&state, &mut handler, "spell_save_dc", vec![Value::Entity(wizard)])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "spell_save_dc",
+            vec![Value::Entity(wizard)],
+        )
         .unwrap();
     assert_eq!(val, Value::Int(0));
 
@@ -673,13 +727,20 @@ fn spell_save_dc_uses_level_and_group() {
     };
     state.write_field(
         &wizard,
-        &[ttrpg_interp::effect::FieldPathSegment::Field("Spellcasting".into())],
+        &[ttrpg_interp::effect::FieldPathSegment::Field(
+            "Spellcasting".into(),
+        )],
         group_val,
     );
 
     // With Spellcasting: dc should be spell_dc + level = 12 + 5 = 17
     let val = interp
-        .evaluate_derive(&state, &mut handler, "spell_save_dc", vec![Value::Entity(wizard)])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "spell_save_dc",
+            vec![Value::Entity(wizard)],
+        )
         .unwrap();
     assert_eq!(val, Value::Int(17));
 }
@@ -734,13 +795,23 @@ fn groups_are_per_entity_independent() {
     // Wizard has Spellcasting but not KiPowers
     let mut handler = ScriptedHandler::new();
     let val = interp
-        .evaluate_derive(&state, &mut handler, "total_resources", vec![Value::Entity(wizard)])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "total_resources",
+            vec![Value::Entity(wizard)],
+        )
         .unwrap();
     assert_eq!(val, Value::Int(4), "wizard: 4 spell slots, 0 ki");
 
     // Monk has KiPowers but not Spellcasting
     let val = interp
-        .evaluate_derive(&state, &mut handler, "total_resources", vec![Value::Entity(monk)])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "total_resources",
+            vec![Value::Entity(monk)],
+        )
         .unwrap();
     assert_eq!(val, Value::Int(5), "monk: 0 spell slots, 5 ki");
 }
@@ -828,7 +899,9 @@ fn revoke_action_emits_correct_effect() {
     };
     state.write_field(
         &wizard,
-        &[ttrpg_interp::effect::FieldPathSegment::Field("Spellcasting".into())],
+        &[ttrpg_interp::effect::FieldPathSegment::Field(
+            "Spellcasting".into(),
+        )],
         group_val,
     );
 
@@ -853,10 +926,7 @@ fn revoke_action_emits_correct_effect() {
     assert!(revoke_effect.is_some(), "should emit RevokeGroup effect");
 
     match revoke_effect.unwrap() {
-        Effect::RevokeGroup {
-            entity,
-            group_name,
-        } => {
+        Effect::RevokeGroup { entity, group_name } => {
             assert_eq!(*entity, wizard);
             assert_eq!(group_name, "Spellcasting");
         }

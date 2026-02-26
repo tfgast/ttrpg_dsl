@@ -81,8 +81,7 @@ impl Runner {
         let mut all_diags = result.diagnostics;
 
         // Run checker (module-aware)
-        let check_result =
-            ttrpg_checker::check_with_modules(&result.program, &result.module_map);
+        let check_result = ttrpg_checker::check_with_modules(&result.program, &result.module_map);
         all_diags.extend(check_result.diagnostics);
 
         let error_count = all_diags
@@ -126,8 +125,7 @@ impl Runner {
             clear_state(self, resolved_paths);
             self.diagnostics = all_diags;
             self.source_map = Some(MultiSourceMap::new(sources));
-            self.output
-                .push("use 'errors' to see diagnostics".into());
+            self.output.push("use 'errors' to see diagnostics".into());
             Err(CliError::Message(format!(
                 "failed to load {}: {} error{}",
                 error_label,
@@ -163,8 +161,7 @@ impl Runner {
                         Severity::Error => "error",
                         Severity::Warning => "warning",
                     };
-                    self.output
-                        .push(format!("[{}] {}", severity, diag.message));
+                    self.output.push(format!("[{}] {}", severity, diag.message));
                 }
             }
         }

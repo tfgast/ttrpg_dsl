@@ -27,12 +27,7 @@ impl<'a> Checker<'a> {
                     is_local: false,
                 },
             );
-            self.validate_with_groups(
-                receiver_name,
-                &recv_ty,
-                with_groups,
-                receiver_type.span,
-            );
+            self.validate_with_groups(receiver_name, &recv_ty, with_groups, receiver_type.span);
         }
 
         for param in condition_params {
@@ -111,7 +106,10 @@ impl<'a> Checker<'a> {
             Some(info) => info.clone(),
             None => {
                 self.error(
-                    format!("modify target `{}` is not a defined function", clause.target),
+                    format!(
+                        "modify target `{}` is not a defined function",
+                        clause.target
+                    ),
                     clause.span,
                 );
                 return;
@@ -143,7 +141,13 @@ impl<'a> Checker<'a> {
         // Validate bindings reference real parameters and type-check value expressions
         self.validate_clause_bindings(
             &clause.bindings,
-            |name| fn_info.params.iter().find(|p| p.name == name).map(|p| p.ty.clone()),
+            |name| {
+                fn_info
+                    .params
+                    .iter()
+                    .find(|p| p.name == name)
+                    .map(|p| p.ty.clone())
+            },
             "modify",
             &format!("does not match any parameter of `{}`", clause.target),
         );
@@ -189,7 +193,10 @@ impl<'a> Checker<'a> {
                 let bind_ty = if let Some(ref type_ann) = ty {
                     let ann_ty = self.resolve_type_validated(type_ann);
                     let val_ty = self.check_expr_expecting(value, Some(&ann_ty));
-                    if !val_ty.is_error() && !ann_ty.is_error() && !self.types_compatible(&val_ty, &ann_ty) {
+                    if !val_ty.is_error()
+                        && !ann_ty.is_error()
+                        && !self.types_compatible(&val_ty, &ann_ty)
+                    {
                         self.error(
                             format!(
                                 "let `{}`: value has type {}, annotation says {}",
@@ -216,14 +223,9 @@ impl<'a> Checker<'a> {
                 if name == "result" {
                     // Direct result assignment: `result = expr`
                     let val_ty = self.check_expr_expecting(value, Some(&fn_info.return_type));
-                    if !val_ty.is_error()
-                        && !self.types_compatible(&val_ty, &fn_info.return_type)
-                    {
+                    if !val_ty.is_error() && !self.types_compatible(&val_ty, &fn_info.return_type) {
                         self.error(
-                            format!(
-                                "result has type {}, found {}",
-                                fn_info.return_type, val_ty
-                            ),
+                            format!("result has type {}, found {}", fn_info.return_type, val_ty),
                             value.span,
                         );
                     }
@@ -242,10 +244,7 @@ impl<'a> Checker<'a> {
                 } else {
                     self.check_expr(value);
                     self.error(
-                        format!(
-                            "`{}` has no parameter `{}`",
-                            fn_info.name, name
-                        ),
+                        format!("`{}` has no parameter `{}`", fn_info.name, name),
                         *span,
                     );
                 }
@@ -255,14 +254,12 @@ impl<'a> Checker<'a> {
                 let result_ty = &fn_info.return_type;
                 let field_ty = self.resolve_field(result_ty, field, *span);
                 let val_ty = self.check_expr_expecting(value, Some(&field_ty));
-                if !val_ty.is_error() && !field_ty.is_error()
+                if !val_ty.is_error()
+                    && !field_ty.is_error()
                     && !self.types_compatible(&val_ty, &field_ty)
                 {
                     self.error(
-                        format!(
-                            "result.{} has type {}, found {}",
-                            field, field_ty, val_ty
-                        ),
+                        format!("result.{} has type {}, found {}", field, field_ty, val_ty),
                         value.span,
                     );
                 }

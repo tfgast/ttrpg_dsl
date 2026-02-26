@@ -107,10 +107,7 @@ fn lower_one_move(
         }
         if !seen.insert(outcome.name.as_str()) {
             diags.push(Diagnostic::error(
-                format!(
-                    "move `{}` has duplicate outcome `{}`",
-                    m.name, outcome.name
-                ),
+                format!("move `{}` has duplicate outcome `{}`", m.name, outcome.name),
                 outcome.span,
             ));
             has_error = true;
@@ -155,8 +152,7 @@ fn lower_one_move(
                         m.name, reserved
                     ),
                     span,
-                ),
-                );
+                ));
                 return None;
             }
         }
@@ -209,10 +205,8 @@ fn lower_one_move(
         span,
     );
 
-    let mechanic_body: Block = Spanned::new(
-        vec![Spanned::new(StmtKind::Expr(roll_call), span)],
-        span,
-    );
+    let mechanic_body: Block =
+        Spanned::new(vec![Spanned::new(StmtKind::Expr(roll_call), span)], span);
 
     let mechanic = FnDecl {
         name: mechanic_name.clone(),
@@ -275,12 +269,7 @@ fn lower_one_move(
         .find(|o| o.name == "weak_hit")?
         .body
         .clone();
-    let miss_body = m
-        .outcomes
-        .iter()
-        .find(|o| o.name == "miss")?
-        .body
-        .clone();
+    let miss_body = m.outcomes.iter().find(|o| o.name == "miss")?.body.clone();
 
     // Build guard match arms:
     //   result >= 10 => { strong_hit },
@@ -354,7 +343,10 @@ mod tests {
     fn test_synthetic_mechanic_name() {
         assert_eq!(synthetic_mechanic_name("GoAggro"), "__go_aggro_roll");
         assert_eq!(synthetic_mechanic_name("Attack"), "__attack_roll");
-        assert_eq!(synthetic_mechanic_name("HackAndSlash"), "__hack_and_slash_roll");
+        assert_eq!(
+            synthetic_mechanic_name("HackAndSlash"),
+            "__hack_and_slash_roll"
+        );
     }
 
     // ── Regression: tdsl-t4c — synthetic mechanic collision includes table/hook ──
@@ -411,7 +403,13 @@ mod tests {
             })
             .collect();
 
-        assert!(existing.contains("__attack_roll"), "table name should be in existing_names");
-        assert!(existing.contains("__defend_roll"), "hook name should be in existing_names");
+        assert!(
+            existing.contains("__attack_roll"),
+            "table name should be in existing_names"
+        );
+        assert!(
+            existing.contains("__defend_roll"),
+            "hook name should be in existing_names"
+        );
     }
 }

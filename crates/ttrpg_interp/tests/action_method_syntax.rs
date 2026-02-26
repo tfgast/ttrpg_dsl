@@ -2,8 +2,8 @@
 
 use std::collections::{HashMap, VecDeque};
 
-use ttrpg_ast::FileId;
 use ttrpg_ast::diagnostic::Severity;
+use ttrpg_ast::FileId;
 use ttrpg_interp::effect::{Effect, EffectHandler, Response};
 use ttrpg_interp::reference_state::GameState;
 use ttrpg_interp::value::Value;
@@ -123,16 +123,22 @@ system "test" {
     let mut handler = ScriptedHandler::ack_all();
 
     interp
-        .execute_action(&gs, &mut handler, "DoubleHeal", healer, vec![
-            Value::Entity(target),
-            Value::Int(5),
-        ])
+        .execute_action(
+            &gs,
+            &mut handler,
+            "DoubleHeal",
+            healer,
+            vec![Value::Entity(target), Value::Int(5)],
+        )
         .unwrap();
 
     // Should see outer ActionStarted, then inner ActionStarted/MutateField/ActionCompleted,
     // then outer ActionCompleted. The MutateField proves the method call dispatched correctly.
     assert!(
-        handler.log.iter().any(|e| matches!(e, Effect::MutateField { .. })),
+        handler
+            .log
+            .iter()
+            .any(|e| matches!(e, Effect::MutateField { .. })),
         "method-call action should produce MutateField effect, got: {:?}",
         effect_names(&handler.log)
     );
@@ -184,7 +190,13 @@ system "test" {
         let target = make_entity(&mut gs, 10);
         let mut handler = ScriptedHandler::ack_all();
         interp
-            .execute_action(&gs, &mut handler, "Driver", actor, vec![Value::Entity(target)])
+            .execute_action(
+                &gs,
+                &mut handler,
+                "Driver",
+                actor,
+                vec![Value::Entity(target)],
+            )
             .unwrap();
         effect_names(&handler.log)
     };
@@ -197,7 +209,13 @@ system "test" {
         let target = make_entity(&mut gs, 10);
         let mut handler = ScriptedHandler::ack_all();
         interp
-            .execute_action(&gs, &mut handler, "Driver", actor, vec![Value::Entity(target)])
+            .execute_action(
+                &gs,
+                &mut handler,
+                "Driver",
+                actor,
+                vec![Value::Entity(target)],
+            )
             .unwrap();
         effect_names(&handler.log)
     };
@@ -237,12 +255,21 @@ system "test" {
     let mut handler = ScriptedHandler::ack_all();
 
     interp
-        .execute_action(&gs, &mut handler, "Driver", actor, vec![Value::Entity(target)])
+        .execute_action(
+            &gs,
+            &mut handler,
+            "Driver",
+            actor,
+            vec![Value::Entity(target)],
+        )
         .unwrap();
 
     // MutateField should be present proving the named args resolved correctly
     assert!(
-        handler.log.iter().any(|e| matches!(e, Effect::MutateField { .. })),
+        handler
+            .log
+            .iter()
+            .any(|e| matches!(e, Effect::MutateField { .. })),
         "named args via method syntax should work, got: {:?}",
         effect_names(&handler.log)
     );
@@ -270,7 +297,9 @@ system "test" {
 "#;
     let errors = setup_errors(source);
     assert!(
-        errors.iter().any(|e| e.contains("action") && e.contains("can only be called")),
+        errors
+            .iter()
+            .any(|e| e.contains("action") && e.contains("can only be called")),
         "expected context error, got: {:?}",
         errors
     );
@@ -300,7 +329,9 @@ system "test" {
 "#;
     let errors = setup_errors(source);
     assert!(
-        errors.iter().any(|e| e.contains("expects receiver of type")),
+        errors
+            .iter()
+            .any(|e| e.contains("expects receiver of type")),
         "expected receiver type mismatch error, got: {:?}",
         errors
     );
@@ -330,9 +361,16 @@ system "test" {
     let mut handler = NoopHandler;
 
     let val = interp
-        .evaluate_derive(&state, &mut handler, "f", vec![
-            Value::List(vec![Value::Int(1), Value::Int(2), Value::Int(3)]),
-        ])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "f",
+            vec![Value::List(vec![
+                Value::Int(1),
+                Value::Int(2),
+                Value::Int(3),
+            ])],
+        )
         .unwrap();
     assert_eq!(val, Value::Int(3));
 }
@@ -366,12 +404,21 @@ system "test" {
     let mut handler = ScriptedHandler::ack_all();
 
     interp
-        .execute_action(&gs, &mut handler, "Driver", actor, vec![Value::Entity(target)])
+        .execute_action(
+            &gs,
+            &mut handler,
+            "Driver",
+            actor,
+            vec![Value::Entity(target)],
+        )
         .unwrap();
 
     // Should produce MutateField proving the default param was used
     assert!(
-        handler.log.iter().any(|e| matches!(e, Effect::MutateField { .. })),
+        handler
+            .log
+            .iter()
+            .any(|e| matches!(e, Effect::MutateField { .. })),
         "method call with defaults should produce MutateField, got: {:?}",
         effect_names(&handler.log)
     );

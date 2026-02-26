@@ -283,18 +283,12 @@ mod tests {
 
     #[test]
     fn load_without_path_is_unknown() {
-        assert_eq!(
-            parse_command("load"),
-            Some(Command::Unknown("load".into()))
-        );
+        assert_eq!(parse_command("load"), Some(Command::Unknown("load".into())));
     }
 
     #[test]
     fn eval_without_expr_is_unknown() {
-        assert_eq!(
-            parse_command("eval"),
-            Some(Command::Unknown("eval".into()))
-        );
+        assert_eq!(parse_command("eval"), Some(Command::Unknown("eval".into())));
     }
 
     #[test]
@@ -365,10 +359,7 @@ mod tests {
 
     #[test]
     fn parse_set_empty_is_unknown() {
-        assert_eq!(
-            parse_command("set"),
-            Some(Command::Unknown("set".into()))
-        );
+        assert_eq!(parse_command("set"), Some(Command::Unknown("set".into())));
     }
 
     #[test]
@@ -397,10 +388,7 @@ mod tests {
 
     #[test]
     fn parse_do_empty_is_unknown() {
-        assert_eq!(
-            parse_command("do"),
-            Some(Command::Unknown("do".into()))
-        );
+        assert_eq!(parse_command("do"), Some(Command::Unknown("do".into())));
     }
 
     #[test]
@@ -413,10 +401,7 @@ mod tests {
 
     #[test]
     fn parse_call_empty_is_unknown() {
-        assert_eq!(
-            parse_command("call"),
-            Some(Command::Unknown("call".into()))
-        );
+        assert_eq!(parse_command("call"), Some(Command::Unknown("call".into())));
     }
 
     #[test]
@@ -441,7 +426,9 @@ mod tests {
     fn parse_grant() {
         assert_eq!(
             parse_command("grant hero.Spellcasting { spell_slots: 5 }"),
-            Some(Command::Grant("hero.Spellcasting { spell_slots: 5 }".into()))
+            Some(Command::Grant(
+                "hero.Spellcasting { spell_slots: 5 }".into()
+            ))
         );
     }
 
@@ -590,18 +577,12 @@ mod tests {
 
     #[test]
     fn parse_seed() {
-        assert_eq!(
-            parse_command("seed 42"),
-            Some(Command::Seed("42".into()))
-        );
+        assert_eq!(parse_command("seed 42"), Some(Command::Seed("42".into())));
     }
 
     #[test]
     fn parse_seed_empty_is_unknown() {
-        assert_eq!(
-            parse_command("seed"),
-            Some(Command::Unknown("seed".into()))
-        );
+        assert_eq!(parse_command("seed"), Some(Command::Unknown("seed".into())));
     }
 
     #[test]

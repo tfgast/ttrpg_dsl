@@ -10,13 +10,34 @@ impl Parser {
         match self.peek().clone() {
             TokenKind::Ident(name) => {
                 let ty = match name.as_str() {
-                    "int" => { self.advance(); TypeExpr::Int }
-                    "bool" => { self.advance(); TypeExpr::Bool }
-                    "string" => { self.advance(); TypeExpr::String }
-                    "float" => { self.advance(); TypeExpr::Float }
-                    "DiceExpr" => { self.advance(); TypeExpr::DiceExpr }
-                    "RollResult" => { self.advance(); TypeExpr::RollResult }
-                    "entity" => { self.advance(); TypeExpr::Named("entity".into()) }
+                    "int" => {
+                        self.advance();
+                        TypeExpr::Int
+                    }
+                    "bool" => {
+                        self.advance();
+                        TypeExpr::Bool
+                    }
+                    "string" => {
+                        self.advance();
+                        TypeExpr::String
+                    }
+                    "float" => {
+                        self.advance();
+                        TypeExpr::Float
+                    }
+                    "DiceExpr" => {
+                        self.advance();
+                        TypeExpr::DiceExpr
+                    }
+                    "RollResult" => {
+                        self.advance();
+                        TypeExpr::RollResult
+                    }
+                    "entity" => {
+                        self.advance();
+                        TypeExpr::Named("entity".into())
+                    }
                     "TurnBudget" | "Duration" | "Position" | "Condition"
                         if !matches!(self.peek_at(1), TokenKind::Dot) =>
                     {
@@ -90,7 +111,10 @@ impl Parser {
                             if let TokenKind::Ident(_) = self.peek_at(1) {
                                 self.advance(); // consume dot
                                 let (qualified_name, _) = self.expect_ident()?;
-                                TypeExpr::Qualified { qualifier: name, name: qualified_name }
+                                TypeExpr::Qualified {
+                                    qualifier: name,
+                                    name: qualified_name,
+                                }
                             } else {
                                 TypeExpr::Named(name)
                             }

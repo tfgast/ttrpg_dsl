@@ -1,6 +1,6 @@
-use ttrpg_ast::FileId;
 use ttrpg_ast::ast::DeclKind;
 use ttrpg_ast::diagnostic::SourceMap;
+use ttrpg_ast::FileId;
 use ttrpg_checker::{check, check_with_modules, CheckResult};
 
 fn check_source(source: &str) -> CheckResult {
@@ -45,7 +45,12 @@ fn check_lowered(source: &str) -> (ttrpg_ast::ast::Program, CheckResult) {
 }
 
 /// Parse and lower, returning lowering diagnostics (does not check).
-fn lower_source(source: &str) -> (ttrpg_ast::ast::Program, Vec<ttrpg_ast::diagnostic::Diagnostic>) {
+fn lower_source(
+    source: &str,
+) -> (
+    ttrpg_ast::ast::Program,
+    Vec<ttrpg_ast::diagnostic::Diagnostic>,
+) {
     let (program, parse_errors) = ttrpg_parser::parse(source, FileId::SYNTH);
     assert!(
         parse_errors.is_empty(),
@@ -162,11 +167,35 @@ fn test_collect_counts() {
     let result = check_source(source);
 
     // Enums: Ability, RollMode, DamageType, WeaponProperty, ResolvedDamage + built-in Duration
-    assert_eq!(result.env.types.values().filter(|d| matches!(d, ttrpg_checker::env::DeclInfo::Enum(_))).count(), 6);
+    assert_eq!(
+        result
+            .env
+            .types
+            .values()
+            .filter(|d| matches!(d, ttrpg_checker::env::DeclInfo::Enum(_)))
+            .count(),
+        6
+    );
     // Structs: DamageSpec, TurnBudget
-    assert_eq!(result.env.types.values().filter(|d| matches!(d, ttrpg_checker::env::DeclInfo::Struct(_))).count(), 2);
+    assert_eq!(
+        result
+            .env
+            .types
+            .values()
+            .filter(|d| matches!(d, ttrpg_checker::env::DeclInfo::Struct(_)))
+            .count(),
+        2
+    );
     // Entities: Weapon, Character
-    assert_eq!(result.env.types.values().filter(|d| matches!(d, ttrpg_checker::env::DeclInfo::Entity(_))).count(), 2);
+    assert_eq!(
+        result
+            .env
+            .types
+            .values()
+            .filter(|d| matches!(d, ttrpg_checker::env::DeclInfo::Entity(_)))
+            .count(),
+        2
+    );
     // Events: entity_leaves_reach, turn_start, turn_end
     assert_eq!(result.env.events.len(), 3);
     // Conditions: Prone, Dodging, Disengaging
@@ -216,7 +245,10 @@ system "test" {
     derive foo(x: int) -> bool { x }
 }
 "#;
-    expect_errors(source, &["function body has type int, expected return type bool"]);
+    expect_errors(
+        source,
+        &["function body has type int, expected return type bool"],
+    );
 }
 
 #[test]
@@ -328,7 +360,10 @@ system "test" {
 }
 "#;
     // int / int -> float, so returning float as int should error
-    expect_errors(source, &["function body has type float, expected return type int"]);
+    expect_errors(
+        source,
+        &["function body has type float, expected return type int"],
+    );
 }
 
 #[test]
@@ -341,6 +376,45 @@ system "test" {
 }
 "#;
     expect_no_errors(source);
+}
+
+#[test]
+fn test_error_builtin_allows_early_abort_return() {
+    let source = r#"
+system "test" {
+    derive fail_fast() -> int {
+        error("boom")
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_error_builtin_unifies_in_if_branch() {
+    let source = r#"
+system "test" {
+    derive pick(flag: bool) -> int {
+        if flag { error("bad state") } else { 7 }
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_error_builtin_requires_string_message() {
+    let source = r#"
+system "test" {
+    derive bad() -> int {
+        error(123)
+    }
+}
+"#;
+    expect_errors(
+        source,
+        &["argument `message` has type int, expected string"],
+    );
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -356,7 +430,10 @@ system "test" {
     }
 }
 "#;
-    expect_errors(source, &["roll() can only be called in mechanic, action, or reaction"]);
+    expect_errors(
+        source,
+        &["roll() can only be called in mechanic, action, or reaction"],
+    );
 }
 
 #[test]
@@ -384,7 +461,10 @@ system "test" {
     }
 }
 "#;
-    expect_errors(source, &["assignment to entity fields requires action or reaction"]);
+    expect_errors(
+        source,
+        &["assignment to entity fields requires action or reaction"],
+    );
 }
 
 #[test]
@@ -419,7 +499,10 @@ system "test" {
     }
 }
 "#;
-    expect_errors(source, &["apply_condition() can only be called in action or reaction"]);
+    expect_errors(
+        source,
+        &["apply_condition() can only be called in action or reaction"],
+    );
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -695,7 +778,10 @@ system "test" {
     }
 }
 "#;
-    expect_errors(source, &["modify target `nonexistent_fn` is not a defined function"]);
+    expect_errors(
+        source,
+        &["modify target `nonexistent_fn` is not a defined function"],
+    );
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -747,7 +833,10 @@ system "test" {
     }
 }
 "#;
-    expect_errors(source, &["let `x`: value has type int, annotation says bool"]);
+    expect_errors(
+        source,
+        &["let `x`: value has type int, annotation says bool"],
+    );
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -863,7 +952,13 @@ system "test" {
     derive bad() -> int { add(c: 5) }
 }
 "#;
-    expect_errors(source, &["missing required argument `a`", "missing required argument `b`"]);
+    expect_errors(
+        source,
+        &[
+            "missing required argument `a`",
+            "missing required argument `b`",
+        ],
+    );
 }
 
 #[test]
@@ -905,7 +1000,10 @@ system "test" {
     }
 }
 "#;
-    expect_errors(source, &["suppress binding `target` has type string, expected Character"]);
+    expect_errors(
+        source,
+        &["suppress binding `target` has type string, expected Character"],
+    );
 }
 
 #[test]
@@ -937,10 +1035,13 @@ system "test" {
     }
 }
 "#;
-    expect_errors(source, &[
-        "does not match any parameter or field",
-        "undefined variable `undefined_var`",
-    ]);
+    expect_errors(
+        source,
+        &[
+            "does not match any parameter or field",
+            "undefined variable `undefined_var`",
+        ],
+    );
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -965,7 +1066,10 @@ system "test" {
     }
 }
 "#;
-    expect_errors(source, &["modify target `Sprint` must be a derive or mechanic"]);
+    expect_errors(
+        source,
+        &["modify target `Sprint` must be a derive or mechanic"],
+    );
 }
 
 #[test]
@@ -1044,7 +1148,10 @@ system "test" {
     }
 }
 "#;
-    expect_errors(source, &["positional trigger binding 0 has type Character, expected int"]);
+    expect_errors(
+        source,
+        &["positional trigger binding 0 has type Character, expected int"],
+    );
 }
 
 #[test]
@@ -1059,7 +1166,10 @@ system "test" {
     }
 }
 "#;
-    expect_errors(source, &["too many positional trigger bindings for event `flee`"]);
+    expect_errors(
+        source,
+        &["too many positional trigger bindings for event `flee`"],
+    );
 }
 
 #[test]
@@ -1088,7 +1198,10 @@ system "test" {
     derive foo(x: int = "hello") -> int { x }
 }
 "#;
-    expect_errors(source, &["parameter `x` default has type string, expected int"]);
+    expect_errors(
+        source,
+        &["parameter `x` default has type string, expected int"],
+    );
 }
 
 #[test]
@@ -1117,7 +1230,10 @@ system "test" {
     }
 }
 "#;
-    expect_warnings(source, &["unreachable match arm: wildcard `_` must be last"]);
+    expect_warnings(
+        source,
+        &["unreachable match arm: wildcard `_` must be last"],
+    );
 }
 
 #[test]
@@ -1285,7 +1401,10 @@ system "test" {
     }
 }
 "#;
-    expect_errors(source, &["variant field `count` has type int, found string"]);
+    expect_errors(
+        source,
+        &["variant field `count` has type int, found string"],
+    );
 }
 
 #[test]
@@ -1625,7 +1744,10 @@ system "test" {
     derive foo() -> Effect { Effect.timed }
 }
 "#;
-    expect_errors(source, &["variant `timed` has payload fields and must be called as a constructor"]);
+    expect_errors(
+        source,
+        &["variant `timed` has payload fields and must be called as a constructor"],
+    );
 }
 
 #[test]
@@ -1657,7 +1779,10 @@ system "test" {
     }
 }
 "#;
-    expect_errors(source, &["is an action and can only be called from action or reaction context"]);
+    expect_errors(
+        source,
+        &["is an action and can only be called from action or reaction context"],
+    );
 }
 
 #[test]
@@ -1775,10 +1900,13 @@ system "test" {
     }
 }
 "#;
-    expect_errors(source, &[
-        "does not match any parameter of event",
-        "undefined variable `undefined_var`",
-    ]);
+    expect_errors(
+        source,
+        &[
+            "does not match any parameter of event",
+            "undefined variable `undefined_var`",
+        ],
+    );
 }
 
 #[test]
@@ -1814,10 +1942,13 @@ system "test" {
     }
 }
 "#;
-    expect_errors(source, &[
-        "does not match any parameter",
-        "undefined variable `undefined_var`",
-    ]);
+    expect_errors(
+        source,
+        &[
+            "does not match any parameter",
+            "undefined variable `undefined_var`",
+        ],
+    );
 }
 
 #[test]
@@ -1835,10 +1966,13 @@ system "test" {
     }
 }
 "#;
-    expect_errors(source, &[
-        "has no parameter `nonexistent_param`",
-        "undefined variable `undefined_var`",
-    ]);
+    expect_errors(
+        source,
+        &[
+            "has no parameter `nonexistent_param`",
+            "undefined variable `undefined_var`",
+        ],
+    );
 }
 
 #[test]
@@ -1987,7 +2121,10 @@ system "test" {
     }
 }
 "#;
-    expect_errors(source, &["positional trigger binding 1 has type Character, expected int"]);
+    expect_errors(
+        source,
+        &["positional trigger binding 1 has type Character, expected int"],
+    );
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -2005,7 +2142,10 @@ system "test" {
     }
 }
 "#;
-    expect_errors(source, &["receiver `turn` shadows the implicit turn budget binding"]);
+    expect_errors(
+        source,
+        &["receiver `turn` shadows the implicit turn budget binding"],
+    );
 }
 
 #[test]
@@ -2019,7 +2159,10 @@ system "test" {
     }
 }
 "#;
-    expect_errors(source, &["parameter `turn` shadows the implicit turn budget binding"]);
+    expect_errors(
+        source,
+        &["parameter `turn` shadows the implicit turn budget binding"],
+    );
 }
 
 #[test]
@@ -2048,7 +2191,10 @@ system "test" {
     }
 }
 "#;
-    expect_errors(source, &["receiver `trigger` shadows the implicit trigger binding"]);
+    expect_errors(
+        source,
+        &["receiver `trigger` shadows the implicit trigger binding"],
+    );
 }
 
 #[test]
@@ -2063,7 +2209,10 @@ system "test" {
     }
 }
 "#;
-    expect_errors(source, &["receiver `turn` shadows the implicit turn budget binding"]);
+    expect_errors(
+        source,
+        &["receiver `turn` shadows the implicit turn budget binding"],
+    );
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -2209,7 +2358,10 @@ system "test" {
     }
 }
 "#;
-    expect_errors(source, &["action `Heal` receiver type must be an entity, found Stats"]);
+    expect_errors(
+        source,
+        &["action `Heal` receiver type must be an entity, found Stats"],
+    );
 }
 
 #[test]
@@ -2225,7 +2377,10 @@ system "test" {
     }
 }
 "#;
-    expect_errors(source, &["reaction `Block` receiver type must be an entity, found Stats"]);
+    expect_errors(
+        source,
+        &["reaction `Block` receiver type must be an entity, found Stats"],
+    );
 }
 
 #[test]
@@ -2236,7 +2391,10 @@ system "test" {
     condition Slow on bearer: Stats {}
 }
 "#;
-    expect_errors(source, &["condition `Slow` receiver type must be an entity, found Stats"]);
+    expect_errors(
+        source,
+        &["condition `Slow` receiver type must be an entity, found Stats"],
+    );
 }
 
 #[test]
@@ -2250,7 +2408,10 @@ system "test" {
     }
 }
 "#;
-    expect_errors(source, &["action `Paint` receiver type must be an entity, found Color"]);
+    expect_errors(
+        source,
+        &["action `Paint` receiver type must be an entity, found Color"],
+    );
 }
 
 #[test]
@@ -2339,7 +2500,10 @@ system "test" {
     }
 }
 "#;
-    expect_errors(source, &["argument `target` has type Stats, expected entity"]);
+    expect_errors(
+        source,
+        &["argument `target` has type Stats, expected entity"],
+    );
 }
 
 // ── Issue 1: Immutable let bindings reject field/index mutation ──
@@ -2362,7 +2526,10 @@ system "test" {
     }
 }
 "#;
-    expect_errors(source, &["cannot mutate field/index of immutable binding `s`"]);
+    expect_errors(
+        source,
+        &["cannot mutate field/index of immutable binding `s`"],
+    );
 }
 
 #[test]
@@ -2376,7 +2543,10 @@ system "test" {
     }
 }
 "#;
-    expect_errors(source, &["cannot mutate field/index of immutable binding `xs`"]);
+    expect_errors(
+        source,
+        &["cannot mutate field/index of immutable binding `xs`"],
+    );
 }
 
 #[test]
@@ -2418,7 +2588,10 @@ system "test" {
     derive bar() -> int { 0 }
 }
 "#;
-    expect_warnings(source, &["function `bar` has the same name as an enum variant"]);
+    expect_warnings(
+        source,
+        &["function `bar` has the same name as an enum variant"],
+    );
 }
 
 // ── Issue 3: Ordering ops restricted to orderable types ──
@@ -2497,7 +2670,10 @@ system "test" {
     }
 }
 "#;
-    expect_errors(source, &["suggest expression has type string, expected Character"]);
+    expect_errors(
+        source,
+        &["suggest expression has type string, expected Character"],
+    );
 }
 
 #[test]
@@ -2666,7 +2842,10 @@ system "test" {
     }
 }
 "#;
-    expect_errors(source, &["modify target `nonexistent_fn` is not a defined function"]);
+    expect_errors(
+        source,
+        &["modify target `nonexistent_fn` is not a defined function"],
+    );
 }
 
 #[test]
@@ -2687,7 +2866,10 @@ system "test" {
     }
 }
 "#;
-    expect_errors(source, &["modify target `Heal` must be a derive or mechanic"]);
+    expect_errors(
+        source,
+        &["modify target `Heal` must be a derive or mechanic"],
+    );
 }
 
 #[test]
@@ -2707,7 +2889,10 @@ system "test" {
     }
 }
 "#;
-    expect_errors(source, &["modify binding `actor` has type string, expected Character"]);
+    expect_errors(
+        source,
+        &["modify binding `actor` has type string, expected Character"],
+    );
 }
 
 #[test]
@@ -2767,7 +2952,10 @@ system "test" {
     }
 }
 "#;
-    expect_errors(source, &["option \"flanking\" extends unknown option \"Some System\""]);
+    expect_errors(
+        source,
+        &["option \"flanking\" extends unknown option \"Some System\""],
+    );
 }
 
 #[test]
@@ -2808,7 +2996,10 @@ system "test" {
     }
 }
 "#;
-    expect_errors(source, &["move declarations must be lowered before type-checking"]);
+    expect_errors(
+        source,
+        &["move declarations must be lowered before type-checking"],
+    );
 }
 
 // ── Bare-call shadowing by local bindings ────────────────────────────
@@ -2825,7 +3016,10 @@ system "test" {
     }
 }
 "#;
-    expect_errors(source, &["is a local binding of type int, not a callable function"]);
+    expect_errors(
+        source,
+        &["is a local binding of type int, not a callable function"],
+    );
 }
 
 #[test]
@@ -2839,7 +3033,10 @@ system "test" {
     }
 }
 "#;
-    expect_errors(source, &["is a local binding of type int, not a callable function"]);
+    expect_errors(
+        source,
+        &["is a local binding of type int, not a callable function"],
+    );
 }
 
 #[test]
@@ -2853,10 +3050,13 @@ system "test" {
     }
 }
 "#;
-    expect_errors(source, &[
-        "is a local binding of type int, not a callable function",
-        "undefined variable `undefined_var`",
-    ]);
+    expect_errors(
+        source,
+        &[
+            "is a local binding of type int, not a callable function",
+            "undefined variable `undefined_var`",
+        ],
+    );
 }
 
 #[test]
@@ -2868,10 +3068,13 @@ system "test" {
     }
 }
 "#;
-    expect_errors(source, &[
-        "undefined function `nonexistent`",
-        "undefined variable `undefined_var`",
-    ]);
+    expect_errors(
+        source,
+        &[
+            "undefined function `nonexistent`",
+            "undefined variable `undefined_var`",
+        ],
+    );
 }
 
 #[test]
@@ -3036,7 +3239,7 @@ system "test" {
 
 #[test]
 fn test_turn_budget_user_defined_fields() {
-    // User-defined TurnBudget with different fields should be respected
+    // User-defined TurnBudget fields are valid cost tokens.
     let source = r#"
 system "test" {
     entity Character { HP: int }
@@ -3044,7 +3247,7 @@ system "test" {
         foo: int
     }
     action Foo on actor: Character () {
-        cost { action }
+        cost { foo }
         resolve {
             turn.foo += 1
         }
@@ -3089,6 +3292,42 @@ system "test" {
 }
 "#;
     expect_no_errors(source);
+}
+
+#[test]
+fn test_turn_budget_custom_cost_token_forward_decl() {
+    // Cost token validation runs after all type collection, so this is valid
+    // even though TurnBudget is declared after the action.
+    let source = r#"
+system "test" {
+    entity Character { HP: int }
+    action Step on actor: Character () {
+        cost { stamina }
+        resolve {}
+    }
+    struct TurnBudget {
+        stamina: int
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_turn_budget_invalid_custom_cost_token() {
+    let source = r#"
+system "test" {
+    entity Character { HP: int }
+    struct TurnBudget {
+        stamina: int
+    }
+    action Step on actor: Character () {
+        cost { unknown_token }
+        resolve {}
+    }
+}
+"#;
+    expect_errors(source, &["invalid cost token `unknown_token`"]);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -3237,7 +3476,9 @@ system "test" {
 "#;
     let (_, diags) = lower_source(source);
     assert!(
-        diags.iter().any(|d| d.message.contains("missing required outcome `miss`")),
+        diags
+            .iter()
+            .any(|d| d.message.contains("missing required outcome `miss`")),
         "expected diagnostic about missing 'miss' outcome, got: {:?}",
         diags.iter().map(|d| &d.message).collect::<Vec<_>>()
     );
@@ -3260,7 +3501,9 @@ system "test" {
 "#;
     let (_, diags) = lower_source(source);
     assert!(
-        diags.iter().any(|d| d.message.contains("invalid outcome `critical`")),
+        diags
+            .iter()
+            .any(|d| d.message.contains("invalid outcome `critical`")),
         "expected diagnostic about invalid outcome, got: {:?}",
         diags.iter().map(|d| &d.message).collect::<Vec<_>>()
     );
@@ -3283,7 +3526,9 @@ system "test" {
 "#;
     let (_, diags) = lower_source(source);
     assert!(
-        diags.iter().any(|d| d.message.contains("duplicate outcome `strong_hit`")),
+        diags
+            .iter()
+            .any(|d| d.message.contains("duplicate outcome `strong_hit`")),
         "expected diagnostic about duplicate outcome, got: {:?}",
         diags.iter().map(|d| &d.message).collect::<Vec<_>>()
     );
@@ -3308,7 +3553,9 @@ system "test" {
 "#;
     let (_, diags) = lower_source(source);
     assert!(
-        diags.iter().any(|d| d.message.contains("collides with an existing declaration")),
+        diags
+            .iter()
+            .any(|d| d.message.contains("collides with an existing declaration")),
         "expected diagnostic about synthetic name collision, got: {:?}",
         diags.iter().map(|d| &d.message).collect::<Vec<_>>()
     );
@@ -3412,7 +3659,10 @@ system "test" {
     }
 }
 "#;
-    expect_errors(source, &["cannot be called in trigger/suppress binding context"]);
+    expect_errors(
+        source,
+        &["cannot be called in trigger/suppress binding context"],
+    );
 }
 
 #[test]
@@ -3446,7 +3696,10 @@ system "test" {
     }
 }
 "#;
-    expect_errors(source, &["dice literals are not allowed in trigger/suppress binding context"]);
+    expect_errors(
+        source,
+        &["dice literals are not allowed in trigger/suppress binding context"],
+    );
 }
 
 #[test]
@@ -3597,7 +3850,10 @@ system "test" {
     }
 }
 "#;
-    expect_errors(source, &["unwrap_or() default has type string, expected int"]);
+    expect_errors(
+        source,
+        &["unwrap_or() default has type string, expected int"],
+    );
 }
 
 #[test]
@@ -3621,7 +3877,10 @@ system "test" {
     }
 }
 "#;
-    expect_errors(source, &["`.unwrap` is a method on option; call it as `.unwrap()`"]);
+    expect_errors(
+        source,
+        &["`.unwrap` is a method on option; call it as `.unwrap()`"],
+    );
 }
 
 #[test]
@@ -4023,7 +4282,10 @@ system "test" {
     }
 }
 "#;
-    expect_errors(source, &["entity `Character` has no optional group `Nonexistent`"]);
+    expect_errors(
+        source,
+        &["entity `Character` has no optional group `Nonexistent`"],
+    );
 }
 
 #[test]
@@ -4035,7 +4297,10 @@ system "test" {
     }
 }
 "#;
-    expect_errors(source, &["`has` can only be used with entity types, found int"]);
+    expect_errors(
+        source,
+        &["`has` can only be used with entity types, found int"],
+    );
 }
 
 #[test]
@@ -4174,7 +4439,10 @@ system "test" {
     }
 }
 "#;
-    expect_errors(source, &["optional group `Spellcasting` has no field `nonexistent`"]);
+    expect_errors(
+        source,
+        &["optional group `Spellcasting` has no field `nonexistent`"],
+    );
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -4193,7 +4461,10 @@ system "test" {
     }
 }
 "#;
-    expect_errors(source, &["entity `Character` has no optional group `Nonexistent`"]);
+    expect_errors(
+        source,
+        &["entity `Character` has no optional group `Nonexistent`"],
+    );
 }
 
 #[test]
@@ -4205,7 +4476,10 @@ system "test" {
     }
 }
 "#;
-    expect_errors(source, &["`with` constraint on `x` requires entity type, found int"]);
+    expect_errors(
+        source,
+        &["`with` constraint on `x` requires entity type, found int"],
+    );
 }
 
 #[test]
@@ -4370,7 +4644,10 @@ system "test" {
     }
 }
 "#;
-    expect_errors(source, &["group `CombatStats` is required on this entity and cannot be granted"]);
+    expect_errors(
+        source,
+        &["group `CombatStats` is required on this entity and cannot be granted"],
+    );
 }
 
 #[test]
@@ -4391,7 +4668,10 @@ system "test" {
     }
 }
 "#;
-    expect_errors(source, &["group `CombatStats` is required on this entity and cannot be revoked"]);
+    expect_errors(
+        source,
+        &["group `CombatStats` is required on this entity and cannot be revoked"],
+    );
 }
 
 #[test]
@@ -4434,7 +4714,10 @@ system "test" {
     }
 }
 "#;
-    expect_errors(source, &["grant is only allowed in action or reaction context"]);
+    expect_errors(
+        source,
+        &["grant is only allowed in action or reaction context"],
+    );
 }
 
 #[test]
@@ -4453,7 +4736,10 @@ system "test" {
     }
 }
 "#;
-    expect_errors(source, &["revoke is only allowed in action or reaction context"]);
+    expect_errors(
+        source,
+        &["revoke is only allowed in action or reaction context"],
+    );
 }
 
 #[test]
@@ -4470,7 +4756,10 @@ system "test" {
     }
 }
 "#;
-    expect_errors(source, &["entity `Character` has no optional group `Nonexistent`"]);
+    expect_errors(
+        source,
+        &["entity `Character` has no optional group `Nonexistent`"],
+    );
 }
 
 #[test]
@@ -4511,7 +4800,10 @@ system "test" {
     }
 }
 "#;
-    expect_errors(source, &["missing required field `ability` in grant of `Spellcasting`"]);
+    expect_errors(
+        source,
+        &["missing required field `ability` in grant of `Spellcasting`"],
+    );
 }
 
 #[test]
@@ -4531,7 +4823,10 @@ system "test" {
     }
 }
 "#;
-    expect_errors(source, &["optional group `Spellcasting` has no field `nonexistent`"]);
+    expect_errors(
+        source,
+        &["optional group `Spellcasting` has no field `nonexistent`"],
+    );
 }
 
 #[test]
@@ -4834,7 +5129,10 @@ system "test" {
     }
 }
 "#;
-    expect_errors(source, &["receiver `trigger` shadows the implicit trigger binding"]);
+    expect_errors(
+        source,
+        &["receiver `trigger` shadows the implicit trigger binding"],
+    );
 }
 
 #[test]
@@ -4848,7 +5146,10 @@ system "test" {
     }
 }
 "#;
-    expect_errors(source, &["receiver `turn` shadows the implicit turn budget binding"]);
+    expect_errors(
+        source,
+        &["receiver `turn` shadows the implicit turn budget binding"],
+    );
 }
 
 #[test]
@@ -4863,7 +5164,10 @@ system "test" {
     }
 }
 "#;
-    expect_errors(source, &["hook `OnDamage` receiver type must be an entity, found Stats"]);
+    expect_errors(
+        source,
+        &["hook `OnDamage` receiver type must be an entity, found Stats"],
+    );
 }
 
 #[test]
@@ -4894,7 +5198,10 @@ system "test" {
     }
 }
 "#;
-    expect_errors(source, &["trigger binding `amount` has type Character, expected int"]);
+    expect_errors(
+        source,
+        &["trigger binding `amount` has type Character, expected int"],
+    );
 }
 
 #[test]
@@ -5335,7 +5642,10 @@ system "test" {
     condition Cursed(level: int, level: int) on bearer: Character {}
 }
 "#;
-    expect_errors(source, &["duplicate parameter `level` in condition `Cursed`"]);
+    expect_errors(
+        source,
+        &["duplicate parameter `level` in condition `Cursed`"],
+    );
 }
 
 // ── P2: Condition parameter default type mismatch ────────────────────────
@@ -5378,7 +5688,10 @@ system "test" {
     }
 }
 "#;
-    expect_errors(source, &["requires `actor` to have group `Spellcasting` proven active"]);
+    expect_errors(
+        source,
+        &["requires `actor` to have group `Spellcasting` proven active"],
+    );
 }
 
 #[test]
@@ -5412,7 +5725,10 @@ system "test" {
     }
 }
 "#;
-    expect_errors(source, &["requires `actor` to have group `Spellcasting` proven active"]);
+    expect_errors(
+        source,
+        &["requires `actor` to have group `Spellcasting` proven active"],
+    );
 }
 
 // ── Ordered enums ────────────────────────────────────────────────
@@ -5632,7 +5948,10 @@ fn expect_multi_no_errors(sources: &[(&str, &str)]) {
         .filter(|d| d.severity == ttrpg_ast::diagnostic::Severity::Error)
         .collect();
     if !errors.is_empty() {
-        let rendered: Vec<_> = errors.iter().map(|d| format!("{:?}: {}", d.span, d.message)).collect();
+        let rendered: Vec<_> = errors
+            .iter()
+            .map(|d| format!("{:?}: {}", d.span, d.message))
+            .collect();
         panic!(
             "expected no errors, found {}:\n{}",
             errors.len(),
@@ -5653,7 +5972,10 @@ fn expect_multi_errors(sources: &[(&str, &str)], expected_fragments: &[&str]) {
     for frag in expected_fragments {
         let found = errors.iter().any(|e| e.message.contains(frag));
         if !found {
-            let rendered: Vec<_> = errors.iter().map(|d| format!("{:?}: {}", d.span, d.message)).collect();
+            let rendered: Vec<_> = errors
+                .iter()
+                .map(|d| format!("{:?}: {}", d.span, d.message))
+                .collect();
             panic!(
                 "expected error containing {:?}, but not found in:\n{}",
                 frag,
@@ -5666,33 +5988,40 @@ fn expect_multi_errors(sources: &[(&str, &str)], expected_fragments: &[&str]) {
 #[test]
 fn test_visibility_own_system_visible() {
     // A derive defined in Core is visible from within Core
-    expect_multi_no_errors(&[
-        ("core.ttrpg", r#"
+    expect_multi_no_errors(&[(
+        "core.ttrpg",
+        r#"
 system "Core" {
     entity Character { HP: int = 10 }
     derive max_hp(c: Character) -> int { c.HP }
     derive double_hp(c: Character) -> int { max_hp(c) * 2 }
 }
-"#),
-    ]);
+"#,
+    )]);
 }
 
 #[test]
 fn test_visibility_imported_system_visible() {
     // Core defines a derive; Main imports Core and calls it
     expect_multi_no_errors(&[
-        ("core.ttrpg", r#"
+        (
+            "core.ttrpg",
+            r#"
 system "Core" {
     entity Character { HP: int = 10 }
     derive max_hp(c: Character) -> int { c.HP }
 }
-"#),
-        ("main.ttrpg", r#"
+"#,
+        ),
+        (
+            "main.ttrpg",
+            r#"
 use "Core"
 system "Main" {
     derive double_hp(c: Character) -> int { max_hp(c) * 2 }
 }
-"#),
+"#,
+        ),
     ]);
 }
 
@@ -5701,17 +6030,23 @@ fn test_visibility_missing_import_function() {
     // Core defines a derive; Main does NOT import Core — should error
     expect_multi_errors(
         &[
-            ("core.ttrpg", r#"
+            (
+                "core.ttrpg",
+                r#"
 system "Core" {
     entity Character { HP: int = 10 }
     derive helper(c: Character) -> int { c.HP }
 }
-"#),
-            ("main.ttrpg", r#"
+"#,
+            ),
+            (
+                "main.ttrpg",
+                r#"
 system "Main" {
     derive caller(c: Character) -> int { helper(c) }
 }
-"#),
+"#,
+            ),
         ],
         &[r#"`helper` is defined in system "Core""#],
     );
@@ -5720,19 +6055,21 @@ system "Main" {
 #[test]
 fn test_visibility_builtins_always_visible() {
     // Builtins like floor() work without any imports
-    expect_multi_no_errors(&[
-        ("main.ttrpg", r#"
+    expect_multi_no_errors(&[(
+        "main.ttrpg",
+        r#"
 system "Main" {
     derive rounded(x: float) -> int { floor(x) }
 }
-"#),
-    ]);
+"#,
+    )]);
 }
 
 #[test]
 fn test_visibility_single_file_no_op() {
     // Single-file check() never produces visibility errors
-    expect_no_errors(r#"
+    expect_no_errors(
+        r#"
 system "Core" {
     entity Character { HP: int = 10 }
     derive helper(c: Character) -> int { c.HP }
@@ -5740,7 +6077,8 @@ system "Core" {
 system "Main" {
     derive caller(c: Character) -> int { helper(c) }
 }
-"#);
+"#,
+    );
 }
 
 #[test]
@@ -5748,16 +6086,22 @@ fn test_visibility_variant_missing_import() {
     // Bare variant from non-imported system → error
     expect_multi_errors(
         &[
-            ("core.ttrpg", r#"
+            (
+                "core.ttrpg",
+                r#"
 system "Core" {
     enum DamageType { fire, cold, lightning }
 }
-"#),
-            ("main.ttrpg", r#"
+"#,
+            ),
+            (
+                "main.ttrpg",
+                r#"
 system "Main" {
     derive get_type() -> DamageType { fire }
 }
-"#),
+"#,
+            ),
         ],
         &[r#"`fire` is defined in system "Core""#],
     );
@@ -5768,17 +6112,23 @@ fn test_visibility_condition_missing_import() {
     // Condition from non-imported system → error
     expect_multi_errors(
         &[
-            ("core.ttrpg", r#"
+            (
+                "core.ttrpg",
+                r#"
 system "Core" {
     entity Character { HP: int = 10 }
     condition Frightened on bearer: Character { }
 }
-"#),
-            ("main.ttrpg", r#"
+"#,
+            ),
+            (
+                "main.ttrpg",
+                r#"
 system "Main" {
     derive is_scared() -> Condition { Frightened }
 }
-"#),
+"#,
+            ),
         ],
         &[r#"`Frightened` is defined in system "Core""#],
     );
@@ -5789,19 +6139,25 @@ fn test_visibility_type_in_struct_lit_missing_import() {
     // Struct literal construction from non-imported system → error
     expect_multi_errors(
         &[
-            ("core.ttrpg", r#"
+            (
+                "core.ttrpg",
+                r#"
 system "Core" {
     struct Stats {
         strength: int
         dexterity: int
     }
 }
-"#),
-            ("main.ttrpg", r#"
+"#,
+            ),
+            (
+                "main.ttrpg",
+                r#"
 system "Main" {
     derive make_stats() -> Stats { Stats { strength: 10, dexterity: 12 } }
 }
-"#),
+"#,
+            ),
         ],
         &[r#"`Stats` is defined in system "Core""#],
     );
@@ -5812,19 +6168,25 @@ fn test_visibility_event_in_trigger_missing_import() {
     // Hook in "Events" system references event from "Core" without importing → error
     expect_multi_errors(
         &[
-            ("core.ttrpg", r#"
+            (
+                "core.ttrpg",
+                r#"
 system "Core" {
     entity Character { HP: int = 10 }
     event damage(target: Character) { amount: int }
 }
-"#),
-            ("events.ttrpg", r#"
+"#,
+            ),
+            (
+                "events.ttrpg",
+                r#"
 system "Events" {
     hook on_damage on self: Character (trigger: damage(target: self)) {
         resolve {}
     }
 }
-"#),
+"#,
+            ),
         ],
         &[r#"`damage` is defined in system "Core""#],
     );
@@ -5835,12 +6197,17 @@ fn test_visibility_variant_in_pattern_missing_import() {
     // Variant used in pattern from non-imported system → error
     expect_multi_errors(
         &[
-            ("core.ttrpg", r#"
+            (
+                "core.ttrpg",
+                r#"
 system "Core" {
     enum Color { red, green, blue }
 }
-"#),
-            ("main.ttrpg", r#"
+"#,
+            ),
+            (
+                "main.ttrpg",
+                r#"
 system "Main" {
     derive is_red(c: Color) -> bool {
         match c {
@@ -5849,7 +6216,8 @@ system "Main" {
         }
     }
 }
-"#),
+"#,
+            ),
         ],
         &[r#"`red` is defined in system "Core""#],
     );
@@ -5860,13 +6228,18 @@ fn test_visibility_modify_target_missing_import() {
     // Modify clause targeting a derive from non-imported system → error
     expect_multi_errors(
         &[
-            ("core.ttrpg", r#"
+            (
+                "core.ttrpg",
+                r#"
 system "Core" {
     entity Character { HP: int = 10 }
     derive max_hp(c: Character) -> int { c.HP }
 }
-"#),
-            ("main.ttrpg", r#"
+"#,
+            ),
+            (
+                "main.ttrpg",
+                r#"
 system "Main" {
     condition Strong on bearer: Character {
         modify max_hp(c: bearer) {
@@ -5874,7 +6247,8 @@ system "Main" {
         }
     }
 }
-"#),
+"#,
+            ),
         ],
         &[r#"`max_hp` is defined in system "Core""#],
     );
@@ -5886,17 +6260,23 @@ system "Main" {
 fn test_alias_qualified_enum_type() {
     // Core.Ability → EnumType
     expect_multi_no_errors(&[
-        ("core.ttrpg", r#"
+        (
+            "core.ttrpg",
+            r#"
 system "Core" {
     enum Ability { STR, DEX, CON }
 }
-"#),
-        ("main.ttrpg", r#"
+"#,
+        ),
+        (
+            "main.ttrpg",
+            r#"
 use "Core" as Core
 system "Main" {
     derive get_ability() -> Ability { Core.Ability.STR }
 }
-"#),
+"#,
+        ),
     ]);
 }
 
@@ -5904,17 +6284,23 @@ system "Main" {
 fn test_alias_qualified_enum_variant() {
     // Core.Ability.STR → enum variant through alias
     expect_multi_no_errors(&[
-        ("core.ttrpg", r#"
+        (
+            "core.ttrpg",
+            r#"
 system "Core" {
     enum DamageType { fire, cold, lightning }
 }
-"#),
-        ("main.ttrpg", r#"
+"#,
+        ),
+        (
+            "main.ttrpg",
+            r#"
 use "Core" as Core
 system "Main" {
     derive get_dmg() -> DamageType { Core.DamageType.fire }
 }
-"#),
+"#,
+        ),
     ]);
 }
 
@@ -5922,17 +6308,23 @@ system "Main" {
 fn test_alias_qualified_bare_variant() {
     // Core.fire → bare variant through alias
     expect_multi_no_errors(&[
-        ("core.ttrpg", r#"
+        (
+            "core.ttrpg",
+            r#"
 system "Core" {
     enum DamageType { fire, cold, lightning }
 }
-"#),
-        ("main.ttrpg", r#"
+"#,
+        ),
+        (
+            "main.ttrpg",
+            r#"
 use "Core" as Core
 system "Main" {
     derive get_dmg() -> DamageType { Core.fire }
 }
-"#),
+"#,
+        ),
     ]);
 }
 
@@ -5940,17 +6332,23 @@ system "Main" {
 fn test_alias_qualified_function_call() {
     // Core.modifier(10) → function call through alias
     expect_multi_no_errors(&[
-        ("core.ttrpg", r#"
+        (
+            "core.ttrpg",
+            r#"
 system "Core" {
     derive modifier(score: int) -> float { (score - 10) / 2 }
 }
-"#),
-        ("main.ttrpg", r#"
+"#,
+        ),
+        (
+            "main.ttrpg",
+            r#"
 use "Core" as Core
 system "Main" {
     derive double_mod(score: int) -> float { Core.modifier(score) * 2 }
 }
-"#),
+"#,
+        ),
     ]);
 }
 
@@ -5958,18 +6356,24 @@ system "Main" {
 fn test_alias_qualified_condition_ref() {
     // Core.Prone → condition reference through alias
     expect_multi_no_errors(&[
-        ("core.ttrpg", r#"
+        (
+            "core.ttrpg",
+            r#"
 system "Core" {
     entity Character { HP: int = 10 }
     condition Prone on bearer: Character { }
 }
-"#),
-        ("main.ttrpg", r#"
+"#,
+        ),
+        (
+            "main.ttrpg",
+            r#"
 use "Core" as Core
 system "Main" {
     derive get_cond() -> Condition { Core.Prone }
 }
-"#),
+"#,
+        ),
     ]);
 }
 
@@ -5977,20 +6381,26 @@ system "Main" {
 fn test_alias_qualified_condition_call() {
     // Core.Frightened(source: attacker) → parameterized condition through alias
     expect_multi_no_errors(&[
-        ("core.ttrpg", r#"
+        (
+            "core.ttrpg",
+            r#"
 system "Core" {
     entity Character { HP: int = 10 }
     condition Frightened(source: Character) on bearer: Character { }
 }
-"#),
-        ("main.ttrpg", r#"
+"#,
+        ),
+        (
+            "main.ttrpg",
+            r#"
 use "Core" as Core
 system "Main" {
     derive get_scared(attacker: Character) -> Condition {
         Core.Frightened(source: attacker)
     }
 }
-"#),
+"#,
+        ),
     ]);
 }
 
@@ -5999,17 +6409,23 @@ fn test_alias_qualified_nonexistent_name() {
     // Core.nonexistent → error
     expect_multi_errors(
         &[
-            ("core.ttrpg", r#"
+            (
+                "core.ttrpg",
+                r#"
 system "Core" {
     enum Ability { STR, DEX }
 }
-"#),
-            ("main.ttrpg", r#"
+"#,
+            ),
+            (
+                "main.ttrpg",
+                r#"
 use "Core" as Core
 system "Main" {
     derive bad() -> int { Core.nonexistent }
 }
-"#),
+"#,
+            ),
         ],
         &["no type, variant, or condition `nonexistent`"],
     );
@@ -6020,17 +6436,23 @@ fn test_alias_qualified_nonexistent_call() {
     // Core.nonexistent(1) → error
     expect_multi_errors(
         &[
-            ("core.ttrpg", r#"
+            (
+                "core.ttrpg",
+                r#"
 system "Core" {
     enum Ability { STR, DEX }
 }
-"#),
-            ("main.ttrpg", r#"
+"#,
+            ),
+            (
+                "main.ttrpg",
+                r#"
 use "Core" as Core
 system "Main" {
     derive bad() -> int { Core.nonexistent(1) }
 }
-"#),
+"#,
+            ),
         ],
         &["no function, condition, or variant `nonexistent`"],
     );
@@ -6041,17 +6463,23 @@ fn test_alias_qualified_struct_not_value() {
     // Core.Stats → error (structs cannot be used as values)
     expect_multi_errors(
         &[
-            ("core.ttrpg", r#"
+            (
+                "core.ttrpg",
+                r#"
 system "Core" {
     struct Stats { strength: int }
 }
-"#),
-            ("main.ttrpg", r#"
+"#,
+            ),
+            (
+                "main.ttrpg",
+                r#"
 use "Core" as Core
 system "Main" {
     derive bad() -> int { Core.Stats }
 }
-"#),
+"#,
+            ),
         ],
         &["cannot be used as a value"],
     );
@@ -6062,17 +6490,23 @@ fn test_alias_qualified_function_type_error() {
     // Core.modifier("string") → type error
     expect_multi_errors(
         &[
-            ("core.ttrpg", r#"
+            (
+                "core.ttrpg",
+                r#"
 system "Core" {
     derive modifier(score: int) -> int { (score - 10) / 2 }
 }
-"#),
-            ("main.ttrpg", r#"
+"#,
+            ),
+            (
+                "main.ttrpg",
+                r#"
 use "Core" as Core
 system "Main" {
     derive bad() -> float { Core.modifier("hello") }
 }
-"#),
+"#,
+            ),
         ],
         &["has type string, expected int"],
     );
@@ -6085,7 +6519,9 @@ fn test_alias_qualified_condition_call_with_group_not_proven() {
     // Core.Hexed(source: actor) should error when actor lacks Spellcasting
     expect_multi_errors(
         &[
-            ("core.ttrpg", r#"
+            (
+                "core.ttrpg",
+                r#"
 system "Core" {
     entity Character {
         HP: int
@@ -6093,15 +6529,19 @@ system "Core" {
     }
     condition Hexed(source: Character with Spellcasting) on bearer: Character {}
 }
-"#),
-            ("main.ttrpg", r#"
+"#,
+            ),
+            (
+                "main.ttrpg",
+                r#"
 use "Core" as Core
 system "Main" {
     mechanic hex(actor: Character) -> Condition {
         Core.Hexed(source: actor)
     }
 }
-"#),
+"#,
+            ),
         ],
         &["requires `actor` to have group `Spellcasting` proven active"],
     );
@@ -6111,7 +6551,9 @@ system "Main" {
 fn test_alias_qualified_condition_call_with_group_proven() {
     // Core.Hexed(source: actor) should pass when actor has Spellcasting
     expect_multi_no_errors(&[
-        ("core.ttrpg", r#"
+        (
+            "core.ttrpg",
+            r#"
 system "Core" {
     entity Character {
         HP: int
@@ -6119,15 +6561,19 @@ system "Core" {
     }
     condition Hexed(source: Character with Spellcasting) on bearer: Character {}
 }
-"#),
-        ("main.ttrpg", r#"
+"#,
+        ),
+        (
+            "main.ttrpg",
+            r#"
 use "Core" as Core
 system "Main" {
     mechanic hex(actor: Character with Spellcasting) -> Condition {
         Core.Hexed(source: actor)
     }
 }
-"#),
+"#,
+        ),
     ]);
 }
 
@@ -6136,7 +6582,9 @@ fn test_alias_qualified_function_call_with_group_not_proven() {
     // Core.needs_rage(c) should error when c lacks Rage
     expect_multi_errors(
         &[
-            ("core.ttrpg", r#"
+            (
+                "core.ttrpg",
+                r#"
 system "Core" {
     entity Character {
         HP: int
@@ -6144,15 +6592,19 @@ system "Core" {
     }
     derive needs_rage(c: Character with Rage) -> int { c.HP }
 }
-"#),
-            ("main.ttrpg", r#"
+"#,
+            ),
+            (
+                "main.ttrpg",
+                r#"
 use "Core" as Core
 system "Main" {
     derive try_rage(c: Character) -> int {
         Core.needs_rage(c)
     }
 }
-"#),
+"#,
+            ),
         ],
         &["requires `c` to have group `Rage` proven active"],
     );
@@ -6162,7 +6614,9 @@ system "Main" {
 fn test_alias_qualified_function_call_with_group_proven() {
     // Core.needs_rage(c) should pass when c has Rage
     expect_multi_no_errors(&[
-        ("core.ttrpg", r#"
+        (
+            "core.ttrpg",
+            r#"
 system "Core" {
     entity Character {
         HP: int
@@ -6170,15 +6624,19 @@ system "Core" {
     }
     derive needs_rage(c: Character with Rage) -> int { c.HP }
 }
-"#),
-        ("main.ttrpg", r#"
+"#,
+        ),
+        (
+            "main.ttrpg",
+            r#"
 use "Core" as Core
 system "Main" {
     derive try_rage(c: Character with Rage) -> int {
         Core.needs_rage(c)
     }
 }
-"#),
+"#,
+        ),
     ]);
 }
 
@@ -6189,23 +6647,32 @@ fn test_alias_bare_variant_not_in_target_system() {
     // Variant exists globally but not in the aliased system — must error (not resolve to wrong enum)
     expect_multi_errors(
         &[
-            ("core.ttrpg", r#"
+            (
+                "core.ttrpg",
+                r#"
 system "Core" {
     enum Ability { STR, DEX }
 }
-"#),
-            ("combat.ttrpg", r#"
+"#,
+            ),
+            (
+                "combat.ttrpg",
+                r#"
 system "Combat" {
     enum DamageType { fire, cold }
 }
-"#),
-            ("main.ttrpg", r#"
+"#,
+            ),
+            (
+                "main.ttrpg",
+                r#"
 use "Core" as Core
 use "Combat" as Combat
 system "Main" {
     derive pick() -> DamageType { Core.fire }
 }
-"#),
+"#,
+            ),
         ],
         &["no type, variant, or condition `fire` in system \"Core\""],
     );
@@ -6216,23 +6683,32 @@ fn test_alias_variant_constructor_not_in_target_system() {
     // Variant constructor exists globally but not in the aliased system
     expect_multi_errors(
         &[
-            ("core.ttrpg", r#"
+            (
+                "core.ttrpg",
+                r#"
 system "Core" {
     enum Ability { STR, DEX }
 }
-"#),
-            ("combat.ttrpg", r#"
+"#,
+            ),
+            (
+                "combat.ttrpg",
+                r#"
 system "Combat" {
     enum Effect { damage(amount: int) }
 }
-"#),
-            ("main.ttrpg", r#"
+"#,
+            ),
+            (
+                "main.ttrpg",
+                r#"
 use "Core" as Core
 use "Combat" as Combat
 system "Main" {
     derive pick() -> Effect { Core.damage(amount: 5) }
 }
-"#),
+"#,
+            ),
         ],
         &["no function, condition, or variant `damage` in system \"Core\""],
     );
@@ -6242,18 +6718,24 @@ system "Main" {
 fn test_alias_bare_variant_unique_in_system_ok() {
     // Variant is unique within the aliased system — should resolve fine
     expect_multi_no_errors(&[
-        ("core.ttrpg", r#"
+        (
+            "core.ttrpg",
+            r#"
 system "Core" {
     enum Color { red, blue }
     enum Alert { yellow, green }
 }
-"#),
-        ("main.ttrpg", r#"
+"#,
+        ),
+        (
+            "main.ttrpg",
+            r#"
 use "Core" as Core
 system "Main" {
     derive pick() -> Color { Core.red }
 }
-"#),
+"#,
+        ),
     ]);
 }
 
@@ -6261,17 +6743,23 @@ system "Main" {
 fn test_alias_variant_constructor_in_target_system_ok() {
     // Variant constructor from correct aliased system — should resolve fine
     expect_multi_no_errors(&[
-        ("core.ttrpg", r#"
+        (
+            "core.ttrpg",
+            r#"
 system "Core" {
     enum Effect { damage(amount: int), heal(amount: int) }
 }
-"#),
-        ("main.ttrpg", r#"
+"#,
+        ),
+        (
+            "main.ttrpg",
+            r#"
 use "Core" as Core
 system "Main" {
     derive pick() -> Effect { Core.damage(amount: 5) }
 }
-"#),
+"#,
+        ),
     ]);
 }
 
@@ -6282,16 +6770,22 @@ fn test_visibility_type_in_param_missing_import() {
     // Parameter type from non-imported system → error
     expect_multi_errors(
         &[
-            ("core.ttrpg", r#"
+            (
+                "core.ttrpg",
+                r#"
 system "Core" {
     entity Character { HP: int = 10 }
 }
-"#),
-            ("main.ttrpg", r#"
+"#,
+            ),
+            (
+                "main.ttrpg",
+                r#"
 system "Main" {
     derive get_hp(c: Character) -> int { 0 }
 }
-"#),
+"#,
+            ),
         ],
         &["add `use \"Core\"`"],
     );
@@ -6302,16 +6796,22 @@ fn test_visibility_type_in_return_missing_import() {
     // Return type from non-imported system → error
     expect_multi_errors(
         &[
-            ("core.ttrpg", r#"
+            (
+                "core.ttrpg",
+                r#"
 system "Core" {
     struct Stats { hp: int }
 }
-"#),
-            ("main.ttrpg", r#"
+"#,
+            ),
+            (
+                "main.ttrpg",
+                r#"
 system "Main" {
     derive make_stats() -> Stats { Stats { hp: 10 } }
 }
-"#),
+"#,
+            ),
         ],
         &["add `use \"Core\"`"],
     );
@@ -6322,18 +6822,24 @@ fn test_visibility_type_in_receiver_missing_import() {
     // Action receiver type from non-imported system → error
     expect_multi_errors(
         &[
-            ("core.ttrpg", r#"
+            (
+                "core.ttrpg",
+                r#"
 system "Core" {
     entity Character { HP: int = 10 }
 }
-"#),
-            ("main.ttrpg", r#"
+"#,
+            ),
+            (
+                "main.ttrpg",
+                r#"
 system "Main" {
     action attack on attacker: Character () {
         resolve { }
     }
 }
-"#),
+"#,
+            ),
         ],
         &["add `use \"Core\"`"],
     );
@@ -6344,16 +6850,22 @@ fn test_visibility_type_in_struct_field_missing_import() {
     // Struct field type from non-imported system → error
     expect_multi_errors(
         &[
-            ("core.ttrpg", r#"
+            (
+                "core.ttrpg",
+                r#"
 system "Core" {
     enum Color { red, green, blue }
 }
-"#),
-            ("main.ttrpg", r#"
+"#,
+            ),
+            (
+                "main.ttrpg",
+                r#"
 system "Main" {
     struct Item { color: Color }
 }
-"#),
+"#,
+            ),
         ],
         &["add `use \"Core\"`"],
     );
@@ -6364,16 +6876,22 @@ fn test_visibility_type_in_entity_field_missing_import() {
     // Entity field type from non-imported system → error
     expect_multi_errors(
         &[
-            ("core.ttrpg", r#"
+            (
+                "core.ttrpg",
+                r#"
 system "Core" {
     enum Size ordered { small, medium, large }
 }
-"#),
-            ("main.ttrpg", r#"
+"#,
+            ),
+            (
+                "main.ttrpg",
+                r#"
 system "Main" {
     entity Monster { size: Size = small }
 }
-"#),
+"#,
+            ),
         ],
         &["add `use \"Core\"`"],
     );
@@ -6384,16 +6902,22 @@ fn test_visibility_type_in_enum_variant_field_missing_import() {
     // Enum variant field type from non-imported system → error
     expect_multi_errors(
         &[
-            ("core.ttrpg", r#"
+            (
+                "core.ttrpg",
+                r#"
 system "Core" {
     entity Character { HP: int = 10 }
 }
-"#),
-            ("main.ttrpg", r#"
+"#,
+            ),
+            (
+                "main.ttrpg",
+                r#"
 system "Main" {
     enum Effect { damage(target: Character, amount: int) }
 }
-"#),
+"#,
+            ),
         ],
         &["add `use \"Core\"`"],
     );
@@ -6404,16 +6928,22 @@ fn test_visibility_type_in_condition_receiver_missing_import() {
     // Condition receiver type from non-imported system → error
     expect_multi_errors(
         &[
-            ("core.ttrpg", r#"
+            (
+                "core.ttrpg",
+                r#"
 system "Core" {
     entity Character { HP: int = 10 }
 }
-"#),
-            ("main.ttrpg", r#"
+"#,
+            ),
+            (
+                "main.ttrpg",
+                r#"
 system "Main" {
     condition Stunned on bearer: Character { }
 }
-"#),
+"#,
+            ),
         ],
         &["add `use \"Core\"`"],
     );
@@ -6424,16 +6954,22 @@ fn test_visibility_type_in_event_param_missing_import() {
     // Event parameter type from non-imported system → error
     expect_multi_errors(
         &[
-            ("core.ttrpg", r#"
+            (
+                "core.ttrpg",
+                r#"
 system "Core" {
     entity Character { HP: int = 10 }
 }
-"#),
-            ("main.ttrpg", r#"
+"#,
+            ),
+            (
+                "main.ttrpg",
+                r#"
 system "Main" {
     event attack(attacker: Character, target: Character) {}
 }
-"#),
+"#,
+            ),
         ],
         &["add `use \"Core\"`"],
     );
@@ -6444,19 +6980,25 @@ fn test_visibility_type_in_let_annotation_missing_import() {
     // Type annotation on let binding from non-imported system → error
     expect_multi_errors(
         &[
-            ("core.ttrpg", r#"
+            (
+                "core.ttrpg",
+                r#"
 system "Core" {
     struct Stats { hp: int }
 }
-"#),
-            ("main.ttrpg", r#"
+"#,
+            ),
+            (
+                "main.ttrpg",
+                r#"
 system "Main" {
     derive test() -> int {
         let s: Stats = Stats { hp: 5 }
         s.hp
     }
 }
-"#),
+"#,
+            ),
         ],
         &["add `use \"Core\"`"],
     );
@@ -6467,16 +7009,22 @@ fn test_visibility_container_inner_type_missing_import() {
     // Named type inside a container (list<T>) from non-imported system → error
     expect_multi_errors(
         &[
-            ("core.ttrpg", r#"
+            (
+                "core.ttrpg",
+                r#"
 system "Core" {
     struct Item { name: string }
 }
-"#),
-            ("main.ttrpg", r#"
+"#,
+            ),
+            (
+                "main.ttrpg",
+                r#"
 system "Main" {
     derive count_items(items: list<Item>) -> int { 0 }
 }
-"#),
+"#,
+            ),
         ],
         &["add `use \"Core\"`"],
     );
@@ -6486,49 +7034,57 @@ system "Main" {
 fn test_visibility_type_in_signature_with_import_ok() {
     // Same scenario as param test but WITH import → no error
     expect_multi_no_errors(&[
-        ("core.ttrpg", r#"
+        (
+            "core.ttrpg",
+            r#"
 system "Core" {
     entity Character { HP: int = 10 }
     struct Stats { hp: int }
     enum Color { red, green, blue }
 }
-"#),
-        ("main.ttrpg", r#"
+"#,
+        ),
+        (
+            "main.ttrpg",
+            r#"
 use "Core"
 system "Main" {
     derive get_hp(c: Character) -> int { c.HP }
     derive make_stats() -> Stats { Stats { hp: 10 } }
     struct Palette { primary: Color }
 }
-"#),
+"#,
+        ),
     ]);
 }
 
 #[test]
 fn test_visibility_own_type_in_signature_ok() {
     // Types defined in the same system are always visible
-    expect_multi_no_errors(&[
-        ("main.ttrpg", r#"
+    expect_multi_no_errors(&[(
+        "main.ttrpg",
+        r#"
 system "Main" {
     entity Character { HP: int = 10 }
     struct Stats { hp: int }
     derive get_hp(c: Character) -> Stats { Stats { hp: c.HP } }
 }
-"#),
-    ]);
+"#,
+    )]);
 }
 
 #[test]
 fn test_visibility_builtin_types_in_signature_always_ok() {
     // Builtin type keywords (int, float, bool, string, etc.) need no imports
-    expect_multi_no_errors(&[
-        ("main.ttrpg", r#"
+    expect_multi_no_errors(&[(
+        "main.ttrpg",
+        r#"
 system "Main" {
     derive identity(x: int) -> int { x }
     derive to_string(x: float) -> string { "hello" }
 }
-"#),
-    ]);
+"#,
+    )]);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -6537,42 +7093,50 @@ system "Main" {
 
 #[test]
 fn shared_variant_ambiguous_bare_use_is_error() {
-    expect_errors(r#"
+    expect_errors(
+        r#"
 system "test" {
     enum Color { red, blue }
     enum Alert { red, yellow }
     derive test() -> Color { red }
 }
-"#, &["ambiguous variant `red`"]);
+"#,
+        &["ambiguous variant `red`"],
+    );
 }
 
 #[test]
 fn shared_variant_qualified_form_works() {
-    expect_no_errors(r#"
+    expect_no_errors(
+        r#"
 system "test" {
     enum Color { red, blue }
     enum Alert { red, yellow }
     derive test() -> Color { Color.red }
 }
-"#);
+"#,
+    );
 }
 
 #[test]
 fn shared_variant_unique_still_bare_accessible() {
     // `blue` belongs only to Color, `yellow` belongs only to Alert — both should work bare
-    expect_no_errors(r#"
+    expect_no_errors(
+        r#"
 system "test" {
     enum Color { red, blue }
     enum Alert { red, yellow }
     derive test_blue() -> Color { blue }
     derive test_yellow() -> Alert { yellow }
 }
-"#);
+"#,
+    );
 }
 
 #[test]
 fn shared_variant_pattern_scrutinee_disambiguates() {
-    expect_no_errors(r#"
+    expect_no_errors(
+        r#"
 system "test" {
     enum Color { red, blue }
     enum Alert { red, yellow }
@@ -6583,12 +7147,14 @@ system "test" {
         }
     }
 }
-"#);
+"#,
+    );
 }
 
 #[test]
 fn shared_variant_pattern_wrong_enum_is_error() {
-    expect_errors(r#"
+    expect_errors(
+        r#"
 system "test" {
     enum Color { red, blue }
     enum Alert { red, yellow }
@@ -6599,34 +7165,42 @@ system "test" {
         }
     }
 }
-"#, &["variant `blue` belongs to"]);
+"#,
+        &["variant `blue` belongs to"],
+    );
 }
 
 #[test]
 fn shared_variant_constructor_ambiguous_is_error() {
-    expect_errors(r#"
+    expect_errors(
+        r#"
 system "test" {
     enum Color { red(intensity: int) }
     enum Alert { red(level: int) }
     derive test() -> Color { red(intensity: 5) }
 }
-"#, &["ambiguous variant `red`"]);
+"#,
+        &["ambiguous variant `red`"],
+    );
 }
 
 #[test]
 fn shared_variant_constructor_qualified_works() {
-    expect_no_errors(r#"
+    expect_no_errors(
+        r#"
 system "test" {
     enum Color { red(intensity: int) }
     enum Alert { red(level: int) }
     derive test() -> Color { Color.red(intensity: 5) }
 }
-"#);
+"#,
+    );
 }
 
 #[test]
 fn shared_variant_bare_destructure_scrutinee_disambiguates() {
-    expect_no_errors(r#"
+    expect_no_errors(
+        r#"
 system "test" {
     enum Color { red(intensity: int) }
     enum Alert { red(level: int) }
@@ -6636,7 +7210,8 @@ system "test" {
         }
     }
 }
-"#);
+"#,
+    );
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -6645,31 +7220,36 @@ system "test" {
 
 #[test]
 fn hint_function_param_disambiguates_bare_variant() {
-    expect_no_errors(r#"
+    expect_no_errors(
+        r#"
 system "test" {
     enum Color { red, blue }
     enum Alert { red, yellow }
     derive paint(c: Color) -> int { 1 }
     derive test() -> int { paint(red) }
 }
-"#);
+"#,
+    );
 }
 
 #[test]
 fn hint_named_param_disambiguates_bare_variant() {
-    expect_no_errors(r#"
+    expect_no_errors(
+        r#"
 system "test" {
     enum Color { red, blue }
     enum Alert { red, yellow }
     derive paint(c: Color) -> int { 1 }
     derive test() -> int { paint(c: red) }
 }
-"#);
+"#,
+    );
 }
 
 #[test]
 fn hint_condition_param_disambiguates_bare_variant() {
-    expect_no_errors(r#"
+    expect_no_errors(
+        r#"
 system "test" {
     entity Character { HP: int }
     enum Color { red, blue }
@@ -6678,47 +7258,55 @@ system "test" {
     }
     derive test() -> Condition { Painted(red) }
 }
-"#);
+"#,
+    );
 }
 
 #[test]
 fn hint_enum_constructor_field_disambiguates_bare_variant() {
-    expect_no_errors(r#"
+    expect_no_errors(
+        r#"
 system "test" {
     enum Color { red, blue }
     enum Alert { red, yellow }
     enum Painted { colored(c: Color) }
     derive test() -> Painted { colored(c: red) }
 }
-"#);
+"#,
+    );
 }
 
 #[test]
 fn hint_struct_field_disambiguates_bare_variant() {
-    expect_no_errors(r#"
+    expect_no_errors(
+        r#"
 system "test" {
     enum Color { red, blue }
     enum Alert { red, yellow }
     struct Brush { color: Color }
     derive test() -> Brush { Brush { color: red } }
 }
-"#);
+"#,
+    );
 }
 
 #[test]
 fn hint_comparison_rhs_disambiguates_bare_variant() {
-    expect_no_errors(r#"
+    expect_no_errors(
+        r#"
 system "test" {
     enum Color { red, blue }
     enum Alert { red, yellow }
     derive test(c: Color) -> bool { c == red }
 }
-"#);
+"#,
+    );
 }
 
 #[test]
 fn hint_let_annotation_disambiguates_bare_variant() {
-    expect_no_errors(r#"
+    expect_no_errors(
+        r#"
 system "test" {
     enum Color { red, blue }
     enum Alert { red, yellow }
@@ -6727,12 +7315,14 @@ system "test" {
         1
     }
 }
-"#);
+"#,
+    );
 }
 
 #[test]
 fn hint_assignment_disambiguates_bare_variant() {
-    expect_no_errors(r#"
+    expect_no_errors(
+        r#"
 system "test" {
     entity Character { HP: int, color: Color }
     enum Color { red, blue }
@@ -6744,24 +7334,28 @@ system "test" {
         }
     }
 }
-"#);
+"#,
+    );
 }
 
 #[test]
 fn hint_list_element_disambiguates_bare_variant() {
-    expect_no_errors(r#"
+    expect_no_errors(
+        r#"
 system "test" {
     enum Color { red, blue }
     enum Alert { red, yellow }
     derive test() -> list<Color> { [blue, red] }
 }
-"#);
+"#,
+    );
 }
 
 #[test]
 fn hint_no_match_still_errors() {
     // `red` is ambiguous between Color and Alert; hint is `Size` which matches neither
-    expect_errors(r#"
+    expect_errors(
+        r#"
 system "test" {
     enum Color { red, blue }
     enum Alert { red, yellow }
@@ -6769,36 +7363,43 @@ system "test" {
     derive paint(s: Size) -> int { 1 }
     derive test() -> int { paint(red) }
 }
-"#, &["ambiguous variant `red`"]);
+"#,
+        &["ambiguous variant `red`"],
+    );
 }
 
 #[test]
 fn hint_existing_unique_variant_still_works() {
     // `blue` is unique to Color — no hint needed, should work as before
-    expect_no_errors(r#"
+    expect_no_errors(
+        r#"
 system "test" {
     enum Color { red, blue }
     enum Alert { red, yellow }
     derive test() -> Color { blue }
 }
-"#);
+"#,
+    );
 }
 
 #[test]
 fn hint_paren_passes_through() {
-    expect_no_errors(r#"
+    expect_no_errors(
+        r#"
 system "test" {
     enum Color { red, blue }
     enum Alert { red, yellow }
     derive paint(c: Color) -> int { 1 }
     derive test() -> int { paint((red)) }
 }
-"#);
+"#,
+    );
 }
 
 #[test]
 fn hint_table_key_disambiguates_bare_variant() {
-    expect_no_errors(r#"
+    expect_no_errors(
+        r#"
 system "test" {
     enum Color { red, blue }
     enum Alert { red, yellow }
@@ -6807,12 +7408,14 @@ system "test" {
         blue => 2,
     }
 }
-"#);
+"#,
+    );
 }
 
 #[test]
 fn hint_table_value_disambiguates_bare_variant() {
-    expect_no_errors(r#"
+    expect_no_errors(
+        r#"
 system "test" {
     enum Color { red, blue }
     enum Alert { red, yellow }
@@ -6821,36 +7424,42 @@ system "test" {
         _ => blue,
     }
 }
-"#);
+"#,
+    );
 }
 
 // ── Default expression type hint disambiguation ──────────────────────
 
 #[test]
 fn hint_struct_field_default_disambiguates_bare_variant() {
-    expect_no_errors(r#"
+    expect_no_errors(
+        r#"
 system "test" {
     enum Color { red, blue }
     enum Alert { red, yellow }
     struct Brush { color: Color = red }
 }
-"#);
+"#,
+    );
 }
 
 #[test]
 fn hint_entity_field_default_disambiguates_bare_variant() {
-    expect_no_errors(r#"
+    expect_no_errors(
+        r#"
 system "test" {
     enum Color { red, blue }
     enum Alert { red, yellow }
     entity Painter { color: Color = red }
 }
-"#);
+"#,
+    );
 }
 
 #[test]
 fn hint_entity_optional_group_default_disambiguates_bare_variant() {
-    expect_no_errors(r#"
+    expect_no_errors(
+        r#"
 system "test" {
     enum Color { red, blue }
     enum Alert { red, yellow }
@@ -6861,23 +7470,27 @@ system "test" {
         }
     }
 }
-"#);
+"#,
+    );
 }
 
 #[test]
 fn hint_param_default_disambiguates_bare_variant() {
-    expect_no_errors(r#"
+    expect_no_errors(
+        r#"
 system "test" {
     enum Color { red, blue }
     enum Alert { red, yellow }
     derive paint(c: Color = red) -> int { 1 }
 }
-"#);
+"#,
+    );
 }
 
 #[test]
 fn hint_condition_param_default_disambiguates_bare_variant() {
-    expect_no_errors(r#"
+    expect_no_errors(
+        r#"
 system "test" {
     entity Character { HP: int }
     enum Color { red, blue }
@@ -6885,48 +7498,57 @@ system "test" {
     condition Painted(c: Color = red) on bearer: Character {
     }
 }
-"#);
+"#,
+    );
 }
 
 #[test]
 fn hint_event_param_default_disambiguates_bare_variant() {
-    expect_no_errors(r#"
+    expect_no_errors(
+        r#"
 system "test" {
     enum Color { red, blue }
     enum Alert { red, yellow }
     event Splash(c: Color = red) {
     }
 }
-"#);
+"#,
+    );
 }
 
 #[test]
 fn default_wrong_type_still_errors_with_hint() {
-    expect_errors(r#"
+    expect_errors(
+        r#"
 system "test" {
     enum Color { red, blue }
     enum Alert { red, yellow }
     struct Brush { color: Color = yellow }
 }
-"#, &["default has type Alert, expected Color"]);
+"#,
+        &["default has type Alert, expected Color"],
+    );
 }
 
 #[test]
 fn qualified_variant_in_default_works() {
-    expect_no_errors(r#"
+    expect_no_errors(
+        r#"
 system "test" {
     enum Color { red, blue }
     enum Alert { red, yellow }
     struct Brush { color: Color = Color.red }
 }
-"#);
+"#,
+    );
 }
 
 // ── Single-owner variant pattern vs non-enum scrutinee (tdsl-65cb) ──
 
 #[test]
 fn single_owner_variant_pattern_rejects_non_enum_scrutinee() {
-    expect_errors(r#"
+    expect_errors(
+        r#"
 system "test" {
     enum Status { active, inactive }
     derive test(x: int) -> int {
@@ -6936,12 +7558,15 @@ system "test" {
         }
     }
 }
-"#, &["cannot match type"]);
+"#,
+        &["cannot match type"],
+    );
 }
 
 #[test]
 fn single_owner_variant_destructure_rejects_non_enum_scrutinee() {
-    expect_errors(r#"
+    expect_errors(
+        r#"
 system "test" {
     enum Result { success(val: int), failure(code: int) }
     derive test(x: string) -> int {
@@ -6951,12 +7576,15 @@ system "test" {
         }
     }
 }
-"#, &["cannot match type"]);
+"#,
+        &["cannot match type"],
+    );
 }
 
 #[test]
 fn single_owner_variant_pattern_still_works_with_correct_enum() {
-    expect_no_errors(r#"
+    expect_no_errors(
+        r#"
 system "test" {
     enum Status { active, inactive }
     derive test(x: Status) -> int {
@@ -6966,7 +7594,8 @@ system "test" {
         }
     }
 }
-"#);
+"#,
+    );
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -6980,7 +7609,8 @@ system "test" {
 #[test]
 fn option_extends_forward_reference_accepted() {
     // Child declared before parent — should be valid.
-    expect_no_errors(r#"
+    expect_no_errors(
+        r#"
 system "test" {
     option flanking extends "base_flanking" {
         description: "Extended flanking"
@@ -6991,7 +7621,8 @@ system "test" {
         default: on
     }
 }
-"#);
+"#,
+    );
 }
 
 /// Bug tdsl-01n: move lowering synthesizes bare calls to `roll(...)` and to
@@ -7028,7 +7659,9 @@ system "test" {
         "expected a lowering diagnostic about 'roll' parameter conflict"
     );
     assert!(
-        lower_diags.iter().any(|d| d.message.contains("roll") && d.message.contains("conflicts")),
+        lower_diags
+            .iter()
+            .any(|d| d.message.contains("roll") && d.message.contains("conflicts")),
         "expected diagnostic mentioning 'roll' conflict, got: {:?}",
         lower_diags.iter().map(|d| &d.message).collect::<Vec<_>>()
     );
@@ -7069,7 +7702,9 @@ system "test" {
         "expected a lowering diagnostic about 'result' parameter conflict"
     );
     assert!(
-        lower_diags.iter().any(|d| d.message.contains("result") && d.message.contains("conflicts")),
+        lower_diags
+            .iter()
+            .any(|d| d.message.contains("result") && d.message.contains("conflicts")),
         "expected diagnostic mentioning 'result' conflict, got: {:?}",
         lower_diags.iter().map(|d| &d.message).collect::<Vec<_>>()
     );
@@ -7223,22 +7858,31 @@ fn test_variant_ambiguity_respects_system_visibility() {
     // C imports only A. Using bare 'short' should resolve to A's Size::short
     // (unique within C's visibility), not report ambiguous.
     expect_multi_no_errors(&[
-        ("a.ttrpg", r#"
+        (
+            "a.ttrpg",
+            r#"
 system "A" {
     enum Size { short, tall }
 }
-"#),
-        ("b.ttrpg", r#"
+"#,
+        ),
+        (
+            "b.ttrpg",
+            r#"
 system "B" {
     enum Length { short, long }
 }
-"#),
-        ("c.ttrpg", r#"
+"#,
+        ),
+        (
+            "c.ttrpg",
+            r#"
 use "A"
 system "C" {
     derive get_size() -> Size { short }
 }
-"#),
+"#,
+        ),
     ]);
 }
 
@@ -7271,12 +7915,17 @@ fn test_modify_body_typed_let_checks_type_visibility() {
     // regular let statement would.
     expect_multi_errors(
         &[
-            ("core.ttrpg", r#"
+            (
+                "core.ttrpg",
+                r#"
 system "Core" {
     enum Rarity { common, rare }
 }
-"#),
-            ("ext.ttrpg", r#"
+"#,
+            ),
+            (
+                "ext.ttrpg",
+                r#"
 system "Ext" {
     entity Character { HP: int }
     derive base_hp(c: Character) -> int { c.HP }
@@ -7287,7 +7936,8 @@ system "Ext" {
         }
     }
 }
-"#),
+"#,
+            ),
         ],
         &[r#"`Rarity` is defined in system "Core""#],
     );
@@ -7438,17 +8088,23 @@ fn test_load_order_forward_type_ref_across_systems() {
     // system's signature can't reference the first system's types.
     // Here system A uses type Character defined in system B.
     let sources_ab: &[(&str, &str)] = &[
-        ("a.ttrpg", r#"
+        (
+            "a.ttrpg",
+            r#"
 use "B"
 system "A" {
     derive hp(c: Character) -> int { c.HP }
 }
-"#),
-        ("b.ttrpg", r#"
+"#,
+        ),
+        (
+            "b.ttrpg",
+            r#"
 system "B" {
     entity Character { HP: int = 10 }
 }
-"#),
+"#,
+        ),
     ];
     let sources_ba: &[(&str, &str)] = &[sources_ab[1], sources_ab[0]];
     expect_multi_no_errors(sources_ab);
@@ -7461,19 +8117,25 @@ fn test_load_order_forward_fn_ref_across_systems() {
     // system's function isn't registered yet, calls from an earlier
     // system would fail.
     let sources_ab: &[(&str, &str)] = &[
-        ("a.ttrpg", r#"
+        (
+            "a.ttrpg",
+            r#"
 use "B"
 system "A" {
     entity Character { HP: int = 10 }
     derive double_hp(c: Character) -> int { base_hp(c) * 2 }
 }
-"#),
-        ("b.ttrpg", r#"
+"#,
+        ),
+        (
+            "b.ttrpg",
+            r#"
 use "A"
 system "B" {
     derive base_hp(c: Character) -> int { c.HP }
 }
-"#),
+"#,
+        ),
     ];
     let sources_ba: &[(&str, &str)] = &[sources_ab[1], sources_ab[0]];
     expect_multi_no_errors(sources_ab);
@@ -7485,20 +8147,32 @@ fn test_load_order_cross_system_collision_both_orderings() {
     // Hazard: collision detection iterates HashMaps. Both file orderings
     // must produce the collision error.
     let sources_ab: &[(&str, &str)] = &[
-        ("a.ttrpg", r#"
+        (
+            "a.ttrpg",
+            r#"
 system "A" {
     enum Color { red, blue }
 }
-"#),
-        ("b.ttrpg", r#"
+"#,
+        ),
+        (
+            "b.ttrpg",
+            r#"
 system "B" {
     enum Color { green, yellow }
 }
-"#),
+"#,
+        ),
     ];
     let sources_ba: &[(&str, &str)] = &[sources_ab[1], sources_ab[0]];
-    assert!(multi_has_errors(sources_ab), "A-first should detect collision");
-    assert!(multi_has_errors(sources_ba), "B-first should detect collision");
+    assert!(
+        multi_has_errors(sources_ab),
+        "A-first should detect collision"
+    );
+    assert!(
+        multi_has_errors(sources_ba),
+        "B-first should detect collision"
+    );
 }
 
 #[test]
@@ -7507,18 +8181,24 @@ fn test_load_order_builtin_override() {
     // defined Duration enum is in a later file, it must still take
     // precedence over the builtin.
     let sources_ab: &[(&str, &str)] = &[
-        ("a.ttrpg", r#"
+        (
+            "a.ttrpg",
+            r#"
 use "B"
 system "A" {
     entity Character { HP: int = 10 }
     condition Burning on bearer: Character {}
 }
-"#),
-        ("b.ttrpg", r#"
+"#,
+        ),
+        (
+            "b.ttrpg",
+            r#"
 system "B" {
     enum Duration { rounds(count: int), minutes(count: int), indefinite }
 }
-"#),
+"#,
+        ),
     ];
     let sources_ba: &[(&str, &str)] = &[sources_ab[1], sources_ab[0]];
     expect_multi_no_errors(sources_ab);
@@ -7530,7 +8210,9 @@ fn test_load_order_cross_file_variant_resolution() {
     // Hazard: variant_to_enums is populated in pass_1b. If the enum is
     // in a later file, its variants must still be resolvable.
     let sources_ab: &[(&str, &str)] = &[
-        ("a.ttrpg", r#"
+        (
+            "a.ttrpg",
+            r#"
 use "B"
 system "A" {
     derive is_fire(dt: DamageType) -> bool {
@@ -7540,12 +8222,16 @@ system "A" {
         }
     }
 }
-"#),
-        ("b.ttrpg", r#"
+"#,
+        ),
+        (
+            "b.ttrpg",
+            r#"
 system "B" {
     enum DamageType { fire, cold, lightning }
 }
-"#),
+"#,
+        ),
     ];
     let sources_ba: &[(&str, &str)] = &[sources_ab[1], sources_ab[0]];
     expect_multi_no_errors(sources_ab);
@@ -7558,18 +8244,24 @@ fn test_load_order_merged_system_across_files() {
     // in one file must be usable in signatures in the other file,
     // regardless of file ordering.
     let sources_ab: &[(&str, &str)] = &[
-        ("types.ttrpg", r#"
+        (
+            "types.ttrpg",
+            r#"
 system "Core" {
     entity Character { HP: int = 10 }
     enum DamageType { fire, cold }
 }
-"#),
-        ("fns.ttrpg", r#"
+"#,
+        ),
+        (
+            "fns.ttrpg",
+            r#"
 system "Core" {
     derive max_hp(c: Character) -> int { c.HP }
     derive get_type() -> DamageType { fire }
 }
-"#),
+"#,
+        ),
     ];
     let sources_ba: &[(&str, &str)] = &[sources_ab[1], sources_ab[0]];
     expect_multi_no_errors(sources_ab);
@@ -7581,13 +8273,18 @@ fn test_load_order_condition_modify_cross_system() {
     // Hazard: condition and its modify target are in different systems.
     // Both orderings must typecheck.
     let sources_ab: &[(&str, &str)] = &[
-        ("core.ttrpg", r#"
+        (
+            "core.ttrpg",
+            r#"
 system "Core" {
     entity Character { HP: int = 10 }
     derive max_hp(c: Character) -> int { c.HP }
 }
-"#),
-        ("conditions.ttrpg", r#"
+"#,
+        ),
+        (
+            "conditions.ttrpg",
+            r#"
 use "Core"
 system "Conditions" {
     condition Strong on bearer: Character {
@@ -7596,7 +8293,8 @@ system "Conditions" {
         }
     }
 }
-"#),
+"#,
+        ),
     ];
     let sources_ba: &[(&str, &str)] = &[sources_ab[1], sources_ab[0]];
     expect_multi_no_errors(sources_ab);
@@ -7607,24 +8305,33 @@ system "Conditions" {
 fn test_load_order_three_systems_import_chain() {
     // Hazard: three systems with imports. All 6 file orderings should
     // typecheck without errors. Each system imports what it needs.
-    let a = ("a.ttrpg", r#"
+    let a = (
+        "a.ttrpg",
+        r#"
 use "B"
 use "C"
 system "A" {
     derive total_hp(c: Character) -> int { base_hp(c) * 2 }
 }
-"#);
-    let b = ("b.ttrpg", r#"
+"#,
+    );
+    let b = (
+        "b.ttrpg",
+        r#"
 use "C"
 system "B" {
     derive base_hp(c: Character) -> int { c.HP }
 }
-"#);
-    let c = ("c.ttrpg", r#"
+"#,
+    );
+    let c = (
+        "c.ttrpg",
+        r#"
 system "C" {
     entity Character { HP: int = 10 }
 }
-"#);
+"#,
+    );
 
     // Test all 6 permutations
     let permutations: &[&[(&str, &str)]] = &[
@@ -7638,7 +8345,11 @@ system "C" {
     for (i, perm) in permutations.iter().enumerate() {
         expect_multi_no_errors(perm);
         // Verify we didn't silently skip the check
-        assert!(!multi_has_errors(perm), "permutation {} should not have errors", i);
+        assert!(
+            !multi_has_errors(perm),
+            "permutation {} should not have errors",
+            i
+        );
     }
 }
 
@@ -7675,17 +8386,23 @@ fn test_load_order_duplicate_type_first_definition_wins() {
     };
 
     let sources_ab: &[(&str, &str)] = &[
-        ("a.ttrpg", r#"
+        (
+            "a.ttrpg",
+            r#"
 system "A" {
     enum Color { red, blue, green }
     derive get_red() -> Color { red }
 }
-"#),
-        ("b.ttrpg", r#"
+"#,
+        ),
+        (
+            "b.ttrpg",
+            r#"
 system "B" {
     enum Color { cyan, magenta, yellow }
 }
-"#),
+"#,
+        ),
     ];
     let sources_ba: &[(&str, &str)] = &[sources_ab[1], sources_ab[0]];
 
@@ -7693,10 +8410,16 @@ system "B" {
     let errors_ba = check_dup(sources_ba);
 
     // Both orderings must detect the collision
-    assert!(errors_ab.iter().any(|m| m.contains("duplicate")),
-        "AB should detect collision: {:?}", errors_ab);
-    assert!(errors_ba.iter().any(|m| m.contains("duplicate")),
-        "BA should detect collision: {:?}", errors_ba);
+    assert!(
+        errors_ab.iter().any(|m| m.contains("duplicate")),
+        "AB should detect collision: {:?}",
+        errors_ab
+    );
+    assert!(
+        errors_ba.iter().any(|m| m.contains("duplicate")),
+        "BA should detect collision: {:?}",
+        errors_ba
+    );
 }
 
 #[test]
@@ -7704,7 +8427,9 @@ fn test_load_order_event_cross_system() {
     // Hazard: event defined in one system, referenced in another.
     // Both file orderings must typecheck.
     let sources_ab: &[(&str, &str)] = &[
-        ("core.ttrpg", r#"
+        (
+            "core.ttrpg",
+            r#"
 system "Core" {
     entity Character { HP: int = 10 }
     event damage(target: Character) { amount: int }
@@ -7712,13 +8437,17 @@ system "Core" {
         self.HP -= trigger.amount
     }
 }
-"#),
-        ("ext.ttrpg", r#"
+"#,
+        ),
+        (
+            "ext.ttrpg",
+            r#"
 use "Core"
 system "Ext" {
     derive hp(c: Character) -> int { c.HP }
 }
-"#),
+"#,
+        ),
     ];
     let sources_ba: &[(&str, &str)] = &[sources_ab[1], sources_ab[0]];
     expect_multi_no_errors(sources_ab);
@@ -7730,20 +8459,26 @@ fn test_load_order_visibility_with_import_both_orderings() {
     // Hazard: visibility computation uses set union over imports.
     // If it becomes order-dependent, one ordering would miss names.
     let sources_ab: &[(&str, &str)] = &[
-        ("lib.ttrpg", r#"
+        (
+            "lib.ttrpg",
+            r#"
 system "Lib" {
     enum Ability { STR, DEX, CON }
     entity Character { HP: int = 10 }
     derive modifier(score: int) -> int { floor((score - 10) / 2) }
 }
-"#),
-        ("main.ttrpg", r#"
+"#,
+        ),
+        (
+            "main.ttrpg",
+            r#"
 use "Lib"
 system "Main" {
     derive str_mod(c: Character) -> int { modifier(c.HP) }
     derive get_str() -> Ability { STR }
 }
-"#),
+"#,
+        ),
     ];
     let sources_ba: &[(&str, &str)] = &[sources_ab[1], sources_ab[0]];
     expect_multi_no_errors(sources_ab);
@@ -7799,22 +8534,31 @@ fn test_variant_visibility_reports_correct_owner_system() {
     // The error should point to the correct system (the one whose enum is first),
     // NOT an arbitrary last-write winner.
     let result = check_multi_source(&[
-        ("a.ttrpg", r#"
+        (
+            "a.ttrpg",
+            r#"
 system "A" {
     enum Size { small, medium, large }
 }
-"#),
-        ("b.ttrpg", r#"
+"#,
+        ),
+        (
+            "b.ttrpg",
+            r#"
 system "B" {
     enum Priority { small, normal, high }
 }
-"#),
-        ("c.ttrpg", r#"
+"#,
+        ),
+        (
+            "c.ttrpg",
+            r#"
 use "A"
 system "C" {
     derive get_size() -> Size { small }
 }
-"#),
+"#,
+        ),
     ]);
     let errors: Vec<_> = result
         .diagnostics
@@ -7822,7 +8566,9 @@ system "C" {
         .filter(|d| d.severity == ttrpg_ast::diagnostic::Severity::Error)
         .collect();
     // "small" is visible via import of A, so there should be no visibility error
-    let has_visibility_err = errors.iter().any(|e| e.message.contains("is defined in system"));
+    let has_visibility_err = errors
+        .iter()
+        .any(|e| e.message.contains("is defined in system"));
     assert!(
         !has_visibility_err,
         "variant 'small' should be visible via import of A; errors: {:?}",
@@ -7836,16 +8582,22 @@ fn test_variant_visibility_error_names_correct_system() {
     // The error should mention system "B", not any other system.
     expect_multi_errors(
         &[
-            ("b.ttrpg", r#"
+            (
+                "b.ttrpg",
+                r#"
 system "B" {
     enum DamageType { fire, cold }
 }
-"#),
-            ("c.ttrpg", r#"
+"#,
+            ),
+            (
+                "c.ttrpg",
+                r#"
 system "C" {
     derive get_type() -> DamageType { fire }
 }
-"#),
+"#,
+            ),
         ],
         &[r#"`fire` is defined in system "B""#],
     );
@@ -7860,7 +8612,9 @@ fn test_qualified_type_in_condition_modify_let_annotation() {
     // Named type; if it doesn't, the checker rejects the unresolved
     // qualified type.
     expect_multi_no_errors(&[
-        ("core.ttrpg", r#"
+        (
+            "core.ttrpg",
+            r#"
 system "Core" {
     enum DamageType { fire, cold, lightning }
     entity Character {
@@ -7870,8 +8624,11 @@ system "Core" {
         actor.HP
     }
 }
-"#),
-        ("main.ttrpg", r#"
+"#,
+        ),
+        (
+            "main.ttrpg",
+            r#"
 use "Core" as Core
 system "Main" {
     condition Focused on bearer: Character {
@@ -7881,7 +8638,8 @@ system "Main" {
         }
     }
 }
-"#),
+"#,
+        ),
     ]);
 }
 
@@ -7889,184 +8647,232 @@ system "Main" {
 
 #[test]
 fn test_sum_type_checks_int_list() {
-    expect_no_errors(r#"
+    expect_no_errors(
+        r#"
 system "test" {
     derive f(xs: list<int>) -> int { sum(xs) }
 }
-"#);
+"#,
+    );
 }
 
 #[test]
 fn test_sum_rejects_non_numeric_list() {
-    expect_errors(r#"
+    expect_errors(
+        r#"
 system "test" {
     derive f(xs: list<bool>) -> int { sum(xs) }
 }
-"#, &["`sum` requires list<int> or list<float>"]);
+"#,
+        &["`sum` requires list<int> or list<float>"],
+    );
 }
 
 #[test]
 fn test_any_type_checks_bool_list() {
-    expect_no_errors(r#"
+    expect_no_errors(
+        r#"
 system "test" {
     derive f(xs: list<bool>) -> bool { any(xs) }
 }
-"#);
+"#,
+    );
 }
 
 #[test]
 fn test_any_rejects_non_bool_list() {
-    expect_errors(r#"
+    expect_errors(
+        r#"
 system "test" {
     derive f(xs: list<int>) -> bool { any(xs) }
 }
-"#, &["`any` requires list<bool>"]);
+"#,
+        &["`any` requires list<bool>"],
+    );
 }
 
 #[test]
 fn test_all_rejects_non_bool_list() {
-    expect_errors(r#"
+    expect_errors(
+        r#"
 system "test" {
     derive f(xs: list<int>) -> bool { all(xs) }
 }
-"#, &["`all` requires list<bool>"]);
+"#,
+        &["`all` requires list<bool>"],
+    );
 }
 
 #[test]
 fn test_sort_type_checks() {
-    expect_no_errors(r#"
+    expect_no_errors(
+        r#"
 system "test" {
     derive f(xs: list<int>) -> list<int> { sort(xs) }
 }
-"#);
+"#,
+    );
 }
 
 // ── list comprehension type checking ────────────────────────────
 
 #[test]
 fn test_list_comprehension_type_checks() {
-    expect_no_errors(r#"
+    expect_no_errors(
+        r#"
 system "test" {
     derive f(xs: list<int>) -> list<int> { [x + 1 for x in xs] }
 }
-"#);
+"#,
+    );
 }
 
 #[test]
 fn test_list_comprehension_filter_type_checks() {
-    expect_no_errors(r#"
+    expect_no_errors(
+        r#"
 system "test" {
     derive f(xs: list<int>) -> list<int> { [x for x in xs if x > 0] }
 }
-"#);
+"#,
+    );
 }
 
 #[test]
 fn test_list_comprehension_filter_non_bool_error() {
-    expect_errors(r#"
+    expect_errors(
+        r#"
 system "test" {
     derive f(xs: list<int>) -> list<int> { [x for x in xs if x + 1] }
 }
-"#, &["list comprehension filter must be bool"]);
+"#,
+        &["list comprehension filter must be bool"],
+    );
 }
 
 #[test]
 fn test_list_comprehension_non_iterable_error() {
-    expect_errors(r#"
+    expect_errors(
+        r#"
 system "test" {
     derive f(x: int) -> list<int> { [x for x in x] }
 }
-"#, &["expected list or set"]);
+"#,
+        &["expected list or set"],
+    );
 }
 
 #[test]
 fn test_list_comprehension_range() {
-    expect_no_errors(r#"
+    expect_no_errors(
+        r#"
 system "test" {
     derive f() -> list<int> { [i * 2 for i in 0..5] }
 }
-"#);
+"#,
+    );
 }
 
 #[test]
 fn test_sum_of_comprehension_type_checks() {
-    expect_no_errors(r#"
+    expect_no_errors(
+        r#"
 system "test" {
     derive f(xs: list<int>) -> int { sum([x * x for x in xs]) }
 }
-"#);
+"#,
+    );
 }
 
 #[test]
 fn test_list_comprehension_method_sum() {
-    expect_no_errors(r#"
+    expect_no_errors(
+        r#"
 system "test" {
     derive f(xs: list<int>) -> int { [x * x for x in xs].sum() }
 }
-"#);
+"#,
+    );
 }
 
 #[test]
 fn test_list_comprehension_with_option_pattern() {
-    expect_no_errors(r#"
+    expect_no_errors(
+        r#"
 system "test" {
     derive f(xs: list<option<int>>) -> list<int> { [x for some(x) in xs] }
 }
-"#);
+"#,
+    );
 }
 
 // ── some() constructor builtin ────────────────────────────────────
 
 #[test]
 fn some_constructor_returns_option_type() {
-    expect_no_errors(r#"
+    expect_no_errors(
+        r#"
 system "test" {
     derive f() -> option<int> { some(42) }
 }
-"#);
+"#,
+    );
 }
 
 #[test]
 fn some_constructor_with_variable() {
-    expect_no_errors(r#"
+    expect_no_errors(
+        r#"
 system "test" {
     derive f(x: int) -> option<int> { some(x) }
 }
-"#);
+"#,
+    );
 }
 
 #[test]
 fn some_constructor_nested() {
-    expect_no_errors(r#"
+    expect_no_errors(
+        r#"
 system "test" {
     derive f() -> option<option<int>> { some(some(1)) }
 }
-"#);
+"#,
+    );
 }
 
 #[test]
 fn some_constructor_wrong_arg_count() {
-    expect_errors(r#"
+    expect_errors(
+        r#"
 system "test" {
     derive f() -> option<int> { some(1, 2) }
 }
-"#, &["`some` expects 1 argument, found 2"]);
+"#,
+        &["`some` expects 1 argument, found 2"],
+    );
 }
 
 #[test]
 fn some_constructor_no_args() {
-    expect_errors(r#"
+    expect_errors(
+        r#"
 system "test" {
     derive f() -> option<int> { some() }
 }
-"#, &["`some` expects 1 argument, found 0"]);
+"#,
+        &["`some` expects 1 argument, found 0"],
+    );
 }
 
 #[test]
 fn some_constructor_type_mismatch() {
-    expect_errors(r#"
+    expect_errors(
+        r#"
 system "test" {
     derive f() -> option<int> { some("hello") }
 }
-"#, &["has type option<string>, expected return type option<int>"]);
+"#,
+        &["has type option<string>, expected return type option<int>"],
+    );
 }

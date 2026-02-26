@@ -182,10 +182,22 @@ fn ose_exploration_has_expected_decls() {
         has_action_phase_enum,
         "expected ExplorationActionPhase enum"
     );
-    assert!(has_turn_phases_derive, "expected exploration_turn_phases derive");
-    assert!(has_action_phases_table, "expected exploration_action_phases table");
-    assert!(has_skip_phase_derive, "expected skip_exploration_phase derive");
-    assert!(has_wandering_roll, "expected wandering_monster_roll mechanic");
+    assert!(
+        has_turn_phases_derive,
+        "expected exploration_turn_phases derive"
+    );
+    assert!(
+        has_action_phases_table,
+        "expected exploration_action_phases table"
+    );
+    assert!(
+        has_skip_phase_derive,
+        "expected skip_exploration_phase derive"
+    );
+    assert!(
+        has_wandering_roll,
+        "expected wandering_monster_roll mechanic"
+    );
 }
 
 #[test]

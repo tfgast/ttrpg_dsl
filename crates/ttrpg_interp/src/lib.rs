@@ -1,21 +1,19 @@
-pub mod value;
-pub mod effect;
-pub mod state;
-pub mod eval;
-pub mod call;
-pub mod builtins;
 pub mod action;
-pub mod pipeline;
-pub mod event;
 pub mod adapter;
+pub mod builtins;
+pub mod call;
+pub mod effect;
+pub mod eval;
+pub mod event;
+pub mod pipeline;
 pub mod reference_state;
+pub mod state;
+pub mod value;
 
 use std::collections::HashMap;
 
+use ttrpg_ast::ast::{DeclKind, ExprKind, Program, TopLevel};
 use ttrpg_ast::{Name, Span, Spanned};
-use ttrpg_ast::ast::{
-    DeclKind, ExprKind, Program, TopLevel,
-};
 use ttrpg_checker::env::TypeEnv;
 
 use crate::effect::EffectHandler;
@@ -95,10 +93,7 @@ impl<'p> Interpreter<'p> {
             }
         }
 
-        Ok(Interpreter {
-            type_env,
-            program,
-        })
+        Ok(Interpreter { type_env, program })
     }
 
     /// Execute a named action through the full pipeline.
@@ -186,10 +181,7 @@ impl<'p> Interpreter<'p> {
         args: Vec<Value>,
     ) -> Result<Value, RuntimeError> {
         if !self.program.mechanics.contains_key(name) {
-            return Err(RuntimeError::new(format!(
-                "undefined mechanic '{}'",
-                name
-            )));
+            return Err(RuntimeError::new(format!("undefined mechanic '{}'", name)));
         }
         let mut env = Env::new(state, handler, self);
         call::evaluate_fn_with_values(&mut env, name, args, Span::dummy())
@@ -570,7 +562,12 @@ system "test" {
         let mut handler = ScriptedHandler::new();
 
         let val = interp
-            .evaluate_derive(&state, &mut handler, "add", vec![Value::Int(3), Value::Int(4)])
+            .evaluate_derive(
+                &state,
+                &mut handler,
+                "add",
+                vec![Value::Int(3), Value::Int(4)],
+            )
             .unwrap();
         assert_eq!(val, Value::Int(7));
     }
@@ -710,9 +707,15 @@ system "test" {
 
         // ActionStarted, RequiresCheck (failed), ActionCompleted — no MutateField
         assert_eq!(handler.log.len(), 3);
-        assert!(matches!(&handler.log[1], Effect::RequiresCheck { passed: false, .. }));
+        assert!(matches!(
+            &handler.log[1],
+            Effect::RequiresCheck { passed: false, .. }
+        ));
         // No mutation effects
-        assert!(!handler.log.iter().any(|e| matches!(e, Effect::MutateField { .. })));
+        assert!(!handler
+            .log
+            .iter()
+            .any(|e| matches!(e, Effect::MutateField { .. })));
     }
 
     // ── End-to-end: derive with modify pipeline ──
@@ -764,7 +767,10 @@ system "test" {
         assert_eq!(val, Value::Int(20));
 
         // Should have ModifyApplied effects
-        assert!(handler.log.iter().any(|e| matches!(e, Effect::ModifyApplied { .. })));
+        assert!(handler
+            .log
+            .iter()
+            .any(|e| matches!(e, Effect::ModifyApplied { .. })));
     }
 
     #[test]
@@ -827,8 +833,12 @@ system "test" {
         let mut state = TestState::new();
         let entity1 = EntityRef(1);
         let entity2 = EntityRef(2);
-        state.fields.insert((1, "name".into()), Value::Str("Alice".into()));
-        state.fields.insert((2, "name".into()), Value::Str("Bob".into()));
+        state
+            .fields
+            .insert((1, "name".into()), Value::Str("Alice".into()));
+        state
+            .fields
+            .insert((2, "name".into()), Value::Str("Bob".into()));
         state.conditions.insert(1, vec![]);
         state.conditions.insert(2, vec![]);
 
@@ -1072,7 +1082,13 @@ system "test" {
         let mut handler = ScriptedHandler::new();
 
         let err = interp
-            .execute_reaction(&state, &mut handler, "Nonexistent", EntityRef(1), Value::None)
+            .execute_reaction(
+                &state,
+                &mut handler,
+                "Nonexistent",
+                EntityRef(1),
+                Value::None,
+            )
             .unwrap_err();
         assert!(err.message.contains("undefined reaction"));
     }
@@ -1133,10 +1149,14 @@ system "test" {
         let target = EntityRef(2);
         state.fields.insert((1, "HP".into()), Value::Int(30));
         state.fields.insert((1, "AC".into()), Value::Int(15));
-        state.fields.insert((1, "attack_bonus".into()), Value::Int(5));
+        state
+            .fields
+            .insert((1, "attack_bonus".into()), Value::Int(5));
         state.fields.insert((2, "HP".into()), Value::Int(25));
         state.fields.insert((2, "AC".into()), Value::Int(12));
-        state.fields.insert((2, "attack_bonus".into()), Value::Int(3));
+        state
+            .fields
+            .insert((2, "attack_bonus".into()), Value::Int(3));
         state.conditions.insert(1, vec![]);
         state.conditions.insert(2, vec![]);
 
@@ -1156,8 +1176,8 @@ system "test" {
             unmodified: 15,
         };
         let mut handler = ScriptedHandler::with_responses(vec![
-            Response::Acknowledged, // ActionStarted
-            Response::Acknowledged, // DeductCost
+            Response::Acknowledged,        // ActionStarted
+            Response::Acknowledged,        // DeductCost
             Response::Rolled(roll_result), // RollDice (from roll_attack)
         ]);
 
@@ -1173,9 +1193,15 @@ system "test" {
         assert_eq!(val, Value::None); // resolve block ends with if-then (assignment)
 
         // Verify RollDice was emitted
-        assert!(handler.log.iter().any(|e| matches!(e, Effect::RollDice { .. })));
+        assert!(handler
+            .log
+            .iter()
+            .any(|e| matches!(e, Effect::RollDice { .. })));
         // Verify MutateField was emitted (HP damage)
-        assert!(handler.log.iter().any(|e| matches!(e, Effect::MutateField { .. })));
+        assert!(handler
+            .log
+            .iter()
+            .any(|e| matches!(e, Effect::MutateField { .. })));
     }
 
     #[test]
@@ -1208,10 +1234,14 @@ system "test" {
         let target = EntityRef(2);
         state.fields.insert((1, "HP".into()), Value::Int(30));
         state.fields.insert((1, "AC".into()), Value::Int(15));
-        state.fields.insert((1, "attack_bonus".into()), Value::Int(5));
+        state
+            .fields
+            .insert((1, "attack_bonus".into()), Value::Int(5));
         state.fields.insert((2, "HP".into()), Value::Int(25));
         state.fields.insert((2, "AC".into()), Value::Int(18));
-        state.fields.insert((2, "attack_bonus".into()), Value::Int(3));
+        state
+            .fields
+            .insert((2, "attack_bonus".into()), Value::Int(3));
         state.conditions.insert(1, vec![]);
         state.conditions.insert(2, vec![]);
 
@@ -1246,7 +1276,10 @@ system "test" {
             .unwrap();
 
         // No MutateField — attack missed
-        assert!(!handler.log.iter().any(|e| matches!(e, Effect::MutateField { .. })));
+        assert!(!handler
+            .log
+            .iter()
+            .any(|e| matches!(e, Effect::MutateField { .. })));
     }
 
     #[test]
@@ -1271,7 +1304,9 @@ system "test" {
         let interp = Interpreter::new(&program, &result.env).unwrap();
         let mut state = TestState::new();
         let entity1 = EntityRef(1);
-        state.fields.insert((1, "name".into()), Value::Str("Alice".into()));
+        state
+            .fields
+            .insert((1, "name".into()), Value::Str("Alice".into()));
         // Entity 1 has Stunned condition
         state.conditions.insert(
             1,
@@ -1401,7 +1436,11 @@ system "test" {
         match &val {
             Value::Struct { name, fields } => {
                 assert_eq!(name, "Point");
-                assert_eq!(fields.get("x"), Some(&Value::Int(11)), "x overridden to p.x + 10");
+                assert_eq!(
+                    fields.get("x"),
+                    Some(&Value::Int(11)),
+                    "x overridden to p.x + 10"
+                );
                 assert_eq!(fields.get("y"), Some(&Value::Int(2)), "y from base");
                 assert_eq!(fields.get("z"), Some(&Value::Int(3)), "z from base");
             }

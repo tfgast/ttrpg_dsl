@@ -20,7 +20,10 @@ fn compile_ose_chargen() -> (ttrpg_ast::ast::Program, ttrpg_checker::CheckResult
     let sources = vec![
         ("ose/ose_core.ttrpg".to_string(), core_source.to_string()),
         ("ose/ose_class.ttrpg".to_string(), class_source.to_string()),
-        ("ose/ose_chargen.ttrpg".to_string(), chargen_source.to_string()),
+        (
+            "ose/ose_chargen.ttrpg".to_string(),
+            chargen_source.to_string(),
+        ),
     ];
 
     let parse_result = ttrpg_parser::parse_multi(&sources);
@@ -141,10 +144,16 @@ fn ose_chargen_has_expected_decls() {
             if sys.name == "OSE Chargen" {
                 for decl in &sys.decls {
                     match &decl.node {
-                        DeclKind::Mechanic(m) if m.name == "roll_ability" => has_roll_ability = true,
-                        DeclKind::Mechanic(m) if m.name == "roll_starting_hp" => has_roll_starting_hp = true,
+                        DeclKind::Mechanic(m) if m.name == "roll_ability" => {
+                            has_roll_ability = true
+                        }
+                        DeclKind::Mechanic(m) if m.name == "roll_starting_hp" => {
+                            has_roll_starting_hp = true
+                        }
                         DeclKind::Table(t) if t.name == "character_thac0" => has_thac0_table = true,
-                        DeclKind::Table(t) if t.name == "available_starting_spells" => has_starting_spells_table = true,
+                        DeclKind::Table(t) if t.name == "available_starting_spells" => {
+                            has_starting_spells_table = true
+                        }
                         _ => {}
                     }
                 }
@@ -282,8 +291,7 @@ fn roll_starting_gold_multiplies_3d6_by_10() {
     let (program, result) = compile_ose_chargen();
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let state = GameState::new();
-    let mut handler =
-        ScriptedHandler::with_responses(vec![scripted_roll(3, 6, vec![3, 3, 4], 10)]);
+    let mut handler = ScriptedHandler::with_responses(vec![scripted_roll(3, 6, vec![3, 3, 4], 10)]);
 
     let gold = interp
         .evaluate_mechanic(

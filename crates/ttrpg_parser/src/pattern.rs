@@ -26,9 +26,15 @@ impl Parser {
                     let negated = n.checked_neg().ok_or_else(|| {
                         self.error(format!("integer overflow in pattern: -{}", n));
                     })?;
-                    Ok(Spanned::new(PatternKind::IntLit(negated), self.end_span(start)))
+                    Ok(Spanned::new(
+                        PatternKind::IntLit(negated),
+                        self.end_span(start),
+                    ))
                 } else {
-                    self.error(format!("expected integer after '-' in pattern, found {:?}", self.peek()));
+                    self.error(format!(
+                        "expected integer after '-' in pattern, found {:?}",
+                        self.peek()
+                    ));
                     Err(())
                 }
             }
@@ -36,17 +42,26 @@ impl Parser {
             TokenKind::String(s) => {
                 let s = s.clone();
                 self.advance();
-                Ok(Spanned::new(PatternKind::StringLit(s), self.end_span(start)))
+                Ok(Spanned::new(
+                    PatternKind::StringLit(s),
+                    self.end_span(start),
+                ))
             }
 
             TokenKind::True => {
                 self.advance();
-                Ok(Spanned::new(PatternKind::BoolLit(true), self.end_span(start)))
+                Ok(Spanned::new(
+                    PatternKind::BoolLit(true),
+                    self.end_span(start),
+                ))
             }
 
             TokenKind::False => {
                 self.advance();
-                Ok(Spanned::new(PatternKind::BoolLit(false), self.end_span(start)))
+                Ok(Spanned::new(
+                    PatternKind::BoolLit(false),
+                    self.end_span(start),
+                ))
             }
 
             TokenKind::None => {
@@ -103,10 +118,7 @@ impl Parser {
                     } else {
                         // Qualified variant: IDENT.IDENT
                         Ok(Spanned::new(
-                            PatternKind::QualifiedVariant {
-                                ty: name,
-                                variant,
-                            },
+                            PatternKind::QualifiedVariant { ty: name, variant },
                             self.end_span(start),
                         ))
                     }

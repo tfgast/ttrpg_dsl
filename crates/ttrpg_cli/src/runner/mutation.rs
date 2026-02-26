@@ -122,7 +122,10 @@ impl Runner {
         }
 
         // All validation passed — now apply mutations (cannot fail).
-        let fields: HashMap<Name, Value> = fields.into_iter().map(|(k, v)| (Name::from(k), v)).collect();
+        let fields: HashMap<Name, Value> = fields
+            .into_iter()
+            .map(|(k, v)| (Name::from(k), v))
+            .collect();
         let entity = self.game_state.borrow_mut().add_entity(entity_type, fields);
         self.handles.insert(handle.to_string(), entity);
         self.reverse_handles.insert(entity, handle.to_string());
@@ -135,12 +138,8 @@ impl Runner {
             );
         }
 
-        self.output.push(format!(
-            "spawned {} {} ({})",
-            entity_type,
-            handle,
-            entity.0
-        ));
+        self.output
+            .push(format!("spawned {} {} ({})", entity_type, handle, entity.0));
         Ok(())
     }
 
@@ -167,7 +166,9 @@ impl Runner {
         let field_path = &lhs[dot_pos + 1..];
 
         if handle.is_empty() || field_path.is_empty() {
-            return Err(CliError::Message("usage: set <handle>.<field> = <value>".into()));
+            return Err(CliError::Message(
+                "usage: set <handle>.<field> = <value>".into(),
+            ));
         }
 
         let entity = self.resolve_handle(handle)?;
@@ -379,8 +380,12 @@ impl Runner {
         let interp = Interpreter::new(&self.program, &self.type_env)
             .map_err(|e| CliError::Message(format!("interpreter error: {}", e)))?;
         let state = RefCellState(&self.game_state);
-        let mut handler =
-            CliHandler::new(&self.game_state, &self.reverse_handles, &mut self.rng, &mut self.roll_queue);
+        let mut handler = CliHandler::new(
+            &self.game_state,
+            &self.reverse_handles,
+            &mut self.rng,
+            &mut self.roll_queue,
+        );
 
         let result = interp
             .execute_action(&state, &mut handler, action_name, actor, args)
@@ -464,8 +469,12 @@ impl Runner {
         let interp = Interpreter::new(&self.program, &self.type_env)
             .map_err(|e| CliError::Message(format!("interpreter error: {}", e)))?;
         let state = RefCellState(&self.game_state);
-        let mut handler =
-            CliHandler::new(&self.game_state, &self.reverse_handles, &mut self.rng, &mut self.roll_queue);
+        let mut handler = CliHandler::new(
+            &self.game_state,
+            &self.reverse_handles,
+            &mut self.rng,
+            &mut self.roll_queue,
+        );
 
         // Dispatch to derive or mechanic based on structured check
         let result = if is_derive {
@@ -520,10 +529,7 @@ impl Runner {
             let gs = self.game_state.borrow();
             gs.entity_type_name(&entity)
                 .ok_or_else(|| {
-                    CliError::Message(format!(
-                        "entity for handle '{}' not found in state",
-                        handle
-                    ))
+                    CliError::Message(format!("entity for handle '{}' not found in state", handle))
                 })?
                 .to_string()
         };
@@ -565,9 +571,9 @@ impl Runner {
     /// `grant handle.GroupName { field: val, ... }` or `grant handle.GroupName`
     pub(super) fn cmd_grant(&mut self, tail: &str) -> Result<(), CliError> {
         let tail = tail.trim();
-        let dot_pos = tail
-            .find('.')
-            .ok_or_else(|| CliError::Message("usage: grant <handle>.<GroupName> [{ ... }]".into()))?;
+        let dot_pos = tail.find('.').ok_or_else(|| {
+            CliError::Message("usage: grant <handle>.<GroupName> [{ ... }]".into())
+        })?;
         let handle = &tail[..dot_pos];
         let after_dot = &tail[dot_pos + 1..];
         if handle.is_empty() || after_dot.is_empty() {
@@ -587,10 +593,7 @@ impl Runner {
             let gs = self.game_state.borrow();
             gs.entity_type_name(&entity)
                 .ok_or_else(|| {
-                    CliError::Message(format!(
-                        "entity for handle '{}' not found in state",
-                        handle
-                    ))
+                    CliError::Message(format!("entity for handle '{}' not found in state", handle))
                 })?
                 .to_string()
         };

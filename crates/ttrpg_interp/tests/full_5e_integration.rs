@@ -6,14 +6,14 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 
+use ttrpg_ast::diagnostic::Severity;
 use ttrpg_ast::DiceFilter;
 use ttrpg_ast::FileId;
-use ttrpg_ast::diagnostic::Severity;
 use ttrpg_interp::adapter::StateAdapter;
 use ttrpg_interp::effect::{ActionKind, Effect, EffectHandler, Response};
 use ttrpg_interp::reference_state::{GameState, GridPosition};
 use ttrpg_interp::state::{EntityRef, StateProvider};
-use ttrpg_interp::value::{DiceExpr, RollResult, Value, duration_variant};
+use ttrpg_interp::value::{duration_variant, DiceExpr, RollResult, Value};
 use ttrpg_interp::Interpreter;
 
 // ── Setup ──────────────────────────────────────────────────────
@@ -262,17 +262,17 @@ fn standard_combatants() -> (GameState, EntityRef, EntityRef) {
     let fighter = add_character(
         &mut state,
         "Fighter",
-        5,                                       // level 5 → prof bonus 3
-        abilities_map(16, 14, 14, 10, 12, 8),    // STR 16, DEX 14
-        damage_type_set(&[]),                     // proficient_saves (using empty set)
-        18,                                       // AC
-        45,                                       // HP
-        45,                                       // max_HP
-        30,                                       // speed
-        damage_type_set(&[]),                     // resistances
-        damage_type_set(&[]),                     // immunities
-        damage_type_set(&[]),                     // vulnerabilities
-        Value::Set(BTreeSet::new()),              // conditions
+        5,                                    // level 5 → prof bonus 3
+        abilities_map(16, 14, 14, 10, 12, 8), // STR 16, DEX 14
+        damage_type_set(&[]),                 // proficient_saves (using empty set)
+        18,                                   // AC
+        45,                                   // HP
+        45,                                   // max_HP
+        30,                                   // speed
+        damage_type_set(&[]),                 // resistances
+        damage_type_set(&[]),                 // immunities
+        damage_type_set(&[]),                 // vulnerabilities
+        Value::Set(BTreeSet::new()),          // conditions
         fighter_pos,
         longsword,
     );
@@ -281,13 +281,13 @@ fn standard_combatants() -> (GameState, EntityRef, EntityRef) {
     let goblin = add_character(
         &mut state,
         "Goblin",
-        1,                                        // level 1 → prof bonus 2
-        abilities_map(8, 14, 10, 10, 8, 8),       // STR 8, DEX 14
+        1,                                  // level 1 → prof bonus 2
+        abilities_map(8, 14, 10, 10, 8, 8), // STR 8, DEX 14
         damage_type_set(&[]),
-        15,                                        // AC
-        7,                                         // HP
-        7,                                         // max_HP
-        30,                                        // speed
+        15, // AC
+        7,  // HP
+        7,  // max_HP
+        30, // speed
         damage_type_set(&[]),
         damage_type_set(&[]),
         damage_type_set(&[]),
@@ -332,7 +332,13 @@ fn pipeline_parses_and_builds_interpreter() {
         .execute_action(&state, &mut handler, "Nonexistent", EntityRef(1), vec![])
         .is_err());
     assert!(interp
-        .execute_reaction(&state, &mut handler, "Nonexistent", EntityRef(1), Value::None)
+        .execute_reaction(
+            &state,
+            &mut handler,
+            "Nonexistent",
+            EntityRef(1),
+            Value::None
+        )
         .is_err());
 }
 
@@ -381,19 +387,34 @@ fn proficiency_bonus_levels() {
 
     // proficiency_bonus(1) = floor((1-1)/4)+2 = 2
     let val = interp
-        .evaluate_derive(&state, &mut handler, "proficiency_bonus", vec![Value::Int(1)])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "proficiency_bonus",
+            vec![Value::Int(1)],
+        )
         .unwrap();
     assert_eq!(val, Value::Int(2));
 
     // proficiency_bonus(5) = floor((5-1)/4)+2 = floor(1)+2 = 3
     let val = interp
-        .evaluate_derive(&state, &mut handler, "proficiency_bonus", vec![Value::Int(5)])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "proficiency_bonus",
+            vec![Value::Int(5)],
+        )
         .unwrap();
     assert_eq!(val, Value::Int(3));
 
     // proficiency_bonus(9) = floor((9-1)/4)+2 = floor(2)+2 = 4
     let val = interp
-        .evaluate_derive(&state, &mut handler, "proficiency_bonus", vec![Value::Int(9)])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "proficiency_bonus",
+            vec![Value::Int(9)],
+        )
         .unwrap();
     assert_eq!(val, Value::Int(4));
 }
@@ -788,7 +809,10 @@ fn attack_roll_emits_roll_dice() {
         .unwrap();
 
     // Should have emitted RollDice
-    assert!(handler.log.iter().any(|e| matches!(e, Effect::RollDice { .. })));
+    assert!(handler
+        .log
+        .iter()
+        .any(|e| matches!(e, Effect::RollDice { .. })));
 
     // Should return a RollResult
     match val {
@@ -1112,14 +1136,20 @@ fn attack_action_out_of_range() {
     assert_eq!(val, Value::None);
 
     // RequiresCheck should have passed=false
-    assert!(handler.log.iter().any(|e| matches!(
-        e,
-        Effect::RequiresCheck { passed: false, .. }
-    )));
+    assert!(handler
+        .log
+        .iter()
+        .any(|e| matches!(e, Effect::RequiresCheck { passed: false, .. })));
     // No DeductCost
-    assert!(!handler.log.iter().any(|e| matches!(e, Effect::DeductCost { .. })));
+    assert!(!handler
+        .log
+        .iter()
+        .any(|e| matches!(e, Effect::DeductCost { .. })));
     // No RollDice
-    assert!(!handler.log.iter().any(|e| matches!(e, Effect::RollDice { .. })));
+    assert!(!handler
+        .log
+        .iter()
+        .any(|e| matches!(e, Effect::RollDice { .. })));
     // ActionCompleted should still be present
     assert!(matches!(
         handler.log.last().unwrap(),
@@ -1358,8 +1388,7 @@ fn prone_on_attacker_disadvantage() {
         14,
         8,
     );
-    let mut handler =
-        ScriptedHandler::with_responses(vec![Response::Acknowledged, roll_response]);
+    let mut handler = ScriptedHandler::with_responses(vec![Response::Acknowledged, roll_response]);
 
     let _val = interp
         .evaluate_mechanic(
@@ -1424,8 +1453,7 @@ fn prone_on_target_melee_advantage() {
         24,
         18,
     );
-    let mut handler =
-        ScriptedHandler::with_responses(vec![Response::Acknowledged, roll_response]);
+    let mut handler = ScriptedHandler::with_responses(vec![Response::Acknowledged, roll_response]);
 
     let _val = interp
         .evaluate_mechanic(
@@ -1537,8 +1565,7 @@ fn prone_on_target_ranged_disadvantage() {
         13,
         8,
     );
-    let mut handler =
-        ScriptedHandler::with_responses(vec![Response::Acknowledged, roll_response]);
+    let mut handler = ScriptedHandler::with_responses(vec![Response::Acknowledged, roll_response]);
 
     let _val = interp
         .evaluate_mechanic(

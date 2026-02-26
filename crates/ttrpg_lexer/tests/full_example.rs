@@ -24,7 +24,9 @@ fn test_overflow_int_literal_produces_error() {
     // A number that overflows i64 should produce an error token, not Int(0)
     let source = "99999999999999999999";
     let tokens: Vec<_> = RawLexer::new(source, FileId::SYNTH).collect();
-    let has_error = tokens.iter().any(|t| matches!(&t.kind, TokenKind::Error(_)));
+    let has_error = tokens
+        .iter()
+        .any(|t| matches!(&t.kind, TokenKind::Error(_)));
     let has_zero = tokens.iter().any(|t| matches!(&t.kind, TokenKind::Int(0)));
     assert!(
         has_error && !has_zero,
@@ -49,7 +51,9 @@ fn test_overflow_dice_sides_gives_misleading_error() {
     assert!(!error_msgs.is_empty(), "should produce an error");
     // The error should mention overflow, not "dice sides must be at least 1"
     assert!(
-        error_msgs.iter().any(|m| m.contains("overflow") || m.contains("too large")),
+        error_msgs
+            .iter()
+            .any(|m| m.contains("overflow") || m.contains("too large")),
         "error should mention overflow, not misleading 'sides must be at least 1'; got: {:?}",
         error_msgs,
     );
@@ -60,7 +64,9 @@ fn test_overflow_dice_count_produces_error() {
     // A count that overflows u32 when cast: 4294967296d6 should error, not become 0d6
     let source = "4294967296d6";
     let tokens: Vec<_> = RawLexer::new(source, FileId::SYNTH).collect();
-    let has_zero_count = tokens.iter().any(|t| matches!(&t.kind, TokenKind::Dice { count: 0, .. }));
+    let has_zero_count = tokens
+        .iter()
+        .any(|t| matches!(&t.kind, TokenKind::Dice { count: 0, .. }));
     assert!(
         !has_zero_count,
         "overflowing dice count should not silently wrap to 0; got: {:?}",
@@ -73,8 +79,12 @@ fn test_overflow_unit_literal_produces_error() {
     // A unit literal with overflowing numeric part should error, not become 0ft
     let source = "99999999999999999999ft";
     let tokens: Vec<_> = RawLexer::new(source, FileId::SYNTH).collect();
-    let has_error = tokens.iter().any(|t| matches!(&t.kind, TokenKind::Error(_)));
-    let has_zero_unit = tokens.iter().any(|t| matches!(&t.kind, TokenKind::UnitLiteral { value: 0, .. }));
+    let has_error = tokens
+        .iter()
+        .any(|t| matches!(&t.kind, TokenKind::Error(_)));
+    let has_zero_unit = tokens
+        .iter()
+        .any(|t| matches!(&t.kind, TokenKind::UnitLiteral { value: 0, .. }));
     assert!(
         has_error && !has_zero_unit,
         "overflowing unit literal should produce Error, not UnitLiteral(0, ft); got: {:?}",

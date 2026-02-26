@@ -245,17 +245,20 @@ impl Parser {
                 let tok = self.advance();
                 match tok.kind {
                     TokenKind::Int(n) => Ok(Spanned::new(ExprKind::IntLit(n), tok.span)),
-                    TokenKind::Dice { count, sides, filter } => {
-                        Ok(Spanned::new(
-                            ExprKind::DiceLit { count, sides, filter },
-                            tok.span,
-                        ))
-                    }
+                    TokenKind::Dice {
+                        count,
+                        sides,
+                        filter,
+                    } => Ok(Spanned::new(
+                        ExprKind::DiceLit {
+                            count,
+                            sides,
+                            filter,
+                        },
+                        tok.span,
+                    )),
                     TokenKind::UnitLiteral { value, suffix } => {
-                        Ok(Spanned::new(
-                            ExprKind::UnitLit { value, suffix },
-                            tok.span,
-                        ))
+                        Ok(Spanned::new(ExprKind::UnitLit { value, suffix }, tok.span))
                     }
                     _ => unreachable!(),
                 }
@@ -298,7 +301,10 @@ impl Parser {
                 if matches!(self.peek(), TokenKind::RBracket) {
                     // Empty list: []
                     self.advance();
-                    return Ok(Spanned::new(ExprKind::ListLit(vec![]), self.end_span(start)));
+                    return Ok(Spanned::new(
+                        ExprKind::ListLit(vec![]),
+                        self.end_span(start),
+                    ));
                 }
                 let first = self.parse_expr()?;
                 if matches!(self.peek(), TokenKind::For) {
@@ -307,7 +313,8 @@ impl Parser {
                     let pattern = self.parse_pattern()?;
                     self.expect(&TokenKind::In)?;
                     let iter_first = self.parse_expr()?;
-                    let iterable = if matches!(self.peek(), TokenKind::DotDot | TokenKind::DotDotEq) {
+                    let iterable = if matches!(self.peek(), TokenKind::DotDot | TokenKind::DotDotEq)
+                    {
                         let inclusive = matches!(self.peek(), TokenKind::DotDotEq);
                         self.advance();
                         let end = self.parse_expr()?;
@@ -376,7 +383,10 @@ impl Parser {
                 }
                 self.skip_newlines();
                 self.expect(&TokenKind::RBrace)?;
-                Ok(Spanned::new(ExprKind::MapLit(entries), self.end_span(start)))
+                Ok(Spanned::new(
+                    ExprKind::MapLit(entries),
+                    self.end_span(start),
+                ))
             }
 
             TokenKind::LParen => {
@@ -574,7 +584,10 @@ impl Parser {
                 self.advance();
             }
             let saw_newline = self.skip_newlines();
-            if !saw_comma && !saw_newline && !matches!(self.peek(), TokenKind::RBrace | TokenKind::Eof) {
+            if !saw_comma
+                && !saw_newline
+                && !matches!(self.peek(), TokenKind::RBrace | TokenKind::Eof)
+            {
                 self.error("expected ',' or newline between match arms");
                 return Err(());
             }
@@ -611,7 +624,10 @@ impl Parser {
                 self.advance();
             }
             let saw_newline = self.skip_newlines();
-            if !saw_comma && !saw_newline && !matches!(self.peek(), TokenKind::RBrace | TokenKind::Eof) {
+            if !saw_comma
+                && !saw_newline
+                && !matches!(self.peek(), TokenKind::RBrace | TokenKind::Eof)
+            {
                 self.error("expected ',' or newline between match arms");
                 return Err(());
             }

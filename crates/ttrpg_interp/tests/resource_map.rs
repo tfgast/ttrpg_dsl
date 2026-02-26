@@ -5,8 +5,8 @@
 
 use std::collections::{BTreeMap, HashMap, VecDeque};
 
-use ttrpg_ast::FileId;
 use ttrpg_ast::diagnostic::Severity;
+use ttrpg_ast::FileId;
 use ttrpg_interp::adapter::StateAdapter;
 use ttrpg_interp::effect::{Effect, EffectHandler, Response};
 use ttrpg_interp::reference_state::GameState;
@@ -562,8 +562,16 @@ fn resource_map_multiple_keys_mutated_in_one_action() {
         Some(Value::Map(m)) => m,
         other => panic!("expected Map, got {:?}", other),
     };
-    assert_eq!(map.get(&Value::Int(1)), Some(&Value::Int(3)), "level 1: 4-1=3");
-    assert_eq!(map.get(&Value::Int(3)), Some(&Value::Int(1)), "level 3: 2-1=1");
+    assert_eq!(
+        map.get(&Value::Int(1)),
+        Some(&Value::Int(3)),
+        "level 1: 4-1=3"
+    );
+    assert_eq!(
+        map.get(&Value::Int(3)),
+        Some(&Value::Int(1)),
+        "level 3: 2-1=1"
+    );
 }
 
 // ── Derive reads from resource map ─────────────────────────────
@@ -598,7 +606,12 @@ fn resource_map_derive_reads_present_key() {
 
     let mut handler = ScriptedHandler::new();
     let result_val = interp
-        .evaluate_derive(&state, &mut handler, "slots_at", vec![Value::Entity(hero), Value::Int(2)])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "slots_at",
+            vec![Value::Entity(hero), Value::Int(2)],
+        )
         .unwrap();
     assert_eq!(result_val, Value::Int(3));
 }
@@ -619,7 +632,12 @@ fn resource_map_derive_sums_multiple_keys() {
 
     let mut handler = ScriptedHandler::new();
     let result_val = interp
-        .evaluate_derive(&state, &mut handler, "total_low_slots", vec![Value::Entity(hero)])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "total_low_slots",
+            vec![Value::Entity(hero)],
+        )
         .unwrap();
     assert_eq!(result_val, Value::Int(9), "4+3+2=9");
 }
@@ -669,7 +687,12 @@ fn resource_map_enum_key_read_and_mutate() {
     // Read via derive
     let mut handler = ScriptedHandler::new();
     let str_val = interp
-        .evaluate_derive(&state, &mut handler, "get_stat", vec![Value::Entity(hero), ability_variant("STR")])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "get_stat",
+            vec![Value::Entity(hero), ability_variant("STR")],
+        )
         .unwrap();
     assert_eq!(str_val, Value::Int(18));
 
@@ -690,7 +713,11 @@ fn resource_map_enum_key_read_and_mutate() {
         other => panic!("expected Map, got {:?}", other),
     };
     assert_eq!(map.get(&ability_variant("STR")), Some(&Value::Int(19)));
-    assert_eq!(map.get(&ability_variant("DEX")), Some(&Value::Int(14)), "DEX unchanged");
+    assert_eq!(
+        map.get(&ability_variant("DEX")),
+        Some(&Value::Int(14)),
+        "DEX unchanged"
+    );
 }
 
 #[test]

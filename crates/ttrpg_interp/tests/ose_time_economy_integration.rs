@@ -18,7 +18,10 @@ fn compile_ose_time_economy() -> (ttrpg_ast::ast::Program, ttrpg_checker::CheckR
 
     let sources = vec![
         ("ose/ose_core.ttrpg".to_string(), core_source.to_string()),
-        ("ose/ose_time_economy.ttrpg".to_string(), time_source.to_string()),
+        (
+            "ose/ose_time_economy.ttrpg".to_string(),
+            time_source.to_string(),
+        ),
     ];
 
     let parse_result = ttrpg_parser::parse_multi(&sources);
@@ -106,11 +109,21 @@ fn ose_time_economy_has_expected_decls() {
                     match &decl.node {
                         DeclKind::Enum(e) if e.name == "LightSourceKind" => has_light_enum = true,
                         DeclKind::Enum(e) if e.name == "ArmourKind" => has_armour_enum = true,
-                        DeclKind::Table(t) if t.name == "light_source_turns" => has_light_table = true,
-                        DeclKind::Table(t) if t.name == "coin_gp_value_x100" => has_coin_table = true,
-                        DeclKind::Table(t) if t.name == "armour_weight_cn" => has_armour_table = true,
-                        DeclKind::Derive(d) if d.name == "rest_interval_turns" => has_rest_interval = true,
-                        DeclKind::Derive(d) if d.name == "training_cost_gp" => has_training_cost = true,
+                        DeclKind::Table(t) if t.name == "light_source_turns" => {
+                            has_light_table = true
+                        }
+                        DeclKind::Table(t) if t.name == "coin_gp_value_x100" => {
+                            has_coin_table = true
+                        }
+                        DeclKind::Table(t) if t.name == "armour_weight_cn" => {
+                            has_armour_table = true
+                        }
+                        DeclKind::Derive(d) if d.name == "rest_interval_turns" => {
+                            has_rest_interval = true
+                        }
+                        DeclKind::Derive(d) if d.name == "training_cost_gp" => {
+                            has_training_cost = true
+                        }
                         _ => {}
                     }
                 }

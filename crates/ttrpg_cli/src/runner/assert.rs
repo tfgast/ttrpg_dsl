@@ -53,12 +53,10 @@ impl Runner {
                 self.output.truncate(output_len);
                 Ok(())
             }
-            Ok(()) => {
-                Err(CliError::Message(format!(
-                    "assertion failed: expected error from: {}",
-                    tail
-                )))
-            }
+            Ok(()) => Err(CliError::Message(format!(
+                "assertion failed: expected error from: {}",
+                tail
+            ))),
         }
     }
 }

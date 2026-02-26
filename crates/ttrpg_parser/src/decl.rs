@@ -24,7 +24,10 @@ impl Parser {
                 "table" => self.parse_table_decl().map(DeclKind::Table),
                 "unit" => self.parse_unit_decl().map(DeclKind::Unit),
                 _ => {
-                    self.error(format!("unexpected identifier '{}' in declaration position", name));
+                    self.error(format!(
+                        "unexpected identifier '{}' in declaration position",
+                        name
+                    ));
                     Err(())
                 }
             },
@@ -61,7 +64,10 @@ impl Parser {
                 self.advance();
             }
             let saw_newline = self.skip_newlines();
-            if !saw_comma && !saw_newline && !matches!(self.peek(), TokenKind::RBrace | TokenKind::Eof) {
+            if !saw_comma
+                && !saw_newline
+                && !matches!(self.peek(), TokenKind::RBrace | TokenKind::Eof)
+            {
                 self.error("expected ',' or newline between enum variants");
                 return Err(());
             }
@@ -73,7 +79,11 @@ impl Parser {
         }
 
         self.expect(&TokenKind::RBrace)?;
-        Ok(EnumDecl { name, ordered, variants })
+        Ok(EnumDecl {
+            name,
+            ordered,
+            variants,
+        })
     }
 
     fn parse_enum_variant(&mut self) -> Result<EnumVariant, ()> {
@@ -171,14 +181,21 @@ impl Parser {
                 self.advance();
             }
             let saw_newline = self.skip_newlines();
-            if !saw_comma && !saw_newline && !matches!(self.peek(), TokenKind::RBrace | TokenKind::Eof) {
+            if !saw_comma
+                && !saw_newline
+                && !matches!(self.peek(), TokenKind::RBrace | TokenKind::Eof)
+            {
                 self.error("expected ',' or newline between fields");
                 return Err(());
             }
         }
 
         self.expect(&TokenKind::RBrace)?;
-        Ok(EntityDecl { name, fields, optional_groups })
+        Ok(EntityDecl {
+            name,
+            fields,
+            optional_groups,
+        })
     }
 
     fn parse_optional_group(&mut self) -> Result<OptionalGroup, ()> {
@@ -225,7 +242,10 @@ impl Parser {
                 self.advance();
             }
             let saw_newline = self.skip_newlines();
-            if !saw_comma && !saw_newline && !matches!(self.peek(), TokenKind::RBrace | TokenKind::Eof) {
+            if !saw_comma
+                && !saw_newline
+                && !matches!(self.peek(), TokenKind::RBrace | TokenKind::Eof)
+            {
                 self.error("expected ',' or newline between fields");
                 return Err(());
             }
@@ -1078,7 +1098,11 @@ impl Parser {
         self.skip_newlines();
         let fields = self.parse_field_defs()?;
         self.expect(&TokenKind::RBrace)?;
-        Ok(UnitDecl { name, suffix, fields })
+        Ok(UnitDecl {
+            name,
+            suffix,
+            fields,
+        })
     }
 
     /// Parse a single table key: expression, range (`1..=3`), or wildcard (`_`).
@@ -1089,7 +1113,10 @@ impl Parser {
         if matches!(self.peek(), TokenKind::Underscore) {
             self.advance();
             let span = self.end_span(start);
-            return Ok(Spanned { node: TableKey::Wildcard, span });
+            return Ok(Spanned {
+                node: TableKey::Wildcard,
+                span,
+            });
         }
 
         // Parse the expression (might be followed by `..=` for a range)

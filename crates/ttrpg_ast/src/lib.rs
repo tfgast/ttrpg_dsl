@@ -1,13 +1,13 @@
-pub mod span;
 pub mod ast;
 pub mod diagnostic;
 pub mod module;
 pub mod name;
+pub mod span;
 pub mod visit;
 
-pub use span::{FileId, Span, Spanned};
 pub use diagnostic::{Diagnostic, MultiSourceMap, Severity, SourceMap};
 pub use name::Name;
+pub use span::{FileId, Span, Spanned};
 pub use visit::VisitSpansMut;
 
 /// Dice filter type — shared between lexer (token representation) and AST.

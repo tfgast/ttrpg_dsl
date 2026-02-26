@@ -1,17 +1,33 @@
-use reedline::{Highlighter, StyledText};
 use nu_ansi_term::{Color, Style};
+use reedline::{Highlighter, StyledText};
 use ttrpg_ast::FileId;
-use ttrpg_lexer::RawLexer;
 use ttrpg_lexer::token::TokenKind;
+use ttrpg_lexer::RawLexer;
 
 /// CLI command names that get special highlighting.
 const CLI_COMMANDS: &[&str] = &[
-    "load", "eval", "reload", "errors",
-    "spawn", "set", "destroy", "do", "call",
-    "grant", "revoke",
-    "inspect", "state", "types", "actions", "mechanics", "conditions",
-    "assert", "assert_eq", "assert_err",
-    "seed", "rolls",
+    "load",
+    "eval",
+    "reload",
+    "errors",
+    "spawn",
+    "set",
+    "destroy",
+    "do",
+    "call",
+    "grant",
+    "revoke",
+    "inspect",
+    "state",
+    "types",
+    "actions",
+    "mechanics",
+    "conditions",
+    "assert",
+    "assert_eq",
+    "assert_err",
+    "seed",
+    "rolls",
 ];
 
 /// Syntax highlighter for the TTRPG REPL.
@@ -96,9 +112,12 @@ fn token_style(kind: &TokenKind, is_first_cli_command: bool) -> Style {
         TokenKind::Ident(_) if is_first_cli_command => Color::Cyan.bold(),
 
         // DSL keywords
-        TokenKind::If | TokenKind::Else | TokenKind::Match | TokenKind::Let | TokenKind::In | TokenKind::For => {
-            Color::Blue.bold()
-        }
+        TokenKind::If
+        | TokenKind::Else
+        | TokenKind::Match
+        | TokenKind::Let
+        | TokenKind::In
+        | TokenKind::For => Color::Blue.bold(),
 
         // Literals
         TokenKind::True | TokenKind::False | TokenKind::None => Color::Yellow.normal(),
@@ -190,7 +209,11 @@ mod tests {
         let cmd_segment = result.buffer.iter().find(|(_, text)| text == "eval");
         assert!(cmd_segment.is_some(), "eval should appear in output");
         let (style, _) = cmd_segment.unwrap();
-        assert_eq!(*style, Color::Cyan.bold(), "eval should be highlighted as CLI command even with leading whitespace");
+        assert_eq!(
+            *style,
+            Color::Cyan.bold(),
+            "eval should be highlighted as CLI command even with leading whitespace"
+        );
     }
 
     #[test]

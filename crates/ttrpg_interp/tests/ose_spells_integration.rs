@@ -18,7 +18,10 @@ fn compile_ose_spells() -> (ttrpg_ast::ast::Program, ttrpg_checker::CheckResult)
 
     let sources = vec![
         ("ose/ose_core.ttrpg".to_string(), core_source.to_string()),
-        ("ose/ose_spells.ttrpg".to_string(), spells_source.to_string()),
+        (
+            "ose/ose_spells.ttrpg".to_string(),
+            spells_source.to_string(),
+        ),
     ];
 
     let parse_result = ttrpg_parser::parse_multi(&sources);

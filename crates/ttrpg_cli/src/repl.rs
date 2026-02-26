@@ -2,10 +2,10 @@ use std::sync::{Arc, Mutex};
 
 use nu_ansi_term::{Color, Style};
 use reedline::{
+    default_emacs_keybindings, default_vi_insert_keybindings, default_vi_normal_keybindings,
     ColumnarMenu, DefaultHinter, EditMode, Emacs, FileBackedHistory, KeyCode, KeyModifiers,
     Keybindings, MenuBuilder, Prompt, PromptEditMode, PromptHistorySearch,
     PromptHistorySearchStatus, Reedline, ReedlineEvent, ReedlineMenu, Signal, Vi,
-    default_emacs_keybindings, default_vi_insert_keybindings, default_vi_normal_keybindings,
 };
 
 use crate::completer::{CompletionContext, TtrpgCompleter};
@@ -27,9 +27,7 @@ impl Prompt for TtrpgPrompt {
 
     fn render_prompt_indicator(&self, edit_mode: PromptEditMode) -> std::borrow::Cow<'_, str> {
         match edit_mode {
-            PromptEditMode::Default | PromptEditMode::Emacs => {
-                std::borrow::Cow::Borrowed("> ")
-            }
+            PromptEditMode::Default | PromptEditMode::Emacs => std::borrow::Cow::Borrowed("> "),
             PromptEditMode::Vi(vi_mode) => match vi_mode {
                 reedline::PromptViMode::Normal => std::borrow::Cow::Borrowed(": "),
                 reedline::PromptViMode::Insert => std::borrow::Cow::Borrowed("> "),

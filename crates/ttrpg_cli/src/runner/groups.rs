@@ -22,7 +22,11 @@ impl Runner {
             .clone();
 
         for (field_name, field_val) in &fields {
-            match group_info.fields.iter().find(|f| f.name == field_name.as_str()) {
+            match group_info
+                .fields
+                .iter()
+                .find(|f| f.name == field_name.as_str())
+            {
                 None => {
                     return Err(CliError::Message(format!(
                         "unknown field '{}' in group '{}'",
@@ -53,7 +57,10 @@ impl Runner {
             }
         }
 
-        let btree_fields: BTreeMap<Name, Value> = fields.into_iter().map(|(k, v)| (Name::from(k), v)).collect();
+        let btree_fields: BTreeMap<Name, Value> = fields
+            .into_iter()
+            .map(|(k, v)| (Name::from(k), v))
+            .collect();
         Ok(Value::Struct {
             name: Name::from(group_name),
             fields: btree_fields,

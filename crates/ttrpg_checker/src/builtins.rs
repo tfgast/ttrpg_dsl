@@ -26,17 +26,42 @@ pub fn register_builtins() -> Vec<FnInfo> {
         // Available everywhere
         builtin("floor", vec![param("x", Ty::Float)], Ty::Int),
         builtin("ceil", vec![param("x", Ty::Float)], Ty::Int),
-        builtin("max", vec![param("a", Ty::Int), param("b", Ty::Int)], Ty::Int),
-        builtin("min", vec![param("a", Ty::Int), param("b", Ty::Int)], Ty::Int),
-        builtin("distance", vec![param("a", Ty::Position), param("b", Ty::Position)], Ty::Int),
-        builtin("dice", vec![param("count", Ty::Int), param("sides", Ty::Int)], Ty::DiceExpr),
-        builtin("multiply_dice", vec![param("expr", Ty::DiceExpr), param("factor", Ty::Int)], Ty::DiceExpr),
+        builtin(
+            "max",
+            vec![param("a", Ty::Int), param("b", Ty::Int)],
+            Ty::Int,
+        ),
+        builtin(
+            "min",
+            vec![param("a", Ty::Int), param("b", Ty::Int)],
+            Ty::Int,
+        ),
+        builtin(
+            "distance",
+            vec![param("a", Ty::Position), param("b", Ty::Position)],
+            Ty::Int,
+        ),
+        builtin(
+            "dice",
+            vec![param("count", Ty::Int), param("sides", Ty::Int)],
+            Ty::DiceExpr,
+        ),
+        builtin(
+            "multiply_dice",
+            vec![param("expr", Ty::DiceExpr), param("factor", Ty::Int)],
+            Ty::DiceExpr,
+        ),
+        builtin("error", vec![param("message", Ty::String)], Ty::Error),
         // Available in rolling blocks
         builtin("roll", vec![param("expr", Ty::DiceExpr)], Ty::RollResult),
         // Available in mutation blocks
         builtin(
             "apply_condition",
-            vec![param("target", Ty::AnyEntity), param("cond", Ty::Condition), param("duration", Ty::Duration)],
+            vec![
+                param("target", Ty::AnyEntity),
+                param("cond", Ty::Condition),
+                param("duration", Ty::Duration),
+            ],
             Ty::Unit,
         ),
         builtin(

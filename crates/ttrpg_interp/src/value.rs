@@ -240,10 +240,9 @@ impl PartialEq for Value {
                 },
             ) => e1 == e2 && v1 == v2 && f1 == f2,
             (Value::Position(a), Value::Position(b)) => a == b,
-            (
-                Value::Condition { name: n1, args: a1 },
-                Value::Condition { name: n2, args: a2 },
-            ) => n1 == n2 && a1 == a2,
+            (Value::Condition { name: n1, args: a1 }, Value::Condition { name: n2, args: a2 }) => {
+                n1 == n2 && a1 == a2
+            }
             (Value::EnumNamespace(a), Value::EnumNamespace(b)) => a == b,
             _ => false,
         }
@@ -312,10 +311,9 @@ impl Ord for Value {
                 .then_with(|| v1.cmp(v2))
                 .then_with(|| ordered_map_cmp(f1, f2)),
             (Value::Position(a), Value::Position(b)) => a.cmp(b),
-            (
-                Value::Condition { name: n1, args: a1 },
-                Value::Condition { name: n2, args: a2 },
-            ) => n1.cmp(n2).then_with(|| ordered_map_cmp(a1, a2)),
+            (Value::Condition { name: n1, args: a1 }, Value::Condition { name: n2, args: a2 }) => {
+                n1.cmp(n2).then_with(|| ordered_map_cmp(a1, a2))
+            }
             (Value::EnumNamespace(a), Value::EnumNamespace(b)) => a.cmp(b),
             // Same discriminant guarantees same variant.
             _ => unreachable!(),
@@ -703,9 +701,13 @@ mod tests {
         let eq = a == b;
         let ord_eq = a.cmp(b) == std::cmp::Ordering::Equal;
         assert_eq!(
-            eq, ord_eq,
+            eq,
+            ord_eq,
             "Ord/Eq contract violation: ({:?}).eq({:?}) = {}, cmp = {:?}",
-            a, b, eq, a.cmp(b)
+            a,
+            b,
+            eq,
+            a.cmp(b)
         );
     }
 
@@ -800,13 +802,30 @@ mod tests {
                 Value::List(vec![Value::Int(1)]),
                 Value::List(vec![Value::Int(2)]),
             ),
-            (Value::Entity(EntityRef(1)), Value::Entity(EntityRef(1)), Value::Entity(EntityRef(2))),
+            (
+                Value::Entity(EntityRef(1)),
+                Value::Entity(EntityRef(1)),
+                Value::Entity(EntityRef(2)),
+            ),
             (
                 Value::Position(PositionValue(Arc::clone(&pos))),
                 Value::Position(PositionValue(Arc::clone(&pos))),
                 Value::Position(PositionValue(Arc::new(99i64))),
             ),
-            (Value::Condition { name: "Prone".into(), args: BTreeMap::new() }, Value::Condition { name: "Prone".into(), args: BTreeMap::new() }, Value::Condition { name: "Stunned".into(), args: BTreeMap::new() }),
+            (
+                Value::Condition {
+                    name: "Prone".into(),
+                    args: BTreeMap::new(),
+                },
+                Value::Condition {
+                    name: "Prone".into(),
+                    args: BTreeMap::new(),
+                },
+                Value::Condition {
+                    name: "Stunned".into(),
+                    args: BTreeMap::new(),
+                },
+            ),
         ];
 
         for (a, b_eq, b_ne) in &pairs {
