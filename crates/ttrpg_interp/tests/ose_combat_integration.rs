@@ -61,6 +61,18 @@ fn enum_variant(enum_name: &str, variant: &str) -> Value {
     }
 }
 
+fn combat_phase(variant: &str) -> Value {
+    enum_variant("CombatPhase", variant)
+}
+
+fn initiative_winner(variant: &str) -> Value {
+    enum_variant("InitiativeWinner", variant)
+}
+
+fn phase_actor_slot(variant: &str) -> Value {
+    enum_variant("PhaseActorSlot", variant)
+}
+
 // ── Effect handler ─────────────────────────────────────────────
 
 struct NullHandler;
@@ -140,7 +152,10 @@ fn ose_combat_has_enums() {
     assert!(enums.contains(&("AttackOutcome", 2)));
     assert!(enums.contains(&("MoraleOutcome", 2)));
     assert!(enums.contains(&("ReactionOutcome", 5)));
-    assert_eq!(enums.len(), 4, "expected 4 enums");
+    assert!(enums.contains(&("CombatPhase", 8)));
+    assert!(enums.contains(&("InitiativeWinner", 3)));
+    assert!(enums.contains(&("PhaseActorSlot", 5)));
+    assert_eq!(enums.len(), 7, "expected 7 enums");
 }
 
 #[test]
@@ -345,6 +360,85 @@ fn missile_range_long() {
         )
         .unwrap();
     assert_eq!(val, Value::Int(-1));
+}
+
+#[test]
+fn phase_sequence_is_typed_and_ordered() {
+    let (program, result) = compile_ose_combat();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NullHandler;
+
+    let val = interp
+        .evaluate_derive(&state, &mut handler, "phase_sequence", vec![])
+        .unwrap();
+    assert_eq!(
+        val,
+        Value::List(vec![
+            combat_phase("Declaration"),
+            combat_phase("Initiative"),
+            combat_phase("Morale"),
+            combat_phase("Movement"),
+            combat_phase("Missile"),
+            combat_phase("Magic"),
+            combat_phase("Melee"),
+            combat_phase("EndOfRound"),
+        ])
+    );
+}
+
+#[test]
+fn phase_actor_order_uses_enum_inputs_and_outputs() {
+    let (program, result) = compile_ose_combat();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NullHandler;
+
+    let declaration = interp
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "phase_actor_order",
+            vec![combat_phase("Declaration"), initiative_winner("Party")],
+        )
+        .unwrap();
+    assert_eq!(declaration, Value::List(vec![phase_actor_slot("Both")]));
+
+    let melee_party_first = interp
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "phase_actor_order",
+            vec![combat_phase("Melee"), initiative_winner("Party")],
+        )
+        .unwrap();
+    assert_eq!(
+        melee_party_first,
+        Value::List(vec![phase_actor_slot("Party"), phase_actor_slot("Monsters")])
+    );
+}
+
+#[test]
+fn skip_phase_uses_typed_phase_enum() {
+    let (program, result) = compile_ose_combat();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NullHandler;
+
+    let skip_magic = interp
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "skip_phase",
+            vec![
+                combat_phase("Magic"),
+                Value::Int(1),
+                Value::Int(0),
+                Value::Int(1),
+            ],
+        )
+        .unwrap();
+    assert_eq!(skip_magic, Value::Int(1));
 }
 
 // ── Table evaluation (via wrapper derives) ─────────────────────

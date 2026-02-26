@@ -78,9 +78,21 @@ impl EffectHandler for ScriptedHandler {
 }
 
 fn action_val(name: &str) -> Value {
+    enum_variant("ExplorationAction", name)
+}
+
+fn phase_val(name: &str) -> Value {
+    enum_variant("ExplorationPhase", name)
+}
+
+fn action_phase_val(name: &str) -> Value {
+    enum_variant("ExplorationActionPhase", name)
+}
+
+fn enum_variant(enum_name: &str, variant: &str) -> Value {
     Value::EnumVariant {
-        enum_name: "ExplorationAction".into(),
-        variant: name.into(),
+        enum_name: enum_name.into(),
+        variant: variant.into(),
         fields: BTreeMap::new(),
     }
 }
@@ -121,6 +133,8 @@ fn ose_exploration_has_expected_decls() {
     let (program, _) = compile_ose_exploration();
 
     let mut has_action_enum = false;
+    let mut has_phase_enum = false;
+    let mut has_action_phase_enum = false;
     let mut has_turn_phases_derive = false;
     let mut has_action_phases_table = false;
     let mut has_skip_phase_derive = false;
@@ -134,6 +148,14 @@ fn ose_exploration_has_expected_decls() {
                         DeclKind::Enum(e) if e.name == "ExplorationAction" => {
                             has_action_enum = true;
                             assert_eq!(e.variants.len(), 6);
+                        }
+                        DeclKind::Enum(e) if e.name == "ExplorationPhase" => {
+                            has_phase_enum = true;
+                            assert_eq!(e.variants.len(), 6);
+                        }
+                        DeclKind::Enum(e) if e.name == "ExplorationActionPhase" => {
+                            has_action_phase_enum = true;
+                            assert_eq!(e.variants.len(), 14);
                         }
                         DeclKind::Derive(d) if d.name == "exploration_turn_phases" => {
                             has_turn_phases_derive = true
@@ -155,6 +177,11 @@ fn ose_exploration_has_expected_decls() {
     }
 
     assert!(has_action_enum, "expected ExplorationAction enum");
+    assert!(has_phase_enum, "expected ExplorationPhase enum");
+    assert!(
+        has_action_phase_enum,
+        "expected ExplorationActionPhase enum"
+    );
     assert!(has_turn_phases_derive, "expected exploration_turn_phases derive");
     assert!(has_action_phases_table, "expected exploration_action_phases table");
     assert!(has_skip_phase_derive, "expected skip_exploration_phase derive");
@@ -171,7 +198,17 @@ fn exploration_phase_tables_and_derives() {
     let turn_phases = interp
         .evaluate_derive(&state, &mut handler, "exploration_turn_phases", vec![])
         .unwrap();
-    assert!(matches!(turn_phases, Value::List(ref xs) if xs.len() == 6));
+    assert_eq!(
+        turn_phases,
+        Value::List(vec![
+            phase_val("CheckLight"),
+            phase_val("AdvanceTime"),
+            phase_val("CheckRest"),
+            phase_val("ExecuteAction"),
+            phase_val("LightSummary"),
+            phase_val("WanderingMonsterCheck"),
+        ])
+    );
 
     let move_phases = interp
         .evaluate_derive(
@@ -184,10 +221,10 @@ fn exploration_phase_tables_and_derives() {
     assert_eq!(
         move_phases,
         Value::List(vec![
-            Value::Str("ValidateDoor".into()),
-            Value::Str("TransitionRoom".into()),
-            Value::Str("CheckTrap".into()),
-            Value::Str("SpawnMonsters".into()),
+            action_phase_val("ValidateDoor"),
+            action_phase_val("TransitionRoom"),
+            action_phase_val("CheckTrap"),
+            action_phase_val("SpawnMonsters"),
         ])
     );
 }
@@ -205,7 +242,7 @@ fn skip_exploration_phase_logic() {
             &mut handler,
             "skip_exploration_phase",
             vec![
-                Value::Str("CheckLight".into()),
+                phase_val("CheckLight"),
                 Value::Bool(false),
                 Value::Bool(true),
             ],
@@ -219,7 +256,7 @@ fn skip_exploration_phase_logic() {
             &mut handler,
             "skip_exploration_phase",
             vec![
-                Value::Str("AdvanceTime".into()),
+                phase_val("AdvanceTime"),
                 Value::Bool(false),
                 Value::Bool(true),
             ],
@@ -233,7 +270,7 @@ fn skip_exploration_phase_logic() {
             &mut handler,
             "skip_exploration_phase",
             vec![
-                Value::Str("CheckRest".into()),
+                phase_val("CheckRest"),
                 Value::Bool(true),
                 Value::Bool(false),
             ],
