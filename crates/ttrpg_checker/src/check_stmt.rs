@@ -1,7 +1,7 @@
 use ttrpg_ast::ast::*;
 use ttrpg_ast::Spanned;
 
-use crate::check::Checker;
+use crate::check::{Checker, Namespace};
 use crate::scope::*;
 use crate::ty::Ty;
 
@@ -294,6 +294,7 @@ impl<'a> Checker<'a> {
         fields: &[StructFieldInit],
         span: ttrpg_ast::Span,
     ) {
+        self.check_name_visible(group_name, Namespace::Group, span);
         // grant/revoke only allowed in action/reaction context
         if !self.scope.allows_mutation() {
             self.error(
@@ -412,6 +413,7 @@ impl<'a> Checker<'a> {
         group_name: &str,
         span: ttrpg_ast::Span,
     ) {
+        self.check_name_visible(group_name, Namespace::Group, span);
         // grant/revoke only allowed in action/reaction context
         if !self.scope.allows_mutation() {
             self.error(

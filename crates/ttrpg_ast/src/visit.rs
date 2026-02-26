@@ -91,6 +91,7 @@ impl VisitSpansMut for SystemBlock {
 impl VisitSpansMut for DeclKind {
     fn visit_spans_mut(&mut self, f: &mut dyn FnMut(&mut Span)) {
         match self {
+            DeclKind::Group(g) => g.visit_spans_mut(f),
             DeclKind::Enum(e) => e.visit_spans_mut(f),
             DeclKind::Struct(s) => s.visit_spans_mut(f),
             DeclKind::Entity(e) => e.visit_spans_mut(f),
@@ -106,6 +107,12 @@ impl VisitSpansMut for DeclKind {
             DeclKind::Table(t) => t.visit_spans_mut(f),
             DeclKind::Unit(u) => u.visit_spans_mut(f),
         }
+    }
+}
+
+impl VisitSpansMut for GroupDecl {
+    fn visit_spans_mut(&mut self, f: &mut dyn FnMut(&mut Span)) {
+        self.fields.visit_spans_mut(f);
     }
 }
 

@@ -85,6 +85,9 @@ fn populate_module_metadata(
 ) {
     // Populate ownership maps from ModuleMap system info
     for (sys_name, sys_info) in &modules.systems {
+        for name in &sys_info.groups {
+            env.group_owner.insert(name.clone(), sys_name.clone());
+        }
         for name in &sys_info.types {
             env.type_owner.insert(name.clone(), sys_name.clone());
         }
@@ -107,6 +110,7 @@ fn populate_module_metadata(
         let mut vis = VisibleNames::default();
 
         // Own declarations
+        vis.groups.extend(sys_info.groups.iter().cloned());
         vis.types.extend(sys_info.types.iter().cloned());
         vis.functions.extend(sys_info.functions.iter().cloned());
         vis.conditions.extend(sys_info.conditions.iter().cloned());
@@ -117,6 +121,7 @@ fn populate_module_metadata(
         // Imported declarations
         for import in &sys_info.imports {
             if let Some(imported_sys) = modules.systems.get(&import.system_name) {
+                vis.groups.extend(imported_sys.groups.iter().cloned());
                 vis.types.extend(imported_sys.types.iter().cloned());
                 vis.functions.extend(imported_sys.functions.iter().cloned());
                 vis.conditions.extend(imported_sys.conditions.iter().cloned());
@@ -167,6 +172,7 @@ fn pass_1a(
 ) {
     for decl in decls {
         let (name, stub) = match &decl.node {
+            DeclKind::Group(_) => continue,
             DeclKind::Enum(e) => (
                 e.name.clone(),
                 DeclInfo::Enum(EnumInfo {
@@ -248,8 +254,20 @@ fn pass_1b(
     diagnostics: &mut Vec<Diagnostic>,
     processed_types: &mut HashSet<Name>,
 ) {
+    // First, collect top-level group schemas so entities can reference groups
+    // declared later in the same system.
+    for decl in decls {
+        if let DeclKind::Group(g) = &decl.node {
+            if check_reserved_prefix(&g.name, decl.span, diagnostics) {
+                continue;
+            }
+            collect_group(g, env, diagnostics, decl.span);
+        }
+    }
+
     for decl in decls {
         match &decl.node {
+            DeclKind::Group(_) => {}
             DeclKind::Enum(e) => {
                 if processed_types.insert(e.name.clone()) {
                     collect_enum(e, env, diagnostics);
@@ -456,6 +474,49 @@ fn collect_struct(s: &StructDecl, env: &mut TypeEnv, diagnostics: &mut Vec<Diagn
     }
 }
 
+fn collect_group(
+    g: &GroupDecl,
+    env: &mut TypeEnv,
+    diagnostics: &mut Vec<Diagnostic>,
+    span: Span,
+) {
+    if env.groups.contains_key(&g.name) {
+        diagnostics.push(Diagnostic::error(
+            format!("duplicate group declaration `{}`", g.name),
+            span,
+        ));
+        return;
+    }
+
+    let mut seen_fields = HashSet::new();
+    let fields: Vec<FieldInfo> = g
+        .fields
+        .iter()
+        .filter_map(|f| {
+            if !seen_fields.insert(f.name.clone()) {
+                diagnostics.push(Diagnostic::error(
+                    format!("duplicate field `{}` in group `{}`", f.name, g.name),
+                    f.span,
+                ));
+                return None;
+            }
+            Some(FieldInfo {
+                name: f.name.clone(),
+                ty: env.resolve_type_validated(&f.ty, diagnostics),
+                has_default: f.default.is_some(),
+            })
+        })
+        .collect();
+
+    env.groups.insert(
+        g.name.clone(),
+        OptionalGroupInfo {
+            name: g.name.clone(),
+            fields,
+        },
+    );
+}
+
 fn collect_entity(e: &EntityDecl, env: &mut TypeEnv, diagnostics: &mut Vec<Diagnostic>) {
     let mut seen = HashSet::new();
     let fields: Vec<FieldInfo> = e
@@ -502,6 +563,21 @@ fn collect_entity(e: &EntityDecl, env: &mut TypeEnv, diagnostics: &mut Vec<Diagn
                     g.span,
                 ));
                 return None;
+            }
+            if g.is_external_ref {
+                return match env.lookup_group(&g.name).cloned() {
+                    Some(schema) => Some(schema),
+                    None => {
+                        diagnostics.push(Diagnostic::error(
+                            format!(
+                                "unknown group `{}` attached to entity `{}`",
+                                g.name, e.name
+                            ),
+                            g.span,
+                        ));
+                        None
+                    }
+                };
             }
             let mut seen_fields = HashSet::new();
             let group_fields: Vec<FieldInfo> = g

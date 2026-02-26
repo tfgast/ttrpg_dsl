@@ -60,12 +60,12 @@ impl Runner {
         })
     }
 
-    /// Find an AST OptionalGroup by entity type and group name.
-    pub(super) fn find_optional_group_ast(
+    /// Find resolved AST field defs for an optional group on an entity.
+    pub(super) fn find_optional_group_ast_fields(
         &self,
         entity_type: &str,
         group_name: &str,
-    ) -> Option<OptionalGroup> {
+    ) -> Option<Vec<FieldDef>> {
         for item in &self.program.items {
             if let TopLevel::System(system) = &item.node {
                 for decl in &system.decls {
@@ -73,9 +73,27 @@ impl Runner {
                         if entity_decl.name == entity_type {
                             for group in &entity_decl.optional_groups {
                                 if group.name == group_name {
-                                    return Some(group.clone());
+                                    if group.is_external_ref {
+                                        return self.find_group_decl_fields(group_name);
+                                    }
+                                    return Some(group.fields.clone());
                                 }
                             }
+                        }
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    fn find_group_decl_fields(&self, group_name: &str) -> Option<Vec<FieldDef>> {
+        for item in &self.program.items {
+            if let TopLevel::System(system) = &item.node {
+                for decl in &system.decls {
+                    if let DeclKind::Group(group_decl) = &decl.node {
+                        if group_decl.name == group_name {
+                            return Some(group_decl.fields.clone());
                         }
                     }
                 }
@@ -91,12 +109,12 @@ impl Runner {
         entity_type: &str,
         fields: &mut HashMap<String, Value>,
     ) -> Result<(), CliError> {
-        let group = match self.find_optional_group_ast(entity_type, group_name) {
+        let group_fields = match self.find_optional_group_ast_fields(entity_type, group_name) {
             Some(g) => g,
             None => return Ok(()),
         };
 
-        for field_def in &group.fields {
+        for field_def in &group_fields {
             if fields.contains_key(field_def.name.as_str()) {
                 continue;
             }

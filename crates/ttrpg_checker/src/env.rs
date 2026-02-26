@@ -112,6 +112,7 @@ pub struct EventInfo {
 /// The populated symbol table — built by Pass 1, consumed by Pass 2.
 #[derive(Debug, Clone)]
 pub struct TypeEnv {
+    pub groups: HashMap<Name, OptionalGroupInfo>,
     pub types: HashMap<Name, DeclInfo>,
     pub functions: HashMap<Name, FnInfo>,
     pub conditions: HashMap<Name, ConditionInfo>,
@@ -125,6 +126,7 @@ pub struct TypeEnv {
     // ── Module awareness (populated when ModuleMap is provided) ───
     /// Declaration name → owning system name, per namespace.
     pub type_owner: HashMap<Name, Name>,
+    pub group_owner: HashMap<Name, Name>,
     pub function_owner: HashMap<Name, Name>,
     pub condition_owner: HashMap<Name, Name>,
     pub event_owner: HashMap<Name, Name>,
@@ -139,6 +141,7 @@ pub struct TypeEnv {
 /// Names visible to a system (own declarations + imported declarations).
 #[derive(Debug, Clone, Default)]
 pub struct VisibleNames {
+    pub groups: HashSet<Name>,
     pub types: HashSet<Name>,
     pub functions: HashSet<Name>,
     pub conditions: HashSet<Name>,
@@ -156,6 +159,7 @@ impl Default for TypeEnv {
 impl TypeEnv {
     pub fn new() -> Self {
         Self {
+            groups: HashMap::new(),
             types: HashMap::new(),
             functions: HashMap::new(),
             conditions: HashMap::new(),
@@ -166,6 +170,7 @@ impl TypeEnv {
             suffix_to_unit: HashMap::new(),
             options: HashSet::new(),
             type_owner: HashMap::new(),
+            group_owner: HashMap::new(),
             function_owner: HashMap::new(),
             condition_owner: HashMap::new(),
             event_owner: HashMap::new(),
@@ -353,8 +358,16 @@ impl TypeEnv {
         }
     }
 
+    /// Look up a top-level group declaration by name.
+    pub fn lookup_group(&self, group_name: &str) -> Option<&OptionalGroupInfo> {
+        self.groups.get(group_name)
+    }
+
     /// Return true if any entity declares an optional group with this name.
     pub fn has_optional_group_named(&self, group_name: &str) -> bool {
+        if self.groups.contains_key(group_name) {
+            return true;
+        }
         self.types.values().any(|decl| match decl {
             DeclInfo::Entity(info) => info.optional_groups.iter().any(|g| g.name == group_name),
             _ => false,
@@ -366,6 +379,9 @@ impl TypeEnv {
         &self,
         group_name: &str,
     ) -> Option<(Name, &OptionalGroupInfo)> {
+        if let Some(group) = self.groups.get(group_name) {
+            return Some((Name::from("entity"), group));
+        }
         let mut found: Option<(Name, &OptionalGroupInfo)> = None;
         for decl in self.types.values() {
             let DeclInfo::Entity(info) = decl else {

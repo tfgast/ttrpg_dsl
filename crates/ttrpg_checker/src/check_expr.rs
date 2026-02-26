@@ -619,6 +619,10 @@ impl<'a> Checker<'a> {
                     if let Some(fi) = group.fields.iter().find(|f| f.name == field) {
                         return fi.ty.clone();
                     }
+                } else if let Some(group) = self.env.lookup_group(group_name) {
+                    if let Some(fi) = group.fields.iter().find(|f| f.name == field) {
+                        return fi.ty.clone();
+                    }
                 }
                 self.error(
                     format!("optional group `{}` has no field `{}`", group_name, field),
@@ -2649,6 +2653,7 @@ impl<'a> Checker<'a> {
         group_name: &str,
         span: ttrpg_ast::Span,
     ) -> Ty {
+        self.check_name_visible(group_name, Namespace::Group, span);
         let entity_ty = self.check_expr(entity);
         if entity_ty.is_error() {
             return Ty::Bool;
@@ -2666,7 +2671,9 @@ impl<'a> Checker<'a> {
                 }
             }
             Ty::AnyEntity => {
-                if !self.env.has_optional_group_named(group_name) {
+                if self.env.lookup_group(group_name).is_none()
+                    && !self.env.has_optional_group_named(group_name)
+                {
                     self.error(
                         format!("unknown optional group `{}` for type `entity`", group_name),
                         span,

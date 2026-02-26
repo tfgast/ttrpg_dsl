@@ -26,6 +26,7 @@ pub struct FileSystemInfo {
 /// Namespace discriminant for collision detection and visibility checks.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum Namespace {
+    Group,
     Type,
     Function,
     Condition,
@@ -84,6 +85,7 @@ pub fn resolve_modules(
                 } else {
                     seen_names.insert((*ns, name.clone()), owned.span);
                     match ns {
+                        Namespace::Group => { info.groups.insert(name.clone()); }
                         Namespace::Type => { info.types.insert(name.clone()); }
                         Namespace::Function => { info.functions.insert(name.clone()); }
                         Namespace::Condition => { info.conditions.insert(name.clone()); }
@@ -256,7 +258,8 @@ pub fn resolve_modules(
 
 /// Check whether a system exports a name in any namespace.
 fn system_has_name(info: &SystemInfo, name: &str) -> bool {
-    info.types.contains(name)
+    info.groups.contains(name)
+        || info.types.contains(name)
         || info.functions.contains(name)
         || info.conditions.contains(name)
         || info.events.contains(name)
@@ -274,6 +277,9 @@ impl DeclOwnership {
     fn from_decl(decl: &DeclKind, span: Span) -> Self {
         let mut names = Vec::new();
         match decl {
+            DeclKind::Group(g) => {
+                names.push((Namespace::Group, g.name.clone()));
+            }
             DeclKind::Enum(e) => {
                 names.push((Namespace::Type, e.name.clone()));
                 for v in &e.variants {
@@ -335,6 +341,7 @@ fn detect_cross_system_collisions(
     // Variants are excluded: multi-owner variants are allowed across systems
     // and disambiguated by the checker via expected-type hints or qualified syntax.
     let namespaces: &[(Namespace, &str)] = &[
+        (Namespace::Group, "group"),
         (Namespace::Type, "type"),
         (Namespace::Function, "function"),
         (Namespace::Condition, "condition"),
@@ -347,6 +354,7 @@ fn detect_cross_system_collisions(
 
         for (sys_name, sys_info) in &module_map.systems {
             let names: &HashSet<Name> = match ns {
+                Namespace::Group => &sys_info.groups,
                 Namespace::Type => &sys_info.types,
                 Namespace::Function => &sys_info.functions,
                 Namespace::Condition => &sys_info.conditions,
@@ -420,6 +428,11 @@ fn desugar_decl_types(
     diagnostics: &mut Vec<Diagnostic>,
 ) {
     match decl {
+        DeclKind::Group(g) => {
+            for f in &mut g.fields {
+                desugar_type_expr(&mut f.ty, current_system, aliases, module_map, diagnostics);
+            }
+        }
         DeclKind::Enum(e) => {
             for v in &mut e.variants {
                 if let Some(ref mut fields) = v.fields {

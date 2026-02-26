@@ -12,6 +12,8 @@ pub struct ModuleMap {
 /// Per-system declaration ownership and import list.
 #[derive(Clone, Debug, Default)]
 pub struct SystemInfo {
+    /// Top-level group names defined in this system.
+    pub groups: HashSet<Name>,
     /// Type names (enums, structs, entities) defined in this system.
     pub types: HashSet<Name>,
     /// Function names (derives, mechanics, actions, reactions, hooks, prompts) defined in this system.

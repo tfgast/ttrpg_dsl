@@ -7,6 +7,7 @@ impl Parser {
     pub(crate) fn parse_decl(&mut self) -> Result<DeclKind, ()> {
         match self.peek() {
             TokenKind::Ident(name) => match name.as_str() {
+                "group" => self.parse_group_decl().map(DeclKind::Group),
                 "enum" => self.parse_enum_decl().map(DeclKind::Enum),
                 "struct" => self.parse_struct_decl().map(DeclKind::Struct),
                 "entity" => self.parse_entity_decl().map(DeclKind::Entity),
@@ -128,6 +129,16 @@ impl Parser {
 
     // ── Struct / Entity ──────────────────────────────────────────
 
+    fn parse_group_decl(&mut self) -> Result<GroupDecl, ()> {
+        self.expect_soft_keyword("group")?;
+        let (name, _) = self.expect_ident()?;
+        self.expect(&TokenKind::LBrace)?;
+        self.skip_newlines();
+        let fields = self.parse_field_defs()?;
+        self.expect(&TokenKind::RBrace)?;
+        Ok(GroupDecl { name, fields })
+    }
+
     fn parse_struct_decl(&mut self) -> Result<StructDecl, ()> {
         self.expect_soft_keyword("struct")?;
         let (name, _) = self.expect_ident()?;
@@ -172,13 +183,19 @@ impl Parser {
         let start = self.start_span();
         self.expect_soft_keyword("optional")?;
         let (name, _) = self.expect_ident()?;
-        self.expect(&TokenKind::LBrace)?;
-        self.skip_newlines();
-        let fields = self.parse_field_defs()?;
-        self.expect(&TokenKind::RBrace)?;
+        let (fields, is_external_ref) = if matches!(self.peek(), TokenKind::LBrace) {
+            self.advance();
+            self.skip_newlines();
+            let fields = self.parse_field_defs()?;
+            self.expect(&TokenKind::RBrace)?;
+            (fields, false)
+        } else {
+            (Vec::new(), true)
+        };
         Ok(OptionalGroup {
             name,
             fields,
+            is_external_ref,
             span: self.end_span(start),
         })
     }

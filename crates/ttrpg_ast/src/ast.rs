@@ -48,6 +48,7 @@ impl Program {
             if let TopLevel::System(system) = &item.node {
                 for decl in &system.decls {
                     match &decl.node {
+                        DeclKind::Group(_) => {}
                         DeclKind::Action(a) => {
                             self.actions.insert(a.name.clone(), a.clone());
                         }
@@ -112,6 +113,7 @@ pub struct SystemBlock {
 
 #[derive(Clone)]
 pub enum DeclKind {
+    Group(GroupDecl),
     Enum(EnumDecl),
     Struct(StructDecl),
     Entity(EntityDecl),
@@ -127,6 +129,12 @@ pub enum DeclKind {
     Move(MoveDecl),
     Table(TableDecl),
     Unit(UnitDecl),
+}
+
+#[derive(Clone)]
+pub struct GroupDecl {
+    pub name: Name,
+    pub fields: Vec<FieldDef>,
 }
 
 #[derive(Clone)]
@@ -170,6 +178,9 @@ pub struct EntityDecl {
 pub struct OptionalGroup {
     pub name: Name,
     pub fields: Vec<FieldDef>,
+    /// True when declared as `optional GroupName` (attached external group),
+    /// false when declared inline as `optional GroupName { ... }`.
+    pub is_external_ref: bool,
     pub span: Span,
 }
 

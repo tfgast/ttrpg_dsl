@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use ttrpg_ast::{Name, Spanned};
 use ttrpg_ast::ast::{
     ArmBody, AssignOp, BinOp, DeclKind, ElseBranch, ExprKind, FieldDef, ForIterable, GuardKind,
-    LValue, LValueSegment, OptionalGroup, PatternKind, TopLevel, TypeExpr, UnaryOp,
+    LValue, LValueSegment, PatternKind, TopLevel, TypeExpr, UnaryOp,
 };
 use ttrpg_checker::env::DeclInfo;
 
@@ -1155,9 +1155,9 @@ pub(crate) fn eval_stmt(
             // Collect defaults from the entity declaration's optional group.
             // Clone the data first to avoid borrow conflict with eval_expr.
             let entity_type = env.state.entity_type_name(&entity_ref);
-            let defaults: Vec<_> = find_optional_group(env, entity_type.as_deref(), group_name)
+            let defaults: Vec<_> = find_optional_group_fields(env, entity_type.as_deref(), group_name)
                 .into_iter()
-                .flat_map(|g| g.fields.iter())
+                .flatten()
                 .filter_map(|fd| {
                     if fields.contains_key(&fd.name) {
                         return None;
@@ -2180,14 +2180,13 @@ pub(crate) fn type_name(val: &Value) -> &'static str {
     }
 }
 
-/// Walk `program.items` to find the `OptionalGroup` definition with the given name,
-/// scoped to a specific entity type. Falls back to first global match if no entity
-/// type is provided.
-fn find_optional_group<'a>(
+/// Walk `program.items` to find optional group field definitions by name,
+/// scoped to a specific entity type.
+fn find_optional_group_fields<'a>(
     env: &'a Env,
     entity_type: Option<&str>,
     group_name: &str,
-) -> Option<&'a OptionalGroup> {
+) -> Option<&'a [FieldDef]> {
     let entity_type = entity_type?;
     for item in &env.interp.program.items {
         if let TopLevel::System(system) = &item.node {
@@ -2196,9 +2195,27 @@ fn find_optional_group<'a>(
                     if entity_decl.name == entity_type {
                         for group in &entity_decl.optional_groups {
                             if group.name == group_name {
-                                return Some(group);
+                                if group.is_external_ref {
+                                    return find_group_decl_fields(env, group_name);
+                                }
+                                return Some(group.fields.as_slice());
                             }
                         }
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+fn find_group_decl_fields<'a>(env: &'a Env, group_name: &str) -> Option<&'a [FieldDef]> {
+    for item in &env.interp.program.items {
+        if let TopLevel::System(system) = &item.node {
+            for decl in &system.decls {
+                if let DeclKind::Group(group_decl) = &decl.node {
+                    if group_decl.name == group_name {
+                        return Some(group_decl.fields.as_slice());
                     }
                 }
             }
@@ -2244,11 +2261,17 @@ fn find_field_def_and_remaining<'a>(
                         .iter()
                         .find(|g| g.name == *first_name)
                     {
+                        let group_fields: &[FieldDef] = if group.is_external_ref {
+                            match find_group_decl_fields(env, first_name) {
+                                Some(fields) => fields,
+                                None => return None,
+                            }
+                        } else {
+                            group.fields.as_slice()
+                        };
                         // Next segment should be a field within the group
                         if let Some(FieldPathSegment::Field(field_name)) = path.get(1) {
-                            if let Some(field) =
-                                group.fields.iter().find(|f| f.name == *field_name)
-                            {
+                            if let Some(field) = group_fields.iter().find(|f| f.name == *field_name) {
                                 return Some((field, 2));
                             }
                         }
@@ -6950,6 +6973,7 @@ mod tests {
                                 span: dummy_span(),
                             },
                         ],
+                        is_external_ref: false,
                         span: dummy_span(),
                     }],
                 }))],
@@ -7008,6 +7032,7 @@ mod tests {
                             default: Some(spanned(ExprKind::IntLit(4))),
                             span: dummy_span(),
                         }],
+                        is_external_ref: false,
                         span: dummy_span(),
                     }],
                 }))],
@@ -7184,6 +7209,7 @@ mod tests {
                                     span: dummy_span(),
                                 },
                             ],
+                            is_external_ref: false,
                             span: dummy_span(),
                         }],
                     })),
@@ -7211,6 +7237,7 @@ mod tests {
                                     span: dummy_span(),
                                 },
                             ],
+                            is_external_ref: false,
                             span: dummy_span(),
                         }],
                     })),
@@ -7289,6 +7316,7 @@ mod tests {
                                     span: dummy_span(),
                                 },
                             ],
+                            is_external_ref: false,
                             span: dummy_span(),
                         }],
                     })),
@@ -7316,6 +7344,7 @@ mod tests {
                                     span: dummy_span(),
                                 },
                             ],
+                            is_external_ref: false,
                             span: dummy_span(),
                         }],
                     })),

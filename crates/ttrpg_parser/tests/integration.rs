@@ -51,7 +51,7 @@ fn test_parse_full_example() {
             DeclKind::Condition(_) => conditions += 1,
             DeclKind::Prompt(_) => prompts += 1,
             DeclKind::Event(_) => events += 1,
-            DeclKind::Hook(_) | DeclKind::Option(_) | DeclKind::Move(_) | DeclKind::Table(_) | DeclKind::Unit(_) => {}
+            DeclKind::Group(_) | DeclKind::Hook(_) | DeclKind::Option(_) | DeclKind::Move(_) | DeclKind::Table(_) | DeclKind::Unit(_) => {}
         }
     }
 
@@ -872,9 +872,45 @@ fn test_entity_with_optional_groups() {
             assert_eq!(e.fields.len(), 3, "base fields");
             assert_eq!(e.optional_groups.len(), 2, "optional groups");
             assert_eq!(e.optional_groups[0].name, "Spellcasting");
+            assert!(!e.optional_groups[0].is_external_ref);
             assert_eq!(e.optional_groups[0].fields.len(), 2);
             assert_eq!(e.optional_groups[1].name, "KiPowers");
+            assert!(!e.optional_groups[1].is_external_ref);
             assert_eq!(e.optional_groups[1].fields.len(), 2);
+        }
+        _ => panic!("expected entity decl"),
+    }
+}
+
+#[test]
+fn test_top_level_group_and_external_attachment_parse() {
+    let source = r#"system "test" {
+    group Spellcasting {
+        spell_dc: int = 10
+        spell_slots: int
+    }
+    entity Character {
+        name: string
+        optional Spellcasting
+    }
+}"#;
+    let (program, diagnostics) = parse(source, FileId::SYNTH);
+    assert!(
+        diagnostics.is_empty(),
+        "top-level group + external attach should parse, got: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+    let system = match &program.items[0].node {
+        TopLevel::System(s) => s,
+        _ => panic!("expected system block"),
+    };
+    assert!(matches!(&system.decls[0].node, DeclKind::Group(g) if g.name == "Spellcasting" && g.fields.len() == 2));
+    match &system.decls[1].node {
+        DeclKind::Entity(e) => {
+            assert_eq!(e.optional_groups.len(), 1);
+            assert_eq!(e.optional_groups[0].name, "Spellcasting");
+            assert!(e.optional_groups[0].is_external_ref);
+            assert!(e.optional_groups[0].fields.is_empty());
         }
         _ => panic!("expected entity decl"),
     }

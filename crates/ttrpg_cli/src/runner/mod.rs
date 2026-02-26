@@ -6,7 +6,7 @@ use rand::SeedableRng;
 use rand::rngs::StdRng;
 
 use ttrpg_ast::Name;
-use ttrpg_ast::ast::{DeclKind, OptionalGroup, Program, TopLevel};
+use ttrpg_ast::ast::{DeclKind, FieldDef, Program, TopLevel};
 use ttrpg_ast::diagnostic::{Diagnostic, MultiSourceMap, Severity};
 use ttrpg_ast::module::ModuleMap;
 use ttrpg_checker::env::{DeclInfo, FnKind, TypeEnv};

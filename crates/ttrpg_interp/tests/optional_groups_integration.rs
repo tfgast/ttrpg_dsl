@@ -99,10 +99,40 @@ system "OptionalGroupsTest" {
 }
 "#;
 
+/// Program using top-level groups with external entity attachment syntax.
+const EXTERNAL_GROUP_PROGRAM_SOURCE: &str = r#"
+system "ExternalGroupsTest" {
+    group Spellcasting {
+        spell_slots: int
+        spell_dc: int = 11
+    }
+
+    entity Character {
+        name: string
+        HP: int
+        optional Spellcasting
+    }
+
+    action GrantSpellcasting on gm: Character (target: Character, slots: int) {
+        resolve {
+            grant target.Spellcasting { spell_slots: slots }
+        }
+    }
+
+    derive spell_dc(c: Character) -> int {
+        if c has Spellcasting {
+            c.Spellcasting.spell_dc
+        } else {
+            0
+        }
+    }
+}
+"#;
+
 // ── Setup ────────────────────────────────────────────────────
 
-fn setup() -> (ttrpg_ast::ast::Program, ttrpg_checker::CheckResult) {
-    let (program, parse_errors) = ttrpg_parser::parse(PROGRAM_SOURCE, FileId::SYNTH);
+fn setup_from_source(source: &str) -> (ttrpg_ast::ast::Program, ttrpg_checker::CheckResult) {
+    let (program, parse_errors) = ttrpg_parser::parse(source, FileId::SYNTH);
     assert!(
         parse_errors.is_empty(),
         "parse errors: {:?}",
@@ -127,6 +157,10 @@ fn setup() -> (ttrpg_ast::ast::Program, ttrpg_checker::CheckResult) {
         errors.iter().map(|d| &d.message).collect::<Vec<_>>()
     );
     (program, result)
+}
+
+fn setup() -> (ttrpg_ast::ast::Program, ttrpg_checker::CheckResult) {
+    setup_from_source(PROGRAM_SOURCE)
 }
 
 // ── ScriptedHandler ──────────────────────────────────────────
@@ -188,6 +222,54 @@ fn pipeline_parses_checks_and_builds_interpreter() {
     let (program, result) = setup();
     let interp = Interpreter::new(&program, &result.env);
     assert!(interp.is_ok(), "interpreter creation failed: {:?}", interp.err());
+}
+
+#[test]
+fn external_group_attachment_grant_uses_group_defaults() {
+    let (program, result) = setup_from_source(EXTERNAL_GROUP_PROGRAM_SOURCE);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut state = GameState::new();
+
+    let mut gm_fields = HashMap::new();
+    gm_fields.insert("name".into(), Value::Str("GM".into()));
+    gm_fields.insert("HP".into(), Value::Int(999));
+    let gm = state.add_entity("Character", gm_fields);
+
+    let mut wizard_fields = HashMap::new();
+    wizard_fields.insert("name".into(), Value::Str("Wizard".into()));
+    wizard_fields.insert("HP".into(), Value::Int(12));
+    let wizard = state.add_entity("Character", wizard_fields);
+
+    state.set_turn_budget(&gm, standard_turn_budget());
+    let adapter = StateAdapter::new(state);
+    let mut handler = ScriptedHandler::with_responses(vec![Response::Acknowledged]);
+    adapter.run(&mut handler, |state, eff_handler| {
+        interp
+            .execute_action(
+                state,
+                eff_handler,
+                "GrantSpellcasting",
+                gm,
+                vec![Value::Entity(wizard), Value::Int(3)],
+            )
+            .unwrap();
+    });
+
+    let state = adapter.into_inner();
+    let group = state.read_field(&wizard, "Spellcasting").unwrap();
+    match group {
+        Value::Struct { fields, .. } => {
+            assert_eq!(fields.get("spell_slots"), Some(&Value::Int(3)));
+            assert_eq!(fields.get("spell_dc"), Some(&Value::Int(11)));
+        }
+        other => panic!("expected Struct, got {:?}", other),
+    }
+
+    let mut handler = ScriptedHandler::new();
+    let dc = interp
+        .evaluate_derive(&state, &mut handler, "spell_dc", vec![Value::Entity(wizard)])
+        .unwrap();
+    assert_eq!(dc, Value::Int(11));
 }
 
 // ════════════════════════════════════════════════════════════════

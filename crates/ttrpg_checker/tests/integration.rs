@@ -3842,6 +3842,36 @@ system "test" {
 }
 
 #[test]
+fn test_top_level_group_external_attachment() {
+    let source = r#"
+system "test" {
+    group Spellcasting {
+        spell_save_DC: int = 10
+        spell_slots: int
+    }
+    entity Character {
+        HP: int
+        optional Spellcasting
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_external_attachment_unknown_group_rejected() {
+    let source = r#"
+system "test" {
+    entity Character {
+        HP: int
+        optional Spellcasting
+    }
+}
+"#;
+    expect_errors(source, &["unknown group `Spellcasting`"]);
+}
+
+#[test]
 fn test_optional_group_duplicate_group_name() {
     let source = r#"
 system "test" {

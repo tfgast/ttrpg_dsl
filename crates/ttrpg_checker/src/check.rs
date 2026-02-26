@@ -13,6 +13,7 @@ use crate::ty::Ty;
 /// Namespace for visibility checks — which owner map to consult.
 #[derive(Debug, Clone, Copy)]
 pub enum Namespace {
+    Group,
     Type,
     Function,
     Condition,
@@ -141,6 +142,7 @@ impl<'a> Checker<'a> {
 
         // Look up the owning system for this name in the appropriate namespace
         let owner = match ns {
+            Namespace::Group => self.env.group_owner.get(name),
             Namespace::Type => self.env.type_owner.get(name),
             Namespace::Function => self.env.function_owner.get(name),
             Namespace::Condition => self.env.condition_owner.get(name),
@@ -163,6 +165,7 @@ impl<'a> Checker<'a> {
         // Check the visibility set for the current system
         if let Some(vis) = self.env.system_visibility.get(&current) {
             let visible = match ns {
+                Namespace::Group => vis.groups.contains(name),
                 Namespace::Type => vis.types.contains(name),
                 Namespace::Function => vis.functions.contains(name),
                 Namespace::Condition => vis.conditions.contains(name),
@@ -247,6 +250,7 @@ impl<'a> Checker<'a> {
 
     fn check_decl(&mut self, decl: &ttrpg_ast::Spanned<DeclKind>) {
         match &decl.node {
+            DeclKind::Group(g) => self.check_group_defaults(g),
             DeclKind::Derive(f) => self.check_derive(f),
             DeclKind::Mechanic(f) => self.check_mechanic(f),
             DeclKind::Action(a) => self.check_action(a),
@@ -827,14 +831,47 @@ impl<'a> Checker<'a> {
         self.scope.pop();
     }
 
+    fn check_group_defaults(&mut self, g: &GroupDecl) {
+        for field in &g.fields {
+            self.check_type_visible(&field.ty);
+        }
+        self.scope.push(BlockKind::Derive);
+        for field in &g.fields {
+            if let Some(ref default) = field.default {
+                let field_ty = self.env.resolve_type(&field.ty);
+                let def_ty = self.check_expr_expecting(default, Some(&field_ty));
+                if !def_ty.is_error() && !self.types_compatible(&def_ty, &field_ty) {
+                    self.error(
+                        format!(
+                            "field `{}` in group `{}` default has type {}, expected {}",
+                            field.name, g.name, def_ty, field_ty
+                        ),
+                        default.span,
+                    );
+                }
+            }
+        }
+        self.scope.pop();
+    }
+
     fn check_entity_defaults(&mut self, e: &EntityDecl) {
         // Check visibility of field types (including optional groups)
         for field in &e.fields {
             self.check_type_visible(&field.ty);
         }
         for group in &e.optional_groups {
-            for field in &group.fields {
-                self.check_type_visible(&field.ty);
+            self.check_name_visible(&group.name, Namespace::Group, group.span);
+            if group.is_external_ref {
+                if self.env.lookup_group(&group.name).is_none() {
+                    self.error(
+                        format!("unknown group `{}`", group.name),
+                        group.span,
+                    );
+                }
+            } else {
+                for field in &group.fields {
+                    self.check_type_visible(&field.ty);
+                }
             }
         }
 
@@ -856,18 +893,20 @@ impl<'a> Checker<'a> {
         }
         // Check optional group field defaults
         for group in &e.optional_groups {
-            for field in &group.fields {
-                if let Some(ref default) = field.default {
-                    let field_ty = self.env.resolve_type(&field.ty);
-                    let def_ty = self.check_expr_expecting(default, Some(&field_ty));
-                    if !def_ty.is_error() && !self.types_compatible(&def_ty, &field_ty) {
-                        self.error(
-                            format!(
-                                "field `{}` in group `{}` default has type {}, expected {}",
-                                field.name, group.name, def_ty, field_ty
-                            ),
-                            default.span,
-                        );
+            if !group.is_external_ref {
+                for field in &group.fields {
+                    if let Some(ref default) = field.default {
+                        let field_ty = self.env.resolve_type(&field.ty);
+                        let def_ty = self.check_expr_expecting(default, Some(&field_ty));
+                        if !def_ty.is_error() && !self.types_compatible(&def_ty, &field_ty) {
+                            self.error(
+                                format!(
+                                    "field `{}` in group `{}` default has type {}, expected {}",
+                                    field.name, group.name, def_ty, field_ty
+                                ),
+                                default.span,
+                            );
+                        }
                     }
                 }
             }
@@ -928,6 +967,7 @@ impl<'a> Checker<'a> {
         span: Span,
     ) {
         for group_name in with_groups {
+            self.check_name_visible(group_name, Namespace::Group, span);
             match ty {
                 Ty::Entity(entity_name) => {
                     if self
@@ -945,7 +985,9 @@ impl<'a> Checker<'a> {
                     }
                 }
                 Ty::AnyEntity => {
-                    if !self.env.has_optional_group_named(group_name) {
+                    if self.env.lookup_group(group_name).is_none()
+                        && !self.env.has_optional_group_named(group_name)
+                    {
                         self.error(
                             format!("unknown optional group `{}` for type `entity`", group_name),
                             span,
