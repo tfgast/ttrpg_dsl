@@ -16,6 +16,7 @@ impl Parser {
                     "float" => { self.advance(); TypeExpr::Float }
                     "DiceExpr" => { self.advance(); TypeExpr::DiceExpr }
                     "RollResult" => { self.advance(); TypeExpr::RollResult }
+                    "entity" => { self.advance(); TypeExpr::Named("entity".into()) }
                     "TurnBudget" | "Duration" | "Position" | "Condition"
                         if !matches!(self.peek_at(1), TokenKind::Dot) =>
                     {

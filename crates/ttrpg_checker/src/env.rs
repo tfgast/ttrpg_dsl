@@ -232,6 +232,9 @@ impl TypeEnv {
             TypeExpr::Position => self.resolve_named_or("Position", Ty::Position),
             TypeExpr::Condition => self.resolve_named_or("Condition", Ty::Condition),
             TypeExpr::Named(name) => {
+                if name == "entity" {
+                    return Ty::AnyEntity;
+                }
                 if let Some(decl) = self.types.get(name) {
                     match decl {
                         DeclInfo::Enum(_) => Ty::Enum(name.clone()),
@@ -264,6 +267,9 @@ impl TypeEnv {
     ) {
         match &texpr.node {
             TypeExpr::Named(name) => {
+                if name == "entity" {
+                    return;
+                }
                 if !self.types.contains_key(name) {
                     diagnostics.push(Diagnostic::error(
                         format!("unknown type `{}`", name),
@@ -345,6 +351,34 @@ impl TypeEnv {
             DeclInfo::Entity(info) => info.optional_groups.iter().find(|g| g.name == group_name),
             _ => None,
         }
+    }
+
+    /// Return true if any entity declares an optional group with this name.
+    pub fn has_optional_group_named(&self, group_name: &str) -> bool {
+        self.types.values().any(|decl| match decl {
+            DeclInfo::Entity(info) => info.optional_groups.iter().any(|g| g.name == group_name),
+            _ => false,
+        })
+    }
+
+    /// If exactly one entity declares `group_name`, return that owner and group.
+    pub fn unique_optional_group_owner(
+        &self,
+        group_name: &str,
+    ) -> Option<(Name, &OptionalGroupInfo)> {
+        let mut found: Option<(Name, &OptionalGroupInfo)> = None;
+        for decl in self.types.values() {
+            let DeclInfo::Entity(info) = decl else {
+                continue;
+            };
+            if let Some(group) = info.optional_groups.iter().find(|g| g.name == group_name) {
+                if found.is_some() {
+                    return None;
+                }
+                found = Some((info.name.clone(), group));
+            }
+        }
+        found
     }
 
     /// Get the RollResult struct fields.

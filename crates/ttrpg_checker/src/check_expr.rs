@@ -594,6 +594,26 @@ impl<'a> Checker<'a> {
                 );
                 Ty::Error
             }
+            Ty::AnyEntity => {
+                if let Some((owner, group)) = self.env.unique_optional_group_owner(field) {
+                    return Ty::OptionalGroupRef(owner, group.name.clone());
+                }
+                if self.env.has_optional_group_named(field) {
+                    self.error(
+                        format!(
+                            "optional group `{}` is ambiguous on type `entity`; use a concrete entity type",
+                            field
+                        ),
+                        span,
+                    );
+                } else {
+                    self.error(
+                        format!("type `entity` has no field or optional group `{}`", field),
+                        span,
+                    );
+                }
+                Ty::Error
+            }
             Ty::OptionalGroupRef(entity_name, group_name) => {
                 if let Some(group) = self.env.lookup_optional_group(entity_name, group_name) {
                     if let Some(fi) = group.fields.iter().find(|f| f.name == field) {
@@ -2633,24 +2653,35 @@ impl<'a> Checker<'a> {
         if entity_ty.is_error() {
             return Ty::Bool;
         }
-        if let Ty::Entity(ref name) = entity_ty {
-            if self.env.lookup_optional_group(name, group_name).is_none() {
+        match &entity_ty {
+            Ty::Entity(name) => {
+                if self.env.lookup_optional_group(name, group_name).is_none() {
+                    self.error(
+                        format!(
+                            "entity `{}` has no optional group `{}`",
+                            name, group_name
+                        ),
+                        span,
+                    );
+                }
+            }
+            Ty::AnyEntity => {
+                if !self.env.has_optional_group_named(group_name) {
+                    self.error(
+                        format!("unknown optional group `{}` for type `entity`", group_name),
+                        span,
+                    );
+                }
+            }
+            _ => {
                 self.error(
                     format!(
-                        "entity `{}` has no optional group `{}`",
-                        name, group_name
+                        "`has` can only be used with entity types, found {}",
+                        entity_ty
                     ),
                     span,
                 );
             }
-        } else {
-            self.error(
-                format!(
-                    "`has` can only be used with entity types, found {}",
-                    entity_ty
-                ),
-                span,
-            );
         }
         Ty::Bool
     }

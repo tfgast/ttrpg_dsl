@@ -204,6 +204,9 @@ impl<'a> Checker<'a> {
     pub fn check_type_visible(&mut self, texpr: &ttrpg_ast::Spanned<TypeExpr>) {
         match &texpr.node {
             TypeExpr::Named(name) => {
+                if name == "entity" {
+                    return;
+                }
                 self.check_name_visible(name, Namespace::Type, texpr.span);
             }
             // TurnBudget/Duration keywords may resolve to user-defined types
@@ -925,28 +928,40 @@ impl<'a> Checker<'a> {
         span: Span,
     ) {
         for group_name in with_groups {
-            if let Ty::Entity(ref entity_name) = ty {
-                if self
-                    .env
-                    .lookup_optional_group(entity_name, group_name)
-                    .is_none()
-                {
+            match ty {
+                Ty::Entity(entity_name) => {
+                    if self
+                        .env
+                        .lookup_optional_group(entity_name, group_name)
+                        .is_none()
+                    {
+                        self.error(
+                            format!(
+                                "entity `{}` has no optional group `{}`",
+                                entity_name, group_name
+                            ),
+                            span,
+                        );
+                    }
+                }
+                Ty::AnyEntity => {
+                    if !self.env.has_optional_group_named(group_name) {
+                        self.error(
+                            format!("unknown optional group `{}` for type `entity`", group_name),
+                            span,
+                        );
+                    }
+                }
+                _ if !ty.is_error() => {
                     self.error(
                         format!(
-                            "entity `{}` has no optional group `{}`",
-                            entity_name, group_name
+                            "`with` constraint on `{}` requires entity type, found {}",
+                            var_name, ty
                         ),
                         span,
                     );
                 }
-            } else if !ty.is_error() {
-                self.error(
-                    format!(
-                        "`with` constraint on `{}` requires entity type, found {}",
-                        var_name, ty
-                    ),
-                    span,
-                );
+                _ => {}
             }
             self.scope
                 .narrow_group(var_name.clone(), group_name.clone());

@@ -2267,6 +2267,20 @@ system "test" {
     expect_no_errors(source);
 }
 
+#[test]
+fn test_action_any_entity_receiver_ok() {
+    let source = r#"
+system "test" {
+    entity Character { hp: int }
+    action Heal on actor: entity () {
+        cost { action }
+        resolve {}
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
 // ═══════════════════════════════════════════════════════════════
 // Fix: Entity-generic builtins (apply_condition, remove_condition)
 // ═══════════════════════════════════════════════════════════════
@@ -3978,6 +3992,21 @@ system "test" {
     expect_errors(source, &["`has` can only be used with entity types, found int"]);
 }
 
+#[test]
+fn test_has_on_any_entity_with_known_group() {
+    let source = r#"
+system "test" {
+    entity Character {
+        optional Spellcasting { dc: int }
+    }
+    derive check(x: entity) -> bool {
+        x has Spellcasting
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
 // ═══════════════════════════════════════════════════════════════
 // Optional groups: field access requires narrowing
 // ═══════════════════════════════════════════════════════════════
@@ -4112,6 +4141,23 @@ system "test" {
 }
 "#;
     expect_errors(source, &["`with` constraint on `x` requires entity type, found int"]);
+}
+
+#[test]
+fn test_with_constraint_on_any_entity() {
+    let source = r#"
+system "test" {
+    entity Character {
+        optional Spellcasting {
+            dc: int
+        }
+    }
+    derive spell_dc(x: entity with Spellcasting) -> int {
+        x.Spellcasting.dc
+    }
+}
+"#;
+    expect_no_errors(source);
 }
 
 #[test]

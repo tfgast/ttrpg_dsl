@@ -1087,6 +1087,37 @@ fn test_param_with_group() {
 }
 
 #[test]
+fn test_parse_entity_type_alias_in_param() {
+    let source = r#"system "test" {
+    derive id(target: entity) -> int {
+        0
+    }
+}"#;
+    let (program, diagnostics) = parse(source, FileId::SYNTH);
+    assert!(
+        diagnostics.is_empty(),
+        "entity type alias should parse, got: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+    let system = match &program.items[0].node {
+        TopLevel::System(s) => s,
+        _ => panic!("expected system block"),
+    };
+    let derive = system
+        .decls
+        .iter()
+        .find_map(|d| match &d.node {
+            DeclKind::Derive(f) => Some(f),
+            _ => None,
+        })
+        .unwrap();
+    assert!(matches!(
+        derive.params[0].ty.node,
+        TypeExpr::Named(ref n) if n == "entity"
+    ));
+}
+
+#[test]
 fn test_condition_receiver_with_group() {
     let source = r#"system "test" {
     entity Character {

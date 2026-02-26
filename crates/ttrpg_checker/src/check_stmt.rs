@@ -307,25 +307,44 @@ impl<'a> Checker<'a> {
             return;
         }
 
-        let entity_name = match &entity_ty {
-            Ty::Entity(name) => name.clone(),
+        let group = match &entity_ty {
+            Ty::Entity(entity_name) => match self.env.lookup_optional_group(entity_name, group_name)
+            {
+                Some(g) => g.clone(),
+                None => {
+                    self.error(
+                        format!(
+                            "entity `{}` has no optional group `{}`",
+                            entity_name, group_name
+                        ),
+                        span,
+                    );
+                    return;
+                }
+            },
+            Ty::AnyEntity => match self.env.unique_optional_group_owner(group_name) {
+                Some((_, g)) => g.clone(),
+                None if self.env.has_optional_group_named(group_name) => {
+                    self.error(
+                        format!(
+                            "optional group `{}` is ambiguous on type `entity`; use a concrete entity type",
+                            group_name
+                        ),
+                        span,
+                    );
+                    return;
+                }
+                None => {
+                    self.error(
+                        format!("unknown optional group `{}` for type `entity`", group_name),
+                        span,
+                    );
+                    return;
+                }
+            },
             _ => {
                 self.error(
                     format!("grant requires an entity, found {}", entity_ty),
-                    span,
-                );
-                return;
-            }
-        };
-
-        let group = match self.env.lookup_optional_group(&entity_name, group_name) {
-            Some(g) => g.clone(),
-            None => {
-                self.error(
-                    format!(
-                        "entity `{}` has no optional group `{}`",
-                        entity_name, group_name
-                    ),
                     span,
                 );
                 return;
@@ -406,25 +425,42 @@ impl<'a> Checker<'a> {
             return;
         }
 
-        let entity_name = match &entity_ty {
-            Ty::Entity(name) => name.clone(),
+        match &entity_ty {
+            Ty::Entity(entity_name) => {
+                if self.env.lookup_optional_group(entity_name, group_name).is_none() {
+                    self.error(
+                        format!(
+                            "entity `{}` has no optional group `{}`",
+                            entity_name, group_name
+                        ),
+                        span,
+                    );
+                }
+            }
+            Ty::AnyEntity => {
+                if self.env.unique_optional_group_owner(group_name).is_none() {
+                    if self.env.has_optional_group_named(group_name) {
+                        self.error(
+                            format!(
+                                "optional group `{}` is ambiguous on type `entity`; use a concrete entity type",
+                                group_name
+                            ),
+                            span,
+                        );
+                    } else {
+                        self.error(
+                            format!("unknown optional group `{}` for type `entity`", group_name),
+                            span,
+                        );
+                    }
+                }
+            }
             _ => {
                 self.error(
                     format!("revoke requires an entity, found {}", entity_ty),
                     span,
                 );
-                return;
             }
-        };
-
-        if self.env.lookup_optional_group(&entity_name, group_name).is_none() {
-            self.error(
-                format!(
-                    "entity `{}` has no optional group `{}`",
-                    entity_name, group_name
-                ),
-                span,
-            );
         }
     }
 }
