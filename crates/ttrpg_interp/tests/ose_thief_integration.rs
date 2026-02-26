@@ -168,7 +168,7 @@ fn ose_thief_has_expected_declarations() {
         _ => None,
     }).collect();
     assert!(mechanics.contains(&"thief_skill_check"), "missing mechanic thief_skill_check");
-    assert!(mechanics.contains(&"hear_noise"), "missing mechanic hear_noise");
+    assert!(mechanics.contains(&"hear_noise_check"), "missing mechanic hear_noise_check");
 
     let derives: Vec<_> = decls.iter().filter_map(|d| match &d.node {
         DeclKind::Derive(d) => Some(&*d.name),
@@ -430,7 +430,7 @@ fn thief_skill_check_failure() {
 }
 
 #[test]
-fn hear_noise_mechanic() {
+fn hear_noise_check_mechanic() {
     let (program, result) = compile_ose_thief();
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let state = GameState::new();
@@ -440,7 +440,7 @@ fn hear_noise_mechanic() {
     let mut handler = ScriptedHandler::with_responses(vec![roll_response]);
 
     let val = interp.evaluate_mechanic(
-        &state, &mut handler, "hear_noise",
+        &state, &mut handler, "hear_noise_check",
         vec![Value::Int(1)],
     ).unwrap();
     assert_eq!(val, Value::Bool(true));
@@ -450,7 +450,7 @@ fn hear_noise_mechanic() {
     let mut handler = ScriptedHandler::with_responses(vec![roll_response]);
 
     let val = interp.evaluate_mechanic(
-        &state, &mut handler, "hear_noise",
+        &state, &mut handler, "hear_noise_check",
         vec![Value::Int(1)],
     ).unwrap();
     assert_eq!(val, Value::Bool(false));
