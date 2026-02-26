@@ -115,7 +115,7 @@ fn ose_class_has_xp_group_enum() {
     let mut found = false;
     for item in &program.items {
         if let TopLevel::System(sys) = &item.node {
-            if sys.name == "OSE Classes" {
+            if sys.name == "OSE" {
                 for decl in &sys.decls {
                     if let DeclKind::Enum(e) = &decl.node {
                         if e.name == "XpGroup" {

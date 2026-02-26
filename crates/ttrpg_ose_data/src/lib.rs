@@ -1,6 +1,6 @@
 //! Bundled OSE (Old-School Essentials) `.ttrpg` rule files.
 //!
-//! This crate embeds all 7 OSE rule-system files at compile time and exposes
+//! This crate embeds all 13 OSE rule-system files at compile time and exposes
 //! them through a simple API for listing, reading, and extracting to disk.
 
 use std::path::Path;
@@ -17,6 +17,10 @@ const FILES: &[BundledFile] = &[
         contents: include_str!("../../../ose/ose_ability.ttrpg"),
     },
     BundledFile {
+        name: "ose_chargen.ttrpg",
+        contents: include_str!("../../../ose/ose_chargen.ttrpg"),
+    },
+    BundledFile {
         name: "ose_class.ttrpg",
         contents: include_str!("../../../ose/ose_class.ttrpg"),
     },
@@ -29,6 +33,14 @@ const FILES: &[BundledFile] = &[
         contents: include_str!("../../../ose/ose_core.ttrpg"),
     },
     BundledFile {
+        name: "ose_equipment.ttrpg",
+        contents: include_str!("../../../ose/ose_equipment.ttrpg"),
+    },
+    BundledFile {
+        name: "ose_exploration.ttrpg",
+        contents: include_str!("../../../ose/ose_exploration.ttrpg"),
+    },
+    BundledFile {
         name: "ose_magic.ttrpg",
         contents: include_str!("../../../ose/ose_magic.ttrpg"),
     },
@@ -37,8 +49,20 @@ const FILES: &[BundledFile] = &[
         contents: include_str!("../../../ose/ose_saves.ttrpg"),
     },
     BundledFile {
+        name: "ose_spells.ttrpg",
+        contents: include_str!("../../../ose/ose_spells.ttrpg"),
+    },
+    BundledFile {
         name: "ose_thief.ttrpg",
         contents: include_str!("../../../ose/ose_thief.ttrpg"),
+    },
+    BundledFile {
+        name: "ose_time_economy.ttrpg",
+        contents: include_str!("../../../ose/ose_time_economy.ttrpg"),
+    },
+    BundledFile {
+        name: "ose_wilderness.ttrpg",
+        contents: include_str!("../../../ose/ose_wilderness.ttrpg"),
     },
 ];
 
@@ -71,16 +95,22 @@ mod tests {
     use super::*;
 
     #[test]
-    fn list_files_returns_all_seven() {
+    fn list_files_returns_all_thirteen() {
         let files = list_files();
-        assert_eq!(files.len(), 7);
+        assert_eq!(files.len(), 13);
         assert!(files.contains(&"ose_ability.ttrpg"));
+        assert!(files.contains(&"ose_chargen.ttrpg"));
         assert!(files.contains(&"ose_class.ttrpg"));
         assert!(files.contains(&"ose_combat.ttrpg"));
         assert!(files.contains(&"ose_core.ttrpg"));
+        assert!(files.contains(&"ose_equipment.ttrpg"));
+        assert!(files.contains(&"ose_exploration.ttrpg"));
         assert!(files.contains(&"ose_magic.ttrpg"));
         assert!(files.contains(&"ose_saves.ttrpg"));
+        assert!(files.contains(&"ose_spells.ttrpg"));
         assert!(files.contains(&"ose_thief.ttrpg"));
+        assert!(files.contains(&"ose_time_economy.ttrpg"));
+        assert!(files.contains(&"ose_wilderness.ttrpg"));
     }
 
     #[test]
@@ -101,7 +131,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
 
         let paths = write_defaults(&dir).unwrap();
-        assert_eq!(paths.len(), 7);
+        assert_eq!(paths.len(), 13);
 
         for path in &paths {
             assert!(path.exists(), "{} should exist", path.display());

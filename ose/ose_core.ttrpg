@@ -101,6 +101,27 @@ system "OSE" {
         DrowArcaneDivine
     }
 
+    // --- XP progression groups ---
+    // Multiple classes share the same XP table. This enum identifies
+    // each unique progression to avoid duplicating table rows.
+    // 13 groups covering all 22 classes.
+
+    enum XpGroup {
+        Fighter,
+        Thief,
+        Cleric,
+        MagicUser,
+        Dwarf,
+        Elf,
+        Halfling,
+        HalfElf,
+        Paladin,
+        Ranger,
+        Gnome,
+        HalfOrc,
+        Svirfneblin
+    }
+
     // --- Encumbrance levels ---
 
     enum EncumbranceLevel {
@@ -133,6 +154,17 @@ system "OSE" {
         Destroyed
     }
 
+    // --- Turn undead attempt outcome ---
+    // Full result of a turn_undead_attempt mechanic call, combining
+    // table lookup, conditional 2d6 success check, and 2d6 HD roll.
+    enum TurnAttempt {
+        Impossible,
+        Failed(roll: int, target: int),
+        Rolled(roll: int, target: int, hd: int),
+        Auto(hd: int),
+        Destroy(hd: int)
+    }
+
     // --- Saving throw values (five categories: D/W/P/B/S) ---
 
     struct SavingThrows {
@@ -144,6 +176,8 @@ system "OSE" {
     }
 
     // --- Static class definition ---
+    // Includes capability tags for registry population:
+    //   has_thief_skills, can_backstab, can_turn_undead, xp_group, bx_equivalent
 
     struct ClassDef {
         class: Class
@@ -157,6 +191,11 @@ system "OSE" {
         spell_progression: SpellProgression
         spell_list: SpellListType
         is_demihuman: bool
+        has_thief_skills: bool
+        can_backstab: bool
+        can_turn_undead: bool
+        xp_group: XpGroup
+        bx_equivalent: Class
     }
 
     // --- Character entity ---

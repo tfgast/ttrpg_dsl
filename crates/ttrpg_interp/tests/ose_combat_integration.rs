@@ -140,7 +140,7 @@ fn ose_combat_has_enums() {
     assert!(enums.contains(&("AttackOutcome", 2)));
     assert!(enums.contains(&("MoraleOutcome", 2)));
     assert!(enums.contains(&("ReactionOutcome", 5)));
-    assert_eq!(enums.len(), 3, "expected 3 enums");
+    assert_eq!(enums.len(), 4, "expected 4 enums");
 }
 
 #[test]
@@ -173,7 +173,7 @@ fn ose_combat_has_derives() {
     assert!(derives.contains(&"target_number"));
     assert!(derives.contains(&"calc_ac"));
     assert!(derives.contains(&"missile_range_mod"));
-    assert_eq!(derives.len(), 3, "expected 3 derives");
+    assert_eq!(derives.len(), 10, "expected 10 derives");
 }
 
 #[test]
@@ -190,7 +190,7 @@ fn ose_combat_has_mechanics() {
     assert!(mechanics.contains(&"attack_roll"));
     assert!(mechanics.contains(&"morale_check"));
     assert!(mechanics.contains(&"reaction_roll"));
-    assert_eq!(mechanics.len(), 3, "expected 3 mechanics");
+    assert_eq!(mechanics.len(), 12, "expected 12 mechanics");
 }
 
 // ── Derive evaluation ──────────────────────────────────────────

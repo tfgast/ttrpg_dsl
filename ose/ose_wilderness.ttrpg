@@ -1,0 +1,221 @@
+// ============================================================
+// OSE Wilderness Travel — terrain properties and travel day procedure
+//
+// Terrain property tables (movement cost, lost chance, forage chance,
+// encounter chance) and travel day procedure mechanics.
+//
+// The travel day follows this sequence:
+//   1. Determine terrain and daily travel range (hexes_per_day).
+//   2. Apply daily overhead: consume 1 ration per living party member;
+//      starvation if none available (-1 attack/save penalty per day,
+//      capped at -4; 1d4 HP damage per member from day 3 onward).
+//   3. Roll for getting lost (1d6): if roll <= terrain_lost_chance,
+//      party is LOST and moves in a random adjacent direction.
+//      Otherwise the party attempts to reach the destination.
+//   4. Encounter checks: 3 per day (morning, afternoon, night).
+//      Each check: roll 1d6; if roll <= terrain_encounter_chance,
+//      an encounter occurs (roll 1d20 on terrain encounter table).
+//
+// Alternative day actions (forage/hunt/orient) share step 2 (daily
+// overhead) but replace steps 3-4 with their own resolution.
+//
+// Reference: OSE Rules Tome — Wilderness Adventures.
+// Source: osr_ai_gm/src/state/wilderness.rs (Terrain impl)
+//         osr_ai_gm/src/engine/wilderness_engine.rs
+// ============================================================
+
+system "OSE Wilderness" {
+
+    // --------------------------------------------------------
+    // TERRAIN TYPES
+    //
+    // Variant names prefixed wt_ to avoid global namespace
+    // collisions with other DSL enums.
+    // --------------------------------------------------------
+
+    enum WildernessTerrainKind {
+        wt_clear,
+        wt_forest,
+        wt_hills,
+        wt_mountains,
+        wt_desert,
+        wt_swamp,
+        wt_jungle,
+        wt_ocean,
+        wt_river,
+        wt_barren,
+        wt_city
+    }
+
+
+    // --------------------------------------------------------
+    // MOVEMENT COST
+    //
+    // Expressed as a fraction: effective hexes = base * den / num.
+    // Equivalently: movement is divided by num then multiplied by den.
+    //
+    //   Clear / City / Ocean   : 1/1  (normal speed)
+    //   Barren / Hills / Forest / River: 3/2  (2/3 speed)
+    //   Desert / Jungle / Swamp: 2/1  (1/2 speed)
+    //   Mountains              : 3/1  (1/3 speed)
+    //
+    // OSE base: 120' movement = 4 hexes/day on clear terrain.
+    // --------------------------------------------------------
+
+    table terrain_move_cost_num(terrain: WildernessTerrainKind) -> int {
+        wt_clear     => 1,
+        wt_city      => 1,
+        wt_ocean     => 1,
+        wt_barren    => 3,
+        wt_hills     => 3,
+        wt_forest    => 3,
+        wt_river     => 3,
+        wt_desert    => 2,
+        wt_jungle    => 2,
+        wt_swamp     => 2,
+        wt_mountains => 3
+    }
+
+    table terrain_move_cost_den(terrain: WildernessTerrainKind) -> int {
+        wt_clear     => 1,
+        wt_city      => 1,
+        wt_ocean     => 1,
+        wt_barren    => 2,
+        wt_hills     => 2,
+        wt_forest    => 2,
+        wt_river     => 2,
+        wt_desert    => 1,
+        wt_jungle    => 1,
+        wt_swamp     => 1,
+        wt_mountains => 1
+    }
+
+
+    // --------------------------------------------------------
+    // GETTING LOST
+    //
+    // Chance of the party getting lost each day of travel (X-in-6).
+    // Roll 1d6; if result <= terrain_lost_chance, party is LOST.
+    // --------------------------------------------------------
+
+    table terrain_lost_chance(terrain: WildernessTerrainKind) -> int {
+        wt_clear     => 1,
+        wt_city      => 1,
+        wt_barren    => 1,
+        wt_hills     => 1,
+        wt_mountains => 1,
+        wt_forest    => 2,
+        wt_river     => 2,
+        wt_desert    => 2,
+        wt_ocean     => 2,
+        wt_swamp     => 2,
+        wt_jungle    => 2
+    }
+
+
+    // --------------------------------------------------------
+    // FORAGING
+    //
+    // Chance of finding food when spending a day foraging (X-in-6).
+    // 0 means foraging is not possible in this terrain.
+    // If successful, find 1d6 person-days of food.
+    // --------------------------------------------------------
+
+    table terrain_forage_chance(terrain: WildernessTerrainKind) -> int {
+        wt_forest    => 2,
+        wt_jungle    => 2,
+        wt_river     => 2,
+        wt_clear     => 1,
+        wt_hills     => 1,
+        wt_swamp     => 1,
+        wt_desert    => 1,
+        wt_mountains => 1,
+        wt_barren    => 0,
+        wt_ocean     => 0,
+        wt_city      => 0
+    }
+
+    // Whether foraging is possible in this terrain (forage_chance > 0).
+    derive terrain_can_forage(terrain: WildernessTerrainKind) -> bool {
+        terrain_forage_chance(terrain) > 0
+    }
+
+
+    // --------------------------------------------------------
+    // ENCOUNTER CHECKS
+    //
+    // Chance of a random encounter per day period (X-in-6).
+    // OSE checks 3 times per day: morning, afternoon, and night.
+    // Roll 1d6 for each period; encounter occurs if roll <= chance.
+    // --------------------------------------------------------
+
+    table terrain_encounter_chance(terrain: WildernessTerrainKind) -> int {
+        wt_city      => 1,
+        wt_clear     => 1,
+        wt_hills     => 1,
+        wt_barren    => 1,
+        wt_forest    => 2,
+        wt_desert    => 2,
+        wt_mountains => 2,
+        wt_swamp     => 2,
+        wt_jungle    => 2,
+        wt_ocean     => 2,
+        wt_river     => 2
+    }
+
+
+    // --------------------------------------------------------
+    // STARVATION
+    //
+    // Attack roll and saving throw penalty from starvation.
+    // Accumulates at -1 per day without food, capped at -4.
+    // HP damage (1d4 per member) begins on day 3 of starvation.
+    // --------------------------------------------------------
+
+    derive starvation_penalty(days_without_food: int) -> int {
+        if days_without_food > 4 { -4 } else { -days_without_food }
+    }
+
+
+    // --------------------------------------------------------
+    // TRAVEL DAY PROCEDURE — DICE MECHANICS
+    //
+    // These mechanics capture the dice rolls from the travel day
+    // procedure. The Rust engine uses them to resolve each step.
+    // State mutations (position, rations, HP) are applied in Rust.
+    // --------------------------------------------------------
+
+    // Step 3: Lost check. Roll 1d6 against terrain lost chance.
+    // Returns true if the party gets lost.
+    mechanic terrain_lost_check(terrain: WildernessTerrainKind) -> bool {
+        let chance = terrain_lost_chance(terrain)
+        let r: RollResult = roll(1d6)
+        r.total <= chance
+    }
+
+    // Step 4: Single encounter check for one day period.
+    // Roll 1d6 against terrain encounter chance.
+    // Returns true if an encounter occurs.
+    mechanic terrain_encounter_check(terrain: WildernessTerrainKind) -> bool {
+        let chance = terrain_encounter_chance(terrain)
+        let r: RollResult = roll(1d6)
+        r.total <= chance
+    }
+
+    // Forage action: roll 1d6 to check against terrain forage chance.
+    // Returns true if foraging yields food.
+    mechanic terrain_forage_check(terrain: WildernessTerrainKind) -> bool {
+        let chance = terrain_forage_chance(terrain)
+        let r: RollResult = roll(1d6)
+        r.total <= chance
+    }
+
+    // Orient action: roll 1d6 to check against orientation success chance.
+    // Success chance = 6 - terrain_lost_chance (inverse of getting lost).
+    // Returns true if the party successfully orients.
+    mechanic terrain_orient_check(terrain: WildernessTerrainKind) -> bool {
+        let orient_chance = 6 - terrain_lost_chance(terrain)
+        let r: RollResult = roll(1d6)
+        r.total <= orient_chance
+    }
+}

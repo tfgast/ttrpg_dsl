@@ -1,0 +1,168 @@
+// ============================================================
+// OSE Spell Metadata — save types and damage formulas
+//
+// Optional AI GM helpers for mechanical spell lookups.
+// Called via GMAPI SpellInfo command, not auto-applied.
+//
+// spell_save_type: which of the 5 OSE saves a spell calls for.
+// spell_damage_dice: damage formula string for damage spells.
+//
+// Reference: data/games/ose/data/spells.json (211 spell definitions),
+//            Advanced Fantasy Players Tome v1.3.
+// ============================================================
+
+use "OSE"
+
+system "OSE Spells" {
+
+    // ========================================================
+    //  SPELL SAVE TYPE ENUM
+    //
+    //  The five OSE saving throw categories plus "no save"
+    //  for spells that don't allow a saving throw.
+    //  Prefixed sv_ to avoid collision with SavingThrows fields.
+    // ========================================================
+
+    enum SpellSaveType {
+        no_save,
+        sv_death,
+        sv_wands,
+        sv_paralysis,
+        sv_breath,
+        sv_spells
+    }
+
+    // ========================================================
+    //  SPELL SAVE TYPE DERIVE
+    //
+    //  Maps each spell to the saving throw category its
+    //  target must roll against. Returns no_save for spells
+    //  that don't allow a save (auto-hit, self-buff, utility).
+    //
+    //  Only covers the PRIMARY (non-reversed) form. Reversed
+    //  spells may use a different save category — the AI GM
+    //  should consult the reversed_description for those.
+    // ========================================================
+
+    derive spell_save_type(spell_name: string) -> SpellSaveType {
+        match spell_name {
+
+            // --- Save vs Death (poison/death ray) ---
+            "Cloudkill"     => sv_death,
+            "Disintegrate"  => sv_death,
+
+            // --- Save vs Spells (rods/staves/spells) ---
+            // This is the most common save category for offensive spells.
+
+            // Cleric
+            "Light"                     => sv_spells,
+            "Hold Person"               => sv_spells,
+            "Silence 15' Radius"        => sv_spells,
+            "Continual Light"           => sv_spells,
+            "Dispel Evil"               => sv_spells,
+            "Quest"                     => sv_spells,
+
+            // Druid
+            "Animal Friendship"         => sv_spells,
+            "Entangle"                  => sv_spells,
+            "Warp Wood"                 => sv_spells,
+            "Call Lightning"            => sv_spells,
+            "Hold Animal"               => sv_spells,
+
+            // Magic-User
+            "Charm Person"              => sv_spells,
+            "Phantasmal Force"          => sv_spells,
+            "Web"                       => sv_spells,
+            "Fire Ball"                 => sv_spells,
+            "Lightning Bolt"            => sv_spells,
+            "Charm Monster"             => sv_spells,
+            "Confusion"                 => sv_spells,
+            "Polymorph Others"          => sv_spells,
+            "Feeblemind"                => sv_spells,
+            "Hold Monster"              => sv_spells,
+            "Magic Jar"                 => sv_spells,
+            "Geas"                      => sv_spells,
+
+            // Illusionist
+            "Chromatic Orb"             => sv_spells,
+            "Colour Spray"              => sv_spells,
+            "Glamour"                   => sv_spells,
+            "Hypnotism"                 => sv_spells,
+            "Spook"                     => sv_spells,
+            "Blindness / Deafness"      => sv_spells,
+            "Fascinate"                 => sv_spells,
+            "Hypnotic Pattern"          => sv_spells,
+            "Improved Phantasmal Force" => sv_spells,
+            "Fear"                      => sv_spells,
+            "Paralysation"             => sv_spells,
+            "Spectral Force"            => sv_spells,
+            "Suggestion"                => sv_spells,
+            "Emotion"                   => sv_spells,
+            "Phantasmal Killer"         => sv_spells,
+            "Rainbow Pattern"           => sv_spells,
+            "Shadow Monsters"           => sv_spells,
+            "Veil of Abandonment"       => sv_spells,
+            "Chaos"                     => sv_spells,
+            "Demi-Shadow Monsters"      => sv_spells,
+            "Illusion"                  => sv_spells,
+            "Seeming"                   => sv_spells,
+            "Visitation"                => sv_spells,
+            "Dream Quest"               => sv_spells,
+            "Impersonation"             => sv_spells,
+            "Manifest Dream"            => sv_spells,
+            "Mass Suggestion"           => sv_spells,
+            "Permanent Illusion"        => sv_spells,
+            "Shades"                    => sv_spells,
+            "Through the Looking Glass" => sv_spells,
+            "Triggered Illusion"        => sv_spells,
+
+            // Default: no save required
+            _ => no_save
+        }
+    }
+
+
+    // ========================================================
+    //  SPELL DAMAGE DICE DERIVE
+    //
+    //  Returns a damage formula string for spells that deal
+    //  direct damage. Returns "" for non-damage spells.
+    //
+    //  Formulas are descriptive strings that the AI GM can
+    //  interpret with the caster's level for final dice rolls.
+    //
+    //  Healing spells are included (positive HP change).
+    // ========================================================
+
+    derive spell_damage_dice(spell_name: string) -> string {
+        match spell_name {
+            // --- Healing ---
+            "Cure Light Wounds"     => "1d6+1",
+            "Cure Serious Wounds"   => "2d6+2",
+
+            // --- Direct damage (level-dependent) ---
+            "Magic Missile"         => "1d6+1 per missile",
+            "Fire Ball"             => "1d6 per caster level",
+            "Lightning Bolt"        => "1d6 per caster level",
+            "Wall of Fire"          => "1d6 per 2 caster levels",
+            "Wall of Ice"           => "1d6 per caster level",
+            "Call Lightning"        => "8d6",
+
+            // --- Direct damage (fixed) ---
+            "Chromatic Orb"         => "1d4 to 2d8 by caster level",
+            "Colour Spray"          => "1d6 HD affected",
+            "Striking"              => "1d6 bonus damage",
+            "Heat Metal"            => "variable by round",
+            "Wall of Thorns"        => "1d8 per 10 feet",
+            "Acid Fog"              => "1d6 per round",
+            "Sticks to Snakes"      => "2d8 per snake",
+
+            // --- HD-based (no dice rolled against targets) ---
+            "Sleep"                 => "2d8 HD affected",
+            "Death Spell"           => "4d8 HD killed",
+            "Cloudkill"             => "instant death under 5 HD",
+
+            _ => ""
+        }
+    }
+}

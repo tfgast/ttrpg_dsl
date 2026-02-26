@@ -78,7 +78,7 @@ fn ose_core_has_all_enums() {
     assert!(enums.contains(&("EncumbranceLevel", 5)));
     assert!(enums.contains(&("ThiefSkill", 8)));
     assert!(enums.contains(&("TurnResult", 4)));
-    assert_eq!(enums.len(), 11, "expected 11 enums total");
+    assert_eq!(enums.len(), 13, "expected 13 enums total");
 }
 
 #[test]
@@ -93,7 +93,7 @@ fn ose_core_has_structs() {
         })
         .collect();
     assert!(structs.contains(&("SavingThrows", 5)));
-    assert!(structs.contains(&("ClassDef", 11)));
+    assert!(structs.contains(&("ClassDef", 16)));
     assert_eq!(structs.len(), 2, "expected 2 structs total");
 }
 

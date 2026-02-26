@@ -1,0 +1,221 @@
+// ============================================================
+// OSE Dungeon Exploration Turn Orchestration
+//
+// Expresses the repeating wrapper sequence that applies to every
+// dungeon exploration action (advance, search, listen, move,
+// force, pick). This procedure-level DSL lets different game
+// systems reorder, add, or remove phases without touching Rust.
+//
+// Phase execution order for any turn-consuming action:
+//   1. CheckLight          — block if party is in darkness
+//   2. AdvanceTime         — tick light sources, increment turn
+//   3. CheckRest           — warn if rest is overdue
+//   4. ExecuteAction       — action-specific sub-mechanics
+//   5. LightSummary        — report remaining light duration
+//   6. WanderingMonsterCheck — 1-in-6 every 2 turns
+//
+// Action-specific sub-phases are nested under ExecuteAction and
+// define what logic each exploration action performs.
+//
+// Reference: OSE Rules Tome — Dungeon Adventuring; Dungeon Turn.
+// Rust: src/engine/exploration/mod.rs
+// ============================================================
+
+use "OSE"
+
+system "OSE Exploration" {
+
+    // ========================================================
+    //  EXPLORATION ACTION ENUM
+    //
+    //  One variant per turn-consuming exploration action.
+    //  Used to dispatch per-action sub-phases.
+    // ========================================================
+
+    enum ExplorationAction {
+        exp_advance,   // Generic turn advance (AdvanceDungeonTurn command)
+        exp_search,    // Search current room for hidden features
+        exp_listen,    // Listen at door for sounds beyond
+        exp_move,      // Move party through a door to adjacent room
+        exp_force,     // Force open a stuck/closed door (no turn cost — but triggers checks)
+        exp_pick       // Pick lock on a locked door
+    }
+
+
+    // ========================================================
+    //  EXPLORATION TURN PHASE SEQUENCE
+    //
+    //  Ordered list of phases executed for every dungeon turn.
+    //  Matches the wrapper in src/engine/exploration/mod.rs:
+    //    advance_dungeon_turn_with / search_room_with /
+    //    listen_at_door_with / move_through_door_with
+    //
+    //  Different game systems override this to insert or remove
+    //  phases (e.g., wilderness tracking, exhaustion mechanics).
+    // ========================================================
+
+    derive exploration_turn_phases() -> list<string> {
+        [
+            "CheckLight",
+            "AdvanceTime",
+            "CheckRest",
+            "ExecuteAction",
+            "LightSummary",
+            "WanderingMonsterCheck"
+        ]
+    }
+
+
+    // ========================================================
+    //  PER-ACTION SUB-PHASES
+    //
+    //  Nested steps performed inside the ExecuteAction phase.
+    //  Each action has its own sequence; an empty list means the
+    //  action adds no specific steps beyond the outer wrapper.
+    //
+    //  Sub-phases are informational labels for the orchestrator.
+    //  Rust executes the corresponding mechanic for each label.
+    // ========================================================
+
+    derive exploration_action_phases(action: ExplorationAction) -> list<string> {
+        match action {
+            exp_advance => [
+                "MarkExplored"
+            ],
+            exp_search => [
+                "RollSearch",
+                "ReportFindings",
+                "TreasureCheck"
+            ],
+            exp_listen => [
+                "ValidateDoors",
+                "RollListen"
+            ],
+            exp_move => [
+                "ValidateDoor",
+                "TransitionRoom",
+                "CheckTrap",
+                "SpawnMonsters"
+            ],
+            exp_force => [
+                "ValidateDoor",
+                "RollForce"
+            ],
+            exp_pick => [
+                "ValidateLock",
+                "ValidateThiefSkill",
+                "RollPick"
+            ]
+        }
+    }
+
+
+    // ========================================================
+    //  PHASE SKIP CONDITIONS
+    //
+    //  Returns true if the given phase should be skipped for this
+    //  turn. Rust consults this before executing each phase.
+    //
+    //  has_light:   true if party has at least one active light source
+    //  needs_rest:  true if party has exceeded the rest interval
+    //               (every 5 activity turns — see ose_time_economy.ttrpg)
+    // ========================================================
+
+    derive skip_exploration_phase(
+        phase: string,
+        has_light: bool,
+        needs_rest: bool
+    ) -> bool {
+        match {
+            // CheckLight always runs — it is the gate, not gated itself
+            phase == "CheckLight" => false,
+
+            // All subsequent phases are blocked when party is in darkness.
+            // Rust returns an error or "DARKNESS" message to the GM.
+            !has_light => true,
+
+            // Rest warning is skipped when the party does not need rest.
+            phase == "CheckRest" && !needs_rest => true,
+
+            _ => false
+        }
+    }
+
+
+    // ========================================================
+    //  WANDERING MONSTER POLICY
+    //
+    //  Defines the check interval and roll type.
+    //  Rust is responsible for the `turn % interval == 0` gate
+    //  because the DSL has no modulo operator. When the interval
+    //  fires, Rust calls wandering_monster_roll().
+    // ========================================================
+
+    // Number of dungeon turns between wandering monster checks.
+    // OSE: roll every 2 turns (each turn = 10 minutes).
+    derive wandering_monster_interval() -> int {
+        2
+    }
+
+    // Wandering monster check: rolls 1d6, triggers on a 1.
+    // OSE: 1-in-6 chance per check interval.
+    // Returns true if an encounter is triggered.
+    mechanic wandering_monster_roll() -> bool {
+        let result = roll(1d6)
+        result.total == 1
+    }
+
+
+    // ========================================================
+    //  SEARCH ROOM
+    //
+    //  Hidden feature detection chance (X-in-6).
+    //  OSE: base 1-in-6; elves detect secret/concealed doors
+    //  on 2-in-6.
+    //
+    //  is_elf: true if the lead searcher is an elf.
+    // ========================================================
+
+    // Detection threshold for search (X-in-6).
+    derive search_room_threshold(is_elf: bool) -> int {
+        match {
+            is_elf => 2,
+            _      => 1
+        }
+    }
+
+    // Roll 1d6 vs threshold.
+    // Returns true if the search reveals something.
+    mechanic search_room_roll(is_elf: bool) -> bool {
+        let threshold = search_room_threshold(is_elf)
+        let result = roll(1d6)
+        result.total <= threshold
+    }
+
+
+    // ========================================================
+    //  LISTEN AT DOOR
+    //
+    //  Noise detection chance (X-in-6).
+    //  OSE: base 1-in-6; demihumans (elves, halflings) succeed
+    //  on 2-in-6.
+    //
+    //  is_demihuman: true if listener is an elf or halfling.
+    // ========================================================
+
+    // Detection threshold for listening (X-in-6).
+    derive listen_at_door_threshold(is_demihuman: bool) -> int {
+        match {
+            is_demihuman => 2,
+            _            => 1
+        }
+    }
+
+    // Roll 1d6 vs threshold.
+    // Returns true if sounds are heard beyond the door.
+    mechanic listen_at_door_roll(is_demihuman: bool) -> bool {
+        let threshold = listen_at_door_threshold(is_demihuman)
+        let result = roll(1d6)
+        result.total <= threshold
+    }
+}

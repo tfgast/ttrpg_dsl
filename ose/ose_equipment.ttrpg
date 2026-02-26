@@ -1,0 +1,232 @@
+// ============================================================
+// OSE Starting Equipment — packages, random tables, armour
+//
+// Fixed equipment packages per class and random weapon tables
+// for variant loadouts. Uses list literals (tdsl-jd5).
+//
+// Item names match data/games/ose/data/equipment.json exactly.
+//
+// Reference: OSE Advanced Fantasy Players Tome v1.3.
+// ============================================================
+
+use "OSE"
+
+system "OSE Equipment" {
+
+    // ========================================================
+    //  STANDARD ADVENTURING GEAR
+    //
+    //  Common gear included in every starting package.
+    //  Useful for composing custom loadouts with
+    //  random_starting_weapon + default_starting_armour.
+    // ========================================================
+
+    derive standard_adventuring_gear() -> list<string> {
+        ["Backpack", "Torches (6)", "Tinder box (flint &steel)", "Rations (iron, 7 days)", "Waterskin", "Rope (50')"]
+    }
+
+
+    // ========================================================
+    //  DEFAULT STARTING ARMOUR
+    //
+    //  Best affordable armour per class permissions.
+    //  Chainmail for heavy-armour classes (within gold budget),
+    //  leather for light armour, nothing for arcane casters.
+    //  Returns armour + shield as applicable.
+    // ========================================================
+
+    derive default_starting_armour(class: Class) -> list<string> {
+        let def = class_def(class)
+        match def.armour {
+            any_armour     => ["Chainmail", "Shield"],
+            any_no_shield  => ["Chainmail"],
+            leather_shield => ["Leather", "Shield"],
+            leather_only   => ["Leather"],
+            no_armour      => []
+        }
+    }
+
+
+    // ========================================================
+    //  EQUIPMENT PACKAGES
+    //
+    //  Fixed starting loadout per class. Includes weapon(s),
+    //  armour (where permitted), and essential gear.
+    //  Costs target roughly 80–110 gp (within 3d6x10 average).
+    //
+    //  Per OSE Reference Booklet and Players Tomes.
+    // ========================================================
+
+    derive equipment_package(class: Class) -> list<string> {
+        match class {
+
+            // --- Martial (heavy armour + melee) ---
+
+            Fighter => ["Sword", "Shield", "Chainmail", "Backpack", "Torches (6)", "Tinder box (flint &steel)", "Rations (iron, 7 days)", "Waterskin", "Rope (50')"],
+
+            Barbarian => ["Battle axe", "Spear", "Chainmail", "Backpack", "Torches (6)", "Tinder box (flint &steel)", "Rations (iron, 7 days)", "Waterskin", "Rope (50')"],
+
+            Knight => ["Sword", "Shield", "Plate mail", "Backpack", "Torches (6)", "Tinder box (flint &steel)", "Rations (iron, 7 days)", "Waterskin"],
+
+            Paladin => ["Sword", "Shield", "Chainmail", "Backpack", "Holy symbol", "Torches (6)", "Tinder box (flint &steel)", "Rations (iron, 7 days)", "Waterskin"],
+
+            Ranger => ["Sword", "Short bow", "Arrows (quiver of 20)", "Leather", "Backpack", "Torches (6)", "Tinder box (flint &steel)", "Rations (iron, 7 days)", "Waterskin", "Rope (50')"],
+
+            // --- Clerical (blunt weapons + armour) ---
+
+            Cleric => ["Mace", "Shield", "Chainmail", "Backpack", "Holy symbol", "Torches (6)", "Tinder box (flint &steel)", "Rations (iron, 7 days)", "Waterskin"],
+
+            Druid => ["Staff", "Leather", "Backpack", "Holy symbol", "Torches (6)", "Tinder box (flint &steel)", "Rations (iron, 7 days)", "Waterskin", "Wolfsbane (1 bunch)"],
+
+            // --- Thief-type (light weapons + leather) ---
+
+            Thief => ["Short sword", "Dagger", "Leather", "Backpack", "Thieves' tools", "Torches (6)", "Tinder box (flint &steel)", "Rations (iron, 7 days)", "Waterskin", "Rope (50')"],
+
+            Acrobat => ["Dagger", "Sling", "Sling stones", "Backpack", "Rope (50')", "Grappling hook", "Torches (6)", "Tinder box (flint &steel)", "Rations (iron, 7 days)", "Waterskin"],
+
+            Assassin => ["Short sword", "Dagger", "Leather", "Backpack", "Torches (6)", "Tinder box (flint &steel)", "Rations (iron, 7 days)", "Waterskin", "Rope (50')", "Iron spikes (12)"],
+
+            Bard => ["Sword", "Leather", "Shield", "Backpack", "Torches (6)", "Tinder box (flint &steel)", "Rations (iron, 7 days)", "Waterskin", "Wine (2 pints)"],
+
+            // --- Arcane (minimal weapons, no armour) ---
+
+            MagicUser => ["Dagger", "Staff", "Backpack", "Torches (6)", "Tinder box (flint &steel)", "Rations (iron, 7 days)", "Waterskin", "Oil (1 flask)"],
+
+            Illusionist => ["Dagger", "Staff", "Backpack", "Torches (6)", "Tinder box (flint &steel)", "Rations (iron, 7 days)", "Waterskin", "Mirror (hand-sized, steel)"],
+
+            // --- Demihuman ---
+
+            Dwarf => ["Battle axe", "Shield", "Chainmail", "Backpack", "Torches (6)", "Tinder box (flint &steel)", "Rations (iron, 7 days)", "Waterskin", "Iron spikes (12)", "Hammer (small)"],
+
+            Duergar => ["War hammer", "Shield", "Chainmail", "Backpack", "Torches (6)", "Tinder box (flint &steel)", "Rations (iron, 7 days)", "Waterskin", "Iron spikes (12)"],
+
+            Elf => ["Sword", "Short bow", "Arrows (quiver of 20)", "Chainmail", "Backpack", "Torches (6)", "Tinder box (flint &steel)", "Rations (iron, 7 days)", "Waterskin"],
+
+            Drow => ["Sword", "Short bow", "Arrows (quiver of 20)", "Chainmail", "Backpack", "Torches (6)", "Tinder box (flint &steel)", "Rations (iron, 7 days)", "Waterskin"],
+
+            HalfElf => ["Sword", "Short bow", "Arrows (quiver of 20)", "Chainmail", "Backpack", "Torches (6)", "Tinder box (flint &steel)", "Rations (iron, 7 days)", "Waterskin"],
+
+            Halfling => ["Short sword", "Sling", "Sling stones", "Leather", "Shield", "Backpack", "Torches (6)", "Tinder box (flint &steel)", "Rations (iron, 7 days)", "Waterskin"],
+
+            HalfOrc => ["Short sword", "Dagger", "Leather", "Backpack", "Torches (6)", "Tinder box (flint &steel)", "Rations (iron, 7 days)", "Waterskin", "Rope (50')"],
+
+            Gnome => ["Dagger", "Sling", "Sling stones", "Leather", "Backpack", "Torches (6)", "Tinder box (flint &steel)", "Rations (iron, 7 days)", "Waterskin"],
+
+            Svirfneblin => ["Short sword", "Dagger", "Leather", "Backpack", "Torches (6)", "Tinder box (flint &steel)", "Rations (iron, 7 days)", "Waterskin", "Iron spikes (12)"]
+        }
+    }
+
+
+    // ========================================================
+    //  RANDOM STARTING WEAPON TABLE
+    //
+    //  d6-based weapon variant per class. Three options each
+    //  (1–2, 3–4, 5–6), matching the class's weapon
+    //  permissions and thematic flavour.
+    //
+    //  Use with: mechanic roll(1d6) for the roll parameter.
+    //  Compose with default_starting_armour + standard_adventuring_gear
+    //  for a complete random loadout.
+    // ========================================================
+
+    table random_starting_weapon(class: Class, roll: int) -> string {
+
+        // --- Martial (any weapon) ---
+        [Fighter, 1..=2]   => "Sword",
+        [Fighter, 3..=4]   => "Battle axe",
+        [Fighter, 5..=6]   => "Two-handed sword",
+
+        [Barbarian, 1..=2] => "Battle axe",
+        [Barbarian, 3..=4] => "Two-handed sword",
+        [Barbarian, 5..=6] => "Spear",
+
+        [Knight, 1..=2]    => "Sword",
+        [Knight, 3..=4]    => "Lance",
+        [Knight, 5..=6]    => "Pole arm",
+
+        [Paladin, 1..=2]   => "Sword",
+        [Paladin, 3..=4]   => "Mace",
+        [Paladin, 5..=6]   => "War hammer",
+
+        [Ranger, 1..=2]    => "Sword",
+        [Ranger, 3..=4]    => "Short bow",
+        [Ranger, 5..=6]    => "Spear",
+
+        // --- Clerical (blunt only) ---
+        [Cleric, 1..=2]    => "Mace",
+        [Cleric, 3..=4]    => "War hammer",
+        [Cleric, 5..=6]    => "Staff",
+
+        [Druid, 1..=2]     => "Staff",
+        [Druid, 3..=4]     => "Club",
+        [Druid, 5..=6]     => "Sling",
+
+        // --- Thief-type (any weapon, light preference) ---
+        [Thief, 1..=2]     => "Short sword",
+        [Thief, 3..=4]     => "Dagger",
+        [Thief, 5..=6]     => "Short bow",
+
+        [Acrobat, 1..=2]   => "Dagger",
+        [Acrobat, 3..=4]   => "Sling",
+        [Acrobat, 5..=6]   => "Club",
+
+        [Assassin, 1..=2]  => "Short sword",
+        [Assassin, 3..=4]  => "Crossbow",
+        [Assassin, 5..=6]  => "Dagger",
+
+        [Bard, 1..=2]      => "Sword",
+        [Bard, 3..=4]      => "Short sword",
+        [Bard, 5..=6]      => "Short bow",
+
+        // --- Arcane (dagger/staff only) ---
+        [MagicUser, 1..=2]   => "Dagger",
+        [MagicUser, 3..=4]   => "Staff",
+        [MagicUser, 5..=6]   => "Silver dagger",
+
+        [Illusionist, 1..=2] => "Dagger",
+        [Illusionist, 3..=4] => "Staff",
+        [Illusionist, 5..=6] => "Silver dagger",
+
+        // --- Demihuman ---
+        [Dwarf, 1..=2]       => "Battle axe",
+        [Dwarf, 3..=4]       => "War hammer",
+        [Dwarf, 5..=6]       => "Short sword",
+
+        [Duergar, 1..=2]     => "War hammer",
+        [Duergar, 3..=4]     => "Battle axe",
+        [Duergar, 5..=6]     => "Crossbow",
+
+        [Elf, 1..=2]         => "Sword",
+        [Elf, 3..=4]         => "Long bow",
+        [Elf, 5..=6]         => "Short sword",
+
+        [Drow, 1..=2]        => "Sword",
+        [Drow, 3..=4]        => "Short bow",
+        [Drow, 5..=6]        => "Crossbow",
+
+        [HalfElf, 1..=2]     => "Sword",
+        [HalfElf, 3..=4]     => "Short bow",
+        [HalfElf, 5..=6]     => "Short sword",
+
+        [Halfling, 1..=2]    => "Short sword",
+        [Halfling, 3..=4]    => "Sling",
+        [Halfling, 5..=6]    => "Short bow",
+
+        [HalfOrc, 1..=2]     => "Short sword",
+        [HalfOrc, 3..=4]     => "Mace",
+        [HalfOrc, 5..=6]     => "Battle axe",
+
+        [Gnome, 1..=2]       => "Dagger",
+        [Gnome, 3..=4]       => "Short sword",
+        [Gnome, 5..=6]       => "Sling",
+
+        [Svirfneblin, 1..=2] => "Short sword",
+        [Svirfneblin, 3..=4] => "Dagger",
+        [Svirfneblin, 5..=6] => "Crossbow"
+    }
+
+    // Wrapper derive for Rust-side DSL evaluation.
+    derive get_random_starting_weapon(class: Class, roll: int) -> string {
+        random_starting_weapon(class, roll)
+    }
+}

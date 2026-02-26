@@ -1,0 +1,133 @@
+// ============================================================
+// OSE Time, Light, Rest, and Economy Constants
+//
+// DSL-side constants for values previously hardcoded in:
+//   src/state/time.rs         (light durations, rest rules, day length)
+//   src/engine/treasure/actions.rs (coin gp values)
+//   src/rules/encumbrance.rs  (armour weights)
+//
+// Reference: OSE Rules Tome — Time & Movement, Equipment, Treasure.
+//
+// Phase 1: defines derives only. DSL gates are wired in oag-98z4o.
+// ============================================================
+
+use "OSE"
+
+system "OSE Time Economy" {
+
+    // --------------------------------------------------------
+    // LIGHT SOURCES
+    // --------------------------------------------------------
+
+    // Light source types for duration tracking.
+    // Variant names are globally unique per DSL requirements.
+    enum LightSourceKind {
+        torch,
+        lantern
+    }
+
+    // Duration in dungeon turns for each light source.
+    // Torch: 6 turns (1 hour). Lantern: 24 turns (4 hours).
+    derive light_source_turns(kind: LightSourceKind) -> int {
+        match kind {
+            torch   => 6,
+            lantern => 24
+        }
+    }
+
+
+    // --------------------------------------------------------
+    // REST RULES
+    // --------------------------------------------------------
+
+    // Turns of activity before rest is required.
+    // OSE: 1 rest turn required after every 5 activity turns.
+    derive rest_interval_turns() -> int {
+        5
+    }
+
+    // Penalty applied to attack and damage rolls when rest is overdue.
+    // OSE: -1 to attack and damage when party has not rested.
+    derive rest_overdue_penalty() -> int {
+        -1
+    }
+
+
+    // --------------------------------------------------------
+    // DAY LENGTH
+    // --------------------------------------------------------
+
+    // Length of a full day in dungeon turns.
+    // OSE: 1 day = 24 hours = 144 turns (10 minutes each).
+    derive day_length_turns() -> int {
+        144
+    }
+
+
+    // --------------------------------------------------------
+    // COIN VALUES
+    //
+    // Each coin's worth expressed in gold pieces × 100 (integer).
+    // Divide by 100 on the Rust side to recover gp as f64.
+    //
+    //   cp = 0.01 gp  →  1
+    //   sp = 0.10 gp  → 10
+    //   ep = 0.50 gp  → 50
+    //   gp = 1.00 gp  → 100
+    //   pp = 5.00 gp  → 500
+    // --------------------------------------------------------
+
+    derive coin_gp_value_x100(coin: string) -> int {
+        match {
+            coin == "cp" => 1,
+            coin == "sp" => 10,
+            coin == "ep" => 50,
+            coin == "gp" => 100,
+            coin == "pp" => 500,
+            _            => 0
+        }
+    }
+
+
+    // --------------------------------------------------------
+    // TRAINING COST
+    // --------------------------------------------------------
+
+    // Gold piece cost to train to the next level.
+    // OSE: training costs level × 1000 gp (most sources).
+    // Stored as level × 100 per project convention (oag-e1whb).
+    derive training_cost_gp(level: int) -> int {
+        level * 100
+    }
+
+
+    // --------------------------------------------------------
+    // ARMOUR WEIGHTS (basic encumbrance)
+    //
+    // Weight in coins (cn) contributed by each armour type.
+    // 10 cn = 1 pound. Used by the basic encumbrance system.
+    // --------------------------------------------------------
+
+    // Armour categories for weight lookup.
+    // Using distinct variant names to avoid global collisions.
+    enum ArmourKind {
+        plate,
+        chain,
+        leather,
+        shield
+    }
+
+    // Weight in coins (cn) for basic encumbrance.
+    //   Plate mail:   500 cn (50 lb)
+    //   Chain mail:   400 cn (40 lb)
+    //   Leather:      200 cn (20 lb)
+    //   Shield:       100 cn (10 lb)
+    derive armour_weight_cn(armour: ArmourKind) -> int {
+        match armour {
+            plate   => 500,
+            chain   => 400,
+            leather => 200,
+            shield  => 100
+        }
+    }
+}

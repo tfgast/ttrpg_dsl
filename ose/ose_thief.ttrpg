@@ -9,6 +9,17 @@
 
 system "OSE" {
 
+    // --- Is-d6 flag ---
+    // Returns true if the skill uses a d6 roll (Hear Noise),
+    // false if it uses d% (all other skills).
+
+    derive is_d6(skill: ThiefSkill) -> bool {
+        match skill {
+            hear_noise => true,
+            _          => false
+        }
+    }
+
     // --- Thief skill chance table (2D: skill × level) ---
     //
     // Returns the target number for a skill check at the given level.
@@ -140,8 +151,14 @@ system "OSE" {
         result.total <= target
     }
 
-    // --- Backstab damage multiplier by level ---
+    // --- Backstab ---
 
+    // Backstab attack bonus: flat +4 to hit (per OSE Rules Tome).
+    derive backstab_attack_bonus() -> int {
+        4
+    }
+
+    // Backstab damage multiplier by level.
     derive backstab_multiplier(level: int) -> int {
         match {
             level <= 4  => 2,

@@ -1,0 +1,151 @@
+// ============================================================
+// OSE Character Generation — ability rolls, HP, gold, THAC0
+//
+// Character creation mechanics and derived statistics.
+// Dice-rolling functions are mechanics; pure lookups are derives/tables.
+//
+// Reference: oag/src/engine/chargen.rs
+// ============================================================
+
+use "OSE"
+
+system "OSE Chargen" {
+
+    // --- Mechanics (roll dice) ---
+
+    // Roll a single ability score: 3d6.
+    mechanic roll_ability() -> int {
+        let result = roll(3d6)
+        result.total
+    }
+
+    // Roll starting HP: 1d(hit_die) + CON modifier, minimum 1.
+    // hit_die is 4, 6, or 8 depending on class.
+    mechanic roll_starting_hp(hit_die: int, con_mod: int) -> int {
+        let hp_result = match {
+            hit_die == 4 => roll(1d4),
+            hit_die == 6 => roll(1d6),
+            _ => roll(1d8)
+        }
+        let hp = hp_result.total + con_mod
+        if hp < 1 { 1 } else { hp }
+    }
+
+    // Roll starting gold: 3d6 x 10 gp (all OSE classes).
+    // Class parameter reserved for future variant gold rolls.
+    mechanic roll_starting_gold(class: Class) -> int {
+        let result = roll(3d6)
+        result.total * 10
+    }
+
+
+    // --- Derives (pure computation) ---
+
+    // Base AC from DEX modifier. Descending AC: 9 (unarmoured) minus DEX bonus.
+    derive base_ac(dex_mod: int) -> int {
+        9 - dex_mod
+    }
+
+    // Base movement rate by class. All OSE classes start at 120'.
+    derive base_movement(class: Class) -> int {
+        120
+    }
+
+    // Racial ability modifiers. Returns list of 6 ints in ability order:
+    // [STR, INT, WIS, DEX, CON, CHA]. Zero means no modifier.
+    derive racial_modifiers(class: Class) -> list<int> {
+        match class {
+            Drow     => [0, 0, 0, 1, -1, 0],
+            Duergar  => [0, 0, 0, 0, 1, -1],
+            Dwarf    => [0, 0, 0, 0, 1, -1],
+            Elf      => [0, 0, 0, 1, -1, 0],
+            Halfling => [-1, 0, 0, 1, 0, 0],
+            HalfOrc  => [1, 0, 0, 0, 1, -2],
+            _        => [0, 0, 0, 0, 0, 0]
+        }
+    }
+
+
+    // --- Tables ---
+
+    // Character THAC0 by combat aptitude and level.
+    // Per OSE attack matrices (Players Tomes).
+    table character_thac0(aptitude: CombatAptitude, level: int) -> int {
+        [martial, 1..=3]   => 19,
+        [martial, 4..=6]   => 17,
+        [martial, 7..=9]   => 14,
+        [martial, 10..=12] => 12,
+        [martial, _]       => 10,
+
+        [semi_martial, 1..=4]   => 19,
+        [semi_martial, 5..=8]   => 17,
+        [semi_martial, 9..=12]  => 14,
+        [semi_martial, _]       => 12,
+
+        [non_martial, 1..=5]  => 19,
+        [non_martial, 6..=10] => 17,
+        [non_martial, _]      => 14
+    }
+
+    // Wrapper derive for Rust-side DSL evaluation.
+    // evaluate_derive() resolves derives by name; tables require a wrapper.
+    derive get_character_thac0(aptitude: CombatAptitude, level: int) -> int {
+        character_thac0(aptitude, level)
+    }
+
+
+    // ========================================================
+    //  STARTING SPELL SELECTION
+    //
+    //  Determines what spells a caster starts with at level 1.
+    //  Arcane casters (spellbook) get Read Magic + one spell.
+    //  Divine casters know all spells on their list.
+    //
+    //  Reference: OSE Rules Tome, spell lists per class.
+    // ========================================================
+
+    // Whether this class uses a spellbook (arcane) vs knowing
+    // all spells on their list (divine).
+    // Arcane: Magic-User, Illusionist, Elf, Half-Elf, Gnome, Svirfneblin, Drow.
+    // Divine: Cleric, Druid, Paladin, Ranger, Bard.
+    derive is_spellbook_caster(class: Class) -> bool {
+        let def = class_def(class)
+        match def.spell_progression {
+            prog_arcane_full => true,
+            prog_half_elf    => true,
+            prog_drow        => true,
+            _                => false
+        }
+    }
+
+    // Starting spellbook for arcane casters.
+    // Always includes Read Magic plus one signature spell.
+    // Non-casters and divine casters return an empty list.
+    derive starting_spellbook(class: Class) -> list<string> {
+        match class {
+            MagicUser   => ["Read Magic", "Sleep"],
+            Illusionist => ["Read Magic", "Phantasmal Force"],
+            Elf         => ["Read Magic", "Sleep"],
+            Drow        => ["Read Magic", "Charm Person"],
+            HalfElf     => ["Read Magic", "Shield"],
+            Gnome       => ["Read Magic", "Colour Spray"],
+            Svirfneblin => ["Read Magic", "Chromatic Orb"],
+            _           => []
+        }
+    }
+
+    // All level-1 spells available per spell list type.
+    // For divine casters: the full selection to prepare from.
+    // For arcane casters: the pool they may add to their spellbook.
+    // Spell names match data/games/ose/data/spells.json exactly.
+    derive available_starting_spells(spell_list: SpellListType) -> list<string> {
+        match spell_list {
+            list_cleric => ["Cure Light Wounds", "Detect Evil", "Detect Magic", "Light", "Protection from Evil", "Purify Food and Water", "Remove Fear", "Resist Cold"],
+            list_druid => ["Animal Friendship", "Detect Danger", "Entangle", "Faerie Fire", "Invisibility to Animals", "Locate Plant or Animal", "Predict Weather", "Speak with Animals"],
+            list_illusionist => ["Auditory Illusion", "Chromatic Orb", "Colour Spray", "Dancing Lights", "Detect Illusion", "Glamour", "Hypnotism", "Light", "Phantasmal Force", "Read Magic", "Spook", "Wall of Fog"],
+            list_magic_user => ["Charm Person", "Detect Magic", "Floating Disc", "Hold Portal", "Light", "Magic Missile", "Protection from Evil", "Read Languages", "Read Magic", "Shield", "Sleep", "Ventriloquism"],
+            list_drow_arcane_divine => ["Charm Person", "Cure Light Wounds", "Detect Evil", "Detect Magic", "Floating Disc", "Hold Portal", "Light", "Magic Missile", "Protection from Evil", "Read Languages", "Read Magic", "Shield", "Sleep", "Ventriloquism"],
+            no_list => []
+        }
+    }
+}
