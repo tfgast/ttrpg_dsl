@@ -572,3 +572,124 @@ system "test" {
         .unwrap();
     assert_eq!(val, Value::Int(-1));
 }
+
+// ── some() constructor builtin ────────────────────────────────────
+
+#[test]
+fn some_constructor_wraps_int() {
+    let source = r#"
+system "test" {
+    derive f() -> option<int> {
+        some(42)
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NoopHandler;
+
+    let val = interp
+        .evaluate_derive(&state, &mut handler, "f", vec![])
+        .unwrap();
+    assert_eq!(val, Value::Option(Some(Box::new(Value::Int(42)))));
+}
+
+#[test]
+fn some_constructor_wraps_string() {
+    let source = r#"
+system "test" {
+    derive f() -> option<string> {
+        some("hello")
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NoopHandler;
+
+    let val = interp
+        .evaluate_derive(&state, &mut handler, "f", vec![])
+        .unwrap();
+    assert_eq!(
+        val,
+        Value::Option(Some(Box::new(Value::Str("hello".into()))))
+    );
+}
+
+#[test]
+fn some_constructor_roundtrips_with_match() {
+    let source = r#"
+system "test" {
+    derive make() -> option<int> {
+        some(10)
+    }
+    derive consume(x: option<int>) -> int {
+        match x {
+            some(n) => n,
+            none => -1
+        }
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NoopHandler;
+
+    let opt = interp
+        .evaluate_derive(&state, &mut handler, "make", vec![])
+        .unwrap();
+    let val = interp
+        .evaluate_derive(&state, &mut handler, "consume", vec![opt])
+        .unwrap();
+    assert_eq!(val, Value::Int(10));
+}
+
+#[test]
+fn some_constructor_wraps_enum_variant() {
+    let source = r#"
+system "test" {
+    enum Color { Red, Green, Blue }
+    derive f() -> option<Color> {
+        some(Red)
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NoopHandler;
+
+    let val = interp
+        .evaluate_derive(&state, &mut handler, "f", vec![])
+        .unwrap();
+    match val {
+        Value::Option(Some(inner)) => match *inner {
+            Value::EnumVariant { ref variant, .. } => assert_eq!(variant.as_ref(), "Red"),
+            other => panic!("expected EnumVariant, got {:?}", other),
+        },
+        other => panic!("expected Option(Some(...)), got {:?}", other),
+    }
+}
+
+#[test]
+fn some_constructor_with_expression() {
+    let source = r#"
+system "test" {
+    derive f(x: int) -> option<int> {
+        some(x + 1)
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NoopHandler;
+
+    let val = interp
+        .evaluate_derive(&state, &mut handler, "f", vec![Value::Int(5)])
+        .unwrap();
+    assert_eq!(val, Value::Option(Some(Box::new(Value::Int(6)))));
+}

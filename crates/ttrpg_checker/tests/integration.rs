@@ -7837,3 +7837,59 @@ system "test" {
 }
 "#);
 }
+
+// ── some() constructor builtin ────────────────────────────────────
+
+#[test]
+fn some_constructor_returns_option_type() {
+    expect_no_errors(r#"
+system "test" {
+    derive f() -> option<int> { some(42) }
+}
+"#);
+}
+
+#[test]
+fn some_constructor_with_variable() {
+    expect_no_errors(r#"
+system "test" {
+    derive f(x: int) -> option<int> { some(x) }
+}
+"#);
+}
+
+#[test]
+fn some_constructor_nested() {
+    expect_no_errors(r#"
+system "test" {
+    derive f() -> option<option<int>> { some(some(1)) }
+}
+"#);
+}
+
+#[test]
+fn some_constructor_wrong_arg_count() {
+    expect_errors(r#"
+system "test" {
+    derive f() -> option<int> { some(1, 2) }
+}
+"#, &["`some` expects 1 argument, found 2"]);
+}
+
+#[test]
+fn some_constructor_no_args() {
+    expect_errors(r#"
+system "test" {
+    derive f() -> option<int> { some() }
+}
+"#, &["`some` expects 1 argument, found 0"]);
+}
+
+#[test]
+fn some_constructor_type_mismatch() {
+    expect_errors(r#"
+system "test" {
+    derive f() -> option<int> { some("hello") }
+}
+"#, &["has type option<string>, expected return type option<int>"]);
+}

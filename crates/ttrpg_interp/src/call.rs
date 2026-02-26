@@ -62,6 +62,7 @@ pub(crate) fn eval_call(
                 "any" => return eval_any(env, args, call_span),
                 "all" => return eval_all(env, args, call_span),
                 "sort" => return eval_sort(env, args, call_span),
+                "some" => return eval_some(env, args, call_span),
                 _ => {}
             }
 
@@ -592,6 +593,21 @@ fn eval_sort(
             call_span,
         )),
     }
+}
+
+fn eval_some(
+    env: &mut Env,
+    args: &[Arg],
+    call_span: Span,
+) -> Result<Value, RuntimeError> {
+    if args.len() != 1 {
+        return Err(RuntimeError::with_span(
+            format!("some() requires 1 argument, got {}", args.len()),
+            call_span,
+        ));
+    }
+    let val = eval_expr(env, &args[0].value)?;
+    Ok(Value::Option(Some(Box::new(val))))
 }
 
 // ── Function dispatch by kind ──────────────────────────────────

@@ -1245,6 +1245,7 @@ impl<'a> Checker<'a> {
             "any" => return self.check_any_call(args, span),
             "all" => return self.check_all_call(args, span),
             "sort" => return self.check_sort_call(args, span),
+            "some" => return self.check_some_call(args, span),
             _ => {}
         }
 
@@ -1930,6 +1931,28 @@ impl<'a> Checker<'a> {
                 Ty::Error
             }
         }
+    }
+
+    fn check_some_call(
+        &mut self,
+        args: &[Arg],
+        span: ttrpg_ast::Span,
+    ) -> Ty {
+        if args.len() != 1 {
+            self.error(
+                format!("`some` expects 1 argument, found {}", args.len()),
+                span,
+            );
+            for arg in args {
+                self.check_expr(&arg.value);
+            }
+            return Ty::Error;
+        }
+        let arg_ty = self.check_expr(&args[0].value);
+        if arg_ty.is_error() {
+            return Ty::Error;
+        }
+        Ty::Option(Box::new(arg_ty))
     }
 
     fn check_enum_constructor(
