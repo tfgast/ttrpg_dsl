@@ -1,6 +1,13 @@
 pub mod builtins;
 pub mod check;
+mod check_args;
+mod check_builtins;
+mod check_call;
+mod check_control;
 mod check_expr;
+mod check_has;
+mod check_literal;
+mod check_method;
 mod check_modify;
 mod check_pattern;
 mod check_stmt;
