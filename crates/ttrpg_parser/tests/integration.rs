@@ -66,9 +66,9 @@ fn test_parse_full_example() {
     assert_eq!(entities, 2, "entity count");
     assert_eq!(derives, 4, "derive count");
     assert_eq!(mechanics, 6, "mechanic count");
-    assert_eq!(actions, 6, "action count");
+    assert_eq!(actions, 8, "action count");
     assert_eq!(reactions, 1, "reaction count");
-    assert_eq!(conditions, 3, "condition count");
+    assert_eq!(conditions, 5, "condition count");
     assert_eq!(prompts, 2, "prompt count");
     assert_eq!(events, 4, "event count");
 }
