@@ -205,6 +205,10 @@ impl StateProvider for GameState {
     fn entity_type_name(&self, entity: &EntityRef) -> Option<Name> {
         self.entities.get(&entity.0).map(|e| e.name.clone())
     }
+
+    fn all_entities(&self) -> Vec<EntityRef> {
+        self.entities.keys().map(|&id| EntityRef(id)).collect()
+    }
 }
 
 // ── WritableState impl ─────────────────────────────────────────

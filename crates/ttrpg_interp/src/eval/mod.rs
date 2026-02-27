@@ -3,6 +3,7 @@ mod assign;
 mod compare;
 mod control;
 mod dispatch;
+mod emit;
 mod helpers;
 mod ops;
 

@@ -642,6 +642,12 @@ impl VisitSpansMut for StmtKind {
             StmtKind::Revoke { entity, .. } => {
                 entity.visit_spans_mut(f);
             }
+            StmtKind::Emit { args, span, .. } => {
+                span.visit_spans_mut(f);
+                for arg in args {
+                    arg.visit_spans_mut(f);
+                }
+            }
         }
     }
 }

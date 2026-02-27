@@ -340,6 +340,11 @@ fn collect_idents_block(block: &ttrpg_ast::ast::Block, out: &mut Vec<Name>) {
             StmtKind::Expr(expr) => collect_idents(expr, out),
             StmtKind::Grant { entity, .. } => collect_idents(entity, out),
             StmtKind::Revoke { entity, .. } => collect_idents(entity, out),
+            StmtKind::Emit { args, .. } => {
+                for arg in args {
+                    collect_idents(&arg.value, out);
+                }
+            }
         }
     }
 }

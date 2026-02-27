@@ -752,6 +752,12 @@ pub enum StmtKind {
         entity: Box<Spanned<ExprKind>>,
         group_name: Name,
     },
+    /// `emit EventName(param: expr, ...)` — fire an event, auto-executing matching hooks.
+    Emit {
+        event_name: Name,
+        args: Vec<Arg>,
+        span: Span,
+    },
 }
 
 #[derive(Clone)]

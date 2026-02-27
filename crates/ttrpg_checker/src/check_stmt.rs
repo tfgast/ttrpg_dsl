@@ -81,6 +81,14 @@ impl<'a> Checker<'a> {
                 self.check_revoke(entity, group_name, stmt.span);
                 Ty::Unit
             }
+            StmtKind::Emit {
+                event_name,
+                args,
+                span,
+            } => {
+                self.check_emit(event_name, args, *span);
+                Ty::Unit
+            }
         }
     }
 
@@ -431,6 +439,109 @@ impl<'a> Checker<'a> {
                     format!(
                         "missing required field `{}` in grant of `{}`",
                         fi.name, group_name
+                    ),
+                    span,
+                );
+            }
+        }
+    }
+
+    fn check_emit(
+        &mut self,
+        event_name: &str,
+        args: &[Arg],
+        span: ttrpg_ast::Span,
+    ) {
+        // emit only allowed in ActionResolve context
+        if !self.scope.allows_emit() {
+            self.error(
+                "emit is only allowed in action context".to_string(),
+                span,
+            );
+        }
+
+        // Look up event declaration
+        let event_info = match self.env.events.get(event_name) {
+            Some(info) => info.clone(),
+            None => {
+                self.error(format!("undefined event `{}`", event_name), span);
+                // Still check arg expressions for other errors
+                for arg in args {
+                    self.check_expr(&arg.value);
+                }
+                return;
+            }
+        };
+
+        // All args must be named
+        for arg in args {
+            if arg.name.is_none() {
+                self.error(
+                    "emit arguments must be named (e.g. `param: value`)".to_string(),
+                    arg.span,
+                );
+            }
+        }
+
+        // Check for duplicate args
+        let mut seen = std::collections::HashSet::new();
+        for arg in args {
+            if let Some(ref name) = arg.name {
+                if !seen.insert(name.clone()) {
+                    self.error(
+                        format!("duplicate argument `{}` in emit", name),
+                        arg.span,
+                    );
+                }
+            }
+        }
+
+        // Match each named arg to event param, type-check value
+        for arg in args {
+            let arg_ty = if let Some(ref name) = arg.name {
+                if let Some(param) = event_info.params.iter().find(|p| p.name == *name) {
+                    self.check_expr_expecting(&arg.value, Some(&param.ty))
+                } else {
+                    let ty = self.check_expr(&arg.value);
+                    self.error(
+                        format!(
+                            "event `{}` has no parameter `{}`",
+                            event_name, name
+                        ),
+                        arg.span,
+                    );
+                    ty
+                }
+            } else {
+                self.check_expr(&arg.value)
+            };
+
+            if arg_ty.is_error() {
+                continue;
+            }
+
+            if let Some(ref name) = arg.name {
+                if let Some(param) = event_info.params.iter().find(|p| p.name == *name) {
+                    if !self.types_compatible(&arg_ty, &param.ty) {
+                        self.error(
+                            format!(
+                                "argument `{}` has type {}, expected {}",
+                                name, arg_ty, param.ty
+                            ),
+                            arg.span,
+                        );
+                    }
+                }
+            }
+        }
+
+        // Check all required params (no default) are provided
+        for param in &event_info.params {
+            if !param.has_default && !seen.contains(&param.name) {
+                self.error(
+                    format!(
+                        "missing required argument `{}` in emit of `{}`",
+                        param.name, event_name
                     ),
                     span,
                 );

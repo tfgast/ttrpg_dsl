@@ -50,6 +50,11 @@ impl Parser {
             return self.parse_revoke_stmt();
         }
 
+        // emit EventName(args)
+        if self.at_ident("emit") {
+            return self.parse_emit_stmt();
+        }
+
         // Parse as expression first, then check if it's an assignment
         let expr = self.parse_expr()?;
 
@@ -152,6 +157,29 @@ impl Parser {
         Ok(StmtKind::Revoke {
             entity: Box::new(entity),
             group_name,
+        })
+    }
+
+    /// Parse `emit EventName(param: expr, ...)`
+    fn parse_emit_stmt(&mut self) -> Result<StmtKind, ()> {
+        let start = self.start_span();
+        self.expect_soft_keyword("emit")?;
+        let (event_name, _) = self.expect_ident()?;
+
+        self.expect(&TokenKind::LParen)?;
+        let args = if matches!(self.peek(), TokenKind::RParen) {
+            Vec::new()
+        } else {
+            self.parse_arg_list()?
+        };
+        self.expect(&TokenKind::RParen)?;
+        self.expect_term()?;
+
+        let span = self.end_span(start);
+        Ok(StmtKind::Emit {
+            event_name,
+            args,
+            span,
         })
     }
 

@@ -727,7 +727,7 @@ impl Parser {
         }
     }
 
-    fn parse_arg_list(&mut self) -> Result<Vec<Arg>, ()> {
+    pub(crate) fn parse_arg_list(&mut self) -> Result<Vec<Arg>, ()> {
         let mut args = Vec::new();
         args.push(self.parse_arg()?);
         while matches!(self.peek(), TokenKind::Comma) {

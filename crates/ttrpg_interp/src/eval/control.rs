@@ -341,6 +341,14 @@ pub(super) fn eval_stmt(
             }
             Ok(Value::None)
         }
+        StmtKind::Emit {
+            event_name,
+            args,
+            span,
+        } => {
+            super::emit::eval_emit(env, event_name, args, *span)?;
+            Ok(Value::None)
+        }
     }
 }
 

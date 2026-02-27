@@ -80,6 +80,10 @@ impl StateProvider for RefCellState<'_> {
     fn entity_type_name(&self, entity: &EntityRef) -> Option<Name> {
         self.0.borrow().entity_type_name(entity).cloned()
     }
+
+    fn all_entities(&self) -> Vec<EntityRef> {
+        self.0.borrow().all_entities()
+    }
 }
 
 // ── CliHandler ──────────────────────────────────────────────────

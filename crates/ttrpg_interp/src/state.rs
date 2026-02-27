@@ -82,6 +82,12 @@ pub trait StateProvider {
     fn entity_type_name(&self, _entity: &EntityRef) -> Option<Name> {
         None
     }
+
+    /// Return all entity refs known to the state.
+    /// Used by `emit` to find hook candidates.
+    fn all_entities(&self) -> Vec<EntityRef> {
+        Vec::new()
+    }
 }
 
 // ── WritableState trait ─────────────────────────────────────────

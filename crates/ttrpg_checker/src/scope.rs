@@ -53,6 +53,10 @@ impl BlockKind {
     pub fn allows_calls(&self) -> bool {
         !matches!(self, BlockKind::TriggerBinding)
     }
+
+    pub fn allows_emit(&self) -> bool {
+        matches!(self, BlockKind::ActionResolve)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -152,6 +156,10 @@ impl ScopeStack {
 
     pub fn allows_calls(&self) -> bool {
         self.current_block_kind().is_none_or(|k| k.allows_calls())
+    }
+
+    pub fn allows_emit(&self) -> bool {
+        self.current_block_kind().is_some_and(|k| k.allows_emit())
     }
 
     /// Check if a name is already bound in the innermost scope.

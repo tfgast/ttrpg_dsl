@@ -107,6 +107,10 @@ impl<S: WritableState> StateProvider for StateAdapter<S> {
     fn entity_type_name(&self, entity: &EntityRef) -> Option<Name> {
         self.state.borrow().entity_type_name(entity)
     }
+
+    fn all_entities(&self) -> Vec<EntityRef> {
+        self.state.borrow().all_entities()
+    }
 }
 
 // ── AdaptedHandler ─────────────────────────────────────────────
