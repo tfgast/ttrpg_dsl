@@ -419,8 +419,8 @@ system "D&D 5e Expanded" {
         // RESOLVED: With optional groups, spell_attack_bonus lives in
         // the Spellcasting group. We check with `has` since mechanics
         // can't use `with` constraints (that's actions only).         [ttrpg_dsl-s43]
-        let spell_bonus = if caster has Spellcasting {
-            caster.Spellcasting.spell_attack_bonus
+        let spell_bonus = if caster has Spellcasting as sc {
+            caster.sc.spell_attack_bonus
         } else {
             0
         }
@@ -619,12 +619,12 @@ system "D&D 5e Expanded" {
     // iterate over them — works for 2 attacks (level 5), 3 (level 11),
     // or 4 (level 20). The host enforces list length.
 
-    action AttackMultiple on attacker: Character with FighterFeatures (
+    action AttackMultiple on attacker: Character with FighterFeatures as ff (
         targets: list<Character>,
         weapon: Weapon
     ) {
         cost { action }
-        requires { attacker.FighterFeatures.has_extra_attack }
+        requires { attacker.ff.has_extra_attack }
 
         resolve {
             for target in targets {
@@ -735,7 +735,7 @@ system "D&D 5e Expanded" {
     // RESOLVED: `with Spellcasting` constraint ensures only casters   [ttrpg_dsl-s43]
     // can use this action. dice() replaces the per-level match.       [ttrpg_dsl-7fv]
 
-    action CureWounds on caster: Character with Spellcasting (
+    action CureWounds on caster: Character with Spellcasting as sc (
         target: Character,
         slot_level: int
     ) {
@@ -746,16 +746,16 @@ system "D&D 5e Expanded" {
             // RESOLVED: dice(count, sides) constructs dice dynamically.
             // No more 6-branch match for base dice.
             let healing_dice: DiceExpr = dice(slot_level, 8)
-            // Spellcasting fields accessed directly via the group —
+            // Spellcasting fields accessed directly via the group alias —
             // no more option<Ability> unwrapping needed.
             let spell_mod = modifier(
-                caster.abilities[caster.Spellcasting.spellcasting_ability]
+                caster.abilities[caster.sc.spellcasting_ability]
             )
             let healing = roll(healing_dice + spell_mod)
             target.HP += healing.total
 
             // RESOLVED: Resource-valued map replaces 9-branch match.   [ttrpg_dsl-5yt]
-            caster.Spellcasting.spell_slots[slot_level] -= 1
+            caster.sc.spell_slots[slot_level] -= 1
         }
     }
 
@@ -769,7 +769,7 @@ system "D&D 5e Expanded" {
     // the list. No DSL-level area targeting yet, but the "roll once,
     // apply many" pattern now works naturally with for-loops.
 
-    action Fireball on caster: Character with Spellcasting (
+    action Fireball on caster: Character with Spellcasting as sc (
         targets: list<Character>,
         slot_level: int
     ) {
@@ -782,7 +782,7 @@ system "D&D 5e Expanded" {
 
             for target in targets {
                 let save = saving_throw(
-                    target, DEX, caster.Spellcasting.spell_save_DC
+                    target, DEX, caster.sc.spell_save_DC
                 )
                 let raw_damage = match save {
                     success => floor(damage_roll.total / 2),
@@ -793,21 +793,21 @@ system "D&D 5e Expanded" {
             }
 
             // RESOLVED: Resource-valued map replaces 7-branch match.   [ttrpg_dsl-5yt]
-            caster.Spellcasting.spell_slots[slot_level] -= 1
+            caster.sc.spell_slots[slot_level] -= 1
         }
     }
 
     // --- Second Wind (Fighter feature) ---
     // RESOLVED: `with FighterFeatures` replaces boolean flag check.   [ttrpg_dsl-s43]
 
-    action SecondWind on fighter: Character with FighterFeatures () {
+    action SecondWind on fighter: Character with FighterFeatures as ff () {
         cost { bonus_action }
-        requires { fighter.FighterFeatures.second_wind_uses > 0 }
+        requires { fighter.ff.second_wind_uses > 0 }
 
         resolve {
             let healing = roll(1d10 + fighter.level)
             fighter.HP += healing.total
-            fighter.FighterFeatures.second_wind_uses -= 1
+            fighter.ff.second_wind_uses -= 1
         }
     }
 
@@ -816,12 +816,12 @@ system "D&D 5e Expanded" {
     // omitted. No difference between "free" and "forgot to declare
     // a cost" — a potential footgun.
 
-    action ActionSurge on fighter: Character with FighterFeatures () {
-        requires { fighter.FighterFeatures.action_surge_uses > 0 }
+    action ActionSurge on fighter: Character with FighterFeatures as ff () {
+        requires { fighter.ff.action_surge_uses > 0 }
 
         resolve {
             turn.actions += 1
-            fighter.FighterFeatures.action_surge_uses -= 1
+            fighter.ff.action_surge_uses -= 1
         }
     }
 
@@ -830,17 +830,17 @@ system "D&D 5e Expanded" {
     // is a common 5e pattern. The DSL has no cost overrides — we
     // duplicate actions with different cost blocks.
 
-    action CunningDash on rogue: Character with RogueFeatures () {
+    action CunningDash on rogue: Character with RogueFeatures as rf () {
         cost { bonus_action }
-        requires { rogue.RogueFeatures.has_cunning_action }
+        requires { rogue.rf.has_cunning_action }
         resolve {
             turn.movement += rogue.speed
         }
     }
 
-    action CunningDisengage on rogue: Character with RogueFeatures () {
+    action CunningDisengage on rogue: Character with RogueFeatures as rf () {
         cost { bonus_action }
-        requires { rogue.RogueFeatures.has_cunning_action }
+        requires { rogue.rf.has_cunning_action }
         resolve {
             apply_condition(rogue, Disengaging, Duration.end_of_turn)
         }
@@ -947,13 +947,13 @@ system "D&D 5e Expanded" {
 
         resolve {
             // Only check if actually concentrating
-            if caster has Spellcasting {
-                if let some(_) = caster.Spellcasting.concentrating_on {
+            if caster has Spellcasting as sc {
+                if let some(_) = caster.sc.concentrating_on {
                     let dc = concentration_check_DC(trigger.amount)
                     let save = saving_throw(caster, CON, dc)
                     match save {
                         failure => {
-                            caster.Spellcasting.concentrating_on = none
+                            caster.sc.concentrating_on = none
                             // PAIN POINT: Dropping concentration should remove  [ttrpg_dsl-5kb]
                             // the spell's effects. No "spell instance" concept.
                         },
@@ -1149,8 +1149,9 @@ system "D&D 5e Expanded" {
     //
     //  [RESOLVED] ENTITY COMPOSITION / OPTIONAL GROUPS            [ttrpg_dsl-s43]
     //    - optional Spellcasting { ... } / FighterFeatures / RogueFeatures
-    //    - `with` constraints on actions (only casters can cast)
-    //    - `has` checks in mechanics and derives
+    //    - `with ... as` constraints on actions (only casters can cast)
+    //    - `has ... as` checks in mechanics and derives
+    //    - `as` aliases shorten repeated group paths (sc, ff, rf)
     //    - grant / revoke for lifecycle management
     //    - Character entity is much leaner
     //
