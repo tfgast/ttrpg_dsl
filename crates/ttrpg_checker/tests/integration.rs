@@ -9045,3 +9045,141 @@ system "test" {
 "#;
     expect_errors(source, &["type `Monster` has no field `dc`"]);
 }
+
+// ── Group alias (`as`) tests ─────────────────────────────────────
+
+#[test]
+fn test_with_group_alias_read() {
+    let source = r#"system "test" {
+    entity Character {
+        name: string
+        optional Spellcasting { dc: int }
+    }
+    derive spell_dc(caster: Character with Spellcasting as sc) -> int {
+        caster.sc.dc
+    }
+}"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_with_group_alias_on_receiver() {
+    let source = r#"system "test" {
+    entity Character {
+        name: string
+        optional Spellcasting { dc: int }
+    }
+    action CastSpell on caster: Character with Spellcasting as sc () {
+        resolve {
+            let x = caster.sc.dc
+        }
+    }
+}"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_has_group_alias_read() {
+    let source = r#"system "test" {
+    entity Character {
+        name: string
+        optional Spellcasting { dc: int }
+    }
+    derive spell_dc(caster: Character) -> int {
+        if caster has Spellcasting as sc {
+            caster.sc.dc
+        } else {
+            0
+        }
+    }
+}"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_has_group_alias_write() {
+    let source = r#"system "test" {
+    entity Character {
+        name: string
+        optional Spellcasting { dc: int }
+    }
+    action Boost on target: Character () {
+        resolve {
+            if target has Spellcasting as sc {
+                target.sc.dc = 20
+            }
+        }
+    }
+}"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_alias_not_visible_outside_scope() {
+    let source = r#"system "test" {
+    entity Character {
+        name: string
+        optional Spellcasting { dc: int }
+    }
+    derive spell_dc(caster: Character) -> int {
+        if caster has Spellcasting as sc {
+            0
+        }
+        caster.sc.dc
+    }
+}"#;
+    // `sc` is only valid inside the if-block; outside it should fail
+    expect_errors(source, &["has"]);
+}
+
+#[test]
+fn test_alias_shadows_field_error() {
+    let source = r#"system "test" {
+    entity Character {
+        name: string
+        optional Spellcasting { dc: int }
+    }
+    derive test(c: Character) -> int {
+        if c has Spellcasting as name {
+            0
+        } else {
+            0
+        }
+    }
+}"#;
+    expect_errors(source, &["alias `name` shadows a field"]);
+}
+
+#[test]
+fn test_alias_shadows_group_error() {
+    let source = r#"system "test" {
+    entity Character {
+        name: string
+        optional Spellcasting { dc: int }
+        optional Magic { power: int }
+    }
+    derive test(c: Character) -> int {
+        if c has Spellcasting as Magic {
+            0
+        } else {
+            0
+        }
+    }
+}"#;
+    expect_errors(source, &["alias `Magic` shadows an optional group"]);
+}
+
+#[test]
+fn test_multiple_aliases_in_body() {
+    let source = r#"system "test" {
+    entity Character {
+        name: string
+        optional Spellcasting { dc: int }
+        optional Rage { bonus: int }
+    }
+    derive combined(c: Character with Spellcasting as sc, Rage as r) -> int {
+        c.sc.dc + c.r.bonus
+    }
+}"#;
+    expect_no_errors(source);
+}

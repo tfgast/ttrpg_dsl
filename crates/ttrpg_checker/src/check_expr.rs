@@ -129,7 +129,11 @@ impl<'a> Checker<'a> {
                 expr.span,
             ),
 
-            ExprKind::Has { entity, group_name } => self.check_has(entity, group_name, expr.span),
+            ExprKind::Has {
+                entity,
+                group_name,
+                alias,
+            } => self.check_has(entity, group_name, alias, expr.span),
         }
     }
 
@@ -510,7 +514,24 @@ impl<'a> Checker<'a> {
             return Ty::Error;
         }
 
-        let result_ty = self.resolve_field(&obj_ty, field, span);
+        // Check if `field` is a group alias on this entity variable
+        let resolved_field: std::borrow::Cow<str> = if obj_ty.is_entity() {
+            if let Some(path_key) = self.extract_path_key(object) {
+                if let Some(real_group) = self.scope.resolve_group_alias(&path_key, field) {
+                    self.resolved_group_aliases
+                        .insert(span, real_group.clone());
+                    std::borrow::Cow::Owned(real_group.into_inner())
+                } else {
+                    std::borrow::Cow::Borrowed(field)
+                }
+            } else {
+                std::borrow::Cow::Borrowed(field)
+            }
+        } else {
+            std::borrow::Cow::Borrowed(field)
+        };
+
+        let result_ty = self.resolve_field(&obj_ty, &resolved_field, span);
 
         // If this resolved to a group reference, check narrowing for optional groups.
         if let Ty::OptionalGroupRef(ref entity_name, ref group_name) = result_ty {
@@ -2580,6 +2601,7 @@ impl<'a> Checker<'a> {
         &mut self,
         entity: &Spanned<ExprKind>,
         group_name: &str,
+        alias: &Option<Name>,
         span: ttrpg_ast::Span,
     ) -> Ty {
         self.check_name_visible(group_name, Namespace::Group, span);
@@ -2616,6 +2638,38 @@ impl<'a> Checker<'a> {
                 );
             }
         }
+        // Validate that alias doesn't shadow an existing field or group on the entity type
+        if let Some(ref alias_name) = alias {
+            match &entity_ty {
+                Ty::Entity(ent_name) => {
+                    if let Some(fields) = self.env.lookup_fields(ent_name) {
+                        if fields.iter().any(|f| f.name == *alias_name) {
+                            self.error(
+                                format!(
+                                    "alias `{}` shadows a field on entity `{}`",
+                                    alias_name, ent_name
+                                ),
+                                span,
+                            );
+                        }
+                    }
+                    if self
+                        .env
+                        .lookup_optional_group(ent_name, alias_name)
+                        .is_some()
+                    {
+                        self.error(
+                            format!(
+                                "alias `{}` shadows an optional group on entity `{}`",
+                                alias_name, ent_name
+                            ),
+                            span,
+                        );
+                    }
+                }
+                _ => {}
+            }
+        }
         Ty::Bool
     }
 
@@ -2634,13 +2688,21 @@ impl<'a> Checker<'a> {
         }
     }
 
-    /// Extract `(path_key, group_name)` narrowing pairs from a `has` condition.
-    /// Supports `entity has Group`, `a and b` composition, and parenthesized expressions.
-    fn extract_has_narrowings(&self, expr: &Spanned<ExprKind>) -> Vec<(Name, Name)> {
+    /// Extract `(path_key, group_name, alias)` narrowing tuples from a `has` condition.
+    /// Supports `entity has Group`, `entity has Group as alias`, `a and b` composition,
+    /// and parenthesized expressions.
+    fn extract_has_narrowings(
+        &self,
+        expr: &Spanned<ExprKind>,
+    ) -> Vec<(Name, Name, Option<Name>)> {
         match &expr.node {
-            ExprKind::Has { entity, group_name } => {
+            ExprKind::Has {
+                entity,
+                group_name,
+                alias,
+            } => {
                 if let Some(path_key) = self.extract_path_key(entity) {
-                    vec![(path_key, group_name.clone())]
+                    vec![(path_key, group_name.clone(), alias.clone())]
                 } else {
                     vec![]
                 }

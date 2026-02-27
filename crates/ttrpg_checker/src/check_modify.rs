@@ -14,7 +14,7 @@ impl<'a> Checker<'a> {
     /// Used by both modify and suppress clauses to set up their shared context.
     fn bind_condition_context(
         &mut self,
-        receiver: Option<(&Name, &Spanned<TypeExpr>, &[Name])>,
+        receiver: Option<(&Name, &Spanned<TypeExpr>, &[GroupConstraint])>,
         condition_params: &[Param],
     ) {
         if let Some((receiver_name, receiver_type, with_groups)) = receiver {
@@ -98,7 +98,7 @@ impl<'a> Checker<'a> {
     pub fn check_modify_clause(
         &mut self,
         clause: &ModifyClause,
-        receiver: Option<(&Name, &Spanned<TypeExpr>, &[Name])>,
+        receiver: Option<(&Name, &Spanned<TypeExpr>, &[GroupConstraint])>,
         condition_params: &[Param],
     ) {
         // Look up the target function
@@ -299,7 +299,7 @@ impl<'a> Checker<'a> {
         clause: &SuppressClause,
         receiver_name: &Name,
         receiver_type: &Spanned<TypeExpr>,
-        receiver_with_groups: &[Name],
+        receiver_with_groups: &[GroupConstraint],
         condition_params: &[Param],
     ) {
         if let Some(event_info) = self.env.events.get(&clause.event_name).cloned() {

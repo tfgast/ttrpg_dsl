@@ -94,10 +94,18 @@ impl Parser {
         } else if self.at_ident("has") {
             self.advance();
             let (group_name, _) = self.expect_ident()?;
+            let alias = if self.at_ident("as") {
+                self.advance();
+                let (a, _) = self.expect_ident()?;
+                Some(a)
+            } else {
+                None
+            };
             Ok(Spanned::new(
                 ExprKind::Has {
                     entity: Box::new(lhs),
                     group_name,
+                    alias,
                 },
                 self.end_span(start),
             ))

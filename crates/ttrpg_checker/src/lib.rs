@@ -53,8 +53,14 @@ fn run_pass2(
     checker.check_program(program);
     diagnostics.extend(checker.diagnostics);
 
-    // Transfer resolution table from checker to env for interpreter use
-    env.resolved_variants = checker.resolved_variants;
+    // Transfer resolution tables from checker to env for interpreter use.
+    // Destructure to move owned fields out, dropping the borrow on `env`.
+    let resolved_variants = checker.resolved_variants;
+    let resolved_group_aliases = checker.resolved_group_aliases;
+    let resolved_lvalue_aliases = checker.resolved_lvalue_aliases;
+    env.resolved_variants = resolved_variants;
+    env.resolved_group_aliases = resolved_group_aliases;
+    env.resolved_lvalue_aliases = resolved_lvalue_aliases;
 
     CheckResult { diagnostics, env }
 }

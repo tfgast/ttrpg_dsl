@@ -202,6 +202,13 @@ pub struct FieldDef {
     pub span: Span,
 }
 
+/// A group constraint with optional alias: `Group` or `Group as alias`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct GroupConstraint {
+    pub name: Name,
+    pub alias: Option<Name>,
+}
+
 /// Shared representation for derive and mechanic declarations.
 #[derive(Clone)]
 pub struct FnDecl {
@@ -221,7 +228,7 @@ pub struct Param {
     pub default: Option<Spanned<ExprKind>>,
     /// Optional group constraints: `param: Entity with Group1, Group2`.
     /// The checker narrows these groups as active within the function body.
-    pub with_groups: Vec<Name>,
+    pub with_groups: Vec<GroupConstraint>,
     pub span: Span,
 }
 
@@ -231,7 +238,7 @@ pub struct ActionDecl {
     pub receiver_name: Name,
     pub receiver_type: Spanned<TypeExpr>,
     /// Optional group constraints on the receiver: `on actor: Entity with Group1, Group2`.
-    pub receiver_with_groups: Vec<Name>,
+    pub receiver_with_groups: Vec<GroupConstraint>,
     pub params: Vec<Param>,
     pub cost: Option<CostClause>,
     pub requires: Option<Spanned<ExprKind>>,
@@ -256,7 +263,7 @@ pub struct ReactionDecl {
     pub receiver_name: Name,
     pub receiver_type: Spanned<TypeExpr>,
     /// Optional group constraints on the receiver: `on reactor: Entity with Group`.
-    pub receiver_with_groups: Vec<Name>,
+    pub receiver_with_groups: Vec<GroupConstraint>,
     pub trigger: TriggerExpr,
     pub cost: Option<CostClause>,
     pub resolve: Block,
@@ -268,7 +275,7 @@ pub struct HookDecl {
     pub receiver_name: Name,
     pub receiver_type: Spanned<TypeExpr>,
     /// Optional group constraints on the receiver: `on target: Entity with Group`.
-    pub receiver_with_groups: Vec<Name>,
+    pub receiver_with_groups: Vec<GroupConstraint>,
     pub trigger: TriggerExpr,
     pub resolve: Block,
 }
@@ -303,7 +310,7 @@ pub struct ConditionDecl {
     pub receiver_name: Name,
     pub receiver_type: Spanned<TypeExpr>,
     /// Optional group constraints on the bearer: `on bearer: Entity with Group`.
-    pub receiver_with_groups: Vec<Name>,
+    pub receiver_with_groups: Vec<GroupConstraint>,
     pub clauses: Vec<ConditionClause>,
 }
 
@@ -556,9 +563,11 @@ pub enum ExprKind {
     },
     /// `entity has GroupName` — tests whether an optional group is active.
     /// Produces a bool and enables flow-sensitive type narrowing.
+    /// Optional alias: `entity has GroupName as alias`.
     Has {
         entity: Box<Spanned<ExprKind>>,
         group_name: Name,
+        alias: Option<Name>,
     },
 }
 

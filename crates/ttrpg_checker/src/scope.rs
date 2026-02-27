@@ -70,6 +70,8 @@ struct Scope {
     /// Optional groups proven active for a given variable in this scope.
     /// Maps variable name → set of group names that are narrowed as active.
     narrowed_groups: HashMap<Name, HashSet<Name>>,
+    /// Group aliases: (variable_name, alias_name) → real_group_name.
+    group_aliases: HashMap<(Name, Name), Name>,
 }
 
 #[derive(Debug)]
@@ -93,6 +95,7 @@ impl ScopeStack {
             block_kind,
             bindings: HashMap::new(),
             narrowed_groups: HashMap::new(),
+            group_aliases: HashMap::new(),
         });
     }
 
@@ -206,5 +209,34 @@ impl ScopeStack {
             }
         }
         false
+    }
+
+    /// Register a group alias: `var.alias` resolves to `var.real_group`.
+    pub fn add_group_alias(&mut self, var: Name, alias: Name, real_group: Name) {
+        debug_assert!(
+            !self.scopes.is_empty(),
+            "ScopeStack::add_group_alias called on empty stack"
+        );
+        if let Some(scope) = self.scopes.last_mut() {
+            scope
+                .group_aliases
+                .insert((var, alias), real_group);
+        }
+    }
+
+    /// Resolve a group alias for a variable, walking scopes innermost to outermost.
+    /// Returns the real group name if `field` is an alias for a group on `var`.
+    pub fn resolve_group_alias(&self, var: &str, field: &str) -> Option<Name> {
+        let key = (Name::from(var), Name::from(field));
+        for scope in self.scopes.iter().rev() {
+            if let Some(real_group) = scope.group_aliases.get(&key) {
+                return Some(real_group.clone());
+            }
+            // Stop at the scope that binds this variable
+            if scope.bindings.contains_key(var) {
+                return None;
+            }
+        }
+        None
     }
 }

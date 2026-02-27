@@ -1119,6 +1119,7 @@ fn test_has_expression() {
         ExprKind::Has {
             ref entity,
             ref group_name,
+            ..
         } => {
             assert!(matches!(entity.node, ExprKind::Ident(ref n) if n == "actor"));
             assert_eq!(group_name, "Spellcasting");
@@ -1225,7 +1226,9 @@ fn test_action_receiver_with_group() {
             _ => None,
         })
         .unwrap();
-    assert_eq!(action.receiver_with_groups, vec!["Spellcasting"]);
+    assert_eq!(action.receiver_with_groups.len(), 1);
+    assert_eq!(action.receiver_with_groups[0].name, "Spellcasting");
+    assert_eq!(action.receiver_with_groups[0].alias, None);
 }
 
 #[test]
@@ -1257,7 +1260,9 @@ fn test_param_with_group() {
             _ => None,
         })
         .unwrap();
-    assert_eq!(derive.params[0].with_groups, vec!["Spellcasting"]);
+    assert_eq!(derive.params[0].with_groups.len(), 1);
+    assert_eq!(derive.params[0].with_groups[0].name, "Spellcasting");
+    assert_eq!(derive.params[0].with_groups[0].alias, None);
 }
 
 #[test]
@@ -1323,7 +1328,9 @@ fn test_condition_receiver_with_group() {
             _ => None,
         })
         .unwrap();
-    assert_eq!(cond.receiver_with_groups, vec!["Spellcasting"]);
+    assert_eq!(cond.receiver_with_groups.len(), 1);
+    assert_eq!(cond.receiver_with_groups[0].name, "Spellcasting");
+    assert_eq!(cond.receiver_with_groups[0].alias, None);
 }
 
 #[test]
@@ -2190,5 +2197,107 @@ fn test_list_comprehension_with_pattern() {
     assert!(
         matches!(expr.node, ExprKind::ListComprehension { .. }),
         "expected ListComprehension"
+    );
+}
+
+// ── Group alias (`as`) tests ─────────────────────────────────────
+
+#[test]
+fn test_parse_with_group_alias() {
+    let source = r#"system "test" {
+    entity Character {
+        name: string
+        optional Spellcasting { dc: int }
+    }
+    action CastSpell on caster: Character with Spellcasting as sc () {
+        resolve {
+            0
+        }
+    }
+}"#;
+    let (program, diagnostics) = parse(source, FileId::SYNTH);
+    assert!(
+        diagnostics.is_empty(),
+        "with Group as alias should parse, got: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+    let system = match &program.items[0].node {
+        TopLevel::System(s) => s,
+        _ => panic!("expected system"),
+    };
+    let action = system
+        .decls
+        .iter()
+        .find_map(|d| match &d.node {
+            DeclKind::Action(a) => Some(a),
+            _ => None,
+        })
+        .unwrap();
+    assert_eq!(action.receiver_with_groups.len(), 1);
+    assert_eq!(action.receiver_with_groups[0].name, "Spellcasting");
+    assert_eq!(
+        action.receiver_with_groups[0].alias.as_ref().unwrap(),
+        "sc"
+    );
+}
+
+#[test]
+fn test_parse_has_group_alias() {
+    let source = "actor has Spellcasting as sc";
+    let (expr, diagnostics) = ttrpg_parser::parse_expr(source);
+    assert!(
+        diagnostics.is_empty(),
+        "has Group as alias should parse, got: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+    let expr = expr.unwrap();
+    match expr.node {
+        ExprKind::Has {
+            ref entity,
+            ref group_name,
+            ref alias,
+        } => {
+            assert!(matches!(entity.node, ExprKind::Ident(ref n) if n == "actor"));
+            assert_eq!(group_name, "Spellcasting");
+            assert_eq!(alias.as_ref().unwrap(), "sc");
+        }
+        _ => panic!("expected Has expression"),
+    }
+}
+
+#[test]
+fn test_parse_param_with_group_alias() {
+    let source = r#"system "test" {
+    entity Character {
+        name: string
+        optional Spellcasting { dc: int }
+    }
+    derive spell_dc(caster: Character with Spellcasting as sc) -> int {
+        0
+    }
+}"#;
+    let (program, diagnostics) = parse(source, FileId::SYNTH);
+    assert!(
+        diagnostics.is_empty(),
+        "param with Group as alias should parse, got: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+    let system = match &program.items[0].node {
+        TopLevel::System(s) => s,
+        _ => panic!("expected system"),
+    };
+    let derive = system
+        .decls
+        .iter()
+        .find_map(|d| match &d.node {
+            DeclKind::Derive(f) => Some(f),
+            _ => None,
+        })
+        .unwrap();
+    assert_eq!(derive.params[0].with_groups.len(), 1);
+    assert_eq!(derive.params[0].with_groups[0].name, "Spellcasting");
+    assert_eq!(
+        derive.params[0].with_groups[0].alias.as_ref().unwrap(),
+        "sc"
     );
 }

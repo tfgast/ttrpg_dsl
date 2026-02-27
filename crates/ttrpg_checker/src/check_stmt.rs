@@ -217,13 +217,27 @@ impl<'a> Checker<'a> {
 
         let mut current = root_ty;
         let mut path_key = lvalue.root.to_string();
-        for seg in &lvalue.segments {
+        for (seg_idx, seg) in lvalue.segments.iter().enumerate() {
             if current.is_error() {
                 return Ty::Error;
             }
             match seg {
                 LValueSegment::Field(name) => {
-                    current = self.resolve_field(&current, name, lvalue.span);
+                    // Check if this field is a group alias
+                    let resolved_name = if current.is_entity() {
+                        if let Some(real_group) =
+                            self.scope.resolve_group_alias(&path_key, name)
+                        {
+                            self.resolved_lvalue_aliases
+                                .insert(lvalue.span, (seg_idx, real_group.clone()));
+                            real_group
+                        } else {
+                            name.clone()
+                        }
+                    } else {
+                        name.clone()
+                    };
+                    current = self.resolve_field(&current, &resolved_name, lvalue.span);
                     // Check narrowing for optional group access
                     if let Ty::OptionalGroupRef(ref entity_name, ref group_name) = current {
                         if !self.env.is_group_required(entity_name, group_name)

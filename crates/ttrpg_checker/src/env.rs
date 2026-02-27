@@ -125,6 +125,11 @@ pub struct TypeEnv {
     pub suffix_to_unit: HashMap<String, Name>,
     pub options: HashSet<Name>,
 
+    /// Maps FieldAccess spans where a group alias was used → real group name.
+    pub resolved_group_aliases: HashMap<Span, Name>,
+    /// Maps LValue spans where a group alias was used → (segment_index, real_group_name).
+    pub resolved_lvalue_aliases: HashMap<Span, (usize, Name)>,
+
     // ── Module awareness (populated when ModuleMap is provided) ───
     /// Declaration name → owning system name, per namespace.
     pub type_owner: HashMap<Name, Name>,
@@ -172,6 +177,8 @@ impl TypeEnv {
             builtins: HashMap::new(),
             suffix_to_unit: HashMap::new(),
             options: HashSet::new(),
+            resolved_group_aliases: HashMap::new(),
+            resolved_lvalue_aliases: HashMap::new(),
             type_owner: HashMap::new(),
             group_owner: HashMap::new(),
             function_owner: HashMap::new(),

@@ -809,7 +809,7 @@ fn collect_fn(
                 name: p.name.clone(),
                 ty: env.resolve_type_validated(&p.ty, diagnostics),
                 has_default: p.default.is_some(),
-                with_groups: p.with_groups.clone(),
+                with_groups: p.with_groups.iter().map(|g| g.name.clone()).collect(),
             }
         })
         .collect();
@@ -886,7 +886,7 @@ fn collect_action(
         name: a.receiver_name.clone(),
         ty: env.resolve_type(&a.receiver_type),
         has_default: false,
-        with_groups: a.receiver_with_groups.clone(),
+        with_groups: a.receiver_with_groups.iter().map(|g| g.name.clone()).collect(),
     };
 
     collect_fn(
@@ -945,7 +945,7 @@ fn collect_reaction(
         name: r.receiver_name.clone(),
         ty: env.resolve_type(&r.receiver_type),
         has_default: false,
-        with_groups: r.receiver_with_groups.clone(),
+        with_groups: r.receiver_with_groups.iter().map(|g| g.name.clone()).collect(),
     };
 
     collect_fn(
@@ -997,7 +997,7 @@ fn collect_hook(h: &HookDecl, env: &mut TypeEnv, diagnostics: &mut Vec<Diagnosti
         name: h.receiver_name.clone(),
         ty: env.resolve_type(&h.receiver_type),
         has_default: false,
-        with_groups: h.receiver_with_groups.clone(),
+        with_groups: h.receiver_with_groups.iter().map(|g| g.name.clone()).collect(),
     };
 
     collect_fn(
@@ -1045,7 +1045,7 @@ fn collect_condition(
             name: param.name.clone(),
             ty,
             has_default: param.default.is_some(),
-            with_groups: param.with_groups.clone(),
+            with_groups: param.with_groups.iter().map(|g| g.name.clone()).collect(),
         });
     }
 
@@ -1113,7 +1113,7 @@ fn collect_event(e: &EventDecl, env: &mut TypeEnv, diagnostics: &mut Vec<Diagnos
                 name: p.name.clone(),
                 ty: env.resolve_type_validated(&p.ty, diagnostics),
                 has_default: p.default.is_some(),
-                with_groups: p.with_groups.clone(),
+                with_groups: p.with_groups.iter().map(|g| g.name.clone()).collect(),
             }
         })
         .collect();

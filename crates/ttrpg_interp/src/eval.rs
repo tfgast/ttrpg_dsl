@@ -183,7 +183,7 @@ pub(crate) fn eval_expr(env: &mut Env, expr: &Spanned<ExprKind>) -> Result<Value
             filter,
         } => eval_list_comprehension(env, element, pattern, iterable, filter.as_deref()),
 
-        ExprKind::Has { entity, group_name } => {
+        ExprKind::Has { entity, group_name, .. } => {
             let entity_val = eval_expr(env, entity)?;
             let entity_ref = match entity_val {
                 Value::Entity(r) => r,
@@ -819,7 +819,15 @@ fn eval_field_access(
     match &object {
         // Entity fields via StateProvider
         Value::Entity(entity_ref) => {
-            if let Some(val) = env.state.read_field(entity_ref, field) {
+            // Check for group alias resolution from the checker
+            let resolved_field: std::borrow::Cow<str> =
+                if let Some(real_name) = env.interp.type_env.resolved_group_aliases.get(&expr.span)
+                {
+                    std::borrow::Cow::Owned(real_name.to_string())
+                } else {
+                    std::borrow::Cow::Borrowed(field)
+                };
+            if let Some(val) = env.state.read_field(entity_ref, &resolved_field) {
                 return Ok(val);
             }
             // Flattened included-group field: look up group, read struct, extract field
@@ -1351,12 +1359,12 @@ fn eval_assign(
     match root_val {
         Some(Value::Entity(entity_ref)) => {
             // Entity mutation: all segments become FieldPathSegments
-            eval_assign_entity(env, entity_ref, &target.segments, op, rhs, span)
+            eval_assign_entity(env, entity_ref, &target.segments, op, rhs, target.span)
         }
         Some(_) => {
             // Local mutation path: walk segments, switching to entity
             // mutation if we encounter an Entity along the way
-            eval_assign_local(env, &target.root, &target.segments, op, rhs, span)
+            eval_assign_local(env, &target.root, &target.segments, op, rhs, target.span)
         }
         None => Err(RuntimeError::with_span(
             format!("undefined variable `{}`", target.root),
@@ -1457,6 +1465,14 @@ fn eval_assign_entity(
     span: ttrpg_ast::Span,
 ) -> Result<(), RuntimeError> {
     let mut path = lvalue_segments_to_field_path(env, segments, span)?;
+
+    // Apply group alias resolution from the checker
+    if let Some((seg_idx, real_name)) = env.interp.type_env.resolved_lvalue_aliases.get(&span) {
+        if *seg_idx < path.len() {
+            path[*seg_idx] = FieldPathSegment::Field(real_name.clone());
+        }
+    }
+
     expand_flattened_path(env, &entity, &mut path);
 
     // Look up resource bounds from the entity's field declaration.
@@ -2538,7 +2554,9 @@ fn collect_idents(expr: &Spanned<ExprKind>, out: &mut Vec<Name>) {
                 collect_idents(f, out);
             }
         }
-        ExprKind::Has { entity, .. } => collect_idents(entity, out),
+        ExprKind::Has { entity, .. } => {
+            collect_idents(entity, out);
+        }
         _ => {}
     }
 }
@@ -7214,6 +7232,7 @@ mod tests {
         let expr = spanned(ExprKind::Has {
             entity: Box::new(spanned(ExprKind::Ident("actor".into()))),
             group_name: "Spellcasting".into(),
+            alias: None,
         });
         assert_eq!(eval_expr(&mut env, &expr).unwrap(), Value::Bool(true));
     }
@@ -7231,6 +7250,7 @@ mod tests {
         let expr = spanned(ExprKind::Has {
             entity: Box::new(spanned(ExprKind::Ident("actor".into()))),
             group_name: "Spellcasting".into(),
+            alias: None,
         });
         assert_eq!(eval_expr(&mut env, &expr).unwrap(), Value::Bool(false));
     }
@@ -7248,6 +7268,7 @@ mod tests {
         let expr = spanned(ExprKind::Has {
             entity: Box::new(spanned(ExprKind::Ident("x".into()))),
             group_name: "Spellcasting".into(),
+            alias: None,
         });
         let err = eval_expr(&mut env, &expr).unwrap_err();
         assert!(

@@ -933,3 +933,346 @@ fn revoke_action_emits_correct_effect() {
         _ => unreachable!(),
     }
 }
+
+// ════════════════════════════════════════════════════════════════
+// Group 10: Alias Bindings (`as <alias>`)
+// ════════════════════════════════════════════════════════════════
+
+/// DSL program using `as` aliases on `with` constraints and `has` guards.
+const ALIAS_PROGRAM_SOURCE: &str = r#"
+system "AliasTest" {
+
+    entity Character {
+        name: string
+        level: int = 1
+        HP: int
+
+        optional Spellcasting {
+            spell_slots: int
+            spell_dc: int = 10
+            spellcasting_ability: string = "INT"
+        }
+
+        optional KiPowers {
+            ki_points: int
+            ki_dc: int = 8
+        }
+    }
+
+    // Derive using `has ... as` alias for read access
+    derive effective_spell_dc(caster: Character) -> int {
+        if caster has Spellcasting as sc {
+            caster.sc.spell_dc
+        } else {
+            0
+        }
+    }
+
+    // Derive using multiple `has ... as` aliases
+    derive total_resources(c: Character) -> int {
+        let spells = if c has Spellcasting as sc { c.sc.spell_slots } else { 0 }
+        let ki = if c has KiPowers as kp { c.kp.ki_points } else { 0 }
+        spells + ki
+    }
+
+    // Action with `with ... as` alias on receiver — reads and writes through alias
+    action CastSpell on caster: Character with Spellcasting as sc (cost: int) {
+        resolve {
+            caster.sc.spell_slots -= cost
+        }
+    }
+
+    // Action that reads through alias in resolve block
+    derive spell_save_dc(caster: Character) -> int {
+        if caster has Spellcasting as sc {
+            caster.sc.spell_dc + caster.level
+        } else {
+            0
+        }
+    }
+
+    // Grant action (no alias — used for setup)
+    action AwakeMagic on gm: Character (target: Character, slots: int, dc: int) {
+        resolve {
+            grant target.Spellcasting { spell_slots: slots, spell_dc: dc }
+        }
+    }
+
+    action UnlockKi on gm: Character (target: Character, points: int) {
+        resolve {
+            grant target.KiPowers { ki_points: points }
+        }
+    }
+
+    // Action: revoke through has alias guard with mutation inside
+    action DrainMagic on gm: Character (target: Character) {
+        resolve {
+            if target has Spellcasting as sc {
+                target.sc.spell_slots = 0
+            }
+            revoke target.Spellcasting
+        }
+    }
+}
+"#;
+
+fn setup_alias() -> (ttrpg_ast::ast::Program, ttrpg_checker::CheckResult) {
+    setup_from_source(ALIAS_PROGRAM_SOURCE)
+}
+
+#[test]
+fn alias_has_guard_read_with_group_present() {
+    let (program, result) = setup_alias();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut state = GameState::new();
+    let wizard = add_character(&mut state, "Wizard", 5, 30);
+
+    // Grant Spellcasting
+    let group_val = Value::Struct {
+        name: "Spellcasting".into(),
+        fields: {
+            let mut f = BTreeMap::new();
+            f.insert("spell_slots".into(), Value::Int(4));
+            f.insert("spell_dc".into(), Value::Int(15));
+            f.insert("spellcasting_ability".into(), Value::Str("INT".into()));
+            f
+        },
+    };
+    state.write_field(
+        &wizard,
+        &[ttrpg_interp::effect::FieldPathSegment::Field(
+            "Spellcasting".into(),
+        )],
+        group_val,
+    );
+
+    // effective_spell_dc reads through `caster.sc.spell_dc` (alias for Spellcasting)
+    let mut handler = ScriptedHandler::new();
+    let val = interp
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "effective_spell_dc",
+            vec![Value::Entity(wizard)],
+        )
+        .unwrap();
+    assert_eq!(val, Value::Int(15));
+}
+
+#[test]
+fn alias_has_guard_read_without_group() {
+    let (program, result) = setup_alias();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut state = GameState::new();
+    let fighter = add_character(&mut state, "Fighter", 5, 40);
+
+    // No Spellcasting granted — else branch returns 0
+    let mut handler = ScriptedHandler::new();
+    let val = interp
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "effective_spell_dc",
+            vec![Value::Entity(fighter)],
+        )
+        .unwrap();
+    assert_eq!(val, Value::Int(0));
+}
+
+#[test]
+fn alias_multiple_has_guards_in_derive() {
+    let (program, result) = setup_alias();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut state = GameState::new();
+    let gm = add_character(&mut state, "GM", 1, 999);
+    let multiclass = add_character(&mut state, "Multiclass", 7, 35);
+    state.set_turn_budget(&gm, standard_turn_budget());
+
+    // Grant both Spellcasting and KiPowers
+    let adapter = StateAdapter::new(state);
+    let mut handler = ScriptedHandler::with_responses(vec![Response::Acknowledged]);
+    adapter.run(&mut handler, |state, eff_handler| {
+        interp
+            .execute_action(
+                state,
+                eff_handler,
+                "AwakeMagic",
+                gm,
+                vec![Value::Entity(multiclass), Value::Int(4), Value::Int(13)],
+            )
+            .unwrap();
+    });
+    let mut state = adapter.into_inner();
+    state.set_turn_budget(&gm, standard_turn_budget());
+
+    let adapter = StateAdapter::new(state);
+    let mut handler = ScriptedHandler::with_responses(vec![Response::Acknowledged]);
+    adapter.run(&mut handler, |state, eff_handler| {
+        interp
+            .execute_action(
+                state,
+                eff_handler,
+                "UnlockKi",
+                gm,
+                vec![Value::Entity(multiclass), Value::Int(5)],
+            )
+            .unwrap();
+    });
+    let state = adapter.into_inner();
+
+    // total_resources uses `c.sc.spell_slots` and `c.kp.ki_points` via aliases
+    let mut handler = ScriptedHandler::new();
+    let val = interp
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "total_resources",
+            vec![Value::Entity(multiclass)],
+        )
+        .unwrap();
+    assert_eq!(val, Value::Int(9), "4 spell slots + 5 ki points");
+}
+
+#[test]
+fn alias_with_constraint_write_in_action() {
+    let (program, result) = setup_alias();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut state = GameState::new();
+    let wizard = add_character(&mut state, "Wizard", 5, 30);
+    state.set_turn_budget(&wizard, standard_turn_budget());
+
+    // Grant Spellcasting with 4 slots
+    let group_val = Value::Struct {
+        name: "Spellcasting".into(),
+        fields: {
+            let mut f = BTreeMap::new();
+            f.insert("spell_slots".into(), Value::Int(4));
+            f.insert("spell_dc".into(), Value::Int(15));
+            f.insert("spellcasting_ability".into(), Value::Str("INT".into()));
+            f
+        },
+    };
+    state.write_field(
+        &wizard,
+        &[ttrpg_interp::effect::FieldPathSegment::Field(
+            "Spellcasting".into(),
+        )],
+        group_val,
+    );
+
+    // CastSpell writes through alias: `caster.sc.spell_slots -= cost`
+    let adapter = StateAdapter::new(state);
+    let mut handler = ScriptedHandler::with_responses(vec![Response::Acknowledged]);
+    adapter.run(&mut handler, |state, eff_handler| {
+        interp
+            .execute_action(state, eff_handler, "CastSpell", wizard, vec![Value::Int(1)])
+            .unwrap();
+    });
+
+    // spell_slots should go from 4 to 3
+    let final_state = adapter.into_inner();
+    let group = final_state.read_field(&wizard, "Spellcasting").unwrap();
+    match group {
+        Value::Struct { fields, .. } => {
+            assert_eq!(fields.get("spell_slots"), Some(&Value::Int(3)));
+        }
+        other => panic!("expected Struct, got {:?}", other),
+    }
+}
+
+#[test]
+fn alias_has_guard_with_mutation_and_revoke() {
+    let (program, result) = setup_alias();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut state = GameState::new();
+    let gm = add_character(&mut state, "GM", 1, 999);
+    let wizard = add_character(&mut state, "Wizard", 5, 30);
+    state.set_turn_budget(&gm, standard_turn_budget());
+
+    // Grant Spellcasting with 4 slots
+    let adapter = StateAdapter::new(state);
+    let mut handler = ScriptedHandler::with_responses(vec![Response::Acknowledged]);
+    adapter.run(&mut handler, |state, eff_handler| {
+        interp
+            .execute_action(
+                state,
+                eff_handler,
+                "AwakeMagic",
+                gm,
+                vec![Value::Entity(wizard), Value::Int(4), Value::Int(15)],
+            )
+            .unwrap();
+    });
+    let mut state = adapter.into_inner();
+    state.set_turn_budget(&gm, standard_turn_budget());
+
+    // Verify slots are 4 before drain
+    let group = state.read_field(&wizard, "Spellcasting").unwrap();
+    match &group {
+        Value::Struct { fields, .. } => {
+            assert_eq!(fields.get("spell_slots"), Some(&Value::Int(4)));
+        }
+        other => panic!("expected Struct, got {:?}", other),
+    }
+
+    // DrainMagic: writes `target.sc.spell_slots = 0` through has-alias, then revokes
+    let adapter = StateAdapter::new(state);
+    let mut handler = ScriptedHandler::with_responses(vec![Response::Acknowledged]);
+    adapter.run(&mut handler, |state, eff_handler| {
+        interp
+            .execute_action(
+                state,
+                eff_handler,
+                "DrainMagic",
+                gm,
+                vec![Value::Entity(wizard)],
+            )
+            .unwrap();
+    });
+
+    // After DrainMagic, Spellcasting should be revoked entirely
+    let final_state = adapter.into_inner();
+    assert!(
+        final_state.read_field(&wizard, "Spellcasting").is_none(),
+        "Spellcasting should be revoked after DrainMagic"
+    );
+}
+
+#[test]
+fn alias_spell_save_dc_with_has_alias() {
+    let (program, result) = setup_alias();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut state = GameState::new();
+    let wizard = add_character(&mut state, "Wizard", 5, 30);
+
+    // Grant Spellcasting with dc=12
+    let group_val = Value::Struct {
+        name: "Spellcasting".into(),
+        fields: {
+            let mut f = BTreeMap::new();
+            f.insert("spell_slots".into(), Value::Int(3));
+            f.insert("spell_dc".into(), Value::Int(12));
+            f.insert("spellcasting_ability".into(), Value::Str("WIS".into()));
+            f
+        },
+    };
+    state.write_field(
+        &wizard,
+        &[ttrpg_interp::effect::FieldPathSegment::Field(
+            "Spellcasting".into(),
+        )],
+        group_val,
+    );
+
+    // spell_save_dc = caster.sc.spell_dc + caster.level = 12 + 5 = 17
+    let mut handler = ScriptedHandler::new();
+    let val = interp
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "spell_save_dc",
+            vec![Value::Entity(wizard)],
+        )
+        .unwrap();
+    assert_eq!(val, Value::Int(17));
+}

@@ -342,16 +342,23 @@ impl Parser {
         })
     }
 
-    /// Parse an optional `with Group1, Group2` constraint list.
+    /// Parse an optional `with Group1 as alias1, Group2` constraint list.
     /// Returns an empty vec if no `with` keyword is present.
-    fn parse_with_groups(&mut self) -> Result<Vec<ttrpg_ast::Name>, ()> {
+    fn parse_with_groups(&mut self) -> Result<Vec<GroupConstraint>, ()> {
         if !self.at_ident("with") {
             return Ok(vec![]);
         }
         self.advance(); // consume 'with'
         let mut groups = Vec::new();
         let (name, _) = self.expect_ident()?;
-        groups.push(name);
+        let alias = if self.at_ident("as") {
+            self.advance();
+            let (a, _) = self.expect_ident()?;
+            Some(a)
+        } else {
+            None
+        };
+        groups.push(GroupConstraint { name, alias });
         while matches!(self.peek(), TokenKind::Comma) {
             // Peek ahead: if the next token after comma is IDENT followed by
             // colon or rparen, it's the next param, not another group name.
@@ -366,7 +373,14 @@ impl Parser {
             }
             self.advance(); // consume ','
             let (name, _) = self.expect_ident()?;
-            groups.push(name);
+            let alias = if self.at_ident("as") {
+                self.advance();
+                let (a, _) = self.expect_ident()?;
+                Some(a)
+            } else {
+                None
+            };
+            groups.push(GroupConstraint { name, alias });
         }
         Ok(groups)
     }

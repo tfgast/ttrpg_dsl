@@ -33,6 +33,12 @@ pub struct Checker<'a> {
     /// Maps each bare variant expression span to its resolved owning enum.
     /// Transferred to `TypeEnv` after checking for use by the interpreter.
     pub resolved_variants: HashMap<Span, Name>,
+    /// Maps FieldAccess spans where a group alias was used → real group name.
+    /// Transferred to `TypeEnv` for interpreter use.
+    pub resolved_group_aliases: HashMap<Span, Name>,
+    /// Maps LValue spans where a group alias was used → (segment_index, real_group_name).
+    /// Transferred to `TypeEnv` for interpreter use.
+    pub resolved_lvalue_aliases: HashMap<Span, (usize, Name)>,
 }
 
 impl<'a> Checker<'a> {
@@ -44,6 +50,8 @@ impl<'a> Checker<'a> {
             modules,
             current_system: None,
             resolved_variants: HashMap::new(),
+            resolved_group_aliases: HashMap::new(),
+            resolved_lvalue_aliases: HashMap::new(),
         }
     }
 
@@ -975,10 +983,11 @@ impl<'a> Checker<'a> {
         &mut self,
         var_name: &Name,
         ty: &Ty,
-        with_groups: &[Name],
+        with_groups: &[GroupConstraint],
         span: Span,
     ) {
-        for group_name in with_groups {
+        for entry in with_groups {
+            let group_name = &entry.name;
             self.check_name_visible(group_name, Namespace::Group, span);
             match ty {
                 Ty::Entity(entity_name) => {
@@ -1019,6 +1028,11 @@ impl<'a> Checker<'a> {
             }
             self.scope
                 .narrow_group(var_name.clone(), group_name.clone());
+            // Register alias if present
+            if let Some(ref alias) = entry.alias {
+                self.scope
+                    .add_group_alias(var_name.clone(), alias.clone(), group_name.clone());
+            }
         }
     }
 
@@ -1026,11 +1040,15 @@ impl<'a> Checker<'a> {
     pub fn check_block_with_narrowings(
         &mut self,
         block: &Block,
-        narrowings: &[(Name, Name)],
+        narrowings: &[(Name, Name, Option<Name>)],
     ) -> Ty {
         self.scope.push(BlockKind::Inner);
-        for (var, group) in narrowings {
+        for (var, group, alias) in narrowings {
             self.scope.narrow_group(var.clone(), group.clone());
+            if let Some(alias) = alias {
+                self.scope
+                    .add_group_alias(var.clone(), alias.clone(), group.clone());
+            }
         }
         let stmts = &block.node;
         let mut last_ty = Ty::Unit;
