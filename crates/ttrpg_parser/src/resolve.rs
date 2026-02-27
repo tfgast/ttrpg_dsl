@@ -817,6 +817,7 @@ mod tests {
             DeclKind::Condition(ConditionDecl {
                 name: Name::from(name),
                 params: vec![],
+                extends: vec![],
                 receiver_name: Name::from("bearer"),
                 receiver_type: Spanned::new(TypeExpr::Named("Character".into()), Span::dummy()),
                 receiver_with_groups: vec![],

@@ -680,6 +680,22 @@ impl Parser {
         } else {
             Vec::new()
         };
+        let extends = if self.at_ident("extends") {
+            self.advance();
+            let mut parents = Vec::new();
+            let start = self.start_span();
+            let (name, _) = self.expect_ident()?;
+            parents.push(Spanned::new(ttrpg_ast::Name::from(name), self.end_span(start)));
+            while matches!(self.peek(), TokenKind::Comma) {
+                self.advance();
+                let start = self.start_span();
+                let (name, _) = self.expect_ident()?;
+                parents.push(Spanned::new(ttrpg_ast::Name::from(name), self.end_span(start)));
+            }
+            parents
+        } else {
+            Vec::new()
+        };
         self.expect_soft_keyword("on")?;
         let (receiver_name, _) = self.expect_ident()?;
         self.expect(&TokenKind::Colon)?;
@@ -708,6 +724,7 @@ impl Parser {
         Ok(ConditionDecl {
             name,
             params,
+            extends,
             receiver_name,
             receiver_type,
             receiver_with_groups,

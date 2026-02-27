@@ -239,6 +239,7 @@ impl VisitSpansMut for EventDecl {
 impl VisitSpansMut for ConditionDecl {
     fn visit_spans_mut(&mut self, f: &mut dyn FnMut(&mut Span)) {
         self.params.visit_spans_mut(f);
+        self.extends.visit_spans_mut(f);
         self.receiver_type.visit_spans_mut(f);
         self.clauses.visit_spans_mut(f);
     }

@@ -359,6 +359,9 @@ pub struct ConditionDecl {
     /// Optional parameters: `condition Frightened(source: Character) on ...`.
     /// Empty vec means no parameters.
     pub params: Vec<Param>,
+    /// Optional parent conditions: `condition Stunned extends Incapacitated on ...`.
+    /// Child inherits all modify/suppress clauses from parents.
+    pub extends: Vec<Spanned<Name>>,
     pub receiver_name: Name,
     pub receiver_type: Spanned<TypeExpr>,
     /// Optional group constraints on the bearer: `on bearer: Entity with Group`.

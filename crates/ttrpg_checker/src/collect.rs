@@ -79,6 +79,9 @@ fn collect_inner(program: &Program, modules: Option<&ModuleMap>) -> (TypeEnv, Ve
     // Validate option extends chains (circular detection)
     validate_option_extends(program, &env, &mut diagnostics);
 
+    // Validate condition extends (parent existence, receiver compat, cycles)
+    validate_condition_extends(program, &env, &mut diagnostics);
+
     // If module map provided, populate ownership and visibility
     if let Some(modules) = modules {
         populate_module_metadata(&mut env, modules, &mut diagnostics);
@@ -1112,6 +1115,7 @@ fn collect_condition(
         ConditionInfo {
             name: name.clone(),
             params: param_infos,
+            extends: c.extends.iter().map(|s| s.node.clone()).collect(),
             receiver_name: c.receiver_name.clone(),
             receiver_type: env.resolve_type(&c.receiver_type),
         },
@@ -1295,6 +1299,131 @@ pub fn validate_option_extends(
             match extends_map.get(&current) {
                 Some((parent, _)) => current = parent.clone(),
                 None => break,
+            }
+        }
+    }
+}
+
+pub fn validate_condition_extends(
+    program: &Program,
+    env: &TypeEnv,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    use std::collections::HashMap;
+
+    // Collect all extends relationships: child -> [(parent_name, span)]
+    let mut extends_map: HashMap<Name, Vec<(Name, Span)>> = HashMap::new();
+    for item in &program.items {
+        if let TopLevel::System(system) = &item.node {
+            for decl in &system.decls {
+                if let DeclKind::Condition(c) = &decl.node {
+                    if !c.extends.is_empty() {
+                        let parents: Vec<(Name, Span)> = c
+                            .extends
+                            .iter()
+                            .map(|s| (s.node.clone(), s.span))
+                            .collect();
+                        extends_map.insert(c.name.clone(), parents);
+                    }
+                }
+            }
+        }
+    }
+
+    // Check parent existence, receiver compatibility, and parent params
+    for (child_name, parents) in &extends_map {
+        let child_info = match env.conditions.get(child_name) {
+            Some(info) => info,
+            None => continue,
+        };
+        for (parent_name, span) in parents {
+            // Parent must exist as a condition
+            let parent_info = match env.conditions.get(parent_name) {
+                Some(info) => info,
+                None => {
+                    diagnostics.push(Diagnostic::error(
+                        format!(
+                            "condition `{}` extends unknown condition `{}`",
+                            child_name, parent_name
+                        ),
+                        *span,
+                    ));
+                    continue;
+                }
+            };
+
+            // Receiver type compatibility: child's receiver must be the same entity
+            // type as parent, or parent accepts AnyEntity
+            if !matches!(parent_info.receiver_type, Ty::AnyEntity)
+                && child_info.receiver_type != parent_info.receiver_type
+            {
+                diagnostics.push(Diagnostic::error(
+                    format!(
+                        "condition `{}` extends `{}` but receiver types differ: {} vs {}",
+                        child_name,
+                        parent_name,
+                        child_info.receiver_type.display(),
+                        parent_info.receiver_type.display()
+                    ),
+                    *span,
+                ));
+            }
+
+            // Parents with required params are rejected (child doesn't forward them)
+            let has_required = parent_info
+                .params
+                .iter()
+                .any(|p| !p.has_default);
+            if has_required {
+                diagnostics.push(Diagnostic::error(
+                    format!(
+                        "condition `{}` extends `{}` which has required parameters",
+                        child_name, parent_name
+                    ),
+                    *span,
+                ));
+            }
+        }
+    }
+
+    // Cycle detection: DFS with visited set for multi-parent graphs
+    for start_name in extends_map.keys() {
+        let mut visited = HashSet::new();
+        let mut stack = vec![start_name.clone()];
+        while let Some(current) = stack.pop() {
+            if !visited.insert(current.clone()) {
+                // Found a cycle — build chain for error message
+                let mut chain: Vec<String> = vec![start_name.to_string()];
+                let mut c = start_name.clone();
+                let mut seen = HashSet::new();
+                seen.insert(c.clone());
+                'outer: loop {
+                    if let Some(parents) = extends_map.get(&c) {
+                        for (parent, _) in parents {
+                            chain.push(parent.to_string());
+                            if parent == start_name {
+                                break 'outer;
+                            }
+                            if !seen.insert(parent.clone()) {
+                                break 'outer;
+                            }
+                            c = parent.clone();
+                            continue 'outer;
+                        }
+                    }
+                    break;
+                }
+                let span = extends_map[start_name][0].1;
+                diagnostics.push(Diagnostic::error(
+                    format!("circular condition extends: {}", chain.join(" \u{2192} ")),
+                    span,
+                ));
+                break;
+            }
+            if let Some(parents) = extends_map.get(&current) {
+                for (parent, _) in parents {
+                    stack.push(parent.clone());
+                }
             }
         }
     }

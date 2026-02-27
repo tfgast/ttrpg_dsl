@@ -367,69 +367,70 @@ fn collect_and_apply_cost_modifiers(
     let mut cost_modifiers: Vec<CostModifier> = Vec::new();
 
     for condition in &conditions {
-        let cond_decl = match env.interp.program.conditions.get(condition.name.as_str()) {
-            Some(decl) => decl,
-            None => continue,
-        };
+        // Collect ancestor chain (parents first, then self)
+        let ancestor_decls =
+            crate::pipeline::collect_ancestor_order(env.interp.program, condition.name.as_str());
 
-        for clause_item in &cond_decl.clauses {
-            let clause = match clause_item {
-                ConditionClause::Modify(c) => c,
-                ConditionClause::Suppress(_) => continue,
-            };
+        for cond_decl in &ancestor_decls {
+            for clause_item in &cond_decl.clauses {
+                let clause = match clause_item {
+                    ConditionClause::Modify(c) => c,
+                    ConditionClause::Suppress(_) => continue,
+                };
 
-            // Only match Cost targets for this action
-            match &clause.target {
-                ModifyTarget::Cost(name) if name == action_name => {}
-                _ => continue,
-            }
-
-            // Check bindings: evaluate each binding expression and compare
-            // with the actual parameter values (actor entity for receiver bindings)
-            let bindings_match = if clause.bindings.is_empty() {
-                true
-            } else {
-                let mut all_match = true;
-                env.push_scope();
-                env.bind(cond_decl.receiver_name.clone(), Value::Entity(condition.bearer));
-                for (name, val) in &condition.params {
-                    env.bind(name.clone(), val.clone());
+                // Only match Cost targets for this action
+                match &clause.target {
+                    ModifyTarget::Cost(name) if name == action_name => {}
+                    _ => continue,
                 }
 
-                for binding in &clause.bindings {
-                    // The binding value is the actual actor entity
-                    let param_val = Value::Entity(*actor);
+                // Check bindings: evaluate each binding expression and compare
+                // with the actual parameter values (actor entity for receiver bindings)
+                let bindings_match = if clause.bindings.is_empty() {
+                    true
+                } else {
+                    let mut all_match = true;
+                    env.push_scope();
+                    env.bind(cond_decl.receiver_name.clone(), Value::Entity(condition.bearer));
+                    for (name, val) in &condition.params {
+                        env.bind(name.clone(), val.clone());
+                    }
 
-                    if let Some(ref expr) = binding.value {
-                        match eval_expr(env, expr) {
-                            Ok(val) => {
-                                if !value_eq(env.state, &param_val, &val) {
+                    for binding in &clause.bindings {
+                        // The binding value is the actual actor entity
+                        let param_val = Value::Entity(*actor);
+
+                        if let Some(ref expr) = binding.value {
+                            match eval_expr(env, expr) {
+                                Ok(val) => {
+                                    if !value_eq(env.state, &param_val, &val) {
+                                        all_match = false;
+                                        break;
+                                    }
+                                }
+                                Err(_) => {
                                     all_match = false;
                                     break;
                                 }
                             }
-                            Err(_) => {
-                                all_match = false;
-                                break;
-                            }
                         }
+                        // None = wildcard, always matches
                     }
-                    // None = wildcard, always matches
+
+                    env.pop_scope();
+                    all_match
+                };
+
+                if bindings_match {
+                    cost_modifiers.push(CostModifier {
+                        source: ModifySource::Condition(condition.name.clone()),
+                        clause: clause.clone(),
+                        bearer: condition.bearer,
+                        receiver_name: cond_decl.receiver_name.clone(),
+                        condition_params: condition.params.clone(),
+                        gained_at: condition.gained_at,
+                    });
                 }
-
-                env.pop_scope();
-                all_match
-            };
-
-            if bindings_match {
-                cost_modifiers.push(CostModifier {
-                    source: ModifySource::Condition(condition.name.clone()),
-                    clause: clause.clone(),
-                    bearer: condition.bearer,
-                    receiver_name: cond_decl.receiver_name.clone(),
-                    condition_params: condition.params.clone(),
-                    gained_at: condition.gained_at,
-                });
             }
         }
     }

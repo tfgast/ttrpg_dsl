@@ -3362,6 +3362,7 @@ fn eval_ident_condition_name() {
             decls: vec![spanned(DeclKind::Condition(ConditionDecl {
                 name: "Stunned".into(),
                 params: vec![],
+                extends: vec![],
                 receiver_name: "bearer".into(),
                 receiver_type: spanned(TypeExpr::Named("Character".into())),
                 receiver_with_groups: vec![],
@@ -3398,6 +3399,8 @@ fn eval_ident_condition_eq() {
                 spanned(DeclKind::Condition(ConditionDecl {
                     name: "Stunned".into(),
                     params: vec![],
+
+                    extends: vec![],
                     receiver_name: "bearer".into(),
                     receiver_type: spanned(TypeExpr::Named("Character".into())),
                     receiver_with_groups: vec![],
@@ -3406,6 +3409,8 @@ fn eval_ident_condition_eq() {
                 spanned(DeclKind::Condition(ConditionDecl {
                     name: "Prone".into(),
                     params: vec![],
+
+                    extends: vec![],
                     receiver_name: "bearer".into(),
                     receiver_type: spanned(TypeExpr::Named("Character".into())),
                     receiver_with_groups: vec![],

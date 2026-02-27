@@ -1079,9 +1079,13 @@ system "D&D 5e Expanded" {
         }
     }
 
-    // PAIN POINT: No condition composition / inheritance.              [ttrpg_dsl-7r4]
-    // Stunned includes Incapacitated's effects (must duplicate).
-    // Can't write: condition Stunned extends Incapacitated
+    condition Incapacitated on bearer: Character {
+        modify initial_budget(actor: bearer) {
+            result.actions = 0
+            result.bonus_actions = 0
+            result.reactions = 0
+        }
+    }
 
     condition Blinded on bearer: Character {
         modify attack_roll(attacker: bearer) {
@@ -1125,8 +1129,7 @@ system "D&D 5e Expanded" {
         }
     }
 
-    condition Stunned on bearer: Character {
-        // Includes effects of Incapacitated (can't take actions/reactions)
+    condition Stunned extends Incapacitated on bearer: Character {
         // PAIN POINT: "Automatically fail STR/DEX saves" can't be       [ttrpg_dsl-34x]
         // expressed — the modify system only supports advantage/disadvantage,
         // not auto-fail. We approximate with disadvantage.
@@ -1134,9 +1137,6 @@ system "D&D 5e Expanded" {
             mode = advantage
         }
         modify initial_budget(actor: bearer) {
-            result.actions = 0
-            result.bonus_actions = 0
-            result.reactions = 0
             result.movement = 0
         }
         modify saving_throw(target: bearer, ability: STR) {
@@ -1300,9 +1300,9 @@ system "D&D 5e Expanded" {
     //
     //  REMAINING language gaps:
     //
-    //  1. NO CONDITION COMPOSITION / INHERITANCE                  [ttrpg_dsl-7r4]
-    //     - Stunned includes Incapacitated's effects (must duplicate)
-    //     - Unconscious includes Prone + Incapacitated
+    //  1. [RESOLVED] CONDITION COMPOSITION / INHERITANCE           [ttrpg_dsl-7r4]
+    //     - `condition Stunned extends Incapacitated on bearer: Character { ... }`
+    //     - Child inherits all modify/suppress clauses from parents
     //
     //  2. NO AUTO-SUCCEED / AUTO-FAIL                             [ttrpg_dsl-34x]
     //     - Stunned auto-fails STR/DEX saves (not just disadvantage)

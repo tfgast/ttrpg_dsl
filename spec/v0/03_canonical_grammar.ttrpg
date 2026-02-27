@@ -267,9 +267,9 @@ hook_decl       = "hook" IDENT "on" IDENT ":" constrained_type
 event_decl      = "event" IDENT "(" params ")" "{" field_def* "}"
 
 // --- Condition (declarative modifiers, has receiver, no mutation) ---
-condition_decl  = "condition" IDENT "on" IDENT ":" constrained_type "{"
-                      condition_clause*
-                  "}"
+condition_decl  = "condition" IDENT params? extends_clause?
+                      "on" IDENT ":" constrained_type "{" condition_clause* "}"
+extends_clause  = "extends" IDENT ("," IDENT)*
 
 condition_clause = modify_clause | suppress_clause
 

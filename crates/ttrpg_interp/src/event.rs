@@ -386,33 +386,34 @@ fn is_suppressed(
                 continue;
             }
 
-            let cond_decl = match env.interp.program.conditions.get(condition.name.as_str()) {
-                Some(decl) => decl,
-                None => continue,
-            };
+            // Collect ancestor chain (parents first, then self)
+            let ancestor_decls =
+                crate::pipeline::collect_ancestor_order(env.interp.program, condition.name.as_str());
 
-            for clause_item in &cond_decl.clauses {
-                let suppress = match clause_item {
-                    ConditionClause::Suppress(s) => s,
-                    ConditionClause::Modify(_) => continue,
-                };
+            for cond_decl in &ancestor_decls {
+                for clause_item in &cond_decl.clauses {
+                    let suppress = match clause_item {
+                        ConditionClause::Suppress(s) => s,
+                        ConditionClause::Modify(_) => continue,
+                    };
 
-                if suppress.event_name != event_name {
-                    continue;
-                }
+                    if suppress.event_name != event_name {
+                        continue;
+                    }
 
-                // Check suppress bindings
-                if check_suppress_bindings(
-                    env,
-                    &suppress.bindings,
-                    &cond_decl.receiver_name,
-                    &Value::Entity(condition.bearer),
-                    &condition.params,
-                    event_params,
-                    event_fields,
-                    payload_fields,
-                )? {
-                    return Ok(true);
+                    // Check suppress bindings
+                    if check_suppress_bindings(
+                        env,
+                        &suppress.bindings,
+                        &cond_decl.receiver_name,
+                        &Value::Entity(condition.bearer),
+                        &condition.params,
+                        event_params,
+                        event_fields,
+                        payload_fields,
+                    )? {
+                        return Ok(true);
+                    }
                 }
             }
         }
@@ -1049,6 +1050,7 @@ mod tests {
             DeclKind::Condition(ConditionDecl {
                 name: "Stunned".into(),
                 params: vec![],
+                extends: vec![],
                 receiver_name: "bearer".into(),
                 receiver_type: spanned(TypeExpr::Named("Character".into())),
                 receiver_with_groups: vec![],
@@ -1091,6 +1093,7 @@ mod tests {
             ConditionInfo {
                 name: "Stunned".into(),
                 params: vec![],
+                extends: vec![],
                 receiver_name: "bearer".into(),
                 receiver_type: Ty::Entity("Character".into()),
             },
@@ -1198,6 +1201,7 @@ mod tests {
             DeclKind::Condition(ConditionDecl {
                 name: "Silenced".into(),
                 params: vec![],
+                extends: vec![],
                 receiver_name: "bearer".into(),
                 receiver_type: spanned(TypeExpr::Named("Character".into())),
                 receiver_with_groups: vec![],
@@ -1253,6 +1257,7 @@ mod tests {
             ConditionInfo {
                 name: "Silenced".into(),
                 params: vec![],
+                extends: vec![],
                 receiver_name: "bearer".into(),
                 receiver_type: Ty::Entity("Character".into()),
             },

@@ -103,6 +103,7 @@ pub struct ParamInfo {
 pub struct ConditionInfo {
     pub name: Name,
     pub params: Vec<ParamInfo>,
+    pub extends: Vec<Name>,
     pub receiver_name: Name,
     pub receiver_type: Ty,
 }

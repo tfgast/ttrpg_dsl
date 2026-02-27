@@ -14,6 +14,40 @@ use crate::RuntimeError;
 
 // ── Supporting types ────────────────────────────────────────────
 
+use ttrpg_ast::ast::{ConditionDecl, Program};
+
+/// DFS post-order traversal of the condition extends hierarchy.
+///
+/// Returns `[grandparent, parent, child]` — ancestors first, so inherited
+/// clauses apply before the child's own clauses. A `HashSet` prevents
+/// diamond duplicates.
+pub(crate) fn collect_ancestor_order<'p>(
+    program: &'p Program,
+    condition_name: &str,
+) -> Vec<&'p ConditionDecl> {
+    let mut result = Vec::new();
+    let mut visited = HashSet::new();
+    fn walk<'p>(
+        program: &'p Program,
+        name: &str,
+        visited: &mut HashSet<Name>,
+        result: &mut Vec<&'p ConditionDecl>,
+    ) {
+        if !visited.insert(Name::from(name)) {
+            return; // already visited (diamond dedup or cycle)
+        }
+        if let Some(decl) = program.conditions.get(name) {
+            // Recurse into parents first (post-order)
+            for parent in &decl.extends {
+                walk(program, parent.node.as_str(), visited, result);
+            }
+            result.push(decl);
+        }
+    }
+    walk(program, condition_name, &mut visited, &mut result);
+    result
+}
+
 /// Collect modifiers from conditions and options, returning owned data.
 ///
 /// Returns modifiers in application order:
@@ -54,52 +88,55 @@ pub(crate) fn collect_modifiers_owned(
                 continue;
             }
 
-            // Look up the condition declaration
-            let cond_decl = match env.interp.program.conditions.get(condition.name.as_str()) {
-                Some(decl) => decl,
-                None => continue,
-            };
+            // Collect ancestor chain (parents first, then self)
+            let ancestor_decls =
+                collect_ancestor_order(env.interp.program, condition.name.as_str());
+            if ancestor_decls.is_empty() {
+                continue;
+            }
 
-            // Check each modify clause
-            for clause_item in &cond_decl.clauses {
-                let clause = match clause_item {
-                    ConditionClause::Modify(c) => c,
-                    ConditionClause::Suppress(_) => continue,
-                };
+            // Check each modify clause across all ancestors
+            for cond_decl in &ancestor_decls {
+                for clause_item in &cond_decl.clauses {
+                    let clause = match clause_item {
+                        ConditionClause::Modify(c) => c,
+                        ConditionClause::Suppress(_) => continue,
+                    };
 
-                // Does the target function name match?
-                match &clause.target {
-                    ModifyTarget::Named(name) => {
-                        if name != fn_name {
+                    // Does the target function name match?
+                    match &clause.target {
+                        ModifyTarget::Named(name) => {
+                            if name != fn_name {
+                                continue;
+                            }
+                        }
+                        ModifyTarget::Selector(_) => {
+                            match env.interp.type_env.selector_matches.get(&clause.id) {
+                                Some(set) if set.contains(fn_name) => {}
+                                _ => continue,
+                            }
+                        }
+                        ModifyTarget::Cost(_) => {
+                            // Cost modifiers are handled separately; skip here
                             continue;
                         }
                     }
-                    ModifyTarget::Selector(_) => {
-                        match env.interp.type_env.selector_matches.get(&clause.id) {
-                            Some(set) if set.contains(fn_name) => {}
-                            _ => continue,
-                        }
-                    }
-                    ModifyTarget::Cost(_) => {
-                        // Cost modifiers are handled separately; skip here
-                        continue;
-                    }
-                }
 
-                // Check bindings: each binding maps a param name to an expression.
-                // Evaluate the expression in a scope with the condition receiver bound.
-                // The binding matches if param[binding.name] equals the evaluated value.
-                if check_modify_bindings(env, clause, condition, fn_info, bound_params)? {
-                    condition_modifiers.push((
-                        condition.gained_at,
-                        OwnedModifier {
-                            source: ModifySource::Condition(condition.name.clone()),
-                            clause: clause.clone(),
-                            bearer: Some(Value::Entity(condition.bearer)),
-                            receiver_name: Some(cond_decl.receiver_name.clone()),
-                            condition_params: condition.params.clone(),
-                        },
-                    ));
+                    // Check bindings: each binding maps a param name to an expression.
+                    // Evaluate the expression in a scope with the condition receiver bound.
+                    // The binding matches if param[binding.name] equals the evaluated value.
+                    if check_modify_bindings(env, clause, condition, fn_info, bound_params)? {
+                        condition_modifiers.push((
+                            condition.gained_at,
+                            OwnedModifier {
+                                source: ModifySource::Condition(condition.name.clone()),
+                                clause: clause.clone(),
+                                bearer: Some(Value::Entity(condition.bearer)),
+                                receiver_name: Some(cond_decl.receiver_name.clone()),
+                                condition_params: condition.params.clone(),
+                            },
+                        ));
+                    }
                 }
             }
         }
@@ -862,6 +899,7 @@ mod tests {
             DeclKind::Condition(ConditionDecl {
                 name: "Prone".into(),
                 params: vec![],
+                extends: vec![],
                 receiver_name: "target".into(),
                 receiver_type: spanned(TypeExpr::Named("Character".into())),
                 receiver_with_groups: vec![],
@@ -914,6 +952,7 @@ mod tests {
             ConditionInfo {
                 name: "Prone".into(),
                 params: vec![],
+                extends: vec![],
                 receiver_name: "target".into(),
                 receiver_type: Ty::Entity("Character".into()),
             },
@@ -1034,6 +1073,7 @@ mod tests {
             DeclKind::Condition(ConditionDecl {
                 name: "Boosted".into(),
                 params: vec![],
+                extends: vec![],
                 receiver_name: "target".into(),
                 receiver_type: spanned(TypeExpr::Named("Character".into())),
                 receiver_with_groups: vec![],
@@ -1078,6 +1118,7 @@ mod tests {
             ConditionInfo {
                 name: "Boosted".into(),
                 params: vec![],
+                extends: vec![],
                 receiver_name: "target".into(),
                 receiver_type: Ty::Entity("Character".into()),
             },
@@ -1193,6 +1234,7 @@ mod tests {
             DeclKind::Condition(ConditionDecl {
                 name: "Alpha".into(),
                 params: vec![],
+                extends: vec![],
                 receiver_name: "t".into(),
                 receiver_type: spanned(TypeExpr::Named("Character".into())),
                 receiver_with_groups: vec![],
@@ -1219,6 +1261,7 @@ mod tests {
             DeclKind::Condition(ConditionDecl {
                 name: "Beta".into(),
                 params: vec![],
+                extends: vec![],
                 receiver_name: "t".into(),
                 receiver_type: spanned(TypeExpr::Named("Character".into())),
                 receiver_with_groups: vec![],
@@ -1275,6 +1318,7 @@ mod tests {
             ConditionInfo {
                 name: "Alpha".into(),
                 params: vec![],
+                extends: vec![],
                 receiver_name: "t".into(),
                 receiver_type: Ty::Entity("Character".into()),
             },
@@ -1284,6 +1328,7 @@ mod tests {
             ConditionInfo {
                 name: "Beta".into(),
                 params: vec![],
+                extends: vec![],
                 receiver_name: "t".into(),
                 receiver_type: Ty::Entity("Character".into()),
             },
@@ -1410,6 +1455,7 @@ mod tests {
             DeclKind::Condition(ConditionDecl {
                 name: "Buff".into(),
                 params: vec![],
+                extends: vec![],
                 receiver_name: "t".into(),
                 receiver_type: spanned(TypeExpr::Named("Character".into())),
                 receiver_with_groups: vec![],
@@ -1487,6 +1533,7 @@ mod tests {
             ConditionInfo {
                 name: "Buff".into(),
                 params: vec![],
+                extends: vec![],
                 receiver_name: "t".into(),
                 receiver_type: Ty::Entity("Character".into()),
             },
@@ -1601,6 +1648,7 @@ mod tests {
             DeclKind::Condition(ConditionDecl {
                 name: "Shared".into(),
                 params: vec![],
+                extends: vec![],
                 receiver_name: "t".into(),
                 receiver_type: spanned(TypeExpr::Named("Character".into())),
                 receiver_with_groups: vec![],
@@ -1653,6 +1701,7 @@ mod tests {
             ConditionInfo {
                 name: "Shared".into(),
                 params: vec![],
+                extends: vec![],
                 receiver_name: "t".into(),
                 receiver_type: Ty::Entity("Character".into()),
             },
@@ -1956,6 +2005,7 @@ mod tests {
             DeclKind::Condition(ConditionDecl {
                 name: "Buff".into(),
                 params: vec![],
+                extends: vec![],
                 receiver_name: "t".into(),
                 receiver_type: spanned(TypeExpr::Named("Character".into())),
                 receiver_with_groups: vec![],
@@ -2012,6 +2062,7 @@ mod tests {
             ConditionInfo {
                 name: "Buff".into(),
                 params: vec![],
+                extends: vec![],
                 receiver_name: "t".into(),
                 receiver_type: Ty::Entity("Character".into()),
             },
@@ -2359,6 +2410,7 @@ mod tests {
             DeclKind::Condition(ConditionDecl {
                 name: "C".into(),
                 params: vec![],
+                extends: vec![],
                 receiver_name: "target".into(),
                 receiver_type: spanned(TypeExpr::Named("Character".into())),
                 receiver_with_groups: vec![],
@@ -2426,6 +2478,7 @@ mod tests {
             "C".into(),
             ConditionInfo {
                 name: "C".into(),
+                extends: vec![],
                 receiver_name: "target".into(),
                 receiver_type: Ty::Entity("Character".into()),
                 params: vec![],
@@ -2506,6 +2559,7 @@ mod tests {
             DeclKind::Condition(ConditionDecl {
                 name: "C".into(),
                 params: vec![],
+                extends: vec![],
                 receiver_name: "target".into(),
                 receiver_type: spanned(TypeExpr::Named("Character".into())),
                 receiver_with_groups: vec![],
@@ -2573,6 +2627,7 @@ mod tests {
             "C".into(),
             ConditionInfo {
                 name: "C".into(),
+                extends: vec![],
                 receiver_name: "target".into(),
                 receiver_type: Ty::Entity("Character".into()),
                 params: vec![],

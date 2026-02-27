@@ -715,6 +715,10 @@ impl<'a> Checker<'a> {
         for param in &c.params {
             self.check_type_visible(&param.ty);
         }
+        // Check visibility of extended parent conditions
+        for parent in &c.extends {
+            self.check_name_visible(parent.node.as_str(), Namespace::Condition, parent.span);
+        }
 
         // Type-check default expressions for condition parameters
         self.scope.push(BlockKind::Derive);
