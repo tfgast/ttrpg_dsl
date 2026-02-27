@@ -87,8 +87,18 @@ impl<'a> Checker<'a> {
                             }
                         }
                     }
+                } else if let Ty::Enum(ref enum_name) = scrutinee_ty {
+                    // Bare name is not a known variant but scrutinee is an enum —
+                    // this is almost certainly a typo, not an intentional binding.
+                    self.error(
+                        format!(
+                            "unknown identifier `{}` in match on enum `{}`; if this is meant as a catch-all, use `_`",
+                            name, enum_name
+                        ),
+                        pattern.span,
+                    );
                 } else {
-                    // It's a binding variable — bind to scrutinee type
+                    // Non-enum scrutinee — bind as a variable (e.g. option, int)
                     if self.scope.has_in_current_scope(name) {
                         self.error(
                             format!("duplicate binding `{}` in pattern", name),

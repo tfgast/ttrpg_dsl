@@ -7599,6 +7599,62 @@ system "test" {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// Bare identifier in enum match → error (tdsl-8x4q)
+// ═══════════════════════════════════════════════════════════════
+
+#[test]
+fn test_bare_ident_in_enum_match_is_error() {
+    // A bare name that is not a known variant should error when matching an enum.
+    let source = r#"
+system "test" {
+    enum Color { red, green, blue }
+    derive name(c: Color) -> string {
+        match c {
+            red => "Red",
+            gren => "Green",
+            blue => "Blue"
+        }
+    }
+}
+"#;
+    expect_errors(source, &["unknown identifier `gren` in match on enum `Color`"]);
+}
+
+#[test]
+fn test_bare_ident_in_non_enum_match_still_binds() {
+    // Bare names in non-enum matches should still work as bindings.
+    let source = r#"
+system "test" {
+    derive describe(x: option<int>) -> int {
+        match x {
+            some(n) => n,
+            none => 0
+        }
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_bare_ident_typo_in_enum_match_suggests_wildcard() {
+    // The error message should suggest using `_` for a catch-all.
+    let source = r#"
+system "test" {
+    enum Direction { north, south, east, west }
+    derive is_vertical(d: Direction) -> bool {
+        match d {
+            north => true,
+            south => true,
+            other => false
+        }
+    }
+}
+"#;
+    expect_errors(source, &["use `_`"]);
+}
+
+// ═══════════════════════════════════════════════════════════════
 // P1 Bug repro tests
 // ═══════════════════════════════════════════════════════════════
 
