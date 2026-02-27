@@ -157,6 +157,12 @@ fn test_full_example_no_errors() {
     expect_no_errors(source);
 }
 
+#[test]
+fn test_expanded_example_no_errors() {
+    let source = include_str!("../../../examples/dnd5e_expanded.ttrpg");
+    expect_no_errors(source);
+}
+
 // ═══════════════════════════════════════════════════════════════
 // Pass 1: Declaration collection
 // ═══════════════════════════════════════════════════════════════
@@ -2969,6 +2975,19 @@ system "test" {
     option flanking extends "base_flanking" {
         description: "Extended flanking"
         default: on
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_option_extends_system_name() {
+    let source = r#"
+system "D&D 5e Combat" {
+    option flanking extends "D&D 5e Combat" {
+        description: "Flanking gives advantage"
+        default: off
     }
 }
 "#;

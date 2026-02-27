@@ -1246,9 +1246,22 @@ pub fn validate_option_extends(
         }
     }
 
+    // Collect system names — `extends` can reference a system or another option
+    let system_names: HashSet<&str> = program
+        .items
+        .iter()
+        .filter_map(|item| {
+            if let TopLevel::System(system) = &item.node {
+                Some(system.name.as_str())
+            } else {
+                None
+            }
+        })
+        .collect();
+
     // Check for unknown parent references
     for (child, (parent, span)) in &extends_map {
-        if !env.options.contains(parent.as_str()) {
+        if !env.options.contains(parent.as_str()) && !system_names.contains(parent.as_str()) {
             diagnostics.push(Diagnostic::error(
                 format!("option \"{}\" extends unknown option \"{}\"", child, parent),
                 *span,
