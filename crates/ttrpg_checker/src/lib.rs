@@ -65,9 +65,11 @@ fn run_pass2(
     let resolved_variants = checker.resolved_variants;
     let resolved_group_aliases = checker.resolved_group_aliases;
     let resolved_lvalue_aliases = checker.resolved_lvalue_aliases;
+    let selector_matches = checker.selector_matches;
     env.resolved_variants = resolved_variants;
     env.resolved_group_aliases = resolved_group_aliases;
     env.resolved_lvalue_aliases = resolved_lvalue_aliases;
+    env.selector_matches = selector_matches;
 
     CheckResult { diagnostics, env }
 }

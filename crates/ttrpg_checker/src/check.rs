@@ -10,6 +10,8 @@ use crate::env::*;
 use crate::scope::*;
 use crate::ty::Ty;
 
+type SelectorMatchMap = HashMap<ModifyClauseId, HashSet<Name>>;
+
 /// Namespace for visibility checks — which owner map to consult.
 #[derive(Debug, Clone, Copy)]
 pub enum Namespace {
@@ -20,6 +22,7 @@ pub enum Namespace {
     Event,
     Variant,
     Option,
+    Tag,
 }
 
 pub struct Checker<'a> {
@@ -39,6 +42,9 @@ pub struct Checker<'a> {
     /// Maps LValue spans where a group alias was used → (segment_index, real_group_name).
     /// Transferred to `TypeEnv` for interpreter use.
     pub resolved_lvalue_aliases: HashMap<Span, (usize, Name)>,
+    /// Maps selector-targeted modify clause IDs → set of matched function names.
+    /// Transferred to `TypeEnv` for interpreter use.
+    pub selector_matches: SelectorMatchMap,
 }
 
 impl<'a> Checker<'a> {
@@ -52,6 +58,7 @@ impl<'a> Checker<'a> {
             resolved_variants: HashMap::new(),
             resolved_group_aliases: HashMap::new(),
             resolved_lvalue_aliases: HashMap::new(),
+            selector_matches: HashMap::new(),
         }
     }
 
@@ -172,6 +179,7 @@ impl<'a> Checker<'a> {
                 })
             }
             Namespace::Option => self.env.option_owner.get(name),
+            Namespace::Tag => self.env.tag_owner.get(name),
         };
 
         // No owner → builtin or fallback type, always visible
@@ -190,6 +198,7 @@ impl<'a> Checker<'a> {
                 Namespace::Event => vis.events.contains(name),
                 Namespace::Variant => vis.variants.contains(name),
                 Namespace::Option => vis.options.contains(name),
+                Namespace::Tag => vis.tags.contains(name),
             };
             if !visible {
                 self.error(
@@ -282,6 +291,7 @@ impl<'a> Checker<'a> {
             DeclKind::Hook(h) => self.check_hook(h),
             DeclKind::Table(t) => self.check_table(t),
             DeclKind::Unit(u) => self.check_unit_defaults(u),
+            DeclKind::Tag(_) => {} // Validated during collection
             DeclKind::Move(_) => {
                 self.error(
                     "move declarations must be lowered before type-checking",

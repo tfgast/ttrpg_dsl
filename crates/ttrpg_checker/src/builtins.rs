@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use crate::env::{FnInfo, FnKind, ParamInfo};
 use crate::ty::Ty;
 
@@ -17,6 +19,8 @@ fn builtin(name: &str, params: Vec<ParamInfo>, return_type: Ty) -> FnInfo {
         params,
         return_type,
         receiver: None,
+        tags: HashSet::new(),
+        synthetic: false,
     }
 }
 

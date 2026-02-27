@@ -92,6 +92,7 @@ impl VisitSpansMut for DeclKind {
     fn visit_spans_mut(&mut self, f: &mut dyn FnMut(&mut Span)) {
         match self {
             DeclKind::Group(g) => g.visit_spans_mut(f),
+            DeclKind::Tag(_) => {} // TagDecl has no spans
             DeclKind::Enum(e) => e.visit_spans_mut(f),
             DeclKind::Struct(s) => s.visit_spans_mut(f),
             DeclKind::Entity(e) => e.visit_spans_mut(f),
@@ -255,8 +256,28 @@ impl VisitSpansMut for ConditionClause {
 impl VisitSpansMut for ModifyClause {
     fn visit_spans_mut(&mut self, f: &mut dyn FnMut(&mut Span)) {
         self.span.visit_spans_mut(f);
+        self.target.visit_spans_mut(f);
         self.bindings.visit_spans_mut(f);
         self.body.visit_spans_mut(f);
+    }
+}
+
+impl VisitSpansMut for ModifyTarget {
+    fn visit_spans_mut(&mut self, f: &mut dyn FnMut(&mut Span)) {
+        match self {
+            ModifyTarget::Named(_) => {}
+            ModifyTarget::Selector(preds) => preds.visit_spans_mut(f),
+        }
+    }
+}
+
+impl VisitSpansMut for SelectorPredicate {
+    fn visit_spans_mut(&mut self, f: &mut dyn FnMut(&mut Span)) {
+        match self {
+            SelectorPredicate::Tag(_) => {}
+            SelectorPredicate::Returns(ty) => ty.visit_spans_mut(f),
+            SelectorPredicate::HasParam { ty, .. } => ty.visit_spans_mut(f),
+        }
     }
 }
 

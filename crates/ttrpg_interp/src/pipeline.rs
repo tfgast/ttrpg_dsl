@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, HashSet};
 
-use ttrpg_ast::ast::{ConditionClause, ModifyClause, ModifyStmt};
+use ttrpg_ast::ast::{ConditionClause, ModifyClause, ModifyStmt, ModifyTarget};
 use ttrpg_ast::Name;
 use ttrpg_checker::env::FnInfo;
 use ttrpg_checker::ty::Ty;
@@ -68,8 +68,18 @@ pub(crate) fn collect_modifiers_owned(
                 };
 
                 // Does the target function name match?
-                if clause.target != fn_name {
-                    continue;
+                match &clause.target {
+                    ModifyTarget::Named(name) => {
+                        if name != fn_name {
+                            continue;
+                        }
+                    }
+                    ModifyTarget::Selector(_) => {
+                        match env.interp.type_env.selector_matches.get(&clause.id) {
+                            Some(set) if set.contains(fn_name) => {}
+                            _ => continue,
+                        }
+                    }
                 }
 
                 // Check bindings: each binding maps a param name to an expression.
@@ -118,8 +128,18 @@ pub(crate) fn collect_modifiers_owned(
         };
 
         for clause in clauses {
-            if clause.target != fn_name {
-                continue;
+            match &clause.target {
+                ModifyTarget::Named(name) => {
+                    if name != fn_name {
+                        continue;
+                    }
+                }
+                ModifyTarget::Selector(_) => {
+                    match env.interp.type_env.selector_matches.get(&clause.id) {
+                        Some(set) if set.contains(fn_name) => {}
+                        _ => continue,
+                    }
+                }
             }
 
             // Options have no receiver — check bindings without bearer
@@ -826,6 +846,7 @@ mod tests {
                     ))]))),
                 })))]),
                 synthetic: false,
+                tags: vec![],
             }),
             DeclKind::Condition(ConditionDecl {
                 name: "Prone".into(),
@@ -834,7 +855,7 @@ mod tests {
                 receiver_type: spanned(TypeExpr::Named("Character".into())),
                 receiver_with_groups: vec![],
                 clauses: vec![ConditionClause::Modify(ModifyClause {
-                    target: "attack_roll".into(),
+                    target: ModifyTarget::Named("attack_roll".into()),
                     bindings: vec![ModifyBinding {
                         name: "attacker".into(),
                         value: Some(spanned(ExprKind::Ident("target".into()))),
@@ -846,6 +867,7 @@ mod tests {
                         span: dummy_span(),
                     }],
                     span: dummy_span(),
+                    id: ModifyClauseId(0),
                 })],
             }),
         ]);
@@ -872,6 +894,8 @@ mod tests {
                 ],
                 return_type: Ty::Int,
                 receiver: None,
+                tags: HashSet::new(),
+                synthetic: false,
             },
         );
         type_env.conditions.insert(
@@ -994,6 +1018,7 @@ mod tests {
                     },
                 )))]),
                 synthetic: false,
+                tags: vec![],
             }),
             DeclKind::Condition(ConditionDecl {
                 name: "Boosted".into(),
@@ -1002,7 +1027,7 @@ mod tests {
                 receiver_type: spanned(TypeExpr::Named("Character".into())),
                 receiver_with_groups: vec![],
                 clauses: vec![ConditionClause::Modify(ModifyClause {
-                    target: "compute".into(),
+                    target: ModifyTarget::Named("compute".into()),
                     bindings: vec![ModifyBinding {
                         name: "val".into(),
                         value: Some(spanned(ExprKind::Ident("target".into()))),
@@ -1014,6 +1039,7 @@ mod tests {
                         span: dummy_span(),
                     }],
                     span: dummy_span(),
+                    id: ModifyClauseId(0),
                 })],
             }),
         ]);
@@ -1032,6 +1058,8 @@ mod tests {
                 }],
                 return_type: Ty::Struct("Outcome".into()),
                 receiver: None,
+                tags: HashSet::new(),
+                synthetic: false,
             },
         );
         type_env.conditions.insert(
@@ -1149,6 +1177,7 @@ mod tests {
                     "x".into(),
                 ))))]),
                 synthetic: false,
+                tags: vec![],
             }),
             DeclKind::Condition(ConditionDecl {
                 name: "Alpha".into(),
@@ -1157,7 +1186,7 @@ mod tests {
                 receiver_type: spanned(TypeExpr::Named("Character".into())),
                 receiver_with_groups: vec![],
                 clauses: vec![ConditionClause::Modify(ModifyClause {
-                    target: "calc".into(),
+                    target: ModifyTarget::Named("calc".into()),
                     bindings: vec![ModifyBinding {
                         name: "target".into(),
                         value: Some(spanned(ExprKind::Ident("t".into()))),
@@ -1173,6 +1202,7 @@ mod tests {
                         span: dummy_span(),
                     }],
                     span: dummy_span(),
+                    id: ModifyClauseId(0),
                 })],
             }),
             DeclKind::Condition(ConditionDecl {
@@ -1182,7 +1212,7 @@ mod tests {
                 receiver_type: spanned(TypeExpr::Named("Character".into())),
                 receiver_with_groups: vec![],
                 clauses: vec![ConditionClause::Modify(ModifyClause {
-                    target: "calc".into(),
+                    target: ModifyTarget::Named("calc".into()),
                     bindings: vec![ModifyBinding {
                         name: "target".into(),
                         value: Some(spanned(ExprKind::Ident("t".into()))),
@@ -1198,6 +1228,7 @@ mod tests {
                         span: dummy_span(),
                     }],
                     span: dummy_span(),
+                    id: ModifyClauseId(0),
                 })],
             }),
         ]);
@@ -1224,6 +1255,8 @@ mod tests {
                 ],
                 return_type: Ty::Int,
                 receiver: None,
+                tags: HashSet::new(),
+                synthetic: false,
             },
         );
         type_env.conditions.insert(
@@ -1361,6 +1394,7 @@ mod tests {
                     "x".into(),
                 ))))]),
                 synthetic: false,
+                tags: vec![],
             }),
             DeclKind::Condition(ConditionDecl {
                 name: "Buff".into(),
@@ -1369,7 +1403,7 @@ mod tests {
                 receiver_type: spanned(TypeExpr::Named("Character".into())),
                 receiver_with_groups: vec![],
                 clauses: vec![ConditionClause::Modify(ModifyClause {
-                    target: "calc".into(),
+                    target: ModifyTarget::Named("calc".into()),
                     bindings: vec![ModifyBinding {
                         name: "target".into(),
                         value: Some(spanned(ExprKind::Ident("t".into()))),
@@ -1385,6 +1419,7 @@ mod tests {
                         span: dummy_span(),
                     }],
                     span: dummy_span(),
+                    id: ModifyClauseId(0),
                 })],
             }),
             DeclKind::Option(OptionDecl {
@@ -1393,7 +1428,7 @@ mod tests {
                 description: None,
                 default_on: None,
                 when_enabled: Some(vec![ModifyClause {
-                    target: "calc".into(),
+                    target: ModifyTarget::Named("calc".into()),
                     bindings: vec![],
                     body: vec![ModifyStmt::ParamOverride {
                         name: "x".into(),
@@ -1405,6 +1440,7 @@ mod tests {
                         span: dummy_span(),
                     }],
                     span: dummy_span(),
+                    id: ModifyClauseId(0),
                 }]),
             }),
         ]);
@@ -1431,6 +1467,8 @@ mod tests {
                 ],
                 return_type: Ty::Int,
                 receiver: None,
+                tags: HashSet::new(),
+                synthetic: false,
             },
         );
         type_env.conditions.insert(
@@ -1547,6 +1585,7 @@ mod tests {
                     "x_val".into(),
                 ))))]),
                 synthetic: false,
+                tags: vec![],
             }),
             DeclKind::Condition(ConditionDecl {
                 name: "Shared".into(),
@@ -1555,7 +1594,7 @@ mod tests {
                 receiver_type: spanned(TypeExpr::Named("Character".into())),
                 receiver_with_groups: vec![],
                 clauses: vec![ConditionClause::Modify(ModifyClause {
-                    target: "interact".into(),
+                    target: ModifyTarget::Named("interact".into()),
                     bindings: vec![ModifyBinding {
                         name: "a".into(),
                         value: Some(spanned(ExprKind::Ident("t".into()))),
@@ -1567,6 +1606,7 @@ mod tests {
                     // Let's instead verify at the collect_modifiers_owned level.
                     body: vec![],
                     span: dummy_span(),
+                    id: ModifyClauseId(0),
                 })],
             }),
         ]);
@@ -1593,6 +1633,8 @@ mod tests {
                 ],
                 return_type: Ty::Int,
                 receiver: None,
+                tags: HashSet::new(),
+                synthetic: false,
             },
         );
         type_env.conditions.insert(
@@ -1666,6 +1708,7 @@ mod tests {
                 rhs: Box::new(spanned(ExprKind::IntLit(1))),
             })))]),
             synthetic: false,
+            tags: vec![],
         })]);
 
         let mut type_env = TypeEnv::new();
@@ -1682,6 +1725,8 @@ mod tests {
                 }],
                 return_type: Ty::Int,
                 receiver: None,
+                tags: HashSet::new(),
+                synthetic: false,
             },
         );
 
@@ -1749,6 +1794,7 @@ mod tests {
                     "x".into(),
                 ))))]),
                 synthetic: false,
+                tags: vec![],
             }),
             DeclKind::Option(OptionDecl {
                 name: "SpecialMode".into(),
@@ -1756,7 +1802,7 @@ mod tests {
                 description: None,
                 default_on: None,
                 when_enabled: Some(vec![ModifyClause {
-                    target: "calc".into(),
+                    target: ModifyTarget::Named("calc".into()),
                     bindings: vec![ModifyBinding {
                         name: "mode".into(),
                         value: Some(spanned(ExprKind::StringLit("special".into()))),
@@ -1772,6 +1818,7 @@ mod tests {
                         span: dummy_span(),
                     }],
                     span: dummy_span(),
+                    id: ModifyClauseId(0),
                 }]),
             }),
         ]);
@@ -1798,6 +1845,8 @@ mod tests {
                 ],
                 return_type: Ty::Int,
                 receiver: None,
+                tags: HashSet::new(),
+                synthetic: false,
             },
         );
         type_env.options.insert("SpecialMode".into());
@@ -1891,6 +1940,7 @@ mod tests {
                     "x".into(),
                 ))))]),
                 synthetic: false,
+                tags: vec![],
             }),
             DeclKind::Condition(ConditionDecl {
                 name: "Buff".into(),
@@ -1899,7 +1949,7 @@ mod tests {
                 receiver_type: spanned(TypeExpr::Named("Character".into())),
                 receiver_with_groups: vec![],
                 clauses: vec![ConditionClause::Modify(ModifyClause {
-                    target: "calc".into(),
+                    target: ModifyTarget::Named("calc".into()),
                     bindings: vec![ModifyBinding {
                         name: "target".into(),
                         value: Some(spanned(ExprKind::Ident("t".into()))),
@@ -1915,6 +1965,7 @@ mod tests {
                         span: dummy_span(),
                     }],
                     span: dummy_span(),
+                    id: ModifyClauseId(0),
                 })],
             }),
         ]);
@@ -1941,6 +1992,8 @@ mod tests {
                 ],
                 return_type: Ty::Int,
                 receiver: None,
+                tags: HashSet::new(),
+                synthetic: false,
             },
         );
         type_env.conditions.insert(
@@ -2016,6 +2069,8 @@ mod tests {
                 params: vec![],
                 return_type: Ty::Int,
                 receiver: None,
+                tags: HashSet::new(),
+                synthetic: false,
             },
         );
         let interp = Interpreter::new(&program, &type_env).unwrap();
@@ -2129,6 +2184,7 @@ mod tests {
                     "x".into(),
                 ))))]),
                 synthetic: false,
+                tags: vec![],
             }),
             // Beta declared first
             DeclKind::Option(OptionDecl {
@@ -2137,7 +2193,7 @@ mod tests {
                 description: None,
                 default_on: None,
                 when_enabled: Some(vec![ModifyClause {
-                    target: "calc".into(),
+                    target: ModifyTarget::Named("calc".into()),
                     bindings: vec![],
                     body: vec![ModifyStmt::ParamOverride {
                         name: "x".into(),
@@ -2149,6 +2205,7 @@ mod tests {
                         span: dummy_span(),
                     }],
                     span: dummy_span(),
+                    id: ModifyClauseId(0),
                 }]),
             }),
             // Alpha declared second
@@ -2158,7 +2215,7 @@ mod tests {
                 description: None,
                 default_on: None,
                 when_enabled: Some(vec![ModifyClause {
-                    target: "calc".into(),
+                    target: ModifyTarget::Named("calc".into()),
                     bindings: vec![],
                     body: vec![ModifyStmt::ParamOverride {
                         name: "x".into(),
@@ -2170,6 +2227,7 @@ mod tests {
                         span: dummy_span(),
                     }],
                     span: dummy_span(),
+                    id: ModifyClauseId(0),
                 }]),
             }),
         ]);
@@ -2188,6 +2246,8 @@ mod tests {
                 }],
                 return_type: Ty::Int,
                 receiver: None,
+                tags: HashSet::new(),
+                synthetic: false,
             },
         );
         type_env.options.insert("Beta".into());
@@ -2283,6 +2343,7 @@ mod tests {
                     "x".into(),
                 ))))]),
                 synthetic: false,
+                tags: vec![],
             }),
             DeclKind::Condition(ConditionDecl {
                 name: "C".into(),
@@ -2291,7 +2352,7 @@ mod tests {
                 receiver_type: spanned(TypeExpr::Named("Character".into())),
                 receiver_with_groups: vec![],
                 clauses: vec![ConditionClause::Modify(ModifyClause {
-                    target: "f".into(),
+                    target: ModifyTarget::Named("f".into()),
                     bindings: vec![ModifyBinding {
                         name: "actor".into(),
                         value: Some(spanned(ExprKind::Ident("target".into()))),
@@ -2319,6 +2380,7 @@ mod tests {
                         },
                     ],
                     span: dummy_span(),
+                    id: ModifyClauseId(0),
                 })],
             }),
         ]);
@@ -2345,6 +2407,8 @@ mod tests {
                 ],
                 return_type: Ty::Int,
                 receiver: None,
+                tags: HashSet::new(),
+                synthetic: false,
             },
         );
         type_env.conditions.insert(
@@ -2426,6 +2490,7 @@ mod tests {
                     "x".into(),
                 ))))]),
                 synthetic: false,
+                tags: vec![],
             }),
             DeclKind::Condition(ConditionDecl {
                 name: "C".into(),
@@ -2434,7 +2499,7 @@ mod tests {
                 receiver_type: spanned(TypeExpr::Named("Character".into())),
                 receiver_with_groups: vec![],
                 clauses: vec![ConditionClause::Modify(ModifyClause {
-                    target: "f".into(),
+                    target: ModifyTarget::Named("f".into()),
                     bindings: vec![ModifyBinding {
                         name: "actor".into(),
                         value: Some(spanned(ExprKind::Ident("target".into()))),
@@ -2462,6 +2527,7 @@ mod tests {
                         },
                     ],
                     span: dummy_span(),
+                    id: ModifyClauseId(0),
                 })],
             }),
         ]);
@@ -2488,6 +2554,8 @@ mod tests {
                 ],
                 return_type: Ty::Int,
                 receiver: None,
+                tags: HashSet::new(),
+                synthetic: false,
             },
         );
         type_env.conditions.insert(

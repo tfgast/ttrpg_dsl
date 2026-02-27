@@ -23,6 +23,7 @@ impl Parser {
                 "move" => self.parse_move_decl().map(DeclKind::Move),
                 "table" => self.parse_table_decl().map(DeclKind::Table),
                 "unit" => self.parse_unit_decl().map(DeclKind::Unit),
+                "tag" => self.parse_tag_decl().map(DeclKind::Tag),
                 _ => {
                     self.error(format!(
                         "unexpected identifier '{}' in declaration position",
@@ -293,6 +294,15 @@ impl Parser {
         self.expect(&TokenKind::RParen)?;
         self.expect(&TokenKind::Arrow)?;
         let return_type = self.parse_type()?;
+
+        // Parse tag annotations: #tag1 #tag2 ... before the body block
+        let mut tags = Vec::new();
+        while matches!(self.peek(), TokenKind::Hash) {
+            self.advance(); // consume #
+            let (tag_name, _) = self.expect_ident()?;
+            tags.push(tag_name);
+        }
+
         let body = self.parse_block()?;
         Ok(FnDecl {
             name,
@@ -300,7 +310,15 @@ impl Parser {
             return_type,
             body,
             synthetic: false,
+            tags,
         })
+    }
+
+    fn parse_tag_decl(&mut self) -> Result<TagDecl, ()> {
+        self.expect_soft_keyword("tag")?;
+        let (name, _) = self.expect_ident()?;
+        self.expect_term()?;
+        Ok(TagDecl { name })
     }
 
     pub(crate) fn parse_params(&mut self) -> Result<Vec<Param>, ()> {
@@ -687,9 +705,37 @@ impl Parser {
     pub(crate) fn parse_modify_clause(&mut self) -> Result<ModifyClause, ()> {
         let start = self.start_span();
         self.expect_soft_keyword("modify")?;
-        let (target, _) = self.expect_ident()?;
+
+        // Parse target: either a selector [predicates] or a named function
+        let target = if matches!(self.peek(), TokenKind::LBracket) {
+            self.advance(); // consume [
+            let mut predicates = Vec::new();
+            // At least one predicate required
+            predicates.push(self.parse_selector_predicate()?);
+            while matches!(self.peek(), TokenKind::Comma) {
+                self.advance();
+                if matches!(self.peek(), TokenKind::RBracket) {
+                    break;
+                }
+                predicates.push(self.parse_selector_predicate()?);
+            }
+            if predicates.is_empty() {
+                self.error("selector requires at least one predicate");
+                return Err(());
+            }
+            self.expect(&TokenKind::RBracket)?;
+            ModifyTarget::Selector(predicates)
+        } else {
+            let (name, _) = self.expect_ident()?;
+            ModifyTarget::Named(name)
+        };
+
         self.expect(&TokenKind::LParen)?;
-        let bindings = self.parse_modify_bindings()?;
+        let bindings = if matches!(self.peek(), TokenKind::RParen) {
+            Vec::new()
+        } else {
+            self.parse_modify_bindings()?
+        };
         self.expect(&TokenKind::RParen)?;
         self.expect(&TokenKind::LBrace)?;
         self.skip_newlines();
@@ -701,7 +747,40 @@ impl Parser {
             bindings,
             body,
             span: self.end_span(start),
+            id: ModifyClauseId(0), // placeholder; build_index() assigns real IDs
         })
+    }
+
+    fn parse_selector_predicate(&mut self) -> Result<SelectorPredicate, ()> {
+        // #tag_name
+        if matches!(self.peek(), TokenKind::Hash) {
+            self.advance();
+            let (name, _) = self.expect_ident()?;
+            return Ok(SelectorPredicate::Tag(name));
+        }
+        // returns Type
+        if self.at_ident("returns") {
+            self.advance();
+            let ty = self.parse_type()?;
+            return Ok(SelectorPredicate::Returns(ty));
+        }
+        // has param_name (: Type)?
+        if self.at_ident("has") {
+            self.advance();
+            let (name, _) = self.expect_ident()?;
+            let ty = if matches!(self.peek(), TokenKind::Colon) {
+                self.advance();
+                Some(self.parse_type()?)
+            } else {
+                None
+            };
+            return Ok(SelectorPredicate::HasParam { name, ty });
+        }
+        self.error(format!(
+            "expected selector predicate (#tag, 'returns', or 'has'), found {:?}",
+            self.peek()
+        ));
+        Err(())
     }
 
     fn parse_modify_bindings(&mut self) -> Result<Vec<ModifyBinding>, ()> {

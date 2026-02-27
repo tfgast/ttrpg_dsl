@@ -9,6 +9,13 @@ use crate::env::*;
 use crate::scope::*;
 use crate::ty::Ty;
 
+/// A selector predicate with types resolved to `Ty` for matching.
+enum ResolvedPredicate {
+    Tag(Name),
+    Returns(Ty),
+    HasParam { name: Name, ty: Option<Ty> },
+}
+
 impl<'a> Checker<'a> {
     /// Bind the receiver (if present) and condition parameters into the current scope.
     /// Used by both modify and suppress clauses to set up their shared context.
@@ -101,15 +108,30 @@ impl<'a> Checker<'a> {
         receiver: Option<(&Name, &Spanned<TypeExpr>, &[GroupConstraint])>,
         condition_params: &[Param],
     ) {
+        match &clause.target {
+            ModifyTarget::Named(name) => {
+                self.check_modify_named(clause, name, receiver, condition_params);
+            }
+            ModifyTarget::Selector(preds) => {
+                self.check_modify_selector(clause, preds, receiver, condition_params);
+            }
+        }
+    }
+
+    /// Check a modify clause targeting a specific named function.
+    fn check_modify_named(
+        &mut self,
+        clause: &ModifyClause,
+        target_name: &Name,
+        receiver: Option<(&Name, &Spanned<TypeExpr>, &[GroupConstraint])>,
+        condition_params: &[Param],
+    ) {
         // Look up the target function
-        let fn_info = match self.env.lookup_fn(&clause.target) {
+        let fn_info = match self.env.lookup_fn(target_name) {
             Some(info) => info.clone(),
             None => {
                 self.error(
-                    format!(
-                        "modify target `{}` is not a defined function",
-                        clause.target
-                    ),
+                    format!("modify target `{}` is not a defined function", target_name),
                     clause.span,
                 );
                 return;
@@ -118,27 +140,257 @@ impl<'a> Checker<'a> {
 
         // Check module visibility for modify target (builtins have no owner)
         if fn_info.kind != FnKind::Builtin {
-            self.check_name_visible(&clause.target, Namespace::Function, clause.span);
+            self.check_name_visible(target_name, Namespace::Function, clause.span);
         }
 
         // Modify clauses can only target derive or mechanic functions
         if fn_info.kind != FnKind::Derive && fn_info.kind != FnKind::Mechanic {
             self.error(
-                format!(
-                    "modify target `{}` must be a derive or mechanic",
-                    clause.target,
-                ),
+                format!("modify target `{}` must be a derive or mechanic", target_name),
                 clause.span,
             );
             return;
         }
 
+        self.check_modify_body(clause, &fn_info, receiver, condition_params);
+    }
+
+    /// Check a modify clause targeting functions via selector predicates.
+    fn check_modify_selector(
+        &mut self,
+        clause: &ModifyClause,
+        preds: &[SelectorPredicate],
+        receiver: Option<(&Name, &Spanned<TypeExpr>, &[GroupConstraint])>,
+        condition_params: &[Param],
+    ) {
+        // Resolve predicates into concrete types for matching
+        let mut resolved: Vec<ResolvedPredicate> = Vec::new();
+        for pred in preds {
+            match pred {
+                SelectorPredicate::Tag(tag_name) => {
+                    // Validate tag is declared and visible
+                    if !self.env.tags.contains(tag_name) {
+                        self.error(
+                            format!("undefined tag `{}`", tag_name),
+                            clause.span,
+                        );
+                        return;
+                    }
+                    self.check_name_visible(tag_name, Namespace::Tag, clause.span);
+                    resolved.push(ResolvedPredicate::Tag(tag_name.clone()));
+                }
+                SelectorPredicate::Returns(type_expr) => {
+                    let ty = self.resolve_type_validated(type_expr);
+                    if ty.is_error() {
+                        return;
+                    }
+                    resolved.push(ResolvedPredicate::Returns(ty));
+                }
+                SelectorPredicate::HasParam { name, ty } => {
+                    let resolved_ty = if let Some(te) = ty {
+                        let t = self.resolve_type_validated(te);
+                        if t.is_error() {
+                            return;
+                        }
+                        Some(t)
+                    } else {
+                        None
+                    };
+                    resolved.push(ResolvedPredicate::HasParam {
+                        name: name.clone(),
+                        ty: resolved_ty,
+                    });
+                }
+            }
+        }
+
+        // Compute match set: iterate all functions, keep Derive/Mechanic, exclude synthetic
+        let mut match_set: HashSet<Name> = HashSet::new();
+        for (fn_name, fn_info) in &self.env.functions {
+            if fn_info.kind != FnKind::Derive && fn_info.kind != FnKind::Mechanic {
+                continue;
+            }
+            if fn_info.synthetic {
+                continue;
+            }
+            if self.fn_matches_predicates(fn_info, &resolved) {
+                match_set.insert(fn_name.clone());
+            }
+        }
+
+        if match_set.is_empty() {
+            self.diagnostics.push(ttrpg_ast::diagnostic::Diagnostic::warning(
+                "selector matches no functions",
+                clause.span,
+            ));
+            return;
+        }
+
+        // Build a synthetic FnInfo representing the intersection of all matched functions
+        let matched_fns: Vec<&FnInfo> = match_set
+            .iter()
+            .filter_map(|n| self.env.functions.get(n))
+            .collect();
+
+        // Validate bindings: for each binding, every fn must have the param with identical type
+        for binding in &clause.bindings {
+            let mut binding_ty: Option<Ty> = None;
+            let mut all_have_param = true;
+            for fi in &matched_fns {
+                if let Some(p) = fi.params.iter().find(|p| p.name == binding.name) {
+                    match &binding_ty {
+                        None => binding_ty = Some(p.ty.clone()),
+                        Some(existing) => {
+                            if !self.types_compatible(existing, &p.ty) {
+                                self.error(
+                                    format!(
+                                        "selector binding `{}` has inconsistent types across matched functions: {} vs {}",
+                                        binding.name, existing, p.ty
+                                    ),
+                                    binding.span,
+                                );
+                            }
+                        }
+                    }
+                } else {
+                    all_have_param = false;
+                }
+            }
+            if !all_have_param {
+                self.error(
+                    format!(
+                        "selector binding `{}` does not exist on all matched functions",
+                        binding.name
+                    ),
+                    binding.span,
+                );
+            }
+        }
+
+        // Check if body references `result`
+        let body_uses_result = clause.body.iter().any(Self::stmt_uses_result);
+
+        // Determine the common return type (needed if body uses result)
+        let common_return_type = if body_uses_result {
+            let mut ret_ty: Option<Ty> = None;
+            let mut consistent = true;
+            for fi in &matched_fns {
+                match &ret_ty {
+                    None => ret_ty = Some(fi.return_type.clone()),
+                    Some(existing) => {
+                        if !self.types_compatible(existing, &fi.return_type) {
+                            consistent = false;
+                            break;
+                        }
+                    }
+                }
+            }
+            if !consistent {
+                self.error(
+                    "selector modify body references `result` but matched functions have different return types",
+                    clause.span,
+                );
+                return;
+            }
+            ret_ty.unwrap_or(Ty::Unit)
+        } else {
+            Ty::Unit
+        };
+
+        // Build synthetic FnInfo: intersection of params with identical types
+        let synthetic_params = Self::compute_common_params(&matched_fns);
+        let synthetic_fn = FnInfo {
+            name: Name::from("<selector>"),
+            kind: FnKind::Derive,
+            params: synthetic_params,
+            return_type: common_return_type,
+            receiver: None,
+            tags: HashSet::new(),
+            synthetic: true,
+        };
+
+        self.check_modify_body(clause, &synthetic_fn, receiver, condition_params);
+
+        // Store match set for interpreter runtime dispatch
+        self.selector_matches.insert(clause.id, match_set);
+    }
+
+    /// Test whether a function matches all resolved predicates.
+    fn fn_matches_predicates(
+        &self,
+        fn_info: &FnInfo,
+        preds: &[ResolvedPredicate],
+    ) -> bool {
+        preds.iter().all(|pred| match pred {
+            ResolvedPredicate::Tag(tag) => fn_info.tags.contains(tag),
+            ResolvedPredicate::Returns(ty) => self.types_compatible(&fn_info.return_type, ty),
+            ResolvedPredicate::HasParam { name, ty } => fn_info.params.iter().any(|p| {
+                p.name == *name
+                    && match ty {
+                        Some(t) => self.types_compatible(&p.ty, t),
+                        None => true,
+                    }
+            }),
+        })
+    }
+
+    /// Compute params that appear in all matched functions with identical types.
+    fn compute_common_params(matched_fns: &[&FnInfo]) -> Vec<ParamInfo> {
+        if matched_fns.is_empty() {
+            return vec![];
+        }
+        let first = &matched_fns[0];
+        first
+            .params
+            .iter()
+            .filter(|p| {
+                matched_fns[1..].iter().all(|fi| {
+                    fi.params
+                        .iter()
+                        .any(|fp| fp.name == p.name && fp.ty == p.ty)
+                })
+            })
+            .cloned()
+            .collect()
+    }
+
+    /// Check whether a modify statement tree references `result`.
+    fn stmt_uses_result(stmt: &ModifyStmt) -> bool {
+        match stmt {
+            ModifyStmt::ResultOverride { .. } => true,
+            ModifyStmt::ParamOverride { name, .. } if name == "result" => true,
+            ModifyStmt::If {
+                then_body,
+                else_body,
+                ..
+            } => {
+                then_body.iter().any(Self::stmt_uses_result)
+                    || else_body
+                        .as_ref()
+                        .is_some_and(|stmts| stmts.iter().any(Self::stmt_uses_result))
+            }
+            _ => false,
+        }
+    }
+
+    /// Shared body-checking logic for both named and selector modify clauses.
+    fn check_modify_body(
+        &mut self,
+        clause: &ModifyClause,
+        fn_info: &FnInfo,
+        receiver: Option<(&Name, &Spanned<TypeExpr>, &[GroupConstraint])>,
+        condition_params: &[Param],
+    ) {
         self.scope.push(BlockKind::ModifyClause);
 
         // Bind receiver and condition params into scope
         self.bind_condition_context(receiver, condition_params);
 
         // Validate bindings reference real parameters and type-check value expressions
+        let target_label = match &clause.target {
+            ModifyTarget::Named(name) => format!("{}", name),
+            ModifyTarget::Selector(_) => "matched functions".to_string(),
+        };
         self.validate_clause_bindings(
             &clause.bindings,
             |name| {
@@ -149,7 +401,7 @@ impl<'a> Checker<'a> {
                     .map(|p| p.ty.clone())
             },
             "modify",
-            &format!("does not match any parameter of `{}`", clause.target),
+            &format!("does not match any parameter of `{}`", target_label),
         );
 
         // Bring target function's params into scope as read-only
@@ -176,7 +428,7 @@ impl<'a> Checker<'a> {
 
         // Check modify statements
         for stmt in &clause.body {
-            self.check_modify_stmt(stmt, &fn_info);
+            self.check_modify_stmt(stmt, fn_info);
         }
 
         self.scope.pop();

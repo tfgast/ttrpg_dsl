@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::ty::Ty;
-use ttrpg_ast::ast::TypeExpr;
+use ttrpg_ast::ast::{ModifyClauseId, TypeExpr};
 use ttrpg_ast::diagnostic::Diagnostic;
 use ttrpg_ast::Name;
 use ttrpg_ast::Span;
@@ -84,6 +84,10 @@ pub struct FnInfo {
     pub return_type: Ty,
     /// For action/reaction: the receiver parameter info.
     pub receiver: Option<ParamInfo>,
+    /// Tags applied to this function.
+    pub tags: HashSet<Name>,
+    /// True for declarations synthesized by `lower_moves`.
+    pub synthetic: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -143,6 +147,14 @@ pub struct TypeEnv {
     pub system_visibility: HashMap<Name, VisibleNames>,
     /// Per-system: alias → target system name.
     pub system_aliases: HashMap<Name, HashMap<Name, Name>>,
+
+    // ── Tag / selector data ─────────────────────────────────────────
+    /// Declared tag names.
+    pub tags: HashSet<Name>,
+    /// Tag → owning system name.
+    pub tag_owner: HashMap<Name, Name>,
+    /// Precomputed selector match sets, keyed by ModifyClauseId.
+    pub selector_matches: HashMap<ModifyClauseId, HashSet<Name>>,
 }
 
 /// Names visible to a system (own declarations + imported declarations).
@@ -155,6 +167,7 @@ pub struct VisibleNames {
     pub events: HashSet<Name>,
     pub variants: HashSet<Name>,
     pub options: HashSet<Name>,
+    pub tags: HashSet<Name>,
 }
 
 impl Default for TypeEnv {
@@ -187,6 +200,9 @@ impl TypeEnv {
             option_owner: HashMap::new(),
             system_visibility: HashMap::new(),
             system_aliases: HashMap::new(),
+            tags: HashSet::new(),
+            tag_owner: HashMap::new(),
+            selector_matches: HashMap::new(),
         }
     }
 

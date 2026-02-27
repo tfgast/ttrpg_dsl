@@ -214,6 +214,7 @@ fn lower_one_move(
         return_type: Spanned::new(TypeExpr::RollResult, span),
         body: mechanic_body,
         synthetic: true,
+        tags: vec![],
     };
 
     // 5. Synthesize action

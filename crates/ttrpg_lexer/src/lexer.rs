@@ -282,6 +282,7 @@ impl<'a> RawLexer<'a> {
             ']' => Token::new(TokenKind::RBracket, self.span(start, self.cursor.pos())),
             ',' => Token::new(TokenKind::Comma, self.span(start, self.cursor.pos())),
             ':' => Token::new(TokenKind::Colon, self.span(start, self.cursor.pos())),
+            '#' => Token::new(TokenKind::Hash, self.span(start, self.cursor.pos())),
 
             '.' => {
                 if self.cursor.peek() == Some('.') {

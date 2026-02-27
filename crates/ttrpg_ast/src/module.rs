@@ -26,6 +26,8 @@ pub struct SystemInfo {
     pub options: HashSet<Name>,
     /// Enum variant names defined in this system (via owning enum).
     pub variants: HashSet<Name>,
+    /// Tag names defined in this system.
+    pub tags: HashSet<Name>,
 
     /// Imports declared for this system (union of `use` decls across all files containing it).
     pub imports: Vec<ImportInfo>,

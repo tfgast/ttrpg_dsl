@@ -56,6 +56,7 @@ fn test_parse_full_example() {
             | DeclKind::Option(_)
             | DeclKind::Move(_)
             | DeclKind::Table(_)
+            | DeclKind::Tag(_)
             | DeclKind::Unit(_) => {}
         }
     }

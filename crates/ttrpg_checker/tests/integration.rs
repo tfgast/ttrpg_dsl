@@ -9183,3 +9183,224 @@ fn test_multiple_aliases_in_body() {
 }"#;
     expect_no_errors(source);
 }
+
+// ═══════════════════════════════════════════════════════════════
+// Tags and selectors
+// ═══════════════════════════════════════════════════════════════
+
+#[test]
+fn test_tag_declaration_basic() {
+    let source = r#"system "Test" {
+    tag attack
+    struct AttackResult { hit: bool }
+    entity Character { hp: int }
+    mechanic sword_strike(a: Character, t: Character) -> AttackResult #attack {
+        AttackResult { hit: true }
+    }
+}"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_tag_undeclared() {
+    let source = r#"system "Test" {
+    struct AttackResult { hit: bool }
+    entity Character { hp: int }
+    mechanic sword_strike(a: Character, t: Character) -> AttackResult #attack {
+        AttackResult { hit: true }
+    }
+}"#;
+    expect_errors(source, &["undeclared tag `attack`"]);
+}
+
+#[test]
+fn test_tag_multiple_on_function() {
+    let source = r#"system "Test" {
+    tag attack
+    tag ranged
+    struct AttackResult { hit: bool }
+    entity Character { hp: int }
+    mechanic arrow_shot(a: Character, t: Character) -> AttackResult #attack #ranged {
+        AttackResult { hit: true }
+    }
+}"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_selector_modify_basic() {
+    let source = r#"system "Test" {
+    tag attack
+    struct AttackResult { hit: bool }
+    entity Character { hp: int }
+    mechanic sword_strike(attacker: Character, target: Character) -> AttackResult #attack {
+        AttackResult { hit: true }
+    }
+    condition Prone on bearer: Character {
+        modify [#attack](attacker: bearer) {
+            result.hit = false
+        }
+    }
+}"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_selector_empty_match_set() {
+    let source = r#"system "Test" {
+    tag attack
+    entity Character { hp: int }
+    condition Prone on bearer: Character {
+        modify [#attack](attacker: bearer) {
+        }
+    }
+}"#;
+    expect_warnings(source, &["selector matches no functions"]);
+}
+
+#[test]
+fn test_selector_binding_mismatch() {
+    let source = r#"system "Test" {
+    tag attack
+    struct AttackResult { hit: bool }
+    entity Character { hp: int }
+    mechanic strike_a(attacker: Character, target: Character) -> AttackResult #attack {
+        AttackResult { hit: true }
+    }
+    mechanic strike_b(attacker: Character, power: int) -> AttackResult #attack {
+        AttackResult { hit: true }
+    }
+    condition Prone on bearer: Character {
+        modify [#attack](target: bearer) {
+        }
+    }
+}"#;
+    expect_errors(source, &["does not exist on all matched functions"]);
+}
+
+#[test]
+fn test_selector_result_type_mismatch() {
+    let source = r#"system "Test" {
+    tag attack
+    struct ResultA { hit: bool }
+    struct ResultB { damage: int }
+    entity Character { hp: int }
+    mechanic strike_a(attacker: Character) -> ResultA #attack {
+        ResultA { hit: true }
+    }
+    mechanic strike_b(attacker: Character) -> ResultB #attack {
+        ResultB { damage: 5 }
+    }
+    condition Prone on bearer: Character {
+        modify [#attack](attacker: bearer) {
+            result = result
+        }
+    }
+}"#;
+    expect_errors(source, &["different return types"]);
+}
+
+#[test]
+fn test_selector_returns_predicate() {
+    let source = r#"system "Test" {
+    struct AttackResult { hit: bool }
+    entity Character { hp: int }
+    mechanic sword_strike(attacker: Character) -> AttackResult {
+        AttackResult { hit: true }
+    }
+    derive get_hp(c: Character) -> int {
+        c.hp
+    }
+    condition Prone on bearer: Character {
+        modify [returns AttackResult](attacker: bearer) {
+            result.hit = false
+        }
+    }
+}"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_selector_has_predicate() {
+    let source = r#"system "Test" {
+    struct AttackResult { hit: bool }
+    entity Character { hp: int }
+    mechanic sword_strike(attacker: Character, target: Character) -> AttackResult {
+        AttackResult { hit: true }
+    }
+    mechanic magic_bolt(attacker: Character, target: Character) -> AttackResult {
+        AttackResult { hit: true }
+    }
+    condition Prone on bearer: Character {
+        modify [has target: Character](target: bearer) {
+            result.hit = false
+        }
+    }
+}"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_selector_combined_predicates() {
+    let source = r#"system "Test" {
+    tag attack
+    struct AttackResult { hit: bool }
+    entity Character { hp: int }
+    mechanic sword_strike(attacker: Character, target: Character) -> AttackResult #attack {
+        AttackResult { hit: true }
+    }
+    derive get_hp(c: Character) -> int {
+        c.hp
+    }
+    condition Prone on bearer: Character {
+        modify [#attack, returns AttackResult](attacker: bearer) {
+            result.hit = false
+        }
+    }
+}"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_selector_excludes_synthetic() {
+    // Move declarations produce synthetic mechanic functions.
+    // Selectors should not match them.
+    let source = r#"
+system "test" {
+    tag movement
+    entity Character { stat: int }
+    move GoAggro on actor: Character () {
+        trigger: "When you threaten with force"
+        roll: 2d6 + actor.stat
+        on strong_hit { actor.stat += 1 }
+        on weak_hit { actor.stat += 0 }
+        on miss { actor.stat -= 1 }
+    }
+    condition Prone on bearer: Character {
+        modify [#movement]() {
+        }
+    }
+}
+"#;
+    // GoAggro is lowered to a synthetic mechanic; with no non-synthetic #movement fns, match set is empty
+    let (_program, result) = check_lowered(source);
+    let warnings: Vec<_> = result
+        .diagnostics
+        .iter()
+        .filter(|d| d.severity == ttrpg_ast::diagnostic::Severity::Warning)
+        .collect();
+    assert!(
+        warnings.iter().any(|w| w.message.contains("selector matches no functions")),
+        "expected warning about empty selector match set, got: {:?}",
+        warnings.iter().map(|w| &w.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn test_duplicate_tag_declaration() {
+    let source = r#"system "Test" {
+    tag attack
+    tag attack
+}"#;
+    expect_errors(source, &["duplicate tag declaration `attack`"]);
+}

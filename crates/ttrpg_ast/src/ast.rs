@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::name::Name;
 use crate::{DiceFilter, Span, Spanned};
@@ -23,6 +23,8 @@ pub struct Program {
     pub hooks: HashMap<Name, HookDecl>,
     pub hook_order: Vec<Name>,
     pub tables: HashMap<Name, TableDecl>,
+    pub tags: HashSet<Name>,
+    pub next_modify_clause_id: u32,
 }
 
 impl Program {
@@ -43,12 +45,17 @@ impl Program {
         self.hooks.clear();
         self.hook_order.clear();
         self.tables.clear();
+        self.tags.clear();
+        self.next_modify_clause_id = 0;
 
-        for item in &self.items {
-            if let TopLevel::System(system) = &item.node {
-                for decl in &system.decls {
-                    match &decl.node {
+        for item in &mut self.items {
+            if let TopLevel::System(system) = &mut item.node {
+                for decl in &mut system.decls {
+                    match &mut decl.node {
                         DeclKind::Group(_) => {}
+                        DeclKind::Tag(t) => {
+                            self.tags.insert(t.name.clone());
+                        }
                         DeclKind::Action(a) => {
                             self.actions.insert(a.name.clone(), a.clone());
                         }
@@ -63,6 +70,13 @@ impl Program {
                             self.reaction_order.push(r.name.clone());
                         }
                         DeclKind::Condition(c) => {
+                            // Assign ModifyClauseIds to condition modify clauses
+                            for clause in &mut c.clauses {
+                                if let ConditionClause::Modify(m) = clause {
+                                    m.id = ModifyClauseId(self.next_modify_clause_id);
+                                    self.next_modify_clause_id += 1;
+                                }
+                            }
                             self.conditions.insert(c.name.clone(), c.clone());
                         }
                         DeclKind::Event(e) => {
@@ -72,6 +86,13 @@ impl Program {
                             self.prompts.insert(p.name.clone(), p.clone());
                         }
                         DeclKind::Option(o) => {
+                            // Assign ModifyClauseIds to option modify clauses
+                            if let Some(ref mut clauses) = o.when_enabled {
+                                for m in clauses {
+                                    m.id = ModifyClauseId(self.next_modify_clause_id);
+                                    self.next_modify_clause_id += 1;
+                                }
+                            }
                             self.options.insert(o.name.clone(), o.clone());
                             self.option_order.push(o.name.clone());
                         }
@@ -114,6 +135,7 @@ pub struct SystemBlock {
 #[derive(Clone)]
 pub enum DeclKind {
     Group(GroupDecl),
+    Tag(TagDecl),
     Enum(EnumDecl),
     Struct(StructDecl),
     Entity(EntityDecl),
@@ -129,6 +151,30 @@ pub enum DeclKind {
     Move(MoveDecl),
     Table(TableDecl),
     Unit(UnitDecl),
+}
+
+#[derive(Clone)]
+pub struct TagDecl {
+    pub name: Name,
+}
+
+/// Stable identity for a modify clause, assigned during `build_index()`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct ModifyClauseId(pub u32);
+
+/// What a modify clause targets: a specific function or a selector.
+#[derive(Clone)]
+pub enum ModifyTarget {
+    Named(Name),
+    Selector(Vec<SelectorPredicate>),
+}
+
+/// A predicate in a selector expression.
+#[derive(Clone)]
+pub enum SelectorPredicate {
+    Tag(Name),
+    Returns(Spanned<TypeExpr>),
+    HasParam { name: Name, ty: Option<Spanned<TypeExpr>> },
 }
 
 #[derive(Clone)]
@@ -219,6 +265,8 @@ pub struct FnDecl {
     /// True for declarations synthesized by `lower_moves` (e.g., `__{move}_roll`).
     /// Parser always sets this to `false`.
     pub synthetic: bool,
+    /// Tags applied to this function (e.g., `#attack #ranged`).
+    pub tags: Vec<Name>,
 }
 
 #[derive(Clone)]
@@ -322,10 +370,12 @@ pub enum ConditionClause {
 
 #[derive(Clone)]
 pub struct ModifyClause {
-    pub target: Name,
+    pub target: ModifyTarget,
     pub bindings: Vec<ModifyBinding>,
     pub body: Vec<ModifyStmt>,
     pub span: Span,
+    /// Stable clause identity, assigned during `build_index()`.
+    pub id: ModifyClauseId,
 }
 
 #[derive(Clone)]

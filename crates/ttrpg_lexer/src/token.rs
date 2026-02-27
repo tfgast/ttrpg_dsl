@@ -56,6 +56,7 @@ pub enum TokenKind {
     Arrow,      // ->
     FatArrow,   // =>
     Underscore, // _ (standalone)
+    Hash,       // #
 
     // Operators
     Plus,     // +
@@ -107,10 +108,11 @@ impl TokenKind {
             | TokenKind::Eq
             | TokenKind::PlusEq
             | TokenKind::MinusEq
-            // After {  ,  and  :
+            // After {  ,  :  and  #
             | TokenKind::LBrace
             | TokenKind::Comma
             | TokenKind::Colon
+            | TokenKind::Hash
         )
     }
 }

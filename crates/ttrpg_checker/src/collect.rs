@@ -113,6 +113,9 @@ fn populate_module_metadata(
         for name in &sys_info.options {
             env.option_owner.insert(name.clone(), sys_name.clone());
         }
+        for name in &sys_info.tags {
+            env.tag_owner.insert(name.clone(), sys_name.clone());
+        }
     }
 
     // Compute per-system visibility (own + imported)
@@ -127,6 +130,7 @@ fn populate_module_metadata(
         vis.events.extend(sys_info.events.iter().cloned());
         vis.variants.extend(sys_info.variants.iter().cloned());
         vis.options.extend(sys_info.options.iter().cloned());
+        vis.tags.extend(sys_info.tags.iter().cloned());
 
         // Imported declarations
         for import in &sys_info.imports {
@@ -139,6 +143,7 @@ fn populate_module_metadata(
                 vis.events.extend(imported_sys.events.iter().cloned());
                 vis.variants.extend(imported_sys.variants.iter().cloned());
                 vis.options.extend(imported_sys.options.iter().cloned());
+                vis.tags.extend(imported_sys.tags.iter().cloned());
             }
         }
 
@@ -179,8 +184,22 @@ fn pass_1a(
     diagnostics: &mut Vec<Diagnostic>,
 ) {
     for decl in decls {
+        // Register tag declarations alongside type stubs
+        if let DeclKind::Tag(t) = &decl.node {
+            if check_reserved_prefix(&t.name, decl.span, diagnostics) {
+                continue;
+            }
+            if !env.tags.insert(t.name.clone()) {
+                diagnostics.push(Diagnostic::error(
+                    format!("duplicate tag declaration `{}`", t.name),
+                    decl.span,
+                ));
+            }
+            continue;
+        }
+
         let (name, stub) = match &decl.node {
-            DeclKind::Group(_) => continue,
+            DeclKind::Group(_) | DeclKind::Tag(_) => continue,
             DeclKind::Enum(e) => (
                 e.name.clone(),
                 DeclInfo::Enum(EnumInfo {
@@ -275,7 +294,7 @@ fn pass_1b(
 
     for decl in decls {
         match &decl.node {
-            DeclKind::Group(_) => {}
+            DeclKind::Group(_) | DeclKind::Tag(_) => {}
             DeclKind::Enum(e) => {
                 if processed_types.insert(e.name.clone()) {
                     collect_enum(e, env, diagnostics);
@@ -301,6 +320,8 @@ fn pass_1b(
                     &f.params,
                     Some(&f.return_type),
                     None,
+                    &f.tags,
+                    f.synthetic,
                     env,
                     diagnostics,
                     decl.span,
@@ -316,6 +337,8 @@ fn pass_1b(
                     &f.params,
                     Some(&f.return_type),
                     None,
+                    &f.tags,
+                    f.synthetic,
                     env,
                     diagnostics,
                     decl.span,
@@ -373,6 +396,8 @@ fn pass_1b(
                     &t.params,
                     Some(&t.return_type),
                     None,
+                    &[],
+                    false,
                     env,
                     diagnostics,
                     decl.span,
@@ -756,6 +781,8 @@ fn collect_fn(
     params: &[Param],
     return_type: Option<&ttrpg_ast::Spanned<TypeExpr>>,
     receiver: Option<ParamInfo>,
+    tags: &[Name],
+    synthetic: bool,
     env: &mut TypeEnv,
     diagnostics: &mut Vec<Diagnostic>,
     span: Span,
@@ -818,6 +845,18 @@ fn collect_fn(
         .map(|rt| env.resolve_type_validated(rt, diagnostics))
         .unwrap_or(Ty::Unit);
 
+    // Validate tags: each must be declared in env.tags
+    let mut tag_set = HashSet::new();
+    for tag in tags {
+        if !env.tags.contains(tag) {
+            diagnostics.push(Diagnostic::error(
+                format!("undeclared tag `{}` on function `{}`", tag, name),
+                span,
+            ));
+        }
+        tag_set.insert(tag.clone());
+    }
+
     env.functions.insert(
         Name::from(name),
         FnInfo {
@@ -826,6 +865,8 @@ fn collect_fn(
             params: param_infos,
             return_type: ret_ty,
             receiver,
+            tags: tag_set,
+            synthetic,
         },
     );
 }
@@ -895,6 +936,8 @@ fn collect_action(
         &a.params,
         None,
         Some(receiver),
+        &[],
+        false,
         env,
         diagnostics,
         span,
@@ -954,6 +997,8 @@ fn collect_reaction(
         &[],
         None,
         Some(receiver),
+        &[],
+        false,
         env,
         diagnostics,
         span,
@@ -1006,6 +1051,8 @@ fn collect_hook(h: &HookDecl, env: &mut TypeEnv, diagnostics: &mut Vec<Diagnosti
         &[],
         None,
         Some(receiver),
+        &[],
+        false,
         env,
         diagnostics,
         span,
@@ -1083,6 +1130,8 @@ fn collect_prompt(
         &p.params,
         Some(&p.return_type),
         None,
+        &[],
+        false,
         env,
         diagnostics,
         span,

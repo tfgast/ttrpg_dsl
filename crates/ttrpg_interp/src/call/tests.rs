@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use ttrpg_ast::ast::*;
 use ttrpg_ast::{Name, Span, Spanned};
@@ -163,6 +163,7 @@ fn derive_call_arithmetic_body() {
             rhs: Box::new(spanned(ExprKind::Ident("bonus".into()))),
         })))]),
         synthetic: false,
+        tags: vec![],
     })]);
 
     let mut type_env = TypeEnv::new();
@@ -187,6 +188,8 @@ fn derive_call_arithmetic_body() {
             ],
             return_type: Ty::Int,
             receiver: None,
+            tags: HashSet::new(),
+            synthetic: false,
         },
     );
 
@@ -243,6 +246,7 @@ fn derive_call_with_named_args() {
             rhs: Box::new(spanned(ExprKind::Ident("bonus".into()))),
         })))]),
         synthetic: false,
+        tags: vec![],
     })]);
 
     let mut type_env = TypeEnv::new();
@@ -267,6 +271,8 @@ fn derive_call_with_named_args() {
             ],
             return_type: Ty::Int,
             receiver: None,
+            tags: HashSet::new(),
+            synthetic: false,
         },
     );
 
@@ -323,6 +329,7 @@ fn derive_call_with_default_value() {
             rhs: Box::new(spanned(ExprKind::Ident("bonus".into()))),
         })))]),
         synthetic: false,
+        tags: vec![],
     })]);
 
     let mut type_env = TypeEnv::new();
@@ -347,6 +354,8 @@ fn derive_call_with_default_value() {
             ],
             return_type: Ty::Int,
             receiver: None,
+            tags: HashSet::new(),
+            synthetic: false,
         },
     );
 
@@ -395,6 +404,7 @@ fn mechanic_call_with_roll_emits_roll_dice() {
             }],
         })))]),
         synthetic: false,
+        tags: vec![],
     })]);
 
     let mut type_env = type_env_with_builtins();
@@ -406,6 +416,8 @@ fn mechanic_call_with_roll_emits_roll_dice() {
             params: vec![],
             return_type: Ty::RollResult,
             receiver: None,
+            tags: HashSet::new(),
+            synthetic: false,
         },
     );
 
@@ -464,6 +476,8 @@ fn prompt_call_emits_resolve_prompt() {
             params: vec![],
             return_type: Ty::Int,
             receiver: None,
+            tags: HashSet::new(),
+            synthetic: false,
         },
     );
 
@@ -526,6 +540,8 @@ fn prompt_call_with_suggest() {
             }],
             return_type: Ty::Int,
             receiver: None,
+            tags: HashSet::new(),
+            synthetic: false,
         },
     );
 
@@ -1241,6 +1257,7 @@ fn missing_required_arg_error() {
             "x".into(),
         ))))]),
         synthetic: false,
+        tags: vec![],
     })]);
 
     let mut type_env = TypeEnv::new();
@@ -1257,6 +1274,8 @@ fn missing_required_arg_error() {
             }],
             return_type: Ty::Int,
             receiver: None,
+            tags: HashSet::new(),
+            synthetic: false,
         },
     );
 
@@ -1543,6 +1562,8 @@ fn action_test_setup() -> (Program, TypeEnv) {
                 has_default: false,
                 with_groups: vec![],
             }),
+            tags: HashSet::new(),
+            synthetic: false,
         },
     );
 
@@ -1673,6 +1694,7 @@ fn derive_default_references_earlier_param() {
             rhs: Box::new(spanned(ExprKind::Ident("b".into()))),
         })))]),
         synthetic: false,
+        tags: vec![],
     })]);
 
     let mut type_env = TypeEnv::new();
@@ -1697,6 +1719,8 @@ fn derive_default_references_earlier_param() {
             ],
             return_type: Ty::Int,
             receiver: None,
+            tags: HashSet::new(),
+            synthetic: false,
         },
     );
 
@@ -1751,6 +1775,7 @@ fn derive_chained_defaults_reference_earlier_defaults() {
             "c".into(),
         ))))]),
         synthetic: false,
+        tags: vec![],
     })]);
 
     let mut type_env = TypeEnv::new();
@@ -1781,6 +1806,8 @@ fn derive_chained_defaults_reference_earlier_defaults() {
             ],
             return_type: Ty::Int,
             receiver: None,
+            tags: HashSet::new(),
+            synthetic: false,
         },
     );
 
@@ -1823,6 +1850,8 @@ fn prompt_call_accepts_override_response() {
             params: vec![],
             return_type: Ty::Int,
             receiver: None,
+            tags: HashSet::new(),
+            synthetic: false,
         },
     );
 
@@ -1859,6 +1888,8 @@ fn prompt_call_rejects_invalid_response() {
             params: vec![],
             return_type: Ty::Int,
             receiver: None,
+            tags: HashSet::new(),
+            synthetic: false,
         },
     );
 
@@ -2091,6 +2122,7 @@ fn bare_call_prefers_variant_over_function() {
             999,
         ))))]),
         synthetic: false,
+        tags: vec![],
     })]);
 
     let mut type_env = TypeEnv::new();
@@ -2107,6 +2139,8 @@ fn bare_call_prefers_variant_over_function() {
             }],
             return_type: Ty::Int,
             receiver: None,
+            tags: HashSet::new(),
+            synthetic: false,
         },
     );
     type_env.types.insert(
@@ -2208,6 +2242,7 @@ fn mixed_args_evaluated_in_source_order() {
             rhs: Box::new(spanned(ExprKind::Ident("c".into()))),
         })))]),
         synthetic: false,
+        tags: vec![],
     })]);
 
     let mut type_env = type_env_with_builtins();
@@ -2238,6 +2273,8 @@ fn mixed_args_evaluated_in_source_order() {
             ],
             return_type: Ty::Int,
             receiver: None,
+            tags: HashSet::new(),
+            synthetic: false,
         },
     );
 
@@ -2391,6 +2428,8 @@ fn prompt_suggest_error_does_not_leak_scope() {
             params: vec![],
             return_type: Ty::Int,
             receiver: None,
+            tags: HashSet::new(),
+            synthetic: false,
         },
     );
 
@@ -2443,6 +2482,7 @@ fn default_eval_error_does_not_leak_scope() {
             "a".into(),
         ))))]),
         synthetic: false,
+        tags: vec![],
     })]);
 
     let mut type_env = TypeEnv::new();
@@ -2467,6 +2507,8 @@ fn default_eval_error_does_not_leak_scope() {
             ],
             return_type: Ty::Int,
             receiver: None,
+            tags: HashSet::new(),
+            synthetic: false,
         },
     );
 

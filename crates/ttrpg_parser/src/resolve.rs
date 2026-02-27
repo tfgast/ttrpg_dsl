@@ -33,6 +33,7 @@ enum Namespace {
     Event,
     Option,
     Variant,
+    Tag,
 }
 
 /// Takes an already-rebased, merged program. Produces ModuleMap + validation diagnostics.
@@ -102,6 +103,9 @@ pub fn resolve_modules(
                         }
                         Namespace::Option => {
                             info.options.insert(name.clone());
+                        }
+                        Namespace::Tag => {
+                            info.tags.insert(name.clone());
                         }
                         Namespace::Variant => unreachable!(),
                     }
@@ -282,6 +286,7 @@ fn system_has_name(info: &SystemInfo, name: &str) -> bool {
         || info.events.contains(name)
         || info.options.contains(name)
         || info.variants.contains(name)
+        || info.tags.contains(name)
 }
 
 /// Ownership info for a single declaration.
@@ -342,6 +347,9 @@ impl DeclOwnership {
             DeclKind::Unit(u) => {
                 names.push((Namespace::Type, u.name.clone()));
             }
+            DeclKind::Tag(t) => {
+                names.push((Namespace::Tag, t.name.clone()));
+            }
         }
         Self { names, span }
     }
@@ -361,6 +369,7 @@ fn detect_cross_system_collisions(module_map: &ModuleMap, diagnostics: &mut Vec<
         (Namespace::Condition, "condition"),
         (Namespace::Event, "event"),
         (Namespace::Option, "option"),
+        (Namespace::Tag, "tag"),
     ];
 
     for &(ns, ns_label) in namespaces {
@@ -374,6 +383,7 @@ fn detect_cross_system_collisions(module_map: &ModuleMap, diagnostics: &mut Vec<
                 Namespace::Condition => &sys_info.conditions,
                 Namespace::Event => &sys_info.events,
                 Namespace::Option => &sys_info.options,
+                Namespace::Tag => &sys_info.tags,
                 Namespace::Variant => &sys_info.variants,
             };
             for name in names {
@@ -608,6 +618,7 @@ fn desugar_decl_types(
             }
         }
         DeclKind::Move(_) => {}
+        DeclKind::Tag(_) => {}
     }
 }
 
@@ -793,6 +804,7 @@ mod tests {
                 return_type: Spanned::new(TypeExpr::Int, Span::dummy()),
                 body: Spanned::new(vec![], Span::dummy()),
                 synthetic: false,
+                tags: vec![],
             }),
             Span::dummy(),
         )
