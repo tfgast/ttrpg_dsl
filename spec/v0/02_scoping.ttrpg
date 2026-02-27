@@ -327,6 +327,45 @@ hook Regenerate on creature: Character (
 }
 
 
+// --- Emit (firing events from DSL code) ---
+//
+// The `emit` statement fires a named event from within an action's
+// resolve block. When emit executes:
+//
+//   1. Argument expressions are evaluated and matched to event params.
+//   2. Missing params with defaults are filled in.
+//   3. Derived fields (event body fields with defaults) are evaluated.
+//   4. The runtime finds all hooks whose trigger matches this event.
+//   5. Each matching hook executes inline (in declaration order).
+//   6. Control returns to the statement after emit.
+//
+// Reactions are NOT auto-fired by emit — they remain host-driven.
+// The host receives the event payload and decides which reactions
+// to offer to the player.
+//
+// Emit is only allowed in action resolve blocks. It is a statement
+// (fire-and-forget), not an expression — it always returns unit.
+//
+// All arguments must be named:
+//   emit Damaged(target: target, amount: damage)   // correct
+//   emit Damaged(target, damage)                   // error: positional args not allowed
+//
+// Parameters with defaults can be omitted:
+//   event Damaged(target: Character, amount: int = 0) {}
+//   emit Damaged(target: victim)                   // amount defaults to 0
+
+// EXAMPLE: action emits an event, triggering a hook
+// action Attack on attacker: Character (target: Character) {
+//     cost { action }
+//     resolve {
+//         target.HP -= 5
+//         emit Damaged(target: target, amount: 5)
+//         // If there is a hook like DeathCheck listening for Damaged,
+//         // it fires here before the next statement executes.
+//     }
+// }
+
+
 // --- Builtins ---
 //
 // Functions provided by the runtime, usable based on block permissions:

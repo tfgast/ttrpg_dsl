@@ -196,8 +196,8 @@ fn test_collect_counts() {
             .count(),
         2
     );
-    // Events: entity_leaves_reach, turn_start, turn_end
-    assert_eq!(result.env.events.len(), 3);
+    // Events: entity_leaves_reach, turn_start, turn_end, Damaged
+    assert_eq!(result.env.events.len(), 4);
     // Conditions: Prone, Dodging, Disengaging
     assert_eq!(result.env.conditions.len(), 3);
 }

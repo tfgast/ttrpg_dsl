@@ -56,7 +56,7 @@
 //     reaction  hook  condition  prompt  option  event  move  cost
 //     requires  resolve  modify  suppress  trigger  roll  on
 //     when  enabled  hint  suggest  description  default  result
-//     with  has  include  as
+//     with  has  include  as  grant  revoke  emit
 //
 // Soft keywords CAN be used as field names, variable names, and
 // enum variants. The parser distinguishes based on position:
@@ -403,13 +403,44 @@ block           = "{" stmt* "}"
 //   - derive/mechanic: block type must match declared return type.
 //   - action/reaction resolve: block value is discarded (no constraint).
 
-stmt            = let_stmt | assign_stmt | expr_stmt
+stmt            = let_stmt | assign_stmt | grant_stmt | revoke_stmt
+                | emit_stmt | expr_stmt
 
 let_stmt        = "let" IDENT (":" type)? "=" expr term
 assign_stmt     = lvalue assign_op expr term
 assign_op       = "=" | "+=" | "-="
 lvalue          = IDENT ("." IDENT | "[" expr "]")*
 expr_stmt       = expr term
+
+// --- Grant and revoke (optional group management) ---
+//
+// `grant` activates an optional group on an entity with initial field values.
+// `revoke` deactivates an optional group, discarding its field values.
+// Both are only allowed in action, reaction, or hook resolve blocks.
+//
+//   grant wizard.Spellcasting { spell_slots: 3, spell_dc: 15 }
+//   revoke wizard.Spellcasting
+//
+grant_stmt      = "grant" lvalue "{" struct_body? "}" term
+revoke_stmt     = "revoke" lvalue term
+
+// --- Emit (fire an event, auto-execute matching hooks) ---
+//
+// `emit` fires a named event with the given arguments. All matching
+// hooks execute inline before the emit statement returns. Reactions
+// are NOT auto-fired — they remain host-driven.
+//
+// All arguments must be named (matches event parameter names).
+// Parameters with defaults can be omitted. The emit statement
+// returns unit (fire-and-forget).
+//
+// Only allowed in action resolve blocks. (Future: may be relaxed
+// to hook and reaction resolve blocks with a cascading depth guard.)
+//
+//   emit Damaged(target: target, amount: damage)
+//   emit TurnStarted(actor: actor)
+//
+emit_stmt       = "emit" IDENT "(" arg_list? ")" term
 
 
 // =========================

@@ -233,7 +233,11 @@ system "D&D 5e Combat" {
         resolve {
             let result = resolve_melee_attack(attacker, target, weapon)
             match result {
-                hit(amount) => { target.HP -= amount },
+                hit(amount) => {
+                    target.HP -= amount
+                    // Fire the Damaged event — matching hooks execute inline
+                    emit Damaged(target: target, attacker: attacker, amount: amount)
+                },
                 miss => {}
             }
         }
@@ -312,6 +316,11 @@ system "D&D 5e Combat" {
         to_position: Position
     }
 
+    // Damage event — emitted by actions that deal damage.
+    // Hooks can listen for this to implement concentration checks,
+    // death triggers, damage logging, etc.
+    event Damaged(target: Character, attacker: Character, amount: int) {}
+
 
     // --- Reactions (can roll AND mutate, trigger-driven) ---
 
@@ -361,6 +370,15 @@ system "D&D 5e Combat" {
                     // Failure
                 }
             }
+        }
+    }
+
+
+    // Damage hook — auto-fires when Damaged is emitted.
+    // Checks if the target has dropped to 0 HP and applies Prone if so.
+    hook DeathDrop on target: Character (trigger: Damaged(target: target)) {
+        if target.HP <= 0 {
+            apply_condition(target, Prone, Duration.indefinite)
         }
     }
 

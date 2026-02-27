@@ -70,7 +70,7 @@ fn test_parse_full_example() {
     assert_eq!(reactions, 1, "reaction count");
     assert_eq!(conditions, 3, "condition count");
     assert_eq!(prompts, 2, "prompt count");
-    assert_eq!(events, 3, "event count");
+    assert_eq!(events, 4, "event count");
 }
 
 #[test]
