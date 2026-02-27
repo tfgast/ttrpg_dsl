@@ -1,6 +1,8 @@
 use std::io::{self, BufRead, IsTerminal};
+use std::path::PathBuf;
 use std::process;
 
+use ttrpg_ast::diagnostic::{MultiSourceMap, Severity};
 use ttrpg_cli::runner::Runner;
 
 fn main() {
@@ -22,9 +24,16 @@ fn main() {
             }
             run_script(args[1]);
         }
+        Some("check") => {
+            if args.len() < 2 {
+                eprintln!("usage: ttrpg check <files...>");
+                process::exit(1);
+            }
+            run_check(&args[1..]);
+        }
         Some(other) => {
             eprintln!("unknown subcommand: {}", other);
-            eprintln!("usage: ttrpg [--vi] [run <script>]");
+            eprintln!("usage: ttrpg [--vi] [run <script> | check <files...>]");
             process::exit(1);
         }
         None => {
@@ -67,6 +76,92 @@ fn run_pipe() {
 
     if had_error {
         process::exit(1);
+    }
+}
+
+fn run_check(file_args: &[&str]) {
+    // Resolve globs and collect paths
+    let mut paths: Vec<PathBuf> = Vec::new();
+    for arg in file_args {
+        if arg.contains('*') || arg.contains('?') || arg.contains('[') {
+            match glob::glob(arg) {
+                Ok(entries) => {
+                    let mut found = false;
+                    for entry in entries {
+                        match entry {
+                            Ok(path) => {
+                                paths.push(path);
+                                found = true;
+                            }
+                            Err(e) => {
+                                eprintln!("glob error for '{}': {}", arg, e);
+                                process::exit(1);
+                            }
+                        }
+                    }
+                    if !found {
+                        eprintln!("no files matched pattern '{}'", arg);
+                        process::exit(1);
+                    }
+                }
+                Err(e) => {
+                    eprintln!("invalid glob pattern '{}': {}", arg, e);
+                    process::exit(1);
+                }
+            }
+        } else {
+            paths.push(PathBuf::from(arg));
+        }
+    }
+
+    // Read all files
+    let mut sources: Vec<(String, String)> = Vec::new();
+    for path in &paths {
+        match std::fs::read_to_string(path) {
+            Ok(content) => sources.push((path.to_string_lossy().into_owned(), content)),
+            Err(e) => {
+                eprintln!("cannot read '{}': {}", path.display(), e);
+                process::exit(1);
+            }
+        }
+    }
+
+    // Parse and check
+    let result = ttrpg_parser::parse_multi(&sources);
+    let mut all_diags = result.diagnostics;
+
+    let check_result = ttrpg_checker::check_with_modules(&result.program, &result.module_map);
+    all_diags.extend(check_result.diagnostics);
+
+    // Render diagnostics
+    let source_map = MultiSourceMap::new(sources);
+    let mut error_count = 0;
+    let mut warning_count = 0;
+
+    for diag in &all_diags {
+        match diag.severity {
+            Severity::Error => error_count += 1,
+            Severity::Warning => warning_count += 1,
+        }
+        eprintln!("{}", source_map.render(diag));
+    }
+
+    // Summary
+    if error_count > 0 {
+        eprintln!(
+            "{} error{}, {} warning{}",
+            error_count,
+            if error_count == 1 { "" } else { "s" },
+            warning_count,
+            if warning_count == 1 { "" } else { "s" },
+        );
+        process::exit(1);
+    } else if warning_count > 0 {
+        eprintln!(
+            "{} warning{}",
+            warning_count,
+            if warning_count == 1 { "" } else { "s" },
+        );
     }
 }
 
