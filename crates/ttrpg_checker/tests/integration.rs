@@ -204,8 +204,8 @@ fn test_collect_counts() {
     );
     // Events: entity_leaves_reach, turn_start, turn_end, Damaged
     assert_eq!(result.env.events.len(), 4);
-    // Conditions: Prone, Dodging, Disengaging
-    assert_eq!(result.env.conditions.len(), 3);
+    // Conditions: Prone, Dodging, Disengaging, Hidden, CunningAction
+    assert_eq!(result.env.conditions.len(), 5);
 }
 
 #[test]
