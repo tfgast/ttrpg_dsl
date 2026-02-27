@@ -156,7 +156,7 @@ fn ose_combat_has_enums() {
     assert!(enums.contains(&("CombatPhase", 8)));
     assert!(enums.contains(&("InitiativeWinner", 3)));
     assert!(enums.contains(&("PhaseActorSlot", 5)));
-    assert_eq!(enums.len(), 7, "expected 7 enums");
+    assert_eq!(enums.len(), 9, "expected 9 enums");
 }
 
 #[test]
@@ -189,7 +189,7 @@ fn ose_combat_has_derives() {
     assert!(derives.contains(&"target_number"));
     assert!(derives.contains(&"calc_ac"));
     assert!(derives.contains(&"missile_range_mod"));
-    assert_eq!(derives.len(), 10, "expected 10 derives");
+    assert_eq!(derives.len(), 11, "expected 11 derives");
 }
 
 #[test]
@@ -206,7 +206,7 @@ fn ose_combat_has_mechanics() {
     assert!(mechanics.contains(&"attack_roll"));
     assert!(mechanics.contains(&"morale_check"));
     assert!(mechanics.contains(&"reaction_roll"));
-    assert_eq!(mechanics.len(), 12, "expected 12 mechanics");
+    assert_eq!(mechanics.len(), 13, "expected 13 mechanics");
 }
 
 // ── Derive evaluation ──────────────────────────────────────────
@@ -444,7 +444,7 @@ fn missile_range_errors_when_distance_exceeds_long_range() {
 
     assert!(
         err.message
-            .contains("missile_range_mod: distance exceeds weapon long range"),
+            .contains("distance exceeds weapon long range"),
         "unexpected error: {}",
         err.message
     );
@@ -523,13 +523,12 @@ fn skip_phase_uses_typed_phase_enum() {
             "skip_phase",
             vec![
                 combat_phase("Magic"),
-                Value::Int(1),
-                Value::Int(0),
-                Value::Int(1),
+                Value::Bool(false),
+                Value::Bool(true),
             ],
         )
         .unwrap();
-    assert_eq!(skip_magic, Value::Int(1));
+    assert_eq!(skip_magic, Value::Bool(true));
 }
 
 // ── Table evaluation (via wrapper derives) ─────────────────────
@@ -884,38 +883,57 @@ fn reaction_roll_clamped_high() {
 }
 
 #[test]
-fn resolve_attack_rejects_non_boolean_weapon_flags() {
+fn should_check_morale_uses_bool_params() {
     let (program, result) = compile_ose_combat();
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let state = GameState::new();
     let mut handler = NullHandler;
 
-    let err = interp
-        .evaluate_mechanic(
+    // First death, not yet checked → should trigger
+    let val = interp
+        .evaluate_derive(
             &state,
             &mut handler,
-            "resolve_attack",
+            "should_check_morale",
             vec![
-                Value::Int(19), // thac0
-                Value::Int(5),  // target_ac
-                Value::Int(2),  // is_missile (invalid: must be 0 or 1)
-                Value::Int(1),  // is_melee
-                Value::Int(10), // distance
-                Value::Int(1),  // str_mod
-                Value::Int(0),  // dex_mod
-                Value::Int(50), // short_range
-                Value::Int(100), // medium_range
-                Value::Int(150), // long_range
-                Value::Int(1),  // damage_dice
-                Value::Int(6),  // damage_sides
+                Value::Int(1),     // deaths
+                Value::Int(5),     // initial
+                Value::Bool(false), // first_death_checked
+                Value::Bool(false), // half_killed_checked
             ],
         )
-        .unwrap_err();
+        .unwrap();
+    assert_eq!(val, Value::Bool(true));
 
-    assert!(
-        err.message
-            .contains("resolve_attack: is_missile must be 0 or 1"),
-        "unexpected error: {}",
-        err.message
-    );
+    // First death, already checked → should not trigger
+    let val = interp
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "should_check_morale",
+            vec![
+                Value::Int(1),
+                Value::Int(5),
+                Value::Bool(true),
+                Value::Bool(false),
+            ],
+        )
+        .unwrap();
+    assert_eq!(val, Value::Bool(false));
+
+    // Half killed, not yet checked → should trigger
+    let val = interp
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "should_check_morale",
+            vec![
+                Value::Int(3),
+                Value::Int(5),
+                Value::Bool(true),
+                Value::Bool(false),
+            ],
+        )
+        .unwrap();
+    assert_eq!(val, Value::Bool(true));
 }
