@@ -197,6 +197,23 @@ struct RollResult {
 //       dice: DiceExpr
 //       type: DamageType
 //   }
+//
+// Fields may declare default values with `= expr`. Omitted fields in a
+// struct literal use their default; fields without defaults are required:
+//
+//   struct TurnBudget {
+//       actions: int = 0
+//       bonus_actions: int = 0
+//       reactions: int = 0
+//       movement: int = 0
+//   }
+//
+//   TurnBudget { actions: 1, movement: 30 }
+//   // bonus_actions = 0, reactions = 0 (from defaults)
+//
+// This is the same `field_def = IDENT ":" type ("=" expr)?` syntax used
+// by groups, entities, events, and units — all field-bearing declarations
+// share the same default-value mechanism.
 
 
 // --- Entities ---

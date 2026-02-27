@@ -47,11 +47,11 @@ system "D&D 5e Combat" {
     }
 
     struct TurnBudget {
-        actions: int
-        bonus_actions: int
-        reactions: int
-        movement: int
-        free_interactions: int
+        actions: int = 0
+        bonus_actions: int = 0
+        reactions: int = 0
+        movement: int = 0
+        free_interactions: int = 0
     }
 
 
@@ -102,6 +102,9 @@ system "D&D 5e Combat" {
             movement: actor.speed,
             free_interactions: 1
         }
+        // With defaults, a partial literal also works:
+        //   TurnBudget { actions: 1, movement: actor.speed }
+        // Omitted fields use their declared defaults (0).
     }
 
     derive apply_resistances(
