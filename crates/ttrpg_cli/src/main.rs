@@ -17,23 +17,46 @@ fn main() {
         .collect();
 
     match args.first().copied() {
-        Some("run") => {
+        Some("-c") => {
             if args.len() != 2 {
-                eprintln!("usage: ttrpg run <script.ttrpg-cli>");
+                eprintln!("usage: ttrpg -c <commands>");
                 process::exit(1);
             }
-            run_script(args[1]);
+            run_commands(args[1]);
+        }
+        Some("run") => {
+            if args.get(1).copied() == Some("-c") {
+                if args.len() != 3 {
+                    eprintln!("usage: ttrpg run -c <commands>");
+                    process::exit(1);
+                }
+                run_commands(args[2]);
+            } else {
+                if args.len() != 2 {
+                    eprintln!("usage: ttrpg run <script.ttrpg-cli>");
+                    process::exit(1);
+                }
+                run_script(args[1]);
+            }
         }
         Some("check") => {
-            if args.len() < 2 {
-                eprintln!("usage: ttrpg check <files...>");
-                process::exit(1);
+            if args.get(1).copied() == Some("-c") {
+                if args.len() != 3 {
+                    eprintln!("usage: ttrpg check -c <source>");
+                    process::exit(1);
+                }
+                check_source(args[2]);
+            } else {
+                if args.len() < 2 {
+                    eprintln!("usage: ttrpg check <files...>");
+                    process::exit(1);
+                }
+                check_files(&args[1..]);
             }
-            run_check(&args[1..]);
         }
         Some(other) => {
             eprintln!("unknown subcommand: {}", other);
-            eprintln!("usage: ttrpg [--vi] [run <script> | check <files...>]");
+            eprintln!("usage: ttrpg [--vi] [-c <commands> | run <script> | check <files...>]");
             process::exit(1);
         }
         None => {
@@ -79,7 +102,54 @@ fn run_pipe() {
     }
 }
 
-fn run_check(file_args: &[&str]) {
+/// Execute CLI commands from a string.
+fn run_commands(commands: &str) {
+    exec_commands("-c", commands);
+}
+
+/// Execute CLI commands from a script file.
+fn run_script(path: &str) {
+    let content = match std::fs::read_to_string(path) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("cannot read '{}': {}", path, e);
+            process::exit(1);
+        }
+    };
+    exec_commands(path, &content);
+}
+
+/// Shared implementation for running CLI commands from a labeled source.
+fn exec_commands(label: &str, content: &str) {
+    let mut runner = Runner::new();
+    let mut had_error = false;
+
+    for (lineno, line) in content.lines().enumerate() {
+        let result = runner.exec(line);
+
+        for out in runner.take_output() {
+            println!("{}", out);
+        }
+
+        if let Err(e) = result {
+            eprintln!("{}:{}: error: {}", label, lineno + 1, e);
+            had_error = true;
+        }
+    }
+
+    if had_error {
+        process::exit(1);
+    }
+}
+
+/// Check DSL source passed as a string.
+fn check_source(source: &str) {
+    let sources = vec![("<string>".to_string(), source.to_string())];
+    check_sources(sources);
+}
+
+/// Check DSL source files by path (with glob support).
+fn check_files(file_args: &[&str]) {
     // Resolve globs and collect paths
     let mut paths: Vec<PathBuf> = Vec::new();
     for arg in file_args {
@@ -126,6 +196,11 @@ fn run_check(file_args: &[&str]) {
         }
     }
 
+    check_sources(sources);
+}
+
+/// Shared implementation for checking DSL sources.
+fn check_sources(sources: Vec<(String, String)>) {
     // Parse and check
     let result = ttrpg_parser::parse_multi(&sources);
     let mut all_diags = result.diagnostics;
@@ -162,35 +237,5 @@ fn run_check(file_args: &[&str]) {
             warning_count,
             if warning_count == 1 { "" } else { "s" },
         );
-    }
-}
-
-fn run_script(path: &str) {
-    let content = match std::fs::read_to_string(path) {
-        Ok(c) => c,
-        Err(e) => {
-            eprintln!("cannot read '{}': {}", path, e);
-            process::exit(1);
-        }
-    };
-
-    let mut runner = Runner::new();
-    let mut had_error = false;
-
-    for (lineno, line) in content.lines().enumerate() {
-        let result = runner.exec(line);
-
-        for out in runner.take_output() {
-            println!("{}", out);
-        }
-
-        if let Err(e) = result {
-            eprintln!("{}:{}: error: {}", path, lineno + 1, e);
-            had_error = true;
-        }
-    }
-
-    if had_error {
-        process::exit(1);
     }
 }
