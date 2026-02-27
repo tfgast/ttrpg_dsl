@@ -2535,7 +2535,12 @@ fn collect_idents_arm_body(body: &ArmBody, out: &mut Vec<Name>) {
 /// First attempts normal expression evaluation (handles literals and in-scope vars).
 /// If that fails, collects all identifiers from the expression, resolves any that are
 /// entity fields, injects them into a temporary scope, and retries evaluation.
-fn eval_bound_expr(env: &mut Env, entity: &EntityRef, expr: &Spanned<ExprKind>) -> Option<Value> {
+fn eval_bound_expr(
+    env: &mut Env,
+    entity: &EntityRef,
+    expr: &Spanned<ExprKind>,
+    group_prefix: &[FieldPathSegment],
+) -> Option<Value> {
     // Try normal evaluation first (handles literals, in-scope variables, derives)
     if let Ok(val) = eval_expr(env, expr) {
         return Some(val);
@@ -2547,7 +2552,18 @@ fn eval_bound_expr(env: &mut Env, entity: &EntityRef, expr: &Spanned<ExprKind>) 
     let mut bindings = Vec::new();
     for name in &idents {
         if env.lookup(name).is_none() {
-            if let Some(val) = env.state.read_field(entity, name) {
+            // First try reading the field at the group-qualified path
+            // (e.g. CombatantCore.max_hp for a resource inside CombatantCore)
+            let resolved = if !group_prefix.is_empty() {
+                let mut full_path = group_prefix.to_vec();
+                full_path.push(FieldPathSegment::Field(name.clone()));
+                crate::adapter::read_at_path(env.state, entity, &full_path)
+            } else {
+                None
+            };
+            // Fall back to top-level field lookup
+            let resolved = resolved.or_else(|| env.state.read_field(entity, name));
+            if let Some(val) = resolved {
                 bindings.push((name.clone(), val));
             }
         }
@@ -2579,7 +2595,7 @@ fn resolve_resource_bounds(
     // Look up the field def and extract resource bounds from the type expression.
     // Clone the bound expressions so we can release the borrow on env.interp.program
     // before calling eval_bound_expr (which needs &mut env).
-    let bound_exprs = {
+    let (bound_exprs, group_prefix) = {
         let (field_def, consumed) = find_field_def_and_remaining(env, &entity_type, path)?;
         let remaining = &path[consumed..];
         let (min_expr, max_expr) = extract_resource_bounds_from_type(
@@ -2587,10 +2603,15 @@ fn resolve_resource_bounds(
             remaining,
             &env.interp.program.items,
         )?;
-        (min_expr.clone(), max_expr.clone())
+        // When the field is inside a group (consumed > 1), the first path
+        // segment is the group name. Bound expressions reference sibling
+        // fields within the same group, so we need to qualify lookups
+        // with the group prefix.
+        let prefix = if consumed > 1 { &path[..1] } else { &[] };
+        ((min_expr.clone(), max_expr.clone()), prefix.to_vec())
     };
-    let min_val = eval_bound_expr(env, entity, &bound_exprs.0)?;
-    let max_val = eval_bound_expr(env, entity, &bound_exprs.1)?;
+    let min_val = eval_bound_expr(env, entity, &bound_exprs.0, &group_prefix)?;
+    let max_val = eval_bound_expr(env, entity, &bound_exprs.1, &group_prefix)?;
     Some((min_val, max_val))
 }
 

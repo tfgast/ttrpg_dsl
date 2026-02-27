@@ -422,7 +422,7 @@ pub fn compute_turn_field_value<S: StateProvider>(
 }
 
 /// Read a value at a nested path from an entity.
-pub fn read_at_path<S: StateProvider>(
+pub fn read_at_path<S: StateProvider + ?Sized>(
     state: &S,
     entity: &EntityRef,
     path: &[FieldPathSegment],
