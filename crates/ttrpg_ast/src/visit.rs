@@ -267,6 +267,7 @@ impl VisitSpansMut for ModifyTarget {
         match self {
             ModifyTarget::Named(_) => {}
             ModifyTarget::Selector(preds) => preds.visit_spans_mut(f),
+            ModifyTarget::Cost(_) => {}
         }
     }
 }
@@ -316,6 +317,10 @@ impl VisitSpansMut for ModifyStmt {
                 condition.visit_spans_mut(f);
                 then_body.visit_spans_mut(f);
                 else_body.visit_spans_mut(f);
+            }
+            ModifyStmt::CostOverride { tokens, span, .. } => {
+                span.visit_spans_mut(f);
+                tokens.visit_spans_mut(f);
             }
         }
     }

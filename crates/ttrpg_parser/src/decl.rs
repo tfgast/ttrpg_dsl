@@ -451,6 +451,18 @@ impl Parser {
     fn parse_cost_clause(&mut self) -> Result<CostClause, ()> {
         let start = self.start_span();
         self.expect_soft_keyword("cost")?;
+
+        // `cost free` — intentionally no cost
+        if self.at_ident("free") {
+            self.advance();
+            self.expect_term()?;
+            return Ok(CostClause {
+                tokens: vec![],
+                free: true,
+                span: self.end_span(start),
+            });
+        }
+
         self.expect(&TokenKind::LBrace)?;
         self.suppress_newlines_in_brace_block();
 
@@ -472,6 +484,7 @@ impl Parser {
         self.expect_term()?;
         Ok(CostClause {
             tokens,
+            free: false,
             span: self.end_span(start),
         })
     }
@@ -706,7 +719,7 @@ impl Parser {
         let start = self.start_span();
         self.expect_soft_keyword("modify")?;
 
-        // Parse target: either a selector [predicates] or a named function
+        // Parse target: either a selector [predicates] or a named function (possibly with .cost)
         let target = if matches!(self.peek(), TokenKind::LBracket) {
             self.advance(); // consume [
             let mut predicates = Vec::new();
@@ -727,7 +740,16 @@ impl Parser {
             ModifyTarget::Selector(predicates)
         } else {
             let (name, _) = self.expect_ident()?;
-            ModifyTarget::Named(name)
+            // Check for `.cost` suffix: `modify ActionName.cost(...)`
+            if matches!(self.peek(), TokenKind::Dot)
+                && matches!(self.peek_at(1), TokenKind::Ident(s) if s == "cost")
+            {
+                self.advance(); // consume .
+                self.advance(); // consume cost
+                ModifyTarget::Cost(name)
+            } else {
+                ModifyTarget::Named(name)
+            }
         };
 
         self.expect(&TokenKind::LParen)?;
@@ -739,7 +761,12 @@ impl Parser {
         self.expect(&TokenKind::RParen)?;
         self.expect(&TokenKind::LBrace)?;
         self.skip_newlines();
-        let body = self.parse_modify_stmts()?;
+
+        // Use cost-specific body parser for Cost targets
+        let body = match &target {
+            ModifyTarget::Cost(_) => self.parse_cost_modify_stmts()?,
+            _ => self.parse_modify_stmts()?,
+        };
         self.expect(&TokenKind::RBrace)?;
 
         Ok(ModifyClause {
@@ -903,6 +930,115 @@ impl Parser {
 
         self.error(format!(
             "expected modify statement (let, result.field =, or param =), found {:?}",
+            self.peek()
+        ));
+        Err(())
+    }
+
+    /// Parse the body of a `modify Name.cost(...)` clause.
+    ///
+    /// Allowed statements:
+    /// - `cost = free` → CostOverride { free: true }
+    /// - `cost = token1, token2` → CostOverride { tokens, free: false }
+    /// - `let name = expr`
+    /// - `if cond { ... } else { ... }` (with cost modify stmts in branches)
+    fn parse_cost_modify_stmts(&mut self) -> Result<Vec<ModifyStmt>, ()> {
+        let mut stmts = Vec::new();
+        while !matches!(self.peek(), TokenKind::RBrace | TokenKind::Eof) {
+            stmts.push(self.parse_cost_modify_stmt()?);
+            self.skip_newlines();
+        }
+        Ok(stmts)
+    }
+
+    fn parse_cost_modify_stmt(&mut self) -> Result<ModifyStmt, ()> {
+        let start = self.start_span();
+
+        // let binding
+        if matches!(self.peek(), TokenKind::Let) {
+            self.advance();
+            let (name, _) = self.expect_ident()?;
+            let ty = if matches!(self.peek(), TokenKind::Colon) {
+                self.advance();
+                Some(self.parse_type()?)
+            } else {
+                None
+            };
+            self.expect(&TokenKind::Eq)?;
+            let value = self.parse_expr()?;
+            self.expect_term()?;
+            return Ok(ModifyStmt::Let {
+                name,
+                ty,
+                value,
+                span: self.end_span(start),
+            });
+        }
+
+        // if
+        if matches!(self.peek(), TokenKind::If) {
+            self.advance();
+            let condition = self.parse_expr()?;
+            self.expect(&TokenKind::LBrace)?;
+            self.skip_newlines();
+            let then_body = self.parse_cost_modify_stmts()?;
+            self.expect(&TokenKind::RBrace)?;
+            let else_body = if matches!(self.peek(), TokenKind::Else) {
+                self.advance();
+                self.expect(&TokenKind::LBrace)?;
+                self.skip_newlines();
+                let body = self.parse_cost_modify_stmts()?;
+                self.expect(&TokenKind::RBrace)?;
+                Some(body)
+            } else {
+                None
+            };
+            self.expect_term()?;
+            return Ok(ModifyStmt::If {
+                condition,
+                then_body,
+                else_body,
+                span: self.end_span(start),
+            });
+        }
+
+        // cost = free | cost = token1, token2
+        if self.at_ident("cost") && matches!(self.peek_at(1), TokenKind::Eq) {
+            self.advance(); // cost
+            self.advance(); // =
+
+            // `cost = free`
+            if self.at_ident("free") {
+                self.advance();
+                self.expect_term()?;
+                return Ok(ModifyStmt::CostOverride {
+                    tokens: vec![],
+                    free: true,
+                    span: self.end_span(start),
+                });
+            }
+
+            // `cost = token1, token2, ...`
+            let mut tokens = Vec::new();
+            let tok_start = self.start_span();
+            let (name, _) = self.expect_ident()?;
+            tokens.push(Spanned::new(name, self.end_span(tok_start)));
+            while matches!(self.peek(), TokenKind::Comma) {
+                self.advance();
+                let tok_start = self.start_span();
+                let (name, _) = self.expect_ident()?;
+                tokens.push(Spanned::new(name, self.end_span(tok_start)));
+            }
+            self.expect_term()?;
+            return Ok(ModifyStmt::CostOverride {
+                tokens,
+                free: false,
+                span: self.end_span(start),
+            });
+        }
+
+        self.error(format!(
+            "expected cost modify statement (cost =, let, or if), found {:?}",
             self.peek()
         ));
         Err(())

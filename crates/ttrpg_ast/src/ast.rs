@@ -162,11 +162,13 @@ pub struct TagDecl {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct ModifyClauseId(pub u32);
 
-/// What a modify clause targets: a specific function or a selector.
+/// What a modify clause targets: a specific function, a selector, or an action's cost.
 #[derive(Clone)]
 pub enum ModifyTarget {
     Named(Name),
     Selector(Vec<SelectorPredicate>),
+    /// `modify ActionName.cost(...)` — override an action/reaction's cost.
+    Cost(Name),
 }
 
 /// A predicate in a selector expression.
@@ -302,6 +304,8 @@ pub struct ActionDecl {
 #[derive(Clone)]
 pub struct CostClause {
     pub tokens: Vec<Spanned<Name>>,
+    /// True when declared as `cost free` — intentionally no cost.
+    pub free: bool,
     pub span: Span,
 }
 
@@ -408,6 +412,13 @@ pub enum ModifyStmt {
         condition: Spanned<ExprKind>,
         then_body: Vec<ModifyStmt>,
         else_body: Option<Vec<ModifyStmt>>,
+        span: Span,
+    },
+    /// `cost = token1, token2` or `cost = free` inside a `.cost` modify body.
+    CostOverride {
+        tokens: Vec<Spanned<Name>>,
+        /// True for `cost = free`.
+        free: bool,
         span: Span,
     },
 }

@@ -148,9 +148,16 @@ fn execute_pipeline(
         }
     }
 
-    // Cost deduction
+    // Cost deduction (skip if explicitly free)
     if let Some(cost) = cost {
-        deduct_costs(env, actor, cost, call_span)?;
+        if !cost.free {
+            // Collect cost modifiers from conditions on the actor
+            let effective_cost = collect_and_apply_cost_modifiers(env, actor, action_name, cost, call_span)?;
+            if let Some(ref eff) = effective_cost {
+                deduct_costs(env, actor, eff, call_span)?;
+            }
+            // else: cost was overridden to free by a modifier
+        }
     }
 
     // Execute resolve block
@@ -320,6 +327,234 @@ pub(crate) fn execute_hook(
         let resolve = hook.resolve.clone();
         eval_block(env, &resolve)
     })
+}
+
+// ── Cost modification ──────────────────────────────────────────
+
+/// Collect cost modifiers from conditions on the actor entity and apply them,
+/// returning the effective cost clause (or None if overridden to free).
+///
+/// Cost modifiers are `modify ActionName.cost(...)` clauses in conditions.
+/// They can replace the cost tokens or make the cost free.
+fn collect_and_apply_cost_modifiers(
+    env: &mut Env,
+    actor: &EntityRef,
+    action_name: &str,
+    original_cost: &CostClause,
+    _call_span: Span,
+) -> Result<Option<CostClause>, RuntimeError> {
+    use ttrpg_ast::ast::{ConditionClause, ModifyTarget};
+    use crate::effect::{Effect, FieldChange, ModifySource, Phase, Response};
+    use crate::eval::{eval_expr, value_eq};
+
+    let mut effective = original_cost.clone();
+
+    // Read conditions on the actor
+    let conditions = match env.state.read_conditions(actor) {
+        Some(c) => c,
+        None => return Ok(Some(effective)),
+    };
+
+    // Collect matching cost modifiers, ordered by gained_at
+    struct CostModifier {
+        source: ModifySource,
+        clause: ttrpg_ast::ast::ModifyClause,
+        bearer: EntityRef,
+        receiver_name: Name,
+        condition_params: std::collections::BTreeMap<Name, Value>,
+        gained_at: u64,
+    }
+    let mut cost_modifiers: Vec<CostModifier> = Vec::new();
+
+    for condition in &conditions {
+        let cond_decl = match env.interp.program.conditions.get(condition.name.as_str()) {
+            Some(decl) => decl,
+            None => continue,
+        };
+
+        for clause_item in &cond_decl.clauses {
+            let clause = match clause_item {
+                ConditionClause::Modify(c) => c,
+                ConditionClause::Suppress(_) => continue,
+            };
+
+            // Only match Cost targets for this action
+            match &clause.target {
+                ModifyTarget::Cost(name) if name == action_name => {}
+                _ => continue,
+            }
+
+            // Check bindings: evaluate each binding expression and compare
+            // with the actual parameter values (actor entity for receiver bindings)
+            let bindings_match = if clause.bindings.is_empty() {
+                true
+            } else {
+                let mut all_match = true;
+                env.push_scope();
+                env.bind(cond_decl.receiver_name.clone(), Value::Entity(condition.bearer));
+                for (name, val) in &condition.params {
+                    env.bind(name.clone(), val.clone());
+                }
+
+                for binding in &clause.bindings {
+                    // The binding value is the actual actor entity
+                    let param_val = Value::Entity(*actor);
+
+                    if let Some(ref expr) = binding.value {
+                        match eval_expr(env, expr) {
+                            Ok(val) => {
+                                if !value_eq(env.state, &param_val, &val) {
+                                    all_match = false;
+                                    break;
+                                }
+                            }
+                            Err(_) => {
+                                all_match = false;
+                                break;
+                            }
+                        }
+                    }
+                    // None = wildcard, always matches
+                }
+
+                env.pop_scope();
+                all_match
+            };
+
+            if bindings_match {
+                cost_modifiers.push(CostModifier {
+                    source: ModifySource::Condition(condition.name.clone()),
+                    clause: clause.clone(),
+                    bearer: condition.bearer,
+                    receiver_name: cond_decl.receiver_name.clone(),
+                    condition_params: condition.params.clone(),
+                    gained_at: condition.gained_at,
+                });
+            }
+        }
+    }
+
+    // Sort by gained_at (stable preserves declaration order)
+    cost_modifiers.sort_by_key(|m| m.gained_at);
+
+    // Apply each cost modifier (last writer wins)
+    for modifier in &cost_modifiers {
+        let old_tokens: Vec<String> = effective.tokens.iter().map(|t| t.node.to_string()).collect();
+        let old_free = effective.free;
+
+        env.push_scope();
+
+        // Bind condition receiver (bearer)
+        env.bind(modifier.receiver_name.clone(), Value::Entity(modifier.bearer));
+
+        // Bind condition params
+        for (name, val) in &modifier.condition_params {
+            env.bind(name.clone(), val.clone());
+        }
+
+        // Execute cost modify statements
+        let result = exec_cost_modify_stmts(env, &modifier.clause.body, &mut effective);
+        env.pop_scope();
+        result?;
+
+        // Check if anything changed and emit ModifyApplied effect
+        let new_tokens: Vec<String> = effective.tokens.iter().map(|t| t.node.to_string()).collect();
+        if old_free != effective.free || old_tokens != new_tokens {
+            let old_desc = if old_free {
+                "free".to_string()
+            } else {
+                old_tokens.join(", ")
+            };
+            let new_desc = if effective.free {
+                "free".to_string()
+            } else {
+                new_tokens.join(", ")
+            };
+            let changes = vec![FieldChange {
+                name: Name::from("cost"),
+                old: Value::Str(old_desc),
+                new: Value::Str(new_desc),
+            }];
+            let response = env.handler.handle(Effect::ModifyApplied {
+                source: modifier.source.clone(),
+                target_fn: Name::from(action_name),
+                phase: Phase::Phase1,
+                changes,
+            });
+            if !matches!(response, Response::Acknowledged) {
+                return Err(RuntimeError::with_span(
+                    format!(
+                        "protocol error: expected Acknowledged for ModifyApplied, got {:?}",
+                        response
+                    ),
+                    modifier.clause.span,
+                ));
+            }
+        }
+    }
+
+    if effective.free {
+        Ok(None)
+    } else {
+        Ok(Some(effective))
+    }
+}
+
+/// Execute cost modify statements, updating the effective cost clause.
+fn exec_cost_modify_stmts(
+    env: &mut Env,
+    stmts: &[ttrpg_ast::ast::ModifyStmt],
+    effective: &mut CostClause,
+) -> Result<(), RuntimeError> {
+    use ttrpg_ast::ast::ModifyStmt;
+    use crate::eval::eval_expr;
+
+    for stmt in stmts {
+        match stmt {
+            ModifyStmt::CostOverride { tokens, free, .. } => {
+                effective.tokens = tokens.clone();
+                effective.free = *free;
+            }
+            ModifyStmt::Let { name, value, .. } => {
+                let val = eval_expr(env, value)?;
+                env.bind(name.clone(), val);
+            }
+            ModifyStmt::If {
+                condition,
+                then_body,
+                else_body,
+                ..
+            } => {
+                let cond = eval_expr(env, condition)?;
+                match cond {
+                    Value::Bool(true) => {
+                        env.push_scope();
+                        let r = exec_cost_modify_stmts(env, then_body, effective);
+                        env.pop_scope();
+                        r?;
+                    }
+                    Value::Bool(false) => {
+                        if let Some(else_stmts) = else_body {
+                            env.push_scope();
+                            let r = exec_cost_modify_stmts(env, else_stmts, effective);
+                            env.pop_scope();
+                            r?;
+                        }
+                    }
+                    _ => {
+                        return Err(RuntimeError::with_span(
+                            "cost modify if condition must be Bool",
+                            condition.span,
+                        ));
+                    }
+                }
+            }
+            // ParamOverride and ResultOverride should not appear in cost modify bodies
+            // (the checker rejects them), but skip gracefully at runtime
+            _ => {}
+        }
+    }
+    Ok(())
 }
 
 // ── Cost deduction ─────────────────────────────────────────────
@@ -620,6 +855,7 @@ mod tests {
             vec![],
             Some(CostClause {
                 tokens: vec![spanned(Name::from("action"))],
+                free: false,
                 span: span(),
             }),
             Some(spanned(ExprKind::BoolLit(true))),
@@ -662,6 +898,7 @@ mod tests {
             vec![],
             Some(CostClause {
                 tokens: vec![spanned(Name::from("action"))],
+                free: false,
                 span: span(),
             }),
             Some(spanned(ExprKind::BoolLit(false))),
@@ -698,6 +935,7 @@ mod tests {
             vec![],
             Some(CostClause {
                 tokens: vec![spanned(Name::from("action"))],
+                free: false,
                 span: span(),
             }),
             Some(spanned(ExprKind::BoolLit(true))),
@@ -730,6 +968,7 @@ mod tests {
             vec![],
             Some(CostClause {
                 tokens: vec![spanned(Name::from("action"))],
+                free: false,
                 span: span(),
             }),
             None, // no requires
@@ -764,6 +1003,7 @@ mod tests {
             vec![],
             Some(CostClause {
                 tokens: vec![spanned(Name::from("action"))],
+                free: false,
                 span: span(),
             }),
             None,
@@ -794,6 +1034,7 @@ mod tests {
             vec![],
             Some(CostClause {
                 tokens: vec![spanned(Name::from("action"))],
+                free: false,
                 span: span(),
             }),
             None,
@@ -986,6 +1227,7 @@ mod tests {
                     spanned(Name::from("action")),
                     spanned(Name::from("bonus_action")),
                 ],
+                free: false,
                 span: span(),
             }),
             None,
@@ -1024,6 +1266,7 @@ mod tests {
             vec![],
             Some(CostClause {
                 tokens: vec![spanned(Name::from("movement"))],
+                free: false,
                 span: span(),
             }),
             None,
@@ -1126,6 +1369,7 @@ mod tests {
             "entity_leaves_reach",
             Some(CostClause {
                 tokens: vec![spanned(Name::from("reaction"))],
+                free: false,
                 span: span(),
             }),
             vec![spanned(StmtKind::Expr(spanned(ExprKind::IntLit(1))))],

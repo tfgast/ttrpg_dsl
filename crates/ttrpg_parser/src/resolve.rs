@@ -653,7 +653,9 @@ fn desugar_modify_stmts(
                     );
                 }
             }
-            ModifyStmt::ParamOverride { .. } | ModifyStmt::ResultOverride { .. } => {}
+            ModifyStmt::ParamOverride { .. }
+            | ModifyStmt::ResultOverride { .. }
+            | ModifyStmt::CostOverride { .. } => {}
         }
     }
 }

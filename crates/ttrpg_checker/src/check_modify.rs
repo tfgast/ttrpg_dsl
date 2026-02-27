@@ -115,6 +115,9 @@ impl<'a> Checker<'a> {
             ModifyTarget::Selector(preds) => {
                 self.check_modify_selector(clause, preds, receiver, condition_params);
             }
+            ModifyTarget::Cost(name) => {
+                self.check_modify_cost(clause, name, receiver, condition_params);
+            }
         }
     }
 
@@ -153,6 +156,204 @@ impl<'a> Checker<'a> {
         }
 
         self.check_modify_body(clause, &fn_info, receiver, condition_params);
+    }
+
+    /// Check a modify clause targeting an action/reaction's cost.
+    fn check_modify_cost(
+        &mut self,
+        clause: &ModifyClause,
+        target_name: &Name,
+        receiver: Option<(&Name, &Spanned<TypeExpr>, &[GroupConstraint])>,
+        condition_params: &[Param],
+    ) {
+        // Look up the target function
+        let fn_info = match self.env.lookup_fn(target_name) {
+            Some(info) => info.clone(),
+            None => {
+                self.error(
+                    format!("modify cost target `{}` is not a defined function", target_name),
+                    clause.span,
+                );
+                return;
+            }
+        };
+
+        // .cost modify can only target actions or reactions
+        if fn_info.kind != FnKind::Action && fn_info.kind != FnKind::Reaction {
+            self.error(
+                format!(
+                    "modify cost target `{}` must be an action or reaction",
+                    target_name
+                ),
+                clause.span,
+            );
+            return;
+        }
+
+        // Check module visibility
+        self.check_name_visible(target_name, Namespace::Function, clause.span);
+
+        self.scope.push(BlockKind::ModifyClause);
+
+        // Bind receiver and condition params into scope
+        self.bind_condition_context(receiver, condition_params);
+
+        // Validate bindings: the action's receiver is bindable, plus all declared params
+        self.validate_clause_bindings(
+            &clause.bindings,
+            |name| {
+                // Check receiver name first
+                if let Some(ref recv) = fn_info.receiver {
+                    if recv.name == name {
+                        return Some(recv.ty.clone());
+                    }
+                }
+                fn_info
+                    .params
+                    .iter()
+                    .find(|p| p.name == name)
+                    .map(|p| p.ty.clone())
+            },
+            "modify",
+            &format!("does not match any parameter of `{}`", target_name),
+        );
+
+        // Bring target function's params into scope as read-only
+        if let Some(ref recv) = fn_info.receiver {
+            self.scope.bind(
+                recv.name.clone(),
+                VarBinding {
+                    ty: recv.ty.clone(),
+                    mutable: false,
+                    is_local: false,
+                },
+            );
+        }
+        for param in &fn_info.params {
+            self.scope.bind(
+                param.name.clone(),
+                VarBinding {
+                    ty: param.ty.clone(),
+                    mutable: false,
+                    is_local: false,
+                },
+            );
+        }
+
+        // Check cost modify statements
+        for stmt in &clause.body {
+            self.check_cost_modify_stmt(stmt, target_name);
+        }
+
+        self.scope.pop();
+    }
+
+    /// Check a single cost modify statement — only Let, If, CostOverride are valid.
+    fn check_cost_modify_stmt(&mut self, stmt: &ModifyStmt, target_name: &Name) {
+        match stmt {
+            ModifyStmt::Let {
+                name,
+                ty,
+                value,
+                span: _,
+            } => {
+                let bind_ty = if let Some(ref type_ann) = ty {
+                    let ann_ty = self.resolve_type_validated(type_ann);
+                    let val_ty = self.check_expr_expecting(value, Some(&ann_ty));
+                    if !val_ty.is_error()
+                        && !ann_ty.is_error()
+                        && !self.types_compatible(&val_ty, &ann_ty)
+                    {
+                        self.error(
+                            format!(
+                                "let `{}`: value has type {}, annotation says {}",
+                                name, val_ty, ann_ty
+                            ),
+                            value.span,
+                        );
+                    }
+                    ann_ty
+                } else {
+                    self.check_expr(value)
+                };
+
+                self.scope.bind(
+                    name.clone(),
+                    VarBinding {
+                        ty: bind_ty,
+                        mutable: false,
+                        is_local: true,
+                    },
+                );
+            }
+            ModifyStmt::If {
+                condition,
+                then_body,
+                else_body,
+                span: _,
+            } => {
+                let cond_ty = self.check_expr(condition);
+                if !cond_ty.is_error() && cond_ty != Ty::Bool {
+                    self.error(
+                        format!("if condition must be bool, found {}", cond_ty),
+                        condition.span,
+                    );
+                }
+                self.scope.push(BlockKind::Inner);
+                for s in then_body {
+                    self.check_cost_modify_stmt(s, target_name);
+                }
+                self.scope.pop();
+                if let Some(else_stmts) = else_body {
+                    self.scope.push(BlockKind::Inner);
+                    for s in else_stmts {
+                        self.check_cost_modify_stmt(s, target_name);
+                    }
+                    self.scope.pop();
+                }
+            }
+            ModifyStmt::CostOverride {
+                tokens,
+                free,
+                span: _,
+            } => {
+                if !free {
+                    // Validate cost tokens
+                    let expected = self
+                        .env
+                        .valid_cost_tokens()
+                        .into_iter()
+                        .map(|n| n.to_string())
+                        .collect::<Vec<_>>();
+
+                    for token in tokens {
+                        if self.env.resolve_cost_token(&token.node).is_none() {
+                            let suffix = if expected.is_empty() {
+                                "no valid cost tokens are available".to_string()
+                            } else {
+                                format!("expected one of: {}", expected.join(", "))
+                            };
+                            self.error(
+                                format!("invalid cost token `{}`; {}", token.node, suffix),
+                                token.span,
+                            );
+                        }
+                    }
+                }
+            }
+            ModifyStmt::ParamOverride { span, .. } => {
+                self.error(
+                    "param overrides are not allowed in cost modify clauses",
+                    *span,
+                );
+            }
+            ModifyStmt::ResultOverride { span, .. } => {
+                self.error(
+                    "result overrides are not allowed in cost modify clauses",
+                    *span,
+                );
+            }
+        }
     }
 
     /// Check a modify clause targeting functions via selector predicates.
@@ -388,7 +589,7 @@ impl<'a> Checker<'a> {
 
         // Validate bindings reference real parameters and type-check value expressions
         let target_label = match &clause.target {
-            ModifyTarget::Named(name) => format!("{}", name),
+            ModifyTarget::Named(name) | ModifyTarget::Cost(name) => format!("{}", name),
             ModifyTarget::Selector(_) => "matched functions".to_string(),
         };
         self.validate_clause_bindings(
@@ -541,6 +742,12 @@ impl<'a> Checker<'a> {
                     }
                     self.scope.pop();
                 }
+            }
+            ModifyStmt::CostOverride { span, .. } => {
+                self.error(
+                    "cost overrides are only allowed in `.cost` modify clauses",
+                    *span,
+                );
             }
         }
     }

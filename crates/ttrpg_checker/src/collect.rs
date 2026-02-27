@@ -1339,6 +1339,10 @@ fn validate_all_cost_tokens(program: &Program, env: &TypeEnv, diagnostics: &mut 
 }
 
 fn validate_cost_tokens(cost: &CostClause, env: &TypeEnv, diagnostics: &mut Vec<Diagnostic>) {
+    if cost.free {
+        return;
+    }
+
     let expected = env
         .valid_cost_tokens()
         .into_iter()

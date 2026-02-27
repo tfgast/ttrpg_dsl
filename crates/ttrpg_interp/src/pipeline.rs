@@ -80,6 +80,10 @@ pub(crate) fn collect_modifiers_owned(
                             _ => continue,
                         }
                     }
+                    ModifyTarget::Cost(_) => {
+                        // Cost modifiers are handled separately; skip here
+                        continue;
+                    }
                 }
 
                 // Check bindings: each binding maps a param name to an expression.
@@ -139,6 +143,10 @@ pub(crate) fn collect_modifiers_owned(
                         Some(set) if set.contains(fn_name) => {}
                         _ => continue,
                     }
+                }
+                ModifyTarget::Cost(_) => {
+                    // Cost modifiers are handled separately; skip here
+                    continue;
                 }
             }
 
@@ -484,8 +492,8 @@ fn exec_modify_stmts_phase1(
                     }
                 }
             }
-            ModifyStmt::ResultOverride { .. } => {
-                // Skip in Phase 1
+            ModifyStmt::ResultOverride { .. } | ModifyStmt::CostOverride { .. } => {
+                // Skip in Phase 1 (CostOverride is handled in cost pipeline)
             }
         }
     }
@@ -610,6 +618,9 @@ fn exec_modify_stmts_phase2(
                         ));
                     }
                 }
+            }
+            ModifyStmt::CostOverride { .. } => {
+                // Skip in Phase 2 (handled in cost pipeline)
             }
         }
     }

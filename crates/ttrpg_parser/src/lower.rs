@@ -317,6 +317,7 @@ fn lower_one_move(
     // Cost: { action }
     let cost = CostClause {
         tokens: vec![Spanned::new("action".into(), span)],
+        free: false,
         span,
     };
 

@@ -1197,6 +1197,7 @@ mod tests {
             params: vec![],
             cost: Some(CostClause {
                 tokens: vec![spanned(Name::from("action"))],
+                free: false,
                 span: span(),
             }),
             requires: None,
