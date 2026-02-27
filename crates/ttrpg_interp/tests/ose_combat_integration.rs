@@ -422,6 +422,35 @@ fn missile_range_long() {
 }
 
 #[test]
+fn missile_range_errors_when_distance_exceeds_long_range() {
+    let (program, result) = compile_ose_combat();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NullHandler;
+
+    let err = interp
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "missile_range_mod",
+            vec![
+                Value::Int(151),
+                Value::Int(50),
+                Value::Int(100),
+                Value::Int(150),
+            ],
+        )
+        .unwrap_err();
+
+    assert!(
+        err.message
+            .contains("missile_range_mod: distance exceeds weapon long range"),
+        "unexpected error: {}",
+        err.message
+    );
+}
+
+#[test]
 fn phase_sequence_is_typed_and_ordered() {
     let (program, result) = compile_ose_combat();
     let interp = Interpreter::new(&program, &result.env).unwrap();
@@ -852,4 +881,41 @@ fn reaction_roll_clamped_high() {
         .evaluate_mechanic(&state, &mut handler, "reaction_roll", vec![Value::Int(3)])
         .unwrap();
     assert_eq!(val, enum_variant("ReactionOutcome", "Friendly"));
+}
+
+#[test]
+fn resolve_attack_rejects_non_boolean_weapon_flags() {
+    let (program, result) = compile_ose_combat();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NullHandler;
+
+    let err = interp
+        .evaluate_mechanic(
+            &state,
+            &mut handler,
+            "resolve_attack",
+            vec![
+                Value::Int(19), // thac0
+                Value::Int(5),  // target_ac
+                Value::Int(2),  // is_missile (invalid: must be 0 or 1)
+                Value::Int(1),  // is_melee
+                Value::Int(10), // distance
+                Value::Int(1),  // str_mod
+                Value::Int(0),  // dex_mod
+                Value::Int(50), // short_range
+                Value::Int(100), // medium_range
+                Value::Int(150), // long_range
+                Value::Int(1),  // damage_dice
+                Value::Int(6),  // damage_sides
+            ],
+        )
+        .unwrap_err();
+
+    assert!(
+        err.message
+            .contains("resolve_attack: is_missile must be 0 or 1"),
+        "unexpected error: {}",
+        err.message
+    );
 }
