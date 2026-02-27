@@ -221,6 +221,82 @@ condition Prone on bearer: Character {
 // and pushes game-specific cancellation logic into explicit DSL code.
 
 
+// --- Cost free ---
+//
+// An action or reaction may declare `cost free` to explicitly signal
+// that it consumes no turn resources. This is distinct from omitting
+// the cost clause: omission is ambiguous (intentional? forgotten?),
+// while `cost free` is an unambiguous declaration.
+//
+//   action Cantrip on caster: Character () {
+//       cost free
+//       resolve { ... }
+//   }
+//
+// Semantics:
+//   - No DeductCost effects are emitted at runtime.
+//   - Cost modifiers (modify Action.cost) can still apply to change
+//     a free action's cost, or to make a costed action free.
+//   - `cost free` is valid on both actions and reactions.
+
+
+// --- Cost modification (modify Action.cost) ---
+//
+// Conditions can override an action's cost using the `.cost` suffix
+// on modify clauses. This enables features like D&D 5e's Cunning
+// Action (Dash/Disengage/Hide as a bonus action) without duplicating
+// the entire action definition.
+//
+// Syntax:
+//   condition CunningAction on bearer: Character {
+//       modify Dash.cost(actor: bearer) { cost = bonus_action }
+//   }
+//
+// The `.cost` suffix distinguishes cost modification from parameter/
+// result modification. The target must be an action or reaction (not
+// a derive or mechanic, which have no cost).
+//
+// Bindings work the same as regular modify clauses: the action's
+// receiver and declared parameters are bindable. In the example above,
+// `actor` is Dash's receiver name, bound to the condition's `bearer`.
+//
+// Cost modify bodies support:
+//   - `cost = token1, token2` — replace the cost with new tokens
+//   - `cost = free` — waive the cost entirely
+//   - `let` bindings for intermediate values
+//   - `if`/`else` for conditional cost changes
+//
+// Cost modify bodies reject parameter overrides (`param = expr`) and
+// result rewrites (`result.field = expr`) — those belong in regular
+// modify clauses.
+//
+// Cost modifiers are collected from active conditions on the acting
+// entity, applied in condition-gained order (oldest first), last
+// writer wins. This follows the same pipeline model as parameter
+// modification (see "Modify conflict resolution" above).
+//
+// EXAMPLE: Rogue's Cunning Action — Dash, Disengage, Hide as bonus action
+//
+//   condition CunningAction on bearer: Character {
+//       modify Dash.cost(actor: bearer) { cost = bonus_action }
+//       modify Disengage.cost(actor: bearer) { cost = bonus_action }
+//       modify Hide.cost(actor: bearer) { cost = bonus_action }
+//   }
+//
+// EXAMPLE: Conditional cost change (free if a resource is available)
+//
+//   condition Metamagic on bearer: Character {
+//       modify Fireball.cost(caster: bearer) {
+//           if bearer.sorcery_points >= 2 {
+//               cost = free
+//           }
+//       }
+//   }
+//
+// EXAMPLE: Cost modification emits a ModifyApplied effect showing
+// the old and new cost, allowing the host to log the change.
+
+
 // --- Turn state ---
 //
 // The action economy is managed by the runtime. The DSL declares:

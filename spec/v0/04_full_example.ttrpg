@@ -304,6 +304,32 @@ system "D&D 5e Combat" {
         }
     }
 
+    action Hide on actor: Character () {
+        cost { action }
+
+        resolve {
+            apply_condition(actor, Hidden, Duration.indefinite)
+        }
+    }
+
+    // --- Free actions (cost free) ---
+    //
+    // `cost free` explicitly declares that an action costs nothing.
+    // This is distinct from omitting cost — it signals intentional no-cost.
+
+    action Perceive on actor: Character (target: Character) {
+        cost free
+
+        resolve {
+            // A free action to observe a target — no turn resources consumed
+            let dc = 10 + modifier(target.abilities[DEX])
+            let check: RollResult = roll(d20_expr(score: actor.abilities[WIS]))
+            if check.total >= dc {
+                remove_condition(target, Hidden)
+            }
+        }
+    }
+
 
     // --- Events (trigger event shapes) ---
     //
@@ -415,5 +441,32 @@ system "D&D 5e Combat" {
         // entity_leaves_reach trigger. This is a built-in interaction
         // between conditions and triggers, not custom logic.
         suppress entity_leaves_reach(entity: bearer)
+    }
+
+    condition Hidden on bearer: Character {
+        // Hidden grants advantage on attack rolls made by the bearer
+        modify attack_roll(attacker: bearer) {
+            mode = advantage
+        }
+    }
+
+
+    // --- Cost modification (modify Action.cost) ---
+    //
+    // Conditions can override an action's cost using `.cost` modify
+    // clauses. This avoids duplicating entire action definitions just
+    // to change their cost.
+
+    // Rogue's Cunning Action: Dash, Disengage, Hide as bonus action
+    condition CunningAction on bearer: Character {
+        modify Dash.cost(actor: bearer) {
+            cost = bonus_action
+        }
+        modify Disengage.cost(actor: bearer) {
+            cost = bonus_action
+        }
+        modify Hide.cost(actor: bearer) {
+            cost = bonus_action
+        }
     }
 }

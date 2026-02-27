@@ -56,7 +56,7 @@
 //     reaction  hook  condition  prompt  option  event  move  cost
 //     requires  resolve  modify  suppress  trigger  roll  on
 //     when  enabled  hint  suggest  description  default  result
-//     with  has  include  as  grant  revoke  emit
+//     with  has  include  as  grant  revoke  emit  free  ordered
 //
 // Soft keywords CAN be used as field names, variable names, and
 // enum variants. The parser distinguishes based on position:
@@ -190,7 +190,8 @@ action_decl     = "action" IDENT "on" IDENT ":" constrained_type
                       resolve_block
                   "}"
 
-cost_clause     = "cost" "{" cost_entry ("," cost_entry)* "}" term
+cost_clause     = "cost" "free" term                  // explicit no-cost
+                | "cost" "{" cost_entry ("," cost_entry)* "}" term
 cost_entry      = IDENT                              // a cost token (see mapping below)
 requires_clause = "requires" "{" expr "}" term       // multiple blocks are combined with &&
 resolve_block   = "resolve" block
@@ -209,6 +210,22 @@ resolve_block   = "resolve" block
 // The singular token is the DSL-facing name (matches D&D terminology:
 // "costs an action"). The plural field is the counter in TurnBudget
 // ("you have 1 actions remaining").
+//
+// --- `cost free` ---
+//
+// An action or reaction may explicitly declare `cost free` to signal
+// that it intentionally consumes no resources. This is distinct from
+// OMITTING the cost clause entirely: omission is ambiguous (forgot to
+// declare? intentionally free?), while `cost free` is a clear signal.
+//
+//   action Cantrip on caster: Character () {
+//       cost free
+//       resolve { ... }
+//   }
+//
+// When `cost free` is declared, no DeductCost effects are emitted
+// at runtime. Cost modifiers (modify Action.cost) can still apply
+// to change a free action's cost, or make a costed action free.
 //
 // STATIC CHECK: The compiler validates cost tokens during semantic
 // analysis (not during parsing). The grammar accepts any IDENT in
@@ -257,6 +274,7 @@ condition_decl  = "condition" IDENT "on" IDENT ":" constrained_type "{"
 condition_clause = modify_clause | suppress_clause
 
 modify_clause   = "modify" mechanic_ref "(" modify_bindings ")" modify_body
+                | "modify" IDENT "." "cost" "(" modify_bindings ")" cost_modify_body
 mechanic_ref    = IDENT                             // name of target mechanic/derive
 modify_bindings = modify_binding ("," modify_binding)* ","?
 modify_binding  = IDENT ":" expr                    // e.g., attacker: bearer
@@ -271,6 +289,37 @@ modify_stmt     = "let" IDENT (":" type)? "=" expr term   // local binding (eith
 // Phase 2 stmts (result.IDENT = expr) execute after.
 // A single modify body can contain both phases; the runtime
 // partitions them. `if` blocks can contain either kind.
+
+// --- Cost modification ---
+//
+// The second form of modify_clause targets an action or reaction's
+// cost instead of its parameters/result. The `.cost` suffix after
+// the action name selects this mode:
+//
+//   modify Dash.cost(actor: bearer) { cost = bonus_action }
+//
+// The target name must refer to an action or reaction (not a derive
+// or mechanic — those have no cost). Bindings work the same way:
+// the receiver and declared parameters are bindable.
+//
+// Cost modify bodies use a restricted statement set — only `cost =`
+// assignments, `let` bindings, and `if`/`else` are allowed. Parameter
+// overrides (`param = expr`) and result rewrites (`result.field = expr`)
+// are rejected with a diagnostic.
+//
+// `cost = free` waives the action's cost entirely.
+// `cost = token1, token2` replaces the cost with the given tokens.
+//
+// Multiple cost modifiers follow the same conflict resolution as
+// parameter modifiers: applied in condition-gained order, last writer
+// wins (see 02_scoping.ttrpg "Modify conflict resolution").
+
+cost_modify_body = "{" cost_modify_stmt* "}"
+cost_modify_stmt = "cost" "=" "free" term                              // waive cost
+                 | "cost" "=" cost_entry ("," cost_entry)* term        // replace cost tokens
+                 | "let" IDENT (":" type)? "=" expr term               // local binding
+                 | "if" expr cost_modify_body
+                       ("else" cost_modify_body)? term                 // conditional
 
 suppress_clause = "suppress" IDENT "(" modify_bindings ")" term
 // Declares that this condition prevents the named trigger event
