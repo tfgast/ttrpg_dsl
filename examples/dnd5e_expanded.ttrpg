@@ -103,6 +103,17 @@ system "D&D 5e Expanded" {
 
 
     // ========================================================
+    //  TAGS
+    // ========================================================
+
+    // RESOLVED: Tags and selector-targeted modify clauses allow     [ttrpg_dsl-wus]
+    // conditions to target classes of functions rather than listing
+    // each one by name. Declare tags here, apply to mechanics below.
+    tag d20_roll      // any mechanic that resolves a d20 check
+    tag attack        // attack resolution mechanics (melee/ranged/spell)
+
+
+    // ========================================================
     //  STRUCTS
     // ========================================================
 
@@ -248,9 +259,11 @@ system "D&D 5e Expanded" {
     }
 
     // The entity is now much leaner — class-specific fields are in
-    // optional groups, not carried by every Character. Remaining gap:
-    // no true traits/mixins for sharing behavior across entity types.
-    // Optional groups are per-entity, not cross-entity composable.
+    // optional groups, not carried by every Character.
+    // RESOLVED: Top-level group declarations + `include` make groups   [ttrpg_dsl-zzx4]
+    // cross-entity composable. A `group CoreStats { ... }` can be
+    // shared across Character, Monster, NPC via `include CoreStats`
+    // (required) or `optional CoreStats` (grantable).
 
 
     // ========================================================
@@ -401,7 +414,7 @@ system "D&D 5e Expanded" {
         weapon: Weapon,
         mode: RollMode = normal,
         bonus: int = 0      // situational bonuses (cover, etc.)
-    ) -> RollResult {
+    ) -> RollResult #d20_roll #attack {
         let ability = choose_attack_ability(attacker, weapon)
         let expr = d20_expr(
             score: attacker.abilities[ability],
@@ -417,7 +430,7 @@ system "D&D 5e Expanded" {
         target: Character,
         mode: RollMode = normal,
         bonus: int = 0
-    ) -> RollResult {
+    ) -> RollResult #d20_roll {
         // RESOLVED: With optional groups, spell_attack_bonus lives in
         // the Spellcasting group. We check with `has` since mechanics
         // can't use `with` constraints (that's actions only).         [ttrpg_dsl-s43]
@@ -484,7 +497,7 @@ system "D&D 5e Expanded" {
         DC: int,
         mode: RollMode = normal,
         bonus: int = 0
-    ) -> SaveResult {
+    ) -> SaveResult #d20_roll {
         let prof = if ability in target.proficient_saves {
             proficiency_bonus(target.level)
         } else {
@@ -507,7 +520,7 @@ system "D&D 5e Expanded" {
         skill: Skill,
         DC: int,
         mode: RollMode = normal
-    ) -> SaveResult {
+    ) -> SaveResult #d20_roll {
         let ability = skill_ability(skill)
         let prof = if skill in actor.proficiency_skills {
             proficiency_bonus(actor.level)
@@ -561,7 +574,7 @@ system "D&D 5e Expanded" {
 
     // --- Initiative ---
 
-    mechanic initiative_roll(combatant: Character) -> RollResult {
+    mechanic initiative_roll(combatant: Character) -> RollResult #d20_roll {
         let expr = d20_expr(score: combatant.abilities[DEX])
         roll(expr)
     }
@@ -609,7 +622,17 @@ system "D&D 5e Expanded" {
         resolve {
             let result = resolve_melee_attack(attacker, target, weapon)
             match result {
-                hit(amount) => { target.HP -= amount },
+                hit(amount) => {
+                    target.HP -= amount
+                    // RESOLVED: emit statement fires events from DSL code.  [ttrpg_dsl-wbic]
+                    // The host no longer needs to manually fire takes_damage.
+                    emit takes_damage(
+                        reactor: target,
+                        source: attacker,
+                        amount: amount,
+                        damage_type: weapon.damage.type
+                    )
+                },
                 miss => {}
             }
         }
@@ -633,7 +656,15 @@ system "D&D 5e Expanded" {
                 if distance(attacker.position, target.position) <= weapon.range {
                     let result = resolve_melee_attack(attacker, target, weapon)
                     match result {
-                        hit(amount) => { target.HP -= amount },
+                        hit(amount) => {
+                            target.HP -= amount
+                            emit takes_damage(
+                                reactor: target,
+                                source: attacker,
+                                amount: amount,
+                                damage_type: weapon.damage.type
+                            )
+                        },
                         miss => {}
                     }
                 }
@@ -792,6 +823,12 @@ system "D&D 5e Expanded" {
                 }
                 let final_damage = apply_resistances(target, raw_damage, fire)
                 target.HP -= final_damage
+                emit takes_damage(
+                    reactor: target,
+                    source: caster,
+                    amount: final_damage,
+                    damage_type: fire
+                )
             }
 
             // RESOLVED: Resource-valued map replaces 7-branch match.   [ttrpg_dsl-5yt]
@@ -854,15 +891,19 @@ system "D&D 5e Expanded" {
         to_position: Position
     }
 
-    event takes_damage(reactor: Character) {
-        source: Character
-        amount: int
+    // RESOLVED: With emit, event params are passed directly from DSL code,
+    // so data fields move from body to header for emit compatibility.
+    event takes_damage(
+        reactor: Character,
+        source: Character,
+        amount: int,
         damage_type: DamageType
-    }
+    ) {}
 
-    // PAIN POINT: takes_damage must be manually fired by the host.    [ttrpg_dsl-clo]
-    // When target.HP -= amount happens, the runtime doesn't auto-emit
-    // a takes_damage event.
+    // PARTIALLY RESOLVED: `emit` statement lets DSL code fire events  [ttrpg_dsl-clo]
+    // inline (see Attack/Fireball above). The host no longer needs to
+    // fire takes_damage manually. Remaining gap: HP mutations don't
+    // auto-emit events — the DSL author must write `emit` explicitly.
 
 
     // ========================================================
@@ -921,7 +962,11 @@ system "D&D 5e Expanded" {
                 reactor, trigger.entity, reactor.equipped_weapon
             )
             match result {
-                hit(amount) => { trigger.entity.HP -= amount },
+                hit(amount) => {
+                    trigger.entity.HP -= amount
+                    // NOTE: emit is only allowed in action context, so reactions
+                    // still rely on the host to fire takes_damage events.
+                },
                 miss => {}
             }
         }
@@ -990,12 +1035,17 @@ system "D&D 5e Expanded" {
         suppress entity_leaves_reach(entity: bearer)
     }
 
+    // RESOLVED: Selector-targeted modify replaces per-mechanic listing. [ttrpg_dsl-wus]
+    // `modify [#attack]` targets all mechanics tagged #attack. Different
+    // parameter names (attacker vs actor) require separate clauses, but
+    // adding a new attack mechanic is now automatically covered.
     condition Helped on bearer: Character {
-        modify attack_roll(attacker: bearer) {
+        modify [#attack](attacker: bearer) {
             mode = advantage
         }
-        // PAIN POINT: Helped should also apply to skill checks.       [ttrpg_dsl-wus]
-        // No "modify all d20 rolls" wildcard — must list each mechanic.
+        modify skill_check(actor: bearer) {
+            mode = advantage
+        }
     }
 
     condition Grappled on bearer: Character {
@@ -1131,7 +1181,7 @@ system "D&D 5e Expanded" {
         default: off
 
         when enabled {
-            modify attack_roll(attacker: _, target: _) {
+            modify [#attack](attacker: _, target: _) {
                 // PAIN POINT: Detecting "opposite sides" requires       [ttrpg_dsl-586]
                 // geometric Position calculations the DSL can't express.
                 mode = advantage
@@ -1211,7 +1261,7 @@ system "D&D 5e Expanded" {
     //    - Comments between cost/requires blocks work             [ttrpg_dsl-c2y]
     //
     //
-    //  REMAINING language gaps:
+    //  RESOLVED language gaps (continued):
     //
     //  [RESOLVED] PARAMETERIZED CONDITIONS                        [ttrpg_dsl-iuw]
     //     - Frightened(source: Character), Exhaustion(level: int), etc.
@@ -1224,6 +1274,32 @@ system "D&D 5e Expanded" {
     //     - CunningAction condition replaces CunningDash/CunningDisengage duplicates
     //     - Cunning Action: modify Dash.cost / Disengage.cost / Hide.cost
     //
+    //  [RESOLVED] TAGS AND SELECTOR-TARGETED MODIFY               [ttrpg_dsl-wus]
+    //     - `tag d20_roll` / `tag attack` — named function categories
+    //     - `mechanic attack_roll(...) #d20_roll #attack { ... }`
+    //     - `modify [#attack](attacker: bearer) { ... }` — target by tag
+    //     - `modify [#attack, has attacker](attacker: bearer)` — AND predicates
+    //     - Structural selectors: `returns T`, `has param: T`, `has param`
+    //     - Checker validates bindings against ALL matched functions
+    //     - New attack mechanics automatically covered by existing conditions
+    //
+    //  [RESOLVED] EMIT STATEMENT FOR INLINE EVENT FIRING          [ttrpg_dsl-wbic]
+    //     - `emit EventName(param: expr, ...)` fires events from DSL code
+    //     - Matching hooks auto-execute inline at the emit site
+    //     - Attack/Fireball now emit takes_damage after HP mutation
+    //     - Host no longer needs to manually fire events for actions
+    //     (Remaining gap: mutations don't auto-emit — emit is explicit;
+    //      emit restricted to action context — reactions still need host)
+    //
+    //  [RESOLVED] TOP-LEVEL GROUPS AND INCLUDE                    [ttrpg_dsl-zzx4]
+    //     - `group Name { ... }` as top-level declaration
+    //     - `include GroupName` in entities (required, always-present)
+    //     - `optional GroupName` in entities (external reference)
+    //     - Cross-entity group sharing (same group on Character + Monster)
+    //
+    //
+    //  REMAINING language gaps:
+    //
     //  1. NO CONDITION COMPOSITION / INHERITANCE                  [ttrpg_dsl-7r4]
     //     - Stunned includes Incapacitated's effects (must duplicate)
     //     - Unconscious includes Prone + Incapacitated
@@ -1235,9 +1311,10 @@ system "D&D 5e Expanded" {
     //  3. NO TYPED PROMPTS                                        [ttrpg_dsl-ctc]
     //     - choose() returns string, not a typed entity reference
     //
-    //  4. NO AUTOMATIC EVENT EMISSION                             [ttrpg_dsl-clo]
-    //     - HP changes don't auto-fire takes_damage
-    //     - Host must manually fire all events
+    //  4. NO FULLY AUTOMATIC EVENT EMISSION                       [ttrpg_dsl-clo]
+    //     - `emit` solves manual host-side firing (see [RESOLVED] above)
+    //     - Remaining: HP mutations don't auto-emit — DSL author writes emit
+    //     - Would want: `HP: resource(...) { on_decrease => emit ... }`
     //
     //  5. NO POSITION ARITHMETIC                                  [ttrpg_dsl-586]
     //     - Can't compute "5 feet away from X toward Y"
@@ -1274,7 +1351,4 @@ system "D&D 5e Expanded" {
     //
     // 15. NO INTEGER RANGE / BOUNDED INT TYPES                    [ttrpg_dsl-3v8]
     //     - Can't express int(1..9) for spell slot levels
-    //
-    // 16. NO WILDCARD MODIFY TARGETS                              [ttrpg_dsl-wus]
-    //     - Can't "modify all d20 rolls" — must list each mechanic
 }
