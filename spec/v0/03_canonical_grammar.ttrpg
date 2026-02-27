@@ -56,7 +56,7 @@
 //     reaction  hook  condition  prompt  option  event  move  cost
 //     requires  resolve  modify  suppress  trigger  roll  on
 //     when  enabled  hint  suggest  description  default  result
-//     with  has  include
+//     with  has  include  as
 //
 // Soft keywords CAN be used as field names, variable names, and
 // enum variants. The parser distinguishes based on position:
@@ -314,10 +314,24 @@ when_clause        = "when" "enabled" "{" modify_clause* "}"
 params          = (param ("," param)* ","?)?
 param           = IDENT ":" constrained_type ("=" expr)?
 constrained_type = type with_clause?
-with_clause     = "with" IDENT ("," IDENT)*
+with_clause     = "with" group_constraint ("," group_constraint)*
+group_constraint = IDENT ("as" IDENT)?
 // Example:
 //   target: Character with Spellcasting
 //   x: entity with Spellcasting
+//   caster: Character with Spellcasting as sc
+//   caster: Character with Spellcasting as sc, KiPowers as kp
+//
+// The optional `as` clause creates a locally-scoped alias for the group
+// name. Inside the function body, the alias can be used in place of the
+// full group name in field access paths:
+//   caster.sc.spell_slots    is equivalent to    caster.Spellcasting.spell_slots
+//
+// Alias scope: the alias is visible only within the function/action body
+// where the `with` constraint appears. It does not escape to callers.
+//
+// Alias shadowing: an alias must not shadow an existing field or group
+// name on the same entity type. The compiler reports an error if it does.
 
 
 // =========================
@@ -417,7 +431,7 @@ or_expr         = and_expr ("||" and_expr)*
 and_expr        = cmp_expr ("&&" cmp_expr)*
 cmp_expr        = in_expr (cmp_op in_expr)?
 cmp_op          = "==" | "!=" | ">=" | "<=" | ">" | "<"
-in_expr         = add_expr ("in" add_expr)?
+in_expr         = add_expr ("in" add_expr | "has" IDENT ("as" IDENT)?)?
 add_expr        = mul_expr (("+" | "-") mul_expr)*
 mul_expr        = unary_expr (("*" | "/") unary_expr)*
 unary_expr      = "!" unary_expr
@@ -539,6 +553,29 @@ list_comprehension  = expr "for" pattern "in" for_source ("if" expr)?
 //   - Without else: type is unit. Can appear as expr_stmt but not
 //                   in value-returning positions (type checker enforces).
 if_expr         = "if" expr block ("else" (block | if_expr))?
+
+// --- Has expression (optional group presence check) ---
+//
+// `expr has GroupName` tests whether an entity currently has the named
+// optional group granted. Returns bool. Commonly used as an `if` guard
+// to narrow access to optional group fields:
+//
+//   if caster has Spellcasting { caster.Spellcasting.spell_dc }
+//
+// The optional `as` clause creates a locally-scoped alias:
+//
+//   if caster has Spellcasting as sc {
+//       caster.sc.spell_dc      // sc is an alias for Spellcasting
+//   }
+//
+// Alias scope: the alias is visible only within the then-block of the
+// `if` expression (NOT in the else-block). It does not escape.
+//
+// Alias shadowing: same rules as `with` aliases — the alias must not
+// shadow an existing field or group name on the entity type.
+//
+// The `has` operator sits at the same precedence level as `in`.
+// Grammar: see `in_expr` above.
 
 // --- Match expressions ---
 //

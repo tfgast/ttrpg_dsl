@@ -83,6 +83,52 @@ mechanic attack_roll(
 }
 
 
+// --- Group aliases (`as`) ---
+//
+// When accessing optional group fields, the full path can be verbose:
+//   caster.Spellcasting.spell_dc + caster.Spellcasting.spell_slots
+//
+// The `as` keyword on `with` constraints and `has` guards creates a
+// locally-scoped alias that shortens these paths.
+//
+// On `with` constraints (scoped to the function/action body):
+
+action CastSpell on caster: Character with Spellcasting as sc (cost: int) {
+    resolve {
+        // `sc` is an alias for `Spellcasting` on `caster`
+        caster.sc.spell_slots -= cost
+    }
+}
+
+// On `has` guards (scoped to the then-block):
+
+derive effective_dc(c: Character) -> int {
+    if c has Spellcasting as sc {
+        c.sc.spell_dc + c.level     // alias visible here
+    } else {
+        0                            // alias NOT visible here
+    }
+}
+
+// Multiple aliases can coexist:
+
+derive total_resources(c: Character) -> int {
+    let spells = if c has Spellcasting as sc { c.sc.spell_slots } else { 0 }
+    let ki = if c has KiPowers as kp { c.kp.ki_points } else { 0 }
+    spells + ki
+}
+
+// Aliases work for both reads and writes (in mutation contexts).
+// They are purely syntactic — the checker resolves them at check time
+// and no runtime name is created.
+//
+// Restrictions:
+//   - An alias must not shadow an existing field or group name on the
+//     same entity type. This prevents ambiguity in field resolution.
+//   - The alias is not visible outside its scope (function body or
+//     then-block).
+
+
 // --- Conditions and `modify` ---
 //
 // condition blocks declare modifier overlays. A modify clause says:
@@ -338,9 +384,10 @@ hook Regenerate on creature: Character (
 //   use_decl    = "use" STRING ("as" IDENT)? TERM
 //   top_level   = use_decl | system_decl
 //
-// `as` is a soft keyword — it is only treated as a keyword after
-// the `use` string literal. Identifiers named `as` are valid
-// elsewhere in the language.
+// `as` is a soft keyword — it is recognized as a keyword after the
+// `use` string literal, after group names in `with` constraints, and
+// after group names in `has` expressions. Identifiers named `as` are
+// valid elsewhere in the language.
 //
 // Multiple files are loaded via the CLI:
 //   load core.ttrpg combat.ttrpg

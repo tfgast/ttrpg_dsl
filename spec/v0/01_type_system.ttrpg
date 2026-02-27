@@ -242,6 +242,26 @@ struct RollResult {
 // Optional groups are accessed via namespaced paths (entity.Group.field) and
 // guarded by `has`/`with` checks in the checker.
 //
+// Both `with` and `has` support `as` aliases to shorten repeated group paths:
+//
+//   action CastSpell on caster: Character with Spellcasting as sc (cost: int) {
+//       resolve {
+//           caster.sc.spell_slots -= cost    // sc resolves to Spellcasting
+//       }
+//   }
+//
+//   derive effective_dc(c: Character) -> int {
+//       if c has Spellcasting as sc {
+//           c.sc.spell_dc + c.level          // sc scoped to this block
+//       } else {
+//           0
+//       }
+//   }
+//
+// Aliases are purely syntactic — the checker resolves them to the real group
+// name at check time. No runtime name is created. See 03_canonical_grammar.ttrpg
+// for the grammar and scoping rules.
+//
 // Included groups (`include GroupName`) are required/always-present and cannot
 // be granted or revoked.
 
