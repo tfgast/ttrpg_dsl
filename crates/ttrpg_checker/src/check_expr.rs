@@ -574,6 +574,22 @@ impl<'a> Checker<'a> {
                         return fi.ty.clone();
                     }
                 }
+
+                // Check for flattened included-group field
+                if matches!(obj_ty, Ty::Entity(_)) {
+                    if let Some(group_name) =
+                        self.env.lookup_flattened_field(name, field)
+                    {
+                        if let Some(group) =
+                            self.env.lookup_optional_group(name, group_name)
+                        {
+                            if let Some(fi) = group.fields.iter().find(|f| f.name == field) {
+                                return fi.ty.clone();
+                            }
+                        }
+                    }
+                }
+
                 self.error(format!("type `{}` has no field `{}`", name, field), span);
                 Ty::Error
             }

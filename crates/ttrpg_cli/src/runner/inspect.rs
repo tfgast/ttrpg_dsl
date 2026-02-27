@@ -114,10 +114,43 @@ impl Runner {
                             self.output.push(format!("{}.{} = <unset>", handle, field));
                         }
                         None => {
-                            return Err(CliError::Message(format!(
-                                "field '{}' not found on {}",
-                                field, handle
-                            )));
+                            // Check for flattened included-group field
+                            let flattened = type_name.as_ref().and_then(|tn| {
+                                self.type_env.lookup_flattened_field(tn, field)
+                            });
+                            if let Some(group_name) = flattened {
+                                match gs.read_field(&entity, group_name) {
+                                    Some(Value::Struct { fields: group_fields, .. }) => {
+                                        match group_fields.get(field) {
+                                            Some(val) => {
+                                                self.output.push(format!(
+                                                    "{}.{} = {}",
+                                                    handle,
+                                                    field,
+                                                    format_value(val)
+                                                ));
+                                            }
+                                            None => {
+                                                self.output.push(format!(
+                                                    "{}.{} = <unset>",
+                                                    handle, field
+                                                ));
+                                            }
+                                        }
+                                    }
+                                    _ => {
+                                        return Err(CliError::Message(format!(
+                                            "included group '{}' is missing in state for {}",
+                                            group_name, handle
+                                        )));
+                                    }
+                                }
+                            } else {
+                                return Err(CliError::Message(format!(
+                                    "field '{}' not found on {}",
+                                    field, handle
+                                )));
+                            }
                         }
                     }
                 }

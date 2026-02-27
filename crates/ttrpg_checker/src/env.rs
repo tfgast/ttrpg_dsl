@@ -120,6 +120,7 @@ pub struct TypeEnv {
     pub events: HashMap<Name, EventInfo>,
     pub variant_to_enums: HashMap<Name, Vec<Name>>,
     pub resolved_variants: HashMap<Span, Name>,
+    pub flattened_group_fields: HashMap<(Name, Name), Name>,
     pub builtins: HashMap<Name, FnInfo>,
     pub suffix_to_unit: HashMap<String, Name>,
     pub options: HashSet<Name>,
@@ -167,6 +168,7 @@ impl TypeEnv {
             events: HashMap::new(),
             variant_to_enums: HashMap::new(),
             resolved_variants: HashMap::new(),
+            flattened_group_fields: HashMap::new(),
             builtins: HashMap::new(),
             suffix_to_unit: HashMap::new(),
             options: HashSet::new(),
@@ -179,6 +181,13 @@ impl TypeEnv {
             system_visibility: HashMap::new(),
             system_aliases: HashMap::new(),
         }
+    }
+
+    /// Look up a flattened included-group field on an entity.
+    /// Returns the group name if `field` is a field in an included group on `entity_type`.
+    pub fn lookup_flattened_field(&self, entity_type: &str, field: &str) -> Option<&Name> {
+        self.flattened_group_fields
+            .get(&(Name::from(entity_type), Name::from(field)))
     }
 
     /// If exactly one enum owns this variant, return that enum's name.

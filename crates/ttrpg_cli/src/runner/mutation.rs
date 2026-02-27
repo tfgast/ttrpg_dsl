@@ -241,31 +241,74 @@ impl Runner {
             } else {
                 // Simple field path
                 let field = field_path;
-                let expected_ty = {
+                let type_name = {
                     let gs = self.game_state.borrow();
-                    if let Some(type_name) = gs.entity_type_name(&entity) {
-                        if let Some(schema_fields) = self.type_env.lookup_fields(type_name) {
-                            match schema_fields.iter().find(|f| f.name == field) {
-                                Some(fi) => Some(fi.ty.clone()),
-                                None => {
-                                    return Err(CliError::Message(format!(
-                                        "unknown field '{}' on entity type '{}'",
-                                        field, type_name
-                                    )));
-                                }
-                            }
-                        } else {
-                            None
+                    gs.entity_type_name(&entity)
+                        .map(|s| s.to_string())
+                        .unwrap_or_default()
+                };
+                let expected_ty = if !type_name.is_empty() {
+                    if let Some(schema_fields) = self.type_env.lookup_fields(&type_name) {
+                        match schema_fields.iter().find(|f| f.name == field) {
+                            Some(fi) => Some(fi.ty.clone()),
+                            None => None,
                         }
                     } else {
                         None
                     }
+                } else {
+                    None
                 };
-                (
-                    vec![FieldPathSegment::Field(Name::from(field))],
-                    expected_ty,
-                    format!("{}.{}", handle, field),
-                )
+
+                // Check for flattened included-group field
+                if expected_ty.is_none() {
+                    if let Some(group_name) =
+                        self.type_env.lookup_flattened_field(&type_name, field)
+                    {
+                        // Validate group is active
+                        {
+                            let gs = self.game_state.borrow();
+                            if gs.read_field(&entity, group_name).is_none() {
+                                return Err(CliError::Message(format!(
+                                    "{}.{} included group '{}' is missing in state",
+                                    handle, field, group_name
+                                )));
+                            }
+                        }
+
+                        let group_info = self
+                            .type_env
+                            .lookup_optional_group(&type_name, group_name)
+                            .ok_or_else(|| {
+                                CliError::Message(format!(
+                                    "internal: flattened field group '{}' not found",
+                                    group_name
+                                ))
+                            })?;
+                        let ty = group_info
+                            .fields
+                            .iter()
+                            .find(|f| f.name == field)
+                            .map(|f| f.ty.clone());
+
+                        let segments = vec![
+                            FieldPathSegment::Field(group_name.clone()),
+                            FieldPathSegment::Field(Name::from(field)),
+                        ];
+                        (segments, ty, format!("{}.{}", handle, field))
+                    } else {
+                        return Err(CliError::Message(format!(
+                            "unknown field '{}' on entity type '{}'",
+                            field, type_name
+                        )));
+                    }
+                } else {
+                    (
+                        vec![FieldPathSegment::Field(Name::from(field))],
+                        expected_ty,
+                        format!("{}.{}", handle, field),
+                    )
+                }
             };
 
         // Parse and evaluate the RHS expression (try handle resolution first)

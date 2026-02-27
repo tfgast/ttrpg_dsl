@@ -8876,3 +8876,116 @@ system "test" {
         &["has type option<string>, expected return type option<int>"],
     );
 }
+
+// ── Flattened included group fields ──────────────────────────────
+
+#[test]
+fn test_flattened_field_access_type_checks() {
+    let source = r#"
+system "test" {
+    group CombatStats {
+        ac: int = 10
+    }
+    entity Monster {
+        HP: int
+        include CombatStats
+    }
+    derive get_ac(m: Monster) -> int {
+        m.ac
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_flattened_field_qualified_still_works() {
+    let source = r#"
+system "test" {
+    group CombatStats {
+        ac: int = 10
+    }
+    entity Monster {
+        HP: int
+        include CombatStats
+    }
+    derive get_ac(m: Monster) -> int {
+        m.CombatStats.ac
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_flattened_field_collision_with_entity_field() {
+    let source = r#"
+system "test" {
+    group CombatStats {
+        ac: int = 10
+    }
+    entity Monster {
+        ac: int
+        include CombatStats
+    }
+}
+"#;
+    expect_errors(source, &["included group `CombatStats` field `ac` conflicts with"]);
+}
+
+#[test]
+fn test_flattened_field_collision_between_included_groups() {
+    let source = r#"
+system "test" {
+    group Stats {
+        ac: int = 10
+    }
+    group Defense {
+        ac: int = 12
+    }
+    entity Monster {
+        HP: int
+        include Stats
+        include Defense
+    }
+}
+"#;
+    expect_errors(source, &["field `ac` defined in both included groups"]);
+}
+
+#[test]
+fn test_flattened_field_collision_with_group_name() {
+    let source = r#"
+system "test" {
+    group CombatStats {
+        Rage: int = 0
+    }
+    entity Monster {
+        HP: int
+        include CombatStats
+        optional Rage {
+            damage: int
+        }
+    }
+}
+"#;
+    expect_errors(source, &["included group `CombatStats` field `Rage` conflicts with"]);
+}
+
+#[test]
+fn test_optional_groups_not_flattened() {
+    let source = r#"
+system "test" {
+    entity Monster {
+        HP: int
+        optional Spellcasting {
+            dc: int
+        }
+    }
+    derive get_dc(m: Monster) -> int {
+        m.dc
+    }
+}
+"#;
+    expect_errors(source, &["type `Monster` has no field `dc`"]);
+}

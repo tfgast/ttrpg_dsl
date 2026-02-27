@@ -615,6 +615,60 @@ fn collect_entity(e: &EntityDecl, env: &mut TypeEnv, diagnostics: &mut Vec<Diagn
         })
         .collect();
 
+    // Build flattened field map for included groups.
+    // Detect collisions: included group fields must not conflict with entity
+    // own fields, group names, or fields from other included groups.
+    {
+        // "flat namespace": entity own field names + all group names
+        let mut flat_namespace: HashSet<Name> = seen.clone();
+        for g in &optional_groups {
+            flat_namespace.insert(g.name.clone());
+        }
+
+        // Track which included group owns each flattened field
+        let mut included_field_owner: std::collections::HashMap<Name, Name> =
+            std::collections::HashMap::new();
+
+        for g in &optional_groups {
+            if !g.required {
+                continue;
+            }
+            // Find the AST node for error spans
+            let ast_span = e
+                .optional_groups
+                .iter()
+                .find(|ag| ag.name == g.name)
+                .map(|ag| ag.span)
+                .unwrap_or(Span::dummy());
+
+            for field in &g.fields {
+                if flat_namespace.contains(&field.name) {
+                    diagnostics.push(Diagnostic::error(
+                        format!(
+                            "included group `{}` field `{}` conflicts with entity `{}` field or group of the same name",
+                            g.name, field.name, e.name
+                        ),
+                        ast_span,
+                    ));
+                } else if let Some(other_group) = included_field_owner.get(&field.name) {
+                    diagnostics.push(Diagnostic::error(
+                        format!(
+                            "field `{}` defined in both included groups `{}` and `{}`",
+                            field.name, other_group, g.name
+                        ),
+                        ast_span,
+                    ));
+                } else {
+                    included_field_owner.insert(field.name.clone(), g.name.clone());
+                    env.flattened_group_fields.insert(
+                        (e.name.clone(), field.name.clone()),
+                        g.name.clone(),
+                    );
+                }
+            }
+        }
+    }
+
     if let Some(DeclInfo::Entity(info)) = env.types.get_mut(&e.name) {
         info.fields = fields;
         info.optional_groups = optional_groups;

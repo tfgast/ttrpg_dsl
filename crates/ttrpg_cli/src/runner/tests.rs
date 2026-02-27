@@ -2323,3 +2323,78 @@ fn set_plus_eq_with_resource_clamps() {
         output
     );
 }
+
+// ── Flattened included group fields ────────────────────────────────
+
+#[test]
+fn set_flattened_included_field() {
+    let mut runner = Runner::new();
+    load_group_program(&mut runner);
+    runner
+        .exec("spawn Character hero { HP: 30, AC: 15 }")
+        .unwrap();
+    runner.take_output();
+
+    // Set flattened field: base_ac lives in included CombatStats group
+    runner.exec("set hero.base_ac = 18").unwrap();
+    let output = runner.take_output();
+    assert!(
+        output[0].contains("hero.base_ac = 18"),
+        "got: {:?}",
+        output
+    );
+
+    // Verify via qualified access
+    runner.exec("inspect hero.CombatStats.base_ac").unwrap();
+    let output = runner.take_output();
+    assert!(
+        output[0].contains("18"),
+        "qualified access should show updated value, got: {:?}",
+        output
+    );
+}
+
+#[test]
+fn inspect_flattened_included_field() {
+    let mut runner = Runner::new();
+    load_group_program(&mut runner);
+    runner
+        .exec("spawn Character hero { HP: 30, AC: 15 }")
+        .unwrap();
+    runner.take_output();
+
+    // Inspect flattened field
+    runner.exec("inspect hero.base_ac").unwrap();
+    let output = runner.take_output();
+    assert!(
+        output[0].contains("hero.base_ac = 10"),
+        "default base_ac should be 10, got: {:?}",
+        output
+    );
+}
+
+#[test]
+fn qualified_access_still_works_after_flattening() {
+    let mut runner = Runner::new();
+    load_group_program(&mut runner);
+    runner
+        .exec("spawn Character hero { HP: 30, AC: 15 }")
+        .unwrap();
+    runner.take_output();
+
+    // Qualified set still works
+    runner
+        .exec("set hero.CombatStats.base_ac = 20")
+        .unwrap();
+    let output = runner.take_output();
+    assert!(
+        output[0].contains("hero.CombatStats.base_ac = 20"),
+        "got: {:?}",
+        output
+    );
+
+    // Qualified inspect still works
+    runner.exec("inspect hero.CombatStats.base_ac").unwrap();
+    let output = runner.take_output();
+    assert!(output[0].contains("20"), "got: {:?}", output);
+}

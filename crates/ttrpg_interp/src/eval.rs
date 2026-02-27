@@ -818,12 +818,29 @@ fn eval_field_access(
 
     match &object {
         // Entity fields via StateProvider
-        Value::Entity(entity_ref) => env.state.read_field(entity_ref, field).ok_or_else(|| {
-            RuntimeError::with_span(
+        Value::Entity(entity_ref) => {
+            if let Some(val) = env.state.read_field(entity_ref, field) {
+                return Ok(val);
+            }
+            // Flattened included-group field: look up group, read struct, extract field
+            if let Some(entity_type) = env.state.entity_type_name(entity_ref) {
+                if let Some(group_name) =
+                    env.interp.type_env.lookup_flattened_field(&entity_type, field)
+                {
+                    if let Some(Value::Struct { fields: group_fields, .. }) =
+                        env.state.read_field(entity_ref, group_name)
+                    {
+                        if let Some(val) = group_fields.get(field) {
+                            return Ok(val.clone());
+                        }
+                    }
+                }
+            }
+            Err(RuntimeError::with_span(
                 format!("entity {} has no field '{}'", entity_ref.0, field),
                 expr.span,
-            )
-        }),
+            ))
+        }
 
         // Struct fields
         Value::Struct { fields, name, .. } => fields.get(field).cloned().ok_or_else(|| {
@@ -1416,6 +1433,20 @@ fn eval_assign_direct(
     Ok(())
 }
 
+/// If the first path segment is a flattened included-group field, insert the
+/// group name as a prefix so the mutation targets the correct nested struct.
+fn expand_flattened_path(env: &Env, entity: &EntityRef, path: &mut Vec<FieldPathSegment>) {
+    if let Some(FieldPathSegment::Field(ref field_name)) = path.first() {
+        if let Some(entity_type) = env.state.entity_type_name(entity) {
+            if let Some(group_name) =
+                env.interp.type_env.lookup_flattened_field(&entity_type, field_name)
+            {
+                path.insert(0, FieldPathSegment::Field(group_name.clone()));
+            }
+        }
+    }
+}
+
 /// Entity field mutation: convert segments to FieldPathSegments and emit MutateField.
 fn eval_assign_entity(
     env: &mut Env,
@@ -1425,7 +1456,8 @@ fn eval_assign_entity(
     rhs: Value,
     span: ttrpg_ast::Span,
 ) -> Result<(), RuntimeError> {
-    let path = lvalue_segments_to_field_path(env, segments, span)?;
+    let mut path = lvalue_segments_to_field_path(env, segments, span)?;
+    expand_flattened_path(env, &entity, &mut path);
 
     // Look up resource bounds from the entity's field declaration.
     // Handles direct resource fields (e.g. HP: resource(0..=max_HP)) and
@@ -1498,7 +1530,7 @@ fn eval_assign_local(
 
     if let Some((depth, entity_ref)) = entity_depth {
         // Convert remaining EvalSegments to FieldPathSegments for entity mutation
-        let path: Vec<FieldPathSegment> = eval_segs[depth..]
+        let mut path: Vec<FieldPathSegment> = eval_segs[depth..]
             .iter()
             .map(|s| match s {
                 EvalSegment::Field(name) => FieldPathSegment::Field(name.clone()),
@@ -1513,6 +1545,7 @@ fn eval_assign_local(
             ));
         }
 
+        expand_flattened_path(env, &entity_ref, &mut path);
         let bounds = resolve_resource_bounds(env, &entity_ref, &path);
 
         let effect = Effect::MutateField {
