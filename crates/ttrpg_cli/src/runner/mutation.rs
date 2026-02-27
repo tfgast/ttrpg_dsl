@@ -143,19 +143,18 @@ impl Runner {
         Ok(())
     }
 
-    /// `set <handle>.<field> = <value>` or `set <handle>.<GroupName>.<field> = <value>`
+    /// `set <handle>.<field> [+= | -= | =] <value>`
+    ///
+    /// Supports `=`, `+=`, and `-=`. Resource fields are automatically clamped
+    /// to their declared bounds.
     pub(super) fn cmd_set(&mut self, tail: &str) -> Result<(), CliError> {
         let tail = tail.trim();
 
-        // Split on '='
-        let eq_pos = tail
-            .find('=')
-            .ok_or_else(|| CliError::Message("usage: set <handle>.<field> = <value>".into()))?;
-        let lhs = tail[..eq_pos].trim();
-        let rhs = tail[eq_pos + 1..].trim();
+        // Parse operator and split into LHS / RHS
+        let (assign_op, lhs, rhs) = parse_set_operator(tail)?;
 
         if rhs.is_empty() {
-            return Err(CliError::Message("missing value after '='".into()));
+            return Err(CliError::Message("missing value after operator".into()));
         }
 
         // Split lhs on first '.'
@@ -276,24 +275,82 @@ impl Runner {
             self.eval(rhs)?
         };
 
-        // Validate type compatibility
-        if let Some(ref ty) = expected_ty {
-            if !value_matches_ty(&val, ty, Some(&*self.game_state.borrow())) {
-                return Err(CliError::Message(format!(
-                    "type mismatch for field '{}': expected {}, got {}",
-                    display_path.split('.').next_back().unwrap_or("?"),
-                    ty.display(),
-                    value_type_display(&val)
-                )));
+        // Validate type compatibility (only for plain assignment; compound ops
+        // produce a new value from the existing field so the RHS is a delta)
+        if assign_op == AssignOp::Eq {
+            if let Some(ref ty) = expected_ty {
+                if !value_matches_ty(&val, ty, Some(&*self.game_state.borrow())) {
+                    return Err(CliError::Message(format!(
+                        "type mismatch for field '{}': expected {}, got {}",
+                        display_path.split('.').next_back().unwrap_or("?"),
+                        ty.display(),
+                        value_type_display(&val)
+                    )));
+                }
             }
         }
 
-        // Write directly to GameState
+        // Resolve resource bounds and compute the final (possibly clamped) value
+        let bounds = {
+            let interp = Interpreter::new(&self.program, &self.type_env)
+                .map_err(|e| CliError::Message(format!("interpreter error: {}", e)))?;
+            let state = RefCellState(&self.game_state);
+            let mut handler = CliHandler::new(
+                &self.game_state,
+                &self.reverse_handles,
+                &mut self.rng,
+                &mut self.roll_queue,
+            );
+            interp.resolve_resource_bounds(&state, &mut handler, &entity, &path_segments)
+        };
+
+        let final_val = {
+            let state = RefCellState(&self.game_state);
+            ttrpg_interp::adapter::compute_field_value(
+                &state,
+                &entity,
+                &path_segments,
+                assign_op,
+                &val,
+                &bounds,
+            )
+            .map_err(|e| CliError::Message(format!("runtime error: {}", e)))?
+        };
+
+        let was_clamped = final_val != val || assign_op != AssignOp::Eq;
+        let clamped_suffix = if bounds.is_some() && assign_op == AssignOp::Eq && final_val != val {
+            " (clamped)"
+        } else {
+            ""
+        };
+
+        // Write the computed value to GameState
         self.game_state
             .borrow_mut()
-            .write_field(&entity, &path_segments, val.clone());
-        self.output
-            .push(format!("{} = {}", display_path, format_value(&val)));
+            .write_field(&entity, &path_segments, final_val.clone());
+
+        let op_str = match assign_op {
+            AssignOp::Eq => "=",
+            AssignOp::PlusEq => "+=",
+            AssignOp::MinusEq => "-=",
+        };
+        if assign_op == AssignOp::Eq {
+            self.output.push(format!(
+                "{} = {}{}",
+                display_path,
+                format_value(&final_val),
+                clamped_suffix
+            ));
+        } else {
+            self.output.push(format!(
+                "{} {} {} => {}",
+                display_path,
+                op_str,
+                format_value(&val),
+                format_value(&final_val)
+            ));
+        }
+        let _ = was_clamped;
         Ok(())
     }
 
@@ -654,4 +711,51 @@ impl Runner {
         ));
         Ok(())
     }
+}
+
+/// Parse the operator in a `set` command, returning `(op, lhs, rhs)`.
+///
+/// Recognises `+=`, `-=`, and plain `=`. The scan is quote-aware so that
+/// `=` inside a string literal on the RHS doesn't confuse the split.
+fn parse_set_operator(input: &str) -> Result<(AssignOp, &str, &str), CliError> {
+    let bytes = input.as_bytes();
+    let mut in_string = false;
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'"' {
+            in_string = !in_string;
+            i += 1;
+            continue;
+        }
+        if in_string {
+            // Skip escaped characters inside strings
+            if bytes[i] == b'\\' {
+                i += 2;
+            } else {
+                i += 1;
+            }
+            continue;
+        }
+        if bytes[i] == b'+' && i + 1 < bytes.len() && bytes[i + 1] == b'=' {
+            return Ok((
+                AssignOp::PlusEq,
+                input[..i].trim(),
+                input[i + 2..].trim(),
+            ));
+        }
+        if bytes[i] == b'-' && i + 1 < bytes.len() && bytes[i + 1] == b'=' {
+            return Ok((
+                AssignOp::MinusEq,
+                input[..i].trim(),
+                input[i + 2..].trim(),
+            ));
+        }
+        if bytes[i] == b'=' {
+            return Ok((AssignOp::Eq, input[..i].trim(), input[i + 1..].trim()));
+        }
+        i += 1;
+    }
+    Err(CliError::Message(
+        "usage: set <handle>.<field> [+= | -= | =] <value>".into(),
+    ))
 }

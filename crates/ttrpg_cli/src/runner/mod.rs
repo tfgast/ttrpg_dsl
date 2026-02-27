@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 
-use ttrpg_ast::ast::{DeclKind, FieldDef, Program, TopLevel};
+use ttrpg_ast::ast::{AssignOp, DeclKind, FieldDef, Program, TopLevel};
 use ttrpg_ast::diagnostic::{Diagnostic, MultiSourceMap, Severity};
 use ttrpg_ast::module::ModuleMap;
 use ttrpg_ast::Name;

@@ -2160,3 +2160,166 @@ fn value_matches_ty_entity_without_state_accepts() {
         None
     ));
 }
+
+// ── Resource bounds + compound assignment tests ──────────────
+
+/// Load a program with a resource field: `hp: resource(0..=max_hp)`.
+fn load_resource_program(runner: &mut Runner) {
+    static RES_COUNTER: AtomicU64 = AtomicU64::new(0);
+    let id = RES_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let dir = std::env::temp_dir().join("ttrpg_cli_test");
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join(format!("test_resource_{}.ttrpg", id));
+    std::fs::write(
+        &path,
+        r#"
+system "test" {
+    entity Character {
+        max_hp: int
+        hp: resource(0..=max_hp)
+        AC: int
+    }
+}
+"#,
+    )
+    .unwrap();
+    runner.exec(&format!("load {}", path.display())).unwrap();
+    runner.take_output();
+    std::fs::remove_file(&path).ok();
+}
+
+#[test]
+fn set_clamps_resource_to_max() {
+    let mut runner = Runner::new();
+    load_resource_program(&mut runner);
+    runner
+        .exec("spawn Character hero { max_hp: 20, hp: 20 }")
+        .unwrap();
+    runner.take_output();
+
+    runner.exec("set hero.hp = 999").unwrap();
+    let output = runner.take_output();
+    // Should be clamped to max_hp (20)
+    assert!(
+        output[0].contains("hero.hp = 20") && output[0].contains("(clamped)"),
+        "expected clamped to 20, got: {:?}",
+        output
+    );
+}
+
+#[test]
+fn set_clamps_resource_to_min() {
+    let mut runner = Runner::new();
+    load_resource_program(&mut runner);
+    runner
+        .exec("spawn Character hero { max_hp: 20, hp: 20 }")
+        .unwrap();
+    runner.take_output();
+
+    runner.exec("set hero.hp = -5").unwrap();
+    let output = runner.take_output();
+    // Should be clamped to 0
+    assert!(
+        output[0].contains("hero.hp = 0") && output[0].contains("(clamped)"),
+        "expected clamped to 0, got: {:?}",
+        output
+    );
+}
+
+#[test]
+fn set_no_clamp_for_non_resource() {
+    let mut runner = Runner::new();
+    load_resource_program(&mut runner);
+    runner
+        .exec("spawn Character hero { max_hp: 20, hp: 20, AC: 15 }")
+        .unwrap();
+    runner.take_output();
+
+    // AC is a plain int, not a resource — should write without clamping
+    runner.exec("set hero.AC = 999").unwrap();
+    let output = runner.take_output();
+    assert!(
+        output[0].contains("hero.AC = 999"),
+        "expected unclamped write, got: {:?}",
+        output
+    );
+    assert!(
+        !output[0].contains("clamped"),
+        "non-resource should not be clamped, got: {:?}",
+        output
+    );
+}
+
+#[test]
+fn set_plus_eq() {
+    let mut runner = Runner::new();
+    load_resource_program(&mut runner);
+    runner
+        .exec("spawn Character hero { max_hp: 20, hp: 10, AC: 15 }")
+        .unwrap();
+    runner.take_output();
+
+    runner.exec("set hero.AC += 3").unwrap();
+    let output = runner.take_output();
+    assert!(
+        output[0].contains("=> 18"),
+        "expected AC to be 18, got: {:?}",
+        output
+    );
+}
+
+#[test]
+fn set_minus_eq() {
+    let mut runner = Runner::new();
+    load_resource_program(&mut runner);
+    runner
+        .exec("spawn Character hero { max_hp: 20, hp: 10, AC: 15 }")
+        .unwrap();
+    runner.take_output();
+
+    runner.exec("set hero.AC -= 5").unwrap();
+    let output = runner.take_output();
+    assert!(
+        output[0].contains("=> 10"),
+        "expected AC to be 10, got: {:?}",
+        output
+    );
+}
+
+#[test]
+fn set_minus_eq_with_resource_clamps() {
+    let mut runner = Runner::new();
+    load_resource_program(&mut runner);
+    runner
+        .exec("spawn Character hero { max_hp: 20, hp: 5 }")
+        .unwrap();
+    runner.take_output();
+
+    // hp=5, hp -= 100 should clamp to 0
+    runner.exec("set hero.hp -= 100").unwrap();
+    let output = runner.take_output();
+    assert!(
+        output[0].contains("=> 0"),
+        "expected hp clamped to 0, got: {:?}",
+        output
+    );
+}
+
+#[test]
+fn set_plus_eq_with_resource_clamps() {
+    let mut runner = Runner::new();
+    load_resource_program(&mut runner);
+    runner
+        .exec("spawn Character hero { max_hp: 20, hp: 18 }")
+        .unwrap();
+    runner.take_output();
+
+    // hp=18, hp += 10 should clamp to max_hp (20)
+    runner.exec("set hero.hp += 10").unwrap();
+    let output = runner.take_output();
+    assert!(
+        output[0].contains("=> 20"),
+        "expected hp clamped to 20, got: {:?}",
+        output
+    );
+}

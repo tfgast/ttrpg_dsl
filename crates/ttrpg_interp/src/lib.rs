@@ -16,7 +16,7 @@ use ttrpg_ast::ast::{DeclKind, ExprKind, Program, TopLevel};
 use ttrpg_ast::{Name, Span, Spanned};
 use ttrpg_checker::env::TypeEnv;
 
-use crate::effect::EffectHandler;
+use crate::effect::{EffectHandler, FieldPathSegment};
 use crate::event::{EventResult, HookResult};
 use crate::state::{EntityRef, StateProvider};
 use crate::value::Value;
@@ -274,6 +274,21 @@ impl<'p> Interpreter<'p> {
     /// Check whether a named mechanic exists in the loaded program.
     pub fn has_mechanic(&self, name: &str) -> bool {
         self.program.mechanics.contains_key(name)
+    }
+
+    /// Resolve resource bounds for a field path on an entity.
+    ///
+    /// Returns `Some((min, max))` if the leaf field is a resource type,
+    /// `None` otherwise. Used by the CLI to clamp `set` values.
+    pub fn resolve_resource_bounds(
+        &self,
+        state: &dyn StateProvider,
+        handler: &mut dyn EffectHandler,
+        entity: &EntityRef,
+        path: &[FieldPathSegment],
+    ) -> Option<(Value, Value)> {
+        let mut env = Env::new(state, handler, self);
+        eval::resolve_resource_bounds_pub(&mut env, entity, path)
     }
 
     /// Query which reactions would trigger for a given event.

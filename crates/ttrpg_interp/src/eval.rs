@@ -2594,6 +2594,14 @@ fn resolve_resource_bounds(
     Some((min_val, max_val))
 }
 
+pub(crate) fn resolve_resource_bounds_pub(
+    env: &mut Env,
+    entity: &EntityRef,
+    path: &[FieldPathSegment],
+) -> Option<(Value, Value)> {
+    resolve_resource_bounds(env, entity, path)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
