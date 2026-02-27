@@ -231,7 +231,9 @@ system "D&D 5e Expanded" {
             // PAIN POINT: Can't default DiceExpr fields.              [ttrpg_dsl-46i]
             // Would like: sneak_attack_dice: DiceExpr = 0d6
             // Changed to int (number of d6s) — loses type safety.
-            has_cunning_action: bool = false
+            // RESOLVED: has_cunning_action removed — Cunning Action   [ttrpg_dsl-xh9]
+            // is now a condition with cost overrides, granted via
+            // apply_condition(rogue, CunningAction, Duration.indefinite)
         }
 
         // Death saves (tracked on all characters; 5e uses 3 successes/failures)
@@ -812,11 +814,11 @@ system "D&D 5e Expanded" {
     }
 
     // --- Action Surge (Fighter feature) ---
-    // PAIN POINT: Action Surge has no action cost — cost block is     [ttrpg_dsl-xh9]
-    // omitted. No difference between "free" and "forgot to declare
-    // a cost" — a potential footgun.
+    // RESOLVED: `cost free` explicitly declares no cost.              [ttrpg_dsl-xh9]
+    // Previously omitting cost was ambiguous — now it's a clear signal.
 
     action ActionSurge on fighter: Character with FighterFeatures as ff () {
+        cost free
         requires { fighter.ff.action_surge_uses > 0 }
 
         resolve {
@@ -825,24 +827,14 @@ system "D&D 5e Expanded" {
         }
     }
 
-    // --- Cunning Action (Rogue feature) ---
-    // PAIN POINT: "Do X as a bonus action instead of an action"       [ttrpg_dsl-xh9]
-    // is a common 5e pattern. The DSL has no cost overrides — we
-    // duplicate actions with different cost blocks.
+    // --- Hide (used by Cunning Action below) ---
 
-    action CunningDash on rogue: Character with RogueFeatures as rf () {
-        cost { bonus_action }
-        requires { rogue.rf.has_cunning_action }
+    action Hide on actor: Character () {
+        cost { action }
         resolve {
-            turn.movement += rogue.speed
-        }
-    }
-
-    action CunningDisengage on rogue: Character with RogueFeatures as rf () {
-        cost { bonus_action }
-        requires { rogue.rf.has_cunning_action }
-        resolve {
-            apply_condition(rogue, Disengaging, Duration.end_of_turn)
+            // PAIN POINT: Stealth check DC depends on observer perception —
+            // simplified here as a state flag.
+            apply_condition(actor, Hidden, Duration.indefinite)
         }
     }
 
@@ -1053,6 +1045,12 @@ system "D&D 5e Expanded" {
         // mechanical tag on skill_check.
     }
 
+    condition Hidden on bearer: Character {
+        modify attack_roll(attacker: bearer) {
+            mode = advantage
+        }
+    }
+
     condition Invisible on bearer: Character {
         modify attack_roll(attacker: bearer) {
             mode = advantage
@@ -1104,6 +1102,23 @@ system "D&D 5e Expanded" {
         // PAIN POINT: Stable doesn't modify any mechanics — it's
         // purely a state flag that the turn-start hook checks.
         // A condition with no clauses is valid but feels like misuse.
+    }
+
+    // --- Cost overrides ---
+    // RESOLVED: modify Action.cost(...) replaces duplicated actions.  [ttrpg_dsl-xh9]
+    // CunningAction is now a condition that overrides cost, not three
+    // separate CunningDash/CunningDisengage/CunningHide actions.
+
+    condition CunningAction on bearer: Character {
+        modify Dash.cost(actor: bearer) {
+            cost = bonus_action
+        }
+        modify Disengage.cost(actor: bearer) {
+            cost = bonus_action
+        }
+        modify Hide.cost(actor: bearer) {
+            cost = bonus_action
+        }
     }
 
 
@@ -1203,6 +1218,12 @@ system "D&D 5e Expanded" {
     //     - Condition params accessible in modify/suppress clause bodies
     //     - Targeted removal: remove_condition(target, Frightened(source: x))
     //
+    //  [RESOLVED] COST OVERRIDES / FREE ACTIONS                  [ttrpg_dsl-xh9]
+    //     - `cost free` explicitly declares no-cost actions (ActionSurge)
+    //     - `modify Action.cost(...)` overrides action cost from conditions
+    //     - CunningAction condition replaces CunningDash/CunningDisengage duplicates
+    //     - Cunning Action: modify Dash.cost / Disengage.cost / Hide.cost
+    //
     //  1. NO CONDITION COMPOSITION / INHERITANCE                  [ttrpg_dsl-7r4]
     //     - Stunned includes Incapacitated's effects (must duplicate)
     //     - Unconscious includes Prone + Incapacitated
@@ -1214,50 +1235,46 @@ system "D&D 5e Expanded" {
     //  3. NO TYPED PROMPTS                                        [ttrpg_dsl-ctc]
     //     - choose() returns string, not a typed entity reference
     //
-    //  4. NO COST OVERRIDES / FREE ACTIONS                        [ttrpg_dsl-xh9]
-    //     - Cunning Action changes cost of existing actions
-    //     - No way to say "this costs nothing" explicitly
-    //
-    //  5. NO AUTOMATIC EVENT EMISSION                             [ttrpg_dsl-clo]
+    //  4. NO AUTOMATIC EVENT EMISSION                             [ttrpg_dsl-clo]
     //     - HP changes don't auto-fire takes_damage
     //     - Host must manually fire all events
     //
-    //  6. NO POSITION ARITHMETIC                                  [ttrpg_dsl-586]
+    //  5. NO POSITION ARITHMETIC                                  [ttrpg_dsl-586]
     //     - Can't compute "5 feet away from X toward Y"
     //     - Can't check "is between A and B" (flanking)
     //     - Position is opaque — only distance() is available
     //
-    //  7. NO UNION TYPES                                          [ttrpg_dsl-q5l]
+    //  6. NO UNION TYPES                                          [ttrpg_dsl-q5l]
     //     - Can't express DamageSource = Weapon | Spell | Environment
     //     - No tuple or multiple return values
     //
-    //  8. SINGLE REQUIRES BLOCK PER ACTION                        [ttrpg_dsl-mcy]
+    //  7. SINGLE REQUIRES BLOCK PER ACTION                        [ttrpg_dsl-mcy]
     //     - Must combine with && (multiline works, but verbose)
     //
-    //  9. NO DEFAULT FOR DiceExpr FIELDS                          [ttrpg_dsl-46i]
+    //  8. NO DEFAULT FOR DiceExpr FIELDS                          [ttrpg_dsl-46i]
     //     - sneak_attack_dice uses int (number of d6s) instead
     //
-    // 11. NO STRUCT UPDATE SYNTAX                                 [ttrpg_dsl-kmy]
+    //  9. NO STRUCT UPDATE SYNTAX                                 [ttrpg_dsl-kmy]
     //     - Must reconstruct entire struct to change one field
     //
-    // 13. NO LIST SORTING / MAP / FILTER / REDUCE                 [ttrpg_dsl-4km]
+    // 10. NO LIST SORTING / MAP / FILTER / REDUCE                 [ttrpg_dsl-4km]
     //     - Host must sort initiative; no ordered collection output
     //
-    // 14. NO ENTITY DESTRUCTION / LIFECYCLE                       [ttrpg_dsl-bcc]
+    // 11. NO ENTITY DESTRUCTION / LIFECYCLE                       [ttrpg_dsl-bcc]
     //     - Can't destroy(dying) — death removes entities permanently
     //
-    // 15. NO ENUM-ASSOCIATED DATA / LOOKUP TABLES                 [ttrpg_dsl-8tu]
+    // 12. NO ENUM-ASSOCIATED DATA / LOOKUP TABLES                 [ttrpg_dsl-8tu]
     //     - skill_ability is 18-branch match for static data
     //
-    // 16. NO EVENT-TRIGGERED DURATIONS                            [ttrpg_dsl-rh4]
+    // 13. NO EVENT-TRIGGERED DURATIONS                            [ttrpg_dsl-rh4]
     //     - "Until next use" (Help) and "until save" (spell effects)
     //
-    // 17. NO SPELL INSTANCE / EFFECT TRACKING                     [ttrpg_dsl-5kb]
+    // 14. NO SPELL INSTANCE / EFFECT TRACKING                     [ttrpg_dsl-5kb]
     //     - Dropping concentration can't auto-remove spell effects
     //
-    // 18. NO INTEGER RANGE / BOUNDED INT TYPES                    [ttrpg_dsl-3v8]
+    // 15. NO INTEGER RANGE / BOUNDED INT TYPES                    [ttrpg_dsl-3v8]
     //     - Can't express int(1..9) for spell slot levels
     //
-    // 19. NO WILDCARD MODIFY TARGETS                              [ttrpg_dsl-wus]
+    // 16. NO WILDCARD MODIFY TARGETS                              [ttrpg_dsl-wus]
     //     - Can't "modify all d20 rolls" — must list each mechanic
 }
