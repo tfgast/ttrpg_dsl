@@ -81,6 +81,7 @@ system "D&D 5e Combat" {
         conditions: set<Condition>
         position: Position
         equipped_weapon: Weapon
+        concentrating_on: option<Invocation>
     }
 
 
@@ -154,7 +155,8 @@ system "D&D 5e Combat" {
         attacker: Character,
         target: Character,
         weapon: Weapon,
-        mode: RollMode = normal
+        mode: RollMode = normal,
+        bonus_dice: DiceExpr = 0d1
     ) -> RollResult {
         let ability = choose_attack_ability(attacker, weapon)
         let expr = d20_expr(
@@ -162,7 +164,7 @@ system "D&D 5e Combat" {
             proficiency: proficiency_bonus(attacker.level),
             mode: mode
         )
-        roll(expr)
+        roll(expr + bonus_dice)
     }
 
     mechanic damage_expr(
@@ -467,6 +469,67 @@ system "D&D 5e Combat" {
         }
         modify Hide.cost(actor: bearer) {
             cost = bonus_action
+        }
+    }
+
+
+    // --- Invocation tracking (concentration) ---
+    //
+    // Tags, events, and hooks combine with `invocation()` and `revoke()`
+    // to implement D&D 5e concentration entirely in the DSL.
+
+    tag #concentration
+
+    event ConcentrationStarted(caster: Character, inv: Invocation)
+
+    // A concentration spell: apply conditions, then register concentration.
+    // Conditions are applied BEFORE the concentration event — if application
+    // fails, the event is never emitted and old concentration is preserved.
+    action CastBless on caster: Character (targets: list<Character>) #concentration {
+        cost { action }
+
+        resolve {
+            let inv = invocation()
+            for target in targets {
+                apply_condition(target, Blessed, Duration.rounds(10))
+            }
+            emit ConcentrationStarted(caster: caster, inv: inv)
+        }
+    }
+
+    // When any concentration spell starts, clean up the previous one.
+    // The action passes its invocation through the event because the hook
+    // has its own invocation scope — each hook gets its own invocation ID.
+    hook on_conc on caster: Character (
+        trigger: ConcentrationStarted(caster: caster)
+    ) {
+        revoke(caster.concentrating_on)
+        caster.concentrating_on = some(trigger.inv)
+    }
+
+    // Concentration save on damage (5e-specific rule)
+    reaction ConcentrationSave on caster: Character (
+        trigger: Damaged(target: caster)
+    ) {
+        cost free
+
+        resolve {
+            if caster.concentrating_on != none {
+                let dc = max(10, floor(trigger.amount / 2))
+                let save: RollResult = roll(d20_expr(
+                    score: caster.abilities[CON]
+                ))
+                if save.total < dc {
+                    revoke(caster.concentrating_on)
+                    caster.concentrating_on = none
+                }
+            }
+        }
+    }
+
+    condition Blessed on bearer: Character {
+        modify attack_roll(attacker: bearer) {
+            bonus_dice = 1d4
         }
     }
 }
