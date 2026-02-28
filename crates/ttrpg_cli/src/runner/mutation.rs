@@ -477,8 +477,7 @@ impl Runner {
             }
         }
 
-        let interp = Interpreter::new(&self.program, &self.type_env)
-            .map_err(|e| CliError::Message(format!("interpreter error: {}", e)))?;
+        let interp = TrackedInterpreter::new(&self.program, &self.type_env, &self.game_state)?;
         let state = RefCellState(&self.game_state);
         let mut handler = CliHandler::new(
             &self.game_state,
@@ -566,8 +565,7 @@ impl Runner {
             }
         }
 
-        let interp = Interpreter::new(&self.program, &self.type_env)
-            .map_err(|e| CliError::Message(format!("interpreter error: {}", e)))?;
+        let interp = TrackedInterpreter::new(&self.program, &self.type_env, &self.game_state)?;
         let state = RefCellState(&self.game_state);
         let mut handler = CliHandler::new(
             &self.game_state,

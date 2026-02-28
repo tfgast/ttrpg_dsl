@@ -273,10 +273,56 @@ impl Runner {
             .copied()
             .ok_or_else(|| CliError::Message(format!("unknown handle: {}", name)))
     }
+
 }
 
 impl Default for Runner {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+/// RAII wrapper that persists the interpreter's invocation counter
+/// back to GameState on drop.
+///
+/// Created via [`TrackedInterpreter::new`] with individual field references
+/// so that callers retain mutable access to other `Runner` fields.
+pub(super) struct TrackedInterpreter<'a, 'p> {
+    interp: Interpreter<'p>,
+    game_state: &'a RefCell<GameState>,
+}
+
+impl<'a, 'p> TrackedInterpreter<'a, 'p> {
+    /// Create an interpreter whose invocation counter is seeded from GameState.
+    /// The counter is persisted back to GameState when this wrapper is dropped,
+    /// ensuring IDs never collide across calls.
+    pub fn new(
+        program: &'p Program,
+        type_env: &'p TypeEnv,
+        game_state: &'a RefCell<GameState>,
+    ) -> Result<Self, CliError> {
+        let start = game_state.borrow().next_invocation_id();
+        let interp =
+            Interpreter::new_with_invocation_start(program, type_env, start)
+                .map_err(|e| CliError::Message(format!("interpreter error: {}", e)))?;
+        Ok(TrackedInterpreter {
+            interp,
+            game_state,
+        })
+    }
+}
+
+impl Drop for TrackedInterpreter<'_, '_> {
+    fn drop(&mut self) {
+        self.game_state
+            .borrow_mut()
+            .set_next_invocation_id(self.interp.next_invocation_id());
+    }
+}
+
+impl<'p> std::ops::Deref for TrackedInterpreter<'_, 'p> {
+    type Target = Interpreter<'p>;
+    fn deref(&self) -> &Self::Target {
+        &self.interp
     }
 }
