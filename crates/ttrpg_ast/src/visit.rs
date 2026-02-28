@@ -414,6 +414,7 @@ impl VisitSpansMut for TypeExpr {
             | TypeExpr::Duration
             | TypeExpr::Position
             | TypeExpr::Condition
+            | TypeExpr::Invocation
             | TypeExpr::Named(_)
             | TypeExpr::Qualified { .. } => {}
             TypeExpr::List(inner) | TypeExpr::Set(inner) | TypeExpr::OptionType(inner) => {

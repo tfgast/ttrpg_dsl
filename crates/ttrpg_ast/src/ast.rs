@@ -296,6 +296,8 @@ pub struct ActionDecl {
     /// Preserved from the originating move declaration's trigger string.
     /// `None` for user-written actions, `Some(...)` for actions synthesized from moves.
     pub trigger_text: Option<String>,
+    /// Tags on the action (e.g., `#concentration`).
+    pub tags: Vec<Name>,
     /// True for actions synthesized by `lower_moves`.
     /// Parser always sets this to `false`.
     pub synthetic: bool,
@@ -538,6 +540,7 @@ pub enum TypeExpr {
     Duration,
     Position,
     Condition,
+    Invocation,
     Named(Name),
     Qualified { qualifier: Name, name: Name },
     Map(Box<Spanned<TypeExpr>>, Box<Spanned<TypeExpr>>),

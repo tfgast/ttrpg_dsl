@@ -96,6 +96,7 @@ pub fn format_value(val: &Value) -> String {
             }
         }
         Value::EnumNamespace(name) => format!("<enum {}>", name),
+        Value::Invocation(id) => format!("Invocation({})", id.0),
     }
 }
 

@@ -131,6 +131,7 @@ pub(super) fn value_matches_ty(val: &Value, ty: &Ty, gs: Option<&GameState>) -> 
         (Value::Position(_), Ty::Position) => true,
         (Value::EnumVariant { enum_name, .. }, Ty::Duration) => enum_name == "Duration",
         (Value::Condition { .. }, Ty::Condition) => true,
+        (Value::Invocation(_), Ty::Invocation) => true,
         _ => false,
     }
 }
@@ -154,6 +155,7 @@ pub(super) fn value_type_display(val: &Value) -> String {
         Value::RollResult(_) => "RollResult".into(),
         Value::Position(_) => "Position".into(),
         Value::Condition { .. } => "Condition".into(),
+        Value::Invocation(_) => "Invocation".into(),
         Value::EnumNamespace(name) => format!("{}(namespace)", name),
     }
 }

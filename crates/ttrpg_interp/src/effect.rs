@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use ttrpg_ast::ast::AssignOp;
 use ttrpg_ast::Name;
 
-use crate::state::EntityRef;
+use crate::state::{EntityRef, InvocationId};
 use crate::value::{DiceExpr, RollResult, Value};
 
 // ── Supporting types ────────────────────────────────────────────
@@ -47,6 +47,17 @@ pub struct FieldChange {
     pub new: Value,
 }
 
+/// Outcome of an action execution, reported in `ActionCompleted`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ActionOutcome {
+    /// Body completed without error.
+    Succeeded,
+    /// Host vetoed the action at the gate.
+    Vetoed,
+    /// Body returned RuntimeError, or host returned unexpected response.
+    Failed,
+}
+
 // ── Effect enum ─────────────────────────────────────────────────
 
 /// An effect yielded by the interpreter to the host.
@@ -83,6 +94,7 @@ pub enum Effect {
         condition: Name,
         params: BTreeMap<Name, Value>,
         duration: Value,
+        invocation: Option<InvocationId>,
     },
     RemoveCondition {
         target: EntityRef,
@@ -130,6 +142,11 @@ pub enum Effect {
     ActionCompleted {
         name: Name,
         actor: EntityRef,
+        outcome: ActionOutcome,
+        invocation: Option<InvocationId>,
+    },
+    RevokeInvocation {
+        invocation: InvocationId,
     },
     ModifyApplied {
         source: ModifySource,
@@ -200,6 +217,7 @@ pub enum EffectKind {
     ActionStarted,
     RequiresCheck,
     ActionCompleted,
+    RevokeInvocation,
     ModifyApplied,
 }
 
@@ -219,6 +237,7 @@ impl EffectKind {
             Effect::ActionStarted { .. } => EffectKind::ActionStarted,
             Effect::RequiresCheck { .. } => EffectKind::RequiresCheck,
             Effect::ActionCompleted { .. } => EffectKind::ActionCompleted,
+            Effect::RevokeInvocation { .. } => EffectKind::RevokeInvocation,
             Effect::ModifyApplied { .. } => EffectKind::ModifyApplied,
         }
     }
@@ -243,6 +262,8 @@ mod tests {
         let effect = Effect::ActionCompleted {
             name: "Attack".into(),
             actor: EntityRef(1),
+            outcome: ActionOutcome::Succeeded,
+            invocation: None,
         };
         assert_eq!(EffectKind::of(&effect), EffectKind::ActionCompleted);
     }

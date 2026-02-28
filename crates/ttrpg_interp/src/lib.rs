@@ -18,7 +18,7 @@ use ttrpg_checker::env::TypeEnv;
 
 use crate::effect::{EffectHandler, FieldPathSegment};
 use crate::event::{EventResult, HookResult};
-use crate::state::{EntityRef, StateProvider};
+use crate::state::{EntityRef, InvocationId, StateProvider};
 use crate::value::Value;
 
 // ── RuntimeError ───────────────────────────────────────────────
@@ -385,6 +385,7 @@ pub(crate) struct Env<'a, 'p> {
     pub interp: &'a Interpreter<'p>,
     pub scopes: Vec<Scope>,
     pub turn_actor: Option<EntityRef>,
+    pub current_invocation_id: Option<InvocationId>,
 }
 
 impl<'a, 'p> Env<'a, 'p> {
@@ -399,6 +400,7 @@ impl<'a, 'p> Env<'a, 'p> {
             interp,
             scopes: vec![Scope::new()],
             turn_actor: None,
+            current_invocation_id: None,
         }
     }
 
@@ -766,6 +768,7 @@ system "test" {
                 bearer: entity,
                 gained_at: 1,
                 duration: Value::None,
+                invocation: None,
             }],
         );
 
@@ -1332,6 +1335,7 @@ system "test" {
                 bearer: entity1,
                 gained_at: 1,
                 duration: Value::None,
+                invocation: None,
             }],
         );
 

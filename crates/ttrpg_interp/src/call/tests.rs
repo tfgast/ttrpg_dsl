@@ -1540,6 +1540,7 @@ fn action_test_setup() -> (Program, TypeEnv) {
             "actor".into(),
         ))))]),
         trigger_text: None,
+        tags: vec![],
         synthetic: false,
     })]);
 

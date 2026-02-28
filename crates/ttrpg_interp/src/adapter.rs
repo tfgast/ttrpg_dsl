@@ -124,14 +124,15 @@ pub struct AdaptedHandler<'a, S: WritableState, H: EffectHandler> {
     inner: &'a mut H,
 }
 
-/// The six mutation effect kinds.
-const MUTATION_KINDS: [EffectKind; 6] = [
+/// The seven mutation effect kinds.
+const MUTATION_KINDS: [EffectKind; 7] = [
     EffectKind::MutateField,
     EffectKind::ApplyCondition,
     EffectKind::RemoveCondition,
     EffectKind::MutateTurnField,
     EffectKind::GrantGroup,
     EffectKind::RevokeGroup,
+    EffectKind::RevokeInvocation,
 ];
 
 fn is_mutation(kind: EffectKind) -> bool {
@@ -250,6 +251,7 @@ fn apply_mutation<S: WritableState>(state: &mut S, effect: &Effect) {
             condition,
             params,
             duration,
+            invocation,
         } => {
             // The adapter creates an ActiveCondition. The host assigns a unique id
             // via the WritableState implementation (e.g., GameState auto-assigns).
@@ -262,6 +264,7 @@ fn apply_mutation<S: WritableState>(state: &mut S, effect: &Effect) {
                     bearer: *target,
                     gained_at: 0, // WritableState impl assigns ordering timestamp
                     duration: duration.clone(),
+                    invocation: *invocation,
                 },
             );
         }
@@ -296,6 +299,9 @@ fn apply_mutation<S: WritableState>(state: &mut S, effect: &Effect) {
         }
         Effect::RevokeGroup { entity, group_name } => {
             state.remove_field(entity, group_name);
+        }
+        Effect::RevokeInvocation { invocation } => {
+            state.remove_conditions_by_invocation(*invocation);
         }
         _ => {} // Not a mutation effect
     }
@@ -339,6 +345,7 @@ fn apply_mutation_with_override<S: WritableState>(
             target,
             condition,
             params,
+            invocation,
             ..
         } => {
             state.add_condition(
@@ -350,6 +357,7 @@ fn apply_mutation_with_override<S: WritableState>(
                     bearer: *target,
                     gained_at: 0,
                     duration: override_val.clone(),
+                    invocation: *invocation,
                 },
             );
         }
@@ -599,8 +607,8 @@ pub fn token_to_budget_field(token: &str) -> Option<&'static str> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::effect::{Effect, Response};
-    use crate::state::ActiveCondition;
+    use crate::effect::{ActionOutcome, Effect, Response};
+    use crate::state::{ActiveCondition, InvocationId};
     use crate::value::{duration_variant, duration_variant_with};
     use std::collections::{BTreeMap, HashMap};
 
@@ -697,6 +705,12 @@ mod tests {
 
         fn remove_field(&mut self, entity: &EntityRef, field: &str) {
             self.fields.remove(&(entity.0, field.to_string()));
+        }
+
+        fn remove_conditions_by_invocation(&mut self, invocation: InvocationId) {
+            for conds in self.conditions.values_mut() {
+                conds.retain(|c| c.invocation != Some(invocation));
+            }
         }
     }
 
@@ -836,6 +850,8 @@ mod tests {
             handler.handle(Effect::ActionCompleted {
                 name: "Attack".into(),
                 actor: EntityRef(1),
+                outcome: ActionOutcome::Succeeded,
+                invocation: None,
             })
         });
 
@@ -1010,6 +1026,7 @@ mod tests {
                 condition: "Prone".into(),
                 params: BTreeMap::new(),
                 duration: duration_variant("end_of_turn"),
+                invocation: None,
             })
         });
 
@@ -1034,6 +1051,7 @@ mod tests {
                 bearer: EntityRef(1),
                 gained_at: 1,
                 duration: duration_variant("end_of_turn"),
+                invocation: None,
             }],
         );
         let adapter = StateAdapter::new(state);
@@ -1203,6 +1221,7 @@ mod tests {
             requires: None,
             resolve: spanned(vec![spanned(StmtKind::Expr(spanned(ExprKind::IntLit(42))))]),
             trigger_text: None,
+            tags: vec![],
             synthetic: false,
         };
 
@@ -1270,6 +1289,7 @@ mod tests {
                 condition: "Prone".into(),
                 params: BTreeMap::new(),
                 duration: duration_variant("end_of_turn"),
+                invocation: None,
             })
         });
 
@@ -1301,6 +1321,7 @@ mod tests {
                     bearer: EntityRef(1),
                     gained_at: 1,
                     duration: duration_variant("end_of_turn"),
+                    invocation: None,
                 },
                 ActiveCondition {
                     id: 2,
@@ -1309,6 +1330,7 @@ mod tests {
                     bearer: EntityRef(1),
                     gained_at: 2,
                     duration: duration_variant("rounds"),
+                    invocation: None,
                 },
             ],
         );
@@ -1745,6 +1767,7 @@ mod tests {
                 bearer: entity,
                 gained_at: 0,
                 duration: duration_variant("indefinite"),
+                invocation: None,
             },
         );
         state.add_condition(
@@ -1756,6 +1779,7 @@ mod tests {
                 bearer: entity,
                 gained_at: 0,
                 duration: duration_variant("indefinite"),
+                invocation: None,
             },
         );
 

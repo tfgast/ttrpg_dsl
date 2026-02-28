@@ -18,6 +18,7 @@ pub enum Ty {
     Duration,
     Position,
     Condition,
+    Invocation,
 
     // Nominal (user-defined)
     Enum(Name),
@@ -92,6 +93,7 @@ impl Ty {
             Ty::Duration => "Duration".into(),
             Ty::Position => "Position".into(),
             Ty::Condition => "Condition".into(),
+            Ty::Invocation => "Invocation".into(),
             Ty::Enum(name) | Ty::EnumType(name) => name.to_string(),
             Ty::Struct(name) => name.to_string(),
             Ty::Entity(name) => name.to_string(),

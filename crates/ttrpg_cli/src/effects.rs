@@ -7,7 +7,7 @@ use ttrpg_ast::ast::AssignOp;
 use ttrpg_ast::DiceFilter;
 use ttrpg_ast::Name;
 use ttrpg_interp::adapter;
-use ttrpg_interp::effect::{Effect, EffectHandler, Response};
+use ttrpg_interp::effect::{ActionOutcome, Effect, EffectHandler, Response};
 use ttrpg_interp::reference_state::GameState;
 use ttrpg_interp::state::{EntityRef, StateProvider, WritableState};
 use ttrpg_interp::value::{DiceExpr, RollResult, Value};
@@ -238,6 +238,7 @@ impl EffectHandler for CliHandler<'_> {
                 condition,
                 params,
                 duration,
+                ..
             } => {
                 let name = self.entity_name(&target);
                 self.game_state.borrow_mut().apply_condition(
@@ -366,10 +367,30 @@ impl EffectHandler for CliHandler<'_> {
             Effect::ActionCompleted {
                 name: action_name,
                 actor,
+                outcome,
+                ..
             } => {
                 let ename = self.entity_name(&actor);
-                self.log
-                    .push(format!("[ActionCompleted] {} by {}", action_name, ename));
+                let outcome_str = match outcome {
+                    ActionOutcome::Succeeded => "succeeded",
+                    ActionOutcome::Vetoed => "vetoed",
+                    ActionOutcome::Failed => "failed",
+                };
+                self.log.push(format!(
+                    "[ActionCompleted] {} by {} ({})",
+                    action_name, ename, outcome_str
+                ));
+                Response::Acknowledged
+            }
+
+            Effect::RevokeInvocation { invocation } => {
+                self.game_state
+                    .borrow_mut()
+                    .remove_conditions_by_invocation(invocation);
+                self.log.push(format!(
+                    "[RevokeInvocation] invocation {}",
+                    invocation.0
+                ));
                 Response::Acknowledged
             }
 
@@ -546,6 +567,8 @@ mod tests {
         let effect = Effect::ActionCompleted {
             name: "Test".into(),
             actor: ttrpg_interp::state::EntityRef(1),
+            outcome: ttrpg_interp::effect::ActionOutcome::Succeeded,
+            invocation: None,
         };
         assert!(matches!(handler.handle(effect), Response::Acknowledged));
     }

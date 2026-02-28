@@ -317,6 +317,7 @@ fn builtin_apply_condition(
                 condition: cond_name.clone(),
                 params: cond_args.clone(),
                 duration: duration.clone(),
+                invocation: env.current_invocation_id,
             };
             validate_mutation_response(env.handler.handle(effect), "ApplyCondition", span)?;
             Ok(Value::None)
@@ -328,6 +329,7 @@ fn builtin_apply_condition(
                 condition: Name::from(cond_name.as_str()),
                 params: BTreeMap::new(),
                 duration: duration.clone(),
+                invocation: env.current_invocation_id,
             };
             validate_mutation_response(env.handler.handle(effect), "ApplyCondition", span)?;
             Ok(Value::None)
@@ -439,6 +441,7 @@ fn type_name(val: &Value) -> &'static str {
         Value::EnumVariant { .. } => "EnumVariant",
         Value::Position(_) => "Position",
         Value::Condition { .. } => "Condition",
+        Value::Invocation(_) => "Invocation",
         Value::EnumNamespace(_) => "EnumNamespace",
     }
 }

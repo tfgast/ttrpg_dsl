@@ -331,6 +331,7 @@ fn lower_one_move(
         requires: None,
         resolve,
         trigger_text: Some(m.trigger_text.clone()),
+        tags: vec![],
         synthetic: true,
     };
 

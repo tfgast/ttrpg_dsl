@@ -6,7 +6,7 @@ use std::sync::Arc;
 use ttrpg_ast::DiceFilter;
 use ttrpg_ast::Name;
 
-use crate::state::EntityRef;
+use crate::state::{EntityRef, InvocationId};
 
 // ── Dice pipeline types ─────────────────────────────────────────
 
@@ -124,6 +124,9 @@ pub enum Value {
         args: BTreeMap<Name, Value>,
     },
 
+    // Invocation handle
+    Invocation(InvocationId),
+
     /// Internal: an enum type name used as a namespace for qualified variant
     /// access (e.g., `Duration.rounds`). Not a user-facing value — only
     /// produced by `eval_ident` when an identifier resolves to an enum type.
@@ -188,7 +191,8 @@ fn discriminant(v: &Value) -> u8 {
         Value::EnumVariant { .. } => 13,
         Value::Position(_) => 14,
         Value::Condition { .. } => 15,
-        Value::EnumNamespace(_) => 16,
+        Value::Invocation(_) => 16,
+        Value::EnumNamespace(_) => 17,
     }
 }
 
@@ -243,6 +247,7 @@ impl PartialEq for Value {
             (Value::Condition { name: n1, args: a1 }, Value::Condition { name: n2, args: a2 }) => {
                 n1 == n2 && a1 == a2
             }
+            (Value::Invocation(a), Value::Invocation(b)) => a == b,
             (Value::EnumNamespace(a), Value::EnumNamespace(b)) => a == b,
             _ => false,
         }
@@ -314,6 +319,7 @@ impl Ord for Value {
             (Value::Condition { name: n1, args: a1 }, Value::Condition { name: n2, args: a2 }) => {
                 n1.cmp(n2).then_with(|| ordered_map_cmp(a1, a2))
             }
+            (Value::Invocation(a), Value::Invocation(b)) => a.0.cmp(&b.0),
             (Value::EnumNamespace(a), Value::EnumNamespace(b)) => a.cmp(b),
             // Same discriminant guarantees same variant.
             _ => unreachable!(),
@@ -430,6 +436,7 @@ impl std::hash::Hash for Value {
                     v.hash(state);
                 }
             }
+            Value::Invocation(v) => v.0.hash(state),
             Value::EnumNamespace(v) => v.hash(state),
         }
     }

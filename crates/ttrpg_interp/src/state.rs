@@ -15,6 +15,13 @@ use crate::value::Value;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct EntityRef(pub u64);
 
+// ── InvocationId ────────────────────────────────────────────────
+
+/// Unique identifier for an action/reaction/hook execution.
+/// All conditions applied during that execution share this ID.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct InvocationId(pub u64);
+
 // ── ActiveCondition ─────────────────────────────────────────────
 
 /// An active condition on an entity.
@@ -40,6 +47,9 @@ pub struct ActiveCondition {
     pub gained_at: u64,
     /// Duration value (e.g., `duration_variant("rounds")` or any ruleset-defined Duration variant).
     pub duration: Value,
+    /// The invocation that applied this condition, if any.
+    /// `None` for conditions applied outside action scope (CLI grant, host-injected).
+    pub invocation: Option<InvocationId>,
 }
 
 // ── StateProvider trait ─────────────────────────────────────────
@@ -117,6 +127,9 @@ pub trait WritableState: StateProvider {
 
     /// Remove a field from an entity (used by `RevokeGroup`).
     fn remove_field(&mut self, entity: &EntityRef, field: &str);
+
+    /// Remove all conditions tagged with the given invocation, across all entities.
+    fn remove_conditions_by_invocation(&mut self, invocation: InvocationId);
 }
 
 #[cfg(test)]
@@ -205,6 +218,7 @@ mod tests {
                 bearer: entity,
                 gained_at: 5,
                 duration: duration_variant("end_of_turn"),
+                invocation: None,
             }],
         );
 
@@ -252,6 +266,7 @@ mod tests {
             bearer: EntityRef(1),
             gained_at: 10,
             duration: duration_variant("rounds"),
+            invocation: None,
         };
         assert_eq!(cond.id, 42);
         assert_eq!(cond.name, "Stunned");

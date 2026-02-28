@@ -270,6 +270,7 @@ impl TypeEnv {
             TypeExpr::Duration => self.resolve_named_or("Duration", Ty::Duration),
             TypeExpr::Position => self.resolve_named_or("Position", Ty::Position),
             TypeExpr::Condition => self.resolve_named_or("Condition", Ty::Condition),
+            TypeExpr::Invocation => Ty::Invocation,
             TypeExpr::Named(name) => {
                 if name == "entity" {
                     return Ty::AnyEntity;

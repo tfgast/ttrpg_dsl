@@ -5,7 +5,7 @@ use std::sync::Arc;
 use ttrpg_ast::Name;
 
 use crate::effect::FieldPathSegment;
-use crate::state::{ActiveCondition, EntityRef, StateProvider, WritableState};
+use crate::state::{ActiveCondition, EntityRef, InvocationId, StateProvider, WritableState};
 use crate::value::{PositionValue, Value};
 
 // ── Grid position ──────────────────────────────────────────────
@@ -109,6 +109,7 @@ impl GameState {
             bearer: *entity,
             gained_at: id, // Use id as ordering timestamp for simplicity
             duration,
+            invocation: None,
         };
         self.conditions.entry(entity.0).or_default().push(cond);
     }
@@ -285,6 +286,12 @@ impl WritableState for GameState {
     fn remove_field(&mut self, entity: &EntityRef, field: &str) {
         if let Some(entity_state) = self.entities.get_mut(&entity.0) {
             entity_state.fields.remove(field);
+        }
+    }
+
+    fn remove_conditions_by_invocation(&mut self, invocation: InvocationId) {
+        for conds in self.conditions.values_mut() {
+            conds.retain(|c| c.invocation != Some(invocation));
         }
     }
 }
@@ -640,6 +647,7 @@ mod tests {
             bearer: entity,
             gained_at: 0,
             duration: duration_variant("end_of_turn"),
+            invocation: None,
         };
         state.add_condition(&entity, cond);
 
@@ -755,6 +763,7 @@ mod tests {
             bearer: ghost,
             gained_at: 0,
             duration: duration_variant("end_of_turn"),
+            invocation: None,
         };
         state.add_condition(&ghost, cond);
         assert!(state.read_conditions(&ghost).is_none());

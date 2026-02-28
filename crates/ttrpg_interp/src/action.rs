@@ -1,9 +1,9 @@
 use ttrpg_ast::ast::{ActionDecl, Block, CostClause, ExprKind, HookDecl, ReactionDecl};
 use ttrpg_ast::{Name, Span, Spanned};
 
-use crate::effect::{ActionKind, Effect, Response};
+use crate::effect::{ActionKind, ActionOutcome, Effect, Response};
 use crate::eval::{eval_block, eval_expr};
-use crate::state::EntityRef;
+use crate::state::{EntityRef, InvocationId};
 use crate::value::Value;
 use crate::Env;
 use crate::RuntimeError;
@@ -31,7 +31,7 @@ fn emit_action_started(
     match response {
         Response::Acknowledged => Ok(LifecycleStart::Proceed),
         Response::Vetoed => {
-            emit_action_completed(env, name, actor, call_span)?;
+            emit_action_completed(env, name, actor, ActionOutcome::Vetoed, None, call_span)?;
             Ok(LifecycleStart::Vetoed)
         }
         other => Err(RuntimeError::with_span(
@@ -49,11 +49,15 @@ fn emit_action_completed(
     env: &mut Env,
     name: &str,
     actor: EntityRef,
+    outcome: ActionOutcome,
+    invocation: Option<InvocationId>,
     call_span: Span,
 ) -> Result<(), RuntimeError> {
     let response = env.handler.handle(Effect::ActionCompleted {
         name: Name::from(name),
         actor,
+        outcome,
+        invocation,
     });
     match response {
         Response::Acknowledged => Ok(()),
@@ -88,7 +92,7 @@ fn scoped_execute(
     env.turn_actor = prev_turn_actor;
 
     if result.is_ok() {
-        emit_action_completed(env, name, actor, call_span)?;
+        emit_action_completed(env, name, actor, ActionOutcome::Succeeded, None, call_span)?;
     }
 
     result
@@ -769,6 +773,7 @@ mod tests {
             requires,
             resolve: spanned(resolve_stmts),
             trigger_text: None,
+            tags: vec![],
             synthetic: false,
         }
     }

@@ -1111,6 +1111,7 @@ mod tests {
                 bearer: EntityRef(1),
                 gained_at: 1,
                 duration: Value::None,
+                invocation: None,
             }],
         );
         state.conditions.insert(2, vec![]);
@@ -1275,6 +1276,7 @@ mod tests {
                 bearer: EntityRef(1),
                 gained_at: 1,
                 duration: Value::None,
+                invocation: None,
             }],
         );
         state.conditions.insert(2, vec![]);

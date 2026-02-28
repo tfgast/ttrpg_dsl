@@ -444,6 +444,7 @@ impl Parser {
             requires,
             resolve,
             trigger_text: None,
+            tags: vec![],
             synthetic: false,
         })
     }

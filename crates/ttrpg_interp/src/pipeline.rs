@@ -970,6 +970,7 @@ mod tests {
                 bearer: EntityRef(1),
                 gained_at: 5,
                 duration: Value::None,
+                invocation: None,
             }],
         );
 
@@ -1135,6 +1136,7 @@ mod tests {
                 bearer: EntityRef(1),
                 gained_at: 3,
                 duration: Value::None,
+                invocation: None,
             }],
         );
 
@@ -1347,6 +1349,7 @@ mod tests {
                     bearer: EntityRef(1),
                     gained_at: 10,
                     duration: Value::None,
+                    invocation: None,
                 },
                 ActiveCondition {
                     id: 2,
@@ -1355,6 +1358,7 @@ mod tests {
                     bearer: EntityRef(1),
                     gained_at: 5,
                     duration: Value::None,
+                    invocation: None,
                 },
             ],
         );
@@ -1551,6 +1555,7 @@ mod tests {
                 bearer: EntityRef(1),
                 gained_at: 1,
                 duration: Value::None,
+                invocation: None,
             }],
         );
         state.enabled_options.push("Variant".into());
@@ -1719,6 +1724,7 @@ mod tests {
                 bearer: EntityRef(1),
                 gained_at: 1,
                 duration: Value::None,
+                invocation: None,
             }],
         );
 
@@ -2079,6 +2085,7 @@ mod tests {
                 bearer: EntityRef(1),
                 gained_at: 1,
                 duration: Value::None,
+                invocation: None,
             }],
         );
 
@@ -2497,6 +2504,7 @@ mod tests {
                 bearer: EntityRef(1),
                 gained_at: 0,
                 duration: Value::None,
+                invocation: None,
             }],
         );
 
@@ -2646,6 +2654,7 @@ mod tests {
                 bearer: EntityRef(1),
                 gained_at: 0,
                 duration: Value::None,
+                invocation: None,
             }],
         );
 

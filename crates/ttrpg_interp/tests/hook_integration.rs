@@ -292,6 +292,7 @@ system "test" {
             bearer: EntityRef(1),
             gained_at: 1,
             duration: Value::None,
+            invocation: None,
         }],
     );
 

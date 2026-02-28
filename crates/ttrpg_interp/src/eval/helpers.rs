@@ -31,6 +31,7 @@ pub(crate) fn type_name(val: &Value) -> &'static str {
         Value::EnumVariant { .. } => "EnumVariant",
         Value::Position(_) => "Position",
         Value::Condition { .. } => "Condition",
+        Value::Invocation(_) => "Invocation",
         Value::EnumNamespace(_) => "EnumNamespace",
     }
 }
