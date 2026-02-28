@@ -47,10 +47,14 @@ system "D&D 5e Expanded" {
 
     enum Size ordered { tiny, small, medium, large, huge, gargantuan }
 
-    // PAIN POINT: No union / sum type beyond enums with payloads.     [ttrpg_dsl-q5l]
-    // In 5e, a "damage source" could be a weapon, a spell, an
-    // environmental hazard, etc. We can't express:
-    //     type DamageSource = Weapon | Spell | Environment
+    // RESOLVED: Union types for entity refs use groups + `entity`.    [ttrpg_dsl-q5l]
+    // For entity unions: `entity with Combatant` accepts any entity
+    // with the group. For non-entity unions, enum payloads work:
+    enum DamageSource {
+        weapon(name: string, damage_dice: DiceExpr),
+        spell(name: string, school: SpellSchool),
+        environment(description: string)
+    }
 
     enum ResolvedDamage {
         miss,
@@ -1356,9 +1360,9 @@ system "D&D 5e Expanded" {
     //     - Can't check "is between A and B" (flanking)
     //     - Position is opaque — only distance() is available
     //
-    //  5. NO UNION TYPES                                          [ttrpg_dsl-q5l]
-    //     - Can't express DamageSource = Weapon | Spell | Environment
-    //     - No tuple or multiple return values
+    //  5. [RESOLVED] UNION TYPES                                  [ttrpg_dsl-q5l]
+    //     - Entity refs: `entity with GroupName` for constrained polymorphism
+    //     - Non-entity: enum payloads (DamageSource { weapon(...), spell(...) })
     //
     //  6. SINGLE REQUIRES BLOCK PER ACTION                        [ttrpg_dsl-mcy]
     //     - Must combine with && (multiline works, but verbose)
