@@ -1,0 +1,276 @@
+// ============================================================
+// PF2e Sustained Spells — Invocation Tracking Example
+//
+// Demonstrates how invocation tracking implements Pathfinder
+// 2e's sustained spell mechanic using the same primitives as
+// D&D 5e concentration but with different rules:
+//
+//   - Multiple sustained spells: PF2e allows sustaining more
+//     than one spell at a time (each costs an action per turn).
+//   - Explicit sustain action: the caster must spend an action
+//     each turn to keep a sustained spell active.
+//   - Lapse on neglect: if not sustained, the spell ends at
+//     end of turn — modeled via a host-fired lapse event.
+//
+// Key difference from 5e: same language primitives
+// (invocation, revoke, events, hooks), different policy.
+//
+// NOTE: PF2e ideally uses `list<Invocation>` for multi-slot
+// tracking. Since list builtins (append, remove) are not yet
+// available, this example uses `option<Invocation>` fields for
+// two sustained spell slots. The pattern is identical — only
+// the container changes when list operations land.
+// ============================================================
+
+system "PF2e Sustained Spells" {
+
+    // --- Core types ---
+
+    enum Ability { STR, DEX, CON, INT, WIS, CHA }
+
+    enum Duration {
+        end_of_turn,
+        start_of_next_turn,
+        rounds(count: int),
+        minutes(count: int),
+        indefinite
+    }
+
+    struct TurnBudget {
+        actions: int = 0
+        reactions: int = 0
+        free_actions: int = 0
+    }
+
+
+    // --- Entities ---
+
+    entity Character {
+        name: string
+        level: int = 1
+        abilities: map<Ability, int>
+        AC: int
+        HP: resource(0..=max_HP)
+        max_HP: int
+        speed: int = 25
+        position: Position
+
+        // Sustained spell slots. PF2e allows multiple sustained
+        // spells; each slot holds the invocation of a sustained
+        // spell (or none if the slot is free).
+        sustained_1: option<Invocation>
+        sustained_2: option<Invocation>
+    }
+
+
+    // --- Shared mechanics ---
+
+    derive modifier(score: int) -> int {
+        floor((score - 10) / 2)
+    }
+
+    derive initial_budget(actor: Character) -> TurnBudget {
+        // PF2e: 3 actions per turn (simplified here).
+        TurnBudget {
+            actions: 3,
+            reactions: 1,
+            free_actions: 1
+        }
+    }
+
+
+    // --- Sustained spell infrastructure ---
+
+    tag #sustained
+    tag #attack
+
+    // Fired when a sustained spell is cast. The hook records the
+    // invocation in the first available slot.
+    event SpellSustained(caster: Character, inv: Invocation)
+
+    // Fired at end of turn for each sustained spell that was NOT
+    // explicitly sustained this turn. The host is responsible for
+    // emitting this — the DSL defines the cleanup behavior.
+    event SustainedSpellLapsed(caster: Character, inv: Invocation)
+
+    // Turn lifecycle events — fired by the host.
+    event turn_start(actor: Character) {}
+    event turn_end(actor: Character) {}
+
+
+    // --- Sustained spell hooks ---
+
+    // When a sustained spell is cast, record it in the first
+    // available slot. With list<Invocation> this would be a
+    // simple append; with fixed slots we check each in order.
+    hook track_sustain on caster: Character (
+        trigger: SpellSustained(caster: caster)
+    ) {
+        if caster.sustained_1 == none {
+            caster.sustained_1 = some(trigger.inv)
+        } else {
+            if caster.sustained_2 == none {
+                caster.sustained_2 = some(trigger.inv)
+            }
+            // If both slots full, the spell is lost — PF2e
+            // limits the number of sustained spells.
+        }
+    }
+
+    // When a sustained spell lapses (not sustained this turn),
+    // revoke its conditions and free the slot.
+    hook on_lapse on caster: Character (
+        trigger: SustainedSpellLapsed(caster: caster)
+    ) {
+        revoke(trigger.inv)
+
+        // Clear the matching slot.
+        if caster.sustained_1 == some(trigger.inv) {
+            caster.sustained_1 = none
+        }
+        if caster.sustained_2 == some(trigger.inv) {
+            caster.sustained_2 = none
+        }
+    }
+
+
+    // ============================================================
+    //  Sustained Spells
+    // ============================================================
+
+    // --- Flaming Sphere (CRB p. 338) ---
+    //
+    // 2nd level, sustained up to 1 minute. Creates a sphere that
+    // deals fire damage to adjacent creatures each round.
+
+    action CastFlamingSphere on caster: Character (target: Character) #sustained {
+        cost { action, action }
+
+        resolve {
+            let inv = invocation()
+
+            // The "sphere exists" condition on the caster tracks
+            // that the spell is active. When revoked, the sphere
+            // vanishes and all its effects are cleaned up.
+            apply_condition(caster, Sustaining_Flaming_Sphere, Duration.indefinite)
+
+            // Initial damage to the target in the sphere's space.
+            let save: RollResult = roll(1d20 + modifier(target.abilities[DEX]))
+            let dc = 10 + modifier(caster.abilities[WIS])
+            if save.total < dc {
+                let dmg: RollResult = roll(3d6)
+                target.HP -= dmg.total
+            }
+
+            emit SpellSustained(caster: caster, inv: inv)
+        }
+    }
+
+    condition Sustaining_Flaming_Sphere on bearer: Character {
+        // The condition's mere presence signals the spell is active.
+        // Modify clauses could add ongoing effects here.
+    }
+
+
+    // --- Inspire Courage (CRB p. 386) ---
+    //
+    // Cantrip (bard focus), sustained up to 1 round normally.
+    // Allies gain +1 status bonus to attack rolls and damage.
+
+    action CastInspireCourage on bard: Character (ally: Character) #sustained {
+        cost { action }
+
+        resolve {
+            let inv = invocation()
+            apply_condition(ally, InspiredCourage, Duration.indefinite)
+            emit SpellSustained(caster: bard, inv: inv)
+        }
+    }
+
+    condition InspiredCourage on bearer: Character {
+        // +1 status bonus to attack and damage rolls.
+        modify attack_roll(attacker: bearer) {
+            bonus = 1
+        }
+        modify damage_roll(attacker: bearer) {
+            bonus = 1
+        }
+    }
+
+
+    // --- Sustain a Spell (CRB p. 304) ---
+    //
+    // The caster spends an action to keep a sustained spell going.
+    // In full PF2e, this extends the duration; here, it signals
+    // the host that the spell was sustained this turn so the
+    // lapse hook won't fire for it.
+    //
+    // The host tracks which invocations were sustained each turn
+    // and emits SustainedSpellLapsed for those that weren't.
+
+    action SustainSpell on caster: Character (inv: Invocation) {
+        cost { action }
+
+        resolve {
+            // The sustain action itself doesn't apply new
+            // conditions — it just signals continuity.
+            // The host observes this action's completion and
+            // marks the invocation as "sustained this turn."
+            1
+        }
+    }
+
+    // --- Dismiss a Spell (CRB p. 305) ---
+    //
+    // The caster voluntarily ends a sustained spell.
+
+    action DismissSpell on caster: Character (inv: Invocation) {
+        cost { action }
+
+        resolve {
+            revoke(some(inv))
+
+            // Clear the matching slot.
+            if caster.sustained_1 == some(inv) {
+                caster.sustained_1 = none
+            }
+            if caster.sustained_2 == some(inv) {
+                caster.sustained_2 = none
+            }
+        }
+    }
+
+
+    // --- Tagged mechanics for modify targets ---
+
+    mechanic attack_roll(
+        attacker: Character,
+        target: Character,
+        bonus: int = 0,
+        bonus_dice: DiceExpr = 0d1
+    ) -> RollResult #attack {
+        roll(1d20 + modifier(attacker.abilities[STR]) + bonus + bonus_dice)
+    }
+
+    mechanic damage_roll(
+        attacker: Character,
+        target: Character,
+        bonus: int = 0,
+        bonus_dice: DiceExpr = 0d1
+    ) -> RollResult {
+        roll(1d8 + modifier(attacker.abilities[STR]) + bonus + bonus_dice)
+    }
+
+    // Basic Strike for testing combat with sustained buffs.
+    action Strike on attacker: Character (target: Character) {
+        cost { action }
+
+        resolve {
+            let atk = attack_roll(attacker, target)
+            if atk.total >= target.AC {
+                let dmg = damage_roll(attacker, target)
+                target.HP -= dmg.total
+            }
+        }
+    }
+}

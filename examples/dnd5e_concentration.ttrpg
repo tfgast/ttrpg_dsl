@@ -1,0 +1,284 @@
+// ============================================================
+// D&D 5e Concentration — Invocation Tracking Example
+//
+// Demonstrates how invocation tracking implements 5e's
+// concentration mechanic entirely in the DSL:
+//
+//   - One spell at a time: casting a new concentration spell
+//     automatically revokes the previous one via a hook.
+//   - Damage-triggered saves: a reaction checks Constitution
+//     and revokes on failure.
+//   - Clean revocation: `revoke(inv)` removes all conditions
+//     applied by that spell across all targets.
+//
+// Key primitives: invocation(), revoke(), tag, event, hook.
+// ============================================================
+
+system "D&D 5e Concentration" {
+
+    // --- Core types ---
+
+    enum Ability { STR, DEX, CON, INT, WIS, CHA }
+    enum RollMode { normal, advantage, disadvantage }
+
+    enum Duration {
+        end_of_turn,
+        start_of_next_turn,
+        rounds(count: int),
+        minutes(count: int),
+        indefinite
+    }
+
+    struct TurnBudget {
+        actions: int = 0
+        bonus_actions: int = 0
+        reactions: int = 0
+        movement: int = 0
+    }
+
+
+    // --- Entities ---
+
+    entity Character {
+        name: string
+        level: int = 1
+        abilities: map<Ability, int>
+        AC: int
+        HP: resource(0..=max_HP)
+        max_HP: int
+        speed: int = 30
+        position: Position
+
+        // Concentration state: tracks which spell (if any) the
+        // character is currently concentrating on. Storing the
+        // invocation handle lets `revoke()` clean up all conditions
+        // applied by that spell in one call.
+        concentrating_on: option<Invocation>
+    }
+
+
+    // --- Shared mechanics ---
+
+    derive modifier(score: int) -> int {
+        floor((score - 10) / 2)
+    }
+
+    derive proficiency_bonus(level: int) -> int {
+        floor((level - 1) / 4) + 2
+    }
+
+    derive initial_budget(actor: Character) -> TurnBudget {
+        TurnBudget {
+            actions: 1,
+            bonus_actions: 1,
+            reactions: 1,
+            movement: actor.speed
+        }
+    }
+
+    mechanic d20_expr(
+        score: int,
+        proficiency: int = 0,
+        bonus: int = 0,
+        mode: RollMode = normal
+    ) -> DiceExpr {
+        let base: DiceExpr = match mode {
+            normal       => 1d20,
+            advantage    => 2d20kh1,
+            disadvantage => 2d20kl1
+        }
+        base + modifier(score) + proficiency + bonus
+    }
+
+
+    // --- Concentration infrastructure ---
+
+    // Tag marks actions as concentration spells. This is metadata —
+    // it doesn't trigger anything automatically. Ruleset authors
+    // explicitly emit events that fire hooks.
+    tag #concentration
+    tag #attack
+
+    // Fired after a concentration spell successfully applies its
+    // effects. The hook listens for this to manage the one-active
+    // rule. The invocation handle is passed through the event
+    // because the hook has its own invocation scope.
+    event ConcentrationStarted(caster: Character, inv: Invocation)
+
+    // Fired when an action deals damage. The concentration save
+    // reaction listens for this.
+    event Damaged(target: Character, attacker: Character, amount: int) {}
+
+
+    // --- Concentration hook ---
+    //
+    // When any concentration spell starts, revoke the previous
+    // one (if any) and record the new invocation. This enforces
+    // 5e's "one concentration spell at a time" rule.
+
+    hook on_conc on caster: Character (
+        trigger: ConcentrationStarted(caster: caster)
+    ) {
+        // revoke(none) is a no-op — safe on first concentration.
+        revoke(caster.concentrating_on)
+        caster.concentrating_on = some(trigger.inv)
+    }
+
+
+    // --- Concentration save reaction ---
+    //
+    // 5e PHB p. 203: "If you take damage while concentrating,
+    // you must make a Constitution saving throw to maintain
+    // concentration. The DC equals 10 or half the damage you
+    // take, whichever number is higher."
+
+    reaction ConcentrationSave on caster: Character (
+        trigger: Damaged(target: caster)
+    ) {
+        cost free
+
+        resolve {
+            if caster.concentrating_on != none {
+                let dc = max(10, floor(trigger.amount / 2))
+                let save: RollResult = roll(d20_expr(
+                    score: caster.abilities[CON]
+                ))
+                if save.total < dc {
+                    revoke(caster.concentrating_on)
+                    caster.concentrating_on = none
+                }
+            }
+        }
+    }
+
+
+    // ============================================================
+    //  Concentration Spells
+    // ============================================================
+
+    // --- Bless (PHB p. 219) ---
+    //
+    // 1st level, concentration up to 1 minute (10 rounds).
+    // Up to three targets gain +1d4 to attack rolls and saves.
+
+    action CastBless on caster: Character (targets: list<Character>) #concentration {
+        cost { action }
+
+        resolve {
+            // Capture invocation BEFORE applying conditions.
+            let inv = invocation()
+
+            // Apply conditions first — if this fails, the
+            // concentration event is never emitted and old
+            // concentration is preserved.
+            for target in targets {
+                apply_condition(target, Blessed, Duration.rounds(10))
+            }
+
+            // Register concentration last.
+            emit ConcentrationStarted(caster: caster, inv: inv)
+        }
+    }
+
+    condition Blessed on bearer: Character {
+        // +1d4 to attack rolls while blessed.
+        modify attack_roll(attacker: bearer) {
+            bonus_dice = 1d4
+        }
+    }
+
+
+    // --- Hex (PHB p. 251) ---
+    //
+    // 1st level, concentration up to 1 hour.
+    // Single target takes extra 1d6 necrotic on each hit.
+
+    action CastHex on caster: Character (target: Character) #concentration {
+        cost { bonus_action }
+
+        resolve {
+            let inv = invocation()
+            apply_condition(target, Hexed, Duration.indefinite)
+            emit ConcentrationStarted(caster: caster, inv: inv)
+        }
+    }
+
+    condition Hexed on bearer: Character {
+        // +1d6 to damage rolls against the hexed target.
+        modify damage_roll(target: bearer) {
+            bonus_dice = 1d6
+        }
+    }
+
+
+    // --- Hold Person (PHB p. 251) ---
+    //
+    // 2nd level, concentration up to 1 minute (10 rounds).
+    // Target is paralyzed on failed Wisdom save.
+
+    action CastHoldPerson on caster: Character (target: Character) #concentration {
+        cost { action }
+
+        resolve {
+            let inv = invocation()
+            let save: RollResult = roll(d20_expr(score: target.abilities[WIS]))
+            let dc = 8 + proficiency_bonus(caster.level) + modifier(caster.abilities[WIS])
+            if save.total < dc {
+                apply_condition(target, HeldByPerson, Duration.rounds(10))
+                emit ConcentrationStarted(caster: caster, inv: inv)
+            }
+        }
+    }
+
+    condition HeldByPerson on bearer: Character {
+        // Held creatures auto-fail STR and DEX saves,
+        // and attacks against them have advantage.
+        modify attack_roll(target: bearer) {
+            mode = advantage
+        }
+    }
+
+
+    // --- Shared tagged mechanics ---
+    //
+    // The #attack tag demonstrates that concentration spells
+    // compose with the rest of the combat system. Blessed
+    // modifies attack_roll, which is called by resolve_attack.
+
+    mechanic attack_roll(
+        attacker: Character,
+        target: Character,
+        mode: RollMode = normal,
+        bonus_dice: DiceExpr = 0d1
+    ) -> RollResult #attack {
+        let expr = d20_expr(
+            score: attacker.abilities[STR],
+            proficiency: proficiency_bonus(attacker.level),
+            mode: mode
+        )
+        roll(expr + bonus_dice)
+    }
+
+    mechanic damage_roll(
+        attacker: Character,
+        target: Character,
+        bonus_dice: DiceExpr = 0d1
+    ) -> RollResult {
+        roll(1d8 + modifier(attacker.abilities[STR]) + bonus_dice)
+    }
+
+    // A basic attack action that emits Damaged so the
+    // concentration save reaction can fire.
+    action Attack on attacker: Character (target: Character) {
+        cost { action }
+
+        resolve {
+            let atk = attack_roll(attacker, target)
+            if atk.total >= target.AC {
+                let dmg = damage_roll(attacker, target)
+                target.HP -= dmg.total
+                emit Damaged(target: target, attacker: attacker, amount: dmg.total)
+            }
+        }
+    }
+}
