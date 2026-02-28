@@ -1758,3 +1758,242 @@ fn adapter_attack_applies_damage() {
     // Original HP was 7, damage was 7, clamped to bounds(0..7) → 0
     assert_eq!(hp, Value::Int(0));
 }
+
+// ════════════════════════════════════════════════════════════════
+// Group 9: Saving Throws & Auto-Fail / Auto-Succeed
+// ════════════════════════════════════════════════════════════════
+
+#[test]
+fn saving_throw_normal_success() {
+    let (program, result) = setup();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let (state, fighter, _goblin) = standard_combatants();
+
+    // Fighter: STR 16, not proficient, level 5
+    // modifier(16) = 3, prof = 0
+    // d20_expr(16, 0, 0, normal) → 1d20+3
+    // Script: dice=12 → total=15, 15 >= DC 10 → success
+    let roll_response = scripted_roll(1, 20, None, 3, vec![12], vec![12], 15, 12);
+    let mut handler = ScriptedHandler::with_responses(vec![roll_response]);
+
+    let val = interp
+        .evaluate_mechanic(
+            &state,
+            &mut handler,
+            "saving_throw",
+            vec![
+                Value::Entity(fighter),
+                enum_variant("Ability", "STR"),
+                Value::Int(10),
+            ],
+        )
+        .unwrap();
+
+    assert_eq!(val, enum_variant("SaveResult", "success"));
+    assert!(handler
+        .log
+        .iter()
+        .any(|e| matches!(e, Effect::RollDice { .. })));
+}
+
+#[test]
+fn saving_throw_normal_failure() {
+    let (program, result) = setup();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let (state, fighter, _goblin) = standard_combatants();
+
+    // d20_expr(16, 0, 0, normal) → 1d20+3
+    // Script: dice=8 → total=11, 11 < DC 18 → failure
+    let roll_response = scripted_roll(1, 20, None, 3, vec![8], vec![8], 11, 8);
+    let mut handler = ScriptedHandler::with_responses(vec![roll_response]);
+
+    let val = interp
+        .evaluate_mechanic(
+            &state,
+            &mut handler,
+            "saving_throw",
+            vec![
+                Value::Entity(fighter),
+                enum_variant("Ability", "STR"),
+                Value::Int(18),
+            ],
+        )
+        .unwrap();
+
+    assert_eq!(val, enum_variant("SaveResult", "failure"));
+}
+
+#[test]
+fn stunned_auto_fails_str_save() {
+    let (program, result) = setup();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let (mut state, fighter, _goblin) = standard_combatants();
+
+    // Apply Stunned — modifies saving_throw(target: bearer, ability: STR) { mode = auto_fail }
+    state.apply_condition(
+        &fighter,
+        "Stunned",
+        BTreeMap::new(),
+        duration_variant("indefinite"),
+        None,
+    );
+
+    // Pattern A: mode changed to auto_fail → mechanic returns immediately, no roll.
+    // Effects: ModifyApplied(Phase1) → Ack
+    let mut handler = ScriptedHandler::with_responses(vec![Response::Acknowledged]);
+
+    let val = interp
+        .evaluate_mechanic(
+            &state,
+            &mut handler,
+            "saving_throw",
+            vec![
+                Value::Entity(fighter),
+                enum_variant("Ability", "STR"),
+                Value::Int(5), // easy DC — would pass normally
+            ],
+        )
+        .unwrap();
+
+    // Result is failure despite easy DC
+    assert_eq!(val, enum_variant("SaveResult", "failure"));
+
+    // No RollDice effect — roll was bypassed entirely
+    assert!(!handler
+        .log
+        .iter()
+        .any(|e| matches!(e, Effect::RollDice { .. })));
+
+    // ModifyApplied WAS emitted
+    assert!(handler
+        .log
+        .iter()
+        .any(|e| matches!(e, Effect::ModifyApplied { .. })));
+}
+
+#[test]
+fn stunned_does_not_affect_wis_save() {
+    let (program, result) = setup();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let (mut state, fighter, _goblin) = standard_combatants();
+
+    // Stunned only modifies STR and DEX saves
+    state.apply_condition(
+        &fighter,
+        "Stunned",
+        BTreeMap::new(),
+        duration_variant("indefinite"),
+        None,
+    );
+
+    // Fighter WIS=12, modifier(12)=1, prof=0 → 1d20+1
+    // Script: dice=14, total=15, 15 >= DC 10 → success
+    let roll_response = scripted_roll(1, 20, None, 1, vec![14], vec![14], 15, 14);
+    let mut handler = ScriptedHandler::with_responses(vec![roll_response]);
+
+    let val = interp
+        .evaluate_mechanic(
+            &state,
+            &mut handler,
+            "saving_throw",
+            vec![
+                Value::Entity(fighter),
+                enum_variant("Ability", "WIS"),
+                Value::Int(10),
+            ],
+        )
+        .unwrap();
+
+    assert_eq!(val, enum_variant("SaveResult", "success"));
+
+    // RollDice WAS emitted — WIS save is unaffected by Stunned
+    assert!(handler
+        .log
+        .iter()
+        .any(|e| matches!(e, Effect::RollDice { .. })));
+}
+
+#[test]
+fn petrified_overrides_str_save_result() {
+    let (program, result) = setup();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let (mut state, fighter, _goblin) = standard_combatants();
+
+    // Petrified: modify saving_throw(target: bearer, ability: STR) { result = SaveResult.failure }
+    state.apply_condition(
+        &fighter,
+        "Petrified",
+        BTreeMap::new(),
+        duration_variant("indefinite"),
+        None,
+    );
+
+    // Pattern B: body runs normally (roll happens), then result is overridden in Phase 2.
+    // Fighter STR 16, modifier=3, prof=0 → 1d20+3
+    // Script: dice=18, total=21, 21 >= DC 5 → would be success
+    // Effects: RollDice(roll), then ModifyApplied(Phase2) → Ack
+    let roll_response = scripted_roll(1, 20, None, 3, vec![18], vec![18], 21, 18);
+    let mut handler =
+        ScriptedHandler::with_responses(vec![roll_response, Response::Acknowledged]);
+
+    let val = interp
+        .evaluate_mechanic(
+            &state,
+            &mut handler,
+            "saving_throw",
+            vec![
+                Value::Entity(fighter),
+                enum_variant("Ability", "STR"),
+                Value::Int(5),
+            ],
+        )
+        .unwrap();
+
+    // Result is failure despite high roll — Phase 2 override
+    assert_eq!(val, enum_variant("SaveResult", "failure"));
+
+    // RollDice WAS emitted — the mechanic body ran normally
+    assert!(handler
+        .log
+        .iter()
+        .any(|e| matches!(e, Effect::RollDice { .. })));
+
+    // ModifyApplied WAS emitted (Phase 2 result override)
+    assert!(handler
+        .log
+        .iter()
+        .any(|e| matches!(e, Effect::ModifyApplied { .. })));
+}
+
+#[test]
+fn auto_succeed_bypasses_roll() {
+    let (program, result) = setup();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let (state, fighter, _goblin) = standard_combatants();
+
+    // Pass mode=auto_succeed directly — no condition needed
+    let mut handler = ScriptedHandler::new();
+
+    let val = interp
+        .evaluate_mechanic(
+            &state,
+            &mut handler,
+            "saving_throw",
+            vec![
+                Value::Entity(fighter),
+                enum_variant("Ability", "STR"),
+                Value::Int(30), // impossibly high DC
+                enum_variant("RollMode", "auto_succeed"),
+            ],
+        )
+        .unwrap();
+
+    // Success despite impossible DC — auto_succeed short-circuits
+    assert_eq!(val, enum_variant("SaveResult", "success"));
+
+    // No RollDice — roll was bypassed entirely
+    assert!(!handler
+        .log
+        .iter()
+        .any(|e| matches!(e, Effect::RollDice { .. })));
+}

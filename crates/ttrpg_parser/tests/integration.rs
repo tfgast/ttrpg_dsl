@@ -61,14 +61,14 @@ fn test_parse_full_example() {
         }
     }
 
-    assert_eq!(enums, 6, "enum count");
+    assert_eq!(enums, 7, "enum count");       // +SaveResult
     assert_eq!(structs, 2, "struct count");
     assert_eq!(entities, 2, "entity count");
     assert_eq!(derives, 4, "derive count");
-    assert_eq!(mechanics, 6, "mechanic count");
+    assert_eq!(mechanics, 7, "mechanic count"); // +saving_throw
     assert_eq!(actions, 9, "action count");
     assert_eq!(reactions, 2, "reaction count");
-    assert_eq!(conditions, 6, "condition count");
+    assert_eq!(conditions, 8, "condition count"); // +Stunned, Petrified
     assert_eq!(prompts, 2, "prompt count");
     assert_eq!(events, 5, "event count");
 }

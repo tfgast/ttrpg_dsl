@@ -24,7 +24,7 @@ system "D&D 5e Expanded" {
         stealth, survival
     }
 
-    enum RollMode { normal, advantage, disadvantage }
+    enum RollMode { normal, advantage, disadvantage, auto_fail, auto_succeed }
 
     enum DamageType {
         slashing, piercing, bludgeoning,
@@ -498,19 +498,25 @@ system "D&D 5e Expanded" {
         mode: RollMode = normal,
         bonus: int = 0
     ) -> SaveResult #d20_roll {
-        let prof = if ability in target.proficient_saves {
-            proficiency_bonus(target.level)
-        } else {
-            0
+        match mode {
+            auto_fail    => SaveResult.failure,
+            auto_succeed => SaveResult.success,
+            _ => {
+                let prof = if ability in target.proficient_saves {
+                    proficiency_bonus(target.level)
+                } else {
+                    0
+                }
+                let expr = d20_expr(
+                    score: target.abilities[ability],
+                    proficiency: prof,
+                    bonus: bonus,
+                    mode: mode
+                )
+                let result = roll(expr)
+                if result >= DC { SaveResult.success } else { SaveResult.failure }
+            }
         }
-        let expr = d20_expr(
-            score: target.abilities[ability],
-            proficiency: prof,
-            bonus: bonus,
-            mode: mode
-        )
-        let result = roll(expr)
-        if result >= DC { SaveResult.success } else { SaveResult.failure }
     }
 
     // --- Skill checks ---
@@ -1130,9 +1136,7 @@ system "D&D 5e Expanded" {
     }
 
     condition Stunned extends Incapacitated on bearer: Character {
-        // PAIN POINT: "Automatically fail STR/DEX saves" can't be       [ttrpg_dsl-34x]
-        // expressed — the modify system only supports advantage/disadvantage,
-        // not auto-fail. We approximate with disadvantage.
+        // RESOLVED: auto_fail bypasses the roll entirely.              [ttrpg_dsl-34x]
         modify attack_roll(target: bearer) {
             mode = advantage
         }
@@ -1140,10 +1144,10 @@ system "D&D 5e Expanded" {
             result.movement = 0
         }
         modify saving_throw(target: bearer, ability: STR) {
-            mode = disadvantage  // should be auto-fail
+            mode = auto_fail
         }
         modify saving_throw(target: bearer, ability: DEX) {
-            mode = disadvantage  // should be auto-fail
+            mode = auto_fail
         }
     }
 

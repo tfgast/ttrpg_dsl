@@ -172,7 +172,7 @@ fn test_collect_counts() {
     let source = include_str!("../../../spec/v0/04_full_example.ttrpg");
     let result = check_source(source);
 
-    // Enums: Ability, RollMode, DamageType, WeaponProperty, ResolvedDamage + built-in Duration
+    // Enums: Ability, RollMode, DamageType, WeaponProperty, SaveResult, ResolvedDamage + built-in Duration
     assert_eq!(
         result
             .env
@@ -180,7 +180,7 @@ fn test_collect_counts() {
             .values()
             .filter(|d| matches!(d, ttrpg_checker::env::DeclInfo::Enum(_)))
             .count(),
-        6
+        7
     );
     // Structs: DamageSpec, TurnBudget
     assert_eq!(
@@ -204,8 +204,8 @@ fn test_collect_counts() {
     );
     // Events: entity_leaves_reach, turn_start, turn_end, Damaged, ConcentrationStarted
     assert_eq!(result.env.events.len(), 5);
-    // Conditions: Prone, Dodging, Disengaging, Hidden, CunningAction, Blessed
-    assert_eq!(result.env.conditions.len(), 6);
+    // Conditions: Prone, Dodging, Disengaging, Hidden, Stunned, Petrified, CunningAction, Blessed
+    assert_eq!(result.env.conditions.len(), 8);
 }
 
 #[test]

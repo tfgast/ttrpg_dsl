@@ -15,7 +15,7 @@ system "D&D 5e Combat" {
     // --- Enums ---
 
     enum Ability { STR, DEX, CON, INT, WIS, CHA }
-    enum RollMode { normal, advantage, disadvantage }
+    enum RollMode { normal, advantage, disadvantage, auto_fail, auto_succeed }
 
     enum DamageType {
         slashing, piercing, bludgeoning,
@@ -32,6 +32,8 @@ system "D&D 5e Combat" {
         minutes(count: int),
         indefinite
     }
+
+    enum SaveResult { success, failure }
 
     enum ResolvedDamage {
         miss,
@@ -165,6 +167,34 @@ system "D&D 5e Combat" {
             mode: mode
         )
         roll(expr + bonus_dice)
+    }
+
+    mechanic saving_throw(
+        target: Character,
+        ability: Ability,
+        DC: int,
+        mode: RollMode = normal,
+        bonus: int = 0
+    ) -> SaveResult {
+        match mode {
+            auto_fail    => SaveResult.failure,
+            auto_succeed => SaveResult.success,
+            _ => {
+                let prof = if ability in target.proficient_saves {
+                    proficiency_bonus(target.level)
+                } else {
+                    0
+                }
+                let expr = d20_expr(
+                    score: target.abilities[ability],
+                    proficiency: prof,
+                    bonus: bonus,
+                    mode: mode
+                )
+                let save: RollResult = roll(expr)
+                if save.total >= DC { SaveResult.success } else { SaveResult.failure }
+            }
+        }
     }
 
     mechanic damage_expr(
@@ -433,8 +463,9 @@ system "D&D 5e Combat" {
         modify attack_roll(target: bearer) {
             mode = disadvantage
         }
-        // Note: saving throw advantage for DEX saves would require
-        // a saving_throw mechanic (omitted for brevity in this example)
+        modify saving_throw(target: bearer, ability: DEX) {
+            mode = advantage
+        }
     }
 
     condition Disengaging on bearer: Character {
@@ -449,6 +480,36 @@ system "D&D 5e Combat" {
         // Hidden grants advantage on attack rolls made by the bearer
         modify attack_roll(attacker: bearer) {
             mode = advantage
+        }
+    }
+
+    // Stunned: auto-fail STR/DEX saves via RollMode.auto_fail.
+    // The saving_throw mechanic checks for auto modes before rolling,
+    // so no dice are rolled at all.
+    condition Stunned on bearer: Character {
+        modify attack_roll(target: bearer) {
+            mode = advantage
+        }
+        modify saving_throw(target: bearer, ability: STR) {
+            mode = auto_fail
+        }
+        modify saving_throw(target: bearer, ability: DEX) {
+            mode = auto_fail
+        }
+    }
+
+    // Petrified: auto-fail STR/DEX saves via whole-result override.
+    // The mechanic body runs normally (the roll happens), but the
+    // result is replaced in Phase 2.
+    condition Petrified on bearer: Character {
+        modify attack_roll(target: bearer) {
+            mode = advantage
+        }
+        modify saving_throw(target: bearer, ability: STR) {
+            result = SaveResult.failure
+        }
+        modify saving_throw(target: bearer, ability: DEX) {
+            result = SaveResult.failure
         }
     }
 
