@@ -224,17 +224,19 @@ system "PF2e Sustained Spells" {
     //
     // The caster voluntarily ends a sustained spell.
 
-    action DismissSpell on caster: Character (inv: Invocation) {
+    action DismissSpell on caster: Character (inv: option<Invocation>) {
         cost { action }
 
         resolve {
-            revoke(some(inv))
+            // revoke() handles option<Invocation> directly —
+            // none is a no-op, some(id) revokes that invocation.
+            revoke(inv)
 
             // Clear the matching slot.
-            if caster.sustained_1 == some(inv) {
+            if caster.sustained_1 == inv {
                 caster.sustained_1 = none
             }
-            if caster.sustained_2 == some(inv) {
+            if caster.sustained_2 == inv {
                 caster.sustained_2 = none
             }
         }

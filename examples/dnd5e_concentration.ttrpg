@@ -125,28 +125,28 @@ system "D&D 5e Concentration" {
     }
 
 
-    // --- Concentration save reaction ---
+    // --- Concentration save hook ---
     //
     // 5e PHB p. 203: "If you take damage while concentrating,
     // you must make a Constitution saving throw to maintain
     // concentration. The DC equals 10 or half the damage you
     // take, whichever number is higher."
+    //
+    // Modeled as a hook (not a reaction) because concentration
+    // saves are mandatory — no player choice is involved.
+    // The hook fires inline when the Damaged event is emitted.
 
-    reaction ConcentrationSave on caster: Character (
+    hook ConcentrationSave on caster: Character (
         trigger: Damaged(target: caster)
     ) {
-        cost free
-
-        resolve {
-            if caster.concentrating_on != none {
-                let dc = max(10, floor(trigger.amount / 2))
-                let save: RollResult = roll(d20_expr(
-                    score: caster.abilities[CON]
-                ))
-                if save.total < dc {
-                    revoke(caster.concentrating_on)
-                    caster.concentrating_on = none
-                }
+        if caster.concentrating_on != none {
+            let dc = max(10, floor(trigger.amount / 2))
+            let save: RollResult = roll(d20_expr(
+                score: caster.abilities[CON]
+            ))
+            if save.total < dc {
+                revoke(caster.concentrating_on)
+                caster.concentrating_on = none
             }
         }
     }
