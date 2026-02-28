@@ -587,9 +587,11 @@ system "D&D 5e Expanded" {
         roll(expr)
     }
 
-    // MISSING FEATURE: No list sorting / map / reduce.               [ttrpg_dsl-4km]
-    // The host must sort combatants by initiative. For-loops help
-    // iterate but don't produce ordered collections.
+    // RESOLVED: List comprehensions + sort() + aggregation builtins.  [ttrpg_dsl-4km]
+    // Initiative order can now be produced in the DSL:
+    //     let rolls = [initiative_roll(c) for c in combatants]
+    //     let ordered = sort(rolls)
+    // Also: [x.name for x in targets if x.HP > 0] for map+filter.
 
     // --- Concentration ---
 
@@ -1371,6 +1373,14 @@ system "D&D 5e Expanded" {
     //
     //  [RESOLVED] DiceExpr fields can use 0d6 default           [ttrpg_dsl-46i]
     //
+    //  [RESOLVED] LIST COMPREHENSIONS & COLLECTION BUILTINS    [ttrpg_dsl-4km]
+    //     - `[expr for x in list]` — map over a list
+    //     - `[expr for x in list if cond]` — map + filter
+    //     - `sort(list)` — sort in natural order
+    //     - `sum(list)`, `any(list)`, `all(list)` — aggregation
+    //     - `first(list)`, `last(list)`, `reverse(list)` — access
+    //     - Replaces need for explicit map/filter/reduce functions
+    //
     //
     //  REMAINING language gaps:
     //
@@ -1384,21 +1394,18 @@ system "D&D 5e Expanded" {
     //     - Can't check "is between A and B" (flanking)
     //     - Position is opaque — only distance() is available
     //
-    //  3. NO LIST SORTING / MAP / FILTER / REDUCE               [ttrpg_dsl-4km]
-    //     - Host must sort initiative; no ordered collection output
-    //
-    //  4. NO ENTITY DESTRUCTION / LIFECYCLE                     [ttrpg_dsl-bcc]
+    //  3. NO ENTITY DESTRUCTION / LIFECYCLE                     [ttrpg_dsl-bcc]
     //     - Can't destroy(dying) — death removes entities permanently
     //
-    //  5. NO ENUM-ASSOCIATED DATA / LOOKUP TABLES               [ttrpg_dsl-8tu]
+    //  4. NO ENUM-ASSOCIATED DATA / LOOKUP TABLES               [ttrpg_dsl-8tu]
     //     - skill_ability is 18-branch match for static data
     //
-    //  6. NO EVENT-TRIGGERED DURATIONS                          [ttrpg_dsl-rh4]
+    //  5. NO EVENT-TRIGGERED DURATIONS                          [ttrpg_dsl-rh4]
     //     - "Until next use" (Help) and "until save" (spell effects)
     //
-    //  7. NO SPELL INSTANCE / EFFECT TRACKING                   [ttrpg_dsl-5kb]
+    //  6. NO SPELL INSTANCE / EFFECT TRACKING                   [ttrpg_dsl-5kb]
     //     - Dropping concentration can't auto-remove spell effects
     //
-    //  8. NO INTEGER RANGE / BOUNDED INT TYPES                  [ttrpg_dsl-3v8]
+    //  7. NO INTEGER RANGE / BOUNDED INT TYPES                  [ttrpg_dsl-3v8]
     //     - Can't express int(1..9) for spell slot levels
 }
