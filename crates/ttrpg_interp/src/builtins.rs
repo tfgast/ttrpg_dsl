@@ -30,6 +30,8 @@ pub(crate) fn call_builtin(
         "roll" => builtin_roll(env, &args, span),
         "apply_condition" => builtin_apply_condition(env, &args, span),
         "remove_condition" => builtin_remove_condition(env, &args, span),
+        "invocation" => builtin_invocation(env, &args, span),
+        "revoke" => builtin_revoke(env, &args, span),
         _ => Err(RuntimeError::with_span(
             format!("unknown builtin function '{}'", name),
             span,
@@ -400,6 +402,75 @@ fn builtin_remove_condition(
     }
 }
 
+// ── invocation ─────────────────────────────────────────────
+
+/// `invocation() -> Invocation`
+///
+/// Returns the current invocation ID. Must be called inside an action,
+/// reaction, or hook scope — errors otherwise.
+fn builtin_invocation(env: &Env, args: &[Value], span: Span) -> Result<Value, RuntimeError> {
+    if !args.is_empty() {
+        return Err(RuntimeError::with_span(
+            "invocation() takes no arguments",
+            span,
+        ));
+    }
+    match env.current_invocation_id {
+        Some(id) => Ok(Value::Invocation(id)),
+        None => Err(RuntimeError::with_span(
+            "invocation() called outside of action/reaction/hook scope",
+            span,
+        )),
+    }
+}
+
+// ── revoke ─────────────────────────────────────────────────
+
+/// `revoke(inv: Invocation | option<Invocation> | none) -> none`
+///
+/// Emits a `RevokeInvocation` effect for the given invocation ID.
+/// Accepts `none` or `Option(None)` as a no-op (nothing to revoke).
+fn builtin_revoke(env: &mut Env, args: &[Value], span: Span) -> Result<Value, RuntimeError> {
+    let arg = args.first().ok_or_else(|| {
+        RuntimeError::with_span("revoke() requires 1 argument", span)
+    })?;
+
+    match arg {
+        Value::Invocation(id) => {
+            let effect = Effect::RevokeInvocation { invocation: *id };
+            validate_mutation_response(env.handler.handle(effect), "RevokeInvocation", span)?;
+            Ok(Value::None)
+        }
+        Value::Option(Some(inner)) => match inner.as_ref() {
+            Value::Invocation(id) => {
+                let effect = Effect::RevokeInvocation { invocation: *id };
+                validate_mutation_response(
+                    env.handler.handle(effect),
+                    "RevokeInvocation",
+                    span,
+                )?;
+                Ok(Value::None)
+            }
+            other => Err(RuntimeError::with_span(
+                format!(
+                    "revoke() expects Invocation inside Option, got {}",
+                    type_name(other)
+                ),
+                span,
+            )),
+        },
+        Value::Option(None) => Ok(Value::None),
+        Value::None => Ok(Value::None),
+        other => Err(RuntimeError::with_span(
+            format!(
+                "revoke() expects Invocation or option<Invocation>, got {}",
+                type_name(other)
+            ),
+            span,
+        )),
+    }
+}
+
 // ── Helpers ────────────────────────────────────────────────────
 
 /// Validate a response to a mutation effect (ApplyCondition, RemoveCondition).
@@ -522,5 +593,155 @@ mod tests {
         let result = builtin_error(&[Value::Int(42)], dummy_span());
         let err = result.unwrap_err();
         assert!(err.message.contains("expects String"));
+    }
+
+    // ── invocation() / revoke() unit tests ──────────────────
+
+    use std::collections::VecDeque;
+    use crate::effect::EffectHandler;
+    use crate::state::{EntityRef, InvocationId, StateProvider, ActiveCondition};
+    use crate::Interpreter;
+
+    struct TestHandler {
+        script: VecDeque<Response>,
+        log: Vec<Effect>,
+    }
+
+    impl TestHandler {
+        fn new() -> Self {
+            TestHandler {
+                script: VecDeque::new(),
+                log: Vec::new(),
+            }
+        }
+    }
+
+    impl EffectHandler for TestHandler {
+        fn handle(&mut self, effect: Effect) -> Response {
+            self.log.push(effect);
+            self.script.pop_front().unwrap_or(Response::Acknowledged)
+        }
+    }
+
+    struct EmptyState;
+
+    impl StateProvider for EmptyState {
+        fn read_field(&self, _: &EntityRef, _: &str) -> Option<Value> { None }
+        fn read_conditions(&self, _: &EntityRef) -> Option<Vec<ActiveCondition>> { None }
+        fn read_turn_budget(&self, _: &EntityRef) -> Option<BTreeMap<Name, Value>> { None }
+        fn read_enabled_options(&self) -> Vec<Name> { vec![] }
+        fn position_eq(&self, _: &Value, _: &Value) -> bool { false }
+        fn distance(&self, _: &Value, _: &Value) -> Option<i64> { None }
+    }
+
+    fn make_env<'a, 'p>(
+        state: &'a EmptyState,
+        handler: &'a mut TestHandler,
+        interp: &'a Interpreter<'p>,
+    ) -> crate::Env<'a, 'p> {
+        crate::Env::new(state, handler, interp)
+    }
+
+    fn empty_program_and_env() -> (ttrpg_ast::ast::Program, ttrpg_checker::env::TypeEnv) {
+        let program = ttrpg_ast::ast::Program::default();
+        let env = ttrpg_checker::env::TypeEnv::default();
+        (program, env)
+    }
+
+    #[test]
+    fn invocation_returns_value_when_set() {
+        let (program, type_env) = empty_program_and_env();
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = EmptyState;
+        let mut handler = TestHandler::new();
+        let mut env = make_env(&state, &mut handler, &interp);
+        env.current_invocation_id = Some(InvocationId(42));
+
+        let result = builtin_invocation(&env, &[], dummy_span()).unwrap();
+        assert_eq!(result, Value::Invocation(InvocationId(42)));
+    }
+
+    #[test]
+    fn invocation_errors_when_none() {
+        let (program, type_env) = empty_program_and_env();
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = EmptyState;
+        let mut handler = TestHandler::new();
+        let env = make_env(&state, &mut handler, &interp);
+
+        let err = builtin_invocation(&env, &[], dummy_span()).unwrap_err();
+        assert!(err.message.contains("outside of action"));
+    }
+
+    #[test]
+    fn revoke_with_invocation_emits_effect() {
+        let (program, type_env) = empty_program_and_env();
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = EmptyState;
+        let mut handler = TestHandler::new();
+        {
+            let mut env = make_env(&state, &mut handler, &interp);
+            env.current_invocation_id = Some(InvocationId(1));
+
+            let result =
+                builtin_revoke(&mut env, &[Value::Invocation(InvocationId(7))], dummy_span())
+                    .unwrap();
+            assert_eq!(result, Value::None);
+        }
+        assert_eq!(handler.log.len(), 1);
+        assert!(matches!(
+            &handler.log[0],
+            Effect::RevokeInvocation { invocation }
+            if *invocation == InvocationId(7)
+        ));
+    }
+
+    #[test]
+    fn revoke_none_is_noop() {
+        let (program, type_env) = empty_program_and_env();
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = EmptyState;
+        let mut handler = TestHandler::new();
+        {
+            let mut env = make_env(&state, &mut handler, &interp);
+            let result = builtin_revoke(&mut env, &[Value::None], dummy_span()).unwrap();
+            assert_eq!(result, Value::None);
+        }
+        assert!(handler.log.is_empty());
+    }
+
+    #[test]
+    fn revoke_option_some_invocation_emits_effect() {
+        let (program, type_env) = empty_program_and_env();
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = EmptyState;
+        let mut handler = TestHandler::new();
+        {
+            let mut env = make_env(&state, &mut handler, &interp);
+            let arg = Value::Option(Some(Box::new(Value::Invocation(InvocationId(5)))));
+            let result = builtin_revoke(&mut env, &[arg], dummy_span()).unwrap();
+            assert_eq!(result, Value::None);
+        }
+        assert_eq!(handler.log.len(), 1);
+        assert!(matches!(
+            &handler.log[0],
+            Effect::RevokeInvocation { invocation }
+            if *invocation == InvocationId(5)
+        ));
+    }
+
+    #[test]
+    fn revoke_option_none_is_noop() {
+        let (program, type_env) = empty_program_and_env();
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = EmptyState;
+        let mut handler = TestHandler::new();
+        {
+            let mut env = make_env(&state, &mut handler, &interp);
+            let arg = Value::Option(None);
+            let result = builtin_revoke(&mut env, &[arg], dummy_span()).unwrap();
+            assert_eq!(result, Value::None);
+        }
+        assert!(handler.log.is_empty());
     }
 }

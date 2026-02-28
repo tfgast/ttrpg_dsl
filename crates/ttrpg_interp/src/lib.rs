@@ -10,6 +10,7 @@ pub mod reference_state;
 pub mod state;
 pub mod value;
 
+use std::cell::Cell;
 use std::collections::HashMap;
 
 use ttrpg_ast::ast::{DeclKind, ExprKind, Program, TopLevel};
@@ -70,6 +71,7 @@ impl std::error::Error for RuntimeError {}
 pub struct Interpreter<'p> {
     pub(crate) type_env: &'p TypeEnv,
     pub(crate) program: &'p Program,
+    next_invocation_id: Cell<u64>,
 }
 
 impl<'p> Interpreter<'p> {
@@ -93,7 +95,40 @@ impl<'p> Interpreter<'p> {
             }
         }
 
-        Ok(Interpreter { type_env, program })
+        Ok(Interpreter {
+            type_env,
+            program,
+            next_invocation_id: Cell::new(1),
+        })
+    }
+
+    /// Construct a new interpreter seeded with a starting invocation counter.
+    ///
+    /// Use this when restoring from persisted state so that new IDs don't
+    /// collide with previously-issued ones.
+    pub fn new_with_invocation_start(
+        program: &'p Program,
+        type_env: &'p TypeEnv,
+        start: u64,
+    ) -> Result<Self, RuntimeError> {
+        let interp = Self::new(program, type_env)?;
+        interp.next_invocation_id.set(start);
+        Ok(interp)
+    }
+
+    /// Allocate the next invocation ID, bumping the internal counter.
+    pub(crate) fn alloc_invocation_id(&self) -> InvocationId {
+        let id = self.next_invocation_id.get();
+        self.next_invocation_id.set(
+            id.checked_add(1)
+                .expect("invocation ID counter overflow"),
+        );
+        InvocationId(id)
+    }
+
+    /// Read the current invocation counter value (for host persistence).
+    pub fn next_invocation_id(&self) -> u64 {
+        self.next_invocation_id.get()
     }
 
     /// Execute a named action through the full pipeline.
@@ -562,6 +597,171 @@ mod tests {
         fn distance(&self, _a: &Value, _b: &Value) -> Option<i64> {
             None
         }
+    }
+
+    // ── Invocation counter unit tests ──────────────────────────
+
+    #[test]
+    fn alloc_invocation_id_monotonic() {
+        let source = r#"system "test" { entity E { x: int } }"#;
+        let (program, result) = setup(source);
+        let interp = Interpreter::new(&program, &result.env).unwrap();
+
+        let a = interp.alloc_invocation_id();
+        let b = interp.alloc_invocation_id();
+        let c = interp.alloc_invocation_id();
+
+        assert_eq!(a, InvocationId(1));
+        assert_eq!(b, InvocationId(2));
+        assert_eq!(c, InvocationId(3));
+    }
+
+    #[test]
+    fn new_with_invocation_start_seeds_correctly() {
+        let source = r#"system "test" { entity E { x: int } }"#;
+        let (program, result) = setup(source);
+        let interp =
+            Interpreter::new_with_invocation_start(&program, &result.env, 100).unwrap();
+
+        assert_eq!(interp.next_invocation_id(), 100);
+        let a = interp.alloc_invocation_id();
+        assert_eq!(a, InvocationId(100));
+        assert_eq!(interp.next_invocation_id(), 101);
+    }
+
+    #[test]
+    fn next_invocation_id_reflects_allocations() {
+        let source = r#"system "test" { entity E { x: int } }"#;
+        let (program, result) = setup(source);
+        let interp = Interpreter::new(&program, &result.env).unwrap();
+
+        assert_eq!(interp.next_invocation_id(), 1);
+        interp.alloc_invocation_id();
+        assert_eq!(interp.next_invocation_id(), 2);
+        interp.alloc_invocation_id();
+        assert_eq!(interp.next_invocation_id(), 3);
+    }
+
+    // ── Action lifecycle with invocation tracking ────────────
+
+    #[test]
+    fn e2e_action_completed_has_invocation_id() {
+        let source = r#"
+system "test" {
+    entity Character { HP: int }
+    action Noop on actor: Character () {
+        resolve { 0 }
+    }
+}
+"#;
+        let (program, result) = setup(source);
+        let interp = Interpreter::new(&program, &result.env).unwrap();
+        let mut state = TestState::new();
+        state.fields.insert((1, "HP".into()), Value::Int(10));
+        state.conditions.insert(1, vec![]);
+        let mut handler = ScriptedHandler::new();
+
+        let val = interp
+            .execute_action(&state, &mut handler, "Noop", EntityRef(1), vec![])
+            .unwrap();
+        assert_eq!(val, Value::Int(0));
+
+        // ActionCompleted should have Succeeded + Some(InvocationId(1))
+        let completed = handler
+            .log
+            .iter()
+            .find(|e| matches!(e, Effect::ActionCompleted { .. }))
+            .expect("should have ActionCompleted");
+        match completed {
+            Effect::ActionCompleted {
+                outcome,
+                invocation,
+                ..
+            } => {
+                assert_eq!(*outcome, crate::effect::ActionOutcome::Succeeded);
+                assert_eq!(*invocation, Some(InvocationId(1)));
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    #[test]
+    fn e2e_vetoed_action_has_no_invocation_id() {
+        let source = r#"
+system "test" {
+    entity Character { HP: int }
+    action Noop on actor: Character () {
+        resolve { 0 }
+    }
+}
+"#;
+        let (program, result) = setup(source);
+        let interp = Interpreter::new(&program, &result.env).unwrap();
+        let mut state = TestState::new();
+        state.fields.insert((1, "HP".into()), Value::Int(10));
+        state.conditions.insert(1, vec![]);
+        let mut handler = ScriptedHandler::with_responses(vec![Response::Vetoed]);
+
+        let val = interp
+            .execute_action(&state, &mut handler, "Noop", EntityRef(1), vec![])
+            .unwrap();
+        assert_eq!(val, Value::None);
+
+        // ActionCompleted should have Vetoed + None invocation
+        let completed = handler
+            .log
+            .iter()
+            .find(|e| matches!(e, Effect::ActionCompleted { .. }))
+            .expect("should have ActionCompleted");
+        match completed {
+            Effect::ActionCompleted {
+                outcome,
+                invocation,
+                ..
+            } => {
+                assert_eq!(*outcome, crate::effect::ActionOutcome::Vetoed);
+                assert_eq!(*invocation, None);
+            }
+            _ => unreachable!(),
+        }
+
+        // Counter should not have been consumed
+        assert_eq!(interp.next_invocation_id(), 1);
+    }
+
+    #[test]
+    fn e2e_action_started_always_paired_with_completed() {
+        let source = r#"
+system "test" {
+    entity Character { HP: int }
+    action Heal on actor: Character () {
+        resolve { actor.HP += 5 }
+    }
+}
+"#;
+        let (program, result) = setup(source);
+        let interp = Interpreter::new(&program, &result.env).unwrap();
+        let mut state = TestState::new();
+        state.fields.insert((1, "HP".into()), Value::Int(10));
+        state.conditions.insert(1, vec![]);
+        let mut handler = ScriptedHandler::new();
+
+        interp
+            .execute_action(&state, &mut handler, "Heal", EntityRef(1), vec![])
+            .unwrap();
+
+        let started_count = handler
+            .log
+            .iter()
+            .filter(|e| matches!(e, Effect::ActionStarted { .. }))
+            .count();
+        let completed_count = handler
+            .log
+            .iter()
+            .filter(|e| matches!(e, Effect::ActionCompleted { .. }))
+            .count();
+        assert_eq!(started_count, 1);
+        assert_eq!(completed_count, 1);
     }
 
     // ── End-to-end: parse → lower → check → interpret (small program) ──

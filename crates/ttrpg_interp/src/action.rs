@@ -34,13 +34,24 @@ fn emit_action_started(
             emit_action_completed(env, name, actor, ActionOutcome::Vetoed, None, call_span)?;
             Ok(LifecycleStart::Vetoed)
         }
-        other => Err(RuntimeError::with_span(
-            format!(
-                "protocol error: expected Acknowledged or Vetoed for ActionStarted, got {:?}",
-                other
-            ),
-            call_span,
-        )),
+        other => {
+            // Best-effort: emit ActionCompleted(Failed) so every Started is paired.
+            let _ = emit_action_completed(
+                env,
+                name,
+                actor,
+                ActionOutcome::Failed,
+                None,
+                call_span,
+            );
+            Err(RuntimeError::with_span(
+                format!(
+                    "protocol error: expected Acknowledged or Vetoed for ActionStarted, got {:?}",
+                    other
+                ),
+                call_span,
+            ))
+        }
     }
 }
 
@@ -71,10 +82,11 @@ fn emit_action_completed(
     }
 }
 
-/// Run `body` inside a scoped environment with `turn_actor` set to `actor`.
+/// Run `body` inside a scoped environment with `turn_actor` and invocation
+/// context set.
 ///
-/// Handles: save/restore `turn_actor`, push/pop scope, and emit
-/// `ActionCompleted` on success.
+/// Guarantees: every call emits exactly one `ActionCompleted` with the
+/// allocated `InvocationId`, regardless of whether the body succeeds or fails.
 fn scoped_execute(
     env: &mut Env,
     name: &str,
@@ -82,20 +94,39 @@ fn scoped_execute(
     call_span: Span,
     body: impl FnOnce(&mut Env) -> Result<Value, RuntimeError>,
 ) -> Result<Value, RuntimeError> {
+    // Save context
     let prev_turn_actor = env.turn_actor.take();
+    let prev_invocation = env.current_invocation_id.take();
+
+    // Set new context
     env.turn_actor = Some(actor);
+    let inv_id = env.interp.alloc_invocation_id();
+    env.current_invocation_id = Some(inv_id);
     env.push_scope();
 
     let result = body(env);
 
+    // Restore context
     env.pop_scope();
     env.turn_actor = prev_turn_actor;
+    env.current_invocation_id = prev_invocation;
 
-    if result.is_ok() {
-        emit_action_completed(env, name, actor, ActionOutcome::Succeeded, None, call_span)?;
+    // Always emit ActionCompleted
+    let outcome = if result.is_ok() {
+        ActionOutcome::Succeeded
+    } else {
+        ActionOutcome::Failed
+    };
+    let completion =
+        emit_action_completed(env, name, actor, outcome, Some(inv_id), call_span);
+
+    match result {
+        Ok(val) => {
+            completion?;
+            Ok(val)
+        }
+        Err(e) => Err(e), // body error takes precedence
     }
-
-    result
 }
 
 /// Inner pipeline shared by actions and reactions: optional requires → optional
@@ -182,7 +213,7 @@ pub(crate) fn execute_action(
     env: &mut Env,
     action: &ActionDecl,
     actor: EntityRef,
-    mut args: Vec<(Name, Value)>,
+    args: Vec<(Name, Value)>,
     call_span: Span,
 ) -> Result<Value, RuntimeError> {
     let action_name = action.name.clone();
@@ -204,26 +235,26 @@ pub(crate) fn execute_action(
         return Ok(Value::None);
     }
 
-    // 2. Fill defaults for missing optional params (after veto check)
-    for i in args.len()..action.params.len() {
-        if let Some(ref default_expr) = action.params[i].default {
-            env.push_scope();
-            env.bind(action.receiver_name.clone(), Value::Entity(actor));
-            for (pname, pval) in &args {
-                env.bind(pname.clone(), pval.clone());
-            }
-            let result = eval_expr(env, default_expr);
-            env.pop_scope();
-            args.push((action.params[i].name.clone(), result?));
-        }
-    }
-
-    // 3–5. Scoped execution with lifecycle completion
+    // 2–5. Scoped execution with lifecycle completion
+    //
+    // Defaults are evaluated inside the scoped closure so they run with
+    // invocation context set and failures are covered by the always-emit
+    // ActionCompleted guarantee.
     scoped_execute(env, &action_name, actor, call_span, |env| {
+        // Bind receiver first so defaults can reference it
         env.bind(action.receiver_name.clone(), Value::Entity(actor));
-        for (name, value) in &args {
-            env.bind(name.clone(), value.clone());
+        for (pname, pval) in &args {
+            env.bind(pname.clone(), pval.clone());
         }
+
+        // Fill defaults for missing optional params
+        for i in args.len()..action.params.len() {
+            if let Some(ref default_expr) = action.params[i].default {
+                let val = eval_expr(env, default_expr)?;
+                env.bind(action.params[i].name.clone(), val);
+            }
+        }
+
         execute_pipeline(
             env,
             &actor,
