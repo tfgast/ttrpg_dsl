@@ -122,15 +122,20 @@ pub fn format_path(path: &[FieldPathSegment]) -> String {
 }
 
 pub fn format_dice_expr(expr: &DiceExpr) -> String {
-    let mut s = format!("{}d{}", expr.count, expr.sides);
-    if let Some(filter) = &expr.filter {
-        match filter {
-            DiceFilter::KeepHighest(n) => s.push_str(&format!("kh{}", n)),
-            DiceFilter::KeepLowest(n) => s.push_str(&format!("kl{}", n)),
-            DiceFilter::DropHighest(n) => s.push_str(&format!("dh{}", n)),
-            DiceFilter::DropLowest(n) => s.push_str(&format!("dl{}", n)),
+    let mut parts: Vec<String> = Vec::new();
+    for group in &expr.groups {
+        let mut gs = format!("{}d{}", group.count, group.sides);
+        if let Some(filter) = &group.filter {
+            match filter {
+                DiceFilter::KeepHighest(n) => gs.push_str(&format!("kh{}", n)),
+                DiceFilter::KeepLowest(n) => gs.push_str(&format!("kl{}", n)),
+                DiceFilter::DropHighest(n) => gs.push_str(&format!("dh{}", n)),
+                DiceFilter::DropLowest(n) => gs.push_str(&format!("dl{}", n)),
+            }
         }
+        parts.push(gs);
     }
+    let mut s = parts.join(" + ");
     if expr.modifier > 0 {
         s.push_str(&format!(" + {}", expr.modifier));
     } else if expr.modifier < 0 {
@@ -231,46 +236,26 @@ mod tests {
 
     #[test]
     fn format_dice_expr_simple() {
-        let val = Value::DiceExpr(DiceExpr {
-            count: 2,
-            sides: 6,
-            filter: None,
-            modifier: 3,
-        });
+        let val = Value::DiceExpr(DiceExpr::single(2, 6, None, 3));
         assert_eq!(format_value(&val), "2d6 + 3");
     }
 
     #[test]
     fn format_dice_expr_negative_modifier() {
-        let val = Value::DiceExpr(DiceExpr {
-            count: 1,
-            sides: 20,
-            filter: None,
-            modifier: -2,
-        });
+        let val = Value::DiceExpr(DiceExpr::single(1, 20, None, -2));
         assert_eq!(format_value(&val), "1d20 - 2");
     }
 
     #[test]
     fn format_dice_expr_no_modifier() {
-        let val = Value::DiceExpr(DiceExpr {
-            count: 4,
-            sides: 6,
-            filter: Some(DiceFilter::KeepHighest(3)),
-            modifier: 0,
-        });
+        let val = Value::DiceExpr(DiceExpr::single(4, 6, Some(DiceFilter::KeepHighest(3)), 0));
         assert_eq!(format_value(&val), "4d6kh3");
     }
 
     #[test]
     fn format_roll_result() {
         let val = Value::RollResult(RollResult {
-            expr: DiceExpr {
-                count: 2,
-                sides: 6,
-                filter: None,
-                modifier: 0,
-            },
+            expr: DiceExpr::single(2, 6, None, 0),
             dice: vec![3, 5],
             kept: vec![3, 5],
             modifier: 0,
@@ -319,12 +304,7 @@ mod tests {
 
     #[test]
     fn format_dice_expr_i64_min_modifier() {
-        let expr = DiceExpr {
-            count: 1,
-            sides: 20,
-            filter: None,
-            modifier: i64::MIN,
-        };
+        let expr = DiceExpr::single(1, 20, None, i64::MIN);
         let result = format_dice_expr(&expr);
         assert!(
             result.contains(" - 9223372036854775808"),

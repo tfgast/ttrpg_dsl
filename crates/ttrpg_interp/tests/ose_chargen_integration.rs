@@ -101,12 +101,7 @@ fn aptitude_val(name: &str) -> Value {
 
 fn scripted_roll(count: u32, sides: u32, dice: Vec<i64>, total: i64) -> Response {
     Response::Rolled(RollResult {
-        expr: DiceExpr {
-            count,
-            sides,
-            filter: None,
-            modifier: 0,
-        },
+        expr: DiceExpr::single(count, sides, None, 0),
         dice: dice.clone(),
         kept: dice,
         modifier: 0,

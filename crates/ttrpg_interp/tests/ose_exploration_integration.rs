@@ -99,12 +99,7 @@ fn enum_variant(enum_name: &str, variant: &str) -> Value {
 
 fn scripted_roll(count: u32, sides: u32, die: i64) -> Response {
     Response::Rolled(RollResult {
-        expr: DiceExpr {
-            count,
-            sides,
-            filter: None,
-            modifier: 0,
-        },
+        expr: DiceExpr::single(count, sides, None, 0),
         dice: vec![die],
         kept: vec![die],
         modifier: 0,

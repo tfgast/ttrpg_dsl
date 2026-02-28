@@ -10,13 +10,41 @@ use crate::state::{EntityRef, InvocationId};
 
 // ── Dice pipeline types ─────────────────────────────────────────
 
-/// A dice expression that has not yet been rolled.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DiceExpr {
+/// A single dice group within a dice expression (e.g., `2d6kh1`).
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct DiceGroup {
     pub count: u32,
     pub sides: u32,
     pub filter: Option<DiceFilter>,
+}
+
+/// A dice expression that has not yet been rolled.
+///
+/// Contains one or more dice groups plus a flat modifier.
+/// For example, `1d20 + 1d6 + 5` has two groups and modifier 5.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DiceExpr {
+    pub groups: Vec<DiceGroup>,
     pub modifier: i64,
+}
+
+impl DiceExpr {
+    /// Construct a DiceExpr with a single dice group.
+    pub fn single(count: u32, sides: u32, filter: Option<DiceFilter>, modifier: i64) -> Self {
+        DiceExpr {
+            groups: vec![DiceGroup {
+                count,
+                sides,
+                filter,
+            }],
+            modifier,
+        }
+    }
+
+    /// Total number of dice across all groups.
+    pub fn total_dice_count(&self) -> u32 {
+        self.groups.iter().map(|g| g.count).sum()
+    }
 }
 
 /// The result of rolling a dice expression.
@@ -328,11 +356,9 @@ impl Ord for Value {
 }
 
 fn dice_expr_cmp(a: &DiceExpr, b: &DiceExpr) -> std::cmp::Ordering {
-    a.count
-        .cmp(&b.count)
-        .then_with(|| a.sides.cmp(&b.sides))
+    a.groups
+        .cmp(&b.groups)
         .then_with(|| a.modifier.cmp(&b.modifier))
-        .then_with(|| a.filter.cmp(&b.filter))
 }
 
 fn roll_result_cmp(a: &RollResult, b: &RollResult) -> std::cmp::Ordering {
@@ -377,15 +403,11 @@ impl std::hash::Hash for Value {
             Value::Float(v) => v.to_bits().hash(state),
             Value::Str(v) => v.hash(state),
             Value::DiceExpr(v) => {
-                v.count.hash(state);
-                v.sides.hash(state);
-                v.filter.hash(state);
+                v.groups.hash(state);
                 v.modifier.hash(state);
             }
             Value::RollResult(v) => {
-                v.expr.count.hash(state);
-                v.expr.sides.hash(state);
-                v.expr.filter.hash(state);
+                v.expr.groups.hash(state);
                 v.expr.modifier.hash(state);
                 v.dice.hash(state);
                 v.kept.hash(state);
@@ -637,25 +659,17 @@ mod tests {
 
     #[test]
     fn dice_expr_construction() {
-        let expr = DiceExpr {
-            count: 2,
-            sides: 6,
-            filter: None,
-            modifier: 3,
-        };
-        assert_eq!(expr.count, 2);
-        assert_eq!(expr.sides, 6);
+        let expr = DiceExpr::single(2, 6, None, 3);
+        assert_eq!(expr.groups.len(), 1);
+        assert_eq!(expr.groups[0].count, 2);
+        assert_eq!(expr.groups[0].sides, 6);
         assert_eq!(expr.modifier, 3);
+        assert_eq!(expr.total_dice_count(), 2);
     }
 
     #[test]
     fn roll_result_construction() {
-        let expr = DiceExpr {
-            count: 2,
-            sides: 6,
-            filter: None,
-            modifier: 3,
-        };
+        let expr = DiceExpr::single(2, 6, None, 3);
         let result = RollResult {
             expr: expr.clone(),
             dice: vec![4, 5],
@@ -720,12 +734,7 @@ mod tests {
 
     #[test]
     fn ord_eq_contract_roll_result_same_total_different_dice() {
-        let expr = DiceExpr {
-            count: 2,
-            sides: 6,
-            filter: None,
-            modifier: 0,
-        };
+        let expr = DiceExpr::single(2, 6, None, 0);
         let r1 = Value::RollResult(RollResult {
             expr: expr.clone(),
             dice: vec![3, 4],
@@ -750,12 +759,7 @@ mod tests {
     #[test]
     fn ord_eq_contract_all_variants() {
         let pos: Arc<dyn Any + Send + Sync> = Arc::new(42i64);
-        let expr = DiceExpr {
-            count: 1,
-            sides: 20,
-            filter: None,
-            modifier: 5,
-        };
+        let expr = DiceExpr::single(1, 20, None, 5);
 
         // Build pairs of (equal, different) for each variant
         let pairs: Vec<(Value, Value, Value)> = vec![
@@ -771,12 +775,7 @@ mod tests {
             (
                 Value::DiceExpr(expr.clone()),
                 Value::DiceExpr(expr.clone()),
-                Value::DiceExpr(DiceExpr {
-                    count: 2,
-                    sides: 20,
-                    filter: None,
-                    modifier: 5,
-                }),
+                Value::DiceExpr(DiceExpr::single(2, 20, None, 5)),
             ),
             (
                 Value::RollResult(RollResult {

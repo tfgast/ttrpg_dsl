@@ -1113,12 +1113,7 @@ system "test" {
         let state = TestState::new();
 
         let roll_result = RollResult {
-            expr: DiceExpr {
-                count: 1,
-                sides: 20,
-                filter: None,
-                modifier: 5,
-            },
+            expr: DiceExpr::single(1, 20, None, 5),
             dice: vec![15],
             kept: vec![15],
             modifier: 5,
@@ -1381,12 +1376,7 @@ system "test" {
         // Script: ActionStarted → Ack, RequiresCheck (none), DeductCost → Ack,
         // RollDice → roll 15+5=20 (hits AC 12)
         let roll_result = RollResult {
-            expr: DiceExpr {
-                count: 1,
-                sides: 20,
-                filter: None,
-                modifier: 5,
-            },
+            expr: DiceExpr::single(1, 20, None, 5),
             dice: vec![15],
             kept: vec![15],
             modifier: 5,
@@ -1465,12 +1455,7 @@ system "test" {
 
         // Roll 3+5=8, misses AC 18
         let roll_result = RollResult {
-            expr: DiceExpr {
-                count: 1,
-                sides: 20,
-                filter: None,
-                modifier: 5,
-            },
+            expr: DiceExpr::single(1, 20, None, 5),
             dice: vec![3],
             kept: vec![3],
             modifier: 5,
@@ -1592,12 +1577,7 @@ system "test" {
         // Script for action execution:
         // ActionStarted → Ack, DeductCost → Ack, RollDice → strong hit (total=12)
         let roll_result = RollResult {
-            expr: DiceExpr {
-                count: 2,
-                sides: 6,
-                filter: None,
-                modifier: 2,
-            },
+            expr: DiceExpr::single(2, 6, None, 2),
             dice: vec![5, 5],
             kept: vec![5, 5],
             modifier: 2,

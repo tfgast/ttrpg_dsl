@@ -113,12 +113,7 @@ fn scripted_roll(
     unmodified: i64,
 ) -> Response {
     Response::Rolled(RollResult {
-        expr: DiceExpr {
-            count,
-            sides,
-            filter: None,
-            modifier,
-        },
+        expr: DiceExpr::single(count, sides, None, modifier),
         dice: dice_vals,
         kept: kept_vals,
         modifier,

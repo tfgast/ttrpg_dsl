@@ -206,8 +206,8 @@ fn eval_add(
                 RuntimeError::with_span("dice modifier overflow in addition", expr.span)
             })?;
             Ok(Value::DiceExpr(DiceExpr {
+                groups: d.groups.clone(),
                 modifier,
-                ..d.clone()
             }))
         }
         (Value::Int(n), Value::DiceExpr(d)) => {
@@ -215,33 +215,18 @@ fn eval_add(
                 RuntimeError::with_span("dice modifier overflow in addition", expr.span)
             })?;
             Ok(Value::DiceExpr(DiceExpr {
+                groups: d.groups.clone(),
                 modifier,
-                ..d.clone()
             }))
         }
-        // DiceExpr + DiceExpr → merge counts and modifiers (must have same dice spec)
+        // DiceExpr + DiceExpr → concatenate groups, sum modifiers
         (Value::DiceExpr(a), Value::DiceExpr(b)) => {
-            if a.sides != b.sides || a.filter != b.filter {
-                return Err(RuntimeError::with_span(
-                    format!(
-                        "cannot add dice expressions with different specs ({}d{} vs {}d{})",
-                        a.count, a.sides, b.count, b.sides
-                    ),
-                    expr.span,
-                ));
-            }
-            let count = a.count.checked_add(b.count).ok_or_else(|| {
-                RuntimeError::with_span("dice count overflow in addition", expr.span)
-            })?;
             let modifier = a.modifier.checked_add(b.modifier).ok_or_else(|| {
                 RuntimeError::with_span("dice modifier overflow in addition", expr.span)
             })?;
-            Ok(Value::DiceExpr(DiceExpr {
-                count,
-                sides: a.sides,
-                filter: a.filter,
-                modifier,
-            }))
+            let mut groups = a.groups.clone();
+            groups.extend(b.groups.iter().cloned());
+            Ok(Value::DiceExpr(DiceExpr { groups, modifier }))
         }
         // Unit type addition: same-type → same-type
         _ => {
@@ -288,8 +273,8 @@ fn eval_sub(
                 RuntimeError::with_span("dice modifier overflow in subtraction", expr.span)
             })?;
             Ok(Value::DiceExpr(DiceExpr {
+                groups: d.groups.clone(),
                 modifier,
-                ..d.clone()
             }))
         }
         // Unit type subtraction: same-type → same-type

@@ -121,12 +121,7 @@ fn damage_spec(count: u32, sides: u32, damage_type: &str) -> Value {
             let mut f = BTreeMap::new();
             f.insert(
                 "dice".into(),
-                Value::DiceExpr(DiceExpr {
-                    count,
-                    sides,
-                    filter: None,
-                    modifier: 0,
-                }),
+                Value::DiceExpr(DiceExpr::single(count, sides, None, 0)),
             );
             f.insert("type".into(), enum_variant("DamageType", damage_type));
             f
@@ -217,12 +212,7 @@ fn scripted_roll(
     unmodified: i64,
 ) -> Response {
     Response::Rolled(RollResult {
-        expr: DiceExpr {
-            count,
-            sides,
-            filter,
-            modifier,
-        },
+        expr: DiceExpr::single(count, sides, filter, modifier),
         dice: dice_vals,
         kept: kept_vals,
         modifier,
@@ -740,9 +730,9 @@ fn d20_expr_normal_mode() {
 
     match val {
         Value::DiceExpr(expr) => {
-            assert_eq!(expr.count, 1);
-            assert_eq!(expr.sides, 20);
-            assert_eq!(expr.filter, None);
+            assert_eq!(expr.total_dice_count(), 1);
+            assert_eq!(expr.groups[0].sides, 20);
+            assert_eq!(expr.groups[0].filter, None);
             assert_eq!(expr.modifier, 5); // 3 + 2 + 0
         }
         other => panic!("expected DiceExpr, got {:?}", other),
@@ -773,9 +763,9 @@ fn d20_expr_advantage_mode() {
 
     match val {
         Value::DiceExpr(expr) => {
-            assert_eq!(expr.count, 2);
-            assert_eq!(expr.sides, 20);
-            assert_eq!(expr.filter, Some(DiceFilter::KeepHighest(1)));
+            assert_eq!(expr.total_dice_count(), 2);
+            assert_eq!(expr.groups[0].sides, 20);
+            assert_eq!(expr.groups[0].filter, Some(DiceFilter::KeepHighest(1)));
             assert_eq!(expr.modifier, 5);
         }
         other => panic!("expected DiceExpr, got {:?}", other),
@@ -1413,9 +1403,9 @@ fn prone_on_attacker_disadvantage() {
         .expect("expected RollDice effect");
     match roll_effect {
         Effect::RollDice { expr } => {
-            assert_eq!(expr.count, 2);
-            assert_eq!(expr.sides, 20);
-            assert_eq!(expr.filter, Some(DiceFilter::KeepLowest(1)));
+            assert_eq!(expr.total_dice_count(), 2);
+            assert_eq!(expr.groups[0].sides, 20);
+            assert_eq!(expr.groups[0].filter, Some(DiceFilter::KeepLowest(1)));
         }
         _ => unreachable!(),
     }
@@ -1478,9 +1468,9 @@ fn prone_on_target_melee_advantage() {
         .expect("expected RollDice effect");
     match roll_effect {
         Effect::RollDice { expr } => {
-            assert_eq!(expr.count, 2);
-            assert_eq!(expr.sides, 20);
-            assert_eq!(expr.filter, Some(DiceFilter::KeepHighest(1)));
+            assert_eq!(expr.total_dice_count(), 2);
+            assert_eq!(expr.groups[0].sides, 20);
+            assert_eq!(expr.groups[0].filter, Some(DiceFilter::KeepHighest(1)));
         }
         _ => unreachable!(),
     }
@@ -1591,9 +1581,9 @@ fn prone_on_target_ranged_disadvantage() {
         .expect("expected RollDice effect");
     match roll_effect {
         Effect::RollDice { expr } => {
-            assert_eq!(expr.count, 2);
-            assert_eq!(expr.sides, 20);
-            assert_eq!(expr.filter, Some(DiceFilter::KeepLowest(1))); // disadvantage
+            assert_eq!(expr.total_dice_count(), 2);
+            assert_eq!(expr.groups[0].sides, 20);
+            assert_eq!(expr.groups[0].filter, Some(DiceFilter::KeepLowest(1))); // disadvantage
         }
         _ => unreachable!(),
     }

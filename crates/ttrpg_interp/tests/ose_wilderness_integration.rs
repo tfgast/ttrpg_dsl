@@ -76,12 +76,7 @@ fn terrain(name: &str) -> Value {
 
 fn scripted_d6(die: i64) -> Response {
     Response::Rolled(RollResult {
-        expr: DiceExpr {
-            count: 1,
-            sides: 6,
-            filter: None,
-            modifier: 0,
-        },
+        expr: DiceExpr::single(1, 6, None, 0),
         dice: vec![die],
         kept: vec![die],
         modifier: 0,

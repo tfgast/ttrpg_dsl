@@ -2146,12 +2146,7 @@ mod tests {
         let mut handler = ScriptedHandler::new();
         let mut env = make_env(&state, &mut handler, &interp);
 
-        let original_expr = DiceExpr {
-            count: 1,
-            sides: 20,
-            filter: None,
-            modifier: 5,
-        };
+        let original_expr = DiceExpr::single(1, 20, None, 5);
 
         let mut result = Value::RollResult(RollResult {
             expr: original_expr.clone(),
@@ -2201,12 +2196,7 @@ mod tests {
         // we test by binding a DiceExpr value and referencing it.
         env.bind(
             Name::from("new_expr"),
-            Value::DiceExpr(DiceExpr {
-                count: 2,
-                sides: 6,
-                filter: None,
-                modifier: 0,
-            }),
+            Value::DiceExpr(DiceExpr::single(2, 6, None, 0)),
         );
         let stmts_expr = vec![ModifyStmt::ResultOverride {
             field: "expr".into(),
@@ -2216,8 +2206,8 @@ mod tests {
         exec_modify_stmts_phase2(&mut env, &stmts_expr, &mut result).unwrap();
         match &result {
             Value::RollResult(rr) => {
-                assert_eq!(rr.expr.count, 2, "expr.count should be overridden");
-                assert_eq!(rr.expr.sides, 6, "expr.sides should be overridden");
+                assert_eq!(rr.expr.groups[0].count, 2, "expr.count should be overridden");
+                assert_eq!(rr.expr.groups[0].sides, 6, "expr.sides should be overridden");
                 assert_eq!(rr.expr.modifier, 0, "expr.modifier should be overridden");
             }
             _ => panic!("expected RollResult"),

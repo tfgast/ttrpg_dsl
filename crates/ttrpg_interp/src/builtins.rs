@@ -203,12 +203,7 @@ fn builtin_dice(args: &[Value], span: Span) -> Result<Value, RuntimeError> {
             let sides_u32 = u32::try_from(*sides).map_err(|_| {
                 RuntimeError::with_span(format!("dice() sides {} overflows u32", sides), span)
             })?;
-            Ok(Value::DiceExpr(DiceExpr {
-                count: count_u32,
-                sides: sides_u32,
-                filter: None,
-                modifier: 0,
-            }))
+            Ok(Value::DiceExpr(DiceExpr::single(count_u32, sides_u32, None, 0)))
         }
         (Some(a), Some(b)) => Err(RuntimeError::with_span(
             format!(
@@ -236,16 +231,22 @@ fn builtin_multiply_dice(args: &[Value], span: Span) -> Result<Value, RuntimeErr
                     span,
                 ));
             }
-            let new_count = (expr.count as i64)
-                .checked_mul(*factor)
-                .and_then(|n| u32::try_from(n).ok())
-                .ok_or_else(|| {
-                    RuntimeError::with_span("dice count overflow in multiply_dice()", span)
-                })?;
+            let mut new_groups = Vec::with_capacity(expr.groups.len());
+            for g in &expr.groups {
+                let new_count = (g.count as i64)
+                    .checked_mul(*factor)
+                    .and_then(|n| u32::try_from(n).ok())
+                    .ok_or_else(|| {
+                        RuntimeError::with_span("dice count overflow in multiply_dice()", span)
+                    })?;
+                new_groups.push(crate::value::DiceGroup {
+                    count: new_count,
+                    sides: g.sides,
+                    filter: g.filter,
+                });
+            }
             Ok(Value::DiceExpr(DiceExpr {
-                count: new_count,
-                sides: expr.sides,
-                filter: expr.filter,
+                groups: new_groups,
                 modifier: expr.modifier,
             }))
         }

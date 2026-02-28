@@ -31,12 +31,7 @@ pub(crate) fn eval_expr(env: &mut Env, expr: &Spanned<ExprKind>) -> Result<Value
             count,
             sides,
             filter,
-        } => Ok(Value::DiceExpr(DiceExpr {
-            count: *count,
-            sides: *sides,
-            filter: *filter,
-            modifier: 0,
-        })),
+        } => Ok(Value::DiceExpr(DiceExpr::single(*count, *sides, *filter, 0))),
 
         ExprKind::Paren(inner) => eval_expr(env, inner),
 

@@ -208,10 +208,10 @@ fn eval_dice_lit() {
     let result = eval_expr(&mut env, &expr).unwrap();
     match result {
         Value::DiceExpr(de) => {
-            assert_eq!(de.count, 2);
-            assert_eq!(de.sides, 6);
+            assert_eq!(de.groups[0].count, 2);
+            assert_eq!(de.groups[0].sides, 6);
             assert_eq!(de.modifier, 0);
-            assert!(de.filter.is_none());
+            assert!(de.groups[0].filter.is_none());
         }
         _ => panic!("expected DiceExpr, got {:?}", result),
     }
@@ -776,12 +776,7 @@ fn eval_roll_result_coercion_in_arithmetic() {
     let mut env = make_env(&state, &mut handler, &interp);
 
     let rr = Value::RollResult(RollResult {
-        expr: DiceExpr {
-            count: 1,
-            sides: 20,
-            filter: None,
-            modifier: 5,
-        },
+        expr: DiceExpr::single(1, 20, None, 5),
         dice: vec![15],
         kept: vec![15],
         modifier: 5,
@@ -809,12 +804,7 @@ fn eval_roll_result_coercion_in_comparison() {
     let mut env = make_env(&state, &mut handler, &interp);
 
     let rr = Value::RollResult(RollResult {
-        expr: DiceExpr {
-            count: 1,
-            sides: 20,
-            filter: None,
-            modifier: 5,
-        },
+        expr: DiceExpr::single(1, 20, None, 5),
         dice: vec![15],
         kept: vec![15],
         modifier: 5,
@@ -891,12 +881,7 @@ fn eval_field_access_roll_result() {
     let mut env = make_env(&state, &mut handler, &interp);
 
     let rr = Value::RollResult(RollResult {
-        expr: DiceExpr {
-            count: 2,
-            sides: 6,
-            filter: None,
-            modifier: 3,
-        },
+        expr: DiceExpr::single(2, 6, None, 3),
         dice: vec![4, 5],
         kept: vec![4, 5],
         modifier: 3,
@@ -1865,9 +1850,9 @@ fn eval_dice_lit_with_filter() {
     let result = eval_expr(&mut env, &expr).unwrap();
     match result {
         Value::DiceExpr(de) => {
-            assert_eq!(de.count, 4);
-            assert_eq!(de.sides, 6);
-            assert_eq!(de.filter, Some(DiceFilter::KeepHighest(3)));
+            assert_eq!(de.groups[0].count, 4);
+            assert_eq!(de.groups[0].sides, 6);
+            assert_eq!(de.groups[0].filter, Some(DiceFilter::KeepHighest(3)));
         }
         _ => panic!("expected DiceExpr"),
     }
@@ -2038,12 +2023,7 @@ fn eval_dice_add_int() {
 
     env.bind(
         "d".into(),
-        Value::DiceExpr(DiceExpr {
-            count: 1,
-            sides: 20,
-            filter: None,
-            modifier: 0,
-        }),
+        Value::DiceExpr(DiceExpr::single(1, 20, None, 0)),
     );
 
     // d + 5
@@ -2054,8 +2034,8 @@ fn eval_dice_add_int() {
     });
     match eval_expr(&mut env, &expr).unwrap() {
         Value::DiceExpr(de) => {
-            assert_eq!(de.count, 1);
-            assert_eq!(de.sides, 20);
+            assert_eq!(de.groups[0].count, 1);
+            assert_eq!(de.groups[0].sides, 20);
             assert_eq!(de.modifier, 5);
         }
         other => panic!("expected DiceExpr, got {:?}", other),
@@ -2073,12 +2053,7 @@ fn eval_int_add_dice() {
 
     env.bind(
         "d".into(),
-        Value::DiceExpr(DiceExpr {
-            count: 2,
-            sides: 6,
-            filter: None,
-            modifier: 3,
-        }),
+        Value::DiceExpr(DiceExpr::single(2, 6, None, 3)),
     );
 
     // 10 + d
@@ -2089,8 +2064,8 @@ fn eval_int_add_dice() {
     });
     match eval_expr(&mut env, &expr).unwrap() {
         Value::DiceExpr(de) => {
-            assert_eq!(de.count, 2);
-            assert_eq!(de.sides, 6);
+            assert_eq!(de.groups[0].count, 2);
+            assert_eq!(de.groups[0].sides, 6);
             assert_eq!(de.modifier, 13);
         }
         other => panic!("expected DiceExpr, got {:?}", other),
@@ -2108,24 +2083,14 @@ fn eval_dice_add_dice() {
 
     env.bind(
         "a".into(),
-        Value::DiceExpr(DiceExpr {
-            count: 2,
-            sides: 6,
-            filter: None,
-            modifier: 1,
-        }),
+        Value::DiceExpr(DiceExpr::single(2, 6, None, 1)),
     );
     env.bind(
         "b".into(),
-        Value::DiceExpr(DiceExpr {
-            count: 3,
-            sides: 6,
-            filter: None,
-            modifier: 2,
-        }),
+        Value::DiceExpr(DiceExpr::single(3, 6, None, 2)),
     );
 
-    // a + b → 5d6 with modifier 3
+    // a + b → 2 groups (2d6, 3d6) with modifier 3
     let expr = spanned(ExprKind::BinOp {
         op: BinOp::Add,
         lhs: Box::new(spanned(ExprKind::Ident("a".into()))),
@@ -2133,8 +2098,11 @@ fn eval_dice_add_dice() {
     });
     match eval_expr(&mut env, &expr).unwrap() {
         Value::DiceExpr(de) => {
-            assert_eq!(de.count, 5);
-            assert_eq!(de.sides, 6);
+            assert_eq!(de.groups.len(), 2);
+            assert_eq!(de.groups[0].count, 2);
+            assert_eq!(de.groups[0].sides, 6);
+            assert_eq!(de.groups[1].count, 3);
+            assert_eq!(de.groups[1].sides, 6);
             assert_eq!(de.modifier, 3);
         }
         other => panic!("expected DiceExpr, got {:?}", other),
@@ -2152,12 +2120,7 @@ fn eval_dice_sub_int() {
 
     env.bind(
         "d".into(),
-        Value::DiceExpr(DiceExpr {
-            count: 1,
-            sides: 20,
-            filter: None,
-            modifier: 5,
-        }),
+        Value::DiceExpr(DiceExpr::single(1, 20, None, 5)),
     );
 
     // d - 3
@@ -2168,8 +2131,8 @@ fn eval_dice_sub_int() {
     });
     match eval_expr(&mut env, &expr).unwrap() {
         Value::DiceExpr(de) => {
-            assert_eq!(de.count, 1);
-            assert_eq!(de.sides, 20);
+            assert_eq!(de.groups[0].count, 1);
+            assert_eq!(de.groups[0].sides, 20);
             assert_eq!(de.modifier, 2);
         }
         other => panic!("expected DiceExpr, got {:?}", other),
@@ -2384,12 +2347,7 @@ fn eval_in_roll_result_no_coercion() {
     let mut env = make_env(&state, &mut handler, &interp);
 
     let roll = Value::RollResult(RollResult {
-        expr: DiceExpr {
-            count: 1,
-            sides: 20,
-            filter: None,
-            modifier: 0,
-        },
+        expr: DiceExpr::single(1, 20, None, 0),
         dice: vec![15],
         kept: vec![15],
         modifier: 0,
@@ -2420,12 +2378,7 @@ fn eval_in_roll_result_not_in_int_list() {
     let mut env = make_env(&state, &mut handler, &interp);
 
     let roll = Value::RollResult(RollResult {
-        expr: DiceExpr {
-            count: 1,
-            sides: 20,
-            filter: None,
-            modifier: 0,
-        },
+        expr: DiceExpr::single(1, 20, None, 0),
         dice: vec![15],
         kept: vec![15],
         modifier: 0,
@@ -2460,21 +2413,11 @@ fn eval_dice_add_dice_different_sides_error() {
 
     env.bind(
         "a".into(),
-        Value::DiceExpr(DiceExpr {
-            count: 2,
-            sides: 6,
-            filter: None,
-            modifier: 0,
-        }),
+        Value::DiceExpr(DiceExpr::single(2, 6, None, 0)),
     );
     env.bind(
         "b".into(),
-        Value::DiceExpr(DiceExpr {
-            count: 3,
-            sides: 8,
-            filter: None,
-            modifier: 0,
-        }),
+        Value::DiceExpr(DiceExpr::single(3, 8, None, 0)),
     );
 
     let expr = spanned(ExprKind::BinOp {
@@ -2482,9 +2425,18 @@ fn eval_dice_add_dice_different_sides_error() {
         lhs: Box::new(spanned(ExprKind::Ident("a".into()))),
         rhs: Box::new(spanned(ExprKind::Ident("b".into()))),
     });
-    let result = eval_expr(&mut env, &expr);
-    assert!(result.is_err());
-    assert!(result.unwrap_err().message.contains("different specs"));
+    // With component-based DiceExpr, different sides are allowed (creates 2 groups)
+    match eval_expr(&mut env, &expr).unwrap() {
+        Value::DiceExpr(de) => {
+            assert_eq!(de.groups.len(), 2);
+            assert_eq!(de.groups[0].count, 2);
+            assert_eq!(de.groups[0].sides, 6);
+            assert_eq!(de.groups[1].count, 3);
+            assert_eq!(de.groups[1].sides, 8);
+            assert_eq!(de.modifier, 0);
+        }
+        other => panic!("expected DiceExpr, got {:?}", other),
+    }
 }
 
 #[test]
@@ -2499,12 +2451,7 @@ fn eval_dice_add_int_overflow() {
 
     env.bind(
         "d".into(),
-        Value::DiceExpr(DiceExpr {
-            count: 1,
-            sides: 20,
-            filter: None,
-            modifier: i64::MAX,
-        }),
+        Value::DiceExpr(DiceExpr::single(1, 20, None, i64::MAX)),
     );
 
     let expr = spanned(ExprKind::BinOp {
@@ -2529,12 +2476,7 @@ fn eval_dice_sub_int_overflow() {
 
     env.bind(
         "d".into(),
-        Value::DiceExpr(DiceExpr {
-            count: 1,
-            sides: 20,
-            filter: None,
-            modifier: i64::MIN,
-        }),
+        Value::DiceExpr(DiceExpr::single(1, 20, None, i64::MIN)),
     );
 
     let expr = spanned(ExprKind::BinOp {
@@ -2548,8 +2490,8 @@ fn eval_dice_sub_int_overflow() {
 }
 
 #[test]
-fn eval_dice_add_dice_count_overflow() {
-    // Two DiceExpr with u32::MAX counts should overflow
+fn eval_dice_add_dice_modifier_overflow() {
+    // Two DiceExpr with modifiers near i64::MAX should overflow on addition
     let program = empty_program();
     let type_env = empty_type_env();
     let interp = Interpreter::new(&program, &type_env).unwrap();
@@ -2559,21 +2501,11 @@ fn eval_dice_add_dice_count_overflow() {
 
     env.bind(
         "a".into(),
-        Value::DiceExpr(DiceExpr {
-            count: u32::MAX,
-            sides: 6,
-            filter: None,
-            modifier: 0,
-        }),
+        Value::DiceExpr(DiceExpr::single(1, 6, None, i64::MAX)),
     );
     env.bind(
         "b".into(),
-        Value::DiceExpr(DiceExpr {
-            count: 1,
-            sides: 6,
-            filter: None,
-            modifier: 0,
-        }),
+        Value::DiceExpr(DiceExpr::single(1, 6, None, 1)),
     );
 
     let expr = spanned(ExprKind::BinOp {
@@ -2588,7 +2520,7 @@ fn eval_dice_add_dice_count_overflow() {
 
 #[test]
 fn eval_dice_add_dice_same_spec_succeeds() {
-    // 2d6+1 + 3d6+2 = 5d6+3 — same spec, should merge
+    // 2d6+1 + 3d6+2 → 2 groups with combined modifier 3
     let program = empty_program();
     let type_env = empty_type_env();
     let interp = Interpreter::new(&program, &type_env).unwrap();
@@ -2598,21 +2530,11 @@ fn eval_dice_add_dice_same_spec_succeeds() {
 
     env.bind(
         "a".into(),
-        Value::DiceExpr(DiceExpr {
-            count: 2,
-            sides: 6,
-            filter: None,
-            modifier: 1,
-        }),
+        Value::DiceExpr(DiceExpr::single(2, 6, None, 1)),
     );
     env.bind(
         "b".into(),
-        Value::DiceExpr(DiceExpr {
-            count: 3,
-            sides: 6,
-            filter: None,
-            modifier: 2,
-        }),
+        Value::DiceExpr(DiceExpr::single(3, 6, None, 2)),
     );
 
     let expr = spanned(ExprKind::BinOp {
@@ -2620,16 +2542,17 @@ fn eval_dice_add_dice_same_spec_succeeds() {
         lhs: Box::new(spanned(ExprKind::Ident("a".into()))),
         rhs: Box::new(spanned(ExprKind::Ident("b".into()))),
     });
-    let result = eval_expr(&mut env, &expr).unwrap();
-    assert_eq!(
-        result,
-        Value::DiceExpr(DiceExpr {
-            count: 5,
-            sides: 6,
-            filter: None,
-            modifier: 3,
-        })
-    );
+    match eval_expr(&mut env, &expr).unwrap() {
+        Value::DiceExpr(de) => {
+            assert_eq!(de.groups.len(), 2);
+            assert_eq!(de.groups[0].count, 2);
+            assert_eq!(de.groups[0].sides, 6);
+            assert_eq!(de.groups[1].count, 3);
+            assert_eq!(de.groups[1].sides, 6);
+            assert_eq!(de.modifier, 3);
+        }
+        other => panic!("expected DiceExpr, got {:?}", other),
+    }
 }
 
 // ── Issue 1: == / != coerce RollResult; Int↔Float equality ──
@@ -2647,12 +2570,7 @@ fn eq_coerces_roll_result_to_int() {
     env.bind(
         "r".into(),
         Value::RollResult(RollResult {
-            expr: DiceExpr {
-                count: 1,
-                sides: 20,
-                filter: None,
-                modifier: 0,
-            },
+            expr: DiceExpr::single(1, 20, None, 0),
             dice: vec![10],
             kept: vec![10],
             modifier: 0,
@@ -4381,12 +4299,7 @@ fn assign_roll_result_coerced_in_plus_eq() {
 
     // RollResult with total=7
     let rr = Value::RollResult(RollResult {
-        expr: DiceExpr {
-            count: 2,
-            sides: 6,
-            filter: None,
-            modifier: 0,
-        },
+        expr: DiceExpr::single(2, 6, None, 0),
         dice: vec![3, 4],
         kept: vec![3, 4],
         modifier: 0,

@@ -264,16 +264,22 @@ fn eval_dice_method(
                             span,
                         ));
                     }
-                    let new_count = (expr.count as i64)
-                        .checked_mul(factor)
-                        .and_then(|n| u32::try_from(n).ok())
-                        .ok_or_else(|| {
-                            RuntimeError::with_span("dice count overflow in multiply()", span)
-                        })?;
+                    let mut new_groups = Vec::with_capacity(expr.groups.len());
+                    for g in &expr.groups {
+                        let new_count = (g.count as i64)
+                            .checked_mul(factor)
+                            .and_then(|n| u32::try_from(n).ok())
+                            .ok_or_else(|| {
+                                RuntimeError::with_span("dice count overflow in multiply()", span)
+                            })?;
+                        new_groups.push(crate::value::DiceGroup {
+                            count: new_count,
+                            sides: g.sides,
+                            filter: g.filter,
+                        });
+                    }
                     Ok(Value::DiceExpr(DiceExpr {
-                        count: new_count,
-                        sides: expr.sides,
-                        filter: expr.filter,
+                        groups: new_groups,
                         modifier: expr.modifier,
                     }))
                 }

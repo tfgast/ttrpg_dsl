@@ -425,12 +425,7 @@ fn mechanic_call_with_roll_emits_roll_dice() {
     let state = TestState::new();
 
     let roll_result = RollResult {
-        expr: DiceExpr {
-            count: 2,
-            sides: 6,
-            filter: None,
-            modifier: 0,
-        },
+        expr: DiceExpr::single(2, 6, None, 0),
         dice: vec![4, 5],
         kept: vec![4, 5],
         modifier: 0,
@@ -451,7 +446,7 @@ fn mechanic_call_with_roll_emits_roll_dice() {
     // Verify that RollDice effect was emitted
     assert_eq!(handler.log.len(), 1);
     assert!(
-        matches!(&handler.log[0], Effect::RollDice { expr } if expr.count == 2 && expr.sides == 6)
+        matches!(&handler.log[0], Effect::RollDice { expr } if expr.groups[0].count == 2 && expr.groups[0].sides == 6)
     );
 }
 
@@ -727,12 +722,7 @@ fn builtin_multiply_dice_test() {
     // multiply_dice(2d6, 3) → 6d6
     env.bind(
         "dice".into(),
-        Value::DiceExpr(DiceExpr {
-            count: 2,
-            sides: 6,
-            filter: None,
-            modifier: 0,
-        }),
+        Value::DiceExpr(DiceExpr::single(2, 6, None, 0)),
     );
 
     let expr = spanned(ExprKind::Call {
@@ -753,8 +743,8 @@ fn builtin_multiply_dice_test() {
     let result = crate::eval::eval_expr(&mut env, &expr).unwrap();
     match result {
         Value::DiceExpr(d) => {
-            assert_eq!(d.count, 6);
-            assert_eq!(d.sides, 6);
+            assert_eq!(d.groups[0].count, 6);
+            assert_eq!(d.groups[0].sides, 6);
         }
         _ => panic!("expected DiceExpr"),
     }
@@ -771,12 +761,7 @@ fn builtin_multiply_dice_zero_factor_error() {
 
     env.bind(
         "dice".into(),
-        Value::DiceExpr(DiceExpr {
-            count: 2,
-            sides: 6,
-            filter: None,
-            modifier: 0,
-        }),
+        Value::DiceExpr(DiceExpr::single(2, 6, None, 0)),
     );
 
     let expr = spanned(ExprKind::Call {
@@ -827,12 +812,7 @@ fn builtin_roll_test() {
     let state = TestState::new();
 
     let roll_result = RollResult {
-        expr: DiceExpr {
-            count: 1,
-            sides: 20,
-            filter: None,
-            modifier: 5,
-        },
+        expr: DiceExpr::single(1, 20, None, 5),
         dice: vec![15],
         kept: vec![15],
         modifier: 5,
@@ -845,12 +825,7 @@ fn builtin_roll_test() {
 
     env.bind(
         "dice".into(),
-        Value::DiceExpr(DiceExpr {
-            count: 1,
-            sides: 20,
-            filter: None,
-            modifier: 5,
-        }),
+        Value::DiceExpr(DiceExpr::single(1, 20, None, 5)),
     );
 
     let expr = spanned(ExprKind::Call {
@@ -873,12 +848,7 @@ fn builtin_roll_override_response() {
     let state = TestState::new();
 
     let override_result = RollResult {
-        expr: DiceExpr {
-            count: 1,
-            sides: 20,
-            filter: None,
-            modifier: 0,
-        },
+        expr: DiceExpr::single(1, 20, None, 0),
         dice: vec![20],
         kept: vec![20],
         modifier: 0,
@@ -892,12 +862,7 @@ fn builtin_roll_override_response() {
 
     env.bind(
         "dice".into(),
-        Value::DiceExpr(DiceExpr {
-            count: 1,
-            sides: 20,
-            filter: None,
-            modifier: 0,
-        }),
+        Value::DiceExpr(DiceExpr::single(1, 20, None, 0)),
     );
 
     let expr = spanned(ExprKind::Call {
@@ -1304,12 +1269,7 @@ fn multiply_dice_overflow_error() {
 
     env.bind(
         "dice".into(),
-        Value::DiceExpr(DiceExpr {
-            count: u32::MAX,
-            sides: 6,
-            filter: None,
-            modifier: 0,
-        }),
+        Value::DiceExpr(DiceExpr::single(u32::MAX, 6, None, 0)),
     );
 
     let expr = spanned(ExprKind::Call {
@@ -1359,9 +1319,9 @@ fn builtin_dice_basic() {
     let result = crate::eval::eval_expr(&mut env, &expr).unwrap();
     match result {
         Value::DiceExpr(d) => {
-            assert_eq!(d.count, 2);
-            assert_eq!(d.sides, 6);
-            assert!(d.filter.is_none());
+            assert_eq!(d.groups[0].count, 2);
+            assert_eq!(d.groups[0].sides, 6);
+            assert!(d.groups[0].filter.is_none());
             assert_eq!(d.modifier, 0);
         }
         _ => panic!("expected DiceExpr, got {:?}", result),
@@ -1396,8 +1356,8 @@ fn builtin_dice_zero_count() {
     let result = crate::eval::eval_expr(&mut env, &expr).unwrap();
     match result {
         Value::DiceExpr(d) => {
-            assert_eq!(d.count, 0);
-            assert_eq!(d.sides, 8);
+            assert_eq!(d.groups[0].count, 0);
+            assert_eq!(d.groups[0].sides, 8);
         }
         _ => panic!("expected DiceExpr, got {:?}", result),
     }
@@ -1491,8 +1451,8 @@ fn builtin_dice_composable_with_modifier() {
     let result = crate::eval::eval_expr(&mut env, &expr).unwrap();
     match result {
         Value::DiceExpr(d) => {
-            assert_eq!(d.count, 3);
-            assert_eq!(d.sides, 8);
+            assert_eq!(d.groups[0].count, 3);
+            assert_eq!(d.groups[0].sides, 8);
             assert_eq!(d.modifier, 5);
         }
         _ => panic!("expected DiceExpr, got {:?}", result),
@@ -1922,12 +1882,7 @@ fn apply_condition_rejects_invalid_response() {
     let state = TestState::new();
     // Invalid: Rolled is not valid for ApplyCondition
     let roll_result = RollResult {
-        expr: DiceExpr {
-            count: 1,
-            sides: 20,
-            filter: None,
-            modifier: 0,
-        },
+        expr: DiceExpr::single(1, 20, None, 0),
         dice: vec![10],
         kept: vec![10],
         modifier: 0,
@@ -2289,12 +2244,7 @@ fn mixed_args_evaluated_in_source_order() {
     // Positional roll(1d4) fills slot [0], positional roll(1d8) fills slot [1].
     let mut handler = ScriptedHandler::with_responses(vec![
         Response::Rolled(RollResult {
-            expr: DiceExpr {
-                count: 1,
-                sides: 4,
-                filter: None,
-                modifier: 0,
-            },
+            expr: DiceExpr::single(1, 4, None, 0),
             dice: vec![1],
             kept: vec![1],
             modifier: 0,
@@ -2302,12 +2252,7 @@ fn mixed_args_evaluated_in_source_order() {
             unmodified: 1,
         }),
         Response::Rolled(RollResult {
-            expr: DiceExpr {
-                count: 1,
-                sides: 6,
-                filter: None,
-                modifier: 0,
-            },
+            expr: DiceExpr::single(1, 6, None, 0),
             dice: vec![2],
             kept: vec![2],
             modifier: 0,
@@ -2315,12 +2260,7 @@ fn mixed_args_evaluated_in_source_order() {
             unmodified: 2,
         }),
         Response::Rolled(RollResult {
-            expr: DiceExpr {
-                count: 1,
-                sides: 8,
-                filter: None,
-                modifier: 0,
-            },
+            expr: DiceExpr::single(1, 8, None, 0),
             dice: vec![3],
             kept: vec![3],
             modifier: 0,
@@ -2393,15 +2333,15 @@ fn mixed_args_evaluated_in_source_order() {
     // Effects emitted in source order: 1d4, 1d6, 1d8
     assert_eq!(handler.log.len(), 3);
     match &handler.log[0] {
-        Effect::RollDice { expr } => assert_eq!(expr.sides, 4, "first roll should be 1d4"),
+        Effect::RollDice { expr } => assert_eq!(expr.groups[0].sides, 4, "first roll should be 1d4"),
         e => panic!("expected RollDice, got {:?}", e),
     }
     match &handler.log[1] {
-        Effect::RollDice { expr } => assert_eq!(expr.sides, 6, "second roll should be 1d6"),
+        Effect::RollDice { expr } => assert_eq!(expr.groups[0].sides, 6, "second roll should be 1d6"),
         e => panic!("expected RollDice, got {:?}", e),
     }
     match &handler.log[2] {
-        Effect::RollDice { expr } => assert_eq!(expr.sides, 8, "third roll should be 1d8"),
+        Effect::RollDice { expr } => assert_eq!(expr.groups[0].sides, 8, "third roll should be 1d8"),
         e => panic!("expected RollDice, got {:?}", e),
     }
 }

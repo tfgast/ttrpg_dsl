@@ -20,7 +20,10 @@ impl EffectHandler for RollHandler {
         match effect {
             Effect::RollDice { expr } => {
                 // Deterministic: every die rolls its max
-                let dice = vec![expr.sides as i64; expr.count as usize];
+                let mut dice = Vec::new();
+                for g in &expr.groups {
+                    dice.extend(vec![g.sides as i64; g.count as usize]);
+                }
                 let unmodified: i64 = dice.iter().sum();
                 let total = unmodified + expr.modifier;
                 Response::Rolled(RollResult {
@@ -507,22 +510,12 @@ system "test" {
             &state,
             &mut handler,
             "f",
-            vec![Value::DiceExpr(DiceExpr {
-                count: 2,
-                sides: 6,
-                filter: None,
-                modifier: 0,
-            })],
+            vec![Value::DiceExpr(DiceExpr::single(2, 6, None, 0))],
         )
         .unwrap();
     assert_eq!(
         val,
-        Value::DiceExpr(DiceExpr {
-            count: 6,
-            sides: 6,
-            filter: None,
-            modifier: 0
-        })
+        Value::DiceExpr(DiceExpr::single(6, 6, None, 0))
     );
 }
 
@@ -545,12 +538,7 @@ system "test" {
             &state,
             &mut handler,
             "f",
-            vec![Value::DiceExpr(DiceExpr {
-                count: 2,
-                sides: 6,
-                filter: None,
-                modifier: 0,
-            })],
+            vec![Value::DiceExpr(DiceExpr::single(2, 6, None, 0))],
         )
         .unwrap();
     // RollHandler rolls max on each die: 2d6 → 6+6 = 12

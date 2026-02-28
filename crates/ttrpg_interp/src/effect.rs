@@ -250,12 +250,7 @@ mod tests {
     #[test]
     fn effect_kind_of() {
         let effect = Effect::RollDice {
-            expr: DiceExpr {
-                count: 1,
-                sides: 20,
-                filter: None,
-                modifier: 0,
-            },
+            expr: DiceExpr::single(1, 20, None, 0),
         };
         assert_eq!(EffectKind::of(&effect), EffectKind::RollDice);
 
@@ -271,16 +266,11 @@ mod tests {
     #[test]
     fn effect_construction_roll_dice() {
         let effect = Effect::RollDice {
-            expr: DiceExpr {
-                count: 2,
-                sides: 6,
-                filter: None,
-                modifier: 3,
-            },
+            expr: DiceExpr::single(2, 6, None, 3),
         };
         if let Effect::RollDice { expr } = &effect {
-            assert_eq!(expr.count, 2);
-            assert_eq!(expr.sides, 6);
+            assert_eq!(expr.groups[0].count, 2);
+            assert_eq!(expr.groups[0].sides, 6);
             assert_eq!(expr.modifier, 3);
         } else {
             panic!("wrong variant");
@@ -359,12 +349,7 @@ mod tests {
     #[test]
     fn response_construction() {
         let rolled = Response::Rolled(RollResult {
-            expr: DiceExpr {
-                count: 1,
-                sides: 20,
-                filter: None,
-                modifier: 5,
-            },
+            expr: DiceExpr::single(1, 20, None, 5),
             dice: vec![15],
             kept: vec![15],
             modifier: 5,

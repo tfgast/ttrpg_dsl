@@ -466,19 +466,26 @@ impl EffectHandler for CliHandler<'_> {
 
 /// Roll a dice expression using the given RNG.
 pub fn roll_dice(rng: &mut StdRng, expr: &DiceExpr) -> RollResult {
-    let sides = (expr.sides as i64).max(1);
-    let mut dice: Vec<i64> = (0..expr.count)
-        .map(|_| rng.random_range(1..=sides))
-        .collect();
+    let mut all_dice = Vec::new();
+    let mut all_kept = Vec::new();
 
-    let kept = apply_dice_filter(&mut dice, &expr.filter);
-    let unmodified: i64 = kept.iter().sum();
+    for group in &expr.groups {
+        let sides = (group.sides as i64).max(1);
+        let mut dice: Vec<i64> = (0..group.count)
+            .map(|_| rng.random_range(1..=sides))
+            .collect();
+        let kept = apply_dice_filter(&mut dice, &group.filter);
+        all_dice.extend(&dice);
+        all_kept.extend(&kept);
+    }
+
+    let unmodified: i64 = all_kept.iter().sum();
     let total = unmodified + expr.modifier;
 
     RollResult {
         expr: expr.clone(),
-        dice,
-        kept,
+        dice: all_dice,
+        kept: all_kept,
         modifier: expr.modifier,
         total,
         unmodified,
@@ -492,30 +499,37 @@ pub fn roll_dice_from_queue(
     rng: &mut StdRng,
     expr: &DiceExpr,
 ) -> Result<RollResult, String> {
-    let mut dice: Vec<i64> = Vec::with_capacity(expr.count as usize);
-    for _ in 0..expr.count {
-        if let Some(val) = queue.pop_front() {
-            if val < 1 || val > expr.sides as i64 {
-                return Err(format!(
-                    "queued value {} out of range for d{} (expected 1..={})",
-                    val, expr.sides, expr.sides
-                ));
+    let mut all_dice = Vec::new();
+    let mut all_kept = Vec::new();
+
+    for group in &expr.groups {
+        let mut dice: Vec<i64> = Vec::with_capacity(group.count as usize);
+        for _ in 0..group.count {
+            if let Some(val) = queue.pop_front() {
+                if val < 1 || val > group.sides as i64 {
+                    return Err(format!(
+                        "queued value {} out of range for d{} (expected 1..={})",
+                        val, group.sides, group.sides
+                    ));
+                }
+                dice.push(val);
+            } else {
+                let sides = (group.sides as i64).max(1);
+                dice.push(rng.random_range(1..=sides));
             }
-            dice.push(val);
-        } else {
-            let sides = (expr.sides as i64).max(1);
-            dice.push(rng.random_range(1..=sides));
         }
+        let kept = apply_dice_filter(&mut dice, &group.filter);
+        all_dice.extend(&dice);
+        all_kept.extend(&kept);
     }
 
-    let kept = apply_dice_filter(&mut dice, &expr.filter);
-    let unmodified: i64 = kept.iter().sum();
+    let unmodified: i64 = all_kept.iter().sum();
     let total = unmodified + expr.modifier;
 
     Ok(RollResult {
         expr: expr.clone(),
-        dice,
-        kept,
+        dice: all_dice,
+        kept: all_kept,
         modifier: expr.modifier,
         total,
         unmodified,
@@ -578,12 +592,7 @@ mod tests {
     fn vetoes_roll_dice() {
         let mut handler = MinimalHandler;
         let effect = Effect::RollDice {
-            expr: DiceExpr {
-                count: 1,
-                sides: 20,
-                filter: None,
-                modifier: 0,
-            },
+            expr: DiceExpr::single(1, 20, None, 0),
         };
         assert!(matches!(handler.handle(effect), Response::Vetoed));
     }
@@ -591,12 +600,7 @@ mod tests {
     #[test]
     fn roll_dice_basic() {
         let mut rng = StdRng::seed_from_u64(42);
-        let expr = DiceExpr {
-            count: 2,
-            sides: 6,
-            filter: None,
-            modifier: 3,
-        };
+        let expr = DiceExpr::single(2, 6, None, 3);
         let result = roll_dice(&mut rng, &expr);
         assert_eq!(result.dice.len(), 2);
         assert!(result.dice.iter().all(|&d| (1..=6).contains(&d)));
@@ -607,12 +611,7 @@ mod tests {
     #[test]
     fn roll_dice_with_filter() {
         let mut rng = StdRng::seed_from_u64(42);
-        let expr = DiceExpr {
-            count: 4,
-            sides: 6,
-            filter: Some(DiceFilter::KeepHighest(3)),
-            modifier: 0,
-        };
+        let expr = DiceExpr::single(4, 6, Some(DiceFilter::KeepHighest(3)), 0);
         let result = roll_dice(&mut rng, &expr);
         assert_eq!(result.dice.len(), 4);
         assert_eq!(result.kept.len(), 3);
@@ -629,12 +628,7 @@ mod tests {
     #[test]
     fn roll_dice_drop_lowest() {
         let mut rng = StdRng::seed_from_u64(123);
-        let expr = DiceExpr {
-            count: 4,
-            sides: 6,
-            filter: Some(DiceFilter::DropLowest(1)),
-            modifier: 0,
-        };
+        let expr = DiceExpr::single(4, 6, Some(DiceFilter::DropLowest(1)), 0);
         let result = roll_dice(&mut rng, &expr);
         assert_eq!(result.dice.len(), 4);
         assert_eq!(result.kept.len(), 3);
@@ -649,12 +643,7 @@ mod tests {
         let mut handler = CliHandler::new(&game_state, &reverse_handles, &mut rng, &mut queue);
 
         let effect = Effect::RollDice {
-            expr: DiceExpr {
-                count: 1,
-                sides: 20,
-                filter: None,
-                modifier: 5,
-            },
+            expr: DiceExpr::single(1, 20, None, 5),
         };
         let response = handler.handle(effect);
         assert!(matches!(response, Response::Rolled(_)));
@@ -816,12 +805,7 @@ mod tests {
     fn roll_dice_from_queue_basic() {
         let mut queue = VecDeque::from(vec![3, 5]);
         let mut rng = StdRng::seed_from_u64(42);
-        let expr = DiceExpr {
-            count: 2,
-            sides: 6,
-            filter: None,
-            modifier: 1,
-        };
+        let expr = DiceExpr::single(2, 6, None, 1);
         let result = roll_dice_from_queue(&mut queue, &mut rng, &expr).unwrap();
         assert_eq!(result.dice, vec![3, 5]);
         assert_eq!(result.total, 3 + 5 + 1);
@@ -833,12 +817,7 @@ mod tests {
         // Queue has only 1 value but we need 2 dice
         let mut queue = VecDeque::from(vec![4]);
         let mut rng = StdRng::seed_from_u64(42);
-        let expr = DiceExpr {
-            count: 2,
-            sides: 6,
-            filter: None,
-            modifier: 0,
-        };
+        let expr = DiceExpr::single(2, 6, None, 0);
         let result = roll_dice_from_queue(&mut queue, &mut rng, &expr).unwrap();
         assert_eq!(result.dice[0], 4); // from queue
         assert!(result.dice[1] >= 1 && result.dice[1] <= 6); // from rng
@@ -849,12 +828,7 @@ mod tests {
     fn roll_dice_from_queue_out_of_range() {
         let mut queue = VecDeque::from(vec![7]); // out of range for d6
         let mut rng = StdRng::seed_from_u64(42);
-        let expr = DiceExpr {
-            count: 1,
-            sides: 6,
-            filter: None,
-            modifier: 0,
-        };
+        let expr = DiceExpr::single(1, 6, None, 0);
         let result = roll_dice_from_queue(&mut queue, &mut rng, &expr);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("out of range"));
@@ -869,12 +843,7 @@ mod tests {
         let mut handler = CliHandler::new(&game_state, &reverse_handles, &mut rng, &mut queue);
 
         let effect = Effect::RollDice {
-            expr: DiceExpr {
-                count: 1,
-                sides: 20,
-                filter: None,
-                modifier: 5,
-            },
+            expr: DiceExpr::single(1, 20, None, 5),
         };
         let response = handler.handle(effect);
         match response {
