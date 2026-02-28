@@ -45,8 +45,8 @@ impl Parser {
             return self.parse_grant_stmt();
         }
 
-        // revoke entity.Group
-        if self.at_ident("revoke") {
+        // revoke entity.Group (but not revoke(inv) — that's a function call)
+        if self.at_ident("revoke") && !matches!(self.peek_at(1), TokenKind::LParen) {
             return self.parse_revoke_stmt();
         }
 

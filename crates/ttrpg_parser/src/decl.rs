@@ -316,6 +316,10 @@ impl Parser {
 
     fn parse_tag_decl(&mut self) -> Result<TagDecl, ()> {
         self.expect_soft_keyword("tag")?;
+        // Accept both `tag #name` and `tag name`
+        if matches!(self.peek(), TokenKind::Hash) {
+            self.advance();
+        }
         let (name, _) = self.expect_ident()?;
         self.expect_term()?;
         Ok(TagDecl { name })
@@ -416,6 +420,15 @@ impl Parser {
         self.expect(&TokenKind::LParen)?;
         let params = self.parse_params()?;
         self.expect(&TokenKind::RParen)?;
+
+        // Parse tag annotations: #tag1 #tag2 ... before the body block
+        let mut tags = Vec::new();
+        while matches!(self.peek(), TokenKind::Hash) {
+            self.advance(); // consume #
+            let (tag_name, _) = self.expect_ident()?;
+            tags.push(tag_name);
+        }
+
         self.expect(&TokenKind::LBrace)?;
         self.skip_newlines();
 
@@ -444,7 +457,7 @@ impl Parser {
             requires,
             resolve,
             trigger_text: None,
-            tags: vec![],
+            tags,
             synthetic: false,
         })
     }
@@ -656,10 +669,18 @@ impl Parser {
         self.expect(&TokenKind::LParen)?;
         let params = self.parse_params()?;
         self.expect(&TokenKind::RParen)?;
-        self.expect(&TokenKind::LBrace)?;
-        self.skip_newlines();
-        let fields = self.parse_field_defs()?;
-        self.expect(&TokenKind::RBrace)?;
+        // Body is optional — events with only params and no extra fields
+        // can omit the `{}` block.
+        let fields = if matches!(self.peek(), TokenKind::LBrace) {
+            self.expect(&TokenKind::LBrace)?;
+            self.skip_newlines();
+            let fields = self.parse_field_defs()?;
+            self.expect(&TokenKind::RBrace)?;
+            fields
+        } else {
+            self.expect_term()?;
+            Vec::new()
+        };
         Ok(EventDecl {
             name,
             params,

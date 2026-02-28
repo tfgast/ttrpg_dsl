@@ -66,11 +66,11 @@ fn test_parse_full_example() {
     assert_eq!(entities, 2, "entity count");
     assert_eq!(derives, 4, "derive count");
     assert_eq!(mechanics, 6, "mechanic count");
-    assert_eq!(actions, 8, "action count");
-    assert_eq!(reactions, 1, "reaction count");
-    assert_eq!(conditions, 5, "condition count");
+    assert_eq!(actions, 9, "action count");
+    assert_eq!(reactions, 2, "reaction count");
+    assert_eq!(conditions, 6, "condition count");
     assert_eq!(prompts, 2, "prompt count");
-    assert_eq!(events, 4, "event count");
+    assert_eq!(events, 5, "event count");
 }
 
 #[test]
@@ -2300,5 +2300,270 @@ fn test_parse_param_with_group_alias() {
     assert_eq!(
         derive.params[0].with_groups[0].alias.as_ref().unwrap(),
         "sc"
+    );
+}
+
+// ── Invocation tracking parser tests ─────────────────────────────
+
+#[test]
+fn test_parse_invocation_type_in_field() {
+    let source = r#"system "test" {
+    entity Character {
+        concentrating_on: option<Invocation>
+    }
+}"#;
+    let (program, diagnostics) = parse(source, FileId::SYNTH);
+    assert!(
+        diagnostics.is_empty(),
+        "Invocation type should parse: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+    let system = match &program.items[0].node {
+        TopLevel::System(s) => s,
+        _ => panic!("expected system"),
+    };
+    let entity = system
+        .decls
+        .iter()
+        .find_map(|d| match &d.node {
+            DeclKind::Entity(e) => Some(e),
+            _ => None,
+        })
+        .unwrap();
+    // The field type should be option<Invocation>
+    assert!(matches!(
+        entity.fields[0].ty.node,
+        TypeExpr::OptionType(_)
+    ));
+    if let TypeExpr::OptionType(inner) = &entity.fields[0].ty.node {
+        assert!(matches!(inner.node, TypeExpr::Invocation));
+    }
+}
+
+#[test]
+fn test_parse_invocation_type_in_event() {
+    let source = r#"system "test" {
+    event ConcentrationStarted(caster: entity, inv: Invocation) {}
+}"#;
+    let (program, diagnostics) = parse(source, FileId::SYNTH);
+    assert!(
+        diagnostics.is_empty(),
+        "Invocation type in event params should parse: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+    let system = match &program.items[0].node {
+        TopLevel::System(s) => s,
+        _ => panic!("expected system"),
+    };
+    let event = system
+        .decls
+        .iter()
+        .find_map(|d| match &d.node {
+            DeclKind::Event(e) => Some(e),
+            _ => None,
+        })
+        .unwrap();
+    assert_eq!(event.params.len(), 2);
+    assert!(matches!(event.params[1].ty.node, TypeExpr::Invocation));
+}
+
+#[test]
+fn test_parse_invocation_type_bare() {
+    let source = r#"system "test" {
+    entity Character {
+        last_inv: Invocation
+    }
+}"#;
+    let (_program, diagnostics) = parse(source, FileId::SYNTH);
+    assert!(
+        diagnostics.is_empty(),
+        "bare Invocation type should parse: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn test_parse_invocation_type_in_list() {
+    let source = r#"system "test" {
+    entity Character {
+        sustained_spells: list<Invocation>
+    }
+}"#;
+    let (program, diagnostics) = parse(source, FileId::SYNTH);
+    assert!(
+        diagnostics.is_empty(),
+        "list<Invocation> should parse: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+    let system = match &program.items[0].node {
+        TopLevel::System(s) => s,
+        _ => panic!("expected system"),
+    };
+    let entity = system
+        .decls
+        .iter()
+        .find_map(|d| match &d.node {
+            DeclKind::Entity(e) => Some(e),
+            _ => None,
+        })
+        .unwrap();
+    if let TypeExpr::List(inner) = &entity.fields[0].ty.node {
+        assert!(matches!(inner.node, TypeExpr::Invocation));
+    } else {
+        panic!("expected List type");
+    }
+}
+
+#[test]
+fn test_parse_action_with_tags() {
+    let source = r#"system "test" {
+    tag #concentration
+    action CastBless on caster: entity (target: entity) #concentration {
+        resolve {
+            let x = 1
+        }
+    }
+}"#;
+    let (program, diagnostics) = parse(source, FileId::SYNTH);
+    assert!(
+        diagnostics.is_empty(),
+        "action with tags should parse: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+    let system = match &program.items[0].node {
+        TopLevel::System(s) => s,
+        _ => panic!("expected system"),
+    };
+    let action = system
+        .decls
+        .iter()
+        .find_map(|d| match &d.node {
+            DeclKind::Action(a) => Some(a),
+            _ => None,
+        })
+        .unwrap();
+    assert_eq!(action.tags.len(), 1);
+    assert_eq!(action.tags[0], "concentration");
+}
+
+#[test]
+fn test_parse_action_with_multiple_tags() {
+    let source = r#"system "test" {
+    tag #concentration
+    tag #spell
+    action CastBless on caster: entity (target: entity) #concentration #spell {
+        resolve {
+            let x = 1
+        }
+    }
+}"#;
+    let (program, diagnostics) = parse(source, FileId::SYNTH);
+    assert!(
+        diagnostics.is_empty(),
+        "action with multiple tags should parse: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+    let system = match &program.items[0].node {
+        TopLevel::System(s) => s,
+        _ => panic!("expected system"),
+    };
+    let action = system
+        .decls
+        .iter()
+        .find_map(|d| match &d.node {
+            DeclKind::Action(a) => Some(a),
+            _ => None,
+        })
+        .unwrap();
+    assert_eq!(action.tags.len(), 2);
+    assert_eq!(action.tags[0], "concentration");
+    assert_eq!(action.tags[1], "spell");
+}
+
+#[test]
+fn test_parse_action_without_tags() {
+    let source = r#"system "test" {
+    action Attack on attacker: entity (target: entity) {
+        resolve {
+            let x = 1
+        }
+    }
+}"#;
+    let (program, diagnostics) = parse(source, FileId::SYNTH);
+    assert!(
+        diagnostics.is_empty(),
+        "action without tags should still parse: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+    let system = match &program.items[0].node {
+        TopLevel::System(s) => s,
+        _ => panic!("expected system"),
+    };
+    let action = system
+        .decls
+        .iter()
+        .find_map(|d| match &d.node {
+            DeclKind::Action(a) => Some(a),
+            _ => None,
+        })
+        .unwrap();
+    assert!(action.tags.is_empty());
+}
+
+#[test]
+fn test_parse_revoke_stmt_still_works() {
+    // revoke entity.GroupName should still parse as a revoke statement
+    let source = r#"system "test" {
+    entity Character {
+        optional Rage { bonus: int }
+    }
+    action EndRage on actor: entity () {
+        resolve {
+            revoke actor.Rage
+        }
+    }
+}"#;
+    let (_program, diagnostics) = parse(source, FileId::SYNTH);
+    assert!(
+        diagnostics.is_empty(),
+        "revoke statement should still parse: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn test_parse_revoke_call_as_expr() {
+    // revoke(inv) should parse as a function call expression statement
+    let source = r#"system "test" {
+    action BreakConcentration on caster: entity () {
+        resolve {
+            revoke(caster.concentrating_on)
+        }
+    }
+}"#;
+    let (program, diagnostics) = parse(source, FileId::SYNTH);
+    assert!(
+        diagnostics.is_empty(),
+        "revoke() call should parse as expression: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+    let system = match &program.items[0].node {
+        TopLevel::System(s) => s,
+        _ => panic!("expected system"),
+    };
+    let action = system
+        .decls
+        .iter()
+        .find_map(|d| match &d.node {
+            DeclKind::Action(a) => Some(a),
+            _ => None,
+        })
+        .unwrap();
+    // The resolve block should contain an expression statement with a Call
+    let stmt = &action.resolve.node[0];
+    assert!(
+        matches!(&stmt.node, StmtKind::Expr(expr) if matches!(&expr.node, ExprKind::Call { .. })),
+        "expected revoke(x) to parse as a call expression statement, got: {:?}",
+        std::mem::discriminant(&stmt.node)
     );
 }
