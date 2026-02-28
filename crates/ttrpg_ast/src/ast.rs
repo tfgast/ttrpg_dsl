@@ -257,6 +257,22 @@ pub struct GroupConstraint {
     pub alias: Option<Name>,
 }
 
+/// A `with` clause on a parameter or receiver: conjunctive (AND) or disjunctive (OR).
+///
+/// - Conjunctive (default): `with A, B` — all groups required and narrowed.
+/// - Disjunctive: `with A | B` — at least one group required, none narrowed.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct WithClause {
+    pub groups: Vec<GroupConstraint>,
+    pub disjunctive: bool,
+}
+
+impl WithClause {
+    pub fn is_empty(&self) -> bool {
+        self.groups.is_empty()
+    }
+}
+
 /// Shared representation for derive and mechanic declarations.
 #[derive(Clone)]
 pub struct FnDecl {
@@ -278,7 +294,7 @@ pub struct Param {
     pub default: Option<Spanned<ExprKind>>,
     /// Optional group constraints: `param: Entity with Group1, Group2`.
     /// The checker narrows these groups as active within the function body.
-    pub with_groups: Vec<GroupConstraint>,
+    pub with_groups: WithClause,
     pub span: Span,
 }
 
@@ -288,7 +304,7 @@ pub struct ActionDecl {
     pub receiver_name: Name,
     pub receiver_type: Spanned<TypeExpr>,
     /// Optional group constraints on the receiver: `on actor: Entity with Group1, Group2`.
-    pub receiver_with_groups: Vec<GroupConstraint>,
+    pub receiver_with_groups: WithClause,
     pub params: Vec<Param>,
     pub cost: Option<CostClause>,
     pub requires: Option<Spanned<ExprKind>>,
@@ -317,7 +333,7 @@ pub struct ReactionDecl {
     pub receiver_name: Name,
     pub receiver_type: Spanned<TypeExpr>,
     /// Optional group constraints on the receiver: `on reactor: Entity with Group`.
-    pub receiver_with_groups: Vec<GroupConstraint>,
+    pub receiver_with_groups: WithClause,
     pub trigger: TriggerExpr,
     pub cost: Option<CostClause>,
     pub resolve: Block,
@@ -329,7 +345,7 @@ pub struct HookDecl {
     pub receiver_name: Name,
     pub receiver_type: Spanned<TypeExpr>,
     /// Optional group constraints on the receiver: `on target: Entity with Group`.
-    pub receiver_with_groups: Vec<GroupConstraint>,
+    pub receiver_with_groups: WithClause,
     pub trigger: TriggerExpr,
     pub resolve: Block,
 }
@@ -367,7 +383,7 @@ pub struct ConditionDecl {
     pub receiver_name: Name,
     pub receiver_type: Spanned<TypeExpr>,
     /// Optional group constraints on the bearer: `on bearer: Entity with Group`.
-    pub receiver_with_groups: Vec<GroupConstraint>,
+    pub receiver_with_groups: WithClause,
     pub clauses: Vec<ConditionClause>,
 }
 

@@ -1,4 +1,4 @@
-use ttrpg_ast::ast::{Arg, Param};
+use ttrpg_ast::ast::{Arg, Param, WithClause};
 use ttrpg_ast::{Name, Span};
 use ttrpg_checker::env::ParamInfo;
 
@@ -66,7 +66,7 @@ pub(super) fn dispatch_action(
             name: receiver_info.name.clone(),
             ty: receiver_type,
             default: None,
-            with_groups: vec![],
+            with_groups: WithClause::default(),
             span: call_span,
         }];
         params.extend(ast_params);

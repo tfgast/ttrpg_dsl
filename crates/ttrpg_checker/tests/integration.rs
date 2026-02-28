@@ -9606,3 +9606,112 @@ fn revoke_with_none_literal() {
 }"#;
     expect_no_errors(source);
 }
+
+// ── Disjunctive with constraint checker tests ───────────────────
+
+#[test]
+fn test_disjunctive_with_body_rejects_direct_field_access() {
+    let source = r#"system "test" {
+    entity Character {
+        hp: int
+        optional Spellcasting { spell_slots: int }
+        optional Martial { attacks: int }
+    }
+    derive combat_value(actor: Character with Spellcasting | Martial) -> int {
+        actor.Spellcasting.spell_slots
+    }
+}"#;
+    let result = check_source(source);
+    assert!(
+        !result.diagnostics.is_empty(),
+        "expected error for direct field access on disjunctive with"
+    );
+}
+
+#[test]
+fn test_disjunctive_with_has_guard_narrows() {
+    let source = r#"system "test" {
+    entity Character {
+        hp: int
+        optional Spellcasting { spell_slots: int }
+        optional Martial { attacks: int }
+    }
+    derive combat_value(actor: Character with Spellcasting | Martial) -> int {
+        if actor has Spellcasting {
+            actor.Spellcasting.spell_slots
+        } else {
+            0
+        }
+    }
+}"#;
+    let result = check_source(source);
+    assert!(
+        result.diagnostics.is_empty(),
+        "unexpected errors: {:?}",
+        result.diagnostics
+    );
+}
+
+#[test]
+fn test_disjunctive_with_callsite_no_proof_required() {
+    let source = r#"system "test" {
+    entity Character {
+        hp: int
+        optional Spellcasting { spell_slots: int }
+        optional Martial { attacks: int }
+    }
+    derive combat_value(actor: Character with Spellcasting | Martial) -> int {
+        0
+    }
+    mechanic test_it(c: Character) -> int {
+        combat_value(c)
+    }
+}"#;
+    let result = check_source(source);
+    assert!(
+        result.diagnostics.is_empty(),
+        "disjunctive with should not require call-site proof: {:?}",
+        result.diagnostics
+    );
+}
+
+#[test]
+fn test_conjunctive_with_callsite_requires_proof() {
+    // Conjunctive `with` DOES require call-site proof (existing behavior)
+    let source = r#"system "test" {
+    entity Character {
+        hp: int
+        optional Spellcasting { spell_slots: int }
+    }
+    derive spell_stuff(actor: Character with Spellcasting) -> int {
+        actor.Spellcasting.spell_slots
+    }
+    mechanic test_it(c: Character) -> int {
+        spell_stuff(c)
+    }
+}"#;
+    let result = check_source(source);
+    assert!(
+        !result.diagnostics.is_empty(),
+        "conjunctive with should require call-site proof"
+    );
+}
+
+#[test]
+fn test_disjunctive_with_validates_groups_exist() {
+    let source = r#"system "test" {
+    entity Character {
+        hp: int
+        optional Spellcasting { spell_slots: int }
+    }
+    derive bad(actor: Character with Spellcasting | NoSuchGroup) -> int {
+        0
+    }
+}"#;
+    let result = check_source(source);
+    assert!(
+        result.diagnostics.iter().any(|d| d.message.contains("NoSuchGroup")),
+        "expected error for nonexistent group in disjunctive with: {:?}",
+        result.diagnostics
+    );
+}

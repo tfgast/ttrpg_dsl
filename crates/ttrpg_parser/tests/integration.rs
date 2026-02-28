@@ -1227,9 +1227,9 @@ fn test_action_receiver_with_group() {
             _ => None,
         })
         .unwrap();
-    assert_eq!(action.receiver_with_groups.len(), 1);
-    assert_eq!(action.receiver_with_groups[0].name, "Spellcasting");
-    assert_eq!(action.receiver_with_groups[0].alias, None);
+    assert_eq!(action.receiver_with_groups.groups.len(), 1);
+    assert_eq!(action.receiver_with_groups.groups[0].name, "Spellcasting");
+    assert_eq!(action.receiver_with_groups.groups[0].alias, None);
 }
 
 #[test]
@@ -1261,9 +1261,9 @@ fn test_param_with_group() {
             _ => None,
         })
         .unwrap();
-    assert_eq!(derive.params[0].with_groups.len(), 1);
-    assert_eq!(derive.params[0].with_groups[0].name, "Spellcasting");
-    assert_eq!(derive.params[0].with_groups[0].alias, None);
+    assert_eq!(derive.params[0].with_groups.groups.len(), 1);
+    assert_eq!(derive.params[0].with_groups.groups[0].name, "Spellcasting");
+    assert_eq!(derive.params[0].with_groups.groups[0].alias, None);
 }
 
 #[test]
@@ -1329,9 +1329,9 @@ fn test_condition_receiver_with_group() {
             _ => None,
         })
         .unwrap();
-    assert_eq!(cond.receiver_with_groups.len(), 1);
-    assert_eq!(cond.receiver_with_groups[0].name, "Spellcasting");
-    assert_eq!(cond.receiver_with_groups[0].alias, None);
+    assert_eq!(cond.receiver_with_groups.groups.len(), 1);
+    assert_eq!(cond.receiver_with_groups.groups[0].name, "Spellcasting");
+    assert_eq!(cond.receiver_with_groups.groups[0].alias, None);
 }
 
 #[test]
@@ -2234,10 +2234,10 @@ fn test_parse_with_group_alias() {
             _ => None,
         })
         .unwrap();
-    assert_eq!(action.receiver_with_groups.len(), 1);
-    assert_eq!(action.receiver_with_groups[0].name, "Spellcasting");
+    assert_eq!(action.receiver_with_groups.groups.len(), 1);
+    assert_eq!(action.receiver_with_groups.groups[0].name, "Spellcasting");
     assert_eq!(
-        action.receiver_with_groups[0].alias.as_ref().unwrap(),
+        action.receiver_with_groups.groups[0].alias.as_ref().unwrap(),
         "sc"
     );
 }
@@ -2295,11 +2295,129 @@ fn test_parse_param_with_group_alias() {
             _ => None,
         })
         .unwrap();
-    assert_eq!(derive.params[0].with_groups.len(), 1);
-    assert_eq!(derive.params[0].with_groups[0].name, "Spellcasting");
+    assert_eq!(derive.params[0].with_groups.groups.len(), 1);
+    assert_eq!(derive.params[0].with_groups.groups[0].name, "Spellcasting");
     assert_eq!(
-        derive.params[0].with_groups[0].alias.as_ref().unwrap(),
+        derive.params[0].with_groups.groups[0].alias.as_ref().unwrap(),
         "sc"
+    );
+}
+
+// ── Disjunctive with constraint parser tests ────────────────────
+
+#[test]
+fn test_parse_disjunctive_with_groups() {
+    let source = r#"system "test" {
+    entity Character { hp: int }
+    group Spellcasting { spell_slots: int }
+    group Martial { attacks: int }
+    derive combat_value(actor: Character with Spellcasting | Martial) -> int {
+        0
+    }
+}"#;
+    let (program, diagnostics) = parse(source, FileId::SYNTH);
+    assert!(diagnostics.is_empty(), "unexpected errors: {:?}", diagnostics);
+
+    let system = match &program.items[0].node {
+        TopLevel::System(s) => s,
+        _ => panic!("expected system block"),
+    };
+    let derive = system
+        .decls
+        .iter()
+        .find_map(|d| match &d.node {
+            DeclKind::Derive(f) => Some(f),
+            _ => None,
+        })
+        .unwrap();
+    assert_eq!(derive.params[0].with_groups.groups.len(), 2);
+    assert!(derive.params[0].with_groups.disjunctive);
+    assert_eq!(derive.params[0].with_groups.groups[0].name, "Spellcasting");
+    assert_eq!(derive.params[0].with_groups.groups[1].name, "Martial");
+}
+
+#[test]
+fn test_parse_disjunctive_with_alias() {
+    let source = r#"system "test" {
+    entity Character { hp: int }
+    group Spellcasting { spell_slots: int }
+    group Martial { attacks: int }
+    action cast_or_strike on actor: Character with Spellcasting as sc | Martial as mt () {
+        resolve { }
+    }
+}"#;
+    let (program, diagnostics) = parse(source, FileId::SYNTH);
+    assert!(diagnostics.is_empty(), "unexpected errors: {:?}", diagnostics);
+
+    let system = match &program.items[0].node {
+        TopLevel::System(s) => s,
+        _ => panic!("expected system block"),
+    };
+    let action = system
+        .decls
+        .iter()
+        .find_map(|d| match &d.node {
+            DeclKind::Action(a) => Some(a),
+            _ => None,
+        })
+        .unwrap();
+    assert!(action.receiver_with_groups.disjunctive);
+    assert_eq!(action.receiver_with_groups.groups.len(), 2);
+    assert_eq!(
+        action.receiver_with_groups.groups[0].alias.as_ref().unwrap(),
+        "sc"
+    );
+    assert_eq!(
+        action.receiver_with_groups.groups[1].alias.as_ref().unwrap(),
+        "mt"
+    );
+}
+
+#[test]
+fn test_parse_conjunctive_with_not_disjunctive() {
+    let source = r#"system "test" {
+    entity Character { hp: int }
+    group Spellcasting { spell_slots: int }
+    group Martial { attacks: int }
+    derive needs_both(actor: Character with Spellcasting, Martial) -> int {
+        0
+    }
+}"#;
+    let (program, diagnostics) = parse(source, FileId::SYNTH);
+    assert!(diagnostics.is_empty(), "unexpected errors: {:?}", diagnostics);
+
+    let system = match &program.items[0].node {
+        TopLevel::System(s) => s,
+        _ => panic!("expected system block"),
+    };
+    let derive = system
+        .decls
+        .iter()
+        .find_map(|d| match &d.node {
+            DeclKind::Derive(f) => Some(f),
+            _ => None,
+        })
+        .unwrap();
+    assert_eq!(derive.params[0].with_groups.groups.len(), 2);
+    assert!(!derive.params[0].with_groups.disjunctive);
+}
+
+#[test]
+fn test_parse_mixed_separators_error() {
+    let source = r#"system "test" {
+    entity Character { hp: int }
+    group A { x: int }
+    group B { y: int }
+    group C { z: int }
+    derive bad(actor: Character with A, B | C) -> int { 0 }
+}"#;
+    let (_, diagnostics) = parse(source, FileId::SYNTH);
+    assert!(
+        diagnostics.iter().any(|d| {
+            d.message.contains("cannot mix")
+        }),
+        "expected mixed separator error, got: {:?}",
+        diagnostics
     );
 }
 

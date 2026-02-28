@@ -839,7 +839,8 @@ fn collect_fn(
                 name: p.name.clone(),
                 ty: env.resolve_type_validated(&p.ty, diagnostics),
                 has_default: p.default.is_some(),
-                with_groups: p.with_groups.iter().map(|g| g.name.clone()).collect(),
+                with_groups: p.with_groups.groups.iter().map(|g| g.name.clone()).collect(),
+                with_disjunctive: p.with_groups.disjunctive,
             }
         })
         .collect();
@@ -930,7 +931,8 @@ fn collect_action(
         name: a.receiver_name.clone(),
         ty: env.resolve_type(&a.receiver_type),
         has_default: false,
-        with_groups: a.receiver_with_groups.iter().map(|g| g.name.clone()).collect(),
+        with_groups: a.receiver_with_groups.groups.iter().map(|g| g.name.clone()).collect(),
+        with_disjunctive: a.receiver_with_groups.disjunctive,
     };
 
     collect_fn(
@@ -991,7 +993,8 @@ fn collect_reaction(
         name: r.receiver_name.clone(),
         ty: env.resolve_type(&r.receiver_type),
         has_default: false,
-        with_groups: r.receiver_with_groups.iter().map(|g| g.name.clone()).collect(),
+        with_groups: r.receiver_with_groups.groups.iter().map(|g| g.name.clone()).collect(),
+        with_disjunctive: r.receiver_with_groups.disjunctive,
     };
 
     collect_fn(
@@ -1045,7 +1048,8 @@ fn collect_hook(h: &HookDecl, env: &mut TypeEnv, diagnostics: &mut Vec<Diagnosti
         name: h.receiver_name.clone(),
         ty: env.resolve_type(&h.receiver_type),
         has_default: false,
-        with_groups: h.receiver_with_groups.iter().map(|g| g.name.clone()).collect(),
+        with_groups: h.receiver_with_groups.groups.iter().map(|g| g.name.clone()).collect(),
+        with_disjunctive: h.receiver_with_groups.disjunctive,
     };
 
     collect_fn(
@@ -1095,7 +1099,8 @@ fn collect_condition(
             name: param.name.clone(),
             ty,
             has_default: param.default.is_some(),
-            with_groups: param.with_groups.iter().map(|g| g.name.clone()).collect(),
+            with_groups: param.with_groups.groups.iter().map(|g| g.name.clone()).collect(),
+            with_disjunctive: param.with_groups.disjunctive,
         });
     }
 
@@ -1166,7 +1171,8 @@ fn collect_event(e: &EventDecl, env: &mut TypeEnv, diagnostics: &mut Vec<Diagnos
                 name: p.name.clone(),
                 ty: env.resolve_type_validated(&p.ty, diagnostics),
                 has_default: p.default.is_some(),
-                with_groups: p.with_groups.iter().map(|g| g.name.clone()).collect(),
+                with_groups: p.with_groups.groups.iter().map(|g| g.name.clone()).collect(),
+                with_disjunctive: p.with_groups.disjunctive,
             }
         })
         .collect();

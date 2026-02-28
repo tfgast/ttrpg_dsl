@@ -364,11 +364,14 @@ impl Parser {
         })
     }
 
-    /// Parse an optional `with Group1 as alias1, Group2` constraint list.
-    /// Returns an empty vec if no `with` keyword is present.
-    fn parse_with_groups(&mut self) -> Result<Vec<GroupConstraint>, ()> {
+    /// Parse an optional `with` constraint list.
+    ///
+    /// - Conjunctive (AND): `with Group1, Group2` — comma-separated.
+    /// - Disjunctive (OR):  `with Group1 | Group2` — pipe-separated.
+    /// - Mixing commas and pipes is a parse error.
+    fn parse_with_groups(&mut self) -> Result<WithClause, ()> {
         if !self.at_ident("with") {
-            return Ok(vec![]);
+            return Ok(WithClause::default());
         }
         self.advance(); // consume 'with'
         let mut groups = Vec::new();
@@ -381,30 +384,76 @@ impl Parser {
             None
         };
         groups.push(GroupConstraint { name, alias });
-        while matches!(self.peek(), TokenKind::Comma) {
-            // Peek ahead: if the next token after comma is IDENT followed by
-            // colon or rparen, it's the next param, not another group name.
-            if matches!(self.peek_at(1), TokenKind::Ident(_))
-                && matches!(self.peek_at(2), TokenKind::Colon)
-            {
-                break;
+
+        // Determine separator mode from first separator token
+        let disjunctive = matches!(self.peek(), TokenKind::Pipe);
+
+        if disjunctive {
+            // Disjunctive mode: parse groups separated by `|`
+            while matches!(self.peek(), TokenKind::Pipe) {
+                self.advance(); // consume '|'
+                if matches!(self.peek(), TokenKind::Comma) {
+                    self.error("cannot mix `,` and `|` in `with` constraints; use all commas (AND) or all pipes (OR)");
+                    return Err(());
+                }
+                let (name, _) = self.expect_ident()?;
+                let alias = if self.at_ident("as") {
+                    self.advance();
+                    let (a, _) = self.expect_ident()?;
+                    Some(a)
+                } else {
+                    None
+                };
+                groups.push(GroupConstraint { name, alias });
             }
-            // Trailing comma: comma followed by ')' ends the param list.
-            if matches!(self.peek_at(1), TokenKind::RParen) {
-                break;
+            // Check for trailing comma that would mix separators
+            if matches!(self.peek(), TokenKind::Comma) {
+                // Peek ahead to see if it's a group name (not next param)
+                if matches!(self.peek_at(1), TokenKind::Ident(_))
+                    && !matches!(self.peek_at(2), TokenKind::Colon)
+                    && !matches!(self.peek_at(1), TokenKind::RParen)
+                {
+                    self.error("cannot mix `,` and `|` in `with` constraints; use all commas (AND) or all pipes (OR)");
+                    return Err(());
+                }
             }
-            self.advance(); // consume ','
-            let (name, _) = self.expect_ident()?;
-            let alias = if self.at_ident("as") {
-                self.advance();
-                let (a, _) = self.expect_ident()?;
-                Some(a)
-            } else {
-                None
-            };
-            groups.push(GroupConstraint { name, alias });
+        } else {
+            // Conjunctive mode: parse groups separated by `,`
+            while matches!(self.peek(), TokenKind::Comma) {
+                // Peek ahead: if the next token after comma is IDENT followed by
+                // colon or rparen, it's the next param, not another group name.
+                if matches!(self.peek_at(1), TokenKind::Ident(_))
+                    && matches!(self.peek_at(2), TokenKind::Colon)
+                {
+                    break;
+                }
+                // Trailing comma: comma followed by ')' ends the param list.
+                if matches!(self.peek_at(1), TokenKind::RParen) {
+                    break;
+                }
+                self.advance(); // consume ','
+                if matches!(self.peek(), TokenKind::Pipe) {
+                    self.error("cannot mix `,` and `|` in `with` constraints; use all commas (AND) or all pipes (OR)");
+                    return Err(());
+                }
+                let (name, _) = self.expect_ident()?;
+                let alias = if self.at_ident("as") {
+                    self.advance();
+                    let (a, _) = self.expect_ident()?;
+                    Some(a)
+                } else {
+                    None
+                };
+                groups.push(GroupConstraint { name, alias });
+            }
+            // Detect trailing pipe after conjunctive groups: `with A, B | C`
+            if matches!(self.peek(), TokenKind::Pipe) {
+                self.error("cannot mix `,` and `|` in `with` constraints; use all commas (AND) or all pipes (OR)");
+                return Err(());
+            }
         }
-        Ok(groups)
+
+        Ok(WithClause { groups, disjunctive })
     }
 
     // ── Action ───────────────────────────────────────────────────

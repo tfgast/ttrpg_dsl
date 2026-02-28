@@ -1211,7 +1211,7 @@ mod tests {
             name: "SimpleAttack".into(),
             receiver_name: "actor".into(),
             receiver_type: spanned(TypeExpr::Named("Character".into())),
-            receiver_with_groups: vec![],
+            receiver_with_groups: WithClause::default(),
             params: vec![],
             cost: Some(CostClause {
                 tokens: vec![spanned(Name::from("action"))],

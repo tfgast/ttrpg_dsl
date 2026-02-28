@@ -9,6 +9,7 @@ fn param(name: &str, ty: Ty) -> ParamInfo {
         ty,
         has_default: false,
         with_groups: vec![],
+        with_disjunctive: false,
     }
 }
 

@@ -97,6 +97,9 @@ pub struct ParamInfo {
     pub has_default: bool,
     /// Optional group constraints from `with` clauses, enforced at call sites.
     pub with_groups: Vec<Name>,
+    /// True when the `with` clause is disjunctive (`with A | B`).
+    /// Disjunctive constraints skip call-site group proof and body narrowing.
+    pub with_disjunctive: bool,
 }
 
 #[derive(Debug, Clone)]

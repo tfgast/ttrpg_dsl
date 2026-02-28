@@ -187,7 +187,7 @@ fn lower_one_move(
         name: m.receiver_name.clone(),
         ty: m.receiver_type.clone(),
         default: None,
-        with_groups: vec![],
+        with_groups: WithClause::default(),
         span,
     }];
     mechanic_params.extend(m.params.iter().cloned());
@@ -325,7 +325,7 @@ fn lower_one_move(
         name: m.name.clone(),
         receiver_name: m.receiver_name.clone(),
         receiver_type: m.receiver_type.clone(),
-        receiver_with_groups: vec![],
+        receiver_with_groups: WithClause::default(),
         params: m.params.clone(),
         cost: Some(cost),
         requires: None,
@@ -376,7 +376,7 @@ mod tests {
                 name: "__defend_roll".into(),
                 receiver_name: "e".into(),
                 receiver_type: Spanned::new(TypeExpr::Named("Character".into()), dummy_span),
-                receiver_with_groups: vec![],
+                receiver_with_groups: WithClause::default(),
                 trigger: TriggerExpr {
                     event_name: "test".into(),
                     bindings: vec![],

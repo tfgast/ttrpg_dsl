@@ -474,6 +474,7 @@ impl<'a> Checker<'a> {
         // Bind params
         self.bind_params(&a.params);
 
+
         // Bind turn keyword
         self.scope.bind(
             "turn".into(),
@@ -993,14 +994,18 @@ impl<'a> Checker<'a> {
     }
 
     /// Validate `with` group constraints on a parameter or receiver, and add narrowings.
+    ///
+    /// For conjunctive constraints (`with A, B`), each group is narrowed and aliased.
+    /// For disjunctive constraints (`with A | B`), groups are validated but NOT narrowed —
+    /// the author must use `has` guards to access group fields.
     pub fn validate_with_groups(
         &mut self,
         var_name: &Name,
         ty: &Ty,
-        with_groups: &[GroupConstraint],
+        with_clause: &WithClause,
         span: Span,
     ) {
-        for entry in with_groups {
+        for entry in &with_clause.groups {
             let group_name = &entry.name;
             self.check_name_visible(group_name, Namespace::Group, span);
             match ty {
@@ -1040,12 +1045,14 @@ impl<'a> Checker<'a> {
                 }
                 _ => {}
             }
-            self.scope
-                .narrow_group(var_name.clone(), group_name.clone());
-            // Register alias if present
-            if let Some(ref alias) = entry.alias {
+            // Only narrow and alias for conjunctive constraints
+            if !with_clause.disjunctive {
                 self.scope
-                    .add_group_alias(var_name.clone(), alias.clone(), group_name.clone());
+                    .narrow_group(var_name.clone(), group_name.clone());
+                if let Some(ref alias) = entry.alias {
+                    self.scope
+                        .add_group_alias(var_name.clone(), alias.clone(), group_name.clone());
+                }
             }
         }
     }

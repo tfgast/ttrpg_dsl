@@ -292,8 +292,8 @@ impl<'a> Checker<'a> {
                     }
                 }
 
-                // Check `with` group constraints at call site
-                if !params[idx].with_groups.is_empty() {
+                // Check `with` group constraints at call site (skip for disjunctive)
+                if !params[idx].with_groups.is_empty() && !params[idx].with_disjunctive {
                     if let Some(path_key) = self.extract_path_key(&arg.value) {
                         for group in &params[idx].with_groups {
                             if !self.scope.is_group_narrowed(&path_key, group) {

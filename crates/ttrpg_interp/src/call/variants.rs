@@ -57,6 +57,7 @@ pub(super) fn construct_enum_variant(
             ty: ty.clone(),
             has_default: false,
             with_groups: vec![],
+            with_disjunctive: false,
         })
         .collect();
 

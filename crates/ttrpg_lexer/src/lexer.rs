@@ -378,10 +378,7 @@ impl<'a> RawLexer<'a> {
                     self.cursor.advance();
                     Token::new(TokenKind::PipePipe, self.span(start, self.cursor.pos()))
                 } else {
-                    Token::new(
-                        TokenKind::Error("unexpected character '|'".to_string()),
-                        self.span(start, self.cursor.pos()),
-                    )
+                    Token::new(TokenKind::Pipe, self.span(start, self.cursor.pos()))
                 }
             }
 
@@ -819,6 +816,50 @@ mod tests {
                 TokenKind::Ident("x".into()),
                 TokenKind::In,
                 TokenKind::Ident("y".into()),
+                TokenKind::Eof,
+            ]
+        );
+    }
+
+    #[test]
+    fn test_pipe_token() {
+        let result = lex("A | B");
+        assert_eq!(
+            result,
+            vec![
+                TokenKind::Ident("A".into()),
+                TokenKind::Pipe,
+                TokenKind::Ident("B".into()),
+                TokenKind::Eof,
+            ]
+        );
+    }
+
+    #[test]
+    fn test_pipe_vs_pipepipe() {
+        let result = lex("A | B || C");
+        assert_eq!(
+            result,
+            vec![
+                TokenKind::Ident("A".into()),
+                TokenKind::Pipe,
+                TokenKind::Ident("B".into()),
+                TokenKind::PipePipe,
+                TokenKind::Ident("C".into()),
+                TokenKind::Eof,
+            ]
+        );
+    }
+
+    #[test]
+    fn test_nl_suppression_after_pipe() {
+        let result = lex("A |\nB");
+        assert_eq!(
+            result,
+            vec![
+                TokenKind::Ident("A".into()),
+                TokenKind::Pipe,
+                TokenKind::Ident("B".into()),
                 TokenKind::Eof,
             ]
         );

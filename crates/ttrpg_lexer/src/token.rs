@@ -74,6 +74,7 @@ pub enum TokenKind {
     LtEq,     // <=
     GtEq,     // >=
     AmpAmp,   // &&
+    Pipe,     // |
     PipePipe, // ||
 
     // Whitespace / structure
@@ -111,6 +112,7 @@ impl TokenKind {
             // After {  ,  :  and  #
             | TokenKind::LBrace
             | TokenKind::Comma
+            | TokenKind::Pipe
             | TokenKind::Colon
             | TokenKind::Hash
         )

@@ -820,7 +820,7 @@ mod tests {
                 extends: vec![],
                 receiver_name: Name::from("bearer"),
                 receiver_type: Spanned::new(TypeExpr::Named("Character".into()), Span::dummy()),
-                receiver_with_groups: vec![],
+                receiver_with_groups: WithClause::default(),
                 clauses: vec![],
             }),
             Span::dummy(),
