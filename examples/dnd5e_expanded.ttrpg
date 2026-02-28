@@ -1329,6 +1329,13 @@ system "D&D 5e Expanded" {
     //     - `optional GroupName` in entities (external reference)
     //     - Cross-entity group sharing (same group on Character + Monster)
     //
+    //  [RESOLVED] DISJUNCTIVE WITH CONSTRAINTS                   [ttrpg_dsl-roen]
+    //     - `with A | B` — parameter has at least one of the groups (OR)
+    //     - `with A, B` — parameter has all listed groups (AND, unchanged)
+    //     - Disjunctive body: no narrowing, must use `has` guards
+    //     - Call site: no static group proof for disjunctive params
+    //     - Mixing `,` and `|` is a parse error
+    //
     //  [RESOLVED] TYPED PROMPTS                                    [ttrpg_dsl-ctc]
     //     - Prompts carry return_type and named params through effects
     //     - Host knows expected return type (Character, Skill, enum, etc.)

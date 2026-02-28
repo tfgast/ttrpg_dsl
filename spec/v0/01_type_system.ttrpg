@@ -262,6 +262,35 @@ struct RollResult {
 // name at check time. No runtime name is created. See 03_canonical_grammar.ttrpg
 // for the grammar and scoping rules.
 //
+// --- Disjunctive `with` (OR constraints) ---
+//
+// `with A, B` (commas) requires ALL groups — conjunctive/AND.
+// `with A | B` (pipes) requires AT LEAST ONE — disjunctive/OR.
+//
+// Disjunctive constraints are useful when a function handles multiple
+// capability groups but doesn't need all of them simultaneously:
+//
+//   derive determine_weapon_mode(
+//       combatant: Combatant with MeleeCapable | MissileCapable,
+//       distance: int
+//   ) -> WeaponMode {
+//       // Neither group is narrowed — must use `has` to access fields.
+//       if combatant has MissileCapable {
+//           if combatant has MeleeCapable {
+//               if distance > 10 { WeaponMode.Missile } else { WeaponMode.Melee }
+//           } else {
+//               WeaponMode.Missile
+//           }
+//       } else {
+//           WeaponMode.Melee   // guaranteed by `with ... | ...`
+//       }
+//   }
+//
+// Key differences from conjunctive `with`:
+//   - Body: group fields are NOT directly accessible — use `has` guards
+//   - Call site: no static proof required (any entity of the right type passes)
+//   - Mixing `,` and `|` is a parse error: `with A, B | C` is invalid
+//
 // Included groups (`include GroupName`) are required/always-present and cannot
 // be granted or revoked.
 

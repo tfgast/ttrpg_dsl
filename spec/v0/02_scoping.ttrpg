@@ -129,6 +129,40 @@ derive total_resources(c: Character) -> int {
 //     then-block).
 
 
+// --- Disjunctive `with` (OR constraints) ---
+//
+// `with A | B` declares that the parameter has at least one of the
+// listed groups. Unlike conjunctive `with A, B` (AND), disjunctive
+// constraints do NOT narrow the body scope — the author must use
+// `has` guards to access group-specific fields.
+//
+// This is useful for functions that handle multiple capability groups
+// without requiring all of them:
+
+// EXAMPLE: disjunctive `with` — at least one combat capability
+//
+// action AnyAttack on actor: Combatant with MeleeCapable | MissileCapable (
+//     target: Combatant, distance: int
+// ) {
+//     resolve {
+//         // Cannot access actor.MeleeCapable.str_mod directly — not narrowed.
+//         // Must use `has` guard to narrow to a specific group:
+//         if actor has MissileCapable as missile && distance > 10 {
+//             let result = resolve_missile_attack(actor, target, distance)
+//             // ...
+//         } else if actor has MeleeCapable {
+//             let result = resolve_melee_attack(actor, target)
+//             // ...
+//         }
+//     }
+// }
+//
+// Key differences from conjunctive `with A, B`:
+//   - Body: group fields NOT directly accessible (use `has` guards)
+//   - Call site: no static group proof required
+//   - Mixing: `with A, B | C` is a parse error (pick one separator)
+
+
 // --- Conditions and `modify` ---
 //
 // condition blocks declare modifier overlays. A modify clause says:

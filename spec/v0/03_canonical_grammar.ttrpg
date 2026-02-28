@@ -376,18 +376,53 @@ when_clause        = "when" "enabled" "{" modify_clause* "}"
 params          = (param ("," param)* ","?)?
 param           = IDENT ":" constrained_type ("=" expr)?
 constrained_type = type with_clause?
-with_clause     = "with" group_constraint ("," group_constraint)*
+with_clause     = "with" group_constraint ("," group_constraint)*   // conjunctive (AND)
+                | "with" group_constraint ("|" group_constraint)*   // disjunctive (OR)
 group_constraint = IDENT ("as" IDENT)?
+
+// --- Conjunctive `with` (AND) ---
+//
+// Comma-separated groups require ALL groups to be present. The function
+// body can access group fields directly (the checker narrows scope).
+// Call sites must prove the entity has all listed groups.
+//
 // Example:
 //   target: Character with Spellcasting
 //   x: entity with Spellcasting
 //   caster: Character with Spellcasting as sc
 //   caster: Character with Spellcasting as sc, KiPowers as kp
 //
+// --- Disjunctive `with` (OR) ---
+//
+// Pipe-separated groups require AT LEAST ONE group to be present.
+// The function body CANNOT access group fields directly — the author
+// must use `has` guards to narrow to a specific group before accessing
+// its fields. Call sites do NOT require proof of any specific group.
+//
+// Example:
+//   combatant: Combatant with MeleeCapable | MissileCapable
+//
+// In the body, use `has` to narrow:
+//   if combatant has MeleeCapable as m {
+//       combatant.m.str_mod   // ok — narrowed by `has` guard
+//   }
+//
+// --- Mixing is an error ---
+//
+// A with clause must be purely conjunctive (commas) or purely
+// disjunctive (pipes). Mixing separators is a parse error:
+//   with A, B | C   // ERROR: cannot mix `,` and `|`
+//
+// --- Aliases ---
+//
 // The optional `as` clause creates a locally-scoped alias for the group
 // name. Inside the function body, the alias can be used in place of the
 // full group name in field access paths:
 //   caster.sc.spell_slots    is equivalent to    caster.Spellcasting.spell_slots
+//
+// Aliases work with both conjunctive and disjunctive constraints.
+// For disjunctive constraints, the alias is only usable inside a `has`
+// guard that narrows to that group.
 //
 // Alias scope: the alias is visible only within the function/action body
 // where the `with` constraint appears. It does not escape to callers.
