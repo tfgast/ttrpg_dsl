@@ -238,7 +238,7 @@ impl EffectHandler for CliHandler<'_> {
                 condition,
                 params,
                 duration,
-                ..
+                invocation,
             } => {
                 let name = self.entity_name(&target);
                 self.game_state.borrow_mut().apply_condition(
@@ -246,6 +246,7 @@ impl EffectHandler for CliHandler<'_> {
                     &condition,
                     params.clone(),
                     duration.clone(),
+                    invocation,
                 );
                 if params.is_empty() {
                     self.log.push(format!(

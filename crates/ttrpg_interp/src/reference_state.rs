@@ -45,6 +45,7 @@ pub struct GameState {
     enabled_options: HashSet<Name>,
     next_entity_id: u64,
     next_condition_id: u64,
+    next_invocation_id: u64,
 }
 
 impl GameState {
@@ -57,6 +58,7 @@ impl GameState {
             enabled_options: HashSet::new(),
             next_entity_id: 1,
             next_condition_id: 1,
+            next_invocation_id: 1,
         }
     }
 
@@ -90,12 +92,23 @@ impl GameState {
     ///
     /// Silently does nothing if the entity doesn't exist, consistent
     /// with read paths that reject unknown entities.
+    /// Get the current invocation id counter.
+    pub fn next_invocation_id(&self) -> u64 {
+        self.next_invocation_id
+    }
+
+    /// Set the invocation id counter (for persistence round-trips).
+    pub fn set_next_invocation_id(&mut self, id: u64) {
+        self.next_invocation_id = id;
+    }
+
     pub fn apply_condition(
         &mut self,
         entity: &EntityRef,
         name: &str,
         params: BTreeMap<Name, Value>,
         duration: Value,
+        invocation: Option<InvocationId>,
     ) {
         if !self.entities.contains_key(&entity.0) {
             return;
@@ -109,7 +122,7 @@ impl GameState {
             bearer: *entity,
             gained_at: id, // Use id as ordering timestamp for simplicity
             duration,
-            invocation: None,
+            invocation,
         };
         self.conditions.entry(entity.0).or_default().push(cond);
     }
@@ -426,6 +439,7 @@ mod tests {
             "Prone",
             BTreeMap::new(),
             duration_variant("end_of_turn"),
+            None,
         );
 
         let conds = state.read_conditions(&entity).unwrap();
@@ -445,12 +459,14 @@ mod tests {
             "Prone",
             BTreeMap::new(),
             duration_variant("end_of_turn"),
+            None,
         );
         state.apply_condition(
             &entity,
             "Stunned",
             BTreeMap::new(),
             duration_variant("rounds"),
+            None,
         );
 
         state.remove_condition(&entity, "Prone", None);
@@ -715,6 +731,7 @@ mod tests {
             "Prone",
             BTreeMap::new(),
             duration_variant("end_of_turn"),
+            None,
         );
         assert!(state.read_conditions(&ghost).is_none());
     }
@@ -733,6 +750,7 @@ mod tests {
             "Prone",
             BTreeMap::new(),
             duration_variant("end_of_turn"),
+            None,
         );
         let mut budget = BTreeMap::new();
         budget.insert("actions".into(), Value::Int(1));
@@ -810,5 +828,100 @@ mod tests {
         let mut state = GameState::new();
         // Should not panic
         state.remove_field(&EntityRef(999), "HP");
+    }
+
+    // ── Invocation tracking ─────────────────────────────────────
+
+    #[test]
+    fn invocation_round_trip() {
+        let mut state = GameState::new();
+        let entity = state.add_entity("Fighter", HashMap::new());
+
+        state.apply_condition(
+            &entity,
+            "Blessed",
+            BTreeMap::new(),
+            duration_variant("rounds"),
+            Some(InvocationId(42)),
+        );
+
+        let conds = state.read_conditions(&entity).unwrap();
+        assert_eq!(conds.len(), 1);
+        assert_eq!(conds[0].invocation, Some(InvocationId(42)));
+    }
+
+    #[test]
+    fn invocation_removal() {
+        let mut state = GameState::new();
+        let entity = state.add_entity("Fighter", HashMap::new());
+
+        // 2 from invocation 1
+        state.apply_condition(
+            &entity,
+            "Blessed",
+            BTreeMap::new(),
+            duration_variant("rounds"),
+            Some(InvocationId(1)),
+        );
+        state.apply_condition(
+            &entity,
+            "Shielded",
+            BTreeMap::new(),
+            duration_variant("rounds"),
+            Some(InvocationId(1)),
+        );
+        // 1 from invocation 2
+        state.apply_condition(
+            &entity,
+            "Hasted",
+            BTreeMap::new(),
+            duration_variant("rounds"),
+            Some(InvocationId(2)),
+        );
+        // 1 with no invocation
+        state.apply_condition(
+            &entity,
+            "Prone",
+            BTreeMap::new(),
+            duration_variant("indefinite"),
+            None,
+        );
+
+        assert_eq!(state.read_conditions(&entity).unwrap().len(), 4);
+
+        state.remove_conditions_by_invocation(InvocationId(1));
+
+        let conds = state.read_conditions(&entity).unwrap();
+        assert_eq!(conds.len(), 2);
+        assert_eq!(conds[0].name, "Hasted");
+        assert_eq!(conds[1].name, "Prone");
+    }
+
+    #[test]
+    fn invocation_removal_cross_entity() {
+        let mut state = GameState::new();
+        let e1 = state.add_entity("Fighter", HashMap::new());
+        let e2 = state.add_entity("Rogue", HashMap::new());
+        let e3 = state.add_entity("Wizard", HashMap::new());
+
+        let inv = Some(InvocationId(7));
+        state.apply_condition(&e1, "Blessed", BTreeMap::new(), duration_variant("rounds"), inv);
+        state.apply_condition(&e2, "Blessed", BTreeMap::new(), duration_variant("rounds"), inv);
+        state.apply_condition(&e3, "Blessed", BTreeMap::new(), duration_variant("rounds"), inv);
+
+        state.remove_conditions_by_invocation(InvocationId(7));
+
+        assert!(state.read_conditions(&e1).unwrap().is_empty());
+        assert!(state.read_conditions(&e2).unwrap().is_empty());
+        assert!(state.read_conditions(&e3).unwrap().is_empty());
+    }
+
+    #[test]
+    fn next_invocation_id_counter() {
+        let mut state = GameState::new();
+        assert_eq!(state.next_invocation_id(), 1);
+
+        state.set_next_invocation_id(100);
+        assert_eq!(state.next_invocation_id(), 100);
     }
 }

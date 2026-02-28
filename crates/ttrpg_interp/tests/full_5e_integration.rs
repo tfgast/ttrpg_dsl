@@ -1374,6 +1374,7 @@ fn prone_on_attacker_disadvantage() {
         "Prone",
         BTreeMap::new(),
         duration_variant("indefinite"),
+        None,
     );
 
     // Call attack_roll — should have disadvantage (2d20kl1)
@@ -1439,6 +1440,7 @@ fn prone_on_target_melee_advantage() {
         "Prone",
         BTreeMap::new(),
         duration_variant("indefinite"),
+        None,
     );
 
     // Fighter is at (0,0), Goblin at (1,0) → distance=1 <= 5 → advantage
@@ -1552,6 +1554,7 @@ fn prone_on_target_ranged_disadvantage() {
         "Prone",
         BTreeMap::new(),
         duration_variant("indefinite"),
+        None,
     );
 
     // Responses consumed: ModifyApplied(Ack), RollDice(roll)
@@ -1608,6 +1611,7 @@ fn prone_modifies_initial_budget() {
         "Prone",
         BTreeMap::new(),
         duration_variant("indefinite"),
+        None,
     );
 
     let mut handler = ScriptedHandler::new();
@@ -1654,6 +1658,7 @@ fn disengaging_suppresses_entity_leaves_reach() {
         "Disengaging",
         BTreeMap::new(),
         duration_variant("end_of_turn"),
+        None,
     );
 
     let payload = Value::Struct {
