@@ -294,6 +294,27 @@ struct RollResult {
 // cannot construct Position values directly in v0.
 
 
+// --- Invocation ---
+//
+// Opaque handle representing a specific action/reaction/hook execution.
+// Every execution scope (action, reaction, hook body) is automatically
+// assigned an InvocationId. All conditions applied during that scope
+// share the same invocation, enabling grouped revocation.
+//
+// DSL code obtains an Invocation via the `invocation()` builtin and
+// can store it in entity fields, pass it through events, and compare
+// with `==`/`!=`. The `revoke(inv)` builtin removes all conditions
+// tagged with a given invocation across all entities.
+//
+// Entity fields commonly use `option<Invocation>` for nullable
+// invocation tracking (e.g., `concentrating_on: option<Invocation>`).
+//
+// Invocation values cannot be constructed from raw integers —
+// they are only produced by `invocation()` inside an execution scope.
+//
+// See 02_scoping.ttrpg for the `invocation()` and `revoke()` builtins.
+
+
 // --- Duration ---
 //
 // Temporal anchor for conditions and temporary effects.

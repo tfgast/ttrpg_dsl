@@ -483,9 +483,50 @@ hook Regenerate on creature: Character (
 //   apply_condition(target: Character, cond: Condition, duration: Duration)
 //   remove_condition(target: Character, cond: Condition)
 //
+// Available in action, reaction, hook (invocation tracking):
+//   invocation() -> Invocation
+//       Returns the current execution scope's invocation handle.
+//       Every action/reaction/hook body is automatically assigned an
+//       invocation ID. All conditions applied during that scope carry
+//       this ID, enabling grouped revocation via `revoke()`.
+//       Rejected by the checker at compile time outside action/reaction/hook.
+//
+//   revoke(inv: Invocation) -> unit
+//       Removes all conditions tagged with the given invocation, across
+//       all entities. Conditions with no invocation (CLI-granted, host-
+//       injected, applied outside action scope) are never affected.
+//       Also accepts `option<Invocation>` — `none` values are a no-op.
+//       This avoids requiring explicit unwrapping when revoking from
+//       nullable entity fields (e.g., `revoke(caster.concentrating_on)`).
+//
 // The `turn` keyword (available in action/reaction/hook resolve blocks):
 //   Refers to the current turn's mutable TurnBudget.
 //   turn.movement, turn.actions, etc. are assignable.
+
+
+// --- Tags ---
+//
+// Tags are metadata labels declared with `tag #name` and attached to
+// derives, mechanics, and actions using `#tagname` after the parameter
+// list (before the opening `{`). Tags must be declared before use.
+//
+//   tag #concentration
+//   tag #ranged
+//
+//   action CastBless on caster: Character (targets: list<Character>) #concentration {
+//       // ...
+//   }
+//
+//   derive ranged_bonus(attacker: Character, weapon: Weapon) -> int #ranged {
+//       // ...
+//   }
+//
+// Tags have no runtime semantics — they are metadata for categorization,
+// selector-based modify clauses, and tooling. Multiple tags can be
+// applied to a single declaration: `action Foo on x: T () #a #b { }`.
+//
+// The checker validates that all tags used on declarations have been
+// declared via `tag #name`. Undeclared tags are a compile-time error.
 
 
 // --- Modules and imports ---

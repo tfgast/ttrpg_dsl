@@ -53,7 +53,7 @@
 //
 //   Contextual / soft (lexed as IDENT, recognized by parser in position):
 //     system  use  group  enum  struct  entity  derive  mechanic  action
-//     reaction  hook  condition  prompt  option  event  move  cost
+//     reaction  hook  condition  prompt  option  event  move  cost  tag
 //     requires  resolve  modify  suppress  trigger  roll  on
 //     when  enabled  hint  suggest  description  default  result
 //     with  has  include  as  grant  revoke  emit  free  ordered
@@ -142,7 +142,15 @@ decl            = enum_decl
                 | prompt_decl
                 | option_decl
                 | event_decl
+                | tag_decl
                 | move_decl          // PbtA sugar (desugars to mechanic + action)
+
+// --- Tag declaration ---
+tag_decl        = "tag" "#" IDENT term
+
+// Tags are metadata labels attached to derives, mechanics, and actions.
+// A tag must be declared before it can be used on a declaration.
+// See 02_scoping.ttrpg for usage details.
 
 // --- Enum ---
 enum_decl       = "enum" IDENT "{" enum_variants "}"
@@ -177,18 +185,23 @@ field_defs      = (field_def (("," | NL) field_def)* ","?)?
 field_def       = IDENT ":" type ("=" expr)?
 
 // --- Derive (pure, no dice, no mutation, no receiver) ---
-derive_decl     = "derive" IDENT "(" params ")" "->" type block
+derive_decl     = "derive" IDENT "(" params ")" "->" type tag_list? block
 
 // --- Mechanic (can roll, no mutation, no receiver) ---
-mechanic_decl   = "mechanic" IDENT "(" params ")" "->" type block
+mechanic_decl   = "mechanic" IDENT "(" params ")" "->" type tag_list? block
 
 // --- Action (can roll, can mutate, has receiver) ---
 action_decl     = "action" IDENT "on" IDENT ":" constrained_type
-                      "(" params ")" "{"
+                      "(" params ")" tag_list? "{"
                       cost_clause?
                       requires_clause*
                       resolve_block
                   "}"
+
+tag_list        = ("#" IDENT)+
+// Tags appear after the closing ")" of the parameter list and before "{".
+// Each tag must have been declared via `tag #name`. Same syntax as on
+// derive_decl and mechanic_decl (which already support tags via fn_body).
 
 cost_clause     = "cost" "free" term                  // explicit no-cost
                 | "cost" "{" cost_entry ("," cost_entry)* "}" term
@@ -390,7 +403,7 @@ group_constraint = IDENT ("as" IDENT)?
 type            = "int" | "bool" | "string" | "float"
                 | "DiceExpr" | "RollResult"
                 | "TurnBudget" | "Duration" | "Position"
-                | "Condition"
+                | "Condition" | "Invocation"
                 | "entity"                           // polymorphic any-entity type alias
                 | IDENT                              // user-defined type
                 | "map" "<" type "," type ">"
@@ -470,8 +483,16 @@ expr_stmt       = expr term
 //   grant wizard.Spellcasting { spell_slots: 3, spell_dc: 15 }
 //   revoke wizard.Spellcasting
 //
+// DISAMBIGUATION: `revoke` as a statement (group management) vs `revoke()`
+// as a function call (invocation revocation) are distinguished by lookahead.
+// When the parser sees `revoke` followed by `(`, it falls through to
+// expression statement parsing (function call). When followed by an lvalue,
+// it enters the revoke_stmt path. No ambiguity.
+//
 grant_stmt      = "grant" lvalue "{" struct_body? "}" term
 revoke_stmt     = "revoke" lvalue term
+// Parser disambiguates: if the token after "revoke" is "(", fall through
+// to expr_stmt (function call). Otherwise, parse as revoke_stmt.
 
 // --- Emit (fire an event, auto-execute matching hooks) ---
 //
