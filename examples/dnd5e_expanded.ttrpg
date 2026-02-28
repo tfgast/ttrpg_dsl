@@ -242,10 +242,8 @@ system "D&D 5e Expanded" {
         }
 
         optional RogueFeatures {
-            sneak_attack_dice: int = 0
-            // PAIN POINT: Can't default DiceExpr fields.              [ttrpg_dsl-46i]
-            // Would like: sneak_attack_dice: DiceExpr = 0d6
-            // Changed to int (number of d6s) — loses type safety.
+            sneak_attack_dice: DiceExpr = 0d6
+            // RESOLVED: 0d6 now works as a DiceExpr default.          [ttrpg_dsl-46i]
             // RESOLVED: has_cunning_action removed — Cunning Action   [ttrpg_dsl-xh9]
             // is now a condition with cost overrides, granted via
             // apply_condition(rogue, CunningAction, Duration.indefinite)
@@ -1367,8 +1365,7 @@ system "D&D 5e Expanded" {
     //  6. SINGLE REQUIRES BLOCK PER ACTION                        [ttrpg_dsl-mcy]
     //     - Must combine with && (multiline works, but verbose)
     //
-    //  7. NO DEFAULT FOR DiceExpr FIELDS                          [ttrpg_dsl-46i]
-    //     - sneak_attack_dice uses int (number of d6s) instead
+    //  7. RESOLVED: DiceExpr fields can use 0d6 default            [ttrpg_dsl-46i]
     //
     //  8. NO STRUCT UPDATE SYNTAX                                 [ttrpg_dsl-kmy]
     //     - Must reconstruct entire struct to change one field
