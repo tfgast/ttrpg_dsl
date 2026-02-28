@@ -5,8 +5,9 @@ use std::sync::Arc;
 
 use ttrpg_ast::DiceFilter;
 use ttrpg_ast::Name;
+use ttrpg_checker::ty::Ty;
 
-use crate::state::{EntityRef, InvocationId};
+use crate::state::{EntityRef, InvocationId, StateProvider};
 
 // ── Dice pipeline types ─────────────────────────────────────────
 
@@ -461,6 +462,79 @@ impl std::hash::Hash for Value {
             Value::Invocation(v) => v.0.hash(state),
             Value::EnumNamespace(v) => v.hash(state),
         }
+    }
+}
+
+// ── Runtime type checking ────────────────────────────────────────
+
+/// Check that a runtime value matches the declared type.
+///
+/// Uses `&dyn StateProvider` for entity type resolution (best-effort:
+/// accepts if the entity type is unknown). Mirrors the CLI's
+/// `value_matches_ty` but works with the `StateProvider` trait.
+pub fn value_matches_ty(val: &Value, ty: &Ty, state: &dyn StateProvider) -> bool {
+    match (val, ty) {
+        (Value::Int(_), Ty::Int | Ty::Resource) => true,
+        (Value::Float(_), Ty::Float) => true,
+        (Value::Bool(_), Ty::Bool) => true,
+        (Value::Str(_), Ty::String) => true,
+        (Value::None, Ty::Option(_)) => true,
+        (Value::Option(inner), Ty::Option(inner_ty)) => match inner {
+            Some(v) => value_matches_ty(v, inner_ty, state),
+            None => true,
+        },
+        (Value::Entity(_), Ty::AnyEntity) => true,
+        (Value::Entity(eref), Ty::Entity(expected)) => {
+            match state.entity_type_name(eref) {
+                Some(actual) => &actual == expected,
+                // Can't resolve → accept (best-effort)
+                None => true,
+            }
+        }
+        (Value::List(elems), Ty::List(elem_ty)) => {
+            elems.iter().all(|e| value_matches_ty(e, elem_ty, state))
+        }
+        (Value::Set(elems), Ty::Set(elem_ty)) => {
+            elems.iter().all(|e| value_matches_ty(e, elem_ty, state))
+        }
+        (Value::Map(entries), Ty::Map(key_ty, val_ty)) => entries
+            .iter()
+            .all(|(k, v)| value_matches_ty(k, key_ty, state) && value_matches_ty(v, val_ty, state)),
+        (Value::Struct { name, .. }, Ty::Struct(n)) => name == n,
+        (Value::Struct { name, .. }, Ty::RollResult) => name == "RollResult",
+        (Value::Struct { name, .. }, Ty::TurnBudget) => name == "TurnBudget",
+        (Value::EnumVariant { enum_name, .. }, Ty::Enum(n)) => enum_name == n,
+        (Value::DiceExpr(_), Ty::DiceExpr) => true,
+        (Value::RollResult(_), Ty::RollResult) => true,
+        (Value::Position(_), Ty::Position) => true,
+        (Value::EnumVariant { enum_name, .. }, Ty::Duration) => enum_name == "Duration",
+        (Value::Condition { .. }, Ty::Condition) => true,
+        (Value::Invocation(_), Ty::Invocation) => true,
+        _ => false,
+    }
+}
+
+/// Human-readable type name for a runtime value (used in error messages).
+pub fn value_type_display(val: &Value) -> String {
+    match val {
+        Value::Int(_) => "int".into(),
+        Value::Float(_) => "float".into(),
+        Value::Bool(_) => "bool".into(),
+        Value::Str(_) => "string".into(),
+        Value::None => "none".into(),
+        Value::Option(_) => "option".into(),
+        Value::Entity(_) => "entity".into(),
+        Value::List(_) => "list".into(),
+        Value::Set(_) => "set".into(),
+        Value::Map(_) => "map".into(),
+        Value::Struct { name, .. } => name.to_string(),
+        Value::EnumVariant { enum_name, .. } => enum_name.to_string(),
+        Value::DiceExpr(_) => "DiceExpr".into(),
+        Value::RollResult(_) => "RollResult".into(),
+        Value::Position(_) => "Position".into(),
+        Value::Condition { .. } => "Condition".into(),
+        Value::Invocation(_) => "Invocation".into(),
+        Value::EnumNamespace(name) => format!("{}(namespace)", name),
     }
 }
 

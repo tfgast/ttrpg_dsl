@@ -54,9 +54,9 @@ The interpreter cannot continue without a value. `Vetoed` is not valid.
 
 The interpreter needs a dice expression evaluated. The host can auto-roll, animate, prompt for physical dice, or have the GM set a result.
 
-**`ResolvePrompt { name: String, params: Vec<Value>, hint: Option<String>, suggest: Option<Value> }`**
+**`ResolvePrompt { name: Name, params: Vec<(Name, Value)>, return_type: Ty, hint: Option<String>, suggest: Option<Value> }`**
 
-The interpreter has reached a `prompt` declaration and needs human input. If the prompt declaration includes a `suggest: expr` clause, the interpreter evaluates it and passes the result in `suggest`. The host can display this as a default or pre-selected choice.
+The interpreter has reached a `prompt` declaration and needs human input. `params` carries named parameter bindings (name–value pairs). `return_type` is the declared return type from the prompt signature, so the host knows what kind of value to provide. If the prompt declaration includes a `suggest: expr` clause, the interpreter evaluates it and passes the result in `suggest`. The host can display this as a default or pre-selected choice. The interpreter validates that the response value matches `return_type` and returns a `RuntimeError` on mismatch.
 
 #### Mutation effects
 

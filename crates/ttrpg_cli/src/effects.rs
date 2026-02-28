@@ -759,6 +759,7 @@ mod tests {
         let effect = Effect::ResolvePrompt {
             name: "choose_target".into(),
             params: vec![],
+            return_type: ttrpg_checker::ty::Ty::Int,
             hint: None,
             suggest: Some(Value::Int(1)),
         };
@@ -777,6 +778,7 @@ mod tests {
         let effect = Effect::ResolvePrompt {
             name: "choose_target".into(),
             params: vec![],
+            return_type: ttrpg_checker::ty::Ty::Int,
             hint: None,
             suggest: None,
         };

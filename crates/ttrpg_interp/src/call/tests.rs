@@ -45,6 +45,7 @@ struct TestState {
     conditions: HashMap<u64, Vec<ActiveCondition>>,
     turn_budgets: HashMap<u64, BTreeMap<Name, Value>>,
     enabled_options: Vec<Name>,
+    entity_types: HashMap<u64, Name>,
 }
 
 impl TestState {
@@ -54,6 +55,7 @@ impl TestState {
             conditions: HashMap::new(),
             turn_budgets: HashMap::new(),
             enabled_options: Vec::new(),
+            entity_types: HashMap::new(),
         }
     }
 }
@@ -92,6 +94,9 @@ impl StateProvider for TestState {
             }
         }
         None
+    }
+    fn entity_type_name(&self, entity: &EntityRef) -> Option<Name> {
+        self.entity_types.get(&entity.0).cloned()
     }
 }
 
@@ -563,10 +568,308 @@ fn prompt_call_with_suggest() {
             suggest, params, ..
         } => {
             assert_eq!(*suggest, Some(Value::Int(11)));
-            assert_eq!(params, &[Value::Int(10)]);
+            assert_eq!(
+                params,
+                &[(Name::from("default_val"), Value::Int(10))]
+            );
         }
         _ => panic!("expected ResolvePrompt"),
     }
+}
+
+#[test]
+fn prompt_emits_return_type_and_named_params() {
+    // prompt pick(x: Int, y: Int) -> Int { hint: "pick one" }
+    let program = program_with_decls(vec![DeclKind::Prompt(PromptDecl {
+        name: "pick".into(),
+        params: vec![
+            Param {
+                name: "x".into(),
+                ty: spanned(TypeExpr::Int),
+                default: None,
+                with_groups: vec![],
+                span: dummy_span(),
+            },
+            Param {
+                name: "y".into(),
+                ty: spanned(TypeExpr::Int),
+                default: None,
+                with_groups: vec![],
+                span: dummy_span(),
+            },
+        ],
+        return_type: spanned(TypeExpr::Int),
+        hint: Some("pick one".into()),
+        suggest: None,
+    })]);
+
+    let mut type_env = TypeEnv::new();
+    type_env.functions.insert(
+        "pick".into(),
+        FnInfo {
+            name: "pick".into(),
+            kind: FnKind::Prompt,
+            params: vec![
+                ParamInfo {
+                    name: "x".into(),
+                    ty: Ty::Int,
+                    has_default: false,
+                    with_groups: vec![],
+                },
+                ParamInfo {
+                    name: "y".into(),
+                    ty: Ty::Int,
+                    has_default: false,
+                    with_groups: vec![],
+                },
+            ],
+            return_type: Ty::Int,
+            receiver: None,
+            tags: HashSet::new(),
+            synthetic: false,
+        },
+    );
+
+    let interp = Interpreter::new(&program, &type_env).unwrap();
+    let state = TestState::new();
+    let mut handler =
+        ScriptedHandler::with_responses(vec![Response::PromptResult(Value::Int(7))]);
+    let mut env = make_env(&state, &mut handler, &interp);
+
+    let expr = spanned(ExprKind::Call {
+        callee: Box::new(spanned(ExprKind::Ident("pick".into()))),
+        args: vec![
+            Arg {
+                name: None,
+                value: spanned(ExprKind::IntLit(3)),
+                span: dummy_span(),
+            },
+            Arg {
+                name: None,
+                value: spanned(ExprKind::IntLit(5)),
+                span: dummy_span(),
+            },
+        ],
+    });
+    let result = crate::eval::eval_expr(&mut env, &expr).unwrap();
+    assert_eq!(result, Value::Int(7));
+
+    // Verify named params and return_type in the emitted effect
+    match &handler.log[0] {
+        Effect::ResolvePrompt {
+            params,
+            return_type,
+            ..
+        } => {
+            assert_eq!(
+                params,
+                &[
+                    (Name::from("x"), Value::Int(3)),
+                    (Name::from("y"), Value::Int(5)),
+                ]
+            );
+            assert_eq!(*return_type, Ty::Int);
+        }
+        _ => panic!("expected ResolvePrompt"),
+    }
+}
+
+#[test]
+fn prompt_return_type_validation_correct_type() {
+    let program = program_with_decls(vec![DeclKind::Prompt(PromptDecl {
+        name: "ask_number".into(),
+        params: vec![],
+        return_type: spanned(TypeExpr::Int),
+        hint: None,
+        suggest: None,
+    })]);
+
+    let mut type_env = TypeEnv::new();
+    type_env.functions.insert(
+        "ask_number".into(),
+        FnInfo {
+            name: "ask_number".into(),
+            kind: FnKind::Prompt,
+            params: vec![],
+            return_type: Ty::Int,
+            receiver: None,
+            tags: HashSet::new(),
+            synthetic: false,
+        },
+    );
+
+    let interp = Interpreter::new(&program, &type_env).unwrap();
+    let state = TestState::new();
+    let mut handler =
+        ScriptedHandler::with_responses(vec![Response::PromptResult(Value::Int(42))]);
+    let mut env = make_env(&state, &mut handler, &interp);
+
+    let expr = spanned(ExprKind::Call {
+        callee: Box::new(spanned(ExprKind::Ident("ask_number".into()))),
+        args: vec![],
+    });
+    let result = crate::eval::eval_expr(&mut env, &expr);
+    assert_eq!(result.unwrap(), Value::Int(42));
+}
+
+#[test]
+fn prompt_return_type_validation_wrong_type() {
+    let program = program_with_decls(vec![DeclKind::Prompt(PromptDecl {
+        name: "ask_number".into(),
+        params: vec![],
+        return_type: spanned(TypeExpr::Int),
+        hint: None,
+        suggest: None,
+    })]);
+
+    let mut type_env = TypeEnv::new();
+    type_env.functions.insert(
+        "ask_number".into(),
+        FnInfo {
+            name: "ask_number".into(),
+            kind: FnKind::Prompt,
+            params: vec![],
+            return_type: Ty::Int,
+            receiver: None,
+            tags: HashSet::new(),
+            synthetic: false,
+        },
+    );
+
+    let interp = Interpreter::new(&program, &type_env).unwrap();
+    let state = TestState::new();
+    // Host returns a string, but prompt expects int
+    let mut handler =
+        ScriptedHandler::with_responses(vec![Response::PromptResult(Value::Str("oops".into()))]);
+    let mut env = make_env(&state, &mut handler, &interp);
+
+    let expr = spanned(ExprKind::Call {
+        callee: Box::new(spanned(ExprKind::Ident("ask_number".into()))),
+        args: vec![],
+    });
+    let result = crate::eval::eval_expr(&mut env, &expr);
+    let err = result.unwrap_err();
+    assert!(
+        err.message.contains("expected return type int"),
+        "error should mention expected type: {}",
+        err.message,
+    );
+    assert!(
+        err.message.contains("got string"),
+        "error should mention actual type: {}",
+        err.message,
+    );
+}
+
+#[test]
+fn prompt_override_validation_wrong_type() {
+    let program = program_with_decls(vec![DeclKind::Prompt(PromptDecl {
+        name: "ask_number".into(),
+        params: vec![],
+        return_type: spanned(TypeExpr::Int),
+        hint: None,
+        suggest: None,
+    })]);
+
+    let mut type_env = TypeEnv::new();
+    type_env.functions.insert(
+        "ask_number".into(),
+        FnInfo {
+            name: "ask_number".into(),
+            kind: FnKind::Prompt,
+            params: vec![],
+            return_type: Ty::Int,
+            receiver: None,
+            tags: HashSet::new(),
+            synthetic: false,
+        },
+    );
+
+    let interp = Interpreter::new(&program, &type_env).unwrap();
+    let state = TestState::new();
+    // Host overrides with wrong type
+    let mut handler =
+        ScriptedHandler::with_responses(vec![Response::Override(Value::Bool(true))]);
+    let mut env = make_env(&state, &mut handler, &interp);
+
+    let expr = spanned(ExprKind::Call {
+        callee: Box::new(spanned(ExprKind::Ident("ask_number".into()))),
+        args: vec![],
+    });
+    let result = crate::eval::eval_expr(&mut env, &expr);
+    let err = result.unwrap_err();
+    assert!(
+        err.message.contains("expected return type int"),
+        "error should mention expected type: {}",
+        err.message,
+    );
+    assert!(
+        err.message.contains("got bool"),
+        "error should mention actual type: {}",
+        err.message,
+    );
+}
+
+#[test]
+fn prompt_entity_type_validated_via_state() {
+    // prompt choose(target: Character) -> Character { hint: "pick" }
+    let program = program_with_decls(vec![DeclKind::Prompt(PromptDecl {
+        name: "choose".into(),
+        params: vec![],
+        return_type: spanned(TypeExpr::Named("Character".into())),
+        hint: None,
+        suggest: None,
+    })]);
+
+    let mut type_env = TypeEnv::new();
+    type_env.functions.insert(
+        "choose".into(),
+        FnInfo {
+            name: "choose".into(),
+            kind: FnKind::Prompt,
+            params: vec![],
+            return_type: Ty::Entity("Character".into()),
+            receiver: None,
+            tags: HashSet::new(),
+            synthetic: false,
+        },
+    );
+
+    let interp = Interpreter::new(&program, &type_env).unwrap();
+
+    // State with entity type tracking
+    let mut state = TestState::new();
+    state.entity_types.insert(1, Name::from("Character"));
+    state.entity_types.insert(2, Name::from("Monster"));
+
+    // Correct entity type — should succeed
+    let mut handler =
+        ScriptedHandler::with_responses(vec![Response::PromptResult(Value::Entity(EntityRef(1)))]);
+    let mut env = make_env(&state, &mut handler, &interp);
+
+    let expr = spanned(ExprKind::Call {
+        callee: Box::new(spanned(ExprKind::Ident("choose".into()))),
+        args: vec![],
+    });
+    let result = crate::eval::eval_expr(&mut env, &expr);
+    assert_eq!(result.unwrap(), Value::Entity(EntityRef(1)));
+
+    // Wrong entity type — should fail
+    let mut handler =
+        ScriptedHandler::with_responses(vec![Response::PromptResult(Value::Entity(EntityRef(2)))]);
+    let mut env = make_env(&state, &mut handler, &interp);
+
+    let expr = spanned(ExprKind::Call {
+        callee: Box::new(spanned(ExprKind::Ident("choose".into()))),
+        args: vec![],
+    });
+    let result = crate::eval::eval_expr(&mut env, &expr);
+    let err = result.unwrap_err();
+    assert!(
+        err.message.contains("expected return type Character"),
+        "error should mention expected type: {}",
+        err.message,
+    );
 }
 
 // ── Builtin tests ──────────────────────────────────────────

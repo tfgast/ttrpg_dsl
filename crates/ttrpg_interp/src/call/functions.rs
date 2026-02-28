@@ -5,7 +5,7 @@ use ttrpg_checker::env::ParamInfo;
 use crate::effect::{Effect, Response};
 use crate::eval::{eval_block, eval_expr};
 use crate::pipeline::{collect_modifiers_owned, run_phase1, run_phase2};
-use crate::value::Value;
+use crate::value::{value_matches_ty, value_type_display, Value};
 use crate::Env;
 use crate::RuntimeError;
 
@@ -344,7 +344,7 @@ pub(super) fn dispatch_prompt(
 
     // Bind arguments
     let bound = bind_args(&fn_info.params, args, Some(&ast_params), env, call_span)?;
-    let param_values: Vec<Value> = bound.iter().map(|(_, v)| v.clone()).collect();
+    let return_type = fn_info.return_type.clone();
 
     // Evaluate suggest expression if present
     let suggest = match &suggest_expr {
@@ -364,15 +364,28 @@ pub(super) fn dispatch_prompt(
     // Emit ResolvePrompt effect
     let effect = Effect::ResolvePrompt {
         name: Name::from(name),
-        params: param_values,
+        params: bound,
+        return_type: return_type.clone(),
         hint,
         suggest,
     };
     let response = env.handler.handle(effect);
 
     match response {
-        Response::PromptResult(val) => Ok(val),
-        Response::Override(val) => Ok(val),
+        Response::PromptResult(val) | Response::Override(val) => {
+            if !value_matches_ty(&val, &return_type, env.state) {
+                return Err(RuntimeError::with_span(
+                    format!(
+                        "prompt '{}' expected return type {}, got {}",
+                        name,
+                        return_type.display(),
+                        value_type_display(&val),
+                    ),
+                    call_span,
+                ));
+            }
+            Ok(val)
+        }
         _ => Err(RuntimeError::with_span(
             format!(
                 "protocol error: expected PromptResult or Override response for ResolvePrompt, got {:?}",

@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 use ttrpg_ast::ast::AssignOp;
 use ttrpg_ast::Name;
+use ttrpg_checker::ty::Ty;
 
 use crate::state::{EntityRef, InvocationId};
 use crate::value::{DiceExpr, RollResult, Value};
@@ -76,7 +77,8 @@ pub enum Effect {
     },
     ResolvePrompt {
         name: Name,
-        params: Vec<Value>,
+        params: Vec<(Name, Value)>,
+        return_type: Ty,
         hint: Option<String>,
         suggest: Option<Value>,
     },
