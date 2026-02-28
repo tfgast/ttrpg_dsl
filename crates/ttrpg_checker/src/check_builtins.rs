@@ -523,6 +523,41 @@ impl<'a> Checker<'a> {
         Ty::Option(Box::new(arg_ty))
     }
 
+    /// `revoke(inv)` accepts both `Invocation` and `option<Invocation>`.
+    pub(crate) fn check_revoke_call(&mut self, args: &[Arg], span: ttrpg_ast::Span) -> Ty {
+        self.check_builtin_permissions("revoke", span);
+        if args.len() != 1 {
+            self.error(
+                format!("`revoke` expects 1 argument, found {}", args.len()),
+                span,
+            );
+            for arg in args {
+                self.check_expr(&arg.value);
+            }
+            return Ty::Error;
+        }
+        let arg_ty = self.check_expr(&args[0].value);
+        if arg_ty.is_error() {
+            return Ty::Unit;
+        }
+        match &arg_ty {
+            Ty::Invocation => Ty::Unit,
+            Ty::Option(inner) if **inner == Ty::Invocation => Ty::Unit,
+            // Also accept none (option<error>) since it's compatible with option<Invocation>
+            _ if arg_ty.is_none() => Ty::Unit,
+            _ => {
+                self.error(
+                    format!(
+                        "`revoke` expects Invocation or option<Invocation>, found {}",
+                        arg_ty
+                    ),
+                    span,
+                );
+                Ty::Error
+            }
+        }
+    }
+
     pub(crate) fn check_builtin_permissions(&mut self, name: &str, span: ttrpg_ast::Span) {
         match name {
             "roll" => {
@@ -538,6 +573,23 @@ impl<'a> Checker<'a> {
                 if !self.scope.allows_mutation() {
                     self.error(
                         format!("{}() can only be called in action or reaction blocks", name),
+                        span,
+                    );
+                }
+            }
+            "invocation" => {
+                if !self.scope.allows_invocation() {
+                    self.error(
+                        "invocation() can only be called in action, reaction, or hook blocks"
+                            .to_string(),
+                        span,
+                    );
+                }
+            }
+            "revoke" => {
+                if !self.scope.allows_mutation() {
+                    self.error(
+                        "revoke() can only be called in action or reaction blocks".to_string(),
                         span,
                     );
                 }

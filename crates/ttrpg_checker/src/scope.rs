@@ -41,6 +41,13 @@ impl BlockKind {
         )
     }
 
+    pub fn allows_invocation(&self) -> bool {
+        matches!(
+            self,
+            BlockKind::ActionResolve | BlockKind::ReactionResolve | BlockKind::HookResolve
+        )
+    }
+
     pub fn allows_turn(&self) -> bool {
         matches!(
             self,
@@ -156,6 +163,11 @@ impl ScopeStack {
 
     pub fn allows_calls(&self) -> bool {
         self.current_block_kind().is_none_or(|k| k.allows_calls())
+    }
+
+    pub fn allows_invocation(&self) -> bool {
+        self.current_block_kind()
+            .is_some_and(|k| k.allows_invocation())
     }
 
     pub fn allows_emit(&self) -> bool {

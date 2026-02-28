@@ -9423,3 +9423,186 @@ fn test_duplicate_tag_declaration() {
 }"#;
     expect_errors(source, &["duplicate tag declaration `attack`"]);
 }
+
+// ═══════════════════════════════════════════════════════════════
+// Invocation tracking
+// ═══════════════════════════════════════════════════════════════
+
+#[test]
+fn invocation_in_action_body() {
+    let source = r#"system "Test" {
+    entity Character { HP: int }
+    action Cast on caster: Character () {
+        resolve {
+            let inv = invocation()
+        }
+    }
+}"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn invocation_in_reaction_body() {
+    let source = r#"system "Test" {
+    entity Character { HP: int }
+    event DamageTaken(target: Character) {}
+    reaction OnHit on target: Character (trigger: DamageTaken(target: target)) {
+        resolve {
+            let inv = invocation()
+        }
+    }
+}"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn invocation_in_hook_body() {
+    let source = r#"system "Test" {
+    entity Character { HP: int }
+    event TurnStarted(actor: Character) {}
+    hook on_turn on actor: Character (trigger: TurnStarted(actor: actor)) {
+        let inv = invocation()
+    }
+}"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn invocation_in_derive_rejected() {
+    let source = r#"system "Test" {
+    entity Character { HP: int }
+    derive get_inv(c: Character) -> Invocation { invocation() }
+}"#;
+    expect_errors(
+        source,
+        &["invocation() can only be called in action, reaction, or hook blocks"],
+    );
+}
+
+#[test]
+fn invocation_in_mechanic_rejected() {
+    let source = r#"system "Test" {
+    entity Character { HP: int }
+    mechanic get_inv(c: Character) -> Invocation { invocation() }
+}"#;
+    expect_errors(
+        source,
+        &["invocation() can only be called in action, reaction, or hook blocks"],
+    );
+}
+
+#[test]
+fn revoke_with_invocation_type() {
+    let source = r#"system "Test" {
+    entity Character { HP: int }
+    action Cast on caster: Character () {
+        resolve {
+            let inv = invocation()
+            revoke(inv)
+        }
+    }
+}"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn revoke_with_option_invocation_type() {
+    let source = r#"system "Test" {
+    entity Character { HP: int, concentrating_on: option<Invocation> }
+    action Cast on caster: Character () {
+        resolve {
+            revoke(caster.concentrating_on)
+        }
+    }
+}"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn revoke_with_wrong_type_rejected() {
+    let source = r#"system "Test" {
+    entity Character { HP: int }
+    action Cast on caster: Character () {
+        resolve {
+            revoke(42)
+        }
+    }
+}"#;
+    expect_errors(
+        source,
+        &["`revoke` expects Invocation or option<Invocation>"],
+    );
+}
+
+#[test]
+fn revoke_in_derive_rejected() {
+    let source = r#"system "Test" {
+    entity Character { HP: int, inv: Invocation }
+    derive bad(c: Character) -> int {
+        revoke(c.inv)
+        0
+    }
+}"#;
+    expect_errors(source, &["revoke() can only be called in action or reaction blocks"]);
+}
+
+#[test]
+fn invocation_type_on_entity_field() {
+    let source = r#"system "Test" {
+    entity Character {
+        HP: int
+        concentrating_on: option<Invocation>
+        sustained_spells: list<Invocation>
+    }
+}"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn invocation_type_on_event_param() {
+    let source = r#"system "Test" {
+    entity Character { HP: int }
+    event ConcentrationStarted(caster: Character, inv: Invocation) {}
+}"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn action_tags_accepted() {
+    let source = r#"system "Test" {
+    tag concentration
+    entity Character { HP: int }
+    action CastBless on caster: Character () #concentration {
+        resolve {
+            let inv = invocation()
+        }
+    }
+}"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn action_undeclared_tag_rejected() {
+    let source = r#"system "Test" {
+    entity Character { HP: int }
+    action CastBless on caster: Character () #concentration {
+        resolve {
+            let inv = invocation()
+        }
+    }
+}"#;
+    expect_errors(source, &["undeclared tag `concentration`"]);
+}
+
+#[test]
+fn revoke_with_none_literal() {
+    let source = r#"system "Test" {
+    entity Character { HP: int }
+    action Cast on caster: Character () {
+        resolve {
+            revoke(none)
+        }
+    }
+}"#;
+    expect_no_errors(source);
+}

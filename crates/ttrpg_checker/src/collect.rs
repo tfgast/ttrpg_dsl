@@ -939,7 +939,7 @@ fn collect_action(
         &a.params,
         None,
         Some(receiver),
-        &[],
+        &a.tags,
         false,
         env,
         diagnostics,

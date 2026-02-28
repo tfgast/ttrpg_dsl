@@ -144,6 +144,7 @@ impl<'a> Checker<'a> {
             "all" => return self.check_all_call(args, span),
             "sort" => return self.check_sort_call(args, span),
             "some" => return self.check_some_call(args, span),
+            "revoke" => return self.check_revoke_call(args, span),
             _ => {}
         }
 
