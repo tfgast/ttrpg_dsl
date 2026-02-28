@@ -168,6 +168,8 @@ pub(crate) fn value_eq(state: &dyn StateProvider, a: &Value, b: &Value) -> bool 
                     .all(|((k1, v1), (k2, v2))| k1 == k2 && value_eq(state, v1, v2))
         }
 
+        (Value::Invocation(a), Value::Invocation(b)) => a == b,
+
         // Different variants are not equal
         _ => false,
     }
