@@ -121,6 +121,10 @@ impl Runner {
             }
         }
 
+        // Fill defaults for entity base fields not explicitly provided.
+        let mut fields = fields;
+        self.fill_entity_defaults(entity_type, &mut fields)?;
+
         // All validation passed — now apply mutations (cannot fail).
         let fields: HashMap<Name, Value> = fields
             .into_iter()

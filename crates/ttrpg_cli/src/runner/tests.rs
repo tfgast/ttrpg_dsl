@@ -2398,3 +2398,85 @@ fn qualified_access_still_works_after_flattening() {
     let output = runner.take_output();
     assert!(output[0].contains("20"), "got: {:?}", output);
 }
+
+// ── Entity field defaults at spawn ──────────────────────────
+
+fn load_defaults_program(runner: &mut Runner) {
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+    let id = COUNTER.fetch_add(1, Ordering::Relaxed);
+    let dir = std::env::temp_dir().join("ttrpg_cli_test");
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join(format!("test_defaults_{}.ttrpg", id));
+    std::fs::write(
+        &path,
+        r#"
+system "test" {
+    entity Character {
+        name: string
+        level: int = 1
+        HP: int
+        AC: int = 10
+    }
+}
+"#,
+    )
+    .unwrap();
+    runner.exec(&format!("load {}", path.display())).unwrap();
+    runner.take_output();
+    std::fs::remove_file(&path).ok();
+}
+
+#[test]
+fn spawn_applies_entity_field_defaults() {
+    let mut runner = Runner::new();
+    load_defaults_program(&mut runner);
+
+    // Spawn without providing defaulted fields
+    runner
+        .exec("spawn Character hero { name: \"Hero\", HP: 30 }")
+        .unwrap();
+    runner.take_output();
+
+    // Defaulted fields should be set
+    runner.exec("inspect hero.level").unwrap();
+    let output = runner.take_output();
+    assert!(output[0].contains("1"), "level should default to 1, got: {:?}", output);
+
+    runner.exec("inspect hero.AC").unwrap();
+    let output = runner.take_output();
+    assert!(output[0].contains("10"), "AC should default to 10, got: {:?}", output);
+}
+
+#[test]
+fn spawn_explicit_overrides_default() {
+    let mut runner = Runner::new();
+    load_defaults_program(&mut runner);
+
+    // Spawn with explicit value overriding default
+    runner
+        .exec("spawn Character hero { name: \"Hero\", level: 5, HP: 30 }")
+        .unwrap();
+    runner.take_output();
+
+    runner.exec("inspect hero.level").unwrap();
+    let output = runner.take_output();
+    assert!(output[0].contains("5"), "level should be 5 (explicit), got: {:?}", output);
+}
+
+#[test]
+fn spawn_no_fields_applies_all_defaults() {
+    let mut runner = Runner::new();
+    load_defaults_program(&mut runner);
+
+    // Spawn with no fields — only defaults applied, non-default fields unset
+    runner.exec("spawn Character hero").unwrap();
+    runner.take_output();
+
+    runner.exec("inspect hero.level").unwrap();
+    let output = runner.take_output();
+    assert!(output[0].contains("1"), "level should default to 1, got: {:?}", output);
+
+    runner.exec("inspect hero.AC").unwrap();
+    let output = runner.take_output();
+    assert!(output[0].contains("10"), "AC should default to 10, got: {:?}", output);
+}

@@ -67,6 +67,67 @@ impl Runner {
         })
     }
 
+    /// Find AST field definitions for an entity type's base fields.
+    pub(super) fn find_entity_ast_fields(&self, entity_type: &str) -> Option<Vec<FieldDef>> {
+        for item in &self.program.items {
+            if let TopLevel::System(system) = &item.node {
+                for decl in &system.decls {
+                    if let DeclKind::Entity(entity_decl) = &decl.node {
+                        if entity_decl.name == entity_type {
+                            return Some(entity_decl.fields.clone());
+                        }
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    /// Fill default values for missing base fields on an entity at spawn time.
+    pub(super) fn fill_entity_defaults(
+        &mut self,
+        entity_type: &str,
+        fields: &mut HashMap<String, Value>,
+    ) -> Result<(), CliError> {
+        let entity_fields = match self.find_entity_ast_fields(entity_type) {
+            Some(f) => f,
+            None => return Ok(()),
+        };
+
+        for field_def in &entity_fields {
+            if fields.contains_key(field_def.name.as_str()) {
+                continue;
+            }
+            if let Some(ref default_expr) = field_def.default {
+                let interp = Interpreter::new(&self.program, &self.type_env)
+                    .map_err(|e| CliError::Message(format!("interpreter error: {}", e)))?;
+                let state = RefCellState(&self.game_state);
+                let mut handler = CliHandler::new(
+                    &self.game_state,
+                    &self.reverse_handles,
+                    &mut self.rng,
+                    &mut self.roll_queue,
+                );
+                let val = interp
+                    .evaluate_expr(&state, &mut handler, default_expr)
+                    .map_err(|e| {
+                        for line in handler.log.drain(..) {
+                            self.output.push(line);
+                        }
+                        CliError::Message(format!(
+                            "error evaluating default for field '{}': {}",
+                            field_def.name, e
+                        ))
+                    })?;
+                for line in handler.log.drain(..) {
+                    self.output.push(line);
+                }
+                fields.insert(field_def.name.to_string(), val);
+            }
+        }
+        Ok(())
+    }
+
     /// Find resolved AST field defs for an optional group on an entity.
     pub(super) fn find_optional_group_ast_fields(
         &self,
