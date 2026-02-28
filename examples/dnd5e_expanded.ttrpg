@@ -158,9 +158,9 @@ system "D&D 5e Expanded" {
         concentration: bool
     }
 
-    // PAIN POINT: No struct update syntax.                            [ttrpg_dsl-kmy]
-    // Can't write: let upcast = spell { damage: new_damage, ..spell }
-    // Must reconstruct the entire struct to change one field.
+    // RESOLVED: Struct update syntax now works with `..base` spread.  [ttrpg_dsl-kmy]
+    // Example: let upcast = SpellInfo { damage: new_damage, ..spell }
+    // Copies all fields from `spell`, overriding only `damage`.
 
 
     // ========================================================
@@ -1345,53 +1345,60 @@ system "D&D 5e Expanded" {
     //     - choose_shove_outcome -> ShoveChoice replaces string matching
     //
     //
-    //  REMAINING language gaps:
+    //  RESOLVED (formerly "remaining") language gaps:
     //
-    //  1. [RESOLVED] CONDITION COMPOSITION / INHERITANCE           [ttrpg_dsl-7r4]
+    //  [RESOLVED] CONDITION COMPOSITION / INHERITANCE           [ttrpg_dsl-7r4]
     //     - `condition Stunned extends Incapacitated on bearer: Character { ... }`
     //     - Child inherits all modify/suppress clauses from parents
     //
-    //  2. NO AUTO-SUCCEED / AUTO-FAIL                             [ttrpg_dsl-34x]
-    //     - Stunned auto-fails STR/DEX saves (not just disadvantage)
-    //     - "Advantage/disadvantage" is the only roll modifier
+    //  [RESOLVED] AUTO-SUCCEED / AUTO-FAIL                      [ttrpg_dsl-34x]
+    //     - RollMode enum extended with auto_fail, auto_succeed
+    //     - saving_throw short-circuits on auto_fail/auto_succeed (Pattern A)
+    //     - modify result = SaveResult.failure overrides post-roll (Pattern B)
+    //     - Stunned uses auto_fail for STR/DEX saves; Petrified uses result override
     //
-    //  3. NO FULLY AUTOMATIC EVENT EMISSION                       [ttrpg_dsl-clo]
+    //  [RESOLVED] UNION TYPES                                   [ttrpg_dsl-q5l]
+    //     - Entity refs: `entity with GroupName` for constrained polymorphism
+    //     - Non-entity: enum payloads (DamageSource { weapon(...), spell(...) })
+    //
+    //  [RESOLVED] MULTIPLE REQUIRES BLOCKS                      [ttrpg_dsl-mcy]
+    //     - Actions now accept `requires*` (zero or more blocks)
+    //     - Multiple blocks combined with implicit && (logical AND)
+    //
+    //  [RESOLVED] STRUCT UPDATE SYNTAX                          [ttrpg_dsl-kmy]
+    //     - `Name { field: val, ..base }` copies unspecified fields from base
+    //     - `Name { ..base }` clones the entire struct
+    //
+    //  [RESOLVED] DiceExpr fields can use 0d6 default           [ttrpg_dsl-46i]
+    //
+    //
+    //  REMAINING language gaps:
+    //
+    //  1. NO FULLY AUTOMATIC EVENT EMISSION                     [ttrpg_dsl-clo]
     //     - `emit` solves manual host-side firing (see [RESOLVED] above)
     //     - Remaining: HP mutations don't auto-emit — DSL author writes emit
     //     - Would want: `HP: resource(...) { on_decrease => emit ... }`
     //
-    //  4. NO POSITION ARITHMETIC                                  [ttrpg_dsl-586]
+    //  2. NO POSITION ARITHMETIC                                [ttrpg_dsl-586]
     //     - Can't compute "5 feet away from X toward Y"
     //     - Can't check "is between A and B" (flanking)
     //     - Position is opaque — only distance() is available
     //
-    //  5. [RESOLVED] UNION TYPES                                  [ttrpg_dsl-q5l]
-    //     - Entity refs: `entity with GroupName` for constrained polymorphism
-    //     - Non-entity: enum payloads (DamageSource { weapon(...), spell(...) })
-    //
-    //  6. SINGLE REQUIRES BLOCK PER ACTION                        [ttrpg_dsl-mcy]
-    //     - Must combine with && (multiline works, but verbose)
-    //
-    //  7. RESOLVED: DiceExpr fields can use 0d6 default            [ttrpg_dsl-46i]
-    //
-    //  8. NO STRUCT UPDATE SYNTAX                                 [ttrpg_dsl-kmy]
-    //     - Must reconstruct entire struct to change one field
-    //
-    //  9. NO LIST SORTING / MAP / FILTER / REDUCE                 [ttrpg_dsl-4km]
+    //  3. NO LIST SORTING / MAP / FILTER / REDUCE               [ttrpg_dsl-4km]
     //     - Host must sort initiative; no ordered collection output
     //
-    // 10. NO ENTITY DESTRUCTION / LIFECYCLE                       [ttrpg_dsl-bcc]
+    //  4. NO ENTITY DESTRUCTION / LIFECYCLE                     [ttrpg_dsl-bcc]
     //     - Can't destroy(dying) — death removes entities permanently
     //
-    // 11. NO ENUM-ASSOCIATED DATA / LOOKUP TABLES                 [ttrpg_dsl-8tu]
+    //  5. NO ENUM-ASSOCIATED DATA / LOOKUP TABLES               [ttrpg_dsl-8tu]
     //     - skill_ability is 18-branch match for static data
     //
-    // 12. NO EVENT-TRIGGERED DURATIONS                            [ttrpg_dsl-rh4]
+    //  6. NO EVENT-TRIGGERED DURATIONS                          [ttrpg_dsl-rh4]
     //     - "Until next use" (Help) and "until save" (spell effects)
     //
-    // 13. NO SPELL INSTANCE / EFFECT TRACKING                     [ttrpg_dsl-5kb]
+    //  7. NO SPELL INSTANCE / EFFECT TRACKING                   [ttrpg_dsl-5kb]
     //     - Dropping concentration can't auto-remove spell effects
     //
-    // 14. NO INTEGER RANGE / BOUNDED INT TYPES                    [ttrpg_dsl-3v8]
+    //  8. NO INTEGER RANGE / BOUNDED INT TYPES                  [ttrpg_dsl-3v8]
     //     - Can't express int(1..9) for spell slot levels
 }
