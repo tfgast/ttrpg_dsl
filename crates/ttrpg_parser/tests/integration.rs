@@ -69,7 +69,7 @@ fn test_parse_full_example() {
     assert_eq!(actions, 9, "action count");
     assert_eq!(reactions, 2, "reaction count");
     assert_eq!(conditions, 8, "condition count"); // +Stunned, Petrified
-    assert_eq!(prompts, 2, "prompt count");
+    assert_eq!(prompts, 3, "prompt count"); // +choose_target (typed prompt)
     assert_eq!(events, 5, "event count");
 }
 

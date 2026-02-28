@@ -255,6 +255,14 @@ system "D&D 5e Combat" {
         hint: "The GM determines the outcome based on the fiction"
     }
 
+    // Typed prompt: returns a Character entity, not a string.
+    // The effect carries return_type so the host knows what to provide,
+    // and the interpreter validates the response matches the declared type.
+    prompt choose_target(chooser: Character, candidates: list<Character>) -> Character {
+        hint: "Choose a target creature"
+        suggest: candidates[0]
+    }
+
 
     // --- Actions (can roll AND mutate, have receiver) ---
 

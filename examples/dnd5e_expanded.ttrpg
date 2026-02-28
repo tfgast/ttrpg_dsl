@@ -609,10 +609,30 @@ system "D&D 5e Expanded" {
         hint: "The GM determines the outcome based on the fiction"
     }
 
-    // PAIN POINT: No typed prompts.                                   [ttrpg_dsl-ctc]
-    // choose() returns string, not a typed entity reference.
-    // The host must map string -> entity externally. Would like:
-    //     prompt choose_target(chooser: Character, candidates: list<Character>) -> Character
+    // RESOLVED: Typed prompts now carry return type and named params   [ttrpg_dsl-ctc]
+    // through the effect system. The host knows exactly what type to
+    // return, and receives named parameter bindings for context.
+
+    // Entity-typed prompt: host returns a Character, not a string.
+    // The interpreter validates the response matches the declared type.
+    prompt choose_target(chooser: Character, candidates: list<Character>) -> Character {
+        hint: "Choose a target creature"
+        suggest: candidates[0]
+    }
+
+    // Enum-typed prompt for defender skill selection in contested checks.
+    prompt choose_contest_skill(defender: Character, allowed: list<Skill>) -> Skill {
+        hint: "Choose which skill to use for the contested check"
+        suggest: allowed[0]
+    }
+
+    // Shove outcome choice: typed enum instead of string matching.
+    enum ShoveChoice { knock_prone, push_away }
+
+    prompt choose_shove_outcome(shover: Character) -> ShoveChoice {
+        hint: "Knock the target prone, or push them 5 feet away?"
+        suggest: ShoveChoice.knock_prone
+    }
 
 
     // ========================================================
@@ -728,13 +748,15 @@ system "D&D 5e Expanded" {
         }
 
         resolve {
+            // RESOLVED: Typed prompt lets the defender choose their   [ttrpg_dsl-ctc]
+            // contest skill. The host receives a Skill-typed prompt
+            // and validates the response is actually a Skill value.
+            let defender_skill = choose_contest_skill(
+                target, [athletics, acrobatics]
+            )
             let success = contested_check(
                 grappler, athletics,
-                target, athletics  // target should choose athletics or acrobatics
-                // PAIN POINT: In 5e, the DEFENDER chooses which skill
-                // to use. This is a decision mid-mechanic — prompts
-                // could handle it but contested_check would need a
-                // skill parameter from a prompt call.
+                target, defender_skill
             )
             if success {
                 // RESOLVED: Duration.indefinite now works.            [ttrpg_dsl-d3r]
@@ -750,21 +772,25 @@ system "D&D 5e Expanded" {
         requires { distance(shover.position, target.position) <= 5 }
 
         resolve {
+            // RESOLVED: Defender chooses contest skill via typed prompt [ttrpg_dsl-ctc]
+            let defender_skill = choose_contest_skill(
+                target, [athletics, acrobatics]
+            )
             let success = contested_check(
                 shover, athletics,
-                target, athletics
+                target, defender_skill
             )
             if success {
-                let choice = choose(shover, ["prone", "push"])
+                // RESOLVED: Typed enum prompt replaces string matching [ttrpg_dsl-ctc]
+                let choice = choose_shove_outcome(shover)
                 match choice {
-                    "prone" => {
+                    knock_prone => {
                         apply_condition(target, Prone, Duration.indefinite)
                     },
-                    "push" => {
+                    push_away => {
                         // PAIN POINT: No position arithmetic.         [ttrpg_dsl-586]
                         // Can't express "move target 5 feet away from shover".
-                    },
-                    _ => {}
+                    }
                 }
             }
         }
@@ -1301,6 +1327,14 @@ system "D&D 5e Expanded" {
     //     - `optional GroupName` in entities (external reference)
     //     - Cross-entity group sharing (same group on Character + Monster)
     //
+    //  [RESOLVED] TYPED PROMPTS                                    [ttrpg_dsl-ctc]
+    //     - Prompts carry return_type and named params through effects
+    //     - Host knows expected return type (Character, Skill, enum, etc.)
+    //     - Interpreter validates response matches declared type
+    //     - choose_target -> Character replaces string-based entity selection
+    //     - choose_contest_skill -> Skill enables mid-mechanic decisions
+    //     - choose_shove_outcome -> ShoveChoice replaces string matching
+    //
     //
     //  REMAINING language gaps:
     //
@@ -1312,47 +1346,44 @@ system "D&D 5e Expanded" {
     //     - Stunned auto-fails STR/DEX saves (not just disadvantage)
     //     - "Advantage/disadvantage" is the only roll modifier
     //
-    //  3. NO TYPED PROMPTS                                        [ttrpg_dsl-ctc]
-    //     - choose() returns string, not a typed entity reference
-    //
-    //  4. NO FULLY AUTOMATIC EVENT EMISSION                       [ttrpg_dsl-clo]
+    //  3. NO FULLY AUTOMATIC EVENT EMISSION                       [ttrpg_dsl-clo]
     //     - `emit` solves manual host-side firing (see [RESOLVED] above)
     //     - Remaining: HP mutations don't auto-emit — DSL author writes emit
     //     - Would want: `HP: resource(...) { on_decrease => emit ... }`
     //
-    //  5. NO POSITION ARITHMETIC                                  [ttrpg_dsl-586]
+    //  4. NO POSITION ARITHMETIC                                  [ttrpg_dsl-586]
     //     - Can't compute "5 feet away from X toward Y"
     //     - Can't check "is between A and B" (flanking)
     //     - Position is opaque — only distance() is available
     //
-    //  6. NO UNION TYPES                                          [ttrpg_dsl-q5l]
+    //  5. NO UNION TYPES                                          [ttrpg_dsl-q5l]
     //     - Can't express DamageSource = Weapon | Spell | Environment
     //     - No tuple or multiple return values
     //
-    //  7. SINGLE REQUIRES BLOCK PER ACTION                        [ttrpg_dsl-mcy]
+    //  6. SINGLE REQUIRES BLOCK PER ACTION                        [ttrpg_dsl-mcy]
     //     - Must combine with && (multiline works, but verbose)
     //
-    //  8. NO DEFAULT FOR DiceExpr FIELDS                          [ttrpg_dsl-46i]
+    //  7. NO DEFAULT FOR DiceExpr FIELDS                          [ttrpg_dsl-46i]
     //     - sneak_attack_dice uses int (number of d6s) instead
     //
-    //  9. NO STRUCT UPDATE SYNTAX                                 [ttrpg_dsl-kmy]
+    //  8. NO STRUCT UPDATE SYNTAX                                 [ttrpg_dsl-kmy]
     //     - Must reconstruct entire struct to change one field
     //
-    // 10. NO LIST SORTING / MAP / FILTER / REDUCE                 [ttrpg_dsl-4km]
+    //  9. NO LIST SORTING / MAP / FILTER / REDUCE                 [ttrpg_dsl-4km]
     //     - Host must sort initiative; no ordered collection output
     //
-    // 11. NO ENTITY DESTRUCTION / LIFECYCLE                       [ttrpg_dsl-bcc]
+    // 10. NO ENTITY DESTRUCTION / LIFECYCLE                       [ttrpg_dsl-bcc]
     //     - Can't destroy(dying) — death removes entities permanently
     //
-    // 12. NO ENUM-ASSOCIATED DATA / LOOKUP TABLES                 [ttrpg_dsl-8tu]
+    // 11. NO ENUM-ASSOCIATED DATA / LOOKUP TABLES                 [ttrpg_dsl-8tu]
     //     - skill_ability is 18-branch match for static data
     //
-    // 13. NO EVENT-TRIGGERED DURATIONS                            [ttrpg_dsl-rh4]
+    // 12. NO EVENT-TRIGGERED DURATIONS                            [ttrpg_dsl-rh4]
     //     - "Until next use" (Help) and "until save" (spell effects)
     //
-    // 14. NO SPELL INSTANCE / EFFECT TRACKING                     [ttrpg_dsl-5kb]
+    // 13. NO SPELL INSTANCE / EFFECT TRACKING                     [ttrpg_dsl-5kb]
     //     - Dropping concentration can't auto-remove spell effects
     //
-    // 15. NO INTEGER RANGE / BOUNDED INT TYPES                    [ttrpg_dsl-3v8]
+    // 14. NO INTEGER RANGE / BOUNDED INT TYPES                    [ttrpg_dsl-3v8]
     //     - Can't express int(1..9) for spell slot levels
 }

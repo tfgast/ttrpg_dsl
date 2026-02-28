@@ -25,11 +25,14 @@ system "Common" {
     }
   }
 
-  // Example: ruling on a creative player action
+  // Example: ruling on a creative player action.
+  // With typed prompts, the host receives return_type = Resolution
+  // and named params (action, context), enabling structured UI.
+  enum Resolution { ability_check, skill_check, saving_throw, auto_success, auto_fail }
+
   prompt adjudicate(action: string, context: string) -> Resolution {
-    // The DSL can suggest which mechanic *might* apply
-    suggest_mechanic: ability_check | skill_check | saving_throw | auto_success | auto_fail
     hint: "Consider the fiction. What would reasonably happen?"
+    suggest: Resolution.ability_check
   }
 
   // --- Optional / variant rules ---
