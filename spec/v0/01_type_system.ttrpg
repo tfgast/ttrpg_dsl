@@ -355,3 +355,25 @@ enum Duration {
     minutes(count: int),
     indefinite
 }
+
+
+// --- ActiveCondition ---
+//
+// Runtime representation of a condition currently active on an entity.
+// Not directly constructible in DSL code — produced by builtins that
+// query entity state (e.g., a future `conditions()` builtin).
+//
+// Fields are read-only and accessed via dot syntax:
+
+struct ActiveCondition {
+    name: string        // condition name (e.g., "Prone", "Frightened")
+    duration: Duration  // when the condition expires
+    id: int             // unique identifier for this condition instance
+}
+
+// The `id` field distinguishes multiple instances of the same condition
+// (e.g., two separate Frightened effects from different sources).
+//
+// Condition parameters (e.g., the `source` in `Frightened(source: attacker)`)
+// are not exposed as fields in v0. Access to heterogeneous parameter
+// fields requires a future type-system extension.
