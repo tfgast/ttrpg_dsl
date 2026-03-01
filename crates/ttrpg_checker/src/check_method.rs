@@ -346,7 +346,7 @@ impl<'a> Checker<'a> {
                 }
                 if !self.scope.allows_dice() {
                     self.error(
-                        ".roll() can only be called in mechanic, action, or reaction blocks"
+                        ".roll() can only be called in mechanic, action, reaction, or hook blocks"
                             .to_string(),
                         span,
                     );

@@ -185,7 +185,7 @@ impl<'a> Checker<'a> {
                 let is_turn = target.root == "turn" && self.scope.allows_turn();
                 if !is_turn {
                     self.error(
-                        "assignment to entity fields requires action or reaction context"
+                        "assignment to entity fields requires action, reaction, or hook context"
                             .to_string(),
                         span,
                     );
@@ -332,10 +332,10 @@ impl<'a> Checker<'a> {
         span: ttrpg_ast::Span,
     ) {
         self.check_name_visible(group_name, Namespace::Group, span);
-        // grant/revoke only allowed in action/reaction context
+        // grant/revoke only allowed in action/reaction/hook context
         if !self.scope.allows_mutation() {
             self.error(
-                "grant is only allowed in action or reaction context".to_string(),
+                "grant is only allowed in action, reaction, or hook context".to_string(),
                 span,
             );
         }
@@ -580,10 +580,10 @@ impl<'a> Checker<'a> {
         span: ttrpg_ast::Span,
     ) {
         self.check_name_visible(group_name, Namespace::Group, span);
-        // grant/revoke only allowed in action/reaction context
+        // grant/revoke only allowed in action/reaction/hook context
         if !self.scope.allows_mutation() {
             self.error(
-                "revoke is only allowed in action or reaction context".to_string(),
+                "revoke is only allowed in action, reaction, or hook context".to_string(),
                 span,
             );
         }

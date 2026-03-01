@@ -360,8 +360,8 @@ enum Duration {
 // --- ActiveCondition ---
 //
 // Runtime representation of a condition currently active on an entity.
-// Not directly constructible in DSL code — produced by builtins that
-// query entity state (e.g., a future `conditions()` builtin).
+// Not directly constructible in DSL code — produced by the
+// `conditions(entity)` builtin which returns active conditions.
 //
 // Fields are read-only and accessed via dot syntax:
 

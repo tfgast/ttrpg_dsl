@@ -68,7 +68,7 @@ impl<'a> Checker<'a> {
                             ) {
                                 self.error(
                                     format!(
-                                        "`{}` is an action and can only be called from action or reaction context",
+                                        "`{}` is an action and can only be called from action, reaction, or hook context",
                                         field
                                     ),
                                     span,
@@ -229,7 +229,7 @@ impl<'a> Checker<'a> {
             ) {
                 self.error(
                     format!(
-                        "`{}` is an action and can only be called from action or reaction context",
+                        "`{}` is an action and can only be called from action, reaction, or hook context",
                         callee_name
                     ),
                     span,

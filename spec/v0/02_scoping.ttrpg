@@ -511,7 +511,9 @@ hook Regenerate on creature: Character (
 
 // --- Builtins ---
 //
-// Functions provided by the runtime, usable based on block permissions:
+// Functions provided by the runtime, usable based on block permissions.
+// Most collection builtins are available as both free functions and
+// receiver-syntax methods (e.g., `len(xs)` and `xs.len()`).
 //
 // Available everywhere:
 //   floor(x: float) -> int          // round toward negative infinity
@@ -523,12 +525,20 @@ hook Regenerate on creature: Character (
 //   multiply_dice(expr: DiceExpr, factor: int) -> DiceExpr
 //       // multiplies dice count only, constants unchanged
 //       // multiply_dice(1d8 + 3, 2) => 2d8 + 3
+//   error(message: string) -> Error
+//       // always aborts evaluation with the provided message
 //   ordinal(v: E) -> int
 //       // E must be an enum value (returns its declaration order index)
 //   from_ordinal(E, index: int) -> E
 //       // E must be an ordered enum type; errors if out of range or payload variant
 //   try_from_ordinal(E, index: int) -> option<E>
 //       // E must be an ordered enum type; returns none for out-of-range/payload variant
+//   some(x: T) -> option<T>
+//       // wraps a value in an option (the constructor for non-none options)
+//   conditions(entity: entity) -> list<ActiveCondition>
+//       // returns all active conditions on the entity, ordered oldest-first
+//
+// Collection builtins (available everywhere, also as methods):
 //   len(xs: list<T> | set<T> | map<K, V>) -> int
 //   keys(m: map<K, V>) -> list<K>
 //   values(m: map<K, V>) -> list<V>
@@ -537,18 +547,33 @@ hook Regenerate on creature: Character (
 //   append(xs: list<T>, item: T) -> list<T>
 //   concat(a: list<T>, b: list<T>) -> list<T>
 //   reverse(xs: list<T>) -> list<T>
+//   sum(xs: list<int> | list<float>) -> int | float
+//   any(xs: list<bool>) -> bool
+//   all(xs: list<bool>) -> bool
+//   sort(xs: list<T>) -> list<T>
 //
-// Option methods (receiver syntax):
+// Option methods (receiver syntax only):
 //   x.unwrap() -> T
 //   x.unwrap_or(default: T) -> T
-// These are methods, not free functions.
+//   x.is_some() -> bool
+//   x.is_none() -> bool
+//
+// String methods (receiver syntax only):
+//   s.len() -> int
+//   s.contains(substr: string) -> bool
+//   s.starts_with(prefix: string) -> bool
+//   s.ends_with(suffix: string) -> bool
+//
+// DiceExpr methods (receiver syntax):
+//   expr.multiply(factor: int) -> DiceExpr   // same as multiply_dice(expr, factor)
+//   expr.roll() -> RollResult                 // same permission as roll()
 //
 // Available in mechanic, action, reaction, hook (blocks that can roll):
 //   roll(expr: DiceExpr) -> RollResult
 //
 // Available in action, reaction, hook (blocks that can mutate):
-//   apply_condition(target: Character, cond: Condition, duration: Duration)
-//   remove_condition(target: Character, cond: Condition | ActiveCondition)
+//   apply_condition(target: entity, cond: Condition, duration: Duration)
+//   remove_condition(target: entity, cond: Condition | ActiveCondition)
 //       Accepts either a Condition value (removes by name + params) or an
 //       ActiveCondition instance (removes by unique id for precise removal).
 //       Example:
@@ -574,7 +599,7 @@ hook Regenerate on creature: Character (
 //
 // The `turn` keyword (available in action/reaction/hook resolve blocks):
 //   Refers to the current turn's mutable TurnBudget.
-//   turn.movement, turn.actions, etc. are assignable.
+//   turn.movement, turn.actions, etc. are readable and assignable.
 
 
 // --- Tags ---

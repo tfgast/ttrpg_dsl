@@ -74,7 +74,7 @@ fn eval_assign_turn(
 ) -> Result<(), RuntimeError> {
     let actor = env.turn_actor.ok_or_else(|| {
         RuntimeError::with_span(
-            "cannot access `turn` outside of action/reaction context",
+            "cannot access `turn` outside of action/reaction/hook context",
             span,
         )
     })?;

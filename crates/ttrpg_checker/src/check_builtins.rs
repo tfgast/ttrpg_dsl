@@ -563,7 +563,7 @@ impl<'a> Checker<'a> {
             "roll" => {
                 if !self.scope.allows_dice() {
                     self.error(
-                        "roll() can only be called in mechanic, action, or reaction blocks"
+                        "roll() can only be called in mechanic, action, reaction, or hook blocks"
                             .to_string(),
                         span,
                     );
@@ -572,7 +572,10 @@ impl<'a> Checker<'a> {
             "apply_condition" | "remove_condition" => {
                 if !self.scope.allows_mutation() {
                     self.error(
-                        format!("{}() can only be called in action or reaction blocks", name),
+                        format!(
+                            "{}() can only be called in action, reaction, or hook blocks",
+                            name
+                        ),
                         span,
                     );
                 }
@@ -589,7 +592,8 @@ impl<'a> Checker<'a> {
             "revoke" => {
                 if !self.scope.allows_mutation() {
                     self.error(
-                        "revoke() can only be called in action or reaction blocks".to_string(),
+                        "revoke() can only be called in action, reaction, or hook blocks"
+                            .to_string(),
                         span,
                     );
                 }

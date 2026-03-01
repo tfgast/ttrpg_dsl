@@ -438,7 +438,7 @@ system "test" {
 "#;
     expect_errors(
         source,
-        &["roll() can only be called in mechanic, action, or reaction"],
+        &["roll() can only be called in mechanic, action, reaction, or hook"],
     );
 }
 
@@ -469,7 +469,7 @@ system "test" {
 "#;
     expect_errors(
         source,
-        &["assignment to entity fields requires action or reaction"],
+        &["assignment to entity fields requires action, reaction, or hook"],
     );
 }
 
@@ -507,7 +507,7 @@ system "test" {
 "#;
     expect_errors(
         source,
-        &["apply_condition() can only be called in action or reaction"],
+        &["apply_condition() can only be called in action, reaction, or hook"],
     );
 }
 
@@ -1787,7 +1787,7 @@ system "test" {
 "#;
     expect_errors(
         source,
-        &["is an action and can only be called from action or reaction context"],
+        &["is an action and can only be called from action, reaction, or hook context"],
     );
 }
 
@@ -4735,7 +4735,7 @@ system "test" {
 "#;
     expect_errors(
         source,
-        &["grant is only allowed in action or reaction context"],
+        &["grant is only allowed in action, reaction, or hook context"],
     );
 }
 
@@ -4757,7 +4757,7 @@ system "test" {
 "#;
     expect_errors(
         source,
-        &["revoke is only allowed in action or reaction context"],
+        &["revoke is only allowed in action, reaction, or hook context"],
     );
 }
 
@@ -9561,7 +9561,7 @@ fn revoke_in_derive_rejected() {
         0
     }
 }"#;
-    expect_errors(source, &["revoke() can only be called in action or reaction blocks"]);
+    expect_errors(source, &["revoke() can only be called in action, reaction, or hook blocks"]);
 }
 
 #[test]
