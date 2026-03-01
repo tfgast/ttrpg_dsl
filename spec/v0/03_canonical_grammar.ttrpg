@@ -575,8 +575,8 @@ revoke_stmt     = "revoke" lvalue term
 // Parameters with defaults can be omitted. The emit statement
 // returns unit (fire-and-forget).
 //
-// Only allowed in action resolve blocks. (Future: may be relaxed
-// to hook and reaction resolve blocks with a cascading depth guard.)
+// Allowed in action, reaction, and hook resolve blocks. Nested
+// emit chains are bounded by a cascading depth guard (limit 16).
 //
 //   emit Damaged(target: target, amount: damage)
 //   emit TurnStarted(actor: actor)
