@@ -455,7 +455,7 @@ impl<'a> Checker<'a> {
         // emit only allowed in ActionResolve context
         if !self.scope.allows_emit() {
             self.error(
-                "emit is only allowed in action context".to_string(),
+                "emit is only allowed in action, reaction, or hook context".to_string(),
                 span,
             );
         }

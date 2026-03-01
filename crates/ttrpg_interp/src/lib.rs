@@ -413,6 +413,9 @@ impl<'p> Interpreter<'p> {
 
 // ── Env (execution environment) ────────────────────────────────
 
+/// Maximum depth for nested `emit` calls before returning a runtime error.
+const MAX_EMIT_DEPTH: u32 = 16;
+
 /// Mutable execution environment, created fresh for each public API call.
 pub(crate) struct Env<'a, 'p> {
     pub state: &'a dyn StateProvider,
@@ -421,6 +424,7 @@ pub(crate) struct Env<'a, 'p> {
     pub scopes: Vec<Scope>,
     pub turn_actor: Option<EntityRef>,
     pub current_invocation_id: Option<InvocationId>,
+    pub emit_depth: u32,
 }
 
 impl<'a, 'p> Env<'a, 'p> {
@@ -436,6 +440,7 @@ impl<'a, 'p> Env<'a, 'p> {
             scopes: vec![Scope::new()],
             turn_actor: None,
             current_invocation_id: None,
+            emit_depth: 0,
         }
     }
 

@@ -7,7 +7,7 @@ use ttrpg_ast::Span;
 use crate::action;
 use crate::event;
 use crate::value::Value;
-use crate::Env;
+use crate::{Env, MAX_EMIT_DEPTH};
 use crate::RuntimeError;
 
 use super::dispatch::eval_expr;
@@ -15,20 +15,32 @@ use super::dispatch::eval_expr;
 /// Evaluate an `emit EventName(param: expr, ...)` statement.
 ///
 /// Steps:
-/// 1. Look up the EventDecl from the program
-/// 2. Evaluate arg expressions, build param map
-/// 3. Fill defaults for missing params
-/// 4. Evaluate derived fields (event field defaults) with params in scope
-/// 5. Construct payload as a struct value
-/// 6. Find matching hooks via `event::find_matching_hooks`
-/// 7. Execute each matching hook inline
+/// 1. Check emit depth limit
+/// 2. Look up the EventDecl from the program
+/// 3. Evaluate arg expressions, build param map
+/// 4. Fill defaults for missing params
+/// 5. Evaluate derived fields (event field defaults) with params in scope
+/// 6. Construct payload as a struct value
+/// 7. Find matching hooks via `event::find_matching_hooks`
+/// 8. Execute each matching hook inline
 pub(crate) fn eval_emit(
     env: &mut Env,
     event_name: &Name,
     args: &[Arg],
     span: Span,
 ) -> Result<(), RuntimeError> {
-    // 1. Look up EventDecl
+    // 1. Check emit depth limit
+    if env.emit_depth >= MAX_EMIT_DEPTH {
+        return Err(RuntimeError::with_span(
+            format!(
+                "emit depth limit ({}) exceeded — possible circular emit chain",
+                MAX_EMIT_DEPTH
+            ),
+            span,
+        ));
+    }
+
+    // 2. Look up EventDecl
     let event_decl = env
         .interp
         .program
@@ -96,23 +108,28 @@ pub(crate) fn eval_emit(
     let hook_result =
         event::find_matching_hooks(env.interp, env.state, event_name, &payload, &candidates)?;
 
-    // 7. Execute each matching hook inline
-    for hook_info in hook_result.hooks {
-        let hook_decl = env
-            .interp
-            .program
-            .hooks
-            .get(&hook_info.name)
-            .ok_or_else(|| {
-                RuntimeError::with_span(
-                    format!("undefined hook '{}'", hook_info.name),
-                    span,
-                )
-            })?
-            .clone();
+    // 7. Execute each matching hook inline (with depth tracking)
+    env.emit_depth += 1;
+    let result = (|| {
+        for hook_info in hook_result.hooks {
+            let hook_decl = env
+                .interp
+                .program
+                .hooks
+                .get(&hook_info.name)
+                .ok_or_else(|| {
+                    RuntimeError::with_span(
+                        format!("undefined hook '{}'", hook_info.name),
+                        span,
+                    )
+                })?
+                .clone();
 
-        action::execute_hook(env, &hook_decl, hook_info.target, payload.clone(), span)?;
-    }
+            action::execute_hook(env, &hook_decl, hook_info.target, payload.clone(), span)?;
+        }
+        Ok(())
+    })();
+    env.emit_depth -= 1;
 
-    Ok(())
+    result
 }

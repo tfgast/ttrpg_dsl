@@ -62,7 +62,7 @@ impl BlockKind {
     }
 
     pub fn allows_emit(&self) -> bool {
-        matches!(self, BlockKind::ActionResolve)
+        matches!(self, BlockKind::ActionResolve | BlockKind::ReactionResolve | BlockKind::HookResolve)
     }
 }
 
