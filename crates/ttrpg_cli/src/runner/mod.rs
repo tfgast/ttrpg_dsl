@@ -23,6 +23,7 @@ use crate::format::format_value;
 mod assert;
 mod config;
 mod groups;
+mod help;
 mod inspect;
 mod load;
 mod mutation;
@@ -224,6 +225,8 @@ impl Runner {
             // Configuration
             Command::Seed(tail) => self.cmd_seed(&tail),
             Command::Rolls(tail) => self.cmd_rolls(&tail),
+            // Help
+            Command::Help(topic) => self.cmd_help(topic.as_deref()),
             Command::Unknown(kw) => Err(CliError::Message(format!("unknown command: {}", kw))),
         }
     }

@@ -30,6 +30,7 @@ const ALL_COMMANDS: &[&str] = &[
     "assert_err",
     "seed",
     "rolls",
+    "help",
 ];
 
 /// DSL keywords and builtins useful in expression contexts.

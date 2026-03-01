@@ -30,6 +30,8 @@ pub enum Command {
     // Configuration
     Seed(String),
     Rolls(String),
+    // Help
+    Help(Option<String>),
     Unknown(String),
 }
 
@@ -205,6 +207,14 @@ pub fn parse_command(line: &str) -> Option<Command> {
                 Some(Command::Unknown("rolls".into()))
             } else {
                 Some(Command::Rolls(s.into()))
+            }
+        }
+        "help" => {
+            let s = strip_comment(tail).trim();
+            if s.is_empty() {
+                Some(Command::Help(None))
+            } else {
+                Some(Command::Help(Some(s.into())))
             }
         }
         _ => Some(Command::Unknown(keyword.into())),
