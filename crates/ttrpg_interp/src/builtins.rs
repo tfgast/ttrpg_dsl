@@ -384,9 +384,11 @@ fn builtin_apply_condition(
 
 // ── remove_condition ───────────────────────────────────────────
 
-/// `remove_condition(target: Entity, condition: Condition) -> None`
+/// `remove_condition(target: Entity, condition: Condition | ActiveCondition) -> None`
 ///
 /// Emits a `RemoveCondition` effect.
+/// When passed a `Condition` value, removes by name + params.
+/// When passed an `ActiveCondition` struct, removes by unique instance id.
 fn builtin_remove_condition(
     env: &mut Env,
     args: &[Value],
@@ -404,6 +406,7 @@ fn builtin_remove_condition(
                 target: *target,
                 condition: cond_name.clone(),
                 params: Some(cond_args.clone()),
+                id: None,
             };
             validate_mutation_response(env.handler.handle(effect), "RemoveCondition", span)?;
             Ok(Value::None)
@@ -413,6 +416,33 @@ fn builtin_remove_condition(
                 target: *target,
                 condition: Name::from(cond_name.as_str()),
                 params: None,
+                id: None,
+            };
+            validate_mutation_response(env.handler.handle(effect), "RemoveCondition", span)?;
+            Ok(Value::None)
+        }
+        (
+            Some(Value::Entity(target)),
+            Some(Value::Struct { name, fields }),
+        ) if name == "ActiveCondition" => {
+            let cond_id = match fields.get("id") {
+                Some(Value::Int(id)) => *id as u64,
+                _ => {
+                    return Err(RuntimeError::with_span(
+                        "ActiveCondition missing 'id' field",
+                        span,
+                    ));
+                }
+            };
+            let cond_name = match fields.get("name") {
+                Some(Value::Str(s)) => Name::from(s.as_str()),
+                _ => Name::from("?"),
+            };
+            let effect = Effect::RemoveCondition {
+                target: *target,
+                condition: cond_name,
+                params: None,
+                id: Some(cond_id),
             };
             validate_mutation_response(env.handler.handle(effect), "RemoveCondition", span)?;
             Ok(Value::None)

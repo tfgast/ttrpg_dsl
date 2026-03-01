@@ -1389,6 +1389,69 @@ fn remove_condition_string_form_uses_none_params() {
     }
 }
 
+// ── remove_condition with ActiveCondition instance ──────────
+
+#[test]
+fn remove_condition_active_condition_uses_id() {
+    // When passing an ActiveCondition struct, the effect should use id-based removal.
+    let program = program_with_decls(vec![]);
+    let type_env = type_env_with_builtins();
+    let interp = Interpreter::new(&program, &type_env).unwrap();
+    let state = TestState::new();
+    let mut handler = ScriptedHandler::new();
+    let mut env = make_env(&state, &mut handler, &interp);
+
+    env.bind("target".into(), Value::Entity(EntityRef(1)));
+
+    // Build an ActiveCondition struct value (as returned by conditions())
+    let mut fields = BTreeMap::new();
+    fields.insert(Name::from("name"), Value::Str("Prone".into()));
+    fields.insert(Name::from("id"), Value::Int(42));
+    fields.insert(
+        Name::from("duration"),
+        crate::value::duration_variant("indefinite"),
+    );
+    env.bind(
+        "cond".into(),
+        Value::Struct {
+            name: Name::from("ActiveCondition"),
+            fields,
+        },
+    );
+
+    let expr = spanned(ExprKind::Call {
+        callee: Box::new(spanned(ExprKind::Ident("remove_condition".into()))),
+        args: vec![
+            Arg {
+                name: None,
+                value: spanned(ExprKind::Ident("target".into())),
+                span: dummy_span(),
+            },
+            Arg {
+                name: None,
+                value: spanned(ExprKind::Ident("cond".into())),
+                span: dummy_span(),
+            },
+        ],
+    });
+    crate::eval::eval_expr(&mut env, &expr).unwrap();
+
+    assert_eq!(handler.log.len(), 1);
+    match &handler.log[0] {
+        Effect::RemoveCondition {
+            target,
+            condition,
+            id,
+            ..
+        } => {
+            assert_eq!(target.0, 1);
+            assert_eq!(condition, "Prone");
+            assert_eq!(*id, Some(42));
+        }
+        _ => panic!("expected RemoveCondition effect"),
+    }
+}
+
 // ── Enum variant construction tests ────────────────────────
 
 #[test]

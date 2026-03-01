@@ -136,6 +136,9 @@ pub trait WritableState: StateProvider {
         params: Option<&BTreeMap<Name, Value>>,
     );
 
+    /// Remove a condition by its unique instance id.
+    fn remove_condition_by_id(&mut self, entity: &EntityRef, id: u64);
+
     /// Write a value to a turn budget field.
     fn write_turn_field(&mut self, entity: &EntityRef, field: &str, value: Value);
 

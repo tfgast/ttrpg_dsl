@@ -1108,6 +1108,10 @@ impl<'a> Checker<'a> {
             | (Ty::AnyEntity, Ty::AnyEntity) => return true,
             _ => {}
         }
+        // ActiveCondition is accepted where Condition is expected (remove_condition overload)
+        if matches!((actual, expected), (Ty::ActiveCondition, Ty::Condition)) {
+            return true;
+        }
         // Built-in type keywords and user-defined types with the same name are equivalent
         match (actual, expected) {
             (Ty::Enum(name), Ty::Duration) | (Ty::Duration, Ty::Enum(name))

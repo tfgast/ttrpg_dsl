@@ -286,6 +286,12 @@ impl WritableState for GameState {
         }
     }
 
+    fn remove_condition_by_id(&mut self, entity: &EntityRef, id: u64) {
+        if let Some(conds) = self.conditions.get_mut(&entity.0) {
+            conds.retain(|c| c.id != id);
+        }
+    }
+
     fn write_turn_field(&mut self, entity: &EntityRef, field: &str, value: Value) {
         if !self.entities.contains_key(&entity.0) {
             return;
@@ -474,6 +480,40 @@ mod tests {
         let conds = state.read_conditions(&entity).unwrap();
         assert_eq!(conds.len(), 1);
         assert_eq!(conds[0].name, "Stunned");
+    }
+
+    #[test]
+    fn condition_remove_by_id() {
+        let mut state = GameState::new();
+        let entity = state.add_entity("Fighter", HashMap::new());
+
+        state.apply_condition(
+            &entity,
+            "Prone",
+            BTreeMap::new(),
+            duration_variant("end_of_turn"),
+            None,
+        );
+        state.apply_condition(
+            &entity,
+            "Prone",
+            BTreeMap::new(),
+            duration_variant("rounds"),
+            None,
+        );
+
+        let conds = state.read_conditions(&entity).unwrap();
+        assert_eq!(conds.len(), 2);
+        let first_id = conds[0].id;
+        let second_id = conds[1].id;
+        assert_ne!(first_id, second_id);
+
+        // Remove only the first instance by id
+        state.remove_condition_by_id(&entity, first_id);
+
+        let conds = state.read_conditions(&entity).unwrap();
+        assert_eq!(conds.len(), 1);
+        assert_eq!(conds[0].id, second_id);
     }
 
     #[test]

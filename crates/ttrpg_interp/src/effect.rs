@@ -103,6 +103,8 @@ pub enum Effect {
         condition: Name,
         /// `None` = remove all matching the name. `Some(params)` = remove only matching params.
         params: Option<BTreeMap<Name, Value>>,
+        /// If set, remove by unique condition instance id instead of by name/params.
+        id: Option<u64>,
     },
     MutateTurnField {
         actor: EntityRef,

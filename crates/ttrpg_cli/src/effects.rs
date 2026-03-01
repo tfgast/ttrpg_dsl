@@ -266,19 +266,30 @@ impl EffectHandler for CliHandler<'_> {
                 target,
                 condition,
                 params,
+                id,
             } => {
                 let name = self.entity_name(&target);
-                self.game_state
-                    .borrow_mut()
-                    .remove_condition(&target, &condition, params.as_ref());
-                if let Some(ref p) = params {
+                if let Some(cid) = id {
+                    self.game_state
+                        .borrow_mut()
+                        .remove_condition_by_id(&target, cid);
                     self.log.push(format!(
-                        "[RemoveCondition] {} loses {}({:?})",
-                        name, condition, p,
+                        "[RemoveCondition] {} loses {} (id={})",
+                        name, condition, cid,
                     ));
                 } else {
-                    self.log
-                        .push(format!("[RemoveCondition] {} loses {}", name, condition,));
+                    self.game_state
+                        .borrow_mut()
+                        .remove_condition(&target, &condition, params.as_ref());
+                    if let Some(ref p) = params {
+                        self.log.push(format!(
+                            "[RemoveCondition] {} loses {}({:?})",
+                            name, condition, p,
+                        ));
+                    } else {
+                        self.log
+                            .push(format!("[RemoveCondition] {} loses {}", name, condition,));
+                    }
                 }
                 Response::Acknowledged
             }

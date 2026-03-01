@@ -272,8 +272,13 @@ fn apply_mutation<S: WritableState>(state: &mut S, effect: &Effect) {
             target,
             condition,
             params,
+            id,
         } => {
-            state.remove_condition(target, condition, params.as_ref());
+            if let Some(cid) = id {
+                state.remove_condition_by_id(target, *cid);
+            } else {
+                state.remove_condition(target, condition, params.as_ref());
+            }
         }
         Effect::MutateTurnField {
             actor,
@@ -365,8 +370,12 @@ fn apply_mutation_with_override<S: WritableState>(
             target,
             condition,
             params,
+            id,
         } => {
-            if let Value::Str(name) = override_val {
+            if let Some(cid) = id {
+                // Id-based removal: override not meaningful, use id directly
+                state.remove_condition_by_id(target, *cid);
+            } else if let Value::Str(name) = override_val {
                 state.remove_condition(target, name, params.as_ref());
             } else {
                 // Non-string override: fall back to original condition name
@@ -705,6 +714,12 @@ mod tests {
 
         fn remove_field(&mut self, entity: &EntityRef, field: &str) {
             self.fields.remove(&(entity.0, field.to_string()));
+        }
+
+        fn remove_condition_by_id(&mut self, entity: &EntityRef, id: u64) {
+            if let Some(conds) = self.conditions.get_mut(&entity.0) {
+                conds.retain(|c| c.id != id);
+            }
         }
 
         fn remove_conditions_by_invocation(&mut self, invocation: InvocationId) {
@@ -1062,6 +1077,7 @@ mod tests {
                 target: EntityRef(1),
                 condition: "Prone".into(),
                 params: None,
+                id: None,
             })
         });
 
@@ -1344,6 +1360,7 @@ mod tests {
                 target: EntityRef(1),
                 condition: "Prone".into(),
                 params: None,
+                id: None,
             })
         });
 
@@ -1789,6 +1806,7 @@ mod tests {
             target: entity,
             condition: "Burning".into(),
             params: Some(params_a.clone()),
+            id: None,
         };
         let override_val = Value::Str("Burning".into());
 
