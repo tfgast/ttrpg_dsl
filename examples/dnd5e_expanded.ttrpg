@@ -70,9 +70,9 @@ system "D&D 5e Expanded" {
     //     condition Exhaustion(level: int) on bearer: Character { ... }
     // Apply with: apply_condition(target, Exhaustion(level: 3), dur)
 
-    // PAIN POINT: Enums can't have associated data beyond variant payloads.
-    // Each Skill has a corresponding Ability — the derive approach works
-    // but is verbose (see skill_ability below).
+    // RESOLVED: Table declarations provide static enum→value mappings.
+    // Each Skill has a corresponding Ability — now expressed as a table
+    // (see skill_ability below) instead of a verbose 18-branch match.
 
     enum SpellSchool {
         abjuration, conjuration, divination, enchantment,
@@ -304,30 +304,27 @@ system "D&D 5e Expanded" {
     }
 
     // Map each skill to its governing ability.
-    // PAIN POINT: This is a 18-branch match for what is essentially   [ttrpg_dsl-8tu]
-    // static data. No way to express a lookup table or associated
-    // enum data.
-    derive skill_ability(skill: Skill) -> Ability {
-        match skill {
-            athletics       => STR,
-            acrobatics      => DEX,
-            sleight_of_hand => DEX,
-            stealth         => DEX,
-            arcana          => INT,
-            history         => INT,
-            investigation   => INT,
-            nature          => INT,
-            religion        => INT,
-            animal_handling => WIS,
-            insight         => WIS,
-            medicine        => WIS,
-            perception      => WIS,
-            survival        => WIS,
-            deception       => CHA,
-            intimidation    => CHA,
-            performance     => CHA,
-            persuasion      => CHA
-        }
+    // RESOLVED: Table declarations replace verbose derive-with-match.  [ttrpg_dsl-8tu]
+    // `table` is a first-class construct for static enum→value mappings.
+    table skill_ability(skill: Skill) -> Ability {
+        athletics       => STR,
+        acrobatics      => DEX,
+        sleight_of_hand => DEX,
+        stealth         => DEX,
+        arcana          => INT,
+        history         => INT,
+        investigation   => INT,
+        nature          => INT,
+        religion        => INT,
+        animal_handling => WIS,
+        insight         => WIS,
+        medicine        => WIS,
+        perception      => WIS,
+        survival        => WIS,
+        deception       => CHA,
+        intimidation    => CHA,
+        performance     => CHA,
+        persuasion      => CHA
     }
 
     // Armor class calculation
@@ -354,27 +351,22 @@ system "D&D 5e Expanded" {
     }
 
     // Cover bonus
-    derive cover_AC_bonus(cover: CoverType) -> int {
-        match cover {
-            no_cover            => 0,
-            half_cover          => 2,
-            three_quarters_cover => 5,
-            full_cover          => 0  // can't be targeted at all
-        }
+    // RESOLVED: Table declarations make identical-body lookups concise. [ttrpg_dsl-8tu]
+    // The semantic distinction (AC vs save) still requires both, but
+    // tables are clean enough that the duplication is trivial.
+    table cover_AC_bonus(cover: CoverType) -> int {
+        no_cover             => 0,
+        half_cover           => 2,
+        three_quarters_cover => 5,
+        full_cover           => 0  // can't be targeted at all
     }
 
-    derive cover_save_bonus(cover: CoverType) -> int {
-        match cover {
-            no_cover            => 0,
-            half_cover          => 2,
-            three_quarters_cover => 5,
-            full_cover          => 0
-        }
+    table cover_save_bonus(cover: CoverType) -> int {
+        no_cover             => 0,
+        half_cover           => 2,
+        three_quarters_cover => 5,
+        full_cover           => 0
     }
-
-    // PAIN POINT: These two derives have identical bodies. No way
-    // to alias a derive. The semantic distinction (AC vs save) matters
-    // for the condition/modify system, so we need both.
 
 
     // ========================================================
@@ -1347,6 +1339,13 @@ system "D&D 5e Expanded" {
     //     - Call site: no static group proof for disjunctive params
     //     - Mixing `,` and `|` is a parse error
     //
+    //  [RESOLVED] TABLE DECLARATIONS / LOOKUP TABLES              [ttrpg_dsl-8tu]
+    //     - `table name(key: EnumType) -> ValueType { ... }` for static mappings
+    //     - Enum-to-enum: skill_ability maps Skill → Ability in 18 entries
+    //     - Enum-to-int: cover_AC_bonus maps CoverType → int
+    //     - Multi-key tables and int range keys (1..=3 => value) supported
+    //     - Replaces verbose derive-with-match for pure data tables
+    //
     //  [RESOLVED] TYPED PROMPTS                                    [ttrpg_dsl-ctc]
     //     - Prompts carry return_type and named params through effects
     //     - Host knows expected return type (Character, Skill, enum, etc.)
@@ -1408,15 +1407,12 @@ system "D&D 5e Expanded" {
     //     - TTRPGs keep entity data for resurrection/raise dead
     //     - CLI `destroy` command handles host-level cleanup
     //
-    //  3. NO ENUM-ASSOCIATED DATA / LOOKUP TABLES               [ttrpg_dsl-8tu]
-    //     - skill_ability is 18-branch match for static data
-    //
-    //  4. NO EVENT-TRIGGERED DURATIONS                          [ttrpg_dsl-rh4]
+    //  3. NO EVENT-TRIGGERED DURATIONS                          [ttrpg_dsl-rh4]
     //     - "Until next use" (Help) and "until save" (spell effects)
     //
-    //  5. NO SPELL INSTANCE / EFFECT TRACKING                   [ttrpg_dsl-5kb]
+    //  4. NO SPELL INSTANCE / EFFECT TRACKING                   [ttrpg_dsl-5kb]
     //     - Dropping concentration can't auto-remove spell effects
     //
-    //  6. NO INTEGER RANGE / BOUNDED INT TYPES                  [ttrpg_dsl-3v8]
+    //  5. NO INTEGER RANGE / BOUNDED INT TYPES                  [ttrpg_dsl-3v8]
     //     - Can't express int(1..9) for spell slot levels
 }
