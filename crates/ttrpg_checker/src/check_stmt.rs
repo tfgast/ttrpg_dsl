@@ -476,7 +476,7 @@ impl<'a> Checker<'a> {
         args: &[Arg],
         span: ttrpg_ast::Span,
     ) {
-        // emit only allowed in ActionResolve context
+        // emit only allowed in action/reaction/hook context
         if !self.scope.allows_emit() {
             self.error(
                 "emit is only allowed in action, reaction, or hook context".to_string(),

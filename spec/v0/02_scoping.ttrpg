@@ -371,7 +371,7 @@ condition Prone on bearer: Character {
 //   2. cost { ... } on each action — what the action consumes
 //   3. `turn` keyword in resolve blocks — access to mutable turn state
 //
-// `turn` is a keyword available ONLY inside action/reaction resolve blocks.
+// `turn` is a keyword available ONLY inside action/reaction/hook resolve blocks.
 // It refers to the current turn's mutable TurnBudget.
 
 struct TurnBudget {
@@ -486,8 +486,9 @@ hook Regenerate on creature: Character (
 // The host receives the event payload and decides which reactions
 // to offer to the player.
 //
-// Emit is only allowed in action resolve blocks. It is a statement
-// (fire-and-forget), not an expression — it always returns unit.
+// Emit is only allowed in action, reaction, or hook resolve blocks.
+// It is a statement (fire-and-forget), not an expression — it always
+// returns unit.
 //
 // All arguments must be named:
 //   emit Damaged(target: target, amount: damage)   // correct

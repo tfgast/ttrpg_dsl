@@ -428,6 +428,167 @@ system "test" {
 // ═══════════════════════════════════════════════════════════════
 
 #[test]
+// ═══════════════════════════════════════════════════════════════
+// Block categories: scoping and permission audit (02_scoping.ttrpg)
+// ═══════════════════════════════════════════════════════════════
+
+// --- emit scope ---
+
+fn test_emit_in_derive_error() {
+    let source = r#"
+system "test" {
+    entity Character { hp: int }
+    event Damage(target: Character) {}
+    derive foo(target: Character) -> int {
+        emit Damage(target: target)
+        0
+    }
+}
+"#;
+    expect_errors(source, &["emit is only allowed in action, reaction, or hook"]);
+}
+
+#[test]
+fn test_emit_in_mechanic_error() {
+    let source = r#"
+system "test" {
+    entity Character { hp: int }
+    event Damage(target: Character) {}
+    mechanic foo(target: Character) -> int {
+        emit Damage(target: target)
+        0
+    }
+}
+"#;
+    expect_errors(source, &["emit is only allowed in action, reaction, or hook"]);
+}
+
+#[test]
+fn test_emit_in_action_ok() {
+    let source = r#"
+system "test" {
+    entity Character { hp: int }
+    event Damage(target: Character) {}
+    action Strike on actor: Character (target: Character) {
+        resolve {
+            target.hp -= 5
+            emit Damage(target: target)
+        }
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_emit_in_reaction_ok() {
+    let source = r#"
+system "test" {
+    entity Character { hp: int }
+    event MeleeAttack(reactor: Character) { attacker: Character }
+    event Riposte(target: Character) {}
+    reaction Parry on defender: Character (trigger: MeleeAttack(reactor: defender)) {
+        resolve {
+            emit Riposte(target: trigger.attacker)
+        }
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_emit_in_hook_ok() {
+    let source = r#"
+system "test" {
+    entity Character { hp: int }
+    event TurnStart(actor: Character) {}
+    event Regenerated(target: Character) {}
+    hook Regen on c: Character (trigger: TurnStart(actor: c)) {
+        c.hp += 1
+        emit Regenerated(target: c)
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+// --- turn keyword scope ---
+
+#[test]
+fn test_turn_in_derive_error() {
+    let source = r#"
+system "test" {
+    entity Character { hp: int }
+    derive foo(actor: Character) -> int {
+        turn.movement
+    }
+}
+"#;
+    expect_errors(source, &["undefined variable `turn`"]);
+}
+
+#[test]
+fn test_turn_in_mechanic_error() {
+    let source = r#"
+system "test" {
+    entity Character { hp: int }
+    mechanic foo(actor: Character) -> int {
+        turn.movement
+    }
+}
+"#;
+    expect_errors(source, &["undefined variable `turn`"]);
+}
+
+#[test]
+fn test_turn_in_action_ok() {
+    let source = r#"
+system "test" {
+    entity Character { speed: int }
+    action Dash on actor: Character () {
+        resolve {
+            turn.movement += actor.speed
+        }
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_turn_in_reaction_ok() {
+    let source = r#"
+system "test" {
+    entity Character { hp: int }
+    event Attack(reactor: Character) { attacker: Character }
+    reaction Dodge on defender: Character (trigger: Attack(reactor: defender)) {
+        resolve {
+            let budget = turn.movement
+        }
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_turn_in_hook_ok() {
+    let source = r#"
+system "test" {
+    entity Character { hp: int }
+    event TurnStart(actor: Character) {}
+    hook MoveReset on c: Character (trigger: TurnStart(actor: c)) {
+        turn.movement += 5
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+// --- roll (dice) permission ---
+
+#[test]
 fn test_roll_in_derive_error() {
     let source = r#"
 system "test" {
@@ -9732,4 +9893,237 @@ fn test_disjunctive_with_validates_groups_exist() {
         "expected error for nonexistent group in disjunctive with: {:?}",
         result.diagnostics
     );
+}
+
+// --- mutation permission across block types ---
+
+#[test]
+fn test_mutation_in_derive_error() {
+    let source = r#"
+system "test" {
+    entity Character { hp: int }
+    derive foo(target: Character) -> int {
+        target.hp -= 5
+        0
+    }
+}
+"#;
+    expect_errors(source, &["assignment to entity fields requires action, reaction, or hook"]);
+}
+
+#[test]
+fn test_mutation_in_hook_ok() {
+    let source = r#"
+system "test" {
+    entity Character { hp: int }
+    event TurnStart(actor: Character) {}
+    hook Regen on c: Character (trigger: TurnStart(actor: c)) {
+        c.hp += 10
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_mutation_in_reaction_ok() {
+    let source = r#"
+system "test" {
+    entity Character { hp: int }
+    event Attack(reactor: Character) { attacker: Character, damage: int }
+    reaction Shield on defender: Character (trigger: Attack(reactor: defender)) {
+        resolve {
+            defender.hp -= trigger.damage
+        }
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+// --- grant/revoke permission ---
+
+#[test]
+fn test_grant_in_derive_error() {
+    let source = r#"
+system "test" {
+    entity Character {
+        hp: int
+        optional Flying { speed: int }
+    }
+    derive foo(target: Character) -> int {
+        grant target.Flying { speed: 60 }
+        0
+    }
+}
+"#;
+    expect_errors(source, &["grant is only allowed in action, reaction, or hook"]);
+}
+
+#[test]
+fn test_grant_in_mechanic_error() {
+    let source = r#"
+system "test" {
+    entity Character {
+        hp: int
+        optional Flying { speed: int }
+    }
+    mechanic foo(target: Character) -> int {
+        grant target.Flying { speed: 60 }
+        0
+    }
+}
+"#;
+    expect_errors(source, &["grant is only allowed in action, reaction, or hook"]);
+}
+
+#[test]
+fn test_grant_in_action_audit_ok() {
+    let source = r#"
+system "test" {
+    entity Character {
+        hp: int
+        optional Flying { speed: int }
+    }
+    action GrantFlight on actor: Character (target: Character) {
+        resolve {
+            grant target.Flying { speed: 60 }
+        }
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+// --- action call context ---
+
+#[test]
+fn test_action_call_from_derive_error() {
+    let source = r#"
+system "test" {
+    entity Character { hp: int }
+    action Heal on actor: Character (target: Character) {
+        resolve {
+            target.hp += 5
+        }
+    }
+    derive foo(a: Character, b: Character) -> int {
+        Heal(a, b)
+        0
+    }
+}
+"#;
+    expect_errors(source, &["is an action and can only be called from action, reaction, or hook"]);
+}
+
+#[test]
+fn test_action_call_from_mechanic_error() {
+    let source = r#"
+system "test" {
+    entity Character { hp: int }
+    action Heal on actor: Character (target: Character) {
+        resolve {
+            target.hp += 5
+        }
+    }
+    mechanic foo(a: Character, b: Character) -> int {
+        Heal(a, b)
+        0
+    }
+}
+"#;
+    expect_errors(source, &["is an action and can only be called from action, reaction, or hook"]);
+}
+
+#[test]
+fn test_action_call_from_action_ok() {
+    let source = r#"
+system "test" {
+    entity Character { hp: int }
+    action Heal on actor: Character (target: Character) {
+        resolve {
+            target.hp += 5
+        }
+    }
+    action DoubleHeal on actor: Character (target: Character) {
+        resolve {
+            Heal(actor, target)
+        }
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+// --- reaction/hook cannot be called directly ---
+
+#[test]
+fn test_reaction_call_error() {
+    let source = r#"
+system "test" {
+    entity Character { hp: int }
+    event Attack(reactor: Character) { attacker: Character }
+    reaction Parry on defender: Character (trigger: Attack(reactor: defender)) {
+        resolve { }
+    }
+    action Foo on actor: Character () {
+        resolve {
+            Parry(actor)
+        }
+    }
+}
+"#;
+    expect_errors(source, &["reactions cannot be called directly"]);
+}
+
+#[test]
+fn test_hook_call_error() {
+    let source = r#"
+system "test" {
+    entity Character { hp: int }
+    event TurnStart(actor: Character) {}
+    hook Regen on c: Character (trigger: TurnStart(actor: c)) {
+        c.hp += 10
+    }
+    action Foo on actor: Character () {
+        resolve {
+            Regen(actor)
+        }
+    }
+}
+"#;
+    expect_errors(source, &["hooks cannot be called directly"]);
+}
+
+// --- invocation/revoke permission ---
+
+#[test]
+fn test_invocation_in_derive_error() {
+    let source = r#"
+system "test" {
+    entity Character { hp: int }
+    derive foo(target: Character) -> Invocation {
+        invocation()
+    }
+}
+"#;
+    expect_errors(source, &["invocation() can only be called in action, reaction, or hook"]);
+}
+
+#[test]
+fn test_invocation_in_action_ok() {
+    let source = r#"
+system "test" {
+    entity Character {
+        hp: int
+        concentrating_on: option<Invocation>
+    }
+    action Foo on actor: Character () {
+        resolve {
+            actor.concentrating_on = some(invocation())
+        }
+    }
+}
+"#;
+    expect_no_errors(source);
 }
