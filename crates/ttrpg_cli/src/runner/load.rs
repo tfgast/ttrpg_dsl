@@ -57,6 +57,7 @@ impl Runner {
             runner.handles.clear();
             runner.reverse_handles.clear();
             runner.source_map = None;
+            runner.unit_suffixes = crate::format::UnitSuffixes::new();
         }
 
         // Read all files
@@ -112,6 +113,7 @@ impl Runner {
         if error_count == 0 && !result.has_errors {
             *self.program = result.program;
             *self.type_env = check_result.env;
+            self.unit_suffixes = crate::format::build_unit_suffixes(&self.type_env);
             self.module_map = result.module_map;
             let mut gs = GameState::new();
             // Auto-enable options declared with `default: on`
@@ -144,7 +146,7 @@ impl Runner {
 
     pub(super) fn cmd_eval(&mut self, expr_str: &str) -> Result<(), CliError> {
         let val = self.eval(expr_str)?;
-        self.output.push(format_value(&val));
+        self.output.push(format_value(&val, &self.unit_suffixes));
         Ok(())
     }
 

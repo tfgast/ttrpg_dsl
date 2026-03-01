@@ -107,6 +107,7 @@ impl Runner {
                         &self.reverse_handles,
                         &mut self.rng,
                         &mut self.roll_queue,
+                        &self.unit_suffixes,
                     );
                     let result = interp
                         .evaluate_expr(&state, &mut handler, &parsed)
@@ -183,6 +184,7 @@ impl Runner {
                     &self.reverse_handles,
                     &mut self.rng,
                     &mut self.roll_queue,
+                    &self.unit_suffixes,
                 );
                 let result = interp
                     .evaluate_expr(&state, &mut handler, &parsed)

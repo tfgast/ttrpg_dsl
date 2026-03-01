@@ -347,6 +347,7 @@ impl Runner {
                 &self.reverse_handles,
                 &mut self.rng,
                 &mut self.roll_queue,
+                &self.unit_suffixes,
             );
             interp.resolve_resource_bounds(&state, &mut handler, &entity, &path_segments)
         };
@@ -385,7 +386,7 @@ impl Runner {
             self.output.push(format!(
                 "{} = {}{}",
                 display_path,
-                format_value(&final_val),
+                format_value(&final_val, &self.unit_suffixes),
                 clamped_suffix
             ));
         } else {
@@ -393,8 +394,8 @@ impl Runner {
                 "{} {} {} => {}",
                 display_path,
                 op_str,
-                format_value(&val),
-                format_value(&final_val)
+                format_value(&val, &self.unit_suffixes),
+                format_value(&final_val, &self.unit_suffixes)
             ));
         }
         let _ = was_clamped;
@@ -488,6 +489,7 @@ impl Runner {
             &self.reverse_handles,
             &mut self.rng,
             &mut self.roll_queue,
+            &self.unit_suffixes,
         );
 
         let result = interp
@@ -505,7 +507,7 @@ impl Runner {
             self.output.push(line);
         }
 
-        self.output.push(format!("=> {}", format_value(&result)));
+        self.output.push(format!("=> {}", format_value(&result, &self.unit_suffixes)));
         Ok(())
     }
 
@@ -576,6 +578,7 @@ impl Runner {
             &self.reverse_handles,
             &mut self.rng,
             &mut self.roll_queue,
+            &self.unit_suffixes,
         );
 
         // Dispatch to derive or mechanic based on structured check
@@ -604,7 +607,7 @@ impl Runner {
             self.output.push(line);
         }
 
-        self.output.push(format!("=> {}", format_value(&result)));
+        self.output.push(format!("=> {}", format_value(&result, &self.unit_suffixes)));
         Ok(())
     }
 
@@ -752,7 +755,7 @@ impl Runner {
             "granted {}.{}: {}",
             handle,
             group_name,
-            format_value(&struct_val)
+            format_value(&struct_val, &self.unit_suffixes)
         ));
         Ok(())
     }

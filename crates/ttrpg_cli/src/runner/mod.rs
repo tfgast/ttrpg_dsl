@@ -18,7 +18,7 @@ use ttrpg_interp::Interpreter;
 
 use crate::commands::{self, Command};
 use crate::effects::{CliHandler, RefCellState};
-use crate::format::format_value;
+use crate::format::{format_value, UnitSuffixes};
 
 mod assert;
 mod config;
@@ -64,6 +64,7 @@ pub struct Runner {
     reverse_handles: HashMap<EntityRef, String>,
     rng: StdRng,
     roll_queue: VecDeque<i64>,
+    unit_suffixes: UnitSuffixes,
 }
 
 impl Runner {
@@ -82,6 +83,7 @@ impl Runner {
             reverse_handles: HashMap::new(),
             rng: StdRng::from_os_rng(),
             roll_queue: VecDeque::new(),
+            unit_suffixes: UnitSuffixes::new(),
         }
     }
 
@@ -258,6 +260,7 @@ impl Runner {
             &self.reverse_handles,
             &mut self.rng,
             &mut self.roll_queue,
+            &self.unit_suffixes,
         );
         let bindings: HashMap<Name, Value> = self
             .handles

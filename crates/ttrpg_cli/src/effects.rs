@@ -12,7 +12,7 @@ use ttrpg_interp::reference_state::GameState;
 use ttrpg_interp::state::{EntityRef, StateProvider, WritableState};
 use ttrpg_interp::value::{DiceExpr, RollResult, Value};
 
-use crate::format::{format_dice_expr, format_path, format_value};
+use crate::format::{format_dice_expr, format_path, format_value, UnitSuffixes};
 
 // ── MinimalHandler ──────────────────────────────────────────────
 
@@ -97,6 +97,7 @@ pub struct CliHandler<'a> {
     reverse_handles: &'a HashMap<EntityRef, String>,
     rng: &'a mut StdRng,
     roll_queue: &'a mut VecDeque<i64>,
+    unit_suffixes: &'a UnitSuffixes,
     pub log: Vec<String>,
 }
 
@@ -106,12 +107,14 @@ impl<'a> CliHandler<'a> {
         reverse_handles: &'a HashMap<EntityRef, String>,
         rng: &'a mut StdRng,
         roll_queue: &'a mut VecDeque<i64>,
+        unit_suffixes: &'a UnitSuffixes,
     ) -> Self {
         CliHandler {
             game_state,
             reverse_handles,
             rng,
             roll_queue,
+            unit_suffixes,
             log: Vec::new(),
         }
     }
@@ -160,7 +163,7 @@ impl EffectHandler for CliHandler<'_> {
                     self.log.push(format!(
                         "[ResolvePrompt] {} -> auto: {}",
                         name,
-                        format_value(&val)
+                        format_value(&val, self.unit_suffixes)
                     ));
                     Response::PromptResult(val)
                 } else {
@@ -180,7 +183,7 @@ impl EffectHandler for CliHandler<'_> {
                 bounds,
             } => {
                 let name = self.entity_name(&entity);
-                let field_str = format_path(&path);
+                let field_str = format_path(&path, self.unit_suffixes);
                 let old = adapter::read_at_path(&*self.game_state.borrow(), &entity, &path)
                     .unwrap_or_else(|| match op {
                         AssignOp::PlusEq | AssignOp::MinusEq => Value::Int(0),
@@ -226,8 +229,8 @@ impl EffectHandler for CliHandler<'_> {
                     "[MutateField] {}.{}: {} -> {}{}",
                     name,
                     field_str,
-                    format_value(&old),
-                    format_value(&new_val),
+                    format_value(&old, self.unit_suffixes),
+                    format_value(&new_val, self.unit_suffixes),
                     suffix,
                 ));
                 Response::Acknowledged
@@ -330,8 +333,8 @@ impl EffectHandler for CliHandler<'_> {
                     "[MutateTurnField] {}.{}: {} -> {}",
                     name,
                     field,
-                    format_value(&old),
-                    format_value(&new_val),
+                    format_value(&old, self.unit_suffixes),
+                    format_value(&new_val, self.unit_suffixes),
                 ));
                 Response::Acknowledged
             }
@@ -423,7 +426,7 @@ impl EffectHandler for CliHandler<'_> {
                     "[GrantGroup] {}.{}: {}",
                     name,
                     group_name,
-                    format_value(&fields),
+                    format_value(&fields, self.unit_suffixes),
                 ));
                 Response::Acknowledged
             }
@@ -456,8 +459,8 @@ impl EffectHandler for CliHandler<'_> {
                         format!(
                             "{}: {} -> {}",
                             c.name,
-                            format_value(&c.old),
-                            format_value(&c.new)
+                            format_value(&c.old, self.unit_suffixes),
+                            format_value(&c.new, self.unit_suffixes)
                         )
                     })
                     .collect();
@@ -651,7 +654,9 @@ mod tests {
         let reverse_handles = HashMap::new();
         let mut rng = StdRng::seed_from_u64(42);
         let mut queue = VecDeque::new();
-        let mut handler = CliHandler::new(&game_state, &reverse_handles, &mut rng, &mut queue);
+        let no_units = UnitSuffixes::new();
+        let mut handler =
+            CliHandler::new(&game_state, &reverse_handles, &mut rng, &mut queue, &no_units);
 
         let effect = Effect::RollDice {
             expr: DiceExpr::single(1, 20, None, 5),
@@ -675,7 +680,9 @@ mod tests {
         reverse.insert(entity, "fighter".to_string());
         let mut rng = StdRng::seed_from_u64(42);
         let mut queue = VecDeque::new();
-        let mut handler = CliHandler::new(&game_state, &reverse, &mut rng, &mut queue);
+        let no_units = UnitSuffixes::new();
+        let mut handler =
+            CliHandler::new(&game_state, &reverse, &mut rng, &mut queue, &no_units);
 
         let effect = Effect::MutateField {
             entity,
@@ -710,7 +717,9 @@ mod tests {
         reverse.insert(entity, "fighter".to_string());
         let mut rng = StdRng::seed_from_u64(42);
         let mut queue = VecDeque::new();
-        let mut handler = CliHandler::new(&game_state, &reverse, &mut rng, &mut queue);
+        let no_units = UnitSuffixes::new();
+        let mut handler =
+            CliHandler::new(&game_state, &reverse, &mut rng, &mut queue, &no_units);
 
         let effect = Effect::MutateField {
             entity,
@@ -739,7 +748,9 @@ mod tests {
         reverse.insert(entity, "fighter".to_string());
         let mut rng = StdRng::seed_from_u64(42);
         let mut queue = VecDeque::new();
-        let mut handler = CliHandler::new(&game_state, &reverse, &mut rng, &mut queue);
+        let no_units = UnitSuffixes::new();
+        let mut handler =
+            CliHandler::new(&game_state, &reverse, &mut rng, &mut queue, &no_units);
 
         let effect = Effect::DeductCost {
             actor: entity,
@@ -765,7 +776,9 @@ mod tests {
         let reverse_handles = HashMap::new();
         let mut rng = StdRng::seed_from_u64(42);
         let mut queue = VecDeque::new();
-        let mut handler = CliHandler::new(&game_state, &reverse_handles, &mut rng, &mut queue);
+        let no_units = UnitSuffixes::new();
+        let mut handler =
+            CliHandler::new(&game_state, &reverse_handles, &mut rng, &mut queue, &no_units);
 
         let effect = Effect::ResolvePrompt {
             name: "choose_target".into(),
@@ -784,7 +797,9 @@ mod tests {
         let reverse_handles = HashMap::new();
         let mut rng = StdRng::seed_from_u64(42);
         let mut queue = VecDeque::new();
-        let mut handler = CliHandler::new(&game_state, &reverse_handles, &mut rng, &mut queue);
+        let no_units = UnitSuffixes::new();
+        let mut handler =
+            CliHandler::new(&game_state, &reverse_handles, &mut rng, &mut queue, &no_units);
 
         let effect = Effect::ResolvePrompt {
             name: "choose_target".into(),
@@ -853,7 +868,9 @@ mod tests {
         let reverse_handles = HashMap::new();
         let mut rng = StdRng::seed_from_u64(42);
         let mut queue = VecDeque::from(vec![15]);
-        let mut handler = CliHandler::new(&game_state, &reverse_handles, &mut rng, &mut queue);
+        let no_units = UnitSuffixes::new();
+        let mut handler =
+            CliHandler::new(&game_state, &reverse_handles, &mut rng, &mut queue, &no_units);
 
         let effect = Effect::RollDice {
             expr: DiceExpr::single(1, 20, None, 5),
@@ -878,7 +895,9 @@ mod tests {
         reverse.insert(entity, "wizard".to_string());
         let mut rng = StdRng::seed_from_u64(42);
         let mut queue = VecDeque::new();
-        let mut handler = CliHandler::new(&game_state, &reverse, &mut rng, &mut queue);
+        let no_units = UnitSuffixes::new();
+        let mut handler =
+            CliHandler::new(&game_state, &reverse, &mut rng, &mut queue, &no_units);
 
         let struct_val = Value::Struct {
             name: "Spellcasting".into(),
@@ -928,7 +947,9 @@ mod tests {
         reverse.insert(entity, "wizard".to_string());
         let mut rng = StdRng::seed_from_u64(42);
         let mut queue = VecDeque::new();
-        let mut handler = CliHandler::new(&game_state, &reverse, &mut rng, &mut queue);
+        let no_units = UnitSuffixes::new();
+        let mut handler =
+            CliHandler::new(&game_state, &reverse, &mut rng, &mut queue, &no_units);
 
         let effect = Effect::RevokeGroup {
             entity,
@@ -965,7 +986,9 @@ mod tests {
         reverse.insert(entity, "fighter".to_string());
         let mut rng = StdRng::seed_from_u64(42);
         let mut queue = VecDeque::new();
-        let mut handler = CliHandler::new(&game_state, &reverse, &mut rng, &mut queue);
+        let no_units = UnitSuffixes::new();
+        let mut handler =
+            CliHandler::new(&game_state, &reverse, &mut rng, &mut queue, &no_units);
 
         let effect = Effect::MutateField {
             entity,
@@ -1002,7 +1025,9 @@ mod tests {
         reverse.insert(entity, "fighter".to_string());
         let mut rng = StdRng::seed_from_u64(42);
         let mut queue = VecDeque::new();
-        let mut handler = CliHandler::new(&game_state, &reverse, &mut rng, &mut queue);
+        let no_units = UnitSuffixes::new();
+        let mut handler =
+            CliHandler::new(&game_state, &reverse, &mut rng, &mut queue, &no_units);
 
         let effect = Effect::MutateField {
             entity,

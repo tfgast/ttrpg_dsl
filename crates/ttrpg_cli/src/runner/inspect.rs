@@ -34,7 +34,7 @@ impl Runner {
                                 handle,
                                 group_name,
                                 field_name,
-                                format_value(val)
+                                format_value(val, &self.unit_suffixes)
                             ));
                         }
                         None => {
@@ -86,7 +86,7 @@ impl Runner {
                                 "{}.{} = {}",
                                 handle,
                                 field,
-                                format_value(&val)
+                                format_value(&val, &self.unit_suffixes)
                             ));
                         }
                         None => {
@@ -107,7 +107,7 @@ impl Runner {
                                 "{}.{} = {}",
                                 handle,
                                 field,
-                                format_value(&val)
+                                format_value(&val, &self.unit_suffixes)
                             ));
                         }
                         None if is_declared => {
@@ -127,7 +127,7 @@ impl Runner {
                                                     "{}.{} = {}",
                                                     handle,
                                                     field,
-                                                    format_value(val)
+                                                    format_value(val, &self.unit_suffixes)
                                                 ));
                                             }
                                             None => {
@@ -174,7 +174,7 @@ impl Runner {
                 for fi in fields {
                     let val = gs
                         .read_field(&entity, &fi.name)
-                        .map(|v| format_value(&v))
+                        .map(|v| format_value(&v, &self.unit_suffixes))
                         .unwrap_or_else(|| "<unset>".into());
                     self.output
                         .push(format!("  {}: {} = {}", fi.name, fi.ty.display(), val));
@@ -198,7 +198,7 @@ impl Runner {
                         for fi in &group_info.fields {
                             let val = fields
                                 .get(&fi.name)
-                                .map(format_value)
+                                .map(|v| format_value(v, &self.unit_suffixes))
                                 .unwrap_or_else(|| "<unset>".into());
                             self.output.push(format!(
                                 "    {}: {} = {}",
@@ -217,7 +217,7 @@ impl Runner {
                     self.output.push(format!(
                         "  [condition] {} ({})",
                         cond.name,
-                        format_value(&cond.duration)
+                        format_value(&cond.duration, &self.unit_suffixes)
                     ));
                 }
             }
@@ -249,7 +249,7 @@ impl Runner {
                 for fi in fields {
                     let val = gs
                         .read_field(entity, &fi.name)
-                        .map(|v| format_value(&v))
+                        .map(|v| format_value(&v, &self.unit_suffixes))
                         .unwrap_or_else(|| "<unset>".into());
                     self.output
                         .push(format!("  {}: {} = {}", fi.name, fi.ty.display(), val));
@@ -273,7 +273,7 @@ impl Runner {
                         for fi in &group_info.fields {
                             let val = fields
                                 .get(&fi.name)
-                                .map(format_value)
+                                .map(|v| format_value(v, &self.unit_suffixes))
                                 .unwrap_or_else(|| "<unset>".into());
                             self.output.push(format!(
                                 "    {}: {} = {}",
@@ -292,7 +292,7 @@ impl Runner {
                     self.output.push(format!(
                         "  [condition] {} ({})",
                         cond.name,
-                        format_value(&cond.duration)
+                        format_value(&cond.duration, &self.unit_suffixes)
                     ));
                 }
             }
@@ -518,7 +518,7 @@ impl Runner {
                         "{}: {} ({})",
                         handle,
                         cond.name,
-                        format_value(&cond.duration)
+                        format_value(&cond.duration, &self.unit_suffixes)
                     ));
                     found_any = true;
                 }

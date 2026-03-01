@@ -39,8 +39,8 @@ impl Runner {
                 "assertion failed: {} != {}\n  left:  {}\n  right: {}",
                 left_str,
                 right_str,
-                format_value(&left),
-                format_value(&right)
+                format_value(&left, &self.unit_suffixes),
+                format_value(&right, &self.unit_suffixes)
             )))
         }
     }

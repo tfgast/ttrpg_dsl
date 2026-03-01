@@ -3829,3 +3829,90 @@ system "Game" {
 
     std::fs::remove_dir_all(&dir).ok();
 }
+
+// ── Unit suffix formatting (tdsl-0mh) ──
+
+#[test]
+fn eval_unit_literal_formats_with_suffix() {
+    let dir = std::env::temp_dir().join("ttrpg_cli_test_unit_suffix");
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("unit_suffix.ttrpg");
+    std::fs::write(
+        &path,
+        r#"
+system "test" {
+    unit Feet suffix ft { value: int }
+    unit GoldPieces suffix gp { value: int }
+}
+"#,
+    )
+    .unwrap();
+
+    let mut runner = Runner::new();
+    runner.exec(&format!("load {}", path.display())).unwrap();
+    runner.take_output();
+
+    // Unit literal should display with suffix
+    runner.exec("eval 30ft").unwrap();
+    let output = runner.take_output();
+    assert_eq!(output, vec!["30ft"]);
+
+    // Struct construction of a unit type should also display with suffix
+    runner.exec("eval Feet { value: 42 }").unwrap();
+    let output = runner.take_output();
+    assert_eq!(output, vec!["42ft"]);
+
+    // Arithmetic result
+    runner.exec("eval 30ft + 10ft").unwrap();
+    let output = runner.take_output();
+    assert_eq!(output, vec!["40ft"]);
+
+    // Different unit type
+    runner.exec("eval 100gp").unwrap();
+    let output = runner.take_output();
+    assert_eq!(output, vec!["100gp"]);
+
+    // List of units
+    runner.exec("eval [10ft, 20ft, 30ft]").unwrap();
+    let output = runner.take_output();
+    assert_eq!(output, vec!["[10ft, 20ft, 30ft]"]);
+
+    // Option wrapping a unit
+    runner.exec("eval some(5ft)").unwrap();
+    let output = runner.take_output();
+    assert_eq!(output, vec!["some(5ft)"]);
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn inspect_entity_with_unit_field_formats_suffix() {
+    let dir = std::env::temp_dir().join("ttrpg_cli_test_unit_inspect");
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("unit_inspect.ttrpg");
+    std::fs::write(
+        &path,
+        r#"
+system "test" {
+    unit Feet suffix ft { value: int }
+    entity Character {
+        speed: Feet = 30ft
+    }
+}
+"#,
+    )
+    .unwrap();
+
+    let mut runner = Runner::new();
+    runner.exec(&format!("load {}", path.display())).unwrap();
+    runner.take_output();
+
+    runner.exec("spawn Character hero").unwrap();
+    runner.take_output();
+
+    runner.exec("inspect hero.speed").unwrap();
+    let output = runner.take_output();
+    assert_eq!(output, vec!["hero.speed = 30ft"]);
+
+    std::fs::remove_dir_all(&dir).ok();
+}
