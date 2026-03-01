@@ -11,6 +11,18 @@ use crate::ty::Ty;
 impl<'a> Checker<'a> {
     /// Check a pattern against the scrutinee type, binding variables into scope.
     pub fn check_pattern(&mut self, pattern: &Spanned<PatternKind>, scrutinee_ty: &Ty) {
+        self.check_pattern_inner(pattern, scrutinee_ty, false);
+    }
+
+    /// Inner pattern checker. When `in_destructure` is true, bare identifiers
+    /// are allowed as variable bindings even when the scrutinee is an enum type
+    /// (they're positional field bindings, not variant references).
+    fn check_pattern_inner(
+        &mut self,
+        pattern: &Spanned<PatternKind>,
+        scrutinee_ty: &Ty,
+        in_destructure: bool,
+    ) {
         match &pattern.node {
             PatternKind::Wildcard => {}
 
@@ -69,7 +81,27 @@ impl<'a> Checker<'a> {
                 // Could be a bare enum variant or a binding variable.
                 // Use scrutinee type to disambiguate multi-owner variants.
                 if self.env.variant_to_enums.contains_key(name) {
-                    if let Some(ref resolved) =
+                    if in_destructure {
+                        // In destructuring sub-patterns, prefer binding even if
+                        // the name happens to be a variant of some other enum.
+                        // The scrutinee type here is the field type, and the user
+                        // is writing a positional binding like `Variant(x, y)`.
+                        if self.scope.has_in_current_scope(name) {
+                            self.error(
+                                format!("duplicate binding `{}` in pattern", name),
+                                pattern.span,
+                            );
+                        } else {
+                            self.scope.bind(
+                                name.clone(),
+                                VarBinding {
+                                    ty: scrutinee_ty.clone(),
+                                    mutable: false,
+                                    is_local: true,
+                                },
+                            );
+                        }
+                    } else if let Some(ref resolved) =
                         self.resolve_bare_variant_in_pattern(name, scrutinee_ty, pattern.span)
                     {
                         // Reject bare pattern for variants with payload fields
@@ -87,18 +119,24 @@ impl<'a> Checker<'a> {
                             }
                         }
                     }
-                } else if let Ty::Enum(ref enum_name) = scrutinee_ty {
+                } else if !in_destructure && matches!(scrutinee_ty, Ty::Enum(_) | Ty::Duration) {
                     // Bare name is not a known variant but scrutinee is an enum —
                     // this is almost certainly a typo, not an intentional binding.
+                    // Skip this check in destructuring context where bindings are expected.
+                    let enum_label = match scrutinee_ty {
+                        Ty::Enum(ref n) => n.as_str(),
+                        Ty::Duration => "Duration",
+                        _ => unreachable!(),
+                    };
                     self.error(
                         format!(
                             "unknown identifier `{}` in match on enum `{}`; if this is meant as a catch-all, use `_`",
-                            name, enum_name
+                            name, enum_label
                         ),
                         pattern.span,
                     );
                 } else {
-                    // Non-enum scrutinee — bind as a variable (e.g. option, int)
+                    // Non-enum scrutinee, or in destructure — bind as a variable
                     if self.scope.has_in_current_scope(name) {
                         self.error(
                             format!("duplicate binding `{}` in pattern", name),
@@ -138,8 +176,13 @@ impl<'a> Checker<'a> {
                             pattern.span,
                         );
                     }
-                    // Check scrutinee is this enum type
-                    if let Ty::Enum(ref s_enum) = scrutinee_ty {
+                    // Check scrutinee is this enum type (Ty::Duration ≡ "Duration")
+                    let s_enum_name = match scrutinee_ty {
+                        Ty::Enum(ref name) => Some(name),
+                        Ty::Duration => Some(&Name::from("Duration")),
+                        _ => None,
+                    };
+                    if let Some(s_enum) = s_enum_name {
                         if s_enum != ty {
                             self.error(
                                 format!(
@@ -180,8 +223,13 @@ impl<'a> Checker<'a> {
                 if let Some(DeclInfo::Enum(info)) = self.env.types.get(ty) {
                     self.check_name_visible(ty, Namespace::Type, pattern.span);
                     if let Some(var_info) = info.variants.iter().find(|v| v.name == *variant) {
-                        // Check scrutinee type
-                        if let Ty::Enum(ref s_enum) = scrutinee_ty {
+                        // Check scrutinee type (Ty::Duration ≡ "Duration")
+                        let s_enum_name = match scrutinee_ty {
+                            Ty::Enum(ref name) => Some(name),
+                            Ty::Duration => Some(&Name::from("Duration")),
+                            _ => None,
+                        };
+                        if let Some(s_enum) = s_enum_name {
                             if s_enum != ty {
                                 self.error(
                                     format!(
@@ -215,7 +263,7 @@ impl<'a> Checker<'a> {
                             );
                         }
                         for (sub, field) in sub_patterns.iter().zip(var_info.fields.iter()) {
-                            self.check_pattern(sub, &field.1);
+                            self.check_pattern_inner(sub, &field.1, true);
                         }
                     } else {
                         self.error(
@@ -260,7 +308,7 @@ impl<'a> Checker<'a> {
                                 }
                                 for (sub, field) in sub_patterns.iter().zip(var_info.fields.iter())
                                 {
-                                    self.check_pattern(sub, &field.1);
+                                    self.check_pattern_inner(sub, &field.1, true);
                                 }
                             }
                         }
@@ -298,7 +346,16 @@ impl<'a> Checker<'a> {
             .cloned()
             .expect("resolve_bare_variant_in_pattern called for name not in variant_to_enums");
 
-        let enum_name = if let Ty::Enum(ref s_enum) = scrutinee_ty {
+        // Normalize builtin type keywords to their enum equivalents for matching.
+        // Ty::Duration is equivalent to Ty::Enum("Duration") when a user-defined
+        // Duration enum exists (same pattern as enum_name_from_hint).
+        let scrutinee_enum_name = match scrutinee_ty {
+            Ty::Enum(ref name) => Some(name.clone()),
+            Ty::Duration => Some(Name::from("Duration")),
+            _ => None,
+        };
+
+        let enum_name = if let Some(ref s_enum) = scrutinee_enum_name {
             // Scrutinee type disambiguates
             if owners.contains(s_enum) {
                 Some(s_enum.clone())

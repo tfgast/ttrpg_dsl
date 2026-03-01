@@ -92,16 +92,19 @@ system "D&D 5e Expanded" {
     // variants they need. This covers "indefinite / until removed"
     // (Grappled, Prone) and time-based durations (rounds, minutes).
     //
-    // Remaining gap: no "until next use" (Help action grants advantage
-    // on the NEXT roll only) and no "until a save is made" (many spell
-    // effects). These would need additional Duration variants with
-    // host-side interpretation.
+    // RESOLVED: Event-triggered durations (until_next_use, until_save) [ttrpg_dsl-rh4]
+    // are just enum variants — the interpreter is opaque to Duration
+    // semantics. Hooks handle the lifecycle: modify_applied fires when
+    // a condition's modifier activates (for until_next_use), and
+    // turn_end + conditions() enables save-based removal (for until_save).
     enum Duration {
         end_of_turn,
         start_of_next_turn,
         rounds(count: int),
         minutes(count: int),
         hours(count: int),
+        until_next_use,
+        until_save(dc: int, ability: Ability),
         indefinite
     }
 
@@ -726,11 +729,11 @@ system "D&D 5e Expanded" {
         cost { action }
         requires { distance(helper.position, target.position) <= 5 }
         resolve {
-            // PAIN POINT: Help grants advantage on the target's NEXT     [ttrpg_dsl-rh4]
-            // ability check or attack roll — a "next use" duration.
-            // Our Duration enum doesn't have a "next_use" variant;
-            // we approximate with start_of_next_turn.
-            apply_condition(target, Helped, Duration.start_of_next_turn)
+            // RESOLVED: until_next_use duration + modify_applied hook    [ttrpg_dsl-rh4]
+            // correctly models "advantage on next roll only". The
+            // ConsumeOnUse hook removes the condition after its modifier
+            // fires once — see Hooks section below.
+            apply_condition(target, Helped, Duration.until_next_use)
         }
     }
 
@@ -976,6 +979,42 @@ system "D&D 5e Expanded" {
             // CLI `destroy` handles host-level cleanup when truly needed.
             if dying.death_save_failures >= 3 {
                 apply_condition(dying, Dead, Duration.indefinite)
+            }
+        }
+    }
+
+    // RESOLVED: Event-triggered duration hooks.                         [ttrpg_dsl-rh4]
+    // The interpreter is opaque to Duration semantics — these hooks
+    // implement "until next use" and "until save" lifecycle in DSL code.
+
+    // "Until next use": consume condition after its modifier fires once.
+    // modify_applied is a built-in event emitted when a condition's
+    // modify clause activates — see spec 02_scoping.ttrpg.
+    hook ConsumeOnUse on c: Character (trigger: modify_applied(bearer: c)) {
+        match trigger.condition.duration {
+            until_next_use => {
+                remove_condition(c, trigger.condition)
+            },
+            _ => {}
+        }
+    }
+
+    // "Until save": at end of turn, bearer attempts saving throw to
+    // shake off each until_save condition. DC and ability are carried
+    // on the Duration variant itself.
+    hook UntilSaveCheck on actor: Character (trigger: turn_end(actor: actor)) {
+        for cond in conditions(actor) {
+            match cond.duration {
+                until_save(dc, ability) => {
+                    let save = saving_throw(actor, ability, dc)
+                    match save {
+                        success => {
+                            remove_condition(actor, cond)
+                        },
+                        failure => {}
+                    }
+                },
+                _ => {}
             }
         }
     }
@@ -1336,6 +1375,15 @@ system "D&D 5e Expanded" {
     //     - Hook cascades: emit in hook fires another hook chain
     //     (Remaining gap: mutations don't auto-emit — emit is explicit)
     //
+    //  [RESOLVED] EVENT-TRIGGERED DURATIONS                      [ttrpg_dsl-rh4]
+    //     - Duration enum variants (until_next_use, until_save) carry intent
+    //     - Interpreter is opaque — hooks implement the lifecycle logic
+    //     - modify_applied built-in event fires when condition modifier activates
+    //     - ConsumeOnUse hook: matches until_next_use, removes after one use
+    //     - UntilSaveCheck hook: matches until_save, attempts save at turn_end
+    //     - conditions() builtin returns list<ActiveCondition> for iteration
+    //     - remove_condition() accepts ActiveCondition for precise id-based removal
+    //
     //  [RESOLVED] TOP-LEVEL GROUPS AND INCLUDE                    [ttrpg_dsl-zzx4]
     //     - `group Name { ... }` as top-level declaration
     //     - `include GroupName` in entities (required, always-present)
@@ -1425,9 +1473,6 @@ system "D&D 5e Expanded" {
     //     - TTRPGs keep entity data for resurrection/raise dead
     //     - CLI `destroy` command handles host-level cleanup
     //
-    //  3. NO EVENT-TRIGGERED DURATIONS                          [ttrpg_dsl-rh4]
-    //     - "Until next use" (Help) and "until save" (spell effects)
-    //
-    //  4. NO INTEGER RANGE / BOUNDED INT TYPES                  [ttrpg_dsl-3v8]
+    //  3. NO INTEGER RANGE / BOUNDED INT TYPES                  [ttrpg_dsl-3v8]
     //     - Can't express int(1..9) for spell slot levels
 }
