@@ -23,6 +23,10 @@ pub enum Command {
     Assert(String),
     AssertEq(String),
     AssertErr(String),
+    // Options
+    Enable(String),
+    Disable(String),
+    Options,
     // Configuration
     Seed(String),
     Rolls(String),
@@ -143,6 +147,24 @@ pub fn parse_command(line: &str) -> Option<Command> {
         "actions" => Some(Command::Actions),
         "mechanics" => Some(Command::Mechanics),
         "conditions" => Some(Command::Conditions),
+        // Options
+        "enable" => {
+            let s = strip_comment(tail).trim();
+            if s.is_empty() {
+                Some(Command::Unknown("enable".into()))
+            } else {
+                Some(Command::Enable(s.into()))
+            }
+        }
+        "disable" => {
+            let s = strip_comment(tail).trim();
+            if s.is_empty() {
+                Some(Command::Unknown("disable".into()))
+            } else {
+                Some(Command::Disable(s.into()))
+            }
+        }
+        "options" => Some(Command::Options),
         // Assertions
         "assert" => {
             let s = strip_comment(tail).trim();
@@ -607,5 +629,52 @@ mod tests {
             parse_command("rolls clear"),
             Some(Command::Rolls("clear".into()))
         );
+    }
+
+    // ── Option commands ─────────────────────────────────────────
+
+    #[test]
+    fn parse_enable() {
+        assert_eq!(
+            parse_command("enable flanking"),
+            Some(Command::Enable("flanking".into()))
+        );
+    }
+
+    #[test]
+    fn parse_enable_empty_is_unknown() {
+        assert_eq!(
+            parse_command("enable"),
+            Some(Command::Unknown("enable".into()))
+        );
+    }
+
+    #[test]
+    fn parse_enable_with_comment() {
+        assert_eq!(
+            parse_command("enable flanking // turn on flanking"),
+            Some(Command::Enable("flanking".into()))
+        );
+    }
+
+    #[test]
+    fn parse_disable() {
+        assert_eq!(
+            parse_command("disable flanking"),
+            Some(Command::Disable("flanking".into()))
+        );
+    }
+
+    #[test]
+    fn parse_disable_empty_is_unknown() {
+        assert_eq!(
+            parse_command("disable"),
+            Some(Command::Unknown("disable".into()))
+        );
+    }
+
+    #[test]
+    fn parse_options() {
+        assert_eq!(parse_command("options"), Some(Command::Options));
     }
 }

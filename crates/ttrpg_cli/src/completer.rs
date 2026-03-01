@@ -22,6 +22,9 @@ const ALL_COMMANDS: &[&str] = &[
     "actions",
     "mechanics",
     "conditions",
+    "enable",
+    "disable",
+    "options",
     "assert",
     "assert_eq",
     "assert_err",
@@ -86,6 +89,8 @@ pub struct CompletionContext {
     pub group_fields: HashMap<(String, String), Vec<String>>,
     /// Maps entity type name → base field names.
     pub type_fields: HashMap<String, Vec<String>>,
+    /// Declared option names (for enable/disable completion).
+    pub option_names: Vec<String>,
 }
 
 /// Context-aware tab completer for the TTRPG REPL.
@@ -241,6 +246,14 @@ impl Completer for TtrpgCompleter {
                         .collect()
                 }
             }
+            "enable" | "disable" => {
+                let current = rest.trim();
+                let word_start = pos - current.len();
+                prefix_matches_owned(&ctx.option_names, current)
+                    .into_iter()
+                    .map(|s| suggestion(s, Span::new(word_start, pos), true))
+                    .collect()
+            }
             "eval" | "assert" | "assert_eq" | "assert_err" => {
                 let current_word = last_word(rest);
                 let word_start = pos - current_word.len();
@@ -328,6 +341,7 @@ mod tests {
             type_groups: HashMap::new(),
             group_fields: HashMap::new(),
             type_fields: HashMap::new(),
+            option_names: vec!["flanking".into(), "critical_fumbles".into()],
         }))
     }
 
@@ -482,5 +496,25 @@ mod tests {
                 r.span.end,
             );
         }
+    }
+
+    #[test]
+    fn complete_enable_option_names() {
+        let ctx = make_ctx();
+        let mut c = TtrpgCompleter::new(ctx);
+        let results = c.complete("enable f", 8);
+        let values: Vec<_> = results.iter().map(|s| s.value.as_str()).collect();
+        assert!(values.contains(&"flanking"), "should suggest flanking");
+        assert!(!values.contains(&"critical_fumbles"), "should not suggest critical_fumbles");
+    }
+
+    #[test]
+    fn complete_disable_option_names() {
+        let ctx = make_ctx();
+        let mut c = TtrpgCompleter::new(ctx);
+        let results = c.complete("disable ", 8);
+        let values: Vec<_> = results.iter().map(|s| s.value.as_str()).collect();
+        assert!(values.contains(&"flanking"));
+        assert!(values.contains(&"critical_fumbles"));
     }
 }

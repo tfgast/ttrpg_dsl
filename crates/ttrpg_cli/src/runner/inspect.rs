@@ -447,6 +447,59 @@ impl Runner {
         Ok(())
     }
 
+    pub(super) fn cmd_enable(&mut self, name: &str) -> Result<(), CliError> {
+        let name = name.trim();
+        if !self.type_env.options.contains(name) {
+            return Err(CliError::Message(format!(
+                "unknown option '{}'",
+                name
+            )));
+        }
+        self.game_state.borrow_mut().enable_option(name);
+        self.output.push(format!("enabled option '{}'", name));
+        Ok(())
+    }
+
+    pub(super) fn cmd_disable(&mut self, name: &str) -> Result<(), CliError> {
+        let name = name.trim();
+        if !self.type_env.options.contains(name) {
+            return Err(CliError::Message(format!(
+                "unknown option '{}'",
+                name
+            )));
+        }
+        self.game_state.borrow_mut().disable_option(name);
+        self.output.push(format!("disabled option '{}'", name));
+        Ok(())
+    }
+
+    pub(super) fn cmd_options(&mut self) -> Result<(), CliError> {
+        if self.program.options.is_empty() {
+            self.output.push("no options".into());
+            return Ok(());
+        }
+        let enabled = self.game_state.borrow().read_enabled_options();
+        let enabled_set: std::collections::HashSet<&str> =
+            enabled.iter().map(|n| n.as_str()).collect();
+        // Use option_order for deterministic output
+        for name in &self.program.option_order {
+            let status = if enabled_set.contains(name.as_str()) {
+                "on"
+            } else {
+                "off"
+            };
+            let decl = &self.program.options[name];
+            let desc = decl
+                .description
+                .as_deref()
+                .map(|d| format!(" — {}", d))
+                .unwrap_or_default();
+            self.output
+                .push(format!("  {} [{}]{}", name, status, desc));
+        }
+        Ok(())
+    }
+
     pub(super) fn cmd_conditions(&mut self) -> Result<(), CliError> {
         if self.handles.is_empty() {
             self.output.push("no entities".into());

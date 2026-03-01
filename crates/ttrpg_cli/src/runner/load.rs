@@ -113,7 +113,14 @@ impl Runner {
             *self.program = result.program;
             *self.type_env = check_result.env;
             self.module_map = result.module_map;
-            self.game_state = RefCell::new(GameState::new());
+            let mut gs = GameState::new();
+            // Auto-enable options declared with `default: on`
+            for (name, decl) in &self.program.options {
+                if decl.default_on == Some(true) {
+                    gs.enable_option(name.as_str());
+                }
+            }
+            self.game_state = RefCell::new(gs);
             self.diagnostics = all_diags;
             self.source_map = Some(MultiSourceMap::new(sources));
             self.last_paths = resolved_paths;

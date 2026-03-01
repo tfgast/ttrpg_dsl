@@ -2500,3 +2500,195 @@ fn spawn_no_fields_applies_all_defaults() {
     let output = runner.take_output();
     assert!(output[0].contains("10"), "AC should default to 10, got: {:?}", output);
 }
+
+// ═══════════════════════════════════════════════════════════════
+// Option commands: enable, disable, options
+// ═══════════════════════════════════════════════════════════════
+
+/// Helper to load a program with option declarations.
+fn load_option_program(runner: &mut Runner) {
+    static OPTION_COUNTER: AtomicU64 = AtomicU64::new(0);
+    let dir = std::env::temp_dir().join("ttrpg_cli_test");
+    std::fs::create_dir_all(&dir).unwrap();
+    let unique = OPTION_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let path = dir.join(format!("test_options_{}.ttrpg", unique));
+    std::fs::write(
+        &path,
+        r#"
+system "test" {
+    derive base_modifier(x: int) -> int { x + 2 }
+
+    option flanking {
+        description: "Melee attackers on opposite sides gain advantage"
+        default: off
+    }
+
+    option generous_crits {
+        description: "Critical hits deal maximum damage"
+        default: on
+    }
+
+    option house_rule {
+        default: off
+        when enabled {
+            modify base_modifier(x: _) {
+                result = result + 10
+            }
+        }
+    }
+}
+"#,
+    )
+    .unwrap();
+    runner.exec(&format!("load {}", path.display())).unwrap();
+    runner.take_output();
+}
+
+#[test]
+fn options_lists_all_declared_options() {
+    let mut runner = Runner::new();
+    load_option_program(&mut runner);
+
+    runner.exec("options").unwrap();
+    let output = runner.take_output();
+    assert_eq!(output.len(), 3, "should list 3 options, got: {:?}", output);
+    // generous_crits should be on (default: on), others off
+    let generous = output.iter().find(|l| l.contains("generous_crits")).unwrap();
+    assert!(generous.contains("[on]"), "generous_crits should be on, got: {}", generous);
+    let flanking = output.iter().find(|l| l.contains("flanking")).unwrap();
+    assert!(flanking.contains("[off]"), "flanking should be off, got: {}", flanking);
+}
+
+#[test]
+fn default_on_auto_enables_at_load() {
+    let mut runner = Runner::new();
+    load_option_program(&mut runner);
+
+    runner.exec("options").unwrap();
+    let output = runner.take_output();
+    let generous = output.iter().find(|l| l.contains("generous_crits")).unwrap();
+    assert!(generous.contains("[on]"), "default:on option should be enabled after load");
+}
+
+#[test]
+fn enable_unknown_option_rejected() {
+    let mut runner = Runner::new();
+    load_option_program(&mut runner);
+
+    let err = runner.exec("enable nonexistent").unwrap_err();
+    assert!(err.to_string().contains("unknown option"), "got: {}", err);
+}
+
+#[test]
+fn disable_unknown_option_rejected() {
+    let mut runner = Runner::new();
+    load_option_program(&mut runner);
+
+    let err = runner.exec("disable nonexistent").unwrap_err();
+    assert!(err.to_string().contains("unknown option"), "got: {}", err);
+}
+
+#[test]
+fn enable_and_disable_option() {
+    let mut runner = Runner::new();
+    load_option_program(&mut runner);
+
+    // flanking starts off
+    runner.exec("options").unwrap();
+    let output = runner.take_output();
+    let flanking = output.iter().find(|l| l.contains("flanking")).unwrap();
+    assert!(flanking.contains("[off]"));
+
+    // Enable it
+    runner.exec("enable flanking").unwrap();
+    let output = runner.take_output();
+    assert!(output[0].contains("enabled"));
+
+    // Now it should be on
+    runner.exec("options").unwrap();
+    let output = runner.take_output();
+    let flanking = output.iter().find(|l| l.contains("flanking")).unwrap();
+    assert!(flanking.contains("[on]"), "flanking should now be on, got: {}", flanking);
+
+    // Disable it
+    runner.exec("disable flanking").unwrap();
+    let output = runner.take_output();
+    assert!(output[0].contains("disabled"));
+
+    // Back to off
+    runner.exec("options").unwrap();
+    let output = runner.take_output();
+    let flanking = output.iter().find(|l| l.contains("flanking")).unwrap();
+    assert!(flanking.contains("[off]"), "flanking should be off again, got: {}", flanking);
+}
+
+#[test]
+fn options_no_options() {
+    let mut runner = Runner::new();
+    runner.exec("options").unwrap();
+    let output = runner.take_output();
+    assert_eq!(output, vec!["no options"]);
+}
+
+#[test]
+fn options_shows_description() {
+    let mut runner = Runner::new();
+    load_option_program(&mut runner);
+
+    runner.exec("options").unwrap();
+    let output = runner.take_output();
+    let flanking = output.iter().find(|l| l.contains("flanking")).unwrap();
+    assert!(
+        flanking.contains("Melee attackers on opposite sides gain advantage"),
+        "should show description, got: {}",
+        flanking
+    );
+}
+
+#[test]
+fn option_modify_applies_when_enabled() {
+    let mut runner = Runner::new();
+    load_option_program(&mut runner);
+
+    // house_rule is off by default — base_modifier(5) returns 7
+    runner.exec("call base_modifier(5)").unwrap();
+    let output = runner.take_output();
+    assert!(output.iter().any(|l| l.contains("7")), "without option: 5 + 2 = 7, got: {:?}", output);
+
+    // Enable house_rule — base_modifier(5) should now return 17 (7 + 10)
+    runner.exec("enable house_rule").unwrap();
+    runner.take_output();
+
+    runner.exec("call base_modifier(5)").unwrap();
+    let output = runner.take_output();
+    assert!(output.iter().any(|l| l.contains("17")), "with option: 5 + 2 + 10 = 17, got: {:?}", output);
+
+    // Disable it again
+    runner.exec("disable house_rule").unwrap();
+    runner.take_output();
+
+    runner.exec("call base_modifier(5)").unwrap();
+    let output = runner.take_output();
+    assert!(output.iter().any(|l| l.contains("7")), "after disable: back to 7, got: {:?}", output);
+}
+
+#[test]
+fn reload_preserves_default_on() {
+    let mut runner = Runner::new();
+    load_option_program(&mut runner);
+
+    // generous_crits starts on (default: on)
+    runner.exec("options").unwrap();
+    let output = runner.take_output();
+    let generous = output.iter().find(|l| l.contains("generous_crits")).unwrap();
+    assert!(generous.contains("[on]"));
+
+    // Reload — default:on should still be enabled
+    runner.exec("reload").unwrap();
+    runner.take_output();
+
+    runner.exec("options").unwrap();
+    let output = runner.take_output();
+    let generous = output.iter().find(|l| l.contains("generous_crits")).unwrap();
+    assert!(generous.contains("[on]"), "after reload, default:on should still be enabled");
+}

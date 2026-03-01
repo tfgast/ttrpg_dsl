@@ -129,6 +129,15 @@ impl Runner {
             .collect()
     }
 
+    /// Returns all declared option names (for tab completion).
+    pub fn option_names(&self) -> Vec<String> {
+        self.type_env
+            .options
+            .iter()
+            .map(|n| n.to_string())
+            .collect()
+    }
+
     /// Returns field names for a given entity type (for tab completion).
     pub fn field_names(&self, entity_type: &str) -> Vec<String> {
         self.type_env
@@ -204,6 +213,10 @@ impl Runner {
             Command::Actions => self.cmd_actions(),
             Command::Mechanics => self.cmd_mechanics(),
             Command::Conditions => self.cmd_conditions(),
+            // Options
+            Command::Enable(name) => self.cmd_enable(&name),
+            Command::Disable(name) => self.cmd_disable(&name),
+            Command::Options => self.cmd_options(),
             // Assertions
             Command::Assert(expr_str) => self.cmd_assert(&expr_str),
             Command::AssertEq(tail) => self.cmd_assert_eq(&tail),
