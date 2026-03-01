@@ -217,18 +217,41 @@ resolve_block   = "resolve" block
 
 // --- Cost token → budget field mapping ---
 //
-// Cost tokens are singular names used in cost clauses. The runtime
-// maps each token to a TurnBudget field and decrements it by 1:
+// Any TurnBudget field name is a valid cost token. The runtime
+// decrements the named field by 1 when the action is performed.
 //
-//   Cost token       Budget field         Effect
-//   ----------       ------------         ------
-//   action           turn.actions         turn.actions -= 1
-//   bonus_action     turn.bonus_actions   turn.bonus_actions -= 1
-//   reaction         turn.reactions       turn.reactions -= 1
+// The default TurnBudget defines these fields:
 //
-// The singular token is the DSL-facing name (matches D&D terminology:
-// "costs an action"). The plural field is the counter in TurnBudget
-// ("you have 1 actions remaining").
+//   Cost token          Budget field           Effect
+//   ----------          ------------           ------
+//   actions             turn.actions           turn.actions -= 1
+//   bonus_actions       turn.bonus_actions     turn.bonus_actions -= 1
+//   reactions           turn.reactions         turn.reactions -= 1
+//   movement            turn.movement          turn.movement -= 1
+//   free_interactions   turn.free_interactions turn.free_interactions -= 1
+//
+// For convenience, singular aliases are also accepted:
+//
+//   Alias            Resolves to
+//   -----            -----------
+//   action           actions
+//   bonus_action     bonus_actions
+//   reaction         reactions
+//
+// The aliases match D&D terminology ("costs an action") while the
+// canonical field names are plural ("you have 1 actions remaining").
+//
+// When a ruleset overrides TurnBudget with a custom struct, the
+// fields of that struct become the valid cost tokens. For example:
+//
+//   struct TurnBudget {
+//       actions: int = 0
+//       swift_actions: int = 0   // Pathfinder-style
+//   }
+//
+// would accept `actions` and `swift_actions` as cost tokens.
+// The three singular aliases (action, bonus_action, reaction) are
+// always available regardless of the TurnBudget definition.
 //
 // --- `cost free` ---
 //
@@ -248,16 +271,16 @@ resolve_block   = "resolve" block
 //
 // STATIC CHECK: The compiler validates cost tokens during semantic
 // analysis (not during parsing). The grammar accepts any IDENT in
-// cost_entry, but the compiler rejects tokens not in the mapping
-// table above. This is a static semantic error, reported as:
+// cost_entry, but the compiler rejects tokens that do not match a
+// TurnBudget field name or a recognized alias. This is a static
+// semantic error, reported as:
 //
 //   error: unknown cost token `foo`
 //     --> file.ttrpg:12:14
 //     | cost { foo }
-//     |        ^^^ expected one of: action, bonus_action, reaction
-//
-// User-defined cost tokens are not supported in v0. A future version
-// may allow systems to extend the cost vocabulary.
+//     |        ^^^ expected one of: action, actions, bonus_action,
+//     |            bonus_actions, reaction, reactions, movement,
+//     |            free_interactions
 
 // --- Reaction (can roll, can mutate, has receiver + trigger) ---
 reaction_decl   = "reaction" IDENT "on" IDENT ":" constrained_type
