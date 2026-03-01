@@ -7639,6 +7639,24 @@ system "test" {
     expect_errors(source, &["unknown identifier `gren` in match on enum `Color`"]);
 }
 
+// ═══════════════════════════════════════════════════════════════
+// Bare identifier in for-loop pattern → binding (tdsl-v20v)
+// ═══════════════════════════════════════════════════════════════
+
+#[test]
+fn test_bare_ident_in_enum_for_loop_binds() {
+    // Iterating over a list of enum values should allow binding each element.
+    let source = r#"
+system "test" {
+    enum Color { red, green, blue }
+    derive reds(colors: list<Color>) -> list<Color> {
+        [c for c in colors if c == red]
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
 #[test]
 fn test_bare_ident_in_non_enum_match_still_binds() {
     // Bare names in non-enum matches should still work as bindings.

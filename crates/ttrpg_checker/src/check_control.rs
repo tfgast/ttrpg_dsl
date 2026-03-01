@@ -242,7 +242,7 @@ impl<'a> Checker<'a> {
         // (e.g. `for target in targets { target.HP -= damage }`).
         // Non-entity bindings stay local so the immutable-local guard applies.
         self.scope.push(BlockKind::Inner);
-        self.check_pattern(pattern, &element_ty);
+        self.check_pattern_binding(pattern, &element_ty);
         self.scope.mark_current_scope_entities_non_local();
         self.check_block(body);
         self.scope.pop();
@@ -298,9 +298,9 @@ impl<'a> Checker<'a> {
             }
         };
 
-        // Push scope and bind pattern
+        // Push scope and bind pattern (binding context — idents are always bindings)
         self.scope.push(BlockKind::Inner);
-        self.check_pattern(pattern, &iter_elem_ty);
+        self.check_pattern_binding(pattern, &iter_elem_ty);
 
         // Check filter if present
         if let Some(filter_expr) = filter {

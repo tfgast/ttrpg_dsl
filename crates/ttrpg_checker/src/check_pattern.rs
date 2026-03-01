@@ -10,18 +10,28 @@ use crate::ty::Ty;
 
 impl<'a> Checker<'a> {
     /// Check a pattern against the scrutinee type, binding variables into scope.
+    /// In match arms, bare identifiers that aren't known variants are rejected
+    /// when the scrutinee is an enum (likely typos).
     pub fn check_pattern(&mut self, pattern: &Spanned<PatternKind>, scrutinee_ty: &Ty) {
-        self.check_pattern_inner(pattern, scrutinee_ty, false);
+        self.check_pattern_inner(pattern, scrutinee_ty, false, false);
     }
 
-    /// Inner pattern checker. When `in_destructure` is true, bare identifiers
-    /// are allowed as variable bindings even when the scrutinee is an enum type
-    /// (they're positional field bindings, not variant references).
+    /// Check a pattern in for-loop / comprehension context. Bare identifiers
+    /// are always treated as variable bindings (no enum-typo guard), since
+    /// iteration patterns are inherently bindings, not variant matches.
+    pub fn check_pattern_binding(&mut self, pattern: &Spanned<PatternKind>, scrutinee_ty: &Ty) {
+        self.check_pattern_inner(pattern, scrutinee_ty, false, true);
+    }
+
+    /// Inner pattern checker.
+    /// - `in_destructure`: bare idents are positional field bindings
+    /// - `is_binding_context`: bare idents are iteration bindings (for-loop)
     fn check_pattern_inner(
         &mut self,
         pattern: &Spanned<PatternKind>,
         scrutinee_ty: &Ty,
         in_destructure: bool,
+        is_binding_context: bool,
     ) {
         match &pattern.node {
             PatternKind::Wildcard => {}
@@ -119,10 +129,12 @@ impl<'a> Checker<'a> {
                             }
                         }
                     }
-                } else if !in_destructure && matches!(scrutinee_ty, Ty::Enum(_) | Ty::Duration) {
+                } else if !in_destructure
+                    && !is_binding_context
+                    && matches!(scrutinee_ty, Ty::Enum(_) | Ty::Duration)
+                {
                     // Bare name is not a known variant but scrutinee is an enum —
                     // this is almost certainly a typo, not an intentional binding.
-                    // Skip this check in destructuring context where bindings are expected.
                     let enum_label = match scrutinee_ty {
                         Ty::Enum(ref n) => n.as_str(),
                         Ty::Duration => "Duration",
@@ -136,7 +148,7 @@ impl<'a> Checker<'a> {
                         pattern.span,
                     );
                 } else {
-                    // Non-enum scrutinee, or in destructure — bind as a variable
+                    // Non-enum scrutinee, binding context, or in destructure — bind as a variable
                     if self.scope.has_in_current_scope(name) {
                         self.error(
                             format!("duplicate binding `{}` in pattern", name),
@@ -263,7 +275,7 @@ impl<'a> Checker<'a> {
                             );
                         }
                         for (sub, field) in sub_patterns.iter().zip(var_info.fields.iter()) {
-                            self.check_pattern_inner(sub, &field.1, true);
+                            self.check_pattern_inner(sub, &field.1, true, false);
                         }
                     } else {
                         self.error(
@@ -308,7 +320,7 @@ impl<'a> Checker<'a> {
                                 }
                                 for (sub, field) in sub_patterns.iter().zip(var_info.fields.iter())
                                 {
-                                    self.check_pattern_inner(sub, &field.1, true);
+                                    self.check_pattern_inner(sub, &field.1, true, false);
                                 }
                             }
                         }
