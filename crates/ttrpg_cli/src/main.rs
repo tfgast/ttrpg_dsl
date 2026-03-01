@@ -40,24 +40,32 @@ fn main() {
             }
         }
         Some("check") => {
-            if args.get(1).copied() == Some("-c") {
-                if args.len() != 3 {
-                    eprintln!("usage: ttrpg check -c <source>");
+            // Strip -s / --snippet flag
+            let check_args: Vec<&str> = args[1..]
+                .iter()
+                .filter(|a| **a != "-s" && **a != "--snippet")
+                .copied()
+                .collect();
+            let snippet = check_args.len() < args.len() - 1;
+
+            if check_args.first().copied() == Some("-c") {
+                if check_args.len() != 2 {
+                    eprintln!("usage: ttrpg check [-s] -c <source>");
                     process::exit(1);
                 }
-                if args[2] == "-" {
-                    check_stdin();
+                if check_args[1] == "-" {
+                    check_stdin(snippet);
                 } else {
-                    check_source(args[2]);
+                    check_source(check_args[1], snippet);
                 }
-            } else if args.len() < 2 {
+            } else if check_args.is_empty() {
                 if io::stdin().is_terminal() {
-                    eprintln!("usage: ttrpg check <files...>");
+                    eprintln!("usage: ttrpg check [-s] <files...>");
                     process::exit(1);
                 }
-                check_stdin();
+                check_stdin(snippet);
             } else {
-                check_files(&args[1..]);
+                check_files(&check_args, snippet);
             }
         }
         Some(other) => {
@@ -149,23 +157,23 @@ fn exec_commands(label: &str, content: &str) {
 }
 
 /// Check DSL source read from stdin.
-fn check_stdin() {
+fn check_stdin(snippet: bool) {
     let source = io::read_to_string(io::stdin()).unwrap_or_else(|e| {
         eprintln!("read error: {}", e);
         process::exit(1);
     });
     let sources = vec![("<stdin>".to_string(), source)];
-    check_sources(sources);
+    check_sources(sources, snippet);
 }
 
 /// Check DSL source passed as a string.
-fn check_source(source: &str) {
+fn check_source(source: &str, snippet: bool) {
     let sources = vec![("<string>".to_string(), source.to_string())];
-    check_sources(sources);
+    check_sources(sources, snippet);
 }
 
 /// Check DSL source files by path (with glob support).
-fn check_files(file_args: &[&str]) {
+fn check_files(file_args: &[&str], snippet: bool) {
     // Resolve globs and collect paths
     let mut paths: Vec<PathBuf> = Vec::new();
     for arg in file_args {
@@ -212,19 +220,52 @@ fn check_files(file_args: &[&str]) {
         }
     }
 
-    check_sources(sources);
+    check_sources(sources, snippet);
 }
 
 /// Shared implementation for checking DSL sources.
-fn check_sources(sources: Vec<(String, String)>) {
-    // Parse and check
-    let result = ttrpg_parser::parse_multi(&sources);
-    let mut all_diags = result.diagnostics;
+///
+/// When `snippet` is true, each source is auto-wrapped in
+/// `system "<check>" { ... }` before parsing, and diagnostic spans are
+/// adjusted so line/column numbers stay relative to the original input.
+fn check_sources(sources: Vec<(String, String)>, snippet: bool) {
+    let snippet_prefix = "system \"<check>\" {\n";
+    let snippet_suffix = "\n}\n";
+    let prefix_len = snippet_prefix.len();
 
-    let check_result = ttrpg_checker::check_with_modules(&result.program, &result.module_map);
-    all_diags.extend(check_result.diagnostics);
+    // Parse and check — wrap sources if in snippet mode
+    let all_diags = if snippet {
+        let wrapped: Vec<(String, String)> = sources
+            .iter()
+            .map(|(name, src)| {
+                (
+                    name.clone(),
+                    format!("{}{}{}", snippet_prefix, src, snippet_suffix),
+                )
+            })
+            .collect();
+        let result = ttrpg_parser::parse_multi(&wrapped);
+        let mut diags = result.diagnostics;
+        let cr = ttrpg_checker::check_with_modules(&result.program, &result.module_map);
+        diags.extend(cr.diagnostics);
 
-    // Render diagnostics
+        // Adjust spans back to original source offsets
+        for diag in &mut diags {
+            if !diag.span.is_dummy() {
+                diag.span.start = diag.span.start.saturating_sub(prefix_len);
+                diag.span.end = diag.span.end.saturating_sub(prefix_len);
+            }
+        }
+        diags
+    } else {
+        let result = ttrpg_parser::parse_multi(&sources);
+        let mut diags = result.diagnostics;
+        let cr = ttrpg_checker::check_with_modules(&result.program, &result.module_map);
+        diags.extend(cr.diagnostics);
+        diags
+    };
+
+    // Render diagnostics against the original (unwrapped) sources
     let source_map = MultiSourceMap::new(sources);
     let mut error_count = 0;
     let mut warning_count = 0;
