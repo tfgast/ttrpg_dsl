@@ -232,7 +232,10 @@ system "D&D 5e Expanded" {
             // map<int, resource(0..=9)> gives clamped, per-level slots.
             spell_slots: map<int, resource(0..=9)>
             known_spells: list<SpellInfo>
-            concentrating_on: option<string>
+            // RESOLVED: Invocation tracking provides spell instance IDs.  [ttrpg_dsl-5kb]
+            // Storing option<Invocation> instead of option<string> lets
+            // revoke() auto-remove all conditions from the spell cast.
+            concentrating_on: option<Invocation>
         }
 
         optional FighterFeatures {
@@ -1020,9 +1023,12 @@ system "D&D 5e Expanded" {
                     let save = saving_throw(caster, CON, dc)
                     match save {
                         failure => {
+                            // RESOLVED: revoke() removes all conditions      [ttrpg_dsl-5kb]
+                            // applied during the spell's invocation — across
+                            // all targets, in one call. Handles option<Invocation>
+                            // directly (none is a no-op).
+                            revoke(caster.sc.concentrating_on)
                             caster.sc.concentrating_on = none
-                            // PAIN POINT: Dropping concentration should remove  [ttrpg_dsl-5kb]
-                            // the spell's effects. No "spell instance" concept.
                         },
                         success => {}
                     }
@@ -1389,6 +1395,14 @@ system "D&D 5e Expanded" {
     //     - `first(list)`, `last(list)`, `reverse(list)` — access
     //     - Replaces need for explicit map/filter/reduce functions
     //
+    //  [RESOLVED] INVOCATION TRACKING / SPELL INSTANCES         [ttrpg_dsl-5kb]
+    //     - `invocation()` returns a unique ID for the current action execution
+    //     - All conditions applied during an invocation are auto-tagged with its ID
+    //     - `revoke(inv)` removes all conditions from that invocation across all entities
+    //     - `option<Invocation>` field stores active spell; `revoke(field)` handles none
+    //     - ConcentrationCheck now calls revoke() to auto-remove spell effects
+    //     - See examples/dnd5e_concentration.ttrpg for the full pattern
+    //
     //
     //  REMAINING language gaps:
     //
@@ -1410,9 +1424,6 @@ system "D&D 5e Expanded" {
     //  3. NO EVENT-TRIGGERED DURATIONS                          [ttrpg_dsl-rh4]
     //     - "Until next use" (Help) and "until save" (spell effects)
     //
-    //  4. NO SPELL INSTANCE / EFFECT TRACKING                   [ttrpg_dsl-5kb]
-    //     - Dropping concentration can't auto-remove spell effects
-    //
-    //  5. NO INTEGER RANGE / BOUNDED INT TYPES                  [ttrpg_dsl-3v8]
+    //  4. NO INTEGER RANGE / BOUNDED INT TYPES                  [ttrpg_dsl-3v8]
     //     - Can't express int(1..9) for spell slot levels
 }
