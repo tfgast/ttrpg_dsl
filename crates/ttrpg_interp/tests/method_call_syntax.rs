@@ -882,3 +882,374 @@ system "test" {
         errors[0]
     );
 }
+
+// ── set methods ──────────────────────────────────────────────
+
+#[test]
+fn set_add_method() {
+    let source = r#"
+system "test" {
+    derive f(xs: set<int>, val: int) -> set<int> {
+        xs.add(val)
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NoopHandler;
+
+    let val = interp
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "f",
+            vec![
+                Value::Set([Value::Int(1), Value::Int(2)].into()),
+                Value::Int(3),
+            ],
+        )
+        .unwrap();
+    assert_eq!(
+        val,
+        Value::Set([Value::Int(1), Value::Int(2), Value::Int(3)].into())
+    );
+}
+
+#[test]
+fn set_add_duplicate_is_noop() {
+    let source = r#"
+system "test" {
+    derive f(xs: set<int>, val: int) -> set<int> {
+        xs.add(val)
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NoopHandler;
+
+    let val = interp
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "f",
+            vec![
+                Value::Set([Value::Int(1), Value::Int(2)].into()),
+                Value::Int(2),
+            ],
+        )
+        .unwrap();
+    assert_eq!(val, Value::Set([Value::Int(1), Value::Int(2)].into()));
+}
+
+#[test]
+fn set_remove_method() {
+    let source = r#"
+system "test" {
+    derive f(xs: set<int>, val: int) -> set<int> {
+        xs.remove(val)
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NoopHandler;
+
+    let val = interp
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "f",
+            vec![
+                Value::Set([Value::Int(1), Value::Int(2), Value::Int(3)].into()),
+                Value::Int(2),
+            ],
+        )
+        .unwrap();
+    assert_eq!(val, Value::Set([Value::Int(1), Value::Int(3)].into()));
+}
+
+#[test]
+fn set_remove_absent_is_noop() {
+    let source = r#"
+system "test" {
+    derive f(xs: set<int>, val: int) -> set<int> {
+        xs.remove(val)
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NoopHandler;
+
+    let val = interp
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "f",
+            vec![
+                Value::Set([Value::Int(1), Value::Int(2)].into()),
+                Value::Int(99),
+            ],
+        )
+        .unwrap();
+    assert_eq!(val, Value::Set([Value::Int(1), Value::Int(2)].into()));
+}
+
+#[test]
+fn set_union_method() {
+    let source = r#"
+system "test" {
+    derive f(a: set<int>, b: set<int>) -> set<int> {
+        a.union(b)
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NoopHandler;
+
+    let val = interp
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "f",
+            vec![
+                Value::Set([Value::Int(1), Value::Int(2)].into()),
+                Value::Set([Value::Int(2), Value::Int(3)].into()),
+            ],
+        )
+        .unwrap();
+    assert_eq!(
+        val,
+        Value::Set([Value::Int(1), Value::Int(2), Value::Int(3)].into())
+    );
+}
+
+#[test]
+fn set_intersection_method() {
+    let source = r#"
+system "test" {
+    derive f(a: set<int>, b: set<int>) -> set<int> {
+        a.intersection(b)
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NoopHandler;
+
+    let val = interp
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "f",
+            vec![
+                Value::Set([Value::Int(1), Value::Int(2), Value::Int(3)].into()),
+                Value::Set([Value::Int(2), Value::Int(3), Value::Int(4)].into()),
+            ],
+        )
+        .unwrap();
+    assert_eq!(val, Value::Set([Value::Int(2), Value::Int(3)].into()));
+}
+
+#[test]
+fn set_difference_method() {
+    let source = r#"
+system "test" {
+    derive f(a: set<int>, b: set<int>) -> set<int> {
+        a.difference(b)
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NoopHandler;
+
+    let val = interp
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "f",
+            vec![
+                Value::Set([Value::Int(1), Value::Int(2), Value::Int(3)].into()),
+                Value::Set([Value::Int(2), Value::Int(4)].into()),
+            ],
+        )
+        .unwrap();
+    assert_eq!(val, Value::Set([Value::Int(1), Value::Int(3)].into()));
+}
+
+#[test]
+fn set_to_list_method() {
+    let source = r#"
+system "test" {
+    derive f(xs: set<int>) -> list<int> {
+        xs.to_list()
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NoopHandler;
+
+    let val = interp
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "f",
+            vec![Value::Set(
+                [Value::Int(3), Value::Int(1), Value::Int(2)].into(),
+            )],
+        )
+        .unwrap();
+    // BTreeSet iteration order is sorted
+    assert_eq!(
+        val,
+        Value::List(vec![Value::Int(1), Value::Int(2), Value::Int(3)])
+    );
+}
+
+#[test]
+fn set_contains_method() {
+    let source = r#"
+system "test" {
+    derive f(xs: set<int>, val: int) -> bool {
+        xs.contains(val)
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NoopHandler;
+
+    let present = interp
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "f",
+            vec![
+                Value::Set([Value::Int(1), Value::Int(2)].into()),
+                Value::Int(2),
+            ],
+        )
+        .unwrap();
+    assert_eq!(present, Value::Bool(true));
+
+    let absent = interp
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "f",
+            vec![
+                Value::Set([Value::Int(1), Value::Int(2)].into()),
+                Value::Int(99),
+            ],
+        )
+        .unwrap();
+    assert_eq!(absent, Value::Bool(false));
+}
+
+// ── list.to_set() ────────────────────────────────────────────
+
+#[test]
+fn list_to_set_method() {
+    let source = r#"
+system "test" {
+    derive f(xs: list<int>) -> set<int> {
+        xs.to_set()
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NoopHandler;
+
+    let val = interp
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "f",
+            vec![Value::List(vec![
+                Value::Int(3),
+                Value::Int(1),
+                Value::Int(2),
+                Value::Int(1),
+            ])],
+        )
+        .unwrap();
+    // Duplicates removed
+    assert_eq!(
+        val,
+        Value::Set([Value::Int(1), Value::Int(2), Value::Int(3)].into())
+    );
+}
+
+// ── set method error messages ────────────────────────────────
+
+#[test]
+fn set_add_wrong_type_error() {
+    let errors = setup_with_errors(
+        r#"
+system "test" {
+    derive f(xs: set<int>) -> set<int> {
+        xs.add("hello")
+    }
+}
+"#,
+    );
+    assert!(!errors.is_empty());
+    assert!(
+        errors[0].contains("element type mismatch"),
+        "expected type mismatch error, got: {}",
+        errors[0]
+    );
+}
+
+#[test]
+fn set_union_wrong_type_error() {
+    let errors = setup_with_errors(
+        r#"
+system "test" {
+    derive f(xs: set<int>, ys: list<int>) -> set<int> {
+        xs.union(ys)
+    }
+}
+"#,
+    );
+    assert!(!errors.is_empty());
+    assert!(
+        errors[0].contains("type mismatch"),
+        "expected type mismatch error, got: {}",
+        errors[0]
+    );
+}
+
+#[test]
+fn unknown_method_on_set_error() {
+    let errors = setup_with_errors(
+        r#"
+system "test" {
+    derive f(xs: set<int>) -> int {
+        xs.foobar()
+    }
+}
+"#,
+    );
+    assert!(!errors.is_empty());
+    assert!(
+        errors[0].contains("no method"),
+        "expected 'no method' error, got: {}",
+        errors[0]
+    );
+}

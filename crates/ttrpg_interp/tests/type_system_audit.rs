@@ -1828,6 +1828,284 @@ system "test" {
     }
 }
 
+// ═══════════════════════════════════════════════════════════════
+// 8. Set compound assignment (+=, -=)
+// ═══════════════════════════════════════════════════════════════
+
+#[test]
+fn set_pluseq_entity_field_adds_element() {
+    let source = r#"
+system "test" {
+    enum DamageType { fire, cold, lightning }
+    entity Character {
+        resistances: set<DamageType>
+    }
+    action GainResist on actor: Character () {
+        resolve {
+            actor.resistances += fire
+        }
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut state = GameState::new();
+    let mut fields = HashMap::new();
+    fields.insert(
+        "resistances".into(),
+        Value::Set([Value::EnumVariant {
+            enum_name: "DamageType".into(),
+            variant: "cold".into(),
+            fields: BTreeMap::new(),
+        }]
+        .into()),
+    );
+    let entity = state.add_entity("Character", fields);
+    let adapter = StateAdapter::new(state);
+    let mut handler = NoopHandler;
+
+    adapter.run(&mut handler, |s, h| {
+        interp
+            .execute_action(s, h, "GainResist", entity, vec![])
+            .unwrap();
+    });
+
+    let result = adapter.read_field(&entity, "resistances");
+    match result {
+        Some(Value::Set(set)) => {
+            assert_eq!(set.len(), 2, "should have 2 elements after adding fire");
+            assert!(set.contains(&Value::EnumVariant {
+                enum_name: "DamageType".into(),
+                variant: "fire".into(),
+                fields: BTreeMap::new(),
+            }));
+            assert!(set.contains(&Value::EnumVariant {
+                enum_name: "DamageType".into(),
+                variant: "cold".into(),
+                fields: BTreeMap::new(),
+            }));
+        }
+        other => panic!("expected Set, got {:?}", other),
+    }
+}
+
+#[test]
+fn set_minuseq_entity_field_removes_element() {
+    let source = r#"
+system "test" {
+    enum DamageType { fire, cold, lightning }
+    entity Character {
+        resistances: set<DamageType>
+    }
+    action LoseResist on actor: Character () {
+        resolve {
+            actor.resistances -= fire
+        }
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut state = GameState::new();
+    let fire = Value::EnumVariant {
+        enum_name: "DamageType".into(),
+        variant: "fire".into(),
+        fields: BTreeMap::new(),
+    };
+    let cold = Value::EnumVariant {
+        enum_name: "DamageType".into(),
+        variant: "cold".into(),
+        fields: BTreeMap::new(),
+    };
+    let mut fields = HashMap::new();
+    fields.insert(
+        "resistances".into(),
+        Value::Set([fire, cold.clone()].into()),
+    );
+    let entity = state.add_entity("Character", fields);
+    let adapter = StateAdapter::new(state);
+    let mut handler = NoopHandler;
+
+    adapter.run(&mut handler, |s, h| {
+        interp
+            .execute_action(s, h, "LoseResist", entity, vec![])
+            .unwrap();
+    });
+
+    let result = adapter.read_field(&entity, "resistances");
+    match result {
+        Some(Value::Set(set)) => {
+            assert_eq!(set.len(), 1, "should have 1 element after removing fire");
+            assert!(set.contains(&cold));
+        }
+        other => panic!("expected Set, got {:?}", other),
+    }
+}
+
+#[test]
+fn set_pluseq_entity_field_multiple() {
+    // Add two elements to an entity set field via +=
+    let source = r#"
+system "test" {
+    entity Character {
+        tags: set<int>
+    }
+    action AddTags on actor: Character () {
+        resolve {
+            actor.tags += 42
+            actor.tags += 99
+        }
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut state = GameState::new();
+    let mut fields = HashMap::new();
+    fields.insert("tags".into(), Value::Set([Value::Int(1)].into()));
+    let entity = state.add_entity("Character", fields);
+    let adapter = StateAdapter::new(state);
+    let mut handler = NoopHandler;
+
+    adapter.run(&mut handler, |s, h| {
+        interp
+            .execute_action(s, h, "AddTags", entity, vec![])
+            .unwrap();
+    });
+
+    let result = adapter.read_field(&entity, "tags");
+    assert_eq!(
+        result,
+        Some(Value::Set(
+            [Value::Int(1), Value::Int(42), Value::Int(99)].into()
+        ))
+    );
+}
+
+#[test]
+fn set_minuseq_entity_field_multiple() {
+    // Remove an element from an entity set field via -=
+    let source = r#"
+system "test" {
+    entity Character {
+        tags: set<int>
+    }
+    action RemoveTag on actor: Character () {
+        resolve {
+            actor.tags -= 2
+        }
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut state = GameState::new();
+    let mut fields = HashMap::new();
+    fields.insert(
+        "tags".into(),
+        Value::Set([Value::Int(1), Value::Int(2), Value::Int(3)].into()),
+    );
+    let entity = state.add_entity("Character", fields);
+    let adapter = StateAdapter::new(state);
+    let mut handler = NoopHandler;
+
+    adapter.run(&mut handler, |s, h| {
+        interp
+            .execute_action(s, h, "RemoveTag", entity, vec![])
+            .unwrap();
+    });
+
+    let result = adapter.read_field(&entity, "tags");
+    assert_eq!(
+        result,
+        Some(Value::Set([Value::Int(1), Value::Int(3)].into()))
+    );
+}
+
+#[test]
+fn set_pluseq_duplicate_is_noop() {
+    // Adding an already-present element should not change the set
+    let source = r#"
+system "test" {
+    entity Character {
+        tags: set<int>
+    }
+    action AddDup on actor: Character () {
+        resolve {
+            actor.tags += 1
+        }
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut state = GameState::new();
+    let mut fields = HashMap::new();
+    fields.insert(
+        "tags".into(),
+        Value::Set([Value::Int(1), Value::Int(2)].into()),
+    );
+    let entity = state.add_entity("Character", fields);
+    let adapter = StateAdapter::new(state);
+    let mut handler = NoopHandler;
+
+    adapter.run(&mut handler, |s, h| {
+        interp
+            .execute_action(s, h, "AddDup", entity, vec![])
+            .unwrap();
+    });
+
+    let result = adapter.read_field(&entity, "tags");
+    assert_eq!(
+        result,
+        Some(Value::Set([Value::Int(1), Value::Int(2)].into()))
+    );
+}
+
+#[test]
+fn set_minuseq_absent_is_noop() {
+    // Removing an absent element should not change the set
+    let source = r#"
+system "test" {
+    entity Character {
+        tags: set<int>
+    }
+    action RemoveAbsent on actor: Character () {
+        resolve {
+            actor.tags -= 99
+        }
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut state = GameState::new();
+    let mut fields = HashMap::new();
+    fields.insert(
+        "tags".into(),
+        Value::Set([Value::Int(1), Value::Int(2)].into()),
+    );
+    let entity = state.add_entity("Character", fields);
+    let adapter = StateAdapter::new(state);
+    let mut handler = NoopHandler;
+
+    adapter.run(&mut handler, |s, h| {
+        interp
+            .execute_action(s, h, "RemoveAbsent", entity, vec![])
+            .unwrap();
+    });
+
+    let result = adapter.read_field(&entity, "tags");
+    assert_eq!(
+        result,
+        Some(Value::Set([Value::Int(1), Value::Int(2)].into()))
+    );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Unit types
+// ═══════════════════════════════════════════════════════════════
+
 #[test]
 fn unit_duplicate_suffix_error() {
     // Spec: suffixes must be unique across entire program

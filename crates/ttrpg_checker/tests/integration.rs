@@ -3812,6 +3812,241 @@ system "test" {
     expect_errors(source, &["Position cannot be used as a set element type"]);
 }
 
+// ── set methods ──────────────────────────────────────────────
+
+#[test]
+fn test_set_add_typechecks() {
+    let source = r#"
+system "test" {
+    enum Color { red, green, blue }
+    derive f(s: set<Color>) -> set<Color> {
+        s.add(red)
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_set_remove_typechecks() {
+    let source = r#"
+system "test" {
+    enum Color { red, green, blue }
+    derive f(s: set<Color>) -> set<Color> {
+        s.remove(green)
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_set_union_typechecks() {
+    let source = r#"
+system "test" {
+    derive f(a: set<int>, b: set<int>) -> set<int> {
+        a.union(b)
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_set_intersection_typechecks() {
+    let source = r#"
+system "test" {
+    derive f(a: set<int>, b: set<int>) -> set<int> {
+        a.intersection(b)
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_set_difference_typechecks() {
+    let source = r#"
+system "test" {
+    derive f(a: set<int>, b: set<int>) -> set<int> {
+        a.difference(b)
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_set_to_list_typechecks() {
+    let source = r#"
+system "test" {
+    derive f(s: set<int>) -> list<int> {
+        s.to_list()
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_set_contains_typechecks() {
+    let source = r#"
+system "test" {
+    derive f(s: set<int>, x: int) -> bool {
+        s.contains(x)
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_list_to_set_typechecks() {
+    let source = r#"
+system "test" {
+    derive f(xs: list<int>) -> set<int> {
+        xs.to_set()
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_set_add_wrong_element_type() {
+    let source = r#"
+system "test" {
+    derive f(s: set<int>) -> set<int> {
+        s.add("hello")
+    }
+}
+"#;
+    expect_errors(source, &["element type mismatch"]);
+}
+
+#[test]
+fn test_set_remove_wrong_element_type() {
+    let source = r#"
+system "test" {
+    derive f(s: set<int>) -> set<int> {
+        s.remove("hello")
+    }
+}
+"#;
+    expect_errors(source, &["element type mismatch"]);
+}
+
+#[test]
+fn test_set_union_wrong_arg_type() {
+    let source = r#"
+system "test" {
+    derive f(a: set<int>, b: list<int>) -> set<int> {
+        a.union(b)
+    }
+}
+"#;
+    expect_errors(source, &["type mismatch"]);
+}
+
+#[test]
+fn test_set_contains_wrong_element_type() {
+    let source = r#"
+system "test" {
+    derive f(s: set<int>) -> bool {
+        s.contains("hello")
+    }
+}
+"#;
+    expect_errors(source, &["element type mismatch"]);
+}
+
+// ── set += / -= ──────────────────────────────────────────────
+
+#[test]
+fn test_set_pluseq_typechecks() {
+    let source = r#"
+system "test" {
+    enum DamageType { fire, cold, lightning }
+    entity Character {
+        resistances: set<DamageType>
+    }
+    action GainResist on actor: Character () {
+        resolve {
+            actor.resistances += fire
+        }
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_set_minuseq_typechecks() {
+    let source = r#"
+system "test" {
+    enum DamageType { fire, cold, lightning }
+    entity Character {
+        resistances: set<DamageType>
+    }
+    action LoseResist on actor: Character () {
+        resolve {
+            actor.resistances -= fire
+        }
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_set_pluseq_wrong_element_type() {
+    let source = r#"
+system "test" {
+    entity Character {
+        tags: set<int>
+    }
+    action Foo on actor: Character () {
+        resolve {
+            actor.tags += "hello"
+        }
+    }
+}
+"#;
+    expect_errors(source, &["right side of += on set<int>"]);
+}
+
+#[test]
+fn test_set_minuseq_wrong_element_type() {
+    let source = r#"
+system "test" {
+    entity Character {
+        tags: set<int>
+    }
+    action Foo on actor: Character () {
+        resolve {
+            actor.tags -= "hello"
+        }
+    }
+}
+"#;
+    expect_errors(source, &["right side of -= on set<int>"]);
+}
+
+#[test]
+fn test_set_pluseq_local_variable_immutable() {
+    // Local let bindings are immutable — += on a local set should be rejected
+    let source = r#"
+system "test" {
+    derive f(s: set<int>) -> set<int> {
+        let result = s
+        result += 42
+        result
+    }
+}
+"#;
+    expect_errors(source, &["cannot reassign immutable binding"]);
+}
+
 #[test]
 fn test_map_position_key_rejected() {
     let source = r#"
