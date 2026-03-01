@@ -363,6 +363,11 @@ enum Duration {
 // Not directly constructible in DSL code — produced by the
 // `conditions(entity)` builtin which returns active conditions.
 //
+// `ActiveCondition` is a built-in type keyword usable in type annotations
+// (e.g., parameter types in events, hooks, or functions). It is not
+// user-overridable — unlike Duration or TurnBudget, a user-defined type
+// named `ActiveCondition` is not permitted.
+//
 // Fields are read-only and accessed via dot syntax:
 
 struct ActiveCondition {
@@ -376,6 +381,12 @@ struct ActiveCondition {
 //
 // ActiveCondition values are accepted by `remove_condition()` for precise
 // id-based removal — see the builtins section in 02_scoping.ttrpg.
+//
+// Example: user-defined event using ActiveCondition as a parameter type
+//
+//   event condition_logged(target: entity, cond: ActiveCondition) {
+//       message: string
+//   }
 //
 // Condition parameters (e.g., the `source` in `Frightened(source: attacker)`)
 // are not exposed as fields in v0. Access to heterogeneous parameter
