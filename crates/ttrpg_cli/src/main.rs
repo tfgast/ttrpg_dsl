@@ -45,12 +45,18 @@ fn main() {
                     eprintln!("usage: ttrpg check -c <source>");
                     process::exit(1);
                 }
-                check_source(args[2]);
-            } else {
-                if args.len() < 2 {
+                if args[2] == "-" {
+                    check_stdin();
+                } else {
+                    check_source(args[2]);
+                }
+            } else if args.len() < 2 {
+                if io::stdin().is_terminal() {
                     eprintln!("usage: ttrpg check <files...>");
                     process::exit(1);
                 }
+                check_stdin();
+            } else {
                 check_files(&args[1..]);
             }
         }
@@ -140,6 +146,16 @@ fn exec_commands(label: &str, content: &str) {
     if had_error {
         process::exit(1);
     }
+}
+
+/// Check DSL source read from stdin.
+fn check_stdin() {
+    let source = io::read_to_string(io::stdin()).unwrap_or_else(|e| {
+        eprintln!("read error: {}", e);
+        process::exit(1);
+    });
+    let sources = vec![("<stdin>".to_string(), source)];
+    check_sources(sources);
 }
 
 /// Check DSL source passed as a string.
