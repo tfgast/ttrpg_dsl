@@ -601,4 +601,64 @@ system "D&D 5e Combat" {
             bonus_dice = 1d4
         }
     }
+
+
+    // --- Set operations ---
+    //
+    // Sets support functional methods (add, remove, union, intersection,
+    // difference, to_list, contains) and compound assignment sugar (+=, -=).
+    //
+    // Example: Barbarian Rage grants resistance to physical damage types.
+
+    derive physical_damage_types() -> set<DamageType> {
+        [bludgeoning, piercing, slashing].to_set()
+    }
+
+    action Rage on barbarian: Character () {
+        cost { bonus_action }
+
+        resolve {
+            // Add physical resistances using set += sugar
+            for dt in physical_damage_types() {
+                barbarian.resistances += dt
+            }
+            apply_condition(barbarian, Raging, Duration.rounds(10))
+        }
+    }
+
+    // When rage ends at end of turn, remove the granted resistances
+    // using set -= sugar.
+    hook RageCleanup on barbarian: Character (trigger: turn_end(actor: barbarian)) {
+        if Raging in barbarian.conditions {
+            // Rage still active, nothing to do
+        } else {
+            // Rage expired — remove granted resistances using set -=
+            for dt in physical_damage_types() {
+                barbarian.resistances -= dt
+            }
+        }
+    }
+
+    // Derive using set intersection: which of the attacker's damage types
+    // is the target resistant to?
+    derive resisted_types(
+        damage_types: set<DamageType>,
+        target: Character
+    ) -> set<DamageType> {
+        damage_types.intersection(target.resistances)
+    }
+
+    // Derive using set difference: damage types not resisted by the target
+    derive unresisted_types(
+        damage_types: set<DamageType>,
+        target: Character
+    ) -> set<DamageType> {
+        damage_types.difference(target.resistances)
+    }
+
+    condition Raging on bearer: Character {
+        modify saving_throw(target: bearer, ability: STR) {
+            mode = advantage
+        }
+    }
 }

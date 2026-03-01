@@ -216,8 +216,22 @@ impl<'a> Checker<'a> {
                 }
             }
             AssignOp::PlusEq | AssignOp::MinusEq => {
-                // Target must be numeric
-                if !target_ty.is_numeric() && !target_ty.is_int_like() {
+                // Set += elem (add element) / Set -= elem (remove element)
+                if let Ty::Set(inner) = &target_ty {
+                    if !value_ty.is_error() && !self.types_compatible(inner, &value_ty) {
+                        self.error(
+                            format!(
+                                "right side of {} on set<{}> must be {}, found {}",
+                                if op == AssignOp::PlusEq { "+=" } else { "-=" },
+                                inner,
+                                inner,
+                                value_ty
+                            ),
+                            value.span,
+                        );
+                    }
+                // Numeric += / -=
+                } else if !target_ty.is_numeric() && !target_ty.is_int_like() {
                     self.error(format!("cannot use += / -= on type {}", target_ty), span);
                 } else if !value_ty.is_numeric() && !value_ty.is_int_like() {
                     self.error(

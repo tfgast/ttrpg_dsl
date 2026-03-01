@@ -489,6 +489,12 @@ pub fn apply_op(op: AssignOp, current: &Value, rhs: &Value) -> Result<Value, Run
     match op {
         AssignOp::Eq => Ok(rhs.clone()),
         AssignOp::PlusEq => match (current, rhs) {
+            // Set += elem: add element to set
+            (Value::Set(set), elem) => {
+                let mut new_set = set.clone();
+                new_set.insert(elem.clone());
+                Ok(Value::Set(new_set))
+            }
             (Value::Int(a), Value::Int(b)) => a.checked_add(*b).map(Value::Int).ok_or_else(|| {
                 RuntimeError::new(format!("integer overflow in += ({} + {})", a, b))
             }),
@@ -528,6 +534,12 @@ pub fn apply_op(op: AssignOp, current: &Value, rhs: &Value) -> Result<Value, Run
             _ => Ok(rhs.clone()), // Fallback for type-checked programs
         },
         AssignOp::MinusEq => match (current, rhs) {
+            // Set -= elem: remove element from set
+            (Value::Set(set), elem) => {
+                let mut new_set = set.clone();
+                new_set.remove(elem);
+                Ok(Value::Set(new_set))
+            }
             (Value::Int(a), Value::Int(b)) => a.checked_sub(*b).map(Value::Int).ok_or_else(|| {
                 RuntimeError::new(format!("integer overflow in -= ({} - {})", a, b))
             }),

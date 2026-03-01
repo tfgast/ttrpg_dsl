@@ -163,6 +163,22 @@ struct RollResult {
 //       returns inner value; runtime error if x is none
 //   x.unwrap_or(default: T)  -> T
 //       returns inner value when present, otherwise default
+//
+// Set values support receiver-style methods (all return new values):
+//   s.add(elem)              -> set<T>   // set with elem added
+//   s.remove(elem)           -> set<T>   // set with elem removed
+//   s.union(other)           -> set<T>   // elements in either set
+//   s.intersection(other)    -> set<T>   // elements in both sets
+//   s.difference(other)      -> set<T>   // elements in s but not other
+//   s.to_list()              -> list<T>  // convert to list
+//   s.contains(elem)         -> bool     // membership test
+//
+// Sets also support compound assignment sugar:
+//   s += elem     // add element (equivalent to s = s.add(elem))
+//   s -= elem     // remove element (equivalent to s = s.remove(elem))
+//
+// List-to-set conversion:
+//   xs.to_set()              -> set<T>   // deduplicate list into set
 
 
 // --- Enums ---

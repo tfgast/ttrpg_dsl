@@ -19,7 +19,7 @@ pub(super) fn eval_method_call(
     match &object {
         Value::Option(_) | Value::None => eval_option_method(env, object, method, args, span),
         Value::List(_) => eval_list_method(env, object, method, args, span),
-        Value::Set(_) => eval_set_method(object, method, span),
+        Value::Set(_) => eval_set_method(env, object, method, args, span),
         Value::Map(_) => eval_map_method(object, method, span),
         Value::DiceExpr(_) => eval_dice_method(env, object, method, args, span),
         Value::Str(_) => eval_string_method(env, object, method, args, span),
@@ -193,9 +193,12 @@ fn eval_list_method(
             v.sort();
             Ok(Value::List(v))
         }
+        "to_set" => {
+            Ok(Value::Set(list.into_iter().collect()))
+        }
         _ => Err(RuntimeError::with_span(
             format!(
-                "list type has no method `{}`; available methods: len, first, last, reverse, append, concat, sum, any, all, sort",
+                "list type has no method `{}`; available methods: len, first, last, reverse, append, concat, sum, any, all, sort, to_set",
                 method
             ),
             span,
@@ -203,15 +206,111 @@ fn eval_list_method(
     }
 }
 
-fn eval_set_method(object: Value, method: &str, span: Span) -> Result<Value, RuntimeError> {
+fn eval_set_method(
+    env: &mut Env,
+    object: Value,
+    method: &str,
+    args: &[Arg],
+    span: Span,
+) -> Result<Value, RuntimeError> {
     let Value::Set(set) = object else {
         unreachable!()
     };
     match method {
         "len" => Ok(Value::Int(set.len() as i64)),
+        "add" => {
+            if args.is_empty() {
+                return Err(RuntimeError::with_span("add() requires 1 argument", span));
+            }
+            let elem = eval_expr(env, &args[0].value)?;
+            let mut new_set = set;
+            new_set.insert(elem);
+            Ok(Value::Set(new_set))
+        }
+        "remove" => {
+            if args.is_empty() {
+                return Err(RuntimeError::with_span("remove() requires 1 argument", span));
+            }
+            let elem = eval_expr(env, &args[0].value)?;
+            let mut new_set = set;
+            new_set.remove(&elem);
+            Ok(Value::Set(new_set))
+        }
+        "union" => {
+            if args.is_empty() {
+                return Err(RuntimeError::with_span("union() requires 1 argument", span));
+            }
+            let other = eval_expr(env, &args[0].value)?;
+            match other {
+                Value::Set(b) => {
+                    let mut new_set = set;
+                    new_set.extend(b);
+                    Ok(Value::Set(new_set))
+                }
+                _ => Err(RuntimeError::with_span(
+                    format!("union() argument must be a set, got {}", type_name(&other)),
+                    span,
+                )),
+            }
+        }
+        "intersection" => {
+            if args.is_empty() {
+                return Err(RuntimeError::with_span(
+                    "intersection() requires 1 argument",
+                    span,
+                ));
+            }
+            let other = eval_expr(env, &args[0].value)?;
+            match other {
+                Value::Set(b) => {
+                    let result = set.intersection(&b).cloned().collect();
+                    Ok(Value::Set(result))
+                }
+                _ => Err(RuntimeError::with_span(
+                    format!(
+                        "intersection() argument must be a set, got {}",
+                        type_name(&other)
+                    ),
+                    span,
+                )),
+            }
+        }
+        "difference" => {
+            if args.is_empty() {
+                return Err(RuntimeError::with_span(
+                    "difference() requires 1 argument",
+                    span,
+                ));
+            }
+            let other = eval_expr(env, &args[0].value)?;
+            match other {
+                Value::Set(b) => {
+                    let result = set.difference(&b).cloned().collect();
+                    Ok(Value::Set(result))
+                }
+                _ => Err(RuntimeError::with_span(
+                    format!(
+                        "difference() argument must be a set, got {}",
+                        type_name(&other)
+                    ),
+                    span,
+                )),
+            }
+        }
+        "to_list" => Ok(Value::List(set.into_iter().collect())),
+        "contains" => {
+            if args.is_empty() {
+                return Err(RuntimeError::with_span(
+                    "contains() requires 1 argument",
+                    span,
+                ));
+            }
+            let elem = eval_expr(env, &args[0].value)?;
+            Ok(Value::Bool(set.contains(&elem)))
+        }
         _ => Err(RuntimeError::with_span(
             format!(
-                "set type has no method `{}`; available methods: len",
+                "set type has no method `{}`; available methods: len, add, remove, union, intersection, difference, to_list, contains",
                 method
             ),
             span,

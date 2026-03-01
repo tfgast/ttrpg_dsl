@@ -204,8 +204,8 @@ fn test_collect_counts() {
     );
     // Events: entity_leaves_reach, turn_start, turn_end, Damaged, ConcentrationStarted + built-in modify_applied
     assert_eq!(result.env.events.len(), 6);
-    // Conditions: Prone, Dodging, Disengaging, Hidden, Stunned, Petrified, CunningAction, Blessed
-    assert_eq!(result.env.conditions.len(), 8);
+    // Conditions: Prone, Dodging, Disengaging, Hidden, Stunned, Petrified, CunningAction, Blessed, Raging
+    assert_eq!(result.env.conditions.len(), 9);
 }
 
 #[test]

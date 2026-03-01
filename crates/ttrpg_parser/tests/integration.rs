@@ -64,11 +64,11 @@ fn test_parse_full_example() {
     assert_eq!(enums, 7, "enum count");       // +SaveResult
     assert_eq!(structs, 2, "struct count");
     assert_eq!(entities, 2, "entity count");
-    assert_eq!(derives, 4, "derive count");
+    assert_eq!(derives, 7, "derive count");    // +physical_damage_types, resisted_types, unresisted_types
     assert_eq!(mechanics, 7, "mechanic count"); // +saving_throw
-    assert_eq!(actions, 9, "action count");
+    assert_eq!(actions, 10, "action count");    // +Rage
     assert_eq!(reactions, 2, "reaction count");
-    assert_eq!(conditions, 8, "condition count"); // +Stunned, Petrified
+    assert_eq!(conditions, 9, "condition count"); // +Stunned, Petrified, Raging
     assert_eq!(prompts, 3, "prompt count"); // +choose_target (typed prompt)
     assert_eq!(events, 5, "event count");
 }

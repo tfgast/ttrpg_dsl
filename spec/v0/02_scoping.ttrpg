@@ -553,6 +553,23 @@ hook Regenerate on creature: Character (
 //   all(xs: list<bool>) -> bool
 //   sort(xs: list<T>) -> list<T>
 //
+// Set methods (receiver syntax only, all return new sets):
+//   s.add(elem: T) -> set<T>                 // returns set with elem added
+//   s.remove(elem: T) -> set<T>              // returns set with elem removed (no-op if absent)
+//   s.union(other: set<T>) -> set<T>         // returns elements in either set
+//   s.intersection(other: set<T>) -> set<T>  // returns elements in both sets
+//   s.difference(other: set<T>) -> set<T>    // returns elements in s but not other
+//   s.to_list() -> list<T>                   // converts to list (iteration order)
+//   s.contains(elem: T) -> bool              // true if elem is in the set
+//
+// List-to-set conversion (receiver syntax only):
+//   xs.to_set() -> set<T>                    // deduplicates list into a set
+//
+// Set compound assignment sugar:
+//   s += elem    // equivalent to s = s.add(elem)
+//   s -= elem    // equivalent to s = s.remove(elem)
+// This works for both local variables and entity fields.
+//
 // Option methods (receiver syntax only):
 //   x.unwrap() -> T
 //   x.unwrap_or(default: T) -> T

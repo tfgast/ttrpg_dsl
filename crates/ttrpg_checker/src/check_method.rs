@@ -223,10 +223,19 @@ impl<'a> Checker<'a> {
                 }
                 Ty::List(inner)
             }
+            "to_set" => {
+                if !args.is_empty() {
+                    self.error(
+                        format!("to_set() takes no arguments, found {}", args.len()),
+                        span,
+                    );
+                }
+                Ty::Set(inner)
+            }
             _ => {
                 self.error(
                     format!(
-                        "list type has no method `{}`; available methods: len, first, last, reverse, append, concat, sum, any, all, sort",
+                        "list type has no method `{}`; available methods: len, first, last, reverse, append, concat, sum, any, all, sort, to_set",
                         method
                     ),
                     span,
@@ -238,7 +247,7 @@ impl<'a> Checker<'a> {
 
     fn check_set_method(
         &mut self,
-        _inner: &Ty,
+        inner: &Ty,
         method: &str,
         args: &[Arg],
         span: ttrpg_ast::Span,
@@ -253,10 +262,86 @@ impl<'a> Checker<'a> {
                 }
                 Ty::Int
             }
+            "add" | "remove" => {
+                if args.len() != 1 {
+                    self.error(
+                        format!("{}() takes 1 argument, found {}", method, args.len()),
+                        span,
+                    );
+                    for arg in args {
+                        self.check_expr(&arg.value);
+                    }
+                    return Ty::Error;
+                }
+                let elem_ty = self.check_expr_expecting(&args[0].value, Some(inner));
+                if !elem_ty.is_error() && !self.types_compatible(inner, &elem_ty) {
+                    self.error(
+                        format!(
+                            ".{}() element type mismatch: set is set<{}>, but got {}",
+                            method, inner, elem_ty
+                        ),
+                        span,
+                    );
+                }
+                Ty::Set(Box::new(inner.clone()))
+            }
+            "union" | "intersection" | "difference" => {
+                if args.len() != 1 {
+                    self.error(
+                        format!("{}() takes 1 argument, found {}", method, args.len()),
+                        span,
+                    );
+                    for arg in args {
+                        self.check_expr(&arg.value);
+                    }
+                    return Ty::Error;
+                }
+                let set_ty = Ty::Set(Box::new(inner.clone()));
+                let arg_ty = self.check_expr_expecting(&args[0].value, Some(&set_ty));
+                if !arg_ty.is_error() && !self.types_compatible(&set_ty, &arg_ty) {
+                    self.error(
+                        format!(".{}() type mismatch: set<{}> vs {}", method, inner, arg_ty),
+                        span,
+                    );
+                }
+                Ty::Set(Box::new(inner.clone()))
+            }
+            "to_list" => {
+                if !args.is_empty() {
+                    self.error(
+                        format!("to_list() takes no arguments, found {}", args.len()),
+                        span,
+                    );
+                }
+                Ty::List(Box::new(inner.clone()))
+            }
+            "contains" => {
+                if args.len() != 1 {
+                    self.error(
+                        format!("contains() takes 1 argument, found {}", args.len()),
+                        span,
+                    );
+                    for arg in args {
+                        self.check_expr(&arg.value);
+                    }
+                    return Ty::Error;
+                }
+                let elem_ty = self.check_expr_expecting(&args[0].value, Some(inner));
+                if !elem_ty.is_error() && !self.types_compatible(inner, &elem_ty) {
+                    self.error(
+                        format!(
+                            ".contains() element type mismatch: set is set<{}>, but got {}",
+                            inner, elem_ty
+                        ),
+                        span,
+                    );
+                }
+                Ty::Bool
+            }
             _ => {
                 self.error(
                     format!(
-                        "set type has no method `{}`; available methods: len",
+                        "set type has no method `{}`; available methods: len, add, remove, union, intersection, difference, to_list, contains",
                         method
                     ),
                     span,

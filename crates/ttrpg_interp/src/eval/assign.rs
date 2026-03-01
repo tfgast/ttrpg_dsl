@@ -461,6 +461,11 @@ pub(super) fn apply_assign_op(
     match op {
         AssignOp::Eq => Ok(rhs),
         AssignOp::PlusEq => {
+            // Set += elem: add element to set
+            if let Value::Set(mut set) = current {
+                set.insert(rhs);
+                return Ok(Value::Set(set));
+            }
             // Coerce RollResult to Int for arithmetic
             let current = coerce_roll_result(current);
             let rhs = coerce_roll_result(rhs);
@@ -494,6 +499,11 @@ pub(super) fn apply_assign_op(
             }
         }
         AssignOp::MinusEq => {
+            // Set -= elem: remove element from set
+            if let Value::Set(mut set) = current {
+                set.remove(&rhs);
+                return Ok(Value::Set(set));
+            }
             let current = coerce_roll_result(current);
             let rhs = coerce_roll_result(rhs);
             match (&current, &rhs) {
