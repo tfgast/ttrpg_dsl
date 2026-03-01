@@ -74,6 +74,12 @@ pub fn register_builtins() -> Vec<FnInfo> {
             vec![param("target", Ty::AnyEntity), param("cond", Ty::Condition)],
             Ty::Unit,
         ),
+        // Available everywhere (state query)
+        builtin(
+            "conditions",
+            vec![param("entity", Ty::AnyEntity)],
+            Ty::List(Box::new(Ty::ActiveCondition)),
+        ),
         // Available in action/reaction/hook blocks
         builtin("invocation", vec![], Ty::Invocation),
         builtin("revoke", vec![param("inv", Ty::Invocation)], Ty::Unit),

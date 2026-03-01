@@ -184,7 +184,7 @@ impl<'a> Checker<'a> {
             let is_pure_builtin = fn_info.kind == FnKind::Builtin
                 && matches!(
                     callee_name.as_str(),
-                    "floor" | "ceil" | "min" | "max" | "distance" | "error"
+                    "floor" | "ceil" | "min" | "max" | "distance" | "conditions" | "error"
                 );
             if !is_pure_builtin {
                 self.error(

@@ -24,6 +24,7 @@ pub(crate) fn call_builtin(
         "min" => builtin_min(&args, span),
         "max" => builtin_max(&args, span),
         "distance" => builtin_distance(env, &args, span),
+        "conditions" => builtin_conditions(env, &args, span),
         "dice" => builtin_dice(&args, span),
         "multiply_dice" => builtin_multiply_dice(&args, span),
         "error" => builtin_error(&args, span),
@@ -171,6 +172,34 @@ fn builtin_distance(env: &Env, args: &[Value], span: Span) -> Result<Value, Runt
         )),
         _ => Err(RuntimeError::with_span(
             "distance() requires 2 arguments",
+            span,
+        )),
+    }
+}
+
+// ── conditions ────────────────────────────────────────────────────
+
+/// `conditions(entity: Entity) -> list<ActiveCondition>`
+///
+/// Returns the active conditions on an entity, ordered by `gained_at` (oldest first).
+fn builtin_conditions(env: &Env, args: &[Value], span: Span) -> Result<Value, RuntimeError> {
+    match args.first() {
+        Some(Value::Entity(entity)) => match env.state.read_conditions(entity) {
+            Some(conditions) => {
+                let values = conditions.iter().map(|c| c.to_value()).collect();
+                Ok(Value::List(values))
+            }
+            None => Err(RuntimeError::with_span(
+                format!("conditions() called on unknown entity: {:?}", entity),
+                span,
+            )),
+        },
+        Some(other) => Err(RuntimeError::with_span(
+            format!("conditions() expects Entity, got {}", type_name(other)),
+            span,
+        )),
+        None => Err(RuntimeError::with_span(
+            "conditions() requires 1 argument",
             span,
         )),
     }
@@ -744,5 +773,105 @@ mod tests {
             assert_eq!(result, Value::None);
         }
         assert!(handler.log.is_empty());
+    }
+
+    // ── conditions() unit tests ──────────────────────────────
+
+    struct ConditionsState {
+        /// Entity ID that has conditions; all others return None.
+        known_entity: u64,
+        conditions: Vec<ActiveCondition>,
+    }
+
+    impl StateProvider for ConditionsState {
+        fn read_field(&self, _: &EntityRef, _: &str) -> Option<Value> { None }
+        fn read_conditions(&self, entity: &EntityRef) -> Option<Vec<ActiveCondition>> {
+            if entity.0 == self.known_entity {
+                Some(self.conditions.clone())
+            } else {
+                None
+            }
+        }
+        fn read_turn_budget(&self, _: &EntityRef) -> Option<BTreeMap<Name, Value>> { None }
+        fn read_enabled_options(&self) -> Vec<Name> { vec![] }
+        fn position_eq(&self, _: &Value, _: &Value) -> bool { false }
+        fn distance(&self, _: &Value, _: &Value) -> Option<i64> { None }
+    }
+
+    fn make_env_with_state<'a, 'p>(
+        state: &'a ConditionsState,
+        handler: &'a mut TestHandler,
+        interp: &'a Interpreter<'p>,
+    ) -> crate::Env<'a, 'p> {
+        crate::Env::new(state, handler, interp)
+    }
+
+    #[test]
+    fn conditions_returns_empty_list_for_entity_with_no_conditions() {
+        let (program, type_env) = empty_program_and_env();
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = ConditionsState { known_entity: 1, conditions: vec![] };
+        let mut handler = TestHandler::new();
+        let env = make_env_with_state(&state, &mut handler, &interp);
+
+        let entity = EntityRef(1);
+        let result = builtin_conditions(&env, &[Value::Entity(entity)], dummy_span()).unwrap();
+        assert_eq!(result, Value::List(vec![]));
+    }
+
+    #[test]
+    fn conditions_returns_active_conditions_as_list() {
+        use crate::value::duration_variant;
+
+        let (program, type_env) = empty_program_and_env();
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let cond = ActiveCondition {
+            id: 1,
+            name: "Prone".into(),
+            params: BTreeMap::new(),
+            bearer: EntityRef(1),
+            gained_at: 0,
+            duration: duration_variant("indefinite"),
+            invocation: None,
+        };
+        let state = ConditionsState { known_entity: 1, conditions: vec![cond.clone()] };
+        let mut handler = TestHandler::new();
+        let env = make_env_with_state(&state, &mut handler, &interp);
+
+        let entity = EntityRef(1);
+        let result = builtin_conditions(&env, &[Value::Entity(entity)], dummy_span()).unwrap();
+        match result {
+            Value::List(items) => {
+                assert_eq!(items.len(), 1);
+                assert_eq!(items[0], cond.to_value());
+            }
+            other => panic!("expected List, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn conditions_errors_on_unknown_entity() {
+        let (program, type_env) = empty_program_and_env();
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = ConditionsState { known_entity: 1, conditions: vec![] };
+        let mut handler = TestHandler::new();
+        let env = make_env_with_state(&state, &mut handler, &interp);
+
+        // Entity 99 is not the known_entity, so read_conditions returns None
+        let entity = EntityRef(99);
+        let err = builtin_conditions(&env, &[Value::Entity(entity)], dummy_span()).unwrap_err();
+        assert!(err.message.contains("unknown entity"));
+    }
+
+    #[test]
+    fn conditions_errors_on_non_entity_arg() {
+        let (program, type_env) = empty_program_and_env();
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = ConditionsState { known_entity: 1, conditions: vec![] };
+        let mut handler = TestHandler::new();
+        let env = make_env_with_state(&state, &mut handler, &interp);
+
+        let err = builtin_conditions(&env, &[Value::Int(42)], dummy_span()).unwrap_err();
+        assert!(err.message.contains("expects Entity"));
     }
 }
