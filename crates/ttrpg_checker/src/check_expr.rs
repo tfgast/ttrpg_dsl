@@ -651,6 +651,15 @@ impl<'a> Checker<'a> {
                 self.error(format!("RollResult has no field `{}`", field), span);
                 Ty::Error
             }
+            Ty::ActiveCondition => {
+                for (fname, ref fty) in TypeEnv::active_condition_fields() {
+                    if fname == field {
+                        return fty.clone();
+                    }
+                }
+                self.error(format!("ActiveCondition has no field `{}`", field), span);
+                Ty::Error
+            }
             Ty::TurnBudget => {
                 // Prefer user-defined struct TurnBudget fields if present,
                 // fall back to hardcoded fields otherwise.

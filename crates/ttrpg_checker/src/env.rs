@@ -473,6 +473,15 @@ impl TypeEnv {
         ]
     }
 
+    /// Get the ActiveCondition struct fields.
+    pub fn active_condition_fields() -> Vec<(&'static str, Ty)> {
+        vec![
+            ("name", Ty::String),
+            ("duration", Ty::Duration),
+            ("id", Ty::Int),
+        ]
+    }
+
     /// Get the TurnBudget struct fields.
     pub fn turn_budget_fields() -> Vec<(&'static str, Ty)> {
         vec![

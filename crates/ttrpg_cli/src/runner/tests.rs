@@ -2111,6 +2111,26 @@ fn value_matches_ty_accepts_correct_struct_for_turn_budget() {
     assert!(value_matches_ty(&correct, &Ty::TurnBudget, None));
 }
 
+// ── value_matches_ty: ActiveCondition ──
+
+#[test]
+fn value_matches_ty_accepts_active_condition_struct() {
+    let correct = Value::Struct {
+        name: "ActiveCondition".into(),
+        fields: std::collections::BTreeMap::new(),
+    };
+    assert!(value_matches_ty(&correct, &Ty::ActiveCondition, None));
+}
+
+#[test]
+fn value_matches_ty_rejects_wrong_struct_for_active_condition() {
+    let wrong = Value::Struct {
+        name: "Damage".into(),
+        fields: std::collections::BTreeMap::new(),
+    };
+    assert!(!value_matches_ty(&wrong, &Ty::ActiveCondition, None));
+}
+
 // ── Regression: tdsl-hof — value_matches_ty checks entity concrete type ──
 
 #[test]

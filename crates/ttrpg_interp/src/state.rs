@@ -52,6 +52,20 @@ pub struct ActiveCondition {
     pub invocation: Option<InvocationId>,
 }
 
+impl ActiveCondition {
+    /// Convert this active condition to a `Value::Struct` for DSL-level access.
+    pub fn to_value(&self) -> Value {
+        let mut fields = BTreeMap::new();
+        fields.insert(Name::from("name"), Value::Str(self.name.to_string()));
+        fields.insert(Name::from("duration"), self.duration.clone());
+        fields.insert(Name::from("id"), Value::Int(self.id as i64));
+        Value::Struct {
+            name: Name::from("ActiveCondition"),
+            fields,
+        }
+    }
+}
+
 // ── StateProvider trait ─────────────────────────────────────────
 
 /// The host implements this trait to give the interpreter synchronous
@@ -272,5 +286,57 @@ mod tests {
         assert_eq!(cond.name, "Stunned");
         assert_eq!(cond.bearer, EntityRef(1));
         assert_eq!(cond.gained_at, 10);
+    }
+
+    #[test]
+    fn active_condition_to_value_no_params() {
+        let cond = ActiveCondition {
+            id: 7,
+            name: "Prone".into(),
+            params: BTreeMap::new(),
+            bearer: EntityRef(1),
+            gained_at: 3,
+            duration: duration_variant("end_of_turn"),
+            invocation: None,
+        };
+        let val = cond.to_value();
+        match &val {
+            Value::Struct { name, fields } => {
+                assert_eq!(name, "ActiveCondition");
+                assert_eq!(fields.get("name"), Some(&Value::Str("Prone".into())));
+                assert_eq!(fields.get("id"), Some(&Value::Int(7)));
+                assert_eq!(
+                    fields.get("duration"),
+                    Some(&duration_variant("end_of_turn"))
+                );
+            }
+            _ => panic!("expected Value::Struct"),
+        }
+    }
+
+    #[test]
+    fn active_condition_to_value_with_params() {
+        let mut params = BTreeMap::new();
+        params.insert(Name::from("source"), Value::Entity(EntityRef(2)));
+        let cond = ActiveCondition {
+            id: 99,
+            name: "Frightened".into(),
+            params,
+            bearer: EntityRef(1),
+            gained_at: 5,
+            duration: duration_variant("rounds"),
+            invocation: None,
+        };
+        let val = cond.to_value();
+        match &val {
+            Value::Struct { name, fields } => {
+                assert_eq!(name, "ActiveCondition");
+                assert_eq!(fields.get("name"), Some(&Value::Str("Frightened".into())));
+                assert_eq!(fields.get("id"), Some(&Value::Int(99)));
+                // params are not exposed in the value (deferred)
+                assert!(!fields.contains_key("params"));
+            }
+            _ => panic!("expected Value::Struct"),
+        }
     }
 }

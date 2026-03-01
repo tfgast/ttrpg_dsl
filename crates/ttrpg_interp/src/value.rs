@@ -503,6 +503,7 @@ pub fn value_matches_ty(val: &Value, ty: &Ty, state: &dyn StateProvider) -> bool
         (Value::Struct { name, .. }, Ty::Struct(n)) => name == n,
         (Value::Struct { name, .. }, Ty::RollResult) => name == "RollResult",
         (Value::Struct { name, .. }, Ty::TurnBudget) => name == "TurnBudget",
+        (Value::Struct { name, .. }, Ty::ActiveCondition) => name == "ActiveCondition",
         (Value::EnumVariant { enum_name, .. }, Ty::Enum(n)) => enum_name == n,
         (Value::DiceExpr(_), Ty::DiceExpr) => true,
         (Value::RollResult(_), Ty::RollResult) => true,
