@@ -156,13 +156,17 @@ impl<'a> Checker<'a> {
         &mut self,
         entries: &[(Spanned<ExprKind>, Spanned<ExprKind>)],
         _span: ttrpg_ast::Span,
+        key_hint: Option<&Ty>,
+        val_hint: Option<&Ty>,
     ) -> Ty {
         if entries.is_empty() {
-            return Ty::Map(Box::new(Ty::Error), Box::new(Ty::Error));
+            let key_ty = key_hint.cloned().unwrap_or(Ty::Error);
+            let val_ty = val_hint.cloned().unwrap_or(Ty::Error);
+            return Ty::Map(Box::new(key_ty), Box::new(val_ty));
         }
 
-        let mut unified_key = self.check_expr(&entries[0].0);
-        let mut unified_val = self.check_expr_expecting(&entries[0].1, None);
+        let mut unified_key = self.check_expr_expecting(&entries[0].0, key_hint);
+        let mut unified_val = self.check_expr_expecting(&entries[0].1, val_hint);
 
         for (key, value) in &entries[1..] {
             let key_ty = self.check_expr_expecting(key, Some(&unified_key));

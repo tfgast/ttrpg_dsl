@@ -73,7 +73,13 @@ impl<'a> Checker<'a> {
                 self.check_list_lit(elems, expr.span, elem_hint)
             }
 
-            ExprKind::MapLit(entries) => self.check_map_lit(entries, expr.span),
+            ExprKind::MapLit(entries) => {
+                let (key_hint, val_hint) = match hint {
+                    Some(Ty::Map(k, v)) => (Some(k.as_ref()), Some(v.as_ref())),
+                    _ => (None, None),
+                };
+                self.check_map_lit(entries, expr.span, key_hint, val_hint)
+            }
 
             ExprKind::Paren(inner) => self.check_expr_expecting(inner, hint),
 

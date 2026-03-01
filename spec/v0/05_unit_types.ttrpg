@@ -209,7 +209,7 @@ unit AbstractDistance {
 // Unit types can appear in all container types:
 //
 //   let distances: list<Feet> = [30ft, 60ft, 120ft]
-//   let prices: map<string, GoldPieces> = ["sword": 15gp, "shield": 10gp]
+//   let prices: map<string, GoldPieces> = {"sword": 15gp, "shield": 10gp}
 //   let range: option<Feet> = 30ft
 //   let weights: set<Pounds> = [Pounds { pounds: 5 }, Pounds { pounds: 10 }]
 

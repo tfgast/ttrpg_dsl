@@ -9,6 +9,13 @@ impl<'a> Checker<'a> {
     /// Check a block of statements; returns the type of the block's value
     /// (the last expression-statement, or Unit if none).
     pub fn check_block(&mut self, block: &Block) -> Ty {
+        self.check_block_with_tail_hint(block, None)
+    }
+
+    /// Like `check_block`, but threads a type hint to the tail expression
+    /// so that empty collection literals can infer their type from context
+    /// (e.g. return type).
+    pub fn check_block_with_tail_hint(&mut self, block: &Block, tail_hint: Option<&Ty>) -> Ty {
         self.scope.push(BlockKind::Inner);
 
         let stmts = &block.node;
@@ -16,7 +23,11 @@ impl<'a> Checker<'a> {
 
         for (i, stmt) in stmts.iter().enumerate() {
             let is_last = i == stmts.len() - 1;
-            last_ty = self.check_stmt(stmt, is_last);
+            if is_last && tail_hint.is_some() {
+                last_ty = self.check_stmt_with_hint(stmt, is_last, tail_hint);
+            } else {
+                last_ty = self.check_stmt_with_hint(stmt, is_last, None);
+            }
         }
 
         self.scope.pop();
@@ -24,6 +35,15 @@ impl<'a> Checker<'a> {
     }
 
     pub(crate) fn check_stmt(&mut self, stmt: &Spanned<StmtKind>, is_last: bool) -> Ty {
+        self.check_stmt_with_hint(stmt, is_last, None)
+    }
+
+    fn check_stmt_with_hint(
+        &mut self,
+        stmt: &Spanned<StmtKind>,
+        is_last: bool,
+        hint: Option<&Ty>,
+    ) -> Ty {
         match &stmt.node {
             StmtKind::Let { name, ty, value } => {
                 let bind_ty = if let Some(ref type_ann) = ty {
@@ -62,7 +82,11 @@ impl<'a> Checker<'a> {
                 Ty::Unit
             }
             StmtKind::Expr(expr) => {
-                let ty = self.check_expr(expr);
+                let ty = if is_last && hint.is_some() {
+                    self.check_expr_expecting(expr, hint)
+                } else {
+                    self.check_expr(expr)
+                };
                 if is_last {
                     ty
                 } else {

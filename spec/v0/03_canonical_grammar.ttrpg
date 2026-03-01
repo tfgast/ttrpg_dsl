@@ -583,6 +583,7 @@ primary_expr    = INT | STRING
                 | IDENT
                 | struct_lit
                 | list_lit
+                | map_lit
                 | "(" expr ")"
                 | if_expr
                 | match_expr
@@ -681,6 +682,10 @@ struct_field    = IDENT ":" expr
 list_lit            = "[" (list_comprehension | list_elements)? "]"
 list_elements       = expr ("," expr)* ","?
 list_comprehension  = expr "for" pattern "in" for_source ("if" expr)?
+
+// --- Map literal ---
+map_lit             = "{" (map_entry ("," map_entry)* ","?)? "}"
+map_entry           = expr ":" expr
 
 // --- If expression ---
 //

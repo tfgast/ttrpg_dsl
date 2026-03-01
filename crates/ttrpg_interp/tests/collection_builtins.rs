@@ -1168,3 +1168,185 @@ system "test" {
         ])
     );
 }
+
+// ── map literals ───────────────────────────────────────────────
+
+#[test]
+fn map_literal_basic() {
+    let source = r#"
+system "test" {
+    derive f() -> map<string, int> {
+        {"a": 1, "b": 2}
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NoopHandler;
+
+    let val = interp
+        .evaluate_derive(&state, &mut handler, "f", vec![])
+        .unwrap();
+    let mut expected = BTreeMap::new();
+    expected.insert(Value::Str("a".into()), Value::Int(1));
+    expected.insert(Value::Str("b".into()), Value::Int(2));
+    assert_eq!(val, Value::Map(expected));
+}
+
+#[test]
+fn map_literal_empty_with_annotation() {
+    let source = r#"
+system "test" {
+    derive f() -> int {
+        let m: map<string, int> = {}
+        len(m)
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NoopHandler;
+
+    let val = interp
+        .evaluate_derive(&state, &mut handler, "f", vec![])
+        .unwrap();
+    assert_eq!(val, Value::Int(0));
+}
+
+#[test]
+fn map_literal_empty_return_type_inference() {
+    let source = r#"
+system "test" {
+    derive f() -> map<string, int> {
+        {}
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NoopHandler;
+
+    let val = interp
+        .evaluate_derive(&state, &mut handler, "f", vec![])
+        .unwrap();
+    assert_eq!(val, Value::Map(BTreeMap::new()));
+}
+
+#[test]
+fn map_literal_index_access() {
+    let source = r#"
+system "test" {
+    derive f() -> int {
+        let m = {"x": 10, "y": 20}
+        m["x"]
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NoopHandler;
+
+    let val = interp
+        .evaluate_derive(&state, &mut handler, "f", vec![])
+        .unwrap();
+    assert_eq!(val, Value::Int(10));
+}
+
+#[test]
+fn map_literal_len() {
+    let source = r#"
+system "test" {
+    derive f() -> int {
+        len({"a": 1, "b": 2, "c": 3})
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NoopHandler;
+
+    let val = interp
+        .evaluate_derive(&state, &mut handler, "f", vec![])
+        .unwrap();
+    assert_eq!(val, Value::Int(3));
+}
+
+#[test]
+fn map_literal_keys_values() {
+    let source = r#"
+system "test" {
+    derive f() -> list<string> {
+        keys({"b": 2, "a": 1})
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NoopHandler;
+
+    let val = interp
+        .evaluate_derive(&state, &mut handler, "f", vec![])
+        .unwrap();
+    // BTreeMap orders keys: "a" < "b"
+    assert_eq!(
+        val,
+        Value::List(vec![Value::Str("a".into()), Value::Str("b".into())])
+    );
+}
+
+#[test]
+fn map_literal_enum_keys() {
+    let source = r#"
+system "test" {
+    enum Ability { strength, dexterity, wisdom }
+    derive f() -> map<Ability, int> {
+        {strength: 10, dexterity: 14, wisdom: 12}
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NoopHandler;
+
+    let val = interp
+        .evaluate_derive(&state, &mut handler, "f", vec![])
+        .unwrap();
+    if let Value::Map(m) = &val {
+        assert_eq!(m.len(), 3);
+    } else {
+        panic!("expected map, got {:?}", val);
+    }
+}
+
+#[test]
+fn map_literal_trailing_comma() {
+    let source = r#"
+system "test" {
+    derive f() -> map<string, int> {
+        {
+            "x": 1,
+            "y": 2,
+        }
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NoopHandler;
+
+    let val = interp
+        .evaluate_derive(&state, &mut handler, "f", vec![])
+        .unwrap();
+    let mut expected = BTreeMap::new();
+    expected.insert(Value::Str("x".into()), Value::Int(1));
+    expected.insert(Value::Str("y".into()), Value::Int(2));
+    assert_eq!(val, Value::Map(expected));
+}

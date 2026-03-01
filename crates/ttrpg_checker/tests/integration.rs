@@ -7112,7 +7112,8 @@ system "Main" {
 
 #[test]
 fn shared_variant_ambiguous_bare_use_is_error() {
-    expect_errors(
+    // Return type hint disambiguates: `red` resolves to `Color.red` via -> Color
+    expect_no_errors(
         r#"
 system "test" {
     enum Color { red, blue }
@@ -7120,7 +7121,6 @@ system "test" {
     derive test() -> Color { red }
 }
 "#,
-        &["ambiguous variant `red`"],
     );
 }
 
@@ -7191,7 +7191,8 @@ system "test" {
 
 #[test]
 fn shared_variant_constructor_ambiguous_is_error() {
-    expect_errors(
+    // Return type hint disambiguates: `red(intensity: 5)` resolves to `Color.red` via -> Color
+    expect_no_errors(
         r#"
 system "test" {
     enum Color { red(intensity: int) }
@@ -7199,7 +7200,6 @@ system "test" {
     derive test() -> Color { red(intensity: 5) }
 }
 "#,
-        &["ambiguous variant `red`"],
     );
 }
 

@@ -315,8 +315,8 @@ impl<'a> Checker<'a> {
         self.scope.push(BlockKind::Derive);
         self.check_type_visible(&f.return_type);
         self.bind_params(&f.params);
-        let body_ty = self.check_block(&f.body);
         let ret_ty = self.env.resolve_type(&f.return_type);
+        let body_ty = self.check_block_with_tail_hint(&f.body, Some(&ret_ty));
         self.check_return_type(&body_ty, &ret_ty, f.body.span);
         self.scope.pop();
     }
@@ -325,8 +325,8 @@ impl<'a> Checker<'a> {
         self.scope.push(BlockKind::Mechanic);
         self.check_type_visible(&f.return_type);
         self.bind_params(&f.params);
-        let body_ty = self.check_block(&f.body);
         let ret_ty = self.env.resolve_type(&f.return_type);
+        let body_ty = self.check_block_with_tail_hint(&f.body, Some(&ret_ty));
         self.check_return_type(&body_ty, &ret_ty, f.body.span);
         self.scope.pop();
     }
