@@ -123,6 +123,23 @@ impl Runner {
                     self.output.push(line);
                 }
                 fields.insert(field_def.name.to_string(), val);
+            } else {
+                // Initialize collection-typed fields to empty containers
+                match &field_def.ty.node {
+                    TypeExpr::Set(_) => {
+                        fields.insert(
+                            field_def.name.to_string(),
+                            Value::Set(BTreeSet::new()),
+                        );
+                    }
+                    TypeExpr::List(_) => {
+                        fields.insert(
+                            field_def.name.to_string(),
+                            Value::List(Vec::new()),
+                        );
+                    }
+                    _ => {}
+                }
             }
         }
         Ok(())
@@ -211,6 +228,22 @@ impl Runner {
                     self.output.push(line);
                 }
                 fields.insert(field_def.name.to_string(), val);
+            } else {
+                match &field_def.ty.node {
+                    TypeExpr::Set(_) => {
+                        fields.insert(
+                            field_def.name.to_string(),
+                            Value::Set(BTreeSet::new()),
+                        );
+                    }
+                    TypeExpr::List(_) => {
+                        fields.insert(
+                            field_def.name.to_string(),
+                            Value::List(Vec::new()),
+                        );
+                    }
+                    _ => {}
+                }
             }
         }
         Ok(())

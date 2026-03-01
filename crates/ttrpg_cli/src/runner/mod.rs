@@ -1,11 +1,11 @@
 use std::cell::RefCell;
-use std::collections::{BTreeMap, HashMap, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::path::PathBuf;
 
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 
-use ttrpg_ast::ast::{AssignOp, DeclKind, FieldDef, Program, TopLevel};
+use ttrpg_ast::ast::{AssignOp, DeclKind, FieldDef, Program, TopLevel, TypeExpr};
 use ttrpg_ast::diagnostic::{Diagnostic, MultiSourceMap, Severity};
 use ttrpg_ast::module::ModuleMap;
 use ttrpg_ast::Name;
