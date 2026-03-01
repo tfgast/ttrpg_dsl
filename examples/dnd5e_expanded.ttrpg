@@ -976,10 +976,12 @@ system "D&D 5e Expanded" {
                     dying.death_save_failures += 1
                 }
             }
-            // 3 failures = death
-            // PAIN POINT: "Death" is permanent removal of the entity.  [ttrpg_dsl-bcc]
-            // The DSL has no concept of destroying entities.
-            //     if dying.death_save_failures >= 3 { destroy(dying) }
+            // RESOLVED: 3 failures = death — modeled as a condition,    [ttrpg_dsl-bcc]
+            // not entity removal. TTRPGs keep entity data for resurrection.
+            // CLI `destroy` handles host-level cleanup when truly needed.
+            if dying.death_save_failures >= 3 {
+                apply_condition(dying, Dead, Duration.indefinite)
+            }
         }
     }
 
@@ -1181,11 +1183,18 @@ system "D&D 5e Expanded" {
         }
     }
 
+    // Dead (3 death save failures — character is dead)
+    // Modeled as a condition rather than entity removal so the entity
+    // persists for resurrection spells. CLI `destroy` can clean up if needed.
+    condition Dead on bearer: Character {
+        // A condition with no modify clauses is valid — it's a state flag.
+        // Hooks/actions can check `has Dead` to gate behavior.
+    }
+
     // Stable (stabilized at 0 HP, no longer making death saves)
     condition Stable on bearer: Character {
-        // PAIN POINT: Stable doesn't modify any mechanics — it's
+        // Like Dead, Stable doesn't modify any mechanics — it's
         // purely a state flag that the turn-start hook checks.
-        // A condition with no clauses is valid but feels like misuse.
     }
 
     // --- Cost overrides ---
@@ -1394,18 +1403,20 @@ system "D&D 5e Expanded" {
     //     - Can't check "is between A and B" (flanking)
     //     - Position is opaque — only distance() is available
     //
-    //  3. NO ENTITY DESTRUCTION / LIFECYCLE                     [ttrpg_dsl-bcc]
-    //     - Can't destroy(dying) — death removes entities permanently
+    //  [RESOLVED] ENTITY DESTRUCTION / LIFECYCLE                 [ttrpg_dsl-bcc]
+    //     - "Death" modeled as condition, not entity removal
+    //     - TTRPGs keep entity data for resurrection/raise dead
+    //     - CLI `destroy` command handles host-level cleanup
     //
-    //  4. NO ENUM-ASSOCIATED DATA / LOOKUP TABLES               [ttrpg_dsl-8tu]
+    //  3. NO ENUM-ASSOCIATED DATA / LOOKUP TABLES               [ttrpg_dsl-8tu]
     //     - skill_ability is 18-branch match for static data
     //
-    //  5. NO EVENT-TRIGGERED DURATIONS                          [ttrpg_dsl-rh4]
+    //  4. NO EVENT-TRIGGERED DURATIONS                          [ttrpg_dsl-rh4]
     //     - "Until next use" (Help) and "until save" (spell effects)
     //
-    //  6. NO SPELL INSTANCE / EFFECT TRACKING                   [ttrpg_dsl-5kb]
+    //  5. NO SPELL INSTANCE / EFFECT TRACKING                   [ttrpg_dsl-5kb]
     //     - Dropping concentration can't auto-remove spell effects
     //
-    //  7. NO INTEGER RANGE / BOUNDED INT TYPES                  [ttrpg_dsl-3v8]
+    //  6. NO INTEGER RANGE / BOUNDED INT TYPES                  [ttrpg_dsl-3v8]
     //     - Can't express int(1..9) for spell slot levels
 }
