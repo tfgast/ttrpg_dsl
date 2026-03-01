@@ -515,7 +515,13 @@ hook Regenerate on creature: Character (
 //
 // Available in action, reaction, hook (blocks that can mutate):
 //   apply_condition(target: Character, cond: Condition, duration: Duration)
-//   remove_condition(target: Character, cond: Condition)
+//   remove_condition(target: Character, cond: Condition | ActiveCondition)
+//       Accepts either a Condition value (removes by name + params) or an
+//       ActiveCondition instance (removes by unique id for precise removal).
+//       Example:
+//         remove_condition(target, Prone)          // by condition name
+//         let c = conditions(target)[0]
+//         remove_condition(target, c)              // by instance id
 //
 // Available in action, reaction, hook (invocation tracking):
 //   invocation() -> Invocation

@@ -374,6 +374,9 @@ struct ActiveCondition {
 // The `id` field distinguishes multiple instances of the same condition
 // (e.g., two separate Frightened effects from different sources).
 //
+// ActiveCondition values are accepted by `remove_condition()` for precise
+// id-based removal — see the builtins section in 02_scoping.ttrpg.
+//
 // Condition parameters (e.g., the `source` in `Frightened(source: attacker)`)
 // are not exposed as fields in v0. Access to heterogeneous parameter
 // fields requires a future type-system extension.
