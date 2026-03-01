@@ -556,6 +556,7 @@ pub enum TypeExpr {
     Duration,
     Position,
     Condition,
+    ActiveCondition,
     Invocation,
     Named(Name),
     Qualified { qualifier: Name, name: Name },
