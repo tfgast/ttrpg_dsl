@@ -931,10 +931,10 @@ system "D&D 5e Expanded" {
         damage_type: DamageType
     ) {}
 
-    // PARTIALLY RESOLVED: `emit` statement lets DSL code fire events  [ttrpg_dsl-clo]
-    // inline (see Attack/Fireball above). The host no longer needs to
-    // fire takes_damage manually. Remaining gap: HP mutations don't
-    // auto-emit events — the DSL author must write `emit` explicitly.
+    // RESOLVED: `emit` works in actions, reactions, and hooks.         [ttrpg_dsl-clo]
+    // OpportunityAttack now emits takes_damage directly. Remaining gap:
+    // HP mutations don't auto-emit events — the DSL author writes `emit`
+    // explicitly. Depth-limited cascades (max 16) prevent infinite loops.
 
 
     // ========================================================
@@ -997,8 +997,12 @@ system "D&D 5e Expanded" {
             match result {
                 hit(amount) => {
                     trigger.entity.HP -= amount
-                    // NOTE: emit is only allowed in action context, so reactions
-                    // still rely on the host to fire takes_damage events.
+                    emit takes_damage(
+                        reactor: trigger.entity,
+                        source: reactor,
+                        amount: amount,
+                        damage_type: reactor.equipped_weapon.damage.type
+                    )
                 },
                 miss => {}
             }
@@ -1327,10 +1331,10 @@ system "D&D 5e Expanded" {
     //  [RESOLVED] EMIT STATEMENT FOR INLINE EVENT FIRING          [ttrpg_dsl-wbic]
     //     - `emit EventName(param: expr, ...)` fires events from DSL code
     //     - Matching hooks auto-execute inline at the emit site
-    //     - Attack/Fireball now emit takes_damage after HP mutation
-    //     - Host no longer needs to manually fire events for actions
-    //     (Remaining gap: mutations don't auto-emit — emit is explicit;
-    //      emit restricted to action context — reactions still need host)
+    //     - Allowed in actions, reactions, AND hooks (depth-limited to 16)
+    //     - Attack/Fireball/OpportunityAttack all emit takes_damage
+    //     - Hook cascades: emit in hook fires another hook chain
+    //     (Remaining gap: mutations don't auto-emit — emit is explicit)
     //
     //  [RESOLVED] TOP-LEVEL GROUPS AND INCLUDE                    [ttrpg_dsl-zzx4]
     //     - `group Name { ... }` as top-level declaration
@@ -1407,7 +1411,7 @@ system "D&D 5e Expanded" {
     //  REMAINING language gaps:
     //
     //  1. NO FULLY AUTOMATIC EVENT EMISSION                     [ttrpg_dsl-clo]
-    //     - `emit` solves manual host-side firing (see [RESOLVED] above)
+    //     - `emit` works in actions, reactions, and hooks (see [RESOLVED])
     //     - Remaining: HP mutations don't auto-emit — DSL author writes emit
     //     - Would want: `HP: resource(...) { on_decrease => emit ... }`
     //
