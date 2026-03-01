@@ -116,6 +116,16 @@ pub(crate) fn eval_call(
                 if let Some(DeclInfo::Enum(_)) = env.interp.type_env.types.get(obj_name.as_str()) {
                     return construct_enum_variant(env, obj_name, field, args, call_span);
                 }
+                // Module alias-qualified call: Alias.function(args)
+                if env
+                    .interp
+                    .type_env
+                    .system_aliases
+                    .values()
+                    .any(|aliases| aliases.contains_key(obj_name.as_str()))
+                {
+                    return dispatch_alias_call(env, field, args, call_span);
+                }
             }
             // Action method call: entity.Action(args)
             if let Some(fn_info) = env.interp.type_env.lookup_fn(field) {
@@ -127,6 +137,10 @@ pub(crate) fn eval_call(
             }
             // Method call: evaluate the object and dispatch
             let object_val = eval_expr(env, object)?;
+            // Enum namespace from chained alias access (e.g., Core.Ability.STR(payload: v))
+            if let Value::EnumNamespace(ref enum_name) = object_val {
+                return construct_enum_variant(env, enum_name, field, args, call_span);
+            }
             eval_method_call(env, object_val, field, args, call_span)
         }
 
@@ -135,6 +149,55 @@ pub(crate) fn eval_call(
             call_span,
         )),
     }
+}
+
+// ── Module alias call dispatch ─────────────────────────────────
+
+/// Dispatch a call through a module alias: `Alias.name(args)`.
+///
+/// The checker validated that `name` exists in the target system.
+/// At runtime, all declarations are in a flat global namespace,
+/// so we look up `name` directly as a condition, function, or
+/// variant constructor.
+fn dispatch_alias_call(
+    env: &mut Env,
+    name: &str,
+    args: &[Arg],
+    call_span: Span,
+) -> Result<Value, RuntimeError> {
+    // 1. Condition call (e.g., Core.Frightened(source: attacker))
+    if let Some(cond_decl) = env.interp.program.conditions.get(name) {
+        let cond_decl = cond_decl.clone();
+        let param_infos = env
+            .interp
+            .type_env
+            .conditions
+            .get(name)
+            .map(|ci| ci.params.clone())
+            .unwrap_or_default();
+        let bound = bind_args(&param_infos, args, Some(&cond_decl.params), env, call_span)?;
+        let cond_args: BTreeMap<Name, Value> = bound.into_iter().collect();
+        return Ok(Value::Condition {
+            name: Name::from(name),
+            args: cond_args,
+        });
+    }
+
+    // 2. Function call (e.g., Core.modifier(10))
+    if let Some(fn_info) = env.interp.type_env.lookup_fn(name) {
+        let fn_info = fn_info.clone();
+        return dispatch_fn(env, &fn_info, args, call_span);
+    }
+
+    // 3. Variant constructor (e.g., Core.rounds(value: 3))
+    if let Some(enum_name) = env.interp.type_env.unique_variant_owner(name).cloned() {
+        return construct_enum_variant(env, &enum_name, &Name::from(name), args, call_span);
+    }
+
+    Err(RuntimeError::with_span(
+        format!("no function, condition, or variant '{}' in module alias", name),
+        call_span,
+    ))
 }
 
 // ── Function dispatch by kind ──────────────────────────────────

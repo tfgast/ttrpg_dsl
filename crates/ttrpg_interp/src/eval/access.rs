@@ -93,6 +93,70 @@ pub(super) fn eval_field_access(
             )),
         },
 
+        // Module alias field access: Alias.Name → resolve in global namespace
+        Value::ModuleAlias(_alias_name) => {
+            // The checker validated that `field` exists in the target system.
+            // At runtime, all declarations are in a flat global namespace,
+            // so we look up `field` directly.
+
+            // 1. Enum type → produce EnumNamespace for further chaining
+            if let Some(DeclInfo::Enum(_)) = env.interp.type_env.types.get(field) {
+                return Ok(Value::EnumNamespace(Name::from(field)));
+            }
+
+            // 2. Bare enum variant
+            let resolved_variant = env
+                .interp
+                .type_env
+                .resolved_variants
+                .get(&expr.span)
+                .cloned()
+                .or_else(|| env.interp.type_env.unique_variant_owner(field).cloned());
+            if let Some(enum_name) = resolved_variant {
+                if let Some(DeclInfo::Enum(enum_info)) =
+                    env.interp.type_env.types.get(enum_name.as_str())
+                {
+                    if let Some(variant) = enum_info.variants.iter().find(|v| v.name == field) {
+                        if variant.fields.is_empty() {
+                            return Ok(Value::EnumVariant {
+                                enum_name,
+                                variant: Name::from(field),
+                                fields: BTreeMap::new(),
+                            });
+                        }
+                        return Err(RuntimeError::with_span(
+                            format!(
+                                "variant '{}.{}' has fields and must be called as a constructor",
+                                enum_name, field
+                            ),
+                            expr.span,
+                        ));
+                    }
+                }
+            }
+
+            // 3. Condition reference (bare use → materialize defaults)
+            if let Some(cond_decl) = env.interp.program.conditions.get(field) {
+                let cond_decl = cond_decl.clone();
+                let mut args = BTreeMap::new();
+                for param in &cond_decl.params {
+                    if let Some(ref default_expr) = param.default {
+                        let val = eval_expr(env, default_expr)?;
+                        args.insert(param.name.clone(), val);
+                    }
+                }
+                return Ok(Value::Condition {
+                    name: Name::from(field),
+                    args,
+                });
+            }
+
+            Err(RuntimeError::with_span(
+                format!("no type, variant, or condition '{}' in module alias", field),
+                expr.span,
+            ))
+        }
+
         // Qualified enum variant access: EnumType.variant
         Value::EnumNamespace(enum_name) => {
             if let Some(DeclInfo::Enum(enum_info)) =

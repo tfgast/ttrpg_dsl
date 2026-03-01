@@ -160,6 +160,12 @@ pub enum Value {
     /// access (e.g., `Duration.rounds`). Not a user-facing value — only
     /// produced by `eval_ident` when an identifier resolves to an enum type.
     EnumNamespace(Name),
+
+    /// Internal: a module alias name used as a namespace for qualified
+    /// access (e.g., `Core.Ability`, `Core.modifier()`). Not a user-facing
+    /// value — only produced by `eval_ident` when an identifier resolves
+    /// to a module alias via `system_aliases`.
+    ModuleAlias(Name),
 }
 
 /// Builds the default 5e turn budget as a `Value::Struct`.
@@ -222,6 +228,7 @@ fn discriminant(v: &Value) -> u8 {
         Value::Condition { .. } => 15,
         Value::Invocation(_) => 16,
         Value::EnumNamespace(_) => 17,
+        Value::ModuleAlias(_) => 18,
     }
 }
 
@@ -278,6 +285,7 @@ impl PartialEq for Value {
             }
             (Value::Invocation(a), Value::Invocation(b)) => a == b,
             (Value::EnumNamespace(a), Value::EnumNamespace(b)) => a == b,
+            (Value::ModuleAlias(a), Value::ModuleAlias(b)) => a == b,
             _ => false,
         }
     }
@@ -350,6 +358,7 @@ impl Ord for Value {
             }
             (Value::Invocation(a), Value::Invocation(b)) => a.0.cmp(&b.0),
             (Value::EnumNamespace(a), Value::EnumNamespace(b)) => a.cmp(b),
+            (Value::ModuleAlias(a), Value::ModuleAlias(b)) => a.cmp(b),
             // Same discriminant guarantees same variant.
             _ => unreachable!(),
         }
@@ -461,6 +470,7 @@ impl std::hash::Hash for Value {
             }
             Value::Invocation(v) => v.0.hash(state),
             Value::EnumNamespace(v) => v.hash(state),
+            Value::ModuleAlias(v) => v.hash(state),
         }
     }
 }
@@ -511,6 +521,7 @@ pub fn value_matches_ty(val: &Value, ty: &Ty, state: &dyn StateProvider) -> bool
         (Value::EnumVariant { enum_name, .. }, Ty::Duration) => enum_name == "Duration",
         (Value::Condition { .. }, Ty::Condition) => true,
         (Value::Invocation(_), Ty::Invocation) => true,
+        (Value::ModuleAlias(_), _) => false,
         _ => false,
     }
 }
@@ -536,6 +547,7 @@ pub fn value_type_display(val: &Value) -> String {
         Value::Condition { .. } => "Condition".into(),
         Value::Invocation(_) => "Invocation".into(),
         Value::EnumNamespace(name) => format!("{}(namespace)", name),
+        Value::ModuleAlias(name) => format!("{}(module alias)", name),
     }
 }
 

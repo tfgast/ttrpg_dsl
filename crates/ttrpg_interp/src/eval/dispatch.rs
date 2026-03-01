@@ -267,7 +267,18 @@ fn eval_ident(env: &mut Env, name: &str, expr: &Spanned<ExprKind>) -> Result<Val
         }
     }
 
-    // 4. Check if it's a condition name (bare use = no args, but materialize defaults)
+    // 4. Check if it's a module alias (e.g., `Core` from `use "..." as Core`)
+    if env
+        .interp
+        .type_env
+        .system_aliases
+        .values()
+        .any(|aliases| aliases.contains_key(name))
+    {
+        return Ok(Value::ModuleAlias(Name::from(name)));
+    }
+
+    // 5. Check if it's a condition name (bare use = no args, but materialize defaults)
     if let Some(cond_decl) = env.interp.program.conditions.get(name) {
         let cond_decl = cond_decl.clone();
         let mut args = BTreeMap::new();

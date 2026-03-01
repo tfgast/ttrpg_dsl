@@ -2981,11 +2981,8 @@ system "Game" {
 
 #[test]
 fn module_qualified_enum_variant_via_alias() {
-    // Qualified variant access: `Core.Ability.STR`
-    // NOTE: Expression-position qualified access via module aliases is
-    // checked and typed correctly, but the interpreter does not yet
-    // resolve module aliases at runtime. This test verifies the checker
-    // accepts the syntax; runtime evaluation is a known gap.
+    // Qualified variant access via alias at runtime:
+    // Core.Ability → enum namespace, Core.Ability.STR → variant
     let dir = multi_file_dir("mod_qualified_variant");
     let core = dir.join("core.ttrpg");
     std::fs::write(
@@ -3005,8 +3002,8 @@ system "Core" {
 use "Core" as Core
 
 system "Game" {
-    // Use unqualified access (works because `use` imports all names)
-    derive get_ability() -> Ability { STR }
+    // Qualified access through module alias
+    derive get_ability() -> Ability { Core.Ability.STR }
 }
 "#,
     )
@@ -3027,12 +3024,7 @@ system "Game" {
 
 #[test]
 fn module_qualified_function_call_via_alias() {
-    // Qualified function call: `Core.modifier(10)`
-    // NOTE: Expression-position qualified access via module aliases is
-    // checked and typed correctly, but the interpreter does not yet
-    // resolve module aliases at runtime. This test uses unqualified
-    // access (which works via `use` imports) and verifies the checker
-    // accepts the qualified type. Runtime qualified calls are a known gap.
+    // Qualified function call at runtime: Core.modifier(14) → 2
     let dir = multi_file_dir("mod_qualified_fn");
     let core = dir.join("core.ttrpg");
     std::fs::write(
@@ -3049,11 +3041,11 @@ system "Core" {
     std::fs::write(
         &game,
         r#"
-use "Core"
+use "Core" as Core
 
 system "Game" {
-    // Unqualified call — works because `use` imports all names
-    derive test_mod() -> int { modifier(14) }
+    // Qualified call through module alias
+    derive test_mod() -> int { Core.modifier(14) }
 }
 "#,
     )
@@ -3236,6 +3228,186 @@ system "Main" { derive test_fn() -> int { 0 } }
         result.is_err(),
         "alias colliding with builtin should error"
     );
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn module_alias_bare_variant_via_alias() {
+    // Bare variant through alias: Core.fire where fire is a unique variant
+    let dir = multi_file_dir("mod_alias_bare_variant");
+    let core = dir.join("core.ttrpg");
+    std::fs::write(
+        &core,
+        r#"
+system "Core" {
+    enum DamageType { fire, cold, lightning }
+}
+"#,
+    )
+    .unwrap();
+
+    let game = dir.join("game.ttrpg");
+    std::fs::write(
+        &game,
+        r#"
+use "Core" as C
+
+system "Game" {
+    derive get_dmg() -> DamageType { C.fire }
+}
+"#,
+    )
+    .unwrap();
+
+    let mut runner = Runner::new();
+    runner
+        .exec(&format!("load {} {}", core.display(), game.display()))
+        .unwrap();
+    runner.take_output();
+
+    runner.exec("eval get_dmg()").unwrap();
+    let output = runner.take_output();
+    assert_eq!(output, vec!["DamageType.fire"]);
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn module_alias_condition_ref_via_alias() {
+    // Condition reference through alias: Core.Prone
+    let dir = multi_file_dir("mod_alias_condition");
+    let core = dir.join("core.ttrpg");
+    std::fs::write(
+        &core,
+        r#"
+system "Core" {
+    entity Character { HP: int }
+    condition Prone on bearer: Character { }
+}
+"#,
+    )
+    .unwrap();
+
+    let game = dir.join("game.ttrpg");
+    std::fs::write(
+        &game,
+        r#"
+use "Core" as Core
+
+system "Game" {
+    derive get_cond() -> Condition { Core.Prone }
+}
+"#,
+    )
+    .unwrap();
+
+    let mut runner = Runner::new();
+    runner
+        .exec(&format!("load {} {}", core.display(), game.display()))
+        .unwrap();
+    runner.take_output();
+
+    runner.exec("eval get_cond()").unwrap();
+    let output = runner.take_output();
+    assert_eq!(output, vec!["Condition(Prone)"]);
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn module_alias_condition_call_via_alias() {
+    // Parameterized condition call through alias: Core.Frightened(source: x)
+    // Tests that alias-qualified condition constructors work at runtime.
+    let dir = multi_file_dir("mod_alias_cond_call");
+    let core = dir.join("core.ttrpg");
+    std::fs::write(
+        &core,
+        r#"
+system "Core" {
+    entity Character { HP: int }
+    condition Frightened(source: Character) on bearer: Character { }
+}
+"#,
+    )
+    .unwrap();
+
+    let game = dir.join("game.ttrpg");
+    std::fs::write(
+        &game,
+        r#"
+use "Core" as Core
+
+system "Game" {
+    // Derive that returns a condition constructed through alias
+    derive make_fright(src: Character) -> Condition {
+        Core.Frightened(source: src)
+    }
+}
+"#,
+    )
+    .unwrap();
+
+    let mut runner = Runner::new();
+    runner
+        .exec(&format!("load {} {}", core.display(), game.display()))
+        .unwrap();
+    runner.take_output();
+
+    runner
+        .exec("spawn Character villain { HP: 30 }")
+        .unwrap();
+    runner.take_output();
+
+    runner.exec("eval make_fright(villain)").unwrap();
+    let output = runner.take_output();
+    assert!(
+        output[0].contains("Frightened"),
+        "should produce Frightened condition, got: {:?}",
+        output
+    );
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn module_alias_variant_constructor_via_alias() {
+    // Enum variant constructor through alias: Core.Duration.rounds(value: 3)
+    let dir = multi_file_dir("mod_alias_variant_ctor");
+    let core = dir.join("core.ttrpg");
+    std::fs::write(
+        &core,
+        r#"
+system "Core" {
+    enum Duration { indefinite, rounds(value: int) }
+}
+"#,
+    )
+    .unwrap();
+
+    let game = dir.join("game.ttrpg");
+    std::fs::write(
+        &game,
+        r#"
+use "Core" as Core
+
+system "Game" {
+    // Derive that uses 2-level alias-qualified variant constructor
+    derive make_duration() -> Duration { Core.Duration.rounds(value: 3) }
+}
+"#,
+    )
+    .unwrap();
+
+    let mut runner = Runner::new();
+    runner
+        .exec(&format!("load {} {}", core.display(), game.display()))
+        .unwrap();
+    runner.take_output();
+
+    runner.exec("eval make_duration()").unwrap();
+    let output = runner.take_output();
+    assert_eq!(output, vec!["Duration.rounds(value: 3)"]);
 
     std::fs::remove_dir_all(&dir).ok();
 }
