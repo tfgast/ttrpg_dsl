@@ -9,6 +9,11 @@ pub struct Parser {
     pos: usize,
     file: FileId,
     diagnostics: Vec<Diagnostic>,
+    /// When true, `is_struct_lit_start()` returns false. Set while parsing
+    /// if-conditions, for-sources, and match-scrutinees to prevent `IDENT {}`
+    /// from being misinterpreted as a struct literal when `{}` is really the
+    /// body block of the enclosing construct.
+    pub(crate) restrict_struct_lit: bool,
 }
 
 impl Parser {
@@ -19,6 +24,7 @@ impl Parser {
             pos: 0,
             file,
             diagnostics: Vec::new(),
+            restrict_struct_lit: false,
         }
     }
 
@@ -173,6 +179,16 @@ impl Parser {
                 i += 1;
             }
         }
+    }
+
+    /// Save the current token position for backtracking.
+    pub(crate) fn save_pos(&self) -> usize {
+        self.pos
+    }
+
+    /// Restore a previously saved token position.
+    pub(crate) fn restore_pos(&mut self, pos: usize) {
+        self.pos = pos;
     }
 
     pub(crate) fn start_span(&self) -> usize {

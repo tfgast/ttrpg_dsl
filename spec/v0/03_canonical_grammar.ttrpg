@@ -39,7 +39,9 @@
 //      Suppressing NL after `>` would merge a field like
 //      `properties: set<WeaponProperty>` with the next line.
 //      The multi-character forms `>=` and `<=` still suppress.
-//   3. After {  ,  and  : — NL is suppressed.
+//   3. After {  ,  :  |  and  # — NL is suppressed.
+//      `|` is needed for disjunctive `with` constraints across lines.
+//      `#` is needed for multi-line tag annotation lists.
 //
 // That's it — three rules, all suppression, no insertion.
 // The lexer never injects tokens.
@@ -54,7 +56,8 @@
 //   Contextual / soft (lexed as IDENT, recognized by parser in position):
 //     system  use  group  enum  struct  entity  derive  mechanic  action
 //     reaction  hook  condition  prompt  option  event  move  cost  tag
-//     requires  resolve  modify  suppress  trigger  roll  on
+//     table  unit  suffix
+//     requires  resolve  modify  suppress  trigger  roll  on  returns
 //     when  enabled  hint  suggest  description  default  result
 //     with  has  include  as  grant  revoke  emit  free  ordered
 //
@@ -121,7 +124,7 @@
 
 program         = top_level* EOF
 top_level       = use_decl | system_block
-use_decl        = "use" STRING term
+use_decl        = "use" STRING ("as" IDENT)? term
 system_block    = "system" STRING "{" decl* "}"
 
 
@@ -146,14 +149,17 @@ decl            = enum_decl
                 | move_decl          // PbtA sugar (desugars to mechanic + action)
 
 // --- Tag declaration ---
-tag_decl        = "tag" "#" IDENT term
+tag_decl        = "tag" "#"? IDENT term
+// The `#` is optional in the declaration; both `tag #Attack` and
+// `tag Attack` are accepted. The `#` prefix is required when using
+// the tag on a declaration: `derive foo() -> int #Attack { ... }`.
 
 // Tags are metadata labels attached to derives, mechanics, and actions.
 // A tag must be declared before it can be used on a declaration.
 // See 02_scoping.ttrpg for usage details.
 
 // --- Enum ---
-enum_decl       = "enum" IDENT "{" enum_variants "}"
+enum_decl       = "enum" IDENT "ordered"? "{" enum_variants "}"
 enum_variants   = enum_variant (("," | NL) enum_variant)* ","?
 enum_variant    = IDENT                             // no data:  STR, miss
                 | IDENT "(" field_list ")"          // with data: hit(amount: int)
@@ -267,17 +273,19 @@ trigger_binding  = IDENT ":" expr                   // e.g., reactor: reactor
 
 // --- Hook (mandatory triggered action, no cost, not suppressible) ---
 hook_decl       = "hook" IDENT "on" IDENT ":" constrained_type
-                      "(" "trigger" ":" trigger_expr ")" "{"
-                      resolve_block
-                  "}"
+                      "(" "trigger" ":" trigger_expr ")" block
 
 // Hooks share the trigger_expr syntax with reactions.
 // Unlike reactions, hooks have NO cost clause and cannot be
 // suppressed by conditions. When the trigger event fires and
 // the trigger bindings match, the hook always executes.
+//
+// Hook bodies are plain blocks (no `resolve` keyword needed).
+// Since hooks have no cost or requires clauses, the outer
+// wrapping is unnecessary — the block IS the resolve body.
 
 // --- Event (declares the shape of a trigger event) ---
-event_decl      = "event" IDENT "(" params ")" "{" field_def* "}"
+event_decl      = "event" IDENT "(" params ")" ("{" field_defs "}")? term
 
 // --- Condition (declarative modifiers, has receiver, no mutation) ---
 condition_decl  = "condition" IDENT params? extends_clause?
@@ -286,11 +294,16 @@ extends_clause  = "extends" IDENT ("," IDENT)*
 
 condition_clause = modify_clause | suppress_clause
 
-modify_clause   = "modify" mechanic_ref "(" modify_bindings ")" modify_body
-                | "modify" IDENT "." "cost" "(" modify_bindings ")" cost_modify_body
-mechanic_ref    = IDENT                             // name of target mechanic/derive
+modify_clause   = "modify" modify_target "(" modify_bindings? ")" modify_body
+                | "modify" IDENT "." "cost" "(" modify_bindings? ")" cost_modify_body
+modify_target   = IDENT                             // name of target mechanic/derive
+                | "[" selector_pred ("," selector_pred)* ","? "]"  // selector
+selector_pred   = "#" IDENT                          // tag predicate
+                | "returns" type                     // return type predicate
+                | "has" IDENT (":" type)?            // param predicate
 modify_bindings = modify_binding ("," modify_binding)* ","?
 modify_binding  = IDENT ":" expr                    // e.g., attacker: bearer
+                | IDENT ":" "_"                     // wildcard (matches any value)
 modify_body     = "{" modify_stmt* "}"
 modify_stmt     = "let" IDENT (":" type)? "=" expr term   // local binding (either phase)
                 | IDENT "=" expr term                // Phase 1: override input parameter
@@ -693,7 +706,17 @@ map_entry           = expr ":" expr
 //   - With else:    type is the common type of both branches.
 //   - Without else: type is unit. Can appear as expr_stmt but not
 //                   in value-returning positions (type checker enforces).
+//
+// The `else` keyword may appear on a new line after the then-block's `}`.
+// The parser looks past newlines to find `else`; if no `else` follows,
+// the newlines are unconsumed (available as statement terminators).
+//
+// Note: struct literal disambiguation. In `if expr {` and `for pat in expr {`,
+// the parser disables the struct-literal heuristic for `expr` so that
+// `if x {}` is parsed as `if (x) {}`, not `if (x {}) ???`. Struct literals
+// inside sub-expressions (parens, brackets, function args) are unaffected.
 if_expr         = "if" expr block ("else" (block | if_expr))?
+                | "if" "let" pattern "=" expr block ("else" (block | if_expr))?
 
 // --- Has expression (optional group presence check) ---
 //
@@ -729,7 +752,8 @@ match_expr      = pattern_match | guard_match
 pattern_match   = "match" expr "{" pattern_arm (("," | NL) pattern_arm)* ","? "}"
 pattern_arm     = pattern "=>" (expr | block)
 pattern         = "_"                                             // wildcard
-                | INT | STRING | "true" | "false"                 // literal
+                | "-"? INT | STRING | "true" | "false" | "none"   // literal (none for option<T>)
+                | "some" "(" pattern ")"                          // option destructure
                 | IDENT "." IDENT                                 // qualified variant
                 | IDENT "." IDENT "(" (pattern ("," pattern)* ","?)? ")" // qualified destructure
                 | IDENT "(" (pattern ("," pattern)* ","?)? ")"         // bare destructure

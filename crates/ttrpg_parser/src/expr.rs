@@ -9,6 +9,17 @@ impl Parser {
         self.parse_or_expr()
     }
 
+    /// Parse an expression with struct-literal disambiguation disabled.
+    /// Used in if-conditions, for-sources, and match-scrutinees where
+    /// `IDENT {}` should be interpreted as expression + block body.
+    pub(crate) fn parse_expr_no_struct(&mut self) -> Result<Spanned<ExprKind>, ()> {
+        let saved = self.restrict_struct_lit;
+        self.restrict_struct_lit = true;
+        let result = self.parse_or_expr();
+        self.restrict_struct_lit = saved;
+        result
+    }
+
     // ── Precedence levels ────────────────────────────────────────
 
     fn parse_or_expr(&mut self) -> Result<Spanned<ExprKind>, ()> {
@@ -212,7 +223,11 @@ impl Parser {
                 }
                 TokenKind::LBracket => {
                     self.advance();
+                    // Struct lits are allowed inside index brackets
+                    let saved = self.restrict_struct_lit;
+                    self.restrict_struct_lit = false;
                     let index = self.parse_expr()?;
+                    self.restrict_struct_lit = saved;
                     self.expect(&TokenKind::RBracket)?;
                     expr = Spanned::new(
                         ExprKind::Index {
@@ -224,11 +239,15 @@ impl Parser {
                 }
                 TokenKind::LParen => {
                     self.advance();
+                    // Struct lits are allowed inside call parens
+                    let saved = self.restrict_struct_lit;
+                    self.restrict_struct_lit = false;
                     let args = if matches!(self.peek(), TokenKind::RParen) {
                         vec![]
                     } else {
                         self.parse_arg_list()?
                     };
+                    self.restrict_struct_lit = saved;
                     self.expect(&TokenKind::RParen)?;
                     expr = Spanned::new(
                         ExprKind::Call {
@@ -304,65 +323,12 @@ impl Parser {
             }
 
             TokenKind::LBracket => {
-                // List literal or list comprehension: [ expr, ... ] or [ expr for pattern in iterable if cond ]
-                self.advance();
-                if matches!(self.peek(), TokenKind::RBracket) {
-                    // Empty list: []
-                    self.advance();
-                    return Ok(Spanned::new(
-                        ExprKind::ListLit(vec![]),
-                        self.end_span(start),
-                    ));
-                }
-                let first = self.parse_expr()?;
-                if matches!(self.peek(), TokenKind::For) {
-                    // List comprehension: [expr for pattern in iterable (if cond)?]
-                    self.advance(); // consume `for`
-                    let pattern = self.parse_pattern()?;
-                    self.expect(&TokenKind::In)?;
-                    let iter_first = self.parse_expr()?;
-                    let iterable = if matches!(self.peek(), TokenKind::DotDot | TokenKind::DotDotEq)
-                    {
-                        let inclusive = matches!(self.peek(), TokenKind::DotDotEq);
-                        self.advance();
-                        let end = self.parse_expr()?;
-                        ForIterable::Range {
-                            start: Box::new(iter_first),
-                            end: Box::new(end),
-                            inclusive,
-                        }
-                    } else {
-                        ForIterable::Collection(Box::new(iter_first))
-                    };
-                    let filter = if matches!(self.peek(), TokenKind::If) {
-                        self.advance();
-                        Some(Box::new(self.parse_expr()?))
-                    } else {
-                        None
-                    };
-                    self.expect(&TokenKind::RBracket)?;
-                    Ok(Spanned::new(
-                        ExprKind::ListComprehension {
-                            element: Box::new(first),
-                            pattern: Box::new(pattern),
-                            iterable,
-                            filter,
-                        },
-                        self.end_span(start),
-                    ))
-                } else {
-                    // Regular list literal
-                    let mut items = vec![first];
-                    while matches!(self.peek(), TokenKind::Comma) {
-                        self.advance();
-                        if matches!(self.peek(), TokenKind::RBracket) {
-                            break; // trailing comma
-                        }
-                        items.push(self.parse_expr()?);
-                    }
-                    self.expect(&TokenKind::RBracket)?;
-                    Ok(Spanned::new(ExprKind::ListLit(items), self.end_span(start)))
-                }
+                // List literal or list comprehension — struct lits allowed inside
+                let saved_restrict = self.restrict_struct_lit;
+                self.restrict_struct_lit = false;
+                let result = self.parse_list_or_comprehension(start);
+                self.restrict_struct_lit = saved_restrict;
+                result
             }
 
             TokenKind::LBrace => {
@@ -398,9 +364,12 @@ impl Parser {
             }
 
             TokenKind::LParen => {
-                // Parenthesized expr
+                // Parenthesized expr — struct lits are allowed inside parens
                 self.advance();
+                let saved = self.restrict_struct_lit;
+                self.restrict_struct_lit = false;
                 let inner = self.parse_expr()?;
+                self.restrict_struct_lit = saved;
                 self.expect(&TokenKind::RParen)?;
                 Ok(Spanned::new(
                     ExprKind::Paren(Box::new(inner)),
@@ -421,9 +390,80 @@ impl Parser {
         }
     }
 
+    fn parse_list_or_comprehension(
+        &mut self,
+        start: usize,
+    ) -> Result<Spanned<ExprKind>, ()> {
+        self.advance(); // consume [
+        if matches!(self.peek(), TokenKind::RBracket) {
+            // Empty list: []
+            self.advance();
+            return Ok(Spanned::new(
+                ExprKind::ListLit(vec![]),
+                self.end_span(start),
+            ));
+        }
+        let first = self.parse_expr()?;
+        if matches!(self.peek(), TokenKind::For) {
+            // List comprehension: [expr for pattern in iterable (if cond)?]
+            self.advance(); // consume `for`
+            let pattern = self.parse_pattern()?;
+            self.expect(&TokenKind::In)?;
+            let iter_first = self.parse_expr()?;
+            let iterable = if matches!(self.peek(), TokenKind::DotDot | TokenKind::DotDotEq) {
+                let inclusive = matches!(self.peek(), TokenKind::DotDotEq);
+                self.advance();
+                let end = self.parse_expr()?;
+                ForIterable::Range {
+                    start: Box::new(iter_first),
+                    end: Box::new(end),
+                    inclusive,
+                }
+            } else {
+                ForIterable::Collection(Box::new(iter_first))
+            };
+            let filter = if matches!(self.peek(), TokenKind::If) {
+                self.advance();
+                Some(Box::new(self.parse_expr()?))
+            } else {
+                None
+            };
+            self.expect(&TokenKind::RBracket)?;
+            Ok(Spanned::new(
+                ExprKind::ListComprehension {
+                    element: Box::new(first),
+                    pattern: Box::new(pattern),
+                    iterable,
+                    filter,
+                },
+                self.end_span(start),
+            ))
+        } else {
+            // Regular list literal
+            let mut items = vec![first];
+            while matches!(self.peek(), TokenKind::Comma) {
+                self.advance();
+                if matches!(self.peek(), TokenKind::RBracket) {
+                    break; // trailing comma
+                }
+                items.push(self.parse_expr()?);
+            }
+            self.expect(&TokenKind::RBracket)?;
+            Ok(Spanned::new(
+                ExprKind::ListLit(items),
+                self.end_span(start),
+            ))
+        }
+    }
+
     /// Check if current IDENT + `{` looks like a struct literal.
     /// Heuristic: IDENT { IDENT : ... } or IDENT { }
     fn is_struct_lit_start(&self) -> bool {
+        // Disabled in if-condition, for-source, and match-scrutinee contexts
+        // where `IDENT {}` should be interpreted as expression + block body.
+        if self.restrict_struct_lit {
+            return false;
+        }
         if !matches!(self.peek(), TokenKind::Ident(_)) {
             return false;
         }
@@ -516,7 +556,7 @@ impl Parser {
             return self.parse_if_let_expr(start);
         }
 
-        let condition = self.parse_expr()?;
+        let condition = self.parse_expr_no_struct()?;
         let then_block = self.parse_block()?;
         let else_branch = self.parse_else_branch()?;
         Ok(Spanned::new(
@@ -548,6 +588,10 @@ impl Parser {
     }
 
     fn parse_else_branch(&mut self) -> Result<Option<ElseBranch>, ()> {
+        // Allow newline(s) between `}` and `else`. If no `else` follows,
+        // restore position so the NL can serve as a statement terminator.
+        let saved_pos = self.save_pos();
+        self.skip_newlines();
         if matches!(self.peek(), TokenKind::Else) {
             self.advance();
             if matches!(self.peek(), TokenKind::If) {
@@ -558,6 +602,7 @@ impl Parser {
                 Ok(Some(ElseBranch::Block(block)))
             }
         } else {
+            self.restore_pos(saved_pos);
             Ok(None)
         }
     }
@@ -577,7 +622,7 @@ impl Parser {
     }
 
     fn parse_pattern_match(&mut self, start: usize) -> Result<Spanned<ExprKind>, ()> {
-        let scrutinee = self.parse_expr()?;
+        let scrutinee = self.parse_expr_no_struct()?;
         self.expect(&TokenKind::LBrace)?;
 
         let mut arms = Vec::new();
@@ -690,9 +735,11 @@ impl Parser {
         let pattern = self.parse_pattern()?;
         self.expect(&TokenKind::In)?;
 
-        // Parse the first expression. Since `..` is not an expression
+        // Parse the source expression. Since `..` is not an expression
         // operator, parse_expr() naturally stops before it.
-        let first = self.parse_expr()?;
+        // Use no-struct mode so `for x in items {}` doesn't parse
+        // `items {}` as a struct literal.
+        let first = self.parse_expr_no_struct()?;
 
         let iterable = if matches!(self.peek(), TokenKind::DotDot | TokenKind::DotDotEq) {
             let inclusive = matches!(self.peek(), TokenKind::DotDotEq);
