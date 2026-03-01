@@ -673,6 +673,7 @@ mod tests {
                     },
                 ],
                 fields: vec![],
+                builtin: false,
             },
         );
 
@@ -772,6 +773,7 @@ mod tests {
                     },
                 ],
                 fields: vec![],
+                builtin: false,
             },
         );
 
@@ -895,6 +897,7 @@ mod tests {
                     },
                 ],
                 fields: vec![],
+                builtin: false,
             },
         );
 
@@ -979,6 +982,7 @@ mod tests {
                     with_disjunctive: false,
                 }],
                 fields: vec![],
+                builtin: false,
             },
         );
 
@@ -1096,6 +1100,7 @@ mod tests {
                     },
                 ],
                 fields: vec![],
+                builtin: false,
             },
         );
         type_env.conditions.insert(
@@ -1250,6 +1255,7 @@ mod tests {
                     },
                 ],
                 fields: vec![],
+                builtin: false,
             },
         );
         type_env.events.insert(
@@ -1264,6 +1270,7 @@ mod tests {
                     with_disjunctive: false,
                 }],
                 fields: vec![],
+                builtin: false,
             },
         );
         type_env.conditions.insert(

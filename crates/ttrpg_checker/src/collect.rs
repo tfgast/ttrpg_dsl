@@ -1148,12 +1148,20 @@ fn collect_prompt(
 }
 
 fn collect_event(e: &EventDecl, env: &mut TypeEnv, diagnostics: &mut Vec<Diagnostic>, span: Span) {
-    if env.events.contains_key(&e.name) {
-        diagnostics.push(Diagnostic::error(
-            format!("duplicate event declaration `{}`", e.name),
-            span,
-        ));
-        return;
+    if let Some(existing) = env.events.get(&e.name) {
+        // Allow user-defined override of builtin events (e.g., modify_applied).
+        // Spec: "User-defined events with the name modify_applied take precedence
+        //        over the built-in (consistent with Duration/TurnBudget override
+        //        semantics)."
+        if existing.builtin {
+            env.events.remove(&e.name);
+        } else {
+            diagnostics.push(Diagnostic::error(
+                format!("duplicate event declaration `{}`", e.name),
+                span,
+            ));
+            return;
+        }
     }
 
     let mut seen_params = HashSet::new();
@@ -1212,6 +1220,7 @@ fn collect_event(e: &EventDecl, env: &mut TypeEnv, diagnostics: &mut Vec<Diagnos
             name: e.name.clone(),
             params,
             fields,
+            builtin: false,
         },
     );
 }
@@ -1392,43 +1401,51 @@ pub fn validate_condition_extends(
         }
     }
 
-    // Cycle detection: DFS with visited set for multi-parent graphs
-    for start_name in extends_map.keys() {
-        let mut visited = HashSet::new();
-        let mut stack = vec![start_name.clone()];
-        while let Some(current) = stack.pop() {
-            if !visited.insert(current.clone()) {
-                // Found a cycle — build chain for error message
-                let mut chain: Vec<String> = vec![start_name.to_string()];
-                let mut c = start_name.clone();
-                let mut seen = HashSet::new();
-                seen.insert(c.clone());
-                'outer: loop {
-                    if let Some(parents) = extends_map.get(&c) {
-                        for (parent, _) in parents {
-                            chain.push(parent.to_string());
-                            if parent == start_name {
-                                break 'outer;
-                            }
-                            if !seen.insert(parent.clone()) {
-                                break 'outer;
-                            }
-                            c = parent.clone();
-                            continue 'outer;
+    // Cycle detection: three-color DFS for multi-parent DAGs.
+    // Gray = on current path, Black = fully explored.
+    // Visiting a Gray node means a cycle; visiting a Black node means
+    // diamond inheritance (legal, not a cycle).
+    let mut color: HashMap<Name, u8> = HashMap::new(); // 0=white, 1=gray, 2=black
+    let all_names: Vec<Name> = extends_map.keys().cloned().collect();
+    for start_name in &all_names {
+        if color.get(start_name).copied().unwrap_or(0) != 0 {
+            continue; // already explored
+        }
+        // Iterative DFS with explicit stack tracking enter/exit
+        enum Action {
+            Enter(Name),
+            Exit(Name),
+        }
+        let mut stack = vec![Action::Enter(start_name.clone())];
+        while let Some(action) = stack.pop() {
+            match action {
+                Action::Enter(ref name) => {
+                    match color.get(name).copied().unwrap_or(0) {
+                        1 => {
+                            // Gray → cycle found. Build chain for error.
+                            let span = extends_map
+                                .get(name)
+                                .map(|v| v[0].1)
+                                .unwrap_or_else(Span::dummy);
+                            diagnostics.push(Diagnostic::error(
+                                format!("circular condition extends involving `{}`", name),
+                                span,
+                            ));
+                            continue;
+                        }
+                        2 => continue, // Black → already fully explored (diamond)
+                        _ => {}
+                    }
+                    color.insert(name.clone(), 1); // Gray
+                    stack.push(Action::Exit(name.clone()));
+                    if let Some(parents) = extends_map.get(name) {
+                        for (parent, _) in parents.iter().rev() {
+                            stack.push(Action::Enter(parent.clone()));
                         }
                     }
-                    break;
                 }
-                let span = extends_map[start_name][0].1;
-                diagnostics.push(Diagnostic::error(
-                    format!("circular condition extends: {}", chain.join(" \u{2192} ")),
-                    span,
-                ));
-                break;
-            }
-            if let Some(parents) = extends_map.get(&current) {
-                for (parent, _) in parents {
-                    stack.push(parent.clone());
+                Action::Exit(ref name) => {
+                    color.insert(name.clone(), 2); // Black
                 }
             }
         }
@@ -1487,6 +1504,7 @@ fn register_builtin_types(env: &mut TypeEnv) {
                 },
             ],
             fields: vec![(Name::from("target_fn"), Ty::String)],
+            builtin: true,
         });
 }
 
