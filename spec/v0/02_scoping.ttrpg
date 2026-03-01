@@ -255,6 +255,39 @@ condition Prone on bearer: Character {
 // and pushes game-specific cancellation logic into explicit DSL code.
 
 
+// --- Built-in `modify_applied` event ---
+//
+// The interpreter automatically emits a `modify_applied` event after a
+// condition's modify clause fires. Hooks can listen for this to implement
+// patterns like "until next use" — consuming a condition after its modifier
+// activates.
+//
+// Event shape (built-in, auto-registered):
+//   event modify_applied(bearer: entity, condition: ActiveCondition) {
+//       target_fn: string
+//   }
+//
+//   - bearer: entity bearing the condition whose modifier fired
+//   - condition: ActiveCondition struct with name, id, duration fields
+//   - target_fn: name of the function that was modified
+//
+// The event is deduplicated by condition instance id: if a condition has
+// multiple modify clauses that all fire on the same call, only one
+// modify_applied event is emitted.
+//
+// Example: remove a condition after its modifier fires once
+//
+//   hook ConsumeOnUse on c: Character (trigger: modify_applied(bearer: c)) {
+//       if trigger.condition.name == "OneTimeBoost" {
+//           remove_condition(c, trigger.condition)
+//       }
+//   }
+//
+// User-defined events with the name `modify_applied` take precedence over
+// the built-in (consistent with Duration/TurnBudget override semantics).
+// The event is only emitted for condition-sourced modifiers, not options.
+
+
 // --- Cost free ---
 //
 // An action or reaction may declare `cost free` to explicitly signal

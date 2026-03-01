@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, HashSet};
 
 use ttrpg_ast::ast::{ConditionClause, ModifyClause, ModifyStmt, ModifyTarget};
-use ttrpg_ast::Name;
+use ttrpg_ast::{Name, Span};
 use ttrpg_checker::env::FnInfo;
 use ttrpg_checker::ty::Ty;
 
@@ -9,7 +9,7 @@ use crate::effect::{Effect, FieldChange, ModifySource, Phase, Response};
 use crate::eval::{eval_expr, value_eq};
 use crate::state::ActiveCondition;
 use crate::value::Value;
-use crate::Env;
+use crate::{action, event, Env, MAX_EMIT_DEPTH};
 use crate::RuntimeError;
 
 // ── Supporting types ────────────────────────────────────────────
@@ -134,6 +134,8 @@ pub(crate) fn collect_modifiers_owned(
                                 bearer: Some(Value::Entity(condition.bearer)),
                                 receiver_name: Some(cond_decl.receiver_name.clone()),
                                 condition_params: condition.params.clone(),
+                                condition_id: Some(condition.id),
+                                condition_duration: Some(condition.duration.clone()),
                             },
                         ));
                     }
@@ -195,6 +197,8 @@ pub(crate) fn collect_modifiers_owned(
                     bearer: None,
                     receiver_name: None,
                     condition_params: BTreeMap::new(),
+                    condition_id: None,
+                    condition_duration: None,
                 });
             }
         }
@@ -211,6 +215,10 @@ pub(crate) struct OwnedModifier {
     pub receiver_name: Option<Name>,
     /// Condition parameters (e.g., source: Entity(1) for Frightened(source: attacker)).
     pub condition_params: BTreeMap<Name, Value>,
+    /// Unique condition instance id (for deduplication in modify_applied events).
+    pub condition_id: Option<u64>,
+    /// Duration of the condition (for hooks that need to check e.g. "until_next_use").
+    pub condition_duration: Option<Value>,
 }
 
 /// Check if a condition modify clause's bindings match the current call params.
@@ -731,6 +739,141 @@ fn collect_result_changes(old: &Value, new: &Value, _fn_info: &FnInfo) -> Vec<Fi
         old: old.clone(),
         new: new.clone(),
     }]
+}
+
+// ── Built-in modify_applied event emission ──────────────────────
+
+/// Emit `modify_applied` events to fire matching DSL hooks.
+///
+/// Deduplicates by `condition_id` — a condition with multiple modify clauses
+/// that all fired emits only one event. Skips option-sourced modifiers (no
+/// condition to report). Skips entirely when no hooks are registered for
+/// `modify_applied` (fast path).
+pub(crate) fn emit_modify_applied_events(
+    env: &mut Env,
+    modifiers: &[OwnedModifier],
+    fn_name: &str,
+    span: Span,
+) -> Result<(), RuntimeError> {
+    // Fast path: skip if no hooks listen for modify_applied
+    if !env
+        .interp
+        .program
+        .hooks
+        .values()
+        .any(|h| h.trigger.event_name == "modify_applied")
+    {
+        return Ok(());
+    }
+
+    // Check emit depth
+    if env.emit_depth >= MAX_EMIT_DEPTH {
+        return Err(RuntimeError::with_span(
+            format!(
+                "emit depth limit ({}) exceeded — possible circular emit chain from modify_applied",
+                MAX_EMIT_DEPTH
+            ),
+            span,
+        ));
+    }
+
+    // Deduplicate by condition_id
+    let mut seen_ids: HashSet<u64> = HashSet::new();
+    let mut payloads: Vec<(Value, Value)> = Vec::new(); // (bearer, condition_value)
+
+    for modifier in modifiers {
+        let cond_id = match modifier.condition_id {
+            Some(id) => id,
+            None => continue, // option-sourced, skip
+        };
+        if !seen_ids.insert(cond_id) {
+            continue; // already emitted for this condition instance
+        }
+
+        let bearer = match &modifier.bearer {
+            Some(b) => b.clone(),
+            None => continue,
+        };
+
+        // Build ActiveCondition-like struct value
+        let condition_name = match &modifier.source {
+            ModifySource::Condition(name) => name.clone(),
+            _ => continue,
+        };
+
+        let mut cond_fields = BTreeMap::new();
+        cond_fields.insert(Name::from("name"), Value::Str(condition_name.to_string()));
+        cond_fields.insert(Name::from("id"), Value::Int(cond_id as i64));
+        cond_fields.insert(
+            Name::from("duration"),
+            modifier
+                .condition_duration
+                .clone()
+                .unwrap_or(Value::None),
+        );
+
+        let condition_value = Value::Struct {
+            name: Name::from("ActiveCondition"),
+            fields: cond_fields,
+        };
+
+        payloads.push((bearer, condition_value));
+    }
+
+    if payloads.is_empty() {
+        return Ok(());
+    }
+
+    env.emit_depth += 1;
+    let result = (|| {
+        for (bearer, condition_value) in payloads {
+            let mut all_fields = BTreeMap::new();
+            all_fields.insert(Name::from("bearer"), bearer.clone());
+            all_fields.insert(Name::from("condition"), condition_value);
+            all_fields.insert(Name::from("target_fn"), Value::Str(fn_name.to_string()));
+
+            let payload = Value::Struct {
+                name: Name::from("__event_modify_applied"),
+                fields: all_fields,
+            };
+
+            let candidates = env.state.all_entities();
+            let hook_result = event::find_matching_hooks(
+                env.interp,
+                env.state,
+                "modify_applied",
+                &payload,
+                &candidates,
+            )?;
+
+            for hook_info in hook_result.hooks {
+                let hook_decl = env
+                    .interp
+                    .program
+                    .hooks
+                    .get(&hook_info.name)
+                    .ok_or_else(|| {
+                        RuntimeError::with_span(
+                            format!("undefined hook '{}'", hook_info.name),
+                            span,
+                        )
+                    })?
+                    .clone();
+
+                action::execute_hook(
+                    env,
+                    &hook_decl,
+                    hook_info.target,
+                    payload.clone(),
+                    span,
+                )?;
+            }
+        }
+        Ok(())
+    })();
+    env.emit_depth -= 1;
+
+    result
 }
 
 #[cfg(test)]

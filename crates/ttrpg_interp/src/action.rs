@@ -398,6 +398,8 @@ fn collect_and_apply_cost_modifiers(
         receiver_name: Name,
         condition_params: std::collections::BTreeMap<Name, Value>,
         gained_at: u64,
+        condition_id: u64,
+        condition_duration: Value,
     }
     let mut cost_modifiers: Vec<CostModifier> = Vec::new();
 
@@ -464,6 +466,8 @@ fn collect_and_apply_cost_modifiers(
                         receiver_name: cond_decl.receiver_name.clone(),
                         condition_params: condition.params.clone(),
                         gained_at: condition.gained_at,
+                        condition_id: condition.id,
+                        condition_duration: condition.duration.clone(),
                     });
                 }
             }
@@ -527,6 +531,24 @@ fn collect_and_apply_cost_modifiers(
                 ));
             }
         }
+    }
+
+    // Emit modify_applied events for any condition cost modifiers that fired
+    if !cost_modifiers.is_empty() {
+        use crate::pipeline::{emit_modify_applied_events, OwnedModifier};
+        let owned: Vec<OwnedModifier> = cost_modifiers
+            .iter()
+            .map(|m| OwnedModifier {
+                source: m.source.clone(),
+                clause: m.clause.clone(),
+                bearer: Some(Value::Entity(m.bearer)),
+                receiver_name: Some(m.receiver_name.clone()),
+                condition_params: m.condition_params.clone(),
+                condition_id: Some(m.condition_id),
+                condition_duration: Some(m.condition_duration.clone()),
+            })
+            .collect();
+        emit_modify_applied_events(env, &owned, action_name, _call_span)?;
     }
 
     if effective.free {

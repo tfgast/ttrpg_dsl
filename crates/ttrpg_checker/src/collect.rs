@@ -1462,6 +1462,32 @@ fn register_builtin_types(env: &mut TypeEnv) {
             }),
         );
     }
+
+    // Built-in `modify_applied` event — emitted by the interpreter when a
+    // condition's modify clause fires. Hooks can listen for this to implement
+    // "until next use" duration patterns.
+    env.events
+        .entry(Name::from("modify_applied"))
+        .or_insert_with(|| EventInfo {
+            name: Name::from("modify_applied"),
+            params: vec![
+                ParamInfo {
+                    name: "bearer".into(),
+                    ty: Ty::AnyEntity,
+                    has_default: false,
+                    with_groups: vec![],
+                    with_disjunctive: false,
+                },
+                ParamInfo {
+                    name: "condition".into(),
+                    ty: Ty::ActiveCondition,
+                    has_default: false,
+                    with_groups: vec![],
+                    with_disjunctive: false,
+                },
+            ],
+            fields: vec![(Name::from("target_fn"), Ty::String)],
+        });
 }
 
 fn validate_all_cost_tokens(program: &Program, env: &TypeEnv, diagnostics: &mut Vec<Diagnostic>) {

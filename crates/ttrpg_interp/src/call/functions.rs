@@ -4,7 +4,7 @@ use ttrpg_checker::env::ParamInfo;
 
 use crate::effect::{Effect, Response};
 use crate::eval::{eval_block, eval_expr};
-use crate::pipeline::{collect_modifiers_owned, run_phase1, run_phase2};
+use crate::pipeline::{collect_modifiers_owned, emit_modify_applied_events, run_phase1, run_phase2};
 use crate::value::{value_matches_ty, value_type_display, Value};
 use crate::Env;
 use crate::RuntimeError;
@@ -106,16 +106,23 @@ pub(crate) fn evaluate_fn_with_values(
     let result = eval_block(env, &body);
     env.pop_scope();
 
-    match result {
+    let val = match result {
         Ok(val) => {
             if modifiers.is_empty() {
-                Ok(val)
+                val
             } else {
-                run_phase2(env, name, &fn_info, &bound, val, &modifiers)
+                run_phase2(env, name, &fn_info, &bound, val, &modifiers)?
             }
         }
-        Err(e) => Err(e),
+        Err(e) => return Err(e),
+    };
+
+    // Emit modify_applied events for any condition modifiers that fired
+    if !modifiers.is_empty() {
+        emit_modify_applied_events(env, &modifiers, name, call_span)?;
     }
+
+    Ok(val)
 }
 
 // ── Derive / Mechanic dispatch ─────────────────────────────────
@@ -183,16 +190,23 @@ pub(super) fn dispatch_derive_or_mechanic(
     env.pop_scope();
 
     // Phase 2: rewrite output result
-    match result {
+    let val = match result {
         Ok(val) => {
             if modifiers.is_empty() {
-                Ok(val)
+                val
             } else {
-                run_phase2(env, name, &fn_info, &bound, val, &modifiers)
+                run_phase2(env, name, &fn_info, &bound, val, &modifiers)?
             }
         }
-        Err(e) => Err(e),
+        Err(e) => return Err(e),
+    };
+
+    // Emit modify_applied events for any condition modifiers that fired
+    if !modifiers.is_empty() {
+        emit_modify_applied_events(env, &modifiers, name, call_span)?;
     }
+
+    Ok(val)
 }
 
 // ── Table dispatch ─────────────────────────────────────────────
