@@ -8,6 +8,12 @@ use ttrpg_cli::runner::Runner;
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
 
+    // Check for --help / -h flag
+    if args.iter().any(|a| a == "--help" || a == "-h") {
+        print_usage();
+        return;
+    }
+
     // Check for --vi flag
     let vi_mode = args.iter().any(|a| a == "--vi");
     let args: Vec<&str> = args
@@ -221,6 +227,31 @@ fn check_files(file_args: &[&str], snippet: bool) {
     }
 
     check_sources(sources, snippet);
+}
+
+/// Print CLI usage and exit.
+fn print_usage() {
+    println!(
+        "\
+ttrpg — TTRPG DSL interpreter
+
+USAGE:
+  ttrpg [--vi]                       Start interactive REPL
+  ttrpg -c <commands>                Execute commands inline
+  ttrpg run <script.ttrpg-cli>       Execute a script file
+  ttrpg run -c <commands>            Execute commands inline (alt form)
+  ttrpg check <files...>             Type-check source files
+  ttrpg check -s <files...>          Type-check snippets (auto-wrapped in system block)
+  ttrpg check [-s] -c <source>       Type-check source string
+  echo <commands> | ttrpg            Pipe mode (no line editing)
+
+FLAGS:
+  --vi                               Use vi keybindings in REPL
+  -h, --help                         Show this help
+
+REPL:
+  Type 'help' inside the REPL for a list of commands."
+    );
 }
 
 /// Shared implementation for checking DSL sources.
