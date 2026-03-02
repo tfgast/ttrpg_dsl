@@ -22,6 +22,7 @@ const CLI_COMMANDS: &[&str] = &[
     "types",
     "actions",
     "mechanics",
+    "derives",
     "conditions",
     "enable",
     "disable",

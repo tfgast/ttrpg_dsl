@@ -176,9 +176,9 @@ const COMMANDS: &[CommandInfo] = &[
     CommandInfo {
         name: "mechanics",
         syntax: "mechanics",
-        description: "List all derives and mechanics",
+        description: "List all derives and mechanics (alias: derives)",
         detail: "List all declared derives and mechanics with their signatures.",
-        examples: &["mechanics"],
+        examples: &["mechanics", "derives"],
         category: "Inspection",
     },
     CommandInfo {

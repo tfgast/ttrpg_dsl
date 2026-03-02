@@ -151,7 +151,7 @@ pub fn parse_command(line: &str) -> Option<Command> {
             }
         }
         "actions" => Some(Command::Actions),
-        "mechanics" => Some(Command::Mechanics),
+        "mechanics" | "derives" => Some(Command::Mechanics),
         "conditions" => Some(Command::Conditions),
         // Options
         "enable" => {
@@ -560,6 +560,11 @@ mod tests {
     #[test]
     fn parse_mechanics() {
         assert_eq!(parse_command("mechanics"), Some(Command::Mechanics));
+    }
+
+    #[test]
+    fn parse_derives_alias() {
+        assert_eq!(parse_command("derives"), Some(Command::Mechanics));
     }
 
     #[test]

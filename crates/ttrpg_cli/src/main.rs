@@ -300,7 +300,7 @@ USAGE:
   echo <commands> | ttrpg            Pipe mode (no line editing)
 
 QUERY TOPICS:
-  types, events, actions, conditions, mechanics, reactions, hooks, entity <name>, all
+  types, events, actions, conditions, mechanics (alias: derives), reactions, hooks, entity <name>, all
 
 FLAGS:
   --vi                               Use vi keybindings in REPL
@@ -378,7 +378,7 @@ fn run_query(args: &[&str]) {
         None => {
             eprintln!("usage: ttrpg query <topic> [options] <files...>");
             eprintln!(
-                "topics: types, events, actions, conditions, mechanics, reactions, hooks, entity <name>, all"
+                "topics: types, events, actions, conditions, mechanics (alias: derives), reactions, hooks, entity <name>, all"
             );
             process::exit(1);
         }
@@ -386,8 +386,8 @@ fn run_query(args: &[&str]) {
 
     // Validate topic and extract topic-specific args
     let (entity_name, file_args) = match topic {
-        "types" | "events" | "actions" | "conditions" | "mechanics" | "reactions" | "hooks"
-        | "all" => (None, &query_args[1..]),
+        "types" | "events" | "actions" | "conditions" | "mechanics" | "derives" | "reactions"
+        | "hooks" | "all" => (None, &query_args[1..]),
         "entity" => {
             let name = match query_args.get(1).copied() {
                 Some(n) => n,
@@ -401,7 +401,7 @@ fn run_query(args: &[&str]) {
         other => {
             eprintln!("unknown query topic: {other}");
             eprintln!(
-                "topics: types, events, actions, conditions, mechanics, reactions, hooks, entity <name>, all"
+                "topics: types, events, actions, conditions, mechanics (alias: derives), reactions, hooks, entity <name>, all"
             );
             process::exit(1);
         }
@@ -493,7 +493,7 @@ fn query_sources(
         "events" => query_events(&env),
         "actions" => query_actions(&env),
         "conditions" => query_conditions(&env),
-        "mechanics" => query_mechanics(&env),
+        "mechanics" | "derives" => query_mechanics(&env),
         "reactions" => query_reactions(&env),
         "hooks" => query_hooks(&env),
         "entity" => query_entity(&env, entity_name.unwrap()),
@@ -530,9 +530,15 @@ fn query_conditions(_env: &TypeEnv) {
     process::exit(1);
 }
 
-fn query_mechanics(_env: &TypeEnv) {
-    eprintln!("query mechanics: not yet implemented");
-    process::exit(1);
+fn query_mechanics(env: &TypeEnv) {
+    let lines = ttrpg_cli::format::format_mechanics(env);
+    if lines.is_empty() {
+        println!("no mechanics");
+    } else {
+        for line in lines {
+            println!("{line}");
+        }
+    }
 }
 
 fn query_reactions(_env: &TypeEnv) {
