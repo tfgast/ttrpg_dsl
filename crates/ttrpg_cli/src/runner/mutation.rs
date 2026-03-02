@@ -253,10 +253,7 @@ impl Runner {
                 };
                 let expected_ty = if !type_name.is_empty() {
                     if let Some(schema_fields) = self.type_env.lookup_fields(&type_name) {
-                        match schema_fields.iter().find(|f| f.name == field) {
-                            Some(fi) => Some(fi.ty.clone()),
-                            None => None,
-                        }
+                        schema_fields.iter().find(|f| f.name == field).map(|fi| fi.ty.clone())
                     } else {
                         None
                     }

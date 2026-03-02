@@ -91,7 +91,7 @@ pub(crate) fn eval_emit(
         .collect();
     for (name, default_expr) in &field_defaults {
         if !all_fields.contains_key(name) {
-            match eval_expr(env, &default_expr) {
+            match eval_expr(env, default_expr) {
                 Ok(val) => {
                     all_fields.insert(name.clone(), val);
                 }

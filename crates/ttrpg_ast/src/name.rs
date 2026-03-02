@@ -6,7 +6,7 @@ use std::ops::Deref;
 ///
 /// Provides a single point of change for a future interning migration:
 /// swap `Name(String)` to `Name(Symbol)` and fix the handful of conversion sites.
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Name(String);
 
 impl Name {
@@ -81,8 +81,3 @@ impl PartialEq<Name> for &str {
     }
 }
 
-impl Default for Name {
-    fn default() -> Self {
-        Name(String::new())
-    }
-}

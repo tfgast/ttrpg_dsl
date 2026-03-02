@@ -242,14 +242,14 @@ impl<'a> Checker<'a> {
 
         // Check cost modify statements
         for stmt in &clause.body {
-            self.check_cost_modify_stmt(stmt, target_name);
+            self.check_cost_modify_stmt(stmt);
         }
 
         self.scope.pop();
     }
 
     /// Check a single cost modify statement — only Let, If, CostOverride are valid.
-    fn check_cost_modify_stmt(&mut self, stmt: &ModifyStmt, target_name: &Name) {
+    fn check_cost_modify_stmt(&mut self, stmt: &ModifyStmt) {
         match stmt {
             ModifyStmt::Let {
                 name,
@@ -301,13 +301,13 @@ impl<'a> Checker<'a> {
                 }
                 self.scope.push(BlockKind::Inner);
                 for s in then_body {
-                    self.check_cost_modify_stmt(s, target_name);
+                    self.check_cost_modify_stmt(s);
                 }
                 self.scope.pop();
                 if let Some(else_stmts) = else_body {
                     self.scope.push(BlockKind::Inner);
                     for s in else_stmts {
-                        self.check_cost_modify_stmt(s, target_name);
+                        self.check_cost_modify_stmt(s);
                     }
                     self.scope.pop();
                 }

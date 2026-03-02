@@ -118,10 +118,7 @@ fn find_field_def_and_remaining<'a>(
                         .find(|g| g.name == *first_name)
                     {
                         let group_fields: &[FieldDef] = if group.is_external_ref {
-                            match find_group_decl_fields(env, first_name) {
-                                Some(fields) => fields,
-                                None => return None,
-                            }
+                            find_group_decl_fields(env, first_name)?
                         } else {
                             group.fields.as_slice()
                         };

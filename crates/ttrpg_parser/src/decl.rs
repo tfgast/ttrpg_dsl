@@ -760,12 +760,12 @@ impl Parser {
             let mut parents = Vec::new();
             let start = self.start_span();
             let (name, _) = self.expect_ident()?;
-            parents.push(Spanned::new(ttrpg_ast::Name::from(name), self.end_span(start)));
+            parents.push(Spanned::new(name, self.end_span(start)));
             while matches!(self.peek(), TokenKind::Comma) {
                 self.advance();
                 let start = self.start_span();
                 let (name, _) = self.expect_ident()?;
-                parents.push(Spanned::new(ttrpg_ast::Name::from(name), self.end_span(start)));
+                parents.push(Spanned::new(name, self.end_span(start)));
             }
             parents
         } else {
