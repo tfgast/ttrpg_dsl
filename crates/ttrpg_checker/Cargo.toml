@@ -1,10 +1,10 @@
 [package]
 name = "ttrpg_checker"
-version = "0.1.0"
-edition = "2021"
+version.workspace = true
+edition.workspace = true
 
 [dependencies]
-ttrpg_ast = { path = "../ttrpg_ast" }
+ttrpg_ast.workspace = true
 
 [dev-dependencies]
-ttrpg_parser = { path = "../ttrpg_parser" }
+ttrpg_parser.workspace = true

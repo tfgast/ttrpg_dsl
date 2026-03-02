@@ -9,3 +9,21 @@ members = [
     "crates/ttrpg_cli",
     "crates/ttrpg_ose_data",
 ]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+
+[workspace.dependencies]
+# Internal crates
+ttrpg_ast = { path = "crates/ttrpg_ast" }
+ttrpg_lexer = { path = "crates/ttrpg_lexer" }
+ttrpg_parser = { path = "crates/ttrpg_parser" }
+ttrpg_checker = { path = "crates/ttrpg_checker" }
+ttrpg_interp = { path = "crates/ttrpg_interp" }
+
+# External
+glob = "0.3"
+nu-ansi-term = "0.50"
+rand = "0.9"
+reedline = "0.45"

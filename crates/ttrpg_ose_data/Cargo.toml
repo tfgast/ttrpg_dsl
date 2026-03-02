@@ -1,5 +1,5 @@
 [package]
 name = "ttrpg_ose_data"
-version = "0.1.0"
-edition = "2021"
+version.workspace = true
+edition.workspace = true
 description = "Bundled OSE .ttrpg rule files for the ttrpg_dsl ecosystem"
