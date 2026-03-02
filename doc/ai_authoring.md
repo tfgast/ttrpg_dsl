@@ -1,0 +1,813 @@
+# TTRPG DSL — AI Authoring Guide
+
+> Concise reference for AI agents generating DSL code.
+> For full details see [`language_reference.md`](language_reference.md) and `spec/v0/`.
+> Validate output with `ttrpg check <file>` or `ttrpg check -s` (snippet mode, auto-wraps in system block).
+
+---
+
+## Block Categories
+
+| Block     | Dice | Mutate | Receiver       | Returns | Cost |
+|-----------|------|--------|----------------|---------|------|
+| derive    | -    | -      | -              | value   | -    |
+| mechanic  | yes  | -      | -              | value   | -    |
+| action    | yes  | yes    | `on` receiver  | unit    | yes  |
+| reaction  | yes  | yes    | `on` + trigger | unit    | yes  |
+| hook      | yes  | yes    | `on` + trigger | unit    | -    |
+| condition | -    | -      | `on bearer`    | -       | -    |
+| prompt    | -    | -      | -              | value   | -    |
+
+**Decision tree:**
+
+- Pure computation, no dice? → **derive**
+- Needs dice, no mutation? → **mechanic**
+- Needs dice + mutation, player-initiated? → **action**
+- Needs dice + mutation, triggered, optional (has cost)? → **reaction**
+- Needs dice + mutation, triggered, mandatory (no cost)? → **hook**
+- Declarative buff/debuff overlay? → **condition**
+- Human decision point? → **prompt**
+
+---
+
+## Top 10 Mistakes
+
+### 1. Dice in derive
+
+```ttrpg-err
+derive bad(score: int) -> int {
+    roll(1d20 + score).total
+}
+```
+
+```ttrpg
+mechanic good(score: int) -> RollResult {
+    roll(1d20 + score)
+}
+```
+
+### 2. Mutation in mechanic
+
+```ttrpg-err
+entity Character { name: string, HP: resource(0..=max_HP), max_HP: int }
+mechanic bad(target: Character, amount: int) -> int {
+    target.HP -= amount
+    amount
+}
+```
+
+```ttrpg
+entity Character { name: string, HP: resource(0..=max_HP), max_HP: int }
+action ApplyDamage on actor: Character (target: Character, amount: int) {
+    cost { action }
+    resolve { target.HP -= amount }
+}
+```
+
+### 3. Comparing DiceExpr without roll()
+
+```ttrpg-err
+derive bad(bonus: int) -> bool {
+    let expr: DiceExpr = 1d20 + bonus
+    expr >= 15
+}
+```
+
+```ttrpg
+mechanic good(bonus: int) -> bool {
+    let result: RollResult = roll(1d20 + bonus)
+    result >= 15
+}
+```
+
+### 4. int / int expecting int (always produces float)
+
+```ttrpg-err
+derive bad(score: int) -> int {
+    (score - 10) / 2
+}
+```
+
+```ttrpg
+derive good(score: int) -> int {
+    floor((score - 10) / 2)
+}
+```
+
+### 5. resource with exclusive range (must use ..=)
+
+```ttrpg-err
+entity Bad { HP: resource(0..100), max_HP: int }
+```
+
+```ttrpg
+entity Good { HP: resource(0..=max_HP), max_HP: int }
+```
+
+### 6. emit with positional args (must be named)
+
+```ttrpg-err
+entity Character { name: string, HP: resource(0..=max_HP), max_HP: int, position: Position, AC: int }
+event Damaged(target: Character, amount: int) {}
+action Hit on attacker: Character (target: Character) {
+    cost { action }
+    resolve {
+        target.HP -= 5
+        emit Damaged(target, 5)
+    }
+}
+```
+
+```ttrpg
+entity Character { name: string, HP: resource(0..=max_HP), max_HP: int, position: Position, AC: int }
+event Damaged(target: Character, amount: int) {}
+action Hit on attacker: Character (target: Character) {
+    cost { action }
+    resolve {
+        target.HP -= 5
+        emit Damaged(target: target, amount: 5)
+    }
+}
+```
+
+### 7. Mixing `,` and `|` in with constraints
+
+```ttrpg-err
+entity Creature { name: string }
+group Flying { fly_speed: int }
+group Swimming { swim_speed: int }
+group Climbing { climb_speed: int }
+derive bad(c: Creature with Flying, Swimming | Climbing) -> int { 0 }
+```
+
+Pick one: `with A, B` (AND) or `with A | B` (OR).
+
+### 8. Condition modify trying to mutate entity state
+
+```ttrpg-err
+entity Character { name: string, HP: resource(0..=max_HP), max_HP: int }
+condition Bad on bearer: Character {
+    modify attack_roll(attacker: bearer) {
+        bearer.HP -= 1
+    }
+}
+```
+
+Modify clauses are declarative — they can only override parameters (phase 1) or rewrite result fields (phase 2). No entity mutation.
+
+### 9. Group field access without has guard (disjunctive with)
+
+```ttrpg-err
+entity Creature { name: string, optional Flying }
+group Flying { fly_speed: int }
+derive bad(c: Creature with Flying | Swimming) -> int {
+    c.Flying.fly_speed
+}
+group Swimming { swim_speed: int }
+```
+
+```ttrpg
+entity Creature { name: string, optional Flying, optional Swimming }
+group Flying { fly_speed: int }
+group Swimming { swim_speed: int }
+derive good(c: Creature with Flying | Swimming) -> int {
+    if c has Flying as f {
+        c.f.fly_speed
+    } else {
+        0
+    }
+}
+```
+
+### 10. Missing event declaration before emit
+
+```ttrpg-err
+entity Character { name: string, HP: resource(0..=max_HP), max_HP: int, position: Position, AC: int }
+action Bad on actor: Character (target: Character) {
+    cost { action }
+    resolve {
+        emit Zapped(target: target, amount: 5)
+    }
+}
+```
+
+```ttrpg
+entity Character { name: string, HP: resource(0..=max_HP), max_HP: int, position: Position, AC: int }
+event Zapped(target: Character, amount: int) {}
+action Good on actor: Character (target: Character) {
+    cost { action }
+    resolve {
+        emit Zapped(target: target, amount: 5)
+    }
+}
+```
+
+---
+
+## Declaration Skeletons
+
+### Enum
+
+```ttrpg
+enum DamageType { slashing, piercing, bludgeoning, fire, cold }
+enum HitResult { hit(amount: int), miss }
+enum Size ordered { small, medium, large }
+```
+
+### Struct
+
+```ttrpg
+struct Weapon {
+    name: string
+    damage: DiceExpr
+    bonus: int = 0
+}
+```
+
+### Entity
+
+```ttrpg
+group Spellcasting {
+    spell_dc: int
+    spell_slots: int = 0
+}
+
+group CombatStats {
+    AC: int
+}
+
+entity Character {
+    name: string
+    level: int = 1
+    HP: resource(0..=max_HP)
+    max_HP: int
+    speed: int = 30
+    position: Position
+    optional Spellcasting
+    include CombatStats
+}
+```
+
+### Group
+
+```ttrpg
+group Spellcasting {
+    spell_dc: int
+    spell_slots: int = 0
+}
+
+group CombatStats {
+    AC: int
+    abilities: map<Ability, int>
+}
+
+enum Ability { STR, DEX, CON, INT, WIS, CHA }
+```
+
+### Unit Type
+
+```ttrpg
+unit Feet suffix ft { value: int }
+```
+
+### Derive
+
+```ttrpg
+derive modifier(score: int) -> int {
+    floor((score - 10) / 2)
+}
+```
+
+### Mechanic
+
+```ttrpg
+mechanic attack_roll(bonus: int, mode: RollMode) -> RollResult {
+    let base: DiceExpr = match mode {
+        normal       => 1d20,
+        advantage    => 2d20kh1,
+        disadvantage => 2d20kl1
+    }
+    roll(base + bonus)
+}
+
+enum RollMode { normal, advantage, disadvantage }
+```
+
+### Action
+
+```ttrpg
+entity Character { name: string, HP: resource(0..=max_HP), max_HP: int, speed: int = 30, position: Position }
+
+struct TurnBudget {
+    actions: int = 0
+    bonus_actions: int = 0
+    reactions: int = 0
+    movement: int = 0
+}
+
+derive initial_budget(actor: Character) -> TurnBudget {
+    TurnBudget { actions: 1, bonus_actions: 1, reactions: 1, movement: actor.speed }
+}
+
+action Dash on actor: Character () {
+    cost { action }
+    resolve {
+        turn.movement += actor.speed
+    }
+}
+```
+
+### Reaction
+
+```ttrpg
+entity Character { name: string, HP: resource(0..=max_HP), max_HP: int, speed: int = 30, position: Position }
+
+struct TurnBudget {
+    actions: int = 0
+    bonus_actions: int = 0
+    reactions: int = 0
+    movement: int = 0
+}
+
+derive initial_budget(actor: Character) -> TurnBudget {
+    TurnBudget { actions: 1, bonus_actions: 1, reactions: 1, movement: actor.speed }
+}
+
+event Damaged(target: Character, attacker: Character, amount: int) {}
+
+reaction ConcentrationSave on caster: Character (trigger: Damaged(target: caster)) {
+    cost free
+    resolve {
+        let dc = max(10, floor(trigger.amount / 2))
+        let save: RollResult = roll(1d20)
+        if save.total < dc {
+            // concentration broken
+        }
+    }
+}
+```
+
+### Hook
+
+```ttrpg
+entity Character { name: string, HP: resource(0..=max_HP), max_HP: int, position: Position }
+
+event turn_start(actor: Character) {}
+
+hook Regenerate on creature: Character (trigger: turn_start(actor: creature)) {
+    if creature.HP > 0 {
+        creature.HP += 10
+    }
+}
+```
+
+### Condition
+
+```ttrpg
+entity Character { name: string, position: Position }
+enum RollMode { normal, advantage, disadvantage }
+
+mechanic attack_roll(
+    attacker: Character,
+    target: Character,
+    mode: RollMode = normal
+) -> RollResult {
+    let base: DiceExpr = match mode {
+        normal       => 1d20,
+        advantage    => 2d20kh1,
+        disadvantage => 2d20kl1
+    }
+    roll(base)
+}
+
+condition Prone on bearer: Character {
+    modify attack_roll(attacker: bearer) {
+        mode = disadvantage
+    }
+    modify attack_roll(target: bearer) {
+        mode = advantage
+    }
+}
+```
+
+### Event
+
+```ttrpg
+entity Character { name: string }
+event Damaged(target: Character, attacker: Character) {
+    amount: int
+    damage_type: string
+}
+```
+
+### Tag
+
+```ttrpg
+tag #concentration
+tag #ranged
+```
+
+### Prompt
+
+```ttrpg
+entity Character { name: string }
+prompt choose_target(chooser: Character, candidates: list<Character>) -> Character {
+    hint: "Choose a target creature"
+    suggest: candidates[0]
+}
+```
+
+### Option
+
+```ttrpg
+entity Character { name: string, position: Position }
+enum RollMode { normal, advantage, disadvantage }
+
+mechanic attack_roll(
+    attacker: Character,
+    target: Character,
+    mode: RollMode = normal
+) -> RollResult {
+    let base: DiceExpr = match mode {
+        normal       => 1d20,
+        advantage    => 2d20kh1,
+        disadvantage => 2d20kl1
+    }
+    roll(base)
+}
+
+option flanking extends "<snippet>" {
+    description: "Flanking grants advantage on melee attacks"
+    default: off
+    when enabled {
+        modify attack_roll(attacker: _) {
+            mode = advantage
+        }
+    }
+}
+```
+
+### System & Use
+
+```ttrpg
+// system "Core Rules" {
+//     // all declarations go here
+// }
+//
+// // In another file:
+// use "Core Rules"
+// use "Core Rules" as Core
+// // Then: Core.TypeName, Core.function(), Core.Enum.Variant
+```
+
+---
+
+## Type System Quick Reference
+
+### Primitives
+
+| Type     | Notes                                        |
+|----------|----------------------------------------------|
+| `int`    | Signed integer                               |
+| `bool`   | `true` / `false`                             |
+| `string` | Double-quoted                                |
+| `float`  | No literals — only from `/` operator         |
+
+### Composites
+
+| Type              | Notes                                    |
+|-------------------|------------------------------------------|
+| `list<T>`         | Ordered sequence; `[1, 2, 3]`            |
+| `set<T>`          | Unordered unique; `[a, b].to_set()`      |
+| `map<K, V>`       | Key-value; `{"a": 1}`                    |
+| `option<T>`       | `some(x)` or `none`                      |
+| `resource(m..=n)` | Bounded int, clamps on assign            |
+
+### Dice Pipeline
+
+```
+DiceExpr  ──roll()──▶  RollResult  ──.total──▶  int
+                                     .unmodified (sum of kept dice, no modifier)
+                                     .dice       (all die outcomes)
+                                     .kept       (after keep/drop filters)
+                                     .modifier   (constant terms)
+```
+
+- `DiceExpr + DiceExpr` → combined pool
+- `DiceExpr + int` → adds modifier
+- `DiceExpr * int` → **TYPE ERROR** (use `multiply_dice(expr, factor)`)
+- `RollResult >= int` → implicit `.total` coercion in comparisons
+- `DiceExpr >= int` → **TYPE ERROR** (must `roll()` first)
+
+### Arithmetic Rules
+
+- `int / int` → **always float** — use `floor()` or `ceil()` to get int
+- `float + int` → float (numeric promotion)
+- Unit arithmetic: same-unit `+`/`-`, `int * unit`, `unit / unit → float`
+
+### Special Types
+
+| Type              | Notes                                         |
+|-------------------|-----------------------------------------------|
+| `entity`          | Polymorphic any-entity alias in type position  |
+| `Position`        | Opaque board location, use `distance(a, b)`    |
+| `Duration`        | `end_of_turn`, `start_of_next_turn`, `rounds(n)`, `minutes(n)`, `indefinite` |
+| `Invocation`      | Execution scope handle from `invocation()`     |
+| `ActiveCondition` | Runtime condition instance: `.name`, `.duration`, `.id` |
+
+---
+
+## Common Game Patterns
+
+### Ability Modifier (derive)
+
+```ttrpg
+derive modifier(score: int) -> int {
+    floor((score - 10) / 2)
+}
+
+derive proficiency_bonus(level: int) -> int {
+    floor((level - 1) / 4) + 2
+}
+```
+
+### d20 Check with Advantage/Disadvantage (mechanic)
+
+```ttrpg
+enum RollMode { normal, advantage, disadvantage }
+
+mechanic d20_check(
+    bonus: int,
+    mode: RollMode = normal
+) -> RollResult {
+    let base: DiceExpr = match mode {
+        normal       => 1d20,
+        advantage    => 2d20kh1,
+        disadvantage => 2d20kl1
+    }
+    roll(base + bonus)
+}
+```
+
+### Attack Action with Damage Event (action + event + hook)
+
+```ttrpg
+entity Character {
+    name: string
+    HP: resource(0..=max_HP)
+    max_HP: int
+    AC: int
+    position: Position
+    speed: int = 30
+}
+
+struct TurnBudget {
+    actions: int = 0
+    bonus_actions: int = 0
+    reactions: int = 0
+    movement: int = 0
+}
+
+derive initial_budget(actor: Character) -> TurnBudget {
+    TurnBudget { actions: 1, bonus_actions: 1, reactions: 1, movement: actor.speed }
+}
+
+event Damaged(target: Character, attacker: Character, amount: int) {}
+
+action Attack on attacker: Character (target: Character) {
+    cost { action }
+    requires { distance(attacker.position, target.position) <= 5 }
+    resolve {
+        let atk: RollResult = roll(1d20 + 5)
+        if atk >= target.AC {
+            let dmg: RollResult = roll(1d8 + 3)
+            target.HP -= dmg.total
+            emit Damaged(target: target, attacker: attacker, amount: dmg.total)
+        }
+    }
+}
+
+hook DeathDrop on target: Character (trigger: Damaged(target: target)) {
+    if target.HP <= 0 {
+        // handle death/unconscious
+    }
+}
+```
+
+### Concentration Spell (invocation tracking)
+
+```ttrpg
+enum Ability { STR, DEX, CON, INT, WIS, CHA }
+
+enum Duration {
+    end_of_turn,
+    start_of_next_turn,
+    rounds(count: int),
+    minutes(count: int),
+    indefinite
+}
+
+entity Character {
+    name: string
+    level: int = 1
+    HP: resource(0..=max_HP)
+    max_HP: int
+    position: Position
+    speed: int = 30
+    concentrating_on: option<Invocation>
+    abilities: map<Ability, int>
+}
+
+struct TurnBudget {
+    actions: int = 0
+    bonus_actions: int = 0
+    reactions: int = 0
+    movement: int = 0
+}
+
+derive initial_budget(actor: Character) -> TurnBudget {
+    TurnBudget { actions: 1, bonus_actions: 1, reactions: 1, movement: actor.speed }
+}
+
+tag #concentration
+
+event ConcentrationStarted(caster: Character, inv: Invocation)
+
+hook on_conc on caster: Character (trigger: ConcentrationStarted(caster: caster)) {
+    revoke(caster.concentrating_on)
+    caster.concentrating_on = some(trigger.inv)
+}
+
+action CastBless on caster: Character (targets: list<Character>) #concentration {
+    cost { action }
+    resolve {
+        let inv = invocation()
+        for target in targets {
+            apply_condition(target, Blessed, Duration.rounds(10))
+        }
+        emit ConcentrationStarted(caster: caster, inv: inv)
+    }
+}
+
+condition Blessed on bearer: Character {
+    modify d20_check(attacker: bearer) {
+        bonus = bonus + 2
+    }
+}
+
+mechanic d20_check(
+    attacker: Character,
+    bonus: int = 0
+) -> RollResult {
+    roll(1d20 + bonus)
+}
+```
+
+### Condition with Modify (advantage/disadvantage)
+
+```ttrpg
+entity Character { name: string, position: Position, speed: int = 30 }
+enum RollMode { normal, advantage, disadvantage }
+
+struct TurnBudget {
+    actions: int = 0
+    bonus_actions: int = 0
+    reactions: int = 0
+    movement: int = 0
+}
+
+derive initial_budget(actor: Character) -> TurnBudget {
+    TurnBudget { actions: 1, bonus_actions: 1, reactions: 1, movement: actor.speed }
+}
+
+mechanic attack_roll(
+    attacker: Character,
+    target: Character,
+    mode: RollMode = normal
+) -> RollResult {
+    let base: DiceExpr = match mode {
+        normal       => 1d20,
+        advantage    => 2d20kh1,
+        disadvantage => 2d20kl1
+    }
+    roll(base)
+}
+
+condition Prone on bearer: Character {
+    modify attack_roll(attacker: bearer) {
+        mode = disadvantage
+    }
+    modify initial_budget(actor: bearer) {
+        result.movement = floor(bearer.speed / 2)
+    }
+}
+```
+
+### Cost Modification (CunningAction pattern)
+
+```ttrpg
+entity Character { name: string, speed: int = 30, position: Position }
+
+struct TurnBudget {
+    actions: int = 0
+    bonus_actions: int = 0
+    reactions: int = 0
+    movement: int = 0
+}
+
+derive initial_budget(actor: Character) -> TurnBudget {
+    TurnBudget { actions: 1, bonus_actions: 1, reactions: 1, movement: actor.speed }
+}
+
+action Dash on actor: Character () {
+    cost { action }
+    resolve { turn.movement += actor.speed }
+}
+
+action Hide on actor: Character () {
+    cost { action }
+    resolve { }
+}
+
+condition CunningAction on bearer: Character {
+    modify Dash.cost(actor: bearer) {
+        cost = bonus_action
+    }
+    modify Hide.cost(actor: bearer) {
+        cost = bonus_action
+    }
+}
+```
+
+### Resistance Check (guard match)
+
+```ttrpg
+enum DamageType { slashing, piercing, bludgeoning, fire, cold }
+
+entity Character {
+    name: string
+    resistances: set<DamageType>
+    immunities: set<DamageType>
+    vulnerabilities: set<DamageType>
+}
+
+derive apply_resistances(
+    target: Character,
+    raw_damage: int,
+    damage_type: DamageType
+) -> int {
+    match {
+        damage_type in target.immunities      => 0,
+        damage_type in target.resistances     => floor(raw_damage / 2),
+        damage_type in target.vulnerabilities => raw_damage * 2,
+        _ => raw_damage
+    }
+}
+```
+
+---
+
+## Module Structure Convention
+
+Recommended declaration order within a `system` block:
+
+1. Enums
+2. Structs
+3. Unit types
+4. Tags
+5. Groups
+6. Entities
+7. Events
+8. Derives
+9. Mechanics
+10. Prompts
+11. Actions
+12. Reactions
+13. Hooks
+14. Conditions
+15. Options
+
+Multiple `system` blocks with the same name merge additively.
+Imports (`use`) are NOT transitive — each file must declare its own.
+
+---
+
+## Validation Workflow
+
+Check a full file:
+
+```bash
+ttrpg check myfile.ttrpg
+```
+
+Check a snippet (auto-wrapped in `system "<check>" { ... }`):
+
+```bash
+echo 'derive foo() -> int { floor(10 / 3) }' | ttrpg check -s
+```
+
+Check multiple files together:
+
+```bash
+ttrpg check core.ttrpg combat.ttrpg spells.ttrpg
+```
