@@ -426,7 +426,13 @@ fn builtin_remove_condition(
             Some(Value::Struct { name, fields }),
         ) if name == "ActiveCondition" => {
             let cond_id = match fields.get("id") {
-                Some(Value::Int(id)) => *id as u64,
+                Some(Value::Int(id)) if *id >= 0 => *id as u64,
+                Some(Value::Int(_)) => {
+                    return Err(RuntimeError::with_span(
+                        "ActiveCondition id must be non-negative",
+                        span,
+                    ));
+                }
                 _ => {
                     return Err(RuntimeError::with_span(
                         "ActiveCondition missing 'id' field",

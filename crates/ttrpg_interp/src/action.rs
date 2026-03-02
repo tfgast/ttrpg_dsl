@@ -100,7 +100,7 @@ fn scoped_execute(
 
     // Set new context
     env.turn_actor = Some(actor);
-    let inv_id = env.interp.alloc_invocation_id();
+    let inv_id = env.interp.alloc_invocation_id()?;
     env.current_invocation_id = Some(inv_id);
     env.push_scope();
 

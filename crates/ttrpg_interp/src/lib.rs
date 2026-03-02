@@ -117,13 +117,13 @@ impl<'p> Interpreter<'p> {
     }
 
     /// Allocate the next invocation ID, bumping the internal counter.
-    pub(crate) fn alloc_invocation_id(&self) -> InvocationId {
+    pub(crate) fn alloc_invocation_id(&self) -> Result<InvocationId, RuntimeError> {
         let id = self.next_invocation_id.get();
         self.next_invocation_id.set(
             id.checked_add(1)
-                .expect("invocation ID counter overflow"),
+                .ok_or_else(|| RuntimeError::new("invocation ID counter overflow"))?,
         );
-        InvocationId(id)
+        Ok(InvocationId(id))
     }
 
     /// Read the current invocation counter value (for host persistence).
@@ -612,9 +612,9 @@ mod tests {
         let (program, result) = setup(source);
         let interp = Interpreter::new(&program, &result.env).unwrap();
 
-        let a = interp.alloc_invocation_id();
-        let b = interp.alloc_invocation_id();
-        let c = interp.alloc_invocation_id();
+        let a = interp.alloc_invocation_id().unwrap();
+        let b = interp.alloc_invocation_id().unwrap();
+        let c = interp.alloc_invocation_id().unwrap();
 
         assert_eq!(a, InvocationId(1));
         assert_eq!(b, InvocationId(2));
@@ -629,7 +629,7 @@ mod tests {
             Interpreter::new_with_invocation_start(&program, &result.env, 100).unwrap();
 
         assert_eq!(interp.next_invocation_id(), 100);
-        let a = interp.alloc_invocation_id();
+        let a = interp.alloc_invocation_id().unwrap();
         assert_eq!(a, InvocationId(100));
         assert_eq!(interp.next_invocation_id(), 101);
     }
@@ -641,10 +641,22 @@ mod tests {
         let interp = Interpreter::new(&program, &result.env).unwrap();
 
         assert_eq!(interp.next_invocation_id(), 1);
-        interp.alloc_invocation_id();
+        interp.alloc_invocation_id().unwrap();
         assert_eq!(interp.next_invocation_id(), 2);
-        interp.alloc_invocation_id();
+        interp.alloc_invocation_id().unwrap();
         assert_eq!(interp.next_invocation_id(), 3);
+    }
+
+    #[test]
+    fn alloc_invocation_id_at_max_returns_error() {
+        let source = r#"system "test" { entity E { x: int } }"#;
+        let (program, result) = setup(source);
+        let interp =
+            Interpreter::new_with_invocation_start(&program, &result.env, u64::MAX).unwrap();
+
+        let err = interp.alloc_invocation_id();
+        assert!(err.is_err());
+        assert!(err.unwrap_err().message.contains("overflow"));
     }
 
     // ── Action lifecycle with invocation tracking ────────────

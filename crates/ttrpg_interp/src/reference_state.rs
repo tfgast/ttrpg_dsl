@@ -263,6 +263,11 @@ impl WritableState for GameState {
             cond.id = self.next_condition_id;
             self.next_condition_id += 1;
             cond.gained_at = cond.id;
+        } else {
+            // Keep counter above any externally-assigned id.
+            if cond.id >= self.next_condition_id {
+                self.next_condition_id = cond.id.saturating_add(1);
+            }
         }
         self.conditions.entry(entity.0).or_default().push(cond);
     }
@@ -710,6 +715,42 @@ mod tests {
         let conds = state.read_conditions(&entity).unwrap();
         assert_eq!(conds.len(), 1);
         assert!(conds[0].id > 0); // Auto-assigned
+    }
+
+    #[test]
+    fn add_condition_preassigned_id_bumps_counter() {
+        let mut state = GameState::new();
+        let entity = state.add_entity("Fighter", HashMap::new());
+
+        // Simulate externally-assigned condition with id = 50
+        let cond = ActiveCondition {
+            id: 50,
+            name: "Prone".into(),
+            params: BTreeMap::new(),
+            bearer: entity,
+            gained_at: 50,
+            duration: duration_variant("end_of_turn"),
+            invocation: None,
+        };
+        state.add_condition(&entity, cond);
+
+        // Now add a condition with auto-assigned id (id = 0)
+        let cond2 = ActiveCondition {
+            id: 0,
+            name: "Stunned".into(),
+            params: BTreeMap::new(),
+            bearer: entity,
+            gained_at: 0,
+            duration: duration_variant("rounds"),
+            invocation: None,
+        };
+        state.add_condition(&entity, cond2);
+
+        let conds = state.read_conditions(&entity).unwrap();
+        assert_eq!(conds.len(), 2);
+        assert_eq!(conds[0].id, 50);
+        // Auto-assigned id must be > 50, not collide
+        assert!(conds[1].id > 50);
     }
 
     // ── GameState: write_field creates new fields ──────────────
