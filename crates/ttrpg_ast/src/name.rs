@@ -80,4 +80,3 @@ impl PartialEq<Name> for &str {
         *self == other.0
     }
 }
-

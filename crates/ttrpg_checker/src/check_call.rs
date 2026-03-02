@@ -65,8 +65,11 @@ impl Checker<'_> {
                             let current_ctx = self.scope.current_block_kind();
                             if !matches!(
                                 current_ctx,
-                                Some(BlockKind::ActionResolve | BlockKind::ReactionResolve |
-BlockKind::HookResolve)
+                                Some(
+                                    BlockKind::ActionResolve
+                                        | BlockKind::ReactionResolve
+                                        | BlockKind::HookResolve
+                                )
                             ) {
                                 self.error(
                                     format!(
@@ -189,9 +192,7 @@ BlockKind::HookResolve)
                 );
             if !is_pure_builtin {
                 self.error(
-                    format!(
-                        "`{callee_name}` cannot be called in trigger/suppress binding context"
-                    ),
+                    format!("`{callee_name}` cannot be called in trigger/suppress binding context"),
                     span,
                 );
             }
@@ -222,8 +223,9 @@ BlockKind::HookResolve)
             let current_ctx = self.scope.current_block_kind();
             if !matches!(
                 current_ctx,
-                Some(BlockKind::ActionResolve | BlockKind::ReactionResolve |
-BlockKind::HookResolve)
+                Some(
+                    BlockKind::ActionResolve | BlockKind::ReactionResolve | BlockKind::HookResolve
+                )
             ) {
                 self.error(
                     format!(
@@ -300,8 +302,7 @@ BlockKind::HookResolve)
                 variant.fields.iter().position(|(n, _)| n == name)
             } else {
                 // Skip fields already claimed by named args
-                while next_positional < variant.fields.len()
-                    && satisfied.contains(&next_positional)
+                while next_positional < variant.fields.len() && satisfied.contains(&next_positional)
                 {
                     next_positional += 1;
                 }
@@ -332,9 +333,7 @@ BlockKind::HookResolve)
                     let (ref fname, ref expected) = variant.fields[idx];
                     if !self.types_compatible(&arg_ty, expected) {
                         self.error(
-                            format!(
-                                "variant field `{fname}` has type {expected}, found {arg_ty}"
-                            ),
+                            format!("variant field `{fname}` has type {expected}, found {arg_ty}"),
                             arg.span,
                         );
                     }
@@ -362,9 +361,7 @@ BlockKind::HookResolve)
         for (idx, (fname, _)) in variant.fields.iter().enumerate() {
             if !satisfied.contains(&idx) {
                 self.error(
-                    format!(
-                        "missing required field `{fname}` in variant `{variant_name}`"
-                    ),
+                    format!("missing required field `{fname}` in variant `{variant_name}`"),
                     span,
                 );
             }

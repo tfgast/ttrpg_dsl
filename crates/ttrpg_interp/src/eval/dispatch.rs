@@ -31,7 +31,9 @@ pub(crate) fn eval_expr(env: &mut Env, expr: &Spanned<ExprKind>) -> Result<Value
             count,
             sides,
             filter,
-        } => Ok(Value::DiceExpr(DiceExpr::single(*count, *sides, *filter, 0))),
+        } => Ok(Value::DiceExpr(DiceExpr::single(
+            *count, *sides, *filter, 0,
+        ))),
 
         ExprKind::Paren(inner) => eval_expr(env, inner),
 
@@ -180,7 +182,9 @@ pub(crate) fn eval_expr(env: &mut Env, expr: &Spanned<ExprKind>) -> Result<Value
             filter,
         } => eval_list_comprehension(env, element, pattern, iterable, filter.as_deref()),
 
-        ExprKind::Has { entity, group_name, .. } => {
+        ExprKind::Has {
+            entity, group_name, ..
+        } => {
             let entity_val = eval_expr(env, entity)?;
             let entity_ref = match entity_val {
                 Value::Entity(r) => r,

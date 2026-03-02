@@ -456,9 +456,7 @@ impl Checker<'_> {
             }
             _ => {
                 self.error(
-                    format!(
-                        "right-hand side of `in` must be a collection, found {rhs}"
-                    ),
+                    format!("right-hand side of `in` must be a collection, found {rhs}"),
                     rhs_expr.span,
                 );
                 Ty::Bool
@@ -512,8 +510,7 @@ impl Checker<'_> {
         let resolved_field: std::borrow::Cow<str> = if obj_ty.is_entity() {
             if let Some(path_key) = self.extract_path_key(object) {
                 if let Some(real_group) = self.scope.resolve_group_alias(&path_key, field) {
-                    self.resolved_group_aliases
-                        .insert(span, real_group.clone());
+                    self.resolved_group_aliases.insert(span, real_group.clone());
                     std::borrow::Cow::Owned(real_group.into_inner())
                 } else {
                     std::borrow::Cow::Borrowed(field)
@@ -567,10 +564,7 @@ impl Checker<'_> {
                         if let Some(param) = event_info.params.iter().find(|p| p.name == field) {
                             return param.ty.clone();
                         }
-                        self.error(
-                            format!("event `{event_name}` has no field `{field}`"),
-                            span,
-                        );
+                        self.error(format!("event `{event_name}` has no field `{field}`"), span);
                         return Ty::Error;
                     }
                 }
@@ -590,12 +584,8 @@ impl Checker<'_> {
 
                 // Check for flattened included-group field
                 if matches!(obj_ty, Ty::Entity(_)) {
-                    if let Some(group_name) =
-                        self.env.lookup_flattened_field(name, field)
-                    {
-                        if let Some(group) =
-                            self.env.lookup_optional_group(name, group_name)
-                        {
+                    if let Some(group_name) = self.env.lookup_flattened_field(name, field) {
+                        if let Some(group) = self.env.lookup_optional_group(name, group_name) {
                             if let Some(fi) = group.fields.iter().find(|f| f.name == field) {
                                 return fi.ty.clone();
                             }
@@ -693,10 +683,7 @@ impl Checker<'_> {
                         return Ty::Enum(enum_name.clone());
                     }
                 }
-                self.error(
-                    format!("enum `{enum_name}` has no variant `{field}`"),
-                    span,
-                );
+                self.error(format!("enum `{enum_name}` has no variant `{field}`"), span);
                 Ty::Error
             }
             // Module alias: resolve through alias to the target system
@@ -714,9 +701,7 @@ impl Checker<'_> {
             Ty::Option(_) => {
                 if field == "unwrap" || field == "unwrap_or" {
                     self.error(
-                        format!(
-                            "`.{field}` is a method on option; call it as `.{field}()`"
-                        ),
+                        format!("`.{field}` is a method on option; call it as `.{field}()`"),
                         span,
                     );
                 } else {
@@ -767,10 +752,7 @@ impl Checker<'_> {
             }
             Ty::Map(key, val) => {
                 if !self.types_compatible(&idx_ty, key) {
-                    self.error(
-                        format!("map key type is {key}, found {idx_ty}"),
-                        index.span,
-                    );
+                    self.error(format!("map key type is {key}, found {idx_ty}"), index.span);
                 }
                 *val.clone()
             }

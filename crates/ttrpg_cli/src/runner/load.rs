@@ -67,7 +67,6 @@ impl Runner {
     /// Load from already-resolved paths. Used by both `cmd_load` and `cmd_reload`
     /// so that reload doesn't need to round-trip paths through string tokenization.
     pub(super) fn load_paths(&mut self, resolved_paths: Vec<PathBuf>) -> Result<(), CliError> {
-
         // Read all files
         let mut sources: Vec<(String, String)> = Vec::new();
         for path in &resolved_paths {

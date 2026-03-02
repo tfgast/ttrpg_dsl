@@ -506,7 +506,10 @@ mod tests {
         let results = c.complete("enable f", 8);
         let values: Vec<_> = results.iter().map(|s| s.value.as_str()).collect();
         assert!(values.contains(&"flanking"), "should suggest flanking");
-        assert!(!values.contains(&"critical_fumbles"), "should not suggest critical_fumbles");
+        assert!(
+            !values.contains(&"critical_fumbles"),
+            "should not suggest critical_fumbles"
+        );
     }
 
     #[test]

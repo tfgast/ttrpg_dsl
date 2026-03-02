@@ -986,9 +986,27 @@ mod tests {
         let e3 = state.add_entity("Wizard", HashMap::new());
 
         let inv = Some(InvocationId(7));
-        state.apply_condition(&e1, "Blessed", BTreeMap::new(), duration_variant("rounds"), inv);
-        state.apply_condition(&e2, "Blessed", BTreeMap::new(), duration_variant("rounds"), inv);
-        state.apply_condition(&e3, "Blessed", BTreeMap::new(), duration_variant("rounds"), inv);
+        state.apply_condition(
+            &e1,
+            "Blessed",
+            BTreeMap::new(),
+            duration_variant("rounds"),
+            inv,
+        );
+        state.apply_condition(
+            &e2,
+            "Blessed",
+            BTreeMap::new(),
+            duration_variant("rounds"),
+            inv,
+        );
+        state.apply_condition(
+            &e3,
+            "Blessed",
+            BTreeMap::new(),
+            duration_variant("rounds"),
+            inv,
+        );
 
         state.remove_conditions_by_invocation(InvocationId(7));
 

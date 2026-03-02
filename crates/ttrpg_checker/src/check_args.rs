@@ -47,10 +47,7 @@ impl Checker<'_> {
                     return match decl {
                         DeclInfo::Enum(_) => Ty::EnumType(Name::from(field)),
                         DeclInfo::Struct(_) | DeclInfo::Entity(_) | DeclInfo::Unit(_) => {
-                            self.error(
-                                format!("type `{field}` cannot be used as a value"),
-                                span,
-                            );
+                            self.error(format!("type `{field}` cannot be used as a value"), span);
                             Ty::Error
                         }
                     };
@@ -400,12 +397,7 @@ impl Checker<'_> {
     }
 
     /// Type-check a function call reached through an alias (delegates to normal function checking).
-    fn check_alias_function_call(
-        &mut self,
-        name: &str,
-        args: &[Arg],
-        span: ttrpg_ast::Span,
-    ) -> Ty {
+    fn check_alias_function_call(&mut self, name: &str, args: &[Arg], span: ttrpg_ast::Span) -> Ty {
         let fn_info = match self.env.lookup_fn(name) {
             Some(info) => info.clone(),
             None => {
@@ -426,9 +418,7 @@ impl Checker<'_> {
                 );
             if !is_pure_builtin {
                 self.error(
-                    format!(
-                        "`{name}` cannot be called in trigger/suppress binding context"
-                    ),
+                    format!("`{name}` cannot be called in trigger/suppress binding context"),
                     span,
                 );
             }
@@ -447,9 +437,7 @@ impl Checker<'_> {
                 "hooks"
             };
             self.error(
-                format!(
-                    "{kind_name} cannot be called directly; `{name}` is triggered by events"
-                ),
+                format!("{kind_name} cannot be called directly; `{name}` is triggered by events"),
                 span,
             );
         }
@@ -459,8 +447,9 @@ impl Checker<'_> {
             let current_ctx = self.scope.current_block_kind();
             if !matches!(
                 current_ctx,
-                Some(BlockKind::ActionResolve | BlockKind::ReactionResolve |
-BlockKind::HookResolve)
+                Some(
+                    BlockKind::ActionResolve | BlockKind::ReactionResolve | BlockKind::HookResolve
+                )
             ) {
                 self.error(
                     format!(

@@ -192,12 +192,17 @@ fn dispatch_alias_call(
 
     // 3. Variant constructor — use system-scoped lookup via alias
     let resolved_enum = {
-        let target = env.interp.type_env.system_aliases.values()
+        let target = env
+            .interp
+            .type_env
+            .system_aliases
+            .values()
             .find_map(|aliases| aliases.get(alias_name))
             .cloned();
         target.and_then(|target_sys| {
             let owners = env.interp.type_env.variant_to_enums.get(name)?;
-            let matching: Vec<_> = owners.iter()
+            let matching: Vec<_> = owners
+                .iter()
                 .filter(|e| env.interp.type_env.type_owner.get(e.as_str()) == Some(&target_sys))
                 .collect();
             (matching.len() == 1).then(|| matching[0].clone())

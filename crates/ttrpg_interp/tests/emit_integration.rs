@@ -361,7 +361,9 @@ system "test" {
 "#,
     );
     assert!(
-        errors.iter().any(|e| e.contains("missing required argument")),
+        errors
+            .iter()
+            .any(|e| e.contains("missing required argument")),
         "expected missing param error, got: {:?}",
         errors
     );
@@ -383,7 +385,9 @@ system "test" {
 "#,
     );
     assert!(
-        errors.iter().any(|e| e.contains("type") && e.contains("amount")),
+        errors
+            .iter()
+            .any(|e| e.contains("type") && e.contains("amount")),
         "expected type mismatch error, got: {:?}",
         errors
     );
@@ -610,7 +614,10 @@ system "test" {
         )
     });
 
-    assert!(result.is_err(), "circular emit should produce a runtime error");
+    assert!(
+        result.is_err(),
+        "circular emit should produce a runtime error"
+    );
     let err_msg = format!("{}", result.unwrap_err());
     assert!(
         err_msg.contains("depth limit"),
@@ -657,7 +664,10 @@ system "test" {
     let result = adapter.run(&mut handler, |state, eff_handler| {
         interp.execute_action(state, eff_handler, "DoBoom", actor, vec![])
     });
-    assert!(result.is_err(), "emit with erroring field default should fail");
+    assert!(
+        result.is_err(),
+        "emit with erroring field default should fail"
+    );
     let err_msg = format!("{}", result.unwrap_err());
     assert!(
         err_msg.contains("field default boom"),

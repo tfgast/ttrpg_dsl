@@ -26,23 +26,27 @@ pub(super) fn eval_field_access(
         // Entity fields via StateProvider
         Value::Entity(entity_ref) => {
             // Check for group alias resolution from the checker
-            let resolved_field: std::borrow::Cow<str> =
-                if let Some(real_name) = env.interp.type_env.resolved_group_aliases.get(&expr.span)
-                {
-                    std::borrow::Cow::Owned(real_name.to_string())
-                } else {
-                    std::borrow::Cow::Borrowed(field)
-                };
+            let resolved_field: std::borrow::Cow<str> = if let Some(real_name) =
+                env.interp.type_env.resolved_group_aliases.get(&expr.span)
+            {
+                std::borrow::Cow::Owned(real_name.to_string())
+            } else {
+                std::borrow::Cow::Borrowed(field)
+            };
             if let Some(val) = env.state.read_field(entity_ref, &resolved_field) {
                 return Ok(val);
             }
             // Flattened included-group field: look up group, read struct, extract field
             if let Some(entity_type) = env.state.entity_type_name(entity_ref) {
-                if let Some(group_name) =
-                    env.interp.type_env.lookup_flattened_field(&entity_type, field)
+                if let Some(group_name) = env
+                    .interp
+                    .type_env
+                    .lookup_flattened_field(&entity_type, field)
                 {
-                    if let Some(Value::Struct { fields: group_fields, .. }) =
-                        env.state.read_field(entity_ref, group_name)
+                    if let Some(Value::Struct {
+                        fields: group_fields,
+                        ..
+                    }) = env.state.read_field(entity_ref, group_name)
                     {
                         if let Some(val) = group_fields.get(field) {
                             return Ok(val.clone());
@@ -58,10 +62,7 @@ pub(super) fn eval_field_access(
 
         // Struct fields
         Value::Struct { fields, name, .. } => fields.get(field).cloned().ok_or_else(|| {
-            RuntimeError::with_span(
-                format!("struct '{name}' has no field '{field}'"),
-                expr.span,
-            )
+            RuntimeError::with_span(format!("struct '{name}' has no field '{field}'"), expr.span)
         }),
 
         // Enum variant fields
@@ -71,9 +72,7 @@ pub(super) fn eval_field_access(
             fields,
         } => fields.get(field).cloned().ok_or_else(|| {
             RuntimeError::with_span(
-                format!(
-                    "variant '{enum_name}.{variant}' has no field '{field}'"
-                ),
+                format!("variant '{enum_name}.{variant}' has no field '{field}'"),
                 expr.span,
             )
         }),
@@ -111,13 +110,20 @@ pub(super) fn eval_field_access(
                 .get(&expr.span)
                 .cloned()
                 .or_else(|| {
-                    let target = env.interp.type_env.system_aliases.values()
+                    let target = env
+                        .interp
+                        .type_env
+                        .system_aliases
+                        .values()
                         .find_map(|aliases| aliases.get(alias_name.as_str()))
                         .cloned();
                     target.and_then(|target_sys| {
                         let owners = env.interp.type_env.variant_to_enums.get(field)?;
-                        let matching: Vec<_> = owners.iter()
-                            .filter(|e| env.interp.type_env.type_owner.get(e.as_str()) == Some(&target_sys))
+                        let matching: Vec<_> = owners
+                            .iter()
+                            .filter(|e| {
+                                env.interp.type_env.type_owner.get(e.as_str()) == Some(&target_sys)
+                            })
                             .collect();
                         (matching.len() == 1).then(|| matching[0].clone())
                     })

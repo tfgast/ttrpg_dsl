@@ -27,21 +27,17 @@ pub(super) fn eval_ordinal(
         Value::EnumVariant {
             enum_name, variant, ..
         } => {
-            let ordinal = variant_ordinal(env.interp.type_env, enum_name, variant).ok_or_else(
-                || {
+            let ordinal =
+                variant_ordinal(env.interp.type_env, enum_name, variant).ok_or_else(|| {
                     RuntimeError::with_span(
                         format!("unknown variant `{variant}` of enum `{enum_name}`"),
                         call_span,
                     )
-                },
-            )?;
+                })?;
             Ok(Value::Int(ordinal as i64))
         }
         _ => Err(RuntimeError::with_span(
-            format!(
-                "ordinal() expects an enum variant, got {}",
-                type_name(&val)
-            ),
+            format!("ordinal() expects an enum variant, got {}", type_name(&val)),
             call_span,
         )),
     }

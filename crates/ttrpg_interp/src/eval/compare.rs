@@ -211,7 +211,12 @@ pub(super) fn match_pattern(
         PatternKind::Ident(name) => {
             // Checker only populates resolved_variants when this ident is a variant match.
             // Absence = binding context (for-loop, destructure, or non-variant name).
-            if env.interp.type_env.resolved_variants.contains_key(&pattern.span) {
+            if env
+                .interp
+                .type_env
+                .resolved_variants
+                .contains_key(&pattern.span)
+            {
                 matches!(value, Value::EnumVariant { variant, .. } if variant == name)
             } else {
                 bindings.insert(name.clone(), value.clone());

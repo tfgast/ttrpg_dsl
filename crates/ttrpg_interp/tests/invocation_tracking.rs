@@ -625,13 +625,7 @@ system "test" {
     let mut handler = ScriptedHandler::new();
     adapter.run(&mut handler, |state, eff_handler| {
         interp
-            .execute_action(
-                state,
-                eff_handler,
-                "DropSpell",
-                caster,
-                vec![],
-            )
+            .execute_action(state, eff_handler, "DropSpell", caster, vec![])
             .unwrap();
     });
 
@@ -643,10 +637,7 @@ system "test" {
         "Blessed should be revoked by DropSpell"
     );
     // last_spell should be none
-    assert_eq!(
-        state.read_field(&caster, "last_spell"),
-        Some(Value::None)
-    );
+    assert_eq!(state.read_field(&caster, "last_spell"), Some(Value::None));
 }
 
 #[test]
@@ -735,8 +726,7 @@ system "test" {
     assert!(next_id > 1);
 
     // Second interpreter: seeded with the previous counter
-    let interp2 =
-        Interpreter::new_with_invocation_start(&program, &result.env, next_id).unwrap();
+    let interp2 = Interpreter::new_with_invocation_start(&program, &result.env, next_id).unwrap();
     let mut state = adapter.into_inner();
     state.set_turn_budget(&actor, standard_turn_budget());
 
@@ -1048,7 +1038,12 @@ system "test" {
 
     // Read back via derive
     let val = interp
-        .evaluate_derive(&state, &mut ScriptedHandler::new(), "read_inv", vec![Value::Entity(actor)])
+        .evaluate_derive(
+            &state,
+            &mut ScriptedHandler::new(),
+            "read_inv",
+            vec![Value::Entity(actor)],
+        )
         .unwrap();
 
     assert!(

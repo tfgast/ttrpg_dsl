@@ -445,7 +445,10 @@ system "test" {
     }
 }
 "#;
-    expect_errors(source, &["emit is only allowed in action, reaction, or hook"]);
+    expect_errors(
+        source,
+        &["emit is only allowed in action, reaction, or hook"],
+    );
 }
 
 #[test]
@@ -460,7 +463,10 @@ system "test" {
     }
 }
 "#;
-    expect_errors(source, &["emit is only allowed in action, reaction, or hook"]);
+    expect_errors(
+        source,
+        &["emit is only allowed in action, reaction, or hook"],
+    );
 }
 
 #[test]
@@ -8101,7 +8107,10 @@ system "test" {
     }
 }
 "#;
-    expect_errors(source, &["unknown identifier `gren` in match on enum `Color`"]);
+    expect_errors(
+        source,
+        &["unknown identifier `gren` in match on enum `Color`"],
+    );
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -9488,7 +9497,10 @@ system "test" {
     }
 }
 "#;
-    expect_errors(source, &["included group `CombatStats` field `ac` conflicts with"]);
+    expect_errors(
+        source,
+        &["included group `CombatStats` field `ac` conflicts with"],
+    );
 }
 
 #[test]
@@ -9527,7 +9539,10 @@ system "test" {
     }
 }
 "#;
-    expect_errors(source, &["included group `CombatStats` field `Rage` conflicts with"]);
+    expect_errors(
+        source,
+        &["included group `CombatStats` field `Rage` conflicts with"],
+    );
 }
 
 #[test]
@@ -9892,7 +9907,9 @@ system "test" {
         .filter(|d| d.severity == ttrpg_ast::diagnostic::Severity::Warning)
         .collect();
     assert!(
-        warnings.iter().any(|w| w.message.contains("selector matches no functions")),
+        warnings
+            .iter()
+            .any(|w| w.message.contains("selector matches no functions")),
         "expected warning about empty selector match set, got: {:?}",
         warnings.iter().map(|w| &w.message).collect::<Vec<_>>()
     );
@@ -10026,7 +10043,10 @@ fn revoke_in_derive_rejected() {
         0
     }
 }"#;
-    expect_errors(source, &["revoke() can only be called in action, reaction, or hook blocks"]);
+    expect_errors(
+        source,
+        &["revoke() can only be called in action, reaction, or hook blocks"],
+    );
 }
 
 #[test]
@@ -10193,7 +10213,10 @@ fn test_disjunctive_with_validates_groups_exist() {
 }"#;
     let result = check_source(source);
     assert!(
-        result.diagnostics.iter().any(|d| d.message.contains("NoSuchGroup")),
+        result
+            .diagnostics
+            .iter()
+            .any(|d| d.message.contains("NoSuchGroup")),
         "expected error for nonexistent group in disjunctive with: {:?}",
         result.diagnostics
     );
@@ -10212,7 +10235,10 @@ system "test" {
     }
 }
 "#;
-    expect_errors(source, &["assignment to entity fields requires action, reaction, or hook"]);
+    expect_errors(
+        source,
+        &["assignment to entity fields requires action, reaction, or hook"],
+    );
 }
 
 #[test]
@@ -10261,7 +10287,10 @@ system "test" {
     }
 }
 "#;
-    expect_errors(source, &["grant is only allowed in action, reaction, or hook"]);
+    expect_errors(
+        source,
+        &["grant is only allowed in action, reaction, or hook"],
+    );
 }
 
 #[test]
@@ -10278,7 +10307,10 @@ system "test" {
     }
 }
 "#;
-    expect_errors(source, &["grant is only allowed in action, reaction, or hook"]);
+    expect_errors(
+        source,
+        &["grant is only allowed in action, reaction, or hook"],
+    );
 }
 
 #[test]
@@ -10317,7 +10349,10 @@ system "test" {
     }
 }
 "#;
-    expect_errors(source, &["is an action and can only be called from action, reaction, or hook"]);
+    expect_errors(
+        source,
+        &["is an action and can only be called from action, reaction, or hook"],
+    );
 }
 
 #[test]
@@ -10336,7 +10371,10 @@ system "test" {
     }
 }
 "#;
-    expect_errors(source, &["is an action and can only be called from action, reaction, or hook"]);
+    expect_errors(
+        source,
+        &["is an action and can only be called from action, reaction, or hook"],
+    );
 }
 
 #[test]
@@ -10411,7 +10449,10 @@ system "test" {
     }
 }
 "#;
-    expect_errors(source, &["invocation() can only be called in action, reaction, or hook"]);
+    expect_errors(
+        source,
+        &["invocation() can only be called in action, reaction, or hook"],
+    );
 }
 
 #[test]
@@ -10524,14 +10565,19 @@ system "test" {
 #[test]
 fn qualified_type_in_modify_selector_resolved() {
     expect_multi_no_errors(&[
-        ("core.ttrpg", r#"
+        (
+            "core.ttrpg",
+            r#"
 system "Core" {
     entity Character { hp: int }
     enum DamageType { fire, cold }
     derive deal(amount: int, dtype: DamageType) -> int { amount }
 }
-"#),
-        ("ext.ttrpg", r#"
+"#,
+        ),
+        (
+            "ext.ttrpg",
+            r#"
 use "Core" as C
 system "Ext" {
     entity Monster { hp: int }
@@ -10541,7 +10587,8 @@ system "Ext" {
         }
     }
 }
-"#),
+"#,
+        ),
     ]);
 }
 

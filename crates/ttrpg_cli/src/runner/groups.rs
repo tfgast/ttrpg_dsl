@@ -123,16 +123,10 @@ impl Runner {
                 // Initialize collection-typed fields to empty containers
                 match &field_def.ty.node {
                     TypeExpr::Set(_) => {
-                        fields.insert(
-                            field_def.name.to_string(),
-                            Value::Set(BTreeSet::new()),
-                        );
+                        fields.insert(field_def.name.to_string(), Value::Set(BTreeSet::new()));
                     }
                     TypeExpr::List(_) => {
-                        fields.insert(
-                            field_def.name.to_string(),
-                            Value::List(Vec::new()),
-                        );
+                        fields.insert(field_def.name.to_string(), Value::List(Vec::new()));
                     }
                     _ => {}
                 }
@@ -225,16 +219,10 @@ impl Runner {
             } else {
                 match &field_def.ty.node {
                     TypeExpr::Set(_) => {
-                        fields.insert(
-                            field_def.name.to_string(),
-                            Value::Set(BTreeSet::new()),
-                        );
+                        fields.insert(field_def.name.to_string(), Value::Set(BTreeSet::new()));
                     }
                     TypeExpr::List(_) => {
-                        fields.insert(
-                            field_def.name.to_string(),
-                            Value::List(Vec::new()),
-                        );
+                        fields.insert(field_def.name.to_string(), Value::List(Vec::new()));
                     }
                     _ => {}
                 }

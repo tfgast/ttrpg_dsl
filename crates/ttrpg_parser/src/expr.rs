@@ -390,10 +390,7 @@ impl Parser {
         }
     }
 
-    fn parse_list_or_comprehension(
-        &mut self,
-        start: usize,
-    ) -> Result<Spanned<ExprKind>, ()> {
+    fn parse_list_or_comprehension(&mut self, start: usize) -> Result<Spanned<ExprKind>, ()> {
         self.advance(); // consume [
         if matches!(self.peek(), TokenKind::RBracket) {
             // Empty list: []
@@ -449,10 +446,7 @@ impl Parser {
                 items.push(self.parse_expr()?);
             }
             self.expect(&TokenKind::RBracket)?;
-            Ok(Spanned::new(
-                ExprKind::ListLit(items),
-                self.end_span(start),
-            ))
+            Ok(Spanned::new(ExprKind::ListLit(items), self.end_span(start)))
         }
     }
 

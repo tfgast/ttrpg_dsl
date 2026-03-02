@@ -65,9 +65,7 @@ pub fn format_value(val: &Value, units: &UnitSuffixes) -> String {
         Value::Map(entries) => {
             let inner: Vec<String> = entries
                 .iter()
-                .map(|(k, v)| {
-                    format!("{}: {}", format_value(k, units), format_value(v, units))
-                })
+                .map(|(k, v)| format!("{}: {}", format_value(k, units), format_value(v, units)))
                 .collect();
             format!("{{{}}}", inner.join(", "))
         }
@@ -266,10 +264,7 @@ mod tests {
             variant: "rounds".into(),
             fields,
         };
-        assert_eq!(
-            format_value(&val, &no_units()),
-            "Duration.rounds(value: 3)"
-        );
+        assert_eq!(format_value(&val, &no_units()), "Duration.rounds(value: 3)");
     }
 
     #[test]

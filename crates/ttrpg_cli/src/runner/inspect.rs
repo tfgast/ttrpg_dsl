@@ -62,9 +62,7 @@ impl Runner {
                             }
                             None => {
                                 let entity_type = type_name.as_deref().unwrap_or("unknown");
-                                format!(
-                                    "unknown group '{group_name}' on {entity_type}"
-                                )
+                                format!("unknown group '{group_name}' on {entity_type}")
                             }
                         };
                         return Err(CliError::Message(msg));
@@ -119,28 +117,27 @@ impl Runner {
                         }
                         None => {
                             // Check for flattened included-group field
-                            let flattened = type_name.as_ref().and_then(|tn| {
-                                self.type_env.lookup_flattened_field(tn, field)
-                            });
+                            let flattened = type_name
+                                .as_ref()
+                                .and_then(|tn| self.type_env.lookup_flattened_field(tn, field));
                             if let Some(group_name) = flattened {
                                 match gs.read_field(&entity, group_name) {
-                                    Some(Value::Struct { fields: group_fields, .. }) => {
-                                        match group_fields.get(field) {
-                                            Some(val) => {
-                                                self.output.push(format!(
-                                                    "{}.{} = {}",
-                                                    handle,
-                                                    field,
-                                                    format_value(val, &self.unit_suffixes)
-                                                ));
-                                            }
-                                            None => {
-                                                self.output.push(format!(
-                                                    "{handle}.{field} = <unset>"
-                                                ));
-                                            }
+                                    Some(Value::Struct {
+                                        fields: group_fields,
+                                        ..
+                                    }) => match group_fields.get(field) {
+                                        Some(val) => {
+                                            self.output.push(format!(
+                                                "{}.{} = {}",
+                                                handle,
+                                                field,
+                                                format_value(val, &self.unit_suffixes)
+                                            ));
                                         }
-                                    }
+                                        None => {
+                                            self.output.push(format!("{handle}.{field} = <unset>"));
+                                        }
+                                    },
                                     _ => {
                                         return Err(CliError::Message(format!(
                                             "included group '{group_name}' is missing in state for {handle}"
@@ -173,8 +170,10 @@ impl Runner {
             if let Some(fields) = self.type_env.lookup_fields(&type_name) {
                 let gs = self.game_state.borrow();
                 for fi in fields {
-                    let val = gs
-                        .read_field(&entity, &fi.name).map_or_else(|| "<unset>".into(), |v| format_value(&v, &self.unit_suffixes));
+                    let val = gs.read_field(&entity, &fi.name).map_or_else(
+                        || "<unset>".into(),
+                        |v| format_value(&v, &self.unit_suffixes),
+                    );
                     self.output
                         .push(format!("  {}: {} = {}", fi.name, fi.ty.display(), val));
                 }
@@ -195,8 +194,10 @@ impl Runner {
                         self.output
                             .push(format!("  [group] {} ({})", group_info.name, status));
                         for fi in &group_info.fields {
-                            let val = fields
-                                .get(&fi.name).map_or_else(|| "<unset>".into(), |v| format_value(v, &self.unit_suffixes));
+                            let val = fields.get(&fi.name).map_or_else(
+                                || "<unset>".into(),
+                                |v| format_value(v, &self.unit_suffixes),
+                            );
                             self.output.push(format!(
                                 "    {}: {} = {}",
                                 fi.name,
@@ -234,7 +235,8 @@ impl Runner {
         for (handle, entity) in &sorted {
             let gs = self.game_state.borrow();
             let type_name = gs
-                .entity_type_name(entity).map_or_else(|| "?".to_string(), |n| n.to_string());
+                .entity_type_name(entity)
+                .map_or_else(|| "?".to_string(), |n| n.to_string());
             drop(gs);
 
             self.output.push(format!("{handle} ({type_name})"));
@@ -242,8 +244,10 @@ impl Runner {
             if let Some(fields) = self.type_env.lookup_fields(&type_name) {
                 let gs = self.game_state.borrow();
                 for fi in fields {
-                    let val = gs
-                        .read_field(entity, &fi.name).map_or_else(|| "<unset>".into(), |v| format_value(&v, &self.unit_suffixes));
+                    let val = gs.read_field(entity, &fi.name).map_or_else(
+                        || "<unset>".into(),
+                        |v| format_value(&v, &self.unit_suffixes),
+                    );
                     self.output
                         .push(format!("  {}: {} = {}", fi.name, fi.ty.display(), val));
                 }
@@ -264,8 +268,10 @@ impl Runner {
                         self.output
                             .push(format!("  [group] {} ({})", group_info.name, status));
                         for fi in &group_info.fields {
-                            let val = fields
-                                .get(&fi.name).map_or_else(|| "<unset>".into(), |v| format_value(v, &self.unit_suffixes));
+                            let val = fields.get(&fi.name).map_or_else(
+                                || "<unset>".into(),
+                                |v| format_value(v, &self.unit_suffixes),
+                            );
                             self.output.push(format!(
                                 "    {}: {} = {}",
                                 fi.name,
@@ -441,9 +447,7 @@ impl Runner {
     pub(super) fn cmd_enable(&mut self, name: &str) -> Result<(), CliError> {
         let name = name.trim();
         if !self.type_env.options.contains(name) {
-            return Err(CliError::Message(format!(
-                "unknown option '{name}'"
-            )));
+            return Err(CliError::Message(format!("unknown option '{name}'")));
         }
         self.game_state.borrow_mut().enable_option(name);
         self.output.push(format!("enabled option '{name}'"));
@@ -453,9 +457,7 @@ impl Runner {
     pub(super) fn cmd_disable(&mut self, name: &str) -> Result<(), CliError> {
         let name = name.trim();
         if !self.type_env.options.contains(name) {
-            return Err(CliError::Message(format!(
-                "unknown option '{name}'"
-            )));
+            return Err(CliError::Message(format!("unknown option '{name}'")));
         }
         self.game_state.borrow_mut().disable_option(name);
         self.output.push(format!("disabled option '{name}'"));
@@ -483,8 +485,7 @@ impl Runner {
                 .as_deref()
                 .map(|d| format!(" — {d}"))
                 .unwrap_or_default();
-            self.output
-                .push(format!("  {name} [{status}]{desc}"));
+            self.output.push(format!("  {name} [{status}]{desc}"));
         }
         Ok(())
     }

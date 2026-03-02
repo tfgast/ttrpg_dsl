@@ -2247,11 +2247,7 @@ fn set_flattened_included_field() {
     // Set flattened field: base_ac lives in included CombatStats group
     runner.exec("set hero.base_ac = 18").unwrap();
     let output = runner.take_output();
-    assert!(
-        output[0].contains("hero.base_ac = 18"),
-        "got: {:?}",
-        output
-    );
+    assert!(output[0].contains("hero.base_ac = 18"), "got: {:?}", output);
 
     // Verify via qualified access
     runner.exec("inspect hero.CombatStats.base_ac").unwrap();
@@ -2292,9 +2288,7 @@ fn qualified_access_still_works_after_flattening() {
     runner.take_output();
 
     // Qualified set still works
-    runner
-        .exec("set hero.CombatStats.base_ac = 20")
-        .unwrap();
+    runner.exec("set hero.CombatStats.base_ac = 20").unwrap();
     let output = runner.take_output();
     assert!(
         output[0].contains("hero.CombatStats.base_ac = 20"),
@@ -2342,11 +2336,19 @@ fn spawn_applies_entity_field_defaults() {
     // Defaulted fields should be set
     runner.exec("inspect hero.level").unwrap();
     let output = runner.take_output();
-    assert!(output[0].contains("1"), "level should default to 1, got: {:?}", output);
+    assert!(
+        output[0].contains("1"),
+        "level should default to 1, got: {:?}",
+        output
+    );
 
     runner.exec("inspect hero.AC").unwrap();
     let output = runner.take_output();
-    assert!(output[0].contains("10"), "AC should default to 10, got: {:?}", output);
+    assert!(
+        output[0].contains("10"),
+        "AC should default to 10, got: {:?}",
+        output
+    );
 }
 
 #[test]
@@ -2362,7 +2364,11 @@ fn spawn_explicit_overrides_default() {
 
     runner.exec("inspect hero.level").unwrap();
     let output = runner.take_output();
-    assert!(output[0].contains("5"), "level should be 5 (explicit), got: {:?}", output);
+    assert!(
+        output[0].contains("5"),
+        "level should be 5 (explicit), got: {:?}",
+        output
+    );
 }
 
 #[test]
@@ -2376,11 +2382,19 @@ fn spawn_no_fields_applies_all_defaults() {
 
     runner.exec("inspect hero.level").unwrap();
     let output = runner.take_output();
-    assert!(output[0].contains("1"), "level should default to 1, got: {:?}", output);
+    assert!(
+        output[0].contains("1"),
+        "level should default to 1, got: {:?}",
+        output
+    );
 
     runner.exec("inspect hero.AC").unwrap();
     let output = runner.take_output();
-    assert!(output[0].contains("10"), "AC should default to 10, got: {:?}", output);
+    assert!(
+        output[0].contains("10"),
+        "AC should default to 10, got: {:?}",
+        output
+    );
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -2429,10 +2443,21 @@ fn options_lists_all_declared_options() {
     let output = runner.take_output();
     assert_eq!(output.len(), 3, "should list 3 options, got: {:?}", output);
     // generous_crits should be on (default: on), others off
-    let generous = output.iter().find(|l| l.contains("generous_crits")).unwrap();
-    assert!(generous.contains("[on]"), "generous_crits should be on, got: {}", generous);
+    let generous = output
+        .iter()
+        .find(|l| l.contains("generous_crits"))
+        .unwrap();
+    assert!(
+        generous.contains("[on]"),
+        "generous_crits should be on, got: {}",
+        generous
+    );
     let flanking = output.iter().find(|l| l.contains("flanking")).unwrap();
-    assert!(flanking.contains("[off]"), "flanking should be off, got: {}", flanking);
+    assert!(
+        flanking.contains("[off]"),
+        "flanking should be off, got: {}",
+        flanking
+    );
 }
 
 #[test]
@@ -2442,8 +2467,14 @@ fn default_on_auto_enables_at_load() {
 
     runner.exec("options").unwrap();
     let output = runner.take_output();
-    let generous = output.iter().find(|l| l.contains("generous_crits")).unwrap();
-    assert!(generous.contains("[on]"), "default:on option should be enabled after load");
+    let generous = output
+        .iter()
+        .find(|l| l.contains("generous_crits"))
+        .unwrap();
+    assert!(
+        generous.contains("[on]"),
+        "default:on option should be enabled after load"
+    );
 }
 
 #[test]
@@ -2484,7 +2515,11 @@ fn enable_and_disable_option() {
     runner.exec("options").unwrap();
     let output = runner.take_output();
     let flanking = output.iter().find(|l| l.contains("flanking")).unwrap();
-    assert!(flanking.contains("[on]"), "flanking should now be on, got: {}", flanking);
+    assert!(
+        flanking.contains("[on]"),
+        "flanking should now be on, got: {}",
+        flanking
+    );
 
     // Disable it
     runner.exec("disable flanking").unwrap();
@@ -2495,7 +2530,11 @@ fn enable_and_disable_option() {
     runner.exec("options").unwrap();
     let output = runner.take_output();
     let flanking = output.iter().find(|l| l.contains("flanking")).unwrap();
-    assert!(flanking.contains("[off]"), "flanking should be off again, got: {}", flanking);
+    assert!(
+        flanking.contains("[off]"),
+        "flanking should be off again, got: {}",
+        flanking
+    );
 }
 
 #[test]
@@ -2529,7 +2568,11 @@ fn option_modify_applies_when_enabled() {
     // house_rule is off by default — base_modifier(5) returns 7
     runner.exec("call base_modifier(5)").unwrap();
     let output = runner.take_output();
-    assert!(output.iter().any(|l| l.contains("7")), "without option: 5 + 2 = 7, got: {:?}", output);
+    assert!(
+        output.iter().any(|l| l.contains("7")),
+        "without option: 5 + 2 = 7, got: {:?}",
+        output
+    );
 
     // Enable house_rule — base_modifier(5) should now return 17 (7 + 10)
     runner.exec("enable house_rule").unwrap();
@@ -2537,7 +2580,11 @@ fn option_modify_applies_when_enabled() {
 
     runner.exec("call base_modifier(5)").unwrap();
     let output = runner.take_output();
-    assert!(output.iter().any(|l| l.contains("17")), "with option: 5 + 2 + 10 = 17, got: {:?}", output);
+    assert!(
+        output.iter().any(|l| l.contains("17")),
+        "with option: 5 + 2 + 10 = 17, got: {:?}",
+        output
+    );
 
     // Disable it again
     runner.exec("disable house_rule").unwrap();
@@ -2545,7 +2592,11 @@ fn option_modify_applies_when_enabled() {
 
     runner.exec("call base_modifier(5)").unwrap();
     let output = runner.take_output();
-    assert!(output.iter().any(|l| l.contains("7")), "after disable: back to 7, got: {:?}", output);
+    assert!(
+        output.iter().any(|l| l.contains("7")),
+        "after disable: back to 7, got: {:?}",
+        output
+    );
 }
 
 #[test]
@@ -2556,7 +2607,10 @@ fn reload_preserves_default_on() {
     // generous_crits starts on (default: on)
     runner.exec("options").unwrap();
     let output = runner.take_output();
-    let generous = output.iter().find(|l| l.contains("generous_crits")).unwrap();
+    let generous = output
+        .iter()
+        .find(|l| l.contains("generous_crits"))
+        .unwrap();
     assert!(generous.contains("[on]"));
 
     // Reload — default:on should still be enabled
@@ -2565,8 +2619,14 @@ fn reload_preserves_default_on() {
 
     runner.exec("options").unwrap();
     let output = runner.take_output();
-    let generous = output.iter().find(|l| l.contains("generous_crits")).unwrap();
-    assert!(generous.contains("[on]"), "after reload, default:on should still be enabled");
+    let generous = output
+        .iter()
+        .find(|l| l.contains("generous_crits"))
+        .unwrap();
+    assert!(
+        generous.contains("[on]"),
+        "after reload, default:on should still be enabled"
+    );
 }
 
 // ── Module system integration tests (spec: 02_scoping.ttrpg) ──────────
@@ -2577,11 +2637,7 @@ fn module_system_merging_additive() {
     // Character from one block, modifier from another — both visible.
     let dir = multi_file_dir("mod_merge_additive");
     let types = dir.join("core_types.ttrpg");
-    std::fs::write(
-        &types,
-        r#"system "Core" { entity Character { HP: int } }"#,
-    )
-    .unwrap();
+    std::fs::write(&types, r#"system "Core" { entity Character { HP: int } }"#).unwrap();
 
     let fns = dir.join("core_fns.ttrpg");
     std::fs::write(
@@ -2625,7 +2681,10 @@ fn module_system_merging_duplicate_decl_error() {
 
     let mut runner = Runner::new();
     let result = runner.exec(&format!("load {} {}", a.display(), b.display()));
-    assert!(result.is_err(), "duplicate decl in merged system should error");
+    assert!(
+        result.is_err(),
+        "duplicate decl in merged system should error"
+    );
 
     std::fs::remove_dir_all(&dir).ok();
 }
@@ -2679,11 +2738,7 @@ fn module_use_applies_to_all_systems_in_file() {
     // All `use` declarations in a file apply to all system blocks in that file.
     let dir = multi_file_dir("mod_use_all_systems");
     let core = dir.join("core.ttrpg");
-    std::fs::write(
-        &core,
-        r#"system "Core" { derive helper() -> int { 42 } }"#,
-    )
-    .unwrap();
+    std::fs::write(&core, r#"system "Core" { derive helper() -> int { 42 } }"#).unwrap();
 
     let multi = dir.join("multi.ttrpg");
     std::fs::write(
@@ -2724,11 +2779,7 @@ fn module_import_not_transitive() {
     // Imports are NOT transitive: if A uses B and B uses C, A cannot see C.
     let dir = multi_file_dir("mod_not_transitive");
     let c = dir.join("c.ttrpg");
-    std::fs::write(
-        &c,
-        r#"system "C" { derive c_fn() -> int { 1 } }"#,
-    )
-    .unwrap();
+    std::fs::write(&c, r#"system "C" { derive c_fn() -> int { 1 } }"#).unwrap();
 
     let b = dir.join("b.ttrpg");
     std::fs::write(
@@ -2758,10 +2809,7 @@ system "A" { derive a_fn() -> int { c_fn() } }
         a.display()
     ));
     // A references c_fn but only imports B, not C — should fail
-    assert!(
-        result.is_err(),
-        "transitive import should not be allowed"
-    );
+    assert!(result.is_err(), "transitive import should not be allowed");
 
     std::fs::remove_dir_all(&dir).ok();
 }
@@ -2771,11 +2819,7 @@ fn module_import_transitive_fixed_with_explicit_use() {
     // If A explicitly uses C, it can see C's names.
     let dir = multi_file_dir("mod_explicit_transitive");
     let c = dir.join("c.ttrpg");
-    std::fs::write(
-        &c,
-        r#"system "C" { derive c_fn() -> int { 1 } }"#,
-    )
-    .unwrap();
+    std::fs::write(&c, r#"system "C" { derive c_fn() -> int { 1 } }"#).unwrap();
 
     let b = dir.join("b.ttrpg");
     std::fs::write(
@@ -2821,11 +2865,7 @@ fn module_qualified_type_via_alias() {
     // Qualified type access: `Core.Character` desugars to `Character`.
     let dir = multi_file_dir("mod_qualified_type");
     let core = dir.join("core.ttrpg");
-    std::fs::write(
-        &core,
-        r#"system "Core" { entity Character { HP: int } }"#,
-    )
-    .unwrap();
+    std::fs::write(&core, r#"system "Core" { entity Character { HP: int } }"#).unwrap();
 
     let game = dir.join("game.ttrpg");
     std::fs::write(
@@ -2946,11 +2986,7 @@ fn module_alias_same_target_idempotent() {
     // Both files defining "Game" import "Core" as C — should not error.
     let dir = multi_file_dir("mod_alias_idempotent");
     let core = dir.join("core.ttrpg");
-    std::fs::write(
-        &core,
-        r#"system "Core" { derive helper() -> int { 1 } }"#,
-    )
-    .unwrap();
+    std::fs::write(&core, r#"system "Core" { derive helper() -> int { 1 } }"#).unwrap();
 
     let a = dir.join("a.ttrpg");
     std::fs::write(
@@ -2999,18 +3035,10 @@ fn module_alias_different_targets_error() {
     // Same alias for different targets: error.
     let dir = multi_file_dir("mod_alias_diff_target");
     let a = dir.join("a.ttrpg");
-    std::fs::write(
-        &a,
-        r#"system "A" { derive fa() -> int { 1 } }"#,
-    )
-    .unwrap();
+    std::fs::write(&a, r#"system "A" { derive fa() -> int { 1 } }"#).unwrap();
 
     let b = dir.join("b.ttrpg");
-    std::fs::write(
-        &b,
-        r#"system "B" { derive fb() -> int { 2 } }"#,
-    )
-    .unwrap();
+    std::fs::write(&b, r#"system "B" { derive fb() -> int { 2 } }"#).unwrap();
 
     let main = dir.join("main.ttrpg");
     std::fs::write(
@@ -3043,11 +3071,7 @@ fn module_alias_conflicts_with_own_declaration() {
     // Alias collides with own declaration name: error.
     let dir = multi_file_dir("mod_alias_own_decl");
     let other = dir.join("other.ttrpg");
-    std::fs::write(
-        &other,
-        r#"system "Other" { derive bar() -> int { 1 } }"#,
-    )
-    .unwrap();
+    std::fs::write(&other, r#"system "Other" { derive bar() -> int { 1 } }"#).unwrap();
 
     let main = dir.join("main.ttrpg");
     std::fs::write(
@@ -3060,11 +3084,7 @@ system "Main" { derive Foo() -> int { 0 } }
     .unwrap();
 
     let mut runner = Runner::new();
-    let result = runner.exec(&format!(
-        "load {} {}",
-        other.display(),
-        main.display()
-    ));
+    let result = runner.exec(&format!("load {} {}", other.display(), main.display()));
     assert!(
         result.is_err(),
         "alias colliding with own declaration should error"
@@ -3078,11 +3098,7 @@ fn module_alias_conflicts_with_builtin() {
     // Alias collides with builtin function name: error.
     let dir = multi_file_dir("mod_alias_builtin");
     let other = dir.join("other.ttrpg");
-    std::fs::write(
-        &other,
-        r#"system "Other" { derive bar() -> int { 1 } }"#,
-    )
-    .unwrap();
+    std::fs::write(&other, r#"system "Other" { derive bar() -> int { 1 } }"#).unwrap();
 
     let main = dir.join("main.ttrpg");
     std::fs::write(
@@ -3095,15 +3111,8 @@ system "Main" { derive test_fn() -> int { 0 } }
     .unwrap();
 
     let mut runner = Runner::new();
-    let result = runner.exec(&format!(
-        "load {} {}",
-        other.display(),
-        main.display()
-    ));
-    assert!(
-        result.is_err(),
-        "alias colliding with builtin should error"
-    );
+    let result = runner.exec(&format!("load {} {}", other.display(), main.display()));
+    assert!(result.is_err(), "alias colliding with builtin should error");
 
     std::fs::remove_dir_all(&dir).ok();
 }
@@ -3230,9 +3239,7 @@ system "Game" {
         .unwrap();
     runner.take_output();
 
-    runner
-        .exec("spawn Character villain { HP: 30 }")
-        .unwrap();
+    runner.exec("spawn Character villain { HP: 30 }").unwrap();
     runner.take_output();
 
     runner.exec("eval make_fright(villain)").unwrap();
@@ -3293,18 +3300,10 @@ fn module_global_name_uniqueness_same_namespace() {
     // No two systems may define the same name in the same namespace.
     let dir = multi_file_dir("mod_global_unique");
     let a = dir.join("a.ttrpg");
-    std::fs::write(
-        &a,
-        r#"system "A" { derive shared() -> int { 1 } }"#,
-    )
-    .unwrap();
+    std::fs::write(&a, r#"system "A" { derive shared() -> int { 1 } }"#).unwrap();
 
     let b = dir.join("b.ttrpg");
-    std::fs::write(
-        &b,
-        r#"system "B" { derive shared() -> int { 2 } }"#,
-    )
-    .unwrap();
+    std::fs::write(&b, r#"system "B" { derive shared() -> int { 2 } }"#).unwrap();
 
     let mut runner = Runner::new();
     let result = runner.exec(&format!("load {} {}", a.display(), b.display()));
@@ -3321,18 +3320,10 @@ fn module_different_namespaces_can_share_names() {
     // Same name in different namespaces is fine (e.g., type Foo and function Foo).
     let dir = multi_file_dir("mod_ns_share");
     let a = dir.join("a.ttrpg");
-    std::fs::write(
-        &a,
-        r#"system "A" { enum Foo { X, Y } }"#,
-    )
-    .unwrap();
+    std::fs::write(&a, r#"system "A" { enum Foo { X, Y } }"#).unwrap();
 
     let b = dir.join("b.ttrpg");
-    std::fs::write(
-        &b,
-        r#"system "B" { derive Foo() -> int { 42 } }"#,
-    )
-    .unwrap();
+    std::fs::write(&b, r#"system "B" { derive Foo() -> int { 42 } }"#).unwrap();
 
     let mut runner = Runner::new();
     runner
@@ -3353,11 +3344,7 @@ fn module_visibility_without_use_errors() {
     // A system cannot see declarations from another system without `use`.
     let dir = multi_file_dir("mod_no_use_error");
     let core = dir.join("core.ttrpg");
-    std::fs::write(
-        &core,
-        r#"system "Core" { derive helper() -> int { 42 } }"#,
-    )
-    .unwrap();
+    std::fs::write(&core, r#"system "Core" { derive helper() -> int { 42 } }"#).unwrap();
 
     let game = dir.join("game.ttrpg");
     std::fs::write(
@@ -3371,11 +3358,7 @@ system "Game" {
     .unwrap();
 
     let mut runner = Runner::new();
-    let result = runner.exec(&format!(
-        "load {} {}",
-        core.display(),
-        game.display()
-    ));
+    let result = runner.exec(&format!("load {} {}", core.display(), game.display()));
     assert!(
         result.is_err(),
         "accessing another system's names without use should error"
@@ -3389,11 +3372,7 @@ fn module_use_with_no_system_block_warns() {
     // `use` with no system block in the file produces a warning.
     let dir = multi_file_dir("mod_use_no_system");
     let core = dir.join("core.ttrpg");
-    std::fs::write(
-        &core,
-        r#"system "Core" { derive helper() -> int { 42 } }"#,
-    )
-    .unwrap();
+    std::fs::write(&core, r#"system "Core" { derive helper() -> int { 42 } }"#).unwrap();
 
     let orphan = dir.join("orphan.ttrpg");
     std::fs::write(
@@ -3411,7 +3390,9 @@ fn module_use_with_no_system_block_warns() {
 
     runner.exec("errors").unwrap();
     let output = runner.take_output();
-    let has_warning = output.iter().any(|l| l.contains("no system blocks") || l.contains("no effect"));
+    let has_warning = output
+        .iter()
+        .any(|l| l.contains("no system blocks") || l.contains("no effect"));
     assert!(
         has_warning || output.iter().any(|l| l.contains("no diagnostics")),
         "expected warning about use with no system block, got: {:?}",
@@ -3480,18 +3461,10 @@ fn module_cross_system_enum_variant_collision_ok() {
     // (multi-owner variants disambiguated by expected-type hints).
     let dir = multi_file_dir("mod_variant_collision_ok");
     let a = dir.join("a.ttrpg");
-    std::fs::write(
-        &a,
-        r#"system "A" { enum Color { red, blue } }"#,
-    )
-    .unwrap();
+    std::fs::write(&a, r#"system "A" { enum Color { red, blue } }"#).unwrap();
 
     let b = dir.join("b.ttrpg");
-    std::fs::write(
-        &b,
-        r#"system "B" { enum Mood { red, calm } }"#,
-    )
-    .unwrap();
+    std::fs::write(&b, r#"system "B" { enum Mood { red, calm } }"#).unwrap();
 
     let mut runner = Runner::new();
     runner

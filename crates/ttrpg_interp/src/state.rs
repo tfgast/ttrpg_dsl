@@ -58,7 +58,10 @@ impl ActiveCondition {
         let mut fields = BTreeMap::new();
         fields.insert(Name::from("name"), Value::Str(self.name.to_string()));
         fields.insert(Name::from("duration"), self.duration.clone());
-        fields.insert(Name::from("id"), Value::Int(self.id.min(i64::MAX as u64) as i64));
+        fields.insert(
+            Name::from("id"),
+            Value::Int(self.id.min(i64::MAX as u64) as i64),
+        );
         Value::Struct {
             name: Name::from("ActiveCondition"),
             fields,

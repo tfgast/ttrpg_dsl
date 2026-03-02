@@ -445,7 +445,9 @@ mod tests {
         let program = lower_moves(program, &mut diags);
         // The move should produce a diagnostic about reserved prefix
         assert!(
-            diags.iter().any(|d| d.message.contains("reserved `__` prefix")),
+            diags
+                .iter()
+                .any(|d| d.message.contains("reserved `__` prefix")),
             "expected reserved prefix error, got: {:?}",
             diags
         );
@@ -455,7 +457,9 @@ mod tests {
             _ => panic!("expected system"),
         };
         assert!(
-            sys.decls.iter().any(|d| matches!(&d.node, DeclKind::Move(_))),
+            sys.decls
+                .iter()
+                .any(|d| matches!(&d.node, DeclKind::Move(_))),
             "move with __ prefix should not be lowered"
         );
     }

@@ -45,9 +45,7 @@ impl Runner {
                     .strip_prefix('{')
                     .and_then(|s| s.strip_suffix('}'))
                     .ok_or_else(|| {
-                        CliError::Message(format!(
-                            "unmatched '{{' in inline group '{group_name}'"
-                        ))
+                        CliError::Message(format!("unmatched '{{' in inline group '{group_name}'"))
                     })?;
 
                 if group_name.is_empty() {

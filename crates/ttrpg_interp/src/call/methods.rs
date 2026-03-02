@@ -1,8 +1,8 @@
 use ttrpg_ast::ast::Arg;
 use ttrpg_ast::Span;
 
-use crate::eval::{eval_expr, type_name};
 use crate::effect::{Effect, Response};
+use crate::eval::{eval_expr, type_name};
 use crate::value::{DiceExpr, Value};
 use crate::Env;
 use crate::RuntimeError;
@@ -331,9 +331,7 @@ fn eval_map_method(object: Value, method: &str, span: Span) -> Result<Value, Run
         "keys" => Ok(Value::List(map.into_keys().collect())),
         "values" => Ok(Value::List(map.into_values().collect())),
         _ => Err(RuntimeError::with_span(
-            format!(
-                "map type has no method `{method}`; available methods: len, keys, values"
-            ),
+            format!("map type has no method `{method}`; available methods: len, keys, values"),
             span,
         )),
     }
@@ -409,9 +407,7 @@ fn eval_dice_method(
             }
         }
         _ => Err(RuntimeError::with_span(
-            format!(
-                "DiceExpr type has no method `{method}`; available methods: multiply, roll"
-            ),
+            format!("DiceExpr type has no method `{method}`; available methods: multiply, roll"),
             span,
         )),
     }

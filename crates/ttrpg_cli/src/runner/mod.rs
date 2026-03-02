@@ -318,7 +318,6 @@ impl Runner {
             .copied()
             .ok_or_else(|| CliError::Message(format!("unknown handle: {name}")))
     }
-
 }
 
 impl Default for Runner {
@@ -348,13 +347,9 @@ impl<'a, 'p> TrackedInterpreter<'a, 'p> {
         source_map: &Option<MultiSourceMap>,
     ) -> Result<Self, CliError> {
         let start = game_state.borrow().next_invocation_id();
-        let interp =
-            Interpreter::new_with_invocation_start(program, type_env, start)
-                .map_err(|e| render_runtime_error(&e, source_map))?;
-        Ok(TrackedInterpreter {
-            interp,
-            game_state,
-        })
+        let interp = Interpreter::new_with_invocation_start(program, type_env, start)
+            .map_err(|e| render_runtime_error(&e, source_map))?;
+        Ok(TrackedInterpreter { interp, game_state })
     }
 }
 

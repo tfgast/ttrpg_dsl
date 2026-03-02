@@ -438,8 +438,7 @@ fn missile_range_errors_when_distance_exceeds_long_range() {
         .unwrap_err();
 
     assert!(
-        err.message
-            .contains("distance exceeds weapon long range"),
+        err.message.contains("distance exceeds weapon long range"),
         "unexpected error: {}",
         err.message
     );
@@ -516,11 +515,7 @@ fn skip_phase_uses_typed_phase_enum() {
             &state,
             &mut handler,
             "skip_phase",
-            vec![
-                combat_phase("Magic"),
-                Value::Bool(false),
-                Value::Bool(true),
-            ],
+            vec![combat_phase("Magic"), Value::Bool(false), Value::Bool(true)],
         )
         .unwrap();
     assert_eq!(skip_magic, Value::Bool(true));
@@ -891,8 +886,8 @@ fn should_check_morale_uses_bool_params() {
             &mut handler,
             "should_check_morale",
             vec![
-                Value::Int(1),     // deaths
-                Value::Int(5),     // initial
+                Value::Int(1),      // deaths
+                Value::Int(5),      // initial
                 Value::Bool(false), // first_death_checked
                 Value::Bool(false), // half_killed_checked
             ],

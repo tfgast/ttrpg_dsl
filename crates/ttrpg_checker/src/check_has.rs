@@ -39,9 +39,7 @@ impl Checker<'_> {
             }
             _ => {
                 self.error(
-                    format!(
-                        "`has` can only be used with entity types, found {entity_ty}"
-                    ),
+                    format!("`has` can only be used with entity types, found {entity_ty}"),
                     span,
                 );
             }
@@ -52,9 +50,7 @@ impl Checker<'_> {
                 if let Some(fields) = self.env.lookup_fields(ent_name) {
                     if fields.iter().any(|f| f.name == *alias_name) {
                         self.error(
-                            format!(
-                                "alias `{alias_name}` shadows a field on entity `{ent_name}`"
-                            ),
+                            format!("alias `{alias_name}` shadows a field on entity `{ent_name}`"),
                             span,
                         );
                     }
@@ -65,9 +61,7 @@ impl Checker<'_> {
                     .is_some()
                 {
                     self.error(
-                        format!(
-                            "alias `{alias_name}` shadows a field on entity `{ent_name}`"
-                        ),
+                        format!("alias `{alias_name}` shadows a field on entity `{ent_name}`"),
                         span,
                     );
                 }

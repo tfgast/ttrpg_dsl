@@ -137,8 +137,10 @@ fn eval_assign_direct(
 fn expand_flattened_path(env: &Env, entity: &EntityRef, path: &mut Vec<FieldPathSegment>) {
     if let Some(FieldPathSegment::Field(ref field_name)) = path.first() {
         if let Some(entity_type) = env.state.entity_type_name(entity) {
-            if let Some(group_name) =
-                env.interp.type_env.lookup_flattened_field(&entity_type, field_name)
+            if let Some(group_name) = env
+                .interp
+                .type_env
+                .lookup_flattened_field(&entity_type, field_name)
             {
                 path.insert(0, FieldPathSegment::Field(group_name.clone()));
             }
@@ -253,8 +255,7 @@ fn eval_assign_local(
         }
 
         // Apply group alias resolution, adjusting index for entity depth
-        if let Some((seg_idx, real_name)) = env.interp.type_env.resolved_lvalue_aliases.get(&span)
-        {
+        if let Some((seg_idx, real_name)) = env.interp.type_env.resolved_lvalue_aliases.get(&span) {
             let adjusted = seg_idx.saturating_sub(depth);
             if adjusted < path.len() {
                 path[adjusted] = FieldPathSegment::Field(real_name.clone());

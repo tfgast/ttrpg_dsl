@@ -349,9 +349,7 @@ impl TypeEnv {
             }
             TypeExpr::Qualified { qualifier, name } => {
                 diagnostics.push(Diagnostic::error(
-                    format!(
-                        "qualified type `{qualifier}.{name}` requires module resolution"
-                    ),
+                    format!("qualified type `{qualifier}.{name}` requires module resolution"),
                     texpr.span,
                 ));
             }

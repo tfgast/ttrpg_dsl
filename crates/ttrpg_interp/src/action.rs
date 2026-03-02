@@ -36,14 +36,7 @@ fn emit_action_started(
         }
         other => {
             // Best-effort: emit ActionCompleted(Failed) so every Started is paired.
-            let _ = emit_action_completed(
-                env,
-                name,
-                actor,
-                ActionOutcome::Failed,
-                None,
-                call_span,
-            );
+            let _ = emit_action_completed(env, name, actor, ActionOutcome::Failed, None, call_span);
             Err(RuntimeError::with_span(
                 format!(
                     "protocol error: expected Acknowledged or Vetoed for ActionStarted, got {other:?}"
@@ -72,9 +65,7 @@ fn emit_action_completed(
     match response {
         Response::Acknowledged => Ok(()),
         other => Err(RuntimeError::with_span(
-            format!(
-                "protocol error: expected Acknowledged for ActionCompleted, got {other:?}"
-            ),
+            format!("protocol error: expected Acknowledged for ActionCompleted, got {other:?}"),
             call_span,
         )),
     }
@@ -115,8 +106,7 @@ fn scoped_execute(
     } else {
         ActionOutcome::Failed
     };
-    let completion =
-        emit_action_completed(env, name, actor, outcome, Some(inv_id), call_span);
+    let completion = emit_action_completed(env, name, actor, outcome, Some(inv_id), call_span);
 
     match result {
         Ok(val) => {
@@ -145,9 +135,7 @@ fn execute_pipeline(
             Value::Bool(b) => *b,
             _ => {
                 return Err(RuntimeError::with_span(
-                    format!(
-                        "requires clause must evaluate to Bool, got {requires_val:?}"
-                    ),
+                    format!("requires clause must evaluate to Bool, got {requires_val:?}"),
                     requires_expr.span,
                 ));
             }
@@ -183,7 +171,8 @@ fn execute_pipeline(
     if let Some(cost) = cost {
         if !cost.free {
             // Collect cost modifiers from conditions on the actor
-            let effective_cost = collect_and_apply_cost_modifiers(env, actor, action_name, cost, call_span)?;
+            let effective_cost =
+                collect_and_apply_cost_modifiers(env, actor, action_name, cost, call_span)?;
             if let Some(ref eff) = effective_cost {
                 deduct_costs(env, actor, eff, call_span)?;
             }
@@ -374,9 +363,9 @@ fn collect_and_apply_cost_modifiers(
     original_cost: &CostClause,
     call_span: Span,
 ) -> Result<Option<CostClause>, RuntimeError> {
-    use ttrpg_ast::ast::{ConditionClause, ModifyTarget};
     use crate::effect::{Effect, FieldChange, ModifySource, Phase, Response};
     use crate::eval::{eval_expr, value_eq};
+    use ttrpg_ast::ast::{ConditionClause, ModifyTarget};
 
     let mut effective = original_cost.clone();
 
@@ -434,7 +423,10 @@ fn collect_and_apply_cost_modifiers(
                         .collect();
 
                     env.push_scope();
-                    env.bind(cond_decl.receiver_name.clone(), Value::Entity(condition.bearer));
+                    env.bind(
+                        cond_decl.receiver_name.clone(),
+                        Value::Entity(condition.bearer),
+                    );
                     for (name, val) in &condition.params {
                         env.bind(name.clone(), val.clone());
                     }
@@ -442,7 +434,10 @@ fn collect_and_apply_cost_modifiers(
                     for (idx, binding) in clause.bindings.iter().enumerate() {
                         let param_val = match &binding_vals[idx] {
                             Some(val) => val.clone(),
-                            None => { all_match = false; break; }
+                            None => {
+                                all_match = false;
+                                break;
+                            }
                         };
 
                         if let Some(ref expr) = binding.value {
@@ -487,13 +482,20 @@ fn collect_and_apply_cost_modifiers(
 
     // Apply each cost modifier (last writer wins)
     for modifier in &cost_modifiers {
-        let old_tokens: Vec<String> = effective.tokens.iter().map(|t| t.node.to_string()).collect();
+        let old_tokens: Vec<String> = effective
+            .tokens
+            .iter()
+            .map(|t| t.node.to_string())
+            .collect();
         let old_free = effective.free;
 
         env.push_scope();
 
         // Bind condition receiver (bearer)
-        env.bind(modifier.receiver_name.clone(), Value::Entity(modifier.bearer));
+        env.bind(
+            modifier.receiver_name.clone(),
+            Value::Entity(modifier.bearer),
+        );
 
         // Bind condition params
         for (name, val) in &modifier.condition_params {
@@ -506,7 +508,11 @@ fn collect_and_apply_cost_modifiers(
         result?;
 
         // Check if anything changed and emit ModifyApplied effect
-        let new_tokens: Vec<String> = effective.tokens.iter().map(|t| t.node.to_string()).collect();
+        let new_tokens: Vec<String> = effective
+            .tokens
+            .iter()
+            .map(|t| t.node.to_string())
+            .collect();
         if old_free != effective.free || old_tokens != new_tokens {
             let old_desc = if old_free {
                 "free".to_string()
@@ -571,8 +577,8 @@ fn exec_cost_modify_stmts(
     stmts: &[ttrpg_ast::ast::ModifyStmt],
     effective: &mut CostClause,
 ) -> Result<(), RuntimeError> {
-    use ttrpg_ast::ast::ModifyStmt;
     use crate::eval::eval_expr;
+    use ttrpg_ast::ast::ModifyStmt;
 
     for stmt in stmts {
         match stmt {

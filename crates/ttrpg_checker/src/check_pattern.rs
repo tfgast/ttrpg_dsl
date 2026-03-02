@@ -204,9 +204,7 @@ impl Checker<'_> {
                         }
                     } else if !scrutinee_ty.is_error() {
                         self.error(
-                            format!(
-                                "qualified variant pattern cannot match type {scrutinee_ty}"
-                            ),
+                            format!("qualified variant pattern cannot match type {scrutinee_ty}"),
                             pattern.span,
                         );
                     }
@@ -383,18 +381,14 @@ impl Checker<'_> {
                 Some(owners[0].clone())
             } else {
                 self.error(
-                    format!(
-                        "variant pattern `{name}` cannot match type {scrutinee_ty}"
-                    ),
+                    format!("variant pattern `{name}` cannot match type {scrutinee_ty}"),
                     span,
                 );
                 None
             }
         } else if !scrutinee_ty.is_error() {
             self.error(
-                format!(
-                    "variant pattern `{name}` cannot match type {scrutinee_ty}"
-                ),
+                format!("variant pattern `{name}` cannot match type {scrutinee_ty}"),
                 span,
             );
             None

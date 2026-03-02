@@ -4,7 +4,9 @@ use ttrpg_checker::env::ParamInfo;
 
 use crate::effect::{Effect, Response};
 use crate::eval::{eval_block, eval_expr};
-use crate::pipeline::{collect_modifiers_owned, emit_modify_applied_events, run_phase1, run_phase2};
+use crate::pipeline::{
+    collect_modifiers_owned, emit_modify_applied_events, run_phase1, run_phase2,
+};
 use crate::value::{value_matches_ty, value_type_display, Value};
 use crate::Env;
 use crate::RuntimeError;
@@ -142,9 +144,7 @@ pub(super) fn dispatch_derive_or_mechanic(
         .or_else(|| env.interp.program.mechanics.get(name))
         .ok_or_else(|| {
             RuntimeError::with_span(
-                format!(
-                    "internal error: no declaration found for function '{name}'"
-                ),
+                format!("internal error: no declaration found for function '{name}'"),
                 call_span,
             )
         })?;

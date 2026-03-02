@@ -24,9 +24,7 @@ impl Checker<'_> {
             if let Some(DeclInfo::Enum(info)) = self.env.types.get(name.as_str()) {
                 if !info.ordered {
                     self.error(
-                        format!(
-                            "`ordinal` requires an ordered enum, but `{name}` is not ordered"
-                        ),
+                        format!("`ordinal` requires an ordered enum, but `{name}` is not ordered"),
                         span,
                     );
                 }
@@ -60,9 +58,7 @@ impl Checker<'_> {
             name.clone()
         } else {
             self.error(
-                format!(
-                    "`from_ordinal` first argument must be an enum type, found {enum_ty}"
-                ),
+                format!("`from_ordinal` first argument must be an enum type, found {enum_ty}"),
                 span,
             );
             return Ty::Error;
@@ -79,9 +75,7 @@ impl Checker<'_> {
         }
         if !idx_ty.is_int_like() {
             self.error(
-                format!(
-                    "`from_ordinal` second argument must be int, found {idx_ty}"
-                ),
+                format!("`from_ordinal` second argument must be int, found {idx_ty}"),
                 span,
             );
         }
@@ -115,9 +109,7 @@ impl Checker<'_> {
             name.clone()
         } else {
             self.error(
-                format!(
-                    "`try_from_ordinal` first argument must be an enum type, found {enum_ty}"
-                ),
+                format!("`try_from_ordinal` first argument must be an enum type, found {enum_ty}"),
                 span,
             );
             return Ty::Error;
@@ -134,9 +126,7 @@ impl Checker<'_> {
         }
         if !idx_ty.is_int_like() {
             self.error(
-                format!(
-                    "`try_from_ordinal` second argument must be int, found {idx_ty}"
-                ),
+                format!("`try_from_ordinal` second argument must be int, found {idx_ty}"),
                 span,
             );
         }
@@ -338,18 +328,14 @@ impl Checker<'_> {
             }
             (Ty::List(_), _) => {
                 self.error(
-                    format!(
-                        "`concat` second argument must be a list, found {second_ty}"
-                    ),
+                    format!("`concat` second argument must be a list, found {second_ty}"),
                     span,
                 );
                 Ty::Error
             }
             _ => {
                 self.error(
-                    format!(
-                        "`concat` expects two lists, found {first_ty} and {second_ty}"
-                    ),
+                    format!("`concat` expects two lists, found {first_ty} and {second_ty}"),
                     span,
                 );
                 Ty::Error
@@ -537,9 +523,7 @@ impl Checker<'_> {
             _ if arg_ty.is_none() => Ty::Unit,
             _ => {
                 self.error(
-                    format!(
-                        "`revoke` expects Invocation or option<Invocation>, found {arg_ty}"
-                    ),
+                    format!("`revoke` expects Invocation or option<Invocation>, found {arg_ty}"),
                     span,
                 );
                 Ty::Error
@@ -561,9 +545,7 @@ impl Checker<'_> {
             "apply_condition" | "remove_condition" => {
                 if !self.scope.allows_mutation() {
                     self.error(
-                        format!(
-                            "{name}() can only be called in action, reaction, or hook blocks"
-                        ),
+                        format!("{name}() can only be called in action, reaction, or hook blocks"),
                         span,
                     );
                 }

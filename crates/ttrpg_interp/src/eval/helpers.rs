@@ -432,7 +432,11 @@ pub(super) fn resolve_resource_bounds(
         // container (group, nested struct, or both). Use all path segments
         // up to (but not including) the final resource field as the lookup
         // prefix so that identifiers resolve at the correct nesting level.
-        let prefix = if path.len() > 1 { &path[..path.len() - 1] } else { &[] };
+        let prefix = if path.len() > 1 {
+            &path[..path.len() - 1]
+        } else {
+            &[]
+        };
         ((min_expr.clone(), max_expr.clone()), prefix.to_vec())
     };
     let min_val = eval_bound_expr(env, entity, &bound_exprs.0, &group_prefix)?;

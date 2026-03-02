@@ -46,9 +46,9 @@ impl Parser {
         self.tokens.get(self.pos).map_or_else(
             || {
                 // Use end of last token or 0
-                self.tokens
-                    .last()
-                    .map_or(Span::dummy(), |t| Span::new(self.file, t.span.end, t.span.end))
+                self.tokens.last().map_or(Span::dummy(), |t| {
+                    Span::new(self.file, t.span.end, t.span.end)
+                })
             },
             |t| t.span,
         )

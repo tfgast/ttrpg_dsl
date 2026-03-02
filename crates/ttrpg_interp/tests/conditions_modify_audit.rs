@@ -134,13 +134,7 @@ system "test" {
     fields.insert("HP".into(), Value::Int(10));
     let entity = state.add_entity("Character", fields);
 
-    state.apply_condition(
-        &entity,
-        "Mixed",
-        BTreeMap::new(),
-        Value::None,
-        None,
-    );
+    state.apply_condition(&entity, "Mixed", BTreeMap::new(), Value::None, None);
 
     let adapter = StateAdapter::new(state);
     let mut handler = ScriptedHandler::new();
@@ -375,13 +369,7 @@ system "test" {
     fields.insert("HP".into(), Value::Int(10));
     let entity = state.add_entity("Character", fields);
 
-    state.apply_condition(
-        &entity,
-        "MultiClause",
-        BTreeMap::new(),
-        Value::None,
-        None,
-    );
+    state.apply_condition(&entity, "MultiClause", BTreeMap::new(), Value::None, None);
 
     let adapter = StateAdapter::new(state);
     let mut handler = ScriptedHandler::new();
@@ -434,27 +422,27 @@ system "test" {
     fields.insert("HP".into(), Value::Int(10));
     let entity = state.add_entity("Character", fields);
 
-    state.apply_condition(
-        &entity,
-        "CunningAction",
-        BTreeMap::new(),
-        Value::None,
-        None,
-    );
+    state.apply_condition(&entity, "CunningAction", BTreeMap::new(), Value::None, None);
 
     let adapter = StateAdapter::new(state);
     let mut handler = ScriptedHandler::new();
 
-    adapter.run(&mut handler, |state, eff_handler| {
-        interp.execute_action(state, eff_handler, "Dash", entity, vec![])
-    }).unwrap();
+    adapter
+        .run(&mut handler, |state, eff_handler| {
+            interp.execute_action(state, eff_handler, "Dash", entity, vec![])
+        })
+        .unwrap();
 
     // Should deduct bonus_action instead of action
     let deduct_effects: Vec<_> = handler
         .log
         .iter()
         .filter_map(|e| match e {
-            Effect::DeductCost { token, budget_field, .. } => Some((token.clone(), budget_field.clone())),
+            Effect::DeductCost {
+                token,
+                budget_field,
+                ..
+            } => Some((token.clone(), budget_field.clone())),
             _ => None,
         })
         .collect();
@@ -493,20 +481,16 @@ system "test" {
     fields.insert("HP".into(), Value::Int(10));
     let entity = state.add_entity("Character", fields);
 
-    state.apply_condition(
-        &entity,
-        "FreeDash",
-        BTreeMap::new(),
-        Value::None,
-        None,
-    );
+    state.apply_condition(&entity, "FreeDash", BTreeMap::new(), Value::None, None);
 
     let adapter = StateAdapter::new(state);
     let mut handler = ScriptedHandler::new();
 
-    adapter.run(&mut handler, |state, eff_handler| {
-        interp.execute_action(state, eff_handler, "Dash", entity, vec![])
-    }).unwrap();
+    adapter
+        .run(&mut handler, |state, eff_handler| {
+            interp.execute_action(state, eff_handler, "Dash", entity, vec![])
+        })
+        .unwrap();
 
     // No DeductCost effect should be emitted
     let has_deduct = handler
@@ -551,11 +535,16 @@ system "test" {
 
     let adapter = StateAdapter::new(state);
     let mut handler = ScriptedHandler::new();
-    adapter.run(&mut handler, |state, eff_handler| {
-        interp.execute_action(state, eff_handler, "Dash", entity, vec![])
-    }).unwrap();
+    adapter
+        .run(&mut handler, |state, eff_handler| {
+            interp.execute_action(state, eff_handler, "Dash", entity, vec![])
+        })
+        .unwrap();
 
-    let has_deduct = handler.log.iter().any(|e| matches!(e, Effect::DeductCost { .. }));
+    let has_deduct = handler
+        .log
+        .iter()
+        .any(|e| matches!(e, Effect::DeductCost { .. }));
     assert!(!has_deduct, "HP > 5 should make action free");
 
     // HP <= 5: should cost normally
@@ -567,18 +556,24 @@ system "test" {
 
     let adapter2 = StateAdapter::new(state2);
     let mut handler2 = ScriptedHandler::new();
-    adapter2.run(&mut handler2, |state, eff_handler| {
-        interp.execute_action(state, eff_handler, "Dash", entity2, vec![])
-    }).unwrap();
+    adapter2
+        .run(&mut handler2, |state, eff_handler| {
+            interp.execute_action(state, eff_handler, "Dash", entity2, vec![])
+        })
+        .unwrap();
 
-    let has_deduct2 = handler2.log.iter().any(|e| matches!(e, Effect::DeductCost { .. }));
+    let has_deduct2 = handler2
+        .log
+        .iter()
+        .any(|e| matches!(e, Effect::DeductCost { .. }));
     assert!(has_deduct2, "HP <= 5 should still cost an action");
 }
 
 #[test]
 fn cost_modify_rejects_param_override() {
     // Spec: "Cost modify bodies reject parameter overrides (param = expr)"
-    let errors = setup_expect_errors(r#"
+    let errors = setup_expect_errors(
+        r#"
 system "test" {
     entity Character { HP: int }
     action Dash on actor: Character () {
@@ -591,7 +586,8 @@ system "test" {
         }
     }
 }
-"#);
+"#,
+    );
     assert!(
         !errors.is_empty(),
         "param override in cost modify body should produce checker error"
@@ -601,7 +597,8 @@ system "test" {
 #[test]
 fn cost_modify_rejects_result_override() {
     // Spec: "Cost modify bodies reject result rewrites (result.field = expr)"
-    let errors = setup_expect_errors(r#"
+    let errors = setup_expect_errors(
+        r#"
 system "test" {
     entity Character { HP: int }
     action Dash on actor: Character () {
@@ -614,7 +611,8 @@ system "test" {
         }
     }
 }
-"#);
+"#,
+    );
     assert!(
         !errors.is_empty(),
         "result override in cost modify body should produce checker error"
@@ -624,7 +622,8 @@ system "test" {
 #[test]
 fn cost_modify_target_must_be_action_or_reaction() {
     // Spec: "The target must be an action or reaction (not a derive or mechanic)"
-    let errors = setup_expect_errors(r#"
+    let errors = setup_expect_errors(
+        r#"
 system "test" {
     entity Character { HP: int }
     derive compute(target: Character) -> int { 42 }
@@ -634,7 +633,8 @@ system "test" {
         }
     }
 }
-"#);
+"#,
+    );
     assert!(
         !errors.is_empty(),
         ".cost modify on a derive should produce checker error"
@@ -702,13 +702,7 @@ system "test" {
     );
 
     // With Disengaging on the mover: reaction should be suppressed
-    state.apply_condition(
-        &mover,
-        "Disengaging",
-        BTreeMap::new(),
-        Value::None,
-        None,
-    );
+    state.apply_condition(&mover, "Disengaging", BTreeMap::new(), Value::None, None);
 
     let result_with_cond = interp
         .what_triggers(&state, "entity_leaves_reach", payload, &[attacker])
@@ -753,13 +747,7 @@ system "test" {
     let entity = state.add_entity("Character", fields);
 
     // Apply suppress condition
-    state.apply_condition(
-        &entity,
-        "Disengaging",
-        BTreeMap::new(),
-        Value::None,
-        None,
-    );
+    state.apply_condition(&entity, "Disengaging", BTreeMap::new(), Value::None, None);
 
     let payload = Value::Struct {
         name: "__event_entity_leaves_reach".into(),
@@ -803,12 +791,25 @@ system "test" {
 
     let event_info = &result.env.events["modify_applied"];
     // User-defined version should have the extra custom_field
-    assert_eq!(event_info.fields.len(), 2, "user-defined version should have 2 fields");
+    assert_eq!(
+        event_info.fields.len(),
+        2,
+        "user-defined version should have 2 fields"
+    );
     let field_names: Vec<_> = event_info.fields.iter().map(|(n, _)| n.as_str()).collect();
-    assert!(field_names.contains(&"target_fn"), "should still have target_fn");
-    assert!(field_names.contains(&"custom_field"), "should have custom_field from user definition");
+    assert!(
+        field_names.contains(&"target_fn"),
+        "should still have target_fn"
+    );
+    assert!(
+        field_names.contains(&"custom_field"),
+        "should have custom_field from user definition"
+    );
     // Should NOT be marked as builtin
-    assert!(!event_info.builtin, "user-defined event should override builtin");
+    assert!(
+        !event_info.builtin,
+        "user-defined event should override builtin"
+    );
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1094,9 +1095,11 @@ system "test" {
     let adapter = StateAdapter::new(state);
     let mut handler = ScriptedHandler::new();
 
-    adapter.run(&mut handler, |state, eff_handler| {
-        interp.execute_action(state, eff_handler, "ClearBlessing", entity, vec![])
-    }).unwrap();
+    adapter
+        .run(&mut handler, |state, eff_handler| {
+            interp.execute_action(state, eff_handler, "ClearBlessing", entity, vec![])
+        })
+        .unwrap();
 
     let state = adapter.into_inner();
     // Both Blessed conditions should be removed (bare name removes all matching)
@@ -1145,15 +1148,17 @@ system "test" {
     let adapter = StateAdapter::new(state);
     let mut handler = ScriptedHandler::new();
 
-    adapter.run(&mut handler, |state, eff_handler| {
-        interp.execute_action(
-            state,
-            eff_handler,
-            "ClearFearFrom",
-            entity,
-            vec![Value::Entity(source1)],
-        )
-    }).unwrap();
+    adapter
+        .run(&mut handler, |state, eff_handler| {
+            interp.execute_action(
+                state,
+                eff_handler,
+                "ClearFearFrom",
+                entity,
+                vec![Value::Entity(source1)],
+            )
+        })
+        .unwrap();
 
     let state = adapter.into_inner();
     // Only the Frightened from source1 should be removed
@@ -1205,9 +1210,11 @@ system "test" {
     let adapter = StateAdapter::new(state);
     let mut handler = ScriptedHandler::new();
 
-    adapter.run(&mut handler, |state, eff_handler| {
-        interp.execute_action(state, eff_handler, "RemoveFirst", entity, vec![])
-    }).unwrap();
+    adapter
+        .run(&mut handler, |state, eff_handler| {
+            interp.execute_action(state, eff_handler, "RemoveFirst", entity, vec![])
+        })
+        .unwrap();
 
     let state = adapter.into_inner();
     // Only the first Blessed should be removed (by id), leaving one
@@ -1390,35 +1397,43 @@ system "test" {
     let target = state.add_entity("Character", fields);
 
     // Apply AlliedStrike on the attacker
-    state.apply_condition(&attacker, "AlliedStrike", BTreeMap::new(), Value::None, None);
+    state.apply_condition(
+        &attacker,
+        "AlliedStrike",
+        BTreeMap::new(),
+        Value::None,
+        None,
+    );
 
     let adapter = StateAdapter::new(state);
     let mut handler = ScriptedHandler::new();
-    adapter.run(&mut handler, |state, eff_handler| {
-        interp.execute_action(
-            state,
-            eff_handler,
-            "Strike",
-            attacker,
-            vec![Value::Entity(target)],
-        )
-    }).unwrap();
+    adapter
+        .run(&mut handler, |state, eff_handler| {
+            interp.execute_action(
+                state,
+                eff_handler,
+                "Strike",
+                attacker,
+                vec![Value::Entity(target)],
+            )
+        })
+        .unwrap();
 
     // Verify the cost was modified (should be bonus_action, not action)
-    let cost_tokens: Vec<_> = handler.log.iter().filter_map(|e| {
-        if let Effect::DeductCost { token, .. } = e {
-            Some(token.to_string())
-        } else {
-            None
-        }
-    }).collect();
-    assert!(
-        !cost_tokens.is_empty(),
-        "should have a cost deduction"
-    );
+    let cost_tokens: Vec<_> = handler
+        .log
+        .iter()
+        .filter_map(|e| {
+            if let Effect::DeductCost { token, .. } = e {
+                Some(token.to_string())
+            } else {
+                None
+            }
+        })
+        .collect();
+    assert!(!cost_tokens.is_empty(), "should have a cost deduction");
     assert_eq!(
-        cost_tokens[0],
-        "bonus_action",
+        cost_tokens[0], "bonus_action",
         "cost should be modified to bonus_action when attacker binding matches"
     );
 }

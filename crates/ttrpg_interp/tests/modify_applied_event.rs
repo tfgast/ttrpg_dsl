@@ -305,7 +305,11 @@ system "test" {
             vec![Value::Entity(entity), Value::Int(0)],
         )
     });
-    assert_eq!(val.unwrap(), Value::Int(10), "first call should get the +10 boost");
+    assert_eq!(
+        val.unwrap(),
+        Value::Int(10),
+        "first call should get the +10 boost"
+    );
 
     let state = adapter.into_inner();
     // Condition should have been removed by the hook
@@ -366,7 +370,15 @@ system "test" {
     let hook_effects: Vec<_> = handler
         .log
         .iter()
-        .filter(|e| matches!(e, Effect::ActionStarted { kind: ttrpg_interp::effect::ActionKind::Hook { .. }, .. }))
+        .filter(|e| {
+            matches!(
+                e,
+                Effect::ActionStarted {
+                    kind: ttrpg_interp::effect::ActionKind::Hook { .. },
+                    ..
+                }
+            )
+        })
         .collect();
     assert!(
         hook_effects.is_empty(),

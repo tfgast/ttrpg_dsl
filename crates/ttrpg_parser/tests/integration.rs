@@ -61,12 +61,12 @@ fn test_parse_full_example() {
         }
     }
 
-    assert_eq!(enums, 7, "enum count");       // +SaveResult
+    assert_eq!(enums, 7, "enum count"); // +SaveResult
     assert_eq!(structs, 2, "struct count");
     assert_eq!(entities, 2, "entity count");
-    assert_eq!(derives, 7, "derive count");    // +physical_damage_types, resisted_types, unresisted_types
+    assert_eq!(derives, 7, "derive count"); // +physical_damage_types, resisted_types, unresisted_types
     assert_eq!(mechanics, 7, "mechanic count"); // +saving_throw
-    assert_eq!(actions, 10, "action count");    // +Rage
+    assert_eq!(actions, 10, "action count"); // +Rage
     assert_eq!(reactions, 2, "reaction count");
     assert_eq!(conditions, 9, "condition count"); // +Stunned, Petrified, Raging
     assert_eq!(prompts, 3, "prompt count"); // +choose_target (typed prompt)
@@ -2345,7 +2345,10 @@ fn test_parse_with_group_alias() {
     assert_eq!(action.receiver_with_groups.groups.len(), 1);
     assert_eq!(action.receiver_with_groups.groups[0].name, "Spellcasting");
     assert_eq!(
-        action.receiver_with_groups.groups[0].alias.as_ref().unwrap(),
+        action.receiver_with_groups.groups[0]
+            .alias
+            .as_ref()
+            .unwrap(),
         "sc"
     );
 }
@@ -2406,7 +2409,10 @@ fn test_parse_param_with_group_alias() {
     assert_eq!(derive.params[0].with_groups.groups.len(), 1);
     assert_eq!(derive.params[0].with_groups.groups[0].name, "Spellcasting");
     assert_eq!(
-        derive.params[0].with_groups.groups[0].alias.as_ref().unwrap(),
+        derive.params[0].with_groups.groups[0]
+            .alias
+            .as_ref()
+            .unwrap(),
         "sc"
     );
 }
@@ -2424,7 +2430,11 @@ fn test_parse_disjunctive_with_groups() {
     }
 }"#;
     let (program, diagnostics) = parse(source, FileId::SYNTH);
-    assert!(diagnostics.is_empty(), "unexpected errors: {:?}", diagnostics);
+    assert!(
+        diagnostics.is_empty(),
+        "unexpected errors: {:?}",
+        diagnostics
+    );
 
     let system = match &program.items[0].node {
         TopLevel::System(s) => s,
@@ -2455,7 +2465,11 @@ fn test_parse_disjunctive_with_alias() {
     }
 }"#;
     let (program, diagnostics) = parse(source, FileId::SYNTH);
-    assert!(diagnostics.is_empty(), "unexpected errors: {:?}", diagnostics);
+    assert!(
+        diagnostics.is_empty(),
+        "unexpected errors: {:?}",
+        diagnostics
+    );
 
     let system = match &program.items[0].node {
         TopLevel::System(s) => s,
@@ -2472,11 +2486,17 @@ fn test_parse_disjunctive_with_alias() {
     assert!(action.receiver_with_groups.disjunctive);
     assert_eq!(action.receiver_with_groups.groups.len(), 2);
     assert_eq!(
-        action.receiver_with_groups.groups[0].alias.as_ref().unwrap(),
+        action.receiver_with_groups.groups[0]
+            .alias
+            .as_ref()
+            .unwrap(),
         "sc"
     );
     assert_eq!(
-        action.receiver_with_groups.groups[1].alias.as_ref().unwrap(),
+        action.receiver_with_groups.groups[1]
+            .alias
+            .as_ref()
+            .unwrap(),
         "mt"
     );
 }
@@ -2492,7 +2512,11 @@ fn test_parse_conjunctive_with_not_disjunctive() {
     }
 }"#;
     let (program, diagnostics) = parse(source, FileId::SYNTH);
-    assert!(diagnostics.is_empty(), "unexpected errors: {:?}", diagnostics);
+    assert!(
+        diagnostics.is_empty(),
+        "unexpected errors: {:?}",
+        diagnostics
+    );
 
     let system = match &program.items[0].node {
         TopLevel::System(s) => s,
@@ -2521,9 +2545,9 @@ fn test_parse_mixed_separators_error() {
 }"#;
     let (_, diagnostics) = parse(source, FileId::SYNTH);
     assert!(
-        diagnostics.iter().any(|d| {
-            d.message.contains("cannot mix")
-        }),
+        diagnostics
+            .iter()
+            .any(|d| { d.message.contains("cannot mix") }),
         "expected mixed separator error, got: {:?}",
         diagnostics
     );
@@ -2557,10 +2581,7 @@ fn test_parse_invocation_type_in_field() {
         })
         .unwrap();
     // The field type should be option<Invocation>
-    assert!(matches!(
-        entity.fields[0].ty.node,
-        TypeExpr::OptionType(_)
-    ));
+    assert!(matches!(entity.fields[0].ty.node, TypeExpr::OptionType(_)));
     if let TypeExpr::OptionType(inner) = &entity.fields[0].ty.node {
         assert!(matches!(inner.node, TypeExpr::Invocation));
     }
@@ -2851,13 +2872,17 @@ fn test_empty_suppress_bindings() {
             for decl in &sys.decls {
                 if let ttrpg_ast::ast::DeclKind::Condition(c) = &decl.node {
                     assert_eq!(c.name, "Stunned");
-                    let suppress = c.clauses.iter().find_map(|cl| {
-                        if let ttrpg_ast::ast::ConditionClause::Suppress(s) = cl {
-                            Some(s)
-                        } else {
-                            None
-                        }
-                    }).expect("should have a suppress clause");
+                    let suppress = c
+                        .clauses
+                        .iter()
+                        .find_map(|cl| {
+                            if let ttrpg_ast::ast::ConditionClause::Suppress(s) = cl {
+                                Some(s)
+                            } else {
+                                None
+                            }
+                        })
+                        .expect("should have a suppress clause");
                     assert!(
                         suppress.bindings.is_empty(),
                         "suppress bindings should be empty, got {} bindings",
@@ -2892,7 +2917,9 @@ fn test_recovery_does_not_skip_group_decl() {
     let (program, diagnostics) = parse(source, FileId::SYNTH);
     // There should be at least one error from the malformed derive
     assert!(
-        diagnostics.iter().any(|d| d.severity == ttrpg_ast::diagnostic::Severity::Error),
+        diagnostics
+            .iter()
+            .any(|d| d.severity == ttrpg_ast::diagnostic::Severity::Error),
         "expected a parse error from the broken derive"
     );
     // But the group should still be parsed
@@ -2907,7 +2934,11 @@ fn test_recovery_does_not_skip_group_decl() {
     assert!(
         has_group,
         "group Spellcasting should be parsed after recovery, decls: {:?}",
-        system.decls.iter().map(|d| std::mem::discriminant(&d.node)).collect::<Vec<_>>()
+        system
+            .decls
+            .iter()
+            .map(|d| std::mem::discriminant(&d.node))
+            .collect::<Vec<_>>()
     );
 }
 
@@ -3048,7 +3079,9 @@ fn test_bare_some_still_recovers() {
 }"#;
     let (_, diagnostics) = parse(source, FileId::SYNTH);
     assert!(
-        diagnostics.iter().any(|d| d.message.contains("bare `some`")),
+        diagnostics
+            .iter()
+            .any(|d| d.message.contains("bare `some`")),
         "bare some should produce recovery diagnostic, got: {:?}",
         diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
     );

@@ -72,9 +72,7 @@ pub fn resolve_modules(
                     info.variants.insert(name.clone());
                 } else if let Some(&prev_span) = seen_names.get(&(*ns, name.clone())) {
                     diagnostics.push(Diagnostic::error(
-                        format!(
-                            "duplicate declaration `{name}` in system \"{sys_name}\""
-                        ),
+                        format!("duplicate declaration `{name}` in system \"{sys_name}\""),
                         owned.span,
                     ));
                     // Also point to first definition
@@ -206,9 +204,7 @@ pub fn resolve_modules(
                 if let Some(sys_info) = module_map.systems.get(sys_name) {
                     if system_has_name(sys_info, alias) {
                         diagnostics.push(Diagnostic::error(
-                            format!(
-                                "alias \"{alias}\" conflicts with declaration \"{alias}\""
-                            ),
+                            format!("alias \"{alias}\" conflicts with declaration \"{alias}\""),
                             import.span,
                         ));
                         continue;
@@ -396,9 +392,7 @@ fn detect_cross_system_collisions(module_map: &ModuleMap, diagnostics: &mut Vec<
                     .collect::<Vec<_>>()
                     .join(", ");
                 diagnostics.push(Diagnostic::error(
-                    format!(
-                        "duplicate {ns_label} \"{name}\": defined in {owners_list}"
-                    ),
+                    format!("duplicate {ns_label} \"{name}\": defined in {owners_list}"),
                     Span::dummy(),
                 ));
             }
@@ -641,7 +635,10 @@ fn desugar_modify_target(
                 SelectorPredicate::Returns(ref mut ty) => {
                     desugar_type_expr(ty, current_system, aliases, module_map, diagnostics);
                 }
-                SelectorPredicate::HasParam { ty: Some(ref mut ty), .. } => {
+                SelectorPredicate::HasParam {
+                    ty: Some(ref mut ty),
+                    ..
+                } => {
                     desugar_type_expr(ty, current_system, aliases, module_map, diagnostics);
                 }
                 _ => {}

@@ -135,9 +135,7 @@ pub(super) fn dispatch_action_method(
         Value::Entity(entity_ref) => *entity_ref,
         other => {
             return Err(RuntimeError::with_span(
-                format!(
-                    "action '{name}' receiver must be an entity, got {other:?}"
-                ),
+                format!("action '{name}' receiver must be an entity, got {other:?}"),
                 call_span,
             ));
         }

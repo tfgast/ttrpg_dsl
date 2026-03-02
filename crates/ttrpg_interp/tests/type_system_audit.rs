@@ -271,7 +271,12 @@ system "test" {
     match val {
         Value::Float(f) => {
             let expected = 10.0 / 3.0;
-            assert!((f - expected).abs() < 1e-10, "expected {}, got {}", expected, f);
+            assert!(
+                (f - expected).abs() < 1e-10,
+                "expected {}, got {}",
+                expected,
+                f
+            );
         }
         other => panic!("expected Float, got {:?}", other),
     }
@@ -763,11 +768,7 @@ fn unit_sub_same_type() {
 #[test]
 fn unit_int_mul() {
     // Spec: int * unit → unit
-    let val = eval_derive(
-        &unit_source("derive f() -> Feet { 3 * 10ft }"),
-        "f",
-        vec![],
-    );
+    let val = eval_derive(&unit_source("derive f() -> Feet { 3 * 10ft }"), "f", vec![]);
     match &val {
         Value::Struct { name, fields } => {
             assert_eq!(name.as_str(), "Feet");
@@ -780,11 +781,7 @@ fn unit_int_mul() {
 #[test]
 fn unit_mul_int() {
     // Spec: unit * int → unit (commutative)
-    let val = eval_derive(
-        &unit_source("derive f() -> Feet { 10ft * 3 }"),
-        "f",
-        vec![],
-    );
+    let val = eval_derive(&unit_source("derive f() -> Feet { 10ft * 3 }"), "f", vec![]);
     match &val {
         Value::Struct { name, fields } => {
             assert_eq!(name.as_str(), "Feet");
@@ -811,11 +808,7 @@ fn unit_div_same_type() {
 #[test]
 fn unit_negate() {
     // Spec: -unit → unit (negates field value)
-    let val = eval_derive(
-        &unit_source("derive f() -> Feet { -30ft }"),
-        "f",
-        vec![],
-    );
+    let val = eval_derive(&unit_source("derive f() -> Feet { -30ft }"), "f", vec![]);
     match &val {
         Value::Struct { name, fields } => {
             assert_eq!(name.as_str(), "Feet");
@@ -1853,12 +1846,14 @@ system "test" {
     let mut fields = HashMap::new();
     fields.insert(
         "resistances".into(),
-        Value::Set([Value::EnumVariant {
-            enum_name: "DamageType".into(),
-            variant: "cold".into(),
-            fields: BTreeMap::new(),
-        }]
-        .into()),
+        Value::Set(
+            [Value::EnumVariant {
+                enum_name: "DamageType".into(),
+                variant: "cold".into(),
+                fields: BTreeMap::new(),
+            }]
+            .into(),
+        ),
     );
     let entity = state.add_entity("Character", fields);
     let adapter = StateAdapter::new(state);

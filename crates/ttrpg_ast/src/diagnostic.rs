@@ -111,10 +111,7 @@ fn render_diagnostic(
     // Caret underline — cap to the current line so multiline spans don't
     // produce an excessively wide underline on the first line.
     let line_end = line_text_start + line_text.len();
-    let caret_len = local_end
-        .min(line_end)
-        .saturating_sub(local_start)
-        .max(1);
+    let caret_len = local_end.min(line_end).saturating_sub(local_start).max(1);
     let carets: String = "^".repeat(caret_len);
 
     let mut result = format!(

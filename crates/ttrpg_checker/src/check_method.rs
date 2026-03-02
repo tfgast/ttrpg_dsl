@@ -66,9 +66,7 @@ impl Checker<'_> {
                 } else {
                     if !arg_ty.is_error() && !self.types_compatible(&arg_ty, inner_ty) {
                         self.error(
-                            format!(
-                                "unwrap_or() default has type {arg_ty}, expected {inner_ty}"
-                            ),
+                            format!("unwrap_or() default has type {arg_ty}, expected {inner_ty}"),
                             span,
                         );
                     }
@@ -186,9 +184,7 @@ impl Checker<'_> {
                     Ty::Float => Ty::Float,
                     _ => {
                         self.error(
-                            format!(
-                                "sum() requires list<int> or list<float>, found list<{inner}>"
-                            ),
+                            format!("sum() requires list<int> or list<float>, found list<{inner}>"),
                             span,
                         );
                         Ty::Error

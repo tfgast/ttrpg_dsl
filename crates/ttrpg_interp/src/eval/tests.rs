@@ -1,6 +1,6 @@
-use super::*;
 use super::compare::{int_float_cmp, int_float_eq, match_pattern};
 use super::control::eval_stmt;
+use super::*;
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
@@ -1989,7 +1989,10 @@ fn eval_pattern_bare_variant_no_match() {
     let mut bindings = HashMap::new();
     let result = match_pattern(
         &env,
-        &Spanned { node: PatternKind::Ident("red".into()), span: Span::dummy() },
+        &Spanned {
+            node: PatternKind::Ident("red".into()),
+            span: Span::dummy(),
+        },
         &Value::Int(42),
         &mut bindings,
     );
@@ -2011,7 +2014,10 @@ fn eval_pattern_binding_still_works_for_non_variant() {
     let mut bindings = HashMap::new();
     let result = match_pattern(
         &env,
-        &Spanned { node: PatternKind::Ident("x".into()), span: Span::dummy() },
+        &Spanned {
+            node: PatternKind::Ident("x".into()),
+            span: Span::dummy(),
+        },
         &Value::Int(42),
         &mut bindings,
     );
@@ -2060,10 +2066,7 @@ fn eval_int_add_dice() {
     let mut handler = ScriptedHandler::new();
     let mut env = make_env(&state, &mut handler, &interp);
 
-    env.bind(
-        "d".into(),
-        Value::DiceExpr(DiceExpr::single(2, 6, None, 3)),
-    );
+    env.bind("d".into(), Value::DiceExpr(DiceExpr::single(2, 6, None, 3)));
 
     // 10 + d
     let expr = spanned(ExprKind::BinOp {
@@ -2090,14 +2093,8 @@ fn eval_dice_add_dice() {
     let mut handler = ScriptedHandler::new();
     let mut env = make_env(&state, &mut handler, &interp);
 
-    env.bind(
-        "a".into(),
-        Value::DiceExpr(DiceExpr::single(2, 6, None, 1)),
-    );
-    env.bind(
-        "b".into(),
-        Value::DiceExpr(DiceExpr::single(3, 6, None, 2)),
-    );
+    env.bind("a".into(), Value::DiceExpr(DiceExpr::single(2, 6, None, 1)));
+    env.bind("b".into(), Value::DiceExpr(DiceExpr::single(3, 6, None, 2)));
 
     // a + b → 2 groups (2d6, 3d6) with modifier 3
     let expr = spanned(ExprKind::BinOp {
@@ -2420,14 +2417,8 @@ fn eval_dice_add_dice_different_sides_error() {
     let mut handler = ScriptedHandler::new();
     let mut env = make_env(&state, &mut handler, &interp);
 
-    env.bind(
-        "a".into(),
-        Value::DiceExpr(DiceExpr::single(2, 6, None, 0)),
-    );
-    env.bind(
-        "b".into(),
-        Value::DiceExpr(DiceExpr::single(3, 8, None, 0)),
-    );
+    env.bind("a".into(), Value::DiceExpr(DiceExpr::single(2, 6, None, 0)));
+    env.bind("b".into(), Value::DiceExpr(DiceExpr::single(3, 8, None, 0)));
 
     let expr = spanned(ExprKind::BinOp {
         op: BinOp::Add,
@@ -2512,10 +2503,7 @@ fn eval_dice_add_dice_modifier_overflow() {
         "a".into(),
         Value::DiceExpr(DiceExpr::single(1, 6, None, i64::MAX)),
     );
-    env.bind(
-        "b".into(),
-        Value::DiceExpr(DiceExpr::single(1, 6, None, 1)),
-    );
+    env.bind("b".into(), Value::DiceExpr(DiceExpr::single(1, 6, None, 1)));
 
     let expr = spanned(ExprKind::BinOp {
         op: BinOp::Add,
@@ -2537,14 +2525,8 @@ fn eval_dice_add_dice_same_spec_succeeds() {
     let mut handler = ScriptedHandler::new();
     let mut env = make_env(&state, &mut handler, &interp);
 
-    env.bind(
-        "a".into(),
-        Value::DiceExpr(DiceExpr::single(2, 6, None, 1)),
-    );
-    env.bind(
-        "b".into(),
-        Value::DiceExpr(DiceExpr::single(3, 6, None, 2)),
-    );
+    env.bind("a".into(), Value::DiceExpr(DiceExpr::single(2, 6, None, 1)));
+    env.bind("b".into(), Value::DiceExpr(DiceExpr::single(3, 6, None, 2)));
 
     let expr = spanned(ExprKind::BinOp {
         op: BinOp::Add,

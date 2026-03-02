@@ -15,9 +15,7 @@ use crate::ty::Ty;
 fn check_reserved_prefix(name: &str, span: Span, diagnostics: &mut Vec<Diagnostic>) -> bool {
     if name.starts_with("__") {
         diagnostics.push(Diagnostic::error(
-            format!(
-                "names starting with `__` are reserved for internal use: `{name}`"
-            ),
+            format!("names starting with `__` are reserved for internal use: `{name}`"),
             span,
         ));
         true
@@ -686,10 +684,8 @@ fn collect_entity(e: &EntityDecl, env: &mut TypeEnv, diagnostics: &mut Vec<Diagn
                     ));
                 } else {
                     included_field_owner.insert(field.name.clone(), g.name.clone());
-                    env.flattened_group_fields.insert(
-                        (e.name.clone(), field.name.clone()),
-                        g.name.clone(),
-                    );
+                    env.flattened_group_fields
+                        .insert((e.name.clone(), field.name.clone()), g.name.clone());
                 }
             }
         }
@@ -752,9 +748,7 @@ fn collect_unit(
         // Check uniqueness
         if let Some(existing) = env.suffix_to_unit.get(suffix) {
             diagnostics.push(Diagnostic::error(
-                format!(
-                    "duplicate unit suffix `{suffix}`; already declared by `{existing}`"
-                ),
+                format!("duplicate unit suffix `{suffix}`; already declared by `{existing}`"),
                 span,
             ));
         } else {
@@ -834,14 +828,18 @@ fn collect_fn(
                 name: p.name.clone(),
                 ty: env.resolve_type_validated(&p.ty, diagnostics),
                 has_default: p.default.is_some(),
-                with_groups: p.with_groups.groups.iter().map(|g| g.name.clone()).collect(),
+                with_groups: p
+                    .with_groups
+                    .groups
+                    .iter()
+                    .map(|g| g.name.clone())
+                    .collect(),
                 with_disjunctive: p.with_groups.disjunctive,
             }
         })
         .collect();
 
-    let ret_ty = return_type
-        .map_or(Ty::Unit, |rt| env.resolve_type_validated(rt, diagnostics));
+    let ret_ty = return_type.map_or(Ty::Unit, |rt| env.resolve_type_validated(rt, diagnostics));
 
     // Validate tags: each must be declared in env.tags
     let mut tag_set = HashSet::new();
@@ -925,7 +923,12 @@ fn collect_action(
         name: a.receiver_name.clone(),
         ty: env.resolve_type(&a.receiver_type),
         has_default: false,
-        with_groups: a.receiver_with_groups.groups.iter().map(|g| g.name.clone()).collect(),
+        with_groups: a
+            .receiver_with_groups
+            .groups
+            .iter()
+            .map(|g| g.name.clone())
+            .collect(),
         with_disjunctive: a.receiver_with_groups.disjunctive,
     };
 
@@ -987,7 +990,12 @@ fn collect_reaction(
         name: r.receiver_name.clone(),
         ty: env.resolve_type(&r.receiver_type),
         has_default: false,
-        with_groups: r.receiver_with_groups.groups.iter().map(|g| g.name.clone()).collect(),
+        with_groups: r
+            .receiver_with_groups
+            .groups
+            .iter()
+            .map(|g| g.name.clone())
+            .collect(),
         with_disjunctive: r.receiver_with_groups.disjunctive,
     };
 
@@ -1042,7 +1050,12 @@ fn collect_hook(h: &HookDecl, env: &mut TypeEnv, diagnostics: &mut Vec<Diagnosti
         name: h.receiver_name.clone(),
         ty: env.resolve_type(&h.receiver_type),
         has_default: false,
-        with_groups: h.receiver_with_groups.groups.iter().map(|g| g.name.clone()).collect(),
+        with_groups: h
+            .receiver_with_groups
+            .groups
+            .iter()
+            .map(|g| g.name.clone())
+            .collect(),
         with_disjunctive: h.receiver_with_groups.disjunctive,
     };
 
@@ -1093,7 +1106,12 @@ fn collect_condition(
             name: param.name.clone(),
             ty,
             has_default: param.default.is_some(),
-            with_groups: param.with_groups.groups.iter().map(|g| g.name.clone()).collect(),
+            with_groups: param
+                .with_groups
+                .groups
+                .iter()
+                .map(|g| g.name.clone())
+                .collect(),
             with_disjunctive: param.with_groups.disjunctive,
         });
     }
@@ -1173,7 +1191,12 @@ fn collect_event(e: &EventDecl, env: &mut TypeEnv, diagnostics: &mut Vec<Diagnos
                 name: p.name.clone(),
                 ty: env.resolve_type_validated(&p.ty, diagnostics),
                 has_default: p.default.is_some(),
-                with_groups: p.with_groups.groups.iter().map(|g| g.name.clone()).collect(),
+                with_groups: p
+                    .with_groups
+                    .groups
+                    .iter()
+                    .map(|g| g.name.clone())
+                    .collect(),
                 with_disjunctive: p.with_groups.disjunctive,
             }
         })
@@ -1330,11 +1353,8 @@ pub fn validate_condition_extends(
             for decl in &system.decls {
                 if let DeclKind::Condition(c) = &decl.node {
                     if !c.extends.is_empty() {
-                        let parents: Vec<(Name, Span)> = c
-                            .extends
-                            .iter()
-                            .map(|s| (s.node.clone(), s.span))
-                            .collect();
+                        let parents: Vec<(Name, Span)> =
+                            c.extends.iter().map(|s| (s.node.clone(), s.span)).collect();
                         extends_map.insert(c.name.clone(), parents);
                     }
                 }
@@ -1381,10 +1401,7 @@ pub fn validate_condition_extends(
             }
 
             // Parents with required params are rejected (child doesn't forward them)
-            let has_required = parent_info
-                .params
-                .iter()
-                .any(|p| !p.has_default);
+            let has_required = parent_info.params.iter().any(|p| !p.has_default);
             if has_required {
                 diagnostics.push(Diagnostic::error(
                     format!(
@@ -1418,8 +1435,7 @@ pub fn validate_condition_extends(
                     match color.get(name).copied().unwrap_or(0) {
                         1 => {
                             // Gray → cycle found. Build chain for error.
-                            let span = extends_map
-                                .get(name).map_or_else(Span::dummy, |v| v[0].1);
+                            let span = extends_map.get(name).map_or_else(Span::dummy, |v| v[0].1);
                             diagnostics.push(Diagnostic::error(
                                 format!("circular condition extends involving `{name}`"),
                                 span,

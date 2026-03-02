@@ -7,8 +7,8 @@ use ttrpg_ast::Span;
 use crate::action;
 use crate::event;
 use crate::value::Value;
-use crate::{Env, MAX_EMIT_DEPTH};
 use crate::RuntimeError;
+use crate::{Env, MAX_EMIT_DEPTH};
 
 use super::dispatch::eval_expr;
 
@@ -32,9 +32,7 @@ pub(crate) fn eval_emit(
     // 1. Check emit depth limit
     if env.emit_depth >= MAX_EMIT_DEPTH {
         return Err(RuntimeError::with_span(
-            format!(
-                "emit depth limit ({MAX_EMIT_DEPTH}) exceeded — possible circular emit chain"
-            ),
+            format!("emit depth limit ({MAX_EMIT_DEPTH}) exceeded — possible circular emit chain"),
             span,
         ));
     }
@@ -45,9 +43,7 @@ pub(crate) fn eval_emit(
         .program
         .events
         .get(event_name)
-        .ok_or_else(|| {
-            RuntimeError::with_span(format!("undefined event '{event_name}'"), span)
-        })?
+        .ok_or_else(|| RuntimeError::with_span(format!("undefined event '{event_name}'"), span))?
         .clone();
 
     // 2. Evaluate arg expressions, build param map
@@ -124,10 +120,7 @@ pub(crate) fn eval_emit(
                 .hooks
                 .get(&hook_info.name)
                 .ok_or_else(|| {
-                    RuntimeError::with_span(
-                        format!("undefined hook '{}'", hook_info.name),
-                        span,
-                    )
+                    RuntimeError::with_span(format!("undefined hook '{}'", hook_info.name), span)
                 })?
                 .clone();
 

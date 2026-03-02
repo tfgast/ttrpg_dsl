@@ -31,18 +31,14 @@ impl Checker<'_> {
             DeclInfo::Unit(info) => (&info.fields, Ty::UnitType(Name::from(name))),
             DeclInfo::Entity(_) => {
                 self.error(
-                    format!(
-                        "cannot construct entity `{name}` with struct literal syntax"
-                    ),
+                    format!("cannot construct entity `{name}` with struct literal syntax"),
                     span,
                 );
                 return Ty::Error;
             }
             DeclInfo::Enum(_) => {
                 self.error(
-                    format!(
-                        "cannot construct enum `{name}` with struct literal syntax"
-                    ),
+                    format!("cannot construct enum `{name}` with struct literal syntax"),
                     span,
                 );
                 return Ty::Error;
@@ -54,9 +50,7 @@ impl Checker<'_> {
             let base_ty = self.check_expr(base_expr);
             if !base_ty.is_error() && !self.types_compatible(&base_ty, &result_ty) {
                 self.error(
-                    format!(
-                        "base expression has type {base_ty}, expected {result_ty}"
-                    ),
+                    format!("base expression has type {base_ty}, expected {result_ty}"),
                     base_expr.span,
                 );
             }

@@ -495,9 +495,10 @@ pub fn apply_op(op: AssignOp, current: &Value, rhs: &Value) -> Result<Value, Run
                 new_set.insert(elem.clone());
                 Ok(Value::Set(new_set))
             }
-            (Value::Int(a), Value::Int(b)) => a.checked_add(*b).map(Value::Int).ok_or_else(|| {
-                RuntimeError::new(format!("integer overflow in += ({a} + {b})"))
-            }),
+            (Value::Int(a), Value::Int(b)) => a
+                .checked_add(*b)
+                .map(Value::Int)
+                .ok_or_else(|| RuntimeError::new(format!("integer overflow in += ({a} + {b})"))),
             (Value::Float(a), Value::Float(b)) => {
                 let result = a + b;
                 if result.is_finite() {
@@ -537,9 +538,10 @@ pub fn apply_op(op: AssignOp, current: &Value, rhs: &Value) -> Result<Value, Run
                 new_set.remove(elem);
                 Ok(Value::Set(new_set))
             }
-            (Value::Int(a), Value::Int(b)) => a.checked_sub(*b).map(Value::Int).ok_or_else(|| {
-                RuntimeError::new(format!("integer overflow in -= ({a} - {b})"))
-            }),
+            (Value::Int(a), Value::Int(b)) => a
+                .checked_sub(*b)
+                .map(Value::Int)
+                .ok_or_else(|| RuntimeError::new(format!("integer overflow in -= ({a} - {b})"))),
             (Value::Float(a), Value::Float(b)) => {
                 let result = a - b;
                 if result.is_finite() {

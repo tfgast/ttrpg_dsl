@@ -232,7 +232,9 @@ fn builtin_dice(args: &[Value], span: Span) -> Result<Value, RuntimeError> {
             let sides_u32 = u32::try_from(*sides).map_err(|_| {
                 RuntimeError::with_span(format!("dice() sides {sides} overflows u32"), span)
             })?;
-            Ok(Value::DiceExpr(DiceExpr::single(count_u32, sides_u32, None, 0)))
+            Ok(Value::DiceExpr(DiceExpr::single(
+                count_u32, sides_u32, None, 0,
+            )))
         }
         (Some(a), Some(b)) => Err(RuntimeError::with_span(
             format!(
@@ -420,10 +422,9 @@ fn builtin_remove_condition(
             validate_mutation_response(env.handler.handle(effect), "RemoveCondition", span)?;
             Ok(Value::None)
         }
-        (
-            Some(Value::Entity(target)),
-            Some(Value::Struct { name, fields }),
-        ) if name == "ActiveCondition" => {
+        (Some(Value::Entity(target)), Some(Value::Struct { name, fields }))
+            if name == "ActiveCondition" =>
+        {
             let cond_id = match fields.get("id") {
                 Some(Value::Int(id)) if *id >= 0 => *id as u64,
                 Some(Value::Int(_)) => {
@@ -496,9 +497,9 @@ fn builtin_invocation(env: &Env, args: &[Value], span: Span) -> Result<Value, Ru
 /// Emits a `RevokeInvocation` effect for the given invocation ID.
 /// Accepts `none` or `Option(None)` as a no-op (nothing to revoke).
 fn builtin_revoke(env: &mut Env, args: &[Value], span: Span) -> Result<Value, RuntimeError> {
-    let arg = args.first().ok_or_else(|| {
-        RuntimeError::with_span("revoke() requires 1 argument", span)
-    })?;
+    let arg = args
+        .first()
+        .ok_or_else(|| RuntimeError::with_span("revoke() requires 1 argument", span))?;
 
     match arg {
         Value::Invocation(id) => {
@@ -509,11 +510,7 @@ fn builtin_revoke(env: &mut Env, args: &[Value], span: Span) -> Result<Value, Ru
         Value::Option(Some(inner)) => match inner.as_ref() {
             Value::Invocation(id) => {
                 let effect = Effect::RevokeInvocation { invocation: *id };
-                validate_mutation_response(
-                    env.handler.handle(effect),
-                    "RevokeInvocation",
-                    span,
-                )?;
+                validate_mutation_response(env.handler.handle(effect), "RevokeInvocation", span)?;
                 Ok(Value::None)
             }
             other => Err(RuntimeError::with_span(
@@ -550,9 +547,7 @@ fn validate_mutation_response(
     match response {
         Response::Acknowledged | Response::Override(_) | Response::Vetoed => Ok(()),
         _ => Err(RuntimeError::with_span(
-            format!(
-                "protocol error: unsupported response for {effect_name}: {response:?}"
-            ),
+            format!("protocol error: unsupported response for {effect_name}: {response:?}"),
             span,
         )),
     }
@@ -662,10 +657,10 @@ mod tests {
 
     // ── invocation() / revoke() unit tests ──────────────────
 
-    use std::collections::VecDeque;
     use crate::effect::EffectHandler;
-    use crate::state::{EntityRef, InvocationId, StateProvider, ActiveCondition};
+    use crate::state::{ActiveCondition, EntityRef, InvocationId, StateProvider};
     use crate::Interpreter;
+    use std::collections::VecDeque;
 
     struct TestHandler {
         script: VecDeque<Response>,
@@ -691,12 +686,24 @@ mod tests {
     struct EmptyState;
 
     impl StateProvider for EmptyState {
-        fn read_field(&self, _: &EntityRef, _: &str) -> Option<Value> { None }
-        fn read_conditions(&self, _: &EntityRef) -> Option<Vec<ActiveCondition>> { None }
-        fn read_turn_budget(&self, _: &EntityRef) -> Option<BTreeMap<Name, Value>> { None }
-        fn read_enabled_options(&self) -> Vec<Name> { vec![] }
-        fn position_eq(&self, _: &Value, _: &Value) -> bool { false }
-        fn distance(&self, _: &Value, _: &Value) -> Option<i64> { None }
+        fn read_field(&self, _: &EntityRef, _: &str) -> Option<Value> {
+            None
+        }
+        fn read_conditions(&self, _: &EntityRef) -> Option<Vec<ActiveCondition>> {
+            None
+        }
+        fn read_turn_budget(&self, _: &EntityRef) -> Option<BTreeMap<Name, Value>> {
+            None
+        }
+        fn read_enabled_options(&self) -> Vec<Name> {
+            vec![]
+        }
+        fn position_eq(&self, _: &Value, _: &Value) -> bool {
+            false
+        }
+        fn distance(&self, _: &Value, _: &Value) -> Option<i64> {
+            None
+        }
     }
 
     fn make_env<'a, 'p>(
@@ -748,9 +755,12 @@ mod tests {
             let mut env = make_env(&state, &mut handler, &interp);
             env.current_invocation_id = Some(InvocationId(1));
 
-            let result =
-                builtin_revoke(&mut env, &[Value::Invocation(InvocationId(7))], dummy_span())
-                    .unwrap();
+            let result = builtin_revoke(
+                &mut env,
+                &[Value::Invocation(InvocationId(7))],
+                dummy_span(),
+            )
+            .unwrap();
             assert_eq!(result, Value::None);
         }
         assert_eq!(handler.log.len(), 1);
@@ -819,7 +829,9 @@ mod tests {
     }
 
     impl StateProvider for ConditionsState {
-        fn read_field(&self, _: &EntityRef, _: &str) -> Option<Value> { None }
+        fn read_field(&self, _: &EntityRef, _: &str) -> Option<Value> {
+            None
+        }
         fn read_conditions(&self, entity: &EntityRef) -> Option<Vec<ActiveCondition>> {
             if entity.0 == self.known_entity {
                 Some(self.conditions.clone())
@@ -827,10 +839,18 @@ mod tests {
                 None
             }
         }
-        fn read_turn_budget(&self, _: &EntityRef) -> Option<BTreeMap<Name, Value>> { None }
-        fn read_enabled_options(&self) -> Vec<Name> { vec![] }
-        fn position_eq(&self, _: &Value, _: &Value) -> bool { false }
-        fn distance(&self, _: &Value, _: &Value) -> Option<i64> { None }
+        fn read_turn_budget(&self, _: &EntityRef) -> Option<BTreeMap<Name, Value>> {
+            None
+        }
+        fn read_enabled_options(&self) -> Vec<Name> {
+            vec![]
+        }
+        fn position_eq(&self, _: &Value, _: &Value) -> bool {
+            false
+        }
+        fn distance(&self, _: &Value, _: &Value) -> Option<i64> {
+            None
+        }
     }
 
     fn make_env_with_state<'a, 'p>(
@@ -845,7 +865,10 @@ mod tests {
     fn conditions_returns_empty_list_for_entity_with_no_conditions() {
         let (program, type_env) = empty_program_and_env();
         let interp = Interpreter::new(&program, &type_env).unwrap();
-        let state = ConditionsState { known_entity: 1, conditions: vec![] };
+        let state = ConditionsState {
+            known_entity: 1,
+            conditions: vec![],
+        };
         let mut handler = TestHandler::new();
         let env = make_env_with_state(&state, &mut handler, &interp);
 
@@ -869,7 +892,10 @@ mod tests {
             duration: duration_variant("indefinite"),
             invocation: None,
         };
-        let state = ConditionsState { known_entity: 1, conditions: vec![cond.clone()] };
+        let state = ConditionsState {
+            known_entity: 1,
+            conditions: vec![cond.clone()],
+        };
         let mut handler = TestHandler::new();
         let env = make_env_with_state(&state, &mut handler, &interp);
 
@@ -888,7 +914,10 @@ mod tests {
     fn conditions_errors_on_unknown_entity() {
         let (program, type_env) = empty_program_and_env();
         let interp = Interpreter::new(&program, &type_env).unwrap();
-        let state = ConditionsState { known_entity: 1, conditions: vec![] };
+        let state = ConditionsState {
+            known_entity: 1,
+            conditions: vec![],
+        };
         let mut handler = TestHandler::new();
         let env = make_env_with_state(&state, &mut handler, &interp);
 
@@ -902,7 +931,10 @@ mod tests {
     fn conditions_errors_on_non_entity_arg() {
         let (program, type_env) = empty_program_and_env();
         let interp = Interpreter::new(&program, &type_env).unwrap();
-        let state = ConditionsState { known_entity: 1, conditions: vec![] };
+        let state = ConditionsState {
+            known_entity: 1,
+            conditions: vec![],
+        };
         let mut handler = TestHandler::new();
         let env = make_env_with_state(&state, &mut handler, &interp);
 

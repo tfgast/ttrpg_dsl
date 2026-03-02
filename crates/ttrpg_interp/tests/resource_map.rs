@@ -1256,7 +1256,13 @@ fn group_resource_field_clamps_at_max() {
     let mut handler = ScriptedHandler::with_responses(vec![
         Response::Acknowledged, // ActionStarted
     ]);
-    let _ = interp.execute_action(&state, &mut handler, "Damage", target, vec![Value::Int(-100)]);
+    let _ = interp.execute_action(
+        &state,
+        &mut handler,
+        "Damage",
+        target,
+        vec![Value::Int(-100)],
+    );
 
     // The MutateField effect should carry bounds (0, 20)
     let mutate = handler

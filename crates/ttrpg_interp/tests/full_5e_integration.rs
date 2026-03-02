@@ -1933,8 +1933,7 @@ fn petrified_overrides_str_save_result() {
     // Script: dice=18, total=21, 21 >= DC 5 → would be success
     // Effects: RollDice(roll), then ModifyApplied(Phase2) → Ack
     let roll_response = scripted_roll(1, 20, None, 3, vec![18], vec![18], 21, 18);
-    let mut handler =
-        ScriptedHandler::with_responses(vec![roll_response, Response::Acknowledged]);
+    let mut handler = ScriptedHandler::with_responses(vec![roll_response, Response::Acknowledged]);
 
     let val = interp
         .evaluate_mechanic(

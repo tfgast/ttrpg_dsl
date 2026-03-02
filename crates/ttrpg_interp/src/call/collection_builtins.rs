@@ -236,10 +236,7 @@ pub(super) fn eval_sum(
                             float_sum += *n as f64;
                         } else {
                             int_sum = int_sum.checked_add(*n).ok_or_else(|| {
-                                RuntimeError::with_span(
-                                    "integer overflow in sum()",
-                                    call_span,
-                                )
+                                RuntimeError::with_span("integer overflow in sum()", call_span)
                             })?;
                         }
                     }

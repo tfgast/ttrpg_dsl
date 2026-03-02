@@ -452,7 +452,10 @@ impl Parser {
             }
         }
 
-        Ok(WithClause { groups, disjunctive })
+        Ok(WithClause {
+            groups,
+            disjunctive,
+        })
     }
 
     // ── Action ───────────────────────────────────────────────────

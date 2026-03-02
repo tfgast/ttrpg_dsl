@@ -176,7 +176,10 @@ pub enum ModifyTarget {
 pub enum SelectorPredicate {
     Tag(Name),
     Returns(Spanned<TypeExpr>),
-    HasParam { name: Name, ty: Option<Spanned<TypeExpr>> },
+    HasParam {
+        name: Name,
+        ty: Option<Spanned<TypeExpr>>,
+    },
 }
 
 #[derive(Clone)]

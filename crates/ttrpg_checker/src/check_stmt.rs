@@ -240,9 +240,7 @@ impl Checker<'_> {
                 } else if target_ty.is_int_like() && value_ty == Ty::Float {
                     // Prevent int += float (would silently lose precision)
                     self.error(
-                        format!(
-                            "cannot use float in += / -= on {target_ty}: would lose precision"
-                        ),
+                        format!("cannot use float in += / -= on {target_ty}: would lose precision"),
                         value.span,
                     );
                 }
@@ -269,9 +267,7 @@ impl Checker<'_> {
                 LValueSegment::Field(name) => {
                     // Check if this field is a group alias
                     let resolved_name = if current.is_entity() {
-                        if let Some(real_group) =
-                            self.scope.resolve_group_alias(&path_key, name)
-                        {
+                        if let Some(real_group) = self.scope.resolve_group_alias(&path_key, name) {
                             self.resolved_lvalue_aliases
                                 .insert(lvalue.span, (seg_idx, real_group.clone()));
                             real_group
@@ -362,9 +358,7 @@ impl Checker<'_> {
                     Some(g) => g.clone(),
                     None => {
                         self.error(
-                            format!(
-                                "entity `{entity_name}` has no optional group `{group_name}`"
-                            ),
+                            format!("entity `{entity_name}` has no optional group `{group_name}`"),
                             span,
                         );
                         return;
@@ -402,19 +396,14 @@ impl Checker<'_> {
                 }
             }
             _ => {
-                self.error(
-                    format!("grant requires an entity, found {entity_ty}"),
-                    span,
-                );
+                self.error(format!("grant requires an entity, found {entity_ty}"), span);
                 return;
             }
         };
 
         if group.required {
             self.error(
-                format!(
-                    "group `{group_name}` is required on this entity and cannot be granted"
-                ),
+                format!("group `{group_name}` is required on this entity and cannot be granted"),
                 span,
             );
             return;
@@ -477,12 +466,7 @@ impl Checker<'_> {
         }
     }
 
-    fn check_emit(
-        &mut self,
-        event_name: &str,
-        args: &[Arg],
-        span: ttrpg_ast::Span,
-    ) {
+    fn check_emit(&mut self, event_name: &str, args: &[Arg], span: ttrpg_ast::Span) {
         // emit only allowed in action/reaction/hook context
         if !self.scope.allows_emit() {
             self.error(
@@ -522,10 +506,7 @@ impl Checker<'_> {
         for arg in args {
             if let Some(ref name) = arg.name {
                 if !seen.insert(name.clone()) {
-                    self.error(
-                        format!("duplicate argument `{name}` in emit"),
-                        arg.span,
-                    );
+                    self.error(format!("duplicate argument `{name}` in emit"), arg.span);
                 }
             }
         }
@@ -538,9 +519,7 @@ impl Checker<'_> {
                 } else {
                     let ty = self.check_expr(&arg.value);
                     self.error(
-                        format!(
-                            "event `{event_name}` has no parameter `{name}`"
-                        ),
+                        format!("event `{event_name}` has no parameter `{name}`"),
                         arg.span,
                     );
                     ty
@@ -616,9 +595,7 @@ impl Checker<'_> {
                     Some(_) => {}
                     None => {
                         self.error(
-                            format!(
-                                "entity `{entity_name}` has no optional group `{group_name}`"
-                            ),
+                            format!("entity `{entity_name}` has no optional group `{group_name}`"),
                             span,
                         );
                     }

@@ -8,8 +8,8 @@ use crate::effect::{Effect, FieldChange, ModifySource, Phase, Response};
 use crate::eval::{eval_expr, value_eq};
 use crate::state::ActiveCondition;
 use crate::value::Value;
-use crate::{action, event, Env, MAX_EMIT_DEPTH};
 use crate::RuntimeError;
+use crate::{action, event, Env, MAX_EMIT_DEPTH};
 
 // ── Supporting types ────────────────────────────────────────────
 
@@ -123,7 +123,14 @@ pub(crate) fn collect_modifiers_owned(
                     // Check bindings: each binding maps a param name to an expression.
                     // Evaluate the expression in a scope with the condition receiver bound.
                     // The binding matches if param[binding.name] equals the evaluated value.
-                    if check_modify_bindings(env, clause, condition, &cond_decl.receiver_name, fn_info, bound_params)? {
+                    if check_modify_bindings(
+                        env,
+                        clause,
+                        condition,
+                        &cond_decl.receiver_name,
+                        fn_info,
+                        bound_params,
+                    )? {
                         condition_modifiers.push((
                             condition.gained_at,
                             OwnedModifier {
@@ -797,10 +804,7 @@ pub(crate) fn emit_modify_applied_events(
         cond_fields.insert(Name::from("id"), Value::Int(cond_id as i64));
         cond_fields.insert(
             Name::from("duration"),
-            modifier
-                .condition_duration
-                .clone()
-                .unwrap_or(Value::None),
+            modifier.condition_duration.clone().unwrap_or(Value::None),
         );
 
         let condition_value = Value::Struct {
@@ -851,13 +855,7 @@ pub(crate) fn emit_modify_applied_events(
                     })?
                     .clone();
 
-                action::execute_hook(
-                    env,
-                    &hook_decl,
-                    hook_info.target,
-                    payload.clone(),
-                    span,
-                )?;
+                action::execute_hook(env, &hook_decl, hook_info.target, payload.clone(), span)?;
             }
         }
         Ok(())
@@ -1067,14 +1065,14 @@ mod tests {
                         ty: Ty::Entity("Character".into()),
                         has_default: false,
                         with_groups: vec![],
-                    with_disjunctive: false,
+                        with_disjunctive: false,
                     },
                     ParamInfo {
                         name: "mode".into(),
                         ty: Ty::String,
                         has_default: false,
                         with_groups: vec![],
-                    with_disjunctive: false,
+                        with_disjunctive: false,
                     },
                 ],
                 return_type: Ty::Int,
@@ -1438,14 +1436,14 @@ mod tests {
                         ty: Ty::Entity("Character".into()),
                         has_default: false,
                         with_groups: vec![],
-                    with_disjunctive: false,
+                        with_disjunctive: false,
                     },
                     ParamInfo {
                         name: "x".into(),
                         ty: Ty::Int,
                         has_default: false,
                         with_groups: vec![],
-                    with_disjunctive: false,
+                        with_disjunctive: false,
                     },
                 ],
                 return_type: Ty::Int,
@@ -1657,14 +1655,14 @@ mod tests {
                         ty: Ty::Entity("Character".into()),
                         has_default: false,
                         with_groups: vec![],
-                    with_disjunctive: false,
+                        with_disjunctive: false,
                     },
                     ParamInfo {
                         name: "x".into(),
                         ty: Ty::Int,
                         has_default: false,
                         with_groups: vec![],
-                    with_disjunctive: false,
+                        with_disjunctive: false,
                     },
                 ],
                 return_type: Ty::Int,
@@ -1828,14 +1826,14 @@ mod tests {
                         ty: Ty::Entity("Character".into()),
                         has_default: false,
                         with_groups: vec![],
-                    with_disjunctive: false,
+                        with_disjunctive: false,
                     },
                     ParamInfo {
                         name: "b".into(),
                         ty: Ty::Entity("Character".into()),
                         has_default: false,
                         with_groups: vec![],
-                    with_disjunctive: false,
+                        with_disjunctive: false,
                     },
                 ],
                 return_type: Ty::Int,
@@ -2045,14 +2043,14 @@ mod tests {
                         ty: Ty::String,
                         has_default: false,
                         with_groups: vec![],
-                    with_disjunctive: false,
+                        with_disjunctive: false,
                     },
                     ParamInfo {
                         name: "x".into(),
                         ty: Ty::Int,
                         has_default: false,
                         with_groups: vec![],
-                    with_disjunctive: false,
+                        with_disjunctive: false,
                     },
                 ],
                 return_type: Ty::Int,
@@ -2195,14 +2193,14 @@ mod tests {
                         ty: Ty::Entity("Character".into()),
                         has_default: false,
                         with_groups: vec![],
-                    with_disjunctive: false,
+                        with_disjunctive: false,
                     },
                     ParamInfo {
                         name: "x".into(),
                         ty: Ty::Int,
                         has_default: false,
                         with_groups: vec![],
-                    with_disjunctive: false,
+                        with_disjunctive: false,
                     },
                 ],
                 return_type: Ty::Int,
@@ -2354,8 +2352,14 @@ mod tests {
         exec_modify_stmts_phase2(&mut env, &stmts_expr, &mut result).unwrap();
         match &result {
             Value::RollResult(rr) => {
-                assert_eq!(rr.expr.groups[0].count, 2, "expr.count should be overridden");
-                assert_eq!(rr.expr.groups[0].sides, 6, "expr.sides should be overridden");
+                assert_eq!(
+                    rr.expr.groups[0].count, 2,
+                    "expr.count should be overridden"
+                );
+                assert_eq!(
+                    rr.expr.groups[0].sides, 6,
+                    "expr.sides should be overridden"
+                );
                 assert_eq!(rr.expr.modifier, 0, "expr.modifier should be overridden");
             }
             _ => panic!("expected RollResult"),
@@ -2606,14 +2610,14 @@ mod tests {
                         ty: Ty::Entity("Character".into()),
                         has_default: false,
                         with_groups: vec![],
-                    with_disjunctive: false,
+                        with_disjunctive: false,
                     },
                     ParamInfo {
                         name: "x".into(),
                         ty: Ty::Int,
                         has_default: false,
                         with_groups: vec![],
-                    with_disjunctive: false,
+                        with_disjunctive: false,
                     },
                 ],
                 return_type: Ty::Int,
@@ -2758,14 +2762,14 @@ mod tests {
                         ty: Ty::Entity("Character".into()),
                         has_default: false,
                         with_groups: vec![],
-                    with_disjunctive: false,
+                        with_disjunctive: false,
                     },
                     ParamInfo {
                         name: "x".into(),
                         ty: Ty::Int,
                         has_default: false,
                         with_groups: vec![],
-                    with_disjunctive: false,
+                        with_disjunctive: false,
                     },
                 ],
                 return_type: Ty::Int,

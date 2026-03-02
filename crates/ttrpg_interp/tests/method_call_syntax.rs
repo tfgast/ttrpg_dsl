@@ -513,10 +513,7 @@ system "test" {
             vec![Value::DiceExpr(DiceExpr::single(2, 6, None, 0))],
         )
         .unwrap();
-    assert_eq!(
-        val,
-        Value::DiceExpr(DiceExpr::single(6, 6, None, 0))
-    );
+    assert_eq!(val, Value::DiceExpr(DiceExpr::single(6, 6, None, 0)));
 }
 
 #[test]

@@ -65,9 +65,7 @@ pub fn what_triggers(
     let event_info = match interp.type_env.events.get(event_name) {
         Some(info) => info.clone(),
         None => {
-            return Err(RuntimeError::new(format!(
-                "undefined event '{event_name}'"
-            )));
+            return Err(RuntimeError::new(format!("undefined event '{event_name}'")));
         }
     };
 
@@ -150,9 +148,7 @@ pub fn find_matching_hooks(
     let event_info = match interp.type_env.events.get(event_name) {
         Some(info) => info.clone(),
         None => {
-            return Err(RuntimeError::new(format!(
-                "undefined event '{event_name}'"
-            )));
+            return Err(RuntimeError::new(format!("undefined event '{event_name}'")));
         }
     };
 
@@ -380,8 +376,10 @@ fn is_suppressed(
             }
 
             // Collect ancestor chain (parents first, then self)
-            let ancestor_decls =
-                crate::pipeline::collect_ancestor_order(env.interp.program, condition.name.as_str());
+            let ancestor_decls = crate::pipeline::collect_ancestor_order(
+                env.interp.program,
+                condition.name.as_str(),
+            );
 
             for cond_decl in &ancestor_decls {
                 for clause_item in &cond_decl.clauses {
@@ -655,14 +653,14 @@ mod tests {
                         ty: Ty::Entity("Character".into()),
                         has_default: false,
                         with_groups: vec![],
-                    with_disjunctive: false,
+                        with_disjunctive: false,
                     },
                     ParamInfo {
                         name: "attacker".into(),
                         ty: Ty::Entity("Character".into()),
                         has_default: false,
                         with_groups: vec![],
-                    with_disjunctive: false,
+                        with_disjunctive: false,
                     },
                 ],
                 fields: vec![],
@@ -755,14 +753,14 @@ mod tests {
                         ty: Ty::Entity("Character".into()),
                         has_default: false,
                         with_groups: vec![],
-                    with_disjunctive: false,
+                        with_disjunctive: false,
                     },
                     ParamInfo {
                         name: "attacker".into(),
                         ty: Ty::Entity("Character".into()),
                         has_default: false,
                         with_groups: vec![],
-                    with_disjunctive: false,
+                        with_disjunctive: false,
                     },
                 ],
                 fields: vec![],
@@ -872,21 +870,21 @@ mod tests {
                         ty: Ty::Entity("Character".into()),
                         has_default: false,
                         with_groups: vec![],
-                    with_disjunctive: false,
+                        with_disjunctive: false,
                     },
                     ParamInfo {
                         name: "target".into(),
                         ty: Ty::Entity("Character".into()),
                         has_default: false,
                         with_groups: vec![],
-                    with_disjunctive: false,
+                        with_disjunctive: false,
                     },
                     ParamInfo {
                         name: "weapon".into(),
                         ty: Ty::Entity("Character".into()),
                         has_default: false,
                         with_groups: vec![],
-                    with_disjunctive: false,
+                        with_disjunctive: false,
                     },
                 ],
                 fields: vec![],
@@ -1082,14 +1080,14 @@ mod tests {
                         ty: Ty::Entity("Character".into()),
                         has_default: false,
                         with_groups: vec![],
-                    with_disjunctive: false,
+                        with_disjunctive: false,
                     },
                     ParamInfo {
                         name: "attacker".into(),
                         ty: Ty::Entity("Character".into()),
                         has_default: false,
                         with_groups: vec![],
-                    with_disjunctive: false,
+                        with_disjunctive: false,
                     },
                 ],
                 fields: vec![],
@@ -1237,14 +1235,14 @@ mod tests {
                         ty: Ty::Entity("Character".into()),
                         has_default: false,
                         with_groups: vec![],
-                    with_disjunctive: false,
+                        with_disjunctive: false,
                     },
                     ParamInfo {
                         name: "attacker".into(),
                         ty: Ty::Entity("Character".into()),
                         has_default: false,
                         with_groups: vec![],
-                    with_disjunctive: false,
+                        with_disjunctive: false,
                     },
                 ],
                 fields: vec![],

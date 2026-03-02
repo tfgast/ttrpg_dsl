@@ -104,7 +104,9 @@ fn concentration_cast_bless_applies_condition_and_tracks_invocation() {
     // Verify condition is on the ally
     let conds = exec(&mut r, "conditions");
     assert!(
-        conds.iter().any(|l| l.contains("ally") && l.contains("Blessed")),
+        conds
+            .iter()
+            .any(|l| l.contains("ally") && l.contains("Blessed")),
         "ally should have Blessed condition: {:?}",
         conds
     );
@@ -131,7 +133,9 @@ fn concentration_recast_revokes_previous_spell() {
     // Ally should have Blessed
     let conds = exec(&mut r, "conditions");
     assert!(
-        conds.iter().any(|l| l.contains("ally") && l.contains("Blessed")),
+        conds
+            .iter()
+            .any(|l| l.contains("ally") && l.contains("Blessed")),
         "ally should have Blessed: {:?}",
         conds
     );
@@ -149,7 +153,9 @@ fn concentration_recast_revokes_previous_spell() {
     // After recasting: only Hexed should remain, Blessed should be gone
     let conds = exec(&mut r, "conditions");
     assert!(
-        conds.iter().any(|l| l.contains("enemy") && l.contains("Hexed")),
+        conds
+            .iter()
+            .any(|l| l.contains("enemy") && l.contains("Hexed")),
         "enemy should have Hexed: {:?}",
         conds
     );
@@ -181,12 +187,16 @@ fn concentration_multi_target_bless_all_revoked_together() {
 
     let conds = exec(&mut r, "conditions");
     assert!(
-        conds.iter().any(|l| l.contains("alice") && l.contains("Blessed")),
+        conds
+            .iter()
+            .any(|l| l.contains("alice") && l.contains("Blessed")),
         "alice should have Blessed: {:?}",
         conds
     );
     assert!(
-        conds.iter().any(|l| l.contains("bob") && l.contains("Blessed")),
+        conds
+            .iter()
+            .any(|l| l.contains("bob") && l.contains("Blessed")),
         "bob should have Blessed: {:?}",
         conds
     );
@@ -405,7 +415,9 @@ fn sustained_cast_fills_first_slot() {
 
     // Action should succeed
     assert!(
-        output.iter().any(|l| l.contains("succeeded") && l.contains("CastFlamingSphere")),
+        output
+            .iter()
+            .any(|l| l.contains("succeeded") && l.contains("CastFlamingSphere")),
         "CastFlamingSphere should succeed: {:?}",
         output
     );
@@ -413,7 +425,9 @@ fn sustained_cast_fills_first_slot() {
     // Caster should have the sustaining condition
     let conds = exec(&mut r, "conditions");
     assert!(
-        conds.iter().any(|l| l.contains("Sustaining_Flaming_Sphere")),
+        conds
+            .iter()
+            .any(|l| l.contains("Sustaining_Flaming_Sphere")),
         "druid should have Sustaining_Flaming_Sphere: {:?}",
         conds
     );
@@ -467,7 +481,9 @@ fn sustained_two_spells_fill_both_slots() {
     // Both conditions should be active
     let conds = exec(&mut r, "conditions");
     assert!(
-        conds.iter().any(|l| l.contains("Sustaining_Flaming_Sphere")),
+        conds
+            .iter()
+            .any(|l| l.contains("Sustaining_Flaming_Sphere")),
         "Sustaining_Flaming_Sphere should be active: {:?}",
         conds
     );
@@ -514,7 +530,9 @@ fn sustained_dismiss_revokes_conditions_and_clears_slot() {
     // Sustaining_Flaming_Sphere should be gone
     let conds = exec(&mut r, "conditions");
     assert!(
-        !conds.iter().any(|l| l.contains("Sustaining_Flaming_Sphere")),
+        !conds
+            .iter()
+            .any(|l| l.contains("Sustaining_Flaming_Sphere")),
         "Sustaining_Flaming_Sphere should be revoked: {:?}",
         conds
     );
@@ -562,7 +580,9 @@ fn sustained_inspire_courage_modifies_attack() {
 
     // Strike should succeed
     assert!(
-        output.iter().any(|l| l.contains("succeeded") && l.contains("Strike")),
+        output
+            .iter()
+            .any(|l| l.contains("succeeded") && l.contains("Strike")),
         "Strike should succeed: {:?}",
         output
     );
@@ -618,7 +638,9 @@ fn sustained_flaming_sphere_save_prevents_damage() {
     // But the sustaining condition should still be on the druid
     let conds = exec(&mut r, "conditions");
     assert!(
-        conds.iter().any(|l| l.contains("Sustaining_Flaming_Sphere")),
+        conds
+            .iter()
+            .any(|l| l.contains("Sustaining_Flaming_Sphere")),
         "druid should still have Sustaining_Flaming_Sphere: {:?}",
         conds
     );
@@ -645,13 +667,23 @@ fn sustained_dismiss_both_spells_clears_all() {
     // Both slots should be cleared
     let slot1 = exec(&mut r, "inspect druid.sustained_1");
     let slot2 = exec(&mut r, "inspect druid.sustained_2");
-    assert!(slot1[0].contains("none"), "sustained_1 should be none: {:?}", slot1);
-    assert!(slot2[0].contains("none"), "sustained_2 should be none: {:?}", slot2);
+    assert!(
+        slot1[0].contains("none"),
+        "sustained_1 should be none: {:?}",
+        slot1
+    );
+    assert!(
+        slot2[0].contains("none"),
+        "sustained_2 should be none: {:?}",
+        slot2
+    );
 
     // No conditions should remain
     let conds = exec(&mut r, "conditions");
     assert!(
-        !conds.iter().any(|l| l.contains("Sustaining_Flaming_Sphere")),
+        !conds
+            .iter()
+            .any(|l| l.contains("Sustaining_Flaming_Sphere")),
         "no sustained conditions should remain: {:?}",
         conds
     );

@@ -624,8 +624,7 @@ mod tests {
     fn new_with_invocation_start_seeds_correctly() {
         let source = r#"system "test" { entity E { x: int } }"#;
         let (program, result) = setup(source);
-        let interp =
-            Interpreter::new_with_invocation_start(&program, &result.env, 100).unwrap();
+        let interp = Interpreter::new_with_invocation_start(&program, &result.env, 100).unwrap();
 
         assert_eq!(interp.next_invocation_id(), 100);
         let a = interp.alloc_invocation_id().unwrap();

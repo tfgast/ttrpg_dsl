@@ -310,9 +310,7 @@ impl Checker<'_> {
             let filter_ty = self.check_expr(filter_expr);
             if !filter_ty.is_error() && filter_ty != Ty::Bool {
                 self.error(
-                    format!(
-                        "list comprehension filter must be bool, found {filter_ty}"
-                    ),
+                    format!("list comprehension filter must be bool, found {filter_ty}"),
                     filter_expr.span,
                 );
             }

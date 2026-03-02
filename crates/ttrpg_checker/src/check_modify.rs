@@ -181,9 +181,7 @@ impl Checker<'_> {
         // .cost modify can only target actions or reactions
         if fn_info.kind != FnKind::Action && fn_info.kind != FnKind::Reaction {
             self.error(
-                format!(
-                    "modify cost target `{target_name}` must be an action or reaction"
-                ),
+                format!("modify cost target `{target_name}` must be an action or reaction"),
                 clause.span,
             );
             return;
@@ -369,10 +367,7 @@ impl Checker<'_> {
                 SelectorPredicate::Tag(tag_name) => {
                     // Validate tag is declared and visible
                     if !self.env.tags.contains(tag_name) {
-                        self.error(
-                            format!("undefined tag `{tag_name}`"),
-                            clause.span,
-                        );
+                        self.error(format!("undefined tag `{tag_name}`"), clause.span);
                         return;
                     }
                     self.check_name_visible(tag_name, Namespace::Tag, clause.span);
@@ -418,10 +413,11 @@ impl Checker<'_> {
         }
 
         if match_set.is_empty() {
-            self.diagnostics.push(ttrpg_ast::diagnostic::Diagnostic::warning(
-                "selector matches no functions",
-                clause.span,
-            ));
+            self.diagnostics
+                .push(ttrpg_ast::diagnostic::Diagnostic::warning(
+                    "selector matches no functions",
+                    clause.span,
+                ));
             return;
         }
 
@@ -515,11 +511,7 @@ impl Checker<'_> {
     }
 
     /// Test whether a function matches all resolved predicates.
-    fn fn_matches_predicates(
-        &self,
-        fn_info: &FnInfo,
-        preds: &[ResolvedPredicate],
-    ) -> bool {
+    fn fn_matches_predicates(&self, fn_info: &FnInfo, preds: &[ResolvedPredicate]) -> bool {
         preds.iter().all(|pred| match pred {
             ResolvedPredicate::Tag(tag) => fn_info.tags.contains(tag),
             ResolvedPredicate::Returns(ty) => self.types_compatible(&fn_info.return_type, ty),
@@ -559,17 +551,17 @@ impl Checker<'_> {
             ExprKind::Ident(name) => name == "result",
             ExprKind::FieldAccess { object, .. } => Self::expr_mentions_result(&object.node),
             ExprKind::BinOp { lhs, rhs, .. } => {
-                Self::expr_mentions_result(&lhs.node)
-                    || Self::expr_mentions_result(&rhs.node)
+                Self::expr_mentions_result(&lhs.node) || Self::expr_mentions_result(&rhs.node)
             }
             ExprKind::UnaryOp { operand, .. } => Self::expr_mentions_result(&operand.node),
             ExprKind::Call { callee, args } => {
                 Self::expr_mentions_result(&callee.node)
-                    || args.iter().any(|a| Self::expr_mentions_result(&a.value.node))
+                    || args
+                        .iter()
+                        .any(|a| Self::expr_mentions_result(&a.value.node))
             }
             ExprKind::Index { object, index } => {
-                Self::expr_mentions_result(&object.node)
-                    || Self::expr_mentions_result(&index.node)
+                Self::expr_mentions_result(&object.node) || Self::expr_mentions_result(&index.node)
             }
             ExprKind::Paren(inner) => Self::expr_mentions_result(&inner.node),
             ExprKind::If { condition, .. } => Self::expr_mentions_result(&condition.node),

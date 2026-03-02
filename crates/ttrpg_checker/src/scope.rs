@@ -62,7 +62,10 @@ impl BlockKind {
     }
 
     pub fn allows_emit(&self) -> bool {
-        matches!(self, BlockKind::ActionResolve | BlockKind::ReactionResolve | BlockKind::HookResolve)
+        matches!(
+            self,
+            BlockKind::ActionResolve | BlockKind::ReactionResolve | BlockKind::HookResolve
+        )
     }
 }
 
@@ -239,9 +242,7 @@ impl ScopeStack {
             "ScopeStack::add_group_alias called on empty stack"
         );
         if let Some(scope) = self.scopes.last_mut() {
-            scope
-                .group_aliases
-                .insert((var, alias), real_group);
+            scope.group_aliases.insert((var, alias), real_group);
         }
     }
 

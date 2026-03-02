@@ -443,8 +443,7 @@ fn mechanic_call_with_roll_emits_roll_dice() {
         total: 9,
         unmodified: 9,
     };
-    let mut handler =
-        ScriptedHandler::with_responses(vec![Response::Rolled(roll_result.clone())]);
+    let mut handler = ScriptedHandler::with_responses(vec![Response::Rolled(roll_result.clone())]);
     let mut env = make_env(&state, &mut handler, &interp);
 
     let expr = spanned(ExprKind::Call {
@@ -489,8 +488,7 @@ fn prompt_call_emits_resolve_prompt() {
 
     let interp = Interpreter::new(&program, &type_env).unwrap();
     let state = TestState::new();
-    let mut handler =
-        ScriptedHandler::with_responses(vec![Response::PromptResult(Value::Int(42))]);
+    let mut handler = ScriptedHandler::with_responses(vec![Response::PromptResult(Value::Int(42))]);
     let mut env = make_env(&state, &mut handler, &interp);
 
     let expr = spanned(ExprKind::Call {
@@ -543,7 +541,7 @@ fn prompt_call_with_suggest() {
                 ty: Ty::Int,
                 has_default: false,
                 with_groups: vec![],
-                    with_disjunctive: false,
+                with_disjunctive: false,
             }],
             return_type: Ty::Int,
             receiver: None,
@@ -575,10 +573,7 @@ fn prompt_call_with_suggest() {
             suggest, params, ..
         } => {
             assert_eq!(*suggest, Some(Value::Int(11)));
-            assert_eq!(
-                params,
-                &[(Name::from("default_val"), Value::Int(10))]
-            );
+            assert_eq!(params, &[(Name::from("default_val"), Value::Int(10))]);
         }
         _ => panic!("expected ResolvePrompt"),
     }
@@ -641,8 +636,7 @@ fn prompt_emits_return_type_and_named_params() {
 
     let interp = Interpreter::new(&program, &type_env).unwrap();
     let state = TestState::new();
-    let mut handler =
-        ScriptedHandler::with_responses(vec![Response::PromptResult(Value::Int(7))]);
+    let mut handler = ScriptedHandler::with_responses(vec![Response::PromptResult(Value::Int(7))]);
     let mut env = make_env(&state, &mut handler, &interp);
 
     let expr = spanned(ExprKind::Call {
@@ -709,8 +703,7 @@ fn prompt_return_type_validation_correct_type() {
 
     let interp = Interpreter::new(&program, &type_env).unwrap();
     let state = TestState::new();
-    let mut handler =
-        ScriptedHandler::with_responses(vec![Response::PromptResult(Value::Int(42))]);
+    let mut handler = ScriptedHandler::with_responses(vec![Response::PromptResult(Value::Int(42))]);
     let mut env = make_env(&state, &mut handler, &interp);
 
     let expr = spanned(ExprKind::Call {
@@ -797,8 +790,7 @@ fn prompt_override_validation_wrong_type() {
     let interp = Interpreter::new(&program, &type_env).unwrap();
     let state = TestState::new();
     // Host overrides with wrong type
-    let mut handler =
-        ScriptedHandler::with_responses(vec![Response::Override(Value::Bool(true))]);
+    let mut handler = ScriptedHandler::with_responses(vec![Response::Override(Value::Bool(true))]);
     let mut env = make_env(&state, &mut handler, &interp);
 
     let expr = spanned(ExprKind::Call {
@@ -1131,8 +1123,7 @@ fn builtin_roll_test() {
         total: 20,
         unmodified: 15,
     };
-    let mut handler =
-        ScriptedHandler::with_responses(vec![Response::Rolled(roll_result.clone())]);
+    let mut handler = ScriptedHandler::with_responses(vec![Response::Rolled(roll_result.clone())]);
     let mut env = make_env(&state, &mut handler, &interp);
 
     env.bind(
@@ -1167,9 +1158,9 @@ fn builtin_roll_override_response() {
         total: 20,
         unmodified: 20,
     };
-    let mut handler = ScriptedHandler::with_responses(vec![Response::Override(
-        Value::RollResult(override_result.clone()),
-    )]);
+    let mut handler = ScriptedHandler::with_responses(vec![Response::Override(Value::RollResult(
+        override_result.clone(),
+    ))]);
     let mut env = make_env(&state, &mut handler, &interp);
 
     env.bind(
@@ -1611,7 +1602,7 @@ fn missing_required_arg_error() {
                 ty: Ty::Int,
                 has_default: false,
                 with_groups: vec![],
-                    with_disjunctive: false,
+                with_disjunctive: false,
             }],
             return_type: Ty::Int,
             receiver: None,
@@ -1891,7 +1882,7 @@ fn action_test_setup() -> (Program, TypeEnv) {
                 ty: Ty::Entity("Character".into()),
                 has_default: false,
                 with_groups: vec![],
-                    with_disjunctive: false,
+                with_disjunctive: false,
             }],
             return_type: Ty::Unit,
             receiver: Some(ParamInfo {
@@ -1899,7 +1890,7 @@ fn action_test_setup() -> (Program, TypeEnv) {
                 ty: Ty::Entity("Character".into()),
                 has_default: false,
                 with_groups: vec![],
-                    with_disjunctive: false,
+                with_disjunctive: false,
             }),
             tags: HashSet::new(),
             synthetic: false,
@@ -2370,8 +2361,7 @@ fn remove_condition_rejects_invalid_response() {
     let type_env = type_env_with_builtins();
     let interp = Interpreter::new(&program, &type_env).unwrap();
     let state = TestState::new();
-    let mut handler =
-        ScriptedHandler::with_responses(vec![Response::PromptResult(Value::Int(42))]);
+    let mut handler = ScriptedHandler::with_responses(vec![Response::PromptResult(Value::Int(42))]);
     let mut env = make_env(&state, &mut handler, &interp);
 
     env.bind("target".into(), Value::Entity(EntityRef(2)));
@@ -2475,7 +2465,7 @@ fn bare_call_prefers_variant_over_function() {
                 ty: Ty::Int,
                 has_default: false,
                 with_groups: vec![],
-                    with_disjunctive: false,
+                with_disjunctive: false,
             }],
             return_type: Ty::Int,
             receiver: None,
@@ -2720,15 +2710,21 @@ fn mixed_args_evaluated_in_source_order() {
     // Effects emitted in source order: 1d4, 1d6, 1d8
     assert_eq!(handler.log.len(), 3);
     match &handler.log[0] {
-        Effect::RollDice { expr } => assert_eq!(expr.groups[0].sides, 4, "first roll should be 1d4"),
+        Effect::RollDice { expr } => {
+            assert_eq!(expr.groups[0].sides, 4, "first roll should be 1d4")
+        }
         e => panic!("expected RollDice, got {:?}", e),
     }
     match &handler.log[1] {
-        Effect::RollDice { expr } => assert_eq!(expr.groups[0].sides, 6, "second roll should be 1d6"),
+        Effect::RollDice { expr } => {
+            assert_eq!(expr.groups[0].sides, 6, "second roll should be 1d6")
+        }
         e => panic!("expected RollDice, got {:?}", e),
     }
     match &handler.log[2] {
-        Effect::RollDice { expr } => assert_eq!(expr.groups[0].sides, 8, "third roll should be 1d8"),
+        Effect::RollDice { expr } => {
+            assert_eq!(expr.groups[0].sides, 8, "third roll should be 1d8")
+        }
         e => panic!("expected RollDice, got {:?}", e),
     }
 }

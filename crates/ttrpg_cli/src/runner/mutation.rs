@@ -171,134 +171,134 @@ impl Runner {
         let entity = self.resolve_handle(handle)?;
 
         // Check if the path has a second '.' (GroupName.field)
-        let (path_segments, expected_ty, display_path) =
-            if let Some(inner_dot) = field_path.find('.') {
-                let group_name = &field_path[..inner_dot];
-                let field_name = &field_path[inner_dot + 1..];
-                if group_name.is_empty() || field_name.is_empty() {
-                    return Err(CliError::Message(
-                        "usage: set <handle>.<GroupName>.<field> = <value>".into(),
-                    ));
-                }
+        let (path_segments, expected_ty, display_path) = if let Some(inner_dot) =
+            field_path.find('.')
+        {
+            let group_name = &field_path[..inner_dot];
+            let field_name = &field_path[inner_dot + 1..];
+            if group_name.is_empty() || field_name.is_empty() {
+                return Err(CliError::Message(
+                    "usage: set <handle>.<GroupName>.<field> = <value>".into(),
+                ));
+            }
 
-                // Validate it's an optional group
-                let type_name = {
-                    let gs = self.game_state.borrow();
-                    gs.entity_type_name(&entity)
-                        .map(|s| s.to_string())
-                        .unwrap_or_default()
-                };
-                let group_info = self
-                    .type_env
-                    .lookup_optional_group(&type_name, group_name)
-                    .ok_or_else(|| {
-                        CliError::Message(format!(
-                            "unknown group '{group_name}' on entity type '{type_name}'"
-                        ))
-                    })?;
+            // Validate it's an optional group
+            let type_name = {
+                let gs = self.game_state.borrow();
+                gs.entity_type_name(&entity)
+                    .map(|s| s.to_string())
+                    .unwrap_or_default()
+            };
+            let group_info = self
+                .type_env
+                .lookup_optional_group(&type_name, group_name)
+                .ok_or_else(|| {
+                    CliError::Message(format!(
+                        "unknown group '{group_name}' on entity type '{type_name}'"
+                    ))
+                })?;
 
-                // Check the group is active/present
-                {
-                    let gs = self.game_state.borrow();
-                    if gs.read_field(&entity, group_name).is_none() {
-                        let status = if group_info.required {
-                            "is required but missing in state"
-                        } else {
-                            "is not currently granted"
-                        };
-                        return Err(CliError::Message(format!(
-                            "{handle}.{group_name} {status}"
-                        )));
-                    }
-                }
-
-                // Validate field within group
-                let ty = group_info
-                    .fields
-                    .iter()
-                    .find(|f| f.name == field_name)
-                    .map(|f| f.ty.clone())
-                    .ok_or_else(|| {
-                        CliError::Message(format!(
-                            "unknown field '{field_name}' in optional group '{group_name}'"
-                        ))
-                    })?;
-
-                let segments = vec![
-                    FieldPathSegment::Field(Name::from(group_name)),
-                    FieldPathSegment::Field(Name::from(field_name)),
-                ];
-                (
-                    segments,
-                    Some(ty),
-                    format!("{handle}.{group_name}.{field_name}"),
-                )
-            } else {
-                // Simple field path
-                let field = field_path;
-                let type_name = {
-                    let gs = self.game_state.borrow();
-                    gs.entity_type_name(&entity)
-                        .map(|s| s.to_string())
-                        .unwrap_or_default()
-                };
-                let expected_ty = if !type_name.is_empty() {
-                    if let Some(schema_fields) = self.type_env.lookup_fields(&type_name) {
-                        schema_fields.iter().find(|f| f.name == field).map(|fi| fi.ty.clone())
+            // Check the group is active/present
+            {
+                let gs = self.game_state.borrow();
+                if gs.read_field(&entity, group_name).is_none() {
+                    let status = if group_info.required {
+                        "is required but missing in state"
                     } else {
-                        None
-                    }
+                        "is not currently granted"
+                    };
+                    return Err(CliError::Message(format!("{handle}.{group_name} {status}")));
+                }
+            }
+
+            // Validate field within group
+            let ty = group_info
+                .fields
+                .iter()
+                .find(|f| f.name == field_name)
+                .map(|f| f.ty.clone())
+                .ok_or_else(|| {
+                    CliError::Message(format!(
+                        "unknown field '{field_name}' in optional group '{group_name}'"
+                    ))
+                })?;
+
+            let segments = vec![
+                FieldPathSegment::Field(Name::from(group_name)),
+                FieldPathSegment::Field(Name::from(field_name)),
+            ];
+            (
+                segments,
+                Some(ty),
+                format!("{handle}.{group_name}.{field_name}"),
+            )
+        } else {
+            // Simple field path
+            let field = field_path;
+            let type_name = {
+                let gs = self.game_state.borrow();
+                gs.entity_type_name(&entity)
+                    .map(|s| s.to_string())
+                    .unwrap_or_default()
+            };
+            let expected_ty = if !type_name.is_empty() {
+                if let Some(schema_fields) = self.type_env.lookup_fields(&type_name) {
+                    schema_fields
+                        .iter()
+                        .find(|f| f.name == field)
+                        .map(|fi| fi.ty.clone())
                 } else {
                     None
-                };
+                }
+            } else {
+                None
+            };
 
-                // Check for flattened included-group field
-                if expected_ty.is_none() {
-                    if let Some(group_name) =
-                        self.type_env.lookup_flattened_field(&type_name, field)
+            // Check for flattened included-group field
+            if expected_ty.is_none() {
+                if let Some(group_name) = self.type_env.lookup_flattened_field(&type_name, field) {
+                    // Validate group is active
                     {
-                        // Validate group is active
-                        {
-                            let gs = self.game_state.borrow();
-                            if gs.read_field(&entity, group_name).is_none() {
-                                return Err(CliError::Message(format!(
+                        let gs = self.game_state.borrow();
+                        if gs.read_field(&entity, group_name).is_none() {
+                            return Err(CliError::Message(format!(
                                     "{handle}.{field} included group '{group_name}' is missing in state"
                                 )));
-                            }
                         }
-
-                        let group_info = self
-                            .type_env
-                            .lookup_optional_group(&type_name, group_name)
-                            .ok_or_else(|| {
-                                CliError::Message(format!(
-                                    "internal: flattened field group '{group_name}' not found"
-                                ))
-                            })?;
-                        let ty = group_info
-                            .fields
-                            .iter()
-                            .find(|f| f.name == field)
-                            .map(|f| f.ty.clone());
-
-                        let segments = vec![
-                            FieldPathSegment::Field(group_name.clone()),
-                            FieldPathSegment::Field(Name::from(field)),
-                        ];
-                        (segments, ty, format!("{handle}.{field}"))
-                    } else {
-                        return Err(CliError::Message(format!(
-                            "unknown field '{field}' on entity type '{type_name}'"
-                        )));
                     }
+
+                    let group_info = self
+                        .type_env
+                        .lookup_optional_group(&type_name, group_name)
+                        .ok_or_else(|| {
+                            CliError::Message(format!(
+                                "internal: flattened field group '{group_name}' not found"
+                            ))
+                        })?;
+                    let ty = group_info
+                        .fields
+                        .iter()
+                        .find(|f| f.name == field)
+                        .map(|f| f.ty.clone());
+
+                    let segments = vec![
+                        FieldPathSegment::Field(group_name.clone()),
+                        FieldPathSegment::Field(Name::from(field)),
+                    ];
+                    (segments, ty, format!("{handle}.{field}"))
                 } else {
-                    (
-                        vec![FieldPathSegment::Field(Name::from(field))],
-                        expected_ty,
-                        format!("{handle}.{field}"),
-                    )
+                    return Err(CliError::Message(format!(
+                        "unknown field '{field}' on entity type '{type_name}'"
+                    )));
                 }
-            };
+            } else {
+                (
+                    vec![FieldPathSegment::Field(Name::from(field))],
+                    expected_ty,
+                    format!("{handle}.{field}"),
+                )
+            }
+        };
 
         // Parse and evaluate the RHS expression (try handle resolution first)
         let val = if let Some(&ent) = self.handles.get(rhs) {
@@ -465,7 +465,12 @@ impl Runner {
             }
         }
 
-        let interp = TrackedInterpreter::new(&self.program, &self.type_env, &self.game_state, &self.source_map)?;
+        let interp = TrackedInterpreter::new(
+            &self.program,
+            &self.type_env,
+            &self.game_state,
+            &self.source_map,
+        )?;
         let state = RefCellState(&self.game_state);
         let mut handler = CliHandler::new(
             &self.game_state,
@@ -490,7 +495,8 @@ impl Runner {
             self.output.push(line);
         }
 
-        self.output.push(format!("=> {}", format_value(&result, &self.unit_suffixes)));
+        self.output
+            .push(format!("=> {}", format_value(&result, &self.unit_suffixes)));
         Ok(())
     }
 
@@ -553,7 +559,12 @@ impl Runner {
             }
         }
 
-        let interp = TrackedInterpreter::new(&self.program, &self.type_env, &self.game_state, &self.source_map)?;
+        let interp = TrackedInterpreter::new(
+            &self.program,
+            &self.type_env,
+            &self.game_state,
+            &self.source_map,
+        )?;
         let state = RefCellState(&self.game_state);
         let mut handler = CliHandler::new(
             &self.game_state,
@@ -589,7 +600,8 @@ impl Runner {
             self.output.push(line);
         }
 
-        self.output.push(format!("=> {}", format_value(&result, &self.unit_suffixes)));
+        self.output
+            .push(format!("=> {}", format_value(&result, &self.unit_suffixes)));
         Ok(())
     }
 
@@ -647,8 +659,7 @@ impl Runner {
         self.game_state
             .borrow_mut()
             .remove_field(&entity, group_name);
-        self.output
-            .push(format!("revoked {handle}.{group_name}"));
+        self.output.push(format!("revoked {handle}.{group_name}"));
         Ok(())
     }
 
@@ -760,18 +771,10 @@ fn parse_set_operator(input: &str) -> Result<(AssignOp, &str, &str), CliError> {
             continue;
         }
         if bytes[i] == b'+' && i + 1 < bytes.len() && bytes[i + 1] == b'=' {
-            return Ok((
-                AssignOp::PlusEq,
-                input[..i].trim(),
-                input[i + 2..].trim(),
-            ));
+            return Ok((AssignOp::PlusEq, input[..i].trim(), input[i + 2..].trim()));
         }
         if bytes[i] == b'-' && i + 1 < bytes.len() && bytes[i + 1] == b'=' {
-            return Ok((
-                AssignOp::MinusEq,
-                input[..i].trim(),
-                input[i + 2..].trim(),
-            ));
+            return Ok((AssignOp::MinusEq, input[..i].trim(), input[i + 2..].trim()));
         }
         if bytes[i] == b'=' {
             return Ok((AssignOp::Eq, input[..i].trim(), input[i + 1..].trim()));

@@ -127,10 +127,7 @@ impl<'a> Checker<'a> {
                     return Some(n);
                 }
             }
-            let qualified: Vec<String> = owners
-                .iter()
-                .map(|e| format!("{e}.{variant}"))
-                .collect();
+            let qualified: Vec<String> = owners.iter().map(|e| format!("{e}.{variant}")).collect();
             let owners_display: Vec<&str> = owners.iter().map(|o| o.as_str()).collect();
             self.error(
                 format!(
@@ -420,10 +417,7 @@ impl<'a> Checker<'a> {
                         }
                         let end_ty = self.check_expr(end);
                         if !end_ty.is_error() && end_ty != Ty::Int {
-                            self.error(
-                                format!("range end must be int, found {end_ty}"),
-                                end.span,
-                            );
+                            self.error(format!("range end must be int, found {end_ty}"), end.span);
                         }
                     }
                     TableKey::Wildcard => {
@@ -471,7 +465,6 @@ impl<'a> Checker<'a> {
 
         // Bind params
         self.bind_params(&a.params);
-
 
         // Bind turn keyword
         self.scope.bind(
@@ -589,10 +582,7 @@ impl<'a> Checker<'a> {
             for binding in &trigger.bindings {
                 if let Some(ref name) = binding.name {
                     if !seen_bindings.insert(name.clone()) {
-                        self.error(
-                            format!("duplicate trigger binding `{name}`"),
-                            binding.span,
-                        );
+                        self.error(format!("duplicate trigger binding `{name}`"), binding.span);
                     }
                     let expected_ty = event_info
                         .params
@@ -785,9 +775,7 @@ impl<'a> Checker<'a> {
             let ret_ty = self.env.resolve_type(&p.return_type);
             if !suggest_ty.is_error() && !self.types_compatible(&suggest_ty, &ret_ty) {
                 self.error(
-                    format!(
-                        "suggest expression has type {suggest_ty}, expected {ret_ty}"
-                    ),
+                    format!("suggest expression has type {suggest_ty}, expected {ret_ty}"),
                     suggest.span,
                 );
             }
@@ -997,9 +985,7 @@ impl<'a> Checker<'a> {
         }
         if !self.types_compatible(body_ty, ret_ty) {
             self.error(
-                format!(
-                    "function body has type {body_ty}, expected return type {ret_ty}"
-                ),
+                format!("function body has type {body_ty}, expected return type {ret_ty}"),
                 span,
             );
         }
@@ -1028,9 +1014,7 @@ impl<'a> Checker<'a> {
                         .is_none()
                     {
                         self.error(
-                            format!(
-                                "entity `{entity_name}` has no optional group `{group_name}`"
-                            ),
+                            format!("entity `{entity_name}` has no optional group `{group_name}`"),
                             span,
                         );
                     }
@@ -1126,8 +1110,9 @@ impl<'a> Checker<'a> {
         }
         // AnyEntity matches any Entity(_)
         match (actual, expected) {
-            (Ty::Entity(_) | Ty::AnyEntity, Ty::AnyEntity) |
-(Ty::AnyEntity, Ty::Entity(_)) => return true,
+            (Ty::Entity(_) | Ty::AnyEntity, Ty::AnyEntity) | (Ty::AnyEntity, Ty::Entity(_)) => {
+                return true
+            }
             _ => {}
         }
         // ActiveCondition is accepted where Condition is expected (remove_condition overload)
