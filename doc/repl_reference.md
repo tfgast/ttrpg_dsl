@@ -9,6 +9,8 @@ ttrpg run <script.ttrpg-cli>    # execute script file
 ttrpg -c "<commands>"           # execute inline commands
 ttrpg check <files...>          # type-check files (no execution)
 ttrpg check -s "<snippet>"      # check snippet (auto-wrapped in system block)
+ttrpg query <topic> <files...>  # introspect type declarations (no execution)
+ttrpg query <topic> -s -c <src> # query inline snippet
 cat commands.txt | ttrpg        # pipe mode (no line editing)
 ```
 
@@ -97,13 +99,30 @@ Cannot grant/revoke required (`include`) groups.
 
 ### Introspection
 
-| Command       | Description                                         |
-|---------------|-----------------------------------------------------|
-| `state`       | Show all entities and their current values           |
-| `types`       | List all defined types (entities, structs, enums)    |
-| `actions`     | List all actions with signatures                     |
-| `mechanics`   | List all derives and mechanics with signatures       |
-| `conditions`  | List all active conditions across entities           |
+| Command              | Description                                                |
+|----------------------|------------------------------------------------------------|
+| `state`              | Show all entities and their current values                  |
+| `types`              | List all defined types (entities, structs, enums, units)    |
+| `entity <name>`      | Show detailed entity type declaration (fields, groups)      |
+| `actions`            | List all actions with signatures                            |
+| `mechanics`          | List all derives and mechanics (alias: `derives`)           |
+| `conditions`         | List all active conditions across entities                  |
+| `condition_decls`    | List all condition declarations                             |
+| `events`             | List all event declarations                                 |
+| `reactions`          | List all reaction declarations                              |
+| `hooks`              | List all hook declarations                                  |
+
+```
+types
+entity Character
+actions
+mechanics
+conditions
+condition_decls
+events
+reactions
+hooks
+```
 
 ### Options
 
@@ -150,6 +169,48 @@ rolls clear
 ```
 
 Queued rolls are consumed in order; RNG resumes after queue empties.
+
+---
+
+## Query Subcommand (CLI)
+
+The `query` subcommand inspects type declarations and signatures from source files without executing code.
+
+### Topics
+
+| Topic                 | Description                              |
+|-----------------------|------------------------------------------|
+| `types`               | All type declarations (entities, structs, enums, units) |
+| `events`              | All event declarations                   |
+| `actions`             | All action signatures                    |
+| `conditions`          | All condition declarations               |
+| `mechanics` (alias: `derives`) | All derives and mechanics         |
+| `reactions`           | All reaction signatures                  |
+| `hooks`               | All hook signatures                      |
+| `entity <name>`       | Detailed entity schema (fields, groups)  |
+| `all`                 | Full schema dump (all of the above)      |
+
+```
+ttrpg query types myfile.ttrpg
+ttrpg query actions core.ttrpg combat.ttrpg
+ttrpg query entity Character combat.ttrpg
+ttrpg query all *.ttrpg
+```
+
+### Flags
+
+| Flag               | Description                                          |
+|--------------------|------------------------------------------------------|
+| `--system <name>`  | Filter output to declarations from a specific system |
+| `--xref`           | Include cross-references (`entity` topic only)       |
+| `-s, --snippet`    | Auto-wrap source in system block                     |
+| `-c <source>`      | Inline source instead of file paths                  |
+
+Cross-references (`--xref`) appends applicable conditions, actions, reactions, and hooks for the queried entity:
+
+```
+ttrpg query entity Character combat.ttrpg --xref
+```
 
 ---
 

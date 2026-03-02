@@ -811,3 +811,78 @@ Check multiple files together:
 ```bash
 ttrpg check core.ttrpg combat.ttrpg spells.ttrpg
 ```
+
+---
+
+## Query / Introspection
+
+The `query` subcommand inspects type declarations and signatures without executing code.
+
+### Topics
+
+| Topic                 | Description                              |
+|-----------------------|------------------------------------------|
+| `types`               | All type declarations (entities, structs, enums, units) |
+| `events`              | All event declarations                   |
+| `actions`             | All action signatures                    |
+| `conditions`          | All condition declarations               |
+| `mechanics` (alias: `derives`) | All derives and mechanics         |
+| `reactions`           | All reaction signatures                  |
+| `hooks`               | All hook signatures                      |
+| `entity <name>`       | Detailed entity schema (fields, groups)  |
+| `all`                 | Full schema dump (all of the above)      |
+
+### Usage
+
+```bash
+ttrpg query types myfile.ttrpg
+ttrpg query actions core.ttrpg combat.ttrpg
+ttrpg query entity Character combat.ttrpg
+ttrpg query all *.ttrpg
+```
+
+Query a snippet:
+
+```bash
+ttrpg query types -s -c 'entity Foo { x: int }'
+echo 'derive double(n: int) -> int { n * 2 }' | ttrpg query mechanics -s
+```
+
+### Flags
+
+| Flag               | Description                                          |
+|--------------------|------------------------------------------------------|
+| `--system <name>`  | Filter output to declarations from a specific system |
+| `--xref`           | Include cross-references (`query entity` only)       |
+| `-s, --snippet`    | Auto-wrap source in system block                     |
+| `-c <source>`      | Inline source instead of file paths                  |
+
+### Cross-references (`--xref`)
+
+When querying a specific entity, `--xref` appends all applicable conditions, actions, reactions, and hooks that reference that entity type:
+
+```bash
+ttrpg query entity Character combat.ttrpg --xref
+```
+
+```
+entity Character {
+  name: string
+  HP: resource
+  ...
+}
+
+// applicable conditions
+condition Prone on bearer: Character
+condition Stunned on bearer: Character
+
+// actions
+action Attack on attacker: Character(target: Character, weapon: Weapon)
+action Dash on actor: Character
+
+// reactions
+reaction OpportunityAttack on reactor: Character (trigger: entity_leaves_reach)
+
+// hooks
+hook DeathDrop on target: Character (trigger: Damaged)
+```
