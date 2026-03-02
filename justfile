@@ -43,3 +43,50 @@ bench *ARGS:
 # Run the CLI (pass args after --)
 run *ARGS:
     cargo run --release -- {{ARGS}}
+
+# ── Fuzzing ──────────────────────────────────────────────────────
+
+# Seed fuzz corpus from existing .ttrpg files
+fuzz-seed:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    targets=(fuzz_lexer fuzz_parser fuzz_checker fuzz_full_pipeline)
+    for target in "${targets[@]}"; do
+        dir="fuzz/corpus/${target}"
+        mkdir -p "$dir"
+        cp -n fuzz/seed_corpus/*.ttrpg "$dir/" 2>/dev/null || true
+        for f in prototypes/*.ttrpg spec/v0/*.ttrpg ose/*.ttrpg examples/*.ttrpg; do
+            [ -f "$f" ] && cp -n "$f" "$dir/" 2>/dev/null || true
+        done
+    done
+    echo "Seeded corpus for ${#targets[@]} targets"
+
+# Run a fuzz target (default: fuzz_parser, 5 minutes)
+# Usage: just fuzz [target] [duration]
+fuzz target="fuzz_parser" duration="300":
+    just fuzz-seed
+    cargo +nightly fuzz run {{target}} -- -max_total_time={{duration}}
+
+# List available fuzz targets
+fuzz-list:
+    cargo +nightly fuzz list
+
+# Reproduce a crash from an artifact file
+# Usage: just fuzz-repro fuzz_parser fuzz/artifacts/fuzz_parser/crash-abc123
+fuzz-repro target artifact:
+    cargo +nightly fuzz run {{target}} {{artifact}}
+
+# Run all fuzz targets briefly (smoke test, 30s each)
+fuzz-smoke:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    just fuzz-seed
+    for target in fuzz_lexer fuzz_parser fuzz_checker fuzz_full_pipeline; do
+        echo "── Fuzzing $target for 30s ──"
+        cargo +nightly fuzz run "$target" -- -max_total_time=30
+    done
+
+# Generate coverage report for a fuzz target
+fuzz-coverage target="fuzz_parser":
+    cargo +nightly fuzz coverage {{target}}
+    @echo "Coverage data in fuzz/coverage/{{target}}"

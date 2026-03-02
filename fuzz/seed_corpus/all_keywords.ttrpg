@@ -1,0 +1,55 @@
+system "Keywords" {
+    enum Size ordered { small, medium, large }
+    enum DamageType { fire, cold, lightning }
+    enum Hit { miss, hit(amount: int), crit(amount: int) }
+
+    tag #concentration
+
+    struct Stats {
+        str_score: int,
+        dex_score: int,
+    }
+
+    entity Character {
+        name: string,
+        hp: resource(0..=100),
+        level: int,
+        stats: Stats,
+        size: Size,
+    }
+
+    group Spellcasting {
+        spell_dc: int,
+    }
+
+    derive modifier(score: int) -> int {
+        floor((score - 10) / 2)
+    }
+
+    mechanic ability_check(bonus: int) -> int {
+        roll(1d20).total + bonus
+    }
+
+    action Attack on target: Character {
+        cost { action }
+        requires { true }
+        resolve {
+            let roll = roll(1d20).total
+            if roll >= 10 {
+                target.hp -= 5
+            }
+        }
+    }
+
+    event Damaged(target: Character, amount: int) {}
+
+    condition Prone on bearer: Character {
+        modify ability_check(attacker: bearer) {
+            result = result - 2
+        }
+    }
+
+    prompt choose_target(chooser: Character, options: list<string>) -> string {
+        hint: "Select a target"
+    }
+}

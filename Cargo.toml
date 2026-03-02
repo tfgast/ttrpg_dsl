@@ -9,6 +9,7 @@ members = [
     "crates/ttrpg_cli",
     "crates/ttrpg_ose_data",
 ]
+exclude = ["fuzz"]
 
 [workspace.package]
 version = "0.1.0"

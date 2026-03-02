@@ -1,0 +1,13 @@
+system "Dice" {
+    mechanic roll_stats() -> int {
+        roll(4d6kh3).total
+    }
+
+    mechanic advantage() -> int {
+        roll(2d20kh1).total
+    }
+
+    mechanic disadvantage() -> int {
+        roll(2d20kl1).total
+    }
+}
