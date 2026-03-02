@@ -89,6 +89,18 @@ fn lower_one_move(
     synthetic_names: &mut HashSet<Name>,
     diags: &mut Vec<Diagnostic>,
 ) -> Option<(FnDecl, ActionDecl)> {
+    // 0. Reject reserved __ prefix on user-authored move names
+    if m.name.starts_with("__") {
+        diags.push(Diagnostic::error(
+            format!(
+                "move `{}` uses reserved `__` prefix; user declarations cannot start with `__`",
+                m.name
+            ),
+            span,
+        ));
+        return None;
+    }
+
     // 1. Validate outcomes: must be exactly {strong_hit, weak_hit, miss}
     let outcome_names: Vec<&str> = m.outcomes.iter().map(|o| o.name.as_str()).collect();
     let mut seen = HashSet::new();
@@ -413,6 +425,38 @@ mod tests {
         assert!(
             existing.contains("__defend_roll"),
             "hook name should be in existing_names"
+        );
+    }
+
+    // ── Regression: tdsl-3kyz — move names reject reserved __ prefix ──
+
+    #[test]
+    fn move_with_reserved_prefix_rejected() {
+        let src = r#"system "Test" {
+    move __Hack on target: entity () {
+        trigger: "Do something bad"
+        roll: 2d6
+        on strong_hit { }
+        on weak_hit { }
+        on miss { }
+    }
+}"#;
+        let (program, mut diags) = crate::parse(src, ttrpg_ast::FileId(0));
+        let program = lower_moves(program, &mut diags);
+        // The move should produce a diagnostic about reserved prefix
+        assert!(
+            diags.iter().any(|d| d.message.contains("reserved `__` prefix")),
+            "expected reserved prefix error, got: {:?}",
+            diags
+        );
+        // The move should remain as DeclKind::Move (not lowered)
+        let sys = match &program.items[0].node {
+            ttrpg_ast::ast::TopLevel::System(s) => s,
+            _ => panic!("expected system"),
+        };
+        assert!(
+            sys.decls.iter().any(|d| matches!(&d.node, DeclKind::Move(_))),
+            "move with __ prefix should not be lowered"
         );
     }
 }

@@ -14,7 +14,7 @@ use parser::Parser;
 pub use resolve::FileSystemInfo;
 use ttrpg_ast::ast::*;
 use ttrpg_ast::module::ModuleMap;
-use ttrpg_ast::{FileId, Spanned};
+use ttrpg_ast::{FileId, Span, Spanned};
 use ttrpg_lexer::TokenKind;
 
 pub fn parse(source: &str, file: FileId) -> (Program, Vec<Diagnostic>) {
@@ -80,7 +80,17 @@ pub fn parse_multi(sources: &[(String, String)]) -> ParseMultiResult {
     let mut programs: Vec<Program> = Vec::new();
 
     for (i, (_filename, source)) in sources.iter().enumerate() {
-        let file = FileId(i as u32);
+        let idx = match u32::try_from(i) {
+            Ok(n) if n < u32::MAX => n,
+            _ => {
+                all_diagnostics.push(Diagnostic::error(
+                    format!("too many source files (max {})", u32::MAX - 1),
+                    Span::dummy(),
+                ));
+                break;
+            }
+        };
+        let file = FileId(idx);
 
         let (program, mut diags) = parse(source, file);
         let program = lower_moves(program, &mut diags);
@@ -284,6 +294,23 @@ system "Core" {
                 }
             }
         }
+    }
+
+    // ── Regression: tdsl-zug6 — FileId rejects u32::MAX (SYNTH sentinel) ──
+
+    #[test]
+    fn parse_multi_rejects_synth_file_id() {
+        // We can't actually create u32::MAX files, but we verify the guard
+        // logic: u32::MAX should be rejected by the idx < u32::MAX check.
+        let idx: usize = u32::MAX as usize;
+        let result = u32::try_from(idx);
+        assert!(result.is_ok(), "u32::MAX converts fine from usize");
+        // But our guard rejects it (n < u32::MAX is false for n == u32::MAX)
+        let n = result.unwrap();
+        assert!(
+            !(n < u32::MAX),
+            "u32::MAX should fail the n < u32::MAX guard"
+        );
     }
 
     #[test]

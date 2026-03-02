@@ -339,7 +339,7 @@ impl Parser {
                 "enum" | "struct" | "entity" | "derive" | "mechanic"
                 | "action" | "reaction" | "condition" | "prompt"
                 | "option" | "event" | "move"
-                | "hook" | "table" | "unit" | "tag"
+                | "hook" | "table" | "unit" | "tag" | "group"
             )
         )
     }

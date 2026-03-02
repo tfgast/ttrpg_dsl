@@ -2873,6 +2873,44 @@ fn test_empty_suppress_bindings() {
 
 // --- Regression tests for parser bug fixes ---
 
+// ── Regression: tdsl-qfdw — recovery skips group declarations ──
+
+#[test]
+fn test_recovery_does_not_skip_group_decl() {
+    // After a parse error, recovery should stop at `group` keyword
+    // so that subsequent group declarations are still parsed.
+    let source = r#"system "test" {
+    derive broken( -> int { 0 }
+    group Spellcasting {
+        spell_dc: int
+    }
+    entity Character {
+        name: string
+        optional Spellcasting
+    }
+}"#;
+    let (program, diagnostics) = parse(source, FileId::SYNTH);
+    // There should be at least one error from the malformed derive
+    assert!(
+        diagnostics.iter().any(|d| d.severity == ttrpg_ast::diagnostic::Severity::Error),
+        "expected a parse error from the broken derive"
+    );
+    // But the group should still be parsed
+    let system = match &program.items[0].node {
+        TopLevel::System(s) => s,
+        _ => panic!("expected system block"),
+    };
+    let has_group = system
+        .decls
+        .iter()
+        .any(|d| matches!(&d.node, DeclKind::Group(g) if g.name == "Spellcasting"));
+    assert!(
+        has_group,
+        "group Spellcasting should be parsed after recovery, decls: {:?}",
+        system.decls.iter().map(|d| std::mem::discriminant(&d.node)).collect::<Vec<_>>()
+    );
+}
+
 #[test]
 fn test_qualified_type_with_option_alias() {
     // Regression: parse_type's "option" branch returned Named("option") without
