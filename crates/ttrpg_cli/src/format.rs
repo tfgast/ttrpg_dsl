@@ -4,6 +4,7 @@ use rustc_hash::FxHashMap;
 use ttrpg_ast::DiceFilter;
 use ttrpg_ast::Name;
 use ttrpg_checker::env::{ConditionInfo, DeclInfo, EventInfo, FnInfo, FnKind, ParamInfo, TypeEnv};
+use ttrpg_checker::ty::Ty;
 use ttrpg_interp::effect::FieldPathSegment;
 use ttrpg_interp::value::{DiceExpr, Value};
 
@@ -283,6 +284,26 @@ pub fn format_entity(env: &TypeEnv, name: &str) -> Result<Vec<String>, String> {
                 out.push("  }".to_string());
             }
             out.push("}".to_string());
+
+            // Applicable conditions: those whose receiver_type matches this entity
+            let mut conds: Vec<_> = env
+                .conditions
+                .values()
+                .filter(|ci| match &ci.receiver_type {
+                    Ty::Entity(n) => n == name,
+                    Ty::AnyEntity => true,
+                    _ => false,
+                })
+                .collect();
+            if !conds.is_empty() {
+                conds.sort_by(|a, b| a.name.cmp(&b.name));
+                out.push(String::new());
+                out.push("// applicable conditions".to_string());
+                for ci in conds {
+                    out.push(format_condition_signature(ci));
+                }
+            }
+
             Ok(out)
         }
         Some(_) => Err(format!("'{name}' is not an entity")),
