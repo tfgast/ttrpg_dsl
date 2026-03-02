@@ -118,7 +118,7 @@ pub(crate) fn eval_expr(env: &mut Env, expr: &Spanned<ExprKind>) -> Result<Value
             let scrutinee_val = eval_expr(env, scrutinee)?;
             for arm in arms {
                 let mut bindings = std::collections::HashMap::new();
-                if match_pattern(env, &arm.pattern.node, &scrutinee_val, &mut bindings) {
+                if match_pattern(env, &arm.pattern, &scrutinee_val, &mut bindings) {
                     env.push_scope();
                     for (name, val) in bindings {
                         env.bind(name, val);
@@ -233,13 +233,7 @@ fn eval_ident(env: &mut Env, name: &str, expr: &Spanned<ExprKind>) -> Result<Val
         return Ok(val.clone());
     }
 
-    // 2. Check if it's an enum type name (for qualified access like `Duration.rounds`)
-    //    Returns EnumNamespace so field access can resolve variants via eval_expr.
-    if let Some(DeclInfo::Enum(_)) = env.interp.type_env.types.get(name) {
-        return Ok(Value::EnumNamespace(Name::from(name)));
-    }
-
-    // 3. Check if it's a bare enum variant name
+    // 2. Check if it's a bare enum variant name
     //    Use the resolution table (populated by the checker) first, then fall back to
     //    unique_variant_owner for CLI eval expressions that weren't checker-resolved.
     let resolved = env
@@ -267,18 +261,7 @@ fn eval_ident(env: &mut Env, name: &str, expr: &Spanned<ExprKind>) -> Result<Val
         }
     }
 
-    // 4. Check if it's a module alias (e.g., `Core` from `use "..." as Core`)
-    if env
-        .interp
-        .type_env
-        .system_aliases
-        .values()
-        .any(|aliases| aliases.contains_key(name))
-    {
-        return Ok(Value::ModuleAlias(Name::from(name)));
-    }
-
-    // 5. Check if it's a condition name (bare use = no args, but materialize defaults)
+    // 3. Check if it's a condition name (bare use = no args, but materialize defaults)
     if let Some(cond_decl) = env.interp.program.conditions.get(name) {
         let cond_decl = cond_decl.clone();
         let mut args = BTreeMap::new();
@@ -293,6 +276,23 @@ fn eval_ident(env: &mut Env, name: &str, expr: &Spanned<ExprKind>) -> Result<Val
             name: Name::from(name),
             args,
         });
+    }
+
+    // 4. Check if it's an enum type name (for qualified access like `Duration.rounds`)
+    //    Returns EnumNamespace so field access can resolve variants via eval_expr.
+    if let Some(DeclInfo::Enum(_)) = env.interp.type_env.types.get(name) {
+        return Ok(Value::EnumNamespace(Name::from(name)));
+    }
+
+    // 5. Check if it's a module alias (e.g., `Core` from `use "..." as Core`)
+    if env
+        .interp
+        .type_env
+        .system_aliases
+        .values()
+        .any(|aliases| aliases.contains_key(name))
+    {
+        return Ok(Value::ModuleAlias(Name::from(name)));
     }
 
     Err(RuntimeError::with_span(

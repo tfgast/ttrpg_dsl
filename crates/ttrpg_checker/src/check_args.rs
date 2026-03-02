@@ -93,6 +93,7 @@ impl<'a> Checker<'a> {
                     if let Some(DeclInfo::Enum(info)) = self.env.types.get(enum_name.as_str()) {
                         if let Some(variant) = info.variants.iter().find(|v| v.name == field) {
                             if variant.fields.is_empty() {
+                                self.resolved_variants.insert(span, enum_name.clone());
                                 return Ty::Enum(enum_name.clone());
                             } else {
                                 self.error(

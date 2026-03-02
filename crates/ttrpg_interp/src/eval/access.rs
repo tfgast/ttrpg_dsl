@@ -94,7 +94,7 @@ pub(super) fn eval_field_access(
         },
 
         // Module alias field access: Alias.Name → resolve in global namespace
-        Value::ModuleAlias(_alias_name) => {
+        Value::ModuleAlias(alias_name) => {
             // The checker validated that `field` exists in the target system.
             // At runtime, all declarations are in a flat global namespace,
             // so we look up `field` directly.
@@ -104,14 +104,25 @@ pub(super) fn eval_field_access(
                 return Ok(Value::EnumNamespace(Name::from(field)));
             }
 
-            // 2. Bare enum variant
+            // 2. Bare enum variant — use checker resolution or system-scoped fallback
             let resolved_variant = env
                 .interp
                 .type_env
                 .resolved_variants
                 .get(&expr.span)
                 .cloned()
-                .or_else(|| env.interp.type_env.unique_variant_owner(field).cloned());
+                .or_else(|| {
+                    let target = env.interp.type_env.system_aliases.values()
+                        .find_map(|aliases| aliases.get(alias_name.as_str()))
+                        .cloned();
+                    target.and_then(|target_sys| {
+                        let owners = env.interp.type_env.variant_to_enums.get(field)?;
+                        let matching: Vec<_> = owners.iter()
+                            .filter(|e| env.interp.type_env.type_owner.get(e.as_str()) == Some(&target_sys))
+                            .collect();
+                        (matching.len() == 1).then(|| matching[0].clone())
+                    })
+                });
             if let Some(enum_name) = resolved_variant {
                 if let Some(DeclInfo::Enum(enum_info)) =
                     env.interp.type_env.types.get(enum_name.as_str())

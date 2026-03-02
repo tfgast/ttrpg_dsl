@@ -1,5 +1,5 @@
 use ttrpg_ast::ast::PatternKind;
-use ttrpg_ast::Name;
+use ttrpg_ast::{Name, Spanned};
 use ttrpg_checker::env::DeclInfo;
 
 use crate::state::StateProvider;
@@ -180,14 +180,17 @@ pub(crate) fn value_eq(state: &dyn StateProvider, a: &Value, b: &Value) -> bool 
 /// Try to match a pattern against a value, collecting bindings.
 ///
 /// Takes `env` so literal comparisons route through `value_eq`.
+/// Takes `&Spanned<PatternKind>` so that `PatternKind::Ident` can consult
+/// `resolved_variants` (keyed by span) instead of `variant_to_enums`,
+/// which avoids treating binding-context idents as variant matches.
 /// Returns true if the pattern matches.
 pub(super) fn match_pattern(
     env: &Env,
-    pattern: &PatternKind,
+    pattern: &Spanned<PatternKind>,
     value: &Value,
     bindings: &mut std::collections::HashMap<Name, Value>,
 ) -> bool {
-    match pattern {
+    match &pattern.node {
         PatternKind::Wildcard => true,
 
         PatternKind::IntLit(n) => matches!(value, Value::Int(v) if v == n),
@@ -200,27 +203,16 @@ pub(super) fn match_pattern(
 
         PatternKind::Some(inner_pattern) => match value {
             Value::Option(Some(inner_val)) => {
-                match_pattern(env, &inner_pattern.node, inner_val, bindings)
+                match_pattern(env, inner_pattern, inner_val, bindings)
             }
             _ => false,
         },
 
         PatternKind::Ident(name) => {
-            // Check if this ident is a known enum variant.
-            // If so, match against the variant; otherwise bind as a variable.
-            if env
-                .interp
-                .type_env
-                .variant_to_enums
-                .contains_key(name.as_str())
-            {
-                // It's a bare enum variant — the runtime value carries its own enum_name,
-                // so we match by variant name (checker guarantees correctness).
-                matches!(
-                    value,
-                    Value::EnumVariant { variant, .. }
-                    if variant == name
-                )
+            // Checker only populates resolved_variants when this ident is a variant match.
+            // Absence = binding context (for-loop, destructure, or non-variant name).
+            if env.interp.type_env.resolved_variants.get(&pattern.span).is_some() {
+                matches!(value, Value::EnumVariant { variant, .. } if variant == name)
             } else {
                 bindings.insert(name.clone(), value.clone());
                 true
@@ -265,7 +257,7 @@ pub(super) fn match_pattern(
                             patterns.iter().zip(variant_info.fields.iter())
                         {
                             if let Some(field_val) = fields.get(field_name) {
-                                if !match_pattern(env, &pat.node, field_val, bindings) {
+                                if !match_pattern(env, pat, field_val, bindings) {
                                     return false;
                                 }
                             } else {
@@ -315,7 +307,7 @@ pub(super) fn match_pattern(
                                 patterns.iter().zip(variant_info.fields.iter())
                             {
                                 if let Some(field_val) = fields.get(field_name) {
-                                    if !match_pattern(env, &pat.node, field_val, bindings) {
+                                    if !match_pattern(env, pat, field_val, bindings) {
                                         return false;
                                     }
                                 } else {
@@ -346,7 +338,7 @@ pub(super) fn match_pattern(
                         }
                         for (pat, field_info) in patterns.iter().zip(struct_info.fields.iter()) {
                             if let Some(field_val) = fields.get(&field_info.name) {
-                                if !match_pattern(env, &pat.node, field_val, bindings) {
+                                if !match_pattern(env, pat, field_val, bindings) {
                                     return false;
                                 }
                             } else {

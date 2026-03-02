@@ -34,20 +34,27 @@ pub(crate) fn eval_call(
     call_span: Span,
 ) -> Result<Value, RuntimeError> {
     match &callee.node {
-        // ── Simple identifier: bare enum variant or function name ──
+        // ── Simple identifier: condition, variant, or function name ──
         ExprKind::Ident(name) => {
-            // 1. Check if it's a bare enum variant (via resolution table or unique owner).
-            //    Variants shadow functions with the same name, matching the
-            //    checker's resolution order (check_expr.rs:630).
-            let resolved = env
-                .interp
-                .type_env
-                .resolved_variants
-                .get(&callee.span)
-                .cloned()
-                .or_else(|| env.interp.type_env.unique_variant_owner(name).cloned());
-            if let Some(enum_name) = resolved {
-                return construct_enum_variant(env, &enum_name, name, args, call_span);
+            // 1. Check if it's a condition with parameters (e.g., Frightened(source: attacker))
+            //    Conditions shadow variants and functions, matching the
+            //    checker's resolution order (check_call.rs).
+            if let Some(cond_decl) = env.interp.program.conditions.get(name.as_str()) {
+                let cond_decl = cond_decl.clone();
+                // Reuse bind_args for named arg resolution + default materialization
+                let param_infos = env
+                    .interp
+                    .type_env
+                    .conditions
+                    .get(name.as_str())
+                    .map(|ci| ci.params.clone())
+                    .unwrap_or_default();
+                let bound = bind_args(&param_infos, args, Some(&cond_decl.params), env, call_span)?;
+                let cond_args: BTreeMap<Name, Value> = bound.into_iter().collect();
+                return Ok(Value::Condition {
+                    name: name.clone(),
+                    args: cond_args,
+                });
             }
 
             // 2. Check ordinal() / from_ordinal() builtins
@@ -79,26 +86,19 @@ pub(crate) fn eval_call(
                 _ => {}
             }
 
-            // 4. Check if it's a condition with parameters (e.g., Frightened(source: attacker))
-            if let Some(cond_decl) = env.interp.program.conditions.get(name.as_str()) {
-                let cond_decl = cond_decl.clone();
-                // Reuse bind_args for named arg resolution + default materialization
-                let param_infos = env
-                    .interp
-                    .type_env
-                    .conditions
-                    .get(name.as_str())
-                    .map(|ci| ci.params.clone())
-                    .unwrap_or_default();
-                let bound = bind_args(&param_infos, args, Some(&cond_decl.params), env, call_span)?;
-                let cond_args: BTreeMap<Name, Value> = bound.into_iter().collect();
-                return Ok(Value::Condition {
-                    name: name.clone(),
-                    args: cond_args,
-                });
+            // 4. Check if it's a bare enum variant (via resolution table or unique owner).
+            let resolved = env
+                .interp
+                .type_env
+                .resolved_variants
+                .get(&callee.span)
+                .cloned()
+                .or_else(|| env.interp.type_env.unique_variant_owner(name).cloned());
+            if let Some(enum_name) = resolved {
+                return construct_enum_variant(env, &enum_name, name, args, call_span);
             }
 
-            // 4. Check if it's a function (user-defined or builtin)
+            // 5. Check if it's a function (user-defined or builtin)
             if let Some(fn_info) = env.interp.type_env.lookup_fn(name) {
                 let fn_info = fn_info.clone();
                 return dispatch_fn(env, &fn_info, args, call_span);
@@ -124,7 +124,7 @@ pub(crate) fn eval_call(
                     .values()
                     .any(|aliases| aliases.contains_key(obj_name.as_str()))
                 {
-                    return dispatch_alias_call(env, field, args, call_span);
+                    return dispatch_alias_call(env, obj_name, field, args, call_span);
                 }
             }
             // Action method call: entity.Action(args)
@@ -161,6 +161,7 @@ pub(crate) fn eval_call(
 /// variant constructor.
 fn dispatch_alias_call(
     env: &mut Env,
+    alias_name: &str,
     name: &str,
     args: &[Arg],
     call_span: Span,
@@ -189,8 +190,20 @@ fn dispatch_alias_call(
         return dispatch_fn(env, &fn_info, args, call_span);
     }
 
-    // 3. Variant constructor (e.g., Core.rounds(value: 3))
-    if let Some(enum_name) = env.interp.type_env.unique_variant_owner(name).cloned() {
+    // 3. Variant constructor — use system-scoped lookup via alias
+    let resolved_enum = {
+        let target = env.interp.type_env.system_aliases.values()
+            .find_map(|aliases| aliases.get(alias_name))
+            .cloned();
+        target.and_then(|target_sys| {
+            let owners = env.interp.type_env.variant_to_enums.get(name)?;
+            let matching: Vec<_> = owners.iter()
+                .filter(|e| env.interp.type_env.type_owner.get(e.as_str()) == Some(&target_sys))
+                .collect();
+            (matching.len() == 1).then(|| matching[0].clone())
+        })
+    };
+    if let Some(enum_name) = resolved_enum {
         return construct_enum_variant(env, &enum_name, &Name::from(name), args, call_span);
     }
 

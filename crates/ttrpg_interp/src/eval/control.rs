@@ -45,7 +45,7 @@ pub(super) fn eval_if_let(
     let scrutinee_val = eval_expr(env, scrutinee)?;
     let mut bindings = std::collections::HashMap::new();
 
-    if match_pattern(env, &pattern.node, &scrutinee_val, &mut bindings) {
+    if match_pattern(env, pattern, &scrutinee_val, &mut bindings) {
         env.push_scope();
         for (name, val) in bindings {
             env.bind(name, val);
@@ -114,7 +114,7 @@ pub(super) fn eval_for(
 
     for item in items {
         let mut bindings = std::collections::HashMap::new();
-        if match_pattern(env, &pattern.node, &item, &mut bindings) {
+        if match_pattern(env, pattern, &item, &mut bindings) {
             env.push_scope();
             for (name, val) in bindings {
                 env.bind(name, val);
@@ -180,7 +180,7 @@ pub(super) fn eval_list_comprehension(
     let mut collected = Vec::new();
     for item in items {
         let mut bindings = std::collections::HashMap::new();
-        if match_pattern(env, &pattern.node, &item, &mut bindings) {
+        if match_pattern(env, pattern, &item, &mut bindings) {
             env.push_scope();
             for (name, val) in bindings {
                 env.bind(name, val);

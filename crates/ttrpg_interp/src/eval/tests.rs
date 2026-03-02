@@ -1919,6 +1919,14 @@ fn eval_pattern_bare_variant_matches() {
         .or_default()
         .push("Color".into());
 
+    // Use unique spans for each variant pattern so resolved_variants can distinguish them
+    let red_span = Span::new(ttrpg_ast::FileId::SYNTH, 100, 103);
+    let blue_span = Span::new(ttrpg_ast::FileId::SYNTH, 200, 204);
+
+    // Populate resolved_variants to tell the interpreter these idents are variant matches
+    type_env.resolved_variants.insert(red_span, "Color".into());
+    type_env.resolved_variants.insert(blue_span, "Color".into());
+
     let interp = Interpreter::new(&program, &type_env).unwrap();
     let state = TestState::new();
     let mut handler = ScriptedHandler::new();
@@ -1936,12 +1944,12 @@ fn eval_pattern_bare_variant_matches() {
         scrutinee: Box::new(spanned(ExprKind::Ident("val".into()))),
         arms: vec![
             PatternArm {
-                pattern: spanned(PatternKind::Ident("red".into())),
+                pattern: Spanned::new(PatternKind::Ident("red".into()), red_span),
                 body: ArmBody::Expr(spanned(ExprKind::IntLit(1))),
                 span: dummy_span(),
             },
             PatternArm {
-                pattern: spanned(PatternKind::Ident("blue".into())),
+                pattern: Spanned::new(PatternKind::Ident("blue".into()), blue_span),
                 body: ArmBody::Expr(spanned(ExprKind::IntLit(2))),
                 span: dummy_span(),
             },
@@ -1981,12 +1989,13 @@ fn eval_pattern_bare_variant_no_match() {
     let mut bindings = HashMap::new();
     let result = match_pattern(
         &env,
-        &PatternKind::Ident("red".into()),
+        &Spanned { node: PatternKind::Ident("red".into()), span: Span::dummy() },
         &Value::Int(42),
         &mut bindings,
     );
-    assert!(!result);
-    assert!(bindings.is_empty());
+    // Span::dummy() won't be in resolved_variants, so this becomes a binding
+    assert!(result);
+    assert_eq!(bindings.get("red"), Some(&Value::Int(42)));
 }
 
 #[test]
@@ -2002,7 +2011,7 @@ fn eval_pattern_binding_still_works_for_non_variant() {
     let mut bindings = HashMap::new();
     let result = match_pattern(
         &env,
-        &PatternKind::Ident("x".into()),
+        &Spanned { node: PatternKind::Ident("x".into()), span: Span::dummy() },
         &Value::Int(42),
         &mut bindings,
     );
