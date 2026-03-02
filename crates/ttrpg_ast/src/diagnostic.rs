@@ -357,10 +357,7 @@ mod tests {
 
     #[test]
     fn render_json_basic() {
-        let msm = MultiSourceMap::new(vec![(
-            "test.ttrpg".into(),
-            "hello\nworld\n".into(),
-        )]);
+        let msm = MultiSourceMap::new(vec![("test.ttrpg".into(), "hello\nworld\n".into())]);
         let diag = Diagnostic::error("bad thing", Span::new(FileId(0), 6, 11))
             .with_help("try something else");
         let json = msm.render_json(&diag);

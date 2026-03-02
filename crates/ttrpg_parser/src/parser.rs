@@ -4,6 +4,9 @@ use ttrpg_ast::name::Name;
 use ttrpg_ast::{FileId, Span, Spanned};
 use ttrpg_lexer::{Lexer, Token, TokenKind};
 
+/// Maximum number of diagnostics before the parser stops recording new ones.
+const MAX_ERRORS: usize = 20;
+
 pub struct Parser {
     tokens: Vec<Token>,
     pos: usize,
@@ -213,8 +216,49 @@ impl Parser {
     }
 
     pub fn error(&mut self, message: impl Into<String>) {
+        if self.diagnostics.len() > MAX_ERRORS {
+            return; // already capped
+        }
         let span = self.peek_span();
+        if self.diagnostics.len() == MAX_ERRORS {
+            self.diagnostics.push(Diagnostic::error(
+                "too many errors, remaining diagnostics suppressed",
+                span,
+            ));
+            return;
+        }
         self.diagnostics.push(Diagnostic::error(message, span));
+    }
+
+    /// Returns `true` when the error cap has been reached.
+    pub(crate) fn has_too_many_errors(&self) -> bool {
+        self.diagnostics.len() > MAX_ERRORS
+    }
+
+    /// Skip forward to the `}` that closes the current brace depth,
+    /// consuming that `}`. Used for early bail-out when error cap is hit.
+    pub(crate) fn skip_to_matching_brace(&mut self) {
+        let mut depth: usize = 1;
+        loop {
+            match self.peek() {
+                TokenKind::Eof => return,
+                TokenKind::LBrace => {
+                    depth += 1;
+                    self.advance();
+                }
+                TokenKind::RBrace => {
+                    if depth <= 1 {
+                        // Don't consume — let caller's expect(RBrace) handle it
+                        return;
+                    }
+                    depth -= 1;
+                    self.advance();
+                }
+                _ => {
+                    self.advance();
+                }
+            }
+        }
     }
 
     // ── Program parsing ──────────────────────────────────────────
@@ -291,6 +335,10 @@ impl Parser {
             if self.at_ident("system") || self.at_ident("use") {
                 break;
             }
+            if self.has_too_many_errors() {
+                self.skip_to_matching_brace();
+                break;
+            }
             let start = self.start_span();
             match self.parse_decl() {
                 Ok(d) => decls.push(Spanned::new(d, self.end_span(start))),
@@ -327,7 +375,23 @@ impl Parser {
                     depth -= 1;
                     self.advance();
                 }
-                TokenKind::RBrace => return, // system block's closing brace
+                TokenKind::RBrace => {
+                    // depth == 0: this `}` could close a declaration (struct,
+                    // enum, entity) OR the enclosing system block. Peek past
+                    // `}` + newlines — if a decl keyword follows, consume
+                    // the `}` (it belonged to the broken declaration).
+                    // Otherwise leave it for the system-block closer.
+                    let saved = self.save_pos();
+                    self.advance(); // consume `}`
+                    self.skip_newlines();
+                    if self.is_decl_start() {
+                        // The `}` closed a declaration; resume at the next decl.
+                        return;
+                    }
+                    // Not a decl start — the `}` is the system block's closer.
+                    self.restore_pos(saved);
+                    return;
+                }
                 _ if depth == 0 && self.is_decl_start() => return,
                 // Stop at top-level keywords so an unclosed system block
                 // doesn't consume subsequent system declarations.

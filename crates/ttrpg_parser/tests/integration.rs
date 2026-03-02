@@ -749,6 +749,187 @@ fn test_error_recovery_continues_past_bad_decl() {
     assert_eq!(good_count, 1, "recovery should parse good_fn after bad_fn");
 }
 
+// ── Error recovery tests ────────────────────────────────────────
+
+#[test]
+fn test_struct_brace_scope_recovery() {
+    // A broken struct field should NOT cause 70+ cascading errors.
+    // The parser should recover past the struct's `}` and parse subsequent decls.
+    let source = r#"system "test" {
+    struct Foo {
+        x int
+        y: int
+    }
+    derive good(a: int) -> int { a + 1 }
+    struct Bar {
+        z: int
+    }
+}"#;
+    let (program, diagnostics) = parse(source, FileId::SYNTH);
+
+    let sm = SourceMap::new(source);
+    for d in &diagnostics {
+        eprintln!("{}", sm.render(d));
+    }
+
+    assert!(
+        diagnostics.len() <= 5,
+        "expected <= 5 errors after recovery, got {}",
+        diagnostics.len()
+    );
+
+    let system = match &program.items[0].node {
+        TopLevel::System(s) => s,
+        _ => panic!("expected system block"),
+    };
+
+    // Both the derive and the second struct should be recovered
+    let derive_count = system
+        .decls
+        .iter()
+        .filter(|d| matches!(&d.node, DeclKind::Derive(_)))
+        .count();
+    let struct_count = system
+        .decls
+        .iter()
+        .filter(|d| matches!(&d.node, DeclKind::Struct(_)))
+        .count();
+    assert!(
+        derive_count >= 1,
+        "should recover derive after broken struct"
+    );
+    assert!(struct_count >= 1, "should recover second struct");
+}
+
+#[test]
+fn test_error_cap() {
+    // 22 bad derives — diagnostics should be capped around MAX_ERRORS + 1
+    let mut bad_derives = String::from("system \"test\" {\n");
+    for i in 0..22 {
+        bad_derives.push_str(&format!("    derive bad{i}( -> int {{ 42 }}\n"));
+    }
+    bad_derives.push_str("}\n");
+
+    let (_, diagnostics) = parse(&bad_derives, FileId::SYNTH);
+    assert!(
+        diagnostics.len() <= 22,
+        "expected capped diagnostics, got {}",
+        diagnostics.len()
+    );
+    // Should contain the "too many" sentinel
+    assert!(
+        diagnostics
+            .iter()
+            .any(|d| d.message.contains("too many errors")),
+        "should contain 'too many errors' sentinel, got: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn test_field_recovery_in_struct() {
+    // One bad field among good fields — struct should still parse with the good fields
+    let source = r#"system "test" {
+    struct Foo {
+        x int
+        y: int
+        z: string
+    }
+}"#;
+    let (program, diagnostics) = parse(source, FileId::SYNTH);
+    assert!(!diagnostics.is_empty(), "should report error for bad field");
+
+    let system = match &program.items[0].node {
+        TopLevel::System(s) => s,
+        _ => panic!("expected system block"),
+    };
+
+    // The struct should parse with at least the good fields
+    let struct_decl = system
+        .decls
+        .iter()
+        .find_map(|d| match &d.node {
+            DeclKind::Struct(s) => Some(s),
+            _ => None,
+        })
+        .expect("struct should be recovered");
+    assert!(
+        struct_decl.fields.len() >= 2,
+        "expected at least 2 good fields, got {}",
+        struct_decl.fields.len()
+    );
+}
+
+#[test]
+fn test_enum_variant_recovery() {
+    // One bad variant among good ones — enum should still parse
+    let source = r#"system "test" {
+    enum Status {
+        active
+        123bad
+        inactive
+        pending
+    }
+}"#;
+    let (program, diagnostics) = parse(source, FileId::SYNTH);
+    assert!(
+        !diagnostics.is_empty(),
+        "should report error for bad variant"
+    );
+
+    let system = match &program.items[0].node {
+        TopLevel::System(s) => s,
+        _ => panic!("expected system block"),
+    };
+
+    let enum_decl = system
+        .decls
+        .iter()
+        .find_map(|d| match &d.node {
+            DeclKind::Enum(e) => Some(e),
+            _ => None,
+        })
+        .expect("enum should be recovered");
+    assert!(
+        enum_decl.variants.len() >= 2,
+        "expected at least 2 good variants, got {}",
+        enum_decl.variants.len()
+    );
+}
+
+#[test]
+fn test_entity_field_recovery() {
+    // Entity with one bad field and good fields — should recover
+    let source = r#"system "test" {
+    entity Character {
+        name string
+        HP: int
+        AC: int
+    }
+}"#;
+    let (program, diagnostics) = parse(source, FileId::SYNTH);
+    assert!(!diagnostics.is_empty(), "should report error for bad field");
+
+    let system = match &program.items[0].node {
+        TopLevel::System(s) => s,
+        _ => panic!("expected system block"),
+    };
+
+    let entity_decl = system
+        .decls
+        .iter()
+        .find_map(|d| match &d.node {
+            DeclKind::Entity(e) => Some(e),
+            _ => None,
+        })
+        .expect("entity should be recovered");
+    assert!(
+        entity_decl.fields.len() >= 2,
+        "expected at least 2 good fields, got {}",
+        entity_decl.fields.len()
+    );
+}
+
 // ── Diagnostic rendering tests ───────────────────────────────────
 
 #[test]

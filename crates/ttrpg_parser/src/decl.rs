@@ -53,12 +53,25 @@ impl Parser {
         self.skip_newlines();
 
         let mut variants = Vec::new();
+        let mut had_error = false;
         loop {
             self.skip_newlines();
             if matches!(self.peek(), TokenKind::RBrace | TokenKind::Eof) {
                 break;
             }
-            variants.push(self.parse_enum_variant()?);
+            match self.parse_enum_variant() {
+                Ok(v) => variants.push(v),
+                Err(()) => {
+                    had_error = true;
+                    // Skip to next variant boundary
+                    while !matches!(
+                        self.peek(),
+                        TokenKind::Comma | TokenKind::Newline | TokenKind::RBrace | TokenKind::Eof
+                    ) {
+                        self.advance();
+                    }
+                }
+            }
             let saw_comma = matches!(self.peek(), TokenKind::Comma);
             if saw_comma {
                 self.advance();
@@ -69,12 +82,20 @@ impl Parser {
                 && !matches!(self.peek(), TokenKind::RBrace | TokenKind::Eof)
             {
                 self.error("expected ',' or newline between enum variants");
-                return Err(());
+                had_error = true;
+                while !matches!(
+                    self.peek(),
+                    TokenKind::Comma | TokenKind::Newline | TokenKind::RBrace | TokenKind::Eof
+                ) {
+                    self.advance();
+                }
             }
         }
 
         if variants.is_empty() {
-            self.error("enum declaration requires at least one variant");
+            if !had_error {
+                self.error("enum declaration requires at least one variant");
+            }
             return Err(());
         }
 
@@ -167,14 +188,25 @@ impl Parser {
 
         let mut fields = Vec::new();
         let mut optional_groups = Vec::new();
+        let mut had_error = false;
 
         while !matches!(self.peek(), TokenKind::RBrace | TokenKind::Eof) {
-            if self.at_ident("optional") {
-                optional_groups.push(self.parse_optional_group()?);
+            let result = if self.at_ident("optional") {
+                self.parse_optional_group().map(|g| optional_groups.push(g))
             } else if self.at_ident("include") {
-                optional_groups.push(self.parse_include_group()?);
+                self.parse_include_group().map(|g| optional_groups.push(g))
             } else {
-                fields.push(self.parse_field_def()?);
+                self.parse_field_def().map(|f| fields.push(f))
+            };
+            if result.is_err() {
+                had_error = true;
+                // Skip to next field boundary
+                while !matches!(
+                    self.peek(),
+                    TokenKind::Comma | TokenKind::Newline | TokenKind::RBrace | TokenKind::Eof
+                ) {
+                    self.advance();
+                }
             }
             let saw_comma = matches!(self.peek(), TokenKind::Comma);
             if saw_comma {
@@ -186,8 +218,18 @@ impl Parser {
                 && !matches!(self.peek(), TokenKind::RBrace | TokenKind::Eof)
             {
                 self.error("expected ',' or newline between fields");
-                return Err(());
+                had_error = true;
+                while !matches!(
+                    self.peek(),
+                    TokenKind::Comma | TokenKind::Newline | TokenKind::RBrace | TokenKind::Eof
+                ) {
+                    self.advance();
+                }
             }
+        }
+
+        if had_error && fields.is_empty() && optional_groups.is_empty() {
+            return Err(());
         }
 
         self.expect(&TokenKind::RBrace)?;
@@ -235,8 +277,21 @@ impl Parser {
 
     pub(crate) fn parse_field_defs(&mut self) -> Result<Vec<FieldDef>, ()> {
         let mut fields = Vec::new();
+        let mut had_error = false;
         while !matches!(self.peek(), TokenKind::RBrace | TokenKind::Eof) {
-            fields.push(self.parse_field_def()?);
+            match self.parse_field_def() {
+                Ok(f) => fields.push(f),
+                Err(()) => {
+                    had_error = true;
+                    // Skip to next field boundary: comma, newline, or `}`
+                    while !matches!(
+                        self.peek(),
+                        TokenKind::Comma | TokenKind::Newline | TokenKind::RBrace | TokenKind::Eof
+                    ) {
+                        self.advance();
+                    }
+                }
+            }
             let saw_comma = matches!(self.peek(), TokenKind::Comma);
             if saw_comma {
                 self.advance();
@@ -247,8 +302,18 @@ impl Parser {
                 && !matches!(self.peek(), TokenKind::RBrace | TokenKind::Eof)
             {
                 self.error("expected ',' or newline between fields");
-                return Err(());
+                had_error = true;
+                // Skip to next boundary to keep recovering
+                while !matches!(
+                    self.peek(),
+                    TokenKind::Comma | TokenKind::Newline | TokenKind::RBrace | TokenKind::Eof
+                ) {
+                    self.advance();
+                }
             }
+        }
+        if had_error && fields.is_empty() {
+            return Err(());
         }
         Ok(fields)
     }

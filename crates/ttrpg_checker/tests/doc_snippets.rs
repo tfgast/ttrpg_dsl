@@ -233,4 +233,3 @@ fn templates_pass_check() {
         failures.join("\n")
     );
 }
-
