@@ -88,13 +88,12 @@ fn valid_snippets_pass_check() {
         }
     }
 
-    if !failures.is_empty() {
-        panic!(
-            "{} valid snippet(s) failed:\n\n{}",
-            failures.len(),
-            failures.join("\n\n")
-        );
-    }
+    assert!(
+        failures.is_empty(),
+        "{} valid snippet(s) failed:\n\n{}",
+        failures.len(),
+        failures.join("\n\n")
+    );
 }
 
 #[test]
@@ -115,13 +114,12 @@ fn invalid_snippets_produce_errors() {
         }
     }
 
-    if !failures.is_empty() {
-        panic!(
-            "{} error snippet(s) passed unexpectedly:\n\n{}",
-            failures.len(),
-            failures.join("\n\n")
-        );
-    }
+    assert!(
+        failures.is_empty(),
+        "{} error snippet(s) passed unexpectedly:\n\n{}",
+        failures.len(),
+        failures.join("\n\n")
+    );
 }
 
 // ═══════════════════════════════════════════════════════════════
