@@ -1862,6 +1862,114 @@ fn struct_lit_leading_base_trailing_comma() {
     }
 }
 
+// ── Multiline struct literal tests (tdsl-4567) ───────────────────
+
+#[test]
+fn struct_lit_multiline_fields() {
+    let (expr, diags) = ttrpg_parser::parse_expr("Point {\n  x: 1,\n  y: 2\n}");
+    assert!(
+        diags.is_empty(),
+        "multiline struct literal should parse: {:?}",
+        diags.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+    let expr = expr.unwrap();
+    match &expr.node {
+        ExprKind::StructLit { name, fields, .. } => {
+            assert_eq!(name, "Point");
+            assert_eq!(fields.len(), 2);
+        }
+        _ => panic!("expected StructLit"),
+    }
+}
+
+#[test]
+fn struct_lit_multiline_empty() {
+    let (expr, diags) = ttrpg_parser::parse_expr("Point {\n}");
+    assert!(
+        diags.is_empty(),
+        "multiline empty struct literal should parse: {:?}",
+        diags.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+    let expr = expr.unwrap();
+    match &expr.node {
+        ExprKind::StructLit { name, fields, .. } => {
+            assert_eq!(name, "Point");
+            assert!(fields.is_empty());
+        }
+        _ => panic!("expected StructLit"),
+    }
+}
+
+#[test]
+fn struct_lit_multiline_base() {
+    let (expr, diags) = ttrpg_parser::parse_expr("Point {\n  ..other\n}");
+    assert!(
+        diags.is_empty(),
+        "multiline struct literal with base should parse: {:?}",
+        diags.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+    let expr = expr.unwrap();
+    match &expr.node {
+        ExprKind::StructLit { name, base, .. } => {
+            assert_eq!(name, "Point");
+            assert!(base.is_some());
+        }
+        _ => panic!("expected StructLit"),
+    }
+}
+
+// ── if-let / for-range struct-lit disambiguation (tdsl-2o22) ─────
+
+#[test]
+fn if_let_empty_body_not_struct_lit() {
+    let source = r#"system "test" {
+    derive f(x: option<int>) -> int {
+        if let some(v) = x {}
+        0
+    }
+}"#;
+    let (_, diags) = parse(source, FileId::SYNTH);
+    assert!(
+        diags.is_empty(),
+        "if let with empty body should parse: {:?}",
+        diags.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn for_range_end_not_struct_lit() {
+    let source = r#"system "test" {
+    derive f(n: int) -> int {
+        let total = 0
+        for i in 0..n { total += i }
+        total
+    }
+}"#;
+    let (_, diags) = parse(source, FileId::SYNTH);
+    assert!(
+        diags.is_empty(),
+        "for range with ident end should parse: {:?}",
+        diags.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn for_range_inclusive_end_not_struct_lit() {
+    let source = r#"system "test" {
+    derive f(n: int) -> int {
+        let total = 0
+        for i in 0..=n { total += i }
+        total
+    }
+}"#;
+    let (_, diags) = parse(source, FileId::SYNTH);
+    assert!(
+        diags.is_empty(),
+        "for inclusive range with ident end should parse: {:?}",
+        diags.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}
+
 // ── Bug repro tests (P1) ──────────────────────────────────────────
 
 /// Bug tdsl-srpf: bare 'some' in pattern is parsed as PatternKind::Ident

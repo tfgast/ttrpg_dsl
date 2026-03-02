@@ -470,18 +470,28 @@ impl Parser {
         if !matches!(self.peek_at(1), TokenKind::LBrace) {
             return false;
         }
+        // Skip newline tokens after the opening brace to support multiline
+        // struct literals like `Point {\n  x: 1\n}`.
+        let mut off = 2;
+        while matches!(self.peek_at(off), TokenKind::Newline) {
+            off += 1;
+        }
         // IDENT { } → struct lit
-        if matches!(self.peek_at(2), TokenKind::RBrace) {
+        if matches!(self.peek_at(off), TokenKind::RBrace) {
             return true;
         }
         // IDENT { IDENT : → struct lit
-        if matches!(self.peek_at(2), TokenKind::Ident(_))
-            && matches!(self.peek_at(3), TokenKind::Colon)
+        let mut field_off = off + 1;
+        while matches!(self.peek_at(field_off), TokenKind::Newline) {
+            field_off += 1;
+        }
+        if matches!(self.peek_at(off), TokenKind::Ident(_))
+            && matches!(self.peek_at(field_off), TokenKind::Colon)
         {
             return true;
         }
         // IDENT { .. → struct lit with base
-        if matches!(self.peek_at(2), TokenKind::DotDot) {
+        if matches!(self.peek_at(off), TokenKind::DotDot) {
             return true;
         }
         false
@@ -573,7 +583,7 @@ impl Parser {
         self.expect(&TokenKind::Let)?;
         let pattern = self.parse_pattern()?;
         self.expect(&TokenKind::Eq)?;
-        let scrutinee = self.parse_expr()?;
+        let scrutinee = self.parse_expr_no_struct()?;
         let then_block = self.parse_block()?;
         let else_branch = self.parse_else_branch()?;
         Ok(Spanned::new(
@@ -744,7 +754,7 @@ impl Parser {
         let iterable = if matches!(self.peek(), TokenKind::DotDot | TokenKind::DotDotEq) {
             let inclusive = matches!(self.peek(), TokenKind::DotDotEq);
             self.advance();
-            let end = self.parse_expr()?;
+            let end = self.parse_expr_no_struct()?;
             ForIterable::Range {
                 start: Box::new(first),
                 end: Box::new(end),
