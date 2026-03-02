@@ -147,7 +147,7 @@ impl<'p> Interpreter<'p> {
             .program
             .actions
             .get(name)
-            .ok_or_else(|| RuntimeError::new(format!("undefined action '{}'", name)))?;
+            .ok_or_else(|| RuntimeError::new(format!("undefined action '{name}'")))?;
         let action_decl = action_decl.clone();
 
         // Map positional args to param names
@@ -197,7 +197,7 @@ impl<'p> Interpreter<'p> {
             .program
             .reactions
             .get(name)
-            .ok_or_else(|| RuntimeError::new(format!("undefined reaction '{}'", name)))?;
+            .ok_or_else(|| RuntimeError::new(format!("undefined reaction '{name}'")))?;
         let reaction_decl = reaction_decl.clone();
 
         let mut env = Env::new(state, handler, self);
@@ -216,7 +216,7 @@ impl<'p> Interpreter<'p> {
         args: Vec<Value>,
     ) -> Result<Value, RuntimeError> {
         if !self.program.mechanics.contains_key(name) {
-            return Err(RuntimeError::new(format!("undefined mechanic '{}'", name)));
+            return Err(RuntimeError::new(format!("undefined mechanic '{name}'")));
         }
         let mut env = Env::new(state, handler, self);
         call::evaluate_fn_with_values(&mut env, name, args, Span::dummy())
@@ -243,8 +243,7 @@ impl<'p> Interpreter<'p> {
             return call::dispatch_table_with_values(&mut env, name, args, Span::dummy());
         }
         Err(RuntimeError::new(format!(
-            "undefined derive or table '{}'",
-            name
+            "undefined derive or table '{name}'"
         )))
     }
 
@@ -373,7 +372,7 @@ impl<'p> Interpreter<'p> {
             .program
             .hooks
             .get(name)
-            .ok_or_else(|| RuntimeError::new(format!("undefined hook '{}'", name)))?;
+            .ok_or_else(|| RuntimeError::new(format!("undefined hook '{name}'")))?;
         let hook_decl = hook_decl.clone();
 
         let mut env = Env::new(state, handler, self);

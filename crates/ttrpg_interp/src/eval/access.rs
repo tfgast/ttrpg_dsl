@@ -59,7 +59,7 @@ pub(super) fn eval_field_access(
         // Struct fields
         Value::Struct { fields, name, .. } => fields.get(field).cloned().ok_or_else(|| {
             RuntimeError::with_span(
-                format!("struct '{}' has no field '{}'", name, field),
+                format!("struct '{name}' has no field '{field}'"),
                 expr.span,
             )
         }),
@@ -72,8 +72,7 @@ pub(super) fn eval_field_access(
         } => fields.get(field).cloned().ok_or_else(|| {
             RuntimeError::with_span(
                 format!(
-                    "variant '{}.{}' has no field '{}'",
-                    enum_name, variant, field
+                    "variant '{enum_name}.{variant}' has no field '{field}'"
                 ),
                 expr.span,
             )
@@ -88,7 +87,7 @@ pub(super) fn eval_field_access(
             "kept" => Ok(Value::List(r.kept.iter().map(|d| Value::Int(*d)).collect())),
             "expr" => Ok(Value::DiceExpr(r.expr.clone())),
             _ => Err(RuntimeError::with_span(
-                format!("RollResult has no field '{}'", field),
+                format!("RollResult has no field '{field}'"),
                 expr.span,
             )),
         },
@@ -137,8 +136,7 @@ pub(super) fn eval_field_access(
                         }
                         return Err(RuntimeError::with_span(
                             format!(
-                                "variant '{}.{}' has fields and must be called as a constructor",
-                                enum_name, field
+                                "variant '{enum_name}.{field}' has fields and must be called as a constructor"
                             ),
                             expr.span,
                         ));
@@ -163,7 +161,7 @@ pub(super) fn eval_field_access(
             }
 
             Err(RuntimeError::with_span(
-                format!("no type, variant, or condition '{}' in module alias", field),
+                format!("no type, variant, or condition '{field}' in module alias"),
                 expr.span,
             ))
         }
@@ -183,15 +181,14 @@ pub(super) fn eval_field_access(
                     }
                     return Err(RuntimeError::with_span(
                         format!(
-                            "enum variant '{}.{}' has fields and must be called as a function",
-                            enum_name, field
+                            "enum variant '{enum_name}.{field}' has fields and must be called as a function"
                         ),
                         expr.span,
                     ));
                 }
             }
             Err(RuntimeError::with_span(
-                format!("enum '{}' has no variant '{}'", enum_name, field),
+                format!("enum '{enum_name}' has no variant '{field}'"),
                 expr.span,
             ))
         }
@@ -247,7 +244,7 @@ pub(super) fn eval_index(
                 .find(|(k, _)| value_eq(env.state, k, key))
                 .map(|(_, v)| v.clone())
                 .ok_or_else(|| {
-                    RuntimeError::with_span(format!("map key {:?} not found", key), expr.span)
+                    RuntimeError::with_span(format!("map key {key:?} not found"), expr.span)
                 })
         }
         _ => Err(RuntimeError::with_span(

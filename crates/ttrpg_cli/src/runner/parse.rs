@@ -46,8 +46,7 @@ impl Runner {
                     .and_then(|s| s.strip_suffix('}'))
                     .ok_or_else(|| {
                         CliError::Message(format!(
-                            "unmatched '{{' in inline group '{}'",
-                            group_name
+                            "unmatched '{{' in inline group '{group_name}'"
                         ))
                     })?;
 
@@ -62,15 +61,13 @@ impl Runner {
                     .is_none()
                 {
                     return Err(CliError::Message(format!(
-                        "unknown group '{}' on entity type '{}'",
-                        group_name, entity_type
+                        "unknown group '{group_name}' on entity type '{entity_type}'"
                     )));
                 }
 
                 if groups.iter().any(|(name, _)| name == group_name) {
                     return Err(CliError::Message(format!(
-                        "duplicate group '{}' in spawn block",
-                        group_name
+                        "duplicate group '{group_name}' in spawn block"
                     )));
                 }
 
@@ -80,14 +77,13 @@ impl Runner {
                 // Field: key: value
                 let cp = colon_pos.ok_or_else(|| {
                     CliError::Message(format!(
-                        "expected 'key: value' in field block, got: {}",
-                        entry
+                        "expected 'key: value' in field block, got: {entry}"
                     ))
                 })?;
                 let key = entry[..cp].trim();
                 let val_str = entry[cp + 1..].trim();
                 if key.is_empty() || val_str.is_empty() {
-                    return Err(CliError::Message(format!("invalid field entry: {}", entry)));
+                    return Err(CliError::Message(format!("invalid field entry: {entry}")));
                 }
 
                 let val = if let Some(&ent) = self.handles.get(val_str) {
@@ -103,7 +99,7 @@ impl Runner {
                         )));
                     }
                     let parsed = parsed.ok_or_else(|| {
-                        CliError::Message(format!("failed to parse value for field '{}'", key))
+                        CliError::Message(format!("failed to parse value for field '{key}'"))
                     })?;
 
                     let interp = Interpreter::new(&self.program, &self.type_env)
@@ -131,8 +127,7 @@ impl Runner {
                 };
                 if fields.contains_key(key) {
                     return Err(CliError::Message(format!(
-                        "duplicate field '{}' in field block",
-                        key
+                        "duplicate field '{key}' in field block"
                     )));
                 }
                 fields.insert(key.to_string(), val);
@@ -156,14 +151,13 @@ impl Runner {
             }
             let colon_pos = entry.find(':').ok_or_else(|| {
                 CliError::Message(format!(
-                    "expected 'key: value' in field block, got: {}",
-                    entry
+                    "expected 'key: value' in field block, got: {entry}"
                 ))
             })?;
             let key = entry[..colon_pos].trim();
             let val_str = entry[colon_pos + 1..].trim();
             if key.is_empty() || val_str.is_empty() {
-                return Err(CliError::Message(format!("invalid field entry: {}", entry)));
+                return Err(CliError::Message(format!("invalid field entry: {entry}")));
             }
 
             // Try handle resolution first, then fall back to expression eval
@@ -180,7 +174,7 @@ impl Runner {
                     )));
                 }
                 let parsed = parsed.ok_or_else(|| {
-                    CliError::Message(format!("failed to parse value for field '{}'", key))
+                    CliError::Message(format!("failed to parse value for field '{key}'"))
                 })?;
 
                 let interp = Interpreter::new(&self.program, &self.type_env)
@@ -208,8 +202,7 @@ impl Runner {
             };
             if fields.contains_key(key) {
                 return Err(CliError::Message(format!(
-                    "duplicate field '{}' in field block",
-                    key
+                    "duplicate field '{key}' in field block"
                 )));
             }
             fields.insert(key.to_string(), val);

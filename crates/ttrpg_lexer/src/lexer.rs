@@ -89,7 +89,7 @@ impl<'a> RawLexer<'a> {
 
                 // Validate count fits in u32
                 let count: u32 = match count_result {
-                    Ok(c) if c >= 0 && c <= u32::MAX as i64 => c as u32,
+                    Ok(c) if u32::try_from(c).is_ok() => c as u32,
                     _ => {
                         let _ = self.try_lex_dice_filter();
                         let span = self.span(first_digit_start, self.cursor.pos());
@@ -412,7 +412,7 @@ impl<'a> RawLexer<'a> {
     }
 }
 
-impl<'a> Iterator for RawLexer<'a> {
+impl Iterator for RawLexer<'_> {
     type Item = Token;
 
     fn next(&mut self) -> Option<Token> {
@@ -451,7 +451,7 @@ impl<'a> Lexer<'a> {
     }
 }
 
-impl<'a> Iterator for Lexer<'a> {
+impl Iterator for Lexer<'_> {
     type Item = Token;
 
     fn next(&mut self) -> Option<Token> {

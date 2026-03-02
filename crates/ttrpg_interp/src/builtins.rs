@@ -34,7 +34,7 @@ pub(crate) fn call_builtin(
         "invocation" => builtin_invocation(env, &args, span),
         "revoke" => builtin_revoke(env, &args, span),
         _ => Err(RuntimeError::with_span(
-            format!("unknown builtin function '{}'", name),
+            format!("unknown builtin function '{name}'"),
             span,
         )),
     }
@@ -71,7 +71,7 @@ fn builtin_floor(args: &[Value], span: Span) -> Result<Value, RuntimeError> {
             let floored = f.floor();
             if floored < (i64::MIN as f64) || floored > (i64::MAX as f64) {
                 return Err(RuntimeError::with_span(
-                    format!("floor({}) overflows integer range", f),
+                    format!("floor({f}) overflows integer range"),
                     span,
                 ));
             }
@@ -100,7 +100,7 @@ fn builtin_ceil(args: &[Value], span: Span) -> Result<Value, RuntimeError> {
             let ceiled = f.ceil();
             if ceiled < (i64::MIN as f64) || ceiled > (i64::MAX as f64) {
                 return Err(RuntimeError::with_span(
-                    format!("ceil({}) overflows integer range", f),
+                    format!("ceil({f}) overflows integer range"),
                     span,
                 ));
             }
@@ -190,7 +190,7 @@ fn builtin_conditions(env: &Env, args: &[Value], span: Span) -> Result<Value, Ru
                 Ok(Value::List(values))
             }
             None => Err(RuntimeError::with_span(
-                format!("conditions() called on unknown entity: {:?}", entity),
+                format!("conditions() called on unknown entity: {entity:?}"),
                 span,
             )),
         },
@@ -216,21 +216,21 @@ fn builtin_dice(args: &[Value], span: Span) -> Result<Value, RuntimeError> {
         (Some(Value::Int(count)), Some(Value::Int(sides))) => {
             if *count < 0 {
                 return Err(RuntimeError::with_span(
-                    format!("dice() count must be non-negative, got {}", count),
+                    format!("dice() count must be non-negative, got {count}"),
                     span,
                 ));
             }
             if *sides < 1 {
                 return Err(RuntimeError::with_span(
-                    format!("dice() sides must be at least 1, got {}", sides),
+                    format!("dice() sides must be at least 1, got {sides}"),
                     span,
                 ));
             }
             let count_u32 = u32::try_from(*count).map_err(|_| {
-                RuntimeError::with_span(format!("dice() count {} overflows u32", count), span)
+                RuntimeError::with_span(format!("dice() count {count} overflows u32"), span)
             })?;
             let sides_u32 = u32::try_from(*sides).map_err(|_| {
-                RuntimeError::with_span(format!("dice() sides {} overflows u32", sides), span)
+                RuntimeError::with_span(format!("dice() sides {sides} overflows u32"), span)
             })?;
             Ok(Value::DiceExpr(DiceExpr::single(count_u32, sides_u32, None, 0)))
         }
@@ -256,7 +256,7 @@ fn builtin_multiply_dice(args: &[Value], span: Span) -> Result<Value, RuntimeErr
         (Some(Value::DiceExpr(expr)), Some(Value::Int(factor))) => {
             if *factor <= 0 {
                 return Err(RuntimeError::with_span(
-                    format!("multiply_dice() factor must be positive, got {}", factor),
+                    format!("multiply_dice() factor must be positive, got {factor}"),
                     span,
                 ));
             }
@@ -310,8 +310,7 @@ fn builtin_roll(env: &mut Env, args: &[Value], span: Span) -> Result<Value, Runt
                 Response::Override(Value::RollResult(rr)) => Ok(Value::RollResult(rr)),
                 _ => Err(RuntimeError::with_span(
                     format!(
-                        "protocol error: expected Rolled or Override(RollResult) for RollDice, got {:?}",
-                        response
+                        "protocol error: expected Rolled or Override(RollResult) for RollDice, got {response:?}"
                     ),
                     span,
                 )),
@@ -552,8 +551,7 @@ fn validate_mutation_response(
         Response::Acknowledged | Response::Override(_) | Response::Vetoed => Ok(()),
         _ => Err(RuntimeError::with_span(
             format!(
-                "protocol error: unsupported response for {}: {:?}",
-                effect_name, response
+                "protocol error: unsupported response for {effect_name}: {response:?}"
             ),
             span,
         )),

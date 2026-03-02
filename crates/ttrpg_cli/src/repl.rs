@@ -48,7 +48,7 @@ impl Prompt for TtrpgPrompt {
             PromptHistorySearchStatus::Passing => "",
             PromptHistorySearchStatus::Failing => "(failed) ",
         };
-        std::borrow::Cow::Owned(format!("{}search: ", prefix))
+        std::borrow::Cow::Owned(format!("{prefix}search: "))
     }
 }
 
@@ -160,14 +160,14 @@ pub fn run_repl(vi_mode: bool) {
                 let result = runner.exec(&buffer);
 
                 for out in runner.take_output() {
-                    println!("{}", out);
+                    println!("{out}");
                 }
 
                 if let Err(e) = result {
                     if e.is_rendered() {
-                        eprintln!("{}", e);
+                        eprintln!("{e}");
                     } else {
-                        eprintln!("error: {}", e);
+                        eprintln!("error: {e}");
                     }
                 }
 
@@ -181,7 +181,7 @@ pub fn run_repl(vi_mode: bool) {
                 break;
             }
             Err(err) => {
-                eprintln!("I/O error: {}", err);
+                eprintln!("I/O error: {err}");
                 break;
             }
         }

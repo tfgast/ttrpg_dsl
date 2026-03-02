@@ -105,10 +105,10 @@ impl Ty {
             Ty::Set(inner) => format!("set<{}>", inner.display()),
             Ty::Map(k, v) => format!("map<{}, {}>", k.display(), v.display()),
             Ty::Option(inner) => format!("option<{}>", inner.display()),
-            Ty::OptionalGroupRef(entity, group) => format!("{}.{}", entity, group),
+            Ty::OptionalGroupRef(entity, group) => format!("{entity}.{group}"),
             Ty::Resource => "resource".into(),
             Ty::Unit => "unit".into(),
-            Ty::ModuleAlias(name) => format!("module \"{}\"", name),
+            Ty::ModuleAlias(name) => format!("module \"{name}\""),
             Ty::Error => "<error>".into(),
         }
     }

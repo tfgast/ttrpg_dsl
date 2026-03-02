@@ -6,8 +6,7 @@ impl Runner {
         match val {
             Value::Bool(true) => Ok(()),
             Value::Bool(false) => Err(CliError::Message(format!(
-                "assertion failed: {} evaluated to false",
-                expr_str
+                "assertion failed: {expr_str} evaluated to false"
             ))),
             _ => Err(CliError::Message(format!(
                 "assertion error: expected bool, got {}",
@@ -54,8 +53,7 @@ impl Runner {
                 Ok(())
             }
             Ok(()) => Err(CliError::Message(format!(
-                "assertion failed: expected error from: {}",
-                tail
+                "assertion failed: expected error from: {tail}"
             ))),
         }
     }

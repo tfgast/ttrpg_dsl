@@ -30,7 +30,7 @@ pub(super) fn eval_ordinal(
             let ordinal = variant_ordinal(env.interp.type_env, enum_name, variant).ok_or_else(
                 || {
                     RuntimeError::with_span(
-                        format!("unknown variant `{}` of enum `{}`", variant, enum_name),
+                        format!("unknown variant `{variant}` of enum `{enum_name}`"),
                         call_span,
                     )
                 },
@@ -89,7 +89,7 @@ pub(super) fn eval_from_ordinal(
 
     if idx < 0 {
         return Err(RuntimeError::with_span(
-            format!("from_ordinal() index must be non-negative, got {}", idx),
+            format!("from_ordinal() index must be non-negative, got {idx}"),
             call_span,
         ));
     }
@@ -98,7 +98,7 @@ pub(super) fn eval_from_ordinal(
         Some(DeclInfo::Enum(info)) => info,
         _ => {
             return Err(RuntimeError::with_span(
-                format!("unknown enum `{}`", enum_name),
+                format!("unknown enum `{enum_name}`"),
                 call_span,
             ));
         }
@@ -183,7 +183,7 @@ pub(super) fn eval_try_from_ordinal(
         Some(DeclInfo::Enum(info)) => info,
         _ => {
             return Err(RuntimeError::with_span(
-                format!("unknown enum `{}`", enum_name),
+                format!("unknown enum `{enum_name}`"),
                 call_span,
             ));
         }

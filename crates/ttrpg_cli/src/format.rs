@@ -25,7 +25,7 @@ pub fn build_unit_suffixes(type_env: &TypeEnv) -> UnitSuffixes {
 pub fn format_value(val: &Value, units: &UnitSuffixes) -> String {
     match val {
         Value::Int(n) => n.to_string(),
-        Value::Float(f) => format!("{}", f),
+        Value::Float(f) => format!("{f}"),
         Value::Bool(b) => b.to_string(),
         Value::Str(s) => {
             let escaped = s
@@ -34,7 +34,7 @@ pub fn format_value(val: &Value, units: &UnitSuffixes) -> String {
                 .replace('\n', "\\n")
                 .replace('\r', "\\r")
                 .replace('\t', "\\t");
-            format!("\"{}\"", escaped)
+            format!("\"{escaped}\"")
         }
         Value::None => "none".into(),
 
@@ -95,7 +95,7 @@ pub fn format_value(val: &Value, units: &UnitSuffixes) -> String {
             fields,
         } => {
             if fields.is_empty() {
-                format!("{}.{}", enum_name, variant)
+                format!("{enum_name}.{variant}")
             } else {
                 let inner: Vec<String> = fields
                     .iter()
@@ -114,7 +114,7 @@ pub fn format_value(val: &Value, units: &UnitSuffixes) -> String {
 
         Value::Condition { name, args } => {
             if args.is_empty() {
-                format!("Condition({})", name)
+                format!("Condition({name})")
             } else {
                 let inner: Vec<String> = args
                     .iter()
@@ -123,8 +123,8 @@ pub fn format_value(val: &Value, units: &UnitSuffixes) -> String {
                 format!("Condition({}({}))", name, inner.join(", "))
             }
         }
-        Value::EnumNamespace(name) => format!("<enum {}>", name),
-        Value::ModuleAlias(name) => format!("<module alias {}>", name),
+        Value::EnumNamespace(name) => format!("<enum {name}>"),
+        Value::ModuleAlias(name) => format!("<module alias {name}>"),
         Value::Invocation(id) => format!("Invocation({})", id.0),
     }
 }
@@ -156,10 +156,10 @@ pub fn format_dice_expr(expr: &DiceExpr) -> String {
         let mut gs = format!("{}d{}", group.count, group.sides);
         if let Some(filter) = &group.filter {
             match filter {
-                DiceFilter::KeepHighest(n) => gs.push_str(&format!("kh{}", n)),
-                DiceFilter::KeepLowest(n) => gs.push_str(&format!("kl{}", n)),
-                DiceFilter::DropHighest(n) => gs.push_str(&format!("dh{}", n)),
-                DiceFilter::DropLowest(n) => gs.push_str(&format!("dl{}", n)),
+                DiceFilter::KeepHighest(n) => gs.push_str(&format!("kh{n}")),
+                DiceFilter::KeepLowest(n) => gs.push_str(&format!("kl{n}")),
+                DiceFilter::DropHighest(n) => gs.push_str(&format!("dh{n}")),
+                DiceFilter::DropLowest(n) => gs.push_str(&format!("dl{n}")),
             }
         }
         parts.push(gs);

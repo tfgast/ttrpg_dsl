@@ -31,7 +31,7 @@ pub(super) fn dispatch_action(
         .get(name.as_str())
         .ok_or_else(|| {
             RuntimeError::with_span(
-                format!("internal error: no declaration found for action '{}'", name),
+                format!("internal error: no declaration found for action '{name}'"),
                 call_span,
             )
         })?;
@@ -45,7 +45,7 @@ pub(super) fn dispatch_action(
         .as_ref()
         .ok_or_else(|| {
             RuntimeError::with_span(
-                format!("internal error: action '{}' has no receiver info", name),
+                format!("internal error: action '{name}' has no receiver info"),
                 call_span,
             )
         })?
@@ -123,7 +123,7 @@ pub(super) fn dispatch_action_method(
         .get(name.as_str())
         .ok_or_else(|| {
             RuntimeError::with_span(
-                format!("internal error: no declaration found for action '{}'", name),
+                format!("internal error: no declaration found for action '{name}'"),
                 call_span,
             )
         })?
@@ -136,8 +136,7 @@ pub(super) fn dispatch_action_method(
         other => {
             return Err(RuntimeError::with_span(
                 format!(
-                    "action '{}' receiver must be an entity, got {:?}",
-                    name, other
+                    "action '{name}' receiver must be an entity, got {other:?}"
                 ),
                 call_span,
             ));

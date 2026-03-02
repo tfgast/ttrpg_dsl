@@ -300,7 +300,7 @@ impl Runner {
             if i > 0 {
                 self.output.push(String::new());
             }
-            self.output.push(format!("{}:", cat));
+            self.output.push(format!("{cat}:"));
             for cmd in COMMANDS.iter().filter(|c| c.category == cat) {
                 self.output.push(format!(
                     "  {:<width$}  {}",
@@ -326,14 +326,13 @@ impl Runner {
                     self.output.push(String::new());
                     self.output.push("  Examples:".to_string());
                     for ex in info.examples {
-                        self.output.push(format!("    {}", ex));
+                        self.output.push(format!("    {ex}"));
                     }
                 }
                 Ok(())
             }
             None => Err(CliError::Message(format!(
-                "unknown command: {}. Type 'help' for a list.",
-                name
+                "unknown command: {name}. Type 'help' for a list."
             ))),
         }
     }

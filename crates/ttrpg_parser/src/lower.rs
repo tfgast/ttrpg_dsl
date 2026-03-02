@@ -79,7 +79,7 @@ fn synthetic_mechanic_name(move_name: &str) -> Name {
         }
         snake.push(ch.to_lowercase().next().unwrap_or(ch));
     }
-    Name::from(format!("__{}_roll", snake))
+    Name::from(format!("__{snake}_roll"))
 }
 
 fn lower_one_move(

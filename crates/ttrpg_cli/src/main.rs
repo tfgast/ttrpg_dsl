@@ -75,7 +75,7 @@ fn main() {
             }
         }
         Some(other) => {
-            eprintln!("unknown subcommand: {}", other);
+            eprintln!("unknown subcommand: {other}");
             eprintln!("usage: ttrpg [--vi] [-c <commands> | run <script> | check <files...>]");
             process::exit(1);
         }
@@ -100,7 +100,7 @@ fn run_pipe() {
         let line = match line {
             Ok(l) => l,
             Err(e) => {
-                eprintln!("read error: {}", e);
+                eprintln!("read error: {e}");
                 process::exit(1);
             }
         };
@@ -108,14 +108,14 @@ fn run_pipe() {
         let result = runner.exec(&line);
 
         for out in runner.take_output() {
-            println!("{}", out);
+            println!("{out}");
         }
 
         if let Err(e) = result {
             if e.is_rendered() {
-                eprintln!("{}", e);
+                eprintln!("{e}");
             } else {
-                eprintln!("error: {}", e);
+                eprintln!("error: {e}");
             }
             had_error = true;
         }
@@ -136,7 +136,7 @@ fn run_script(path: &str) {
     let content = match std::fs::read_to_string(path) {
         Ok(c) => c,
         Err(e) => {
-            eprintln!("cannot read '{}': {}", path, e);
+            eprintln!("cannot read '{path}': {e}");
             process::exit(1);
         }
     };
@@ -152,12 +152,12 @@ fn exec_commands(label: &str, content: &str) {
         let result = runner.exec(line);
 
         for out in runner.take_output() {
-            println!("{}", out);
+            println!("{out}");
         }
 
         if let Err(e) = result {
             if e.is_rendered() {
-                eprintln!("{}", e);
+                eprintln!("{e}");
             } else {
                 eprintln!("{}:{}: error: {}", label, lineno + 1, e);
             }
@@ -173,7 +173,7 @@ fn exec_commands(label: &str, content: &str) {
 /// Check DSL source read from stdin.
 fn check_stdin(snippet: bool) {
     let source = io::read_to_string(io::stdin()).unwrap_or_else(|e| {
-        eprintln!("read error: {}", e);
+        eprintln!("read error: {e}");
         process::exit(1);
     });
     let sources = vec![("<stdin>".to_string(), source)];
@@ -202,18 +202,18 @@ fn check_files(file_args: &[&str], snippet: bool) {
                                 found = true;
                             }
                             Err(e) => {
-                                eprintln!("glob error for '{}': {}", arg, e);
+                                eprintln!("glob error for '{arg}': {e}");
                                 process::exit(1);
                             }
                         }
                     }
                     if !found {
-                        eprintln!("no files matched pattern '{}'", arg);
+                        eprintln!("no files matched pattern '{arg}'");
                         process::exit(1);
                     }
                 }
                 Err(e) => {
-                    eprintln!("invalid glob pattern '{}': {}", arg, e);
+                    eprintln!("invalid glob pattern '{arg}': {e}");
                     process::exit(1);
                 }
             }
@@ -279,7 +279,7 @@ fn check_sources(sources: Vec<(String, String)>, snippet: bool) {
             .map(|(name, src)| {
                 (
                     name.clone(),
-                    format!("{}{}{}", snippet_prefix, src, snippet_suffix),
+                    format!("{snippet_prefix}{src}{snippet_suffix}"),
                 )
             })
             .collect();

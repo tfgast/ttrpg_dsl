@@ -496,7 +496,7 @@ pub fn apply_op(op: AssignOp, current: &Value, rhs: &Value) -> Result<Value, Run
                 Ok(Value::Set(new_set))
             }
             (Value::Int(a), Value::Int(b)) => a.checked_add(*b).map(Value::Int).ok_or_else(|| {
-                RuntimeError::new(format!("integer overflow in += ({} + {})", a, b))
+                RuntimeError::new(format!("integer overflow in += ({a} + {b})"))
             }),
             (Value::Float(a), Value::Float(b)) => {
                 let result = a + b;
@@ -504,8 +504,7 @@ pub fn apply_op(op: AssignOp, current: &Value, rhs: &Value) -> Result<Value, Run
                     Ok(Value::Float(result))
                 } else {
                     Err(RuntimeError::new(format!(
-                        "non-finite float result in += ({} + {})",
-                        a, b
+                        "non-finite float result in += ({a} + {b})"
                     )))
                 }
             }
@@ -515,8 +514,7 @@ pub fn apply_op(op: AssignOp, current: &Value, rhs: &Value) -> Result<Value, Run
                     Ok(Value::Float(result))
                 } else {
                     Err(RuntimeError::new(format!(
-                        "non-finite float result in += ({} + {})",
-                        a, b
+                        "non-finite float result in += ({a} + {b})"
                     )))
                 }
             }
@@ -526,8 +524,7 @@ pub fn apply_op(op: AssignOp, current: &Value, rhs: &Value) -> Result<Value, Run
                     Ok(Value::Float(result))
                 } else {
                     Err(RuntimeError::new(format!(
-                        "non-finite float result in += ({} + {})",
-                        a, b
+                        "non-finite float result in += ({a} + {b})"
                     )))
                 }
             }
@@ -541,7 +538,7 @@ pub fn apply_op(op: AssignOp, current: &Value, rhs: &Value) -> Result<Value, Run
                 Ok(Value::Set(new_set))
             }
             (Value::Int(a), Value::Int(b)) => a.checked_sub(*b).map(Value::Int).ok_or_else(|| {
-                RuntimeError::new(format!("integer overflow in -= ({} - {})", a, b))
+                RuntimeError::new(format!("integer overflow in -= ({a} - {b})"))
             }),
             (Value::Float(a), Value::Float(b)) => {
                 let result = a - b;
@@ -549,8 +546,7 @@ pub fn apply_op(op: AssignOp, current: &Value, rhs: &Value) -> Result<Value, Run
                     Ok(Value::Float(result))
                 } else {
                     Err(RuntimeError::new(format!(
-                        "non-finite float result in -= ({} - {})",
-                        a, b
+                        "non-finite float result in -= ({a} - {b})"
                     )))
                 }
             }
@@ -560,8 +556,7 @@ pub fn apply_op(op: AssignOp, current: &Value, rhs: &Value) -> Result<Value, Run
                     Ok(Value::Float(result))
                 } else {
                     Err(RuntimeError::new(format!(
-                        "non-finite float result in -= ({} - {})",
-                        a, b
+                        "non-finite float result in -= ({a} - {b})"
                     )))
                 }
             }
@@ -571,8 +566,7 @@ pub fn apply_op(op: AssignOp, current: &Value, rhs: &Value) -> Result<Value, Run
                     Ok(Value::Float(result))
                 } else {
                     Err(RuntimeError::new(format!(
-                        "non-finite float result in -= ({} - {})",
-                        a, b
+                        "non-finite float result in -= ({a} - {b})"
                     )))
                 }
             }

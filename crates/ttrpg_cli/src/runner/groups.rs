@@ -15,8 +15,7 @@ impl Runner {
             .lookup_optional_group(entity_type, group_name)
             .ok_or_else(|| {
                 CliError::Message(format!(
-                    "unknown group '{}' on entity type '{}'",
-                    group_name, entity_type
+                    "unknown group '{group_name}' on entity type '{entity_type}'"
                 ))
             })?
             .clone();
@@ -29,8 +28,7 @@ impl Runner {
             {
                 None => {
                     return Err(CliError::Message(format!(
-                        "unknown field '{}' in group '{}'",
-                        field_name, group_name
+                        "unknown field '{field_name}' in group '{group_name}'"
                     )));
                 }
                 Some(fi) => {

@@ -5,7 +5,7 @@ use crate::check::Checker;
 use crate::scope::BlockKind;
 use crate::ty::Ty;
 
-impl<'a> Checker<'a> {
+impl Checker<'_> {
     pub(crate) fn check_if(
         &mut self,
         condition: &Spanned<ExprKind>,
@@ -17,7 +17,7 @@ impl<'a> Checker<'a> {
         let cond_ty = self.check_expr(condition);
         if !cond_ty.is_error() && cond_ty != Ty::Bool {
             self.error(
-                format!("if condition must be bool, found {}", cond_ty),
+                format!("if condition must be bool, found {cond_ty}"),
                 condition.span,
             );
         }
@@ -69,8 +69,7 @@ impl<'a> Checker<'a> {
                     None => {
                         self.error(
                             format!(
-                                "if/else branches have incompatible types: {} and {}",
-                                then_ty, else_ty
+                                "if/else branches have incompatible types: {then_ty} and {else_ty}"
                             ),
                             span,
                         );
@@ -85,8 +84,7 @@ impl<'a> Checker<'a> {
                     None => {
                         self.error(
                             format!(
-                                "if/else branches have incompatible types: {} and {}",
-                                then_ty, else_ty
+                                "if/else branches have incompatible types: {then_ty} and {else_ty}"
                             ),
                             span,
                         );
@@ -122,7 +120,7 @@ impl<'a> Checker<'a> {
                         Some(unified) => result_ty = Some(unified),
                         None => {
                             self.error(
-                                format!("match arm has type {}, expected {}", arm_ty, existing),
+                                format!("match arm has type {arm_ty}, expected {existing}"),
                                 arm.span,
                             );
                         }
@@ -157,7 +155,7 @@ impl<'a> Checker<'a> {
                     let guard_ty = self.check_expr(expr);
                     if !guard_ty.is_error() && guard_ty != Ty::Bool {
                         self.error(
-                            format!("guard condition must be bool, found {}", guard_ty),
+                            format!("guard condition must be bool, found {guard_ty}"),
                             expr.span,
                         );
                     }
@@ -182,7 +180,7 @@ impl<'a> Checker<'a> {
                         Some(unified) => result_ty = Some(unified),
                         None => {
                             self.error(
-                                format!("match arm has type {}, expected {}", arm_ty, existing),
+                                format!("match arm has type {arm_ty}, expected {existing}"),
                                 arm.span,
                             );
                         }
@@ -216,7 +214,7 @@ impl<'a> Checker<'a> {
                     }
                     Ty::Error => Ty::Error,
                     other => {
-                        self.error(format!("expected list or set, found {}", other), span);
+                        self.error(format!("expected list or set, found {other}"), span);
                         Ty::Error
                     }
                 }
@@ -230,12 +228,12 @@ impl<'a> Checker<'a> {
                 let end_ty = self.check_expr(end);
                 if !start_ty.is_error() && !start_ty.is_int_like() {
                     self.error(
-                        format!("range start must be int, found {}", start_ty),
+                        format!("range start must be int, found {start_ty}"),
                         start.span,
                     );
                 }
                 if !end_ty.is_error() && !end_ty.is_int_like() {
-                    self.error(format!("range end must be int, found {}", end_ty), end.span);
+                    self.error(format!("range end must be int, found {end_ty}"), end.span);
                 }
                 Ty::Int
             }
@@ -278,7 +276,7 @@ impl<'a> Checker<'a> {
                     }
                     Ty::Error => Ty::Error,
                     other => {
-                        self.error(format!("expected list or set, found {}", other), span);
+                        self.error(format!("expected list or set, found {other}"), span);
                         Ty::Error
                     }
                 }
@@ -292,12 +290,12 @@ impl<'a> Checker<'a> {
                 let end_ty = self.check_expr(end);
                 if !start_ty.is_error() && !start_ty.is_int_like() {
                     self.error(
-                        format!("range start must be int, found {}", start_ty),
+                        format!("range start must be int, found {start_ty}"),
                         start.span,
                     );
                 }
                 if !end_ty.is_error() && !end_ty.is_int_like() {
-                    self.error(format!("range end must be int, found {}", end_ty), end.span);
+                    self.error(format!("range end must be int, found {end_ty}"), end.span);
                 }
                 Ty::Int
             }
@@ -313,8 +311,7 @@ impl<'a> Checker<'a> {
             if !filter_ty.is_error() && filter_ty != Ty::Bool {
                 self.error(
                     format!(
-                        "list comprehension filter must be bool, found {}",
-                        filter_ty
+                        "list comprehension filter must be bool, found {filter_ty}"
                     ),
                     filter_expr.span,
                 );

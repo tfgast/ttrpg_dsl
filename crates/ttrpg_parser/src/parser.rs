@@ -33,28 +33,25 @@ impl Parser {
     pub fn peek(&self) -> &TokenKind {
         self.tokens
             .get(self.pos)
-            .map(|t| &t.kind)
-            .unwrap_or(&TokenKind::Eof)
+            .map_or(&TokenKind::Eof, |t| &t.kind)
     }
 
     pub(crate) fn peek_at(&self, offset: usize) -> &TokenKind {
         self.tokens
             .get(self.pos + offset)
-            .map(|t| &t.kind)
-            .unwrap_or(&TokenKind::Eof)
+            .map_or(&TokenKind::Eof, |t| &t.kind)
     }
 
     pub(crate) fn peek_span(&self) -> Span {
-        self.tokens
-            .get(self.pos)
-            .map(|t| t.span)
-            .unwrap_or_else(|| {
+        self.tokens.get(self.pos).map_or_else(
+            || {
                 // Use end of last token or 0
                 self.tokens
                     .last()
-                    .map(|t| Span::new(self.file, t.span.end, t.span.end))
-                    .unwrap_or(Span::dummy())
-            })
+                    .map_or(Span::dummy(), |t| Span::new(self.file, t.span.end, t.span.end))
+            },
+            |t| t.span,
+        )
     }
 
     pub(crate) fn at(&self, kind: &TokenKind) -> bool {

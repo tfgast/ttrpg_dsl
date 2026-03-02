@@ -187,7 +187,7 @@ pub(super) fn value_type_display(val: &Value) -> String {
         Value::Position(_) => "Position".into(),
         Value::Condition { .. } => "Condition".into(),
         Value::Invocation(_) => "Invocation".into(),
-        Value::EnumNamespace(name) => format!("{}(namespace)", name),
-        Value::ModuleAlias(name) => format!("{}(module alias)", name),
+        Value::EnumNamespace(name) => format!("{name}(namespace)"),
+        Value::ModuleAlias(name) => format!("{name}(module alias)"),
     }
 }

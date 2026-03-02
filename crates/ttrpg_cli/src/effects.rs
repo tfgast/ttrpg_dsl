@@ -143,7 +143,7 @@ impl EffectHandler for CliHandler<'_> {
                             Response::Rolled(result)
                         }
                         Err(msg) => {
-                            self.log.push(format!("[RollDice] error: {}", msg));
+                            self.log.push(format!("[RollDice] error: {msg}"));
                             Response::Vetoed
                         }
                     }
@@ -168,8 +168,7 @@ impl EffectHandler for CliHandler<'_> {
                     Response::PromptResult(val)
                 } else {
                     self.log.push(format!(
-                        "[ResolvePrompt] {} -> vetoed (no suggestion)",
-                        name
+                        "[ResolvePrompt] {name} -> vetoed (no suggestion)"
                     ));
                     Response::Vetoed
                 }
@@ -253,13 +252,11 @@ impl EffectHandler for CliHandler<'_> {
                 );
                 if params.is_empty() {
                     self.log.push(format!(
-                        "[ApplyCondition] {} gains {} ({:?})",
-                        name, condition, duration,
+                        "[ApplyCondition] {name} gains {condition} ({duration:?})",
                     ));
                 } else {
                     self.log.push(format!(
-                        "[ApplyCondition] {} gains {}({:?}) ({:?})",
-                        name, condition, params, duration,
+                        "[ApplyCondition] {name} gains {condition}({params:?}) ({duration:?})",
                     ));
                 }
                 Response::Acknowledged
@@ -277,8 +274,7 @@ impl EffectHandler for CliHandler<'_> {
                         .borrow_mut()
                         .remove_condition_by_id(&target, cid);
                     self.log.push(format!(
-                        "[RemoveCondition] {} loses {} (id={})",
-                        name, condition, cid,
+                        "[RemoveCondition] {name} loses {condition} (id={cid})",
                     ));
                 } else {
                     self.game_state
@@ -286,12 +282,11 @@ impl EffectHandler for CliHandler<'_> {
                         .remove_condition(&target, &condition, params.as_ref());
                     if let Some(ref p) = params {
                         self.log.push(format!(
-                            "[RemoveCondition] {} loses {}({:?})",
-                            name, condition, p,
+                            "[RemoveCondition] {name} loses {condition}({p:?})",
                         ));
                     } else {
                         self.log
-                            .push(format!("[RemoveCondition] {} loses {}", name, condition,));
+                            .push(format!("[RemoveCondition] {name} loses {condition}",));
                     }
                 }
                 Response::Acknowledged
@@ -350,7 +345,7 @@ impl EffectHandler for CliHandler<'_> {
                     &actor,
                     &budget_field,
                 );
-                self.log.push(format!("[DeductCost] {}: {}", name, token));
+                self.log.push(format!("[DeductCost] {name}: {token}"));
                 Response::Acknowledged
             }
 
@@ -361,7 +356,7 @@ impl EffectHandler for CliHandler<'_> {
             } => {
                 let ename = self.entity_name(&actor);
                 self.log
-                    .push(format!("[ActionStarted] {} by {}", action_name, ename));
+                    .push(format!("[ActionStarted] {action_name} by {ename}"));
                 Response::Acknowledged
             }
 
@@ -371,10 +366,9 @@ impl EffectHandler for CliHandler<'_> {
                 reason,
             } => {
                 let status = if passed { "passed" } else { "failed" };
-                let reason_str = reason.map(|r| format!(" ({})", r)).unwrap_or_default();
+                let reason_str = reason.map(|r| format!(" ({r})")).unwrap_or_default();
                 self.log.push(format!(
-                    "[RequiresCheck] {}: {}{}",
-                    action, status, reason_str,
+                    "[RequiresCheck] {action}: {status}{reason_str}",
                 ));
                 Response::Acknowledged
             }
@@ -392,8 +386,7 @@ impl EffectHandler for CliHandler<'_> {
                     ActionOutcome::Failed => "failed",
                 };
                 self.log.push(format!(
-                    "[ActionCompleted] {} by {} ({})",
-                    action_name, ename, outcome_str
+                    "[ActionCompleted] {action_name} by {ename} ({outcome_str})"
                 ));
                 Response::Acknowledged
             }
@@ -437,7 +430,7 @@ impl EffectHandler for CliHandler<'_> {
                     .borrow_mut()
                     .remove_field(&entity, &group_name);
                 self.log
-                    .push(format!("[RevokeGroup] {}.{}", name, group_name));
+                    .push(format!("[RevokeGroup] {name}.{group_name}"));
                 Response::Acknowledged
             }
 
@@ -449,9 +442,9 @@ impl EffectHandler for CliHandler<'_> {
             } => {
                 let source_str = match &source {
                     ttrpg_interp::effect::ModifySource::Condition(c) => {
-                        format!("condition:{}", c)
+                        format!("condition:{c}")
                     }
-                    ttrpg_interp::effect::ModifySource::Option(o) => format!("option:{}", o),
+                    ttrpg_interp::effect::ModifySource::Option(o) => format!("option:{o}"),
                 };
                 let changes_str: Vec<String> = changes
                     .iter()
@@ -556,7 +549,7 @@ fn apply_dice_filter(dice: &mut [i64], filter: &Option<DiceFilter>) -> Vec<i64> 
         None => dice.to_owned(),
         Some(f) => {
             let mut sorted = dice.to_owned();
-            sorted.sort();
+            sorted.sort_unstable();
             match f {
                 DiceFilter::KeepHighest(n) => {
                     let n = *n as usize;

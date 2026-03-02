@@ -7,7 +7,7 @@ use crate::env::*;
 use crate::scope::BlockKind;
 use crate::ty::Ty;
 
-impl<'a> Checker<'a> {
+impl Checker<'_> {
     /// Type-check an expression, returning its resolved type.
     pub fn check_expr(&mut self, expr: &Spanned<ExprKind>) -> Ty {
         self.check_expr_expecting(expr, None)
@@ -42,7 +42,7 @@ impl<'a> Checker<'a> {
                 if let Some(unit_name) = self.env.suffix_to_unit.get(suffix.as_str()).cloned() {
                     Ty::UnitType(unit_name)
                 } else {
-                    self.error(format!("unknown unit suffix `{}`", suffix), expr.span);
+                    self.error(format!("unknown unit suffix `{suffix}`"), expr.span);
                     Ty::Error
                 }
             }
@@ -165,8 +165,7 @@ impl<'a> Checker<'a> {
             if required_params > 0 {
                 self.error(
                     format!(
-                        "condition `{}` requires {} parameter(s); use `{}(...)` to supply them",
-                        name, required_params, name
+                        "condition `{name}` requires {required_params} parameter(s); use `{name}(...)` to supply them"
                     ),
                     span,
                 );
@@ -184,7 +183,7 @@ impl<'a> Checker<'a> {
             return match decl {
                 DeclInfo::Enum(_) => Ty::EnumType(Name::from(name)),
                 DeclInfo::Struct(_) | DeclInfo::Entity(_) | DeclInfo::Unit(_) => {
-                    self.error(format!("type `{}` cannot be used as a value", name), span);
+                    self.error(format!("type `{name}` cannot be used as a value"), span);
                     Ty::Error
                 }
             };
@@ -199,7 +198,7 @@ impl<'a> Checker<'a> {
             }
         }
 
-        self.error(format!("undefined variable `{}`", name), span);
+        self.error(format!("undefined variable `{name}`"), span);
         Ty::Error
     }
 
@@ -231,13 +230,13 @@ impl<'a> Checker<'a> {
             BinOp::And | BinOp::Or => {
                 if lhs_ty != Ty::Bool {
                     self.error(
-                        format!("left operand of logical op must be bool, found {}", lhs_ty),
+                        format!("left operand of logical op must be bool, found {lhs_ty}"),
                         lhs.span,
                     );
                 }
                 if rhs_ty != Ty::Bool {
                     self.error(
-                        format!("right operand of logical op must be bool, found {}", rhs_ty),
+                        format!("right operand of logical op must be bool, found {rhs_ty}"),
                         rhs.span,
                     );
                 }
@@ -260,17 +259,14 @@ impl<'a> Checker<'a> {
             (Ty::DiceExpr, t) if t.is_int_like() => Ty::DiceExpr,
             (t, Ty::DiceExpr) if t.is_int_like() => Ty::DiceExpr,
             // Numeric
-            (Ty::Int, Ty::Int)
-            | (Ty::Resource, Ty::Int)
-            | (Ty::Int, Ty::Resource)
-            | (Ty::Resource, Ty::Resource) => Ty::Int,
+            (Ty::Int | Ty::Resource, Ty::Int | Ty::Resource) => Ty::Int,
             (Ty::Float, t) | (t, Ty::Float) if t.is_numeric() => Ty::Float,
             // String concatenation
             (Ty::String, Ty::String) => Ty::String,
             // Unit types: same-type addition
             (Ty::UnitType(a), Ty::UnitType(b)) if a == b => Ty::UnitType(a.clone()),
             _ => {
-                self.error(format!("cannot add {} and {}", lhs, rhs), span);
+                self.error(format!("cannot add {lhs} and {rhs}"), span);
                 Ty::Error
             }
         }
@@ -286,7 +282,7 @@ impl<'a> Checker<'a> {
             // Unit types: same-type subtraction
             (Ty::UnitType(a), Ty::UnitType(b)) if a == b => Ty::UnitType(a.clone()),
             _ => {
-                self.error(format!("cannot subtract {} from {}", rhs, lhs), span);
+                self.error(format!("cannot subtract {rhs} from {lhs}"), span);
                 Ty::Error
             }
         }
@@ -308,7 +304,7 @@ impl<'a> Checker<'a> {
             // Unit types: int * unit or unit * int
             (Ty::Int, Ty::UnitType(a)) | (Ty::UnitType(a), Ty::Int) => Ty::UnitType(a.clone()),
             _ => {
-                self.error(format!("cannot multiply {} and {}", lhs, rhs), span);
+                self.error(format!("cannot multiply {lhs} and {rhs}"), span);
                 Ty::Error
             }
         }
@@ -331,7 +327,7 @@ impl<'a> Checker<'a> {
             // Unit types: same-type division produces float (dimensionless ratio)
             (Ty::UnitType(a), Ty::UnitType(b)) if a == b => Ty::Float,
             _ => {
-                self.error(format!("cannot divide {} by {}", lhs, rhs), span);
+                self.error(format!("cannot divide {lhs} by {rhs}"), span);
                 Ty::Error
             }
         }
@@ -377,12 +373,12 @@ impl<'a> Checker<'a> {
         if ordering {
             // <, >, <=, >= only for orderable types
             if !self.types_orderable(l, r) {
-                self.error(format!("cannot order {} and {}", lhs_ty, rhs_ty), span);
+                self.error(format!("cannot order {lhs_ty} and {rhs_ty}"), span);
             }
         } else {
             // ==, != for any comparable types
             if !self.types_comparable(l, r) {
-                self.error(format!("cannot compare {} and {}", lhs_ty, rhs_ty), span);
+                self.error(format!("cannot compare {lhs_ty} and {rhs_ty}"), span);
             }
         }
 
@@ -448,21 +444,20 @@ impl<'a> Checker<'a> {
         match rhs {
             Ty::List(inner) | Ty::Set(inner) => {
                 if !self.types_compatible(lhs, inner) {
-                    self.error(format!("cannot check if {} is in {}", lhs, rhs), span);
+                    self.error(format!("cannot check if {lhs} is in {rhs}"), span);
                 }
                 Ty::Bool
             }
             Ty::Map(key, _) => {
                 if !self.types_compatible(lhs, key) {
-                    self.error(format!("cannot check if {} is in {}", lhs, rhs), span);
+                    self.error(format!("cannot check if {lhs} is in {rhs}"), span);
                 }
                 Ty::Bool
             }
             _ => {
                 self.error(
                     format!(
-                        "right-hand side of `in` must be a collection, found {}",
-                        rhs
+                        "right-hand side of `in` must be a collection, found {rhs}"
                     ),
                     rhs_expr.span,
                 );
@@ -487,7 +482,7 @@ impl<'a> Checker<'a> {
                 if ty.is_numeric() || matches!(ty, Ty::UnitType(_)) {
                     ty
                 } else {
-                    self.error(format!("cannot negate {}", ty), span);
+                    self.error(format!("cannot negate {ty}"), span);
                     Ty::Error
                 }
             }
@@ -495,7 +490,7 @@ impl<'a> Checker<'a> {
                 if ty == Ty::Bool {
                     Ty::Bool
                 } else {
-                    self.error(format!("cannot apply `!` to {}", ty), span);
+                    self.error(format!("cannot apply `!` to {ty}"), span);
                     Ty::Error
                 }
             }
@@ -540,8 +535,7 @@ impl<'a> Checker<'a> {
                     if !self.scope.is_group_narrowed(&path_key, &group_name) {
                         self.error(
                             format!(
-                                "access to optional group `{}` on `{}` requires a `has` guard or `with` constraint",
-                                group_name, path_key
+                                "access to optional group `{group_name}` on `{path_key}` requires a `has` guard or `with` constraint"
                             ),
                             span,
                         );
@@ -549,8 +543,7 @@ impl<'a> Checker<'a> {
                 } else {
                     self.error(
                         format!(
-                            "access to optional group `{}` requires a `has` guard or `with` constraint",
-                            group_name
+                            "access to optional group `{group_name}` requires a `has` guard or `with` constraint"
                         ),
                         span,
                     );
@@ -575,7 +568,7 @@ impl<'a> Checker<'a> {
                             return param.ty.clone();
                         }
                         self.error(
-                            format!("event `{}` has no field `{}`", event_name, field),
+                            format!("event `{event_name}` has no field `{field}`"),
                             span,
                         );
                         return Ty::Error;
@@ -610,7 +603,7 @@ impl<'a> Checker<'a> {
                     }
                 }
 
-                self.error(format!("type `{}` has no field `{}`", name, field), span);
+                self.error(format!("type `{name}` has no field `{field}`"), span);
                 Ty::Error
             }
             Ty::AnyEntity => {
@@ -620,14 +613,13 @@ impl<'a> Checker<'a> {
                 if self.env.has_optional_group_named(field) {
                     self.error(
                         format!(
-                            "optional group `{}` is ambiguous on type `entity`; use a concrete entity type",
-                            field
+                            "optional group `{field}` is ambiguous on type `entity`; use a concrete entity type"
                         ),
                         span,
                     );
                 } else {
                     self.error(
-                        format!("type `entity` has no field or optional group `{}`", field),
+                        format!("type `entity` has no field or optional group `{field}`"),
                         span,
                     );
                 }
@@ -644,7 +636,7 @@ impl<'a> Checker<'a> {
                     }
                 }
                 self.error(
-                    format!("optional group `{}` has no field `{}`", group_name, field),
+                    format!("optional group `{group_name}` has no field `{field}`"),
                     span,
                 );
                 Ty::Error
@@ -655,7 +647,7 @@ impl<'a> Checker<'a> {
                         return fty.clone();
                     }
                 }
-                self.error(format!("RollResult has no field `{}`", field), span);
+                self.error(format!("RollResult has no field `{field}`"), span);
                 Ty::Error
             }
             Ty::ActiveCondition => {
@@ -664,7 +656,7 @@ impl<'a> Checker<'a> {
                         return fty.clone();
                     }
                 }
-                self.error(format!("ActiveCondition has no field `{}`", field), span);
+                self.error(format!("ActiveCondition has no field `{field}`"), span);
                 Ty::Error
             }
             Ty::TurnBudget => {
@@ -674,7 +666,7 @@ impl<'a> Checker<'a> {
                     if let Some(fi) = fields.iter().find(|f| f.name == field) {
                         return fi.ty.clone();
                     }
-                    self.error(format!("TurnBudget has no field `{}`", field), span);
+                    self.error(format!("TurnBudget has no field `{field}`"), span);
                     return Ty::Error;
                 }
                 for (fname, ref fty) in TypeEnv::turn_budget_fields() {
@@ -682,7 +674,7 @@ impl<'a> Checker<'a> {
                         return fty.clone();
                     }
                 }
-                self.error(format!("TurnBudget has no field `{}`", field), span);
+                self.error(format!("TurnBudget has no field `{field}`"), span);
                 Ty::Error
             }
             // Qualified enum variant: EnumType.Variant (namespace access)
@@ -692,8 +684,7 @@ impl<'a> Checker<'a> {
                         if !variant.fields.is_empty() {
                             self.error(
                                 format!(
-                                    "variant `{}` has payload fields and must be called as a constructor",
-                                    field
+                                    "variant `{field}` has payload fields and must be called as a constructor"
                                 ),
                                 span,
                             );
@@ -703,7 +694,7 @@ impl<'a> Checker<'a> {
                     }
                 }
                 self.error(
-                    format!("enum `{}` has no variant `{}`", enum_name, field),
+                    format!("enum `{enum_name}` has no variant `{field}`"),
                     span,
                 );
                 Ty::Error
@@ -714,8 +705,7 @@ impl<'a> Checker<'a> {
             Ty::Enum(enum_name) => {
                 self.error(
                     format!(
-                        "cannot access field `{}` on enum value of type `{}`; use pattern matching instead",
-                        field, enum_name
+                        "cannot access field `{field}` on enum value of type `{enum_name}`; use pattern matching instead"
                     ),
                     span,
                 );
@@ -725,19 +715,18 @@ impl<'a> Checker<'a> {
                 if field == "unwrap" || field == "unwrap_or" {
                     self.error(
                         format!(
-                            "`.{}` is a method on option; call it as `.{}()`",
-                            field, field
+                            "`.{field}` is a method on option; call it as `.{field}()`"
                         ),
                         span,
                     );
                 } else {
-                    self.error(format!("option type has no field `{}`", field), span);
+                    self.error(format!("option type has no field `{field}`"), span);
                 }
                 Ty::Error
             }
             _ => {
                 self.error(
-                    format!("cannot access field `{}` on type {}", field, obj_ty),
+                    format!("cannot access field `{field}` on type {obj_ty}"),
                     span,
                 );
                 Ty::Error
@@ -766,7 +755,7 @@ impl<'a> Checker<'a> {
             Ty::List(_) => {
                 if !idx_ty.is_int_like() {
                     self.error(
-                        format!("list index must be int, found {}", idx_ty),
+                        format!("list index must be int, found {idx_ty}"),
                         index.span,
                     );
                 }
@@ -779,14 +768,14 @@ impl<'a> Checker<'a> {
             Ty::Map(key, val) => {
                 if !self.types_compatible(&idx_ty, key) {
                     self.error(
-                        format!("map key type is {}, found {}", key, idx_ty),
+                        format!("map key type is {key}, found {idx_ty}"),
                         index.span,
                     );
                 }
                 *val.clone()
             }
             _ => {
-                self.error(format!("cannot index into {}", obj_ty), span);
+                self.error(format!("cannot index into {obj_ty}"), span);
                 Ty::Error
             }
         }

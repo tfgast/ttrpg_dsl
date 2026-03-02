@@ -3,5 +3,8 @@ name = "ttrpg_lexer"
 version.workspace = true
 edition.workspace = true
 
+[lints]
+workspace = true
+
 [dependencies]
 ttrpg_ast.workspace = true

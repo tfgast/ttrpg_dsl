@@ -26,7 +26,7 @@ impl Runner {
                     Err(e) => {
                         self.clear_state(Vec::new());
                         return Err(CliError::Message(format!(
-                            "invalid glob pattern '{}': {}", token, e
+                            "invalid glob pattern '{token}': {e}"
                         )));
                     }
                 };
@@ -40,8 +40,7 @@ impl Runner {
                         Err(e) => {
                             self.clear_state(Vec::new());
                             return Err(CliError::Message(format!(
-                                "glob error for '{}': {}",
-                                token, e
+                                "glob error for '{token}': {e}"
                             )));
                         }
                     }
@@ -49,8 +48,7 @@ impl Runner {
                 if !found {
                     self.clear_state(Vec::new());
                     return Err(CliError::Message(format!(
-                        "no files matched pattern '{}'",
-                        token
+                        "no files matched pattern '{token}'"
                     )));
                 }
             } else {
@@ -77,7 +75,7 @@ impl Runner {
             match std::fs::read_to_string(path) {
                 Ok(s) => sources.push((path_str.into_owned(), s)),
                 Err(e) => {
-                    let msg = format!("cannot read '{}': {}", path_str, e);
+                    let msg = format!("cannot read '{path_str}': {e}");
                     self.clear_state(resolved_paths);
                     self.diagnostics = Vec::new();
                     return Err(CliError::Message(msg));

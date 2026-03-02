@@ -8,7 +8,7 @@ use crate::check::{Checker, Namespace};
 use crate::env::*;
 use crate::ty::Ty;
 
-impl<'a> Checker<'a> {
+impl Checker<'_> {
     pub(crate) fn check_struct_lit(
         &mut self,
         name: &str,
@@ -19,7 +19,7 @@ impl<'a> Checker<'a> {
         let decl = match self.env.types.get(name) {
             Some(d) => d.clone(),
             None => {
-                self.error(format!("undefined type `{}`", name), span);
+                self.error(format!("undefined type `{name}`"), span);
                 return Ty::Error;
             }
         };
@@ -32,8 +32,7 @@ impl<'a> Checker<'a> {
             DeclInfo::Entity(_) => {
                 self.error(
                     format!(
-                        "cannot construct entity `{}` with struct literal syntax",
-                        name
+                        "cannot construct entity `{name}` with struct literal syntax"
                     ),
                     span,
                 );
@@ -42,8 +41,7 @@ impl<'a> Checker<'a> {
             DeclInfo::Enum(_) => {
                 self.error(
                     format!(
-                        "cannot construct enum `{}` with struct literal syntax",
-                        name
+                        "cannot construct enum `{name}` with struct literal syntax"
                     ),
                     span,
                 );
@@ -57,8 +55,7 @@ impl<'a> Checker<'a> {
             if !base_ty.is_error() && !self.types_compatible(&base_ty, &result_ty) {
                 self.error(
                     format!(
-                        "base expression has type {}, expected {}",
-                        base_ty, result_ty
+                        "base expression has type {base_ty}, expected {result_ty}"
                     ),
                     base_expr.span,
                 );
@@ -109,7 +106,7 @@ impl<'a> Checker<'a> {
 
         // Check for missing required fields (no default) — skip when base provides them
         if !has_base {
-            for fi in declared_fields.iter() {
+            for fi in declared_fields {
                 if !fi.has_default && !seen.contains(&fi.name) {
                     self.error(
                         format!("missing required field `{}` in `{}` literal", fi.name, name),
@@ -142,7 +139,7 @@ impl<'a> Checker<'a> {
                 Some(ty) => unified_ty = ty,
                 None => {
                     self.error(
-                        format!("list element has type {}, expected {}", elem_ty, unified_ty),
+                        format!("list element has type {elem_ty}, expected {unified_ty}"),
                         elem.span,
                     );
                 }
@@ -174,7 +171,7 @@ impl<'a> Checker<'a> {
                 Some(ty) => unified_key = ty,
                 None => {
                     self.error(
-                        format!("map key has type {}, expected {}", key_ty, unified_key),
+                        format!("map key has type {key_ty}, expected {unified_key}"),
                         key.span,
                     );
                 }
@@ -185,7 +182,7 @@ impl<'a> Checker<'a> {
                 Some(ty) => unified_val = ty,
                 None => {
                     self.error(
-                        format!("map value has type {}, expected {}", val_ty, unified_val),
+                        format!("map value has type {val_ty}, expected {unified_val}"),
                         value.span,
                     );
                 }

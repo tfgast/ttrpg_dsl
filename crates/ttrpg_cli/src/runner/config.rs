@@ -7,7 +7,7 @@ impl Runner {
             .parse()
             .map_err(|_| CliError::Message(format!("invalid seed: {}", tail.trim())))?;
         self.rng = StdRng::seed_from_u64(seed);
-        self.output.push(format!("seed set to {}", seed));
+        self.output.push(format!("seed set to {seed}"));
         Ok(())
     }
 
@@ -24,7 +24,7 @@ impl Runner {
             .map(|token| {
                 token
                     .parse()
-                    .map_err(|_| CliError::Message(format!("invalid roll value: {}", token)))
+                    .map_err(|_| CliError::Message(format!("invalid roll value: {token}")))
             })
             .collect::<Result<_, _>>()?;
         let count = vals.len();

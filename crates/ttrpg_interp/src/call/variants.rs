@@ -23,7 +23,7 @@ pub(super) fn construct_enum_variant(
         Some(DeclInfo::Enum(info)) => info.clone(),
         _ => {
             return Err(RuntimeError::with_span(
-                format!("internal error: '{}' is not an enum", enum_name),
+                format!("internal error: '{enum_name}' is not an enum"),
                 call_span,
             ));
         }
@@ -35,7 +35,7 @@ pub(super) fn construct_enum_variant(
         .find(|v| v.name == variant_name)
         .ok_or_else(|| {
             RuntimeError::with_span(
-                format!("enum '{}' has no variant '{}'", enum_name, variant_name),
+                format!("enum '{enum_name}' has no variant '{variant_name}'"),
                 call_span,
             )
         })?;

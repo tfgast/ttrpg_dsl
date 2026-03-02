@@ -16,7 +16,7 @@ enum ResolvedPredicate {
     HasParam { name: Name, ty: Option<Ty> },
 }
 
-impl<'a> Checker<'a> {
+impl Checker<'_> {
     /// Bind the receiver (if present) and condition parameters into the current scope.
     /// Used by both modify and suppress clauses to set up their shared context.
     fn bind_condition_context(
@@ -134,7 +134,7 @@ impl<'a> Checker<'a> {
             Some(info) => info.clone(),
             None => {
                 self.error(
-                    format!("modify target `{}` is not a defined function", target_name),
+                    format!("modify target `{target_name}` is not a defined function"),
                     clause.span,
                 );
                 return;
@@ -149,7 +149,7 @@ impl<'a> Checker<'a> {
         // Modify clauses can only target derive or mechanic functions
         if fn_info.kind != FnKind::Derive && fn_info.kind != FnKind::Mechanic {
             self.error(
-                format!("modify target `{}` must be a derive or mechanic", target_name),
+                format!("modify target `{target_name}` must be a derive or mechanic"),
                 clause.span,
             );
             return;
@@ -171,7 +171,7 @@ impl<'a> Checker<'a> {
             Some(info) => info.clone(),
             None => {
                 self.error(
-                    format!("modify cost target `{}` is not a defined function", target_name),
+                    format!("modify cost target `{target_name}` is not a defined function"),
                     clause.span,
                 );
                 return;
@@ -182,8 +182,7 @@ impl<'a> Checker<'a> {
         if fn_info.kind != FnKind::Action && fn_info.kind != FnKind::Reaction {
             self.error(
                 format!(
-                    "modify cost target `{}` must be an action or reaction",
-                    target_name
+                    "modify cost target `{target_name}` must be an action or reaction"
                 ),
                 clause.span,
             );
@@ -215,7 +214,7 @@ impl<'a> Checker<'a> {
                     .map(|p| p.ty.clone())
             },
             "modify",
-            &format!("does not match any parameter of `{}`", target_name),
+            &format!("does not match any parameter of `{target_name}`"),
         );
 
         // Bring target function's params into scope as read-only
@@ -266,8 +265,7 @@ impl<'a> Checker<'a> {
                     {
                         self.error(
                             format!(
-                                "let `{}`: value has type {}, annotation says {}",
-                                name, val_ty, ann_ty
+                                "let `{name}`: value has type {val_ty}, annotation says {ann_ty}"
                             ),
                             value.span,
                         );
@@ -295,7 +293,7 @@ impl<'a> Checker<'a> {
                 let cond_ty = self.check_expr(condition);
                 if !cond_ty.is_error() && cond_ty != Ty::Bool {
                     self.error(
-                        format!("if condition must be bool, found {}", cond_ty),
+                        format!("if condition must be bool, found {cond_ty}"),
                         condition.span,
                     );
                 }
@@ -372,7 +370,7 @@ impl<'a> Checker<'a> {
                     // Validate tag is declared and visible
                     if !self.env.tags.contains(tag_name) {
                         self.error(
-                            format!("undefined tag `{}`", tag_name),
+                            format!("undefined tag `{tag_name}`"),
                             clause.span,
                         );
                         return;
@@ -620,7 +618,7 @@ impl<'a> Checker<'a> {
 
         // Validate bindings reference real parameters and type-check value expressions
         let target_label = match &clause.target {
-            ModifyTarget::Named(name) | ModifyTarget::Cost(name) => format!("{}", name),
+            ModifyTarget::Named(name) | ModifyTarget::Cost(name) => format!("{name}"),
             ModifyTarget::Selector(_) => "matched functions".to_string(),
         };
         self.validate_clause_bindings(
@@ -633,7 +631,7 @@ impl<'a> Checker<'a> {
                     .map(|p| p.ty.clone())
             },
             "modify",
-            &format!("does not match any parameter of `{}`", target_label),
+            &format!("does not match any parameter of `{target_label}`"),
         );
 
         // Bring target function's params into scope as read-only
@@ -683,8 +681,7 @@ impl<'a> Checker<'a> {
                     {
                         self.error(
                             format!(
-                                "let `{}`: value has type {}, annotation says {}",
-                                name, val_ty, ann_ty
+                                "let `{name}`: value has type {val_ty}, annotation says {ann_ty}"
                             ),
                             value.span,
                         );
@@ -743,7 +740,7 @@ impl<'a> Checker<'a> {
                     && !self.types_compatible(&val_ty, &field_ty)
                 {
                     self.error(
-                        format!("result.{} has type {}, found {}", field, field_ty, val_ty),
+                        format!("result.{field} has type {field_ty}, found {val_ty}"),
                         value.span,
                     );
                 }
@@ -757,7 +754,7 @@ impl<'a> Checker<'a> {
                 let cond_ty = self.check_expr(condition);
                 if !cond_ty.is_error() && cond_ty != Ty::Bool {
                     self.error(
-                        format!("if condition must be bool, found {}", cond_ty),
+                        format!("if condition must be bool, found {cond_ty}"),
                         condition.span,
                     );
                 }

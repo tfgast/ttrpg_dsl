@@ -3,3 +3,6 @@ name = "ttrpg_ose_data"
 version.workspace = true
 edition.workspace = true
 description = "Bundled OSE .ttrpg rule files for the ttrpg_dsl ecosystem"
+
+[lints]
+workspace = true

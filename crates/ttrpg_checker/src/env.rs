@@ -320,7 +320,7 @@ impl TypeEnv {
                 }
                 if !self.types.contains_key(name) {
                     diagnostics.push(Diagnostic::error(
-                        format!("unknown type `{}`", name),
+                        format!("unknown type `{name}`"),
                         texpr.span,
                     ));
                 }
@@ -350,8 +350,7 @@ impl TypeEnv {
             TypeExpr::Qualified { qualifier, name } => {
                 diagnostics.push(Diagnostic::error(
                     format!(
-                        "qualified type `{}.{}` requires module resolution",
-                        qualifier, name
+                        "qualified type `{qualifier}.{name}` requires module resolution"
                     ),
                     texpr.span,
                 ));
@@ -411,8 +410,7 @@ impl TypeEnv {
     /// Return whether a group attached to an entity is required (`include`) vs optional.
     pub fn is_group_required(&self, entity_name: &str, group_name: &str) -> bool {
         self.lookup_optional_group(entity_name, group_name)
-            .map(|g| g.required)
-            .unwrap_or(false)
+            .is_some_and(|g| g.required)
     }
 
     /// Look up a top-level group declaration by name.

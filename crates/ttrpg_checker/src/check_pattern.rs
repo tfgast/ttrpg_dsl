@@ -8,7 +8,7 @@ use crate::env::DeclInfo;
 use crate::scope::VarBinding;
 use crate::ty::Ty;
 
-impl<'a> Checker<'a> {
+impl Checker<'_> {
     /// Check a pattern against the scrutinee type, binding variables into scope.
     /// In match arms, bare identifiers that aren't known variants are rejected
     /// when the scrutinee is an enum (likely typos).
@@ -39,7 +39,7 @@ impl<'a> Checker<'a> {
             PatternKind::NoneLit => {
                 if !scrutinee_ty.is_error() && !matches!(scrutinee_ty, Ty::Option(_)) {
                     self.error(
-                        format!("`none` pattern cannot match type {}", scrutinee_ty),
+                        format!("`none` pattern cannot match type {scrutinee_ty}"),
                         pattern.span,
                     );
                 }
@@ -54,7 +54,7 @@ impl<'a> Checker<'a> {
                 }
                 _ => {
                     self.error(
-                        format!("`some(...)` pattern cannot match type {}", scrutinee_ty),
+                        format!("`some(...)` pattern cannot match type {scrutinee_ty}"),
                         pattern.span,
                     );
                 }
@@ -63,7 +63,7 @@ impl<'a> Checker<'a> {
             PatternKind::IntLit(_) => {
                 if !scrutinee_ty.is_error() && !scrutinee_ty.is_int_like() {
                     self.error(
-                        format!("integer pattern cannot match type {}", scrutinee_ty),
+                        format!("integer pattern cannot match type {scrutinee_ty}"),
                         pattern.span,
                     );
                 }
@@ -72,7 +72,7 @@ impl<'a> Checker<'a> {
             PatternKind::StringLit(_) => {
                 if !scrutinee_ty.is_error() && *scrutinee_ty != Ty::String {
                     self.error(
-                        format!("string pattern cannot match type {}", scrutinee_ty),
+                        format!("string pattern cannot match type {scrutinee_ty}"),
                         pattern.span,
                     );
                 }
@@ -81,7 +81,7 @@ impl<'a> Checker<'a> {
             PatternKind::BoolLit(_) => {
                 if !scrutinee_ty.is_error() && *scrutinee_ty != Ty::Bool {
                     self.error(
-                        format!("bool pattern cannot match type {}", scrutinee_ty),
+                        format!("bool pattern cannot match type {scrutinee_ty}"),
                         pattern.span,
                     );
                 }
@@ -98,7 +98,7 @@ impl<'a> Checker<'a> {
                         // is writing a positional binding like `Variant(x, y)`.
                         if self.scope.has_in_current_scope(name) {
                             self.error(
-                                format!("duplicate binding `{}` in pattern", name),
+                                format!("duplicate binding `{name}` in pattern"),
                                 pattern.span,
                             );
                         } else {
@@ -142,8 +142,7 @@ impl<'a> Checker<'a> {
                     };
                     self.error(
                         format!(
-                            "unknown identifier `{}` in match on enum `{}`; if this is meant as a catch-all, use `_`",
-                            name, enum_label
+                            "unknown identifier `{name}` in match on enum `{enum_label}`; if this is meant as a catch-all, use `_`"
                         ),
                         pattern.span,
                     );
@@ -151,7 +150,7 @@ impl<'a> Checker<'a> {
                     // Non-enum scrutinee, binding context, or in destructure — bind as a variable
                     if self.scope.has_in_current_scope(name) {
                         self.error(
-                            format!("duplicate binding `{}` in pattern", name),
+                            format!("duplicate binding `{name}` in pattern"),
                             pattern.span,
                         );
                     } else {
@@ -184,7 +183,7 @@ impl<'a> Checker<'a> {
                         }
                     } else {
                         self.error(
-                            format!("enum `{}` has no variant `{}`", ty, variant),
+                            format!("enum `{ty}` has no variant `{variant}`"),
                             pattern.span,
                         );
                     }
@@ -198,8 +197,7 @@ impl<'a> Checker<'a> {
                         if s_enum != ty {
                             self.error(
                                 format!(
-                                    "qualified variant `{}.{}` cannot match enum `{}`",
-                                    ty, variant, s_enum
+                                    "qualified variant `{ty}.{variant}` cannot match enum `{s_enum}`"
                                 ),
                                 pattern.span,
                             );
@@ -207,8 +205,7 @@ impl<'a> Checker<'a> {
                     } else if !scrutinee_ty.is_error() {
                         self.error(
                             format!(
-                                "qualified variant pattern cannot match type {}",
-                                scrutinee_ty
+                                "qualified variant pattern cannot match type {scrutinee_ty}"
                             ),
                             pattern.span,
                         );
@@ -216,13 +213,12 @@ impl<'a> Checker<'a> {
                 } else if self.env.types.contains_key(ty) {
                     self.error(
                         format!(
-                            "`{}` is not an enum; qualified variant patterns require an enum type",
-                            ty
+                            "`{ty}` is not an enum; qualified variant patterns require an enum type"
                         ),
                         pattern.span,
                     );
                 } else {
-                    self.error(format!("undefined type `{}`", ty), pattern.span);
+                    self.error(format!("undefined type `{ty}`"), pattern.span);
                 }
             }
 
@@ -245,8 +241,7 @@ impl<'a> Checker<'a> {
                             if s_enum != ty {
                                 self.error(
                                     format!(
-                                        "qualified variant `{}.{}` cannot match enum `{}`",
-                                        ty, variant, s_enum
+                                        "qualified variant `{ty}.{variant}` cannot match enum `{s_enum}`"
                                     ),
                                     pattern.span,
                                 );
@@ -254,8 +249,7 @@ impl<'a> Checker<'a> {
                         } else if !scrutinee_ty.is_error() {
                             self.error(
                                 format!(
-                                    "qualified variant pattern cannot match type {}",
-                                    scrutinee_ty
+                                    "qualified variant pattern cannot match type {scrutinee_ty}"
                                 ),
                                 pattern.span,
                             );
@@ -279,20 +273,19 @@ impl<'a> Checker<'a> {
                         }
                     } else {
                         self.error(
-                            format!("enum `{}` has no variant `{}`", ty, variant),
+                            format!("enum `{ty}` has no variant `{variant}`"),
                             pattern.span,
                         );
                     }
                 } else if self.env.types.contains_key(ty) {
                     self.error(
                         format!(
-                            "`{}` is not an enum; qualified variant patterns require an enum type",
-                            ty
+                            "`{ty}` is not an enum; qualified variant patterns require an enum type"
                         ),
                         pattern.span,
                     );
                 } else {
-                    self.error(format!("undefined type `{}`", ty), pattern.span);
+                    self.error(format!("undefined type `{ty}`"), pattern.span);
                 }
             }
 
@@ -326,7 +319,7 @@ impl<'a> Checker<'a> {
                         }
                     }
                 } else {
-                    self.error(format!("undefined variant `{}`", name), pattern.span);
+                    self.error(format!("undefined variant `{name}`"), pattern.span);
                 }
             }
         }
@@ -373,7 +366,7 @@ impl<'a> Checker<'a> {
                 Some(s_enum.clone())
             } else {
                 // Variant doesn't belong to the scrutinee's enum
-                let owner_list: Vec<String> = owners.iter().map(|e| format!("`{}`", e)).collect();
+                let owner_list: Vec<String> = owners.iter().map(|e| format!("`{e}`")).collect();
                 self.error(
                     format!(
                         "variant `{}` belongs to {}, not `{}`",
@@ -391,8 +384,7 @@ impl<'a> Checker<'a> {
             } else {
                 self.error(
                     format!(
-                        "variant pattern `{}` cannot match type {}",
-                        name, scrutinee_ty
+                        "variant pattern `{name}` cannot match type {scrutinee_ty}"
                     ),
                     span,
                 );
@@ -401,8 +393,7 @@ impl<'a> Checker<'a> {
         } else if !scrutinee_ty.is_error() {
             self.error(
                 format!(
-                    "variant pattern `{}` cannot match type {}",
-                    name, scrutinee_ty
+                    "variant pattern `{name}` cannot match type {scrutinee_ty}"
                 ),
                 span,
             );

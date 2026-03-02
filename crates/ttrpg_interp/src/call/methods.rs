@@ -75,8 +75,7 @@ fn eval_option_method(
         }
         _ => Err(RuntimeError::with_span(
             format!(
-                "option type has no method `{}`; available methods: unwrap, unwrap_or, is_some, is_none",
-                method
+                "option type has no method `{method}`; available methods: unwrap, unwrap_or, is_some, is_none"
             ),
             span,
         )),
@@ -96,11 +95,9 @@ fn eval_list_method(
     match method {
         "len" => Ok(Value::Int(list.len() as i64)),
         "first" => Ok(list.into_iter().next()
-            .map(|v| Value::Option(Some(Box::new(v))))
-            .unwrap_or(Value::None)),
+            .map_or(Value::None, |v| Value::Option(Some(Box::new(v))))),
         "last" => Ok(list.into_iter().next_back()
-            .map(|v| Value::Option(Some(Box::new(v))))
-            .unwrap_or(Value::None)),
+            .map_or(Value::None, |v| Value::Option(Some(Box::new(v))))),
         "reverse" => {
             let mut v = list;
             v.reverse();
@@ -207,8 +204,7 @@ fn eval_list_method(
         }
         _ => Err(RuntimeError::with_span(
             format!(
-                "list type has no method `{}`; available methods: len, first, last, reverse, append, concat, sum, any, all, sort, to_set",
-                method
+                "list type has no method `{method}`; available methods: len, first, last, reverse, append, concat, sum, any, all, sort, to_set"
             ),
             span,
         )),
@@ -319,8 +315,7 @@ fn eval_set_method(
         }
         _ => Err(RuntimeError::with_span(
             format!(
-                "set type has no method `{}`; available methods: len, add, remove, union, intersection, difference, to_list, contains",
-                method
+                "set type has no method `{method}`; available methods: len, add, remove, union, intersection, difference, to_list, contains"
             ),
             span,
         )),
@@ -337,8 +332,7 @@ fn eval_map_method(object: Value, method: &str, span: Span) -> Result<Value, Run
         "values" => Ok(Value::List(map.into_values().collect())),
         _ => Err(RuntimeError::with_span(
             format!(
-                "map type has no method `{}`; available methods: len, keys, values",
-                method
+                "map type has no method `{method}`; available methods: len, keys, values"
             ),
             span,
         )),
@@ -368,7 +362,7 @@ fn eval_dice_method(
                 Value::Int(factor) => {
                     if factor <= 0 {
                         return Err(RuntimeError::with_span(
-                            format!("multiply() factor must be positive, got {}", factor),
+                            format!("multiply() factor must be positive, got {factor}"),
                             span,
                         ));
                     }
@@ -408,8 +402,7 @@ fn eval_dice_method(
                 Response::Override(Value::RollResult(rr)) => Ok(Value::RollResult(rr)),
                 _ => Err(RuntimeError::with_span(
                     format!(
-                        "protocol error: expected Rolled or Override(RollResult) for .roll(), got {:?}",
-                        response
+                        "protocol error: expected Rolled or Override(RollResult) for .roll(), got {response:?}"
                     ),
                     span,
                 )),
@@ -417,8 +410,7 @@ fn eval_dice_method(
         }
         _ => Err(RuntimeError::with_span(
             format!(
-                "DiceExpr type has no method `{}`; available methods: multiply, roll",
-                method
+                "DiceExpr type has no method `{method}`; available methods: multiply, roll"
             ),
             span,
         )),
@@ -440,7 +432,7 @@ fn eval_string_method(
         "contains" | "starts_with" | "ends_with" => {
             if args.is_empty() {
                 return Err(RuntimeError::with_span(
-                    format!("{}() requires 1 argument", method),
+                    format!("{method}() requires 1 argument"),
                     span,
                 ));
             }
@@ -465,8 +457,7 @@ fn eval_string_method(
         }
         _ => Err(RuntimeError::with_span(
             format!(
-                "string type has no method `{}`; available methods: len, contains, starts_with, ends_with",
-                method
+                "string type has no method `{method}`; available methods: len, contains, starts_with, ends_with"
             ),
             span,
         )),

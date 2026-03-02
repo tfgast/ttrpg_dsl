@@ -203,14 +203,14 @@ pub(crate) fn eval_expr(env: &mut Env, expr: &Spanned<ExprKind>) -> Result<Value
                 .suffix_to_unit
                 .get(suffix.as_str())
                 .ok_or_else(|| {
-                    RuntimeError::with_span(format!("unknown unit suffix `{}`", suffix), expr.span)
+                    RuntimeError::with_span(format!("unknown unit suffix `{suffix}`"), expr.span)
                 })?
                 .clone();
             let field_name = match env.interp.type_env.types.get(&unit_name) {
                 Some(DeclInfo::Unit(info)) => info.fields[0].name.clone(),
                 _ => {
                     return Err(RuntimeError::with_span(
-                        format!("unit type `{}` not found", unit_name),
+                        format!("unit type `{unit_name}` not found"),
                         expr.span,
                     ))
                 }
@@ -296,7 +296,7 @@ fn eval_ident(env: &mut Env, name: &str, expr: &Spanned<ExprKind>) -> Result<Val
     }
 
     Err(RuntimeError::with_span(
-        format!("undefined variable '{}'", name),
+        format!("undefined variable '{name}'"),
         expr.span,
     ))
 }

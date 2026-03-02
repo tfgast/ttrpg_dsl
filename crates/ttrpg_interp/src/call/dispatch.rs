@@ -105,7 +105,7 @@ pub(crate) fn eval_call(
             }
 
             Err(RuntimeError::with_span(
-                format!("undefined function '{}'", name),
+                format!("undefined function '{name}'"),
                 call_span,
             ))
         }
@@ -208,7 +208,7 @@ fn dispatch_alias_call(
     }
 
     Err(RuntimeError::with_span(
-        format!("no function, condition, or variant '{}' in module alias", name),
+        format!("no function, condition, or variant '{name}' in module alias"),
         call_span,
     ))
 }

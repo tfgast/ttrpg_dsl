@@ -47,7 +47,7 @@ pub fn resolve_modules(
     // Step 1: Build system registry — which declarations belong to which system
     let mut system_decls: HashMap<Name, Vec<DeclOwnership>> = HashMap::new();
 
-    for item in program.items.iter() {
+    for item in &program.items {
         if let TopLevel::System(system) = &item.node {
             let entry = system_decls.entry(system.name.clone()).or_default();
             for decl in &system.decls {
@@ -73,14 +73,13 @@ pub fn resolve_modules(
                 } else if let Some(&prev_span) = seen_names.get(&(*ns, name.clone())) {
                     diagnostics.push(Diagnostic::error(
                         format!(
-                            "duplicate declaration `{}` in system \"{}\"",
-                            name, sys_name
+                            "duplicate declaration `{name}` in system \"{sys_name}\""
                         ),
                         owned.span,
                     ));
                     // Also point to first definition
                     diagnostics.push(Diagnostic::warning(
-                        format!("first definition of `{}` here", name),
+                        format!("first definition of `{name}` here"),
                         prev_span,
                     ));
                 } else {
@@ -177,7 +176,7 @@ pub fn resolve_modules(
             // Check self-import
             if import.system_name == *sys_name {
                 diagnostics.push(Diagnostic::warning(
-                    format!("system \"{}\" imports itself (no effect)", sys_name),
+                    format!("system \"{sys_name}\" imports itself (no effect)"),
                     import.span,
                 ));
                 continue;
@@ -189,13 +188,12 @@ pub fn resolve_modules(
                     if *existing_target != import.system_name {
                         diagnostics.push(Diagnostic::error(
                             format!(
-                                "duplicate alias \"{}\": already used for \"{}\"",
-                                alias, existing_target
+                                "duplicate alias \"{alias}\": already used for \"{existing_target}\""
                             ),
                             import.span,
                         ));
                         diagnostics.push(Diagnostic::warning(
-                            format!("previous use of alias \"{}\" here", alias),
+                            format!("previous use of alias \"{alias}\" here"),
                             *existing_span,
                         ));
                         continue;
@@ -209,8 +207,7 @@ pub fn resolve_modules(
                     if system_has_name(sys_info, alias) {
                         diagnostics.push(Diagnostic::error(
                             format!(
-                                "alias \"{}\" conflicts with declaration \"{}\"",
-                                alias, alias
+                                "alias \"{alias}\" conflicts with declaration \"{alias}\""
                             ),
                             import.span,
                         ));
@@ -245,8 +242,7 @@ pub fn resolve_modules(
                 if let Some(source_system) = shadowed_system {
                     diagnostics.push(Diagnostic::error(
                         format!(
-                            "alias \"{}\" shadows declaration \"{}\" imported from \"{}\"",
-                            alias, alias, source_system
+                            "alias \"{alias}\" shadows declaration \"{alias}\" imported from \"{source_system}\""
                         ),
                         import.span,
                     ));
@@ -393,16 +389,15 @@ fn detect_cross_system_collisions(module_map: &ModuleMap, diagnostics: &mut Vec<
         for (name, owners) in &name_owners {
             if owners.len() > 1 {
                 let mut sorted_owners = owners.clone();
-                sorted_owners.sort();
+                sorted_owners.sort_unstable();
                 let owners_list = sorted_owners
                     .iter()
-                    .map(|o| format!("\"{}\"", o))
+                    .map(|o| format!("\"{o}\""))
                     .collect::<Vec<_>>()
                     .join(", ");
                 diagnostics.push(Diagnostic::error(
                     format!(
-                        "duplicate {} \"{}\": defined in {}",
-                        ns_label, name, owners_list
+                        "duplicate {ns_label} \"{name}\": defined in {owners_list}"
                     ),
                     Span::dummy(),
                 ));
@@ -718,15 +713,14 @@ fn desugar_type_expr(
                         } else {
                             diagnostics.push(Diagnostic::error(
                                 format!(
-                                    "no type \"{}\" in system \"{}\" (alias \"{}\")",
-                                    name, target, qualifier
+                                    "no type \"{name}\" in system \"{target}\" (alias \"{qualifier}\")"
                                 ),
                                 texpr.span,
                             ));
                         }
                     } else {
                         diagnostics.push(Diagnostic::error(
-                            format!("unknown system \"{}\"", target),
+                            format!("unknown system \"{target}\""),
                             texpr.span,
                         ));
                     }
@@ -734,8 +728,7 @@ fn desugar_type_expr(
                 None => {
                     diagnostics.push(Diagnostic::error(
                         format!(
-                            "unknown module alias \"{}\" in system \"{}\"",
-                            qualifier, current_system
+                            "unknown module alias \"{qualifier}\" in system \"{current_system}\""
                         ),
                         texpr.span,
                     ));

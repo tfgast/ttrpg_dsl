@@ -39,15 +39,13 @@ impl Runner {
                         }
                         None => {
                             return Err(CliError::Message(format!(
-                                "field '{}' not found in group '{}'",
-                                field_name, group_name
+                                "field '{field_name}' not found in group '{group_name}'"
                             )));
                         }
                     },
                     Some(_) => {
                         return Err(CliError::Message(format!(
-                            "field '{}' is not a group on {}",
-                            group_name, handle
+                            "field '{group_name}' is not a group on {handle}"
                         )));
                     }
                     None => {
@@ -57,16 +55,15 @@ impl Runner {
                             .and_then(|tn| self.type_env.lookup_optional_group(tn, group_name));
                         let msg = match group_info {
                             Some(info) if info.required => {
-                                format!("{}.{} is required but missing in state", handle, group_name)
+                                format!("{handle}.{group_name} is required but missing in state")
                             }
                             Some(_) => {
-                                format!("{}.{} is not currently granted", handle, group_name)
+                                format!("{handle}.{group_name} is not currently granted")
                             }
                             None => {
                                 let entity_type = type_name.as_deref().unwrap_or("unknown");
                                 format!(
-                                    "unknown group '{}' on {}",
-                                    group_name, entity_type
+                                    "unknown group '{group_name}' on {entity_type}"
                                 )
                             }
                         };
@@ -99,7 +96,7 @@ impl Runner {
                         }
                         None => {
                             self.output
-                                .push(format!("{}.{} = <not granted>", handle, field));
+                                .push(format!("{handle}.{field} = <not granted>"));
                         }
                     }
                 } else {
@@ -107,8 +104,7 @@ impl Runner {
                     let is_declared = type_name
                         .as_ref()
                         .and_then(|tn| self.type_env.lookup_fields(tn))
-                        .map(|fields| fields.iter().any(|f| f.name == field))
-                        .unwrap_or(false);
+                        .is_some_and(|fields| fields.iter().any(|f| f.name == field));
                     match gs.read_field(&entity, field) {
                         Some(val) => {
                             self.output.push(format!(
@@ -119,7 +115,7 @@ impl Runner {
                             ));
                         }
                         None if is_declared => {
-                            self.output.push(format!("{}.{} = <unset>", handle, field));
+                            self.output.push(format!("{handle}.{field} = <unset>"));
                         }
                         None => {
                             // Check for flattened included-group field
@@ -140,23 +136,20 @@ impl Runner {
                                             }
                                             None => {
                                                 self.output.push(format!(
-                                                    "{}.{} = <unset>",
-                                                    handle, field
+                                                    "{handle}.{field} = <unset>"
                                                 ));
                                             }
                                         }
                                     }
                                     _ => {
                                         return Err(CliError::Message(format!(
-                                            "included group '{}' is missing in state for {}",
-                                            group_name, handle
+                                            "included group '{group_name}' is missing in state for {handle}"
                                         )));
                                     }
                                 }
                             } else {
                                 return Err(CliError::Message(format!(
-                                    "field '{}' not found on {}",
-                                    field, handle
+                                    "field '{field}' not found on {handle}"
                                 )));
                             }
                         }
@@ -170,20 +163,18 @@ impl Runner {
             let type_name = gs
                 .entity_type_name(&entity)
                 .ok_or_else(|| {
-                    CliError::Message(format!("entity for handle '{}' not found in state", handle))
+                    CliError::Message(format!("entity for handle '{handle}' not found in state"))
                 })?
                 .to_string();
             drop(gs);
 
-            self.output.push(format!("{} ({})", handle, type_name));
+            self.output.push(format!("{handle} ({type_name})"));
 
             if let Some(fields) = self.type_env.lookup_fields(&type_name) {
                 let gs = self.game_state.borrow();
                 for fi in fields {
                     let val = gs
-                        .read_field(&entity, &fi.name)
-                        .map(|v| format_value(&v, &self.unit_suffixes))
-                        .unwrap_or_else(|| "<unset>".into());
+                        .read_field(&entity, &fi.name).map_or_else(|| "<unset>".into(), |v| format_value(&v, &self.unit_suffixes));
                     self.output
                         .push(format!("  {}: {} = {}", fi.name, fi.ty.display(), val));
                 }
@@ -205,9 +196,7 @@ impl Runner {
                             .push(format!("  [group] {} ({})", group_info.name, status));
                         for fi in &group_info.fields {
                             let val = fields
-                                .get(&fi.name)
-                                .map(|v| format_value(v, &self.unit_suffixes))
-                                .unwrap_or_else(|| "<unset>".into());
+                                .get(&fi.name).map_or_else(|| "<unset>".into(), |v| format_value(v, &self.unit_suffixes));
                             self.output.push(format!(
                                 "    {}: {} = {}",
                                 fi.name,
@@ -245,20 +234,16 @@ impl Runner {
         for (handle, entity) in &sorted {
             let gs = self.game_state.borrow();
             let type_name = gs
-                .entity_type_name(entity)
-                .map(|n| n.to_string())
-                .unwrap_or_else(|| "?".to_string());
+                .entity_type_name(entity).map_or_else(|| "?".to_string(), |n| n.to_string());
             drop(gs);
 
-            self.output.push(format!("{} ({})", handle, type_name));
+            self.output.push(format!("{handle} ({type_name})"));
 
             if let Some(fields) = self.type_env.lookup_fields(&type_name) {
                 let gs = self.game_state.borrow();
                 for fi in fields {
                     let val = gs
-                        .read_field(entity, &fi.name)
-                        .map(|v| format_value(&v, &self.unit_suffixes))
-                        .unwrap_or_else(|| "<unset>".into());
+                        .read_field(entity, &fi.name).map_or_else(|| "<unset>".into(), |v| format_value(&v, &self.unit_suffixes));
                     self.output
                         .push(format!("  {}: {} = {}", fi.name, fi.ty.display(), val));
                 }
@@ -280,9 +265,7 @@ impl Runner {
                             .push(format!("  [group] {} ({})", group_info.name, status));
                         for fi in &group_info.fields {
                             let val = fields
-                                .get(&fi.name)
-                                .map(|v| format_value(v, &self.unit_suffixes))
-                                .unwrap_or_else(|| "<unset>".into());
+                                .get(&fi.name).map_or_else(|| "<unset>".into(), |v| format_value(v, &self.unit_suffixes));
                             self.output.push(format!(
                                 "    {}: {} = {}",
                                 fi.name,
@@ -320,7 +303,7 @@ impl Runner {
         for (name, decl) in &sorted {
             match decl {
                 DeclInfo::Entity(info) => {
-                    self.output.push(format!("entity {}", name));
+                    self.output.push(format!("entity {name}"));
                     for fi in &info.fields {
                         self.output
                             .push(format!("  {}: {}", fi.name, fi.ty.display()));
@@ -339,14 +322,14 @@ impl Runner {
                     }
                 }
                 DeclInfo::Struct(info) => {
-                    self.output.push(format!("struct {}", name));
+                    self.output.push(format!("struct {name}"));
                     for fi in &info.fields {
                         self.output
                             .push(format!("  {}: {}", fi.name, fi.ty.display()));
                     }
                 }
                 DeclInfo::Enum(info) => {
-                    self.output.push(format!("enum {}", name));
+                    self.output.push(format!("enum {name}"));
                     for variant in &info.variants {
                         if variant.fields.is_empty() {
                             self.output.push(format!("  {}", variant.name));
@@ -363,10 +346,10 @@ impl Runner {
                 }
                 DeclInfo::Unit(info) => {
                     let suffix_str = match &info.suffix {
-                        Some(s) => format!(" suffix {}", s),
+                        Some(s) => format!(" suffix {s}"),
                         None => String::new(),
                     };
-                    self.output.push(format!("unit {}{}", name, suffix_str));
+                    self.output.push(format!("unit {name}{suffix_str}"));
                     for fi in &info.fields {
                         self.output
                             .push(format!("  {}: {}", fi.name, fi.ty.display()));
@@ -459,12 +442,11 @@ impl Runner {
         let name = name.trim();
         if !self.type_env.options.contains(name) {
             return Err(CliError::Message(format!(
-                "unknown option '{}'",
-                name
+                "unknown option '{name}'"
             )));
         }
         self.game_state.borrow_mut().enable_option(name);
-        self.output.push(format!("enabled option '{}'", name));
+        self.output.push(format!("enabled option '{name}'"));
         Ok(())
     }
 
@@ -472,12 +454,11 @@ impl Runner {
         let name = name.trim();
         if !self.type_env.options.contains(name) {
             return Err(CliError::Message(format!(
-                "unknown option '{}'",
-                name
+                "unknown option '{name}'"
             )));
         }
         self.game_state.borrow_mut().disable_option(name);
-        self.output.push(format!("disabled option '{}'", name));
+        self.output.push(format!("disabled option '{name}'"));
         Ok(())
     }
 
@@ -500,10 +481,10 @@ impl Runner {
             let desc = decl
                 .description
                 .as_deref()
-                .map(|d| format!(" — {}", d))
+                .map(|d| format!(" — {d}"))
                 .unwrap_or_default();
             self.output
-                .push(format!("  {} [{}]{}", name, status, desc));
+                .push(format!("  {name} [{status}]{desc}"));
         }
         Ok(())
     }

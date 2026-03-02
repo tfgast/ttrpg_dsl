@@ -101,8 +101,8 @@ impl PartialOrd for PositionValue {
 
 impl Ord for PositionValue {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        let a = Arc::as_ptr(&self.0) as *const () as usize;
-        let b = Arc::as_ptr(&other.0) as *const () as usize;
+        let a = Arc::as_ptr(&self.0).cast::<()>() as usize;
+        let b = Arc::as_ptr(&other.0).cast::<()>() as usize;
         a.cmp(&b)
     }
 }
@@ -459,7 +459,7 @@ impl std::hash::Hash for Value {
                 }
             }
             Value::Position(v) => {
-                (Arc::as_ptr(&v.0) as *const () as usize).hash(state);
+                (Arc::as_ptr(&v.0).cast::<()>() as usize).hash(state);
             }
             Value::Condition { name, args } => {
                 name.hash(state);
@@ -546,8 +546,8 @@ pub fn value_type_display(val: &Value) -> String {
         Value::Position(_) => "Position".into(),
         Value::Condition { .. } => "Condition".into(),
         Value::Invocation(_) => "Invocation".into(),
-        Value::EnumNamespace(name) => format!("{}(namespace)", name),
-        Value::ModuleAlias(name) => format!("{}(module alias)", name),
+        Value::EnumNamespace(name) => format!("{name}(namespace)"),
+        Value::ModuleAlias(name) => format!("{name}(module alias)"),
     }
 }
 

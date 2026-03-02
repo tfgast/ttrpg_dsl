@@ -75,8 +75,7 @@ pub(crate) fn collect_modifiers_owned(
             Some(c) => c,
             None => {
                 return Err(RuntimeError::new(format!(
-                    "read_conditions returned None for entity {:?} — host state out of sync",
-                    entity_ref,
+                    "read_conditions returned None for entity {entity_ref:?} — host state out of sync",
                 )));
             }
         };
@@ -378,8 +377,7 @@ pub(crate) fn run_phase1(
             if !matches!(response, Response::Acknowledged) {
                 return Err(RuntimeError::with_span(
                     format!(
-                        "protocol error: expected Acknowledged for ModifyApplied, got {:?}",
-                        response
+                        "protocol error: expected Acknowledged for ModifyApplied, got {response:?}"
                     ),
                     modifier.clause.span,
                 ));
@@ -456,8 +454,7 @@ pub(crate) fn run_phase2(
             if !matches!(response, Response::Acknowledged) {
                 return Err(RuntimeError::with_span(
                     format!(
-                        "protocol error: expected Acknowledged for ModifyApplied, got {:?}",
-                        response
+                        "protocol error: expected Acknowledged for ModifyApplied, got {response:?}"
                     ),
                     modifier.clause.span,
                 ));
@@ -765,8 +762,7 @@ pub(crate) fn emit_modify_applied_events(
     if env.emit_depth >= MAX_EMIT_DEPTH {
         return Err(RuntimeError::with_span(
             format!(
-                "emit depth limit ({}) exceeded — possible circular emit chain from modify_applied",
-                MAX_EMIT_DEPTH
+                "emit depth limit ({MAX_EMIT_DEPTH}) exceeded — possible circular emit chain from modify_applied"
             ),
             span,
         ));

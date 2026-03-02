@@ -15,7 +15,7 @@ pub(crate) enum CallKind {
     Function,
 }
 
-impl<'a> Checker<'a> {
+impl Checker<'_> {
     pub(crate) fn check_call(
         &mut self,
         callee: &Spanned<ExprKind>,
@@ -65,14 +65,12 @@ impl<'a> Checker<'a> {
                             let current_ctx = self.scope.current_block_kind();
                             if !matches!(
                                 current_ctx,
-                                Some(BlockKind::ActionResolve)
-                                    | Some(BlockKind::ReactionResolve)
-                                    | Some(BlockKind::HookResolve)
+                                Some(BlockKind::ActionResolve | BlockKind::ReactionResolve |
+BlockKind::HookResolve)
                             ) {
                                 self.error(
                                     format!(
-                                        "`{}` is an action and can only be called from action, reaction, or hook context",
-                                        field
+                                        "`{field}` is an action and can only be called from action, reaction, or hook context"
                                     ),
                                     span,
                                 );
@@ -169,7 +167,7 @@ impl<'a> Checker<'a> {
         let fn_info = match self.env.lookup_fn(&callee_name) {
             Some(info) => info.clone(),
             None => {
-                self.error(format!("undefined function `{}`", callee_name), callee.span);
+                self.error(format!("undefined function `{callee_name}`"), callee.span);
                 for arg in args {
                     self.check_expr(&arg.value);
                 }
@@ -192,8 +190,7 @@ impl<'a> Checker<'a> {
             if !is_pure_builtin {
                 self.error(
                     format!(
-                        "`{}` cannot be called in trigger/suppress binding context",
-                        callee_name
+                        "`{callee_name}` cannot be called in trigger/suppress binding context"
                     ),
                     span,
                 );
@@ -214,8 +211,7 @@ impl<'a> Checker<'a> {
             };
             self.error(
                 format!(
-                    "{} cannot be called directly; `{}` is triggered by events",
-                    kind_name, callee_name
+                    "{kind_name} cannot be called directly; `{callee_name}` is triggered by events"
                 ),
                 span,
             );
@@ -226,14 +222,12 @@ impl<'a> Checker<'a> {
             let current_ctx = self.scope.current_block_kind();
             if !matches!(
                 current_ctx,
-                Some(BlockKind::ActionResolve)
-                    | Some(BlockKind::ReactionResolve)
-                    | Some(BlockKind::HookResolve)
+                Some(BlockKind::ActionResolve | BlockKind::ReactionResolve |
+BlockKind::HookResolve)
             ) {
                 self.error(
                     format!(
-                        "`{}` is an action and can only be called from action, reaction, or hook context",
-                        callee_name
+                        "`{callee_name}` is an action and can only be called from action, reaction, or hook context"
                     ),
                     span,
                 );
@@ -269,7 +263,7 @@ impl<'a> Checker<'a> {
         let info = match self.env.types.get(enum_name) {
             Some(DeclInfo::Enum(info)) => info.clone(),
             _ => {
-                self.error(format!("undefined enum `{}`", enum_name), span);
+                self.error(format!("undefined enum `{enum_name}`"), span);
                 return Ty::Error;
             }
         };
@@ -278,7 +272,7 @@ impl<'a> Checker<'a> {
             Some(v) => v,
             None => {
                 self.error(
-                    format!("enum `{}` has no variant `{}`", enum_name, variant_name),
+                    format!("enum `{enum_name}` has no variant `{variant_name}`"),
                     span,
                 );
                 return Ty::Error;
@@ -339,8 +333,7 @@ impl<'a> Checker<'a> {
                     if !self.types_compatible(&arg_ty, expected) {
                         self.error(
                             format!(
-                                "variant field `{}` has type {}, found {}",
-                                fname, expected, arg_ty
+                                "variant field `{fname}` has type {expected}, found {arg_ty}"
                             ),
                             arg.span,
                         );
@@ -348,7 +341,7 @@ impl<'a> Checker<'a> {
                 }
             } else if let Some(ref name) = arg.name {
                 self.error(
-                    format!("variant `{}` has no field `{}`", variant_name, name),
+                    format!("variant `{variant_name}` has no field `{name}`"),
                     arg.span,
                 );
             } else {
@@ -370,8 +363,7 @@ impl<'a> Checker<'a> {
             if !satisfied.contains(&idx) {
                 self.error(
                     format!(
-                        "missing required field `{}` in variant `{}`",
-                        fname, variant_name
+                        "missing required field `{fname}` in variant `{variant_name}`"
                     ),
                     span,
                 );

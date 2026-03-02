@@ -199,7 +199,7 @@ fn eval_add(
         (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a + b)),
         (Value::Int(a), Value::Float(b)) => Ok(Value::Float(*a as f64 + b)),
         (Value::Float(a), Value::Int(b)) => Ok(Value::Float(a + *b as f64)),
-        (Value::Str(a), Value::Str(b)) => Ok(Value::Str(format!("{}{}", a, b))),
+        (Value::Str(a), Value::Str(b)) => Ok(Value::Str(format!("{a}{b}"))),
         // DiceExpr algebra: DiceExpr + Int → adjust modifier
         (Value::DiceExpr(d), Value::Int(n)) => {
             let modifier = d.modifier.checked_add(*n).ok_or_else(|| {

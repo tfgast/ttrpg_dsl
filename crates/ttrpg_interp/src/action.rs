@@ -46,8 +46,7 @@ fn emit_action_started(
             );
             Err(RuntimeError::with_span(
                 format!(
-                    "protocol error: expected Acknowledged or Vetoed for ActionStarted, got {:?}",
-                    other
+                    "protocol error: expected Acknowledged or Vetoed for ActionStarted, got {other:?}"
                 ),
                 call_span,
             ))
@@ -74,8 +73,7 @@ fn emit_action_completed(
         Response::Acknowledged => Ok(()),
         other => Err(RuntimeError::with_span(
             format!(
-                "protocol error: expected Acknowledged for ActionCompleted, got {:?}",
-                other
+                "protocol error: expected Acknowledged for ActionCompleted, got {other:?}"
             ),
             call_span,
         )),
@@ -148,8 +146,7 @@ fn execute_pipeline(
             _ => {
                 return Err(RuntimeError::with_span(
                     format!(
-                        "requires clause must evaluate to Bool, got {:?}",
-                        requires_val
+                        "requires clause must evaluate to Bool, got {requires_val:?}"
                     ),
                     requires_expr.span,
                 ));
@@ -169,8 +166,7 @@ fn execute_pipeline(
             other => {
                 return Err(RuntimeError::with_span(
                     format!(
-                        "protocol error: expected Acknowledged or Override(Bool) for RequiresCheck, got {:?}",
-                        other
+                        "protocol error: expected Acknowledged or Override(Bool) for RequiresCheck, got {other:?}"
                     ),
                     requires_expr.span,
                 ));
@@ -376,7 +372,7 @@ fn collect_and_apply_cost_modifiers(
     actor: &EntityRef,
     action_name: &str,
     original_cost: &CostClause,
-    _call_span: Span,
+    call_span: Span,
 ) -> Result<Option<CostClause>, RuntimeError> {
     use ttrpg_ast::ast::{ConditionClause, ModifyTarget};
     use crate::effect::{Effect, FieldChange, ModifySource, Phase, Response};
@@ -536,8 +532,7 @@ fn collect_and_apply_cost_modifiers(
             if !matches!(response, Response::Acknowledged) {
                 return Err(RuntimeError::with_span(
                     format!(
-                        "protocol error: expected Acknowledged for ModifyApplied, got {:?}",
-                        response
+                        "protocol error: expected Acknowledged for ModifyApplied, got {response:?}"
                     ),
                     modifier.clause.span,
                 ));
@@ -560,7 +555,7 @@ fn collect_and_apply_cost_modifiers(
                 condition_duration: Some(m.condition_duration.clone()),
             })
             .collect();
-        emit_modify_applied_events(env, &owned, action_name, _call_span)?;
+        emit_modify_applied_events(env, &owned, action_name, call_span)?;
     }
 
     if effective.free {
@@ -582,7 +577,7 @@ fn exec_cost_modify_stmts(
     for stmt in stmts {
         match stmt {
             ModifyStmt::CostOverride { tokens, free, .. } => {
-                effective.tokens = tokens.clone();
+                effective.tokens.clone_from(tokens);
                 effective.free = *free;
             }
             ModifyStmt::Let { name, value, .. } => {
@@ -702,8 +697,7 @@ fn deduct_costs(
             other => {
                 return Err(RuntimeError::with_span(
                     format!(
-                        "protocol error: expected Acknowledged, Override(Str), or Vetoed for DeductCost, got {:?}",
-                        other
+                        "protocol error: expected Acknowledged, Override(Str), or Vetoed for DeductCost, got {other:?}"
                     ),
                     call_span,
                 ));

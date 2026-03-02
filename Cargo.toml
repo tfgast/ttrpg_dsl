@@ -27,3 +27,47 @@ glob = "0.3"
 nu-ansi-term = "0.50"
 rand = "0.9"
 reedline = "0.45"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+# Enable pedantic as a baseline, then allow noisy/subjective lints
+pedantic = { level = "warn", priority = -1 }
+
+# Documentation lints — too noisy for a DSL compiler
+doc_markdown = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+
+# Style preferences we disagree with
+must_use_candidate = "allow"
+return_self_not_must_use = "allow"
+module_name_repetitions = "allow"
+too_many_lines = "allow"
+single_match_else = "allow"
+if_not_else = "allow"
+match_same_arms = "allow"
+wildcard_imports = "allow"
+items_after_statements = "allow"
+similar_names = "allow"
+
+# Cast lints — intentional in a DSL interpreter
+cast_possible_truncation = "allow"
+cast_possible_wrap = "allow"
+cast_precision_loss = "allow"
+cast_sign_loss = "allow"
+cast_lossless = "allow"
+
+# Would require large mechanical refactors for marginal benefit
+needless_pass_by_value = "allow"
+trivially_copy_pass_by_ref = "allow"
+unnecessary_wraps = "allow"
+redundant_closure_for_method_calls = "allow"
+unused_self = "allow"
+
+# Patterns used intentionally throughout the codebase
+manual_let_else = "allow"
+format_push_string = "allow"
+ref_option = "allow"
+match_wildcard_for_single_variants = "allow"

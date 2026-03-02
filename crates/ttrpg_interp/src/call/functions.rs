@@ -30,7 +30,7 @@ pub(crate) fn evaluate_fn_with_values(
         .get(name)
         .or_else(|| env.interp.program.mechanics.get(name))
         .ok_or_else(|| {
-            RuntimeError::with_span(format!("undefined function '{}'", name), call_span)
+            RuntimeError::with_span(format!("undefined function '{name}'"), call_span)
         })?;
 
     let ast_params = fn_decl.params.clone();
@@ -42,7 +42,7 @@ pub(crate) fn evaluate_fn_with_values(
         .lookup_fn(name)
         .ok_or_else(|| {
             RuntimeError::with_span(
-                format!("internal error: no type info for function '{}'", name),
+                format!("internal error: no type info for function '{name}'"),
                 call_span,
             )
         })?
@@ -143,8 +143,7 @@ pub(super) fn dispatch_derive_or_mechanic(
         .ok_or_else(|| {
             RuntimeError::with_span(
                 format!(
-                    "internal error: no declaration found for function '{}'",
-                    name
+                    "internal error: no declaration found for function '{name}'"
                 ),
                 call_span,
             )
@@ -161,7 +160,7 @@ pub(super) fn dispatch_derive_or_mechanic(
         .lookup_fn(name)
         .ok_or_else(|| {
             RuntimeError::with_span(
-                format!("internal error: no type info for function '{}'", name),
+                format!("internal error: no type info for function '{name}'"),
                 call_span,
             )
         })?
@@ -222,7 +221,7 @@ pub(super) fn dispatch_table(
     // Look up the table declaration
     let table_decl = env.interp.program.tables.get(name).ok_or_else(|| {
         RuntimeError::with_span(
-            format!("internal error: no declaration found for table '{}'", name),
+            format!("internal error: no declaration found for table '{name}'"),
             call_span,
         )
     })?;
@@ -244,7 +243,7 @@ pub(crate) fn dispatch_table_with_values(
 ) -> Result<Value, RuntimeError> {
     if !env.interp.program.tables.contains_key(name) {
         return Err(RuntimeError::with_span(
-            format!("undefined table '{}'", name),
+            format!("undefined table '{name}'"),
             call_span,
         ));
     }
@@ -262,7 +261,7 @@ fn dispatch_table_core(
 
     let table_decl = env.interp.program.tables.get(name).ok_or_else(|| {
         RuntimeError::with_span(
-            format!("internal error: no declaration found for table '{}'", name),
+            format!("internal error: no declaration found for table '{name}'"),
             call_span,
         )
     })?;
@@ -330,7 +329,7 @@ fn dispatch_table_core(
             name,
             arg_values
                 .iter()
-                .map(|v| format!("{:?}", v))
+                .map(|v| format!("{v:?}"))
                 .collect::<Vec<_>>()
                 .join(", ")
         ),
@@ -348,7 +347,7 @@ pub(super) fn dispatch_prompt(
 ) -> Result<Value, RuntimeError> {
     let prompt_decl = env.interp.program.prompts.get(name).ok_or_else(|| {
         RuntimeError::with_span(
-            format!("internal error: no declaration found for prompt '{}'", name),
+            format!("internal error: no declaration found for prompt '{name}'"),
             call_span,
         )
     })?;
@@ -364,7 +363,7 @@ pub(super) fn dispatch_prompt(
         .lookup_fn(name)
         .ok_or_else(|| {
             RuntimeError::with_span(
-                format!("internal error: no type info for prompt '{}'", name),
+                format!("internal error: no type info for prompt '{name}'"),
                 call_span,
             )
         })?
@@ -416,8 +415,7 @@ pub(super) fn dispatch_prompt(
         }
         _ => Err(RuntimeError::with_span(
             format!(
-                "protocol error: expected PromptResult or Override response for ResolvePrompt, got {:?}",
-                response
+                "protocol error: expected PromptResult or Override response for ResolvePrompt, got {response:?}"
             ),
             call_span,
         )),

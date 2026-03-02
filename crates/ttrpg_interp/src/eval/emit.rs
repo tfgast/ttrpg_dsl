@@ -33,8 +33,7 @@ pub(crate) fn eval_emit(
     if env.emit_depth >= MAX_EMIT_DEPTH {
         return Err(RuntimeError::with_span(
             format!(
-                "emit depth limit ({}) exceeded — possible circular emit chain",
-                MAX_EMIT_DEPTH
+                "emit depth limit ({MAX_EMIT_DEPTH}) exceeded — possible circular emit chain"
             ),
             span,
         ));
@@ -47,7 +46,7 @@ pub(crate) fn eval_emit(
         .events
         .get(event_name)
         .ok_or_else(|| {
-            RuntimeError::with_span(format!("undefined event '{}'", event_name), span)
+            RuntimeError::with_span(format!("undefined event '{event_name}'"), span)
         })?
         .clone();
 
@@ -106,7 +105,7 @@ pub(crate) fn eval_emit(
 
     // 5. Construct payload
     let payload = Value::Struct {
-        name: Name::from(format!("__event_{}", event_name)),
+        name: Name::from(format!("__event_{event_name}")),
         fields: all_fields,
     };
 

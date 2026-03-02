@@ -66,8 +66,7 @@ pub fn what_triggers(
         Some(info) => info.clone(),
         None => {
             return Err(RuntimeError::new(format!(
-                "undefined event '{}'",
-                event_name
+                "undefined event '{event_name}'"
             )));
         }
     };
@@ -152,8 +151,7 @@ pub fn find_matching_hooks(
         Some(info) => info.clone(),
         None => {
             return Err(RuntimeError::new(format!(
-                "undefined event '{}'",
-                event_name
+                "undefined event '{event_name}'"
             )));
         }
     };
@@ -277,8 +275,7 @@ fn match_bindings_inner(
                 }
                 None => {
                     return Err(RuntimeError::new(format!(
-                        "event payload missing expected field '{}'",
-                        name,
+                        "event payload missing expected field '{name}'",
                     )));
                 }
             }
@@ -298,8 +295,7 @@ fn match_bindings_inner(
                 }
                 None => {
                     return Err(RuntimeError::new(format!(
-                        "event payload missing expected param '{}'",
-                        param_name,
+                        "event payload missing expected param '{param_name}'",
                     )));
                 }
             }
@@ -353,14 +349,12 @@ fn is_suppressed(
                 }
                 Some(other) => {
                     return Err(RuntimeError::new(format!(
-                        "event payload field '{}' should be Entity, got {:?}",
-                        field_name, other,
+                        "event payload field '{field_name}' should be Entity, got {other:?}",
                     )));
                 }
                 None => {
                     return Err(RuntimeError::new(format!(
-                        "event payload missing expected entity field '{}'",
-                        field_name,
+                        "event payload missing expected entity field '{field_name}'",
                     )));
                 }
             }
@@ -375,8 +369,7 @@ fn is_suppressed(
             Some(c) => c,
             None => {
                 return Err(RuntimeError::new(format!(
-                    "read_conditions returned None for entity {:?} — host state out of sync",
-                    entity_ref,
+                    "read_conditions returned None for entity {entity_ref:?} — host state out of sync",
                 )));
             }
         };

@@ -3,6 +3,9 @@ name = "ttrpg_checker"
 version.workspace = true
 edition.workspace = true
 
+[lints]
+workspace = true
+
 [dependencies]
 ttrpg_ast.workspace = true
 

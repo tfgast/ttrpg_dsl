@@ -129,7 +129,7 @@ impl<'a> Checker<'a> {
             }
             let qualified: Vec<String> = owners
                 .iter()
-                .map(|e| format!("{}.{}", e, variant))
+                .map(|e| format!("{e}.{variant}"))
                 .collect();
             let owners_display: Vec<&str> = owners.iter().map(|o| o.as_str()).collect();
             self.error(
@@ -203,8 +203,7 @@ impl<'a> Checker<'a> {
             if !visible {
                 self.error(
                     format!(
-                        "`{}` is defined in system \"{}\"; add `use \"{}\"` to access it from \"{}\"",
-                        name, owner, owner, current
+                        "`{name}` is defined in system \"{owner}\"; add `use \"{owner}\"` to access it from \"{current}\""
                     ),
                     span,
                 );
@@ -397,7 +396,7 @@ impl<'a> Checker<'a> {
                             && !self.types_compatible(&key_ty, expected_ty)
                         {
                             self.error(
-                                format!("table key has type {}, expected {}", key_ty, expected_ty),
+                                format!("table key has type {key_ty}, expected {expected_ty}"),
                                 key.span,
                             );
                         }
@@ -407,8 +406,7 @@ impl<'a> Checker<'a> {
                         if !expected_ty.is_error() && *expected_ty != Ty::Int {
                             self.error(
                                 format!(
-                                    "range keys are only valid for int parameters, found {}",
-                                    expected_ty
+                                    "range keys are only valid for int parameters, found {expected_ty}"
                                 ),
                                 key.span,
                             );
@@ -416,14 +414,14 @@ impl<'a> Checker<'a> {
                         let start_ty = self.check_expr(start);
                         if !start_ty.is_error() && start_ty != Ty::Int {
                             self.error(
-                                format!("range start must be int, found {}", start_ty),
+                                format!("range start must be int, found {start_ty}"),
                                 start.span,
                             );
                         }
                         let end_ty = self.check_expr(end);
                         if !end_ty.is_error() && end_ty != Ty::Int {
                             self.error(
-                                format!("range end must be int, found {}", end_ty),
+                                format!("range end must be int, found {end_ty}"),
                                 end.span,
                             );
                         }
@@ -439,7 +437,7 @@ impl<'a> Checker<'a> {
             if !val_ty.is_error() && !ret_ty.is_error() && !self.types_compatible(&val_ty, &ret_ty)
             {
                 self.error(
-                    format!("table entry value has type {}, expected {}", val_ty, ret_ty),
+                    format!("table entry value has type {val_ty}, expected {ret_ty}"),
                     entry.value.span,
                 );
             }
@@ -490,7 +488,7 @@ impl<'a> Checker<'a> {
             let req_ty = self.check_expr(requires);
             if !req_ty.is_error() && req_ty != Ty::Bool {
                 self.error(
-                    format!("requires clause must be bool, found {}", req_ty),
+                    format!("requires clause must be bool, found {req_ty}"),
                     requires.span,
                 );
             }
@@ -592,7 +590,7 @@ impl<'a> Checker<'a> {
                 if let Some(ref name) = binding.name {
                     if !seen_bindings.insert(name.clone()) {
                         self.error(
-                            format!("duplicate trigger binding `{}`", name),
+                            format!("duplicate trigger binding `{name}`"),
                             binding.span,
                         );
                     }
@@ -615,8 +613,7 @@ impl<'a> Checker<'a> {
                         if !val_ty.is_error() && !self.types_compatible(&val_ty, &expected) {
                             self.error(
                                 format!(
-                                    "trigger binding `{}` has type {}, expected {}",
-                                    name, val_ty, expected
+                                    "trigger binding `{name}` has type {val_ty}, expected {expected}"
                                 ),
                                 binding.value.span,
                             );
@@ -646,8 +643,7 @@ impl<'a> Checker<'a> {
                         if !val_ty.is_error() && !self.types_compatible(&val_ty, expected) {
                             self.error(
                                 format!(
-                                    "positional trigger binding {} has type {}, expected {} (parameter `{}`)",
-                                    positional_index, val_ty, expected, param_name
+                                    "positional trigger binding {positional_index} has type {val_ty}, expected {expected} (parameter `{param_name}`)"
                                 ),
                                 binding.value.span,
                             );
@@ -790,8 +786,7 @@ impl<'a> Checker<'a> {
             if !suggest_ty.is_error() && !self.types_compatible(&suggest_ty, &ret_ty) {
                 self.error(
                     format!(
-                        "suggest expression has type {}, expected {}",
-                        suggest_ty, ret_ty
+                        "suggest expression has type {suggest_ty}, expected {ret_ty}"
                     ),
                     suggest.span,
                 );
@@ -1003,8 +998,7 @@ impl<'a> Checker<'a> {
         if !self.types_compatible(body_ty, ret_ty) {
             self.error(
                 format!(
-                    "function body has type {}, expected return type {}",
-                    body_ty, ret_ty
+                    "function body has type {body_ty}, expected return type {ret_ty}"
                 ),
                 span,
             );
@@ -1035,8 +1029,7 @@ impl<'a> Checker<'a> {
                     {
                         self.error(
                             format!(
-                                "entity `{}` has no optional group `{}`",
-                                entity_name, group_name
+                                "entity `{entity_name}` has no optional group `{group_name}`"
                             ),
                             span,
                         );
@@ -1047,7 +1040,7 @@ impl<'a> Checker<'a> {
                         && !self.env.has_optional_group_named(group_name)
                     {
                         self.error(
-                            format!("unknown optional group `{}` for type `entity`", group_name),
+                            format!("unknown optional group `{group_name}` for type `entity`"),
                             span,
                         );
                     }
@@ -1055,8 +1048,7 @@ impl<'a> Checker<'a> {
                 _ if !ty.is_error() => {
                     self.error(
                         format!(
-                            "`with` constraint on `{}` requires entity type, found {}",
-                            var_name, ty
+                            "`with` constraint on `{var_name}` requires entity type, found {ty}"
                         ),
                         span,
                     );
@@ -1134,9 +1126,8 @@ impl<'a> Checker<'a> {
         }
         // AnyEntity matches any Entity(_)
         match (actual, expected) {
-            (Ty::Entity(_), Ty::AnyEntity)
-            | (Ty::AnyEntity, Ty::Entity(_))
-            | (Ty::AnyEntity, Ty::AnyEntity) => return true,
+            (Ty::Entity(_) | Ty::AnyEntity, Ty::AnyEntity) |
+(Ty::AnyEntity, Ty::Entity(_)) => return true,
             _ => {}
         }
         // ActiveCondition is accepted where Condition is expected (remove_condition overload)

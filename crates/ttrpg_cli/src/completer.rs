@@ -206,7 +206,7 @@ impl Completer for TtrpgCompleter {
                     if let Some(inner_dot) = after_dot.find('.') {
                         let group_name = &after_dot[..inner_dot];
                         let field_prefix = &after_dot[inner_dot + 1..];
-                        let prefix_str = format!("{}.{}.", handle, group_name);
+                        let prefix_str = format!("{handle}.{group_name}.");
                         let field_start = word_start + prefix_str.len();
 
                         if let Some(entity_type) = ctx.handle_types.get(handle) {
@@ -221,7 +221,7 @@ impl Completer for TtrpgCompleter {
                         Vec::new()
                     } else {
                         // After handle. — complete base fields + group names
-                        let prefix_str = format!("{}.", handle);
+                        let prefix_str = format!("{handle}.");
                         let field_start = word_start + prefix_str.len();
 
                         if let Some(entity_type) = ctx.handle_types.get(handle) {

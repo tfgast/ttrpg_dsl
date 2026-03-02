@@ -24,7 +24,7 @@ impl Parser {
                 if let TokenKind::Int(n) = self.peek().clone() {
                     self.advance();
                     let negated = n.checked_neg().ok_or_else(|| {
-                        self.error(format!("integer overflow in pattern: -{}", n));
+                        self.error(format!("integer overflow in pattern: -{n}"));
                     })?;
                     Ok(Spanned::new(
                         PatternKind::IntLit(negated),

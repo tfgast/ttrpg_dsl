@@ -319,7 +319,7 @@ pub(super) fn eval_stmt(
             let response = env.handler.handle(effect);
             if let Response::Vetoed = response {
                 return Err(RuntimeError::with_span(
-                    format!("grant {} was vetoed by host", group_name),
+                    format!("grant {group_name} was vetoed by host"),
                     stmt.span,
                 ));
             }
@@ -344,7 +344,7 @@ pub(super) fn eval_stmt(
             let response = env.handler.handle(effect);
             if let Response::Vetoed = response {
                 return Err(RuntimeError::with_span(
-                    format!("revoke {} was vetoed by host", group_name),
+                    format!("revoke {group_name} was vetoed by host"),
                     stmt.span,
                 ));
             }

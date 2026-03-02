@@ -9,7 +9,7 @@ use crate::env::*;
 use crate::scope::BlockKind;
 use crate::ty::Ty;
 
-impl<'a> Checker<'a> {
+impl Checker<'_> {
     // ── Alias-qualified expression resolution ──────────────────────
 
     /// Resolve the target system for a module alias in the current system.
@@ -35,7 +35,7 @@ impl<'a> Checker<'a> {
         let target = match self.resolve_alias_target(alias, span) {
             Some(t) => t,
             None => {
-                self.error(format!("unknown module alias `{}`", alias), span);
+                self.error(format!("unknown module alias `{alias}`"), span);
                 return Ty::Error;
             }
         };
@@ -48,7 +48,7 @@ impl<'a> Checker<'a> {
                         DeclInfo::Enum(_) => Ty::EnumType(Name::from(field)),
                         DeclInfo::Struct(_) | DeclInfo::Entity(_) | DeclInfo::Unit(_) => {
                             self.error(
-                                format!("type `{}` cannot be used as a value", field),
+                                format!("type `{field}` cannot be used as a value"),
                                 span,
                             );
                             Ty::Error
@@ -65,46 +65,45 @@ impl<'a> Checker<'a> {
                         .iter()
                         .filter(|e| sys_info.types.contains(e.as_str()))
                         .collect();
-                    let enum_name = if matching.len() == 1 {
-                        matching[0]
-                    } else if matching.len() > 1 {
-                        let qualified: Vec<String> = matching
-                            .iter()
-                            .map(|e| format!("{}.{}.{}", alias, e, field))
-                            .collect();
-                        self.error(
-                            format!(
-                                "variant `{}` is ambiguous in system \"{}\" (alias `{}`); use a qualified form: {}",
-                                field, target, alias, qualified.join(", ")
-                            ),
-                            span,
-                        );
-                        return Ty::Error;
-                    } else {
-                        self.error(
-                            format!(
-                                "variant `{}` is not defined by any enum in system \"{}\" (alias `{}`)",
-                                field, target, alias
-                            ),
-                            span,
-                        );
-                        return Ty::Error;
+                    let enum_name = match matching.len() {
+                        1 => matching[0],
+                        2.. => {
+                            let qualified: Vec<String> = matching
+                                .iter()
+                                .map(|e| format!("{alias}.{e}.{field}"))
+                                .collect();
+                            self.error(
+                                format!(
+                                    "variant `{}` is ambiguous in system \"{}\" (alias `{}`); use a qualified form: {}",
+                                    field, target, alias, qualified.join(", ")
+                                ),
+                                span,
+                            );
+                            return Ty::Error;
+                        }
+                        _ => {
+                            self.error(
+                                format!(
+                                    "variant `{field}` is not defined by any enum in system \"{target}\" (alias `{alias}`)"
+                                ),
+                                span,
+                            );
+                            return Ty::Error;
+                        }
                     };
                     if let Some(DeclInfo::Enum(info)) = self.env.types.get(enum_name.as_str()) {
                         if let Some(variant) = info.variants.iter().find(|v| v.name == field) {
                             if variant.fields.is_empty() {
                                 self.resolved_variants.insert(span, enum_name.clone());
                                 return Ty::Enum(enum_name.clone());
-                            } else {
-                                self.error(
-                                    format!(
-                                        "variant `{}` has payload fields and must be called as a constructor",
-                                        field
-                                    ),
-                                    span,
-                                );
-                                return Ty::Error;
                             }
+                            self.error(
+                                format!(
+                                    "variant `{field}` has payload fields and must be called as a constructor"
+                                ),
+                                span,
+                            );
+                            return Ty::Error;
                         }
                     }
                 }
@@ -118,8 +117,7 @@ impl<'a> Checker<'a> {
                     if required_params > 0 {
                         self.error(
                             format!(
-                                "condition `{}` requires {} parameter(s); use `{}.{}(...)` to supply them",
-                                field, required_params, alias, field
+                                "condition `{field}` requires {required_params} parameter(s); use `{alias}.{field}(...)` to supply them"
                             ),
                             span,
                         );
@@ -131,8 +129,7 @@ impl<'a> Checker<'a> {
 
         self.error(
             format!(
-                "no type, variant, or condition `{}` in system \"{}\" (alias `{}`)",
-                field, target, alias
+                "no type, variant, or condition `{field}` in system \"{target}\" (alias `{alias}`)"
             ),
             span,
         );
@@ -151,7 +148,7 @@ impl<'a> Checker<'a> {
         let target = match self.resolve_alias_target(alias, span) {
             Some(t) => t,
             None => {
-                self.error(format!("unknown module alias `{}`", alias), span);
+                self.error(format!("unknown module alias `{alias}`"), span);
                 for arg in args {
                     self.check_expr(&arg.value);
                 }
@@ -181,36 +178,37 @@ impl<'a> Checker<'a> {
                         .iter()
                         .filter(|e| sys_info.types.contains(e.as_str()))
                         .collect();
-                    let enum_name = if matching.len() == 1 {
-                        matching[0].clone()
-                    } else if matching.len() > 1 {
-                        let qualified: Vec<String> = matching
-                            .iter()
-                            .map(|e| format!("{}.{}.{}", alias, e, field))
-                            .collect();
-                        self.error(
-                            format!(
-                                "variant `{}` is ambiguous in system \"{}\" (alias `{}`); use a qualified form: {}",
-                                field, target, alias, qualified.join(", ")
-                            ),
-                            span,
-                        );
-                        for arg in args {
-                            self.check_expr(&arg.value);
+                    let enum_name = match matching.len() {
+                        1 => matching[0].clone(),
+                        2.. => {
+                            let qualified: Vec<String> = matching
+                                .iter()
+                                .map(|e| format!("{alias}.{e}.{field}"))
+                                .collect();
+                            self.error(
+                                format!(
+                                    "variant `{}` is ambiguous in system \"{}\" (alias `{}`); use a qualified form: {}",
+                                    field, target, alias, qualified.join(", ")
+                                ),
+                                span,
+                            );
+                            for arg in args {
+                                self.check_expr(&arg.value);
+                            }
+                            return Ty::Error;
                         }
-                        return Ty::Error;
-                    } else {
-                        self.error(
-                            format!(
-                                "variant `{}` is not defined by any enum in system \"{}\" (alias `{}`)",
-                                field, target, alias
-                            ),
-                            span,
-                        );
-                        for arg in args {
-                            self.check_expr(&arg.value);
+                        _ => {
+                            self.error(
+                                format!(
+                                    "variant `{field}` is not defined by any enum in system \"{target}\" (alias `{alias}`)"
+                                ),
+                                span,
+                            );
+                            for arg in args {
+                                self.check_expr(&arg.value);
+                            }
+                            return Ty::Error;
                         }
-                        return Ty::Error;
                     };
                     return self.check_enum_constructor(&enum_name, field, args, span);
                 }
@@ -219,8 +217,7 @@ impl<'a> Checker<'a> {
 
         self.error(
             format!(
-                "no function, condition, or variant `{}` in system \"{}\" (alias `{}`)",
-                field, target, alias
+                "no function, condition, or variant `{field}` in system \"{target}\" (alias `{alias}`)"
             ),
             span,
         );
@@ -243,7 +240,7 @@ impl<'a> Checker<'a> {
         let mut satisfied: HashSet<usize> = HashSet::new();
         let mut next_positional = 0usize;
 
-        for arg in args.iter() {
+        for arg in args {
             let param_idx = if let Some(ref name) = arg.name {
                 params.iter().position(|p| p.name == *name)
             } else {
@@ -323,13 +320,13 @@ impl<'a> Checker<'a> {
                 match kind {
                     CallKind::Condition => {
                         self.error(
-                            format!("condition `{}` has no parameter `{}`", callee_name, name),
+                            format!("condition `{callee_name}` has no parameter `{name}`"),
                             arg.span,
                         );
                     }
                     CallKind::Function => {
                         self.error(
-                            format!("`{}` has no parameter `{}`", callee_name, name),
+                            format!("`{callee_name}` has no parameter `{name}`"),
                             arg.span,
                         );
                     }
@@ -412,7 +409,7 @@ impl<'a> Checker<'a> {
         let fn_info = match self.env.lookup_fn(name) {
             Some(info) => info.clone(),
             None => {
-                self.error(format!("undefined function `{}`", name), span);
+                self.error(format!("undefined function `{name}`"), span);
                 for arg in args {
                     self.check_expr(&arg.value);
                 }
@@ -430,8 +427,7 @@ impl<'a> Checker<'a> {
             if !is_pure_builtin {
                 self.error(
                     format!(
-                        "`{}` cannot be called in trigger/suppress binding context",
-                        name
+                        "`{name}` cannot be called in trigger/suppress binding context"
                     ),
                     span,
                 );
@@ -452,8 +448,7 @@ impl<'a> Checker<'a> {
             };
             self.error(
                 format!(
-                    "{} cannot be called directly; `{}` is triggered by events",
-                    kind_name, name
+                    "{kind_name} cannot be called directly; `{name}` is triggered by events"
                 ),
                 span,
             );
@@ -464,14 +459,12 @@ impl<'a> Checker<'a> {
             let current_ctx = self.scope.current_block_kind();
             if !matches!(
                 current_ctx,
-                Some(BlockKind::ActionResolve)
-                    | Some(BlockKind::ReactionResolve)
-                    | Some(BlockKind::HookResolve)
+                Some(BlockKind::ActionResolve | BlockKind::ReactionResolve |
+BlockKind::HookResolve)
             ) {
                 self.error(
                     format!(
-                        "`{}` is an action and can only be called from action, reaction, or hook context",
-                        name
+                        "`{name}` is an action and can only be called from action, reaction, or hook context"
                     ),
                     span,
                 );

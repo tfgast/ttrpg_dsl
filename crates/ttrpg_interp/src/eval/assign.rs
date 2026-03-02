@@ -125,7 +125,7 @@ fn eval_assign_direct(
 ) -> Result<(), RuntimeError> {
     let var = env
         .lookup_mut(name)
-        .ok_or_else(|| RuntimeError::with_span(format!("undefined variable `{}`", name), span))?;
+        .ok_or_else(|| RuntimeError::with_span(format!("undefined variable `{name}`"), span))?;
 
     let new_val = apply_assign_op(op, var.clone(), rhs, span)?;
     *var = new_val;
@@ -279,7 +279,7 @@ fn eval_assign_local(
     // Copy the shared state reference before taking &mut on env via lookup_mut.
     let state = env.state;
     let root = env.lookup_mut(root_name).ok_or_else(|| {
-        RuntimeError::with_span(format!("undefined variable `{}`", root_name), span)
+        RuntimeError::with_span(format!("undefined variable `{root_name}`"), span)
     })?;
 
     apply_local_mutation(root, &eval_segs, 0, op, rhs, span, state)
@@ -315,7 +315,7 @@ fn find_entity_depth(
     state: &dyn StateProvider,
 ) -> Result<Option<(usize, EntityRef)>, RuntimeError> {
     let mut current = env.lookup(root_name).cloned().ok_or_else(|| {
-        RuntimeError::with_span(format!("undefined variable `{}`", root_name), span)
+        RuntimeError::with_span(format!("undefined variable `{root_name}`"), span)
     })?;
 
     for (i, seg) in segments.iter().enumerate() {
@@ -326,7 +326,7 @@ fn find_entity_depth(
             Value::Struct { fields, .. } => {
                 if let EvalSegment::Field(name) = seg {
                     current = fields.get(name.as_str()).cloned().ok_or_else(|| {
-                        RuntimeError::with_span(format!("struct has no field `{}`", name), span)
+                        RuntimeError::with_span(format!("struct has no field `{name}`"), span)
                     })?;
                 } else {
                     return Err(RuntimeError::with_span("cannot index into a struct", span));
@@ -391,7 +391,7 @@ fn apply_local_mutation(
     match (&segments[depth], current) {
         (EvalSegment::Field(name), Value::Struct { fields, .. }) => {
             let field = fields.get_mut(name.as_str()).ok_or_else(|| {
-                RuntimeError::with_span(format!("struct has no field `{}`", name), span)
+                RuntimeError::with_span(format!("struct has no field `{name}`"), span)
             })?;
             apply_local_mutation(field, segments, depth + 1, op, rhs, span, state)
         }
@@ -437,7 +437,7 @@ fn apply_local_mutation(
             } else {
                 // Navigate deeper into the map value
                 let ek = existing_key.ok_or_else(|| {
-                    RuntimeError::with_span(format!("map has no key {:?}", key), span)
+                    RuntimeError::with_span(format!("map has no key {key:?}"), span)
                 })?;
                 let entry = map.get_mut(&ek).ok_or_else(|| {
                     RuntimeError::with_span("internal: validated map key missing", span)
@@ -569,13 +569,13 @@ fn resolve_list_index(
             } else {
                 let positive = i.checked_neg().ok_or_else(|| {
                     RuntimeError::with_span(
-                        format!("list index {} out of bounds, length {}", i, len),
+                        format!("list index {i} out of bounds, length {len}"),
                         span,
                     )
                 })? as usize;
                 if positive > len {
                     return Err(RuntimeError::with_span(
-                        format!("list index {} out of bounds, length {}", i, len),
+                        format!("list index {i} out of bounds, length {len}"),
                         span,
                     ));
                 }
@@ -583,7 +583,7 @@ fn resolve_list_index(
             };
             if index >= len {
                 return Err(RuntimeError::with_span(
-                    format!("list index {} out of bounds, length {}", i, len),
+                    format!("list index {i} out of bounds, length {len}"),
                     span,
                 ));
             }

@@ -5,7 +5,7 @@ use ttrpg_ast::Spanned;
 use crate::check::{Checker, Namespace};
 use crate::ty::Ty;
 
-impl<'a> Checker<'a> {
+impl Checker<'_> {
     pub(crate) fn check_has(
         &mut self,
         entity: &Spanned<ExprKind>,
@@ -22,7 +22,7 @@ impl<'a> Checker<'a> {
             Ty::Entity(name) => {
                 if self.env.lookup_optional_group(name, group_name).is_none() {
                     self.error(
-                        format!("entity `{}` has no optional group `{}`", name, group_name),
+                        format!("entity `{name}` has no optional group `{group_name}`"),
                         span,
                     );
                 }
@@ -32,7 +32,7 @@ impl<'a> Checker<'a> {
                     && !self.env.has_optional_group_named(group_name)
                 {
                     self.error(
-                        format!("unknown optional group `{}` for type `entity`", group_name),
+                        format!("unknown optional group `{group_name}` for type `entity`"),
                         span,
                     );
                 }
@@ -40,8 +40,7 @@ impl<'a> Checker<'a> {
             _ => {
                 self.error(
                     format!(
-                        "`has` can only be used with entity types, found {}",
-                        entity_ty
+                        "`has` can only be used with entity types, found {entity_ty}"
                     ),
                     span,
                 );
@@ -54,8 +53,7 @@ impl<'a> Checker<'a> {
                     if fields.iter().any(|f| f.name == *alias_name) {
                         self.error(
                             format!(
-                                "alias `{}` shadows a field on entity `{}`",
-                                alias_name, ent_name
+                                "alias `{alias_name}` shadows a field on entity `{ent_name}`"
                             ),
                             span,
                         );
@@ -68,8 +66,7 @@ impl<'a> Checker<'a> {
                 {
                     self.error(
                         format!(
-                            "alias `{}` shadows a field on entity `{}`",
-                            alias_name, ent_name
+                            "alias `{alias_name}` shadows a field on entity `{ent_name}`"
                         ),
                         span,
                     );
@@ -81,8 +78,7 @@ impl<'a> Checker<'a> {
                 {
                     self.error(
                         format!(
-                            "alias `{}` shadows an optional group on entity `{}`",
-                            alias_name, ent_name
+                            "alias `{alias_name}` shadows an optional group on entity `{ent_name}`"
                         ),
                         span,
                     );
@@ -96,12 +92,13 @@ impl<'a> Checker<'a> {
     /// Returns `Some("actor")` for `actor`, `Some("actor.foo")` for `actor.foo`, etc.
     /// Returns `None` for expressions involving indexing or non-variable roots,
     /// since narrowing cannot be statically tracked through dynamic access.
+    #[allow(clippy::self_only_used_in_recursion)]
     pub(crate) fn extract_path_key(&self, expr: &Spanned<ExprKind>) -> Option<Name> {
         match &expr.node {
             ExprKind::Ident(name) => Some(name.clone()),
             ExprKind::FieldAccess { object, field } => self
                 .extract_path_key(object)
-                .map(|p| Name::from(format!("{}.{}", p, field))),
+                .map(|p| Name::from(format!("{p}.{field}"))),
             ExprKind::Paren(inner) => self.extract_path_key(inner),
             _ => None,
         }

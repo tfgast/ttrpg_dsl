@@ -26,8 +26,7 @@ impl Parser {
                 "tag" => self.parse_tag_decl().map(DeclKind::Tag),
                 _ => {
                     self.error(format!(
-                        "unexpected identifier '{}' in declaration position",
-                        name
+                        "unexpected identifier '{name}' in declaration position"
                     ));
                     Err(())
                 }

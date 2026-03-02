@@ -16,8 +16,7 @@ fn check_reserved_prefix(name: &str, span: Span, diagnostics: &mut Vec<Diagnosti
     if name.starts_with("__") {
         diagnostics.push(Diagnostic::error(
             format!(
-                "names starting with `__` are reserved for internal use: `{}`",
-                name
+                "names starting with `__` are reserved for internal use: `{name}`"
             ),
             span,
         ));
@@ -171,7 +170,7 @@ fn populate_module_metadata(
         for alias in aliases.keys() {
             if env.builtins.contains_key(alias) {
                 diagnostics.push(Diagnostic::error(
-                    format!("alias \"{}\" shadows builtin function \"{}\"", alias, alias),
+                    format!("alias \"{alias}\" shadows builtin function \"{alias}\""),
                     ttrpg_ast::Span::dummy(),
                 ));
             }
@@ -666,8 +665,7 @@ fn collect_entity(e: &EntityDecl, env: &mut TypeEnv, diagnostics: &mut Vec<Diagn
                 .optional_groups
                 .iter()
                 .find(|ag| ag.name == g.name)
-                .map(|ag| ag.span)
-                .unwrap_or(Span::dummy());
+                .map_or(Span::dummy(), |ag| ag.span);
 
             for field in &g.fields {
                 if flat_namespace.contains(&field.name) {
@@ -746,7 +744,7 @@ fn collect_unit(
         // Must start with a letter
         if !suffix.starts_with(|c: char| c.is_ascii_alphabetic()) {
             diagnostics.push(Diagnostic::error(
-                format!("unit suffix `{}` must start with a letter", suffix),
+                format!("unit suffix `{suffix}` must start with a letter"),
                 span,
             ));
         }
@@ -755,8 +753,7 @@ fn collect_unit(
         if let Some(existing) = env.suffix_to_unit.get(suffix) {
             diagnostics.push(Diagnostic::error(
                 format!(
-                    "duplicate unit suffix `{}`; already declared by `{}`",
-                    suffix, existing
+                    "duplicate unit suffix `{suffix}`; already declared by `{existing}`"
                 ),
                 span,
             ));
@@ -773,7 +770,7 @@ fn collect_unit(
     };
     if let Some(DeclInfo::Unit(info)) = env.types.get_mut(&u.name) {
         info.fields = vec![field_info];
-        info.suffix = u.suffix.clone();
+        info.suffix.clone_from(&u.suffix);
     }
 }
 
@@ -792,7 +789,7 @@ fn collect_fn(
 ) {
     if env.functions.contains_key(name) {
         diagnostics.push(Diagnostic::error(
-            format!("duplicate function declaration `{}`", name),
+            format!("duplicate function declaration `{name}`"),
             span,
         ));
         return;
@@ -802,8 +799,7 @@ fn collect_fn(
     if env.variant_to_enums.contains_key(name) {
         diagnostics.push(Diagnostic::warning(
             format!(
-                "function `{}` has the same name as an enum variant; the function will be uncallable in bare form",
-                name
+                "function `{name}` has the same name as an enum variant; the function will be uncallable in bare form"
             ),
             span,
         ));
@@ -816,8 +812,7 @@ fn collect_fn(
             if p.name == "result" {
                 diagnostics.push(Diagnostic::error(
                     format!(
-                        "`result` is reserved and cannot be used as a parameter name in `{}`",
-                        name
+                        "`result` is reserved and cannot be used as a parameter name in `{name}`"
                     ),
                     p.span,
                 ));
@@ -846,15 +841,14 @@ fn collect_fn(
         .collect();
 
     let ret_ty = return_type
-        .map(|rt| env.resolve_type_validated(rt, diagnostics))
-        .unwrap_or(Ty::Unit);
+        .map_or(Ty::Unit, |rt| env.resolve_type_validated(rt, diagnostics));
 
     // Validate tags: each must be declared in env.tags
     let mut tag_set = HashSet::new();
     for tag in tags {
         if !env.tags.contains(tag) {
             diagnostics.push(Diagnostic::error(
-                format!("undeclared tag `{}` on function `{}`", tag, name),
+                format!("undeclared tag `{tag}` on function `{name}`"),
                 span,
             ));
         }
@@ -1075,7 +1069,7 @@ fn collect_condition(
     let name = &c.name;
     if env.conditions.contains_key(name) {
         diagnostics.push(Diagnostic::error(
-            format!("duplicate condition declaration `{}`", name),
+            format!("duplicate condition declaration `{name}`"),
             span,
         ));
         return;
@@ -1282,7 +1276,7 @@ pub fn validate_option_extends(
     for (child, (parent, span)) in &extends_map {
         if !env.options.contains(parent.as_str()) && !system_names.contains(parent.as_str()) {
             diagnostics.push(Diagnostic::error(
-                format!("option \"{}\" extends unknown option \"{}\"", child, parent),
+                format!("option \"{child}\" extends unknown option \"{parent}\""),
                 *span,
             ));
         }
@@ -1361,8 +1355,7 @@ pub fn validate_condition_extends(
                 None => {
                     diagnostics.push(Diagnostic::error(
                         format!(
-                            "condition `{}` extends unknown condition `{}`",
-                            child_name, parent_name
+                            "condition `{child_name}` extends unknown condition `{parent_name}`"
                         ),
                         *span,
                     ));
@@ -1395,8 +1388,7 @@ pub fn validate_condition_extends(
             if has_required {
                 diagnostics.push(Diagnostic::error(
                     format!(
-                        "condition `{}` extends `{}` which has required parameters",
-                        child_name, parent_name
+                        "condition `{child_name}` extends `{parent_name}` which has required parameters"
                     ),
                     *span,
                 ));
@@ -1427,11 +1419,9 @@ pub fn validate_condition_extends(
                         1 => {
                             // Gray → cycle found. Build chain for error.
                             let span = extends_map
-                                .get(name)
-                                .map(|v| v[0].1)
-                                .unwrap_or_else(Span::dummy);
+                                .get(name).map_or_else(Span::dummy, |v| v[0].1);
                             diagnostics.push(Diagnostic::error(
-                                format!("circular condition extends involving `{}`", name),
+                                format!("circular condition extends involving `{name}`"),
                                 span,
                             ));
                             continue;

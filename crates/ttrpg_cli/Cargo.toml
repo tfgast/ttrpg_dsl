@@ -3,6 +3,9 @@ name = "ttrpg_cli"
 version.workspace = true
 edition.workspace = true
 
+[lints]
+workspace = true
+
 [lib]
 name = "ttrpg_cli"
 path = "src/lib.rs"

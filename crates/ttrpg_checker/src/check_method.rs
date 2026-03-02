@@ -3,7 +3,7 @@ use ttrpg_ast::ast::*;
 use crate::check::Checker;
 use crate::ty::Ty;
 
-impl<'a> Checker<'a> {
+impl Checker<'_> {
     pub(crate) fn check_method_call(
         &mut self,
         obj_ty: &Ty,
@@ -19,7 +19,7 @@ impl<'a> Checker<'a> {
             Ty::DiceExpr => self.check_dice_method(method, args, span),
             Ty::String => self.check_string_method(method, args, span),
             _ => {
-                self.error(format!("type {} has no methods", obj_ty), span);
+                self.error(format!("type {obj_ty} has no methods"), span);
                 Ty::Error
             }
         }
@@ -67,8 +67,7 @@ impl<'a> Checker<'a> {
                     if !arg_ty.is_error() && !self.types_compatible(&arg_ty, inner_ty) {
                         self.error(
                             format!(
-                                "unwrap_or() default has type {}, expected {}",
-                                arg_ty, inner_ty
+                                "unwrap_or() default has type {arg_ty}, expected {inner_ty}"
                             ),
                             span,
                         );
@@ -88,8 +87,7 @@ impl<'a> Checker<'a> {
             _ => {
                 self.error(
                     format!(
-                        "option type has no method `{}`; available methods: unwrap, unwrap_or, is_some, is_none",
-                        method
+                        "option type has no method `{method}`; available methods: unwrap, unwrap_or, is_some, is_none"
                     ),
                     span,
                 );
@@ -148,8 +146,7 @@ impl<'a> Checker<'a> {
                 if !elem_ty.is_error() && !self.types_compatible(&elem_ty, &inner) {
                     self.error(
                         format!(
-                            ".append() element type mismatch: list is list<{}>, but got {}",
-                            inner, elem_ty
+                            ".append() element type mismatch: list is list<{inner}>, but got {elem_ty}"
                         ),
                         span,
                     );
@@ -171,7 +168,7 @@ impl<'a> Checker<'a> {
                 let arg_ty = self.check_expr_expecting(&args[0].value, Some(&list_ty));
                 if !arg_ty.is_error() && !self.types_compatible(&arg_ty, &list_ty) {
                     self.error(
-                        format!(".concat() type mismatch: list<{}> vs {}", inner, arg_ty),
+                        format!(".concat() type mismatch: list<{inner}> vs {arg_ty}"),
                         span,
                     );
                 }
@@ -190,8 +187,7 @@ impl<'a> Checker<'a> {
                     _ => {
                         self.error(
                             format!(
-                                "sum() requires list<int> or list<float>, found list<{}>",
-                                inner
+                                "sum() requires list<int> or list<float>, found list<{inner}>"
                             ),
                             span,
                         );
@@ -208,7 +204,7 @@ impl<'a> Checker<'a> {
                 }
                 if *inner != Ty::Bool && *inner != Ty::Error {
                     self.error(
-                        format!("{}() requires list<bool>, found list<{}>", method, inner),
+                        format!("{method}() requires list<bool>, found list<{inner}>"),
                         span,
                     );
                 }
@@ -235,8 +231,7 @@ impl<'a> Checker<'a> {
             _ => {
                 self.error(
                     format!(
-                        "list type has no method `{}`; available methods: len, first, last, reverse, append, concat, sum, any, all, sort, to_set",
-                        method
+                        "list type has no method `{method}`; available methods: len, first, last, reverse, append, concat, sum, any, all, sort, to_set"
                     ),
                     span,
                 );
@@ -277,8 +272,7 @@ impl<'a> Checker<'a> {
                 if !elem_ty.is_error() && !self.types_compatible(&elem_ty, inner) {
                     self.error(
                         format!(
-                            ".{}() element type mismatch: set is set<{}>, but got {}",
-                            method, inner, elem_ty
+                            ".{method}() element type mismatch: set is set<{inner}>, but got {elem_ty}"
                         ),
                         span,
                     );
@@ -300,7 +294,7 @@ impl<'a> Checker<'a> {
                 let arg_ty = self.check_expr_expecting(&args[0].value, Some(&set_ty));
                 if !arg_ty.is_error() && !self.types_compatible(&arg_ty, &set_ty) {
                     self.error(
-                        format!(".{}() type mismatch: set<{}> vs {}", method, inner, arg_ty),
+                        format!(".{method}() type mismatch: set<{inner}> vs {arg_ty}"),
                         span,
                     );
                 }
@@ -330,8 +324,7 @@ impl<'a> Checker<'a> {
                 if !elem_ty.is_error() && !self.types_compatible(&elem_ty, inner) {
                     self.error(
                         format!(
-                            ".contains() element type mismatch: set is set<{}>, but got {}",
-                            inner, elem_ty
+                            ".contains() element type mismatch: set is set<{inner}>, but got {elem_ty}"
                         ),
                         span,
                     );
@@ -341,8 +334,7 @@ impl<'a> Checker<'a> {
             _ => {
                 self.error(
                     format!(
-                        "set type has no method `{}`; available methods: len, add, remove, union, intersection, difference, to_list, contains",
-                        method
+                        "set type has no method `{method}`; available methods: len, add, remove, union, intersection, difference, to_list, contains"
                     ),
                     span,
                 );
@@ -390,8 +382,7 @@ impl<'a> Checker<'a> {
             _ => {
                 self.error(
                     format!(
-                        "map type has no method `{}`; available methods: len, keys, values",
-                        method
+                        "map type has no method `{method}`; available methods: len, keys, values"
                     ),
                     span,
                 );
@@ -416,7 +407,7 @@ impl<'a> Checker<'a> {
                 let factor_ty = self.check_expr_expecting(&args[0].value, Some(&Ty::Int));
                 if !factor_ty.is_error() && factor_ty != Ty::Int {
                     self.error(
-                        format!("multiply() factor must be int, found {}", factor_ty),
+                        format!("multiply() factor must be int, found {factor_ty}"),
                         span,
                     );
                 }
@@ -441,8 +432,7 @@ impl<'a> Checker<'a> {
             _ => {
                 self.error(
                     format!(
-                        "DiceExpr type has no method `{}`; available methods: multiply, roll",
-                        method
+                        "DiceExpr type has no method `{method}`; available methods: multiply, roll"
                     ),
                     span,
                 );
@@ -480,7 +470,7 @@ impl<'a> Checker<'a> {
                 let arg_ty = self.check_expr_expecting(&args[0].value, Some(&Ty::String));
                 if !arg_ty.is_error() && !self.types_compatible(&arg_ty, &Ty::String) {
                     self.error(
-                        format!("{}() argument must be string, found {}", method, arg_ty),
+                        format!("{method}() argument must be string, found {arg_ty}"),
                         span,
                     );
                 }
@@ -489,8 +479,7 @@ impl<'a> Checker<'a> {
             _ => {
                 self.error(
                     format!(
-                        "string type has no method `{}`; available methods: len, contains, starts_with, ends_with",
-                        method
+                        "string type has no method `{method}`; available methods: len, contains, starts_with, ends_with"
                     ),
                     span,
                 );

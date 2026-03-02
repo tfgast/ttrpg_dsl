@@ -5,7 +5,7 @@ use crate::check::{Checker, Namespace};
 use crate::scope::*;
 use crate::ty::Ty;
 
-impl<'a> Checker<'a> {
+impl Checker<'_> {
     /// Check a block of statements; returns the type of the block's value
     /// (the last expression-statement, or Unit if none).
     pub fn check_block(&mut self, block: &Block) -> Ty {
@@ -55,8 +55,7 @@ impl<'a> Checker<'a> {
                     {
                         self.error(
                             format!(
-                                "let `{}`: value has type {}, annotation says {}",
-                                name, val_ty, ann_ty
+                                "let `{name}`: value has type {val_ty}, annotation says {ann_ty}"
                             ),
                             value.span,
                         );
@@ -210,7 +209,7 @@ impl<'a> Checker<'a> {
             AssignOp::Eq => {
                 if !self.types_compatible(&value_ty, &target_ty) {
                     self.error(
-                        format!("cannot assign {} to {}", value_ty, target_ty),
+                        format!("cannot assign {value_ty} to {target_ty}"),
                         value.span,
                     );
                 }
@@ -232,18 +231,17 @@ impl<'a> Checker<'a> {
                     }
                 // Numeric += / -=
                 } else if !target_ty.is_numeric() && !target_ty.is_int_like() {
-                    self.error(format!("cannot use += / -= on type {}", target_ty), span);
+                    self.error(format!("cannot use += / -= on type {target_ty}"), span);
                 } else if !value_ty.is_numeric() && !value_ty.is_int_like() {
                     self.error(
-                        format!("right side of += / -= must be numeric, found {}", value_ty),
+                        format!("right side of += / -= must be numeric, found {value_ty}"),
                         value.span,
                     );
                 } else if target_ty.is_int_like() && value_ty == Ty::Float {
                     // Prevent int += float (would silently lose precision)
                     self.error(
                         format!(
-                            "cannot use float in += / -= on {}: would lose precision",
-                            target_ty
+                            "cannot use float in += / -= on {target_ty}: would lose precision"
                         ),
                         value.span,
                     );
@@ -291,14 +289,13 @@ impl<'a> Checker<'a> {
                         {
                             self.error(
                                     format!(
-                                        "access to optional group `{}` on `{}` requires a `has` guard or `with` constraint",
-                                        group_name, path_key
+                                        "access to optional group `{group_name}` on `{path_key}` requires a `has` guard or `with` constraint"
                                     ),
                                     lvalue.span,
                                 );
                         }
                     }
-                    path_key = format!("{}.{}", path_key, name);
+                    path_key = format!("{path_key}.{name}");
                 }
                 LValueSegment::Index(idx_expr) => {
                     let idx_ty = self.check_expr(idx_expr);
@@ -311,7 +308,7 @@ impl<'a> Checker<'a> {
                         Ty::List(inner) => {
                             if !idx_ty.is_int_like() {
                                 self.error(
-                                    format!("list index must be int, found {}", idx_ty),
+                                    format!("list index must be int, found {idx_ty}"),
                                     idx_expr.span,
                                 );
                             }
@@ -320,14 +317,14 @@ impl<'a> Checker<'a> {
                         Ty::Map(key, val) => {
                             if !self.types_compatible(&idx_ty, key) {
                                 self.error(
-                                    format!("map key type is {}, found {}", key, idx_ty),
+                                    format!("map key type is {key}, found {idx_ty}"),
                                     idx_expr.span,
                                 );
                             }
                             current = *val.clone();
                         }
                         _ => {
-                            self.error(format!("cannot index into {}", current), lvalue.span);
+                            self.error(format!("cannot index into {current}"), lvalue.span);
                             return Ty::Error;
                         }
                     }
@@ -366,8 +363,7 @@ impl<'a> Checker<'a> {
                     None => {
                         self.error(
                             format!(
-                                "entity `{}` has no optional group `{}`",
-                                entity_name, group_name
+                                "entity `{entity_name}` has no optional group `{group_name}`"
                             ),
                             span,
                         );
@@ -379,8 +375,7 @@ impl<'a> Checker<'a> {
                 if self.env.is_group_required_somewhere(group_name) {
                     self.error(
                         format!(
-                            "group `{}` is required on some entity types and cannot be granted on type `entity`; use a concrete entity type",
-                            group_name
+                            "group `{group_name}` is required on some entity types and cannot be granted on type `entity`; use a concrete entity type"
                         ),
                         span,
                     );
@@ -391,8 +386,7 @@ impl<'a> Checker<'a> {
                     None if self.env.has_optional_group_named(group_name) => {
                         self.error(
                             format!(
-                                "optional group `{}` is ambiguous on type `entity`; use a concrete entity type",
-                                group_name
+                                "optional group `{group_name}` is ambiguous on type `entity`; use a concrete entity type"
                             ),
                             span,
                         );
@@ -400,7 +394,7 @@ impl<'a> Checker<'a> {
                     }
                     None => {
                         self.error(
-                            format!("unknown optional group `{}` for type `entity`", group_name),
+                            format!("unknown optional group `{group_name}` for type `entity`"),
                             span,
                         );
                         return;
@@ -409,7 +403,7 @@ impl<'a> Checker<'a> {
             }
             _ => {
                 self.error(
-                    format!("grant requires an entity, found {}", entity_ty),
+                    format!("grant requires an entity, found {entity_ty}"),
                     span,
                 );
                 return;
@@ -419,8 +413,7 @@ impl<'a> Checker<'a> {
         if group.required {
             self.error(
                 format!(
-                    "group `{}` is required on this entity and cannot be granted",
-                    group_name
+                    "group `{group_name}` is required on this entity and cannot be granted"
                 ),
                 span,
             );
@@ -505,7 +498,7 @@ impl<'a> Checker<'a> {
         let event_info = match self.env.events.get(event_name) {
             Some(info) => info.clone(),
             None => {
-                self.error(format!("undefined event `{}`", event_name), span);
+                self.error(format!("undefined event `{event_name}`"), span);
                 // Still check arg expressions for other errors
                 for arg in args {
                     self.check_expr(&arg.value);
@@ -530,7 +523,7 @@ impl<'a> Checker<'a> {
             if let Some(ref name) = arg.name {
                 if !seen.insert(name.clone()) {
                     self.error(
-                        format!("duplicate argument `{}` in emit", name),
+                        format!("duplicate argument `{name}` in emit"),
                         arg.span,
                     );
                 }
@@ -546,8 +539,7 @@ impl<'a> Checker<'a> {
                     let ty = self.check_expr(&arg.value);
                     self.error(
                         format!(
-                            "event `{}` has no parameter `{}`",
-                            event_name, name
+                            "event `{event_name}` has no parameter `{name}`"
                         ),
                         arg.span,
                     );
@@ -616,8 +608,7 @@ impl<'a> Checker<'a> {
                     Some(group) if group.required => {
                         self.error(
                             format!(
-                                "group `{}` is required on this entity and cannot be revoked",
-                                group_name
+                                "group `{group_name}` is required on this entity and cannot be revoked"
                             ),
                             span,
                         );
@@ -626,8 +617,7 @@ impl<'a> Checker<'a> {
                     None => {
                         self.error(
                             format!(
-                                "entity `{}` has no optional group `{}`",
-                                entity_name, group_name
+                                "entity `{entity_name}` has no optional group `{group_name}`"
                             ),
                             span,
                         );
@@ -638,8 +628,7 @@ impl<'a> Checker<'a> {
                 if self.env.is_group_required_somewhere(group_name) {
                     self.error(
                         format!(
-                            "group `{}` is required on some entity types and cannot be revoked on type `entity`; use a concrete entity type",
-                            group_name
+                            "group `{group_name}` is required on some entity types and cannot be revoked on type `entity`; use a concrete entity type"
                         ),
                         span,
                     );
@@ -649,8 +638,7 @@ impl<'a> Checker<'a> {
                     if group.required {
                         self.error(
                             format!(
-                                "group `{}` is required on this entity and cannot be revoked",
-                                group_name
+                                "group `{group_name}` is required on this entity and cannot be revoked"
                             ),
                             span,
                         );
@@ -658,21 +646,20 @@ impl<'a> Checker<'a> {
                 } else if self.env.has_optional_group_named(group_name) {
                     self.error(
                         format!(
-                            "optional group `{}` is ambiguous on type `entity`; use a concrete entity type",
-                            group_name
+                            "optional group `{group_name}` is ambiguous on type `entity`; use a concrete entity type"
                         ),
                         span,
                     );
                 } else {
                     self.error(
-                        format!("unknown optional group `{}` for type `entity`", group_name),
+                        format!("unknown optional group `{group_name}` for type `entity`"),
                         span,
                     );
                 }
             }
             _ => {
                 self.error(
-                    format!("revoke requires an entity, found {}", entity_ty),
+                    format!("revoke requires an entity, found {entity_ty}"),
                     span,
                 );
             }

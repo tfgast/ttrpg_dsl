@@ -3,6 +3,9 @@ name = "ttrpg_parser"
 version.workspace = true
 edition.workspace = true
 
+[lints]
+workspace = true
+
 [dependencies]
 ttrpg_ast.workspace = true
 ttrpg_lexer.workspace = true

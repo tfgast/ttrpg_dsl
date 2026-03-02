@@ -31,11 +31,11 @@ pub(super) fn bind_args(
     for arg in args {
         if let Some(ref name) = arg.name {
             let pos = params.iter().position(|p| p.name == *name).ok_or_else(|| {
-                RuntimeError::with_span(format!("unknown parameter '{}'", name), arg.span)
+                RuntimeError::with_span(format!("unknown parameter '{name}'"), arg.span)
             })?;
             if named_slots[pos] {
                 return Err(RuntimeError::with_span(
-                    format!("duplicate argument for parameter '{}'", name),
+                    format!("duplicate argument for parameter '{name}'"),
                     arg.span,
                 ));
             }
@@ -50,7 +50,7 @@ pub(super) fn bind_args(
         if let Some(ref name) = arg.name {
             let pos = params.iter().position(|p| p.name == *name).ok_or_else(|| {
                 RuntimeError::with_span(
-                    format!("internal: named arg '{}' not found after validation", name),
+                    format!("internal: named arg '{name}' not found after validation"),
                     arg.span,
                 )
             })?;

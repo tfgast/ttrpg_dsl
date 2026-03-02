@@ -89,8 +89,7 @@ pub(super) fn eval_first(
         Value::List(v) => Ok(v
             .into_iter()
             .next()
-            .map(|v| Value::Option(Some(Box::new(v))))
-            .unwrap_or(Value::None)),
+            .map_or(Value::None, |v| Value::Option(Some(Box::new(v))))),
         _ => Err(RuntimeError::with_span(
             format!("first() expects a list, got {}", type_name(&val)),
             call_span,
@@ -114,8 +113,7 @@ pub(super) fn eval_last(
         Value::List(v) => Ok(v
             .into_iter()
             .next_back()
-            .map(|v| Value::Option(Some(Box::new(v))))
-            .unwrap_or(Value::None)),
+            .map_or(Value::None, |v| Value::Option(Some(Box::new(v))))),
         _ => Err(RuntimeError::with_span(
             format!("last() expects a list, got {}", type_name(&val)),
             call_span,

@@ -56,7 +56,7 @@ impl CliError {
 impl std::fmt::Display for CliError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            CliError::Message(msg) | CliError::Rendered(msg) => write!(f, "{}", msg),
+            CliError::Message(msg) | CliError::Rendered(msg) => write!(f, "{msg}"),
         }
     }
 }
@@ -255,7 +255,7 @@ impl Runner {
             Command::Rolls(tail) => self.cmd_rolls(&tail),
             // Help
             Command::Help(topic) => self.cmd_help(topic.as_deref()),
-            Command::Unknown(kw) => Err(CliError::Message(format!("unknown command: {}", kw))),
+            Command::Unknown(kw) => Err(CliError::Message(format!("unknown command: {kw}"))),
         }
     }
 
@@ -316,7 +316,7 @@ impl Runner {
         self.handles
             .get(name)
             .copied()
-            .ok_or_else(|| CliError::Message(format!("unknown handle: {}", name)))
+            .ok_or_else(|| CliError::Message(format!("unknown handle: {name}")))
     }
 
 }

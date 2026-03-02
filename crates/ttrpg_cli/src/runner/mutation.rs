@@ -23,15 +23,13 @@ impl Runner {
 
         if !is_valid_handle(handle) {
             return Err(CliError::Message(format!(
-                "invalid handle '{}': must be a bare identifier",
-                handle
+                "invalid handle '{handle}': must be a bare identifier"
             )));
         }
 
         if self.handles.contains_key(handle) {
             return Err(CliError::Message(format!(
-                "handle '{}' already exists",
-                handle
+                "handle '{handle}' already exists"
             )));
         }
 
@@ -40,14 +38,12 @@ impl Runner {
             Some(ttrpg_checker::env::DeclInfo::Entity(_)) => {} // valid
             Some(_) => {
                 return Err(CliError::Message(format!(
-                    "'{}' is not an entity type",
-                    entity_type
+                    "'{entity_type}' is not an entity type"
                 )));
             }
             None => {
                 return Err(CliError::Message(format!(
-                    "unknown entity type '{}'",
-                    entity_type
+                    "unknown entity type '{entity_type}'"
                 )));
             }
         }
@@ -64,8 +60,7 @@ impl Runner {
             (HashMap::new(), Vec::new())
         } else {
             return Err(CliError::Message(format!(
-                "unexpected text after handle: {}",
-                rest
+                "unexpected text after handle: {rest}"
             )));
         };
 
@@ -75,8 +70,7 @@ impl Runner {
                 match schema_fields.iter().find(|f| f.name == field_name.as_str()) {
                     None => {
                         return Err(CliError::Message(format!(
-                            "unknown field '{}' on entity type '{}'",
-                            field_name, entity_type
+                            "unknown field '{field_name}' on entity type '{entity_type}'"
                         )));
                     }
                     Some(fi) => {
@@ -199,8 +193,7 @@ impl Runner {
                     .lookup_optional_group(&type_name, group_name)
                     .ok_or_else(|| {
                         CliError::Message(format!(
-                            "unknown group '{}' on entity type '{}'",
-                            group_name, type_name
+                            "unknown group '{group_name}' on entity type '{type_name}'"
                         ))
                     })?;
 
@@ -214,8 +207,7 @@ impl Runner {
                             "is not currently granted"
                         };
                         return Err(CliError::Message(format!(
-                            "{}.{} {}",
-                            handle, group_name, status
+                            "{handle}.{group_name} {status}"
                         )));
                     }
                 }
@@ -228,8 +220,7 @@ impl Runner {
                     .map(|f| f.ty.clone())
                     .ok_or_else(|| {
                         CliError::Message(format!(
-                            "unknown field '{}' in optional group '{}'",
-                            field_name, group_name
+                            "unknown field '{field_name}' in optional group '{group_name}'"
                         ))
                     })?;
 
@@ -240,7 +231,7 @@ impl Runner {
                 (
                     segments,
                     Some(ty),
-                    format!("{}.{}.{}", handle, group_name, field_name),
+                    format!("{handle}.{group_name}.{field_name}"),
                 )
             } else {
                 // Simple field path
@@ -271,8 +262,7 @@ impl Runner {
                             let gs = self.game_state.borrow();
                             if gs.read_field(&entity, group_name).is_none() {
                                 return Err(CliError::Message(format!(
-                                    "{}.{} included group '{}' is missing in state",
-                                    handle, field, group_name
+                                    "{handle}.{field} included group '{group_name}' is missing in state"
                                 )));
                             }
                         }
@@ -282,8 +272,7 @@ impl Runner {
                             .lookup_optional_group(&type_name, group_name)
                             .ok_or_else(|| {
                                 CliError::Message(format!(
-                                    "internal: flattened field group '{}' not found",
-                                    group_name
+                                    "internal: flattened field group '{group_name}' not found"
                                 ))
                             })?;
                         let ty = group_info
@@ -296,18 +285,17 @@ impl Runner {
                             FieldPathSegment::Field(group_name.clone()),
                             FieldPathSegment::Field(Name::from(field)),
                         ];
-                        (segments, ty, format!("{}.{}", handle, field))
+                        (segments, ty, format!("{handle}.{field}"))
                     } else {
                         return Err(CliError::Message(format!(
-                            "unknown field '{}' on entity type '{}'",
-                            field, type_name
+                            "unknown field '{field}' on entity type '{type_name}'"
                         )));
                     }
                 } else {
                     (
                         vec![FieldPathSegment::Field(Name::from(field))],
                         expected_ty,
-                        format!("{}.{}", handle, field),
+                        format!("{handle}.{field}"),
                     )
                 }
             };
@@ -410,13 +398,12 @@ impl Runner {
         let removed = self.game_state.borrow_mut().remove_entity(&entity);
         if !removed {
             return Err(CliError::Message(format!(
-                "entity for handle '{}' not found in state",
-                handle
+                "entity for handle '{handle}' not found in state"
             )));
         }
         self.handles.remove(handle);
         self.reverse_handles.remove(&entity);
-        self.output.push(format!("destroyed {}", handle));
+        self.output.push(format!("destroyed {handle}"));
         Ok(())
     }
 
@@ -457,8 +444,7 @@ impl Runner {
                 .map_err(|e| render_runtime_error(&e, &self.source_map))?;
             if !interp.has_action(action_name) {
                 return Err(CliError::Message(format!(
-                    "undefined action '{}'",
-                    action_name
+                    "undefined action '{action_name}'"
                 )));
             }
         }
@@ -549,8 +535,7 @@ impl Runner {
         }
         if !is_derive && !is_mechanic {
             return Err(CliError::Message(format!(
-                "undefined function '{}' (no derive or mechanic with that name)",
-                fn_name
+                "undefined function '{fn_name}' (no derive or mechanic with that name)"
             )));
         }
 
@@ -631,7 +616,7 @@ impl Runner {
             let gs = self.game_state.borrow();
             gs.entity_type_name(&entity)
                 .ok_or_else(|| {
-                    CliError::Message(format!("entity for handle '{}' not found in state", handle))
+                    CliError::Message(format!("entity for handle '{handle}' not found in state"))
                 })?
                 .to_string()
         };
@@ -640,14 +625,12 @@ impl Runner {
             .lookup_optional_group(&type_name, group_name)
             .ok_or_else(|| {
                 CliError::Message(format!(
-                    "unknown group '{}' on entity type '{}'",
-                    group_name, type_name
+                    "unknown group '{group_name}' on entity type '{type_name}'"
                 ))
             })?;
         if group_info.required {
             return Err(CliError::Message(format!(
-                "{}.{} is required and cannot be revoked",
-                handle, group_name
+                "{handle}.{group_name} is required and cannot be revoked"
             )));
         }
 
@@ -656,8 +639,7 @@ impl Runner {
             let gs = self.game_state.borrow();
             if gs.read_field(&entity, group_name).is_none() {
                 return Err(CliError::Message(format!(
-                    "{}.{} is not currently granted",
-                    handle, group_name
+                    "{handle}.{group_name} is not currently granted"
                 )));
             }
         }
@@ -666,7 +648,7 @@ impl Runner {
             .borrow_mut()
             .remove_field(&entity, group_name);
         self.output
-            .push(format!("revoked {}.{}", handle, group_name));
+            .push(format!("revoked {handle}.{group_name}"));
         Ok(())
     }
 
@@ -695,7 +677,7 @@ impl Runner {
             let gs = self.game_state.borrow();
             gs.entity_type_name(&entity)
                 .ok_or_else(|| {
-                    CliError::Message(format!("entity for handle '{}' not found in state", handle))
+                    CliError::Message(format!("entity for handle '{handle}' not found in state"))
                 })?
                 .to_string()
         };
@@ -704,14 +686,12 @@ impl Runner {
             .lookup_optional_group(&type_name, group_name)
             .ok_or_else(|| {
                 CliError::Message(format!(
-                    "unknown group '{}' on entity type '{}'",
-                    group_name, type_name
+                    "unknown group '{group_name}' on entity type '{type_name}'"
                 ))
             })?;
         if group_info.required {
             return Err(CliError::Message(format!(
-                "{}.{} is required and cannot be granted",
-                handle, group_name
+                "{handle}.{group_name} is required and cannot be granted"
             )));
         }
 
@@ -720,8 +700,7 @@ impl Runner {
             let gs = self.game_state.borrow();
             if gs.read_field(&entity, group_name).is_some() {
                 return Err(CliError::Message(format!(
-                    "{}.{} is already granted",
-                    handle, group_name
+                    "{handle}.{group_name} is already granted"
                 )));
             }
         }
@@ -737,8 +716,7 @@ impl Runner {
             HashMap::new()
         } else {
             return Err(CliError::Message(format!(
-                "unexpected text after group name: {}",
-                rest
+                "unexpected text after group name: {rest}"
             )));
         };
 
