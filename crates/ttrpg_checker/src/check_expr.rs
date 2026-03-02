@@ -18,6 +18,21 @@ impl Checker<'_> {
     /// The hint is used to disambiguate bare enum variants when multiple
     /// enums share the same variant name.
     pub fn check_expr_expecting(&mut self, expr: &Spanned<ExprKind>, hint: Option<&Ty>) -> Ty {
+        use crate::check::MAX_EXPR_DEPTH;
+
+        self.expr_depth += 1;
+        if self.expr_depth > MAX_EXPR_DEPTH {
+            self.expr_depth -= 1;
+            self.error("expression nesting too deep".to_string(), expr.span);
+            return Ty::Error;
+        }
+
+        let ty = self.check_expr_inner(expr, hint);
+        self.expr_depth -= 1;
+        ty
+    }
+
+    fn check_expr_inner(&mut self, expr: &Spanned<ExprKind>, hint: Option<&Ty>) -> Ty {
         match &expr.node {
             ExprKind::IntLit(_) => Ty::Int,
             ExprKind::StringLit(_) => Ty::String,

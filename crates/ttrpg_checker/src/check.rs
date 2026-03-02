@@ -25,6 +25,10 @@ pub enum Namespace {
     Tag,
 }
 
+/// Maximum nesting depth for expression type-checking.
+/// Prevents stack overflow on pathological/adversarial ASTs.
+pub(crate) const MAX_EXPR_DEPTH: usize = 256;
+
 pub struct Checker<'a> {
     pub env: &'a TypeEnv,
     pub scope: ScopeStack,
@@ -45,6 +49,8 @@ pub struct Checker<'a> {
     /// Maps selector-targeted modify clause IDs → set of matched function names.
     /// Transferred to `TypeEnv` for interpreter use.
     pub selector_matches: SelectorMatchMap,
+    /// Current expression nesting depth (guards against stack overflow).
+    pub(crate) expr_depth: usize,
 }
 
 impl<'a> Checker<'a> {
@@ -59,6 +65,7 @@ impl<'a> Checker<'a> {
             resolved_group_aliases: HashMap::new(),
             resolved_lvalue_aliases: HashMap::new(),
             selector_matches: HashMap::new(),
+            expr_depth: 0,
         }
     }
 

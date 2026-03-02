@@ -248,8 +248,11 @@ impl TypeEnv {
     /// Precondition: `validate_type_names` (or `resolve_type_validated`) must
     /// have been called on this type expression previously. Unknown names
     /// resolve to `Ty::Error` without emitting diagnostics.
+    /// Maximum nesting depth for type resolution.
+    const MAX_TYPE_DEPTH: usize = 128;
+
     pub fn resolve_type(&self, texpr: &Spanned<TypeExpr>) -> Ty {
-        self.resolve_type_inner(&texpr.node)
+        self.resolve_type_depth(&texpr.node, 0)
     }
 
     /// Validate and resolve a type expression in one step.
@@ -260,10 +263,13 @@ impl TypeEnv {
         diagnostics: &mut Vec<Diagnostic>,
     ) -> Ty {
         self.validate_type_names(texpr, diagnostics);
-        self.resolve_type_inner(&texpr.node)
+        self.resolve_type_depth(&texpr.node, 0)
     }
 
-    fn resolve_type_inner(&self, texpr: &TypeExpr) -> Ty {
+    fn resolve_type_depth(&self, texpr: &TypeExpr, depth: usize) -> Ty {
+        if depth > Self::MAX_TYPE_DEPTH {
+            return Ty::Error;
+        }
         match texpr {
             TypeExpr::Int => Ty::Int,
             TypeExpr::Float => Ty::Float,
@@ -296,13 +302,19 @@ impl TypeEnv {
             // Qualified types are desugared to Named by module resolution before checking.
             // If one reaches the checker, it's an internal error — resolve to Error.
             TypeExpr::Qualified { .. } => Ty::Error,
-            TypeExpr::List(inner) => Ty::List(Box::new(self.resolve_type(inner))),
-            TypeExpr::Set(inner) => Ty::Set(Box::new(self.resolve_type(inner))),
+            TypeExpr::List(inner) => {
+                Ty::List(Box::new(self.resolve_type_depth(&inner.node, depth + 1)))
+            }
+            TypeExpr::Set(inner) => {
+                Ty::Set(Box::new(self.resolve_type_depth(&inner.node, depth + 1)))
+            }
             TypeExpr::Map(k, v) => Ty::Map(
-                Box::new(self.resolve_type(k)),
-                Box::new(self.resolve_type(v)),
+                Box::new(self.resolve_type_depth(&k.node, depth + 1)),
+                Box::new(self.resolve_type_depth(&v.node, depth + 1)),
             ),
-            TypeExpr::OptionType(inner) => Ty::Option(Box::new(self.resolve_type(inner))),
+            TypeExpr::OptionType(inner) => {
+                Ty::Option(Box::new(self.resolve_type_depth(&inner.node, depth + 1)))
+            }
             TypeExpr::Resource(_, _) => Ty::Resource,
         }
     }
@@ -313,6 +325,18 @@ impl TypeEnv {
         texpr: &Spanned<TypeExpr>,
         diagnostics: &mut Vec<Diagnostic>,
     ) {
+        self.validate_type_names_depth(texpr, diagnostics, 0);
+    }
+
+    fn validate_type_names_depth(
+        &self,
+        texpr: &Spanned<TypeExpr>,
+        diagnostics: &mut Vec<Diagnostic>,
+        depth: usize,
+    ) {
+        if depth > Self::MAX_TYPE_DEPTH {
+            return;
+        }
         match &texpr.node {
             TypeExpr::Named(name) => {
                 if name == "entity" {
@@ -326,7 +350,7 @@ impl TypeEnv {
                 }
             }
             TypeExpr::List(inner) | TypeExpr::OptionType(inner) => {
-                self.validate_type_names(inner, diagnostics);
+                self.validate_type_names_depth(inner, diagnostics, depth + 1);
             }
             TypeExpr::Set(inner) => {
                 if matches!(inner.node, TypeExpr::Position) {
@@ -335,7 +359,7 @@ impl TypeEnv {
                         inner.span,
                     ));
                 }
-                self.validate_type_names(inner, diagnostics);
+                self.validate_type_names_depth(inner, diagnostics, depth + 1);
             }
             TypeExpr::Map(k, v) => {
                 if matches!(k.node, TypeExpr::Position) {
@@ -344,8 +368,8 @@ impl TypeEnv {
                         k.span,
                     ));
                 }
-                self.validate_type_names(k, diagnostics);
-                self.validate_type_names(v, diagnostics);
+                self.validate_type_names_depth(k, diagnostics, depth + 1);
+                self.validate_type_names_depth(v, diagnostics, depth + 1);
             }
             TypeExpr::Qualified { qualifier, name } => {
                 diagnostics.push(Diagnostic::error(
