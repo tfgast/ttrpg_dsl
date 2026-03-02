@@ -1,5 +1,6 @@
 use std::collections::HashSet;
 
+use rustc_hash::FxHashMap;
 use ttrpg_ast::ast::*;
 use ttrpg_ast::diagnostic::Diagnostic;
 use ttrpg_ast::module::ModuleMap;
@@ -152,7 +153,7 @@ fn populate_module_metadata(
 
     // Compute per-system aliases
     for (sys_name, sys_info) in &modules.systems {
-        let mut aliases = std::collections::HashMap::new();
+        let mut aliases = FxHashMap::default();
         for import in &sys_info.imports {
             if let Some(ref alias) = import.alias {
                 aliases.insert(alias.clone(), import.system_name.clone());

@@ -1,5 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
+use rustc_hash::{FxHashMap, FxHashSet};
+
 use crate::ty::Ty;
 use ttrpg_ast::ast::{ModifyClauseId, TypeExpr};
 use ttrpg_ast::diagnostic::Diagnostic;
@@ -124,17 +126,17 @@ pub struct EventInfo {
 /// The populated symbol table — built by Pass 1, consumed by Pass 2.
 #[derive(Debug, Clone)]
 pub struct TypeEnv {
-    pub groups: HashMap<Name, OptionalGroupInfo>,
-    pub types: HashMap<Name, DeclInfo>,
-    pub functions: HashMap<Name, FnInfo>,
-    pub conditions: HashMap<Name, ConditionInfo>,
-    pub events: HashMap<Name, EventInfo>,
-    pub variant_to_enums: HashMap<Name, Vec<Name>>,
+    pub groups: FxHashMap<Name, OptionalGroupInfo>,
+    pub types: FxHashMap<Name, DeclInfo>,
+    pub functions: FxHashMap<Name, FnInfo>,
+    pub conditions: FxHashMap<Name, ConditionInfo>,
+    pub events: FxHashMap<Name, EventInfo>,
+    pub variant_to_enums: FxHashMap<Name, Vec<Name>>,
     pub resolved_variants: HashMap<Span, Name>,
-    pub flattened_group_fields: HashMap<(Name, Name), Name>,
-    pub builtins: HashMap<Name, FnInfo>,
-    pub suffix_to_unit: HashMap<String, Name>,
-    pub options: HashSet<Name>,
+    pub flattened_group_fields: FxHashMap<(Name, Name), Name>,
+    pub builtins: FxHashMap<Name, FnInfo>,
+    pub suffix_to_unit: FxHashMap<String, Name>,
+    pub options: FxHashSet<Name>,
 
     /// Maps FieldAccess spans where a group alias was used → real group name.
     pub resolved_group_aliases: HashMap<Span, Name>,
@@ -143,23 +145,23 @@ pub struct TypeEnv {
 
     // ── Module awareness (populated when ModuleMap is provided) ───
     /// Declaration name → owning system name, per namespace.
-    pub type_owner: HashMap<Name, Name>,
-    pub group_owner: HashMap<Name, Name>,
-    pub function_owner: HashMap<Name, Name>,
-    pub condition_owner: HashMap<Name, Name>,
-    pub event_owner: HashMap<Name, Name>,
-    pub option_owner: HashMap<Name, Name>,
+    pub type_owner: FxHashMap<Name, Name>,
+    pub group_owner: FxHashMap<Name, Name>,
+    pub function_owner: FxHashMap<Name, Name>,
+    pub condition_owner: FxHashMap<Name, Name>,
+    pub event_owner: FxHashMap<Name, Name>,
+    pub option_owner: FxHashMap<Name, Name>,
 
     /// Per-system: which names are visible (own + imported).
-    pub system_visibility: HashMap<Name, VisibleNames>,
+    pub system_visibility: FxHashMap<Name, VisibleNames>,
     /// Per-system: alias → target system name.
-    pub system_aliases: HashMap<Name, HashMap<Name, Name>>,
+    pub system_aliases: FxHashMap<Name, FxHashMap<Name, Name>>,
 
     // ── Tag / selector data ─────────────────────────────────────────
     /// Declared tag names.
-    pub tags: HashSet<Name>,
+    pub tags: FxHashSet<Name>,
     /// Tag → owning system name.
-    pub tag_owner: HashMap<Name, Name>,
+    pub tag_owner: FxHashMap<Name, Name>,
     /// Precomputed selector match sets, keyed by ModifyClauseId.
     pub selector_matches: HashMap<ModifyClauseId, HashSet<Name>>,
 }
@@ -167,14 +169,14 @@ pub struct TypeEnv {
 /// Names visible to a system (own declarations + imported declarations).
 #[derive(Debug, Clone, Default)]
 pub struct VisibleNames {
-    pub groups: HashSet<Name>,
-    pub types: HashSet<Name>,
-    pub functions: HashSet<Name>,
-    pub conditions: HashSet<Name>,
-    pub events: HashSet<Name>,
-    pub variants: HashSet<Name>,
-    pub options: HashSet<Name>,
-    pub tags: HashSet<Name>,
+    pub groups: FxHashSet<Name>,
+    pub types: FxHashSet<Name>,
+    pub functions: FxHashSet<Name>,
+    pub conditions: FxHashSet<Name>,
+    pub events: FxHashSet<Name>,
+    pub variants: FxHashSet<Name>,
+    pub options: FxHashSet<Name>,
+    pub tags: FxHashSet<Name>,
 }
 
 impl Default for TypeEnv {
@@ -186,29 +188,29 @@ impl Default for TypeEnv {
 impl TypeEnv {
     pub fn new() -> Self {
         Self {
-            groups: HashMap::new(),
-            types: HashMap::new(),
-            functions: HashMap::new(),
-            conditions: HashMap::new(),
-            events: HashMap::new(),
-            variant_to_enums: HashMap::new(),
+            groups: FxHashMap::default(),
+            types: FxHashMap::default(),
+            functions: FxHashMap::default(),
+            conditions: FxHashMap::default(),
+            events: FxHashMap::default(),
+            variant_to_enums: FxHashMap::default(),
             resolved_variants: HashMap::new(),
-            flattened_group_fields: HashMap::new(),
-            builtins: HashMap::new(),
-            suffix_to_unit: HashMap::new(),
-            options: HashSet::new(),
+            flattened_group_fields: FxHashMap::default(),
+            builtins: FxHashMap::default(),
+            suffix_to_unit: FxHashMap::default(),
+            options: FxHashSet::default(),
             resolved_group_aliases: HashMap::new(),
             resolved_lvalue_aliases: HashMap::new(),
-            type_owner: HashMap::new(),
-            group_owner: HashMap::new(),
-            function_owner: HashMap::new(),
-            condition_owner: HashMap::new(),
-            event_owner: HashMap::new(),
-            option_owner: HashMap::new(),
-            system_visibility: HashMap::new(),
-            system_aliases: HashMap::new(),
-            tags: HashSet::new(),
-            tag_owner: HashMap::new(),
+            type_owner: FxHashMap::default(),
+            group_owner: FxHashMap::default(),
+            function_owner: FxHashMap::default(),
+            condition_owner: FxHashMap::default(),
+            event_owner: FxHashMap::default(),
+            option_owner: FxHashMap::default(),
+            system_visibility: FxHashMap::default(),
+            system_aliases: FxHashMap::default(),
+            tags: FxHashSet::default(),
+            tag_owner: FxHashMap::default(),
             selector_matches: HashMap::new(),
         }
     }

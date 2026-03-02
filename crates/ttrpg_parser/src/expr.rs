@@ -285,7 +285,7 @@ impl Parser {
                         tok.span,
                     )),
                     TokenKind::UnitLiteral { value, suffix } => {
-                        Ok(Spanned::new(ExprKind::UnitLit { value, suffix }, tok.span))
+                        Ok(Spanned::new(ExprKind::UnitLit { value, suffix: suffix.to_string() }, tok.span))
                     }
                     _ => unreachable!(),
                 }

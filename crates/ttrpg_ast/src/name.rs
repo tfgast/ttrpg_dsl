@@ -39,6 +39,12 @@ impl From<&str> for Name {
     }
 }
 
+impl From<Arc<str>> for Name {
+    fn from(s: Arc<str>) -> Self {
+        Name(s)
+    }
+}
+
 impl AsRef<str> for Name {
     fn as_ref(&self) -> &str {
         &self.0

@@ -2,4 +2,4 @@
 source: crates/ttrpg_interp/tests/snapshot_output.rs
 expression: err.to_string()
 ---
-missing required argument 'b' for 'add' (at 18446744073709551615..18446744073709551615)
+missing required argument 'b' for 'add' (at 4294967295..4294967295)

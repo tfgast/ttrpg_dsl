@@ -30,6 +30,7 @@ insta = "1"
 nu-ansi-term = "0.50"
 rand = "0.9"
 reedline = "0.45"
+rustc-hash = "2"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
@@ -74,3 +75,8 @@ manual_let_else = "allow"
 format_push_string = "allow"
 ref_option = "allow"
 match_wildcard_for_single_variants = "allow"
+
+# ── Profiling ────────────────────────────────────────────────────
+[profile.profiling]
+inherits = "release"
+debug = true

@@ -1,5 +1,4 @@
 use std::collections::{HashMap, HashSet};
-
 use ttrpg_ast::ast::*;
 use ttrpg_ast::diagnostic::Diagnostic;
 use ttrpg_ast::module::ModuleMap;

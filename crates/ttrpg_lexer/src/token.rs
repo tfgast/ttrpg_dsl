@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use ttrpg_ast::{DiceFilter, Span};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -24,11 +26,11 @@ pub enum TokenKind {
     },
     UnitLiteral {
         value: i64,
-        suffix: String,
+        suffix: Arc<str>,
     },
 
     // Identifier (includes soft keywords)
-    Ident(String),
+    Ident(Arc<str>),
 
     // Reserved keywords
     Let,

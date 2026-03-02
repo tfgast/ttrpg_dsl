@@ -9,7 +9,7 @@ impl Parser {
 
         match self.peek().clone() {
             TokenKind::Ident(name) => {
-                let ty = match name.as_str() {
+                let ty = match &*name {
                     "int" => {
                         self.advance();
                         TypeExpr::Int
@@ -42,7 +42,7 @@ impl Parser {
                     | "Invocation"
                         if !matches!(self.peek_at(1), TokenKind::Dot) =>
                     {
-                        let ty = match name.as_str() {
+                        let ty = match &*name {
                             "TurnBudget" => TypeExpr::TurnBudget,
                             "Duration" => TypeExpr::Duration,
                             "Position" => TypeExpr::Position,

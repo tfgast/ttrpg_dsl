@@ -1,5 +1,6 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
+use rustc_hash::FxHashMap;
 use ttrpg_ast::Name;
 
 use crate::ty::Ty;
@@ -80,12 +81,12 @@ pub struct VarBinding {
 #[derive(Debug)]
 struct Scope {
     block_kind: BlockKind,
-    bindings: HashMap<Name, VarBinding>,
+    bindings: FxHashMap<Name, VarBinding>,
     /// Optional groups proven active for a given variable in this scope.
     /// Maps variable name → set of group names that are narrowed as active.
-    narrowed_groups: HashMap<Name, HashSet<Name>>,
+    narrowed_groups: FxHashMap<Name, HashSet<Name>>,
     /// Group aliases: (variable_name, alias_name) → real_group_name.
-    group_aliases: HashMap<(Name, Name), Name>,
+    group_aliases: FxHashMap<(Name, Name), Name>,
 }
 
 #[derive(Debug)]
@@ -107,9 +108,9 @@ impl ScopeStack {
     pub fn push(&mut self, block_kind: BlockKind) {
         self.scopes.push(Scope {
             block_kind,
-            bindings: HashMap::new(),
-            narrowed_groups: HashMap::new(),
-            group_aliases: HashMap::new(),
+            bindings: FxHashMap::default(),
+            narrowed_groups: FxHashMap::default(),
+            group_aliases: FxHashMap::default(),
         });
     }
 

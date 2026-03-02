@@ -62,7 +62,7 @@ impl Parser {
     }
 
     pub(crate) fn at_ident(&self, name: &str) -> bool {
-        matches!(self.peek(), TokenKind::Ident(s) if s == name)
+        matches!(self.peek(), TokenKind::Ident(s) if &**s == name)
     }
 
     pub(crate) fn advance(&mut self) -> Token {
@@ -150,18 +150,22 @@ impl Parser {
     /// (e.g. `requires { expr }`, `cost { tokens }`) so that multiline
     /// content is parsed without newline-termination issues.
     pub(crate) fn suppress_newlines_in_brace_block(&mut self) {
+        // Cache discriminants for hot-path comparisons
+        let disc_lbrace = std::mem::discriminant(&TokenKind::LBrace);
+        let disc_rbrace = std::mem::discriminant(&TokenKind::RBrace);
+        let disc_newline = std::mem::discriminant(&TokenKind::Newline);
+
         let mut depth = 1usize;
         let mut end = self.pos;
         while end < self.tokens.len() {
-            match self.tokens[end].kind {
-                TokenKind::LBrace => depth += 1,
-                TokenKind::RBrace => {
-                    depth -= 1;
-                    if depth == 0 {
-                        break;
-                    }
+            let d = std::mem::discriminant(&self.tokens[end].kind);
+            if d == disc_lbrace {
+                depth += 1;
+            } else if d == disc_rbrace {
+                depth -= 1;
+                if depth == 0 {
+                    break;
                 }
-                _ => {}
             }
             end += 1;
         }
@@ -174,7 +178,9 @@ impl Parser {
         // We swap elements forward so no cloning is needed.
         let mut write = self.pos;
         for read in self.pos..self.tokens.len() {
-            if read < end && self.tokens[read].kind == TokenKind::Newline {
+            if read < end
+                && std::mem::discriminant(&self.tokens[read].kind) == disc_newline
+            {
                 continue; // skip newlines in the target range
             }
             if write != read {
@@ -339,7 +345,7 @@ impl Parser {
         matches!(
             self.peek(),
             TokenKind::Ident(ref s) if matches!(
-                s.as_str(),
+                &**s,
                 "enum" | "struct" | "entity" | "derive" | "mechanic"
                 | "action" | "reaction" | "condition" | "prompt"
                 | "option" | "event" | "move"

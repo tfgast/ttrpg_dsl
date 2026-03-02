@@ -79,6 +79,17 @@ impl<'a> Cursor<'a> {
         }
     }
 
+    /// Fast path for skipping ` `, `\t`, `\r` — avoids closure overhead.
+    #[inline]
+    pub fn eat_horizontal_whitespace(&mut self) {
+        while self.pos < self.bytes.len() {
+            match self.bytes[self.pos] {
+                b' ' | b'\t' | b'\r' => self.pos += 1,
+                _ => return,
+            }
+        }
+    }
+
     pub fn eat_while(&mut self, predicate: impl Fn(char) -> bool) {
         // Fast path: scan ASCII bytes directly
         while self.pos < self.bytes.len() {

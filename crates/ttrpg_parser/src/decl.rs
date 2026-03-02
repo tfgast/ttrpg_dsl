@@ -6,7 +6,7 @@ use ttrpg_lexer::TokenKind;
 impl Parser {
     pub(crate) fn parse_decl(&mut self) -> Result<DeclKind, ()> {
         match self.peek() {
-            TokenKind::Ident(name) => match name.as_str() {
+            TokenKind::Ident(name) => match &**name {
                 "group" => self.parse_group_decl().map(DeclKind::Group),
                 "enum" => self.parse_enum_decl().map(DeclKind::Enum),
                 "struct" => self.parse_struct_decl().map(DeclKind::Struct),
@@ -836,7 +836,7 @@ impl Parser {
             let (name, _) = self.expect_ident()?;
             // Check for `.cost` suffix: `modify ActionName.cost(...)`
             if matches!(self.peek(), TokenKind::Dot)
-                && matches!(self.peek_at(1), TokenKind::Ident(s) if s == "cost")
+                && matches!(self.peek_at(1), TokenKind::Ident(s) if &**s == "cost")
             {
                 self.advance(); // consume .
                 self.advance(); // consume cost

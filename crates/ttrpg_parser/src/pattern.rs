@@ -74,7 +74,7 @@ impl Parser {
                 self.advance();
 
                 // some(pattern) — option destructuring
-                if raw_name == "some" && matches!(self.peek(), TokenKind::LParen) {
+                if &*raw_name == "some" && matches!(self.peek(), TokenKind::LParen) {
                     self.advance(); // consume '('
                     let inner = self.parse_pattern()?;
                     self.expect(&TokenKind::RParen)?;
@@ -86,7 +86,7 @@ impl Parser {
 
                 // Bare `some` without parens — recover as some(_) with diagnostic
                 // But not if followed by `.` — that's a qualified pattern (e.g. some.Variant)
-                if raw_name == "some" && !matches!(self.peek(), TokenKind::Dot) {
+                if &*raw_name == "some" && !matches!(self.peek(), TokenKind::Dot) {
                     self.error(
                         "bare `some` in pattern position — use `some(x)` to match or `_` for wildcard"
                     );

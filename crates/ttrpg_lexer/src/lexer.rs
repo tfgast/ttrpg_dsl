@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use crate::cursor::Cursor;
 use crate::token::{Token, TokenKind};
 use ttrpg_ast::{DiceFilter, FileId, Span};
@@ -25,9 +27,8 @@ impl<'a> RawLexer<'a> {
 
     fn skip_whitespace_and_comments(&mut self) {
         loop {
-            // Skip horizontal whitespace (not newlines)
-            self.cursor
-                .eat_while(|ch| ch == ' ' || ch == '\t' || ch == '\r');
+            // Skip horizontal whitespace (not newlines) — specialized fast path
+            self.cursor.eat_horizontal_whitespace();
 
             // Check for line comments
             if self.cursor.peek() == Some('/') && self.cursor.peek_next() == Some('/') {
@@ -175,7 +176,7 @@ impl<'a> RawLexer<'a> {
             self.cursor
                 .eat_while(|ch| ch.is_ascii_alphanumeric() || ch == '_');
             let suffix_end = self.cursor.pos();
-            let suffix = self.cursor.slice(suffix_start, suffix_end).to_string();
+            let suffix: Arc<str> = Arc::from(self.cursor.slice(suffix_start, suffix_end));
             return Token::new(
                 TokenKind::UnitLiteral {
                     value: count,
@@ -250,7 +251,7 @@ impl<'a> RawLexer<'a> {
             "none" => TokenKind::None,
             "in" => TokenKind::In,
             "for" => TokenKind::For,
-            _ => TokenKind::Ident(text.to_string()),
+            _ => TokenKind::Ident(Arc::from(text)),
         };
 
         Token::new(kind, span)

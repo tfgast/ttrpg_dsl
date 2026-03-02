@@ -9,6 +9,7 @@ workspace = true
 [dependencies]
 ttrpg_ast.workspace = true
 ttrpg_checker.workspace = true
+rustc-hash.workspace = true
 
 [dev-dependencies]
 criterion.workspace = true
