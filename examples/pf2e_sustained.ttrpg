@@ -216,7 +216,6 @@ system "PF2e Sustained Spells" {
             // conditions — it just signals continuity.
             // The host observes this action's completion and
             // marks the invocation as "sustained this turn."
-            1
         }
     }
 

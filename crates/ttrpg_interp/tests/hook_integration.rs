@@ -235,13 +235,13 @@ system "test" {
     entity Character { HP: int }
     event damage(target: Character) {}
     hook First on target: Character (trigger: damage(target: target)) {
-        1
+        target.HP -= 1
     }
     hook Second on target: Character (trigger: damage(target: target)) {
-        2
+        target.HP -= 2
     }
     hook Third on target: Character (trigger: damage(target: target)) {
-        3
+        target.HP -= 3
     }
 }
 "#;
@@ -347,7 +347,7 @@ system "test" {
     entity Character { HP: int }
     event damage(target: Character) {}
     hook OnDamage on target: Character (trigger: damage(target: target)) {
-        42
+        target.HP -= 1
     }
 }
 "#;
@@ -363,15 +363,15 @@ system "test" {
     let val = interp
         .execute_hook(&state, &mut handler, "OnDamage", EntityRef(1), payload)
         .unwrap();
-    assert_eq!(val, Value::Int(42));
+    assert_eq!(val, Value::None);
 
     // Verify no DeductCost
     assert!(!handler
         .log
         .iter()
         .any(|e| matches!(e, Effect::DeductCost { .. })));
-    // Only ActionStarted + ActionCompleted
-    assert_eq!(handler.log.len(), 2);
+    // ActionStarted + MutateField + ActionCompleted (no DeductCost)
+    assert_eq!(handler.log.len(), 3);
 }
 
 #[test]
@@ -381,10 +381,10 @@ system "test" {
     entity Character { HP: int }
     event damage(target: Character) {}
     hook First on target: Character (trigger: damage(target: target)) {
-        1
+        target.HP -= 1
     }
     hook Second on target: Character (trigger: damage(target: target)) {
-        2
+        target.HP -= 2
     }
 }
 "#;
@@ -403,9 +403,9 @@ system "test" {
 
     assert_eq!(results.len(), 2);
     assert_eq!(results[0].0, "First");
-    assert_eq!(results[0].2, Value::Int(1));
+    assert_eq!(results[0].2, Value::None);
     assert_eq!(results[1].0, "Second");
-    assert_eq!(results[1].2, Value::Int(2));
+    assert_eq!(results[1].2, Value::None);
 }
 
 #[test]
@@ -416,7 +416,7 @@ system "test" {
     entity Character { HP: int }
     event damage(target: Character, amount: int) {}
     hook OnDamage on target: Character (trigger: damage(target: target)) {
-        trigger.amount
+        target.HP -= trigger.amount
     }
 }
 "#;
@@ -438,7 +438,7 @@ system "test" {
     let val = interp
         .execute_hook(&state, &mut handler, "OnDamage", EntityRef(1), payload)
         .unwrap();
-    assert_eq!(val, Value::Int(15));
+    assert_eq!(val, Value::None);
 }
 
 #[test]
@@ -472,7 +472,7 @@ system "test" {
     entity Character { HP: int }
     event damage(target: Character) {}
     hook OnDamage on target: Character (trigger: damage(target: target)) {
-        1
+        target.HP -= 1
     }
 }
 "#;
@@ -489,5 +489,5 @@ system "test" {
     let val = interp
         .execute_hook(&state, &mut handler, "OnDamage", EntityRef(1), payload)
         .unwrap();
-    assert_eq!(val, Value::Int(1));
+    assert_eq!(val, Value::None);
 }

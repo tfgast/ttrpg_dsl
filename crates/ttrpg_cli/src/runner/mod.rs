@@ -260,7 +260,13 @@ impl Runner {
             Command::Rolls(tail) => self.cmd_rolls(&tail),
             // Help
             Command::Help(topic) => self.cmd_help(topic.as_deref()),
-            Command::Unknown(kw) => Err(CliError::Message(format!("unknown command: {kw}"))),
+            Command::Unknown(kw) => {
+                if help::is_known_command(&kw) {
+                    self.help_command(&kw)
+                } else {
+                    Err(CliError::Message(format!("unknown command: {kw}")))
+                }
+            }
         }
     }
 

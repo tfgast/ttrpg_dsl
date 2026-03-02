@@ -694,7 +694,7 @@ fn invocation_id_continuity_across_interpreter_invocations() {
 system "test" {
     entity Character { HP: int }
     action Strike on actor: Character () {
-        resolve { 1 }
+        resolve { }
     }
 }
 "#;
@@ -749,7 +749,7 @@ fn vetoed_action_has_no_invocation_id() {
 system "test" {
     entity Character { HP: int }
     action Strike on actor: Character () {
-        resolve { 1 }
+        resolve { }
     }
 }
 "#;
@@ -792,7 +792,7 @@ system "test" {
     entity Monster { HP: int }
     action Strike on actor: Character (target: Monster) {
         requires { actor.HP > 100 }
-        resolve { 1 }
+        resolve { }
     }
 }
 "#;
@@ -842,10 +842,10 @@ fn multiple_actions_get_distinct_invocation_ids() {
 system "test" {
     entity Character { HP: int }
     action Strike on actor: Character () {
-        resolve { 1 }
+        resolve { }
     }
     action Dodge on actor: Character () {
-        resolve { 2 }
+        resolve { }
     }
 }
 "#;

@@ -493,8 +493,16 @@ impl<'a> Checker<'a> {
             }
         }
 
-        // Check resolve block
-        self.check_block(&a.resolve);
+        // Check resolve block — actions cannot return a value (but synthetic
+        // actions from lowered moves are allowed to, since move branches
+        // produce outcome values by design).
+        let body_ty = self.check_block(&a.resolve);
+        if !a.synthetic && !body_ty.is_error() && body_ty != Ty::Unit {
+            self.error(
+                format!("action resolve block has type {body_ty}, but actions cannot return a value"),
+                a.resolve.span,
+            );
+        }
 
         self.scope.pop();
     }
@@ -522,7 +530,7 @@ impl<'a> Checker<'a> {
             r.receiver_type.span,
         );
 
-        self.check_trigger_and_body(&r.trigger, &r.resolve);
+        self.check_trigger_and_body("reaction", &r.trigger, &r.resolve);
 
         self.scope.pop();
     }
@@ -550,14 +558,14 @@ impl<'a> Checker<'a> {
             h.receiver_type.span,
         );
 
-        self.check_trigger_and_body(&h.trigger, &h.resolve);
+        self.check_trigger_and_body("hook", &h.trigger, &h.resolve);
 
         self.scope.pop();
     }
 
     /// Shared logic for reaction and hook: validate trigger event, check
     /// bindings, bind `trigger` and `turn`, then type-check the body block.
-    fn check_trigger_and_body(&mut self, trigger: &TriggerExpr, body: &Block) {
+    fn check_trigger_and_body(&mut self, kind: &str, trigger: &TriggerExpr, body: &Block) {
         // Validate trigger event exists and bind trigger
         if let Some(event_info) = self.env.events.get(&trigger.event_name) {
             self.check_name_visible(&trigger.event_name, Namespace::Event, trigger.span);
@@ -698,8 +706,14 @@ impl<'a> Checker<'a> {
             },
         );
 
-        // Check body
-        self.check_block(body);
+        // Check body — reactions/hooks cannot return a value
+        let body_ty = self.check_block(body);
+        if !body_ty.is_error() && body_ty != Ty::Unit {
+            self.error(
+                format!("{kind} resolve block has type {body_ty}, but {kind}s cannot return a value"),
+                body.span,
+            );
+        }
     }
 
     fn check_condition(&mut self, c: &ConditionDecl) {

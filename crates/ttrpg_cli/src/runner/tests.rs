@@ -88,6 +88,22 @@ fn exec_unknown_command() {
 }
 
 #[test]
+fn exec_known_command_missing_args_shows_help() {
+    let mut runner = Runner::new();
+    // `load` without a path should show help, not "unknown command"
+    runner.exec("load").unwrap();
+    let output = runner.take_output();
+    assert!(
+        output.iter().any(|l| l.contains("load")),
+        "expected help output for 'load', got: {output:?}"
+    );
+    assert!(
+        !output.iter().any(|l| l.contains("unknown")),
+        "should not contain 'unknown': {output:?}"
+    );
+}
+
+#[test]
 fn exec_reload_without_load() {
     let mut runner = Runner::new();
     let err = runner.exec("reload").unwrap_err();

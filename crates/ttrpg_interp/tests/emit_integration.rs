@@ -502,7 +502,6 @@ system "test" {
     reaction Parry on defender: Character (trigger: Attacked(target: defender)) {
         resolve {
             emit ParryUsed(by: defender)
-            0
         }
     }
 

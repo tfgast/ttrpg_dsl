@@ -5651,7 +5651,7 @@ system "test" {
     hook TrackCasting on caster: Character with Spellcasting (
         trigger: spell_cast(caster: caster)
     ) {
-        caster.Spellcasting.dc
+        let dc = caster.Spellcasting.dc
     }
 }
 "#;
@@ -10684,4 +10684,99 @@ fn test_has_alias_shadows_flattened_field() {
     }
 }"#;
     expect_errors(source, &["alias `ac` shadows a field"]);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// action / reaction / hook cannot return a value
+// ═══════════════════════════════════════════════════════════════
+
+#[test]
+fn test_action_return_value_rejected() {
+    let source = r#"
+system "test" {
+    entity Character { hp: int }
+    action Heal on actor: Character (target: Character) {
+        resolve {
+            target.hp += 5
+            42
+        }
+    }
+}
+"#;
+    expect_errors(source, &["action resolve block has type int, but actions cannot return a value"]);
+}
+
+#[test]
+fn test_reaction_return_value_rejected() {
+    let source = r#"
+system "test" {
+    entity Character { hp: int }
+    event Attack(target: Character) {}
+    reaction Parry on defender: Character (trigger: Attack(target: defender)) {
+        resolve {
+            defender.hp
+        }
+    }
+}
+"#;
+    expect_errors(source, &["reaction resolve block has type int, but reactions cannot return a value"]);
+}
+
+#[test]
+fn test_hook_return_value_rejected() {
+    let source = r#"
+system "test" {
+    entity Character { hp: int }
+    event Damaged(target: Character) {}
+    hook OnDamage on target: Character (trigger: Damaged(target: target)) {
+        target.hp
+    }
+}
+"#;
+    expect_errors(source, &["hook resolve block has type int, but hooks cannot return a value"]);
+}
+
+#[test]
+fn test_action_unit_tail_ok() {
+    let source = r#"
+system "test" {
+    entity Character { hp: int }
+    action Heal on actor: Character (target: Character) {
+        resolve {
+            target.hp += 5
+        }
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_reaction_unit_tail_ok() {
+    let source = r#"
+system "test" {
+    entity Character { hp: int }
+    event Attack(target: Character) {}
+    reaction Parry on defender: Character (trigger: Attack(target: defender)) {
+        resolve {
+            defender.hp += 1
+        }
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_hook_unit_tail_ok() {
+    let source = r#"
+system "test" {
+    entity Character { hp: int }
+    event Damaged(target: Character) {}
+    hook OnDamage on target: Character (trigger: Damaged(target: target)) {
+        target.hp += 1
+    }
+}
+"#;
+    expect_no_errors(source);
 }

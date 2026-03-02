@@ -327,6 +327,11 @@ const CATEGORIES: &[&str] = &[
     "Help",
 ];
 
+/// Returns `true` if `name` matches a known command in the help system.
+pub(super) fn is_known_command(name: &str) -> bool {
+    COMMANDS.iter().any(|c| c.name == name)
+}
+
 impl Runner {
     pub(super) fn cmd_help(&mut self, topic: Option<&str>) -> Result<(), CliError> {
         match topic {
@@ -356,7 +361,7 @@ impl Runner {
         Ok(())
     }
 
-    fn help_command(&mut self, name: &str) -> Result<(), CliError> {
+    pub(super) fn help_command(&mut self, name: &str) -> Result<(), CliError> {
         let cmd = COMMANDS.iter().find(|c| c.name == name);
         match cmd {
             Some(info) => {

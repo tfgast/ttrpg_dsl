@@ -666,7 +666,7 @@ mod tests {
 system "test" {
     entity Character { HP: int }
     action Noop on actor: Character () {
-        resolve { 0 }
+        resolve { }
     }
 }
 "#;
@@ -680,7 +680,7 @@ system "test" {
         let val = interp
             .execute_action(&state, &mut handler, "Noop", EntityRef(1), vec![])
             .unwrap();
-        assert_eq!(val, Value::Int(0));
+        assert_eq!(val, Value::None);
 
         // ActionCompleted should have Succeeded + Some(InvocationId(1))
         let completed = handler
@@ -707,7 +707,7 @@ system "test" {
 system "test" {
     entity Character { HP: int }
     action Noop on actor: Character () {
-        resolve { 0 }
+        resolve { }
     }
 }
 "#;
@@ -1056,9 +1056,7 @@ system "test" {
     event flee(actor: Character) {}
     reaction Intercept on defender: Character (trigger: flee(defender)) {
         cost { reaction }
-        resolve {
-            0
-        }
+        resolve { }
     }
 }
 "#;
@@ -1100,7 +1098,7 @@ system "test" {
         let val = interp
             .execute_reaction(&state, &mut handler, "Intercept", entity1, payload)
             .unwrap();
-        assert_eq!(val, Value::Int(0));
+        assert_eq!(val, Value::None);
 
         // Verify effect sequence: ActionStarted (Reaction), DeductCost, ActionCompleted
         assert_eq!(handler.log.len(), 3);
@@ -1183,7 +1181,7 @@ system "test" {
         HP: int
     }
     action Noop on actor: Character () {
-        resolve { 0 }
+        resolve { }
     }
 }
 "#;
@@ -1216,7 +1214,7 @@ system "test" {
     }
     action CostAction on actor: Character () {
         cost { action }
-        resolve { 0 }
+        resolve { }
     }
 }
 "#;
@@ -1512,7 +1510,7 @@ system "test" {
     event flee(actor: Character) {}
     reaction Intercept on defender: Character (trigger: flee(actor: defender)) {
         cost { reaction }
-        resolve { 0 }
+        resolve { }
     }
     condition Stunned on bearer: Character {
         suppress flee(actor: bearer)
