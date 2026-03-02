@@ -190,6 +190,14 @@ const COMMANDS: &[CommandInfo] = &[
         category: "Inspection",
     },
     CommandInfo {
+        name: "condition_decls",
+        syntax: "condition_decls",
+        description: "List all condition declarations",
+        detail: "List all declared conditions showing parameters, receiver, and extends list. Unlike 'conditions' which shows active instances on live entities, this shows the type declarations.",
+        examples: &["condition_decls"],
+        category: "Inspection",
+    },
+    CommandInfo {
         name: "events",
         syntax: "events",
         description: "List all event declarations",

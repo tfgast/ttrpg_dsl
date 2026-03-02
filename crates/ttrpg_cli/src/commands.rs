@@ -23,6 +23,7 @@ pub enum Command {
     Reactions,
     Hooks,
     Events,
+    ConditionDecls,
     // Assertions
     Assert(String),
     AssertEq(String),
@@ -159,6 +160,7 @@ pub fn parse_command(line: &str) -> Option<Command> {
         "reactions" => Some(Command::Reactions),
         "hooks" => Some(Command::Hooks),
         "events" => Some(Command::Events),
+        "condition_decls" => Some(Command::ConditionDecls),
         // Options
         "enable" => {
             let s = strip_comment(tail).trim();
@@ -576,6 +578,14 @@ mod tests {
     #[test]
     fn parse_conditions() {
         assert_eq!(parse_command("conditions"), Some(Command::Conditions));
+    }
+
+    #[test]
+    fn parse_condition_decls() {
+        assert_eq!(
+            parse_command("condition_decls"),
+            Some(Command::ConditionDecls)
+        );
     }
 
     #[test]

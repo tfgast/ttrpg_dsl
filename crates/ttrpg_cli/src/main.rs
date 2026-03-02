@@ -537,9 +537,15 @@ fn query_actions(env: &TypeEnv) {
     }
 }
 
-fn query_conditions(_env: &TypeEnv) {
-    eprintln!("query conditions: not yet implemented");
-    process::exit(1);
+fn query_conditions(env: &TypeEnv) {
+    let lines = ttrpg_cli::format::format_condition_decls(env);
+    if lines.is_empty() {
+        println!("no conditions");
+    } else {
+        for line in lines {
+            println!("{line}");
+        }
+    }
 }
 
 fn query_mechanics(env: &TypeEnv) {

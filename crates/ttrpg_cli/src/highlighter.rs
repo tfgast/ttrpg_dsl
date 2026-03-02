@@ -24,6 +24,7 @@ const CLI_COMMANDS: &[&str] = &[
     "mechanics",
     "derives",
     "conditions",
+    "condition_decls",
     "events",
     "reactions",
     "hooks",

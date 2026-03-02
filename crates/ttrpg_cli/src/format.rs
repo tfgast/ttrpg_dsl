@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use ttrpg_ast::DiceFilter;
 use ttrpg_ast::Name;
-use ttrpg_checker::env::{DeclInfo, EventInfo, FnInfo, FnKind, TypeEnv};
+use ttrpg_checker::env::{ConditionInfo, DeclInfo, EventInfo, FnInfo, FnKind, TypeEnv};
 use ttrpg_interp::effect::FieldPathSegment;
 use ttrpg_interp::value::{DiceExpr, Value};
 
@@ -340,6 +340,44 @@ fn format_event_signature(ei: &EventInfo) -> String {
             fields.join(", ")
         )
     }
+}
+
+/// Format all condition declarations from a TypeEnv for human-readable output.
+pub fn format_condition_decls(env: &TypeEnv) -> Vec<String> {
+    let mut conds: Vec<_> = env.conditions.values().collect();
+    conds.sort_by(|a, b| a.name.cmp(&b.name));
+    conds
+        .iter()
+        .map(|ci| format_condition_signature(ci))
+        .collect()
+}
+
+/// Format a single condition signature as `condition Name(params) on receiver: Type`.
+fn format_condition_signature(ci: &ConditionInfo) -> String {
+    let params: Vec<String> = ci
+        .params
+        .iter()
+        .map(|p| format!("{}: {}", p.name, p.ty.display()))
+        .collect();
+    let params_str = if params.is_empty() {
+        String::new()
+    } else {
+        format!("({})", params.join(", "))
+    };
+    let extends = if ci.extends.is_empty() {
+        String::new()
+    } else {
+        let names: Vec<&str> = ci.extends.iter().map(|n| n.as_str()).collect();
+        format!(" extends {}", names.join(", "))
+    };
+    format!(
+        "condition {}{} on {}: {}{}",
+        ci.name,
+        params_str,
+        ci.receiver_name,
+        ci.receiver_type.display(),
+        extends,
+    )
 }
 
 /// Format a field path for effect logging (e.g., `HP` or `stats["STR"]`).

@@ -357,6 +357,16 @@ impl Runner {
         Ok(())
     }
 
+    pub(super) fn cmd_condition_decls(&mut self) -> Result<(), CliError> {
+        let lines = crate::format::format_condition_decls(&self.type_env);
+        if lines.is_empty() {
+            self.output.push("no condition declarations".into());
+        } else {
+            self.output.extend(lines);
+        }
+        Ok(())
+    }
+
     pub(super) fn cmd_events(&mut self) -> Result<(), CliError> {
         let lines = crate::format::format_events(&self.type_env);
         if lines.is_empty() {
