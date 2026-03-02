@@ -298,71 +298,11 @@ impl Runner {
     }
 
     pub(super) fn cmd_types(&mut self) -> Result<(), CliError> {
-        let mut sorted: Vec<_> = self.type_env.types.iter().collect();
-        sorted.sort_by_key(|(name, _)| *name);
-
-        if sorted.is_empty() {
+        let lines = crate::format::format_types(&self.type_env);
+        if lines.is_empty() {
             self.output.push("no types".into());
-            return Ok(());
-        }
-
-        for (name, decl) in &sorted {
-            match decl {
-                DeclInfo::Entity(info) => {
-                    self.output.push(format!("entity {name}"));
-                    for fi in &info.fields {
-                        self.output
-                            .push(format!("  {}: {}", fi.name, fi.ty.display()));
-                    }
-                    for group in &info.optional_groups {
-                        let decl_kw = if group.required {
-                            "include"
-                        } else {
-                            "optional"
-                        };
-                        self.output.push(format!("  {} {}", decl_kw, group.name));
-                        for fi in &group.fields {
-                            self.output
-                                .push(format!("    {}: {}", fi.name, fi.ty.display()));
-                        }
-                    }
-                }
-                DeclInfo::Struct(info) => {
-                    self.output.push(format!("struct {name}"));
-                    for fi in &info.fields {
-                        self.output
-                            .push(format!("  {}: {}", fi.name, fi.ty.display()));
-                    }
-                }
-                DeclInfo::Enum(info) => {
-                    let ordered = if info.ordered { " ordered" } else { "" };
-                    self.output.push(format!("enum {name}{ordered}"));
-                    for variant in &info.variants {
-                        if variant.fields.is_empty() {
-                            self.output.push(format!("  {}", variant.name));
-                        } else {
-                            let fields: Vec<String> = variant
-                                .fields
-                                .iter()
-                                .map(|(n, t)| format!("{}: {}", n, t.display()))
-                                .collect();
-                            self.output
-                                .push(format!("  {}({})", variant.name, fields.join(", ")));
-                        }
-                    }
-                }
-                DeclInfo::Unit(info) => {
-                    let suffix_str = match &info.suffix {
-                        Some(s) => format!(" suffix {s}"),
-                        None => String::new(),
-                    };
-                    self.output.push(format!("unit {name}{suffix_str}"));
-                    for fi in &info.fields {
-                        self.output
-                            .push(format!("  {}: {}", fi.name, fi.ty.display()));
-                    }
-                }
-            }
+        } else {
+            self.output.extend(lines);
         }
         Ok(())
     }

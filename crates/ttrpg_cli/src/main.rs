@@ -505,67 +505,12 @@ fn query_sources(
 // -- Topic stubs (each implemented by a follow-up bead) --
 
 fn query_types(env: &TypeEnv) {
-    use ttrpg_checker::env::DeclInfo;
-
-    let mut sorted: Vec<_> = env.types.iter().collect();
-    sorted.sort_by_key(|(name, _)| *name);
-
-    if sorted.is_empty() {
+    let lines = ttrpg_cli::format::format_types(env);
+    if lines.is_empty() {
         println!("no types");
-        return;
-    }
-
-    for (name, decl) in &sorted {
-        match decl {
-            DeclInfo::Entity(info) => {
-                println!("entity {name}");
-                for fi in &info.fields {
-                    println!("  {}: {}", fi.name, fi.ty.display());
-                }
-                for group in &info.optional_groups {
-                    let kw = if group.required {
-                        "include"
-                    } else {
-                        "optional"
-                    };
-                    println!("  {} {}", kw, group.name);
-                    for fi in &group.fields {
-                        println!("    {}: {}", fi.name, fi.ty.display());
-                    }
-                }
-            }
-            DeclInfo::Struct(info) => {
-                println!("struct {name}");
-                for fi in &info.fields {
-                    println!("  {}: {}", fi.name, fi.ty.display());
-                }
-            }
-            DeclInfo::Enum(info) => {
-                let ordered = if info.ordered { " ordered" } else { "" };
-                println!("enum {name}{ordered}");
-                for variant in &info.variants {
-                    if variant.fields.is_empty() {
-                        println!("  {}", variant.name);
-                    } else {
-                        let fields: Vec<String> = variant
-                            .fields
-                            .iter()
-                            .map(|(n, t)| format!("{}: {}", n, t.display()))
-                            .collect();
-                        println!("  {}({})", variant.name, fields.join(", "));
-                    }
-                }
-            }
-            DeclInfo::Unit(info) => {
-                let suffix_str = match &info.suffix {
-                    Some(s) => format!(" suffix {s}"),
-                    None => String::new(),
-                };
-                println!("unit {name}{suffix_str}");
-                for fi in &info.fields {
-                    println!("  {}: {}", fi.name, fi.ty.display());
-                }
-            }
+    } else {
+        for line in lines {
+            println!("{line}");
         }
     }
 }

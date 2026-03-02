@@ -127,6 +127,71 @@ pub fn format_value(val: &Value, units: &UnitSuffixes) -> String {
     }
 }
 
+/// Format all type declarations from a TypeEnv for human-readable output.
+///
+/// Returns one line per output row (header + indented fields/variants/groups).
+/// Used by both `ttrpg query types` and the REPL `types` command.
+pub fn format_types(env: &TypeEnv) -> Vec<String> {
+    let mut sorted: Vec<_> = env.types.iter().collect();
+    sorted.sort_by_key(|(name, _)| *name);
+
+    let mut out = Vec::new();
+    for (name, decl) in &sorted {
+        match decl {
+            DeclInfo::Entity(info) => {
+                out.push(format!("entity {name}"));
+                for fi in &info.fields {
+                    out.push(format!("  {}: {}", fi.name, fi.ty.display()));
+                }
+                for group in &info.optional_groups {
+                    let kw = if group.required {
+                        "include"
+                    } else {
+                        "optional"
+                    };
+                    out.push(format!("  {} {}", kw, group.name));
+                    for fi in &group.fields {
+                        out.push(format!("    {}: {}", fi.name, fi.ty.display()));
+                    }
+                }
+            }
+            DeclInfo::Struct(info) => {
+                out.push(format!("struct {name}"));
+                for fi in &info.fields {
+                    out.push(format!("  {}: {}", fi.name, fi.ty.display()));
+                }
+            }
+            DeclInfo::Enum(info) => {
+                let ordered = if info.ordered { " ordered" } else { "" };
+                out.push(format!("enum {name}{ordered}"));
+                for variant in &info.variants {
+                    if variant.fields.is_empty() {
+                        out.push(format!("  {}", variant.name));
+                    } else {
+                        let fields: Vec<String> = variant
+                            .fields
+                            .iter()
+                            .map(|(n, t)| format!("{}: {}", n, t.display()))
+                            .collect();
+                        out.push(format!("  {}({})", variant.name, fields.join(", ")));
+                    }
+                }
+            }
+            DeclInfo::Unit(info) => {
+                let suffix_str = match &info.suffix {
+                    Some(s) => format!(" suffix {s}"),
+                    None => String::new(),
+                };
+                out.push(format!("unit {name}{suffix_str}"));
+                for fi in &info.fields {
+                    out.push(format!("  {}: {}", fi.name, fi.ty.display()));
+                }
+            }
+        }
+    }
+    out
+}
+
 /// Format a field path for effect logging (e.g., `HP` or `stats["STR"]`).
 pub fn format_path(path: &[FieldPathSegment], units: &UnitSuffixes) -> String {
     let mut s = String::new();
