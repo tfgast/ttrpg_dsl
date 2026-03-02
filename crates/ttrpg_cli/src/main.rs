@@ -452,7 +452,7 @@ fn query_sources(
     snippet: bool,
     topic: &str,
     entity_name: Option<&str>,
-    _system_filter: Option<&str>,
+    system_filter: Option<&str>,
     _json: bool,
 ) {
     let snippet_prefix = "system \"<check>\" {\n";
@@ -462,7 +462,12 @@ fn query_sources(
     let (env, all_diags) = if snippet {
         let wrapped: Vec<(String, String)> = sources
             .iter()
-            .map(|(name, src)| (name.clone(), format!("{snippet_prefix}{src}{snippet_suffix}")))
+            .map(|(name, src)| {
+                (
+                    name.clone(),
+                    format!("{snippet_prefix}{src}{snippet_suffix}"),
+                )
+            })
             .collect();
         let result = ttrpg_parser::parse_multi(&wrapped);
         let mut diags = result.diagnostics;
@@ -489,25 +494,24 @@ fn query_sources(
 
     // Dispatch to topic handler
     match topic {
-        "types" => query_types(&env),
-        "events" => query_events(&env),
-        "actions" => query_actions(&env),
-        "conditions" => query_conditions(&env),
-        "mechanics" | "derives" => query_mechanics(&env),
-        "reactions" => query_reactions(&env),
-        "hooks" => query_hooks(&env),
+        "types" => query_types(&env, system_filter),
+        "events" => query_events(&env, system_filter),
+        "actions" => query_actions(&env, system_filter),
+        "conditions" => query_conditions(&env, system_filter),
+        "mechanics" | "derives" => query_mechanics(&env, system_filter),
+        "reactions" => query_reactions(&env, system_filter),
+        "hooks" => query_hooks(&env, system_filter),
         "entity" => query_entity(&env, entity_name.unwrap()),
-        "all" => query_all(&env),
+        "all" => query_all(&env, system_filter),
         _ => unreachable!(),
     }
 }
 
 // -- Topic stubs (each implemented by a follow-up bead) --
 
-fn query_types(env: &TypeEnv) {
-    let lines = ttrpg_cli::format::format_types(env);
+fn print_query(lines: Vec<String>, empty_msg: &str) {
     if lines.is_empty() {
-        println!("no types");
+        println!("{empty_msg}");
     } else {
         for line in lines {
             println!("{line}");
@@ -515,70 +519,53 @@ fn query_types(env: &TypeEnv) {
     }
 }
 
-fn query_events(env: &TypeEnv) {
-    let lines = ttrpg_cli::format::format_events(env);
-    if lines.is_empty() {
-        println!("no events");
-    } else {
-        for line in lines {
-            println!("{line}");
-        }
-    }
+fn query_types(env: &TypeEnv, system: Option<&str>) {
+    print_query(
+        ttrpg_cli::format::format_types_filtered(env, system),
+        "no types",
+    );
 }
 
-fn query_actions(env: &TypeEnv) {
-    let lines = ttrpg_cli::format::format_actions(env);
-    if lines.is_empty() {
-        println!("no actions");
-    } else {
-        for line in lines {
-            println!("{line}");
-        }
-    }
+fn query_events(env: &TypeEnv, system: Option<&str>) {
+    print_query(
+        ttrpg_cli::format::format_events_filtered(env, system),
+        "no events",
+    );
 }
 
-fn query_conditions(env: &TypeEnv) {
-    let lines = ttrpg_cli::format::format_condition_decls(env);
-    if lines.is_empty() {
-        println!("no conditions");
-    } else {
-        for line in lines {
-            println!("{line}");
-        }
-    }
+fn query_actions(env: &TypeEnv, system: Option<&str>) {
+    print_query(
+        ttrpg_cli::format::format_actions_filtered(env, system),
+        "no actions",
+    );
 }
 
-fn query_mechanics(env: &TypeEnv) {
-    let lines = ttrpg_cli::format::format_mechanics(env);
-    if lines.is_empty() {
-        println!("no mechanics");
-    } else {
-        for line in lines {
-            println!("{line}");
-        }
-    }
+fn query_conditions(env: &TypeEnv, system: Option<&str>) {
+    print_query(
+        ttrpg_cli::format::format_condition_decls_filtered(env, system),
+        "no conditions",
+    );
 }
 
-fn query_reactions(env: &TypeEnv) {
-    let lines = ttrpg_cli::format::format_reactions(env);
-    if lines.is_empty() {
-        println!("no reactions");
-    } else {
-        for line in lines {
-            println!("{line}");
-        }
-    }
+fn query_mechanics(env: &TypeEnv, system: Option<&str>) {
+    print_query(
+        ttrpg_cli::format::format_mechanics_filtered(env, system),
+        "no mechanics",
+    );
 }
 
-fn query_hooks(env: &TypeEnv) {
-    let lines = ttrpg_cli::format::format_hooks(env);
-    if lines.is_empty() {
-        println!("no hooks");
-    } else {
-        for line in lines {
-            println!("{line}");
-        }
-    }
+fn query_reactions(env: &TypeEnv, system: Option<&str>) {
+    print_query(
+        ttrpg_cli::format::format_reactions_filtered(env, system),
+        "no reactions",
+    );
+}
+
+fn query_hooks(env: &TypeEnv, system: Option<&str>) {
+    print_query(
+        ttrpg_cli::format::format_hooks_filtered(env, system),
+        "no hooks",
+    );
 }
 
 fn query_entity(env: &TypeEnv, name: &str) {
@@ -595,7 +582,7 @@ fn query_entity(env: &TypeEnv, name: &str) {
     }
 }
 
-fn query_all(_env: &TypeEnv) {
+fn query_all(_env: &TypeEnv, _system: Option<&str>) {
     eprintln!("query all: not yet implemented");
     process::exit(1);
 }

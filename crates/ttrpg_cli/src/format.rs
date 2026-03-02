@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use rustc_hash::FxHashMap;
 use ttrpg_ast::DiceFilter;
 use ttrpg_ast::Name;
 use ttrpg_checker::env::{ConditionInfo, DeclInfo, EventInfo, FnInfo, FnKind, TypeEnv};
@@ -127,12 +128,32 @@ pub fn format_value(val: &Value, units: &UnitSuffixes) -> String {
     }
 }
 
+/// Returns true if a declaration named `name` is owned by the system `filter`,
+/// according to the given owner map.
+fn owned_by(name: &Name, owner_map: &FxHashMap<Name, Name>, filter: &str) -> bool {
+    owner_map
+        .get(name)
+        .is_some_and(|sys| sys.as_str() == filter)
+}
+
 /// Format all type declarations from a TypeEnv for human-readable output.
 ///
 /// Returns one line per output row (header + indented fields/variants/groups).
 /// Used by both `ttrpg query types` and the REPL `types` command.
 pub fn format_types(env: &TypeEnv) -> Vec<String> {
-    let mut sorted: Vec<_> = env.types.iter().collect();
+    format_types_filtered(env, None)
+}
+
+/// Format type declarations, optionally filtered by owning system name.
+pub fn format_types_filtered(env: &TypeEnv, system: Option<&str>) -> Vec<String> {
+    let mut sorted: Vec<_> = env
+        .types
+        .iter()
+        .filter(|(name, _)| match system {
+            Some(s) => owned_by(name, &env.type_owner, s),
+            None => true,
+        })
+        .collect();
     sorted.sort_by_key(|(name, _)| *name);
 
     let mut out = Vec::new();
@@ -203,7 +224,12 @@ pub fn format_entity(env: &TypeEnv, name: &str) -> Result<Vec<String>, String> {
             out.push(format!("entity {}", info.name));
             for fi in &info.fields {
                 let default_marker = if fi.has_default { " (default)" } else { "" };
-                out.push(format!("  {}: {}{}", fi.name, fi.ty.display(), default_marker));
+                out.push(format!(
+                    "  {}: {}{}",
+                    fi.name,
+                    fi.ty.display(),
+                    default_marker
+                ));
             }
             for group in &info.optional_groups {
                 let kw = if group.required {
@@ -268,43 +294,54 @@ pub fn format_fn_signature(fi: &FnInfo) -> String {
 
 /// Format all action declarations from a TypeEnv for human-readable output.
 pub fn format_actions(env: &TypeEnv) -> Vec<String> {
-    let mut actions: Vec<_> = env
-        .functions
-        .values()
-        .filter(|fi| matches!(fi.kind, FnKind::Action))
-        .collect();
-    actions.sort_by(|a, b| a.name.cmp(&b.name));
-    actions.iter().map(|fi| format_fn_signature(fi)).collect()
+    format_actions_filtered(env, None)
+}
+
+/// Format action declarations, optionally filtered by owning system name.
+pub fn format_actions_filtered(env: &TypeEnv, system: Option<&str>) -> Vec<String> {
+    format_fns_by_kind(env, &[FnKind::Action], system)
 }
 
 /// Format all mechanic and derive declarations from a TypeEnv for human-readable output.
 pub fn format_mechanics(env: &TypeEnv) -> Vec<String> {
-    let mut fns: Vec<_> = env
-        .functions
-        .values()
-        .filter(|fi| matches!(fi.kind, FnKind::Mechanic | FnKind::Derive))
-        .collect();
-    fns.sort_by(|a, b| a.name.cmp(&b.name));
-    fns.iter().map(|fi| format_fn_signature(fi)).collect()
+    format_mechanics_filtered(env, None)
+}
+
+/// Format mechanic and derive declarations, optionally filtered by owning system name.
+pub fn format_mechanics_filtered(env: &TypeEnv, system: Option<&str>) -> Vec<String> {
+    format_fns_by_kind(env, &[FnKind::Mechanic, FnKind::Derive], system)
 }
 
 /// Format all reaction declarations from a TypeEnv for human-readable output.
 pub fn format_reactions(env: &TypeEnv) -> Vec<String> {
-    let mut fns: Vec<_> = env
-        .functions
-        .values()
-        .filter(|fi| matches!(fi.kind, FnKind::Reaction))
-        .collect();
-    fns.sort_by(|a, b| a.name.cmp(&b.name));
-    fns.iter().map(|fi| format_fn_signature(fi)).collect()
+    format_reactions_filtered(env, None)
+}
+
+/// Format reaction declarations, optionally filtered by owning system name.
+pub fn format_reactions_filtered(env: &TypeEnv, system: Option<&str>) -> Vec<String> {
+    format_fns_by_kind(env, &[FnKind::Reaction], system)
 }
 
 /// Format all hook declarations from a TypeEnv for human-readable output.
 pub fn format_hooks(env: &TypeEnv) -> Vec<String> {
+    format_hooks_filtered(env, None)
+}
+
+/// Format hook declarations, optionally filtered by owning system name.
+pub fn format_hooks_filtered(env: &TypeEnv, system: Option<&str>) -> Vec<String> {
+    format_fns_by_kind(env, &[FnKind::Hook], system)
+}
+
+/// Shared helper: format functions matching any of the given kinds, with optional system filter.
+fn format_fns_by_kind(env: &TypeEnv, kinds: &[FnKind], system: Option<&str>) -> Vec<String> {
     let mut fns: Vec<_> = env
         .functions
         .values()
-        .filter(|fi| matches!(fi.kind, FnKind::Hook))
+        .filter(|fi| kinds.contains(&fi.kind))
+        .filter(|fi| match system {
+            Some(s) => owned_by(&fi.name, &env.function_owner, s),
+            None => true,
+        })
         .collect();
     fns.sort_by(|a, b| a.name.cmp(&b.name));
     fns.iter().map(|fi| format_fn_signature(fi)).collect()
@@ -312,7 +349,19 @@ pub fn format_hooks(env: &TypeEnv) -> Vec<String> {
 
 /// Format all event declarations from a TypeEnv for human-readable output.
 pub fn format_events(env: &TypeEnv) -> Vec<String> {
-    let mut events: Vec<_> = env.events.values().collect();
+    format_events_filtered(env, None)
+}
+
+/// Format event declarations, optionally filtered by owning system name.
+pub fn format_events_filtered(env: &TypeEnv, system: Option<&str>) -> Vec<String> {
+    let mut events: Vec<_> = env
+        .events
+        .values()
+        .filter(|ei| match system {
+            Some(s) => owned_by(&ei.name, &env.event_owner, s),
+            None => true,
+        })
+        .collect();
     events.sort_by(|a, b| a.name.cmp(&b.name));
     events.iter().map(|ei| format_event_signature(ei)).collect()
 }
@@ -344,7 +393,19 @@ fn format_event_signature(ei: &EventInfo) -> String {
 
 /// Format all condition declarations from a TypeEnv for human-readable output.
 pub fn format_condition_decls(env: &TypeEnv) -> Vec<String> {
-    let mut conds: Vec<_> = env.conditions.values().collect();
+    format_condition_decls_filtered(env, None)
+}
+
+/// Format condition declarations, optionally filtered by owning system name.
+pub fn format_condition_decls_filtered(env: &TypeEnv, system: Option<&str>) -> Vec<String> {
+    let mut conds: Vec<_> = env
+        .conditions
+        .values()
+        .filter(|ci| match system {
+            Some(s) => owned_by(&ci.name, &env.condition_owner, s),
+            None => true,
+        })
+        .collect();
     conds.sort_by(|a, b| a.name.cmp(&b.name));
     conds
         .iter()
