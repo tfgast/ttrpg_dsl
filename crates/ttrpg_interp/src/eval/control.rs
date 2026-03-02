@@ -187,14 +187,18 @@ pub(super) fn eval_list_comprehension(
             }
 
             let include = if let Some(filter_expr) = filter {
-                match eval_expr(env, filter_expr)? {
-                    Value::Bool(b) => b,
-                    _ => {
+                match eval_expr(env, filter_expr) {
+                    Ok(Value::Bool(b)) => b,
+                    Ok(_) => {
                         env.pop_scope();
                         return Err(RuntimeError::with_span(
                             "list comprehension filter must be bool",
                             filter_expr.span,
                         ));
+                    }
+                    Err(e) => {
+                        env.pop_scope();
+                        return Err(e);
                     }
                 }
             } else {
@@ -202,8 +206,13 @@ pub(super) fn eval_list_comprehension(
             };
 
             if include {
-                let val = eval_expr(env, element)?;
-                collected.push(val);
+                match eval_expr(env, element) {
+                    Ok(val) => collected.push(val),
+                    Err(e) => {
+                        env.pop_scope();
+                        return Err(e);
+                    }
+                }
             }
             env.pop_scope();
         }

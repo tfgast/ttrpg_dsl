@@ -1169,6 +1169,98 @@ system "test" {
     );
 }
 
+// ── list comprehension scope cleanup on error ──────────────────
+
+/// Regression test: list comprehension element expression errors must
+/// pop the per-iteration scope before propagating (tdsl-mn1u).
+#[test]
+fn list_comprehension_element_error_cleans_scope() {
+    let source = r#"
+system "test" {
+    derive boom(xs: list<int>) -> list<int> {
+        [if x == 0 { error("elem boom") } else { x + 1 } for x in xs]
+    }
+    derive ok(xs: list<int>) -> list<int> {
+        [x + 1 for x in xs]
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NoopHandler;
+
+    // Trigger error in element expression (inside pushed scope)
+    let err = interp
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "boom",
+            vec![Value::List(vec![Value::Int(1), Value::Int(0)])],
+        )
+        .unwrap_err();
+    assert!(
+        err.message.contains("elem boom"),
+        "expected error message, got: {}",
+        err.message
+    );
+
+    // Subsequent call on the same interpreter must succeed
+    let val = interp
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "ok",
+            vec![Value::List(vec![Value::Int(1), Value::Int(2)])],
+        )
+        .unwrap();
+    assert_eq!(val, Value::List(vec![Value::Int(2), Value::Int(3)]));
+}
+
+/// Regression test: list comprehension filter expression errors must
+/// pop the per-iteration scope before propagating (tdsl-mn1u).
+#[test]
+fn list_comprehension_filter_error_cleans_scope() {
+    let source = r#"
+system "test" {
+    derive boom(xs: list<int>) -> list<int> {
+        [x for x in xs if error("filter boom")]
+    }
+    derive ok(xs: list<int>) -> list<int> {
+        [x + 1 for x in xs]
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NoopHandler;
+
+    let err = interp
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "boom",
+            vec![Value::List(vec![Value::Int(1)])],
+        )
+        .unwrap_err();
+    assert!(
+        err.message.contains("filter boom"),
+        "expected error message, got: {}",
+        err.message
+    );
+
+    let val = interp
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "ok",
+            vec![Value::List(vec![Value::Int(1), Value::Int(2)])],
+        )
+        .unwrap();
+    assert_eq!(val, Value::List(vec![Value::Int(2), Value::Int(3)]));
+}
+
 // ── map literals ───────────────────────────────────────────────
 
 #[test]

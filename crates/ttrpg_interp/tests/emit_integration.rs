@@ -618,3 +618,68 @@ system "test" {
         err_msg
     );
 }
+
+// ── Regression: scope cleanup on field-default error (tdsl-3947) ──
+
+#[test]
+fn emit_field_default_error_cleans_scope() {
+    let source = r#"
+system "test" {
+    entity Character { HP: int }
+    event Boom(x: int) {
+        computed: int = error("field default boom")
+    }
+    action DoBoom on actor: Character () {
+        resolve {
+            emit Boom(x: 1)
+        }
+    }
+    action Heal on actor: Character (amount: int) {
+        resolve {
+            actor.HP += amount
+        }
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut state = GameState::new();
+
+    let mut fields = HashMap::new();
+    fields.insert("HP".into(), Value::Int(10));
+    let actor = state.add_entity("Character", fields);
+
+    state.set_turn_budget(&actor, standard_turn_budget());
+
+    // Trigger the error in field-default evaluation (inside pushed scope)
+    let adapter = StateAdapter::new(state);
+    let mut handler = ScriptedHandler::new();
+    let result = adapter.run(&mut handler, |state, eff_handler| {
+        interp.execute_action(state, eff_handler, "DoBoom", actor, vec![])
+    });
+    assert!(result.is_err(), "emit with erroring field default should fail");
+    let err_msg = format!("{}", result.unwrap_err());
+    assert!(
+        err_msg.contains("field default boom"),
+        "expected field-default error, got: {}",
+        err_msg
+    );
+
+    // Subsequent action on the same interpreter must succeed
+    let mut state = adapter.into_inner();
+    state.set_turn_budget(&actor, standard_turn_budget());
+    let adapter = StateAdapter::new(state);
+    let mut handler = ScriptedHandler::new();
+    adapter.run(&mut handler, |state, eff_handler| {
+        interp
+            .execute_action(state, eff_handler, "Heal", actor, vec![Value::Int(5)])
+            .unwrap();
+    });
+
+    let state = adapter.into_inner();
+    assert_eq!(
+        state.read_field(&actor, "HP"),
+        Some(Value::Int(15)),
+        "HP should increase from 10 to 15 after successful Heal"
+    );
+}
