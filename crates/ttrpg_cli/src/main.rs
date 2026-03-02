@@ -46,32 +46,66 @@ fn main() {
             }
         }
         Some("check") => {
-            // Strip -s / --snippet flag
-            let check_args: Vec<&str> = args[1..]
-                .iter()
-                .filter(|a| **a != "-s" && **a != "--snippet")
-                .copied()
-                .collect();
-            let snippet = check_args.len() < args.len() - 1;
+            // Strip -s / --snippet and --format json flags
+            let mut snippet = false;
+            let mut json = false;
+            let mut check_args: Vec<&str> = Vec::new();
+            let mut rest = &args[1..];
+            while let Some((&first, tail)) = rest.split_first() {
+                match first {
+                    "-s" | "--snippet" => {
+                        snippet = true;
+                        rest = tail;
+                    }
+                    "--format" => {
+                        match tail.first() {
+                            Some(&"json") => json = true,
+                            Some(other) => {
+                                eprintln!("unknown format: {other}");
+                                process::exit(1);
+                            }
+                            None => {
+                                eprintln!("--format requires an argument");
+                                process::exit(1);
+                            }
+                        }
+                        rest = &tail[1..];
+                    }
+                    _ if first.starts_with("--format=") => {
+                        let val = &first["--format=".len()..];
+                        if val == "json" {
+                            json = true;
+                        } else {
+                            eprintln!("unknown format: {val}");
+                            process::exit(1);
+                        }
+                        rest = tail;
+                    }
+                    _ => {
+                        check_args.push(first);
+                        rest = tail;
+                    }
+                }
+            }
 
             if check_args.first().copied() == Some("-c") {
                 if check_args.len() != 2 {
-                    eprintln!("usage: ttrpg check [-s] -c <source>");
+                    eprintln!("usage: ttrpg check [-s] [--format json] -c <source>");
                     process::exit(1);
                 }
                 if check_args[1] == "-" {
-                    check_stdin(snippet);
+                    check_stdin(snippet, json);
                 } else {
-                    check_source(check_args[1], snippet);
+                    check_source(check_args[1], snippet, json);
                 }
             } else if check_args.is_empty() {
                 if io::stdin().is_terminal() {
-                    eprintln!("usage: ttrpg check [-s] <files...>");
+                    eprintln!("usage: ttrpg check [-s] [--format json] <files...>");
                     process::exit(1);
                 }
-                check_stdin(snippet);
+                check_stdin(snippet, json);
             } else {
-                check_files(&check_args, snippet);
+                check_files(&check_args, snippet, json);
             }
         }
         Some(other) => {
@@ -171,23 +205,23 @@ fn exec_commands(label: &str, content: &str) {
 }
 
 /// Check DSL source read from stdin.
-fn check_stdin(snippet: bool) {
+fn check_stdin(snippet: bool, json: bool) {
     let source = io::read_to_string(io::stdin()).unwrap_or_else(|e| {
         eprintln!("read error: {e}");
         process::exit(1);
     });
     let sources = vec![("<stdin>".to_string(), source)];
-    check_sources(sources, snippet);
+    check_sources(sources, snippet, json);
 }
 
 /// Check DSL source passed as a string.
-fn check_source(source: &str, snippet: bool) {
+fn check_source(source: &str, snippet: bool, json: bool) {
     let sources = vec![("<string>".to_string(), source.to_string())];
-    check_sources(sources, snippet);
+    check_sources(sources, snippet, json);
 }
 
 /// Check DSL source files by path (with glob support).
-fn check_files(file_args: &[&str], snippet: bool) {
+fn check_files(file_args: &[&str], snippet: bool, json: bool) {
     // Resolve globs and collect paths
     let mut paths: Vec<PathBuf> = Vec::new();
     for arg in file_args {
@@ -234,7 +268,7 @@ fn check_files(file_args: &[&str], snippet: bool) {
         }
     }
 
-    check_sources(sources, snippet);
+    check_sources(sources, snippet, json);
 }
 
 /// Print CLI usage and exit.
@@ -251,10 +285,12 @@ USAGE:
   ttrpg check <files...>             Type-check source files
   ttrpg check -s <files...>          Type-check snippets (auto-wrapped in system block)
   ttrpg check [-s] -c <source>       Type-check source string
+  ttrpg check --format json <files>  JSON diagnostic output (one object per line)
   echo <commands> | ttrpg            Pipe mode (no line editing)
 
 FLAGS:
   --vi                               Use vi keybindings in REPL
+  --format json                      Output diagnostics as JSON (check only)
   -h, --help                         Show this help
 
 REPL:
@@ -267,7 +303,7 @@ REPL:
 /// When `snippet` is true, each source is auto-wrapped in
 /// `system "<check>" { ... }` before parsing, and diagnostic spans are
 /// adjusted so line/column numbers stay relative to the original input.
-fn check_sources(sources: Vec<(String, String)>, snippet: bool) {
+fn check_sources(sources: Vec<(String, String)>, snippet: bool, json: bool) {
     let snippet_prefix = "system \"<check>\" {\n";
     let snippet_suffix = "\n}\n";
     let prefix_len = snippet_prefix.len();
@@ -314,24 +350,33 @@ fn check_sources(sources: Vec<(String, String)>, snippet: bool) {
             Severity::Error => error_count += 1,
             Severity::Warning => warning_count += 1,
         }
-        eprintln!("{}", source_map.render(diag));
+        if json {
+            println!("{}", source_map.render_json(diag));
+        } else {
+            eprintln!("{}", source_map.render(diag));
+        }
     }
 
-    // Summary
+    // Summary (human-readable only)
+    if !json {
+        if error_count > 0 {
+            eprintln!(
+                "{} error{}, {} warning{}",
+                error_count,
+                if error_count == 1 { "" } else { "s" },
+                warning_count,
+                if warning_count == 1 { "" } else { "s" },
+            );
+        } else if warning_count > 0 {
+            eprintln!(
+                "{} warning{}",
+                warning_count,
+                if warning_count == 1 { "" } else { "s" },
+            );
+        }
+    }
+
     if error_count > 0 {
-        eprintln!(
-            "{} error{}, {} warning{}",
-            error_count,
-            if error_count == 1 { "" } else { "s" },
-            warning_count,
-            if warning_count == 1 { "" } else { "s" },
-        );
         process::exit(1);
-    } else if warning_count > 0 {
-        eprintln!(
-            "{} warning{}",
-            warning_count,
-            if warning_count == 1 { "" } else { "s" },
-        );
     }
 }

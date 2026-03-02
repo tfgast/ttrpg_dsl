@@ -179,6 +179,64 @@ impl MultiSourceMap {
         Self { files }
     }
 
+    /// Returns (1-indexed line, 1-indexed column) for a byte offset within a file.
+    fn line_col(line_starts: &[usize], byte_offset: usize) -> (usize, usize) {
+        let line = line_starts
+            .partition_point(|&start| start <= byte_offset)
+            .saturating_sub(1);
+        let col = byte_offset - line_starts[line];
+        (line + 1, col + 1)
+    }
+
+    /// Render a diagnostic as a JSON object (one-line, no trailing newline).
+    ///
+    /// Fields: `file`, `line`, `col`, `end_line`, `end_col`, `message`, `help`, `severity`.
+    pub fn render_json(&self, diag: &Diagnostic) -> String {
+        let severity = match diag.severity {
+            Severity::Error => "error",
+            Severity::Warning => "warning",
+        };
+
+        let (file, line, col, end_line, end_col) = if diag.span.is_dummy() {
+            (None, 0, 0, 0, 0)
+        } else {
+            let file_idx = diag.span.file.0 as usize;
+            match self.files.get(file_idx) {
+                Some(f) => {
+                    let (l, c) = Self::line_col(&f.line_starts, diag.span.start as usize);
+                    let (el, ec) = Self::line_col(&f.line_starts, diag.span.end as usize);
+                    (Some(f.filename.as_str()), l, c, el, ec)
+                }
+                None => (None, 0, 0, 0, 0),
+            }
+        };
+
+        let file_json = match file {
+            Some(f) => format!("\"{}\"", f.replace('\\', "\\\\").replace('"', "\\\"")),
+            None => "null".to_string(),
+        };
+        let msg = diag
+            .message
+            .replace('\\', "\\\\")
+            .replace('"', "\\\"")
+            .replace('\n', "\\n");
+        let help_json = match &diag.help {
+            Some(h) => format!(
+                "\"{}\"",
+                h.replace('\\', "\\\\")
+                    .replace('"', "\\\"")
+                    .replace('\n', "\\n")
+            ),
+            None => "null".to_string(),
+        };
+
+        format!(
+            "{{\"file\":{file_json},\"line\":{line},\"col\":{col},\
+             \"end_line\":{end_line},\"end_col\":{end_col},\
+             \"message\":\"{msg}\",\"help\":{help_json},\"severity\":\"{severity}\"}}"
+        )
+    }
+
     /// Render a diagnostic with filename:line:col location.
     pub fn render(&self, diag: &Diagnostic) -> String {
         // Dummy spans have no source location — render without file attribution
@@ -293,6 +351,49 @@ mod tests {
             !rendered.contains("^^^^"),
             "caret should NOT extend beyond first line, got: {rendered}",
         );
+    }
+
+    // ── JSON rendering ──
+
+    #[test]
+    fn render_json_basic() {
+        let msm = MultiSourceMap::new(vec![(
+            "test.ttrpg".into(),
+            "hello\nworld\n".into(),
+        )]);
+        let diag = Diagnostic::error("bad thing", Span::new(FileId(0), 6, 11))
+            .with_help("try something else");
+        let json = msm.render_json(&diag);
+        assert_eq!(
+            json,
+            r#"{"file":"test.ttrpg","line":2,"col":1,"end_line":2,"end_col":6,"message":"bad thing","help":"try something else","severity":"error"}"#,
+        );
+    }
+
+    #[test]
+    fn render_json_warning_no_help() {
+        let msm = MultiSourceMap::new(vec![("a.ttrpg".into(), "abc".into())]);
+        let diag = Diagnostic::warning("heads up", Span::new(FileId(0), 0, 3));
+        let json = msm.render_json(&diag);
+        assert!(json.contains(r#""severity":"warning""#));
+        assert!(json.contains(r#""help":null"#));
+    }
+
+    #[test]
+    fn render_json_dummy_span() {
+        let msm = MultiSourceMap::new(vec![("a.ttrpg".into(), "abc".into())]);
+        let diag = Diagnostic::error("orphan", Span::dummy());
+        let json = msm.render_json(&diag);
+        assert!(json.contains(r#""file":null"#));
+        assert!(json.contains(r#""line":0"#));
+    }
+
+    #[test]
+    fn render_json_escapes_special_chars() {
+        let msm = MultiSourceMap::new(vec![("a.ttrpg".into(), "x".into())]);
+        let diag = Diagnostic::error("has \"quotes\" and \\backslash", Span::new(FileId(0), 0, 1));
+        let json = msm.render_json(&diag);
+        assert!(json.contains(r#"has \"quotes\" and \\backslash"#));
     }
 
     #[test]
