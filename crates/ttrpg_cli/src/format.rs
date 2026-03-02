@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use ttrpg_ast::DiceFilter;
 use ttrpg_ast::Name;
-use ttrpg_checker::env::{DeclInfo, TypeEnv};
+use ttrpg_checker::env::{DeclInfo, FnInfo, FnKind, TypeEnv};
 use ttrpg_interp::effect::FieldPathSegment;
 use ttrpg_interp::value::{DiceExpr, Value};
 
@@ -227,6 +227,65 @@ pub fn format_entity(env: &TypeEnv, name: &str) -> Result<Vec<String>, String> {
         Some(_) => Err(format!("'{name}' is not an entity")),
         None => Err(format!("unknown type: '{name}'")),
     }
+}
+
+/// Format a single function signature as `kind name(params) -> return_type`.
+pub fn format_fn_signature(fi: &FnInfo) -> String {
+    let kind_label = match fi.kind {
+        FnKind::Action => "action",
+        FnKind::Reaction => "reaction",
+        FnKind::Hook => "hook",
+        FnKind::Derive => "derive",
+        FnKind::Mechanic => "mechanic",
+        FnKind::Prompt => "prompt",
+        FnKind::Table => "table",
+        FnKind::Builtin => "builtin",
+    };
+
+    let receiver = fi
+        .receiver
+        .as_ref()
+        .map(|r| format!("{}: {}", r.name, r.ty.display()));
+    let params: Vec<String> = fi
+        .params
+        .iter()
+        .map(|p| format!("{}: {}", p.name, p.ty.display()))
+        .collect();
+    let all_params = match (&receiver, params.is_empty()) {
+        (Some(r), true) => r.clone(),
+        (Some(r), false) => format!("{}, {}", r, params.join(", ")),
+        (None, _) => params.join(", "),
+    };
+
+    format!(
+        "{} {}({}) -> {}",
+        kind_label,
+        fi.name,
+        all_params,
+        fi.return_type.display()
+    )
+}
+
+/// Format all action declarations from a TypeEnv for human-readable output.
+pub fn format_actions(env: &TypeEnv) -> Vec<String> {
+    let mut actions: Vec<_> = env
+        .functions
+        .values()
+        .filter(|fi| matches!(fi.kind, FnKind::Action))
+        .collect();
+    actions.sort_by(|a, b| a.name.cmp(&b.name));
+    actions.iter().map(|fi| format_fn_signature(fi)).collect()
+}
+
+/// Format all mechanic and derive declarations from a TypeEnv for human-readable output.
+pub fn format_mechanics(env: &TypeEnv) -> Vec<String> {
+    let mut fns: Vec<_> = env
+        .functions
+        .values()
+        .filter(|fi| matches!(fi.kind, FnKind::Mechanic | FnKind::Derive))
+        .collect();
+    fns.sort_by(|a, b| a.name.cmp(&b.name));
+    fns.iter().map(|fi| format_fn_signature(fi)).collect()
 }
 
 /// Format a field path for effect logging (e.g., `HP` or `stats["STR"]`).

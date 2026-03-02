@@ -308,79 +308,21 @@ impl Runner {
     }
 
     pub(super) fn cmd_actions(&mut self) -> Result<(), CliError> {
-        let mut actions: Vec<_> = self
-            .type_env
-            .functions
-            .values()
-            .filter(|fi| matches!(fi.kind, FnKind::Action))
-            .collect();
-        actions.sort_by(|a, b| a.name.cmp(&b.name));
-
-        if actions.is_empty() {
+        let lines = crate::format::format_actions(&self.type_env);
+        if lines.is_empty() {
             self.output.push("no actions".into());
-            return Ok(());
-        }
-
-        for fi in &actions {
-            let receiver = fi
-                .receiver
-                .as_ref()
-                .map(|r| format!("{}: {}", r.name, r.ty.display()))
-                .unwrap_or_default();
-            let params: Vec<String> = fi
-                .params
-                .iter()
-                .map(|p| format!("{}: {}", p.name, p.ty.display()))
-                .collect();
-            let all_params = if receiver.is_empty() {
-                params.join(", ")
-            } else if params.is_empty() {
-                receiver
-            } else {
-                format!("{}, {}", receiver, params.join(", "))
-            };
-            self.output.push(format!(
-                "action {}({}) -> {}",
-                fi.name,
-                all_params,
-                fi.return_type.display()
-            ));
+        } else {
+            self.output.extend(lines);
         }
         Ok(())
     }
 
     pub(super) fn cmd_mechanics(&mut self) -> Result<(), CliError> {
-        let mut fns: Vec<_> = self
-            .type_env
-            .functions
-            .values()
-            .filter(|fi| matches!(fi.kind, FnKind::Mechanic | FnKind::Derive))
-            .collect();
-        fns.sort_by(|a, b| a.name.cmp(&b.name));
-
-        if fns.is_empty() {
+        let lines = crate::format::format_mechanics(&self.type_env);
+        if lines.is_empty() {
             self.output.push("no mechanics".into());
-            return Ok(());
-        }
-
-        for fi in &fns {
-            let kind_label = match fi.kind {
-                FnKind::Derive => "derive",
-                FnKind::Mechanic => "mechanic",
-                _ => unreachable!(),
-            };
-            let params: Vec<String> = fi
-                .params
-                .iter()
-                .map(|p| format!("{}: {}", p.name, p.ty.display()))
-                .collect();
-            self.output.push(format!(
-                "{} {}({}) -> {}",
-                kind_label,
-                fi.name,
-                params.join(", "),
-                fi.return_type.display()
-            ));
+        } else {
+            self.output.extend(lines);
         }
         Ok(())
     }
