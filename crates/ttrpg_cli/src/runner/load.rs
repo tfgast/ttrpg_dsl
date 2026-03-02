@@ -1,6 +1,19 @@
 use super::*;
 
 impl Runner {
+    /// Reset all loaded state (program, types, game state, handles, etc.)
+    fn clear_state(&mut self, paths: Vec<PathBuf>) {
+        *self.program = Program::default();
+        *self.type_env = TypeEnv::new();
+        self.module_map = ModuleMap::default();
+        self.game_state = RefCell::new(GameState::new());
+        self.last_paths = paths;
+        self.handles.clear();
+        self.reverse_handles.clear();
+        self.source_map = None;
+        self.unit_suffixes = crate::format::UnitSuffixes::new();
+    }
+
     pub(super) fn cmd_load(&mut self, paths_str: &str) -> Result<(), CliError> {
         // Split on whitespace and expand globs
         let tokens: Vec<&str> = paths_str.split_whitespace().collect();
@@ -8,9 +21,15 @@ impl Runner {
         for token in &tokens {
             if token.contains('*') || token.contains('?') || token.contains('[') {
                 // Glob expansion
-                let entries = glob::glob(token).map_err(|e| {
-                    CliError::Message(format!("invalid glob pattern '{}': {}", token, e))
-                })?;
+                let entries = match glob::glob(token) {
+                    Ok(e) => e,
+                    Err(e) => {
+                        self.clear_state(Vec::new());
+                        return Err(CliError::Message(format!(
+                            "invalid glob pattern '{}': {}", token, e
+                        )));
+                    }
+                };
                 let mut found = false;
                 for entry in entries {
                     match entry {
@@ -19,6 +38,7 @@ impl Runner {
                             found = true;
                         }
                         Err(e) => {
+                            self.clear_state(Vec::new());
                             return Err(CliError::Message(format!(
                                 "glob error for '{}': {}",
                                 token, e
@@ -27,6 +47,7 @@ impl Runner {
                     }
                 }
                 if !found {
+                    self.clear_state(Vec::new());
                     return Err(CliError::Message(format!(
                         "no files matched pattern '{}'",
                         token
@@ -38,6 +59,7 @@ impl Runner {
         }
 
         if resolved_paths.is_empty() {
+            self.clear_state(Vec::new());
             return Err(CliError::Message("no files specified".into()));
         }
 
@@ -47,18 +69,6 @@ impl Runner {
     /// Load from already-resolved paths. Used by both `cmd_load` and `cmd_reload`
     /// so that reload doesn't need to round-trip paths through string tokenization.
     pub(super) fn load_paths(&mut self, resolved_paths: Vec<PathBuf>) -> Result<(), CliError> {
-        // Helper to clear stale state
-        fn clear_state(runner: &mut Runner, paths: Vec<PathBuf>) {
-            *runner.program = Program::default();
-            *runner.type_env = TypeEnv::new();
-            runner.module_map = ModuleMap::default();
-            runner.game_state = RefCell::new(GameState::new());
-            runner.last_paths = paths;
-            runner.handles.clear();
-            runner.reverse_handles.clear();
-            runner.source_map = None;
-            runner.unit_suffixes = crate::format::UnitSuffixes::new();
-        }
 
         // Read all files
         let mut sources: Vec<(String, String)> = Vec::new();
@@ -68,7 +78,7 @@ impl Runner {
                 Ok(s) => sources.push((path_str.into_owned(), s)),
                 Err(e) => {
                     let msg = format!("cannot read '{}': {}", path_str, e);
-                    clear_state(self, resolved_paths);
+                    self.clear_state(resolved_paths);
                     self.diagnostics = Vec::new();
                     return Err(CliError::Message(msg));
                 }
@@ -131,7 +141,7 @@ impl Runner {
             self.output.push(loaded_label);
             Ok(())
         } else {
-            clear_state(self, resolved_paths);
+            self.clear_state(resolved_paths);
             self.diagnostics = all_diags;
             self.source_map = Some(MultiSourceMap::new(sources));
             self.output.push("use 'errors' to see diagnostics".into());

@@ -166,11 +166,11 @@ impl Completer for TtrpgCompleter {
             }
             "do" => {
                 // After do: complete action names (only before '(')
-                if rest.contains('(') {
+                if rest.trim_start().contains('(') {
                     // Cursor is inside arguments — no action name completions
                     return Vec::new();
                 }
-                let current = rest.trim();
+                let current = last_word(rest);
                 let word_start = pos - current.len();
                 prefix_matches_owned(&ctx.action_names, current)
                     .into_iter()
@@ -179,11 +179,11 @@ impl Completer for TtrpgCompleter {
             }
             "call" => {
                 // After call: complete derive + mechanic names (only before '(')
-                if rest.contains('(') {
+                if rest.trim_start().contains('(') {
                     // Cursor is inside arguments — no function name completions
                     return Vec::new();
                 }
-                let current = rest.trim();
+                let current = last_word(rest);
                 let word_start = pos - current.len();
                 let mut candidates: Vec<String> = Vec::new();
                 candidates.extend(ctx.derive_names.iter().cloned());
@@ -248,7 +248,7 @@ impl Completer for TtrpgCompleter {
                 }
             }
             "enable" | "disable" => {
-                let current = rest.trim();
+                let current = last_word(rest);
                 let word_start = pos - current.len();
                 prefix_matches_owned(&ctx.option_names, current)
                     .into_iter()

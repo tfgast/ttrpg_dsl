@@ -55,14 +55,22 @@ impl Runner {
                         let group_info = type_name
                             .as_deref()
                             .and_then(|tn| self.type_env.lookup_optional_group(tn, group_name));
-                        let suffix = match group_info {
-                            Some(info) if info.required => "is required but missing in state",
-                            _ => "is not currently granted",
+                        let msg = match group_info {
+                            Some(info) if info.required => {
+                                format!("{}.{} is required but missing in state", handle, group_name)
+                            }
+                            Some(_) => {
+                                format!("{}.{} is not currently granted", handle, group_name)
+                            }
+                            None => {
+                                let entity_type = type_name.as_deref().unwrap_or("unknown");
+                                format!(
+                                    "unknown group '{}' on {}",
+                                    group_name, entity_type
+                                )
+                            }
                         };
-                        return Err(CliError::Message(format!(
-                            "{}.{} {}",
-                            handle, group_name, suffix
-                        )));
+                        return Err(CliError::Message(msg));
                     }
                 }
             } else {
