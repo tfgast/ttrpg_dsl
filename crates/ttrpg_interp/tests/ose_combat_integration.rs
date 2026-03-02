@@ -530,12 +530,12 @@ fn compile_table_test() -> (ttrpg_ast::ast::Program, ttrpg_checker::CheckResult)
     // Replace the closing "}" with wrappers + "}".
     let source = base.replace(
         "\n}\n",
-        r#"
+        r"
     // Test wrappers for table access
     derive test_thac0(hd: int) -> int { monster_thac0(hd) }
     derive test_reaction(roll: int) -> ReactionOutcome { reaction_outcome(roll) }
 }
-"#,
+",
     );
     let (program, parse_errors) = ttrpg_parser::parse(&source, FileId::SYNTH);
     assert!(
@@ -609,9 +609,7 @@ fn monster_thac0_all_tiers() {
         assert_eq!(
             val,
             Value::Int(expected_thac0),
-            "HD {} should have THAC0 {}",
-            hd,
-            expected_thac0
+            "HD {hd} should have THAC0 {expected_thac0}"
         );
     }
 }
@@ -646,9 +644,7 @@ fn reaction_outcome_all_tiers() {
         assert_eq!(
             val,
             enum_variant("ReactionOutcome", expected_variant),
-            "roll {} should be {}",
-            roll,
-            expected_variant
+            "roll {roll} should be {expected_variant}"
         );
     }
 }

@@ -319,8 +319,7 @@ system "test" {
         errors
             .iter()
             .any(|e| e.contains("only allowed in action, reaction, or hook")),
-        "expected context error, got: {:?}",
-        errors
+        "expected context error, got: {errors:?}"
     );
 }
 
@@ -340,8 +339,7 @@ system "test" {
     );
     assert!(
         errors.iter().any(|e| e.contains("undefined event")),
-        "expected undefined event error, got: {:?}",
-        errors
+        "expected undefined event error, got: {errors:?}"
     );
 }
 
@@ -364,8 +362,7 @@ system "test" {
         errors
             .iter()
             .any(|e| e.contains("missing required argument")),
-        "expected missing param error, got: {:?}",
-        errors
+        "expected missing param error, got: {errors:?}"
     );
 }
 
@@ -388,8 +385,7 @@ system "test" {
         errors
             .iter()
             .any(|e| e.contains("type") && e.contains("amount")),
-        "expected type mismatch error, got: {:?}",
-        errors
+        "expected type mismatch error, got: {errors:?}"
     );
 }
 
@@ -410,8 +406,7 @@ system "test" {
     );
     assert!(
         errors.iter().any(|e| e.contains("no parameter `bogus`")),
-        "expected unknown param error, got: {:?}",
-        errors
+        "expected unknown param error, got: {errors:?}"
     );
 }
 
@@ -621,8 +616,7 @@ system "test" {
     let err_msg = format!("{}", result.unwrap_err());
     assert!(
         err_msg.contains("depth limit"),
-        "error should mention depth limit, got: {}",
-        err_msg
+        "error should mention depth limit, got: {err_msg}"
     );
 }
 
@@ -671,8 +665,7 @@ system "test" {
     let err_msg = format!("{}", result.unwrap_err());
     assert!(
         err_msg.contains("field default boom"),
-        "expected field-default error, got: {}",
-        err_msg
+        "expected field-default error, got: {err_msg}"
     );
 
     // Subsequent action on the same interpreter must succeed

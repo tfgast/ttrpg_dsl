@@ -14,7 +14,7 @@ fn write_temp(name: &str, source: &str) -> std::path::PathBuf {
     let id = COUNTER.fetch_add(1, Ordering::Relaxed);
     let dir = std::env::temp_dir().join("ttrpg_cli_inv_test");
     std::fs::create_dir_all(&dir).unwrap();
-    let path = dir.join(format!("{}_{}.ttrpg", name, id));
+    let path = dir.join(format!("{name}_{id}.ttrpg"));
     std::fs::write(&path, source).unwrap();
     path
 }
@@ -51,7 +51,7 @@ fn exec(runner: &mut Runner, cmd: &str) -> Vec<String> {
 /// for invocation tracking tests).
 fn spawn_5e(runner: &mut Runner, handle: &str, fields: &str) {
     runner
-        .exec(&format!("spawn Character {} {{ {} }}", handle, fields))
+        .exec(&format!("spawn Character {handle} {{ {fields} }}"))
         .unwrap();
     runner.take_output();
 }
@@ -85,20 +85,17 @@ fn concentration_cast_bless_applies_condition_and_tracks_invocation() {
     // Action should succeed
     assert!(
         output.iter().any(|l| l.contains("succeeded")),
-        "CastBless should succeed: {:?}",
-        output
+        "CastBless should succeed: {output:?}"
     );
     // Condition should be applied
     assert!(
         output.iter().any(|l| l.contains("Blessed")),
-        "should apply Blessed condition: {:?}",
-        output
+        "should apply Blessed condition: {output:?}"
     );
     // Hook should fire and set concentrating_on
     assert!(
         output.iter().any(|l| l.contains("on_conc")),
-        "on_conc hook should fire: {:?}",
-        output
+        "on_conc hook should fire: {output:?}"
     );
 
     // Verify condition is on the ally
@@ -107,16 +104,14 @@ fn concentration_cast_bless_applies_condition_and_tracks_invocation() {
         conds
             .iter()
             .any(|l| l.contains("ally") && l.contains("Blessed")),
-        "ally should have Blessed condition: {:?}",
-        conds
+        "ally should have Blessed condition: {conds:?}"
     );
 
     // Verify concentrating_on is set
     let field = exec(&mut r, "inspect caster.concentrating_on");
     assert!(
         field[0].contains("some(Invocation("),
-        "concentrating_on should be set: {:?}",
-        field
+        "concentrating_on should be set: {field:?}"
     );
 }
 
@@ -136,8 +131,7 @@ fn concentration_recast_revokes_previous_spell() {
         conds
             .iter()
             .any(|l| l.contains("ally") && l.contains("Blessed")),
-        "ally should have Blessed: {:?}",
-        conds
+        "ally should have Blessed: {conds:?}"
     );
 
     // Now cast Hex on enemy (different concentration spell)
@@ -146,8 +140,7 @@ fn concentration_recast_revokes_previous_spell() {
     // Hook should revoke the old invocation
     assert!(
         output.iter().any(|l| l.contains("RevokeInvocation")),
-        "on_conc hook should revoke old invocation: {:?}",
-        output
+        "on_conc hook should revoke old invocation: {output:?}"
     );
 
     // After recasting: only Hexed should remain, Blessed should be gone
@@ -156,21 +149,18 @@ fn concentration_recast_revokes_previous_spell() {
         conds
             .iter()
             .any(|l| l.contains("enemy") && l.contains("Hexed")),
-        "enemy should have Hexed: {:?}",
-        conds
+        "enemy should have Hexed: {conds:?}"
     );
     assert!(
         !conds.iter().any(|l| l.contains("Blessed")),
-        "Blessed should be revoked: {:?}",
-        conds
+        "Blessed should be revoked: {conds:?}"
     );
 
     // concentrating_on should point to the new invocation
     let field = exec(&mut r, "inspect caster.concentrating_on");
     assert!(
         field[0].contains("some(Invocation("),
-        "concentrating_on should still be set: {:?}",
-        field
+        "concentrating_on should still be set: {field:?}"
     );
 }
 
@@ -190,15 +180,13 @@ fn concentration_multi_target_bless_all_revoked_together() {
         conds
             .iter()
             .any(|l| l.contains("alice") && l.contains("Blessed")),
-        "alice should have Blessed: {:?}",
-        conds
+        "alice should have Blessed: {conds:?}"
     );
     assert!(
         conds
             .iter()
             .any(|l| l.contains("bob") && l.contains("Blessed")),
-        "bob should have Blessed: {:?}",
-        conds
+        "bob should have Blessed: {conds:?}"
     );
 
     // Cast Hex — should revoke ALL Blessed conditions (both targets)
@@ -207,13 +195,11 @@ fn concentration_multi_target_bless_all_revoked_together() {
     let conds = exec(&mut r, "conditions");
     assert!(
         !conds.iter().any(|l| l.contains("Blessed")),
-        "all Blessed conditions should be revoked: {:?}",
-        conds
+        "all Blessed conditions should be revoked: {conds:?}"
     );
     assert!(
         conds.iter().any(|l| l.contains("Hexed")),
-        "Hexed should remain: {:?}",
-        conds
+        "Hexed should remain: {conds:?}"
     );
 }
 
@@ -240,16 +226,14 @@ fn concentration_save_succeeds_keeps_spell() {
     let field = exec(&mut r, "inspect caster.concentrating_on");
     assert!(
         field[0].contains("some(Invocation("),
-        "concentration should be maintained on successful save: {:?}",
-        field
+        "concentration should be maintained on successful save: {field:?}"
     );
 
     // Blessed should still be on the ally
     let conds = exec(&mut r, "conditions");
     assert!(
         conds.iter().any(|l| l.contains("Blessed")),
-        "Blessed should persist after successful save: {:?}",
-        conds
+        "Blessed should persist after successful save: {conds:?}"
     );
 }
 
@@ -274,29 +258,25 @@ fn concentration_save_fails_revokes_spell() {
     // ConcentrationSave hook should fire and revoke
     assert!(
         output.iter().any(|l| l.contains("ConcentrationSave")),
-        "ConcentrationSave hook should fire: {:?}",
-        output
+        "ConcentrationSave hook should fire: {output:?}"
     );
     assert!(
         output.iter().any(|l| l.contains("RevokeInvocation")),
-        "failed save should revoke: {:?}",
-        output
+        "failed save should revoke: {output:?}"
     );
 
     // Concentration should be lost
     let field = exec(&mut r, "inspect caster.concentrating_on");
     assert!(
         field[0].contains("none"),
-        "concentrating_on should be none after failed save: {:?}",
-        field
+        "concentrating_on should be none after failed save: {field:?}"
     );
 
     // Blessed should be gone
     let conds = exec(&mut r, "conditions");
     assert!(
         !conds.iter().any(|l| l.contains("Blessed")),
-        "Blessed should be revoked after failed save: {:?}",
-        conds
+        "Blessed should be revoked after failed save: {conds:?}"
     );
 }
 
@@ -313,14 +293,12 @@ fn concentration_none_initial_revoke_is_noop() {
     // Should succeed without errors
     assert!(
         output.iter().any(|l| l.contains("succeeded")),
-        "first concentration spell should succeed: {:?}",
-        output
+        "first concentration spell should succeed: {output:?}"
     );
     // No RevokeInvocation should appear (revoke(none) is silent)
     assert!(
         !output.iter().any(|l| l.contains("RevokeInvocation")),
-        "revoke(none) should not emit RevokeInvocation: {:?}",
-        output
+        "revoke(none) should not emit RevokeInvocation: {output:?}"
     );
 }
 
@@ -341,23 +319,20 @@ fn concentration_hold_person_with_save() {
 
     assert!(
         output.iter().any(|l| l.contains("HeldByPerson")),
-        "target should get HeldByPerson on failed save: {:?}",
-        output
+        "target should get HeldByPerson on failed save: {output:?}"
     );
 
     let conds = exec(&mut r, "conditions");
     assert!(
         conds.iter().any(|l| l.contains("HeldByPerson")),
-        "HeldByPerson should be active: {:?}",
-        conds
+        "HeldByPerson should be active: {conds:?}"
     );
 
     // Concentration should be tracked
     let field = exec(&mut r, "inspect caster.concentrating_on");
     assert!(
         field[0].contains("some(Invocation("),
-        "concentrating_on should be set for Hold Person: {:?}",
-        field
+        "concentrating_on should be set for Hold Person: {field:?}"
     );
 }
 
@@ -377,8 +352,7 @@ fn concentration_hold_person_save_succeeds_no_effect() {
     let conds = exec(&mut r, "conditions");
     assert!(
         !conds.iter().any(|l| l.contains("HeldByPerson")),
-        "target should not be held on successful save: {:?}",
-        conds
+        "target should not be held on successful save: {conds:?}"
     );
 
     // No concentration — the spell didn't take effect
@@ -386,8 +360,7 @@ fn concentration_hold_person_save_succeeds_no_effect() {
     let field = exec(&mut r, "inspect caster.concentrating_on");
     assert!(
         field[0].contains("none"),
-        "concentrating_on should remain none when spell fails: {:?}",
-        field
+        "concentrating_on should remain none when spell fails: {field:?}"
     );
 }
 
@@ -398,7 +371,7 @@ fn concentration_hold_person_save_succeeds_no_effect() {
 /// Spawn a PF2e Character.
 fn spawn_pf2e(runner: &mut Runner, handle: &str, fields: &str) {
     runner
-        .exec(&format!("spawn Character {} {{ {} }}", handle, fields))
+        .exec(&format!("spawn Character {handle} {{ {fields} }}"))
         .unwrap();
     runner.take_output();
 }
@@ -418,8 +391,7 @@ fn sustained_cast_fills_first_slot() {
         output
             .iter()
             .any(|l| l.contains("succeeded") && l.contains("CastFlamingSphere")),
-        "CastFlamingSphere should succeed: {:?}",
-        output
+        "CastFlamingSphere should succeed: {output:?}"
     );
 
     // Caster should have the sustaining condition
@@ -428,24 +400,21 @@ fn sustained_cast_fills_first_slot() {
         conds
             .iter()
             .any(|l| l.contains("Sustaining_Flaming_Sphere")),
-        "druid should have Sustaining_Flaming_Sphere: {:?}",
-        conds
+        "druid should have Sustaining_Flaming_Sphere: {conds:?}"
     );
 
     // First sustained slot should be filled
     let slot = exec(&mut r, "inspect druid.sustained_1");
     assert!(
         slot[0].contains("some(Invocation("),
-        "sustained_1 should hold the invocation: {:?}",
-        slot
+        "sustained_1 should hold the invocation: {slot:?}"
     );
 
     // Second slot should still be empty
     let slot2 = exec(&mut r, "inspect druid.sustained_2");
     assert!(
         slot2[0].contains("none"),
-        "sustained_2 should still be none: {:?}",
-        slot2
+        "sustained_2 should still be none: {slot2:?}"
     );
 }
 
@@ -467,15 +436,13 @@ fn sustained_two_spells_fill_both_slots() {
     let slot1 = exec(&mut r, "inspect druid.sustained_1");
     assert!(
         slot1[0].contains("some(Invocation("),
-        "sustained_1 should be set: {:?}",
-        slot1
+        "sustained_1 should be set: {slot1:?}"
     );
 
     let slot2 = exec(&mut r, "inspect druid.sustained_2");
     assert!(
         slot2[0].contains("some(Invocation("),
-        "sustained_2 should be set: {:?}",
-        slot2
+        "sustained_2 should be set: {slot2:?}"
     );
 
     // Both conditions should be active
@@ -484,13 +451,11 @@ fn sustained_two_spells_fill_both_slots() {
         conds
             .iter()
             .any(|l| l.contains("Sustaining_Flaming_Sphere")),
-        "Sustaining_Flaming_Sphere should be active: {:?}",
-        conds
+        "Sustaining_Flaming_Sphere should be active: {conds:?}"
     );
     assert!(
         conds.iter().any(|l| l.contains("InspiredCourage")),
-        "InspiredCourage should be active: {:?}",
-        conds
+        "InspiredCourage should be active: {conds:?}"
     );
 }
 
@@ -515,16 +480,14 @@ fn sustained_dismiss_revokes_conditions_and_clears_slot() {
     let output = exec(&mut r, "do DismissSpell(druid, druid.sustained_1)");
     assert!(
         output.iter().any(|l| l.contains("RevokeInvocation")),
-        "DismissSpell should revoke the invocation: {:?}",
-        output
+        "DismissSpell should revoke the invocation: {output:?}"
     );
 
     // First slot should be cleared
     let slot1 = exec(&mut r, "inspect druid.sustained_1");
     assert!(
         slot1[0].contains("none"),
-        "sustained_1 should be none after dismiss: {:?}",
-        slot1
+        "sustained_1 should be none after dismiss: {slot1:?}"
     );
 
     // Sustaining_Flaming_Sphere should be gone
@@ -533,23 +496,20 @@ fn sustained_dismiss_revokes_conditions_and_clears_slot() {
         !conds
             .iter()
             .any(|l| l.contains("Sustaining_Flaming_Sphere")),
-        "Sustaining_Flaming_Sphere should be revoked: {:?}",
-        conds
+        "Sustaining_Flaming_Sphere should be revoked: {conds:?}"
     );
 
     // InspiredCourage should still be active (different invocation)
     assert!(
         conds.iter().any(|l| l.contains("InspiredCourage")),
-        "InspiredCourage should survive dismiss of other spell: {:?}",
-        conds
+        "InspiredCourage should survive dismiss of other spell: {conds:?}"
     );
 
     // Second slot should still hold its invocation
     let slot2 = exec(&mut r, "inspect druid.sustained_2");
     assert!(
         slot2[0].contains("some(Invocation("),
-        "sustained_2 should still be set: {:?}",
-        slot2
+        "sustained_2 should still be set: {slot2:?}"
     );
 }
 
@@ -567,8 +527,7 @@ fn sustained_inspire_courage_modifies_attack() {
     let conds = exec(&mut r, "conditions");
     assert!(
         conds.iter().any(|l| l.contains("InspiredCourage")),
-        "InspiredCourage should be active: {:?}",
-        conds
+        "InspiredCourage should be active: {conds:?}"
     );
 
     // Ally attacks with the buff — the modify clause adds +1 to attack_roll.
@@ -583,15 +542,13 @@ fn sustained_inspire_courage_modifies_attack() {
         output
             .iter()
             .any(|l| l.contains("succeeded") && l.contains("Strike")),
-        "Strike should succeed: {:?}",
-        output
+        "Strike should succeed: {output:?}"
     );
 
     // Damage should have been dealt (enemy HP reduced)
     assert!(
         output.iter().any(|l| l.contains("HP") && l.contains("->")),
-        "enemy should take damage: {:?}",
-        output
+        "enemy should take damage: {output:?}"
     );
 }
 
@@ -610,9 +567,8 @@ fn sustained_flaming_sphere_deals_damage_on_cast() {
     // Goblin should have taken 18 damage (20 - 18 = 2 HP)
     let hp = exec(&mut r, "inspect goblin.HP");
     assert!(
-        hp[0].contains("2"),
-        "goblin should have 2 HP after 18 fire damage: {:?}",
-        hp
+        hp[0].contains('2'),
+        "goblin should have 2 HP after 18 fire damage: {hp:?}"
     );
 }
 
@@ -631,8 +587,7 @@ fn sustained_flaming_sphere_save_prevents_damage() {
     let hp = exec(&mut r, "inspect goblin.HP");
     assert!(
         hp[0].contains("20"),
-        "goblin should be at full HP after successful save: {:?}",
-        hp
+        "goblin should be at full HP after successful save: {hp:?}"
     );
 
     // But the sustaining condition should still be on the druid
@@ -641,8 +596,7 @@ fn sustained_flaming_sphere_save_prevents_damage() {
         conds
             .iter()
             .any(|l| l.contains("Sustaining_Flaming_Sphere")),
-        "druid should still have Sustaining_Flaming_Sphere: {:?}",
-        conds
+        "druid should still have Sustaining_Flaming_Sphere: {conds:?}"
     );
 }
 
@@ -669,13 +623,11 @@ fn sustained_dismiss_both_spells_clears_all() {
     let slot2 = exec(&mut r, "inspect druid.sustained_2");
     assert!(
         slot1[0].contains("none"),
-        "sustained_1 should be none: {:?}",
-        slot1
+        "sustained_1 should be none: {slot1:?}"
     );
     assert!(
         slot2[0].contains("none"),
-        "sustained_2 should be none: {:?}",
-        slot2
+        "sustained_2 should be none: {slot2:?}"
     );
 
     // No conditions should remain
@@ -684,12 +636,10 @@ fn sustained_dismiss_both_spells_clears_all() {
         !conds
             .iter()
             .any(|l| l.contains("Sustaining_Flaming_Sphere")),
-        "no sustained conditions should remain: {:?}",
-        conds
+        "no sustained conditions should remain: {conds:?}"
     );
     assert!(
         !conds.iter().any(|l| l.contains("InspiredCourage")),
-        "no inspired conditions should remain: {:?}",
-        conds
+        "no inspired conditions should remain: {conds:?}"
     );
 }

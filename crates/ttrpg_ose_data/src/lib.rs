@@ -140,8 +140,7 @@ mod tests {
             let bundled = read_file(name).unwrap();
             assert_eq!(
                 on_disk, bundled,
-                "on-disk content should match bundled for {}",
-                name
+                "on-disk content should match bundled for {name}"
             );
         }
 

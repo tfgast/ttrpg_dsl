@@ -1,5 +1,6 @@
 //! Integration tests for method call syntax on collections, options, and dice.
 
+use std::collections::BTreeMap;
 use ttrpg_ast::diagnostic::Severity;
 use ttrpg_ast::FileId;
 use ttrpg_interp::effect::{Effect, EffectHandler, Response};
@@ -323,7 +324,7 @@ system "test" {
                         Value::EnumVariant {
                             enum_name: "Color".into(),
                             variant: "red".into(),
-                            fields: Default::default(),
+                            fields: BTreeMap::default(),
                         },
                         Value::Int(10),
                     ),
@@ -331,7 +332,7 @@ system "test" {
                         Value::EnumVariant {
                             enum_name: "Color".into(),
                             variant: "blue".into(),
-                            fields: Default::default(),
+                            fields: BTreeMap::default(),
                         },
                         Value::Int(20),
                     ),
@@ -369,7 +370,7 @@ system "test" {
                     Value::EnumVariant {
                         enum_name: "Color".into(),
                         variant: "red".into(),
-                        fields: Default::default(),
+                        fields: BTreeMap::default(),
                     },
                     Value::Int(10),
                 )]
@@ -383,10 +384,10 @@ system "test" {
             assert_eq!(items.len(), 1);
             match &items[0] {
                 Value::EnumVariant { variant, .. } => assert_eq!(variant.as_str(), "red"),
-                other => panic!("expected EnumVariant, got {:?}", other),
+                other => panic!("expected EnumVariant, got {other:?}"),
             }
         }
-        other => panic!("expected List, got {:?}", other),
+        other => panic!("expected List, got {other:?}"),
     }
 }
 
@@ -415,7 +416,7 @@ system "test" {
                     Value::EnumVariant {
                         enum_name: "Color".into(),
                         variant: "red".into(),
-                        fields: Default::default(),
+                        fields: BTreeMap::default(),
                     },
                     Value::Int(42),
                 )]
@@ -541,7 +542,7 @@ system "test" {
     // RollHandler rolls max on each die: 2d6 → 6+6 = 12
     match val {
         Value::RollResult(rr) => assert_eq!(rr.total, 12),
-        other => panic!("expected RollResult, got {:?}", other),
+        other => panic!("expected RollResult, got {other:?}"),
     }
 }
 
@@ -568,7 +569,7 @@ system "test" {
 
     // Empty string
     let val = interp
-        .evaluate_derive(&state, &mut handler, "f", vec![Value::Str("".into())])
+        .evaluate_derive(&state, &mut handler, "f", vec![Value::Str(String::new())])
         .unwrap();
     assert_eq!(val, Value::Int(0));
 }

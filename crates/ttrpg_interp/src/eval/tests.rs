@@ -213,7 +213,7 @@ fn eval_dice_lit() {
             assert_eq!(de.modifier, 0);
             assert!(de.groups[0].filter.is_none());
         }
-        _ => panic!("expected DiceExpr, got {:?}", result),
+        _ => panic!("expected DiceExpr, got {result:?}"),
     }
 }
 
@@ -1071,7 +1071,7 @@ fn eval_struct_lit() {
             assert_eq!(fields.get("x"), Some(&Value::Int(10)));
             assert_eq!(fields.get("y"), Some(&Value::Int(20)));
         }
-        _ => panic!("expected Struct, got {:?}", result),
+        _ => panic!("expected Struct, got {result:?}"),
     }
 }
 
@@ -1142,7 +1142,7 @@ fn eval_struct_lit_fills_defaults() {
             );
             assert_eq!(fields.get("z"), Some(&Value::Int(7)));
         }
-        _ => panic!("expected Struct, got {:?}", result),
+        _ => panic!("expected Struct, got {result:?}"),
     }
 }
 
@@ -1196,7 +1196,7 @@ fn eval_struct_spread_override_one_field() {
                 "base field preserved"
             );
         }
-        _ => panic!("expected Struct, got {:?}", result),
+        _ => panic!("expected Struct, got {result:?}"),
     }
 }
 
@@ -1236,7 +1236,7 @@ fn eval_struct_spread_base_only() {
             assert_eq!(fields.get("x"), Some(&Value::Int(10)));
             assert_eq!(fields.get("y"), Some(&Value::Int(20)));
         }
-        _ => panic!("expected Struct, got {:?}", result),
+        _ => panic!("expected Struct, got {result:?}"),
     }
 }
 
@@ -2053,7 +2053,7 @@ fn eval_dice_add_int() {
             assert_eq!(de.groups[0].sides, 20);
             assert_eq!(de.modifier, 5);
         }
-        other => panic!("expected DiceExpr, got {:?}", other),
+        other => panic!("expected DiceExpr, got {other:?}"),
     }
 }
 
@@ -2080,7 +2080,7 @@ fn eval_int_add_dice() {
             assert_eq!(de.groups[0].sides, 6);
             assert_eq!(de.modifier, 13);
         }
-        other => panic!("expected DiceExpr, got {:?}", other),
+        other => panic!("expected DiceExpr, got {other:?}"),
     }
 }
 
@@ -2111,7 +2111,7 @@ fn eval_dice_add_dice() {
             assert_eq!(de.groups[1].sides, 6);
             assert_eq!(de.modifier, 3);
         }
-        other => panic!("expected DiceExpr, got {:?}", other),
+        other => panic!("expected DiceExpr, got {other:?}"),
     }
 }
 
@@ -2141,7 +2141,7 @@ fn eval_dice_sub_int() {
             assert_eq!(de.groups[0].sides, 20);
             assert_eq!(de.modifier, 2);
         }
-        other => panic!("expected DiceExpr, got {:?}", other),
+        other => panic!("expected DiceExpr, got {other:?}"),
     }
 }
 
@@ -2435,7 +2435,7 @@ fn eval_dice_add_dice_different_sides_error() {
             assert_eq!(de.groups[1].sides, 8);
             assert_eq!(de.modifier, 0);
         }
-        other => panic!("expected DiceExpr, got {:?}", other),
+        other => panic!("expected DiceExpr, got {other:?}"),
     }
 }
 
@@ -2542,7 +2542,7 @@ fn eval_dice_add_dice_same_spec_succeeds() {
             assert_eq!(de.groups[1].sides, 6);
             assert_eq!(de.modifier, 3);
         }
-        other => panic!("expected DiceExpr, got {:?}", other),
+        other => panic!("expected DiceExpr, got {other:?}"),
     }
 }
 
@@ -2647,10 +2647,10 @@ fn value_eq_int_float_boundary() {
     ));
 
     // Largest f64 below 2^63 (still in i64 range) should round-trip correctly
-    let largest_below = 9223372036854774784.0_f64; // 2^63 - 1024
+    let largest_below = 9_223_372_036_854_774_784.0_f64; // 2^63 - 1024
     assert!(value_eq(
         &state,
-        &Value::Int(9223372036854774784),
+        &Value::Int(9_223_372_036_854_774_784),
         &Value::Float(largest_below),
     ));
     assert!(!value_eq(
@@ -2693,9 +2693,9 @@ fn int_float_cmp_boundary() {
     );
 
     // Largest f64 below 2^63
-    let largest_below = 9223372036854774784.0_f64;
+    let largest_below = 9_223_372_036_854_774_784.0_f64;
     assert_eq!(
-        int_float_cmp(9223372036854774784, largest_below),
+        int_float_cmp(9_223_372_036_854_774_784, largest_below),
         Some(Ordering::Equal),
     );
     assert_eq!(
@@ -3543,7 +3543,7 @@ fn assign_entity_field_emits_mutate_field() {
             assert_eq!(*value, Value::Int(5));
             assert!(bounds.is_none());
         }
-        other => panic!("expected MutateField, got {:?}", other),
+        other => panic!("expected MutateField, got {other:?}"),
     }
 }
 
@@ -3595,7 +3595,7 @@ fn assign_entity_nested_path_emits_mutate_field() {
             assert_eq!(*op, AssignOp::Eq);
             assert_eq!(*value, Value::Int(18));
         }
-        other => panic!("expected MutateField, got {:?}", other),
+        other => panic!("expected MutateField, got {other:?}"),
     }
 }
 
@@ -3653,7 +3653,7 @@ fn assign_entity_through_struct_emits_mutate_field() {
             assert_eq!(*op, AssignOp::MinusEq);
             assert_eq!(*value, Value::Int(5));
         }
-        other => panic!("expected MutateField, got {:?}", other),
+        other => panic!("expected MutateField, got {other:?}"),
     }
 }
 
@@ -3691,7 +3691,7 @@ fn assign_turn_field_emits_mutate_turn_field() {
             assert_eq!(*op, AssignOp::MinusEq);
             assert_eq!(*value, Value::Int(1));
         }
-        other => panic!("expected MutateTurnField, got {:?}", other),
+        other => panic!("expected MutateTurnField, got {other:?}"),
     }
 }
 
@@ -3770,7 +3770,7 @@ fn assign_local_struct_field() {
             assert_eq!(fields.get("x"), Some(&Value::Int(10)));
             assert_eq!(fields.get("y"), Some(&Value::Int(2)));
         }
-        other => panic!("expected Struct, got {:?}", other),
+        other => panic!("expected Struct, got {other:?}"),
     }
 }
 
@@ -3805,7 +3805,7 @@ fn assign_local_struct_field_plus_eq() {
         Some(Value::Struct { fields, .. }) => {
             assert_eq!(fields.get("strength"), Some(&Value::Int(15)));
         }
-        other => panic!("expected Struct, got {:?}", other),
+        other => panic!("expected Struct, got {other:?}"),
     }
 }
 
@@ -3869,7 +3869,7 @@ fn assign_local_list_index() {
         Some(Value::List(items)) => {
             assert_eq!(items, &vec![Value::Int(10), Value::Int(99), Value::Int(30)]);
         }
-        other => panic!("expected List, got {:?}", other),
+        other => panic!("expected List, got {other:?}"),
     }
 }
 
@@ -3902,7 +3902,7 @@ fn assign_local_list_negative_index() {
         Some(Value::List(items)) => {
             assert_eq!(items, &vec![Value::Int(1), Value::Int(2), Value::Int(99)]);
         }
-        other => panic!("expected List, got {:?}", other),
+        other => panic!("expected List, got {other:?}"),
     }
 }
 
@@ -3966,7 +3966,7 @@ fn assign_local_list_index_plus_eq() {
         Some(Value::List(items)) => {
             assert_eq!(items[0], Value::Int(15));
         }
-        other => panic!("expected List, got {:?}", other),
+        other => panic!("expected List, got {other:?}"),
     }
 }
 
@@ -4003,7 +4003,7 @@ fn assign_local_map_key_insert() {
             assert_eq!(m.get(&Value::Str("a".to_string())), Some(&Value::Int(1)));
             assert_eq!(m.get(&Value::Str("b".to_string())), Some(&Value::Int(2)));
         }
-        other => panic!("expected Map, got {:?}", other),
+        other => panic!("expected Map, got {other:?}"),
     }
 }
 
@@ -4037,7 +4037,7 @@ fn assign_local_map_key_update() {
         Some(Value::Map(m)) => {
             assert_eq!(m.get(&Value::Str("a".to_string())), Some(&Value::Int(99)));
         }
-        other => panic!("expected Map, got {:?}", other),
+        other => panic!("expected Map, got {other:?}"),
     }
 }
 
@@ -4074,7 +4074,7 @@ fn assign_local_map_key_plus_eq() {
                 Some(&Value::Int(150))
             );
         }
-        other => panic!("expected Map, got {:?}", other),
+        other => panic!("expected Map, got {other:?}"),
     }
 }
 
@@ -4395,14 +4395,13 @@ fn assign_local_map_semantic_key_overwrite() {
             assert_eq!(
                 m.len(),
                 1,
-                "should have 1 entry, not a duplicate; got {:?}",
-                m
+                "should have 1 entry, not a duplicate; got {m:?}"
             );
             // The value should be updated regardless of which structural key remains
             let val = m.values().next().unwrap();
             assert_eq!(val, &Value::Int(99));
         }
-        other => panic!("expected Map, got {:?}", other),
+        other => panic!("expected Map, got {other:?}"),
     }
 }
 
@@ -4434,7 +4433,7 @@ fn assign_local_map_semantic_key_plus_eq() {
             let val = m.values().next().unwrap();
             assert_eq!(val, &Value::Int(15));
         }
-        other => panic!("expected Map, got {:?}", other),
+        other => panic!("expected Map, got {other:?}"),
     }
 }
 
@@ -4555,7 +4554,7 @@ fn grant_emits_grant_group_effect_with_fields() {
                     assert_eq!(fields.get("spell_slots"), Some(&Value::Int(3)));
                     assert_eq!(fields.get("cantrips"), Some(&Value::Int(2)));
                 }
-                _ => panic!("expected Struct value, got {:?}", fields),
+                _ => panic!("expected Struct value, got {fields:?}"),
             }
         }
         _ => panic!("expected GrantGroup effect, got {:?}", handler.log[0]),

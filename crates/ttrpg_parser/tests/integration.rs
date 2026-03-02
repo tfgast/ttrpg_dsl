@@ -1677,8 +1677,7 @@ fn test_ordered_enum_parsed() {
     let (program, diagnostics) = parse(source, FileId::SYNTH);
     assert!(
         diagnostics.is_empty(),
-        "unexpected errors: {:?}",
-        diagnostics
+        "unexpected errors: {diagnostics:?}"
     );
 
     let system = match &program.items[0].node {
@@ -1706,8 +1705,7 @@ fn test_non_ordered_enum_parsed() {
     let (program, diagnostics) = parse(source, FileId::SYNTH);
     assert!(
         diagnostics.is_empty(),
-        "unexpected errors: {:?}",
-        diagnostics
+        "unexpected errors: {diagnostics:?}"
     );
 
     let system = match &program.items[0].node {
@@ -2432,8 +2430,7 @@ fn test_parse_disjunctive_with_groups() {
     let (program, diagnostics) = parse(source, FileId::SYNTH);
     assert!(
         diagnostics.is_empty(),
-        "unexpected errors: {:?}",
-        diagnostics
+        "unexpected errors: {diagnostics:?}"
     );
 
     let system = match &program.items[0].node {
@@ -2467,8 +2464,7 @@ fn test_parse_disjunctive_with_alias() {
     let (program, diagnostics) = parse(source, FileId::SYNTH);
     assert!(
         diagnostics.is_empty(),
-        "unexpected errors: {:?}",
-        diagnostics
+        "unexpected errors: {diagnostics:?}"
     );
 
     let system = match &program.items[0].node {
@@ -2514,8 +2510,7 @@ fn test_parse_conjunctive_with_not_disjunctive() {
     let (program, diagnostics) = parse(source, FileId::SYNTH);
     assert!(
         diagnostics.is_empty(),
-        "unexpected errors: {:?}",
-        diagnostics
+        "unexpected errors: {diagnostics:?}"
     );
 
     let system = match &program.items[0].node {
@@ -2548,8 +2543,7 @@ fn test_parse_mixed_separators_error() {
         diagnostics
             .iter()
             .any(|d| { d.message.contains("cannot mix") }),
-        "expected mixed separator error, got: {:?}",
-        diagnostics
+        "expected mixed separator error, got: {diagnostics:?}"
     );
 }
 

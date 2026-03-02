@@ -119,7 +119,7 @@ fn make_payload(event_name: &str, fields: Vec<(&str, Value)>) -> Value {
         map.insert(ttrpg_ast::Name::from(name), val);
     }
     Value::Struct {
-        name: format!("__event_{}", event_name).into(),
+        name: format!("__event_{event_name}").into(),
         fields: map,
     }
 }

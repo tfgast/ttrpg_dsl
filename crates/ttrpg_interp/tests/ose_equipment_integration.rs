@@ -99,16 +99,16 @@ fn ose_equipment_has_expected_decls() {
                 for decl in &sys.decls {
                     match &decl.node {
                         DeclKind::Derive(d) if d.name == "standard_adventuring_gear" => {
-                            has_standard_gear = true
+                            has_standard_gear = true;
                         }
                         DeclKind::Derive(d) if d.name == "default_starting_armour" => {
-                            has_default_armour = true
+                            has_default_armour = true;
                         }
                         DeclKind::Table(t) if t.name == "equipment_package" => {
-                            has_equipment_package_table = true
+                            has_equipment_package_table = true;
                         }
                         DeclKind::Table(t) if t.name == "random_starting_weapon" => {
-                            has_random_weapon_table = true
+                            has_random_weapon_table = true;
                         }
                         _ => {}
                     }

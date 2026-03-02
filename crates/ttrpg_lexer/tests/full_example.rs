@@ -54,8 +54,7 @@ fn test_overflow_dice_sides_gives_misleading_error() {
         error_msgs
             .iter()
             .any(|m| m.contains("overflow") || m.contains("too large")),
-        "error should mention overflow, not misleading 'sides must be at least 1'; got: {:?}",
-        error_msgs,
+        "error should mention overflow, not misleading 'sides must be at least 1'; got: {error_msgs:?}",
     );
 }
 

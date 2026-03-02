@@ -266,7 +266,7 @@ fn external_group_attachment_grant_uses_group_defaults() {
             assert_eq!(fields.get("spell_slots"), Some(&Value::Int(3)));
             assert_eq!(fields.get("spell_dc"), Some(&Value::Int(11)));
         }
-        other => panic!("expected Struct, got {:?}", other),
+        other => panic!("expected Struct, got {other:?}"),
     }
 
     let mut handler = ScriptedHandler::new();
@@ -392,7 +392,7 @@ fn grant_action_adds_group_fields_to_state() {
                 "default should be filled"
             );
         }
-        other => panic!("expected Struct, got {:?}", other),
+        other => panic!("expected Struct, got {other:?}"),
     }
 }
 
@@ -436,7 +436,7 @@ fn grant_fills_defaults_from_declaration() {
                 "ki_dc should default to 8"
             );
         }
-        other => panic!("expected Struct, got {:?}", other),
+        other => panic!("expected Struct, got {other:?}"),
     }
 }
 
@@ -687,7 +687,7 @@ fn with_constrained_action_succeeds_when_group_granted() {
         Value::Struct { fields, .. } => {
             assert_eq!(fields.get("spell_slots"), Some(&Value::Int(3)));
         }
-        other => panic!("expected Struct, got {:?}", other),
+        other => panic!("expected Struct, got {other:?}"),
     }
 }
 
@@ -870,7 +870,7 @@ fn grant_action_emits_correct_effect() {
                         Some(&Value::Str("INT".into()))
                     );
                 }
-                _ => panic!("expected Struct, got {:?}", fields),
+                _ => panic!("expected Struct, got {fields:?}"),
             }
         }
         _ => unreachable!(),
@@ -1176,7 +1176,7 @@ fn alias_with_constraint_write_in_action() {
         Value::Struct { fields, .. } => {
             assert_eq!(fields.get("spell_slots"), Some(&Value::Int(3)));
         }
-        other => panic!("expected Struct, got {:?}", other),
+        other => panic!("expected Struct, got {other:?}"),
     }
 }
 
@@ -1212,7 +1212,7 @@ fn alias_has_guard_with_mutation_and_revoke() {
         Value::Struct { fields, .. } => {
             assert_eq!(fields.get("spell_slots"), Some(&Value::Int(4)));
         }
-        other => panic!("expected Struct, got {:?}", other),
+        other => panic!("expected Struct, got {other:?}"),
     }
 
     // DrainMagic: writes `target.sc.spell_slots = 0` through has-alias, then revokes
@@ -1393,7 +1393,7 @@ fn alias_nested_entity_trigger_write() {
         Value::Struct { fields, .. } => {
             assert_eq!(fields.get("spell_slots"), Some(&Value::Int(3)));
         }
-        other => panic!("expected Struct for wizard, got {:?}", other),
+        other => panic!("expected Struct for wizard, got {other:?}"),
     }
 
     // Target: spell_slots should go from 3 to 2 (from hook's trigger.target.sc.spell_slots -= 1)
@@ -1406,6 +1406,6 @@ fn alias_nested_entity_trigger_write() {
                 "hook should have drained target's spell_slots via trigger.target.sc alias"
             );
         }
-        other => panic!("expected Struct for target, got {:?}", other),
+        other => panic!("expected Struct for target, got {other:?}"),
     }
 }

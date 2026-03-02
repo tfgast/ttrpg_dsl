@@ -767,7 +767,7 @@ fn undead_rank_direct_mapping() {
                 vec![Value::Int(hd)],
             )
             .unwrap();
-        assert_eq!(val, Value::Int(hd), "rank for HD {} should be {}", hd, hd);
+        assert_eq!(val, Value::Int(hd), "rank for HD {hd} should be {hd}");
     }
 }
 

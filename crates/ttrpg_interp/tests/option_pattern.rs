@@ -223,9 +223,8 @@ system "test" {
         .evaluate_derive(&state, &mut handler, "f", vec![Value::Option(None)])
         .unwrap_err();
     assert!(
-        format!("{}", err).contains("unwrap()"),
-        "expected unwrap error, got: {}",
-        err
+        format!("{err}").contains("unwrap()"),
+        "expected unwrap error, got: {err}"
     );
 }
 
@@ -247,9 +246,8 @@ system "test" {
         .evaluate_derive(&state, &mut handler, "f", vec![Value::None])
         .unwrap_err();
     assert!(
-        format!("{}", err).contains("unwrap()"),
-        "expected unwrap error, got: {}",
-        err
+        format!("{err}").contains("unwrap()"),
+        "expected unwrap error, got: {err}"
     );
 }
 
@@ -618,9 +616,9 @@ system "test" {
     match val {
         Value::Option(Some(inner)) => match *inner {
             Value::EnumVariant { ref variant, .. } => assert_eq!(variant.as_ref(), "Red"),
-            other => panic!("expected EnumVariant, got {:?}", other),
+            other => panic!("expected EnumVariant, got {other:?}"),
         },
-        other => panic!("expected Option(Some(...)), got {:?}", other),
+        other => panic!("expected Option(Some(...)), got {other:?}"),
     }
 }
 

@@ -305,6 +305,6 @@ mod tests {
             rendered.contains("test"),
             "should still contain the message"
         );
-        assert!(rendered.contains("^"), "should still have caret(s)");
+        assert!(rendered.contains('^'), "should still have caret(s)");
     }
 }

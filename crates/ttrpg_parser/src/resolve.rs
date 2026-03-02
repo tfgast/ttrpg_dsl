@@ -865,7 +865,7 @@ mod tests {
         }];
 
         let (map, diags) = resolve_modules(&mut program, &file_systems);
-        assert!(diags.is_empty(), "unexpected diagnostics: {:?}", diags);
+        assert!(diags.is_empty(), "unexpected diagnostics: {diags:?}");
         let core = map.systems.get("Core").unwrap();
         assert!(core.types.contains("Ability"));
         assert!(core.functions.contains("modifier"));
@@ -916,8 +916,7 @@ mod tests {
             .collect();
         assert!(
             errors.is_empty(),
-            "multi-owner variants should not be errors: {:?}",
-            errors
+            "multi-owner variants should not be errors: {errors:?}"
         );
     }
 
@@ -940,9 +939,9 @@ mod tests {
             .collect();
         assert_eq!(errors.len(), 1);
         let msg = &errors[0].message;
-        assert!(msg.contains("\"A\""), "should mention system A: {}", msg);
-        assert!(msg.contains("\"B\""), "should mention system B: {}", msg);
-        assert!(msg.contains("\"C\""), "should mention system C: {}", msg);
+        assert!(msg.contains("\"A\""), "should mention system A: {msg}");
+        assert!(msg.contains("\"B\""), "should mention system B: {msg}");
+        assert!(msg.contains("\"C\""), "should mention system C: {msg}");
     }
 
     #[test]
@@ -963,8 +962,7 @@ mod tests {
             .collect();
         assert!(
             errors.is_empty(),
-            "type Foo and function Foo should not collide: {:?}",
-            errors
+            "type Foo and function Foo should not collide: {errors:?}"
         );
     }
 
@@ -1070,8 +1068,7 @@ mod tests {
             .collect();
         assert!(
             errors.is_empty(),
-            "same alias→same target should be idempotent: {:?}",
-            errors
+            "same alias→same target should be idempotent: {errors:?}"
         );
     }
 
@@ -1143,7 +1140,7 @@ mod tests {
             .iter()
             .filter(|d| d.severity == Severity::Error)
             .collect();
-        assert!(errors.is_empty(), "unexpected errors: {:?}", errors);
+        assert!(errors.is_empty(), "unexpected errors: {errors:?}");
 
         // Homebrew should have Core as an import (use decl applies to all systems in file)
         let homebrew = map.systems.get("Homebrew").unwrap();
@@ -1194,8 +1191,7 @@ mod tests {
             diags.iter().any(|d| d
                 .message
                 .contains("alias \"fire\" conflicts with declaration")),
-            "alias should conflict with own variant: {:?}",
-            diags
+            "alias should conflict with own variant: {diags:?}"
         );
     }
 
@@ -1233,8 +1229,7 @@ mod tests {
             errors
                 .iter()
                 .any(|d| d.message.contains("alias \"Foo\" shadows")),
-            "alias Foo should shadow imported type Foo from A: {:?}",
-            errors
+            "alias Foo should shadow imported type Foo from A: {errors:?}"
         );
     }
 
@@ -1271,8 +1266,7 @@ mod tests {
             errors
                 .iter()
                 .any(|d| d.message.contains("alias \"fire\" shadows")),
-            "alias fire should shadow imported variant fire from A: {:?}",
-            errors
+            "alias fire should shadow imported variant fire from A: {errors:?}"
         );
     }
 
@@ -1309,8 +1303,7 @@ mod tests {
             errors
                 .iter()
                 .any(|d| d.message.contains("alias \"Stunned\" shadows")),
-            "alias Stunned should shadow imported condition from A: {:?}",
-            errors
+            "alias Stunned should shadow imported condition from A: {errors:?}"
         );
     }
 
@@ -1339,8 +1332,7 @@ mod tests {
             errors
                 .iter()
                 .any(|d| d.message.contains("alias \"Foo\" shadows")),
-            "alias Foo should shadow type Foo from target system A: {:?}",
-            errors
+            "alias Foo should shadow type Foo from target system A: {errors:?}"
         );
     }
 
@@ -1373,7 +1365,7 @@ mod tests {
             .iter()
             .filter(|d| d.severity == Severity::Error)
             .collect();
-        assert!(errors.is_empty(), "no conflicts expected: {:?}", errors);
+        assert!(errors.is_empty(), "no conflicts expected: {errors:?}");
     }
 
     // ── Load order independence tests ──────────────────────────────────
@@ -1709,16 +1701,14 @@ mod tests {
         let (map1, d1) = resolve_modules(&mut p1, &make_fs(true));
         assert!(
             !d1.iter().any(|d| d.severity == Severity::Error),
-            "lib-first: {:?}",
-            d1
+            "lib-first: {d1:?}"
         );
 
         let mut p2 = make_program(items.clone());
         let (map2, d2) = resolve_modules(&mut p2, &make_fs(false));
         assert!(
             !d2.iter().any(|d| d.severity == Severity::Error),
-            "utils-first: {:?}",
-            d2
+            "utils-first: {d2:?}"
         );
 
         let main1 = map1.systems.get("Main").unwrap();
@@ -1815,8 +1805,7 @@ mod tests {
             errors
                 .iter()
                 .any(|d| d.message.contains("alias \"Foo\" conflicts")),
-            "import A alias should conflict with own declaration: {:?}",
-            errors
+            "import A alias should conflict with own declaration: {errors:?}"
         );
 
         // Import B should NOT be flagged for shadowing A's "bar_fn"
@@ -1825,8 +1814,7 @@ mod tests {
             !errors
                 .iter()
                 .any(|d| d.message.contains("alias \"bar_fn\" shadows")),
-            "import B alias should not shadow rejected import A's name: {:?}",
-            errors
+            "import B alias should not shadow rejected import A's name: {errors:?}"
         );
     }
 }

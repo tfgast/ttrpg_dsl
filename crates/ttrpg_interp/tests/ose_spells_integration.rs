@@ -190,5 +190,5 @@ fn spell_damage_dice_lookup_examples() {
             vec![Value::Str("Unknown Spell".into())],
         )
         .unwrap();
-    assert_eq!(unknown, Value::Str("".into()));
+    assert_eq!(unknown, Value::Str(String::new()));
 }

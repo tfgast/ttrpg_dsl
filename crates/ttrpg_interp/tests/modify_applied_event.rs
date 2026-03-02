@@ -129,8 +129,7 @@ system "test" {
     let errors = setup_expect_errors(source);
     assert!(
         errors.is_empty(),
-        "hook on modify_applied should type-check without errors, got: {:?}",
-        errors
+        "hook on modify_applied should type-check without errors, got: {errors:?}"
     );
 }
 

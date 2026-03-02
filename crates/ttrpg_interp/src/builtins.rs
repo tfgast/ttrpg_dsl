@@ -906,7 +906,7 @@ mod tests {
                 assert_eq!(items.len(), 1);
                 assert_eq!(items[0], cond.to_value());
             }
-            other => panic!("expected List, got {:?}", other),
+            other => panic!("expected List, got {other:?}"),
         }
     }
 

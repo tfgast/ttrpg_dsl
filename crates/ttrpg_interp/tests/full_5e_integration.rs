@@ -435,7 +435,7 @@ fn initial_budget() {
             assert_eq!(fields.get("movement"), Some(&Value::Int(30)));
             assert_eq!(fields.get("free_interactions"), Some(&Value::Int(1)));
         }
-        other => panic!("expected TurnBudget struct, got {:?}", other),
+        other => panic!("expected TurnBudget struct, got {other:?}"),
     }
 }
 
@@ -735,7 +735,7 @@ fn d20_expr_normal_mode() {
             assert_eq!(expr.groups[0].filter, None);
             assert_eq!(expr.modifier, 5); // 3 + 2 + 0
         }
-        other => panic!("expected DiceExpr, got {:?}", other),
+        other => panic!("expected DiceExpr, got {other:?}"),
     }
 }
 
@@ -768,7 +768,7 @@ fn d20_expr_advantage_mode() {
             assert_eq!(expr.groups[0].filter, Some(DiceFilter::KeepHighest(1)));
             assert_eq!(expr.modifier, 5);
         }
-        other => panic!("expected DiceExpr, got {:?}", other),
+        other => panic!("expected DiceExpr, got {other:?}"),
     }
 }
 
@@ -809,7 +809,7 @@ fn attack_roll_emits_roll_dice() {
         Value::RollResult(rr) => {
             assert_eq!(rr.total, 20);
         }
-        other => panic!("expected RollResult, got {:?}", other),
+        other => panic!("expected RollResult, got {other:?}"),
     }
 }
 
@@ -851,7 +851,7 @@ fn resolve_melee_attack_hit() {
             assert_eq!(variant, "hit");
             assert_eq!(fields.get("amount"), Some(&Value::Int(7)));
         }
-        other => panic!("expected ResolvedDamage.hit, got {:?}", other),
+        other => panic!("expected ResolvedDamage.hit, got {other:?}"),
     }
 }
 
@@ -892,7 +892,7 @@ fn resolve_melee_attack_nat_20_crit() {
             assert_eq!(variant, "hit");
             assert_eq!(fields.get("amount"), Some(&Value::Int(14)));
         }
-        other => panic!("expected ResolvedDamage.hit (crit), got {:?}", other),
+        other => panic!("expected ResolvedDamage.hit (crit), got {other:?}"),
     }
 }
 
@@ -928,7 +928,7 @@ fn resolve_melee_attack_nat_1_miss() {
             assert_eq!(enum_name, "ResolvedDamage");
             assert_eq!(variant, "miss");
         }
-        other => panic!("expected ResolvedDamage.miss, got {:?}", other),
+        other => panic!("expected ResolvedDamage.miss, got {other:?}"),
     }
 }
 
@@ -964,7 +964,7 @@ fn resolve_melee_attack_below_ac_miss() {
             assert_eq!(enum_name, "ResolvedDamage");
             assert_eq!(variant, "miss");
         }
-        other => panic!("expected ResolvedDamage.miss, got {:?}", other),
+        other => panic!("expected ResolvedDamage.miss, got {other:?}"),
     }
 
     // No damage roll should have been emitted (only 1 RollDice for the attack)
@@ -1622,7 +1622,7 @@ fn prone_modifies_initial_budget() {
             // Other fields unchanged
             assert_eq!(fields.get("actions"), Some(&Value::Int(1)));
         }
-        other => panic!("expected TurnBudget struct, got {:?}", other),
+        other => panic!("expected TurnBudget struct, got {other:?}"),
     }
 
     // Verify ModifyApplied was emitted

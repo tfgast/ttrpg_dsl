@@ -153,16 +153,16 @@ fn ose_exploration_has_expected_decls() {
                             assert_eq!(e.variants.len(), 14);
                         }
                         DeclKind::Derive(d) if d.name == "exploration_turn_phases" => {
-                            has_turn_phases_derive = true
+                            has_turn_phases_derive = true;
                         }
                         DeclKind::Table(t) if t.name == "exploration_action_phases" => {
-                            has_action_phases_table = true
+                            has_action_phases_table = true;
                         }
                         DeclKind::Derive(d) if d.name == "skip_exploration_phase" => {
-                            has_skip_phase_derive = true
+                            has_skip_phase_derive = true;
                         }
                         DeclKind::Mechanic(m) if m.name == "wandering_monster_roll" => {
-                            has_wandering_roll = true
+                            has_wandering_roll = true;
                         }
                         _ => {}
                     }

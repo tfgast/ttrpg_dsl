@@ -33,7 +33,7 @@ system "OSE" {
 fn compile_ose_thief() -> (ttrpg_ast::ast::Program, ttrpg_checker::CheckResult) {
     let core_source = include_str!("../../../ose/ose_core.ttrpg");
     let thief_source = include_str!("../../../ose/ose_thief.ttrpg");
-    let source = format!("{}\n{}\n{}", core_source, thief_source, TEST_HARNESS);
+    let source = format!("{core_source}\n{thief_source}\n{TEST_HARNESS}");
 
     let (program, parse_errors) = ttrpg_parser::parse(&source, FileId::SYNTH);
     assert!(
@@ -147,8 +147,7 @@ fn ose_thief_parses_and_typechecks() {
         .count();
     assert!(
         ose_count >= 2,
-        "expected at least 2 system 'OSE' blocks, got {}",
-        ose_count
+        "expected at least 2 system 'OSE' blocks, got {ose_count}"
     );
 }
 

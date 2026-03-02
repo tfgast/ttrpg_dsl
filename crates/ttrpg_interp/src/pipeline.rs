@@ -1296,7 +1296,7 @@ mod tests {
                 assert_eq!(name, "Outcome");
                 assert_eq!(fields.get("score"), Some(&Value::Int(99)));
             }
-            _ => panic!("expected Struct result, got {:?}", result),
+            _ => panic!("expected Struct result, got {result:?}"),
         }
 
         // Verify ModifyApplied effect was emitted with Phase2

@@ -1764,8 +1764,7 @@ mod tests {
         assert_eq!(
             result,
             Value::Float(-2.5),
-            "bug tdsl-jgk: expected 0 - 2.5 = -2.5, got {:?}",
-            result
+            "bug tdsl-jgk: expected 0 - 2.5 = -2.5, got {result:?}"
         );
     }
 

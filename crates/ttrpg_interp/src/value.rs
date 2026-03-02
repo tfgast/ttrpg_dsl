@@ -682,7 +682,7 @@ mod tests {
         assert!(Value::None < Value::Bool(false));
         assert!(Value::Bool(true) < Value::Int(0));
         assert!(Value::Int(0) < Value::Float(0.0));
-        assert!(Value::Float(0.0) < Value::Str("".into()));
+        assert!(Value::Float(0.0) < Value::Str(String::new()));
     }
 
     #[test]

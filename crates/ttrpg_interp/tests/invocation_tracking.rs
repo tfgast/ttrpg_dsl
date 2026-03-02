@@ -383,8 +383,7 @@ system "test" {
     let conc_field = state.read_field(&caster, "concentrating_on").unwrap();
     assert!(
         matches!(&conc_field, Value::Option(Some(inner)) if matches!(inner.as_ref(), Value::Invocation(_))),
-        "concentrating_on should be some(Invocation), got {:?}",
-        conc_field
+        "concentrating_on should be some(Invocation), got {conc_field:?}"
     );
 
     // Step 2: CastHex (should revoke Bless via hook)
@@ -529,8 +528,7 @@ system "test" {
     assert_eq!(
         completions.len(),
         2,
-        "expected 2 ActionCompleted (action + hook), got {:?}",
-        completions
+        "expected 2 ActionCompleted (action + hook), got {completions:?}"
     );
 
     let action_inv = completions
@@ -678,8 +676,7 @@ system "test" {
     let revokes = revoke_invocation_effects(&handler.log);
     assert!(
         revokes.is_empty(),
-        "revoke(none) should not emit RevokeInvocation, got {:?}",
-        revokes
+        "revoke(none) should not emit RevokeInvocation, got {revokes:?}"
     );
 
     // Action should still complete successfully
@@ -1048,8 +1045,7 @@ system "test" {
 
     assert!(
         matches!(&val, Value::Option(Some(inner)) if matches!(inner.as_ref(), Value::Invocation(InvocationId(1)))),
-        "should read back the stored invocation, got {:?}",
-        val
+        "should read back the stored invocation, got {val:?}"
     );
 }
 

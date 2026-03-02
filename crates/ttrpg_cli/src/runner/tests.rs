@@ -11,7 +11,7 @@ fn write_temp(prefix: &str, source: &str) -> PathBuf {
     let id = TEMP_COUNTER.fetch_add(1, Ordering::Relaxed);
     let dir = std::env::temp_dir().join("ttrpg_cli_test");
     std::fs::create_dir_all(&dir).unwrap();
-    let path = dir.join(format!("{}_{}.ttrpg", prefix, id));
+    let path = dir.join(format!("{prefix}_{id}.ttrpg"));
     std::fs::write(&path, source).unwrap();
     path
 }
@@ -60,7 +60,7 @@ fn eval_complex_arithmetic() {
 fn eval_parse_error() {
     let mut runner = Runner::new();
     let err = runner.eval("2 +").unwrap_err();
-    assert!(err.to_string().contains("parse error"), "got: {}", err);
+    assert!(err.to_string().contains("parse error"), "got: {err}");
 }
 
 #[test]
@@ -184,7 +184,7 @@ system "test" {
 fn exec_reload_path_with_spaces() {
     // Create a unique temp directory with a space in the name
     let id = TEMP_COUNTER.fetch_add(1, Ordering::Relaxed);
-    let dir = std::env::temp_dir().join(format!("ttrpg cli test {}", id));
+    let dir = std::env::temp_dir().join(format!("ttrpg cli test {id}"));
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join("test file.ttrpg");
     std::fs::write(
@@ -208,8 +208,7 @@ system "test" {
     let output = runner.take_output();
     assert!(
         output[0].starts_with("loaded"),
-        "reload should succeed for paths with spaces; got: {:?}",
-        output
+        "reload should succeed for paths with spaces; got: {output:?}"
     );
 }
 
@@ -264,8 +263,7 @@ system "test" {
     let err = runner.exec("reload").unwrap_err();
     assert!(
         err.to_string().contains("failed to load"),
-        "reload should target the bad file, got: {}",
-        err
+        "reload should target the bad file, got: {err}"
     );
     runner.take_output();
 }
@@ -299,8 +297,7 @@ system "test" {
     let err = runner.exec("reload").unwrap_err();
     assert!(
         err.to_string().contains("cannot read"),
-        "reload should target the failed path, got: {}",
-        err
+        "reload should target the failed path, got: {err}"
     );
     runner.take_output();
 }
@@ -320,7 +317,7 @@ system "test" {
     let result = runner.exec(&format!("load {}", path.display()));
     assert!(result.is_err(), "load with errors should return Err");
     let err = result.unwrap_err();
-    assert!(err.to_string().contains("failed to load"), "got: {}", err);
+    assert!(err.to_string().contains("failed to load"), "got: {err}");
 }
 
 // ── Helpers ─────────────────────────────────────────────────
@@ -515,7 +512,7 @@ system "test" {
     runner.take_output();
 
     let err = runner.exec("call add(1,,2)").unwrap_err();
-    assert!(err.to_string().contains("empty argument"), "got: {}", err);
+    assert!(err.to_string().contains("empty argument"), "got: {err}");
 }
 
 #[test]
@@ -536,8 +533,7 @@ system "test" {
     let err = runner.exec("call nonexistent(42)").unwrap_err();
     assert!(
         err.to_string().contains("undefined function"),
-        "got: {}",
-        err
+        "got: {err}"
     );
 }
 
@@ -561,7 +557,7 @@ system "test" {
     runner.take_output();
 
     let err = runner.exec("do NoSuchAction(fighter)").unwrap_err();
-    assert!(err.to_string().contains("undefined action"), "got: {}", err);
+    assert!(err.to_string().contains("undefined action"), "got: {err}");
 }
 
 // ── Split helpers tests ──────────────────────────────────────
@@ -627,7 +623,7 @@ fn spawn_dotted_handle_rejected() {
     let mut runner = Runner::new();
     load_character_program(&mut runner);
     let err = runner.exec("spawn Character foo.bar").unwrap_err();
-    assert!(err.to_string().contains("invalid handle"), "got: {}", err);
+    assert!(err.to_string().contains("invalid handle"), "got: {err}");
 }
 
 #[test]
@@ -635,7 +631,7 @@ fn spawn_numeric_handle_rejected() {
     let mut runner = Runner::new();
     load_character_program(&mut runner);
     let err = runner.exec("spawn Character 123abc").unwrap_err();
-    assert!(err.to_string().contains("invalid handle"), "got: {}", err);
+    assert!(err.to_string().contains("invalid handle"), "got: {err}");
 }
 
 #[test]
@@ -713,8 +709,7 @@ fn spawn_unknown_field_rejected() {
         .unwrap_err();
     assert!(
         err.to_string().contains("unknown field 'STR'"),
-        "got: {}",
-        err
+        "got: {err}"
     );
 }
 
@@ -728,8 +723,7 @@ fn set_unknown_field_rejected() {
     let err = runner.exec("set fighter.STR = 16").unwrap_err();
     assert!(
         err.to_string().contains("unknown field 'STR'"),
-        "got: {}",
-        err
+        "got: {err}"
     );
 }
 
@@ -740,7 +734,7 @@ fn spawn_type_mismatch_rejected() {
     let err = runner
         .exec(r#"spawn Character fighter { HP: "thirty" }"#)
         .unwrap_err();
-    assert!(err.to_string().contains("type mismatch"), "got: {}", err);
+    assert!(err.to_string().contains("type mismatch"), "got: {err}");
 }
 
 #[test]
@@ -752,8 +746,7 @@ fn spawn_nested_type_mismatch_rejected() {
         .unwrap_err();
     assert!(
         err.to_string().contains("type mismatch"),
-        "expected type mismatch for nested list element, got: {}",
-        err
+        "expected type mismatch for nested list element, got: {err}"
     );
 }
 
@@ -766,8 +759,7 @@ fn set_nested_type_mismatch_rejected() {
     let err = runner.exec(r#"set h.scores = ["bad"]"#).unwrap_err();
     assert!(
         err.to_string().contains("type mismatch"),
-        "expected type mismatch for nested list element, got: {}",
-        err
+        "expected type mismatch for nested list element, got: {err}"
     );
 }
 
@@ -780,8 +772,7 @@ fn spawn_duplicate_field_rejected() {
         .unwrap_err();
     assert!(
         err.to_string().contains("duplicate field"),
-        "expected duplicate field error, got: {}",
-        err
+        "expected duplicate field error, got: {err}"
     );
 }
 
@@ -793,7 +784,7 @@ fn set_type_mismatch_rejected() {
     runner.take_output();
 
     let err = runner.exec(r#"set fighter.HP = "thirty""#).unwrap_err();
-    assert!(err.to_string().contains("type mismatch"), "got: {}", err);
+    assert!(err.to_string().contains("type mismatch"), "got: {err}");
 }
 
 // ── Phase 3: Configuration tests ─────────────────────────────
@@ -862,14 +853,14 @@ fn cmd_assert_true() {
 fn cmd_assert_false() {
     let mut runner = Runner::new();
     let err = runner.exec("assert 2 + 3 == 6").unwrap_err();
-    assert!(err.to_string().contains("assertion failed"), "got: {}", err);
+    assert!(err.to_string().contains("assertion failed"), "got: {err}");
 }
 
 #[test]
 fn cmd_assert_non_bool() {
     let mut runner = Runner::new();
     let err = runner.exec("assert 2 + 3").unwrap_err();
-    assert!(err.to_string().contains("expected bool"), "got: {}", err);
+    assert!(err.to_string().contains("expected bool"), "got: {err}");
 }
 
 #[test]
@@ -882,8 +873,8 @@ fn cmd_assert_eq_pass() {
 fn cmd_assert_eq_fail() {
     let mut runner = Runner::new();
     let err = runner.exec("assert_eq 2 + 3, 6").unwrap_err();
-    assert!(err.to_string().contains("assertion failed"), "got: {}", err);
-    assert!(err.to_string().contains("!="), "got: {}", err);
+    assert!(err.to_string().contains("assertion failed"), "got: {err}");
+    assert!(err.to_string().contains("!="), "got: {err}");
 }
 
 #[test]
@@ -900,7 +891,7 @@ fn cmd_assert_err_fail() {
     let mut runner = Runner::new();
     // eval 2+3 succeeds, so assert_err should fail
     let err = runner.exec("assert_err eval 2 + 3").unwrap_err();
-    assert!(err.to_string().contains("expected error"), "got: {}", err);
+    assert!(err.to_string().contains("expected error"), "got: {err}");
 }
 
 // ── Phase 3: Inspection tests ────────────────────────────────
@@ -1141,8 +1132,7 @@ fn grant_and_revoke_basic() {
     let output = runner.take_output();
     assert!(
         output[0].contains("granted hero.Spellcasting"),
-        "got: {:?}",
-        output
+        "got: {output:?}"
     );
 
     // Revoke
@@ -1165,8 +1155,7 @@ fn grant_defaults_filled() {
     let output = runner.take_output();
     assert!(
         output[0].contains("spell_dc"),
-        "default should be filled, got: {:?}",
-        output
+        "default should be filled, got: {output:?}"
     );
 }
 
@@ -1181,8 +1170,7 @@ fn grant_missing_required_field() {
     let err = runner.exec("grant hero.Spellcasting").unwrap_err();
     assert!(
         err.to_string().contains("missing required field"),
-        "got: {}",
-        err
+        "got: {err}"
     );
 }
 
@@ -1194,7 +1182,7 @@ fn grant_unknown_group() {
     runner.take_output();
 
     let err = runner.exec("grant hero.Flying").unwrap_err();
-    assert!(err.to_string().contains("unknown group"), "got: {}", err);
+    assert!(err.to_string().contains("unknown group"), "got: {err}");
 }
 
 #[test]
@@ -1207,8 +1195,7 @@ fn grant_required_group_rejected() {
     let err = runner.exec("grant hero.CombatStats").unwrap_err();
     assert!(
         err.to_string().contains("required and cannot be granted"),
-        "got: {}",
-        err
+        "got: {err}"
     );
 }
 
@@ -1225,7 +1212,7 @@ fn grant_already_granted() {
     let err = runner
         .exec("grant hero.Rage { rage_count: 2 }")
         .unwrap_err();
-    assert!(err.to_string().contains("already granted"), "got: {}", err);
+    assert!(err.to_string().contains("already granted"), "got: {err}");
 }
 
 #[test]
@@ -1238,8 +1225,7 @@ fn revoke_not_granted() {
     let err = runner.exec("revoke hero.Spellcasting").unwrap_err();
     assert!(
         err.to_string().contains("not currently granted"),
-        "got: {}",
-        err
+        "got: {err}"
     );
 }
 
@@ -1253,8 +1239,7 @@ fn revoke_required_group_rejected() {
     let err = runner.exec("revoke hero.CombatStats").unwrap_err();
     assert!(
         err.to_string().contains("required and cannot be revoked"),
-        "got: {}",
-        err
+        "got: {err}"
     );
 }
 
@@ -1275,8 +1260,7 @@ fn set_group_field() {
     let output = runner.take_output();
     assert!(
         output[0].contains("hero.Spellcasting.spell_slots = 3"),
-        "got: {:?}",
-        output
+        "got: {output:?}"
     );
 }
 
@@ -1292,8 +1276,7 @@ fn set_group_field_not_granted() {
         .unwrap_err();
     assert!(
         err.to_string().contains("not currently granted"),
-        "got: {}",
-        err
+        "got: {err}"
     );
 }
 
@@ -1311,7 +1294,7 @@ fn inspect_group() {
     // Inspect group
     runner.exec("inspect hero.Spellcasting").unwrap();
     let output = runner.take_output();
-    assert!(output[0].contains("hero.Spellcasting"), "got: {:?}", output);
+    assert!(output[0].contains("hero.Spellcasting"), "got: {output:?}");
 }
 
 #[test]
@@ -1323,7 +1306,7 @@ fn inspect_group_not_granted() {
 
     runner.exec("inspect hero.Spellcasting").unwrap();
     let output = runner.take_output();
-    assert!(output[0].contains("<not granted>"), "got: {:?}", output);
+    assert!(output[0].contains("<not granted>"), "got: {output:?}");
 }
 
 #[test]
@@ -1343,8 +1326,7 @@ fn inspect_group_field() {
     let output = runner.take_output();
     assert!(
         output[0].contains("hero.Spellcasting.spell_slots = 5"),
-        "got: {:?}",
-        output
+        "got: {output:?}"
     );
 }
 
@@ -1363,15 +1345,13 @@ fn inspect_entity_shows_groups() {
     let output = runner.take_output();
     assert!(
         output.iter().any(|l| l.contains("[group] Spellcasting")),
-        "should show granted group, got: {:?}",
-        output
+        "should show granted group, got: {output:?}"
     );
     assert!(
         output
             .iter()
-            .any(|l| l.contains("spell_slots") && l.contains("5")),
-        "should show group field value, got: {:?}",
-        output
+            .any(|l| l.contains("spell_slots") && l.contains('5')),
+        "should show group field value, got: {output:?}"
     );
 }
 
@@ -1384,18 +1364,15 @@ fn types_shows_optional_groups() {
     let output = runner.take_output();
     assert!(
         output.iter().any(|l| l.contains("optional Spellcasting")),
-        "types should show optional groups, got: {:?}",
-        output
+        "types should show optional groups, got: {output:?}"
     );
     assert!(
         output.iter().any(|l| l.contains("include CombatStats")),
-        "types should show include groups, got: {:?}",
-        output
+        "types should show include groups, got: {output:?}"
     );
     assert!(
         output.iter().any(|l| l.contains("spell_slots")),
-        "types should show group fields, got: {:?}",
-        output
+        "types should show group fields, got: {output:?}"
     );
 }
 
@@ -1411,8 +1388,7 @@ fn spawn_auto_materializes_included_group() {
     let output = runner.take_output();
     assert!(
         output[0].contains("10"),
-        "included group defaults should be materialized, got: {:?}",
-        output
+        "included group defaults should be materialized, got: {output:?}"
     );
 }
 
@@ -1429,8 +1405,7 @@ fn state_shows_granted_groups() {
     let output = runner.take_output();
     assert!(
         output.iter().any(|l| l.contains("[group] Rage")),
-        "state should show granted group, got: {:?}",
-        output
+        "state should show granted group, got: {output:?}"
     );
 }
 
@@ -1445,8 +1420,7 @@ fn spawn_inline_group() {
     let output = runner.take_output();
     assert!(
         output[0].contains("spawned Character wizard"),
-        "got: {:?}",
-        output
+        "got: {output:?}"
     );
 
     // Verify the group was granted
@@ -1455,9 +1429,8 @@ fn spawn_inline_group() {
         .unwrap();
     let output = runner.take_output();
     assert!(
-        output[0].contains("5"),
-        "inline group should set field, got: {:?}",
-        output
+        output[0].contains('5'),
+        "inline group should set field, got: {output:?}"
     );
 }
 
@@ -1476,8 +1449,7 @@ fn spawn_inline_group_with_defaults() {
     let output = runner.take_output();
     assert!(
         output[0].contains("10"),
-        "default should be filled, got: {:?}",
-        output
+        "default should be filled, got: {output:?}"
     );
 }
 
@@ -1489,7 +1461,7 @@ fn spawn_inline_group_unknown_rejected() {
     let err = runner
         .exec("spawn Character hero { HP: 20, Flying { speed: 60 } }")
         .unwrap_err();
-    assert!(err.to_string().contains("unknown group"), "got: {}", err);
+    assert!(err.to_string().contains("unknown group"), "got: {err}");
 }
 
 #[test]
@@ -1501,15 +1473,14 @@ fn spawn_inline_group_error_is_atomic() {
     let err = runner
         .exec("spawn Character hero { HP: 20, Spellcasting { spell_slots: \"bad\" } }")
         .unwrap_err();
-    assert!(err.to_string().contains("type mismatch"), "got: {}", err);
+    assert!(err.to_string().contains("type mismatch"), "got: {err}");
 
     // The handle should NOT exist — spawn was rolled back
     let err2 = runner.exec("eval hero.HP").unwrap_err();
     assert!(
         err2.to_string().contains("undefined variable")
             || err2.to_string().contains("unknown handle"),
-        "entity should not exist after failed spawn, got: {}",
-        err2
+        "entity should not exist after failed spawn, got: {err2}"
     );
 }
 
@@ -1525,8 +1496,7 @@ fn grant_unknown_field_in_group() {
         .unwrap_err();
     assert!(
         err.to_string().contains("unknown field 'nonexistent'"),
-        "got: {}",
-        err
+        "got: {err}"
     );
 }
 
@@ -1538,7 +1508,7 @@ fn revoke_unknown_group() {
     runner.take_output();
 
     let err = runner.exec("revoke hero.Flying").unwrap_err();
-    assert!(err.to_string().contains("unknown group"), "got: {}", err);
+    assert!(err.to_string().contains("unknown group"), "got: {err}");
 }
 
 #[test]
@@ -1573,7 +1543,7 @@ fn group_accessor_methods() {
 
 fn multi_file_dir(test_name: &str) -> PathBuf {
     let id = TEMP_COUNTER.fetch_add(1, Ordering::Relaxed);
-    let dir = std::env::temp_dir().join(format!("ttrpg_test_{}_{}", test_name, id));
+    let dir = std::env::temp_dir().join(format!("ttrpg_test_{test_name}_{id}"));
     std::fs::create_dir_all(&dir).unwrap();
     dir
 }
@@ -1695,8 +1665,7 @@ system \"B\" { entity Character { AC: int } }
     let output = runner.take_output();
     assert!(
         output.iter().any(|l| l.contains("Character")),
-        "expected duplicate name 'Character' in errors, got: {:?}",
-        output
+        "expected duplicate name 'Character' in errors, got: {output:?}"
     );
 
     std::fs::remove_dir_all(&dir).ok();
@@ -1739,8 +1708,7 @@ system "B" {
     // MultiSourceMap renders with filename prefix
     assert!(
         output.iter().any(|l| l.contains("render_a.ttrpg")),
-        "expected filename in diagnostic, got: {:?}",
-        output
+        "expected filename in diagnostic, got: {output:?}"
     );
 
     std::fs::remove_dir_all(&dir).ok();
@@ -1771,8 +1739,7 @@ fn multi_file_glob_expansion() {
     let output = runner.take_output();
     assert!(
         output[0].contains("loaded 2 files"),
-        "expected 2 files loaded, got: {:?}",
-        output
+        "expected 2 files loaded, got: {output:?}"
     );
 
     std::fs::remove_dir_all(&dir).ok();
@@ -1826,8 +1793,7 @@ system \"test\" {
     // Single file says "loaded <path>" not "loaded N files"
     assert!(
         output[0].starts_with("loaded") && !output[0].contains("files"),
-        "single file should say 'loaded <path>', got: {:?}",
-        output
+        "single file should say 'loaded <path>', got: {output:?}"
     );
 
     runner.exec("spawn Character hero { HP: 20 }").unwrap();
@@ -2111,8 +2077,7 @@ fn set_clamps_resource_to_max() {
     // Should be clamped to max_hp (20)
     assert!(
         output[0].contains("hero.hp = 20") && output[0].contains("(clamped)"),
-        "expected clamped to 20, got: {:?}",
-        output
+        "expected clamped to 20, got: {output:?}"
     );
 }
 
@@ -2130,8 +2095,7 @@ fn set_clamps_resource_to_min() {
     // Should be clamped to 0
     assert!(
         output[0].contains("hero.hp = 0") && output[0].contains("(clamped)"),
-        "expected clamped to 0, got: {:?}",
-        output
+        "expected clamped to 0, got: {output:?}"
     );
 }
 
@@ -2149,13 +2113,11 @@ fn set_no_clamp_for_non_resource() {
     let output = runner.take_output();
     assert!(
         output[0].contains("hero.AC = 999"),
-        "expected unclamped write, got: {:?}",
-        output
+        "expected unclamped write, got: {output:?}"
     );
     assert!(
         !output[0].contains("clamped"),
-        "non-resource should not be clamped, got: {:?}",
-        output
+        "non-resource should not be clamped, got: {output:?}"
     );
 }
 
@@ -2172,8 +2134,7 @@ fn set_plus_eq() {
     let output = runner.take_output();
     assert!(
         output[0].contains("=> 18"),
-        "expected AC to be 18, got: {:?}",
-        output
+        "expected AC to be 18, got: {output:?}"
     );
 }
 
@@ -2190,8 +2151,7 @@ fn set_minus_eq() {
     let output = runner.take_output();
     assert!(
         output[0].contains("=> 10"),
-        "expected AC to be 10, got: {:?}",
-        output
+        "expected AC to be 10, got: {output:?}"
     );
 }
 
@@ -2209,8 +2169,7 @@ fn set_minus_eq_with_resource_clamps() {
     let output = runner.take_output();
     assert!(
         output[0].contains("=> 0"),
-        "expected hp clamped to 0, got: {:?}",
-        output
+        "expected hp clamped to 0, got: {output:?}"
     );
 }
 
@@ -2228,8 +2187,7 @@ fn set_plus_eq_with_resource_clamps() {
     let output = runner.take_output();
     assert!(
         output[0].contains("=> 20"),
-        "expected hp clamped to 20, got: {:?}",
-        output
+        "expected hp clamped to 20, got: {output:?}"
     );
 }
 
@@ -2247,15 +2205,14 @@ fn set_flattened_included_field() {
     // Set flattened field: base_ac lives in included CombatStats group
     runner.exec("set hero.base_ac = 18").unwrap();
     let output = runner.take_output();
-    assert!(output[0].contains("hero.base_ac = 18"), "got: {:?}", output);
+    assert!(output[0].contains("hero.base_ac = 18"), "got: {output:?}");
 
     // Verify via qualified access
     runner.exec("inspect hero.CombatStats.base_ac").unwrap();
     let output = runner.take_output();
     assert!(
         output[0].contains("18"),
-        "qualified access should show updated value, got: {:?}",
-        output
+        "qualified access should show updated value, got: {output:?}"
     );
 }
 
@@ -2273,8 +2230,7 @@ fn inspect_flattened_included_field() {
     let output = runner.take_output();
     assert!(
         output[0].contains("hero.base_ac = 10"),
-        "default base_ac should be 10, got: {:?}",
-        output
+        "default base_ac should be 10, got: {output:?}"
     );
 }
 
@@ -2292,14 +2248,13 @@ fn qualified_access_still_works_after_flattening() {
     let output = runner.take_output();
     assert!(
         output[0].contains("hero.CombatStats.base_ac = 20"),
-        "got: {:?}",
-        output
+        "got: {output:?}"
     );
 
     // Qualified inspect still works
     runner.exec("inspect hero.CombatStats.base_ac").unwrap();
     let output = runner.take_output();
-    assert!(output[0].contains("20"), "got: {:?}", output);
+    assert!(output[0].contains("20"), "got: {output:?}");
 }
 
 // ── Entity field defaults at spawn ──────────────────────────
@@ -2337,17 +2292,15 @@ fn spawn_applies_entity_field_defaults() {
     runner.exec("inspect hero.level").unwrap();
     let output = runner.take_output();
     assert!(
-        output[0].contains("1"),
-        "level should default to 1, got: {:?}",
-        output
+        output[0].contains('1'),
+        "level should default to 1, got: {output:?}"
     );
 
     runner.exec("inspect hero.AC").unwrap();
     let output = runner.take_output();
     assert!(
         output[0].contains("10"),
-        "AC should default to 10, got: {:?}",
-        output
+        "AC should default to 10, got: {output:?}"
     );
 }
 
@@ -2365,9 +2318,8 @@ fn spawn_explicit_overrides_default() {
     runner.exec("inspect hero.level").unwrap();
     let output = runner.take_output();
     assert!(
-        output[0].contains("5"),
-        "level should be 5 (explicit), got: {:?}",
-        output
+        output[0].contains('5'),
+        "level should be 5 (explicit), got: {output:?}"
     );
 }
 
@@ -2383,17 +2335,15 @@ fn spawn_no_fields_applies_all_defaults() {
     runner.exec("inspect hero.level").unwrap();
     let output = runner.take_output();
     assert!(
-        output[0].contains("1"),
-        "level should default to 1, got: {:?}",
-        output
+        output[0].contains('1'),
+        "level should default to 1, got: {output:?}"
     );
 
     runner.exec("inspect hero.AC").unwrap();
     let output = runner.take_output();
     assert!(
         output[0].contains("10"),
-        "AC should default to 10, got: {:?}",
-        output
+        "AC should default to 10, got: {output:?}"
     );
 }
 
@@ -2441,7 +2391,7 @@ fn options_lists_all_declared_options() {
 
     runner.exec("options").unwrap();
     let output = runner.take_output();
-    assert_eq!(output.len(), 3, "should list 3 options, got: {:?}", output);
+    assert_eq!(output.len(), 3, "should list 3 options, got: {output:?}");
     // generous_crits should be on (default: on), others off
     let generous = output
         .iter()
@@ -2449,14 +2399,12 @@ fn options_lists_all_declared_options() {
         .unwrap();
     assert!(
         generous.contains("[on]"),
-        "generous_crits should be on, got: {}",
-        generous
+        "generous_crits should be on, got: {generous}"
     );
     let flanking = output.iter().find(|l| l.contains("flanking")).unwrap();
     assert!(
         flanking.contains("[off]"),
-        "flanking should be off, got: {}",
-        flanking
+        "flanking should be off, got: {flanking}"
     );
 }
 
@@ -2483,7 +2431,7 @@ fn enable_unknown_option_rejected() {
     load_option_program(&mut runner);
 
     let err = runner.exec("enable nonexistent").unwrap_err();
-    assert!(err.to_string().contains("unknown option"), "got: {}", err);
+    assert!(err.to_string().contains("unknown option"), "got: {err}");
 }
 
 #[test]
@@ -2492,7 +2440,7 @@ fn disable_unknown_option_rejected() {
     load_option_program(&mut runner);
 
     let err = runner.exec("disable nonexistent").unwrap_err();
-    assert!(err.to_string().contains("unknown option"), "got: {}", err);
+    assert!(err.to_string().contains("unknown option"), "got: {err}");
 }
 
 #[test]
@@ -2517,8 +2465,7 @@ fn enable_and_disable_option() {
     let flanking = output.iter().find(|l| l.contains("flanking")).unwrap();
     assert!(
         flanking.contains("[on]"),
-        "flanking should now be on, got: {}",
-        flanking
+        "flanking should now be on, got: {flanking}"
     );
 
     // Disable it
@@ -2532,8 +2479,7 @@ fn enable_and_disable_option() {
     let flanking = output.iter().find(|l| l.contains("flanking")).unwrap();
     assert!(
         flanking.contains("[off]"),
-        "flanking should be off again, got: {}",
-        flanking
+        "flanking should be off again, got: {flanking}"
     );
 }
 
@@ -2555,8 +2501,7 @@ fn options_shows_description() {
     let flanking = output.iter().find(|l| l.contains("flanking")).unwrap();
     assert!(
         flanking.contains("Melee attackers on opposite sides gain advantage"),
-        "should show description, got: {}",
-        flanking
+        "should show description, got: {flanking}"
     );
 }
 
@@ -2569,9 +2514,8 @@ fn option_modify_applies_when_enabled() {
     runner.exec("call base_modifier(5)").unwrap();
     let output = runner.take_output();
     assert!(
-        output.iter().any(|l| l.contains("7")),
-        "without option: 5 + 2 = 7, got: {:?}",
-        output
+        output.iter().any(|l| l.contains('7')),
+        "without option: 5 + 2 = 7, got: {output:?}"
     );
 
     // Enable house_rule — base_modifier(5) should now return 17 (7 + 10)
@@ -2582,8 +2526,7 @@ fn option_modify_applies_when_enabled() {
     let output = runner.take_output();
     assert!(
         output.iter().any(|l| l.contains("17")),
-        "with option: 5 + 2 + 10 = 17, got: {:?}",
-        output
+        "with option: 5 + 2 + 10 = 17, got: {output:?}"
     );
 
     // Disable it again
@@ -2593,9 +2536,8 @@ fn option_modify_applies_when_enabled() {
     runner.exec("call base_modifier(5)").unwrap();
     let output = runner.take_output();
     assert!(
-        output.iter().any(|l| l.contains("7")),
-        "after disable: back to 7, got: {:?}",
-        output
+        output.iter().any(|l| l.contains('7')),
+        "after disable: back to 7, got: {output:?}"
     );
 }
 
@@ -3246,8 +3188,7 @@ system "Game" {
     let output = runner.take_output();
     assert!(
         output[0].contains("Frightened"),
-        "should produce Frightened condition, got: {:?}",
-        output
+        "should produce Frightened condition, got: {output:?}"
     );
 
     std::fs::remove_dir_all(&dir).ok();
@@ -3395,8 +3336,7 @@ fn module_use_with_no_system_block_warns() {
         .any(|l| l.contains("no system blocks") || l.contains("no effect"));
     assert!(
         has_warning || output.iter().any(|l| l.contains("no diagnostics")),
-        "expected warning about use with no system block, got: {:?}",
-        output
+        "expected warning about use with no system block, got: {output:?}"
     );
 
     std::fs::remove_dir_all(&dir).ok();
@@ -3424,8 +3364,7 @@ system "Core" { derive helper() -> int { 42 } }
     let has_self_import_warn = output.iter().any(|l| l.contains("imports itself"));
     assert!(
         has_self_import_warn || output.iter().any(|l| l.contains("no diagnostics")),
-        "expected self-import warning, got: {:?}",
-        output
+        "expected self-import warning, got: {output:?}"
     );
 
     std::fs::remove_dir_all(&dir).ok();

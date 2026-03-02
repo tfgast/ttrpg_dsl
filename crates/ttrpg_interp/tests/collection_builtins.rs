@@ -1413,7 +1413,7 @@ system "test" {
     if let Value::Map(m) = &val {
         assert_eq!(m.len(), 3);
     } else {
-        panic!("expected map, got {:?}", val);
+        panic!("expected map, got {val:?}");
     }
 }
 

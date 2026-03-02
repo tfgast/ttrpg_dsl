@@ -620,10 +620,10 @@ mod tests {
         assert_eq!(result.kept.len(), 3);
         // Kept should be the 3 highest
         let mut all_sorted = result.dice.clone();
-        all_sorted.sort();
+        all_sorted.sort_unstable();
         let expected_kept: Vec<i64> = all_sorted.into_iter().rev().take(3).collect();
         let mut kept_sorted = result.kept.clone();
-        kept_sorted.sort();
+        kept_sorted.sort_unstable();
         kept_sorted.reverse();
         assert_eq!(kept_sorted, expected_kept);
     }

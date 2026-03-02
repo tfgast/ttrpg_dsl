@@ -191,7 +191,7 @@ fn class_def_fighter() {
         assert_eq!(fields.get("weapons_any"), Some(&Value::Bool(true)));
         assert_eq!(fields.get("is_demihuman"), Some(&Value::Bool(false)));
     } else {
-        panic!("expected Struct, got {:?}", def);
+        panic!("expected Struct, got {def:?}");
     }
 }
 
@@ -218,7 +218,7 @@ fn class_def_magic_user() {
         assert_eq!(fields.get("weapons_any"), Some(&Value::Bool(false)));
         assert_eq!(fields.get("weapons_blunt_only"), Some(&Value::Bool(false)));
     } else {
-        panic!("expected Struct, got {:?}", def);
+        panic!("expected Struct, got {def:?}");
     }
 }
 
@@ -239,7 +239,7 @@ fn class_def_dwarf() {
         assert_eq!(fields.get("max_level"), Some(&Value::Int(12)));
         assert_eq!(fields.get("is_demihuman"), Some(&Value::Bool(true)));
     } else {
-        panic!("expected Struct, got {:?}", def);
+        panic!("expected Struct, got {def:?}");
     }
 }
 
@@ -286,7 +286,7 @@ fn xp_for_level_fighter() {
                 vec![class_val("Fighter"), Value::Int(9)]
             )
             .unwrap(),
-        Value::Int(240000)
+        Value::Int(240_000)
     );
     // Level 14 = 840000 XP
     assert_eq!(
@@ -298,7 +298,7 @@ fn xp_for_level_fighter() {
                 vec![class_val("Fighter"), Value::Int(14)]
             )
             .unwrap(),
-        Value::Int(840000)
+        Value::Int(840_000)
     );
 }
 
@@ -379,7 +379,7 @@ fn xp_for_level_demihuman_tables() {
                 vec![class_val("Halfling"), Value::Int(8)]
             )
             .unwrap(),
-        Value::Int(120000)
+        Value::Int(120_000)
     );
 
     // Gnome level 4 = 12000
@@ -414,8 +414,7 @@ fn xp_for_level_beyond_max_errors() {
         .unwrap_err();
     assert!(
         err.to_string().contains("no matching entry"),
-        "expected 'no matching entry' error, got: {}",
-        err
+        "expected 'no matching entry' error, got: {err}"
     );
 }
 
@@ -490,7 +489,7 @@ fn check_level_up_at_max() {
                 &state,
                 &mut handler,
                 "check_level_up",
-                vec![class_val("Halfling"), Value::Int(8), Value::Int(999999)]
+                vec![class_val("Halfling"), Value::Int(8), Value::Int(999_999)]
             )
             .unwrap(),
         Value::Bool(false)

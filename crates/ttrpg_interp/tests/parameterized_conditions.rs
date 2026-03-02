@@ -120,7 +120,7 @@ system "test" {
             assert_eq!(name, "Frightened");
             assert_eq!(args.get("source"), Some(&Value::Entity(EntityRef(1))));
         }
-        other => panic!("expected Condition value, got {:?}", other),
+        other => panic!("expected Condition value, got {other:?}"),
     }
 }
 
@@ -158,7 +158,7 @@ system "test" {
             assert_eq!(args.get("source"), Some(&Value::Entity(EntityRef(1))));
             assert_eq!(args.len(), 1);
         }
-        other => panic!("expected Condition value, got {:?}", other),
+        other => panic!("expected Condition value, got {other:?}"),
     }
 }
 
@@ -188,7 +188,7 @@ system "test" {
             // Default should be materialized: level = 1
             assert_eq!(args.get("level"), Some(&Value::Int(1)));
         }
-        other => panic!("expected Condition value, got {:?}", other),
+        other => panic!("expected Condition value, got {other:?}"),
     }
 }
 
@@ -217,7 +217,7 @@ system "test" {
             assert_eq!(name, "Weakened");
             assert_eq!(args.get("level"), Some(&Value::Int(3)));
         }
-        other => panic!("expected Condition value, got {:?}", other),
+        other => panic!("expected Condition value, got {other:?}"),
     }
 }
 
@@ -259,7 +259,7 @@ system "test" {
             assert_eq!(args.get("source"), Some(&Value::Entity(EntityRef(1))));
             assert_eq!(args.get("severity"), Some(&Value::Int(1)));
         }
-        other => panic!("expected Condition, got {:?}", other),
+        other => panic!("expected Condition, got {other:?}"),
     }
 
     // Both args positional
@@ -276,7 +276,7 @@ system "test" {
             assert_eq!(args.get("source"), Some(&Value::Entity(EntityRef(1))));
             assert_eq!(args.get("severity"), Some(&Value::Int(3)));
         }
-        other => panic!("expected Condition, got {:?}", other),
+        other => panic!("expected Condition, got {other:?}"),
     }
 
     // Both args named
@@ -293,6 +293,6 @@ system "test" {
             assert_eq!(args.get("source"), Some(&Value::Entity(EntityRef(1))));
             assert_eq!(args.get("severity"), Some(&Value::Int(5)));
         }
-        other => panic!("expected Condition, got {:?}", other),
+        other => panic!("expected Condition, got {other:?}"),
     }
 }

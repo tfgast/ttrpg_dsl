@@ -449,8 +449,7 @@ fn out_of_range_level_errors() {
         .unwrap_err();
     assert!(
         err.to_string().contains("no matching entry"),
-        "expected 'no matching entry' error, got: {}",
-        err
+        "expected 'no matching entry' error, got: {err}"
     );
 }
 

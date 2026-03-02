@@ -175,7 +175,7 @@ fn resource_map_clamping_prevents_underflow() {
     let slot_val = adapter.read_field(&hero, "spell_slots");
     let map = match slot_val {
         Some(Value::Map(m)) => m,
-        other => panic!("expected Map, got {:?}", other),
+        other => panic!("expected Map, got {other:?}"),
     };
     assert_eq!(map.get(&Value::Int(1)), Some(&Value::Int(0)));
 }
@@ -207,7 +207,7 @@ fn resource_map_clamping_prevents_overflow() {
     let slot_val = adapter.read_field(&hero, "spell_slots");
     let map = match slot_val {
         Some(Value::Map(m)) => m,
-        other => panic!("expected Map, got {:?}", other),
+        other => panic!("expected Map, got {other:?}"),
     };
     assert_eq!(map.get(&Value::Int(1)), Some(&Value::Int(9)));
 }
@@ -239,7 +239,7 @@ fn resource_map_set_is_clamped() {
     let slot_val = adapter.read_field(&hero, "spell_slots");
     let map = match slot_val {
         Some(Value::Map(m)) => m,
-        other => panic!("expected Map, got {:?}", other),
+        other => panic!("expected Map, got {other:?}"),
     };
     assert_eq!(map.get(&Value::Int(1)), Some(&Value::Int(9)));
 }
@@ -269,7 +269,7 @@ fn resource_map_write_to_missing_key_auto_initializes() {
     let slot_val = adapter.read_field(&hero, "spell_slots");
     let map = match slot_val {
         Some(Value::Map(m)) => m,
-        other => panic!("expected Map, got {:?}", other),
+        other => panic!("expected Map, got {other:?}"),
     };
     assert_eq!(
         map.get(&Value::Int(5)),
@@ -323,7 +323,7 @@ fn resource_map_dynamic_bounds_from_entity_field() {
     let slot_val = adapter.read_field(&hero, "spell_slots");
     let map = match slot_val {
         Some(Value::Map(m)) => m,
-        other => panic!("expected Map, got {:?}", other),
+        other => panic!("expected Map, got {other:?}"),
     };
     assert_eq!(map.get(&Value::Int(1)), Some(&Value::Int(4)));
 }
@@ -381,11 +381,11 @@ fn resource_map_in_optional_group_is_clamped() {
     let group_val = adapter.read_field(&hero, "Spellcasting");
     let spell_slots = match group_val {
         Some(Value::Struct { fields, .. }) => fields.get("spell_slots").cloned().unwrap(),
-        other => panic!("expected Struct, got {:?}", other),
+        other => panic!("expected Struct, got {other:?}"),
     };
     let map = match spell_slots {
         Value::Map(m) => m,
-        other => panic!("expected Map, got {:?}", other),
+        other => panic!("expected Map, got {other:?}"),
     };
     assert_eq!(map.get(&Value::Int(1)), Some(&Value::Int(0)));
 }
@@ -445,7 +445,7 @@ fn resource_map_nonzero_min_prevents_underflow() {
     let val = adapter.read_field(&hero, "abilities");
     let map = match val {
         Some(Value::Map(m)) => m,
-        other => panic!("expected Map, got {:?}", other),
+        other => panic!("expected Map, got {other:?}"),
     };
     assert_eq!(map.get(&Value::Int(1)), Some(&Value::Int(1)));
 }
@@ -477,7 +477,7 @@ fn resource_map_nonzero_min_set_below_clamps_up() {
     let val = adapter.read_field(&hero, "abilities");
     let map = match val {
         Some(Value::Map(m)) => m,
-        other => panic!("expected Map, got {:?}", other),
+        other => panic!("expected Map, got {other:?}"),
     };
     assert_eq!(map.get(&Value::Int(1)), Some(&Value::Int(1)));
 }
@@ -507,7 +507,7 @@ fn resource_map_nonzero_min_auto_init_missing_key() {
     let val = adapter.read_field(&hero, "abilities");
     let map = match val {
         Some(Value::Map(m)) => m,
-        other => panic!("expected Map, got {:?}", other),
+        other => panic!("expected Map, got {other:?}"),
     };
     assert_eq!(
         map.get(&Value::Int(1)),
@@ -560,7 +560,7 @@ fn resource_map_multiple_keys_mutated_in_one_action() {
     let slot_val = adapter.read_field(&hero, "spell_slots");
     let map = match slot_val {
         Some(Value::Map(m)) => m,
-        other => panic!("expected Map, got {:?}", other),
+        other => panic!("expected Map, got {other:?}"),
     };
     assert_eq!(
         map.get(&Value::Int(1)),
@@ -710,7 +710,7 @@ fn resource_map_enum_key_read_and_mutate() {
     let val = adapter.read_field(&hero, "abilities");
     let map = match val {
         Some(Value::Map(m)) => m,
-        other => panic!("expected Map, got {:?}", other),
+        other => panic!("expected Map, got {other:?}"),
     };
     assert_eq!(map.get(&ability_variant("STR")), Some(&Value::Int(19)));
     assert_eq!(
@@ -746,7 +746,7 @@ fn resource_map_enum_key_clamped_at_max() {
     let val = adapter.read_field(&hero, "abilities");
     let map = match val {
         Some(Value::Map(m)) => m,
-        other => panic!("expected Map, got {:?}", other),
+        other => panic!("expected Map, got {other:?}"),
     };
     assert_eq!(
         map.get(&ability_variant("STR")),
@@ -816,7 +816,7 @@ fn local_to_entity_mutation_carries_bounds() {
     let slot_val = adapter.read_field(&caster, "spell_slots");
     let map = match slot_val {
         Some(Value::Map(m)) => m,
-        other => panic!("expected Map, got {:?}", other),
+        other => panic!("expected Map, got {other:?}"),
     };
     assert_eq!(
         map.get(&Value::Int(1)),
@@ -917,7 +917,7 @@ fn complex_bound_expression_is_evaluated() {
     let slot_val = adapter.read_field(&hero, "spell_slots");
     let map = match slot_val {
         Some(Value::Map(m)) => m,
-        other => panic!("expected Map, got {:?}", other),
+        other => panic!("expected Map, got {other:?}"),
     };
     assert_eq!(
         map.get(&Value::Int(1)),
@@ -1014,11 +1014,11 @@ fn struct_field_traversal_resolves_bounds() {
     let stats_val = adapter.read_field(&hero, "stats");
     let spell_slots = match stats_val {
         Some(Value::Struct { fields, .. }) => fields.get("spell_slots").cloned().unwrap(),
-        other => panic!("expected Struct, got {:?}", other),
+        other => panic!("expected Struct, got {other:?}"),
     };
     let map = match spell_slots {
         Value::Map(m) => m,
-        other => panic!("expected Map, got {:?}", other),
+        other => panic!("expected Map, got {other:?}"),
     };
     assert_eq!(
         map.get(&Value::Int(1)),

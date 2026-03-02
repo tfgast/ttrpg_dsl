@@ -54,17 +54,17 @@ impl EffectHandler for ScriptedHandler {
 
 fn setup() -> (ttrpg_ast::ast::Program, ttrpg_checker::env::TypeEnv) {
     let (program, parse_errors) = ttrpg_parser::parse(PROGRAM_SOURCE, FileId::SYNTH);
-    assert!(parse_errors.is_empty(), "parse errors: {:?}", parse_errors);
+    assert!(parse_errors.is_empty(), "parse errors: {parse_errors:?}");
     let mut lower_diags = Vec::new();
     let program = ttrpg_parser::lower_moves(program, &mut lower_diags);
-    assert!(lower_diags.is_empty(), "lower errors: {:?}", lower_diags);
+    assert!(lower_diags.is_empty(), "lower errors: {lower_diags:?}");
     let result = ttrpg_checker::check(&program);
     let errors: Vec<_> = result
         .diagnostics
         .iter()
         .filter(|d| d.severity == ttrpg_ast::diagnostic::Severity::Error)
         .collect();
-    assert!(errors.is_empty(), "check errors: {:?}", errors);
+    assert!(errors.is_empty(), "check errors: {errors:?}");
     (program, result.env)
 }
 
@@ -119,8 +119,7 @@ fn action_default_not_evaluated_on_veto() {
     assert_eq!(
         effect_names,
         vec!["ActionStarted", "ActionCompleted"],
-        "vetoed action should only produce ActionStarted + ActionCompleted, got: {:?}",
-        effect_names
+        "vetoed action should only produce ActionStarted + ActionCompleted, got: {effect_names:?}"
     );
 }
 

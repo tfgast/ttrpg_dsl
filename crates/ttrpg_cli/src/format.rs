@@ -317,14 +317,12 @@ mod tests {
         let formatted = format_value(&val, &no_units());
         assert!(
             !formatted.contains("a\"b\"") || formatted.matches('"').count() == 2,
-            "embedded quote should be escaped; got: {}",
-            formatted,
+            "embedded quote should be escaped; got: {formatted}",
         );
         assert_eq!(
             formatted.matches('"').count() - formatted.matches("\\\"").count(),
             2,
-            "should have exactly 2 unescaped quotes (open/close); got: {}",
-            formatted,
+            "should have exactly 2 unescaped quotes (open/close); got: {formatted}",
         );
     }
 
@@ -334,8 +332,7 @@ mod tests {
         let formatted = format_value(&val, &no_units());
         assert!(
             formatted.contains("\\\\"),
-            "backslash should be escaped; got: {}",
-            formatted,
+            "backslash should be escaped; got: {formatted}",
         );
     }
 
@@ -347,8 +344,7 @@ mod tests {
         let result = format_dice_expr(&expr);
         assert!(
             result.contains(" - 9223372036854775808"),
-            "i64::MIN modifier should format without panic; got: {}",
-            result,
+            "i64::MIN modifier should format without panic; got: {result}",
         );
     }
 
@@ -358,8 +354,7 @@ mod tests {
         let formatted = format_value(&val, &no_units());
         assert!(
             !formatted.contains('\n') || formatted.contains("\\n"),
-            "newline should be escaped; got: {:?}",
-            formatted,
+            "newline should be escaped; got: {formatted:?}",
         );
     }
 

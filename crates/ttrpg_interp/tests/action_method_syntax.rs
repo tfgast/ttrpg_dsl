@@ -302,8 +302,7 @@ system "test" {
         errors
             .iter()
             .any(|e| e.contains("action") && e.contains("can only be called")),
-        "expected context error, got: {:?}",
-        errors
+        "expected context error, got: {errors:?}"
     );
 }
 
@@ -334,8 +333,7 @@ system "test" {
         errors
             .iter()
             .any(|e| e.contains("expects receiver of type")),
-        "expected receiver type mismatch error, got: {:?}",
-        errors
+        "expected receiver type mismatch error, got: {errors:?}"
     );
 }
 

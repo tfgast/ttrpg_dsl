@@ -448,8 +448,7 @@ mod tests {
             diags
                 .iter()
                 .any(|d| d.message.contains("reserved `__` prefix")),
-            "expected reserved prefix error, got: {:?}",
-            diags
+            "expected reserved prefix error, got: {diags:?}"
         );
         // The move should remain as DeclKind::Move (not lowered)
         let sys = match &program.items[0].node {

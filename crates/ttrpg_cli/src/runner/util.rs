@@ -21,33 +21,6 @@ pub(super) fn split_first_token(s: &str) -> (&str, &str) {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn split_first_token_ascii_space() {
-        assert_eq!(split_first_token("hello world"), ("hello", "world"));
-    }
-
-    #[test]
-    fn split_first_token_no_space() {
-        assert_eq!(split_first_token("hello"), ("hello", ""));
-    }
-
-    #[test]
-    fn split_first_token_unicode_whitespace() {
-        // U+00A0 (non-breaking space) is 2 bytes in UTF-8
-        let input = "hello\u{00A0}world";
-        assert_eq!(split_first_token(input), ("hello", "world"));
-    }
-
-    #[test]
-    fn split_first_token_tab() {
-        assert_eq!(split_first_token("hello\tworld"), ("hello", "world"));
-    }
-}
-
 /// Split on commas, respecting `()`, `[]`, `{}`, and `""` nesting.
 pub(super) fn split_top_level_commas(s: &str) -> Vec<&str> {
     let mut result = Vec::new();
@@ -189,5 +162,32 @@ pub(super) fn value_type_display(val: &Value) -> String {
         Value::Invocation(_) => "Invocation".into(),
         Value::EnumNamespace(name) => format!("{name}(namespace)"),
         Value::ModuleAlias(name) => format!("{name}(module alias)"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn split_first_token_ascii_space() {
+        assert_eq!(split_first_token("hello world"), ("hello", "world"));
+    }
+
+    #[test]
+    fn split_first_token_no_space() {
+        assert_eq!(split_first_token("hello"), ("hello", ""));
+    }
+
+    #[test]
+    fn split_first_token_unicode_whitespace() {
+        // U+00A0 (non-breaking space) is 2 bytes in UTF-8
+        let input = "hello\u{00A0}world";
+        assert_eq!(split_first_token(input), ("hello", "world"));
+    }
+
+    #[test]
+    fn split_first_token_tab() {
+        assert_eq!(split_first_token("hello\tworld"), ("hello", "world"));
     }
 }

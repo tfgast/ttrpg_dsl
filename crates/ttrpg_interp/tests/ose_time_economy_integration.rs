@@ -110,19 +110,19 @@ fn ose_time_economy_has_expected_decls() {
                         DeclKind::Enum(e) if e.name == "LightSourceKind" => has_light_enum = true,
                         DeclKind::Enum(e) if e.name == "ArmourKind" => has_armour_enum = true,
                         DeclKind::Table(t) if t.name == "light_source_turns" => {
-                            has_light_table = true
+                            has_light_table = true;
                         }
                         DeclKind::Table(t) if t.name == "coin_gp_value_x100" => {
-                            has_coin_table = true
+                            has_coin_table = true;
                         }
                         DeclKind::Table(t) if t.name == "armour_weight_cn" => {
-                            has_armour_table = true
+                            has_armour_table = true;
                         }
                         DeclKind::Derive(d) if d.name == "rest_interval_turns" => {
-                            has_rest_interval = true
+                            has_rest_interval = true;
                         }
                         DeclKind::Derive(d) if d.name == "training_cost_gp" => {
-                            has_training_cost = true
+                            has_training_cost = true;
                         }
                         _ => {}
                     }

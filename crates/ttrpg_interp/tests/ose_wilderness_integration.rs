@@ -114,10 +114,10 @@ fn ose_wilderness_has_expected_decls() {
                         }
                         DeclKind::Table(_) => table_count += 1,
                         DeclKind::Mechanic(m) if m.name == "terrain_lost_check" => {
-                            has_lost_check = true
+                            has_lost_check = true;
                         }
                         DeclKind::Derive(d) if d.name == "starvation_penalty" => {
-                            has_starvation_penalty = true
+                            has_starvation_penalty = true;
                         }
                         _ => {}
                     }

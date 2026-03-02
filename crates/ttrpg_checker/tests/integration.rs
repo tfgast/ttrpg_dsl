@@ -6353,7 +6353,7 @@ fn check_multi_source(sources: &[(&str, &str)]) -> CheckResult {
         result
             .diagnostics
             .iter()
-            .map(|d| format!("{:?}", d))
+            .map(|d| format!("{d:?}"))
             .collect::<Vec<_>>()
             .join("\n")
     );
@@ -8914,8 +8914,7 @@ system "C" {
         // Verify we didn't silently skip the check
         assert!(
             !multi_has_errors(perm),
-            "permutation {} should not have errors",
-            i
+            "permutation {i} should not have errors"
         );
     }
 }
@@ -8979,13 +8978,11 @@ system "B" {
     // Both orderings must detect the collision
     assert!(
         errors_ab.iter().any(|m| m.contains("duplicate")),
-        "AB should detect collision: {:?}",
-        errors_ab
+        "AB should detect collision: {errors_ab:?}"
     );
     assert!(
         errors_ba.iter().any(|m| m.contains("duplicate")),
-        "BA should detect collision: {:?}",
-        errors_ba
+        "BA should detect collision: {errors_ba:?}"
     );
 }
 

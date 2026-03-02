@@ -1505,7 +1505,7 @@ fn enum_variant_qualified_construction() {
             assert_eq!(variant, "rounds");
             assert_eq!(fields.get("value"), Some(&Value::Int(3)));
         }
-        _ => panic!("expected EnumVariant, got {:?}", result),
+        _ => panic!("expected EnumVariant, got {result:?}"),
     }
 }
 
@@ -1566,7 +1566,7 @@ fn enum_variant_bare_construction() {
             assert_eq!(variant, "rounds");
             assert_eq!(fields.get("value"), Some(&Value::Int(5)));
         }
-        _ => panic!("expected EnumVariant, got {:?}", result),
+        _ => panic!("expected EnumVariant, got {result:?}"),
     }
 }
 
@@ -1691,7 +1691,7 @@ fn builtin_dice_basic() {
             assert!(d.groups[0].filter.is_none());
             assert_eq!(d.modifier, 0);
         }
-        _ => panic!("expected DiceExpr, got {:?}", result),
+        _ => panic!("expected DiceExpr, got {result:?}"),
     }
 }
 
@@ -1726,7 +1726,7 @@ fn builtin_dice_zero_count() {
             assert_eq!(d.groups[0].count, 0);
             assert_eq!(d.groups[0].sides, 8);
         }
-        _ => panic!("expected DiceExpr, got {:?}", result),
+        _ => panic!("expected DiceExpr, got {result:?}"),
     }
 }
 
@@ -1822,7 +1822,7 @@ fn builtin_dice_composable_with_modifier() {
             assert_eq!(d.groups[0].sides, 8);
             assert_eq!(d.modifier, 5);
         }
-        _ => panic!("expected DiceExpr, got {:?}", result),
+        _ => panic!("expected DiceExpr, got {result:?}"),
     }
 }
 
@@ -2516,7 +2516,7 @@ fn bare_call_prefers_variant_over_function() {
             assert_eq!(fields.get("value"), Some(&Value::Int(5)));
         }
         Value::Int(999) => panic!("resolved to function instead of enum variant"),
-        other => panic!("unexpected result: {:?}", other),
+        other => panic!("unexpected result: {other:?}"),
     }
 }
 
@@ -2711,21 +2711,21 @@ fn mixed_args_evaluated_in_source_order() {
     assert_eq!(handler.log.len(), 3);
     match &handler.log[0] {
         Effect::RollDice { expr } => {
-            assert_eq!(expr.groups[0].sides, 4, "first roll should be 1d4")
+            assert_eq!(expr.groups[0].sides, 4, "first roll should be 1d4");
         }
-        e => panic!("expected RollDice, got {:?}", e),
+        e => panic!("expected RollDice, got {e:?}"),
     }
     match &handler.log[1] {
         Effect::RollDice { expr } => {
-            assert_eq!(expr.groups[0].sides, 6, "second roll should be 1d6")
+            assert_eq!(expr.groups[0].sides, 6, "second roll should be 1d6");
         }
-        e => panic!("expected RollDice, got {:?}", e),
+        e => panic!("expected RollDice, got {e:?}"),
     }
     match &handler.log[2] {
         Effect::RollDice { expr } => {
-            assert_eq!(expr.groups[0].sides, 8, "third roll should be 1d8")
+            assert_eq!(expr.groups[0].sides, 8, "third roll should be 1d8");
         }
-        e => panic!("expected RollDice, got {:?}", e),
+        e => panic!("expected RollDice, got {e:?}"),
     }
 }
 

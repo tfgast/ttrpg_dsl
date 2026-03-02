@@ -273,12 +273,10 @@ system "test" {
             let expected = 10.0 / 3.0;
             assert!(
                 (f - expected).abs() < 1e-10,
-                "expected {}, got {}",
-                expected,
-                f
+                "expected {expected}, got {f}"
             );
         }
-        other => panic!("expected Float, got {:?}", other),
+        other => panic!("expected Float, got {other:?}"),
     }
 }
 
@@ -312,7 +310,7 @@ system "test" {
     // 7/2 = 3.5, 3.5 + 1 = 4.5
     match val {
         Value::Float(f) => assert!((f - 4.5).abs() < 1e-10),
-        other => panic!("expected Float, got {:?}", other),
+        other => panic!("expected Float, got {other:?}"),
     }
 }
 
@@ -331,7 +329,7 @@ system "test" {
     // 1 + 3.5 = 4.5
     match val {
         Value::Float(f) => assert!((f - 4.5).abs() < 1e-10),
-        other => panic!("expected Float, got {:?}", other),
+        other => panic!("expected Float, got {other:?}"),
     }
 }
 
@@ -349,7 +347,7 @@ system "test" {
     // 3.5 - 1 = 2.5
     match val {
         Value::Float(f) => assert!((f - 2.5).abs() < 1e-10),
-        other => panic!("expected Float, got {:?}", other),
+        other => panic!("expected Float, got {other:?}"),
     }
 }
 
@@ -367,7 +365,7 @@ system "test" {
     // 3.5 * 2 = 7.0
     match val {
         Value::Float(f) => assert!((f - 7.0).abs() < 1e-10),
-        other => panic!("expected Float, got {:?}", other),
+        other => panic!("expected Float, got {other:?}"),
     }
 }
 
@@ -385,7 +383,7 @@ system "test" {
     // 3.5 / 2 = 1.75
     match val {
         Value::Float(f) => assert!((f - 1.75).abs() < 1e-10),
-        other => panic!("expected Float, got {:?}", other),
+        other => panic!("expected Float, got {other:?}"),
     }
 }
 
@@ -403,7 +401,7 @@ system "test" {
     // 3.5 + 3.5 = 7.0
     match val {
         Value::Float(f) => assert!((f - 7.0).abs() < 1e-10),
-        other => panic!("expected Float, got {:?}", other),
+        other => panic!("expected Float, got {other:?}"),
     }
 }
 
@@ -570,7 +568,7 @@ system "test" {
             assert_eq!(d.groups[0].sides, 20);
             assert_eq!(d.modifier, 5);
         }
-        other => panic!("expected DiceExpr, got {:?}", other),
+        other => panic!("expected DiceExpr, got {other:?}"),
     }
 }
 
@@ -591,7 +589,7 @@ system "test" {
             assert_eq!(d.groups.len(), 2, "should have two groups");
             assert_eq!(d.modifier, 3);
         }
-        other => panic!("expected DiceExpr, got {:?}", other),
+        other => panic!("expected DiceExpr, got {other:?}"),
     }
 }
 
@@ -610,7 +608,7 @@ system "test" {
         Value::DiceExpr(d) => {
             assert_eq!(d.modifier, -2);
         }
-        other => panic!("expected DiceExpr, got {:?}", other),
+        other => panic!("expected DiceExpr, got {other:?}"),
     }
 }
 
@@ -635,7 +633,7 @@ system "test" {
             assert_eq!(d.groups[0].sides, 8);
             assert_eq!(d.modifier, 3, "modifier should be preserved, not doubled");
         }
-        other => panic!("expected DiceExpr, got {:?}", other),
+        other => panic!("expected DiceExpr, got {other:?}"),
     }
 }
 
@@ -657,7 +655,7 @@ system "test" {
             assert_eq!(d.groups[0].count, 2);
             assert_eq!(d.groups[1].count, 2);
         }
-        other => panic!("expected DiceExpr, got {:?}", other),
+        other => panic!("expected DiceExpr, got {other:?}"),
     }
 }
 
@@ -744,7 +742,7 @@ fn unit_add_same_type() {
             assert_eq!(name.as_str(), "Feet");
             assert_eq!(fields.get("value"), Some(&Value::Int(40)));
         }
-        other => panic!("expected Feet struct, got {:?}", other),
+        other => panic!("expected Feet struct, got {other:?}"),
     }
 }
 
@@ -761,7 +759,7 @@ fn unit_sub_same_type() {
             assert_eq!(name.as_str(), "Feet");
             assert_eq!(fields.get("value"), Some(&Value::Int(20)));
         }
-        other => panic!("expected Feet struct, got {:?}", other),
+        other => panic!("expected Feet struct, got {other:?}"),
     }
 }
 
@@ -774,7 +772,7 @@ fn unit_int_mul() {
             assert_eq!(name.as_str(), "Feet");
             assert_eq!(fields.get("value"), Some(&Value::Int(30)));
         }
-        other => panic!("expected Feet struct, got {:?}", other),
+        other => panic!("expected Feet struct, got {other:?}"),
     }
 }
 
@@ -787,7 +785,7 @@ fn unit_mul_int() {
             assert_eq!(name.as_str(), "Feet");
             assert_eq!(fields.get("value"), Some(&Value::Int(30)));
         }
-        other => panic!("expected Feet struct, got {:?}", other),
+        other => panic!("expected Feet struct, got {other:?}"),
     }
 }
 
@@ -801,7 +799,7 @@ fn unit_div_same_type() {
     );
     match val {
         Value::Float(f) => assert!((f - 2.0).abs() < 1e-10),
-        other => panic!("expected Float, got {:?}", other),
+        other => panic!("expected Float, got {other:?}"),
     }
 }
 
@@ -814,7 +812,7 @@ fn unit_negate() {
             assert_eq!(name.as_str(), "Feet");
             assert_eq!(fields.get("value"), Some(&Value::Int(-30)));
         }
-        other => panic!("expected Feet struct, got {:?}", other),
+        other => panic!("expected Feet struct, got {other:?}"),
     }
 }
 
@@ -842,7 +840,7 @@ fn unit_struct_construction() {
             assert_eq!(name.as_str(), "Feet");
             assert_eq!(fields.get("value"), Some(&Value::Int(42)));
         }
-        other => panic!("expected Feet struct, got {:?}", other),
+        other => panic!("expected Feet struct, got {other:?}"),
     }
 }
 
@@ -945,11 +943,11 @@ fn unit_half_speed_pattern() {
     // Spec example: Feet { value: floor(speed.value / 2) }
     let val = eval_derive(
         &unit_source(
-            r#"
+            r"
     derive half_speed(speed: Feet) -> Feet {
         Feet { value: floor(speed.value / 2) }
     }
-"#,
+",
         ),
         "half_speed",
         vec![{
@@ -966,7 +964,7 @@ fn unit_half_speed_pattern() {
             assert_eq!(name.as_str(), "Feet");
             assert_eq!(fields.get("value"), Some(&Value::Int(15)));
         }
-        other => panic!("expected Feet struct, got {:?}", other),
+        other => panic!("expected Feet struct, got {other:?}"),
     }
 }
 
@@ -1257,7 +1255,7 @@ system "test" {
     });
     match val.unwrap() {
         Value::Float(f) => assert!((f - 7.5).abs() < 1e-10),
-        other => panic!("expected Float, got {:?}", other),
+        other => panic!("expected Float, got {other:?}"),
     }
 }
 
@@ -1296,7 +1294,7 @@ system "test" {
     );
     match val {
         Value::Float(f) => assert!((f - 10.0 / 3.0).abs() < 1e-10),
-        other => panic!("expected Float, got {:?}", other),
+        other => panic!("expected Float, got {other:?}"),
     }
 }
 
@@ -1589,10 +1587,10 @@ fn composite_list_of_units() {
     // Spec: unit types work in list containers
     let val = eval_derive(
         &unit_source(
-            r#"derive f() -> int {
+            r"derive f() -> int {
         let distances: list<Feet> = [30ft, 60ft, 120ft]
         len(distances)
-    }"#,
+    }",
         ),
         "f",
         vec![],
@@ -1604,10 +1602,10 @@ fn composite_list_of_units() {
 fn composite_option_unit_type() {
     // Spec: unit types work in option containers
     let source = unit_source(
-        r#"derive f() -> int {
+        r"derive f() -> int {
         let r: option<Feet> = some(30ft)
         r.unwrap().value
-    }"#,
+    }",
     );
     let val = eval_derive(&source, "f", vec![]);
     assert_eq!(val, Value::Int(30));
@@ -1712,7 +1710,7 @@ system "test" {
             assert_eq!(d.groups[0].count, 3);
             assert_eq!(d.groups[0].sides, 8);
         }
-        other => panic!("expected DiceExpr, got {:?}", other),
+        other => panic!("expected DiceExpr, got {other:?}"),
     }
 }
 
@@ -1734,7 +1732,7 @@ system "test" {
             assert_eq!(d.groups[0].sides, 6);
             assert_eq!(d.modifier, 3);
         }
-        other => panic!("expected DiceExpr, got {:?}", other),
+        other => panic!("expected DiceExpr, got {other:?}"),
     }
 }
 
@@ -1796,7 +1794,7 @@ system "test" {
             assert_eq!(name.as_str(), "Feet");
             assert_eq!(fields.get("value"), Some(&Value::Int(30)));
         }
-        other => panic!("expected Feet struct, got {:?}", other),
+        other => panic!("expected Feet struct, got {other:?}"),
     }
 }
 
@@ -1817,7 +1815,7 @@ system "test" {
             assert_eq!(name.as_str(), "AbstractDistance");
             assert_eq!(fields.get("value"), Some(&Value::Int(42)));
         }
-        other => panic!("expected AbstractDistance struct, got {:?}", other),
+        other => panic!("expected AbstractDistance struct, got {other:?}"),
     }
 }
 
@@ -1880,7 +1878,7 @@ system "test" {
                 fields: BTreeMap::new(),
             }));
         }
-        other => panic!("expected Set, got {:?}", other),
+        other => panic!("expected Set, got {other:?}"),
     }
 }
 
@@ -1933,7 +1931,7 @@ system "test" {
             assert_eq!(set.len(), 1, "should have 1 element after removing fire");
             assert!(set.contains(&cold));
         }
-        other => panic!("expected Set, got {:?}", other),
+        other => panic!("expected Set, got {other:?}"),
     }
 }
 

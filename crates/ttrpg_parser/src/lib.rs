@@ -308,7 +308,7 @@ system "Core" {
         // But our guard rejects it (n < u32::MAX is false for n == u32::MAX)
         let n = result.unwrap();
         assert!(
-            !(n < u32::MAX),
+            (n == u32::MAX),
             "u32::MAX should fail the n < u32::MAX guard"
         );
     }

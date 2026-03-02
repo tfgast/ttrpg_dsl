@@ -1658,7 +1658,7 @@ system "test" {
                 assert_eq!(fields.get("y"), Some(&Value::Int(2)), "y from base");
                 assert_eq!(fields.get("z"), Some(&Value::Int(3)), "z from base");
             }
-            _ => panic!("expected Struct, got {:?}", val),
+            _ => panic!("expected Struct, got {val:?}"),
         }
     }
 
