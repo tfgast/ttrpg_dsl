@@ -1,0 +1,5 @@
+---
+source: crates/ttrpg_cli/src/format.rs
+expression: format_condition_signature(&ci)
+---
+condition Prone on bearer: Character

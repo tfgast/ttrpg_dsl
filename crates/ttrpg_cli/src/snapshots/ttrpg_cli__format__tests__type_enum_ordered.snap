@@ -1,0 +1,9 @@
+---
+source: crates/ttrpg_cli/src/format.rs
+expression: "lines.join(\"\\n\")"
+---
+enum Size ordered {
+  small
+  medium
+  large
+}

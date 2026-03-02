@@ -1,0 +1,11 @@
+---
+source: crates/ttrpg_cli/src/format.rs
+expression: "lines.join(\"\\n\")"
+---
+entity Character {
+  name: string
+  level: int
+  optional Spellcasting {
+    spell_slots: int
+  }
+}

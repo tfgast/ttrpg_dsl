@@ -1,0 +1,7 @@
+---
+source: crates/ttrpg_cli/src/format.rs
+expression: "lines.join(\"\\n\")"
+---
+unit Feet suffix ft {
+  value: int
+}

@@ -1,9 +1,9 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use rustc_hash::FxHashMap;
 use ttrpg_ast::DiceFilter;
 use ttrpg_ast::Name;
-use ttrpg_checker::env::{ConditionInfo, DeclInfo, EventInfo, FnInfo, FnKind, TypeEnv};
+use ttrpg_checker::env::{ConditionInfo, DeclInfo, EventInfo, FnInfo, FnKind, ParamInfo, TypeEnv};
 use ttrpg_interp::effect::FieldPathSegment;
 use ttrpg_interp::value::{DiceExpr, Value};
 
@@ -136,6 +136,34 @@ fn owned_by(name: &Name, owner_map: &FxHashMap<Name, Name>, filter: &str) -> boo
         .is_some_and(|sys| sys.as_str() == filter)
 }
 
+/// Format a single parameter including `with` group constraints.
+fn format_param(p: &ParamInfo) -> String {
+    let base = format!("{}: {}", p.name, p.ty.display());
+    if p.with_groups.is_empty() {
+        base
+    } else {
+        let sep = if p.with_disjunctive { " | " } else { ", " };
+        let groups: Vec<&str> = p.with_groups.iter().map(|n| n.as_str()).collect();
+        format!("{} with {}", base, groups.join(sep))
+    }
+}
+
+/// Format sorted tags as ` #tag1 #tag2` (with leading space), or empty string.
+fn format_tags(tags: &HashSet<Name>) -> String {
+    if tags.is_empty() {
+        String::new()
+    } else {
+        let mut sorted: Vec<&str> = tags.iter().map(|n| n.as_str()).collect();
+        sorted.sort_unstable();
+        let tag_str = sorted
+            .iter()
+            .map(|t| format!("#{t}"))
+            .collect::<Vec<_>>()
+            .join(" ");
+        format!(" {tag_str}")
+    }
+}
+
 /// Format all type declarations from a TypeEnv for human-readable output.
 ///
 /// Returns one line per output row (header + indented fields/variants/groups).
@@ -160,7 +188,7 @@ pub fn format_types_filtered(env: &TypeEnv, system: Option<&str>) -> Vec<String>
     for (name, decl) in &sorted {
         match decl {
             DeclInfo::Entity(info) => {
-                out.push(format!("entity {name}"));
+                out.push(format!("entity {name} {{"));
                 for fi in &info.fields {
                     out.push(format!("  {}: {}", fi.name, fi.ty.display()));
                 }
@@ -170,21 +198,24 @@ pub fn format_types_filtered(env: &TypeEnv, system: Option<&str>) -> Vec<String>
                     } else {
                         "optional"
                     };
-                    out.push(format!("  {} {}", kw, group.name));
+                    out.push(format!("  {kw} {} {{", group.name));
                     for fi in &group.fields {
                         out.push(format!("    {}: {}", fi.name, fi.ty.display()));
                     }
+                    out.push("  }".to_string());
                 }
+                out.push("}".to_string());
             }
             DeclInfo::Struct(info) => {
-                out.push(format!("struct {name}"));
+                out.push(format!("struct {name} {{"));
                 for fi in &info.fields {
                     out.push(format!("  {}: {}", fi.name, fi.ty.display()));
                 }
+                out.push("}".to_string());
             }
             DeclInfo::Enum(info) => {
                 let ordered = if info.ordered { " ordered" } else { "" };
-                out.push(format!("enum {name}{ordered}"));
+                out.push(format!("enum {name}{ordered} {{"));
                 for variant in &info.variants {
                     if variant.fields.is_empty() {
                         out.push(format!("  {}", variant.name));
@@ -197,16 +228,18 @@ pub fn format_types_filtered(env: &TypeEnv, system: Option<&str>) -> Vec<String>
                         out.push(format!("  {}({})", variant.name, fields.join(", ")));
                     }
                 }
+                out.push("}".to_string());
             }
             DeclInfo::Unit(info) => {
                 let suffix_str = match &info.suffix {
                     Some(s) => format!(" suffix {s}"),
                     None => String::new(),
                 };
-                out.push(format!("unit {name}{suffix_str}"));
+                out.push(format!("unit {name}{suffix_str} {{"));
                 for fi in &info.fields {
                     out.push(format!("  {}: {}", fi.name, fi.ty.display()));
                 }
+                out.push("}".to_string());
             }
         }
     }
@@ -221,7 +254,7 @@ pub fn format_entity(env: &TypeEnv, name: &str) -> Result<Vec<String>, String> {
     match env.types.get(name) {
         Some(DeclInfo::Entity(info)) => {
             let mut out = Vec::new();
-            out.push(format!("entity {}", info.name));
+            out.push(format!("entity {} {{", info.name));
             for fi in &info.fields {
                 let default_marker = if fi.has_default { " (default)" } else { "" };
                 out.push(format!(
@@ -237,7 +270,7 @@ pub fn format_entity(env: &TypeEnv, name: &str) -> Result<Vec<String>, String> {
                 } else {
                     "optional"
                 };
-                out.push(format!("  {} {}", kw, group.name));
+                out.push(format!("  {kw} {} {{", group.name));
                 for fi in &group.fields {
                     let default_marker = if fi.has_default { " (default)" } else { "" };
                     out.push(format!(
@@ -247,7 +280,9 @@ pub fn format_entity(env: &TypeEnv, name: &str) -> Result<Vec<String>, String> {
                         default_marker
                     ));
                 }
+                out.push("  }".to_string());
             }
+            out.push("}".to_string());
             Ok(out)
         }
         Some(_) => Err(format!("'{name}' is not an entity")),
@@ -255,41 +290,76 @@ pub fn format_entity(env: &TypeEnv, name: &str) -> Result<Vec<String>, String> {
     }
 }
 
-/// Format a single function signature as `kind name(params) -> return_type`.
+/// Format a single function signature aligned with DSL declaration syntax.
 pub fn format_fn_signature(fi: &FnInfo) -> String {
-    let kind_label = match fi.kind {
-        FnKind::Action => "action",
-        FnKind::Reaction => "reaction",
-        FnKind::Hook => "hook",
-        FnKind::Derive => "derive",
-        FnKind::Mechanic => "mechanic",
-        FnKind::Prompt => "prompt",
-        FnKind::Table => "table",
-        FnKind::Builtin => "builtin",
-    };
-
-    let receiver = fi
-        .receiver
-        .as_ref()
-        .map(|r| format!("{}: {}", r.name, r.ty.display()));
-    let params: Vec<String> = fi
-        .params
-        .iter()
-        .map(|p| format!("{}: {}", p.name, p.ty.display()))
-        .collect();
-    let all_params = match (&receiver, params.is_empty()) {
-        (Some(r), true) => r.clone(),
-        (Some(r), false) => format!("{}, {}", r, params.join(", ")),
-        (None, _) => params.join(", "),
-    };
-
-    format!(
-        "{} {}({}) -> {}",
-        kind_label,
-        fi.name,
-        all_params,
-        fi.return_type.display()
-    )
+    match fi.kind {
+        FnKind::Action => {
+            let recv = fi.receiver.as_ref().expect("action must have receiver");
+            let on_part = format!(" on {}", format_param(recv));
+            let params: Vec<String> = fi.params.iter().map(format_param).collect();
+            let params_str = if params.is_empty() {
+                String::new()
+            } else {
+                format!("({})", params.join(", "))
+            };
+            let tags = format_tags(&fi.tags);
+            format!("action {}{}{}{}", fi.name, on_part, params_str, tags)
+        }
+        FnKind::Reaction => {
+            let recv = fi.receiver.as_ref().expect("reaction must have receiver");
+            format!("reaction {} on {}", fi.name, format_param(recv))
+        }
+        FnKind::Hook => {
+            let recv = fi.receiver.as_ref().expect("hook must have receiver");
+            format!("hook {} on {}", fi.name, format_param(recv))
+        }
+        FnKind::Derive => {
+            let params: Vec<String> = fi.params.iter().map(format_param).collect();
+            let tags = format_tags(&fi.tags);
+            format!(
+                "derive {}({}) -> {}{}",
+                fi.name,
+                params.join(", "),
+                fi.return_type.display(),
+                tags,
+            )
+        }
+        FnKind::Mechanic => {
+            let params: Vec<String> = fi.params.iter().map(format_param).collect();
+            let tags = format_tags(&fi.tags);
+            format!(
+                "mechanic {}({}) -> {}{}",
+                fi.name,
+                params.join(", "),
+                fi.return_type.display(),
+                tags,
+            )
+        }
+        FnKind::Prompt => {
+            let params: Vec<String> = fi.params.iter().map(format_param).collect();
+            format!(
+                "prompt {}({}) -> {}",
+                fi.name,
+                params.join(", "),
+                fi.return_type.display(),
+            )
+        }
+        FnKind::Table | FnKind::Builtin => {
+            let kind_label = match fi.kind {
+                FnKind::Table => "table",
+                FnKind::Builtin => "builtin",
+                _ => unreachable!(),
+            };
+            let params: Vec<String> = fi.params.iter().map(format_param).collect();
+            format!(
+                "{} {}({}) -> {}",
+                kind_label,
+                fi.name,
+                params.join(", "),
+                fi.return_type.display(),
+            )
+        }
+    }
 }
 
 /// Format all action declarations from a TypeEnv for human-readable output.
@@ -368,11 +438,7 @@ pub fn format_events_filtered(env: &TypeEnv, system: Option<&str>) -> Vec<String
 
 /// Format a single event signature as `event Name(params) { fields }`.
 fn format_event_signature(ei: &EventInfo) -> String {
-    let params: Vec<String> = ei
-        .params
-        .iter()
-        .map(|p| format!("{}: {}", p.name, p.ty.display()))
-        .collect();
+    let params: Vec<String> = ei.params.iter().map(format_param).collect();
     let fields: Vec<String> = ei
         .fields
         .iter()
@@ -413,13 +479,9 @@ pub fn format_condition_decls_filtered(env: &TypeEnv, system: Option<&str>) -> V
         .collect()
 }
 
-/// Format a single condition signature as `condition Name(params) on receiver: Type`.
+/// Format a single condition signature as `condition Name(params) extends Parent on bearer: Type`.
 fn format_condition_signature(ci: &ConditionInfo) -> String {
-    let params: Vec<String> = ci
-        .params
-        .iter()
-        .map(|p| format!("{}: {}", p.name, p.ty.display()))
-        .collect();
+    let params: Vec<String> = ci.params.iter().map(format_param).collect();
     let params_str = if params.is_empty() {
         String::new()
     } else {
@@ -432,12 +494,12 @@ fn format_condition_signature(ci: &ConditionInfo) -> String {
         format!(" extends {}", names.join(", "))
     };
     format!(
-        "condition {}{} on {}: {}{}",
+        "condition {}{}{} on {}: {}",
         ci.name,
         params_str,
+        extends,
         ci.receiver_name,
         ci.receiver_type.display(),
-        extends,
     )
 }
 
@@ -490,6 +552,10 @@ pub fn format_dice_expr(expr: &DiceExpr) -> String {
 mod tests {
     use super::*;
     use std::collections::{BTreeMap, BTreeSet};
+    use ttrpg_checker::env::{
+        EntityInfo, EnumInfo, FieldInfo, OptionalGroupInfo, StructInfo, UnitInfo, VariantInfo,
+    };
+    use ttrpg_checker::ty::Ty;
     use ttrpg_interp::state::EntityRef;
     use ttrpg_interp::value::RollResult;
 
@@ -711,5 +777,393 @@ mod tests {
         };
         let val = Value::List(vec![item]);
         assert_eq!(format_value(&val, &units), "[10ft]");
+    }
+
+    // ══════════════════════════════════════════════════════════
+    // Declaration formatting (insta snapshots)
+    // ══════════════════════════════════════════════════════════
+
+    fn mk_param(name: &str, ty: Ty) -> ParamInfo {
+        ParamInfo {
+            name: name.into(),
+            ty,
+            has_default: false,
+            with_groups: vec![],
+            with_disjunctive: false,
+        }
+    }
+
+    fn mk_param_with(name: &str, ty: Ty, groups: &[&str], disjunctive: bool) -> ParamInfo {
+        ParamInfo {
+            name: name.into(),
+            ty,
+            has_default: false,
+            with_groups: groups.iter().map(|&g| g.into()).collect(),
+            with_disjunctive: disjunctive,
+        }
+    }
+
+    fn mk_fn(
+        name: &str,
+        kind: FnKind,
+        receiver: Option<ParamInfo>,
+        params: Vec<ParamInfo>,
+        return_type: Ty,
+        tags: &[&str],
+    ) -> FnInfo {
+        FnInfo {
+            name: name.into(),
+            kind,
+            params,
+            return_type,
+            receiver,
+            tags: tags.iter().map(|&t| t.into()).collect(),
+            synthetic: false,
+        }
+    }
+
+    fn mk_field(name: &str, ty: Ty) -> FieldInfo {
+        FieldInfo {
+            name: name.into(),
+            ty,
+            has_default: false,
+        }
+    }
+
+    fn mk_field_default(name: &str, ty: Ty) -> FieldInfo {
+        FieldInfo {
+            name: name.into(),
+            ty,
+            has_default: true,
+        }
+    }
+
+    // ── Function signatures ──
+
+    #[test]
+    fn sig_derive_basic() {
+        let fi = mk_fn(
+            "modifier",
+            FnKind::Derive,
+            None,
+            vec![mk_param("score", Ty::Int)],
+            Ty::Int,
+            &[],
+        );
+        insta::assert_snapshot!(format_fn_signature(&fi));
+    }
+
+    #[test]
+    fn sig_mechanic_with_tags() {
+        let fi = mk_fn(
+            "attack_roll",
+            FnKind::Mechanic,
+            None,
+            vec![
+                mk_param("attacker", Ty::Entity("Character".into())),
+                mk_param("target", Ty::Entity("Character".into())),
+            ],
+            Ty::RollResult,
+            &["attack"],
+        );
+        insta::assert_snapshot!(format_fn_signature(&fi));
+    }
+
+    #[test]
+    fn sig_action_with_params() {
+        let fi = mk_fn(
+            "Attack",
+            FnKind::Action,
+            Some(mk_param("attacker", Ty::Entity("Character".into()))),
+            vec![mk_param("target", Ty::Entity("Character".into()))],
+            Ty::Unit,
+            &[],
+        );
+        insta::assert_snapshot!(format_fn_signature(&fi));
+    }
+
+    #[test]
+    fn sig_action_with_receiver_groups() {
+        let fi = mk_fn(
+            "CastSpell",
+            FnKind::Action,
+            Some(mk_param_with(
+                "caster",
+                Ty::Entity("Character".into()),
+                &["Spellcasting"],
+                false,
+            )),
+            vec![mk_param("target", Ty::Entity("Character".into()))],
+            Ty::Unit,
+            &[],
+        );
+        insta::assert_snapshot!(format_fn_signature(&fi));
+    }
+
+    #[test]
+    fn sig_reaction() {
+        let fi = mk_fn(
+            "OpportunityAttack",
+            FnKind::Reaction,
+            Some(mk_param("reactor", Ty::Entity("Character".into()))),
+            vec![],
+            Ty::Unit,
+            &[],
+        );
+        insta::assert_snapshot!(format_fn_signature(&fi));
+    }
+
+    #[test]
+    fn sig_hook() {
+        let fi = mk_fn(
+            "DeathCheck",
+            FnKind::Hook,
+            Some(mk_param("actor", Ty::Entity("Character".into()))),
+            vec![],
+            Ty::Unit,
+            &[],
+        );
+        insta::assert_snapshot!(format_fn_signature(&fi));
+    }
+
+    #[test]
+    fn sig_prompt() {
+        let fi = mk_fn(
+            "choose",
+            FnKind::Prompt,
+            None,
+            vec![
+                mk_param("chooser", Ty::Entity("Character".into())),
+                mk_param("options", Ty::List(Box::new(Ty::String))),
+            ],
+            Ty::String,
+            &[],
+        );
+        insta::assert_snapshot!(format_fn_signature(&fi));
+    }
+
+    #[test]
+    fn sig_derive_with_conjunctive() {
+        let fi = mk_fn(
+            "spell_dc",
+            FnKind::Derive,
+            None,
+            vec![mk_param_with(
+                "caster",
+                Ty::Entity("Character".into()),
+                &["Spellcasting"],
+                false,
+            )],
+            Ty::Int,
+            &[],
+        );
+        insta::assert_snapshot!(format_fn_signature(&fi));
+    }
+
+    #[test]
+    fn sig_derive_with_disjunctive() {
+        let fi = mk_fn(
+            "foo",
+            FnKind::Derive,
+            None,
+            vec![mk_param_with("x", Ty::AnyEntity, &["A", "B"], true)],
+            Ty::Int,
+            &[],
+        );
+        insta::assert_snapshot!(format_fn_signature(&fi));
+    }
+
+    // ── Condition signatures ──
+
+    #[test]
+    fn sig_condition_simple() {
+        let ci = ConditionInfo {
+            name: "Prone".into(),
+            params: vec![],
+            extends: vec![],
+            receiver_name: "bearer".into(),
+            receiver_type: Ty::Entity("Character".into()),
+        };
+        insta::assert_snapshot!(format_condition_signature(&ci));
+    }
+
+    #[test]
+    fn sig_condition_extends() {
+        let ci = ConditionInfo {
+            name: "Paralyzed".into(),
+            params: vec![],
+            extends: vec!["Incapacitated".into()],
+            receiver_name: "bearer".into(),
+            receiver_type: Ty::Entity("Character".into()),
+        };
+        insta::assert_snapshot!(format_condition_signature(&ci));
+    }
+
+    #[test]
+    fn sig_condition_params_extends() {
+        let ci = ConditionInfo {
+            name: "Frightened".into(),
+            params: vec![mk_param("source", Ty::Entity("Character".into()))],
+            extends: vec!["Afraid".into()],
+            receiver_name: "bearer".into(),
+            receiver_type: Ty::Entity("Character".into()),
+        };
+        insta::assert_snapshot!(format_condition_signature(&ci));
+    }
+
+    // ── Event signatures ──
+
+    #[test]
+    fn sig_event_with_fields() {
+        let ei = EventInfo {
+            name: "Damaged".into(),
+            params: vec![
+                mk_param("target", Ty::Entity("Character".into())),
+                mk_param("amount", Ty::Int),
+            ],
+            fields: vec![("total_hp".into(), Ty::Int)],
+            builtin: false,
+        };
+        insta::assert_snapshot!(format_event_signature(&ei));
+    }
+
+    #[test]
+    fn sig_event_without_fields() {
+        let ei = EventInfo {
+            name: "TurnStart".into(),
+            params: vec![mk_param("actor", Ty::Entity("Character".into()))],
+            fields: vec![],
+            builtin: false,
+        };
+        insta::assert_snapshot!(format_event_signature(&ei));
+    }
+
+    // ── Type formatting ──
+
+    #[test]
+    fn type_entity_with_groups() {
+        let mut env = TypeEnv::new();
+        env.types.insert(
+            "Character".into(),
+            DeclInfo::Entity(EntityInfo {
+                name: "Character".into(),
+                fields: vec![mk_field("name", Ty::String), mk_field("level", Ty::Int)],
+                optional_groups: vec![OptionalGroupInfo {
+                    name: "Spellcasting".into(),
+                    fields: vec![mk_field("spell_slots", Ty::Int)],
+                    required: false,
+                }],
+            }),
+        );
+        let lines = format_types(&env);
+        insta::assert_snapshot!(lines.join("\n"));
+    }
+
+    #[test]
+    fn type_struct_braces() {
+        let mut env = TypeEnv::new();
+        env.types.insert(
+            "Point".into(),
+            DeclInfo::Struct(StructInfo {
+                name: "Point".into(),
+                fields: vec![mk_field("x", Ty::Int), mk_field("y", Ty::Int)],
+            }),
+        );
+        let lines = format_types(&env);
+        insta::assert_snapshot!(lines.join("\n"));
+    }
+
+    #[test]
+    fn type_enum_basic() {
+        let mut env = TypeEnv::new();
+        env.types.insert(
+            "Color".into(),
+            DeclInfo::Enum(EnumInfo {
+                name: "Color".into(),
+                ordered: false,
+                variants: vec![
+                    VariantInfo {
+                        name: "red".into(),
+                        fields: vec![],
+                    },
+                    VariantInfo {
+                        name: "green".into(),
+                        fields: vec![],
+                    },
+                    VariantInfo {
+                        name: "blue".into(),
+                        fields: vec![],
+                    },
+                ],
+            }),
+        );
+        let lines = format_types(&env);
+        insta::assert_snapshot!(lines.join("\n"));
+    }
+
+    #[test]
+    fn type_enum_ordered() {
+        let mut env = TypeEnv::new();
+        env.types.insert(
+            "Size".into(),
+            DeclInfo::Enum(EnumInfo {
+                name: "Size".into(),
+                ordered: true,
+                variants: vec![
+                    VariantInfo {
+                        name: "small".into(),
+                        fields: vec![],
+                    },
+                    VariantInfo {
+                        name: "medium".into(),
+                        fields: vec![],
+                    },
+                    VariantInfo {
+                        name: "large".into(),
+                        fields: vec![],
+                    },
+                ],
+            }),
+        );
+        let lines = format_types(&env);
+        insta::assert_snapshot!(lines.join("\n"));
+    }
+
+    #[test]
+    fn type_unit_suffix() {
+        let mut env = TypeEnv::new();
+        env.types.insert(
+            "Feet".into(),
+            DeclInfo::Unit(UnitInfo {
+                name: "Feet".into(),
+                fields: vec![mk_field("value", Ty::Int)],
+                suffix: Some("ft".into()),
+            }),
+        );
+        let lines = format_types(&env);
+        insta::assert_snapshot!(lines.join("\n"));
+    }
+
+    #[test]
+    fn entity_detail_with_defaults() {
+        let mut env = TypeEnv::new();
+        env.types.insert(
+            "Character".into(),
+            DeclInfo::Entity(EntityInfo {
+                name: "Character".into(),
+                fields: vec![
+                    mk_field("name", Ty::String),
+                    mk_field_default("level", Ty::Int),
+                ],
+                optional_groups: vec![OptionalGroupInfo {
+                    name: "Spellcasting".into(),
+                    fields: vec![mk_field_default("spell_slots", Ty::Int)],
+                    required: false,
+                }],
+            }),
+        );
+        // Use super:: to avoid shadowing by the format_entity test function
+        let lines = super::format_entity(&env, "Character").unwrap();
+        insta::assert_snapshot!(lines.join("\n"));
     }
 }

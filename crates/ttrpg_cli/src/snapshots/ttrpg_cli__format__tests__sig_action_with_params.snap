@@ -1,0 +1,5 @@
+---
+source: crates/ttrpg_cli/src/format.rs
+expression: format_fn_signature(&fi)
+---
+action Attack on attacker: Character(target: Character)

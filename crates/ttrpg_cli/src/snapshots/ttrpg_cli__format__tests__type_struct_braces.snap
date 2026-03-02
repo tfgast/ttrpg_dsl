@@ -1,0 +1,8 @@
+---
+source: crates/ttrpg_cli/src/format.rs
+expression: "lines.join(\"\\n\")"
+---
+struct Point {
+  x: int
+  y: int
+}
