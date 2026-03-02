@@ -298,7 +298,7 @@ impl Runner {
     }
 
     pub(super) fn cmd_entity(&mut self, name: &str) -> Result<(), CliError> {
-        match crate::format::format_entity(&self.type_env, name) {
+        match crate::format::format_entity(&self.type_env, name, false) {
             Ok(lines) => {
                 self.output.extend(lines);
                 Ok(())

@@ -306,6 +306,7 @@ FLAGS:
   --vi                               Use vi keybindings in REPL
   --format json                      Output as JSON (check, query)
   --system <name>                    Filter query output by system name
+  --xref                             Include cross-references (query entity)
   -s, --snippet                      Auto-wrap source in system block (check, query)
   -h, --help                         Show this help
 
@@ -318,6 +319,7 @@ REPL:
 fn run_query(args: &[&str]) {
     let mut json = false;
     let mut snippet = false;
+    let mut xref = false;
     let mut system_filter: Option<String> = None;
     let mut query_args: Vec<&str> = Vec::new();
     let mut rest = args;
@@ -326,6 +328,10 @@ fn run_query(args: &[&str]) {
         match first {
             "-s" | "--snippet" => {
                 snippet = true;
+                rest = tail;
+            }
+            "--xref" => {
+                xref = true;
                 rest = tail;
             }
             "--format" => {
@@ -443,6 +449,7 @@ fn run_query(args: &[&str]) {
         entity_name,
         system_filter.as_deref(),
         json,
+        xref,
     );
 }
 
@@ -454,6 +461,7 @@ fn query_sources(
     entity_name: Option<&str>,
     system_filter: Option<&str>,
     _json: bool,
+    xref: bool,
 ) {
     let snippet_prefix = "system \"<check>\" {\n";
     let snippet_suffix = "\n}\n";
@@ -501,7 +509,7 @@ fn query_sources(
         "mechanics" | "derives" => query_mechanics(&env, system_filter),
         "reactions" => query_reactions(&env, system_filter),
         "hooks" => query_hooks(&env, system_filter),
-        "entity" => query_entity(&env, entity_name.unwrap()),
+        "entity" => query_entity(&env, entity_name.unwrap(), xref),
         "all" => query_all(&env, system_filter),
         _ => unreachable!(),
     }
@@ -568,8 +576,8 @@ fn query_hooks(env: &TypeEnv, system: Option<&str>) {
     );
 }
 
-fn query_entity(env: &TypeEnv, name: &str) {
-    match ttrpg_cli::format::format_entity(env, name) {
+fn query_entity(env: &TypeEnv, name: &str, xref: bool) {
+    match ttrpg_cli::format::format_entity(env, name, xref) {
         Ok(lines) => {
             for line in lines {
                 println!("{line}");

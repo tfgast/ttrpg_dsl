@@ -251,7 +251,7 @@ pub fn format_types_filtered(env: &TypeEnv, system: Option<&str>) -> Vec<String>
 ///
 /// Returns `Ok(lines)` on success, or `Err(message)` if the name is not found
 /// or does not refer to an entity.
-pub fn format_entity(env: &TypeEnv, name: &str) -> Result<Vec<String>, String> {
+pub fn format_entity(env: &TypeEnv, name: &str, xref: bool) -> Result<Vec<String>, String> {
     match env.types.get(name) {
         Some(DeclInfo::Entity(info)) => {
             let mut out = Vec::new();
@@ -285,22 +285,24 @@ pub fn format_entity(env: &TypeEnv, name: &str) -> Result<Vec<String>, String> {
             }
             out.push("}".to_string());
 
-            // Applicable conditions: those whose receiver_type matches this entity
-            let mut conds: Vec<_> = env
-                .conditions
-                .values()
-                .filter(|ci| match &ci.receiver_type {
-                    Ty::Entity(n) => n == name,
-                    Ty::AnyEntity => true,
-                    _ => false,
-                })
-                .collect();
-            if !conds.is_empty() {
-                conds.sort_by(|a, b| a.name.cmp(&b.name));
-                out.push(String::new());
-                out.push("// applicable conditions".to_string());
-                for ci in conds {
-                    out.push(format_condition_signature(ci));
+            if xref {
+                // Applicable conditions: those whose receiver_type matches this entity
+                let mut conds: Vec<_> = env
+                    .conditions
+                    .values()
+                    .filter(|ci| match &ci.receiver_type {
+                        Ty::Entity(n) => n == name,
+                        Ty::AnyEntity => true,
+                        _ => false,
+                    })
+                    .collect();
+                if !conds.is_empty() {
+                    conds.sort_by(|a, b| a.name.cmp(&b.name));
+                    out.push(String::new());
+                    out.push("// applicable conditions".to_string());
+                    for ci in conds {
+                        out.push(format_condition_signature(ci));
+                    }
                 }
             }
 
@@ -1233,7 +1235,7 @@ mod tests {
             }),
         );
         // Use super:: to avoid shadowing by the format_entity test function
-        let lines = super::format_entity(&env, "Character").unwrap();
+        let lines = super::format_entity(&env, "Character", false).unwrap();
         insta::assert_snapshot!(lines.join("\n"));
     }
 }
