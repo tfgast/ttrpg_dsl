@@ -606,7 +606,7 @@ fn query_all(env: &TypeEnv, system: Option<&str>) {
             println!();
         }
         first = false;
-        println!("# {heading}");
+        println!("// {heading}");
         for line in lines {
             println!("{line}");
         }
