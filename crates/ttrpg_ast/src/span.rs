@@ -38,7 +38,7 @@ impl Span {
         if other.is_dummy() {
             return self;
         }
-        debug_assert_eq!(
+        assert_eq!(
             self.file.0, other.file.0,
             "cannot merge spans from different files"
         );
@@ -59,5 +59,35 @@ pub struct Spanned<T> {
 impl<T> Spanned<T> {
     pub fn new(node: T, span: Span) -> Self {
         Self { node, span }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    #[should_panic(expected = "cannot merge spans from different files")]
+    fn merge_cross_file_panics() {
+        let a = Span::new(FileId(0), 0, 5);
+        let b = Span::new(FileId(1), 10, 15);
+        let _ = a.merge(b);
+    }
+
+    #[test]
+    fn merge_same_file_works() {
+        let a = Span::new(FileId(0), 0, 5);
+        let b = Span::new(FileId(0), 10, 15);
+        let merged = a.merge(b);
+        assert_eq!(merged.file, FileId(0));
+        assert_eq!(merged.start, 0);
+        assert_eq!(merged.end, 15);
+    }
+
+    #[test]
+    fn merge_dummy_returns_other() {
+        let real = Span::new(FileId(0), 3, 7);
+        assert_eq!(Span::dummy().merge(real), real);
+        assert_eq!(real.merge(Span::dummy()), real);
     }
 }

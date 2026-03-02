@@ -67,6 +67,13 @@ impl Runner {
                     )));
                 }
 
+                if groups.iter().any(|(name, _)| name == group_name) {
+                    return Err(CliError::Message(format!(
+                        "duplicate group '{}' in spawn block",
+                        group_name
+                    )));
+                }
+
                 let group_fields = self.parse_field_block(inner_block)?;
                 groups.push((group_name.to_string(), group_fields));
             } else {

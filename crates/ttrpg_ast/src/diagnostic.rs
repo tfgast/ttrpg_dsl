@@ -108,8 +108,13 @@ fn render_diagnostic(
 
     let line_num_width = line_1indexed.to_string().len();
 
-    // Caret underline (saturating_sub guards against inverted spans)
-    let caret_len = local_end.saturating_sub(local_start).max(1);
+    // Caret underline — cap to the current line so multiline spans don't
+    // produce an excessively wide underline on the first line.
+    let line_end = line_text_start + line_text.len();
+    let caret_len = local_end
+        .min(line_end)
+        .saturating_sub(local_start)
+        .max(1);
     let carets: String = "^".repeat(caret_len);
 
     let mut result = format!(
@@ -273,6 +278,25 @@ mod tests {
     }
 
     // ── Regression: tdsl-li9m — inverted span should not panic in renderer ──
+
+    #[test]
+    fn multiline_span_caret_capped_to_first_line() {
+        // Span crosses from line 1 into line 2 — caret should not exceed line 1
+        let src = "hello\nworld\n";
+        let sm = SourceMap::new(src);
+        // Span from offset 2 ("llo\nworld") — crosses newline
+        let diag = Diagnostic::error("test", Span::new(FileId::SYNTH, 2, 11));
+        let rendered = sm.render(&diag);
+        // The caret should cover "llo" (3 chars), not 9 chars
+        assert!(
+            rendered.contains("^^^"),
+            "caret should span to end of first line, got: {rendered}",
+        );
+        assert!(
+            !rendered.contains("^^^^"),
+            "caret should NOT extend beyond first line, got: {rendered}",
+        );
+    }
 
     #[test]
     fn render_inverted_span_does_not_panic() {
