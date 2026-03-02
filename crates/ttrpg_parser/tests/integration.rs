@@ -2870,3 +2870,286 @@ fn test_empty_suppress_bindings() {
     }
     panic!("condition Stunned not found in parsed output");
 }
+
+// --- Regression tests for parser bug fixes ---
+
+#[test]
+fn test_qualified_type_with_option_alias() {
+    // Regression: parse_type's "option" branch returned Named("option") without
+    // checking for .Ident qualified syntax, so `option.CustomType` was misparsed.
+    let source = r#"system "test" {
+    derive f(x: option.CustomType) -> int {
+        0
+    }
+}"#;
+    let (program, diagnostics) = parse(source, FileId::SYNTH);
+    assert!(
+        diagnostics.is_empty(),
+        "option.CustomType should parse as qualified type, got: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+    // Verify the parameter type is Qualified { qualifier: "option", name: "CustomType" }
+    for item in &program.items {
+        if let ttrpg_ast::ast::TopLevel::System(sys) = &item.node {
+            for decl in &sys.decls {
+                if let ttrpg_ast::ast::DeclKind::Derive(d) = &decl.node {
+                    let param = &d.params[0];
+                    if let ttrpg_ast::ast::TypeExpr::Qualified { qualifier, name } = &param.ty.node
+                    {
+                        assert_eq!(qualifier.as_str(), "option");
+                        assert_eq!(name.as_str(), "CustomType");
+                        return;
+                    }
+                }
+            }
+        }
+    }
+    panic!("expected Qualified type not found in parsed output");
+}
+
+#[test]
+fn test_option_type_still_works() {
+    // Ensure option<T> still parses correctly after the qualified type fix.
+    let source = r#"system "test" {
+    derive f(x: option<int>) -> int {
+        0
+    }
+}"#;
+    let (_, diagnostics) = parse(source, FileId::SYNTH);
+    assert!(
+        diagnostics.is_empty(),
+        "option<int> should still parse, got: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn test_bare_option_named_type_still_works() {
+    // Ensure bare `option` (no `<` or `.`) still parses as Named("option").
+    let source = r#"system "test" {
+    derive f(x: option) -> int {
+        0
+    }
+}"#;
+    let (_, diagnostics) = parse(source, FileId::SYNTH);
+    assert!(
+        diagnostics.is_empty(),
+        "bare option type should still parse, got: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn test_pattern_qualified_name_starting_with_some() {
+    // Regression: bare `some` recovery ran before checking for `.`, so
+    // `some.Variant` was misparsed instead of being treated as a qualified pattern.
+    let source = r#"system "test" {
+    derive f(x: int) -> int {
+        match x {
+            some.Variant => 1
+            _ => 0
+        }
+    }
+}"#;
+    let (_, diagnostics) = parse(source, FileId::SYNTH);
+    assert!(
+        diagnostics.is_empty(),
+        "some.Variant should parse as qualified pattern, got: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn test_pattern_qualified_destructure_starting_with_some() {
+    // Qualified destructure: some.Variant(x) should parse, not trigger bare-some recovery.
+    let source = r#"system "test" {
+    derive f(x: int) -> int {
+        match x {
+            some.Variant(y) => y
+            _ => 0
+        }
+    }
+}"#;
+    let (_, diagnostics) = parse(source, FileId::SYNTH);
+    assert!(
+        diagnostics.is_empty(),
+        "some.Variant(y) should parse as qualified destructure, got: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn test_some_pattern_still_works() {
+    // Ensure some(x) pattern still works after the qualified name fix.
+    let source = r#"system "test" {
+    derive f(x: option<int>) -> int {
+        match x {
+            some(n) => n,
+            none => 0
+        }
+    }
+}"#;
+    let (_, diagnostics) = parse(source, FileId::SYNTH);
+    assert!(
+        diagnostics.is_empty(),
+        "some(n) should still parse, got: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn test_bare_some_still_recovers() {
+    // Bare `some` (without parens or dot) should still produce a diagnostic.
+    let source = r#"system "test" {
+    derive f(x: option<int>) -> int {
+        match x {
+            some => 1,
+            none => 0
+        }
+    }
+}"#;
+    let (_, diagnostics) = parse(source, FileId::SYNTH);
+    assert!(
+        diagnostics.iter().any(|d| d.message.contains("bare `some`")),
+        "bare some should produce recovery diagnostic, got: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn test_grant_as_variable_name_assignment() {
+    // Regression: soft-keyword `grant` unconditionally dispatched to parse_grant_stmt,
+    // so `grant = 5` failed to parse as an assignment statement.
+    let source = r#"system "test" {
+    derive f(grant: int) -> int {
+        grant
+    }
+}"#;
+    let (_, diagnostics) = parse(source, FileId::SYNTH);
+    assert!(
+        diagnostics.is_empty(),
+        "grant as parameter name should parse, got: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn test_emit_as_variable_name() {
+    // Regression: soft-keyword `emit` unconditionally dispatched to parse_emit_stmt,
+    // so `emit` used as a variable was misparsed.
+    let source = r#"system "test" {
+    derive f(emit: int) -> int {
+        emit
+    }
+}"#;
+    let (_, diagnostics) = parse(source, FileId::SYNTH);
+    assert!(
+        diagnostics.is_empty(),
+        "emit as parameter name should parse, got: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn test_revoke_as_variable_name_assignment() {
+    // Regression: soft-keyword `revoke` dispatched for non-LParen tokens,
+    // so `revoke = 5` or `revoke.field` failed to parse.
+    let source = r#"system "test" {
+    derive f(revoke: int) -> int {
+        revoke
+    }
+}"#;
+    let (_, diagnostics) = parse(source, FileId::SYNTH);
+    assert!(
+        diagnostics.is_empty(),
+        "revoke as parameter name should parse, got: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn test_grant_statement_still_works() {
+    // Ensure grant statements still parse correctly after the soft-keyword fix.
+    let source = r#"system "test" {
+    entity Character {
+        name: string
+        optional Spellcasting { dc: int }
+    }
+    action GainMagic on actor: Character () {
+        resolve {
+            grant actor.Spellcasting { dc: 15 }
+        }
+    }
+}"#;
+    let (_, diagnostics) = parse(source, FileId::SYNTH);
+    assert!(
+        diagnostics.is_empty(),
+        "grant statement should still parse, got: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn test_emit_statement_still_works() {
+    // Ensure emit statements still parse correctly after the soft-keyword fix.
+    let source = r#"system "test" {
+    entity Character { hp: int }
+    event Damage(target: Character) {}
+    action Strike on actor: Character (target: Character) {
+        resolve {
+            emit Damage(target: target)
+        }
+    }
+}"#;
+    let (_, diagnostics) = parse(source, FileId::SYNTH);
+    assert!(
+        diagnostics.is_empty(),
+        "emit statement should still parse, got: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn test_revoke_call_still_works() {
+    // Ensure revoke(inv) function call still parses after the soft-keyword fix.
+    let source = r#"system "test" {
+    entity Character {
+        name: string
+        conc: option<Invocation>
+        optional Spellcasting { dc: int }
+    }
+    action DropConcentration on actor: Character () {
+        resolve {
+            revoke(actor.conc)
+        }
+    }
+}"#;
+    let (_, diagnostics) = parse(source, FileId::SYNTH);
+    assert!(
+        diagnostics.is_empty(),
+        "revoke(inv) call should still parse, got: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn test_revoke_statement_still_works() {
+    // Ensure revoke entity.Group still parses after the soft-keyword fix.
+    let source = r#"system "test" {
+    entity Character {
+        name: string
+        optional Spellcasting { dc: int }
+    }
+    action LoseMagic on actor: Character () {
+        resolve {
+            revoke actor.Spellcasting
+        }
+    }
+}"#;
+    let (_, diagnostics) = parse(source, FileId::SYNTH);
+    assert!(
+        diagnostics.is_empty(),
+        "revoke statement should still parse, got: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}

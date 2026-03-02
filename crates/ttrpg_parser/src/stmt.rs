@@ -41,17 +41,22 @@ impl Parser {
         }
 
         // grant entity.Group { field: val, ... }
-        if self.at_ident("grant") {
+        // Only dispatch when followed by an identifier (the entity name), so that
+        // `grant = 5`, `grant.field`, `grant()` etc. fall through to expr/assignment.
+        if self.at_ident("grant") && matches!(self.peek_at(1), TokenKind::Ident(_)) {
             return self.parse_grant_stmt();
         }
 
-        // revoke entity.Group (but not revoke(inv) — that's a function call)
-        if self.at_ident("revoke") && !matches!(self.peek_at(1), TokenKind::LParen) {
+        // revoke entity.Group (but not revoke(inv), revoke = 5, revoke.field, etc.)
+        // Only dispatch when followed by an identifier (the entity name).
+        if self.at_ident("revoke") && matches!(self.peek_at(1), TokenKind::Ident(_)) {
             return self.parse_revoke_stmt();
         }
 
         // emit EventName(args)
-        if self.at_ident("emit") {
+        // Only dispatch when followed by an identifier (the event name), so that
+        // `emit = 5`, `emit.field`, `emit()` etc. fall through to expr/assignment.
+        if self.at_ident("emit") && matches!(self.peek_at(1), TokenKind::Ident(_)) {
             return self.parse_emit_stmt();
         }
 

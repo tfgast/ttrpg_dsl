@@ -88,8 +88,24 @@ impl Parser {
                             self.expect(&TokenKind::Gt)?;
                             TypeExpr::OptionType(Box::new(inner))
                         } else {
+                            // Fall through to named/qualified logic (e.g. option.CustomType
+                            // when `use "Other" as option` is present)
+                            let name = ttrpg_ast::Name::from(name.clone());
                             self.advance();
-                            TypeExpr::Named("option".into())
+                            if matches!(self.peek(), TokenKind::Dot) {
+                                if let TokenKind::Ident(_) = self.peek_at(1) {
+                                    self.advance(); // consume dot
+                                    let (qualified_name, _) = self.expect_ident()?;
+                                    TypeExpr::Qualified {
+                                        qualifier: name,
+                                        name: qualified_name,
+                                    }
+                                } else {
+                                    TypeExpr::Named(name)
+                                }
+                            } else {
+                                TypeExpr::Named(name)
+                            }
                         }
                     }
                     "resource" => {

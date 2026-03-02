@@ -85,7 +85,8 @@ impl Parser {
                 }
 
                 // Bare `some` without parens — recover as some(_) with diagnostic
-                if raw_name == "some" {
+                // But not if followed by `.` — that's a qualified pattern (e.g. some.Variant)
+                if raw_name == "some" && !matches!(self.peek(), TokenKind::Dot) {
                     self.error(
                         "bare `some` in pattern position — use `some(x)` to match or `_` for wildcard"
                     );
