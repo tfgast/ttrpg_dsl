@@ -164,6 +164,10 @@ pub struct TypeEnv {
     /// Per-system: alias → target system name.
     pub system_aliases: FxHashMap<Name, FxHashMap<Name, Name>>,
 
+    // ── Trigger index ─────────────────────────────────────────────
+    /// Event name → reaction/hook function names that trigger on it (declaration order).
+    pub trigger_index: FxHashMap<Name, Vec<Name>>,
+
     // ── Tag / selector data ─────────────────────────────────────────
     /// Declared tag names.
     pub tags: FxHashSet<Name>,
@@ -216,6 +220,7 @@ impl TypeEnv {
             option_owner: FxHashMap::default(),
             system_visibility: FxHashMap::default(),
             system_aliases: FxHashMap::default(),
+            trigger_index: FxHashMap::default(),
             tags: FxHashSet::default(),
             tag_owner: FxHashMap::default(),
             selector_matches: HashMap::new(),

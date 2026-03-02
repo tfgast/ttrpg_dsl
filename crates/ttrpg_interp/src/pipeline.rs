@@ -757,10 +757,9 @@ pub(crate) fn emit_modify_applied_events(
     // Fast path: skip if no hooks listen for modify_applied
     if !env
         .interp
-        .program
-        .hooks
-        .values()
-        .any(|h| h.trigger.event_name == "modify_applied")
+        .type_env
+        .trigger_index
+        .contains_key("modify_applied")
     {
         return Ok(());
     }

@@ -1019,6 +1019,11 @@ fn collect_reaction(
             event_name: r.trigger.event_name.clone(),
         });
     }
+
+    env.trigger_index
+        .entry(r.trigger.event_name.clone())
+        .or_default()
+        .push(Name::from(r.name.as_str()));
 }
 
 fn collect_hook(h: &HookDecl, env: &mut TypeEnv, diagnostics: &mut Vec<Diagnostic>, span: Span) {
@@ -1085,6 +1090,11 @@ fn collect_hook(h: &HookDecl, env: &mut TypeEnv, diagnostics: &mut Vec<Diagnosti
             event_name: h.trigger.event_name.clone(),
         });
     }
+
+    env.trigger_index
+        .entry(h.trigger.event_name.clone())
+        .or_default()
+        .push(Name::from(h.name.as_str()));
 }
 
 fn collect_condition(

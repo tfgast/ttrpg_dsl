@@ -85,12 +85,25 @@ pub fn what_triggers(
     let mut suppressed = Vec::new();
     let mut triggerable = Vec::new();
 
-    // Scan all reactions in declaration order whose trigger event name matches
-    for reaction_name in &interp.program.reaction_order {
-        let reaction_decl = &interp.program.reactions[reaction_name];
-        if reaction_decl.trigger.event_name != event_name {
+    // Use the trigger index to find only reactions that listen for this event
+    let empty = Vec::new();
+    let triggered_names = interp
+        .type_env
+        .trigger_index
+        .get(event_name)
+        .unwrap_or(&empty);
+
+    for reaction_name in triggered_names {
+        // Skip non-reactions (hooks share the same index)
+        if interp
+            .type_env
+            .functions
+            .get(reaction_name)
+            .map_or(true, |fi| fi.kind != ttrpg_checker::env::FnKind::Reaction)
+        {
             continue;
         }
+        let reaction_decl = &interp.program.reactions[reaction_name];
 
         // For each candidate entity, try to match trigger bindings
         for candidate in candidates {
@@ -164,11 +177,25 @@ pub fn find_matching_hooks(
 
     let mut hooks = Vec::new();
 
-    for hook_name in &interp.program.hook_order {
-        let hook_decl = &interp.program.hooks[hook_name];
-        if hook_decl.trigger.event_name != event_name {
+    // Use the trigger index to find only hooks that listen for this event
+    let empty = Vec::new();
+    let triggered_names = interp
+        .type_env
+        .trigger_index
+        .get(event_name)
+        .unwrap_or(&empty);
+
+    for hook_name in triggered_names {
+        // Skip non-hooks (reactions share the same index)
+        if interp
+            .type_env
+            .functions
+            .get(hook_name)
+            .map_or(true, |fi| fi.kind != ttrpg_checker::env::FnKind::Hook)
+        {
             continue;
         }
+        let hook_decl = &interp.program.hooks[hook_name];
 
         for candidate in candidates {
             if !match_trigger_bindings(
@@ -509,7 +536,9 @@ mod tests {
 
     use ttrpg_ast::ast::*;
     use ttrpg_ast::{Name, Span, Spanned};
-    use ttrpg_checker::env::{ConditionInfo, EventInfo, ParamInfo, TypeEnv};
+    use ttrpg_checker::env::{
+        ConditionInfo, EventInfo, FnInfo, FnKind, ParamInfo, TriggerInfo, TypeEnv,
+    };
     use ttrpg_checker::ty::Ty;
 
     use crate::state::ActiveCondition;
@@ -575,6 +604,55 @@ mod tests {
         };
         program.build_index();
         program
+    }
+
+    /// Populate type_env with trigger_index and FnInfo entries for all
+    /// reactions and hooks in the program.
+    fn populate_triggers(program: &Program, type_env: &mut TypeEnv) {
+        for (name, r) in &program.reactions {
+            type_env.functions.insert(
+                name.clone(),
+                FnInfo {
+                    name: name.clone(),
+                    kind: FnKind::Reaction,
+                    params: vec![],
+                    return_type: Ty::Unit,
+                    receiver: None,
+                    tags: std::collections::HashSet::new(),
+                    synthetic: false,
+                    trigger: Some(TriggerInfo {
+                        event_name: r.trigger.event_name.clone(),
+                    }),
+                },
+            );
+            type_env
+                .trigger_index
+                .entry(r.trigger.event_name.clone())
+                .or_default()
+                .push(name.clone());
+        }
+        for (name, h) in &program.hooks {
+            type_env.functions.insert(
+                name.clone(),
+                FnInfo {
+                    name: name.clone(),
+                    kind: FnKind::Hook,
+                    params: vec![],
+                    return_type: Ty::Unit,
+                    receiver: None,
+                    tags: std::collections::HashSet::new(),
+                    synthetic: false,
+                    trigger: Some(TriggerInfo {
+                        event_name: h.trigger.event_name.clone(),
+                    }),
+                },
+            );
+            type_env
+                .trigger_index
+                .entry(h.trigger.event_name.clone())
+                .or_default()
+                .push(name.clone());
+        }
     }
 
     /// Build a payload struct value from a list of (name, value) pairs.
@@ -668,6 +746,7 @@ mod tests {
             },
         );
 
+        populate_triggers(&program, &mut type_env);
         let interp = Interpreter::new(&program, &type_env).unwrap();
         let mut state = TestState::new();
         state.conditions.insert(1, vec![]);
@@ -768,6 +847,7 @@ mod tests {
             },
         );
 
+        populate_triggers(&program, &mut type_env);
         let interp = Interpreter::new(&program, &type_env).unwrap();
         let mut state = TestState::new();
         state.conditions.insert(1, vec![]);
@@ -892,6 +972,7 @@ mod tests {
             },
         );
 
+        populate_triggers(&program, &mut type_env);
         let interp = Interpreter::new(&program, &type_env).unwrap();
         let mut state = TestState::new();
         state.conditions.insert(1, vec![]);
@@ -977,6 +1058,7 @@ mod tests {
             },
         );
 
+        populate_triggers(&program, &mut type_env);
         let interp = Interpreter::new(&program, &type_env).unwrap();
         let mut state = TestState::new();
         state.conditions.insert(2, vec![]);
@@ -1105,6 +1187,7 @@ mod tests {
             },
         );
 
+        populate_triggers(&program, &mut type_env);
         let interp = Interpreter::new(&program, &type_env).unwrap();
         let mut state = TestState::new();
         // Entity 1 has Stunned condition
@@ -1275,6 +1358,7 @@ mod tests {
             },
         );
 
+        populate_triggers(&program, &mut type_env);
         let interp = Interpreter::new(&program, &type_env).unwrap();
         let mut state = TestState::new();
         // Entity 1 has Silenced condition (suppresses Healed, not Attacked)
