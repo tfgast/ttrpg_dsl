@@ -3,6 +3,19 @@ use super::*;
 use std::sync::atomic::{AtomicU64, Ordering};
 use ttrpg_checker::ty::Ty;
 
+/// Global counter for unique temp file names across all tests.
+static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+/// Write source to a unique temp file and return the path.
+fn write_temp(prefix: &str, source: &str) -> PathBuf {
+    let id = TEMP_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let dir = std::env::temp_dir().join("ttrpg_cli_test");
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join(format!("{}_{}.ttrpg", prefix, id));
+    std::fs::write(&path, source).unwrap();
+    path
+}
+
 #[test]
 fn eval_arithmetic() {
     let mut runner = Runner::new();
@@ -98,19 +111,14 @@ fn exec_load_nonexistent_file() {
 
 #[test]
 fn exec_load_and_eval() {
-    // Create a temp file with a simple system
-    let dir = std::env::temp_dir().join("ttrpg_cli_test");
-    std::fs::create_dir_all(&dir).unwrap();
-    let path = dir.join("test_load.ttrpg");
-    std::fs::write(
-        &path,
+    let path = write_temp(
+        "load",
         r#"
 system "test" {
     derive add(a: int, b: int) -> int { a + b }
 }
 "#,
-    )
-    .unwrap();
+    );
 
     let mut runner = Runner::new();
     runner.exec(&format!("load {}", path.display())).unwrap();
@@ -122,24 +130,18 @@ system "test" {
     runner.exec("eval 10 * 3").unwrap();
     let output = runner.take_output();
     assert_eq!(output, vec!["30"]);
-
-    std::fs::remove_file(&path).ok();
 }
 
 #[test]
 fn exec_load_with_errors_then_errors_command() {
-    let dir = std::env::temp_dir().join("ttrpg_cli_test");
-    std::fs::create_dir_all(&dir).unwrap();
-    let path = dir.join("test_errors.ttrpg");
-    std::fs::write(
-        &path,
+    let path = write_temp(
+        "errors",
         r#"
 system "test" {
     derive bad() -> int { undefined_var }
 }
 "#,
-    )
-    .unwrap();
+    );
 
     let mut runner = Runner::new();
     let err = runner
@@ -154,24 +156,18 @@ system "test" {
     let output = runner.take_output();
     assert!(!output.is_empty());
     assert!(output.iter().any(|l| l.contains("error")));
-
-    std::fs::remove_file(&path).ok();
 }
 
 #[test]
 fn exec_reload() {
-    let dir = std::env::temp_dir().join("ttrpg_cli_test");
-    std::fs::create_dir_all(&dir).unwrap();
-    let path = dir.join("test_reload.ttrpg");
-    std::fs::write(
-        &path,
+    let path = write_temp(
+        "reload",
         r#"
 system "test" {
     derive add(a: int, b: int) -> int { a + b }
 }
 "#,
-    )
-    .unwrap();
+    );
 
     let mut runner = Runner::new();
     runner.exec(&format!("load {}", path.display())).unwrap();
@@ -180,16 +176,15 @@ system "test" {
     runner.exec("reload").unwrap();
     let output = runner.take_output();
     assert!(output[0].starts_with("loaded"));
-
-    std::fs::remove_file(&path).ok();
 }
 
 // ── Regression: tdsl-3zv — reload breaks paths with spaces ──
 
 #[test]
 fn exec_reload_path_with_spaces() {
-    // Create a temp directory with a space in the name
-    let dir = std::env::temp_dir().join("ttrpg cli test dir");
+    // Create a unique temp directory with a space in the name
+    let id = TEMP_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let dir = std::env::temp_dir().join(format!("ttrpg cli test {}", id));
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join("test file.ttrpg");
     std::fs::write(
@@ -216,9 +211,6 @@ system "test" {
         "reload should succeed for paths with spaces; got: {:?}",
         output
     );
-
-    std::fs::remove_file(&path).ok();
-    std::fs::remove_dir(&dir).ok();
 }
 
 #[test]
@@ -233,20 +225,14 @@ fn eval_list_literal() {
 
 #[test]
 fn failed_load_clears_stale_state() {
-    let dir = std::env::temp_dir().join("ttrpg_cli_test");
-    std::fs::create_dir_all(&dir).unwrap();
-
-    // First, load a good file
-    let good = dir.join("good_stale.ttrpg");
-    std::fs::write(
-        &good,
+    let good = write_temp(
+        "good_stale",
         r#"
 system "test" {
     derive add(a: int, b: int) -> int { a + b }
 }
 "#,
-    )
-    .unwrap();
+    );
 
     let mut runner = Runner::new();
     runner.exec(&format!("load {}", good.display())).unwrap();
@@ -257,16 +243,14 @@ system "test" {
     assert_eq!(runner.take_output(), vec!["3"]);
 
     // Now load a bad file
-    let bad = dir.join("bad_stale.ttrpg");
-    std::fs::write(
-        &bad,
+    let bad = write_temp(
+        "bad_stale",
         r#"
 system "test" {
     derive bad() -> int { undefined_var }
 }
 "#,
-    )
-    .unwrap();
+    );
 
     let err = runner.exec(&format!("load {}", bad.display())).unwrap_err();
     assert!(err.to_string().contains("failed to load"));
@@ -284,27 +268,18 @@ system "test" {
         err
     );
     runner.take_output();
-
-    std::fs::remove_file(&good).ok();
-    std::fs::remove_file(&bad).ok();
 }
 
 #[test]
 fn io_failure_clears_stale_state() {
-    let dir = std::env::temp_dir().join("ttrpg_cli_test");
-    std::fs::create_dir_all(&dir).unwrap();
-
-    // Load a good file first
-    let good = dir.join("good_io.ttrpg");
-    std::fs::write(
-        &good,
+    let good = write_temp(
+        "good_io",
         r#"
 system "test" {
     derive add(a: int, b: int) -> int { a + b }
 }
 "#,
-    )
-    .unwrap();
+    );
 
     let mut runner = Runner::new();
     runner.exec(&format!("load {}", good.display())).unwrap();
@@ -328,45 +303,32 @@ system "test" {
         err
     );
     runner.take_output();
-
-    std::fs::remove_file(&good).ok();
 }
 
 #[test]
 fn failed_load_returns_err() {
-    let dir = std::env::temp_dir().join("ttrpg_cli_test");
-    std::fs::create_dir_all(&dir).unwrap();
-    let path = dir.join("test_load_err.ttrpg");
-    std::fs::write(
-        &path,
+    let path = write_temp(
+        "load_err",
         r#"
 system "test" {
     derive bad() -> int { undefined_var }
 }
 "#,
-    )
-    .unwrap();
+    );
 
     let mut runner = Runner::new();
     let result = runner.exec(&format!("load {}", path.display()));
     assert!(result.is_err(), "load with errors should return Err");
     let err = result.unwrap_err();
     assert!(err.to_string().contains("failed to load"), "got: {}", err);
-
-    std::fs::remove_file(&path).ok();
 }
 
 // ── Helpers ─────────────────────────────────────────────────
 
 /// Load a program that declares `entity Hero { scores: list<int> }`.
 fn load_list_program(runner: &mut Runner) {
-    static LIST_COUNTER: AtomicU64 = AtomicU64::new(0);
-    let id = LIST_COUNTER.fetch_add(1, Ordering::Relaxed);
-    let dir = std::env::temp_dir().join("ttrpg_cli_test");
-    std::fs::create_dir_all(&dir).unwrap();
-    let path = dir.join(format!("test_list_{}.ttrpg", id));
-    std::fs::write(
-        &path,
+    let path = write_temp(
+        "list",
         r#"
 system "test" {
     entity Hero {
@@ -374,22 +336,15 @@ system "test" {
     }
 }
 "#,
-    )
-    .unwrap();
+    );
     runner.exec(&format!("load {}", path.display())).unwrap();
     runner.take_output();
-    std::fs::remove_file(&path).ok();
 }
 
 /// Load a program that declares `entity Character { HP: int  AC: int }`.
 fn load_character_program(runner: &mut Runner) {
-    static COUNTER: AtomicU64 = AtomicU64::new(0);
-    let id = COUNTER.fetch_add(1, Ordering::Relaxed);
-    let dir = std::env::temp_dir().join("ttrpg_cli_test");
-    std::fs::create_dir_all(&dir).unwrap();
-    let path = dir.join(format!("test_character_{}.ttrpg", id));
-    std::fs::write(
-        &path,
+    let path = write_temp(
+        "character",
         r#"
 system "test" {
     entity Character {
@@ -399,11 +354,9 @@ system "test" {
     derive id(x: int) -> int { x }
 }
 "#,
-    )
-    .unwrap();
+    );
     runner.exec(&format!("load {}", path.display())).unwrap();
     runner.take_output();
-    std::fs::remove_file(&path).ok();
 }
 
 // ── Spawn/Set/Destroy tests ─────────────────────────────────
@@ -506,18 +459,14 @@ fn destroy_unknown_handle() {
 
 #[test]
 fn call_derive() {
-    let dir = std::env::temp_dir().join("ttrpg_cli_test");
-    std::fs::create_dir_all(&dir).unwrap();
-    let path = dir.join("test_call_derive.ttrpg");
-    std::fs::write(
-        &path,
+    let path = write_temp(
+        "call_derive",
         r#"
 system "test" {
     derive double(x: int) -> int { x * 2 }
 }
 "#,
-    )
-    .unwrap();
+    );
 
     let mut runner = Runner::new();
     runner.exec(&format!("load {}", path.display())).unwrap();
@@ -526,24 +475,18 @@ system "test" {
     runner.exec("call double(16)").unwrap();
     let output = runner.take_output();
     assert!(output.iter().any(|l| l.contains("=> 32")));
-
-    std::fs::remove_file(&path).ok();
 }
 
 #[test]
 fn call_mechanic_fallback() {
-    let dir = std::env::temp_dir().join("ttrpg_cli_test");
-    std::fs::create_dir_all(&dir).unwrap();
-    let path = dir.join("test_call_mechanic.ttrpg");
-    std::fs::write(
-        &path,
+    let path = write_temp(
+        "call_mechanic",
         r#"
 system "test" {
     mechanic add(a: int, b: int) -> int { a + b }
 }
 "#,
-    )
-    .unwrap();
+    );
 
     let mut runner = Runner::new();
     runner.exec(&format!("load {}", path.display())).unwrap();
@@ -552,26 +495,20 @@ system "test" {
     runner.exec("call add(10, 20)").unwrap();
     let output = runner.take_output();
     assert!(output.iter().any(|l| l.contains("=> 30")));
-
-    std::fs::remove_file(&path).ok();
 }
 
 // ── Issue regression tests ────────────────────────────────────
 
 #[test]
 fn call_empty_arg_rejected() {
-    let dir = std::env::temp_dir().join("ttrpg_cli_test");
-    std::fs::create_dir_all(&dir).unwrap();
-    let path = dir.join("test_empty_arg.ttrpg");
-    std::fs::write(
-        &path,
+    let path = write_temp(
+        "empty_arg",
         r#"
 system "test" {
     derive add(a: int, b: int) -> int { a + b }
 }
 "#,
-    )
-    .unwrap();
+    );
 
     let mut runner = Runner::new();
     runner.exec(&format!("load {}", path.display())).unwrap();
@@ -579,24 +516,18 @@ system "test" {
 
     let err = runner.exec("call add(1,,2)").unwrap_err();
     assert!(err.to_string().contains("empty argument"), "got: {}", err);
-
-    std::fs::remove_file(&path).ok();
 }
 
 #[test]
 fn call_undefined_function_rejected() {
-    let dir = std::env::temp_dir().join("ttrpg_cli_test");
-    std::fs::create_dir_all(&dir).unwrap();
-    let path = dir.join("test_undef_fn.ttrpg");
-    std::fs::write(
-        &path,
+    let path = write_temp(
+        "undef_fn",
         r#"
 system "test" {
     derive id(x: int) -> int { x }
 }
 "#,
-    )
-    .unwrap();
+    );
 
     let mut runner = Runner::new();
     runner.exec(&format!("load {}", path.display())).unwrap();
@@ -608,25 +539,19 @@ system "test" {
         "got: {}",
         err
     );
-
-    std::fs::remove_file(&path).ok();
 }
 
 #[test]
 fn do_undefined_action_rejected() {
-    let dir = std::env::temp_dir().join("ttrpg_cli_test");
-    std::fs::create_dir_all(&dir).unwrap();
-    let path = dir.join("test_undef_action.ttrpg");
-    std::fs::write(
-        &path,
+    let path = write_temp(
+        "undef_action",
         r#"
 system "test" {
     entity Character { HP: int }
     derive id(x: int) -> int { x }
 }
 "#,
-    )
-    .unwrap();
+    );
 
     let mut runner = Runner::new();
     runner.exec(&format!("load {}", path.display())).unwrap();
@@ -637,8 +562,6 @@ system "test" {
 
     let err = runner.exec("do NoSuchAction(fighter)").unwrap_err();
     assert!(err.to_string().contains("undefined action"), "got: {}", err);
-
-    std::fs::remove_file(&path).ok();
 }
 
 // ── Split helpers tests ──────────────────────────────────────
@@ -671,19 +594,15 @@ fn split_top_level_commas_empty() {
 
 #[test]
 fn load_clears_handles() {
-    let dir = std::env::temp_dir().join("ttrpg_cli_test");
-    std::fs::create_dir_all(&dir).unwrap();
-    let path = dir.join("test_load_clears.ttrpg");
-    std::fs::write(
-        &path,
+    let path = write_temp(
+        "load_clears",
         r#"
 system "test" {
     entity Character { HP: int }
     derive id(x: int) -> int { x }
 }
 "#,
-    )
-    .unwrap();
+    );
 
     let mut runner = Runner::new();
     runner.exec(&format!("load {}", path.display())).unwrap();
@@ -699,8 +618,6 @@ system "test" {
     // Handle should no longer exist
     let err = runner.exec("set fighter.HP = 10").unwrap_err();
     assert!(err.to_string().contains("unknown handle"));
-
-    std::fs::remove_file(&path).ok();
 }
 
 // ── Handle validation tests (Issue 3) ────────────────────────
@@ -734,13 +651,8 @@ fn spawn_underscore_handle_ok() {
 
 /// Load a program with entity-typed fields for handle resolution tests.
 fn load_party_program(runner: &mut Runner) {
-    static COUNTER: AtomicU64 = AtomicU64::new(0);
-    let id = COUNTER.fetch_add(1, Ordering::Relaxed);
-    let dir = std::env::temp_dir().join("ttrpg_cli_test");
-    std::fs::create_dir_all(&dir).unwrap();
-    let path = dir.join(format!("test_party_{}.ttrpg", id));
-    std::fs::write(
-        &path,
+    let path = write_temp(
+        "party",
         r#"
 system "test" {
     entity Character {
@@ -751,11 +663,9 @@ system "test" {
     derive id(x: int) -> int { x }
 }
 "#,
-    )
-    .unwrap();
+    );
     runner.exec(&format!("load {}", path.display())).unwrap();
     runner.take_output();
-    std::fs::remove_file(&path).ok();
 }
 
 #[test]
@@ -1072,11 +982,8 @@ fn cmd_types() {
 
 #[test]
 fn cmd_actions() {
-    let dir = std::env::temp_dir().join("ttrpg_cli_test");
-    std::fs::create_dir_all(&dir).unwrap();
-    let path = dir.join("test_actions.ttrpg");
-    std::fs::write(
-        &path,
+    let path = write_temp(
+        "actions",
         r#"
 system "test" {
     entity Character { HP: int }
@@ -1087,8 +994,7 @@ system "test" {
     }
 }
 "#,
-    )
-    .unwrap();
+    );
 
     let mut runner = Runner::new();
     runner.exec(&format!("load {}", path.display())).unwrap();
@@ -1097,8 +1003,6 @@ system "test" {
     runner.exec("actions").unwrap();
     let output = runner.take_output();
     assert!(output.iter().any(|l| l.contains("action Attack")));
-
-    std::fs::remove_file(&path).ok();
 }
 
 #[test]
@@ -1194,13 +1098,8 @@ fn cmd_inspect_unset_field() {
 
 /// Load a program with optional groups for grant/revoke tests.
 fn load_group_program(runner: &mut Runner) {
-    static COUNTER: AtomicU64 = AtomicU64::new(0);
-    let id = COUNTER.fetch_add(1, Ordering::Relaxed);
-    let dir = std::env::temp_dir().join("ttrpg_cli_test");
-    std::fs::create_dir_all(&dir).unwrap();
-    let path = dir.join(format!("test_group_{}.ttrpg", id));
-    std::fs::write(
-        &path,
+    let path = write_temp(
+        "group",
         r#"
 system "test" {
     group CombatStats {
@@ -1221,11 +1120,9 @@ system "test" {
     derive id(x: int) -> int { x }
 }
 "#,
-    )
-    .unwrap();
+    );
     runner.exec(&format!("load {}", path.display())).unwrap();
     runner.take_output();
-    std::fs::remove_file(&path).ok();
 }
 
 #[test]
@@ -1675,9 +1572,8 @@ fn group_accessor_methods() {
 // ── Multi-file loading tests ───────────────────────────────────
 
 fn multi_file_dir(test_name: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("ttrpg_test_{}", test_name));
-    // Clean any stale directory from a previous run, then create fresh
-    let _ = std::fs::remove_dir_all(&dir);
+    let id = TEMP_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let dir = std::env::temp_dir().join(format!("ttrpg_test_{}_{}", test_name, id));
     std::fs::create_dir_all(&dir).unwrap();
     dir
 }
@@ -2185,13 +2081,8 @@ fn value_matches_ty_entity_without_state_accepts() {
 
 /// Load a program with a resource field: `hp: resource(0..=max_hp)`.
 fn load_resource_program(runner: &mut Runner) {
-    static RES_COUNTER: AtomicU64 = AtomicU64::new(0);
-    let id = RES_COUNTER.fetch_add(1, Ordering::Relaxed);
-    let dir = std::env::temp_dir().join("ttrpg_cli_test");
-    std::fs::create_dir_all(&dir).unwrap();
-    let path = dir.join(format!("test_resource_{}.ttrpg", id));
-    std::fs::write(
-        &path,
+    let path = write_temp(
+        "resource",
         r#"
 system "test" {
     entity Character {
@@ -2201,11 +2092,9 @@ system "test" {
     }
 }
 "#,
-    )
-    .unwrap();
+    );
     runner.exec(&format!("load {}", path.display())).unwrap();
     runner.take_output();
-    std::fs::remove_file(&path).ok();
 }
 
 #[test]
@@ -2422,13 +2311,8 @@ fn qualified_access_still_works_after_flattening() {
 // ── Entity field defaults at spawn ──────────────────────────
 
 fn load_defaults_program(runner: &mut Runner) {
-    static COUNTER: AtomicU64 = AtomicU64::new(0);
-    let id = COUNTER.fetch_add(1, Ordering::Relaxed);
-    let dir = std::env::temp_dir().join("ttrpg_cli_test");
-    std::fs::create_dir_all(&dir).unwrap();
-    let path = dir.join(format!("test_defaults_{}.ttrpg", id));
-    std::fs::write(
-        &path,
+    let path = write_temp(
+        "defaults",
         r#"
 system "test" {
     entity Character {
@@ -2439,11 +2323,9 @@ system "test" {
     }
 }
 "#,
-    )
-    .unwrap();
+    );
     runner.exec(&format!("load {}", path.display())).unwrap();
     runner.take_output();
-    std::fs::remove_file(&path).ok();
 }
 
 #[test]
@@ -2507,13 +2389,8 @@ fn spawn_no_fields_applies_all_defaults() {
 
 /// Helper to load a program with option declarations.
 fn load_option_program(runner: &mut Runner) {
-    static OPTION_COUNTER: AtomicU64 = AtomicU64::new(0);
-    let dir = std::env::temp_dir().join("ttrpg_cli_test");
-    std::fs::create_dir_all(&dir).unwrap();
-    let unique = OPTION_COUNTER.fetch_add(1, Ordering::Relaxed);
-    let path = dir.join(format!("test_options_{}.ttrpg", unique));
-    std::fs::write(
-        &path,
+    let path = write_temp(
+        "options",
         r#"
 system "test" {
     derive base_modifier(x: int) -> int { x + 2 }
@@ -2538,8 +2415,7 @@ system "test" {
     }
 }
 "#,
-    )
-    .unwrap();
+    );
     runner.exec(&format!("load {}", path.display())).unwrap();
     runner.take_output();
 }
@@ -3834,19 +3710,15 @@ system "Game" {
 
 #[test]
 fn eval_unit_literal_formats_with_suffix() {
-    let dir = std::env::temp_dir().join("ttrpg_cli_test_unit_suffix");
-    std::fs::create_dir_all(&dir).unwrap();
-    let path = dir.join("unit_suffix.ttrpg");
-    std::fs::write(
-        &path,
+    let path = write_temp(
+        "unit_suffix",
         r#"
 system "test" {
     unit Feet suffix ft { value: int }
     unit GoldPieces suffix gp { value: int }
 }
 "#,
-    )
-    .unwrap();
+    );
 
     let mut runner = Runner::new();
     runner.exec(&format!("load {}", path.display())).unwrap();
@@ -3881,17 +3753,12 @@ system "test" {
     runner.exec("eval some(5ft)").unwrap();
     let output = runner.take_output();
     assert_eq!(output, vec!["some(5ft)"]);
-
-    std::fs::remove_dir_all(&dir).ok();
 }
 
 #[test]
 fn inspect_entity_with_unit_field_formats_suffix() {
-    let dir = std::env::temp_dir().join("ttrpg_cli_test_unit_inspect");
-    std::fs::create_dir_all(&dir).unwrap();
-    let path = dir.join("unit_inspect.ttrpg");
-    std::fs::write(
-        &path,
+    let path = write_temp(
+        "unit_inspect",
         r#"
 system "test" {
     unit Feet suffix ft { value: int }
@@ -3900,8 +3767,7 @@ system "test" {
     }
 }
 "#,
-    )
-    .unwrap();
+    );
 
     let mut runner = Runner::new();
     runner.exec(&format!("load {}", path.display())).unwrap();
@@ -3913,6 +3779,4 @@ system "test" {
     runner.exec("inspect hero.speed").unwrap();
     let output = runner.take_output();
     assert_eq!(output, vec!["hero.speed = 30ft"]);
-
-    std::fs::remove_dir_all(&dir).ok();
 }
