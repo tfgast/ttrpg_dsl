@@ -1,14 +1,15 @@
-//! Validates that all fenced code blocks in `doc/ai_authoring.md` are correct.
+//! Validates that documentation code examples stay correct as the language evolves.
 //!
-//! - ` ```ttrpg ` blocks must parse and type-check with zero errors.
-//! - ` ```ttrpg-err ` blocks must produce at least one error.
-//!
-//! This keeps the AI authoring guide in sync with the language as it evolves.
+//! - `doc/ai_authoring.md`: ` ```ttrpg ` blocks must check cleanly;
+//!   ` ```ttrpg-err ` blocks must produce at least one error.
+//! - `doc/few_shot_examples.ttrpg`: full file must parse, lower, and type-check
+//!   with zero errors.
 
 use ttrpg_ast::diagnostic::{Severity, SourceMap};
 use ttrpg_ast::FileId;
 
 static AI_AUTHORING_MD: &str = include_str!("../../../doc/ai_authoring.md");
+static FEW_SHOT_TTRPG: &str = include_str!("../../../doc/few_shot_examples.ttrpg");
 
 /// Extract fenced code blocks with a given info string from markdown.
 fn extract_blocks<'a>(md: &'a str, info_string: &str) -> Vec<(usize, &'a str)> {
@@ -121,4 +122,52 @@ fn invalid_snippets_produce_errors() {
             failures.join("\n\n")
         );
     }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Few-shot examples (doc/few_shot_examples.ttrpg)
+// ═══════════════════════════════════════════════════════════════
+
+#[test]
+fn few_shot_examples_pass_check() {
+    let (program, parse_errors) = ttrpg_parser::parse(FEW_SHOT_TTRPG, FileId::SYNTH);
+    assert!(
+        parse_errors.is_empty(),
+        "parse errors in few_shot_examples.ttrpg: {:?}",
+        parse_errors.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+
+    let mut lower_diags = Vec::new();
+    let program = ttrpg_parser::lower_moves(program, &mut lower_diags);
+    assert!(
+        lower_diags.is_empty(),
+        "lowering errors in few_shot_examples.ttrpg: {:?}",
+        lower_diags.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+
+    let result = ttrpg_checker::check(&program);
+    let errors: Vec<_> = result
+        .diagnostics
+        .iter()
+        .filter(|d| d.severity == Severity::Error)
+        .collect();
+    assert!(
+        errors.is_empty(),
+        "checker errors in few_shot_examples.ttrpg: {:?}",
+        errors.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}
+
+/// Structural guard: the few-shot file should maintain a minimum number of
+/// paired RULE→DSL examples. Catches accidental deletions.
+#[test]
+fn few_shot_examples_coverage() {
+    let rule_count = FEW_SHOT_TTRPG
+        .lines()
+        .filter(|l| l.trim_start().starts_with("// RULE:"))
+        .count();
+    assert!(
+        rule_count >= 20,
+        "expected >= 20 RULE entries in few_shot_examples.ttrpg, found {rule_count}"
+    );
 }
