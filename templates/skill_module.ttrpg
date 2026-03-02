@@ -1,0 +1,100 @@
+// ============================================================
+// Skill Module — Ability Scores & Skill Checks
+//
+// Demonstrates derive composition, map lookups, set membership,
+// and the d20 check pipeline. No actions or mutation — pure
+// computation and dice mechanics only.
+//
+// Usage:
+//   1. Copy this file and rename it
+//   2. Replace "My Game" with your system name
+//   3. Fill in // TEMPLATE: sections
+//   4. Validate: ttrpg check your_game.ttrpg
+// ============================================================
+
+system "My Game" {
+
+    // --- Enums ---
+
+    enum Ability { STR, DEX, CON, INT, WIS, CHA }
+    enum RollMode { normal, advantage, disadvantage }
+
+    // TEMPLATE: Add or remove skills for your game system
+    enum Skill {
+        Athletics,
+        Acrobatics,
+        Stealth,
+        Perception,
+        Persuasion
+    }
+
+
+    // --- Entities ---
+
+    entity Character {
+        name: string
+        level: int = 1
+        abilities: map<Ability, int>
+        proficient_skills: set<Skill>
+        position: Position
+        // TEMPLATE: Add fields (saving throw proficiencies, etc.)
+    }
+
+
+    // --- Derives ---
+
+    // Ability modifier: the canonical floor((score - 10) / 2) formula
+    // Note: int / int always returns float — wrap in floor() for int
+    derive modifier(score: int) -> int {
+        floor((score - 10) / 2)
+    }
+
+    // Proficiency bonus scales with level
+    derive proficiency_bonus(level: int) -> int {
+        floor((level - 1) / 4) + 2
+    }
+
+    // TEMPLATE: Map each skill to its governing ability
+    derive skill_ability(skill: Skill) -> Ability {
+        match skill {
+            Athletics   => STR,
+            Acrobatics  => DEX,
+            Stealth     => DEX,
+            Perception  => WIS,
+            Persuasion  => CHA
+        }
+    }
+
+
+    // --- Mechanics ---
+
+    // General d20 check with optional proficiency bonus
+    mechanic ability_check(
+        actor: Character,
+        ability: Ability,
+        proficient: bool = false,
+        mode: RollMode = normal
+    ) -> RollResult {
+        let base: DiceExpr = match mode {
+            normal       => 1d20,
+            advantage    => 2d20kh1,
+            disadvantage => 2d20kl1
+        }
+        let bonus = modifier(actor.abilities[ability])
+        let prof = if proficient { proficiency_bonus(actor.level) } else { 0 }
+        roll(base + bonus + prof)
+    }
+
+    // Skill check: looks up governing ability and proficiency
+    mechanic skill_check(
+        actor: Character,
+        skill: Skill,
+        mode: RollMode = normal
+    ) -> RollResult {
+        let ability = skill_ability(skill)
+        let proficient = actor.proficient_skills.contains(skill)
+        ability_check(actor, ability, proficient, mode)
+    }
+
+    // TEMPLATE: Add contested checks, passive perception, saving throws, etc.
+}

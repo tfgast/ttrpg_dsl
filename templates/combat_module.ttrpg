@@ -1,0 +1,155 @@
+// ============================================================
+// Combat Module — Attack / Damage / Conditions
+//
+// Core combat loop: roll attack vs AC, apply damage, emit
+// events, trigger hooks. Includes one condition (Prone) to
+// show how modifiers interact with mechanics.
+//
+// Usage:
+//   1. Copy this file and rename it
+//   2. Replace "My Game" with your system name
+//   3. Fill in // TEMPLATE: sections
+//   4. Validate: ttrpg check your_game.ttrpg
+// ============================================================
+
+system "My Game" {
+
+    // --- Enums ---
+
+    enum RollMode { normal, advantage, disadvantage }
+
+    enum Duration {
+        end_of_turn,
+        start_of_next_turn,
+        rounds(count: int),
+        indefinite
+    }
+
+    // TEMPLATE: Add damage types, weapon categories, etc.
+
+
+    // --- Structs ---
+
+    struct TurnBudget {
+        actions: int = 0
+        bonus_actions: int = 0
+        reactions: int = 0
+        movement: int = 0
+    }
+
+    // TEMPLATE: Add structs for weapons, damage specs, etc.
+
+
+    // --- Entities ---
+
+    entity Character {
+        name: string
+        AC: int
+        HP: resource(0..=max_HP)
+        max_HP: int
+        attack_bonus: int = 0
+        damage_dice: DiceExpr = 1d8
+        speed: int = 30
+        position: Position
+        // TEMPLATE: Add combat-relevant fields (armor, resistances, etc.)
+    }
+
+
+    // --- Events ---
+
+    event Damaged(target: Character, attacker: Character, amount: int) {}
+
+    // TEMPLATE: Add events (entity_leaves_reach, turn_start, etc.)
+
+
+    // --- Derives ---
+
+    derive initial_budget(actor: Character) -> TurnBudget {
+        TurnBudget {
+            actions: 1,
+            bonus_actions: 1,
+            reactions: 1,
+            movement: actor.speed
+        }
+    }
+
+
+    // --- Mechanics ---
+
+    // attack_roll: dice + no mutation → mechanic
+    mechanic attack_roll(
+        attacker: Character,
+        target: Character,
+        bonus: int = 0,
+        mode: RollMode = normal
+    ) -> RollResult {
+        let base: DiceExpr = match mode {
+            normal       => 1d20,
+            advantage    => 2d20kh1,
+            disadvantage => 2d20kl1
+        }
+        roll(base + attacker.attack_bonus + bonus)
+    }
+
+    // TEMPLATE: Add damage_roll, saving_throw, etc.
+
+
+    // --- Actions ---
+
+    action Attack on attacker: Character (target: Character) {
+        cost { action }
+        requires { distance(attacker.position, target.position) <= 5 }
+
+        resolve {
+            let atk = attack_roll(attacker, target)
+            if atk >= target.AC {
+                let dmg: RollResult = roll(attacker.damage_dice)
+                target.HP -= dmg.total
+                emit Damaged(
+                    target: target,
+                    attacker: attacker,
+                    amount: dmg.total
+                )
+            }
+        }
+    }
+
+    // TEMPLATE: Add more actions (Dash, Dodge, Disengage, etc.)
+
+
+    // --- Hooks ---
+
+    // Mandatory trigger: when damaged, check for death
+    hook DeathCheck on target: Character (
+        trigger: Damaged(target: target)
+    ) {
+        if target.HP <= 0 {
+            apply_condition(target, Prone, Duration.indefinite)
+        }
+    }
+
+    // TEMPLATE: Add hooks for death saves, damage logging, etc.
+
+
+    // --- Conditions ---
+
+    // Prone: disadvantage on own attacks, advantage when attacked
+    // within melee range, costs movement to stand up
+    condition Prone on bearer: Character {
+        modify attack_roll(attacker: bearer) {
+            mode = disadvantage
+        }
+        modify attack_roll(target: bearer) {
+            mode = if distance(attacker.position, bearer.position) <= 5 {
+                advantage
+            } else {
+                disadvantage
+            }
+        }
+        modify initial_budget(actor: bearer) {
+            result.movement = result.movement - floor(bearer.speed / 2)
+        }
+    }
+
+    // TEMPLATE: Add conditions (Stunned, Frightened, Invisible, etc.)
+}

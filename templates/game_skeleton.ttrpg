@@ -1,0 +1,79 @@
+// ============================================================
+// Game Skeleton — Minimal Starting Point
+//
+// The absolute minimum for a playable game system:
+// one entity type, one action, and the turn budget boilerplate.
+//
+// Usage:
+//   1. Copy this file and rename it
+//   2. Replace "My Game" with your system name
+//   3. Fill in // TEMPLATE: sections
+//   4. Validate: ttrpg check your_game.ttrpg
+// ============================================================
+
+system "My Game" {
+
+    // --- Enums ---
+
+    enum Duration {
+        end_of_turn,
+        start_of_next_turn,
+        rounds(count: int),
+        indefinite
+    }
+
+    // TEMPLATE: Add game-specific enums (damage types, abilities, etc.)
+
+
+    // --- Structs ---
+
+    struct TurnBudget {
+        actions: int = 0
+        bonus_actions: int = 0
+        reactions: int = 0
+        movement: int = 0
+    }
+
+    // TEMPLATE: Add game-specific structs (weapons, damage specs, etc.)
+
+
+    // --- Entities ---
+
+    entity Character {
+        name: string
+        HP: resource(0..=max_HP)
+        max_HP: int
+        speed: int = 30
+        position: Position
+        // TEMPLATE: Add fields for your game (abilities, AC, etc.)
+    }
+
+    // TEMPLATE: Add more entity types (Monster, NPC, Item, etc.)
+
+
+    // --- Derives ---
+
+    derive initial_budget(actor: Character) -> TurnBudget {
+        TurnBudget {
+            actions: 1,
+            bonus_actions: 1,
+            reactions: 1,
+            movement: actor.speed
+        }
+    }
+
+    // TEMPLATE: Add derives for computed values (modifiers, bonuses, etc.)
+
+
+    // --- Actions ---
+
+    action BasicAction on actor: Character () {
+        cost { action }
+        resolve {
+            // TEMPLATE: Replace with your action's effect
+            turn.movement += 0
+        }
+    }
+
+    // TEMPLATE: Add more actions, mechanics, conditions, etc.
+}

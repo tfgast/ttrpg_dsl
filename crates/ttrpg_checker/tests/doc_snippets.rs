@@ -171,3 +171,68 @@ fn few_shot_examples_coverage() {
         "expected >= 20 RULE entries in few_shot_examples.ttrpg, found {rule_count}"
     );
 }
+
+// ═══════════════════════════════════════════════════════════════
+// Scaffolding templates (templates/*.ttrpg)
+// ═══════════════════════════════════════════════════════════════
+
+static TEMPLATE_GAME_SKELETON: &str = include_str!("../../../templates/game_skeleton.ttrpg");
+static TEMPLATE_COMBAT: &str = include_str!("../../../templates/combat_module.ttrpg");
+static TEMPLATE_MAGIC: &str = include_str!("../../../templates/magic_module.ttrpg");
+static TEMPLATE_SKILL: &str = include_str!("../../../templates/skill_module.ttrpg");
+static TEMPLATE_CLASS: &str = include_str!("../../../templates/class_module.ttrpg");
+
+#[test]
+fn templates_pass_check() {
+    let templates = [
+        ("game_skeleton", TEMPLATE_GAME_SKELETON),
+        ("combat_module", TEMPLATE_COMBAT),
+        ("magic_module", TEMPLATE_MAGIC),
+        ("skill_module", TEMPLATE_SKILL),
+        ("class_module", TEMPLATE_CLASS),
+    ];
+
+    let mut failures = Vec::new();
+    for (name, source) in templates {
+        let (program, parse_errors) = ttrpg_parser::parse(source, FileId::SYNTH);
+        let errs: Vec<_> = parse_errors
+            .iter()
+            .filter(|d| d.severity == Severity::Error)
+            .map(|d| &d.message)
+            .collect();
+        if !errs.is_empty() {
+            failures.push(format!("{name}: parse errors: {errs:?}"));
+            continue;
+        }
+
+        let mut lower_diags = Vec::new();
+        let program = ttrpg_parser::lower_moves(program, &mut lower_diags);
+        let errs: Vec<_> = lower_diags
+            .iter()
+            .filter(|d| d.severity == Severity::Error)
+            .map(|d| &d.message)
+            .collect();
+        if !errs.is_empty() {
+            failures.push(format!("{name}: lowering errors: {errs:?}"));
+            continue;
+        }
+
+        let result = ttrpg_checker::check(&program);
+        let errs: Vec<_> = result
+            .diagnostics
+            .iter()
+            .filter(|d| d.severity == Severity::Error)
+            .map(|d| &d.message)
+            .collect();
+        if !errs.is_empty() {
+            failures.push(format!("{name}: checker errors: {errs:?}"));
+        }
+    }
+
+    assert!(
+        failures.is_empty(),
+        "template validation failures:\n{}",
+        failures.join("\n")
+    );
+}
+

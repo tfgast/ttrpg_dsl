@@ -1,0 +1,181 @@
+// ============================================================
+// Magic Module — Spellcasting & Concentration
+//
+// Demonstrates optional groups (Spellcasting), tags
+// (#concentration), invocation tracking, and the event-hook
+// pattern for one-spell-at-a-time enforcement.
+//
+// Usage:
+//   1. Copy this file and rename it
+//   2. Replace "My Game" with your system name
+//   3. Fill in // TEMPLATE: sections
+//   4. Validate: ttrpg check your_game.ttrpg
+// ============================================================
+
+system "My Game" {
+
+    // --- Enums ---
+
+    enum Ability { STR, DEX, CON, INT, WIS, CHA }
+    enum RollMode { normal, advantage, disadvantage }
+
+    enum Duration {
+        end_of_turn,
+        start_of_next_turn,
+        rounds(count: int),
+        minutes(count: int),
+        indefinite
+    }
+
+    // TEMPLATE: Add spell schools, damage types, etc.
+
+
+    // --- Structs ---
+
+    struct TurnBudget {
+        actions: int = 0
+        bonus_actions: int = 0
+        reactions: int = 0
+        movement: int = 0
+    }
+
+
+    // --- Tags ---
+
+    tag #concentration
+
+
+    // --- Groups ---
+
+    // Optional group: not every character can cast spells
+    group Spellcasting {
+        spell_dc: int
+        spell_slots: resource(0..=max_slots)
+        max_slots: int
+        // TEMPLATE: Add spell_attack_bonus, casting ability, etc.
+    }
+
+
+    // --- Entities ---
+
+    entity Character {
+        name: string
+        level: int = 1
+        abilities: map<Ability, int>
+        AC: int
+        HP: resource(0..=max_HP)
+        max_HP: int
+        speed: int = 30
+        position: Position
+        concentrating_on: option<Invocation>
+        optional Spellcasting
+        // TEMPLATE: Add fields for your game
+    }
+
+
+    // --- Events ---
+
+    event ConcentrationStarted(caster: Character, inv: Invocation)
+    event Damaged(target: Character, attacker: Character, amount: int) {}
+
+    // TEMPLATE: Add spell-specific events as needed
+
+
+    // --- Derives ---
+
+    derive modifier(score: int) -> int {
+        floor((score - 10) / 2)
+    }
+
+    derive initial_budget(actor: Character) -> TurnBudget {
+        TurnBudget {
+            actions: 1,
+            bonus_actions: 1,
+            reactions: 1,
+            movement: actor.speed
+        }
+    }
+
+
+    // --- Mechanics ---
+
+    mechanic ability_check(
+        actor: Character,
+        ability: Ability,
+        mode: RollMode = normal
+    ) -> RollResult {
+        let base: DiceExpr = match mode {
+            normal       => 1d20,
+            advantage    => 2d20kh1,
+            disadvantage => 2d20kl1
+        }
+        roll(base + modifier(actor.abilities[ability]))
+    }
+
+    // TEMPLATE: Add spell_attack mechanic, saving_throw, etc.
+
+
+    // --- Actions ---
+
+    // Concentration spell: applies a condition, tracks invocation
+    action CastSpell on caster: Character with Spellcasting as sc (
+        target: Character
+    ) #concentration {
+        cost { action }
+        requires { caster.sc.spell_slots > 0 }
+
+        resolve {
+            let inv = invocation()
+            caster.sc.spell_slots -= 1
+            apply_condition(target, SpellEffect, Duration.rounds(10))
+            emit ConcentrationStarted(caster: caster, inv: inv)
+        }
+    }
+
+    // TEMPLATE: Add more spells (AoE, healing, non-concentration, etc.)
+
+
+    // --- Hooks ---
+
+    // Enforces one concentration spell at a time
+    hook OnConcentration on caster: Character (
+        trigger: ConcentrationStarted(caster: caster)
+    ) {
+        revoke(caster.concentrating_on)
+        caster.concentrating_on = some(trigger.inv)
+    }
+
+
+    // --- Reactions ---
+
+    // CON save to maintain concentration when damaged
+    reaction ConcentrationSave on caster: Character (
+        trigger: Damaged(target: caster)
+    ) {
+        cost free
+        resolve {
+            if caster.concentrating_on != none {
+                let dc = max(10, floor(trigger.amount / 2))
+                let save = ability_check(caster, CON)
+                if save.total < dc {
+                    revoke(caster.concentrating_on)
+                    caster.concentrating_on = none
+                }
+            }
+        }
+    }
+
+    // TEMPLATE: Add reactions (counterspell, shield, etc.)
+
+
+    // --- Conditions ---
+
+    // Placeholder condition applied by CastSpell
+    condition SpellEffect on bearer: Character {
+        modify ability_check(actor: bearer) {
+            mode = advantage
+        }
+    }
+
+    // TEMPLATE: Define spell-specific conditions (Blessed, Hexed, etc.)
+}

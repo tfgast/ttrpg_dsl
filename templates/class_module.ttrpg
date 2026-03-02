@@ -1,0 +1,108 @@
+// ============================================================
+// Class Module — Character Classes & XP Progression
+//
+// Demonstrates class-as-enum, struct-returning derives,
+// XP threshold tables via match, and dynamic dice construction
+// with the dice() builtin.
+//
+// Usage:
+//   1. Copy this file and rename it
+//   2. Replace "My Game" with your system name
+//   3. Fill in // TEMPLATE: sections
+//   4. Validate: ttrpg check your_game.ttrpg
+// ============================================================
+
+system "My Game" {
+
+    // --- Enums ---
+
+    // TEMPLATE: Define your game's character classes
+    enum Class { warrior, mage, rogue }
+
+    enum Ability { STR, DEX, CON, INT, WIS, CHA }
+
+
+    // --- Structs ---
+
+    // TEMPLATE: Add fields (armor proficiency, spell progression, etc.)
+    struct ClassInfo {
+        hit_die: int
+        primary_ability: Ability
+        max_level: int
+    }
+
+
+    // --- Entities ---
+
+    entity Character {
+        name: string
+        class: Class
+        level: int = 1
+        xp: int = 0
+        HP: resource(0..=max_HP)
+        max_HP: int
+        abilities: map<Ability, int>
+        position: Position
+        // TEMPLATE: Add fields (proficiencies, features, etc.)
+    }
+
+
+    // --- Derives ---
+
+    // Class definition lookup: returns per-class stats
+    derive class_info(class: Class) -> ClassInfo {
+        match class {
+            warrior => ClassInfo { hit_die: 10, primary_ability: STR, max_level: 20 },
+            mage    => ClassInfo { hit_die: 6,  primary_ability: INT, max_level: 20 },
+            rogue   => ClassInfo { hit_die: 8,  primary_ability: DEX, max_level: 20 }
+        }
+    }
+
+    // TEMPLATE: Fill in your game's XP table
+    derive xp_for_level(class: Class, level: int) -> int {
+        match class {
+            warrior => match level {
+                1 => 0,     2 => 300,   3 => 900,
+                4 => 2700,  5 => 6500,  _ => 999999
+            },
+            mage => match level {
+                1 => 0,     2 => 300,   3 => 900,
+                4 => 2700,  5 => 6500,  _ => 999999
+            },
+            rogue => match level {
+                1 => 0,     2 => 300,   3 => 900,
+                4 => 2700,  5 => 6500,  _ => 999999
+            }
+        }
+    }
+
+    // Check whether a character qualifies to level up
+    derive can_level_up(class: Class, level: int, xp: int) -> bool {
+        let info = class_info(class)
+        let next_level = level + 1
+        if next_level > info.max_level {
+            false
+        } else {
+            xp >= xp_for_level(class, next_level)
+        }
+    }
+
+    // Ability modifier
+    derive modifier(score: int) -> int {
+        floor((score - 10) / 2)
+    }
+
+    // TEMPLATE: Add level-up effects (feature unlocks, HP formulas, etc.)
+
+
+    // --- Mechanics ---
+
+    // Roll a hit die for a given class using the dice() builtin
+    // dice(count, sides) constructs a DiceExpr at runtime
+    mechanic roll_hit_die(class: Class) -> RollResult {
+        let info = class_info(class)
+        roll(dice(1, info.hit_die))
+    }
+
+    // TEMPLATE: Add mechanics for level-up HP, class features, etc.
+}
