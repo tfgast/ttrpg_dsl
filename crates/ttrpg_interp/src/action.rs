@@ -457,9 +457,9 @@ fn collect_and_apply_cost_modifiers(
                                         break;
                                     }
                                 }
-                                Err(_) => {
-                                    all_match = false;
-                                    break;
+                                Err(e) => {
+                                    env.pop_scope();
+                                    return Err(e);
                                 }
                             }
                         }

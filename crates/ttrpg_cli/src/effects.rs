@@ -517,18 +517,18 @@ pub fn roll_dice_from_queue(
     let mut all_kept = Vec::new();
 
     for group in &expr.groups {
+        let sides = (group.sides as i64).max(1);
         let mut dice: Vec<i64> = Vec::with_capacity(group.count as usize);
         for _ in 0..group.count {
             if let Some(val) = queue.pop_front() {
-                if val < 1 || val > group.sides as i64 {
+                if val < 1 || val > sides {
                     return Err(format!(
                         "queued value {} out of range for d{} (expected 1..={})",
-                        val, group.sides, group.sides
+                        val, group.sides, sides
                     ));
                 }
                 dice.push(val);
             } else {
-                let sides = (group.sides as i64).max(1);
                 dice.push(rng.random_range(1..=sides));
             }
         }

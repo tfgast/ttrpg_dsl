@@ -431,11 +431,11 @@ pub(super) fn resolve_resource_bounds(
             remaining,
             &env.interp.program.items,
         )?;
-        // When the field is inside a group (consumed > 1), the first path
-        // segment is the group name. Bound expressions reference sibling
-        // fields within the same group, so we need to qualify lookups
-        // with the group prefix.
-        let prefix = if consumed > 1 { &path[..1] } else { &[] };
+        // Bound expressions reference sibling fields within the same
+        // container (group, nested struct, or both). Use all path segments
+        // up to (but not including) the final resource field as the lookup
+        // prefix so that identifiers resolve at the correct nesting level.
+        let prefix = if path.len() > 1 { &path[..path.len() - 1] } else { &[] };
         ((min_expr.clone(), max_expr.clone()), prefix.to_vec())
     };
     let min_val = eval_bound_expr(env, entity, &bound_exprs.0, &group_prefix)?;
