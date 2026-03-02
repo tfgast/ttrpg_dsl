@@ -545,9 +545,18 @@ fn query_hooks(_env: &TypeEnv) {
     process::exit(1);
 }
 
-fn query_entity(_env: &TypeEnv, _name: &str) {
-    eprintln!("query entity: not yet implemented");
-    process::exit(1);
+fn query_entity(env: &TypeEnv, name: &str) {
+    match ttrpg_cli::format::format_entity(env, name) {
+        Ok(lines) => {
+            for line in lines {
+                println!("{line}");
+            }
+        }
+        Err(msg) => {
+            eprintln!("{msg}");
+            process::exit(1);
+        }
+    }
 }
 
 fn query_all(_env: &TypeEnv) {

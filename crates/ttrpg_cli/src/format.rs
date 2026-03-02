@@ -192,6 +192,43 @@ pub fn format_types(env: &TypeEnv) -> Vec<String> {
     out
 }
 
+/// Format a single entity declaration from a TypeEnv for human-readable output.
+///
+/// Returns `Ok(lines)` on success, or `Err(message)` if the name is not found
+/// or does not refer to an entity.
+pub fn format_entity(env: &TypeEnv, name: &str) -> Result<Vec<String>, String> {
+    match env.types.get(name) {
+        Some(DeclInfo::Entity(info)) => {
+            let mut out = Vec::new();
+            out.push(format!("entity {}", info.name));
+            for fi in &info.fields {
+                let default_marker = if fi.has_default { " (default)" } else { "" };
+                out.push(format!("  {}: {}{}", fi.name, fi.ty.display(), default_marker));
+            }
+            for group in &info.optional_groups {
+                let kw = if group.required {
+                    "include"
+                } else {
+                    "optional"
+                };
+                out.push(format!("  {} {}", kw, group.name));
+                for fi in &group.fields {
+                    let default_marker = if fi.has_default { " (default)" } else { "" };
+                    out.push(format!(
+                        "    {}: {}{}",
+                        fi.name,
+                        fi.ty.display(),
+                        default_marker
+                    ));
+                }
+            }
+            Ok(out)
+        }
+        Some(_) => Err(format!("'{name}' is not an entity")),
+        None => Err(format!("unknown type: '{name}'")),
+    }
+}
+
 /// Format a field path for effect logging (e.g., `HP` or `stats["STR"]`).
 pub fn format_path(path: &[FieldPathSegment], units: &UnitSuffixes) -> String {
     let mut s = String::new();
