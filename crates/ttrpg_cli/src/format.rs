@@ -286,15 +286,13 @@ pub fn format_entity(env: &TypeEnv, name: &str, xref: bool) -> Result<Vec<String
             out.push("}".to_string());
 
             if xref {
-                // Applicable conditions: those whose receiver_type matches this entity
+                let receiver_matches = |ty: &Ty| matches!(ty, Ty::Entity(n) if n == name) || matches!(ty, Ty::AnyEntity);
+
+                // Applicable conditions
                 let mut conds: Vec<_> = env
                     .conditions
                     .values()
-                    .filter(|ci| match &ci.receiver_type {
-                        Ty::Entity(n) => n == name,
-                        Ty::AnyEntity => true,
-                        _ => false,
-                    })
+                    .filter(|ci| receiver_matches(&ci.receiver_type))
                     .collect();
                 if !conds.is_empty() {
                     conds.sort_by(|a, b| a.name.cmp(&b.name));
@@ -302,6 +300,32 @@ pub fn format_entity(env: &TypeEnv, name: &str, xref: bool) -> Result<Vec<String
                     out.push("// applicable conditions".to_string());
                     for ci in conds {
                         out.push(format_condition_signature(ci));
+                    }
+                }
+
+                // Available functions (actions, reactions, hooks) by receiver type
+                let recv_fns: Vec<_> = env
+                    .functions
+                    .values()
+                    .filter(|fi| {
+                        matches!(fi.kind, FnKind::Action | FnKind::Reaction | FnKind::Hook)
+                            && fi.receiver.as_ref().is_some_and(|r| receiver_matches(&r.ty))
+                    })
+                    .collect();
+
+                for (label, kind) in [
+                    ("actions", FnKind::Action),
+                    ("reactions", FnKind::Reaction),
+                    ("hooks", FnKind::Hook),
+                ] {
+                    let mut fns: Vec<_> = recv_fns.iter().filter(|fi| fi.kind == kind).collect();
+                    if !fns.is_empty() {
+                        fns.sort_by(|a, b| a.name.cmp(&b.name));
+                        out.push(String::new());
+                        out.push(format!("// {label}"));
+                        for fi in fns {
+                            out.push(format_fn_signature(fi));
+                        }
                     }
                 }
             }
