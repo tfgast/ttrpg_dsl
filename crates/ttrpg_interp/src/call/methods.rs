@@ -142,7 +142,16 @@ fn eval_list_method(
             for item in &list {
                 match item {
                     Value::Int(n) => {
-                        if is_float { float_sum += *n as f64; } else { int_sum += n; }
+                        if is_float {
+                            float_sum += *n as f64;
+                        } else {
+                            int_sum = int_sum.checked_add(*n).ok_or_else(|| {
+                                RuntimeError::with_span(
+                                    "integer overflow in sum()",
+                                    span,
+                                )
+                            })?;
+                        }
                     }
                     Value::Float(f) => {
                         if !is_float { is_float = true; float_sum = int_sum as f64; }

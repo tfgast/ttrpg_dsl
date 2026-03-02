@@ -266,6 +266,20 @@ fn dispatch_table_core(
             call_span,
         )
     })?;
+    let expected_arity = table_decl.params.len();
+    if arg_values.len() != expected_arity {
+        return Err(RuntimeError::with_span(
+            format!(
+                "table '{}' expects {} argument{}, got {}",
+                name,
+                expected_arity,
+                if expected_arity == 1 { "" } else { "s" },
+                arg_values.len()
+            ),
+            call_span,
+        ));
+    }
+
     let entries = table_decl.entries.clone();
 
     // Try each entry in order

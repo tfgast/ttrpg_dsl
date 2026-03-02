@@ -13,9 +13,9 @@ pub(super) fn eval_len(
     args: &[Arg],
     call_span: Span,
 ) -> Result<Value, RuntimeError> {
-    if args.is_empty() {
+    if args.len() != 1 {
         return Err(RuntimeError::with_span(
-            "len() requires 1 argument",
+            format!("len() requires 1 argument, got {}", args.len()),
             call_span,
         ));
     }
@@ -36,9 +36,9 @@ pub(super) fn eval_keys(
     args: &[Arg],
     call_span: Span,
 ) -> Result<Value, RuntimeError> {
-    if args.is_empty() {
+    if args.len() != 1 {
         return Err(RuntimeError::with_span(
-            "keys() requires 1 argument",
+            format!("keys() requires 1 argument, got {}", args.len()),
             call_span,
         ));
     }
@@ -57,9 +57,9 @@ pub(super) fn eval_values(
     args: &[Arg],
     call_span: Span,
 ) -> Result<Value, RuntimeError> {
-    if args.is_empty() {
+    if args.len() != 1 {
         return Err(RuntimeError::with_span(
-            "values() requires 1 argument",
+            format!("values() requires 1 argument, got {}", args.len()),
             call_span,
         ));
     }
@@ -78,9 +78,9 @@ pub(super) fn eval_first(
     args: &[Arg],
     call_span: Span,
 ) -> Result<Value, RuntimeError> {
-    if args.is_empty() {
+    if args.len() != 1 {
         return Err(RuntimeError::with_span(
-            "first() requires 1 argument",
+            format!("first() requires 1 argument, got {}", args.len()),
             call_span,
         ));
     }
@@ -103,9 +103,9 @@ pub(super) fn eval_last(
     args: &[Arg],
     call_span: Span,
 ) -> Result<Value, RuntimeError> {
-    if args.is_empty() {
+    if args.len() != 1 {
         return Err(RuntimeError::with_span(
-            "last() requires 1 argument",
+            format!("last() requires 1 argument, got {}", args.len()),
             call_span,
         ));
     }
@@ -128,9 +128,9 @@ pub(super) fn eval_append(
     args: &[Arg],
     call_span: Span,
 ) -> Result<Value, RuntimeError> {
-    if args.len() < 2 {
+    if args.len() != 2 {
         return Err(RuntimeError::with_span(
-            "append() requires 2 arguments",
+            format!("append() requires 2 arguments, got {}", args.len()),
             call_span,
         ));
     }
@@ -156,9 +156,9 @@ pub(super) fn eval_concat(
     args: &[Arg],
     call_span: Span,
 ) -> Result<Value, RuntimeError> {
-    if args.len() < 2 {
+    if args.len() != 2 {
         return Err(RuntimeError::with_span(
-            "concat() requires 2 arguments",
+            format!("concat() requires 2 arguments, got {}", args.len()),
             call_span,
         ));
     }
@@ -192,9 +192,9 @@ pub(super) fn eval_reverse(
     args: &[Arg],
     call_span: Span,
 ) -> Result<Value, RuntimeError> {
-    if args.is_empty() {
+    if args.len() != 1 {
         return Err(RuntimeError::with_span(
-            "reverse() requires 1 argument",
+            format!("reverse() requires 1 argument, got {}", args.len()),
             call_span,
         ));
     }
@@ -216,9 +216,9 @@ pub(super) fn eval_sum(
     args: &[Arg],
     call_span: Span,
 ) -> Result<Value, RuntimeError> {
-    if args.is_empty() {
+    if args.len() != 1 {
         return Err(RuntimeError::with_span(
-            "sum() requires 1 argument",
+            format!("sum() requires 1 argument, got {}", args.len()),
             call_span,
         ));
     }
@@ -237,7 +237,12 @@ pub(super) fn eval_sum(
                         if is_float {
                             float_sum += *n as f64;
                         } else {
-                            int_sum += n;
+                            int_sum = int_sum.checked_add(*n).ok_or_else(|| {
+                                RuntimeError::with_span(
+                                    "integer overflow in sum()",
+                                    call_span,
+                                )
+                            })?;
                         }
                     }
                     Value::Float(f) => {
@@ -276,9 +281,9 @@ pub(super) fn eval_any(
     args: &[Arg],
     call_span: Span,
 ) -> Result<Value, RuntimeError> {
-    if args.is_empty() {
+    if args.len() != 1 {
         return Err(RuntimeError::with_span(
-            "any() requires 1 argument",
+            format!("any() requires 1 argument, got {}", args.len()),
             call_span,
         ));
     }
@@ -311,9 +316,9 @@ pub(super) fn eval_all(
     args: &[Arg],
     call_span: Span,
 ) -> Result<Value, RuntimeError> {
-    if args.is_empty() {
+    if args.len() != 1 {
         return Err(RuntimeError::with_span(
-            "all() requires 1 argument",
+            format!("all() requires 1 argument, got {}", args.len()),
             call_span,
         ));
     }
@@ -346,9 +351,9 @@ pub(super) fn eval_sort(
     args: &[Arg],
     call_span: Span,
 ) -> Result<Value, RuntimeError> {
-    if args.is_empty() {
+    if args.len() != 1 {
         return Err(RuntimeError::with_span(
-            "sort() requires 1 argument",
+            format!("sort() requires 1 argument, got {}", args.len()),
             call_span,
         ));
     }
