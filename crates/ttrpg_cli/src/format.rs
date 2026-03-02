@@ -307,11 +307,26 @@ pub fn format_fn_signature(fi: &FnInfo) -> String {
         }
         FnKind::Reaction => {
             let recv = fi.receiver.as_ref().expect("reaction must have receiver");
-            format!("reaction {} on {}", fi.name, format_param(recv))
+            let trigger_part = fi
+                .trigger
+                .as_ref()
+                .map(|t| format!(" (trigger: {})", t.event_name))
+                .unwrap_or_default();
+            format!(
+                "reaction {} on {}{}",
+                fi.name,
+                format_param(recv),
+                trigger_part
+            )
         }
         FnKind::Hook => {
             let recv = fi.receiver.as_ref().expect("hook must have receiver");
-            format!("hook {} on {}", fi.name, format_param(recv))
+            let trigger_part = fi
+                .trigger
+                .as_ref()
+                .map(|t| format!(" (trigger: {})", t.event_name))
+                .unwrap_or_default();
+            format!("hook {} on {}{}", fi.name, format_param(recv), trigger_part)
         }
         FnKind::Derive => {
             let params: Vec<String> = fi.params.iter().map(format_param).collect();
@@ -553,7 +568,8 @@ mod tests {
     use super::*;
     use std::collections::{BTreeMap, BTreeSet};
     use ttrpg_checker::env::{
-        EntityInfo, EnumInfo, FieldInfo, OptionalGroupInfo, StructInfo, UnitInfo, VariantInfo,
+        EntityInfo, EnumInfo, FieldInfo, OptionalGroupInfo, StructInfo, TriggerInfo, UnitInfo,
+        VariantInfo,
     };
     use ttrpg_checker::ty::Ty;
     use ttrpg_interp::state::EntityRef;
@@ -819,6 +835,7 @@ mod tests {
             receiver,
             tags: tags.iter().map(|&t| t.into()).collect(),
             synthetic: false,
+            trigger: None,
         }
     }
 
@@ -923,6 +940,38 @@ mod tests {
             Ty::Unit,
             &[],
         );
+        insta::assert_snapshot!(format_fn_signature(&fi));
+    }
+
+    #[test]
+    fn sig_reaction_with_trigger() {
+        let mut fi = mk_fn(
+            "OpportunityAttack",
+            FnKind::Reaction,
+            Some(mk_param("reactor", Ty::Entity("Character".into()))),
+            vec![],
+            Ty::Unit,
+            &[],
+        );
+        fi.trigger = Some(TriggerInfo {
+            event_name: "entity_leaves_reach".into(),
+        });
+        insta::assert_snapshot!(format_fn_signature(&fi));
+    }
+
+    #[test]
+    fn sig_hook_with_trigger() {
+        let mut fi = mk_fn(
+            "DeathCheck",
+            FnKind::Hook,
+            Some(mk_param("actor", Ty::Entity("Character".into()))),
+            vec![],
+            Ty::Unit,
+            &[],
+        );
+        fi.trigger = Some(TriggerInfo {
+            event_name: "Damaged".into(),
+        });
         insta::assert_snapshot!(format_fn_signature(&fi));
     }
 

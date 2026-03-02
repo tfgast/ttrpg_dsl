@@ -90,6 +90,8 @@ pub struct FnInfo {
     pub tags: HashSet<Name>,
     /// True for declarations synthesized by `lower_moves`.
     pub synthetic: bool,
+    /// For reactions/hooks: the trigger event name.
+    pub trigger: Option<TriggerInfo>,
 }
 
 #[derive(Debug, Clone)]
@@ -102,6 +104,11 @@ pub struct ParamInfo {
     /// True when the `with` clause is disjunctive (`with A | B`).
     /// Disjunctive constraints skip call-site group proof and body narrowing.
     pub with_disjunctive: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct TriggerInfo {
+    pub event_name: Name,
 }
 
 #[derive(Debug, Clone)]

@@ -1,0 +1,5 @@
+---
+source: crates/ttrpg_cli/src/format.rs
+expression: format_fn_signature(&fi)
+---
+hook DeathCheck on actor: Character (trigger: Damaged)

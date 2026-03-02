@@ -502,6 +502,7 @@ impl Checker<'_> {
             receiver: None,
             tags: HashSet::new(),
             synthetic: true,
+            trigger: None,
         };
 
         self.check_modify_body(clause, &synthetic_fn, receiver, condition_params);

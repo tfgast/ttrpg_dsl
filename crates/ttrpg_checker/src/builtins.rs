@@ -22,6 +22,7 @@ fn builtin(name: &str, params: Vec<ParamInfo>, return_type: Ty) -> FnInfo {
         receiver: None,
         tags: HashSet::new(),
         synthetic: false,
+        trigger: None,
     }
 }
 

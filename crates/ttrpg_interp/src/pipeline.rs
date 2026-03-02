@@ -1079,6 +1079,7 @@ mod tests {
                 receiver: None,
                 tags: HashSet::new(),
                 synthetic: false,
+                trigger: None,
             },
         );
         type_env.conditions.insert(
@@ -1247,6 +1248,7 @@ mod tests {
                 receiver: None,
                 tags: HashSet::new(),
                 synthetic: false,
+                trigger: None,
             },
         );
         type_env.conditions.insert(
@@ -1450,6 +1452,7 @@ mod tests {
                 receiver: None,
                 tags: HashSet::new(),
                 synthetic: false,
+                trigger: None,
             },
         );
         type_env.conditions.insert(
@@ -1669,6 +1672,7 @@ mod tests {
                 receiver: None,
                 tags: HashSet::new(),
                 synthetic: false,
+                trigger: None,
             },
         );
         type_env.conditions.insert(
@@ -1840,6 +1844,7 @@ mod tests {
                 receiver: None,
                 tags: HashSet::new(),
                 synthetic: false,
+                trigger: None,
             },
         );
         type_env.conditions.insert(
@@ -1935,6 +1940,7 @@ mod tests {
                 receiver: None,
                 tags: HashSet::new(),
                 synthetic: false,
+                trigger: None,
             },
         );
 
@@ -2057,6 +2063,7 @@ mod tests {
                 receiver: None,
                 tags: HashSet::new(),
                 synthetic: false,
+                trigger: None,
             },
         );
         type_env.options.insert("SpecialMode".into());
@@ -2207,6 +2214,7 @@ mod tests {
                 receiver: None,
                 tags: HashSet::new(),
                 synthetic: false,
+                trigger: None,
             },
         );
         type_env.conditions.insert(
@@ -2286,6 +2294,7 @@ mod tests {
                 receiver: None,
                 tags: HashSet::new(),
                 synthetic: false,
+                trigger: None,
             },
         );
         let interp = Interpreter::new(&program, &type_env).unwrap();
@@ -2460,6 +2469,7 @@ mod tests {
                 receiver: None,
                 tags: HashSet::new(),
                 synthetic: false,
+                trigger: None,
             },
         );
         type_env.options.insert("Beta".into());
@@ -2624,6 +2634,7 @@ mod tests {
                 receiver: None,
                 tags: HashSet::new(),
                 synthetic: false,
+                trigger: None,
             },
         );
         type_env.conditions.insert(
@@ -2776,6 +2787,7 @@ mod tests {
                 receiver: None,
                 tags: HashSet::new(),
                 synthetic: false,
+                trigger: None,
             },
         );
         type_env.conditions.insert(

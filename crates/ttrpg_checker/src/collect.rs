@@ -864,6 +864,7 @@ fn collect_fn(
             receiver,
             tags: tag_set,
             synthetic,
+            trigger: None,
         },
     );
 }
@@ -1012,6 +1013,12 @@ fn collect_reaction(
         diagnostics,
         span,
     );
+
+    if let Some(fi) = env.functions.get_mut(&Name::from(r.name.as_str())) {
+        fi.trigger = Some(TriggerInfo {
+            event_name: r.trigger.event_name.clone(),
+        });
+    }
 }
 
 fn collect_hook(h: &HookDecl, env: &mut TypeEnv, diagnostics: &mut Vec<Diagnostic>, span: Span) {
@@ -1072,6 +1079,12 @@ fn collect_hook(h: &HookDecl, env: &mut TypeEnv, diagnostics: &mut Vec<Diagnosti
         diagnostics,
         span,
     );
+
+    if let Some(fi) = env.functions.get_mut(&Name::from(h.name.as_str())) {
+        fi.trigger = Some(TriggerInfo {
+            event_name: h.trigger.event_name.clone(),
+        });
+    }
 }
 
 fn collect_condition(

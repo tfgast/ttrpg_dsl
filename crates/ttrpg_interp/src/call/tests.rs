@@ -197,6 +197,7 @@ fn derive_call_arithmetic_body() {
             receiver: None,
             tags: HashSet::new(),
             synthetic: false,
+            trigger: None,
         },
     );
 
@@ -282,6 +283,7 @@ fn derive_call_with_named_args() {
             receiver: None,
             tags: HashSet::new(),
             synthetic: false,
+            trigger: None,
         },
     );
 
@@ -367,6 +369,7 @@ fn derive_call_with_default_value() {
             receiver: None,
             tags: HashSet::new(),
             synthetic: false,
+            trigger: None,
         },
     );
 
@@ -429,6 +432,7 @@ fn mechanic_call_with_roll_emits_roll_dice() {
             receiver: None,
             tags: HashSet::new(),
             synthetic: false,
+            trigger: None,
         },
     );
 
@@ -483,6 +487,7 @@ fn prompt_call_emits_resolve_prompt() {
             receiver: None,
             tags: HashSet::new(),
             synthetic: false,
+            trigger: None,
         },
     );
 
@@ -547,6 +552,7 @@ fn prompt_call_with_suggest() {
             receiver: None,
             tags: HashSet::new(),
             synthetic: false,
+            trigger: None,
         },
     );
 
@@ -631,6 +637,7 @@ fn prompt_emits_return_type_and_named_params() {
             receiver: None,
             tags: HashSet::new(),
             synthetic: false,
+            trigger: None,
         },
     );
 
@@ -698,6 +705,7 @@ fn prompt_return_type_validation_correct_type() {
             receiver: None,
             tags: HashSet::new(),
             synthetic: false,
+            trigger: None,
         },
     );
 
@@ -735,6 +743,7 @@ fn prompt_return_type_validation_wrong_type() {
             receiver: None,
             tags: HashSet::new(),
             synthetic: false,
+            trigger: None,
         },
     );
 
@@ -784,6 +793,7 @@ fn prompt_override_validation_wrong_type() {
             receiver: None,
             tags: HashSet::new(),
             synthetic: false,
+            trigger: None,
         },
     );
 
@@ -833,6 +843,7 @@ fn prompt_entity_type_validated_via_state() {
             receiver: None,
             tags: HashSet::new(),
             synthetic: false,
+            trigger: None,
         },
     );
 
@@ -1608,6 +1619,7 @@ fn missing_required_arg_error() {
             receiver: None,
             tags: HashSet::new(),
             synthetic: false,
+            trigger: None,
         },
     );
 
@@ -1894,6 +1906,7 @@ fn action_test_setup() -> (Program, TypeEnv) {
             }),
             tags: HashSet::new(),
             synthetic: false,
+            trigger: None,
         },
     );
 
@@ -2053,6 +2066,7 @@ fn derive_default_references_earlier_param() {
             receiver: None,
             tags: HashSet::new(),
             synthetic: false,
+            trigger: None,
         },
     );
 
@@ -2143,6 +2157,7 @@ fn derive_chained_defaults_reference_earlier_defaults() {
             receiver: None,
             tags: HashSet::new(),
             synthetic: false,
+            trigger: None,
         },
     );
 
@@ -2187,6 +2202,7 @@ fn prompt_call_accepts_override_response() {
             receiver: None,
             tags: HashSet::new(),
             synthetic: false,
+            trigger: None,
         },
     );
 
@@ -2225,6 +2241,7 @@ fn prompt_call_rejects_invalid_response() {
             receiver: None,
             tags: HashSet::new(),
             synthetic: false,
+            trigger: None,
         },
     );
 
@@ -2471,6 +2488,7 @@ fn bare_call_prefers_variant_over_function() {
             receiver: None,
             tags: HashSet::new(),
             synthetic: false,
+            trigger: None,
         },
     );
     type_env.types.insert(
@@ -2608,6 +2626,7 @@ fn mixed_args_evaluated_in_source_order() {
             receiver: None,
             tags: HashSet::new(),
             synthetic: false,
+            trigger: None,
         },
     );
 
@@ -2754,6 +2773,7 @@ fn prompt_suggest_error_does_not_leak_scope() {
             receiver: None,
             tags: HashSet::new(),
             synthetic: false,
+            trigger: None,
         },
     );
 
@@ -2835,6 +2855,7 @@ fn default_eval_error_does_not_leak_scope() {
             receiver: None,
             tags: HashSet::new(),
             synthetic: false,
+            trigger: None,
         },
     );
 
