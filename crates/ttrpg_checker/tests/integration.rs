@@ -6669,6 +6669,75 @@ system "Main" {
     );
 }
 
+#[test]
+fn test_visibility_emit_missing_import() {
+    // emit referencing event from non-imported system → error
+    expect_multi_errors(
+        &[
+            (
+                "core.ttrpg",
+                r#"
+system "Core" {
+    entity Character { HP: int = 10 }
+    event damage(target: Character) { amount: int }
+}
+"#,
+            ),
+            (
+                "actions.ttrpg",
+                r#"
+system "Actions" {
+    action Hit on actor: Character (target: Character) {
+        cost { action }
+        resolve {
+            emit damage(target: target, amount: 5)
+        }
+    }
+}
+"#,
+            ),
+        ],
+        &[r#"`damage` is defined in system "Core""#],
+    );
+}
+
+#[test]
+fn test_visibility_method_action_missing_import() {
+    // Method-style entity.Action() call from non-imported system → error
+    expect_multi_errors(
+        &[
+            (
+                "core.ttrpg",
+                r#"
+system "Core" {
+    entity Character { HP: int = 10 }
+    action Heal on actor: Character (target: Character) {
+        cost { action }
+        resolve {
+            target.HP += 5
+        }
+    }
+}
+"#,
+            ),
+            (
+                "main.ttrpg",
+                r#"
+system "Main" {
+    action Combo on actor: Character (target: Character) {
+        cost { action }
+        resolve {
+            target.Heal()
+        }
+    }
+}
+"#,
+            ),
+        ],
+        &[r#"`Heal` is defined in system "Core""#],
+    );
+}
+
 // ── Alias-qualified expression tests ───────────────────────────────────
 
 #[test]

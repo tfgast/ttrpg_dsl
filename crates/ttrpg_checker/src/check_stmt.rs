@@ -498,6 +498,9 @@ impl<'a> Checker<'a> {
             );
         }
 
+        // Check module visibility for the event name
+        self.check_name_visible(event_name, Namespace::Event, span);
+
         // Look up event declaration
         let event_info = match self.env.events.get(event_name) {
             Some(info) => info.clone(),

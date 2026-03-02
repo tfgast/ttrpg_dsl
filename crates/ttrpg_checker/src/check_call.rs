@@ -43,6 +43,9 @@ impl<'a> Checker<'a> {
                 if obj_ty.is_entity() {
                     if let Some(fn_info) = self.env.lookup_fn(field).cloned() {
                         if fn_info.kind == FnKind::Action {
+                            // Check module visibility (same as direct call path)
+                            self.check_name_visible(field, Namespace::Function, span);
+
                             // Verify receiver type compatibility
                             if let Some(ref receiver) = fn_info.receiver {
                                 if !self.types_compatible(&obj_ty, &receiver.ty) {
