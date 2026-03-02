@@ -1,0 +1,9 @@
+---
+source: crates/ttrpg_checker/tests/snapshot_diagnostics.rs
+expression: render_errors(source)
+---
+error: cannot add int and string
+  --> line 3:44
+  |
+3 |     derive bad(x: int, y: string) -> int { x + y }
+  |                                            ^^^^^

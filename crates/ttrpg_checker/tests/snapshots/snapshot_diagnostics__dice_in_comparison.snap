@@ -1,0 +1,9 @@
+---
+source: crates/ttrpg_checker/tests/snapshot_diagnostics.rs
+expression: render_errors(source)
+---
+error: cannot compare DiceExpr directly; call roll() first
+  --> line 5:9
+  |
+5 |         x >= 15
+  |         ^

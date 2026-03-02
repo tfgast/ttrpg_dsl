@@ -1,0 +1,5 @@
+---
+source: crates/ttrpg_cli/tests/snapshot_format.rs
+expression: "format_value(&val, &no_units())"
+---
+Point { x: 10, y: 20 }

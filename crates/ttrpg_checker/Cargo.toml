@@ -10,4 +10,5 @@ workspace = true
 ttrpg_ast.workspace = true
 
 [dev-dependencies]
+insta.workspace = true
 ttrpg_parser.workspace = true

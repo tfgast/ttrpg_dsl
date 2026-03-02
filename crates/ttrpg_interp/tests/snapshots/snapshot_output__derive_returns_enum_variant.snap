@@ -1,0 +1,13 @@
+---
+source: crates/ttrpg_interp/tests/snapshot_output.rs
+expression: val
+---
+EnumVariant {
+    enum_name: Name(
+        "Shape",
+    ),
+    variant: Name(
+        "circle",
+    ),
+    fields: {},
+}

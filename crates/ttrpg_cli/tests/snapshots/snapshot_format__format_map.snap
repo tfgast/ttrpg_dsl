@@ -1,0 +1,5 @@
+---
+source: crates/ttrpg_cli/tests/snapshot_format.rs
+expression: "format_value(&Value::Map(m), &no_units())"
+---
+{"a": 1, "b": 2}

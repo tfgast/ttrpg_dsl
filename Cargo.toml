@@ -24,6 +24,7 @@ ttrpg_interp = { path = "crates/ttrpg_interp" }
 
 # External
 glob = "0.3"
+insta = "1"
 nu-ansi-term = "0.50"
 rand = "0.9"
 reedline = "0.45"

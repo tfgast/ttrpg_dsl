@@ -1,0 +1,5 @@
+---
+source: crates/ttrpg_interp/tests/snapshot_output.rs
+expression: err.to_string()
+---
+undefined derive or table 'nonexistent'

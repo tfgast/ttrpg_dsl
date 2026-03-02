@@ -1,0 +1,7 @@
+---
+source: crates/ttrpg_interp/tests/snapshot_output.rs
+expression: negative
+---
+Str(
+    "negative",
+)

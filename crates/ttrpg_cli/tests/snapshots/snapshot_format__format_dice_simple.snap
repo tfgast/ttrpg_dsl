@@ -1,0 +1,5 @@
+---
+source: crates/ttrpg_cli/tests/snapshot_format.rs
+expression: "format_value(&val, &no_units())"
+---
+2d6 + 3

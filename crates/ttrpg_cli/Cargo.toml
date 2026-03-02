@@ -24,3 +24,6 @@ glob.workspace = true
 nu-ansi-term.workspace = true
 rand.workspace = true
 reedline.workspace = true
+
+[dev-dependencies]
+insta.workspace = true

@@ -1,0 +1,21 @@
+---
+source: crates/ttrpg_checker/tests/snapshot_diagnostics.rs
+expression: render_errors(source)
+---
+error: function body has type int, expected return type bool
+  --> line 3:30
+  |
+3 |     derive a(x: int) -> bool { x }
+  |                              ^^^^^
+
+error: undefined variable `unknown_var`
+  --> line 4:25
+  |
+4 |     derive b() -> int { unknown_var }
+  |                         ^^^^^^^^^^^
+
+error: cannot add int and string
+  --> line 5:31
+  |
+5 |     derive c(x: int) -> int { x + "bad" }
+  |                               ^^^^^^^^^

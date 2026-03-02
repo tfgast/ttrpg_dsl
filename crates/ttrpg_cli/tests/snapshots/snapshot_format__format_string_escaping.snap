@@ -1,0 +1,9 @@
+---
+source: crates/ttrpg_cli/tests/snapshot_format.rs
+expression: output
+---
+embedded_quote: "a\"b"
+backslash: "a\\b"
+newline: "line1\nline2"
+tab: "a\tb"
+empty: ""

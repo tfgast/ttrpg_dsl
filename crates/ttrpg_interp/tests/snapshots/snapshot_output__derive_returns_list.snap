@@ -1,0 +1,23 @@
+---
+source: crates/ttrpg_interp/tests/snapshot_output.rs
+expression: val
+---
+List(
+    [
+        Int(
+            0,
+        ),
+        Int(
+            2,
+        ),
+        Int(
+            4,
+        ),
+        Int(
+            6,
+        ),
+        Int(
+            8,
+        ),
+    ],
+)

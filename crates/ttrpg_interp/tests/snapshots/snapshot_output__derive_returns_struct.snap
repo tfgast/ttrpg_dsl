@@ -1,0 +1,21 @@
+---
+source: crates/ttrpg_interp/tests/snapshot_output.rs
+expression: val
+---
+Struct {
+    name: Name(
+        "Point",
+    ),
+    fields: {
+        Name(
+            "x",
+        ): Int(
+            0,
+        ),
+        Name(
+            "y",
+        ): Int(
+            0,
+        ),
+    },
+}

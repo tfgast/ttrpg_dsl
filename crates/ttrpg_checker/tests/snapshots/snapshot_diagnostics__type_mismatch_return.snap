@@ -1,0 +1,9 @@
+---
+source: crates/ttrpg_checker/tests/snapshot_diagnostics.rs
+expression: render_errors(source)
+---
+error: function body has type int, expected return type bool
+  --> line 3:32
+  |
+3 |     derive foo(x: int) -> bool { x }
+  |                                ^^^^^

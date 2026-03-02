@@ -1,0 +1,12 @@
+---
+source: crates/ttrpg_cli/tests/snapshot_format.rs
+expression: output
+---
+int: 42
+negative_int: -7
+zero: 0
+bool_true: true
+bool_false: false
+none: none
+float: 2.75
+string: "hello"
