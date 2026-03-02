@@ -520,9 +520,15 @@ fn query_events(_env: &TypeEnv) {
     process::exit(1);
 }
 
-fn query_actions(_env: &TypeEnv) {
-    eprintln!("query actions: not yet implemented");
-    process::exit(1);
+fn query_actions(env: &TypeEnv) {
+    let lines = ttrpg_cli::format::format_actions(env);
+    if lines.is_empty() {
+        println!("no actions");
+    } else {
+        for line in lines {
+            println!("{line}");
+        }
+    }
 }
 
 fn query_conditions(_env: &TypeEnv) {
