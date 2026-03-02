@@ -422,20 +422,32 @@ fn collect_and_apply_cost_modifiers(
                 }
 
                 // Check bindings: evaluate each binding expression and compare
-                // with the actual parameter values (actor entity for receiver bindings)
+                // with the actual parameter values. Resolve each binding.name
+                // against the action/reaction scope (receiver + params are bound
+                // in the calling scope before cost evaluation).
                 let bindings_match = if clause.bindings.is_empty() {
                     true
                 } else {
                     let mut all_match = true;
+
+                    // Resolve action param values before pushing condition scope
+                    let binding_vals: Vec<Option<Value>> = clause
+                        .bindings
+                        .iter()
+                        .map(|b| env.lookup(&b.name).cloned())
+                        .collect();
+
                     env.push_scope();
                     env.bind(cond_decl.receiver_name.clone(), Value::Entity(condition.bearer));
                     for (name, val) in &condition.params {
                         env.bind(name.clone(), val.clone());
                     }
 
-                    for binding in &clause.bindings {
-                        // The binding value is the actual actor entity
-                        let param_val = Value::Entity(*actor);
+                    for (idx, binding) in clause.bindings.iter().enumerate() {
+                        let param_val = match &binding_vals[idx] {
+                            Some(val) => val.clone(),
+                            None => { all_match = false; break; }
+                        };
 
                         if let Some(ref expr) = binding.value {
                             match eval_expr(env, expr) {

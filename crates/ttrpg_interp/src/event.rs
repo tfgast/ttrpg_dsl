@@ -324,7 +324,7 @@ fn is_suppressed(
     let mut entity_values: Vec<(&str, EntityRef)> = Vec::new();
 
     for param_info in event_params {
-        if matches!(param_info.ty, Ty::Entity(_)) {
+        if param_info.ty.is_entity() {
             match payload_fields.get(&param_info.name) {
                 Some(Value::Entity(e)) => {
                     entity_values.push((&param_info.name, *e));
@@ -346,7 +346,7 @@ fn is_suppressed(
     }
 
     for (field_name, field_ty) in event_fields {
-        if matches!(field_ty, Ty::Entity(_)) {
+        if field_ty.is_entity() {
             match payload_fields.get(field_name) {
                 Some(Value::Entity(e)) => {
                     entity_values.push((field_name, *e));

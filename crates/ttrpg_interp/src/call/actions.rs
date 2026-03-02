@@ -144,8 +144,14 @@ pub(super) fn dispatch_action_method(
         }
     };
 
-    // Bind remaining arguments against the action's regular params (not receiver)
-    let bound = bind_args(&fn_info.params, args, Some(&ast_params), env, call_span)?;
+    // Bind remaining arguments against the action's regular params (not receiver).
+    // Push receiver into scope first so default expressions can reference it
+    // (mirrors dispatch_action which includes receiver in effective_params).
+    env.push_scope();
+    env.bind(action_decl.receiver_name.clone(), receiver);
+    let bound = bind_args(&fn_info.params, args, Some(&ast_params), env, call_span);
+    env.pop_scope();
+    let bound = bound?;
 
     execute_action(env, &action_decl, actor, bound, call_span)
 }

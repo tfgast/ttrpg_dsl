@@ -3,7 +3,6 @@ use std::collections::{BTreeMap, HashSet};
 use ttrpg_ast::ast::{ConditionClause, ModifyClause, ModifyStmt, ModifyTarget};
 use ttrpg_ast::{Name, Span};
 use ttrpg_checker::env::FnInfo;
-use ttrpg_checker::ty::Ty;
 
 use crate::effect::{Effect, FieldChange, ModifySource, Phase, Response};
 use crate::eval::{eval_expr, value_eq};
@@ -64,7 +63,7 @@ pub(crate) fn collect_modifiers_owned(
 
     // 1. For each entity-typed param, query conditions
     for (i, param_info) in fn_info.params.iter().enumerate() {
-        if !matches!(param_info.ty, Ty::Entity(_)) {
+        if !param_info.ty.is_entity() {
             continue;
         }
         let entity_ref = match &bound_params[i].1 {
@@ -125,7 +124,7 @@ pub(crate) fn collect_modifiers_owned(
                     // Check bindings: each binding maps a param name to an expression.
                     // Evaluate the expression in a scope with the condition receiver bound.
                     // The binding matches if param[binding.name] equals the evaluated value.
-                    if check_modify_bindings(env, clause, condition, fn_info, bound_params)? {
+                    if check_modify_bindings(env, clause, condition, &cond_decl.receiver_name, fn_info, bound_params)? {
                         condition_modifiers.push((
                             condition.gained_at,
                             OwnedModifier {
@@ -230,6 +229,7 @@ fn check_modify_bindings(
     env: &mut Env,
     clause: &ModifyClause,
     condition: &ActiveCondition,
+    receiver_name: &Name,
     _fn_info: &FnInfo,
     bound_params: &[(Name, Value)],
 ) -> Result<bool, RuntimeError> {
@@ -238,12 +238,7 @@ fn check_modify_bindings(
         return Ok(true);
     }
 
-    // Look up the condition declaration to get receiver name
-    let cond_decl = match env.interp.program.conditions.get(condition.name.as_str()) {
-        Some(decl) => decl,
-        None => return Ok(false),
-    };
-    let receiver_name = cond_decl.receiver_name.clone();
+    let receiver_name = receiver_name.clone();
 
     for binding in &clause.bindings {
         // Find the param value for this binding name

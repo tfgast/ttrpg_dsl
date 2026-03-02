@@ -5,7 +5,9 @@ use std::collections::{HashMap, VecDeque};
 use ttrpg_ast::diagnostic::Severity;
 use ttrpg_ast::FileId;
 use ttrpg_interp::effect::{Effect, EffectHandler, Response};
+use ttrpg_interp::adapter::StateAdapter;
 use ttrpg_interp::reference_state::GameState;
+use ttrpg_interp::state::StateProvider;
 use ttrpg_interp::value::Value;
 use ttrpg_interp::Interpreter;
 
@@ -455,4 +457,52 @@ system "test" {
         .evaluate_derive(&gs, &mut handler, "get_hp", vec![Value::Entity(c)])
         .unwrap();
     assert_eq!(val, Value::Int(42));
+}
+
+// ── Bug fix: method defaults can reference receiver (tdsl-figw) ──
+
+#[test]
+fn action_method_default_references_receiver() {
+    // Regression: dispatch_action_method called bind_args without the receiver
+    // in scope, so default expressions referencing the receiver would fail with
+    // an undefined-variable error on method-call syntax (entity.Action()).
+    let source = r#"
+system "test" {
+    entity Character { HP: int }
+
+    action HealSelf on healer: Character (amount: int = healer.HP) {
+        resolve {
+            healer.HP += amount
+        }
+    }
+
+    action Wrapper on actor: Character () {
+        resolve {
+            actor.HealSelf()
+        }
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut gs = GameState::new();
+    let entity = make_entity(&mut gs, 10);
+
+    // Call via method syntax inside Wrapper — default should resolve healer.HP = 10
+    let adapter = StateAdapter::new(gs);
+    let mut handler = ScriptedHandler::ack_all();
+    adapter
+        .run(&mut handler, |state, eff_handler| {
+            interp.execute_action(state, eff_handler, "Wrapper", entity, vec![])
+        })
+        .unwrap();
+
+    // HP should be doubled: 10 + 10 = 20
+    let gs = adapter.into_inner();
+    let hp = gs.read_field(&entity, "HP").unwrap();
+    assert_eq!(
+        hp,
+        Value::Int(20),
+        "method-call default should be able to reference receiver (healer.HP)"
+    );
 }

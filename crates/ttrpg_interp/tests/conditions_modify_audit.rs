@@ -1217,3 +1217,208 @@ system "test" {
         "remove_condition by ActiveCondition should remove exactly one instance"
     );
 }
+
+// ═══════════════════════════════════════════════════════════════
+// Bug fix: suppress logic skips AnyEntity event params (tdsl-3k51)
+// ═══════════════════════════════════════════════════════════════
+
+#[test]
+fn suppress_works_with_any_entity_event_params() {
+    // Regression: is_suppressed skipped entity-typed event params when the
+    // checker resolved the type to Ty::AnyEntity rather than Ty::Entity(_).
+    let source = r#"
+system "test" {
+    entity Character { HP: int }
+    entity Monster { HP: int }
+
+    event creature_moves(mover: entity, bystander: entity) {}
+
+    reaction OpportunityStrike on striker: Character (
+        trigger: creature_moves(bystander: striker)
+    ) {
+        cost { reaction }
+        resolve {
+            striker.HP += 0
+        }
+    }
+
+    condition Disengaging on bearer: Character {
+        suppress creature_moves(mover: bearer)
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut state = GameState::new();
+
+    let mut char_fields = HashMap::new();
+    char_fields.insert("HP".into(), Value::Int(10));
+    let striker = state.add_entity("Character", char_fields.clone());
+    let mover = state.add_entity("Character", char_fields);
+
+    // Without Disengaging: reaction should trigger
+    let payload = Value::Struct {
+        name: "__event_creature_moves".into(),
+        fields: {
+            let mut f = BTreeMap::new();
+            f.insert("mover".into(), Value::Entity(mover));
+            f.insert("bystander".into(), Value::Entity(striker));
+            f
+        },
+    };
+
+    let result_no_cond = interp
+        .what_triggers(&state, "creature_moves", payload.clone(), &[striker])
+        .unwrap();
+    assert_eq!(
+        result_no_cond.triggerable.len(),
+        1,
+        "without Disengaging, reaction should be triggerable"
+    );
+
+    // Apply Disengaging on the mover: should suppress
+    state.apply_condition(&mover, "Disengaging", BTreeMap::new(), Value::None, None);
+
+    let result_with_cond = interp
+        .what_triggers(&state, "creature_moves", payload, &[striker])
+        .unwrap();
+    assert!(
+        result_with_cond.triggerable.is_empty(),
+        "with Disengaging on mover, reaction should be suppressed even with entity-typed params"
+    );
+    assert_eq!(
+        result_with_cond.suppressed.len(),
+        1,
+        "reaction should appear in suppressed list"
+    );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Bug fix: inherited modify bindings use child receiver name (tdsl-4t1y)
+// ═══════════════════════════════════════════════════════════════
+
+#[test]
+fn extends_inherited_bindings_use_parent_receiver_name() {
+    // Regression: check_modify_bindings always looked up the child condition's
+    // receiver name when evaluating inherited parent clauses, so if the parent
+    // used a different receiver name, bindings would fail to resolve.
+    let source = r#"
+system "test" {
+    entity Character { HP: int }
+
+    derive compute(target: Character, val: int) -> int {
+        val
+    }
+
+    condition ParentCond on subject: Character {
+        modify compute(target: subject) {
+            val = val + 100
+        }
+    }
+
+    condition ChildCond extends ParentCond on bearer: Character {}
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut state = GameState::new();
+
+    let mut fields = HashMap::new();
+    fields.insert("HP".into(), Value::Int(10));
+    let entity = state.add_entity("Character", fields);
+
+    // Apply ChildCond — should inherit ParentCond's modify clause.
+    // ParentCond uses receiver name "subject", ChildCond uses "bearer".
+    state.apply_condition(&entity, "ChildCond", BTreeMap::new(), Value::None, None);
+
+    let adapter = StateAdapter::new(state);
+    let mut handler = ScriptedHandler::new();
+
+    let val = adapter.run(&mut handler, |state, eff_handler| {
+        interp.evaluate_derive(
+            state,
+            eff_handler,
+            "compute",
+            vec![Value::Entity(entity), Value::Int(5)],
+        )
+    });
+
+    // ParentCond's modify should fire: val = 5 + 100 = 105
+    assert_eq!(
+        val.unwrap(),
+        Value::Int(105),
+        "inherited modify binding should use parent's receiver name 'subject', not child's 'bearer'"
+    );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Bug fix: cost modify bindings compare against actor for all names (tdsl-t0sn)
+// ═══════════════════════════════════════════════════════════════
+
+#[test]
+fn cost_modify_binding_resolves_non_receiver_params() {
+    // Regression: collect_and_apply_cost_modifiers used Value::Entity(*actor)
+    // for every binding regardless of name. When a cost modify binding references
+    // an action parameter (not the receiver), it should compare against the
+    // actual argument value.
+    let source = r#"
+system "test" {
+    entity Character { HP: int, ally_boost: bool }
+
+    action Strike on attacker: Character (target: Character) {
+        cost { action }
+        resolve {
+            target.HP -= 1
+        }
+    }
+
+    condition AlliedStrike on bearer: Character {
+        modify Strike.cost(attacker: bearer) {
+            cost = bonus_action
+        }
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut state = GameState::new();
+
+    let mut fields = HashMap::new();
+    fields.insert("HP".into(), Value::Int(20));
+    fields.insert("ally_boost".into(), Value::Bool(false));
+    let attacker = state.add_entity("Character", fields.clone());
+    let target = state.add_entity("Character", fields);
+
+    // Apply AlliedStrike on the attacker
+    state.apply_condition(&attacker, "AlliedStrike", BTreeMap::new(), Value::None, None);
+
+    let adapter = StateAdapter::new(state);
+    let mut handler = ScriptedHandler::new();
+    adapter.run(&mut handler, |state, eff_handler| {
+        interp.execute_action(
+            state,
+            eff_handler,
+            "Strike",
+            attacker,
+            vec![Value::Entity(target)],
+        )
+    }).unwrap();
+
+    // Verify the cost was modified (should be bonus_action, not action)
+    let cost_tokens: Vec<_> = handler.log.iter().filter_map(|e| {
+        if let Effect::DeductCost { token, .. } = e {
+            Some(token.to_string())
+        } else {
+            None
+        }
+    }).collect();
+    assert!(
+        !cost_tokens.is_empty(),
+        "should have a cost deduction"
+    );
+    assert_eq!(
+        cost_tokens[0],
+        "bonus_action",
+        "cost should be modified to bonus_action when attacker binding matches"
+    );
+}
