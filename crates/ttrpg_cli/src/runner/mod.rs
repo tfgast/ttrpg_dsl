@@ -33,6 +33,8 @@ mod util;
 #[cfg(test)]
 mod tests;
 
+use ttrpg_interp::RuntimeError;
+
 use util::*;
 
 /// Errors produced by Runner operations.
@@ -40,14 +42,38 @@ use util::*;
 pub enum CliError {
     /// A user-facing message (not a bug).
     Message(String),
+    /// A pre-rendered diagnostic with source spans (already includes "error:" prefix).
+    Rendered(String),
+}
+
+impl CliError {
+    /// Returns `true` if this error is already formatted with source spans.
+    pub fn is_rendered(&self) -> bool {
+        matches!(self, CliError::Rendered(_))
+    }
 }
 
 impl std::fmt::Display for CliError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            CliError::Message(msg) => write!(f, "{}", msg),
+            CliError::Message(msg) | CliError::Rendered(msg) => write!(f, "{}", msg),
         }
     }
+}
+
+/// Convert a `RuntimeError` into a `CliError`, rendering the source span
+/// through the `MultiSourceMap` when available.
+pub(super) fn render_runtime_error(
+    e: &RuntimeError,
+    source_map: &Option<MultiSourceMap>,
+) -> CliError {
+    if let (Some(span), Some(sm)) = (e.span, source_map.as_ref()) {
+        if !span.is_dummy() {
+            let diag = Diagnostic::error(&e.message, span);
+            return CliError::Rendered(sm.render(&diag));
+        }
+    }
+    CliError::Message(format!("runtime error: {}", e.message))
 }
 
 /// The core CLI runner. Owns program state and dispatches commands.
@@ -252,7 +278,7 @@ impl Runner {
             parsed.ok_or_else(|| CliError::Message("failed to parse expression".into()))?;
 
         let interp = Interpreter::new(&self.program, &self.type_env)
-            .map_err(|e| CliError::Message(format!("interpreter error: {}", e)))?;
+            .map_err(|e| render_runtime_error(&e, &self.source_map))?;
 
         let state = RefCellState(&self.game_state);
         let mut handler = CliHandler::new(
@@ -274,7 +300,7 @@ impl Runner {
                 for line in handler.log.drain(..) {
                     self.output.push(line);
                 }
-                CliError::Message(format!("runtime error: {}", e))
+                render_runtime_error(&e, &self.source_map)
             })?;
 
         // Emit any effect log lines
@@ -319,11 +345,12 @@ impl<'a, 'p> TrackedInterpreter<'a, 'p> {
         program: &'p Program,
         type_env: &'p TypeEnv,
         game_state: &'a RefCell<GameState>,
+        source_map: &Option<MultiSourceMap>,
     ) -> Result<Self, CliError> {
         let start = game_state.borrow().next_invocation_id();
         let interp =
             Interpreter::new_with_invocation_start(program, type_env, start)
-                .map_err(|e| CliError::Message(format!("interpreter error: {}", e)))?;
+                .map_err(|e| render_runtime_error(&e, source_map))?;
         Ok(TrackedInterpreter {
             interp,
             game_state,

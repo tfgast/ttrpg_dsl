@@ -112,7 +112,11 @@ fn run_pipe() {
         }
 
         if let Err(e) = result {
-            eprintln!("error: {}", e);
+            if e.is_rendered() {
+                eprintln!("{}", e);
+            } else {
+                eprintln!("error: {}", e);
+            }
             had_error = true;
         }
     }
@@ -152,7 +156,11 @@ fn exec_commands(label: &str, content: &str) {
         }
 
         if let Err(e) = result {
-            eprintln!("{}:{}: error: {}", label, lineno + 1, e);
+            if e.is_rendered() {
+                eprintln!("{}", e);
+            } else {
+                eprintln!("{}:{}: error: {}", label, lineno + 1, e);
+            }
             had_error = true;
         }
     }

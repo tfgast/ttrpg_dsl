@@ -164,7 +164,11 @@ pub fn run_repl(vi_mode: bool) {
                 }
 
                 if let Err(e) = result {
-                    eprintln!("error: {}", e);
+                    if e.is_rendered() {
+                        eprintln!("{}", e);
+                    } else {
+                        eprintln!("error: {}", e);
+                    }
                 }
 
                 // Refresh completion context after each command

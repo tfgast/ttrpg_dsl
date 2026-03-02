@@ -107,7 +107,7 @@ impl Runner {
                     })?;
 
                     let interp = Interpreter::new(&self.program, &self.type_env)
-                        .map_err(|e| CliError::Message(format!("interpreter error: {}", e)))?;
+                        .map_err(|e| render_runtime_error(&e, &self.source_map))?;
                     let state = RefCellState(&self.game_state);
                     let mut handler = CliHandler::new(
                         &self.game_state,
@@ -122,7 +122,7 @@ impl Runner {
                             for line in handler.log.drain(..) {
                                 self.output.push(line);
                             }
-                            CliError::Message(format!("error evaluating field '{}': {}", key, e))
+                            render_runtime_error(&e, &self.source_map)
                         })?;
                     for line in handler.log.drain(..) {
                         self.output.push(line);
@@ -184,7 +184,7 @@ impl Runner {
                 })?;
 
                 let interp = Interpreter::new(&self.program, &self.type_env)
-                    .map_err(|e| CliError::Message(format!("interpreter error: {}", e)))?;
+                    .map_err(|e| render_runtime_error(&e, &self.source_map))?;
                 let state = RefCellState(&self.game_state);
                 let mut handler = CliHandler::new(
                     &self.game_state,
@@ -199,7 +199,7 @@ impl Runner {
                         for line in handler.log.drain(..) {
                             self.output.push(line);
                         }
-                        CliError::Message(format!("error evaluating field '{}': {}", key, e))
+                        render_runtime_error(&e, &self.source_map)
                     })?;
                 for line in handler.log.drain(..) {
                     self.output.push(line);

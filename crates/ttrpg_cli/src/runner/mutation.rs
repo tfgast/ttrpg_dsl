@@ -337,7 +337,7 @@ impl Runner {
         // Resolve resource bounds and compute the final (possibly clamped) value
         let bounds = {
             let interp = Interpreter::new(&self.program, &self.type_env)
-                .map_err(|e| CliError::Message(format!("interpreter error: {}", e)))?;
+                .map_err(|e| render_runtime_error(&e, &self.source_map))?;
             let state = RefCellState(&self.game_state);
             let mut handler = CliHandler::new(
                 &self.game_state,
@@ -359,7 +359,7 @@ impl Runner {
                 &val,
                 &bounds,
             )
-            .map_err(|e| CliError::Message(format!("runtime error: {}", e)))?
+            .map_err(|e| render_runtime_error(&e, &self.source_map))?
         };
 
         let was_clamped = final_val != val || assign_op != AssignOp::Eq;
@@ -454,7 +454,7 @@ impl Runner {
         // Check that the action exists before evaluating args (avoid side effects)
         {
             let interp = Interpreter::new(&self.program, &self.type_env)
-                .map_err(|e| CliError::Message(format!("interpreter error: {}", e)))?;
+                .map_err(|e| render_runtime_error(&e, &self.source_map))?;
             if !interp.has_action(action_name) {
                 return Err(CliError::Message(format!(
                     "undefined action '{}'",
@@ -479,7 +479,7 @@ impl Runner {
             }
         }
 
-        let interp = TrackedInterpreter::new(&self.program, &self.type_env, &self.game_state)?;
+        let interp = TrackedInterpreter::new(&self.program, &self.type_env, &self.game_state, &self.source_map)?;
         let state = RefCellState(&self.game_state);
         let mut handler = CliHandler::new(
             &self.game_state,
@@ -496,7 +496,7 @@ impl Runner {
                 for line in handler.log.drain(..) {
                     self.output.push(line);
                 }
-                CliError::Message(format!("runtime error: {}", e))
+                render_runtime_error(&e, &self.source_map)
             })?;
 
         // Emit effect log
@@ -543,7 +543,7 @@ impl Runner {
         let is_mechanic;
         {
             let interp = Interpreter::new(&self.program, &self.type_env)
-                .map_err(|e| CliError::Message(format!("interpreter error: {}", e)))?;
+                .map_err(|e| render_runtime_error(&e, &self.source_map))?;
             is_derive = interp.has_derive(fn_name);
             is_mechanic = interp.has_mechanic(fn_name);
         }
@@ -568,7 +568,7 @@ impl Runner {
             }
         }
 
-        let interp = TrackedInterpreter::new(&self.program, &self.type_env, &self.game_state)?;
+        let interp = TrackedInterpreter::new(&self.program, &self.type_env, &self.game_state, &self.source_map)?;
         let state = RefCellState(&self.game_state);
         let mut handler = CliHandler::new(
             &self.game_state,
@@ -586,7 +586,7 @@ impl Runner {
                     for line in handler.log.drain(..) {
                         self.output.push(line);
                     }
-                    CliError::Message(format!("runtime error: {}", e))
+                    render_runtime_error(&e, &self.source_map)
                 })?
         } else {
             interp
@@ -595,7 +595,7 @@ impl Runner {
                     for line in handler.log.drain(..) {
                         self.output.push(line);
                     }
-                    CliError::Message(format!("runtime error: {}", e))
+                    render_runtime_error(&e, &self.source_map)
                 })?
         };
 
