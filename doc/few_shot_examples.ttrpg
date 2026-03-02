@@ -1,0 +1,827 @@
+// ============================================================
+// Few-Shot Translation Library
+//
+// Paired examples: English game rule → TTRPG DSL implementation.
+// Use as few-shot prompt material for AI agents generating
+// new game systems.
+//
+// Organization:
+//   §1  Shared Preamble (types used across examples)
+//   §2  Lookup Tables & Derived Values
+//   §3  Dice Mechanics & Resolution
+//   §4  Combat Actions & Events
+//   §5  Conditions & Modifiers
+//   §6  Reactions & Hooks
+//   §7  Resource Management & Set Operations
+//   §8  Invocation Tracking (Concentration)
+//   §9  Optional Groups & Polymorphism
+//   §10 Unit Types & Spatial
+//   §11 Variant Rules & Options
+//   §12 Cost Modification (Action Economy)
+//   §13 Ordered Enums & Comparisons
+// ============================================================
+
+system "Few-Shot Examples" {
+
+    // ==========================================================
+    // §1 — Shared Preamble
+    //
+    // Common types referenced by multiple examples below.
+    // A real system would split these across modules.
+    // ==========================================================
+
+    enum Ability { STR, DEX, CON, INT, WIS, CHA }
+    enum RollMode { normal, advantage, disadvantage }
+    enum DamageType {
+        slashing, piercing, bludgeoning,
+        fire, cold, lightning, poison, radiant, necrotic
+    }
+    enum SaveResult { success, failure }
+    enum Size ordered { tiny, small, medium, large, huge, gargantuan }
+
+    enum Duration {
+        end_of_turn,
+        start_of_next_turn,
+        rounds(count: int),
+        minutes(count: int),
+        indefinite
+    }
+
+    struct DamageSpec {
+        dice: DiceExpr
+        type: DamageType
+    }
+
+    struct TurnBudget {
+        actions: int = 0
+        bonus_actions: int = 0
+        reactions: int = 0
+        movement: int = 0
+    }
+
+    unit Feet suffix ft { value: int }
+
+    tag #concentration
+    tag #attack
+
+    group Spellcasting {
+        spell_dc: int
+        spell_attack_bonus: int
+        spell_slots: resource(0..=max_slots)
+        max_slots: int
+    }
+
+    entity Character {
+        name: string
+        level: int = 1
+        abilities: map<Ability, int>
+        proficient_saves: set<Ability>
+        AC: int
+        HP: resource(0..=max_HP)
+        max_HP: int
+        speed: int = 30
+        size: Size = Size.medium
+        resistances: set<DamageType>
+        immunities: set<DamageType>
+        vulnerabilities: set<DamageType>
+        position: Position
+        concentrating_on: option<Invocation>
+        optional Spellcasting
+    }
+
+    entity Weapon {
+        name: string
+        damage: DamageSpec
+        ability: Ability
+        range: int
+    }
+
+    derive initial_budget(actor: Character) -> TurnBudget {
+        TurnBudget {
+            actions: 1,
+            bonus_actions: 1,
+            reactions: 1,
+            movement: actor.speed
+        }
+    }
+
+
+    // ==========================================================
+    // §2 — Lookup Tables & Derived Values
+    // ==========================================================
+
+    // RULE: "An ability score of 10-11 gives a +0 modifier.
+    //        Each 2 points above 10 adds +1; each 2 below
+    //        subtracts 1. Example: 14 → +2, 8 → -1, 20 → +5."
+    //
+    // Pattern: derive (pure computation, no dice)
+    // Key: int / int always returns float — wrap in floor()
+
+    derive modifier(score: int) -> int {
+        floor((score - 10) / 2)
+    }
+
+
+    // RULE: "Proficiency bonus starts at +2 at level 1 and
+    //        increases by 1 every four levels: +2 at 1-4,
+    //        +3 at 5-8, +4 at 9-12, +5 at 13-16, +6 at 17-20."
+    //
+    // Pattern: derive — formula instead of lookup table
+
+    derive proficiency_bonus(level: int) -> int {
+        floor((level - 1) / 4) + 2
+    }
+
+
+    // RULE: "A creature's carrying capacity is 15 times its
+    //        Strength score."
+    //
+    // Pattern: derive reading an entity field
+
+    derive carry_capacity(c: Character) -> int {
+        c.abilities[STR] * 15
+    }
+
+
+    // RULE: "A creature can long jump a number of feet equal
+    //        to its Strength score (with a running start) or
+    //        half that distance from a standing start."
+    //
+    // Pattern: derive returning a struct
+
+    struct JumpDistance {
+        running: int
+        standing: int
+    }
+
+    derive jump_distances(c: Character) -> JumpDistance {
+        let str_score = c.abilities[STR]
+        JumpDistance {
+            running: str_score,
+            standing: floor(str_score / 2)
+        }
+    }
+
+
+    // ==========================================================
+    // §3 — Dice Mechanics & Resolution
+    // ==========================================================
+
+    // RULE: "To make an ability check, roll a d20 and add the
+    //        relevant ability modifier. If proficient, also add
+    //        your proficiency bonus. With advantage, roll 2d20
+    //        and take the higher; with disadvantage, the lower."
+    //
+    // Pattern: mechanic (needs dice, no mutation)
+    // Key: DiceExpr → roll() → RollResult pipeline
+    // Key: match on enum to select dice expression
+
+    mechanic ability_check(
+        actor: Character,
+        ability: Ability,
+        proficient: bool = false,
+        mode: RollMode = normal
+    ) -> RollResult {
+        let base: DiceExpr = match mode {
+            normal       => 1d20,
+            advantage    => 2d20kh1,
+            disadvantage => 2d20kl1
+        }
+        let prof = if proficient {
+            proficiency_bonus(actor.level)
+        } else {
+            0
+        }
+        roll(base + modifier(actor.abilities[ability]) + prof)
+    }
+
+
+    // RULE: "To make an attack roll, roll a d20 and add your
+    //        ability modifier + proficiency bonus. If the result
+    //        meets or exceeds the target's AC, you hit."
+    //
+    // Pattern: mechanic returning RollResult for caller to check
+
+    mechanic attack_roll(
+        attacker: Character,
+        target: Character,
+        ability: Ability,
+        mode: RollMode = normal
+    ) -> RollResult {
+        let base: DiceExpr = match mode {
+            normal       => 1d20,
+            advantage    => 2d20kh1,
+            disadvantage => 2d20kl1
+        }
+        roll(base + modifier(attacker.abilities[ability]) +
+            proficiency_bonus(attacker.level))
+    }
+
+
+    // RULE: "When you score a critical hit, roll all of the
+    //        attack's damage dice twice and add them together,
+    //        then add your ability modifier."
+    //
+    // Pattern: mechanic using multiply_dice() builtin
+    // Key: DiceExpr * int is a TYPE ERROR — use multiply_dice()
+
+    mechanic damage_roll(
+        attacker: Character,
+        weapon: Weapon,
+        critical: bool = false
+    ) -> RollResult {
+        let dice: DiceExpr = if critical {
+            multiply_dice(weapon.damage.dice, 2)
+        } else {
+            weapon.damage.dice
+        }
+        roll(dice + modifier(attacker.abilities[weapon.ability]))
+    }
+
+
+    // RULE: "If a creature has resistance to a damage type,
+    //        damage of that type is halved. If immune, it takes
+    //        none. If vulnerable, it takes double."
+    //
+    // Pattern: derive with guard match (no scrutinee)
+    // Key: first truthy branch wins; _ is the fallback
+
+    derive apply_resistances(
+        target: Character,
+        raw_damage: int,
+        damage_type: DamageType
+    ) -> int {
+        match {
+            damage_type in target.immunities      => 0,
+            damage_type in target.resistances     => floor(raw_damage / 2),
+            damage_type in target.vulnerabilities => raw_damage * 2,
+            _ => raw_damage
+        }
+    }
+
+
+    // RULE: "To make a saving throw, roll a d20 and add the
+    //        ability modifier. If proficient in that save, also
+    //        add proficiency bonus. Meet or beat the DC to pass."
+    //
+    // Pattern: mechanic returning an enum result
+
+    mechanic saving_throw(
+        target: Character,
+        ability: Ability,
+        DC: int,
+        mode: RollMode = normal
+    ) -> SaveResult {
+        let base: DiceExpr = match mode {
+            normal       => 1d20,
+            advantage    => 2d20kh1,
+            disadvantage => 2d20kl1
+        }
+        let prof = if ability in target.proficient_saves {
+            proficiency_bonus(target.level)
+        } else {
+            0
+        }
+        let result: RollResult = roll(
+            base + modifier(target.abilities[ability]) + prof
+        )
+        if result.total >= DC {
+            SaveResult.success
+        } else {
+            SaveResult.failure
+        }
+    }
+
+
+    // ==========================================================
+    // §4 — Combat Actions & Events
+    // ==========================================================
+
+    // Events must be declared before they can be emitted.
+    // Parameters are matching context; body fields are payload.
+    event Damaged(target: Character, attacker: Character, amount: int) {}
+    event entity_leaves_reach(reactor: Character) {
+        entity: Character
+    }
+    event turn_start(actor: Character) {}
+    event turn_end(actor: Character) {}
+
+
+    // RULE: "On your turn, use your action to make one melee
+    //        weapon attack. Roll d20 + attack bonus vs. AC.
+    //        On a hit, roll weapon damage and subtract from HP."
+    //
+    // Pattern: action (dice + mutation + receiver)
+    // Key: cost clause declares resource cost
+    // Key: requires clause is a precondition gate
+    // Key: emit fires events — matching hooks run inline
+    // Key: emit args must be named (positional is an error)
+
+    action Attack on attacker: Character (
+        target: Character,
+        weapon: Weapon
+    ) #attack {
+        cost { action }
+        requires { distance(attacker.position, target.position) <= weapon.range }
+
+        resolve {
+            let atk = attack_roll(attacker, target, weapon.ability)
+            if atk >= target.AC {
+                let dmg = damage_roll(attacker, weapon)
+                let final_dmg = apply_resistances(
+                    target, dmg.total, weapon.damage.type
+                )
+                target.HP -= final_dmg
+                emit Damaged(
+                    target: target,
+                    attacker: attacker,
+                    amount: final_dmg
+                )
+            }
+        }
+    }
+
+
+    // RULE: "Each creature in the area must make a Dexterity
+    //        saving throw. A target takes 3d6 fire damage on a
+    //        failed save, or half as much on a successful one."
+    //
+    // Pattern: AoE action with for loop over target list
+    // Key: roll once, apply to each target with save for half
+
+    action BurningHands on caster: Character (
+        targets: list<Character>
+    ) {
+        cost { action }
+        resolve {
+            let damage: RollResult = roll(3d6)
+            for target in targets {
+                let save = saving_throw(target, DEX, 13)
+                match save {
+                    success => { target.HP -= floor(damage.total / 2) },
+                    failure => { target.HP -= damage.total }
+                }
+            }
+        }
+    }
+
+
+    // RULE: "You can take the Dash action to gain extra movement
+    //        equal to your speed for the current turn."
+    //
+    // Pattern: action modifying turn budget
+    // Key: turn.movement accesses the mutable TurnBudget
+
+    action Dash on actor: Character () {
+        cost { action }
+        resolve {
+            turn.movement += actor.speed
+        }
+    }
+
+
+    // RULE: "At 5th level, a fighter can attack twice instead
+    //        of once when taking the Attack action."
+    //
+    // Pattern: action with range-based iteration
+    // Key: 0..n is exclusive — 0..2 gives [0, 1] (two attacks)
+
+    action ExtraAttack on attacker: Character (
+        target: Character,
+        weapon: Weapon,
+        num_attacks: int
+    ) #attack {
+        cost { action }
+        requires { distance(attacker.position, target.position) <= weapon.range }
+
+        resolve {
+            for i in 0..num_attacks {
+                let atk = attack_roll(attacker, target, weapon.ability)
+                if atk >= target.AC {
+                    let dmg = damage_roll(attacker, weapon)
+                    target.HP -= dmg.total
+                }
+            }
+        }
+    }
+
+
+    // ==========================================================
+    // §5 — Conditions & Modifiers
+    // ==========================================================
+
+    // RULE: "A prone creature has disadvantage on attack rolls.
+    //        An attack against the creature has advantage if the
+    //        attacker is within 5 feet, otherwise disadvantage.
+    //        Standing up costs half your movement."
+    //
+    // Pattern: condition with modify clauses
+    // Key: phase 1 — override parameters before the call
+    // Key: phase 2 — rewrite result.field after the call
+    // Key: modify bindings match specific roles (attacker/target)
+
+    condition Prone on bearer: Character {
+        modify attack_roll(attacker: bearer) {
+            mode = disadvantage
+        }
+        modify attack_roll(target: bearer) {
+            mode = if distance(attacker.position, bearer.position) <= 5 {
+                advantage
+            } else {
+                disadvantage
+            }
+        }
+        modify initial_budget(actor: bearer) {
+            result.movement = result.movement - floor(bearer.speed / 2)
+        }
+    }
+
+
+    // RULE: "Until the start of your next turn, any attack roll
+    //        made against you has disadvantage, and you make DEX
+    //        saving throws with advantage."
+    //
+    // Pattern: condition targeting multiple mechanics
+
+    condition Dodging on bearer: Character {
+        modify attack_roll(target: bearer) {
+            mode = disadvantage
+        }
+        modify saving_throw(target: bearer, ability: DEX) {
+            mode = advantage
+        }
+    }
+
+    action Dodge on actor: Character () {
+        cost { action }
+        resolve {
+            apply_condition(actor, Dodging, Duration.start_of_next_turn)
+        }
+    }
+
+
+    // RULE: "A stunned creature automatically fails Strength
+    //        and Dexterity saving throws. Attack rolls against
+    //        it have advantage."
+    //
+    // Pattern: condition with phase 2 result override
+    // Key: result = value replaces entire mechanic return value
+
+    condition Stunned on bearer: Character {
+        modify attack_roll(target: bearer) {
+            mode = advantage
+        }
+        modify saving_throw(target: bearer, ability: STR) {
+            result = SaveResult.failure
+        }
+        modify saving_throw(target: bearer, ability: DEX) {
+            result = SaveResult.failure
+        }
+    }
+
+
+    // ==========================================================
+    // §6 — Reactions & Hooks
+    // ==========================================================
+
+    // RULE: "When a hostile creature moves out of your reach,
+    //        you can use your reaction to make one melee attack
+    //        against it."
+    //
+    // Pattern: reaction (triggered, has cost, optional)
+    // Key: trigger binds event parameters and body fields
+    // Key: trigger.entity accesses the event body field
+
+    reaction OpportunityAttack on reactor: Character (
+        trigger: entity_leaves_reach(reactor: reactor)
+    ) {
+        cost { reaction }
+        resolve {
+            let atk = attack_roll(reactor, trigger.entity, STR)
+            if atk >= trigger.entity.AC {
+                let dmg: RollResult = roll(1d8 + modifier(reactor.abilities[STR]))
+                trigger.entity.HP -= dmg.total
+            }
+        }
+    }
+
+
+    // RULE: "If you take the Disengage action, your movement
+    //        doesn't provoke opportunity attacks for the rest
+    //        of the turn."
+    //
+    // Pattern: condition with suppress clause
+    // Key: suppress prevents a trigger event from firing at all
+
+    action Disengage on actor: Character () {
+        cost { action }
+        resolve {
+            apply_condition(actor, Disengaging, Duration.end_of_turn)
+        }
+    }
+
+    condition Disengaging on bearer: Character {
+        suppress entity_leaves_reach(entity: bearer)
+    }
+
+
+    // RULE: "At the start of each of your turns while at 0 HP,
+    //        you make a death saving throw: roll a d20. On 10+
+    //        you succeed. On a natural 20, you regain 1 HP.
+    //        On a natural 1, it counts as two failures."
+    //
+    // Pattern: hook (mandatory, no cost, auto-fires on event)
+    // Key: hooks always fire — cannot be declined or suppressed
+
+    hook DeathSaveCheck on actor: Character (
+        trigger: turn_start(actor: actor)
+    ) {
+        if actor.HP == 0 {
+            let save: RollResult = roll(1d20)
+            match {
+                save.unmodified == 20 => { actor.HP += 1 },
+                save.unmodified == 1  => {
+                    // critical failure — counts as two fails
+                },
+                save.total >= 10     => {
+                    // success
+                },
+                _                    => {
+                    // failure
+                }
+            }
+        }
+    }
+
+
+    // RULE: "When a creature drops to 0 HP, it falls prone."
+    //
+    // Pattern: hook triggered by a damage event
+
+    hook DeathDrop on target: Character (
+        trigger: Damaged(target: target)
+    ) {
+        if target.HP <= 0 {
+            apply_condition(target, Prone, Duration.indefinite)
+        }
+    }
+
+
+    // ==========================================================
+    // §7 — Resource Management & Set Operations
+    // ==========================================================
+
+    // RULE: "When a barbarian rages, they gain resistance to
+    //        bludgeoning, piercing, and slashing damage for
+    //        the duration. They also have advantage on Strength
+    //        saving throws."
+    //
+    // Pattern: action + set operations (+=) + condition
+    // Key: set += adds an element; .to_set() converts list to set
+    // Key: resource(0..=max) clamps on assignment — no underflow
+
+    derive physical_damage_types() -> set<DamageType> {
+        [bludgeoning, piercing, slashing].to_set()
+    }
+
+    action Rage on barbarian: Character () {
+        cost { bonus_action }
+        resolve {
+            for dt in physical_damage_types() {
+                barbarian.resistances += dt
+            }
+            apply_condition(barbarian, Raging, Duration.rounds(10))
+        }
+    }
+
+    condition Raging on bearer: Character {
+        modify saving_throw(target: bearer, ability: STR) {
+            mode = advantage
+        }
+    }
+
+
+    // ==========================================================
+    // §8 — Invocation Tracking (Concentration)
+    // ==========================================================
+
+    // RULE: "Some spells require concentration. Casting another
+    //        concentration spell ends the first. Taking damage
+    //        forces a CON save (DC = max of 10 or half the
+    //        damage taken). On failure, concentration is lost."
+    //
+    // Pattern: tag + invocation() + revoke() + event + hook
+    // Key: invocation() captures the current execution scope
+    // Key: revoke(inv) removes all conditions from that scope
+    // Key: revoke(option<Invocation>) — none is a safe no-op
+
+    event ConcentrationStarted(caster: Character, inv: Invocation)
+
+    action CastBless on caster: Character (
+        targets: list<Character>
+    ) #concentration {
+        cost { action }
+        resolve {
+            let inv = invocation()
+            for target in targets {
+                apply_condition(target, Blessed, Duration.rounds(10))
+            }
+            emit ConcentrationStarted(caster: caster, inv: inv)
+        }
+    }
+
+    hook on_conc on caster: Character (
+        trigger: ConcentrationStarted(caster: caster)
+    ) {
+        revoke(caster.concentrating_on)
+        caster.concentrating_on = some(trigger.inv)
+    }
+
+    reaction ConcentrationSave on caster: Character (
+        trigger: Damaged(target: caster)
+    ) {
+        cost free
+        resolve {
+            if caster.concentrating_on != none {
+                let dc = max(10, floor(trigger.amount / 2))
+                let save = ability_check(caster, CON)
+                if save.total < dc {
+                    revoke(caster.concentrating_on)
+                    caster.concentrating_on = none
+                }
+            }
+        }
+    }
+
+    condition Blessed on bearer: Character {
+        modify ability_check(actor: bearer) {
+            mode = advantage
+        }
+    }
+
+
+    // ==========================================================
+    // §9 — Optional Groups & Polymorphism
+    // ==========================================================
+
+    // RULE: "Some characters can cast spells. A spellcaster has
+    //        a spell save DC and spell attack bonus. To make a
+    //        spell attack, roll d20 + spell attack bonus vs. AC."
+    //
+    // Pattern: optional group + with constraint (conjunctive)
+    // Key: `with GroupName as alias` narrows scope
+    // Key: caller must prove the entity has the group
+
+    mechanic spell_attack(
+        caster: Character with Spellcasting as sc,
+        target: Character,
+        mode: RollMode = normal
+    ) -> RollResult {
+        let base: DiceExpr = match mode {
+            normal       => 1d20,
+            advantage    => 2d20kh1,
+            disadvantage => 2d20kl1
+        }
+        roll(base + caster.sc.spell_attack_bonus)
+    }
+
+
+    // RULE: "Fire Bolt: Make a ranged spell attack against the
+    //        target. On a hit, the target takes 1d10 fire damage."
+    //
+    // Pattern: action using group-narrowed mechanic
+
+    action CastFireBolt on caster: Character with Spellcasting as sc (
+        target: Character
+    ) {
+        cost { action }
+        requires { distance(caster.position, target.position) <= 120 }
+
+        resolve {
+            let atk = spell_attack(caster, target)
+            if atk >= target.AC {
+                let dmg: RollResult = roll(1d10)
+                target.HP -= dmg.total
+            }
+        }
+    }
+
+
+    // RULE: "Check if a creature has spellcasting ability."
+    //
+    // Pattern: has guard for runtime group detection
+    // Key: `has` works inside if expressions for type narrowing
+
+    derive is_spellcaster(c: Character) -> bool {
+        if c has Spellcasting {
+            true
+        } else {
+            false
+        }
+    }
+
+
+    // ==========================================================
+    // §10 — Unit Types & Spatial
+    // ==========================================================
+
+    // RULE: "A character's base walking speed is 30 feet.
+    //        Dwarves move 25 feet. The Dash action doubles
+    //        available movement. One grid square is 5 feet."
+    //
+    // Pattern: unit type with suffix literal syntax
+    // Key: same-unit +/- works; int * unit scales
+    // Key: unit / unit → float — wrap in floor() for int
+
+    derive standard_speed() -> Feet {
+        30ft
+    }
+
+    derive dwarf_speed() -> Feet {
+        25ft
+    }
+
+    derive dash_movement(base: Feet) -> Feet {
+        base + base
+    }
+
+    derive movement_squares(dist: Feet) -> int {
+        floor(dist / 5ft)
+    }
+
+
+    // ==========================================================
+    // §11 — Variant Rules & Options
+    // ==========================================================
+
+    // RULE: "Optional Rule — Flanking: When a creature and at
+    //        least one ally are on opposite sides of an enemy,
+    //        they have advantage on melee attack rolls against
+    //        that enemy."
+    //
+    // Pattern: option block extending a system
+    // Key: option has default on/off; when enabled adds modifiers
+    // Key: attacker: _ matches any attacker
+
+    option flanking extends "Few-Shot Examples" {
+        description: "Flanking grants advantage on melee attacks"
+        default: off
+        when enabled {
+            modify attack_roll(attacker: _) {
+                mode = advantage
+            }
+        }
+    }
+
+
+    // ==========================================================
+    // §12 — Cost Modification (Action Economy)
+    // ==========================================================
+
+    // RULE: "A rogue can use Cunning Action to take the Dash,
+    //        Disengage, or Hide action as a bonus action instead
+    //        of a full action."
+    //
+    // Pattern: condition modifying action costs
+    // Key: modify Action.cost(actor: bearer) overrides cost token
+    // Key: cost = bonus_action swaps the resource consumed
+
+    action Hide on actor: Character () {
+        cost { action }
+        resolve { }
+    }
+
+    condition CunningAction on bearer: Character {
+        modify Dash.cost(actor: bearer) {
+            cost = bonus_action
+        }
+        modify Disengage.cost(actor: bearer) {
+            cost = bonus_action
+        }
+        modify Hide.cost(actor: bearer) {
+            cost = bonus_action
+        }
+    }
+
+
+    // ==========================================================
+    // §13 — Ordered Enums & Comparisons
+    // ==========================================================
+
+    // RULE: "A creature can grapple a target only if the target
+    //        is no more than one size larger than itself. Sizes
+    //        from smallest to largest: Tiny, Small, Medium,
+    //        Large, Huge, Gargantuan."
+    //
+    // Pattern: ordered enum with ordinal() builtin
+    // Key: `ordered` keyword enables <, >, <=, >= on variants
+    // Key: ordinal() returns 0-based int position in enum order
+
+    derive can_grapple(grappler: Character, target: Character) -> bool {
+        ordinal(target.size) <= ordinal(grappler.size) + 1
+    }
+
+    derive size_difference(a: Character, b: Character) -> int {
+        ordinal(a.size) - ordinal(b.size)
+    }
+}
