@@ -582,9 +582,39 @@ fn query_entity(env: &TypeEnv, name: &str) {
     }
 }
 
-fn query_all(_env: &TypeEnv, _system: Option<&str>) {
-    eprintln!("query all: not yet implemented");
-    process::exit(1);
+fn query_all(env: &TypeEnv, system: Option<&str>) {
+    use ttrpg_cli::format;
+    let sections: &[(&str, Vec<String>)] = &[
+        ("Types", format::format_types_filtered(env, system)),
+        ("Events", format::format_events_filtered(env, system)),
+        ("Actions", format::format_actions_filtered(env, system)),
+        (
+            "Conditions",
+            format::format_condition_decls_filtered(env, system),
+        ),
+        ("Mechanics", format::format_mechanics_filtered(env, system)),
+        ("Reactions", format::format_reactions_filtered(env, system)),
+        ("Hooks", format::format_hooks_filtered(env, system)),
+    ];
+
+    let mut first = true;
+    for (heading, lines) in sections {
+        if lines.is_empty() {
+            continue;
+        }
+        if !first {
+            println!();
+        }
+        first = false;
+        println!("# {heading}");
+        for line in lines {
+            println!("{line}");
+        }
+    }
+
+    if first {
+        println!("no declarations");
+    }
 }
 
 /// Shared implementation for checking DSL sources.
