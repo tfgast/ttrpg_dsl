@@ -112,12 +112,14 @@ impl Program {
 }
 
 #[derive(Clone)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum TopLevel {
     Use(UseDecl),
     System(SystemBlock),
 }
 
 #[derive(Clone)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct UseDecl {
     pub path: String,
     pub alias: Option<Name>,
@@ -125,6 +127,7 @@ pub struct UseDecl {
 }
 
 #[derive(Clone)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct SystemBlock {
     pub name: Name,
     pub decls: Vec<Spanned<DeclKind>>,
@@ -133,6 +136,7 @@ pub struct SystemBlock {
 // ── Declarations ─────────────────────────────────────────────────
 
 #[derive(Clone)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum DeclKind {
     Group(GroupDecl),
     Tag(TagDecl),
@@ -154,16 +158,19 @@ pub enum DeclKind {
 }
 
 #[derive(Clone)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct TagDecl {
     pub name: Name,
 }
 
 /// Stable identity for a modify clause, assigned during `build_index()`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct ModifyClauseId(pub u32);
 
 /// What a modify clause targets: a specific function, a selector, or an action's cost.
 #[derive(Clone)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum ModifyTarget {
     Named(Name),
     Selector(Vec<SelectorPredicate>),
@@ -173,6 +180,7 @@ pub enum ModifyTarget {
 
 /// A predicate in a selector expression.
 #[derive(Clone)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum SelectorPredicate {
     Tag(Name),
     Returns(Spanned<TypeExpr>),
@@ -183,12 +191,14 @@ pub enum SelectorPredicate {
 }
 
 #[derive(Clone)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct GroupDecl {
     pub name: Name,
     pub fields: Vec<FieldDef>,
 }
 
 #[derive(Clone)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct EnumDecl {
     pub name: Name,
     pub ordered: bool,
@@ -196,6 +206,7 @@ pub struct EnumDecl {
 }
 
 #[derive(Clone)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct EnumVariant {
     pub name: Name,
     pub fields: Option<Vec<FieldEntry>>,
@@ -204,6 +215,7 @@ pub struct EnumVariant {
 
 /// Inline field in enum variant or param list: `name: type`
 #[derive(Clone)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct FieldEntry {
     pub name: Name,
     pub ty: Spanned<TypeExpr>,
@@ -211,12 +223,14 @@ pub struct FieldEntry {
 }
 
 #[derive(Clone)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct StructDecl {
     pub name: Name,
     pub fields: Vec<FieldDef>,
 }
 
 #[derive(Clone)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct EntityDecl {
     pub name: Name,
     pub fields: Vec<FieldDef>,
@@ -233,6 +247,7 @@ pub struct EntityDecl {
 /// - `optional GroupName` (external optional schema)
 /// - `include GroupName` (external required schema)
 #[derive(Clone)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct OptionalGroup {
     pub name: Name,
     pub fields: Vec<FieldDef>,
@@ -246,6 +261,7 @@ pub struct OptionalGroup {
 
 /// Field definition with optional default: `name: type (= expr)?`
 #[derive(Clone)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct FieldDef {
     pub name: Name,
     pub ty: Spanned<TypeExpr>,
@@ -255,6 +271,7 @@ pub struct FieldDef {
 
 /// A group constraint with optional alias: `Group` or `Group as alias`.
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct GroupConstraint {
     pub name: Name,
     pub alias: Option<Name>,
@@ -265,6 +282,7 @@ pub struct GroupConstraint {
 /// - Conjunctive (default): `with A, B` — all groups required and narrowed.
 /// - Disjunctive: `with A | B` — at least one group required, none narrowed.
 #[derive(Debug, Clone, PartialEq, Default)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct WithClause {
     pub groups: Vec<GroupConstraint>,
     pub disjunctive: bool,
@@ -278,6 +296,7 @@ impl WithClause {
 
 /// Shared representation for derive and mechanic declarations.
 #[derive(Clone)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct FnDecl {
     pub name: Name,
     pub params: Vec<Param>,
@@ -291,6 +310,7 @@ pub struct FnDecl {
 }
 
 #[derive(Clone)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct Param {
     pub name: Name,
     pub ty: Spanned<TypeExpr>,
@@ -302,6 +322,7 @@ pub struct Param {
 }
 
 #[derive(Clone)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct ActionDecl {
     pub name: Name,
     pub receiver_name: Name,
@@ -323,6 +344,7 @@ pub struct ActionDecl {
 }
 
 #[derive(Clone)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct CostClause {
     pub tokens: Vec<Spanned<Name>>,
     /// True when declared as `cost free` — intentionally no cost.
@@ -331,6 +353,7 @@ pub struct CostClause {
 }
 
 #[derive(Clone)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct ReactionDecl {
     pub name: Name,
     pub receiver_name: Name,
@@ -343,6 +366,7 @@ pub struct ReactionDecl {
 }
 
 #[derive(Clone)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct HookDecl {
     pub name: Name,
     pub receiver_name: Name,
@@ -354,6 +378,7 @@ pub struct HookDecl {
 }
 
 #[derive(Clone)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct TriggerExpr {
     pub event_name: Name,
     pub bindings: Vec<TriggerBinding>,
@@ -361,6 +386,7 @@ pub struct TriggerExpr {
 }
 
 #[derive(Clone)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct TriggerBinding {
     pub name: Option<Name>,
     pub value: Spanned<ExprKind>,
@@ -368,6 +394,7 @@ pub struct TriggerBinding {
 }
 
 #[derive(Clone)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct EventDecl {
     pub name: Name,
     pub params: Vec<Param>,
@@ -375,6 +402,7 @@ pub struct EventDecl {
 }
 
 #[derive(Clone)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct ConditionDecl {
     pub name: Name,
     /// Optional parameters: `condition Frightened(source: Character) on ...`.
@@ -391,12 +419,14 @@ pub struct ConditionDecl {
 }
 
 #[derive(Clone)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum ConditionClause {
     Modify(ModifyClause),
     Suppress(SuppressClause),
 }
 
 #[derive(Clone)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct ModifyClause {
     pub target: ModifyTarget,
     pub bindings: Vec<ModifyBinding>,
@@ -407,6 +437,7 @@ pub struct ModifyClause {
 }
 
 #[derive(Clone)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct ModifyBinding {
     pub name: Name,
     /// `None` means wildcard (`_`) — matches any value.
@@ -448,6 +479,7 @@ pub enum ModifyStmt {
 }
 
 #[derive(Clone)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct SuppressClause {
     pub event_name: Name,
     pub bindings: Vec<ModifyBinding>,
@@ -455,6 +487,7 @@ pub struct SuppressClause {
 }
 
 #[derive(Clone)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct PromptDecl {
     pub name: Name,
     pub params: Vec<Param>,
@@ -464,6 +497,7 @@ pub struct PromptDecl {
 }
 
 #[derive(Clone)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct OptionDecl {
     pub name: Name,
     pub extends: Option<Name>,
@@ -473,6 +507,7 @@ pub struct OptionDecl {
 }
 
 #[derive(Clone)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct MoveDecl {
     pub name: Name,
     pub receiver_name: Name,
@@ -484,6 +519,7 @@ pub struct MoveDecl {
 }
 
 #[derive(Clone)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct OutcomeBlock {
     pub name: Name,
     pub body: Block,
@@ -508,6 +544,7 @@ pub struct OutcomeBlock {
 /// Tables are registered as callable functions (like derives), invoked as:
 ///   let val = name(arg1, arg2)
 #[derive(Clone)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct TableDecl {
     pub name: Name,
     pub params: Vec<Param>,
@@ -517,6 +554,7 @@ pub struct TableDecl {
 
 /// A single entry in a table: keys => value.
 #[derive(Clone)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct TableEntry {
     pub keys: Vec<Spanned<TableKey>>,
     pub value: Spanned<ExprKind>,
@@ -525,6 +563,7 @@ pub struct TableEntry {
 
 /// A key in a table entry — can be a literal, enum variant, range, or wildcard.
 #[derive(Clone)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum TableKey {
     /// An expression used as a key (int literal, string literal, enum variant, etc.)
     Expr(ExprKind),
@@ -539,6 +578,7 @@ pub enum TableKey {
 
 /// A `unit` declaration: dimensioned numeric type with optional suffix.
 #[derive(Clone)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct UnitDecl {
     pub name: Name,
     pub suffix: Option<String>,
@@ -659,6 +699,7 @@ pub enum ExprKind {
 }
 
 #[derive(Clone)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum ForIterable {
     Collection(Box<Spanned<ExprKind>>),
     Range {
@@ -669,6 +710,7 @@ pub enum ForIterable {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum BinOp {
     Add,
     Sub,
@@ -686,12 +728,14 @@ pub enum BinOp {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum UnaryOp {
     Neg,
     Not,
 }
 
 #[derive(Clone)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct Arg {
     pub name: Option<Name>,
     pub value: Spanned<ExprKind>,
@@ -699,6 +743,7 @@ pub struct Arg {
 }
 
 #[derive(Clone)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct StructFieldInit {
     pub name: Name,
     pub value: Spanned<ExprKind>,
@@ -706,12 +751,14 @@ pub struct StructFieldInit {
 }
 
 #[derive(Clone)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum ElseBranch {
     Block(Block),
     If(Box<Spanned<ExprKind>>),
 }
 
 #[derive(Clone)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct PatternArm {
     pub pattern: Spanned<PatternKind>,
     pub body: ArmBody,
@@ -719,6 +766,7 @@ pub struct PatternArm {
 }
 
 #[derive(Clone)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct GuardArm {
     pub guard: GuardKind,
     pub body: ArmBody,
@@ -726,12 +774,14 @@ pub struct GuardArm {
 }
 
 #[derive(Clone)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum GuardKind {
     Wildcard,
     Expr(Spanned<ExprKind>),
 }
 
 #[derive(Clone)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum ArmBody {
     Expr(Spanned<ExprKind>),
     Block(Block),
@@ -766,6 +816,7 @@ pub enum PatternKind {
 // ── Statements ───────────────────────────────────────────────────
 
 #[derive(Clone)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum StmtKind {
     Let {
         name: Name,
@@ -798,6 +849,7 @@ pub enum StmtKind {
 }
 
 #[derive(Clone)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct LValue {
     pub root: Name,
     pub segments: Vec<LValueSegment>,
@@ -805,12 +857,14 @@ pub struct LValue {
 }
 
 #[derive(Clone)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum LValueSegment {
     Field(Name),
     Index(Spanned<ExprKind>),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum AssignOp {
     Eq,
     PlusEq,

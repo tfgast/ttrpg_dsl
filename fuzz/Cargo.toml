@@ -1,0 +1,53 @@
+[package]
+name = "ttrpg-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+arbitrary = { version = "1", features = ["derive"] }
+libfuzzer-sys = "0.4"
+ttrpg_ast = { path = "../crates/ttrpg_ast", features = ["arbitrary"] }
+ttrpg_lexer = { path = "../crates/ttrpg_lexer" }
+ttrpg_parser = { path = "../crates/ttrpg_parser" }
+ttrpg_checker = { path = "../crates/ttrpg_checker" }
+ttrpg_interp = { path = "../crates/ttrpg_interp" }
+
+[lints.clippy]
+pedantic = "allow"
+
+[[bin]]
+name = "fuzz_lexer"
+path = "fuzz_targets/fuzz_lexer.rs"
+doc = false
+
+[[bin]]
+name = "fuzz_parser"
+path = "fuzz_targets/fuzz_parser.rs"
+doc = false
+
+[[bin]]
+name = "fuzz_checker"
+path = "fuzz_targets/fuzz_checker.rs"
+doc = false
+
+[[bin]]
+name = "fuzz_full_pipeline"
+path = "fuzz_targets/fuzz_full_pipeline.rs"
+doc = false
+
+[[bin]]
+name = "fuzz_checker_ast"
+path = "fuzz_targets/fuzz_checker_ast.rs"
+doc = false
+
+[[bin]]
+name = "fuzz_interp_ast"
+path = "fuzz_targets/fuzz_interp_ast.rs"
+doc = false
+
+# Prevent Cargo from merging this into the parent workspace
+[workspace]

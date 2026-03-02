@@ -10,8 +10,12 @@ pub use name::Name;
 pub use span::{FileId, Span, Spanned};
 pub use visit::VisitSpansMut;
 
+#[cfg(feature = "arbitrary")]
+mod arbitrary_impl;
+
 /// Dice filter type — shared between lexer (token representation) and AST.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum DiceFilter {
     KeepHighest(u32),
     KeepLowest(u32),

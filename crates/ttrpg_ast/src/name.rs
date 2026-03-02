@@ -7,6 +7,7 @@ use std::ops::Deref;
 /// Provides a single point of change for a future interning migration:
 /// swap `Name(String)` to `Name(Symbol)` and fix the handful of conversion sites.
 #[derive(Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct Name(String);
 
 impl Name {

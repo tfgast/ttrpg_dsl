@@ -1,4 +1,5 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct FileId(pub u32);
 
 impl FileId {
@@ -6,6 +7,7 @@ impl FileId {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct Span {
     pub file: FileId,
     pub start: usize,
@@ -51,6 +53,7 @@ impl Span {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct Spanned<T> {
     pub node: T,
     pub span: Span,

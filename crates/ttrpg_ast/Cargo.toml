@@ -3,5 +3,11 @@ name = "ttrpg_ast"
 version.workspace = true
 edition.workspace = true
 
+[features]
+arbitrary = ["dep:arbitrary"]
+
+[dependencies]
+arbitrary = { version = "1", features = ["derive"], optional = true }
+
 [lints]
 workspace = true
