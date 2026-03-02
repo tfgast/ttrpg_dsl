@@ -13,8 +13,38 @@ pub(super) type SpawnBlock = (
 /// Split a trimmed line into the first whitespace-delimited token and the rest.
 pub(super) fn split_first_token(s: &str) -> (&str, &str) {
     match s.find(char::is_whitespace) {
-        Some(pos) => (&s[..pos], &s[pos + 1..]),
+        Some(pos) => {
+            let ws_char = s[pos..].chars().next().unwrap();
+            (&s[..pos], &s[pos + ws_char.len_utf8()..])
+        }
         None => (s, ""),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn split_first_token_ascii_space() {
+        assert_eq!(split_first_token("hello world"), ("hello", "world"));
+    }
+
+    #[test]
+    fn split_first_token_no_space() {
+        assert_eq!(split_first_token("hello"), ("hello", ""));
+    }
+
+    #[test]
+    fn split_first_token_unicode_whitespace() {
+        // U+00A0 (non-breaking space) is 2 bytes in UTF-8
+        let input = "hello\u{00A0}world";
+        assert_eq!(split_first_token(input), ("hello", "world"));
+    }
+
+    #[test]
+    fn split_first_token_tab() {
+        assert_eq!(split_first_token("hello\tworld"), ("hello", "world"));
     }
 }
 

@@ -1294,12 +1294,15 @@ pub fn validate_option_extends(
         let mut current = start_name.clone();
         loop {
             if !visited.insert(current.clone()) {
-                // Circular — build the chain for the error message
+                // Circular — build the chain for the error message.
+                // `current` is the node where the cycle was detected; walk
+                // from start_name and stop when we revisit `current`.
+                let cycle_node = current.clone();
                 let mut chain: Vec<String> = vec![start_name.to_string()];
                 let mut c = start_name.clone();
                 while let Some((parent, _)) = extends_map.get(&c) {
                     chain.push(parent.to_string());
-                    if parent == start_name {
+                    if *parent == cycle_node {
                         break;
                     }
                     c = parent.clone();

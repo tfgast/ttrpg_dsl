@@ -10475,3 +10475,48 @@ system "Ext" {
 "#),
     ]);
 }
+
+/// Bug tdsl-8qat: validate_option_extends cycle error builder assumes the
+/// cycle closes back to start_name, but for A->B->C->B the cycle is B->C->B
+/// and the builder loops forever trying to reach A. Must stop on the detected
+/// cycle node instead.
+#[test]
+fn option_extends_cycle_not_through_start_terminates() {
+    // A extends B, B extends C, C extends B → cycle is B→C→B.
+    // Starting from A, detection finds revisit at B. The error builder
+    // must terminate without looping.
+    expect_errors(
+        r#"
+system "test" {
+    option a extends "b" {
+        description: "A"
+        default: off
+    }
+    option b extends "c" {
+        description: "B"
+        default: off
+    }
+    option c extends "b" {
+        description: "C"
+        default: off
+    }
+}
+"#,
+        &["circular option extends"],
+    );
+}
+
+#[test]
+fn option_extends_direct_self_cycle_detected() {
+    expect_errors(
+        r#"
+system "test" {
+    option x extends "x" {
+        description: "Self"
+        default: off
+    }
+}
+"#,
+        &["circular option extends"],
+    );
+}
