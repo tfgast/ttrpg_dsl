@@ -145,7 +145,7 @@ impl<'a> Checker<'a> {
                     return Ty::Error;
                 }
                 let elem_ty = self.check_expr_expecting(&args[0].value, Some(&inner));
-                if !elem_ty.is_error() && !self.types_compatible(&inner, &elem_ty) {
+                if !elem_ty.is_error() && !self.types_compatible(&elem_ty, &inner) {
                     self.error(
                         format!(
                             ".append() element type mismatch: list is list<{}>, but got {}",
@@ -169,7 +169,7 @@ impl<'a> Checker<'a> {
                 }
                 let list_ty = Ty::List(inner.clone());
                 let arg_ty = self.check_expr_expecting(&args[0].value, Some(&list_ty));
-                if !arg_ty.is_error() && !self.types_compatible(&list_ty, &arg_ty) {
+                if !arg_ty.is_error() && !self.types_compatible(&arg_ty, &list_ty) {
                     self.error(
                         format!(".concat() type mismatch: list<{}> vs {}", inner, arg_ty),
                         span,
@@ -274,7 +274,7 @@ impl<'a> Checker<'a> {
                     return Ty::Error;
                 }
                 let elem_ty = self.check_expr_expecting(&args[0].value, Some(inner));
-                if !elem_ty.is_error() && !self.types_compatible(inner, &elem_ty) {
+                if !elem_ty.is_error() && !self.types_compatible(&elem_ty, inner) {
                     self.error(
                         format!(
                             ".{}() element type mismatch: set is set<{}>, but got {}",
@@ -298,7 +298,7 @@ impl<'a> Checker<'a> {
                 }
                 let set_ty = Ty::Set(Box::new(inner.clone()));
                 let arg_ty = self.check_expr_expecting(&args[0].value, Some(&set_ty));
-                if !arg_ty.is_error() && !self.types_compatible(&set_ty, &arg_ty) {
+                if !arg_ty.is_error() && !self.types_compatible(&arg_ty, &set_ty) {
                     self.error(
                         format!(".{}() type mismatch: set<{}> vs {}", method, inner, arg_ty),
                         span,
@@ -327,7 +327,7 @@ impl<'a> Checker<'a> {
                     return Ty::Error;
                 }
                 let elem_ty = self.check_expr_expecting(&args[0].value, Some(inner));
-                if !elem_ty.is_error() && !self.types_compatible(inner, &elem_ty) {
+                if !elem_ty.is_error() && !self.types_compatible(&elem_ty, inner) {
                     self.error(
                         format!(
                             ".contains() element type mismatch: set is set<{}>, but got {}",

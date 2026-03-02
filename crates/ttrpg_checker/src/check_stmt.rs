@@ -38,7 +38,7 @@ impl<'a> Checker<'a> {
         self.check_stmt_with_hint(stmt, is_last, None)
     }
 
-    fn check_stmt_with_hint(
+    pub(crate) fn check_stmt_with_hint(
         &mut self,
         stmt: &Spanned<StmtKind>,
         is_last: bool,

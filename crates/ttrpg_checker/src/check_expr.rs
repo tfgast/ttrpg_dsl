@@ -87,7 +87,7 @@ impl<'a> Checker<'a> {
                 condition,
                 then_block,
                 else_branch,
-            } => self.check_if(condition, then_block, else_branch.as_ref(), expr.span),
+            } => self.check_if(condition, then_block, else_branch.as_ref(), expr.span, hint),
 
             ExprKind::IfLet {
                 pattern,
@@ -100,6 +100,7 @@ impl<'a> Checker<'a> {
                 then_block,
                 else_branch.as_ref(),
                 expr.span,
+                hint,
             ),
 
             ExprKind::PatternMatch { scrutinee, arms } => {

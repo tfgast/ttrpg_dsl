@@ -12,6 +12,7 @@ impl<'a> Checker<'a> {
         then_block: &Block,
         else_branch: Option<&ElseBranch>,
         span: ttrpg_ast::Span,
+        hint: Option<&Ty>,
     ) -> Ty {
         let cond_ty = self.check_expr(condition);
         if !cond_ty.is_error() && cond_ty != Ty::Bool {
@@ -24,11 +25,11 @@ impl<'a> Checker<'a> {
         // Extract narrowings from `has` conditions for the then-block
         let narrowings = self.extract_has_narrowings(condition);
         let then_ty = if narrowings.is_empty() {
-            self.check_block(then_block)
+            self.check_block_with_tail_hint(then_block, hint)
         } else {
-            self.check_block_with_narrowings(then_block, &narrowings)
+            self.check_block_with_narrowings_and_hint(then_block, &narrowings, hint)
         };
-        self.check_else_branch_type(&then_ty, else_branch, span)
+        self.check_else_branch_type(&then_ty, else_branch, span, hint)
     }
 
     pub(crate) fn check_if_let(
@@ -38,16 +39,17 @@ impl<'a> Checker<'a> {
         then_block: &Block,
         else_branch: Option<&ElseBranch>,
         span: ttrpg_ast::Span,
+        hint: Option<&Ty>,
     ) -> Ty {
         let scrutinee_ty = self.check_expr(scrutinee);
 
         // Pattern bindings are scoped to the then-block
         self.scope.push(BlockKind::Inner);
         self.check_pattern(pattern, &scrutinee_ty);
-        let then_ty = self.check_block(then_block);
+        let then_ty = self.check_block_with_tail_hint(then_block, hint);
         self.scope.pop();
 
-        self.check_else_branch_type(&then_ty, else_branch, span)
+        self.check_else_branch_type(&then_ty, else_branch, span, hint)
     }
 
     fn check_else_branch_type(
@@ -55,10 +57,13 @@ impl<'a> Checker<'a> {
         then_ty: &Ty,
         else_branch: Option<&ElseBranch>,
         span: ttrpg_ast::Span,
+        hint: Option<&Ty>,
     ) -> Ty {
+        // Prefer the already-resolved then_ty over the original hint
+        let branch_hint = Some(then_ty).filter(|t| !t.is_error()).or(hint);
         match else_branch {
             Some(ElseBranch::Block(else_block)) => {
-                let else_ty = self.check_block(else_block);
+                let else_ty = self.check_block_with_tail_hint(else_block, branch_hint);
                 match self.unify_branch_types(then_ty, &else_ty) {
                     Some(ty) => ty,
                     None => {
@@ -74,7 +79,7 @@ impl<'a> Checker<'a> {
                 }
             }
             Some(ElseBranch::If(if_expr)) => {
-                let else_ty = self.check_expr(if_expr);
+                let else_ty = self.check_expr_expecting(if_expr, branch_hint);
                 match self.unify_branch_types(then_ty, &else_ty) {
                     Some(ty) => ty,
                     None => {

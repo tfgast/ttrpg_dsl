@@ -10362,3 +10362,116 @@ system "test" {
 "#;
     expect_no_errors(source);
 }
+
+// ── Regression: tdsl-z7sj — reversed types_compatible in list/set methods ──
+
+#[test]
+fn list_append_accepts_compatible_subtype() {
+    // append() should accept an element whose type is compatible with the list element type
+    let source = r#"
+system "test" {
+    entity Character { hp: int }
+    condition Prone on bearer: Character {}
+    derive foo(conds: list<Condition>) -> list<Condition> {
+        let c = conds
+        append(c, Prone)
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn set_add_accepts_compatible_subtype() {
+    let source = r#"
+system "test" {
+    entity Character { hp: int }
+    derive foo(items: set<int>) -> set<int> {
+        items.add(42)
+        items
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+// ── Regression: tdsl-7bdk — condition/event defaults referencing earlier params ──
+
+#[test]
+fn condition_default_references_earlier_param() {
+    let source = r#"
+system "test" {
+    entity Character { hp: int }
+    condition Buffed(amount: int, doubled: int = amount * 2) on bearer: Character {
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn event_default_references_earlier_param() {
+    let source = r#"
+system "test" {
+    entity Character { hp: int }
+    event Damaged(target: Character, amount: int, doubled: int = amount * 2) {}
+}
+"#;
+    expect_no_errors(source);
+}
+
+// ── Regression: tdsl-5zuy — if/if-let branches ignore expected type hints ──
+
+#[test]
+fn if_branches_thread_type_hint() {
+    let source = r#"
+system "test" {
+    enum Color { red, blue }
+    enum Alert { red, yellow }
+    derive pick(flag: bool) -> Color {
+        if flag { red } else { blue }
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn if_let_branches_thread_type_hint() {
+    let source = r#"
+system "test" {
+    enum Color { red, blue }
+    enum Alert { red, yellow }
+    derive pick(val: option<int>) -> Color {
+        if let some(_) = val { red } else { blue }
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+// ── Regression: tdsl-j5c2 — qualified types in modify selectors ──
+
+#[test]
+fn qualified_type_in_modify_selector_resolved() {
+    expect_multi_no_errors(&[
+        ("core.ttrpg", r#"
+system "Core" {
+    entity Character { hp: int }
+    enum DamageType { fire, cold }
+    derive deal(amount: int, dtype: DamageType) -> int { amount }
+}
+"#),
+        ("ext.ttrpg", r#"
+use "Core" as C
+system "Ext" {
+    entity Monster { hp: int }
+    condition Resistant on bearer: Monster {
+        modify [returns C.DamageType]() {
+            result = 0
+        }
+    }
+}
+"#),
+    ]);
+}

@@ -722,10 +722,11 @@ impl<'a> Checker<'a> {
         }
 
         // Type-check default expressions for condition parameters
+        // Bind incrementally so later defaults can reference earlier params
         self.scope.push(BlockKind::Derive);
         for param in &c.params {
+            let param_ty = self.env.resolve_type(&param.ty);
             if let Some(ref default) = param.default {
-                let param_ty = self.env.resolve_type(&param.ty);
                 let def_ty = self.check_expr_expecting(default, Some(&param_ty));
                 if !def_ty.is_error() && !self.types_compatible(&def_ty, &param_ty) {
                     self.error(
@@ -737,6 +738,14 @@ impl<'a> Checker<'a> {
                     );
                 }
             }
+            self.scope.bind(
+                param.name.clone(),
+                VarBinding {
+                    ty: param_ty,
+                    mutable: false,
+                    is_local: false,
+                },
+            );
         }
         self.scope.pop();
 
@@ -801,10 +810,11 @@ impl<'a> Checker<'a> {
             self.check_type_visible(&field.ty);
         }
 
+        // Bind incrementally so later defaults can reference earlier params
         self.scope.push(BlockKind::Derive);
         for param in &e.params {
+            let param_ty = self.env.resolve_type(&param.ty);
             if let Some(ref default) = param.default {
-                let param_ty = self.env.resolve_type(&param.ty);
                 let def_ty = self.check_expr_expecting(default, Some(&param_ty));
                 if !def_ty.is_error() && !self.types_compatible(&def_ty, &param_ty) {
                     self.error(
@@ -816,6 +826,14 @@ impl<'a> Checker<'a> {
                     );
                 }
             }
+            self.scope.bind(
+                param.name.clone(),
+                VarBinding {
+                    ty: param_ty,
+                    mutable: false,
+                    is_local: false,
+                },
+            );
         }
         self.scope.pop();
     }
@@ -1063,6 +1081,15 @@ impl<'a> Checker<'a> {
         block: &Block,
         narrowings: &[(Name, Name, Option<Name>)],
     ) -> Ty {
+        self.check_block_with_narrowings_and_hint(block, narrowings, None)
+    }
+
+    pub fn check_block_with_narrowings_and_hint(
+        &mut self,
+        block: &Block,
+        narrowings: &[(Name, Name, Option<Name>)],
+        hint: Option<&Ty>,
+    ) -> Ty {
         self.scope.push(BlockKind::Inner);
         for (var, group, alias) in narrowings {
             self.scope.narrow_group(var.clone(), group.clone());
@@ -1075,7 +1102,11 @@ impl<'a> Checker<'a> {
         let mut last_ty = Ty::Unit;
         for (i, stmt) in stmts.iter().enumerate() {
             let is_last = i == stmts.len() - 1;
-            last_ty = self.check_stmt(stmt, is_last);
+            if is_last && hint.is_some() {
+                last_ty = self.check_stmt_with_hint(stmt, is_last, hint);
+            } else {
+                last_ty = self.check_stmt(stmt, is_last);
+            }
         }
         self.scope.pop();
         last_ty

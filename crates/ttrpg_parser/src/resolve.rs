@@ -551,6 +551,13 @@ fn desugar_decl_types(
             }
             for clause in &mut c.clauses {
                 if let ConditionClause::Modify(m) = clause {
+                    desugar_modify_target(
+                        &mut m.target,
+                        current_system,
+                        aliases,
+                        module_map,
+                        diagnostics,
+                    );
                     desugar_modify_stmts(
                         &mut m.body,
                         current_system,
@@ -607,6 +614,13 @@ fn desugar_decl_types(
         DeclKind::Option(o) => {
             if let Some(ref mut clauses) = o.when_enabled {
                 for m in clauses {
+                    desugar_modify_target(
+                        &mut m.target,
+                        current_system,
+                        aliases,
+                        module_map,
+                        diagnostics,
+                    );
                     desugar_modify_stmts(
                         &mut m.body,
                         current_system,
@@ -619,6 +633,29 @@ fn desugar_decl_types(
         }
         DeclKind::Move(_) => {}
         DeclKind::Tag(_) => {}
+    }
+}
+
+/// Desugar qualified types inside a modify clause's target (selector predicates).
+fn desugar_modify_target(
+    target: &mut ModifyTarget,
+    current_system: &Name,
+    aliases: Option<&HashMap<Name, Name>>,
+    module_map: &ModuleMap,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    if let ModifyTarget::Selector(predicates) = target {
+        for pred in predicates {
+            match pred {
+                SelectorPredicate::Returns(ref mut ty) => {
+                    desugar_type_expr(ty, current_system, aliases, module_map, diagnostics);
+                }
+                SelectorPredicate::HasParam { ty: Some(ref mut ty), .. } => {
+                    desugar_type_expr(ty, current_system, aliases, module_map, diagnostics);
+                }
+                _ => {}
+            }
+        }
     }
 }
 
