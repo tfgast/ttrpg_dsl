@@ -288,7 +288,7 @@ impl Runner {
             &mut self.roll_queue,
             &self.unit_suffixes,
         );
-        let bindings: HashMap<Name, Value> = self
+        let bindings: rustc_hash::FxHashMap<Name, Value> = self
             .handles
             .iter()
             .map(|(name, entity)| (Name::from(name.as_str()), Value::Entity(*entity)))

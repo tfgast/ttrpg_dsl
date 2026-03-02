@@ -1,6 +1,7 @@
 use super::compare::{int_float_cmp, int_float_eq, match_pattern};
 use super::control::eval_stmt;
 use super::*;
+use rustc_hash::FxHashMap;
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
@@ -1986,7 +1987,7 @@ fn eval_pattern_bare_variant_no_match() {
     let env = make_env(&state, &mut handler, &interp);
 
     // Try to match `red` against an Int — should not match
-    let mut bindings = HashMap::new();
+    let mut bindings = FxHashMap::default();
     let result = match_pattern(
         &env,
         &Spanned {
@@ -2011,7 +2012,7 @@ fn eval_pattern_binding_still_works_for_non_variant() {
     let mut handler = ScriptedHandler::new();
     let env = make_env(&state, &mut handler, &interp);
 
-    let mut bindings = HashMap::new();
+    let mut bindings = FxHashMap::default();
     let result = match_pattern(
         &env,
         &Spanned {

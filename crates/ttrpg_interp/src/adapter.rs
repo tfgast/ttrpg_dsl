@@ -627,6 +627,7 @@ mod tests {
     use crate::effect::{ActionOutcome, Effect, Response};
     use crate::state::{ActiveCondition, InvocationId};
     use crate::value::{duration_variant, duration_variant_with};
+    use rustc_hash::FxHashMap;
     use std::collections::{BTreeMap, HashMap};
 
     // ── Test WritableState impl ────────────────────────────────
@@ -1251,7 +1252,7 @@ mod tests {
 
         // Set up GameState with an entity that has a turn budget
         let mut game_state = GameState::new();
-        let actor = game_state.add_entity("Fighter", HashMap::new());
+        let actor = game_state.add_entity("Fighter", FxHashMap::default());
         let mut budget = BTreeMap::new();
         budget.insert("actions".into(), Value::Int(1));
         budget.insert("bonus_actions".into(), Value::Int(1));

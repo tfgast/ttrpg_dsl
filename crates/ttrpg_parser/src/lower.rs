@@ -4,7 +4,7 @@
 //! Runs after parsing but **before** type-checking. The synthesized
 //! declarations are validated by the checker naturally.
 
-use std::collections::HashSet;
+use rustc_hash::FxHashSet;
 
 use ttrpg_ast::ast::*;
 use ttrpg_ast::diagnostic::Diagnostic;
@@ -30,10 +30,10 @@ pub fn lower_moves(mut program: Program, diags: &mut Vec<Diagnostic>) -> Program
 
 fn lower_system_moves(system: &mut SystemBlock, diags: &mut Vec<Diagnostic>) {
     // Collect synthetic names used by moves in this block to detect collisions.
-    let mut synthetic_names: HashSet<Name> = HashSet::new();
+    let mut synthetic_names: FxHashSet<Name> = FxHashSet::default();
 
     // Also collect existing declaration names to check for collisions.
-    let existing_names: HashSet<Name> = system
+    let existing_names: FxHashSet<Name> = system
         .decls
         .iter()
         .filter_map(|d| match &d.node {
@@ -85,8 +85,8 @@ fn synthetic_mechanic_name(move_name: &str) -> Name {
 fn lower_one_move(
     m: &MoveDecl,
     span: Span,
-    existing_names: &HashSet<Name>,
-    synthetic_names: &mut HashSet<Name>,
+    existing_names: &FxHashSet<Name>,
+    synthetic_names: &mut FxHashSet<Name>,
     diags: &mut Vec<Diagnostic>,
 ) -> Option<(FnDecl, ActionDecl)> {
     // 0. Reject reserved __ prefix on user-authored move names
@@ -103,7 +103,7 @@ fn lower_one_move(
 
     // 1. Validate outcomes: must be exactly {strong_hit, weak_hit, miss}
     let outcome_names: Vec<&str> = m.outcomes.iter().map(|o| o.name.as_str()).collect();
-    let mut seen = HashSet::new();
+    let mut seen = FxHashSet::default();
     let mut has_error = false;
 
     for outcome in &m.outcomes {
@@ -404,7 +404,7 @@ mod tests {
             decls: vec![table_decl, hook_decl],
         };
 
-        let existing: std::collections::HashSet<Name> = system
+        let existing: rustc_hash::FxHashSet<Name> = system
             .decls
             .iter()
             .filter_map(|d| match &d.node {

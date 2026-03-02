@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::name::Name;
 use crate::{DiceFilter, Span, Spanned};
@@ -10,20 +10,20 @@ pub struct Program {
     pub items: Vec<Spanned<TopLevel>>,
 
     // ── Declaration index (built by `build_index()`) ────────────
-    pub actions: HashMap<Name, ActionDecl>,
-    pub derives: HashMap<Name, FnDecl>,
-    pub mechanics: HashMap<Name, FnDecl>,
-    pub reactions: HashMap<Name, ReactionDecl>,
+    pub actions: FxHashMap<Name, ActionDecl>,
+    pub derives: FxHashMap<Name, FnDecl>,
+    pub mechanics: FxHashMap<Name, FnDecl>,
+    pub reactions: FxHashMap<Name, ReactionDecl>,
     pub reaction_order: Vec<Name>,
-    pub conditions: HashMap<Name, ConditionDecl>,
-    pub events: HashMap<Name, EventDecl>,
-    pub prompts: HashMap<Name, PromptDecl>,
-    pub options: HashMap<Name, OptionDecl>,
+    pub conditions: FxHashMap<Name, ConditionDecl>,
+    pub events: FxHashMap<Name, EventDecl>,
+    pub prompts: FxHashMap<Name, PromptDecl>,
+    pub options: FxHashMap<Name, OptionDecl>,
     pub option_order: Vec<Name>,
-    pub hooks: HashMap<Name, HookDecl>,
+    pub hooks: FxHashMap<Name, HookDecl>,
     pub hook_order: Vec<Name>,
-    pub tables: HashMap<Name, TableDecl>,
-    pub tags: HashSet<Name>,
+    pub tables: FxHashMap<Name, TableDecl>,
+    pub tags: FxHashSet<Name>,
     pub next_modify_clause_id: u32,
 }
 

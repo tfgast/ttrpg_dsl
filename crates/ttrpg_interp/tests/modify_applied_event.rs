@@ -4,8 +4,9 @@
 //! when a condition's modify clause fires, matching `modify_applied` hooks
 //! execute automatically.
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::VecDeque;
 
+use rustc_hash::FxHashMap;
 use ttrpg_ast::diagnostic::Severity;
 use ttrpg_ast::FileId;
 use ttrpg_interp::adapter::StateAdapter;
@@ -156,7 +157,7 @@ system "test" {
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let mut state = GameState::new();
 
-    let mut fields = HashMap::new();
+    let mut fields = FxHashMap::default();
     fields.insert("HP".into(), Value::Int(10));
     let entity = state.add_entity("Character", fields);
 
@@ -216,7 +217,7 @@ system "test" {
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let mut state = GameState::new();
 
-    let mut fields = HashMap::new();
+    let mut fields = FxHashMap::default();
     fields.insert("HP".into(), Value::Int(10));
     fields.insert("last_modified_fn".into(), Value::Str("none".into()));
     let entity = state.add_entity("Character", fields);
@@ -277,7 +278,7 @@ system "test" {
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let mut state = GameState::new();
 
-    let mut fields = HashMap::new();
+    let mut fields = FxHashMap::default();
     fields.insert("HP".into(), Value::Int(10));
     let entity = state.add_entity("Character", fields);
 
@@ -340,7 +341,7 @@ system "test" {
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let mut state = GameState::new();
 
-    let mut fields = HashMap::new();
+    let mut fields = FxHashMap::default();
     fields.insert("HP".into(), Value::Int(10));
     let entity = state.add_entity("Character", fields);
 
@@ -412,7 +413,7 @@ system "test" {
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let mut state = GameState::new();
 
-    let mut fields = HashMap::new();
+    let mut fields = FxHashMap::default();
     fields.insert("HP".into(), Value::Int(10));
     fields.insert("counter".into(), Value::Int(0));
     let entity = state.add_entity("Character", fields);

@@ -11,7 +11,8 @@ pub mod state;
 pub mod value;
 
 use std::cell::Cell;
-use std::collections::HashMap;
+
+use rustc_hash::FxHashMap;
 
 use ttrpg_ast::ast::{DeclKind, ExprKind, Program, TopLevel};
 use ttrpg_ast::{Name, Span, Spanned};
@@ -270,7 +271,7 @@ impl<'p> Interpreter<'p> {
         state: &dyn StateProvider,
         handler: &mut dyn EffectHandler,
         expr: &Spanned<ExprKind>,
-        bindings: HashMap<Name, Value>,
+        bindings: FxHashMap<Name, Value>,
     ) -> Result<Value, RuntimeError> {
         let mut env = Env::new(state, handler, self);
         for (name, value) in bindings {
@@ -483,13 +484,13 @@ impl<'a, 'p> Env<'a, 'p> {
 
 /// A single lexical scope containing variable bindings.
 pub(crate) struct Scope {
-    pub bindings: HashMap<Name, Value>,
+    pub bindings: FxHashMap<Name, Value>,
 }
 
 impl Scope {
     pub fn new() -> Self {
         Scope {
-            bindings: HashMap::new(),
+            bindings: FxHashMap::default(),
         }
     }
 }
@@ -497,7 +498,7 @@ impl Scope {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::{BTreeMap, VecDeque};
+    use std::collections::{BTreeMap, HashMap, VecDeque};
 
     use ttrpg_ast::diagnostic::Severity;
 

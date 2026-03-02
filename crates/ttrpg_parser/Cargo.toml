@@ -9,3 +9,4 @@ workspace = true
 [dependencies]
 ttrpg_ast.workspace = true
 ttrpg_lexer.workspace = true
+rustc-hash.workspace = true

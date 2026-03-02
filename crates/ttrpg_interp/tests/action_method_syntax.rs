@@ -1,7 +1,8 @@
 //! Tests for method-call syntax on actions: entity.Action(args)
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::VecDeque;
 
+use rustc_hash::FxHashMap;
 use ttrpg_ast::diagnostic::Severity;
 use ttrpg_ast::FileId;
 use ttrpg_interp::adapter::StateAdapter;
@@ -77,7 +78,7 @@ fn setup_errors(source: &str) -> Vec<String> {
 }
 
 fn make_entity(gs: &mut GameState, hp: i64) -> ttrpg_interp::state::EntityRef {
-    let mut fields = HashMap::new();
+    let mut fields = FxHashMap::default();
     fields.insert("HP".into(), Value::Int(hp));
     gs.add_entity("Character", fields)
 }

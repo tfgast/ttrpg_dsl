@@ -178,9 +178,7 @@ impl Parser {
         // We swap elements forward so no cloning is needed.
         let mut write = self.pos;
         for read in self.pos..self.tokens.len() {
-            if read < end
-                && std::mem::discriminant(&self.tokens[read].kind) == disc_newline
-            {
+            if read < end && std::mem::discriminant(&self.tokens[read].kind) == disc_newline {
                 continue; // skip newlines in the target range
             }
             if write != read {

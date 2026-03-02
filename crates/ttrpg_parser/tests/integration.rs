@@ -1675,10 +1675,7 @@ fn test_ordered_enum_parsed() {
     }
 }"#;
     let (program, diagnostics) = parse(source, FileId::SYNTH);
-    assert!(
-        diagnostics.is_empty(),
-        "unexpected errors: {diagnostics:?}"
-    );
+    assert!(diagnostics.is_empty(), "unexpected errors: {diagnostics:?}");
 
     let system = match &program.items[0].node {
         TopLevel::System(s) => s,
@@ -1703,10 +1700,7 @@ fn test_non_ordered_enum_parsed() {
     }
 }"#;
     let (program, diagnostics) = parse(source, FileId::SYNTH);
-    assert!(
-        diagnostics.is_empty(),
-        "unexpected errors: {diagnostics:?}"
-    );
+    assert!(diagnostics.is_empty(), "unexpected errors: {diagnostics:?}");
 
     let system = match &program.items[0].node {
         TopLevel::System(s) => s,
@@ -2428,10 +2422,7 @@ fn test_parse_disjunctive_with_groups() {
     }
 }"#;
     let (program, diagnostics) = parse(source, FileId::SYNTH);
-    assert!(
-        diagnostics.is_empty(),
-        "unexpected errors: {diagnostics:?}"
-    );
+    assert!(diagnostics.is_empty(), "unexpected errors: {diagnostics:?}");
 
     let system = match &program.items[0].node {
         TopLevel::System(s) => s,
@@ -2462,10 +2453,7 @@ fn test_parse_disjunctive_with_alias() {
     }
 }"#;
     let (program, diagnostics) = parse(source, FileId::SYNTH);
-    assert!(
-        diagnostics.is_empty(),
-        "unexpected errors: {diagnostics:?}"
-    );
+    assert!(diagnostics.is_empty(), "unexpected errors: {diagnostics:?}");
 
     let system = match &program.items[0].node {
         TopLevel::System(s) => s,
@@ -2508,10 +2496,7 @@ fn test_parse_conjunctive_with_not_disjunctive() {
     }
 }"#;
     let (program, diagnostics) = parse(source, FileId::SYNTH);
-    assert!(
-        diagnostics.is_empty(),
-        "unexpected errors: {diagnostics:?}"
-    );
+    assert!(diagnostics.is_empty(), "unexpected errors: {diagnostics:?}");
 
     let system = match &program.items[0].node {
         TopLevel::System(s) => s,

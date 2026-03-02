@@ -21,6 +21,7 @@ ttrpg_parser.workspace = true
 ttrpg_checker.workspace = true
 ttrpg_interp.workspace = true
 glob.workspace = true
+rustc-hash.workspace = true
 nu-ansi-term.workspace = true
 rand.workspace = true
 reedline.workspace = true

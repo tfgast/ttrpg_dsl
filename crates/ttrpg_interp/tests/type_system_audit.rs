@@ -14,8 +14,9 @@
 //! 6. Float: no literals, only produced by division, floor/ceil.
 //! 7. Composite types: list/set/map/option construction and access.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 
+use rustc_hash::FxHashMap;
 use ttrpg_ast::diagnostic::Severity;
 use ttrpg_ast::FileId;
 use ttrpg_interp::adapter::StateAdapter;
@@ -271,10 +272,7 @@ system "test" {
     match val {
         Value::Float(f) => {
             let expected = 10.0 / 3.0;
-            assert!(
-                (f - expected).abs() < 1e-10,
-                "expected {expected}, got {f}"
-            );
+            assert!((f - expected).abs() < 1e-10, "expected {expected}, got {f}");
         }
         other => panic!("expected Float, got {other:?}"),
     }
@@ -1097,7 +1095,7 @@ system "test" {
     let (program, result) = setup(source);
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let mut state = GameState::new();
-    let mut fields = HashMap::new();
+    let mut fields = FxHashMap::default();
     fields.insert("HP".into(), Value::Int(10));
     let entity = state.add_entity("Character", fields);
     let adapter = StateAdapter::new(state);
@@ -1146,7 +1144,7 @@ system "test" {
     let (program, result) = setup(source);
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let mut state = GameState::new();
-    let mut fields = HashMap::new();
+    let mut fields = FxHashMap::default();
     fields.insert("HP".into(), Value::Int(15));
     let entity = state.add_entity("Character", fields);
     let adapter = StateAdapter::new(state);
@@ -1183,7 +1181,7 @@ system "test" {
     let (program, result) = setup(source);
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let mut state = GameState::new();
-    let mut fields = HashMap::new();
+    let mut fields = FxHashMap::default();
     fields.insert("HP".into(), Value::Int(5));
     let entity = state.add_entity("Character", fields);
     let adapter = StateAdapter::new(state);
@@ -1218,7 +1216,7 @@ system "test" {
     let (program, result) = setup(source);
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let mut state = GameState::new();
-    let mut fields = HashMap::new();
+    let mut fields = FxHashMap::default();
     fields.insert("HP".into(), Value::Int(10));
     let entity = state.add_entity("Character", fields);
     let adapter = StateAdapter::new(state);
@@ -1245,7 +1243,7 @@ system "test" {
     let (program, result) = setup(source);
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let mut state = GameState::new();
-    let mut fields = HashMap::new();
+    let mut fields = FxHashMap::default();
     fields.insert("HP".into(), Value::Int(15));
     let entity = state.add_entity("Character", fields);
     let adapter = StateAdapter::new(state);
@@ -1771,7 +1769,7 @@ system "test" {
     let (program, result) = setup(source);
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let mut state = GameState::new();
-    let mut fields = HashMap::new();
+    let mut fields = FxHashMap::default();
     let mut ft_fields = BTreeMap::new();
     ft_fields.insert("value".into(), Value::Int(30));
     fields.insert(
@@ -1841,7 +1839,7 @@ system "test" {
     let (program, result) = setup(source);
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let mut state = GameState::new();
-    let mut fields = HashMap::new();
+    let mut fields = FxHashMap::default();
     fields.insert(
         "resistances".into(),
         Value::Set(
@@ -1910,7 +1908,7 @@ system "test" {
         variant: "cold".into(),
         fields: BTreeMap::new(),
     };
-    let mut fields = HashMap::new();
+    let mut fields = FxHashMap::default();
     fields.insert(
         "resistances".into(),
         Value::Set([fire, cold.clone()].into()),
@@ -1954,7 +1952,7 @@ system "test" {
     let (program, result) = setup(source);
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let mut state = GameState::new();
-    let mut fields = HashMap::new();
+    let mut fields = FxHashMap::default();
     fields.insert("tags".into(), Value::Set([Value::Int(1)].into()));
     let entity = state.add_entity("Character", fields);
     let adapter = StateAdapter::new(state);
@@ -1993,7 +1991,7 @@ system "test" {
     let (program, result) = setup(source);
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let mut state = GameState::new();
-    let mut fields = HashMap::new();
+    let mut fields = FxHashMap::default();
     fields.insert(
         "tags".into(),
         Value::Set([Value::Int(1), Value::Int(2), Value::Int(3)].into()),
@@ -2033,7 +2031,7 @@ system "test" {
     let (program, result) = setup(source);
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let mut state = GameState::new();
-    let mut fields = HashMap::new();
+    let mut fields = FxHashMap::default();
     fields.insert(
         "tags".into(),
         Value::Set([Value::Int(1), Value::Int(2)].into()),
@@ -2073,7 +2071,7 @@ system "test" {
     let (program, result) = setup(source);
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let mut state = GameState::new();
-    let mut fields = HashMap::new();
+    let mut fields = FxHashMap::default();
     fields.insert(
         "tags".into(),
         Value::Set([Value::Int(1), Value::Int(2)].into()),

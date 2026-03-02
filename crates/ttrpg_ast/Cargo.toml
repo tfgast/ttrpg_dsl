@@ -8,6 +8,7 @@ arbitrary = ["dep:arbitrary"]
 
 [dependencies]
 arbitrary = { version = "1", features = ["derive"], optional = true }
+rustc-hash.workspace = true
 
 [lints]
 workspace = true

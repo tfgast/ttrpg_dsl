@@ -4,8 +4,9 @@
 //! the entire pipeline (parse → lower → check → interpret), exercising every layer
 //! together with realistic game scenarios.
 
-use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
+use rustc_hash::FxHashMap;
 use ttrpg_ast::diagnostic::Severity;
 use ttrpg_ast::DiceFilter;
 use ttrpg_ast::FileId;
@@ -138,7 +139,7 @@ fn add_weapon(
     range: i64,
     long_range: Option<i64>,
 ) -> EntityRef {
-    let mut fields = HashMap::new();
+    let mut fields = FxHashMap::default();
     fields.insert("name".into(), Value::Str(name.to_string()));
     fields.insert("damage".into(), dmg);
     fields.insert("ability".into(), enum_variant("Ability", ability));
@@ -172,7 +173,7 @@ fn add_character(
     position: Value,
     equipped_weapon: EntityRef,
 ) -> EntityRef {
-    let mut fields = HashMap::new();
+    let mut fields = FxHashMap::default();
     fields.insert("name".into(), Value::Str(name.to_string()));
     fields.insert("level".into(), Value::Int(level));
     fields.insert("abilities".into(), abilities);

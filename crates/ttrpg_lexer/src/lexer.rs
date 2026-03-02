@@ -1,5 +1,7 @@
 use std::sync::Arc;
 
+use rustc_hash::FxHashMap;
+
 use crate::cursor::Cursor;
 use crate::token::{Token, TokenKind};
 use ttrpg_ast::{DiceFilter, FileId, Span};
@@ -9,6 +11,9 @@ pub struct RawLexer<'a> {
     cursor: Cursor<'a>,
     file: FileId,
     done: bool,
+    /// Intern table for deduplicating `Arc<str>` allocations.
+    /// Keys are slices from the source, values are the shared `Arc<str>`.
+    intern: FxHashMap<&'a str, Arc<str>>,
 }
 
 impl<'a> RawLexer<'a> {
@@ -17,7 +22,13 @@ impl<'a> RawLexer<'a> {
             cursor: Cursor::new(source),
             file,
             done: false,
+            intern: FxHashMap::default(),
         }
+    }
+
+    /// Return a shared `Arc<str>` for `s`, reusing an existing allocation if present.
+    fn intern(&mut self, s: &'a str) -> Arc<str> {
+        Arc::clone(self.intern.entry(s).or_insert_with(|| Arc::from(s)))
     }
 
     /// Convenience: build a span in this file.
@@ -176,7 +187,7 @@ impl<'a> RawLexer<'a> {
             self.cursor
                 .eat_while(|ch| ch.is_ascii_alphanumeric() || ch == '_');
             let suffix_end = self.cursor.pos();
-            let suffix: Arc<str> = Arc::from(self.cursor.slice(suffix_start, suffix_end));
+            let suffix: Arc<str> = self.intern(self.cursor.slice(suffix_start, suffix_end));
             return Token::new(
                 TokenKind::UnitLiteral {
                     value: count,
@@ -251,7 +262,7 @@ impl<'a> RawLexer<'a> {
             "none" => TokenKind::None,
             "in" => TokenKind::In,
             "for" => TokenKind::For,
-            _ => TokenKind::Ident(Arc::from(text)),
+            _ => TokenKind::Ident(self.intern(text)),
         };
 
         Token::new(kind, span)

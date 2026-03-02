@@ -577,6 +577,7 @@ fn apply_dice_filter(dice: &mut [i64], filter: &Option<DiceFilter>) -> Vec<i64> 
 mod tests {
     use super::*;
     use rand::SeedableRng;
+    use rustc_hash::FxHashMap;
     use ttrpg_interp::effect::FieldPathSegment;
 
     #[test]
@@ -665,7 +666,7 @@ mod tests {
     fn cli_handler_mutate_field() {
         let mut gs = GameState::new();
         let entity = gs.add_entity("Fighter", {
-            let mut f = HashMap::new();
+            let mut f = FxHashMap::default();
             f.insert("HP".into(), Value::Int(30));
             f
         });
@@ -701,7 +702,7 @@ mod tests {
     fn cli_handler_mutate_field_clamped() {
         let mut gs = GameState::new();
         let entity = gs.add_entity("Fighter", {
-            let mut f = HashMap::new();
+            let mut f = FxHashMap::default();
             f.insert("HP".into(), Value::Int(5));
             f
         });
@@ -731,7 +732,7 @@ mod tests {
     #[test]
     fn cli_handler_deduct_cost() {
         let mut gs = GameState::new();
-        let entity = gs.add_entity("Fighter", HashMap::new());
+        let entity = gs.add_entity("Fighter", FxHashMap::default());
         let mut budget = BTreeMap::new();
         budget.insert("actions".into(), Value::Int(1));
         gs.set_turn_budget(&entity, budget);
@@ -817,7 +818,7 @@ mod tests {
     fn refcell_state_reads() {
         let mut gs = GameState::new();
         let entity = gs.add_entity("Fighter", {
-            let mut f = HashMap::new();
+            let mut f = FxHashMap::default();
             f.insert("HP".into(), Value::Int(30));
             f
         });
@@ -895,7 +896,7 @@ mod tests {
     #[test]
     fn cli_handler_grant_group() {
         let mut gs = GameState::new();
-        let entity = gs.add_entity("Character", HashMap::new());
+        let entity = gs.add_entity("Character", FxHashMap::default());
         let game_state = RefCell::new(gs);
         let mut reverse = HashMap::new();
         reverse.insert(entity, "wizard".to_string());
@@ -934,7 +935,7 @@ mod tests {
     fn cli_handler_revoke_group() {
         let mut gs = GameState::new();
         let entity = gs.add_entity("Character", {
-            let mut f = HashMap::new();
+            let mut f = FxHashMap::default();
             f.insert("HP".into(), Value::Int(30));
             f
         });
@@ -984,7 +985,7 @@ mod tests {
         // When a field doesn't exist, compute_field_value uses Int(0) as baseline
         // for +=. The audit log should show "0 -> 5", not "none -> 5".
         let mut gs = GameState::new();
-        let entity = gs.add_entity("Fighter", HashMap::new());
+        let entity = gs.add_entity("Fighter", FxHashMap::default());
         let game_state = RefCell::new(gs);
         let mut reverse = HashMap::new();
         reverse.insert(entity, "fighter".to_string());
@@ -1022,7 +1023,7 @@ mod tests {
         // -= on missing field: compute baseline is 0, so 0 - 10 = -10, clamped to 0.
         // Log should show "0 -> 0 (clamped)", not "none -> 0 (clamped)".
         let mut gs = GameState::new();
-        let entity = gs.add_entity("Fighter", HashMap::new());
+        let entity = gs.add_entity("Fighter", FxHashMap::default());
         let game_state = RefCell::new(gs);
         let mut reverse = HashMap::new();
         reverse.insert(entity, "fighter".to_string());

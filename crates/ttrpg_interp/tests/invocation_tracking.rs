@@ -5,8 +5,9 @@
 //! revocation, nested invocations, ID continuity, failure outcomes,
 //! and revoke(none) no-ops.
 
-use std::collections::{BTreeMap, HashMap, VecDeque};
+use std::collections::{BTreeMap, VecDeque};
 
+use rustc_hash::FxHashMap;
 use ttrpg_ast::diagnostic::Severity;
 use ttrpg_ast::FileId;
 use ttrpg_interp::adapter::StateAdapter;
@@ -145,7 +146,7 @@ system "test" {
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let mut state = GameState::new();
 
-    let mut fields = HashMap::new();
+    let mut fields = FxHashMap::default();
     fields.insert("HP".into(), Value::Int(50));
     let actor = state.add_entity("Character", fields.clone());
     let target = state.add_entity("Character", fields);
@@ -189,7 +190,7 @@ system "test" {
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let mut state = GameState::new();
 
-    let mut fields = HashMap::new();
+    let mut fields = FxHashMap::default();
     fields.insert("HP".into(), Value::Int(50));
     let caster = state.add_entity("Character", fields.clone());
     let target = state.add_entity("Character", fields);
@@ -243,7 +244,7 @@ system "test" {
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let mut state = GameState::new();
 
-    let mut fields = HashMap::new();
+    let mut fields = FxHashMap::default();
     fields.insert("HP".into(), Value::Int(50));
     let caster = state.add_entity("Character", fields.clone());
     let t1 = state.add_entity("Character", fields.clone());
@@ -347,12 +348,12 @@ system "test" {
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let mut state = GameState::new();
 
-    let mut caster_fields = HashMap::new();
+    let mut caster_fields = FxHashMap::default();
     caster_fields.insert("HP".into(), Value::Int(50));
     caster_fields.insert("concentrating_on".into(), Value::Option(None));
     let caster = state.add_entity("Character", caster_fields);
 
-    let mut target_fields = HashMap::new();
+    let mut target_fields = FxHashMap::default();
     target_fields.insert("HP".into(), Value::Int(30));
     let target = state.add_entity("Character", target_fields);
 
@@ -442,7 +443,7 @@ system "test" {
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let mut state = GameState::new();
 
-    let mut fields = HashMap::new();
+    let mut fields = FxHashMap::default();
     fields.insert("HP".into(), Value::Int(50));
     let actor = state.add_entity("Character", fields.clone());
     let target = state.add_entity("Character", fields);
@@ -503,7 +504,7 @@ system "test" {
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let mut state = GameState::new();
 
-    let mut fields = HashMap::new();
+    let mut fields = FxHashMap::default();
     fields.insert("HP".into(), Value::Int(50));
     let caster = state.add_entity("Character", fields.clone());
     let target = state.add_entity("Character", fields);
@@ -588,12 +589,12 @@ system "test" {
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let mut state = GameState::new();
 
-    let mut caster_fields = HashMap::new();
+    let mut caster_fields = FxHashMap::default();
     caster_fields.insert("HP".into(), Value::Int(50));
     caster_fields.insert("last_spell".into(), Value::Option(None));
     let caster = state.add_entity("Character", caster_fields);
 
-    let mut target_fields = HashMap::new();
+    let mut target_fields = FxHashMap::default();
     target_fields.insert("HP".into(), Value::Int(30));
     let target = state.add_entity("Character", target_fields);
 
@@ -658,7 +659,7 @@ system "test" {
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let mut state = GameState::new();
 
-    let mut fields = HashMap::new();
+    let mut fields = FxHashMap::default();
     fields.insert("HP".into(), Value::Int(50));
     fields.insert("concentrating_on".into(), Value::Option(None));
     let actor = state.add_entity("Character", fields);
@@ -702,7 +703,7 @@ system "test" {
     // First interpreter: starts at 1 (default)
     let interp1 = Interpreter::new(&program, &result.env).unwrap();
     let mut state = GameState::new();
-    let mut fields = HashMap::new();
+    let mut fields = FxHashMap::default();
     fields.insert("HP".into(), Value::Int(50));
     let actor = state.add_entity("Character", fields);
     state.set_turn_budget(&actor, standard_turn_budget());
@@ -756,7 +757,7 @@ system "test" {
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let mut state = GameState::new();
 
-    let mut fields = HashMap::new();
+    let mut fields = FxHashMap::default();
     fields.insert("HP".into(), Value::Int(50));
     let actor = state.add_entity("Character", fields);
     state.set_turn_budget(&actor, standard_turn_budget());
@@ -799,11 +800,11 @@ system "test" {
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let mut state = GameState::new();
 
-    let mut char_fields = HashMap::new();
+    let mut char_fields = FxHashMap::default();
     char_fields.insert("HP".into(), Value::Int(10)); // fails requires
     let actor = state.add_entity("Character", char_fields);
 
-    let mut monster_fields = HashMap::new();
+    let mut monster_fields = FxHashMap::default();
     monster_fields.insert("HP".into(), Value::Int(20));
     let target = state.add_entity("Monster", monster_fields);
 
@@ -852,7 +853,7 @@ system "test" {
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let mut state = GameState::new();
 
-    let mut fields = HashMap::new();
+    let mut fields = FxHashMap::default();
     fields.insert("HP".into(), Value::Int(50));
     let actor = state.add_entity("Character", fields);
     state.set_turn_budget(&actor, standard_turn_budget());
@@ -929,13 +930,13 @@ system "test" {
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let mut state = GameState::new();
 
-    let mut caster_fields = HashMap::new();
+    let mut caster_fields = FxHashMap::default();
     caster_fields.insert("HP".into(), Value::Int(50));
     caster_fields.insert("spell_a".into(), Value::Option(None));
     caster_fields.insert("spell_b".into(), Value::Option(None));
     let caster = state.add_entity("Character", caster_fields);
 
-    let mut target_fields = HashMap::new();
+    let mut target_fields = FxHashMap::default();
     target_fields.insert("HP".into(), Value::Int(30));
     let target = state.add_entity("Character", target_fields);
 
@@ -1016,7 +1017,7 @@ system "test" {
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let mut state = GameState::new();
 
-    let mut fields = HashMap::new();
+    let mut fields = FxHashMap::default();
     fields.insert("HP".into(), Value::Int(50));
     fields.insert("last_inv".into(), Value::Option(None));
     let actor = state.add_entity("Character", fields);
@@ -1087,12 +1088,12 @@ system "test" {
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let mut state = GameState::new();
 
-    let mut caster_fields = HashMap::new();
+    let mut caster_fields = FxHashMap::default();
     caster_fields.insert("HP".into(), Value::Int(50));
     caster_fields.insert("hook_inv".into(), Value::Option(None));
     let caster = state.add_entity("Character", caster_fields);
 
-    let mut target_fields = HashMap::new();
+    let mut target_fields = FxHashMap::default();
     target_fields.insert("HP".into(), Value::Int(30));
     target_fields.insert("hook_inv".into(), Value::Option(None));
     let target = state.add_entity("Character", target_fields);

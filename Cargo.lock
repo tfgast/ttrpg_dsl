@@ -986,6 +986,7 @@ name = "ttrpg_ast"
 version = "0.1.0"
 dependencies = [
  "arbitrary",
+ "rustc-hash",
 ]
 
 [[package]]
@@ -1007,6 +1008,7 @@ dependencies = [
  "nu-ansi-term",
  "rand",
  "reedline",
+ "rustc-hash",
  "ttrpg_ast",
  "ttrpg_checker",
  "ttrpg_interp",
@@ -1031,6 +1033,7 @@ dependencies = [
 name = "ttrpg_lexer"
 version = "0.1.0"
 dependencies = [
+ "rustc-hash",
  "ttrpg_ast",
 ]
 
@@ -1042,6 +1045,7 @@ version = "0.1.0"
 name = "ttrpg_parser"
 version = "0.1.0"
 dependencies = [
+ "rustc-hash",
  "ttrpg_ast",
  "ttrpg_lexer",
 ]

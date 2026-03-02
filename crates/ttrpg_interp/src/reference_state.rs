@@ -2,6 +2,7 @@ use std::any::Any;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
 
+use rustc_hash::FxHashMap;
 use ttrpg_ast::Name;
 
 use crate::effect::FieldPathSegment;
@@ -28,7 +29,7 @@ impl GridPosition {
 
 struct EntityState {
     name: Name,
-    fields: HashMap<Name, Value>,
+    fields: FxHashMap<Name, Value>,
 }
 
 // ── GameState ──────────────────────────────────────────────────
@@ -64,7 +65,7 @@ impl GameState {
 
     /// Add a new entity with the given name and fields.
     /// Returns a reference to the new entity.
-    pub fn add_entity(&mut self, name: &str, fields: HashMap<Name, Value>) -> EntityRef {
+    pub fn add_entity(&mut self, name: &str, fields: FxHashMap<Name, Value>) -> EntityRef {
         let id = self.next_entity_id;
         self.next_entity_id += 1;
         self.entities.insert(
@@ -376,7 +377,7 @@ mod tests {
     #[test]
     fn add_entity_and_read_fields() {
         let mut state = GameState::new();
-        let mut fields = HashMap::new();
+        let mut fields = FxHashMap::default();
         fields.insert("HP".into(), Value::Int(30));
         fields.insert("AC".into(), Value::Int(15));
         let entity = state.add_entity("Fighter", fields);
@@ -397,7 +398,7 @@ mod tests {
     #[test]
     fn write_field_simple() {
         let mut state = GameState::new();
-        let mut fields = HashMap::new();
+        let mut fields = FxHashMap::default();
         fields.insert("HP".into(), Value::Int(30));
         let entity = state.add_entity("Fighter", fields);
 
@@ -416,7 +417,7 @@ mod tests {
         stats.insert(Value::Str("STR".into()), Value::Int(16));
         stats.insert(Value::Str("DEX".into()), Value::Int(14));
 
-        let mut fields = HashMap::new();
+        let mut fields = FxHashMap::default();
         fields.insert("stats".into(), Value::Map(stats));
         let entity = state.add_entity("Fighter", fields);
 
@@ -443,7 +444,7 @@ mod tests {
     #[test]
     fn condition_add_and_query() {
         let mut state = GameState::new();
-        let entity = state.add_entity("Fighter", HashMap::new());
+        let entity = state.add_entity("Fighter", FxHashMap::default());
 
         state.apply_condition(
             &entity,
@@ -463,7 +464,7 @@ mod tests {
     #[test]
     fn condition_remove() {
         let mut state = GameState::new();
-        let entity = state.add_entity("Fighter", HashMap::new());
+        let entity = state.add_entity("Fighter", FxHashMap::default());
 
         state.apply_condition(
             &entity,
@@ -490,7 +491,7 @@ mod tests {
     #[test]
     fn condition_remove_by_id() {
         let mut state = GameState::new();
-        let entity = state.add_entity("Fighter", HashMap::new());
+        let entity = state.add_entity("Fighter", FxHashMap::default());
 
         state.apply_condition(
             &entity,
@@ -524,7 +525,7 @@ mod tests {
     #[test]
     fn conditions_empty_for_new_entity() {
         let mut state = GameState::new();
-        let entity = state.add_entity("Fighter", HashMap::new());
+        let entity = state.add_entity("Fighter", FxHashMap::default());
         let conds = state.read_conditions(&entity).unwrap();
         assert!(conds.is_empty());
     }
@@ -540,7 +541,7 @@ mod tests {
     #[test]
     fn turn_budget_set_and_read() {
         let mut state = GameState::new();
-        let entity = state.add_entity("Fighter", HashMap::new());
+        let entity = state.add_entity("Fighter", FxHashMap::default());
 
         let mut budget = BTreeMap::new();
         budget.insert("actions".into(), Value::Int(1));
@@ -555,7 +556,7 @@ mod tests {
     #[test]
     fn turn_budget_write_field() {
         let mut state = GameState::new();
-        let entity = state.add_entity("Fighter", HashMap::new());
+        let entity = state.add_entity("Fighter", FxHashMap::default());
 
         let mut budget = BTreeMap::new();
         budget.insert("actions".into(), Value::Int(1));
@@ -570,7 +571,7 @@ mod tests {
     #[test]
     fn turn_budget_none_for_no_budget() {
         let mut state = GameState::new();
-        let entity = state.add_entity("Fighter", HashMap::new());
+        let entity = state.add_entity("Fighter", FxHashMap::default());
         assert!(state.read_turn_budget(&entity).is_none());
     }
 
@@ -688,8 +689,8 @@ mod tests {
     #[test]
     fn entity_ids_are_unique() {
         let mut state = GameState::new();
-        let e1 = state.add_entity("A", HashMap::new());
-        let e2 = state.add_entity("B", HashMap::new());
+        let e1 = state.add_entity("A", FxHashMap::default());
+        let e2 = state.add_entity("B", FxHashMap::default());
         assert_ne!(e1, e2);
     }
 
@@ -698,7 +699,7 @@ mod tests {
     #[test]
     fn writable_state_add_condition_auto_assigns_id() {
         let mut state = GameState::new();
-        let entity = state.add_entity("Fighter", HashMap::new());
+        let entity = state.add_entity("Fighter", FxHashMap::default());
 
         // Simulate adapter-created condition (id = 0)
         let cond = ActiveCondition {
@@ -720,7 +721,7 @@ mod tests {
     #[test]
     fn add_condition_preassigned_id_bumps_counter() {
         let mut state = GameState::new();
-        let entity = state.add_entity("Fighter", HashMap::new());
+        let entity = state.add_entity("Fighter", FxHashMap::default());
 
         // Simulate externally-assigned condition with id = 50
         let cond = ActiveCondition {
@@ -758,7 +759,7 @@ mod tests {
     #[test]
     fn write_field_creates_new_field() {
         let mut state = GameState::new();
-        let entity = state.add_entity("Fighter", HashMap::new());
+        let entity = state.add_entity("Fighter", FxHashMap::default());
 
         state.write_field(
             &entity,
@@ -822,7 +823,7 @@ mod tests {
     #[test]
     fn remove_entity_cleans_all_maps() {
         let mut state = GameState::new();
-        let mut fields = HashMap::new();
+        let mut fields = FxHashMap::default();
         fields.insert("HP".into(), Value::Int(30));
         let entity = state.add_entity("Fighter", fields);
 
@@ -873,7 +874,7 @@ mod tests {
     #[test]
     fn remove_field_removes_existing() {
         let mut state = GameState::new();
-        let mut fields = HashMap::new();
+        let mut fields = FxHashMap::default();
         fields.insert("HP".into(), Value::Int(30));
         fields.insert(
             "Spellcasting".into(),
@@ -898,7 +899,7 @@ mod tests {
     #[test]
     fn remove_field_nonexistent_field_noop() {
         let mut state = GameState::new();
-        let entity = state.add_entity("Character", HashMap::new());
+        let entity = state.add_entity("Character", FxHashMap::default());
         // Should not panic
         state.remove_field(&entity, "DoesNotExist");
         assert_eq!(state.read_field(&entity, "DoesNotExist"), None);
@@ -916,7 +917,7 @@ mod tests {
     #[test]
     fn invocation_round_trip() {
         let mut state = GameState::new();
-        let entity = state.add_entity("Fighter", HashMap::new());
+        let entity = state.add_entity("Fighter", FxHashMap::default());
 
         state.apply_condition(
             &entity,
@@ -934,7 +935,7 @@ mod tests {
     #[test]
     fn invocation_removal() {
         let mut state = GameState::new();
-        let entity = state.add_entity("Fighter", HashMap::new());
+        let entity = state.add_entity("Fighter", FxHashMap::default());
 
         // 2 from invocation 1
         state.apply_condition(
@@ -981,9 +982,9 @@ mod tests {
     #[test]
     fn invocation_removal_cross_entity() {
         let mut state = GameState::new();
-        let e1 = state.add_entity("Fighter", HashMap::new());
-        let e2 = state.add_entity("Rogue", HashMap::new());
-        let e3 = state.add_entity("Wizard", HashMap::new());
+        let e1 = state.add_entity("Fighter", FxHashMap::default());
+        let e2 = state.add_entity("Rogue", FxHashMap::default());
+        let e3 = state.add_entity("Wizard", FxHashMap::default());
 
         let inv = Some(InvocationId(7));
         state.apply_condition(

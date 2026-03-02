@@ -3,8 +3,9 @@
 //! Tests the full pipeline: parse → lower → check → interpret, verifying
 //! that tables are properly parsed, type-checked, and evaluated at runtime.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 
+use rustc_hash::FxHashMap;
 use ttrpg_ast::diagnostic::Severity;
 use ttrpg_ast::FileId;
 use ttrpg_interp::effect::{Effect, EffectHandler, Response};
@@ -449,7 +450,7 @@ fn table_with_dynamic_entity_keys() {
     let (program, result) = compile(DYNAMIC_KEY_TABLE);
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let mut state = GameState::new();
-    let mut fields = HashMap::new();
+    let mut fields = FxHashMap::default();
     fields.insert("level".into(), Value::Int(7));
     let hero = state.add_entity("Character", fields);
 

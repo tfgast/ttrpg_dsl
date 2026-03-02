@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 
+use rustc_hash::FxHashMap;
 use ttrpg_ast::ast::ExprKind;
 use ttrpg_ast::{Name, Spanned};
 use ttrpg_checker::env::DeclInfo;
@@ -119,7 +120,7 @@ pub(crate) fn eval_expr(env: &mut Env, expr: &Spanned<ExprKind>) -> Result<Value
         ExprKind::PatternMatch { scrutinee, arms } => {
             let scrutinee_val = eval_expr(env, scrutinee)?;
             for arm in arms {
-                let mut bindings = std::collections::HashMap::new();
+                let mut bindings = FxHashMap::default();
                 if match_pattern(env, &arm.pattern, &scrutinee_val, &mut bindings) {
                     env.push_scope();
                     for (name, val) in bindings {

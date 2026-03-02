@@ -12,8 +12,9 @@
 //! 6. Condition extends clause behavior (inheritance, ordering, diamond dedup)
 //! 7. Parameterized conditions: params stored on ActiveCondition, matching on remove
 
-use std::collections::{BTreeMap, HashMap, VecDeque};
+use std::collections::{BTreeMap, VecDeque};
 
+use rustc_hash::FxHashMap;
 use ttrpg_ast::diagnostic::Severity;
 use ttrpg_ast::FileId;
 use ttrpg_interp::adapter::StateAdapter;
@@ -130,7 +131,7 @@ system "test" {
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let mut state = GameState::new();
 
-    let mut fields = HashMap::new();
+    let mut fields = FxHashMap::default();
     fields.insert("HP".into(), Value::Int(10));
     let entity = state.add_entity("Character", fields);
 
@@ -181,7 +182,7 @@ system "test" {
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let mut state = GameState::new();
 
-    let mut fields = HashMap::new();
+    let mut fields = FxHashMap::default();
     fields.insert("HP".into(), Value::Int(10));
     let entity = state.add_entity("Character", fields);
 
@@ -259,7 +260,7 @@ system "test" {
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let mut state = GameState::new();
 
-    let mut fields = HashMap::new();
+    let mut fields = FxHashMap::default();
     fields.insert("HP".into(), Value::Int(10));
     let entity = state.add_entity("Character", fields);
 
@@ -312,7 +313,7 @@ system "test" {
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let mut state = GameState::new();
 
-    let mut fields = HashMap::new();
+    let mut fields = FxHashMap::default();
     fields.insert("HP".into(), Value::Int(10));
     let entity = state.add_entity("Character", fields);
 
@@ -365,7 +366,7 @@ system "test" {
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let mut state = GameState::new();
 
-    let mut fields = HashMap::new();
+    let mut fields = FxHashMap::default();
     fields.insert("HP".into(), Value::Int(10));
     let entity = state.add_entity("Character", fields);
 
@@ -418,7 +419,7 @@ system "test" {
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let mut state = GameState::new();
 
-    let mut fields = HashMap::new();
+    let mut fields = FxHashMap::default();
     fields.insert("HP".into(), Value::Int(10));
     let entity = state.add_entity("Character", fields);
 
@@ -477,7 +478,7 @@ system "test" {
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let mut state = GameState::new();
 
-    let mut fields = HashMap::new();
+    let mut fields = FxHashMap::default();
     fields.insert("HP".into(), Value::Int(10));
     let entity = state.add_entity("Character", fields);
 
@@ -528,7 +529,7 @@ system "test" {
 
     // HP > 5: should be free
     let mut state = GameState::new();
-    let mut fields = HashMap::new();
+    let mut fields = FxHashMap::default();
     fields.insert("HP".into(), Value::Int(10));
     let entity = state.add_entity("Character", fields);
     state.apply_condition(&entity, "MaybeFree", BTreeMap::new(), Value::None, None);
@@ -549,7 +550,7 @@ system "test" {
 
     // HP <= 5: should cost normally
     let mut state2 = GameState::new();
-    let mut fields2 = HashMap::new();
+    let mut fields2 = FxHashMap::default();
     fields2.insert("HP".into(), Value::Int(3));
     let entity2 = state2.add_entity("Character", fields2);
     state2.apply_condition(&entity2, "MaybeFree", BTreeMap::new(), Value::None, None);
@@ -672,7 +673,7 @@ system "test" {
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let mut state = GameState::new();
 
-    let mut fields = HashMap::new();
+    let mut fields = FxHashMap::default();
     fields.insert("HP".into(), Value::Int(10));
     let attacker = state.add_entity("Character", fields.clone());
     let mover = state.add_entity("Character", fields);
@@ -742,7 +743,7 @@ system "test" {
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let mut state = GameState::new();
 
-    let mut fields = HashMap::new();
+    let mut fields = FxHashMap::default();
     fields.insert("HP".into(), Value::Int(10));
     let entity = state.add_entity("Character", fields);
 
@@ -845,7 +846,7 @@ system "test" {
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let mut state = GameState::new();
 
-    let mut fields = HashMap::new();
+    let mut fields = FxHashMap::default();
     fields.insert("HP".into(), Value::Int(10));
     let entity = state.add_entity("Character", fields);
 
@@ -896,7 +897,7 @@ system "test" {
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let mut state = GameState::new();
 
-    let mut fields = HashMap::new();
+    let mut fields = FxHashMap::default();
     fields.insert("HP".into(), Value::Int(10));
     let attacker = state.add_entity("Character", fields.clone());
     let mover = state.add_entity("Character", fields);
@@ -957,7 +958,7 @@ system "test" {
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let mut state = GameState::new();
 
-    let mut fields = HashMap::new();
+    let mut fields = FxHashMap::default();
     fields.insert("HP".into(), Value::Int(10));
     let entity = state.add_entity("Character", fields);
 
@@ -1029,7 +1030,7 @@ system "test" {
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let mut state = GameState::new();
 
-    let mut fields = HashMap::new();
+    let mut fields = FxHashMap::default();
     fields.insert("HP".into(), Value::Int(10));
     let entity = state.add_entity("Character", fields);
 
@@ -1082,7 +1083,7 @@ system "test" {
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let mut state = GameState::new();
 
-    let mut fields = HashMap::new();
+    let mut fields = FxHashMap::default();
     fields.insert("HP".into(), Value::Int(10));
     let entity = state.add_entity("Character", fields);
 
@@ -1129,7 +1130,7 @@ system "test" {
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let mut state = GameState::new();
 
-    let mut fields = HashMap::new();
+    let mut fields = FxHashMap::default();
     fields.insert("HP".into(), Value::Int(10));
     let entity = state.add_entity("Character", fields.clone());
     let source1 = state.add_entity("Character", fields.clone());
@@ -1197,7 +1198,7 @@ system "test" {
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let mut state = GameState::new();
 
-    let mut fields = HashMap::new();
+    let mut fields = FxHashMap::default();
     fields.insert("HP".into(), Value::Int(10));
     let entity = state.add_entity("Character", fields);
 
@@ -1258,7 +1259,7 @@ system "test" {
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let mut state = GameState::new();
 
-    let mut char_fields = HashMap::new();
+    let mut char_fields = FxHashMap::default();
     char_fields.insert("HP".into(), Value::Int(10));
     let striker = state.add_entity("Character", char_fields.clone());
     let mover = state.add_entity("Character", char_fields);
@@ -1330,7 +1331,7 @@ system "test" {
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let mut state = GameState::new();
 
-    let mut fields = HashMap::new();
+    let mut fields = FxHashMap::default();
     fields.insert("HP".into(), Value::Int(10));
     let entity = state.add_entity("Character", fields);
 
@@ -1390,7 +1391,7 @@ system "test" {
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let mut state = GameState::new();
 
-    let mut fields = HashMap::new();
+    let mut fields = FxHashMap::default();
     fields.insert("HP".into(), Value::Int(20));
     fields.insert("ally_boost".into(), Value::Bool(false));
     let attacker = state.add_entity("Character", fields.clone());

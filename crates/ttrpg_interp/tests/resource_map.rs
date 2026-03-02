@@ -3,8 +3,9 @@
 //! Tests the full pipeline: parse → lower → check → interpret, verifying
 //! that resource bounds are properly resolved and clamped for map entries.
 
-use std::collections::{BTreeMap, HashMap, VecDeque};
+use std::collections::{BTreeMap, VecDeque};
 
+use rustc_hash::FxHashMap;
 use ttrpg_ast::diagnostic::Severity;
 use ttrpg_ast::FileId;
 use ttrpg_interp::adapter::StateAdapter;
@@ -122,7 +123,7 @@ fn resource_map_mutation_carries_bounds() {
     let mut state = GameState::new();
     let mut slots = BTreeMap::new();
     slots.insert(Value::Int(1), Value::Int(4));
-    let mut fields = HashMap::new();
+    let mut fields = FxHashMap::default();
     fields.insert("spell_slots".into(), Value::Map(slots));
     let hero = state.add_entity("Character", fields);
     state.set_turn_budget(&hero, standard_turn_budget());
@@ -156,7 +157,7 @@ fn resource_map_clamping_prevents_underflow() {
     let mut state = GameState::new();
     let mut slots = BTreeMap::new();
     slots.insert(Value::Int(1), Value::Int(0)); // already at min
-    let mut fields = HashMap::new();
+    let mut fields = FxHashMap::default();
     fields.insert("spell_slots".into(), Value::Map(slots));
     let hero = state.add_entity("Character", fields);
     state.set_turn_budget(&hero, standard_turn_budget());
@@ -188,7 +189,7 @@ fn resource_map_clamping_prevents_overflow() {
     let mut state = GameState::new();
     let mut slots = BTreeMap::new();
     slots.insert(Value::Int(1), Value::Int(9)); // already at max
-    let mut fields = HashMap::new();
+    let mut fields = FxHashMap::default();
     fields.insert("spell_slots".into(), Value::Map(slots));
     let hero = state.add_entity("Character", fields);
     state.set_turn_budget(&hero, standard_turn_budget());
@@ -220,7 +221,7 @@ fn resource_map_set_is_clamped() {
     let mut state = GameState::new();
     let mut slots = BTreeMap::new();
     slots.insert(Value::Int(1), Value::Int(5));
-    let mut fields = HashMap::new();
+    let mut fields = FxHashMap::default();
     fields.insert("spell_slots".into(), Value::Map(slots));
     let hero = state.add_entity("Character", fields);
     state.set_turn_budget(&hero, standard_turn_budget());
@@ -250,7 +251,7 @@ fn resource_map_write_to_missing_key_auto_initializes() {
     let interp = Interpreter::new(&program, &result.env).unwrap();
 
     let mut state = GameState::new();
-    let mut fields = HashMap::new();
+    let mut fields = FxHashMap::default();
     fields.insert("spell_slots".into(), Value::Map(BTreeMap::new())); // empty map
     let hero = state.add_entity("Character", fields);
     state.set_turn_budget(&hero, standard_turn_budget());
@@ -303,7 +304,7 @@ fn resource_map_dynamic_bounds_from_entity_field() {
     let mut state = GameState::new();
     let mut slots = BTreeMap::new();
     slots.insert(Value::Int(1), Value::Int(4)); // at max_slots
-    let mut fields = HashMap::new();
+    let mut fields = FxHashMap::default();
     fields.insert("max_slots".into(), Value::Int(4));
     fields.insert("spell_slots".into(), Value::Map(slots));
     let hero = state.add_entity("Character", fields);
@@ -362,7 +363,7 @@ fn resource_map_in_optional_group_is_clamped() {
             f
         },
     };
-    let mut fields = HashMap::new();
+    let mut fields = FxHashMap::default();
     fields.insert("Spellcasting".into(), group_struct);
     let hero = state.add_entity("Character", fields);
     state.set_turn_budget(&hero, standard_turn_budget());
@@ -426,7 +427,7 @@ fn resource_map_nonzero_min_prevents_underflow() {
     let mut state = GameState::new();
     let mut abilities = BTreeMap::new();
     abilities.insert(Value::Int(1), Value::Int(1)); // STR at min
-    let mut fields = HashMap::new();
+    let mut fields = FxHashMap::default();
     fields.insert("abilities".into(), Value::Map(abilities));
     let hero = state.add_entity("Character", fields);
     state.set_turn_budget(&hero, standard_turn_budget());
@@ -458,7 +459,7 @@ fn resource_map_nonzero_min_set_below_clamps_up() {
     let mut state = GameState::new();
     let mut abilities = BTreeMap::new();
     abilities.insert(Value::Int(1), Value::Int(10));
-    let mut fields = HashMap::new();
+    let mut fields = FxHashMap::default();
     fields.insert("abilities".into(), Value::Map(abilities));
     let hero = state.add_entity("Character", fields);
     state.set_turn_budget(&hero, standard_turn_budget());
@@ -488,7 +489,7 @@ fn resource_map_nonzero_min_auto_init_missing_key() {
     let interp = Interpreter::new(&program, &result.env).unwrap();
 
     let mut state = GameState::new();
-    let mut fields = HashMap::new();
+    let mut fields = FxHashMap::default();
     fields.insert("abilities".into(), Value::Map(BTreeMap::new())); // empty map
     let hero = state.add_entity("Character", fields);
     state.set_turn_budget(&hero, standard_turn_budget());
@@ -542,7 +543,7 @@ fn resource_map_multiple_keys_mutated_in_one_action() {
     let mut slots = BTreeMap::new();
     slots.insert(Value::Int(1), Value::Int(4));
     slots.insert(Value::Int(3), Value::Int(2));
-    let mut fields = HashMap::new();
+    let mut fields = FxHashMap::default();
     fields.insert("spell_slots".into(), Value::Map(slots));
     let hero = state.add_entity("Character", fields);
     state.set_turn_budget(&hero, standard_turn_budget());
@@ -600,7 +601,7 @@ fn resource_map_derive_reads_present_key() {
     slots.insert(Value::Int(1), Value::Int(4));
     slots.insert(Value::Int(2), Value::Int(3));
     slots.insert(Value::Int(3), Value::Int(2));
-    let mut fields = HashMap::new();
+    let mut fields = FxHashMap::default();
     fields.insert("spell_slots".into(), Value::Map(slots));
     let hero = state.add_entity("Character", fields);
 
@@ -626,7 +627,7 @@ fn resource_map_derive_sums_multiple_keys() {
     slots.insert(Value::Int(1), Value::Int(4));
     slots.insert(Value::Int(2), Value::Int(3));
     slots.insert(Value::Int(3), Value::Int(2));
-    let mut fields = HashMap::new();
+    let mut fields = FxHashMap::default();
     fields.insert("spell_slots".into(), Value::Map(slots));
     let hero = state.add_entity("Character", fields);
 
@@ -679,7 +680,7 @@ fn resource_map_enum_key_read_and_mutate() {
     let mut abilities = BTreeMap::new();
     abilities.insert(ability_variant("STR"), Value::Int(18));
     abilities.insert(ability_variant("DEX"), Value::Int(14));
-    let mut fields = HashMap::new();
+    let mut fields = FxHashMap::default();
     fields.insert("abilities".into(), Value::Map(abilities));
     let hero = state.add_entity("Character", fields);
     state.set_turn_budget(&hero, standard_turn_budget());
@@ -728,7 +729,7 @@ fn resource_map_enum_key_clamped_at_max() {
     let mut state = GameState::new();
     let mut abilities = BTreeMap::new();
     abilities.insert(ability_variant("STR"), Value::Int(20)); // at max
-    let mut fields = HashMap::new();
+    let mut fields = FxHashMap::default();
     fields.insert("abilities".into(), Value::Map(abilities));
     let hero = state.add_entity("Character", fields);
     state.set_turn_budget(&hero, standard_turn_budget());
@@ -781,12 +782,12 @@ fn local_to_entity_mutation_carries_bounds() {
     // The caster entity (trigger.caster)
     let mut caster_slots = BTreeMap::new();
     caster_slots.insert(Value::Int(1), Value::Int(0)); // at min
-    let mut caster_fields = HashMap::new();
+    let mut caster_fields = FxHashMap::default();
     caster_fields.insert("spell_slots".into(), Value::Map(caster_slots));
     let caster = state.add_entity("Character", caster_fields);
 
     // The reactor entity
-    let mut reactor_fields = HashMap::new();
+    let mut reactor_fields = FxHashMap::default();
     reactor_fields.insert("spell_slots".into(), Value::Map(BTreeMap::new()));
     let reactor = state.add_entity("Character", reactor_fields);
     state.set_turn_budget(&reactor, standard_turn_budget());
@@ -833,11 +834,11 @@ fn local_to_entity_mutation_effect_has_bounds() {
     let mut state = GameState::new();
     let mut caster_slots = BTreeMap::new();
     caster_slots.insert(Value::Int(1), Value::Int(4));
-    let mut caster_fields = HashMap::new();
+    let mut caster_fields = FxHashMap::default();
     caster_fields.insert("spell_slots".into(), Value::Map(caster_slots));
     let caster = state.add_entity("Character", caster_fields);
 
-    let mut reactor_fields = HashMap::new();
+    let mut reactor_fields = FxHashMap::default();
     reactor_fields.insert("spell_slots".into(), Value::Map(BTreeMap::new()));
     let reactor = state.add_entity("Character", reactor_fields);
     state.set_turn_budget(&reactor, standard_turn_budget());
@@ -897,7 +898,7 @@ fn complex_bound_expression_is_evaluated() {
     let mut state = GameState::new();
     let mut slots = BTreeMap::new();
     slots.insert(Value::Int(1), Value::Int(5)); // max_slots + 1 = 5, so at max
-    let mut fields = HashMap::new();
+    let mut fields = FxHashMap::default();
     fields.insert("max_slots".into(), Value::Int(4));
     fields.insert("spell_slots".into(), Value::Map(slots));
     let hero = state.add_entity("Character", fields);
@@ -934,7 +935,7 @@ fn complex_bound_expression_effect_has_bounds() {
     let mut state = GameState::new();
     let mut slots = BTreeMap::new();
     slots.insert(Value::Int(1), Value::Int(3));
-    let mut fields = HashMap::new();
+    let mut fields = FxHashMap::default();
     fields.insert("max_slots".into(), Value::Int(4));
     fields.insert("spell_slots".into(), Value::Map(slots));
     let hero = state.add_entity("Character", fields);
@@ -995,7 +996,7 @@ fn struct_field_traversal_resolves_bounds() {
             f
         },
     };
-    let mut fields = HashMap::new();
+    let mut fields = FxHashMap::default();
     fields.insert("stats".into(), stats);
     let hero = state.add_entity("Character", fields);
     state.set_turn_budget(&hero, standard_turn_budget());
@@ -1043,7 +1044,7 @@ fn struct_field_traversal_effect_has_bounds() {
             f
         },
     };
-    let mut fields = HashMap::new();
+    let mut fields = FxHashMap::default();
     fields.insert("stats".into(), stats);
     let hero = state.add_entity("Character", fields);
     state.set_turn_budget(&hero, standard_turn_budget());
@@ -1091,7 +1092,7 @@ fn direct_resource_field_is_clamped() {
     let interp = Interpreter::new(&program, &result.env).unwrap();
 
     let mut state = GameState::new();
-    let mut fields = HashMap::new();
+    let mut fields = FxHashMap::default();
     fields.insert("max_HP".into(), Value::Int(100));
     fields.insert("HP".into(), Value::Int(10));
     let hero = state.add_entity("Character", fields);
@@ -1135,7 +1136,7 @@ fn if_expr_bound_idents_are_collected() {
     let interp = Interpreter::new(&program, &result.env).unwrap();
 
     let mut state = GameState::new();
-    let mut fields = HashMap::new();
+    let mut fields = FxHashMap::default();
     fields.insert("cap".into(), Value::Int(10));
     fields.insert("hp".into(), Value::Int(3));
     let hero = state.add_entity("Character", fields);
@@ -1200,7 +1201,7 @@ fn group_resource_field_is_clamped() {
             m
         },
     };
-    let mut fields = HashMap::new();
+    let mut fields = FxHashMap::default();
     fields.insert("Stats".into(), stats);
     let target = state.add_entity("Combatant", fields);
     state.set_turn_budget(&target, standard_turn_budget());
@@ -1244,7 +1245,7 @@ fn group_resource_field_clamps_at_max() {
             m
         },
     };
-    let mut fields = HashMap::new();
+    let mut fields = FxHashMap::default();
     fields.insert("Stats".into(), stats);
     let target = state.add_entity("Combatant", fields);
     state.set_turn_budget(&target, standard_turn_budget());

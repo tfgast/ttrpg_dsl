@@ -531,10 +531,7 @@ system "test" {
     runner.take_output();
 
     let err = runner.exec("call nonexistent(42)").unwrap_err();
-    assert!(
-        err.to_string().contains("undefined function"),
-        "got: {err}"
-    );
+    assert!(err.to_string().contains("undefined function"), "got: {err}");
 }
 
 #[test]
@@ -1998,7 +1995,7 @@ fn value_matches_ty_rejects_wrong_struct_for_active_condition() {
 #[test]
 fn value_matches_ty_rejects_wrong_entity_type() {
     let mut gs = GameState::new();
-    let monster = gs.add_entity("Monster", std::collections::HashMap::new());
+    let monster = gs.add_entity("Monster", rustc_hash::FxHashMap::default());
 
     // A Monster entity should not match a field typed as Character
     assert!(!value_matches_ty(
@@ -2011,7 +2008,7 @@ fn value_matches_ty_rejects_wrong_entity_type() {
 #[test]
 fn value_matches_ty_accepts_correct_entity_type() {
     let mut gs = GameState::new();
-    let character = gs.add_entity("Character", std::collections::HashMap::new());
+    let character = gs.add_entity("Character", rustc_hash::FxHashMap::default());
 
     assert!(value_matches_ty(
         &Value::Entity(character),
@@ -2023,7 +2020,7 @@ fn value_matches_ty_accepts_correct_entity_type() {
 #[test]
 fn value_matches_ty_entity_any_accepts_all() {
     let mut gs = GameState::new();
-    let monster = gs.add_entity("Monster", std::collections::HashMap::new());
+    let monster = gs.add_entity("Monster", rustc_hash::FxHashMap::default());
 
     // AnyEntity should accept any entity regardless of type
     assert!(value_matches_ty(

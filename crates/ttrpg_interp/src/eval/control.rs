@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 
+use rustc_hash::FxHashMap;
 use ttrpg_ast::ast::{ArmBody, ElseBranch, ExprKind, ForIterable, PatternKind};
 use ttrpg_ast::Spanned;
 
@@ -43,7 +44,7 @@ pub(super) fn eval_if_let(
     else_branch: &Option<ElseBranch>,
 ) -> Result<Value, RuntimeError> {
     let scrutinee_val = eval_expr(env, scrutinee)?;
-    let mut bindings = std::collections::HashMap::new();
+    let mut bindings = FxHashMap::default();
 
     if match_pattern(env, pattern, &scrutinee_val, &mut bindings) {
         env.push_scope();
@@ -113,7 +114,7 @@ pub(super) fn eval_for(
     };
 
     for item in items {
-        let mut bindings = std::collections::HashMap::new();
+        let mut bindings = FxHashMap::default();
         if match_pattern(env, pattern, &item, &mut bindings) {
             env.push_scope();
             for (name, val) in bindings {
@@ -179,7 +180,7 @@ pub(super) fn eval_list_comprehension(
 
     let mut collected = Vec::new();
     for item in items {
-        let mut bindings = std::collections::HashMap::new();
+        let mut bindings = FxHashMap::default();
         if match_pattern(env, pattern, &item, &mut bindings) {
             env.push_scope();
             for (name, val) in bindings {

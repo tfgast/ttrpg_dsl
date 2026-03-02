@@ -1,8 +1,9 @@
 //! Tests that action parameter defaults are evaluated AFTER ActionStarted/veto,
 //! not before. (Regression test for tdsl-3ot)
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::VecDeque;
 
+use rustc_hash::FxHashMap;
 use ttrpg_ast::FileId;
 use ttrpg_interp::effect::{Effect, EffectHandler, Response};
 use ttrpg_interp::reference_state::GameState;
@@ -69,7 +70,7 @@ fn setup() -> (ttrpg_ast::ast::Program, ttrpg_checker::env::TypeEnv) {
 }
 
 fn make_entity(gs: &mut GameState, hp: i64) -> ttrpg_interp::state::EntityRef {
-    let mut fields = HashMap::new();
+    let mut fields = FxHashMap::default();
     fields.insert("HP".into(), Value::Int(hp));
     gs.add_entity("Character", fields)
 }

@@ -120,7 +120,7 @@ impl Runner {
         self.fill_entity_defaults(entity_type, &mut fields)?;
 
         // All validation passed — now apply mutations (cannot fail).
-        let fields: HashMap<Name, Value> = fields
+        let fields: rustc_hash::FxHashMap<Name, Value> = fields
             .into_iter()
             .map(|(k, v)| (Name::from(k), v))
             .collect();

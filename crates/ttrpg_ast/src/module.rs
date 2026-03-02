@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::name::Name;
 use crate::Span;
@@ -6,28 +6,28 @@ use crate::Span;
 /// Maps system names to their declaration metadata and import relationships.
 #[derive(Clone, Debug, Default)]
 pub struct ModuleMap {
-    pub systems: HashMap<Name, SystemInfo>,
+    pub systems: FxHashMap<Name, SystemInfo>,
 }
 
 /// Per-system declaration ownership and import list.
 #[derive(Clone, Debug, Default)]
 pub struct SystemInfo {
     /// Top-level group names defined in this system.
-    pub groups: HashSet<Name>,
+    pub groups: FxHashSet<Name>,
     /// Type names (enums, structs, entities) defined in this system.
-    pub types: HashSet<Name>,
+    pub types: FxHashSet<Name>,
     /// Function names (derives, mechanics, actions, reactions, hooks, prompts) defined in this system.
-    pub functions: HashSet<Name>,
+    pub functions: FxHashSet<Name>,
     /// Condition names defined in this system.
-    pub conditions: HashSet<Name>,
+    pub conditions: FxHashSet<Name>,
     /// Event names defined in this system.
-    pub events: HashSet<Name>,
+    pub events: FxHashSet<Name>,
     /// Option names defined in this system.
-    pub options: HashSet<Name>,
+    pub options: FxHashSet<Name>,
     /// Enum variant names defined in this system (via owning enum).
-    pub variants: HashSet<Name>,
+    pub variants: FxHashSet<Name>,
     /// Tag names defined in this system.
-    pub tags: HashSet<Name>,
+    pub tags: FxHashSet<Name>,
 
     /// Imports declared for this system (union of `use` decls across all files containing it).
     pub imports: Vec<ImportInfo>,

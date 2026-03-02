@@ -3,8 +3,9 @@
 //! Tests the full pipeline (parse → lower → check → interpret) for `emit`,
 //! verifying that matching hooks are auto-executed inline.
 
-use std::collections::{BTreeMap, HashMap, VecDeque};
+use std::collections::{BTreeMap, VecDeque};
 
+use rustc_hash::FxHashMap;
 use ttrpg_ast::diagnostic::Severity;
 use ttrpg_ast::FileId;
 use ttrpg_interp::adapter::StateAdapter;
@@ -114,11 +115,11 @@ system "test" {
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let mut state = GameState::new();
 
-    let mut actor_fields = HashMap::new();
+    let mut actor_fields = FxHashMap::default();
     actor_fields.insert("HP".into(), Value::Int(50));
     let actor = state.add_entity("Character", actor_fields);
 
-    let mut target_fields = HashMap::new();
+    let mut target_fields = FxHashMap::default();
     target_fields.insert("HP".into(), Value::Int(30));
     let target = state.add_entity("Character", target_fields);
 
@@ -172,12 +173,12 @@ system "test" {
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let mut state = GameState::new();
 
-    let mut actor_fields = HashMap::new();
+    let mut actor_fields = FxHashMap::default();
     actor_fields.insert("HP".into(), Value::Int(50));
     actor_fields.insert("log_count".into(), Value::Int(0));
     let actor = state.add_entity("Character", actor_fields);
 
-    let mut target_fields = HashMap::new();
+    let mut target_fields = FxHashMap::default();
     target_fields.insert("HP".into(), Value::Int(30));
     target_fields.insert("log_count".into(), Value::Int(0));
     let target = state.add_entity("Character", target_fields);
@@ -221,11 +222,11 @@ system "test" {
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let mut state = GameState::new();
 
-    let mut actor_fields = HashMap::new();
+    let mut actor_fields = FxHashMap::default();
     actor_fields.insert("HP".into(), Value::Int(50));
     let actor = state.add_entity("Character", actor_fields);
 
-    let mut target_fields = HashMap::new();
+    let mut target_fields = FxHashMap::default();
     target_fields.insert("HP".into(), Value::Int(30));
     let target = state.add_entity("Character", target_fields);
 
@@ -270,11 +271,11 @@ system "test" {
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let mut state = GameState::new();
 
-    let mut actor_fields = HashMap::new();
+    let mut actor_fields = FxHashMap::default();
     actor_fields.insert("HP".into(), Value::Int(50));
     let actor = state.add_entity("Character", actor_fields);
 
-    let mut target_fields = HashMap::new();
+    let mut target_fields = FxHashMap::default();
     target_fields.insert("HP".into(), Value::Int(10));
     let target = state.add_entity("Character", target_fields);
 
@@ -447,12 +448,12 @@ system "test" {
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let mut state = GameState::new();
 
-    let mut actor_fields = HashMap::new();
+    let mut actor_fields = FxHashMap::default();
     actor_fields.insert("HP".into(), Value::Int(50));
     actor_fields.insert("shield".into(), Value::Int(0));
     let actor = state.add_entity("Character", actor_fields);
 
-    let mut target_fields = HashMap::new();
+    let mut target_fields = FxHashMap::default();
     target_fields.insert("HP".into(), Value::Int(30));
     target_fields.insert("shield".into(), Value::Int(1));
     let target = state.add_entity("Character", target_fields);
@@ -516,12 +517,12 @@ system "test" {
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let mut state = GameState::new();
 
-    let mut actor_fields = HashMap::new();
+    let mut actor_fields = FxHashMap::default();
     actor_fields.insert("HP".into(), Value::Int(50));
     actor_fields.insert("parry_count".into(), Value::Int(0));
     let actor = state.add_entity("Character", actor_fields);
 
-    let mut target_fields = HashMap::new();
+    let mut target_fields = FxHashMap::default();
     target_fields.insert("HP".into(), Value::Int(30));
     target_fields.insert("parry_count".into(), Value::Int(0));
     let target = state.add_entity("Character", target_fields);
@@ -587,11 +588,11 @@ system "test" {
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let mut state = GameState::new();
 
-    let mut actor_fields = HashMap::new();
+    let mut actor_fields = FxHashMap::default();
     actor_fields.insert("count".into(), Value::Int(0));
     let actor = state.add_entity("Character", actor_fields);
 
-    let mut target_fields = HashMap::new();
+    let mut target_fields = FxHashMap::default();
     target_fields.insert("count".into(), Value::Int(0));
     let target = state.add_entity("Character", target_fields);
 
@@ -646,7 +647,7 @@ system "test" {
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let mut state = GameState::new();
 
-    let mut fields = HashMap::new();
+    let mut fields = FxHashMap::default();
     fields.insert("HP".into(), Value::Int(10));
     let actor = state.add_entity("Character", fields);
 

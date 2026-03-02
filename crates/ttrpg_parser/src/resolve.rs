@@ -3,7 +3,7 @@
 //!
 //! Runs after parsing/lowering, before checking.
 
-use std::collections::{HashMap, HashSet};
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use ttrpg_ast::ast::*;
 use ttrpg_ast::diagnostic::Diagnostic;
@@ -45,7 +45,7 @@ pub fn resolve_modules(
     let mut diagnostics = Vec::new();
 
     // Step 1: Build system registry — which declarations belong to which system
-    let mut system_decls: HashMap<Name, Vec<DeclOwnership>> = HashMap::new();
+    let mut system_decls: FxHashMap<Name, Vec<DeclOwnership>> = FxHashMap::default();
 
     for item in &program.items {
         if let TopLevel::System(system) = &item.node {
@@ -61,7 +61,7 @@ pub fn resolve_modules(
 
     for (sys_name, decl_list) in &system_decls {
         let mut info = SystemInfo::default();
-        let mut seen_names: HashMap<(Namespace, Name), Span> = HashMap::new();
+        let mut seen_names: FxHashMap<(Namespace, Name), Span> = FxHashMap::default();
 
         for owned in decl_list {
             for (ns, name) in &owned.names {
@@ -116,7 +116,7 @@ pub fn resolve_modules(
     // Step 3: Collect per-file use declarations and associate with systems
     // All uses in a file apply to ALL system blocks in that file.
     // Per-system imports = union of uses from all files containing it.
-    let mut system_imports: HashMap<Name, Vec<(ImportInfo, Span)>> = HashMap::new();
+    let mut system_imports: FxHashMap<Name, Vec<(ImportInfo, Span)>> = FxHashMap::default();
 
     for file_info in file_systems {
         for use_decl in &file_info.use_decls {
@@ -151,7 +151,7 @@ pub fn resolve_modules(
     for (sys_name, imports) in &system_imports {
         // Pass 1: Validate non-shadow checks, collect tentatively accepted imports.
         // This determines which import targets contribute to the shadow check set.
-        let mut aliases: HashMap<Name, (Name, Span)> = HashMap::new();
+        let mut aliases: FxHashMap<Name, (Name, Span)> = FxHashMap::default();
         let mut tentative: Vec<ImportInfo> = Vec::new();
 
         for (import, _span) in imports {
@@ -220,7 +220,7 @@ pub fn resolve_modules(
         // Pass 2: Build accepted target set from tentative imports, then check shadows.
         // Only imports that passed non-shadow validation contribute, so rejected
         // imports don't cause spurious shadow errors. Order-independent.
-        let accepted_targets: HashSet<Name> =
+        let accepted_targets: FxHashSet<Name> =
             tentative.iter().map(|i| i.system_name.clone()).collect();
 
         let mut deduped_imports: Vec<ImportInfo> = Vec::new();
@@ -361,10 +361,10 @@ fn detect_cross_system_collisions(module_map: &ModuleMap, diagnostics: &mut Vec<
     ];
 
     for &(ns, ns_label) in namespaces {
-        let mut name_owners: HashMap<&str, Vec<&str>> = HashMap::new();
+        let mut name_owners: FxHashMap<&str, Vec<&str>> = FxHashMap::default();
 
         for (sys_name, sys_info) in &module_map.systems {
-            let names: &HashSet<Name> = match ns {
+            let names: &FxHashSet<Name> = match ns {
                 Namespace::Group => &sys_info.groups,
                 Namespace::Type => &sys_info.types,
                 Namespace::Function => &sys_info.functions,
@@ -408,7 +408,7 @@ fn desugar_qualified_types(
     diagnostics: &mut Vec<Diagnostic>,
 ) {
     // Build alias → system_name map per system from validated imports
-    let mut system_aliases: HashMap<Name, HashMap<Name, Name>> = HashMap::new();
+    let mut system_aliases: FxHashMap<Name, FxHashMap<Name, Name>> = FxHashMap::default();
     for (sys_name, sys_info) in &module_map.systems {
         for import in &sys_info.imports {
             if let Some(ref alias) = import.alias {
@@ -441,7 +441,7 @@ fn desugar_qualified_types(
 fn desugar_decl_types(
     decl: &mut DeclKind,
     current_system: &Name,
-    aliases: Option<&HashMap<Name, Name>>,
+    aliases: Option<&FxHashMap<Name, Name>>,
     module_map: &ModuleMap,
     diagnostics: &mut Vec<Diagnostic>,
 ) {
@@ -625,7 +625,7 @@ fn desugar_decl_types(
 fn desugar_modify_target(
     target: &mut ModifyTarget,
     current_system: &Name,
-    aliases: Option<&HashMap<Name, Name>>,
+    aliases: Option<&FxHashMap<Name, Name>>,
     module_map: &ModuleMap,
     diagnostics: &mut Vec<Diagnostic>,
 ) {
@@ -651,7 +651,7 @@ fn desugar_modify_target(
 fn desugar_modify_stmts(
     stmts: &mut [ModifyStmt],
     current_system: &Name,
-    aliases: Option<&HashMap<Name, Name>>,
+    aliases: Option<&FxHashMap<Name, Name>>,
     module_map: &ModuleMap,
     diagnostics: &mut Vec<Diagnostic>,
 ) {
@@ -689,7 +689,7 @@ fn desugar_modify_stmts(
 fn desugar_type_expr(
     texpr: &mut Spanned<TypeExpr>,
     current_system: &Name,
-    aliases: Option<&HashMap<Name, Name>>,
+    aliases: Option<&FxHashMap<Name, Name>>,
     module_map: &ModuleMap,
     diagnostics: &mut Vec<Diagnostic>,
 ) {
@@ -1553,7 +1553,7 @@ mod tests {
 
     #[test]
     fn collision_detection_both_system_orderings() {
-        // Hazard: detect_cross_system_collisions iterates a HashMap.
+        // Hazard: detect_cross_system_collisions iterates a FxHashMap.
         // This test ensures collision is detected regardless of which
         // system is iterated first (by testing both program orderings).
         let items_ab = vec![

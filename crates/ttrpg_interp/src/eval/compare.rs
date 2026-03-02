@@ -1,3 +1,4 @@
+use rustc_hash::FxHashMap;
 use ttrpg_ast::ast::PatternKind;
 use ttrpg_ast::{Name, Spanned};
 use ttrpg_checker::env::DeclInfo;
@@ -188,7 +189,7 @@ pub(super) fn match_pattern(
     env: &Env,
     pattern: &Spanned<PatternKind>,
     value: &Value,
-    bindings: &mut std::collections::HashMap<Name, Value>,
+    bindings: &mut FxHashMap<Name, Value>,
 ) -> bool {
     match &pattern.node {
         PatternKind::Wildcard => true,

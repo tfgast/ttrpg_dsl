@@ -10,8 +10,9 @@
 //! - Guards in derives (`if entity has Group`)
 //! - StateAdapter grant/revoke lifecycle
 
-use std::collections::{BTreeMap, HashMap, VecDeque};
+use std::collections::{BTreeMap, VecDeque};
 
+use rustc_hash::FxHashMap;
 use ttrpg_ast::diagnostic::Severity;
 use ttrpg_ast::FileId;
 use ttrpg_interp::adapter::StateAdapter;
@@ -196,7 +197,7 @@ impl EffectHandler for ScriptedHandler {
 // ── Entity helpers ───────────────────────────────────────────
 
 fn add_character(state: &mut GameState, name: &str, level: i64, hp: i64) -> EntityRef {
-    let mut fields = HashMap::new();
+    let mut fields = FxHashMap::default();
     fields.insert("name".into(), Value::Str(name.to_string()));
     fields.insert("level".into(), Value::Int(level));
     fields.insert("HP".into(), Value::Int(hp));
@@ -234,12 +235,12 @@ fn external_group_attachment_grant_uses_group_defaults() {
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let mut state = GameState::new();
 
-    let mut gm_fields = HashMap::new();
+    let mut gm_fields = FxHashMap::default();
     gm_fields.insert("name".into(), Value::Str("GM".into()));
     gm_fields.insert("HP".into(), Value::Int(999));
     let gm = state.add_entity("Character", gm_fields);
 
-    let mut wizard_fields = HashMap::new();
+    let mut wizard_fields = FxHashMap::default();
     wizard_fields.insert("name".into(), Value::Str("Wizard".into()));
     wizard_fields.insert("HP".into(), Value::Int(12));
     let wizard = state.add_entity("Character", wizard_fields);
