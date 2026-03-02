@@ -1,0 +1,149 @@
+// ============================================================
+// OSRIC 3.0 Saving Throw Tables
+//
+// Each class has its own saving throw progression across
+// 5 categories: Aimed Magic Items, Breath Weapons,
+// Death/Paralysis/Poison, Petrification/Polymorph, and
+// Spells for Unlisted Categories.
+//
+// Tables are grouped by combat group since many classes
+// share the same table (e.g. Fighter/Paladin/Ranger).
+//
+// Reference: OSRIC 3.0 Player Guide, Tables 1.3.x.4b
+// ============================================================
+
+use "OSRIC"
+use "OSRIC Classes"
+
+system "OSRIC Saves" {
+
+    // ========================================================
+    //  FIGHTER-GROUP SAVING THROWS (Fighter, Paladin, Ranger)
+    //  Table 1.3.4.4b — per-level, not per-range.
+    //  Fighters improve every 2 levels. Level 0 included.
+    // ========================================================
+
+    table fighter_saves(level: int) -> SavingThrows {
+        0       => SavingThrows { aimed_magic: 18, breath: 20, death_paralysis_poison: 16, petrification_polymorph: 17, spells: 19 },
+        1..=2   => SavingThrows { aimed_magic: 16, breath: 17, death_paralysis_poison: 14, petrification_polymorph: 15, spells: 17 },
+        3..=4   => SavingThrows { aimed_magic: 15, breath: 16, death_paralysis_poison: 13, petrification_polymorph: 14, spells: 16 },
+        5..=6   => SavingThrows { aimed_magic: 13, breath: 13, death_paralysis_poison: 11, petrification_polymorph: 12, spells: 14 },
+        7..=8   => SavingThrows { aimed_magic: 12, breath: 12, death_paralysis_poison: 10, petrification_polymorph: 11, spells: 13 },
+        9..=10  => SavingThrows { aimed_magic: 10, breath: 9, death_paralysis_poison: 8, petrification_polymorph: 9, spells: 11 },
+        11..=12 => SavingThrows { aimed_magic: 9, breath: 8, death_paralysis_poison: 7, petrification_polymorph: 8, spells: 10 },
+        13..=14 => SavingThrows { aimed_magic: 7, breath: 5, death_paralysis_poison: 5, petrification_polymorph: 6, spells: 8 },
+        15..=16 => SavingThrows { aimed_magic: 6, breath: 4, death_paralysis_poison: 4, petrification_polymorph: 5, spells: 7 },
+        17..=18 => SavingThrows { aimed_magic: 5, breath: 4, death_paralysis_poison: 3, petrification_polymorph: 4, spells: 6 },
+        _       => SavingThrows { aimed_magic: 4, breath: 3, death_paralysis_poison: 2, petrification_polymorph: 3, spells: 5 }
+    }
+
+    // Paladin uses the fighter table but with better values.
+    // Per Table 1.3.8.4b — Paladin saves are slightly better.
+    table paladin_saves(level: int) -> SavingThrows {
+        1..=2   => SavingThrows { aimed_magic: 14, breath: 15, death_paralysis_poison: 12, petrification_polymorph: 13, spells: 15 },
+        3..=4   => SavingThrows { aimed_magic: 13, breath: 14, death_paralysis_poison: 11, petrification_polymorph: 12, spells: 14 },
+        5..=6   => SavingThrows { aimed_magic: 11, breath: 11, death_paralysis_poison: 9, petrification_polymorph: 10, spells: 12 },
+        7..=8   => SavingThrows { aimed_magic: 10, breath: 10, death_paralysis_poison: 8, petrification_polymorph: 9, spells: 11 },
+        9..=10  => SavingThrows { aimed_magic: 8, breath: 7, death_paralysis_poison: 6, petrification_polymorph: 7, spells: 9 },
+        11..=12 => SavingThrows { aimed_magic: 7, breath: 6, death_paralysis_poison: 5, petrification_polymorph: 6, spells: 8 },
+        13..=14 => SavingThrows { aimed_magic: 5, breath: 3, death_paralysis_poison: 3, petrification_polymorph: 4, spells: 6 },
+        15..=16 => SavingThrows { aimed_magic: 4, breath: 2, death_paralysis_poison: 2, petrification_polymorph: 3, spells: 5 },
+        17..=18 => SavingThrows { aimed_magic: 3, breath: 2, death_paralysis_poison: 2, petrification_polymorph: 2, spells: 4 },
+        _       => SavingThrows { aimed_magic: 2, breath: 2, death_paralysis_poison: 2, petrification_polymorph: 2, spells: 3 }
+    }
+
+
+    // ========================================================
+    //  CLERIC-GROUP SAVING THROWS (Cleric, Druid)
+    //  Tables 1.3.2.4b, 1.3.3.4b
+    // ========================================================
+
+    table cleric_saves(level: int) -> SavingThrows {
+        1..=3   => SavingThrows { aimed_magic: 14, breath: 16, death_paralysis_poison: 10, petrification_polymorph: 13, spells: 15 },
+        4..=6   => SavingThrows { aimed_magic: 13, breath: 15, death_paralysis_poison: 9, petrification_polymorph: 12, spells: 14 },
+        7..=9   => SavingThrows { aimed_magic: 11, breath: 13, death_paralysis_poison: 7, petrification_polymorph: 10, spells: 12 },
+        10..=12 => SavingThrows { aimed_magic: 10, breath: 12, death_paralysis_poison: 6, petrification_polymorph: 9, spells: 11 },
+        13..=15 => SavingThrows { aimed_magic: 9, breath: 11, death_paralysis_poison: 5, petrification_polymorph: 8, spells: 10 },
+        16..=18 => SavingThrows { aimed_magic: 8, breath: 10, death_paralysis_poison: 4, petrification_polymorph: 7, spells: 9 },
+        _       => SavingThrows { aimed_magic: 6, breath: 8, death_paralysis_poison: 2, petrification_polymorph: 5, spells: 7 }
+    }
+
+    // Druid saves — same as Cleric but only goes to level 14.
+    table druid_saves(level: int) -> SavingThrows {
+        1..=3   => SavingThrows { aimed_magic: 14, breath: 16, death_paralysis_poison: 10, petrification_polymorph: 13, spells: 15 },
+        4..=6   => SavingThrows { aimed_magic: 13, breath: 15, death_paralysis_poison: 9, petrification_polymorph: 12, spells: 14 },
+        7..=9   => SavingThrows { aimed_magic: 11, breath: 13, death_paralysis_poison: 7, petrification_polymorph: 10, spells: 12 },
+        10..=12 => SavingThrows { aimed_magic: 10, breath: 12, death_paralysis_poison: 6, petrification_polymorph: 9, spells: 11 },
+        _       => SavingThrows { aimed_magic: 9, breath: 11, death_paralysis_poison: 5, petrification_polymorph: 8, spells: 10 }
+    }
+
+
+    // ========================================================
+    //  THIEF-GROUP SAVING THROWS (Thief, Assassin)
+    //  Tables 1.3.1.4c (Assassin), 1.3.10.4b (Thief)
+    // ========================================================
+
+    table thief_saves(level: int) -> SavingThrows {
+        1..=4   => SavingThrows { aimed_magic: 14, breath: 16, death_paralysis_poison: 13, petrification_polymorph: 12, spells: 15 },
+        5..=8   => SavingThrows { aimed_magic: 12, breath: 15, death_paralysis_poison: 12, petrification_polymorph: 11, spells: 13 },
+        9..=12  => SavingThrows { aimed_magic: 10, breath: 14, death_paralysis_poison: 11, petrification_polymorph: 10, spells: 11 },
+        _       => SavingThrows { aimed_magic: 8, breath: 13, death_paralysis_poison: 10, petrification_polymorph: 9, spells: 9 }
+    }
+
+
+    // ========================================================
+    //  MAGIC-USER GROUP SAVING THROWS (Magic-User, Illusionist)
+    //  Tables 1.3.5.4b (Illusionist), 1.3.6.4b (Magic-User)
+    // ========================================================
+
+    table magic_user_saves(level: int) -> SavingThrows {
+        1..=5   => SavingThrows { aimed_magic: 11, breath: 15, death_paralysis_poison: 14, petrification_polymorph: 13, spells: 12 },
+        6..=10  => SavingThrows { aimed_magic: 9, breath: 13, death_paralysis_poison: 13, petrification_polymorph: 11, spells: 10 },
+        11..=15 => SavingThrows { aimed_magic: 7, breath: 11, death_paralysis_poison: 11, petrification_polymorph: 9, spells: 8 },
+        _       => SavingThrows { aimed_magic: 5, breath: 9, death_paralysis_poison: 10, petrification_polymorph: 7, spells: 6 }
+    }
+
+    // Illusionist saves — slightly different from Magic-User.
+    table illusionist_saves(level: int) -> SavingThrows {
+        1..=5   => SavingThrows { aimed_magic: 11, breath: 15, death_paralysis_poison: 14, petrification_polymorph: 13, spells: 12 },
+        6..=10  => SavingThrows { aimed_magic: 9, breath: 13, death_paralysis_poison: 13, petrification_polymorph: 11, spells: 10 },
+        11..=15 => SavingThrows { aimed_magic: 7, breath: 11, death_paralysis_poison: 11, petrification_polymorph: 9, spells: 8 },
+        _       => SavingThrows { aimed_magic: 5, breath: 9, death_paralysis_poison: 10, petrification_polymorph: 7, spells: 6 }
+    }
+
+
+    // ========================================================
+    //  MONK SAVING THROWS
+    //  Table 1.3.7.4c
+    // ========================================================
+
+    table monk_saves(level: int) -> SavingThrows {
+        1..=4   => SavingThrows { aimed_magic: 14, breath: 16, death_paralysis_poison: 13, petrification_polymorph: 12, spells: 15 },
+        5..=8   => SavingThrows { aimed_magic: 12, breath: 15, death_paralysis_poison: 12, petrification_polymorph: 11, spells: 13 },
+        9..=12  => SavingThrows { aimed_magic: 10, breath: 14, death_paralysis_poison: 11, petrification_polymorph: 10, spells: 11 },
+        13..=16 => SavingThrows { aimed_magic: 8, breath: 13, death_paralysis_poison: 10, petrification_polymorph: 9, spells: 9 },
+        _       => SavingThrows { aimed_magic: 6, breath: 12, death_paralysis_poison: 9, petrification_polymorph: 8, spells: 7 }
+    }
+
+
+    // ========================================================
+    //  UNIFIED SAVE LOOKUP
+    //
+    //  Dispatches to the correct table based on class.
+    // ========================================================
+
+    derive saving_throws_for(class: Class, level: int) -> SavingThrows {
+        match class {
+            Fighter   => fighter_saves(level),
+            Paladin   => paladin_saves(level),
+            Ranger    => fighter_saves(level),
+            Cleric    => cleric_saves(level),
+            Druid     => druid_saves(level),
+            Thief     => thief_saves(level),
+            Assassin  => thief_saves(level),
+            MagicUser => magic_user_saves(level),
+            Illusionist => illusionist_saves(level),
+            Monk      => monk_saves(level)
+        }
+    }
+}

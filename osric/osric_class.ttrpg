@@ -1,0 +1,263 @@
+// ============================================================
+// OSRIC 3.0 Class Definitions & XP Tables
+//
+// Static class data for all 10 OSRIC classes and XP progression
+// tables. Although the bead title says "core four", all 10
+// classes are included since the ClassDef data is straightforward.
+//
+// Reference: OSRIC 3.0 Player Guide, Chapter 3
+// ============================================================
+
+use "OSRIC"
+
+system "OSRIC Classes" {
+
+    // ========================================================
+    //  CLASS DEFINITIONS
+    //
+    //  Static mechanical identity for each of the 10 classes.
+    //  Per OSRIC 3.0 Player Guide class stat blocks.
+    // ========================================================
+
+    derive class_def(class: Class) -> ClassDef {
+        match class {
+            Assassin => ClassDef { class: Assassin, hit_die: 6, max_hit_dice: 15, hp_after_max: 1, combat_group: ThiefGroup, armour: leather_shield, shield_allowed: true, weapons_any: true, non_prof_penalty: -3, weapon_specialization: false, spell_progression: NonCaster, has_thief_skills: true, can_backstab: true, can_turn_undead: false, has_exceptional_str: false },
+            Cleric => ClassDef { class: Class.Cleric, hit_die: 8, max_hit_dice: 9, hp_after_max: 2, combat_group: ClericGroup, armour: any_armour, shield_allowed: true, weapons_any: false, non_prof_penalty: -3, weapon_specialization: false, spell_progression: SpellProgression.Cleric, has_thief_skills: false, can_backstab: false, can_turn_undead: true, has_exceptional_str: false },
+            Druid => ClassDef { class: Class.Druid, hit_die: 8, max_hit_dice: 14, hp_after_max: 1, combat_group: ClericGroup, armour: leather_wooden, shield_allowed: true, weapons_any: false, non_prof_penalty: -4, weapon_specialization: false, spell_progression: SpellProgression.Druid, has_thief_skills: false, can_backstab: false, can_turn_undead: false, has_exceptional_str: false },
+            Fighter => ClassDef { class: Class.Fighter, hit_die: 10, max_hit_dice: 9, hp_after_max: 3, combat_group: FighterGroup, armour: any_armour, shield_allowed: true, weapons_any: true, non_prof_penalty: -2, weapon_specialization: true, spell_progression: NonCaster, has_thief_skills: false, can_backstab: false, can_turn_undead: false, has_exceptional_str: true },
+            Illusionist => ClassDef { class: Class.Illusionist, hit_die: 4, max_hit_dice: 10, hp_after_max: 1, combat_group: MagicUserGroup, armour: no_armour, shield_allowed: false, weapons_any: false, non_prof_penalty: -5, weapon_specialization: false, spell_progression: SpellProgression.Illusionist, has_thief_skills: false, can_backstab: false, can_turn_undead: false, has_exceptional_str: false },
+            MagicUser => ClassDef { class: Class.MagicUser, hit_die: 4, max_hit_dice: 11, hp_after_max: 1, combat_group: MagicUserGroup, armour: no_armour, shield_allowed: false, weapons_any: false, non_prof_penalty: -5, weapon_specialization: false, spell_progression: SpellProgression.MagicUser, has_thief_skills: false, can_backstab: false, can_turn_undead: false, has_exceptional_str: false },
+            Monk => ClassDef { class: Class.Monk, hit_die: 4, max_hit_dice: 18, hp_after_max: 0, combat_group: ClericGroup, armour: no_armour, shield_allowed: false, weapons_any: false, non_prof_penalty: -3, weapon_specialization: false, spell_progression: NonCaster, has_thief_skills: true, can_backstab: false, can_turn_undead: false, has_exceptional_str: false },
+            Paladin => ClassDef { class: Class.Paladin, hit_die: 10, max_hit_dice: 9, hp_after_max: 3, combat_group: FighterGroup, armour: any_armour, shield_allowed: true, weapons_any: true, non_prof_penalty: -2, weapon_specialization: true, spell_progression: SpellProgression.Paladin, has_thief_skills: false, can_backstab: false, can_turn_undead: true, has_exceptional_str: true },
+            Ranger => ClassDef { class: Class.Ranger, hit_die: 8, max_hit_dice: 10, hp_after_max: 2, combat_group: FighterGroup, armour: any_armour, shield_allowed: true, weapons_any: true, non_prof_penalty: -2, weapon_specialization: true, spell_progression: SpellProgression.Ranger, has_thief_skills: false, can_backstab: false, can_turn_undead: false, has_exceptional_str: true },
+            Thief => ClassDef { class: Class.Thief, hit_die: 6, max_hit_dice: 10, hp_after_max: 2, combat_group: ThiefGroup, armour: leather_only, shield_allowed: false, weapons_any: true, non_prof_penalty: -3, weapon_specialization: false, spell_progression: NonCaster, has_thief_skills: true, can_backstab: true, can_turn_undead: false, has_exceptional_str: false }
+        }
+    }
+
+
+    // ========================================================
+    //  XP TABLES
+    //
+    //  Each class has its own XP progression.
+    //  Per Tables 1.3.x.4a in the Player Guide.
+    // ========================================================
+
+    table xp_for_level(class: Class, level: int) -> int {
+
+        // --- Assassin (max level 15) ---
+        [Assassin, 1]  => 0,
+        [Assassin, 2]  => 1500,
+        [Assassin, 3]  => 3000,
+        [Assassin, 4]  => 6000,
+        [Assassin, 5]  => 12000,
+        [Assassin, 6]  => 25000,
+        [Assassin, 7]  => 50000,
+        [Assassin, 8]  => 100000,
+        [Assassin, 9]  => 200000,
+        [Assassin, 10] => 300000,
+        [Assassin, 11] => 450000,
+        [Assassin, 12] => 600000,
+        [Assassin, 13] => 750000,
+        [Assassin, 14] => 1000000,
+        [Assassin, 15] => 1500000,
+
+        // --- Cleric (unlimited for humans) ---
+        [Class.Cleric, 1]  => 0,
+        [Class.Cleric, 2]  => 1500,
+        [Class.Cleric, 3]  => 3000,
+        [Class.Cleric, 4]  => 6000,
+        [Class.Cleric, 5]  => 13000,
+        [Class.Cleric, 6]  => 27000,
+        [Class.Cleric, 7]  => 55000,
+        [Class.Cleric, 8]  => 110000,
+        [Class.Cleric, 9]  => 220000,
+        [Class.Cleric, 10] => 450000,
+        [Class.Cleric, 11] => 675000,
+        [Class.Cleric, 12] => 900000,
+        [Class.Cleric, 13] => 1125000,
+        [Class.Cleric, 14] => 1350000,
+        [Class.Cleric, 15] => 1575000,
+        [Class.Cleric, 16] => 1800000,
+        [Class.Cleric, 17] => 2050000,
+        [Class.Cleric, 18] => 2300000,
+        [Class.Cleric, 19] => 2550000,
+        [Class.Cleric, 20] => 2700000,
+
+        // --- Druid (max level 14) ---
+        [Class.Druid, 1]  => 0,
+        [Class.Druid, 2]  => 2000,
+        [Class.Druid, 3]  => 4000,
+        [Class.Druid, 4]  => 8000,
+        [Class.Druid, 5]  => 12000,
+        [Class.Druid, 6]  => 20000,
+        [Class.Druid, 7]  => 35000,
+        [Class.Druid, 8]  => 60000,
+        [Class.Druid, 9]  => 90000,
+        [Class.Druid, 10] => 125000,
+        [Class.Druid, 11] => 200000,
+        [Class.Druid, 12] => 300000,
+        [Class.Druid, 13] => 750000,
+        [Class.Druid, 14] => 1500000,
+
+        // --- Fighter (unlimited for humans) ---
+        [Class.Fighter, 1]  => 0,
+        [Class.Fighter, 2]  => 2000,
+        [Class.Fighter, 3]  => 4000,
+        [Class.Fighter, 4]  => 8000,
+        [Class.Fighter, 5]  => 17000,
+        [Class.Fighter, 6]  => 35000,
+        [Class.Fighter, 7]  => 70000,
+        [Class.Fighter, 8]  => 125000,
+        [Class.Fighter, 9]  => 250000,
+        [Class.Fighter, 10] => 500000,
+        [Class.Fighter, 11] => 750000,
+        [Class.Fighter, 12] => 1000000,
+        [Class.Fighter, 13] => 1250000,
+        [Class.Fighter, 14] => 1500000,
+        [Class.Fighter, 15] => 1750000,
+        [Class.Fighter, 16] => 2000000,
+        [Class.Fighter, 17] => 2250000,
+        [Class.Fighter, 18] => 2500000,
+        [Class.Fighter, 19] => 2750000,
+        [Class.Fighter, 20] => 3000000,
+
+        // --- Illusionist ---
+        [Class.Illusionist, 1]  => 0,
+        [Class.Illusionist, 2]  => 2500,
+        [Class.Illusionist, 3]  => 4750,
+        [Class.Illusionist, 4]  => 9000,
+        [Class.Illusionist, 5]  => 18000,
+        [Class.Illusionist, 6]  => 35000,
+        [Class.Illusionist, 7]  => 60000,
+        [Class.Illusionist, 8]  => 95000,
+        [Class.Illusionist, 9]  => 145000,
+        [Class.Illusionist, 10] => 220000,
+        [Class.Illusionist, 11] => 440000,
+        [Class.Illusionist, 12] => 660000,
+        [Class.Illusionist, 13] => 880000,
+        [Class.Illusionist, 14] => 1100000,
+        [Class.Illusionist, 15] => 1320000,
+        [Class.Illusionist, 16] => 1540000,
+        [Class.Illusionist, 17] => 1760000,
+        [Class.Illusionist, 18] => 1980000,
+        [Class.Illusionist, 19] => 2200000,
+        [Class.Illusionist, 20] => 2420000,
+
+        // --- Magic-User ---
+        [Class.MagicUser, 1]  => 0,
+        [Class.MagicUser, 2]  => 2400,
+        [Class.MagicUser, 3]  => 4800,
+        [Class.MagicUser, 4]  => 10250,
+        [Class.MagicUser, 5]  => 22000,
+        [Class.MagicUser, 6]  => 40000,
+        [Class.MagicUser, 7]  => 60000,
+        [Class.MagicUser, 8]  => 80000,
+        [Class.MagicUser, 9]  => 140000,
+        [Class.MagicUser, 10] => 250000,
+        [Class.MagicUser, 11] => 375000,
+        [Class.MagicUser, 12] => 750000,
+        [Class.MagicUser, 13] => 1125000,
+        [Class.MagicUser, 14] => 1500000,
+        [Class.MagicUser, 15] => 1875000,
+        [Class.MagicUser, 16] => 2250000,
+        [Class.MagicUser, 17] => 2625000,
+        [Class.MagicUser, 18] => 3000000,
+        [Class.MagicUser, 19] => 3375000,
+        [Class.MagicUser, 20] => 3750000,
+
+        // --- Monk (max level 17) ---
+        [Class.Monk, 1]  => 0,
+        [Class.Monk, 2]  => 2000,
+        [Class.Monk, 3]  => 5000,
+        [Class.Monk, 4]  => 10000,
+        [Class.Monk, 5]  => 21250,
+        [Class.Monk, 6]  => 45000,
+        [Class.Monk, 7]  => 100000,
+        [Class.Monk, 8]  => 200000,
+        [Class.Monk, 9]  => 350000,
+        [Class.Monk, 10] => 500000,
+        [Class.Monk, 11] => 700000,
+        [Class.Monk, 12] => 950000,
+        [Class.Monk, 13] => 1250000,
+        [Class.Monk, 14] => 1750000,
+        [Class.Monk, 15] => 2250000,
+        [Class.Monk, 16] => 2750000,
+        [Class.Monk, 17] => 3250000,
+
+        // --- Paladin ---
+        [Class.Paladin, 1]  => 0,
+        [Class.Paladin, 2]  => 2550,
+        [Class.Paladin, 3]  => 5500,
+        [Class.Paladin, 4]  => 12500,
+        [Class.Paladin, 5]  => 25000,
+        [Class.Paladin, 6]  => 45000,
+        [Class.Paladin, 7]  => 95000,
+        [Class.Paladin, 8]  => 175000,
+        [Class.Paladin, 9]  => 325000,
+        [Class.Paladin, 10] => 600000,
+        [Class.Paladin, 11] => 1000000,
+        [Class.Paladin, 12] => 1350000,
+        [Class.Paladin, 13] => 1700000,
+        [Class.Paladin, 14] => 2050000,
+        [Class.Paladin, 15] => 2400000,
+        [Class.Paladin, 16] => 2750000,
+        [Class.Paladin, 17] => 3100000,
+        [Class.Paladin, 18] => 3450000,
+        [Class.Paladin, 19] => 3800000,
+        [Class.Paladin, 20] => 4150000,
+
+        // --- Ranger ---
+        [Class.Ranger, 1]  => 0,
+        [Class.Ranger, 2]  => 2250,
+        [Class.Ranger, 3]  => 4500,
+        [Class.Ranger, 4]  => 9500,
+        [Class.Ranger, 5]  => 18000,
+        [Class.Ranger, 6]  => 36000,
+        [Class.Ranger, 7]  => 60000,
+        [Class.Ranger, 8]  => 90000,
+        [Class.Ranger, 9]  => 150000,
+        [Class.Ranger, 10] => 225000,
+        [Class.Ranger, 11] => 325000,
+        [Class.Ranger, 12] => 650000,
+        [Class.Ranger, 13] => 975000,
+        [Class.Ranger, 14] => 1300000,
+        [Class.Ranger, 15] => 1625000,
+        [Class.Ranger, 16] => 1950000,
+        [Class.Ranger, 17] => 2275000,
+        [Class.Ranger, 18] => 2600000,
+        [Class.Ranger, 19] => 2925000,
+        [Class.Ranger, 20] => 3250000,
+
+        // --- Thief ---
+        [Class.Thief, 1]  => 0,
+        [Class.Thief, 2]  => 1250,
+        [Class.Thief, 3]  => 2500,
+        [Class.Thief, 4]  => 5000,
+        [Class.Thief, 5]  => 10000,
+        [Class.Thief, 6]  => 20000,
+        [Class.Thief, 7]  => 40000,
+        [Class.Thief, 8]  => 70000,
+        [Class.Thief, 9]  => 110000,
+        [Class.Thief, 10] => 160000,
+        [Class.Thief, 11] => 220000,
+        [Class.Thief, 12] => 440000,
+        [Class.Thief, 13] => 660000,
+        [Class.Thief, 14] => 880000,
+        [Class.Thief, 15] => 1100000,
+        [Class.Thief, 16] => 1320000,
+        [Class.Thief, 17] => 1540000,
+        [Class.Thief, 18] => 1760000,
+        [Class.Thief, 19] => 1980000,
+        [Class.Thief, 20] => 2200000
+    }
+
+
+    // ========================================================
+    //  LEVEL ADVANCEMENT CHECK
+    // ========================================================
+
+    derive check_level_up(class: Class, current_level: int, xp: int) -> bool {
+        let next = current_level + 1
+        xp >= xp_for_level(class, next)
+    }
+}

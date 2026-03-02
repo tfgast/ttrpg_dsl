@@ -1,0 +1,140 @@
+// ============================================================
+// OSRIC 3.0 Character — creation, derived stats, validation
+//
+// Derives for computing character properties from base stats,
+// applying ancestry modifiers, and validating class requirements.
+//
+// Reference: OSRIC 3.0 Player Guide, Chapters 1-3
+// ============================================================
+
+use "OSRIC"
+use "OSRIC Ability"
+
+system "OSRIC Character" {
+
+    // ========================================================
+    //  EFFECTIVE ARMOUR CLASS
+    //
+    //  Ascending AC = base AC + DEX adjustment.
+    //  Base unarmoured AC = 10; higher = better.
+    // ========================================================
+
+    derive effective_ac(base_ac: int, dex: int) -> int {
+        base_ac + dex_ac_adj(dex)
+    }
+
+
+    // ========================================================
+    //  ANCESTRY MODIFIER APPLICATION
+    //
+    //  Applies ancestral ability score adjustments to a raw
+    //  set of rolled scores.
+    // ========================================================
+
+    derive apply_ancestry_mods(
+        abilities: map<Ability, int>,
+        ancestry: Ancestry
+    ) -> map<Ability, int> {
+        let def = ancestry_def(ancestry)
+        {
+            STR: abilities[STR] + def.str_adj,
+            DEX: abilities[DEX] + def.dex_adj,
+            CON: abilities[CON] + def.con_adj,
+            INT: abilities[INT] + def.int_adj,
+            WIS: abilities[WIS] + def.wis_adj,
+            CHA: abilities[CHA] + def.cha_adj
+        }
+    }
+
+
+    // ========================================================
+    //  ABILITY SCORE VALIDATION
+    //
+    //  Checks whether all ability scores fall within the
+    //  permitted range for a given ancestry (after adjustments).
+    // ========================================================
+
+    derive check_ability_in_range(score: int, range: AbilityRange) -> bool {
+        score >= range.min && score <= range.max
+    }
+
+    derive validate_ancestry_scores(
+        abilities: map<Ability, int>,
+        ancestry: Ancestry
+    ) -> bool {
+        let ok_str = check_ability_in_range(abilities[STR], ancestry_ability_range(ancestry, STR))
+        let ok_dex = check_ability_in_range(abilities[DEX], ancestry_ability_range(ancestry, DEX))
+        let ok_con = check_ability_in_range(abilities[CON], ancestry_ability_range(ancestry, CON))
+        let ok_int = check_ability_in_range(abilities[INT], ancestry_ability_range(ancestry, INT))
+        let ok_wis = check_ability_in_range(abilities[WIS], ancestry_ability_range(ancestry, WIS))
+        let ok_cha = check_ability_in_range(abilities[CHA], ancestry_ability_range(ancestry, CHA))
+        ok_str && ok_dex && ok_con && ok_int && ok_wis && ok_cha
+    }
+
+
+    // ========================================================
+    //  CLASS MINIMUM ABILITY REQUIREMENTS
+    //
+    //  Returns true if the given scores meet or exceed the
+    //  minimum ability requirements for the class.
+    //  Per OSRIC 3.0, Tables 1.3.x.1 for each class.
+    // ========================================================
+
+    derive meets_class_requirements(class: Class, abilities: map<Ability, int>) -> bool {
+        match class {
+            Assassin => abilities[STR] >= 12 && abilities[DEX] >= 12 && abilities[CON] >= 6 && abilities[INT] >= 11 && abilities[WIS] >= 6,
+            Cleric => abilities[STR] >= 6 && abilities[CON] >= 6 && abilities[INT] >= 6 && abilities[WIS] >= 9 && abilities[CHA] >= 6,
+            Druid => abilities[STR] >= 6 && abilities[CON] >= 6 && abilities[INT] >= 6 && abilities[WIS] >= 12 && abilities[CHA] >= 15,
+            Fighter => abilities[STR] >= 9 && abilities[DEX] >= 6 && abilities[CON] >= 7 && abilities[INT] >= 3 && abilities[WIS] >= 6 && abilities[CHA] >= 6,
+            Illusionist => abilities[STR] >= 6 && abilities[DEX] >= 16 && abilities[INT] >= 15 && abilities[WIS] >= 6 && abilities[CHA] >= 6,
+            MagicUser => abilities[DEX] >= 6 && abilities[CON] >= 6 && abilities[INT] >= 9 && abilities[WIS] >= 6 && abilities[CHA] >= 6,
+            Monk => abilities[STR] >= 10 && abilities[WIS] >= 10 && abilities[DEX] >= 15,
+            Paladin => abilities[STR] >= 12 && abilities[DEX] >= 6 && abilities[CON] >= 9 && abilities[INT] >= 9 && abilities[WIS] >= 13 && abilities[CHA] >= 17,
+            Ranger => abilities[STR] >= 13 && abilities[DEX] >= 6 && abilities[CON] >= 14 && abilities[INT] >= 13 && abilities[WIS] >= 14 && abilities[CHA] >= 6,
+            Thief => abilities[DEX] >= 9
+        }
+    }
+
+
+    // ========================================================
+    //  PRIME REQUISITE XP BONUS
+    //
+    //  OSRIC prime requisite bonuses are per-class, not a
+    //  generic table. Returns percentage: 0 or 10.
+    //  Only some classes get a 10% XP bonus.
+    // ========================================================
+
+    derive prime_req_xp_bonus(class: Class, abilities: map<Ability, int>) -> int {
+        match class {
+            // Fighter: 10% if STR 16+
+            Fighter => if abilities[STR] >= 16 { 10 } else { 0 },
+            // Paladin: 10% if STR 16+ AND WIS 16+
+            Paladin => if abilities[STR] >= 16 && abilities[WIS] >= 16 { 10 } else { 0 },
+            // Ranger: 10% if STR 16+ AND INT 16+ AND WIS 16+
+            Ranger => if abilities[STR] >= 16 && abilities[INT] >= 16 && abilities[WIS] >= 16 { 10 } else { 0 },
+            // Cleric: 10% if WIS 16+
+            Cleric => if abilities[WIS] >= 16 { 10 } else { 0 },
+            // Druid: 10% if WIS 16+ AND CHA 16+
+            Druid => if abilities[WIS] >= 16 && abilities[CHA] >= 16 { 10 } else { 0 },
+            // Magic-User: 10% if INT 16+
+            MagicUser => if abilities[INT] >= 16 { 10 } else { 0 },
+            // Thief: 10% if DEX 16+
+            Thief => if abilities[DEX] >= 16 { 10 } else { 0 },
+            // Assassin, Illusionist, Monk: no prime requisite bonus
+            _ => 0
+        }
+    }
+
+
+    // ========================================================
+    //  BASE MOVEMENT RATE
+    //
+    //  Ancestry determines base movement. Encumbrance reduces it.
+    //  For now just returns the ancestry base; encumbrance
+    //  reduction will be added with the equipment system.
+    // ========================================================
+
+    derive base_movement(ancestry: Ancestry) -> int {
+        ancestry_def(ancestry).base_movement
+    }
+}

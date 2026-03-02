@@ -1,0 +1,204 @@
+// ============================================================
+// OSRIC 3.0 Core Types — shared enums, structs, entity definitions
+//
+// Foundation types for OSRIC (Old School Reference and Index
+// Compilation), a retroclone of First Edition AD&D.
+// All other OSRIC files import from this module.
+//
+// Reference: OSRIC 3.0 Player Guide, Chapters 1-3
+// ============================================================
+
+system "OSRIC" {
+
+    // --- Ability scores (same six as all D&D) ---
+
+    enum Ability { STR, DEX, CON, INT, WIS, CHA }
+
+    // --- Alignment (nine-fold, unlike OSE's three-fold) ---
+
+    enum Alignment {
+        LawfulGood,
+        LawfulNeutral,
+        LawfulEvil,
+        NeutralGood,
+        TrueNeutral,
+        NeutralEvil,
+        ChaoticGood,
+        ChaoticNeutral,
+        ChaoticEvil
+    }
+
+    // --- Character classes (10 total) ---
+
+    enum Class {
+        Assassin,
+        Cleric,
+        Druid,
+        Fighter,
+        Illusionist,
+        MagicUser,
+        Monk,
+        Paladin,
+        Ranger,
+        Thief
+    }
+
+    // --- Ancestry (7 options; "ancestry" replaces "race" in OSRIC 3.0) ---
+
+    enum Ancestry {
+        Dwarf,
+        Elf,
+        Gnome,
+        HalfElf,
+        HalfOrc,
+        Halfling,
+        Human
+    }
+
+    // --- Size categories ---
+
+    enum Size ordered { Small, Medium }
+
+    // --- Saving throw categories (five in 1e/OSRIC) ---
+
+    enum SaveCategory {
+        AimedMagicItems,
+        BreathWeapons,
+        DeathParalysisPoison,
+        PetrificationPolymorph,
+        SpellsUnlisted
+    }
+
+    // --- Combat progression groups ---
+    // Classes share to-hit tables. These group them.
+    // Fighter progression: Fighter, Paladin, Ranger
+    // Cleric progression: Cleric, Druid, Monk
+    // Thief progression: Thief, Assassin
+    // MagicUser progression: Magic-User, Illusionist
+
+    enum CombatGroup { FighterGroup, ClericGroup, ThiefGroup, MagicUserGroup }
+
+    // --- Spell progression categories ---
+
+    enum SpellProgression {
+        NonCaster,
+        Cleric,
+        Druid,
+        MagicUser,
+        Illusionist,
+        Paladin,
+        Ranger
+    }
+
+    // --- Armour permission levels ---
+
+    enum ArmourPermission {
+        any_armour,         // Fighter, Paladin, Ranger, Cleric
+        leather_shield,     // Assassin (leather/studded + shield)
+        leather_wooden,     // Druid (leather + wooden shield only)
+        leather_only,       // Thief (leather, no shield for abilities)
+        no_armour           // Magic-User, Illusionist, Monk
+    }
+
+    // --- Thief skills (used by Thief, Assassin, Monk) ---
+
+    enum ThiefSkill {
+        climb_walls,
+        find_traps,
+        hear_noise,
+        hide_in_shadows,
+        move_silently,
+        open_locks,
+        pick_pockets,
+        read_languages
+    }
+
+    // --- Saving throw values (five categories) ---
+
+    struct SavingThrows {
+        aimed_magic: int
+        breath: int
+        death_paralysis_poison: int
+        petrification_polymorph: int
+        spells: int
+    }
+
+    // --- Static class definition ---
+    // Core mechanical identity of each class, independent of level.
+
+    struct ClassDef {
+        class: Class
+        hit_die: int                        // d4=4, d6=6, d8=8, d10=10
+        max_hit_dice: int                   // level after which HP is fixed per level
+        hp_after_max: int                   // fixed HP gained per level after max_hit_dice
+        combat_group: CombatGroup
+        armour: ArmourPermission
+        shield_allowed: bool
+        weapons_any: bool
+        non_prof_penalty: int               // -2 to -5
+        weapon_specialization: bool         // optional rule for fighter-types
+        spell_progression: SpellProgression
+        has_thief_skills: bool
+        can_backstab: bool
+        can_turn_undead: bool
+        has_exceptional_str: bool           // fighters, paladins, rangers with STR 18
+    }
+
+    // --- Ancestry definition ---
+    // Static data for each ancestry: ability adjustments, limits, features.
+
+    struct AncestryDef {
+        ancestry: Ancestry
+        size: Size
+        base_movement: int          // feet per round (120ft = human standard)
+        infravision: int            // range in feet, 0 = none
+        str_adj: int                // ability score adjustment
+        dex_adj: int
+        con_adj: int
+        int_adj: int
+        wis_adj: int
+        cha_adj: int
+    }
+
+    // --- Ability score range limits per ancestry ---
+
+    struct AbilityRange {
+        min: int
+        max: int
+    }
+
+    // --- Character entity ---
+
+    entity Character {
+        name: string
+        class: Class
+        ancestry: Ancestry = Ancestry.Human
+        level: int = 1
+        alignment: Alignment = Alignment.TrueNeutral
+        abilities: map<Ability, int>
+        exceptional_str: option<int>    // percentile STR for fighters/paladins/rangers with 18 STR
+        hp: int
+        max_hp: int
+        ac: int = 10                    // ascending AC; unarmoured = 10
+        xp: int = 0
+        base_movement: int = 120
+        gold: int = 0
+        saving_throws: option<SavingThrows>
+    }
+
+    // --- Monster entity ---
+
+    entity Monster {
+        name: string
+        hit_dice: int
+        hp: int
+        max_hp: int
+        ac: int = 10
+        morale: int = 7
+        xp_value: int = 0
+        attacks: list<string>
+        damage: string
+        size: Size = Size.Medium
+        special: list<string>
+    }
+}

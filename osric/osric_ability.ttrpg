@@ -1,0 +1,535 @@
+// ============================================================
+// OSRIC 3.0 Ability Score Modifier Tables
+//
+// OSRIC ability scores have far more sub-tables than OSE/B/X.
+// STR has separate to-hit, damage, encumbrance, and test columns.
+// STR 18 with exceptional strength (fighters/paladins/rangers)
+// has additional breakpoints at 18.01-18.50, 18.51-18.75, etc.
+// DEX has surprise, missile to-hit, AC, initiative, and agility save.
+// CON has HP modifier, resurrection success, and system shock.
+// INT has additional languages.
+// WIS has mental saving throw modifier.
+// CHA has henchman limit, loyalty, and reaction.
+//
+// Reference: OSRIC 3.0 Player Guide, Tables 1.1.2a-1.1.7a
+// ============================================================
+
+use "OSRIC"
+
+system "OSRIC Ability" {
+
+    // ========================================================
+    //  STRENGTH
+    // ========================================================
+
+    // Melee to-hit modifier (Table 1.1.2a, "To Hit" column).
+    table str_to_hit(score: int) -> int {
+        3       => -3,
+        4..=5   => -2,
+        6..=7   => -1,
+        8..=15  =>  0,
+        16      =>  0,
+        17      =>  1,
+        18      =>  1,
+        _       =>  3       // 19 (score 19 = superhuman, from table)
+    }
+
+    // Melee/thrown damage modifier.
+    table str_damage(score: int) -> int {
+        3       => -1,
+        4..=5   => -1,
+        6..=7   =>  0,
+        8..=15  =>  0,
+        16      =>  1,
+        17      =>  1,
+        18      =>  2,
+        _       =>  6       // 19
+    }
+
+    // Encumbrance allowance (weight in lbs).
+    table str_encumbrance(score: int) -> int {
+        3       =>   0,
+        4..=5   =>  10,
+        6..=7   =>  20,
+        8..=9   =>  35,
+        10..=11 =>  35,
+        12..=13 =>  45,
+        14..=15 =>  55,
+        16      =>  70,
+        17      =>  85,
+        18      => 110,
+        _       => 300      // 19
+    }
+
+    // Minor test of strength (chance on d6; e.g. forcing stuck doors).
+    // Returns X where success is 1-X on d6.
+    table str_minor_test(score: int) -> int {
+        3..=7   => 1,
+        8..=15  => 2,
+        16..=17 => 3,
+        18      => 3,
+        _       => 5        // 19
+    }
+
+    // Major test of strength (percentage chance on d100).
+    table str_major_test(score: int) -> int {
+        3..=7   =>  0,
+        8..=9   =>  1,
+        10..=11 =>  2,
+        12..=13 =>  4,
+        14..=15 =>  7,
+        16      => 10,
+        17      => 13,
+        18      => 16,
+        _       => 40       // 19
+    }
+
+    // --- Exceptional Strength (18.xx) ---
+    // Only fighters, paladins, and rangers with STR 18 roll d100.
+    // The percentile (1-100) determines bonus modifiers.
+    // These tables take the percentile value (1-100).
+
+    table exc_str_to_hit(pct: int) -> int {
+        1..=50  =>  1,
+        51..=75 =>  2,
+        76..=90 =>  2,
+        91..=99 =>  2,
+        _       =>  3       // 100 = "18.00" or "19"
+    }
+
+    table exc_str_damage(pct: int) -> int {
+        1..=50  =>  3,
+        51..=75 =>  3,
+        76..=90 =>  4,
+        91..=99 =>  5,
+        _       =>  6       // 100
+    }
+
+    table exc_str_encumbrance(pct: int) -> int {
+        1..=50  => 135,
+        51..=75 => 160,
+        76..=90 => 185,
+        91..=99 => 235,
+        _       => 300      // 100
+    }
+
+    // Exceptional minor test: X-in-6. Some entries also have
+    // "extraordinary success" chance — modeled as a separate call.
+    table exc_str_minor_test(pct: int) -> int {
+        1..=75  => 3,
+        76..=90 => 4,
+        91..=99 => 4,
+        _       => 5        // 100
+    }
+
+    table exc_str_major_test(pct: int) -> int {
+        1..=50  => 20,
+        51..=75 => 25,
+        76..=90 => 30,
+        91..=99 => 35,
+        _       => 40       // 100
+    }
+
+    // Composite: effective STR to-hit considering exceptional strength.
+    derive effective_str_to_hit(score: int, exceptional: option<int>) -> int {
+        if score == 18 {
+            if let some(pct) = exceptional {
+                exc_str_to_hit(pct)
+            } else {
+                str_to_hit(18)
+            }
+        } else {
+            str_to_hit(score)
+        }
+    }
+
+    // Composite: effective STR damage considering exceptional strength.
+    derive effective_str_damage(score: int, exceptional: option<int>) -> int {
+        if score == 18 {
+            if let some(pct) = exceptional {
+                exc_str_damage(pct)
+            } else {
+                str_damage(18)
+            }
+        } else {
+            str_damage(score)
+        }
+    }
+
+
+    // ========================================================
+    //  DEXTERITY (Table 1.1.3a)
+    // ========================================================
+
+    // Surprise modifier (affects surprise rolls).
+    table dex_surprise(score: int) -> int {
+        3       => -3,
+        4       => -2,
+        5       => -1,
+        6..=14  =>  0,
+        15      =>  0,
+        16      =>  1,
+        17      =>  2,
+        18..=19 =>  3
+    }
+
+    // Missile to-hit modifier.
+    table dex_missile(score: int) -> int {
+        3       => -3,
+        4       => -2,
+        5       => -1,
+        6..=14  =>  0,
+        15      =>  0,
+        16      =>  1,
+        17      =>  2,
+        18..=19 =>  3
+    }
+
+    // AC adjustment (ascending AC: positive = better).
+    // In OSRIC's table, descending positive means worse AC.
+    // For ascending AC, we negate: high DEX = higher AC = better.
+    table dex_ac_adj(score: int) -> int {
+        3       => -4,
+        4       => -3,
+        5       => -2,
+        6       => -1,
+        7..=14  =>  0,
+        15      =>  1,
+        16      =>  2,
+        17      =>  3,
+        18..=19 =>  4
+    }
+
+    // Initiative effect on missile combat (segments added/subtracted).
+    // Negative = act earlier (better). 0 = no adjustment.
+    table dex_init_missile(score: int) -> int {
+        3       =>  3,
+        4       =>  2,
+        5       =>  1,
+        6..=15  =>  0,
+        16      => -1,
+        17      => -2,
+        18..=19 => -3
+    }
+
+    // Agility saving throw modifier (vs aimed magic, area effects).
+    table dex_agility_save(score: int) -> int {
+        3       => -4,
+        4       => -3,
+        5       => -2,
+        6       => -1,
+        7..=14  =>  0,
+        15      =>  1,
+        16      =>  2,
+        17      =>  3,
+        18..=19 =>  4
+    }
+
+
+    // ========================================================
+    //  CONSTITUTION (Table 1.1.4a)
+    // ========================================================
+
+    // Hit point modifier per Hit Die.
+    // Note: Scores 17+ have special rules for fighter-types
+    // (+3 for fighters at 17, +4 at 18, +5 at 19). These
+    // are handled by the class system applying fighter_con_hp_mod.
+    table con_hp_mod(score: int) -> int {
+        3       => -2,
+        4..=5   => -1,
+        6       => -1,
+        7..=14  =>  0,
+        15      =>  1,
+        16      =>  2,
+        17      =>  2,
+        18      =>  2,
+        _       =>  2       // 19
+    }
+
+    // Fighter-type (Fighter, Paladin, Ranger) HP mod at high CON.
+    table con_hp_mod_fighter(score: int) -> int {
+        3       => -2,
+        4..=5   => -1,
+        6       => -1,
+        7..=14  =>  0,
+        15      =>  1,
+        16      =>  2,
+        17      =>  3,
+        18      =>  4,
+        _       =>  5       // 19
+    }
+
+    // Resurrection success (percentage on d100).
+    table con_resurrection(score: int) -> int {
+        3       => 40,
+        4       => 45,
+        5       => 50,
+        6       => 55,
+        7       => 60,
+        8       => 65,
+        9       => 70,
+        10      => 75,
+        11      => 80,
+        12      => 85,
+        13      => 90,
+        14      => 92,
+        15      => 94,
+        16      => 96,
+        17      => 98,
+        18..=19 => 100
+    }
+
+    // System shock (percentage on d100).
+    table con_system_shock(score: int) -> int {
+        3       => 35,
+        4       => 40,
+        5       => 45,
+        6       => 50,
+        7       => 55,
+        8       => 60,
+        9       => 65,
+        10      => 70,
+        11      => 75,
+        12      => 80,
+        13      => 85,
+        14      => 88,
+        15      => 91,
+        16      => 95,
+        17      => 97,
+        18..=19 => 99
+    }
+
+
+    // ========================================================
+    //  INTELLIGENCE (Table 1.1.5a)
+    // ========================================================
+
+    // Maximum additional languages the character can learn.
+    table int_extra_languages(score: int) -> int {
+        3..=7   => 0,
+        8..=9   => 1,
+        10..=11 => 2,
+        12..=13 => 3,
+        14..=15 => 4,
+        16      => 5,
+        17      => 6,
+        18      => 7,
+        _       => 8        // 19
+    }
+
+
+    // ========================================================
+    //  WISDOM (Table 1.1.6a)
+    // ========================================================
+
+    // Mental saving throw modifier (vs mind-affecting spells).
+    table wis_mental_save(score: int) -> int {
+        3       => -3,
+        4       => -2,
+        5..=7   => -1,
+        8..=14  =>  0,
+        15      =>  1,
+        16      =>  2,
+        17      =>  3,
+        18      =>  4,
+        _       =>  5       // 19
+    }
+
+
+    // ========================================================
+    //  CHARISMA (Table 1.1.7a)
+    // ========================================================
+
+    // Maximum number of henchmen (sidekick limit).
+    table cha_max_henchmen(score: int) -> int {
+        3       => 1,
+        4       => 1,
+        5       => 2,
+        6       => 2,
+        7       => 3,
+        8       => 3,
+        9..=11  => 4,
+        12      => 5,
+        13      => 5,
+        14      => 6,
+        15      => 7,
+        16      => 8,
+        17      => 10,
+        18      => 15,
+        _       => 20       // 19
+    }
+
+    // Loyalty modifier (applied to henchmen/retainer morale).
+    table cha_loyalty(score: int) -> int {
+        3       => -30,
+        4       => -25,
+        5       => -20,
+        6       => -15,
+        7       => -10,
+        8       =>  -5,
+        9..=11  =>   0,
+        12      =>   0,
+        13      =>   0,
+        14      =>   5,
+        15      =>  15,
+        16      =>  20,
+        17      =>  30,
+        18      =>  40,
+        _       =>  50       // 19
+    }
+
+    // NPC/monster reaction modifier (applied to 2d6 reaction roll).
+    table cha_reaction(score: int) -> int {
+        3       => -25,
+        4       => -20,
+        5       => -15,
+        6       => -10,
+        7       =>  -5,
+        8       =>   0,
+        9..=11  =>   0,
+        12      =>   0,
+        13      =>   5,
+        14      =>  10,
+        15      =>  15,
+        16      =>  25,
+        17      =>  30,
+        18      =>  35,
+        _       =>  40       // 19
+    }
+
+
+    // ========================================================
+    //  ANCESTRY DEFINITIONS
+    // ========================================================
+
+    derive ancestry_def(ancestry: Ancestry) -> AncestryDef {
+        match ancestry {
+            Dwarf => AncestryDef {
+                ancestry: Dwarf, size: Small, base_movement: 90,
+                infravision: 60,
+                str_adj: 0, dex_adj: 0, con_adj: 1, int_adj: 0, wis_adj: 0, cha_adj: -1
+            },
+            Elf => AncestryDef {
+                ancestry: Elf, size: Medium, base_movement: 120,
+                infravision: 60,
+                str_adj: 0, dex_adj: 1, con_adj: -1, int_adj: 0, wis_adj: 0, cha_adj: 0
+            },
+            Gnome => AncestryDef {
+                ancestry: Gnome, size: Small, base_movement: 90,
+                infravision: 60,
+                str_adj: 0, dex_adj: 0, con_adj: 0, int_adj: 0, wis_adj: 0, cha_adj: 0
+            },
+            HalfElf => AncestryDef {
+                ancestry: HalfElf, size: Medium, base_movement: 120,
+                infravision: 60,
+                str_adj: 0, dex_adj: 0, con_adj: 0, int_adj: 0, wis_adj: 0, cha_adj: 0
+            },
+            HalfOrc => AncestryDef {
+                ancestry: HalfOrc, size: Medium, base_movement: 120,
+                infravision: 60,
+                str_adj: 1, dex_adj: 0, con_adj: 1, int_adj: 0, wis_adj: 0, cha_adj: -2
+            },
+            Halfling => AncestryDef {
+                ancestry: Halfling, size: Small, base_movement: 90,
+                infravision: 60,
+                str_adj: -1, dex_adj: 1, con_adj: 0, int_adj: 0, wis_adj: 0, cha_adj: 0
+            },
+            Human => AncestryDef {
+                ancestry: Human, size: Medium, base_movement: 120,
+                infravision: 0,
+                str_adj: 0, dex_adj: 0, con_adj: 0, int_adj: 0, wis_adj: 0, cha_adj: 0
+            }
+        }
+    }
+
+
+    // ========================================================
+    //  ANCESTRY ABILITY SCORE LIMITS (Table 1.2.0a)
+    // ========================================================
+
+    // Returns the allowed range for an ability score after
+    // ancestral adjustments have been applied.
+    derive ancestry_ability_range(ancestry: Ancestry, ability: Ability) -> AbilityRange {
+        match ancestry {
+            Dwarf => match ability {
+                STR => AbilityRange { min: 8, max: 18 },
+                DEX => AbilityRange { min: 3, max: 17 },
+                CON => AbilityRange { min: 12, max: 19 },
+                INT => AbilityRange { min: 3, max: 18 },
+                WIS => AbilityRange { min: 3, max: 18 },
+                CHA => AbilityRange { min: 3, max: 16 }
+            },
+            Elf => match ability {
+                STR => AbilityRange { min: 3, max: 18 },
+                DEX => AbilityRange { min: 7, max: 19 },
+                CON => AbilityRange { min: 6, max: 18 },
+                INT => AbilityRange { min: 8, max: 18 },
+                WIS => AbilityRange { min: 3, max: 18 },
+                CHA => AbilityRange { min: 8, max: 18 }
+            },
+            Gnome => match ability {
+                STR => AbilityRange { min: 6, max: 18 },
+                DEX => AbilityRange { min: 3, max: 18 },
+                CON => AbilityRange { min: 8, max: 18 },
+                INT => AbilityRange { min: 7, max: 18 },
+                WIS => AbilityRange { min: 3, max: 18 },
+                CHA => AbilityRange { min: 3, max: 18 }
+            },
+            HalfElf => match ability {
+                STR => AbilityRange { min: 3, max: 18 },
+                DEX => AbilityRange { min: 6, max: 18 },
+                CON => AbilityRange { min: 6, max: 18 },
+                INT => AbilityRange { min: 4, max: 18 },
+                WIS => AbilityRange { min: 3, max: 18 },
+                CHA => AbilityRange { min: 3, max: 18 }
+            },
+            HalfOrc => match ability {
+                STR => AbilityRange { min: 6, max: 18 },
+                DEX => AbilityRange { min: 3, max: 17 },
+                CON => AbilityRange { min: 13, max: 19 },
+                INT => AbilityRange { min: 3, max: 17 },
+                WIS => AbilityRange { min: 3, max: 14 },
+                CHA => AbilityRange { min: 3, max: 12 }
+            },
+            Halfling => match ability {
+                STR => AbilityRange { min: 6, max: 17 },
+                DEX => AbilityRange { min: 8, max: 18 },
+                CON => AbilityRange { min: 10, max: 19 },
+                INT => AbilityRange { min: 6, max: 18 },
+                WIS => AbilityRange { min: 3, max: 17 },
+                CHA => AbilityRange { min: 3, max: 18 }
+            },
+            Human => match ability {
+                _ => AbilityRange { min: 3, max: 18 }
+            }
+        }
+    }
+
+
+    // ========================================================
+    //  STALWART SAVING THROW BONUS
+    //
+    //  Dwarves, gnomes, and halflings get a bonus to saves vs
+    //  aimed magic, poison, and spells based on Constitution.
+    //  Same table for all three ancestries.
+    //  (Tables 1.2.1.2a, 1.2.3.2a, 1.2.5.2a)
+    // ========================================================
+
+    table stalwart_save_bonus(con: int) -> int {
+        3..=6   => 1,
+        7..=10  => 2,
+        11..=13 => 3,
+        14..=17 => 4,
+        _       => 5        // 18-19
+    }
+
+    // Returns true if this ancestry gets the Stalwart bonus.
+    derive has_stalwart(ancestry: Ancestry) -> bool {
+        match ancestry {
+            Dwarf    => true,
+            Gnome    => true,
+            Halfling => true,
+            _        => false
+        }
+    }
+}
