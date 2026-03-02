@@ -1,14 +1,14 @@
 use std::borrow::Borrow;
 use std::fmt;
 use std::ops::Deref;
+use std::sync::Arc;
 
 /// Newtype wrapper for identifier strings (type names, field names, variable names, etc.).
 ///
-/// Provides a single point of change for a future interning migration:
-/// swap `Name(String)` to `Name(Symbol)` and fix the handful of conversion sites.
+/// Backed by `Arc<str>` so that `clone()` is a cheap reference-count bump
+/// rather than a heap allocation.
 #[derive(Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
-pub struct Name(String);
+pub struct Name(Arc<str>);
 
 impl Name {
     pub fn as_str(&self) -> &str {
@@ -16,7 +16,8 @@ impl Name {
     }
 
     pub fn into_inner(self) -> String {
-        self.0
+        // We can't move out of an Arc, so we have to copy.
+        self.0.to_string()
     }
 }
 
@@ -28,13 +29,13 @@ impl fmt::Display for Name {
 
 impl From<String> for Name {
     fn from(s: String) -> Self {
-        Name(s)
+        Name(Arc::from(s))
     }
 }
 
 impl From<&str> for Name {
     fn from(s: &str) -> Self {
-        Name(s.to_owned())
+        Name(Arc::from(s))
     }
 }
 
@@ -60,24 +61,32 @@ impl Deref for Name {
 
 impl PartialEq<str> for Name {
     fn eq(&self, other: &str) -> bool {
-        self.0 == other
+        &*self.0 == other
     }
 }
 
 impl PartialEq<&str> for Name {
     fn eq(&self, other: &&str) -> bool {
-        self.0 == *other
+        &*self.0 == *other
     }
 }
 
 impl PartialEq<Name> for str {
     fn eq(&self, other: &Name) -> bool {
-        self == other.0
+        self == &*other.0
     }
 }
 
 impl PartialEq<Name> for &str {
     fn eq(&self, other: &Name) -> bool {
-        *self == other.0
+        *self == &*other.0
+    }
+}
+
+#[cfg(feature = "arbitrary")]
+impl<'a> arbitrary::Arbitrary<'a> for Name {
+    fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
+        let s: String = u.arbitrary()?;
+        Ok(Name::from(s))
     }
 }

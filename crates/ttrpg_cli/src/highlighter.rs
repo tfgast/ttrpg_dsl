@@ -52,12 +52,12 @@ impl Highlighter for TtrpgHighlighter {
         let first_word = line.split_whitespace().next().unwrap_or("");
         let is_cli_cmd = CLI_COMMANDS.contains(&first_word);
 
-        let mut last_end = 0;
+        let mut last_end: usize = 0;
         let mut is_first_token = true;
 
         for token in RawLexer::new(line, FileId::SYNTH) {
-            let start = token.span.start;
-            let end = token.span.end;
+            let start = token.span.start as usize;
+            let end = token.span.end as usize;
 
             if matches!(token.kind, TokenKind::Eof) {
                 break;

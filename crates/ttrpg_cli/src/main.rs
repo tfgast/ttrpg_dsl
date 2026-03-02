@@ -291,8 +291,8 @@ fn check_sources(sources: Vec<(String, String)>, snippet: bool) {
         // Adjust spans back to original source offsets
         for diag in &mut diags {
             if !diag.span.is_dummy() {
-                diag.span.start = diag.span.start.saturating_sub(prefix_len);
-                diag.span.end = diag.span.end.saturating_sub(prefix_len);
+                diag.span.start = diag.span.start.saturating_sub(prefix_len as u32);
+                diag.span.end = diag.span.end.saturating_sub(prefix_len as u32);
             }
         }
         diags

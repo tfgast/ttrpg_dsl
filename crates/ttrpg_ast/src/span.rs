@@ -10,27 +10,31 @@ impl FileId {
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct Span {
     pub file: FileId,
-    pub start: usize,
-    pub end: usize,
+    pub start: u32,
+    pub end: u32,
 }
 
 impl Span {
     pub fn new(file: FileId, start: usize, end: usize) -> Self {
-        Self { file, start, end }
+        Self {
+            file,
+            start: start as u32,
+            end: end as u32,
+        }
     }
 
     /// Sentinel span that does not correspond to any source location.
     pub fn dummy() -> Self {
         Self {
             file: FileId::SYNTH,
-            start: usize::MAX,
-            end: usize::MAX,
+            start: u32::MAX,
+            end: u32::MAX,
         }
     }
 
     /// Returns true if this span is the dummy sentinel (no source location).
     pub fn is_dummy(self) -> bool {
-        self.start == usize::MAX && self.end == usize::MAX
+        self.start == u32::MAX && self.end == u32::MAX
     }
 
     pub fn merge(self, other: Span) -> Span {

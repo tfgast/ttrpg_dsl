@@ -84,8 +84,8 @@ fn render_diagnostic(
     source: &str,
     line_starts: &[usize],
 ) -> String {
-    let local_start = diag.span.start;
-    let local_end = diag.span.end;
+    let local_start = diag.span.start as usize;
+    let local_end = diag.span.end as usize;
 
     let line = line_starts
         .partition_point(|&start| start <= local_start)

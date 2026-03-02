@@ -18,7 +18,10 @@ pub struct Parser {
 
 impl Parser {
     pub fn new(source: &str, file: FileId) -> Self {
-        let tokens: Vec<Token> = Lexer::new(source, file).collect();
+        let lexer = Lexer::new(source, file);
+        // Pre-allocate based on source length heuristic (~5 bytes per token on average).
+        let mut tokens = Vec::with_capacity(source.len() / 5);
+        tokens.extend(lexer);
         Self {
             tokens,
             pos: 0,
@@ -47,7 +50,7 @@ impl Parser {
             || {
                 // Use end of last token or 0
                 self.tokens.last().map_or(Span::dummy(), |t| {
-                    Span::new(self.file, t.span.end, t.span.end)
+                    Span::new(self.file, t.span.end as usize, t.span.end as usize)
                 })
             },
             |t| t.span,
@@ -166,16 +169,20 @@ impl Parser {
         if depth != 0 {
             return;
         }
-        // Remove Newline tokens in [self.pos..end)
-        let mut i = self.pos;
-        while i < end {
-            if self.tokens[i].kind == TokenKind::Newline {
-                self.tokens.remove(i);
-                end -= 1;
-            } else {
-                i += 1;
+        // Remove Newline tokens in [self.pos..end) using a single O(n)
+        // compaction pass instead of repeated O(n) Vec::remove calls.
+        // We swap elements forward so no cloning is needed.
+        let mut write = self.pos;
+        for read in self.pos..self.tokens.len() {
+            if read < end && self.tokens[read].kind == TokenKind::Newline {
+                continue; // skip newlines in the target range
             }
+            if write != read {
+                self.tokens.swap(write, read);
+            }
+            write += 1;
         }
+        self.tokens.truncate(write);
     }
 
     /// Save the current token position for backtracking.
@@ -189,12 +196,12 @@ impl Parser {
     }
 
     pub(crate) fn start_span(&self) -> usize {
-        self.peek_span().start
+        self.peek_span().start as usize
     }
 
     pub(crate) fn end_span(&self, start: usize) -> Span {
         let end = if self.pos > 0 {
-            self.tokens[self.pos - 1].span.end
+            self.tokens[self.pos - 1].span.end as usize
         } else {
             start
         };
