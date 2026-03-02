@@ -297,6 +297,16 @@ impl Runner {
         Ok(())
     }
 
+    pub(super) fn cmd_entity(&mut self, name: &str) -> Result<(), CliError> {
+        match crate::format::format_entity(&self.type_env, name) {
+            Ok(lines) => {
+                self.output.extend(lines);
+                Ok(())
+            }
+            Err(msg) => Err(CliError::Message(msg)),
+        }
+    }
+
     pub(super) fn cmd_types(&mut self) -> Result<(), CliError> {
         let lines = crate::format::format_types(&self.type_env);
         if lines.is_empty() {

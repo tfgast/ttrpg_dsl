@@ -19,6 +19,7 @@ const ALL_COMMANDS: &[&str] = &[
     "inspect",
     "state",
     "types",
+    "entity",
     "actions",
     "mechanics",
     "conditions",
@@ -151,8 +152,8 @@ impl Completer for TtrpgCompleter {
         };
 
         match first_word {
-            "spawn" => {
-                // After spawn: complete entity type names (only while typing the first arg)
+            "spawn" | "entity" => {
+                // After spawn/entity: complete entity type names (only while typing the first arg)
                 let (current, extra) = split_first_word(rest);
                 if extra.is_some() {
                     // Cursor is past the entity type — no entity type completions

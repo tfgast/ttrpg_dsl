@@ -155,6 +155,17 @@ const COMMANDS: &[CommandInfo] = &[
         category: "Inspection",
     },
     CommandInfo {
+        name: "entity",
+        syntax: "entity <name>",
+        description: "Show entity type declaration",
+        detail: "Display an entity type's fields, optional groups, and defaults.\n  Shows the type declaration, not a runtime instance (use 'inspect' for that).",
+        examples: &[
+            "entity Character",
+            "entity Monster",
+        ],
+        category: "Inspection",
+    },
+    CommandInfo {
         name: "actions",
         syntax: "actions",
         description: "List all actions with signatures",

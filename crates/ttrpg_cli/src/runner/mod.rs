@@ -239,6 +239,7 @@ impl Runner {
             Command::Inspect(tail) => self.cmd_inspect(&tail),
             Command::State => self.cmd_state(),
             Command::Types => self.cmd_types(),
+            Command::Entity(name) => self.cmd_entity(&name),
             Command::Actions => self.cmd_actions(),
             Command::Mechanics => self.cmd_mechanics(),
             Command::Conditions => self.cmd_conditions(),

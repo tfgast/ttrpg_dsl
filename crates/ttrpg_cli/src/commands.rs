@@ -16,6 +16,7 @@ pub enum Command {
     Inspect(String),
     State,
     Types,
+    Entity(String),
     Actions,
     Mechanics,
     Conditions,
@@ -141,6 +142,14 @@ pub fn parse_command(line: &str) -> Option<Command> {
         }
         "state" => Some(Command::State),
         "types" => Some(Command::Types),
+        "entity" => {
+            let s = strip_comment(tail).trim();
+            if s.is_empty() {
+                Some(Command::Unknown("entity".into()))
+            } else {
+                Some(Command::Entity(s.into()))
+            }
+        }
         "actions" => Some(Command::Actions),
         "mechanics" => Some(Command::Mechanics),
         "conditions" => Some(Command::Conditions),
@@ -525,6 +534,22 @@ mod tests {
     #[test]
     fn parse_types() {
         assert_eq!(parse_command("types"), Some(Command::Types));
+    }
+
+    #[test]
+    fn parse_entity() {
+        assert_eq!(
+            parse_command("entity Character"),
+            Some(Command::Entity("Character".into()))
+        );
+    }
+
+    #[test]
+    fn parse_entity_empty_is_unknown() {
+        assert_eq!(
+            parse_command("entity"),
+            Some(Command::Unknown("entity".into()))
+        );
     }
 
     #[test]
