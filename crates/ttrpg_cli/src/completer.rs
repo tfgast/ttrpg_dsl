@@ -24,6 +24,8 @@ const ALL_COMMANDS: &[&str] = &[
     "mechanics",
     "derives",
     "conditions",
+    "reactions",
+    "hooks",
     "enable",
     "disable",
     "options",

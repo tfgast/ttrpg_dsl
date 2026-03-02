@@ -288,6 +288,28 @@ pub fn format_mechanics(env: &TypeEnv) -> Vec<String> {
     fns.iter().map(|fi| format_fn_signature(fi)).collect()
 }
 
+/// Format all reaction declarations from a TypeEnv for human-readable output.
+pub fn format_reactions(env: &TypeEnv) -> Vec<String> {
+    let mut fns: Vec<_> = env
+        .functions
+        .values()
+        .filter(|fi| matches!(fi.kind, FnKind::Reaction))
+        .collect();
+    fns.sort_by(|a, b| a.name.cmp(&b.name));
+    fns.iter().map(|fi| format_fn_signature(fi)).collect()
+}
+
+/// Format all hook declarations from a TypeEnv for human-readable output.
+pub fn format_hooks(env: &TypeEnv) -> Vec<String> {
+    let mut fns: Vec<_> = env
+        .functions
+        .values()
+        .filter(|fi| matches!(fi.kind, FnKind::Hook))
+        .collect();
+    fns.sort_by(|a, b| a.name.cmp(&b.name));
+    fns.iter().map(|fi| format_fn_signature(fi)).collect()
+}
+
 /// Format a field path for effect logging (e.g., `HP` or `stats["STR"]`).
 pub fn format_path(path: &[FieldPathSegment], units: &UnitSuffixes) -> String {
     let mut s = String::new();

@@ -20,6 +20,8 @@ pub enum Command {
     Actions,
     Mechanics,
     Conditions,
+    Reactions,
+    Hooks,
     // Assertions
     Assert(String),
     AssertEq(String),
@@ -153,6 +155,8 @@ pub fn parse_command(line: &str) -> Option<Command> {
         "actions" => Some(Command::Actions),
         "mechanics" | "derives" => Some(Command::Mechanics),
         "conditions" => Some(Command::Conditions),
+        "reactions" => Some(Command::Reactions),
+        "hooks" => Some(Command::Hooks),
         // Options
         "enable" => {
             let s = strip_comment(tail).trim();
@@ -570,6 +574,16 @@ mod tests {
     #[test]
     fn parse_conditions() {
         assert_eq!(parse_command("conditions"), Some(Command::Conditions));
+    }
+
+    #[test]
+    fn parse_reactions() {
+        assert_eq!(parse_command("reactions"), Some(Command::Reactions));
+    }
+
+    #[test]
+    fn parse_hooks() {
+        assert_eq!(parse_command("hooks"), Some(Command::Hooks));
     }
 
     // ── Phase 3: Assertion commands ──────────────────────────────

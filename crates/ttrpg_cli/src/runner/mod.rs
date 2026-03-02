@@ -243,6 +243,8 @@ impl Runner {
             Command::Actions => self.cmd_actions(),
             Command::Mechanics => self.cmd_mechanics(),
             Command::Conditions => self.cmd_conditions(),
+            Command::Reactions => self.cmd_reactions(),
+            Command::Hooks => self.cmd_hooks(),
             // Options
             Command::Enable(name) => self.cmd_enable(&name),
             Command::Disable(name) => self.cmd_disable(&name),

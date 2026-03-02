@@ -541,14 +541,26 @@ fn query_mechanics(env: &TypeEnv) {
     }
 }
 
-fn query_reactions(_env: &TypeEnv) {
-    eprintln!("query reactions: not yet implemented");
-    process::exit(1);
+fn query_reactions(env: &TypeEnv) {
+    let lines = ttrpg_cli::format::format_reactions(env);
+    if lines.is_empty() {
+        println!("no reactions");
+    } else {
+        for line in lines {
+            println!("{line}");
+        }
+    }
 }
 
-fn query_hooks(_env: &TypeEnv) {
-    eprintln!("query hooks: not yet implemented");
-    process::exit(1);
+fn query_hooks(env: &TypeEnv) {
+    let lines = ttrpg_cli::format::format_hooks(env);
+    if lines.is_empty() {
+        println!("no hooks");
+    } else {
+        for line in lines {
+            println!("{line}");
+        }
+    }
 }
 
 fn query_entity(env: &TypeEnv, name: &str) {

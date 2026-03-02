@@ -189,6 +189,22 @@ const COMMANDS: &[CommandInfo] = &[
         examples: &["conditions"],
         category: "Inspection",
     },
+    CommandInfo {
+        name: "reactions",
+        syntax: "reactions",
+        description: "List all reaction declarations",
+        detail: "List all declared reactions showing receiver, trigger, parameters, and return type.",
+        examples: &["reactions"],
+        category: "Inspection",
+    },
+    CommandInfo {
+        name: "hooks",
+        syntax: "hooks",
+        description: "List all hook declarations",
+        detail: "List all declared hooks showing receiver, trigger, parameters, and return type.",
+        examples: &["hooks"],
+        category: "Inspection",
+    },
     // Options
     CommandInfo {
         name: "enable",

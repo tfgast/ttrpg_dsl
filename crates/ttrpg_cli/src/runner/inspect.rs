@@ -337,6 +337,26 @@ impl Runner {
         Ok(())
     }
 
+    pub(super) fn cmd_reactions(&mut self) -> Result<(), CliError> {
+        let lines = crate::format::format_reactions(&self.type_env);
+        if lines.is_empty() {
+            self.output.push("no reactions".into());
+        } else {
+            self.output.extend(lines);
+        }
+        Ok(())
+    }
+
+    pub(super) fn cmd_hooks(&mut self) -> Result<(), CliError> {
+        let lines = crate::format::format_hooks(&self.type_env);
+        if lines.is_empty() {
+            self.output.push("no hooks".into());
+        } else {
+            self.output.extend(lines);
+        }
+        Ok(())
+    }
+
     pub(super) fn cmd_enable(&mut self, name: &str) -> Result<(), CliError> {
         let name = name.trim();
         if !self.type_env.options.contains(name) {
