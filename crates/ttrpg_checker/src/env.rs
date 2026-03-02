@@ -520,6 +520,12 @@ impl TypeEnv {
     pub fn resolve_cost_token(&self, token: &str) -> Option<Name> {
         let fields: HashSet<Name> = self.turn_budget_field_names().into_iter().collect();
 
+        // Exact field match first
+        if fields.contains(token) {
+            return Some(Name::from(token));
+        }
+
+        // Legacy alias fallback
         let alias_field = match token {
             "action" => Some("actions"),
             "bonus_action" => Some("bonus_actions"),
@@ -531,10 +537,6 @@ impl TypeEnv {
             if fields.contains(field) {
                 return Some(Name::from(field));
             }
-        }
-
-        if fields.contains(token) {
-            return Some(Name::from(token));
         }
 
         None

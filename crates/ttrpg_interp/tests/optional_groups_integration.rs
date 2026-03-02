@@ -1276,3 +1276,136 @@ fn alias_spell_save_dc_with_has_alias() {
         .unwrap();
     assert_eq!(val, Value::Int(17));
 }
+
+// ════════════════════════════════════════════════════════════════
+// Group 11: Nested-entity alias rewrite through local variable
+// ════════════════════════════════════════════════════════════════
+
+/// Regression test: when an entity is nested inside a non-entity value (like a
+/// trigger payload struct), mutation through a group alias must apply the
+/// alias rewrite from the checker's `resolved_lvalue_aliases`, adjusting the
+/// segment index by the entity depth.
+const NESTED_ENTITY_ALIAS_SOURCE: &str = r#"
+system "NestedAliasTest" {
+    entity Character {
+        name: string
+        level: int = 1
+        HP: int
+
+        optional Spellcasting {
+            spell_slots: int
+            spell_dc: int = 10
+        }
+    }
+
+    struct TurnBudget {
+        actions: int = 1
+        bonus_actions: int = 1
+        reactions: int = 1
+        movement: int = 30
+    }
+
+    event SpellCast(caster: Character, target: Character) {}
+
+    // Hook that mutates through trigger payload entity + group alias
+    hook DrainOnCast on receiver: Character (trigger: SpellCast(caster: receiver)) {
+        if trigger.target has Spellcasting as sc {
+            trigger.target.sc.spell_slots -= 1
+        }
+    }
+
+    // Action that emits the event
+    action CastSpell on caster: Character with Spellcasting as sc (target: Character) {
+        resolve {
+            caster.sc.spell_slots -= 1
+            emit SpellCast(caster: caster, target: target)
+        }
+    }
+
+    action AwakeMagic on gm: Character (target: Character, slots: int, dc: int) {
+        resolve {
+            grant target.Spellcasting { spell_slots: slots, spell_dc: dc }
+        }
+    }
+}
+"#;
+
+#[test]
+fn alias_nested_entity_trigger_write() {
+    let (program, result) = setup_from_source(NESTED_ENTITY_ALIAS_SOURCE);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut state = GameState::new();
+    let gm = add_character(&mut state, "GM", 1, 999);
+    let wizard = add_character(&mut state, "Wizard", 5, 30);
+    let target = add_character(&mut state, "Target", 3, 20);
+    state.set_turn_budget(&gm, standard_turn_budget());
+    state.set_turn_budget(&wizard, standard_turn_budget());
+
+    // Grant Spellcasting to both wizard and target
+    let adapter = StateAdapter::new(state);
+    let mut handler = ScriptedHandler::with_responses(vec![
+        Response::Acknowledged, // AwakeMagic for wizard
+        Response::Acknowledged, // AwakeMagic for target
+    ]);
+    adapter.run(&mut handler, |state, eff_handler| {
+        interp
+            .execute_action(
+                state,
+                eff_handler,
+                "AwakeMagic",
+                gm,
+                vec![Value::Entity(wizard), Value::Int(4), Value::Int(15)],
+            )
+            .unwrap();
+        interp
+            .execute_action(
+                state,
+                eff_handler,
+                "AwakeMagic",
+                gm,
+                vec![Value::Entity(target), Value::Int(3), Value::Int(12)],
+            )
+            .unwrap();
+    });
+    let mut state = adapter.into_inner();
+    state.set_turn_budget(&wizard, standard_turn_budget());
+
+    // CastSpell: wizard casts on target, hook should drain target's slots
+    let adapter = StateAdapter::new(state);
+    let mut handler = ScriptedHandler::with_responses(vec![Response::Acknowledged]);
+    adapter.run(&mut handler, |state, eff_handler| {
+        interp
+            .execute_action(
+                state,
+                eff_handler,
+                "CastSpell",
+                wizard,
+                vec![Value::Entity(target)],
+            )
+            .unwrap();
+    });
+
+    let final_state = adapter.into_inner();
+
+    // Wizard: spell_slots should go from 4 to 3 (from CastSpell's own cost)
+    let wiz_group = final_state.read_field(&wizard, "Spellcasting").unwrap();
+    match &wiz_group {
+        Value::Struct { fields, .. } => {
+            assert_eq!(fields.get("spell_slots"), Some(&Value::Int(3)));
+        }
+        other => panic!("expected Struct for wizard, got {:?}", other),
+    }
+
+    // Target: spell_slots should go from 3 to 2 (from hook's trigger.target.sc.spell_slots -= 1)
+    let tgt_group = final_state.read_field(&target, "Spellcasting").unwrap();
+    match &tgt_group {
+        Value::Struct { fields, .. } => {
+            assert_eq!(
+                fields.get("spell_slots"),
+                Some(&Value::Int(2)),
+                "hook should have drained target's spell_slots via trigger.target.sc alias"
+            );
+        }
+        other => panic!("expected Struct for target, got {:?}", other),
+    }
+}

@@ -252,6 +252,15 @@ fn eval_assign_local(
             ));
         }
 
+        // Apply group alias resolution, adjusting index for entity depth
+        if let Some((seg_idx, real_name)) = env.interp.type_env.resolved_lvalue_aliases.get(&span)
+        {
+            let adjusted = seg_idx.saturating_sub(depth);
+            if adjusted < path.len() {
+                path[adjusted] = FieldPathSegment::Field(real_name.clone());
+            }
+        }
+
         expand_flattened_path(env, &entity_ref, &mut path);
         let bounds = resolve_resource_bounds(env, &entity_ref, &path);
 

@@ -64,6 +64,19 @@ impl<'a> Checker<'a> {
                     }
                     if self
                         .env
+                        .lookup_flattened_field(ent_name, alias_name)
+                        .is_some()
+                    {
+                        self.error(
+                            format!(
+                                "alias `{}` shadows a field on entity `{}`",
+                                alias_name, ent_name
+                            ),
+                            span,
+                        );
+                    }
+                    if self
+                        .env
                         .lookup_optional_group(ent_name, alias_name)
                         .is_some()
                     {

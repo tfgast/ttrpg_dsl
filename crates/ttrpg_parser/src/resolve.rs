@@ -150,26 +150,12 @@ pub fn resolve_modules(
         }
     }
 
-    // Step 4: Validate imports
+    // Step 4: Validate imports (two-pass for order-independent shadow checking)
     for (sys_name, imports) in &system_imports {
-        // Track aliases: alias_name → (target_system, span)
+        // Pass 1: Validate non-shadow checks, collect tentatively accepted imports.
+        // This determines which import targets contribute to the shadow check set.
         let mut aliases: HashMap<Name, (Name, Span)> = HashMap::new();
-        let mut deduped_imports: Vec<ImportInfo> = Vec::new();
-
-        // Pre-collect ALL valid import target systems so alias shadow
-        // checking is order-independent (not just "previously accepted").
-        let all_import_targets: HashSet<Name> = imports
-            .iter()
-            .filter_map(|(import, _)| {
-                if !module_map.systems.contains_key(&import.system_name) {
-                    return None;
-                }
-                if import.system_name == *sys_name {
-                    return None;
-                }
-                Some(import.system_name.clone())
-            })
-            .collect();
+        let mut tentative: Vec<ImportInfo> = Vec::new();
 
         for (import, _span) in imports {
             // Check target exists
@@ -232,11 +218,23 @@ pub fn resolve_modules(
                     }
                 }
 
-                // Check alias vs imported names from ALL import targets
-                // (order-independent: uses pre-collected target set, not
-                // just previously processed imports)
+                aliases.insert(alias.clone(), (import.system_name.clone(), import.span));
+            }
+
+            tentative.push(import.clone());
+        }
+
+        // Pass 2: Build accepted target set from tentative imports, then check shadows.
+        // Only imports that passed non-shadow validation contribute, so rejected
+        // imports don't cause spurious shadow errors. Order-independent.
+        let accepted_targets: HashSet<Name> =
+            tentative.iter().map(|i| i.system_name.clone()).collect();
+
+        let mut deduped_imports: Vec<ImportInfo> = Vec::new();
+        for import in tentative {
+            if let Some(ref alias) = import.alias {
                 let mut shadowed_system = None;
-                for target in &all_import_targets {
+                for target in &accepted_targets {
                     if let Some(sys_info) = module_map.systems.get(target.as_str()) {
                         if system_has_name(sys_info, alias) {
                             shadowed_system = Some(target.to_string());
@@ -254,11 +252,9 @@ pub fn resolve_modules(
                     ));
                     continue;
                 }
-
-                aliases.insert(alias.clone(), (import.system_name.clone(), import.span));
             }
 
-            deduped_imports.push(import.clone());
+            deduped_imports.push(import);
         }
 
         if let Some(sys_info) = module_map.systems.get_mut(sys_name) {
@@ -1783,6 +1779,64 @@ mod tests {
         assert!(
             !has_errors(&mut p2, &fs2),
             "reversed clean alias should not produce errors"
+        );
+    }
+
+    #[test]
+    fn rejected_import_does_not_cause_spurious_shadow() {
+        // Bug fix: import A is rejected (alias conflicts with own declaration),
+        // then import B's alias should NOT be flagged for shadowing a name from A.
+        //
+        // Setup: Main declares "Foo" type. Import A aliased as "Foo" (rejected:
+        // conflicts with own decl). Import B aliased as "bar_fn" where A exports
+        // "bar_fn". Since A's import was rejected, B's alias should be fine.
+        let mut program = make_program(vec![
+            make_system("A", vec![make_derive("bar_fn")]),
+            make_system("B", vec![make_derive("baz")]),
+            make_system(
+                "Main",
+                vec![make_enum("Foo", &["X"]), make_derive("main_fn")],
+            ),
+        ]);
+        let file_systems = vec![FileSystemInfo {
+            system_names: vec!["Main".into()],
+            use_decls: vec![
+                UseDecl {
+                    path: "A".into(),
+                    alias: Some("Foo".into()),
+                    span: Span::new(FileId(0), 0, 10),
+                },
+                UseDecl {
+                    path: "B".into(),
+                    alias: Some("bar_fn".into()),
+                    span: Span::new(FileId(0), 15, 30),
+                },
+            ],
+        }];
+
+        let (_map, diags) = resolve_modules(&mut program, &file_systems);
+        let errors: Vec<_> = diags
+            .iter()
+            .filter(|d| d.severity == Severity::Error)
+            .collect();
+
+        // Import A should be rejected (alias "Foo" conflicts with own declaration)
+        assert!(
+            errors
+                .iter()
+                .any(|d| d.message.contains("alias \"Foo\" conflicts")),
+            "import A alias should conflict with own declaration: {:?}",
+            errors
+        );
+
+        // Import B should NOT be flagged for shadowing A's "bar_fn"
+        // because A's import was rejected
+        assert!(
+            !errors
+                .iter()
+                .any(|d| d.message.contains("alias \"bar_fn\" shadows")),
+            "import B alias should not shadow rejected import A's name: {:?}",
+            errors
         );
     }
 }

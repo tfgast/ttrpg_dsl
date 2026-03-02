@@ -10520,3 +10520,55 @@ system "test" {
         &["circular option extends"],
     );
 }
+
+// ═══════════════════════════════════════════════════════════════
+// Fix: cost token exact match before alias fallback
+// ═══════════════════════════════════════════════════════════════
+
+#[test]
+fn test_cost_token_exact_match_before_alias() {
+    // When both `action` and `actions` exist as fields, `action` should
+    // resolve to itself (exact match), not to `actions` (alias).
+    let source = r#"
+system "test" {
+    entity Character { HP: int }
+    struct TurnBudget {
+        action: int
+        actions: int
+    }
+    action Step on actor: Character () {
+        cost { action }
+        resolve {}
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Fix: has-alias shadow check catches flattened included fields
+// ═══════════════════════════════════════════════════════════════
+
+#[test]
+fn test_has_alias_shadows_flattened_field() {
+    let source = r#"system "test" {
+    group CombatStats {
+        ac: int
+    }
+    entity Character {
+        name: string
+        include CombatStats
+        optional Spellcasting {
+            spell_dc: int
+        }
+    }
+    derive check_spells(caster: Character) -> bool {
+        if caster has Spellcasting as ac {
+            true
+        } else {
+            false
+        }
+    }
+}"#;
+    expect_errors(source, &["alias `ac` shadows a field"]);
+}
