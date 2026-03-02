@@ -47,10 +47,10 @@ impl<'a> Checker<'a> {
 
             PatternKind::Some(inner) => match scrutinee_ty {
                 Ty::Option(inner_ty) => {
-                    self.check_pattern(inner, inner_ty);
+                    self.check_pattern_inner(inner, inner_ty, in_destructure, is_binding_context);
                 }
                 _ if scrutinee_ty.is_error() => {
-                    self.check_pattern(inner, &Ty::Error);
+                    self.check_pattern_inner(inner, &Ty::Error, in_destructure, is_binding_context);
                 }
                 _ => {
                     self.error(

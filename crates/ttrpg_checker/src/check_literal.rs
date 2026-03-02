@@ -54,7 +54,7 @@ impl<'a> Checker<'a> {
         // Validate base expression if present
         let has_base = if let Some(base_expr) = base {
             let base_ty = self.check_expr(base_expr);
-            if !base_ty.is_error() && base_ty != result_ty {
+            if !base_ty.is_error() && !self.types_compatible(&base_ty, &result_ty) {
                 self.error(
                     format!(
                         "base expression has type {}, expected {}",

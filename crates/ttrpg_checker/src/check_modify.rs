@@ -555,17 +555,48 @@ impl<'a> Checker<'a> {
             .collect()
     }
 
+    /// Check whether an expression tree references `result`.
+    fn expr_mentions_result(expr: &ExprKind) -> bool {
+        match expr {
+            ExprKind::Ident(name) => name == "result",
+            ExprKind::FieldAccess { object, .. } => Self::expr_mentions_result(&object.node),
+            ExprKind::BinOp { lhs, rhs, .. } => {
+                Self::expr_mentions_result(&lhs.node)
+                    || Self::expr_mentions_result(&rhs.node)
+            }
+            ExprKind::UnaryOp { operand, .. } => Self::expr_mentions_result(&operand.node),
+            ExprKind::Call { callee, args } => {
+                Self::expr_mentions_result(&callee.node)
+                    || args.iter().any(|a| Self::expr_mentions_result(&a.value.node))
+            }
+            ExprKind::Index { object, index } => {
+                Self::expr_mentions_result(&object.node)
+                    || Self::expr_mentions_result(&index.node)
+            }
+            ExprKind::Paren(inner) => Self::expr_mentions_result(&inner.node),
+            ExprKind::If { condition, .. } => Self::expr_mentions_result(&condition.node),
+            ExprKind::IfLet { scrutinee, .. } => Self::expr_mentions_result(&scrutinee.node),
+            ExprKind::Has { entity, .. } => Self::expr_mentions_result(&entity.node),
+            _ => false,
+        }
+    }
+
     /// Check whether a modify statement tree references `result`.
     fn stmt_uses_result(stmt: &ModifyStmt) -> bool {
         match stmt {
             ModifyStmt::ResultOverride { .. } => true,
-            ModifyStmt::ParamOverride { name, .. } if name == "result" => true,
+            ModifyStmt::ParamOverride { name, value, .. } => {
+                name == "result" || Self::expr_mentions_result(&value.node)
+            }
+            ModifyStmt::Let { value, .. } => Self::expr_mentions_result(&value.node),
             ModifyStmt::If {
+                condition,
                 then_body,
                 else_body,
                 ..
             } => {
-                then_body.iter().any(Self::stmt_uses_result)
+                Self::expr_mentions_result(&condition.node)
+                    || then_body.iter().any(Self::stmt_uses_result)
                     || else_body
                         .as_ref()
                         .is_some_and(|stmts| stmts.iter().any(Self::stmt_uses_result))

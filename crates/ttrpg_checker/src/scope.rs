@@ -216,6 +216,7 @@ impl ScopeStack {
     /// Check whether an optional group is narrowed as active for a variable,
     /// walking scopes innermost to outermost.
     pub fn is_group_narrowed(&self, var: &str, group: &str) -> bool {
+        let root = var.split('.').next().unwrap_or(var);
         for scope in self.scopes.iter().rev() {
             if let Some(groups) = scope.narrowed_groups.get(var) {
                 if groups.contains(group) {
@@ -224,7 +225,7 @@ impl ScopeStack {
             }
             // Stop at the scope that binds this variable — narrowing from
             // outer scopes applies to the outer binding, not a shadowed one.
-            if scope.bindings.contains_key(var) {
+            if scope.bindings.contains_key(root) {
                 return false;
             }
         }
@@ -247,13 +248,14 @@ impl ScopeStack {
     /// Resolve a group alias for a variable, walking scopes innermost to outermost.
     /// Returns the real group name if `field` is an alias for a group on `var`.
     pub fn resolve_group_alias(&self, var: &str, field: &str) -> Option<Name> {
+        let root = var.split('.').next().unwrap_or(var);
         let key = (Name::from(var), Name::from(field));
         for scope in self.scopes.iter().rev() {
             if let Some(real_group) = scope.group_aliases.get(&key) {
                 return Some(real_group.clone());
             }
             // Stop at the scope that binds this variable
-            if scope.bindings.contains_key(var) {
+            if scope.bindings.contains_key(root) {
                 return None;
             }
         }
