@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use ttrpg_ast::DiceFilter;
 use ttrpg_ast::Name;
-use ttrpg_checker::env::{DeclInfo, FnInfo, FnKind, TypeEnv};
+use ttrpg_checker::env::{DeclInfo, EventInfo, FnInfo, FnKind, TypeEnv};
 use ttrpg_interp::effect::FieldPathSegment;
 use ttrpg_interp::value::{DiceExpr, Value};
 
@@ -308,6 +308,38 @@ pub fn format_hooks(env: &TypeEnv) -> Vec<String> {
         .collect();
     fns.sort_by(|a, b| a.name.cmp(&b.name));
     fns.iter().map(|fi| format_fn_signature(fi)).collect()
+}
+
+/// Format all event declarations from a TypeEnv for human-readable output.
+pub fn format_events(env: &TypeEnv) -> Vec<String> {
+    let mut events: Vec<_> = env.events.values().collect();
+    events.sort_by(|a, b| a.name.cmp(&b.name));
+    events.iter().map(|ei| format_event_signature(ei)).collect()
+}
+
+/// Format a single event signature as `event Name(params) { fields }`.
+fn format_event_signature(ei: &EventInfo) -> String {
+    let params: Vec<String> = ei
+        .params
+        .iter()
+        .map(|p| format!("{}: {}", p.name, p.ty.display()))
+        .collect();
+    let fields: Vec<String> = ei
+        .fields
+        .iter()
+        .map(|(name, ty)| format!("{}: {}", name, ty.display()))
+        .collect();
+
+    if fields.is_empty() {
+        format!("event {}({})", ei.name, params.join(", "))
+    } else {
+        format!(
+            "event {}({}) {{ {} }}",
+            ei.name,
+            params.join(", "),
+            fields.join(", ")
+        )
+    }
 }
 
 /// Format a field path for effect logging (e.g., `HP` or `stats["STR"]`).

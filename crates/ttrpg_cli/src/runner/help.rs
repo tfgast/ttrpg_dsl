@@ -190,6 +190,14 @@ const COMMANDS: &[CommandInfo] = &[
         category: "Inspection",
     },
     CommandInfo {
+        name: "events",
+        syntax: "events",
+        description: "List all event declarations",
+        detail: "List all declared events showing parameters and body fields.",
+        examples: &["events"],
+        category: "Inspection",
+    },
+    CommandInfo {
         name: "reactions",
         syntax: "reactions",
         description: "List all reaction declarations",

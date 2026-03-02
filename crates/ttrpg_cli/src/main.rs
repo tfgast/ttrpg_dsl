@@ -515,9 +515,15 @@ fn query_types(env: &TypeEnv) {
     }
 }
 
-fn query_events(_env: &TypeEnv) {
-    eprintln!("query events: not yet implemented");
-    process::exit(1);
+fn query_events(env: &TypeEnv) {
+    let lines = ttrpg_cli::format::format_events(env);
+    if lines.is_empty() {
+        println!("no events");
+    } else {
+        for line in lines {
+            println!("{line}");
+        }
+    }
 }
 
 fn query_actions(env: &TypeEnv) {
