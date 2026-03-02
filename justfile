@@ -36,6 +36,10 @@ fix:
 build:
     cargo build --release
 
+# Run criterion benchmarks
+bench *ARGS:
+    cargo bench -p ttrpg_interp {{ARGS}}
+
 # Run the CLI (pass args after --)
 run *ARGS:
     cargo run --release -- {{ARGS}}

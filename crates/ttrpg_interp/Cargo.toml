@@ -11,5 +11,11 @@ ttrpg_ast.workspace = true
 ttrpg_checker.workspace = true
 
 [dev-dependencies]
+criterion.workspace = true
 insta.workspace = true
+ttrpg_lexer.workspace = true
 ttrpg_parser.workspace = true
+
+[[bench]]
+name = "pipeline"
+harness = false
