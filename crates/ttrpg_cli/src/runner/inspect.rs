@@ -335,7 +335,8 @@ impl Runner {
                     }
                 }
                 DeclInfo::Enum(info) => {
-                    self.output.push(format!("enum {name}"));
+                    let ordered = if info.ordered { " ordered" } else { "" };
+                    self.output.push(format!("enum {name}{ordered}"));
                     for variant in &info.variants {
                         if variant.fields.is_empty() {
                             self.output.push(format!("  {}", variant.name));
