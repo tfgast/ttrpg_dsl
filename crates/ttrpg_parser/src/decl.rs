@@ -663,7 +663,11 @@ impl Parser {
         self.expect(&TokenKind::Colon)?;
         let (event_name, _) = self.expect_ident()?;
         self.expect(&TokenKind::LParen)?;
-        let bindings = self.parse_trigger_bindings()?;
+        let bindings = if matches!(self.peek(), TokenKind::RParen) {
+            Vec::new()
+        } else {
+            self.parse_trigger_bindings()?
+        };
         self.expect(&TokenKind::RParen)?;
         Ok(TriggerExpr {
             event_name,
@@ -1137,7 +1141,11 @@ impl Parser {
         self.expect_soft_keyword("suppress")?;
         let (event_name, _) = self.expect_ident()?;
         self.expect(&TokenKind::LParen)?;
-        let bindings = self.parse_modify_bindings()?;
+        let bindings = if matches!(self.peek(), TokenKind::RParen) {
+            Vec::new()
+        } else {
+            self.parse_modify_bindings()?
+        };
         self.expect(&TokenKind::RParen)?;
         self.expect_term()?;
         Ok(SuppressClause {

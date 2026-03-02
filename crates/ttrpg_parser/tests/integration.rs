@@ -2793,3 +2793,80 @@ fn test_parse_revoke_call_as_expr() {
         std::mem::discriminant(&stmt.node)
     );
 }
+
+#[test]
+fn test_empty_trigger_bindings() {
+    let source = r#"system "test" {
+    entity Character { HP: int }
+    event round_start() {}
+    hook OnRoundStart on target: Character (
+        trigger: round_start()
+    ) {
+        target.HP += 1
+    }
+}"#;
+    let (program, diagnostics) = parse(source, FileId::SYNTH);
+    assert!(
+        diagnostics.is_empty(),
+        "empty trigger bindings should parse, got: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+    // Verify the hook's trigger has empty bindings
+    for item in &program.items {
+        if let ttrpg_ast::ast::TopLevel::System(sys) = &item.node {
+            for decl in &sys.decls {
+                if let ttrpg_ast::ast::DeclKind::Hook(h) = &decl.node {
+                    assert_eq!(h.name, "OnRoundStart");
+                    assert!(
+                        h.trigger.bindings.is_empty(),
+                        "trigger bindings should be empty, got {} bindings",
+                        h.trigger.bindings.len()
+                    );
+                    return;
+                }
+            }
+        }
+    }
+    panic!("hook OnRoundStart not found in parsed output");
+}
+
+#[test]
+fn test_empty_suppress_bindings() {
+    let source = r#"system "test" {
+    entity Character { HP: int }
+    event round_start() {}
+    condition Stunned on bearer: Character {
+        suppress round_start()
+    }
+}"#;
+    let (program, diagnostics) = parse(source, FileId::SYNTH);
+    assert!(
+        diagnostics.is_empty(),
+        "empty suppress bindings should parse, got: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+    // Verify the suppress clause has empty bindings
+    for item in &program.items {
+        if let ttrpg_ast::ast::TopLevel::System(sys) = &item.node {
+            for decl in &sys.decls {
+                if let ttrpg_ast::ast::DeclKind::Condition(c) = &decl.node {
+                    assert_eq!(c.name, "Stunned");
+                    let suppress = c.clauses.iter().find_map(|cl| {
+                        if let ttrpg_ast::ast::ConditionClause::Suppress(s) = cl {
+                            Some(s)
+                        } else {
+                            None
+                        }
+                    }).expect("should have a suppress clause");
+                    assert!(
+                        suppress.bindings.is_empty(),
+                        "suppress bindings should be empty, got {} bindings",
+                        suppress.bindings.len()
+                    );
+                    return;
+                }
+            }
+        }
+    }
+    panic!("condition Stunned not found in parsed output");
+}
