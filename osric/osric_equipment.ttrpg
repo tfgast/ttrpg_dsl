@@ -17,23 +17,6 @@ use "OSRIC Classes"
 system "OSRIC Equipment" {
 
     // ========================================================
-    //  DICE SPECIFICATION (for stored damage values)
-    //
-    //  Usage in combat: roll(dice(spec.count, spec.sides)).total + spec.bonus
-    // ========================================================
-
-    struct DiceSpec {
-        count: int
-        sides: int
-        bonus: int
-    }
-
-    derive ds(count: int, sides: int, bonus: int) -> DiceSpec {
-        DiceSpec { count: count, sides: sides, bonus: bonus }
-    }
-
-
-    // ========================================================
     //  DAMAGE TYPES
     //
     //  Some weapons have multiple types (wielder's choice);
@@ -125,7 +108,7 @@ system "OSRIC Equipment" {
         hands: int
         is_hurled: bool
         damage_type: DamageType
-        range_increment: int
+        range_increment: Feet
         rate_of_fire: int
         damage_sm: DiceSpec
         damage_l: DiceSpec
@@ -135,20 +118,20 @@ system "OSRIC Equipment" {
 
     derive missile_weapon_def(weapon: MissileWeapon) -> MissileWeaponDef {
         match weapon {
-            BowLong => MissileWeaponDef { hands: 2, is_hurled: false, damage_type: Piercing, range_increment: 70, rate_of_fire: 2, damage_sm: ds(1,6,0), damage_l: ds(1,6,0), weight: 12, cost_gp: 60 },
-            BowShort => MissileWeaponDef { hands: 2, is_hurled: false, damage_type: Piercing, range_increment: 50, rate_of_fire: 2, damage_sm: ds(1,6,0), damage_l: ds(1,6,0), weight: 8, cost_gp: 15 },
-            CompositeBowLong => MissileWeaponDef { hands: 2, is_hurled: false, damage_type: Piercing, range_increment: 60, rate_of_fire: 2, damage_sm: ds(1,6,0), damage_l: ds(1,6,0), weight: 8, cost_gp: 100 },
-            CompositeBowShort => MissileWeaponDef { hands: 2, is_hurled: false, damage_type: Piercing, range_increment: 50, rate_of_fire: 2, damage_sm: ds(1,6,0), damage_l: ds(1,6,0), weight: 5, cost_gp: 75 },
-            CrossbowHeavy => MissileWeaponDef { hands: 2, is_hurled: false, damage_type: Piercing, range_increment: 80, rate_of_fire: 0, damage_sm: ds(1,6,1), damage_l: ds(1,6,1), weight: 12, cost_gp: 20 },
-            CrossbowLight => MissileWeaponDef { hands: 2, is_hurled: false, damage_type: Piercing, range_increment: 60, rate_of_fire: 1, damage_sm: ds(1,4,1), damage_l: ds(1,4,1), weight: 4, cost_gp: 12 },
-            DaggerThrown => MissileWeaponDef { hands: 1, is_hurled: true, damage_type: Piercing, range_increment: 10, rate_of_fire: 2, damage_sm: ds(1,4,0), damage_l: ds(1,3,0), weight: 1, cost_gp: 2 },
-            HandAxeThrown => MissileWeaponDef { hands: 1, is_hurled: true, damage_type: Slashing, range_increment: 10, rate_of_fire: 1, damage_sm: ds(1,6,0), damage_l: ds(1,4,0), weight: 5, cost_gp: 1 },
-            ClubThrown => MissileWeaponDef { hands: 1, is_hurled: true, damage_type: Blunt, range_increment: 10, rate_of_fire: 1, damage_sm: ds(1,6,0), damage_l: ds(1,3,0), weight: 3, cost_gp: 0 },
-            DartThrown => MissileWeaponDef { hands: 1, is_hurled: true, damage_type: Piercing, range_increment: 15, rate_of_fire: 3, damage_sm: ds(1,3,0), damage_l: ds(1,2,0), weight: 0, cost_gp: 0 },
-            JavelinThrown => MissileWeaponDef { hands: 1, is_hurled: true, damage_type: Piercing, range_increment: 20, rate_of_fire: 1, damage_sm: ds(1,6,0), damage_l: ds(1,4,0), weight: 2, cost_gp: 0 },
-            SpearThrown => MissileWeaponDef { hands: 1, is_hurled: true, damage_type: Piercing, range_increment: 15, rate_of_fire: 1, damage_sm: ds(1,6,0), damage_l: ds(1,8,0), weight: 5, cost_gp: 1 },
-            Sling => MissileWeaponDef { hands: 1, is_hurled: false, damage_type: Blunt, range_increment: 35, rate_of_fire: 1, damage_sm: ds(1,4,1), damage_l: ds(1,6,1), weight: 0, cost_gp: 0 },
-            WarhammerThrown => MissileWeaponDef { hands: 1, is_hurled: true, damage_type: Blunt, range_increment: 10, rate_of_fire: 1, damage_sm: ds(1,4,1), damage_l: ds(1,4,0), weight: 5, cost_gp: 1 }
+            BowLong => MissileWeaponDef { hands: 2, is_hurled: false, damage_type: Piercing, range_increment: 70ft, rate_of_fire: 2, damage_sm: ds(1,6,0), damage_l: ds(1,6,0), weight: 12, cost_gp: 60 },
+            BowShort => MissileWeaponDef { hands: 2, is_hurled: false, damage_type: Piercing, range_increment: 50ft, rate_of_fire: 2, damage_sm: ds(1,6,0), damage_l: ds(1,6,0), weight: 8, cost_gp: 15 },
+            CompositeBowLong => MissileWeaponDef { hands: 2, is_hurled: false, damage_type: Piercing, range_increment: 60ft, rate_of_fire: 2, damage_sm: ds(1,6,0), damage_l: ds(1,6,0), weight: 8, cost_gp: 100 },
+            CompositeBowShort => MissileWeaponDef { hands: 2, is_hurled: false, damage_type: Piercing, range_increment: 50ft, rate_of_fire: 2, damage_sm: ds(1,6,0), damage_l: ds(1,6,0), weight: 5, cost_gp: 75 },
+            CrossbowHeavy => MissileWeaponDef { hands: 2, is_hurled: false, damage_type: Piercing, range_increment: 80ft, rate_of_fire: 0, damage_sm: ds(1,6,1), damage_l: ds(1,6,1), weight: 12, cost_gp: 20 },
+            CrossbowLight => MissileWeaponDef { hands: 2, is_hurled: false, damage_type: Piercing, range_increment: 60ft, rate_of_fire: 1, damage_sm: ds(1,4,1), damage_l: ds(1,4,1), weight: 4, cost_gp: 12 },
+            DaggerThrown => MissileWeaponDef { hands: 1, is_hurled: true, damage_type: Piercing, range_increment: 10ft, rate_of_fire: 2, damage_sm: ds(1,4,0), damage_l: ds(1,3,0), weight: 1, cost_gp: 2 },
+            HandAxeThrown => MissileWeaponDef { hands: 1, is_hurled: true, damage_type: Slashing, range_increment: 10ft, rate_of_fire: 1, damage_sm: ds(1,6,0), damage_l: ds(1,4,0), weight: 5, cost_gp: 1 },
+            ClubThrown => MissileWeaponDef { hands: 1, is_hurled: true, damage_type: Blunt, range_increment: 10ft, rate_of_fire: 1, damage_sm: ds(1,6,0), damage_l: ds(1,3,0), weight: 3, cost_gp: 0 },
+            DartThrown => MissileWeaponDef { hands: 1, is_hurled: true, damage_type: Piercing, range_increment: 15ft, rate_of_fire: 3, damage_sm: ds(1,3,0), damage_l: ds(1,2,0), weight: 0, cost_gp: 0 },
+            JavelinThrown => MissileWeaponDef { hands: 1, is_hurled: true, damage_type: Piercing, range_increment: 20ft, rate_of_fire: 1, damage_sm: ds(1,6,0), damage_l: ds(1,4,0), weight: 2, cost_gp: 0 },
+            SpearThrown => MissileWeaponDef { hands: 1, is_hurled: true, damage_type: Piercing, range_increment: 15ft, rate_of_fire: 1, damage_sm: ds(1,6,0), damage_l: ds(1,8,0), weight: 5, cost_gp: 1 },
+            Sling => MissileWeaponDef { hands: 1, is_hurled: false, damage_type: Blunt, range_increment: 35ft, rate_of_fire: 1, damage_sm: ds(1,4,1), damage_l: ds(1,6,1), weight: 0, cost_gp: 0 },
+            WarhammerThrown => MissileWeaponDef { hands: 1, is_hurled: true, damage_type: Blunt, range_increment: 10ft, rate_of_fire: 1, damage_sm: ds(1,4,1), damage_l: ds(1,4,0), weight: 5, cost_gp: 1 }
         }
     }
 
@@ -169,22 +152,22 @@ system "OSRIC Equipment" {
     struct ArmourDef {
         ascending_ac: int
         weight: int
-        movement_cap: int
+        movement_cap: Feet
         cost_gp: int
     }
 
     derive armour_def(armour: ArmourType) -> ArmourDef {
         match armour {
-            Banded => ArmourDef { ascending_ac: 16, weight: 35, movement_cap: 90, cost_gp: 90 },
-            ChainMail => ArmourDef { ascending_ac: 15, weight: 30, movement_cap: 90, cost_gp: 75 },
-            ElfinMail => ArmourDef { ascending_ac: 15, weight: 15, movement_cap: 120, cost_gp: 0 },
-            Leather => ArmourDef { ascending_ac: 12, weight: 15, movement_cap: 120, cost_gp: 5 },
-            Padded => ArmourDef { ascending_ac: 12, weight: 10, movement_cap: 90, cost_gp: 4 },
-            PlateMail => ArmourDef { ascending_ac: 17, weight: 45, movement_cap: 60, cost_gp: 400 },
-            RingMail => ArmourDef { ascending_ac: 13, weight: 35, movement_cap: 90, cost_gp: 30 },
-            ScaleLamellar => ArmourDef { ascending_ac: 14, weight: 40, movement_cap: 60, cost_gp: 45 },
-            Splint => ArmourDef { ascending_ac: 16, weight: 40, movement_cap: 60, cost_gp: 80 },
-            StuddedLeather => ArmourDef { ascending_ac: 13, weight: 20, movement_cap: 90, cost_gp: 15 }
+            Banded => ArmourDef { ascending_ac: 16, weight: 35, movement_cap: 90ft, cost_gp: 90 },
+            ChainMail => ArmourDef { ascending_ac: 15, weight: 30, movement_cap: 90ft, cost_gp: 75 },
+            ElfinMail => ArmourDef { ascending_ac: 15, weight: 15, movement_cap: 120ft, cost_gp: 0 },
+            Leather => ArmourDef { ascending_ac: 12, weight: 15, movement_cap: 120ft, cost_gp: 5 },
+            Padded => ArmourDef { ascending_ac: 12, weight: 10, movement_cap: 90ft, cost_gp: 4 },
+            PlateMail => ArmourDef { ascending_ac: 17, weight: 45, movement_cap: 60ft, cost_gp: 400 },
+            RingMail => ArmourDef { ascending_ac: 13, weight: 35, movement_cap: 90ft, cost_gp: 30 },
+            ScaleLamellar => ArmourDef { ascending_ac: 14, weight: 40, movement_cap: 60ft, cost_gp: 45 },
+            Splint => ArmourDef { ascending_ac: 16, weight: 40, movement_cap: 60ft, cost_gp: 80 },
+            StuddedLeather => ArmourDef { ascending_ac: 13, weight: 20, movement_cap: 90ft, cost_gp: 15 }
         }
     }
 

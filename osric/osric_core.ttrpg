@@ -10,6 +10,23 @@
 
 system "OSRIC" {
 
+    // --- Unit types ---
+
+    unit Feet suffix ft { value: int }
+
+    // --- Dice specification (for stored damage values) ---
+    // Usage in combat: roll(dice(spec.count, spec.sides)).total + spec.bonus
+
+    struct DiceSpec {
+        count: int
+        sides: int
+        bonus: int
+    }
+
+    derive ds(count: int, sides: int, bonus: int) -> DiceSpec {
+        DiceSpec { count: count, sides: sides, bonus: bonus }
+    }
+
     // --- Ability scores (same six as all D&D) ---
 
     enum Ability { STR, DEX, CON, INT, WIS, CHA }
@@ -150,8 +167,8 @@ system "OSRIC" {
     struct AncestryDef {
         ancestry: Ancestry
         size: Size
-        base_movement: int          // feet per round (120ft = human standard)
-        infravision: int            // range in feet, 0 = none
+        base_movement: Feet         // feet per round (120ft = human standard)
+        infravision: Feet           // range in feet, 0ft = none
         str_adj: int                // ability score adjustment
         dex_adj: int
         con_adj: int
@@ -167,6 +184,13 @@ system "OSRIC" {
         max: int
     }
 
+    // --- Monster attack entry ---
+
+    struct MonsterAttack {
+        name: string
+        damage: DiceSpec
+    }
+
     // --- Character entity ---
 
     entity Character {
@@ -176,14 +200,27 @@ system "OSRIC" {
         level: int = 1
         alignment: Alignment = Alignment.TrueNeutral
         abilities: map<Ability, int>
-        exceptional_str: option<int>    // percentile STR for fighters/paladins/rangers with 18 STR
-        hp: int
         max_hp: int
+        hp: resource(0..=max_hp)
         ac: int = 10                    // ascending AC; unarmoured = 10
         xp: int = 0
-        base_movement: int = 120
+        base_movement: Feet = 120ft
         gold: int = 0
         saving_throws: option<SavingThrows>
+
+        optional ExceptionalStrength {
+            percentile: int
+        }
+
+        optional Spellcasting {
+            casting_invocation: option<Invocation>
+        }
+
+        optional ThiefSkills {
+            skills: map<ThiefSkill, int>
+        }
+
+        optional TurnUndead {}
     }
 
     // --- Monster entity ---
@@ -191,13 +228,12 @@ system "OSRIC" {
     entity Monster {
         name: string
         hit_dice: int
-        hp: int
         max_hp: int
+        hp: resource(0..=max_hp)
         ac: int = 10
         morale: int = 7
         xp_value: int = 0
-        attacks: list<string>
-        damage: string
+        attacks: list<MonsterAttack>
         size: Size = Size.Medium
         special: list<string>
     }

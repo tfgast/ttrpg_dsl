@@ -21,6 +21,12 @@ system "OSRIC Combat" {
 
     enum AttackOutcome { Miss, Hit }
 
+    enum Duration {
+        end_of_round,
+        rounds(count: int),
+        indefinite
+    }
+
     enum SurpriseState {
         NoSurprise,
         PartySurprises,
@@ -39,11 +45,15 @@ system "OSRIC Combat" {
         damage: int
     }
 
+    struct TurnBudget {
+        attack: int = 0
+    }
+
     struct EncounterStart {
         party_roll: int
         monster_roll: int
         surprise: SurpriseState
-        distance: int
+        distance: Feet
     }
 
 
@@ -158,8 +168,8 @@ system "OSRIC Combat" {
     //  Max 5 increments for longbows, 5 for shortbows.
     // ========================================================
 
-    derive missile_range_penalty(distance: int, range_increment: int) -> int {
-        if range_increment <= 0 {
+    derive missile_range_penalty(distance: Feet, range_increment: Feet) -> int {
+        if range_increment.value <= 0 {
             error("range_increment must be positive")
         } else {
             let increments_beyond = floor(distance / range_increment)
@@ -216,14 +226,14 @@ system "OSRIC Combat" {
         attack_mod: int = 0
     ) -> AttackResult #attack_resolution {
         let bthb_val = bthb(attacker.class, attacker.level)
-        let str_hit = effective_str_to_hit(attacker.abilities[STR], attacker.exceptional_str)
+        let str_hit = effective_str_to_hit(attacker)
         let total_mod = bthb_val + str_hit + attack_mod
         let outcome = attack_roll_aac(total_mod, target.ac)
 
         let wdef = melee_weapon_def(weapon)
         let target_size = ancestry_def(target.ancestry).size
         let dmg_spec = if target_size > Size.Medium { wdef.damage_l } else { wdef.damage_sm }
-        let str_dmg = effective_str_damage(attacker.abilities[STR], attacker.exceptional_str)
+        let str_dmg = effective_str_damage(attacker)
 
         let damage = match outcome {
             AttackOutcome.Hit => damage_from_spec(dmg_spec, str_dmg),
@@ -239,7 +249,7 @@ system "OSRIC Combat" {
         attacker: Character,
         target: Character,
         weapon: MissileWeapon,
-        distance: int,
+        distance: Feet,
         attack_mod: int = 0
     ) -> AttackResult #attack_resolution {
         let bthb_val = bthb(attacker.class, attacker.level)
@@ -251,7 +261,7 @@ system "OSRIC Combat" {
 
         let target_size = ancestry_def(target.ancestry).size
         let dmg_spec = if target_size > Size.Medium { wdef.damage_l } else { wdef.damage_sm }
-        let str_dmg = if wdef.is_hurled { effective_str_damage(attacker.abilities[STR], attacker.exceptional_str) } else { 0 }
+        let str_dmg = if wdef.is_hurled { effective_str_damage(attacker) } else { 0 }
 
         let damage = match outcome {
             AttackOutcome.Hit => damage_from_spec(dmg_spec, str_dmg),
@@ -263,17 +273,17 @@ system "OSRIC Combat" {
 
     // Monster attack using hit dice for BTHB.
     mechanic resolve_monster_attack(
-        hit_dice: int,
-        target_ac: int,
-        damage_spec: DiceSpec,
+        attacker: Monster,
+        target: Character,
+        attack: MonsterAttack,
         attack_mod: int = 0
     ) -> AttackResult #attack_resolution {
-        let bthb_val = monster_bthb(hit_dice)
+        let bthb_val = monster_bthb(attacker.hit_dice)
         let total_mod = bthb_val + attack_mod
-        let outcome = attack_roll_aac(total_mod, target_ac)
+        let outcome = attack_roll_aac(total_mod, target.ac)
 
         let damage = match outcome {
-            AttackOutcome.Hit => damage_from_spec(damage_spec),
+            AttackOutcome.Hit => damage_from_spec(attack.damage),
             _ => 0
         }
 
@@ -299,10 +309,10 @@ system "OSRIC Combat" {
     // Encounter distance in feet.
     // Normal: (1d4+4) x 10 = 50-80ft.
     // Surprised: 1d3 x 10 = 10-30ft.
-    mechanic encounter_distance(surprised: bool = false) -> int {
+    mechanic encounter_distance(surprised: bool = false) -> Feet {
         let d = if surprised { roll(1d3) } else { roll(1d4) }
         let base = if surprised { d.total } else { d.total + 4 }
-        base * 10
+        Feet { value: base * 10 }
     }
 
     // Group initiative: 1d6 per side, low = acts first.
@@ -343,6 +353,7 @@ system "OSRIC Combat" {
 
     // Standard melee attack with a hand-held weapon.
     action MeleeAttack on attacker: Character (target: Character, weapon: MeleeWeapon) {
+        cost { attack }
         resolve {
             let result = resolve_melee_attack(attacker, target, weapon)
             match result.outcome {
@@ -362,8 +373,9 @@ system "OSRIC Combat" {
     action MissileAttack on attacker: Character (
         target: Character,
         weapon: MissileWeapon,
-        distance: int
+        distance: Feet
     ) {
+        cost { attack }
         resolve {
             let result = resolve_missile_attack(attacker, target, weapon, distance)
             match result.outcome {
@@ -383,6 +395,7 @@ system "OSRIC Combat" {
     // Per 1.6.2.1: once per 10 rounds, no DEX AC bonus for charger.
     // Set weapon against charge (double damage) deferred to initiative.
     action Charge on attacker: Character (target: Character, weapon: MeleeWeapon) {
+        cost { attack }
         resolve {
             let result = resolve_melee_attack(attacker, target, weapon, 2)
             match result.outcome {

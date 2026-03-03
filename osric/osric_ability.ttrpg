@@ -131,10 +131,11 @@ system "OSRIC Ability" {
     }
 
     // Composite: effective STR to-hit considering exceptional strength.
-    derive effective_str_to_hit(score: int, exceptional: option<int>) -> int {
+    derive effective_str_to_hit(attacker: Character) -> int {
+        let score = attacker.abilities[STR]
         if score == 18 {
-            if let some(pct) = exceptional {
-                exc_str_to_hit(pct)
+            if attacker has ExceptionalStrength as es {
+                exc_str_to_hit(attacker.es.percentile)
             } else {
                 str_to_hit(18)
             }
@@ -144,10 +145,11 @@ system "OSRIC Ability" {
     }
 
     // Composite: effective STR damage considering exceptional strength.
-    derive effective_str_damage(score: int, exceptional: option<int>) -> int {
+    derive effective_str_damage(attacker: Character) -> int {
+        let score = attacker.abilities[STR]
         if score == 18 {
-            if let some(pct) = exceptional {
-                exc_str_damage(pct)
+            if attacker has ExceptionalStrength as es {
+                exc_str_damage(attacker.es.percentile)
             } else {
                 str_damage(18)
             }
@@ -405,38 +407,38 @@ system "OSRIC Ability" {
     derive ancestry_def(ancestry: Ancestry) -> AncestryDef {
         match ancestry {
             Dwarf => AncestryDef {
-                ancestry: Dwarf, size: Small, base_movement: 90,
-                infravision: 60,
+                ancestry: Dwarf, size: Small, base_movement: 90ft,
+                infravision: 60ft,
                 str_adj: 0, dex_adj: 0, con_adj: 1, int_adj: 0, wis_adj: 0, cha_adj: -1
             },
             Elf => AncestryDef {
-                ancestry: Elf, size: Medium, base_movement: 120,
-                infravision: 60,
+                ancestry: Elf, size: Medium, base_movement: 120ft,
+                infravision: 60ft,
                 str_adj: 0, dex_adj: 1, con_adj: -1, int_adj: 0, wis_adj: 0, cha_adj: 0
             },
             Gnome => AncestryDef {
-                ancestry: Gnome, size: Small, base_movement: 90,
-                infravision: 60,
+                ancestry: Gnome, size: Small, base_movement: 90ft,
+                infravision: 60ft,
                 str_adj: 0, dex_adj: 0, con_adj: 0, int_adj: 0, wis_adj: 0, cha_adj: 0
             },
             HalfElf => AncestryDef {
-                ancestry: HalfElf, size: Medium, base_movement: 120,
-                infravision: 60,
+                ancestry: HalfElf, size: Medium, base_movement: 120ft,
+                infravision: 60ft,
                 str_adj: 0, dex_adj: 0, con_adj: 0, int_adj: 0, wis_adj: 0, cha_adj: 0
             },
             HalfOrc => AncestryDef {
-                ancestry: HalfOrc, size: Medium, base_movement: 120,
-                infravision: 60,
+                ancestry: HalfOrc, size: Medium, base_movement: 120ft,
+                infravision: 60ft,
                 str_adj: 1, dex_adj: 0, con_adj: 1, int_adj: 0, wis_adj: 0, cha_adj: -2
             },
             Halfling => AncestryDef {
-                ancestry: Halfling, size: Small, base_movement: 90,
-                infravision: 60,
+                ancestry: Halfling, size: Small, base_movement: 90ft,
+                infravision: 60ft,
                 str_adj: -1, dex_adj: 1, con_adj: 0, int_adj: 0, wis_adj: 0, cha_adj: 0
             },
             Human => AncestryDef {
-                ancestry: Human, size: Medium, base_movement: 120,
-                infravision: 0,
+                ancestry: Human, size: Medium, base_movement: 120ft,
+                infravision: 0ft,
                 str_adj: 0, dex_adj: 0, con_adj: 0, int_adj: 0, wis_adj: 0, cha_adj: 0
             }
         }

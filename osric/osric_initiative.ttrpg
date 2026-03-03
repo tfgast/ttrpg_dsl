@@ -304,14 +304,14 @@ system "OSRIC Initiative" {
     //  that's 12 feet per segment.
     // ========================================================
 
-    derive movement_per_segment(base_movement: int) -> int {
-        floor(base_movement / 10)
+    derive movement_per_segment(base_movement: Feet) -> Feet {
+        Feet { value: floor(base_movement.value / 10) }
     }
 
     // Total movement completed through a given segment.
-    derive movement_through_segment(base_movement: int, segment: int) -> int {
-        let per_seg = floor(base_movement / 10)
-        per_seg * segment
+    derive movement_through_segment(base_movement: Feet, segment: int) -> Feet {
+        let per_seg = floor(base_movement.value / 10)
+        Feet { value: per_seg * segment }
     }
 
 
@@ -353,11 +353,29 @@ system "OSRIC Initiative" {
     //  present is a potential DSL limitation to investigate.
     // ========================================================
 
-    hook SpellInterruption on caster: Character (
+    hook SpellInterruption on caster: Character with Spellcasting (
         trigger: Damaged(target: caster)
     ) {
         remove_condition(caster, CastingSpell)
         emit SpellInterrupted(caster: caster)
+    }
+
+
+    // ========================================================
+    //  BEGIN CASTING ACTION
+    //
+    //  Applies CastingSpell condition and stores the invocation
+    //  handle for later revocation (e.g., concentration break).
+    //  Requires Spellcasting optional group.
+    // ========================================================
+
+    action BeginCasting on caster: Character with Spellcasting as sc (
+        casting_time: int
+    ) {
+        resolve {
+            apply_condition(caster, CastingSpell, Duration.indefinite)
+            caster.sc.casting_invocation = some(invocation())
+        }
     }
 
 

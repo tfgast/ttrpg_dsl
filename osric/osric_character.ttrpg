@@ -134,7 +134,7 @@ system "OSRIC Character" {
     //  reduction will be added with the equipment system.
     // ========================================================
 
-    derive base_movement(ancestry: Ancestry) -> int {
+    derive base_movement(ancestry: Ancestry) -> Feet {
         ancestry_def(ancestry).base_movement
     }
 }
