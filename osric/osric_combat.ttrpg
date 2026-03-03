@@ -65,6 +65,7 @@ system "OSRIC Combat" {
 
     tag attack_resolution
     tag ac_defense
+    tag damage_dealt
 
 
     // ========================================================
@@ -405,6 +406,42 @@ system "OSRIC Combat" {
 
 
     // ========================================================
+    //  DAMAGE PIPELINE
+    //
+    //  deal_damage: identity derive that conditions can modify
+    //  via Phase 1/Phase 2 (resistance, weakness, immunity).
+    //  TakeDamage: action wrapper for HP reduction + events.
+    // ========================================================
+
+    derive deal_damage(
+        target: entity,
+        attacker: entity,
+        raw_damage: int,
+        damage_type: DamageType = DamageType.Blunt
+    ) -> int #damage_dealt {
+        raw_damage
+    }
+
+    // Apply damage to target: runs through deal_damage pipeline,
+    // reduces HP, emits Damaged and potentially CreatureSlain.
+    action TakeDamage on target: Character (
+        attacker: entity,
+        raw_damage: int,
+        damage_type: DamageType = DamageType.Blunt
+    ) {
+        cost free
+        resolve {
+            let final_damage = deal_damage(target, attacker, raw_damage, damage_type)
+            target.hp = target.hp - final_damage
+            emit Damaged(target: target, attacker: attacker, amount: final_damage)
+            if target.hp <= 0 {
+                emit CreatureSlain(target: target, attacker: attacker)
+            }
+        }
+    }
+
+
+    // ========================================================
     //  COMBAT ACTIONS
     //
     //  Character actions that resolve attacks, apply damage,
@@ -419,11 +456,8 @@ system "OSRIC Combat" {
             let result = resolve_melee_attack(attacker, target, weapon)
             match result.outcome {
                 AttackOutcome.Hit => {
-                    target.hp = target.hp - result.damage
-                    emit Damaged(target: target, attacker: attacker, amount: result.damage)
-                    if target.hp <= 0 {
-                        emit CreatureSlain(target: target, attacker: attacker)
-                    }
+                    let wdef = melee_weapon_def(weapon)
+                    target.TakeDamage(attacker, result.damage, wdef.damage_type)
                 },
                 _ => {}
             }
@@ -441,11 +475,8 @@ system "OSRIC Combat" {
             let result = resolve_missile_attack(attacker, target, weapon, distance)
             match result.outcome {
                 AttackOutcome.Hit => {
-                    target.hp = target.hp - result.damage
-                    emit Damaged(target: target, attacker: attacker, amount: result.damage)
-                    if target.hp <= 0 {
-                        emit CreatureSlain(target: target, attacker: attacker)
-                    }
+                    let wdef = missile_weapon_def(weapon)
+                    target.TakeDamage(attacker, result.damage, wdef.damage_type)
                 },
                 _ => {}
             }
@@ -461,11 +492,8 @@ system "OSRIC Combat" {
             let result = resolve_melee_attack(attacker, target, weapon, 2)
             match result.outcome {
                 AttackOutcome.Hit => {
-                    target.hp = target.hp - result.damage
-                    emit Damaged(target: target, attacker: attacker, amount: result.damage)
-                    if target.hp <= 0 {
-                        emit CreatureSlain(target: target, attacker: attacker)
-                    }
+                    let wdef = melee_weapon_def(weapon)
+                    target.TakeDamage(attacker, result.damage, wdef.damage_type)
                 },
                 _ => {}
             }

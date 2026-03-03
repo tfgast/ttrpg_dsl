@@ -389,6 +389,7 @@ fn osric_combat_has_derives() {
     assert!(derives.contains(&"bthb"));
     assert!(derives.contains(&"fighter_attacks"));
     assert!(derives.contains(&"missile_range_penalty"));
+    assert!(derives.contains(&"deal_damage"));
 }
 
 #[test]
@@ -439,6 +440,7 @@ fn osric_combat_has_actions() {
             _ => None,
         })
         .collect();
+    assert!(actions.contains(&"TakeDamage"));
     assert!(actions.contains(&"MeleeAttack"));
     assert!(actions.contains(&"MissileAttack"));
     assert!(actions.contains(&"Charge"));
@@ -2002,6 +2004,209 @@ fn melee_attack_emits_creature_slain_on_kill() {
                 vec![
                     Value::Entity(target),
                     enum_variant("MeleeWeapon", "SwordLong"),
+                ],
+            )
+            .unwrap();
+    });
+
+    let final_state = adapter.into_inner();
+    let hp = final_state.read_field(&target, "hp").unwrap();
+    assert_eq!(hp, Value::Int(0), "target HP should be clamped to 0");
+}
+
+// ── deal_damage derive ────────────────────────────────────────
+
+#[test]
+fn deal_damage_returns_raw_damage() {
+    let (program, result) = compile_osric_combat();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut state = GameState::new();
+
+    let attacker = make_character(
+        &mut state,
+        "Fighter",
+        "Fighter",
+        5,
+        &standard_abilities(),
+        30,
+        15,
+        "Human",
+    );
+    let target = make_character(
+        &mut state,
+        "Target",
+        "Fighter",
+        1,
+        &standard_abilities(),
+        10,
+        14,
+        "Human",
+    );
+    let mut handler = NullHandler;
+
+    let val = interp
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "deal_damage",
+            vec![
+                Value::Entity(target),
+                Value::Entity(attacker),
+                Value::Int(7),
+                enum_variant("DamageType", "Slashing"),
+            ],
+        )
+        .unwrap();
+    assert_eq!(val, Value::Int(7), "deal_damage should pass through raw_damage");
+}
+
+#[test]
+fn deal_damage_with_default_damage_type() {
+    let (program, result) = compile_osric_combat();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut state = GameState::new();
+
+    let attacker = make_character(
+        &mut state,
+        "Fighter",
+        "Fighter",
+        1,
+        &standard_abilities(),
+        10,
+        10,
+        "Human",
+    );
+    let target = make_character(
+        &mut state,
+        "Target",
+        "Fighter",
+        1,
+        &standard_abilities(),
+        10,
+        10,
+        "Human",
+    );
+    let mut handler = NullHandler;
+
+    // Call with only 3 args — damage_type defaults to Blunt
+    let val = interp
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "deal_damage",
+            vec![
+                Value::Entity(target),
+                Value::Entity(attacker),
+                Value::Int(3),
+            ],
+        )
+        .unwrap();
+    assert_eq!(val, Value::Int(3), "deal_damage with default type should still pass through");
+}
+
+// ── TakeDamage action ─────────────────────────────────────────
+
+#[test]
+fn take_damage_action_reduces_hp() {
+    let (program, result) = compile_osric_combat();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut state = GameState::new();
+
+    let attacker = make_character(
+        &mut state,
+        "Fighter",
+        "Fighter",
+        5,
+        &standard_abilities(),
+        30,
+        15,
+        "Human",
+    );
+    let target = make_character(
+        &mut state,
+        "Target",
+        "Fighter",
+        1,
+        &standard_abilities(),
+        10,
+        14,
+        "Human",
+    );
+    state.set_turn_budget(&target, combat_turn_budget());
+
+    // TakeDamage pipeline: ActionStarted, DeductCost, resolve (deal_damage + hp mutation + emit)
+    let mut handler = ScriptedHandler::with_responses(vec![
+        Response::Acknowledged, // ActionStarted
+        Response::Acknowledged, // DeductCost
+    ]);
+
+    let adapter = StateAdapter::new(state);
+    adapter.run(&mut handler, |state, eff_handler| {
+        interp
+            .execute_action(
+                state,
+                eff_handler,
+                "TakeDamage",
+                target,
+                vec![
+                    Value::Entity(attacker),
+                    Value::Int(6),
+                    enum_variant("DamageType", "Slashing"),
+                ],
+            )
+            .unwrap();
+    });
+
+    let final_state = adapter.into_inner();
+    let hp = final_state.read_field(&target, "hp").unwrap();
+    assert_eq!(hp, Value::Int(4), "target HP should be 10 - 6 = 4");
+}
+
+#[test]
+fn take_damage_action_emits_creature_slain_on_kill() {
+    let (program, result) = compile_osric_combat();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut state = GameState::new();
+
+    let attacker = make_character(
+        &mut state,
+        "Fighter",
+        "Fighter",
+        5,
+        &standard_abilities(),
+        30,
+        15,
+        "Human",
+    );
+    let target = make_character(
+        &mut state,
+        "Victim",
+        "Fighter",
+        1,
+        &standard_abilities(),
+        3,
+        10,
+        "Human",
+    );
+    state.set_turn_budget(&target, combat_turn_budget());
+
+    let mut handler = ScriptedHandler::with_responses(vec![
+        Response::Acknowledged,
+        Response::Acknowledged,
+    ]);
+
+    let adapter = StateAdapter::new(state);
+    adapter.run(&mut handler, |state, eff_handler| {
+        interp
+            .execute_action(
+                state,
+                eff_handler,
+                "TakeDamage",
+                target,
+                vec![
+                    Value::Entity(attacker),
+                    Value::Int(5),
+                    enum_variant("DamageType", "Blunt"),
                 ],
             )
             .unwrap();
