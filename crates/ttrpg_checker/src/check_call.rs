@@ -218,6 +218,27 @@ impl Checker<'_> {
             );
         }
 
+        // Check context restrictions for functions (callable from function/action/reaction/hook)
+        if fn_info.kind == FnKind::Function {
+            let current_ctx = self.scope.current_block_kind();
+            if !matches!(
+                current_ctx,
+                Some(
+                    BlockKind::FunctionBody
+                        | BlockKind::ActionResolve
+                        | BlockKind::ReactionResolve
+                        | BlockKind::HookResolve
+                )
+            ) {
+                self.error(
+                    format!(
+                        "`{callee_name}` is a function and can only be called from function, action, reaction, or hook context"
+                    ),
+                    span,
+                );
+            }
+        }
+
         // Check context restrictions for actions
         if fn_info.kind == FnKind::Action {
             let current_ctx = self.scope.current_block_kind();

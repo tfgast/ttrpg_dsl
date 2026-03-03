@@ -227,6 +227,7 @@ fn dispatch_fn(
     call_span: Span,
 ) -> Result<Value, RuntimeError> {
     match fn_info.kind {
+        FnKind::Function => dispatch_derive_or_mechanic(env, &fn_info.name, args, call_span),
         FnKind::Derive => dispatch_derive_or_mechanic(env, &fn_info.name, args, call_span),
         FnKind::Mechanic => dispatch_derive_or_mechanic(env, &fn_info.name, args, call_span),
         FnKind::Prompt => dispatch_prompt(env, &fn_info.name, args, call_span),

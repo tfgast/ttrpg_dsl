@@ -8,6 +8,7 @@ use crate::ty::Ty;
 /// What kind of block we're inside — determines permissions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BlockKind {
+    FunctionBody,
     Derive,
     Mechanic,
     ActionResolve,
@@ -28,7 +29,8 @@ impl BlockKind {
     pub fn allows_dice(&self) -> bool {
         matches!(
             self,
-            BlockKind::Mechanic
+            BlockKind::FunctionBody
+                | BlockKind::Mechanic
                 | BlockKind::ActionResolve
                 | BlockKind::ReactionResolve
                 | BlockKind::HookResolve
@@ -38,7 +40,10 @@ impl BlockKind {
     pub fn allows_mutation(&self) -> bool {
         matches!(
             self,
-            BlockKind::ActionResolve | BlockKind::ReactionResolve | BlockKind::HookResolve
+            BlockKind::FunctionBody
+                | BlockKind::ActionResolve
+                | BlockKind::ReactionResolve
+                | BlockKind::HookResolve
         )
     }
 
@@ -65,7 +70,10 @@ impl BlockKind {
     pub fn allows_emit(&self) -> bool {
         matches!(
             self,
-            BlockKind::ActionResolve | BlockKind::ReactionResolve | BlockKind::HookResolve
+            BlockKind::FunctionBody
+                | BlockKind::ActionResolve
+                | BlockKind::ReactionResolve
+                | BlockKind::HookResolve
         )
     }
 }

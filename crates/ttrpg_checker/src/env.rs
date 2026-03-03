@@ -68,6 +68,7 @@ pub struct OptionalGroupInfo {
 /// What kind of callable a function name refers to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FnKind {
+    Function,
     Derive,
     Mechanic,
     Action,

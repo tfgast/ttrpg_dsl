@@ -317,7 +317,7 @@ fn pass_1b(
                 }
                 collect_fn(
                     &f.name,
-                    FnKind::Derive,
+                    FnKind::Function,
                     &f.params,
                     Some(&f.return_type),
                     None,

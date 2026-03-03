@@ -31,6 +31,7 @@ pub(crate) fn evaluate_fn_with_values(
         .derives
         .get(name)
         .or_else(|| env.interp.program.mechanics.get(name))
+        .or_else(|| env.interp.program.functions.get(name))
         .ok_or_else(|| {
             RuntimeError::with_span(format!("undefined function '{name}'"), call_span)
         })?;
@@ -142,6 +143,7 @@ pub(super) fn dispatch_derive_or_mechanic(
         .derives
         .get(name)
         .or_else(|| env.interp.program.mechanics.get(name))
+        .or_else(|| env.interp.program.functions.get(name))
         .ok_or_else(|| {
             RuntimeError::with_span(
                 format!("internal error: no declaration found for function '{name}'"),

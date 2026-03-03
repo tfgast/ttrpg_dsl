@@ -375,6 +375,17 @@ pub fn format_fn_signature(fi: &FnInfo) -> String {
                 .unwrap_or_default();
             format!("hook {} on {}{}", fi.name, format_param(recv), trigger_part)
         }
+        FnKind::Function => {
+            let params: Vec<String> = fi.params.iter().map(format_param).collect();
+            let tags = format_tags(&fi.tags);
+            format!(
+                "function {}({}) -> {}{}",
+                fi.name,
+                params.join(", "),
+                fi.return_type.display(),
+                tags,
+            )
+        }
         FnKind::Derive => {
             let params: Vec<String> = fi.params.iter().map(format_param).collect();
             let tags = format_tags(&fi.tags);

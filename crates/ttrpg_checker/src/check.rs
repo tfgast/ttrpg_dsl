@@ -279,7 +279,7 @@ impl<'a> Checker<'a> {
     fn check_decl(&mut self, decl: &ttrpg_ast::Spanned<DeclKind>) {
         match &decl.node {
             DeclKind::Group(g) => self.check_group_defaults(g),
-            DeclKind::Function(f) => self.check_derive(f),
+            DeclKind::Function(f) => self.check_function(f),
             DeclKind::Derive(f) => self.check_derive(f),
             DeclKind::Mechanic(f) => self.check_mechanic(f),
             DeclKind::Action(a) => self.check_action(a),
@@ -312,6 +312,16 @@ impl<'a> Checker<'a> {
                 }
             }
         }
+    }
+
+    fn check_function(&mut self, f: &FnDecl) {
+        self.scope.push(BlockKind::FunctionBody);
+        self.check_type_visible(&f.return_type);
+        self.bind_params(&f.params);
+        let ret_ty = self.env.resolve_type(&f.return_type);
+        let body_ty = self.check_block_with_tail_hint(&f.body, Some(&ret_ty));
+        self.check_return_type(&body_ty, &ret_ty, f.body.span);
+        self.scope.pop();
     }
 
     fn check_derive(&mut self, f: &FnDecl) {
