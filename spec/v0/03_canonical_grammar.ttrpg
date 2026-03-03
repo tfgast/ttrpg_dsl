@@ -138,6 +138,7 @@ decl            = enum_decl
                 | entity_decl
                 | derive_decl
                 | mechanic_decl
+                | function_decl
                 | action_decl
                 | reaction_decl
                 | hook_decl
@@ -154,7 +155,7 @@ tag_decl        = "tag" "#"? IDENT term
 // `tag Attack` are accepted. The `#` prefix is required when using
 // the tag on a declaration: `derive foo() -> int #Attack { ... }`.
 
-// Tags are metadata labels attached to derives, mechanics, and actions.
+// Tags are metadata labels attached to derives, mechanics, functions, and actions.
 // A tag must be declared before it can be used on a declaration.
 // See 02_scoping.ttrpg for usage details.
 
@@ -195,6 +196,12 @@ derive_decl     = "derive" IDENT "(" params ")" "->" type tag_list? block
 
 // --- Mechanic (can roll, no mutation, no receiver) ---
 mechanic_decl   = "mechanic" IDENT "(" params ")" "->" type tag_list? block
+
+// --- Function (can roll, can mutate, can emit, no receiver, no modify pipeline) ---
+// Return type is optional; when absent, defaults to unit (void).
+// Functions can call actions, other functions, derives, and mechanics.
+// Unlike derive/mechanic, conditions cannot modify function calls.
+function_decl   = "function" IDENT "(" params ")" ("->" type)? tag_list? block
 
 // --- Action (can roll, can mutate, has receiver) ---
 action_decl     = "action" IDENT "on" IDENT ":" constrained_type

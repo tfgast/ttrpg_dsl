@@ -396,6 +396,14 @@ interpreter.evaluate_derive(state, handler, name, args)
 
 Runs the modify pipeline (conditions can modify derives) and returns a value. Takes a handler because the modify pipeline can emit `ModifyApplied` informational effects.
 
+### Evaluate a function
+
+```rust
+interpreter.evaluate_function(state, handler, name, args)
+```
+
+Evaluates the function body directly — no modify pipeline, no lifecycle effects. Functions can roll dice, mutate entity state, emit events, and call actions, but have no receiver, no cost/requires, no `turn` keyword, and no `invocation()`. Returns the computed value (or `Value::None` for void functions). Takes a handler because the body can yield `RollDice`, `MutateField`, and other effects.
+
 ### Fire an event
 
 ```rust
