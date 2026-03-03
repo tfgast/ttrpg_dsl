@@ -12,11 +12,10 @@
 // action queue management, and turn flow control.
 //
 // DISCOVERED DSL LIMITATIONS (for future language work):
-//   1. No modulo operator (%) — workarounds used
-//   2. No built-in action scheduler/queue — host manages this
-//   3. No "delay until segment X" construct — derives compute
+//   1. No built-in action scheduler/queue — host manages this
+//   2. No "delay until segment X" construct — derives compute
 //      timing, host enforces execution order
-//   4. Condition removal when condition may not be present —
+//   3. Condition removal when condition may not be present —
 //      remove_condition behaviour on absent condition untested
 //
 // Reference: OSRIC 3.0 Player Guide, Chapter 6 (pp. 90-93)
@@ -153,13 +152,19 @@ system "OSRIC Initiative" {
     //   - Spells complete after casting_time segments
     // ========================================================
 
+    // Wrap a computed segment into the 1–10 range.
+    // Segment 11 → 1, segment 12 → 2, etc.
+    derive wrap_segment(seg: int) -> int {
+        (seg - 1) % 10 + 1
+    }
+
     derive action_segment(
         initiative_segment: int,
         action_type: DeclaredActionType,
         casting_time: int = 0,
         dex_missile_init_adj: int = 0
     ) -> int {
-        match action_type {
+        let raw = match action_type {
             MeleeAttackAction      => initiative_segment,
             MissileAttackAction    => max(1, initiative_segment + dex_missile_init_adj),
             CastSpellAction        => initiative_segment + casting_time - 1,
@@ -170,6 +175,7 @@ system "OSRIC Initiative" {
             FleeAction             => initiative_segment,
             HoldAction             => initiative_segment
         }
+        wrap_segment(raw)
     }
 
     // Compute missile initiative segment for a specific character.
@@ -214,18 +220,18 @@ system "OSRIC Initiative" {
 
     // Number of attacks this round for a fighter-group member.
     // At 3/2 rate, alternates between 1 and 2 attacks per round.
-    derive fighter_attacks_this_round(level: int, is_even_round: bool) -> int {
+    derive fighter_attacks_this_round(level: int, round_number: int) -> int {
         match {
             level < 7  => 1,
-            level < 13 => if is_even_round { 2 } else { 1 },
+            level < 13 => if round_number % 2 == 0 { 2 } else { 1 },
             _          => 2
         }
     }
 
     // Segments at which fighter multi-attacks occur.
     // Returns list of segments (e.g., [1] or [1, 10]).
-    derive fighter_attack_segments(level: int, is_even_round: bool) -> list<int> {
-        let attacks = fighter_attacks_this_round(level, is_even_round)
+    derive fighter_attack_segments(level: int, round_number: int) -> list<int> {
+        let attacks = fighter_attacks_this_round(level, round_number)
         if attacks >= 2 {
             [1, 10]
         } else if level >= 7 {
@@ -250,7 +256,7 @@ system "OSRIC Initiative" {
     // ========================================================
 
     derive spell_effect_segment(initiative_segment: int, casting_time: int) -> int {
-        initiative_segment + casting_time - 1
+        wrap_segment(initiative_segment + casting_time - 1)
     }
 
     // Is the caster currently casting (interruptible) at this segment?

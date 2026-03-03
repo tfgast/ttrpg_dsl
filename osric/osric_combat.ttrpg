@@ -152,10 +152,10 @@ system "OSRIC Combat" {
     //  2/1 at level 13. Attacks happen at segments 1 and 10.
     // ========================================================
 
-    derive fighter_attacks(level: int, is_even_round: bool) -> int {
+    derive fighter_attacks(level: int, round_number: int) -> int {
         match {
             level < 7  => 1,
-            level < 13 => if is_even_round { 2 } else { 1 },
+            level < 13 => if round_number % 2 == 0 { 2 } else { 1 },
             _          => 2
         }
     }
