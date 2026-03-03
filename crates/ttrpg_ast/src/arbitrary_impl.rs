@@ -214,7 +214,7 @@ impl<'a> Arbitrary<'a> for ExprKind {
 impl<'a> Arbitrary<'a> for TypeExpr {
     fn arbitrary(u: &mut Unstructured<'a>) -> Result<Self> {
         if u.len() < RECURSION_BUDGET {
-            let choice = u.int_in_range(0..=13)?;
+            let choice = u.int_in_range(0..=14)?;
             return Ok(match choice {
                 0 => TypeExpr::Int,
                 1 => TypeExpr::Bool,
@@ -228,7 +228,8 @@ impl<'a> Arbitrary<'a> for TypeExpr {
                 9 => TypeExpr::Condition,
                 10 => TypeExpr::ActiveCondition,
                 11 => TypeExpr::Invocation,
-                12 => TypeExpr::Named(u.arbitrary()?),
+                12 => TypeExpr::Unit,
+                13 => TypeExpr::Named(u.arbitrary()?),
                 _ => TypeExpr::Qualified {
                     qualifier: u.arbitrary()?,
                     name: u.arbitrary()?,
@@ -236,7 +237,7 @@ impl<'a> Arbitrary<'a> for TypeExpr {
             });
         }
 
-        let choice = u.int_in_range(0..=18)?;
+        let choice = u.int_in_range(0..=19)?;
         Ok(match choice {
             0 => TypeExpr::Int,
             1 => TypeExpr::Bool,
@@ -250,8 +251,9 @@ impl<'a> Arbitrary<'a> for TypeExpr {
             9 => TypeExpr::Condition,
             10 => TypeExpr::ActiveCondition,
             11 => TypeExpr::Invocation,
-            12 => TypeExpr::Named(u.arbitrary()?),
-            13 => TypeExpr::Qualified {
+            12 => TypeExpr::Unit,
+            13 => TypeExpr::Named(u.arbitrary()?),
+            14 => TypeExpr::Qualified {
                 qualifier: u.arbitrary()?,
                 name: u.arbitrary()?,
             },

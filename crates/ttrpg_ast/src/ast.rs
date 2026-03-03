@@ -601,6 +601,7 @@ pub enum TypeExpr {
     Condition,
     ActiveCondition,
     Invocation,
+    Unit,
     Named(Name),
     Qualified { qualifier: Name, name: Name },
     Map(Box<Spanned<TypeExpr>>, Box<Spanned<TypeExpr>>),

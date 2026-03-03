@@ -298,6 +298,7 @@ impl TypeEnv {
             TypeExpr::Condition => self.resolve_named_or("Condition", Ty::Condition),
             TypeExpr::ActiveCondition => Ty::ActiveCondition,
             TypeExpr::Invocation => Ty::Invocation,
+            TypeExpr::Unit => Ty::Unit,
             TypeExpr::Named(name) => {
                 if name == "entity" {
                     return Ty::AnyEntity;
