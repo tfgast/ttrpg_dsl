@@ -1954,7 +1954,7 @@ system "test" {
 "#;
     expect_errors(
         source,
-        &["is an action and can only be called from action, reaction, or hook context"],
+        &["is an action and can only be called from function, action, reaction, or hook context"],
     );
 }
 
@@ -10420,7 +10420,7 @@ system "test" {
 "#;
     expect_errors(
         source,
-        &["is an action and can only be called from action, reaction, or hook"],
+        &["is an action and can only be called from function, action, reaction, or hook"],
     );
 }
 
@@ -10442,7 +10442,7 @@ system "test" {
 "#;
     expect_errors(
         source,
-        &["is an action and can only be called from action, reaction, or hook"],
+        &["is an action and can only be called from function, action, reaction, or hook"],
     );
 }
 
@@ -10908,7 +10908,7 @@ system "test" {
 }
 
 #[test]
-fn test_function_cannot_call_action() {
+fn test_function_can_call_action() {
     let source = r#"
 system "test" {
     entity Character { hp: int }
@@ -10920,10 +10920,7 @@ system "test" {
     }
 }
 "#;
-    expect_errors(
-        source,
-        &["is an action and can only be called from action, reaction, or hook"],
-    );
+    expect_no_errors(source);
 }
 
 #[test]

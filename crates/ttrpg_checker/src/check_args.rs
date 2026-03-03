@@ -448,12 +448,15 @@ impl Checker<'_> {
             if !matches!(
                 current_ctx,
                 Some(
-                    BlockKind::ActionResolve | BlockKind::ReactionResolve | BlockKind::HookResolve
+                    BlockKind::FunctionBody
+                        | BlockKind::ActionResolve
+                        | BlockKind::ReactionResolve
+                        | BlockKind::HookResolve
                 )
             ) {
                 self.error(
                     format!(
-                        "`{name}` is an action and can only be called from action, reaction, or hook context"
+                        "`{name}` is an action and can only be called from function, action, reaction, or hook context"
                     ),
                     span,
                 );

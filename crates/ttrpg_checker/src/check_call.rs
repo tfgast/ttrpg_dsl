@@ -66,14 +66,15 @@ impl Checker<'_> {
                             if !matches!(
                                 current_ctx,
                                 Some(
-                                    BlockKind::ActionResolve
+                                    BlockKind::FunctionBody
+                                        | BlockKind::ActionResolve
                                         | BlockKind::ReactionResolve
                                         | BlockKind::HookResolve
                                 )
                             ) {
                                 self.error(
                                     format!(
-                                        "`{field}` is an action and can only be called from action, reaction, or hook context"
+                                        "`{field}` is an action and can only be called from function, action, reaction, or hook context"
                                     ),
                                     span,
                                 );
@@ -245,12 +246,15 @@ impl Checker<'_> {
             if !matches!(
                 current_ctx,
                 Some(
-                    BlockKind::ActionResolve | BlockKind::ReactionResolve | BlockKind::HookResolve
+                    BlockKind::FunctionBody
+                        | BlockKind::ActionResolve
+                        | BlockKind::ReactionResolve
+                        | BlockKind::HookResolve
                 )
             ) {
                 self.error(
                     format!(
-                        "`{callee_name}` is an action and can only be called from action, reaction, or hook context"
+                        "`{callee_name}` is an action and can only be called from function, action, reaction, or hook context"
                     ),
                     span,
                 );
