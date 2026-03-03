@@ -27,6 +27,7 @@ fn compile_osric_combat() -> (ttrpg_ast::ast::Program, ttrpg_checker::CheckResul
     let ability_source = include_str!("../../../osric/osric_ability.ttrpg");
     let class_source = include_str!("../../../osric/osric_class.ttrpg");
     let equipment_source = include_str!("../../../osric/osric_equipment.ttrpg");
+    let conditions_source = include_str!("../../../osric/osric_conditions.ttrpg");
     let combat_source = include_str!("../../../osric/osric_combat.ttrpg");
 
     let sources = vec![
@@ -45,6 +46,10 @@ fn compile_osric_combat() -> (ttrpg_ast::ast::Program, ttrpg_checker::CheckResul
         (
             "osric/osric_equipment.ttrpg".to_string(),
             equipment_source.to_string(),
+        ),
+        (
+            "osric/osric_conditions.ttrpg".to_string(),
+            conditions_source.to_string(),
         ),
         (
             "osric/osric_combat.ttrpg".to_string(),
@@ -1871,8 +1876,9 @@ fn charge_action_adds_attack_mod() {
     // damage: SwordLong 1d8, roll 5
     let dmg_roll = scripted_roll(1, 8, 0, vec![5], vec![5], 5, 5);
     let mut handler = ScriptedHandler::with_responses(vec![
-        Response::Acknowledged,
-        Response::Acknowledged,
+        Response::Acknowledged, // ActionStarted
+        Response::Acknowledged, // RequiresCheck (no ChargeRecovery → pass)
+        Response::Acknowledged, // DeductCost(attack)
         atk_roll,
         dmg_roll,
     ]);

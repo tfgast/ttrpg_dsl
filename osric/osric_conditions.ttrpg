@@ -228,4 +228,33 @@ system "OSRIC Conditions" {
             attack_mod = attack_mod - penalty
         }
     }
+
+
+    // ========================================================
+    //  CHARGING
+    //
+    //  Applied for the remainder of the round when a character
+    //  charges. Loses DEX AC bonus and suffers -1 AC penalty.
+    //  Per 1.6.2.1: "suffers an AC penalty of 1 and loses any
+    //  dexterity bonuses to AC for the rest of the round."
+    // ========================================================
+
+    condition Charging on bearer: entity {
+        modify effective_target_ac(target: bearer) {
+            include_dex = false
+            ac_mod = ac_mod - 1
+        }
+    }
+
+
+    // ========================================================
+    //  CHARGE RECOVERY
+    //
+    //  Cooldown marker applied after charging. A character may
+    //  only charge once per 10 rounds (Per 1.6.2.1).
+    //  Duration rounds(10) — removed automatically by
+    //  expire_conditions.
+    // ========================================================
+
+    condition ChargeRecovery on bearer: entity {}
 }

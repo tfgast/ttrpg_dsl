@@ -436,7 +436,7 @@ fn osric_conditions_parses_and_typechecks() {
 // ── Structure verification ─────────────────────────────────────
 
 #[test]
-fn osric_conditions_has_all_eleven_conditions() {
+fn osric_conditions_has_all_thirteen_conditions() {
     let (program, _) = compile_osric_conditions();
     let decls = get_conditions_decls(&program);
     let conditions: Vec<_> = decls
@@ -459,6 +459,8 @@ fn osric_conditions_has_all_eleven_conditions() {
         "RearAttacked",
         "Concealed",
         "Cover",
+        "Charging",
+        "ChargeRecovery",
     ];
 
     for name in &expected {
@@ -469,8 +471,8 @@ fn osric_conditions_has_all_eleven_conditions() {
     }
     assert_eq!(
         conditions.len(),
-        11,
-        "expected 11 conditions, found {}: {:?}",
+        13,
+        "expected 13 conditions, found {}: {:?}",
         conditions.len(),
         conditions
     );

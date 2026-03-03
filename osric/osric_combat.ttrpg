@@ -12,6 +12,7 @@ use "OSRIC"
 use "OSRIC Ability"
 use "OSRIC Classes"
 use "OSRIC Equipment"
+use "OSRIC Conditions"
 
 system "OSRIC Combat" {
 
@@ -252,11 +253,12 @@ system "OSRIC Combat" {
     derive effective_target_ac(
         target: Character,
         include_dex: bool = true,
-        include_shield: bool = true
+        include_shield: bool = true,
+        ac_mod: int = 0
     ) -> int #ac_defense {
         let dex_bonus = if include_dex { dex_ac_adj(target.abilities[DEX]) } else { 0 }
         let shield_bonus = if include_shield { target.shield_ac_bonus } else { 0 }
-        target.armor_ac + dex_bonus + shield_bonus
+        target.armor_ac + dex_bonus + shield_bonus + ac_mod
     }
 
 
@@ -513,17 +515,64 @@ system "OSRIC Combat" {
         }
     }
 
+    // ========================================================
+    //  SET WEAPON AGAINST CHARGE
+    //
+    //  Long-hafted, pointed weapons (spear, javelin, lance,
+    //  pole arm, trident) inflict double damage when set to
+    //  receive a charge. Per Table 1.4.2.3c footnote †.
+    // ========================================================
+
+    derive set_weapon_damage_multiplier() -> int {
+        2
+    }
+
+    derive can_set_against_charge(weapon: MeleeWeapon) -> bool {
+        match weapon {
+            Spear   => true,
+            Javelin => true,
+            Lance   => true,
+            PoleArm => true,
+            Trident => true,
+            _       => false
+        }
+    }
+
     // Charge: move at double speed and attack with +2 to hit.
     // Per 1.6.2.1: once per 10 rounds, no DEX AC bonus for charger.
-    // Set weapon against charge (double damage) deferred to initiative.
+    // Charging condition (AC penalty) applied by resolve_action before
+    // this action fires. ChargeRecovery cooldown applied here.
     action Charge on attacker: Character (target: Character, weapon: MeleeWeapon) {
         cost { attack }
+        requires {
+            !any([c.name == "ChargeRecovery" for c in conditions(attacker)])
+        }
         resolve {
+            apply_condition(attacker, ChargeRecovery, Duration.rounds(10))
             let result = resolve_melee_attack(attacker, target, weapon, 2)
             match result.outcome {
                 AttackOutcome.Hit => {
                     let wdef = melee_weapon_def(weapon)
                     target.TakeDamage(attacker, result.damage, wdef.damage_type)
+                },
+                _ => {}
+            }
+        }
+    }
+
+    // Set weapon strike: defender's first strike against a charging
+    // opponent with a set weapon (spear, lance, etc.) inflicts double
+    // damage. Per 1.6.2.1: "inflict double damage when set to receive
+    // a charge if the foe actually charges."
+    action SetWeaponStrike on defender: Character (target: Character, weapon: MeleeWeapon) {
+        cost { attack }
+        resolve {
+            let result = resolve_melee_attack(defender, target, weapon, 0)
+            match result.outcome {
+                AttackOutcome.Hit => {
+                    let wdef = melee_weapon_def(weapon)
+                    let doubled = result.damage * set_weapon_damage_multiplier()
+                    target.TakeDamage(defender, doubled, wdef.damage_type)
                 },
                 _ => {}
             }

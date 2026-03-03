@@ -32,6 +32,7 @@ fn compile_osric_initiative() -> (ttrpg_ast::ast::Program, ttrpg_checker::CheckR
     let ability_source = include_str!("../../../osric/osric_ability.ttrpg");
     let class_source = include_str!("../../../osric/osric_class.ttrpg");
     let equipment_source = include_str!("../../../osric/osric_equipment.ttrpg");
+    let conditions_source = include_str!("../../../osric/osric_conditions.ttrpg");
     let combat_source = include_str!("../../../osric/osric_combat.ttrpg");
     let initiative_source = include_str!("../../../osric/osric_initiative.ttrpg");
 
@@ -51,6 +52,10 @@ fn compile_osric_initiative() -> (ttrpg_ast::ast::Program, ttrpg_checker::CheckR
         (
             "osric/osric_equipment.ttrpg".to_string(),
             equipment_source.to_string(),
+        ),
+        (
+            "osric/osric_conditions.ttrpg".to_string(),
+            conditions_source.to_string(),
         ),
         (
             "osric/osric_combat.ttrpg".to_string(),
@@ -479,8 +484,6 @@ fn initiative_has_derives() {
         "melee_order",
         "movement_per_segment",
         "movement_through_segment",
-        "set_weapon_damage_multiplier",
-        "can_set_against_charge",
     ] {
         assert!(derives.contains(expected), "missing derive: {expected}");
     }

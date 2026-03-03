@@ -44,6 +44,7 @@ use "OSRIC Ability"
 use "OSRIC Classes"
 use "OSRIC Equipment"
 use "OSRIC Combat"
+use "OSRIC Conditions"
 
 system "OSRIC Initiative" {
 
@@ -423,36 +424,6 @@ system "OSRIC Initiative" {
 
 
     // ========================================================
-    //  CHARGE INTERACTION
-    //
-    //  Set Weapon Against Charge: defender with a set weapon
-    //  (spear, javelin, lance, pole arm, trident) attacks first
-    //  at segment 1 and inflicts double damage on a hit.
-    //  This overrides normal initiative for the defender's
-    //  first strike against the charging attacker.
-    //
-    //  Modeled as a derive for damage calculation; the host
-    //  handles the timing (segment 1 resolution).
-    // ========================================================
-
-    derive set_weapon_damage_multiplier() -> int {
-        2
-    }
-
-    // Is this weapon valid for setting against a charge?
-    derive can_set_against_charge(weapon: MeleeWeapon) -> bool {
-        match weapon {
-            Spear   => true,
-            Javelin => true,
-            Lance   => true,
-            PoleArm => true,
-            Trident => true,
-            _       => false
-        }
-    }
-
-
-    // ========================================================
     //  ROUND ACTION
     //
     //  Packages a combatant's declared action with all context
@@ -547,7 +518,7 @@ system "OSRIC Initiative" {
     //  condition; non-combat actions are deferred to the host.
     // ========================================================
 
-    function resolve_action(action: RoundAction) {
+    function resolve_action(action: RoundAction, all_actions: list<RoundAction>) {
         match action.action_type {
             MeleeAttackAction => {
                 let target = action.target.unwrap()
@@ -564,10 +535,47 @@ system "OSRIC Initiative" {
                 }
             },
             ChargeAction => {
+                let charger = action.combatant
                 let target = action.target.unwrap()
-                let weapon = action.weapon_melee.unwrap()
-                with_budget(action.combatant, { attack: 1 }) {
-                    action.combatant.Charge(target, weapon)
+                let charge_weapon = action.weapon_melee.unwrap()
+
+                // Apply Charging condition (strips DEX AC, -1 AC)
+                apply_condition(charger, Charging, Duration.end_of_round)
+
+                // Check if target declared set weapon against charge
+                let set_actions = [a for a in all_actions
+                    if a.action_type == DeclaredActionType.SetAgainstChargeAction
+                    && a.combatant == target]
+
+                if len(set_actions) > 0 {
+                    let set_weapon = first(set_actions).unwrap().weapon_melee.unwrap()
+
+                    if weapon_longer(set_weapon, charge_weapon) {
+                        // Set weapon is longer — defender strikes first
+                        with_budget(target, { attack: 1 }) {
+                            target.SetWeaponStrike(charger, set_weapon)
+                        }
+                        if charger.hp > 0 {
+                            with_budget(charger, { attack: 1 }) {
+                                charger.Charge(target, charge_weapon)
+                            }
+                        }
+                    } else {
+                        // Charger has equal or longer weapon — strikes first
+                        with_budget(charger, { attack: 1 }) {
+                            charger.Charge(target, charge_weapon)
+                        }
+                        if target.hp > 0 {
+                            with_budget(target, { attack: 1 }) {
+                                target.SetWeaponStrike(charger, set_weapon)
+                            }
+                        }
+                    }
+                } else {
+                    // Normal charge, no set weapon opposition
+                    with_budget(charger, { attack: 1 }) {
+                        charger.Charge(target, charge_weapon)
+                    }
                 }
             },
             CastSpellAction => {
@@ -577,9 +585,8 @@ system "OSRIC Initiative" {
                 remove_condition(action.combatant, CastingSpell)
             },
             SetAgainstChargeAction => {
-                // Set at segment 1. If a charging opponent arrives,
-                // the host applies double damage via
-                // set_weapon_damage_multiplier.
+                // Resolved reactively via ChargeAction branch when
+                // a charger targets this combatant.
             },
             _ => {
                 // MoveAction, ParryAction, FleeAction, HoldAction:
@@ -658,7 +665,7 @@ system "OSRIC Initiative" {
                     for sf in 0..=20 {
                         for action in seg_actions {
                             if action.speed_factor == sf {
-                                resolve_action(action)
+                                resolve_action(action, actions)
                             }
                         }
                     }
@@ -667,10 +674,10 @@ system "OSRIC Initiative" {
                     let winners = [a for a in seg_actions if a.party_side == party_won]
                     let losers  = [a for a in seg_actions if a.party_side != party_won]
                     for action in winners {
-                        resolve_action(action)
+                        resolve_action(action, actions)
                     }
                     for action in losers {
-                        resolve_action(action)
+                        resolve_action(action, actions)
                     }
                 }
             }

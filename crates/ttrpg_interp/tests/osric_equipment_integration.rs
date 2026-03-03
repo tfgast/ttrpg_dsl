@@ -403,8 +403,8 @@ fn equipment_structs_exist() {
         .collect();
 
     assert!(
-        structs.contains(&("MeleeWeaponDef", 7)),
-        "missing MeleeWeaponDef with 7 fields"
+        structs.contains(&("MeleeWeaponDef", 8)),
+        "missing MeleeWeaponDef with 8 fields"
     );
     assert!(
         structs.contains(&("MissileWeaponDef", 9)),
