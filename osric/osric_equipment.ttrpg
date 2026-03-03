@@ -1,0 +1,257 @@
+// ============================================================
+// OSRIC 3.0 Equipment — weapons, armour, shields, packages
+//
+// Weapon and armour definitions with combat-relevant stats.
+// Melee weapons include speed factor (for segment initiative),
+// damage vs S/M and vs L+ targets, weight, and cost.
+//
+// Damage is stored as DiceSpec (count, sides, bonus) so the
+// combat system can construct dice via dice(count, sides).
+//
+// Reference: OSRIC 3.0 Player Guide, Tables 1.4.2.3b–g
+// ============================================================
+
+use "OSRIC"
+use "OSRIC Classes"
+
+system "OSRIC Equipment" {
+
+    // ========================================================
+    //  DICE SPECIFICATION (for stored damage values)
+    //
+    //  Usage in combat: roll(dice(spec.count, spec.sides)).total + spec.bonus
+    // ========================================================
+
+    struct DiceSpec {
+        count: int
+        sides: int
+        bonus: int
+    }
+
+    derive ds(count: int, sides: int, bonus: int) -> DiceSpec {
+        DiceSpec { count: count, sides: sides, bonus: bonus }
+    }
+
+
+    // ========================================================
+    //  DAMAGE TYPES
+    //
+    //  Some weapons have multiple types (wielder's choice);
+    //  we store the primary type here.
+    // ========================================================
+
+    enum DamageType { Slashing, Piercing, Blunt }
+
+
+    // ========================================================
+    //  MELEE WEAPONS — Table 1.4.2.3b + 1.4.2.3c
+    //
+    //  All standard melee weapons with damage, speed factor,
+    //  weight, cost, and primary damage type.
+    //  "hands" is typical hands required; some weapons are
+    //  versatile (usable one-handed with high STR).
+    // ========================================================
+
+    enum MeleeWeapon {
+        BattleAxe, HandAxe, Club, Dagger, FistOrKick,
+        FlailHeavy, FlailLight, Halberd, Javelin, Lance,
+        MaceHeavy, MaceLight, MorningStar,
+        PickHeavy, PickLight, PoleArm, Spear, Staff,
+        SwordBastard, SwordBroad, SwordLong, SwordScimitar,
+        SwordShort, SwordTwoHanded, Trident,
+        WarhammerHeavy, WarhammerLight
+    }
+
+    struct MeleeWeaponDef {
+        hands: int
+        damage_sm: DiceSpec
+        damage_l: DiceSpec
+        weight: int
+        cost_gp: int
+        speed_factor: int
+        damage_type: DamageType
+    }
+
+    derive melee_weapon_def(weapon: MeleeWeapon) -> MeleeWeaponDef {
+        match weapon {
+            BattleAxe => MeleeWeaponDef { hands: 2, damage_sm: ds(1,8,0), damage_l: ds(1,8,0), weight: 7, cost_gp: 5, speed_factor: 7, damage_type: Slashing },
+            HandAxe => MeleeWeaponDef { hands: 1, damage_sm: ds(1,6,0), damage_l: ds(1,4,0), weight: 5, cost_gp: 1, speed_factor: 4, damage_type: Slashing },
+            Club => MeleeWeaponDef { hands: 1, damage_sm: ds(1,6,0), damage_l: ds(1,3,0), weight: 3, cost_gp: 0, speed_factor: 4, damage_type: Blunt },
+            Dagger => MeleeWeaponDef { hands: 1, damage_sm: ds(1,4,0), damage_l: ds(1,3,0), weight: 1, cost_gp: 2, speed_factor: 2, damage_type: Piercing },
+            FistOrKick => MeleeWeaponDef { hands: 1, damage_sm: ds(1,2,0), damage_l: ds(1,2,0), weight: 0, cost_gp: 0, speed_factor: 1, damage_type: Blunt },
+            FlailHeavy => MeleeWeaponDef { hands: 2, damage_sm: ds(1,6,1), damage_l: ds(2,4,0), weight: 10, cost_gp: 3, speed_factor: 7, damage_type: Blunt },
+            FlailLight => MeleeWeaponDef { hands: 1, damage_sm: ds(1,4,1), damage_l: ds(1,4,1), weight: 4, cost_gp: 6, speed_factor: 6, damage_type: Blunt },
+            Halberd => MeleeWeaponDef { hands: 2, damage_sm: ds(1,10,0), damage_l: ds(2,6,0), weight: 18, cost_gp: 9, speed_factor: 9, damage_type: Slashing },
+            Javelin => MeleeWeaponDef { hands: 1, damage_sm: ds(1,6,0), damage_l: ds(1,4,0), weight: 2, cost_gp: 0, speed_factor: 8, damage_type: Piercing },
+            Lance => MeleeWeaponDef { hands: 1, damage_sm: ds(2,4,1), damage_l: ds(3,6,0), weight: 15, cost_gp: 6, speed_factor: 8, damage_type: Piercing },
+            MaceHeavy => MeleeWeaponDef { hands: 2, damage_sm: ds(1,6,1), damage_l: ds(1,6,0), weight: 10, cost_gp: 10, speed_factor: 7, damage_type: Blunt },
+            MaceLight => MeleeWeaponDef { hands: 1, damage_sm: ds(1,4,1), damage_l: ds(1,4,1), weight: 5, cost_gp: 4, speed_factor: 6, damage_type: Blunt },
+            MorningStar => MeleeWeaponDef { hands: 2, damage_sm: ds(2,4,0), damage_l: ds(1,6,1), weight: 12, cost_gp: 5, speed_factor: 7, damage_type: Blunt },
+            PickHeavy => MeleeWeaponDef { hands: 2, damage_sm: ds(1,6,1), damage_l: ds(2,4,0), weight: 1, cost_gp: 8, speed_factor: 7, damage_type: Piercing },
+            PickLight => MeleeWeaponDef { hands: 1, damage_sm: ds(1,4,1), damage_l: ds(1,4,0), weight: 4, cost_gp: 5, speed_factor: 5, damage_type: Piercing },
+            PoleArm => MeleeWeaponDef { hands: 2, damage_sm: ds(1,6,1), damage_l: ds(1,10,0), weight: 8, cost_gp: 6, speed_factor: 13, damage_type: Piercing },
+            Spear => MeleeWeaponDef { hands: 1, damage_sm: ds(1,6,0), damage_l: ds(1,8,0), weight: 5, cost_gp: 1, speed_factor: 7, damage_type: Piercing },
+            Staff => MeleeWeaponDef { hands: 2, damage_sm: ds(1,6,0), damage_l: ds(1,6,0), weight: 5, cost_gp: 0, speed_factor: 4, damage_type: Blunt },
+            SwordBastard => MeleeWeaponDef { hands: 2, damage_sm: ds(2,4,0), damage_l: ds(2,8,0), weight: 10, cost_gp: 25, speed_factor: 6, damage_type: Slashing },
+            SwordBroad => MeleeWeaponDef { hands: 2, damage_sm: ds(2,4,0), damage_l: ds(1,6,1), weight: 8, cost_gp: 15, speed_factor: 5, damage_type: Slashing },
+            SwordLong => MeleeWeaponDef { hands: 1, damage_sm: ds(1,8,0), damage_l: ds(1,12,0), weight: 7, cost_gp: 15, speed_factor: 5, damage_type: Slashing },
+            SwordScimitar => MeleeWeaponDef { hands: 1, damage_sm: ds(1,8,0), damage_l: ds(1,8,0), weight: 5, cost_gp: 15, speed_factor: 5, damage_type: Slashing },
+            SwordShort => MeleeWeaponDef { hands: 1, damage_sm: ds(1,6,0), damage_l: ds(1,8,0), weight: 3, cost_gp: 8, speed_factor: 3, damage_type: Slashing },
+            SwordTwoHanded => MeleeWeaponDef { hands: 2, damage_sm: ds(1,10,0), damage_l: ds(3,6,0), weight: 25, cost_gp: 30, speed_factor: 10, damage_type: Slashing },
+            Trident => MeleeWeaponDef { hands: 2, damage_sm: ds(1,6,1), damage_l: ds(3,4,0), weight: 5, cost_gp: 4, speed_factor: 6, damage_type: Piercing },
+            WarhammerHeavy => MeleeWeaponDef { hands: 2, damage_sm: ds(1,6,1), damage_l: ds(1,6,0), weight: 10, cost_gp: 7, speed_factor: 7, damage_type: Blunt },
+            WarhammerLight => MeleeWeaponDef { hands: 1, damage_sm: ds(1,4,1), damage_l: ds(1,4,0), weight: 5, cost_gp: 1, speed_factor: 6, damage_type: Blunt }
+        }
+    }
+
+
+    // ========================================================
+    //  MISSILE WEAPONS — Table 1.4.2.3d
+    //
+    //  is_hurled: true = thrown (add STR bonus to damage),
+    //             false = launched (no STR bonus).
+    //  rate_of_fire: attacks per round; 0 = every other round
+    //  (heavy crossbow only).
+    // ========================================================
+
+    enum MissileWeapon {
+        BowLong, BowShort, CompositeBowLong, CompositeBowShort,
+        CrossbowHeavy, CrossbowLight,
+        DaggerThrown, HandAxeThrown, ClubThrown, DartThrown,
+        JavelinThrown, SpearThrown, Sling, WarhammerThrown
+    }
+
+    struct MissileWeaponDef {
+        hands: int
+        is_hurled: bool
+        damage_type: DamageType
+        range_increment: int
+        rate_of_fire: int
+        damage_sm: DiceSpec
+        damage_l: DiceSpec
+        weight: int
+        cost_gp: int
+    }
+
+    derive missile_weapon_def(weapon: MissileWeapon) -> MissileWeaponDef {
+        match weapon {
+            BowLong => MissileWeaponDef { hands: 2, is_hurled: false, damage_type: Piercing, range_increment: 70, rate_of_fire: 2, damage_sm: ds(1,6,0), damage_l: ds(1,6,0), weight: 12, cost_gp: 60 },
+            BowShort => MissileWeaponDef { hands: 2, is_hurled: false, damage_type: Piercing, range_increment: 50, rate_of_fire: 2, damage_sm: ds(1,6,0), damage_l: ds(1,6,0), weight: 8, cost_gp: 15 },
+            CompositeBowLong => MissileWeaponDef { hands: 2, is_hurled: false, damage_type: Piercing, range_increment: 60, rate_of_fire: 2, damage_sm: ds(1,6,0), damage_l: ds(1,6,0), weight: 8, cost_gp: 100 },
+            CompositeBowShort => MissileWeaponDef { hands: 2, is_hurled: false, damage_type: Piercing, range_increment: 50, rate_of_fire: 2, damage_sm: ds(1,6,0), damage_l: ds(1,6,0), weight: 5, cost_gp: 75 },
+            CrossbowHeavy => MissileWeaponDef { hands: 2, is_hurled: false, damage_type: Piercing, range_increment: 80, rate_of_fire: 0, damage_sm: ds(1,6,1), damage_l: ds(1,6,1), weight: 12, cost_gp: 20 },
+            CrossbowLight => MissileWeaponDef { hands: 2, is_hurled: false, damage_type: Piercing, range_increment: 60, rate_of_fire: 1, damage_sm: ds(1,4,1), damage_l: ds(1,4,1), weight: 4, cost_gp: 12 },
+            DaggerThrown => MissileWeaponDef { hands: 1, is_hurled: true, damage_type: Piercing, range_increment: 10, rate_of_fire: 2, damage_sm: ds(1,4,0), damage_l: ds(1,3,0), weight: 1, cost_gp: 2 },
+            HandAxeThrown => MissileWeaponDef { hands: 1, is_hurled: true, damage_type: Slashing, range_increment: 10, rate_of_fire: 1, damage_sm: ds(1,6,0), damage_l: ds(1,4,0), weight: 5, cost_gp: 1 },
+            ClubThrown => MissileWeaponDef { hands: 1, is_hurled: true, damage_type: Blunt, range_increment: 10, rate_of_fire: 1, damage_sm: ds(1,6,0), damage_l: ds(1,3,0), weight: 3, cost_gp: 0 },
+            DartThrown => MissileWeaponDef { hands: 1, is_hurled: true, damage_type: Piercing, range_increment: 15, rate_of_fire: 3, damage_sm: ds(1,3,0), damage_l: ds(1,2,0), weight: 0, cost_gp: 0 },
+            JavelinThrown => MissileWeaponDef { hands: 1, is_hurled: true, damage_type: Piercing, range_increment: 20, rate_of_fire: 1, damage_sm: ds(1,6,0), damage_l: ds(1,4,0), weight: 2, cost_gp: 0 },
+            SpearThrown => MissileWeaponDef { hands: 1, is_hurled: true, damage_type: Piercing, range_increment: 15, rate_of_fire: 1, damage_sm: ds(1,6,0), damage_l: ds(1,8,0), weight: 5, cost_gp: 1 },
+            Sling => MissileWeaponDef { hands: 1, is_hurled: false, damage_type: Blunt, range_increment: 35, rate_of_fire: 1, damage_sm: ds(1,4,1), damage_l: ds(1,6,1), weight: 0, cost_gp: 0 },
+            WarhammerThrown => MissileWeaponDef { hands: 1, is_hurled: true, damage_type: Blunt, range_increment: 10, rate_of_fire: 1, damage_sm: ds(1,4,1), damage_l: ds(1,4,0), weight: 5, cost_gp: 1 }
+        }
+    }
+
+
+    // ========================================================
+    //  ARMOUR — Table 1.4.2.g
+    //
+    //  Ascending AC (higher = better). Unarmoured = 10.
+    //  movement_cap: max movement rate in armour (0 = no cap).
+    //  All purchased armour includes a helmet.
+    // ========================================================
+
+    enum ArmourType {
+        Banded, ChainMail, ElfinMail, Leather, Padded,
+        PlateMail, RingMail, ScaleLamellar, Splint, StuddedLeather
+    }
+
+    struct ArmourDef {
+        ascending_ac: int
+        weight: int
+        movement_cap: int
+        cost_gp: int
+    }
+
+    derive armour_def(armour: ArmourType) -> ArmourDef {
+        match armour {
+            Banded => ArmourDef { ascending_ac: 16, weight: 35, movement_cap: 90, cost_gp: 90 },
+            ChainMail => ArmourDef { ascending_ac: 15, weight: 30, movement_cap: 90, cost_gp: 75 },
+            ElfinMail => ArmourDef { ascending_ac: 15, weight: 15, movement_cap: 120, cost_gp: 0 },
+            Leather => ArmourDef { ascending_ac: 12, weight: 15, movement_cap: 120, cost_gp: 5 },
+            Padded => ArmourDef { ascending_ac: 12, weight: 10, movement_cap: 90, cost_gp: 4 },
+            PlateMail => ArmourDef { ascending_ac: 17, weight: 45, movement_cap: 60, cost_gp: 400 },
+            RingMail => ArmourDef { ascending_ac: 13, weight: 35, movement_cap: 90, cost_gp: 30 },
+            ScaleLamellar => ArmourDef { ascending_ac: 14, weight: 40, movement_cap: 60, cost_gp: 45 },
+            Splint => ArmourDef { ascending_ac: 16, weight: 40, movement_cap: 60, cost_gp: 80 },
+            StuddedLeather => ArmourDef { ascending_ac: 13, weight: 20, movement_cap: 90, cost_gp: 15 }
+        }
+    }
+
+
+    // ========================================================
+    //  SHIELDS — Table 1.4.2.g
+    //
+    //  All shields grant +1 ascending AC. They differ in how
+    //  many incoming attacks per round the shield can block.
+    // ========================================================
+
+    enum ShieldType { SmallShield, MediumShield, LargeShield }
+
+    struct ShieldDef {
+        ac_bonus: int
+        max_blocks: int
+        weight: int
+        cost_gp: int
+    }
+
+    derive shield_def(shield: ShieldType) -> ShieldDef {
+        match shield {
+            SmallShield => ShieldDef { ac_bonus: 1, max_blocks: 1, weight: 5, cost_gp: 10 },
+            MediumShield => ShieldDef { ac_bonus: 1, max_blocks: 2, weight: 8, cost_gp: 12 },
+            LargeShield => ShieldDef { ac_bonus: 1, max_blocks: 3, weight: 10, cost_gp: 15 }
+        }
+    }
+
+
+    // ========================================================
+    //  DEFAULT STARTING ARMOUR
+    //
+    //  Best affordable armour per class armour permission.
+    //  Chain mail for heavy-armour classes, leather for light,
+    //  nothing for arcane casters.
+    // ========================================================
+
+    derive default_starting_armour(class: Class) -> list<string> {
+        let def = class_def(class)
+        match def.armour {
+            any_armour     => ["Chain mail", "Shield"],
+            leather_shield => ["Leather", "Shield"],
+            leather_wooden => ["Leather", "Wooden shield"],
+            leather_only   => ["Leather"],
+            no_armour      => []
+        }
+    }
+
+
+    // ========================================================
+    //  EQUIPMENT PACKAGES
+    //
+    //  Fixed starting loadout per class. Includes weapon(s),
+    //  armour (where permitted), and essential gear.
+    //  Per OSRIC 3.0, Table 1.4.2.1.
+    // ========================================================
+
+    table equipment_package(class: Class) -> list<string> {
+        Fighter => ["Sword, long", "Shield", "Chain mail", "Backpack", "Torches (6)", "Flint and steel", "Rations (7 days)", "Waterskin", "Rope (50ft)"],
+        Paladin => ["Sword, long", "Shield", "Chain mail", "Backpack", "Holy symbol (silver)", "Torches (6)", "Flint and steel", "Rations (7 days)", "Waterskin"],
+        Ranger => ["Sword, long", "Bow, short", "Arrows (20)", "Leather", "Backpack", "Torches (6)", "Flint and steel", "Rations (7 days)", "Waterskin", "Rope (50ft)"],
+        Cleric => ["Mace, heavy", "Shield", "Chain mail", "Backpack", "Holy symbol (pewter)", "Torches (6)", "Flint and steel", "Rations (7 days)", "Waterskin"],
+        Druid => ["Staff", "Leather", "Wooden shield", "Backpack", "Holy symbol (wooden)", "Torches (6)", "Flint and steel", "Rations (7 days)", "Waterskin"],
+        Thief => ["Sword, short", "Dagger", "Leather", "Backpack", "Thieves' tools", "Torches (6)", "Flint and steel", "Rations (7 days)", "Waterskin", "Rope (50ft)"],
+        Assassin => ["Sword, short", "Dagger", "Leather", "Shield", "Backpack", "Torches (6)", "Flint and steel", "Rations (7 days)", "Waterskin", "Rope (50ft)"],
+        MagicUser => ["Dagger", "Staff", "Backpack", "Spell book (blank)", "Torches (6)", "Flint and steel", "Rations (7 days)", "Waterskin"],
+        Illusionist => ["Dagger", "Staff", "Backpack", "Spell book (blank)", "Torches (6)", "Flint and steel", "Rations (7 days)", "Waterskin", "Mirror (small steel)"],
+        Monk => ["Staff", "Dagger", "Backpack", "Torches (6)", "Flint and steel", "Rations (7 days)", "Waterskin", "Rope (50ft)"]
+    }
+}

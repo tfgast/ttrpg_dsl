@@ -1,0 +1,215 @@
+// ============================================================
+// OSRIC 3.0 Conditions — combat status effects and modifiers
+//
+// Conditions use modify clauses to alter attack resolution
+// mechanics. The attack_mod parameter on resolve_melee_attack
+// and resolve_missile_attack is the primary hook for combat
+// conditions that make targets easier/harder to hit.
+//
+// Concealment and cover are modeled as parameterised conditions
+// on the defender, modifying incoming attacks.
+//
+// Reference: OSRIC 3.0 Player Guide, Section 1.6.3 (pp. 96)
+// ============================================================
+
+use "OSRIC"
+use "OSRIC Ability"
+use "OSRIC Combat"
+
+system "OSRIC Conditions" {
+
+    // ========================================================
+    //  PRONE
+    //
+    //  Attacked at +4. Cannot use shield or DEX bonus to AC.
+    //  The +4 attack bonus captures the combined effect of
+    //  being easier to hit due to position.
+    // ========================================================
+
+    condition Prone on bearer: Character {
+        modify resolve_melee_attack(target: bearer) {
+            attack_mod = attack_mod + 4
+        }
+        modify resolve_missile_attack(target: bearer) {
+            attack_mod = attack_mod + 4
+        }
+    }
+
+
+    // ========================================================
+    //  STUNNED
+    //
+    //  Attacked at +4. Cannot use shield or DEX bonus to AC.
+    //  Mechanically identical to Prone for attack purposes.
+    // ========================================================
+
+    condition Stunned on bearer: Character {
+        modify resolve_melee_attack(target: bearer) {
+            attack_mod = attack_mod + 4
+        }
+        modify resolve_missile_attack(target: bearer) {
+            attack_mod = attack_mod + 4
+        }
+    }
+
+
+    // ========================================================
+    //  STAGGERED
+    //
+    //  Attacked at +2. Less severe than Prone/Stunned.
+    // ========================================================
+
+    condition Staggered on bearer: Character {
+        modify resolve_melee_attack(target: bearer) {
+            attack_mod = attack_mod + 2
+        }
+        modify resolve_missile_attack(target: bearer) {
+            attack_mod = attack_mod + 2
+        }
+    }
+
+
+    // ========================================================
+    //  INVISIBLE
+    //
+    //  If general location known: attacked at -4.
+    //  If location unknown: cannot be targeted (handled by GM).
+    //  Bearer gets +4 on all saving throws.
+    // ========================================================
+
+    condition Invisible on bearer: Character {
+        modify resolve_melee_attack(target: bearer) {
+            attack_mod = attack_mod - 4
+        }
+        modify resolve_missile_attack(target: bearer) {
+            attack_mod = attack_mod - 4
+        }
+    }
+
+
+    // ========================================================
+    //  PARALYZED
+    //
+    //  Auto-hit at melee range. Maximum damage dealt.
+    //  Instant kill or bind if unprotected by nearby ally.
+    //  Modeled as +20 attack bonus (effectively auto-hit)
+    //  since we can't override the d20 roll itself.
+    // ========================================================
+
+    condition Paralyzed on bearer: Character {
+        modify resolve_melee_attack(target: bearer) {
+            attack_mod = attack_mod + 20
+        }
+    }
+
+
+    // ========================================================
+    //  SLEEPING
+    //
+    //  Natural sleep: auto-hit at melee range, instant kill
+    //  possible. Modeled same as Paralyzed for attack purposes.
+    //  Magical sleep: depends on spell specifics.
+    // ========================================================
+
+    condition Sleeping on bearer: Character {
+        modify resolve_melee_attack(target: bearer) {
+            attack_mod = attack_mod + 20
+        }
+    }
+
+
+    // ========================================================
+    //  FLEEING
+    //
+    //  Opponents get +4 to melee attacks against fleeing target.
+    //  Bearer's own attacks are suppressed (forced miss via
+    //  result override). Per 1.6.2.3: opponents may make an
+    //  immediate attack at +4 even if already attacked.
+    // ========================================================
+
+    condition Fleeing on bearer: Character {
+        modify resolve_melee_attack(target: bearer) {
+            attack_mod = attack_mod + 4
+        }
+        modify resolve_melee_attack(attacker: bearer) {
+            result.outcome = AttackOutcome.Miss
+            result.damage = 0
+        }
+        modify resolve_missile_attack(attacker: bearer) {
+            result.outcome = AttackOutcome.Miss
+            result.damage = 0
+        }
+    }
+
+
+    // ========================================================
+    //  SURPRISED
+    //
+    //  Cannot act during surprise segments. Enemies may act
+    //  freely. Bearer's attacks are suppressed.
+    //  Duration: 1-2 segments (tracked by initiative system).
+    // ========================================================
+
+    condition Surprised on bearer: Character {
+        modify resolve_melee_attack(attacker: bearer) {
+            result.outcome = AttackOutcome.Miss
+            result.damage = 0
+        }
+        modify resolve_missile_attack(attacker: bearer) {
+            result.outcome = AttackOutcome.Miss
+            result.damage = 0
+        }
+    }
+
+
+    // ========================================================
+    //  REAR ATTACK
+    //
+    //  Attack from directly behind: +2 to hit, negates shield
+    //  and DEX bonuses. Per 1.6.3.3.
+    // ========================================================
+
+    condition RearAttacked on bearer: Character {
+        modify resolve_melee_attack(target: bearer) {
+            attack_mod = attack_mod + 2
+        }
+    }
+
+
+    // ========================================================
+    //  CONCEALMENT (parameterised)
+    //
+    //  Partial obscurement (smoke, tree limbs, dim light).
+    //  Level 1-4 maps to -1 to -4 penalty on incoming attacks.
+    //  Does not stack with invisibility.
+    //  Per 1.6.3.1: 1/4 = -1, 1/2 = -2, 3/4 = -3, total = -4.
+    // ========================================================
+
+    condition Concealed(level: int) on bearer: Character {
+        modify resolve_melee_attack(target: bearer) {
+            attack_mod = attack_mod - level
+        }
+        modify resolve_missile_attack(target: bearer) {
+            attack_mod = attack_mod - level
+        }
+    }
+
+
+    // ========================================================
+    //  COVER (parameterised)
+    //
+    //  Physical barrier blocking attacks. Stronger than
+    //  concealment. Also grants +2 to DEX-related saves
+    //  if 25%+ cover.
+    //  Per 1.6.3.2: 25% = -2, 50% = -4, 75% = -7, 90% = -10.
+    // ========================================================
+
+    condition Cover(penalty: int) on bearer: Character {
+        modify resolve_melee_attack(target: bearer) {
+            attack_mod = attack_mod - penalty
+        }
+        modify resolve_missile_attack(target: bearer) {
+            attack_mod = attack_mod - penalty
+        }
+    }
+}

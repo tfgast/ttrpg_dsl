@@ -1,0 +1,400 @@
+// ============================================================
+// OSRIC 3.0 Combat — attack resolution, BTHB, damage, actions
+//
+// Ascending AC system (higher AC = harder to hit).
+// Attack formula: d20 + BTHB + modifiers >= target AC = hit.
+// Natural 1 always misses. Natural 20 gets +5 bonus.
+//
+// Reference: OSRIC 3.0 Player Guide, Chapter 6 (pp. 80–96)
+// ============================================================
+
+use "OSRIC"
+use "OSRIC Ability"
+use "OSRIC Classes"
+use "OSRIC Equipment"
+
+system "OSRIC Combat" {
+
+    // ========================================================
+    //  ENUMS
+    // ========================================================
+
+    enum AttackOutcome { Miss, Hit }
+
+    enum SurpriseState {
+        NoSurprise,
+        PartySurprises,
+        MonstersSurprise,
+        Both
+    }
+
+
+    // ========================================================
+    //  STRUCTS
+    // ========================================================
+
+    struct AttackResult {
+        outcome: AttackOutcome
+        total_mod: int
+        damage: int
+    }
+
+    struct EncounterStart {
+        party_roll: int
+        monster_roll: int
+        surprise: SurpriseState
+        distance: int
+    }
+
+
+    // ========================================================
+    //  TAGS
+    // ========================================================
+
+    tag attack_resolution
+
+
+    // ========================================================
+    //  EVENTS
+    // ========================================================
+
+    event Damaged(target: Character, attacker: Character, amount: int) {}
+
+    event CreatureSlain(target: Character, attacker: Character) {}
+
+
+    // ========================================================
+    //  BTHB — BASE TO HIT BONUS
+    //
+    //  Per Table on p.81. Classes share BTHB progression
+    //  within their combat group.
+    //  Fighter group: linear (level - 1).
+    //  Others: step functions every 3-5 levels.
+    // ========================================================
+
+    // Fighter group: Fighter, Paladin, Ranger.
+    // BTHB = level - 1 (clean linear, +0 at 1, +19 at 20).
+    derive fighter_group_bthb(level: int) -> int {
+        level - 1
+    }
+
+    // Cleric group: Cleric, Druid, Monk.
+    table cleric_group_bthb(level: int) -> int {
+        1..=3   => 0,
+        4..=6   => 2,
+        7..=10  => 4,
+        11..=12 => 6,
+        13..=15 => 8,
+        16..=18 => 10,
+        _       => 11
+    }
+
+    // Thief group: Thief, Assassin.
+    table thief_group_bthb(level: int) -> int {
+        1..=4   => -1,
+        5..=8   => 1,
+        9..=12  => 4,
+        13..=17 => 6,
+        _       => 8
+    }
+
+    // Magic-User group: Magic-User, Illusionist.
+    table magic_user_group_bthb(level: int) -> int {
+        1..=5   => -1,
+        6..=10  => 1,
+        11..=15 => 3,
+        _       => 5
+    }
+
+    // Unified BTHB lookup by class and level.
+    derive bthb(class: Class, level: int) -> int {
+        let group = class_def(class).combat_group
+        match group {
+            FighterGroup   => fighter_group_bthb(level),
+            ClericGroup    => cleric_group_bthb(level),
+            ThiefGroup     => thief_group_bthb(level),
+            MagicUserGroup => magic_user_group_bthb(level)
+        }
+    }
+
+    // Monster BTHB based on hit dice.
+    // Note: OSRIC distinguishes "1-1 HD" (+0) from "1 HD" (+1)
+    // and "1+ HD" (+2); we approximate with int hit_dice.
+    table monster_bthb(hit_dice: int) -> int {
+        0       => -1,
+        1       => 1,
+        2..=3   => 4,
+        4..=5   => 5,
+        6..=7   => 7,
+        8..=9   => 8,
+        10..=11 => 10,
+        12..=13 => 11,
+        14..=15 => 12,
+        _       => 13
+    }
+
+
+    // ========================================================
+    //  FIGHTER MULTIPLE ATTACKS
+    //
+    //  Fighters, Paladins, Rangers gain extra attacks at high
+    //  levels. 3/2 at level 7 (alternating 1/2 per round),
+    //  2/1 at level 13. Attacks happen at segments 1 and 10.
+    // ========================================================
+
+    derive fighter_attacks(level: int, is_even_round: bool) -> int {
+        match {
+            level < 7  => 1,
+            level < 13 => if is_even_round { 2 } else { 1 },
+            _          => 2
+        }
+    }
+
+
+    // ========================================================
+    //  MISSILE RANGE PENALTY
+    //
+    //  -2 per range increment beyond the first.
+    //  Max 5 increments for longbows, 5 for shortbows.
+    // ========================================================
+
+    derive missile_range_penalty(distance: int, range_increment: int) -> int {
+        if range_increment <= 0 {
+            error("range_increment must be positive")
+        } else {
+            let increments_beyond = floor(distance / range_increment)
+            increments_beyond * -2
+        }
+    }
+
+
+    // ========================================================
+    //  CORE MECHANICS (dice rolls, no mutation)
+    // ========================================================
+
+    // d20 attack roll using ascending AC formula.
+    // Natural 1 always misses. Natural 20 gets +5 bonus.
+    mechanic attack_roll_aac(
+        attack_bonus: int,
+        target_ac: int,
+        attack_mod: int = 0
+    ) -> AttackOutcome {
+        let result = roll(1d20)
+        let natural = result.unmodified
+        let total = natural + attack_bonus + attack_mod
+        let adjusted = if natural == 20 { total + 5 } else { total }
+        match {
+            natural == 1       => AttackOutcome.Miss,
+            adjusted >= target_ac => AttackOutcome.Hit,
+            _                  => AttackOutcome.Miss
+        }
+    }
+
+    // Damage roll from a DiceSpec. Minimum damage is always 1.
+    mechanic damage_from_spec(spec: DiceSpec, damage_mod: int = 0) -> int {
+        let result = roll(dice(spec.count, spec.sides))
+        max(1, result.total + spec.bonus + damage_mod)
+    }
+
+
+    // ========================================================
+    //  CHARACTER ATTACK RESOLUTION
+    //
+    //  Entity-level mechanics that combine BTHB, ability mods,
+    //  weapon stats, and target properties into a full result.
+    //  Conditions can modify these via #attack_resolution tag.
+    // ========================================================
+
+    // Melee attack: d20 + BTHB + STR to-hit + attack_mod vs target AC.
+    // Damage uses weapon dice + STR damage mod.
+    // attack_mod defaults to 0; conditions (Prone, Stunned, etc.)
+    // modify this parameter via Phase 1 overrides.
+    mechanic resolve_melee_attack(
+        attacker: Character,
+        target: Character,
+        weapon: MeleeWeapon,
+        attack_mod: int = 0
+    ) -> AttackResult #attack_resolution {
+        let bthb_val = bthb(attacker.class, attacker.level)
+        let str_hit = effective_str_to_hit(attacker.abilities[STR], attacker.exceptional_str)
+        let total_mod = bthb_val + str_hit + attack_mod
+        let outcome = attack_roll_aac(total_mod, target.ac)
+
+        let wdef = melee_weapon_def(weapon)
+        let target_size = ancestry_def(target.ancestry).size
+        let dmg_spec = if target_size > Size.Medium { wdef.damage_l } else { wdef.damage_sm }
+        let str_dmg = effective_str_damage(attacker.abilities[STR], attacker.exceptional_str)
+
+        let damage = match outcome {
+            AttackOutcome.Hit => damage_from_spec(dmg_spec, str_dmg),
+            _ => 0
+        }
+
+        AttackResult { outcome: outcome, total_mod: total_mod, damage: damage }
+    }
+
+    // Missile attack: d20 + BTHB + DEX missile mod - range + attack_mod vs AC.
+    // Hurled weapons add STR damage; launched weapons do not.
+    mechanic resolve_missile_attack(
+        attacker: Character,
+        target: Character,
+        weapon: MissileWeapon,
+        distance: int,
+        attack_mod: int = 0
+    ) -> AttackResult #attack_resolution {
+        let bthb_val = bthb(attacker.class, attacker.level)
+        let dex_mod = dex_missile(attacker.abilities[DEX])
+        let wdef = missile_weapon_def(weapon)
+        let range_mod = missile_range_penalty(distance, wdef.range_increment)
+        let total_mod = bthb_val + dex_mod + range_mod + attack_mod
+        let outcome = attack_roll_aac(total_mod, target.ac)
+
+        let target_size = ancestry_def(target.ancestry).size
+        let dmg_spec = if target_size > Size.Medium { wdef.damage_l } else { wdef.damage_sm }
+        let str_dmg = if wdef.is_hurled { effective_str_damage(attacker.abilities[STR], attacker.exceptional_str) } else { 0 }
+
+        let damage = match outcome {
+            AttackOutcome.Hit => damage_from_spec(dmg_spec, str_dmg),
+            _ => 0
+        }
+
+        AttackResult { outcome: outcome, total_mod: total_mod, damage: damage }
+    }
+
+    // Monster attack using hit dice for BTHB.
+    mechanic resolve_monster_attack(
+        hit_dice: int,
+        target_ac: int,
+        damage_spec: DiceSpec,
+        attack_mod: int = 0
+    ) -> AttackResult #attack_resolution {
+        let bthb_val = monster_bthb(hit_dice)
+        let total_mod = bthb_val + attack_mod
+        let outcome = attack_roll_aac(total_mod, target_ac)
+
+        let damage = match outcome {
+            AttackOutcome.Hit => damage_from_spec(damage_spec),
+            _ => 0
+        }
+
+        AttackResult { outcome: outcome, total_mod: total_mod, damage: damage }
+    }
+
+
+    // ========================================================
+    //  SURPRISE & INITIATIVE
+    //
+    //  Surprise: d6 per side, 1-2 = surprised for that many
+    //  segments. DEX surprise modifier adjusts duration.
+    //  Initiative: d6 per side, low roll acts first.
+    //  Encounter distance: 1d4+4 x10ft (normal), 1d3 x10ft
+    //  (surprised).
+    // ========================================================
+
+    mechanic surprise_roll() -> int {
+        let result = roll(1d6)
+        result.total
+    }
+
+    // Encounter distance in feet.
+    // Normal: (1d4+4) x 10 = 50-80ft.
+    // Surprised: 1d3 x 10 = 10-30ft.
+    mechanic encounter_distance(surprised: bool = false) -> int {
+        let d = if surprised { roll(1d3) } else { roll(1d4) }
+        let base = if surprised { d.total } else { d.total + 4 }
+        base * 10
+    }
+
+    // Group initiative: 1d6 per side, low = acts first.
+    mechanic group_initiative() -> int {
+        let result = roll(1d6)
+        result.total
+    }
+
+    // Full encounter opening sequence.
+    mechanic encounter_sequence() -> EncounterStart {
+        let party_roll = surprise_roll()
+        let monster_roll = surprise_roll()
+        let party_surprised = party_roll <= 2
+        let monster_surprised = monster_roll <= 2
+        let surprise = match {
+            party_surprised && monster_surprised   => SurpriseState.Both,
+            monster_surprised                      => SurpriseState.PartySurprises,
+            party_surprised                        => SurpriseState.MonstersSurprise,
+            _                                      => SurpriseState.NoSurprise
+        }
+        let distance = encounter_distance(party_surprised || monster_surprised)
+        EncounterStart {
+            party_roll: party_roll,
+            monster_roll: monster_roll,
+            surprise: surprise,
+            distance: distance
+        }
+    }
+
+
+    // ========================================================
+    //  COMBAT ACTIONS
+    //
+    //  Character actions that resolve attacks, apply damage,
+    //  and emit events. Cost blocks left minimal; the segment-
+    //  based initiative system will add timing constraints.
+    // ========================================================
+
+    // Standard melee attack with a hand-held weapon.
+    action MeleeAttack on attacker: Character (target: Character, weapon: MeleeWeapon) {
+        resolve {
+            let result = resolve_melee_attack(attacker, target, weapon)
+            match result.outcome {
+                AttackOutcome.Hit => {
+                    target.hp = target.hp - result.damage
+                    emit Damaged(target: target, attacker: attacker, amount: result.damage)
+                    if target.hp <= 0 {
+                        emit CreatureSlain(target: target, attacker: attacker)
+                    }
+                },
+                _ => {}
+            }
+        }
+    }
+
+    // Ranged attack with a missile weapon.
+    action MissileAttack on attacker: Character (
+        target: Character,
+        weapon: MissileWeapon,
+        distance: int
+    ) {
+        resolve {
+            let result = resolve_missile_attack(attacker, target, weapon, distance)
+            match result.outcome {
+                AttackOutcome.Hit => {
+                    target.hp = target.hp - result.damage
+                    emit Damaged(target: target, attacker: attacker, amount: result.damage)
+                    if target.hp <= 0 {
+                        emit CreatureSlain(target: target, attacker: attacker)
+                    }
+                },
+                _ => {}
+            }
+        }
+    }
+
+    // Charge: move at double speed and attack with +2 to hit.
+    // Per 1.6.2.1: once per 10 rounds, no DEX AC bonus for charger.
+    // Set weapon against charge (double damage) deferred to initiative.
+    action Charge on attacker: Character (target: Character, weapon: MeleeWeapon) {
+        resolve {
+            let result = resolve_melee_attack(attacker, target, weapon, 2)
+            match result.outcome {
+                AttackOutcome.Hit => {
+                    target.hp = target.hp - result.damage
+                    emit Damaged(target: target, attacker: attacker, amount: result.damage)
+                    if target.hp <= 0 {
+                        emit CreatureSlain(target: target, attacker: attacker)
+                    }
+                },
+                _ => {}
+            }
+        }
+    }
+}

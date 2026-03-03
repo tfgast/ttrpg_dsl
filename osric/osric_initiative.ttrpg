@@ -1,0 +1,392 @@
+// ============================================================
+// OSRIC 3.0 Segment-Based Initiative System
+//
+// OSRIC uses a 10-segment combat round with d6 group initiative
+// (low roll = earlier segment). This is the most mechanically
+// distinctive aspect of OSRIC combat and a key stress test for
+// the DSL's expressive capabilities.
+//
+// The DSL handles: computational rules (segment assignment,
+// spell timing, tie-breaking, surprise duration).
+// The host runtime handles: segment-by-segment execution loop,
+// action queue management, and turn flow control.
+//
+// DISCOVERED DSL LIMITATIONS (for future language work):
+//   1. No modulo operator (%) — workarounds used
+//   2. No built-in action scheduler/queue — host manages this
+//   3. No "delay until segment X" construct — derives compute
+//      timing, host enforces execution order
+//   4. Condition removal when condition may not be present —
+//      remove_condition behaviour on absent condition untested
+//
+// Reference: OSRIC 3.0 Player Guide, Chapter 6 (pp. 90-93)
+// ============================================================
+
+use "OSRIC"
+use "OSRIC Ability"
+use "OSRIC Classes"
+use "OSRIC Equipment"
+use "OSRIC Combat"
+
+system "OSRIC Initiative" {
+
+    // ========================================================
+    //  ENUMS
+    // ========================================================
+
+    // Types of actions a combatant can declare at round start.
+    enum DeclaredActionType {
+        MeleeAttackAction,
+        MissileAttackAction,
+        CastSpellAction,
+        ChargeAction,
+        MoveAction,
+        ParryAction,
+        SetAgainstChargeAction,
+        FleeAction,
+        HoldAction
+    }
+
+
+    // ========================================================
+    //  STRUCTS
+    // ========================================================
+
+    struct InitiativeResult {
+        party_roll: int
+        monster_roll: int
+        party_segment: int
+        monster_segment: int
+        simultaneous: bool
+    }
+
+    struct SurpriseResult {
+        party_roll: int
+        monster_roll: int
+        party_surprised_segments: int
+        monster_surprised_segments: int
+    }
+
+    // A resolved action with its assigned segment and ordering info.
+    struct SegmentAction {
+        segment: int
+        action_type: DeclaredActionType
+        speed_factor: int
+    }
+
+
+    // ========================================================
+    //  SURPRISE
+    //
+    //  d6 per side. 1-2 = surprised for that many segments.
+    //  DEX surprise modifier reduces personal surprise duration.
+    //  Unsurprised side gets free segments = difference.
+    // ========================================================
+
+    // Personal surprise duration after DEX adjustment.
+    derive surprise_duration(side_roll: int, dex_surprise_adj: int) -> int {
+        if side_roll > 2 {
+            0
+        } else {
+            max(0, side_roll - dex_surprise_adj)
+        }
+    }
+
+    // Free surprise segments for the unsurprised (or less-surprised) side.
+    derive free_surprise_segments(
+        party_surprise_segs: int,
+        monster_surprise_segs: int
+    ) -> int {
+        match {
+            party_surprise_segs > monster_surprise_segs => party_surprise_segs - monster_surprise_segs,
+            monster_surprise_segs > party_surprise_segs => monster_surprise_segs - party_surprise_segs,
+            _ => 0
+        }
+    }
+
+    // Full surprise resolution. Individual DEX adjustments
+    // are applied separately per-character by the host.
+    mechanic roll_surprise() -> SurpriseResult {
+        let p = roll(1d6)
+        let m = roll(1d6)
+        SurpriseResult {
+            party_roll: p.total,
+            monster_roll: m.total,
+            party_surprised_segments: if p.total <= 2 { p.total } else { 0 },
+            monster_surprised_segments: if m.total <= 2 { m.total } else { 0 }
+        }
+    }
+
+
+    // ========================================================
+    //  INITIATIVE ROLL
+    //
+    //  d6 per side, low = better (acts in that segment).
+    //  Roll of 1 = act in segment 1, roll of 6 = segment 6.
+    //  Ties = simultaneous (both sides act in same segment,
+    //  speed factor breaks ties within segment).
+    // ========================================================
+
+    mechanic roll_initiative() -> InitiativeResult {
+        let p = roll(1d6)
+        let m = roll(1d6)
+        InitiativeResult {
+            party_roll: p.total,
+            monster_roll: m.total,
+            party_segment: p.total,
+            monster_segment: m.total,
+            simultaneous: p.total == m.total
+        }
+    }
+
+
+    // ========================================================
+    //  SEGMENT ASSIGNMENT
+    //
+    //  Given a side's initiative roll and a declared action,
+    //  compute which segment the action resolves in.
+    //
+    //  Special cases:
+    //   - Movement always starts segment 1
+    //   - Set weapon against charge is always segment 1
+    //   - Missile weapons adjusted by DEX init modifier
+    //   - Spells complete after casting_time segments
+    // ========================================================
+
+    derive action_segment(
+        initiative_segment: int,
+        action_type: DeclaredActionType,
+        casting_time: int = 0,
+        dex_missile_init_adj: int = 0
+    ) -> int {
+        match action_type {
+            MeleeAttackAction      => initiative_segment,
+            MissileAttackAction    => max(1, initiative_segment + dex_missile_init_adj),
+            CastSpellAction        => initiative_segment + casting_time - 1,
+            ChargeAction           => initiative_segment,
+            MoveAction             => 1,
+            ParryAction            => initiative_segment,
+            SetAgainstChargeAction => 1,
+            FleeAction             => initiative_segment,
+            HoldAction             => initiative_segment
+        }
+    }
+
+    // Compute missile initiative segment for a specific character.
+    derive missile_init_segment(base_segment: int, dex: int) -> int {
+        max(1, base_segment + dex_init_missile(dex))
+    }
+
+    // Full segment assignment from a declared action.
+    derive assign_segment(
+        initiative_segment: int,
+        action_type: DeclaredActionType,
+        weapon_speed: int = 0,
+        casting_time: int = 0,
+        dex_missile_init_adj: int = 0
+    ) -> SegmentAction {
+        let seg = action_segment(initiative_segment, action_type, casting_time, dex_missile_init_adj)
+        SegmentAction {
+            segment: seg,
+            action_type: action_type,
+            speed_factor: weapon_speed
+        }
+    }
+
+
+    // ========================================================
+    //  FIGHTER MULTIPLE ATTACKS
+    //
+    //  Fighters, Paladins, Rangers with multiple attacks act
+    //  at segments 1 and 10 (regardless of initiative roll).
+    //  Level 7-12: 3/2 attacks (alternating 1 and 2 per round)
+    //  Level 13+: 2/1 attacks (always 2 per round)
+    //  The first attack is always at segment 1.
+    // ========================================================
+
+    derive has_fighter_multi_attack(class: Class, level: int) -> bool {
+        let def = class_def(class)
+        match {
+            def.combat_group == CombatGroup.FighterGroup && level >= 7 => true,
+            _ => false
+        }
+    }
+
+    // Number of attacks this round for a fighter-group member.
+    // At 3/2 rate, alternates between 1 and 2 attacks per round.
+    derive fighter_attacks_this_round(level: int, is_even_round: bool) -> int {
+        match {
+            level < 7  => 1,
+            level < 13 => if is_even_round { 2 } else { 1 },
+            _          => 2
+        }
+    }
+
+    // Segments at which fighter multi-attacks occur.
+    // Returns list of segments (e.g., [1] or [1, 10]).
+    derive fighter_attack_segments(level: int, is_even_round: bool) -> list<int> {
+        let attacks = fighter_attacks_this_round(level, is_even_round)
+        if attacks >= 2 {
+            [1, 10]
+        } else if level >= 7 {
+            [1]
+        } else {
+            []
+        }
+    }
+
+
+    // ========================================================
+    //  SPELL TIMING
+    //
+    //  Casting begins at initiative segment. Spell goes off
+    //  after (casting_time) segments from when casting starts.
+    //  If caster takes damage before completion, spell is lost.
+    //
+    //  Example: initiative 4, casting time 3
+    //   → starts segment 4, completes at end of segment 6
+    //   → interruptible during segments 4, 5
+    //   → spell effect in segment 6
+    // ========================================================
+
+    derive spell_effect_segment(initiative_segment: int, casting_time: int) -> int {
+        initiative_segment + casting_time - 1
+    }
+
+    // Is the caster currently casting (interruptible) at this segment?
+    derive is_casting_at_segment(
+        cast_start_segment: int,
+        casting_time: int,
+        current_segment: int
+    ) -> bool {
+        current_segment >= cast_start_segment && current_segment < cast_start_segment + casting_time
+    }
+
+    // Has the spell completed at this segment?
+    derive spell_completed_at_segment(
+        cast_start_segment: int,
+        casting_time: int,
+        current_segment: int
+    ) -> bool {
+        current_segment >= cast_start_segment + casting_time - 1
+    }
+
+
+    // ========================================================
+    //  SPEED FACTOR TIE-BREAKING
+    //
+    //  When initiative is simultaneous (tied), actions within
+    //  the same segment resolve from lowest speed factor to
+    //  highest. Lower speed factor = acts first.
+    //
+    //  Example: dagger (SF 2) strikes before longsword (SF 5)
+    //  if both act in the same segment.
+    // ========================================================
+
+    derive acts_first_by_speed(speed_a: int, speed_b: int) -> bool {
+        speed_a < speed_b
+    }
+
+    // Order two simultaneous melee combatants.
+    // Returns true if weapon_a's wielder acts first.
+    derive melee_order(weapon_a: MeleeWeapon, weapon_b: MeleeWeapon) -> bool {
+        let def_a = melee_weapon_def(weapon_a)
+        let def_b = melee_weapon_def(weapon_b)
+        def_a.speed_factor < def_b.speed_factor
+    }
+
+
+    // ========================================================
+    //  MOVEMENT SEGMENTS
+    //
+    //  Movement begins at segment 1. Characters move 1/10 of
+    //  their full movement per segment. With base movement 120,
+    //  that's 12 feet per segment.
+    // ========================================================
+
+    derive movement_per_segment(base_movement: int) -> int {
+        floor(base_movement / 10)
+    }
+
+    // Total movement completed through a given segment.
+    derive movement_through_segment(base_movement: int, segment: int) -> int {
+        let per_seg = floor(base_movement / 10)
+        per_seg * segment
+    }
+
+
+    // ========================================================
+    //  EVENTS
+    // ========================================================
+
+    event SpellInterrupted(caster: Character) {}
+
+
+    // ========================================================
+    //  CONDITIONS
+    //
+    //  CastingSpell: applied when a character begins casting.
+    //  Prevents attacks while casting (caster is occupied).
+    //  Removed when spell completes or is interrupted.
+    // ========================================================
+
+    condition CastingSpell on bearer: Character {
+        modify resolve_melee_attack(attacker: bearer) {
+            result.outcome = AttackOutcome.Miss
+            result.damage = 0
+        }
+        modify resolve_missile_attack(attacker: bearer) {
+            result.outcome = AttackOutcome.Miss
+            result.damage = 0
+        }
+    }
+
+
+    // ========================================================
+    //  HOOKS
+    //
+    //  Spell interruption: if a casting character takes damage,
+    //  the spell is lost. The CastingSpell condition is removed
+    //  and the SpellInterrupted event is emitted.
+    //
+    //  NOTE: remove_condition behaviour when condition is not
+    //  present is a potential DSL limitation to investigate.
+    // ========================================================
+
+    hook SpellInterruption on caster: Character (
+        trigger: Damaged(target: caster)
+    ) {
+        remove_condition(caster, CastingSpell)
+        emit SpellInterrupted(caster: caster)
+    }
+
+
+    // ========================================================
+    //  CHARGE INTERACTION
+    //
+    //  Set Weapon Against Charge: defender with a set weapon
+    //  (spear, javelin, lance, pole arm, trident) attacks first
+    //  at segment 1 and inflicts double damage on a hit.
+    //  This overrides normal initiative for the defender's
+    //  first strike against the charging attacker.
+    //
+    //  Modeled as a derive for damage calculation; the host
+    //  handles the timing (segment 1 resolution).
+    // ========================================================
+
+    derive set_weapon_damage_multiplier() -> int {
+        2
+    }
+
+    // Is this weapon valid for setting against a charge?
+    derive can_set_against_charge(weapon: MeleeWeapon) -> bool {
+        match weapon {
+            Spear   => true,
+            Javelin => true,
+            Lance   => true,
+            PoleArm => true,
+            Trident => true,
+            _       => false
+        }
+    }
+}

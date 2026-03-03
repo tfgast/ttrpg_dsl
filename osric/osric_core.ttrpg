@@ -57,7 +57,7 @@ system "OSRIC" {
 
     // --- Size categories ---
 
-    enum Size ordered { Small, Medium }
+    enum Size ordered { Small, Medium, Large }
 
     // --- Saving throw categories (five in 1e/OSRIC) ---
 
