@@ -481,6 +481,10 @@ system "OSRIC Initiative" {
     //  ROUND RESOLUTION EVENTS
     // ========================================================
 
+    event RoundStart(round: int) {}
+
+    event RoundEnd(round: int) {}
+
     event SegmentStart(segment: int) {}
 
     event ActionResolved(
@@ -620,9 +624,11 @@ system "OSRIC Initiative" {
     // ========================================================
 
     function resolve_round(
+        round: int,
         initiative: InitiativeResult,
         actions: list<RoundAction>
     ) {
+        emit RoundStart(round: round)
         let party_won = initiative.party_segment < initiative.monster_segment
 
         for seg in 1..=10 {
@@ -668,5 +674,7 @@ system "OSRIC Initiative" {
                 }
             }
         }
+
+        emit RoundEnd(round: round)
     }
 }
