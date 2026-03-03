@@ -666,8 +666,9 @@ fn deduct_costs(
                 )
             })?;
 
+        let payer = env.cost_payer.unwrap_or(*actor);
         let response = env.handler.handle(Effect::DeductCost {
-            actor: *actor,
+            actor: payer,
             token: token.node.clone(),
             budget_field: budget_field.clone(),
         });

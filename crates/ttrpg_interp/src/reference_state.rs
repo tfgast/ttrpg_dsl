@@ -319,6 +319,17 @@ impl WritableState for GameState {
             conds.retain(|c| c.invocation != Some(invocation));
         }
     }
+
+    fn set_turn_budget(&mut self, entity: &EntityRef, budget: BTreeMap<Name, Value>) {
+        if !self.entities.contains_key(&entity.0) {
+            return;
+        }
+        self.turn_budgets.insert(entity.0, budget);
+    }
+
+    fn clear_turn_budget(&mut self, entity: &EntityRef) {
+        self.turn_budgets.remove(&entity.0);
+    }
 }
 
 /// Navigate a nested path and write the value at the leaf.

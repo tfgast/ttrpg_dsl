@@ -150,6 +150,12 @@ pub trait WritableState: StateProvider {
 
     /// Remove all conditions tagged with the given invocation, across all entities.
     fn remove_conditions_by_invocation(&mut self, invocation: InvocationId);
+
+    /// Set the turn budget for an entity, replacing any existing budget.
+    fn set_turn_budget(&mut self, entity: &EntityRef, budget: BTreeMap<Name, Value>);
+
+    /// Remove the turn budget for an entity entirely.
+    fn clear_turn_budget(&mut self, entity: &EntityRef);
 }
 
 #[cfg(test)]

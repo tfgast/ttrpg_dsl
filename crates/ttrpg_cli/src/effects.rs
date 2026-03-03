@@ -430,6 +430,30 @@ impl EffectHandler for CliHandler<'_> {
                 Response::Acknowledged
             }
 
+            Effect::ProvisionBudget { actor, budget } => {
+                let name = self.entity_name(&actor);
+                self.game_state
+                    .borrow_mut()
+                    .set_turn_budget(&actor, budget.clone());
+                let fields_str: Vec<String> = budget
+                    .iter()
+                    .map(|(k, v)| format!("{}: {}", k, format_value(v, self.unit_suffixes)))
+                    .collect();
+                self.log.push(format!(
+                    "[ProvisionBudget] {name}: {{ {} }}",
+                    fields_str.join(", "),
+                ));
+                Response::Acknowledged
+            }
+
+            Effect::ClearBudget { actor } => {
+                let name = self.entity_name(&actor);
+                self.game_state.borrow_mut().clear_turn_budget(&actor);
+                self.log
+                    .push(format!("[ClearBudget] {name}"));
+                Response::Acknowledged
+            }
+
             Effect::ModifyApplied {
                 source,
                 target_fn,

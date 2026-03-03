@@ -2,12 +2,15 @@ use std::collections::BTreeMap;
 
 use rustc_hash::FxHashMap;
 use ttrpg_ast::ast::{ArmBody, ElseBranch, ExprKind, ForIterable, PatternKind};
-use ttrpg_ast::Spanned;
+use ttrpg_ast::{Span, Spanned};
 
 use crate::effect::{Effect, Response};
+use crate::state::EntityRef;
 use crate::value::Value;
 use crate::Env;
 use crate::RuntimeError;
+
+use ttrpg_ast::Name;
 
 use super::compare::match_pattern;
 use super::dispatch::eval_expr;
@@ -359,10 +362,112 @@ pub(super) fn eval_stmt(
             super::emit::eval_emit(env, event_name, args, *span)?;
             Ok(Value::None)
         }
-        StmtKind::WithBudget { .. } => Err(RuntimeError::with_span(
-            "with_budget is not yet implemented",
-            stmt.span,
-        )),
+        StmtKind::WithBudget {
+            entity,
+            budget_fields,
+            body,
+            span,
+        } => {
+            let entity_val = eval_expr(env, entity)?;
+            let actor = match entity_val {
+                Value::Entity(r) => r,
+                _ => {
+                    return Err(RuntimeError::with_span(
+                        "with_budget: expected entity value",
+                        entity.span,
+                    ))
+                }
+            };
+
+            let mut budget = BTreeMap::new();
+            for (name, expr) in budget_fields {
+                let val = eval_expr(env, expr)?;
+                budget.insert(name.node.clone(), val);
+            }
+
+            scoped_budget(env, actor, budget, *span, |env| eval_block(env, body))
+        }
+    }
+}
+
+// ── Scoped budget helper ────────────────────────────────────────
+
+/// Execute `body` with a provisioned turn budget, restoring the previous
+/// budget/turn_actor/cost_payer on exit (even on error).
+fn scoped_budget<F>(
+    env: &mut Env,
+    actor: EntityRef,
+    budget: BTreeMap<Name, Value>,
+    span: Span,
+    body: F,
+) -> Result<Value, RuntimeError>
+where
+    F: FnOnce(&mut Env) -> Result<Value, RuntimeError>,
+{
+    // 1. Snapshot previous state
+    let prev_budget = env.state.read_turn_budget(&actor);
+    let prev_turn_actor = env.turn_actor;
+    let prev_cost_payer = env.cost_payer;
+
+    // 2. Emit ProvisionBudget
+    let response = env.handler.handle(Effect::ProvisionBudget {
+        actor,
+        budget: budget.clone(),
+    });
+    if let Response::Vetoed = response {
+        return Err(RuntimeError::with_span(
+            "with_budget: ProvisionBudget was vetoed by host",
+            span,
+        ));
+    }
+
+    // 3. Set env context
+    env.turn_actor = Some(actor);
+    env.cost_payer = Some(actor);
+
+    // 4. Execute body
+    let body_result = body(env);
+
+    // 5. Restore env context (always runs)
+    env.turn_actor = prev_turn_actor;
+    env.cost_payer = prev_cost_payer;
+
+    // 6. Restore or clear budget (always runs)
+    let cleanup_result = match prev_budget {
+        Some(old_budget) => {
+            let resp = env.handler.handle(Effect::ProvisionBudget {
+                actor,
+                budget: old_budget,
+            });
+            if let Response::Vetoed = resp {
+                Err(RuntimeError::with_span(
+                    "with_budget: budget restore was vetoed by host",
+                    span,
+                ))
+            } else {
+                Ok(())
+            }
+        }
+        None => {
+            let resp = env.handler.handle(Effect::ClearBudget { actor });
+            if let Response::Vetoed = resp {
+                Err(RuntimeError::with_span(
+                    "with_budget: budget clear was vetoed by host",
+                    span,
+                ))
+            } else {
+                Ok(())
+            }
+        }
+    };
+
+    // 7. Body error takes precedence
+    match body_result {
+        Err(e) => Err(e),
+        Ok(val) => {
+            cleanup_result?;
+            Ok(val)
+        }
     }
 }
 

@@ -124,14 +124,16 @@ pub struct AdaptedHandler<'a, S: WritableState, H: EffectHandler> {
     inner: &'a mut H,
 }
 
-/// The seven mutation effect kinds.
-const MUTATION_KINDS: [EffectKind; 7] = [
+/// The nine mutation effect kinds.
+const MUTATION_KINDS: [EffectKind; 9] = [
     EffectKind::MutateField,
     EffectKind::ApplyCondition,
     EffectKind::RemoveCondition,
     EffectKind::MutateTurnField,
     EffectKind::GrantGroup,
     EffectKind::RevokeGroup,
+    EffectKind::ProvisionBudget,
+    EffectKind::ClearBudget,
     EffectKind::RevokeInvocation,
 ];
 
@@ -304,6 +306,12 @@ fn apply_mutation<S: WritableState>(state: &mut S, effect: &Effect) {
         }
         Effect::RevokeGroup { entity, group_name } => {
             state.remove_field(entity, group_name);
+        }
+        Effect::ProvisionBudget { actor, budget } => {
+            state.set_turn_budget(actor, budget.clone());
+        }
+        Effect::ClearBudget { actor } => {
+            state.clear_turn_budget(actor);
         }
         Effect::RevokeInvocation { invocation } => {
             state.remove_conditions_by_invocation(*invocation);
@@ -735,6 +743,14 @@ mod tests {
             for conds in self.conditions.values_mut() {
                 conds.retain(|c| c.invocation != Some(invocation));
             }
+        }
+
+        fn set_turn_budget(&mut self, entity: &EntityRef, budget: BTreeMap<Name, Value>) {
+            self.turn_budgets.insert(entity.0, budget);
+        }
+
+        fn clear_turn_budget(&mut self, entity: &EntityRef) {
+            self.turn_budgets.remove(&entity.0);
         }
     }
 

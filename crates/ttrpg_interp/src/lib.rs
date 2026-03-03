@@ -446,6 +446,7 @@ pub(crate) struct Env<'a, 'p> {
     pub interp: &'a Interpreter<'p>,
     pub scopes: Vec<Scope>,
     pub turn_actor: Option<EntityRef>,
+    pub cost_payer: Option<EntityRef>,
     pub current_invocation_id: Option<InvocationId>,
     pub emit_depth: u32,
 }
@@ -462,6 +463,7 @@ impl<'a, 'p> Env<'a, 'p> {
             interp,
             scopes: vec![Scope::new()],
             turn_actor: None,
+            cost_payer: None,
             current_invocation_id: None,
             emit_depth: 0,
         }

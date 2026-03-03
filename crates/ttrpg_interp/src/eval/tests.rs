@@ -5175,3 +5175,140 @@ fn grant_no_defaults_when_entity_type_unknown() {
         _ => panic!("expected GrantGroup"),
     }
 }
+
+// ── with_budget tests ──────────────────────────────────────
+
+#[test]
+fn with_budget_provisions_and_clears() {
+    let program = empty_program();
+    let type_env = empty_type_env();
+    let interp = Interpreter::new(&program, &type_env).unwrap();
+    let state = TestState::new();
+    let mut handler = ScriptedHandler::new();
+    let mut env = make_env(&state, &mut handler, &interp);
+
+    env.bind(Name::from("actor"), Value::Entity(EntityRef(1)));
+
+    // Build: with_budget(actor, { actions: 2 }) { 42 }
+    let stmt = spanned(StmtKind::WithBudget {
+        entity: Box::new(spanned(ExprKind::Ident("actor".into()))),
+        budget_fields: vec![(
+            spanned(Name::from("actions")),
+            spanned(ExprKind::IntLit(2)),
+        )],
+        body: Spanned::new(
+            vec![spanned(StmtKind::Expr(spanned(ExprKind::IntLit(42))))],
+            dummy_span(),
+        ),
+        span: dummy_span(),
+    });
+
+    let result = eval_stmt(&mut env, &stmt).unwrap();
+    assert_eq!(result, Value::Int(42));
+
+    // Should have emitted ProvisionBudget then ClearBudget
+    assert!(handler.log.len() >= 2);
+    assert!(
+        matches!(&handler.log[0], Effect::ProvisionBudget { actor, budget }
+            if actor.0 == 1 && budget.get("actions") == Some(&Value::Int(2))),
+        "first effect should be ProvisionBudget, got {:?}",
+        handler.log[0],
+    );
+    assert!(
+        matches!(&handler.log[1], Effect::ClearBudget { actor } if actor.0 == 1),
+        "second effect should be ClearBudget, got {:?}",
+        handler.log[1],
+    );
+}
+
+#[test]
+fn with_budget_sets_turn_actor_and_cost_payer() {
+    let program = empty_program();
+    let type_env = empty_type_env();
+    let interp = Interpreter::new(&program, &type_env).unwrap();
+    let state = TestState::new();
+    let mut handler = ScriptedHandler::new();
+    let mut env = make_env(&state, &mut handler, &interp);
+
+    env.bind(Name::from("actor"), Value::Entity(EntityRef(1)));
+
+    // Set env.turn_actor to something different before with_budget
+    env.turn_actor = Some(EntityRef(99));
+    env.cost_payer = Some(EntityRef(99));
+
+    let stmt = spanned(StmtKind::WithBudget {
+        entity: Box::new(spanned(ExprKind::Ident("actor".into()))),
+        budget_fields: vec![(
+            spanned(Name::from("actions")),
+            spanned(ExprKind::IntLit(1)),
+        )],
+        body: Spanned::new(
+            vec![spanned(StmtKind::Expr(spanned(ExprKind::IntLit(0))))],
+            dummy_span(),
+        ),
+        span: dummy_span(),
+    });
+
+    eval_stmt(&mut env, &stmt).unwrap();
+
+    // After with_budget, turn_actor and cost_payer should be restored
+    assert_eq!(env.turn_actor, Some(EntityRef(99)));
+    assert_eq!(env.cost_payer, Some(EntityRef(99)));
+}
+
+#[test]
+fn with_budget_restores_on_error() {
+    let program = empty_program();
+    let type_env = empty_type_env();
+    let interp = Interpreter::new(&program, &type_env).unwrap();
+    let mut state = TestState::new();
+    // Give entity 1 a pre-existing budget so cleanup restores it
+    let mut budget = BTreeMap::new();
+    budget.insert(Name::from("actions"), Value::Int(5));
+    state.turn_budgets.insert(1, budget);
+
+    let mut handler = ScriptedHandler::new();
+    let mut env = make_env(&state, &mut handler, &interp);
+
+    env.bind(Name::from("actor"), Value::Entity(EntityRef(1)));
+    env.turn_actor = Some(EntityRef(42));
+    env.cost_payer = None;
+
+    // Body references a nonexistent variable to trigger an error
+    let stmt = spanned(StmtKind::WithBudget {
+        entity: Box::new(spanned(ExprKind::Ident("actor".into()))),
+        budget_fields: vec![(
+            spanned(Name::from("actions")),
+            spanned(ExprKind::IntLit(1)),
+        )],
+        body: Spanned::new(
+            vec![spanned(StmtKind::Expr(spanned(ExprKind::Ident(
+                "nonexistent".into(),
+            ))))],
+            dummy_span(),
+        ),
+        span: dummy_span(),
+    });
+
+    let result = eval_stmt(&mut env, &stmt);
+    assert!(result.is_err(), "body error should propagate");
+
+    // Env should be restored
+    assert_eq!(env.turn_actor, Some(EntityRef(42)));
+    assert_eq!(env.cost_payer, None);
+
+    // Should have emitted: ProvisionBudget (new), ProvisionBudget (restore old)
+    assert!(handler.log.len() >= 2);
+    assert!(
+        matches!(&handler.log[0], Effect::ProvisionBudget { actor, budget }
+            if actor.0 == 1 && budget.get("actions") == Some(&Value::Int(1))),
+        "first: provision new budget",
+    );
+    // Cleanup: restore old budget (ProvisionBudget with old values)
+    assert!(
+        matches!(&handler.log[1], Effect::ProvisionBudget { actor, budget }
+            if actor.0 == 1 && budget.get("actions") == Some(&Value::Int(5))),
+        "second: restore old budget, got {:?}",
+        handler.log[1],
+    );
+}

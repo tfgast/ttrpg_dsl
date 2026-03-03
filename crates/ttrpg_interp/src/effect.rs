@@ -65,7 +65,8 @@ pub enum ActionOutcome {
 ///
 /// Effects fall into five categories:
 /// - **Value effects**: interpreter needs a value back (`RollDice`, `ResolvePrompt`)
-/// - **Mutation effects**: state changes (`MutateField`, `ApplyCondition`, `RemoveCondition`, `MutateTurnField`)
+/// - **Mutation effects**: state changes (`MutateField`, `ApplyCondition`, `RemoveCondition`,
+///   `MutateTurnField`, `ProvisionBudget`, `ClearBudget`)
 /// - **Decision effects**: always passed through (`DeductCost`)
 /// - **Gate effects**: host can alter control flow (`ActionStarted`, `RequiresCheck`)
 /// - **Informational effects**: fire-and-forget (`ActionCompleted`, `ModifyApplied`)
@@ -120,6 +121,13 @@ pub enum Effect {
     RevokeGroup {
         entity: EntityRef,
         group_name: Name,
+    },
+    ProvisionBudget {
+        actor: EntityRef,
+        budget: BTreeMap<Name, Value>,
+    },
+    ClearBudget {
+        actor: EntityRef,
     },
 
     // ── Decision effects ────────────────────────────────────
@@ -217,6 +225,8 @@ pub enum EffectKind {
     MutateTurnField,
     GrantGroup,
     RevokeGroup,
+    ProvisionBudget,
+    ClearBudget,
     DeductCost,
     ActionStarted,
     RequiresCheck,
@@ -237,6 +247,8 @@ impl EffectKind {
             Effect::MutateTurnField { .. } => EffectKind::MutateTurnField,
             Effect::GrantGroup { .. } => EffectKind::GrantGroup,
             Effect::RevokeGroup { .. } => EffectKind::RevokeGroup,
+            Effect::ProvisionBudget { .. } => EffectKind::ProvisionBudget,
+            Effect::ClearBudget { .. } => EffectKind::ClearBudget,
             Effect::DeductCost { .. } => EffectKind::DeductCost,
             Effect::ActionStarted { .. } => EffectKind::ActionStarted,
             Effect::RequiresCheck { .. } => EffectKind::RequiresCheck,
@@ -419,6 +431,25 @@ mod tests {
         } else {
             panic!("wrong variant");
         }
+    }
+
+    #[test]
+    fn effect_kind_of_provision_budget() {
+        let mut budget = BTreeMap::new();
+        budget.insert("actions".into(), Value::Int(1));
+        let effect = Effect::ProvisionBudget {
+            actor: EntityRef(1),
+            budget,
+        };
+        assert_eq!(EffectKind::of(&effect), EffectKind::ProvisionBudget);
+    }
+
+    #[test]
+    fn effect_kind_of_clear_budget() {
+        let effect = Effect::ClearBudget {
+            actor: EntityRef(1),
+        };
+        assert_eq!(EffectKind::of(&effect), EffectKind::ClearBudget);
     }
 
     #[test]
