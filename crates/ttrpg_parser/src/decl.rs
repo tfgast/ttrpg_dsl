@@ -355,7 +355,10 @@ impl Parser {
             self.parse_type()?
         } else {
             let s = self.peek_span();
-            Spanned::new(TypeExpr::Unit, Span::new(s.file, s.start as usize, s.start as usize))
+            Spanned::new(
+                TypeExpr::Unit,
+                Span::new(s.file, s.start as usize, s.start as usize),
+            )
         };
 
         // Parse tag annotations: #tag1 #tag2 ... before the body block

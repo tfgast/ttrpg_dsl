@@ -36,7 +36,10 @@ fn compile_osric_initiative() -> (ttrpg_ast::ast::Program, ttrpg_checker::CheckR
     let initiative_source = include_str!("../../../osric/osric_initiative.ttrpg");
 
     let sources = vec![
-        ("osric/osric_core.ttrpg".to_string(), core_source.to_string()),
+        (
+            "osric/osric_core.ttrpg".to_string(),
+            core_source.to_string(),
+        ),
         (
             "osric/osric_ability.ttrpg".to_string(),
             ability_source.to_string(),
@@ -395,9 +398,10 @@ fn resolve_melee(
 #[test]
 fn osric_initiative_parses_and_typechecks() {
     let (program, _) = compile_osric_initiative();
-    let has_system = program.items.iter().any(
-        |item| matches!(&item.node, TopLevel::System(sys) if sys.name == "OSRIC Initiative"),
-    );
+    let has_system = program
+        .items
+        .iter()
+        .any(|item| matches!(&item.node, TopLevel::System(sys) if sys.name == "OSRIC Initiative"));
     assert!(has_system, "expected system named 'OSRIC Initiative'");
 }
 
@@ -478,10 +482,7 @@ fn initiative_has_derives() {
         "set_weapon_damage_multiplier",
         "can_set_against_charge",
     ] {
-        assert!(
-            derives.contains(expected),
-            "missing derive: {expected}"
-        );
+        assert!(derives.contains(expected), "missing derive: {expected}");
     }
 }
 
@@ -496,7 +497,10 @@ fn initiative_has_mechanics() {
             _ => None,
         })
         .collect();
-    assert!(mechanics.contains(&"roll_surprise"), "missing roll_surprise");
+    assert!(
+        mechanics.contains(&"roll_surprise"),
+        "missing roll_surprise"
+    );
     assert!(
         mechanics.contains(&"roll_initiative"),
         "missing roll_initiative"
@@ -583,10 +587,12 @@ fn surprise_duration_roll_3_or_higher_not_surprised() {
 
     for roll in 3..=6 {
         let val = interp
-            .evaluate_derive(&state, &mut NullHandler, "surprise_duration", vec![
-                Value::Int(roll),
-                Value::Int(0),
-            ])
+            .evaluate_derive(
+                &state,
+                &mut NullHandler,
+                "surprise_duration",
+                vec![Value::Int(roll), Value::Int(0)],
+            )
             .unwrap();
         assert_eq!(val, Value::Int(0), "roll {roll} should not cause surprise");
     }
@@ -599,12 +605,18 @@ fn surprise_duration_roll_1_no_dex_adj() {
     let state = GameState::new();
 
     let val = interp
-        .evaluate_derive(&state, &mut NullHandler, "surprise_duration", vec![
-            Value::Int(1),
-            Value::Int(0),
-        ])
+        .evaluate_derive(
+            &state,
+            &mut NullHandler,
+            "surprise_duration",
+            vec![Value::Int(1), Value::Int(0)],
+        )
         .unwrap();
-    assert_eq!(val, Value::Int(1), "roll 1 with no DEX adj = 1 segment surprised");
+    assert_eq!(
+        val,
+        Value::Int(1),
+        "roll 1 with no DEX adj = 1 segment surprised"
+    );
 }
 
 #[test]
@@ -614,10 +626,12 @@ fn surprise_duration_roll_2_no_dex_adj() {
     let state = GameState::new();
 
     let val = interp
-        .evaluate_derive(&state, &mut NullHandler, "surprise_duration", vec![
-            Value::Int(2),
-            Value::Int(0),
-        ])
+        .evaluate_derive(
+            &state,
+            &mut NullHandler,
+            "surprise_duration",
+            vec![Value::Int(2), Value::Int(0)],
+        )
         .unwrap();
     assert_eq!(val, Value::Int(2), "roll 2 with no DEX adj = 2 segments");
 }
@@ -629,10 +643,12 @@ fn surprise_duration_roll_2_with_dex_adj_1() {
     let state = GameState::new();
 
     let val = interp
-        .evaluate_derive(&state, &mut NullHandler, "surprise_duration", vec![
-            Value::Int(2),
-            Value::Int(1),
-        ])
+        .evaluate_derive(
+            &state,
+            &mut NullHandler,
+            "surprise_duration",
+            vec![Value::Int(2), Value::Int(1)],
+        )
         .unwrap();
     assert_eq!(val, Value::Int(1), "roll 2 - DEX adj 1 = 1 segment");
 }
@@ -645,10 +661,12 @@ fn surprise_duration_dex_adj_fully_negates() {
 
     // DEX adj of 3 against roll 2 → max(0, 2-3) = 0
     let val = interp
-        .evaluate_derive(&state, &mut NullHandler, "surprise_duration", vec![
-            Value::Int(2),
-            Value::Int(3),
-        ])
+        .evaluate_derive(
+            &state,
+            &mut NullHandler,
+            "surprise_duration",
+            vec![Value::Int(2), Value::Int(3)],
+        )
         .unwrap();
     assert_eq!(val, Value::Int(0), "high DEX should fully negate surprise");
 }
@@ -660,10 +678,12 @@ fn free_surprise_segments_party_more_surprised() {
     let state = GameState::new();
 
     let val = interp
-        .evaluate_derive(&state, &mut NullHandler, "free_surprise_segments", vec![
-            Value::Int(2),
-            Value::Int(0),
-        ])
+        .evaluate_derive(
+            &state,
+            &mut NullHandler,
+            "free_surprise_segments",
+            vec![Value::Int(2), Value::Int(0)],
+        )
         .unwrap();
     assert_eq!(val, Value::Int(2), "monsters get 2 free segments");
 }
@@ -675,10 +695,12 @@ fn free_surprise_segments_monster_more_surprised() {
     let state = GameState::new();
 
     let val = interp
-        .evaluate_derive(&state, &mut NullHandler, "free_surprise_segments", vec![
-            Value::Int(0),
-            Value::Int(1),
-        ])
+        .evaluate_derive(
+            &state,
+            &mut NullHandler,
+            "free_surprise_segments",
+            vec![Value::Int(0), Value::Int(1)],
+        )
         .unwrap();
     assert_eq!(val, Value::Int(1), "party gets 1 free segment");
 }
@@ -690,10 +712,12 @@ fn free_surprise_segments_equal_is_zero() {
     let state = GameState::new();
 
     let val = interp
-        .evaluate_derive(&state, &mut NullHandler, "free_surprise_segments", vec![
-            Value::Int(1),
-            Value::Int(1),
-        ])
+        .evaluate_derive(
+            &state,
+            &mut NullHandler,
+            "free_surprise_segments",
+            vec![Value::Int(1), Value::Int(1)],
+        )
         .unwrap();
     assert_eq!(val, Value::Int(0), "equal surprise = no free segments");
 }
@@ -833,7 +857,12 @@ fn wrap_segment_within_range_unchanged() {
 
     for seg in 1..=10 {
         let val = interp
-            .evaluate_derive(&state, &mut NullHandler, "wrap_segment", vec![Value::Int(seg)])
+            .evaluate_derive(
+                &state,
+                &mut NullHandler,
+                "wrap_segment",
+                vec![Value::Int(seg)],
+            )
             .unwrap();
         assert_eq!(val, Value::Int(seg), "segment {seg} should stay {seg}");
     }
@@ -846,7 +875,12 @@ fn wrap_segment_11_wraps_to_1() {
     let state = GameState::new();
 
     let val = interp
-        .evaluate_derive(&state, &mut NullHandler, "wrap_segment", vec![Value::Int(11)])
+        .evaluate_derive(
+            &state,
+            &mut NullHandler,
+            "wrap_segment",
+            vec![Value::Int(11)],
+        )
         .unwrap();
     assert_eq!(val, Value::Int(1));
 }
@@ -858,7 +892,12 @@ fn wrap_segment_12_wraps_to_2() {
     let state = GameState::new();
 
     let val = interp
-        .evaluate_derive(&state, &mut NullHandler, "wrap_segment", vec![Value::Int(12)])
+        .evaluate_derive(
+            &state,
+            &mut NullHandler,
+            "wrap_segment",
+            vec![Value::Int(12)],
+        )
         .unwrap();
     assert_eq!(val, Value::Int(2));
 }
@@ -870,7 +909,12 @@ fn wrap_segment_20_wraps_to_10() {
     let state = GameState::new();
 
     let val = interp
-        .evaluate_derive(&state, &mut NullHandler, "wrap_segment", vec![Value::Int(20)])
+        .evaluate_derive(
+            &state,
+            &mut NullHandler,
+            "wrap_segment",
+            vec![Value::Int(20)],
+        )
         .unwrap();
     assert_eq!(val, Value::Int(10));
 }
@@ -886,10 +930,12 @@ fn action_segment_melee_equals_initiative() {
     let state = GameState::new();
 
     let val = interp
-        .evaluate_derive(&state, &mut NullHandler, "action_segment", vec![
-            Value::Int(4),
-            action_type("MeleeAttackAction"),
-        ])
+        .evaluate_derive(
+            &state,
+            &mut NullHandler,
+            "action_segment",
+            vec![Value::Int(4), action_type("MeleeAttackAction")],
+        )
         .unwrap();
     assert_eq!(val, Value::Int(4));
 }
@@ -902,12 +948,18 @@ fn action_segment_move_always_1() {
 
     for init_seg in 1..=6 {
         let val = interp
-            .evaluate_derive(&state, &mut NullHandler, "action_segment", vec![
-                Value::Int(init_seg),
-                action_type("MoveAction"),
-            ])
+            .evaluate_derive(
+                &state,
+                &mut NullHandler,
+                "action_segment",
+                vec![Value::Int(init_seg), action_type("MoveAction")],
+            )
             .unwrap();
-        assert_eq!(val, Value::Int(1), "MoveAction at init {init_seg} should be segment 1");
+        assert_eq!(
+            val,
+            Value::Int(1),
+            "MoveAction at init {init_seg} should be segment 1"
+        );
     }
 }
 
@@ -918,10 +970,12 @@ fn action_segment_set_against_charge_always_1() {
     let state = GameState::new();
 
     let val = interp
-        .evaluate_derive(&state, &mut NullHandler, "action_segment", vec![
-            Value::Int(5),
-            action_type("SetAgainstChargeAction"),
-        ])
+        .evaluate_derive(
+            &state,
+            &mut NullHandler,
+            "action_segment",
+            vec![Value::Int(5), action_type("SetAgainstChargeAction")],
+        )
         .unwrap();
     assert_eq!(val, Value::Int(1));
 }
@@ -934,11 +988,16 @@ fn action_segment_cast_spell_with_casting_time() {
 
     // Initiative 4, casting time 3 → 4 + 3 - 1 = 6
     let val = interp
-        .evaluate_derive(&state, &mut NullHandler, "action_segment", vec![
-            Value::Int(4),
-            action_type("CastSpellAction"),
-            Value::Int(3), // casting_time
-        ])
+        .evaluate_derive(
+            &state,
+            &mut NullHandler,
+            "action_segment",
+            vec![
+                Value::Int(4),
+                action_type("CastSpellAction"),
+                Value::Int(3), // casting_time
+            ],
+        )
         .unwrap();
     assert_eq!(val, Value::Int(6));
 }
@@ -952,11 +1011,16 @@ fn action_segment_cast_spell_cross_round() {
     // Initiative 6, casting time 7 → 6 + 7 - 1 = 12
     // NOT wrapped: value > 10 means spell continues into next round (§1.6.1.3).
     let val = interp
-        .evaluate_derive(&state, &mut NullHandler, "action_segment", vec![
-            Value::Int(6),
-            action_type("CastSpellAction"),
-            Value::Int(7), // casting_time
-        ])
+        .evaluate_derive(
+            &state,
+            &mut NullHandler,
+            "action_segment",
+            vec![
+                Value::Int(6),
+                action_type("CastSpellAction"),
+                Value::Int(7), // casting_time
+            ],
+        )
         .unwrap();
     assert_eq!(val, Value::Int(12));
 }
@@ -969,12 +1033,17 @@ fn action_segment_missile_with_dex_adj() {
 
     // Initiative 4, DEX missile adj -1 → max(1, 4 + (-1)) = 3
     let val = interp
-        .evaluate_derive(&state, &mut NullHandler, "action_segment", vec![
-            Value::Int(4),
-            action_type("MissileAttackAction"),
-            Value::Int(0), // casting_time (default)
-            Value::Int(-1), // dex_missile_init_adj
-        ])
+        .evaluate_derive(
+            &state,
+            &mut NullHandler,
+            "action_segment",
+            vec![
+                Value::Int(4),
+                action_type("MissileAttackAction"),
+                Value::Int(0),  // casting_time (default)
+                Value::Int(-1), // dex_missile_init_adj
+            ],
+        )
         .unwrap();
     assert_eq!(val, Value::Int(3));
 }
@@ -987,12 +1056,17 @@ fn action_segment_missile_dex_adj_floors_to_1() {
 
     // Initiative 1, DEX missile adj -3 → max(1, 1 + (-3)) = max(1, -2) = 1
     let val = interp
-        .evaluate_derive(&state, &mut NullHandler, "action_segment", vec![
-            Value::Int(1),
-            action_type("MissileAttackAction"),
-            Value::Int(0),
-            Value::Int(-3),
-        ])
+        .evaluate_derive(
+            &state,
+            &mut NullHandler,
+            "action_segment",
+            vec![
+                Value::Int(1),
+                action_type("MissileAttackAction"),
+                Value::Int(0),
+                Value::Int(-3),
+            ],
+        )
         .unwrap();
     assert_eq!(val, Value::Int(1));
 }
@@ -1006,12 +1080,18 @@ fn action_segment_all_simple_types_equal_initiative() {
     // These action types all resolve at the initiative segment
     for variant in &["ChargeAction", "ParryAction", "FleeAction", "HoldAction"] {
         let val = interp
-            .evaluate_derive(&state, &mut NullHandler, "action_segment", vec![
-                Value::Int(3),
-                action_type(variant),
-            ])
+            .evaluate_derive(
+                &state,
+                &mut NullHandler,
+                "action_segment",
+                vec![Value::Int(3), action_type(variant)],
+            )
             .unwrap();
-        assert_eq!(val, Value::Int(3), "{variant} should resolve at initiative segment");
+        assert_eq!(
+            val,
+            Value::Int(3),
+            "{variant} should resolve at initiative segment"
+        );
     }
 }
 
@@ -1025,10 +1105,12 @@ fn missile_init_segment_dex_16_reduces_segment() {
 
     // DEX 16 → dex_init_missile = -1 → base 4 + (-1) = 3 → max(1, 3) = 3
     let val = interp
-        .evaluate_derive(&state, &mut NullHandler, "missile_init_segment", vec![
-            Value::Int(4),
-            Value::Int(16),
-        ])
+        .evaluate_derive(
+            &state,
+            &mut NullHandler,
+            "missile_init_segment",
+            vec![Value::Int(4), Value::Int(16)],
+        )
         .unwrap();
     assert_eq!(val, Value::Int(3));
 }
@@ -1041,10 +1123,12 @@ fn missile_init_segment_dex_3_increases_segment() {
 
     // DEX 3 → dex_init_missile = +3 → base 2 + 3 = 5 → max(1, 5) = 5
     let val = interp
-        .evaluate_derive(&state, &mut NullHandler, "missile_init_segment", vec![
-            Value::Int(2),
-            Value::Int(3),
-        ])
+        .evaluate_derive(
+            &state,
+            &mut NullHandler,
+            "missile_init_segment",
+            vec![Value::Int(2), Value::Int(3)],
+        )
         .unwrap();
     assert_eq!(val, Value::Int(5));
 }
@@ -1058,11 +1142,16 @@ fn assign_segment_melee_returns_segment_action() {
     let state = GameState::new();
 
     let val = interp
-        .evaluate_derive(&state, &mut NullHandler, "assign_segment", vec![
-            Value::Int(3),
-            action_type("MeleeAttackAction"),
-            Value::Int(5), // weapon_speed
-        ])
+        .evaluate_derive(
+            &state,
+            &mut NullHandler,
+            "assign_segment",
+            vec![
+                Value::Int(3),
+                action_type("MeleeAttackAction"),
+                Value::Int(5), // weapon_speed
+            ],
+        )
         .unwrap();
 
     match val {
@@ -1090,12 +1179,17 @@ fn assign_segment_casting_adjusts_for_casting_time() {
     let state = GameState::new();
 
     let val = interp
-        .evaluate_derive(&state, &mut NullHandler, "assign_segment", vec![
-            Value::Int(2),
-            action_type("CastSpellAction"),
-            Value::Int(0),  // weapon_speed
-            Value::Int(5),  // casting_time
-        ])
+        .evaluate_derive(
+            &state,
+            &mut NullHandler,
+            "assign_segment",
+            vec![
+                Value::Int(2),
+                action_type("CastSpellAction"),
+                Value::Int(0), // weapon_speed
+                Value::Int(5), // casting_time
+            ],
+        )
         .unwrap();
 
     match val {
@@ -1123,10 +1217,12 @@ fn has_fighter_multi_attack_fighter_level_7() {
     let state = GameState::new();
 
     let val = interp
-        .evaluate_derive(&state, &mut NullHandler, "has_fighter_multi_attack", vec![
-            class_variant("Fighter"),
-            Value::Int(7),
-        ])
+        .evaluate_derive(
+            &state,
+            &mut NullHandler,
+            "has_fighter_multi_attack",
+            vec![class_variant("Fighter"), Value::Int(7)],
+        )
         .unwrap();
     assert_eq!(val, Value::Bool(true));
 }
@@ -1138,10 +1234,12 @@ fn has_fighter_multi_attack_fighter_level_6_no() {
     let state = GameState::new();
 
     let val = interp
-        .evaluate_derive(&state, &mut NullHandler, "has_fighter_multi_attack", vec![
-            class_variant("Fighter"),
-            Value::Int(6),
-        ])
+        .evaluate_derive(
+            &state,
+            &mut NullHandler,
+            "has_fighter_multi_attack",
+            vec![class_variant("Fighter"), Value::Int(6)],
+        )
         .unwrap();
     assert_eq!(val, Value::Bool(false));
 }
@@ -1154,10 +1252,12 @@ fn has_fighter_multi_attack_paladin_level_7() {
 
     // Paladin is FighterGroup
     let val = interp
-        .evaluate_derive(&state, &mut NullHandler, "has_fighter_multi_attack", vec![
-            class_variant("Paladin"),
-            Value::Int(7),
-        ])
+        .evaluate_derive(
+            &state,
+            &mut NullHandler,
+            "has_fighter_multi_attack",
+            vec![class_variant("Paladin"), Value::Int(7)],
+        )
         .unwrap();
     assert_eq!(val, Value::Bool(true));
 }
@@ -1170,10 +1270,12 @@ fn has_fighter_multi_attack_thief_level_10_no() {
 
     // Thief is ThiefGroup, not FighterGroup
     let val = interp
-        .evaluate_derive(&state, &mut NullHandler, "has_fighter_multi_attack", vec![
-            class_variant("Thief"),
-            Value::Int(10),
-        ])
+        .evaluate_derive(
+            &state,
+            &mut NullHandler,
+            "has_fighter_multi_attack",
+            vec![class_variant("Thief"), Value::Int(10)],
+        )
         .unwrap();
     assert_eq!(val, Value::Bool(false));
 }
@@ -1186,12 +1288,18 @@ fn fighter_attacks_this_round_below_7_always_1() {
 
     for round in 1..=4 {
         let val = interp
-            .evaluate_derive(&state, &mut NullHandler, "fighter_attacks_this_round", vec![
-                Value::Int(6),
-                Value::Int(round),
-            ])
+            .evaluate_derive(
+                &state,
+                &mut NullHandler,
+                "fighter_attacks_this_round",
+                vec![Value::Int(6), Value::Int(round)],
+            )
             .unwrap();
-        assert_eq!(val, Value::Int(1), "level 6, round {round} should be 1 attack");
+        assert_eq!(
+            val,
+            Value::Int(1),
+            "level 6, round {round} should be 1 attack"
+        );
     }
 }
 
@@ -1203,18 +1311,28 @@ fn fighter_attacks_this_round_level_7_12_alternates() {
 
     // Level 7-12: 3/2 rate — odd rounds: 1 attack, even rounds: 2 attacks
     let odd = interp
-        .evaluate_derive(&state, &mut NullHandler, "fighter_attacks_this_round", vec![
-            Value::Int(9),
-            Value::Int(1), // odd round
-        ])
+        .evaluate_derive(
+            &state,
+            &mut NullHandler,
+            "fighter_attacks_this_round",
+            vec![
+                Value::Int(9),
+                Value::Int(1), // odd round
+            ],
+        )
         .unwrap();
     assert_eq!(odd, Value::Int(1));
 
     let even = interp
-        .evaluate_derive(&state, &mut NullHandler, "fighter_attacks_this_round", vec![
-            Value::Int(9),
-            Value::Int(2), // even round
-        ])
+        .evaluate_derive(
+            &state,
+            &mut NullHandler,
+            "fighter_attacks_this_round",
+            vec![
+                Value::Int(9),
+                Value::Int(2), // even round
+            ],
+        )
         .unwrap();
     assert_eq!(even, Value::Int(2));
 }
@@ -1227,12 +1345,18 @@ fn fighter_attacks_this_round_level_13_always_2() {
 
     for round in 1..=4 {
         let val = interp
-            .evaluate_derive(&state, &mut NullHandler, "fighter_attacks_this_round", vec![
-                Value::Int(13),
-                Value::Int(round),
-            ])
+            .evaluate_derive(
+                &state,
+                &mut NullHandler,
+                "fighter_attacks_this_round",
+                vec![Value::Int(13), Value::Int(round)],
+            )
             .unwrap();
-        assert_eq!(val, Value::Int(2), "level 13+, round {round} should be 2 attacks");
+        assert_eq!(
+            val,
+            Value::Int(2),
+            "level 13+, round {round} should be 2 attacks"
+        );
     }
 }
 
@@ -1244,10 +1368,12 @@ fn fighter_attack_segments_level_7_even_round() {
 
     // Level 7, even round → 2 attacks → [1, 10]
     let val = interp
-        .evaluate_derive(&state, &mut NullHandler, "fighter_attack_segments", vec![
-            Value::Int(7),
-            Value::Int(2),
-        ])
+        .evaluate_derive(
+            &state,
+            &mut NullHandler,
+            "fighter_attack_segments",
+            vec![Value::Int(7), Value::Int(2)],
+        )
         .unwrap();
     assert_eq!(val, Value::List(vec![Value::Int(1), Value::Int(10)]));
 }
@@ -1260,10 +1386,12 @@ fn fighter_attack_segments_level_7_odd_round() {
 
     // Level 7, odd round → 1 attack → [1]
     let val = interp
-        .evaluate_derive(&state, &mut NullHandler, "fighter_attack_segments", vec![
-            Value::Int(7),
-            Value::Int(1),
-        ])
+        .evaluate_derive(
+            &state,
+            &mut NullHandler,
+            "fighter_attack_segments",
+            vec![Value::Int(7), Value::Int(1)],
+        )
         .unwrap();
     assert_eq!(val, Value::List(vec![Value::Int(1)]));
 }
@@ -1276,10 +1404,12 @@ fn fighter_attack_segments_level_13_always_two() {
 
     for round in 1..=3 {
         let val = interp
-            .evaluate_derive(&state, &mut NullHandler, "fighter_attack_segments", vec![
-                Value::Int(13),
-                Value::Int(round),
-            ])
+            .evaluate_derive(
+                &state,
+                &mut NullHandler,
+                "fighter_attack_segments",
+                vec![Value::Int(13), Value::Int(round)],
+            )
             .unwrap();
         assert_eq!(
             val,
@@ -1296,10 +1426,12 @@ fn fighter_attack_segments_below_7_empty() {
     let state = GameState::new();
 
     let val = interp
-        .evaluate_derive(&state, &mut NullHandler, "fighter_attack_segments", vec![
-            Value::Int(5),
-            Value::Int(1),
-        ])
+        .evaluate_derive(
+            &state,
+            &mut NullHandler,
+            "fighter_attack_segments",
+            vec![Value::Int(5), Value::Int(1)],
+        )
         .unwrap();
     assert_eq!(val, Value::List(vec![]));
 }
@@ -1316,10 +1448,12 @@ fn spell_effect_segment_basic() {
 
     // Initiative 4, casting time 3 → 4 + 3 - 1 = 6
     let val = interp
-        .evaluate_derive(&state, &mut NullHandler, "spell_effect_segment", vec![
-            Value::Int(4),
-            Value::Int(3),
-        ])
+        .evaluate_derive(
+            &state,
+            &mut NullHandler,
+            "spell_effect_segment",
+            vec![Value::Int(4), Value::Int(3)],
+        )
         .unwrap();
     assert_eq!(val, Value::Int(6));
 }
@@ -1333,10 +1467,12 @@ fn spell_effect_segment_cross_round() {
     // Initiative 9, casting time 5 → 9 + 5 - 1 = 13
     // NOT wrapped: value > 10 means spell continues into next round (§1.6.1.3).
     let val = interp
-        .evaluate_derive(&state, &mut NullHandler, "spell_effect_segment", vec![
-            Value::Int(9),
-            Value::Int(5),
-        ])
+        .evaluate_derive(
+            &state,
+            &mut NullHandler,
+            "spell_effect_segment",
+            vec![Value::Int(9), Value::Int(5)],
+        )
         .unwrap();
     assert_eq!(val, Value::Int(13));
 }
@@ -1349,10 +1485,12 @@ fn spell_effect_segment_casting_time_1() {
 
     // Initiative 2, casting time 1 → 2 + 1 - 1 = 2 (instant cast)
     let val = interp
-        .evaluate_derive(&state, &mut NullHandler, "spell_effect_segment", vec![
-            Value::Int(2),
-            Value::Int(1),
-        ])
+        .evaluate_derive(
+            &state,
+            &mut NullHandler,
+            "spell_effect_segment",
+            vec![Value::Int(2), Value::Int(1)],
+        )
         .unwrap();
     assert_eq!(val, Value::Int(2));
 }
@@ -1366,21 +1504,27 @@ fn is_casting_at_segment_during_casting() {
     // Cast starts at segment 4, casting time 3 → casting during 4, 5, 6
     // At segment 4: 4 >= 4 && 4 < 7 → true
     let val = interp
-        .evaluate_derive(&state, &mut NullHandler, "is_casting_at_segment", vec![
-            Value::Int(4), // cast_start_segment
-            Value::Int(3), // casting_time
-            Value::Int(4), // current_segment
-        ])
+        .evaluate_derive(
+            &state,
+            &mut NullHandler,
+            "is_casting_at_segment",
+            vec![
+                Value::Int(4), // cast_start_segment
+                Value::Int(3), // casting_time
+                Value::Int(4), // current_segment
+            ],
+        )
         .unwrap();
     assert_eq!(val, Value::Bool(true));
 
     // At segment 5: 5 >= 4 && 5 < 7 → true
     let val = interp
-        .evaluate_derive(&state, &mut NullHandler, "is_casting_at_segment", vec![
-            Value::Int(4),
-            Value::Int(3),
-            Value::Int(5),
-        ])
+        .evaluate_derive(
+            &state,
+            &mut NullHandler,
+            "is_casting_at_segment",
+            vec![Value::Int(4), Value::Int(3), Value::Int(5)],
+        )
         .unwrap();
     assert_eq!(val, Value::Bool(true));
 }
@@ -1393,11 +1537,12 @@ fn is_casting_at_segment_before_start() {
 
     // Current segment 3 < cast start 4 → false
     let val = interp
-        .evaluate_derive(&state, &mut NullHandler, "is_casting_at_segment", vec![
-            Value::Int(4),
-            Value::Int(3),
-            Value::Int(3),
-        ])
+        .evaluate_derive(
+            &state,
+            &mut NullHandler,
+            "is_casting_at_segment",
+            vec![Value::Int(4), Value::Int(3), Value::Int(3)],
+        )
         .unwrap();
     assert_eq!(val, Value::Bool(false));
 }
@@ -1411,11 +1556,12 @@ fn is_casting_at_segment_after_completion() {
     // Cast starts 4, casting time 3 → completes at 6.
     // At segment 7: 7 >= 4 but 7 >= 7 → false (7 < 7 is false)
     let val = interp
-        .evaluate_derive(&state, &mut NullHandler, "is_casting_at_segment", vec![
-            Value::Int(4),
-            Value::Int(3),
-            Value::Int(7),
-        ])
+        .evaluate_derive(
+            &state,
+            &mut NullHandler,
+            "is_casting_at_segment",
+            vec![Value::Int(4), Value::Int(3), Value::Int(7)],
+        )
         .unwrap();
     assert_eq!(val, Value::Bool(false));
 }
@@ -1429,11 +1575,12 @@ fn spell_completed_at_segment_exact() {
     // Cast starts 4, casting time 3 → completes at 4+3-1=6
     // At segment 6: 6 >= 6 → true
     let val = interp
-        .evaluate_derive(&state, &mut NullHandler, "spell_completed_at_segment", vec![
-            Value::Int(4),
-            Value::Int(3),
-            Value::Int(6),
-        ])
+        .evaluate_derive(
+            &state,
+            &mut NullHandler,
+            "spell_completed_at_segment",
+            vec![Value::Int(4), Value::Int(3), Value::Int(6)],
+        )
         .unwrap();
     assert_eq!(val, Value::Bool(true));
 }
@@ -1445,11 +1592,12 @@ fn spell_completed_at_segment_after() {
     let state = GameState::new();
 
     let val = interp
-        .evaluate_derive(&state, &mut NullHandler, "spell_completed_at_segment", vec![
-            Value::Int(4),
-            Value::Int(3),
-            Value::Int(8),
-        ])
+        .evaluate_derive(
+            &state,
+            &mut NullHandler,
+            "spell_completed_at_segment",
+            vec![Value::Int(4), Value::Int(3), Value::Int(8)],
+        )
         .unwrap();
     assert_eq!(val, Value::Bool(true));
 }
@@ -1462,11 +1610,12 @@ fn spell_completed_at_segment_before() {
 
     // At segment 5: 5 >= 6 → false
     let val = interp
-        .evaluate_derive(&state, &mut NullHandler, "spell_completed_at_segment", vec![
-            Value::Int(4),
-            Value::Int(3),
-            Value::Int(5),
-        ])
+        .evaluate_derive(
+            &state,
+            &mut NullHandler,
+            "spell_completed_at_segment",
+            vec![Value::Int(4), Value::Int(3), Value::Int(5)],
+        )
         .unwrap();
     assert_eq!(val, Value::Bool(false));
 }
@@ -1482,10 +1631,12 @@ fn acts_first_by_speed_lower_wins() {
     let state = GameState::new();
 
     let val = interp
-        .evaluate_derive(&state, &mut NullHandler, "acts_first_by_speed", vec![
-            Value::Int(2),
-            Value::Int(5),
-        ])
+        .evaluate_derive(
+            &state,
+            &mut NullHandler,
+            "acts_first_by_speed",
+            vec![Value::Int(2), Value::Int(5)],
+        )
         .unwrap();
     assert_eq!(val, Value::Bool(true), "lower speed acts first");
 }
@@ -1497,10 +1648,12 @@ fn acts_first_by_speed_higher_loses() {
     let state = GameState::new();
 
     let val = interp
-        .evaluate_derive(&state, &mut NullHandler, "acts_first_by_speed", vec![
-            Value::Int(5),
-            Value::Int(2),
-        ])
+        .evaluate_derive(
+            &state,
+            &mut NullHandler,
+            "acts_first_by_speed",
+            vec![Value::Int(5), Value::Int(2)],
+        )
         .unwrap();
     assert_eq!(val, Value::Bool(false));
 }
@@ -1512,10 +1665,12 @@ fn acts_first_by_speed_equal_is_false() {
     let state = GameState::new();
 
     let val = interp
-        .evaluate_derive(&state, &mut NullHandler, "acts_first_by_speed", vec![
-            Value::Int(4),
-            Value::Int(4),
-        ])
+        .evaluate_derive(
+            &state,
+            &mut NullHandler,
+            "acts_first_by_speed",
+            vec![Value::Int(4), Value::Int(4)],
+        )
         .unwrap();
     assert_eq!(val, Value::Bool(false), "equal speed = not first");
 }
@@ -1528,10 +1683,12 @@ fn melee_order_dagger_vs_longsword() {
 
     // Dagger SF=2, SwordLong SF=5 → dagger acts first
     let val = interp
-        .evaluate_derive(&state, &mut NullHandler, "melee_order", vec![
-            melee_weapon("Dagger"),
-            melee_weapon("SwordLong"),
-        ])
+        .evaluate_derive(
+            &state,
+            &mut NullHandler,
+            "melee_order",
+            vec![melee_weapon("Dagger"), melee_weapon("SwordLong")],
+        )
         .unwrap();
     assert_eq!(val, Value::Bool(true));
 }
@@ -1543,10 +1700,12 @@ fn melee_order_longsword_vs_dagger() {
     let state = GameState::new();
 
     let val = interp
-        .evaluate_derive(&state, &mut NullHandler, "melee_order", vec![
-            melee_weapon("SwordLong"),
-            melee_weapon("Dagger"),
-        ])
+        .evaluate_derive(
+            &state,
+            &mut NullHandler,
+            "melee_order",
+            vec![melee_weapon("SwordLong"), melee_weapon("Dagger")],
+        )
         .unwrap();
     assert_eq!(val, Value::Bool(false));
 }
@@ -1558,10 +1717,12 @@ fn melee_order_same_weapon_is_false() {
     let state = GameState::new();
 
     let val = interp
-        .evaluate_derive(&state, &mut NullHandler, "melee_order", vec![
-            melee_weapon("SwordLong"),
-            melee_weapon("SwordLong"),
-        ])
+        .evaluate_derive(
+            &state,
+            &mut NullHandler,
+            "melee_order",
+            vec![melee_weapon("SwordLong"), melee_weapon("SwordLong")],
+        )
         .unwrap();
     assert_eq!(val, Value::Bool(false), "same weapon = not first");
 }
@@ -1574,18 +1735,26 @@ fn melee_order_halberd_vs_fist() {
 
     // Halberd SF=9, FistOrKick SF=1 → fist acts first
     let val = interp
-        .evaluate_derive(&state, &mut NullHandler, "melee_order", vec![
-            melee_weapon("Halberd"),
-            melee_weapon("FistOrKick"),
-        ])
+        .evaluate_derive(
+            &state,
+            &mut NullHandler,
+            "melee_order",
+            vec![melee_weapon("Halberd"), melee_weapon("FistOrKick")],
+        )
         .unwrap();
-    assert_eq!(val, Value::Bool(false), "halberd (SF=9) loses to fist (SF=1)");
+    assert_eq!(
+        val,
+        Value::Bool(false),
+        "halberd (SF=9) loses to fist (SF=1)"
+    );
 
     let val2 = interp
-        .evaluate_derive(&state, &mut NullHandler, "melee_order", vec![
-            melee_weapon("FistOrKick"),
-            melee_weapon("Halberd"),
-        ])
+        .evaluate_derive(
+            &state,
+            &mut NullHandler,
+            "melee_order",
+            vec![melee_weapon("FistOrKick"), melee_weapon("Halberd")],
+        )
         .unwrap();
     assert_eq!(val2, Value::Bool(true));
 }
@@ -1601,7 +1770,12 @@ fn movement_per_segment_base_120() {
     let state = GameState::new();
 
     let val = interp
-        .evaluate_derive(&state, &mut NullHandler, "movement_per_segment", vec![feet(120)])
+        .evaluate_derive(
+            &state,
+            &mut NullHandler,
+            "movement_per_segment",
+            vec![feet(120)],
+        )
         .unwrap();
     assert_eq!(expect_feet(val, "movement_per_segment"), 12);
 }
@@ -1613,7 +1787,12 @@ fn movement_per_segment_base_60() {
     let state = GameState::new();
 
     let val = interp
-        .evaluate_derive(&state, &mut NullHandler, "movement_per_segment", vec![feet(60)])
+        .evaluate_derive(
+            &state,
+            &mut NullHandler,
+            "movement_per_segment",
+            vec![feet(60)],
+        )
         .unwrap();
     assert_eq!(expect_feet(val, "movement_per_segment"), 6);
 }
@@ -1626,7 +1805,12 @@ fn movement_per_segment_base_90_floors() {
 
     // 90 / 10 = 9, no rounding needed
     let val = interp
-        .evaluate_derive(&state, &mut NullHandler, "movement_per_segment", vec![feet(90)])
+        .evaluate_derive(
+            &state,
+            &mut NullHandler,
+            "movement_per_segment",
+            vec![feet(90)],
+        )
         .unwrap();
     assert_eq!(expect_feet(val, "movement_per_segment"), 9);
 }
@@ -1638,10 +1822,12 @@ fn movement_through_segment_1() {
     let state = GameState::new();
 
     let val = interp
-        .evaluate_derive(&state, &mut NullHandler, "movement_through_segment", vec![
-            feet(120),
-            Value::Int(1),
-        ])
+        .evaluate_derive(
+            &state,
+            &mut NullHandler,
+            "movement_through_segment",
+            vec![feet(120), Value::Int(1)],
+        )
         .unwrap();
     assert_eq!(expect_feet(val, "movement_through_segment"), 12);
 }
@@ -1653,10 +1839,12 @@ fn movement_through_segment_5() {
     let state = GameState::new();
 
     let val = interp
-        .evaluate_derive(&state, &mut NullHandler, "movement_through_segment", vec![
-            feet(120),
-            Value::Int(5),
-        ])
+        .evaluate_derive(
+            &state,
+            &mut NullHandler,
+            "movement_through_segment",
+            vec![feet(120), Value::Int(5)],
+        )
         .unwrap();
     assert_eq!(expect_feet(val, "movement_through_segment"), 60);
 }
@@ -1668,10 +1856,12 @@ fn movement_through_segment_10() {
     let state = GameState::new();
 
     let val = interp
-        .evaluate_derive(&state, &mut NullHandler, "movement_through_segment", vec![
-            feet(120),
-            Value::Int(10),
-        ])
+        .evaluate_derive(
+            &state,
+            &mut NullHandler,
+            "movement_through_segment",
+            vec![feet(120), Value::Int(10)],
+        )
         .unwrap();
     assert_eq!(expect_feet(val, "movement_through_segment"), 120);
 }
@@ -1687,7 +1877,12 @@ fn set_weapon_damage_multiplier_is_2() {
     let state = GameState::new();
 
     let val = interp
-        .evaluate_derive(&state, &mut NullHandler, "set_weapon_damage_multiplier", vec![])
+        .evaluate_derive(
+            &state,
+            &mut NullHandler,
+            "set_weapon_damage_multiplier",
+            vec![],
+        )
         .unwrap();
     assert_eq!(val, Value::Int(2));
 }
@@ -1700,11 +1895,18 @@ fn can_set_against_charge_valid_weapons() {
 
     for weapon in &["Spear", "Javelin", "Lance", "PoleArm", "Trident"] {
         let val = interp
-            .evaluate_derive(&state, &mut NullHandler, "can_set_against_charge", vec![
-                melee_weapon(weapon),
-            ])
+            .evaluate_derive(
+                &state,
+                &mut NullHandler,
+                "can_set_against_charge",
+                vec![melee_weapon(weapon)],
+            )
             .unwrap();
-        assert_eq!(val, Value::Bool(true), "{weapon} should be valid for set against charge");
+        assert_eq!(
+            val,
+            Value::Bool(true),
+            "{weapon} should be valid for set against charge"
+        );
     }
 }
 
@@ -1716,11 +1918,18 @@ fn can_set_against_charge_invalid_weapons() {
 
     for weapon in &["SwordLong", "Dagger", "Club", "Staff", "BattleAxe"] {
         let val = interp
-            .evaluate_derive(&state, &mut NullHandler, "can_set_against_charge", vec![
-                melee_weapon(weapon),
-            ])
+            .evaluate_derive(
+                &state,
+                &mut NullHandler,
+                "can_set_against_charge",
+                vec![melee_weapon(weapon)],
+            )
             .unwrap();
-        assert_eq!(val, Value::Bool(false), "{weapon} should NOT be valid for set against charge");
+        assert_eq!(
+            val,
+            Value::Bool(false),
+            "{weapon} should NOT be valid for set against charge"
+        );
     }
 }
 
@@ -1736,10 +1945,24 @@ fn baseline_melee_attack_without_casting_spell() {
     let mut state = GameState::new();
 
     let attacker = make_character(
-        &mut state, "Fighter", "Fighter", 5, &standard_abilities(), 30, 15, "Human",
+        &mut state,
+        "Fighter",
+        "Fighter",
+        5,
+        &standard_abilities(),
+        30,
+        15,
+        "Human",
     );
     let target = make_character(
-        &mut state, "Target", "Fighter", 1, &standard_abilities(), 10, 14, "Human",
+        &mut state,
+        "Target",
+        "Fighter",
+        1,
+        &standard_abilities(),
+        10,
+        14,
+        "Human",
     );
 
     let atk_roll = scripted_roll(1, 20, 0, vec![15], vec![15], 15, 15);
@@ -1769,13 +1992,33 @@ fn casting_spell_on_attacker_forces_miss() {
     let mut state = GameState::new();
 
     let attacker = make_character(
-        &mut state, "Fighter", "Fighter", 5, &standard_abilities(), 30, 15, "Human",
+        &mut state,
+        "Fighter",
+        "Fighter",
+        5,
+        &standard_abilities(),
+        30,
+        15,
+        "Human",
     );
     let target = make_character(
-        &mut state, "Target", "Fighter", 1, &standard_abilities(), 10, 14, "Human",
+        &mut state,
+        "Target",
+        "Fighter",
+        1,
+        &standard_abilities(),
+        10,
+        14,
+        "Human",
     );
 
-    state.apply_condition(&attacker, "CastingSpell", BTreeMap::new(), Value::None, None);
+    state.apply_condition(
+        &attacker,
+        "CastingSpell",
+        BTreeMap::new(),
+        Value::None,
+        None,
+    );
 
     // The condition modifies the result post-call (Phase 2): outcome → Miss, damage → 0
     // Mechanic body runs first (dice rolls), then Phase 2 modify fires after
@@ -1796,11 +2039,16 @@ fn casting_spell_on_attacker_forces_miss() {
         &enum_variant("AttackOutcome", "Miss"),
         "CastingSpell should force attack to Miss"
     );
-    assert_eq!(get_int(&fields, "damage"), 0, "CastingSpell should zero damage");
+    assert_eq!(
+        get_int(&fields, "damage"),
+        0,
+        "CastingSpell should zero damage"
+    );
 
     // Verify ModifyApplied was emitted
     assert!(
-        log.iter().any(|e| matches!(e, Effect::ModifyApplied { .. })),
+        log.iter()
+            .any(|e| matches!(e, Effect::ModifyApplied { .. })),
         "expected ModifyApplied effect"
     );
 }
@@ -1815,10 +2063,24 @@ fn casting_spell_on_target_strips_dex_ac_but_attack_hits() {
     let mut state = GameState::new();
 
     let attacker = make_character(
-        &mut state, "Fighter", "Fighter", 5, &standard_abilities(), 30, 15, "Human",
+        &mut state,
+        "Fighter",
+        "Fighter",
+        5,
+        &standard_abilities(),
+        30,
+        15,
+        "Human",
     );
     let target = make_character(
-        &mut state, "Target", "Fighter", 1, &standard_abilities(), 10, 14, "Human",
+        &mut state,
+        "Target",
+        "Fighter",
+        1,
+        &standard_abilities(),
+        10,
+        14,
+        "Human",
     );
 
     // Apply CastingSpell to target, not attacker
@@ -1849,7 +2111,8 @@ fn casting_spell_on_target_strips_dex_ac_but_attack_hits() {
 
     // Verify the DEX AC modify fired
     assert!(
-        log.iter().any(|e| matches!(e, Effect::ModifyApplied { .. })),
+        log.iter()
+            .any(|e| matches!(e, Effect::ModifyApplied { .. })),
         "expected ModifyApplied for effective_target_ac DEX stripping"
     );
 }
@@ -1864,16 +2127,34 @@ fn casting_spell_strips_high_dex_ac_bonus() {
     let mut state = GameState::new();
 
     let high_dex_abilities: Vec<(&str, i64)> = vec![
-        ("STR", 12), ("DEX", 16), ("CON", 12),
-        ("INT", 12), ("WIS", 12), ("CHA", 12),
+        ("STR", 12),
+        ("DEX", 16),
+        ("CON", 12),
+        ("INT", 12),
+        ("WIS", 12),
+        ("CHA", 12),
     ];
 
     let attacker = make_character(
-        &mut state, "Fighter", "Fighter", 1, &standard_abilities(), 30, 10, "Human",
+        &mut state,
+        "Fighter",
+        "Fighter",
+        1,
+        &standard_abilities(),
+        30,
+        10,
+        "Human",
     );
     // Target: armor_ac 14, DEX 16 → +2 AC bonus → effective AC 16
     let target = make_character(
-        &mut state, "Target", "MagicUser", 5, &high_dex_abilities, 10, 14, "Human",
+        &mut state,
+        "Target",
+        "MagicUser",
+        5,
+        &high_dex_abilities,
+        10,
+        14,
+        "Human",
     );
 
     // Roll 15 + BTHB 0 (Fighter 1) + STR 0 (12) = 15
@@ -1907,7 +2188,8 @@ fn casting_spell_strips_high_dex_ac_bonus() {
 
     // Verify modify fired
     assert!(
-        log.iter().any(|e| matches!(e, Effect::ModifyApplied { .. })),
+        log.iter()
+            .any(|e| matches!(e, Effect::ModifyApplied { .. })),
         "expected ModifyApplied for DEX AC stripping"
     );
 }
@@ -1923,7 +2205,14 @@ fn begin_casting_applies_casting_spell_condition() {
     let mut state = GameState::new();
 
     let caster = make_caster(
-        &mut state, "Mage", "MagicUser", 5, &standard_abilities(), 10, 10, "Human",
+        &mut state,
+        "Mage",
+        "MagicUser",
+        5,
+        &standard_abilities(),
+        10,
+        10,
+        "Human",
     );
     state.set_turn_budget(&caster, combat_turn_budget());
 
@@ -1972,10 +2261,24 @@ fn spell_interruption_hook_fires_on_damage() {
     let mut state = GameState::new();
 
     let caster = make_caster(
-        &mut state, "Mage", "MagicUser", 5, &standard_abilities(), 20, 10, "Human",
+        &mut state,
+        "Mage",
+        "MagicUser",
+        5,
+        &standard_abilities(),
+        20,
+        10,
+        "Human",
     );
     let attacker = make_character(
-        &mut state, "Fighter", "Fighter", 5, &standard_abilities(), 30, 15, "Human",
+        &mut state,
+        "Fighter",
+        "Fighter",
+        5,
+        &standard_abilities(),
+        30,
+        15,
+        "Human",
     );
     state.set_turn_budget(&attacker, combat_turn_budget());
 
@@ -1984,7 +2287,11 @@ fn spell_interruption_hook_fires_on_damage() {
 
     // Verify condition is present before attack
     assert!(
-        state.read_conditions(&caster).unwrap_or_default().iter().any(|c| &*c.name == "CastingSpell"),
+        state
+            .read_conditions(&caster)
+            .unwrap_or_default()
+            .iter()
+            .any(|c| &*c.name == "CastingSpell"),
         "CastingSpell should be present before damage"
     );
 
@@ -2012,10 +2319,7 @@ fn spell_interruption_hook_fires_on_damage() {
                 eff_handler,
                 "MeleeAttack",
                 attacker,
-                vec![
-                    Value::Entity(caster),
-                    melee_weapon("SwordLong"),
-                ],
+                vec![Value::Entity(caster), melee_weapon("SwordLong")],
             )
             .unwrap();
     });

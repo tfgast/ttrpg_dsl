@@ -5192,10 +5192,7 @@ fn with_budget_provisions_and_clears() {
     // Build: with_budget(actor, { actions: 2 }) { 42 }
     let stmt = spanned(StmtKind::WithBudget {
         entity: Box::new(spanned(ExprKind::Ident("actor".into()))),
-        budget_fields: vec![(
-            spanned(Name::from("actions")),
-            spanned(ExprKind::IntLit(2)),
-        )],
+        budget_fields: vec![(spanned(Name::from("actions")), spanned(ExprKind::IntLit(2)))],
         body: Spanned::new(
             vec![spanned(StmtKind::Expr(spanned(ExprKind::IntLit(42))))],
             dummy_span(),
@@ -5238,10 +5235,7 @@ fn with_budget_sets_turn_actor_and_cost_payer() {
 
     let stmt = spanned(StmtKind::WithBudget {
         entity: Box::new(spanned(ExprKind::Ident("actor".into()))),
-        budget_fields: vec![(
-            spanned(Name::from("actions")),
-            spanned(ExprKind::IntLit(1)),
-        )],
+        budget_fields: vec![(spanned(Name::from("actions")), spanned(ExprKind::IntLit(1)))],
         body: Spanned::new(
             vec![spanned(StmtKind::Expr(spanned(ExprKind::IntLit(0))))],
             dummy_span(),
@@ -5277,10 +5271,7 @@ fn with_budget_restores_on_error() {
     // Body references a nonexistent variable to trigger an error
     let stmt = spanned(StmtKind::WithBudget {
         entity: Box::new(spanned(ExprKind::Ident("actor".into()))),
-        budget_fields: vec![(
-            spanned(Name::from("actions")),
-            spanned(ExprKind::IntLit(1)),
-        )],
+        budget_fields: vec![(spanned(Name::from("actions")), spanned(ExprKind::IntLit(1)))],
         body: Spanned::new(
             vec![spanned(StmtKind::Expr(spanned(ExprKind::Ident(
                 "nonexistent".into(),

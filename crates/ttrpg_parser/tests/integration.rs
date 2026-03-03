@@ -3430,7 +3430,10 @@ fn test_with_budget_basic() {
             assert_eq!(budget_fields[0].0.node.as_str(), "action");
             assert_eq!(body.node.len(), 1);
         }
-        _ => panic!("expected WithBudget statement, got {:?}", std::mem::discriminant(stmt)),
+        _ => panic!(
+            "expected WithBudget statement, got {:?}",
+            std::mem::discriminant(stmt)
+        ),
     }
 }
 

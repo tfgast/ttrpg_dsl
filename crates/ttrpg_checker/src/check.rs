@@ -510,7 +510,9 @@ impl<'a> Checker<'a> {
         let body_ty = self.check_block(&a.resolve);
         if !a.synthetic && !body_ty.is_error() && body_ty != Ty::Unit {
             self.error(
-                format!("action resolve block has type {body_ty}, but actions cannot return a value"),
+                format!(
+                    "action resolve block has type {body_ty}, but actions cannot return a value"
+                ),
                 a.resolve.span,
             );
         }
@@ -721,7 +723,9 @@ impl<'a> Checker<'a> {
         let body_ty = self.check_block(body);
         if !body_ty.is_error() && body_ty != Ty::Unit {
             self.error(
-                format!("{kind} resolve block has type {body_ty}, but {kind}s cannot return a value"),
+                format!(
+                    "{kind} resolve block has type {body_ty}, but {kind}s cannot return a value"
+                ),
                 body.span,
             );
         }

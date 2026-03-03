@@ -22,7 +22,10 @@ fn compile_osric_class() -> (ttrpg_ast::ast::Program, ttrpg_checker::CheckResult
     let class_source = include_str!("../../../osric/osric_class.ttrpg");
 
     let sources = vec![
-        ("osric/osric_core.ttrpg".to_string(), core_source.to_string()),
+        (
+            "osric/osric_core.ttrpg".to_string(),
+            core_source.to_string(),
+        ),
         (
             "osric/osric_class.ttrpg".to_string(),
             class_source.to_string(),
@@ -112,9 +115,7 @@ fn get_bool(fields: &BTreeMap<String, Value>, key: &str) -> bool {
 fn get_enum_variant<'a>(fields: &'a BTreeMap<String, Value>, key: &'a str) -> (&'a str, &'a str) {
     match fields.get(key) {
         Some(Value::EnumVariant {
-            enum_name,
-            variant,
-            ..
+            enum_name, variant, ..
         }) => (enum_name.as_str(), variant.as_str()),
         other => panic!("expected enum variant for {key}, got: {other:?}"),
     }
@@ -645,10 +646,7 @@ fn xp_for_level_magic_user_spot_checks() {
     let mut handler = NullHandler;
 
     assert_eq!(get_xp(&interp, &state, &mut handler, "MagicUser", 2), 2400);
-    assert_eq!(
-        get_xp(&interp, &state, &mut handler, "MagicUser", 4),
-        10250
-    );
+    assert_eq!(get_xp(&interp, &state, &mut handler, "MagicUser", 4), 10250);
     assert_eq!(
         get_xp(&interp, &state, &mut handler, "MagicUser", 10),
         250_000
@@ -682,7 +680,10 @@ fn xp_for_level_assassin_spot_checks() {
     let mut handler = NullHandler;
 
     assert_eq!(get_xp(&interp, &state, &mut handler, "Assassin", 2), 1500);
-    assert_eq!(get_xp(&interp, &state, &mut handler, "Assassin", 8), 100_000);
+    assert_eq!(
+        get_xp(&interp, &state, &mut handler, "Assassin", 8),
+        100_000
+    );
     assert_eq!(
         get_xp(&interp, &state, &mut handler, "Assassin", 15),
         1_500_000
@@ -698,10 +699,7 @@ fn xp_for_level_monk_spot_checks() {
 
     assert_eq!(get_xp(&interp, &state, &mut handler, "Monk", 3), 5000);
     assert_eq!(get_xp(&interp, &state, &mut handler, "Monk", 9), 350_000);
-    assert_eq!(
-        get_xp(&interp, &state, &mut handler, "Monk", 17),
-        3_250_000
-    );
+    assert_eq!(get_xp(&interp, &state, &mut handler, "Monk", 17), 3_250_000);
 }
 
 #[test]
@@ -817,7 +815,12 @@ fn check_level_up_fighter_below_threshold() {
 
     // Fighter level 2 requires 2000 XP. At 1999 XP, should NOT level up.
     assert!(!check_level_up(
-        &interp, &state, &mut handler, "Fighter", 1, 1999
+        &interp,
+        &state,
+        &mut handler,
+        "Fighter",
+        1,
+        1999
     ));
 }
 
@@ -830,7 +833,12 @@ fn check_level_up_fighter_at_threshold() {
 
     // Fighter level 2 requires 2000 XP. At exactly 2000, should level up.
     assert!(check_level_up(
-        &interp, &state, &mut handler, "Fighter", 1, 2000
+        &interp,
+        &state,
+        &mut handler,
+        "Fighter",
+        1,
+        2000
     ));
 }
 
@@ -843,7 +851,12 @@ fn check_level_up_fighter_above_threshold() {
 
     // Fighter level 2 requires 2000 XP. At 5000, should level up.
     assert!(check_level_up(
-        &interp, &state, &mut handler, "Fighter", 1, 5000
+        &interp,
+        &state,
+        &mut handler,
+        "Fighter",
+        1,
+        5000
     ));
 }
 
@@ -856,7 +869,12 @@ fn check_level_up_thief_below_threshold() {
 
     // Thief level 5 requires 10000 XP. At 9999, should NOT level up from 4.
     assert!(!check_level_up(
-        &interp, &state, &mut handler, "Thief", 4, 9999
+        &interp,
+        &state,
+        &mut handler,
+        "Thief",
+        4,
+        9999
     ));
 }
 
@@ -869,7 +887,12 @@ fn check_level_up_thief_at_threshold() {
 
     // Thief level 5 requires 10000 XP.
     assert!(check_level_up(
-        &interp, &state, &mut handler, "Thief", 4, 10000
+        &interp,
+        &state,
+        &mut handler,
+        "Thief",
+        4,
+        10000
     ));
 }
 
@@ -955,8 +978,14 @@ fn thief_group_has_thief_skills_and_backstab() {
 
     for class in &["Thief", "Assassin"] {
         let def = get_class_def(&interp, &state, &mut handler, class);
-        assert!(get_bool(&def, "has_thief_skills"), "{class} should have thief skills");
-        assert!(get_bool(&def, "can_backstab"), "{class} should be able to backstab");
+        assert!(
+            get_bool(&def, "has_thief_skills"),
+            "{class} should have thief skills"
+        );
+        assert!(
+            get_bool(&def, "can_backstab"),
+            "{class} should be able to backstab"
+        );
     }
 }
 
@@ -1026,10 +1055,16 @@ fn exceptional_str_only_fighter_types() {
 
     for class in &with_exc_str {
         let def = get_class_def(&interp, &state, &mut handler, class);
-        assert!(get_bool(&def, "has_exceptional_str"), "{class} should have exceptional strength");
+        assert!(
+            get_bool(&def, "has_exceptional_str"),
+            "{class} should have exceptional strength"
+        );
     }
     for class in &without {
         let def = get_class_def(&interp, &state, &mut handler, class);
-        assert!(!get_bool(&def, "has_exceptional_str"), "{class} should NOT have exceptional strength");
+        assert!(
+            !get_bool(&def, "has_exceptional_str"),
+            "{class} should NOT have exceptional strength"
+        );
     }
 }

@@ -669,9 +669,7 @@ impl Checker<'_> {
 
         // Entity arg must resolve to an entity type
         let entity_ty = self.check_expr(entity);
-        if !entity_ty.is_error()
-            && !matches!(entity_ty, Ty::Entity(_) | Ty::AnyEntity)
-        {
+        if !entity_ty.is_error() && !matches!(entity_ty, Ty::Entity(_) | Ty::AnyEntity) {
             self.error(
                 format!("with_budget requires an entity, found {entity_ty}"),
                 span,
@@ -683,10 +681,7 @@ impl Checker<'_> {
         for (field_name, field_value) in budget_fields {
             if !valid_fields.iter().any(|f| f == &field_name.node) {
                 self.error(
-                    format!(
-                        "TurnBudget has no field `{}`",
-                        field_name.node
-                    ),
+                    format!("TurnBudget has no field `{}`", field_name.node),
                     field_name.span,
                 );
             }

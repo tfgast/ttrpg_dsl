@@ -286,7 +286,9 @@ pub fn format_entity(env: &TypeEnv, name: &str, xref: bool) -> Result<Vec<String
             out.push("}".to_string());
 
             if xref {
-                let receiver_matches = |ty: &Ty| matches!(ty, Ty::Entity(n) if n == name) || matches!(ty, Ty::AnyEntity);
+                let receiver_matches = |ty: &Ty| {
+                    matches!(ty, Ty::Entity(n) if n == name) || matches!(ty, Ty::AnyEntity)
+                };
 
                 // Applicable conditions
                 let mut conds: Vec<_> = env
@@ -309,7 +311,10 @@ pub fn format_entity(env: &TypeEnv, name: &str, xref: bool) -> Result<Vec<String
                     .values()
                     .filter(|fi| {
                         matches!(fi.kind, FnKind::Action | FnKind::Reaction | FnKind::Hook)
-                            && fi.receiver.as_ref().is_some_and(|r| receiver_matches(&r.ty))
+                            && fi
+                                .receiver
+                                .as_ref()
+                                .is_some_and(|r| receiver_matches(&r.ty))
                     })
                     .collect();
 

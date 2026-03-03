@@ -22,7 +22,10 @@ fn compile_osric_character() -> (ttrpg_ast::ast::Program, ttrpg_checker::CheckRe
     let character_source = include_str!("../../../osric/osric_character.ttrpg");
 
     let sources = vec![
-        ("osric/osric_core.ttrpg".to_string(), core_source.to_string()),
+        (
+            "osric/osric_core.ttrpg".to_string(),
+            core_source.to_string(),
+        ),
         (
             "osric/osric_ability.ttrpg".to_string(),
             ability_source.to_string(),
@@ -1330,12 +1333,7 @@ fn base_movement_per_ancestry() {
 
     for (name, expected_ft) in cases {
         let val = interp
-            .evaluate_derive(
-                &state,
-                &mut handler,
-                "base_movement",
-                vec![ancestry(name)],
-            )
+            .evaluate_derive(&state, &mut handler, "base_movement", vec![ancestry(name)])
             .unwrap();
         assert_eq!(
             expect_feet(val, &format!("base_movement({name})")),

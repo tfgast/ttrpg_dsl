@@ -22,7 +22,10 @@ fn compile_osric_ability() -> (ttrpg_ast::ast::Program, ttrpg_checker::CheckResu
     let ability_source = include_str!("../../../osric/osric_ability.ttrpg");
 
     let sources = vec![
-        ("osric/osric_core.ttrpg".to_string(), core_source.to_string()),
+        (
+            "osric/osric_core.ttrpg".to_string(),
+            core_source.to_string(),
+        ),
         (
             "osric/osric_ability.ttrpg".to_string(),
             ability_source.to_string(),
@@ -81,11 +84,7 @@ fn ancestry(variant: &str) -> Value {
 }
 
 /// Build a minimal Character entity in GameState and return its EntityRef.
-fn make_character(
-    state: &mut GameState,
-    name: &str,
-    abilities: &[(& str, i64)],
-) -> EntityRef {
+fn make_character(state: &mut GameState, name: &str, abilities: &[(&str, i64)]) -> EntityRef {
     use rustc_hash::FxHashMap;
     use ttrpg_ast::Name;
 
@@ -96,10 +95,7 @@ fn make_character(
 
     let mut fields = FxHashMap::default();
     fields.insert(Name::from("name"), Value::Str(name.to_string()));
-    fields.insert(
-        Name::from("class"),
-        enum_variant("Class", "Fighter"),
-    );
+    fields.insert(Name::from("class"), enum_variant("Class", "Fighter"));
     fields.insert(Name::from("ancestry"), enum_variant("Ancestry", "Human"));
     fields.insert(Name::from("level"), Value::Int(1));
     fields.insert(
@@ -262,7 +258,10 @@ fn str_to_hit_values() {
         (19, 3), // wildcard
     ];
     for (score, expected) in cases {
-        let val = expect_int(eval_table(&interp, &state, "str_to_hit", score), "str_to_hit");
+        let val = expect_int(
+            eval_table(&interp, &state, "str_to_hit", score),
+            "str_to_hit",
+        );
         assert_eq!(val, expected, "str_to_hit({score})");
     }
 }
@@ -284,7 +283,10 @@ fn str_damage_values() {
         (19, 6),
     ];
     for (score, expected) in cases {
-        let val = expect_int(eval_table(&interp, &state, "str_damage", score), "str_damage");
+        let val = expect_int(
+            eval_table(&interp, &state, "str_damage", score),
+            "str_damage",
+        );
         assert_eq!(val, expected, "str_damage({score})");
     }
 }
@@ -295,7 +297,18 @@ fn str_encumbrance_values() {
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let state = GameState::new();
 
-    let cases = [(3, 0), (5, 10), (7, 20), (9, 35), (13, 45), (15, 55), (16, 70), (17, 85), (18, 110), (19, 300)];
+    let cases = [
+        (3, 0),
+        (5, 10),
+        (7, 20),
+        (9, 35),
+        (13, 45),
+        (15, 55),
+        (16, 70),
+        (17, 85),
+        (18, 110),
+        (19, 300),
+    ];
     for (score, expected) in cases {
         let val = expect_int(
             eval_table(&interp, &state, "str_encumbrance", score),
@@ -327,7 +340,17 @@ fn str_major_test_values() {
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let state = GameState::new();
 
-    let cases = [(3, 0), (9, 1), (11, 2), (13, 4), (15, 7), (16, 10), (17, 13), (18, 16), (19, 40)];
+    let cases = [
+        (3, 0),
+        (9, 1),
+        (11, 2),
+        (13, 4),
+        (15, 7),
+        (16, 10),
+        (17, 13),
+        (18, 16),
+        (19, 40),
+    ];
     for (score, expected) in cases {
         let val = expect_int(
             eval_table(&interp, &state, "str_major_test", score),
@@ -345,7 +368,15 @@ fn exc_str_to_hit_values() {
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let state = GameState::new();
 
-    let cases = [(1, 1), (50, 1), (51, 2), (75, 2), (90, 2), (99, 2), (100, 3)];
+    let cases = [
+        (1, 1),
+        (50, 1),
+        (51, 2),
+        (75, 2),
+        (90, 2),
+        (99, 2),
+        (100, 3),
+    ];
     for (pct, expected) in cases {
         let val = expect_int(
             eval_table(&interp, &state, "exc_str_to_hit", pct),
@@ -361,7 +392,17 @@ fn exc_str_damage_values() {
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let state = GameState::new();
 
-    let cases = [(1, 3), (50, 3), (51, 3), (75, 3), (76, 4), (90, 4), (91, 5), (99, 5), (100, 6)];
+    let cases = [
+        (1, 3),
+        (50, 3),
+        (51, 3),
+        (75, 3),
+        (76, 4),
+        (90, 4),
+        (91, 5),
+        (99, 5),
+        (100, 6),
+    ];
     for (pct, expected) in cases {
         let val = expect_int(
             eval_table(&interp, &state, "exc_str_damage", pct),
@@ -377,7 +418,14 @@ fn exc_str_encumbrance_values() {
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let state = GameState::new();
 
-    let cases = [(1, 135), (50, 135), (75, 160), (90, 185), (99, 235), (100, 300)];
+    let cases = [
+        (1, 135),
+        (50, 135),
+        (75, 160),
+        (90, 185),
+        (99, 235),
+        (100, 300),
+    ];
     for (pct, expected) in cases {
         let val = expect_int(
             eval_table(&interp, &state, "exc_str_encumbrance", pct),
@@ -427,7 +475,18 @@ fn dex_surprise_values() {
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let state = GameState::new();
 
-    let cases = [(3, -3), (4, -2), (5, -1), (6, 0), (14, 0), (15, 0), (16, 1), (17, 2), (18, 3), (19, 3)];
+    let cases = [
+        (3, -3),
+        (4, -2),
+        (5, -1),
+        (6, 0),
+        (14, 0),
+        (15, 0),
+        (16, 1),
+        (17, 2),
+        (18, 3),
+        (19, 3),
+    ];
     for (score, expected) in cases {
         let val = expect_int(
             eval_table(&interp, &state, "dex_surprise", score),
@@ -443,7 +502,16 @@ fn dex_missile_values() {
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let state = GameState::new();
 
-    let cases = [(3, -3), (4, -2), (5, -1), (10, 0), (15, 0), (16, 1), (17, 2), (18, 3)];
+    let cases = [
+        (3, -3),
+        (4, -2),
+        (5, -1),
+        (10, 0),
+        (15, 0),
+        (16, 1),
+        (17, 2),
+        (18, 3),
+    ];
     for (score, expected) in cases {
         let val = expect_int(
             eval_table(&interp, &state, "dex_missile", score),
@@ -459,7 +527,18 @@ fn dex_ac_adj_values() {
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let state = GameState::new();
 
-    let cases = [(3, -4), (4, -3), (5, -2), (6, -1), (7, 0), (14, 0), (15, 1), (16, 2), (17, 3), (18, 4)];
+    let cases = [
+        (3, -4),
+        (4, -3),
+        (5, -2),
+        (6, -1),
+        (7, 0),
+        (14, 0),
+        (15, 1),
+        (16, 2),
+        (17, 3),
+        (18, 4),
+    ];
     for (score, expected) in cases {
         let val = expect_int(
             eval_table(&interp, &state, "dex_ac_adj", score),
@@ -476,7 +555,16 @@ fn dex_init_missile_values() {
     let state = GameState::new();
 
     // Note: positive = slower (bad), negative = faster (good)
-    let cases = [(3, 3), (4, 2), (5, 1), (6, 0), (15, 0), (16, -1), (17, -2), (18, -3)];
+    let cases = [
+        (3, 3),
+        (4, 2),
+        (5, 1),
+        (6, 0),
+        (15, 0),
+        (16, -1),
+        (17, -2),
+        (18, -3),
+    ];
     for (score, expected) in cases {
         let val = expect_int(
             eval_table(&interp, &state, "dex_init_missile", score),
@@ -492,7 +580,17 @@ fn dex_agility_save_values() {
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let state = GameState::new();
 
-    let cases = [(3, -4), (4, -3), (5, -2), (6, -1), (10, 0), (15, 1), (16, 2), (17, 3), (18, 4)];
+    let cases = [
+        (3, -4),
+        (4, -3),
+        (5, -2),
+        (6, -1),
+        (10, 0),
+        (15, 1),
+        (16, 2),
+        (17, 3),
+        (18, 4),
+    ];
     for (score, expected) in cases {
         let val = expect_int(
             eval_table(&interp, &state, "dex_agility_save", score),
@@ -510,7 +608,18 @@ fn con_hp_mod_values() {
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let state = GameState::new();
 
-    let cases = [(3, -2), (4, -1), (6, -1), (7, 0), (14, 0), (15, 1), (16, 2), (17, 2), (18, 2), (19, 2)];
+    let cases = [
+        (3, -2),
+        (4, -1),
+        (6, -1),
+        (7, 0),
+        (14, 0),
+        (15, 1),
+        (16, 2),
+        (17, 2),
+        (18, 2),
+        (19, 2),
+    ];
     for (score, expected) in cases {
         let val = expect_int(
             eval_table(&interp, &state, "con_hp_mod", score),
@@ -527,7 +636,15 @@ fn con_hp_mod_fighter_values() {
     let state = GameState::new();
 
     // Fighter-types get higher bonuses at 17+
-    let cases = [(3, -2), (6, -1), (14, 0), (16, 2), (17, 3), (18, 4), (19, 5)];
+    let cases = [
+        (3, -2),
+        (6, -1),
+        (14, 0),
+        (16, 2),
+        (17, 3),
+        (18, 4),
+        (19, 5),
+    ];
     for (score, expected) in cases {
         let val = expect_int(
             eval_table(&interp, &state, "con_hp_mod_fighter", score),
@@ -577,7 +694,18 @@ fn int_extra_languages_values() {
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let state = GameState::new();
 
-    let cases = [(3, 0), (7, 0), (8, 1), (11, 2), (13, 3), (15, 4), (16, 5), (17, 6), (18, 7), (19, 8)];
+    let cases = [
+        (3, 0),
+        (7, 0),
+        (8, 1),
+        (11, 2),
+        (13, 3),
+        (15, 4),
+        (16, 5),
+        (17, 6),
+        (18, 7),
+        (19, 8),
+    ];
     for (score, expected) in cases {
         let val = expect_int(
             eval_table(&interp, &state, "int_extra_languages", score),
@@ -595,7 +723,19 @@ fn wis_mental_save_values() {
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let state = GameState::new();
 
-    let cases = [(3, -3), (4, -2), (5, -1), (7, -1), (8, 0), (14, 0), (15, 1), (16, 2), (17, 3), (18, 4), (19, 5)];
+    let cases = [
+        (3, -3),
+        (4, -2),
+        (5, -1),
+        (7, -1),
+        (8, 0),
+        (14, 0),
+        (15, 1),
+        (16, 2),
+        (17, 3),
+        (18, 4),
+        (19, 5),
+    ];
     for (score, expected) in cases {
         let val = expect_int(
             eval_table(&interp, &state, "wis_mental_save", score),
@@ -613,7 +753,20 @@ fn cha_max_henchmen_values() {
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let state = GameState::new();
 
-    let cases = [(3, 1), (4, 1), (5, 2), (7, 3), (9, 4), (12, 5), (14, 6), (15, 7), (16, 8), (17, 10), (18, 15), (19, 20)];
+    let cases = [
+        (3, 1),
+        (4, 1),
+        (5, 2),
+        (7, 3),
+        (9, 4),
+        (12, 5),
+        (14, 6),
+        (15, 7),
+        (16, 8),
+        (17, 10),
+        (18, 15),
+        (19, 20),
+    ];
     for (score, expected) in cases {
         let val = expect_int(
             eval_table(&interp, &state, "cha_max_henchmen", score),
@@ -629,7 +782,19 @@ fn cha_loyalty_values() {
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let state = GameState::new();
 
-    let cases = [(3, -30), (5, -20), (8, -5), (9, 0), (12, 0), (14, 5), (15, 15), (16, 20), (17, 30), (18, 40), (19, 50)];
+    let cases = [
+        (3, -30),
+        (5, -20),
+        (8, -5),
+        (9, 0),
+        (12, 0),
+        (14, 5),
+        (15, 15),
+        (16, 20),
+        (17, 30),
+        (18, 40),
+        (19, 50),
+    ];
     for (score, expected) in cases {
         let val = expect_int(
             eval_table(&interp, &state, "cha_loyalty", score),
@@ -645,7 +810,20 @@ fn cha_reaction_values() {
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let state = GameState::new();
 
-    let cases = [(3, -25), (5, -15), (7, -5), (8, 0), (10, 0), (13, 5), (14, 10), (15, 15), (16, 25), (17, 30), (18, 35), (19, 40)];
+    let cases = [
+        (3, -25),
+        (5, -15),
+        (7, -5),
+        (8, 0),
+        (10, 0),
+        (13, 5),
+        (14, 10),
+        (15, 15),
+        (16, 25),
+        (17, 30),
+        (18, 35),
+        (19, 40),
+    ];
     for (score, expected) in cases {
         let val = expect_int(
             eval_table(&interp, &state, "cha_reaction", score),
@@ -663,7 +841,18 @@ fn stalwart_save_bonus_values() {
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let state = GameState::new();
 
-    let cases = [(3, 1), (6, 1), (7, 2), (10, 2), (11, 3), (13, 3), (14, 4), (17, 4), (18, 5), (19, 5)];
+    let cases = [
+        (3, 1),
+        (6, 1),
+        (7, 2),
+        (10, 2),
+        (11, 3),
+        (13, 3),
+        (14, 4),
+        (17, 4),
+        (18, 5),
+        (19, 5),
+    ];
     for (con, expected) in cases {
         let val = expect_int(
             eval_table(&interp, &state, "stalwart_save_bonus", con),
@@ -709,7 +898,12 @@ fn ancestry_def_human() {
     let mut handler = NullHandler;
 
     let val = interp
-        .evaluate_derive(&state, &mut handler, "ancestry_def", vec![ancestry("Human")])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "ancestry_def",
+            vec![ancestry("Human")],
+        )
         .unwrap();
 
     match val {
@@ -739,7 +933,9 @@ fn ancestry_def_human() {
                 other => panic!("expected Feet struct, got {other:?}"),
             }
             // All adjustments = 0
-            for adj in ["str_adj", "dex_adj", "con_adj", "int_adj", "wis_adj", "cha_adj"] {
+            for adj in [
+                "str_adj", "dex_adj", "con_adj", "int_adj", "wis_adj", "cha_adj",
+            ] {
                 assert_eq!(
                     field(&fields, adj),
                     Some(&Value::Int(0)),
@@ -759,16 +955,18 @@ fn ancestry_def_dwarf() {
     let mut handler = NullHandler;
 
     let val = interp
-        .evaluate_derive(&state, &mut handler, "ancestry_def", vec![ancestry("Dwarf")])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "ancestry_def",
+            vec![ancestry("Dwarf")],
+        )
         .unwrap();
 
     match val {
         Value::Struct { name, fields } => {
             assert_eq!(&*name, "AncestryDef");
-            assert_eq!(
-                field(&fields, "size"),
-                Some(&enum_variant("Size", "Small"))
-            );
+            assert_eq!(field(&fields, "size"), Some(&enum_variant("Size", "Small")));
             // Dwarf: CON +1, CHA -1, rest 0
             assert_eq!(field(&fields, "str_adj"), Some(&Value::Int(0)));
             assert_eq!(field(&fields, "con_adj"), Some(&Value::Int(1)));
@@ -808,10 +1006,7 @@ fn ancestry_def_halfling() {
             assert_eq!(field(&fields, "str_adj"), Some(&Value::Int(-1)));
             assert_eq!(field(&fields, "dex_adj"), Some(&Value::Int(1)));
             assert_eq!(field(&fields, "con_adj"), Some(&Value::Int(0)));
-            assert_eq!(
-                field(&fields, "size"),
-                Some(&enum_variant("Size", "Small"))
-            );
+            assert_eq!(field(&fields, "size"), Some(&enum_variant("Size", "Small")));
         }
         other => panic!("expected Struct, got {other:?}"),
     }
@@ -865,8 +1060,16 @@ fn ancestry_ability_range_human_all_3_18() {
             .unwrap();
         match val {
             Value::Struct { fields, .. } => {
-                assert_eq!(field(&fields, "min"), Some(&Value::Int(3)), "Human {ab} min");
-                assert_eq!(field(&fields, "max"), Some(&Value::Int(18)), "Human {ab} max");
+                assert_eq!(
+                    field(&fields, "min"),
+                    Some(&Value::Int(3)),
+                    "Human {ab} min"
+                );
+                assert_eq!(
+                    field(&fields, "max"),
+                    Some(&Value::Int(18)),
+                    "Human {ab} max"
+                );
             }
             other => panic!("expected AbilityRange struct, got {other:?}"),
         }
@@ -924,11 +1127,7 @@ fn ancestry_ability_range_half_orc_restrictions() {
     let mut handler = NullHandler;
 
     // HalfOrc: CON 13-19, WIS 3-14, CHA 3-12
-    let cases = [
-        ("CON", 13, 19),
-        ("WIS", 3, 14),
-        ("CHA", 3, 12),
-    ];
+    let cases = [("CON", 13, 19), ("WIS", 3, 14), ("CHA", 3, 12)];
     for (ab, exp_min, exp_max) in cases {
         let val = interp
             .evaluate_derive(
@@ -969,7 +1168,14 @@ fn effective_str_to_hit_normal_str() {
     let entity = make_character(
         &mut state,
         "TestFighter",
-        &[("STR", 16), ("DEX", 10), ("CON", 10), ("INT", 10), ("WIS", 10), ("CHA", 10)],
+        &[
+            ("STR", 16),
+            ("DEX", 10),
+            ("CON", 10),
+            ("INT", 10),
+            ("WIS", 10),
+            ("CHA", 10),
+        ],
     );
 
     let val = interp
@@ -994,7 +1200,14 @@ fn effective_str_to_hit_str_17() {
     let entity = make_character(
         &mut state,
         "TestFighter17",
-        &[("STR", 17), ("DEX", 10), ("CON", 10), ("INT", 10), ("WIS", 10), ("CHA", 10)],
+        &[
+            ("STR", 17),
+            ("DEX", 10),
+            ("CON", 10),
+            ("INT", 10),
+            ("WIS", 10),
+            ("CHA", 10),
+        ],
     );
 
     let val = interp
@@ -1020,7 +1233,14 @@ fn effective_str_to_hit_str_18_no_exceptional() {
     let entity = make_character(
         &mut state,
         "TestCleric18",
-        &[("STR", 18), ("DEX", 10), ("CON", 10), ("INT", 10), ("WIS", 10), ("CHA", 10)],
+        &[
+            ("STR", 18),
+            ("DEX", 10),
+            ("CON", 10),
+            ("INT", 10),
+            ("WIS", 10),
+            ("CHA", 10),
+        ],
     );
 
     let val = interp
@@ -1045,7 +1265,14 @@ fn effective_str_to_hit_str_18_with_exceptional() {
     let entity = make_character(
         &mut state,
         "TestFighter18",
-        &[("STR", 18), ("DEX", 10), ("CON", 10), ("INT", 10), ("WIS", 10), ("CHA", 10)],
+        &[
+            ("STR", 18),
+            ("DEX", 10),
+            ("CON", 10),
+            ("INT", 10),
+            ("WIS", 10),
+            ("CHA", 10),
+        ],
     );
 
     // Grant ExceptionalStrength with percentile 76
@@ -1085,7 +1312,14 @@ fn effective_str_to_hit_str_18_exceptional_100() {
     let entity = make_character(
         &mut state,
         "TestFighter18_100",
-        &[("STR", 18), ("DEX", 10), ("CON", 10), ("INT", 10), ("WIS", 10), ("CHA", 10)],
+        &[
+            ("STR", 18),
+            ("DEX", 10),
+            ("CON", 10),
+            ("INT", 10),
+            ("WIS", 10),
+            ("CHA", 10),
+        ],
     );
 
     use ttrpg_interp::effect::FieldPathSegment;
@@ -1126,7 +1360,14 @@ fn effective_str_damage_normal() {
     let entity = make_character(
         &mut state,
         "TestFighter",
-        &[("STR", 17), ("DEX", 10), ("CON", 10), ("INT", 10), ("WIS", 10), ("CHA", 10)],
+        &[
+            ("STR", 17),
+            ("DEX", 10),
+            ("CON", 10),
+            ("INT", 10),
+            ("WIS", 10),
+            ("CHA", 10),
+        ],
     );
 
     let val = interp
@@ -1151,7 +1392,14 @@ fn effective_str_damage_with_exceptional() {
     let entity = make_character(
         &mut state,
         "TestFighter18",
-        &[("STR", 18), ("DEX", 10), ("CON", 10), ("INT", 10), ("WIS", 10), ("CHA", 10)],
+        &[
+            ("STR", 18),
+            ("DEX", 10),
+            ("CON", 10),
+            ("INT", 10),
+            ("WIS", 10),
+            ("CHA", 10),
+        ],
     );
 
     use ttrpg_interp::effect::FieldPathSegment;

@@ -23,7 +23,10 @@ fn compile_osric_saves() -> (ttrpg_ast::ast::Program, ttrpg_checker::CheckResult
     let saves_source = include_str!("../../../osric/osric_saves.ttrpg");
 
     let sources = vec![
-        ("osric/osric_core.ttrpg".to_string(), core_source.to_string()),
+        (
+            "osric/osric_core.ttrpg".to_string(),
+            core_source.to_string(),
+        ),
         (
             "osric/osric_class.ttrpg".to_string(),
             class_source.to_string(),
@@ -676,11 +679,23 @@ fn paladin_saves_are_better_than_fighter() {
     let paladin = get_saves(&interp, &state, &mut handler, "Paladin", 1);
     let fighter = get_saves(&interp, &state, &mut handler, "Fighter", 1);
     // Lower is better for saving throws — Paladin should be <= Fighter in all categories
-    assert!(paladin.0 <= fighter.0, "Paladin aimed_magic should be <= Fighter");
-    assert!(paladin.1 <= fighter.1, "Paladin breath should be <= Fighter");
+    assert!(
+        paladin.0 <= fighter.0,
+        "Paladin aimed_magic should be <= Fighter"
+    );
+    assert!(
+        paladin.1 <= fighter.1,
+        "Paladin breath should be <= Fighter"
+    );
     assert!(paladin.2 <= fighter.2, "Paladin death should be <= Fighter");
-    assert!(paladin.3 <= fighter.3, "Paladin petrification should be <= Fighter");
-    assert!(paladin.4 <= fighter.4, "Paladin spells should be <= Fighter");
+    assert!(
+        paladin.3 <= fighter.3,
+        "Paladin petrification should be <= Fighter"
+    );
+    assert!(
+        paladin.4 <= fighter.4,
+        "Paladin spells should be <= Fighter"
+    );
 }
 
 // ── Saves improve with level ───────────────────────────────────
@@ -725,14 +740,14 @@ fn osric_saves_table_entry_counts() {
     let (program, _) = compile_osric_saves();
 
     let expected_counts = [
-        ("fighter_saves", 11),     // 0, 1-2, 3-4, 5-6, 7-8, 9-10, 11-12, 13-14, 15-16, 17-18, _
-        ("paladin_saves", 10),     // 1-2, 3-4, 5-6, 7-8, 9-10, 11-12, 13-14, 15-16, 17-18, _
-        ("cleric_saves", 7),       // 1-3, 4-6, 7-9, 10-12, 13-15, 16-18, _
-        ("druid_saves", 5),        // 1-3, 4-6, 7-9, 10-12, _
-        ("thief_saves", 4),        // 1-4, 5-8, 9-12, _
-        ("magic_user_saves", 4),   // 1-5, 6-10, 11-15, _
-        ("illusionist_saves", 4),  // 1-5, 6-10, 11-15, _
-        ("monk_saves", 5),         // 1-4, 5-8, 9-12, 13-16, _
+        ("fighter_saves", 11), // 0, 1-2, 3-4, 5-6, 7-8, 9-10, 11-12, 13-14, 15-16, 17-18, _
+        ("paladin_saves", 10), // 1-2, 3-4, 5-6, 7-8, 9-10, 11-12, 13-14, 15-16, 17-18, _
+        ("cleric_saves", 7),   // 1-3, 4-6, 7-9, 10-12, 13-15, 16-18, _
+        ("druid_saves", 5),    // 1-3, 4-6, 7-9, 10-12, _
+        ("thief_saves", 4),    // 1-4, 5-8, 9-12, _
+        ("magic_user_saves", 4), // 1-5, 6-10, 11-15, _
+        ("illusionist_saves", 4), // 1-5, 6-10, 11-15, _
+        ("monk_saves", 5),     // 1-4, 5-8, 9-12, 13-16, _
     ];
 
     for item in &program.items {
@@ -740,8 +755,9 @@ fn osric_saves_table_entry_counts() {
             if sys.name == "OSRIC Saves" {
                 for decl in &sys.decls {
                     if let DeclKind::Table(t) = &decl.node {
-                        if let Some(&(_, expected)) =
-                            expected_counts.iter().find(|(name, _)| *name == t.name.as_str())
+                        if let Some(&(_, expected)) = expected_counts
+                            .iter()
+                            .find(|(name, _)| *name == t.name.as_str())
                         {
                             assert_eq!(
                                 t.entries.len(),

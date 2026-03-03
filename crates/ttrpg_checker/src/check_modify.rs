@@ -458,8 +458,7 @@ impl Checker<'_> {
                         match_set.retain(|fn_name| {
                             if let Some(fi) = self.env.functions.get(fn_name) {
                                 fi.params.iter().any(|p| {
-                                    p.name == binding.name
-                                        && self.types_compatible(&p.ty, expected)
+                                    p.name == binding.name && self.types_compatible(&p.ty, expected)
                                 })
                             } else {
                                 false
@@ -479,9 +478,7 @@ impl Checker<'_> {
                         let mut binding_ty: Option<Ty> = None;
                         for fn_name in &match_set {
                             if let Some(fi) = self.env.functions.get(fn_name) {
-                                if let Some(p) =
-                                    fi.params.iter().find(|p| p.name == binding.name)
-                                {
+                                if let Some(p) = fi.params.iter().find(|p| p.name == binding.name) {
                                     match &binding_ty {
                                         None => binding_ty = Some(p.ty.clone()),
                                         Some(existing) => {
@@ -595,9 +592,9 @@ impl Checker<'_> {
             .params
             .iter()
             .filter_map(|p| {
-                let all_present = matched_fns[1..].iter().all(|fi| {
-                    fi.params.iter().any(|fp| fp.name == p.name)
-                });
+                let all_present = matched_fns[1..]
+                    .iter()
+                    .all(|fi| fi.params.iter().any(|fp| fp.name == p.name));
                 if !all_present {
                     return None;
                 }

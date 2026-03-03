@@ -135,17 +135,12 @@ pub(super) fn dispatch_function(
     args: &[Arg],
     call_span: Span,
 ) -> Result<Value, RuntimeError> {
-    let fn_decl = env
-        .interp
-        .program
-        .functions
-        .get(name)
-        .ok_or_else(|| {
-            RuntimeError::with_span(
-                format!("internal error: no declaration found for function '{name}'"),
-                call_span,
-            )
-        })?;
+    let fn_decl = env.interp.program.functions.get(name).ok_or_else(|| {
+        RuntimeError::with_span(
+            format!("internal error: no declaration found for function '{name}'"),
+            call_span,
+        )
+    })?;
 
     let ast_params = fn_decl.params.clone();
     let body = fn_decl.body.clone();
@@ -181,14 +176,9 @@ pub(crate) fn evaluate_function_with_values(
     args: Vec<Value>,
     call_span: Span,
 ) -> Result<Value, RuntimeError> {
-    let fn_decl = env
-        .interp
-        .program
-        .functions
-        .get(name)
-        .ok_or_else(|| {
-            RuntimeError::with_span(format!("undefined function '{name}'"), call_span)
-        })?;
+    let fn_decl = env.interp.program.functions.get(name).ok_or_else(|| {
+        RuntimeError::with_span(format!("undefined function '{name}'"), call_span)
+    })?;
 
     let ast_params = fn_decl.params.clone();
     let body = fn_decl.body.clone();

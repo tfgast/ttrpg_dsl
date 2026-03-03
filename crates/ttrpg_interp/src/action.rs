@@ -1812,7 +1812,7 @@ mod tests {
         let interp = Interpreter::new(&program, &type_env).unwrap();
         let mut handler = ScriptedHandler::with_responses(vec![
             Response::Acknowledged,                // ActionStarted
-            Response::Override(Value::Bool(true)),  // RequiresCheck — allow overdraft
+            Response::Override(Value::Bool(true)), // RequiresCheck — allow overdraft
         ]);
         let mut env = make_env(&state, &mut handler, &interp);
         env.turn_actor = Some(EntityRef(1));
@@ -1823,7 +1823,10 @@ mod tests {
 
         // ActionStarted, RequiresCheck(budget), DeductCost, ActionCompleted
         assert_eq!(handler.log.len(), 4);
-        assert!(matches!(&handler.log[1], Effect::RequiresCheck { passed: false, .. }));
+        assert!(matches!(
+            &handler.log[1],
+            Effect::RequiresCheck { passed: false, .. }
+        ));
         assert!(matches!(&handler.log[2], Effect::DeductCost { .. }));
     }
 
@@ -1840,7 +1843,7 @@ mod tests {
         let interp = Interpreter::new(&program, &type_env).unwrap();
         let mut handler = ScriptedHandler::with_responses(vec![
             Response::Acknowledged,                 // ActionStarted
-            Response::Override(Value::Bool(false)),  // RequiresCheck — deny
+            Response::Override(Value::Bool(false)), // RequiresCheck — deny
         ]);
         let mut env = make_env(&state, &mut handler, &interp);
         env.turn_actor = Some(EntityRef(1));
@@ -1851,7 +1854,10 @@ mod tests {
 
         // ActionStarted, RequiresCheck(budget), ActionCompleted — no DeductCost
         assert_eq!(handler.log.len(), 3);
-        assert!(matches!(&handler.log[1], Effect::RequiresCheck { passed: false, .. }));
+        assert!(matches!(
+            &handler.log[1],
+            Effect::RequiresCheck { passed: false, .. }
+        ));
         assert!(matches!(&handler.log[2], Effect::ActionCompleted { .. }));
     }
 

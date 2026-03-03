@@ -25,7 +25,10 @@ fn compile_osric_equipment() -> (ttrpg_ast::ast::Program, ttrpg_checker::CheckRe
     let equipment_source = include_str!("../../../osric/osric_equipment.ttrpg");
 
     let sources = vec![
-        ("osric/osric_core.ttrpg".to_string(), core_source.to_string()),
+        (
+            "osric/osric_core.ttrpg".to_string(),
+            core_source.to_string(),
+        ),
         (
             "osric/osric_class.ttrpg".to_string(),
             class_source.to_string(),
@@ -220,9 +223,10 @@ fn get_string_list(val: Value) -> Vec<String> {
 #[test]
 fn osric_equipment_parses_and_typechecks() {
     let (program, _) = compile_osric_equipment();
-    let has_system = program.items.iter().any(
-        |item| matches!(&item.node, TopLevel::System(sys) if sys.name == "OSRIC Equipment"),
-    );
+    let has_system = program
+        .items
+        .iter()
+        .any(|item| matches!(&item.node, TopLevel::System(sys) if sys.name == "OSRIC Equipment"));
     assert!(has_system, "expected system named 'OSRIC Equipment'");
 }
 
@@ -289,10 +293,7 @@ fn melee_weapon_enum_has_27_variants() {
     ];
     let actual: Vec<_> = mw.variants.iter().map(|v| v.name.as_str()).collect();
     for name in &expected {
-        assert!(
-            actual.contains(name),
-            "MeleeWeapon missing variant: {name}"
-        );
+        assert!(actual.contains(name), "MeleeWeapon missing variant: {name}");
     }
 }
 
@@ -367,10 +368,7 @@ fn armour_type_enum_has_10_variants() {
     ];
     let actual: Vec<_> = at.variants.iter().map(|v| v.name.as_str()).collect();
     for name in &expected {
-        assert!(
-            actual.contains(name),
-            "ArmourType missing variant: {name}"
-        );
+        assert!(actual.contains(name), "ArmourType missing variant: {name}");
     }
 }
 
@@ -978,7 +976,9 @@ fn equipment_package_magic_user() {
     assert!(items.contains(&"Staff".to_string()));
     assert!(items.contains(&"Spell book (blank)".to_string()));
     // Magic-users should NOT have armour
-    assert!(!items.iter().any(|s| s.contains("mail") || s.contains("Leather")));
+    assert!(!items
+        .iter()
+        .any(|s| s.contains("mail") || s.contains("Leather")));
 }
 
 #[test]

@@ -31,7 +31,10 @@ fn compile_osric_conditions() -> (ttrpg_ast::ast::Program, ttrpg_checker::CheckR
     let conditions_source = include_str!("../../../osric/osric_conditions.ttrpg");
 
     let sources = vec![
-        ("osric/osric_core.ttrpg".to_string(), core_source.to_string()),
+        (
+            "osric/osric_core.ttrpg".to_string(),
+            core_source.to_string(),
+        ),
         (
             "osric/osric_ability.ttrpg".to_string(),
             ability_source.to_string(),
@@ -236,10 +239,7 @@ fn make_monster(
     fields.insert(Name::from("morale"), Value::Int(7));
     fields.insert(Name::from("xp_value"), Value::Int(0));
     fields.insert(Name::from("attacks"), Value::List(attacks));
-    fields.insert(
-        Name::from("size"),
-        enum_variant("Size", "Medium"),
-    );
+    fields.insert(Name::from("size"), enum_variant("Size", "Medium"));
     fields.insert(Name::from("special"), Value::List(vec![]));
 
     state.add_entity("Monster", fields)
@@ -404,11 +404,7 @@ fn resolve_monster(
             state,
             &mut handler,
             "resolve_monster_attack",
-            vec![
-                Value::Entity(attacker),
-                Value::Entity(target),
-                attack,
-            ],
+            vec![Value::Entity(attacker), Value::Entity(target), attack],
         )
         .unwrap();
 
@@ -430,9 +426,10 @@ fn resolve_monster(
 #[test]
 fn osric_conditions_parses_and_typechecks() {
     let (program, _) = compile_osric_conditions();
-    let has_system = program.items.iter().any(
-        |item| matches!(&item.node, TopLevel::System(sys) if sys.name == "OSRIC Conditions"),
-    );
+    let has_system = program
+        .items
+        .iter()
+        .any(|item| matches!(&item.node, TopLevel::System(sys) if sys.name == "OSRIC Conditions"));
     assert!(has_system, "expected system named 'OSRIC Conditions'");
 }
 
@@ -553,10 +550,24 @@ fn baseline_melee_attack_no_conditions() {
     let mut state = GameState::new();
 
     let attacker = make_character(
-        &mut state, "Fighter", "Fighter", 5, &standard_abilities(), 30, 15, "Human",
+        &mut state,
+        "Fighter",
+        "Fighter",
+        5,
+        &standard_abilities(),
+        30,
+        15,
+        "Human",
     );
     let target = make_character(
-        &mut state, "Target", "Fighter", 1, &standard_abilities(), 10, 14, "Human",
+        &mut state,
+        "Target",
+        "Fighter",
+        1,
+        &standard_abilities(),
+        10,
+        14,
+        "Human",
     );
 
     let atk_roll = scripted_roll(1, 20, 0, vec![15], vec![15], 15, 15);
@@ -587,10 +598,24 @@ fn prone_on_target_adds_4_to_attack_mod() {
     let mut state = GameState::new();
 
     let attacker = make_character(
-        &mut state, "Fighter", "Fighter", 5, &standard_abilities(), 30, 15, "Human",
+        &mut state,
+        "Fighter",
+        "Fighter",
+        5,
+        &standard_abilities(),
+        30,
+        15,
+        "Human",
     );
     let target = make_character(
-        &mut state, "Target", "Fighter", 1, &standard_abilities(), 10, 14, "Human",
+        &mut state,
+        "Target",
+        "Fighter",
+        1,
+        &standard_abilities(),
+        10,
+        14,
+        "Human",
     );
 
     state.apply_condition(&target, "Prone", BTreeMap::new(), Value::None, None);
@@ -602,7 +627,12 @@ fn prone_on_target_adds_4_to_attack_mod() {
     let (fields, log) = resolve_melee(
         &interp,
         &state,
-        vec![Response::Acknowledged, Response::Acknowledged, atk_roll, dmg_roll],
+        vec![
+            Response::Acknowledged,
+            Response::Acknowledged,
+            atk_roll,
+            dmg_roll,
+        ],
         attacker,
         target,
         "SwordLong",
@@ -616,7 +646,8 @@ fn prone_on_target_adds_4_to_attack_mod() {
 
     // Verify ModifyApplied was emitted
     assert!(
-        log.iter().any(|e| matches!(e, Effect::ModifyApplied { .. })),
+        log.iter()
+            .any(|e| matches!(e, Effect::ModifyApplied { .. })),
         "expected ModifyApplied effect"
     );
 }
@@ -629,10 +660,24 @@ fn stunned_on_target_adds_4_to_attack_mod() {
     let mut state = GameState::new();
 
     let attacker = make_character(
-        &mut state, "Fighter", "Fighter", 5, &standard_abilities(), 30, 15, "Human",
+        &mut state,
+        "Fighter",
+        "Fighter",
+        5,
+        &standard_abilities(),
+        30,
+        15,
+        "Human",
     );
     let target = make_character(
-        &mut state, "Target", "Fighter", 1, &standard_abilities(), 10, 14, "Human",
+        &mut state,
+        "Target",
+        "Fighter",
+        1,
+        &standard_abilities(),
+        10,
+        14,
+        "Human",
     );
 
     state.apply_condition(&target, "Stunned", BTreeMap::new(), Value::None, None);
@@ -643,7 +688,12 @@ fn stunned_on_target_adds_4_to_attack_mod() {
     let (fields, _) = resolve_melee(
         &interp,
         &state,
-        vec![Response::Acknowledged, Response::Acknowledged, atk_roll, dmg_roll],
+        vec![
+            Response::Acknowledged,
+            Response::Acknowledged,
+            atk_roll,
+            dmg_roll,
+        ],
         attacker,
         target,
         "SwordLong",
@@ -660,10 +710,24 @@ fn staggered_on_target_adds_2_to_attack_mod() {
     let mut state = GameState::new();
 
     let attacker = make_character(
-        &mut state, "Fighter", "Fighter", 5, &standard_abilities(), 30, 15, "Human",
+        &mut state,
+        "Fighter",
+        "Fighter",
+        5,
+        &standard_abilities(),
+        30,
+        15,
+        "Human",
     );
     let target = make_character(
-        &mut state, "Target", "Fighter", 1, &standard_abilities(), 10, 14, "Human",
+        &mut state,
+        "Target",
+        "Fighter",
+        1,
+        &standard_abilities(),
+        10,
+        14,
+        "Human",
     );
 
     state.apply_condition(&target, "Staggered", BTreeMap::new(), Value::None, None);
@@ -691,10 +755,24 @@ fn invisible_on_target_subtracts_4_from_attack_mod() {
     let mut state = GameState::new();
 
     let attacker = make_character(
-        &mut state, "Fighter", "Fighter", 5, &standard_abilities(), 30, 15, "Human",
+        &mut state,
+        "Fighter",
+        "Fighter",
+        5,
+        &standard_abilities(),
+        30,
+        15,
+        "Human",
     );
     let target = make_character(
-        &mut state, "Target", "Fighter", 1, &standard_abilities(), 10, 14, "Human",
+        &mut state,
+        "Target",
+        "Fighter",
+        1,
+        &standard_abilities(),
+        10,
+        14,
+        "Human",
     );
 
     state.apply_condition(&target, "Invisible", BTreeMap::new(), Value::None, None);
@@ -724,10 +802,24 @@ fn invisible_on_target_causes_miss() {
     let mut state = GameState::new();
 
     let attacker = make_character(
-        &mut state, "Fighter", "Fighter", 1, &standard_abilities(), 10, 10, "Human",
+        &mut state,
+        "Fighter",
+        "Fighter",
+        1,
+        &standard_abilities(),
+        10,
+        10,
+        "Human",
     );
     let target = make_character(
-        &mut state, "Target", "Fighter", 1, &standard_abilities(), 10, 14, "Human",
+        &mut state,
+        "Target",
+        "Fighter",
+        1,
+        &standard_abilities(),
+        10,
+        14,
+        "Human",
     );
 
     state.apply_condition(&target, "Invisible", BTreeMap::new(), Value::None, None);
@@ -764,10 +856,24 @@ fn paralyzed_on_target_adds_20_melee() {
     let mut state = GameState::new();
 
     let attacker = make_character(
-        &mut state, "Fighter", "Fighter", 1, &standard_abilities(), 10, 10, "Human",
+        &mut state,
+        "Fighter",
+        "Fighter",
+        1,
+        &standard_abilities(),
+        10,
+        10,
+        "Human",
     );
     let target = make_character(
-        &mut state, "Target", "Fighter", 1, &standard_abilities(), 10, 18, "Human",
+        &mut state,
+        "Target",
+        "Fighter",
+        1,
+        &standard_abilities(),
+        10,
+        18,
+        "Human",
     );
 
     state.apply_condition(&target, "Paralyzed", BTreeMap::new(), Value::None, None);
@@ -799,10 +905,24 @@ fn sleeping_on_target_adds_20_melee() {
     let mut state = GameState::new();
 
     let attacker = make_character(
-        &mut state, "Fighter", "Fighter", 1, &standard_abilities(), 10, 10, "Human",
+        &mut state,
+        "Fighter",
+        "Fighter",
+        1,
+        &standard_abilities(),
+        10,
+        10,
+        "Human",
     );
     let target = make_character(
-        &mut state, "Target", "Fighter", 1, &standard_abilities(), 10, 18, "Human",
+        &mut state,
+        "Target",
+        "Fighter",
+        1,
+        &standard_abilities(),
+        10,
+        18,
+        "Human",
     );
 
     state.apply_condition(&target, "Sleeping", BTreeMap::new(), Value::None, None);
@@ -833,10 +953,24 @@ fn rear_attacked_on_target_adds_2_melee() {
     let mut state = GameState::new();
 
     let attacker = make_character(
-        &mut state, "Fighter", "Fighter", 5, &standard_abilities(), 30, 15, "Human",
+        &mut state,
+        "Fighter",
+        "Fighter",
+        5,
+        &standard_abilities(),
+        30,
+        15,
+        "Human",
     );
     let target = make_character(
-        &mut state, "Target", "Fighter", 1, &standard_abilities(), 10, 14, "Human",
+        &mut state,
+        "Target",
+        "Fighter",
+        1,
+        &standard_abilities(),
+        10,
+        14,
+        "Human",
     );
 
     state.apply_condition(&target, "RearAttacked", BTreeMap::new(), Value::None, None);
@@ -847,7 +981,12 @@ fn rear_attacked_on_target_adds_2_melee() {
     let (fields, _) = resolve_melee(
         &interp,
         &state,
-        vec![Response::Acknowledged, Response::Acknowledged, atk_roll, dmg_roll],
+        vec![
+            Response::Acknowledged,
+            Response::Acknowledged,
+            atk_roll,
+            dmg_roll,
+        ],
         attacker,
         target,
         "SwordLong",
@@ -867,10 +1006,24 @@ fn paralyzed_does_not_affect_missile_attack() {
     let mut state = GameState::new();
 
     let attacker = make_character(
-        &mut state, "Archer", "Fighter", 3, &standard_abilities(), 20, 14, "Human",
+        &mut state,
+        "Archer",
+        "Fighter",
+        3,
+        &standard_abilities(),
+        20,
+        14,
+        "Human",
     );
     let target = make_character(
-        &mut state, "Target", "Fighter", 1, &standard_abilities(), 10, 14, "Human",
+        &mut state,
+        "Target",
+        "Fighter",
+        1,
+        &standard_abilities(),
+        10,
+        14,
+        "Human",
     );
 
     state.apply_condition(&target, "Paralyzed", BTreeMap::new(), Value::None, None);
@@ -905,10 +1058,24 @@ fn surprised_on_attacker_forces_miss() {
     let mut state = GameState::new();
 
     let attacker = make_character(
-        &mut state, "Fighter", "Fighter", 5, &standard_abilities(), 30, 15, "Human",
+        &mut state,
+        "Fighter",
+        "Fighter",
+        5,
+        &standard_abilities(),
+        30,
+        15,
+        "Human",
     );
     let target = make_character(
-        &mut state, "Target", "Fighter", 1, &standard_abilities(), 10, 10, "Human",
+        &mut state,
+        "Target",
+        "Fighter",
+        1,
+        &standard_abilities(),
+        10,
+        10,
+        "Human",
     );
 
     state.apply_condition(&attacker, "Surprised", BTreeMap::new(), Value::None, None);
@@ -943,10 +1110,24 @@ fn fleeing_on_attacker_forces_miss() {
     let mut state = GameState::new();
 
     let attacker = make_character(
-        &mut state, "Fighter", "Fighter", 5, &standard_abilities(), 30, 15, "Human",
+        &mut state,
+        "Fighter",
+        "Fighter",
+        5,
+        &standard_abilities(),
+        30,
+        15,
+        "Human",
     );
     let target = make_character(
-        &mut state, "Target", "Fighter", 1, &standard_abilities(), 10, 10, "Human",
+        &mut state,
+        "Target",
+        "Fighter",
+        1,
+        &standard_abilities(),
+        10,
+        10,
+        "Human",
     );
 
     state.apply_condition(&attacker, "Fleeing", BTreeMap::new(), Value::None, None);
@@ -981,10 +1162,24 @@ fn fleeing_on_target_adds_4_to_melee() {
     let mut state = GameState::new();
 
     let attacker = make_character(
-        &mut state, "Fighter", "Fighter", 5, &standard_abilities(), 30, 15, "Human",
+        &mut state,
+        "Fighter",
+        "Fighter",
+        5,
+        &standard_abilities(),
+        30,
+        15,
+        "Human",
     );
     let target = make_character(
-        &mut state, "Target", "Fighter", 1, &standard_abilities(), 10, 14, "Human",
+        &mut state,
+        "Target",
+        "Fighter",
+        1,
+        &standard_abilities(),
+        10,
+        14,
+        "Human",
     );
 
     state.apply_condition(&target, "Fleeing", BTreeMap::new(), Value::None, None);
@@ -1014,10 +1209,24 @@ fn concealed_level_1_subtracts_1() {
     let mut state = GameState::new();
 
     let attacker = make_character(
-        &mut state, "Fighter", "Fighter", 5, &standard_abilities(), 30, 15, "Human",
+        &mut state,
+        "Fighter",
+        "Fighter",
+        5,
+        &standard_abilities(),
+        30,
+        15,
+        "Human",
     );
     let target = make_character(
-        &mut state, "Target", "Fighter", 1, &standard_abilities(), 10, 14, "Human",
+        &mut state,
+        "Target",
+        "Fighter",
+        1,
+        &standard_abilities(),
+        10,
+        14,
+        "Human",
     );
 
     let mut params = BTreeMap::new();
@@ -1047,10 +1256,24 @@ fn concealed_level_4_subtracts_4() {
     let mut state = GameState::new();
 
     let attacker = make_character(
-        &mut state, "Fighter", "Fighter", 5, &standard_abilities(), 30, 15, "Human",
+        &mut state,
+        "Fighter",
+        "Fighter",
+        5,
+        &standard_abilities(),
+        30,
+        15,
+        "Human",
     );
     let target = make_character(
-        &mut state, "Target", "Fighter", 1, &standard_abilities(), 10, 14, "Human",
+        &mut state,
+        "Target",
+        "Fighter",
+        1,
+        &standard_abilities(),
+        10,
+        14,
+        "Human",
     );
 
     let mut params = BTreeMap::new();
@@ -1080,10 +1303,24 @@ fn cover_penalty_2_subtracts_2() {
     let mut state = GameState::new();
 
     let attacker = make_character(
-        &mut state, "Fighter", "Fighter", 5, &standard_abilities(), 30, 15, "Human",
+        &mut state,
+        "Fighter",
+        "Fighter",
+        5,
+        &standard_abilities(),
+        30,
+        15,
+        "Human",
     );
     let target = make_character(
-        &mut state, "Target", "Fighter", 1, &standard_abilities(), 10, 14, "Human",
+        &mut state,
+        "Target",
+        "Fighter",
+        1,
+        &standard_abilities(),
+        10,
+        14,
+        "Human",
     );
 
     let mut params = BTreeMap::new();
@@ -1113,10 +1350,24 @@ fn cover_penalty_10_subtracts_10() {
     let mut state = GameState::new();
 
     let attacker = make_character(
-        &mut state, "Fighter", "Fighter", 5, &standard_abilities(), 30, 15, "Human",
+        &mut state,
+        "Fighter",
+        "Fighter",
+        5,
+        &standard_abilities(),
+        30,
+        15,
+        "Human",
     );
     let target = make_character(
-        &mut state, "Target", "Fighter", 1, &standard_abilities(), 10, 14, "Human",
+        &mut state,
+        "Target",
+        "Fighter",
+        1,
+        &standard_abilities(),
+        10,
+        14,
+        "Human",
     );
 
     let mut params = BTreeMap::new();
@@ -1155,10 +1406,24 @@ fn prone_on_target_applies_to_missile_attack() {
     let mut state = GameState::new();
 
     let attacker = make_character(
-        &mut state, "Archer", "Fighter", 3, &standard_abilities(), 20, 14, "Human",
+        &mut state,
+        "Archer",
+        "Fighter",
+        3,
+        &standard_abilities(),
+        20,
+        14,
+        "Human",
     );
     let target = make_character(
-        &mut state, "Target", "Fighter", 1, &standard_abilities(), 10, 14, "Human",
+        &mut state,
+        "Target",
+        "Fighter",
+        1,
+        &standard_abilities(),
+        10,
+        14,
+        "Human",
     );
 
     state.apply_condition(&target, "Prone", BTreeMap::new(), Value::None, None);
@@ -1170,7 +1435,12 @@ fn prone_on_target_applies_to_missile_attack() {
     let (fields, _) = resolve_missile(
         &interp,
         &state,
-        vec![Response::Acknowledged, Response::Acknowledged, atk_roll, dmg_roll],
+        vec![
+            Response::Acknowledged,
+            Response::Acknowledged,
+            atk_roll,
+            dmg_roll,
+        ],
         attacker,
         target,
         "BowLong",
@@ -1197,7 +1467,14 @@ fn prone_on_target_applies_to_monster_attack() {
         vec![monster_attack("Club", 1, 10, 0)],
     );
     let target = make_character(
-        &mut state, "Victim", "Fighter", 1, &standard_abilities(), 8, 14, "Human",
+        &mut state,
+        "Victim",
+        "Fighter",
+        1,
+        &standard_abilities(),
+        8,
+        14,
+        "Human",
     );
 
     state.apply_condition(&target, "Prone", BTreeMap::new(), Value::None, None);
@@ -1209,7 +1486,12 @@ fn prone_on_target_applies_to_monster_attack() {
     let (fields, _) = resolve_monster(
         &interp,
         &state,
-        vec![Response::Acknowledged, Response::Acknowledged, atk_roll, dmg_roll],
+        vec![
+            Response::Acknowledged,
+            Response::Acknowledged,
+            atk_roll,
+            dmg_roll,
+        ],
         monster,
         target,
         monster_attack("Club", 1, 10, 0),
@@ -1235,7 +1517,14 @@ fn rear_attacked_does_not_affect_monster_attack() {
         vec![monster_attack("Club", 1, 10, 0)],
     );
     let target = make_character(
-        &mut state, "Victim", "Fighter", 1, &standard_abilities(), 8, 14, "Human",
+        &mut state,
+        "Victim",
+        "Fighter",
+        1,
+        &standard_abilities(),
+        8,
+        14,
+        "Human",
     );
 
     state.apply_condition(&target, "RearAttacked", BTreeMap::new(), Value::None, None);
@@ -1247,7 +1536,12 @@ fn rear_attacked_does_not_affect_monster_attack() {
     let (fields, _) = resolve_monster(
         &interp,
         &state,
-        vec![Response::Acknowledged, Response::Acknowledged, atk_roll, dmg_roll],
+        vec![
+            Response::Acknowledged,
+            Response::Acknowledged,
+            atk_roll,
+            dmg_roll,
+        ],
         monster,
         target,
         monster_attack("Club", 1, 10, 0),
@@ -1267,10 +1561,24 @@ fn prone_and_staggered_stack_on_target() {
     let mut state = GameState::new();
 
     let attacker = make_character(
-        &mut state, "Fighter", "Fighter", 5, &standard_abilities(), 30, 15, "Human",
+        &mut state,
+        "Fighter",
+        "Fighter",
+        5,
+        &standard_abilities(),
+        30,
+        15,
+        "Human",
     );
     let target = make_character(
-        &mut state, "Target", "Fighter", 1, &standard_abilities(), 10, 14, "Human",
+        &mut state,
+        "Target",
+        "Fighter",
+        1,
+        &standard_abilities(),
+        10,
+        14,
+        "Human",
     );
 
     state.apply_condition(&target, "Prone", BTreeMap::new(), Value::None, None);
@@ -1306,10 +1614,24 @@ fn prone_and_invisible_cancel_out() {
     let mut state = GameState::new();
 
     let attacker = make_character(
-        &mut state, "Fighter", "Fighter", 5, &standard_abilities(), 30, 15, "Human",
+        &mut state,
+        "Fighter",
+        "Fighter",
+        5,
+        &standard_abilities(),
+        30,
+        15,
+        "Human",
     );
     let target = make_character(
-        &mut state, "Target", "Fighter", 1, &standard_abilities(), 10, 14, "Human",
+        &mut state,
+        "Target",
+        "Fighter",
+        1,
+        &standard_abilities(),
+        10,
+        14,
+        "Human",
     );
 
     state.apply_condition(&target, "Prone", BTreeMap::new(), Value::None, None);
@@ -1345,10 +1667,24 @@ fn cover_and_concealed_stack() {
     let mut state = GameState::new();
 
     let attacker = make_character(
-        &mut state, "Fighter", "Fighter", 5, &standard_abilities(), 30, 15, "Human",
+        &mut state,
+        "Fighter",
+        "Fighter",
+        5,
+        &standard_abilities(),
+        30,
+        15,
+        "Human",
     );
     let target = make_character(
-        &mut state, "Target", "Fighter", 1, &standard_abilities(), 10, 14, "Human",
+        &mut state,
+        "Target",
+        "Fighter",
+        1,
+        &standard_abilities(),
+        10,
+        14,
+        "Human",
     );
 
     let mut cover_params = BTreeMap::new();
@@ -1391,10 +1727,24 @@ fn removing_condition_removes_modifier() {
     let mut state = GameState::new();
 
     let attacker = make_character(
-        &mut state, "Fighter", "Fighter", 5, &standard_abilities(), 30, 15, "Human",
+        &mut state,
+        "Fighter",
+        "Fighter",
+        5,
+        &standard_abilities(),
+        30,
+        15,
+        "Human",
     );
     let target = make_character(
-        &mut state, "Target", "Fighter", 1, &standard_abilities(), 10, 14, "Human",
+        &mut state,
+        "Target",
+        "Fighter",
+        1,
+        &standard_abilities(),
+        10,
+        14,
+        "Human",
     );
 
     // Apply and verify
@@ -1432,10 +1782,24 @@ fn removing_one_stacked_condition_leaves_other() {
     let mut state = GameState::new();
 
     let attacker = make_character(
-        &mut state, "Fighter", "Fighter", 5, &standard_abilities(), 30, 15, "Human",
+        &mut state,
+        "Fighter",
+        "Fighter",
+        5,
+        &standard_abilities(),
+        30,
+        15,
+        "Human",
     );
     let target = make_character(
-        &mut state, "Target", "Fighter", 1, &standard_abilities(), 10, 14, "Human",
+        &mut state,
+        "Target",
+        "Fighter",
+        1,
+        &standard_abilities(),
+        10,
+        14,
+        "Human",
     );
 
     state.apply_condition(&target, "Prone", BTreeMap::new(), Value::None, None);
@@ -1471,10 +1835,24 @@ fn remove_parameterised_condition_by_params() {
     let mut state = GameState::new();
 
     let attacker = make_character(
-        &mut state, "Fighter", "Fighter", 5, &standard_abilities(), 30, 15, "Human",
+        &mut state,
+        "Fighter",
+        "Fighter",
+        5,
+        &standard_abilities(),
+        30,
+        15,
+        "Human",
     );
     let target = make_character(
-        &mut state, "Target", "Fighter", 1, &standard_abilities(), 10, 14, "Human",
+        &mut state,
+        "Target",
+        "Fighter",
+        1,
+        &standard_abilities(),
+        10,
+        14,
+        "Human",
     );
 
     let mut params = BTreeMap::new();
@@ -1520,7 +1898,14 @@ fn surprised_on_monster_forces_miss() {
         vec![monster_attack("Club", 1, 10, 0)],
     );
     let target = make_character(
-        &mut state, "Victim", "Fighter", 5, &standard_abilities(), 30, 17, "Human",
+        &mut state,
+        "Victim",
+        "Fighter",
+        5,
+        &standard_abilities(),
+        30,
+        17,
+        "Human",
     );
 
     state.apply_condition(&monster, "Surprised", BTreeMap::new(), Value::None, None);
@@ -1563,7 +1948,14 @@ fn concealed_on_target_applies_to_monster_attack() {
         vec![monster_attack("Shortsword", 1, 6, 0)],
     );
     let target = make_character(
-        &mut state, "Ranger", "Ranger", 5, &standard_abilities(), 30, 15, "Human",
+        &mut state,
+        "Ranger",
+        "Ranger",
+        5,
+        &standard_abilities(),
+        30,
+        15,
+        "Human",
     );
 
     let mut params = BTreeMap::new();
@@ -1599,10 +1991,24 @@ fn cover_all_standard_levels() {
         let mut state = GameState::new();
 
         let attacker = make_character(
-            &mut state, "Fighter", "Fighter", 5, &standard_abilities(), 30, 15, "Human",
+            &mut state,
+            "Fighter",
+            "Fighter",
+            5,
+            &standard_abilities(),
+            30,
+            15,
+            "Human",
         );
         let target = make_character(
-            &mut state, "Target", "Fighter", 1, &standard_abilities(), 10, 14, "Human",
+            &mut state,
+            "Target",
+            "Fighter",
+            1,
+            &standard_abilities(),
+            10,
+            14,
+            "Human",
         );
 
         let mut params = BTreeMap::new();
@@ -1641,10 +2047,24 @@ fn concealed_all_levels() {
         let mut state = GameState::new();
 
         let attacker = make_character(
-            &mut state, "Fighter", "Fighter", 5, &standard_abilities(), 30, 15, "Human",
+            &mut state,
+            "Fighter",
+            "Fighter",
+            5,
+            &standard_abilities(),
+            30,
+            15,
+            "Human",
         );
         let target = make_character(
-            &mut state, "Target", "Fighter", 1, &standard_abilities(), 10, 14, "Human",
+            &mut state,
+            "Target",
+            "Fighter",
+            1,
+            &standard_abilities(),
+            10,
+            14,
+            "Human",
         );
 
         let mut params = BTreeMap::new();
@@ -1682,10 +2102,24 @@ fn surprised_on_attacker_forces_miss_on_missile() {
     let mut state = GameState::new();
 
     let attacker = make_character(
-        &mut state, "Archer", "Fighter", 3, &standard_abilities(), 20, 14, "Human",
+        &mut state,
+        "Archer",
+        "Fighter",
+        3,
+        &standard_abilities(),
+        20,
+        14,
+        "Human",
     );
     let target = make_character(
-        &mut state, "Target", "Fighter", 1, &standard_abilities(), 10, 14, "Human",
+        &mut state,
+        "Target",
+        "Fighter",
+        1,
+        &standard_abilities(),
+        10,
+        14,
+        "Human",
     );
 
     state.apply_condition(&attacker, "Surprised", BTreeMap::new(), Value::None, None);
@@ -1723,7 +2157,10 @@ fn condition_count_after_apply_and_remove() {
     char_fields.insert(Name::from("class"), class_variant("Fighter"));
     char_fields.insert(Name::from("ancestry"), enum_variant("Ancestry", "Human"));
     char_fields.insert(Name::from("level"), Value::Int(1));
-    char_fields.insert(Name::from("alignment"), enum_variant("Alignment", "TrueNeutral"));
+    char_fields.insert(
+        Name::from("alignment"),
+        enum_variant("Alignment", "TrueNeutral"),
+    );
     char_fields.insert(Name::from("abilities"), Value::Map(BTreeMap::new()));
     char_fields.insert(Name::from("max_hp"), Value::Int(10));
     char_fields.insert(Name::from("hp"), Value::Int(10));
@@ -1763,11 +2200,25 @@ fn prone_negates_dex_ac_bonus() {
     let mut state = GameState::new();
 
     let attacker = make_character(
-        &mut state, "Fighter", "Fighter", 5, &standard_abilities(), 30, 15, "Human",
+        &mut state,
+        "Fighter",
+        "Fighter",
+        5,
+        &standard_abilities(),
+        30,
+        15,
+        "Human",
     );
     // DEX 17 → dex_ac_adj = +3; armor_ac=14 (effective AC = 14+3 = 17)
     let target = make_character(
-        &mut state, "Target", "Fighter", 1, &high_dex_abilities(), 10, 14, "Human",
+        &mut state,
+        "Target",
+        "Fighter",
+        1,
+        &high_dex_abilities(),
+        10,
+        14,
+        "Human",
     );
 
     state.apply_condition(&target, "Prone", BTreeMap::new(), Value::None, None);
@@ -1778,7 +2229,12 @@ fn prone_negates_dex_ac_bonus() {
     let (fields, _) = resolve_melee(
         &interp,
         &state,
-        vec![Response::Acknowledged, Response::Acknowledged, atk_roll, dmg_roll],
+        vec![
+            Response::Acknowledged,
+            Response::Acknowledged,
+            atk_roll,
+            dmg_roll,
+        ],
         attacker,
         target,
         "SwordLong",
@@ -1797,11 +2253,25 @@ fn stunned_negates_dex_ac_bonus() {
     let mut state = GameState::new();
 
     let attacker = make_character(
-        &mut state, "Fighter", "Fighter", 5, &standard_abilities(), 30, 15, "Human",
+        &mut state,
+        "Fighter",
+        "Fighter",
+        5,
+        &standard_abilities(),
+        30,
+        15,
+        "Human",
     );
     // armor_ac=14 (effective AC = 14+3 = 17)
     let target = make_character(
-        &mut state, "Target", "Fighter", 1, &high_dex_abilities(), 10, 14, "Human",
+        &mut state,
+        "Target",
+        "Fighter",
+        1,
+        &high_dex_abilities(),
+        10,
+        14,
+        "Human",
     );
 
     state.apply_condition(&target, "Stunned", BTreeMap::new(), Value::None, None);
@@ -1812,7 +2282,12 @@ fn stunned_negates_dex_ac_bonus() {
     let (fields, _) = resolve_melee(
         &interp,
         &state,
-        vec![Response::Acknowledged, Response::Acknowledged, atk_roll, dmg_roll],
+        vec![
+            Response::Acknowledged,
+            Response::Acknowledged,
+            atk_roll,
+            dmg_roll,
+        ],
         attacker,
         target,
         "SwordLong",
@@ -1830,11 +2305,25 @@ fn rear_attacked_negates_dex_ac_on_missile() {
     let mut state = GameState::new();
 
     let attacker = make_character(
-        &mut state, "Archer", "Fighter", 3, &standard_abilities(), 20, 14, "Human",
+        &mut state,
+        "Archer",
+        "Fighter",
+        3,
+        &standard_abilities(),
+        20,
+        14,
+        "Human",
     );
     // armor_ac=14 (effective AC = 14+3 = 17)
     let target = make_character(
-        &mut state, "Target", "Fighter", 1, &high_dex_abilities(), 10, 14, "Human",
+        &mut state,
+        "Target",
+        "Fighter",
+        1,
+        &high_dex_abilities(),
+        10,
+        14,
+        "Human",
     );
 
     state.apply_condition(&target, "RearAttacked", BTreeMap::new(), Value::None, None);
@@ -1845,7 +2334,12 @@ fn rear_attacked_negates_dex_ac_on_missile() {
     let (fields, _) = resolve_missile(
         &interp,
         &state,
-        vec![Response::Acknowledged, Response::Acknowledged, atk_roll, dmg_roll],
+        vec![
+            Response::Acknowledged,
+            Response::Acknowledged,
+            atk_roll,
+            dmg_roll,
+        ],
         attacker,
         target,
         "BowLong",
@@ -1868,11 +2362,26 @@ fn prone_negates_shield_ac_bonus() {
     let mut state = GameState::new();
 
     let attacker = make_character(
-        &mut state, "Fighter", "Fighter", 5, &standard_abilities(), 30, 15, "Human",
+        &mut state,
+        "Fighter",
+        "Fighter",
+        5,
+        &standard_abilities(),
+        30,
+        15,
+        "Human",
     );
     // armor_ac=14, shield=1 → effective AC = 14+0+1 = 15
     let target = make_character_with_shield(
-        &mut state, "Target", "Fighter", 1, &standard_abilities(), 10, 14, 1, "Human",
+        &mut state,
+        "Target",
+        "Fighter",
+        1,
+        &standard_abilities(),
+        10,
+        14,
+        1,
+        "Human",
     );
 
     state.apply_condition(&target, "Prone", BTreeMap::new(), Value::None, None);
@@ -1883,7 +2392,12 @@ fn prone_negates_shield_ac_bonus() {
     let (fields, _) = resolve_melee(
         &interp,
         &state,
-        vec![Response::Acknowledged, Response::Acknowledged, atk_roll, dmg_roll],
+        vec![
+            Response::Acknowledged,
+            Response::Acknowledged,
+            atk_roll,
+            dmg_roll,
+        ],
         attacker,
         target,
         "SwordLong",
@@ -1903,11 +2417,26 @@ fn rear_attacked_negates_dex_and_shield_combined() {
     let mut state = GameState::new();
 
     let attacker = make_character(
-        &mut state, "Fighter", "Fighter", 5, &standard_abilities(), 30, 15, "Human",
+        &mut state,
+        "Fighter",
+        "Fighter",
+        5,
+        &standard_abilities(),
+        30,
+        15,
+        "Human",
     );
     // armor_ac=14, shield=1 → effective AC = 14+3+1 = 18
     let target = make_character_with_shield(
-        &mut state, "Target", "Fighter", 1, &high_dex_abilities(), 10, 14, 1, "Human",
+        &mut state,
+        "Target",
+        "Fighter",
+        1,
+        &high_dex_abilities(),
+        10,
+        14,
+        1,
+        "Human",
     );
 
     state.apply_condition(&target, "RearAttacked", BTreeMap::new(), Value::None, None);
@@ -1918,7 +2447,12 @@ fn rear_attacked_negates_dex_and_shield_combined() {
     let (fields, _) = resolve_melee(
         &interp,
         &state,
-        vec![Response::Acknowledged, Response::Acknowledged, atk_roll, dmg_roll],
+        vec![
+            Response::Acknowledged,
+            Response::Acknowledged,
+            atk_roll,
+            dmg_roll,
+        ],
         attacker,
         target,
         "SwordLong",
@@ -1938,10 +2472,24 @@ fn stunned_on_attacker_forces_miss() {
     let mut state = GameState::new();
 
     let attacker = make_character(
-        &mut state, "Fighter", "Fighter", 5, &standard_abilities(), 30, 15, "Human",
+        &mut state,
+        "Fighter",
+        "Fighter",
+        5,
+        &standard_abilities(),
+        30,
+        15,
+        "Human",
     );
     let target = make_character(
-        &mut state, "Target", "Fighter", 1, &standard_abilities(), 10, 10, "Human",
+        &mut state,
+        "Target",
+        "Fighter",
+        1,
+        &standard_abilities(),
+        10,
+        10,
+        "Human",
     );
 
     state.apply_condition(&attacker, "Stunned", BTreeMap::new(), Value::None, None);
@@ -1977,10 +2525,24 @@ fn paralyzed_on_attacker_forces_miss() {
     let mut state = GameState::new();
 
     let attacker = make_character(
-        &mut state, "Fighter", "Fighter", 5, &standard_abilities(), 30, 15, "Human",
+        &mut state,
+        "Fighter",
+        "Fighter",
+        5,
+        &standard_abilities(),
+        30,
+        15,
+        "Human",
     );
     let target = make_character(
-        &mut state, "Target", "Fighter", 1, &standard_abilities(), 10, 10, "Human",
+        &mut state,
+        "Target",
+        "Fighter",
+        1,
+        &standard_abilities(),
+        10,
+        10,
+        "Human",
     );
 
     state.apply_condition(&attacker, "Paralyzed", BTreeMap::new(), Value::None, None);
@@ -2014,10 +2576,24 @@ fn sleeping_on_attacker_forces_miss() {
     let mut state = GameState::new();
 
     let attacker = make_character(
-        &mut state, "Fighter", "Fighter", 5, &standard_abilities(), 30, 15, "Human",
+        &mut state,
+        "Fighter",
+        "Fighter",
+        5,
+        &standard_abilities(),
+        30,
+        15,
+        "Human",
     );
     let target = make_character(
-        &mut state, "Target", "Fighter", 1, &standard_abilities(), 10, 10, "Human",
+        &mut state,
+        "Target",
+        "Fighter",
+        1,
+        &standard_abilities(),
+        10,
+        10,
+        "Human",
     );
 
     state.apply_condition(&attacker, "Sleeping", BTreeMap::new(), Value::None, None);
@@ -2052,10 +2628,24 @@ fn paralyzed_auto_hit_max_damage_battleaxe() {
     let mut state = GameState::new();
 
     let attacker = make_character(
-        &mut state, "Fighter", "Fighter", 5, &standard_abilities(), 30, 15, "Human",
+        &mut state,
+        "Fighter",
+        "Fighter",
+        5,
+        &standard_abilities(),
+        30,
+        15,
+        "Human",
     );
     let target = make_character(
-        &mut state, "Target", "Fighter", 1, &standard_abilities(), 10, 18, "Human",
+        &mut state,
+        "Target",
+        "Fighter",
+        1,
+        &standard_abilities(),
+        10,
+        18,
+        "Human",
     );
 
     state.apply_condition(&target, "Paralyzed", BTreeMap::new(), Value::None, None);
@@ -2094,7 +2684,14 @@ fn paralyzed_auto_hit_max_damage_monster_attack() {
         vec![monster_attack("Greatclub", 2, 6, 0)],
     );
     let target = make_character(
-        &mut state, "Target", "Fighter", 1, &standard_abilities(), 10, 18, "Human",
+        &mut state,
+        "Target",
+        "Fighter",
+        1,
+        &standard_abilities(),
+        10,
+        18,
+        "Human",
     );
 
     state.apply_condition(&target, "Paralyzed", BTreeMap::new(), Value::None, None);
@@ -2125,11 +2722,26 @@ fn paralyzed_negates_dex_and_shield_on_auto_hit() {
     let mut state = GameState::new();
 
     let attacker = make_character(
-        &mut state, "Fighter", "Fighter", 5, &standard_abilities(), 30, 15, "Human",
+        &mut state,
+        "Fighter",
+        "Fighter",
+        5,
+        &standard_abilities(),
+        30,
+        15,
+        "Human",
     );
     // armor_ac=14, shield=1 → effective AC = 14+3+1 = 18
     let target = make_character_with_shield(
-        &mut state, "Target", "Fighter", 1, &high_dex_abilities(), 10, 14, 1, "Human",
+        &mut state,
+        "Target",
+        "Fighter",
+        1,
+        &high_dex_abilities(),
+        10,
+        14,
+        1,
+        "Human",
     );
 
     state.apply_condition(&target, "Paralyzed", BTreeMap::new(), Value::None, None);

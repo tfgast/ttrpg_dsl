@@ -527,7 +527,7 @@ system "test" {
     // Adapter intercepts ProvisionBudget, MutateField, ClearBudget (not forwarded).
     // Handler sees: ActionStarted, RequiresCheck(budget), DeductCost, ActionCompleted
     let mut handler = ScriptedHandler::with_responses(vec![
-        Response::Acknowledged,               // ActionStarted
+        Response::Acknowledged,                // ActionStarted
         Response::Override(Value::Bool(true)), // RequiresCheck — allow overdraft
     ]);
     adapter

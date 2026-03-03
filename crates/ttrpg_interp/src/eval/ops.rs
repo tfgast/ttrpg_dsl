@@ -406,11 +406,7 @@ fn eval_div(
     }
 }
 
-fn eval_mod(
-    lhs: &Value,
-    rhs: &Value,
-    expr: &Spanned<ExprKind>,
-) -> Result<Value, RuntimeError> {
+fn eval_mod(lhs: &Value, rhs: &Value, expr: &Spanned<ExprKind>) -> Result<Value, RuntimeError> {
     match (lhs, rhs) {
         (Value::Int(a), Value::Int(b)) => {
             if *b == 0 {
@@ -441,11 +437,7 @@ fn eval_mod(
             }
         }
         _ => Err(RuntimeError::with_span(
-            format!(
-                "cannot compute {:?} % {:?}",
-                type_name(lhs),
-                type_name(rhs)
-            ),
+            format!("cannot compute {:?} % {:?}", type_name(lhs), type_name(rhs)),
             expr.span,
         )),
     }

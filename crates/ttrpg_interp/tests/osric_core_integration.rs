@@ -274,11 +274,7 @@ fn character_entity_fields() {
         })
         .expect("Character entity not found");
 
-    let field_names: Vec<_> = character
-        .fields
-        .iter()
-        .map(|f| f.name.as_str())
-        .collect();
+    let field_names: Vec<_> = character.fields.iter().map(|f| f.name.as_str()).collect();
 
     let expected_fields = [
         "name",
@@ -397,15 +393,7 @@ fn monster_entity_fields() {
     let field_names: Vec<_> = monster.fields.iter().map(|f| f.name.as_str()).collect();
 
     let expected_fields = [
-        "name",
-        "hit_dice",
-        "max_hp",
-        "hp",
-        "ac",
-        "morale",
-        "xp_value",
-        "attacks",
-        "size",
+        "name", "hit_dice", "max_hp", "hp", "ac", "morale", "xp_value", "attacks", "size",
         "special",
     ];
     for name in &expected_fields {

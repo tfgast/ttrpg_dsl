@@ -82,7 +82,12 @@ system "test" {
     let mut handler = NoopHandler;
 
     let val = interp
-        .evaluate_function(&state, &mut handler, "add", vec![Value::Int(3), Value::Int(7)])
+        .evaluate_function(
+            &state,
+            &mut handler,
+            "add",
+            vec![Value::Int(3), Value::Int(7)],
+        )
         .unwrap();
     assert_eq!(val, Value::Int(10));
 }
@@ -192,7 +197,10 @@ system "test" {
         .unwrap();
 
     // Verify ActionStarted/ActionCompleted lifecycle effects fired
-    let action_started = handler.effects.iter().any(|e| matches!(e, Effect::ActionStarted { .. }));
+    let action_started = handler
+        .effects
+        .iter()
+        .any(|e| matches!(e, Effect::ActionStarted { .. }));
     let action_completed = handler
         .effects
         .iter()
@@ -201,10 +209,14 @@ system "test" {
     assert!(action_completed, "expected ActionCompleted effect");
 
     // Verify the mutation: target.hp should be 5 + compute_heal(3) = 5 + 6 = 11
-    let mutate = handler.effects.iter().find(|e| {
-        matches!(e, Effect::MutateField { entity, .. } if *entity == target)
-    });
-    assert!(mutate.is_some(), "expected MutateField effect for target.hp");
+    let mutate = handler
+        .effects
+        .iter()
+        .find(|e| matches!(e, Effect::MutateField { entity, .. } if *entity == target));
+    assert!(
+        mutate.is_some(),
+        "expected MutateField effect for target.hp"
+    );
     if let Some(Effect::MutateField { value, .. }) = mutate {
         assert_eq!(*value, Value::Int(6));
     }
