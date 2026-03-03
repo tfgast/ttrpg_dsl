@@ -287,13 +287,13 @@ fn class_def_fighter() {
         get_enum_variant(&def, "spell_progression"),
         ("SpellProgression", "NonCaster")
     );
-    assert_eq!(get_bool(&def, "shield_allowed"), true);
-    assert_eq!(get_bool(&def, "weapons_any"), true);
-    assert_eq!(get_bool(&def, "weapon_specialization"), true);
-    assert_eq!(get_bool(&def, "has_thief_skills"), false);
-    assert_eq!(get_bool(&def, "can_backstab"), false);
-    assert_eq!(get_bool(&def, "can_turn_undead"), false);
-    assert_eq!(get_bool(&def, "has_exceptional_str"), true);
+    assert!(get_bool(&def, "shield_allowed"));
+    assert!(get_bool(&def, "weapons_any"));
+    assert!(get_bool(&def, "weapon_specialization"));
+    assert!(!get_bool(&def, "has_thief_skills"));
+    assert!(!get_bool(&def, "can_backstab"));
+    assert!(!get_bool(&def, "can_turn_undead"));
+    assert!(get_bool(&def, "has_exceptional_str"));
 }
 
 // ── class_def: Paladin ─────────────────────────────────────────
@@ -317,9 +317,9 @@ fn class_def_paladin() {
         get_enum_variant(&def, "spell_progression"),
         ("SpellProgression", "Paladin")
     );
-    assert_eq!(get_bool(&def, "weapon_specialization"), true);
-    assert_eq!(get_bool(&def, "can_turn_undead"), true);
-    assert_eq!(get_bool(&def, "has_exceptional_str"), true);
+    assert!(get_bool(&def, "weapon_specialization"));
+    assert!(get_bool(&def, "can_turn_undead"));
+    assert!(get_bool(&def, "has_exceptional_str"));
 }
 
 // ── class_def: Ranger ──────────────────────────────────────────
@@ -343,8 +343,8 @@ fn class_def_ranger() {
         get_enum_variant(&def, "spell_progression"),
         ("SpellProgression", "Ranger")
     );
-    assert_eq!(get_bool(&def, "weapon_specialization"), true);
-    assert_eq!(get_bool(&def, "has_exceptional_str"), true);
+    assert!(get_bool(&def, "weapon_specialization"));
+    assert!(get_bool(&def, "has_exceptional_str"));
 }
 
 // ── class_def: Cleric ──────────────────────────────────────────
@@ -372,9 +372,9 @@ fn class_def_cleric() {
         get_enum_variant(&def, "spell_progression"),
         ("SpellProgression", "Cleric")
     );
-    assert_eq!(get_bool(&def, "shield_allowed"), true);
-    assert_eq!(get_bool(&def, "weapons_any"), false);
-    assert_eq!(get_bool(&def, "can_turn_undead"), true);
+    assert!(get_bool(&def, "shield_allowed"));
+    assert!(!get_bool(&def, "weapons_any"));
+    assert!(get_bool(&def, "can_turn_undead"));
 }
 
 // ── class_def: Druid ───────────────────────────────────────────
@@ -430,10 +430,10 @@ fn class_def_thief() {
         get_enum_variant(&def, "spell_progression"),
         ("SpellProgression", "NonCaster")
     );
-    assert_eq!(get_bool(&def, "shield_allowed"), false);
-    assert_eq!(get_bool(&def, "weapons_any"), true);
-    assert_eq!(get_bool(&def, "has_thief_skills"), true);
-    assert_eq!(get_bool(&def, "can_backstab"), true);
+    assert!(!get_bool(&def, "shield_allowed"));
+    assert!(get_bool(&def, "weapons_any"));
+    assert!(get_bool(&def, "has_thief_skills"));
+    assert!(get_bool(&def, "can_backstab"));
 }
 
 // ── class_def: Assassin ────────────────────────────────────────
@@ -457,9 +457,9 @@ fn class_def_assassin() {
         get_enum_variant(&def, "armour"),
         ("ArmourPermission", "leather_shield")
     );
-    assert_eq!(get_bool(&def, "shield_allowed"), true);
-    assert_eq!(get_bool(&def, "has_thief_skills"), true);
-    assert_eq!(get_bool(&def, "can_backstab"), true);
+    assert!(get_bool(&def, "shield_allowed"));
+    assert!(get_bool(&def, "has_thief_skills"));
+    assert!(get_bool(&def, "can_backstab"));
 }
 
 // ── class_def: Magic-User ──────────────────────────────────────
@@ -487,8 +487,8 @@ fn class_def_magic_user() {
         get_enum_variant(&def, "spell_progression"),
         ("SpellProgression", "MagicUser")
     );
-    assert_eq!(get_bool(&def, "shield_allowed"), false);
-    assert_eq!(get_bool(&def, "weapons_any"), false);
+    assert!(!get_bool(&def, "shield_allowed"));
+    assert!(!get_bool(&def, "weapons_any"));
     assert_eq!(get_int(&def, "non_prof_penalty"), -5);
 }
 
@@ -540,10 +540,10 @@ fn class_def_monk() {
         get_enum_variant(&def, "spell_progression"),
         ("SpellProgression", "NonCaster")
     );
-    assert_eq!(get_bool(&def, "shield_allowed"), false);
-    assert_eq!(get_bool(&def, "weapons_any"), false);
-    assert_eq!(get_bool(&def, "has_thief_skills"), true);
-    assert_eq!(get_bool(&def, "can_backstab"), false);
+    assert!(!get_bool(&def, "shield_allowed"));
+    assert!(!get_bool(&def, "weapons_any"));
+    assert!(get_bool(&def, "has_thief_skills"));
+    assert!(!get_bool(&def, "can_backstab"));
 }
 
 // ── class_def: all classes return a class field matching input ──
@@ -618,10 +618,10 @@ fn xp_for_level_fighter_spot_checks() {
 
     assert_eq!(get_xp(&interp, &state, &mut handler, "Fighter", 2), 2000);
     assert_eq!(get_xp(&interp, &state, &mut handler, "Fighter", 5), 17000);
-    assert_eq!(get_xp(&interp, &state, &mut handler, "Fighter", 9), 250000);
+    assert_eq!(get_xp(&interp, &state, &mut handler, "Fighter", 9), 250_000);
     assert_eq!(
         get_xp(&interp, &state, &mut handler, "Fighter", 20),
-        3000000
+        3_000_000
     );
 }
 
@@ -634,7 +634,7 @@ fn xp_for_level_thief_spot_checks() {
 
     assert_eq!(get_xp(&interp, &state, &mut handler, "Thief", 2), 1250);
     assert_eq!(get_xp(&interp, &state, &mut handler, "Thief", 8), 70000);
-    assert_eq!(get_xp(&interp, &state, &mut handler, "Thief", 12), 440000);
+    assert_eq!(get_xp(&interp, &state, &mut handler, "Thief", 12), 440_000);
 }
 
 #[test]
@@ -651,11 +651,11 @@ fn xp_for_level_magic_user_spot_checks() {
     );
     assert_eq!(
         get_xp(&interp, &state, &mut handler, "MagicUser", 10),
-        250000
+        250_000
     );
     assert_eq!(
         get_xp(&interp, &state, &mut handler, "MagicUser", 18),
-        3000000
+        3_000_000
     );
 }
 
@@ -670,7 +670,7 @@ fn xp_for_level_cleric_spot_checks() {
     assert_eq!(get_xp(&interp, &state, &mut handler, "Cleric", 7), 55000);
     assert_eq!(
         get_xp(&interp, &state, &mut handler, "Cleric", 20),
-        2700000
+        2_700_000
     );
 }
 
@@ -682,10 +682,10 @@ fn xp_for_level_assassin_spot_checks() {
     let mut handler = NullHandler;
 
     assert_eq!(get_xp(&interp, &state, &mut handler, "Assassin", 2), 1500);
-    assert_eq!(get_xp(&interp, &state, &mut handler, "Assassin", 8), 100000);
+    assert_eq!(get_xp(&interp, &state, &mut handler, "Assassin", 8), 100_000);
     assert_eq!(
         get_xp(&interp, &state, &mut handler, "Assassin", 15),
-        1500000
+        1_500_000
     );
 }
 
@@ -697,10 +697,10 @@ fn xp_for_level_monk_spot_checks() {
     let mut handler = NullHandler;
 
     assert_eq!(get_xp(&interp, &state, &mut handler, "Monk", 3), 5000);
-    assert_eq!(get_xp(&interp, &state, &mut handler, "Monk", 9), 350000);
+    assert_eq!(get_xp(&interp, &state, &mut handler, "Monk", 9), 350_000);
     assert_eq!(
         get_xp(&interp, &state, &mut handler, "Monk", 17),
-        3250000
+        3_250_000
     );
 }
 
@@ -712,10 +712,10 @@ fn xp_for_level_paladin_spot_checks() {
     let mut handler = NullHandler;
 
     assert_eq!(get_xp(&interp, &state, &mut handler, "Paladin", 2), 2550);
-    assert_eq!(get_xp(&interp, &state, &mut handler, "Paladin", 9), 325000);
+    assert_eq!(get_xp(&interp, &state, &mut handler, "Paladin", 9), 325_000);
     assert_eq!(
         get_xp(&interp, &state, &mut handler, "Paladin", 20),
-        4150000
+        4_150_000
     );
 }
 
@@ -730,7 +730,7 @@ fn xp_for_level_ranger_spot_checks() {
     assert_eq!(get_xp(&interp, &state, &mut handler, "Ranger", 8), 90000);
     assert_eq!(
         get_xp(&interp, &state, &mut handler, "Ranger", 20),
-        3250000
+        3_250_000
     );
 }
 
@@ -745,7 +745,7 @@ fn xp_for_level_druid_spot_checks() {
     assert_eq!(get_xp(&interp, &state, &mut handler, "Druid", 9), 90000);
     assert_eq!(
         get_xp(&interp, &state, &mut handler, "Druid", 14),
-        1500000
+        1_500_000
     );
 }
 
@@ -766,7 +766,7 @@ fn xp_for_level_illusionist_spot_checks() {
     );
     assert_eq!(
         get_xp(&interp, &state, &mut handler, "Illusionist", 20),
-        2420000
+        2_420_000
     );
 }
 
@@ -887,7 +887,7 @@ fn check_level_up_magic_user_mid_level() {
         &mut handler,
         "MagicUser",
         9,
-        249999
+        249_999
     ));
     assert!(check_level_up(
         &interp,
@@ -895,7 +895,7 @@ fn check_level_up_magic_user_mid_level() {
         &mut handler,
         "MagicUser",
         9,
-        250000
+        250_000
     ));
 }
 
@@ -913,7 +913,7 @@ fn check_level_up_cleric_high_level() {
         &mut handler,
         "Cleric",
         19,
-        2699999
+        2_699_999
     ));
     assert!(check_level_up(
         &interp,
@@ -921,7 +921,7 @@ fn check_level_up_cleric_high_level() {
         &mut handler,
         "Cleric",
         19,
-        2700000
+        2_700_000
     ));
 }
 
@@ -955,16 +955,8 @@ fn thief_group_has_thief_skills_and_backstab() {
 
     for class in &["Thief", "Assassin"] {
         let def = get_class_def(&interp, &state, &mut handler, class);
-        assert_eq!(
-            get_bool(&def, "has_thief_skills"),
-            true,
-            "{class} should have thief skills"
-        );
-        assert_eq!(
-            get_bool(&def, "can_backstab"),
-            true,
-            "{class} should be able to backstab"
-        );
+        assert!(get_bool(&def, "has_thief_skills"), "{class} should have thief skills");
+        assert!(get_bool(&def, "can_backstab"), "{class} should be able to backstab");
     }
 }
 
@@ -1034,18 +1026,10 @@ fn exceptional_str_only_fighter_types() {
 
     for class in &with_exc_str {
         let def = get_class_def(&interp, &state, &mut handler, class);
-        assert_eq!(
-            get_bool(&def, "has_exceptional_str"),
-            true,
-            "{class} should have exceptional strength"
-        );
+        assert!(get_bool(&def, "has_exceptional_str"), "{class} should have exceptional strength");
     }
     for class in &without {
         let def = get_class_def(&interp, &state, &mut handler, class);
-        assert_eq!(
-            get_bool(&def, "has_exceptional_str"),
-            false,
-            "{class} should NOT have exceptional strength"
-        );
+        assert!(!get_bool(&def, "has_exceptional_str"), "{class} should NOT have exceptional strength");
     }
 }

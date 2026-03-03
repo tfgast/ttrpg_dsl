@@ -697,8 +697,7 @@ fn deduct_costs(
                     other => {
                         return Err(RuntimeError::with_span(
                             format!(
-                                "budget field '{}' has non-integer value: {:?}",
-                                budget_field, other
+                                "budget field '{budget_field}' has non-integer value: {other:?}",
                             ),
                             call_span,
                         ));
@@ -711,8 +710,7 @@ fn deduct_costs(
                         action: Name::from(action_name),
                         passed: false,
                         reason: Some(format!(
-                            "insufficient budget: {} requires {} but {} has {}",
-                            budget_field, required, budget_field, current_int
+                            "insufficient budget: {budget_field} requires {required} but {budget_field} has {current_int}",
                         )),
                     });
                     match response {

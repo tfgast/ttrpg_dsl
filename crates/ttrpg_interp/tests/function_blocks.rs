@@ -187,7 +187,7 @@ system "test" {
             &mut handler,
             "Heal",
             actor,
-            vec![Value::Entity(target.clone())],
+            vec![Value::Entity(target)],
         )
         .unwrap();
 

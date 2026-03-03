@@ -8,9 +8,6 @@ use ttrpg_ast::ast::{DeclKind, TopLevel};
 use ttrpg_ast::diagnostic::Severity;
 use ttrpg_ast::FileId;
 use ttrpg_interp::effect::{Effect, EffectHandler, Response};
-use ttrpg_interp::reference_state::GameState;
-use ttrpg_interp::value::Value;
-use ttrpg_interp::Interpreter;
 
 // ── Compile helpers ────────────────────────────────────────────
 
@@ -55,6 +52,7 @@ fn get_decls(program: &ttrpg_ast::ast::Program) -> &[ttrpg_ast::Spanned<DeclKind
     panic!("no system block named 'OSRIC' found");
 }
 
+#[allow(dead_code)]
 struct NullHandler;
 impl EffectHandler for NullHandler {
     fn handle(&mut self, _effect: Effect) -> Response {
@@ -124,7 +122,7 @@ fn osric_core_has_all_enums() {
         "missing ThiefSkill enum"
     );
 
-    assert_eq!(enums.len(), 10, "expected 10 enums, got {:?}", enums);
+    assert_eq!(enums.len(), 10, "expected 10 enums, got {enums:?}");
 }
 
 #[test]
@@ -221,7 +219,7 @@ fn osric_core_has_all_structs() {
         "missing MonsterAttack struct"
     );
 
-    assert_eq!(structs.len(), 5, "expected 5 structs, got {:?}", structs);
+    assert_eq!(structs.len(), 5, "expected 5 structs, got {structs:?}");
 }
 
 // ── Unit type ──────────────────────────────────────────────────
@@ -240,8 +238,7 @@ fn osric_core_has_feet_unit() {
 
     assert!(
         units.contains(&("Feet", Some("ft"))),
-        "missing Feet unit with 'ft' suffix, got: {:?}",
-        units
+        "missing Feet unit with 'ft' suffix, got: {units:?}"
     );
     assert_eq!(units.len(), 1, "expected exactly 1 unit type");
 }
@@ -308,8 +305,7 @@ fn character_entity_fields() {
     assert_eq!(
         field_names.len(),
         expected_fields.len(),
-        "Character field count mismatch: got {:?}",
-        field_names
+        "Character field count mismatch: got {field_names:?}"
     );
 }
 
@@ -346,8 +342,7 @@ fn character_entity_optional_groups() {
     assert_eq!(
         group_names.len(),
         expected_groups.len(),
-        "optional group count mismatch: got {:?}",
-        group_names
+        "optional group count mismatch: got {group_names:?}"
     );
 
     // All groups are inline (not external refs) and optional (not required)
@@ -419,8 +414,7 @@ fn monster_entity_fields() {
     assert_eq!(
         field_names.len(),
         expected_fields.len(),
-        "Monster field count mismatch: got {:?}",
-        field_names
+        "Monster field count mismatch: got {field_names:?}"
     );
 
     // Monster should have no optional groups

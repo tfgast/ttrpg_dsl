@@ -99,7 +99,7 @@ pub fn what_triggers(
             .type_env
             .functions
             .get(reaction_name)
-            .map_or(true, |fi| fi.kind != ttrpg_checker::env::FnKind::Reaction)
+            .is_none_or(|fi| fi.kind != ttrpg_checker::env::FnKind::Reaction)
         {
             continue;
         }
@@ -191,7 +191,7 @@ pub fn find_matching_hooks(
             .type_env
             .functions
             .get(hook_name)
-            .map_or(true, |fi| fi.kind != ttrpg_checker::env::FnKind::Hook)
+            .is_none_or(|fi| fi.kind != ttrpg_checker::env::FnKind::Hook)
         {
             continue;
         }

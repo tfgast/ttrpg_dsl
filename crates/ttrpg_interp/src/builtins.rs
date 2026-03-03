@@ -312,10 +312,10 @@ fn builtin_max_value(args: &[Value], span: Span) -> Result<Value, RuntimeError> 
                 .iter()
                 .map(|g| {
                     let effective = match g.filter {
-                        Some(ttrpg_ast::DiceFilter::KeepHighest(n))
-                        | Some(ttrpg_ast::DiceFilter::KeepLowest(n)) => n,
-                        Some(ttrpg_ast::DiceFilter::DropHighest(n))
-                        | Some(ttrpg_ast::DiceFilter::DropLowest(n)) => g.count.saturating_sub(n),
+                        Some(ttrpg_ast::DiceFilter::KeepHighest(n)
+                        | ttrpg_ast::DiceFilter::KeepLowest(n)) => n,
+                        Some(ttrpg_ast::DiceFilter::DropHighest(n)
+                        | ttrpg_ast::DiceFilter::DropLowest(n)) => g.count.saturating_sub(n),
                         None => g.count,
                     };
                     (effective as i64) * (g.sides as i64)

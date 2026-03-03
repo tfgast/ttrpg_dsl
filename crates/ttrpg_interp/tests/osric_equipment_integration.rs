@@ -613,7 +613,7 @@ fn missile_weapon_def_long_bow() {
     );
 
     assert_eq!(get_int(&fields, "hands"), 2);
-    assert_eq!(get_bool(&fields, "is_hurled"), false);
+    assert!(!get_bool(&fields, "is_hurled"));
     assert_eq!(get_damage_type(&fields, "damage_type"), "Piercing");
     assert_eq!(get_feet(&fields, "range_increment"), 70);
     assert_eq!(get_int(&fields, "rate_of_fire"), 2);
@@ -640,7 +640,7 @@ fn missile_weapon_def_heavy_crossbow() {
     );
 
     assert_eq!(get_int(&fields, "hands"), 2);
-    assert_eq!(get_bool(&fields, "is_hurled"), false);
+    assert!(!get_bool(&fields, "is_hurled"));
     assert_eq!(get_feet(&fields, "range_increment"), 80);
     // Rate of fire 0 = every other round
     assert_eq!(get_int(&fields, "rate_of_fire"), 0);
@@ -665,7 +665,7 @@ fn missile_weapon_def_dagger_thrown_is_hurled() {
     );
 
     assert_eq!(get_int(&fields, "hands"), 1);
-    assert_eq!(get_bool(&fields, "is_hurled"), true);
+    assert!(get_bool(&fields, "is_hurled"));
     assert_eq!(get_damage_type(&fields, "damage_type"), "Piercing");
     assert_eq!(get_feet(&fields, "range_increment"), 10);
     assert_eq!(get_int(&fields, "rate_of_fire"), 2);
@@ -691,7 +691,7 @@ fn missile_weapon_def_sling() {
 
     assert_eq!(get_int(&fields, "hands"), 1);
     // Sling is launched (not hurled)
-    assert_eq!(get_bool(&fields, "is_hurled"), false);
+    assert!(!get_bool(&fields, "is_hurled"));
     assert_eq!(get_damage_type(&fields, "damage_type"), "Blunt");
     assert_eq!(get_feet(&fields, "range_increment"), 35);
     assert_eq!(get_dice_expr(&fields, "damage_sm"), (1, 4, 1));
@@ -714,7 +714,7 @@ fn missile_weapon_def_dart_has_highest_rof() {
         "MissileWeaponDef",
     );
 
-    assert_eq!(get_bool(&fields, "is_hurled"), true);
+    assert!(get_bool(&fields, "is_hurled"));
     assert_eq!(get_int(&fields, "rate_of_fire"), 3);
     assert_eq!(get_feet(&fields, "range_increment"), 15);
 }

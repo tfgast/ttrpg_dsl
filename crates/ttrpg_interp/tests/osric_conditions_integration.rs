@@ -181,6 +181,7 @@ fn scripted_roll(
 
 // ── Entity builders ────────────────────────────────────────────
 
+#[allow(clippy::too_many_arguments)]
 fn make_character(
     state: &mut GameState,
     name: &str,
