@@ -203,10 +203,9 @@ system "OSRIC Combat" {
         }
     }
 
-    // Damage roll from a DiceSpec. Minimum damage is always 1.
-    mechanic damage_from_spec(spec: DiceSpec, damage_mod: int = 0) -> int {
-        let result = roll(dice(spec.count, spec.sides))
-        max(1, result.total + spec.bonus + damage_mod)
+    // Damage roll from a DiceExpr. Minimum damage is always 1.
+    mechanic damage_roll(dmg_dice: DiceExpr, damage_mod: int = 0) -> int {
+        max(1, roll(dmg_dice).total + damage_mod)
     }
 
 
@@ -264,15 +263,15 @@ system "OSRIC Combat" {
 
         let wdef = melee_weapon_def(weapon)
         let target_size = ancestry_def(target.ancestry).size
-        let dmg_spec = if target_size > Size.Medium { wdef.damage_l } else { wdef.damage_sm }
+        let dmg_dice = if target_size > Size.Medium { wdef.damage_l } else { wdef.damage_sm }
         let str_dmg = effective_str_damage(attacker)
 
         let damage = match outcome {
             AttackOutcome.Hit => {
                 if max_damage {
-                    max(1, dmg_spec.count * dmg_spec.sides + dmg_spec.bonus + str_dmg)
+                    max(1, max_value(dmg_dice) + str_dmg)
                 } else {
-                    damage_from_spec(dmg_spec, str_dmg)
+                    damage_roll(dmg_dice, str_dmg)
                 }
             },
             _ => 0
@@ -304,15 +303,15 @@ system "OSRIC Combat" {
         }
 
         let target_size = ancestry_def(target.ancestry).size
-        let dmg_spec = if target_size > Size.Medium { wdef.damage_l } else { wdef.damage_sm }
+        let dmg_dice = if target_size > Size.Medium { wdef.damage_l } else { wdef.damage_sm }
         let str_dmg = if wdef.is_hurled { effective_str_damage(attacker) } else { 0 }
 
         let damage = match outcome {
             AttackOutcome.Hit => {
                 if max_damage {
-                    max(1, dmg_spec.count * dmg_spec.sides + dmg_spec.bonus + str_dmg)
+                    max(1, max_value(dmg_dice) + str_dmg)
                 } else {
-                    damage_from_spec(dmg_spec, str_dmg)
+                    damage_roll(dmg_dice, str_dmg)
                 }
             },
             _ => 0
@@ -341,9 +340,9 @@ system "OSRIC Combat" {
         let damage = match outcome {
             AttackOutcome.Hit => {
                 if max_damage {
-                    max(1, attack.damage.count * attack.damage.sides + attack.damage.bonus)
+                    max(1, max_value(attack.damage))
                 } else {
-                    damage_from_spec(attack.damage)
+                    damage_roll(attack.damage)
                 }
             },
             _ => 0

@@ -3,7 +3,7 @@
 //! Verifies that osric/osric_combat.ttrpg parses, lowers, and type-checks
 //! through the full multi-file pipeline (core + ability + class + equipment +
 //! combat). Exercises BTHB tables for all 4 combat groups, fighter_attacks,
-//! missile_range_penalty, attack_roll_aac, damage_from_spec,
+//! missile_range_penalty, attack_roll_aac, damage_roll,
 //! resolve_melee_attack, resolve_missile_attack, resolve_monster_attack,
 //! Damaged/CreatureSlain events, and MeleeAttack/MissileAttack/Charge actions.
 
@@ -118,26 +118,16 @@ fn feet(value: i64) -> Value {
     }
 }
 
-fn dice_spec(count: i64, sides: i64, bonus: i64) -> Value {
-    Value::Struct {
-        name: Name::from("DiceSpec"),
-        fields: {
-            let mut f = BTreeMap::new();
-            f.insert(Name::from("count"), Value::Int(count));
-            f.insert(Name::from("sides"), Value::Int(sides));
-            f.insert(Name::from("bonus"), Value::Int(bonus));
-            f
-        },
-    }
-}
-
-fn monster_attack(name: &str, count: i64, sides: i64, bonus: i64) -> Value {
+fn monster_attack(name: &str, count: u32, sides: u32, bonus: i64) -> Value {
     Value::Struct {
         name: Name::from("MonsterAttack"),
         fields: {
             let mut f = BTreeMap::new();
             f.insert(Name::from("name"), Value::Str(name.to_string()));
-            f.insert(Name::from("damage"), dice_spec(count, sides, bonus));
+            f.insert(
+                Name::from("damage"),
+                Value::DiceExpr(DiceExpr::single(count, sides, None, bonus)),
+            );
             f
         },
     }
@@ -413,7 +403,7 @@ fn osric_combat_has_mechanics() {
         })
         .collect();
     assert!(mechanics.contains(&"attack_roll_aac"));
-    assert!(mechanics.contains(&"damage_from_spec"));
+    assert!(mechanics.contains(&"damage_roll"));
     assert!(mechanics.contains(&"resolve_melee_attack"));
     assert!(mechanics.contains(&"resolve_missile_attack"));
     assert!(mechanics.contains(&"resolve_monster_attack"));
@@ -1082,15 +1072,15 @@ fn attack_roll_aac_with_attack_mod() {
     assert_eq!(val, enum_variant("AttackOutcome", "Hit"));
 }
 
-// ── damage_from_spec mechanic ──────────────────────────────────
+// ── damage_roll mechanic ──────────────────────────────────────
 
 #[test]
-fn damage_from_spec_normal_roll() {
+fn damage_roll_normal_roll() {
     let (program, result) = compile_osric_combat();
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let state = GameState::new();
 
-    // DiceSpec{1, 8, 0}, damage_mod=0, roll 5 → max(1, 5+0+0) = 5
+    // 1d8, damage_mod=0, roll 5 → max(1, 5+0) = 5
     let roll = scripted_roll(1, 8, 0, vec![5], vec![5], 5, 5);
     let mut handler = ScriptedHandler::with_responses(vec![roll]);
 
@@ -1098,41 +1088,44 @@ fn damage_from_spec_normal_roll() {
         .evaluate_mechanic(
             &state,
             &mut handler,
-            "damage_from_spec",
-            vec![dice_spec(1, 8, 0)],
+            "damage_roll",
+            vec![Value::DiceExpr(DiceExpr::single(1, 8, None, 0))],
         )
         .unwrap();
     assert_eq!(val, Value::Int(5));
 }
 
 #[test]
-fn damage_from_spec_with_bonus_and_mod() {
+fn damage_roll_with_bonus_and_mod() {
     let (program, result) = compile_osric_combat();
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let state = GameState::new();
 
-    // DiceSpec{1, 6, 1}, damage_mod=2, roll 3 → max(1, 3+1+2) = 6
-    let roll = scripted_roll(1, 6, 0, vec![3], vec![3], 3, 3);
+    // 1d6+1, damage_mod=2, roll 3 → total=3+1=4, max(1, 4+2) = 6
+    let roll = scripted_roll(1, 6, 1, vec![3], vec![3], 4, 3);
     let mut handler = ScriptedHandler::with_responses(vec![roll]);
 
     let val = interp
         .evaluate_mechanic(
             &state,
             &mut handler,
-            "damage_from_spec",
-            vec![dice_spec(1, 6, 1), Value::Int(2)],
+            "damage_roll",
+            vec![
+                Value::DiceExpr(DiceExpr::single(1, 6, None, 1)),
+                Value::Int(2),
+            ],
         )
         .unwrap();
     assert_eq!(val, Value::Int(6));
 }
 
 #[test]
-fn damage_from_spec_minimum_is_one() {
+fn damage_roll_minimum_is_one() {
     let (program, result) = compile_osric_combat();
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let state = GameState::new();
 
-    // DiceSpec{1, 4, 0}, damage_mod=-10, roll 1 → max(1, 1+0+(-10)) = max(1, -9) = 1
+    // 1d4, damage_mod=-10, roll 1 → max(1, 1+(-10)) = max(1, -9) = 1
     let roll = scripted_roll(1, 4, 0, vec![1], vec![1], 1, 1);
     let mut handler = ScriptedHandler::with_responses(vec![roll]);
 
@@ -1140,8 +1133,11 @@ fn damage_from_spec_minimum_is_one() {
         .evaluate_mechanic(
             &state,
             &mut handler,
-            "damage_from_spec",
-            vec![dice_spec(1, 4, 0), Value::Int(-10)],
+            "damage_roll",
+            vec![
+                Value::DiceExpr(DiceExpr::single(1, 4, None, 0)),
+                Value::Int(-10),
+            ],
         )
         .unwrap();
     assert_eq!(val, Value::Int(1));
@@ -1180,7 +1176,7 @@ fn resolve_melee_attack_hit_deals_damage() {
 
     // attack_roll_aac: roll 15 → 15+4+0+0 = 19 >= 14 → Hit
     let atk_roll = scripted_roll(1, 20, 0, vec![15], vec![15], 15, 15);
-    // damage_from_spec: SwordLong damage_sm = 1d8, roll 6
+    // damage_roll: SwordLong damage_sm = 1d8, roll 6
     let dmg_roll = scripted_roll(1, 8, 0, vec![6], vec![6], 6, 6);
     let mut handler = ScriptedHandler::with_responses(vec![atk_roll, dmg_roll]);
 

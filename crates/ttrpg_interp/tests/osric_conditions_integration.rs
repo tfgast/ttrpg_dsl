@@ -122,22 +122,16 @@ fn feet(value: i64) -> Value {
     }
 }
 
-fn monster_attack(name: &str, count: i64, sides: i64, bonus: i64) -> Value {
+fn monster_attack(name: &str, count: u32, sides: u32, bonus: i64) -> Value {
     Value::Struct {
         name: Name::from("MonsterAttack"),
         fields: {
             let mut f = BTreeMap::new();
             f.insert(Name::from("name"), Value::Str(name.to_string()));
-            f.insert(Name::from("damage"), {
-                let mut d = BTreeMap::new();
-                d.insert(Name::from("count"), Value::Int(count));
-                d.insert(Name::from("sides"), Value::Int(sides));
-                d.insert(Name::from("bonus"), Value::Int(bonus));
-                Value::Struct {
-                    name: Name::from("DiceSpec"),
-                    fields: d,
-                }
-            });
+            f.insert(
+                Name::from("damage"),
+                Value::DiceExpr(DiceExpr::single(count, sides, None, bonus)),
+            );
             f
         },
     }

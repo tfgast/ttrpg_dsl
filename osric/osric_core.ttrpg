@@ -14,19 +14,6 @@ system "OSRIC" {
 
     unit Feet suffix ft { value: int }
 
-    // --- Dice specification (for stored damage values) ---
-    // Usage in combat: roll(dice(spec.count, spec.sides)).total + spec.bonus
-
-    struct DiceSpec {
-        count: int
-        sides: int
-        bonus: int
-    }
-
-    derive ds(count: int, sides: int, bonus: int) -> DiceSpec {
-        DiceSpec { count: count, sides: sides, bonus: bonus }
-    }
-
     // --- Ability scores (same six as all D&D) ---
 
     enum Ability { STR, DEX, CON, INT, WIS, CHA }
@@ -188,7 +175,7 @@ system "OSRIC" {
 
     struct MonsterAttack {
         name: string
-        damage: DiceSpec
+        damage: DiceExpr
     }
 
     // --- Character entity ---

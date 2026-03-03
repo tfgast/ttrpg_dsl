@@ -27,6 +27,7 @@ pub(crate) fn call_builtin(
         "conditions" => builtin_conditions(env, &args, span),
         "dice" => builtin_dice(&args, span),
         "multiply_dice" => builtin_multiply_dice(&args, span),
+        "max_value" => builtin_max_value(&args, span),
         "error" => builtin_error(&args, span),
         "roll" => builtin_roll(env, &args, span),
         "apply_condition" => builtin_apply_condition(env, &args, span),
@@ -291,6 +292,43 @@ fn builtin_multiply_dice(args: &[Value], span: Span) -> Result<Value, RuntimeErr
         )),
         _ => Err(RuntimeError::with_span(
             "multiply_dice() requires 2 arguments",
+            span,
+        )),
+    }
+}
+
+// ── max_value ─────────────────────────────────────────────────
+
+/// `max_value(expr: DiceExpr) -> Int`
+///
+/// Returns the maximum possible value of a dice expression.
+/// For each group, computes effective_count * sides, then adds the modifier.
+/// Accounts for keep/drop filters.
+fn builtin_max_value(args: &[Value], span: Span) -> Result<Value, RuntimeError> {
+    match args.first() {
+        Some(Value::DiceExpr(expr)) => {
+            let max_dice: i64 = expr
+                .groups
+                .iter()
+                .map(|g| {
+                    let effective = match g.filter {
+                        Some(ttrpg_ast::DiceFilter::KeepHighest(n))
+                        | Some(ttrpg_ast::DiceFilter::KeepLowest(n)) => n,
+                        Some(ttrpg_ast::DiceFilter::DropHighest(n))
+                        | Some(ttrpg_ast::DiceFilter::DropLowest(n)) => g.count.saturating_sub(n),
+                        None => g.count,
+                    };
+                    (effective as i64) * (g.sides as i64)
+                })
+                .sum();
+            Ok(Value::Int(max_dice + expr.modifier))
+        }
+        Some(other) => Err(RuntimeError::with_span(
+            format!("max_value() expects DiceExpr, got {}", type_name(other)),
+            span,
+        )),
+        None => Err(RuntimeError::with_span(
+            "max_value() requires 1 argument",
             span,
         )),
     }

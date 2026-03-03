@@ -195,11 +195,6 @@ fn osric_core_has_all_structs() {
         })
         .collect();
 
-    // DiceSpec: count, sides, bonus
-    assert!(
-        structs.contains(&("DiceSpec", 3)),
-        "missing DiceSpec struct"
-    );
     // SavingThrows: 5 fields
     assert!(
         structs.contains(&("SavingThrows", 5)),
@@ -226,7 +221,7 @@ fn osric_core_has_all_structs() {
         "missing MonsterAttack struct"
     );
 
-    assert_eq!(structs.len(), 6, "expected 6 structs, got {:?}", structs);
+    assert_eq!(structs.len(), 5, "expected 5 structs, got {:?}", structs);
 }
 
 // ── Unit type ──────────────────────────────────────────────────
@@ -438,103 +433,25 @@ fn monster_entity_fields() {
 // ── Derives ────────────────────────────────────────────────────
 
 #[test]
-fn osric_core_has_ds_derive() {
+fn osric_core_monster_attack_uses_dice_expr() {
+    // MonsterAttack.damage should be DiceExpr (not the old DiceSpec struct)
     let (program, _) = compile_osric_core();
     let decls = get_decls(&program);
-    let derives: Vec<_> = decls
+    let structs: Vec<_> = decls
         .iter()
         .filter_map(|d| match &d.node {
-            DeclKind::Derive(f) if !f.synthetic => Some((&*f.name, f.params.len())),
+            DeclKind::Struct(s) => Some(&*s.name),
             _ => None,
         })
         .collect();
 
     assert!(
-        derives.contains(&("ds", 3)),
-        "missing ds derive with 3 params"
+        structs.contains(&"MonsterAttack"),
+        "missing MonsterAttack struct"
     );
-}
-
-#[test]
-fn ds_derive_returns_dice_spec() {
-    let (program, result) = compile_osric_core();
-    let interp = Interpreter::new(&program, &result.env).unwrap();
-    let state = GameState::new();
-    let mut handler = NullHandler;
-
-    // ds(2, 6, 1) should produce DiceSpec { count: 2, sides: 6, bonus: 1 }
-    let val = interp
-        .evaluate_derive(
-            &state,
-            &mut handler,
-            "ds",
-            vec![Value::Int(2), Value::Int(6), Value::Int(1)],
-        )
-        .expect("ds derive failed");
-
-    match val {
-        Value::Struct { name, fields } => {
-            assert_eq!(&*name, "DiceSpec");
-            assert_eq!(fields.get("count"), Some(&Value::Int(2)));
-            assert_eq!(fields.get("sides"), Some(&Value::Int(6)));
-            assert_eq!(fields.get("bonus"), Some(&Value::Int(1)));
-        }
-        other => panic!("expected Struct, got: {:?}", other),
-    }
-}
-
-#[test]
-fn ds_derive_zero_bonus() {
-    let (program, result) = compile_osric_core();
-    let interp = Interpreter::new(&program, &result.env).unwrap();
-    let state = GameState::new();
-    let mut handler = NullHandler;
-
-    // ds(1, 8, 0) — a standard 1d8 with no bonus
-    let val = interp
-        .evaluate_derive(
-            &state,
-            &mut handler,
-            "ds",
-            vec![Value::Int(1), Value::Int(8), Value::Int(0)],
-        )
-        .expect("ds derive failed");
-
-    match val {
-        Value::Struct { name, fields } => {
-            assert_eq!(&*name, "DiceSpec");
-            assert_eq!(fields.get("count"), Some(&Value::Int(1)));
-            assert_eq!(fields.get("sides"), Some(&Value::Int(8)));
-            assert_eq!(fields.get("bonus"), Some(&Value::Int(0)));
-        }
-        other => panic!("expected Struct, got: {:?}", other),
-    }
-}
-
-#[test]
-fn ds_derive_negative_bonus() {
-    let (program, result) = compile_osric_core();
-    let interp = Interpreter::new(&program, &result.env).unwrap();
-    let state = GameState::new();
-    let mut handler = NullHandler;
-
-    // ds(1, 4, -1) — 1d4-1 (e.g. small creature damage)
-    let val = interp
-        .evaluate_derive(
-            &state,
-            &mut handler,
-            "ds",
-            vec![Value::Int(1), Value::Int(4), Value::Int(-1)],
-        )
-        .expect("ds derive failed");
-
-    match val {
-        Value::Struct { name, fields } => {
-            assert_eq!(&*name, "DiceSpec");
-            assert_eq!(fields.get("count"), Some(&Value::Int(1)));
-            assert_eq!(fields.get("sides"), Some(&Value::Int(4)));
-            assert_eq!(fields.get("bonus"), Some(&Value::Int(-1)));
-        }
-        other => panic!("expected Struct, got: {:?}", other),
-    }
+    // DiceSpec should no longer exist
+    assert!(
+        !structs.contains(&"DiceSpec"),
+        "DiceSpec should have been removed"
+    );
 }

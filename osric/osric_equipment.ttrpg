@@ -5,8 +5,7 @@
 // Melee weapons include speed factor (for segment initiative),
 // damage vs S/M and vs L+ targets, weight, and cost.
 //
-// Damage is stored as DiceSpec (count, sides, bonus) so the
-// combat system can construct dice via dice(count, sides).
+// Damage is stored as DiceExpr — the built-in dice type.
 //
 // Reference: OSRIC 3.0 Player Guide, Tables 1.4.2.3b–g
 // ============================================================
@@ -47,8 +46,8 @@ system "OSRIC Equipment" {
 
     struct MeleeWeaponDef {
         hands: int
-        damage_sm: DiceSpec
-        damage_l: DiceSpec
+        damage_sm: DiceExpr
+        damage_l: DiceExpr
         weight: int
         cost_gp: int
         speed_factor: int
@@ -57,33 +56,33 @@ system "OSRIC Equipment" {
 
     derive melee_weapon_def(weapon: MeleeWeapon) -> MeleeWeaponDef {
         match weapon {
-            BattleAxe => MeleeWeaponDef { hands: 2, damage_sm: ds(1,8,0), damage_l: ds(1,8,0), weight: 7, cost_gp: 5, speed_factor: 7, damage_type: Slashing },
-            HandAxe => MeleeWeaponDef { hands: 1, damage_sm: ds(1,6,0), damage_l: ds(1,4,0), weight: 5, cost_gp: 1, speed_factor: 4, damage_type: Slashing },
-            Club => MeleeWeaponDef { hands: 1, damage_sm: ds(1,6,0), damage_l: ds(1,3,0), weight: 3, cost_gp: 0, speed_factor: 4, damage_type: Blunt },
-            Dagger => MeleeWeaponDef { hands: 1, damage_sm: ds(1,4,0), damage_l: ds(1,3,0), weight: 1, cost_gp: 2, speed_factor: 2, damage_type: Piercing },
-            FistOrKick => MeleeWeaponDef { hands: 1, damage_sm: ds(1,2,0), damage_l: ds(1,2,0), weight: 0, cost_gp: 0, speed_factor: 1, damage_type: Blunt },
-            FlailHeavy => MeleeWeaponDef { hands: 2, damage_sm: ds(1,6,1), damage_l: ds(2,4,0), weight: 10, cost_gp: 3, speed_factor: 7, damage_type: Blunt },
-            FlailLight => MeleeWeaponDef { hands: 1, damage_sm: ds(1,4,1), damage_l: ds(1,4,1), weight: 4, cost_gp: 6, speed_factor: 6, damage_type: Blunt },
-            Halberd => MeleeWeaponDef { hands: 2, damage_sm: ds(1,10,0), damage_l: ds(2,6,0), weight: 18, cost_gp: 9, speed_factor: 9, damage_type: Slashing },
-            Javelin => MeleeWeaponDef { hands: 1, damage_sm: ds(1,6,0), damage_l: ds(1,4,0), weight: 2, cost_gp: 0, speed_factor: 8, damage_type: Piercing },
-            Lance => MeleeWeaponDef { hands: 1, damage_sm: ds(2,4,1), damage_l: ds(3,6,0), weight: 15, cost_gp: 6, speed_factor: 8, damage_type: Piercing },
-            MaceHeavy => MeleeWeaponDef { hands: 2, damage_sm: ds(1,6,1), damage_l: ds(1,6,0), weight: 10, cost_gp: 10, speed_factor: 7, damage_type: Blunt },
-            MaceLight => MeleeWeaponDef { hands: 1, damage_sm: ds(1,4,1), damage_l: ds(1,4,1), weight: 5, cost_gp: 4, speed_factor: 6, damage_type: Blunt },
-            MorningStar => MeleeWeaponDef { hands: 2, damage_sm: ds(2,4,0), damage_l: ds(1,6,1), weight: 12, cost_gp: 5, speed_factor: 7, damage_type: Blunt },
-            PickHeavy => MeleeWeaponDef { hands: 2, damage_sm: ds(1,6,1), damage_l: ds(2,4,0), weight: 1, cost_gp: 8, speed_factor: 7, damage_type: Piercing },
-            PickLight => MeleeWeaponDef { hands: 1, damage_sm: ds(1,4,1), damage_l: ds(1,4,0), weight: 4, cost_gp: 5, speed_factor: 5, damage_type: Piercing },
-            PoleArm => MeleeWeaponDef { hands: 2, damage_sm: ds(1,6,1), damage_l: ds(1,10,0), weight: 8, cost_gp: 6, speed_factor: 13, damage_type: Piercing },
-            Spear => MeleeWeaponDef { hands: 1, damage_sm: ds(1,6,0), damage_l: ds(1,8,0), weight: 5, cost_gp: 1, speed_factor: 7, damage_type: Piercing },
-            Staff => MeleeWeaponDef { hands: 2, damage_sm: ds(1,6,0), damage_l: ds(1,6,0), weight: 5, cost_gp: 0, speed_factor: 4, damage_type: Blunt },
-            SwordBastard => MeleeWeaponDef { hands: 2, damage_sm: ds(2,4,0), damage_l: ds(2,8,0), weight: 10, cost_gp: 25, speed_factor: 6, damage_type: Slashing },
-            SwordBroad => MeleeWeaponDef { hands: 2, damage_sm: ds(2,4,0), damage_l: ds(1,6,1), weight: 8, cost_gp: 15, speed_factor: 5, damage_type: Slashing },
-            SwordLong => MeleeWeaponDef { hands: 1, damage_sm: ds(1,8,0), damage_l: ds(1,12,0), weight: 7, cost_gp: 15, speed_factor: 5, damage_type: Slashing },
-            SwordScimitar => MeleeWeaponDef { hands: 1, damage_sm: ds(1,8,0), damage_l: ds(1,8,0), weight: 5, cost_gp: 15, speed_factor: 5, damage_type: Slashing },
-            SwordShort => MeleeWeaponDef { hands: 1, damage_sm: ds(1,6,0), damage_l: ds(1,8,0), weight: 3, cost_gp: 8, speed_factor: 3, damage_type: Slashing },
-            SwordTwoHanded => MeleeWeaponDef { hands: 2, damage_sm: ds(1,10,0), damage_l: ds(3,6,0), weight: 25, cost_gp: 30, speed_factor: 10, damage_type: Slashing },
-            Trident => MeleeWeaponDef { hands: 2, damage_sm: ds(1,6,1), damage_l: ds(3,4,0), weight: 5, cost_gp: 4, speed_factor: 6, damage_type: Piercing },
-            WarhammerHeavy => MeleeWeaponDef { hands: 2, damage_sm: ds(1,6,1), damage_l: ds(1,6,0), weight: 10, cost_gp: 7, speed_factor: 7, damage_type: Blunt },
-            WarhammerLight => MeleeWeaponDef { hands: 1, damage_sm: ds(1,4,1), damage_l: ds(1,4,0), weight: 5, cost_gp: 1, speed_factor: 6, damage_type: Blunt }
+            BattleAxe => MeleeWeaponDef { hands: 2, damage_sm: 1d8, damage_l: 1d8, weight: 7, cost_gp: 5, speed_factor: 7, damage_type: Slashing },
+            HandAxe => MeleeWeaponDef { hands: 1, damage_sm: 1d6, damage_l: 1d4, weight: 5, cost_gp: 1, speed_factor: 4, damage_type: Slashing },
+            Club => MeleeWeaponDef { hands: 1, damage_sm: 1d6, damage_l: 1d3, weight: 3, cost_gp: 0, speed_factor: 4, damage_type: Blunt },
+            Dagger => MeleeWeaponDef { hands: 1, damage_sm: 1d4, damage_l: 1d3, weight: 1, cost_gp: 2, speed_factor: 2, damage_type: Piercing },
+            FistOrKick => MeleeWeaponDef { hands: 1, damage_sm: 1d2, damage_l: 1d2, weight: 0, cost_gp: 0, speed_factor: 1, damage_type: Blunt },
+            FlailHeavy => MeleeWeaponDef { hands: 2, damage_sm: 1d6 + 1, damage_l: 2d4, weight: 10, cost_gp: 3, speed_factor: 7, damage_type: Blunt },
+            FlailLight => MeleeWeaponDef { hands: 1, damage_sm: 1d4 + 1, damage_l: 1d4 + 1, weight: 4, cost_gp: 6, speed_factor: 6, damage_type: Blunt },
+            Halberd => MeleeWeaponDef { hands: 2, damage_sm: 1d10, damage_l: 2d6, weight: 18, cost_gp: 9, speed_factor: 9, damage_type: Slashing },
+            Javelin => MeleeWeaponDef { hands: 1, damage_sm: 1d6, damage_l: 1d4, weight: 2, cost_gp: 0, speed_factor: 8, damage_type: Piercing },
+            Lance => MeleeWeaponDef { hands: 1, damage_sm: 2d4 + 1, damage_l: 3d6, weight: 15, cost_gp: 6, speed_factor: 8, damage_type: Piercing },
+            MaceHeavy => MeleeWeaponDef { hands: 2, damage_sm: 1d6 + 1, damage_l: 1d6, weight: 10, cost_gp: 10, speed_factor: 7, damage_type: Blunt },
+            MaceLight => MeleeWeaponDef { hands: 1, damage_sm: 1d4 + 1, damage_l: 1d4 + 1, weight: 5, cost_gp: 4, speed_factor: 6, damage_type: Blunt },
+            MorningStar => MeleeWeaponDef { hands: 2, damage_sm: 2d4, damage_l: 1d6 + 1, weight: 12, cost_gp: 5, speed_factor: 7, damage_type: Blunt },
+            PickHeavy => MeleeWeaponDef { hands: 2, damage_sm: 1d6 + 1, damage_l: 2d4, weight: 1, cost_gp: 8, speed_factor: 7, damage_type: Piercing },
+            PickLight => MeleeWeaponDef { hands: 1, damage_sm: 1d4 + 1, damage_l: 1d4, weight: 4, cost_gp: 5, speed_factor: 5, damage_type: Piercing },
+            PoleArm => MeleeWeaponDef { hands: 2, damage_sm: 1d6 + 1, damage_l: 1d10, weight: 8, cost_gp: 6, speed_factor: 13, damage_type: Piercing },
+            Spear => MeleeWeaponDef { hands: 1, damage_sm: 1d6, damage_l: 1d8, weight: 5, cost_gp: 1, speed_factor: 7, damage_type: Piercing },
+            Staff => MeleeWeaponDef { hands: 2, damage_sm: 1d6, damage_l: 1d6, weight: 5, cost_gp: 0, speed_factor: 4, damage_type: Blunt },
+            SwordBastard => MeleeWeaponDef { hands: 2, damage_sm: 2d4, damage_l: 2d8, weight: 10, cost_gp: 25, speed_factor: 6, damage_type: Slashing },
+            SwordBroad => MeleeWeaponDef { hands: 2, damage_sm: 2d4, damage_l: 1d6 + 1, weight: 8, cost_gp: 15, speed_factor: 5, damage_type: Slashing },
+            SwordLong => MeleeWeaponDef { hands: 1, damage_sm: 1d8, damage_l: 1d12, weight: 7, cost_gp: 15, speed_factor: 5, damage_type: Slashing },
+            SwordScimitar => MeleeWeaponDef { hands: 1, damage_sm: 1d8, damage_l: 1d8, weight: 5, cost_gp: 15, speed_factor: 5, damage_type: Slashing },
+            SwordShort => MeleeWeaponDef { hands: 1, damage_sm: 1d6, damage_l: 1d8, weight: 3, cost_gp: 8, speed_factor: 3, damage_type: Slashing },
+            SwordTwoHanded => MeleeWeaponDef { hands: 2, damage_sm: 1d10, damage_l: 3d6, weight: 25, cost_gp: 30, speed_factor: 10, damage_type: Slashing },
+            Trident => MeleeWeaponDef { hands: 2, damage_sm: 1d6 + 1, damage_l: 3d4, weight: 5, cost_gp: 4, speed_factor: 6, damage_type: Piercing },
+            WarhammerHeavy => MeleeWeaponDef { hands: 2, damage_sm: 1d6 + 1, damage_l: 1d6, weight: 10, cost_gp: 7, speed_factor: 7, damage_type: Blunt },
+            WarhammerLight => MeleeWeaponDef { hands: 1, damage_sm: 1d4 + 1, damage_l: 1d4, weight: 5, cost_gp: 1, speed_factor: 6, damage_type: Blunt }
         }
     }
 
@@ -110,28 +109,28 @@ system "OSRIC Equipment" {
         damage_type: DamageType
         range_increment: Feet
         rate_of_fire: int
-        damage_sm: DiceSpec
-        damage_l: DiceSpec
+        damage_sm: DiceExpr
+        damage_l: DiceExpr
         weight: int
         cost_gp: int
     }
 
     derive missile_weapon_def(weapon: MissileWeapon) -> MissileWeaponDef {
         match weapon {
-            BowLong => MissileWeaponDef { hands: 2, is_hurled: false, damage_type: Piercing, range_increment: 70ft, rate_of_fire: 2, damage_sm: ds(1,6,0), damage_l: ds(1,6,0), weight: 12, cost_gp: 60 },
-            BowShort => MissileWeaponDef { hands: 2, is_hurled: false, damage_type: Piercing, range_increment: 50ft, rate_of_fire: 2, damage_sm: ds(1,6,0), damage_l: ds(1,6,0), weight: 8, cost_gp: 15 },
-            CompositeBowLong => MissileWeaponDef { hands: 2, is_hurled: false, damage_type: Piercing, range_increment: 60ft, rate_of_fire: 2, damage_sm: ds(1,6,0), damage_l: ds(1,6,0), weight: 8, cost_gp: 100 },
-            CompositeBowShort => MissileWeaponDef { hands: 2, is_hurled: false, damage_type: Piercing, range_increment: 50ft, rate_of_fire: 2, damage_sm: ds(1,6,0), damage_l: ds(1,6,0), weight: 5, cost_gp: 75 },
-            CrossbowHeavy => MissileWeaponDef { hands: 2, is_hurled: false, damage_type: Piercing, range_increment: 80ft, rate_of_fire: 0, damage_sm: ds(1,6,1), damage_l: ds(1,6,1), weight: 12, cost_gp: 20 },
-            CrossbowLight => MissileWeaponDef { hands: 2, is_hurled: false, damage_type: Piercing, range_increment: 60ft, rate_of_fire: 1, damage_sm: ds(1,4,1), damage_l: ds(1,4,1), weight: 4, cost_gp: 12 },
-            DaggerThrown => MissileWeaponDef { hands: 1, is_hurled: true, damage_type: Piercing, range_increment: 10ft, rate_of_fire: 2, damage_sm: ds(1,4,0), damage_l: ds(1,3,0), weight: 1, cost_gp: 2 },
-            HandAxeThrown => MissileWeaponDef { hands: 1, is_hurled: true, damage_type: Slashing, range_increment: 10ft, rate_of_fire: 1, damage_sm: ds(1,6,0), damage_l: ds(1,4,0), weight: 5, cost_gp: 1 },
-            ClubThrown => MissileWeaponDef { hands: 1, is_hurled: true, damage_type: Blunt, range_increment: 10ft, rate_of_fire: 1, damage_sm: ds(1,6,0), damage_l: ds(1,3,0), weight: 3, cost_gp: 0 },
-            DartThrown => MissileWeaponDef { hands: 1, is_hurled: true, damage_type: Piercing, range_increment: 15ft, rate_of_fire: 3, damage_sm: ds(1,3,0), damage_l: ds(1,2,0), weight: 0, cost_gp: 0 },
-            JavelinThrown => MissileWeaponDef { hands: 1, is_hurled: true, damage_type: Piercing, range_increment: 20ft, rate_of_fire: 1, damage_sm: ds(1,6,0), damage_l: ds(1,4,0), weight: 2, cost_gp: 0 },
-            SpearThrown => MissileWeaponDef { hands: 1, is_hurled: true, damage_type: Piercing, range_increment: 15ft, rate_of_fire: 1, damage_sm: ds(1,6,0), damage_l: ds(1,8,0), weight: 5, cost_gp: 1 },
-            Sling => MissileWeaponDef { hands: 1, is_hurled: false, damage_type: Blunt, range_increment: 35ft, rate_of_fire: 1, damage_sm: ds(1,4,1), damage_l: ds(1,6,1), weight: 0, cost_gp: 0 },
-            WarhammerThrown => MissileWeaponDef { hands: 1, is_hurled: true, damage_type: Blunt, range_increment: 10ft, rate_of_fire: 1, damage_sm: ds(1,4,1), damage_l: ds(1,4,0), weight: 5, cost_gp: 1 }
+            BowLong => MissileWeaponDef { hands: 2, is_hurled: false, damage_type: Piercing, range_increment: 70ft, rate_of_fire: 2, damage_sm: 1d6, damage_l: 1d6, weight: 12, cost_gp: 60 },
+            BowShort => MissileWeaponDef { hands: 2, is_hurled: false, damage_type: Piercing, range_increment: 50ft, rate_of_fire: 2, damage_sm: 1d6, damage_l: 1d6, weight: 8, cost_gp: 15 },
+            CompositeBowLong => MissileWeaponDef { hands: 2, is_hurled: false, damage_type: Piercing, range_increment: 60ft, rate_of_fire: 2, damage_sm: 1d6, damage_l: 1d6, weight: 8, cost_gp: 100 },
+            CompositeBowShort => MissileWeaponDef { hands: 2, is_hurled: false, damage_type: Piercing, range_increment: 50ft, rate_of_fire: 2, damage_sm: 1d6, damage_l: 1d6, weight: 5, cost_gp: 75 },
+            CrossbowHeavy => MissileWeaponDef { hands: 2, is_hurled: false, damage_type: Piercing, range_increment: 80ft, rate_of_fire: 0, damage_sm: 1d6 + 1, damage_l: 1d6 + 1, weight: 12, cost_gp: 20 },
+            CrossbowLight => MissileWeaponDef { hands: 2, is_hurled: false, damage_type: Piercing, range_increment: 60ft, rate_of_fire: 1, damage_sm: 1d4 + 1, damage_l: 1d4 + 1, weight: 4, cost_gp: 12 },
+            DaggerThrown => MissileWeaponDef { hands: 1, is_hurled: true, damage_type: Piercing, range_increment: 10ft, rate_of_fire: 2, damage_sm: 1d4, damage_l: 1d3, weight: 1, cost_gp: 2 },
+            HandAxeThrown => MissileWeaponDef { hands: 1, is_hurled: true, damage_type: Slashing, range_increment: 10ft, rate_of_fire: 1, damage_sm: 1d6, damage_l: 1d4, weight: 5, cost_gp: 1 },
+            ClubThrown => MissileWeaponDef { hands: 1, is_hurled: true, damage_type: Blunt, range_increment: 10ft, rate_of_fire: 1, damage_sm: 1d6, damage_l: 1d3, weight: 3, cost_gp: 0 },
+            DartThrown => MissileWeaponDef { hands: 1, is_hurled: true, damage_type: Piercing, range_increment: 15ft, rate_of_fire: 3, damage_sm: 1d3, damage_l: 1d2, weight: 0, cost_gp: 0 },
+            JavelinThrown => MissileWeaponDef { hands: 1, is_hurled: true, damage_type: Piercing, range_increment: 20ft, rate_of_fire: 1, damage_sm: 1d6, damage_l: 1d4, weight: 2, cost_gp: 0 },
+            SpearThrown => MissileWeaponDef { hands: 1, is_hurled: true, damage_type: Piercing, range_increment: 15ft, rate_of_fire: 1, damage_sm: 1d6, damage_l: 1d8, weight: 5, cost_gp: 1 },
+            Sling => MissileWeaponDef { hands: 1, is_hurled: false, damage_type: Blunt, range_increment: 35ft, rate_of_fire: 1, damage_sm: 1d4 + 1, damage_l: 1d6 + 1, weight: 0, cost_gp: 0 },
+            WarhammerThrown => MissileWeaponDef { hands: 1, is_hurled: true, damage_type: Blunt, range_increment: 10ft, rate_of_fire: 1, damage_sm: 1d4 + 1, damage_l: 1d4, weight: 5, cost_gp: 1 }
         }
     }
 

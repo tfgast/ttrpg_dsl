@@ -185,25 +185,20 @@ fn get_feet(fields: &BTreeMap<String, Value>, key: &str) -> i64 {
     }
 }
 
-/// Extract DiceSpec as (count, sides, bonus).
-fn get_dice_spec(fields: &BTreeMap<String, Value>, key: &str) -> (i64, i64, i64) {
+/// Extract DiceExpr as (count, sides, modifier).
+fn get_dice_expr(fields: &BTreeMap<String, Value>, key: &str) -> (u32, u32, i64) {
     match fields.get(key) {
-        Some(Value::Struct { name, fields }) if &**name == "DiceSpec" => {
-            let count = match fields.get(&Name::from("count")) {
-                Some(Value::Int(n)) => *n,
-                other => panic!("expected int for DiceSpec.count in '{key}', got: {other:?}"),
-            };
-            let sides = match fields.get(&Name::from("sides")) {
-                Some(Value::Int(n)) => *n,
-                other => panic!("expected int for DiceSpec.sides in '{key}', got: {other:?}"),
-            };
-            let bonus = match fields.get(&Name::from("bonus")) {
-                Some(Value::Int(n)) => *n,
-                other => panic!("expected int for DiceSpec.bonus in '{key}', got: {other:?}"),
-            };
-            (count, sides, bonus)
+        Some(Value::DiceExpr(expr)) => {
+            assert_eq!(
+                expr.groups.len(),
+                1,
+                "expected single dice group for '{key}'"
+            );
+            let g = &expr.groups[0];
+            assert!(g.filter.is_none(), "unexpected filter on '{key}'");
+            (g.count, g.sides, expr.modifier)
         }
-        other => panic!("expected DiceSpec struct for '{key}', got: {other:?}"),
+        other => panic!("expected DiceExpr for '{key}', got: {other:?}"),
     }
 }
 
@@ -446,8 +441,8 @@ fn melee_weapon_def_long_sword() {
     );
 
     assert_eq!(get_int(&fields, "hands"), 1);
-    assert_eq!(get_dice_spec(&fields, "damage_sm"), (1, 8, 0));
-    assert_eq!(get_dice_spec(&fields, "damage_l"), (1, 12, 0));
+    assert_eq!(get_dice_expr(&fields, "damage_sm"), (1, 8, 0));
+    assert_eq!(get_dice_expr(&fields, "damage_l"), (1, 12, 0));
     assert_eq!(get_int(&fields, "weight"), 7);
     assert_eq!(get_int(&fields, "cost_gp"), 15);
     assert_eq!(get_int(&fields, "speed_factor"), 5);
@@ -471,8 +466,8 @@ fn melee_weapon_def_dagger() {
     );
 
     assert_eq!(get_int(&fields, "hands"), 1);
-    assert_eq!(get_dice_spec(&fields, "damage_sm"), (1, 4, 0));
-    assert_eq!(get_dice_spec(&fields, "damage_l"), (1, 3, 0));
+    assert_eq!(get_dice_expr(&fields, "damage_sm"), (1, 4, 0));
+    assert_eq!(get_dice_expr(&fields, "damage_l"), (1, 3, 0));
     assert_eq!(get_int(&fields, "weight"), 1);
     assert_eq!(get_int(&fields, "cost_gp"), 2);
     assert_eq!(get_int(&fields, "speed_factor"), 2);
@@ -496,8 +491,8 @@ fn melee_weapon_def_halberd() {
     );
 
     assert_eq!(get_int(&fields, "hands"), 2);
-    assert_eq!(get_dice_spec(&fields, "damage_sm"), (1, 10, 0));
-    assert_eq!(get_dice_spec(&fields, "damage_l"), (2, 6, 0));
+    assert_eq!(get_dice_expr(&fields, "damage_sm"), (1, 10, 0));
+    assert_eq!(get_dice_expr(&fields, "damage_l"), (2, 6, 0));
     assert_eq!(get_int(&fields, "weight"), 18);
     assert_eq!(get_int(&fields, "cost_gp"), 9);
     assert_eq!(get_int(&fields, "speed_factor"), 9);
@@ -521,8 +516,8 @@ fn melee_weapon_def_fist_or_kick() {
     );
 
     assert_eq!(get_int(&fields, "hands"), 1);
-    assert_eq!(get_dice_spec(&fields, "damage_sm"), (1, 2, 0));
-    assert_eq!(get_dice_spec(&fields, "damage_l"), (1, 2, 0));
+    assert_eq!(get_dice_expr(&fields, "damage_sm"), (1, 2, 0));
+    assert_eq!(get_dice_expr(&fields, "damage_l"), (1, 2, 0));
     assert_eq!(get_int(&fields, "weight"), 0);
     assert_eq!(get_int(&fields, "cost_gp"), 0);
     assert_eq!(get_int(&fields, "speed_factor"), 1);
@@ -546,8 +541,8 @@ fn melee_weapon_def_two_handed_sword() {
     );
 
     assert_eq!(get_int(&fields, "hands"), 2);
-    assert_eq!(get_dice_spec(&fields, "damage_sm"), (1, 10, 0));
-    assert_eq!(get_dice_spec(&fields, "damage_l"), (3, 6, 0));
+    assert_eq!(get_dice_expr(&fields, "damage_sm"), (1, 10, 0));
+    assert_eq!(get_dice_expr(&fields, "damage_l"), (3, 6, 0));
     assert_eq!(get_int(&fields, "weight"), 25);
     assert_eq!(get_int(&fields, "cost_gp"), 30);
     assert_eq!(get_int(&fields, "speed_factor"), 10);
@@ -571,8 +566,8 @@ fn melee_weapon_def_flail_heavy_has_bonus_damage() {
     );
 
     // Heavy flail has bonus damage: 1d6+1 vs S/M, 2d4 vs L+
-    assert_eq!(get_dice_spec(&fields, "damage_sm"), (1, 6, 1));
-    assert_eq!(get_dice_spec(&fields, "damage_l"), (2, 4, 0));
+    assert_eq!(get_dice_expr(&fields, "damage_sm"), (1, 6, 1));
+    assert_eq!(get_dice_expr(&fields, "damage_l"), (2, 4, 0));
     assert_eq!(get_damage_type(&fields, "damage_type"), "Blunt");
 }
 
@@ -593,8 +588,8 @@ fn melee_weapon_def_lance() {
     );
 
     assert_eq!(get_int(&fields, "hands"), 1);
-    assert_eq!(get_dice_spec(&fields, "damage_sm"), (2, 4, 1));
-    assert_eq!(get_dice_spec(&fields, "damage_l"), (3, 6, 0));
+    assert_eq!(get_dice_expr(&fields, "damage_sm"), (2, 4, 1));
+    assert_eq!(get_dice_expr(&fields, "damage_l"), (3, 6, 0));
     assert_eq!(get_int(&fields, "speed_factor"), 8);
     assert_eq!(get_damage_type(&fields, "damage_type"), "Piercing");
 }
@@ -622,8 +617,8 @@ fn missile_weapon_def_long_bow() {
     assert_eq!(get_damage_type(&fields, "damage_type"), "Piercing");
     assert_eq!(get_feet(&fields, "range_increment"), 70);
     assert_eq!(get_int(&fields, "rate_of_fire"), 2);
-    assert_eq!(get_dice_spec(&fields, "damage_sm"), (1, 6, 0));
-    assert_eq!(get_dice_spec(&fields, "damage_l"), (1, 6, 0));
+    assert_eq!(get_dice_expr(&fields, "damage_sm"), (1, 6, 0));
+    assert_eq!(get_dice_expr(&fields, "damage_l"), (1, 6, 0));
     assert_eq!(get_int(&fields, "weight"), 12);
     assert_eq!(get_int(&fields, "cost_gp"), 60);
 }
@@ -649,8 +644,8 @@ fn missile_weapon_def_heavy_crossbow() {
     assert_eq!(get_feet(&fields, "range_increment"), 80);
     // Rate of fire 0 = every other round
     assert_eq!(get_int(&fields, "rate_of_fire"), 0);
-    assert_eq!(get_dice_spec(&fields, "damage_sm"), (1, 6, 1));
-    assert_eq!(get_dice_spec(&fields, "damage_l"), (1, 6, 1));
+    assert_eq!(get_dice_expr(&fields, "damage_sm"), (1, 6, 1));
+    assert_eq!(get_dice_expr(&fields, "damage_l"), (1, 6, 1));
 }
 
 #[test]
@@ -674,8 +669,8 @@ fn missile_weapon_def_dagger_thrown_is_hurled() {
     assert_eq!(get_damage_type(&fields, "damage_type"), "Piercing");
     assert_eq!(get_feet(&fields, "range_increment"), 10);
     assert_eq!(get_int(&fields, "rate_of_fire"), 2);
-    assert_eq!(get_dice_spec(&fields, "damage_sm"), (1, 4, 0));
-    assert_eq!(get_dice_spec(&fields, "damage_l"), (1, 3, 0));
+    assert_eq!(get_dice_expr(&fields, "damage_sm"), (1, 4, 0));
+    assert_eq!(get_dice_expr(&fields, "damage_l"), (1, 3, 0));
 }
 
 #[test]
@@ -699,8 +694,8 @@ fn missile_weapon_def_sling() {
     assert_eq!(get_bool(&fields, "is_hurled"), false);
     assert_eq!(get_damage_type(&fields, "damage_type"), "Blunt");
     assert_eq!(get_feet(&fields, "range_increment"), 35);
-    assert_eq!(get_dice_spec(&fields, "damage_sm"), (1, 4, 1));
-    assert_eq!(get_dice_spec(&fields, "damage_l"), (1, 6, 1));
+    assert_eq!(get_dice_expr(&fields, "damage_sm"), (1, 4, 1));
+    assert_eq!(get_dice_expr(&fields, "damage_l"), (1, 6, 1));
 }
 
 #[test]
