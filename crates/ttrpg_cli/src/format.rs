@@ -455,6 +455,16 @@ pub fn format_mechanics_filtered(env: &TypeEnv, system: Option<&str>) -> Vec<Str
     format_fns_by_kind(env, &[FnKind::Mechanic, FnKind::Derive], system)
 }
 
+/// Format all function block declarations from a TypeEnv for human-readable output.
+pub fn format_functions(env: &TypeEnv) -> Vec<String> {
+    format_functions_filtered(env, None)
+}
+
+/// Format function block declarations, optionally filtered by owning system name.
+pub fn format_functions_filtered(env: &TypeEnv, system: Option<&str>) -> Vec<String> {
+    format_fns_by_kind(env, &[FnKind::Function], system)
+}
+
 /// Format all reaction declarations from a TypeEnv for human-readable output.
 pub fn format_reactions(env: &TypeEnv) -> Vec<String> {
     format_reactions_filtered(env, None)

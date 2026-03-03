@@ -19,6 +19,7 @@ pub enum Command {
     Entity(String),
     Actions,
     Mechanics,
+    Functions,
     Conditions,
     Reactions,
     Hooks,
@@ -156,6 +157,7 @@ pub fn parse_command(line: &str) -> Option<Command> {
         }
         "actions" => Some(Command::Actions),
         "mechanics" | "derives" => Some(Command::Mechanics),
+        "functions" => Some(Command::Functions),
         "conditions" => Some(Command::Conditions),
         "reactions" => Some(Command::Reactions),
         "hooks" => Some(Command::Hooks),
@@ -573,6 +575,11 @@ mod tests {
     #[test]
     fn parse_derives_alias() {
         assert_eq!(parse_command("derives"), Some(Command::Mechanics));
+    }
+
+    #[test]
+    fn parse_functions() {
+        assert_eq!(parse_command("functions"), Some(Command::Functions));
     }
 
     #[test]

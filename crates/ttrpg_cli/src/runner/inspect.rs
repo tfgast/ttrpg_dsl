@@ -337,6 +337,16 @@ impl Runner {
         Ok(())
     }
 
+    pub(super) fn cmd_functions(&mut self) -> Result<(), CliError> {
+        let lines = crate::format::format_functions(&self.type_env);
+        if lines.is_empty() {
+            self.output.push("no functions".into());
+        } else {
+            self.output.extend(lines);
+        }
+        Ok(())
+    }
+
     pub(super) fn cmd_reactions(&mut self) -> Result<(), CliError> {
         let lines = crate::format::format_reactions(&self.type_env);
         if lines.is_empty() {

@@ -62,6 +62,7 @@ fn refresh_completions(runner: &Runner, ctx: &Arc<Mutex<CompletionContext>>) {
     c.action_names = runner.action_names();
     c.derive_names = runner.derive_names();
     c.mechanic_names = runner.mechanic_names();
+    c.function_names = runner.function_names();
     c.option_names = runner.option_names();
 
     // Populate handle→type, type→groups, type→fields, and (type,group)→fields maps

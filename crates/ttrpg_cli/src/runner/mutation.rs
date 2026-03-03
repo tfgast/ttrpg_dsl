@@ -530,18 +530,20 @@ impl Runner {
             }
         }
 
-        // Check that the derive or mechanic exists before evaluating args
+        // Check that the derive, mechanic, or function exists before evaluating args
         let is_derive;
         let is_mechanic;
+        let is_function;
         {
             let interp = Interpreter::new(&self.program, &self.type_env)
                 .map_err(|e| render_runtime_error(&e, &self.source_map))?;
             is_derive = interp.has_derive(fn_name);
             is_mechanic = interp.has_mechanic(fn_name);
+            is_function = interp.has_function(fn_name);
         }
-        if !is_derive && !is_mechanic {
+        if !is_derive && !is_mechanic && !is_function {
             return Err(CliError::Message(format!(
-                "undefined function '{fn_name}' (no derive or mechanic with that name)"
+                "undefined function '{fn_name}' (no derive, mechanic, or function with that name)"
             )));
         }
 
@@ -574,7 +576,7 @@ impl Runner {
             &self.unit_suffixes,
         );
 
-        // Dispatch to derive or mechanic based on structured check
+        // Dispatch to derive, mechanic, or function based on structured check
         let result = if is_derive {
             interp
                 .evaluate_derive(&state, &mut handler, fn_name, args)
@@ -584,9 +586,18 @@ impl Runner {
                     }
                     render_runtime_error(&e, &self.source_map)
                 })?
-        } else {
+        } else if is_mechanic {
             interp
                 .evaluate_mechanic(&state, &mut handler, fn_name, args)
+                .map_err(|e| {
+                    for line in handler.log.drain(..) {
+                        self.output.push(line);
+                    }
+                    render_runtime_error(&e, &self.source_map)
+                })?
+        } else {
+            interp
+                .evaluate_function(&state, &mut handler, fn_name, args)
                 .map_err(|e| {
                     for line in handler.log.drain(..) {
                         self.output.push(line);

@@ -109,11 +109,12 @@ const COMMANDS: &[CommandInfo] = &[
     CommandInfo {
         name: "call",
         syntax: "call <func>(args...)",
-        description: "Call a derive or mechanic",
-        detail: "Call a pure computation (derive) or dice-rolling function (mechanic).\n  Arguments are evaluated as expressions or handle names.",
+        description: "Call a derive, mechanic, or function",
+        detail: "Call a derive, mechanic, or function block.\n  Derives are pure computations, mechanics can roll dice,\n  and functions can roll dice and mutate state.\n  Arguments are evaluated as expressions or handle names.",
         examples: &[
             "call modifier(16)",
             "call attack_roll(5)",
+            "call heal_target(hero, 10)",
         ],
         category: "Execution",
     },
@@ -179,6 +180,14 @@ const COMMANDS: &[CommandInfo] = &[
         description: "List all derives and mechanics (alias: derives)",
         detail: "List all declared derives and mechanics with their signatures.",
         examples: &["mechanics", "derives"],
+        category: "Inspection",
+    },
+    CommandInfo {
+        name: "functions",
+        syntax: "functions",
+        description: "List all function blocks",
+        detail: "List all declared function blocks with their signatures.\n  Functions can roll dice and mutate state but have no receiver.",
+        examples: &["functions"],
         category: "Inspection",
     },
     CommandInfo {

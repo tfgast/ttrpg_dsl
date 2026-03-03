@@ -158,6 +158,16 @@ impl Runner {
             .collect()
     }
 
+    /// Returns all function block names (for tab completion).
+    pub fn function_names(&self) -> Vec<String> {
+        self.type_env
+            .functions
+            .values()
+            .filter(|fi| matches!(fi.kind, FnKind::Function))
+            .map(|fi| fi.name.to_string())
+            .collect()
+    }
+
     /// Returns all declared option names (for tab completion).
     pub fn option_names(&self) -> Vec<String> {
         self.type_env
@@ -242,6 +252,7 @@ impl Runner {
             Command::Entity(name) => self.cmd_entity(&name),
             Command::Actions => self.cmd_actions(),
             Command::Mechanics => self.cmd_mechanics(),
+            Command::Functions => self.cmd_functions(),
             Command::Conditions => self.cmd_conditions(),
             Command::Reactions => self.cmd_reactions(),
             Command::Hooks => self.cmd_hooks(),

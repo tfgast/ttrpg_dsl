@@ -329,6 +329,11 @@ impl<'p> Interpreter<'p> {
         self.program.mechanics.contains_key(name)
     }
 
+    /// Check whether a named function exists in the loaded program.
+    pub fn has_function(&self, name: &str) -> bool {
+        self.program.functions.contains_key(name)
+    }
+
     /// Resolve resource bounds for a field path on an entity.
     ///
     /// Returns `Some((min, max))` if the leaf field is a resource type,

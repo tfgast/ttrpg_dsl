@@ -28,6 +28,7 @@ const ALL_COMMANDS: &[&str] = &[
     "events",
     "reactions",
     "hooks",
+    "functions",
     "enable",
     "disable",
     "options",
@@ -88,6 +89,7 @@ pub struct CompletionContext {
     pub action_names: Vec<String>,
     pub derive_names: Vec<String>,
     pub mechanic_names: Vec<String>,
+    pub function_names: Vec<String>,
     /// Maps handle name → entity type name.
     pub handle_types: HashMap<String, String>,
     /// Maps entity type name → optional group names.
@@ -184,7 +186,7 @@ impl Completer for TtrpgCompleter {
                     .collect()
             }
             "call" => {
-                // After call: complete derive + mechanic names (only before '(')
+                // After call: complete derive + mechanic + function names (only before '(')
                 if rest.trim_start().contains('(') {
                     // Cursor is inside arguments — no function name completions
                     return Vec::new();
@@ -194,6 +196,7 @@ impl Completer for TtrpgCompleter {
                 let mut candidates: Vec<String> = Vec::new();
                 candidates.extend(ctx.derive_names.iter().cloned());
                 candidates.extend(ctx.mechanic_names.iter().cloned());
+                candidates.extend(ctx.function_names.iter().cloned());
                 prefix_matches_owned(&candidates, current)
                     .into_iter()
                     .map(|s| suggestion(s, Span::new(word_start, pos), false))
@@ -344,6 +347,7 @@ mod tests {
             action_names: vec!["Attack".into(), "Heal".into()],
             derive_names: vec!["modifier".into()],
             mechanic_names: vec!["add".into()],
+            function_names: vec!["heal_target".into()],
             handle_types: HashMap::new(),
             type_groups: HashMap::new(),
             group_fields: HashMap::new(),
