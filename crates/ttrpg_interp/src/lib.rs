@@ -223,6 +223,25 @@ impl<'p> Interpreter<'p> {
         call::evaluate_fn_with_values(&mut env, name, args, Span::dummy())
     }
 
+    /// Evaluate a named function with pre-evaluated arguments.
+    ///
+    /// Functions are pure computations with no receiver, no dice, and no
+    /// mutation. The modify pipeline (condition/option modifiers) still
+    /// runs automatically.
+    pub fn evaluate_function(
+        &self,
+        state: &dyn StateProvider,
+        handler: &mut dyn EffectHandler,
+        name: &str,
+        args: Vec<Value>,
+    ) -> Result<Value, RuntimeError> {
+        if !self.program.functions.contains_key(name) {
+            return Err(RuntimeError::new(format!("undefined function '{name}'")));
+        }
+        let mut env = Env::new(state, handler, self);
+        call::evaluate_fn_with_values(&mut env, name, args, Span::dummy())
+    }
+
     /// Evaluate a named derive or table with pre-evaluated arguments.
     ///
     /// Derives compute values from entity state. The modify pipeline
