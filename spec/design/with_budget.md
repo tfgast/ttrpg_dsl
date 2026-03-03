@@ -262,7 +262,7 @@ function resolve_turn(actor: Character) {
                     Disengage =>
                         actor.Disengage()                // cost { action }
                     BonusAttack(target) =>
-                        target.OffhandAttack(actor)      // cost { bonus_action }
+                        actor.OffhandAttack(target)      // cost { bonus_action }
                     MoveTo(dest) =>
                         actor.MoveTo(dest)               // cost { movement: distance(actor, dest) }
                 }
@@ -321,9 +321,8 @@ if self.at_ident("with_budget") {
 
 - Entity expression must resolve to an entity type
 - Budget field names validated against declared turn budget type (or cost tokens)
-- Budget field values must be `int`
 - Body checked in a `BlockKind` that `allows_mutation()` (same as function body)
-- `turn` field access within body returns `int`
+- `turn` field access allowed within body
 
 ### 5. `crates/ttrpg_interp/src/effect.rs` — New effects
 
