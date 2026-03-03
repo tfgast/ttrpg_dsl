@@ -104,7 +104,7 @@ pub(super) fn eval_binop(
     // e.g. `roll_result in list<RollResult>` compares structurally.
     match op {
         // Arithmetic — coerce
-        BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div => {
+        BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div | BinOp::Mod => {
             let lhs = coerce_roll_result(lhs);
             let rhs = coerce_roll_result(rhs);
             match op {
@@ -112,6 +112,7 @@ pub(super) fn eval_binop(
                 BinOp::Sub => eval_sub(&lhs, &rhs, env.interp.type_env, expr),
                 BinOp::Mul => eval_mul(&lhs, &rhs, env.interp.type_env, expr),
                 BinOp::Div => eval_div(&lhs, &rhs, env.interp.type_env, expr),
+                BinOp::Mod => eval_mod(&lhs, &rhs, expr),
                 _ => unreachable!(),
             }
         }
@@ -400,6 +401,51 @@ fn eval_div(
         }
         _ => Err(RuntimeError::with_span(
             format!("cannot divide {:?} by {:?}", type_name(lhs), type_name(rhs)),
+            expr.span,
+        )),
+    }
+}
+
+fn eval_mod(
+    lhs: &Value,
+    rhs: &Value,
+    expr: &Spanned<ExprKind>,
+) -> Result<Value, RuntimeError> {
+    match (lhs, rhs) {
+        (Value::Int(a), Value::Int(b)) => {
+            if *b == 0 {
+                Err(RuntimeError::with_span("modulo by zero", expr.span))
+            } else {
+                Ok(Value::Int(a % b))
+            }
+        }
+        (Value::Float(a), Value::Float(b)) => {
+            if *b == 0.0 {
+                Err(RuntimeError::with_span("modulo by zero", expr.span))
+            } else {
+                Ok(Value::Float(a % b))
+            }
+        }
+        (Value::Int(a), Value::Float(b)) => {
+            if *b == 0.0 {
+                Err(RuntimeError::with_span("modulo by zero", expr.span))
+            } else {
+                Ok(Value::Float(*a as f64 % b))
+            }
+        }
+        (Value::Float(a), Value::Int(b)) => {
+            if *b == 0 {
+                Err(RuntimeError::with_span("modulo by zero", expr.span))
+            } else {
+                Ok(Value::Float(a % *b as f64))
+            }
+        }
+        _ => Err(RuntimeError::with_span(
+            format!(
+                "cannot compute {:?} % {:?}",
+                type_name(lhs),
+                type_name(rhs)
+            ),
             expr.span,
         )),
     }

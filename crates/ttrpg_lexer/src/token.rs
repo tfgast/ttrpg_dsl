@@ -65,6 +65,7 @@ pub enum TokenKind {
     Minus,    // -
     Star,     // *
     Slash,    // /
+    Percent,  // %
     Bang,     // !
     Eq,       // =
     PlusEq,   // +=
@@ -97,6 +98,7 @@ impl TokenKind {
             | TokenKind::Minus
             | TokenKind::Star
             | TokenKind::Slash
+            | TokenKind::Percent
             | TokenKind::PipePipe
             | TokenKind::AmpAmp
             | TokenKind::EqEq

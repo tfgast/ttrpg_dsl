@@ -242,6 +242,7 @@ impl Checker<'_> {
             BinOp::Sub => self.check_sub(&lhs_ty, &rhs_ty, span),
             BinOp::Mul => self.check_mul(&lhs_ty, &rhs_ty, span),
             BinOp::Div => self.check_div(&lhs_ty, &rhs_ty, span),
+            BinOp::Mod => self.check_mod(&lhs_ty, &rhs_ty, span),
             BinOp::And | BinOp::Or => {
                 if lhs_ty != Ty::Bool {
                     self.error(
@@ -343,6 +344,25 @@ impl Checker<'_> {
             (Ty::UnitType(a), Ty::UnitType(b)) if a == b => Ty::Float,
             _ => {
                 self.error(format!("cannot divide {lhs} by {rhs}"), span);
+                Ty::Error
+            }
+        }
+    }
+
+    fn check_mod(&mut self, lhs: &Ty, rhs: &Ty, span: ttrpg_ast::Span) -> Ty {
+        if *lhs == Ty::DiceExpr || *rhs == Ty::DiceExpr {
+            self.error(
+                "cannot use modulo with DiceExpr; roll first".to_string(),
+                span,
+            );
+            return Ty::Error;
+        }
+
+        match (lhs, rhs) {
+            (l, r) if l.is_int_like() && r.is_int_like() => Ty::Int,
+            (Ty::Float, t) | (t, Ty::Float) if t.is_numeric() => Ty::Float,
+            _ => {
+                self.error(format!("cannot compute {lhs} % {rhs}"), span);
                 Ty::Error
             }
         }

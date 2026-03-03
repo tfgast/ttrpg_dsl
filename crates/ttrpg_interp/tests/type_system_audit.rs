@@ -291,6 +291,62 @@ system "test" {
     );
 }
 
+// ── modulo (%) ───────────────────────────────────────────────
+
+#[test]
+fn arith_int_mod() {
+    let val = eval_derive(
+        r#"
+system "test" {
+    derive f(a: int, b: int) -> int { a % b }
+}
+"#,
+        "f",
+        vec![Value::Int(10), Value::Int(3)],
+    );
+    assert_eq!(val, Value::Int(1));
+}
+
+#[test]
+fn arith_int_mod_negative() {
+    // Truncated remainder: -7 % 3 == -1 (Rust semantics)
+    let val = eval_derive(
+        r#"
+system "test" {
+    derive f(a: int, b: int) -> int { a % b }
+}
+"#,
+        "f",
+        vec![Value::Int(-7), Value::Int(3)],
+    );
+    assert_eq!(val, Value::Int(-1));
+}
+
+#[test]
+fn arith_int_mod_return_as_float_error() {
+    // int % int → int, so returning as float should be a type error
+    expect_checker_errors(
+        r#"
+system "test" {
+    derive f(x: int) -> float { x % 2 }
+}
+"#,
+        &["function body has type int, expected return type float"],
+    );
+}
+
+#[test]
+fn arith_dice_mod_error() {
+    expect_checker_errors(
+        r#"
+system "test" {
+    derive f(a: int) -> int { 1d20 % a }
+}
+"#,
+        &["cannot use modulo with DiceExpr"],
+    );
+}
+
 // ── float arithmetic (numeric promotion) ─────────────────────
 
 #[test]

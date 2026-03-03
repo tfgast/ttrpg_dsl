@@ -517,6 +517,43 @@ fn eval_div_by_zero_int() {
     assert!(err.message.contains("division by zero"));
 }
 
+// ── Modulo tests ──────────────────────────────────────────
+
+#[test]
+fn eval_mod_basic() {
+    let program = empty_program();
+    let type_env = empty_type_env();
+    let interp = Interpreter::new(&program, &type_env).unwrap();
+    let state = TestState::new();
+    let mut handler = ScriptedHandler::new();
+    let mut env = make_env(&state, &mut handler, &interp);
+
+    let expr = spanned(ExprKind::BinOp {
+        op: BinOp::Mod,
+        lhs: Box::new(spanned(ExprKind::IntLit(10))),
+        rhs: Box::new(spanned(ExprKind::IntLit(3))),
+    });
+    assert_eq!(eval_expr(&mut env, &expr).unwrap(), Value::Int(1));
+}
+
+#[test]
+fn eval_mod_by_zero() {
+    let program = empty_program();
+    let type_env = empty_type_env();
+    let interp = Interpreter::new(&program, &type_env).unwrap();
+    let state = TestState::new();
+    let mut handler = ScriptedHandler::new();
+    let mut env = make_env(&state, &mut handler, &interp);
+
+    let expr = spanned(ExprKind::BinOp {
+        op: BinOp::Mod,
+        lhs: Box::new(spanned(ExprKind::IntLit(10))),
+        rhs: Box::new(spanned(ExprKind::IntLit(0))),
+    });
+    let err = eval_expr(&mut env, &expr).unwrap_err();
+    assert!(err.message.contains("modulo by zero"));
+}
+
 // ── Comparison tests ───────────────────────────────────────
 
 #[test]

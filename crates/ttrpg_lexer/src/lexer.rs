@@ -333,6 +333,7 @@ impl<'a> RawLexer<'a> {
 
             '*' => Token::new(TokenKind::Star, self.span(start, self.cursor.pos())),
             '/' => Token::new(TokenKind::Slash, self.span(start, self.cursor.pos())),
+            '%' => Token::new(TokenKind::Percent, self.span(start, self.cursor.pos())),
 
             '!' => {
                 if self.cursor.peek() == Some('=') {
