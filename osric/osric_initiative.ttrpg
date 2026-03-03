@@ -331,11 +331,7 @@ system "OSRIC Initiative" {
     // ========================================================
 
     condition CastingSpell on bearer: Character {
-        modify resolve_melee_attack(attacker: bearer) {
-            result.outcome = AttackOutcome.Miss
-            result.damage = 0
-        }
-        modify resolve_missile_attack(attacker: bearer) {
+        modify [#attack_resolution](attacker: bearer) {
             result.outcome = AttackOutcome.Miss
             result.damage = 0
         }

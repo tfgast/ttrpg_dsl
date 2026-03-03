@@ -9773,7 +9773,9 @@ fn test_selector_empty_match_set() {
 }
 
 #[test]
-fn test_selector_binding_mismatch() {
+fn test_selector_binding_narrows_match_set() {
+    // When a binding param doesn't exist on some matched functions,
+    // those functions are silently excluded rather than causing an error.
     let source = r#"system "Test" {
     tag attack
     struct AttackResult { hit: bool }
@@ -9789,7 +9791,52 @@ fn test_selector_binding_mismatch() {
         }
     }
 }"#;
-    expect_errors(source, &["does not exist on all matched functions"]);
+    // strike_b is excluded (no `target` param), only strike_a matches
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_selector_binding_type_narrows_match_set() {
+    // When a binding value has a known type that's incompatible with some
+    // matched functions' param types, those functions are silently excluded.
+    let source = r#"system "Test" {
+    tag attack_resolution
+    struct AttackResult { hit: bool, damage: int }
+    entity Character { hp: int }
+    entity Monster { hit_dice: int }
+    mechanic resolve_character_attack(attacker: Character, target: Character) -> AttackResult #attack_resolution {
+        AttackResult { hit: true, damage: 5 }
+    }
+    mechanic resolve_monster_attack(attacker: Monster, target: Character) -> AttackResult #attack_resolution {
+        AttackResult { hit: true, damage: 3 }
+    }
+    condition Frightened on bearer: Character {
+        modify [#attack_resolution](attacker: bearer) {
+            result.damage = 0
+        }
+    }
+}"#;
+    // resolve_monster_attack is excluded (attacker: Monster != Character)
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_selector_binding_narrows_to_empty_warns() {
+    // If all functions are narrowed out, we get a warning (not error)
+    let source = r#"system "Test" {
+    tag attack
+    struct AttackResult { hit: bool }
+    entity Character { hp: int }
+    entity Monster { hit_dice: int }
+    mechanic monster_strike(attacker: Monster) -> AttackResult #attack {
+        AttackResult { hit: true }
+    }
+    condition Prone on bearer: Character {
+        modify [#attack](attacker: bearer) {
+        }
+    }
+}"#;
+    expect_no_errors(source);
 }
 
 #[test]

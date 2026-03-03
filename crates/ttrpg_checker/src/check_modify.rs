@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use ttrpg_ast::ast::*;
 use ttrpg_ast::Name;
@@ -421,46 +421,103 @@ impl Checker<'_> {
             return;
         }
 
+        // Narrow match set based on bindings: filter out functions where binding
+        // parameters don't exist or have incompatible types with the binding value.
+        // This allows e.g. `[#attack](attacker: bearer)` where bearer: Character
+        // to silently exclude functions with `attacker: Monster`.
+        {
+            // Build a type map from the binding context (receiver + condition params)
+            let mut context_types: HashMap<&Name, Ty> = HashMap::new();
+            if let Some((name, type_expr, _with)) = receiver {
+                let ty = self.env.resolve_type(type_expr);
+                if !ty.is_error() {
+                    context_types.insert(name, ty);
+                }
+            }
+            for p in condition_params {
+                let ty = self.env.resolve_type(&p.ty);
+                if !ty.is_error() {
+                    context_types.insert(&p.name, ty);
+                }
+            }
+
+            for binding in &clause.bindings {
+                // Try to determine the expected type from the binding value
+                let expected_ty = binding.value.as_ref().and_then(|value| {
+                    if let ExprKind::Ident(ref name) = value.node {
+                        context_types.get(name).cloned()
+                    } else {
+                        None
+                    }
+                });
+
+                match expected_ty {
+                    Some(ref expected) => {
+                        // Narrow: keep only functions where the binding param
+                        // exists and has a compatible type
+                        match_set.retain(|fn_name| {
+                            if let Some(fi) = self.env.functions.get(fn_name) {
+                                fi.params.iter().any(|p| {
+                                    p.name == binding.name
+                                        && self.types_compatible(&p.ty, expected)
+                                })
+                            } else {
+                                false
+                            }
+                        });
+                    }
+                    None => {
+                        // No expected type known — filter out functions that lack
+                        // the param, then check type consistency across the rest
+                        match_set.retain(|fn_name| {
+                            if let Some(fi) = self.env.functions.get(fn_name) {
+                                fi.params.iter().any(|p| p.name == binding.name)
+                            } else {
+                                false
+                            }
+                        });
+                        let mut binding_ty: Option<Ty> = None;
+                        for fn_name in &match_set {
+                            if let Some(fi) = self.env.functions.get(fn_name) {
+                                if let Some(p) =
+                                    fi.params.iter().find(|p| p.name == binding.name)
+                                {
+                                    match &binding_ty {
+                                        None => binding_ty = Some(p.ty.clone()),
+                                        Some(existing) => {
+                                            if !self.types_compatible(existing, &p.ty) {
+                                                self.error(
+                                                    format!(
+                                                        "selector binding `{}` has inconsistent types across matched functions: {} vs {}",
+                                                        binding.name, existing, p.ty
+                                                    ),
+                                                    binding.span,
+                                                );
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            if match_set.is_empty() {
+                self.diagnostics
+                    .push(ttrpg_ast::diagnostic::Diagnostic::warning(
+                        "selector matches no functions after binding narrowing",
+                        clause.span,
+                    ));
+                return;
+            }
+        }
+
         // Build a synthetic FnInfo representing the intersection of all matched functions
         let matched_fns: Vec<&FnInfo> = match_set
             .iter()
             .filter_map(|n| self.env.functions.get(n))
             .collect();
-
-        // Validate bindings: for each binding, every fn must have the param with identical type
-        for binding in &clause.bindings {
-            let mut binding_ty: Option<Ty> = None;
-            let mut all_have_param = true;
-            for fi in &matched_fns {
-                if let Some(p) = fi.params.iter().find(|p| p.name == binding.name) {
-                    match &binding_ty {
-                        None => binding_ty = Some(p.ty.clone()),
-                        Some(existing) => {
-                            if !self.types_compatible(existing, &p.ty) {
-                                self.error(
-                                    format!(
-                                        "selector binding `{}` has inconsistent types across matched functions: {} vs {}",
-                                        binding.name, existing, p.ty
-                                    ),
-                                    binding.span,
-                                );
-                            }
-                        }
-                    }
-                } else {
-                    all_have_param = false;
-                }
-            }
-            if !all_have_param {
-                self.error(
-                    format!(
-                        "selector binding `{}` does not exist on all matched functions",
-                        binding.name
-                    ),
-                    binding.span,
-                );
-            }
-        }
 
         // Check if body references `result`
         let body_uses_result = clause.body.iter().any(Self::stmt_uses_result);

@@ -156,11 +156,16 @@ set for each selector-targeted modify clause (e.g., "selector matches: `attack_r
 The modify clause body is checked against **every** function in M. This is the
 key invariant: no partial application, no silent skips.
 
-**Bindings** — for each binding in the modify header (e.g. `attacker: bearer`):
-- Every function in M must have a parameter named `attacker`
-- That parameter's type must be identical across all functions in M
-- If any function lacks the parameter, or types disagree: compile error with
-  per-function diagnostics
+**Bindings** — for each binding in the modify header (e.g. `attacker: bearer`),
+the match set M is **narrowed** rather than errored:
+- Functions that lack the binding parameter are silently removed from M
+- If the binding value has a determinable type (e.g. `bearer` resolves to
+  `Character` from the condition receiver), functions whose parameter type is
+  incompatible are silently removed from M
+- If the binding value's type cannot be determined (rare), the parameter type
+  must be identical across all remaining functions in M; inconsistency is a
+  compile error
+- If narrowing empties M entirely, the checker emits a warning
 
 **Return type rule** — whether return types must agree depends on whether the
 body references `result`:

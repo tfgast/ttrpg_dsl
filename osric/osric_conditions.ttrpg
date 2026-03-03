@@ -119,11 +119,7 @@ system "OSRIC Conditions" {
         modify resolve_melee_attack(target: bearer) {
             attack_mod = attack_mod + 4
         }
-        modify resolve_melee_attack(attacker: bearer) {
-            result.outcome = AttackOutcome.Miss
-            result.damage = 0
-        }
-        modify resolve_missile_attack(attacker: bearer) {
+        modify [#attack_resolution](attacker: bearer) {
             result.outcome = AttackOutcome.Miss
             result.damage = 0
         }
@@ -139,11 +135,7 @@ system "OSRIC Conditions" {
     // ========================================================
 
     condition Surprised on bearer: Character {
-        modify resolve_melee_attack(attacker: bearer) {
-            result.outcome = AttackOutcome.Miss
-            result.damage = 0
-        }
-        modify resolve_missile_attack(attacker: bearer) {
+        modify [#attack_resolution](attacker: bearer) {
             result.outcome = AttackOutcome.Miss
             result.damage = 0
         }
