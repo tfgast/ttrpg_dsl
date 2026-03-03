@@ -311,6 +311,23 @@ fn pass_1b(
                     collect_entity(e, env, diagnostics);
                 }
             }
+            DeclKind::Function(f) => {
+                if check_reserved_prefix(&f.name, decl.span, diagnostics) {
+                    continue;
+                }
+                collect_fn(
+                    &f.name,
+                    FnKind::Derive,
+                    &f.params,
+                    Some(&f.return_type),
+                    None,
+                    &f.tags,
+                    f.synthetic,
+                    env,
+                    diagnostics,
+                    decl.span,
+                );
+            }
             DeclKind::Derive(f) => {
                 if !f.synthetic && check_reserved_prefix(&f.name, decl.span, diagnostics) {
                     continue;

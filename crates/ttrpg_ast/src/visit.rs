@@ -96,7 +96,9 @@ impl VisitSpansMut for DeclKind {
             DeclKind::Enum(e) => e.visit_spans_mut(f),
             DeclKind::Struct(s) => s.visit_spans_mut(f),
             DeclKind::Entity(e) => e.visit_spans_mut(f),
-            DeclKind::Derive(d) | DeclKind::Mechanic(d) => d.visit_spans_mut(f),
+            DeclKind::Function(d) | DeclKind::Derive(d) | DeclKind::Mechanic(d) => {
+                d.visit_spans_mut(f)
+            }
             DeclKind::Action(a) => a.visit_spans_mut(f),
             DeclKind::Reaction(r) => r.visit_spans_mut(f),
             DeclKind::Hook(h) => h.visit_spans_mut(f),

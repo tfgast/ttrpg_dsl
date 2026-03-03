@@ -302,7 +302,7 @@ impl DeclOwnership {
             DeclKind::Entity(e) => {
                 names.push((Namespace::Type, e.name.clone()));
             }
-            DeclKind::Derive(f) | DeclKind::Mechanic(f) => {
+            DeclKind::Function(f) | DeclKind::Derive(f) | DeclKind::Mechanic(f) => {
                 names.push((Namespace::Function, f.name.clone()));
             }
             DeclKind::Action(a) => {
@@ -481,7 +481,7 @@ fn desugar_decl_types(
                 }
             }
         }
-        DeclKind::Derive(f) | DeclKind::Mechanic(f) => {
+        DeclKind::Function(f) | DeclKind::Derive(f) | DeclKind::Mechanic(f) => {
             desugar_type_expr(
                 &mut f.return_type,
                 current_system,

@@ -22,6 +22,7 @@ pub struct Program {
     pub option_order: Vec<Name>,
     pub hooks: FxHashMap<Name, HookDecl>,
     pub hook_order: Vec<Name>,
+    pub functions: FxHashMap<Name, FnDecl>,
     pub tables: FxHashMap<Name, TableDecl>,
     pub tags: FxHashSet<Name>,
     pub next_modify_clause_id: u32,
@@ -33,6 +34,7 @@ impl Program {
     /// Must be called after any mutation of `items` (e.g. after `lower_moves`).
     pub fn build_index(&mut self) {
         self.actions.clear();
+        self.functions.clear();
         self.derives.clear();
         self.mechanics.clear();
         self.reactions.clear();
@@ -58,6 +60,9 @@ impl Program {
                         }
                         DeclKind::Action(a) => {
                             self.actions.insert(a.name.clone(), a.clone());
+                        }
+                        DeclKind::Function(f) => {
+                            self.functions.insert(f.name.clone(), f.clone());
                         }
                         DeclKind::Derive(f) => {
                             self.derives.insert(f.name.clone(), f.clone());
@@ -143,6 +148,7 @@ pub enum DeclKind {
     Enum(EnumDecl),
     Struct(StructDecl),
     Entity(EntityDecl),
+    Function(FnDecl),
     Derive(FnDecl),
     Mechanic(FnDecl),
     Action(ActionDecl),

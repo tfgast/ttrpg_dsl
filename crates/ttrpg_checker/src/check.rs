@@ -279,6 +279,7 @@ impl<'a> Checker<'a> {
     fn check_decl(&mut self, decl: &ttrpg_ast::Spanned<DeclKind>) {
         match &decl.node {
             DeclKind::Group(g) => self.check_group_defaults(g),
+            DeclKind::Function(f) => self.check_derive(f),
             DeclKind::Derive(f) => self.check_derive(f),
             DeclKind::Mechanic(f) => self.check_mechanic(f),
             DeclKind::Action(a) => self.check_action(a),
