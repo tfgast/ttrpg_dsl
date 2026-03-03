@@ -653,6 +653,10 @@ hook Regenerate on creature: Character (
 //       // wraps a value in an option (the constructor for non-none options)
 //   conditions(entity: entity) -> list<ActiveCondition>
 //       // returns all active conditions on the entity, ordered oldest-first
+//   game_time() -> int
+//       // returns the abstract game time counter (starts at 0)
+//       // each TTRPG system defines what a "tick" means
+//       // (e.g., OSRIC: 1 tick = 1 segment, 10 segments per round)
 //
 // Collection builtins (available everywhere, also as methods):
 //   len(xs: list<T> | set<T> | map<K, V>) -> int
@@ -713,6 +717,15 @@ hook Regenerate on creature: Character (
 //         remove_condition(target, Prone)          // by condition name
 //         let c = conditions(target)[0]
 //         remove_condition(target, c)              // by instance id
+//
+// Available in function blocks only (game time progression):
+//   advance_time(amount: int) -> unit
+//       Advances the abstract game time counter by `amount` ticks.
+//       Amount must be a positive integer.
+//       Checker rejects calls outside function blocks. Runtime also
+//       rejects if an invocation is active (function called by an action).
+//       Typical usage: once per time-step in a round-resolution function
+//       (e.g., `advance_time(1)` per segment in a combat loop).
 //
 // Available in action, reaction, hook (invocation tracking):
 //   invocation() -> Invocation
