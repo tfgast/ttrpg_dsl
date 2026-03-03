@@ -6,6 +6,10 @@
 // and resolve_missile_attack is the primary hook for combat
 // conditions that make targets easier/harder to hit.
 //
+// All conditions use `entity` as their bearer type so they
+// apply to both Characters and Monsters. Selector bindings
+// narrow to compatible attack functions at check time.
+//
 // Concealment and cover are modeled as parameterised conditions
 // on the defender, modifying incoming attacks.
 //
@@ -26,7 +30,7 @@ system "OSRIC Conditions" {
     //  being easier to hit due to position.
     // ========================================================
 
-    condition Prone on bearer: Character {
+    condition Prone on bearer: entity {
         modify [#attack_resolution](target: bearer) {
             attack_mod = attack_mod + 4
         }
@@ -40,7 +44,7 @@ system "OSRIC Conditions" {
     //  Mechanically identical to Prone for attack purposes.
     // ========================================================
 
-    condition Stunned on bearer: Character {
+    condition Stunned on bearer: entity {
         modify [#attack_resolution](target: bearer) {
             attack_mod = attack_mod + 4
         }
@@ -53,7 +57,7 @@ system "OSRIC Conditions" {
     //  Attacked at +2. Less severe than Prone/Stunned.
     // ========================================================
 
-    condition Staggered on bearer: Character {
+    condition Staggered on bearer: entity {
         modify [#attack_resolution](target: bearer) {
             attack_mod = attack_mod + 2
         }
@@ -68,7 +72,7 @@ system "OSRIC Conditions" {
     //  Bearer gets +4 on all saving throws.
     // ========================================================
 
-    condition Invisible on bearer: Character {
+    condition Invisible on bearer: entity {
         modify [#attack_resolution](target: bearer) {
             attack_mod = attack_mod - 4
         }
@@ -84,7 +88,7 @@ system "OSRIC Conditions" {
     //  since we can't override the d20 roll itself.
     // ========================================================
 
-    condition Paralyzed on bearer: Character {
+    condition Paralyzed on bearer: entity {
         modify resolve_melee_attack(target: bearer) {
             attack_mod = attack_mod + 20
         }
@@ -99,7 +103,7 @@ system "OSRIC Conditions" {
     //  Magical sleep: depends on spell specifics.
     // ========================================================
 
-    condition Sleeping on bearer: Character {
+    condition Sleeping on bearer: entity {
         modify resolve_melee_attack(target: bearer) {
             attack_mod = attack_mod + 20
         }
@@ -115,7 +119,7 @@ system "OSRIC Conditions" {
     //  immediate attack at +4 even if already attacked.
     // ========================================================
 
-    condition Fleeing on bearer: Character {
+    condition Fleeing on bearer: entity {
         modify resolve_melee_attack(target: bearer) {
             attack_mod = attack_mod + 4
         }
@@ -134,7 +138,7 @@ system "OSRIC Conditions" {
     //  Duration: 1-2 segments (tracked by initiative system).
     // ========================================================
 
-    condition Surprised on bearer: Character {
+    condition Surprised on bearer: entity {
         modify [#attack_resolution](attacker: bearer) {
             result.outcome = AttackOutcome.Miss
             result.damage = 0
@@ -149,7 +153,7 @@ system "OSRIC Conditions" {
     //  and DEX bonuses. Per 1.6.3.3.
     // ========================================================
 
-    condition RearAttacked on bearer: Character {
+    condition RearAttacked on bearer: entity {
         modify resolve_melee_attack(target: bearer) {
             attack_mod = attack_mod + 2
         }
@@ -165,7 +169,7 @@ system "OSRIC Conditions" {
     //  Per 1.6.3.1: 1/4 = -1, 1/2 = -2, 3/4 = -3, total = -4.
     // ========================================================
 
-    condition Concealed(level: int) on bearer: Character {
+    condition Concealed(level: int) on bearer: entity {
         modify [#attack_resolution](target: bearer) {
             attack_mod = attack_mod - level
         }
@@ -181,7 +185,7 @@ system "OSRIC Conditions" {
     //  Per 1.6.3.2: 25% = -2, 50% = -4, 75% = -7, 90% = -10.
     // ========================================================
 
-    condition Cover(penalty: int) on bearer: Character {
+    condition Cover(penalty: int) on bearer: entity {
         modify [#attack_resolution](target: bearer) {
             attack_mod = attack_mod - penalty
         }
