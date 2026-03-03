@@ -59,7 +59,7 @@
 //     table  unit  suffix
 //     requires  resolve  modify  suppress  trigger  roll  on  returns
 //     when  enabled  hint  suggest  description  default  result
-//     with  has  include  as  grant  revoke  emit  free  ordered
+//     with  with_budget  has  include  as  grant  revoke  emit  free  ordered
 //
 // Soft keywords CAN be used as field names, variable names, and
 // enum variants. The parser distinguishes based on position:
@@ -544,7 +544,7 @@ block           = "{" stmt* "}"
 //   - action/reaction resolve: block value is discarded (no constraint).
 
 stmt            = let_stmt | assign_stmt | grant_stmt | revoke_stmt
-                | emit_stmt | expr_stmt
+                | emit_stmt | with_budget_stmt | expr_stmt
 
 let_stmt        = "let" IDENT (":" type)? "=" expr term
 assign_stmt     = lvalue assign_op expr term
@@ -589,6 +589,62 @@ revoke_stmt     = "revoke" lvalue term
 //   emit TurnStarted(actor: actor)
 //
 emit_stmt       = "emit" IDENT "(" arg_list? ")" term
+
+// --- with_budget (scoped turn budget provisioning) ---
+//
+// `with_budget` provisions a turn budget for an entity, executes a
+// block in that budget context, then cleans up. This enables functions
+// to call costed actions by providing the required budget.
+//
+// Allowed in function, action, reaction, and hook blocks (any mutation
+// context). Not allowed in derive, mechanic, condition, or prompt.
+//
+// The entity expression must evaluate to an entity type. Budget field
+// names must match fields of the TurnBudget struct, and values must
+// be int.
+//
+// Within the body:
+//   - `turn` is readable as a struct (e.g., `turn.attack`)
+//   - Actions called within deduct from the provisioned budget
+//   - Budget enforcement fires RequiresCheck when budget is exhausted
+//
+// Nesting: with_budget blocks can nest. Each saves/restores the
+// previous budget and turn context. Inner blocks shadow the outer
+// budget for the same entity; the outer budget is restored on exit.
+//
+// Cost payer: the entity argument becomes the cost payer for actions
+// called within the body. This enables summoning patterns where the
+// receiver of an action differs from the entity paying the cost:
+//
+//   with_budget(wizard, { attack: 1 }) {
+//       skeleton.MeleeAttack(target, weapon)  // skeleton acts, wizard pays
+//   }
+//
+// Cleanup: budget is always cleared/restored on exit, even if the
+// body errors. Error in the body takes precedence over cleanup errors.
+//
+// Examples:
+//
+//   // OSRIC pattern: provision one attack, call costed action
+//   with_budget(combatant, { attack: 1 }) {
+//       combatant.MeleeAttack(target, weapon)
+//   }
+//
+//   // 5e interactive turn: multiple resources, read budget in loop
+//   with_budget(actor, { action: 1, bonus_action: 1, movement: actor.speed }) {
+//       while turn.action > 0 || turn.bonus_action > 0 {
+//           let choice = prompt choose_action(actor)
+//           match choice {
+//               Attack(target) => target.Attack(actor),
+//               Dash => actor.Dash(),
+//               EndTurn => {}
+//           }
+//       }
+//   }
+
+with_budget_stmt = "with_budget" "(" expr "," "{" budget_fields "}" ")" block
+budget_fields    = budget_field ("," budget_field)* ","?
+budget_field     = IDENT ":" expr
 
 
 // =========================

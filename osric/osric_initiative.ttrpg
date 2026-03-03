@@ -25,9 +25,6 @@
 // DISCOVERED DSL LIMITATIONS (for future language work):
 //   1. No "delay until segment X" construct — derives compute
 //      timing, host enforces execution order
-//   2. Functions cannot provision turn budgets, so costed
-//      actions (MeleeAttack, etc.) must be replicated via
-//      mechanics + TakeDamage (see tdsl-vbov)
 //
 // RESOLVED:
 //   - remove_condition on an absent condition is a safe no-op
@@ -35,6 +32,9 @@
 //   - Functions CAN call actions that use invocation() — the
 //     action dispatch sets up its own invocation context
 //     (see action.rs run_action_body)
+//   - Functions can now provision turn budgets via with_budget,
+//     enabling direct calls to costed actions (MeleeAttack, etc.)
+//     instead of reimplementing logic with mechanics + TakeDamage
 //
 // Reference: OSRIC 3.0 Player Guide, Chapter 6 (pp. 90-93)
 // ============================================================
@@ -536,11 +536,11 @@ system "OSRIC Initiative" {
     // ========================================================
     //  RESOLVE ACTION
     //
-    //  Dispatches a single combatant action. Calls the
-    //  underlying resolve mechanics and applies damage via
-    //  TakeDamage (free cost). Spell completion removes the
-    //  CastingSpell condition; non-combat actions are deferred
-    //  to the host runtime.
+    //  Dispatches a single combatant action. Uses with_budget
+    //  to provision a turn budget, then calls the actual costed
+    //  actions (MeleeAttack, MissileAttack, Charge) via method
+    //  syntax. Spell completion removes the CastingSpell
+    //  condition; non-combat actions are deferred to the host.
     // ========================================================
 
     function resolve_action(action: RoundAction) {
@@ -548,31 +548,22 @@ system "OSRIC Initiative" {
             MeleeAttackAction => {
                 let target = action.target.unwrap()
                 let weapon = action.weapon_melee.unwrap()
-                let result = resolve_melee_attack(action.combatant, target, weapon)
-                if result.outcome == AttackOutcome.Hit {
-                    let wdef = melee_weapon_def(weapon)
-                    target.TakeDamage(action.combatant, result.damage, wdef.damage_type)
+                with_budget(action.combatant, { attack: 1 }) {
+                    action.combatant.MeleeAttack(target, weapon)
                 }
             },
             MissileAttackAction => {
                 let target = action.target.unwrap()
                 let weapon = action.weapon_missile.unwrap()
-                let result = resolve_missile_attack(
-                    action.combatant, target, weapon, action.distance
-                )
-                if result.outcome == AttackOutcome.Hit {
-                    let wdef = missile_weapon_def(weapon)
-                    target.TakeDamage(action.combatant, result.damage, wdef.damage_type)
+                with_budget(action.combatant, { attack: 1 }) {
+                    action.combatant.MissileAttack(target, weapon, action.distance)
                 }
             },
             ChargeAction => {
                 let target = action.target.unwrap()
                 let weapon = action.weapon_melee.unwrap()
-                // +2 to hit on a charge (p. 93).
-                let result = resolve_melee_attack(action.combatant, target, weapon, 2)
-                if result.outcome == AttackOutcome.Hit {
-                    let wdef = melee_weapon_def(weapon)
-                    target.TakeDamage(action.combatant, result.damage, wdef.damage_type)
+                with_budget(action.combatant, { attack: 1 }) {
+                    action.combatant.Charge(target, weapon)
                 }
             },
             CastSpellAction => {

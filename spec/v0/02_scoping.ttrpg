@@ -38,9 +38,13 @@
 //
 // Functions are general-purpose subroutines. They can do everything an
 // action resolve block can except: no receiver (`on`), no cost/requires
-// clauses, no `turn` keyword, no `invocation()`. They cannot be targeted
-// by condition modify clauses. Functions can call actions, other functions,
-// derives, and mechanics. Derives and mechanics CANNOT call functions.
+// clauses, no `invocation()`. They cannot be targeted by condition modify
+// clauses. Functions can call actions, other functions, derives, and
+// mechanics. Derives and mechanics CANNOT call functions.
+//
+// Functions can provision turn budgets via `with_budget`, enabling them
+// to call costed actions. Within a `with_budget` block, the `turn`
+// keyword is accessible (readable as a struct). See with_budget docs below.
 //
 // Note: while `invocation()` cannot be called directly inside a function
 // body (there is no actor to anchor it), actions called BY a function
@@ -408,7 +412,8 @@ condition Prone on bearer: Character {
 //   2. cost { ... } on each action — what the action consumes
 //   3. `turn` keyword in resolve blocks — access to mutable turn state
 //
-// `turn` is a keyword available ONLY inside action/reaction/hook resolve blocks.
+// `turn` is a keyword available inside action/reaction/hook resolve blocks
+// and inside `with_budget` blocks (including those within functions).
 // It refers to the current turn's mutable TurnBudget.
 
 struct TurnBudget {
@@ -545,6 +550,79 @@ hook Regenerate on creature: Character (
 //         // it fires here before the next statement executes.
 //     }
 // }
+
+
+// --- with_budget (scoped turn budget provisioning) ---
+//
+// `with_budget` provisions a turn budget for an entity, executes a
+// block, then cleans up. This allows functions to call costed actions
+// without requiring the host to manage turn budgets manually.
+//
+// Syntax:
+//   with_budget(entity_expr, { field: value, ... }) { body }
+//
+// Semantics:
+//   1. Evaluate entity and budget fields
+//   2. Snapshot previous budget/turn_actor/cost_payer state
+//   3. Emit ProvisionBudget effect → host sets the budget
+//   4. Set turn_actor and cost_payer to the entity
+//   5. Execute body (actions deduct from this budget)
+//   6. Restore turn_actor and cost_payer
+//   7. Restore or clear the budget
+//
+// Within the body:
+//   - `turn` is readable as a TurnBudget struct (e.g., `turn.attack`)
+//   - Costed actions deduct from the provisioned budget
+//   - Budget enforcement fires RequiresCheck when a field is exhausted
+//   - The host can override enforcement via RequiresCheck responses
+//
+// Allowed contexts: function, action, reaction, hook (any mutation context).
+// Not allowed in: derive, mechanic, condition, prompt.
+//
+// Budget enforcement only activates for budgets provisioned via with_budget.
+// Host-managed budgets (set directly via the runtime API) are not enforced,
+// preserving backward compatibility.
+//
+// EXAMPLE: OSRIC round resolution — function calls costed melee attack
+//
+// function resolve_action(action: RoundAction) {
+//     match action.action_type {
+//         MeleeAttackAction => {
+//             let target = action.target.unwrap()
+//             let weapon = action.weapon_melee.unwrap()
+//             with_budget(action.combatant, { attack: 1 }) {
+//                 action.combatant.MeleeAttack(target, weapon)
+//             }
+//         },
+//         _ => {}
+//     }
+// }
+//
+// EXAMPLE: summoning pattern — wizard pays, skeleton acts
+//
+// function command_undead(wizard: Character, skeleton: Character, target: Character) {
+//     with_budget(wizard, { attack: 1 }) {
+//         skeleton.MeleeAttack(target, weapon)   // skeleton attacks, wizard's budget pays
+//     }
+// }
+//
+// EXAMPLE: reading the budget for interactive control flow
+//
+// function take_turn(actor: Character) {
+//     with_budget(actor, { action: 1, bonus_action: 1, movement: actor.speed }) {
+//         if turn.action > 0 {
+//             actor.Attack(target)    // deducts turn.action
+//         }
+//         // turn.action is now 0 after the attack
+//     }
+// }
+//
+// Nesting: with_budget blocks can nest for different entities (each
+// maintains independent budgets) or the same entity (inner shadows
+// outer, outer restored on exit).
+//
+// Cleanup: always runs on all exit paths (error, early return).
+// Body error takes precedence over cleanup error.
 
 
 // --- Builtins ---
