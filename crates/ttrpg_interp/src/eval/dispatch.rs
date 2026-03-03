@@ -300,6 +300,26 @@ fn eval_ident(env: &mut Env, name: &str, expr: &Spanned<ExprKind>) -> Result<Val
         return Ok(Value::ModuleAlias(Name::from(name)));
     }
 
+    // 6. `turn` keyword — materialize current actor's turn budget as a struct
+    if name == "turn" {
+        let actor = env.turn_actor.ok_or_else(|| {
+            RuntimeError::with_span(
+                "cannot access `turn` outside of turn context",
+                expr.span,
+            )
+        })?;
+        let budget = env.state.read_turn_budget(&actor).ok_or_else(|| {
+            RuntimeError::with_span(
+                "no turn budget provisioned for actor",
+                expr.span,
+            )
+        })?;
+        return Ok(Value::Struct {
+            name: Name::from("TurnBudget"),
+            fields: budget,
+        });
+    }
+
     Err(RuntimeError::with_span(
         format!("undefined variable '{name}'"),
         expr.span,

@@ -3773,6 +3773,99 @@ fn assign_turn_no_segments_error() {
     assert!(err.message.contains("turn"), "got: {}", err.message);
 }
 
+// ── Turn read tests ───────────────────────────────────────
+
+#[test]
+fn read_turn_field_returns_budget_value() {
+    let program = empty_program();
+    let type_env = empty_type_env();
+    let interp = Interpreter::new(&program, &type_env).unwrap();
+    let mut state = TestState::new();
+
+    let mut budget = BTreeMap::new();
+    budget.insert(Name::from("actions"), Value::Int(2));
+    budget.insert(Name::from("bonus_actions"), Value::Int(1));
+    state.turn_budgets.insert(5, budget);
+
+    let mut handler = ScriptedHandler::new();
+    let mut env = make_env(&state, &mut handler, &interp);
+    env.turn_actor = Some(EntityRef(5));
+
+    // turn.actions → 2
+    let expr = spanned(ExprKind::FieldAccess {
+        object: Box::new(spanned(ExprKind::Ident(Name::from("turn")))),
+        field: Name::from("actions"),
+    });
+    let val = eval_expr(&mut env, &expr).unwrap();
+    assert_eq!(val, Value::Int(2));
+}
+
+#[test]
+fn read_turn_returns_struct() {
+    let program = empty_program();
+    let type_env = empty_type_env();
+    let interp = Interpreter::new(&program, &type_env).unwrap();
+    let mut state = TestState::new();
+
+    let mut budget = BTreeMap::new();
+    budget.insert(Name::from("actions"), Value::Int(3));
+    state.turn_budgets.insert(7, budget.clone());
+
+    let mut handler = ScriptedHandler::new();
+    let mut env = make_env(&state, &mut handler, &interp);
+    env.turn_actor = Some(EntityRef(7));
+
+    // bare `turn` → Value::Struct
+    let expr = spanned(ExprKind::Ident(Name::from("turn")));
+    let val = eval_expr(&mut env, &expr).unwrap();
+    assert_eq!(
+        val,
+        Value::Struct {
+            name: Name::from("TurnBudget"),
+            fields: budget,
+        }
+    );
+}
+
+#[test]
+fn read_turn_without_actor_errors() {
+    let program = empty_program();
+    let type_env = empty_type_env();
+    let interp = Interpreter::new(&program, &type_env).unwrap();
+    let state = TestState::new();
+    let mut handler = ScriptedHandler::new();
+    let mut env = make_env(&state, &mut handler, &interp);
+
+    // No turn_actor set
+    let expr = spanned(ExprKind::Ident(Name::from("turn")));
+    let err = eval_expr(&mut env, &expr).unwrap_err();
+    assert!(
+        err.message.contains("turn"),
+        "expected turn-related error, got: {}",
+        err.message
+    );
+}
+
+#[test]
+fn read_turn_without_budget_errors() {
+    let program = empty_program();
+    let type_env = empty_type_env();
+    let interp = Interpreter::new(&program, &type_env).unwrap();
+    let state = TestState::new();
+    let mut handler = ScriptedHandler::new();
+    let mut env = make_env(&state, &mut handler, &interp);
+    env.turn_actor = Some(EntityRef(99));
+
+    // Actor set but no budget provisioned
+    let expr = spanned(ExprKind::Ident(Name::from("turn")));
+    let err = eval_expr(&mut env, &expr).unwrap_err();
+    assert!(
+        err.message.contains("budget"),
+        "expected budget-related error, got: {}",
+        err.message
+    );
+}
+
 // ── Local struct field mutation tests ──────────────────────
 
 #[test]
