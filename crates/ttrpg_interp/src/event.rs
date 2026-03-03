@@ -1201,6 +1201,7 @@ mod tests {
                 gained_at: 1,
                 duration: Value::None,
                 invocation: None,
+                applied_at: 0,
             }],
         );
         state.conditions.insert(2, vec![]);
@@ -1372,6 +1373,7 @@ mod tests {
                 gained_at: 1,
                 duration: Value::None,
                 invocation: None,
+                applied_at: 0,
             }],
         );
         state.conditions.insert(2, vec![]);

@@ -50,6 +50,9 @@ pub struct ActiveCondition {
     /// The invocation that applied this condition, if any.
     /// `None` for conditions applied outside action scope (CLI grant, host-injected).
     pub invocation: Option<InvocationId>,
+    /// Game time when this condition was applied.
+    /// Set from `read_game_time()` by the adapter at application time.
+    pub applied_at: u64,
 }
 
 impl ActiveCondition {
@@ -61,6 +64,10 @@ impl ActiveCondition {
         fields.insert(
             Name::from("id"),
             Value::Int(self.id.min(i64::MAX as u64) as i64),
+        );
+        fields.insert(
+            Name::from("applied_at"),
+            Value::Int(self.applied_at.min(i64::MAX as u64) as i64),
         );
         Value::Struct {
             name: Name::from("ActiveCondition"),
@@ -254,6 +261,7 @@ mod tests {
                 gained_at: 5,
                 duration: duration_variant("end_of_turn"),
                 invocation: None,
+                applied_at: 0,
             }],
         );
 
@@ -302,6 +310,7 @@ mod tests {
             gained_at: 10,
             duration: duration_variant("rounds"),
             invocation: None,
+            applied_at: 0,
         };
         assert_eq!(cond.id, 42);
         assert_eq!(cond.name, "Stunned");
@@ -319,6 +328,7 @@ mod tests {
             gained_at: 3,
             duration: duration_variant("end_of_turn"),
             invocation: None,
+            applied_at: 42,
         };
         let val = cond.to_value();
         match &val {
@@ -330,6 +340,7 @@ mod tests {
                     fields.get("duration"),
                     Some(&duration_variant("end_of_turn"))
                 );
+                assert_eq!(fields.get("applied_at"), Some(&Value::Int(42)));
             }
             _ => panic!("expected Value::Struct"),
         }
@@ -347,6 +358,7 @@ mod tests {
             gained_at: 5,
             duration: duration_variant("rounds"),
             invocation: None,
+            applied_at: 0,
         };
         let val = cond.to_value();
         match &val {

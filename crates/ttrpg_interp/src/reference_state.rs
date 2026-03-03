@@ -118,6 +118,7 @@ impl GameState {
         }
         let id = self.next_condition_id;
         self.next_condition_id += 1;
+        let applied_at = self.game_time;
         let cond = ActiveCondition {
             id,
             name: Name::from(name),
@@ -126,6 +127,7 @@ impl GameState {
             gained_at: id, // Use id as ordering timestamp for simplicity
             duration,
             invocation,
+            applied_at,
         };
         self.conditions.entry(entity.0).or_default().push(cond);
     }
@@ -736,6 +738,7 @@ mod tests {
             gained_at: 0,
             duration: duration_variant("end_of_turn"),
             invocation: None,
+            applied_at: 0,
         };
         state.add_condition(&entity, cond);
 
@@ -758,6 +761,7 @@ mod tests {
             gained_at: 50,
             duration: duration_variant("end_of_turn"),
             invocation: None,
+            applied_at: 0,
         };
         state.add_condition(&entity, cond);
 
@@ -770,6 +774,7 @@ mod tests {
             gained_at: 0,
             duration: duration_variant("rounds"),
             invocation: None,
+            applied_at: 0,
         };
         state.add_condition(&entity, cond2);
 
@@ -890,6 +895,7 @@ mod tests {
             gained_at: 0,
             duration: duration_variant("end_of_turn"),
             invocation: None,
+            applied_at: 0,
         };
         state.add_condition(&ghost, cond);
         assert!(state.read_conditions(&ghost).is_none());

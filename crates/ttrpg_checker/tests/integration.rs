@@ -11444,3 +11444,18 @@ system "test" {
         &["advance_time() can only be called in function blocks"],
     );
 }
+
+#[test]
+fn test_active_condition_applied_at_field() {
+    let source = r#"
+system "test" {
+    entity Character { hp: int }
+    condition Prone on bearer: Character {}
+    derive read_applied_at(c: Character) -> int {
+        let conds = conditions(c)
+        conds[0].applied_at
+    }
+}
+"#;
+    expect_no_errors(source);
+}

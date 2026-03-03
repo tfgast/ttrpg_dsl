@@ -11,6 +11,7 @@ use ttrpg_ast::{FileId, Name};
 use ttrpg_interp::adapter::StateAdapter;
 use ttrpg_interp::effect::{Effect, EffectHandler, Response};
 use ttrpg_interp::reference_state::GameState;
+use ttrpg_interp::state::StateProvider;
 use ttrpg_interp::value::Value;
 use ttrpg_interp::Interpreter;
 
@@ -256,4 +257,103 @@ system "test" {
 
     let final_state = adapter.into_inner();
     assert_eq!(final_state.game_time(), 42);
+}
+
+// ── applied_at stamped from game_time on conditions ──────────
+
+#[test]
+fn condition_applied_at_reflects_game_time() {
+    let source = r#"
+system "test" {
+    entity Character { hp: int }
+
+    enum Duration { indefinite }
+
+    action Mark on actor: Character () {
+        cost free
+        resolve {
+            apply_condition(actor, Prone, Duration.indefinite)
+        }
+    }
+
+    condition Prone on bearer: Character {}
+
+    function apply_at_time(c: Character) {
+        advance_time(10)
+        c.Mark()
+    }
+}
+"#;
+    let (program, result) = compile(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut state = GameState::new();
+    let entity = state.add_entity("Character", {
+        let mut f = FxHashMap::default();
+        f.insert(Name::from("hp"), Value::Int(10));
+        f
+    });
+    let adapter = StateAdapter::new(state);
+    let mut handler = ScriptedHandler::ack_all();
+
+    adapter
+        .run(&mut handler, |s, h| {
+            interp.evaluate_function(s, h, "apply_at_time", vec![Value::Entity(entity)])
+        })
+        .unwrap();
+
+    let final_state = adapter.into_inner();
+    let conds = final_state.read_conditions(&entity).unwrap();
+    assert_eq!(conds.len(), 1);
+    assert_eq!(conds[0].name, "Prone");
+    assert_eq!(
+        conds[0].applied_at, 10,
+        "applied_at should reflect game_time at application"
+    );
+}
+
+// ── applied_at is zero when no advance_time called ───────────
+
+#[test]
+fn condition_applied_at_zero_by_default() {
+    let source = r#"
+system "test" {
+    entity Character { hp: int }
+
+    enum Duration { indefinite }
+
+    action Mark on actor: Character () {
+        cost free
+        resolve {
+            apply_condition(actor, Prone, Duration.indefinite)
+        }
+    }
+
+    condition Prone on bearer: Character {}
+
+    function apply_no_time(c: Character) {
+        c.Mark()
+    }
+}
+"#;
+    let (program, result) = compile(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut state = GameState::new();
+    let entity = state.add_entity("Character", {
+        let mut f = FxHashMap::default();
+        f.insert(Name::from("hp"), Value::Int(10));
+        f
+    });
+    let adapter = StateAdapter::new(state);
+    let mut handler = ScriptedHandler::ack_all();
+
+    adapter
+        .run(&mut handler, |s, h| {
+            interp.evaluate_function(s, h, "apply_no_time", vec![Value::Entity(entity)])
+        })
+        .unwrap();
+
+    let final_state = adapter.into_inner();
+    let conds = final_state.read_conditions(&entity).unwrap();
+    assert_eq!(conds.len(), 1);
+    assert_eq!(conds[0].applied_at, 0);
 }

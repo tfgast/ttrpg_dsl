@@ -990,6 +990,7 @@ mod tests {
             gained_at: 0,
             duration: duration_variant("indefinite"),
             invocation: None,
+            applied_at: 0,
         };
         let state = ConditionsState {
             known_entity: 1,

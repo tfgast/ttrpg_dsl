@@ -519,6 +519,7 @@ impl TypeEnv {
             ("name", Ty::String),
             ("duration", Ty::Duration),
             ("id", Ty::Int),
+            ("applied_at", Ty::Int),
         ]
     }
 

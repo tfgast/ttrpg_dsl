@@ -293,6 +293,7 @@ system "test" {
             gained_at: 1,
             duration: Value::None,
             invocation: None,
+            applied_at: 0,
         }],
     );
 

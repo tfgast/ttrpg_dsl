@@ -1105,6 +1105,7 @@ mod tests {
                 gained_at: 5,
                 duration: Value::None,
                 invocation: None,
+                applied_at: 0,
             }],
         );
 
@@ -1273,6 +1274,7 @@ mod tests {
                 gained_at: 3,
                 duration: Value::None,
                 invocation: None,
+                applied_at: 0,
             }],
         );
 
@@ -1489,6 +1491,7 @@ mod tests {
                     gained_at: 10,
                     duration: Value::None,
                     invocation: None,
+                    applied_at: 0,
                 },
                 ActiveCondition {
                     id: 2,
@@ -1498,6 +1501,7 @@ mod tests {
                     gained_at: 5,
                     duration: Value::None,
                     invocation: None,
+                    applied_at: 0,
                 },
             ],
         );
@@ -1698,6 +1702,7 @@ mod tests {
                 gained_at: 1,
                 duration: Value::None,
                 invocation: None,
+                applied_at: 0,
             }],
         );
         state.enabled_options.push("Variant".into());
@@ -1870,6 +1875,7 @@ mod tests {
                 gained_at: 1,
                 duration: Value::None,
                 invocation: None,
+                applied_at: 0,
             }],
         );
 
@@ -2239,6 +2245,7 @@ mod tests {
                 gained_at: 1,
                 duration: Value::None,
                 invocation: None,
+                applied_at: 0,
             }],
         );
 
@@ -2660,6 +2667,7 @@ mod tests {
                 gained_at: 0,
                 duration: Value::None,
                 invocation: None,
+                applied_at: 0,
             }],
         );
 
@@ -2813,6 +2821,7 @@ mod tests {
                 gained_at: 0,
                 duration: Value::None,
                 invocation: None,
+                applied_at: 0,
             }],
         );
 

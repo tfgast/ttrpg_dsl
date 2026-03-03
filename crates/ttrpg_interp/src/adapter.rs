@@ -262,6 +262,7 @@ fn apply_mutation<S: WritableState>(state: &mut S, effect: &Effect) {
         } => {
             // The adapter creates an ActiveCondition. The host assigns a unique id
             // via the WritableState implementation (e.g., GameState auto-assigns).
+            let applied_at = state.read_game_time();
             state.add_condition(
                 target,
                 ActiveCondition {
@@ -272,6 +273,7 @@ fn apply_mutation<S: WritableState>(state: &mut S, effect: &Effect) {
                     gained_at: 0, // WritableState impl assigns ordering timestamp
                     duration: duration.clone(),
                     invocation: *invocation,
+                    applied_at,
                 },
             );
         }
@@ -370,6 +372,7 @@ fn apply_mutation_with_override<S: WritableState>(
             invocation,
             ..
         } => {
+            let applied_at = state.read_game_time();
             state.add_condition(
                 target,
                 ActiveCondition {
@@ -380,6 +383,7 @@ fn apply_mutation_with_override<S: WritableState>(
                     gained_at: 0,
                     duration: override_val.clone(),
                     invocation: *invocation,
+                    applied_at,
                 },
             );
         }
@@ -1113,6 +1117,7 @@ mod tests {
                 gained_at: 1,
                 duration: duration_variant("end_of_turn"),
                 invocation: None,
+                applied_at: 0,
             }],
         );
         let adapter = StateAdapter::new(state);
@@ -1384,6 +1389,7 @@ mod tests {
                     gained_at: 1,
                     duration: duration_variant("end_of_turn"),
                     invocation: None,
+                    applied_at: 0,
                 },
                 ActiveCondition {
                     id: 2,
@@ -1393,6 +1399,7 @@ mod tests {
                     gained_at: 2,
                     duration: duration_variant("rounds"),
                     invocation: None,
+                    applied_at: 0,
                 },
             ],
         );
@@ -1830,6 +1837,7 @@ mod tests {
                 gained_at: 0,
                 duration: duration_variant("indefinite"),
                 invocation: None,
+                applied_at: 0,
             },
         );
         state.add_condition(
@@ -1842,6 +1850,7 @@ mod tests {
                 gained_at: 0,
                 duration: duration_variant("indefinite"),
                 invocation: None,
+                applied_at: 0,
             },
         );
 

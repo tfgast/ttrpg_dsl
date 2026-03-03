@@ -390,6 +390,7 @@ struct ActiveCondition {
     name: string        // condition name (e.g., "Prone", "Frightened")
     duration: Duration  // when the condition expires
     id: int             // unique identifier for this condition instance
+    applied_at: int     // game time when this condition was applied
 }
 
 // The `id` field distinguishes multiple instances of the same condition
