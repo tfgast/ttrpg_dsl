@@ -1,6 +1,6 @@
 use crate::parser::Parser;
 use ttrpg_ast::ast::*;
-use ttrpg_ast::Spanned;
+use ttrpg_ast::{Span, Spanned};
 use ttrpg_lexer::TokenKind;
 
 impl Parser {
@@ -11,6 +11,7 @@ impl Parser {
                 "enum" => self.parse_enum_decl().map(DeclKind::Enum),
                 "struct" => self.parse_struct_decl().map(DeclKind::Struct),
                 "entity" => self.parse_entity_decl().map(DeclKind::Entity),
+                "function" => self.parse_function_decl().map(DeclKind::Function),
                 "derive" => self.parse_derive_decl().map(DeclKind::Derive),
                 "mechanic" => self.parse_mechanic_decl().map(DeclKind::Mechanic),
                 "action" => self.parse_action_decl().map(DeclKind::Action),
@@ -340,6 +341,41 @@ impl Parser {
     }
 
     // ── Derive / Mechanic ────────────────────────────────────────
+
+    fn parse_function_decl(&mut self) -> Result<FnDecl, ()> {
+        self.expect_soft_keyword("function")?;
+        let (name, _) = self.expect_ident()?;
+        self.expect(&TokenKind::LParen)?;
+        let params = self.parse_params()?;
+        self.expect(&TokenKind::RParen)?;
+
+        // Return type is optional; when absent, synthesize TypeExpr::Unit
+        let return_type = if matches!(self.peek(), TokenKind::Arrow) {
+            self.advance();
+            self.parse_type()?
+        } else {
+            let s = self.peek_span();
+            Spanned::new(TypeExpr::Unit, Span::new(s.file, s.start as usize, s.start as usize))
+        };
+
+        // Parse tag annotations: #tag1 #tag2 ... before the body block
+        let mut tags = Vec::new();
+        while matches!(self.peek(), TokenKind::Hash) {
+            self.advance();
+            let (tag_name, _) = self.expect_ident()?;
+            tags.push(tag_name);
+        }
+
+        let body = self.parse_block()?;
+        Ok(FnDecl {
+            name,
+            params,
+            return_type,
+            body,
+            synthetic: false,
+            tags,
+        })
+    }
 
     fn parse_derive_decl(&mut self) -> Result<FnDecl, ()> {
         self.expect_soft_keyword("derive")?;

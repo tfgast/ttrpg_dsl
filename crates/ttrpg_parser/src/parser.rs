@@ -408,7 +408,7 @@ impl Parser {
             self.peek(),
             TokenKind::Ident(ref s) if matches!(
                 &**s,
-                "enum" | "struct" | "entity" | "derive" | "mechanic"
+                "enum" | "struct" | "entity" | "function" | "derive" | "mechanic"
                 | "action" | "reaction" | "condition" | "prompt"
                 | "option" | "event" | "move"
                 | "hook" | "table" | "unit" | "tag" | "group"
