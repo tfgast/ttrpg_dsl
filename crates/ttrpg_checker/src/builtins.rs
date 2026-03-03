@@ -57,11 +57,7 @@ pub fn register_builtins() -> Vec<FnInfo> {
             vec![param("expr", Ty::DiceExpr), param("factor", Ty::Int)],
             Ty::DiceExpr,
         ),
-        builtin(
-            "max_value",
-            vec![param("expr", Ty::DiceExpr)],
-            Ty::Int,
-        ),
+        builtin("max_value", vec![param("expr", Ty::DiceExpr)], Ty::Int),
         builtin("error", vec![param("message", Ty::String)], Ty::Error),
         // Available in rolling blocks
         builtin("roll", vec![param("expr", Ty::DiceExpr)], Ty::RollResult),
@@ -89,5 +85,8 @@ pub fn register_builtins() -> Vec<FnInfo> {
         // Available in action/reaction/hook blocks
         builtin("invocation", vec![], Ty::Invocation),
         builtin("revoke", vec![param("inv", Ty::Invocation)], Ty::Unit),
+        // Game time
+        builtin("game_time", vec![], Ty::Int),
+        builtin("advance_time", vec![param("amount", Ty::Int)], Ty::Unit),
     ]
 }

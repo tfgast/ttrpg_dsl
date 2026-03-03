@@ -2,6 +2,7 @@ use ttrpg_ast::ast::*;
 
 use crate::check::Checker;
 use crate::env::*;
+use crate::scope::BlockKind;
 use crate::ty::Ty;
 
 impl Checker<'_> {
@@ -564,6 +565,14 @@ impl Checker<'_> {
                     self.error(
                         "revoke() can only be called in action, reaction, or hook blocks"
                             .to_string(),
+                        span,
+                    );
+                }
+            }
+            "advance_time" => {
+                if self.scope.current_block_kind() != Some(BlockKind::FunctionBody) {
+                    self.error(
+                        "advance_time() can only be called in function blocks".to_string(),
                         span,
                     );
                 }

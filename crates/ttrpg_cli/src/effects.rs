@@ -449,8 +449,7 @@ impl EffectHandler for CliHandler<'_> {
             Effect::ClearBudget { actor } => {
                 let name = self.entity_name(&actor);
                 self.game_state.borrow_mut().clear_turn_budget(&actor);
-                self.log
-                    .push(format!("[ClearBudget] {name}"));
+                self.log.push(format!("[ClearBudget] {name}"));
                 Response::Acknowledged
             }
 
@@ -483,6 +482,10 @@ impl EffectHandler for CliHandler<'_> {
                     target_fn,
                     changes_str.join(", "),
                 ));
+                Response::Acknowledged
+            }
+            Effect::AdvanceTime { amount } => {
+                self.log.push(format!("[AdvanceTime] +{amount}"));
                 Response::Acknowledged
             }
         }

@@ -30,7 +30,10 @@ fn compile_osric_combat() -> (ttrpg_ast::ast::Program, ttrpg_checker::CheckResul
     let combat_source = include_str!("../../../osric/osric_combat.ttrpg");
 
     let sources = vec![
-        ("osric/osric_core.ttrpg".to_string(), core_source.to_string()),
+        (
+            "osric/osric_core.ttrpg".to_string(),
+            core_source.to_string(),
+        ),
         (
             "osric/osric_ability.ttrpg".to_string(),
             ability_source.to_string(),
@@ -241,10 +244,7 @@ fn make_monster(
     fields.insert(Name::from("morale"), Value::Int(7));
     fields.insert(Name::from("xp_value"), Value::Int(0));
     fields.insert(Name::from("attacks"), Value::List(attacks));
-    fields.insert(
-        Name::from("size"),
-        enum_variant("Size", "Medium"),
-    );
+    fields.insert(Name::from("size"), enum_variant("Size", "Medium"));
     fields.insert(Name::from("special"), Value::List(vec![]));
 
     state.add_entity("Monster", fields)
@@ -309,9 +309,10 @@ fn get_struct_fields(
 #[test]
 fn osric_combat_parses_and_typechecks() {
     let (program, _) = compile_osric_combat();
-    let has_system = program.items.iter().any(
-        |item| matches!(&item.node, TopLevel::System(sys) if sys.name == "OSRIC Combat"),
-    );
+    let has_system = program
+        .items
+        .iter()
+        .any(|item| matches!(&item.node, TopLevel::System(sys) if sys.name == "OSRIC Combat"));
     assert!(has_system, "expected system named 'OSRIC Combat'");
 }
 
@@ -329,7 +330,7 @@ fn osric_combat_has_enums() {
         })
         .collect();
     assert!(enums.contains(&("AttackOutcome", 2)));
-    assert!(enums.contains(&("Duration", 3)));
+    assert!(enums.contains(&("Duration", 7)));
     assert!(enums.contains(&("SurpriseState", 4)));
 }
 
@@ -457,14 +458,7 @@ fn fighter_group_bthb_is_linear() {
     let mut handler = NullHandler;
 
     // Fighter BTHB = level - 1
-    let cases = vec![
-        (1, 0),
-        (5, 4),
-        (7, 6),
-        (10, 9),
-        (13, 12),
-        (20, 19),
-    ];
+    let cases = vec![(1, 0), (5, 4), (7, 6), (10, 9), (13, 12), (20, 19)];
 
     for (level, expected) in cases {
         let val = interp
@@ -665,11 +659,7 @@ fn bthb_all_classes_resolve() {
                 vec![class_variant(class), Value::Int(10)],
             )
             .unwrap();
-        assert_eq!(
-            val,
-            Value::Int(9),
-            "{class} level 10 should have BTHB 9"
-        );
+        assert_eq!(val, Value::Int(9), "{class} level 10 should have BTHB 9");
     }
 
     // Cleric group: Cleric, Druid, Monk → 7-10=4
@@ -682,11 +672,7 @@ fn bthb_all_classes_resolve() {
                 vec![class_variant(class), Value::Int(10)],
             )
             .unwrap();
-        assert_eq!(
-            val,
-            Value::Int(4),
-            "{class} level 10 should have BTHB 4"
-        );
+        assert_eq!(val, Value::Int(4), "{class} level 10 should have BTHB 4");
     }
 
     // Thief group: Thief, Assassin → 5-8=1
@@ -699,11 +685,7 @@ fn bthb_all_classes_resolve() {
                 vec![class_variant(class), Value::Int(5)],
             )
             .unwrap();
-        assert_eq!(
-            val,
-            Value::Int(1),
-            "{class} level 5 should have BTHB 1"
-        );
+        assert_eq!(val, Value::Int(1), "{class} level 5 should have BTHB 1");
     }
 
     // MU group: MagicUser, Illusionist → 6-10=1
@@ -716,11 +698,7 @@ fn bthb_all_classes_resolve() {
                 vec![class_variant(class), Value::Int(6)],
             )
             .unwrap();
-        assert_eq!(
-            val,
-            Value::Int(1),
-            "{class} level 6 should have BTHB 1"
-        );
+        assert_eq!(val, Value::Int(1), "{class} level 6 should have BTHB 1");
     }
 }
 
@@ -1199,8 +1177,10 @@ fn resolve_melee_attack_hit_deals_damage() {
     match val {
         Value::Struct { name, fields } => {
             assert_eq!(&*name, "AttackResult");
-            let fields: BTreeMap<String, Value> =
-                fields.into_iter().map(|(k, v)| (k.to_string(), v)).collect();
+            let fields: BTreeMap<String, Value> = fields
+                .into_iter()
+                .map(|(k, v)| (k.to_string(), v))
+                .collect();
             assert_eq!(
                 fields.get("outcome").unwrap(),
                 &enum_variant("AttackOutcome", "Hit")
@@ -1259,8 +1239,10 @@ fn resolve_melee_attack_miss_deals_zero() {
     match val {
         Value::Struct { name, fields } => {
             assert_eq!(&*name, "AttackResult");
-            let fields: BTreeMap<String, Value> =
-                fields.into_iter().map(|(k, v)| (k.to_string(), v)).collect();
+            let fields: BTreeMap<String, Value> = fields
+                .into_iter()
+                .map(|(k, v)| (k.to_string(), v))
+                .collect();
             assert_eq!(
                 fields.get("outcome").unwrap(),
                 &enum_variant("AttackOutcome", "Miss")
@@ -1326,8 +1308,10 @@ fn resolve_missile_attack_hit() {
     match val {
         Value::Struct { name, fields } => {
             assert_eq!(&*name, "AttackResult");
-            let fields: BTreeMap<String, Value> =
-                fields.into_iter().map(|(k, v)| (k.to_string(), v)).collect();
+            let fields: BTreeMap<String, Value> = fields
+                .into_iter()
+                .map(|(k, v)| (k.to_string(), v))
+                .collect();
             assert_eq!(
                 fields.get("outcome").unwrap(),
                 &enum_variant("AttackOutcome", "Hit")
@@ -1387,8 +1371,10 @@ fn resolve_missile_attack_range_penalty_causes_miss() {
 
     match val {
         Value::Struct { fields, .. } => {
-            let fields: BTreeMap<String, Value> =
-                fields.into_iter().map(|(k, v)| (k.to_string(), v)).collect();
+            let fields: BTreeMap<String, Value> = fields
+                .into_iter()
+                .map(|(k, v)| (k.to_string(), v))
+                .collect();
             assert_eq!(
                 fields.get("outcome").unwrap(),
                 &enum_variant("AttackOutcome", "Miss")
@@ -1449,8 +1435,10 @@ fn resolve_monster_attack_hit() {
     match val {
         Value::Struct { name, fields } => {
             assert_eq!(&*name, "AttackResult");
-            let fields: BTreeMap<String, Value> =
-                fields.into_iter().map(|(k, v)| (k.to_string(), v)).collect();
+            let fields: BTreeMap<String, Value> = fields
+                .into_iter()
+                .map(|(k, v)| (k.to_string(), v))
+                .collect();
             assert_eq!(
                 fields.get("outcome").unwrap(),
                 &enum_variant("AttackOutcome", "Hit")
@@ -1507,8 +1495,10 @@ fn resolve_monster_attack_miss() {
 
     match val {
         Value::Struct { fields, .. } => {
-            let fields: BTreeMap<String, Value> =
-                fields.into_iter().map(|(k, v)| (k.to_string(), v)).collect();
+            let fields: BTreeMap<String, Value> = fields
+                .into_iter()
+                .map(|(k, v)| (k.to_string(), v))
+                .collect();
             assert_eq!(
                 fields.get("outcome").unwrap(),
                 &enum_variant("AttackOutcome", "Miss")
@@ -1699,7 +1689,10 @@ fn melee_attack_action_hits_and_damages() {
     let atk_roll = scripted_roll(1, 20, 0, vec![15], vec![15], 15, 15);
     let dmg_roll = scripted_roll(1, 8, 0, vec![6], vec![6], 6, 6);
     let mut handler = ScriptedHandler::with_responses(vec![
-        Response::Acknowledged, Response::Acknowledged, atk_roll, dmg_roll,
+        Response::Acknowledged,
+        Response::Acknowledged,
+        atk_roll,
+        dmg_roll,
     ]);
 
     let adapter = StateAdapter::new(state);
@@ -1755,7 +1748,9 @@ fn melee_attack_action_miss_preserves_hp() {
     // Roll 5 → miss (5+0 = 5 < 18)
     let atk_roll = scripted_roll(1, 20, 0, vec![5], vec![5], 5, 5);
     let mut handler = ScriptedHandler::with_responses(vec![
-        Response::Acknowledged, Response::Acknowledged, atk_roll,
+        Response::Acknowledged,
+        Response::Acknowledged,
+        atk_roll,
     ]);
 
     let adapter = StateAdapter::new(state);
@@ -1766,10 +1761,7 @@ fn melee_attack_action_miss_preserves_hp() {
                 eff_handler,
                 "MeleeAttack",
                 attacker,
-                vec![
-                    Value::Entity(target),
-                    enum_variant("MeleeWeapon", "Dagger"),
-                ],
+                vec![Value::Entity(target), enum_variant("MeleeWeapon", "Dagger")],
             )
             .unwrap();
     });
@@ -1813,7 +1805,10 @@ fn missile_attack_action_hits() {
     let atk_roll = scripted_roll(1, 20, 0, vec![14], vec![14], 14, 14);
     let dmg_roll = scripted_roll(1, 6, 0, vec![3], vec![3], 3, 3);
     let mut handler = ScriptedHandler::with_responses(vec![
-        Response::Acknowledged, Response::Acknowledged, atk_roll, dmg_roll,
+        Response::Acknowledged,
+        Response::Acknowledged,
+        atk_roll,
+        dmg_roll,
     ]);
 
     let adapter = StateAdapter::new(state);
@@ -1876,7 +1871,10 @@ fn charge_action_adds_attack_mod() {
     // damage: SwordLong 1d8, roll 5
     let dmg_roll = scripted_roll(1, 8, 0, vec![5], vec![5], 5, 5);
     let mut handler = ScriptedHandler::with_responses(vec![
-        Response::Acknowledged, Response::Acknowledged, atk_roll, dmg_roll,
+        Response::Acknowledged,
+        Response::Acknowledged,
+        atk_roll,
+        dmg_roll,
     ]);
 
     let adapter = StateAdapter::new(state);
@@ -1932,7 +1930,9 @@ fn charge_would_miss_without_bonus() {
     // Roll 12 → 12+0+0 = 12 < 14 → Miss (no charge bonus)
     let atk_roll = scripted_roll(1, 20, 0, vec![12], vec![12], 12, 12);
     let mut handler = ScriptedHandler::with_responses(vec![
-        Response::Acknowledged, Response::Acknowledged, atk_roll,
+        Response::Acknowledged,
+        Response::Acknowledged,
+        atk_roll,
     ]);
 
     let adapter = StateAdapter::new(state);
@@ -1991,7 +1991,10 @@ fn melee_attack_emits_creature_slain_on_kill() {
     let atk_roll = scripted_roll(1, 20, 0, vec![18], vec![18], 18, 18);
     let dmg_roll = scripted_roll(1, 8, 0, vec![5], vec![5], 5, 5);
     let mut handler = ScriptedHandler::with_responses(vec![
-        Response::Acknowledged, Response::Acknowledged, atk_roll, dmg_roll,
+        Response::Acknowledged,
+        Response::Acknowledged,
+        atk_roll,
+        dmg_roll,
     ]);
 
     let adapter = StateAdapter::new(state);
@@ -2058,7 +2061,11 @@ fn deal_damage_returns_raw_damage() {
             ],
         )
         .unwrap();
-    assert_eq!(val, Value::Int(7), "deal_damage should pass through raw_damage");
+    assert_eq!(
+        val,
+        Value::Int(7),
+        "deal_damage should pass through raw_damage"
+    );
 }
 
 #[test]
@@ -2102,7 +2109,11 @@ fn deal_damage_with_default_damage_type() {
             ],
         )
         .unwrap();
-    assert_eq!(val, Value::Int(3), "deal_damage with default type should still pass through");
+    assert_eq!(
+        val,
+        Value::Int(3),
+        "deal_damage with default type should still pass through"
+    );
 }
 
 // ── TakeDamage action ─────────────────────────────────────────
@@ -2191,10 +2202,8 @@ fn take_damage_action_emits_creature_slain_on_kill() {
     );
     state.set_turn_budget(&target, combat_turn_budget());
 
-    let mut handler = ScriptedHandler::with_responses(vec![
-        Response::Acknowledged,
-        Response::Acknowledged,
-    ]);
+    let mut handler =
+        ScriptedHandler::with_responses(vec![Response::Acknowledged, Response::Acknowledged]);
 
     let adapter = StateAdapter::new(state);
     adapter.run(&mut handler, |state, eff_handler| {

@@ -10775,7 +10775,10 @@ system "test" {
     }
 }
 "#;
-    expect_errors(source, &["action resolve block has type int, but actions cannot return a value"]);
+    expect_errors(
+        source,
+        &["action resolve block has type int, but actions cannot return a value"],
+    );
 }
 
 #[test]
@@ -10791,7 +10794,10 @@ system "test" {
     }
 }
 "#;
-    expect_errors(source, &["reaction resolve block has type int, but reactions cannot return a value"]);
+    expect_errors(
+        source,
+        &["reaction resolve block has type int, but reactions cannot return a value"],
+    );
 }
 
 #[test]
@@ -10805,7 +10811,10 @@ system "test" {
     }
 }
 "#;
-    expect_errors(source, &["hook resolve block has type int, but hooks cannot return a value"]);
+    expect_errors(
+        source,
+        &["hook resolve block has type int, but hooks cannot return a value"],
+    );
 }
 
 #[test]
@@ -11078,7 +11087,10 @@ system "test" {
     }
 }
 "#;
-    expect_errors(source, &["with_budget is only allowed in function, action, reaction, or hook context"]);
+    expect_errors(
+        source,
+        &["with_budget is only allowed in function, action, reaction, or hook context"],
+    );
 }
 
 #[test]
@@ -11093,7 +11105,10 @@ system "test" {
     }
 }
 "#;
-    expect_errors(source, &["with_budget is only allowed in function, action, reaction, or hook context"]);
+    expect_errors(
+        source,
+        &["with_budget is only allowed in function, action, reaction, or hook context"],
+    );
 }
 
 #[test]
@@ -11198,7 +11213,10 @@ system "test" {
     }
 }
 "#;
-    expect_errors(source, &["invocation() can only be called in action, reaction, or hook"]);
+    expect_errors(
+        source,
+        &["invocation() can only be called in action, reaction, or hook"],
+    );
 }
 
 #[test]
@@ -11252,4 +11270,177 @@ system "test" {
 }
 "#;
     expect_errors(source, &["TurnBudget has no field `actions`"]);
+}
+
+// ── game_time / advance_time checker tests ─────────────────────
+
+#[test]
+fn test_game_time_passes_in_function() {
+    let source = r#"
+system "test" {
+    function foo() -> int {
+        game_time()
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_game_time_passes_in_derive() {
+    let source = r#"
+system "test" {
+    derive foo() -> int {
+        game_time()
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_game_time_passes_in_mechanic() {
+    let source = r#"
+system "test" {
+    mechanic foo() -> int {
+        game_time()
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_game_time_passes_in_action() {
+    let source = r#"
+system "test" {
+    entity Character { hp: int }
+    action Foo on actor: Character () {
+        cost free
+        resolve {
+            let t = game_time()
+        }
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_advance_time_passes_in_function() {
+    let source = r#"
+system "test" {
+    function foo() {
+        advance_time(1)
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_advance_time_errors_in_derive() {
+    let source = r#"
+system "test" {
+    derive foo() -> int {
+        advance_time(1)
+        0
+    }
+}
+"#;
+    expect_errors(
+        source,
+        &["advance_time() can only be called in function blocks"],
+    );
+}
+
+#[test]
+fn test_advance_time_errors_in_mechanic() {
+    let source = r#"
+system "test" {
+    mechanic foo() -> int {
+        advance_time(1)
+        0
+    }
+}
+"#;
+    expect_errors(
+        source,
+        &["advance_time() can only be called in function blocks"],
+    );
+}
+
+#[test]
+fn test_advance_time_errors_in_action() {
+    let source = r#"
+system "test" {
+    entity Character { hp: int }
+    action Foo on actor: Character () {
+        cost free
+        resolve {
+            advance_time(1)
+        }
+    }
+}
+"#;
+    expect_errors(
+        source,
+        &["advance_time() can only be called in function blocks"],
+    );
+}
+
+#[test]
+fn test_advance_time_errors_in_reaction() {
+    let source = r#"
+system "test" {
+    entity Character { hp: int }
+    event Hit(target: Character) {}
+    reaction Foo on actor: Character (trigger: Hit(target: actor)) {
+        cost free
+        resolve {
+            advance_time(1)
+        }
+    }
+}
+"#;
+    expect_errors(
+        source,
+        &["advance_time() can only be called in function blocks"],
+    );
+}
+
+#[test]
+fn test_advance_time_errors_in_hook() {
+    let source = r#"
+system "test" {
+    entity Character { hp: int }
+    event Hit(target: Character) {}
+    hook Foo on actor: Character (trigger: Hit(target: actor)) {
+        advance_time(1)
+    }
+}
+"#;
+    expect_errors(
+        source,
+        &["advance_time() can only be called in function blocks"],
+    );
+}
+
+#[test]
+fn test_advance_time_errors_in_with_budget() {
+    let source = r#"
+system "test" {
+    struct TurnBudget { attack: int }
+    entity Character { hp: int }
+    function foo(actor: Character) {
+        with_budget(actor, { attack: 1 }) {
+            advance_time(1)
+        }
+    }
+}
+"#;
+    expect_errors(
+        source,
+        &["advance_time() can only be called in function blocks"],
+    );
 }

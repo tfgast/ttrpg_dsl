@@ -34,6 +34,8 @@ pub(crate) fn call_builtin(
         "remove_condition" => builtin_remove_condition(env, &args, span),
         "invocation" => builtin_invocation(env, &args, span),
         "revoke" => builtin_revoke(env, &args, span),
+        "game_time" => builtin_game_time(env, &args, span),
+        "advance_time" => builtin_advance_time(env, &args, span),
         _ => Err(RuntimeError::with_span(
             format!("unknown builtin function '{name}'"),
             span,
@@ -312,10 +314,14 @@ fn builtin_max_value(args: &[Value], span: Span) -> Result<Value, RuntimeError> 
                 .iter()
                 .map(|g| {
                     let effective = match g.filter {
-                        Some(ttrpg_ast::DiceFilter::KeepHighest(n)
-                        | ttrpg_ast::DiceFilter::KeepLowest(n)) => n,
-                        Some(ttrpg_ast::DiceFilter::DropHighest(n)
-                        | ttrpg_ast::DiceFilter::DropLowest(n)) => g.count.saturating_sub(n),
+                        Some(
+                            ttrpg_ast::DiceFilter::KeepHighest(n)
+                            | ttrpg_ast::DiceFilter::KeepLowest(n),
+                        ) => n,
+                        Some(
+                            ttrpg_ast::DiceFilter::DropHighest(n)
+                            | ttrpg_ast::DiceFilter::DropLowest(n),
+                        ) => g.count.saturating_sub(n),
                         None => g.count,
                     };
                     (effective as i64) * (g.sides as i64)
@@ -566,6 +572,61 @@ fn builtin_revoke(env: &mut Env, args: &[Value], span: Span) -> Result<Value, Ru
                 "revoke() expects Invocation or option<Invocation>, got {}",
                 type_name(other)
             ),
+            span,
+        )),
+    }
+}
+
+// ── game_time ──────────────────────────────────────────────────
+
+/// `game_time() -> Int`
+///
+/// Returns the current game time counter. Pure read, no context restriction.
+fn builtin_game_time(env: &Env, args: &[Value], span: Span) -> Result<Value, RuntimeError> {
+    if !args.is_empty() {
+        return Err(RuntimeError::with_span(
+            "game_time() takes no arguments",
+            span,
+        ));
+    }
+    Ok(Value::Int(env.state.read_game_time() as i64))
+}
+
+// ── advance_time ───────────────────────────────────────────────
+
+/// `advance_time(amount: Int) -> None`
+///
+/// Advances the game time counter by `amount`. Must be positive.
+/// Cannot be called during action/reaction/hook execution.
+fn builtin_advance_time(env: &mut Env, args: &[Value], span: Span) -> Result<Value, RuntimeError> {
+    if env.current_invocation_id.is_some() {
+        return Err(RuntimeError::with_span(
+            "advance_time() cannot be called during action/reaction/hook execution",
+            span,
+        ));
+    }
+    match args.first() {
+        Some(Value::Int(amount)) if *amount > 0 => {
+            let effect = Effect::AdvanceTime {
+                amount: *amount as u64,
+            };
+            validate_mutation_response(env.handler.handle(effect), "AdvanceTime", span)?;
+            Ok(Value::None)
+        }
+        Some(Value::Int(amount)) if *amount == 0 => Err(RuntimeError::with_span(
+            "advance_time() amount must be positive, got 0",
+            span,
+        )),
+        Some(Value::Int(amount)) => Err(RuntimeError::with_span(
+            format!("advance_time() amount must be positive, got {amount}"),
+            span,
+        )),
+        Some(other) => Err(RuntimeError::with_span(
+            format!("advance_time() expects Int, got {}", type_name(other)),
+            span,
+        )),
+        None => Err(RuntimeError::with_span(
+            "advance_time() requires 1 argument",
             span,
         )),
     }

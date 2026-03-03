@@ -626,6 +626,8 @@ system "OSRIC Initiative" {
         let party_won = initiative.party_segment < initiative.monster_segment
 
         for seg in 1..=10 {
+            advance_time(1)
+
             // Begin-casting: call BeginCasting on casters whose
             // initiative segment is reached, applying CastingSpell
             // (making them interruptible) and storing the invocation

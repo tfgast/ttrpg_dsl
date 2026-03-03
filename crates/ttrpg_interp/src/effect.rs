@@ -129,6 +129,9 @@ pub enum Effect {
     ClearBudget {
         actor: EntityRef,
     },
+    AdvanceTime {
+        amount: u64,
+    },
 
     // ── Decision effects ────────────────────────────────────
     DeductCost {
@@ -232,6 +235,7 @@ pub enum EffectKind {
     RequiresCheck,
     ActionCompleted,
     RevokeInvocation,
+    AdvanceTime,
     ModifyApplied,
 }
 
@@ -254,6 +258,7 @@ impl EffectKind {
             Effect::RequiresCheck { .. } => EffectKind::RequiresCheck,
             Effect::ActionCompleted { .. } => EffectKind::ActionCompleted,
             Effect::RevokeInvocation { .. } => EffectKind::RevokeInvocation,
+            Effect::AdvanceTime { .. } => EffectKind::AdvanceTime,
             Effect::ModifyApplied { .. } => EffectKind::ModifyApplied,
         }
     }

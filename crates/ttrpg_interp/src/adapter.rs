@@ -104,6 +104,10 @@ impl<S: WritableState> StateProvider for StateAdapter<S> {
         self.state.borrow().distance(a, b)
     }
 
+    fn read_game_time(&self) -> u64 {
+        self.state.borrow().read_game_time()
+    }
+
     fn entity_type_name(&self, entity: &EntityRef) -> Option<Name> {
         self.state.borrow().entity_type_name(entity)
     }
@@ -125,7 +129,7 @@ pub struct AdaptedHandler<'a, S: WritableState, H: EffectHandler> {
 }
 
 /// The nine mutation effect kinds.
-const MUTATION_KINDS: [EffectKind; 9] = [
+const MUTATION_KINDS: [EffectKind; 10] = [
     EffectKind::MutateField,
     EffectKind::ApplyCondition,
     EffectKind::RemoveCondition,
@@ -135,6 +139,7 @@ const MUTATION_KINDS: [EffectKind; 9] = [
     EffectKind::ProvisionBudget,
     EffectKind::ClearBudget,
     EffectKind::RevokeInvocation,
+    EffectKind::AdvanceTime,
 ];
 
 fn is_mutation(kind: EffectKind) -> bool {
@@ -315,6 +320,10 @@ fn apply_mutation<S: WritableState>(state: &mut S, effect: &Effect) {
         }
         Effect::RevokeInvocation { invocation } => {
             state.remove_conditions_by_invocation(*invocation);
+        }
+        Effect::AdvanceTime { amount } => {
+            let current = state.read_game_time();
+            state.set_game_time(current.saturating_add(*amount));
         }
         _ => {} // Not a mutation effect
     }
@@ -652,6 +661,7 @@ mod tests {
         turn_budgets: HashMap<u64, BTreeMap<Name, Value>>,
         enabled_options: Vec<Name>,
         next_condition_id: u64,
+        game_time: u64,
     }
 
     impl TestWritableState {
@@ -662,6 +672,7 @@ mod tests {
                 turn_budgets: HashMap::new(),
                 enabled_options: Vec::new(),
                 next_condition_id: 1,
+                game_time: 0,
             }
         }
     }
@@ -757,6 +768,10 @@ mod tests {
 
         fn clear_turn_budget(&mut self, entity: &EntityRef) {
             self.turn_budgets.remove(&entity.0);
+        }
+
+        fn set_game_time(&mut self, time: u64) {
+            self.game_time = time;
         }
     }
 

@@ -25,7 +25,11 @@ system "OSRIC Combat" {
 
     enum Duration {
         end_of_round,
+        segments(count: int),
         rounds(count: int),
+        turns(count: int),
+        hours(count: int),
+        days(count: int),
         indefinite
     }
 
@@ -75,6 +79,32 @@ system "OSRIC Combat" {
     event Damaged(target: Character, attacker: Character, amount: int) {}
 
     event CreatureSlain(target: Character, attacker: Character) {}
+
+
+    // ========================================================
+    //  TIME CONVERSIONS
+    //
+    //  OSRIC uses segments as the base time unit (1 tick = 1 segment).
+    //  1 round = 10 segments, 1 turn = 10 rounds = 100 segments,
+    //  1 hour = 6 turns = 600 segments, 1 day = 24 hours = 14400 segments.
+    // ========================================================
+
+    derive segments_per_round() -> int { 10 }
+    derive segments_per_turn() -> int { 100 }
+    derive segments_per_hour() -> int { 600 }
+    derive segments_per_day() -> int { 14400 }
+
+    derive duration_to_segments(d: Duration) -> int {
+        match d {
+            Duration.segments(n) => n,
+            Duration.rounds(n) => n * segments_per_round(),
+            Duration.turns(n) => n * segments_per_turn(),
+            Duration.hours(n) => n * segments_per_hour(),
+            Duration.days(n) => n * segments_per_day(),
+            Duration.end_of_round => 0,
+            Duration.indefinite => -1
+        }
+    }
 
 
     // ========================================================

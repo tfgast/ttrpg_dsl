@@ -104,6 +104,12 @@ pub trait StateProvider {
     /// Returns `None` if the inputs are not valid positions.
     fn distance(&self, a: &Value, b: &Value) -> Option<i64>;
 
+    /// Read the current game time counter.
+    /// Returns `0` by default (no time tracking).
+    fn read_game_time(&self) -> u64 {
+        0
+    }
+
     /// Get the entity's declared type name (e.g. "Character", "Monster").
     /// Returns `None` if unknown. Used by `grant` to resolve group defaults.
     fn entity_type_name(&self, _entity: &EntityRef) -> Option<Name> {
@@ -156,6 +162,9 @@ pub trait WritableState: StateProvider {
 
     /// Remove the turn budget for an entity entirely.
     fn clear_turn_budget(&mut self, entity: &EntityRef);
+
+    /// Set the game time counter.
+    fn set_game_time(&mut self, time: u64);
 }
 
 #[cfg(test)]

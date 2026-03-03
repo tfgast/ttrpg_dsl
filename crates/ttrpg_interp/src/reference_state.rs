@@ -47,6 +47,7 @@ pub struct GameState {
     next_entity_id: u64,
     next_condition_id: u64,
     next_invocation_id: u64,
+    game_time: u64,
 }
 
 impl GameState {
@@ -60,6 +61,7 @@ impl GameState {
             next_entity_id: 1,
             next_condition_id: 1,
             next_invocation_id: 1,
+            game_time: 0,
         }
     }
 
@@ -153,6 +155,11 @@ impl GameState {
     pub fn disable_option(&mut self, name: &str) {
         self.enabled_options.remove(name);
     }
+
+    /// Get the current game time counter.
+    pub fn game_time(&self) -> u64 {
+        self.game_time
+    }
 }
 
 impl Default for GameState {
@@ -215,6 +222,10 @@ impl StateProvider for GameState {
             }
             _ => None,
         }
+    }
+
+    fn read_game_time(&self) -> u64 {
+        self.game_time
     }
 
     fn entity_type_name(&self, entity: &EntityRef) -> Option<Name> {
@@ -329,6 +340,10 @@ impl WritableState for GameState {
 
     fn clear_turn_budget(&mut self, entity: &EntityRef) {
         self.turn_budgets.remove(&entity.0);
+    }
+
+    fn set_game_time(&mut self, time: u64) {
+        self.game_time = time;
     }
 }
 
