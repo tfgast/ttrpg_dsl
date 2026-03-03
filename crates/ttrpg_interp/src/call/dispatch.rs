@@ -16,7 +16,9 @@ use super::collection_builtins::{
     eval_all, eval_any, eval_append, eval_concat, eval_first, eval_keys, eval_last, eval_len,
     eval_reverse, eval_some, eval_sort, eval_sum, eval_values,
 };
-use super::functions::{dispatch_derive_or_mechanic, dispatch_prompt, dispatch_table};
+use super::functions::{
+    dispatch_derive_or_mechanic, dispatch_function, dispatch_prompt, dispatch_table,
+};
 use super::methods::eval_method_call;
 use super::ordinals::{eval_from_ordinal, eval_ordinal, eval_try_from_ordinal};
 use super::variants::construct_enum_variant;
@@ -227,7 +229,7 @@ fn dispatch_fn(
     call_span: Span,
 ) -> Result<Value, RuntimeError> {
     match fn_info.kind {
-        FnKind::Function => dispatch_derive_or_mechanic(env, &fn_info.name, args, call_span),
+        FnKind::Function => dispatch_function(env, &fn_info.name, args, call_span),
         FnKind::Derive => dispatch_derive_or_mechanic(env, &fn_info.name, args, call_span),
         FnKind::Mechanic => dispatch_derive_or_mechanic(env, &fn_info.name, args, call_span),
         FnKind::Prompt => dispatch_prompt(env, &fn_info.name, args, call_span),

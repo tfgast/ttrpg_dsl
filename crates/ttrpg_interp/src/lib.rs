@@ -225,9 +225,8 @@ impl<'p> Interpreter<'p> {
 
     /// Evaluate a named function with pre-evaluated arguments.
     ///
-    /// Functions are pure computations with no receiver, no dice, and no
-    /// mutation. The modify pipeline (condition/option modifiers) still
-    /// runs automatically.
+    /// Functions can roll dice and mutate state but have no receiver and
+    /// no modify pipeline (condition/option modifiers do not apply).
     pub fn evaluate_function(
         &self,
         state: &dyn StateProvider,
@@ -239,7 +238,7 @@ impl<'p> Interpreter<'p> {
             return Err(RuntimeError::new(format!("undefined function '{name}'")));
         }
         let mut env = Env::new(state, handler, self);
-        call::evaluate_fn_with_values(&mut env, name, args, Span::dummy())
+        call::evaluate_function_with_values(&mut env, name, args, Span::dummy())
     }
 
     /// Evaluate a named derive or table with pre-evaluated arguments.

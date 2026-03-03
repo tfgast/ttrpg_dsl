@@ -31,9 +31,8 @@ pub(crate) fn evaluate_fn_with_values(
         .derives
         .get(name)
         .or_else(|| env.interp.program.mechanics.get(name))
-        .or_else(|| env.interp.program.functions.get(name))
         .ok_or_else(|| {
-            RuntimeError::with_span(format!("undefined function '{name}'"), call_span)
+            RuntimeError::with_span(format!("undefined derive/mechanic '{name}'"), call_span)
         })?;
 
     let ast_params = fn_decl.params.clone();
@@ -128,6 +127,134 @@ pub(crate) fn evaluate_fn_with_values(
     Ok(val)
 }
 
+// ── Function dispatch (no modify pipeline) ────────────────────
+
+pub(super) fn dispatch_function(
+    env: &mut Env,
+    name: &str,
+    args: &[Arg],
+    call_span: Span,
+) -> Result<Value, RuntimeError> {
+    let fn_decl = env
+        .interp
+        .program
+        .functions
+        .get(name)
+        .ok_or_else(|| {
+            RuntimeError::with_span(
+                format!("internal error: no declaration found for function '{name}'"),
+                call_span,
+            )
+        })?;
+
+    let ast_params = fn_decl.params.clone();
+    let body = fn_decl.body.clone();
+
+    let fn_info = env
+        .interp
+        .type_env
+        .lookup_fn(name)
+        .ok_or_else(|| {
+            RuntimeError::with_span(
+                format!("internal error: no type info for function '{name}'"),
+                call_span,
+            )
+        })?
+        .clone();
+
+    let bound = bind_args(&fn_info.params, args, Some(&ast_params), env, call_span)?;
+
+    env.push_scope();
+    for (param_name, param_val) in &bound {
+        env.bind(param_name.clone(), param_val.clone());
+    }
+
+    let result = eval_block(env, &body);
+    env.pop_scope();
+    result
+}
+
+/// Evaluate a function with pre-evaluated positional arguments (no modify pipeline).
+pub(crate) fn evaluate_function_with_values(
+    env: &mut Env,
+    name: &str,
+    args: Vec<Value>,
+    call_span: Span,
+) -> Result<Value, RuntimeError> {
+    let fn_decl = env
+        .interp
+        .program
+        .functions
+        .get(name)
+        .ok_or_else(|| {
+            RuntimeError::with_span(format!("undefined function '{name}'"), call_span)
+        })?;
+
+    let ast_params = fn_decl.params.clone();
+    let body = fn_decl.body.clone();
+
+    let fn_info = env
+        .interp
+        .type_env
+        .lookup_fn(name)
+        .ok_or_else(|| {
+            RuntimeError::with_span(
+                format!("internal error: no type info for function '{name}'"),
+                call_span,
+            )
+        })?
+        .clone();
+
+    if args.len() > fn_info.params.len() {
+        return Err(RuntimeError::with_span(
+            format!(
+                "too many arguments: '{}' takes {} params, got {}",
+                name,
+                fn_info.params.len(),
+                args.len()
+            ),
+            call_span,
+        ));
+    }
+
+    let mut bound: Vec<(Name, Value)> = Vec::new();
+    for (i, val) in args.into_iter().enumerate() {
+        bound.push((fn_info.params[i].name.clone(), val));
+    }
+
+    // Fill defaults for missing optional params
+    for i in bound.len()..fn_info.params.len() {
+        if fn_info.params[i].has_default {
+            if let Some(default_expr) = ast_params.get(i).and_then(|p| p.default.as_ref()) {
+                env.push_scope();
+                for (pname, pval) in &bound {
+                    env.bind(pname.clone(), pval.clone());
+                }
+                let result = eval_expr(env, default_expr);
+                env.pop_scope();
+                bound.push((fn_info.params[i].name.clone(), result?));
+            }
+        } else {
+            return Err(RuntimeError::with_span(
+                format!(
+                    "missing required argument '{}' for '{}'",
+                    fn_info.params[i].name, name
+                ),
+                call_span,
+            ));
+        }
+    }
+
+    env.push_scope();
+    for (param_name, param_val) in &bound {
+        env.bind(param_name.clone(), param_val.clone());
+    }
+
+    let result = eval_block(env, &body);
+    env.pop_scope();
+    result
+}
+
 // ── Derive / Mechanic dispatch ─────────────────────────────────
 
 pub(super) fn dispatch_derive_or_mechanic(
@@ -143,10 +270,9 @@ pub(super) fn dispatch_derive_or_mechanic(
         .derives
         .get(name)
         .or_else(|| env.interp.program.mechanics.get(name))
-        .or_else(|| env.interp.program.functions.get(name))
         .ok_or_else(|| {
             RuntimeError::with_span(
-                format!("internal error: no declaration found for function '{name}'"),
+                format!("internal error: no declaration found for derive/mechanic '{name}'"),
                 call_span,
             )
         })?;
