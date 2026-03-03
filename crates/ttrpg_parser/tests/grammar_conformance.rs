@@ -399,6 +399,58 @@ fn mechanic_basic() {
 }
 
 #[test]
+fn function_basic() {
+    let p = ok(r#"system "t" {
+    function add(a: int, b: int) -> int {
+        a + b
+    }
+}"#);
+    match first_decl(&p) {
+        DeclKind::Function(f) => {
+            assert_eq!(f.name.as_str(), "add");
+            assert_eq!(f.params.len(), 2);
+            assert!(!matches!(f.return_type.node, TypeExpr::Unit));
+        }
+        _ => panic!("expected function"),
+    }
+}
+
+#[test]
+fn function_no_return_type() {
+    let p = ok(r#"system "t" {
+    entity Character { hp: int }
+    function heal(target: Character) {
+        target.hp += 1
+    }
+}"#);
+    match &decls(&p)[1].node {
+        DeclKind::Function(f) => {
+            assert_eq!(f.name.as_str(), "heal");
+            assert!(matches!(f.return_type.node, TypeExpr::Unit));
+        }
+        _ => panic!("expected function"),
+    }
+}
+
+#[test]
+fn function_with_tags() {
+    let p = ok(r#"system "t" {
+    tag #healing
+    function heal(amount: int) -> int #healing {
+        amount + 1
+    }
+}"#);
+    match &decls(&p)[1].node {
+        DeclKind::Function(f) => {
+            assert_eq!(f.name.as_str(), "heal");
+            assert_eq!(f.tags.len(), 1);
+            assert_eq!(f.tags[0].as_str(), "healing");
+        }
+        _ => panic!("expected function"),
+    }
+}
+
+#[test]
 fn one_line_block_value() {
     // Spec: `{ DEX }` should work (term matches &"}")
     ok(r#"system "t" {

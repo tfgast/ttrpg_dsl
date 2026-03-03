@@ -10852,3 +10852,182 @@ system "test" {
 "#;
     expect_no_errors(source);
 }
+
+// ── Function block capability enforcement ───────────────────────
+
+#[test]
+fn test_function_can_roll_dice() {
+    let source = r#"
+system "test" {
+    function roll_attack(bonus: int) -> int {
+        let r = roll(1d20 + bonus)
+        r.total
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_function_can_mutate() {
+    let source = r#"
+system "test" {
+    entity Character { hp: int }
+    function heal(target: Character, amount: int) {
+        target.hp += amount
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_function_can_emit() {
+    let source = r#"
+system "test" {
+    entity Character { hp: int }
+    event Healed(target: Character) {}
+    function heal(target: Character) {
+        target.hp += 1
+        emit Healed(target: target)
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_function_can_call_function() {
+    let source = r#"
+system "test" {
+    function double(x: int) -> int { x * 2 }
+    function quadruple(x: int) -> int { double(double(x)) }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_function_cannot_call_action() {
+    let source = r#"
+system "test" {
+    entity Character { hp: int }
+    action Heal on actor: Character (target: Character) {
+        resolve { target.hp += 5 }
+    }
+    function do_heal(a: Character, b: Character) {
+        Heal(a, b)
+    }
+}
+"#;
+    expect_errors(
+        source,
+        &["is an action and can only be called from action, reaction, or hook"],
+    );
+}
+
+#[test]
+fn test_function_cannot_use_invocation() {
+    let source = r#"
+system "test" {
+    entity Character { inv: option<Invocation> }
+    function foo(target: Character) {
+        target.inv = some(invocation())
+    }
+}
+"#;
+    expect_errors(
+        source,
+        &["invocation() can only be called in action, reaction, or hook"],
+    );
+}
+
+#[test]
+fn test_function_cannot_use_turn() {
+    let source = r#"
+system "test" {
+    entity Character { hp: int }
+    function foo(target: Character) -> int {
+        turn
+    }
+}
+"#;
+    expect_errors(source, &["undefined variable `turn`"]);
+}
+
+#[test]
+fn test_derive_cannot_call_function() {
+    let source = r#"
+system "test" {
+    function double(x: int) -> int { x * 2 }
+    derive quad(x: int) -> int { double(double(x)) }
+}
+"#;
+    expect_errors(
+        source,
+        &["is a function and can only be called from function, action, reaction, or hook"],
+    );
+}
+
+#[test]
+fn test_mechanic_cannot_call_function() {
+    let source = r#"
+system "test" {
+    function double(x: int) -> int { x * 2 }
+    mechanic quad(x: int) -> int { double(double(x)) }
+}
+"#;
+    expect_errors(
+        source,
+        &["is a function and can only be called from function, action, reaction, or hook"],
+    );
+}
+
+#[test]
+fn test_function_called_from_action_ok() {
+    let source = r#"
+system "test" {
+    entity Character { hp: int }
+    function compute_heal(base: int) -> int { base * 2 }
+    action Heal on actor: Character (target: Character) {
+        resolve {
+            target.hp += compute_heal(3)
+        }
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_function_called_from_reaction_ok() {
+    let source = r#"
+system "test" {
+    entity Character { hp: int }
+    event Damaged(target: Character) {}
+    function compute_heal(base: int) -> int { base * 2 }
+    reaction Shield on reactor: Character (trigger: Damaged(target: reactor)) {
+        cost { reaction }
+        resolve {
+            reactor.hp += compute_heal(1)
+        }
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_function_called_from_hook_ok() {
+    let source = r#"
+system "test" {
+    entity Character { hp: int }
+    event Damaged(target: Character) {}
+    function compute_heal(base: int) -> int { base * 2 }
+    hook Regen on target: Character (trigger: Damaged(target: target)) {
+        target.hp += compute_heal(1)
+    }
+}
+"#;
+    expect_no_errors(source);
+}
