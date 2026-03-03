@@ -193,7 +193,14 @@ system "OSRIC Initiative" {
             FleeAction             => initiative_segment,
             HoldAction             => initiative_segment
         }
-        wrap_segment(raw)
+        // Spells are NOT wrapped: values > 10 indicate cross-round
+        // casting that continues into the next combat round (p. 93).
+        // Non-spell actions are clamped to 1–10 for safety.
+        if action_type == DeclaredActionType.CastSpellAction {
+            raw
+        } else {
+            wrap_segment(raw)
+        }
     }
 
     // Compute missile initiative segment for a specific character.
@@ -267,14 +274,24 @@ system "OSRIC Initiative" {
     //  after (casting_time) segments from when casting starts.
     //  If caster takes damage before completion, spell is lost.
     //
+    //  Values > 10 indicate cross-round casting: the spell
+    //  continues into the next combat round, taking effect
+    //  when complete (OSRIC 3.0 §1.6.1.3, p. 93).
+    //
     //  Example: initiative 4, casting time 3
     //   → starts segment 4, completes at end of segment 6
     //   → interruptible during segments 4, 5
     //   → spell effect in segment 6
+    //
+    //  Example: initiative 5, casting time 8
+    //   → starts segment 5, completes at segment 12
+    //   → segment 12 > 10, so casting continues into next
+    //     round (effect at segment 2 of next round)
+    //   → CastingSpell condition persists across round boundary
     // ========================================================
 
     derive spell_effect_segment(initiative_segment: int, casting_time: int) -> int {
-        wrap_segment(initiative_segment + casting_time - 1)
+        initiative_segment + casting_time - 1
     }
 
     // Is the caster currently casting (interruptible) at this segment?
@@ -350,11 +367,17 @@ system "OSRIC Initiative" {
     //  CONDITIONS
     //
     //  CastingSpell: applied when a character begins casting.
-    //  Prevents attacks while casting (caster is occupied).
+    //  Per OSRIC 3.0 §1.6.2.11:
+    //   - Caster receives no dexterity bonus to AC while casting.
+    //   - Caster cannot attack while casting (occupied).
     //  Removed when spell completes or is interrupted.
     // ========================================================
 
     condition CastingSpell on bearer: Character {
+        // Per 1.6.2.11: no dexterity bonus to armour class while casting.
+        modify effective_target_ac(target: bearer) {
+            include_dex = false
+        }
         modify [#attack_resolution](attacker: bearer) {
             result.outcome = AttackOutcome.Miss
             result.damage = 0
@@ -593,6 +616,12 @@ system "OSRIC Initiative" {
     //        lowest first (faster weapons strike first).
     //   4. Damage from resolved attacks may trigger the
     //      SpellInterruption hook, breaking in-progress spells.
+    //
+    //  Cross-round casting (§1.6.1.3): if a spell's effect
+    //  segment > 10, it does NOT resolve this round. The
+    //  CastingSpell condition persists across the round
+    //  boundary; the host runtime carries the pending spell
+    //  into the next round for resolution.
     //
     //  Fighter multi-attacks (segments 1 and 10) and missile
     //  DEX adjustments are baked into each RoundAction's

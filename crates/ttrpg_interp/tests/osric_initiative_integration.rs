@@ -944,12 +944,13 @@ fn action_segment_cast_spell_with_casting_time() {
 }
 
 #[test]
-fn action_segment_cast_spell_wraps() {
+fn action_segment_cast_spell_cross_round() {
     let (program, result) = compile_osric_initiative();
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let state = GameState::new();
 
-    // Initiative 6, casting time 7 → 6 + 7 - 1 = 12 → wraps to 2
+    // Initiative 6, casting time 7 → 6 + 7 - 1 = 12
+    // NOT wrapped: value > 10 means spell continues into next round (§1.6.1.3).
     let val = interp
         .evaluate_derive(&state, &mut NullHandler, "action_segment", vec![
             Value::Int(6),
@@ -957,7 +958,7 @@ fn action_segment_cast_spell_wraps() {
             Value::Int(7), // casting_time
         ])
         .unwrap();
-    assert_eq!(val, Value::Int(2));
+    assert_eq!(val, Value::Int(12));
 }
 
 #[test]
@@ -1324,19 +1325,20 @@ fn spell_effect_segment_basic() {
 }
 
 #[test]
-fn spell_effect_segment_wraps_around() {
+fn spell_effect_segment_cross_round() {
     let (program, result) = compile_osric_initiative();
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let state = GameState::new();
 
-    // Initiative 9, casting time 5 → 9 + 5 - 1 = 13 → wrap → 3
+    // Initiative 9, casting time 5 → 9 + 5 - 1 = 13
+    // NOT wrapped: value > 10 means spell continues into next round (§1.6.1.3).
     let val = interp
         .evaluate_derive(&state, &mut NullHandler, "spell_effect_segment", vec![
             Value::Int(9),
             Value::Int(5),
         ])
         .unwrap();
-    assert_eq!(val, Value::Int(3));
+    assert_eq!(val, Value::Int(13));
 }
 
 #[test]
@@ -1803,9 +1805,11 @@ fn casting_spell_on_attacker_forces_miss() {
     );
 }
 
-/// CastingSpell on target (not attacker) should NOT modify the attack.
+/// CastingSpell on target: strips DEX AC bonus per §1.6.2.11 but does NOT
+/// force a miss (that modify only fires when attacker = bearer).
+/// With standard DEX 12 (AC adj 0), the effective AC is unchanged.
 #[test]
-fn casting_spell_on_target_does_not_affect_attack() {
+fn casting_spell_on_target_strips_dex_ac_but_attack_hits() {
     let (program, result) = compile_osric_initiative();
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let mut state = GameState::new();
@@ -1823,21 +1827,89 @@ fn casting_spell_on_target_does_not_affect_attack() {
     let atk_roll = scripted_roll(1, 20, 0, vec![15], vec![15], 15, 15);
     let dmg_roll = scripted_roll(1, 8, 0, vec![6], vec![6], 6, 6);
 
-    let (fields, _) = resolve_melee(
+    let (fields, log) = resolve_melee(
         &interp,
         &state,
-        vec![atk_roll, dmg_roll],
+        vec![
+            Response::Acknowledged, // ModifyApplied (effective_target_ac DEX stripping)
+            atk_roll,
+            dmg_roll,
+        ],
         attacker,
         target,
         "SwordLong",
     );
 
-    // Attack should proceed normally — condition only modifies when attacker = bearer
+    // Attack hits normally — DEX 12 gives 0 AC bonus, so stripping it changes nothing
     assert_eq!(
         fields.get("outcome").unwrap(),
         &enum_variant("AttackOutcome", "Hit")
     );
     assert_eq!(get_int(&fields, "damage"), 6);
+
+    // Verify the DEX AC modify fired
+    assert!(
+        log.iter().any(|e| matches!(e, Effect::ModifyApplied { .. })),
+        "expected ModifyApplied for effective_target_ac DEX stripping"
+    );
+}
+
+/// CastingSpell on a high-DEX target strips their DEX AC bonus (§1.6.2.11),
+/// making them easier to hit. DEX 16 → +2 AC bonus stripped → attack that
+/// would miss now hits.
+#[test]
+fn casting_spell_strips_high_dex_ac_bonus() {
+    let (program, result) = compile_osric_initiative();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut state = GameState::new();
+
+    let high_dex_abilities: Vec<(&str, i64)> = vec![
+        ("STR", 12), ("DEX", 16), ("CON", 12),
+        ("INT", 12), ("WIS", 12), ("CHA", 12),
+    ];
+
+    let attacker = make_character(
+        &mut state, "Fighter", "Fighter", 1, &standard_abilities(), 30, 10, "Human",
+    );
+    // Target: armor_ac 14, DEX 16 → +2 AC bonus → effective AC 16
+    let target = make_character(
+        &mut state, "Target", "MagicUser", 5, &high_dex_abilities, 10, 14, "Human",
+    );
+
+    // Roll 15 + BTHB 0 (Fighter 1) + STR 0 (12) = 15
+    // Without CastingSpell: effective AC = 14 + 2 (DEX 16) = 16 → 15 < 16 → Miss
+    // With CastingSpell: effective AC = 14 + 0 (DEX stripped) = 14 → 15 >= 14 → Hit!
+    state.apply_condition(&target, "CastingSpell", BTreeMap::new(), Value::None, None);
+
+    let atk_roll = scripted_roll(1, 20, 0, vec![15], vec![15], 15, 15);
+    let dmg_roll = scripted_roll(1, 8, 0, vec![6], vec![6], 6, 6);
+
+    let (fields, log) = resolve_melee(
+        &interp,
+        &state,
+        vec![
+            Response::Acknowledged, // ModifyApplied (DEX AC stripping)
+            atk_roll,
+            dmg_roll,
+        ],
+        attacker,
+        target,
+        "SwordLong",
+    );
+
+    // Attack hits because CastingSpell stripped the DEX +2 AC bonus
+    assert_eq!(
+        fields.get("outcome").unwrap(),
+        &enum_variant("AttackOutcome", "Hit"),
+        "CastingSpell should strip DEX AC bonus, making target easier to hit"
+    );
+    assert_eq!(get_int(&fields, "damage"), 6);
+
+    // Verify modify fired
+    assert!(
+        log.iter().any(|e| matches!(e, Effect::ModifyApplied { .. })),
+        "expected ModifyApplied for DEX AC stripping"
+    );
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -1923,6 +1995,7 @@ fn spell_interruption_hook_fires_on_damage() {
     let mut handler = ScriptedHandler::with_responses(vec![
         Response::Acknowledged, // ActionStarted
         Response::Acknowledged, // DeductCost
+        Response::Acknowledged, // ModifyApplied (CastingSpell strips DEX AC on caster)
         atk_roll,
         dmg_roll,
         Response::Acknowledged, // Damaged event
