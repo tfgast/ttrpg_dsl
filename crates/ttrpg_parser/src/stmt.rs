@@ -60,6 +60,11 @@ impl Parser {
             return self.parse_emit_stmt();
         }
 
+        // with_budget(entity, { field: expr, ... }) { body }
+        if self.at_ident("with_budget") && matches!(self.peek_at(1), TokenKind::LParen) {
+            return self.parse_with_budget_stmt();
+        }
+
         // Parse as expression first, then check if it's an assignment
         let expr = self.parse_expr()?;
 
@@ -184,6 +189,57 @@ impl Parser {
         Ok(StmtKind::Emit {
             event_name,
             args,
+            span,
+        })
+    }
+
+    /// Parse `with_budget(entity, { field: expr, ... }) { body }`
+    fn parse_with_budget_stmt(&mut self) -> Result<StmtKind, ()> {
+        let start = self.start_span();
+        self.expect_soft_keyword("with_budget")?;
+        self.expect(&TokenKind::LParen)?;
+
+        let entity = self.parse_expr()?;
+        self.expect(&TokenKind::Comma)?;
+        self.skip_newlines();
+
+        // Parse budget fields: { ident: expr, ... }
+        self.expect(&TokenKind::LBrace)?;
+        self.skip_newlines();
+        let mut budget_fields = Vec::new();
+        if !matches!(self.peek(), TokenKind::RBrace) {
+            let field_start = self.start_span();
+            let (name, _) = self.expect_ident()?;
+            self.expect(&TokenKind::Colon)?;
+            let value = self.parse_expr()?;
+            self.skip_newlines();
+            budget_fields.push((Spanned::new(name, self.end_span(field_start)), value));
+
+            while matches!(self.peek(), TokenKind::Comma) {
+                self.advance();
+                self.skip_newlines();
+                if matches!(self.peek(), TokenKind::RBrace) {
+                    break;
+                }
+                let field_start = self.start_span();
+                let (name, _) = self.expect_ident()?;
+                self.expect(&TokenKind::Colon)?;
+                let value = self.parse_expr()?;
+                self.skip_newlines();
+                budget_fields.push((Spanned::new(name, self.end_span(field_start)), value));
+            }
+        }
+        self.skip_newlines();
+        self.expect(&TokenKind::RBrace)?;
+
+        self.expect(&TokenKind::RParen)?;
+        let body = self.parse_block()?;
+        let span = self.end_span(start);
+
+        Ok(StmtKind::WithBudget {
+            entity: Box::new(entity),
+            budget_fields,
+            body,
             span,
         })
     }

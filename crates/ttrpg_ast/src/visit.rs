@@ -659,6 +659,20 @@ impl VisitSpansMut for StmtKind {
                     arg.visit_spans_mut(f);
                 }
             }
+            StmtKind::WithBudget {
+                entity,
+                budget_fields,
+                body,
+                span,
+            } => {
+                entity.visit_spans_mut(f);
+                for (name, value) in budget_fields {
+                    name.visit_spans_mut(f);
+                    value.visit_spans_mut(f);
+                }
+                body.visit_spans_mut(f);
+                span.visit_spans_mut(f);
+            }
         }
     }
 }

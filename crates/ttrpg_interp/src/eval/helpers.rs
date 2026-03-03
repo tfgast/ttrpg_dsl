@@ -344,6 +344,18 @@ fn collect_idents_block(block: &ttrpg_ast::ast::Block, out: &mut Vec<Name>) {
                     collect_idents(&arg.value, out);
                 }
             }
+            StmtKind::WithBudget {
+                entity,
+                budget_fields,
+                body,
+                ..
+            } => {
+                collect_idents(entity, out);
+                for (_, val) in budget_fields {
+                    collect_idents(val, out);
+                }
+                collect_idents_block(body, out);
+            }
         }
     }
 }

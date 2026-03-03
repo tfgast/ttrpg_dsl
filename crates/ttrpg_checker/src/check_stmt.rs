@@ -112,6 +112,10 @@ impl Checker<'_> {
                 self.check_emit(event_name, args, *span);
                 Ty::Unit
             }
+            StmtKind::WithBudget { span, .. } => {
+                self.error("with_budget is not yet supported", *span);
+                Ty::Unit
+            }
         }
     }
 

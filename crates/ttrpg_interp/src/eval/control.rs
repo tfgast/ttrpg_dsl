@@ -359,6 +359,10 @@ pub(super) fn eval_stmt(
             super::emit::eval_emit(env, event_name, args, *span)?;
             Ok(Value::None)
         }
+        StmtKind::WithBudget { .. } => Err(RuntimeError::with_span(
+            "with_budget is not yet implemented",
+            stmt.span,
+        )),
     }
 }
 

@@ -3385,3 +3385,163 @@ fn test_revoke_statement_still_works() {
         diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
     );
 }
+
+// ── `with_budget` statement tests ────────────────────────────────
+
+#[test]
+fn test_with_budget_basic() {
+    let source = r#"system "test" {
+    entity Character { hp: int }
+    action MeleeAttack on actor: Character (target: Character) {
+        resolve { target.hp -= 1 }
+    }
+    function do_attack(actor: Character, target: Character) {
+        with_budget(actor, { action: 1 }) {
+            actor.MeleeAttack(target)
+        }
+    }
+}"#;
+    let (program, diagnostics) = parse(source, FileId::SYNTH);
+    assert!(
+        diagnostics.is_empty(),
+        "with_budget basic should parse, got: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+    let system = match &program.items[0].node {
+        TopLevel::System(s) => s,
+        _ => panic!("expected system block"),
+    };
+    let func = system
+        .decls
+        .iter()
+        .find_map(|d| match &d.node {
+            DeclKind::Function(f) => Some(f),
+            _ => None,
+        })
+        .unwrap();
+    let stmt = &func.body.node[0].node;
+    match stmt {
+        StmtKind::WithBudget {
+            budget_fields,
+            body,
+            ..
+        } => {
+            assert_eq!(budget_fields.len(), 1);
+            assert_eq!(budget_fields[0].0.node.as_str(), "action");
+            assert_eq!(body.node.len(), 1);
+        }
+        _ => panic!("expected WithBudget statement, got {:?}", std::mem::discriminant(stmt)),
+    }
+}
+
+#[test]
+fn test_with_budget_multiple_fields() {
+    let source = r#"system "test" {
+    entity Character { hp: int }
+    function do_stuff(actor: Character) {
+        with_budget(actor, { action: 1, bonus_action: 1 }) {
+            let x = 1
+        }
+    }
+}"#;
+    let (program, diagnostics) = parse(source, FileId::SYNTH);
+    assert!(
+        diagnostics.is_empty(),
+        "with_budget multiple fields should parse, got: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+    let system = match &program.items[0].node {
+        TopLevel::System(s) => s,
+        _ => panic!("expected system block"),
+    };
+    let func = system
+        .decls
+        .iter()
+        .find_map(|d| match &d.node {
+            DeclKind::Function(f) => Some(f),
+            _ => None,
+        })
+        .unwrap();
+    let stmt = &func.body.node[0].node;
+    match stmt {
+        StmtKind::WithBudget { budget_fields, .. } => {
+            assert_eq!(budget_fields.len(), 2);
+            assert_eq!(budget_fields[0].0.node.as_str(), "action");
+            assert_eq!(budget_fields[1].0.node.as_str(), "bonus_action");
+        }
+        _ => panic!("expected WithBudget statement"),
+    }
+}
+
+#[test]
+fn test_with_budget_trailing_comma() {
+    let source = r#"system "test" {
+    entity Character { hp: int }
+    function f(e: Character) {
+        with_budget(e, { a: 1, }) {
+            let x = 1
+        }
+    }
+}"#;
+    let (_, diagnostics) = parse(source, FileId::SYNTH);
+    assert!(
+        diagnostics.is_empty(),
+        "with_budget trailing comma should parse, got: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn test_with_budget_nested_body() {
+    let source = r#"system "test" {
+    entity Character { hp: int }
+    function f(actor: Character, target: Character) {
+        with_budget(actor, { action: 2 }) {
+            let x = 1
+            let y = 2
+            target.hp -= x + y
+        }
+    }
+}"#;
+    let (program, diagnostics) = parse(source, FileId::SYNTH);
+    assert!(
+        diagnostics.is_empty(),
+        "with_budget nested body should parse, got: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+    let system = match &program.items[0].node {
+        TopLevel::System(s) => s,
+        _ => panic!("expected system block"),
+    };
+    let func = system
+        .decls
+        .iter()
+        .find_map(|d| match &d.node {
+            DeclKind::Function(f) => Some(f),
+            _ => None,
+        })
+        .unwrap();
+    let stmt = &func.body.node[0].node;
+    match stmt {
+        StmtKind::WithBudget { body, .. } => {
+            assert_eq!(body.node.len(), 3);
+        }
+        _ => panic!("expected WithBudget statement"),
+    }
+}
+
+#[test]
+fn test_with_budget_as_variable_name() {
+    // Ensure `with_budget` used as a variable name (not followed by `(`) still works.
+    let source = r#"system "test" {
+    derive f(with_budget: int) -> int {
+        with_budget
+    }
+}"#;
+    let (_, diagnostics) = parse(source, FileId::SYNTH);
+    assert!(
+        diagnostics.is_empty(),
+        "with_budget as variable name should parse, got: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}

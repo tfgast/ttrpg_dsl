@@ -854,6 +854,13 @@ pub enum StmtKind {
         args: Vec<Arg>,
         span: Span,
     },
+    /// `with_budget(entity, { field: expr, ... }) { body }` — provision a temporary turn budget.
+    WithBudget {
+        entity: Box<Spanned<ExprKind>>,
+        budget_fields: Vec<(Spanned<Name>, Spanned<ExprKind>)>,
+        body: Block,
+        span: Span,
+    },
 }
 
 #[derive(Clone)]
