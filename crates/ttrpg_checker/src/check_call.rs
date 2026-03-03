@@ -70,6 +70,7 @@ impl Checker<'_> {
                                         | BlockKind::ActionResolve
                                         | BlockKind::ReactionResolve
                                         | BlockKind::HookResolve
+                                        | BlockKind::WithBudget
                                 )
                             ) {
                                 self.error(
@@ -219,7 +220,7 @@ impl Checker<'_> {
             );
         }
 
-        // Check context restrictions for functions (callable from function/action/reaction/hook)
+        // Check context restrictions for functions (callable from function/action/reaction/hook/with_budget)
         if fn_info.kind == FnKind::Function {
             let current_ctx = self.scope.current_block_kind();
             if !matches!(
@@ -229,6 +230,7 @@ impl Checker<'_> {
                         | BlockKind::ActionResolve
                         | BlockKind::ReactionResolve
                         | BlockKind::HookResolve
+                        | BlockKind::WithBudget
                 )
             ) {
                 self.error(
@@ -250,6 +252,7 @@ impl Checker<'_> {
                         | BlockKind::ActionResolve
                         | BlockKind::ReactionResolve
                         | BlockKind::HookResolve
+                        | BlockKind::WithBudget
                 )
             ) {
                 self.error(

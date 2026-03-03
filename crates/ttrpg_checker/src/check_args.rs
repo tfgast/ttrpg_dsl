@@ -452,6 +452,7 @@ impl Checker<'_> {
                         | BlockKind::ActionResolve
                         | BlockKind::ReactionResolve
                         | BlockKind::HookResolve
+                        | BlockKind::WithBudget
                 )
             ) {
                 self.error(

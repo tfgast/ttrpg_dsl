@@ -21,6 +21,8 @@ pub enum BlockKind {
     /// access, action/reaction calls, prompts, and mechanic calls. Only
     /// side-effect-free builtins (floor, ceil, min, max, distance) are permitted.
     TriggerBinding,
+    /// `with_budget` body — provisions a scoped turn budget in a function.
+    WithBudget,
     /// Inner blocks (if, match, etc.) inherit from enclosing real block.
     Inner,
 }
@@ -34,6 +36,7 @@ impl BlockKind {
                 | BlockKind::ActionResolve
                 | BlockKind::ReactionResolve
                 | BlockKind::HookResolve
+                | BlockKind::WithBudget
         )
     }
 
@@ -44,6 +47,7 @@ impl BlockKind {
                 | BlockKind::ActionResolve
                 | BlockKind::ReactionResolve
                 | BlockKind::HookResolve
+                | BlockKind::WithBudget
         )
     }
 
@@ -57,7 +61,10 @@ impl BlockKind {
     pub fn allows_turn(&self) -> bool {
         matches!(
             self,
-            BlockKind::ActionResolve | BlockKind::ReactionResolve | BlockKind::HookResolve
+            BlockKind::ActionResolve
+                | BlockKind::ReactionResolve
+                | BlockKind::HookResolve
+                | BlockKind::WithBudget
         )
     }
 
@@ -74,6 +81,7 @@ impl BlockKind {
                 | BlockKind::ActionResolve
                 | BlockKind::ReactionResolve
                 | BlockKind::HookResolve
+                | BlockKind::WithBudget
         )
     }
 }

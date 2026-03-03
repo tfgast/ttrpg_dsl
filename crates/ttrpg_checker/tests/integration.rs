@@ -11028,3 +11028,228 @@ system "test" {
 "#;
     expect_no_errors(source);
 }
+
+// ── with_budget checker tests ───────────────────────────────────
+
+#[test]
+fn test_with_budget_in_function_ok() {
+    let source = r#"
+system "test" {
+    entity Character { hp: int }
+    action Strike on actor: Character (target: Character) {
+        resolve { target.hp -= 1 }
+    }
+    function do_attack(actor: Character, target: Character) {
+        with_budget(actor, { actions: 1 }) {
+            actor.Strike(target)
+        }
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_with_budget_in_action_ok() {
+    let source = r#"
+system "test" {
+    entity Character { hp: int }
+    action Strike on actor: Character (target: Character) {
+        resolve {
+            with_budget(actor, { actions: 1 }) {
+                actor.Strike(target)
+            }
+        }
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_with_budget_in_derive_error() {
+    let source = r#"
+system "test" {
+    entity Character { hp: int }
+    derive foo(actor: Character) -> int {
+        with_budget(actor, { actions: 1 }) {
+            0
+        }
+    }
+}
+"#;
+    expect_errors(source, &["with_budget is only allowed in function, action, reaction, or hook context"]);
+}
+
+#[test]
+fn test_with_budget_in_mechanic_error() {
+    let source = r#"
+system "test" {
+    entity Character { hp: int }
+    mechanic foo(actor: Character) -> int {
+        with_budget(actor, { actions: 1 }) {
+            0
+        }
+    }
+}
+"#;
+    expect_errors(source, &["with_budget is only allowed in function, action, reaction, or hook context"]);
+}
+
+#[test]
+fn test_with_budget_non_entity_error() {
+    let source = r#"
+system "test" {
+    entity Character { hp: int }
+    function foo(x: int) {
+        with_budget(x, { actions: 1 }) {
+            let y = 1
+        }
+    }
+}
+"#;
+    expect_errors(source, &["with_budget requires an entity"]);
+}
+
+#[test]
+fn test_with_budget_invalid_field_error() {
+    let source = r#"
+system "test" {
+    entity Character { hp: int }
+    function foo(actor: Character) {
+        with_budget(actor, { nonexistent: 1 }) {
+            let y = 1
+        }
+    }
+}
+"#;
+    expect_errors(source, &["TurnBudget has no field `nonexistent`"]);
+}
+
+#[test]
+fn test_with_budget_non_int_field_error() {
+    let source = r#"
+system "test" {
+    entity Character { hp: int }
+    function foo(actor: Character) {
+        with_budget(actor, { actions: "nope" }) {
+            let y = 1
+        }
+    }
+}
+"#;
+    expect_errors(source, &["budget field `actions` must be int"]);
+}
+
+#[test]
+fn test_with_budget_turn_readable_in_body() {
+    let source = r#"
+system "test" {
+    entity Character { hp: int }
+    function foo(actor: Character) {
+        with_budget(actor, { actions: 1 }) {
+            let a = turn.actions
+        }
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_with_budget_turn_writable_in_body() {
+    let source = r#"
+system "test" {
+    entity Character { hp: int }
+    function foo(actor: Character) {
+        with_budget(actor, { actions: 2 }) {
+            turn.actions -= 1
+        }
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_with_budget_multiple_fields_ok() {
+    let source = r#"
+system "test" {
+    entity Character { hp: int }
+    function foo(actor: Character) {
+        with_budget(actor, { actions: 1, bonus_actions: 1, movement: 30 }) {
+            let a = turn.actions
+        }
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_with_budget_invocation_rejected_in_body() {
+    let source = r#"
+system "test" {
+    entity Character { inv: option<Invocation> }
+    function foo(actor: Character) {
+        with_budget(actor, { actions: 1 }) {
+            actor.inv = some(invocation())
+        }
+    }
+}
+"#;
+    expect_errors(source, &["invocation() can only be called in action, reaction, or hook"]);
+}
+
+#[test]
+fn test_with_budget_any_entity_ok() {
+    let source = r#"
+system "test" {
+    entity Character { hp: int }
+    function foo(actor: entity) {
+        with_budget(actor, { actions: 1 }) {
+            let a = turn.actions
+        }
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_with_budget_user_defined_turn_budget() {
+    let source = r#"
+system "test" {
+    struct TurnBudget {
+        attack: int
+        move_pts: int
+    }
+    entity Character { hp: int }
+    function foo(actor: Character) {
+        with_budget(actor, { attack: 1 }) {
+            let a = turn.attack
+        }
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_with_budget_user_defined_rejects_builtin_field() {
+    let source = r#"
+system "test" {
+    struct TurnBudget {
+        attack: int
+        move_pts: int
+    }
+    entity Character { hp: int }
+    function foo(actor: Character) {
+        with_budget(actor, { actions: 1 }) {
+            let y = 1
+        }
+    }
+}
+"#;
+    expect_errors(source, &["TurnBudget has no field `actions`"]);
+}

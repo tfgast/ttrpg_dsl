@@ -1,5 +1,5 @@
 use ttrpg_ast::ast::*;
-use ttrpg_ast::Spanned;
+use ttrpg_ast::{Name, Spanned};
 
 use crate::check::{Checker, Namespace};
 use crate::scope::*;
@@ -112,8 +112,13 @@ impl Checker<'_> {
                 self.check_emit(event_name, args, *span);
                 Ty::Unit
             }
-            StmtKind::WithBudget { span, .. } => {
-                self.error("with_budget is not yet supported", *span);
+            StmtKind::WithBudget {
+                entity,
+                budget_fields,
+                body,
+                span,
+            } => {
+                self.check_with_budget(entity, budget_fields, body, *span);
                 Ty::Unit
             }
         }
@@ -645,5 +650,70 @@ impl Checker<'_> {
                 );
             }
         }
+    }
+
+    fn check_with_budget(
+        &mut self,
+        entity: &Spanned<ExprKind>,
+        budget_fields: &[(Spanned<Name>, Spanned<ExprKind>)],
+        body: &Block,
+        span: ttrpg_ast::Span,
+    ) {
+        // with_budget requires mutation context (rejects derive/mechanic/condition/prompt)
+        if !self.scope.allows_mutation() {
+            self.error(
+                "with_budget is only allowed in function, action, reaction, or hook context",
+                span,
+            );
+        }
+
+        // Entity arg must resolve to an entity type
+        let entity_ty = self.check_expr(entity);
+        if !entity_ty.is_error()
+            && !matches!(entity_ty, Ty::Entity(_) | Ty::AnyEntity)
+        {
+            self.error(
+                format!("with_budget requires an entity, found {entity_ty}"),
+                span,
+            );
+        }
+
+        // Validate budget field names against TurnBudget declaration
+        let valid_fields: Vec<Name> = self.env.turn_budget_field_names();
+        for (field_name, field_value) in budget_fields {
+            if !valid_fields.iter().any(|f| f == &field_name.node) {
+                self.error(
+                    format!(
+                        "TurnBudget has no field `{}`",
+                        field_name.node
+                    ),
+                    field_name.span,
+                );
+            }
+            let val_ty = self.check_expr(field_value);
+            if !val_ty.is_error() && val_ty != Ty::Int {
+                self.error(
+                    format!(
+                        "budget field `{}` must be int, found {val_ty}",
+                        field_name.node
+                    ),
+                    field_value.span,
+                );
+            }
+        }
+
+        // Push WithBudget scope and bind `turn` as mutable TurnBudget
+        self.scope.push(BlockKind::WithBudget);
+        self.scope.bind(
+            "turn".into(),
+            VarBinding {
+                ty: Ty::TurnBudget,
+                mutable: true,
+                is_local: false,
+            },
+        );
+
+        self.check_block(body);
+        self.scope.pop();
     }
 }
