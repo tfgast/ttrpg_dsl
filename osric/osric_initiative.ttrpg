@@ -625,6 +625,7 @@ system "OSRIC Initiative" {
 
     function resolve_round(
         round: int,
+        combatants: list<Character>,
         initiative: InitiativeResult,
         actions: list<RoundAction>
     ) {
@@ -675,6 +676,47 @@ system "OSRIC Initiative" {
             }
         }
 
+        expire_conditions(combatants)
         emit RoundEnd(round: round)
+    }
+
+
+    // ========================================================
+    //  CONDITION EXPIRY
+    //
+    //  Called at the end of each round to remove conditions
+    //  whose duration has elapsed. Uses game_time() and each
+    //  condition's applied_at to compute elapsed segments.
+    //
+    //  Handles: end_of_round, rounds(n), turns(n), hours(n),
+    //  days(n). Does NOT handle segments(n) — those are managed
+    //  locally by surprise/casting code. Indefinite conditions
+    //  are never expired.
+    // ========================================================
+
+    function expire_conditions(combatants: list<Character>) {
+        let now = game_time()
+        for combatant in combatants {
+            for cond in conditions(combatant) {
+                match cond.duration {
+                    Duration.end_of_round => {
+                        remove_condition(combatant, cond)
+                    },
+                    Duration.segments(_) => {
+                        // Managed locally (surprise, casting), skip.
+                    },
+                    Duration.indefinite => {
+                        // Never expires.
+                    },
+                    _ => {
+                        let duration_segs = duration_to_segments(cond.duration)
+                        let elapsed = now - cond.applied_at
+                        if elapsed >= duration_segs {
+                            remove_condition(combatant, cond)
+                        }
+                    }
+                }
+            }
+        }
     }
 }
