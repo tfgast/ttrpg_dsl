@@ -583,7 +583,9 @@ impl Checker<'_> {
         })
     }
 
-    /// Compute params that appear in all matched functions with identical types.
+    /// Compute params that appear in all matched functions with compatible types.
+    /// Params with identical types are included as-is. Params where all types are
+    /// entity types (but not all the same specific entity) are unified to `AnyEntity`.
     fn compute_common_params(matched_fns: &[&FnInfo]) -> Vec<ParamInfo> {
         if matched_fns.is_empty() {
             return vec![];
@@ -592,14 +594,36 @@ impl Checker<'_> {
         first
             .params
             .iter()
-            .filter(|p| {
-                matched_fns[1..].iter().all(|fi| {
+            .filter_map(|p| {
+                let all_present = matched_fns[1..].iter().all(|fi| {
+                    fi.params.iter().any(|fp| fp.name == p.name)
+                });
+                if !all_present {
+                    return None;
+                }
+                // Check if all types are identical
+                let all_same = matched_fns[1..].iter().all(|fi| {
                     fi.params
                         .iter()
                         .any(|fp| fp.name == p.name && fp.ty == p.ty)
-                })
+                });
+                if all_same {
+                    return Some(p.clone());
+                }
+                // If all types are entity types, unify to AnyEntity
+                let all_entity = p.ty.is_entity()
+                    && matched_fns[1..].iter().all(|fi| {
+                        fi.params
+                            .iter()
+                            .any(|fp| fp.name == p.name && fp.ty.is_entity())
+                    });
+                if all_entity {
+                    let mut unified = p.clone();
+                    unified.ty = Ty::AnyEntity;
+                    return Some(unified);
+                }
+                None
             })
-            .cloned()
             .collect()
     }
 

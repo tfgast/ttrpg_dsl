@@ -9821,6 +9821,31 @@ fn test_selector_binding_type_narrows_match_set() {
 }
 
 #[test]
+fn test_selector_entity_keyword_polymorphic_binding() {
+    // When a condition receiver is `entity` (AnyEntity), a tag selector binding
+    // should match functions with different specific entity types for that param.
+    let source = r#"system "Test" {
+    tag attack_resolution
+    struct AttackResult { hit: bool, damage: int }
+    entity Character { hp: int }
+    entity Monster { hit_dice: int }
+    mechanic resolve_character_attack(attacker: Character, target: Character) -> AttackResult #attack_resolution {
+        AttackResult { hit: true, damage: 5 }
+    }
+    mechanic resolve_monster_attack(attacker: Monster, target: Character) -> AttackResult #attack_resolution {
+        AttackResult { hit: true, damage: 3 }
+    }
+    condition Fleeing on bearer: entity {
+        modify [#attack_resolution](attacker: bearer) {
+            result.damage = 0
+        }
+    }
+}"#;
+    // Both functions should match: attacker types unify to `entity`
+    expect_no_errors(source);
+}
+
+#[test]
 fn test_selector_binding_narrows_to_empty_warns() {
     // If all functions are narrowed out, we get a warning (not error)
     let source = r#"system "Test" {
