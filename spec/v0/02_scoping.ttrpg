@@ -41,6 +41,13 @@
 // clauses, no `turn` keyword, no `invocation()`. They cannot be targeted
 // by condition modify clauses. Functions can call actions, other functions,
 // derives, and mechanics. Derives and mechanics CANNOT call functions.
+//
+// Call restrictions by context:
+//   derive/mechanic  → can call derives, mechanics, prompts, builtins
+//   function         → can call derives, mechanics, functions, actions, prompts, builtins
+//   action/reaction/hook resolve → can call derives, mechanics, functions, actions, prompts, builtins
+//   condition modify → can call derives, mechanics, builtins (no actions, functions, prompts)
+//   trigger binding  → side-effect-free builtins only
 
 
 // --- Receivers: the `on` keyword ---
