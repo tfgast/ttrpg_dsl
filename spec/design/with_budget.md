@@ -254,7 +254,7 @@ function resolve_turn(actor: Character) {
                 match choice {
                     EndTurn => ended = true
                     Attack(target) =>
-                        target.Attack(actor)             // cost { action }
+                        actor.Attack(target)             // cost { action }
                     CastSpell(spell) =>
                         actor.Cast(spell)                // cost varies
                     Dash =>
