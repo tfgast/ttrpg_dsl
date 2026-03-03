@@ -214,7 +214,7 @@ fn make_character(
     fields.insert(Name::from("abilities"), Value::Map(ability_map));
     fields.insert(Name::from("max_hp"), Value::Int(max_hp));
     fields.insert(Name::from("hp"), Value::Int(max_hp));
-    fields.insert(Name::from("ac"), Value::Int(ac));
+    fields.insert(Name::from("armor_ac"), Value::Int(ac));
     fields.insert(Name::from("shield_ac_bonus"), Value::Int(0));
     fields.insert(Name::from("xp"), Value::Int(0));
     fields.insert(Name::from("base_movement"), feet(120));
@@ -237,7 +237,7 @@ fn make_monster(
     fields.insert(Name::from("hit_dice"), Value::Int(hit_dice));
     fields.insert(Name::from("max_hp"), Value::Int(max_hp));
     fields.insert(Name::from("hp"), Value::Int(max_hp));
-    fields.insert(Name::from("ac"), Value::Int(ac));
+    fields.insert(Name::from("armor_ac"), Value::Int(ac));
     fields.insert(Name::from("morale"), Value::Int(7));
     fields.insert(Name::from("xp_value"), Value::Int(0));
     fields.insert(Name::from("attacks"), Value::List(attacks));
@@ -302,7 +302,7 @@ fn make_character_with_shield(
     fields.insert(Name::from("abilities"), Value::Map(ability_map));
     fields.insert(Name::from("max_hp"), Value::Int(max_hp));
     fields.insert(Name::from("hp"), Value::Int(max_hp));
-    fields.insert(Name::from("ac"), Value::Int(ac));
+    fields.insert(Name::from("armor_ac"), Value::Int(ac));
     fields.insert(Name::from("shield_ac_bonus"), Value::Int(shield_ac_bonus));
     fields.insert(Name::from("xp"), Value::Int(0));
     fields.insert(Name::from("base_movement"), feet(120));
@@ -600,14 +600,14 @@ fn prone_on_target_adds_4_to_attack_mod() {
 
     state.apply_condition(&target, "Prone", BTreeMap::new(), Value::None, None);
 
-    // ModifyApplied (Phase 1) → Ack, then d20 roll, then damage roll
+    // ModifyApplied (Phase 1 attack_resolution + effective_target_ac) → 2 Acks, then rolls
     let atk_roll = scripted_roll(1, 20, 0, vec![15], vec![15], 15, 15);
     let dmg_roll = scripted_roll(1, 8, 0, vec![6], vec![6], 6, 6);
 
     let (fields, log) = resolve_melee(
         &interp,
         &state,
-        vec![Response::Acknowledged, atk_roll, dmg_roll],
+        vec![Response::Acknowledged, Response::Acknowledged, atk_roll, dmg_roll],
         attacker,
         target,
         "SwordLong",
@@ -648,7 +648,7 @@ fn stunned_on_target_adds_4_to_attack_mod() {
     let (fields, _) = resolve_melee(
         &interp,
         &state,
-        vec![Response::Acknowledged, atk_roll, dmg_roll],
+        vec![Response::Acknowledged, Response::Acknowledged, atk_roll, dmg_roll],
         attacker,
         target,
         "SwordLong",
@@ -777,11 +777,11 @@ fn paralyzed_on_target_adds_20_melee() {
 
     state.apply_condition(&target, "Paralyzed", BTreeMap::new(), Value::None, None);
 
-    // auto_hit + max_damage: no dice rolls, only ModifyApplied ack
+    // auto_hit + max_damage: no dice rolls, 2 ModifyApplied acks (attack_resolution + effective_target_ac)
     let (fields, _) = resolve_melee(
         &interp,
         &state,
-        vec![Response::Acknowledged],
+        vec![Response::Acknowledged, Response::Acknowledged],
         attacker,
         target,
         "SwordLong",
@@ -812,11 +812,11 @@ fn sleeping_on_target_adds_20_melee() {
 
     state.apply_condition(&target, "Sleeping", BTreeMap::new(), Value::None, None);
 
-    // auto_hit + max_damage: no dice rolls, only ModifyApplied ack
+    // auto_hit + max_damage: no dice rolls, 2 ModifyApplied acks
     let (fields, _) = resolve_melee(
         &interp,
         &state,
-        vec![Response::Acknowledged],
+        vec![Response::Acknowledged, Response::Acknowledged],
         attacker,
         target,
         "SwordLong",
@@ -852,7 +852,7 @@ fn rear_attacked_on_target_adds_2_melee() {
     let (fields, _) = resolve_melee(
         &interp,
         &state,
-        vec![Response::Acknowledged, atk_roll, dmg_roll],
+        vec![Response::Acknowledged, Response::Acknowledged, atk_roll, dmg_roll],
         attacker,
         target,
         "SwordLong",
@@ -880,11 +880,11 @@ fn paralyzed_does_not_affect_missile_attack() {
 
     state.apply_condition(&target, "Paralyzed", BTreeMap::new(), Value::None, None);
 
-    // auto_hit + max_damage: no dice rolls, only ModifyApplied ack
+    // auto_hit + max_damage: no dice rolls, 2 ModifyApplied acks
     let (fields, _) = resolve_missile(
         &interp,
         &state,
-        vec![Response::Acknowledged],
+        vec![Response::Acknowledged, Response::Acknowledged],
         attacker,
         target,
         "BowLong",
@@ -1175,7 +1175,7 @@ fn prone_on_target_applies_to_missile_attack() {
     let (fields, _) = resolve_missile(
         &interp,
         &state,
-        vec![Response::Acknowledged, atk_roll, dmg_roll],
+        vec![Response::Acknowledged, Response::Acknowledged, atk_roll, dmg_roll],
         attacker,
         target,
         "BowLong",
@@ -1214,7 +1214,7 @@ fn prone_on_target_applies_to_monster_attack() {
     let (fields, _) = resolve_monster(
         &interp,
         &state,
-        vec![Response::Acknowledged, atk_roll, dmg_roll],
+        vec![Response::Acknowledged, Response::Acknowledged, atk_roll, dmg_roll],
         monster,
         target,
         monster_attack("Club", 1, 10, 0),
@@ -1245,15 +1245,14 @@ fn rear_attacked_does_not_affect_monster_attack() {
 
     state.apply_condition(&target, "RearAttacked", BTreeMap::new(), Value::None, None);
 
-    // monster_bthb(4)=5, attack_mod=+2, dex_neg=0 (DEX 12), shield_neg=0
-    // total_mod = 5 + 2 = 7
+    // monster_bthb(4)=5, attack_mod=+2 → total_mod = 7
     let atk_roll = scripted_roll(1, 20, 0, vec![12], vec![12], 12, 12);
     let dmg_roll = scripted_roll(1, 10, 0, vec![7], vec![7], 7, 7);
 
     let (fields, _) = resolve_monster(
         &interp,
         &state,
-        vec![Response::Acknowledged, atk_roll, dmg_roll],
+        vec![Response::Acknowledged, Response::Acknowledged, atk_roll, dmg_roll],
         monster,
         target,
         monster_attack("Club", 1, 10, 0),
@@ -1285,11 +1284,12 @@ fn prone_and_staggered_stack_on_target() {
     let atk_roll = scripted_roll(1, 20, 0, vec![15], vec![15], 15, 15);
     let dmg_roll = scripted_roll(1, 8, 0, vec![6], vec![6], 6, 6);
 
-    // Two ModifyApplied effects (one per condition) before rolls
+    // Three ModifyApplied effects: Prone(attack_res) + Staggered(attack_res) + Prone(effective_target_ac)
     let (fields, _) = resolve_melee(
         &interp,
         &state,
         vec![
+            Response::Acknowledged,
             Response::Acknowledged,
             Response::Acknowledged,
             atk_roll,
@@ -1323,10 +1323,12 @@ fn prone_and_invisible_cancel_out() {
     let atk_roll = scripted_roll(1, 20, 0, vec![15], vec![15], 15, 15);
     let dmg_roll = scripted_roll(1, 8, 0, vec![6], vec![6], 6, 6);
 
+    // Prone(attack_res) + Invisible(attack_res) + Prone(effective_target_ac)
     let (fields, _) = resolve_melee(
         &interp,
         &state,
         vec![
+            Response::Acknowledged,
             Response::Acknowledged,
             Response::Acknowledged,
             atk_roll,
@@ -1730,7 +1732,7 @@ fn condition_count_after_apply_and_remove() {
     char_fields.insert(Name::from("abilities"), Value::Map(BTreeMap::new()));
     char_fields.insert(Name::from("max_hp"), Value::Int(10));
     char_fields.insert(Name::from("hp"), Value::Int(10));
-    char_fields.insert(Name::from("ac"), Value::Int(10));
+    char_fields.insert(Name::from("armor_ac"), Value::Int(10));
     char_fields.insert(Name::from("shield_ac_bonus"), Value::Int(0));
     char_fields.insert(Name::from("xp"), Value::Int(0));
     char_fields.insert(Name::from("base_movement"), feet(120));
@@ -1757,7 +1759,8 @@ fn condition_count_after_apply_and_remove() {
 // ── New tests: DEX AC negation ──────────────────────────────────
 
 /// Prone negates DEX AC bonus. Target with DEX 17 has dex_ac_adj=+3.
-/// Without Prone: total_mod = BTHB=4. With Prone: total_mod = 4 + 4 (attack_mod) + 3 (dex_neg) = 11.
+/// armor_ac=14, effective_target_ac normally = 14+3+0 = 17.
+/// With Prone: effective_target_ac = 14 (dex/shield stripped), total_mod = BTHB=4 + attack_mod=4 = 8.
 #[test]
 fn prone_negates_dex_ac_bonus() {
     let (program, result) = compile_osric_conditions();
@@ -1767,9 +1770,9 @@ fn prone_negates_dex_ac_bonus() {
     let attacker = make_character(
         &mut state, "Fighter", "Fighter", 5, &standard_abilities(), 30, 15, "Human",
     );
-    // DEX 17 → dex_ac_adj = +3
+    // DEX 17 → dex_ac_adj = +3; armor_ac=14 (effective AC = 14+3 = 17)
     let target = make_character(
-        &mut state, "Target", "Fighter", 1, &high_dex_abilities(), 10, 17, "Human",
+        &mut state, "Target", "Fighter", 1, &high_dex_abilities(), 10, 14, "Human",
     );
 
     state.apply_condition(&target, "Prone", BTreeMap::new(), Value::None, None);
@@ -1780,18 +1783,18 @@ fn prone_negates_dex_ac_bonus() {
     let (fields, _) = resolve_melee(
         &interp,
         &state,
-        vec![Response::Acknowledged, atk_roll, dmg_roll],
+        vec![Response::Acknowledged, Response::Acknowledged, atk_roll, dmg_roll],
         attacker,
         target,
         "SwordLong",
     );
 
-    // BTHB=4 + attack_mod=4 + dex_neg=3 = 11
-    assert_eq!(get_int(&fields, "total_mod"), 11);
+    // BTHB=4 + attack_mod=4 = 8 (DEX negation now on AC side)
+    assert_eq!(get_int(&fields, "total_mod"), 8);
 }
 
 /// Stunned negates DEX AC bonus. DEX 17 → dex_ac_adj=+3.
-/// total_mod = BTHB=4 + attack_mod=4 + dex_neg=3 = 11.
+/// total_mod = BTHB=4 + attack_mod=4 = 8 (DEX negation on AC side).
 #[test]
 fn stunned_negates_dex_ac_bonus() {
     let (program, result) = compile_osric_conditions();
@@ -1801,8 +1804,9 @@ fn stunned_negates_dex_ac_bonus() {
     let attacker = make_character(
         &mut state, "Fighter", "Fighter", 5, &standard_abilities(), 30, 15, "Human",
     );
+    // armor_ac=14 (effective AC = 14+3 = 17)
     let target = make_character(
-        &mut state, "Target", "Fighter", 1, &high_dex_abilities(), 10, 17, "Human",
+        &mut state, "Target", "Fighter", 1, &high_dex_abilities(), 10, 14, "Human",
     );
 
     state.apply_condition(&target, "Stunned", BTreeMap::new(), Value::None, None);
@@ -1813,17 +1817,17 @@ fn stunned_negates_dex_ac_bonus() {
     let (fields, _) = resolve_melee(
         &interp,
         &state,
-        vec![Response::Acknowledged, atk_roll, dmg_roll],
+        vec![Response::Acknowledged, Response::Acknowledged, atk_roll, dmg_roll],
         attacker,
         target,
         "SwordLong",
     );
 
-    assert_eq!(get_int(&fields, "total_mod"), 11);
+    assert_eq!(get_int(&fields, "total_mod"), 8);
 }
 
 /// RearAttacked negates DEX AC bonus on missile attacks too.
-/// DEX 17 target → dex_ac_adj=+3.
+/// DEX 17 target → dex_ac_adj=+3. DEX negation now on AC side.
 #[test]
 fn rear_attacked_negates_dex_ac_on_missile() {
     let (program, result) = compile_osric_conditions();
@@ -1833,9 +1837,9 @@ fn rear_attacked_negates_dex_ac_on_missile() {
     let attacker = make_character(
         &mut state, "Archer", "Fighter", 3, &standard_abilities(), 20, 14, "Human",
     );
-    // DEX 17 → dex_ac_adj = +3
+    // armor_ac=14 (effective AC = 14+3 = 17)
     let target = make_character(
-        &mut state, "Target", "Fighter", 1, &high_dex_abilities(), 10, 17, "Human",
+        &mut state, "Target", "Fighter", 1, &high_dex_abilities(), 10, 14, "Human",
     );
 
     state.apply_condition(&target, "RearAttacked", BTreeMap::new(), Value::None, None);
@@ -1846,21 +1850,22 @@ fn rear_attacked_negates_dex_ac_on_missile() {
     let (fields, _) = resolve_missile(
         &interp,
         &state,
-        vec![Response::Acknowledged, atk_roll, dmg_roll],
+        vec![Response::Acknowledged, Response::Acknowledged, atk_roll, dmg_roll],
         attacker,
         target,
         "BowLong",
         60,
     );
 
-    // BTHB=2 + attack_mod=2 + dex_neg=3 = 7
-    assert_eq!(get_int(&fields, "total_mod"), 7);
+    // BTHB=2 + attack_mod=2 = 4 (DEX negation on AC side)
+    assert_eq!(get_int(&fields, "total_mod"), 4);
 }
 
 // ── New tests: shield AC negation ───────────────────────────────
 
 /// Prone negates shield AC bonus. Target with shield_ac_bonus=1.
-/// total_mod = BTHB=4 + attack_mod=4 + shield_neg=1 = 9.
+/// armor_ac=14, shield=1 → effective AC = 14+0+1 = 15.
+/// With Prone: effective AC = 14, total_mod = BTHB=4 + attack_mod=4 = 8.
 #[test]
 fn prone_negates_shield_ac_bonus() {
     let (program, result) = compile_osric_conditions();
@@ -1870,9 +1875,9 @@ fn prone_negates_shield_ac_bonus() {
     let attacker = make_character(
         &mut state, "Fighter", "Fighter", 5, &standard_abilities(), 30, 15, "Human",
     );
-    // AC 15 with 1 from shield
+    // armor_ac=14, shield=1 → effective AC = 14+0+1 = 15
     let target = make_character_with_shield(
-        &mut state, "Target", "Fighter", 1, &standard_abilities(), 10, 15, 1, "Human",
+        &mut state, "Target", "Fighter", 1, &standard_abilities(), 10, 14, 1, "Human",
     );
 
     state.apply_condition(&target, "Prone", BTreeMap::new(), Value::None, None);
@@ -1883,18 +1888,19 @@ fn prone_negates_shield_ac_bonus() {
     let (fields, _) = resolve_melee(
         &interp,
         &state,
-        vec![Response::Acknowledged, atk_roll, dmg_roll],
+        vec![Response::Acknowledged, Response::Acknowledged, atk_roll, dmg_roll],
         attacker,
         target,
         "SwordLong",
     );
 
-    // BTHB=4 + attack_mod=4 + dex_neg=0 (DEX 12) + shield_neg=1 = 9
-    assert_eq!(get_int(&fields, "total_mod"), 9);
+    // BTHB=4 + attack_mod=4 = 8 (shield negation on AC side)
+    assert_eq!(get_int(&fields, "total_mod"), 8);
 }
 
 /// RearAttacked negates both DEX and shield bonuses combined.
 /// Target: DEX 17 (dex_ac_adj=+3), shield_ac_bonus=1.
+/// armor_ac=14, effective AC normally = 14+3+1 = 18. With RearAttacked: 14.
 #[test]
 fn rear_attacked_negates_dex_and_shield_combined() {
     let (program, result) = compile_osric_conditions();
@@ -1904,9 +1910,9 @@ fn rear_attacked_negates_dex_and_shield_combined() {
     let attacker = make_character(
         &mut state, "Fighter", "Fighter", 5, &standard_abilities(), 30, 15, "Human",
     );
-    // DEX 17 → dex_ac_adj=+3, shield=+1, total AC = 10+4(armor)+3(dex)+1(shield)=18
+    // armor_ac=14, shield=1 → effective AC = 14+3+1 = 18
     let target = make_character_with_shield(
-        &mut state, "Target", "Fighter", 1, &high_dex_abilities(), 10, 18, 1, "Human",
+        &mut state, "Target", "Fighter", 1, &high_dex_abilities(), 10, 14, 1, "Human",
     );
 
     state.apply_condition(&target, "RearAttacked", BTreeMap::new(), Value::None, None);
@@ -1917,14 +1923,14 @@ fn rear_attacked_negates_dex_and_shield_combined() {
     let (fields, _) = resolve_melee(
         &interp,
         &state,
-        vec![Response::Acknowledged, atk_roll, dmg_roll],
+        vec![Response::Acknowledged, Response::Acknowledged, atk_roll, dmg_roll],
         attacker,
         target,
         "SwordLong",
     );
 
-    // BTHB=4 + attack_mod=2 + dex_neg=3 + shield_neg=1 = 10
-    assert_eq!(get_int(&fields, "total_mod"), 10);
+    // BTHB=4 + attack_mod=2 = 6 (DEX+shield negation on AC side)
+    assert_eq!(get_int(&fields, "total_mod"), 6);
 }
 
 // ── New tests: stunned suppresses bearer attacks ────────────────
@@ -2059,11 +2065,11 @@ fn paralyzed_auto_hit_max_damage_battleaxe() {
 
     state.apply_condition(&target, "Paralyzed", BTreeMap::new(), Value::None, None);
 
-    // No dice rolls needed (auto_hit + max_damage)
+    // No dice rolls needed (auto_hit + max_damage), 2 ModifyApplied acks
     let (fields, _) = resolve_melee(
         &interp,
         &state,
-        vec![Response::Acknowledged],
+        vec![Response::Acknowledged, Response::Acknowledged],
         attacker,
         target,
         "BattleAxe",
@@ -2098,11 +2104,11 @@ fn paralyzed_auto_hit_max_damage_monster_attack() {
 
     state.apply_condition(&target, "Paralyzed", BTreeMap::new(), Value::None, None);
 
-    // No dice rolls needed (auto_hit + max_damage)
+    // No dice rolls needed (auto_hit + max_damage), 2 ModifyApplied acks
     let (fields, _) = resolve_monster(
         &interp,
         &state,
-        vec![Response::Acknowledged],
+        vec![Response::Acknowledged, Response::Acknowledged],
         monster,
         target,
         monster_attack("Greatclub", 2, 6, 0),
@@ -2116,7 +2122,7 @@ fn paralyzed_auto_hit_max_damage_monster_attack() {
 }
 
 /// Paralyzed also negates DEX and shield AC on the auto-hit.
-/// DEX 17 target (dex_ac_adj=+3) with shield (1). total_mod includes negation.
+/// DEX 17 target (dex_ac_adj=+3) with shield (1). DEX/shield negation on AC side.
 #[test]
 fn paralyzed_negates_dex_and_shield_on_auto_hit() {
     let (program, result) = compile_osric_conditions();
@@ -2126,8 +2132,9 @@ fn paralyzed_negates_dex_and_shield_on_auto_hit() {
     let attacker = make_character(
         &mut state, "Fighter", "Fighter", 5, &standard_abilities(), 30, 15, "Human",
     );
+    // armor_ac=14, shield=1 → effective AC = 14+3+1 = 18
     let target = make_character_with_shield(
-        &mut state, "Target", "Fighter", 1, &high_dex_abilities(), 10, 18, 1, "Human",
+        &mut state, "Target", "Fighter", 1, &high_dex_abilities(), 10, 14, 1, "Human",
     );
 
     state.apply_condition(&target, "Paralyzed", BTreeMap::new(), Value::None, None);
@@ -2135,14 +2142,14 @@ fn paralyzed_negates_dex_and_shield_on_auto_hit() {
     let (fields, _) = resolve_melee(
         &interp,
         &state,
-        vec![Response::Acknowledged],
+        vec![Response::Acknowledged, Response::Acknowledged],
         attacker,
         target,
         "SwordLong",
     );
 
-    // BTHB=4 + dex_neg=3 + shield_neg=1 = 8
-    assert_eq!(get_int(&fields, "total_mod"), 8);
+    // BTHB=4 (DEX/shield negation now on AC side)
+    assert_eq!(get_int(&fields, "total_mod"), 4);
     assert_eq!(
         fields.get("outcome").unwrap(),
         &enum_variant("AttackOutcome", "Hit")

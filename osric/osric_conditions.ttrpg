@@ -2,13 +2,10 @@
 // OSRIC 3.0 Conditions — combat status effects and modifiers
 //
 // Conditions use modify clauses to alter attack resolution
-// mechanics. Parameters on resolve_melee_attack, resolve_missile_attack,
-// and resolve_monster_attack serve as hooks:
-//   attack_mod       — flat to-hit adjustment
-//   ignore_dex_ac    — negate target's DEX AC bonus
-//   ignore_shield_ac — negate target's shield AC bonus
-//   auto_hit         — skip d20 roll, force Hit outcome
-//   max_damage       — use maximum dice value instead of rolling
+// mechanics and AC computation:
+//   [#attack_resolution] — attack_mod, roll_mode, max_damage
+//   effective_target_ac  — include_dex, include_shield
+//   Phase 2 result       — result.outcome, result.damage
 //
 // All conditions use `entity` as their bearer type so they
 // apply to both Characters and Monsters. Selector bindings
@@ -34,8 +31,10 @@ system "OSRIC Conditions" {
     condition Prone on bearer: entity {
         modify [#attack_resolution](target: bearer) {
             attack_mod = attack_mod + 4
-            ignore_dex_ac = true
-            ignore_shield_ac = true
+        }
+        modify effective_target_ac(target: bearer) {
+            include_dex = false
+            include_shield = false
         }
     }
 
@@ -51,8 +50,10 @@ system "OSRIC Conditions" {
     condition Stunned on bearer: entity {
         modify [#attack_resolution](target: bearer) {
             attack_mod = attack_mod + 4
-            ignore_dex_ac = true
-            ignore_shield_ac = true
+        }
+        modify effective_target_ac(target: bearer) {
+            include_dex = false
+            include_shield = false
         }
         modify [#attack_resolution](attacker: bearer) {
             result.outcome = AttackOutcome.Miss
@@ -102,10 +103,12 @@ system "OSRIC Conditions" {
 
     condition Paralyzed on bearer: entity {
         modify [#attack_resolution](target: bearer) {
-            auto_hit = true
+            roll_mode = RollMode.AutoHit
             max_damage = true
-            ignore_dex_ac = true
-            ignore_shield_ac = true
+        }
+        modify effective_target_ac(target: bearer) {
+            include_dex = false
+            include_shield = false
         }
         modify [#attack_resolution](attacker: bearer) {
             result.outcome = AttackOutcome.Miss
@@ -127,10 +130,12 @@ system "OSRIC Conditions" {
 
     condition Sleeping on bearer: entity {
         modify [#attack_resolution](target: bearer) {
-            auto_hit = true
+            roll_mode = RollMode.AutoHit
             max_damage = true
-            ignore_dex_ac = true
-            ignore_shield_ac = true
+        }
+        modify effective_target_ac(target: bearer) {
+            include_dex = false
+            include_shield = false
         }
         modify [#attack_resolution](attacker: bearer) {
             result.outcome = AttackOutcome.Miss
@@ -185,8 +190,10 @@ system "OSRIC Conditions" {
     condition RearAttacked on bearer: entity {
         modify [#attack_resolution](target: bearer) {
             attack_mod = attack_mod + 2
-            ignore_dex_ac = true
-            ignore_shield_ac = true
+        }
+        modify effective_target_ac(target: bearer) {
+            include_dex = false
+            include_shield = false
         }
     }
 

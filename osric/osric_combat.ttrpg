@@ -21,6 +21,8 @@ system "OSRIC Combat" {
 
     enum AttackOutcome { Miss, Hit }
 
+    enum RollMode { Normal, AutoHit }
+
     enum Duration {
         end_of_round,
         rounds(count: int),
@@ -62,6 +64,7 @@ system "OSRIC Combat" {
     // ========================================================
 
     tag attack_resolution
+    tag ac_defense
 
 
     // ========================================================
@@ -208,39 +211,56 @@ system "OSRIC Combat" {
 
 
     // ========================================================
+    //  EFFECTIVE TARGET AC
+    //
+    //  Computes the target's effective AC from armor_ac,
+    //  DEX bonus, and shield bonus. Conditions can strip
+    //  DEX or shield via Phase 1 overrides on include_dex
+    //  and include_shield.
+    // ========================================================
+
+    derive effective_target_ac(
+        target: Character,
+        include_dex: bool = true,
+        include_shield: bool = true
+    ) -> int #ac_defense {
+        let dex_bonus = if include_dex { dex_ac_adj(target.abilities[DEX]) } else { 0 }
+        let shield_bonus = if include_shield { target.shield_ac_bonus } else { 0 }
+        target.armor_ac + dex_bonus + shield_bonus
+    }
+
+
+    // ========================================================
     //  CHARACTER ATTACK RESOLUTION
     //
     //  Entity-level mechanics that combine BTHB, ability mods,
     //  weapon stats, and target properties into a full result.
     //  Conditions can modify these via #attack_resolution tag.
+    //  AC stripping is handled by effective_target_ac.
     // ========================================================
 
-    // Melee attack: d20 + BTHB + STR to-hit + attack_mod vs target AC.
+    // Melee attack: d20 + BTHB + STR to-hit + attack_mod vs effective AC.
     // Damage uses weapon dice + STR damage mod.
-    // attack_mod defaults to 0; conditions (Prone, Stunned, etc.)
-    // modify this parameter via Phase 1 overrides.
-    //
-    // Condition flags (Phase 1 overrides):
-    //   ignore_dex_ac  — negate target's DEX AC bonus (Prone, Stunned, RearAttacked)
-    //   ignore_shield_ac — negate target's shield AC bonus (Prone, Stunned, RearAttacked)
-    //   auto_hit       — skip d20 roll, force Hit (Paralyzed, Sleeping)
-    //   max_damage     — use max dice value instead of rolling (Paralyzed, Sleeping)
+    // Condition hooks (Phase 1 overrides):
+    //   attack_mod — flat to-hit adjustment (Prone, Stunned, etc.)
+    //   roll_mode  — RollMode.AutoHit skips d20 roll (Paralyzed, Sleeping)
+    //   max_damage — use max dice value instead of rolling (Paralyzed, Sleeping)
     mechanic resolve_melee_attack(
         attacker: Character,
         target: Character,
         weapon: MeleeWeapon,
         attack_mod: int = 0,
-        ignore_dex_ac: bool = false,
-        ignore_shield_ac: bool = false,
-        auto_hit: bool = false,
+        roll_mode: RollMode = RollMode.Normal,
         max_damage: bool = false
     ) -> AttackResult #attack_resolution {
         let bthb_val = bthb(attacker.class, attacker.level)
         let str_hit = effective_str_to_hit(attacker)
-        let dex_neg = if ignore_dex_ac { dex_ac_adj(target.abilities[DEX]) } else { 0 }
-        let shield_neg = if ignore_shield_ac { target.shield_ac_bonus } else { 0 }
-        let total_mod = bthb_val + str_hit + attack_mod + dex_neg + shield_neg
-        let outcome = if auto_hit { AttackOutcome.Hit } else { attack_roll_aac(total_mod, target.ac) }
+        let target_ac = effective_target_ac(target)
+        let total_mod = bthb_val + str_hit + attack_mod
+        let outcome = match roll_mode {
+            RollMode.AutoHit => AttackOutcome.Hit,
+            _ => attack_roll_aac(total_mod, target_ac)
+        }
 
         let wdef = melee_weapon_def(weapon)
         let target_size = ancestry_def(target.ancestry).size
@@ -261,28 +281,27 @@ system "OSRIC Combat" {
         AttackResult { outcome: outcome, total_mod: total_mod, damage: damage }
     }
 
-    // Missile attack: d20 + BTHB + DEX missile mod - range + attack_mod vs AC.
+    // Missile attack: d20 + BTHB + DEX missile mod - range + attack_mod vs effective AC.
     // Hurled weapons add STR damage; launched weapons do not.
-    // Same condition flags as melee (ignore_dex_ac, ignore_shield_ac, auto_hit, max_damage).
     mechanic resolve_missile_attack(
         attacker: Character,
         target: Character,
         weapon: MissileWeapon,
         distance: Feet,
         attack_mod: int = 0,
-        ignore_dex_ac: bool = false,
-        ignore_shield_ac: bool = false,
-        auto_hit: bool = false,
+        roll_mode: RollMode = RollMode.Normal,
         max_damage: bool = false
     ) -> AttackResult #attack_resolution {
         let bthb_val = bthb(attacker.class, attacker.level)
         let dex_mod = dex_missile(attacker.abilities[DEX])
         let wdef = missile_weapon_def(weapon)
         let range_mod = missile_range_penalty(distance, wdef.range_increment)
-        let dex_neg = if ignore_dex_ac { dex_ac_adj(target.abilities[DEX]) } else { 0 }
-        let shield_neg = if ignore_shield_ac { target.shield_ac_bonus } else { 0 }
-        let total_mod = bthb_val + dex_mod + range_mod + attack_mod + dex_neg + shield_neg
-        let outcome = if auto_hit { AttackOutcome.Hit } else { attack_roll_aac(total_mod, target.ac) }
+        let target_ac = effective_target_ac(target)
+        let total_mod = bthb_val + dex_mod + range_mod + attack_mod
+        let outcome = match roll_mode {
+            RollMode.AutoHit => AttackOutcome.Hit,
+            _ => attack_roll_aac(total_mod, target_ac)
+        }
 
         let target_size = ancestry_def(target.ancestry).size
         let dmg_spec = if target_size > Size.Medium { wdef.damage_l } else { wdef.damage_sm }
@@ -303,22 +322,21 @@ system "OSRIC Combat" {
     }
 
     // Monster attack using hit dice for BTHB.
-    // Same condition flags as character attacks.
     mechanic resolve_monster_attack(
         attacker: Monster,
         target: Character,
         attack: MonsterAttack,
         attack_mod: int = 0,
-        ignore_dex_ac: bool = false,
-        ignore_shield_ac: bool = false,
-        auto_hit: bool = false,
+        roll_mode: RollMode = RollMode.Normal,
         max_damage: bool = false
     ) -> AttackResult #attack_resolution {
         let bthb_val = monster_bthb(attacker.hit_dice)
-        let dex_neg = if ignore_dex_ac { dex_ac_adj(target.abilities[DEX]) } else { 0 }
-        let shield_neg = if ignore_shield_ac { target.shield_ac_bonus } else { 0 }
-        let total_mod = bthb_val + attack_mod + dex_neg + shield_neg
-        let outcome = if auto_hit { AttackOutcome.Hit } else { attack_roll_aac(total_mod, target.ac) }
+        let target_ac = effective_target_ac(target)
+        let total_mod = bthb_val + attack_mod
+        let outcome = match roll_mode {
+            RollMode.AutoHit => AttackOutcome.Hit,
+            _ => attack_roll_aac(total_mod, target_ac)
+        }
 
         let damage = match outcome {
             AttackOutcome.Hit => {

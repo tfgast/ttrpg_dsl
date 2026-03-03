@@ -202,7 +202,7 @@ system "OSRIC" {
         abilities: map<Ability, int>
         max_hp: int
         hp: resource(0..=max_hp)
-        ac: int = 10                    // ascending AC; unarmoured = 10
+        armor_ac: int = 10              // base armor AC; DEX and shield computed via effective_target_ac
         shield_ac_bonus: int = 0        // AC contribution from shield (for condition negation)
         xp: int = 0
         base_movement: Feet = 120ft

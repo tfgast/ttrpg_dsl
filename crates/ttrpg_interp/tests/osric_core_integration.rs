@@ -297,7 +297,7 @@ fn character_entity_fields() {
         "abilities",
         "max_hp",
         "hp",
-        "ac",
+        "armor_ac",
         "shield_ac_bonus",
         "xp",
         "base_movement",

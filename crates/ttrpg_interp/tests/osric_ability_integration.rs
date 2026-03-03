@@ -109,7 +109,7 @@ fn make_character(
     fields.insert(Name::from("abilities"), Value::Map(ability_map));
     fields.insert(Name::from("max_hp"), Value::Int(10));
     fields.insert(Name::from("hp"), Value::Int(10));
-    fields.insert(Name::from("ac"), Value::Int(10));
+    fields.insert(Name::from("armor_ac"), Value::Int(10));
     fields.insert(Name::from("shield_ac_bonus"), Value::Int(0));
     fields.insert(Name::from("xp"), Value::Int(0));
     fields.insert(
