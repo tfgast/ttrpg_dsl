@@ -42,6 +42,12 @@
 // by condition modify clauses. Functions can call actions, other functions,
 // derives, and mechanics. Derives and mechanics CANNOT call functions.
 //
+// Note: while `invocation()` cannot be called directly inside a function
+// body (there is no actor to anchor it), actions called BY a function
+// still get their own invocation context. The action dispatch saves the
+// caller's state, allocates a fresh invocation ID, and restores on return.
+// So a function can safely call actions that use `invocation()` internally.
+//
 // Call restrictions by context:
 //   derive/mechanic  → can call derives, mechanics, prompts, builtins
 //   function         → can call derives, mechanics, functions, actions, prompts, builtins
@@ -637,6 +643,9 @@ hook Regenerate on creature: Character (
 //       invocation ID. All conditions applied during that scope carry
 //       this ID, enabling grouped revocation via `revoke()`.
 //       Rejected by the checker at compile time outside action/reaction/hook.
+//       Note: this restriction is on *direct* calls to invocation(). Actions
+//       called from a function still receive their own invocation scope, so
+//       invocation() inside those called actions works normally.
 //
 //   revoke(inv: Invocation) -> unit
 //       Removes all conditions tagged with the given invocation, across

@@ -6,17 +6,35 @@
 // distinctive aspect of OSRIC combat and a key stress test for
 // the DSL's expressive capabilities.
 //
-// The DSL handles: computational rules (segment assignment,
-// spell timing, tie-breaking, surprise duration).
-// The host runtime handles: segment-by-segment execution loop,
-// action queue management, and turn flow control.
+// The DSL handles:
+//   - Computational rules (segment assignment, spell timing,
+//     tie-breaking, surprise duration) via derives/mechanics.
+//   - Round resolution via resolve_round / resolve_action
+//     functions: iterates segments 1–10, dispatches combat
+//     actions in priority order (initiative winner first, or
+//     speed-factor order when simultaneous), applies casting
+//     conditions, and delegates to the attack/damage pipeline.
+//
+// The host runtime handles:
+//   - Movement tracking (segment-by-segment positional state)
+//   - Parry/flee opportunity attacks and defensive bonuses
+//   - Set-against-charge double damage interaction
+//   - Spell effect dispatch (the DSL marks casting complete;
+//     the host applies the actual spell effect)
 //
 // DISCOVERED DSL LIMITATIONS (for future language work):
-//   1. No built-in action scheduler/queue — host manages this
-//   2. No "delay until segment X" construct — derives compute
+//   1. No "delay until segment X" construct — derives compute
 //      timing, host enforces execution order
-//   3. Condition removal when condition may not be present —
-//      remove_condition behaviour on absent condition untested
+//   2. Functions cannot provision turn budgets, so costed
+//      actions (MeleeAttack, etc.) must be replicated via
+//      mechanics + TakeDamage (see tdsl-vbov)
+//
+// RESOLVED:
+//   - remove_condition on an absent condition is a safe no-op
+//     (both reference_state and adapter silently skip)
+//   - Functions CAN call actions that use invocation() — the
+//     action dispatch sets up its own invocation context
+//     (see action.rs run_action_body)
 //
 // Reference: OSRIC 3.0 Player Guide, Chapter 6 (pp. 90-93)
 // ============================================================
@@ -351,8 +369,8 @@ system "OSRIC Initiative" {
     //  the spell is lost. The CastingSpell condition is removed
     //  and the SpellInterrupted event is emitted.
     //
-    //  NOTE: remove_condition behaviour when condition is not
-    //  present is a potential DSL limitation to investigate.
+    //  NOTE: remove_condition on an absent condition is a safe
+    //  no-op (confirmed — silently skips if not present).
     // ========================================================
 
     hook SpellInterruption on caster: Character with Spellcasting (
@@ -407,6 +425,226 @@ system "OSRIC Initiative" {
             PoleArm => true,
             Trident => true,
             _       => false
+        }
+    }
+
+
+    // ========================================================
+    //  ROUND ACTION
+    //
+    //  Packages a combatant's declared action with all context
+    //  needed for round resolution. Constructed from declared
+    //  actions and initiative results via build_round_action,
+    //  then fed to resolve_round for segment-by-segment
+    //  processing.
+    // ========================================================
+
+    struct RoundAction {
+        combatant: Character
+        target: option<Character>
+        action_type: DeclaredActionType
+        weapon_melee: option<MeleeWeapon>
+        weapon_missile: option<MissileWeapon>
+        distance: Feet
+        casting_time: int
+        segment: int
+        speed_factor: int
+        initiative_segment: int
+        party_side: bool
+    }
+
+
+    // ========================================================
+    //  ROUND RESOLUTION EVENTS
+    // ========================================================
+
+    event SegmentStart(segment: int) {}
+
+    event ActionResolved(
+        combatant: Character,
+        action_type: DeclaredActionType,
+        segment: int
+    ) {}
+
+
+    // ========================================================
+    //  BUILD ROUND ACTION
+    //
+    //  Convenience derive to construct a RoundAction from a
+    //  declared action. Computes segment assignment and melee
+    //  weapon speed factor from the underlying definitions.
+    //  Missile weapons do not use speed factor (they use DEX
+    //  initiative adjustment instead).
+    // ========================================================
+
+    derive build_round_action(
+        combatant: Character,
+        action_type: DeclaredActionType,
+        initiative_segment: int,
+        party_side: bool,
+        target: option<Character> = none,
+        weapon_melee: option<MeleeWeapon> = none,
+        weapon_missile: option<MissileWeapon> = none,
+        distance: Feet = 0ft,
+        casting_time: int = 0,
+        dex_missile_init_adj: int = 0
+    ) -> RoundAction {
+        let weapon_speed = match {
+            weapon_melee.is_some() => melee_weapon_def(weapon_melee.unwrap()).speed_factor,
+            _ => 0
+        }
+        let seg = action_segment(initiative_segment, action_type, casting_time, dex_missile_init_adj)
+        RoundAction {
+            combatant: combatant,
+            target: target,
+            action_type: action_type,
+            weapon_melee: weapon_melee,
+            weapon_missile: weapon_missile,
+            distance: distance,
+            casting_time: casting_time,
+            segment: seg,
+            speed_factor: weapon_speed,
+            initiative_segment: initiative_segment,
+            party_side: party_side
+        }
+    }
+
+
+    // ========================================================
+    //  RESOLVE ACTION
+    //
+    //  Dispatches a single combatant action. Calls the
+    //  underlying resolve mechanics and applies damage via
+    //  TakeDamage (free cost). Spell completion removes the
+    //  CastingSpell condition; non-combat actions are deferred
+    //  to the host runtime.
+    // ========================================================
+
+    function resolve_action(action: RoundAction) {
+        match action.action_type {
+            MeleeAttackAction => {
+                let target = action.target.unwrap()
+                let weapon = action.weapon_melee.unwrap()
+                let result = resolve_melee_attack(action.combatant, target, weapon)
+                if result.outcome == AttackOutcome.Hit {
+                    let wdef = melee_weapon_def(weapon)
+                    target.TakeDamage(action.combatant, result.damage, wdef.damage_type)
+                }
+            },
+            MissileAttackAction => {
+                let target = action.target.unwrap()
+                let weapon = action.weapon_missile.unwrap()
+                let result = resolve_missile_attack(
+                    action.combatant, target, weapon, action.distance
+                )
+                if result.outcome == AttackOutcome.Hit {
+                    let wdef = missile_weapon_def(weapon)
+                    target.TakeDamage(action.combatant, result.damage, wdef.damage_type)
+                }
+            },
+            ChargeAction => {
+                let target = action.target.unwrap()
+                let weapon = action.weapon_melee.unwrap()
+                // +2 to hit on a charge (p. 93).
+                let result = resolve_melee_attack(action.combatant, target, weapon, 2)
+                if result.outcome == AttackOutcome.Hit {
+                    let wdef = melee_weapon_def(weapon)
+                    target.TakeDamage(action.combatant, result.damage, wdef.damage_type)
+                }
+            },
+            CastSpellAction => {
+                // Spell completes this segment — remove CastingSpell.
+                // If interrupted by damage, the SpellInterruption hook
+                // already removed it and emitted SpellInterrupted.
+                remove_condition(action.combatant, CastingSpell)
+            },
+            SetAgainstChargeAction => {
+                // Set at segment 1. If a charging opponent arrives,
+                // the host applies double damage via
+                // set_weapon_damage_multiplier.
+            },
+            _ => {
+                // MoveAction, ParryAction, FleeAction, HoldAction:
+                // Host manages movement tracking, defensive bonuses,
+                // fleeing opportunity attacks, and delayed resolution.
+            }
+        }
+        emit ActionResolved(
+            combatant: action.combatant,
+            action_type: action.action_type,
+            segment: action.segment
+        )
+    }
+
+
+    // ========================================================
+    //  RESOLVE ROUND
+    //
+    //  Processes a full 10-segment combat round per OSRIC 3.0
+    //  rules (pp. 92–93):
+    //
+    //   1. Count through segments 1–10.
+    //   2. At each segment, apply CastingSpell to spellcasters
+    //      whose initiative segment is reached (casting begins,
+    //      making them interruptible by damage).
+    //   3. Resolve actions assigned to this segment:
+    //      - Non-simultaneous: winning side first, then losers.
+    //      - Simultaneous (tied rolls): speed factor order,
+    //        lowest first (faster weapons strike first).
+    //   4. Damage from resolved attacks may trigger the
+    //      SpellInterruption hook, breaking in-progress spells.
+    //
+    //  Fighter multi-attacks (segments 1 and 10) and missile
+    //  DEX adjustments are baked into each RoundAction's
+    //  segment field via build_round_action / action_segment.
+    // ========================================================
+
+    function resolve_round(
+        initiative: InitiativeResult,
+        actions: list<RoundAction>
+    ) {
+        let party_won = initiative.party_segment < initiative.monster_segment
+
+        for seg in 1..=10 {
+            // Begin-casting: call BeginCasting on casters whose
+            // initiative segment is reached, applying CastingSpell
+            // (making them interruptible) and storing the invocation
+            // handle for concentration tracking.
+            for a in actions {
+                if a.action_type == DeclaredActionType.CastSpellAction && a.initiative_segment == seg {
+                    if a.combatant has Spellcasting as sc {
+                        a.combatant.BeginCasting(a.casting_time)
+                    }
+                }
+            }
+
+            let seg_actions = [a for a in actions if a.segment == seg]
+
+            if len(seg_actions) > 0 {
+                emit SegmentStart(segment: seg)
+
+                if initiative.simultaneous {
+                    // Speed factor tie-breaking: lower acts first (p. 92).
+                    // Melee speed factors range 1–13; 0–20 covers all cases.
+                    for sf in 0..=20 {
+                        for action in seg_actions {
+                            if action.speed_factor == sf {
+                                resolve_action(action)
+                            }
+                        }
+                    }
+                } else {
+                    // Winning side resolves first within each segment.
+                    let winners = [a for a in seg_actions if a.party_side == party_won]
+                    let losers  = [a for a in seg_actions if a.party_side != party_won]
+                    for action in winners {
+                        resolve_action(action)
+                    }
+                    for action in losers {
+                        resolve_action(action)
+                    }
+                }
+            }
         }
     }
 }
