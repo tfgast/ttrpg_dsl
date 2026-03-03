@@ -219,16 +219,28 @@ system "OSRIC Combat" {
     // Damage uses weapon dice + STR damage mod.
     // attack_mod defaults to 0; conditions (Prone, Stunned, etc.)
     // modify this parameter via Phase 1 overrides.
+    //
+    // Condition flags (Phase 1 overrides):
+    //   ignore_dex_ac  — negate target's DEX AC bonus (Prone, Stunned, RearAttacked)
+    //   ignore_shield_ac — negate target's shield AC bonus (Prone, Stunned, RearAttacked)
+    //   auto_hit       — skip d20 roll, force Hit (Paralyzed, Sleeping)
+    //   max_damage     — use max dice value instead of rolling (Paralyzed, Sleeping)
     mechanic resolve_melee_attack(
         attacker: Character,
         target: Character,
         weapon: MeleeWeapon,
-        attack_mod: int = 0
+        attack_mod: int = 0,
+        ignore_dex_ac: bool = false,
+        ignore_shield_ac: bool = false,
+        auto_hit: bool = false,
+        max_damage: bool = false
     ) -> AttackResult #attack_resolution {
         let bthb_val = bthb(attacker.class, attacker.level)
         let str_hit = effective_str_to_hit(attacker)
-        let total_mod = bthb_val + str_hit + attack_mod
-        let outcome = attack_roll_aac(total_mod, target.ac)
+        let dex_neg = if ignore_dex_ac { dex_ac_adj(target.abilities[DEX]) } else { 0 }
+        let shield_neg = if ignore_shield_ac { target.shield_ac_bonus } else { 0 }
+        let total_mod = bthb_val + str_hit + attack_mod + dex_neg + shield_neg
+        let outcome = if auto_hit { AttackOutcome.Hit } else { attack_roll_aac(total_mod, target.ac) }
 
         let wdef = melee_weapon_def(weapon)
         let target_size = ancestry_def(target.ancestry).size
@@ -236,7 +248,13 @@ system "OSRIC Combat" {
         let str_dmg = effective_str_damage(attacker)
 
         let damage = match outcome {
-            AttackOutcome.Hit => damage_from_spec(dmg_spec, str_dmg),
+            AttackOutcome.Hit => {
+                if max_damage {
+                    max(1, dmg_spec.count * dmg_spec.sides + dmg_spec.bonus + str_dmg)
+                } else {
+                    damage_from_spec(dmg_spec, str_dmg)
+                }
+            },
             _ => 0
         }
 
@@ -245,26 +263,39 @@ system "OSRIC Combat" {
 
     // Missile attack: d20 + BTHB + DEX missile mod - range + attack_mod vs AC.
     // Hurled weapons add STR damage; launched weapons do not.
+    // Same condition flags as melee (ignore_dex_ac, ignore_shield_ac, auto_hit, max_damage).
     mechanic resolve_missile_attack(
         attacker: Character,
         target: Character,
         weapon: MissileWeapon,
         distance: Feet,
-        attack_mod: int = 0
+        attack_mod: int = 0,
+        ignore_dex_ac: bool = false,
+        ignore_shield_ac: bool = false,
+        auto_hit: bool = false,
+        max_damage: bool = false
     ) -> AttackResult #attack_resolution {
         let bthb_val = bthb(attacker.class, attacker.level)
         let dex_mod = dex_missile(attacker.abilities[DEX])
         let wdef = missile_weapon_def(weapon)
         let range_mod = missile_range_penalty(distance, wdef.range_increment)
-        let total_mod = bthb_val + dex_mod + range_mod + attack_mod
-        let outcome = attack_roll_aac(total_mod, target.ac)
+        let dex_neg = if ignore_dex_ac { dex_ac_adj(target.abilities[DEX]) } else { 0 }
+        let shield_neg = if ignore_shield_ac { target.shield_ac_bonus } else { 0 }
+        let total_mod = bthb_val + dex_mod + range_mod + attack_mod + dex_neg + shield_neg
+        let outcome = if auto_hit { AttackOutcome.Hit } else { attack_roll_aac(total_mod, target.ac) }
 
         let target_size = ancestry_def(target.ancestry).size
         let dmg_spec = if target_size > Size.Medium { wdef.damage_l } else { wdef.damage_sm }
         let str_dmg = if wdef.is_hurled { effective_str_damage(attacker) } else { 0 }
 
         let damage = match outcome {
-            AttackOutcome.Hit => damage_from_spec(dmg_spec, str_dmg),
+            AttackOutcome.Hit => {
+                if max_damage {
+                    max(1, dmg_spec.count * dmg_spec.sides + dmg_spec.bonus + str_dmg)
+                } else {
+                    damage_from_spec(dmg_spec, str_dmg)
+                }
+            },
             _ => 0
         }
 
@@ -272,18 +303,31 @@ system "OSRIC Combat" {
     }
 
     // Monster attack using hit dice for BTHB.
+    // Same condition flags as character attacks.
     mechanic resolve_monster_attack(
         attacker: Monster,
         target: Character,
         attack: MonsterAttack,
-        attack_mod: int = 0
+        attack_mod: int = 0,
+        ignore_dex_ac: bool = false,
+        ignore_shield_ac: bool = false,
+        auto_hit: bool = false,
+        max_damage: bool = false
     ) -> AttackResult #attack_resolution {
         let bthb_val = monster_bthb(attacker.hit_dice)
-        let total_mod = bthb_val + attack_mod
-        let outcome = attack_roll_aac(total_mod, target.ac)
+        let dex_neg = if ignore_dex_ac { dex_ac_adj(target.abilities[DEX]) } else { 0 }
+        let shield_neg = if ignore_shield_ac { target.shield_ac_bonus } else { 0 }
+        let total_mod = bthb_val + attack_mod + dex_neg + shield_neg
+        let outcome = if auto_hit { AttackOutcome.Hit } else { attack_roll_aac(total_mod, target.ac) }
 
         let damage = match outcome {
-            AttackOutcome.Hit => damage_from_spec(attack.damage),
+            AttackOutcome.Hit => {
+                if max_damage {
+                    max(1, attack.damage.count * attack.damage.sides + attack.damage.bonus)
+                } else {
+                    damage_from_spec(attack.damage)
+                }
+            },
             _ => 0
         }
 

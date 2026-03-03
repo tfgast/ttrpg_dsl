@@ -229,6 +229,7 @@ fn make_character(
     fields.insert(Name::from("max_hp"), Value::Int(max_hp));
     fields.insert(Name::from("hp"), Value::Int(max_hp));
     fields.insert(Name::from("ac"), Value::Int(ac));
+    fields.insert(Name::from("shield_ac_bonus"), Value::Int(0));
     fields.insert(Name::from("xp"), Value::Int(0));
     fields.insert(Name::from("base_movement"), feet(120));
     fields.insert(Name::from("gold"), Value::Int(0));
@@ -267,6 +268,7 @@ fn make_caster(
     fields.insert(Name::from("max_hp"), Value::Int(max_hp));
     fields.insert(Name::from("hp"), Value::Int(max_hp));
     fields.insert(Name::from("ac"), Value::Int(ac));
+    fields.insert(Name::from("shield_ac_bonus"), Value::Int(0));
     fields.insert(Name::from("xp"), Value::Int(0));
     fields.insert(Name::from("base_movement"), feet(120));
     fields.insert(Name::from("gold"), Value::Int(0));

@@ -215,6 +215,7 @@ fn make_character(
     fields.insert(Name::from("max_hp"), Value::Int(max_hp));
     fields.insert(Name::from("hp"), Value::Int(max_hp));
     fields.insert(Name::from("ac"), Value::Int(ac));
+    fields.insert(Name::from("shield_ac_bonus"), Value::Int(0));
     fields.insert(Name::from("xp"), Value::Int(0));
     fields.insert(Name::from("base_movement"), feet(120));
     fields.insert(Name::from("gold"), Value::Int(0));
@@ -258,6 +259,57 @@ fn standard_abilities() -> Vec<(&'static str, i64)> {
         ("WIS", 12),
         ("CHA", 12),
     ]
+}
+
+fn high_dex_abilities() -> Vec<(&'static str, i64)> {
+    vec![
+        ("STR", 12),
+        ("DEX", 17),
+        ("CON", 12),
+        ("INT", 12),
+        ("WIS", 12),
+        ("CHA", 12),
+    ]
+}
+
+/// Build a Character with explicit shield AC bonus.
+#[allow(clippy::too_many_arguments)]
+fn make_character_with_shield(
+    state: &mut GameState,
+    name: &str,
+    class: &str,
+    level: i64,
+    abilities: &[(&str, i64)],
+    max_hp: i64,
+    ac: i64,
+    shield_ac_bonus: i64,
+    ancestry: &str,
+) -> EntityRef {
+    let mut ability_map = BTreeMap::new();
+    for &(ab, score) in abilities {
+        ability_map.insert(ability(ab), Value::Int(score));
+    }
+
+    let mut fields = FxHashMap::default();
+    fields.insert(Name::from("name"), Value::Str(name.to_string()));
+    fields.insert(Name::from("class"), class_variant(class));
+    fields.insert(Name::from("ancestry"), enum_variant("Ancestry", ancestry));
+    fields.insert(Name::from("level"), Value::Int(level));
+    fields.insert(
+        Name::from("alignment"),
+        enum_variant("Alignment", "TrueNeutral"),
+    );
+    fields.insert(Name::from("abilities"), Value::Map(ability_map));
+    fields.insert(Name::from("max_hp"), Value::Int(max_hp));
+    fields.insert(Name::from("hp"), Value::Int(max_hp));
+    fields.insert(Name::from("ac"), Value::Int(ac));
+    fields.insert(Name::from("shield_ac_bonus"), Value::Int(shield_ac_bonus));
+    fields.insert(Name::from("xp"), Value::Int(0));
+    fields.insert(Name::from("base_movement"), feet(120));
+    fields.insert(Name::from("gold"), Value::Int(0));
+    fields.insert(Name::from("saving_throws"), Value::Option(None));
+
+    state.add_entity("Character", fields)
 }
 
 fn get_int(fields: &BTreeMap<String, Value>, key: &str) -> i64 {
@@ -707,7 +759,9 @@ fn invisible_on_target_causes_miss() {
 
 // ── Target conditions: melee-specific modifiers ────────────────
 
-/// Paralyzed on target: +20 to attack_mod on resolve_melee_attack only.
+/// Paralyzed on target: auto_hit + max_damage on all attacks.
+/// No d20 roll or damage roll needed — outcome is forced Hit, damage is max of weapon dice.
+/// SwordLong: 1d8 → max = 8. STR 12 → no bonus. Total damage = 8.
 #[test]
 fn paralyzed_on_target_adds_20_melee() {
     let (program, result) = compile_osric_conditions();
@@ -723,28 +777,26 @@ fn paralyzed_on_target_adds_20_melee() {
 
     state.apply_condition(&target, "Paralyzed", BTreeMap::new(), Value::None, None);
 
-    // BTHB=0, attack_mod=+20 → total_mod=20
-    // Roll 5 → 5+20 = 25 >= 18 → Hit (auto-hit effectively)
-    let atk_roll = scripted_roll(1, 20, 0, vec![5], vec![5], 5, 5);
-    let dmg_roll = scripted_roll(1, 8, 0, vec![6], vec![6], 6, 6);
-
+    // auto_hit + max_damage: no dice rolls, only ModifyApplied ack
     let (fields, _) = resolve_melee(
         &interp,
         &state,
-        vec![Response::Acknowledged, atk_roll, dmg_roll],
+        vec![Response::Acknowledged],
         attacker,
         target,
         "SwordLong",
     );
 
-    assert_eq!(get_int(&fields, "total_mod"), 20); // BTHB=0 + attack_mod=20
+    assert_eq!(get_int(&fields, "total_mod"), 0); // BTHB=0, no attack_mod bonus
     assert_eq!(
         fields.get("outcome").unwrap(),
         &enum_variant("AttackOutcome", "Hit")
     );
+    assert_eq!(get_int(&fields, "damage"), 8); // max(1d8) = 8
 }
 
-/// Sleeping on target: +20 to attack_mod on resolve_melee_attack (same as Paralyzed).
+/// Sleeping on target: auto_hit + max_damage (same as Paralyzed).
+/// SwordLong: 1d8 → max = 8. STR 12 → no bonus.
 #[test]
 fn sleeping_on_target_adds_20_melee() {
     let (program, result) = compile_osric_conditions();
@@ -760,23 +812,22 @@ fn sleeping_on_target_adds_20_melee() {
 
     state.apply_condition(&target, "Sleeping", BTreeMap::new(), Value::None, None);
 
-    let atk_roll = scripted_roll(1, 20, 0, vec![5], vec![5], 5, 5);
-    let dmg_roll = scripted_roll(1, 8, 0, vec![6], vec![6], 6, 6);
-
+    // auto_hit + max_damage: no dice rolls, only ModifyApplied ack
     let (fields, _) = resolve_melee(
         &interp,
         &state,
-        vec![Response::Acknowledged, atk_roll, dmg_roll],
+        vec![Response::Acknowledged],
         attacker,
         target,
         "SwordLong",
     );
 
-    assert_eq!(get_int(&fields, "total_mod"), 20);
+    assert_eq!(get_int(&fields, "total_mod"), 0);
     assert_eq!(
         fields.get("outcome").unwrap(),
         &enum_variant("AttackOutcome", "Hit")
     );
+    assert_eq!(get_int(&fields, "damage"), 8); // max(1d8) = 8
 }
 
 /// RearAttacked on target: +2 to attack_mod on resolve_melee_attack.
@@ -810,9 +861,10 @@ fn rear_attacked_on_target_adds_2_melee() {
     assert_eq!(get_int(&fields, "total_mod"), 6); // BTHB=4 + attack_mod=2
 }
 
-// ── Paralyzed/Sleeping are melee-only: no effect on missile ────
+// ── Paralyzed/Sleeping affect ALL attacks (auto_hit + max_damage) ──
 
-/// Paralyzed does NOT affect missile attacks (it targets resolve_melee_attack, not #attack_resolution).
+/// Paralyzed DOES affect missile attacks (uses #attack_resolution tag).
+/// Auto-hit with maximum damage. BowLong: 1d6 → max = 6.
 #[test]
 fn paralyzed_does_not_affect_missile_attack() {
     let (program, result) = compile_osric_conditions();
@@ -828,23 +880,24 @@ fn paralyzed_does_not_affect_missile_attack() {
 
     state.apply_condition(&target, "Paralyzed", BTreeMap::new(), Value::None, None);
 
-    // BTHB=2, no Paralyzed effect on missile → total_mod=2
-    // Roll 15 → 15+2 = 17 >= 14 → Hit
-    let atk_roll = scripted_roll(1, 20, 0, vec![15], vec![15], 15, 15);
-    let dmg_roll = scripted_roll(1, 6, 0, vec![4], vec![4], 4, 4);
-
+    // auto_hit + max_damage: no dice rolls, only ModifyApplied ack
     let (fields, _) = resolve_missile(
         &interp,
         &state,
-        vec![atk_roll, dmg_roll],
+        vec![Response::Acknowledged],
         attacker,
         target,
         "BowLong",
         60,
     );
 
-    // total_mod should be BTHB=2 only, no +20 from Paralyzed
+    // BTHB=2, dex_missile(12)=0, range_penalty=0
     assert_eq!(get_int(&fields, "total_mod"), 2);
+    assert_eq!(
+        fields.get("outcome").unwrap(),
+        &enum_variant("AttackOutcome", "Hit")
+    );
+    assert_eq!(get_int(&fields, "damage"), 6); // max(1d6) = 6
 }
 
 // ── Attacker conditions: result override ───────────────────────
@@ -1170,8 +1223,8 @@ fn prone_on_target_applies_to_monster_attack() {
     assert_eq!(get_int(&fields, "total_mod"), 9); // monster_bthb=5 + attack_mod=4
 }
 
-/// RearAttacked uses resolve_melee_attack specific selector,
-/// so it does NOT affect resolve_monster_attack.
+/// RearAttacked now uses #attack_resolution tag, so it affects ALL attack types
+/// including resolve_monster_attack. +2 to hit, negate DEX/shield AC.
 #[test]
 fn rear_attacked_does_not_affect_monster_attack() {
     let (program, result) = compile_osric_conditions();
@@ -1192,20 +1245,21 @@ fn rear_attacked_does_not_affect_monster_attack() {
 
     state.apply_condition(&target, "RearAttacked", BTreeMap::new(), Value::None, None);
 
-    // monster_bthb(4)=5, NO attack_mod (RearAttacked is melee-specific)
+    // monster_bthb(4)=5, attack_mod=+2, dex_neg=0 (DEX 12), shield_neg=0
+    // total_mod = 5 + 2 = 7
     let atk_roll = scripted_roll(1, 20, 0, vec![12], vec![12], 12, 12);
     let dmg_roll = scripted_roll(1, 10, 0, vec![7], vec![7], 7, 7);
 
     let (fields, _) = resolve_monster(
         &interp,
         &state,
-        vec![atk_roll, dmg_roll],
+        vec![Response::Acknowledged, atk_roll, dmg_roll],
         monster,
         target,
         monster_attack("Club", 1, 10, 0),
     );
 
-    assert_eq!(get_int(&fields, "total_mod"), 5); // monster_bthb=5 only, no +2
+    assert_eq!(get_int(&fields, "total_mod"), 7); // monster_bthb=5 + attack_mod=2
 }
 
 // ── Condition stacking ─────────────────────────────────────────
@@ -1677,6 +1731,7 @@ fn condition_count_after_apply_and_remove() {
     char_fields.insert(Name::from("max_hp"), Value::Int(10));
     char_fields.insert(Name::from("hp"), Value::Int(10));
     char_fields.insert(Name::from("ac"), Value::Int(10));
+    char_fields.insert(Name::from("shield_ac_bonus"), Value::Int(0));
     char_fields.insert(Name::from("xp"), Value::Int(0));
     char_fields.insert(Name::from("base_movement"), feet(120));
     char_fields.insert(Name::from("gold"), Value::Int(0));
@@ -1697,4 +1752,400 @@ fn condition_count_after_apply_and_remove() {
     assert!(names.contains(&"Prone".to_string()));
     assert!(names.contains(&"Staggered".to_string()));
     assert!(!names.contains(&"Stunned".to_string()));
+}
+
+// ── New tests: DEX AC negation ──────────────────────────────────
+
+/// Prone negates DEX AC bonus. Target with DEX 17 has dex_ac_adj=+3.
+/// Without Prone: total_mod = BTHB=4. With Prone: total_mod = 4 + 4 (attack_mod) + 3 (dex_neg) = 11.
+#[test]
+fn prone_negates_dex_ac_bonus() {
+    let (program, result) = compile_osric_conditions();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut state = GameState::new();
+
+    let attacker = make_character(
+        &mut state, "Fighter", "Fighter", 5, &standard_abilities(), 30, 15, "Human",
+    );
+    // DEX 17 → dex_ac_adj = +3
+    let target = make_character(
+        &mut state, "Target", "Fighter", 1, &high_dex_abilities(), 10, 17, "Human",
+    );
+
+    state.apply_condition(&target, "Prone", BTreeMap::new(), Value::None, None);
+
+    let atk_roll = scripted_roll(1, 20, 0, vec![15], vec![15], 15, 15);
+    let dmg_roll = scripted_roll(1, 8, 0, vec![6], vec![6], 6, 6);
+
+    let (fields, _) = resolve_melee(
+        &interp,
+        &state,
+        vec![Response::Acknowledged, atk_roll, dmg_roll],
+        attacker,
+        target,
+        "SwordLong",
+    );
+
+    // BTHB=4 + attack_mod=4 + dex_neg=3 = 11
+    assert_eq!(get_int(&fields, "total_mod"), 11);
+}
+
+/// Stunned negates DEX AC bonus. DEX 17 → dex_ac_adj=+3.
+/// total_mod = BTHB=4 + attack_mod=4 + dex_neg=3 = 11.
+#[test]
+fn stunned_negates_dex_ac_bonus() {
+    let (program, result) = compile_osric_conditions();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut state = GameState::new();
+
+    let attacker = make_character(
+        &mut state, "Fighter", "Fighter", 5, &standard_abilities(), 30, 15, "Human",
+    );
+    let target = make_character(
+        &mut state, "Target", "Fighter", 1, &high_dex_abilities(), 10, 17, "Human",
+    );
+
+    state.apply_condition(&target, "Stunned", BTreeMap::new(), Value::None, None);
+
+    let atk_roll = scripted_roll(1, 20, 0, vec![15], vec![15], 15, 15);
+    let dmg_roll = scripted_roll(1, 8, 0, vec![6], vec![6], 6, 6);
+
+    let (fields, _) = resolve_melee(
+        &interp,
+        &state,
+        vec![Response::Acknowledged, atk_roll, dmg_roll],
+        attacker,
+        target,
+        "SwordLong",
+    );
+
+    assert_eq!(get_int(&fields, "total_mod"), 11);
+}
+
+/// RearAttacked negates DEX AC bonus on missile attacks too.
+/// DEX 17 target → dex_ac_adj=+3.
+#[test]
+fn rear_attacked_negates_dex_ac_on_missile() {
+    let (program, result) = compile_osric_conditions();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut state = GameState::new();
+
+    let attacker = make_character(
+        &mut state, "Archer", "Fighter", 3, &standard_abilities(), 20, 14, "Human",
+    );
+    // DEX 17 → dex_ac_adj = +3
+    let target = make_character(
+        &mut state, "Target", "Fighter", 1, &high_dex_abilities(), 10, 17, "Human",
+    );
+
+    state.apply_condition(&target, "RearAttacked", BTreeMap::new(), Value::None, None);
+
+    let atk_roll = scripted_roll(1, 20, 0, vec![15], vec![15], 15, 15);
+    let dmg_roll = scripted_roll(1, 6, 0, vec![4], vec![4], 4, 4);
+
+    let (fields, _) = resolve_missile(
+        &interp,
+        &state,
+        vec![Response::Acknowledged, atk_roll, dmg_roll],
+        attacker,
+        target,
+        "BowLong",
+        60,
+    );
+
+    // BTHB=2 + attack_mod=2 + dex_neg=3 = 7
+    assert_eq!(get_int(&fields, "total_mod"), 7);
+}
+
+// ── New tests: shield AC negation ───────────────────────────────
+
+/// Prone negates shield AC bonus. Target with shield_ac_bonus=1.
+/// total_mod = BTHB=4 + attack_mod=4 + shield_neg=1 = 9.
+#[test]
+fn prone_negates_shield_ac_bonus() {
+    let (program, result) = compile_osric_conditions();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut state = GameState::new();
+
+    let attacker = make_character(
+        &mut state, "Fighter", "Fighter", 5, &standard_abilities(), 30, 15, "Human",
+    );
+    // AC 15 with 1 from shield
+    let target = make_character_with_shield(
+        &mut state, "Target", "Fighter", 1, &standard_abilities(), 10, 15, 1, "Human",
+    );
+
+    state.apply_condition(&target, "Prone", BTreeMap::new(), Value::None, None);
+
+    let atk_roll = scripted_roll(1, 20, 0, vec![15], vec![15], 15, 15);
+    let dmg_roll = scripted_roll(1, 8, 0, vec![6], vec![6], 6, 6);
+
+    let (fields, _) = resolve_melee(
+        &interp,
+        &state,
+        vec![Response::Acknowledged, atk_roll, dmg_roll],
+        attacker,
+        target,
+        "SwordLong",
+    );
+
+    // BTHB=4 + attack_mod=4 + dex_neg=0 (DEX 12) + shield_neg=1 = 9
+    assert_eq!(get_int(&fields, "total_mod"), 9);
+}
+
+/// RearAttacked negates both DEX and shield bonuses combined.
+/// Target: DEX 17 (dex_ac_adj=+3), shield_ac_bonus=1.
+#[test]
+fn rear_attacked_negates_dex_and_shield_combined() {
+    let (program, result) = compile_osric_conditions();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut state = GameState::new();
+
+    let attacker = make_character(
+        &mut state, "Fighter", "Fighter", 5, &standard_abilities(), 30, 15, "Human",
+    );
+    // DEX 17 → dex_ac_adj=+3, shield=+1, total AC = 10+4(armor)+3(dex)+1(shield)=18
+    let target = make_character_with_shield(
+        &mut state, "Target", "Fighter", 1, &high_dex_abilities(), 10, 18, 1, "Human",
+    );
+
+    state.apply_condition(&target, "RearAttacked", BTreeMap::new(), Value::None, None);
+
+    let atk_roll = scripted_roll(1, 20, 0, vec![15], vec![15], 15, 15);
+    let dmg_roll = scripted_roll(1, 8, 0, vec![6], vec![6], 6, 6);
+
+    let (fields, _) = resolve_melee(
+        &interp,
+        &state,
+        vec![Response::Acknowledged, atk_roll, dmg_roll],
+        attacker,
+        target,
+        "SwordLong",
+    );
+
+    // BTHB=4 + attack_mod=2 + dex_neg=3 + shield_neg=1 = 10
+    assert_eq!(get_int(&fields, "total_mod"), 10);
+}
+
+// ── New tests: stunned suppresses bearer attacks ────────────────
+
+/// Stunned bearer cannot attack — forces Miss with 0 damage.
+#[test]
+fn stunned_on_attacker_forces_miss() {
+    let (program, result) = compile_osric_conditions();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut state = GameState::new();
+
+    let attacker = make_character(
+        &mut state, "Fighter", "Fighter", 5, &standard_abilities(), 30, 15, "Human",
+    );
+    let target = make_character(
+        &mut state, "Target", "Fighter", 1, &standard_abilities(), 10, 10, "Human",
+    );
+
+    state.apply_condition(&attacker, "Stunned", BTreeMap::new(), Value::None, None);
+
+    // Mechanic body runs normally, then Phase 2 forces Miss + damage=0.
+    // No ModifyApplied before body for attacker-side Phase 2 overrides.
+    let atk_roll = scripted_roll(1, 20, 0, vec![18], vec![18], 18, 18);
+    let dmg_roll = scripted_roll(1, 8, 0, vec![6], vec![6], 6, 6);
+
+    let (fields, _) = resolve_melee(
+        &interp,
+        &state,
+        vec![atk_roll, dmg_roll],
+        attacker,
+        target,
+        "SwordLong",
+    );
+
+    assert_eq!(
+        fields.get("outcome").unwrap(),
+        &enum_variant("AttackOutcome", "Miss")
+    );
+    assert_eq!(get_int(&fields, "damage"), 0);
+}
+
+// ── New tests: paralyzed/sleeping suppress bearer attacks ───────
+
+/// Paralyzed bearer cannot attack — forces Miss with 0 damage.
+#[test]
+fn paralyzed_on_attacker_forces_miss() {
+    let (program, result) = compile_osric_conditions();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut state = GameState::new();
+
+    let attacker = make_character(
+        &mut state, "Fighter", "Fighter", 5, &standard_abilities(), 30, 15, "Human",
+    );
+    let target = make_character(
+        &mut state, "Target", "Fighter", 1, &standard_abilities(), 10, 10, "Human",
+    );
+
+    state.apply_condition(&attacker, "Paralyzed", BTreeMap::new(), Value::None, None);
+
+    // auto_hit is NOT triggered (attacker is paralyzed, not target)
+    // Mechanic body runs normally, then Phase 2 override forces Miss
+    let atk_roll = scripted_roll(1, 20, 0, vec![18], vec![18], 18, 18);
+    let dmg_roll = scripted_roll(1, 8, 0, vec![6], vec![6], 6, 6);
+
+    let (fields, _) = resolve_melee(
+        &interp,
+        &state,
+        vec![atk_roll, dmg_roll],
+        attacker,
+        target,
+        "SwordLong",
+    );
+
+    assert_eq!(
+        fields.get("outcome").unwrap(),
+        &enum_variant("AttackOutcome", "Miss")
+    );
+    assert_eq!(get_int(&fields, "damage"), 0);
+}
+
+/// Sleeping bearer cannot attack — forces Miss with 0 damage.
+#[test]
+fn sleeping_on_attacker_forces_miss() {
+    let (program, result) = compile_osric_conditions();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut state = GameState::new();
+
+    let attacker = make_character(
+        &mut state, "Fighter", "Fighter", 5, &standard_abilities(), 30, 15, "Human",
+    );
+    let target = make_character(
+        &mut state, "Target", "Fighter", 1, &standard_abilities(), 10, 10, "Human",
+    );
+
+    state.apply_condition(&attacker, "Sleeping", BTreeMap::new(), Value::None, None);
+
+    let atk_roll = scripted_roll(1, 20, 0, vec![18], vec![18], 18, 18);
+    let dmg_roll = scripted_roll(1, 8, 0, vec![6], vec![6], 6, 6);
+
+    let (fields, _) = resolve_melee(
+        &interp,
+        &state,
+        vec![atk_roll, dmg_roll],
+        attacker,
+        target,
+        "SwordLong",
+    );
+
+    assert_eq!(
+        fields.get("outcome").unwrap(),
+        &enum_variant("AttackOutcome", "Miss")
+    );
+    assert_eq!(get_int(&fields, "damage"), 0);
+}
+
+// ── New tests: paralyzed auto-hit + max damage variations ───────
+
+/// Paralyzed on target: auto_hit + max_damage with BattleAxe (1d8 vs S/M).
+/// Max damage = 8.
+#[test]
+fn paralyzed_auto_hit_max_damage_battleaxe() {
+    let (program, result) = compile_osric_conditions();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut state = GameState::new();
+
+    let attacker = make_character(
+        &mut state, "Fighter", "Fighter", 5, &standard_abilities(), 30, 15, "Human",
+    );
+    let target = make_character(
+        &mut state, "Target", "Fighter", 1, &standard_abilities(), 10, 18, "Human",
+    );
+
+    state.apply_condition(&target, "Paralyzed", BTreeMap::new(), Value::None, None);
+
+    // No dice rolls needed (auto_hit + max_damage)
+    let (fields, _) = resolve_melee(
+        &interp,
+        &state,
+        vec![Response::Acknowledged],
+        attacker,
+        target,
+        "BattleAxe",
+    );
+
+    assert_eq!(
+        fields.get("outcome").unwrap(),
+        &enum_variant("AttackOutcome", "Hit")
+    );
+    assert_eq!(get_int(&fields, "damage"), 8); // max(1d8) = 8
+}
+
+/// Paralyzed on target: auto_hit on monster attack with max damage.
+/// MonsterAttack with 2d6 → max = 12.
+#[test]
+fn paralyzed_auto_hit_max_damage_monster_attack() {
+    let (program, result) = compile_osric_conditions();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut state = GameState::new();
+
+    let monster = make_monster(
+        &mut state,
+        "Ogre",
+        4,
+        26,
+        15,
+        vec![monster_attack("Greatclub", 2, 6, 0)],
+    );
+    let target = make_character(
+        &mut state, "Target", "Fighter", 1, &standard_abilities(), 10, 18, "Human",
+    );
+
+    state.apply_condition(&target, "Paralyzed", BTreeMap::new(), Value::None, None);
+
+    // No dice rolls needed (auto_hit + max_damage)
+    let (fields, _) = resolve_monster(
+        &interp,
+        &state,
+        vec![Response::Acknowledged],
+        monster,
+        target,
+        monster_attack("Greatclub", 2, 6, 0),
+    );
+
+    assert_eq!(
+        fields.get("outcome").unwrap(),
+        &enum_variant("AttackOutcome", "Hit")
+    );
+    assert_eq!(get_int(&fields, "damage"), 12); // max(2d6) = 12
+}
+
+/// Paralyzed also negates DEX and shield AC on the auto-hit.
+/// DEX 17 target (dex_ac_adj=+3) with shield (1). total_mod includes negation.
+#[test]
+fn paralyzed_negates_dex_and_shield_on_auto_hit() {
+    let (program, result) = compile_osric_conditions();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut state = GameState::new();
+
+    let attacker = make_character(
+        &mut state, "Fighter", "Fighter", 5, &standard_abilities(), 30, 15, "Human",
+    );
+    let target = make_character_with_shield(
+        &mut state, "Target", "Fighter", 1, &high_dex_abilities(), 10, 18, 1, "Human",
+    );
+
+    state.apply_condition(&target, "Paralyzed", BTreeMap::new(), Value::None, None);
+
+    let (fields, _) = resolve_melee(
+        &interp,
+        &state,
+        vec![Response::Acknowledged],
+        attacker,
+        target,
+        "SwordLong",
+    );
+
+    // BTHB=4 + dex_neg=3 + shield_neg=1 = 8
+    assert_eq!(get_int(&fields, "total_mod"), 8);
+    assert_eq!(
+        fields.get("outcome").unwrap(),
+        &enum_variant("AttackOutcome", "Hit")
+    );
+    assert_eq!(get_int(&fields, "damage"), 8); // max(1d8) = 8
 }

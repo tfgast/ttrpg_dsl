@@ -2,18 +2,19 @@
 // OSRIC 3.0 Conditions — combat status effects and modifiers
 //
 // Conditions use modify clauses to alter attack resolution
-// mechanics. The attack_mod parameter on resolve_melee_attack
-// and resolve_missile_attack is the primary hook for combat
-// conditions that make targets easier/harder to hit.
+// mechanics. Parameters on resolve_melee_attack, resolve_missile_attack,
+// and resolve_monster_attack serve as hooks:
+//   attack_mod       — flat to-hit adjustment
+//   ignore_dex_ac    — negate target's DEX AC bonus
+//   ignore_shield_ac — negate target's shield AC bonus
+//   auto_hit         — skip d20 roll, force Hit outcome
+//   max_damage       — use maximum dice value instead of rolling
 //
 // All conditions use `entity` as their bearer type so they
 // apply to both Characters and Monsters. Selector bindings
 // narrow to compatible attack functions at check time.
 //
-// Concealment and cover are modeled as parameterised conditions
-// on the defender, modifying incoming attacks.
-//
-// Reference: OSRIC 3.0 Player Guide, Section 1.6.3 (pp. 96)
+// Reference: OSRIC 3.0 Player Guide, Sections 1.6.3, 1.6.10
 // ============================================================
 
 use "OSRIC"
@@ -26,13 +27,15 @@ system "OSRIC Conditions" {
     //  PRONE
     //
     //  Attacked at +4. Cannot use shield or DEX bonus to AC.
-    //  The +4 attack bonus captures the combined effect of
-    //  being easier to hit due to position.
+    //  Per 1.6.3.6: the +4 is a separate modifier on top of
+    //  losing shield and DEX AC contributions.
     // ========================================================
 
     condition Prone on bearer: entity {
         modify [#attack_resolution](target: bearer) {
             attack_mod = attack_mod + 4
+            ignore_dex_ac = true
+            ignore_shield_ac = true
         }
     }
 
@@ -41,12 +44,19 @@ system "OSRIC Conditions" {
     //  STUNNED
     //
     //  Attacked at +4. Cannot use shield or DEX bonus to AC.
-    //  Mechanically identical to Prone for attack purposes.
+    //  Cannot move or act — bearer's attacks are suppressed.
+    //  Per 1.6.3.6 and 1.6.10.11.
     // ========================================================
 
     condition Stunned on bearer: entity {
         modify [#attack_resolution](target: bearer) {
             attack_mod = attack_mod + 4
+            ignore_dex_ac = true
+            ignore_shield_ac = true
+        }
+        modify [#attack_resolution](attacker: bearer) {
+            result.outcome = AttackOutcome.Miss
+            result.damage = 0
         }
     }
 
@@ -82,15 +92,24 @@ system "OSRIC Conditions" {
     // ========================================================
     //  PARALYZED
     //
-    //  Auto-hit at melee range. Maximum damage dealt.
-    //  Instant kill or bind if unprotected by nearby ally.
-    //  Modeled as +20 attack bonus (effectively auto-hit)
-    //  since we can't override the d20 roll itself.
+    //  Automatic hit, maximum damage on all attacks.
+    //  Cannot use shield or DEX bonus to AC.
+    //  Instant-kill or bind at melee range if unprotected by
+    //  a nearby ally (GM adjudicated).
+    //  Bearer cannot act — attacks are suppressed.
+    //  Per 1.6.3.6 and 1.6.10.15.
     // ========================================================
 
     condition Paralyzed on bearer: entity {
-        modify resolve_melee_attack(target: bearer) {
-            attack_mod = attack_mod + 20
+        modify [#attack_resolution](target: bearer) {
+            auto_hit = true
+            max_damage = true
+            ignore_dex_ac = true
+            ignore_shield_ac = true
+        }
+        modify [#attack_resolution](attacker: bearer) {
+            result.outcome = AttackOutcome.Miss
+            result.damage = 0
         }
     }
 
@@ -98,14 +117,24 @@ system "OSRIC Conditions" {
     // ========================================================
     //  SLEEPING
     //
-    //  Natural sleep: auto-hit at melee range, instant kill
-    //  possible. Modeled same as Paralyzed for attack purposes.
+    //  Natural sleep: automatic hit, maximum damage.
+    //  Cannot use shield or DEX bonus to AC.
+    //  Instant-kill possible at melee range (GM adjudicated).
     //  Magical sleep: depends on spell specifics.
+    //  Bearer cannot act — attacks are suppressed.
+    //  Per 1.6.3.6.
     // ========================================================
 
     condition Sleeping on bearer: entity {
-        modify resolve_melee_attack(target: bearer) {
-            attack_mod = attack_mod + 20
+        modify [#attack_resolution](target: bearer) {
+            auto_hit = true
+            max_damage = true
+            ignore_dex_ac = true
+            ignore_shield_ac = true
+        }
+        modify [#attack_resolution](attacker: bearer) {
+            result.outcome = AttackOutcome.Miss
+            result.damage = 0
         }
     }
 
@@ -150,12 +179,14 @@ system "OSRIC Conditions" {
     //  REAR ATTACK
     //
     //  Attack from directly behind: +2 to hit, negates shield
-    //  and DEX bonuses. Per 1.6.3.3.
+    //  and DEX bonuses to AC. Per 1.6.3.3.
     // ========================================================
 
     condition RearAttacked on bearer: entity {
-        modify resolve_melee_attack(target: bearer) {
+        modify [#attack_resolution](target: bearer) {
             attack_mod = attack_mod + 2
+            ignore_dex_ac = true
+            ignore_shield_ac = true
         }
     }
 
