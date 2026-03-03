@@ -607,14 +607,20 @@ pub fn clamp_value(val: Value, lo: &Value, hi: &Value) -> Value {
 }
 
 /// Decrement a turn budget field by 1.
+///
+/// Only deducts if a budget was explicitly provisioned for this entity AND
+/// the field was explicitly provisioned in the budget. This prevents
+/// auto-materializing phantom budget entries.
 pub fn deduct_budget_field<S: WritableState>(state: &mut S, actor: &EntityRef, field: &str) {
-    let current = state
-        .read_turn_budget(actor)
-        .and_then(|b| b.get(field).cloned())
-        .unwrap_or(Value::Int(0));
+    let Some(budget) = state.read_turn_budget(actor) else {
+        return; // No budget → no deduction (backward compatible no-op)
+    };
+    let Some(current) = budget.get(field) else {
+        return; // Field not in budget → no deduction (no phantom materialization)
+    };
     let new_val = match current {
         Value::Int(v) => Value::Int(v.saturating_sub(1)),
-        other => other,
+        other => other.clone(),
     };
     state.write_turn_field(actor, field, new_val);
 }

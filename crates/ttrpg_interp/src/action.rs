@@ -174,7 +174,10 @@ fn execute_pipeline(
             let effective_cost =
                 collect_and_apply_cost_modifiers(env, actor, action_name, cost, call_span)?;
             if let Some(ref eff) = effective_cost {
-                deduct_costs(env, actor, eff, call_span)?;
+                match deduct_costs(env, action_name, eff, call_span)? {
+                    CostOutcome::Proceed => {}
+                    CostOutcome::ActionFailed => return Ok(Value::None),
+                }
             }
             // else: cost was overridden to free by a modifier
         }
@@ -630,18 +633,31 @@ fn exec_cost_modify_stmts(
 
 // ── Cost deduction ─────────────────────────────────────────────
 
-/// Emit `DeductCost` for each token in the cost clause.
+/// Whether cost deduction succeeded or the action should be aborted.
+enum CostOutcome {
+    /// All budget checks passed (or no enforcement applies). Proceed with resolve block.
+    Proceed,
+    /// Budget insufficient and host acknowledged failure. Skip resolve block.
+    ActionFailed,
+}
+
+/// Pre-check budget, then emit `DeductCost` for each token in the cost clause.
 ///
-/// Handles three response types:
+/// Budget enforcement: if the payer has a provisioned budget, checks all tokens
+/// have sufficient values before any deduction. Insufficient budget emits a
+/// synthetic `RequiresCheck` — the host can acknowledge (action fails) or
+/// override with `Bool(true)` to allow overdraft.
+///
+/// Deduction handles three response types:
 /// - `Acknowledged`: host accepts the deduction (host is responsible for applying it at Layer 1)
 /// - `Override(Str(replacement))`: redirect to a different budget field
 /// - `Vetoed`: cost waived, no deduction
 fn deduct_costs(
     env: &mut Env,
-    actor: &EntityRef,
+    action_name: &str,
     cost: &ttrpg_ast::ast::CostClause,
     call_span: Span,
-) -> Result<(), RuntimeError> {
+) -> Result<CostOutcome, RuntimeError> {
     let expected_tokens = env
         .interp
         .type_env
@@ -650,6 +666,80 @@ fn deduct_costs(
         .map(|n| n.to_string())
         .collect::<Vec<_>>();
 
+    let payer = env
+        .cost_payer
+        .unwrap_or_else(|| env.turn_actor.expect("no turn context"));
+
+    // ── Budget pre-check ────────────────────────────────────────
+    // Only enforces when a budget is explicitly provisioned for the payer.
+    // Pre-checks ALL tokens before any deduction to prevent partial deductions.
+    if let Some(budget) = env.state.read_turn_budget(&payer) {
+        for token in &cost.tokens {
+            let budget_field = env
+                .interp
+                .type_env
+                .resolve_cost_token(&token.node)
+                .ok_or_else(|| {
+                    RuntimeError::with_span(
+                        format!(
+                            "internal error: unknown cost token '{}'; expected one of: {}",
+                            token.node,
+                            expected_tokens.join(", ")
+                        ),
+                        token.span,
+                    )
+                })?;
+
+            // Only enforce if this field was explicitly provisioned in the budget
+            if let Some(current) = budget.get(&budget_field) {
+                let current_int = match current {
+                    Value::Int(v) => *v,
+                    other => {
+                        return Err(RuntimeError::with_span(
+                            format!(
+                                "budget field '{}' has non-integer value: {:?}",
+                                budget_field, other
+                            ),
+                            call_span,
+                        ));
+                    }
+                };
+                let required = 1; // 1 per bare token
+
+                if current_int < required {
+                    let response = env.handler.handle(Effect::RequiresCheck {
+                        action: Name::from(action_name),
+                        passed: false,
+                        reason: Some(format!(
+                            "insufficient budget: {} requires {} but {} has {}",
+                            budget_field, required, budget_field, current_int
+                        )),
+                    });
+                    match response {
+                        Response::Acknowledged => return Ok(CostOutcome::ActionFailed),
+                        Response::Override(Value::Bool(true)) => {
+                            // Host allows overdraft — continue pre-check
+                        }
+                        Response::Override(Value::Bool(false)) => {
+                            return Ok(CostOutcome::ActionFailed);
+                        }
+                        other => {
+                            return Err(RuntimeError::with_span(
+                                format!(
+                                    "protocol error: expected Acknowledged or Override(Bool) for RequiresCheck, got {other:?}"
+                                ),
+                                call_span,
+                            ));
+                        }
+                    }
+                }
+            }
+            // Field not in budget: no enforcement for this cost type
+        }
+    }
+    // No budget at all: no enforcement (backward compatible)
+
+    // ── Deduction loop ──────────────────────────────────────────
     for token in &cost.tokens {
         let budget_field = env
             .interp
@@ -666,7 +756,6 @@ fn deduct_costs(
                 )
             })?;
 
-        let payer = env.cost_payer.unwrap_or(*actor);
         let response = env.handler.handle(Effect::DeductCost {
             actor: payer,
             token: token.node.clone(),
@@ -711,7 +800,7 @@ fn deduct_costs(
             }
         }
     }
-    Ok(())
+    Ok(CostOutcome::Proceed)
 }
 
 #[cfg(test)]
@@ -1654,5 +1743,194 @@ mod tests {
         let result = execute_reaction(&mut env, &reaction, reactor, Value::None, span());
         assert!(result.is_err());
         assert!(result.unwrap_err().message.contains("protocol error"));
+    }
+
+    // ── Budget enforcement tests ────────────────────────────────
+
+    fn make_state_with_budget(entity_id: u64, budget: BTreeMap<Name, Value>) -> TestState {
+        let mut state = TestState::new();
+        state.turn_budgets.insert(entity_id, budget);
+        state
+    }
+
+    fn attack_action_with_cost(cost_token: &str) -> ActionDecl {
+        make_action(
+            "MeleeAttack",
+            "actor",
+            vec![],
+            Some(CostClause {
+                tokens: vec![spanned(Name::from(cost_token))],
+                free: false,
+                span: span(),
+            }),
+            None,
+            vec![spanned(StmtKind::Expr(spanned(ExprKind::IntLit(42))))],
+        )
+    }
+
+    #[test]
+    fn budget_enforcement_insufficient_acknowledged() {
+        // Budget has attack: 0, host acknowledges → ActionFailed, no DeductCost emitted
+        let action = attack_action_with_cost("attack");
+        let mut budget = BTreeMap::new();
+        budget.insert(Name::from("attack"), Value::Int(0));
+        let state = make_state_with_budget(1, budget);
+
+        let program = empty_program();
+        let type_env = type_env_with_turn_budget(&["attack"]);
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let mut handler = ScriptedHandler::with_responses(vec![
+            Response::Acknowledged, // ActionStarted
+            Response::Acknowledged, // RequiresCheck (budget insufficient)
+        ]);
+        let mut env = make_env(&state, &mut handler, &interp);
+        env.turn_actor = Some(EntityRef(1));
+        let actor = EntityRef(1);
+
+        let result = execute_action(&mut env, &action, actor, vec![], span()).unwrap();
+        assert_eq!(result, Value::None);
+
+        // ActionStarted, RequiresCheck(budget), ActionCompleted — no DeductCost
+        assert_eq!(handler.log.len(), 3);
+        assert!(matches!(&handler.log[0], Effect::ActionStarted { .. }));
+        assert!(matches!(
+            &handler.log[1],
+            Effect::RequiresCheck { action, passed: false, reason: Some(msg), .. }
+            if action == "MeleeAttack" && msg.contains("insufficient budget")
+        ));
+        assert!(matches!(&handler.log[2], Effect::ActionCompleted { .. }));
+    }
+
+    #[test]
+    fn budget_enforcement_insufficient_override_allows_overdraft() {
+        // Budget has attack: 0, host overrides true → proceed, DeductCost emitted
+        let action = attack_action_with_cost("attack");
+        let mut budget = BTreeMap::new();
+        budget.insert(Name::from("attack"), Value::Int(0));
+        let state = make_state_with_budget(1, budget);
+
+        let program = empty_program();
+        let type_env = type_env_with_turn_budget(&["attack"]);
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let mut handler = ScriptedHandler::with_responses(vec![
+            Response::Acknowledged,                // ActionStarted
+            Response::Override(Value::Bool(true)),  // RequiresCheck — allow overdraft
+        ]);
+        let mut env = make_env(&state, &mut handler, &interp);
+        env.turn_actor = Some(EntityRef(1));
+        let actor = EntityRef(1);
+
+        let result = execute_action(&mut env, &action, actor, vec![], span()).unwrap();
+        assert_eq!(result, Value::Int(42));
+
+        // ActionStarted, RequiresCheck(budget), DeductCost, ActionCompleted
+        assert_eq!(handler.log.len(), 4);
+        assert!(matches!(&handler.log[1], Effect::RequiresCheck { passed: false, .. }));
+        assert!(matches!(&handler.log[2], Effect::DeductCost { .. }));
+    }
+
+    #[test]
+    fn budget_enforcement_insufficient_override_denies() {
+        // Budget has attack: 0, host overrides false → ActionFailed
+        let action = attack_action_with_cost("attack");
+        let mut budget = BTreeMap::new();
+        budget.insert(Name::from("attack"), Value::Int(0));
+        let state = make_state_with_budget(1, budget);
+
+        let program = empty_program();
+        let type_env = type_env_with_turn_budget(&["attack"]);
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let mut handler = ScriptedHandler::with_responses(vec![
+            Response::Acknowledged,                 // ActionStarted
+            Response::Override(Value::Bool(false)),  // RequiresCheck — deny
+        ]);
+        let mut env = make_env(&state, &mut handler, &interp);
+        env.turn_actor = Some(EntityRef(1));
+        let actor = EntityRef(1);
+
+        let result = execute_action(&mut env, &action, actor, vec![], span()).unwrap();
+        assert_eq!(result, Value::None);
+
+        // ActionStarted, RequiresCheck(budget), ActionCompleted — no DeductCost
+        assert_eq!(handler.log.len(), 3);
+        assert!(matches!(&handler.log[1], Effect::RequiresCheck { passed: false, .. }));
+        assert!(matches!(&handler.log[2], Effect::ActionCompleted { .. }));
+    }
+
+    #[test]
+    fn budget_enforcement_sufficient_proceeds() {
+        // Budget has attack: 1 (sufficient) → normal flow, no RequiresCheck for budget
+        let action = attack_action_with_cost("attack");
+        let mut budget = BTreeMap::new();
+        budget.insert(Name::from("attack"), Value::Int(1));
+        let state = make_state_with_budget(1, budget);
+
+        let program = empty_program();
+        let type_env = type_env_with_turn_budget(&["attack"]);
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let mut handler = ScriptedHandler::new();
+        let mut env = make_env(&state, &mut handler, &interp);
+        env.turn_actor = Some(EntityRef(1));
+        let actor = EntityRef(1);
+
+        let result = execute_action(&mut env, &action, actor, vec![], span()).unwrap();
+        assert_eq!(result, Value::Int(42));
+
+        // ActionStarted, DeductCost, ActionCompleted — no RequiresCheck
+        assert_eq!(handler.log.len(), 3);
+        assert!(matches!(&handler.log[0], Effect::ActionStarted { .. }));
+        assert!(matches!(&handler.log[1], Effect::DeductCost { .. }));
+        assert!(matches!(&handler.log[2], Effect::ActionCompleted { .. }));
+    }
+
+    #[test]
+    fn budget_enforcement_no_budget_skips() {
+        // No budget provisioned → no enforcement, normal flow (backward compatible)
+        let action = attack_action_with_cost("action");
+
+        let program = empty_program();
+        let type_env = empty_type_env();
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let state = TestState::new(); // no budget
+        let mut handler = ScriptedHandler::new();
+        let mut env = make_env(&state, &mut handler, &interp);
+        env.turn_actor = Some(EntityRef(1));
+        let actor = EntityRef(1);
+
+        let result = execute_action(&mut env, &action, actor, vec![], span()).unwrap();
+        assert_eq!(result, Value::Int(42));
+
+        // ActionStarted, DeductCost, ActionCompleted — no RequiresCheck
+        assert_eq!(handler.log.len(), 3);
+        assert!(matches!(&handler.log[0], Effect::ActionStarted { .. }));
+        assert!(matches!(&handler.log[1], Effect::DeductCost { .. }));
+        assert!(matches!(&handler.log[2], Effect::ActionCompleted { .. }));
+    }
+
+    #[test]
+    fn budget_enforcement_field_absent_skips() {
+        // Budget exists but doesn't have the cost token's field → no enforcement
+        let action = attack_action_with_cost("attack");
+        // Budget has "spell" but not "attack"
+        let mut budget = BTreeMap::new();
+        budget.insert(Name::from("spell"), Value::Int(1));
+        let state = make_state_with_budget(1, budget);
+
+        let program = empty_program();
+        let type_env = type_env_with_turn_budget(&["attack", "spell"]);
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let mut handler = ScriptedHandler::new();
+        let mut env = make_env(&state, &mut handler, &interp);
+        env.turn_actor = Some(EntityRef(1));
+        let actor = EntityRef(1);
+
+        let result = execute_action(&mut env, &action, actor, vec![], span()).unwrap();
+        assert_eq!(result, Value::Int(42));
+
+        // ActionStarted, DeductCost, ActionCompleted — no RequiresCheck
+        assert_eq!(handler.log.len(), 3);
+        assert!(matches!(&handler.log[0], Effect::ActionStarted { .. }));
+        assert!(matches!(&handler.log[1], Effect::DeductCost { .. }));
+        assert!(matches!(&handler.log[2], Effect::ActionCompleted { .. }));
     }
 }
