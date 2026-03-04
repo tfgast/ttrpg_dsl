@@ -1,0 +1,1485 @@
+//! Shared helpers for OSRIC integration tests.
+//!
+//! Extracts duplicated value constructors, extractors, handlers, and entity
+//! builders that appear across the 10 `osric_*_integration.rs` test files.
+#![allow(dead_code)]
+
+use std::collections::{BTreeMap, VecDeque};
+
+use rustc_hash::FxHashMap;
+use ttrpg_ast::diagnostic::Severity;
+use ttrpg_ast::Name;
+use ttrpg_interp::adapter::StateAdapter;
+use ttrpg_interp::effect::{Effect, EffectHandler, Response};
+use ttrpg_interp::reference_state::GameState;
+use ttrpg_interp::state::{EntityRef, WritableState};
+use ttrpg_interp::value::{DiceExpr, RollResult, Value};
+use ttrpg_interp::Interpreter;
+
+// ── Compilation ────────────────────────────────────────────────
+
+/// Compile multiple OSRIC source files through the full pipeline.
+pub fn compile_osric_sources(
+    sources: Vec<(String, String)>,
+) -> (ttrpg_ast::ast::Program, ttrpg_checker::CheckResult) {
+    let parse_result = ttrpg_parser::parse_multi(&sources);
+    let parse_errors: Vec<_> = parse_result
+        .diagnostics
+        .iter()
+        .filter(|d| d.severity == Severity::Error)
+        .collect();
+    assert!(
+        parse_errors.is_empty(),
+        "parse/lower errors: {:?}",
+        parse_errors.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+
+    let (program, module_map) = parse_result.ok().unwrap();
+    let result = ttrpg_checker::check_with_modules(program, module_map);
+    let errors: Vec<_> = result
+        .diagnostics
+        .iter()
+        .filter(|d| d.severity == Severity::Error)
+        .collect();
+    assert!(
+        errors.is_empty(),
+        "checker errors: {:?}",
+        errors.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+
+    (program.clone(), result)
+}
+
+// ── Value constructors ─────────────────────────────────────────
+
+pub fn enum_variant(enum_name: &str, variant: &str) -> Value {
+    Value::EnumVariant {
+        enum_name: Name::from(enum_name),
+        variant: Name::from(variant),
+        fields: BTreeMap::new(),
+    }
+}
+
+pub fn ability(variant: &str) -> Value {
+    enum_variant("Ability", variant)
+}
+
+pub fn ancestry(variant: &str) -> Value {
+    enum_variant("Ancestry", variant)
+}
+
+pub fn class_variant(variant: &str) -> Value {
+    enum_variant("Class", variant)
+}
+
+pub fn feet(value: i64) -> Value {
+    Value::Struct {
+        name: Name::from("Feet"),
+        fields: {
+            let mut f = BTreeMap::new();
+            f.insert(Name::from("value"), Value::Int(value));
+            f
+        },
+    }
+}
+
+pub fn tier(variant: &str) -> Value {
+    enum_variant("EncumbranceTier", variant)
+}
+
+pub fn action_type(variant: &str) -> Value {
+    enum_variant("DeclaredActionType", variant)
+}
+
+pub fn melee_variant(variant: &str) -> Value {
+    enum_variant("MeleeWeapon", variant)
+}
+
+pub fn missile_variant(variant: &str) -> Value {
+    enum_variant("MissileWeapon", variant)
+}
+
+pub fn armour_variant(variant: &str) -> Value {
+    enum_variant("ArmourType", variant)
+}
+
+pub fn shield_variant(variant: &str) -> Value {
+    enum_variant("ShieldType", variant)
+}
+
+pub fn monster_attack(name: &str, count: u32, sides: u32, bonus: i64) -> Value {
+    Value::Struct {
+        name: Name::from("MonsterAttack"),
+        fields: {
+            let mut f = BTreeMap::new();
+            f.insert(Name::from("name"), Value::Str(name.to_string()));
+            f.insert(
+                Name::from("damage"),
+                Value::DiceExpr(DiceExpr::single(count, sides, None, bonus)),
+            );
+            f
+        },
+    }
+}
+
+pub fn ability_map(scores: &[(&str, i64)]) -> Value {
+    let mut map = BTreeMap::new();
+    for &(ab, score) in scores {
+        map.insert(ability(ab), Value::Int(score));
+    }
+    Value::Map(map)
+}
+
+/// Turn budget for OSRIC combat: just `attack` token.
+pub fn combat_turn_budget() -> BTreeMap<Name, Value> {
+    let mut b = BTreeMap::new();
+    b.insert("attack".into(), Value::Int(1));
+    b
+}
+
+// ── Extractors ─────────────────────────────────────────────────
+
+pub fn expect_int(val: Value, ctx: &str) -> i64 {
+    match val {
+        Value::Int(n) => n,
+        other => panic!("{ctx}: expected Int, got {other:?}"),
+    }
+}
+
+pub fn expect_bool(val: Value, ctx: &str) -> bool {
+    match val {
+        Value::Bool(b) => b,
+        other => panic!("{ctx}: expected Bool, got {other:?}"),
+    }
+}
+
+pub fn expect_feet(val: Value, ctx: &str) -> i64 {
+    match val {
+        Value::Struct { name, fields } => {
+            assert_eq!(&*name, "Feet", "{ctx}: expected Feet struct");
+            match fields.get::<Name>(&"value".into()) {
+                Some(Value::Int(n)) => *n,
+                other => panic!("{ctx}: expected Feet.value Int, got {other:?}"),
+            }
+        }
+        other => panic!("{ctx}: expected Feet struct, got {other:?}"),
+    }
+}
+
+pub fn field<'a>(fields: &'a BTreeMap<Name, Value>, key: &str) -> Option<&'a Value> {
+    fields.get::<Name>(&key.into())
+}
+
+pub fn get_int(fields: &BTreeMap<String, Value>, key: &str) -> i64 {
+    match fields.get(key) {
+        Some(Value::Int(n)) => *n,
+        other => panic!("expected int for '{key}', got: {other:?}"),
+    }
+}
+
+pub fn get_bool(fields: &BTreeMap<String, Value>, key: &str) -> bool {
+    match fields.get(key) {
+        Some(Value::Bool(b)) => *b,
+        other => panic!("expected bool for '{key}', got: {other:?}"),
+    }
+}
+
+// ── Handlers ───────────────────────────────────────────────────
+
+pub struct NullHandler;
+impl EffectHandler for NullHandler {
+    fn handle(&mut self, _effect: Effect) -> Response {
+        Response::Acknowledged
+    }
+}
+
+pub struct ScriptedHandler {
+    pub script: VecDeque<Response>,
+    pub log: Vec<Effect>,
+}
+
+impl ScriptedHandler {
+    pub fn with_responses(responses: Vec<Response>) -> Self {
+        ScriptedHandler {
+            script: responses.into(),
+            log: Vec::new(),
+        }
+    }
+}
+
+impl EffectHandler for ScriptedHandler {
+    fn handle(&mut self, effect: Effect) -> Response {
+        self.log.push(effect);
+        self.script.pop_front().unwrap_or(Response::Acknowledged)
+    }
+}
+
+pub fn scripted_roll(
+    count: u32,
+    sides: u32,
+    modifier: i64,
+    dice_vals: Vec<i64>,
+    kept_vals: Vec<i64>,
+    total: i64,
+    unmodified: i64,
+) -> Response {
+    Response::Rolled(RollResult {
+        expr: DiceExpr::single(count, sides, None, modifier),
+        dice: dice_vals,
+        kept: kept_vals,
+        modifier,
+        total,
+        unmodified,
+    })
+}
+
+// ── Entity builders ────────────────────────────────────────────
+
+pub fn standard_abilities() -> Vec<(&'static str, i64)> {
+    vec![
+        ("STR", 10),
+        ("DEX", 10),
+        ("CON", 10),
+        ("INT", 10),
+        ("WIS", 10),
+        ("CHA", 10),
+    ]
+}
+
+/// Standard abilities with all 12s (no modifiers) — used by combat/conditions/initiative.
+pub fn standard_abilities_12() -> Vec<(&'static str, i64)> {
+    vec![
+        ("STR", 12),
+        ("DEX", 12),
+        ("CON", 12),
+        ("INT", 12),
+        ("WIS", 12),
+        ("CHA", 12),
+    ]
+}
+
+/// Build a Character for combat/conditions/initiative tests (full params).
+#[allow(clippy::too_many_arguments)]
+pub fn make_character(
+    state: &mut GameState,
+    name: &str,
+    class: &str,
+    level: i64,
+    abilities: &[(&str, i64)],
+    max_hp: i64,
+    ac: i64,
+    ancestry: &str,
+) -> EntityRef {
+    let mut ability_map = BTreeMap::new();
+    for &(ab, score) in abilities {
+        ability_map.insert(ability(ab), Value::Int(score));
+    }
+
+    let mut fields = FxHashMap::default();
+    fields.insert(Name::from("name"), Value::Str(name.to_string()));
+    fields.insert(Name::from("class"), class_variant(class));
+    fields.insert(Name::from("ancestry"), enum_variant("Ancestry", ancestry));
+    fields.insert(Name::from("level"), Value::Int(level));
+    fields.insert(
+        Name::from("alignment"),
+        enum_variant("Alignment", "TrueNeutral"),
+    );
+    fields.insert(Name::from("abilities"), Value::Map(ability_map));
+    fields.insert(Name::from("max_hp"), Value::Int(max_hp));
+    fields.insert(Name::from("hp"), Value::Int(max_hp));
+    fields.insert(Name::from("armor_ac"), Value::Int(ac));
+    fields.insert(Name::from("shield_ac_bonus"), Value::Int(0));
+    fields.insert(Name::from("xp"), Value::Int(0));
+    fields.insert(Name::from("base_movement"), feet(120));
+    fields.insert(Name::from("gold"), Value::Int(0));
+    fields.insert(Name::from("saving_throws"), Value::Option(None));
+
+    state.add_entity("Character", fields)
+}
+
+/// Build a Character with explicit shield AC bonus.
+#[allow(clippy::too_many_arguments)]
+pub fn make_character_with_shield(
+    state: &mut GameState,
+    name: &str,
+    class: &str,
+    level: i64,
+    abilities: &[(&str, i64)],
+    max_hp: i64,
+    ac: i64,
+    shield_ac_bonus: i64,
+    ancestry: &str,
+) -> EntityRef {
+    let mut ability_map = BTreeMap::new();
+    for &(ab, score) in abilities {
+        ability_map.insert(ability(ab), Value::Int(score));
+    }
+
+    let mut fields = FxHashMap::default();
+    fields.insert(Name::from("name"), Value::Str(name.to_string()));
+    fields.insert(Name::from("class"), class_variant(class));
+    fields.insert(Name::from("ancestry"), enum_variant("Ancestry", ancestry));
+    fields.insert(Name::from("level"), Value::Int(level));
+    fields.insert(
+        Name::from("alignment"),
+        enum_variant("Alignment", "TrueNeutral"),
+    );
+    fields.insert(Name::from("abilities"), Value::Map(ability_map));
+    fields.insert(Name::from("max_hp"), Value::Int(max_hp));
+    fields.insert(Name::from("hp"), Value::Int(max_hp));
+    fields.insert(Name::from("armor_ac"), Value::Int(ac));
+    fields.insert(Name::from("shield_ac_bonus"), Value::Int(shield_ac_bonus));
+    fields.insert(Name::from("xp"), Value::Int(0));
+    fields.insert(Name::from("base_movement"), feet(120));
+    fields.insert(Name::from("gold"), Value::Int(0));
+    fields.insert(Name::from("saving_throws"), Value::Option(None));
+
+    state.add_entity("Character", fields)
+}
+
+/// Build a Character with the Spellcasting optional group (for initiative tests).
+#[allow(clippy::too_many_arguments)]
+pub fn make_caster(
+    state: &mut GameState,
+    name: &str,
+    class: &str,
+    level: i64,
+    abilities: &[(&str, i64)],
+    max_hp: i64,
+    ac: i64,
+    ancestry: &str,
+) -> EntityRef {
+    let mut ability_map = BTreeMap::new();
+    for &(ab, score) in abilities {
+        ability_map.insert(ability(ab), Value::Int(score));
+    }
+
+    let mut fields = FxHashMap::default();
+    fields.insert(Name::from("name"), Value::Str(name.to_string()));
+    fields.insert(Name::from("class"), class_variant(class));
+    fields.insert(Name::from("ancestry"), enum_variant("Ancestry", ancestry));
+    fields.insert(Name::from("level"), Value::Int(level));
+    fields.insert(
+        Name::from("alignment"),
+        enum_variant("Alignment", "TrueNeutral"),
+    );
+    fields.insert(Name::from("abilities"), Value::Map(ability_map));
+    fields.insert(Name::from("max_hp"), Value::Int(max_hp));
+    fields.insert(Name::from("hp"), Value::Int(max_hp));
+    fields.insert(Name::from("armor_ac"), Value::Int(ac));
+    fields.insert(Name::from("shield_ac_bonus"), Value::Int(0));
+    fields.insert(Name::from("xp"), Value::Int(0));
+    fields.insert(Name::from("base_movement"), feet(120));
+    fields.insert(Name::from("gold"), Value::Int(0));
+    fields.insert(Name::from("saving_throws"), Value::Option(None));
+    fields.insert(
+        Name::from("Spellcasting"),
+        Value::Struct {
+            name: Name::from("Spellcasting"),
+            fields: {
+                let mut f = BTreeMap::new();
+                f.insert(Name::from("casting_invocation"), Value::Option(None));
+                f
+            },
+        },
+    );
+
+    state.add_entity("Character", fields)
+}
+
+/// Build a Monster entity.
+pub fn make_monster(
+    state: &mut GameState,
+    name: &str,
+    hit_dice: (u32, u32, i64),
+    max_hp: i64,
+    ac: i64,
+    attacks: Vec<Value>,
+) -> EntityRef {
+    let mut fields = FxHashMap::default();
+    fields.insert(Name::from("name"), Value::Str(name.to_string()));
+    fields.insert(
+        Name::from("hit_dice"),
+        Value::DiceExpr(DiceExpr::single(hit_dice.0, hit_dice.1, None, hit_dice.2)),
+    );
+    fields.insert(Name::from("max_hp"), Value::Int(max_hp));
+    fields.insert(Name::from("hp"), Value::Int(max_hp));
+    fields.insert(Name::from("ac"), Value::Int(ac));
+    fields.insert(Name::from("morale"), Value::Int(7));
+    fields.insert(Name::from("xp_value"), Value::Int(0));
+    fields.insert(Name::from("attacks"), Value::List(attacks));
+    fields.insert(Name::from("size"), enum_variant("Size", "Medium"));
+    fields.insert(Name::from("special"), Value::List(vec![]));
+
+    state.add_entity("Monster", fields)
+}
+
+/// Build a Character for encumbrance tests (different signature: weight + armour cap).
+pub fn make_encumbrance_character(
+    state: &mut GameState,
+    name: &str,
+    abilities: &[(&str, i64)],
+    ancestry_name: &str,
+    current_weight: i64,
+    armour_cap: i64,
+) -> EntityRef {
+    let mut ability_map = BTreeMap::new();
+    for &(ab, score) in abilities {
+        ability_map.insert(ability(ab), Value::Int(score));
+    }
+
+    let mut fields = FxHashMap::default();
+    fields.insert(Name::from("name"), Value::Str(name.to_string()));
+    fields.insert(Name::from("class"), enum_variant("Class", "Fighter"));
+    fields.insert(
+        Name::from("ancestry"),
+        enum_variant("Ancestry", ancestry_name),
+    );
+    fields.insert(Name::from("level"), Value::Int(1));
+    fields.insert(
+        Name::from("alignment"),
+        enum_variant("Alignment", "TrueNeutral"),
+    );
+    fields.insert(Name::from("abilities"), Value::Map(ability_map));
+    fields.insert(Name::from("max_hp"), Value::Int(10));
+    fields.insert(Name::from("hp"), Value::Int(10));
+    fields.insert(Name::from("armor_ac"), Value::Int(10));
+    fields.insert(Name::from("shield_ac_bonus"), Value::Int(0));
+    fields.insert(Name::from("xp"), Value::Int(0));
+    fields.insert(Name::from("base_movement"), feet(120));
+    fields.insert(Name::from("current_weight"), Value::Int(current_weight));
+    fields.insert(Name::from("armour_movement_cap"), feet(armour_cap));
+    fields.insert(Name::from("gold"), Value::Int(0));
+    fields.insert(Name::from("saving_throws"), Value::Option(None));
+
+    state.add_entity("Character", fields)
+}
+
+/// Build a Character for ability tests (minimal signature).
+pub fn make_ability_character(
+    state: &mut GameState,
+    name: &str,
+    abilities: &[(&str, i64)],
+) -> EntityRef {
+    let mut ability_map = BTreeMap::new();
+    for &(ab, score) in abilities {
+        ability_map.insert(ability(ab), Value::Int(score));
+    }
+
+    let mut fields = FxHashMap::default();
+    fields.insert(Name::from("name"), Value::Str(name.to_string()));
+    fields.insert(Name::from("class"), enum_variant("Class", "Fighter"));
+    fields.insert(Name::from("ancestry"), enum_variant("Ancestry", "Human"));
+    fields.insert(Name::from("level"), Value::Int(1));
+    fields.insert(
+        Name::from("alignment"),
+        enum_variant("Alignment", "TrueNeutral"),
+    );
+    fields.insert(Name::from("abilities"), Value::Map(ability_map));
+    fields.insert(Name::from("max_hp"), Value::Int(10));
+    fields.insert(Name::from("hp"), Value::Int(10));
+    fields.insert(Name::from("armor_ac"), Value::Int(10));
+    fields.insert(Name::from("shield_ac_bonus"), Value::Int(0));
+    fields.insert(Name::from("xp"), Value::Int(0));
+    fields.insert(Name::from("base_movement"), feet(120));
+    fields.insert(Name::from("gold"), Value::Int(0));
+    fields.insert(Name::from("saving_throws"), Value::Option(None));
+
+    state.add_entity("Character", fields)
+}
+
+pub fn apply_encumbrance(state: &mut GameState, entity: &EntityRef, tier_variant: &str) {
+    let mut params = BTreeMap::new();
+    params.insert(Name::from("tier"), tier(tier_variant));
+    state.apply_condition(entity, "EncumbranceState", params, Value::Option(None), None);
+}
+
+// ── OSRIC source loading ───────────────────────────────────────
+
+/// Load all 9 OSRIC source files as (filename, source) pairs.
+pub fn all_osric_sources() -> Vec<(String, String)> {
+    vec![
+        (
+            "osric/osric_core.ttrpg".to_string(),
+            include_str!("../../../../osric/osric_core.ttrpg").to_string(),
+        ),
+        (
+            "osric/osric_ability.ttrpg".to_string(),
+            include_str!("../../../../osric/osric_ability.ttrpg").to_string(),
+        ),
+        (
+            "osric/osric_character.ttrpg".to_string(),
+            include_str!("../../../../osric/osric_character.ttrpg").to_string(),
+        ),
+        (
+            "osric/osric_class.ttrpg".to_string(),
+            include_str!("../../../../osric/osric_class.ttrpg").to_string(),
+        ),
+        (
+            "osric/osric_saves.ttrpg".to_string(),
+            include_str!("../../../../osric/osric_saves.ttrpg").to_string(),
+        ),
+        (
+            "osric/osric_equipment.ttrpg".to_string(),
+            include_str!("../../../../osric/osric_equipment.ttrpg").to_string(),
+        ),
+        (
+            "osric/osric_conditions.ttrpg".to_string(),
+            include_str!("../../../../osric/osric_conditions.ttrpg").to_string(),
+        ),
+        (
+            "osric/osric_combat.ttrpg".to_string(),
+            include_str!("../../../../osric/osric_combat.ttrpg").to_string(),
+        ),
+        (
+            "osric/osric_initiative.ttrpg".to_string(),
+            include_str!("../../../../osric/osric_initiative.ttrpg").to_string(),
+        ),
+    ]
+}
+
+// ── Scenario runners (exercise DSL code paths for coverage) ────
+
+/// Exercise ability table lookups (STR, DEX, CON, INT, WIS, CHA modifiers + ancestry defs).
+pub fn run_all_ability(interp: &Interpreter, state: &GameState) {
+    let mut handler = NullHandler;
+
+    // STR tables at representative scores
+    for score in [3, 10, 16, 18] {
+        let _ = interp.evaluate_derive(state, &mut handler, "str_to_hit", vec![Value::Int(score)]);
+        let _ = interp.evaluate_derive(state, &mut handler, "str_damage", vec![Value::Int(score)]);
+        let _ = interp.evaluate_derive(
+            state,
+            &mut handler,
+            "str_encumbrance",
+            vec![Value::Int(score)],
+        );
+        let _ = interp.evaluate_derive(
+            state,
+            &mut handler,
+            "str_minor_test",
+            vec![Value::Int(score)],
+        );
+        let _ = interp.evaluate_derive(
+            state,
+            &mut handler,
+            "str_major_test",
+            vec![Value::Int(score)],
+        );
+    }
+
+    // Exceptional STR tables
+    for pct in [1, 50, 76, 100] {
+        let _ = interp.evaluate_derive(
+            state,
+            &mut handler,
+            "exc_str_to_hit",
+            vec![Value::Int(pct)],
+        );
+        let _ = interp.evaluate_derive(
+            state,
+            &mut handler,
+            "exc_str_damage",
+            vec![Value::Int(pct)],
+        );
+        let _ = interp.evaluate_derive(
+            state,
+            &mut handler,
+            "exc_str_encumbrance",
+            vec![Value::Int(pct)],
+        );
+    }
+
+    // DEX tables
+    for score in [3, 10, 16, 18] {
+        let _ =
+            interp.evaluate_derive(state, &mut handler, "dex_surprise", vec![Value::Int(score)]);
+        let _ =
+            interp.evaluate_derive(state, &mut handler, "dex_missile", vec![Value::Int(score)]);
+        let _ =
+            interp.evaluate_derive(state, &mut handler, "dex_ac_adj", vec![Value::Int(score)]);
+    }
+
+    // CON tables
+    for score in [3, 10, 15, 18] {
+        let _ =
+            interp.evaluate_derive(state, &mut handler, "con_hp_adj", vec![Value::Int(score)]);
+        let _ = interp.evaluate_derive(
+            state,
+            &mut handler,
+            "con_system_shock",
+            vec![Value::Int(score)],
+        );
+        let _ = interp.evaluate_derive(
+            state,
+            &mut handler,
+            "con_resurrection",
+            vec![Value::Int(score)],
+        );
+    }
+
+    // CHA table
+    for score in [3, 10, 16, 18] {
+        let _ = interp.evaluate_derive(
+            state,
+            &mut handler,
+            "cha_reaction_adj",
+            vec![Value::Int(score)],
+        );
+    }
+
+    // Ancestry defs
+    for anc in [
+        "Dwarf", "Elf", "Gnome", "HalfElf", "HalfOrc", "Halfling", "Human",
+    ] {
+        let _ = interp.evaluate_derive(
+            state,
+            &mut handler,
+            "ancestry_def",
+            vec![ancestry(anc)],
+        );
+    }
+}
+
+/// Exercise character derives (dex_ac_adj, apply_ancestry_mods, class requirements, etc.).
+pub fn run_all_character(interp: &Interpreter, state: &GameState) {
+    let mut handler = NullHandler;
+
+    // dex_ac_adj
+    for score in [3, 10, 16, 18] {
+        let _ = interp.evaluate_derive(
+            state,
+            &mut handler,
+            "dex_ac_adj",
+            vec![Value::Int(score)],
+        );
+    }
+
+    // apply_ancestry_mods
+    let scores = ability_map(&[
+        ("STR", 14),
+        ("DEX", 12),
+        ("CON", 13),
+        ("INT", 10),
+        ("WIS", 11),
+        ("CHA", 9),
+    ]);
+    for anc in ["Human", "Dwarf", "Elf", "HalfOrc", "Halfling"] {
+        let _ = interp.evaluate_derive(
+            state,
+            &mut handler,
+            "apply_ancestry_mods",
+            vec![scores.clone(), ancestry(anc)],
+        );
+    }
+
+    // validate_ancestry_scores
+    let _ = interp.evaluate_derive(
+        state,
+        &mut handler,
+        "validate_ancestry_scores",
+        vec![scores.clone(), ancestry("Human")],
+    );
+    let _ = interp.evaluate_derive(
+        state,
+        &mut handler,
+        "validate_ancestry_scores",
+        vec![scores.clone(), ancestry("Dwarf")],
+    );
+
+    // meets_class_requirements
+    let good_scores = ability_map(&[
+        ("STR", 16),
+        ("DEX", 16),
+        ("CON", 16),
+        ("INT", 16),
+        ("WIS", 16),
+        ("CHA", 17),
+    ]);
+    for class in [
+        "Fighter",
+        "Paladin",
+        "Ranger",
+        "Cleric",
+        "Druid",
+        "Thief",
+        "Assassin",
+        "MagicUser",
+        "Illusionist",
+        "Monk",
+    ] {
+        let _ = interp.evaluate_derive(
+            state,
+            &mut handler,
+            "meets_class_requirements",
+            vec![class_variant(class), good_scores.clone()],
+        );
+    }
+
+    // prime_req_xp_bonus
+    for class in [
+        "Fighter", "Paladin", "Ranger", "Cleric", "Druid", "Thief", "MagicUser", "Assassin",
+        "Illusionist", "Monk",
+    ] {
+        let _ = interp.evaluate_derive(
+            state,
+            &mut handler,
+            "prime_req_xp_bonus",
+            vec![class_variant(class), good_scores.clone()],
+        );
+    }
+
+    // base_movement
+    for anc in [
+        "Dwarf", "Elf", "Gnome", "HalfElf", "HalfOrc", "Halfling", "Human",
+    ] {
+        let _ = interp.evaluate_derive(
+            state,
+            &mut handler,
+            "base_movement",
+            vec![ancestry(anc)],
+        );
+    }
+
+    // check_ability_in_range
+    let range = Value::Struct {
+        name: Name::from("AbilityRange"),
+        fields: {
+            let mut f = BTreeMap::new();
+            f.insert(Name::from("min"), Value::Int(8));
+            f.insert(Name::from("max"), Value::Int(18));
+            f
+        },
+    };
+    let _ = interp.evaluate_derive(
+        state,
+        &mut handler,
+        "check_ability_in_range",
+        vec![Value::Int(12), range],
+    );
+}
+
+/// Exercise class_def and xp_for_level tables for all 10 classes.
+pub fn run_all_class(interp: &Interpreter, state: &GameState) {
+    let mut handler = NullHandler;
+
+    for class in [
+        "Fighter",
+        "Paladin",
+        "Ranger",
+        "Cleric",
+        "Druid",
+        "Thief",
+        "Assassin",
+        "MagicUser",
+        "Illusionist",
+        "Monk",
+    ] {
+        let _ = interp.evaluate_derive(
+            state,
+            &mut handler,
+            "class_def",
+            vec![class_variant(class)],
+        );
+        // XP for levels 1, 5, 10
+        for level in [1, 5, 10] {
+            let _ = interp.evaluate_derive(
+                state,
+                &mut handler,
+                "xp_for_level",
+                vec![class_variant(class), Value::Int(level)],
+            );
+        }
+        // check_level_up
+        let _ = interp.evaluate_derive(
+            state,
+            &mut handler,
+            "check_level_up",
+            vec![class_variant(class), Value::Int(1), Value::Int(2000)],
+        );
+    }
+}
+
+/// Exercise saving throw tables for all classes at representative levels.
+pub fn run_all_saves(interp: &Interpreter, state: &GameState) {
+    let mut handler = NullHandler;
+
+    for class in [
+        "Fighter",
+        "Paladin",
+        "Ranger",
+        "Cleric",
+        "Druid",
+        "Thief",
+        "Assassin",
+        "MagicUser",
+        "Illusionist",
+        "Monk",
+    ] {
+        for level in [1, 5, 10, 15] {
+            let _ = interp.evaluate_derive(
+                state,
+                &mut handler,
+                "saving_throws_for",
+                vec![class_variant(class), Value::Int(level)],
+            );
+        }
+    }
+}
+
+/// Exercise equipment derives (melee/missile/armour/shield defs, equipment packages).
+pub fn run_all_equipment(interp: &Interpreter, state: &GameState) {
+    let mut handler = NullHandler;
+
+    // Melee weapon defs
+    for weapon in [
+        "BattleAxe",
+        "Dagger",
+        "SwordLong",
+        "SwordTwoHanded",
+        "Halberd",
+        "FlailHeavy",
+        "Lance",
+        "Club",
+        "FistOrKick",
+        "SwordBastard",
+        "SwordBroad",
+    ] {
+        let _ = interp.evaluate_derive(
+            state,
+            &mut handler,
+            "melee_weapon_def",
+            vec![melee_variant(weapon)],
+        );
+    }
+
+    // Missile weapon defs
+    for weapon in [
+        "BowLong",
+        "CrossbowHeavy",
+        "DaggerThrown",
+        "Sling",
+        "DartThrown",
+        "SlingStone",
+        "ClubThrown",
+        "JavelinThrown",
+    ] {
+        let _ = interp.evaluate_derive(
+            state,
+            &mut handler,
+            "missile_weapon_def",
+            vec![missile_variant(weapon)],
+        );
+    }
+
+    // Armour defs
+    for armour in [
+        "PlateMail",
+        "ChainMail",
+        "Leather",
+        "ElfinMail",
+        "Banded",
+        "Splint",
+    ] {
+        let _ = interp.evaluate_derive(
+            state,
+            &mut handler,
+            "armour_def",
+            vec![armour_variant(armour)],
+        );
+    }
+
+    // Shield defs
+    for shield in ["SmallShield", "MediumShield", "LargeShield"] {
+        let _ = interp.evaluate_derive(
+            state,
+            &mut handler,
+            "shield_def",
+            vec![shield_variant(shield)],
+        );
+    }
+
+    // Equipment packages
+    for class in [
+        "Fighter",
+        "Paladin",
+        "Ranger",
+        "Cleric",
+        "Druid",
+        "Thief",
+        "Assassin",
+        "MagicUser",
+        "Illusionist",
+        "Monk",
+    ] {
+        let _ = interp.evaluate_derive(
+            state,
+            &mut handler,
+            "equipment_package",
+            vec![class_variant(class)],
+        );
+        let _ = interp.evaluate_derive(
+            state,
+            &mut handler,
+            "default_starting_armour",
+            vec![class_variant(class)],
+        );
+    }
+}
+
+/// Exercise encumbrance derives and conditions.
+pub fn run_all_encumbrance(interp: &Interpreter) {
+    let mut state = GameState::new();
+    let mut handler = NullHandler;
+
+    // encumbrance_tier
+    for weight in [0, 1, 40, 41, 80, 81, 120, 121] {
+        let _ = interp.evaluate_derive(
+            &state,
+            &mut handler,
+            "encumbrance_tier",
+            vec![Value::Int(weight)],
+        );
+    }
+
+    // encumbrance_movement_numerator
+    for t in ["Unencumbered", "Light", "Moderate", "Heavy", "Overloaded"] {
+        let _ = interp.evaluate_derive(
+            &state,
+            &mut handler,
+            "encumbrance_movement_numerator",
+            vec![tier(t)],
+        );
+    }
+
+    // effective_str_encumbrance
+    let char_ref = make_encumbrance_character(
+        &mut state,
+        "Enc-Test",
+        &standard_abilities(),
+        "Human",
+        0,
+        0,
+    );
+    let _ = interp.evaluate_derive(
+        &state,
+        &mut handler,
+        "effective_str_encumbrance",
+        vec![Value::Entity(char_ref)],
+    );
+
+    // character_encumbrance
+    let _ = interp.evaluate_derive(
+        &state,
+        &mut handler,
+        "character_encumbrance",
+        vec![Value::Entity(char_ref)],
+    );
+
+    // character_movement
+    let _ = interp.evaluate_derive(
+        &state,
+        &mut handler,
+        "character_movement",
+        vec![Value::Entity(char_ref)],
+    );
+
+    // character_movement with encumbrance condition
+    for t in ["Unencumbered", "Light", "Moderate", "Heavy", "Overloaded"] {
+        let ent = make_encumbrance_character(
+            &mut state,
+            &format!("Enc-{t}"),
+            &standard_abilities(),
+            "Human",
+            0,
+            0,
+        );
+        apply_encumbrance(&mut state, &ent, t);
+        let _ = interp.evaluate_derive(
+            &state,
+            &mut handler,
+            "character_movement",
+            vec![Value::Entity(ent)],
+        );
+    }
+
+    // character_surprise_adj
+    let ent2 = make_encumbrance_character(
+        &mut state,
+        "Surprise-Test",
+        &[
+            ("STR", 10),
+            ("DEX", 16),
+            ("CON", 10),
+            ("INT", 10),
+            ("WIS", 10),
+            ("CHA", 10),
+        ],
+        "Human",
+        0,
+        0,
+    );
+    apply_encumbrance(&mut state, &ent2, "Unencumbered");
+    let _ = interp.evaluate_derive(
+        &state,
+        &mut handler,
+        "character_surprise_adj",
+        vec![Value::Entity(ent2)],
+    );
+
+    // update_encumbrance (function)
+    let ent3 = make_encumbrance_character(
+        &mut state,
+        "UpdateEnc",
+        &standard_abilities(),
+        "Human",
+        0,
+        0,
+    );
+    let adapter = StateAdapter::new(state);
+    adapter.run(&mut handler, |s, h| {
+        let _ = interp.evaluate_function(s, h, "update_encumbrance", vec![Value::Entity(ent3)]);
+    });
+}
+
+/// Exercise condition defines and their modify clauses.
+pub fn run_all_conditions(interp: &Interpreter) {
+    let mut state = GameState::new();
+
+    let attacker = make_character(
+        &mut state,
+        "Attacker",
+        "Fighter",
+        5,
+        &standard_abilities_12(),
+        30,
+        15,
+        "Human",
+    );
+    let target = make_character(
+        &mut state,
+        "Target",
+        "Fighter",
+        5,
+        &standard_abilities_12(),
+        30,
+        15,
+        "Human",
+    );
+    let _goblin = make_monster(&mut state, "Goblin", (1, 8, 0), 5, 14, vec![]);
+
+    // Apply simple conditions
+    for cond in [
+        "Prone",
+        "Stunned",
+        "Staggered",
+        "Invisible",
+        "Paralyzed",
+        "Sleeping",
+        "Surprised",
+        "RearAttacked",
+    ] {
+        state.apply_condition(
+            &target,
+            cond,
+            BTreeMap::new(),
+            Value::Option(None),
+            None,
+        );
+    }
+
+    // Apply parameterised conditions
+    {
+        let mut params = BTreeMap::new();
+        params.insert(Name::from("level"), Value::Int(2));
+        state.apply_condition(&target, "Concealed", params, Value::Option(None), None);
+    }
+    {
+        let mut params = BTreeMap::new();
+        params.insert(Name::from("penalty"), Value::Int(-4));
+        state.apply_condition(&target, "Cover", params, Value::Option(None), None);
+    }
+
+    // Exercise resolve_melee_attack with conditions active
+    let roll_hit = scripted_roll(1, 20, 0, vec![15], vec![15], 15, 15);
+    let roll_dmg = scripted_roll(1, 8, 0, vec![5], vec![5], 5, 5);
+    let mut handler = ScriptedHandler::with_responses(vec![
+        Response::Acknowledged,
+        Response::Acknowledged,
+        Response::Acknowledged,
+        Response::Acknowledged,
+        Response::Acknowledged,
+        Response::Acknowledged,
+        roll_hit,
+        roll_dmg,
+    ]);
+    let _ = interp.evaluate_mechanic(
+        &state,
+        &mut handler,
+        "resolve_melee_attack",
+        vec![
+            Value::Entity(attacker),
+            Value::Entity(target),
+            melee_variant("SwordLong"),
+        ],
+    );
+
+    // Remove conditions and try again
+    state.remove_condition(&target, "Prone", None);
+    state.remove_condition(&target, "Invisible", None);
+}
+
+/// Exercise combat mechanics (BTHB, attack_roll, damage_roll, resolve_* mechanics).
+pub fn run_all_combat(interp: &Interpreter) {
+    let mut state = GameState::new();
+
+    let attacker = make_character(
+        &mut state,
+        "Fighter",
+        "Fighter",
+        5,
+        &standard_abilities_12(),
+        30,
+        15,
+        "Human",
+    );
+    let target = make_character(
+        &mut state,
+        "Target",
+        "Fighter",
+        1,
+        &standard_abilities_12(),
+        10,
+        12,
+        "Human",
+    );
+    let goblin = make_monster(
+        &mut state,
+        "Goblin",
+        (1, 8, 0),
+        5,
+        14,
+        vec![monster_attack("Bite", 1, 6, 0)],
+    );
+
+    let mut handler = NullHandler;
+
+    // BTHB tables
+    for group in ["FighterGroup", "ClericGroup", "ThiefGroup", "MagicUserGroup"] {
+        for level in [1, 5, 10, 15, 20] {
+            let _ = interp.evaluate_derive(
+                &state,
+                &mut handler,
+                "bthb",
+                vec![enum_variant("CombatGroup", group), Value::Int(level)],
+            );
+        }
+    }
+
+    // fighter_attacks
+    for level in [1, 7, 13] {
+        let _ = interp.evaluate_derive(
+            &state,
+            &mut handler,
+            "fighter_attacks",
+            vec![Value::Int(level)],
+        );
+    }
+
+    // missile_range_penalty
+    for dist in [1, 2, 3] {
+        let _ = interp.evaluate_derive(
+            &state,
+            &mut handler,
+            "missile_range_penalty",
+            vec![Value::Int(dist)],
+        );
+    }
+
+    // attack_roll_aac
+    let _ = interp.evaluate_derive(
+        &state,
+        &mut handler,
+        "attack_roll_aac",
+        vec![Value::Int(15), Value::Int(15)],
+    );
+
+    // resolve_melee_attack
+    let roll_hit = scripted_roll(1, 20, 0, vec![18], vec![18], 18, 18);
+    let roll_dmg = scripted_roll(1, 8, 0, vec![6], vec![6], 6, 6);
+    let mut handler2 = ScriptedHandler::with_responses(vec![roll_hit, roll_dmg]);
+    let _ = interp.evaluate_mechanic(
+        &state,
+        &mut handler2,
+        "resolve_melee_attack",
+        vec![
+            Value::Entity(attacker),
+            Value::Entity(target),
+            melee_variant("SwordLong"),
+        ],
+    );
+
+    // resolve_missile_attack
+    let roll_hit = scripted_roll(1, 20, 0, vec![15], vec![15], 15, 15);
+    let roll_dmg = scripted_roll(1, 6, 0, vec![4], vec![4], 4, 4);
+    let mut handler3 = ScriptedHandler::with_responses(vec![roll_hit, roll_dmg]);
+    let _ = interp.evaluate_mechanic(
+        &state,
+        &mut handler3,
+        "resolve_missile_attack",
+        vec![
+            Value::Entity(attacker),
+            Value::Entity(target),
+            missile_variant("BowLong"),
+            Value::Int(1),
+        ],
+    );
+
+    // resolve_monster_attack
+    let roll_hit = scripted_roll(1, 20, 0, vec![15], vec![15], 15, 15);
+    let roll_dmg = scripted_roll(1, 6, 0, vec![3], vec![3], 3, 3);
+    let mut handler4 = ScriptedHandler::with_responses(vec![roll_hit, roll_dmg]);
+    let _ = interp.evaluate_mechanic(
+        &state,
+        &mut handler4,
+        "resolve_monster_attack",
+        vec![
+            Value::Entity(goblin),
+            Value::Entity(target),
+            monster_attack("Bite", 1, 6, 0),
+        ],
+    );
+
+    // damage_roll
+    let roll = scripted_roll(1, 8, 0, vec![5], vec![5], 5, 5);
+    let mut handler5 = ScriptedHandler::with_responses(vec![roll]);
+    let _ = interp.evaluate_mechanic(
+        &state,
+        &mut handler5,
+        "damage_roll",
+        vec![
+            Value::Entity(attacker),
+            melee_variant("SwordLong"),
+            enum_variant("Size", "Medium"),
+        ],
+    );
+
+    // MeleeAttack action (via execute_action)
+    let roll_hit = scripted_roll(1, 20, 0, vec![19], vec![19], 19, 19);
+    let roll_dmg = scripted_roll(1, 8, 0, vec![4], vec![4], 4, 4);
+    let mut handler6 = ScriptedHandler::with_responses(vec![
+        Response::Acknowledged, // ModifyApplied
+        roll_hit,
+        roll_dmg,
+        Response::Acknowledged, // Damaged event
+        Response::Acknowledged, // MutateField
+    ]);
+    let adapter = StateAdapter::new(state);
+    adapter.run(&mut handler6, |s, h| {
+        let _ = interp.execute_action(
+            s,
+            h,
+            "MeleeAttack",
+            attacker,
+            vec![Value::Entity(target), melee_variant("SwordLong")],
+        );
+    });
+}
+
+/// Exercise initiative derives and mechanics.
+pub fn run_all_initiative(interp: &Interpreter) {
+    let mut state = GameState::new();
+    let mut handler = NullHandler;
+
+    // surprise_duration
+    for segments in [1, 2, 3] {
+        let _ = interp.evaluate_derive(
+            &state,
+            &mut handler,
+            "surprise_duration",
+            vec![Value::Int(segments)],
+        );
+    }
+
+    // free_surprise_segments
+    for segments in [0, 1, 3] {
+        let _ = interp.evaluate_derive(
+            &state,
+            &mut handler,
+            "free_surprise_segments",
+            vec![Value::Int(segments), Value::Int(0)],
+        );
+    }
+
+    // wrap_segment
+    for seg in [0, 5, 10, 15] {
+        let _ = interp.evaluate_derive(
+            &state,
+            &mut handler,
+            "wrap_segment",
+            vec![Value::Int(seg)],
+        );
+    }
+
+    // action_segment for each action type
+    for at in [
+        "Melee",
+        "Missile",
+        "Movement",
+        "SetSpear",
+        "Spell",
+        "Turning",
+        "Other",
+    ] {
+        let _ = interp.evaluate_derive(
+            &state,
+            &mut handler,
+            "action_segment",
+            vec![
+                action_type(at),
+                Value::Int(3),
+                Value::Int(5),
+                Value::Int(0),
+            ],
+        );
+    }
+
+    // missile_init_segment
+    let _ = interp.evaluate_derive(
+        &state,
+        &mut handler,
+        "missile_init_segment",
+        vec![Value::Int(3), Value::Int(0)],
+    );
+
+    // assign_segment
+    let _ = interp.evaluate_derive(
+        &state,
+        &mut handler,
+        "assign_segment",
+        vec![Value::Int(5), Value::Int(3)],
+    );
+
+    // fighter_attack_segments
+    for level in [1, 7, 13] {
+        let _ = interp.evaluate_derive(
+            &state,
+            &mut handler,
+            "fighter_attack_segments",
+            vec![Value::Int(level), Value::Int(5), Value::Int(3)],
+        );
+    }
+
+    // spell_effect_segment / is_casting_at_segment / spell_completed_at_segment
+    let _ = interp.evaluate_derive(
+        &state,
+        &mut handler,
+        "spell_effect_segment",
+        vec![Value::Int(3), Value::Int(3)],
+    );
+    let _ = interp.evaluate_derive(
+        &state,
+        &mut handler,
+        "is_casting_at_segment",
+        vec![Value::Int(3), Value::Int(3), Value::Int(5)],
+    );
+    let _ = interp.evaluate_derive(
+        &state,
+        &mut handler,
+        "spell_completed_at_segment",
+        vec![Value::Int(3), Value::Int(3), Value::Int(5)],
+    );
+
+    // acts_first_by_speed
+    let _ = interp.evaluate_derive(
+        &state,
+        &mut handler,
+        "acts_first_by_speed",
+        vec![Value::Int(3), Value::Int(7)],
+    );
+
+    // melee_order
+    let _ = interp.evaluate_derive(
+        &state,
+        &mut handler,
+        "melee_order",
+        vec![
+            Value::Int(3),
+            Value::Int(7),
+            Value::Int(5),
+            Value::Int(5),
+        ],
+    );
+
+    // movement_per_segment / movement_through_segment
+    let _ = interp.evaluate_derive(
+        &state,
+        &mut handler,
+        "movement_per_segment",
+        vec![feet(120)],
+    );
+    let _ = interp.evaluate_derive(
+        &state,
+        &mut handler,
+        "movement_through_segment",
+        vec![feet(120), Value::Int(3), Value::Int(5)],
+    );
+
+    // roll_surprise (mechanic — needs scripted handler)
+    let roll = scripted_roll(1, 6, 0, vec![2], vec![2], 2, 2);
+    let mut handler2 = ScriptedHandler::with_responses(vec![roll]);
+    let _ = interp.evaluate_mechanic(
+        &state,
+        &mut handler2,
+        "roll_surprise",
+        vec![Value::Int(2)],
+    );
+
+    // roll_initiative
+    let roll = scripted_roll(1, 6, 0, vec![4], vec![4], 4, 4);
+    let mut handler3 = ScriptedHandler::with_responses(vec![roll]);
+    let _ = interp.evaluate_mechanic(
+        &state,
+        &mut handler3,
+        "roll_initiative",
+        vec![],
+    );
+
+    // CastingSpell condition + SpellInterruption hook + BeginCasting action
+    let caster = make_caster(
+        &mut state,
+        "Mage",
+        "MagicUser",
+        5,
+        &standard_abilities_12(),
+        10,
+        10,
+        "Human",
+    );
+    let _ = make_character(
+        &mut state,
+        "Target2",
+        "Fighter",
+        1,
+        &standard_abilities_12(),
+        10,
+        10,
+        "Human",
+    );
+
+    // BeginCasting action
+    let mut handler4 = ScriptedHandler::with_responses(vec![
+        Response::Acknowledged, // ModifyApplied
+        Response::Acknowledged, // apply_condition
+    ]);
+    let adapter = StateAdapter::new(state);
+    adapter.run(&mut handler4, |s, h| {
+        let _ = interp.execute_action(
+            s,
+            h,
+            "BeginCasting",
+            caster,
+            vec![Value::Int(3), Value::Int(3)],
+        );
+    });
+}
