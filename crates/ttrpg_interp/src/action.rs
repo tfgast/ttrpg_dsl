@@ -204,6 +204,7 @@ pub(crate) fn execute_action(
     args: Vec<(Name, Value)>,
     call_span: Span,
 ) -> Result<Value, RuntimeError> {
+    env.record_function_entry(&action.name);
     let action_name = action.name.clone();
     let param_values: Vec<Value> = args.iter().map(|(_, v)| v.clone()).collect();
 
@@ -270,6 +271,7 @@ pub(crate) fn execute_reaction(
     event_payload: Value,
     call_span: Span,
 ) -> Result<Value, RuntimeError> {
+    env.record_function_entry(&reaction.name);
     let reaction_name = reaction.name.clone();
 
     // 1. Emit ActionStarted (veto → early return)
@@ -322,6 +324,7 @@ pub(crate) fn execute_hook(
     event_payload: Value,
     call_span: Span,
 ) -> Result<Value, RuntimeError> {
+    env.record_function_entry(&hook.name);
     let hook_name = hook.name.clone();
 
     // 1. Emit ActionStarted (veto → early return)

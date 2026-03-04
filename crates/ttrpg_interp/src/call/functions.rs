@@ -25,6 +25,7 @@ pub(crate) fn evaluate_fn_with_values(
     args: Vec<Value>,
     call_span: Span,
 ) -> Result<Value, RuntimeError> {
+    env.record_function_entry(name);
     let fn_decl = env
         .interp
         .program
@@ -135,6 +136,7 @@ pub(super) fn dispatch_function(
     args: &[Arg],
     call_span: Span,
 ) -> Result<Value, RuntimeError> {
+    env.record_function_entry(name);
     let fn_decl = env.interp.program.functions.get(name).ok_or_else(|| {
         RuntimeError::with_span(
             format!("internal error: no declaration found for function '{name}'"),
@@ -176,6 +178,7 @@ pub(crate) fn evaluate_function_with_values(
     args: Vec<Value>,
     call_span: Span,
 ) -> Result<Value, RuntimeError> {
+    env.record_function_entry(name);
     let fn_decl = env.interp.program.functions.get(name).ok_or_else(|| {
         RuntimeError::with_span(format!("undefined function '{name}'"), call_span)
     })?;
@@ -253,6 +256,7 @@ pub(super) fn dispatch_derive_or_mechanic(
     args: &[Arg],
     call_span: Span,
 ) -> Result<Value, RuntimeError> {
+    env.record_function_entry(name);
     // Look up the declaration
     let fn_decl = env
         .interp

@@ -5,6 +5,7 @@ use ttrpg_ast::ast::ExprKind;
 use ttrpg_ast::{Name, Spanned};
 use ttrpg_checker::env::DeclInfo;
 
+use crate::coverage::{BranchKind, BranchPoint};
 use crate::value::{DiceExpr, Value};
 use crate::Env;
 use crate::RuntimeError;
@@ -108,20 +109,29 @@ pub(crate) fn eval_expr(env: &mut Env, expr: &Spanned<ExprKind>) -> Result<Value
             condition,
             then_block,
             else_branch,
-        } => eval_if(env, condition, then_block, else_branch),
+        } => eval_if(env, condition, then_block, else_branch, expr.span),
 
         ExprKind::IfLet {
             pattern,
             scrutinee,
             then_block,
             else_branch,
-        } => eval_if_let(env, pattern, scrutinee, then_block, else_branch),
+        } => eval_if_let(env, pattern, scrutinee, then_block, else_branch, expr.span),
 
         ExprKind::PatternMatch { scrutinee, arms } => {
             let scrutinee_val = eval_expr(env, scrutinee)?;
-            for arm in arms {
+            for (i, arm) in arms.iter().enumerate() {
                 let mut bindings = FxHashMap::default();
                 if match_pattern(env, &arm.pattern, &scrutinee_val, &mut bindings) {
+                    let arm_span = match &arm.body {
+                        ttrpg_ast::ast::ArmBody::Expr(e) => e.span,
+                        ttrpg_ast::ast::ArmBody::Block(b) => b.span,
+                    };
+                    env.record_branch(BranchPoint {
+                        parent_span: expr.span,
+                        kind: BranchKind::MatchArm(i),
+                        arm_span,
+                    });
                     env.push_scope();
                     for (name, val) in bindings {
                         env.bind(name, val);
@@ -141,15 +151,35 @@ pub(crate) fn eval_expr(env: &mut Env, expr: &Spanned<ExprKind>) -> Result<Value
 
         ExprKind::GuardMatch { arms } => {
             use ttrpg_ast::ast::GuardKind;
-            for arm in arms {
+            for (i, arm) in arms.iter().enumerate() {
                 match &arm.guard {
                     GuardKind::Wildcard => {
+                        let arm_span = match &arm.body {
+                            ttrpg_ast::ast::ArmBody::Expr(e) => e.span,
+                            ttrpg_ast::ast::ArmBody::Block(b) => b.span,
+                        };
+                        env.record_branch(BranchPoint {
+                            parent_span: expr.span,
+                            kind: BranchKind::GuardArm(i),
+                            arm_span,
+                        });
                         return eval_arm_body(env, &arm.body);
                     }
                     GuardKind::Expr(guard_expr) => {
                         let guard_val = eval_expr(env, guard_expr)?;
                         match guard_val {
-                            Value::Bool(true) => return eval_arm_body(env, &arm.body),
+                            Value::Bool(true) => {
+                                let arm_span = match &arm.body {
+                                    ttrpg_ast::ast::ArmBody::Expr(e) => e.span,
+                                    ttrpg_ast::ast::ArmBody::Block(b) => b.span,
+                                };
+                                env.record_branch(BranchPoint {
+                                    parent_span: expr.span,
+                                    kind: BranchKind::GuardArm(i),
+                                    arm_span,
+                                });
+                                return eval_arm_body(env, &arm.body);
+                            }
                             Value::Bool(false) => {}
                             _ => {
                                 return Err(RuntimeError::with_span(

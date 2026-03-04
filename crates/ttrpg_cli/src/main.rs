@@ -15,11 +15,12 @@ fn main() {
         return;
     }
 
-    // Check for --vi flag
+    // Check for --vi and --coverage flags
     let vi_mode = args.iter().any(|a| a == "--vi");
+    let coverage_mode = args.iter().any(|a| a == "--coverage");
     let args: Vec<&str> = args
         .iter()
-        .filter(|a| *a != "--vi")
+        .filter(|a| *a != "--vi" && *a != "--coverage")
         .map(|s| s.as_str())
         .collect();
 
@@ -29,7 +30,7 @@ fn main() {
                 eprintln!("usage: ttrpg -c <commands>");
                 process::exit(1);
             }
-            run_commands(args[1]);
+            run_commands(args[1], coverage_mode);
         }
         Some("run") => {
             if args.get(1).copied() == Some("-c") {
@@ -37,13 +38,13 @@ fn main() {
                     eprintln!("usage: ttrpg run -c <commands>");
                     process::exit(1);
                 }
-                run_commands(args[2]);
+                run_commands(args[2], coverage_mode);
             } else {
                 if args.len() != 2 {
                     eprintln!("usage: ttrpg run <script.ttrpg-cli>");
                     process::exit(1);
                 }
-                run_script(args[1]);
+                run_script(args[1], coverage_mode);
             }
         }
         Some("check") => {
@@ -122,18 +123,21 @@ fn main() {
         None => {
             let stdin = io::stdin();
             if stdin.is_terminal() {
-                ttrpg_cli::repl::run_repl(vi_mode);
+                ttrpg_cli::repl::run_repl(vi_mode, coverage_mode);
             } else {
-                run_pipe();
+                run_pipe(coverage_mode);
             }
         }
     }
 }
 
 /// Pipe mode: read raw lines from stdin, no reedline.
-fn run_pipe() {
+fn run_pipe(coverage: bool) {
     let stdin = io::stdin();
     let mut runner = Runner::new();
+    if coverage {
+        runner.enable_coverage();
+    }
     let mut had_error = false;
 
     for line in stdin.lock().lines() {
@@ -167,12 +171,12 @@ fn run_pipe() {
 }
 
 /// Execute CLI commands from a string.
-fn run_commands(commands: &str) {
-    exec_commands("-c", commands);
+fn run_commands(commands: &str, coverage: bool) {
+    exec_commands("-c", commands, coverage);
 }
 
 /// Execute CLI commands from a script file.
-fn run_script(path: &str) {
+fn run_script(path: &str, coverage: bool) {
     let content = match std::fs::read_to_string(path) {
         Ok(c) => c,
         Err(e) => {
@@ -180,12 +184,15 @@ fn run_script(path: &str) {
             process::exit(1);
         }
     };
-    exec_commands(path, &content);
+    exec_commands(path, &content, coverage);
 }
 
 /// Shared implementation for running CLI commands from a labeled source.
-fn exec_commands(label: &str, content: &str) {
+fn exec_commands(label: &str, content: &str, coverage: bool) {
     let mut runner = Runner::new();
+    if coverage {
+        runner.enable_coverage();
+    }
     let mut had_error = false;
 
     for (lineno, line) in content.lines().enumerate() {

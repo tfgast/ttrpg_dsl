@@ -100,8 +100,12 @@ impl Runner {
                         CliError::Message(format!("failed to parse value for field '{key}'"))
                     })?;
 
-                    let interp = Interpreter::new(&self.program, &self.type_env)
+                    let cov_rc = self.coverage_rc();
+                    let mut interp = Interpreter::new(&self.program, &self.type_env)
                         .map_err(|e| render_runtime_error(&e, &self.source_map))?;
+                    if let Some(cov) = cov_rc {
+                        interp.set_coverage(cov);
+                    }
                     let state = RefCellState(&self.game_state);
                     let mut handler = CliHandler::new(
                         &self.game_state,

@@ -324,8 +324,12 @@ impl Runner {
 
         // Resolve resource bounds and compute the final (possibly clamped) value
         let bounds = {
-            let interp = Interpreter::new(&self.program, &self.type_env)
+            let cov_rc = self.coverage_rc();
+            let mut interp = Interpreter::new(&self.program, &self.type_env)
                 .map_err(|e| render_runtime_error(&e, &self.source_map))?;
+            if let Some(cov) = cov_rc {
+                interp.set_coverage(cov);
+            }
             let state = RefCellState(&self.game_state);
             let mut handler = CliHandler::new(
                 &self.game_state,
@@ -440,8 +444,11 @@ impl Runner {
 
         // Check that the action exists before evaluating args (avoid side effects)
         {
-            let interp = Interpreter::new(&self.program, &self.type_env)
+            let mut interp = Interpreter::new(&self.program, &self.type_env)
                 .map_err(|e| render_runtime_error(&e, &self.source_map))?;
+            if let Some(cov) = self.coverage_rc() {
+                interp.set_coverage(cov);
+            }
             if !interp.has_action(action_name) {
                 return Err(CliError::Message(format!(
                     "undefined action '{action_name}'"
@@ -465,12 +472,16 @@ impl Runner {
             }
         }
 
-        let interp = TrackedInterpreter::new(
+        let cov_rc = self.coverage_rc();
+        let mut interp = TrackedInterpreter::new(
             &self.program,
             &self.type_env,
             &self.game_state,
             &self.source_map,
         )?;
+        if let Some(cov) = cov_rc {
+            interp.interp.set_coverage(cov);
+        }
         let state = RefCellState(&self.game_state);
         let mut handler = CliHandler::new(
             &self.game_state,
@@ -535,8 +546,11 @@ impl Runner {
         let is_mechanic;
         let is_function;
         {
-            let interp = Interpreter::new(&self.program, &self.type_env)
+            let mut interp = Interpreter::new(&self.program, &self.type_env)
                 .map_err(|e| render_runtime_error(&e, &self.source_map))?;
+            if let Some(cov) = self.coverage_rc() {
+                interp.set_coverage(cov);
+            }
             is_derive = interp.has_derive(fn_name);
             is_mechanic = interp.has_mechanic(fn_name);
             is_function = interp.has_function(fn_name);
@@ -561,12 +575,16 @@ impl Runner {
             }
         }
 
-        let interp = TrackedInterpreter::new(
+        let cov_rc = self.coverage_rc();
+        let mut interp = TrackedInterpreter::new(
             &self.program,
             &self.type_env,
             &self.game_state,
             &self.source_map,
         )?;
+        if let Some(cov) = cov_rc {
+            interp.interp.set_coverage(cov);
+        }
         let state = RefCellState(&self.game_state);
         let mut handler = CliHandler::new(
             &self.game_state,

@@ -4,6 +4,7 @@ use rustc_hash::FxHashMap;
 use ttrpg_ast::ast::{ArmBody, ElseBranch, ExprKind, ForIterable, PatternKind};
 use ttrpg_ast::{Span, Spanned};
 
+use crate::coverage::{BranchKind, BranchPoint};
 use crate::effect::{Effect, Response};
 use crate::state::EntityRef;
 use crate::value::Value;
@@ -23,15 +24,33 @@ pub(super) fn eval_if(
     condition: &Spanned<ExprKind>,
     then_block: &ttrpg_ast::ast::Block,
     else_branch: &Option<ElseBranch>,
+    parent_span: Span,
 ) -> Result<Value, RuntimeError> {
     let cond_val = eval_expr(env, condition)?;
     match cond_val {
-        Value::Bool(true) => eval_block(env, then_block),
-        Value::Bool(false) => match else_branch {
-            Some(ElseBranch::Block(block)) => eval_block(env, block),
-            Some(ElseBranch::If(if_expr)) => eval_expr(env, if_expr),
-            None => Ok(Value::None),
-        },
+        Value::Bool(true) => {
+            env.record_branch(BranchPoint {
+                parent_span,
+                kind: BranchKind::IfThen,
+                arm_span: then_block.span,
+            });
+            eval_block(env, then_block)
+        }
+        Value::Bool(false) => {
+            env.record_branch(BranchPoint {
+                parent_span,
+                kind: BranchKind::IfElse,
+                arm_span: else_branch.as_ref().map_or(parent_span, |eb| match eb {
+                    ElseBranch::Block(b) => b.span,
+                    ElseBranch::If(e) => e.span,
+                }),
+            });
+            match else_branch {
+                Some(ElseBranch::Block(block)) => eval_block(env, block),
+                Some(ElseBranch::If(if_expr)) => eval_expr(env, if_expr),
+                None => Ok(Value::None),
+            }
+        }
         _ => Err(RuntimeError::with_span(
             "if condition must be Bool",
             condition.span,
@@ -45,11 +64,17 @@ pub(super) fn eval_if_let(
     scrutinee: &Spanned<ExprKind>,
     then_block: &ttrpg_ast::ast::Block,
     else_branch: &Option<ElseBranch>,
+    parent_span: Span,
 ) -> Result<Value, RuntimeError> {
     let scrutinee_val = eval_expr(env, scrutinee)?;
     let mut bindings = FxHashMap::default();
 
     if match_pattern(env, pattern, &scrutinee_val, &mut bindings) {
+        env.record_branch(BranchPoint {
+            parent_span,
+            kind: BranchKind::IfThen,
+            arm_span: then_block.span,
+        });
         env.push_scope();
         for (name, val) in bindings {
             env.bind(name, val);
@@ -58,6 +83,14 @@ pub(super) fn eval_if_let(
         env.pop_scope();
         result
     } else {
+        env.record_branch(BranchPoint {
+            parent_span,
+            kind: BranchKind::IfElse,
+            arm_span: else_branch.as_ref().map_or(parent_span, |eb| match eb {
+                ElseBranch::Block(b) => b.span,
+                ElseBranch::If(e) => e.span,
+            }),
+        });
         match else_branch {
             Some(ElseBranch::Block(block)) => eval_block(env, block),
             Some(ElseBranch::If(if_expr)) => eval_expr(env, if_expr),
@@ -255,6 +288,7 @@ pub(super) fn eval_stmt(
     env: &mut Env,
     stmt: &Spanned<ttrpg_ast::ast::StmtKind>,
 ) -> Result<Value, RuntimeError> {
+    env.record_coverage(stmt.span);
     use ttrpg_ast::ast::StmtKind;
 
     match &stmt.node {

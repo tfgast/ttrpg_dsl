@@ -1,6 +1,7 @@
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::path::PathBuf;
+use std::rc::Rc;
 
 use rand::rngs::StdRng;
 use rand::SeedableRng;
@@ -10,6 +11,7 @@ use ttrpg_ast::diagnostic::{Diagnostic, MultiSourceMap, Severity};
 use ttrpg_ast::module::ModuleMap;
 use ttrpg_ast::Name;
 use ttrpg_checker::env::{DeclInfo, FnKind, TypeEnv};
+use ttrpg_interp::coverage::{self, CoverageData};
 use ttrpg_interp::effect::FieldPathSegment;
 use ttrpg_interp::reference_state::GameState;
 use ttrpg_interp::state::{EntityRef, StateProvider, WritableState};
@@ -91,6 +93,7 @@ pub struct Runner {
     rng: StdRng,
     roll_queue: VecDeque<i64>,
     unit_suffixes: UnitSuffixes,
+    coverage: Option<Rc<RefCell<CoverageData>>>,
 }
 
 impl Runner {
@@ -110,6 +113,7 @@ impl Runner {
             rng: StdRng::from_os_rng(),
             roll_queue: VecDeque::new(),
             unit_suffixes: UnitSuffixes::new(),
+            coverage: None,
         }
     }
 
@@ -266,6 +270,9 @@ impl Runner {
             Command::Assert(expr_str) => self.cmd_assert(&expr_str),
             Command::AssertEq(tail) => self.cmd_assert_eq(&tail),
             Command::AssertErr(tail) => self.cmd_assert_err(&tail),
+            // Coverage
+            Command::Coverage => self.cmd_coverage(),
+            Command::CoverageReset => self.cmd_coverage_reset(),
             // Configuration
             Command::Seed(tail) => self.cmd_seed(&tail),
             Command::Rolls(tail) => self.cmd_rolls(&tail),
@@ -299,8 +306,12 @@ impl Runner {
         let parsed =
             parsed.ok_or_else(|| CliError::Message("failed to parse expression".into()))?;
 
-        let interp = Interpreter::new(&self.program, &self.type_env)
+        let cov_rc = self.coverage_rc();
+        let mut interp = Interpreter::new(&self.program, &self.type_env)
             .map_err(|e| render_runtime_error(&e, &self.source_map))?;
+        if let Some(cov) = cov_rc {
+            interp.set_coverage(cov);
+        }
 
         let state = RefCellState(&self.game_state);
         let mut handler = CliHandler::new(
@@ -340,6 +351,70 @@ impl Runner {
             .copied()
             .ok_or_else(|| CliError::Message(format!("unknown handle: {name}")))
     }
+
+    /// Enable coverage tracking. Creates the shared `Rc` that will be
+    /// attached to every interpreter instance created via `make_interpreter`.
+    pub fn enable_coverage(&mut self) {
+        self.coverage = Some(Rc::new(RefCell::new(CoverageData::new())));
+    }
+
+    /// Returns a clone of the coverage `Rc` (if coverage is enabled).
+    /// Cheap to clone since it's just an `Rc` bump.
+    pub(super) fn coverage_rc(&self) -> Option<Rc<RefCell<CoverageData>>> {
+        self.coverage.clone()
+    }
+
+    /// `coverage` command — render a coverage report.
+    fn cmd_coverage(&mut self) -> Result<(), CliError> {
+        let cov = match &self.coverage {
+            Some(cov) => cov,
+            None => {
+                return Err(CliError::Message(
+                    "coverage not enabled (start with --coverage flag)".into(),
+                ));
+            }
+        };
+
+        let sm = match &self.source_map {
+            Some(sm) => sm,
+            None => {
+                return Err(CliError::Message(
+                    "no source files loaded — load a file first".into(),
+                ));
+            }
+        };
+
+        let mut sources = Vec::new();
+        for i in 0..sm.file_count() {
+            if let Some((filename, source, line_starts)) = sm.file_info(i) {
+                sources.push(coverage::CoverageSource {
+                    filename: filename.to_string(),
+                    source: source.to_string(),
+                    file_id: i as u32,
+                    line_starts: line_starts.to_vec(),
+                });
+            }
+        }
+
+        let data = cov.borrow();
+        let report = coverage::render_coverage_report(&data, &sources, &self.program);
+        self.output.push(report);
+        Ok(())
+    }
+
+    /// `coverage reset` command — clear coverage data.
+    fn cmd_coverage_reset(&mut self) -> Result<(), CliError> {
+        match &self.coverage {
+            Some(cov) => {
+                cov.borrow_mut().reset();
+                self.output.push("coverage data reset".to_string());
+                Ok(())
+            }
+            None => Err(CliError::Message(
+                "coverage not enabled (start with --coverage flag)".into(),
+            )),
+        }
+    }
 }
 
 impl Default for Runner {
@@ -354,7 +429,7 @@ impl Default for Runner {
 /// Created via [`TrackedInterpreter::new`] with individual field references
 /// so that callers retain mutable access to other `Runner` fields.
 pub(super) struct TrackedInterpreter<'a, 'p> {
-    interp: Interpreter<'p>,
+    pub(super) interp: Interpreter<'p>,
     game_state: &'a RefCell<GameState>,
 }
 

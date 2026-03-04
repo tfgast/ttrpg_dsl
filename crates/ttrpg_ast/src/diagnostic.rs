@@ -237,6 +237,23 @@ impl MultiSourceMap {
         )
     }
 
+    /// Returns the number of files in this source map.
+    pub fn file_count(&self) -> usize {
+        self.files.len()
+    }
+
+    /// Returns (filename, source, line_starts) for a file by index.
+    /// Returns `None` if the index is out of range.
+    pub fn file_info(&self, index: usize) -> Option<(&str, &str, &[usize])> {
+        self.files.get(index).map(|f| {
+            (
+                f.filename.as_str(),
+                f.source.as_str(),
+                f.line_starts.as_slice(),
+            )
+        })
+    }
+
     /// Render a diagnostic with filename:line:col location.
     pub fn render(&self, diag: &Diagnostic) -> String {
         // Dummy spans have no source location — render without file attribution

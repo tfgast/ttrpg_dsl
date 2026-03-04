@@ -2,6 +2,7 @@ pub mod action;
 pub mod adapter;
 pub mod builtins;
 pub mod call;
+pub mod coverage;
 pub mod effect;
 pub mod eval;
 pub mod event;
@@ -10,7 +11,8 @@ pub mod reference_state;
 pub mod state;
 pub mod value;
 
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
+use std::rc::Rc;
 
 use rustc_hash::FxHashMap;
 
@@ -73,6 +75,7 @@ pub struct Interpreter<'p> {
     pub(crate) type_env: &'p TypeEnv,
     pub(crate) program: &'p Program,
     next_invocation_id: Cell<u64>,
+    pub(crate) coverage: Option<Rc<RefCell<coverage::CoverageData>>>,
 }
 
 impl<'p> Interpreter<'p> {
@@ -100,6 +103,7 @@ impl<'p> Interpreter<'p> {
             type_env,
             program,
             next_invocation_id: Cell::new(1),
+            coverage: None,
         })
     }
 
@@ -130,6 +134,11 @@ impl<'p> Interpreter<'p> {
     /// Read the current invocation counter value (for host persistence).
     pub fn next_invocation_id(&self) -> u64 {
         self.next_invocation_id.get()
+    }
+
+    /// Attach shared coverage data to this interpreter.
+    pub fn set_coverage(&mut self, cov: Rc<RefCell<coverage::CoverageData>>) {
+        self.coverage = Some(cov);
     }
 
     /// Execute a named action through the full pipeline.
@@ -504,6 +513,33 @@ impl<'a, 'p> Env<'a, 'p> {
             }
         }
         None
+    }
+
+    /// Record a coverage hit for the given span. No-op when coverage is disabled.
+    #[inline]
+    pub fn record_coverage(&self, span: Span) {
+        if let Some(ref cov) = self.interp.coverage {
+            if !span.is_dummy() {
+                cov.borrow_mut().hit_spans.insert((span.file.0, span.start));
+            }
+        }
+    }
+
+    /// Record a branch point hit. No-op when coverage is disabled.
+    #[inline]
+    pub fn record_branch(&self, branch: coverage::BranchPoint) {
+        if let Some(ref cov) = self.interp.coverage {
+            cov.borrow_mut().hit_branches.insert(branch);
+        }
+    }
+
+    /// Record entry into a named function/derive/mechanic/action/etc.
+    /// No-op when coverage is disabled.
+    #[inline]
+    pub fn record_function_entry(&self, name: &str) {
+        if let Some(ref cov) = self.interp.coverage {
+            cov.borrow_mut().hit_functions.insert(name.to_string());
+        }
     }
 }
 

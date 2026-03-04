@@ -36,6 +36,9 @@ pub enum Command {
     // Configuration
     Seed(String),
     Rolls(String),
+    // Coverage
+    Coverage,
+    CoverageReset,
     // Help
     Help(Option<String>),
     Unknown(String),
@@ -221,6 +224,14 @@ pub fn parse_command(line: &str) -> Option<Command> {
                 Some(Command::Unknown("rolls".into()))
             } else {
                 Some(Command::Rolls(s.into()))
+            }
+        }
+        "coverage" => {
+            let s = strip_comment(tail).trim();
+            if s == "reset" {
+                Some(Command::CoverageReset)
+            } else {
+                Some(Command::Coverage)
             }
         }
         "help" => {
