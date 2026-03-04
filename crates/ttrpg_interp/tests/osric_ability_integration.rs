@@ -192,12 +192,14 @@ fn osric_ability_has_all_tables() {
         "str_damage",
         "str_encumbrance",
         "str_minor_test",
+        "str_minor_extraordinary",
         "str_major_test",
         // Exceptional STR
         "exc_str_to_hit",
         "exc_str_damage",
         "exc_str_encumbrance",
         "exc_str_minor_test",
+        "exc_str_minor_extraordinary",
         "exc_str_major_test",
         // DEX
         "dex_surprise",
@@ -335,6 +337,22 @@ fn str_minor_test_values() {
 }
 
 #[test]
+fn str_minor_extraordinary_values() {
+    let (program, result) = compile_osric_ability();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+
+    let cases = [(3, 0), (10, 0), (15, 0), (18, 0), (19, 2)];
+    for (score, expected) in cases {
+        let val = expect_int(
+            eval_table(&interp, &state, "str_minor_extraordinary", score),
+            "str_minor_extraordinary",
+        );
+        assert_eq!(val, expected, "str_minor_extraordinary({score})");
+    }
+}
+
+#[test]
 fn str_major_test_values() {
     let (program, result) = compile_osric_ability();
     let interp = Interpreter::new(&program, &result.env).unwrap();
@@ -448,6 +466,30 @@ fn exc_str_minor_test_values() {
             "exc_str_minor_test",
         );
         assert_eq!(val, expected, "exc_str_minor_test({pct})");
+    }
+}
+
+#[test]
+fn exc_str_minor_extraordinary_values() {
+    let (program, result) = compile_osric_ability();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+
+    let cases = [
+        (1, 0),
+        (50, 0),
+        (75, 0),
+        (90, 0),
+        (91, 1),
+        (99, 1),
+        (100, 2),
+    ];
+    for (pct, expected) in cases {
+        let val = expect_int(
+            eval_table(&interp, &state, "exc_str_minor_extraordinary", pct),
+            "exc_str_minor_extraordinary",
+        );
+        assert_eq!(val, expected, "exc_str_minor_extraordinary({pct})");
     }
 }
 
