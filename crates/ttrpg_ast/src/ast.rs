@@ -265,13 +265,15 @@ pub struct OptionalGroup {
     pub span: Span,
 }
 
-/// Field definition with optional default: `name: type (= expr)?`
+/// Field definition with optional default: `(restricted)? name: type (= expr)?`
 #[derive(Clone)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct FieldDef {
     pub name: Name,
     pub ty: Spanned<TypeExpr>,
     pub default: Option<Spanned<ExprKind>>,
+    /// If true, this field can only be mutated within the declaring module.
+    pub restricted: bool,
     pub span: Span,
 }
 

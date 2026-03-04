@@ -336,6 +336,7 @@ impl Parser {
             name,
             ty,
             default,
+            restricted: false,
             span: self.end_span(start),
         })
     }
