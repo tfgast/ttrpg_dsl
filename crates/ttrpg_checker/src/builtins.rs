@@ -58,6 +58,9 @@ pub fn register_builtins() -> Vec<FnInfo> {
             Ty::DiceExpr,
         ),
         builtin("max_value", vec![param("expr", Ty::DiceExpr)], Ty::Int),
+        builtin("dice_count", vec![param("expr", Ty::DiceExpr)], Ty::Int),
+        builtin("dice_sides", vec![param("expr", Ty::DiceExpr)], Ty::Int),
+        builtin("dice_modifier", vec![param("expr", Ty::DiceExpr)], Ty::Int),
         builtin("error", vec![param("message", Ty::String)], Ty::Error),
         // Available in rolling blocks
         builtin("roll", vec![param("expr", Ty::DiceExpr)], Ty::RollResult),

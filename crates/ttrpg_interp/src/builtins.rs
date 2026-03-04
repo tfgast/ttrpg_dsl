@@ -28,6 +28,9 @@ pub(crate) fn call_builtin(
         "dice" => builtin_dice(&args, span),
         "multiply_dice" => builtin_multiply_dice(&args, span),
         "max_value" => builtin_max_value(&args, span),
+        "dice_count" => builtin_dice_count(&args, span),
+        "dice_sides" => builtin_dice_sides(&args, span),
+        "dice_modifier" => builtin_dice_modifier(&args, span),
         "error" => builtin_error(&args, span),
         "roll" => builtin_roll(env, &args, span),
         "apply_condition" => builtin_apply_condition(env, &args, span),
@@ -335,6 +338,84 @@ fn builtin_max_value(args: &[Value], span: Span) -> Result<Value, RuntimeError> 
         )),
         None => Err(RuntimeError::with_span(
             "max_value() requires 1 argument",
+            span,
+        )),
+    }
+}
+
+// ── dice_count ────────────────────────────────────────────────
+
+/// `dice_count(expr: DiceExpr) -> Int`
+///
+/// Returns the total number of dice across all groups.
+fn builtin_dice_count(args: &[Value], span: Span) -> Result<Value, RuntimeError> {
+    match args.first() {
+        Some(Value::DiceExpr(expr)) => Ok(Value::Int(expr.total_dice_count() as i64)),
+        Some(other) => Err(RuntimeError::with_span(
+            format!("dice_count() expects DiceExpr, got {}", type_name(other)),
+            span,
+        )),
+        None => Err(RuntimeError::with_span(
+            "dice_count() requires 1 argument",
+            span,
+        )),
+    }
+}
+
+// ── dice_sides ────────────────────────────────────────────────
+
+/// `dice_sides(expr: DiceExpr) -> Int`
+///
+/// Returns the number of sides per die. All groups must have the
+/// same die size; errors if the expression has mixed die sizes.
+fn builtin_dice_sides(args: &[Value], span: Span) -> Result<Value, RuntimeError> {
+    match args.first() {
+        Some(Value::DiceExpr(expr)) => {
+            if expr.groups.is_empty() {
+                return Err(RuntimeError::with_span(
+                    "dice_sides() called on dice expression with no dice groups",
+                    span,
+                ));
+            }
+            let sides = expr.groups[0].sides;
+            for g in &expr.groups[1..] {
+                if g.sides != sides {
+                    return Err(RuntimeError::with_span(
+                        format!(
+                            "dice_sides() requires uniform die size, got d{} and d{}",
+                            sides, g.sides
+                        ),
+                        span,
+                    ));
+                }
+            }
+            Ok(Value::Int(sides as i64))
+        }
+        Some(other) => Err(RuntimeError::with_span(
+            format!("dice_sides() expects DiceExpr, got {}", type_name(other)),
+            span,
+        )),
+        None => Err(RuntimeError::with_span(
+            "dice_sides() requires 1 argument",
+            span,
+        )),
+    }
+}
+
+// ── dice_modifier ─────────────────────────────────────────────
+
+/// `dice_modifier(expr: DiceExpr) -> Int`
+///
+/// Returns the flat modifier of the dice expression.
+fn builtin_dice_modifier(args: &[Value], span: Span) -> Result<Value, RuntimeError> {
+    match args.first() {
+        Some(Value::DiceExpr(expr)) => Ok(Value::Int(expr.modifier)),
+        Some(other) => Err(RuntimeError::with_span(
+            format!("dice_modifier() expects DiceExpr, got {}", type_name(other)),
+            span,
+        )),
+        None => Err(RuntimeError::with_span(
+            "dice_modifier() requires 1 argument",
             span,
         )),
     }
