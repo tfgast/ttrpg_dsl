@@ -148,82 +148,62 @@ fn osric_character_parses_and_typechecks() {
     assert!(system_names.contains(&"OSRIC Character"));
 }
 
-// ── effective_ac ───────────────────────────────────────────────
+// ── dex_ac_adj (AC = base + dex_ac_adj) ─────────────────────────
 
 #[test]
-fn effective_ac_unarmoured_average_dex() {
+fn dex_ac_adj_average_dex() {
     let (program, result) = compile_osric_character();
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let state = GameState::new();
     let mut handler = NullHandler;
 
-    // base AC 10, DEX 10 → dex_ac_adj(10) = 0 → 10
+    // DEX 10 → dex_ac_adj = 0
     let val = interp
-        .evaluate_derive(
-            &state,
-            &mut handler,
-            "effective_ac",
-            vec![Value::Int(10), Value::Int(10)],
-        )
+        .evaluate_derive(&state, &mut handler, "dex_ac_adj", vec![Value::Int(10)])
         .unwrap();
-    assert_eq!(expect_int(val, "effective_ac"), 10);
+    assert_eq!(expect_int(val, "dex_ac_adj"), 0);
 }
 
 #[test]
-fn effective_ac_high_dex() {
+fn dex_ac_adj_high_dex() {
     let (program, result) = compile_osric_character();
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let state = GameState::new();
     let mut handler = NullHandler;
 
-    // base AC 10, DEX 18 → dex_ac_adj(18) = +4 → 14
+    // DEX 18 → dex_ac_adj = +4
     let val = interp
-        .evaluate_derive(
-            &state,
-            &mut handler,
-            "effective_ac",
-            vec![Value::Int(10), Value::Int(18)],
-        )
+        .evaluate_derive(&state, &mut handler, "dex_ac_adj", vec![Value::Int(18)])
         .unwrap();
-    assert_eq!(expect_int(val, "effective_ac"), 14);
+    assert_eq!(expect_int(val, "dex_ac_adj"), 4);
 }
 
 #[test]
-fn effective_ac_low_dex() {
+fn dex_ac_adj_low_dex() {
     let (program, result) = compile_osric_character();
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let state = GameState::new();
     let mut handler = NullHandler;
 
-    // base AC 10, DEX 3 → dex_ac_adj(3) = -4 → 6
+    // DEX 3 → dex_ac_adj = -4
     let val = interp
-        .evaluate_derive(
-            &state,
-            &mut handler,
-            "effective_ac",
-            vec![Value::Int(10), Value::Int(3)],
-        )
+        .evaluate_derive(&state, &mut handler, "dex_ac_adj", vec![Value::Int(3)])
         .unwrap();
-    assert_eq!(expect_int(val, "effective_ac"), 6);
+    assert_eq!(expect_int(val, "dex_ac_adj"), -4);
 }
 
 #[test]
-fn effective_ac_with_armour() {
+fn dex_ac_adj_good_dex() {
     let (program, result) = compile_osric_character();
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let state = GameState::new();
     let mut handler = NullHandler;
 
-    // base AC 15 (chain mail), DEX 16 → dex_ac_adj(16) = +2 → 17
+    // DEX 16 → dex_ac_adj = +2
     let val = interp
-        .evaluate_derive(
-            &state,
-            &mut handler,
-            "effective_ac",
-            vec![Value::Int(15), Value::Int(16)],
-        )
+        .evaluate_derive(&state, &mut handler, "dex_ac_adj", vec![Value::Int(16)])
         .unwrap();
-    assert_eq!(expect_int(val, "effective_ac"), 17);
+    assert_eq!(expect_int(val, "dex_ac_adj"), 2);
 }
 
 // ── apply_ancestry_mods ────────────────────────────────────────

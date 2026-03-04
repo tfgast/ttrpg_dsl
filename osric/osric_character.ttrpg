@@ -13,18 +13,6 @@ use "OSRIC Ability"
 system "OSRIC Character" {
 
     // ========================================================
-    //  EFFECTIVE ARMOUR CLASS
-    //
-    //  Ascending AC = base AC + DEX adjustment.
-    //  Base unarmoured AC = 10; higher = better.
-    // ========================================================
-
-    derive effective_ac(base_ac: int, dex: int) -> int {
-        base_ac + dex_ac_adj(dex)
-    }
-
-
-    // ========================================================
     //  ANCESTRY MODIFIER APPLICATION
     //
     //  Applies ancestral ability score adjustments to a raw

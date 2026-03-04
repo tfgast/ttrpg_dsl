@@ -270,9 +270,12 @@ system "OSRIC Combat" {
         include_shield: bool = true,
         ac_mod: int = 0
     ) -> int #ac_defense {
-        let dex_bonus = if include_dex { dex_ac_adj(target.abilities[DEX]) } else { 0 }
+        // Monks use level-based AC (class feature) and never receive DEX AC bonus.
+        // Conditions that set include_dex = false are no-ops for monks.
+        let base_ac = if target.class == Monk { monk_ac(target.level) } else { target.armor_ac }
+        let dex_bonus = if include_dex && target.class != Monk { dex_ac_adj(target.abilities[DEX]) } else { 0 }
         let shield_bonus = if include_shield { target.shield_ac_bonus } else { 0 }
-        target.armor_ac + dex_bonus + shield_bonus + ac_mod
+        base_ac + dex_bonus + shield_bonus + ac_mod
     }
 
 
@@ -312,13 +315,19 @@ system "OSRIC Combat" {
         let target_size = ancestry_def(target.ancestry).size
         let dmg_dice = if target_size > Size.Medium { wdef.damage_l } else { wdef.damage_sm }
         let str_dmg = effective_str_damage(attacker)
+        // Monk weapon damage bonus replaces STR damage (OSRIC 3.0, pp.52-54).
+        let monk_dmg = if attacker.class == Monk {
+            let base = monk_weapon_damage(attacker.level)
+            if attacker.abilities[STR] >= 15 { base } else { max(0, base - 1) }
+        } else { 0 }
+        let dmg_mod = str_dmg + monk_dmg
 
         let damage = match outcome {
             AttackOutcome.Hit => {
                 if max_damage {
-                    max(1, max_value(dmg_dice) + str_dmg)
+                    max(1, max_value(dmg_dice) + dmg_mod)
                 } else {
-                    damage_roll(dmg_dice, str_dmg)
+                    damage_roll(dmg_dice, dmg_mod)
                 }
             },
             _ => 0
@@ -328,7 +337,7 @@ system "OSRIC Combat" {
     }
 
     // Missile attack: d20 + BTHB + DEX missile mod - range + attack_mod vs effective AC.
-    // Hurled weapons add STR damage; launched weapons do not.
+    // Hurled weapons add STR damage (or monk weapon damage); launched weapons do not.
     mechanic resolve_missile_attack(
         attacker: Character,
         target: Character,
@@ -352,13 +361,18 @@ system "OSRIC Combat" {
         let target_size = ancestry_def(target.ancestry).size
         let dmg_dice = if target_size > Size.Medium { wdef.damage_l } else { wdef.damage_sm }
         let str_dmg = if wdef.is_hurled { effective_str_damage(attacker) } else { 0 }
+        let monk_dmg = if wdef.is_hurled && attacker.class == Monk {
+            let base = monk_weapon_damage(attacker.level)
+            if attacker.abilities[STR] >= 15 { base } else { max(0, base - 1) }
+        } else { 0 }
+        let dmg_mod = str_dmg + monk_dmg
 
         let damage = match outcome {
             AttackOutcome.Hit => {
                 if max_damage {
-                    max(1, max_value(dmg_dice) + str_dmg)
+                    max(1, max_value(dmg_dice) + dmg_mod)
                 } else {
-                    damage_roll(dmg_dice, str_dmg)
+                    damage_roll(dmg_dice, dmg_mod)
                 }
             },
             _ => 0
