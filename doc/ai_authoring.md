@@ -13,20 +13,24 @@
 | derive    | -    | -      | -              | value   | -    |
 | table     | -    | -      | -              | value   | -    |
 | mechanic  | yes  | -      | -              | value   | -    |
+| function  | yes  | yes    | -              | optional| -    |
 | action    | yes  | yes    | `on` receiver  | unit    | yes  |
 | reaction  | yes  | yes    | `on` + trigger | unit    | yes  |
 | hook      | yes  | yes    | `on` + trigger | unit    | -    |
 | condition | -    | -      | `on bearer`    | -       | -    |
 | prompt    | -    | -      | -              | value   | -    |
+| move      | yes  | yes    | `on` receiver  | unit    | yes  |
 
 **Decision tree:**
 
 - Static lookup / mapping data? → **table**
 - Pure computation, no dice? → **derive**
 - Needs dice, no mutation? → **mechanic**
+- Reusable logic with dice + mutation, no receiver? → **function**
 - Needs dice + mutation, player-initiated? → **action**
 - Needs dice + mutation, triggered, optional (has cost)? → **reaction**
 - Needs dice + mutation, triggered, mandatory (no cost)? → **hook**
+- PbtA-style 2d6+stat with strong/weak/miss outcomes? → **move**
 - Declarative buff/debuff overlay? → **condition**
 - Human decision point? → **prompt**
 
@@ -313,6 +317,60 @@ table saving_throws(category: SaveCategory, level: int) -> SavingThrows {
 - Wildcard must be last (checker warns about unreachable entries after `_`)
 - Called like any function: `str_melee_mod(14)`, `character_thac0(martial, 5)`
 
+### Function
+
+```ttrpg
+entity Character { name: string, HP: resource(0..=max_HP), max_HP: int, speed: int = 30, position: Position }
+
+struct TurnBudget {
+    actions: int = 0
+    bonus_actions: int = 0
+    reactions: int = 0
+    movement: int = 0
+}
+
+derive initial_budget(actor: Character) -> TurnBudget {
+    TurnBudget { actions: 1, bonus_actions: 1, reactions: 1, movement: actor.speed }
+}
+
+action Attack on attacker: Character (target: Character) {
+    cost { action }
+    resolve {
+        let atk: RollResult = roll(1d20 + 5)
+        if atk >= 10 {
+            target.HP -= roll(1d8).total
+        }
+    }
+}
+
+// Void function (no return type)
+function resolve_attacks(attacker: Character, target: Character, count: int) {
+    with_budget(attacker, { actions: count }) {
+        for i in 0..count {
+            attacker.Attack(target)
+        }
+    }
+}
+
+// Function with return value
+function compute_heal(base: int, bonus: int) -> int {
+    base * 2 + bonus
+}
+```
+
+**Key rules:**
+
+- Can roll dice, mutate entities, emit events, call actions/functions/derives/mechanics
+- No receiver (`on`), no cost/requires clauses
+- Cannot use `invocation()` directly (actions called by a function get their own)
+- NOT subject to condition `modify` clauses (no modify pipeline)
+- Return type optional — omit `->` for void functions
+- `with_budget(entity, { field: value }) { body }` provisions a scoped turn budget:
+  - `turn` keyword becomes readable/writable inside the body
+  - Actions called deduct from the provisioned budget
+  - Entity arg pays costs; action receiver can differ (summoning pattern)
+  - Nesting supported; cleanup always runs (error-safe)
+
 ### Derive
 
 ```ttrpg
@@ -489,6 +547,34 @@ option flanking extends "<snippet>" {
     }
 }
 ```
+
+### Move (PbtA Sugar)
+
+```ttrpg
+entity Character { name: string, stats: map<string, int> }
+
+move GoAggro on actor: Character (target: Character) {
+    trigger: "threaten with force"
+    roll: 2d6 + actor.stats["Hard"]
+    on strong_hit {
+        // 10+: full success
+    }
+    on weak_hit {
+        // 7-9: partial success
+    }
+    on miss {
+        // 6-: failure
+    }
+}
+```
+
+**Key rules:**
+
+- Desugars to a mechanic (for the roll) + action (with outcome matching)
+- Hardcoded PbtA thresholds: 10+ strong\_hit, 7–9 weak\_hit, 6- miss
+- Must have exactly three outcomes: `strong_hit`, `weak_hit`, `miss`
+- Action cost is always `{ action }`
+- For custom thresholds, use mechanic + action directly instead
 
 ### System & Use
 
@@ -824,12 +910,14 @@ Recommended declaration order within a `system` block:
 8. Tables
 9. Derives
 10. Mechanics
-11. Prompts
-12. Actions
-13. Reactions
-14. Hooks
-15. Conditions
-16. Options
+11. Functions
+12. Prompts
+13. Actions
+14. Reactions
+15. Hooks
+16. Conditions
+17. Moves
+18. Options
 
 Multiple `system` blocks with the same name merge additively.
 Imports (`use`) are NOT transitive — each file must declare its own.

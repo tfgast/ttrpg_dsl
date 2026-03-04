@@ -172,11 +172,13 @@ Errors:
 | derive    | -    | -      | -                 | value   | -    |
 | table     | -    | -      | -                 | value   | -    |
 | mechanic  | yes  | -      | -                 | value   | -    |
+| function  | yes  | yes    | -                 | optional| -    |
 | action    | yes  | yes    | `on` receiver     | unit    | yes  |
 | reaction  | yes  | yes    | `on` + trigger    | unit    | yes  |
 | hook      | yes  | yes    | `on` + trigger    | unit    | -    |
 | condition | -    | -      | `on bearer`       | -       | -    |
 | prompt    | -    | -      | -                 | value   | -    |
+| move      | yes  | yes    | `on` receiver     | unit    | yes  |
 
 ### Derive
 
@@ -193,6 +195,48 @@ mechanic attack_roll(bonus: int) -> RollResult #attack {
     roll(1d20 + bonus)
 }
 ```
+
+### Function
+
+```
+function resolve_attacks(attacker: Character, target: Character, count: int) {
+    with_budget(attacker, { actions: count }) {
+        for i in 0..count {
+            attacker.Attack(target)
+        }
+    }
+}
+
+function compute_heal(base: int, bonus: int) -> int {
+    base * 2 + bonus
+}
+```
+
+Syntax: `function Name(params) -> ReturnType { body }` (return type optional, defaults to unit)
+
+Capabilities: dice, mutation, emit, grant/revoke, call actions/functions/derives/mechanics.
+Restrictions: no receiver (`on`), no cost/requires, no `invocation()`, not targeted by condition `modify`.
+
+`with_budget(entity, { field: value }) { body }` — provisions a scoped turn budget:
+- `turn` keyword readable/writable inside the body
+- Actions called deduct from the provisioned budget
+- Entity arg pays costs; action receiver can differ
+- Nesting supported; cleanup always runs (error-safe)
+
+### Move (PbtA Sugar)
+
+```
+move GoAggro on actor: Character (target: Character) {
+    trigger: "threaten with force"
+    roll: 2d6 + actor.stats["Hard"]
+    on strong_hit { }
+    on weak_hit { }
+    on miss { }
+}
+```
+
+Desugars to mechanic + action. Hardcoded PbtA thresholds: 10+ strong\_hit, 7–9 weak\_hit, 6- miss.
+Must have exactly three outcomes. Action cost is always `{ action }`.
 
 ### Action
 
@@ -391,7 +435,7 @@ emit EventName(param: value)       // fire event (named args only)
 `floor(f)` `ceil(f)` `max(a, b)` `min(a, b)`
 
 ### Dice
-`roll(expr)` `dice(count, sides)` `multiply_dice(expr, factor)`
+`roll(expr)` `dice(count, sides)` `multiply_dice(expr, factor)` `max_value(expr)` `dice_count(expr)` `dice_sides(expr)` `dice_modifier(expr)`
 
 ### Collections
 `len(xs)` `keys(m)` `values(m)` `first(xs)` `last(xs)` `append(xs, item)` `concat(a, b)` `reverse(xs)` `sum(xs)` `any(xs)` `all(xs)` `sort(xs)`
@@ -417,8 +461,11 @@ emit EventName(param: value)       // fire event (named args only)
 ### Invocation
 `invocation()` `revoke(inv)` — revokes all conditions tagged with that invocation
 
+### Time
+`game_time()` `advance_time(amount)` — advance\_time only callable from function scope (not during action/reaction/hook execution)
+
 ### Other
-`distance(a, b)` `error(msg)` `turn` (mutable TurnBudget in resolve blocks)
+`distance(a, b)` `error(msg)` `turn` (mutable TurnBudget in resolve blocks and `with_budget` bodies)
 
 ---
 
@@ -447,5 +494,5 @@ Imports are NOT transitive.
 - Comments: `// line comment` (no block comments)
 - NL suppressed: inside `()` `[]`; after `+ - * / || && == != >= <= in => -> = += -=`; after `{ , : | #`
 - Reserved keywords: `let` `if` `else` `match` `true` `false` `none` `in` `for`
-- Soft keywords (usable as identifiers): `system` `use` `group` `enum` `struct` `entity` `derive` `mechanic` `action` `reaction` `hook` `condition` `prompt` `option` `event` `move` `cost` `tag` `table` `unit` `suffix` `requires` `resolve` `modify` `suppress` `trigger` `roll` `on` `returns` `when` `enabled` `hint` `suggest` `description` `default` `result` `with` `has` `include` `as` `grant` `revoke` `emit` `free` `ordered` `extends`
+- Soft keywords (usable as identifiers): `system` `use` `group` `enum` `struct` `entity` `derive` `mechanic` `function` `action` `reaction` `hook` `condition` `prompt` `option` `event` `move` `cost` `tag` `table` `unit` `suffix` `requires` `resolve` `modify` `suppress` `trigger` `roll` `on` `returns` `when` `enabled` `hint` `suggest` `description` `default` `result` `with` `has` `include` `as` `grant` `revoke` `emit` `free` `ordered` `extends`
 - Dice literals take precedence over unit literals (`2d6` is dice, not unit)
