@@ -1150,8 +1150,11 @@ impl<'a> Checker<'a> {
             }
             _ => {}
         }
-        // ActiveCondition is accepted where Condition is expected (remove_condition overload)
-        if matches!((actual, expected), (Ty::ActiveCondition, Ty::Condition)) {
+        // ActiveCondition or String is accepted where Condition is expected (remove_condition overloads)
+        if matches!(
+            (actual, expected),
+            (Ty::ActiveCondition | Ty::String, Ty::Condition)
+        ) {
             return true;
         }
         // Built-in type keywords and user-defined types with the same name are equivalent

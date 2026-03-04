@@ -18,6 +18,7 @@ use rustc_hash::FxHashMap;
 use ttrpg_ast::ast::TopLevel;
 use ttrpg_ast::diagnostic::Severity;
 use ttrpg_ast::Name;
+use ttrpg_interp::adapter::StateAdapter;
 use ttrpg_interp::effect::{Effect, EffectHandler, FieldPathSegment, Response};
 use ttrpg_interp::reference_state::GameState;
 use ttrpg_interp::state::{EntityRef, WritableState};
@@ -1003,4 +1004,119 @@ fn surprise_adj_overloaded() {
         )
         .unwrap();
     assert_eq!(expect_int(val, "DEX10 overloaded"), -1);
+}
+
+// ── update_encumbrance lifecycle ─────────────────────────────
+
+#[test]
+fn update_encumbrance_applies_correct_tier() {
+    let (program, result) = compile_osric_encumbrance();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut state = GameState::new();
+
+    // STR 10 → allowance 35. Weight 0 → Unencumbered.
+    let char_ref = make_character(&mut state, "Test", &standard_abilities(), "Human", 0, 0);
+
+    let adapter = StateAdapter::new(state);
+    let mut handler = NullHandler;
+
+    adapter.run(&mut handler, |s, h| {
+        interp
+            .evaluate_function(s, h, "update_encumbrance", vec![Value::Entity(char_ref)])
+            .unwrap();
+    });
+
+    // Verify movement: Human 120ft, Unencumbered → 120ft
+    let val = interp
+        .evaluate_derive(
+            &adapter,
+            &mut handler,
+            "character_movement",
+            vec![Value::Entity(char_ref)],
+        )
+        .unwrap();
+    assert_eq!(expect_feet(val, "unenc movement"), 120);
+
+    let state = adapter.into_inner();
+
+    // Now change weight to 76 (35 allowance + 41 over → Moderate) and recompute.
+    let mut state = state;
+    state.write_field(
+        &char_ref,
+        &[FieldPathSegment::Field(Name::from("current_weight"))],
+        Value::Int(76),
+    );
+
+    let adapter = StateAdapter::new(state);
+    adapter.run(&mut handler, |s, h| {
+        interp
+            .evaluate_function(s, h, "update_encumbrance", vec![Value::Entity(char_ref)])
+            .unwrap();
+    });
+
+    // Moderate: 120 * 2/4 = 60
+    let val = interp
+        .evaluate_derive(
+            &adapter,
+            &mut handler,
+            "character_movement",
+            vec![Value::Entity(char_ref)],
+        )
+        .unwrap();
+    assert_eq!(expect_feet(val, "moderate movement"), 60);
+}
+
+#[test]
+fn update_encumbrance_replaces_previous_tier() {
+    let (program, result) = compile_osric_encumbrance();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut state = GameState::new();
+
+    // STR 10 → allowance 35. Weight 156 (121 over) → Overloaded.
+    let char_ref = make_character(&mut state, "Test", &standard_abilities(), "Human", 156, 0);
+
+    let adapter = StateAdapter::new(state);
+    let mut handler = NullHandler;
+
+    adapter.run(&mut handler, |s, h| {
+        interp
+            .evaluate_function(s, h, "update_encumbrance", vec![Value::Entity(char_ref)])
+            .unwrap();
+    });
+
+    // Overloaded: 120 * 0/4 = 0
+    let val = interp
+        .evaluate_derive(
+            &adapter,
+            &mut handler,
+            "character_movement",
+            vec![Value::Entity(char_ref)],
+        )
+        .unwrap();
+    assert_eq!(expect_feet(val, "overloaded"), 0);
+
+    // Drop weight to 36 (1 over → Light). Call update again.
+    adapter.run(&mut handler, |s, h| {
+        h.handle(Effect::MutateField {
+            entity: char_ref,
+            path: vec![FieldPathSegment::Field(Name::from("current_weight"))],
+            value: Value::Int(36),
+            op: ttrpg_ast::ast::AssignOp::Eq,
+            bounds: None,
+        });
+        interp
+            .evaluate_function(s, h, "update_encumbrance", vec![Value::Entity(char_ref)])
+            .unwrap();
+    });
+
+    // Light: 120 * 3/4 = 90
+    let val = interp
+        .evaluate_derive(
+            &adapter,
+            &mut handler,
+            "character_movement",
+            vec![Value::Entity(char_ref)],
+        )
+        .unwrap();
+    assert_eq!(expect_feet(val, "light after update"), 90);
 }

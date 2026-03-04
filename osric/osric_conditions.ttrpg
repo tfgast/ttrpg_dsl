@@ -279,4 +279,18 @@ system "OSRIC Conditions" {
         }
     }
 
+
+    // ========================================================
+    //  ENCUMBRANCE LIFECYCLE HELPER
+    //
+    //  Call after any weight or armour change to recompute the
+    //  encumbrance tier and reapply the condition.
+    // ========================================================
+
+    function update_encumbrance(character: Character) {
+        remove_condition(character, "EncumbranceState")
+        let tier = character_encumbrance(character)
+        apply_condition(character, EncumbranceState(tier: tier), Duration.indefinite)
+    }
+
 }
