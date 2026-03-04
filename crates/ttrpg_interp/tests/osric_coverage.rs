@@ -44,7 +44,6 @@ fn osric_combined_coverage() {
     let sm = MultiSourceMap::new(
         sources
             .into_iter()
-            .map(|(f, s)| (f, s))
             .collect(),
     );
     let mut cov_sources = Vec::new();

@@ -305,7 +305,7 @@ fn coverage_report_contains_expected_sections() {
 
     // Should include line numbers
     assert!(
-        report.contains("|"),
+        report.contains('|'),
         "should have line number separators:\n{report}"
     );
 }
