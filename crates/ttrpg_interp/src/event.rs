@@ -686,29 +686,16 @@ mod tests {
             DeclKind::Event(EventDecl {
                 name: "Attacked".into(),
                 params: vec![
-                    Param {
-                        name: "target".into(),
-                        ty: spanned(TypeExpr::Named("Character".into())),
-                        default: None,
-                        with_groups: WithClause::default(),
-                        span: dummy_span(),
-                    },
-                    Param {
-                        name: "attacker".into(),
-                        ty: spanned(TypeExpr::Named("Character".into())),
-                        default: None,
-                        with_groups: WithClause::default(),
-                        span: dummy_span(),
-                    },
+                    Param::new("target", spanned(TypeExpr::Named("Character".into()))),
+                    Param::new("attacker", spanned(TypeExpr::Named("Character".into()))),
                 ],
                 fields: vec![],
             }),
-            DeclKind::Reaction(ReactionDecl {
-                name: "Parry".into(),
-                receiver_name: "defender".into(),
-                receiver_type: spanned(TypeExpr::Named("Character".into())),
-                receiver_with_groups: WithClause::default(),
-                trigger: TriggerExpr {
+            DeclKind::Reaction(ReactionDecl::new(
+                "Parry",
+                "defender",
+                spanned(TypeExpr::Named("Character".into())),
+                TriggerExpr {
                     event_name: "Attacked".into(),
                     bindings: vec![TriggerBinding {
                         name: Some("target".into()),
@@ -717,9 +704,8 @@ mod tests {
                     }],
                     span: dummy_span(),
                 },
-                cost: None,
-                resolve: spanned(vec![spanned(StmtKind::Expr(spanned(ExprKind::IntLit(0))))]),
-            }),
+                spanned(vec![spanned(StmtKind::Expr(spanned(ExprKind::IntLit(0))))]),
+            )),
         ]);
 
         let mut type_env = TypeEnv::new();
@@ -787,29 +773,16 @@ mod tests {
             DeclKind::Event(EventDecl {
                 name: "Attacked".into(),
                 params: vec![
-                    Param {
-                        name: "target".into(),
-                        ty: spanned(TypeExpr::Named("Character".into())),
-                        default: None,
-                        with_groups: WithClause::default(),
-                        span: dummy_span(),
-                    },
-                    Param {
-                        name: "attacker".into(),
-                        ty: spanned(TypeExpr::Named("Character".into())),
-                        default: None,
-                        with_groups: WithClause::default(),
-                        span: dummy_span(),
-                    },
+                    Param::new("target", spanned(TypeExpr::Named("Character".into()))),
+                    Param::new("attacker", spanned(TypeExpr::Named("Character".into()))),
                 ],
                 fields: vec![],
             }),
-            DeclKind::Reaction(ReactionDecl {
-                name: "CounterStrike".into(),
-                receiver_name: "fighter".into(),
-                receiver_type: spanned(TypeExpr::Named("Character".into())),
-                receiver_with_groups: WithClause::default(),
-                trigger: TriggerExpr {
+            DeclKind::Reaction(ReactionDecl::new(
+                "CounterStrike",
+                "fighter",
+                spanned(TypeExpr::Named("Character".into())),
+                TriggerExpr {
                     event_name: "Attacked".into(),
                     bindings: vec![TriggerBinding {
                         name: None, // positional
@@ -818,9 +791,8 @@ mod tests {
                     }],
                     span: dummy_span(),
                 },
-                cost: None,
-                resolve: spanned(vec![spanned(StmtKind::Expr(spanned(ExprKind::IntLit(0))))]),
-            }),
+                spanned(vec![spanned(StmtKind::Expr(spanned(ExprKind::IntLit(0))))]),
+            )),
         ]);
 
         let mut type_env = TypeEnv::new();
@@ -891,36 +863,17 @@ mod tests {
             DeclKind::Event(EventDecl {
                 name: "Combat".into(),
                 params: vec![
-                    Param {
-                        name: "attacker".into(),
-                        ty: spanned(TypeExpr::Named("Character".into())),
-                        default: None,
-                        with_groups: WithClause::default(),
-                        span: dummy_span(),
-                    },
-                    Param {
-                        name: "target".into(),
-                        ty: spanned(TypeExpr::Named("Character".into())),
-                        default: None,
-                        with_groups: WithClause::default(),
-                        span: dummy_span(),
-                    },
-                    Param {
-                        name: "weapon".into(),
-                        ty: spanned(TypeExpr::Named("Character".into())),
-                        default: None,
-                        with_groups: WithClause::default(),
-                        span: dummy_span(),
-                    },
+                    Param::new("attacker", spanned(TypeExpr::Named("Character".into()))),
+                    Param::new("target", spanned(TypeExpr::Named("Character".into()))),
+                    Param::new("weapon", spanned(TypeExpr::Named("Character".into()))),
                 ],
                 fields: vec![],
             }),
-            DeclKind::Reaction(ReactionDecl {
-                name: "Dodge".into(),
-                receiver_name: "me".into(),
-                receiver_type: spanned(TypeExpr::Named("Character".into())),
-                receiver_with_groups: WithClause::default(),
-                trigger: TriggerExpr {
+            DeclKind::Reaction(ReactionDecl::new(
+                "Dodge",
+                "me",
+                spanned(TypeExpr::Named("Character".into())),
+                TriggerExpr {
                     event_name: "Combat".into(),
                     bindings: vec![
                         TriggerBinding {
@@ -936,9 +889,8 @@ mod tests {
                     ],
                     span: dummy_span(),
                 },
-                cost: None,
-                resolve: spanned(vec![spanned(StmtKind::Expr(spanned(ExprKind::IntLit(0))))]),
-            }),
+                spanned(vec![spanned(StmtKind::Expr(spanned(ExprKind::IntLit(0))))]),
+            )),
         ]);
 
         let mut type_env = TypeEnv::new();
@@ -1015,21 +967,17 @@ mod tests {
         let program = program_with_decls(vec![
             DeclKind::Event(EventDecl {
                 name: "Blast".into(),
-                params: vec![Param {
-                    name: "target".into(),
-                    ty: spanned(TypeExpr::Named("Character".into())),
-                    default: None,
-                    with_groups: WithClause::default(),
-                    span: dummy_span(),
-                }],
+                params: vec![Param::new(
+                    "target",
+                    spanned(TypeExpr::Named("Character".into())),
+                )],
                 fields: vec![],
             }),
-            DeclKind::Reaction(ReactionDecl {
-                name: "Shield".into(),
-                receiver_name: "defender".into(),
-                receiver_type: spanned(TypeExpr::Named("Character".into())),
-                receiver_with_groups: WithClause::default(),
-                trigger: TriggerExpr {
+            DeclKind::Reaction(ReactionDecl::new(
+                "Shield",
+                "defender",
+                spanned(TypeExpr::Named("Character".into())),
+                TriggerExpr {
                     event_name: "Blast".into(),
                     bindings: vec![TriggerBinding {
                         name: Some("target".into()),
@@ -1038,9 +986,8 @@ mod tests {
                     }],
                     span: dummy_span(),
                 },
-                cost: None,
-                resolve: spanned(vec![spanned(StmtKind::Expr(spanned(ExprKind::IntLit(0))))]),
-            }),
+                spanned(vec![spanned(StmtKind::Expr(spanned(ExprKind::IntLit(0))))]),
+            )),
         ]);
 
         let mut type_env = TypeEnv::new();
@@ -1100,29 +1047,16 @@ mod tests {
             DeclKind::Event(EventDecl {
                 name: "Attacked".into(),
                 params: vec![
-                    Param {
-                        name: "target".into(),
-                        ty: spanned(TypeExpr::Named("Character".into())),
-                        default: None,
-                        with_groups: WithClause::default(),
-                        span: dummy_span(),
-                    },
-                    Param {
-                        name: "attacker".into(),
-                        ty: spanned(TypeExpr::Named("Character".into())),
-                        default: None,
-                        with_groups: WithClause::default(),
-                        span: dummy_span(),
-                    },
+                    Param::new("target", spanned(TypeExpr::Named("Character".into()))),
+                    Param::new("attacker", spanned(TypeExpr::Named("Character".into()))),
                 ],
                 fields: vec![],
             }),
-            DeclKind::Reaction(ReactionDecl {
-                name: "Parry".into(),
-                receiver_name: "defender".into(),
-                receiver_type: spanned(TypeExpr::Named("Character".into())),
-                receiver_with_groups: WithClause::default(),
-                trigger: TriggerExpr {
+            DeclKind::Reaction(ReactionDecl::new(
+                "Parry",
+                "defender",
+                spanned(TypeExpr::Named("Character".into())),
+                TriggerExpr {
                     event_name: "Attacked".into(),
                     bindings: vec![TriggerBinding {
                         name: Some("target".into()),
@@ -1131,17 +1065,15 @@ mod tests {
                     }],
                     span: dummy_span(),
                 },
-                cost: None,
-                resolve: spanned(vec![spanned(StmtKind::Expr(spanned(ExprKind::IntLit(0))))]),
-            }),
-            DeclKind::Condition(ConditionDecl {
-                name: "Stunned".into(),
-                params: vec![],
-                extends: vec![],
-                receiver_name: "bearer".into(),
-                receiver_type: spanned(TypeExpr::Named("Character".into())),
-                receiver_with_groups: WithClause::default(),
-                clauses: vec![ConditionClause::Suppress(SuppressClause {
+                spanned(vec![spanned(StmtKind::Expr(spanned(ExprKind::IntLit(0))))]),
+            )),
+            DeclKind::Condition(
+                ConditionDecl::new(
+                    "Stunned",
+                    "bearer",
+                    spanned(TypeExpr::Named("Character".into())),
+                )
+                .with_clauses(vec![ConditionClause::Suppress(SuppressClause {
                     event_name: "Attacked".into(),
                     bindings: vec![ModifyBinding {
                         name: "target".into(),
@@ -1149,8 +1081,8 @@ mod tests {
                         span: dummy_span(),
                     }],
                     span: dummy_span(),
-                })],
-            }),
+                })]),
+            ),
         ]);
 
         let mut type_env = TypeEnv::new();
@@ -1246,40 +1178,24 @@ mod tests {
             DeclKind::Event(EventDecl {
                 name: "Attacked".into(),
                 params: vec![
-                    Param {
-                        name: "target".into(),
-                        ty: spanned(TypeExpr::Named("Character".into())),
-                        default: None,
-                        with_groups: WithClause::default(),
-                        span: dummy_span(),
-                    },
-                    Param {
-                        name: "attacker".into(),
-                        ty: spanned(TypeExpr::Named("Character".into())),
-                        default: None,
-                        with_groups: WithClause::default(),
-                        span: dummy_span(),
-                    },
+                    Param::new("target", spanned(TypeExpr::Named("Character".into()))),
+                    Param::new("attacker", spanned(TypeExpr::Named("Character".into()))),
                 ],
                 fields: vec![],
             }),
             DeclKind::Event(EventDecl {
                 name: "Healed".into(),
-                params: vec![Param {
-                    name: "target".into(),
-                    ty: spanned(TypeExpr::Named("Character".into())),
-                    default: None,
-                    with_groups: WithClause::default(),
-                    span: dummy_span(),
-                }],
+                params: vec![Param::new(
+                    "target",
+                    spanned(TypeExpr::Named("Character".into())),
+                )],
                 fields: vec![],
             }),
-            DeclKind::Reaction(ReactionDecl {
-                name: "Parry".into(),
-                receiver_name: "defender".into(),
-                receiver_type: spanned(TypeExpr::Named("Character".into())),
-                receiver_with_groups: WithClause::default(),
-                trigger: TriggerExpr {
+            DeclKind::Reaction(ReactionDecl::new(
+                "Parry",
+                "defender",
+                spanned(TypeExpr::Named("Character".into())),
+                TriggerExpr {
                     event_name: "Attacked".into(),
                     bindings: vec![TriggerBinding {
                         name: Some("target".into()),
@@ -1288,17 +1204,15 @@ mod tests {
                     }],
                     span: dummy_span(),
                 },
-                cost: None,
-                resolve: spanned(vec![spanned(StmtKind::Expr(spanned(ExprKind::IntLit(0))))]),
-            }),
-            DeclKind::Condition(ConditionDecl {
-                name: "Silenced".into(),
-                params: vec![],
-                extends: vec![],
-                receiver_name: "bearer".into(),
-                receiver_type: spanned(TypeExpr::Named("Character".into())),
-                receiver_with_groups: WithClause::default(),
-                clauses: vec![ConditionClause::Suppress(SuppressClause {
+                spanned(vec![spanned(StmtKind::Expr(spanned(ExprKind::IntLit(0))))]),
+            )),
+            DeclKind::Condition(
+                ConditionDecl::new(
+                    "Silenced",
+                    "bearer",
+                    spanned(TypeExpr::Named("Character".into())),
+                )
+                .with_clauses(vec![ConditionClause::Suppress(SuppressClause {
                     event_name: "Healed".into(), // different event
                     bindings: vec![ModifyBinding {
                         name: "target".into(),
@@ -1306,8 +1220,8 @@ mod tests {
                         span: dummy_span(),
                     }],
                     span: dummy_span(),
-                })],
-            }),
+                })]),
+            ),
         ]);
 
         let mut type_env = TypeEnv::new();

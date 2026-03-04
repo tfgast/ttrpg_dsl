@@ -1274,23 +1274,17 @@ mod tests {
         // Build a simple action that:
         // 1. Costs one action
         // 2. Has a resolve block returning the literal 42
-        let action = ActionDecl {
-            name: "SimpleAttack".into(),
-            receiver_name: "actor".into(),
-            receiver_type: spanned(TypeExpr::Named("Character".into())),
-            receiver_with_groups: WithClause::default(),
-            params: vec![],
-            cost: Some(CostClause {
-                tokens: vec![spanned(Name::from("action"))],
-                free: false,
-                span: span(),
-            }),
-            requires: None,
-            resolve: spanned(vec![spanned(StmtKind::Expr(spanned(ExprKind::IntLit(42))))]),
-            trigger_text: None,
-            tags: vec![],
-            synthetic: false,
-        };
+        let action = ActionDecl::new(
+            "SimpleAttack",
+            "actor",
+            spanned(TypeExpr::Named("Character".into())),
+            spanned(vec![spanned(StmtKind::Expr(spanned(ExprKind::IntLit(42))))]),
+        )
+        .with_cost(CostClause {
+            tokens: vec![spanned(Name::from("action"))],
+            free: false,
+            span: span(),
+        });
 
         // Set up GameState with an entity that has a turn budget
         let mut game_state = GameState::new();

@@ -143,33 +143,19 @@ fn type_env_with_builtins() -> TypeEnv {
 #[test]
 fn derive_call_arithmetic_body() {
     // derive add_bonus(base: Int, bonus: Int) -> Int { base + bonus }
-    let program = program_with_decls(vec![DeclKind::Derive(FnDecl {
-        name: "add_bonus".into(),
-        params: vec![
-            Param {
-                name: "base".into(),
-                ty: spanned(TypeExpr::Int),
-                default: None,
-                with_groups: WithClause::default(),
-                span: dummy_span(),
-            },
-            Param {
-                name: "bonus".into(),
-                ty: spanned(TypeExpr::Int),
-                default: None,
-                with_groups: WithClause::default(),
-                span: dummy_span(),
-            },
+    let program = program_with_decls(vec![DeclKind::Derive(FnDecl::new(
+        "add_bonus",
+        vec![
+            Param::new("base", spanned(TypeExpr::Int)),
+            Param::new("bonus", spanned(TypeExpr::Int)),
         ],
-        return_type: spanned(TypeExpr::Int),
-        body: spanned(vec![spanned(StmtKind::Expr(spanned(ExprKind::BinOp {
+        spanned(TypeExpr::Int),
+        spanned(vec![spanned(StmtKind::Expr(spanned(ExprKind::BinOp {
             op: BinOp::Add,
             lhs: Box::new(spanned(ExprKind::Ident("base".into()))),
             rhs: Box::new(spanned(ExprKind::Ident("bonus".into()))),
         })))]),
-        synthetic: false,
-        tags: vec![],
-    })]);
+    ))]);
 
     let mut type_env = TypeEnv::new();
     type_env.functions.insert(
@@ -229,33 +215,19 @@ fn derive_call_arithmetic_body() {
 #[test]
 fn derive_call_with_named_args() {
     // derive add_bonus(base: Int, bonus: Int) -> Int { base + bonus }
-    let program = program_with_decls(vec![DeclKind::Derive(FnDecl {
-        name: "add_bonus".into(),
-        params: vec![
-            Param {
-                name: "base".into(),
-                ty: spanned(TypeExpr::Int),
-                default: None,
-                with_groups: WithClause::default(),
-                span: dummy_span(),
-            },
-            Param {
-                name: "bonus".into(),
-                ty: spanned(TypeExpr::Int),
-                default: None,
-                with_groups: WithClause::default(),
-                span: dummy_span(),
-            },
+    let program = program_with_decls(vec![DeclKind::Derive(FnDecl::new(
+        "add_bonus",
+        vec![
+            Param::new("base", spanned(TypeExpr::Int)),
+            Param::new("bonus", spanned(TypeExpr::Int)),
         ],
-        return_type: spanned(TypeExpr::Int),
-        body: spanned(vec![spanned(StmtKind::Expr(spanned(ExprKind::BinOp {
+        spanned(TypeExpr::Int),
+        spanned(vec![spanned(StmtKind::Expr(spanned(ExprKind::BinOp {
             op: BinOp::Add,
             lhs: Box::new(spanned(ExprKind::Ident("base".into()))),
             rhs: Box::new(spanned(ExprKind::Ident("bonus".into()))),
         })))]),
-        synthetic: false,
-        tags: vec![],
-    })]);
+    ))]);
 
     let mut type_env = TypeEnv::new();
     type_env.functions.insert(
@@ -315,33 +287,20 @@ fn derive_call_with_named_args() {
 #[test]
 fn derive_call_with_default_value() {
     // derive add_bonus(base: Int, bonus: Int = 5) -> Int { base + bonus }
-    let program = program_with_decls(vec![DeclKind::Derive(FnDecl {
-        name: "add_bonus".into(),
-        params: vec![
-            Param {
-                name: "base".into(),
-                ty: spanned(TypeExpr::Int),
-                default: None,
-                with_groups: WithClause::default(),
-                span: dummy_span(),
-            },
-            Param {
-                name: "bonus".into(),
-                ty: spanned(TypeExpr::Int),
-                default: Some(spanned(ExprKind::IntLit(5))),
-                with_groups: WithClause::default(),
-                span: dummy_span(),
-            },
+    let program = program_with_decls(vec![DeclKind::Derive(FnDecl::new(
+        "add_bonus",
+        vec![
+            Param::new("base", spanned(TypeExpr::Int)),
+            Param::new("bonus", spanned(TypeExpr::Int))
+                .with_default(spanned(ExprKind::IntLit(5))),
         ],
-        return_type: spanned(TypeExpr::Int),
-        body: spanned(vec![spanned(StmtKind::Expr(spanned(ExprKind::BinOp {
+        spanned(TypeExpr::Int),
+        spanned(vec![spanned(StmtKind::Expr(spanned(ExprKind::BinOp {
             op: BinOp::Add,
             lhs: Box::new(spanned(ExprKind::Ident("base".into()))),
             rhs: Box::new(spanned(ExprKind::Ident("bonus".into()))),
         })))]),
-        synthetic: false,
-        tags: vec![],
-    })]);
+    ))]);
 
     let mut type_env = TypeEnv::new();
     type_env.functions.insert(
@@ -401,11 +360,11 @@ fn mechanic_call_with_roll_emits_roll_dice() {
     // For simplicity, body is: roll(2d6 + bonus) which needs DiceLit + Add + roll
     // Let's simplify: body just calls roll on a dice literal
 
-    let program = program_with_decls(vec![DeclKind::Mechanic(FnDecl {
-        name: "attack_roll".into(),
-        params: vec![],
-        return_type: spanned(TypeExpr::RollResult),
-        body: spanned(vec![spanned(StmtKind::Expr(spanned(ExprKind::Call {
+    let program = program_with_decls(vec![DeclKind::Mechanic(FnDecl::new(
+        "attack_roll",
+        vec![],
+        spanned(TypeExpr::RollResult),
+        spanned(vec![spanned(StmtKind::Expr(spanned(ExprKind::Call {
             callee: Box::new(spanned(ExprKind::Ident("roll".into()))),
             args: vec![Arg {
                 name: None,
@@ -417,9 +376,7 @@ fn mechanic_call_with_roll_emits_roll_dice() {
                 span: dummy_span(),
             }],
         })))]),
-        synthetic: false,
-        tags: vec![],
-    })]);
+    ))]);
 
     let mut type_env = type_env_with_builtins();
     type_env.functions.insert(
@@ -519,13 +476,7 @@ fn prompt_call_with_suggest() {
     // prompt pick_value(default: Int) -> Int { hint: "pick", suggest: default + 1 }
     let program = program_with_decls(vec![DeclKind::Prompt(PromptDecl {
         name: "pick_value".into(),
-        params: vec![Param {
-            name: "default_val".into(),
-            ty: spanned(TypeExpr::Int),
-            default: None,
-            with_groups: WithClause::default(),
-            span: dummy_span(),
-        }],
+        params: vec![Param::new("default_val", spanned(TypeExpr::Int))],
         return_type: spanned(TypeExpr::Int),
         hint: Some("pick".into()),
         suggest: Some(spanned(ExprKind::BinOp {
@@ -591,20 +542,8 @@ fn prompt_emits_return_type_and_named_params() {
     let program = program_with_decls(vec![DeclKind::Prompt(PromptDecl {
         name: "pick".into(),
         params: vec![
-            Param {
-                name: "x".into(),
-                ty: spanned(TypeExpr::Int),
-                default: None,
-                with_groups: WithClause::default(),
-                span: dummy_span(),
-            },
-            Param {
-                name: "y".into(),
-                ty: spanned(TypeExpr::Int),
-                default: None,
-                with_groups: WithClause::default(),
-                span: dummy_span(),
-            },
+            Param::new("x", spanned(TypeExpr::Int)),
+            Param::new("y", spanned(TypeExpr::Int)),
         ],
         return_type: spanned(TypeExpr::Int),
         hint: Some("pick one".into()),
@@ -1635,22 +1574,14 @@ fn enum_variant_bare_construction() {
 
 #[test]
 fn missing_required_arg_error() {
-    let program = program_with_decls(vec![DeclKind::Derive(FnDecl {
-        name: "identity".into(),
-        params: vec![Param {
-            name: "x".into(),
-            ty: spanned(TypeExpr::Int),
-            default: None,
-            with_groups: WithClause::default(),
-            span: dummy_span(),
-        }],
-        return_type: spanned(TypeExpr::Int),
-        body: spanned(vec![spanned(StmtKind::Expr(spanned(ExprKind::Ident(
+    let program = program_with_decls(vec![DeclKind::Derive(FnDecl::new(
+        "identity",
+        vec![Param::new("x", spanned(TypeExpr::Int))],
+        spanned(TypeExpr::Int),
+        spanned(vec![spanned(StmtKind::Expr(spanned(ExprKind::Ident(
             "x".into(),
         ))))]),
-        synthetic: false,
-        tags: vec![],
-    })]);
+    ))]);
 
     let mut type_env = TypeEnv::new();
     type_env.functions.insert(
@@ -1911,27 +1842,20 @@ fn invalid_callee_expression_error() {
 /// Helper: build an action declaration and matching FnInfo for testing.
 fn action_test_setup() -> (Program, TypeEnv) {
     // action Attack on actor: Character (target: Character) { resolve { actor } }
-    let program = program_with_decls(vec![DeclKind::Action(ActionDecl {
-        name: "Attack".into(),
-        receiver_name: "actor".into(),
-        receiver_type: spanned(TypeExpr::Named("Character".into())),
-        receiver_with_groups: WithClause::default(),
-        params: vec![Param {
-            name: "target".into(),
-            ty: spanned(TypeExpr::Named("Character".into())),
-            default: None,
-            with_groups: WithClause::default(),
-            span: dummy_span(),
-        }],
-        cost: None,
-        requires: None,
-        resolve: spanned(vec![spanned(StmtKind::Expr(spanned(ExprKind::Ident(
-            "actor".into(),
-        ))))]),
-        trigger_text: None,
-        tags: vec![],
-        synthetic: false,
-    })]);
+    let program = program_with_decls(vec![DeclKind::Action(
+        ActionDecl::new(
+            "Attack",
+            "actor",
+            spanned(TypeExpr::Named("Character".into())),
+            spanned(vec![spanned(StmtKind::Expr(spanned(ExprKind::Ident(
+                "actor".into(),
+            ))))]),
+        )
+        .with_params(vec![Param::new(
+            "target",
+            spanned(TypeExpr::Named("Character".into())),
+        )]),
+    )]);
 
     let mut type_env = TypeEnv::new();
     type_env.functions.insert(
@@ -2062,33 +1986,20 @@ fn action_call_missing_receiver_error() {
 #[test]
 fn derive_default_references_earlier_param() {
     // derive add(a: Int, b: Int = a) -> Int { a + b }
-    let program = program_with_decls(vec![DeclKind::Derive(FnDecl {
-        name: "add".into(),
-        params: vec![
-            Param {
-                name: "a".into(),
-                ty: spanned(TypeExpr::Int),
-                default: None,
-                with_groups: WithClause::default(),
-                span: dummy_span(),
-            },
-            Param {
-                name: "b".into(),
-                ty: spanned(TypeExpr::Int),
-                default: Some(spanned(ExprKind::Ident("a".into()))),
-                with_groups: WithClause::default(),
-                span: dummy_span(),
-            },
+    let program = program_with_decls(vec![DeclKind::Derive(FnDecl::new(
+        "add",
+        vec![
+            Param::new("a", spanned(TypeExpr::Int)),
+            Param::new("b", spanned(TypeExpr::Int))
+                .with_default(spanned(ExprKind::Ident("a".into()))),
         ],
-        return_type: spanned(TypeExpr::Int),
-        body: spanned(vec![spanned(StmtKind::Expr(spanned(ExprKind::BinOp {
+        spanned(TypeExpr::Int),
+        spanned(vec![spanned(StmtKind::Expr(spanned(ExprKind::BinOp {
             op: BinOp::Add,
             lhs: Box::new(spanned(ExprKind::Ident("a".into()))),
             rhs: Box::new(spanned(ExprKind::Ident("b".into()))),
         })))]),
-        synthetic: false,
-        tags: vec![],
-    })]);
+    ))]);
 
     let mut type_env = TypeEnv::new();
     type_env.functions.insert(
@@ -2141,38 +2052,20 @@ fn derive_default_references_earlier_param() {
 #[test]
 fn derive_chained_defaults_reference_earlier_defaults() {
     // derive f(a: Int, b: Int = a, c: Int = b) -> Int { c }
-    let program = program_with_decls(vec![DeclKind::Derive(FnDecl {
-        name: "f".into(),
-        params: vec![
-            Param {
-                name: "a".into(),
-                ty: spanned(TypeExpr::Int),
-                default: None,
-                with_groups: WithClause::default(),
-                span: dummy_span(),
-            },
-            Param {
-                name: "b".into(),
-                ty: spanned(TypeExpr::Int),
-                default: Some(spanned(ExprKind::Ident("a".into()))),
-                with_groups: WithClause::default(),
-                span: dummy_span(),
-            },
-            Param {
-                name: "c".into(),
-                ty: spanned(TypeExpr::Int),
-                default: Some(spanned(ExprKind::Ident("b".into()))),
-                with_groups: WithClause::default(),
-                span: dummy_span(),
-            },
+    let program = program_with_decls(vec![DeclKind::Derive(FnDecl::new(
+        "f",
+        vec![
+            Param::new("a", spanned(TypeExpr::Int)),
+            Param::new("b", spanned(TypeExpr::Int))
+                .with_default(spanned(ExprKind::Ident("a".into()))),
+            Param::new("c", spanned(TypeExpr::Int))
+                .with_default(spanned(ExprKind::Ident("b".into()))),
         ],
-        return_type: spanned(TypeExpr::Int),
-        body: spanned(vec![spanned(StmtKind::Expr(spanned(ExprKind::Ident(
+        spanned(TypeExpr::Int),
+        spanned(vec![spanned(StmtKind::Expr(spanned(ExprKind::Ident(
             "c".into(),
         ))))]),
-        synthetic: false,
-        tags: vec![],
-    })]);
+    ))]);
 
     let mut type_env = TypeEnv::new();
     type_env.functions.insert(
@@ -2522,22 +2415,14 @@ fn action_call_non_entity_receiver_error() {
 fn bare_call_prefers_variant_over_function() {
     // Enum variant "rounds" collides with a function named "rounds".
     // The interpreter should resolve to the variant, matching the checker.
-    let program = program_with_decls(vec![DeclKind::Derive(FnDecl {
-        name: "rounds".into(),
-        params: vec![Param {
-            name: "n".into(),
-            ty: spanned(TypeExpr::Int),
-            default: None,
-            with_groups: WithClause::default(),
-            span: dummy_span(),
-        }],
-        return_type: spanned(TypeExpr::Int),
-        body: spanned(vec![spanned(StmtKind::Expr(spanned(ExprKind::IntLit(
+    let program = program_with_decls(vec![DeclKind::Derive(FnDecl::new(
+        "rounds",
+        vec![Param::new("n", spanned(TypeExpr::Int))],
+        spanned(TypeExpr::Int),
+        spanned(vec![spanned(StmtKind::Expr(spanned(ExprKind::IntLit(
             999,
         ))))]),
-        synthetic: false,
-        tags: vec![],
-    })]);
+    ))]);
 
     let mut type_env = TypeEnv::new();
     type_env.functions.insert(
@@ -2622,33 +2507,15 @@ fn mixed_args_evaluated_in_source_order() {
     // we'll use a derive whose body just returns a + b + c, and pass
     // expressions that call roll() which emits effects in order.
 
-    let program = program_with_decls(vec![DeclKind::Derive(FnDecl {
-        name: "sum3".into(),
-        params: vec![
-            Param {
-                name: "a".into(),
-                ty: spanned(TypeExpr::Int),
-                default: None,
-                with_groups: WithClause::default(),
-                span: dummy_span(),
-            },
-            Param {
-                name: "b".into(),
-                ty: spanned(TypeExpr::Int),
-                default: None,
-                with_groups: WithClause::default(),
-                span: dummy_span(),
-            },
-            Param {
-                name: "c".into(),
-                ty: spanned(TypeExpr::Int),
-                default: None,
-                with_groups: WithClause::default(),
-                span: dummy_span(),
-            },
+    let program = program_with_decls(vec![DeclKind::Derive(FnDecl::new(
+        "sum3",
+        vec![
+            Param::new("a", spanned(TypeExpr::Int)),
+            Param::new("b", spanned(TypeExpr::Int)),
+            Param::new("c", spanned(TypeExpr::Int)),
         ],
-        return_type: spanned(TypeExpr::Int),
-        body: spanned(vec![spanned(StmtKind::Expr(spanned(ExprKind::BinOp {
+        spanned(TypeExpr::Int),
+        spanned(vec![spanned(StmtKind::Expr(spanned(ExprKind::BinOp {
             op: BinOp::Add,
             lhs: Box::new(spanned(ExprKind::BinOp {
                 op: BinOp::Add,
@@ -2657,9 +2524,7 @@ fn mixed_args_evaluated_in_source_order() {
             })),
             rhs: Box::new(spanned(ExprKind::Ident("c".into()))),
         })))]),
-        synthetic: false,
-        tags: vec![],
-    })]);
+    ))]);
 
     let mut type_env = type_env_with_builtins();
     type_env.functions.insert(
@@ -2870,32 +2735,19 @@ fn prompt_suggest_error_does_not_leak_scope() {
 #[test]
 fn default_eval_error_does_not_leak_scope() {
     // derive f(a: Int, b: Int = undefined_var) -> Int { a }
-    let program = program_with_decls(vec![DeclKind::Derive(FnDecl {
-        name: "f".into(),
-        params: vec![
-            Param {
-                name: "a".into(),
-                ty: spanned(TypeExpr::Int),
-                default: None,
-                with_groups: WithClause::default(),
-                span: dummy_span(),
-            },
-            Param {
-                name: "b".into(),
-                ty: spanned(TypeExpr::Int),
-                // Default expression references an undefined variable
-                default: Some(spanned(ExprKind::Ident("undefined_var".into()))),
-                with_groups: WithClause::default(),
-                span: dummy_span(),
-            },
+    let program = program_with_decls(vec![DeclKind::Derive(FnDecl::new(
+        "f",
+        vec![
+            Param::new("a", spanned(TypeExpr::Int)),
+            // Default expression references an undefined variable
+            Param::new("b", spanned(TypeExpr::Int))
+                .with_default(spanned(ExprKind::Ident("undefined_var".into()))),
         ],
-        return_type: spanned(TypeExpr::Int),
-        body: spanned(vec![spanned(StmtKind::Expr(spanned(ExprKind::Ident(
+        spanned(TypeExpr::Int),
+        spanned(vec![spanned(StmtKind::Expr(spanned(ExprKind::Ident(
             "a".into(),
         ))))]),
-        synthetic: false,
-        tags: vec![],
-    })]);
+    ))]);
 
     let mut type_env = TypeEnv::new();
     type_env.functions.insert(

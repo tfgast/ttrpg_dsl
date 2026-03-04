@@ -195,13 +195,9 @@ fn lower_one_move(
 
     // 4. Synthesize mechanic FnDecl
     // Parameters: receiver + all move params
-    let mut mechanic_params = vec![Param {
-        name: m.receiver_name.clone(),
-        ty: m.receiver_type.clone(),
-        default: None,
-        with_groups: WithClause::default(),
-        span,
-    }];
+    let mut mechanic_params = vec![
+        Param::new(m.receiver_name.clone(), m.receiver_type.clone()).with_span(span),
+    ];
     mechanic_params.extend(m.params.iter().cloned());
 
     // Body: roll(m.roll_expr)
@@ -220,14 +216,13 @@ fn lower_one_move(
     let mechanic_body: Block =
         Spanned::new(vec![Spanned::new(StmtKind::Expr(roll_call), span)], span);
 
-    let mechanic = FnDecl {
-        name: mechanic_name.clone(),
-        params: mechanic_params,
-        return_type: Spanned::new(TypeExpr::RollResult, span),
-        body: mechanic_body,
-        synthetic: true,
-        tags: vec![],
-    };
+    let mechanic = FnDecl::new(
+        mechanic_name.clone(),
+        mechanic_params,
+        Spanned::new(TypeExpr::RollResult, span),
+        mechanic_body,
+    )
+    .synthetic();
 
     // 5. Synthesize action
     // Build the resolve block:
@@ -333,19 +328,16 @@ fn lower_one_move(
         span,
     };
 
-    let action = ActionDecl {
-        name: m.name.clone(),
-        receiver_name: m.receiver_name.clone(),
-        receiver_type: m.receiver_type.clone(),
-        receiver_with_groups: WithClause::default(),
-        params: m.params.clone(),
-        cost: Some(cost),
-        requires: None,
+    let action = ActionDecl::new(
+        m.name.clone(),
+        m.receiver_name.clone(),
+        m.receiver_type.clone(),
         resolve,
-        trigger_text: Some(m.trigger_text.clone()),
-        tags: vec![],
-        synthetic: true,
-    };
+    )
+    .with_params(m.params.clone())
+    .with_cost(cost)
+    .with_trigger_text(m.trigger_text.clone())
+    .synthetic();
 
     Some((mechanic, action))
 }
@@ -384,18 +376,17 @@ mod tests {
         );
 
         let hook_decl = Spanned::new(
-            DeclKind::Hook(HookDecl {
-                name: "__defend_roll".into(),
-                receiver_name: "e".into(),
-                receiver_type: Spanned::new(TypeExpr::Named("Character".into()), dummy_span),
-                receiver_with_groups: WithClause::default(),
-                trigger: TriggerExpr {
+            DeclKind::Hook(HookDecl::new(
+                "__defend_roll",
+                "e",
+                Spanned::new(TypeExpr::Named("Character".into()), dummy_span),
+                TriggerExpr {
                     event_name: "test".into(),
                     bindings: vec![],
                     span: dummy_span,
                 },
-                resolve: Spanned::new(vec![], dummy_span),
-            }),
+                Spanned::new(vec![], dummy_span),
+            )),
             dummy_span,
         );
 

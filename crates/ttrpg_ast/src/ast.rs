@@ -277,6 +277,33 @@ pub struct FieldDef {
     pub span: Span,
 }
 
+impl FieldDef {
+    pub fn new(name: impl Into<Name>, ty: Spanned<TypeExpr>) -> Self {
+        Self {
+            name: name.into(),
+            ty,
+            default: None,
+            restricted: false,
+            span: Span::dummy(),
+        }
+    }
+
+    pub fn with_default(mut self, default: Spanned<ExprKind>) -> Self {
+        self.default = Some(default);
+        self
+    }
+
+    pub fn restricted(mut self) -> Self {
+        self.restricted = true;
+        self
+    }
+
+    pub fn with_span(mut self, span: Span) -> Self {
+        self.span = span;
+        self
+    }
+}
+
 /// A group constraint with optional alias: `Group` or `Group as alias`.
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
@@ -302,6 +329,33 @@ impl WithClause {
     }
 }
 
+impl Param {
+    pub fn new(name: impl Into<Name>, ty: Spanned<TypeExpr>) -> Self {
+        Self {
+            name: name.into(),
+            ty,
+            default: None,
+            with_groups: WithClause::default(),
+            span: Span::dummy(),
+        }
+    }
+
+    pub fn with_default(mut self, default: Spanned<ExprKind>) -> Self {
+        self.default = Some(default);
+        self
+    }
+
+    pub fn with_groups(mut self, groups: WithClause) -> Self {
+        self.with_groups = groups;
+        self
+    }
+
+    pub fn with_span(mut self, span: Span) -> Self {
+        self.span = span;
+        self
+    }
+}
+
 /// Shared representation for derive and mechanic declarations.
 #[derive(Clone)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
@@ -315,6 +369,34 @@ pub struct FnDecl {
     pub synthetic: bool,
     /// Tags applied to this function (e.g., `#attack #ranged`).
     pub tags: Vec<Name>,
+}
+
+impl FnDecl {
+    pub fn new(
+        name: impl Into<Name>,
+        params: Vec<Param>,
+        return_type: Spanned<TypeExpr>,
+        body: Block,
+    ) -> Self {
+        Self {
+            name: name.into(),
+            params,
+            return_type,
+            body,
+            synthetic: false,
+            tags: vec![],
+        }
+    }
+
+    pub fn synthetic(mut self) -> Self {
+        self.synthetic = true;
+        self
+    }
+
+    pub fn with_tags(mut self, tags: Vec<Name>) -> Self {
+        self.tags = tags;
+        self
+    }
 }
 
 #[derive(Clone)]
@@ -351,6 +433,64 @@ pub struct ActionDecl {
     pub synthetic: bool,
 }
 
+impl ActionDecl {
+    pub fn new(
+        name: impl Into<Name>,
+        receiver_name: impl Into<Name>,
+        receiver_type: Spanned<TypeExpr>,
+        resolve: Block,
+    ) -> Self {
+        Self {
+            name: name.into(),
+            receiver_name: receiver_name.into(),
+            receiver_type,
+            receiver_with_groups: WithClause::default(),
+            params: vec![],
+            cost: None,
+            requires: None,
+            resolve,
+            trigger_text: None,
+            tags: vec![],
+            synthetic: false,
+        }
+    }
+
+    pub fn with_params(mut self, params: Vec<Param>) -> Self {
+        self.params = params;
+        self
+    }
+
+    pub fn with_cost(mut self, cost: CostClause) -> Self {
+        self.cost = Some(cost);
+        self
+    }
+
+    pub fn with_requires(mut self, requires: Spanned<ExprKind>) -> Self {
+        self.requires = Some(requires);
+        self
+    }
+
+    pub fn with_trigger_text(mut self, text: String) -> Self {
+        self.trigger_text = Some(text);
+        self
+    }
+
+    pub fn with_tags(mut self, tags: Vec<Name>) -> Self {
+        self.tags = tags;
+        self
+    }
+
+    pub fn with_receiver_groups(mut self, groups: WithClause) -> Self {
+        self.receiver_with_groups = groups;
+        self
+    }
+
+    pub fn synthetic(mut self) -> Self {
+        self.synthetic = true;
+        self
+    }
+}
+
 #[derive(Clone)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct CostClause {
@@ -373,6 +513,36 @@ pub struct ReactionDecl {
     pub resolve: Block,
 }
 
+impl ReactionDecl {
+    pub fn new(
+        name: impl Into<Name>,
+        receiver_name: impl Into<Name>,
+        receiver_type: Spanned<TypeExpr>,
+        trigger: TriggerExpr,
+        resolve: Block,
+    ) -> Self {
+        Self {
+            name: name.into(),
+            receiver_name: receiver_name.into(),
+            receiver_type,
+            receiver_with_groups: WithClause::default(),
+            trigger,
+            cost: None,
+            resolve,
+        }
+    }
+
+    pub fn with_cost(mut self, cost: CostClause) -> Self {
+        self.cost = Some(cost);
+        self
+    }
+
+    pub fn with_receiver_groups(mut self, groups: WithClause) -> Self {
+        self.receiver_with_groups = groups;
+        self
+    }
+}
+
 #[derive(Clone)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct HookDecl {
@@ -383,6 +553,30 @@ pub struct HookDecl {
     pub receiver_with_groups: WithClause,
     pub trigger: TriggerExpr,
     pub resolve: Block,
+}
+
+impl HookDecl {
+    pub fn new(
+        name: impl Into<Name>,
+        receiver_name: impl Into<Name>,
+        receiver_type: Spanned<TypeExpr>,
+        trigger: TriggerExpr,
+        resolve: Block,
+    ) -> Self {
+        Self {
+            name: name.into(),
+            receiver_name: receiver_name.into(),
+            receiver_type,
+            receiver_with_groups: WithClause::default(),
+            trigger,
+            resolve,
+        }
+    }
+
+    pub fn with_receiver_groups(mut self, groups: WithClause) -> Self {
+        self.receiver_with_groups = groups;
+        self
+    }
 }
 
 #[derive(Clone)]
@@ -424,6 +618,44 @@ pub struct ConditionDecl {
     /// Optional group constraints on the bearer: `on bearer: Entity with Group`.
     pub receiver_with_groups: WithClause,
     pub clauses: Vec<ConditionClause>,
+}
+
+impl ConditionDecl {
+    pub fn new(
+        name: impl Into<Name>,
+        receiver_name: impl Into<Name>,
+        receiver_type: Spanned<TypeExpr>,
+    ) -> Self {
+        Self {
+            name: name.into(),
+            params: vec![],
+            extends: vec![],
+            receiver_name: receiver_name.into(),
+            receiver_type,
+            receiver_with_groups: WithClause::default(),
+            clauses: vec![],
+        }
+    }
+
+    pub fn with_params(mut self, params: Vec<Param>) -> Self {
+        self.params = params;
+        self
+    }
+
+    pub fn with_extends(mut self, extends: Vec<Spanned<Name>>) -> Self {
+        self.extends = extends;
+        self
+    }
+
+    pub fn with_receiver_groups(mut self, groups: WithClause) -> Self {
+        self.receiver_with_groups = groups;
+        self
+    }
+
+    pub fn with_clauses(mut self, clauses: Vec<ConditionClause>) -> Self {
+        self.clauses = clauses;
+        self
+    }
 }
 
 #[derive(Clone)]

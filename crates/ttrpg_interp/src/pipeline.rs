@@ -1039,29 +1039,17 @@ mod tests {
         // Expected: mode overridden to "disadvantage", ModifyApplied(Phase1) emitted.
 
         let program = program_with_decls(vec![
-            DeclKind::Derive(FnDecl {
-                name: "attack_roll".into(),
-                params: vec![
-                    Param {
-                        name: "attacker".into(),
-                        ty: spanned(TypeExpr::Named("Character".into())),
-                        default: None,
-                        with_groups: WithClause::default(),
-                        span: dummy_span(),
-                    },
-                    Param {
-                        name: "mode".into(),
-                        ty: spanned(TypeExpr::String),
-                        default: None,
-                        with_groups: WithClause::default(),
-                        span: dummy_span(),
-                    },
+            DeclKind::Derive(FnDecl::new(
+                "attack_roll",
+                vec![
+                    Param::new("attacker", spanned(TypeExpr::Named("Character".into()))),
+                    Param::new("mode", spanned(TypeExpr::String)),
                 ],
-                return_type: spanned(TypeExpr::Int),
+                spanned(TypeExpr::Int),
                 // body: just return the mode as 42 if called — but we care about
                 // the modified params, so body returns mode == "disadvantage" as int
                 // For simplicity: body = if mode == "disadvantage" { 1 } else { 0 }
-                body: spanned(vec![spanned(StmtKind::Expr(spanned(ExprKind::If {
+                spanned(vec![spanned(StmtKind::Expr(spanned(ExprKind::If {
                     condition: Box::new(spanned(ExprKind::BinOp {
                         op: BinOp::Eq,
                         lhs: Box::new(spanned(ExprKind::Ident("mode".into()))),
@@ -1074,32 +1062,25 @@ mod tests {
                         spanned(ExprKind::IntLit(0)),
                     ))]))),
                 })))]),
-                synthetic: false,
-                tags: vec![],
-            }),
-            DeclKind::Condition(ConditionDecl {
-                name: "Prone".into(),
-                params: vec![],
-                extends: vec![],
-                receiver_name: "target".into(),
-                receiver_type: spanned(TypeExpr::Named("Character".into())),
-                receiver_with_groups: WithClause::default(),
-                clauses: vec![ConditionClause::Modify(ModifyClause {
-                    target: ModifyTarget::Named("attack_roll".into()),
-                    bindings: vec![ModifyBinding {
-                        name: "attacker".into(),
-                        value: Some(spanned(ExprKind::Ident("target".into()))),
+            )),
+            DeclKind::Condition(
+                ConditionDecl::new("Prone", "target", spanned(TypeExpr::Named("Character".into())))
+                    .with_clauses(vec![ConditionClause::Modify(ModifyClause {
+                        target: ModifyTarget::Named("attack_roll".into()),
+                        bindings: vec![ModifyBinding {
+                            name: "attacker".into(),
+                            value: Some(spanned(ExprKind::Ident("target".into()))),
+                            span: dummy_span(),
+                        }],
+                        body: vec![ModifyStmt::ParamOverride {
+                            name: "mode".into(),
+                            value: spanned(ExprKind::StringLit("disadvantage".into())),
+                            span: dummy_span(),
+                        }],
                         span: dummy_span(),
-                    }],
-                    body: vec![ModifyStmt::ParamOverride {
-                        name: "mode".into(),
-                        value: spanned(ExprKind::StringLit("disadvantage".into())),
-                        span: dummy_span(),
-                    }],
-                    span: dummy_span(),
-                    id: ModifyClauseId(0),
-                })],
-            }),
+                        id: ModifyClauseId(0),
+                    })]),
+            ),
         ]);
 
         let mut type_env = TypeEnv::new();
@@ -1232,17 +1213,11 @@ mod tests {
         // Expected: result.score overridden from 10 to 99, ModifyApplied(Phase2) emitted.
 
         let program = program_with_decls(vec![
-            DeclKind::Derive(FnDecl {
-                name: "compute".into(),
-                params: vec![Param {
-                    name: "val".into(),
-                    ty: spanned(TypeExpr::Named("Character".into())),
-                    default: None,
-                    with_groups: WithClause::default(),
-                    span: dummy_span(),
-                }],
-                return_type: spanned(TypeExpr::Named("Outcome".into())),
-                body: spanned(vec![spanned(StmtKind::Expr(spanned(
+            DeclKind::Derive(FnDecl::new(
+                "compute",
+                vec![Param::new("val", spanned(TypeExpr::Named("Character".into())))],
+                spanned(TypeExpr::Named("Outcome".into())),
+                spanned(vec![spanned(StmtKind::Expr(spanned(
                     ExprKind::StructLit {
                         name: "Outcome".into(),
                         fields: vec![StructFieldInit {
@@ -1253,32 +1228,25 @@ mod tests {
                         base: None,
                     },
                 )))]),
-                synthetic: false,
-                tags: vec![],
-            }),
-            DeclKind::Condition(ConditionDecl {
-                name: "Boosted".into(),
-                params: vec![],
-                extends: vec![],
-                receiver_name: "target".into(),
-                receiver_type: spanned(TypeExpr::Named("Character".into())),
-                receiver_with_groups: WithClause::default(),
-                clauses: vec![ConditionClause::Modify(ModifyClause {
-                    target: ModifyTarget::Named("compute".into()),
-                    bindings: vec![ModifyBinding {
-                        name: "val".into(),
-                        value: Some(spanned(ExprKind::Ident("target".into()))),
+            )),
+            DeclKind::Condition(
+                ConditionDecl::new("Boosted", "target", spanned(TypeExpr::Named("Character".into())))
+                    .with_clauses(vec![ConditionClause::Modify(ModifyClause {
+                        target: ModifyTarget::Named("compute".into()),
+                        bindings: vec![ModifyBinding {
+                            name: "val".into(),
+                            value: Some(spanned(ExprKind::Ident("target".into()))),
+                            span: dummy_span(),
+                        }],
+                        body: vec![ModifyStmt::ResultOverride {
+                            field: "score".into(),
+                            value: spanned(ExprKind::IntLit(99)),
+                            span: dummy_span(),
+                        }],
                         span: dummy_span(),
-                    }],
-                    body: vec![ModifyStmt::ResultOverride {
-                        field: "score".into(),
-                        value: spanned(ExprKind::IntLit(99)),
-                        span: dummy_span(),
-                    }],
-                    span: dummy_span(),
-                    id: ModifyClauseId(0),
-                })],
-            }),
+                        id: ModifyClauseId(0),
+                    })]),
+            ),
         ]);
 
         let mut type_env = TypeEnv::new();
@@ -1396,85 +1364,61 @@ mod tests {
         // Expected result: 12
 
         let program = program_with_decls(vec![
-            DeclKind::Derive(FnDecl {
-                name: "calc".into(),
-                params: vec![
-                    Param {
-                        name: "target".into(),
-                        ty: spanned(TypeExpr::Named("Character".into())),
-                        default: None,
-                        with_groups: WithClause::default(),
-                        span: dummy_span(),
-                    },
-                    Param {
-                        name: "x".into(),
-                        ty: spanned(TypeExpr::Int),
-                        default: None,
-                        with_groups: WithClause::default(),
-                        span: dummy_span(),
-                    },
+            DeclKind::Derive(FnDecl::new(
+                "calc",
+                vec![
+                    Param::new("target", spanned(TypeExpr::Named("Character".into()))),
+                    Param::new("x", spanned(TypeExpr::Int)),
                 ],
-                return_type: spanned(TypeExpr::Int),
-                body: spanned(vec![spanned(StmtKind::Expr(spanned(ExprKind::Ident(
+                spanned(TypeExpr::Int),
+                spanned(vec![spanned(StmtKind::Expr(spanned(ExprKind::Ident(
                     "x".into(),
                 ))))]),
-                synthetic: false,
-                tags: vec![],
-            }),
-            DeclKind::Condition(ConditionDecl {
-                name: "Alpha".into(),
-                params: vec![],
-                extends: vec![],
-                receiver_name: "t".into(),
-                receiver_type: spanned(TypeExpr::Named("Character".into())),
-                receiver_with_groups: WithClause::default(),
-                clauses: vec![ConditionClause::Modify(ModifyClause {
-                    target: ModifyTarget::Named("calc".into()),
-                    bindings: vec![ModifyBinding {
-                        name: "target".into(),
-                        value: Some(spanned(ExprKind::Ident("t".into()))),
+            )),
+            DeclKind::Condition(
+                ConditionDecl::new("Alpha", "t", spanned(TypeExpr::Named("Character".into())))
+                    .with_clauses(vec![ConditionClause::Modify(ModifyClause {
+                        target: ModifyTarget::Named("calc".into()),
+                        bindings: vec![ModifyBinding {
+                            name: "target".into(),
+                            value: Some(spanned(ExprKind::Ident("t".into()))),
+                            span: dummy_span(),
+                        }],
+                        body: vec![ModifyStmt::ParamOverride {
+                            name: "x".into(),
+                            value: spanned(ExprKind::BinOp {
+                                op: BinOp::Add,
+                                lhs: Box::new(spanned(ExprKind::Ident("x".into()))),
+                                rhs: Box::new(spanned(ExprKind::IntLit(10))),
+                            }),
+                            span: dummy_span(),
+                        }],
                         span: dummy_span(),
-                    }],
-                    body: vec![ModifyStmt::ParamOverride {
-                        name: "x".into(),
-                        value: spanned(ExprKind::BinOp {
-                            op: BinOp::Add,
-                            lhs: Box::new(spanned(ExprKind::Ident("x".into()))),
-                            rhs: Box::new(spanned(ExprKind::IntLit(10))),
-                        }),
+                        id: ModifyClauseId(0),
+                    })]),
+            ),
+            DeclKind::Condition(
+                ConditionDecl::new("Beta", "t", spanned(TypeExpr::Named("Character".into())))
+                    .with_clauses(vec![ConditionClause::Modify(ModifyClause {
+                        target: ModifyTarget::Named("calc".into()),
+                        bindings: vec![ModifyBinding {
+                            name: "target".into(),
+                            value: Some(spanned(ExprKind::Ident("t".into()))),
+                            span: dummy_span(),
+                        }],
+                        body: vec![ModifyStmt::ParamOverride {
+                            name: "x".into(),
+                            value: spanned(ExprKind::BinOp {
+                                op: BinOp::Mul,
+                                lhs: Box::new(spanned(ExprKind::Ident("x".into()))),
+                                rhs: Box::new(spanned(ExprKind::IntLit(2))),
+                            }),
+                            span: dummy_span(),
+                        }],
                         span: dummy_span(),
-                    }],
-                    span: dummy_span(),
-                    id: ModifyClauseId(0),
-                })],
-            }),
-            DeclKind::Condition(ConditionDecl {
-                name: "Beta".into(),
-                params: vec![],
-                extends: vec![],
-                receiver_name: "t".into(),
-                receiver_type: spanned(TypeExpr::Named("Character".into())),
-                receiver_with_groups: WithClause::default(),
-                clauses: vec![ConditionClause::Modify(ModifyClause {
-                    target: ModifyTarget::Named("calc".into()),
-                    bindings: vec![ModifyBinding {
-                        name: "target".into(),
-                        value: Some(spanned(ExprKind::Ident("t".into()))),
-                        span: dummy_span(),
-                    }],
-                    body: vec![ModifyStmt::ParamOverride {
-                        name: "x".into(),
-                        value: spanned(ExprKind::BinOp {
-                            op: BinOp::Mul,
-                            lhs: Box::new(spanned(ExprKind::Ident("x".into()))),
-                            rhs: Box::new(spanned(ExprKind::IntLit(2))),
-                        }),
-                        span: dummy_span(),
-                    }],
-                    span: dummy_span(),
-                    id: ModifyClauseId(0),
-                })],
-            }),
+                        id: ModifyClauseId(0),
+                    })]),
+            ),
         ]);
 
         let mut type_env = TypeEnv::new();
@@ -1624,58 +1568,39 @@ mod tests {
         // Expected order: Buff first (x = 1 + 100 = 101), then Variant (x = 101 + 1 = 102).
 
         let program = program_with_decls(vec![
-            DeclKind::Derive(FnDecl {
-                name: "calc".into(),
-                params: vec![
-                    Param {
-                        name: "target".into(),
-                        ty: spanned(TypeExpr::Named("Character".into())),
-                        default: None,
-                        with_groups: WithClause::default(),
-                        span: dummy_span(),
-                    },
-                    Param {
-                        name: "x".into(),
-                        ty: spanned(TypeExpr::Int),
-                        default: None,
-                        with_groups: WithClause::default(),
-                        span: dummy_span(),
-                    },
+            DeclKind::Derive(FnDecl::new(
+                "calc",
+                vec![
+                    Param::new("target", spanned(TypeExpr::Named("Character".into()))),
+                    Param::new("x", spanned(TypeExpr::Int)),
                 ],
-                return_type: spanned(TypeExpr::Int),
-                body: spanned(vec![spanned(StmtKind::Expr(spanned(ExprKind::Ident(
+                spanned(TypeExpr::Int),
+                spanned(vec![spanned(StmtKind::Expr(spanned(ExprKind::Ident(
                     "x".into(),
                 ))))]),
-                synthetic: false,
-                tags: vec![],
-            }),
-            DeclKind::Condition(ConditionDecl {
-                name: "Buff".into(),
-                params: vec![],
-                extends: vec![],
-                receiver_name: "t".into(),
-                receiver_type: spanned(TypeExpr::Named("Character".into())),
-                receiver_with_groups: WithClause::default(),
-                clauses: vec![ConditionClause::Modify(ModifyClause {
-                    target: ModifyTarget::Named("calc".into()),
-                    bindings: vec![ModifyBinding {
-                        name: "target".into(),
-                        value: Some(spanned(ExprKind::Ident("t".into()))),
+            )),
+            DeclKind::Condition(
+                ConditionDecl::new("Buff", "t", spanned(TypeExpr::Named("Character".into())))
+                    .with_clauses(vec![ConditionClause::Modify(ModifyClause {
+                        target: ModifyTarget::Named("calc".into()),
+                        bindings: vec![ModifyBinding {
+                            name: "target".into(),
+                            value: Some(spanned(ExprKind::Ident("t".into()))),
+                            span: dummy_span(),
+                        }],
+                        body: vec![ModifyStmt::ParamOverride {
+                            name: "x".into(),
+                            value: spanned(ExprKind::BinOp {
+                                op: BinOp::Add,
+                                lhs: Box::new(spanned(ExprKind::Ident("x".into()))),
+                                rhs: Box::new(spanned(ExprKind::IntLit(100))),
+                            }),
+                            span: dummy_span(),
+                        }],
                         span: dummy_span(),
-                    }],
-                    body: vec![ModifyStmt::ParamOverride {
-                        name: "x".into(),
-                        value: spanned(ExprKind::BinOp {
-                            op: BinOp::Add,
-                            lhs: Box::new(spanned(ExprKind::Ident("x".into()))),
-                            rhs: Box::new(spanned(ExprKind::IntLit(100))),
-                        }),
-                        span: dummy_span(),
-                    }],
-                    span: dummy_span(),
-                    id: ModifyClauseId(0),
-                })],
-            }),
+                        id: ModifyClauseId(0),
+                    })]),
+            ),
             DeclKind::Option(OptionDecl {
                 name: "Variant".into(),
                 extends: None,
@@ -1822,54 +1747,35 @@ mod tests {
         // Both params a and b are entity 1 — condition should only apply once.
 
         let program = program_with_decls(vec![
-            DeclKind::Derive(FnDecl {
-                name: "interact".into(),
-                params: vec![
-                    Param {
-                        name: "a".into(),
-                        ty: spanned(TypeExpr::Named("Character".into())),
-                        default: None,
-                        with_groups: WithClause::default(),
-                        span: dummy_span(),
-                    },
-                    Param {
-                        name: "b".into(),
-                        ty: spanned(TypeExpr::Named("Character".into())),
-                        default: None,
-                        with_groups: WithClause::default(),
-                        span: dummy_span(),
-                    },
+            DeclKind::Derive(FnDecl::new(
+                "interact",
+                vec![
+                    Param::new("a", spanned(TypeExpr::Named("Character".into()))),
+                    Param::new("b", spanned(TypeExpr::Named("Character".into()))),
                 ],
-                return_type: spanned(TypeExpr::Int),
-                body: spanned(vec![spanned(StmtKind::Expr(spanned(ExprKind::Ident(
+                spanned(TypeExpr::Int),
+                spanned(vec![spanned(StmtKind::Expr(spanned(ExprKind::Ident(
                     "x_val".into(),
                 ))))]),
-                synthetic: false,
-                tags: vec![],
-            }),
-            DeclKind::Condition(ConditionDecl {
-                name: "Shared".into(),
-                params: vec![],
-                extends: vec![],
-                receiver_name: "t".into(),
-                receiver_type: spanned(TypeExpr::Named("Character".into())),
-                receiver_with_groups: WithClause::default(),
-                clauses: vec![ConditionClause::Modify(ModifyClause {
-                    target: ModifyTarget::Named("interact".into()),
-                    bindings: vec![ModifyBinding {
-                        name: "a".into(),
-                        value: Some(spanned(ExprKind::Ident("t".into()))),
+            )),
+            DeclKind::Condition(
+                ConditionDecl::new("Shared", "t", spanned(TypeExpr::Named("Character".into())))
+                    .with_clauses(vec![ConditionClause::Modify(ModifyClause {
+                        target: ModifyTarget::Named("interact".into()),
+                        bindings: vec![ModifyBinding {
+                            name: "a".into(),
+                            value: Some(spanned(ExprKind::Ident("t".into()))),
+                            span: dummy_span(),
+                        }],
+                        // Non-empty body to generate a ModifyApplied effect
+                        // We need to set something for the change to appear.
+                        // Actually we need an additional param to override.
+                        // Let's instead verify at the collect_modifiers_owned level.
+                        body: vec![],
                         span: dummy_span(),
-                    }],
-                    // Non-empty body to generate a ModifyApplied effect
-                    // We need to set something for the change to appear.
-                    // Actually we need an additional param to override.
-                    // Let's instead verify at the collect_modifiers_owned level.
-                    body: vec![],
-                    span: dummy_span(),
-                    id: ModifyClauseId(0),
-                })],
-            }),
+                        id: ModifyClauseId(0),
+                    })]),
+            ),
         ]);
 
         let mut type_env = TypeEnv::new();
@@ -1959,24 +1865,16 @@ mod tests {
         // Call: simple(5) = 6
         // No ModifyApplied effects emitted.
 
-        let program = program_with_decls(vec![DeclKind::Derive(FnDecl {
-            name: "simple".into(),
-            params: vec![Param {
-                name: "x".into(),
-                ty: spanned(TypeExpr::Int),
-                default: None,
-                with_groups: WithClause::default(),
-                span: dummy_span(),
-            }],
-            return_type: spanned(TypeExpr::Int),
-            body: spanned(vec![spanned(StmtKind::Expr(spanned(ExprKind::BinOp {
+        let program = program_with_decls(vec![DeclKind::Derive(FnDecl::new(
+            "simple",
+            vec![Param::new("x", spanned(TypeExpr::Int))],
+            spanned(TypeExpr::Int),
+            spanned(vec![spanned(StmtKind::Expr(spanned(ExprKind::BinOp {
                 op: BinOp::Add,
                 lhs: Box::new(spanned(ExprKind::Ident("x".into()))),
                 rhs: Box::new(spanned(ExprKind::IntLit(1))),
             })))]),
-            synthetic: false,
-            tags: vec![],
-        })]);
+        ))]);
 
         let mut type_env = TypeEnv::new();
         type_env.functions.insert(
@@ -2040,31 +1938,17 @@ mod tests {
         // Call calc("special", 1) → x = 1 + 50 = 51
 
         let program = program_with_decls(vec![
-            DeclKind::Derive(FnDecl {
-                name: "calc".into(),
-                params: vec![
-                    Param {
-                        name: "mode".into(),
-                        ty: spanned(TypeExpr::String),
-                        default: None,
-                        with_groups: WithClause::default(),
-                        span: dummy_span(),
-                    },
-                    Param {
-                        name: "x".into(),
-                        ty: spanned(TypeExpr::Int),
-                        default: None,
-                        with_groups: WithClause::default(),
-                        span: dummy_span(),
-                    },
+            DeclKind::Derive(FnDecl::new(
+                "calc",
+                vec![
+                    Param::new("mode", spanned(TypeExpr::String)),
+                    Param::new("x", spanned(TypeExpr::Int)),
                 ],
-                return_type: spanned(TypeExpr::Int),
-                body: spanned(vec![spanned(StmtKind::Expr(spanned(ExprKind::Ident(
+                spanned(TypeExpr::Int),
+                spanned(vec![spanned(StmtKind::Expr(spanned(ExprKind::Ident(
                     "x".into(),
                 ))))]),
-                synthetic: false,
-                tags: vec![],
-            }),
+            )),
             DeclKind::Option(OptionDecl {
                 name: "SpecialMode".into(),
                 extends: None,
@@ -2189,58 +2073,39 @@ mod tests {
         // Handler returns Vetoed for ModifyApplied → protocol error
 
         let program = program_with_decls(vec![
-            DeclKind::Derive(FnDecl {
-                name: "calc".into(),
-                params: vec![
-                    Param {
-                        name: "target".into(),
-                        ty: spanned(TypeExpr::Named("Character".into())),
-                        default: None,
-                        with_groups: WithClause::default(),
-                        span: dummy_span(),
-                    },
-                    Param {
-                        name: "x".into(),
-                        ty: spanned(TypeExpr::Int),
-                        default: None,
-                        with_groups: WithClause::default(),
-                        span: dummy_span(),
-                    },
+            DeclKind::Derive(FnDecl::new(
+                "calc",
+                vec![
+                    Param::new("target", spanned(TypeExpr::Named("Character".into()))),
+                    Param::new("x", spanned(TypeExpr::Int)),
                 ],
-                return_type: spanned(TypeExpr::Int),
-                body: spanned(vec![spanned(StmtKind::Expr(spanned(ExprKind::Ident(
+                spanned(TypeExpr::Int),
+                spanned(vec![spanned(StmtKind::Expr(spanned(ExprKind::Ident(
                     "x".into(),
                 ))))]),
-                synthetic: false,
-                tags: vec![],
-            }),
-            DeclKind::Condition(ConditionDecl {
-                name: "Buff".into(),
-                params: vec![],
-                extends: vec![],
-                receiver_name: "t".into(),
-                receiver_type: spanned(TypeExpr::Named("Character".into())),
-                receiver_with_groups: WithClause::default(),
-                clauses: vec![ConditionClause::Modify(ModifyClause {
-                    target: ModifyTarget::Named("calc".into()),
-                    bindings: vec![ModifyBinding {
-                        name: "target".into(),
-                        value: Some(spanned(ExprKind::Ident("t".into()))),
+            )),
+            DeclKind::Condition(
+                ConditionDecl::new("Buff", "t", spanned(TypeExpr::Named("Character".into())))
+                    .with_clauses(vec![ConditionClause::Modify(ModifyClause {
+                        target: ModifyTarget::Named("calc".into()),
+                        bindings: vec![ModifyBinding {
+                            name: "target".into(),
+                            value: Some(spanned(ExprKind::Ident("t".into()))),
+                            span: dummy_span(),
+                        }],
+                        body: vec![ModifyStmt::ParamOverride {
+                            name: "x".into(),
+                            value: spanned(ExprKind::BinOp {
+                                op: BinOp::Add,
+                                lhs: Box::new(spanned(ExprKind::Ident("x".into()))),
+                                rhs: Box::new(spanned(ExprKind::IntLit(10))),
+                            }),
+                            span: dummy_span(),
+                        }],
                         span: dummy_span(),
-                    }],
-                    body: vec![ModifyStmt::ParamOverride {
-                        name: "x".into(),
-                        value: spanned(ExprKind::BinOp {
-                            op: BinOp::Add,
-                            lhs: Box::new(spanned(ExprKind::Ident("x".into()))),
-                            rhs: Box::new(spanned(ExprKind::IntLit(10))),
-                        }),
-                        span: dummy_span(),
-                    }],
-                    span: dummy_span(),
-                    id: ModifyClauseId(0),
-                })],
-            }),
+                        id: ModifyClauseId(0),
+                    })]),
+            ),
         ]);
 
         let mut type_env = TypeEnv::new();
@@ -2446,22 +2311,14 @@ mod tests {
         // Expected: x = 1 * 3 = 3, then x = 3 + 10 = 13.
 
         let program = program_with_decls(vec![
-            DeclKind::Derive(FnDecl {
-                name: "calc".into(),
-                params: vec![Param {
-                    name: "x".into(),
-                    ty: spanned(TypeExpr::Int),
-                    default: None,
-                    with_groups: WithClause::default(),
-                    span: dummy_span(),
-                }],
-                return_type: spanned(TypeExpr::Int),
-                body: spanned(vec![spanned(StmtKind::Expr(spanned(ExprKind::Ident(
+            DeclKind::Derive(FnDecl::new(
+                "calc",
+                vec![Param::new("x", spanned(TypeExpr::Int))],
+                spanned(TypeExpr::Int),
+                spanned(vec![spanned(StmtKind::Expr(spanned(ExprKind::Ident(
                     "x".into(),
                 ))))]),
-                synthetic: false,
-                tags: vec![],
-            }),
+            )),
             // Beta declared first
             DeclKind::Option(OptionDecl {
                 name: "Beta".into(),
@@ -2598,70 +2455,51 @@ mod tests {
         // Expected: x overridden to 10 in if-branch, then x = x + 1 = 11.
 
         let program = program_with_decls(vec![
-            DeclKind::Derive(FnDecl {
-                name: "f".into(),
-                params: vec![
-                    Param {
-                        name: "actor".into(),
-                        ty: spanned(TypeExpr::Named("Character".into())),
-                        default: None,
-                        with_groups: WithClause::default(),
-                        span: dummy_span(),
-                    },
-                    Param {
-                        name: "x".into(),
-                        ty: spanned(TypeExpr::Int),
-                        default: None,
-                        with_groups: WithClause::default(),
-                        span: dummy_span(),
-                    },
+            DeclKind::Derive(FnDecl::new(
+                "f",
+                vec![
+                    Param::new("actor", spanned(TypeExpr::Named("Character".into()))),
+                    Param::new("x", spanned(TypeExpr::Int)),
                 ],
-                return_type: spanned(TypeExpr::Int),
-                body: spanned(vec![spanned(StmtKind::Expr(spanned(ExprKind::Ident(
+                spanned(TypeExpr::Int),
+                spanned(vec![spanned(StmtKind::Expr(spanned(ExprKind::Ident(
                     "x".into(),
                 ))))]),
-                synthetic: false,
-                tags: vec![],
-            }),
-            DeclKind::Condition(ConditionDecl {
-                name: "C".into(),
-                params: vec![],
-                extends: vec![],
-                receiver_name: "target".into(),
-                receiver_type: spanned(TypeExpr::Named("Character".into())),
-                receiver_with_groups: WithClause::default(),
-                clauses: vec![ConditionClause::Modify(ModifyClause {
-                    target: ModifyTarget::Named("f".into()),
-                    bindings: vec![ModifyBinding {
-                        name: "actor".into(),
-                        value: Some(spanned(ExprKind::Ident("target".into()))),
-                        span: dummy_span(),
-                    }],
-                    body: vec![
-                        ModifyStmt::If {
-                            condition: spanned(ExprKind::BoolLit(true)),
-                            then_body: vec![ModifyStmt::ParamOverride {
-                                name: "x".into(),
-                                value: spanned(ExprKind::IntLit(10)),
+            )),
+            DeclKind::Condition(
+                ConditionDecl::new("C", "target", spanned(TypeExpr::Named("Character".into())))
+                    .with_clauses(vec![ConditionClause::Modify(ModifyClause {
+                        target: ModifyTarget::Named("f".into()),
+                        bindings: vec![ModifyBinding {
+                            name: "actor".into(),
+                            value: Some(spanned(ExprKind::Ident("target".into()))),
+                            span: dummy_span(),
+                        }],
+                        body: vec![
+                            ModifyStmt::If {
+                                condition: spanned(ExprKind::BoolLit(true)),
+                                then_body: vec![ModifyStmt::ParamOverride {
+                                    name: "x".into(),
+                                    value: spanned(ExprKind::IntLit(10)),
+                                    span: dummy_span(),
+                                }],
+                                else_body: None,
                                 span: dummy_span(),
-                            }],
-                            else_body: None,
-                            span: dummy_span(),
-                        },
-                        ModifyStmt::ParamOverride {
-                            name: "x".into(),
-                            value: spanned(ExprKind::BinOp {
-                                op: BinOp::Add,
-                                lhs: Box::new(spanned(ExprKind::Ident("x".into()))),
-                                rhs: Box::new(spanned(ExprKind::IntLit(1))),
-                            }),
-                            span: dummy_span(),
-                        },
-                    ],
-                    span: dummy_span(),
-                    id: ModifyClauseId(0),
-                })],
-            }),
+                            },
+                            ModifyStmt::ParamOverride {
+                                name: "x".into(),
+                                value: spanned(ExprKind::BinOp {
+                                    op: BinOp::Add,
+                                    lhs: Box::new(spanned(ExprKind::Ident("x".into()))),
+                                    rhs: Box::new(spanned(ExprKind::IntLit(1))),
+                                }),
+                                span: dummy_span(),
+                            },
+                        ],
+                        span: dummy_span(),
+                        id: ModifyClauseId(0),
+                    })]),
+            ),
         ]);
 
         let mut type_env = TypeEnv::new();
@@ -2752,70 +2590,51 @@ mod tests {
         // Expected: x = 1 + 1 = 2 (branch not taken)
 
         let program = program_with_decls(vec![
-            DeclKind::Derive(FnDecl {
-                name: "f".into(),
-                params: vec![
-                    Param {
-                        name: "actor".into(),
-                        ty: spanned(TypeExpr::Named("Character".into())),
-                        default: None,
-                        with_groups: WithClause::default(),
-                        span: dummy_span(),
-                    },
-                    Param {
-                        name: "x".into(),
-                        ty: spanned(TypeExpr::Int),
-                        default: None,
-                        with_groups: WithClause::default(),
-                        span: dummy_span(),
-                    },
+            DeclKind::Derive(FnDecl::new(
+                "f",
+                vec![
+                    Param::new("actor", spanned(TypeExpr::Named("Character".into()))),
+                    Param::new("x", spanned(TypeExpr::Int)),
                 ],
-                return_type: spanned(TypeExpr::Int),
-                body: spanned(vec![spanned(StmtKind::Expr(spanned(ExprKind::Ident(
+                spanned(TypeExpr::Int),
+                spanned(vec![spanned(StmtKind::Expr(spanned(ExprKind::Ident(
                     "x".into(),
                 ))))]),
-                synthetic: false,
-                tags: vec![],
-            }),
-            DeclKind::Condition(ConditionDecl {
-                name: "C".into(),
-                params: vec![],
-                extends: vec![],
-                receiver_name: "target".into(),
-                receiver_type: spanned(TypeExpr::Named("Character".into())),
-                receiver_with_groups: WithClause::default(),
-                clauses: vec![ConditionClause::Modify(ModifyClause {
-                    target: ModifyTarget::Named("f".into()),
-                    bindings: vec![ModifyBinding {
-                        name: "actor".into(),
-                        value: Some(spanned(ExprKind::Ident("target".into()))),
-                        span: dummy_span(),
-                    }],
-                    body: vec![
-                        ModifyStmt::If {
-                            condition: spanned(ExprKind::BoolLit(false)),
-                            then_body: vec![ModifyStmt::ParamOverride {
-                                name: "x".into(),
-                                value: spanned(ExprKind::IntLit(10)),
+            )),
+            DeclKind::Condition(
+                ConditionDecl::new("C", "target", spanned(TypeExpr::Named("Character".into())))
+                    .with_clauses(vec![ConditionClause::Modify(ModifyClause {
+                        target: ModifyTarget::Named("f".into()),
+                        bindings: vec![ModifyBinding {
+                            name: "actor".into(),
+                            value: Some(spanned(ExprKind::Ident("target".into()))),
+                            span: dummy_span(),
+                        }],
+                        body: vec![
+                            ModifyStmt::If {
+                                condition: spanned(ExprKind::BoolLit(false)),
+                                then_body: vec![ModifyStmt::ParamOverride {
+                                    name: "x".into(),
+                                    value: spanned(ExprKind::IntLit(10)),
+                                    span: dummy_span(),
+                                }],
+                                else_body: None,
                                 span: dummy_span(),
-                            }],
-                            else_body: None,
-                            span: dummy_span(),
-                        },
-                        ModifyStmt::ParamOverride {
-                            name: "x".into(),
-                            value: spanned(ExprKind::BinOp {
-                                op: BinOp::Add,
-                                lhs: Box::new(spanned(ExprKind::Ident("x".into()))),
-                                rhs: Box::new(spanned(ExprKind::IntLit(1))),
-                            }),
-                            span: dummy_span(),
-                        },
-                    ],
-                    span: dummy_span(),
-                    id: ModifyClauseId(0),
-                })],
-            }),
+                            },
+                            ModifyStmt::ParamOverride {
+                                name: "x".into(),
+                                value: spanned(ExprKind::BinOp {
+                                    op: BinOp::Add,
+                                    lhs: Box::new(spanned(ExprKind::Ident("x".into()))),
+                                    rhs: Box::new(spanned(ExprKind::IntLit(1))),
+                                }),
+                                span: dummy_span(),
+                            },
+                        ],
+                        span: dummy_span(),
+                        id: ModifyClauseId(0),
+                    })]),
+            ),
         ]);
 
         let mut type_env = TypeEnv::new();

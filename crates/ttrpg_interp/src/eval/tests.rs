@@ -1121,27 +1121,11 @@ fn eval_struct_lit_fills_defaults() {
             decls: vec![spanned(DeclKind::Struct(StructDecl {
                 name: "Config".into(),
                 fields: vec![
-                    FieldDef {
-                        name: "x".into(),
-                        ty: spanned(TypeExpr::Int),
-                        default: None,
-                        restricted: false,
-                        span: dummy_span(),
-                    },
-                    FieldDef {
-                        name: "y".into(),
-                        ty: spanned(TypeExpr::Int),
-                        default: Some(spanned(ExprKind::IntLit(42))),
-                        restricted: false,
-                        span: dummy_span(),
-                    },
-                    FieldDef {
-                        name: "z".into(),
-                        ty: spanned(TypeExpr::Int),
-                        default: Some(spanned(ExprKind::IntLit(99))),
-                        restricted: false,
-                        span: dummy_span(),
-                    },
+                    FieldDef::new("x", spanned(TypeExpr::Int)),
+                    FieldDef::new("y", spanned(TypeExpr::Int))
+                        .with_default(spanned(ExprKind::IntLit(42))),
+                    FieldDef::new("z", spanned(TypeExpr::Int))
+                        .with_default(spanned(ExprKind::IntLit(99))),
                 ],
             }))],
         }))],
@@ -3309,15 +3293,11 @@ fn eval_ident_condition_name() {
     let mut program = Program {
         items: vec![spanned(TopLevel::System(SystemBlock {
             name: "Test".into(),
-            decls: vec![spanned(DeclKind::Condition(ConditionDecl {
-                name: "Stunned".into(),
-                params: vec![],
-                extends: vec![],
-                receiver_name: "bearer".into(),
-                receiver_type: spanned(TypeExpr::Named("Character".into())),
-                receiver_with_groups: WithClause::default(),
-                clauses: vec![],
-            }))],
+            decls: vec![spanned(DeclKind::Condition(ConditionDecl::new(
+                "Stunned",
+                "bearer",
+                spanned(TypeExpr::Named("Character".into())),
+            )))],
         }))],
         ..Default::default()
     };
@@ -3346,26 +3326,16 @@ fn eval_ident_condition_eq() {
         items: vec![spanned(TopLevel::System(SystemBlock {
             name: "Test".into(),
             decls: vec![
-                spanned(DeclKind::Condition(ConditionDecl {
-                    name: "Stunned".into(),
-                    params: vec![],
-
-                    extends: vec![],
-                    receiver_name: "bearer".into(),
-                    receiver_type: spanned(TypeExpr::Named("Character".into())),
-                    receiver_with_groups: WithClause::default(),
-                    clauses: vec![],
-                })),
-                spanned(DeclKind::Condition(ConditionDecl {
-                    name: "Prone".into(),
-                    params: vec![],
-
-                    extends: vec![],
-                    receiver_name: "bearer".into(),
-                    receiver_type: spanned(TypeExpr::Named("Character".into())),
-                    receiver_with_groups: WithClause::default(),
-                    clauses: vec![],
-                })),
+                spanned(DeclKind::Condition(ConditionDecl::new(
+                    "Stunned",
+                    "bearer",
+                    spanned(TypeExpr::Named("Character".into())),
+                ))),
+                spanned(DeclKind::Condition(ConditionDecl::new(
+                    "Prone",
+                    "bearer",
+                    spanned(TypeExpr::Named("Character".into())),
+                ))),
             ],
         }))],
         ..Default::default()
@@ -4736,20 +4706,9 @@ fn grant_fills_defaults_from_entity_decl() {
                 optional_groups: vec![OptionalGroup {
                     name: "Spellcasting".into(),
                     fields: vec![
-                        FieldDef {
-                            name: "spell_slots".into(),
-                            ty: spanned(TypeExpr::Int),
-                            default: None, // no default
-                            restricted: false,
-                            span: dummy_span(),
-                        },
-                        FieldDef {
-                            name: "cantrips".into(),
-                            ty: spanned(TypeExpr::Int),
-                            default: Some(spanned(ExprKind::IntLit(4))), // default = 4
-                            restricted: false,
-                            span: dummy_span(),
-                        },
+                        FieldDef::new("spell_slots", spanned(TypeExpr::Int)),
+                        FieldDef::new("cantrips", spanned(TypeExpr::Int))
+                            .with_default(spanned(ExprKind::IntLit(4))), // default = 4
                     ],
                     is_external_ref: false,
                     is_required: false,
@@ -4805,13 +4764,10 @@ fn grant_explicit_field_overrides_default() {
                 fields: vec![],
                 optional_groups: vec![OptionalGroup {
                     name: "Spellcasting".into(),
-                    fields: vec![FieldDef {
-                        name: "cantrips".into(),
-                        ty: spanned(TypeExpr::Int),
-                        default: Some(spanned(ExprKind::IntLit(4))),
-                        restricted: false,
-                        span: dummy_span(),
-                    }],
+                    fields: vec![
+                        FieldDef::new("cantrips", spanned(TypeExpr::Int))
+                            .with_default(spanned(ExprKind::IntLit(4))),
+                    ],
                     is_external_ref: false,
                     is_required: false,
                     span: dummy_span(),
@@ -4973,30 +4929,13 @@ fn grant_defaults_scoped_to_entity_type() {
             decls: vec![
                 spanned(DeclKind::Entity(EntityDecl {
                     name: "Character".into(),
-                    fields: vec![FieldDef {
-                        name: "HP".into(),
-                        ty: spanned(TypeExpr::Int),
-                        default: None,
-                        restricted: false,
-                        span: dummy_span(),
-                    }],
+                    fields: vec![FieldDef::new("HP", spanned(TypeExpr::Int))],
                     optional_groups: vec![OptionalGroup {
                         name: "Spellcasting".into(),
                         fields: vec![
-                            FieldDef {
-                                name: "spell_slots".into(),
-                                ty: spanned(TypeExpr::Int),
-                                default: Some(spanned(ExprKind::IntLit(3))),
-                                restricted: false,
-                                span: dummy_span(),
-                            },
-                            FieldDef {
-                                name: "dc".into(),
-                                ty: spanned(TypeExpr::Int),
-                                default: None,
-                                restricted: false,
-                                span: dummy_span(),
-                            },
+                            FieldDef::new("spell_slots", spanned(TypeExpr::Int))
+                                .with_default(spanned(ExprKind::IntLit(3))),
+                            FieldDef::new("dc", spanned(TypeExpr::Int)),
                         ],
                         is_external_ref: false,
                         is_required: false,
@@ -5005,30 +4944,13 @@ fn grant_defaults_scoped_to_entity_type() {
                 })),
                 spanned(DeclKind::Entity(EntityDecl {
                     name: "Monster".into(),
-                    fields: vec![FieldDef {
-                        name: "HP".into(),
-                        ty: spanned(TypeExpr::Int),
-                        default: None,
-                        restricted: false,
-                        span: dummy_span(),
-                    }],
+                    fields: vec![FieldDef::new("HP", spanned(TypeExpr::Int))],
                     optional_groups: vec![OptionalGroup {
                         name: "Spellcasting".into(),
                         fields: vec![
-                            FieldDef {
-                                name: "spell_slots".into(),
-                                ty: spanned(TypeExpr::Int),
-                                default: Some(spanned(ExprKind::IntLit(1))),
-                                restricted: false,
-                                span: dummy_span(),
-                            },
-                            FieldDef {
-                                name: "dc".into(),
-                                ty: spanned(TypeExpr::Int),
-                                default: None,
-                                restricted: false,
-                                span: dummy_span(),
-                            },
+                            FieldDef::new("spell_slots", spanned(TypeExpr::Int))
+                                .with_default(spanned(ExprKind::IntLit(1))),
+                            FieldDef::new("dc", spanned(TypeExpr::Int)),
                         ],
                         is_external_ref: false,
                         is_required: false,
@@ -5088,30 +5010,13 @@ fn grant_no_defaults_when_entity_type_unknown() {
             decls: vec![
                 spanned(DeclKind::Entity(EntityDecl {
                     name: "Character".into(),
-                    fields: vec![FieldDef {
-                        name: "HP".into(),
-                        ty: spanned(TypeExpr::Int),
-                        default: None,
-                        restricted: false,
-                        span: dummy_span(),
-                    }],
+                    fields: vec![FieldDef::new("HP", spanned(TypeExpr::Int))],
                     optional_groups: vec![OptionalGroup {
                         name: "Spellcasting".into(),
                         fields: vec![
-                            FieldDef {
-                                name: "spell_slots".into(),
-                                ty: spanned(TypeExpr::Int),
-                                default: Some(spanned(ExprKind::IntLit(3))),
-                                restricted: false,
-                                span: dummy_span(),
-                            },
-                            FieldDef {
-                                name: "dc".into(),
-                                ty: spanned(TypeExpr::Int),
-                                default: None,
-                                restricted: false,
-                                span: dummy_span(),
-                            },
+                            FieldDef::new("spell_slots", spanned(TypeExpr::Int))
+                                .with_default(spanned(ExprKind::IntLit(3))),
+                            FieldDef::new("dc", spanned(TypeExpr::Int)),
                         ],
                         is_external_ref: false,
                         is_required: false,
@@ -5120,30 +5025,13 @@ fn grant_no_defaults_when_entity_type_unknown() {
                 })),
                 spanned(DeclKind::Entity(EntityDecl {
                     name: "Monster".into(),
-                    fields: vec![FieldDef {
-                        name: "HP".into(),
-                        ty: spanned(TypeExpr::Int),
-                        default: None,
-                        restricted: false,
-                        span: dummy_span(),
-                    }],
+                    fields: vec![FieldDef::new("HP", spanned(TypeExpr::Int))],
                     optional_groups: vec![OptionalGroup {
                         name: "Spellcasting".into(),
                         fields: vec![
-                            FieldDef {
-                                name: "spell_slots".into(),
-                                ty: spanned(TypeExpr::Int),
-                                default: Some(spanned(ExprKind::IntLit(1))),
-                                restricted: false,
-                                span: dummy_span(),
-                            },
-                            FieldDef {
-                                name: "dc".into(),
-                                ty: spanned(TypeExpr::Int),
-                                default: None,
-                                restricted: false,
-                                span: dummy_span(),
-                            },
+                            FieldDef::new("spell_slots", spanned(TypeExpr::Int))
+                                .with_default(spanned(ExprKind::IntLit(1))),
+                            FieldDef::new("dc", spanned(TypeExpr::Int)),
                         ],
                         is_external_ref: false,
                         is_required: false,

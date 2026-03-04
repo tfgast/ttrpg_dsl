@@ -63,9 +63,23 @@ pub struct Spanned<T> {
     pub span: Span,
 }
 
+impl Default for Span {
+    fn default() -> Self {
+        Self::dummy()
+    }
+}
+
 impl<T> Spanned<T> {
     pub fn new(node: T, span: Span) -> Self {
         Self { node, span }
+    }
+
+    /// Wrap `node` with `Span::dummy()` — convenience for test/synthetic code.
+    pub fn dummy(node: T) -> Self {
+        Self {
+            node,
+            span: Span::dummy(),
+        }
     }
 }
 

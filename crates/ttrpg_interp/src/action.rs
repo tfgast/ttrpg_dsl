@@ -921,19 +921,22 @@ mod tests {
         requires: Option<Spanned<ExprKind>>,
         resolve_stmts: Vec<Spanned<StmtKind>>,
     ) -> ActionDecl {
-        ActionDecl {
-            name: Name::from(name),
-            receiver_name: Name::from(receiver_name),
-            receiver_type: spanned(TypeExpr::Named("Character".into())),
-            receiver_with_groups: WithClause::default(),
-            params,
-            cost,
-            requires,
-            resolve: spanned(resolve_stmts),
-            trigger_text: None,
-            tags: vec![],
-            synthetic: false,
+        let mut decl = ActionDecl::new(
+            name,
+            receiver_name,
+            spanned(TypeExpr::Named("Character".into())),
+            spanned(resolve_stmts),
+        );
+        if !params.is_empty() {
+            decl = decl.with_params(params);
         }
+        if let Some(cost) = cost {
+            decl = decl.with_cost(cost);
+        }
+        if let Some(requires) = requires {
+            decl = decl.with_requires(requires);
+        }
+        decl
     }
 
     // Helper to make a simple reaction declaration
@@ -944,18 +947,22 @@ mod tests {
         cost: Option<CostClause>,
         resolve_stmts: Vec<Spanned<StmtKind>>,
     ) -> ReactionDecl {
-        ReactionDecl {
-            name: Name::from(name),
-            receiver_name: Name::from(receiver_name),
-            receiver_type: spanned(TypeExpr::Named("Character".into())),
-            receiver_with_groups: WithClause::default(),
-            trigger: TriggerExpr {
-                event_name: Name::from(event_name),
-                bindings: vec![],
-                span: span(),
-            },
-            cost,
-            resolve: spanned(resolve_stmts),
+        let trigger = TriggerExpr {
+            event_name: Name::from(event_name),
+            bindings: vec![],
+            span: span(),
+        };
+        let decl = ReactionDecl::new(
+            name,
+            receiver_name,
+            spanned(TypeExpr::Named("Character".into())),
+            trigger,
+            spanned(resolve_stmts),
+        );
+        if let Some(cost) = cost {
+            decl.with_cost(cost)
+        } else {
+            decl
         }
     }
 
@@ -1315,13 +1322,7 @@ mod tests {
         let action = make_action(
             "Attack",
             "actor",
-            vec![Param {
-                name: "target".into(),
-                ty: spanned(TypeExpr::Named("Character".into())),
-                default: None,
-                with_groups: WithClause::default(),
-                span: span(),
-            }],
+            vec![Param::new("target", spanned(TypeExpr::Named("Character".into())))],
             None,
             None,
             vec![spanned(StmtKind::Expr(spanned(ExprKind::Ident(
