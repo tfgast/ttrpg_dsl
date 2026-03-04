@@ -16,6 +16,7 @@
 
 use "OSRIC"
 use "OSRIC Ability"
+use "OSRIC Equipment"
 use "OSRIC Character"
 use "OSRIC Combat"
 
@@ -275,7 +276,7 @@ system "OSRIC Conditions" {
         }
 
         modify character_surprise_adj(character: bearer) {
-            result = encumbrance_surprise_adj(tier, result, bearer.armour_movement_cap.value)
+            result = encumbrance_surprise_adj(tier, result, armor_movement_cap(bearer).value)
         }
     }
 

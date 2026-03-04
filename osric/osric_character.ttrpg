@@ -9,6 +9,7 @@
 
 use "OSRIC"
 use "OSRIC Ability"
+use "OSRIC Equipment"
 
 system "OSRIC Character" {
 
@@ -195,7 +196,7 @@ system "OSRIC Character" {
     // EncumbranceState condition modifies the result.
     derive character_movement(character: Character) -> Feet {
         let base = base_movement(character.ancestry)
-        let cap = character.armour_movement_cap
+        let cap = armor_movement_cap(character)
         if cap.value > 0 {
             Feet { value: min(base.value, cap.value) }
         } else {

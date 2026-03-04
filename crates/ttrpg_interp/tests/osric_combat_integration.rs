@@ -1095,11 +1095,11 @@ fn resolve_melee_attack_miss_deals_zero() {
         1,
         &standard_abilities_12(),
         10,
-        18,
+        17,
         "Human",
     );
 
-    // Roll 5 → 5+0+0 = 5 < 18 → Miss
+    // Roll 5 → 5+0+0 = 5 < 17 → Miss
     let atk_roll = scripted_roll(1, 20, 0, vec![5], vec![5], 5, 5);
     let mut handler = ScriptedHandler::with_responses(vec![atk_roll]);
 
@@ -1564,12 +1564,15 @@ fn melee_attack_action_hits_and_damages() {
         "Human",
     );
     state.set_turn_budget(&attacker, combat_turn_budget());
+    // Equip a longsword on the attacker
+    set_field(&mut state, &attacker, "wielded_main", wielded_melee_item("SwordLong"));
 
-    // Action pipeline: ActionStarted → DeductCost → resolve body → ActionCompleted
+    // Action pipeline: ActionStarted → RequiresCheck → DeductCost → resolve body → ActionCompleted
     let atk_roll = scripted_roll(1, 20, 0, vec![15], vec![15], 15, 15);
     let dmg_roll = scripted_roll(1, 8, 0, vec![6], vec![6], 6, 6);
     let mut handler = ScriptedHandler::with_responses(vec![
         Response::Acknowledged,
+        Response::Acknowledged, // RequiresCheck (wielded_melee is_some → pass)
         Response::Acknowledged,
         atk_roll,
         dmg_roll,
@@ -1583,10 +1586,7 @@ fn melee_attack_action_hits_and_damages() {
                 eff_handler,
                 "MeleeAttack",
                 attacker,
-                vec![
-                    Value::Entity(target),
-                    enum_variant("MeleeWeapon", "SwordLong"),
-                ],
+                vec![Value::Entity(target)],
             )
             .unwrap();
     });
@@ -1620,15 +1620,18 @@ fn melee_attack_action_miss_preserves_hp() {
         1,
         &standard_abilities_12(),
         10,
-        18,
+        17,
         "Human",
     );
     state.set_turn_budget(&attacker, combat_turn_budget());
+    // Equip a dagger on the attacker
+    set_field(&mut state, &attacker, "wielded_main", wielded_melee_item("Dagger"));
 
-    // Roll 5 → miss (5+0 = 5 < 18)
+    // Roll 5 → miss (5+0 = 5 < 17)
     let atk_roll = scripted_roll(1, 20, 0, vec![5], vec![5], 5, 5);
     let mut handler = ScriptedHandler::with_responses(vec![
         Response::Acknowledged,
+        Response::Acknowledged, // RequiresCheck
         Response::Acknowledged,
         atk_roll,
     ]);
@@ -1641,7 +1644,7 @@ fn melee_attack_action_miss_preserves_hp() {
                 eff_handler,
                 "MeleeAttack",
                 attacker,
-                vec![Value::Entity(target), enum_variant("MeleeWeapon", "Dagger")],
+                vec![Value::Entity(target)],
             )
             .unwrap();
     });
@@ -1680,12 +1683,15 @@ fn missile_attack_action_hits() {
         "Human",
     );
     state.set_turn_budget(&attacker, combat_turn_budget());
+    // Equip a longbow on the attacker
+    set_field(&mut state, &attacker, "wielded_main", wielded_missile_item("BowLong"));
 
     // Roll 14 → 14+2+0+0 = 16 >= 12 → Hit; damage 1d6 roll 3
     let atk_roll = scripted_roll(1, 20, 0, vec![14], vec![14], 14, 14);
     let dmg_roll = scripted_roll(1, 6, 0, vec![3], vec![3], 3, 3);
     let mut handler = ScriptedHandler::with_responses(vec![
         Response::Acknowledged,
+        Response::Acknowledged, // RequiresCheck
         Response::Acknowledged,
         atk_roll,
         dmg_roll,
@@ -1699,11 +1705,7 @@ fn missile_attack_action_hits() {
                 eff_handler,
                 "MissileAttack",
                 attacker,
-                vec![
-                    Value::Entity(target),
-                    enum_variant("MissileWeapon", "BowLong"),
-                    feet(60),
-                ],
+                vec![Value::Entity(target), feet(60)],
             )
             .unwrap();
     });
@@ -1745,6 +1747,8 @@ fn charge_action_adds_attack_mod() {
         "Human",
     );
     state.set_turn_budget(&attacker, combat_turn_budget());
+    // Equip a longsword on the charger
+    set_field(&mut state, &attacker, "wielded_main", wielded_melee_item("SwordLong"));
 
     // Roll 12 → 12+0+0+2 = 14 >= 14 → Hit (only hits because of +2 charge bonus)
     let atk_roll = scripted_roll(1, 20, 0, vec![12], vec![12], 12, 12);
@@ -1752,7 +1756,7 @@ fn charge_action_adds_attack_mod() {
     let dmg_roll = scripted_roll(1, 8, 0, vec![5], vec![5], 5, 5);
     let mut handler = ScriptedHandler::with_responses(vec![
         Response::Acknowledged, // ActionStarted
-        Response::Acknowledged, // RequiresCheck (no ChargeRecovery → pass)
+        Response::Acknowledged, // RequiresCheck (wielded + no ChargeRecovery → pass)
         Response::Acknowledged, // DeductCost(attack)
         atk_roll,
         dmg_roll,
@@ -1766,10 +1770,7 @@ fn charge_action_adds_attack_mod() {
                 eff_handler,
                 "Charge",
                 attacker,
-                vec![
-                    Value::Entity(target),
-                    enum_variant("MeleeWeapon", "SwordLong"),
-                ],
+                vec![Value::Entity(target)],
             )
             .unwrap();
     });
@@ -1807,11 +1808,13 @@ fn charge_would_miss_without_bonus() {
         "Human",
     );
     state.set_turn_budget(&attacker, combat_turn_budget());
+    set_field(&mut state, &attacker, "wielded_main", wielded_melee_item("SwordLong"));
 
     // Roll 12 → 12+0+0 = 12 < 14 → Miss (no charge bonus)
     let atk_roll = scripted_roll(1, 20, 0, vec![12], vec![12], 12, 12);
     let mut handler = ScriptedHandler::with_responses(vec![
         Response::Acknowledged,
+        Response::Acknowledged, // RequiresCheck
         Response::Acknowledged,
         atk_roll,
     ]);
@@ -1824,10 +1827,7 @@ fn charge_would_miss_without_bonus() {
                 eff_handler,
                 "MeleeAttack",
                 attacker,
-                vec![
-                    Value::Entity(target),
-                    enum_variant("MeleeWeapon", "SwordLong"),
-                ],
+                vec![Value::Entity(target)],
             )
             .unwrap();
     });
@@ -1867,12 +1867,14 @@ fn melee_attack_emits_creature_slain_on_kill() {
         "Human",
     );
     state.set_turn_budget(&attacker, combat_turn_budget());
+    set_field(&mut state, &attacker, "wielded_main", wielded_melee_item("SwordLong"));
 
     // Roll 18 → hit; damage 1d8 roll 5 → 5 damage kills target (3 HP)
     let atk_roll = scripted_roll(1, 20, 0, vec![18], vec![18], 18, 18);
     let dmg_roll = scripted_roll(1, 8, 0, vec![5], vec![5], 5, 5);
     let mut handler = ScriptedHandler::with_responses(vec![
         Response::Acknowledged,
+        Response::Acknowledged, // RequiresCheck
         Response::Acknowledged,
         atk_roll,
         dmg_roll,
@@ -1886,10 +1888,7 @@ fn melee_attack_emits_creature_slain_on_kill() {
                 eff_handler,
                 "MeleeAttack",
                 attacker,
-                vec![
-                    Value::Entity(target),
-                    enum_variant("MeleeWeapon", "SwordLong"),
-                ],
+                vec![Value::Entity(target)],
             )
             .unwrap();
     });

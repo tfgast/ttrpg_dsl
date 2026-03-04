@@ -67,6 +67,53 @@ system "OSRIC" {
 
     enum EncumbranceTier ordered { Unencumbered, Light, Moderate, Heavy, Overloaded }
 
+    // --- Damage types ---
+
+    enum DamageType { Slashing, Piercing, Blunt }
+
+    // --- Weapon enums (bare types; lookup tables in OSRIC Equipment) ---
+
+    enum MeleeWeapon {
+        BattleAxe, HandAxe, Club, Dagger, FistOrKick,
+        FlailHeavy, FlailLight, Halberd, Javelin, Lance,
+        MaceHeavy, MaceLight, MorningStar,
+        PickHeavy, PickLight, PoleArm, Spear, Staff,
+        SwordBastard, SwordBroad, SwordLong, SwordScimitar,
+        SwordShort, SwordTwoHanded, Trident,
+        WarhammerHeavy, WarhammerLight
+    }
+
+    enum MissileWeapon {
+        BowLong, BowShort, CompositeBowLong, CompositeBowShort,
+        CrossbowHeavy, CrossbowLight,
+        DaggerThrown, HandAxeThrown, ClubThrown, DartThrown,
+        JavelinThrown, SpearThrown, Sling, SlingStone, WarhammerThrown
+    }
+
+    // --- Armour / shield enums (lookup tables in OSRIC Equipment) ---
+
+    enum ArmourType {
+        Banded, ChainMail, ElfinMail, Leather, Padded,
+        PlateMail, RingMail, ScaleLamellar, Splint, StuddedLeather
+    }
+
+    enum ShieldType { SmallShield, MediumShield, LargeShield }
+
+    // --- Equipment wrapper types ---
+
+    enum WieldedItem {
+        Melee(weapon: MeleeWeapon),
+        Missile(weapon: MissileWeapon)
+    }
+
+    struct Armor {
+        armour_type: ArmourType
+    }
+
+    struct Shield {
+        shield_type: ShieldType
+    }
+
     // --- Saving throw categories (five in 1e/OSRIC) ---
 
     enum SaveCategory {
@@ -204,13 +251,18 @@ system "OSRIC" {
         abilities: map<Ability, int>
         max_hp: int
         hp: resource(0..=max_hp)
-        armor_ac: int = 10              // base armor AC; DEX and shield computed via effective_target_ac
-        shield_ac_bonus: int = 0        // AC contribution from shield (for condition negation)
         base_movement: Feet = 120ft
-        current_weight: int = 0            // lbs carried; manual now, inventory-derived later
-        armour_movement_cap: Feet = 0ft    // 0ft = no armour cap; set from equipped armour
+        current_weight: int = 0            // lbs carried; updated by equip/unequip functions
         gold: int = 0
         saving_throws: option<SavingThrows>
+
+        // Equipment slots — managed by equip/unequip functions in OSRIC Equipment.
+        // Weapon slots use WieldedItem enum; armour/shield use wrapper structs.
+        // AC and movement cap are derived from these slots, not stored as raw ints.
+        wielded_main: option<WieldedItem> = none
+        wielded_off: option<WieldedItem> = none
+        worn_armor: option<Armor> = none
+        worn_shield: option<Shield> = none
 
         optional ExceptionalStrength {
             percentile: int

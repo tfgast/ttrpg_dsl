@@ -107,6 +107,92 @@ pub fn shield_variant(variant: &str) -> Value {
     enum_variant("ShieldType", variant)
 }
 
+/// Construct an `option<Armor>` value with the given ArmourType variant.
+pub fn worn_armor(armour_type: &str) -> Value {
+    Value::Option(Some(Box::new(Value::Struct {
+        name: Name::from("Armor"),
+        fields: {
+            let mut f = BTreeMap::new();
+            f.insert(
+                Name::from("armour_type"),
+                enum_variant("ArmourType", armour_type),
+            );
+            f
+        },
+    })))
+}
+
+/// Construct an `option<Shield>` value with the given ShieldType variant.
+pub fn worn_shield(shield_type: &str) -> Value {
+    Value::Option(Some(Box::new(Value::Struct {
+        name: Name::from("Shield"),
+        fields: {
+            let mut f = BTreeMap::new();
+            f.insert(
+                Name::from("shield_type"),
+                enum_variant("ShieldType", shield_type),
+            );
+            f
+        },
+    })))
+}
+
+/// Construct an `option<WieldedItem>` for a melee weapon.
+pub fn wielded_melee_item(weapon: &str) -> Value {
+    Value::Option(Some(Box::new(Value::EnumVariant {
+        enum_name: Name::from("WieldedItem"),
+        variant: Name::from("Melee"),
+        fields: {
+            let mut f = BTreeMap::new();
+            f.insert(Name::from("weapon"), enum_variant("MeleeWeapon", weapon));
+            f
+        },
+    })))
+}
+
+/// Construct an `option<WieldedItem>` for a missile weapon.
+pub fn wielded_missile_item(weapon: &str) -> Value {
+    Value::Option(Some(Box::new(Value::EnumVariant {
+        enum_name: Name::from("WieldedItem"),
+        variant: Name::from("Missile"),
+        fields: {
+            let mut f = BTreeMap::new();
+            f.insert(
+                Name::from("weapon"),
+                enum_variant("MissileWeapon", weapon),
+            );
+            f
+        },
+    })))
+}
+
+/// Map an AC value to the appropriate `option<Armor>`.
+/// Standard armor ACs: 10(none), 12(Leather), 13(StuddedLeather),
+/// 14(ScaleLamellar), 15(ChainMail), 16(Banded), 17(PlateMail).
+pub fn armor_for_ac(ac: i64) -> Value {
+    match ac {
+        10 => Value::Option(None),
+        12 => worn_armor("Leather"),
+        13 => worn_armor("StuddedLeather"),
+        14 => worn_armor("ScaleLamellar"),
+        15 => worn_armor("ChainMail"),
+        16 => worn_armor("Banded"),
+        17 => worn_armor("PlateMail"),
+        _ => panic!("No standard armor for AC {ac}; use worn_armor() directly"),
+    }
+}
+
+/// Map an armour movement cap to an appropriate armor type.
+pub fn armor_for_movement_cap(cap: i64) -> Value {
+    match cap {
+        0 => Value::Option(None),
+        60 => worn_armor("PlateMail"),
+        90 => worn_armor("ChainMail"),
+        120 => worn_armor("Leather"),
+        _ => panic!("No standard armor for movement cap {cap}ft"),
+    }
+}
+
 pub fn class_level_struct(class: &str, level: i64, xp: i64) -> Value {
     Value::Struct {
         name: Name::from("ClassLevel"),
@@ -307,16 +393,19 @@ pub fn make_character(
     fields.insert(Name::from("abilities"), Value::Map(ability_map));
     fields.insert(Name::from("max_hp"), Value::Int(max_hp));
     fields.insert(Name::from("hp"), Value::Int(max_hp));
-    fields.insert(Name::from("armor_ac"), Value::Int(ac));
-    fields.insert(Name::from("shield_ac_bonus"), Value::Int(0));
     fields.insert(Name::from("base_movement"), feet(120));
+    fields.insert(Name::from("current_weight"), Value::Int(0));
     fields.insert(Name::from("gold"), Value::Int(0));
     fields.insert(Name::from("saving_throws"), Value::Option(None));
+    fields.insert(Name::from("wielded_main"), Value::Option(None));
+    fields.insert(Name::from("wielded_off"), Value::Option(None));
+    fields.insert(Name::from("worn_armor"), armor_for_ac(ac));
+    fields.insert(Name::from("worn_shield"), Value::Option(None));
 
     state.add_entity("Character", fields)
 }
 
-/// Build a Character with explicit shield AC bonus.
+/// Build a Character with a shield equipped (SmallShield, +1 AC).
 #[allow(clippy::too_many_arguments)]
 pub fn make_character_with_shield(
     state: &mut GameState,
@@ -326,7 +415,7 @@ pub fn make_character_with_shield(
     abilities: &[(&str, i64)],
     max_hp: i64,
     ac: i64,
-    shield_ac_bonus: i64,
+    _shield_ac_bonus: i64,
     ancestry: &str,
 ) -> EntityRef {
     let mut ability_map = BTreeMap::new();
@@ -349,11 +438,14 @@ pub fn make_character_with_shield(
     fields.insert(Name::from("abilities"), Value::Map(ability_map));
     fields.insert(Name::from("max_hp"), Value::Int(max_hp));
     fields.insert(Name::from("hp"), Value::Int(max_hp));
-    fields.insert(Name::from("armor_ac"), Value::Int(ac));
-    fields.insert(Name::from("shield_ac_bonus"), Value::Int(shield_ac_bonus));
     fields.insert(Name::from("base_movement"), feet(120));
+    fields.insert(Name::from("current_weight"), Value::Int(0));
     fields.insert(Name::from("gold"), Value::Int(0));
     fields.insert(Name::from("saving_throws"), Value::Option(None));
+    fields.insert(Name::from("wielded_main"), Value::Option(None));
+    fields.insert(Name::from("wielded_off"), Value::Option(None));
+    fields.insert(Name::from("worn_armor"), armor_for_ac(ac));
+    fields.insert(Name::from("worn_shield"), worn_shield("SmallShield"));
 
     state.add_entity("Character", fields)
 }
@@ -390,11 +482,14 @@ pub fn make_caster(
     fields.insert(Name::from("abilities"), Value::Map(ability_map));
     fields.insert(Name::from("max_hp"), Value::Int(max_hp));
     fields.insert(Name::from("hp"), Value::Int(max_hp));
-    fields.insert(Name::from("armor_ac"), Value::Int(ac));
-    fields.insert(Name::from("shield_ac_bonus"), Value::Int(0));
     fields.insert(Name::from("base_movement"), feet(120));
+    fields.insert(Name::from("current_weight"), Value::Int(0));
     fields.insert(Name::from("gold"), Value::Int(0));
     fields.insert(Name::from("saving_throws"), Value::Option(None));
+    fields.insert(Name::from("wielded_main"), Value::Option(None));
+    fields.insert(Name::from("wielded_off"), Value::Option(None));
+    fields.insert(Name::from("worn_armor"), armor_for_ac(ac));
+    fields.insert(Name::from("worn_shield"), Value::Option(None));
     fields.insert(
         Name::from("Spellcasting"),
         Value::Struct {
@@ -438,6 +533,7 @@ pub fn make_monster(
 }
 
 /// Build a Character for encumbrance tests (different signature: weight + armour cap).
+/// Maps armour_cap to an appropriate worn armor type (0=none, 60=PlateMail, 90=ChainMail, 120=Leather).
 pub fn make_encumbrance_character(
     state: &mut GameState,
     name: &str,
@@ -469,13 +565,14 @@ pub fn make_encumbrance_character(
     fields.insert(Name::from("abilities"), Value::Map(ability_map));
     fields.insert(Name::from("max_hp"), Value::Int(10));
     fields.insert(Name::from("hp"), Value::Int(10));
-    fields.insert(Name::from("armor_ac"), Value::Int(10));
-    fields.insert(Name::from("shield_ac_bonus"), Value::Int(0));
     fields.insert(Name::from("base_movement"), feet(120));
     fields.insert(Name::from("current_weight"), Value::Int(current_weight));
-    fields.insert(Name::from("armour_movement_cap"), feet(armour_cap));
     fields.insert(Name::from("gold"), Value::Int(0));
     fields.insert(Name::from("saving_throws"), Value::Option(None));
+    fields.insert(Name::from("wielded_main"), Value::Option(None));
+    fields.insert(Name::from("wielded_off"), Value::Option(None));
+    fields.insert(Name::from("worn_armor"), armor_for_movement_cap(armour_cap));
+    fields.insert(Name::from("worn_shield"), Value::Option(None));
 
     state.add_entity("Character", fields)
 }
@@ -506,13 +603,22 @@ pub fn make_ability_character(
     fields.insert(Name::from("abilities"), Value::Map(ability_map));
     fields.insert(Name::from("max_hp"), Value::Int(10));
     fields.insert(Name::from("hp"), Value::Int(10));
-    fields.insert(Name::from("armor_ac"), Value::Int(10));
-    fields.insert(Name::from("shield_ac_bonus"), Value::Int(0));
     fields.insert(Name::from("base_movement"), feet(120));
+    fields.insert(Name::from("current_weight"), Value::Int(0));
     fields.insert(Name::from("gold"), Value::Int(0));
     fields.insert(Name::from("saving_throws"), Value::Option(None));
+    fields.insert(Name::from("wielded_main"), Value::Option(None));
+    fields.insert(Name::from("wielded_off"), Value::Option(None));
+    fields.insert(Name::from("worn_armor"), Value::Option(None));
+    fields.insert(Name::from("worn_shield"), Value::Option(None));
 
     state.add_entity("Character", fields)
+}
+
+/// Write a top-level field on an entity by name.
+pub fn set_field(state: &mut GameState, entity: &EntityRef, field: &str, value: Value) {
+    use ttrpg_interp::effect::FieldPathSegment;
+    state.write_field(entity, &[FieldPathSegment::Field(field.into())], value);
 }
 
 pub fn apply_encumbrance(state: &mut GameState, entity: &EntityRef, tier_variant: &str) {

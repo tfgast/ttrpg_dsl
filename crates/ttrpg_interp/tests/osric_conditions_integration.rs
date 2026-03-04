@@ -678,7 +678,7 @@ fn paralyzed_on_target_adds_20_melee() {
         1,
         &standard_abilities_12(),
         10,
-        18,
+        17,
         "Human",
     );
 
@@ -727,7 +727,7 @@ fn sleeping_on_target_adds_20_melee() {
         1,
         &standard_abilities_12(),
         10,
-        18,
+        17,
         "Human",
     );
 
@@ -1973,11 +1973,14 @@ fn condition_count_after_apply_and_remove() {
     char_fields.insert(Name::from("abilities"), Value::Map(BTreeMap::new()));
     char_fields.insert(Name::from("max_hp"), Value::Int(10));
     char_fields.insert(Name::from("hp"), Value::Int(10));
-    char_fields.insert(Name::from("armor_ac"), Value::Int(10));
-    char_fields.insert(Name::from("shield_ac_bonus"), Value::Int(0));
     char_fields.insert(Name::from("base_movement"), feet(120));
+    char_fields.insert(Name::from("current_weight"), Value::Int(0));
     char_fields.insert(Name::from("gold"), Value::Int(0));
     char_fields.insert(Name::from("saving_throws"), Value::Option(None));
+    char_fields.insert(Name::from("wielded_main"), Value::Option(None));
+    char_fields.insert(Name::from("wielded_off"), Value::Option(None));
+    char_fields.insert(Name::from("worn_armor"), Value::Option(None));
+    char_fields.insert(Name::from("worn_shield"), Value::Option(None));
     let entity = state.add_entity("Character", char_fields);
 
     // Apply three conditions
@@ -2452,7 +2455,7 @@ fn paralyzed_auto_hit_max_damage_battleaxe() {
         1,
         &standard_abilities_12(),
         10,
-        18,
+        17,
         "Human",
     );
 
@@ -2498,7 +2501,7 @@ fn paralyzed_auto_hit_max_damage_monster_attack() {
         1,
         &standard_abilities_12(),
         10,
-        18,
+        17,
         "Human",
     );
 

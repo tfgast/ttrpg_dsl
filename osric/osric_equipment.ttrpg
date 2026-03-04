@@ -16,33 +16,14 @@ use "OSRIC Classes"
 system "OSRIC Equipment" {
 
     // ========================================================
-    //  DAMAGE TYPES
-    //
-    //  Some weapons have multiple types (wielder's choice);
-    //  we store the primary type here.
-    // ========================================================
-
-    enum DamageType { Slashing, Piercing, Blunt }
-
-
-    // ========================================================
     //  MELEE WEAPONS — Table 1.4.2.3b + 1.4.2.3c
     //
     //  All standard melee weapons with damage, speed factor,
     //  weight, cost (in copper pieces), and primary damage type.
     //  "hands" is typical hands required; "one_hand_str" is the
     //  minimum STR to wield one-handed (0 = no exception).
+    //  Enum types are in OSRIC core; stat structs and lookups here.
     // ========================================================
-
-    enum MeleeWeapon {
-        BattleAxe, HandAxe, Club, Dagger, FistOrKick,
-        FlailHeavy, FlailLight, Halberd, Javelin, Lance,
-        MaceHeavy, MaceLight, MorningStar,
-        PickHeavy, PickLight, PoleArm, Spear, Staff,
-        SwordBastard, SwordBroad, SwordLong, SwordScimitar,
-        SwordShort, SwordTwoHanded, Trident,
-        WarhammerHeavy, WarhammerLight
-    }
 
     struct MeleeWeaponDef {
         hands: int
@@ -95,6 +76,34 @@ system "OSRIC Equipment" {
 
 
     // ========================================================
+    //  WIELDED ITEM HELPERS
+    //
+    //  Utility derives for WieldedItem (enum in OSRIC core).
+    // ========================================================
+
+    derive wielded_item_weight(item: WieldedItem) -> int {
+        match item {
+            Melee(w) => melee_weapon_def(w).weight,
+            Missile(w) => missile_weapon_def(w).weight
+        }
+    }
+
+    derive wielded_item_hands(item: WieldedItem) -> int {
+        match item {
+            Melee(w) => melee_weapon_def(w).hands,
+            Missile(w) => missile_weapon_def(w).hands
+        }
+    }
+
+    derive wielded_item_speed_factor(item: WieldedItem) -> int {
+        match item {
+            Melee(w) => melee_weapon_def(w).speed_factor,
+            Missile(w) => 0
+        }
+    }
+
+
+    // ========================================================
     //  MISSILE WEAPONS — Table 1.4.2.3d
     //
     //  is_hurled: true = thrown (add STR bonus to damage),
@@ -103,14 +112,8 @@ system "OSRIC Equipment" {
     //  (heavy crossbow only).
     //  Sling has two ammo variants: Sling (bullet, 1d4+1/1d6+1)
     //  and SlingStone (stone, 1d4/1d4).
+    //  Enum type is in OSRIC core; stat struct and lookup here.
     // ========================================================
-
-    enum MissileWeapon {
-        BowLong, BowShort, CompositeBowLong, CompositeBowShort,
-        CrossbowHeavy, CrossbowLight,
-        DaggerThrown, HandAxeThrown, ClubThrown, DartThrown,
-        JavelinThrown, SpearThrown, Sling, SlingStone, WarhammerThrown
-    }
 
     struct MissileWeaponDef {
         hands: int
@@ -151,12 +154,8 @@ system "OSRIC Equipment" {
     //  Ascending AC (higher = better). Unarmoured = 10.
     //  movement_cap: max movement rate in armour (0 = no cap).
     //  All purchased armour includes a helmet.
+    //  Enum type is in OSRIC core; stat struct and lookup here.
     // ========================================================
-
-    enum ArmourType {
-        Banded, ChainMail, ElfinMail, Leather, Padded,
-        PlateMail, RingMail, ScaleLamellar, Splint, StuddedLeather
-    }
 
     struct ArmourDef {
         ascending_ac: int
@@ -186,9 +185,8 @@ system "OSRIC Equipment" {
     //
     //  All shields grant +1 ascending AC. They differ in how
     //  many incoming attacks per round the shield can block.
+    //  Enum type is in OSRIC core; stat struct and lookup here.
     // ========================================================
-
-    enum ShieldType { SmallShield, MediumShield, LargeShield }
 
     struct ShieldDef {
         ac_bonus: int
@@ -202,6 +200,138 @@ system "OSRIC Equipment" {
             SmallShield => ShieldDef { ac_bonus: 1, max_blocks: 1, weight: 5, cost_gp: 10 },
             MediumShield => ShieldDef { ac_bonus: 1, max_blocks: 2, weight: 8, cost_gp: 12 },
             LargeShield => ShieldDef { ac_bonus: 1, max_blocks: 3, weight: 10, cost_gp: 15 }
+        }
+    }
+
+
+    // ========================================================
+    //  EQUIPMENT EXTRACTION HELPERS
+    //
+    //  Convenience derives for reading weapon type from
+    //  wielded slots and computing derived equipment stats.
+    // ========================================================
+
+    derive wielded_melee(char: Character) -> option<MeleeWeapon> {
+        if char.wielded_main.is_some() {
+            match char.wielded_main.unwrap() {
+                Melee(w) => some(w),
+                _ => none
+            }
+        } else {
+            none
+        }
+    }
+
+    derive wielded_missile(char: Character) -> option<MissileWeapon> {
+        if char.wielded_main.is_some() {
+            match char.wielded_main.unwrap() {
+                Missile(w) => some(w),
+                _ => none
+            }
+        } else {
+            none
+        }
+    }
+
+    derive wielded_off_melee(char: Character) -> option<MeleeWeapon> {
+        if char.wielded_off.is_some() {
+            match char.wielded_off.unwrap() {
+                Melee(w) => some(w),
+                _ => none
+            }
+        } else {
+            none
+        }
+    }
+
+    // Movement cap from worn armour; 0ft = no cap (unarmoured).
+    derive armor_movement_cap(char: Character) -> Feet {
+        if char.worn_armor.is_some() {
+            armour_def(char.worn_armor.unwrap().armour_type).movement_cap
+        } else {
+            0ft
+        }
+    }
+
+
+    // ========================================================
+    //  EQUIP / UNEQUIP FUNCTIONS
+    //
+    //  Mutate entity equipment slots with hands-constraint
+    //  validation. Update current_weight automatically.
+    //  Callers should call update_encumbrance() after armour
+    //  changes if the EncumbranceState condition is in use.
+    // ========================================================
+
+    function unequip_main(char: Character) {
+        if char.wielded_main.is_some() {
+            char.current_weight = char.current_weight - wielded_item_weight(char.wielded_main.unwrap())
+            char.wielded_main = none
+        }
+    }
+
+    function unequip_off(char: Character) {
+        if char.wielded_off.is_some() {
+            char.current_weight = char.current_weight - wielded_item_weight(char.wielded_off.unwrap())
+            char.wielded_off = none
+        }
+    }
+
+    function unequip_armor(char: Character) {
+        if char.worn_armor.is_some() {
+            char.current_weight = char.current_weight - armour_def(char.worn_armor.unwrap().armour_type).weight
+            char.worn_armor = none
+        }
+    }
+
+    function unequip_shield(char: Character) {
+        if char.worn_shield.is_some() {
+            char.current_weight = char.current_weight - shield_def(char.worn_shield.unwrap().shield_type).weight
+            char.worn_shield = none
+        }
+    }
+
+    function equip_main(char: Character, item: WieldedItem) {
+        // Remove old item
+        unequip_main(char)
+        // Two-handed items clear off-hand and shield
+        if wielded_item_hands(item) == 2 {
+            unequip_off(char)
+            unequip_shield(char)
+        }
+        char.wielded_main = some(item)
+        char.current_weight = char.current_weight + wielded_item_weight(item)
+    }
+
+    function equip_off(char: Character, item: WieldedItem) {
+        // Validate main hand isn't two-handed
+        if char.wielded_main.is_some() && wielded_item_hands(char.wielded_main.unwrap()) == 2 {
+            error("Cannot equip off-hand: main-hand weapon is two-handed")
+        } else {
+            // Off-hand and shield are mutually exclusive
+            unequip_off(char)
+            unequip_shield(char)
+            char.wielded_off = some(item)
+            char.current_weight = char.current_weight + wielded_item_weight(item)
+        }
+    }
+
+    function equip_armor(char: Character, armor: Armor) {
+        unequip_armor(char)
+        char.worn_armor = some(armor)
+        char.current_weight = char.current_weight + armour_def(armor.armour_type).weight
+    }
+
+    function equip_shield(char: Character, shield: Shield) {
+        // Shield requires free off-hand
+        if char.wielded_off.is_some() {
+            error("Cannot equip shield: off-hand is occupied")
+        } else if char.wielded_main.is_some() && wielded_item_hands(char.wielded_main.unwrap()) == 2 {
+            error("Cannot equip shield: main-hand weapon is two-handed")
+        } else {
+            unequip_shield(char)
+            char.worn_shield = some(shield)
+            char.current_weight = char.current_weight + shield_def(shield.shield_type).weight
         }
     }
 

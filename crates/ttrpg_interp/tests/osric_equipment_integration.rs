@@ -81,6 +81,18 @@ fn get_equipment_decls(program: &ttrpg_ast::ast::Program) -> &[ttrpg_ast::Spanne
     panic!("no system block named 'OSRIC Equipment' found");
 }
 
+/// Extract all DeclKind items from the "OSRIC" core system block.
+fn get_core_decls(program: &ttrpg_ast::ast::Program) -> &[ttrpg_ast::Spanned<DeclKind>] {
+    for item in &program.items {
+        if let TopLevel::System(sys) = &item.node {
+            if sys.name == "OSRIC" {
+                return &sys.decls;
+            }
+        }
+    }
+    panic!("no system block named 'OSRIC' found");
+}
+
 /// Call a derive and return struct fields as BTreeMap<String, Value>.
 fn get_struct_fields(
     interp: &Interpreter,
@@ -176,7 +188,7 @@ fn osric_equipment_parses_and_typechecks() {
 #[test]
 fn damage_type_enum_has_3_variants() {
     let (program, _) = compile_osric_equipment();
-    let decls = get_equipment_decls(&program);
+    let decls = get_core_decls(&program);
     let dt = decls
         .iter()
         .find_map(|d| match &d.node {
@@ -192,7 +204,7 @@ fn damage_type_enum_has_3_variants() {
 #[test]
 fn melee_weapon_enum_has_27_variants() {
     let (program, _) = compile_osric_equipment();
-    let decls = get_equipment_decls(&program);
+    let decls = get_core_decls(&program);
     let mw = decls
         .iter()
         .find_map(|d| match &d.node {
@@ -241,7 +253,7 @@ fn melee_weapon_enum_has_27_variants() {
 #[test]
 fn missile_weapon_enum_has_15_variants() {
     let (program, _) = compile_osric_equipment();
-    let decls = get_equipment_decls(&program);
+    let decls = get_core_decls(&program);
     let mw = decls
         .iter()
         .find_map(|d| match &d.node {
@@ -285,7 +297,7 @@ fn missile_weapon_enum_has_15_variants() {
 #[test]
 fn armour_type_enum_has_10_variants() {
     let (program, _) = compile_osric_equipment();
-    let decls = get_equipment_decls(&program);
+    let decls = get_core_decls(&program);
     let at = decls
         .iter()
         .find_map(|d| match &d.node {
@@ -317,7 +329,7 @@ fn armour_type_enum_has_10_variants() {
 #[test]
 fn shield_type_enum_has_3_variants() {
     let (program, _) = compile_osric_equipment();
-    let decls = get_equipment_decls(&program);
+    let decls = get_core_decls(&program);
     let st = decls
         .iter()
         .find_map(|d| match &d.node {

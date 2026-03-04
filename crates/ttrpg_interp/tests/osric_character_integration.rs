@@ -21,6 +21,8 @@ use osric_common::*;
 fn compile_osric_character() -> (ttrpg_ast::ast::Program, ttrpg_checker::CheckResult) {
     let core_source = include_str!("../../../osric/osric_core.ttrpg");
     let ability_source = include_str!("../../../osric/osric_ability.ttrpg");
+    let class_source = include_str!("../../../osric/osric_class.ttrpg");
+    let equipment_source = include_str!("../../../osric/osric_equipment.ttrpg");
     let character_source = include_str!("../../../osric/osric_character.ttrpg");
 
     let sources = vec![
@@ -31,6 +33,14 @@ fn compile_osric_character() -> (ttrpg_ast::ast::Program, ttrpg_checker::CheckRe
         (
             "osric/osric_ability.ttrpg".to_string(),
             ability_source.to_string(),
+        ),
+        (
+            "osric/osric_class.ttrpg".to_string(),
+            class_source.to_string(),
+        ),
+        (
+            "osric/osric_equipment.ttrpg".to_string(),
+            equipment_source.to_string(),
         ),
         (
             "osric/osric_character.ttrpg".to_string(),

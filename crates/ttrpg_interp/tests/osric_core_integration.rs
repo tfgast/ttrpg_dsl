@@ -115,8 +115,48 @@ fn osric_core_has_all_enums() {
         enums.contains(&("ThiefSkill", 8)),
         "missing ThiefSkill enum"
     );
+    // DamageType: 3 variants
+    assert!(
+        enums.contains(&("DamageType", 3)),
+        "missing DamageType enum"
+    );
+    // MeleeWeapon: 27 variants
+    assert!(
+        enums.contains(&("MeleeWeapon", 27)),
+        "missing MeleeWeapon enum"
+    );
+    // MissileWeapon: 15 variants
+    assert!(
+        enums.contains(&("MissileWeapon", 15)),
+        "missing MissileWeapon enum"
+    );
+    // ArmourType: 10 variants
+    assert!(
+        enums.contains(&("ArmourType", 10)),
+        "missing ArmourType enum"
+    );
+    // ShieldType: 3 variants
+    assert!(
+        enums.contains(&("ShieldType", 3)),
+        "missing ShieldType enum"
+    );
+    // WieldedItem: 2 data-carrying variants
+    assert!(
+        enums.contains(&("WieldedItem", 2)),
+        "missing WieldedItem enum"
+    );
+    // ClassingMode: 3 variants
+    assert!(
+        enums.contains(&("ClassingMode", 3)),
+        "missing ClassingMode enum"
+    );
+    // EncumbranceTier: 5 variants
+    assert!(
+        enums.contains(&("EncumbranceTier", 5)),
+        "missing EncumbranceTier enum"
+    );
 
-    assert_eq!(enums.len(), 12, "expected 12 enums, got {enums:?}");
+    assert_eq!(enums.len(), 18, "expected 18 enums, got {enums:?}");
 }
 
 #[test]
@@ -212,8 +252,23 @@ fn osric_core_has_all_structs() {
         structs.contains(&("MonsterAttack", 2)),
         "missing MonsterAttack struct"
     );
+    // Armor: armour_type
+    assert!(
+        structs.contains(&("Armor", 1)),
+        "missing Armor struct"
+    );
+    // Shield: shield_type
+    assert!(
+        structs.contains(&("Shield", 1)),
+        "missing Shield struct"
+    );
+    // ClassLevel: class, level, xp
+    assert!(
+        structs.contains(&("ClassLevel", 3)),
+        "missing ClassLevel struct"
+    );
 
-    assert_eq!(structs.len(), 6, "expected 6 structs, got {structs:?}");
+    assert_eq!(structs.len(), 8, "expected 8 structs, got {structs:?}");
 }
 
 // ── Unit type ──────────────────────────────────────────────────
@@ -279,13 +334,14 @@ fn character_entity_fields() {
         "abilities",
         "max_hp",
         "hp",
-        "armor_ac",
-        "shield_ac_bonus",
         "base_movement",
         "current_weight",
-        "armour_movement_cap",
         "gold",
         "saving_throws",
+        "wielded_main",
+        "wielded_off",
+        "worn_armor",
+        "worn_shield",
     ];
     for name in &expected_fields {
         assert!(

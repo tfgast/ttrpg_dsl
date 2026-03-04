@@ -262,9 +262,33 @@ system "OSRIC Combat" {
 
 
     // ========================================================
+    //  AC DERIVES — from equipment state
+    //
+    //  Base AC and shield bonus derived from worn equipment.
+    //  Replaces the old armor_ac / shield_ac_bonus entity fields.
+    // ========================================================
+
+    derive base_armor_ac(char: Character) -> int {
+        if char.worn_armor.is_some() {
+            armour_def(char.worn_armor.unwrap().armour_type).ascending_ac
+        } else {
+            10
+        }
+    }
+
+    derive base_shield_bonus(char: Character) -> int {
+        if char.worn_shield.is_some() {
+            shield_def(char.worn_shield.unwrap().shield_type).ac_bonus
+        } else {
+            0
+        }
+    }
+
+
+    // ========================================================
     //  EFFECTIVE TARGET AC
     //
-    //  Computes the target's effective AC from armor_ac,
+    //  Computes the target's effective AC from worn armour,
     //  DEX bonus, and shield bonus. Conditions can strip
     //  DEX or shield via Phase 1 overrides on include_dex
     //  and include_shield.
@@ -278,9 +302,9 @@ system "OSRIC Combat" {
     ) -> int #ac_defense {
         // Monks use level-based AC (class feature) and never receive DEX AC bonus.
         // Conditions that set include_dex = false are no-ops for monks.
-        let base_ac = if is_class(target, Monk) { monk_ac(class_level_for(target, Monk).unwrap()) } else { target.armor_ac }
+        let base_ac = if is_class(target, Monk) { monk_ac(class_level_for(target, Monk).unwrap()) } else { base_armor_ac(target) }
         let dex_bonus = if include_dex && !is_class(target, Monk) { dex_ac_adj(target.abilities[DEX]) } else { 0 }
-        let shield_bonus = if include_shield { target.shield_ac_bonus } else { 0 }
+        let shield_bonus = if include_shield { base_shield_bonus(target) } else { 0 }
         base_ac + dex_bonus + shield_bonus + ac_mod
     }
 
@@ -515,10 +539,14 @@ system "OSRIC Combat" {
     //  based initiative system will add timing constraints.
     // ========================================================
 
-    // Standard melee attack with a hand-held weapon.
-    action MeleeAttack on attacker: Character (target: Character, weapon: MeleeWeapon) {
+    // Standard melee attack with wielded main-hand weapon.
+    action MeleeAttack on attacker: Character (target: Character) {
         cost { attack }
+        requires {
+            wielded_melee(attacker).is_some()
+        }
         resolve {
+            let weapon = wielded_melee(attacker).unwrap()
             let result = resolve_melee_attack(attacker, target, weapon)
             match result.outcome {
                 AttackOutcome.Hit => {
@@ -530,14 +558,17 @@ system "OSRIC Combat" {
         }
     }
 
-    // Ranged attack with a missile weapon.
+    // Ranged attack with wielded missile weapon.
     action MissileAttack on attacker: Character (
         target: Character,
-        weapon: MissileWeapon,
         distance: Feet
     ) {
         cost { attack }
+        requires {
+            wielded_missile(attacker).is_some()
+        }
         resolve {
+            let weapon = wielded_missile(attacker).unwrap()
             let result = resolve_missile_attack(attacker, target, weapon, distance)
             match result.outcome {
                 AttackOutcome.Hit => {
@@ -576,12 +607,14 @@ system "OSRIC Combat" {
     // Per 1.6.2.1: once per 10 rounds, no DEX AC bonus for charger.
     // Charging condition (AC penalty) applied by resolve_action before
     // this action fires. ChargeRecovery cooldown applied here.
-    action Charge on attacker: Character (target: Character, weapon: MeleeWeapon) {
+    action Charge on attacker: Character (target: Character) {
         cost { attack }
         requires {
-            !any([c.name == "ChargeRecovery" for c in conditions(attacker)])
+            wielded_melee(attacker).is_some()
+            && !any([c.name == "ChargeRecovery" for c in conditions(attacker)])
         }
         resolve {
+            let weapon = wielded_melee(attacker).unwrap()
             apply_condition(attacker, ChargeRecovery, Duration.rounds(10))
             let result = resolve_melee_attack(attacker, target, weapon, 2)
             match result.outcome {
@@ -598,9 +631,14 @@ system "OSRIC Combat" {
     // opponent with a set weapon (spear, lance, etc.) inflicts double
     // damage. Per 1.6.2.1: "inflict double damage when set to receive
     // a charge if the foe actually charges."
-    action SetWeaponStrike on defender: Character (target: Character, weapon: MeleeWeapon) {
+    // Reads weapon from defender's wielded main-hand.
+    action SetWeaponStrike on defender: Character (target: Character) {
         cost { attack }
+        requires {
+            wielded_melee(defender).is_some()
+        }
         resolve {
+            let weapon = wielded_melee(defender).unwrap()
             let result = resolve_melee_attack(defender, target, weapon, 0)
             match result.outcome {
                 AttackOutcome.Hit => {

@@ -43,6 +43,7 @@ use "OSRIC"
 use "OSRIC Ability"
 use "OSRIC Classes"
 use "OSRIC Equipment"
+use "OSRIC Character"
 use "OSRIC Combat"
 use "OSRIC Conditions"
 
@@ -541,21 +542,26 @@ system "OSRIC Initiative" {
             MeleeAttackAction => {
                 let target = action.target.unwrap()
                 let weapon = action.weapon_melee.unwrap()
+                equip_main(action.combatant, WieldedItem.Melee(weapon))
                 with_budget(action.combatant, { attack: 1 }) {
-                    action.combatant.MeleeAttack(target, weapon)
+                    action.combatant.MeleeAttack(target)
                 }
             },
             MissileAttackAction => {
                 let target = action.target.unwrap()
                 let weapon = action.weapon_missile.unwrap()
+                equip_main(action.combatant, WieldedItem.Missile(weapon))
                 with_budget(action.combatant, { attack: 1 }) {
-                    action.combatant.MissileAttack(target, weapon, action.distance)
+                    action.combatant.MissileAttack(target, action.distance)
                 }
             },
             ChargeAction => {
                 let charger = action.combatant
                 let target = action.target.unwrap()
                 let charge_weapon = action.weapon_melee.unwrap()
+
+                // Equip charger's weapon
+                equip_main(charger, WieldedItem.Melee(charge_weapon))
 
                 // Apply Charging condition (strips DEX AC, -1 AC)
                 apply_condition(charger, Charging, Duration.end_of_round)
@@ -568,31 +574,34 @@ system "OSRIC Initiative" {
                 if len(set_actions) > 0 {
                     let set_weapon = first(set_actions).unwrap().weapon_melee.unwrap()
 
+                    // Equip defender's set weapon
+                    equip_main(target, WieldedItem.Melee(set_weapon))
+
                     if weapon_longer(set_weapon, charge_weapon) {
                         // Set weapon is longer — defender strikes first
                         with_budget(target, { attack: 1 }) {
-                            target.SetWeaponStrike(charger, set_weapon)
+                            target.SetWeaponStrike(charger)
                         }
                         if charger.hp > 0 {
                             with_budget(charger, { attack: 1 }) {
-                                charger.Charge(target, charge_weapon)
+                                charger.Charge(target)
                             }
                         }
                     } else {
                         // Charger has equal or longer weapon — strikes first
                         with_budget(charger, { attack: 1 }) {
-                            charger.Charge(target, charge_weapon)
+                            charger.Charge(target)
                         }
                         if target.hp > 0 {
                             with_budget(target, { attack: 1 }) {
-                                target.SetWeaponStrike(charger, set_weapon)
+                                target.SetWeaponStrike(charger)
                             }
                         }
                     }
                 } else {
                     // Normal charge, no set weapon opposition
                     with_budget(charger, { attack: 1 }) {
-                        charger.Charge(target, charge_weapon)
+                        charger.Charge(target)
                     }
                 }
             },
