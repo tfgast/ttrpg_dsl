@@ -76,6 +76,25 @@ entity Character {
 }
 ```
 
+### Restricted Fields
+
+Fields marked `restricted` can only be mutated within the declaring system. Other systems can read but not assign (`=`, `+=`, `-=`).
+
+```
+entity Character {
+    restricted HP: resource(0..=max_HP)    // only declaring system can modify
+    max_HP: int
+    name: string                           // any system can modify
+}
+
+group Spellcasting {
+    restricted spell_slots: int = 0
+    spell_dc: int
+}
+```
+
+Applies to entity, struct, and group fields. `grant` is exempt (initializes, doesn't mutate). Skipped in single-file/REPL mode.
+
 ### Group
 
 ```
@@ -494,5 +513,5 @@ Imports are NOT transitive.
 - Comments: `// line comment` (no block comments)
 - NL suppressed: inside `()` `[]`; after `+ - * / || && == != >= <= in => -> = += -=`; after `{ , : | #`
 - Reserved keywords: `let` `if` `else` `match` `true` `false` `none` `in` `for`
-- Soft keywords (usable as identifiers): `system` `use` `group` `enum` `struct` `entity` `derive` `mechanic` `function` `action` `reaction` `hook` `condition` `prompt` `option` `event` `move` `cost` `tag` `table` `unit` `suffix` `requires` `resolve` `modify` `suppress` `trigger` `roll` `on` `returns` `when` `enabled` `hint` `suggest` `description` `default` `result` `with` `has` `include` `as` `grant` `revoke` `emit` `free` `ordered` `extends`
+- Soft keywords (usable as identifiers): `system` `use` `group` `enum` `struct` `entity` `derive` `mechanic` `function` `action` `reaction` `hook` `condition` `prompt` `option` `event` `move` `cost` `tag` `table` `unit` `suffix` `requires` `resolve` `modify` `suppress` `trigger` `roll` `on` `returns` `when` `enabled` `hint` `suggest` `description` `default` `result` `with` `has` `include` `as` `grant` `revoke` `emit` `free` `ordered` `extends` `restricted`
 - Dice literals take precedence over unit literals (`2d6` is dice, not unit)

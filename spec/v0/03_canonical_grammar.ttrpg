@@ -60,6 +60,7 @@
 //     requires  resolve  modify  suppress  trigger  roll  on  returns
 //     when  enabled  hint  suggest  description  default  result
 //     with  with_budget  has  include  as  grant  revoke  emit  free  ordered
+     restricted
 //
 // Soft keywords CAN be used as field names, variable names, and
 // enum variants. The parser distinguishes based on position:
@@ -189,7 +190,27 @@ field_list      = field_entry ("," field_entry)* ","?
 field_entry     = IDENT ":" type
 
 field_defs      = (field_def (("," | NL) field_def)* ","?)?
-field_def       = IDENT ":" type ("=" expr)?
+field_def       = "restricted"? IDENT ":" type ("=" expr)?
+
+// The optional `restricted` modifier marks a field as mutable only within
+// the system that declares it. Other systems that import the type can
+// read the field but cannot assign to it (`=`, `+=`, `-=`).
+//
+// This enables module-level encapsulation: a core system can expose an
+// entity's fields for reading while reserving mutation rights.
+//
+// Examples:
+//   restricted HP: resource(0..=max_HP)     // only the declaring system can modify HP
+//   restricted spell_slots: int = 0         // restricted with a default value
+//   name: string                            // normal field — any system can mutate
+//
+// The check is skipped in single-file mode (no modules) and does not
+// apply to `grant` statements (which initialize group fields, not mutate
+// existing ones).
+//
+// Disambiguation: when a field is literally named "restricted", the
+// parser uses lookahead — if "restricted" is followed by IDENT ":",
+// it is the modifier; otherwise it is the field name.
 
 // --- Derive (pure, no dice, no mutation, no receiver) ---
 derive_decl     = "derive" IDENT "(" params ")" "->" type tag_list? block

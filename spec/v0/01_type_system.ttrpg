@@ -227,9 +227,31 @@ struct RollResult {
 //   TurnBudget { actions: 1, movement: 30 }
 //   // bonus_actions = 0, reactions = 0 (from defaults)
 //
-// This is the same `field_def = IDENT ":" type ("=" expr)?` syntax used
-// by groups, entities, events, and units — all field-bearing declarations
-// share the same default-value mechanism.
+// This is the same `field_def = "restricted"? IDENT ":" type ("=" expr)?`
+// syntax used by groups, entities, events, and units — all field-bearing
+// declarations share the same default-value mechanism.
+//
+// --- Restricted fields ---
+//
+// Fields may be marked `restricted` to limit mutation to the declaring
+// system. Other systems that import the type can read the field but
+// cannot assign to it (`=`, `+=`, `-=`).
+//
+//   entity Character {
+//       restricted HP: resource(0..=max_HP)   // only "Core" can mutate HP
+//       name: string                          // any system can mutate
+//       max_HP: int
+//   }
+//
+//   group Spellcasting {
+//       restricted spell_slots: int = 0       // restricted with default
+//       spell_dc: int
+//   }
+//
+// The restriction is enforced by the checker in multi-module mode.
+// Single-file mode (no modules) and REPL mode skip the check.
+// `grant` statements are exempt — they initialize group fields, not
+// mutate existing state. Reading restricted fields is always allowed.
 
 
 // --- Entities ---

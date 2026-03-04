@@ -36,7 +36,7 @@
 
 ---
 
-## Top 10 Mistakes
+## Top 11 Mistakes
 
 ### 1. Dice in derive
 
@@ -185,7 +185,26 @@ derive good(c: Creature with Flying | Swimming) -> int {
 }
 ```
 
-### 10. Missing event declaration before emit
+### 10. Mutating a restricted field from another system
+
+```ttrpg-err
+// core.ttrpg
+system "Core" {
+    entity Character { restricted HP: int }
+}
+
+// ext.ttrpg — imports Core
+use "Core"
+system "Ext" {
+    action Zap on target: Character () {
+        resolve { target.HP -= 1 }    // ERROR: restricted field
+    }
+}
+```
+
+Restricted fields can only be mutated within the declaring system. Other systems can read them freely. Move the mutation into the declaring system, or remove the `restricted` modifier if cross-system mutation is intended.
+
+### 11. Missing event declaration before emit
 
 ```ttrpg-err
 entity Character { name: string, HP: resource(0..=max_HP), max_HP: int, position: Position, AC: int }

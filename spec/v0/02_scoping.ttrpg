@@ -832,6 +832,51 @@ hook Regenerate on creature: Character (
 // and modifier(). Duplicate declarations within a merged system
 // are an error.
 //
+// --- Restricted field mutation ---
+//
+// Fields marked `restricted` can only be mutated (`=`, `+=`, `-=`)
+// within the system that declares the containing type or group.
+// Other systems can read restricted fields freely but cannot assign
+// to them.
+//
+// This provides module-level encapsulation: a core system can expose
+// entity state for reading while reserving mutation to its own
+// actions, functions, and hooks.
+//
+// EXAMPLE: Core declares HP as restricted; Extension cannot mutate it.
+//
+//   // core.ttrpg
+//   system "Core" {
+//       entity Character {
+//           restricted HP: resource(0..=max_HP)
+//           max_HP: int
+//       }
+//       action Heal on target: Character () {
+//           resolve { target.HP += 5 }   // OK — same system
+//       }
+//   }
+//
+//   // ext.ttrpg
+//   use "Core"
+//   system "Extension" {
+//       derive is_hurt(c: Character) -> bool { c.HP < c.max_HP }   // OK — read
+//       action Zap on target: Character () {
+//           resolve { target.HP -= 1 }   // ERROR: restricted field
+//       }
+//   }
+//
+// Rules:
+//   - Applies to entity fields, struct fields, group fields, and
+//     inline optional group fields.
+//   - The declaring system is determined by `type_owner` (for entity/
+//     struct fields) or `group_owner` (for top-level group fields),
+//     falling back to the entity's owner for inline groups.
+//   - `grant` is exempt: initializing group fields via grant is not
+//     treated as mutation, allowing cross-system group provisioning.
+//   - Single-file mode and REPL mode skip the check (no modules).
+//   - The error message identifies both the current system and the
+//     declaring system for easy diagnosis.
+
 // --- Import semantics ---
 //
 // `use` is a top-level declaration, not inside a system block.
