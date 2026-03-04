@@ -12,18 +12,19 @@
 //! CastingSpell condition (modifies #attack_resolution), SpellInterruption hook
 //! (fires on Damaged event while casting), and BeginCasting action.
 
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::BTreeMap;
 
-use rustc_hash::FxHashMap;
 use ttrpg_ast::ast::{DeclKind, TopLevel};
 use ttrpg_ast::diagnostic::Severity;
-use ttrpg_ast::Name;
 use ttrpg_interp::adapter::StateAdapter;
-use ttrpg_interp::effect::{Effect, EffectHandler, Response};
+use ttrpg_interp::effect::{Effect, Response};
 use ttrpg_interp::reference_state::GameState;
 use ttrpg_interp::state::{EntityRef, StateProvider};
-use ttrpg_interp::value::{DiceExpr, RollResult, Value};
+use ttrpg_interp::value::Value;
 use ttrpg_interp::Interpreter;
+
+mod osric_common;
+use osric_common::*;
 
 // ── Compile helpers ────────────────────────────────────────────
 
@@ -112,228 +113,7 @@ fn get_initiative_decls(program: &ttrpg_ast::ast::Program) -> &[ttrpg_ast::Spann
     panic!("no system block named 'OSRIC Initiative' found");
 }
 
-// ── Value helpers ──────────────────────────────────────────────
-
-fn enum_variant(enum_name: &str, variant: &str) -> Value {
-    Value::EnumVariant {
-        enum_name: Name::from(enum_name),
-        variant: Name::from(variant),
-        fields: BTreeMap::new(),
-    }
-}
-
-fn class_variant(variant: &str) -> Value {
-    enum_variant("Class", variant)
-}
-
-fn ability(variant: &str) -> Value {
-    enum_variant("Ability", variant)
-}
-
-fn feet(value: i64) -> Value {
-    Value::Struct {
-        name: Name::from("Feet"),
-        fields: {
-            let mut f = BTreeMap::new();
-            f.insert(Name::from("value"), Value::Int(value));
-            f
-        },
-    }
-}
-
-fn expect_feet(val: Value, ctx: &str) -> i64 {
-    match val {
-        Value::Struct { name, fields } => {
-            assert_eq!(&*name, "Feet", "{ctx}: expected Feet struct");
-            match fields.get(&Name::from("value")) {
-                Some(Value::Int(n)) => *n,
-                other => panic!("{ctx}: expected int value in Feet, got: {other:?}"),
-            }
-        }
-        other => panic!("{ctx}: expected Feet struct, got: {other:?}"),
-    }
-}
-
-fn action_type(variant: &str) -> Value {
-    enum_variant("DeclaredActionType", variant)
-}
-
-fn melee_weapon(variant: &str) -> Value {
-    enum_variant("MeleeWeapon", variant)
-}
-
-// ── Effect handler ─────────────────────────────────────────────
-
-struct NullHandler;
-impl EffectHandler for NullHandler {
-    fn handle(&mut self, _effect: Effect) -> Response {
-        Response::Acknowledged
-    }
-}
-
-struct ScriptedHandler {
-    script: VecDeque<Response>,
-    log: Vec<Effect>,
-}
-
-impl ScriptedHandler {
-    fn with_responses(responses: Vec<Response>) -> Self {
-        ScriptedHandler {
-            script: responses.into(),
-            log: Vec::new(),
-        }
-    }
-}
-
-impl EffectHandler for ScriptedHandler {
-    fn handle(&mut self, effect: Effect) -> Response {
-        self.log.push(effect);
-        self.script.pop_front().unwrap_or(Response::Acknowledged)
-    }
-}
-
-fn scripted_roll(
-    count: u32,
-    sides: u32,
-    modifier: i64,
-    dice_vals: Vec<i64>,
-    kept_vals: Vec<i64>,
-    total: i64,
-    unmodified: i64,
-) -> Response {
-    Response::Rolled(RollResult {
-        expr: DiceExpr::single(count, sides, None, modifier),
-        dice: dice_vals,
-        kept: kept_vals,
-        modifier,
-        total,
-        unmodified,
-    })
-}
-
-// ── Entity builders ────────────────────────────────────────────
-
-#[allow(clippy::too_many_arguments)]
-fn make_character(
-    state: &mut GameState,
-    name: &str,
-    class: &str,
-    level: i64,
-    abilities: &[(&str, i64)],
-    max_hp: i64,
-    ac: i64,
-    ancestry: &str,
-) -> EntityRef {
-    let mut ability_map = BTreeMap::new();
-    for &(ab, score) in abilities {
-        ability_map.insert(ability(ab), Value::Int(score));
-    }
-
-    let mut fields = FxHashMap::default();
-    fields.insert(Name::from("name"), Value::Str(name.to_string()));
-    fields.insert(Name::from("class"), class_variant(class));
-    fields.insert(Name::from("ancestry"), enum_variant("Ancestry", ancestry));
-    fields.insert(Name::from("level"), Value::Int(level));
-    fields.insert(
-        Name::from("alignment"),
-        enum_variant("Alignment", "TrueNeutral"),
-    );
-    fields.insert(Name::from("abilities"), Value::Map(ability_map));
-    fields.insert(Name::from("max_hp"), Value::Int(max_hp));
-    fields.insert(Name::from("hp"), Value::Int(max_hp));
-    fields.insert(Name::from("armor_ac"), Value::Int(ac));
-    fields.insert(Name::from("shield_ac_bonus"), Value::Int(0));
-    fields.insert(Name::from("xp"), Value::Int(0));
-    fields.insert(Name::from("base_movement"), feet(120));
-    fields.insert(Name::from("gold"), Value::Int(0));
-    fields.insert(Name::from("saving_throws"), Value::Option(None));
-
-    state.add_entity("Character", fields)
-}
-
-/// Build a Character with the Spellcasting optional group.
-#[allow(clippy::too_many_arguments)]
-fn make_caster(
-    state: &mut GameState,
-    name: &str,
-    class: &str,
-    level: i64,
-    abilities: &[(&str, i64)],
-    max_hp: i64,
-    ac: i64,
-    ancestry: &str,
-) -> EntityRef {
-    let mut ability_map = BTreeMap::new();
-    for &(ab, score) in abilities {
-        ability_map.insert(ability(ab), Value::Int(score));
-    }
-
-    let mut fields = FxHashMap::default();
-    fields.insert(Name::from("name"), Value::Str(name.to_string()));
-    fields.insert(Name::from("class"), class_variant(class));
-    fields.insert(Name::from("ancestry"), enum_variant("Ancestry", ancestry));
-    fields.insert(Name::from("level"), Value::Int(level));
-    fields.insert(
-        Name::from("alignment"),
-        enum_variant("Alignment", "TrueNeutral"),
-    );
-    fields.insert(Name::from("abilities"), Value::Map(ability_map));
-    fields.insert(Name::from("max_hp"), Value::Int(max_hp));
-    fields.insert(Name::from("hp"), Value::Int(max_hp));
-    fields.insert(Name::from("armor_ac"), Value::Int(ac));
-    fields.insert(Name::from("shield_ac_bonus"), Value::Int(0));
-    fields.insert(Name::from("xp"), Value::Int(0));
-    fields.insert(Name::from("base_movement"), feet(120));
-    fields.insert(Name::from("gold"), Value::Int(0));
-    fields.insert(Name::from("saving_throws"), Value::Option(None));
-    // Grant Spellcasting optional group
-    fields.insert(
-        Name::from("Spellcasting"),
-        Value::Struct {
-            name: Name::from("Spellcasting"),
-            fields: {
-                let mut f = BTreeMap::new();
-                f.insert(Name::from("casting_invocation"), Value::Option(None));
-                f
-            },
-        },
-    );
-
-    state.add_entity("Character", fields)
-}
-
-/// Standard abilities: all 12s (no modifiers).
-fn standard_abilities() -> Vec<(&'static str, i64)> {
-    vec![
-        ("STR", 12),
-        ("DEX", 12),
-        ("CON", 12),
-        ("INT", 12),
-        ("WIS", 12),
-        ("CHA", 12),
-    ]
-}
-
-/// Turn budget for OSRIC combat: just `attack` token.
-fn combat_turn_budget() -> BTreeMap<Name, Value> {
-    let mut b = BTreeMap::new();
-    b.insert("attack".into(), Value::Int(1));
-    b
-}
-
-fn get_int(fields: &BTreeMap<String, Value>, key: &str) -> i64 {
-    match fields.get(key) {
-        Some(Value::Int(n)) => *n,
-        other => panic!("expected int for '{key}', got: {other:?}"),
-    }
-}
-
-fn get_bool(fields: &BTreeMap<String, Value>, key: &str) -> bool {
-    match fields.get(key) {
-        Some(Value::Bool(b)) => *b,
-        other => panic!("expected bool for '{key}', got: {other:?}"),
-    }
-}
+// ── File-specific helpers ──────────────────────────────────────
 
 /// Call a mechanic that returns a struct and extract its fields.
 fn call_mechanic_struct(
@@ -383,7 +163,7 @@ fn resolve_melee(
             vec![
                 Value::Entity(attacker),
                 Value::Entity(target),
-                melee_weapon(weapon),
+                melee_variant(weapon),
             ],
         )
         .unwrap();
@@ -1851,7 +1631,7 @@ fn melee_order_dagger_vs_longsword() {
             &state,
             &mut NullHandler,
             "melee_order",
-            vec![melee_weapon("Dagger"), melee_weapon("SwordLong")],
+            vec![melee_variant("Dagger"), melee_variant("SwordLong")],
         )
         .unwrap();
     assert_eq!(val, Value::Bool(true));
@@ -1868,7 +1648,7 @@ fn melee_order_longsword_vs_dagger() {
             &state,
             &mut NullHandler,
             "melee_order",
-            vec![melee_weapon("SwordLong"), melee_weapon("Dagger")],
+            vec![melee_variant("SwordLong"), melee_variant("Dagger")],
         )
         .unwrap();
     assert_eq!(val, Value::Bool(false));
@@ -1885,7 +1665,7 @@ fn melee_order_same_weapon_is_false() {
             &state,
             &mut NullHandler,
             "melee_order",
-            vec![melee_weapon("SwordLong"), melee_weapon("SwordLong")],
+            vec![melee_variant("SwordLong"), melee_variant("SwordLong")],
         )
         .unwrap();
     assert_eq!(val, Value::Bool(false), "same weapon = not first");
@@ -1903,7 +1683,7 @@ fn melee_order_halberd_vs_fist() {
             &state,
             &mut NullHandler,
             "melee_order",
-            vec![melee_weapon("Halberd"), melee_weapon("FistOrKick")],
+            vec![melee_variant("Halberd"), melee_variant("FistOrKick")],
         )
         .unwrap();
     assert_eq!(
@@ -1917,7 +1697,7 @@ fn melee_order_halberd_vs_fist() {
             &state,
             &mut NullHandler,
             "melee_order",
-            vec![melee_weapon("FistOrKick"), melee_weapon("Halberd")],
+            vec![melee_variant("FistOrKick"), melee_variant("Halberd")],
         )
         .unwrap();
     assert_eq!(val2, Value::Bool(true));
@@ -2063,7 +1843,7 @@ fn can_set_against_charge_valid_weapons() {
                 &state,
                 &mut NullHandler,
                 "can_set_against_charge",
-                vec![melee_weapon(weapon)],
+                vec![melee_variant(weapon)],
             )
             .unwrap();
         assert_eq!(
@@ -2086,7 +1866,7 @@ fn can_set_against_charge_invalid_weapons() {
                 &state,
                 &mut NullHandler,
                 "can_set_against_charge",
-                vec![melee_weapon(weapon)],
+                vec![melee_variant(weapon)],
             )
             .unwrap();
         assert_eq!(
@@ -2113,7 +1893,7 @@ fn baseline_melee_attack_without_casting_spell() {
         "Fighter",
         "Fighter",
         5,
-        &standard_abilities(),
+        &standard_abilities_12(),
         30,
         15,
         "Human",
@@ -2123,7 +1903,7 @@ fn baseline_melee_attack_without_casting_spell() {
         "Target",
         "Fighter",
         1,
-        &standard_abilities(),
+        &standard_abilities_12(),
         10,
         14,
         "Human",
@@ -2160,7 +1940,7 @@ fn casting_spell_on_attacker_forces_miss() {
         "Fighter",
         "Fighter",
         5,
-        &standard_abilities(),
+        &standard_abilities_12(),
         30,
         15,
         "Human",
@@ -2170,7 +1950,7 @@ fn casting_spell_on_attacker_forces_miss() {
         "Target",
         "Fighter",
         1,
-        &standard_abilities(),
+        &standard_abilities_12(),
         10,
         14,
         "Human",
@@ -2231,7 +2011,7 @@ fn casting_spell_on_target_strips_dex_ac_but_attack_hits() {
         "Fighter",
         "Fighter",
         5,
-        &standard_abilities(),
+        &standard_abilities_12(),
         30,
         15,
         "Human",
@@ -2241,7 +2021,7 @@ fn casting_spell_on_target_strips_dex_ac_but_attack_hits() {
         "Target",
         "Fighter",
         1,
-        &standard_abilities(),
+        &standard_abilities_12(),
         10,
         14,
         "Human",
@@ -2304,7 +2084,7 @@ fn casting_spell_strips_high_dex_ac_bonus() {
         "Fighter",
         "Fighter",
         1,
-        &standard_abilities(),
+        &standard_abilities_12(),
         30,
         10,
         "Human",
@@ -2373,7 +2153,7 @@ fn begin_casting_applies_casting_spell_condition() {
         "Mage",
         "MagicUser",
         5,
-        &standard_abilities(),
+        &standard_abilities_12(),
         10,
         10,
         "Human",
@@ -2429,7 +2209,7 @@ fn spell_interruption_hook_fires_on_damage() {
         "Mage",
         "MagicUser",
         5,
-        &standard_abilities(),
+        &standard_abilities_12(),
         20,
         10,
         "Human",
@@ -2439,7 +2219,7 @@ fn spell_interruption_hook_fires_on_damage() {
         "Fighter",
         "Fighter",
         5,
-        &standard_abilities(),
+        &standard_abilities_12(),
         30,
         15,
         "Human",
@@ -2483,7 +2263,7 @@ fn spell_interruption_hook_fires_on_damage() {
                 eff_handler,
                 "MeleeAttack",
                 attacker,
-                vec![Value::Entity(caster), melee_weapon("SwordLong")],
+                vec![Value::Entity(caster), melee_variant("SwordLong")],
             )
             .unwrap();
     });

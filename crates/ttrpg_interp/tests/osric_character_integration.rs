@@ -9,10 +9,12 @@ use std::collections::BTreeMap;
 use ttrpg_ast::ast::TopLevel;
 use ttrpg_ast::diagnostic::Severity;
 use ttrpg_ast::Name;
-use ttrpg_interp::effect::{Effect, EffectHandler, Response};
 use ttrpg_interp::reference_state::GameState;
 use ttrpg_interp::value::Value;
 use ttrpg_interp::Interpreter;
+
+mod osric_common;
+use osric_common::*;
 
 // ── Compile helpers ────────────────────────────────────────────
 
@@ -62,72 +64,6 @@ fn compile_osric_character() -> (ttrpg_ast::ast::Program, ttrpg_checker::CheckRe
     );
 
     (program.clone(), result)
-}
-
-struct NullHandler;
-impl EffectHandler for NullHandler {
-    fn handle(&mut self, _effect: Effect) -> Response {
-        Response::Acknowledged
-    }
-}
-
-fn enum_variant(enum_name: &str, variant: &str) -> Value {
-    Value::EnumVariant {
-        enum_name: Name::from(enum_name),
-        variant: Name::from(variant),
-        fields: BTreeMap::new(),
-    }
-}
-
-fn ability(variant: &str) -> Value {
-    enum_variant("Ability", variant)
-}
-
-fn ancestry(variant: &str) -> Value {
-    enum_variant("Ancestry", variant)
-}
-
-fn class_val(variant: &str) -> Value {
-    enum_variant("Class", variant)
-}
-
-fn ability_map(scores: &[(&str, i64)]) -> Value {
-    let mut map = BTreeMap::new();
-    for &(ab, score) in scores {
-        map.insert(ability(ab), Value::Int(score));
-    }
-    Value::Map(map)
-}
-
-fn expect_int(val: Value, ctx: &str) -> i64 {
-    match val {
-        Value::Int(n) => n,
-        other => panic!("{ctx}: expected Int, got {other:?}"),
-    }
-}
-
-fn expect_bool(val: Value, ctx: &str) -> bool {
-    match val {
-        Value::Bool(b) => b,
-        other => panic!("{ctx}: expected Bool, got {other:?}"),
-    }
-}
-
-fn field<'a>(fields: &'a BTreeMap<Name, Value>, key: &str) -> Option<&'a Value> {
-    fields.get::<Name>(&key.into())
-}
-
-fn expect_feet(val: Value, ctx: &str) -> i64 {
-    match val {
-        Value::Struct { name, fields } => {
-            assert_eq!(&*name, "Feet", "{ctx}: expected Feet struct");
-            match field(&fields, "value") {
-                Some(Value::Int(n)) => *n,
-                other => panic!("{ctx}: expected Feet.value Int, got {other:?}"),
-            }
-        }
-        other => panic!("{ctx}: expected Feet struct, got {other:?}"),
-    }
 }
 
 // ── Parse + typecheck ──────────────────────────────────────────
@@ -632,7 +568,7 @@ fn meets_class_requirements_fighter_passes() {
             &state,
             &mut handler,
             "meets_class_requirements",
-            vec![class_val("Fighter"), scores],
+            vec![class_variant("Fighter"), scores],
         )
         .unwrap();
     assert!(expect_bool(val, "fighter passes"));
@@ -660,7 +596,7 @@ fn meets_class_requirements_fighter_fails_str() {
             &state,
             &mut handler,
             "meets_class_requirements",
-            vec![class_val("Fighter"), scores],
+            vec![class_variant("Fighter"), scores],
         )
         .unwrap();
     assert!(!expect_bool(val, "fighter fails STR"));
@@ -688,7 +624,7 @@ fn meets_class_requirements_fighter_at_minimums() {
             &state,
             &mut handler,
             "meets_class_requirements",
-            vec![class_val("Fighter"), scores],
+            vec![class_variant("Fighter"), scores],
         )
         .unwrap();
     assert!(expect_bool(val, "fighter at minimums"));
@@ -716,7 +652,7 @@ fn meets_class_requirements_paladin_passes() {
             &state,
             &mut handler,
             "meets_class_requirements",
-            vec![class_val("Paladin"), scores],
+            vec![class_variant("Paladin"), scores],
         )
         .unwrap();
     assert!(expect_bool(val, "paladin passes"));
@@ -744,7 +680,7 @@ fn meets_class_requirements_paladin_fails_cha() {
             &state,
             &mut handler,
             "meets_class_requirements",
-            vec![class_val("Paladin"), scores],
+            vec![class_variant("Paladin"), scores],
         )
         .unwrap();
     assert!(!expect_bool(val, "paladin fails CHA"));
@@ -772,7 +708,7 @@ fn meets_class_requirements_thief_minimal() {
             &state,
             &mut handler,
             "meets_class_requirements",
-            vec![class_val("Thief"), scores],
+            vec![class_variant("Thief"), scores],
         )
         .unwrap();
     assert!(expect_bool(val, "thief minimal"));
@@ -800,7 +736,7 @@ fn meets_class_requirements_thief_fails() {
             &state,
             &mut handler,
             "meets_class_requirements",
-            vec![class_val("Thief"), scores],
+            vec![class_variant("Thief"), scores],
         )
         .unwrap();
     assert!(!expect_bool(val, "thief fails DEX"));
@@ -828,7 +764,7 @@ fn meets_class_requirements_ranger_passes() {
             &state,
             &mut handler,
             "meets_class_requirements",
-            vec![class_val("Ranger"), scores],
+            vec![class_variant("Ranger"), scores],
         )
         .unwrap();
     assert!(expect_bool(val, "ranger passes"));
@@ -856,7 +792,7 @@ fn meets_class_requirements_ranger_fails_con() {
             &state,
             &mut handler,
             "meets_class_requirements",
-            vec![class_val("Ranger"), scores],
+            vec![class_variant("Ranger"), scores],
         )
         .unwrap();
     assert!(!expect_bool(val, "ranger fails CON"));
@@ -884,7 +820,7 @@ fn meets_class_requirements_druid_passes() {
             &state,
             &mut handler,
             "meets_class_requirements",
-            vec![class_val("Druid"), scores],
+            vec![class_variant("Druid"), scores],
         )
         .unwrap();
     assert!(expect_bool(val, "druid passes"));
@@ -912,7 +848,7 @@ fn meets_class_requirements_druid_fails_cha() {
             &state,
             &mut handler,
             "meets_class_requirements",
-            vec![class_val("Druid"), scores],
+            vec![class_variant("Druid"), scores],
         )
         .unwrap();
     assert!(!expect_bool(val, "druid fails CHA"));
@@ -940,7 +876,7 @@ fn meets_class_requirements_illusionist_passes() {
             &state,
             &mut handler,
             "meets_class_requirements",
-            vec![class_val("Illusionist"), scores],
+            vec![class_variant("Illusionist"), scores],
         )
         .unwrap();
     assert!(expect_bool(val, "illusionist passes"));
@@ -968,7 +904,7 @@ fn meets_class_requirements_illusionist_fails_dex() {
             &state,
             &mut handler,
             "meets_class_requirements",
-            vec![class_val("Illusionist"), scores],
+            vec![class_variant("Illusionist"), scores],
         )
         .unwrap();
     assert!(!expect_bool(val, "illusionist fails DEX"));
@@ -998,7 +934,7 @@ fn prime_req_xp_bonus_fighter_at_boundary() {
             &state,
             &mut handler,
             "prime_req_xp_bonus",
-            vec![class_val("Fighter"), scores_15],
+            vec![class_variant("Fighter"), scores_15],
         )
         .unwrap();
     assert_eq!(expect_int(val, "fighter STR 15"), 0);
@@ -1017,7 +953,7 @@ fn prime_req_xp_bonus_fighter_at_boundary() {
             &state,
             &mut handler,
             "prime_req_xp_bonus",
-            vec![class_val("Fighter"), scores_16],
+            vec![class_variant("Fighter"), scores_16],
         )
         .unwrap();
     assert_eq!(expect_int(val, "fighter STR 16"), 10);
@@ -1045,7 +981,7 @@ fn prime_req_xp_bonus_paladin_both_required() {
             &state,
             &mut handler,
             "prime_req_xp_bonus",
-            vec![class_val("Paladin"), scores_both],
+            vec![class_variant("Paladin"), scores_both],
         )
         .unwrap();
     assert_eq!(expect_int(val, "paladin both 16+"), 10);
@@ -1064,7 +1000,7 @@ fn prime_req_xp_bonus_paladin_both_required() {
             &state,
             &mut handler,
             "prime_req_xp_bonus",
-            vec![class_val("Paladin"), scores_str_only],
+            vec![class_variant("Paladin"), scores_str_only],
         )
         .unwrap();
     assert_eq!(expect_int(val, "paladin WIS 15"), 0);
@@ -1091,7 +1027,7 @@ fn prime_req_xp_bonus_ranger_all_three_required() {
             &state,
             &mut handler,
             "prime_req_xp_bonus",
-            vec![class_val("Ranger"), scores_all],
+            vec![class_variant("Ranger"), scores_all],
         )
         .unwrap();
     assert_eq!(expect_int(val, "ranger all 16+"), 10);
@@ -1110,7 +1046,7 @@ fn prime_req_xp_bonus_ranger_all_three_required() {
             &state,
             &mut handler,
             "prime_req_xp_bonus",
-            vec![class_val("Ranger"), scores_no_int],
+            vec![class_variant("Ranger"), scores_no_int],
         )
         .unwrap();
     assert_eq!(expect_int(val, "ranger INT 15"), 0);
@@ -1137,7 +1073,7 @@ fn prime_req_xp_bonus_cleric() {
             &state,
             &mut handler,
             "prime_req_xp_bonus",
-            vec![class_val("Cleric"), scores],
+            vec![class_variant("Cleric"), scores],
         )
         .unwrap();
     assert_eq!(expect_int(val, "cleric WIS 16"), 10);
@@ -1155,7 +1091,7 @@ fn prime_req_xp_bonus_cleric() {
             &state,
             &mut handler,
             "prime_req_xp_bonus",
-            vec![class_val("Cleric"), scores_low],
+            vec![class_variant("Cleric"), scores_low],
         )
         .unwrap();
     assert_eq!(expect_int(val, "cleric WIS 15"), 0);
@@ -1182,7 +1118,7 @@ fn prime_req_xp_bonus_magic_user() {
             &state,
             &mut handler,
             "prime_req_xp_bonus",
-            vec![class_val("MagicUser"), scores],
+            vec![class_variant("MagicUser"), scores],
         )
         .unwrap();
     assert_eq!(expect_int(val, "magic-user INT 16"), 10);
@@ -1209,7 +1145,7 @@ fn prime_req_xp_bonus_thief() {
             &state,
             &mut handler,
             "prime_req_xp_bonus",
-            vec![class_val("Thief"), scores],
+            vec![class_variant("Thief"), scores],
         )
         .unwrap();
     assert_eq!(expect_int(val, "thief DEX 16"), 10);
@@ -1238,7 +1174,7 @@ fn prime_req_xp_bonus_no_bonus_classes() {
                 &state,
                 &mut handler,
                 "prime_req_xp_bonus",
-                vec![class_val(class_name), high_scores.clone()],
+                vec![class_variant(class_name), high_scores.clone()],
             )
             .unwrap();
         assert_eq!(expect_int(val, &format!("{class_name} no bonus")), 0);
@@ -1266,7 +1202,7 @@ fn prime_req_xp_bonus_druid_both_required() {
             &state,
             &mut handler,
             "prime_req_xp_bonus",
-            vec![class_val("Druid"), scores_both],
+            vec![class_variant("Druid"), scores_both],
         )
         .unwrap();
     assert_eq!(expect_int(val, "druid both 16+"), 10);
@@ -1285,7 +1221,7 @@ fn prime_req_xp_bonus_druid_both_required() {
             &state,
             &mut handler,
             "prime_req_xp_bonus",
-            vec![class_val("Druid"), scores_wis_only],
+            vec![class_variant("Druid"), scores_wis_only],
         )
         .unwrap();
     assert_eq!(expect_int(val, "druid CHA 15"), 0);

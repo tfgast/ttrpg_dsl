@@ -14,16 +14,18 @@
 
 use std::collections::BTreeMap;
 
-use rustc_hash::FxHashMap;
 use ttrpg_ast::ast::TopLevel;
 use ttrpg_ast::diagnostic::Severity;
 use ttrpg_ast::Name;
 use ttrpg_interp::adapter::StateAdapter;
-use ttrpg_interp::effect::{Effect, EffectHandler, FieldPathSegment, Response};
+use ttrpg_interp::effect::{Effect, FieldPathSegment};
 use ttrpg_interp::reference_state::GameState;
-use ttrpg_interp::state::{EntityRef, WritableState};
+use ttrpg_interp::state::WritableState;
 use ttrpg_interp::value::Value;
 use ttrpg_interp::Interpreter;
+
+mod osric_common;
+use osric_common::*;
 
 // ── Compile helpers ────────────────────────────────────────────
 
@@ -95,126 +97,11 @@ fn compile_osric_encumbrance() -> (ttrpg_ast::ast::Program, ttrpg_checker::Check
     (program.clone(), result)
 }
 
-struct NullHandler;
-impl EffectHandler for NullHandler {
-    fn handle(&mut self, _effect: Effect) -> Response {
-        Response::Acknowledged
-    }
-}
-
-// ── Value helpers ──────────────────────────────────────────────
-
-fn enum_variant(enum_name: &str, variant: &str) -> Value {
-    Value::EnumVariant {
-        enum_name: Name::from(enum_name),
-        variant: Name::from(variant),
-        fields: BTreeMap::new(),
-    }
-}
-
-fn ability(variant: &str) -> Value {
-    enum_variant("Ability", variant)
-}
-
-fn tier(variant: &str) -> Value {
-    enum_variant("EncumbranceTier", variant)
-}
-
-fn feet(value: i64) -> Value {
-    Value::Struct {
-        name: Name::from("Feet"),
-        fields: {
-            let mut f = BTreeMap::new();
-            f.insert(Name::from("value"), Value::Int(value));
-            f
-        },
-    }
-}
-
-fn expect_int(val: Value, ctx: &str) -> i64 {
-    match val {
-        Value::Int(n) => n,
-        other => panic!("{ctx}: expected Int, got {other:?}"),
-    }
-}
-
-fn expect_feet(val: Value, ctx: &str) -> i64 {
-    match val {
-        Value::Struct { name, fields } => {
-            assert_eq!(&*name, "Feet", "{ctx}: expected Feet struct");
-            match fields.get::<Name>(&"value".into()) {
-                Some(Value::Int(n)) => *n,
-                other => panic!("{ctx}: expected Feet.value Int, got {other:?}"),
-            }
-        }
-        other => panic!("{ctx}: expected Feet struct, got {other:?}"),
-    }
-}
-
 fn expect_tier(val: Value, ctx: &str) -> String {
     match val {
         Value::EnumVariant { variant, .. } => variant.to_string(),
         other => panic!("{ctx}: expected EncumbranceTier variant, got {other:?}"),
     }
-}
-
-// ── Entity builders ───────────────────────────────────────────
-
-fn make_character(
-    state: &mut GameState,
-    name: &str,
-    abilities: &[(&str, i64)],
-    ancestry_name: &str,
-    current_weight: i64,
-    armour_cap: i64,
-) -> EntityRef {
-    let mut ability_map = BTreeMap::new();
-    for &(ab, score) in abilities {
-        ability_map.insert(ability(ab), Value::Int(score));
-    }
-
-    let mut fields = FxHashMap::default();
-    fields.insert(Name::from("name"), Value::Str(name.to_string()));
-    fields.insert(Name::from("class"), enum_variant("Class", "Fighter"));
-    fields.insert(
-        Name::from("ancestry"),
-        enum_variant("Ancestry", ancestry_name),
-    );
-    fields.insert(Name::from("level"), Value::Int(1));
-    fields.insert(
-        Name::from("alignment"),
-        enum_variant("Alignment", "TrueNeutral"),
-    );
-    fields.insert(Name::from("abilities"), Value::Map(ability_map));
-    fields.insert(Name::from("max_hp"), Value::Int(10));
-    fields.insert(Name::from("hp"), Value::Int(10));
-    fields.insert(Name::from("armor_ac"), Value::Int(10));
-    fields.insert(Name::from("shield_ac_bonus"), Value::Int(0));
-    fields.insert(Name::from("xp"), Value::Int(0));
-    fields.insert(Name::from("base_movement"), feet(120));
-    fields.insert(Name::from("current_weight"), Value::Int(current_weight));
-    fields.insert(Name::from("armour_movement_cap"), feet(armour_cap));
-    fields.insert(Name::from("gold"), Value::Int(0));
-    fields.insert(Name::from("saving_throws"), Value::Option(None));
-
-    state.add_entity("Character", fields)
-}
-
-fn standard_abilities() -> Vec<(&'static str, i64)> {
-    vec![
-        ("STR", 10),
-        ("DEX", 10),
-        ("CON", 10),
-        ("INT", 10),
-        ("WIS", 10),
-        ("CHA", 10),
-    ]
-}
-
-fn apply_encumbrance(state: &mut GameState, entity: &EntityRef, tier_variant: &str) {
-    let mut params = BTreeMap::new();
-    params.insert(Name::from("tier"), tier(tier_variant));
-    state.apply_condition(entity, "EncumbranceState", params, Value::None, None);
 }
 
 // ── Parse + typecheck ──────────────────────────────────────────
@@ -312,7 +199,7 @@ fn effective_str_encumbrance_normal_str() {
     let mut handler = NullHandler;
 
     // STR 10 → str_encumbrance(10) = 35
-    let char_ref = make_character(
+    let char_ref = make_encumbrance_character(
         &mut state,
         "Test",
         &[
@@ -346,7 +233,7 @@ fn effective_str_encumbrance_str_18_no_exceptional() {
     let mut handler = NullHandler;
 
     // STR 18, no exceptional → str_encumbrance(18) = 110
-    let char_ref = make_character(
+    let char_ref = make_encumbrance_character(
         &mut state,
         "Test",
         &[
@@ -380,7 +267,7 @@ fn effective_str_encumbrance_str_18_exc_50() {
     let mut handler = NullHandler;
 
     // STR 18 + exc 50 → exc_str_encumbrance(50) = 135
-    let char_ref = make_character(
+    let char_ref = make_encumbrance_character(
         &mut state,
         "Test",
         &[
@@ -428,7 +315,7 @@ fn effective_str_encumbrance_str_18_exc_100() {
     let mut handler = NullHandler;
 
     // STR 18 + exc 100 → exc_str_encumbrance(100) = 300
-    let char_ref = make_character(
+    let char_ref = make_encumbrance_character(
         &mut state,
         "Test",
         &[
@@ -489,7 +376,7 @@ fn character_encumbrance_tiers() {
     ];
 
     for (weight, expected) in cases {
-        let char_ref = make_character(
+        let char_ref = make_encumbrance_character(
             &mut state,
             &format!("Test-{weight}"),
             &[
@@ -530,7 +417,7 @@ fn character_movement_no_armour_cap() {
     let mut handler = NullHandler;
 
     // Human (base 120ft), no armour cap
-    let char_ref = make_character(&mut state, "Test", &standard_abilities(), "Human", 0, 0);
+    let char_ref = make_encumbrance_character(&mut state, "Test", &standard_abilities(), "Human", 0, 0);
     let val = interp
         .evaluate_derive(
             &state,
@@ -550,7 +437,7 @@ fn character_movement_with_armour_cap() {
     let mut handler = NullHandler;
 
     // Human (base 120ft), plate armour cap 60ft
-    let char_ref = make_character(&mut state, "Test", &standard_abilities(), "Human", 0, 60);
+    let char_ref = make_encumbrance_character(&mut state, "Test", &standard_abilities(), "Human", 0, 60);
     let val = interp
         .evaluate_derive(
             &state,
@@ -581,7 +468,7 @@ fn character_movement_human_all_tiers() {
     ];
 
     for (tier_name, expected) in cases {
-        let char_ref = make_character(
+        let char_ref = make_encumbrance_character(
             &mut state,
             &format!("Test-{tier_name}"),
             &standard_abilities(),
@@ -624,7 +511,7 @@ fn character_movement_dwarf_with_encumbrance() {
     ];
 
     for (tier_name, expected) in cases {
-        let char_ref = make_character(
+        let char_ref = make_encumbrance_character(
             &mut state,
             &format!("Dwarf-{tier_name}"),
             &standard_abilities(),
@@ -660,7 +547,7 @@ fn character_movement_armour_cap_dominates() {
     // Human 120ft base + plate 60ft cap. Armour cap applied first by derive,
     // then encumbrance fraction reduces further.
     // Unencumbered: min(120, 60) = 60, then 60 * 4/4 = 60
-    let char1 = make_character(
+    let char1 = make_encumbrance_character(
         &mut state,
         "Plate-Unenc",
         &standard_abilities(),
@@ -680,7 +567,7 @@ fn character_movement_armour_cap_dominates() {
     assert_eq!(expect_feet(val, "plate+unenc"), 60);
 
     // Light: min(120, 60) = 60, then 60 * 3/4 = 45
-    let char2 = make_character(
+    let char2 = make_encumbrance_character(
         &mut state,
         "Plate-Light",
         &standard_abilities(),
@@ -711,7 +598,7 @@ fn surprise_adj_unencumbered_no_armour() {
 
     // DEX 16 → dex_surprise(16) = +1, Unencumbered + no armour → +1 bonus
     // Total: 1 + 1 = 2
-    let char_ref = make_character(
+    let char_ref = make_encumbrance_character(
         &mut state,
         "Test",
         &[
@@ -748,7 +635,7 @@ fn surprise_adj_unencumbered_heavy_armour() {
 
     // DEX 16 → +1, Unencumbered + plate (cap 60ft) → no bonus (heavy armour)
     // Total: 1 + 0 = 1
-    let char_ref = make_character(
+    let char_ref = make_encumbrance_character(
         &mut state,
         "Test",
         &[
@@ -785,7 +672,7 @@ fn surprise_adj_unencumbered_light_armour() {
 
     // DEX 16 → +1, Unencumbered + leather (cap 120ft) → +1 bonus (light armour)
     // Total: 1 + 1 = 2
-    let char_ref = make_character(
+    let char_ref = make_encumbrance_character(
         &mut state,
         "Test",
         &[
@@ -822,7 +709,7 @@ fn surprise_adj_light_encumbrance() {
 
     // DEX 16 → +1, Light encumbrance → normal (DEX applies, no bonus/penalty)
     // Total: 1
-    let char_ref = make_character(
+    let char_ref = make_encumbrance_character(
         &mut state,
         "Test",
         &[
@@ -858,7 +745,7 @@ fn surprise_adj_moderate_caps_bonuses() {
     let mut handler = NullHandler;
 
     // DEX 16 → +1, Moderate → min(0, 1) = 0. No bonuses.
-    let char_ref = make_character(
+    let char_ref = make_encumbrance_character(
         &mut state,
         "Test",
         &[
@@ -894,7 +781,7 @@ fn surprise_adj_moderate_preserves_penalties() {
     let mut handler = NullHandler;
 
     // DEX 3 → -3, Moderate → min(0, -3) = -3. Penalties preserved.
-    let char_ref = make_character(
+    let char_ref = make_encumbrance_character(
         &mut state,
         "Test",
         &[
@@ -930,7 +817,7 @@ fn surprise_adj_heavy_extra_penalty() {
     let mut handler = NullHandler;
 
     // DEX 16 → +1, Heavy → min(0, 1) - 1 = -1
-    let char1 = make_character(
+    let char1 = make_encumbrance_character(
         &mut state,
         "HighDex",
         &[
@@ -957,7 +844,7 @@ fn surprise_adj_heavy_extra_penalty() {
     assert_eq!(expect_int(val, "DEX16 heavy"), -1);
 
     // DEX 3 → -3, Heavy → min(0, -3) - 1 = -4
-    let char2 = make_character(
+    let char2 = make_encumbrance_character(
         &mut state,
         "LowDex",
         &[
@@ -992,7 +879,7 @@ fn surprise_adj_overloaded() {
     let mut handler = NullHandler;
 
     // DEX 10 → 0, Overloaded → min(0, 0) - 1 = -1
-    let char_ref = make_character(&mut state, "Test", &standard_abilities(), "Human", 0, 0);
+    let char_ref = make_encumbrance_character(&mut state, "Test", &standard_abilities(), "Human", 0, 0);
     apply_encumbrance(&mut state, &char_ref, "Overloaded");
 
     let val = interp
@@ -1015,7 +902,7 @@ fn update_encumbrance_applies_correct_tier() {
     let mut state = GameState::new();
 
     // STR 10 → allowance 35. Weight 0 → Unencumbered.
-    let char_ref = make_character(&mut state, "Test", &standard_abilities(), "Human", 0, 0);
+    let char_ref = make_encumbrance_character(&mut state, "Test", &standard_abilities(), "Human", 0, 0);
 
     let adapter = StateAdapter::new(state);
     let mut handler = NullHandler;
@@ -1073,7 +960,7 @@ fn update_encumbrance_replaces_previous_tier() {
     let mut state = GameState::new();
 
     // STR 10 → allowance 35. Weight 156 (121 over) → Overloaded.
-    let char_ref = make_character(&mut state, "Test", &standard_abilities(), "Human", 156, 0);
+    let char_ref = make_encumbrance_character(&mut state, "Test", &standard_abilities(), "Human", 156, 0);
 
     let adapter = StateAdapter::new(state);
     let mut handler = NullHandler;

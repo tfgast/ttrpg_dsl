@@ -7,7 +7,9 @@
 use ttrpg_ast::ast::{DeclKind, TopLevel};
 use ttrpg_ast::diagnostic::Severity;
 use ttrpg_ast::FileId;
-use ttrpg_interp::effect::{Effect, EffectHandler, Response};
+mod osric_common;
+#[allow(unused_imports)]
+use osric_common::*;
 
 // ── Compile helpers ────────────────────────────────────────────
 
@@ -50,14 +52,6 @@ fn get_decls(program: &ttrpg_ast::ast::Program) -> &[ttrpg_ast::Spanned<DeclKind
         }
     }
     panic!("no system block named 'OSRIC' found");
-}
-
-#[allow(dead_code)]
-struct NullHandler;
-impl EffectHandler for NullHandler {
-    fn handle(&mut self, _effect: Effect) -> Response {
-        Response::Acknowledged
-    }
 }
 
 // ── Parse + typecheck ──────────────────────────────────────────

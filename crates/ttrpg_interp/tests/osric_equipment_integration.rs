@@ -12,10 +12,12 @@ use std::collections::BTreeMap;
 use ttrpg_ast::ast::{DeclKind, TopLevel};
 use ttrpg_ast::diagnostic::Severity;
 use ttrpg_ast::Name;
-use ttrpg_interp::effect::{Effect, EffectHandler, Response};
 use ttrpg_interp::reference_state::GameState;
 use ttrpg_interp::value::Value;
 use ttrpg_interp::Interpreter;
+
+mod osric_common;
+use osric_common::*;
 
 // ── Compile helpers ────────────────────────────────────────────
 
@@ -79,53 +81,6 @@ fn get_equipment_decls(program: &ttrpg_ast::ast::Program) -> &[ttrpg_ast::Spanne
     panic!("no system block named 'OSRIC Equipment' found");
 }
 
-struct NullHandler;
-impl EffectHandler for NullHandler {
-    fn handle(&mut self, _effect: Effect) -> Response {
-        Response::Acknowledged
-    }
-}
-
-fn melee_variant(variant: &str) -> Value {
-    Value::EnumVariant {
-        enum_name: Name::from("MeleeWeapon"),
-        variant: Name::from(variant),
-        fields: BTreeMap::new(),
-    }
-}
-
-fn missile_variant(variant: &str) -> Value {
-    Value::EnumVariant {
-        enum_name: Name::from("MissileWeapon"),
-        variant: Name::from(variant),
-        fields: BTreeMap::new(),
-    }
-}
-
-fn armour_variant(variant: &str) -> Value {
-    Value::EnumVariant {
-        enum_name: Name::from("ArmourType"),
-        variant: Name::from(variant),
-        fields: BTreeMap::new(),
-    }
-}
-
-fn shield_variant(variant: &str) -> Value {
-    Value::EnumVariant {
-        enum_name: Name::from("ShieldType"),
-        variant: Name::from(variant),
-        fields: BTreeMap::new(),
-    }
-}
-
-fn class_variant(variant: &str) -> Value {
-    Value::EnumVariant {
-        enum_name: Name::from("Class"),
-        variant: Name::from(variant),
-        fields: BTreeMap::new(),
-    }
-}
-
 /// Call a derive and return struct fields as BTreeMap<String, Value>.
 fn get_struct_fields(
     interp: &Interpreter,
@@ -151,20 +106,6 @@ fn get_struct_fields(
                 .collect()
         }
         other => panic!("expected {expected_struct} struct, got: {other:?}"),
-    }
-}
-
-fn get_int(fields: &BTreeMap<String, Value>, key: &str) -> i64 {
-    match fields.get(key) {
-        Some(Value::Int(n)) => *n,
-        other => panic!("expected int for '{key}', got: {other:?}"),
-    }
-}
-
-fn get_bool(fields: &BTreeMap<String, Value>, key: &str) -> bool {
-    match fields.get(key) {
-        Some(Value::Bool(b)) => *b,
-        other => panic!("expected bool for '{key}', got: {other:?}"),
     }
 }
 

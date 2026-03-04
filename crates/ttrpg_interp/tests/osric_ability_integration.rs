@@ -8,12 +8,13 @@ use std::collections::BTreeMap;
 
 use ttrpg_ast::ast::{DeclKind, TopLevel};
 use ttrpg_ast::diagnostic::Severity;
-use ttrpg_ast::Name;
-use ttrpg_interp::effect::{Effect, EffectHandler, Response};
 use ttrpg_interp::reference_state::GameState;
-use ttrpg_interp::state::{EntityRef, WritableState};
+use ttrpg_interp::state::WritableState;
 use ttrpg_interp::value::Value;
 use ttrpg_interp::Interpreter;
+
+mod osric_common;
+use osric_common::*;
 
 // ── Compile helpers ────────────────────────────────────────────
 
@@ -60,89 +61,12 @@ fn compile_osric_ability() -> (ttrpg_ast::ast::Program, ttrpg_checker::CheckResu
     (program.clone(), result)
 }
 
-struct NullHandler;
-impl EffectHandler for NullHandler {
-    fn handle(&mut self, _effect: Effect) -> Response {
-        Response::Acknowledged
-    }
-}
-
-fn enum_variant(enum_name: &str, variant: &str) -> Value {
-    Value::EnumVariant {
-        enum_name: ttrpg_ast::Name::from(enum_name),
-        variant: ttrpg_ast::Name::from(variant),
-        fields: BTreeMap::new(),
-    }
-}
-
-fn ability(variant: &str) -> Value {
-    enum_variant("Ability", variant)
-}
-
-fn ancestry(variant: &str) -> Value {
-    enum_variant("Ancestry", variant)
-}
-
-/// Build a minimal Character entity in GameState and return its EntityRef.
-fn make_character(state: &mut GameState, name: &str, abilities: &[(&str, i64)]) -> EntityRef {
-    use rustc_hash::FxHashMap;
-    use ttrpg_ast::Name;
-
-    let mut ability_map = BTreeMap::new();
-    for &(ab, score) in abilities {
-        ability_map.insert(ability(ab), Value::Int(score));
-    }
-
-    let mut fields = FxHashMap::default();
-    fields.insert(Name::from("name"), Value::Str(name.to_string()));
-    fields.insert(Name::from("class"), enum_variant("Class", "Fighter"));
-    fields.insert(Name::from("ancestry"), enum_variant("Ancestry", "Human"));
-    fields.insert(Name::from("level"), Value::Int(1));
-    fields.insert(
-        Name::from("alignment"),
-        enum_variant("Alignment", "TrueNeutral"),
-    );
-    fields.insert(Name::from("abilities"), Value::Map(ability_map));
-    fields.insert(Name::from("max_hp"), Value::Int(10));
-    fields.insert(Name::from("hp"), Value::Int(10));
-    fields.insert(Name::from("armor_ac"), Value::Int(10));
-    fields.insert(Name::from("shield_ac_bonus"), Value::Int(0));
-    fields.insert(Name::from("xp"), Value::Int(0));
-    fields.insert(
-        Name::from("base_movement"),
-        Value::Struct {
-            name: Name::from("Feet"),
-            fields: {
-                let mut f = BTreeMap::new();
-                f.insert(Name::from("value"), Value::Int(120));
-                f
-            },
-        },
-    );
-    fields.insert(Name::from("gold"), Value::Int(0));
-    fields.insert(Name::from("saving_throws"), Value::Option(None));
-
-    state.add_entity("Character", fields)
-}
-
 /// Helper to run a table/derive with a single int argument.
 fn eval_table(interp: &Interpreter, state: &GameState, name: &str, arg: i64) -> Value {
     let mut handler = NullHandler;
     interp
         .evaluate_derive(state, &mut handler, name, vec![Value::Int(arg)])
         .unwrap_or_else(|e| panic!("{name}({arg}) failed: {e}"))
-}
-
-/// Look up a field in a BTreeMap<Name, Value> without ambiguity.
-fn field<'a>(fields: &'a BTreeMap<Name, Value>, key: &str) -> Option<&'a Value> {
-    fields.get::<Name>(&key.into())
-}
-
-fn expect_int(val: Value, ctx: &str) -> i64 {
-    match val {
-        Value::Int(n) => n,
-        other => panic!("{ctx}: expected Int, got {other:?}"),
-    }
 }
 
 // ── Parse + typecheck ──────────────────────────────────────────
@@ -1207,7 +1131,7 @@ fn effective_str_to_hit_normal_str() {
     let mut handler = NullHandler;
 
     // Fighter with STR 16 — no exceptional strength
-    let entity = make_character(
+    let entity = make_ability_character(
         &mut state,
         "TestFighter",
         &[
@@ -1239,7 +1163,7 @@ fn effective_str_to_hit_str_17() {
     let mut state = GameState::new();
     let mut handler = NullHandler;
 
-    let entity = make_character(
+    let entity = make_ability_character(
         &mut state,
         "TestFighter17",
         &[
@@ -1272,7 +1196,7 @@ fn effective_str_to_hit_str_18_no_exceptional() {
     let mut handler = NullHandler;
 
     // STR 18 but no ExceptionalStrength group (e.g. a cleric)
-    let entity = make_character(
+    let entity = make_ability_character(
         &mut state,
         "TestCleric18",
         &[
@@ -1304,7 +1228,7 @@ fn effective_str_to_hit_str_18_with_exceptional() {
     let mut state = GameState::new();
     let mut handler = NullHandler;
 
-    let entity = make_character(
+    let entity = make_ability_character(
         &mut state,
         "TestFighter18",
         &[
@@ -1351,7 +1275,7 @@ fn effective_str_to_hit_str_18_exceptional_100() {
     let mut state = GameState::new();
     let mut handler = NullHandler;
 
-    let entity = make_character(
+    let entity = make_ability_character(
         &mut state,
         "TestFighter18_100",
         &[
@@ -1399,7 +1323,7 @@ fn effective_str_damage_normal() {
     let mut state = GameState::new();
     let mut handler = NullHandler;
 
-    let entity = make_character(
+    let entity = make_ability_character(
         &mut state,
         "TestFighter",
         &[
@@ -1431,7 +1355,7 @@ fn effective_str_damage_with_exceptional() {
     let mut state = GameState::new();
     let mut handler = NullHandler;
 
-    let entity = make_character(
+    let entity = make_ability_character(
         &mut state,
         "TestFighter18",
         &[

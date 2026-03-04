@@ -9,11 +9,12 @@ use std::collections::BTreeMap;
 
 use ttrpg_ast::ast::{DeclKind, TopLevel};
 use ttrpg_ast::diagnostic::Severity;
-use ttrpg_ast::Name;
-use ttrpg_interp::effect::{Effect, EffectHandler, Response};
 use ttrpg_interp::reference_state::GameState;
 use ttrpg_interp::value::Value;
 use ttrpg_interp::Interpreter;
+
+mod osric_common;
+use osric_common::*;
 
 // ── Compile helpers ────────────────────────────────────────────
 
@@ -60,21 +61,6 @@ fn compile_osric_class() -> (ttrpg_ast::ast::Program, ttrpg_checker::CheckResult
     (program.clone(), result)
 }
 
-struct NullHandler;
-impl EffectHandler for NullHandler {
-    fn handle(&mut self, _effect: Effect) -> Response {
-        Response::Acknowledged
-    }
-}
-
-fn class_variant(variant: &str) -> Value {
-    Value::EnumVariant {
-        enum_name: Name::from("Class"),
-        variant: Name::from(variant),
-        fields: BTreeMap::new(),
-    }
-}
-
 /// Call class_def and return the ClassDef struct fields as a BTreeMap.
 fn get_class_def(
     interp: &Interpreter,
@@ -95,20 +81,6 @@ fn get_class_def(
                 .collect()
         }
         other => panic!("expected ClassDef struct, got: {other:?}"),
-    }
-}
-
-fn get_int(fields: &BTreeMap<String, Value>, key: &str) -> i64 {
-    match fields.get(key) {
-        Some(Value::Int(n)) => *n,
-        other => panic!("expected int for {key}, got: {other:?}"),
-    }
-}
-
-fn get_bool(fields: &BTreeMap<String, Value>, key: &str) -> bool {
-    match fields.get(key) {
-        Some(Value::Bool(b)) => *b,
-        other => panic!("expected bool for {key}, got: {other:?}"),
     }
 }
 

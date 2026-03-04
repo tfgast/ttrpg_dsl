@@ -8,17 +8,20 @@
 //! (parameterised). Tests condition stacking, removal, and cross-entity-type
 //! application (Character and Monster bearers).
 
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::BTreeMap;
 
 use rustc_hash::FxHashMap;
 use ttrpg_ast::ast::{DeclKind, TopLevel};
 use ttrpg_ast::diagnostic::Severity;
 use ttrpg_ast::Name;
-use ttrpg_interp::effect::{Effect, EffectHandler, Response};
+use ttrpg_interp::effect::{Effect, Response};
 use ttrpg_interp::reference_state::GameState;
 use ttrpg_interp::state::{EntityRef, StateProvider, WritableState};
-use ttrpg_interp::value::{DiceExpr, RollResult, Value};
+use ttrpg_interp::value::Value;
 use ttrpg_interp::Interpreter;
+
+mod osric_common;
+use osric_common::*;
 
 // ── Compile helpers ────────────────────────────────────────────
 
@@ -101,168 +104,7 @@ fn get_conditions_decls(program: &ttrpg_ast::ast::Program) -> &[ttrpg_ast::Spann
     panic!("no system block named 'OSRIC Conditions' found");
 }
 
-// ── Value helpers ──────────────────────────────────────────────
-
-fn enum_variant(enum_name: &str, variant: &str) -> Value {
-    Value::EnumVariant {
-        enum_name: Name::from(enum_name),
-        variant: Name::from(variant),
-        fields: BTreeMap::new(),
-    }
-}
-
-fn class_variant(variant: &str) -> Value {
-    enum_variant("Class", variant)
-}
-
-fn ability(variant: &str) -> Value {
-    enum_variant("Ability", variant)
-}
-
-fn feet(value: i64) -> Value {
-    Value::Struct {
-        name: Name::from("Feet"),
-        fields: {
-            let mut f = BTreeMap::new();
-            f.insert(Name::from("value"), Value::Int(value));
-            f
-        },
-    }
-}
-
-fn monster_attack(name: &str, count: u32, sides: u32, bonus: i64) -> Value {
-    Value::Struct {
-        name: Name::from("MonsterAttack"),
-        fields: {
-            let mut f = BTreeMap::new();
-            f.insert(Name::from("name"), Value::Str(name.to_string()));
-            f.insert(
-                Name::from("damage"),
-                Value::DiceExpr(DiceExpr::single(count, sides, None, bonus)),
-            );
-            f
-        },
-    }
-}
-
-// ── Effect handler ─────────────────────────────────────────────
-
-struct ScriptedHandler {
-    script: VecDeque<Response>,
-    log: Vec<Effect>,
-}
-
-impl ScriptedHandler {
-    fn with_responses(responses: Vec<Response>) -> Self {
-        ScriptedHandler {
-            script: responses.into(),
-            log: Vec::new(),
-        }
-    }
-}
-
-impl EffectHandler for ScriptedHandler {
-    fn handle(&mut self, effect: Effect) -> Response {
-        self.log.push(effect);
-        self.script.pop_front().unwrap_or(Response::Acknowledged)
-    }
-}
-
-fn scripted_roll(
-    count: u32,
-    sides: u32,
-    modifier: i64,
-    dice_vals: Vec<i64>,
-    kept_vals: Vec<i64>,
-    total: i64,
-    unmodified: i64,
-) -> Response {
-    Response::Rolled(RollResult {
-        expr: DiceExpr::single(count, sides, None, modifier),
-        dice: dice_vals,
-        kept: kept_vals,
-        modifier,
-        total,
-        unmodified,
-    })
-}
-
-// ── Entity builders ────────────────────────────────────────────
-
-#[allow(clippy::too_many_arguments)]
-fn make_character(
-    state: &mut GameState,
-    name: &str,
-    class: &str,
-    level: i64,
-    abilities: &[(&str, i64)],
-    max_hp: i64,
-    ac: i64,
-    ancestry: &str,
-) -> EntityRef {
-    let mut ability_map = BTreeMap::new();
-    for &(ab, score) in abilities {
-        ability_map.insert(ability(ab), Value::Int(score));
-    }
-
-    let mut fields = FxHashMap::default();
-    fields.insert(Name::from("name"), Value::Str(name.to_string()));
-    fields.insert(Name::from("class"), class_variant(class));
-    fields.insert(Name::from("ancestry"), enum_variant("Ancestry", ancestry));
-    fields.insert(Name::from("level"), Value::Int(level));
-    fields.insert(
-        Name::from("alignment"),
-        enum_variant("Alignment", "TrueNeutral"),
-    );
-    fields.insert(Name::from("abilities"), Value::Map(ability_map));
-    fields.insert(Name::from("max_hp"), Value::Int(max_hp));
-    fields.insert(Name::from("hp"), Value::Int(max_hp));
-    fields.insert(Name::from("armor_ac"), Value::Int(ac));
-    fields.insert(Name::from("shield_ac_bonus"), Value::Int(0));
-    fields.insert(Name::from("xp"), Value::Int(0));
-    fields.insert(Name::from("base_movement"), feet(120));
-    fields.insert(Name::from("gold"), Value::Int(0));
-    fields.insert(Name::from("saving_throws"), Value::Option(None));
-
-    state.add_entity("Character", fields)
-}
-
-fn make_monster(
-    state: &mut GameState,
-    name: &str,
-    hit_dice: (u32, u32, i64),
-    max_hp: i64,
-    ac: i64,
-    attacks: Vec<Value>,
-) -> EntityRef {
-    let mut fields = FxHashMap::default();
-    fields.insert(Name::from("name"), Value::Str(name.to_string()));
-    fields.insert(
-        Name::from("hit_dice"),
-        Value::DiceExpr(DiceExpr::single(hit_dice.0, hit_dice.1, None, hit_dice.2)),
-    );
-    fields.insert(Name::from("max_hp"), Value::Int(max_hp));
-    fields.insert(Name::from("hp"), Value::Int(max_hp));
-    fields.insert(Name::from("armor_ac"), Value::Int(ac));
-    fields.insert(Name::from("morale"), Value::Int(7));
-    fields.insert(Name::from("xp_value"), Value::Int(0));
-    fields.insert(Name::from("attacks"), Value::List(attacks));
-    fields.insert(Name::from("size"), enum_variant("Size", "Medium"));
-    fields.insert(Name::from("special"), Value::List(vec![]));
-
-    state.add_entity("Monster", fields)
-}
-
-fn standard_abilities() -> Vec<(&'static str, i64)> {
-    vec![
-        ("STR", 12),
-        ("DEX", 12),
-        ("CON", 12),
-        ("INT", 12),
-        ("WIS", 12),
-        ("CHA", 12),
-    ]
-}
+// ── File-specific helpers ──────────────────────────────────────
 
 fn high_dex_abilities() -> Vec<(&'static str, i64)> {
     vec![
@@ -273,53 +115,6 @@ fn high_dex_abilities() -> Vec<(&'static str, i64)> {
         ("WIS", 12),
         ("CHA", 12),
     ]
-}
-
-/// Build a Character with explicit shield AC bonus.
-#[allow(clippy::too_many_arguments)]
-fn make_character_with_shield(
-    state: &mut GameState,
-    name: &str,
-    class: &str,
-    level: i64,
-    abilities: &[(&str, i64)],
-    max_hp: i64,
-    ac: i64,
-    shield_ac_bonus: i64,
-    ancestry: &str,
-) -> EntityRef {
-    let mut ability_map = BTreeMap::new();
-    for &(ab, score) in abilities {
-        ability_map.insert(ability(ab), Value::Int(score));
-    }
-
-    let mut fields = FxHashMap::default();
-    fields.insert(Name::from("name"), Value::Str(name.to_string()));
-    fields.insert(Name::from("class"), class_variant(class));
-    fields.insert(Name::from("ancestry"), enum_variant("Ancestry", ancestry));
-    fields.insert(Name::from("level"), Value::Int(level));
-    fields.insert(
-        Name::from("alignment"),
-        enum_variant("Alignment", "TrueNeutral"),
-    );
-    fields.insert(Name::from("abilities"), Value::Map(ability_map));
-    fields.insert(Name::from("max_hp"), Value::Int(max_hp));
-    fields.insert(Name::from("hp"), Value::Int(max_hp));
-    fields.insert(Name::from("armor_ac"), Value::Int(ac));
-    fields.insert(Name::from("shield_ac_bonus"), Value::Int(shield_ac_bonus));
-    fields.insert(Name::from("xp"), Value::Int(0));
-    fields.insert(Name::from("base_movement"), feet(120));
-    fields.insert(Name::from("gold"), Value::Int(0));
-    fields.insert(Name::from("saving_throws"), Value::Option(None));
-
-    state.add_entity("Character", fields)
-}
-
-fn get_int(fields: &BTreeMap<String, Value>, key: &str) -> i64 {
-    match fields.get(key) {
-        Some(Value::Int(n)) => *n,
-        other => panic!("expected int for '{key}', got: {other:?}"),
-    }
 }
 
 /// Call resolve_melee_attack and return the AttackResult fields.
@@ -565,7 +360,7 @@ fn baseline_melee_attack_no_conditions() {
         "Fighter",
         "Fighter",
         5,
-        &standard_abilities(),
+        &standard_abilities_12(),
         30,
         15,
         "Human",
@@ -575,7 +370,7 @@ fn baseline_melee_attack_no_conditions() {
         "Target",
         "Fighter",
         1,
-        &standard_abilities(),
+        &standard_abilities_12(),
         10,
         14,
         "Human",
@@ -613,7 +408,7 @@ fn prone_on_target_adds_4_to_attack_mod() {
         "Fighter",
         "Fighter",
         5,
-        &standard_abilities(),
+        &standard_abilities_12(),
         30,
         15,
         "Human",
@@ -623,7 +418,7 @@ fn prone_on_target_adds_4_to_attack_mod() {
         "Target",
         "Fighter",
         1,
-        &standard_abilities(),
+        &standard_abilities_12(),
         10,
         14,
         "Human",
@@ -675,7 +470,7 @@ fn stunned_on_target_adds_4_to_attack_mod() {
         "Fighter",
         "Fighter",
         5,
-        &standard_abilities(),
+        &standard_abilities_12(),
         30,
         15,
         "Human",
@@ -685,7 +480,7 @@ fn stunned_on_target_adds_4_to_attack_mod() {
         "Target",
         "Fighter",
         1,
-        &standard_abilities(),
+        &standard_abilities_12(),
         10,
         14,
         "Human",
@@ -725,7 +520,7 @@ fn staggered_on_target_adds_2_to_attack_mod() {
         "Fighter",
         "Fighter",
         5,
-        &standard_abilities(),
+        &standard_abilities_12(),
         30,
         15,
         "Human",
@@ -735,7 +530,7 @@ fn staggered_on_target_adds_2_to_attack_mod() {
         "Target",
         "Fighter",
         1,
-        &standard_abilities(),
+        &standard_abilities_12(),
         10,
         14,
         "Human",
@@ -770,7 +565,7 @@ fn invisible_on_target_subtracts_4_from_attack_mod() {
         "Fighter",
         "Fighter",
         5,
-        &standard_abilities(),
+        &standard_abilities_12(),
         30,
         15,
         "Human",
@@ -780,7 +575,7 @@ fn invisible_on_target_subtracts_4_from_attack_mod() {
         "Target",
         "Fighter",
         1,
-        &standard_abilities(),
+        &standard_abilities_12(),
         10,
         14,
         "Human",
@@ -817,7 +612,7 @@ fn invisible_on_target_causes_miss() {
         "Fighter",
         "Fighter",
         1,
-        &standard_abilities(),
+        &standard_abilities_12(),
         10,
         10,
         "Human",
@@ -827,7 +622,7 @@ fn invisible_on_target_causes_miss() {
         "Target",
         "Fighter",
         1,
-        &standard_abilities(),
+        &standard_abilities_12(),
         10,
         14,
         "Human",
@@ -871,7 +666,7 @@ fn paralyzed_on_target_adds_20_melee() {
         "Fighter",
         "Fighter",
         1,
-        &standard_abilities(),
+        &standard_abilities_12(),
         10,
         10,
         "Human",
@@ -881,7 +676,7 @@ fn paralyzed_on_target_adds_20_melee() {
         "Target",
         "Fighter",
         1,
-        &standard_abilities(),
+        &standard_abilities_12(),
         10,
         18,
         "Human",
@@ -920,7 +715,7 @@ fn sleeping_on_target_adds_20_melee() {
         "Fighter",
         "Fighter",
         1,
-        &standard_abilities(),
+        &standard_abilities_12(),
         10,
         10,
         "Human",
@@ -930,7 +725,7 @@ fn sleeping_on_target_adds_20_melee() {
         "Target",
         "Fighter",
         1,
-        &standard_abilities(),
+        &standard_abilities_12(),
         10,
         18,
         "Human",
@@ -968,7 +763,7 @@ fn rear_attacked_on_target_adds_2_melee() {
         "Fighter",
         "Fighter",
         5,
-        &standard_abilities(),
+        &standard_abilities_12(),
         30,
         15,
         "Human",
@@ -978,7 +773,7 @@ fn rear_attacked_on_target_adds_2_melee() {
         "Target",
         "Fighter",
         1,
-        &standard_abilities(),
+        &standard_abilities_12(),
         10,
         14,
         "Human",
@@ -1021,7 +816,7 @@ fn paralyzed_does_not_affect_missile_attack() {
         "Archer",
         "Fighter",
         3,
-        &standard_abilities(),
+        &standard_abilities_12(),
         20,
         14,
         "Human",
@@ -1031,7 +826,7 @@ fn paralyzed_does_not_affect_missile_attack() {
         "Target",
         "Fighter",
         1,
-        &standard_abilities(),
+        &standard_abilities_12(),
         10,
         14,
         "Human",
@@ -1073,7 +868,7 @@ fn surprised_on_attacker_forces_miss() {
         "Fighter",
         "Fighter",
         5,
-        &standard_abilities(),
+        &standard_abilities_12(),
         30,
         15,
         "Human",
@@ -1083,7 +878,7 @@ fn surprised_on_attacker_forces_miss() {
         "Target",
         "Fighter",
         1,
-        &standard_abilities(),
+        &standard_abilities_12(),
         10,
         10,
         "Human",
@@ -1125,7 +920,7 @@ fn fleeing_on_attacker_forces_miss() {
         "Fighter",
         "Fighter",
         5,
-        &standard_abilities(),
+        &standard_abilities_12(),
         30,
         15,
         "Human",
@@ -1135,7 +930,7 @@ fn fleeing_on_attacker_forces_miss() {
         "Target",
         "Fighter",
         1,
-        &standard_abilities(),
+        &standard_abilities_12(),
         10,
         10,
         "Human",
@@ -1177,7 +972,7 @@ fn fleeing_on_target_adds_4_to_melee() {
         "Fighter",
         "Fighter",
         5,
-        &standard_abilities(),
+        &standard_abilities_12(),
         30,
         15,
         "Human",
@@ -1187,7 +982,7 @@ fn fleeing_on_target_adds_4_to_melee() {
         "Target",
         "Fighter",
         1,
-        &standard_abilities(),
+        &standard_abilities_12(),
         10,
         14,
         "Human",
@@ -1224,7 +1019,7 @@ fn concealed_level_1_subtracts_1() {
         "Fighter",
         "Fighter",
         5,
-        &standard_abilities(),
+        &standard_abilities_12(),
         30,
         15,
         "Human",
@@ -1234,7 +1029,7 @@ fn concealed_level_1_subtracts_1() {
         "Target",
         "Fighter",
         1,
-        &standard_abilities(),
+        &standard_abilities_12(),
         10,
         14,
         "Human",
@@ -1271,7 +1066,7 @@ fn concealed_level_4_subtracts_4() {
         "Fighter",
         "Fighter",
         5,
-        &standard_abilities(),
+        &standard_abilities_12(),
         30,
         15,
         "Human",
@@ -1281,7 +1076,7 @@ fn concealed_level_4_subtracts_4() {
         "Target",
         "Fighter",
         1,
-        &standard_abilities(),
+        &standard_abilities_12(),
         10,
         14,
         "Human",
@@ -1318,7 +1113,7 @@ fn cover_penalty_2_subtracts_2() {
         "Fighter",
         "Fighter",
         5,
-        &standard_abilities(),
+        &standard_abilities_12(),
         30,
         15,
         "Human",
@@ -1328,7 +1123,7 @@ fn cover_penalty_2_subtracts_2() {
         "Target",
         "Fighter",
         1,
-        &standard_abilities(),
+        &standard_abilities_12(),
         10,
         14,
         "Human",
@@ -1365,7 +1160,7 @@ fn cover_penalty_10_subtracts_10() {
         "Fighter",
         "Fighter",
         5,
-        &standard_abilities(),
+        &standard_abilities_12(),
         30,
         15,
         "Human",
@@ -1375,7 +1170,7 @@ fn cover_penalty_10_subtracts_10() {
         "Target",
         "Fighter",
         1,
-        &standard_abilities(),
+        &standard_abilities_12(),
         10,
         14,
         "Human",
@@ -1421,7 +1216,7 @@ fn prone_on_target_applies_to_missile_attack() {
         "Archer",
         "Fighter",
         3,
-        &standard_abilities(),
+        &standard_abilities_12(),
         20,
         14,
         "Human",
@@ -1431,7 +1226,7 @@ fn prone_on_target_applies_to_missile_attack() {
         "Target",
         "Fighter",
         1,
-        &standard_abilities(),
+        &standard_abilities_12(),
         10,
         14,
         "Human",
@@ -1482,7 +1277,7 @@ fn prone_on_target_applies_to_monster_attack() {
         "Victim",
         "Fighter",
         1,
-        &standard_abilities(),
+        &standard_abilities_12(),
         8,
         14,
         "Human",
@@ -1532,7 +1327,7 @@ fn rear_attacked_does_not_affect_monster_attack() {
         "Victim",
         "Fighter",
         1,
-        &standard_abilities(),
+        &standard_abilities_12(),
         8,
         14,
         "Human",
@@ -1576,7 +1371,7 @@ fn prone_and_staggered_stack_on_target() {
         "Fighter",
         "Fighter",
         5,
-        &standard_abilities(),
+        &standard_abilities_12(),
         30,
         15,
         "Human",
@@ -1586,7 +1381,7 @@ fn prone_and_staggered_stack_on_target() {
         "Target",
         "Fighter",
         1,
-        &standard_abilities(),
+        &standard_abilities_12(),
         10,
         14,
         "Human",
@@ -1629,7 +1424,7 @@ fn prone_and_invisible_cancel_out() {
         "Fighter",
         "Fighter",
         5,
-        &standard_abilities(),
+        &standard_abilities_12(),
         30,
         15,
         "Human",
@@ -1639,7 +1434,7 @@ fn prone_and_invisible_cancel_out() {
         "Target",
         "Fighter",
         1,
-        &standard_abilities(),
+        &standard_abilities_12(),
         10,
         14,
         "Human",
@@ -1682,7 +1477,7 @@ fn cover_and_concealed_stack() {
         "Fighter",
         "Fighter",
         5,
-        &standard_abilities(),
+        &standard_abilities_12(),
         30,
         15,
         "Human",
@@ -1692,7 +1487,7 @@ fn cover_and_concealed_stack() {
         "Target",
         "Fighter",
         1,
-        &standard_abilities(),
+        &standard_abilities_12(),
         10,
         14,
         "Human",
@@ -1742,7 +1537,7 @@ fn removing_condition_removes_modifier() {
         "Fighter",
         "Fighter",
         5,
-        &standard_abilities(),
+        &standard_abilities_12(),
         30,
         15,
         "Human",
@@ -1752,7 +1547,7 @@ fn removing_condition_removes_modifier() {
         "Target",
         "Fighter",
         1,
-        &standard_abilities(),
+        &standard_abilities_12(),
         10,
         14,
         "Human",
@@ -1797,7 +1592,7 @@ fn removing_one_stacked_condition_leaves_other() {
         "Fighter",
         "Fighter",
         5,
-        &standard_abilities(),
+        &standard_abilities_12(),
         30,
         15,
         "Human",
@@ -1807,7 +1602,7 @@ fn removing_one_stacked_condition_leaves_other() {
         "Target",
         "Fighter",
         1,
-        &standard_abilities(),
+        &standard_abilities_12(),
         10,
         14,
         "Human",
@@ -1850,7 +1645,7 @@ fn remove_parameterised_condition_by_params() {
         "Fighter",
         "Fighter",
         5,
-        &standard_abilities(),
+        &standard_abilities_12(),
         30,
         15,
         "Human",
@@ -1860,7 +1655,7 @@ fn remove_parameterised_condition_by_params() {
         "Target",
         "Fighter",
         1,
-        &standard_abilities(),
+        &standard_abilities_12(),
         10,
         14,
         "Human",
@@ -1913,7 +1708,7 @@ fn surprised_on_monster_forces_miss() {
         "Victim",
         "Fighter",
         5,
-        &standard_abilities(),
+        &standard_abilities_12(),
         30,
         17,
         "Human",
@@ -1963,7 +1758,7 @@ fn concealed_on_target_applies_to_monster_attack() {
         "Ranger",
         "Ranger",
         5,
-        &standard_abilities(),
+        &standard_abilities_12(),
         30,
         15,
         "Human",
@@ -2006,7 +1801,7 @@ fn cover_all_standard_levels() {
             "Fighter",
             "Fighter",
             5,
-            &standard_abilities(),
+            &standard_abilities_12(),
             30,
             15,
             "Human",
@@ -2016,7 +1811,7 @@ fn cover_all_standard_levels() {
             "Target",
             "Fighter",
             1,
-            &standard_abilities(),
+            &standard_abilities_12(),
             10,
             14,
             "Human",
@@ -2062,7 +1857,7 @@ fn concealed_all_levels() {
             "Fighter",
             "Fighter",
             5,
-            &standard_abilities(),
+            &standard_abilities_12(),
             30,
             15,
             "Human",
@@ -2072,7 +1867,7 @@ fn concealed_all_levels() {
             "Target",
             "Fighter",
             1,
-            &standard_abilities(),
+            &standard_abilities_12(),
             10,
             14,
             "Human",
@@ -2117,7 +1912,7 @@ fn surprised_on_attacker_forces_miss_on_missile() {
         "Archer",
         "Fighter",
         3,
-        &standard_abilities(),
+        &standard_abilities_12(),
         20,
         14,
         "Human",
@@ -2127,7 +1922,7 @@ fn surprised_on_attacker_forces_miss_on_missile() {
         "Target",
         "Fighter",
         1,
-        &standard_abilities(),
+        &standard_abilities_12(),
         10,
         14,
         "Human",
@@ -2215,7 +2010,7 @@ fn prone_negates_dex_ac_bonus() {
         "Fighter",
         "Fighter",
         5,
-        &standard_abilities(),
+        &standard_abilities_12(),
         30,
         15,
         "Human",
@@ -2268,7 +2063,7 @@ fn stunned_negates_dex_ac_bonus() {
         "Fighter",
         "Fighter",
         5,
-        &standard_abilities(),
+        &standard_abilities_12(),
         30,
         15,
         "Human",
@@ -2320,7 +2115,7 @@ fn rear_attacked_negates_dex_ac_on_missile() {
         "Archer",
         "Fighter",
         3,
-        &standard_abilities(),
+        &standard_abilities_12(),
         20,
         14,
         "Human",
@@ -2377,7 +2172,7 @@ fn prone_negates_shield_ac_bonus() {
         "Fighter",
         "Fighter",
         5,
-        &standard_abilities(),
+        &standard_abilities_12(),
         30,
         15,
         "Human",
@@ -2388,7 +2183,7 @@ fn prone_negates_shield_ac_bonus() {
         "Target",
         "Fighter",
         1,
-        &standard_abilities(),
+        &standard_abilities_12(),
         10,
         14,
         1,
@@ -2432,7 +2227,7 @@ fn rear_attacked_negates_dex_and_shield_combined() {
         "Fighter",
         "Fighter",
         5,
-        &standard_abilities(),
+        &standard_abilities_12(),
         30,
         15,
         "Human",
@@ -2487,7 +2282,7 @@ fn stunned_on_attacker_forces_miss() {
         "Fighter",
         "Fighter",
         5,
-        &standard_abilities(),
+        &standard_abilities_12(),
         30,
         15,
         "Human",
@@ -2497,7 +2292,7 @@ fn stunned_on_attacker_forces_miss() {
         "Target",
         "Fighter",
         1,
-        &standard_abilities(),
+        &standard_abilities_12(),
         10,
         10,
         "Human",
@@ -2540,7 +2335,7 @@ fn paralyzed_on_attacker_forces_miss() {
         "Fighter",
         "Fighter",
         5,
-        &standard_abilities(),
+        &standard_abilities_12(),
         30,
         15,
         "Human",
@@ -2550,7 +2345,7 @@ fn paralyzed_on_attacker_forces_miss() {
         "Target",
         "Fighter",
         1,
-        &standard_abilities(),
+        &standard_abilities_12(),
         10,
         10,
         "Human",
@@ -2591,7 +2386,7 @@ fn sleeping_on_attacker_forces_miss() {
         "Fighter",
         "Fighter",
         5,
-        &standard_abilities(),
+        &standard_abilities_12(),
         30,
         15,
         "Human",
@@ -2601,7 +2396,7 @@ fn sleeping_on_attacker_forces_miss() {
         "Target",
         "Fighter",
         1,
-        &standard_abilities(),
+        &standard_abilities_12(),
         10,
         10,
         "Human",
@@ -2643,7 +2438,7 @@ fn paralyzed_auto_hit_max_damage_battleaxe() {
         "Fighter",
         "Fighter",
         5,
-        &standard_abilities(),
+        &standard_abilities_12(),
         30,
         15,
         "Human",
@@ -2653,7 +2448,7 @@ fn paralyzed_auto_hit_max_damage_battleaxe() {
         "Target",
         "Fighter",
         1,
-        &standard_abilities(),
+        &standard_abilities_12(),
         10,
         18,
         "Human",
@@ -2699,7 +2494,7 @@ fn paralyzed_auto_hit_max_damage_monster_attack() {
         "Target",
         "Fighter",
         1,
-        &standard_abilities(),
+        &standard_abilities_12(),
         10,
         18,
         "Human",
@@ -2737,7 +2532,7 @@ fn paralyzed_negates_dex_and_shield_on_auto_hit() {
         "Fighter",
         "Fighter",
         5,
-        &standard_abilities(),
+        &standard_abilities_12(),
         30,
         15,
         "Human",

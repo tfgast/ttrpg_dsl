@@ -7,18 +7,19 @@
 //! resolve_melee_attack, resolve_missile_attack, resolve_monster_attack,
 //! Damaged/CreatureSlain events, and MeleeAttack/MissileAttack/Charge actions.
 
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::BTreeMap;
 
-use rustc_hash::FxHashMap;
 use ttrpg_ast::ast::{DeclKind, TopLevel};
 use ttrpg_ast::diagnostic::Severity;
-use ttrpg_ast::Name;
 use ttrpg_interp::adapter::StateAdapter;
-use ttrpg_interp::effect::{Effect, EffectHandler, Response};
+use ttrpg_interp::effect::{EffectHandler, Response};
 use ttrpg_interp::reference_state::GameState;
-use ttrpg_interp::state::{EntityRef, StateProvider};
-use ttrpg_interp::value::{DiceExpr, RollResult, Value};
+use ttrpg_interp::state::StateProvider;
+use ttrpg_interp::value::{DiceExpr, Value};
 use ttrpg_interp::Interpreter;
+
+mod osric_common;
+use osric_common::*;
 
 // ── Compile helpers ────────────────────────────────────────────
 
@@ -102,194 +103,7 @@ fn get_combat_decls(program: &ttrpg_ast::ast::Program) -> &[ttrpg_ast::Spanned<D
     panic!("no system block named 'OSRIC Combat' found");
 }
 
-// ── Value helpers ──────────────────────────────────────────────
-
-fn enum_variant(enum_name: &str, variant: &str) -> Value {
-    Value::EnumVariant {
-        enum_name: Name::from(enum_name),
-        variant: Name::from(variant),
-        fields: BTreeMap::new(),
-    }
-}
-
-fn class_variant(variant: &str) -> Value {
-    enum_variant("Class", variant)
-}
-
-fn ability(variant: &str) -> Value {
-    enum_variant("Ability", variant)
-}
-
-fn feet(value: i64) -> Value {
-    Value::Struct {
-        name: Name::from("Feet"),
-        fields: {
-            let mut f = BTreeMap::new();
-            f.insert(Name::from("value"), Value::Int(value));
-            f
-        },
-    }
-}
-
-fn monster_attack(name: &str, count: u32, sides: u32, bonus: i64) -> Value {
-    Value::Struct {
-        name: Name::from("MonsterAttack"),
-        fields: {
-            let mut f = BTreeMap::new();
-            f.insert(Name::from("name"), Value::Str(name.to_string()));
-            f.insert(
-                Name::from("damage"),
-                Value::DiceExpr(DiceExpr::single(count, sides, None, bonus)),
-            );
-            f
-        },
-    }
-}
-
-// ── Effect handler ─────────────────────────────────────────────
-
-struct NullHandler;
-impl EffectHandler for NullHandler {
-    fn handle(&mut self, _effect: Effect) -> Response {
-        Response::Acknowledged
-    }
-}
-
-struct ScriptedHandler {
-    script: VecDeque<Response>,
-    log: Vec<Effect>,
-}
-
-impl ScriptedHandler {
-    fn with_responses(responses: Vec<Response>) -> Self {
-        ScriptedHandler {
-            script: responses.into(),
-            log: Vec::new(),
-        }
-    }
-}
-
-impl EffectHandler for ScriptedHandler {
-    fn handle(&mut self, effect: Effect) -> Response {
-        self.log.push(effect);
-        self.script.pop_front().unwrap_or(Response::Acknowledged)
-    }
-}
-
-fn scripted_roll(
-    count: u32,
-    sides: u32,
-    modifier: i64,
-    dice_vals: Vec<i64>,
-    kept_vals: Vec<i64>,
-    total: i64,
-    unmodified: i64,
-) -> Response {
-    Response::Rolled(RollResult {
-        expr: DiceExpr::single(count, sides, None, modifier),
-        dice: dice_vals,
-        kept: kept_vals,
-        modifier,
-        total,
-        unmodified,
-    })
-}
-
-// ── Entity builders ────────────────────────────────────────────
-
-/// Build a Character entity with customizable fields.
-#[allow(clippy::too_many_arguments)]
-fn make_character(
-    state: &mut GameState,
-    name: &str,
-    class: &str,
-    level: i64,
-    abilities: &[(&str, i64)],
-    max_hp: i64,
-    ac: i64,
-    ancestry: &str,
-) -> EntityRef {
-    let mut ability_map = BTreeMap::new();
-    for &(ab, score) in abilities {
-        ability_map.insert(ability(ab), Value::Int(score));
-    }
-
-    let mut fields = FxHashMap::default();
-    fields.insert(Name::from("name"), Value::Str(name.to_string()));
-    fields.insert(Name::from("class"), class_variant(class));
-    fields.insert(Name::from("ancestry"), enum_variant("Ancestry", ancestry));
-    fields.insert(Name::from("level"), Value::Int(level));
-    fields.insert(
-        Name::from("alignment"),
-        enum_variant("Alignment", "TrueNeutral"),
-    );
-    fields.insert(Name::from("abilities"), Value::Map(ability_map));
-    fields.insert(Name::from("max_hp"), Value::Int(max_hp));
-    fields.insert(Name::from("hp"), Value::Int(max_hp));
-    fields.insert(Name::from("armor_ac"), Value::Int(ac));
-    fields.insert(Name::from("shield_ac_bonus"), Value::Int(0));
-    fields.insert(Name::from("xp"), Value::Int(0));
-    fields.insert(Name::from("base_movement"), feet(120));
-    fields.insert(Name::from("gold"), Value::Int(0));
-    fields.insert(Name::from("saving_throws"), Value::Option(None));
-
-    state.add_entity("Character", fields)
-}
-
-/// Build a Monster entity.
-///
-/// `hit_dice` is (count, sides, modifier) — e.g. (4, 8, 1) for 4d8+1.
-fn make_monster(
-    state: &mut GameState,
-    name: &str,
-    hit_dice: (u32, u32, i64),
-    max_hp: i64,
-    ac: i64,
-    attacks: Vec<Value>,
-) -> EntityRef {
-    let mut fields = FxHashMap::default();
-    fields.insert(Name::from("name"), Value::Str(name.to_string()));
-    fields.insert(
-        Name::from("hit_dice"),
-        Value::DiceExpr(DiceExpr::single(hit_dice.0, hit_dice.1, None, hit_dice.2)),
-    );
-    fields.insert(Name::from("max_hp"), Value::Int(max_hp));
-    fields.insert(Name::from("hp"), Value::Int(max_hp));
-    fields.insert(Name::from("ac"), Value::Int(ac));
-    fields.insert(Name::from("morale"), Value::Int(7));
-    fields.insert(Name::from("xp_value"), Value::Int(0));
-    fields.insert(Name::from("attacks"), Value::List(attacks));
-    fields.insert(Name::from("size"), enum_variant("Size", "Medium"));
-    fields.insert(Name::from("special"), Value::List(vec![]));
-
-    state.add_entity("Monster", fields)
-}
-
-/// Standard abilities: all 12s (no modifiers).
-fn standard_abilities() -> Vec<(&'static str, i64)> {
-    vec![
-        ("STR", 12),
-        ("DEX", 12),
-        ("CON", 12),
-        ("INT", 12),
-        ("WIS", 12),
-        ("CHA", 12),
-    ]
-}
-
-/// Turn budget for OSRIC combat: just `attack` token.
-fn combat_turn_budget() -> BTreeMap<Name, Value> {
-    let mut b = BTreeMap::new();
-    b.insert("attack".into(), Value::Int(1));
-    b
-}
-
-fn get_int(fields: &BTreeMap<String, Value>, key: &str) -> i64 {
-    match fields.get(key) {
-        Some(Value::Int(n)) => *n,
-        other => panic!("expected int for '{key}', got: {other:?}"),
-    }
-}
+// ── File-specific helpers ──────────────────────────────────────
 
 #[allow(dead_code)]
 fn get_struct_fields(
@@ -1205,7 +1019,7 @@ fn resolve_melee_attack_hit_deals_damage() {
         "Fighter",
         "Fighter",
         5,
-        &standard_abilities(),
+        &standard_abilities_12(),
         30,
         15,
         "Human",
@@ -1215,7 +1029,7 @@ fn resolve_melee_attack_hit_deals_damage() {
         "Target",
         "Fighter",
         1,
-        &standard_abilities(),
+        &standard_abilities_12(),
         10,
         14,
         "Human",
@@ -1269,7 +1083,7 @@ fn resolve_melee_attack_miss_deals_zero() {
         "Fighter",
         "Fighter",
         1,
-        &standard_abilities(),
+        &standard_abilities_12(),
         10,
         10,
         "Human",
@@ -1279,7 +1093,7 @@ fn resolve_melee_attack_miss_deals_zero() {
         "Target",
         "Fighter",
         1,
-        &standard_abilities(),
+        &standard_abilities_12(),
         10,
         18,
         "Human",
@@ -1333,7 +1147,7 @@ fn resolve_missile_attack_hit() {
         "Archer",
         "Fighter",
         3,
-        &standard_abilities(),
+        &standard_abilities_12(),
         20,
         14,
         "Human",
@@ -1343,7 +1157,7 @@ fn resolve_missile_attack_hit() {
         "Target",
         "Fighter",
         1,
-        &standard_abilities(),
+        &standard_abilities_12(),
         10,
         12,
         "Human",
@@ -1399,7 +1213,7 @@ fn resolve_missile_attack_range_penalty_causes_miss() {
         "Archer",
         "Fighter",
         1,
-        &standard_abilities(),
+        &standard_abilities_12(),
         10,
         10,
         "Human",
@@ -1409,7 +1223,7 @@ fn resolve_missile_attack_range_penalty_causes_miss() {
         "Target",
         "Fighter",
         1,
-        &standard_abilities(),
+        &standard_abilities_12(),
         10,
         12,
         "Human",
@@ -1473,7 +1287,7 @@ fn resolve_monster_attack_hit() {
         "Victim",
         "Fighter",
         1,
-        &standard_abilities(),
+        &standard_abilities_12(),
         8,
         14,
         "Human",
@@ -1536,7 +1350,7 @@ fn resolve_monster_attack_miss() {
         "Warrior",
         "Fighter",
         5,
-        &standard_abilities(),
+        &standard_abilities_12(),
         30,
         17,
         "Human",
@@ -1734,7 +1548,7 @@ fn melee_attack_action_hits_and_damages() {
         "Fighter",
         "Fighter",
         5,
-        &standard_abilities(),
+        &standard_abilities_12(),
         30,
         15,
         "Human",
@@ -1744,7 +1558,7 @@ fn melee_attack_action_hits_and_damages() {
         "Target",
         "Fighter",
         1,
-        &standard_abilities(),
+        &standard_abilities_12(),
         10,
         14,
         "Human",
@@ -1794,7 +1608,7 @@ fn melee_attack_action_miss_preserves_hp() {
         "Fighter",
         "Fighter",
         1,
-        &standard_abilities(),
+        &standard_abilities_12(),
         10,
         10,
         "Human",
@@ -1804,7 +1618,7 @@ fn melee_attack_action_miss_preserves_hp() {
         "Target",
         "Fighter",
         1,
-        &standard_abilities(),
+        &standard_abilities_12(),
         10,
         18,
         "Human",
@@ -1850,7 +1664,7 @@ fn missile_attack_action_hits() {
         "Archer",
         "Fighter",
         3,
-        &standard_abilities(),
+        &standard_abilities_12(),
         20,
         14,
         "Human",
@@ -1860,7 +1674,7 @@ fn missile_attack_action_hits() {
         "Target",
         "Fighter",
         1,
-        &standard_abilities(),
+        &standard_abilities_12(),
         10,
         12,
         "Human",
@@ -1915,7 +1729,7 @@ fn charge_action_adds_attack_mod() {
         "Charger",
         "Fighter",
         1,
-        &standard_abilities(),
+        &standard_abilities_12(),
         10,
         10,
         "Human",
@@ -1925,7 +1739,7 @@ fn charge_action_adds_attack_mod() {
         "Target",
         "Fighter",
         1,
-        &standard_abilities(),
+        &standard_abilities_12(),
         10,
         14,
         "Human",
@@ -1977,7 +1791,7 @@ fn charge_would_miss_without_bonus() {
         "Fighter",
         "Fighter",
         1,
-        &standard_abilities(),
+        &standard_abilities_12(),
         10,
         10,
         "Human",
@@ -1987,7 +1801,7 @@ fn charge_would_miss_without_bonus() {
         "Target",
         "Fighter",
         1,
-        &standard_abilities(),
+        &standard_abilities_12(),
         10,
         14,
         "Human",
@@ -2036,7 +1850,7 @@ fn melee_attack_emits_creature_slain_on_kill() {
         "Fighter",
         "Fighter",
         5,
-        &standard_abilities(),
+        &standard_abilities_12(),
         30,
         15,
         "Human",
@@ -2047,7 +1861,7 @@ fn melee_attack_emits_creature_slain_on_kill() {
         "Victim",
         "Fighter",
         1,
-        &standard_abilities(),
+        &standard_abilities_12(),
         3,
         10,
         "Human",
@@ -2098,7 +1912,7 @@ fn deal_damage_returns_raw_damage() {
         "Fighter",
         "Fighter",
         5,
-        &standard_abilities(),
+        &standard_abilities_12(),
         30,
         15,
         "Human",
@@ -2108,7 +1922,7 @@ fn deal_damage_returns_raw_damage() {
         "Target",
         "Fighter",
         1,
-        &standard_abilities(),
+        &standard_abilities_12(),
         10,
         14,
         "Human",
@@ -2146,7 +1960,7 @@ fn deal_damage_with_default_damage_type() {
         "Fighter",
         "Fighter",
         1,
-        &standard_abilities(),
+        &standard_abilities_12(),
         10,
         10,
         "Human",
@@ -2156,7 +1970,7 @@ fn deal_damage_with_default_damage_type() {
         "Target",
         "Fighter",
         1,
-        &standard_abilities(),
+        &standard_abilities_12(),
         10,
         10,
         "Human",
@@ -2196,7 +2010,7 @@ fn take_damage_action_reduces_hp() {
         "Fighter",
         "Fighter",
         5,
-        &standard_abilities(),
+        &standard_abilities_12(),
         30,
         15,
         "Human",
@@ -2206,7 +2020,7 @@ fn take_damage_action_reduces_hp() {
         "Target",
         "Fighter",
         1,
-        &standard_abilities(),
+        &standard_abilities_12(),
         10,
         14,
         "Human",
@@ -2252,7 +2066,7 @@ fn take_damage_action_emits_creature_slain_on_kill() {
         "Fighter",
         "Fighter",
         5,
-        &standard_abilities(),
+        &standard_abilities_12(),
         30,
         15,
         "Human",
@@ -2262,7 +2076,7 @@ fn take_damage_action_emits_creature_slain_on_kill() {
         "Victim",
         "Fighter",
         1,
-        &standard_abilities(),
+        &standard_abilities_12(),
         3,
         10,
         "Human",

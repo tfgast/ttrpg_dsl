@@ -5,15 +5,14 @@
 //! all 8 class-specific saving throw tables at representative levels and
 //! tests the saving_throws_for dispatch derive.
 
-use std::collections::BTreeMap;
-
 use ttrpg_ast::ast::{DeclKind, TopLevel};
 use ttrpg_ast::diagnostic::Severity;
-use ttrpg_ast::Name;
-use ttrpg_interp::effect::{Effect, EffectHandler, Response};
 use ttrpg_interp::reference_state::GameState;
 use ttrpg_interp::value::Value;
 use ttrpg_interp::Interpreter;
+
+mod osric_common;
+use osric_common::*;
 
 // ── Compile helpers ────────────────────────────────────────────
 
@@ -63,21 +62,6 @@ fn compile_osric_saves() -> (ttrpg_ast::ast::Program, ttrpg_checker::CheckResult
     );
 
     (program.clone(), result)
-}
-
-struct NullHandler;
-impl EffectHandler for NullHandler {
-    fn handle(&mut self, _effect: Effect) -> Response {
-        Response::Acknowledged
-    }
-}
-
-fn class_variant(variant: &str) -> Value {
-    Value::EnumVariant {
-        enum_name: Name::from("Class"),
-        variant: Name::from(variant),
-        fields: BTreeMap::new(),
-    }
 }
 
 /// Call saving_throws_for and return the SavingThrows struct fields as a tuple:
