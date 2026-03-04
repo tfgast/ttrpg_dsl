@@ -11684,3 +11684,159 @@ system "test" {
         parse_errors.iter().map(|e| &e.message).collect::<Vec<_>>()
     );
 }
+
+// ── Restricted field mutation ────────────────────────────────────────
+
+#[test]
+fn test_restricted_same_system_allowed() {
+    // Mutating a restricted field within the same system is fine.
+    expect_multi_no_errors(&[(
+        "core.ttrpg",
+        r#"
+        system "Core" {
+            entity Character {
+                restricted HP: int
+            }
+            action TakeDamage on target: Character () {
+                resolve {
+                    target.HP -= 1
+                }
+            }
+        }
+        "#,
+    )]);
+}
+
+#[test]
+fn test_restricted_cross_system_rejected() {
+    // Mutating a restricted field from another system is an error.
+    expect_multi_errors(
+        &[
+            (
+                "core.ttrpg",
+                r#"
+                system "Core" {
+                    entity Character {
+                        restricted HP: int
+                    }
+                }
+                "#,
+            ),
+            (
+                "ext.ttrpg",
+                r#"
+                use "Core"
+                system "Ext" {
+                    action Zap on target: Character () {
+                        resolve {
+                            target.HP -= 1
+                        }
+                    }
+                }
+                "#,
+            ),
+        ],
+        &["cannot mutate restricted field `HP`"],
+    );
+}
+
+#[test]
+fn test_restricted_grant_cross_system_allowed() {
+    // grant initializing restricted group fields is allowed (grant doesn't
+    // go through check_assign).
+    expect_multi_no_errors(&[
+        (
+            "core.ttrpg",
+            r#"
+            system "Core" {
+                group Buffs {
+                    restricted bonus: int
+                }
+                entity Character {
+                    optional Buffs
+                }
+            }
+            "#,
+        ),
+        (
+            "ext.ttrpg",
+            r#"
+            use "Core"
+            system "Ext" {
+                action Buff on target: Character () {
+                    resolve {
+                        grant target.Buffs { bonus: 5 }
+                    }
+                }
+            }
+            "#,
+        ),
+    ]);
+}
+
+#[test]
+fn test_restricted_group_field_cross_system_rejected() {
+    // Mutating a restricted group field from another system is an error.
+    expect_multi_errors(
+        &[
+            (
+                "core.ttrpg",
+                r#"
+                system "Core" {
+                    entity Character {
+                        optional Buffs {
+                            restricted bonus: int
+                        }
+                    }
+                }
+                "#,
+            ),
+            (
+                "ext.ttrpg",
+                r#"
+                use "Core"
+                system "Ext" {
+                    action Tweak on target: Character () {
+                        resolve {
+                            if target has Buffs {
+                                target.Buffs.bonus += 1
+                            }
+                        }
+                    }
+                }
+                "#,
+            ),
+        ],
+        &["cannot mutate restricted field `bonus`"],
+    );
+}
+
+#[test]
+fn test_non_restricted_cross_system_allowed() {
+    // Non-restricted field mutation from another system is fine.
+    expect_multi_no_errors(&[
+        (
+            "core.ttrpg",
+            r#"
+            system "Core" {
+                entity Character {
+                    HP: int
+                }
+            }
+            "#,
+        ),
+        (
+            "ext.ttrpg",
+            r#"
+            use "Core"
+            system "Ext" {
+                action Zap on target: Character () {
+                    resolve {
+                        target.HP -= 1
+                    }
+                }
+            }
+            "#,
+        ),
+    ]);
+}

@@ -980,6 +980,7 @@ mod tests {
                         name: Name::from(*name),
                         ty: ttrpg_checker::ty::Ty::Int,
                         has_default: false,
+                        restricted: false,
                     })
                     .collect(),
             }),

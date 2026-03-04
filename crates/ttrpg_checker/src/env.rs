@@ -36,6 +36,7 @@ pub struct FieldInfo {
     pub name: Name,
     pub ty: Ty,
     pub has_default: bool,
+    pub restricted: bool,
 }
 
 #[derive(Debug, Clone)]

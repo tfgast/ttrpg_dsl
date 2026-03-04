@@ -917,6 +917,7 @@ mod tests {
             name: name.into(),
             ty,
             has_default: false,
+            restricted: false,
         }
     }
 
@@ -925,6 +926,7 @@ mod tests {
             name: name.into(),
             ty,
             has_default: true,
+            restricted: false,
         }
     }
 

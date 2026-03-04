@@ -519,6 +519,7 @@ fn collect_struct(s: &StructDecl, env: &mut TypeEnv, diagnostics: &mut Vec<Diagn
                 name: f.name.clone(),
                 ty: env.resolve_type_validated(&f.ty, diagnostics),
                 has_default: f.default.is_some(),
+                restricted: f.restricted,
             })
         })
         .collect();
@@ -553,6 +554,7 @@ fn collect_group(g: &GroupDecl, env: &mut TypeEnv, diagnostics: &mut Vec<Diagnos
                 name: f.name.clone(),
                 ty: env.resolve_type_validated(&f.ty, diagnostics),
                 has_default: f.default.is_some(),
+                restricted: f.restricted,
             })
         })
         .collect();
@@ -584,6 +586,7 @@ fn collect_entity(e: &EntityDecl, env: &mut TypeEnv, diagnostics: &mut Vec<Diagn
                 name: f.name.clone(),
                 ty: env.resolve_type_validated(&f.ty, diagnostics),
                 has_default: f.default.is_some(),
+                restricted: f.restricted,
             })
         })
         .collect();
@@ -647,6 +650,7 @@ fn collect_entity(e: &EntityDecl, env: &mut TypeEnv, diagnostics: &mut Vec<Diagn
                         name: f.name.clone(),
                         ty: env.resolve_type_validated(&f.ty, diagnostics),
                         has_default: f.default.is_some(),
+                        restricted: f.restricted,
                     })
                 })
                 .collect();
@@ -779,6 +783,7 @@ fn collect_unit(
         name: field.name.clone(),
         ty: field_ty,
         has_default: field.default.is_some(),
+        restricted: field.restricted,
     };
     if let Some(DeclInfo::Unit(info)) = env.types.get_mut(&u.name) {
         info.fields = vec![field_info];
