@@ -116,6 +116,53 @@ tag #concentration
 
 Applied on declarations: `action CastBless ... #concentration { ... }`
 
+### Table
+
+Static lookup declaration with pattern-matching keys.
+
+```
+// Single-key with range patterns and wildcard
+table ability_mod(score: int) -> int {
+    1..=3   => -3,
+    4..=5   => -2,
+    6..=8   => -1,
+    9..=12  =>  0,
+    13..=15 =>  1,
+    16..=17 =>  2,
+    _       =>  3
+}
+
+// Multi-key (bracket syntax)
+table save_dc(class: Class, level: int) -> int {
+    [Fighter, 1..=3] => 14,
+    [Fighter, 4..=6] => 12,
+    [Thief,   1..=4]  => 15,
+    [Thief,   _]      => 13
+}
+```
+
+Syntax: `table name(params) -> ReturnType { entries }`
+
+Key types:
+- **Expression**: enum variant, int/string literal, any expression — `Fighter`, `0`, `"Sword"`
+- **Range**: inclusive only — `1..=3` (int params only)
+- **Wildcard**: `_` — matches anything, must be last entry
+
+Entry syntax:
+- Single-key: `key => value`
+- Multi-key: `[key1, key2, ...] => value`
+
+Semantics:
+- Pure scope (same as derive) — no dice, no mutation, no receiver
+- First-match: entries evaluated in order, first full match wins
+- All keys in an entry must match (conjunction)
+- Value expressions evaluated lazily (only on match)
+- Called like a function: `ability_mod(14)`, `save_dc(Fighter, 5)`
+
+Errors:
+- Runtime: no matching entry → runtime error (unless wildcard covers all cases)
+- Checker: range on non-int param, key/value type mismatch, entries after wildcard (warning)
+
 ---
 
 ## Block Categories
@@ -123,6 +170,7 @@ Applied on declarations: `action CastBless ... #concentration { ... }`
 | Block     | Dice | Mutate | Receiver          | Returns | Cost |
 |-----------|------|--------|-------------------|---------|------|
 | derive    | -    | -      | -                 | value   | -    |
+| table     | -    | -      | -                 | value   | -    |
 | mechanic  | yes  | -      | -                 | value   | -    |
 | action    | yes  | yes    | `on` receiver     | unit    | yes  |
 | reaction  | yes  | yes    | `on` + trigger    | unit    | yes  |

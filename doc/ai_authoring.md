@@ -11,6 +11,7 @@
 | Block     | Dice | Mutate | Receiver       | Returns | Cost |
 |-----------|------|--------|----------------|---------|------|
 | derive    | -    | -      | -              | value   | -    |
+| table     | -    | -      | -              | value   | -    |
 | mechanic  | yes  | -      | -              | value   | -    |
 | action    | yes  | yes    | `on` receiver  | unit    | yes  |
 | reaction  | yes  | yes    | `on` + trigger | unit    | yes  |
@@ -20,6 +21,7 @@
 
 **Decision tree:**
 
+- Static lookup / mapping data? → **table**
 - Pure computation, no dice? → **derive**
 - Needs dice, no mutation? → **mechanic**
 - Needs dice + mutation, player-initiated? → **action**
@@ -269,6 +271,47 @@ enum Ability { STR, DEX, CON, INT, WIS, CHA }
 ```ttrpg
 unit Feet suffix ft { value: int }
 ```
+
+### Table
+
+```ttrpg
+// Single-key table (range patterns + wildcard fallback)
+table str_melee_mod(score: int) -> int {
+    1..=3   => -3,
+    4..=5   => -2,
+    6..=8   => -1,
+    9..=12  =>  0,
+    13..=15 =>  1,
+    16..=17 =>  2,
+    _       =>  3
+}
+
+// Multi-key table (bracket syntax)
+table character_thac0(aptitude: CombatAptitude, level: int) -> int {
+    [martial, 1..=3]       => 19,
+    [martial, 4..=6]       => 17,
+    [semi_martial, 1..=4]  => 19,
+    [semi_martial, 5..=8]  => 17,
+    [non_martial, 1..=5]   => 19,
+    [non_martial, _]       => 14
+}
+
+// Returning struct values
+table saving_throws(category: SaveCategory, level: int) -> SavingThrows {
+    [Fighter, 1..=3] => SavingThrows { death: 12, wand: 13, paralysis: 14, breath: 15, spell: 16 },
+    [Fighter, 4..=6] => SavingThrows { death: 10, wand: 11, paralysis: 12, breath: 13, spell: 14 }
+}
+```
+
+**Key rules:**
+
+- Pure scope (like derive) — no dice, no mutation, no receiver
+- Keys can be: expressions (enum variants, literals), inclusive ranges (`1..=3`), or wildcard (`_`)
+- Ranges only valid for `int` parameters
+- Single-key: `key => value`; multi-key: `[key1, key2] => value`
+- First-match semantics — entries evaluated in order
+- Wildcard must be last (checker warns about unreachable entries after `_`)
+- Called like any function: `str_melee_mod(14)`, `character_thac0(martial, 5)`
 
 ### Derive
 
@@ -778,14 +821,15 @@ Recommended declaration order within a `system` block:
 5. Groups
 6. Entities
 7. Events
-8. Derives
-9. Mechanics
-10. Prompts
-11. Actions
-12. Reactions
-13. Hooks
-14. Conditions
-15. Options
+8. Tables
+9. Derives
+10. Mechanics
+11. Prompts
+12. Actions
+13. Reactions
+14. Hooks
+15. Conditions
+16. Options
 
 Multiple `system` blocks with the same name merge additively.
 Imports (`use`) are NOT transitive — each file must declare its own.
