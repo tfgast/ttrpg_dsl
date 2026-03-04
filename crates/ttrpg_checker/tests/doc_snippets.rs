@@ -58,6 +58,18 @@ fn check_snippet(source: &str) -> Vec<String> {
         return errors;
     }
 
+    let mut lower_diags = Vec::new();
+    let program = ttrpg_parser::lower_moves(program, &mut lower_diags);
+    errors.extend(
+        lower_diags
+            .iter()
+            .filter(|d| d.severity == Severity::Error)
+            .map(|d| sm.render(d)),
+    );
+    if !errors.is_empty() {
+        return errors;
+    }
+
     let result = ttrpg_checker::check(&program);
     errors.extend(
         result

@@ -290,6 +290,11 @@ table str_melee_mod(score: int) -> int {
     _       =>  3
 }
 
+// Types needed by multi-key examples
+enum CombatAptitude { martial, semi_martial, non_martial }
+enum SaveCategory { Fighter, Cleric, Thief }
+struct SavingThrows { death: int, wand: int, paralysis: int, breath: int, spell: int }
+
 // Multi-key table (bracket syntax)
 table character_thac0(aptitude: CombatAptitude, level: int) -> int {
     [martial, 1..=3]       => 19,
