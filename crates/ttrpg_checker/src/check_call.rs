@@ -220,7 +220,7 @@ impl Checker<'_> {
             );
         }
 
-        // Check context restrictions for functions (callable from function/action/reaction/hook/with_budget)
+        // Check context restrictions for functions (callable from function/action/reaction/hook/with_budget/lifecycle)
         if fn_info.kind == FnKind::Function {
             let current_ctx = self.scope.current_block_kind();
             if !matches!(
@@ -231,11 +231,12 @@ impl Checker<'_> {
                         | BlockKind::ReactionResolve
                         | BlockKind::HookResolve
                         | BlockKind::WithBudget
+                        | BlockKind::LifecycleBlock
                 )
             ) {
                 self.error(
                     format!(
-                        "`{callee_name}` is a function and can only be called from function, action, reaction, or hook context"
+                        "`{callee_name}` is a function and can only be called from function, action, reaction, hook, or lifecycle context"
                     ),
                     span,
                 );
@@ -253,11 +254,12 @@ impl Checker<'_> {
                         | BlockKind::ReactionResolve
                         | BlockKind::HookResolve
                         | BlockKind::WithBudget
+                        | BlockKind::LifecycleBlock
                 )
             ) {
                 self.error(
                     format!(
-                        "`{callee_name}` is an action and can only be called from function, action, reaction, or hook context"
+                        "`{callee_name}` is an action and can only be called from function, action, reaction, hook, or lifecycle context"
                     ),
                     span,
                 );

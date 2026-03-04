@@ -549,6 +549,11 @@ impl Checker<'_> {
                         format!("{name}() can only be called in function, action, reaction, or hook blocks"),
                         span,
                     );
+                } else if !self.scope.allows_condition_manipulation() {
+                    self.error(
+                        format!("{name}() cannot be called inside on_apply/on_remove blocks"),
+                        span,
+                    );
                 }
             }
             "invocation" => {
@@ -565,6 +570,11 @@ impl Checker<'_> {
                     self.error(
                         "revoke() can only be called in function, action, reaction, or hook blocks"
                             .to_string(),
+                        span,
+                    );
+                } else if !self.scope.allows_condition_manipulation() {
+                    self.error(
+                        "revoke() cannot be called inside on_apply/on_remove blocks".to_string(),
                         span,
                     );
                 }

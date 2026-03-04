@@ -429,6 +429,16 @@ pub struct ConditionDecl {
 pub enum ConditionClause {
     Modify(ModifyClause),
     Suppress(SuppressClause),
+    OnApply(LifecycleBlock),
+    OnRemove(LifecycleBlock),
+}
+
+/// An imperative block that runs when a condition is applied or removed.
+#[derive(Clone)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct LifecycleBlock {
+    pub body: Block,
+    pub span: Span,
 }
 
 #[derive(Clone)]

@@ -453,11 +453,12 @@ impl Checker<'_> {
                         | BlockKind::ReactionResolve
                         | BlockKind::HookResolve
                         | BlockKind::WithBudget
+                        | BlockKind::LifecycleBlock
                 )
             ) {
                 self.error(
                     format!(
-                        "`{name}` is an action and can only be called from function, action, reaction, or hook context"
+                        "`{name}` is an action and can only be called from function, action, reaction, hook, or lifecycle context"
                     ),
                     span,
                 );

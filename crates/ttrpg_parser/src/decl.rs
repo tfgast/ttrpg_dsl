@@ -886,14 +886,30 @@ impl Parser {
         self.skip_newlines();
 
         let mut clauses = Vec::new();
+        let mut seen_on_apply = false;
+        let mut seen_on_remove = false;
         while !matches!(self.peek(), TokenKind::RBrace | TokenKind::Eof) {
             if self.at_ident("modify") {
                 clauses.push(ConditionClause::Modify(self.parse_modify_clause()?));
             } else if self.at_ident("suppress") {
                 clauses.push(ConditionClause::Suppress(self.parse_suppress_clause()?));
+            } else if self.at_ident("on_apply") {
+                if seen_on_apply {
+                    self.error("duplicate on_apply block in condition");
+                    return Err(());
+                }
+                seen_on_apply = true;
+                clauses.push(ConditionClause::OnApply(self.parse_lifecycle_block()?));
+            } else if self.at_ident("on_remove") {
+                if seen_on_remove {
+                    self.error("duplicate on_remove block in condition");
+                    return Err(());
+                }
+                seen_on_remove = true;
+                clauses.push(ConditionClause::OnRemove(self.parse_lifecycle_block()?));
             } else {
                 self.error(format!(
-                    "expected 'modify' or 'suppress' in condition body, found {:?}",
+                    "expected 'modify', 'suppress', 'on_apply', or 'on_remove' in condition body, found {:?}",
                     self.peek()
                 ));
                 return Err(());
@@ -910,6 +926,18 @@ impl Parser {
             receiver_type,
             receiver_with_groups,
             clauses,
+        })
+    }
+
+    /// Parse `on_apply { ... }` or `on_remove { ... }` lifecycle block.
+    fn parse_lifecycle_block(&mut self) -> Result<LifecycleBlock, ()> {
+        let start = self.start_span();
+        // Consume the soft keyword (on_apply or on_remove)
+        self.advance();
+        let body = self.parse_block()?;
+        Ok(LifecycleBlock {
+            body,
+            span: self.end_span(start),
         })
     }
 

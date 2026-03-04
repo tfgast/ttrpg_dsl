@@ -23,6 +23,9 @@ pub enum BlockKind {
     TriggerBinding,
     /// `with_budget` body — provisions a scoped turn budget in a function.
     WithBudget,
+    /// `on_apply` / `on_remove` lifecycle block inside a condition.
+    /// Hook-like permissions minus `invocation()` and `turn`.
+    LifecycleBlock,
     /// Inner blocks (if, match, etc.) inherit from enclosing real block.
     Inner,
 }
@@ -37,6 +40,7 @@ impl BlockKind {
                 | BlockKind::ReactionResolve
                 | BlockKind::HookResolve
                 | BlockKind::WithBudget
+                | BlockKind::LifecycleBlock
         )
     }
 
@@ -48,6 +52,7 @@ impl BlockKind {
                 | BlockKind::ReactionResolve
                 | BlockKind::HookResolve
                 | BlockKind::WithBudget
+                | BlockKind::LifecycleBlock
         )
     }
 
@@ -82,7 +87,14 @@ impl BlockKind {
                 | BlockKind::ReactionResolve
                 | BlockKind::HookResolve
                 | BlockKind::WithBudget
+                | BlockKind::LifecycleBlock
         )
+    }
+
+    /// Whether `apply_condition`, `remove_condition`, and `revoke()` are allowed.
+    /// Banned inside lifecycle blocks to prevent infinite recursion.
+    pub fn allows_condition_manipulation(&self) -> bool {
+        !matches!(self, BlockKind::LifecycleBlock)
     }
 }
 
@@ -192,6 +204,11 @@ impl ScopeStack {
 
     pub fn allows_emit(&self) -> bool {
         self.current_block_kind().is_some_and(|k| k.allows_emit())
+    }
+
+    pub fn allows_condition_manipulation(&self) -> bool {
+        self.current_block_kind()
+            .is_none_or(|k| k.allows_condition_manipulation())
     }
 
     /// Check if a name is already bound in the innermost scope.

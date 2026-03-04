@@ -111,6 +111,10 @@ pub(crate) fn eval_emit(
         event::find_matching_hooks(env.interp, env.state, event_name, &payload, &candidates)?;
 
     // 7. Execute each matching hook inline (with depth tracking)
+    // Save and restore in_lifecycle_block so that hooks triggered via emit
+    // inside a lifecycle block can freely call apply_condition/remove_condition/revoke.
+    let saved_lifecycle = env.in_lifecycle_block;
+    env.in_lifecycle_block = 0;
     env.emit_depth += 1;
     let result = (|| {
         for hook_info in hook_result.hooks {
@@ -129,6 +133,7 @@ pub(crate) fn eval_emit(
         Ok(())
     })();
     env.emit_depth -= 1;
+    env.in_lifecycle_block = saved_lifecycle;
 
     result
 }

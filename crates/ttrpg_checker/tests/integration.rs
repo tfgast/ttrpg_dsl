@@ -1954,7 +1954,7 @@ system "test" {
 "#;
     expect_errors(
         source,
-        &["is an action and can only be called from function, action, reaction, or hook context"],
+        &["is an action and can only be called from function, action, reaction, hook, or lifecycle context"],
     );
 }
 
@@ -10435,7 +10435,7 @@ system "test" {
 "#;
     expect_errors(
         source,
-        &["is an action and can only be called from function, action, reaction, or hook"],
+        &["is an action and can only be called from function, action, reaction, hook, or lifecycle context"],
     );
 }
 
@@ -10457,7 +10457,7 @@ system "test" {
 "#;
     expect_errors(
         source,
-        &["is an action and can only be called from function, action, reaction, or hook"],
+        &["is an action and can only be called from function, action, reaction, hook, or lifecycle context"],
     );
 }
 
@@ -10986,7 +10986,7 @@ system "test" {
 "#;
     expect_errors(
         source,
-        &["is a function and can only be called from function, action, reaction, or hook"],
+        &["is a function and can only be called from function, action, reaction, hook, or lifecycle context"],
     );
 }
 
@@ -11000,7 +11000,7 @@ system "test" {
 "#;
     expect_errors(
         source,
-        &["is a function and can only be called from function, action, reaction, or hook"],
+        &["is a function and can only be called from function, action, reaction, hook, or lifecycle context"],
     );
 }
 
@@ -11473,4 +11473,214 @@ system "test" {
 }
 "#;
     expect_no_errors(source);
+}
+
+// ── Condition Lifecycle Hooks (on_apply / on_remove) ──────────────────
+
+#[test]
+fn condition_on_apply_parses_and_checks() {
+    let source = r#"
+system "test" {
+    entity Character { hp: int }
+    condition Prone on bearer: Character {
+        on_apply {
+            bearer.hp = bearer.hp - 1
+        }
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn condition_on_remove_parses_and_checks() {
+    let source = r#"
+system "test" {
+    entity Character { hp: int }
+    condition Prone on bearer: Character {
+        on_remove {
+            bearer.hp = bearer.hp + 1
+        }
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn condition_on_apply_and_on_remove_together() {
+    let source = r#"
+system "test" {
+    entity Character { hp: int }
+    condition Prone on bearer: Character {
+        on_apply {
+            bearer.hp = bearer.hp - 1
+        }
+        on_remove {
+            bearer.hp = bearer.hp + 1
+        }
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn condition_on_apply_with_params_in_scope() {
+    let source = r#"
+system "test" {
+    entity Character { hp: int }
+    condition Frightened(source: Character) on bearer: Character {
+        on_apply {
+            bearer.hp = bearer.hp - 1
+            let s = source
+        }
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn condition_on_apply_with_modify_clauses() {
+    let source = r#"
+system "test" {
+    entity Character { hp: int }
+    derive get_hp(c: Character) -> int { c.hp }
+    condition Weakened on bearer: Character {
+        modify get_hp(c: bearer) {
+            result = result - 2
+        }
+        on_apply {
+            bearer.hp = bearer.hp - 1
+        }
+        on_remove {
+            bearer.hp = bearer.hp + 1
+        }
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn condition_on_apply_rejects_apply_condition() {
+    let source = r#"
+system "test" {
+    entity Character { hp: int }
+    condition Prone on bearer: Character {
+        on_apply {
+            apply_condition(bearer, Prone)
+        }
+    }
+}
+"#;
+    expect_errors(source, &["cannot be called inside on_apply/on_remove"]);
+}
+
+#[test]
+fn condition_on_apply_rejects_remove_condition() {
+    let source = r#"
+system "test" {
+    entity Character { hp: int }
+    condition Prone on bearer: Character {
+        on_apply {
+            remove_condition(bearer, Prone)
+        }
+    }
+}
+"#;
+    expect_errors(source, &["cannot be called inside on_apply/on_remove"]);
+}
+
+#[test]
+fn condition_on_remove_rejects_revoke() {
+    let source = r#"
+system "test" {
+    entity Character { hp: int }
+    condition Prone on bearer: Character {
+        on_remove {
+            let inv = invocation()
+        }
+    }
+}
+"#;
+    expect_errors(source, &["invocation()"]);
+}
+
+#[test]
+fn condition_on_apply_allows_emit() {
+    let source = r#"
+system "test" {
+    entity Character { hp: int }
+    event Applied(target: Character) {}
+    condition Prone on bearer: Character {
+        on_apply {
+            emit Applied(target: bearer)
+        }
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn condition_on_apply_allows_dice() {
+    let source = r#"
+system "test" {
+    entity Character { hp: int }
+    condition Prone on bearer: Character {
+        on_apply {
+            bearer.hp = bearer.hp - roll(1d6).total
+        }
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn condition_duplicate_on_apply_parse_error() {
+    let source = r#"
+system "test" {
+    entity Character { hp: int }
+    condition Prone on bearer: Character {
+        on_apply {
+            bearer.hp = bearer.hp - 1
+        }
+        on_apply {
+            bearer.hp = bearer.hp - 2
+        }
+    }
+}
+"#;
+    let (_program, parse_errors) = ttrpg_parser::parse(source, FileId::SYNTH);
+    assert!(
+        parse_errors.iter().any(|e| e.message.contains("duplicate")),
+        "expected parse error containing 'duplicate', got: {:?}",
+        parse_errors.iter().map(|e| &e.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn condition_duplicate_on_remove_parse_error() {
+    let source = r#"
+system "test" {
+    entity Character { hp: int }
+    condition Prone on bearer: Character {
+        on_remove {
+            bearer.hp = bearer.hp + 1
+        }
+        on_remove {
+            bearer.hp = bearer.hp + 2
+        }
+    }
+}
+"#;
+    let (_program, parse_errors) = ttrpg_parser::parse(source, FileId::SYNTH);
+    assert!(
+        parse_errors.iter().any(|e| e.message.contains("duplicate")),
+        "expected parse error containing 'duplicate', got: {:?}",
+        parse_errors.iter().map(|e| &e.message).collect::<Vec<_>>()
+    );
 }

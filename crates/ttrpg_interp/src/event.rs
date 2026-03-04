@@ -412,7 +412,9 @@ fn is_suppressed(
                 for clause_item in &cond_decl.clauses {
                     let suppress = match clause_item {
                         ConditionClause::Suppress(s) => s,
-                        ConditionClause::Modify(_) => continue,
+                        ConditionClause::Modify(_)
+                        | ConditionClause::OnApply(_)
+                        | ConditionClause::OnRemove(_) => continue,
                     };
 
                     if suppress.event_name != event_name {

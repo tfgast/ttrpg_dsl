@@ -1758,6 +1758,7 @@ fn charge_action_adds_attack_mod() {
         Response::Acknowledged, // ActionStarted
         Response::Acknowledged, // RequiresCheck (wielded + no ChargeRecovery → pass)
         Response::Acknowledged, // DeductCost(attack)
+        Response::Acknowledged, // ConditionApplyGate (ChargeRecovery)
         atk_roll,
         dmg_roll,
     ]);

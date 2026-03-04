@@ -1237,8 +1237,13 @@ fn builtin_apply_condition_emits_effect() {
     let result = crate::eval::eval_expr(&mut env, &expr).unwrap();
     assert_eq!(result, Value::None);
 
-    assert_eq!(handler.log.len(), 1);
-    match &handler.log[0] {
+    // Now emits ConditionApplyGate first, then ApplyCondition
+    assert_eq!(handler.log.len(), 2);
+    assert!(
+        matches!(&handler.log[0], Effect::ConditionApplyGate { condition, .. } if condition == "Prone"),
+        "expected ConditionApplyGate first"
+    );
+    match &handler.log[1] {
         Effect::ApplyCondition {
             target, condition, ..
         } => {
@@ -1254,7 +1259,21 @@ fn builtin_remove_condition_emits_effect() {
     let program = program_with_decls(vec![]);
     let type_env = type_env_with_builtins();
     let interp = Interpreter::new(&program, &type_env).unwrap();
-    let state = TestState::new();
+    let mut state = TestState::new();
+    // Populate with a matching condition so remove_condition finds it
+    state.conditions.insert(
+        2,
+        vec![ActiveCondition {
+            id: 1,
+            name: "Stunned".into(),
+            params: BTreeMap::new(),
+            bearer: EntityRef(2),
+            gained_at: 0,
+            duration: crate::value::duration_variant("indefinite"),
+            invocation: None,
+            applied_at: 0,
+        }],
+    );
     let mut handler = ScriptedHandler::new();
     let mut env = make_env(&state, &mut handler, &interp);
 
@@ -1285,8 +1304,13 @@ fn builtin_remove_condition_emits_effect() {
     let result = crate::eval::eval_expr(&mut env, &expr).unwrap();
     assert_eq!(result, Value::None);
 
-    assert_eq!(handler.log.len(), 1);
-    match &handler.log[0] {
+    // Now emits ConditionRemovalGate first, then RemoveCondition
+    assert_eq!(handler.log.len(), 2);
+    assert!(
+        matches!(&handler.log[0], Effect::ConditionRemovalGate { condition, .. } if condition == "Stunned"),
+        "expected ConditionRemovalGate first"
+    );
+    match &handler.log[1] {
         Effect::RemoveCondition {
             target, condition, ..
         } => {
@@ -1301,12 +1325,25 @@ fn builtin_remove_condition_emits_effect() {
 
 #[test]
 fn remove_condition_empty_args_preserves_exact_match() {
-    // When passing a Condition value with empty args, the effect should
-    // have params=Some(empty_map), NOT params=None (which means "remove all").
+    // When passing a Condition value with empty args, matching instances
+    // are found via read_conditions and removed individually by id.
     let program = program_with_decls(vec![]);
     let type_env = type_env_with_builtins();
     let interp = Interpreter::new(&program, &type_env).unwrap();
-    let state = TestState::new();
+    let mut state = TestState::new();
+    state.conditions.insert(
+        1,
+        vec![ActiveCondition {
+            id: 10,
+            name: "Stunned".into(),
+            params: BTreeMap::new(),
+            bearer: EntityRef(1),
+            gained_at: 0,
+            duration: crate::value::duration_variant("indefinite"),
+            invocation: None,
+            applied_at: 0,
+        }],
+    );
     let mut handler = ScriptedHandler::new();
     let mut env = make_env(&state, &mut handler, &interp);
 
@@ -1336,14 +1373,11 @@ fn remove_condition_empty_args_preserves_exact_match() {
     });
     crate::eval::eval_expr(&mut env, &expr).unwrap();
 
-    assert_eq!(handler.log.len(), 1);
-    match &handler.log[0] {
-        Effect::RemoveCondition { params, .. } => {
-            assert_eq!(
-                *params,
-                Some(BTreeMap::new()),
-                "empty Condition args should produce Some(empty_map), not None"
-            );
+    // Gate + RemoveCondition (by id)
+    assert_eq!(handler.log.len(), 2);
+    match &handler.log[1] {
+        Effect::RemoveCondition { id, .. } => {
+            assert_eq!(*id, Some(10), "should remove by instance id");
         }
         _ => panic!("expected RemoveCondition effect"),
     }
@@ -1351,11 +1385,24 @@ fn remove_condition_empty_args_preserves_exact_match() {
 
 #[test]
 fn remove_condition_string_form_uses_none_params() {
-    // When passing a String (not Condition), params should be None (remove all).
+    // When passing a String (not Condition), all matching conditions are removed.
     let program = program_with_decls(vec![]);
     let type_env = type_env_with_builtins();
     let interp = Interpreter::new(&program, &type_env).unwrap();
-    let state = TestState::new();
+    let mut state = TestState::new();
+    state.conditions.insert(
+        1,
+        vec![ActiveCondition {
+            id: 5,
+            name: "Stunned".into(),
+            params: BTreeMap::new(),
+            bearer: EntityRef(1),
+            gained_at: 0,
+            duration: crate::value::duration_variant("indefinite"),
+            invocation: None,
+            applied_at: 0,
+        }],
+    );
     let mut handler = ScriptedHandler::new();
     let mut env = make_env(&state, &mut handler, &interp);
 
@@ -1379,13 +1426,11 @@ fn remove_condition_string_form_uses_none_params() {
     });
     crate::eval::eval_expr(&mut env, &expr).unwrap();
 
-    assert_eq!(handler.log.len(), 1);
-    match &handler.log[0] {
-        Effect::RemoveCondition { params, .. } => {
-            assert!(
-                params.is_none(),
-                "String form should produce params=None (remove all)"
-            );
+    // Gate + RemoveCondition by id
+    assert_eq!(handler.log.len(), 2);
+    match &handler.log[1] {
+        Effect::RemoveCondition { id, .. } => {
+            assert_eq!(*id, Some(5), "String form should still remove by id after lookup");
         }
         _ => panic!("expected RemoveCondition effect"),
     }
@@ -1438,8 +1483,13 @@ fn remove_condition_active_condition_uses_id() {
     });
     crate::eval::eval_expr(&mut env, &expr).unwrap();
 
-    assert_eq!(handler.log.len(), 1);
-    match &handler.log[0] {
+    // Gate + RemoveCondition
+    assert_eq!(handler.log.len(), 2);
+    assert!(
+        matches!(&handler.log[0], Effect::ConditionRemovalGate { id, .. } if *id == 42),
+        "expected ConditionRemovalGate with id=42"
+    );
+    match &handler.log[1] {
         Effect::RemoveCondition {
             target,
             condition,
@@ -2377,8 +2427,26 @@ fn remove_condition_rejects_invalid_response() {
     let program = program_with_decls(vec![]);
     let type_env = type_env_with_builtins();
     let interp = Interpreter::new(&program, &type_env).unwrap();
-    let state = TestState::new();
-    let mut handler = ScriptedHandler::with_responses(vec![Response::PromptResult(Value::Int(42))]);
+    let mut state = TestState::new();
+    state.conditions.insert(
+        2,
+        vec![ActiveCondition {
+            id: 1,
+            name: "Stunned".into(),
+            params: BTreeMap::new(),
+            bearer: EntityRef(2),
+            gained_at: 0,
+            duration: crate::value::duration_variant("indefinite"),
+            invocation: None,
+            applied_at: 0,
+        }],
+    );
+    // First response is for the ConditionRemovalGate (Acknowledged),
+    // second response is for RemoveCondition (invalid PromptResult).
+    let mut handler = ScriptedHandler::with_responses(vec![
+        Response::Acknowledged,
+        Response::PromptResult(Value::Int(42)),
+    ]);
     let mut env = make_env(&state, &mut handler, &interp);
 
     env.bind("target".into(), Value::Entity(EntityRef(2)));

@@ -152,6 +152,22 @@ pub enum Effect {
         passed: bool,
         reason: Option<String>,
     },
+    /// Host gate before applying a condition. Host responds `Acknowledged`
+    /// (allow) or `Vetoed` (deny — no on_apply, no condition applied).
+    ConditionApplyGate {
+        target: EntityRef,
+        condition: Name,
+        params: BTreeMap<Name, Value>,
+        duration: Value,
+        invocation: Option<InvocationId>,
+    },
+    /// Host gate before removing a condition instance. Host responds
+    /// `Acknowledged` (allow) or `Vetoed` (deny — condition stays).
+    ConditionRemovalGate {
+        target: EntityRef,
+        condition: Name,
+        id: u64,
+    },
 
     // ── Informational effects ───────────────────────────────
     ActionCompleted {
@@ -237,6 +253,8 @@ pub enum EffectKind {
     RevokeInvocation,
     AdvanceTime,
     ModifyApplied,
+    ConditionApplyGate,
+    ConditionRemovalGate,
 }
 
 impl EffectKind {
@@ -260,6 +278,8 @@ impl EffectKind {
             Effect::RevokeInvocation { .. } => EffectKind::RevokeInvocation,
             Effect::AdvanceTime { .. } => EffectKind::AdvanceTime,
             Effect::ModifyApplied { .. } => EffectKind::ModifyApplied,
+            Effect::ConditionApplyGate { .. } => EffectKind::ConditionApplyGate,
+            Effect::ConditionRemovalGate { .. } => EffectKind::ConditionRemovalGate,
         }
     }
 }

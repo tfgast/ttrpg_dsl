@@ -403,7 +403,9 @@ fn collect_and_apply_cost_modifiers(
             for clause_item in &cond_decl.clauses {
                 let clause = match clause_item {
                     ConditionClause::Modify(c) => c,
-                    ConditionClause::Suppress(_) => continue,
+                    ConditionClause::Suppress(_)
+                    | ConditionClause::OnApply(_)
+                    | ConditionClause::OnRemove(_) => continue,
                 };
 
                 // Only match Cost targets for this action

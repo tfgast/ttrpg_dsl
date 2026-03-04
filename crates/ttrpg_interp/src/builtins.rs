@@ -455,13 +455,25 @@ fn builtin_roll(env: &mut Env, args: &[Value], span: Span) -> Result<Value, Runt
 
 /// `apply_condition(target: Entity, condition: Condition, duration: Duration) -> None`
 ///
-/// Emits an `ApplyCondition` effect.
+/// Two-phase lifecycle:
+/// 1. Emit `ConditionApplyGate` — if host vetoes, return early (no condition)
+/// 2. Execute `on_apply` lifecycle blocks
+/// 3. If on_apply succeeds, emit `ApplyCondition` to activate
+/// 4. If on_apply errors, propagate error (condition never activates)
 fn builtin_apply_condition(
     env: &mut Env,
     args: &[Value],
     span: Span,
 ) -> Result<Value, RuntimeError> {
-    match (args.first(), args.get(1), args.get(2)) {
+    if env.in_lifecycle_block > 0 {
+        return Err(RuntimeError::with_span(
+            "apply_condition() cannot be called inside on_apply/on_remove blocks",
+            span,
+        ));
+    }
+
+    // Extract arguments
+    let (target, cond_name, cond_args, duration) = match (args.first(), args.get(1), args.get(2)) {
         (
             Some(Value::Entity(target)),
             Some(Value::Condition {
@@ -469,58 +481,95 @@ fn builtin_apply_condition(
                 args: cond_args,
             }),
             Some(duration),
-        ) => {
-            let effect = Effect::ApplyCondition {
-                target: *target,
-                condition: cond_name.clone(),
-                params: cond_args.clone(),
-                duration: duration.clone(),
-                invocation: env.current_invocation_id,
-            };
-            validate_mutation_response(env.handler.handle(effect), "ApplyCondition", span)?;
-            Ok(Value::None)
+        ) => (*target, cond_name.clone(), cond_args.clone(), duration.clone()),
+        (Some(Value::Entity(target)), Some(Value::Str(cond_name)), Some(duration)) => (
+            *target,
+            Name::from(cond_name.as_str()),
+            BTreeMap::new(),
+            duration.clone(),
+        ),
+        (Some(a), Some(b), Some(c)) => {
+            return Err(RuntimeError::with_span(
+                format!(
+                    "apply_condition() expects (Entity, Condition, Duration), got ({}, {}, {})",
+                    type_name(a),
+                    type_name(b),
+                    type_name(c)
+                ),
+                span,
+            ));
         }
-        (Some(Value::Entity(target)), Some(Value::Str(cond_name)), Some(duration)) => {
-            // Also accept String for condition name (common in DSL)
-            let effect = Effect::ApplyCondition {
-                target: *target,
-                condition: Name::from(cond_name.as_str()),
-                params: BTreeMap::new(),
-                duration: duration.clone(),
-                invocation: env.current_invocation_id,
-            };
-            validate_mutation_response(env.handler.handle(effect), "ApplyCondition", span)?;
-            Ok(Value::None)
+        _ => {
+            return Err(RuntimeError::with_span(
+                "apply_condition() requires 3 arguments",
+                span,
+            ));
         }
-        (Some(a), Some(b), Some(c)) => Err(RuntimeError::with_span(
-            format!(
-                "apply_condition() expects (Entity, Condition, Duration), got ({}, {}, {})",
-                type_name(a),
-                type_name(b),
-                type_name(c)
-            ),
-            span,
-        )),
-        _ => Err(RuntimeError::with_span(
-            "apply_condition() requires 3 arguments",
-            span,
-        )),
+    };
+
+    // Phase 1: Gate — host can veto
+    let gate = Effect::ConditionApplyGate {
+        target,
+        condition: cond_name.clone(),
+        params: cond_args.clone(),
+        duration: duration.clone(),
+        invocation: env.current_invocation_id,
+    };
+    match env.handler.handle(gate) {
+        Response::Vetoed => return Ok(Value::None),
+        Response::Acknowledged => {}
+        other => {
+            return Err(RuntimeError::with_span(
+                format!("protocol error: unexpected response for ConditionApplyGate: {other:?}"),
+                span,
+            ));
+        }
     }
+
+    // Phase 2: Execute on_apply lifecycle blocks
+    crate::pipeline::execute_lifecycle_blocks(
+        env,
+        cond_name.as_str(),
+        target,
+        &cond_args,
+        crate::pipeline::LifecycleKind::OnApply,
+    )?;
+
+    // Phase 3: Activate the condition
+    let effect = Effect::ApplyCondition {
+        target,
+        condition: cond_name,
+        params: cond_args,
+        duration,
+        invocation: env.current_invocation_id,
+    };
+    validate_mutation_response(env.handler.handle(effect), "ApplyCondition", span)?;
+    Ok(Value::None)
 }
 
 // ── remove_condition ───────────────────────────────────────────
 
 /// `remove_condition(target: Entity, condition: Condition | ActiveCondition) -> None`
 ///
-/// Emits a `RemoveCondition` effect.
-/// When passed a `Condition` value, removes by name + params.
-/// When passed an `ActiveCondition` struct, removes by unique instance id.
+/// Two-phase lifecycle per instance:
+/// 1. Emit `ConditionRemovalGate` — if host vetoes, skip (condition stays)
+/// 2. Execute `on_remove` lifecycle blocks (condition still active)
+/// 3. Emit `RemoveCondition` to strip it — always, even if on_remove errored
+/// 4. Propagate first on_remove error after all instances processed
 fn builtin_remove_condition(
     env: &mut Env,
     args: &[Value],
     span: Span,
 ) -> Result<Value, RuntimeError> {
-    match (args.first(), args.get(1)) {
+    if env.in_lifecycle_block > 0 {
+        return Err(RuntimeError::with_span(
+            "remove_condition() cannot be called inside on_apply/on_remove blocks",
+            span,
+        ));
+    }
+
+    // Resolve the target entity and matching condition instances
+    let (target, instances) = match (args.first(), args.get(1)) {
         (
             Some(Value::Entity(target)),
             Some(Value::Condition {
@@ -528,24 +577,21 @@ fn builtin_remove_condition(
                 args: cond_args,
             }),
         ) => {
-            let effect = Effect::RemoveCondition {
-                target: *target,
-                condition: cond_name.clone(),
-                params: Some(cond_args.clone()),
-                id: None,
-            };
-            validate_mutation_response(env.handler.handle(effect), "RemoveCondition", span)?;
-            Ok(Value::None)
+            let conditions = env.state.read_conditions(target).unwrap_or_default();
+            let matching: Vec<_> = conditions
+                .into_iter()
+                .filter(|c| c.name == *cond_name && c.params == *cond_args)
+                .collect();
+            (*target, matching)
         }
         (Some(Value::Entity(target)), Some(Value::Str(cond_name))) => {
-            let effect = Effect::RemoveCondition {
-                target: *target,
-                condition: Name::from(cond_name.as_str()),
-                params: None,
-                id: None,
-            };
-            validate_mutation_response(env.handler.handle(effect), "RemoveCondition", span)?;
-            Ok(Value::None)
+            let conditions = env.state.read_conditions(target).unwrap_or_default();
+            let name = Name::from(cond_name.as_str());
+            let matching: Vec<_> = conditions
+                .into_iter()
+                .filter(|c| c.name == name)
+                .collect();
+            (*target, matching)
         }
         (Some(Value::Entity(target)), Some(Value::Struct { name, fields }))
             if name == "ActiveCondition" =>
@@ -569,27 +615,117 @@ fn builtin_remove_condition(
                 Some(Value::Str(s)) => Name::from(s.as_str()),
                 _ => Name::from("?"),
             };
-            let effect = Effect::RemoveCondition {
-                target: *target,
-                condition: cond_name,
-                params: None,
-                id: Some(cond_id),
+            let cond_params = match fields.get("params") {
+                Some(Value::Map(m)) => {
+                    let mut params = BTreeMap::new();
+                    for (k, v) in m {
+                        if let Value::Str(key) = k {
+                            params.insert(Name::from(key.as_str()), v.clone());
+                        }
+                    }
+                    params
+                }
+                _ => BTreeMap::new(),
             };
-            validate_mutation_response(env.handler.handle(effect), "RemoveCondition", span)?;
-            Ok(Value::None)
+            let instance = crate::state::ActiveCondition {
+                id: cond_id,
+                name: cond_name,
+                params: cond_params,
+                bearer: *target,
+                gained_at: 0,
+                duration: Value::None,
+                invocation: None,
+                applied_at: 0,
+            };
+            (*target, vec![instance])
         }
-        (Some(a), Some(b)) => Err(RuntimeError::with_span(
-            format!(
-                "remove_condition() expects (Entity, Condition), got ({}, {})",
-                type_name(a),
-                type_name(b)
-            ),
-            span,
-        )),
-        _ => Err(RuntimeError::with_span(
-            "remove_condition() requires 2 arguments",
-            span,
-        )),
+        (Some(a), Some(b)) => {
+            return Err(RuntimeError::with_span(
+                format!(
+                    "remove_condition() expects (Entity, Condition), got ({}, {})",
+                    type_name(a),
+                    type_name(b)
+                ),
+                span,
+            ));
+        }
+        _ => {
+            return Err(RuntimeError::with_span(
+                "remove_condition() requires 2 arguments",
+                span,
+            ));
+        }
+    };
+
+    // Process each instance with lifecycle hooks
+    remove_condition_instances(env, target, &instances, span)?;
+    Ok(Value::None)
+}
+
+/// Shared helper: per-instance gate → on_remove → remove flow.
+///
+/// For each instance (in `gained_at` order):
+/// 1. Emit `ConditionRemovalGate` — if vetoed, skip
+/// 2. Execute `on_remove` lifecycle blocks (condition still active during execution)
+/// 3. Emit `RemoveCondition` to strip it — always, even if on_remove errored
+/// 4. Collect first on_remove error; propagate after loop
+fn remove_condition_instances(
+    env: &mut Env,
+    target: crate::state::EntityRef,
+    instances: &[crate::state::ActiveCondition],
+    span: Span,
+) -> Result<(), RuntimeError> {
+    let mut first_error: Option<RuntimeError> = None;
+
+    // Sort by gained_at (instances should already be sorted, but be safe)
+    let mut sorted: Vec<_> = instances.to_vec();
+    sorted.sort_by_key(|c| c.gained_at);
+
+    for instance in &sorted {
+        // Phase 1: Gate
+        let gate = Effect::ConditionRemovalGate {
+            target,
+            condition: instance.name.clone(),
+            id: instance.id,
+        };
+        match env.handler.handle(gate) {
+            Response::Vetoed => continue,
+            Response::Acknowledged => {}
+            _ => {} // Treat unexpected responses as acknowledged
+        }
+
+        // Phase 2: on_remove lifecycle blocks
+        let lifecycle_result = crate::pipeline::execute_lifecycle_blocks(
+            env,
+            instance.name.as_str(),
+            target,
+            &instance.params,
+            crate::pipeline::LifecycleKind::OnRemove,
+        );
+        if let Err(e) = lifecycle_result {
+            if first_error.is_none() {
+                first_error = Some(e);
+            }
+        }
+
+        // Phase 3: Always remove the condition, even if on_remove errored
+        let effect = Effect::RemoveCondition {
+            target,
+            condition: instance.name.clone(),
+            params: None,
+            id: Some(instance.id),
+        };
+        if let Err(e) = validate_mutation_response(env.handler.handle(effect), "RemoveCondition", span) {
+            if first_error.is_none() {
+                first_error = Some(e);
+            }
+        }
+    }
+
+    if let Some(err) = first_error {
+        Err(err)
+    } else {
+        Ok(())
     }
 }
 
@@ -619,42 +755,108 @@ fn builtin_invocation(env: &Env, args: &[Value], span: Span) -> Result<Value, Ru
 
 /// `revoke(inv: Invocation | option<Invocation> | none) -> none`
 ///
-/// Emits a `RevokeInvocation` effect for the given invocation ID.
+/// Finds all conditions tagged with the given invocation across all entities,
+/// runs their on_remove lifecycle blocks, and removes them.
 /// Accepts `none` or `Option(None)` as a no-op (nothing to revoke).
 fn builtin_revoke(env: &mut Env, args: &[Value], span: Span) -> Result<Value, RuntimeError> {
+    if env.in_lifecycle_block > 0 {
+        return Err(RuntimeError::with_span(
+            "revoke() cannot be called inside on_apply/on_remove blocks",
+            span,
+        ));
+    }
+
     let arg = args
         .first()
         .ok_or_else(|| RuntimeError::with_span("revoke() requires 1 argument", span))?;
 
-    match arg {
-        Value::Invocation(id) => {
-            let effect = Effect::RevokeInvocation { invocation: *id };
-            validate_mutation_response(env.handler.handle(effect), "RevokeInvocation", span)?;
-            Ok(Value::None)
-        }
+    let inv_id = match arg {
+        Value::Invocation(id) => *id,
         Value::Option(Some(inner)) => match inner.as_ref() {
-            Value::Invocation(id) => {
-                let effect = Effect::RevokeInvocation { invocation: *id };
-                validate_mutation_response(env.handler.handle(effect), "RevokeInvocation", span)?;
-                Ok(Value::None)
+            Value::Invocation(id) => *id,
+            other => {
+                return Err(RuntimeError::with_span(
+                    format!(
+                        "revoke() expects Invocation inside Option, got {}",
+                        type_name(other)
+                    ),
+                    span,
+                ));
             }
-            other => Err(RuntimeError::with_span(
+        },
+        Value::Option(None) | Value::None => return Ok(Value::None),
+        other => {
+            return Err(RuntimeError::with_span(
                 format!(
-                    "revoke() expects Invocation inside Option, got {}",
+                    "revoke() expects Invocation or option<Invocation>, got {}",
                     type_name(other)
                 ),
                 span,
-            )),
-        },
-        Value::Option(None) => Ok(Value::None),
-        Value::None => Ok(Value::None),
-        other => Err(RuntimeError::with_span(
-            format!(
-                "revoke() expects Invocation or option<Invocation>, got {}",
-                type_name(other)
-            ),
-            span,
-        )),
+            ));
+        }
+    };
+
+    // Collect all conditions with this invocation across all entities
+    let entities = env.state.all_entities();
+    let mut matching: Vec<(crate::state::EntityRef, crate::state::ActiveCondition)> = Vec::new();
+    for entity in &entities {
+        if let Some(conditions) = env.state.read_conditions(entity) {
+            for cond in conditions {
+                if cond.invocation == Some(inv_id) {
+                    matching.push((*entity, cond));
+                }
+            }
+        }
+    }
+
+    // Sort by gained_at
+    matching.sort_by_key(|(_, c)| c.gained_at);
+
+    // Run lifecycle hooks + remove for each
+    let mut first_error: Option<RuntimeError> = None;
+    for (entity, instance) in &matching {
+        // Gate
+        let gate = Effect::ConditionRemovalGate {
+            target: *entity,
+            condition: instance.name.clone(),
+            id: instance.id,
+        };
+        if let Response::Vetoed = env.handler.handle(gate) {
+            continue;
+        }
+
+        // on_remove lifecycle
+        let lifecycle_result = crate::pipeline::execute_lifecycle_blocks(
+            env,
+            instance.name.as_str(),
+            *entity,
+            &instance.params,
+            crate::pipeline::LifecycleKind::OnRemove,
+        );
+        if let Err(e) = lifecycle_result {
+            if first_error.is_none() {
+                first_error = Some(e);
+            }
+        }
+
+        // Always remove
+        let effect = Effect::RemoveCondition {
+            target: *entity,
+            condition: instance.name.clone(),
+            params: None,
+            id: Some(instance.id),
+        };
+        let _ = validate_mutation_response(env.handler.handle(effect), "RemoveCondition", span);
+    }
+
+    // Also emit RevokeInvocation for the host to do any cleanup
+    let effect = Effect::RevokeInvocation { invocation: inv_id };
+    let _ = validate_mutation_response(env.handler.handle(effect), "RevokeInvocation", span);
+
+    if let Some(err) = first_error {
+        Err(err)
+    } else {
+        Ok(Value::None)
     }
 }
 

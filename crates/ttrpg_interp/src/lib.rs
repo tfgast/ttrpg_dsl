@@ -458,6 +458,11 @@ pub(crate) struct Env<'a, 'p> {
     pub cost_payer: Option<EntityRef>,
     pub current_invocation_id: Option<InvocationId>,
     pub emit_depth: u32,
+    /// Counter for nested lifecycle block execution. When > 0,
+    /// `apply_condition`, `remove_condition`, and `revoke()` are blocked.
+    /// Uses a counter (not bool) so that hooks triggered via `emit` inside
+    /// a lifecycle block can temporarily clear it.
+    pub in_lifecycle_block: u32,
 }
 
 impl<'a, 'p> Env<'a, 'p> {
@@ -475,6 +480,7 @@ impl<'a, 'p> Env<'a, 'p> {
             cost_payer: None,
             current_invocation_id: None,
             emit_depth: 0,
+            in_lifecycle_block: 0,
         }
     }
 

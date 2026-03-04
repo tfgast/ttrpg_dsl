@@ -488,6 +488,27 @@ impl EffectHandler for CliHandler<'_> {
                 self.log.push(format!("[AdvanceTime] +{amount}"));
                 Response::Acknowledged
             }
+
+            Effect::ConditionApplyGate {
+                target, condition, ..
+            } => {
+                let name = self.entity_name(&target);
+                self.log
+                    .push(format!("[ConditionApplyGate] {condition} on {name}"));
+                Response::Acknowledged
+            }
+
+            Effect::ConditionRemovalGate {
+                target,
+                condition,
+                id,
+            } => {
+                let name = self.entity_name(&target);
+                self.log.push(format!(
+                    "[ConditionRemovalGate] {condition}#{id} on {name}"
+                ));
+                Response::Acknowledged
+            }
         }
     }
 }

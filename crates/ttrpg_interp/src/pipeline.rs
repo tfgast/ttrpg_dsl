@@ -47,6 +47,54 @@ pub(crate) fn collect_ancestor_order<'p>(
     result
 }
 
+/// Which lifecycle hook to execute.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum LifecycleKind {
+    OnApply,
+    OnRemove,
+}
+
+/// Execute lifecycle blocks (on_apply or on_remove) for a condition.
+///
+/// Walks the ancestor chain (parents first), executing each matching block
+/// with the bearer and condition params in scope. The `in_lifecycle_block`
+/// counter is incremented to prevent `apply_condition`/`remove_condition`/`revoke()`
+/// calls inside the blocks.
+pub(crate) fn execute_lifecycle_blocks(
+    env: &mut Env,
+    condition_name: &str,
+    bearer: crate::state::EntityRef,
+    params: &BTreeMap<Name, Value>,
+    kind: LifecycleKind,
+) -> Result<(), RuntimeError> {
+    let chain = collect_ancestor_order(env.interp.program, condition_name);
+    env.in_lifecycle_block += 1;
+
+    let result = (|| {
+        for decl in &chain {
+            for clause in &decl.clauses {
+                let block = match (kind, clause) {
+                    (LifecycleKind::OnApply, ConditionClause::OnApply(lb)) => &lb.body,
+                    (LifecycleKind::OnRemove, ConditionClause::OnRemove(lb)) => &lb.body,
+                    _ => continue,
+                };
+                env.push_scope();
+                env.bind(decl.receiver_name.clone(), Value::Entity(bearer));
+                for (pname, pval) in params {
+                    env.bind(pname.clone(), pval.clone());
+                }
+                let r = crate::eval::eval_block(env, block);
+                env.pop_scope();
+                r?;
+            }
+        }
+        Ok(())
+    })();
+
+    env.in_lifecycle_block -= 1;
+    result
+}
+
 /// Collect modifiers from conditions and options, returning owned data.
 ///
 /// Returns modifiers in application order:
@@ -98,7 +146,9 @@ pub(crate) fn collect_modifiers_owned(
                 for clause_item in &cond_decl.clauses {
                     let clause = match clause_item {
                         ConditionClause::Modify(c) => c,
-                        ConditionClause::Suppress(_) => continue,
+                        ConditionClause::Suppress(_)
+                        | ConditionClause::OnApply(_)
+                        | ConditionClause::OnRemove(_) => continue,
                     };
 
                     // Does the target function name match?
