@@ -339,6 +339,94 @@ fn entity_comma_separated_members() {
 }
 
 // =============================================================================
+// 2. Declarations — Restricted fields
+// =============================================================================
+
+#[test]
+fn restricted_field_in_entity() {
+    let p = ok(r#"system "t" {
+    entity Character {
+        restricted HP: resource(0 ..= 100)
+        name: string
+    }
+}"#);
+    match first_decl(&p) {
+        DeclKind::Entity(e) => {
+            assert!(e.fields[0].restricted);
+            assert_eq!(e.fields[0].name.as_str(), "HP");
+            assert!(!e.fields[1].restricted);
+        }
+        _ => panic!("expected entity"),
+    }
+}
+
+#[test]
+fn restricted_field_in_group() {
+    let p = ok(r#"system "t" {
+    group Spellcasting {
+        restricted spell_slots: int
+        spell_dc: int
+    }
+}"#);
+    match first_decl(&p) {
+        DeclKind::Group(g) => {
+            assert!(g.fields[0].restricted);
+            assert!(!g.fields[1].restricted);
+        }
+        _ => panic!("expected group"),
+    }
+}
+
+#[test]
+fn restricted_field_in_inline_optional() {
+    let p = ok(r#"system "t" {
+    entity Character {
+        name: string
+        optional KiPowers {
+            restricted ki_points: resource(0 ..= 20)
+        }
+    }
+}"#);
+    match first_decl(&p) {
+        DeclKind::Entity(e) => {
+            assert!(e.optional_groups[0].fields[0].restricted);
+        }
+        _ => panic!("expected entity"),
+    }
+}
+
+#[test]
+fn restricted_field_with_default() {
+    let p = ok(r#"system "t" {
+    entity Character {
+        restricted level: int = 1
+    }
+}"#);
+    match first_decl(&p) {
+        DeclKind::Entity(e) => {
+            assert!(e.fields[0].restricted);
+            assert!(e.fields[0].default.is_some());
+        }
+        _ => panic!("expected entity"),
+    }
+}
+
+#[test]
+fn field_named_restricted_is_not_modifier() {
+    // A field literally named "restricted" should parse as a normal field
+    let p = ok(r#"system "t" {
+    entity E { restricted: bool }
+}"#);
+    match first_decl(&p) {
+        DeclKind::Entity(e) => {
+            assert_eq!(e.fields[0].name.as_str(), "restricted");
+            assert!(!e.fields[0].restricted);
+        }
+        _ => panic!("expected entity"),
+    }
+}
+
+// =============================================================================
 // 2. Declarations — Derive / Mechanic
 // =============================================================================
 

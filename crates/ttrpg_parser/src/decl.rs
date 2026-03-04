@@ -321,6 +321,14 @@ impl Parser {
 
     pub(crate) fn parse_field_def(&mut self) -> Result<FieldDef, ()> {
         let start = self.start_span();
+
+        // `restricted name: type` vs field named `restricted: type`
+        let restricted =
+            self.at_ident("restricted") && matches!(self.peek_at(1), TokenKind::Ident(_));
+        if restricted {
+            self.advance();
+        }
+
         let (name, _) = self.expect_ident()?;
         self.expect(&TokenKind::Colon)?;
         let ty = self.parse_type()?;
@@ -332,13 +340,14 @@ impl Parser {
             None
         };
 
-        Ok(FieldDef {
-            name,
-            ty,
-            default,
-            restricted: false,
-            span: self.end_span(start),
-        })
+        let mut field = FieldDef::new(name, ty).with_span(self.end_span(start));
+        if let Some(default) = default {
+            field = field.with_default(default);
+        }
+        if restricted {
+            field = field.restricted();
+        }
+        Ok(field)
     }
 
     // ── Derive / Mechanic ────────────────────────────────────────
