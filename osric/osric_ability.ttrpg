@@ -149,7 +149,7 @@ system "OSRIC Ability" {
     // Composite: effective STR to-hit considering exceptional strength.
     // Monks do not receive STR bonuses to hit (OSRIC 3.0, p.51).
     derive effective_str_to_hit(attacker: Character) -> int {
-        if attacker.class == Monk { 0 } else {
+        if any([cl.class == Monk for cl in attacker.classes]) { 0 } else {
             let score = attacker.abilities[STR]
             if score == 18 {
                 if attacker has ExceptionalStrength as es {
@@ -167,7 +167,7 @@ system "OSRIC Ability" {
     // Monks do not receive STR damage bonuses (OSRIC 3.0, p.51).
     // Instead they get monk_weapon_damage() — applied in resolve_melee_attack.
     derive effective_str_damage(attacker: Character) -> int {
-        if attacker.class == Monk { 0 } else {
+        if any([cl.class == Monk for cl in attacker.classes]) { 0 } else {
             let score = attacker.abilities[STR]
             if score == 18 {
                 if attacker has ExceptionalStrength as es {

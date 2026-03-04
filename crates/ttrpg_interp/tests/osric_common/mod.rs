@@ -107,6 +107,23 @@ pub fn shield_variant(variant: &str) -> Value {
     enum_variant("ShieldType", variant)
 }
 
+pub fn class_level_struct(class: &str, level: i64, xp: i64) -> Value {
+    Value::Struct {
+        name: Name::from("ClassLevel"),
+        fields: {
+            let mut f = BTreeMap::new();
+            f.insert(Name::from("class"), class_variant(class));
+            f.insert(Name::from("level"), Value::Int(level));
+            f.insert(Name::from("xp"), Value::Int(xp));
+            f
+        },
+    }
+}
+
+pub fn classing_mode(variant: &str) -> Value {
+    enum_variant("ClassingMode", variant)
+}
+
 pub fn monster_attack(name: &str, count: u32, sides: u32, bonus: i64) -> Value {
     Value::Struct {
         name: Name::from("MonsterAttack"),
@@ -277,9 +294,12 @@ pub fn make_character(
 
     let mut fields = FxHashMap::default();
     fields.insert(Name::from("name"), Value::Str(name.to_string()));
-    fields.insert(Name::from("class"), class_variant(class));
+    fields.insert(
+        Name::from("classes"),
+        Value::List(vec![class_level_struct(class, level, 0)]),
+    );
+    fields.insert(Name::from("classing_mode"), classing_mode("Single"));
     fields.insert(Name::from("ancestry"), enum_variant("Ancestry", ancestry));
-    fields.insert(Name::from("level"), Value::Int(level));
     fields.insert(
         Name::from("alignment"),
         enum_variant("Alignment", "TrueNeutral"),
@@ -289,7 +309,6 @@ pub fn make_character(
     fields.insert(Name::from("hp"), Value::Int(max_hp));
     fields.insert(Name::from("armor_ac"), Value::Int(ac));
     fields.insert(Name::from("shield_ac_bonus"), Value::Int(0));
-    fields.insert(Name::from("xp"), Value::Int(0));
     fields.insert(Name::from("base_movement"), feet(120));
     fields.insert(Name::from("gold"), Value::Int(0));
     fields.insert(Name::from("saving_throws"), Value::Option(None));
@@ -317,9 +336,12 @@ pub fn make_character_with_shield(
 
     let mut fields = FxHashMap::default();
     fields.insert(Name::from("name"), Value::Str(name.to_string()));
-    fields.insert(Name::from("class"), class_variant(class));
+    fields.insert(
+        Name::from("classes"),
+        Value::List(vec![class_level_struct(class, level, 0)]),
+    );
+    fields.insert(Name::from("classing_mode"), classing_mode("Single"));
     fields.insert(Name::from("ancestry"), enum_variant("Ancestry", ancestry));
-    fields.insert(Name::from("level"), Value::Int(level));
     fields.insert(
         Name::from("alignment"),
         enum_variant("Alignment", "TrueNeutral"),
@@ -329,7 +351,6 @@ pub fn make_character_with_shield(
     fields.insert(Name::from("hp"), Value::Int(max_hp));
     fields.insert(Name::from("armor_ac"), Value::Int(ac));
     fields.insert(Name::from("shield_ac_bonus"), Value::Int(shield_ac_bonus));
-    fields.insert(Name::from("xp"), Value::Int(0));
     fields.insert(Name::from("base_movement"), feet(120));
     fields.insert(Name::from("gold"), Value::Int(0));
     fields.insert(Name::from("saving_throws"), Value::Option(None));
@@ -356,9 +377,12 @@ pub fn make_caster(
 
     let mut fields = FxHashMap::default();
     fields.insert(Name::from("name"), Value::Str(name.to_string()));
-    fields.insert(Name::from("class"), class_variant(class));
+    fields.insert(
+        Name::from("classes"),
+        Value::List(vec![class_level_struct(class, level, 0)]),
+    );
+    fields.insert(Name::from("classing_mode"), classing_mode("Single"));
     fields.insert(Name::from("ancestry"), enum_variant("Ancestry", ancestry));
-    fields.insert(Name::from("level"), Value::Int(level));
     fields.insert(
         Name::from("alignment"),
         enum_variant("Alignment", "TrueNeutral"),
@@ -368,7 +392,6 @@ pub fn make_caster(
     fields.insert(Name::from("hp"), Value::Int(max_hp));
     fields.insert(Name::from("armor_ac"), Value::Int(ac));
     fields.insert(Name::from("shield_ac_bonus"), Value::Int(0));
-    fields.insert(Name::from("xp"), Value::Int(0));
     fields.insert(Name::from("base_movement"), feet(120));
     fields.insert(Name::from("gold"), Value::Int(0));
     fields.insert(Name::from("saving_throws"), Value::Option(None));
@@ -430,12 +453,15 @@ pub fn make_encumbrance_character(
 
     let mut fields = FxHashMap::default();
     fields.insert(Name::from("name"), Value::Str(name.to_string()));
-    fields.insert(Name::from("class"), enum_variant("Class", "Fighter"));
+    fields.insert(
+        Name::from("classes"),
+        Value::List(vec![class_level_struct("Fighter", 1, 0)]),
+    );
+    fields.insert(Name::from("classing_mode"), classing_mode("Single"));
     fields.insert(
         Name::from("ancestry"),
         enum_variant("Ancestry", ancestry_name),
     );
-    fields.insert(Name::from("level"), Value::Int(1));
     fields.insert(
         Name::from("alignment"),
         enum_variant("Alignment", "TrueNeutral"),
@@ -445,7 +471,6 @@ pub fn make_encumbrance_character(
     fields.insert(Name::from("hp"), Value::Int(10));
     fields.insert(Name::from("armor_ac"), Value::Int(10));
     fields.insert(Name::from("shield_ac_bonus"), Value::Int(0));
-    fields.insert(Name::from("xp"), Value::Int(0));
     fields.insert(Name::from("base_movement"), feet(120));
     fields.insert(Name::from("current_weight"), Value::Int(current_weight));
     fields.insert(Name::from("armour_movement_cap"), feet(armour_cap));
@@ -468,9 +493,12 @@ pub fn make_ability_character(
 
     let mut fields = FxHashMap::default();
     fields.insert(Name::from("name"), Value::Str(name.to_string()));
-    fields.insert(Name::from("class"), enum_variant("Class", "Fighter"));
+    fields.insert(
+        Name::from("classes"),
+        Value::List(vec![class_level_struct("Fighter", 1, 0)]),
+    );
+    fields.insert(Name::from("classing_mode"), classing_mode("Single"));
     fields.insert(Name::from("ancestry"), enum_variant("Ancestry", "Human"));
-    fields.insert(Name::from("level"), Value::Int(1));
     fields.insert(
         Name::from("alignment"),
         enum_variant("Alignment", "TrueNeutral"),
@@ -480,7 +508,6 @@ pub fn make_ability_character(
     fields.insert(Name::from("hp"), Value::Int(10));
     fields.insert(Name::from("armor_ac"), Value::Int(10));
     fields.insert(Name::from("shield_ac_bonus"), Value::Int(0));
-    fields.insert(Name::from("xp"), Value::Int(0));
     fields.insert(Name::from("base_movement"), feet(120));
     fields.insert(Name::from("gold"), Value::Int(0));
     fields.insert(Name::from("saving_throws"), Value::Option(None));

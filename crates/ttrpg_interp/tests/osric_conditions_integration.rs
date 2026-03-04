@@ -1960,9 +1960,12 @@ fn condition_count_after_apply_and_remove() {
     let mut state = GameState::new();
     let mut char_fields = FxHashMap::default();
     char_fields.insert(Name::from("name"), Value::Str("Test".to_string()));
-    char_fields.insert(Name::from("class"), class_variant("Fighter"));
+    char_fields.insert(
+        Name::from("classes"),
+        Value::List(vec![class_level_struct("Fighter", 1, 0)]),
+    );
+    char_fields.insert(Name::from("classing_mode"), classing_mode("Single"));
     char_fields.insert(Name::from("ancestry"), enum_variant("Ancestry", "Human"));
-    char_fields.insert(Name::from("level"), Value::Int(1));
     char_fields.insert(
         Name::from("alignment"),
         enum_variant("Alignment", "TrueNeutral"),
@@ -1972,7 +1975,6 @@ fn condition_count_after_apply_and_remove() {
     char_fields.insert(Name::from("hp"), Value::Int(10));
     char_fields.insert(Name::from("armor_ac"), Value::Int(10));
     char_fields.insert(Name::from("shield_ac_bonus"), Value::Int(0));
-    char_fields.insert(Name::from("xp"), Value::Int(0));
     char_fields.insert(Name::from("base_movement"), feet(120));
     char_fields.insert(Name::from("gold"), Value::Int(0));
     char_fields.insert(Name::from("saving_throws"), Value::Option(None));

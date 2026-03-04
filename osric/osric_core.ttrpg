@@ -183,20 +183,29 @@ system "OSRIC" {
         damage: DiceExpr
     }
 
+    // --- Per-class level and XP tracking ---
+
+    struct ClassLevel {
+        class: Class
+        level: int
+        xp: int
+    }
+
+    enum ClassingMode { Single, Multi, Dual }
+
     // --- Character entity ---
 
     entity Character {
         name: string
-        class: Class
+        classes: list<ClassLevel>
+        classing_mode: ClassingMode = ClassingMode.Single
         ancestry: Ancestry = Ancestry.Human
-        level: int = 1
         alignment: Alignment = Alignment.TrueNeutral
         abilities: map<Ability, int>
         max_hp: int
         hp: resource(0..=max_hp)
         armor_ac: int = 10              // base armor AC; DEX and shield computed via effective_target_ac
         shield_ac_bonus: int = 0        // AC contribution from shield (for condition negation)
-        xp: int = 0
         base_movement: Feet = 120ft
         current_weight: int = 0            // lbs carried; manual now, inventory-derived later
         armour_movement_cap: Feet = 0ft    // 0ft = no armour cap; set from equipped armour

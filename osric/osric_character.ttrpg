@@ -13,6 +13,35 @@ use "OSRIC Ability"
 system "OSRIC Character" {
 
     // ========================================================
+    //  MULTI-CLASS HELPERS
+    //
+    //  Bridge derives for querying per-class data from the
+    //  Character's classes list.
+    // ========================================================
+
+    // Does the character have this class (any slot)?
+    derive is_class(char: Character, c: Class) -> bool {
+        any([cl.class == c for cl in char.classes])
+    }
+
+    // Level for a specific class, if held.
+    derive class_level_for(char: Character, c: Class) -> option<int> {
+        let matches = [cl.level for cl in char.classes if cl.class == c]
+        if len(matches) > 0 { some(first(matches).unwrap()) } else { none }
+    }
+
+    // Primary class (first entry — original for dual, only for single).
+    derive primary_class(char: Character) -> ClassLevel {
+        first(char.classes).unwrap()
+    }
+
+    // Current/active class (last entry — current for dual, same as primary for single/multi).
+    derive current_class(char: Character) -> ClassLevel {
+        last(char.classes).unwrap()
+    }
+
+
+    // ========================================================
     //  ANCESTRY MODIFIER APPLICATION
     //
     //  Applies ancestral ability score adjustments to a raw

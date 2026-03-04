@@ -116,7 +116,7 @@ fn osric_core_has_all_enums() {
         "missing ThiefSkill enum"
     );
 
-    assert_eq!(enums.len(), 11, "expected 11 enums, got {enums:?}");
+    assert_eq!(enums.len(), 12, "expected 12 enums, got {enums:?}");
 }
 
 #[test]
@@ -213,7 +213,7 @@ fn osric_core_has_all_structs() {
         "missing MonsterAttack struct"
     );
 
-    assert_eq!(structs.len(), 5, "expected 5 structs, got {structs:?}");
+    assert_eq!(structs.len(), 6, "expected 6 structs, got {structs:?}");
 }
 
 // ── Unit type ──────────────────────────────────────────────────
@@ -272,16 +272,15 @@ fn character_entity_fields() {
 
     let expected_fields = [
         "name",
-        "class",
+        "classes",
+        "classing_mode",
         "ancestry",
-        "level",
         "alignment",
         "abilities",
         "max_hp",
         "hp",
         "armor_ac",
         "shield_ac_bonus",
-        "xp",
         "base_movement",
         "current_weight",
         "armour_movement_cap",

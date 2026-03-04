@@ -133,6 +133,18 @@ system "OSRIC Saves" {
     //  Dispatches to the correct table based on class.
     // ========================================================
 
+    // Best (lowest) save per category across all of a character's classes.
+    derive character_best_saves(char: Character) -> SavingThrows {
+        let all = [saving_throws_for(cl.class, cl.level) for cl in char.classes]
+        SavingThrows {
+            aimed_magic: first(sort([s.aimed_magic for s in all])).unwrap(),
+            breath: first(sort([s.breath for s in all])).unwrap(),
+            death_paralysis_poison: first(sort([s.death_paralysis_poison for s in all])).unwrap(),
+            petrification_polymorph: first(sort([s.petrification_polymorph for s in all])).unwrap(),
+            spells: first(sort([s.spells for s in all])).unwrap()
+        }
+    }
+
     derive saving_throws_for(class: Class, level: int) -> SavingThrows {
         match class {
             Fighter   => fighter_saves(level),

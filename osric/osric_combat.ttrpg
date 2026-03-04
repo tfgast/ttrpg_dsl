@@ -10,6 +10,7 @@
 
 use "OSRIC"
 use "OSRIC Ability"
+use "OSRIC Character"
 use "OSRIC Classes"
 use "OSRIC Equipment"
 use "OSRIC Conditions"
@@ -151,6 +152,11 @@ system "OSRIC Combat" {
         _       => 5
     }
 
+    // Best BTHB across all of a character's classes.
+    derive character_bthb(char: Character) -> int {
+        last(sort([bthb(cl.class, cl.level) for cl in char.classes])).unwrap()
+    }
+
     // Unified BTHB lookup by class and level.
     derive bthb(class: Class, level: int) -> int {
         let group = class_def(class).combat_group
@@ -272,8 +278,8 @@ system "OSRIC Combat" {
     ) -> int #ac_defense {
         // Monks use level-based AC (class feature) and never receive DEX AC bonus.
         // Conditions that set include_dex = false are no-ops for monks.
-        let base_ac = if target.class == Monk { monk_ac(target.level) } else { target.armor_ac }
-        let dex_bonus = if include_dex && target.class != Monk { dex_ac_adj(target.abilities[DEX]) } else { 0 }
+        let base_ac = if is_class(target, Monk) { monk_ac(class_level_for(target, Monk).unwrap()) } else { target.armor_ac }
+        let dex_bonus = if include_dex && !is_class(target, Monk) { dex_ac_adj(target.abilities[DEX]) } else { 0 }
         let shield_bonus = if include_shield { target.shield_ac_bonus } else { 0 }
         base_ac + dex_bonus + shield_bonus + ac_mod
     }
@@ -302,7 +308,7 @@ system "OSRIC Combat" {
         roll_mode: RollMode = RollMode.Normal,
         max_damage: bool = false
     ) -> AttackResult #attack_resolution {
-        let bthb_val = bthb(attacker.class, attacker.level)
+        let bthb_val = character_bthb(attacker)
         let str_hit = effective_str_to_hit(attacker)
         let target_ac = effective_target_ac(target)
         let total_mod = bthb_val + str_hit + attack_mod
@@ -316,8 +322,8 @@ system "OSRIC Combat" {
         let dmg_dice = if target_size > Size.Medium { wdef.damage_l } else { wdef.damage_sm }
         let str_dmg = effective_str_damage(attacker)
         // Monk weapon damage bonus replaces STR damage (OSRIC 3.0, pp.52-54).
-        let monk_dmg = if attacker.class == Monk {
-            let base = monk_weapon_damage(attacker.level)
+        let monk_dmg = if is_class(attacker, Monk) {
+            let base = monk_weapon_damage(class_level_for(attacker, Monk).unwrap())
             if attacker.abilities[STR] >= 15 { base } else { max(0, base - 1) }
         } else { 0 }
         let dmg_mod = str_dmg + monk_dmg
@@ -347,7 +353,7 @@ system "OSRIC Combat" {
         roll_mode: RollMode = RollMode.Normal,
         max_damage: bool = false
     ) -> AttackResult #attack_resolution {
-        let bthb_val = bthb(attacker.class, attacker.level)
+        let bthb_val = character_bthb(attacker)
         let dex_mod = dex_missile(attacker.abilities[DEX])
         let wdef = missile_weapon_def(weapon)
         let range_mod = missile_range_penalty(distance, wdef.range_increment)
@@ -361,8 +367,8 @@ system "OSRIC Combat" {
         let target_size = ancestry_def(target.ancestry).size
         let dmg_dice = if target_size > Size.Medium { wdef.damage_l } else { wdef.damage_sm }
         let str_dmg = if wdef.is_hurled { effective_str_damage(attacker) } else { 0 }
-        let monk_dmg = if wdef.is_hurled && attacker.class == Monk {
-            let base = monk_weapon_damage(attacker.level)
+        let monk_dmg = if wdef.is_hurled && is_class(attacker, Monk) {
+            let base = monk_weapon_damage(class_level_for(attacker, Monk).unwrap())
             if attacker.abilities[STR] >= 15 { base } else { max(0, base - 1) }
         } else { 0 }
         let dmg_mod = str_dmg + monk_dmg
