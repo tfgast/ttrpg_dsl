@@ -273,6 +273,7 @@ fn class_def_fighter() {
 
     let def = get_class_def(&interp, &state, &mut handler, "Fighter");
     assert_eq!(get_int(&def, "hit_die"), 10);
+    assert_eq!(get_int(&def, "bonus_first_hd"), 0);
     assert_eq!(get_int(&def, "max_hit_dice"), 9);
     assert_eq!(get_int(&def, "hp_after_max"), 3);
     assert_eq!(get_int(&def, "non_prof_penalty"), -2);
@@ -334,6 +335,7 @@ fn class_def_ranger() {
 
     let def = get_class_def(&interp, &state, &mut handler, "Ranger");
     assert_eq!(get_int(&def, "hit_die"), 8);
+    assert_eq!(get_int(&def, "bonus_first_hd"), 1); // Rangers start with 2d8
     assert_eq!(get_int(&def, "max_hit_dice"), 10);
     assert_eq!(get_int(&def, "hp_after_max"), 2);
     assert_eq!(

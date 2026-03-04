@@ -137,6 +137,7 @@ system "OSRIC" {
     struct ClassDef {
         class: Class
         hit_die: int                        // d4=4, d6=6, d8=8, d10=10
+        bonus_first_hd: int                 // extra HD at level 1 (e.g. Ranger gets 1)
         max_hit_dice: int                   // level after which HP is fixed per level
         hp_after_max: int                   // fixed HP gained per level after max_hit_dice
         combat_group: CombatGroup
