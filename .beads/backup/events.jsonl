@@ -1346,3 +1346,38 @@
 {"actor":"Theodore Gast","comment":null,"created_at":"2026-03-03T19:58:14Z","event_type":"created","id":1376,"issue_id":"tdsl-aa1b","new_value":"","old_value":""}
 {"actor":"Theodore Gast","comment":null,"created_at":"2026-03-03T19:58:20Z","event_type":"status_changed","id":1377,"issue_id":"tdsl-aa1b","new_value":"{\"status\":\"in_progress\"}","old_value":"{\"id\":\"tdsl-aa1b\",\"title\":\"Implement DSL-level code coverage for .ttrpg files\",\"description\":\"Add instrumentation to the interpreter to track which lines/branches execute at runtime, then render a plain-text coverage report. Includes: coverage.rs (core types + report), interpreter integration, CLI commands (coverage/coverage reset), --coverage flag.\",\"status\":\"open\",\"priority\":2,\"issue_type\":\"feature\",\"owner\":\"tfgast@gmail.com\",\"created_at\":\"2026-03-04T03:58:15Z\",\"created_by\":\"Theodore Gast\",\"updated_at\":\"2026-03-04T03:58:15Z\"}"}
 {"actor":"Theodore Gast","comment":null,"created_at":"2026-03-03T20:13:44Z","event_type":"closed","id":1378,"issue_id":"tdsl-aa1b","new_value":"Implemented DSL-level code coverage: --coverage flag, coverage/coverage reset commands, HIT/MISS line annotations, branch/function tracking","old_value":""}
+{"actor":"Theodore Gast","comment":null,"created_at":"2026-03-03T21:42:55Z","event_type":"created","id":1379,"issue_id":"tdsl-3srb","new_value":"","old_value":""}
+{"actor":"Theodore Gast","comment":null,"created_at":"2026-03-03T21:42:59Z","event_type":"created","id":1380,"issue_id":"tdsl-8pye","new_value":"","old_value":""}
+{"actor":"Theodore Gast","comment":null,"created_at":"2026-03-03T21:42:59Z","event_type":"created","id":1381,"issue_id":"tdsl-h4ja","new_value":"","old_value":""}
+{"actor":"Theodore Gast","comment":null,"created_at":"2026-03-03T21:43:00Z","event_type":"created","id":1382,"issue_id":"tdsl-gz1a","new_value":"","old_value":""}
+{"actor":"Theodore Gast","comment":null,"created_at":"2026-03-03T21:43:01Z","event_type":"created","id":1383,"issue_id":"tdsl-8zfl","new_value":"","old_value":""}
+{"actor":"Theodore Gast","comment":null,"created_at":"2026-03-03T21:43:02Z","event_type":"created","id":1384,"issue_id":"tdsl-sr5r","new_value":"","old_value":""}
+{"actor":"Theodore Gast","comment":null,"created_at":"2026-03-03T21:43:39Z","event_type":"created","id":1385,"issue_id":"tdsl-3b5a","new_value":"","old_value":""}
+{"actor":"Theodore Gast","comment":null,"created_at":"2026-03-03T21:43:40Z","event_type":"created","id":1386,"issue_id":"tdsl-xkoa","new_value":"","old_value":""}
+{"actor":"Theodore Gast","comment":null,"created_at":"2026-03-03T21:43:42Z","event_type":"created","id":1387,"issue_id":"tdsl-70kr","new_value":"","old_value":""}
+{"actor":"Theodore Gast","comment":null,"created_at":"2026-03-03T21:43:44Z","event_type":"created","id":1388,"issue_id":"tdsl-4s8h","new_value":"","old_value":""}
+{"actor":"Theodore Gast","comment":null,"created_at":"2026-03-03T21:43:45Z","event_type":"created","id":1389,"issue_id":"tdsl-rmg3","new_value":"","old_value":""}
+{"actor":"Theodore Gast","comment":null,"created_at":"2026-03-03T21:43:46Z","event_type":"created","id":1390,"issue_id":"tdsl-p0dw","new_value":"","old_value":""}
+{"actor":"Theodore Gast","comment":null,"created_at":"2026-03-03T21:43:57Z","event_type":"created","id":1391,"issue_id":"tdsl-ltxe","new_value":"","old_value":""}
+{"actor":"Theodore Gast","comment":null,"created_at":"2026-03-03T21:43:59Z","event_type":"created","id":1392,"issue_id":"tdsl-30w4","new_value":"","old_value":""}
+{"actor":"Theodore Gast","comment":null,"created_at":"2026-03-03T21:44:00Z","event_type":"created","id":1393,"issue_id":"tdsl-4iuo","new_value":"","old_value":""}
+{"actor":"Theodore Gast","comment":null,"created_at":"2026-03-03T21:44:02Z","event_type":"created","id":1394,"issue_id":"tdsl-gr6w","new_value":"","old_value":""}
+{"actor":"Theodore Gast","comment":null,"created_at":"2026-03-03T21:44:03Z","event_type":"created","id":1395,"issue_id":"tdsl-3uma","new_value":"","old_value":""}
+{"actor":"Theodore Gast","comment":null,"created_at":"2026-03-03T21:44:42Z","event_type":"created","id":1396,"issue_id":"tdsl-ggr1","new_value":"","old_value":""}
+{"actor":"Theodore Gast","comment":null,"created_at":"2026-03-03T21:44:43Z","event_type":"created","id":1397,"issue_id":"tdsl-var1","new_value":"","old_value":""}
+{"actor":"Theodore Gast","comment":null,"created_at":"2026-03-03T21:44:45Z","event_type":"created","id":1398,"issue_id":"tdsl-fvrq","new_value":"","old_value":""}
+{"actor":"Theodore Gast","comment":null,"created_at":"2026-03-03T21:45:01Z","event_type":"created","id":1399,"issue_id":"tdsl-6ahc","new_value":"","old_value":""}
+{"actor":"Theodore Gast","comment":null,"created_at":"2026-03-03T21:45:11Z","event_type":"created","id":1400,"issue_id":"tdsl-c4kn","new_value":"","old_value":""}
+{"actor":"Theodore Gast","comment":null,"created_at":"2026-03-03T21:45:14Z","event_type":"created","id":1401,"issue_id":"tdsl-evze","new_value":"","old_value":""}
+{"actor":"Theodore Gast","comment":null,"created_at":"2026-03-03T21:45:18Z","event_type":"created","id":1402,"issue_id":"tdsl-tk0x","new_value":"","old_value":""}
+{"actor":"Theodore Gast","comment":null,"created_at":"2026-03-03T21:45:22Z","event_type":"created","id":1403,"issue_id":"tdsl-m7s6","new_value":"","old_value":""}
+{"actor":"Theodore Gast","comment":null,"created_at":"2026-03-03T21:45:33Z","event_type":"created","id":1404,"issue_id":"tdsl-cajy","new_value":"","old_value":""}
+{"actor":"Theodore Gast","comment":null,"created_at":"2026-03-03T21:45:36Z","event_type":"created","id":1405,"issue_id":"tdsl-6wsd","new_value":"","old_value":""}
+{"actor":"Theodore Gast","comment":null,"created_at":"2026-03-03T21:45:38Z","event_type":"created","id":1406,"issue_id":"tdsl-93my","new_value":"","old_value":""}
+{"actor":"Theodore Gast","comment":null,"created_at":"2026-03-03T21:45:40Z","event_type":"created","id":1407,"issue_id":"tdsl-83ys","new_value":"","old_value":""}
+{"actor":"Theodore Gast","comment":null,"created_at":"2026-03-03T21:45:49Z","event_type":"created","id":1408,"issue_id":"tdsl-q0kh","new_value":"","old_value":""}
+{"actor":"Theodore Gast","comment":null,"created_at":"2026-03-03T21:45:51Z","event_type":"created","id":1409,"issue_id":"tdsl-cngz","new_value":"","old_value":""}
+{"actor":"Theodore Gast","comment":null,"created_at":"2026-03-03T21:45:55Z","event_type":"created","id":1410,"issue_id":"tdsl-f0rr","new_value":"","old_value":""}
+{"actor":"Theodore Gast","comment":null,"created_at":"2026-03-03T21:45:57Z","event_type":"created","id":1411,"issue_id":"tdsl-ymiq","new_value":"","old_value":""}
+{"actor":"Theodore Gast","comment":null,"created_at":"2026-03-03T21:46:28Z","event_type":"closed","id":1412,"issue_id":"tdsl-l2j7","new_value":"Completed: full gap analysis of OSRIC 3.0 PDFs vs DSL implementation, created 6 epics and 25 task issues covering all identified gaps","old_value":""}
+{"actor":"Theodore Gast","comment":null,"created_at":"2026-03-03T22:00:07Z","event_type":"created","id":1413,"issue_id":"tdsl-eqet","new_value":"","old_value":""}
