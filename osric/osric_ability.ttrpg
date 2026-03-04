@@ -71,6 +71,14 @@ system "OSRIC Ability" {
         _       => 5        // 19
     }
 
+    // Extraordinary success on minor test: X-in-6 chance to perform
+    // normally impossible feats (e.g. forcing a hold-portal'd door).
+    // Only STR 19 has this in the base table (Table 1.1.2a).
+    table str_minor_extraordinary(score: int) -> int {
+        3..=18  => 0,
+        _       => 2        // 19: 2-in-6
+    }
+
     // Major test of strength (percentage chance on d100).
     table str_major_test(score: int) -> int {
         3..=7   =>  0,
@@ -113,13 +121,21 @@ system "OSRIC Ability" {
         _       => 300      // 100
     }
 
-    // Exceptional minor test: X-in-6. Some entries also have
-    // "extraordinary success" chance — modeled as a separate call.
+    // Exceptional minor test: X-in-6 normal success threshold.
     table exc_str_minor_test(pct: int) -> int {
         1..=75  => 3,
         76..=90 => 4,
         91..=99 => 4,
         _       => 5        // 100
+    }
+
+    // Extraordinary success on minor test: X-in-6 chance to perform
+    // normally impossible feats (e.g. forcing a hold-portal'd door).
+    // Only 18.91+ bands have this (Table 1.1.2a).
+    table exc_str_minor_extraordinary(pct: int) -> int {
+        1..=90  => 0,       // no extraordinary success
+        91..=99 => 1,       // 1-in-6
+        _       => 2        // 100: 2-in-6
     }
 
     table exc_str_major_test(pct: int) -> int {
@@ -155,6 +171,20 @@ system "OSRIC Ability" {
             }
         } else {
             str_damage(score)
+        }
+    }
+
+    // Composite: effective STR encumbrance allowance (lbs).
+    derive effective_str_encumbrance(character: Character) -> int {
+        let score = character.abilities[STR]
+        if score == 18 {
+            if character has ExceptionalStrength as es {
+                exc_str_encumbrance(character.es.percentile)
+            } else {
+                str_encumbrance(18)
+            }
+        } else {
+            str_encumbrance(score)
         }
     }
 

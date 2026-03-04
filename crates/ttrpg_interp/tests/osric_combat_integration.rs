@@ -25,6 +25,7 @@ use ttrpg_interp::Interpreter;
 fn compile_osric_combat() -> (ttrpg_ast::ast::Program, ttrpg_checker::CheckResult) {
     let core_source = include_str!("../../../osric/osric_core.ttrpg");
     let ability_source = include_str!("../../../osric/osric_ability.ttrpg");
+    let character_source = include_str!("../../../osric/osric_character.ttrpg");
     let class_source = include_str!("../../../osric/osric_class.ttrpg");
     let equipment_source = include_str!("../../../osric/osric_equipment.ttrpg");
     let conditions_source = include_str!("../../../osric/osric_conditions.ttrpg");
@@ -38,6 +39,10 @@ fn compile_osric_combat() -> (ttrpg_ast::ast::Program, ttrpg_checker::CheckResul
         (
             "osric/osric_ability.ttrpg".to_string(),
             ability_source.to_string(),
+        ),
+        (
+            "osric/osric_character.ttrpg".to_string(),
+            character_source.to_string(),
         ),
         (
             "osric/osric_class.ttrpg".to_string(),
@@ -232,17 +237,22 @@ fn make_character(
 }
 
 /// Build a Monster entity.
+///
+/// `hit_dice` is (count, sides, modifier) — e.g. (4, 8, 1) for 4d8+1.
 fn make_monster(
     state: &mut GameState,
     name: &str,
-    hit_dice: i64,
+    hit_dice: (u32, u32, i64),
     max_hp: i64,
     ac: i64,
     attacks: Vec<Value>,
 ) -> EntityRef {
     let mut fields = FxHashMap::default();
     fields.insert(Name::from("name"), Value::Str(name.to_string()));
-    fields.insert(Name::from("hit_dice"), Value::Int(hit_dice));
+    fields.insert(
+        Name::from("hit_dice"),
+        Value::DiceExpr(DiceExpr::single(hit_dice.0, hit_dice.1, None, hit_dice.2)),
+    );
     fields.insert(Name::from("max_hp"), Value::Int(max_hp));
     fields.insert(Name::from("hp"), Value::Int(max_hp));
     fields.insert(Name::from("ac"), Value::Int(ac));
@@ -378,7 +388,6 @@ fn osric_combat_has_tables() {
     assert!(tables.contains(&"cleric_group_bthb"));
     assert!(tables.contains(&"thief_group_bthb"));
     assert!(tables.contains(&"magic_user_group_bthb"));
-    assert!(tables.contains(&"monster_bthb"));
 }
 
 #[test]
@@ -394,6 +403,7 @@ fn osric_combat_has_derives() {
         .collect();
     assert!(derives.contains(&"fighter_group_bthb"));
     assert!(derives.contains(&"bthb"));
+    assert!(derives.contains(&"monster_bthb"));
     assert!(derives.contains(&"fighter_attacks"));
     assert!(derives.contains(&"missile_range_penalty"));
     assert!(derives.contains(&"deal_damage"));
@@ -713,42 +723,55 @@ fn monster_bthb_all_tiers() {
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let state = GameState::new();
 
-    // monster_bthb: HD 0=-1, 1=1, 2-3=4, 4-5=5, 6-7=7, 8-9=8, 10-11=10,
-    // 12-13=11, 14-15=12, 16+=13
-    let cases = vec![
-        (0, -1),
-        (1, 1),
-        (2, 4),
-        (3, 4),
-        (4, 5),
-        (5, 5),
-        (6, 7),
-        (7, 7),
-        (8, 8),
-        (9, 8),
-        (10, 10),
-        (11, 10),
-        (12, 11),
-        (13, 11),
-        (14, 12),
-        (15, 12),
-        (16, 13),
-        (25, 13),
+    // Helper: build a DiceExpr value from (count, sides, modifier).
+    let hd = |count: u32, sides: u32, modifier: i64| -> Value {
+        Value::DiceExpr(DiceExpr::single(count, sides, None, modifier))
+    };
+
+    // OSRIC Table 2.1.2A: all 16 monster HD tiers.
+    // (dice_count, dice_sides, modifier) → expected BTHB
+    let cases: Vec<(Value, i64, &str)> = vec![
+        (hd(0, 0, 0), -1, "<1-1 (0 dice)"),
+        (hd(1, 4, 0), -1, "<1-1 (1d4)"),
+        (hd(1, 8, -2), -1, "<1-1 (1d8-2)"),
+        (hd(1, 8, -1), 0, "1-1"),
+        (hd(1, 8, 0), 1, "1"),
+        (hd(1, 8, 1), 2, "1+"),
+        (hd(1, 8, 2), 2, "1+2"),
+        (hd(2, 8, 0), 4, "2"),
+        (hd(3, 8, 3), 4, "3+3"),
+        (hd(4, 8, 1), 5, "4+1"),
+        (hd(5, 8, 0), 5, "5"),
+        (hd(6, 8, 0), 7, "6"),
+        (hd(7, 8, 1), 7, "7+1"),
+        (hd(8, 8, 0), 8, "8"),
+        (hd(9, 8, 2), 8, "9+2"),
+        (hd(10, 8, 0), 10, "10"),
+        (hd(11, 8, 0), 10, "11"),
+        (hd(12, 8, 0), 11, "12"),
+        (hd(13, 8, 0), 11, "13"),
+        (hd(14, 8, 0), 12, "14"),
+        (hd(15, 8, 0), 12, "15"),
+        (hd(16, 8, 0), 13, "16"),
+        (hd(17, 8, 0), 13, "17"),
+        (hd(18, 8, 0), 15, "18"),
+        (hd(19, 8, 0), 15, "19"),
+        (hd(20, 8, 0), 16, "20"),
+        (hd(21, 8, 0), 16, "21"),
+        (hd(22, 8, 0), 17, "22"),
+        (hd(23, 8, 0), 17, "23"),
+        (hd(24, 8, 0), 18, "24"),
+        (hd(30, 8, 0), 18, "30"),
     ];
 
-    for (hd, expected) in cases {
+    for (dice, expected, label) in cases {
         let val = interp
-            .evaluate_derive(
-                &state,
-                &mut NullHandler,
-                "monster_bthb",
-                vec![Value::Int(hd)],
-            )
+            .evaluate_derive(&state, &mut NullHandler, "monster_bthb", vec![dice])
             .unwrap();
         assert_eq!(
             val,
             Value::Int(expected),
-            "monster_bthb({hd}) should be {expected}"
+            "monster_bthb({label}) should be {expected}"
         );
     }
 }
@@ -870,6 +893,44 @@ fn missile_range_penalty_first_increment() {
         )
         .unwrap();
     assert_eq!(val, Value::Int(0));
+}
+
+#[test]
+fn missile_range_penalty_at_exact_boundary() {
+    let (program, result) = compile_osric_combat();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NullHandler;
+
+    // Distance exactly equal to increment: still first band, no penalty
+    let val = interp
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "missile_range_penalty",
+            vec![feet(70), feet(70)],
+        )
+        .unwrap();
+    assert_eq!(val, Value::Int(0));
+}
+
+#[test]
+fn missile_range_penalty_just_past_boundary() {
+    let (program, result) = compile_osric_combat();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NullHandler;
+
+    // Distance 1ft past first increment: second band, -2 penalty
+    let val = interp
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "missile_range_penalty",
+            vec![feet(71), feet(70)],
+        )
+        .unwrap();
+    assert_eq!(val, Value::Int(-2));
 }
 
 #[test]
@@ -1398,11 +1459,11 @@ fn resolve_monster_attack_hit() {
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let mut state = GameState::new();
 
-    // Ogre: 4 HD → monster_bthb(4) = 5
+    // Ogre: 4d8+1 HD → monster_bthb = 5 (4-5+ tier)
     let monster = make_monster(
         &mut state,
         "Ogre",
-        4,
+        (4, 8, 1),
         26,
         15,
         vec![monster_attack("Club", 1, 10, 0)],
@@ -1461,11 +1522,11 @@ fn resolve_monster_attack_miss() {
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let mut state = GameState::new();
 
-    // Rat: 0 HD → monster_bthb(0) = -1
+    // Rat: <1-1 HD (1d4, no modifier, sub-1-die creature) → BTHB -1
     let monster = make_monster(
         &mut state,
         "Rat",
-        0,
+        (0, 0, 0),
         1,
         10,
         vec![monster_attack("Bite", 1, 2, 0)],

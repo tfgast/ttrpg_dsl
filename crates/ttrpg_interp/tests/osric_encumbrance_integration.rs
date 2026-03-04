@@ -1,0 +1,1006 @@
+//! OSRIC encumbrance integration test.
+//!
+//! Verifies encumbrance derives, the EncumbranceState condition's modify clauses,
+//! and their interaction with movement and surprise.
+//!
+//! Tests:
+//! - encumbrance_tier: boundary tests at 0, 1, 40, 41, 80, 81, 120, 121
+//! - encumbrance_movement_numerator: each tier → 4/3/2/1/0
+//! - effective_str_encumbrance: STR 10, 18, 18+exc50, 18+exc100
+//! - character_encumbrance: various weight/STR combos
+//! - character_movement + EncumbranceState: Human/Dwarf with each tier
+//! - character_movement + armour cap: cap dominates when lower
+//! - character_surprise_adj + EncumbranceState: tier × armour × DEX combos
+
+use std::collections::BTreeMap;
+
+use rustc_hash::FxHashMap;
+use ttrpg_ast::ast::TopLevel;
+use ttrpg_ast::diagnostic::Severity;
+use ttrpg_ast::Name;
+use ttrpg_interp::effect::{Effect, EffectHandler, FieldPathSegment, Response};
+use ttrpg_interp::reference_state::GameState;
+use ttrpg_interp::state::{EntityRef, WritableState};
+use ttrpg_interp::value::Value;
+use ttrpg_interp::Interpreter;
+
+// ── Compile helpers ────────────────────────────────────────────
+
+fn compile_osric_encumbrance() -> (ttrpg_ast::ast::Program, ttrpg_checker::CheckResult) {
+    let core_source = include_str!("../../../osric/osric_core.ttrpg");
+    let ability_source = include_str!("../../../osric/osric_ability.ttrpg");
+    let character_source = include_str!("../../../osric/osric_character.ttrpg");
+    let class_source = include_str!("../../../osric/osric_class.ttrpg");
+    let equipment_source = include_str!("../../../osric/osric_equipment.ttrpg");
+    let combat_source = include_str!("../../../osric/osric_combat.ttrpg");
+    let conditions_source = include_str!("../../../osric/osric_conditions.ttrpg");
+
+    let sources = vec![
+        (
+            "osric/osric_core.ttrpg".to_string(),
+            core_source.to_string(),
+        ),
+        (
+            "osric/osric_ability.ttrpg".to_string(),
+            ability_source.to_string(),
+        ),
+        (
+            "osric/osric_character.ttrpg".to_string(),
+            character_source.to_string(),
+        ),
+        (
+            "osric/osric_class.ttrpg".to_string(),
+            class_source.to_string(),
+        ),
+        (
+            "osric/osric_equipment.ttrpg".to_string(),
+            equipment_source.to_string(),
+        ),
+        (
+            "osric/osric_combat.ttrpg".to_string(),
+            combat_source.to_string(),
+        ),
+        (
+            "osric/osric_conditions.ttrpg".to_string(),
+            conditions_source.to_string(),
+        ),
+    ];
+
+    let parse_result = ttrpg_parser::parse_multi(&sources);
+    let parse_errors: Vec<_> = parse_result
+        .diagnostics
+        .iter()
+        .filter(|d| d.severity == Severity::Error)
+        .collect();
+    assert!(
+        parse_errors.is_empty(),
+        "parse/lower errors: {:?}",
+        parse_errors.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+
+    let (program, module_map) = parse_result.ok().unwrap();
+    let result = ttrpg_checker::check_with_modules(program, module_map);
+    let errors: Vec<_> = result
+        .diagnostics
+        .iter()
+        .filter(|d| d.severity == Severity::Error)
+        .collect();
+    assert!(
+        errors.is_empty(),
+        "checker errors: {:?}",
+        errors.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+
+    (program.clone(), result)
+}
+
+struct NullHandler;
+impl EffectHandler for NullHandler {
+    fn handle(&mut self, _effect: Effect) -> Response {
+        Response::Acknowledged
+    }
+}
+
+// ── Value helpers ──────────────────────────────────────────────
+
+fn enum_variant(enum_name: &str, variant: &str) -> Value {
+    Value::EnumVariant {
+        enum_name: Name::from(enum_name),
+        variant: Name::from(variant),
+        fields: BTreeMap::new(),
+    }
+}
+
+fn ability(variant: &str) -> Value {
+    enum_variant("Ability", variant)
+}
+
+fn tier(variant: &str) -> Value {
+    enum_variant("EncumbranceTier", variant)
+}
+
+fn feet(value: i64) -> Value {
+    Value::Struct {
+        name: Name::from("Feet"),
+        fields: {
+            let mut f = BTreeMap::new();
+            f.insert(Name::from("value"), Value::Int(value));
+            f
+        },
+    }
+}
+
+fn expect_int(val: Value, ctx: &str) -> i64 {
+    match val {
+        Value::Int(n) => n,
+        other => panic!("{ctx}: expected Int, got {other:?}"),
+    }
+}
+
+fn expect_feet(val: Value, ctx: &str) -> i64 {
+    match val {
+        Value::Struct { name, fields } => {
+            assert_eq!(&*name, "Feet", "{ctx}: expected Feet struct");
+            match fields.get::<Name>(&"value".into()) {
+                Some(Value::Int(n)) => *n,
+                other => panic!("{ctx}: expected Feet.value Int, got {other:?}"),
+            }
+        }
+        other => panic!("{ctx}: expected Feet struct, got {other:?}"),
+    }
+}
+
+fn expect_tier(val: Value, ctx: &str) -> String {
+    match val {
+        Value::EnumVariant { variant, .. } => variant.to_string(),
+        other => panic!("{ctx}: expected EncumbranceTier variant, got {other:?}"),
+    }
+}
+
+// ── Entity builders ───────────────────────────────────────────
+
+fn make_character(
+    state: &mut GameState,
+    name: &str,
+    abilities: &[(&str, i64)],
+    ancestry_name: &str,
+    current_weight: i64,
+    armour_cap: i64,
+) -> EntityRef {
+    let mut ability_map = BTreeMap::new();
+    for &(ab, score) in abilities {
+        ability_map.insert(ability(ab), Value::Int(score));
+    }
+
+    let mut fields = FxHashMap::default();
+    fields.insert(Name::from("name"), Value::Str(name.to_string()));
+    fields.insert(Name::from("class"), enum_variant("Class", "Fighter"));
+    fields.insert(
+        Name::from("ancestry"),
+        enum_variant("Ancestry", ancestry_name),
+    );
+    fields.insert(Name::from("level"), Value::Int(1));
+    fields.insert(
+        Name::from("alignment"),
+        enum_variant("Alignment", "TrueNeutral"),
+    );
+    fields.insert(Name::from("abilities"), Value::Map(ability_map));
+    fields.insert(Name::from("max_hp"), Value::Int(10));
+    fields.insert(Name::from("hp"), Value::Int(10));
+    fields.insert(Name::from("armor_ac"), Value::Int(10));
+    fields.insert(Name::from("shield_ac_bonus"), Value::Int(0));
+    fields.insert(Name::from("xp"), Value::Int(0));
+    fields.insert(Name::from("base_movement"), feet(120));
+    fields.insert(Name::from("current_weight"), Value::Int(current_weight));
+    fields.insert(Name::from("armour_movement_cap"), feet(armour_cap));
+    fields.insert(Name::from("gold"), Value::Int(0));
+    fields.insert(Name::from("saving_throws"), Value::Option(None));
+
+    state.add_entity("Character", fields)
+}
+
+fn standard_abilities() -> Vec<(&'static str, i64)> {
+    vec![
+        ("STR", 10),
+        ("DEX", 10),
+        ("CON", 10),
+        ("INT", 10),
+        ("WIS", 10),
+        ("CHA", 10),
+    ]
+}
+
+fn apply_encumbrance(state: &mut GameState, entity: &EntityRef, tier_variant: &str) {
+    let mut params = BTreeMap::new();
+    params.insert(Name::from("tier"), tier(tier_variant));
+    state.apply_condition(entity, "EncumbranceState", params, Value::None, None);
+}
+
+// ── Parse + typecheck ──────────────────────────────────────────
+
+#[test]
+fn osric_encumbrance_parses_and_typechecks() {
+    let (program, _) = compile_osric_encumbrance();
+    let has_conditions = program
+        .items
+        .iter()
+        .any(|item| matches!(&item.node, TopLevel::System(sys) if sys.name == "OSRIC Conditions"));
+    assert!(has_conditions);
+}
+
+// ── encumbrance_tier ──────────────────────────────────────────
+
+#[test]
+fn encumbrance_tier_boundaries() {
+    let (program, result) = compile_osric_encumbrance();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NullHandler;
+
+    let cases = [
+        (0, "Unencumbered"),
+        (-10, "Unencumbered"),
+        (1, "Light"),
+        (40, "Light"),
+        (41, "Moderate"),
+        (80, "Moderate"),
+        (81, "Heavy"),
+        (120, "Heavy"),
+        (121, "Overloaded"),
+        (200, "Overloaded"),
+    ];
+
+    for (weight_over, expected) in cases {
+        let val = interp
+            .evaluate_derive(
+                &state,
+                &mut handler,
+                "encumbrance_tier",
+                vec![Value::Int(weight_over)],
+            )
+            .unwrap();
+        assert_eq!(
+            expect_tier(val, &format!("encumbrance_tier({weight_over})")),
+            expected,
+            "weight_over={weight_over}"
+        );
+    }
+}
+
+// ── encumbrance_movement_numerator ────────────────────────────
+
+#[test]
+fn encumbrance_movement_numerator_all_tiers() {
+    let (program, result) = compile_osric_encumbrance();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NullHandler;
+
+    let cases = [
+        ("Unencumbered", 4),
+        ("Light", 3),
+        ("Moderate", 2),
+        ("Heavy", 1),
+        ("Overloaded", 0),
+    ];
+
+    for (variant, expected) in cases {
+        let val = interp
+            .evaluate_derive(
+                &state,
+                &mut handler,
+                "encumbrance_movement_numerator",
+                vec![tier(variant)],
+            )
+            .unwrap();
+        assert_eq!(
+            expect_int(val, &format!("numerator({variant})")),
+            expected,
+            "tier={variant}"
+        );
+    }
+}
+
+// ── effective_str_encumbrance ─────────────────────────────────
+
+#[test]
+fn effective_str_encumbrance_normal_str() {
+    let (program, result) = compile_osric_encumbrance();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut state = GameState::new();
+    let mut handler = NullHandler;
+
+    // STR 10 → str_encumbrance(10) = 35
+    let char_ref = make_character(
+        &mut state,
+        "Test",
+        &[
+            ("STR", 10),
+            ("DEX", 10),
+            ("CON", 10),
+            ("INT", 10),
+            ("WIS", 10),
+            ("CHA", 10),
+        ],
+        "Human",
+        0,
+        0,
+    );
+    let val = interp
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "effective_str_encumbrance",
+            vec![Value::Entity(char_ref)],
+        )
+        .unwrap();
+    assert_eq!(expect_int(val, "STR 10"), 35);
+}
+
+#[test]
+fn effective_str_encumbrance_str_18_no_exceptional() {
+    let (program, result) = compile_osric_encumbrance();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut state = GameState::new();
+    let mut handler = NullHandler;
+
+    // STR 18, no exceptional → str_encumbrance(18) = 110
+    let char_ref = make_character(
+        &mut state,
+        "Test",
+        &[
+            ("STR", 18),
+            ("DEX", 10),
+            ("CON", 10),
+            ("INT", 10),
+            ("WIS", 10),
+            ("CHA", 10),
+        ],
+        "Human",
+        0,
+        0,
+    );
+    let val = interp
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "effective_str_encumbrance",
+            vec![Value::Entity(char_ref)],
+        )
+        .unwrap();
+    assert_eq!(expect_int(val, "STR 18 no exc"), 110);
+}
+
+#[test]
+fn effective_str_encumbrance_str_18_exc_50() {
+    let (program, result) = compile_osric_encumbrance();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut state = GameState::new();
+    let mut handler = NullHandler;
+
+    // STR 18 + exc 50 → exc_str_encumbrance(50) = 135
+    let char_ref = make_character(
+        &mut state,
+        "Test",
+        &[
+            ("STR", 18),
+            ("DEX", 10),
+            ("CON", 10),
+            ("INT", 10),
+            ("WIS", 10),
+            ("CHA", 10),
+        ],
+        "Human",
+        0,
+        0,
+    );
+    // Grant ExceptionalStrength group
+    state.write_field(
+        &char_ref,
+        &[FieldPathSegment::Field("ExceptionalStrength".into())],
+        Value::Struct {
+            name: "ExceptionalStrength".into(),
+            fields: {
+                let mut f = BTreeMap::new();
+                f.insert("percentile".into(), Value::Int(50));
+                f
+            },
+        },
+    );
+
+    let val = interp
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "effective_str_encumbrance",
+            vec![Value::Entity(char_ref)],
+        )
+        .unwrap();
+    assert_eq!(expect_int(val, "STR 18 exc 50"), 135);
+}
+
+#[test]
+fn effective_str_encumbrance_str_18_exc_100() {
+    let (program, result) = compile_osric_encumbrance();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut state = GameState::new();
+    let mut handler = NullHandler;
+
+    // STR 18 + exc 100 → exc_str_encumbrance(100) = 300
+    let char_ref = make_character(
+        &mut state,
+        "Test",
+        &[
+            ("STR", 18),
+            ("DEX", 10),
+            ("CON", 10),
+            ("INT", 10),
+            ("WIS", 10),
+            ("CHA", 10),
+        ],
+        "Human",
+        0,
+        0,
+    );
+    state.write_field(
+        &char_ref,
+        &[FieldPathSegment::Field("ExceptionalStrength".into())],
+        Value::Struct {
+            name: "ExceptionalStrength".into(),
+            fields: {
+                let mut f = BTreeMap::new();
+                f.insert("percentile".into(), Value::Int(100));
+                f
+            },
+        },
+    );
+
+    let val = interp
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "effective_str_encumbrance",
+            vec![Value::Entity(char_ref)],
+        )
+        .unwrap();
+    assert_eq!(expect_int(val, "STR 18 exc 100"), 300);
+}
+
+// ── character_encumbrance ─────────────────────────────────────
+
+#[test]
+fn character_encumbrance_tiers() {
+    let (program, result) = compile_osric_encumbrance();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut state = GameState::new();
+    let mut handler = NullHandler;
+
+    // STR 10 → allowance 35
+    let cases = [
+        (35, "Unencumbered"), // 35 - 35 = 0
+        (36, "Light"),        // 36 - 35 = 1
+        (75, "Light"),        // 75 - 35 = 40
+        (76, "Moderate"),     // 76 - 35 = 41
+        (115, "Moderate"),    // 115 - 35 = 80
+        (116, "Heavy"),       // 116 - 35 = 81
+        (155, "Heavy"),       // 155 - 35 = 120
+        (156, "Overloaded"),  // 156 - 35 = 121
+    ];
+
+    for (weight, expected) in cases {
+        let char_ref = make_character(
+            &mut state,
+            &format!("Test-{weight}"),
+            &[
+                ("STR", 10),
+                ("DEX", 10),
+                ("CON", 10),
+                ("INT", 10),
+                ("WIS", 10),
+                ("CHA", 10),
+            ],
+            "Human",
+            weight,
+            0,
+        );
+        let val = interp
+            .evaluate_derive(
+                &state,
+                &mut handler,
+                "character_encumbrance",
+                vec![Value::Entity(char_ref)],
+            )
+            .unwrap();
+        assert_eq!(
+            expect_tier(val, &format!("weight={weight}")),
+            expected,
+            "weight={weight} (STR 10, allowance=35)"
+        );
+    }
+}
+
+// ── character_movement base derive (no condition) ─────────────
+
+#[test]
+fn character_movement_no_armour_cap() {
+    let (program, result) = compile_osric_encumbrance();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut state = GameState::new();
+    let mut handler = NullHandler;
+
+    // Human (base 120ft), no armour cap
+    let char_ref = make_character(&mut state, "Test", &standard_abilities(), "Human", 0, 0);
+    let val = interp
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "character_movement",
+            vec![Value::Entity(char_ref)],
+        )
+        .unwrap();
+    assert_eq!(expect_feet(val, "human no cap"), 120);
+}
+
+#[test]
+fn character_movement_with_armour_cap() {
+    let (program, result) = compile_osric_encumbrance();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut state = GameState::new();
+    let mut handler = NullHandler;
+
+    // Human (base 120ft), plate armour cap 60ft
+    let char_ref = make_character(&mut state, "Test", &standard_abilities(), "Human", 0, 60);
+    let val = interp
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "character_movement",
+            vec![Value::Entity(char_ref)],
+        )
+        .unwrap();
+    assert_eq!(expect_feet(val, "human + plate cap"), 60);
+}
+
+// ── character_movement + EncumbranceState condition ───────────
+
+#[test]
+fn character_movement_human_all_tiers() {
+    let (program, result) = compile_osric_encumbrance();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut state = GameState::new();
+    let mut handler = NullHandler;
+
+    // Human 120ft base, no armour cap
+    let cases = [
+        ("Unencumbered", 120), // 120 * 4/4 = 120
+        ("Light", 90),         // 120 * 3/4 = 90
+        ("Moderate", 60),      // 120 * 2/4 = 60
+        ("Heavy", 30),         // 120 * 1/4 = 30
+        ("Overloaded", 0),     // 120 * 0/4 = 0
+    ];
+
+    for (tier_name, expected) in cases {
+        let char_ref = make_character(
+            &mut state,
+            &format!("Test-{tier_name}"),
+            &standard_abilities(),
+            "Human",
+            0,
+            0,
+        );
+        apply_encumbrance(&mut state, &char_ref, tier_name);
+
+        let val = interp
+            .evaluate_derive(
+                &state,
+                &mut handler,
+                "character_movement",
+                vec![Value::Entity(char_ref)],
+            )
+            .unwrap();
+        assert_eq!(
+            expect_feet(val, &format!("Human {tier_name}")),
+            expected,
+            "Human + {tier_name}"
+        );
+    }
+}
+
+#[test]
+fn character_movement_dwarf_with_encumbrance() {
+    let (program, result) = compile_osric_encumbrance();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut state = GameState::new();
+    let mut handler = NullHandler;
+
+    // Dwarf 90ft base
+    let cases = [
+        ("Unencumbered", 90), // 90 * 4/4 = 90
+        ("Light", 67),        // floor(90 * 3/4) = floor(67.5) = 67
+        ("Moderate", 45),     // floor(90 * 2/4) = 45
+        ("Heavy", 22),        // floor(90 * 1/4) = floor(22.5) = 22
+        ("Overloaded", 0),    // 90 * 0/4 = 0
+    ];
+
+    for (tier_name, expected) in cases {
+        let char_ref = make_character(
+            &mut state,
+            &format!("Dwarf-{tier_name}"),
+            &standard_abilities(),
+            "Dwarf",
+            0,
+            0,
+        );
+        apply_encumbrance(&mut state, &char_ref, tier_name);
+
+        let val = interp
+            .evaluate_derive(
+                &state,
+                &mut handler,
+                "character_movement",
+                vec![Value::Entity(char_ref)],
+            )
+            .unwrap();
+        assert_eq!(
+            expect_feet(val, &format!("Dwarf {tier_name}")),
+            expected,
+            "Dwarf + {tier_name}"
+        );
+    }
+}
+
+#[test]
+fn character_movement_armour_cap_dominates() {
+    let (program, result) = compile_osric_encumbrance();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut state = GameState::new();
+    let mut handler = NullHandler;
+
+    // Human 120ft base + plate 60ft cap. Armour cap applied first by derive,
+    // then encumbrance fraction reduces further.
+    // Unencumbered: min(120, 60) = 60, then 60 * 4/4 = 60
+    let char1 = make_character(
+        &mut state,
+        "Plate-Unenc",
+        &standard_abilities(),
+        "Human",
+        0,
+        60,
+    );
+    apply_encumbrance(&mut state, &char1, "Unencumbered");
+    let val = interp
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "character_movement",
+            vec![Value::Entity(char1)],
+        )
+        .unwrap();
+    assert_eq!(expect_feet(val, "plate+unenc"), 60);
+
+    // Light: min(120, 60) = 60, then 60 * 3/4 = 45
+    let char2 = make_character(
+        &mut state,
+        "Plate-Light",
+        &standard_abilities(),
+        "Human",
+        0,
+        60,
+    );
+    apply_encumbrance(&mut state, &char2, "Light");
+    let val = interp
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "character_movement",
+            vec![Value::Entity(char2)],
+        )
+        .unwrap();
+    assert_eq!(expect_feet(val, "plate+light"), 45);
+}
+
+// ── character_surprise_adj + EncumbranceState ─────────────────
+
+#[test]
+fn surprise_adj_unencumbered_no_armour() {
+    let (program, result) = compile_osric_encumbrance();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut state = GameState::new();
+    let mut handler = NullHandler;
+
+    // DEX 16 → dex_surprise(16) = +1, Unencumbered + no armour → +1 bonus
+    // Total: 1 + 1 = 2
+    let char_ref = make_character(
+        &mut state,
+        "Test",
+        &[
+            ("STR", 10),
+            ("DEX", 16),
+            ("CON", 10),
+            ("INT", 10),
+            ("WIS", 10),
+            ("CHA", 10),
+        ],
+        "Human",
+        0,
+        0, // no armour
+    );
+    apply_encumbrance(&mut state, &char_ref, "Unencumbered");
+
+    let val = interp
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "character_surprise_adj",
+            vec![Value::Entity(char_ref)],
+        )
+        .unwrap();
+    assert_eq!(expect_int(val, "DEX16 unenc no armour"), 2);
+}
+
+#[test]
+fn surprise_adj_unencumbered_heavy_armour() {
+    let (program, result) = compile_osric_encumbrance();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut state = GameState::new();
+    let mut handler = NullHandler;
+
+    // DEX 16 → +1, Unencumbered + plate (cap 60ft) → no bonus (heavy armour)
+    // Total: 1 + 0 = 1
+    let char_ref = make_character(
+        &mut state,
+        "Test",
+        &[
+            ("STR", 10),
+            ("DEX", 16),
+            ("CON", 10),
+            ("INT", 10),
+            ("WIS", 10),
+            ("CHA", 10),
+        ],
+        "Human",
+        0,
+        60, // plate armour cap
+    );
+    apply_encumbrance(&mut state, &char_ref, "Unencumbered");
+
+    let val = interp
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "character_surprise_adj",
+            vec![Value::Entity(char_ref)],
+        )
+        .unwrap();
+    assert_eq!(expect_int(val, "DEX16 unenc plate"), 1);
+}
+
+#[test]
+fn surprise_adj_unencumbered_light_armour() {
+    let (program, result) = compile_osric_encumbrance();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut state = GameState::new();
+    let mut handler = NullHandler;
+
+    // DEX 16 → +1, Unencumbered + leather (cap 120ft) → +1 bonus (light armour)
+    // Total: 1 + 1 = 2
+    let char_ref = make_character(
+        &mut state,
+        "Test",
+        &[
+            ("STR", 10),
+            ("DEX", 16),
+            ("CON", 10),
+            ("INT", 10),
+            ("WIS", 10),
+            ("CHA", 10),
+        ],
+        "Human",
+        0,
+        120, // leather armour cap (light)
+    );
+    apply_encumbrance(&mut state, &char_ref, "Unencumbered");
+
+    let val = interp
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "character_surprise_adj",
+            vec![Value::Entity(char_ref)],
+        )
+        .unwrap();
+    assert_eq!(expect_int(val, "DEX16 unenc leather"), 2);
+}
+
+#[test]
+fn surprise_adj_light_encumbrance() {
+    let (program, result) = compile_osric_encumbrance();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut state = GameState::new();
+    let mut handler = NullHandler;
+
+    // DEX 16 → +1, Light encumbrance → normal (DEX applies, no bonus/penalty)
+    // Total: 1
+    let char_ref = make_character(
+        &mut state,
+        "Test",
+        &[
+            ("STR", 10),
+            ("DEX", 16),
+            ("CON", 10),
+            ("INT", 10),
+            ("WIS", 10),
+            ("CHA", 10),
+        ],
+        "Human",
+        0,
+        0,
+    );
+    apply_encumbrance(&mut state, &char_ref, "Light");
+
+    let val = interp
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "character_surprise_adj",
+            vec![Value::Entity(char_ref)],
+        )
+        .unwrap();
+    assert_eq!(expect_int(val, "DEX16 light"), 1);
+}
+
+#[test]
+fn surprise_adj_moderate_caps_bonuses() {
+    let (program, result) = compile_osric_encumbrance();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut state = GameState::new();
+    let mut handler = NullHandler;
+
+    // DEX 16 → +1, Moderate → min(0, 1) = 0. No bonuses.
+    let char_ref = make_character(
+        &mut state,
+        "Test",
+        &[
+            ("STR", 10),
+            ("DEX", 16),
+            ("CON", 10),
+            ("INT", 10),
+            ("WIS", 10),
+            ("CHA", 10),
+        ],
+        "Human",
+        0,
+        0,
+    );
+    apply_encumbrance(&mut state, &char_ref, "Moderate");
+
+    let val = interp
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "character_surprise_adj",
+            vec![Value::Entity(char_ref)],
+        )
+        .unwrap();
+    assert_eq!(expect_int(val, "DEX16 moderate"), 0);
+}
+
+#[test]
+fn surprise_adj_moderate_preserves_penalties() {
+    let (program, result) = compile_osric_encumbrance();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut state = GameState::new();
+    let mut handler = NullHandler;
+
+    // DEX 3 → -3, Moderate → min(0, -3) = -3. Penalties preserved.
+    let char_ref = make_character(
+        &mut state,
+        "Test",
+        &[
+            ("STR", 10),
+            ("DEX", 3),
+            ("CON", 10),
+            ("INT", 10),
+            ("WIS", 10),
+            ("CHA", 10),
+        ],
+        "Human",
+        0,
+        0,
+    );
+    apply_encumbrance(&mut state, &char_ref, "Moderate");
+
+    let val = interp
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "character_surprise_adj",
+            vec![Value::Entity(char_ref)],
+        )
+        .unwrap();
+    assert_eq!(expect_int(val, "DEX3 moderate"), -3);
+}
+
+#[test]
+fn surprise_adj_heavy_extra_penalty() {
+    let (program, result) = compile_osric_encumbrance();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut state = GameState::new();
+    let mut handler = NullHandler;
+
+    // DEX 16 → +1, Heavy → min(0, 1) - 1 = -1
+    let char1 = make_character(
+        &mut state,
+        "HighDex",
+        &[
+            ("STR", 10),
+            ("DEX", 16),
+            ("CON", 10),
+            ("INT", 10),
+            ("WIS", 10),
+            ("CHA", 10),
+        ],
+        "Human",
+        0,
+        0,
+    );
+    apply_encumbrance(&mut state, &char1, "Heavy");
+    let val = interp
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "character_surprise_adj",
+            vec![Value::Entity(char1)],
+        )
+        .unwrap();
+    assert_eq!(expect_int(val, "DEX16 heavy"), -1);
+
+    // DEX 3 → -3, Heavy → min(0, -3) - 1 = -4
+    let char2 = make_character(
+        &mut state,
+        "LowDex",
+        &[
+            ("STR", 10),
+            ("DEX", 3),
+            ("CON", 10),
+            ("INT", 10),
+            ("WIS", 10),
+            ("CHA", 10),
+        ],
+        "Human",
+        0,
+        0,
+    );
+    apply_encumbrance(&mut state, &char2, "Heavy");
+    let val = interp
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "character_surprise_adj",
+            vec![Value::Entity(char2)],
+        )
+        .unwrap();
+    assert_eq!(expect_int(val, "DEX3 heavy"), -4);
+}
+
+#[test]
+fn surprise_adj_overloaded() {
+    let (program, result) = compile_osric_encumbrance();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut state = GameState::new();
+    let mut handler = NullHandler;
+
+    // DEX 10 → 0, Overloaded → min(0, 0) - 1 = -1
+    let char_ref = make_character(&mut state, "Test", &standard_abilities(), "Human", 0, 0);
+    apply_encumbrance(&mut state, &char_ref, "Overloaded");
+
+    let val = interp
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "character_surprise_adj",
+            vec![Value::Entity(char_ref)],
+        )
+        .unwrap();
+    assert_eq!(expect_int(val, "DEX10 overloaded"), -1);
+}

@@ -122,7 +122,7 @@ fn osric_core_has_all_enums() {
         "missing ThiefSkill enum"
     );
 
-    assert_eq!(enums.len(), 10, "expected 10 enums, got {enums:?}");
+    assert_eq!(enums.len(), 11, "expected 11 enums, got {enums:?}");
 }
 
 #[test]
@@ -289,6 +289,8 @@ fn character_entity_fields() {
         "shield_ac_bonus",
         "xp",
         "base_movement",
+        "current_weight",
+        "armour_movement_cap",
         "gold",
         "saving_throws",
     ];

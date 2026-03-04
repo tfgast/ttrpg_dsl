@@ -91,7 +91,7 @@ system "OSRIC Character" {
             Monk => abilities[STR] >= 10 && abilities[WIS] >= 10 && abilities[DEX] >= 15,
             Paladin => abilities[STR] >= 12 && abilities[DEX] >= 6 && abilities[CON] >= 9 && abilities[INT] >= 9 && abilities[WIS] >= 13 && abilities[CHA] >= 17,
             Ranger => abilities[STR] >= 13 && abilities[DEX] >= 6 && abilities[CON] >= 14 && abilities[INT] >= 13 && abilities[WIS] >= 14 && abilities[CHA] >= 6,
-            Thief => abilities[DEX] >= 9
+            Thief => abilities[STR] >= 6 && abilities[DEX] >= 9 && abilities[CON] >= 6 && abilities[INT] >= 6 && abilities[CHA] >= 6
         }
     }
 
@@ -136,5 +136,82 @@ system "OSRIC Character" {
 
     derive base_movement(ancestry: Ancestry) -> Feet {
         ancestry_def(ancestry).base_movement
+    }
+
+
+    // ========================================================
+    //  ENCUMBRANCE (§1.5.3.3)
+    //
+    //  Weight over STR allowance determines movement reduction
+    //  and surprise vulnerability. Pure computation layer —
+    //  the EncumbranceState condition calls these derives.
+    // ========================================================
+
+    // Map lbs-over-allowance to encumbrance tier.
+    derive encumbrance_tier(weight_over: int) -> EncumbranceTier {
+        if weight_over <= 0 { Unencumbered }
+        else if weight_over <= 40 { Light }
+        else if weight_over <= 80 { Moderate }
+        else if weight_over <= 120 { Heavy }
+        else { Overloaded }
+    }
+
+    // Convenience: compute encumbrance tier from character state.
+    derive character_encumbrance(character: Character) -> EncumbranceTier {
+        let allowance = effective_str_encumbrance(character)
+        let weight_over = character.current_weight - allowance
+        encumbrance_tier(weight_over)
+    }
+
+    // Fraction numerator (over 4) for movement reduction per tier.
+    derive encumbrance_movement_numerator(tier: EncumbranceTier) -> int {
+        match tier {
+            Unencumbered => 4,
+            Light        => 3,
+            Moderate     => 2,
+            Heavy        => 1,
+            Overloaded   => 0
+        }
+    }
+
+    // Base movement: ancestry rate capped by armour.
+    // EncumbranceState condition modifies the result.
+    derive character_movement(character: Character) -> Feet {
+        let base = base_movement(character.ancestry)
+        let cap = character.armour_movement_cap
+        if cap.value > 0 {
+            Feet { value: min(base.value, cap.value) }
+        } else {
+            base
+        }
+    }
+
+    // Base surprise adjustment from DEX.
+    // EncumbranceState condition modifies the result.
+    derive character_surprise_adj(character: Character) -> int {
+        dex_surprise(character.abilities[DEX])
+    }
+
+    // Compute encumbrance surprise adjustment.
+    // Called from EncumbranceState modify clause (match not allowed in modify blocks).
+    derive encumbrance_surprise_adj(
+        tier: EncumbranceTier,
+        base_adj: int,
+        armour_cap_value: int
+    ) -> int {
+        match tier {
+            Unencumbered => {
+                // +1 surprise bonus only with light/no armour
+                if armour_cap_value == 0 || armour_cap_value >= 120 {
+                    base_adj + 1
+                } else {
+                    base_adj
+                }
+            },
+            Light    => base_adj,
+            Moderate => min(0, base_adj),
+            Heavy    => min(0, base_adj) - 1,
+            Overloaded => min(0, base_adj) - 1
+        }
     }
 }

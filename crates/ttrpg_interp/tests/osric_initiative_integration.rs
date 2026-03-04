@@ -30,6 +30,7 @@ use ttrpg_interp::Interpreter;
 fn compile_osric_initiative() -> (ttrpg_ast::ast::Program, ttrpg_checker::CheckResult) {
     let core_source = include_str!("../../../osric/osric_core.ttrpg");
     let ability_source = include_str!("../../../osric/osric_ability.ttrpg");
+    let character_source = include_str!("../../../osric/osric_character.ttrpg");
     let class_source = include_str!("../../../osric/osric_class.ttrpg");
     let equipment_source = include_str!("../../../osric/osric_equipment.ttrpg");
     let conditions_source = include_str!("../../../osric/osric_conditions.ttrpg");
@@ -44,6 +45,10 @@ fn compile_osric_initiative() -> (ttrpg_ast::ast::Program, ttrpg_checker::CheckR
         (
             "osric/osric_ability.ttrpg".to_string(),
             ability_source.to_string(),
+        ),
+        (
+            "osric/osric_character.ttrpg".to_string(),
+            character_source.to_string(),
         ),
         (
             "osric/osric_class.ttrpg".to_string(),
@@ -674,6 +679,88 @@ fn surprise_duration_dex_adj_fully_negates() {
     assert_eq!(val, Value::Int(0), "high DEX should fully negate surprise");
 }
 
+// ── Expanded surprise threshold (monster-specific ranges) ────
+
+#[test]
+fn surprise_duration_threshold_3_roll_3_is_surprised() {
+    let (program, result) = compile_osric_initiative();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+
+    // Monster "surprises on 1-3" → threshold 3. Roll 3, no DEX adj → 3 segments.
+    let val = interp
+        .evaluate_derive(
+            &state,
+            &mut NullHandler,
+            "surprise_duration",
+            vec![Value::Int(3), Value::Int(0), Value::Int(3)],
+        )
+        .unwrap();
+    assert_eq!(val, Value::Int(3), "roll 3 with threshold 3 = 3 segments");
+}
+
+#[test]
+fn surprise_duration_threshold_4_roll_4_is_surprised() {
+    let (program, result) = compile_osric_initiative();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+
+    // Monster "surprises on 1-4" → threshold 4. Roll 4, no DEX adj → 4 segments.
+    let val = interp
+        .evaluate_derive(
+            &state,
+            &mut NullHandler,
+            "surprise_duration",
+            vec![Value::Int(4), Value::Int(0), Value::Int(4)],
+        )
+        .unwrap();
+    assert_eq!(val, Value::Int(4), "roll 4 with threshold 4 = 4 segments");
+}
+
+#[test]
+fn surprise_duration_threshold_3_roll_4_not_surprised() {
+    let (program, result) = compile_osric_initiative();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+
+    // Threshold 3 but rolled 4 → not surprised.
+    let val = interp
+        .evaluate_derive(
+            &state,
+            &mut NullHandler,
+            "surprise_duration",
+            vec![Value::Int(4), Value::Int(0), Value::Int(3)],
+        )
+        .unwrap();
+    assert_eq!(
+        val,
+        Value::Int(0),
+        "roll 4 with threshold 3 = not surprised"
+    );
+}
+
+#[test]
+fn surprise_duration_threshold_3_with_dex_adj() {
+    let (program, result) = compile_osric_initiative();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+
+    // Threshold 3, roll 3, DEX adj 1 → max(0, 3-1) = 2 segments.
+    let val = interp
+        .evaluate_derive(
+            &state,
+            &mut NullHandler,
+            "surprise_duration",
+            vec![Value::Int(3), Value::Int(1), Value::Int(3)],
+        )
+        .unwrap();
+    assert_eq!(
+        val,
+        Value::Int(2),
+        "roll 3 with threshold 3 and DEX adj 1 = 2 segments"
+    );
+}
+
 #[test]
 fn free_surprise_segments_party_more_surprised() {
     let (program, result) = compile_osric_initiative();
@@ -796,6 +883,80 @@ fn roll_surprise_both_surprised() {
 
     assert_eq!(get_int(&fields, "party_surprised_segments"), 2);
     assert_eq!(get_int(&fields, "monster_surprised_segments"), 1);
+}
+
+// ── roll_surprise with expanded thresholds ───────────────────
+
+#[test]
+fn roll_surprise_monster_threshold_3_surprises_party_on_3() {
+    let (program, result) = compile_osric_initiative();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+
+    // Party rolls 3 (normally not surprised, but monster has threshold 3).
+    // Monster rolls 5 (not surprised at default threshold 2).
+    let party_roll = scripted_roll(1, 6, 0, vec![3], vec![3], 3, 3);
+    let monster_roll = scripted_roll(1, 6, 0, vec![5], vec![5], 5, 5);
+
+    let (fields, _) = call_mechanic_struct(
+        &interp,
+        &state,
+        vec![party_roll, monster_roll],
+        "roll_surprise",
+        vec![Value::Int(3), Value::Int(2)], // monster_surprise_threshold=3, party=2
+        "SurpriseResult",
+    );
+
+    assert_eq!(get_int(&fields, "party_roll"), 3);
+    assert_eq!(get_int(&fields, "party_surprised_segments"), 3);
+    assert_eq!(get_int(&fields, "monster_surprised_segments"), 0);
+}
+
+#[test]
+fn roll_surprise_party_threshold_3_surprises_monster_on_3() {
+    let (program, result) = compile_osric_initiative();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+
+    // Party rolls 5 (not surprised). Monster rolls 3 (party has threshold 3 → surprised).
+    let party_roll = scripted_roll(1, 6, 0, vec![5], vec![5], 5, 5);
+    let monster_roll = scripted_roll(1, 6, 0, vec![3], vec![3], 3, 3);
+
+    let (fields, _) = call_mechanic_struct(
+        &interp,
+        &state,
+        vec![party_roll, monster_roll],
+        "roll_surprise",
+        vec![Value::Int(2), Value::Int(3)], // monster_surprise_threshold=2, party=3
+        "SurpriseResult",
+    );
+
+    assert_eq!(get_int(&fields, "party_surprised_segments"), 0);
+    assert_eq!(get_int(&fields, "monster_surprised_segments"), 3);
+}
+
+#[test]
+fn roll_surprise_asymmetric_thresholds() {
+    let (program, result) = compile_osric_initiative();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+
+    // Monster surprises on 1-4, party surprises on 1-2 (standard).
+    // Party rolls 4 → surprised 4 segments. Monster rolls 3 → not surprised (threshold 2).
+    let party_roll = scripted_roll(1, 6, 0, vec![4], vec![4], 4, 4);
+    let monster_roll = scripted_roll(1, 6, 0, vec![3], vec![3], 3, 3);
+
+    let (fields, _) = call_mechanic_struct(
+        &interp,
+        &state,
+        vec![party_roll, monster_roll],
+        "roll_surprise",
+        vec![Value::Int(4), Value::Int(2)], // monster_surprise_threshold=4, party=2
+        "SurpriseResult",
+    );
+
+    assert_eq!(get_int(&fields, "party_surprised_segments"), 4);
+    assert_eq!(get_int(&fields, "monster_surprised_segments"), 0);
 }
 
 #[test]

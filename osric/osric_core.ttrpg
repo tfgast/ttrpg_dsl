@@ -63,6 +63,10 @@ system "OSRIC" {
 
     enum Size ordered { Small, Medium, Large }
 
+    // --- Encumbrance tiers (§1.5.3.3) ---
+
+    enum EncumbranceTier ordered { Unencumbered, Light, Moderate, Heavy, Overloaded }
+
     // --- Saving throw categories (five in 1e/OSRIC) ---
 
     enum SaveCategory {
@@ -193,6 +197,8 @@ system "OSRIC" {
         shield_ac_bonus: int = 0        // AC contribution from shield (for condition negation)
         xp: int = 0
         base_movement: Feet = 120ft
+        current_weight: int = 0            // lbs carried; manual now, inventory-derived later
+        armour_movement_cap: Feet = 0ft    // 0ft = no armour cap; set from equipped armour
         gold: int = 0
         saving_throws: option<SavingThrows>
 
@@ -215,7 +221,7 @@ system "OSRIC" {
 
     entity Monster {
         name: string
-        hit_dice: int
+        hit_dice: DiceExpr
         max_hp: int
         hp: resource(0..=max_hp)
         ac: int = 10

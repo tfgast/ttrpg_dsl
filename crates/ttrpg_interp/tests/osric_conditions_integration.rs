@@ -25,6 +25,7 @@ use ttrpg_interp::Interpreter;
 fn compile_osric_conditions() -> (ttrpg_ast::ast::Program, ttrpg_checker::CheckResult) {
     let core_source = include_str!("../../../osric/osric_core.ttrpg");
     let ability_source = include_str!("../../../osric/osric_ability.ttrpg");
+    let character_source = include_str!("../../../osric/osric_character.ttrpg");
     let class_source = include_str!("../../../osric/osric_class.ttrpg");
     let equipment_source = include_str!("../../../osric/osric_equipment.ttrpg");
     let combat_source = include_str!("../../../osric/osric_combat.ttrpg");
@@ -38,6 +39,10 @@ fn compile_osric_conditions() -> (ttrpg_ast::ast::Program, ttrpg_checker::CheckR
         (
             "osric/osric_ability.ttrpg".to_string(),
             ability_source.to_string(),
+        ),
+        (
+            "osric/osric_character.ttrpg".to_string(),
+            character_source.to_string(),
         ),
         (
             "osric/osric_class.ttrpg".to_string(),
@@ -225,14 +230,17 @@ fn make_character(
 fn make_monster(
     state: &mut GameState,
     name: &str,
-    hit_dice: i64,
+    hit_dice: (u32, u32, i64),
     max_hp: i64,
     ac: i64,
     attacks: Vec<Value>,
 ) -> EntityRef {
     let mut fields = FxHashMap::default();
     fields.insert(Name::from("name"), Value::Str(name.to_string()));
-    fields.insert(Name::from("hit_dice"), Value::Int(hit_dice));
+    fields.insert(
+        Name::from("hit_dice"),
+        Value::DiceExpr(DiceExpr::single(hit_dice.0, hit_dice.1, None, hit_dice.2)),
+    );
     fields.insert(Name::from("max_hp"), Value::Int(max_hp));
     fields.insert(Name::from("hp"), Value::Int(max_hp));
     fields.insert(Name::from("armor_ac"), Value::Int(ac));
@@ -436,7 +444,7 @@ fn osric_conditions_parses_and_typechecks() {
 // ── Structure verification ─────────────────────────────────────
 
 #[test]
-fn osric_conditions_has_all_thirteen_conditions() {
+fn osric_conditions_has_all_fourteen_conditions() {
     let (program, _) = compile_osric_conditions();
     let decls = get_conditions_decls(&program);
     let conditions: Vec<_> = decls
@@ -461,6 +469,7 @@ fn osric_conditions_has_all_thirteen_conditions() {
         "Cover",
         "Charging",
         "ChargeRecovery",
+        "EncumbranceState",
     ];
 
     for name in &expected {
@@ -471,8 +480,8 @@ fn osric_conditions_has_all_thirteen_conditions() {
     }
     assert_eq!(
         conditions.len(),
-        13,
-        "expected 13 conditions, found {}: {:?}",
+        14,
+        "expected 14 conditions, found {}: {:?}",
         conditions.len(),
         conditions
     );
@@ -1463,7 +1472,7 @@ fn prone_on_target_applies_to_monster_attack() {
     let monster = make_monster(
         &mut state,
         "Ogre",
-        4,
+        (4, 8, 1),
         26,
         15,
         vec![monster_attack("Club", 1, 10, 0)],
@@ -1513,7 +1522,7 @@ fn rear_attacked_does_not_affect_monster_attack() {
     let monster = make_monster(
         &mut state,
         "Ogre",
-        4,
+        (4, 8, 1),
         26,
         15,
         vec![monster_attack("Club", 1, 10, 0)],
@@ -1894,7 +1903,7 @@ fn surprised_on_monster_forces_miss() {
     let monster = make_monster(
         &mut state,
         "Ogre",
-        4,
+        (4, 8, 1),
         26,
         15,
         vec![monster_attack("Club", 1, 10, 0)],
@@ -1944,7 +1953,7 @@ fn concealed_on_target_applies_to_monster_attack() {
     let monster = make_monster(
         &mut state,
         "Goblin",
-        1,
+        (1, 8, -1),
         4,
         13,
         vec![monster_attack("Shortsword", 1, 6, 0)],
@@ -1964,7 +1973,7 @@ fn concealed_on_target_applies_to_monster_attack() {
     params.insert(Name::from("level"), Value::Int(3));
     state.apply_condition(&target, "Concealed", params, Value::None, None);
 
-    // monster_bthb(1)=1, attack_mod=-3 (Concealed level 3) → total_mod=-2
+    // monster_bthb(1d8-1)=0 (1-1 HD tier), attack_mod=-3 (Concealed level 3) → total_mod=-3
     let atk_roll = scripted_roll(1, 20, 0, vec![15], vec![15], 15, 15);
 
     let (fields, _) = resolve_monster(
@@ -1976,7 +1985,7 @@ fn concealed_on_target_applies_to_monster_attack() {
         monster_attack("Shortsword", 1, 6, 0),
     );
 
-    assert_eq!(get_int(&fields, "total_mod"), -2); // monster_bthb=1 + Concealed(-3)
+    assert_eq!(get_int(&fields, "total_mod"), -3); // monster_bthb=0 + Concealed(-3)
 }
 
 // ── All cover levels ───────────────────────────────────────────
@@ -2680,7 +2689,7 @@ fn paralyzed_auto_hit_max_damage_monster_attack() {
     let monster = make_monster(
         &mut state,
         "Ogre",
-        4,
+        (4, 8, 1),
         26,
         15,
         vec![monster_attack("Greatclub", 2, 6, 0)],

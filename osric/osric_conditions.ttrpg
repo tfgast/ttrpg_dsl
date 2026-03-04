@@ -16,6 +16,7 @@
 
 use "OSRIC"
 use "OSRIC Ability"
+use "OSRIC Character"
 use "OSRIC Combat"
 
 system "OSRIC Conditions" {
@@ -257,4 +258,25 @@ system "OSRIC Conditions" {
     // ========================================================
 
     condition ChargeRecovery on bearer: entity {}
+
+
+    // ========================================================
+    //  ENCUMBRANCE STATE (§1.5.3.3)
+    //
+    //  Always applied (even Unencumbered — movement is identity
+    //  at 4/4, surprise adds light-armour bonus). Avoids a
+    //  special "no condition" code path.
+    // ========================================================
+
+    condition EncumbranceState(tier: EncumbranceTier) on bearer: Character {
+        modify character_movement(character: bearer) {
+            let numerator = encumbrance_movement_numerator(tier)
+            result = Feet { value: floor(result.value * numerator / 4) }
+        }
+
+        modify character_surprise_adj(character: bearer) {
+            result = encumbrance_surprise_adj(tier, result, bearer.armour_movement_cap.value)
+        }
+    }
+
 }
