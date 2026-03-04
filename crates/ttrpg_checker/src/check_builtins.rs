@@ -546,7 +546,7 @@ impl Checker<'_> {
             "apply_condition" | "remove_condition" => {
                 if !self.scope.allows_mutation() {
                     self.error(
-                        format!("{name}() can only be called in action, reaction, or hook blocks"),
+                        format!("{name}() can only be called in function, action, reaction, or hook blocks"),
                         span,
                     );
                 }
@@ -563,7 +563,7 @@ impl Checker<'_> {
             "revoke" => {
                 if !self.scope.allows_mutation() {
                     self.error(
-                        "revoke() can only be called in action, reaction, or hook blocks"
+                        "revoke() can only be called in function, action, reaction, or hook blocks"
                             .to_string(),
                         span,
                     );

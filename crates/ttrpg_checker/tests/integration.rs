@@ -674,7 +674,7 @@ system "test" {
 "#;
     expect_errors(
         source,
-        &["apply_condition() can only be called in action, reaction, or hook"],
+        &["apply_condition() can only be called in function, action, reaction, or hook"],
     );
 }
 
@@ -10114,8 +10114,23 @@ fn revoke_in_derive_rejected() {
 }"#;
     expect_errors(
         source,
-        &["revoke() can only be called in action, reaction, or hook blocks"],
+        &["revoke() can only be called in function, action, reaction, or hook blocks"],
     );
+}
+
+#[test]
+fn revoke_in_function_allowed() {
+    let source = r#"system "Test" {
+    entity Character { HP: int, concentrating_on: option<Invocation> }
+    condition Blessed on bearer: Character {}
+    function end_concentration(target: Character, inv: Invocation) {
+        revoke(inv)
+    }
+    function end_concentration_option(target: Character, inv: option<Invocation>) {
+        revoke(inv)
+    }
+}"#;
+    expect_no_errors(source);
 }
 
 #[test]
