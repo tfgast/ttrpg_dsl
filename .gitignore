@@ -1,5 +1,6 @@
 /target
 .claude/
+*.pdf
 
 # Gas Town (added by gt)
 .runtime/
