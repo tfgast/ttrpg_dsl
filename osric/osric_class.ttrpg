@@ -30,7 +30,7 @@ system "OSRIC Classes" {
             Monk => ClassDef { class: Class.Monk, hit_die: 4, max_hit_dice: 18, hp_after_max: 0, combat_group: ClericGroup, armour: no_armour, shield_allowed: false, weapons_any: false, non_prof_penalty: -3, weapon_specialization: false, spell_progression: NonCaster, has_thief_skills: true, can_backstab: false, can_turn_undead: false, has_exceptional_str: false },
             Paladin => ClassDef { class: Class.Paladin, hit_die: 10, max_hit_dice: 9, hp_after_max: 3, combat_group: FighterGroup, armour: any_armour, shield_allowed: true, weapons_any: true, non_prof_penalty: -2, weapon_specialization: true, spell_progression: SpellProgression.Paladin, has_thief_skills: false, can_backstab: false, can_turn_undead: true, has_exceptional_str: true },
             Ranger => ClassDef { class: Class.Ranger, hit_die: 8, max_hit_dice: 10, hp_after_max: 2, combat_group: FighterGroup, armour: any_armour, shield_allowed: true, weapons_any: true, non_prof_penalty: -2, weapon_specialization: true, spell_progression: SpellProgression.Ranger, has_thief_skills: false, can_backstab: false, can_turn_undead: false, has_exceptional_str: true },
-            Thief => ClassDef { class: Class.Thief, hit_die: 6, max_hit_dice: 10, hp_after_max: 2, combat_group: ThiefGroup, armour: leather_only, shield_allowed: false, weapons_any: true, non_prof_penalty: -3, weapon_specialization: false, spell_progression: NonCaster, has_thief_skills: true, can_backstab: true, can_turn_undead: false, has_exceptional_str: false }
+            Thief => ClassDef { class: Class.Thief, hit_die: 6, max_hit_dice: 10, hp_after_max: 2, combat_group: ThiefGroup, armour: leather_only, shield_allowed: false, weapons_any: false, non_prof_penalty: -3, weapon_specialization: false, spell_progression: NonCaster, has_thief_skills: true, can_backstab: true, can_turn_undead: false, has_exceptional_str: false }
         }
     }
 
@@ -211,22 +211,22 @@ system "OSRIC Classes" {
         [Class.Ranger, 2]  => 2250,
         [Class.Ranger, 3]  => 4500,
         [Class.Ranger, 4]  => 9500,
-        [Class.Ranger, 5]  => 18000,
-        [Class.Ranger, 6]  => 36000,
-        [Class.Ranger, 7]  => 60000,
-        [Class.Ranger, 8]  => 90000,
-        [Class.Ranger, 9]  => 150000,
-        [Class.Ranger, 10] => 225000,
-        [Class.Ranger, 11] => 325000,
-        [Class.Ranger, 12] => 650000,
-        [Class.Ranger, 13] => 975000,
-        [Class.Ranger, 14] => 1300000,
-        [Class.Ranger, 15] => 1625000,
-        [Class.Ranger, 16] => 1950000,
-        [Class.Ranger, 17] => 2275000,
-        [Class.Ranger, 18] => 2600000,
-        [Class.Ranger, 19] => 2925000,
-        [Class.Ranger, 20] => 3250000,
+        [Class.Ranger, 5]  => 20000,
+        [Class.Ranger, 6]  => 40000,
+        [Class.Ranger, 7]  => 90000,
+        [Class.Ranger, 8]  => 150000,
+        [Class.Ranger, 9]  => 225000,
+        [Class.Ranger, 10] => 325000,
+        [Class.Ranger, 11] => 650000,
+        [Class.Ranger, 12] => 975000,
+        [Class.Ranger, 13] => 1300000,
+        [Class.Ranger, 14] => 1625000,
+        [Class.Ranger, 15] => 1950000,
+        [Class.Ranger, 16] => 2275000,
+        [Class.Ranger, 17] => 2600000,
+        [Class.Ranger, 18] => 2925000,
+        [Class.Ranger, 19] => 3250000,
+        [Class.Ranger, 20] => 3575000,
 
         // --- Thief ---
         [Class.Thief, 1]  => 0,

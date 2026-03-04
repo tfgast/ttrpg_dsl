@@ -432,7 +432,7 @@ fn class_def_thief() {
         ("SpellProgression", "NonCaster")
     );
     assert!(!get_bool(&def, "shield_allowed"));
-    assert!(get_bool(&def, "weapons_any"));
+    assert!(!get_bool(&def, "weapons_any"));
     assert!(get_bool(&def, "has_thief_skills"));
     assert!(get_bool(&def, "can_backstab"));
 }
@@ -725,10 +725,10 @@ fn xp_for_level_ranger_spot_checks() {
     let mut handler = NullHandler;
 
     assert_eq!(get_xp(&interp, &state, &mut handler, "Ranger", 2), 2250);
-    assert_eq!(get_xp(&interp, &state, &mut handler, "Ranger", 8), 90000);
+    assert_eq!(get_xp(&interp, &state, &mut handler, "Ranger", 8), 150_000);
     assert_eq!(
         get_xp(&interp, &state, &mut handler, "Ranger", 20),
-        3_250_000
+        3_575_000
     );
 }
 
