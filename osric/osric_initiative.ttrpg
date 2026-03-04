@@ -96,14 +96,24 @@ system "OSRIC Initiative" {
     // ========================================================
     //  SURPRISE
     //
-    //  d6 per side. 1-2 = surprised for that many segments.
+    //  d6 per side. Standard: 1-2 = surprised for that many
+    //  segments. Some monsters/classes have expanded surprise
+    //  ranges (e.g., "surprises on 1-3" → threshold 3).
+    //  Per §1.6.1.1 the roll value = number of surprise segments.
     //  DEX surprise modifier reduces personal surprise duration.
     //  Unsurprised side gets free segments = difference.
     // ========================================================
 
     // Personal surprise duration after DEX adjustment.
-    derive surprise_duration(side_roll: int, dex_surprise_adj: int) -> int {
-        if side_roll > 2 {
+    // surprise_threshold: highest d6 roll that causes surprise
+    // (default 2). Monsters with expanded surprise ranges pass
+    // a higher value (e.g., 3 for "surprises on 1-3").
+    derive surprise_duration(
+        side_roll: int,
+        dex_surprise_adj: int,
+        surprise_threshold: int = 2
+    ) -> int {
+        if side_roll > surprise_threshold {
             0
         } else {
             max(0, side_roll - dex_surprise_adj)
@@ -124,14 +134,22 @@ system "OSRIC Initiative" {
 
     // Full surprise resolution. Individual DEX adjustments
     // are applied separately per-character by the host.
-    mechanic roll_surprise() -> SurpriseResult {
+    //
+    // monster_surprise_threshold: highest roll that surprises
+    //   the party (default 2; monster with "surprises on 1-3" → 3).
+    // party_surprise_threshold: highest roll that surprises
+    //   the monsters (default 2; ranger ambush might pass 3).
+    mechanic roll_surprise(
+        monster_surprise_threshold: int = 2,
+        party_surprise_threshold: int = 2
+    ) -> SurpriseResult {
         let p = roll(1d6)
         let m = roll(1d6)
         SurpriseResult {
             party_roll: p.total,
             monster_roll: m.total,
-            party_surprised_segments: if p.total <= 2 { p.total } else { 0 },
-            monster_surprised_segments: if m.total <= 2 { m.total } else { 0 }
+            party_surprised_segments: if p.total <= monster_surprise_threshold { p.total } else { 0 },
+            monster_surprised_segments: if m.total <= party_surprise_threshold { m.total } else { 0 }
         }
     }
 
