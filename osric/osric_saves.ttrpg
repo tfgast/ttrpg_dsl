@@ -87,7 +87,8 @@ system "OSRIC Saves" {
         1..=4   => SavingThrows { aimed_magic: 14, breath: 16, death_paralysis_poison: 13, petrification_polymorph: 12, spells: 15 },
         5..=8   => SavingThrows { aimed_magic: 12, breath: 15, death_paralysis_poison: 12, petrification_polymorph: 11, spells: 13 },
         9..=12  => SavingThrows { aimed_magic: 10, breath: 14, death_paralysis_poison: 11, petrification_polymorph: 10, spells: 11 },
-        _       => SavingThrows { aimed_magic: 8, breath: 13, death_paralysis_poison: 10, petrification_polymorph: 9, spells: 9 }
+        13..=16 => SavingThrows { aimed_magic: 8, breath: 13, death_paralysis_poison: 10, petrification_polymorph: 9, spells: 9 },
+        _       => SavingThrows { aimed_magic: 6, breath: 12, death_paralysis_poison: 9, petrification_polymorph: 8, spells: 7 }
     }
 
 

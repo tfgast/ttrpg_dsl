@@ -418,9 +418,21 @@ fn thief_level_13_saves() {
     let state = GameState::new();
     let mut handler = NullHandler;
 
-    // Wildcard tier (13+)
+    // 13-16 tier
     let saves = get_saves(&interp, &state, &mut handler, "Thief", 13);
     assert_eq!(saves, (8, 13, 10, 9, 9));
+}
+
+#[test]
+fn thief_level_17_saves() {
+    let (program, result) = compile_osric_saves();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NullHandler;
+
+    // Wildcard tier (17+)
+    let saves = get_saves(&interp, &state, &mut handler, "Thief", 17);
+    assert_eq!(saves, (6, 12, 9, 8, 7));
 }
 
 // ── Magic-User saves ───────────────────────────────────────────
@@ -744,7 +756,7 @@ fn osric_saves_table_entry_counts() {
         ("paladin_saves", 10), // 1-2, 3-4, 5-6, 7-8, 9-10, 11-12, 13-14, 15-16, 17-18, _
         ("cleric_saves", 7),   // 1-3, 4-6, 7-9, 10-12, 13-15, 16-18, _
         ("druid_saves", 5),    // 1-3, 4-6, 7-9, 10-12, _
-        ("thief_saves", 4),    // 1-4, 5-8, 9-12, _
+        ("thief_saves", 5),    // 1-4, 5-8, 9-12, 13-16, _
         ("magic_user_saves", 4), // 1-5, 6-10, 11-15, _
         ("illusionist_saves", 4), // 1-5, 6-10, 11-15, _
         ("monk_saves", 5),     // 1-4, 5-8, 9-12, 13-16, _

@@ -777,14 +777,14 @@ fn meets_class_requirements_thief_minimal() {
     let state = GameState::new();
     let mut handler = NullHandler;
 
-    // Thief only requires DEX >= 9
+    // Thief requires STR 6, DEX 9, CON 6, INT 6, CHA 6
     let scores = ability_map(&[
-        ("STR", 3),
+        ("STR", 6),
         ("DEX", 9),
-        ("CON", 3),
-        ("INT", 3),
+        ("CON", 6),
+        ("INT", 6),
         ("WIS", 3),
-        ("CHA", 3),
+        ("CHA", 6),
     ]);
 
     let val = interp
