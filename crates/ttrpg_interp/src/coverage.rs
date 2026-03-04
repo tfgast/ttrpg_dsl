@@ -29,6 +29,14 @@ impl CoverageData {
         self.hit_branches.clear();
         self.hit_functions.clear();
     }
+
+    /// Merge another `CoverageData` into this one (union of all sets).
+    pub fn merge(&mut self, other: &CoverageData) {
+        self.hit_spans.extend(&other.hit_spans);
+        self.hit_branches.extend(other.hit_branches.iter().cloned());
+        self.hit_functions
+            .extend(other.hit_functions.iter().cloned());
+    }
 }
 
 /// A specific branch point that was taken during execution.

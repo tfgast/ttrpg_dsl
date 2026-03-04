@@ -364,6 +364,11 @@ impl Runner {
         self.coverage.clone()
     }
 
+    /// Returns a reference to the shared coverage data (if coverage is enabled).
+    pub fn coverage_data(&self) -> Option<&Rc<RefCell<CoverageData>>> {
+        self.coverage.as_ref()
+    }
+
     /// `coverage` command — render a coverage report.
     fn cmd_coverage(&mut self) -> Result<(), CliError> {
         let cov = match &self.coverage {
