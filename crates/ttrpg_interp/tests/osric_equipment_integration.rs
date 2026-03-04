@@ -298,7 +298,7 @@ fn melee_weapon_enum_has_27_variants() {
 }
 
 #[test]
-fn missile_weapon_enum_has_14_variants() {
+fn missile_weapon_enum_has_15_variants() {
     let (program, _) = compile_osric_equipment();
     let decls = get_equipment_decls(&program);
     let mw = decls
@@ -311,8 +311,8 @@ fn missile_weapon_enum_has_14_variants() {
 
     assert_eq!(
         mw.variants.len(),
-        14,
-        "MissileWeapon should have 14 variants"
+        15,
+        "MissileWeapon should have 15 variants"
     );
 
     let expected = [
@@ -329,6 +329,7 @@ fn missile_weapon_enum_has_14_variants() {
         "JavelinThrown",
         "SpearThrown",
         "Sling",
+        "SlingStone",
         "WarhammerThrown",
     ];
     let actual: Vec<_> = mw.variants.iter().map(|v| v.name.as_str()).collect();
@@ -403,8 +404,8 @@ fn equipment_structs_exist() {
         .collect();
 
     assert!(
-        structs.contains(&("MeleeWeaponDef", 8)),
-        "missing MeleeWeaponDef with 8 fields"
+        structs.contains(&("MeleeWeaponDef", 9)),
+        "missing MeleeWeaponDef with 9 fields"
     );
     assert!(
         structs.contains(&("MissileWeaponDef", 9)),
@@ -442,9 +443,10 @@ fn melee_weapon_def_long_sword() {
     assert_eq!(get_dice_expr(&fields, "damage_sm"), (1, 8, 0));
     assert_eq!(get_dice_expr(&fields, "damage_l"), (1, 12, 0));
     assert_eq!(get_int(&fields, "weight"), 7);
-    assert_eq!(get_int(&fields, "cost_gp"), 15);
+    assert_eq!(get_int(&fields, "cost_cp"), 1500);
     assert_eq!(get_int(&fields, "speed_factor"), 5);
     assert_eq!(get_damage_type(&fields, "damage_type"), "Slashing");
+    assert_eq!(get_int(&fields, "one_hand_str"), 0);
 }
 
 #[test]
@@ -467,7 +469,7 @@ fn melee_weapon_def_dagger() {
     assert_eq!(get_dice_expr(&fields, "damage_sm"), (1, 4, 0));
     assert_eq!(get_dice_expr(&fields, "damage_l"), (1, 3, 0));
     assert_eq!(get_int(&fields, "weight"), 1);
-    assert_eq!(get_int(&fields, "cost_gp"), 2);
+    assert_eq!(get_int(&fields, "cost_cp"), 200);
     assert_eq!(get_int(&fields, "speed_factor"), 2);
     assert_eq!(get_damage_type(&fields, "damage_type"), "Piercing");
 }
@@ -492,7 +494,7 @@ fn melee_weapon_def_halberd() {
     assert_eq!(get_dice_expr(&fields, "damage_sm"), (1, 10, 0));
     assert_eq!(get_dice_expr(&fields, "damage_l"), (2, 6, 0));
     assert_eq!(get_int(&fields, "weight"), 18);
-    assert_eq!(get_int(&fields, "cost_gp"), 9);
+    assert_eq!(get_int(&fields, "cost_cp"), 900);
     assert_eq!(get_int(&fields, "speed_factor"), 9);
     assert_eq!(get_damage_type(&fields, "damage_type"), "Slashing");
 }
@@ -517,7 +519,7 @@ fn melee_weapon_def_fist_or_kick() {
     assert_eq!(get_dice_expr(&fields, "damage_sm"), (1, 2, 0));
     assert_eq!(get_dice_expr(&fields, "damage_l"), (1, 2, 0));
     assert_eq!(get_int(&fields, "weight"), 0);
-    assert_eq!(get_int(&fields, "cost_gp"), 0);
+    assert_eq!(get_int(&fields, "cost_cp"), 0);
     assert_eq!(get_int(&fields, "speed_factor"), 1);
     assert_eq!(get_damage_type(&fields, "damage_type"), "Blunt");
 }
@@ -542,7 +544,7 @@ fn melee_weapon_def_two_handed_sword() {
     assert_eq!(get_dice_expr(&fields, "damage_sm"), (1, 10, 0));
     assert_eq!(get_dice_expr(&fields, "damage_l"), (3, 6, 0));
     assert_eq!(get_int(&fields, "weight"), 25);
-    assert_eq!(get_int(&fields, "cost_gp"), 30);
+    assert_eq!(get_int(&fields, "cost_cp"), 3000);
     assert_eq!(get_int(&fields, "speed_factor"), 10);
     assert_eq!(get_damage_type(&fields, "damage_type"), "Slashing");
 }
@@ -618,7 +620,7 @@ fn missile_weapon_def_long_bow() {
     assert_eq!(get_dice_expr(&fields, "damage_sm"), (1, 6, 0));
     assert_eq!(get_dice_expr(&fields, "damage_l"), (1, 6, 0));
     assert_eq!(get_int(&fields, "weight"), 12);
-    assert_eq!(get_int(&fields, "cost_gp"), 60);
+    assert_eq!(get_int(&fields, "cost_cp"), 6000);
 }
 
 #[test]
@@ -715,6 +717,176 @@ fn missile_weapon_def_dart_has_highest_rof() {
     assert!(get_bool(&fields, "is_hurled"));
     assert_eq!(get_int(&fields, "rate_of_fire"), 3);
     assert_eq!(get_feet(&fields, "range_increment"), 15);
+}
+
+#[test]
+fn missile_weapon_def_sling_stone_lower_damage() {
+    let (program, result) = compile_osric_equipment();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NullHandler;
+
+    let fields = get_struct_fields(
+        &interp,
+        &state,
+        &mut handler,
+        "missile_weapon_def",
+        vec![missile_variant("SlingStone")],
+        "MissileWeaponDef",
+    );
+
+    assert_eq!(get_int(&fields, "hands"), 1);
+    assert!(!get_bool(&fields, "is_hurled"));
+    assert_eq!(get_damage_type(&fields, "damage_type"), "Blunt");
+    assert_eq!(get_feet(&fields, "range_increment"), 35);
+    // Stone ammo: 1d4/1d4 (lower than bullet's 1d4+1/1d6+1)
+    assert_eq!(get_dice_expr(&fields, "damage_sm"), (1, 4, 0));
+    assert_eq!(get_dice_expr(&fields, "damage_l"), (1, 4, 0));
+    assert_eq!(get_int(&fields, "cost_cp"), 50);
+}
+
+#[test]
+fn missile_weapon_def_club_thrown_costs_2cp() {
+    let (program, result) = compile_osric_equipment();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NullHandler;
+
+    let fields = get_struct_fields(
+        &interp,
+        &state,
+        &mut handler,
+        "missile_weapon_def",
+        vec![missile_variant("ClubThrown")],
+        "MissileWeaponDef",
+    );
+
+    // Club costs 2 cp (was incorrectly 0 gp)
+    assert_eq!(get_int(&fields, "cost_cp"), 2);
+}
+
+#[test]
+fn missile_weapon_def_javelin_costs_50cp() {
+    let (program, result) = compile_osric_equipment();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NullHandler;
+
+    let fields = get_struct_fields(
+        &interp,
+        &state,
+        &mut handler,
+        "missile_weapon_def",
+        vec![missile_variant("JavelinThrown")],
+        "MissileWeaponDef",
+    );
+
+    // Javelin costs 5 sp = 50 cp (was incorrectly 0 gp)
+    assert_eq!(get_int(&fields, "cost_cp"), 50);
+}
+
+// ── Handedness STR exceptions ─────────────────────────────────
+
+#[test]
+fn melee_weapon_battle_axe_one_hand_str_15() {
+    let (program, result) = compile_osric_equipment();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NullHandler;
+
+    let fields = get_struct_fields(
+        &interp,
+        &state,
+        &mut handler,
+        "melee_weapon_def",
+        vec![melee_variant("BattleAxe")],
+        "MeleeWeaponDef",
+    );
+
+    assert_eq!(get_int(&fields, "hands"), 2);
+    assert_eq!(get_int(&fields, "one_hand_str"), 15);
+}
+
+#[test]
+fn melee_weapon_sword_bastard_one_hand_str_15() {
+    let (program, result) = compile_osric_equipment();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NullHandler;
+
+    let fields = get_struct_fields(
+        &interp,
+        &state,
+        &mut handler,
+        "melee_weapon_def",
+        vec![melee_variant("SwordBastard")],
+        "MeleeWeaponDef",
+    );
+
+    assert_eq!(get_int(&fields, "hands"), 2);
+    assert_eq!(get_int(&fields, "one_hand_str"), 15);
+    assert_eq!(get_int(&fields, "cost_cp"), 2500);
+}
+
+#[test]
+fn melee_weapon_sword_broad_one_hand_str_12() {
+    let (program, result) = compile_osric_equipment();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NullHandler;
+
+    let fields = get_struct_fields(
+        &interp,
+        &state,
+        &mut handler,
+        "melee_weapon_def",
+        vec![melee_variant("SwordBroad")],
+        "MeleeWeaponDef",
+    );
+
+    assert_eq!(get_int(&fields, "hands"), 2);
+    assert_eq!(get_int(&fields, "one_hand_str"), 12);
+}
+
+#[test]
+fn melee_weapon_club_costs_2cp() {
+    let (program, result) = compile_osric_equipment();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NullHandler;
+
+    let fields = get_struct_fields(
+        &interp,
+        &state,
+        &mut handler,
+        "melee_weapon_def",
+        vec![melee_variant("Club")],
+        "MeleeWeaponDef",
+    );
+
+    // Club costs 2 cp (was incorrectly 0 gp)
+    assert_eq!(get_int(&fields, "cost_cp"), 2);
+    assert_eq!(get_int(&fields, "one_hand_str"), 0);
+}
+
+#[test]
+fn melee_weapon_javelin_costs_50cp() {
+    let (program, result) = compile_osric_equipment();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NullHandler;
+
+    let fields = get_struct_fields(
+        &interp,
+        &state,
+        &mut handler,
+        "melee_weapon_def",
+        vec![melee_variant("Javelin")],
+        "MeleeWeaponDef",
+    );
+
+    // Javelin costs 5 sp = 50 cp (was incorrectly 0 gp)
+    assert_eq!(get_int(&fields, "cost_cp"), 50);
 }
 
 // ── Armour derives ─────────────────────────────────────────────
