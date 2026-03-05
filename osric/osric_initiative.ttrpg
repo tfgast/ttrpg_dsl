@@ -63,6 +63,7 @@ system "OSRIC Initiative" {
         MoveAction,
         ParryAction,
         SetAgainstChargeAction,
+        TwoWeaponAttackAction,
         FleeAction,
         HoldAction
     }
@@ -211,6 +212,7 @@ system "OSRIC Initiative" {
             MoveAction             => 1,
             ParryAction            => initiative_segment,
             SetAgainstChargeAction => 1,
+            TwoWeaponAttackAction  => initiative_segment,
             FleeAction             => initiative_segment,
             HoldAction             => initiative_segment
         }
@@ -562,6 +564,14 @@ system "OSRIC Initiative" {
                 let combatant = action.combatant
                 with_budget(combatant, { attack: 1 }) {
                     combatant.Parry()
+                }
+            },
+            TwoWeaponAttackAction => {
+                let target = action.target.unwrap()
+                let weapon = action.weapon_melee.unwrap()
+                equip_main(action.combatant, WieldedItem.Melee(weapon))
+                with_budget(action.combatant, { attack: 1 }) {
+                    action.combatant.TwoWeaponAttack(target)
                 }
             },
             _ => {

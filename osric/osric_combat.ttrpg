@@ -669,6 +669,83 @@ system "OSRIC Combat" {
 
 
     // ========================================================
+    //  TWO-WEAPON FIGHTING (§1.6.3.4)
+    //
+    //  Primary hand: -2 to hit. Off-hand: -4 to hit.
+    //  DEX missile bonus/penalty applies to both attacks.
+    //  Penalties can be offset but never result in a bonus
+    //  (minimum -1 per hand). Off-hand must be dagger or
+    //  hand axe. Cannot affect parrying.
+    //
+    //  Reference: PG p.96 (§1.6.3.4)
+    // ========================================================
+
+    derive is_valid_offhand_weapon(weapon: MeleeWeapon) -> bool {
+        match weapon {
+            Dagger  => true,
+            HandAxe => true,
+            _       => false
+        }
+    }
+
+    // Compute the to-hit penalty for the primary hand.
+    // Base -2, offset by DEX missile bonus. Minimum -1.
+    derive two_weapon_primary_penalty(dex: int) -> int {
+        let base = -2
+        let adj = base + dex_missile(dex)
+        min(-1, adj)
+    }
+
+    // Compute the to-hit penalty for the off-hand.
+    // Base -4, offset by DEX missile bonus. Minimum -1.
+    derive two_weapon_offhand_penalty(dex: int) -> int {
+        let base = -4
+        let adj = base + dex_missile(dex)
+        min(-1, adj)
+    }
+
+    // Two-weapon fighting: attack once with primary, once with off-hand.
+    // Both attacks use the standard melee attack pipeline.
+    // The off-hand weapon cannot be used to parry (enforced by
+    // Parry action reading wielded_melee — main hand only).
+    action TwoWeaponAttack on attacker: Character (target: Character) {
+        cost { attack }
+        requires {
+            wielded_melee(attacker).is_some()
+            && wielded_off_melee(attacker).is_some()
+            && is_valid_offhand_weapon(wielded_off_melee(attacker).unwrap())
+        }
+        resolve {
+            let primary_weapon = wielded_melee(attacker).unwrap()
+            let offhand_weapon = wielded_off_melee(attacker).unwrap()
+            let dex = attacker.abilities[DEX]
+            let primary_penalty = two_weapon_primary_penalty(dex)
+            let offhand_penalty = two_weapon_offhand_penalty(dex)
+
+            // Primary hand attack
+            let result1 = resolve_melee_attack(attacker, target, primary_weapon, primary_penalty)
+            match result1.outcome {
+                AttackOutcome.Hit => {
+                    let wdef = melee_weapon_def(primary_weapon)
+                    target.TakeDamage(attacker, result1.damage, wdef.damage_type)
+                },
+                _ => {}
+            }
+
+            // Off-hand attack
+            let result2 = resolve_melee_attack(attacker, target, offhand_weapon, offhand_penalty)
+            match result2.outcome {
+                AttackOutcome.Hit => {
+                    let wdef = melee_weapon_def(offhand_weapon)
+                    target.TakeDamage(attacker, result2.damage, wdef.damage_type)
+                },
+                _ => {}
+            }
+        }
+    }
+
+
+    // ========================================================
     //  SET WEAPON AGAINST CHARGE
     //
     //  Long-hafted, pointed weapons (spear, javelin, lance,

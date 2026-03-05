@@ -2935,3 +2935,239 @@ fn parry_action_without_parry_same_roll_would_hit() {
     let hp = read_group_field(&final_state, &parrier, "HitPoints", "hp").unwrap();
     assert_eq!(hp, Value::Int(25), "target HP should be 30 - 5 = 25 (hit without parry)");
 }
+
+
+// ── Two-Weapon Fighting (§1.6.3.4) ────────────────────────────
+
+#[test]
+fn two_weapon_valid_offhand_dagger() {
+    let (program, result) = compile_osric_combat();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = ScriptedHandler::with_responses(vec![]);
+    let val = interp
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "is_valid_offhand_weapon",
+            vec![enum_variant("MeleeWeapon", "Dagger")],
+        )
+        .unwrap();
+    assert_eq!(val, Value::Bool(true));
+}
+
+#[test]
+fn two_weapon_valid_offhand_hand_axe() {
+    let (program, result) = compile_osric_combat();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = ScriptedHandler::with_responses(vec![]);
+    let val = interp
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "is_valid_offhand_weapon",
+            vec![enum_variant("MeleeWeapon", "HandAxe")],
+        )
+        .unwrap();
+    assert_eq!(val, Value::Bool(true));
+}
+
+#[test]
+fn two_weapon_invalid_offhand_longsword() {
+    let (program, result) = compile_osric_combat();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = ScriptedHandler::with_responses(vec![]);
+    let val = interp
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "is_valid_offhand_weapon",
+            vec![enum_variant("MeleeWeapon", "SwordLong")],
+        )
+        .unwrap();
+    assert_eq!(val, Value::Bool(false));
+}
+
+#[test]
+fn two_weapon_primary_penalty_dex_12() {
+    // DEX 12 → dex_missile = 0. Primary penalty = max(-1, -2 + 0) = -2.
+    let (program, result) = compile_osric_combat();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = ScriptedHandler::with_responses(vec![]);
+    let val = interp
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "two_weapon_primary_penalty",
+            vec![Value::Int(12)],
+        )
+        .unwrap();
+    assert_eq!(val, Value::Int(-2), "DEX 12: primary penalty = -2");
+}
+
+#[test]
+fn two_weapon_offhand_penalty_dex_12() {
+    // DEX 12 → dex_missile = 0. Off-hand penalty = max(-1, -4 + 0) = -4.
+    let (program, result) = compile_osric_combat();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = ScriptedHandler::with_responses(vec![]);
+    let val = interp
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "two_weapon_offhand_penalty",
+            vec![Value::Int(12)],
+        )
+        .unwrap();
+    assert_eq!(val, Value::Int(-4), "DEX 12: off-hand penalty = -4");
+}
+
+#[test]
+fn two_weapon_primary_penalty_dex_18() {
+    // DEX 18 → dex_missile = +3. Primary penalty = min(-1, -2 + 3) = min(-1, 1) = -1.
+    let (program, result) = compile_osric_combat();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = ScriptedHandler::with_responses(vec![]);
+    let val = interp
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "two_weapon_primary_penalty",
+            vec![Value::Int(18)],
+        )
+        .unwrap();
+    assert_eq!(val, Value::Int(-1), "DEX 18: primary penalty capped at -1");
+}
+
+#[test]
+fn two_weapon_offhand_penalty_dex_18() {
+    // DEX 18 → dex_missile = +3. Off-hand penalty = min(-1, -4 + 3) = min(-1, -1) = -1.
+    let (program, result) = compile_osric_combat();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = ScriptedHandler::with_responses(vec![]);
+    let val = interp
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "two_weapon_offhand_penalty",
+            vec![Value::Int(18)],
+        )
+        .unwrap();
+    assert_eq!(val, Value::Int(-1), "DEX 18: off-hand penalty capped at -1");
+}
+
+#[test]
+fn two_weapon_offhand_penalty_dex_3() {
+    // DEX 3 → dex_missile = -3. Off-hand penalty = min(-1, -4 + (-3)) = -7.
+    let (program, result) = compile_osric_combat();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = ScriptedHandler::with_responses(vec![]);
+    let val = interp
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "two_weapon_offhand_penalty",
+            vec![Value::Int(3)],
+        )
+        .unwrap();
+    assert_eq!(val, Value::Int(-7), "DEX 3: off-hand penalty = -7");
+}
+
+#[test]
+fn two_weapon_attack_both_hit() {
+    // Fighter L1, STR 12, DEX 12 → primary -2, off-hand -4.
+    // Main: SwordLong, Off: Dagger.
+    // Target: AC 10, 30 HP.
+    // Primary roll 20 (natural 20 → +5 bonus, auto-hit). Damage: 1d8 → 5.
+    // Off-hand roll 20 (natural 20 → auto-hit). Damage: 1d4 → 3.
+    // Target HP: 30 - 5 - 3 = 22.
+    let (program, result) = compile_osric_combat();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut state = GameState::new();
+
+    let attacker = make_character(
+        &mut state,
+        "DualWielder",
+        "Fighter",
+        1,
+        &standard_abilities_12(),
+        10,
+        10,
+        "Human",
+    );
+    set_field(
+        &mut state,
+        &attacker,
+        "wielded_main",
+        wielded_melee_item("SwordLong"),
+    );
+    set_field(
+        &mut state,
+        &attacker,
+        "wielded_off",
+        wielded_melee_item("Dagger"),
+    );
+
+    let target = make_character(
+        &mut state,
+        "Target",
+        "Fighter",
+        1,
+        &standard_abilities_12(),
+        30,
+        10,
+        "Human",
+    );
+
+    state.set_turn_budget(&attacker, combat_turn_budget());
+
+    // Primary attack: roll 20, damage 1d8 → 5
+    let primary_atk = scripted_roll(1, 20, 0, vec![20], vec![20], 20, 20);
+    let primary_dmg = scripted_roll(1, 8, 0, vec![5], vec![5], 5, 5);
+    // Off-hand attack: roll 20, damage 1d4 → 3
+    let offhand_atk = scripted_roll(1, 20, 0, vec![20], vec![20], 20, 20);
+    let offhand_dmg = scripted_roll(1, 4, 0, vec![3], vec![3], 3, 3);
+
+    let mut handler = ScriptedHandler::with_responses(vec![
+        Response::Acknowledged, // ActionStarted
+        Response::Acknowledged, // RequiresCheck
+        Response::Acknowledged, // DeductCost(attack)
+        primary_atk,            // Primary attack roll
+        primary_dmg,            // Primary damage roll
+        Response::Acknowledged, // TakeDamage ActionStarted
+        Response::Acknowledged, // DeductCost (free)
+        Response::Acknowledged, // Damaged event
+        Response::Acknowledged, // TakeDamage ActionCompleted
+        offhand_atk,            // Off-hand attack roll
+        offhand_dmg,            // Off-hand damage roll
+        Response::Acknowledged, // TakeDamage ActionStarted
+        Response::Acknowledged, // DeductCost (free)
+        Response::Acknowledged, // Damaged event
+        Response::Acknowledged, // TakeDamage ActionCompleted
+        Response::Acknowledged, // ActionCompleted
+    ]);
+
+    let adapter = StateAdapter::new(state);
+    adapter.run(&mut handler, |state, eff_handler| {
+        interp
+            .execute_action(
+                state,
+                eff_handler,
+                "TwoWeaponAttack",
+                attacker,
+                vec![Value::Entity(target)],
+            )
+            .unwrap();
+    });
+
+    let final_state = adapter.into_inner();
+    let hp = read_group_field(&final_state, &target, "HitPoints", "hp").unwrap();
+    assert_eq!(hp, Value::Int(22), "target HP should be 30 - 5 - 3 = 22");
+}
