@@ -756,6 +756,112 @@ system "OSRIC Combat" {
 
 
     // ========================================================
+    //  ASSASSINATION (§1.3.1.2)
+    //
+    //  Assassin-only ability. Requires surprise. Roll d100
+    //  against: 50% + 5% per assassin level - 5% per 2 target
+    //  HD (or levels; GM picks if target has both). Success =
+    //  instant kill regardless of HP. Failure = normal weapon
+    //  attack damage (not backstab). Cannot assassinate oozes,
+    //  slimes, elementals, golems, zombies, or similar creatures
+    //  without vital organs (immunity left to GM adjudication).
+    //
+    //  Reference: PG p.30 (§1.3.1.2)
+    // ========================================================
+
+    enum AssassinationOutcome { Kill, Miss, WeaponHit }
+
+    struct AssassinationResult {
+        outcome: AssassinationOutcome
+        chance: int
+        roll: int
+        damage: int
+    }
+
+    // Base assassination chance: 50% + 5% per assassin level
+    // minus 5% per 2 target HD (rounded down).
+    derive assassination_chance(assassin_level: int, target_hd: int) -> int {
+        let base = 50 + assassin_level * 5
+        let penalty = floor(target_hd / 2) * 5
+        max(1, base - penalty)
+    }
+
+    // Assassination mechanic: d100 roll against computed chance.
+    // On success, target is killed outright. On failure, resolve
+    // a normal melee attack (no backstab bonus, no multiplier).
+    mechanic resolve_assassination(
+        attacker: Character,
+        target: Character,
+        weapon: MeleeWeapon,
+        target_hd: int
+    ) -> AssassinationResult {
+        let level = class_level_for(attacker, Assassin).unwrap()
+        let chance = assassination_chance(level, target_hd)
+        let d100 = roll(1d100).total
+
+        if d100 <= chance {
+            // Instant kill
+            AssassinationResult {
+                outcome: AssassinationOutcome.Kill,
+                chance: chance,
+                roll: d100,
+                damage: 0
+            }
+        } else {
+            // Failed assassination: normal weapon attack
+            let result = resolve_melee_attack(
+                attacker, target, weapon, 0,
+                RollMode.Normal, false, 1
+            )
+            let dmg = match result.outcome {
+                AttackOutcome.Hit => result.damage,
+                _ => 0
+            }
+            let outcome = if dmg > 0 {
+                AssassinationOutcome.WeaponHit
+            } else {
+                AssassinationOutcome.Miss
+            }
+            AssassinationResult {
+                outcome: outcome,
+                chance: chance,
+                roll: d100,
+                damage: dmg
+            }
+        }
+    }
+
+    // Assassinate action: surprise an enemy and attempt an instant kill.
+    // Requires: attacker is an Assassin, wielding a melee weapon.
+    // The target_hd parameter represents the target's hit dice or
+    // level count (GM decides which to use per §1.3.1.2).
+    action Assassinate on attacker: Character (target: Character, target_hd: int) {
+        cost { attack }
+        requires {
+            wielded_melee(attacker).is_some()
+            && is_class(attacker, Assassin)
+        }
+        resolve {
+            let weapon = wielded_melee(attacker).unwrap()
+            let result = resolve_assassination(attacker, target, weapon, target_hd)
+            match result.outcome {
+                AssassinationOutcome.Kill => {
+                    // Instant death regardless of HP
+                    target.hp = -10
+                    apply_condition(target, Dead, Duration.indefinite)
+                    emit CreatureSlain(target: target, attacker: attacker)
+                },
+                AssassinationOutcome.WeaponHit => {
+                    let wdef = melee_weapon_def(weapon)
+                    target.TakeDamage(attacker, result.damage, wdef.damage_type)
+                },
+                AssassinationOutcome.Miss => {}
+            }
+        }
+    }
+
+
+    // ========================================================
     //  BLEEDING & STABILIZATION (§1.6.6)
     //
     //  Unconscious characters bleed 1 HP/round. Death at -10.

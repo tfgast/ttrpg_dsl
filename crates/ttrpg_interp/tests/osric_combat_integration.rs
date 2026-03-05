@@ -95,6 +95,7 @@ fn osric_combat_has_enums() {
     assert!(enums.contains(&("AttackOutcome", 2)));
     assert!(enums.contains(&("Duration", 7)));
     assert!(enums.contains(&("SurpriseState", 4)));
+    assert!(enums.contains(&("AssassinationOutcome", 3)));
 }
 
 #[test]
@@ -119,6 +120,10 @@ fn osric_combat_has_structs() {
     assert!(
         structs.contains(&("EncounterStart", 4)),
         "missing EncounterStart with 4 fields"
+    );
+    assert!(
+        structs.contains(&("AssassinationResult", 4)),
+        "missing AssassinationResult with 4 fields"
     );
 }
 
@@ -2358,5 +2363,291 @@ fn resolve_melee_attack_with_damage_mult() {
             assert_eq!(*damage, Value::Int(9), "backstab damage should be 3*3=9");
         }
         other => panic!("expected AttackResult struct, got: {other:?}"),
+    }
+}
+
+// ── Assassination ────────────────────────────────────────────
+
+#[test]
+fn osric_combat_has_assassination_enum_and_struct() {
+    let (program, _) = compile_osric_combat();
+    let decls = get_combat_decls(&program);
+
+    let enums: Vec<_> = decls
+        .iter()
+        .filter_map(|d| match &d.node {
+            DeclKind::Enum(e) => Some((&*e.name, e.variants.len())),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        enums.contains(&("AssassinationOutcome", 3)),
+        "missing AssassinationOutcome enum with 3 variants"
+    );
+
+    let structs: Vec<_> = decls
+        .iter()
+        .filter_map(|d| match &d.node {
+            DeclKind::Struct(s) => Some((&*s.name, s.fields.len())),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        structs.contains(&("AssassinationResult", 4)),
+        "missing AssassinationResult struct with 4 fields"
+    );
+}
+
+#[test]
+fn osric_combat_has_assassination_mechanic() {
+    let (program, _) = compile_osric_combat();
+    let decls = get_combat_decls(&program);
+    let mechanics: Vec<_> = decls
+        .iter()
+        .filter_map(|d| match &d.node {
+            DeclKind::Mechanic(m) => Some(&*m.name),
+            _ => None,
+        })
+        .collect();
+    assert!(mechanics.contains(&"resolve_assassination"));
+}
+
+#[test]
+fn osric_combat_has_assassinate_action() {
+    let (program, _) = compile_osric_combat();
+    let decls = get_combat_decls(&program);
+    let actions: Vec<_> = decls
+        .iter()
+        .filter_map(|d| match &d.node {
+            DeclKind::Action(a) => Some(&*a.name),
+            _ => None,
+        })
+        .collect();
+    assert!(actions.contains(&"Assassinate"));
+}
+
+/// assassination_chance: 50 + level*5 - floor(hd/2)*5
+/// L8 assassin vs 8 HD target: 50 + 40 - 20 = 70
+#[test]
+fn assassination_chance_level_8_vs_8hd() {
+    let (program, result) = compile_osric_combat();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NullHandler;
+
+    let val = interp
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "assassination_chance",
+            vec![Value::Int(8), Value::Int(8)],
+        )
+        .unwrap();
+    assert_eq!(val, Value::Int(70), "L8 vs 8HD should be 70%");
+}
+
+/// L1 assassin vs 0 HD target: 50 + 5 - 0 = 55
+#[test]
+fn assassination_chance_level_1_vs_0hd() {
+    let (program, result) = compile_osric_combat();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NullHandler;
+
+    let val = interp
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "assassination_chance",
+            vec![Value::Int(1), Value::Int(0)],
+        )
+        .unwrap();
+    assert_eq!(val, Value::Int(55), "L1 vs 0HD should be 55%");
+}
+
+/// L1 assassin vs 21 HD target: 50 + 5 - 50 = 5 (but minimum is 1)
+#[test]
+fn assassination_chance_clamps_to_minimum_1() {
+    let (program, result) = compile_osric_combat();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NullHandler;
+
+    let val = interp
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "assassination_chance",
+            vec![Value::Int(1), Value::Int(21)],
+        )
+        .unwrap();
+    assert_eq!(val, Value::Int(5), "L1 vs 21HD = 50+5-50 = 5");
+}
+
+/// Odd HD: L4 vs 7 HD: 50 + 20 - floor(7/2)*5 = 70 - 15 = 55
+#[test]
+fn assassination_chance_odd_hd_rounds_down() {
+    let (program, result) = compile_osric_combat();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NullHandler;
+
+    let val = interp
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "assassination_chance",
+            vec![Value::Int(4), Value::Int(7)],
+        )
+        .unwrap();
+    assert_eq!(val, Value::Int(55), "L4 vs 7HD: 50+20-15 = 55");
+}
+
+/// resolve_assassination with a successful d100 roll → Kill outcome
+#[test]
+fn resolve_assassination_success_kills() {
+    let (program, result) = compile_osric_combat();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut state = GameState::new();
+
+    // L8 assassin (Assassin class, level 8)
+    let attacker = make_character(
+        &mut state,
+        "Shadowblade",
+        "Assassin",
+        8,
+        &standard_abilities_12(),
+        30,
+        12,
+        "Human",
+    );
+    // Target with AC 14
+    let target = make_character(
+        &mut state,
+        "Guard",
+        "Fighter",
+        4,
+        &standard_abilities_12(),
+        30,
+        14,
+        "Human",
+    );
+    // Equip attacker with dagger
+    set_field(
+        &mut state,
+        &attacker,
+        "wielded_main",
+        wielded_melee_item("Dagger"),
+    );
+
+    // L8 vs 8 HD: chance = 70%. Script d100 = 50 (success, 50 <= 70)
+    let responses = vec![
+        scripted_roll(1, 100, 0, vec![50], vec![50], 50, 50), // d100 assassination roll
+    ];
+    let mut handler = ScriptedHandler::with_responses(responses);
+
+    let val = interp
+        .evaluate_mechanic(
+            &state,
+            &mut handler,
+            "resolve_assassination",
+            vec![
+                Value::Entity(attacker),
+                Value::Entity(target),
+                melee_variant("Dagger"),
+                Value::Int(8), // target_hd
+            ],
+        )
+        .unwrap();
+
+    match val {
+        Value::Struct { name, fields } => {
+            assert_eq!(&*name, "AssassinationResult");
+            let outcome = fields.get::<ttrpg_ast::Name>(&"outcome".into()).unwrap();
+            assert_eq!(
+                *outcome,
+                enum_variant("AssassinationOutcome", "Kill"),
+                "d100=50 vs 70% chance should be a kill"
+            );
+            let chance = fields.get::<ttrpg_ast::Name>(&"chance".into()).unwrap();
+            assert_eq!(*chance, Value::Int(70));
+        }
+        other => panic!("expected AssassinationResult struct, got: {other:?}"),
+    }
+}
+
+/// resolve_assassination with a failed d100 roll → normal weapon attack
+#[test]
+fn resolve_assassination_failure_does_normal_attack() {
+    let (program, result) = compile_osric_combat();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut state = GameState::new();
+
+    // L4 assassin
+    let attacker = make_character(
+        &mut state,
+        "Shadowblade",
+        "Assassin",
+        4,
+        &standard_abilities_12(),
+        30,
+        12,
+        "Human",
+    );
+    // Target
+    let target = make_character(
+        &mut state,
+        "Guard",
+        "Fighter",
+        4,
+        &standard_abilities_12(),
+        30,
+        12,
+        "Human",
+    );
+    // Equip attacker with dagger
+    set_field(
+        &mut state,
+        &attacker,
+        "wielded_main",
+        wielded_melee_item("Dagger"),
+    );
+
+    // L4 vs 6 HD: chance = 50+20-15 = 55%. Script d100 = 80 (fail, 80 > 55)
+    // Then normal attack: d20=18 (hit), d4=3 (damage)
+    let responses = vec![
+        scripted_roll(1, 100, 0, vec![80], vec![80], 80, 80), // d100 assassination roll (fail)
+        scripted_roll(1, 20, 0, vec![18], vec![18], 18, 18),   // d20 attack roll
+        scripted_roll(1, 4, 0, vec![3], vec![3], 3, 3),        // d4 damage roll
+    ];
+    let mut handler = ScriptedHandler::with_responses(responses);
+
+    let val = interp
+        .evaluate_mechanic(
+            &state,
+            &mut handler,
+            "resolve_assassination",
+            vec![
+                Value::Entity(attacker),
+                Value::Entity(target),
+                melee_variant("Dagger"),
+                Value::Int(6), // target_hd
+            ],
+        )
+        .unwrap();
+
+    match val {
+        Value::Struct { name, fields } => {
+            assert_eq!(&*name, "AssassinationResult");
+            let outcome = fields.get::<ttrpg_ast::Name>(&"outcome".into()).unwrap();
+            assert_eq!(
+                *outcome,
+                enum_variant("AssassinationOutcome", "WeaponHit"),
+                "failed assassination with hit should give WeaponHit"
+            );
+            let damage = fields.get::<ttrpg_ast::Name>(&"damage".into()).unwrap();
+            assert_eq!(*damage, Value::Int(3), "normal attack damage should be 3");
+        }
+        other => panic!("expected AssassinationResult struct, got: {other:?}"),
     }
 }
