@@ -365,6 +365,46 @@ pub(super) fn eval_sort(
     }
 }
 
+pub(super) fn eval_take(
+    env: &mut Env,
+    args: &[Arg],
+    call_span: Span,
+) -> Result<Value, RuntimeError> {
+    if args.len() != 2 {
+        return Err(RuntimeError::with_span(
+            format!("take() requires 2 arguments, got {}", args.len()),
+            call_span,
+        ));
+    }
+    let list_val = eval_expr(env, &args[0].value)?;
+    let n_val = eval_expr(env, &args[1].value)?;
+    let n = match &n_val {
+        Value::Int(i) => *i,
+        _ => {
+            return Err(RuntimeError::with_span(
+                format!(
+                    "take() expects an int as second argument, got {}",
+                    type_name(&n_val)
+                ),
+                call_span,
+            ));
+        }
+    };
+    match list_val {
+        Value::List(v) => {
+            let n = (n.max(0) as usize).min(v.len());
+            Ok(Value::List(v.into_iter().take(n).collect()))
+        }
+        _ => Err(RuntimeError::with_span(
+            format!(
+                "take() expects a list as first argument, got {}",
+                type_name(&list_val)
+            ),
+            call_span,
+        )),
+    }
+}
+
 pub(super) fn eval_some(
     env: &mut Env,
     args: &[Arg],

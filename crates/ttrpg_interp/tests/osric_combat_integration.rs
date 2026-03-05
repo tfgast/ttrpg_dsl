@@ -2669,7 +2669,9 @@ fn parry_bonus_with_str_only() {
         ("WIS", 12),
         ("CHA", 12),
     ];
-    let parrier = make_character(&mut state, "Parrier", "Fighter", 5, &abilities, 30, 15, "Human");
+    let parrier = make_character(
+        &mut state, "Parrier", "Fighter", 5, &abilities, 30, 15, "Human",
+    );
     set_field(
         &mut state,
         &parrier,
@@ -2679,9 +2681,18 @@ fn parry_bonus_with_str_only() {
 
     let mut handler = ScriptedHandler::with_responses(vec![]);
     let val = interp
-        .evaluate_derive(&state, &mut handler, "parry_bonus", vec![Value::Entity(parrier)])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "parry_bonus",
+            vec![Value::Entity(parrier)],
+        )
         .unwrap();
-    assert_eq!(val, Value::Int(1), "STR 17 gives +1 to hit → parry_bonus = 1");
+    assert_eq!(
+        val,
+        Value::Int(1),
+        "STR 17 gives +1 to hit → parry_bonus = 1"
+    );
 }
 
 #[test]
@@ -2699,7 +2710,9 @@ fn parry_bonus_with_str_and_spec() {
         ("WIS", 12),
         ("CHA", 12),
     ];
-    let parrier = make_character(&mut state, "Parrier", "Fighter", 5, &abilities, 30, 15, "Human");
+    let parrier = make_character(
+        &mut state, "Parrier", "Fighter", 5, &abilities, 30, 15, "Human",
+    );
     set_field(
         &mut state,
         &parrier,
@@ -2717,9 +2730,18 @@ fn parry_bonus_with_str_and_spec() {
 
     let mut handler = ScriptedHandler::with_responses(vec![]);
     let val = interp
-        .evaluate_derive(&state, &mut handler, "parry_bonus", vec![Value::Entity(parrier)])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "parry_bonus",
+            vec![Value::Entity(parrier)],
+        )
         .unwrap();
-    assert_eq!(val, Value::Int(2), "STR 17 (+1) + Single spec (+1) → parry_bonus = 2");
+    assert_eq!(
+        val,
+        Value::Int(2),
+        "STR 17 (+1) + Single spec (+1) → parry_bonus = 2"
+    );
 }
 
 #[test]
@@ -2748,9 +2770,18 @@ fn parry_bonus_zero_with_no_str_bonus() {
 
     let mut handler = ScriptedHandler::with_responses(vec![]);
     let val = interp
-        .evaluate_derive(&state, &mut handler, "parry_bonus", vec![Value::Entity(parrier)])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "parry_bonus",
+            vec![Value::Entity(parrier)],
+        )
         .unwrap();
-    assert_eq!(val, Value::Int(0), "STR 12 gives +0 to hit → parry_bonus = 0");
+    assert_eq!(
+        val,
+        Value::Int(0),
+        "STR 12 gives +0 to hit → parry_bonus = 0"
+    );
 }
 
 #[test]
@@ -2824,13 +2855,7 @@ fn parry_action_applies_condition_and_penalises_attacker() {
     let adapter = StateAdapter::new(state);
     adapter.run(&mut parry_handler, |state, eff_handler| {
         interp
-            .execute_action(
-                state,
-                eff_handler,
-                "Parry",
-                parrier,
-                vec![],
-            )
+            .execute_action(state, eff_handler, "Parry", parrier, vec![])
             .unwrap();
     });
     let mut state = adapter.into_inner();
@@ -2862,7 +2887,11 @@ fn parry_action_applies_condition_and_penalises_attacker() {
 
     let final_state = adapter.into_inner();
     let hp = read_group_field(&final_state, &parrier, "HitPoints", "hp").unwrap();
-    assert_eq!(hp, Value::Int(30), "parrier HP should remain 30 — attack missed due to parry penalty");
+    assert_eq!(
+        hp,
+        Value::Int(30),
+        "parrier HP should remain 30 — attack missed due to parry penalty"
+    );
 }
 
 #[test]
@@ -2933,9 +2962,12 @@ fn parry_action_without_parry_same_roll_would_hit() {
 
     let final_state = adapter.into_inner();
     let hp = read_group_field(&final_state, &parrier, "HitPoints", "hp").unwrap();
-    assert_eq!(hp, Value::Int(25), "target HP should be 30 - 5 = 25 (hit without parry)");
+    assert_eq!(
+        hp,
+        Value::Int(25),
+        "target HP should be 30 - 5 = 25 (hit without parry)"
+    );
 }
-
 
 // ── Two-Weapon Fighting (§1.6.3.4) ────────────────────────────
 

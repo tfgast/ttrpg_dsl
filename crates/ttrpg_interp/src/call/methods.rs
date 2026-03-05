@@ -199,6 +199,21 @@ fn eval_list_method(
             v.sort();
             Ok(Value::List(v))
         }
+        "take" => {
+            if args.is_empty() {
+                return Err(RuntimeError::with_span("take() requires 1 argument", span));
+            }
+            let n_val = eval_expr(env, &args[0].value)?;
+            let n = match &n_val {
+                Value::Int(i) => (*i).max(0) as usize,
+                _ => return Err(RuntimeError::with_span(
+                    format!("take() expects int argument, got {}", type_name(&n_val)),
+                    span,
+                )),
+            };
+            let n = n.min(list.len());
+            Ok(Value::List(list.into_iter().take(n).collect()))
+        }
         "to_set" => {
             Ok(Value::Set(list.into_iter().collect()))
         }
@@ -222,7 +237,7 @@ fn eval_list_method(
         }
         _ => Err(RuntimeError::with_span(
             format!(
-                "list type has no method `{method}`; available methods: len, first, last, reverse, append, concat, sum, any, all, sort, to_set, contains, remove_first"
+                "list type has no method `{method}`; available methods: len, first, last, reverse, append, concat, sum, any, all, sort, take, to_set, contains, remove_first"
             ),
             span,
         )),

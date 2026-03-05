@@ -213,6 +213,23 @@ impl Checker<'_> {
                         span,
                     );
                 }
+                Ty::List(inner.clone())
+            }
+            "take" => {
+                if args.len() != 1 {
+                    self.error(
+                        format!("take() takes 1 argument, found {}", args.len()),
+                        span,
+                    );
+                    for arg in args {
+                        self.check_expr(&arg.value);
+                    }
+                    return Ty::Error;
+                }
+                let n_ty = self.check_expr(&args[0].value);
+                if !n_ty.is_error() && n_ty != Ty::Int {
+                    self.error(format!("take() expects int argument, found {n_ty}"), span);
+                }
                 Ty::List(inner)
             }
             "to_set" => {
@@ -271,7 +288,7 @@ impl Checker<'_> {
             _ => {
                 self.error(
                     format!(
-                        "list type has no method `{method}`; available methods: len, first, last, reverse, append, concat, sum, any, all, sort, to_set, contains, remove_first"
+                        "list type has no method `{method}`; available methods: len, first, last, reverse, append, concat, sum, any, all, sort, take, to_set, contains, remove_first"
                     ),
                     span,
                 );

@@ -334,11 +334,7 @@ fn clw_does_not_exceed_max_hp() {
         vec![Value::Entity(caster), Value::Entity(target)],
     );
 
-    assert_eq!(
-        read_hp(&state, &target),
-        30,
-        "HP should cap at max_hp (30)"
-    );
+    assert_eq!(read_hp(&state, &target), 30, "HP should cap at max_hp (30)");
 }
 
 // ── Cause Light Wounds ─────────────────────────────────────

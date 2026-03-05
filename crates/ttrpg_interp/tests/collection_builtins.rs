@@ -1442,3 +1442,112 @@ system "test" {
     expected.insert(Value::Str("y".into()), Value::Int(2));
     assert_eq!(val, Value::Map(expected));
 }
+
+// ── take ──────────────────────────────────────────────────────
+
+#[test]
+fn take_first_n_elements() {
+    let source = r#"
+system "test" {
+    derive f() -> list<int> {
+        take([10, 20, 30, 40, 50], 3)
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NoopHandler;
+
+    let val = interp
+        .evaluate_derive(&state, &mut handler, "f", vec![])
+        .unwrap();
+    assert_eq!(
+        val,
+        Value::List(vec![Value::Int(10), Value::Int(20), Value::Int(30)])
+    );
+}
+
+#[test]
+fn take_n_greater_than_length() {
+    let source = r#"
+system "test" {
+    derive f() -> list<int> {
+        take([1, 2], 10)
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NoopHandler;
+
+    let val = interp
+        .evaluate_derive(&state, &mut handler, "f", vec![])
+        .unwrap();
+    assert_eq!(val, Value::List(vec![Value::Int(1), Value::Int(2)]));
+}
+
+#[test]
+fn take_zero_elements() {
+    let source = r#"
+system "test" {
+    derive f() -> list<int> {
+        take([1, 2, 3], 0)
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NoopHandler;
+
+    let val = interp
+        .evaluate_derive(&state, &mut handler, "f", vec![])
+        .unwrap();
+    assert_eq!(val, Value::List(vec![]));
+}
+
+#[test]
+fn take_from_empty_list() {
+    let source = r#"
+system "test" {
+    derive f() -> list<int> {
+        let empty: list<int> = []
+        take(empty, 5)
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NoopHandler;
+
+    let val = interp
+        .evaluate_derive(&state, &mut handler, "f", vec![])
+        .unwrap();
+    assert_eq!(val, Value::List(vec![]));
+}
+
+#[test]
+fn take_with_method_syntax() {
+    let source = r#"
+system "test" {
+    derive f() -> list<string> {
+        ["a", "b", "c", "d"].take(2)
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NoopHandler;
+
+    let val = interp
+        .evaluate_derive(&state, &mut handler, "f", vec![])
+        .unwrap();
+    assert_eq!(
+        val,
+        Value::List(vec![Value::Str("a".into()), Value::Str("b".into())])
+    );
+}

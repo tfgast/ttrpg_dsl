@@ -482,6 +482,41 @@ impl Checker<'_> {
         }
     }
 
+    pub(crate) fn check_take_call(&mut self, args: &[Arg], span: ttrpg_ast::Span) -> Ty {
+        if args.len() != 2 {
+            self.error(
+                format!("`take` expects 2 arguments, found {}", args.len()),
+                span,
+            );
+            for arg in args {
+                self.check_expr(&arg.value);
+            }
+            return Ty::Error;
+        }
+        let list_ty = self.check_expr(&args[0].value);
+        let n_ty = self.check_expr(&args[1].value);
+        if list_ty.is_error() || n_ty.is_error() {
+            return Ty::Error;
+        }
+        if n_ty != Ty::Int {
+            self.error(
+                format!("`take` expects int as second argument, found {n_ty}"),
+                span,
+            );
+            return Ty::Error;
+        }
+        match list_ty {
+            Ty::List(_) => list_ty,
+            _ => {
+                self.error(
+                    format!("`take` expects a list as first argument, found {list_ty}"),
+                    span,
+                );
+                Ty::Error
+            }
+        }
+    }
+
     pub(crate) fn check_some_call(&mut self, args: &[Arg], span: ttrpg_ast::Span) -> Ty {
         if args.len() != 1 {
             self.error(
