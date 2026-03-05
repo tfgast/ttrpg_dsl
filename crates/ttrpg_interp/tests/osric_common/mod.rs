@@ -294,6 +294,49 @@ pub fn make_multiclass_character(
     state.add_entity("Character", fields)
 }
 
+/// Build a dual-classed Character entity with old class and new class entries.
+/// Abilities are provided explicitly (dual-class tests need specific scores).
+pub fn make_dualclass_character(
+    state: &mut GameState,
+    name: &str,
+    old_class: &str,
+    old_level: i64,
+    new_class: &str,
+    new_level: i64,
+    abilities: &[(&str, i64)],
+) -> EntityRef {
+    let mut ability_map = BTreeMap::new();
+    for &(ab, score) in abilities {
+        ability_map.insert(ability(ab), Value::Int(score));
+    }
+
+    let class_levels = vec![
+        class_level_struct(old_class, old_level, 0),
+        class_level_struct(new_class, new_level, 0),
+    ];
+
+    let mut fields = FxHashMap::default();
+    fields.insert(Name::from("name"), Value::Str(name.to_string()));
+    fields.insert(Name::from("classes"), Value::List(class_levels));
+    fields.insert(Name::from("classing_mode"), classing_mode("Dual"));
+    fields.insert(Name::from("ancestry"), enum_variant("Ancestry", "Human"));
+    fields.insert(
+        Name::from("alignment"),
+        enum_variant("Alignment", "TrueNeutral"),
+    );
+    fields.insert(Name::from("abilities"), Value::Map(ability_map));
+    fields.insert(Name::from("HitPoints"), hit_points_group(20));
+    fields.insert(Name::from("base_movement"), feet(120));
+    fields.insert(Name::from("gold"), Value::Int(0));
+    fields.insert(Name::from("saving_throws"), Value::Option(None));
+    fields.insert(
+        Name::from("EquipmentSlots"),
+        equipment_slots_group(Value::Option(None), Value::Option(None)),
+    );
+
+    state.add_entity("Character", fields)
+}
+
 /// Standard abilities all at 14 (for multi-class tests).
 pub fn standard_abilities_14() -> Vec<(&'static str, i64)> {
     vec![
@@ -894,6 +937,10 @@ pub fn all_osric_sources() -> Vec<(String, String)> {
         (
             "osric/osric_multiclass.ttrpg".to_string(),
             include_str!("../../../../osric/osric_multiclass.ttrpg").to_string(),
+        ),
+        (
+            "osric/osric_dualclass.ttrpg".to_string(),
+            include_str!("../../../../osric/osric_dualclass.ttrpg").to_string(),
         ),
     ]
 }

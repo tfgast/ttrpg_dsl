@@ -1,0 +1,196 @@
+// ============================================================
+// OSRIC 3.0 Dual-Classing Rules
+//
+// Human-only. A character abandons their old class to start
+// a new one at level 1. Requirements: 15+ in old class prime
+// requisite(s), 17+ in new class prime requisite(s).
+//
+// The character keeps old HP but gains no new HP until the
+// new class level exceeds the old. Old class abilities cannot
+// be used until new level exceeds old (except thief Read
+// Languages). Using old abilities forfeits all XP for that
+// adventure.
+//
+// Once new level > old level: old abilities unlocked, HP gains
+// resume (full die for new class, not averaged).
+//
+// Reference: OSRIC 3.0 Player Guide §1.3.12 (p.69)
+// ============================================================
+
+use "OSRIC"
+use "OSRIC Classes"
+use "OSRIC Character"
+
+system "OSRIC Dualclass" {
+
+    // ========================================================
+    //  PRIME REQUISITES PER CLASS
+    //
+    //  Returns the list of abilities that serve as prime
+    //  requisites for each class. Used for dual-class
+    //  eligibility checks and XP bonus determination.
+    //
+    //  Classes with no prime requisite (Assassin, Illusionist,
+    //  Monk) return an empty list — the dual-class ability
+    //  check is vacuously satisfied for them.
+    // ========================================================
+
+    derive prime_requisites(class: Class) -> list<Ability> {
+        match class {
+            Fighter     => [STR],
+            Paladin     => [STR, WIS],
+            Ranger      => [STR, INT, WIS],
+            Cleric      => [WIS],
+            Druid       => [WIS, CHA],
+            MagicUser   => [INT],
+            Thief       => [DEX],
+            Assassin    => [],
+            Illusionist => [],
+            Monk        => []
+        }
+    }
+
+
+    // ========================================================
+    //  DUAL-CLASS ABILITY CHECKS
+    //
+    //  Old class: all prime requisites must be >= 15.
+    //  New class: all prime requisites must be >= 17.
+    //  §1.3.12: "at least 15 in the Prime Requisite(s) of
+    //  the class you're changing from, and at least 17 in
+    //  the Prime Requisite(s) of the class you're changing to"
+    // ========================================================
+
+    derive ability_for_prime_req(abilities: map<Ability, int>, ab: Ability) -> int {
+        abilities[ab]
+    }
+
+    derive meets_dual_class_from_reqs(old_class: Class, abilities: map<Ability, int>) -> bool {
+        let reqs = prime_requisites(old_class)
+        all([ability_for_prime_req(abilities, ab) >= 15 for ab in reqs])
+    }
+
+    derive meets_dual_class_to_reqs(new_class: Class, abilities: map<Ability, int>) -> bool {
+        let reqs = prime_requisites(new_class)
+        all([ability_for_prime_req(abilities, ab) >= 17 for ab in reqs])
+    }
+
+
+    // ========================================================
+    //  FULL DUAL-CLASS ELIGIBILITY
+    //
+    //  Combines all prerequisites:
+    //  1. Must be Human
+    //  2. Old and new class must differ
+    //  3. Old class prime reqs >= 15
+    //  4. New class prime reqs >= 17
+    // ========================================================
+
+    derive can_dual_class(
+        ancestry: Ancestry,
+        old_class: Class,
+        new_class: Class,
+        abilities: map<Ability, int>
+    ) -> bool {
+        if ancestry != Ancestry.Human { false }
+        else if old_class == new_class { false }
+        else {
+            let from_ok = meets_dual_class_from_reqs(old_class, abilities)
+            let to_ok = meets_dual_class_to_reqs(new_class, abilities)
+            from_ok && to_ok
+        }
+    }
+
+
+    // ========================================================
+    //  DUAL-CLASS LEVEL COMPARISON
+    //
+    //  For a dual-classed character, the old class is the
+    //  first entry in classes[], the new class is the last.
+    //  Key threshold: new level > old level unlocks old
+    //  abilities and HP gains.
+    //
+    //  §1.3.12: "Once you're higher level in your new class
+    //  than in your old one..."
+    // ========================================================
+
+    derive dual_class_old_level(char: Character) -> int {
+        primary_class(char).level
+    }
+
+    derive dual_class_new_level(char: Character) -> int {
+        current_class(char).level
+    }
+
+    derive dual_class_new_exceeds_old(char: Character) -> bool {
+        dual_class_new_level(char) > dual_class_old_level(char)
+    }
+
+
+    // ========================================================
+    //  HP GAIN FOR DUAL-CLASSED CHARACTERS
+    //
+    //  No HP gain until new level > old level.
+    //  Once unlocked, full die roll + CON modifier for the
+    //  new class (NOT averaged like multi-class).
+    //  Minimum 1 HP per level gain.
+    //
+    //  §1.3.12: "you don't gain any hp until you reach a
+    //  higher level in the new class than you had in the
+    //  old one"
+    // ========================================================
+
+    derive dual_class_hp_gain(
+        die_roll: int,
+        con_modifier: int,
+        new_exceeds_old: bool
+    ) -> int {
+        if new_exceeds_old {
+            max(1, die_roll + con_modifier)
+        } else {
+            0
+        }
+    }
+
+
+    // ========================================================
+    //  OLD CLASS ABILITY USAGE
+    //
+    //  Before new level > old level:
+    //    - Cannot use old class abilities (except thief
+    //      Read Languages)
+    //    - If old abilities ARE used, forfeit all XP for
+    //      that adventure
+    //
+    //  After new level > old level:
+    //    - Old abilities unlocked without penalty
+    //    - Armour restrictions still apply for spellcasting
+    //      (can't cast MU/Illusionist spells in armour,
+    //       can't cast druid spells in non-druid armour,
+    //       can't use thief abilities in non-thief armour,
+    //       monks can't use class abilities in armour)
+    //
+    //  §1.3.12: "Normally dual-classed characters don't use
+    //  their old class's abilities at this stage."
+    // ========================================================
+
+    derive dual_class_can_use_old_abilities(char: Character) -> bool {
+        dual_class_new_exceeds_old(char)
+    }
+
+    // Check if using old abilities would forfeit XP
+    // (true = penalty applies, old abilities used before threshold).
+    derive dual_class_xp_forfeit(char: Character, used_old_abilities: bool) -> bool {
+        if dual_class_new_exceeds_old(char) {
+            false
+        } else {
+            used_old_abilities
+        }
+    }
+
+    // Thief Read Languages is the sole exception — always available
+    // to a character whose old class was Thief, regardless of level.
+    derive dual_class_can_read_languages(char: Character) -> bool {
+        primary_class(char).class == Class.Thief
+    }
+}
