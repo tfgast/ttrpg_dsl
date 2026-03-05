@@ -425,6 +425,29 @@ system "OSRIC Conditions" {
 
 
     // ========================================================
+    //  PARRYING (§1.6.2.9)
+    //
+    //  Character forgoes attack for the round. Subtracts their
+    //  STR-based and specialisation-based to-hit bonuses from
+    //  opponent melee attack rolls. Must have weapon in hand.
+    //  Can be used when fleeing. Only valuable with a STR or
+    //  specialisation bonus. parry_bonus is pre-computed by
+    //  the Parry action from the character's current bonuses.
+    //  Per 1.6.2.9.
+    // ========================================================
+
+    condition Parrying(parry_bonus: int) on bearer: entity {
+        modify resolve_melee_attack(target: bearer) {
+            attack_mod = attack_mod - parry_bonus
+        }
+        modify [#attack_resolution](attacker: bearer) {
+            result.outcome = AttackOutcome.Miss
+            result.damage = 0
+        }
+    }
+
+
+    // ========================================================
     //  ENCUMBRANCE STATE (§1.5.3.3)
     //
     //  Always applied (even Unencumbered — movement is identity

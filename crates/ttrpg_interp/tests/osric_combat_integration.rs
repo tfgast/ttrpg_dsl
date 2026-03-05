@@ -2651,3 +2651,287 @@ fn resolve_assassination_failure_does_normal_attack() {
         other => panic!("expected AssassinationResult struct, got: {other:?}"),
     }
 }
+
+// ── PARRYING (§1.6.2.9) ──────────────────────────────────────
+
+#[test]
+fn parry_bonus_with_str_only() {
+    // STR 17 → +1 to hit. No weapon spec. Parry bonus = 1.
+    let (program, result) = compile_osric_combat();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut state = GameState::new();
+
+    let abilities = vec![
+        ("STR", 17),
+        ("DEX", 12),
+        ("CON", 12),
+        ("INT", 12),
+        ("WIS", 12),
+        ("CHA", 12),
+    ];
+    let parrier = make_character(&mut state, "Parrier", "Fighter", 5, &abilities, 30, 15, "Human");
+    set_field(
+        &mut state,
+        &parrier,
+        "wielded_main",
+        wielded_melee_item("SwordLong"),
+    );
+
+    let mut handler = ScriptedHandler::with_responses(vec![]);
+    let val = interp
+        .evaluate_derive(&state, &mut handler, "parry_bonus", vec![Value::Entity(parrier)])
+        .unwrap();
+    assert_eq!(val, Value::Int(1), "STR 17 gives +1 to hit → parry_bonus = 1");
+}
+
+#[test]
+fn parry_bonus_with_str_and_spec() {
+    // STR 17 → +1 to hit. Single spec → +1 to hit. Parry bonus = 2.
+    let (program, result) = compile_osric_combat();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut state = GameState::new();
+
+    let abilities = vec![
+        ("STR", 17),
+        ("DEX", 12),
+        ("CON", 12),
+        ("INT", 12),
+        ("WIS", 12),
+        ("CHA", 12),
+    ];
+    let parrier = make_character(&mut state, "Parrier", "Fighter", 5, &abilities, 30, 15, "Human");
+    set_field(
+        &mut state,
+        &parrier,
+        "wielded_main",
+        wielded_melee_item("SwordLong"),
+    );
+    grant_weapon_spec(
+        &mut state,
+        &parrier,
+        "SpecMelee",
+        "MeleeWeapon",
+        "SwordLong",
+        "Single",
+    );
+
+    let mut handler = ScriptedHandler::with_responses(vec![]);
+    let val = interp
+        .evaluate_derive(&state, &mut handler, "parry_bonus", vec![Value::Entity(parrier)])
+        .unwrap();
+    assert_eq!(val, Value::Int(2), "STR 17 (+1) + Single spec (+1) → parry_bonus = 2");
+}
+
+#[test]
+fn parry_bonus_zero_with_no_str_bonus() {
+    // STR 12 → +0 to hit. No weapon spec. Parry bonus = 0.
+    let (program, result) = compile_osric_combat();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut state = GameState::new();
+
+    let parrier = make_character(
+        &mut state,
+        "Parrier",
+        "Fighter",
+        5,
+        &standard_abilities_12(),
+        30,
+        15,
+        "Human",
+    );
+    set_field(
+        &mut state,
+        &parrier,
+        "wielded_main",
+        wielded_melee_item("SwordLong"),
+    );
+
+    let mut handler = ScriptedHandler::with_responses(vec![]);
+    let val = interp
+        .evaluate_derive(&state, &mut handler, "parry_bonus", vec![Value::Entity(parrier)])
+        .unwrap();
+    assert_eq!(val, Value::Int(0), "STR 12 gives +0 to hit → parry_bonus = 0");
+}
+
+#[test]
+fn parry_action_applies_condition_and_penalises_attacker() {
+    // Parrier: STR 17 (+1 to-hit), single spec longsword (+1) → parry_bonus = 2.
+    // Attacker: Fighter L1, STR 12, no spec.
+    // Attacker rolls 14 → 14+0(BTHB)+0(STR)+0(spec) = 14, but parry subtracts 2 → effective 12 < 14 AC → miss.
+    let (program, result) = compile_osric_combat();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut state = GameState::new();
+
+    let parrier_abilities = vec![
+        ("STR", 17),
+        ("DEX", 12),
+        ("CON", 12),
+        ("INT", 12),
+        ("WIS", 12),
+        ("CHA", 12),
+    ];
+    let parrier = make_character(
+        &mut state,
+        "Parrier",
+        "Fighter",
+        5,
+        &parrier_abilities,
+        30,
+        14,
+        "Human",
+    );
+    set_field(
+        &mut state,
+        &parrier,
+        "wielded_main",
+        wielded_melee_item("SwordLong"),
+    );
+    grant_weapon_spec(
+        &mut state,
+        &parrier,
+        "SpecMelee",
+        "MeleeWeapon",
+        "SwordLong",
+        "Single",
+    );
+
+    let attacker = make_character(
+        &mut state,
+        "Attacker",
+        "Fighter",
+        1,
+        &standard_abilities_12(),
+        10,
+        10,
+        "Human",
+    );
+    set_field(
+        &mut state,
+        &attacker,
+        "wielded_main",
+        wielded_melee_item("SwordLong"),
+    );
+
+    // Execute Parry action on the parrier
+    state.set_turn_budget(&parrier, combat_turn_budget());
+    let mut parry_handler = ScriptedHandler::with_responses(vec![
+        Response::Acknowledged, // ActionStarted
+        Response::Acknowledged, // RequiresCheck (wielded → pass)
+        Response::Acknowledged, // DeductCost(attack)
+        Response::Acknowledged, // ConditionApplyGate (Parrying)
+    ]);
+
+    let adapter = StateAdapter::new(state);
+    adapter.run(&mut parry_handler, |state, eff_handler| {
+        interp
+            .execute_action(
+                state,
+                eff_handler,
+                "Parry",
+                parrier,
+                vec![],
+            )
+            .unwrap();
+    });
+    let mut state = adapter.into_inner();
+
+    // Now attacker makes a melee attack on the parrier.
+    // Roll 14 → 14+0(BTHB)+0(STR)+0(spec) = 14, but Parrying subtracts 2 → 12 < 14 AC → miss.
+    state.set_turn_budget(&attacker, combat_turn_budget());
+    let atk_roll = scripted_roll(1, 20, 0, vec![14], vec![14], 14, 14);
+    let mut attack_handler = ScriptedHandler::with_responses(vec![
+        Response::Acknowledged, // ActionStarted
+        Response::Acknowledged, // RequiresCheck
+        Response::Acknowledged, // DeductCost
+        Response::Acknowledged, // ModifyApplied (Parrying condition)
+        atk_roll,
+    ]);
+
+    let adapter = StateAdapter::new(state);
+    adapter.run(&mut attack_handler, |state, eff_handler| {
+        interp
+            .execute_action(
+                state,
+                eff_handler,
+                "MeleeAttack",
+                attacker,
+                vec![Value::Entity(parrier)],
+            )
+            .unwrap();
+    });
+
+    let final_state = adapter.into_inner();
+    let hp = read_group_field(&final_state, &parrier, "HitPoints", "hp").unwrap();
+    assert_eq!(hp, Value::Int(30), "parrier HP should remain 30 — attack missed due to parry penalty");
+}
+
+#[test]
+fn parry_action_without_parry_same_roll_would_hit() {
+    // Same setup as above but without parrying. Roll 14 → 14 >= 14 → hit.
+    let (program, result) = compile_osric_combat();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut state = GameState::new();
+
+    let parrier = make_character(
+        &mut state,
+        "Target",
+        "Fighter",
+        5,
+        &standard_abilities_12(),
+        30,
+        14,
+        "Human",
+    );
+    set_field(
+        &mut state,
+        &parrier,
+        "wielded_main",
+        wielded_melee_item("SwordLong"),
+    );
+
+    let attacker = make_character(
+        &mut state,
+        "Attacker",
+        "Fighter",
+        1,
+        &standard_abilities_12(),
+        10,
+        10,
+        "Human",
+    );
+    set_field(
+        &mut state,
+        &attacker,
+        "wielded_main",
+        wielded_melee_item("SwordLong"),
+    );
+
+    // No Parry action — directly attack. Roll 14 → 14+0+0 = 14 >= 14 → hit.
+    state.set_turn_budget(&attacker, combat_turn_budget());
+    let atk_roll = scripted_roll(1, 20, 0, vec![14], vec![14], 14, 14);
+    let dmg_roll = scripted_roll(1, 8, 0, vec![5], vec![5], 5, 5);
+    let mut handler = ScriptedHandler::with_responses(vec![
+        Response::Acknowledged,
+        Response::Acknowledged,
+        Response::Acknowledged,
+        atk_roll,
+        dmg_roll,
+    ]);
+
+    let adapter = StateAdapter::new(state);
+    adapter.run(&mut handler, |state, eff_handler| {
+        interp
+            .execute_action(
+                state,
+                eff_handler,
+                "MeleeAttack",
+                attacker,
+                vec![Value::Entity(parrier)],
+            )
+            .unwrap();
+    });
+
+    let final_state = adapter.into_inner();
+    let hp = read_group_field(&final_state, &parrier, "HitPoints", "hp").unwrap();
+    assert_eq!(hp, Value::Int(25), "target HP should be 30 - 5 = 25 (hit without parry)");
+}

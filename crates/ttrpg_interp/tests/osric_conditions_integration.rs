@@ -209,6 +209,7 @@ fn osric_conditions_has_all_nineteen_conditions() {
         "Deafened",
         "Grappling",
         "Overborne",
+        "Parrying",
         "EncumbranceState",
     ];
 
@@ -220,8 +221,8 @@ fn osric_conditions_has_all_nineteen_conditions() {
     }
     assert_eq!(
         conditions.len(),
-        24,
-        "expected 24 conditions, found {}: {:?}",
+        25,
+        "expected 25 conditions, found {}: {:?}",
         conditions.len(),
         conditions
     );

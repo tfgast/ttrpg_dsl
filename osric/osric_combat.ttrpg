@@ -638,6 +638,37 @@ system "OSRIC Combat" {
     }
 
     // ========================================================
+    //  PARRYING (§1.6.2.9)
+    //
+    //  Forgo attack for the round. Subtract STR-based and
+    //  specialisation-based to-hit bonuses from opponent melee
+    //  attack rolls. Must have weapon in hand. Can be used
+    //  when fleeing. Only valuable with STR/specialisation bonus.
+    // ========================================================
+
+    derive parry_bonus(char: Character) -> int {
+        let str_hit = effective_str_to_hit(char)
+        let spec_hit = if wielded_melee(char).is_some() {
+            melee_spec_hit_mod(char, wielded_melee(char).unwrap())
+        } else {
+            0
+        }
+        max(0, str_hit + spec_hit)
+    }
+
+    action Parry on parrier: Character () {
+        cost { attack }
+        requires {
+            wielded_melee(parrier).is_some()
+        }
+        resolve {
+            let bonus = parry_bonus(parrier)
+            apply_condition(parrier, Parrying(parry_bonus: bonus), Duration.end_of_round)
+        }
+    }
+
+
+    // ========================================================
     //  SET WEAPON AGAINST CHARGE
     //
     //  Long-hafted, pointed weapons (spear, javelin, lance,

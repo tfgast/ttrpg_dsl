@@ -554,9 +554,19 @@ system "OSRIC Initiative" {
                 // Resolved reactively via ChargeAction branch when
                 // a charger targets this combatant.
             },
+            ParryAction => {
+                // Apply Parrying condition with pre-computed bonus.
+                // The condition subtracts STR + spec to-hit from
+                // incoming melee attacks and suppresses the parrier's
+                // own attacks for the round. Per §1.6.2.9.
+                let combatant = action.combatant
+                with_budget(combatant, { attack: 1 }) {
+                    combatant.Parry()
+                }
+            },
             _ => {
-                // MoveAction, ParryAction, FleeAction, HoldAction:
-                // Host manages movement tracking, defensive bonuses,
+                // MoveAction, FleeAction, HoldAction:
+                // Host manages movement tracking,
                 // fleeing opportunity attacks, and delayed resolution.
             }
         }

@@ -1542,6 +1542,11 @@ pub fn run_all_conditions(interp: &Interpreter) {
         params.insert(Name::from("penalty"), Value::Int(-4));
         state.apply_condition(&target, "Cover", params, Value::Option(None), None);
     }
+    {
+        let mut params = BTreeMap::new();
+        params.insert(Name::from("parry_bonus"), Value::Int(2));
+        state.apply_condition(&target, "Parrying", params, Value::Option(None), None);
+    }
 
     // Exercise resolve_melee_attack with conditions active
     let roll_hit = scripted_roll(1, 20, 0, vec![15], vec![15], 15, 15);
