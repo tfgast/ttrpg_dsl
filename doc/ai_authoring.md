@@ -229,6 +229,53 @@ action Good on actor: Character (target: Character) {
 
 ---
 
+## Shared Preamble
+
+Blocks fenced as ` ```ttrpg-with-preamble ` implicitly include these declarations.
+When authoring, assume these types exist — do **not** redeclare them.
+Self-contained blocks (` ```ttrpg `) still declare everything they need.
+
+```ttrpg-preamble
+enum Ability { STR, DEX, CON, INT, WIS, CHA }
+enum RollMode { normal, advantage, disadvantage }
+enum DamageType { slashing, piercing, bludgeoning, fire, cold }
+
+struct TurnBudget {
+    actions: int = 0
+    bonus_actions: int = 0
+    reactions: int = 0
+    movement: int = 0
+}
+
+tag #concentration
+
+group Spellcasting {
+    spell_dc: int
+    spell_slots: int = 0
+}
+
+entity Character {
+    name: string
+    level: int = 1
+    HP: resource(0..=max_HP)
+    max_HP: int
+    speed: int = 30
+    position: Position
+    AC: int
+    abilities: map<Ability, int>
+    concentrating_on: option<Invocation>
+    optional Spellcasting
+}
+
+derive initial_budget(actor: Character) -> TurnBudget {
+    TurnBudget { actions: 1, bonus_actions: 1, reactions: 1, movement: actor.speed }
+}
+
+event Damaged(target: Character, attacker: Character, amount: int) {}
+```
+
+---
+
 ## Declaration Skeletons
 
 ### Enum
@@ -343,20 +390,7 @@ table saving_throws(category: SaveCategory, level: int) -> SavingThrows {
 
 ### Function
 
-```ttrpg
-entity Character { name: string, HP: resource(0..=max_HP), max_HP: int, speed: int = 30, position: Position }
-
-struct TurnBudget {
-    actions: int = 0
-    bonus_actions: int = 0
-    reactions: int = 0
-    movement: int = 0
-}
-
-derive initial_budget(actor: Character) -> TurnBudget {
-    TurnBudget { actions: 1, bonus_actions: 1, reactions: 1, movement: actor.speed }
-}
-
+```ttrpg-with-preamble
 action Attack on attacker: Character (target: Character) {
     cost { action }
     resolve {
@@ -405,7 +439,7 @@ derive modifier(score: int) -> int {
 
 ### Mechanic
 
-```ttrpg
+```ttrpg-with-preamble
 mechanic attack_roll(bonus: int, mode: RollMode) -> RollResult {
     let base: DiceExpr = match mode {
         normal       => 1d20,
@@ -414,26 +448,11 @@ mechanic attack_roll(bonus: int, mode: RollMode) -> RollResult {
     }
     roll(base + bonus)
 }
-
-enum RollMode { normal, advantage, disadvantage }
 ```
 
 ### Action
 
-```ttrpg
-entity Character { name: string, HP: resource(0..=max_HP), max_HP: int, speed: int = 30, position: Position }
-
-struct TurnBudget {
-    actions: int = 0
-    bonus_actions: int = 0
-    reactions: int = 0
-    movement: int = 0
-}
-
-derive initial_budget(actor: Character) -> TurnBudget {
-    TurnBudget { actions: 1, bonus_actions: 1, reactions: 1, movement: actor.speed }
-}
-
+```ttrpg-with-preamble
 action Dash on actor: Character () {
     cost { action }
     resolve {
@@ -444,22 +463,7 @@ action Dash on actor: Character () {
 
 ### Reaction
 
-```ttrpg
-entity Character { name: string, HP: resource(0..=max_HP), max_HP: int, speed: int = 30, position: Position }
-
-struct TurnBudget {
-    actions: int = 0
-    bonus_actions: int = 0
-    reactions: int = 0
-    movement: int = 0
-}
-
-derive initial_budget(actor: Character) -> TurnBudget {
-    TurnBudget { actions: 1, bonus_actions: 1, reactions: 1, movement: actor.speed }
-}
-
-event Damaged(target: Character, attacker: Character, amount: int) {}
-
+```ttrpg-with-preamble
 reaction ConcentrationSave on caster: Character (trigger: Damaged(target: caster)) {
     cost free
     resolve {
@@ -474,9 +478,7 @@ reaction ConcentrationSave on caster: Character (trigger: Damaged(target: caster
 
 ### Hook
 
-```ttrpg
-entity Character { name: string, HP: resource(0..=max_HP), max_HP: int, position: Position }
-
+```ttrpg-with-preamble
 event turn_start(actor: Character) {}
 
 hook Regenerate on creature: Character (trigger: turn_start(actor: creature)) {
@@ -488,10 +490,7 @@ hook Regenerate on creature: Character (trigger: turn_start(actor: creature)) {
 
 ### Condition
 
-```ttrpg
-entity Character { name: string, position: Position }
-enum RollMode { normal, advantage, disadvantage }
-
+```ttrpg-with-preamble
 mechanic attack_roll(
     attacker: Character,
     target: Character,
@@ -558,8 +557,7 @@ tag #ranged
 
 ### Prompt
 
-```ttrpg
-entity Character { name: string }
+```ttrpg-with-preamble
 prompt choose_target(chooser: Character, candidates: list<Character>) -> Character {
     hint: "Choose a target creature"
     suggest: candidates[0]
@@ -568,10 +566,7 @@ prompt choose_target(chooser: Character, candidates: list<Character>) -> Charact
 
 ### Option
 
-```ttrpg
-entity Character { name: string, position: Position }
-enum RollMode { normal, advantage, disadvantage }
-
+```ttrpg-with-preamble
 mechanic attack_roll(
     attacker: Character,
     target: Character,
@@ -710,9 +705,7 @@ derive proficiency_bonus(level: int) -> int {
 
 ### d20 Check with Advantage/Disadvantage (mechanic)
 
-```ttrpg
-enum RollMode { normal, advantage, disadvantage }
-
+```ttrpg-with-preamble
 mechanic d20_check(
     bonus: int,
     mode: RollMode = normal
@@ -728,29 +721,7 @@ mechanic d20_check(
 
 ### Attack Action with Damage Event (action + event + hook)
 
-```ttrpg
-entity Character {
-    name: string
-    HP: resource(0..=max_HP)
-    max_HP: int
-    AC: int
-    position: Position
-    speed: int = 30
-}
-
-struct TurnBudget {
-    actions: int = 0
-    bonus_actions: int = 0
-    reactions: int = 0
-    movement: int = 0
-}
-
-derive initial_budget(actor: Character) -> TurnBudget {
-    TurnBudget { actions: 1, bonus_actions: 1, reactions: 1, movement: actor.speed }
-}
-
-event Damaged(target: Character, attacker: Character, amount: int) {}
-
+```ttrpg-with-preamble
 action Attack on attacker: Character (target: Character) {
     cost { action }
     requires { distance(attacker.position, target.position) <= 5 }
@@ -773,9 +744,7 @@ hook DeathDrop on target: Character (trigger: Damaged(target: target)) {
 
 ### Concentration Spell (invocation tracking)
 
-```ttrpg
-enum Ability { STR, DEX, CON, INT, WIS, CHA }
-
+```ttrpg-with-preamble
 enum Duration {
     end_of_turn,
     start_of_next_turn,
@@ -783,30 +752,6 @@ enum Duration {
     minutes(count: int),
     indefinite
 }
-
-entity Character {
-    name: string
-    level: int = 1
-    HP: resource(0..=max_HP)
-    max_HP: int
-    position: Position
-    speed: int = 30
-    concentrating_on: option<Invocation>
-    abilities: map<Ability, int>
-}
-
-struct TurnBudget {
-    actions: int = 0
-    bonus_actions: int = 0
-    reactions: int = 0
-    movement: int = 0
-}
-
-derive initial_budget(actor: Character) -> TurnBudget {
-    TurnBudget { actions: 1, bonus_actions: 1, reactions: 1, movement: actor.speed }
-}
-
-tag #concentration
 
 event ConcentrationStarted(caster: Character, inv: Invocation)
 
@@ -842,21 +787,7 @@ mechanic d20_check(
 
 ### Condition with Modify (advantage/disadvantage)
 
-```ttrpg
-entity Character { name: string, position: Position, speed: int = 30 }
-enum RollMode { normal, advantage, disadvantage }
-
-struct TurnBudget {
-    actions: int = 0
-    bonus_actions: int = 0
-    reactions: int = 0
-    movement: int = 0
-}
-
-derive initial_budget(actor: Character) -> TurnBudget {
-    TurnBudget { actions: 1, bonus_actions: 1, reactions: 1, movement: actor.speed }
-}
-
+```ttrpg-with-preamble
 mechanic attack_roll(
     attacker: Character,
     target: Character,
@@ -882,20 +813,7 @@ condition Prone on bearer: Character {
 
 ### Cost Modification (CunningAction pattern)
 
-```ttrpg
-entity Character { name: string, speed: int = 30, position: Position }
-
-struct TurnBudget {
-    actions: int = 0
-    bonus_actions: int = 0
-    reactions: int = 0
-    movement: int = 0
-}
-
-derive initial_budget(actor: Character) -> TurnBudget {
-    TurnBudget { actions: 1, bonus_actions: 1, reactions: 1, movement: actor.speed }
-}
-
+```ttrpg-with-preamble
 action Dash on actor: Character () {
     cost { action }
     resolve { turn.movement += actor.speed }

@@ -1,7 +1,10 @@
 //! Validates that documentation code examples stay correct as the language evolves.
 //!
-//! - `doc/ai_authoring.md`: ` ```ttrpg ` blocks must check cleanly;
-//!   ` ```ttrpg-err ` blocks must produce at least one error.
+//! - `doc/ai_authoring.md`:
+//!   - ` ```ttrpg ` blocks must check cleanly (self-contained).
+//!   - ` ```ttrpg-with-preamble ` blocks must check cleanly when the shared preamble
+//!     (the single ` ```ttrpg-preamble ` block) is prepended as a separate system.
+//!   - ` ```ttrpg-err ` blocks must produce at least one error.
 //! - `doc/few_shot_examples.ttrpg`: full file must parse, lower, and type-check
 //!   with zero errors.
 
@@ -43,11 +46,10 @@ fn extract_blocks<'a>(md: &'a str, info_string: &str) -> Vec<(usize, &'a str)> {
     blocks
 }
 
-fn check_snippet(source: &str) -> Vec<String> {
-    let wrapped = format!("system \"<snippet>\" {{\n{source}\n}}\n");
-    let (program, parse_errors) = ttrpg_parser::parse(&wrapped, FileId::SYNTH);
+fn check_source(full_source: &str) -> Vec<String> {
+    let (program, parse_errors) = ttrpg_parser::parse(full_source, FileId::SYNTH);
 
-    let sm = SourceMap::new(&wrapped);
+    let sm = SourceMap::new(full_source);
     let mut errors: Vec<String> = parse_errors
         .iter()
         .filter(|d| d.severity == Severity::Error)
@@ -79,6 +81,20 @@ fn check_snippet(source: &str) -> Vec<String> {
             .map(|d| sm.render(d)),
     );
     errors
+}
+
+fn check_snippet(source: &str) -> Vec<String> {
+    let wrapped = format!("system \"<snippet>\" {{\n{source}\n}}\n");
+    check_source(&wrapped)
+}
+
+fn check_snippet_with_preamble(preamble: &str, source: &str) -> Vec<String> {
+    let wrapped = format!(
+        "system \"<preamble>\" {{\n{preamble}\n}}\n\
+         use \"<preamble>\"\n\
+         system \"<snippet>\" {{\n{source}\n}}\n"
+    );
+    check_source(&wrapped)
 }
 
 #[test]
@@ -129,6 +145,49 @@ fn invalid_snippets_produce_errors() {
     assert!(
         failures.is_empty(),
         "{} error snippet(s) passed unexpectedly:\n\n{}",
+        failures.len(),
+        failures.join("\n\n")
+    );
+}
+
+#[test]
+fn preamble_snippets_pass_check() {
+    let preamble_blocks = extract_blocks(AI_AUTHORING_MD, "ttrpg-preamble");
+    assert!(
+        preamble_blocks.len() == 1,
+        "expected exactly one ```ttrpg-preamble block, found {}",
+        preamble_blocks.len()
+    );
+    let (_, preamble) = &preamble_blocks[0];
+
+    // The preamble itself must be valid
+    let preamble_errors = check_snippet(preamble);
+    assert!(
+        preamble_errors.is_empty(),
+        "preamble has errors:\n{}",
+        preamble_errors.join("\n")
+    );
+
+    let blocks = extract_blocks(AI_AUTHORING_MD, "ttrpg-with-preamble");
+    assert!(
+        !blocks.is_empty(),
+        "no ```ttrpg-with-preamble blocks found in ai_authoring.md"
+    );
+
+    let mut failures = Vec::new();
+    for (line, snippet) in &blocks {
+        let errors = check_snippet_with_preamble(preamble, snippet);
+        if !errors.is_empty() {
+            failures.push(format!(
+                "--- line {line} ---\n{snippet}\n\nErrors:\n{}",
+                errors.join("\n")
+            ));
+        }
+    }
+
+    assert!(
+        failures.is_empty(),
+        "{} preamble snippet(s) failed:\n\n{}",
         failures.len(),
         failures.join("\n\n")
     );
