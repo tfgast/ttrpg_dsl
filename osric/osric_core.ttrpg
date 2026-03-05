@@ -341,6 +341,17 @@ system "OSRIC" {
         timestamp: int       // game-time in segments when drain occurred
     }
 
+    // --- Per-level HP roll record ---
+    // Tracks exactly how many HP were gained at each class level,
+    // so level drain can subtract the correct amount and restoration
+    // can re-roll. Populated by character creation / level-up.
+
+    struct HpRoll {
+        class: Class         // which class this HD was for
+        level: int           // the class level when this roll was made
+        amount: int          // final HP gained (after CON mod, multi-class division)
+    }
+
     enum ClassingMode { Single, Multi, Dual }
 
     // --- Character entity ---
@@ -356,6 +367,7 @@ system "OSRIC" {
         base_movement: Feet = 120ft
         gold: int = 0
         drain_history: list<DrainEvent> = []
+        hp_rolls: list<HpRoll> = []
         saving_throws: option<SavingThrows>
         include EquipmentSlots
 

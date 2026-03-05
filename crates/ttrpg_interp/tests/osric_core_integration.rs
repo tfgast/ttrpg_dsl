@@ -278,8 +278,10 @@ fn osric_core_has_all_structs() {
         structs.contains(&("DrainEvent", 3)),
         "missing DrainEvent struct"
     );
+    // HpRoll: class, level, amount
+    assert!(structs.contains(&("HpRoll", 3)), "missing HpRoll struct");
 
-    assert_eq!(structs.len(), 11, "expected 11 structs, got {structs:?}");
+    assert_eq!(structs.len(), 12, "expected 12 structs, got {structs:?}");
 }
 
 // ── Unit type ──────────────────────────────────────────────────
@@ -348,6 +350,7 @@ fn character_entity_fields() {
         "base_movement",
         "gold",
         "drain_history",
+        "hp_rolls",
         "saving_throws",
     ];
     for name in &expected_fields {

@@ -13,6 +13,7 @@ use ttrpg_interp::value::Value;
 use ttrpg_interp::Interpreter;
 
 mod osric_common;
+#[allow(unused_imports)]
 use osric_common::*;
 
 // ── Compile helpers ────────────────────────────────────────────
@@ -69,6 +70,7 @@ fn make_drain_character(
     fields.insert(Name::from("base_movement"), feet(120));
     fields.insert(Name::from("gold"), Value::Int(0));
     fields.insert(Name::from("drain_history"), Value::List(vec![]));
+    fields.insert(Name::from("hp_rolls"), Value::List(vec![]));
     fields.insert(Name::from("saving_throws"), Value::Option(None));
     fields.insert(
         Name::from("EquipmentSlots"),
@@ -76,6 +78,21 @@ fn make_drain_character(
     );
 
     state.add_entity("Character", fields)
+}
+
+// ── Helper: build an HpRoll struct value ───────────────────────
+
+fn hp_roll_struct(class: &str, level: i64, amount: i64) -> Value {
+    Value::Struct {
+        name: Name::from("HpRoll"),
+        fields: {
+            let mut f = BTreeMap::new();
+            f.insert(Name::from("class"), class_variant(class));
+            f.insert(Name::from("level"), Value::Int(level));
+            f.insert(Name::from("amount"), Value::Int(amount));
+            f
+        },
+    }
 }
 
 // ── highest_class_level ────────────────────────────────────────
@@ -313,6 +330,14 @@ fn apply_level_drain_single_class() {
 
     let char_ref = make_drain_character(&mut state, "Fighter5", &[("Fighter", 5, 20000)], "Single");
 
+    // Set up hp_rolls: Fighter levels 1-5, each rolled 7 HP
+    let hp_rolls = Value::List(
+        (1..=5)
+            .map(|lvl| hp_roll_struct("Fighter", lvl, 7))
+            .collect(),
+    );
+    set_field(&mut state, &char_ref, "hp_rolls", hp_rolls);
+
     // No dice needed — single class, no tie-breaking
     let mut handler = NullHandler;
 
@@ -352,6 +377,17 @@ fn apply_level_drain_single_class() {
             match history {
                 Value::List(items) => {
                     assert_eq!(items.len(), 1, "one drain event recorded");
+                }
+                other => panic!("expected list, got {other:?}"),
+            }
+            // hp_change should be 7 (the level 5 roll)
+            let hp_change = fields.get::<Name>(&"hp_change".into()).unwrap();
+            assert_eq!(*hp_change, Value::Int(7), "HP lost = level 5 roll amount");
+            // hp_rolls should have 4 entries (level 5 removed)
+            let rolls = fields.get::<Name>(&"hp_rolls".into()).unwrap();
+            match rolls {
+                Value::List(items) => {
+                    assert_eq!(items.len(), 4, "level 5 roll removed");
                 }
                 other => panic!("expected list, got {other:?}"),
             }
@@ -412,7 +448,6 @@ fn restoration_restores_oldest_eligible() {
     let (program, result) = compile_osric_level_drain();
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let mut state = GameState::new();
-    let mut handler = NullHandler;
 
     // Character was drained twice:
     // 1st drain: Fighter 5→4 at time 1000
@@ -443,11 +478,25 @@ fn restoration_restores_oldest_eligible() {
 
     let char_ref = make_drain_character(&mut state, "Fighter3", &[("Fighter", 3, 4000)], "Single");
     set_field(&mut state, &char_ref, "drain_history", drain_history);
+    // hp_rolls for remaining levels 1-3
+    let hp_rolls = Value::List(
+        (1..=3)
+            .map(|lvl| hp_roll_struct("Fighter", lvl, 6))
+            .collect(),
+    );
+    set_field(&mut state, &char_ref, "hp_rolls", hp_rolls);
+
+    // Scripted: restoration re-rolls 1d10 for the restored level → roll 8
+    // Fighter hit_die=10, CON 14 → con_hp_mod=0, single class
+    // HP gained = max(1, 8+0) = 8
+    let mut handler = ScriptedHandler::with_responses(vec![
+        scripted_roll(1, 10, 0, vec![8], vec![8], 8, 8), // roll_hp_for_level → 1d10 = 8
+    ]);
 
     // Restore at time 10000, caster cleric level 7 (window = 100800)
     // Both drains are within window — should restore oldest (level 5)
     let val = interp
-        .evaluate_derive(
+        .evaluate_mechanic(
             &state,
             &mut handler,
             "apply_restoration",
@@ -473,10 +522,20 @@ fn restoration_restores_oldest_eligible() {
                     }
                     other => panic!("expected list, got {other:?}"),
                 }
+                // hp_change should be 8 (re-rolled)
+                let hp_change = fields.get::<Name>(&"hp_change".into()).unwrap();
+                assert_eq!(*hp_change, Value::Int(8), "HP gained from restoration");
+                // hp_rolls should have 4 entries (3 original + 1 restored)
+                let rolls = fields.get::<Name>(&"hp_rolls".into()).unwrap();
+                match rolls {
+                    Value::List(items) => {
+                        assert_eq!(items.len(), 4, "restored level 5 roll added");
+                    }
+                    other => panic!("expected list, got {other:?}"),
+                }
             }
             other => panic!("expected RestoreResult struct, got {other:?}"),
         },
-        // DSL some() wraps in Value::Option(Some(..)), but check both none representations
         Value::Option(None) | Value::Void => panic!("expected Some(RestoreResult), got None"),
         other => panic!("expected Option, got {other:?}"),
     }
@@ -505,8 +564,9 @@ fn restoration_returns_none_when_expired() {
     let char_ref = make_drain_character(&mut state, "Fighter4", &[("Fighter", 4, 8000)], "Single");
     set_field(&mut state, &char_ref, "drain_history", drain_history);
 
+    // No dice rolled — expired drains return none before rolling
     let val = interp
-        .evaluate_derive(
+        .evaluate_mechanic(
             &state,
             &mut handler,
             "apply_restoration",
@@ -519,4 +579,151 @@ fn restoration_returns_none_when_expired() {
         "expected None (expired), got {:?}",
         val
     );
+}
+
+// ── hp_for_level (lookup from hp_rolls) ───────────────────────
+
+#[test]
+fn hp_for_level_finds_matching_roll() {
+    let (program, result) = compile_osric_level_drain();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NullHandler;
+
+    let hp_rolls = Value::List(vec![
+        hp_roll_struct("Fighter", 1, 8),
+        hp_roll_struct("Fighter", 2, 6),
+        hp_roll_struct("Fighter", 3, 10),
+    ]);
+
+    // Look up level 2 → should be 6
+    let val = interp
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "hp_for_level",
+            vec![hp_rolls.clone(), class_variant("Fighter"), Value::Int(2)],
+        )
+        .unwrap();
+    assert_eq!(expect_int(val, "hp_for_level(Fighter,2)"), 6);
+
+    // Look up missing level 5 → should be 0 (fallback)
+    let val2 = interp
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "hp_for_level",
+            vec![hp_rolls, class_variant("Fighter"), Value::Int(5)],
+        )
+        .unwrap();
+    assert_eq!(expect_int(val2, "hp_for_level(Fighter,5) missing"), 0);
+}
+
+// ── remove_hp_roll ────────────────────────────────────────────
+
+#[test]
+fn remove_hp_roll_removes_first_match() {
+    let (program, result) = compile_osric_level_drain();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NullHandler;
+
+    let hp_rolls = Value::List(vec![
+        hp_roll_struct("Fighter", 1, 8),
+        hp_roll_struct("Fighter", 2, 6),
+        hp_roll_struct("Fighter", 3, 10),
+    ]);
+
+    let val = interp
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "remove_hp_roll",
+            vec![hp_rolls, class_variant("Fighter"), Value::Int(2)],
+        )
+        .unwrap();
+
+    match val {
+        Value::List(items) => {
+            assert_eq!(items.len(), 2, "one roll removed");
+            // Remaining should be levels 1 and 3
+            for item in &items {
+                match item {
+                    Value::Struct { fields, .. } => {
+                        let level = fields.get::<Name>(&"level".into()).unwrap();
+                        assert!(
+                            *level == Value::Int(1) || *level == Value::Int(3),
+                            "level 2 should be removed, found {level:?}"
+                        );
+                    }
+                    other => panic!("expected struct, got {other:?}"),
+                }
+            }
+        }
+        other => panic!("expected list, got {other:?}"),
+    }
+}
+
+// ── con_hp_modifier_for_class ─────────────────────────────────
+
+#[test]
+fn con_hp_modifier_fighter_vs_non_fighter() {
+    let (program, result) = compile_osric_level_drain();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NullHandler;
+
+    // Fighter at CON 18 → uses fighter table → +4
+    let val = interp
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "con_hp_modifier_for_class",
+            vec![class_variant("Fighter"), Value::Int(18)],
+        )
+        .unwrap();
+    assert_eq!(expect_int(val, "fighter CON 18"), 4);
+
+    // Thief at CON 18 → uses normal table → +2
+    let val2 = interp
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "con_hp_modifier_for_class",
+            vec![class_variant("Thief"), Value::Int(18)],
+        )
+        .unwrap();
+    assert_eq!(expect_int(val2, "thief CON 18"), 2);
+}
+
+// ── drain with no hp_rolls (fallback to 0) ────────────────────
+
+#[test]
+fn drain_with_empty_hp_rolls_returns_zero_hp_change() {
+    let (program, result) = compile_osric_level_drain();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut state = GameState::new();
+
+    let char_ref = make_drain_character(&mut state, "Fighter5", &[("Fighter", 5, 20000)], "Single");
+    // hp_rolls left empty — no recorded rolls
+
+    let mut handler = NullHandler;
+    let adapter = ttrpg_interp::adapter::StateAdapter::new(state);
+    let result_val = adapter.run(&mut handler, |s, h| {
+        interp.evaluate_function(
+            s,
+            h,
+            "apply_level_drain",
+            vec![Value::Entity(char_ref), Value::Int(1000)],
+        )
+    });
+
+    let val = result_val.unwrap();
+    match val {
+        Value::Struct { fields, .. } => {
+            let hp_change = fields.get::<Name>(&"hp_change".into()).unwrap();
+            assert_eq!(*hp_change, Value::Int(0), "no hp_rolls → 0 HP lost");
+        }
+        other => panic!("expected DrainResult, got {other:?}"),
+    }
 }

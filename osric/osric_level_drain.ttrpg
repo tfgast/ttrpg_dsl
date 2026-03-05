@@ -19,8 +19,10 @@
 // ============================================================
 
 use "OSRIC"
+use "OSRIC Ability"
 use "OSRIC Classes"
 use "OSRIC Combat"
+use "OSRIC Multiclass"
 
 system "OSRIC Level Drain" {
 
@@ -121,6 +123,86 @@ system "OSRIC Level Drain" {
     }
 
     // ========================================================
+    //  HP LOOKUP FOR DRAIN
+    //
+    //  Finds the HpRoll for a given class and level.
+    //  Returns the amount of HP gained at that level, or 0
+    //  if no record exists (defensive fallback).
+    // ========================================================
+
+    derive hp_for_level(
+        hp_rolls: list<HpRoll>,
+        class: Class,
+        level: int
+    ) -> int {
+        let matches = [r.amount for r in hp_rolls if r.class == class && r.level == level]
+        if len(matches) > 0 { first(matches).unwrap() } else { 0 }
+    }
+
+    // ========================================================
+    //  REMOVE HP ROLL
+    //
+    //  Removes the HpRoll for a given class and level.
+    //  Removes only the first match (in case of duplicates).
+    // ========================================================
+
+    derive remove_hp_roll(
+        hp_rolls: list<HpRoll>,
+        class: Class,
+        level: int
+    ) -> list<HpRoll> {
+        let match_indices = [i for i in 0..len(hp_rolls) if hp_rolls[i].class == class && hp_rolls[i].level == level]
+        let remove_idx = if len(match_indices) > 0 { first(match_indices).unwrap() } else { -1 }
+        [hp_rolls[i] for i in 0..len(hp_rolls) if i != remove_idx]
+    }
+
+    // ========================================================
+    //  CON HP MODIFIER FOR CLASS
+    //
+    //  Fighter-types (has_exceptional_str) use the improved
+    //  CON HP table; all others use the standard table.
+    //  §1.1.7a Constitution (PG p.12)
+    // ========================================================
+
+    derive con_hp_modifier_for_class(class: Class, con_score: int) -> int {
+        if class_def(class).has_exceptional_str {
+            con_hp_mod_fighter(con_score)
+        } else {
+            con_hp_mod(con_score)
+        }
+    }
+
+    // ========================================================
+    //  ROLL HP FOR RESTORED LEVEL
+    //
+    //  Re-rolls the hit die for a restored level.
+    //  Levels beyond max_hit_dice get fixed hp_after_max
+    //  (no CON bonus, no multi-class division).
+    //  Levels within HD range: roll 1 HD + CON mod,
+    //  divided by num_classes for multi-class (min 1).
+    // ========================================================
+
+    mechanic roll_hp_for_level(
+        class: Class,
+        level: int,
+        con_score: int,
+        num_classes: int
+    ) -> int {
+        let def = class_def(class)
+        if level > def.max_hit_dice {
+            def.hp_after_max
+        } else {
+            let con_mod = con_hp_modifier_for_class(class, con_score)
+            let die_roll = roll(dice(1, def.hit_die)).total
+            if num_classes > 1 {
+                multiclass_hp_gain(die_roll, con_mod, num_classes)
+            } else {
+                max(1, die_roll + con_mod)
+            }
+        }
+    }
+
+    // ========================================================
     //  RECORD DRAIN EVENT
     //
     //  Appends a DrainEvent to the drain history. The timestamp
@@ -145,8 +227,11 @@ system "OSRIC Level Drain" {
     //  APPLY LEVEL DRAIN (full operation)
     //
     //  Rolls for target class (if tied), applies the drain,
-    //  and records the event. Returns the new class list and
-    //  updated drain history.
+    //  looks up and removes the HP roll for the lost level,
+    //  and records the event.
+    //
+    //  hp_change is the amount to subtract from max_hp
+    //  (looked up from the character's hp_rolls history).
     //
     //  The caller should check is_killed_by_drain on the
     //  target class's level before applying.
@@ -158,6 +243,8 @@ system "OSRIC Level Drain" {
     struct DrainResult {
         classes: list<ClassLevel>
         drain_history: list<DrainEvent>
+        hp_rolls: list<HpRoll>
+        hp_change: int
         drained_class: Class
         killed: bool
     }
@@ -173,9 +260,13 @@ system "OSRIC Level Drain" {
         let new_history = record_drain_event(
             char.drain_history, target, target_level, current_time
         )
+        let lost_hp = hp_for_level(char.hp_rolls, target, target_level)
+        let new_hp_rolls = remove_hp_roll(char.hp_rolls, target, target_level)
         DrainResult {
             classes: new_classes,
             drain_history: new_history,
+            hp_rolls: new_hp_rolls,
+            hp_change: lost_hp,
             drained_class: target,
             killed: killed
         }
@@ -271,18 +362,27 @@ system "OSRIC Level Drain" {
     //  APPLY RESTORATION (full operation)
     //
     //  Finds the oldest eligible drain, restores the level,
-    //  and removes the event from history.
+    //  re-rolls HP for the restored level, and removes the
+    //  drain event from history.
+    //
+    //  hp_change is the amount to add to max_hp (freshly
+    //  rolled hit die + CON mod, respecting multi-class).
+    //
     //  Returns none if no eligible drain exists.
+    //  This is a mechanic because it rolls HP for the
+    //  restored level.
     // ========================================================
 
     struct RestoreResult {
         classes: list<ClassLevel>
         drain_history: list<DrainEvent>
+        hp_rolls: list<HpRoll>
+        hp_change: int
         restored_class: Class
         restored_level: int
     }
 
-    derive apply_restoration(
+    mechanic apply_restoration(
         char: Character,
         current_time: int,
         caster_cleric_level: int
@@ -296,9 +396,19 @@ system "OSRIC Level Drain" {
             let drain = char.drain_history[idx]
             let new_classes = apply_restore_to_classes(char.classes, drain)
             let new_history = remove_drain_at(char.drain_history, idx)
+            let con_score = char.abilities[Ability.CON]
+            let num = len(char.classes)
+            let hp_gained = roll_hp_for_level(drain.class, drain.original_level, con_score, num)
+            let new_hp_rolls = char.hp_rolls.append(HpRoll {
+                class: drain.class,
+                level: drain.original_level,
+                amount: hp_gained
+            })
             some(RestoreResult {
                 classes: new_classes,
                 drain_history: new_history,
+                hp_rolls: new_hp_rolls,
+                hp_change: hp_gained,
                 restored_class: drain.class,
                 restored_level: drain.original_level
             })
