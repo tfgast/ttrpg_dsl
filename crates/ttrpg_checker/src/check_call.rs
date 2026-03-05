@@ -150,6 +150,8 @@ impl Checker<'_> {
             "all" => return self.check_all_call(args, span),
             "sort" => return self.check_sort_call(args, span),
             "take" => return self.check_take_call(args, span),
+            "max" => return self.check_max_call(args, span),
+            "min" => return self.check_min_call(args, span),
             "some" => return self.check_some_call(args, span),
             "revoke" => return self.check_revoke_call(args, span),
             _ => {}

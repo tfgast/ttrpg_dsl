@@ -402,6 +402,62 @@ impl Checker<'_> {
         }
     }
 
+    /// `max(a: Int, b: Int) -> Int` or `max(list: List[Int]) -> Int`
+    pub(crate) fn check_max_call(&mut self, args: &[Arg], span: ttrpg_ast::Span) -> Ty {
+        self.check_min_max_call("max", args, span)
+    }
+
+    /// `min(a: Int, b: Int) -> Int` or `min(list: List[Int]) -> Int`
+    pub(crate) fn check_min_call(&mut self, args: &[Arg], span: ttrpg_ast::Span) -> Ty {
+        self.check_min_max_call("min", args, span)
+    }
+
+    fn check_min_max_call(&mut self, name: &str, args: &[Arg], span: ttrpg_ast::Span) -> Ty {
+        match args.len() {
+            2 => {
+                let a_ty = self.check_expr(&args[0].value);
+                let b_ty = self.check_expr(&args[1].value);
+                if a_ty.is_error() || b_ty.is_error() {
+                    return Ty::Error;
+                }
+                if a_ty != Ty::Int || b_ty != Ty::Int {
+                    self.error(
+                        format!("`{name}` expects (int, int) or (list<int>), got ({a_ty}, {b_ty})"),
+                        span,
+                    );
+                    return Ty::Error;
+                }
+                Ty::Int
+            }
+            1 => {
+                let arg_ty = self.check_expr(&args[0].value);
+                if arg_ty.is_error() {
+                    return Ty::Error;
+                }
+                match arg_ty {
+                    Ty::List(ref inner) if matches!(inner.as_ref(), Ty::Int) => Ty::Int,
+                    _ => {
+                        self.error(
+                            format!("`{name}` expects (int, int) or (list<int>), got ({arg_ty})"),
+                            span,
+                        );
+                        Ty::Error
+                    }
+                }
+            }
+            _ => {
+                self.error(
+                    format!("`{name}` expects 1 or 2 arguments, found {}", args.len()),
+                    span,
+                );
+                for arg in args {
+                    self.check_expr(&arg.value);
+                }
+                Ty::Error
+            }
+        }
+    }
+
     pub(crate) fn check_any_call(&mut self, args: &[Arg], span: ttrpg_ast::Span) -> Ty {
         if args.len() != 1 {
             self.error(

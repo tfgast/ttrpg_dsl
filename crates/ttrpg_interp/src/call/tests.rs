@@ -927,6 +927,54 @@ fn builtin_min_max_test() {
 }
 
 #[test]
+fn builtin_min_max_list_test() {
+    let program = program_with_decls(vec![]);
+    let type_env = type_env_with_builtins();
+    let interp = Interpreter::new(&program, &type_env).unwrap();
+    let state = TestState::new();
+    let mut handler = ScriptedHandler::new();
+    let mut env = make_env(&state, &mut handler, &interp);
+
+    // max([3, 1, 7, 2])
+    let expr = spanned(ExprKind::Call {
+        callee: Box::new(spanned(ExprKind::Ident("max".into()))),
+        args: vec![Arg {
+            name: None,
+            value: spanned(ExprKind::ListLit(vec![
+                spanned(ExprKind::IntLit(3)),
+                spanned(ExprKind::IntLit(1)),
+                spanned(ExprKind::IntLit(7)),
+                spanned(ExprKind::IntLit(2)),
+            ])),
+            span: dummy_span(),
+        }],
+    });
+    assert_eq!(
+        crate::eval::eval_expr(&mut env, &expr).unwrap(),
+        Value::Int(7)
+    );
+
+    // min([3, 1, 7, 2])
+    let expr = spanned(ExprKind::Call {
+        callee: Box::new(spanned(ExprKind::Ident("min".into()))),
+        args: vec![Arg {
+            name: None,
+            value: spanned(ExprKind::ListLit(vec![
+                spanned(ExprKind::IntLit(3)),
+                spanned(ExprKind::IntLit(1)),
+                spanned(ExprKind::IntLit(7)),
+                spanned(ExprKind::IntLit(2)),
+            ])),
+            span: dummy_span(),
+        }],
+    });
+    assert_eq!(
+        crate::eval::eval_expr(&mut env, &expr).unwrap(),
+        Value::Int(1)
+    );
+}
+
+#[test]
 fn builtin_distance_test() {
     use std::sync::Arc;
 

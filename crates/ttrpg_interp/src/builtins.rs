@@ -21,8 +21,7 @@ pub(crate) fn call_builtin(
     match name {
         "floor" => builtin_floor(&args, span),
         "ceil" => builtin_ceil(&args, span),
-        "min" => builtin_min(&args, span),
-        "max" => builtin_max(&args, span),
+        // min/max are handled in collection_builtins (support list overloads)
         "distance" => builtin_distance(env, &args, span),
         "conditions" => builtin_conditions(env, &args, span),
         "dice" => builtin_dice(&args, span),
@@ -117,42 +116,6 @@ fn builtin_ceil(args: &[Value], span: Span) -> Result<Value, RuntimeError> {
             span,
         )),
         None => Err(RuntimeError::with_span("ceil() requires 1 argument", span)),
-    }
-}
-
-// ── min ────────────────────────────────────────────────────────
-
-/// `min(a: Int, b: Int) -> Int`
-fn builtin_min(args: &[Value], span: Span) -> Result<Value, RuntimeError> {
-    match (args.first(), args.get(1)) {
-        (Some(Value::Int(a)), Some(Value::Int(b))) => Ok(Value::Int((*a).min(*b))),
-        (Some(a), Some(b)) => Err(RuntimeError::with_span(
-            format!(
-                "min() expects (Int, Int), got ({}, {})",
-                type_name(a),
-                type_name(b)
-            ),
-            span,
-        )),
-        _ => Err(RuntimeError::with_span("min() requires 2 arguments", span)),
-    }
-}
-
-// ── max ────────────────────────────────────────────────────────
-
-/// `max(a: Int, b: Int) -> Int`
-fn builtin_max(args: &[Value], span: Span) -> Result<Value, RuntimeError> {
-    match (args.first(), args.get(1)) {
-        (Some(Value::Int(a)), Some(Value::Int(b))) => Ok(Value::Int((*a).max(*b))),
-        (Some(a), Some(b)) => Err(RuntimeError::with_span(
-            format!(
-                "max() expects (Int, Int), got ({}, {})",
-                type_name(a),
-                type_name(b)
-            ),
-            span,
-        )),
-        _ => Err(RuntimeError::with_span("max() requires 2 arguments", span)),
     }
 }
 

@@ -14,7 +14,7 @@ use super::actions::{dispatch_action, dispatch_action_method};
 use super::args::bind_args;
 use super::collection_builtins::{
     eval_all, eval_any, eval_append, eval_concat, eval_first, eval_keys, eval_last, eval_len,
-    eval_reverse, eval_some, eval_sort, eval_sum, eval_take, eval_values,
+    eval_max, eval_min, eval_reverse, eval_some, eval_sort, eval_sum, eval_take, eval_values,
 };
 use super::functions::{
     dispatch_derive_or_mechanic, dispatch_function, dispatch_prompt, dispatch_table,
@@ -86,6 +86,8 @@ pub(crate) fn eval_call(
                 "sort" => return eval_sort(env, args, call_span),
                 "take" => return eval_take(env, args, call_span),
                 "some" => return eval_some(env, args, call_span),
+                "max" => return eval_max(env, args, call_span),
+                "min" => return eval_min(env, args, call_span),
                 _ => {}
             }
 

@@ -419,3 +419,94 @@ pub(super) fn eval_some(
     let val = eval_expr(env, &args[0].value)?;
     Ok(Value::Option(Some(Box::new(val))))
 }
+
+/// `max(a, b)` or `max(list)` — returns the maximum int.
+pub(super) fn eval_max(
+    env: &mut Env,
+    args: &[Arg],
+    call_span: Span,
+) -> Result<Value, RuntimeError> {
+    eval_min_max(env, args, call_span, "max", |a, b| a.max(b))
+}
+
+/// `min(a, b)` or `min(list)` — returns the minimum int.
+pub(super) fn eval_min(
+    env: &mut Env,
+    args: &[Arg],
+    call_span: Span,
+) -> Result<Value, RuntimeError> {
+    eval_min_max(env, args, call_span, "min", |a, b| a.min(b))
+}
+
+fn eval_min_max(
+    env: &mut Env,
+    args: &[Arg],
+    call_span: Span,
+    name: &str,
+    combine: fn(i64, i64) -> i64,
+) -> Result<Value, RuntimeError> {
+    match args.len() {
+        2 => {
+            let a = eval_expr(env, &args[0].value)?;
+            let b = eval_expr(env, &args[1].value)?;
+            match (&a, &b) {
+                (Value::Int(x), Value::Int(y)) => Ok(Value::Int(combine(*x, *y))),
+                _ => Err(RuntimeError::with_span(
+                    format!(
+                        "{name}() expects (int, int) or (list<int>), got ({}, {})",
+                        type_name(&a),
+                        type_name(&b)
+                    ),
+                    call_span,
+                )),
+            }
+        }
+        1 => {
+            let val = eval_expr(env, &args[0].value)?;
+            match val {
+                Value::List(ref items) => {
+                    let mut iter = items.iter();
+                    let first = match iter.next() {
+                        Some(Value::Int(n)) => *n,
+                        Some(other) => {
+                            return Err(RuntimeError::with_span(
+                                format!("{name}() list contains non-int: {}", type_name(other)),
+                                call_span,
+                            ))
+                        }
+                        None => {
+                            return Err(RuntimeError::with_span(
+                                format!("{name}() called on empty list"),
+                                call_span,
+                            ))
+                        }
+                    };
+                    let mut result = first;
+                    for item in iter {
+                        match item {
+                            Value::Int(n) => result = combine(result, *n),
+                            other => {
+                                return Err(RuntimeError::with_span(
+                                    format!("{name}() list contains non-int: {}", type_name(other)),
+                                    call_span,
+                                ))
+                            }
+                        }
+                    }
+                    Ok(Value::Int(result))
+                }
+                _ => Err(RuntimeError::with_span(
+                    format!(
+                        "{name}() expects (int, int) or (list<int>), got ({})",
+                        type_name(&val)
+                    ),
+                    call_span,
+                )),
+            }
+        }
+        _ => Err(RuntimeError::with_span(
+            format!("{name}() requires 1 or 2 arguments, got {}", args.len()),
+            call_span,
+        )),
+    }
+}

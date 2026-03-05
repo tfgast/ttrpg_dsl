@@ -32,6 +32,8 @@ pub fn register_builtins() -> Vec<FnInfo> {
         // Available everywhere
         builtin("floor", vec![param("x", Ty::Float)], Ty::Int),
         builtin("ceil", vec![param("x", Ty::Float)], Ty::Int),
+        // Note: max/min are also special-cased in check_call.rs for list overloads.
+        // The registration here is kept for lookup_fn() in alias paths.
         builtin(
             "max",
             vec![param("a", Ty::Int), param("b", Ty::Int)],
