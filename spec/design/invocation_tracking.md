@@ -415,7 +415,7 @@ match response {
     Response::Acknowledged => {},
     Response::Vetoed => {
         emit_action_completed(env, &action_name, actor, ActionOutcome::Vetoed, None, call_span)?;
-        return Ok(Value::None);
+        return Ok(Value::Void);
     }
     other => {
         let _ = emit_action_completed(env, &action_name, actor, ActionOutcome::Failed, None, call_span);
@@ -494,9 +494,9 @@ fn builtin_revoke(env: &mut Env, args: &[Value], span: Span) -> Result<Value, Ru
         Some(Value::Invocation(inv_id)) => {
             let effect = Effect::RevokeInvocation { invocation: *inv_id };
             validate_mutation_response(env.handler.handle(effect), "RevokeInvocation", span)?;
-            Ok(Value::None)
+            Ok(Value::Void)
         }
-        Some(Value::None) => Ok(Value::None),  // no-op for option<Invocation> = none
+        Some(Value::Void) => Ok(Value::Void),  // no-op for option<Invocation> = none
         // ... error cases ...
     }
 }

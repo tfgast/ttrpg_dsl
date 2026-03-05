@@ -94,9 +94,9 @@ system "test" {
         .unwrap();
     assert_eq!(val, Value::Int(0));
 
-    // Value::None should also still match `none` pattern
+    // Value::Void should also still match `none` pattern
     let val = interp
-        .evaluate_derive(&state, &mut handler, "f", vec![Value::None])
+        .evaluate_derive(&state, &mut handler, "f", vec![Value::Void])
         .unwrap();
     assert_eq!(val, Value::Int(0));
 }
@@ -243,7 +243,7 @@ system "test" {
     let mut handler = NoopHandler;
 
     let err = interp
-        .evaluate_derive(&state, &mut handler, "f", vec![Value::None])
+        .evaluate_derive(&state, &mut handler, "f", vec![Value::Void])
         .unwrap_err();
     assert!(
         format!("{err}").contains("unwrap()"),
@@ -311,7 +311,7 @@ system "test" {
     let mut handler = NoopHandler;
 
     let val = interp
-        .evaluate_derive(&state, &mut handler, "f", vec![Value::None])
+        .evaluate_derive(&state, &mut handler, "f", vec![Value::Void])
         .unwrap();
     assert_eq!(val, Value::Int(99));
 }

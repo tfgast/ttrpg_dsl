@@ -747,7 +747,7 @@ system "test" {
         let val = interp
             .execute_action(&state, &mut handler, "Noop", EntityRef(1), vec![])
             .unwrap();
-        assert_eq!(val, Value::None);
+        assert_eq!(val, Value::Void);
 
         // ActionCompleted should have Succeeded + Some(InvocationId(1))
         let completed = handler
@@ -788,7 +788,7 @@ system "test" {
         let val = interp
             .execute_action(&state, &mut handler, "Noop", EntityRef(1), vec![])
             .unwrap();
-        assert_eq!(val, Value::None);
+        assert_eq!(val, Value::Void);
 
         // ActionCompleted should have Vetoed + None invocation
         let completed = handler
@@ -950,7 +950,7 @@ system "test" {
             )
             .unwrap();
         // Resolve block ends with assignment (returns None)
-        assert_eq!(val, Value::None);
+        assert_eq!(val, Value::Void);
 
         // Verify effect sequence: ActionStarted, RequiresCheck, DeductCost, MutateField, ActionCompleted
         assert_eq!(handler.log.len(), 5);
@@ -1003,7 +1003,7 @@ system "test" {
         let val = interp
             .execute_action(&state, &mut handler, "SelfHeal", actor, vec![])
             .unwrap();
-        assert_eq!(val, Value::None);
+        assert_eq!(val, Value::Void);
 
         // ActionStarted, RequiresCheck (failed), ActionCompleted — no MutateField
         assert_eq!(handler.log.len(), 3);
@@ -1050,7 +1050,7 @@ system "test" {
                 params: BTreeMap::new(),
                 bearer: entity,
                 gained_at: 1,
-                duration: Value::None,
+                duration: Value::Void,
                 invocation: None,
                 applied_at: 0,
             }],
@@ -1166,7 +1166,7 @@ system "test" {
         let val = interp
             .execute_reaction(&state, &mut handler, "Intercept", entity1, payload)
             .unwrap();
-        assert_eq!(val, Value::None);
+        assert_eq!(val, Value::Void);
 
         // Verify effect sequence: ActionStarted (Reaction), DeductCost, ActionCompleted
         assert_eq!(handler.log.len(), 3);
@@ -1382,7 +1382,7 @@ system "test" {
                 &mut handler,
                 "Nonexistent",
                 EntityRef(1),
-                Value::None,
+                Value::Void,
             )
             .unwrap_err();
         assert!(err.message.contains("undefined reaction"));
@@ -1480,7 +1480,7 @@ system "test" {
                 vec![Value::Entity(target)],
             )
             .unwrap();
-        assert_eq!(val, Value::None); // resolve block ends with if-then (assignment)
+        assert_eq!(val, Value::Void); // resolve block ends with if-then (assignment)
 
         // Verify RollDice was emitted
         assert!(handler
@@ -1601,7 +1601,7 @@ system "test" {
                 params: BTreeMap::new(),
                 bearer: entity1,
                 gained_at: 1,
-                duration: Value::None,
+                duration: Value::Void,
                 invocation: None,
                 applied_at: 0,
             }],

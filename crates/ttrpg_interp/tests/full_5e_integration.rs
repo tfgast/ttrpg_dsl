@@ -328,7 +328,7 @@ fn pipeline_parses_and_builds_interpreter() {
             &mut handler,
             "Nonexistent",
             EntityRef(1),
-            Value::None
+            Value::Void
         )
         .is_err());
 }
@@ -1011,7 +1011,7 @@ fn attack_action_hit() {
             vec![Value::Entity(goblin), Value::Entity(longsword)],
         )
         .unwrap();
-    assert_eq!(val, Value::None);
+    assert_eq!(val, Value::Void);
 
     // Verify effect sequence
     assert!(matches!(
@@ -1124,7 +1124,7 @@ fn attack_action_out_of_range() {
             vec![Value::Entity(goblin), Value::Entity(longsword)],
         )
         .unwrap();
-    assert_eq!(val, Value::None);
+    assert_eq!(val, Value::Void);
 
     // RequiresCheck should have passed=false
     assert!(handler
@@ -1158,7 +1158,7 @@ fn dash_action() {
     let val = interp
         .execute_action(&state, &mut handler, "Dash", fighter, vec![])
         .unwrap();
-    assert_eq!(val, Value::None);
+    assert_eq!(val, Value::Void);
 
     // Verify: DeductCost(action), MutateTurnField(movement, PlusEq, 30)
     assert!(handler.log.iter().any(|e| matches!(
@@ -1186,7 +1186,7 @@ fn dodge_action() {
     let val = interp
         .execute_action(&state, &mut handler, "Dodge", fighter, vec![])
         .unwrap();
-    assert_eq!(val, Value::None);
+    assert_eq!(val, Value::Void);
 
     assert!(handler.log.iter().any(|e| matches!(
         e,
@@ -1213,7 +1213,7 @@ fn disengage_action() {
     let val = interp
         .execute_action(&state, &mut handler, "Disengage", fighter, vec![])
         .unwrap();
-    assert_eq!(val, Value::None);
+    assert_eq!(val, Value::Void);
 
     assert!(handler.log.iter().any(|e| matches!(
         e,
@@ -1296,7 +1296,7 @@ fn execute_opportunity_attack_reaction() {
     let val = interp
         .execute_reaction(&state, &mut handler, "OpportunityAttack", fighter, payload)
         .unwrap();
-    assert_eq!(val, Value::None);
+    assert_eq!(val, Value::Void);
 
     // Verify ActionStarted with Reaction kind
     assert!(matches!(

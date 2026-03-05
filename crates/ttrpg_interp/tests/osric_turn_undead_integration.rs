@@ -34,9 +34,10 @@ fn get_turn_undead_decls(program: &ttrpg_ast::ast::Program) -> &[ttrpg_ast::Span
 #[test]
 fn osric_turn_undead_parses_and_typechecks() {
     let (program, _) = compile_osric_turn_undead();
-    let has_system = program.items.iter().any(|item| {
-        matches!(&item.node, TopLevel::System(sys) if sys.name == "OSRIC Turn Undead")
-    });
+    let has_system = program
+        .items
+        .iter()
+        .any(|item| matches!(&item.node, TopLevel::System(sys) if sys.name == "OSRIC Turn Undead"));
     assert!(has_system, "expected system named 'OSRIC Turn Undead'");
 }
 
@@ -298,11 +299,7 @@ fn is_evil_alignment_checks() {
                 vec![enum_variant("Alignment", variant)],
             )
             .unwrap();
-        assert_eq!(
-            val,
-            Value::Bool(expected),
-            "is_evil_alignment({variant})"
-        );
+        assert_eq!(val, Value::Bool(expected), "is_evil_alignment({variant})");
     }
 }
 
@@ -385,11 +382,7 @@ fn resolve_turn_undead_impossible() {
             &state,
             &mut handler,
             "resolve_turn_undead",
-            vec![
-                Value::Entity(char_ref),
-                Value::Int(6),
-                Value::Bool(false),
-            ],
+            vec![Value::Entity(char_ref), Value::Int(6), Value::Bool(false)],
         )
         .unwrap();
 
@@ -418,11 +411,7 @@ fn resolve_turn_undead_auto_turn() {
             &state,
             &mut handler,
             "resolve_turn_undead",
-            vec![
-                Value::Entity(char_ref),
-                Value::Int(1),
-                Value::Bool(false),
-            ],
+            vec![Value::Entity(char_ref), Value::Int(1), Value::Bool(false)],
         )
         .unwrap();
 
@@ -458,11 +447,7 @@ fn resolve_turn_undead_number_roll_success() {
             &state,
             &mut handler,
             "resolve_turn_undead",
-            vec![
-                Value::Entity(char_ref),
-                Value::Int(1),
-                Value::Bool(false),
-            ],
+            vec![Value::Entity(char_ref), Value::Int(1), Value::Bool(false)],
         )
         .unwrap();
 
@@ -496,11 +481,7 @@ fn resolve_turn_undead_number_roll_failure() {
             &state,
             &mut handler,
             "resolve_turn_undead",
-            vec![
-                Value::Entity(char_ref),
-                Value::Int(1),
-                Value::Bool(false),
-            ],
+            vec![Value::Entity(char_ref), Value::Int(1), Value::Bool(false)],
         )
         .unwrap();
 
@@ -529,11 +510,7 @@ fn resolve_turn_undead_destroy_good_cleric() {
             &state,
             &mut handler,
             "resolve_turn_undead",
-            vec![
-                Value::Entity(char_ref),
-                Value::Int(1),
-                Value::Bool(false),
-            ],
+            vec![Value::Entity(char_ref), Value::Int(1), Value::Bool(false)],
         )
         .unwrap();
 
@@ -570,11 +547,7 @@ fn resolve_turn_undead_evil_cleric_controlled() {
             &state,
             &mut handler,
             "resolve_turn_undead",
-            vec![
-                Value::Entity(char_ref),
-                Value::Int(1),
-                Value::Bool(false),
-            ],
+            vec![Value::Entity(char_ref), Value::Int(1), Value::Bool(false)],
         )
         .unwrap();
 
@@ -611,11 +584,7 @@ fn resolve_turn_undead_evil_cleric_not_controlled() {
             &state,
             &mut handler,
             "resolve_turn_undead",
-            vec![
-                Value::Entity(char_ref),
-                Value::Int(1),
-                Value::Bool(false),
-            ],
+            vec![Value::Entity(char_ref), Value::Int(1), Value::Bool(false)],
         )
         .unwrap();
 

@@ -19,7 +19,7 @@ pub(crate) fn type_name(val: &Value) -> &'static str {
         Value::Float(_) => "Float",
         Value::Bool(_) => "Bool",
         Value::Str(_) => "String",
-        Value::None => "None",
+        Value::Void => "Void",
         Value::DiceExpr(_) => "DiceExpr",
         Value::RollResult(_) => "RollResult",
         Value::List(_) => "List",

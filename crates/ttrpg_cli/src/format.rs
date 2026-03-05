@@ -38,7 +38,7 @@ pub fn format_value(val: &Value, units: &UnitSuffixes) -> String {
                 .replace('\t', "\\t");
             format!("\"{escaped}\"")
         }
-        Value::None => "none".into(),
+        Value::Void => "none".into(),
 
         Value::DiceExpr(expr) => format_dice_expr(expr),
 
@@ -674,7 +674,7 @@ mod tests {
 
     #[test]
     fn format_none() {
-        assert_eq!(format_value(&Value::None, &no_units()), "none");
+        assert_eq!(format_value(&Value::Void, &no_units()), "none");
     }
 
     #[test]

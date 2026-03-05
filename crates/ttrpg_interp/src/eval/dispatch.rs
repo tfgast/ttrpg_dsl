@@ -27,7 +27,7 @@ pub(crate) fn eval_expr(env: &mut Env, expr: &Spanned<ExprKind>) -> Result<Value
 
         ExprKind::BoolLit(b) => Ok(Value::Bool(*b)),
 
-        ExprKind::NoneLit => Ok(Value::None),
+        ExprKind::NoneLit => Ok(Value::Void),
 
         ExprKind::DiceLit {
             count,

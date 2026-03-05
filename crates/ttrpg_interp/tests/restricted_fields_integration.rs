@@ -90,7 +90,13 @@ fn same_module_action_mutates_restricted_field() {
     let adapter = StateAdapter::new(gs);
     adapter.run(&mut handler, |state, eff_handler| {
         interp
-            .execute_action(state, eff_handler, "TakeDamage", target, vec![Value::Int(7)])
+            .execute_action(
+                state,
+                eff_handler,
+                "TakeDamage",
+                target,
+                vec![Value::Int(7)],
+            )
             .unwrap();
     });
     let gs = adapter.into_inner();

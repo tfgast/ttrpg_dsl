@@ -102,7 +102,7 @@ fn action_default_not_evaluated_on_veto() {
         )
         .unwrap();
 
-    assert_eq!(result, Value::None, "vetoed action should return None");
+    assert_eq!(result, Value::Void, "vetoed action should return None");
 
     // The effect log should only have ActionStarted and ActionCompleted
     // No MutateField effects should appear (no side effects from defaults or resolve)
@@ -146,7 +146,7 @@ fn action_default_evaluated_after_acknowledgement() {
         .unwrap();
 
     // Default amount = actor.HP = 100. target.HP = 5 + 100 = 105
-    assert_eq!(result, Value::None);
+    assert_eq!(result, Value::Void);
 
     // Verify ActionStarted appears before MutateField
     let mut saw_action_started = false;

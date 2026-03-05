@@ -19,7 +19,7 @@ enum LifecycleStart {
 /// Emit `ActionStarted` and handle the response.
 ///
 /// On `Vetoed`, emits `ActionCompleted` (with protocol validation) and returns
-/// `LifecycleStart::Vetoed` — the caller should return `Ok(Value::None)`.
+/// `LifecycleStart::Vetoed` — the caller should return `Ok(Value::Void)`.
 fn emit_action_started(
     env: &mut Env,
     name: &str,
@@ -163,7 +163,7 @@ fn execute_pipeline(
 
         if !effective_passed {
             // Requires failed: no cost spent, action ends
-            return Ok(Value::None);
+            return Ok(Value::Void);
         }
     }
 
@@ -176,7 +176,7 @@ fn execute_pipeline(
             if let Some(ref eff) = effective_cost {
                 match deduct_costs(env, action_name, eff, call_span)? {
                     CostOutcome::Proceed => {}
-                    CostOutcome::ActionFailed => return Ok(Value::None),
+                    CostOutcome::ActionFailed => return Ok(Value::Void),
                 }
             }
             // else: cost was overridden to free by a modifier
@@ -221,7 +221,7 @@ pub(crate) fn execute_action(
         actor,
         call_span,
     )? {
-        return Ok(Value::None);
+        return Ok(Value::Void);
     }
 
     // 2–5. Scoped execution with lifecycle completion
@@ -290,7 +290,7 @@ pub(crate) fn execute_reaction(
         reactor,
         call_span,
     )? {
-        return Ok(Value::None);
+        return Ok(Value::Void);
     }
 
     // 2–4. Scoped execution with lifecycle completion
@@ -343,7 +343,7 @@ pub(crate) fn execute_hook(
         target,
         call_span,
     )? {
-        return Ok(Value::None);
+        return Ok(Value::Void);
     }
 
     // 2–4. Scoped execution with lifecycle completion
@@ -1086,7 +1086,7 @@ mod tests {
         let actor = EntityRef(1);
 
         let result = execute_action(&mut env, &action, actor, vec![], span()).unwrap();
-        assert_eq!(result, Value::None);
+        assert_eq!(result, Value::Void);
 
         // Effect sequence: ActionStarted, RequiresCheck, ActionCompleted (no DeductCost!)
         assert_eq!(handler.log.len(), 3);
@@ -1123,7 +1123,7 @@ mod tests {
         let actor = EntityRef(1);
 
         let result = execute_action(&mut env, &action, actor, vec![], span()).unwrap();
-        assert_eq!(result, Value::None);
+        assert_eq!(result, Value::Void);
 
         // Only ActionStarted and ActionCompleted
         assert_eq!(handler.log.len(), 2);
@@ -1310,7 +1310,7 @@ mod tests {
         let actor = EntityRef(1);
 
         let result = execute_action(&mut env, &action, actor, vec![], span()).unwrap();
-        assert_eq!(result, Value::None);
+        assert_eq!(result, Value::Void);
 
         // ActionStarted, RequiresCheck, ActionCompleted (no resolve)
         assert_eq!(handler.log.len(), 3);
@@ -1523,8 +1523,8 @@ mod tests {
         let mut env = make_env(&state, &mut handler, &interp);
         let reactor = EntityRef(1);
 
-        let result = execute_reaction(&mut env, &reaction, reactor, Value::None, span()).unwrap();
-        assert_eq!(result, Value::None);
+        let result = execute_reaction(&mut env, &reaction, reactor, Value::Void, span()).unwrap();
+        assert_eq!(result, Value::Void);
 
         // Only ActionStarted + ActionCompleted
         assert_eq!(handler.log.len(), 2);
@@ -1552,7 +1552,7 @@ mod tests {
         let mut env = make_env(&state, &mut handler, &interp);
         let reactor = EntityRef(1);
 
-        execute_reaction(&mut env, &reaction, reactor, Value::None, span()).unwrap();
+        execute_reaction(&mut env, &reaction, reactor, Value::Void, span()).unwrap();
 
         // ActionStarted, DeductCost(reaction), ActionCompleted
         assert_eq!(handler.log.len(), 3);
@@ -1582,7 +1582,7 @@ mod tests {
         let reactor = EntityRef(5);
 
         env.turn_actor = Some(EntityRef(10));
-        execute_reaction(&mut env, &reaction, reactor, Value::None, span()).unwrap();
+        execute_reaction(&mut env, &reaction, reactor, Value::Void, span()).unwrap();
         assert_eq!(env.turn_actor, Some(EntityRef(10)));
     }
 
@@ -1607,7 +1607,7 @@ mod tests {
         let mut env = make_env(&state, &mut handler, &interp);
         let reactor = EntityRef(7);
 
-        let result = execute_reaction(&mut env, &reaction, reactor, Value::None, span()).unwrap();
+        let result = execute_reaction(&mut env, &reaction, reactor, Value::Void, span()).unwrap();
         assert_eq!(result, Value::Entity(EntityRef(7)));
     }
 
@@ -1748,7 +1748,7 @@ mod tests {
         let mut env = make_env(&state, &mut handler, &interp);
         let reactor = EntityRef(1);
 
-        let result = execute_reaction(&mut env, &reaction, reactor, Value::None, span());
+        let result = execute_reaction(&mut env, &reaction, reactor, Value::Void, span());
         assert!(result.is_err());
         assert!(result.unwrap_err().message.contains("protocol error"));
     }
@@ -1796,7 +1796,7 @@ mod tests {
         let actor = EntityRef(1);
 
         let result = execute_action(&mut env, &action, actor, vec![], span()).unwrap();
-        assert_eq!(result, Value::None);
+        assert_eq!(result, Value::Void);
 
         // ActionStarted, RequiresCheck(budget), ActionCompleted — no DeductCost
         assert_eq!(handler.log.len(), 3);
@@ -1860,7 +1860,7 @@ mod tests {
         let actor = EntityRef(1);
 
         let result = execute_action(&mut env, &action, actor, vec![], span()).unwrap();
-        assert_eq!(result, Value::None);
+        assert_eq!(result, Value::Void);
 
         // ActionStarted, RequiresCheck(budget), ActionCompleted — no DeductCost
         assert_eq!(handler.log.len(), 3);

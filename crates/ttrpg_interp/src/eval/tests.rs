@@ -189,7 +189,7 @@ fn eval_none_lit() {
     let mut env = make_env(&state, &mut handler, &interp);
 
     let expr = spanned(ExprKind::NoneLit);
-    assert_eq!(eval_expr(&mut env, &expr).unwrap(), Value::None);
+    assert_eq!(eval_expr(&mut env, &expr).unwrap(), Value::Void);
 }
 
 #[test]
@@ -1319,7 +1319,7 @@ fn eval_if_no_else_returns_none() {
         then_block: spanned(vec![spanned(StmtKind::Expr(spanned(ExprKind::IntLit(1))))]),
         else_branch: None,
     });
-    assert_eq!(eval_expr(&mut env, &expr).unwrap(), Value::None);
+    assert_eq!(eval_expr(&mut env, &expr).unwrap(), Value::Void);
 }
 
 // ── Guard match tests ──────────────────────────────────────
@@ -3239,20 +3239,20 @@ fn try_from_ordinal_returns_none_on_negative() {
 fn value_eq_none_vs_option_none() {
     let state = TestState::new();
 
-    // Value::None == Value::Option(None)
-    assert!(value_eq(&state, &Value::None, &Value::Option(None)));
-    assert!(value_eq(&state, &Value::Option(None), &Value::None));
+    // Value::Void == Value::Option(None)
+    assert!(value_eq(&state, &Value::Void, &Value::Option(None)));
+    assert!(value_eq(&state, &Value::Option(None), &Value::Void));
 
-    // Value::None != Value::Option(Some(...))
+    // Value::Void != Value::Option(Some(...))
     assert!(!value_eq(
         &state,
-        &Value::None,
+        &Value::Void,
         &Value::Option(Some(Box::new(Value::Int(1))))
     ));
     assert!(!value_eq(
         &state,
         &Value::Option(Some(Box::new(Value::Int(1)))),
-        &Value::None
+        &Value::Void
     ));
 }
 
@@ -4376,7 +4376,7 @@ fn assign_returns_none_as_stmt_value() {
         spanned(ExprKind::IntLit(42)),
     )]);
     let result = eval_block(&mut env, &block).unwrap();
-    assert_eq!(result, Value::None);
+    assert_eq!(result, Value::Void);
     // But x was updated
     assert_eq!(env.lookup("x"), Some(&Value::Int(42)));
 }
@@ -4483,7 +4483,7 @@ fn assign_local_map_semantic_key_overwrite() {
     let mut env = make_env(&state, &mut handler, &interp);
 
     let mut map = BTreeMap::new();
-    map.insert(Value::None, Value::Int(1));
+    map.insert(Value::Void, Value::Int(1));
     env.bind(Name::from("m"), Value::Map(map));
 
     // m[option_none] = 99 — should overwrite the None entry, not create a duplicate
@@ -4520,7 +4520,7 @@ fn assign_local_map_semantic_key_plus_eq() {
     let mut env = make_env(&state, &mut handler, &interp);
 
     let mut map = BTreeMap::new();
-    map.insert(Value::None, Value::Int(10));
+    map.insert(Value::Void, Value::Int(10));
     env.bind(Name::from("m"), Value::Map(map));
 
     // m[option_none] += 5 — should find the None key semantically

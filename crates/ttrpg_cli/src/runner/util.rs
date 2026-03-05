@@ -103,7 +103,7 @@ pub(super) fn value_matches_ty(val: &Value, ty: &Ty, gs: Option<&GameState>) -> 
         (Value::Float(_), Ty::Float) => true,
         (Value::Bool(_), Ty::Bool) => true,
         (Value::Str(_), Ty::String) => true,
-        (Value::None, Ty::Option(_)) => true,
+        (Value::Void, Ty::Option(_)) => true,
         (Value::Option(inner), Ty::Option(inner_ty)) => match inner {
             Some(v) => value_matches_ty(v, inner_ty, gs),
             None => true,
@@ -147,7 +147,7 @@ pub(super) fn value_type_display(val: &Value) -> String {
         Value::Float(_) => "float".into(),
         Value::Bool(_) => "bool".into(),
         Value::Str(_) => "string".into(),
-        Value::None => "none".into(),
+        Value::Void => "none".into(),
         Value::Option(_) => "option".into(),
         Value::Entity(_) => "entity".into(),
         Value::List(_) => "list".into(),

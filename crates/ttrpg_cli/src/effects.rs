@@ -185,7 +185,7 @@ impl EffectHandler for CliHandler<'_> {
                 let old = adapter::read_at_path(&*self.game_state.borrow(), &entity, &path)
                     .unwrap_or_else(|| match op {
                         AssignOp::PlusEq | AssignOp::MinusEq => Value::Int(0),
-                        AssignOp::Eq => Value::None,
+                        AssignOp::Eq => Value::Void,
                     });
                 let new_val = match adapter::compute_field_value(
                     &*self.game_state.borrow(),

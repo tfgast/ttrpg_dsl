@@ -166,7 +166,7 @@ system "test" {
         &entity,
         "Blessed",
         std::collections::BTreeMap::new(),
-        Value::None,
+        Value::Void,
         None,
     );
 
@@ -226,7 +226,7 @@ system "test" {
         &entity,
         "Blessed",
         std::collections::BTreeMap::new(),
-        Value::None,
+        Value::Void,
         None,
     );
 
@@ -286,7 +286,7 @@ system "test" {
         &entity,
         "OneTimeBoost",
         std::collections::BTreeMap::new(),
-        Value::None,
+        Value::Void,
         None,
     );
 
@@ -349,7 +349,7 @@ system "test" {
         &entity,
         "Blessed",
         std::collections::BTreeMap::new(),
-        Value::None,
+        Value::Void,
         None,
     );
 
@@ -422,7 +422,7 @@ system "test" {
         &entity,
         "DoubleModify",
         std::collections::BTreeMap::new(),
-        Value::None,
+        Value::Void,
         None,
     );
 

@@ -1040,7 +1040,7 @@ system "test" {
             "f",
             vec![Value::List(vec![
                 Value::Option(Some(Box::new(Value::Int(1)))),
-                Value::None,
+                Value::Void,
                 Value::Option(Some(Box::new(Value::Int(3)))),
             ])],
         )

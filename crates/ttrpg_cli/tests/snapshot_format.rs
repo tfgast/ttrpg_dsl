@@ -37,7 +37,7 @@ fn format_primitives() {
         "bool_false: {}\n",
         format_value(&Value::Bool(false), &u)
     ));
-    output.push_str(&format!("none: {}\n", format_value(&Value::None, &u)));
+    output.push_str(&format!("none: {}\n", format_value(&Value::Void, &u)));
     output.push_str(&format!(
         "float: {}\n",
         format_value(&Value::Float(2.75), &u)

@@ -1862,7 +1862,11 @@ fn melee_attack_emits_creature_slain_on_kill() {
 
     let final_state = adapter.into_inner();
     let hp = read_group_field(&final_state, &target, "HitPoints", "hp").unwrap();
-    assert_eq!(hp, Value::Int(-2), "target HP should be -2 (unconscious, not dead)");
+    assert_eq!(
+        hp,
+        Value::Int(-2),
+        "target HP should be -2 (unconscious, not dead)"
+    );
 }
 
 // ── deal_damage derive ────────────────────────────────────────
@@ -2071,7 +2075,11 @@ fn take_damage_action_emits_creature_slain_on_kill() {
 
     let final_state = adapter.into_inner();
     let hp = read_group_field(&final_state, &target, "HitPoints", "hp").unwrap();
-    assert_eq!(hp, Value::Int(-2), "target HP should be -2 (unconscious, not dead)");
+    assert_eq!(
+        hp,
+        Value::Int(-2),
+        "target HP should be -2 (unconscious, not dead)"
+    );
 }
 
 // ── Backstab ──────────────────────────────────────────────────
@@ -2100,11 +2108,16 @@ fn thief_backstab_multiplier_table() {
     let mut handler = NullHandler;
 
     let cases = vec![
-        (1, 2), (4, 2),     // L1-4 → x2
-        (5, 3), (8, 3),     // L5-8 → x3
-        (9, 4), (12, 4),    // L9-12 → x4
-        (13, 5), (16, 5),   // L13-16 → x5
-        (17, 6), (20, 6),   // L17+ → x6
+        (1, 2),
+        (4, 2), // L1-4 → x2
+        (5, 3),
+        (8, 3), // L5-8 → x3
+        (9, 4),
+        (12, 4), // L9-12 → x4
+        (13, 5),
+        (16, 5), // L13-16 → x5
+        (17, 6),
+        (20, 6), // L17+ → x6
     ];
 
     for (level, expected_mult) in cases {
@@ -2133,10 +2146,14 @@ fn assassin_backstab_multiplier_table() {
     let mut handler = NullHandler;
 
     let cases = vec![
-        (1, 2), (4, 2),    // L1-4 → x2
-        (5, 3), (8, 3),    // L5-8 → x3
-        (9, 4), (12, 4),   // L9-12 → x4
-        (13, 5), (15, 5),  // L13+ → x5 (caps at x5)
+        (1, 2),
+        (4, 2), // L1-4 → x2
+        (5, 3),
+        (8, 3), // L5-8 → x3
+        (9, 4),
+        (12, 4), // L9-12 → x4
+        (13, 5),
+        (15, 5), // L13+ → x5 (caps at x5)
     ];
 
     for (level, expected_mult) in cases {
@@ -2209,13 +2226,34 @@ fn character_can_backstab_thief() {
     let mut state = GameState::new();
 
     let thief = make_character(
-        &mut state, "Thief", "Thief", 5, &standard_abilities_12(), 20, 12, "Human",
+        &mut state,
+        "Thief",
+        "Thief",
+        5,
+        &standard_abilities_12(),
+        20,
+        12,
+        "Human",
     );
     let fighter = make_character(
-        &mut state, "Fighter", "Fighter", 5, &standard_abilities_12(), 30, 17, "Human",
+        &mut state,
+        "Fighter",
+        "Fighter",
+        5,
+        &standard_abilities_12(),
+        30,
+        17,
+        "Human",
     );
     let assassin = make_character(
-        &mut state, "Assassin", "Assassin", 5, &standard_abilities_12(), 20, 12, "Human",
+        &mut state,
+        "Assassin",
+        "Assassin",
+        5,
+        &standard_abilities_12(),
+        20,
+        12,
+        "Human",
     );
 
     let mut handler = NullHandler;
@@ -2260,14 +2298,33 @@ fn resolve_melee_attack_with_damage_mult() {
 
     // STR 12 → +0 to hit, +0 damage (no STR modifiers at 12)
     let attacker = make_character(
-        &mut state, "Attacker", "Thief", 5, &standard_abilities_12(), 20, 10, "Human",
+        &mut state,
+        "Attacker",
+        "Thief",
+        5,
+        &standard_abilities_12(),
+        20,
+        10,
+        "Human",
     );
     let target = make_character(
-        &mut state, "Target", "Fighter", 1, &standard_abilities_12(), 20, 10, "Human",
+        &mut state,
+        "Target",
+        "Fighter",
+        1,
+        &standard_abilities_12(),
+        20,
+        10,
+        "Human",
     );
 
     // Equip attacker with a dagger
-    set_field(&mut state, &attacker, "wielded_main", wielded_melee_item("Dagger"));
+    set_field(
+        &mut state,
+        &attacker,
+        "wielded_main",
+        wielded_melee_item("Dagger"),
+    );
 
     // Script rolls: d20=18 (hit), damage d4=3
     let responses = vec![

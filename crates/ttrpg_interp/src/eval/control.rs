@@ -48,7 +48,7 @@ pub(super) fn eval_if(
             match else_branch {
                 Some(ElseBranch::Block(block)) => eval_block(env, block),
                 Some(ElseBranch::If(if_expr)) => eval_expr(env, if_expr),
-                None => Ok(Value::None),
+                None => Ok(Value::Void),
             }
         }
         _ => Err(RuntimeError::with_span(
@@ -94,7 +94,7 @@ pub(super) fn eval_if_let(
         match else_branch {
             Some(ElseBranch::Block(block)) => eval_block(env, block),
             Some(ElseBranch::If(if_expr)) => eval_expr(env, if_expr),
-            None => Ok(Value::None),
+            None => Ok(Value::Void),
         }
     }
 }
@@ -162,7 +162,7 @@ pub(super) fn eval_for(
         }
     }
 
-    Ok(Value::None)
+    Ok(Value::Void)
 }
 
 pub(super) fn eval_list_comprehension(
@@ -261,14 +261,14 @@ pub(super) fn eval_list_comprehension(
 // ── Block evaluation ───────────────────────────────────────────
 
 /// Execute a block of statements. Returns the value of the last
-/// expression-statement, or `Value::None` if the last statement
+/// expression-statement, or `Value::Void` if the last statement
 /// is a let/assign or the block is empty.
 pub(crate) fn eval_block(
     env: &mut Env,
     block: &ttrpg_ast::ast::Block,
 ) -> Result<Value, RuntimeError> {
     env.push_scope();
-    let mut result = Value::None;
+    let mut result = Value::Void;
     for stmt in &block.node {
         match eval_stmt(env, stmt) {
             Ok(val) => result = val,
@@ -295,12 +295,12 @@ pub(super) fn eval_stmt(
         StmtKind::Let { name, value, .. } => {
             let val = eval_expr(env, value)?;
             env.bind(name.clone(), val);
-            Ok(Value::None)
+            Ok(Value::Void)
         }
         StmtKind::Expr(expr) => eval_expr(env, expr),
         StmtKind::Assign { target, op, value } => {
             super::assign::eval_assign(env, target, *op, value, stmt.span)?;
-            Ok(Value::None)
+            Ok(Value::Void)
         }
         StmtKind::Grant {
             entity,
@@ -361,7 +361,7 @@ pub(super) fn eval_stmt(
                     stmt.span,
                 ));
             }
-            Ok(Value::None)
+            Ok(Value::Void)
         }
         StmtKind::Revoke { entity, group_name } => {
             let entity_val = eval_expr(env, entity)?;
@@ -386,7 +386,7 @@ pub(super) fn eval_stmt(
                     stmt.span,
                 ));
             }
-            Ok(Value::None)
+            Ok(Value::Void)
         }
         StmtKind::Emit {
             event_name,
@@ -394,7 +394,7 @@ pub(super) fn eval_stmt(
             span,
         } => {
             super::emit::eval_emit(env, event_name, args, *span)?;
-            Ok(Value::None)
+            Ok(Value::Void)
         }
         StmtKind::WithBudget {
             entity,

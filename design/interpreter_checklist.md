@@ -205,7 +205,7 @@ Companion to [`interpreter_impl_plan.md`](interpreter_impl_plan.md). Check items
 - [x] Integer overflow in `+=`/`-=` → RuntimeError
 - [x] Float `+=`/`-=` operations
 - [x] RollResult coerced to Int in `+=`
-- [x] Assignment returns `Value::None` as block value
+- [x] Assignment returns `Value::Void` as block value
 - [x] Local mutations emit no effects
 
 ---

@@ -1173,7 +1173,7 @@ fn builtin_apply_condition_emits_effect() {
         ],
     });
     let result = crate::eval::eval_expr(&mut env, &expr).unwrap();
-    assert_eq!(result, Value::None);
+    assert_eq!(result, Value::Void);
 
     // Now emits ConditionApplyGate first, then ApplyCondition
     assert_eq!(handler.log.len(), 2);
@@ -1240,7 +1240,7 @@ fn builtin_remove_condition_emits_effect() {
         ],
     });
     let result = crate::eval::eval_expr(&mut env, &expr).unwrap();
-    assert_eq!(result, Value::None);
+    assert_eq!(result, Value::Void);
 
     // Now emits ConditionRemovalGate first, then RemoveCondition
     assert_eq!(handler.log.len(), 2);
@@ -2315,7 +2315,7 @@ fn apply_condition_accepts_vetoed_response() {
         ],
     });
     let result = crate::eval::eval_expr(&mut env, &expr).unwrap();
-    assert_eq!(result, Value::None);
+    assert_eq!(result, Value::Void);
 }
 
 #[test]

@@ -364,7 +364,7 @@ fn prone_on_target_adds_4_to_attack_mod() {
         "Human",
     );
 
-    state.apply_condition(&target, "Prone", BTreeMap::new(), Value::None, None);
+    state.apply_condition(&target, "Prone", BTreeMap::new(), Value::Void, None);
 
     // ModifyApplied (Phase 1 attack_resolution + effective_target_ac) → 2 Acks, then rolls
     let atk_roll = scripted_roll(1, 20, 0, vec![15], vec![15], 15, 15);
@@ -426,7 +426,7 @@ fn stunned_on_target_adds_4_to_attack_mod() {
         "Human",
     );
 
-    state.apply_condition(&target, "Stunned", BTreeMap::new(), Value::None, None);
+    state.apply_condition(&target, "Stunned", BTreeMap::new(), Value::Void, None);
 
     let atk_roll = scripted_roll(1, 20, 0, vec![15], vec![15], 15, 15);
     let dmg_roll = scripted_roll(1, 8, 0, vec![6], vec![6], 6, 6);
@@ -476,7 +476,7 @@ fn staggered_on_target_adds_2_to_attack_mod() {
         "Human",
     );
 
-    state.apply_condition(&target, "Staggered", BTreeMap::new(), Value::None, None);
+    state.apply_condition(&target, "Staggered", BTreeMap::new(), Value::Void, None);
 
     let atk_roll = scripted_roll(1, 20, 0, vec![15], vec![15], 15, 15);
     let dmg_roll = scripted_roll(1, 8, 0, vec![6], vec![6], 6, 6);
@@ -521,7 +521,7 @@ fn invisible_on_target_subtracts_4_from_attack_mod() {
         "Human",
     );
 
-    state.apply_condition(&target, "Invisible", BTreeMap::new(), Value::None, None);
+    state.apply_condition(&target, "Invisible", BTreeMap::new(), Value::Void, None);
 
     // With attack_mod=-4, total_mod = 4+(-4) = 0
     // Roll 15 → 15+0 = 15 >= 14 → still Hit
@@ -568,7 +568,7 @@ fn invisible_on_target_causes_miss() {
         "Human",
     );
 
-    state.apply_condition(&target, "Invisible", BTreeMap::new(), Value::None, None);
+    state.apply_condition(&target, "Invisible", BTreeMap::new(), Value::Void, None);
 
     // BTHB=0, attack_mod=-4 → total_mod=-4
     // Roll 17 → 17+(-4) = 13 < 14 → Miss (without Invisible, 17+0=17 >= 14 → Hit)
@@ -622,7 +622,7 @@ fn paralyzed_on_target_adds_20_melee() {
         "Human",
     );
 
-    state.apply_condition(&target, "Paralyzed", BTreeMap::new(), Value::None, None);
+    state.apply_condition(&target, "Paralyzed", BTreeMap::new(), Value::Void, None);
 
     // auto_hit + max_damage: no dice rolls, 2 ModifyApplied acks (attack_resolution + effective_target_ac)
     let (fields, _) = resolve_melee(
@@ -671,7 +671,7 @@ fn sleeping_on_target_adds_20_melee() {
         "Human",
     );
 
-    state.apply_condition(&target, "Sleeping", BTreeMap::new(), Value::None, None);
+    state.apply_condition(&target, "Sleeping", BTreeMap::new(), Value::Void, None);
 
     // auto_hit + max_damage: no dice rolls, 2 ModifyApplied acks
     let (fields, _) = resolve_melee(
@@ -719,7 +719,7 @@ fn rear_attacked_on_target_adds_2_melee() {
         "Human",
     );
 
-    state.apply_condition(&target, "RearAttacked", BTreeMap::new(), Value::None, None);
+    state.apply_condition(&target, "RearAttacked", BTreeMap::new(), Value::Void, None);
 
     let atk_roll = scripted_roll(1, 20, 0, vec![15], vec![15], 15, 15);
     let dmg_roll = scripted_roll(1, 8, 0, vec![6], vec![6], 6, 6);
@@ -772,7 +772,7 @@ fn paralyzed_does_not_affect_missile_attack() {
         "Human",
     );
 
-    state.apply_condition(&target, "Paralyzed", BTreeMap::new(), Value::None, None);
+    state.apply_condition(&target, "Paralyzed", BTreeMap::new(), Value::Void, None);
 
     // auto_hit + max_damage: no dice rolls, 2 ModifyApplied acks
     let (fields, _) = resolve_missile(
@@ -824,7 +824,7 @@ fn surprised_on_attacker_forces_miss() {
         "Human",
     );
 
-    state.apply_condition(&attacker, "Surprised", BTreeMap::new(), Value::None, None);
+    state.apply_condition(&attacker, "Surprised", BTreeMap::new(), Value::Void, None);
 
     // The mechanic body will run (roll attack, possibly damage),
     // then Phase 2 override forces outcome=Miss, damage=0.
@@ -876,7 +876,7 @@ fn fleeing_on_attacker_forces_miss() {
         "Human",
     );
 
-    state.apply_condition(&attacker, "Fleeing", BTreeMap::new(), Value::None, None);
+    state.apply_condition(&attacker, "Fleeing", BTreeMap::new(), Value::Void, None);
 
     let atk_roll = scripted_roll(1, 20, 0, vec![18], vec![18], 18, 18);
     let dmg_roll = scripted_roll(1, 8, 0, vec![6], vec![6], 6, 6);
@@ -928,7 +928,7 @@ fn fleeing_on_target_adds_4_to_melee() {
         "Human",
     );
 
-    state.apply_condition(&target, "Fleeing", BTreeMap::new(), Value::None, None);
+    state.apply_condition(&target, "Fleeing", BTreeMap::new(), Value::Void, None);
 
     let atk_roll = scripted_roll(1, 20, 0, vec![15], vec![15], 15, 15);
     let dmg_roll = scripted_roll(1, 8, 0, vec![6], vec![6], 6, 6);
@@ -977,7 +977,7 @@ fn concealed_level_1_subtracts_1() {
 
     let mut params = BTreeMap::new();
     params.insert(Name::from("level"), Value::Int(1));
-    state.apply_condition(&target, "Concealed", params, Value::None, None);
+    state.apply_condition(&target, "Concealed", params, Value::Void, None);
 
     let atk_roll = scripted_roll(1, 20, 0, vec![15], vec![15], 15, 15);
     let dmg_roll = scripted_roll(1, 8, 0, vec![6], vec![6], 6, 6);
@@ -1024,7 +1024,7 @@ fn concealed_level_4_subtracts_4() {
 
     let mut params = BTreeMap::new();
     params.insert(Name::from("level"), Value::Int(4));
-    state.apply_condition(&target, "Concealed", params, Value::None, None);
+    state.apply_condition(&target, "Concealed", params, Value::Void, None);
 
     let atk_roll = scripted_roll(1, 20, 0, vec![15], vec![15], 15, 15);
     let dmg_roll = scripted_roll(1, 8, 0, vec![6], vec![6], 6, 6);
@@ -1071,7 +1071,7 @@ fn cover_penalty_2_subtracts_2() {
 
     let mut params = BTreeMap::new();
     params.insert(Name::from("penalty"), Value::Int(2));
-    state.apply_condition(&target, "Cover", params, Value::None, None);
+    state.apply_condition(&target, "Cover", params, Value::Void, None);
 
     let atk_roll = scripted_roll(1, 20, 0, vec![15], vec![15], 15, 15);
     let dmg_roll = scripted_roll(1, 8, 0, vec![6], vec![6], 6, 6);
@@ -1118,7 +1118,7 @@ fn cover_penalty_10_subtracts_10() {
 
     let mut params = BTreeMap::new();
     params.insert(Name::from("penalty"), Value::Int(10));
-    state.apply_condition(&target, "Cover", params, Value::None, None);
+    state.apply_condition(&target, "Cover", params, Value::Void, None);
 
     // BTHB=4, attack_mod=-10 → total_mod=-6
     // Roll 19 → 19+(-6) = 13 < 14 → Miss
@@ -1172,7 +1172,7 @@ fn prone_on_target_applies_to_missile_attack() {
         "Human",
     );
 
-    state.apply_condition(&target, "Prone", BTreeMap::new(), Value::None, None);
+    state.apply_condition(&target, "Prone", BTreeMap::new(), Value::Void, None);
 
     // BTHB=2, attack_mod=+4 (Prone) → total_mod=6
     let atk_roll = scripted_roll(1, 20, 0, vec![15], vec![15], 15, 15);
@@ -1223,7 +1223,7 @@ fn prone_on_target_applies_to_monster_attack() {
         "Human",
     );
 
-    state.apply_condition(&target, "Prone", BTreeMap::new(), Value::None, None);
+    state.apply_condition(&target, "Prone", BTreeMap::new(), Value::Void, None);
 
     // monster_bthb(4)=5, attack_mod=+4 (Prone) → total_mod=9
     let atk_roll = scripted_roll(1, 20, 0, vec![12], vec![12], 12, 12);
@@ -1273,7 +1273,7 @@ fn rear_attacked_does_not_affect_monster_attack() {
         "Human",
     );
 
-    state.apply_condition(&target, "RearAttacked", BTreeMap::new(), Value::None, None);
+    state.apply_condition(&target, "RearAttacked", BTreeMap::new(), Value::Void, None);
 
     // monster_bthb(4)=5, attack_mod=+2 → total_mod = 7
     let atk_roll = scripted_roll(1, 20, 0, vec![12], vec![12], 12, 12);
@@ -1327,8 +1327,8 @@ fn prone_and_staggered_stack_on_target() {
         "Human",
     );
 
-    state.apply_condition(&target, "Prone", BTreeMap::new(), Value::None, None);
-    state.apply_condition(&target, "Staggered", BTreeMap::new(), Value::None, None);
+    state.apply_condition(&target, "Prone", BTreeMap::new(), Value::Void, None);
+    state.apply_condition(&target, "Staggered", BTreeMap::new(), Value::Void, None);
 
     let atk_roll = scripted_roll(1, 20, 0, vec![15], vec![15], 15, 15);
     let dmg_roll = scripted_roll(1, 8, 0, vec![6], vec![6], 6, 6);
@@ -1380,8 +1380,8 @@ fn prone_and_invisible_cancel_out() {
         "Human",
     );
 
-    state.apply_condition(&target, "Prone", BTreeMap::new(), Value::None, None);
-    state.apply_condition(&target, "Invisible", BTreeMap::new(), Value::None, None);
+    state.apply_condition(&target, "Prone", BTreeMap::new(), Value::Void, None);
+    state.apply_condition(&target, "Invisible", BTreeMap::new(), Value::Void, None);
 
     let atk_roll = scripted_roll(1, 20, 0, vec![15], vec![15], 15, 15);
     let dmg_roll = scripted_roll(1, 8, 0, vec![6], vec![6], 6, 6);
@@ -1435,11 +1435,11 @@ fn cover_and_concealed_stack() {
 
     let mut cover_params = BTreeMap::new();
     cover_params.insert(Name::from("penalty"), Value::Int(7));
-    state.apply_condition(&target, "Cover", cover_params, Value::None, None);
+    state.apply_condition(&target, "Cover", cover_params, Value::Void, None);
 
     let mut conceal_params = BTreeMap::new();
     conceal_params.insert(Name::from("level"), Value::Int(2));
-    state.apply_condition(&target, "Concealed", conceal_params, Value::None, None);
+    state.apply_condition(&target, "Concealed", conceal_params, Value::Void, None);
 
     // BTHB=4, Cover(-7) + Concealed(-2) = attack_mod=-9 → total_mod=-5
     // Roll 19 → 19+(-5) = 14 >= 14 → Hit
@@ -1494,7 +1494,7 @@ fn removing_condition_removes_modifier() {
     );
 
     // Apply and verify
-    state.apply_condition(&target, "Prone", BTreeMap::new(), Value::None, None);
+    state.apply_condition(&target, "Prone", BTreeMap::new(), Value::Void, None);
     let conds = state.read_conditions(&target).unwrap();
     assert_eq!(conds.len(), 1);
     assert_eq!(&*conds[0].name, "Prone");
@@ -1548,8 +1548,8 @@ fn removing_one_stacked_condition_leaves_other() {
         "Human",
     );
 
-    state.apply_condition(&target, "Prone", BTreeMap::new(), Value::None, None);
-    state.apply_condition(&target, "Staggered", BTreeMap::new(), Value::None, None);
+    state.apply_condition(&target, "Prone", BTreeMap::new(), Value::Void, None);
+    state.apply_condition(&target, "Staggered", BTreeMap::new(), Value::Void, None);
 
     // Remove Prone, keep Staggered
     state.remove_condition(&target, "Prone", None);
@@ -1603,7 +1603,7 @@ fn remove_parameterised_condition_by_params() {
 
     let mut params = BTreeMap::new();
     params.insert(Name::from("level"), Value::Int(3));
-    state.apply_condition(&target, "Concealed", params.clone(), Value::None, None);
+    state.apply_condition(&target, "Concealed", params.clone(), Value::Void, None);
 
     // Remove with matching params
     state.remove_condition(&target, "Concealed", Some(&params));
@@ -1654,7 +1654,7 @@ fn surprised_on_monster_forces_miss() {
         "Human",
     );
 
-    state.apply_condition(&monster, "Surprised", BTreeMap::new(), Value::None, None);
+    state.apply_condition(&monster, "Surprised", BTreeMap::new(), Value::Void, None);
 
     // Monster is surprised: its attacks should be forced to Miss
     let atk_roll = scripted_roll(1, 20, 0, vec![18], vec![18], 18, 18);
@@ -1706,7 +1706,7 @@ fn concealed_on_target_applies_to_monster_attack() {
 
     let mut params = BTreeMap::new();
     params.insert(Name::from("level"), Value::Int(3));
-    state.apply_condition(&target, "Concealed", params, Value::None, None);
+    state.apply_condition(&target, "Concealed", params, Value::Void, None);
 
     // monster_bthb(1d8-1)=0 (1-1 HD tier), attack_mod=-3 (Concealed level 3) → total_mod=-3
     let atk_roll = scripted_roll(1, 20, 0, vec![15], vec![15], 15, 15);
@@ -1759,7 +1759,7 @@ fn cover_all_standard_levels() {
 
         let mut params = BTreeMap::new();
         params.insert(Name::from("penalty"), Value::Int(penalty));
-        state.apply_condition(&target, "Cover", params, Value::None, None);
+        state.apply_condition(&target, "Cover", params, Value::Void, None);
 
         let atk_roll = scripted_roll(1, 20, 0, vec![19], vec![19], 19, 19);
         let dmg_roll = scripted_roll(1, 8, 0, vec![6], vec![6], 6, 6);
@@ -1815,7 +1815,7 @@ fn concealed_all_levels() {
 
         let mut params = BTreeMap::new();
         params.insert(Name::from("level"), Value::Int(level));
-        state.apply_condition(&target, "Concealed", params, Value::None, None);
+        state.apply_condition(&target, "Concealed", params, Value::Void, None);
 
         let atk_roll = scripted_roll(1, 20, 0, vec![15], vec![15], 15, 15);
         let dmg_roll = scripted_roll(1, 8, 0, vec![6], vec![6], 6, 6);
@@ -1868,7 +1868,7 @@ fn surprised_on_attacker_forces_miss_on_missile() {
         "Human",
     );
 
-    state.apply_condition(&attacker, "Surprised", BTreeMap::new(), Value::None, None);
+    state.apply_condition(&attacker, "Surprised", BTreeMap::new(), Value::Void, None);
 
     let atk_roll = scripted_roll(1, 20, 0, vec![18], vec![18], 18, 18);
     let dmg_roll = scripted_roll(1, 6, 0, vec![5], vec![5], 5, 5);
@@ -1924,9 +1924,9 @@ fn condition_count_after_apply_and_remove() {
     let entity = state.add_entity("Character", char_fields);
 
     // Apply three conditions
-    state.apply_condition(&entity, "Prone", BTreeMap::new(), Value::None, None);
-    state.apply_condition(&entity, "Stunned", BTreeMap::new(), Value::None, None);
-    state.apply_condition(&entity, "Staggered", BTreeMap::new(), Value::None, None);
+    state.apply_condition(&entity, "Prone", BTreeMap::new(), Value::Void, None);
+    state.apply_condition(&entity, "Stunned", BTreeMap::new(), Value::Void, None);
+    state.apply_condition(&entity, "Staggered", BTreeMap::new(), Value::Void, None);
     assert_eq!(state.read_conditions(&entity).unwrap().len(), 3);
 
     // Remove one
@@ -1972,7 +1972,7 @@ fn prone_negates_dex_ac_bonus() {
         "Human",
     );
 
-    state.apply_condition(&target, "Prone", BTreeMap::new(), Value::None, None);
+    state.apply_condition(&target, "Prone", BTreeMap::new(), Value::Void, None);
 
     let atk_roll = scripted_roll(1, 20, 0, vec![15], vec![15], 15, 15);
     let dmg_roll = scripted_roll(1, 8, 0, vec![6], vec![6], 6, 6);
@@ -2025,7 +2025,7 @@ fn stunned_negates_dex_ac_bonus() {
         "Human",
     );
 
-    state.apply_condition(&target, "Stunned", BTreeMap::new(), Value::None, None);
+    state.apply_condition(&target, "Stunned", BTreeMap::new(), Value::Void, None);
 
     let atk_roll = scripted_roll(1, 20, 0, vec![15], vec![15], 15, 15);
     let dmg_roll = scripted_roll(1, 8, 0, vec![6], vec![6], 6, 6);
@@ -2077,7 +2077,7 @@ fn rear_attacked_negates_dex_ac_on_missile() {
         "Human",
     );
 
-    state.apply_condition(&target, "RearAttacked", BTreeMap::new(), Value::None, None);
+    state.apply_condition(&target, "RearAttacked", BTreeMap::new(), Value::Void, None);
 
     let atk_roll = scripted_roll(1, 20, 0, vec![15], vec![15], 15, 15);
     let dmg_roll = scripted_roll(1, 6, 0, vec![4], vec![4], 4, 4);
@@ -2135,7 +2135,7 @@ fn prone_negates_shield_ac_bonus() {
         "Human",
     );
 
-    state.apply_condition(&target, "Prone", BTreeMap::new(), Value::None, None);
+    state.apply_condition(&target, "Prone", BTreeMap::new(), Value::Void, None);
 
     let atk_roll = scripted_roll(1, 20, 0, vec![15], vec![15], 15, 15);
     let dmg_roll = scripted_roll(1, 8, 0, vec![6], vec![6], 6, 6);
@@ -2190,7 +2190,7 @@ fn rear_attacked_negates_dex_and_shield_combined() {
         "Human",
     );
 
-    state.apply_condition(&target, "RearAttacked", BTreeMap::new(), Value::None, None);
+    state.apply_condition(&target, "RearAttacked", BTreeMap::new(), Value::Void, None);
 
     let atk_roll = scripted_roll(1, 20, 0, vec![15], vec![15], 15, 15);
     let dmg_roll = scripted_roll(1, 8, 0, vec![6], vec![6], 6, 6);
@@ -2243,7 +2243,7 @@ fn stunned_on_attacker_forces_miss() {
         "Human",
     );
 
-    state.apply_condition(&attacker, "Stunned", BTreeMap::new(), Value::None, None);
+    state.apply_condition(&attacker, "Stunned", BTreeMap::new(), Value::Void, None);
 
     // Mechanic body runs normally, then Phase 2 forces Miss + damage=0.
     // No ModifyApplied before body for attacker-side Phase 2 overrides.
@@ -2296,7 +2296,7 @@ fn paralyzed_on_attacker_forces_miss() {
         "Human",
     );
 
-    state.apply_condition(&attacker, "Paralyzed", BTreeMap::new(), Value::None, None);
+    state.apply_condition(&attacker, "Paralyzed", BTreeMap::new(), Value::Void, None);
 
     // auto_hit is NOT triggered (attacker is paralyzed, not target)
     // Mechanic body runs normally, then Phase 2 override forces Miss
@@ -2347,7 +2347,7 @@ fn sleeping_on_attacker_forces_miss() {
         "Human",
     );
 
-    state.apply_condition(&attacker, "Sleeping", BTreeMap::new(), Value::None, None);
+    state.apply_condition(&attacker, "Sleeping", BTreeMap::new(), Value::Void, None);
 
     let atk_roll = scripted_roll(1, 20, 0, vec![18], vec![18], 18, 18);
     let dmg_roll = scripted_roll(1, 8, 0, vec![6], vec![6], 6, 6);
@@ -2399,7 +2399,7 @@ fn paralyzed_auto_hit_max_damage_battleaxe() {
         "Human",
     );
 
-    state.apply_condition(&target, "Paralyzed", BTreeMap::new(), Value::None, None);
+    state.apply_condition(&target, "Paralyzed", BTreeMap::new(), Value::Void, None);
 
     // No dice rolls needed (auto_hit + max_damage), 2 ModifyApplied acks
     let (fields, _) = resolve_melee(
@@ -2445,7 +2445,7 @@ fn paralyzed_auto_hit_max_damage_monster_attack() {
         "Human",
     );
 
-    state.apply_condition(&target, "Paralyzed", BTreeMap::new(), Value::None, None);
+    state.apply_condition(&target, "Paralyzed", BTreeMap::new(), Value::Void, None);
 
     // No dice rolls needed (auto_hit + max_damage), 2 ModifyApplied acks
     let (fields, _) = resolve_monster(
@@ -2495,7 +2495,7 @@ fn paralyzed_negates_dex_and_shield_on_auto_hit() {
         "Human",
     );
 
-    state.apply_condition(&target, "Paralyzed", BTreeMap::new(), Value::None, None);
+    state.apply_condition(&target, "Paralyzed", BTreeMap::new(), Value::Void, None);
 
     let (fields, _) = resolve_melee(
         &interp,

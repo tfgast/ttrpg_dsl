@@ -277,7 +277,7 @@ Changes to `deduct_costs`:
 
 Changes to `execute_pipeline`:
 - No longer passes explicit actor to `deduct_costs`.
-- Checks `CostOutcome` return: on `ActionFailed`, returns `Ok(Value::None)`
+- Checks `CostOutcome` return: on `ActionFailed`, returns `Ok(Value::Void)`
   (matching the existing pattern for `RequiresCheck` failure).
 
 ### Turn Readability
@@ -411,13 +411,13 @@ enum CostOutcome {
 if let Some(ref eff) = effective_cost {
     match deduct_costs(env, eff, call_span)? {
         CostOutcome::Proceed => {},
-        CostOutcome::ActionFailed => return Ok(Value::None),
+        CostOutcome::ActionFailed => return Ok(Value::Void),
     }
 }
 ```
 
 This matches the existing pattern where `RequiresCheck` failure returns
-`Ok(Value::None)` to signal the action ended without executing.
+`Ok(Value::Void)` to signal the action ended without executing.
 
 **Pre-check phase:** To prevent partial deductions (where some cost tokens are
 deducted before a later token fails the budget check), enforcement runs as a
@@ -989,7 +989,7 @@ In `deduct_costs()`:
 5. Pass payer (not receiver) as `DeductCost.actor`.
 
 In `execute_pipeline()`:
-- Check `CostOutcome`: on `ActionFailed`, return `Ok(Value::None)` (matching
+- Check `CostOutcome`: on `ActionFailed`, return `Ok(Value::Void)` (matching
   existing `RequiresCheck` failure pattern).
 
 ### 14. `crates/ttrpg_interp/src/state.rs` — `WritableState` trait
@@ -1070,7 +1070,7 @@ Log `ProvisionBudget` and `ClearBudget` effects.
 - Unexpected host response to `ProvisionBudget` → env fields unchanged (no corruption)
 - Unexpected host response to `ClearBudget` during cleanup → warning, not error
 - Error precedence: body error + cleanup error → body error wins
-- `CostOutcome::ActionFailed` returns `Value::None` (action not executed)
+- `CostOutcome::ActionFailed` returns `Value::Void` (action not executed)
 - `deduct_budget_field` is no-op when no budget provisioned (regression test)
 - `deduct_budget_field` is no-op when field absent from budget (regression test —
   absent field must not be materialized)

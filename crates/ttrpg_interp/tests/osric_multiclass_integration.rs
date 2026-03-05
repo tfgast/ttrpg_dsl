@@ -63,7 +63,14 @@ fn multiclass_human_always_invalid() {
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let state = GameState::new();
 
-    check_valid_multiclass(&interp, &state, "Human", &["Fighter", "Thief"], false, "human fighter/thief");
+    check_valid_multiclass(
+        &interp,
+        &state,
+        "Human",
+        &["Fighter", "Thief"],
+        false,
+        "human fighter/thief",
+    );
 }
 
 #[test]
@@ -72,7 +79,14 @@ fn multiclass_single_class_invalid() {
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let state = GameState::new();
 
-    check_valid_multiclass(&interp, &state, "Elf", &["Fighter"], false, "elf single class");
+    check_valid_multiclass(
+        &interp,
+        &state,
+        "Elf",
+        &["Fighter"],
+        false,
+        "elf single class",
+    );
 }
 
 #[test]
@@ -81,7 +95,14 @@ fn multiclass_dwarf_fighter_thief() {
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let state = GameState::new();
 
-    check_valid_multiclass(&interp, &state, "Dwarf", &["Fighter", "Thief"], true, "dwarf fighter/thief");
+    check_valid_multiclass(
+        &interp,
+        &state,
+        "Dwarf",
+        &["Fighter", "Thief"],
+        true,
+        "dwarf fighter/thief",
+    );
 }
 
 #[test]
@@ -90,7 +111,14 @@ fn multiclass_dwarf_fighter_cleric_invalid() {
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let state = GameState::new();
 
-    check_valid_multiclass(&interp, &state, "Dwarf", &["Fighter", "Cleric"], false, "dwarf fighter/cleric");
+    check_valid_multiclass(
+        &interp,
+        &state,
+        "Dwarf",
+        &["Fighter", "Cleric"],
+        false,
+        "dwarf fighter/cleric",
+    );
 }
 
 #[test]
@@ -99,10 +127,38 @@ fn multiclass_elf_valid_combos() {
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let state = GameState::new();
 
-    check_valid_multiclass(&interp, &state, "Elf", &["Fighter", "MagicUser"], true, "elf fighter/mu");
-    check_valid_multiclass(&interp, &state, "Elf", &["Fighter", "Thief"], true, "elf fighter/thief");
-    check_valid_multiclass(&interp, &state, "Elf", &["MagicUser", "Thief"], true, "elf mu/thief");
-    check_valid_multiclass(&interp, &state, "Elf", &["Fighter", "MagicUser", "Thief"], true, "elf f/mu/t");
+    check_valid_multiclass(
+        &interp,
+        &state,
+        "Elf",
+        &["Fighter", "MagicUser"],
+        true,
+        "elf fighter/mu",
+    );
+    check_valid_multiclass(
+        &interp,
+        &state,
+        "Elf",
+        &["Fighter", "Thief"],
+        true,
+        "elf fighter/thief",
+    );
+    check_valid_multiclass(
+        &interp,
+        &state,
+        "Elf",
+        &["MagicUser", "Thief"],
+        true,
+        "elf mu/thief",
+    );
+    check_valid_multiclass(
+        &interp,
+        &state,
+        "Elf",
+        &["Fighter", "MagicUser", "Thief"],
+        true,
+        "elf f/mu/t",
+    );
 }
 
 #[test]
@@ -111,8 +167,22 @@ fn multiclass_elf_invalid_combo() {
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let state = GameState::new();
 
-    check_valid_multiclass(&interp, &state, "Elf", &["Fighter", "Cleric"], false, "elf fighter/cleric");
-    check_valid_multiclass(&interp, &state, "Elf", &["Thief", "Cleric"], false, "elf thief/cleric");
+    check_valid_multiclass(
+        &interp,
+        &state,
+        "Elf",
+        &["Fighter", "Cleric"],
+        false,
+        "elf fighter/cleric",
+    );
+    check_valid_multiclass(
+        &interp,
+        &state,
+        "Elf",
+        &["Thief", "Cleric"],
+        false,
+        "elf thief/cleric",
+    );
 }
 
 #[test]
@@ -121,9 +191,30 @@ fn multiclass_gnome_valid_combos() {
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let state = GameState::new();
 
-    check_valid_multiclass(&interp, &state, "Gnome", &["Fighter", "Illusionist"], true, "gnome f/i");
-    check_valid_multiclass(&interp, &state, "Gnome", &["Fighter", "Thief"], true, "gnome f/t");
-    check_valid_multiclass(&interp, &state, "Gnome", &["Illusionist", "Thief"], true, "gnome i/t");
+    check_valid_multiclass(
+        &interp,
+        &state,
+        "Gnome",
+        &["Fighter", "Illusionist"],
+        true,
+        "gnome f/i",
+    );
+    check_valid_multiclass(
+        &interp,
+        &state,
+        "Gnome",
+        &["Fighter", "Thief"],
+        true,
+        "gnome f/t",
+    );
+    check_valid_multiclass(
+        &interp,
+        &state,
+        "Gnome",
+        &["Illusionist", "Thief"],
+        true,
+        "gnome i/t",
+    );
 }
 
 #[test]
@@ -132,13 +223,62 @@ fn multiclass_half_elf_valid_combos() {
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let state = GameState::new();
 
-    check_valid_multiclass(&interp, &state, "HalfElf", &["Cleric", "Fighter"], true, "he c/f");
-    check_valid_multiclass(&interp, &state, "HalfElf", &["Cleric", "Ranger"], true, "he c/r");
-    check_valid_multiclass(&interp, &state, "HalfElf", &["Cleric", "MagicUser"], true, "he c/mu");
-    check_valid_multiclass(&interp, &state, "HalfElf", &["Fighter", "MagicUser"], true, "he f/mu");
-    check_valid_multiclass(&interp, &state, "HalfElf", &["Fighter", "Thief"], true, "he f/t");
-    check_valid_multiclass(&interp, &state, "HalfElf", &["Cleric", "Fighter", "MagicUser"], true, "he c/f/mu");
-    check_valid_multiclass(&interp, &state, "HalfElf", &["Fighter", "MagicUser", "Thief"], true, "he f/mu/t");
+    check_valid_multiclass(
+        &interp,
+        &state,
+        "HalfElf",
+        &["Cleric", "Fighter"],
+        true,
+        "he c/f",
+    );
+    check_valid_multiclass(
+        &interp,
+        &state,
+        "HalfElf",
+        &["Cleric", "Ranger"],
+        true,
+        "he c/r",
+    );
+    check_valid_multiclass(
+        &interp,
+        &state,
+        "HalfElf",
+        &["Cleric", "MagicUser"],
+        true,
+        "he c/mu",
+    );
+    check_valid_multiclass(
+        &interp,
+        &state,
+        "HalfElf",
+        &["Fighter", "MagicUser"],
+        true,
+        "he f/mu",
+    );
+    check_valid_multiclass(
+        &interp,
+        &state,
+        "HalfElf",
+        &["Fighter", "Thief"],
+        true,
+        "he f/t",
+    );
+    check_valid_multiclass(
+        &interp,
+        &state,
+        "HalfElf",
+        &["Cleric", "Fighter", "MagicUser"],
+        true,
+        "he c/f/mu",
+    );
+    check_valid_multiclass(
+        &interp,
+        &state,
+        "HalfElf",
+        &["Fighter", "MagicUser", "Thief"],
+        true,
+        "he f/mu/t",
+    );
 }
 
 #[test]
@@ -147,11 +287,46 @@ fn multiclass_half_orc_valid_combos() {
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let state = GameState::new();
 
-    check_valid_multiclass(&interp, &state, "HalfOrc", &["Cleric", "Fighter"], true, "ho c/f");
-    check_valid_multiclass(&interp, &state, "HalfOrc", &["Cleric", "Thief"], true, "ho c/t");
-    check_valid_multiclass(&interp, &state, "HalfOrc", &["Assassin", "Cleric"], true, "ho a/c");
-    check_valid_multiclass(&interp, &state, "HalfOrc", &["Fighter", "Thief"], true, "ho f/t");
-    check_valid_multiclass(&interp, &state, "HalfOrc", &["Assassin", "Fighter"], true, "ho a/f");
+    check_valid_multiclass(
+        &interp,
+        &state,
+        "HalfOrc",
+        &["Cleric", "Fighter"],
+        true,
+        "ho c/f",
+    );
+    check_valid_multiclass(
+        &interp,
+        &state,
+        "HalfOrc",
+        &["Cleric", "Thief"],
+        true,
+        "ho c/t",
+    );
+    check_valid_multiclass(
+        &interp,
+        &state,
+        "HalfOrc",
+        &["Assassin", "Cleric"],
+        true,
+        "ho a/c",
+    );
+    check_valid_multiclass(
+        &interp,
+        &state,
+        "HalfOrc",
+        &["Fighter", "Thief"],
+        true,
+        "ho f/t",
+    );
+    check_valid_multiclass(
+        &interp,
+        &state,
+        "HalfOrc",
+        &["Assassin", "Fighter"],
+        true,
+        "ho a/f",
+    );
 }
 
 #[test]
@@ -160,8 +335,22 @@ fn multiclass_halfling_valid_combo() {
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let state = GameState::new();
 
-    check_valid_multiclass(&interp, &state, "Halfling", &["Fighter", "Thief"], true, "halfling f/t");
-    check_valid_multiclass(&interp, &state, "Halfling", &["Fighter", "Cleric"], false, "halfling f/c");
+    check_valid_multiclass(
+        &interp,
+        &state,
+        "Halfling",
+        &["Fighter", "Thief"],
+        true,
+        "halfling f/t",
+    );
+    check_valid_multiclass(
+        &interp,
+        &state,
+        "Halfling",
+        &["Fighter", "Cleric"],
+        false,
+        "halfling f/c",
+    );
 }
 
 #[test]
@@ -171,8 +360,22 @@ fn multiclass_reversed_order_still_valid() {
     let state = GameState::new();
 
     // Classes listed in reverse order should still validate (sort_classes normalizes)
-    check_valid_multiclass(&interp, &state, "Elf", &["Thief", "Fighter"], true, "elf thief/fighter reversed");
-    check_valid_multiclass(&interp, &state, "Elf", &["Thief", "MagicUser", "Fighter"], true, "elf t/mu/f reversed");
+    check_valid_multiclass(
+        &interp,
+        &state,
+        "Elf",
+        &["Thief", "Fighter"],
+        true,
+        "elf thief/fighter reversed",
+    );
+    check_valid_multiclass(
+        &interp,
+        &state,
+        "Elf",
+        &["Thief", "MagicUser", "Fighter"],
+        true,
+        "elf t/mu/f reversed",
+    );
 }
 
 // ── split_xp ───────────────────────────────────────────────────
@@ -186,7 +389,12 @@ fn split_xp_two_classes() {
 
     // 125 XP / 2 classes = 62 (drop fraction)
     let val = interp
-        .evaluate_derive(&state, &mut handler, "split_xp", vec![Value::Int(125), Value::Int(2)])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "split_xp",
+            vec![Value::Int(125), Value::Int(2)],
+        )
         .unwrap();
     assert_eq!(expect_int(val, "125/2"), 62);
 }
@@ -200,7 +408,12 @@ fn split_xp_three_classes() {
 
     // 100 XP / 3 classes = 33 (drop fraction)
     let val = interp
-        .evaluate_derive(&state, &mut handler, "split_xp", vec![Value::Int(100), Value::Int(3)])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "split_xp",
+            vec![Value::Int(100), Value::Int(3)],
+        )
         .unwrap();
     assert_eq!(expect_int(val, "100/3"), 33);
 }
@@ -214,7 +427,12 @@ fn split_xp_even_division() {
 
     // 300 XP / 3 classes = 100 (no fraction)
     let val = interp
-        .evaluate_derive(&state, &mut handler, "split_xp", vec![Value::Int(300), Value::Int(3)])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "split_xp",
+            vec![Value::Int(300), Value::Int(3)],
+        )
         .unwrap();
     assert_eq!(expect_int(val, "300/3"), 100);
 }
@@ -320,12 +538,8 @@ fn effective_armour_permission_fighter_thief() {
 
     // Fighter = any_armour (rank 4), Thief = leather_only (rank 1)
     // Most restrictive = leather_only
-    let char_ref = make_multiclass_character(
-        &mut state,
-        "Erix",
-        &[("Fighter", 3), ("Thief", 3)],
-        "Dwarf",
-    );
+    let char_ref =
+        make_multiclass_character(&mut state, "Erix", &[("Fighter", 3), ("Thief", 3)], "Dwarf");
     let val = interp
         .evaluate_derive(
             &state,
@@ -409,12 +623,8 @@ fn num_classes_single_and_multi() {
         .unwrap();
     assert_eq!(expect_int(val, "single class"), 1);
 
-    let multi_ref = make_multiclass_character(
-        &mut state,
-        "Duo",
-        &[("Fighter", 3), ("Thief", 3)],
-        "Elf",
-    );
+    let multi_ref =
+        make_multiclass_character(&mut state, "Duo", &[("Fighter", 3), ("Thief", 3)], "Elf");
     let val = interp
         .evaluate_derive(
             &state,

@@ -268,17 +268,14 @@ fn eval_skill_base_for_class(class: &str, skill: &str, level: i64) -> i64 {
             &state,
             &mut handler,
             "skill_base_for_class",
-            vec![
-                class_variant(class),
-                thief_skill(skill),
-                Value::Int(level),
-            ],
+            vec![class_variant(class), thief_skill(skill), Value::Int(level)],
         )
-        .unwrap_or_else(|e| {
-            panic!("skill_base_for_class({class}, {skill}, {level}) failed: {e}")
-        });
+        .unwrap_or_else(|e| panic!("skill_base_for_class({class}, {skill}, {level}) failed: {e}"));
 
-    expect_int(val, &format!("skill_base_for_class({class}, {skill}, {level})"))
+    expect_int(
+        val,
+        &format!("skill_base_for_class({class}, {skill}, {level})"),
+    )
 }
 
 #[test]
@@ -497,10 +494,7 @@ fn effective_thief_open_locks_dwarf_dex9_level1() {
 #[test]
 fn effective_assassin_find_traps_elf_dex18_level5() {
     // Assassin base find_traps L5 = 30, DEX 18 adj +10, Elf adj +5 = 45
-    assert_eq!(
-        eval_effective("Assassin", "find_traps", 5, 18, "Elf"),
-        45
-    );
+    assert_eq!(eval_effective("Assassin", "find_traps", 5, 18, "Elf"), 45);
 }
 
 #[test]
@@ -531,7 +525,15 @@ fn call_thief_skill_check(target_pct: i64, d100_roll: i64) -> bool {
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let state = GameState::new();
 
-    let responses = vec![scripted_roll(1, 100, 0, vec![d100_roll], vec![d100_roll], d100_roll, d100_roll)];
+    let responses = vec![scripted_roll(
+        1,
+        100,
+        0,
+        vec![d100_roll],
+        vec![d100_roll],
+        d100_roll,
+        d100_roll,
+    )];
     let mut handler = ScriptedHandler::with_responses(responses);
 
     let val = interp

@@ -44,7 +44,12 @@ fn prime_requisites_fighter_is_str() {
     let mut handler = NullHandler;
 
     let val = interp
-        .evaluate_derive(&state, &mut handler, "prime_requisites", vec![class_variant("Fighter")])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "prime_requisites",
+            vec![class_variant("Fighter")],
+        )
         .unwrap();
     assert_eq!(val, Value::List(vec![ability("STR")]));
 }
@@ -57,7 +62,12 @@ fn prime_requisites_ranger_is_str_int_wis() {
     let mut handler = NullHandler;
 
     let val = interp
-        .evaluate_derive(&state, &mut handler, "prime_requisites", vec![class_variant("Ranger")])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "prime_requisites",
+            vec![class_variant("Ranger")],
+        )
         .unwrap();
     assert_eq!(
         val,
@@ -73,7 +83,12 @@ fn prime_requisites_assassin_is_empty() {
     let mut handler = NullHandler;
 
     let val = interp
-        .evaluate_derive(&state, &mut handler, "prime_requisites", vec![class_variant("Assassin")])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "prime_requisites",
+            vec![class_variant("Assassin")],
+        )
         .unwrap();
     assert_eq!(val, Value::List(vec![]));
 }
@@ -97,10 +112,20 @@ fn meets_from_reqs_fighter_str_15_passes() {
     let mut handler = NullHandler;
 
     let abs = abilities_map(&[
-        ("STR", 15), ("DEX", 10), ("CON", 10), ("INT", 10), ("WIS", 10), ("CHA", 10),
+        ("STR", 15),
+        ("DEX", 10),
+        ("CON", 10),
+        ("INT", 10),
+        ("WIS", 10),
+        ("CHA", 10),
     ]);
     let val = interp
-        .evaluate_derive(&state, &mut handler, "meets_dual_class_from_reqs", vec![class_variant("Fighter"), abs])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "meets_dual_class_from_reqs",
+            vec![class_variant("Fighter"), abs],
+        )
         .unwrap();
     assert_eq!(expect_bool(val, "fighter from 15"), true);
 }
@@ -113,10 +138,20 @@ fn meets_from_reqs_fighter_str_14_fails() {
     let mut handler = NullHandler;
 
     let abs = abilities_map(&[
-        ("STR", 14), ("DEX", 10), ("CON", 10), ("INT", 10), ("WIS", 10), ("CHA", 10),
+        ("STR", 14),
+        ("DEX", 10),
+        ("CON", 10),
+        ("INT", 10),
+        ("WIS", 10),
+        ("CHA", 10),
     ]);
     let val = interp
-        .evaluate_derive(&state, &mut handler, "meets_dual_class_from_reqs", vec![class_variant("Fighter"), abs])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "meets_dual_class_from_reqs",
+            vec![class_variant("Fighter"), abs],
+        )
         .unwrap();
     assert_eq!(expect_bool(val, "fighter from 14"), false);
 }
@@ -130,10 +165,20 @@ fn meets_from_reqs_assassin_always_passes() {
 
     // Assassin has no prime requisites — vacuously true
     let abs = abilities_map(&[
-        ("STR", 3), ("DEX", 3), ("CON", 3), ("INT", 3), ("WIS", 3), ("CHA", 3),
+        ("STR", 3),
+        ("DEX", 3),
+        ("CON", 3),
+        ("INT", 3),
+        ("WIS", 3),
+        ("CHA", 3),
     ]);
     let val = interp
-        .evaluate_derive(&state, &mut handler, "meets_dual_class_from_reqs", vec![class_variant("Assassin"), abs])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "meets_dual_class_from_reqs",
+            vec![class_variant("Assassin"), abs],
+        )
         .unwrap();
     assert_eq!(expect_bool(val, "assassin from any"), true);
 }
@@ -148,10 +193,20 @@ fn meets_to_reqs_ranger_all_17_passes() {
     let mut handler = NullHandler;
 
     let abs = abilities_map(&[
-        ("STR", 17), ("DEX", 10), ("CON", 10), ("INT", 17), ("WIS", 17), ("CHA", 10),
+        ("STR", 17),
+        ("DEX", 10),
+        ("CON", 10),
+        ("INT", 17),
+        ("WIS", 17),
+        ("CHA", 10),
     ]);
     let val = interp
-        .evaluate_derive(&state, &mut handler, "meets_dual_class_to_reqs", vec![class_variant("Ranger"), abs])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "meets_dual_class_to_reqs",
+            vec![class_variant("Ranger"), abs],
+        )
         .unwrap();
     assert_eq!(expect_bool(val, "ranger to 17s"), true);
 }
@@ -165,10 +220,20 @@ fn meets_to_reqs_ranger_one_16_fails() {
 
     // INT only 16 — fails
     let abs = abilities_map(&[
-        ("STR", 17), ("DEX", 10), ("CON", 10), ("INT", 16), ("WIS", 17), ("CHA", 10),
+        ("STR", 17),
+        ("DEX", 10),
+        ("CON", 10),
+        ("INT", 16),
+        ("WIS", 17),
+        ("CHA", 10),
     ]);
     let val = interp
-        .evaluate_derive(&state, &mut handler, "meets_dual_class_to_reqs", vec![class_variant("Ranger"), abs])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "meets_dual_class_to_reqs",
+            vec![class_variant("Ranger"), abs],
+        )
         .unwrap();
     assert_eq!(expect_bool(val, "ranger to 16 int"), false);
 }
@@ -185,14 +250,24 @@ fn can_dual_class_paladin_to_ranger_example() {
     // PG p.69 example: paladin → ranger needs 17 STR, 17 INT, 17 WIS
     // Paladin prime reqs (STR, WIS) need 15+
     let abs = abilities_map(&[
-        ("STR", 17), ("DEX", 10), ("CON", 10), ("INT", 17), ("WIS", 17), ("CHA", 17),
+        ("STR", 17),
+        ("DEX", 10),
+        ("CON", 10),
+        ("INT", 17),
+        ("WIS", 17),
+        ("CHA", 17),
     ]);
     let val = interp
         .evaluate_derive(
             &state,
             &mut handler,
             "can_dual_class",
-            vec![ancestry("Human"), class_variant("Paladin"), class_variant("Ranger"), abs],
+            vec![
+                ancestry("Human"),
+                class_variant("Paladin"),
+                class_variant("Ranger"),
+                abs,
+            ],
         )
         .unwrap();
     assert_eq!(expect_bool(val, "paladin->ranger"), true);
@@ -206,14 +281,24 @@ fn can_dual_class_non_human_fails() {
     let mut handler = NullHandler;
 
     let abs = abilities_map(&[
-        ("STR", 18), ("DEX", 18), ("CON", 18), ("INT", 18), ("WIS", 18), ("CHA", 18),
+        ("STR", 18),
+        ("DEX", 18),
+        ("CON", 18),
+        ("INT", 18),
+        ("WIS", 18),
+        ("CHA", 18),
     ]);
     let val = interp
         .evaluate_derive(
             &state,
             &mut handler,
             "can_dual_class",
-            vec![ancestry("Elf"), class_variant("Fighter"), class_variant("Thief"), abs],
+            vec![
+                ancestry("Elf"),
+                class_variant("Fighter"),
+                class_variant("Thief"),
+                abs,
+            ],
         )
         .unwrap();
     assert_eq!(expect_bool(val, "elf dual-class"), false);
@@ -227,14 +312,24 @@ fn can_dual_class_same_class_fails() {
     let mut handler = NullHandler;
 
     let abs = abilities_map(&[
-        ("STR", 18), ("DEX", 18), ("CON", 18), ("INT", 18), ("WIS", 18), ("CHA", 18),
+        ("STR", 18),
+        ("DEX", 18),
+        ("CON", 18),
+        ("INT", 18),
+        ("WIS", 18),
+        ("CHA", 18),
     ]);
     let val = interp
         .evaluate_derive(
             &state,
             &mut handler,
             "can_dual_class",
-            vec![ancestry("Human"), class_variant("Fighter"), class_variant("Fighter"), abs],
+            vec![
+                ancestry("Human"),
+                class_variant("Fighter"),
+                class_variant("Fighter"),
+                abs,
+            ],
         )
         .unwrap();
     assert_eq!(expect_bool(val, "same class"), false);
@@ -249,14 +344,24 @@ fn can_dual_class_fighter_to_thief_borderline() {
 
     // Fighter from: STR >= 15 (exactly 15). Thief to: DEX >= 17 (exactly 17).
     let abs = abilities_map(&[
-        ("STR", 15), ("DEX", 17), ("CON", 10), ("INT", 10), ("WIS", 10), ("CHA", 10),
+        ("STR", 15),
+        ("DEX", 17),
+        ("CON", 10),
+        ("INT", 10),
+        ("WIS", 10),
+        ("CHA", 10),
     ]);
     let val = interp
         .evaluate_derive(
             &state,
             &mut handler,
             "can_dual_class",
-            vec![ancestry("Human"), class_variant("Fighter"), class_variant("Thief"), abs],
+            vec![
+                ancestry("Human"),
+                class_variant("Fighter"),
+                class_variant("Thief"),
+                abs,
+            ],
         )
         .unwrap();
     assert_eq!(expect_bool(val, "fighter->thief borderline"), true);
@@ -271,14 +376,24 @@ fn can_dual_class_fighter_to_thief_str_too_low() {
 
     // Fighter from: STR 14 (too low). Thief to: DEX 17 (ok).
     let abs = abilities_map(&[
-        ("STR", 14), ("DEX", 17), ("CON", 10), ("INT", 10), ("WIS", 10), ("CHA", 10),
+        ("STR", 14),
+        ("DEX", 17),
+        ("CON", 10),
+        ("INT", 10),
+        ("WIS", 10),
+        ("CHA", 10),
     ]);
     let val = interp
         .evaluate_derive(
             &state,
             &mut handler,
             "can_dual_class",
-            vec![ancestry("Human"), class_variant("Fighter"), class_variant("Thief"), abs],
+            vec![
+                ancestry("Human"),
+                class_variant("Fighter"),
+                class_variant("Thief"),
+                abs,
+            ],
         )
         .unwrap();
     assert_eq!(expect_bool(val, "fighter->thief str low"), false);
@@ -288,7 +403,12 @@ fn can_dual_class_fighter_to_thief_str_too_low() {
 
 fn high_abilities() -> Vec<(&'static str, i64)> {
     vec![
-        ("STR", 17), ("DEX", 17), ("CON", 14), ("INT", 17), ("WIS", 17), ("CHA", 17),
+        ("STR", 17),
+        ("DEX", 17),
+        ("CON", 14),
+        ("INT", 17),
+        ("WIS", 17),
+        ("CHA", 17),
     ]
 }
 
@@ -301,7 +421,13 @@ fn dual_class_new_exceeds_old_false_when_equal() {
 
     // Fighter 5 → Thief 5: new == old, not exceeded
     let char_ref = make_dualclass_character(
-        &mut state, "Equal", "Fighter", 5, "Thief", 5, &high_abilities(),
+        &mut state,
+        "Equal",
+        "Fighter",
+        5,
+        "Thief",
+        5,
+        &high_abilities(),
     );
     let val = interp
         .evaluate_derive(
@@ -323,7 +449,13 @@ fn dual_class_new_exceeds_old_false_when_lower() {
 
     // Fighter 7 → Thief 3: new < old
     let char_ref = make_dualclass_character(
-        &mut state, "Lower", "Fighter", 7, "Thief", 3, &high_abilities(),
+        &mut state,
+        "Lower",
+        "Fighter",
+        7,
+        "Thief",
+        3,
+        &high_abilities(),
     );
     let val = interp
         .evaluate_derive(
@@ -345,7 +477,13 @@ fn dual_class_new_exceeds_old_true_when_higher() {
 
     // Fighter 5 → Thief 6: new > old
     let char_ref = make_dualclass_character(
-        &mut state, "Higher", "Fighter", 5, "Thief", 6, &high_abilities(),
+        &mut state,
+        "Higher",
+        "Fighter",
+        5,
+        "Thief",
+        6,
+        &high_abilities(),
     );
     let val = interp
         .evaluate_derive(
@@ -427,7 +565,13 @@ fn old_abilities_locked_when_new_lower() {
     let mut handler = NullHandler;
 
     let char_ref = make_dualclass_character(
-        &mut state, "Locked", "Fighter", 5, "MagicUser", 3, &high_abilities(),
+        &mut state,
+        "Locked",
+        "Fighter",
+        5,
+        "MagicUser",
+        3,
+        &high_abilities(),
     );
     let val = interp
         .evaluate_derive(
@@ -448,7 +592,13 @@ fn old_abilities_unlocked_when_new_higher() {
     let mut handler = NullHandler;
 
     let char_ref = make_dualclass_character(
-        &mut state, "Unlocked", "Fighter", 5, "MagicUser", 6, &high_abilities(),
+        &mut state,
+        "Unlocked",
+        "Fighter",
+        5,
+        "MagicUser",
+        6,
+        &high_abilities(),
     );
     let val = interp
         .evaluate_derive(
@@ -472,7 +622,13 @@ fn xp_forfeit_no_penalty_when_exceeded() {
 
     // New > old: using old abilities is fine
     let char_ref = make_dualclass_character(
-        &mut state, "Free", "Fighter", 5, "Thief", 6, &high_abilities(),
+        &mut state,
+        "Free",
+        "Fighter",
+        5,
+        "Thief",
+        6,
+        &high_abilities(),
     );
     let val = interp
         .evaluate_derive(
@@ -494,7 +650,13 @@ fn xp_forfeit_penalty_when_not_exceeded_and_used() {
 
     // New < old: used old abilities → forfeit
     let char_ref = make_dualclass_character(
-        &mut state, "Forfeit", "Fighter", 5, "Thief", 3, &high_abilities(),
+        &mut state,
+        "Forfeit",
+        "Fighter",
+        5,
+        "Thief",
+        3,
+        &high_abilities(),
     );
     let val = interp
         .evaluate_derive(
@@ -516,7 +678,13 @@ fn xp_forfeit_no_penalty_when_not_exceeded_but_not_used() {
 
     // New < old: did NOT use old abilities → no forfeit
     let char_ref = make_dualclass_character(
-        &mut state, "Safe", "Fighter", 5, "Thief", 3, &high_abilities(),
+        &mut state,
+        "Safe",
+        "Fighter",
+        5,
+        "Thief",
+        3,
+        &high_abilities(),
     );
     let val = interp
         .evaluate_derive(
@@ -540,7 +708,13 @@ fn read_languages_available_when_old_class_thief() {
 
     // Thief → Fighter: Read Languages always available
     let char_ref = make_dualclass_character(
-        &mut state, "ExThief", "Thief", 5, "Fighter", 2, &high_abilities(),
+        &mut state,
+        "ExThief",
+        "Thief",
+        5,
+        "Fighter",
+        2,
+        &high_abilities(),
     );
     let val = interp
         .evaluate_derive(
@@ -562,7 +736,13 @@ fn read_languages_unavailable_when_old_class_not_thief() {
 
     // Fighter → Thief: no Read Languages exception (old class wasn't Thief)
     let char_ref = make_dualclass_character(
-        &mut state, "ExFighter", "Fighter", 5, "Thief", 2, &high_abilities(),
+        &mut state,
+        "ExFighter",
+        "Fighter",
+        5,
+        "Thief",
+        2,
+        &high_abilities(),
     );
     let val = interp
         .evaluate_derive(

@@ -17,7 +17,7 @@ pub(super) fn eval_method_call(
     span: Span,
 ) -> Result<Value, RuntimeError> {
     match &object {
-        Value::Option(_) | Value::None => eval_option_method(env, object, method, args, span),
+        Value::Option(_) | Value::Void => eval_option_method(env, object, method, args, span),
         Value::List(_) => eval_list_method(env, object, method, args, span),
         Value::Set(_) => eval_set_method(env, object, method, args, span),
         Value::Map(_) => eval_map_method(object, method, span),
@@ -41,7 +41,7 @@ fn eval_option_method(
         "unwrap" => {
             match value {
                 Value::Option(Some(inner)) => Ok(*inner),
-                Value::Option(None) | Value::None => Err(RuntimeError::with_span(
+                Value::Option(None) | Value::Void => Err(RuntimeError::with_span(
                     "called unwrap() on a none value",
                     span,
                 )),
@@ -55,20 +55,20 @@ fn eval_option_method(
             let default_val = eval_expr(env, &args[0].value)?;
             match value {
                 Value::Option(Some(inner)) => Ok(*inner),
-                Value::Option(None) | Value::None => Ok(default_val),
+                Value::Option(None) | Value::Void => Ok(default_val),
                 _ => unreachable!(),
             }
         }
         "is_some" => {
             match value {
                 Value::Option(Some(_)) => Ok(Value::Bool(true)),
-                Value::Option(None) | Value::None => Ok(Value::Bool(false)),
+                Value::Option(None) | Value::Void => Ok(Value::Bool(false)),
                 _ => unreachable!(),
             }
         }
         "is_none" => {
             match value {
-                Value::Option(None) | Value::None => Ok(Value::Bool(true)),
+                Value::Option(None) | Value::Void => Ok(Value::Bool(true)),
                 Value::Option(Some(_)) => Ok(Value::Bool(false)),
                 _ => unreachable!(),
             }

@@ -521,7 +521,7 @@ fn builtin_apply_condition(
         invocation: env.current_invocation_id,
     };
     match env.handler.handle(gate) {
-        Response::Vetoed => return Ok(Value::None),
+        Response::Vetoed => return Ok(Value::Void),
         Response::Acknowledged => {}
         other => {
             return Err(RuntimeError::with_span(
@@ -549,7 +549,7 @@ fn builtin_apply_condition(
         invocation: env.current_invocation_id,
     };
     validate_mutation_response(env.handler.handle(effect), "ApplyCondition", span)?;
-    Ok(Value::None)
+    Ok(Value::Void)
 }
 
 // ── remove_condition ───────────────────────────────────────────
@@ -635,7 +635,7 @@ fn builtin_remove_condition(
                 params: cond_params,
                 bearer: *target,
                 gained_at: 0,
-                duration: Value::None,
+                duration: Value::Void,
                 invocation: None,
                 applied_at: 0,
             };
@@ -661,7 +661,7 @@ fn builtin_remove_condition(
 
     // Process each instance with lifecycle hooks
     remove_condition_instances(env, target, &instances, span)?;
-    Ok(Value::None)
+    Ok(Value::Void)
 }
 
 /// Shared helper: per-instance gate → on_remove → remove flow.
@@ -788,7 +788,7 @@ fn builtin_revoke(env: &mut Env, args: &[Value], span: Span) -> Result<Value, Ru
                 ));
             }
         },
-        Value::Option(None) | Value::None => return Ok(Value::None),
+        Value::Option(None) | Value::Void => return Ok(Value::Void),
         other => {
             return Err(RuntimeError::with_span(
                 format!(
@@ -860,7 +860,7 @@ fn builtin_revoke(env: &mut Env, args: &[Value], span: Span) -> Result<Value, Ru
     if let Some(err) = first_error {
         Err(err)
     } else {
-        Ok(Value::None)
+        Ok(Value::Void)
     }
 }
 
@@ -898,7 +898,7 @@ fn builtin_advance_time(env: &mut Env, args: &[Value], span: Span) -> Result<Val
                 amount: *amount as u64,
             };
             validate_mutation_response(env.handler.handle(effect), "AdvanceTime", span)?;
-            Ok(Value::None)
+            Ok(Value::Void)
         }
         Some(Value::Int(amount)) if *amount == 0 => Err(RuntimeError::with_span(
             "advance_time() amount must be positive, got 0",
@@ -945,7 +945,7 @@ fn type_name(val: &Value) -> &'static str {
         Value::Float(_) => "Float",
         Value::Bool(_) => "Bool",
         Value::Str(_) => "String",
-        Value::None => "None",
+        Value::Void => "Void",
         Value::DiceExpr(_) => "DiceExpr",
         Value::RollResult(_) => "RollResult",
         Value::List(_) => "List",
@@ -1147,7 +1147,7 @@ mod tests {
                 dummy_span(),
             )
             .unwrap();
-            assert_eq!(result, Value::None);
+            assert_eq!(result, Value::Void);
         }
         assert_eq!(handler.log.len(), 1);
         assert!(matches!(
@@ -1165,8 +1165,8 @@ mod tests {
         let mut handler = TestHandler::new();
         {
             let mut env = make_env(&state, &mut handler, &interp);
-            let result = builtin_revoke(&mut env, &[Value::None], dummy_span()).unwrap();
-            assert_eq!(result, Value::None);
+            let result = builtin_revoke(&mut env, &[Value::Void], dummy_span()).unwrap();
+            assert_eq!(result, Value::Void);
         }
         assert!(handler.log.is_empty());
     }
@@ -1181,7 +1181,7 @@ mod tests {
             let mut env = make_env(&state, &mut handler, &interp);
             let arg = Value::Option(Some(Box::new(Value::Invocation(InvocationId(5)))));
             let result = builtin_revoke(&mut env, &[arg], dummy_span()).unwrap();
-            assert_eq!(result, Value::None);
+            assert_eq!(result, Value::Void);
         }
         assert_eq!(handler.log.len(), 1);
         assert!(matches!(
@@ -1201,7 +1201,7 @@ mod tests {
             let mut env = make_env(&state, &mut handler, &interp);
             let arg = Value::Option(None);
             let result = builtin_revoke(&mut env, &[arg], dummy_span()).unwrap();
-            assert_eq!(result, Value::None);
+            assert_eq!(result, Value::Void);
         }
         assert!(handler.log.is_empty());
     }

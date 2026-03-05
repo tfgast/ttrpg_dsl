@@ -241,5 +241,5 @@ system "test" {
     let val = interp
         .evaluate_function(&state, &mut handler, "noop", vec![])
         .unwrap();
-    assert_eq!(val, Value::None);
+    assert_eq!(val, Value::Void);
 }

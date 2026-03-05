@@ -159,7 +159,7 @@ system "test" {
     let val = interp
         .execute_hook(&state, &mut handler, "OnDamage", EntityRef(1), payload)
         .unwrap();
-    assert_eq!(val, Value::None); // assignment returns None
+    assert_eq!(val, Value::Void); // assignment returns None
 
     // Verify effect sequence: ActionStarted(Hook), MutateField, ActionCompleted
     assert_eq!(handler.log.len(), 3);
@@ -291,7 +291,7 @@ system "test" {
             params: BTreeMap::new(),
             bearer: EntityRef(1),
             gained_at: 1,
-            duration: Value::None,
+            duration: Value::Void,
             invocation: None,
             applied_at: 0,
         }],
@@ -332,7 +332,7 @@ system "test" {
     let val = interp
         .execute_hook(&state, &mut handler, "OnDamage", EntityRef(1), payload)
         .unwrap();
-    assert_eq!(val, Value::None);
+    assert_eq!(val, Value::Void);
 
     // Only ActionStarted + ActionCompleted
     assert_eq!(handler.log.len(), 2);
@@ -364,7 +364,7 @@ system "test" {
     let val = interp
         .execute_hook(&state, &mut handler, "OnDamage", EntityRef(1), payload)
         .unwrap();
-    assert_eq!(val, Value::None);
+    assert_eq!(val, Value::Void);
 
     // Verify no DeductCost
     assert!(!handler
@@ -404,9 +404,9 @@ system "test" {
 
     assert_eq!(results.len(), 2);
     assert_eq!(results[0].0, "First");
-    assert_eq!(results[0].2, Value::None);
+    assert_eq!(results[0].2, Value::Void);
     assert_eq!(results[1].0, "Second");
-    assert_eq!(results[1].2, Value::None);
+    assert_eq!(results[1].2, Value::Void);
 }
 
 #[test]
@@ -439,7 +439,7 @@ system "test" {
     let val = interp
         .execute_hook(&state, &mut handler, "OnDamage", EntityRef(1), payload)
         .unwrap();
-    assert_eq!(val, Value::None);
+    assert_eq!(val, Value::Void);
 }
 
 #[test]
@@ -460,7 +460,7 @@ system "test" {
             &mut handler,
             "Nonexistent",
             EntityRef(1),
-            Value::None,
+            Value::Void,
         )
         .unwrap_err();
     assert!(err.message.contains("undefined hook"));
@@ -490,5 +490,5 @@ system "test" {
     let val = interp
         .execute_hook(&state, &mut handler, "OnDamage", EntityRef(1), payload)
         .unwrap();
-    assert_eq!(val, Value::None);
+    assert_eq!(val, Value::Void);
 }

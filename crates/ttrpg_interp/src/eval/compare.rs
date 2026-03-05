@@ -88,9 +88,9 @@ pub(super) fn int_float_cmp(i: i64, f: f64) -> Option<std::cmp::Ordering> {
 /// - Composites: recursive walk
 pub(crate) fn value_eq(state: &dyn StateProvider, a: &Value, b: &Value) -> bool {
     match (a, b) {
-        (Value::None, Value::None) => true,
-        (Value::None, Value::Option(None)) => true,
-        (Value::Option(None), Value::None) => true,
+        (Value::Void, Value::Void) => true,
+        (Value::Void, Value::Option(None)) => true,
+        (Value::Option(None), Value::Void) => true,
         (Value::Bool(a), Value::Bool(b)) => a == b,
         (Value::Int(a), Value::Int(b)) => a == b,
         (Value::Float(a), Value::Float(b)) => a == b, // standard f64 ==
@@ -200,7 +200,7 @@ pub(super) fn match_pattern(
 
         PatternKind::BoolLit(b) => matches!(value, Value::Bool(v) if v == b),
 
-        PatternKind::NoneLit => matches!(value, Value::None | Value::Option(None)),
+        PatternKind::NoneLit => matches!(value, Value::Void | Value::Option(None)),
 
         PatternKind::Some(inner_pattern) => match value {
             Value::Option(Some(inner_val)) => {

@@ -399,7 +399,7 @@ fn exec_block(env: &mut Env, block: &Block) -> Result<Value, RuntimeError>
 fn exec_stmt(env: &mut Env, stmt: &Spanned<StmtKind>) -> Result<Value, RuntimeError>
 ```
 
-`exec_block` pushes a scope, executes statements in order, pops scope. Returns the value of the last expression-statement (or `Value::None` if the last statement is a let/assign).
+`exec_block` pushes a scope, executes statements in order, pops scope. Returns the value of the last expression-statement (or `Value::Void` if the last statement is a let/assign).
 
 ### 3.2 Statements
 
@@ -500,8 +500,8 @@ fn bind_args(
 | `distance(a, b)` | Delegate to `state.distance(a, b)`. If `None` is returned (invalid inputs), produce `RuntimeError`. |
 | `multiply_dice(expr, factor)` | `factor` must be a positive `Int`; `RuntimeError` if `factor <= 0`. Uses `checked_mul` on `DiceExpr.count`; `RuntimeError` on overflow. Result: `DiceExpr { count: count * factor, .. }` |
 | `roll(expr)` | Emit `RollDice` effect, return response as `Value::RollResult` |
-| `apply_condition(target, cond, dur)` | Emit `ApplyCondition` effect, return `Value::None` |
-| `remove_condition(target, cond)` | Emit `RemoveCondition` effect, return `Value::None` |
+| `apply_condition(target, cond, dur)` | Emit `ApplyCondition` effect, return `Value::Void` |
+| `remove_condition(target, cond)` | Emit `RemoveCondition` effect, return `Value::Void` |
 
 `roll` is the key effectful builtin — it emits `RollDice` and expects `Rolled(RollResult)` or `Override(RollResult)` back.
 
@@ -531,11 +531,11 @@ pub fn execute_action(
 Pipeline (design doc Section 6):
 
 1. **Emit `ActionStarted`** with `kind: Action`.
-   - `Vetoed` → emit `ActionCompleted`, return `Value::None`.
+   - `Vetoed` → emit `ActionCompleted`, return `Value::Void`.
 2. **Bind scope**: push scope with receiver + params bound, save previous `turn_actor`, set `turn_actor` to current actor. (Save/restore enables nested action calls without clobbering outer context.) Note: for the public API entry point (`Interpreter::execute_action`), the actor is provided directly. For nested action calls from within a resolve block, the receiver is extracted from the call arguments (see Phase 4.2 "Receiver handling"). Bindings must be established before the requires clause because the checker allows requires expressions to reference receiver, params, and `turn`.
 3. **Requires clause** (if present): evaluate expression to Bool, emit `RequiresCheck`.
    - `Override(Bool(true))` forces pass; `Override(Bool(false))` forces fail.
-   - If failed: pop scope, restore previous `turn_actor`, emit `ActionCompleted`, return `Value::None` — no cost spent.
+   - If failed: pop scope, restore previous `turn_actor`, emit `ActionCompleted`, return `Value::Void` — no cost spent.
 4. **Cost deduction**: for each token in `cost.tokens` (declaration order), emit `DeductCost`.
    - Map token → budget_field using the fixed table (`action` → `actions`, etc.).
    - `Acknowledged` → the host is responsible for applying the deduction (Layer 1). `Override(Str(replacement))` → validate replacement is in table, host applies deduction to replacement's field. `Vetoed` → cost waived. **Note:** In Layer 2, the adapter takes over deduction responsibility — the host's handler only decides (acknowledge/override/veto) and the adapter calls `write_turn_field`. See Phase 7.1.
@@ -555,7 +555,7 @@ pub fn execute_reaction(
 
 Same structure as action:
 1. Emit `ActionStarted` with `kind: Reaction { event, trigger: payload }`.
-   - `Vetoed` → emit `ActionCompleted`, return `Value::None`.
+   - `Vetoed` → emit `ActionCompleted`, return `Value::Void`.
 2. Bind scope: push scope with receiver + `trigger` bound to event_payload. Save previous `turn_actor`, set to reactor.
 3. No requires clause for reactions.
 4. Deduct cost.

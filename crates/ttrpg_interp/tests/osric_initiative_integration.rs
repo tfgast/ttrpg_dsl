@@ -1905,7 +1905,7 @@ fn casting_spell_on_attacker_forces_miss() {
         &attacker,
         "CastingSpell",
         BTreeMap::new(),
-        Value::None,
+        Value::Void,
         None,
     );
 
@@ -1973,7 +1973,7 @@ fn casting_spell_on_target_strips_dex_ac_but_attack_hits() {
     );
 
     // Apply CastingSpell to target, not attacker
-    state.apply_condition(&target, "CastingSpell", BTreeMap::new(), Value::None, None);
+    state.apply_condition(&target, "CastingSpell", BTreeMap::new(), Value::Void, None);
 
     let atk_roll = scripted_roll(1, 20, 0, vec![15], vec![15], 15, 15);
     let dmg_roll = scripted_roll(1, 8, 0, vec![6], vec![6], 6, 6);
@@ -2049,7 +2049,7 @@ fn casting_spell_strips_high_dex_ac_bonus() {
     // Roll 15 + BTHB 0 (Fighter 1) + STR 0 (12) = 15
     // Without CastingSpell: effective AC = 14 + 2 (DEX 16) = 16 → 15 < 16 → Miss
     // With CastingSpell: effective AC = 14 + 0 (DEX stripped) = 14 → 15 >= 14 → Hit!
-    state.apply_condition(&target, "CastingSpell", BTreeMap::new(), Value::None, None);
+    state.apply_condition(&target, "CastingSpell", BTreeMap::new(), Value::Void, None);
 
     let atk_roll = scripted_roll(1, 20, 0, vec![15], vec![15], 15, 15);
     let dmg_roll = scripted_roll(1, 8, 0, vec![6], vec![6], 6, 6);
@@ -2180,7 +2180,7 @@ fn spell_interruption_hook_fires_on_damage() {
     );
 
     // Manually apply CastingSpell to caster (as if BeginCasting was called)
-    state.apply_condition(&caster, "CastingSpell", BTreeMap::new(), Value::None, None);
+    state.apply_condition(&caster, "CastingSpell", BTreeMap::new(), Value::Void, None);
 
     // Verify condition is present before attack
     assert!(

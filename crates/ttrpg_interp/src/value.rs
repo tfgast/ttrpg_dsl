@@ -120,7 +120,7 @@ pub enum Value {
     Float(f64),
     Bool(bool),
     Str(String),
-    None,
+    Void,
 
     // Dice pipeline
     DiceExpr(DiceExpr),
@@ -210,7 +210,7 @@ pub fn duration_variant_with(variant: &str, fields: BTreeMap<Name, Value>) -> Va
 /// Returns a numeric discriminant for cross-variant ordering.
 fn discriminant(v: &Value) -> u8 {
     match v {
-        Value::None => 0,
+        Value::Void => 0,
         Value::Bool(_) => 1,
         Value::Int(_) => 2,
         Value::Float(_) => 3,
@@ -245,7 +245,7 @@ fn discriminant(v: &Value) -> u8 {
 impl PartialEq for Value {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
-            (Value::None, Value::None) => true,
+            (Value::Void, Value::Void) => true,
             (Value::Bool(a), Value::Bool(b)) => a == b,
             (Value::Int(a), Value::Int(b)) => a == b,
             (Value::Float(a), Value::Float(b)) => a.to_bits() == b.to_bits(),
@@ -315,7 +315,7 @@ impl Ord for Value {
         }
 
         match (self, other) {
-            (Value::None, Value::None) => Ordering::Equal,
+            (Value::Void, Value::Void) => Ordering::Equal,
             (Value::Bool(a), Value::Bool(b)) => a.cmp(b),
             (Value::Int(a), Value::Int(b)) => a.cmp(b),
             (Value::Float(a), Value::Float(b)) => a.total_cmp(b),
@@ -407,7 +407,7 @@ impl std::hash::Hash for Value {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         discriminant(self).hash(state);
         match self {
-            Value::None => {}
+            Value::Void => {}
             Value::Bool(v) => v.hash(state),
             Value::Int(v) => v.hash(state),
             Value::Float(v) => v.to_bits().hash(state),
@@ -488,7 +488,7 @@ pub fn value_matches_ty(val: &Value, ty: &Ty, state: &dyn StateProvider) -> bool
         (Value::Float(_), Ty::Float) => true,
         (Value::Bool(_), Ty::Bool) => true,
         (Value::Str(_), Ty::String) => true,
-        (Value::None, Ty::Option(_)) => true,
+        (Value::Void, Ty::Option(_)) => true,
         (Value::Option(inner), Ty::Option(inner_ty)) => match inner {
             Some(v) => value_matches_ty(v, inner_ty, state),
             None => true,
@@ -533,7 +533,7 @@ pub fn value_type_display(val: &Value) -> String {
         Value::Float(_) => "float".into(),
         Value::Bool(_) => "bool".into(),
         Value::Str(_) => "string".into(),
-        Value::None => "none".into(),
+        Value::Void => "none".into(),
         Value::Option(_) => "option".into(),
         Value::Entity(_) => "entity".into(),
         Value::List(_) => "list".into(),
@@ -593,7 +593,7 @@ mod tests {
 
     #[test]
     fn none_equality() {
-        assert_eq!(Value::None, Value::None);
+        assert_eq!(Value::Void, Value::Void);
     }
 
     // ── Cross-variant inequality ────────────────────────────────
@@ -602,7 +602,7 @@ mod tests {
     fn different_variants_not_equal() {
         assert_ne!(Value::Int(0), Value::Float(0.0));
         assert_ne!(Value::Int(1), Value::Bool(true));
-        assert_ne!(Value::None, Value::Int(0));
+        assert_ne!(Value::Void, Value::Int(0));
     }
 
     // ── Composite equality ──────────────────────────────────────
@@ -679,7 +679,7 @@ mod tests {
     #[test]
     fn cross_variant_ordering() {
         // None < Bool < Int < Float < Str
-        assert!(Value::None < Value::Bool(false));
+        assert!(Value::Void < Value::Bool(false));
         assert!(Value::Bool(true) < Value::Int(0));
         assert!(Value::Int(0) < Value::Float(0.0));
         assert!(Value::Float(0.0) < Value::Str(String::new()));
@@ -850,7 +850,7 @@ mod tests {
 
         // Build pairs of (equal, different) for each variant
         let pairs: Vec<(Value, Value, Value)> = vec![
-            (Value::None, Value::None, Value::Int(0)),
+            (Value::Void, Value::Void, Value::Int(0)),
             (Value::Bool(true), Value::Bool(true), Value::Bool(false)),
             (Value::Int(42), Value::Int(42), Value::Int(43)),
             (Value::Float(3.125), Value::Float(3.125), Value::Float(2.5)),

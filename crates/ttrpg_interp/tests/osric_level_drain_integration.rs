@@ -311,12 +311,7 @@ fn apply_level_drain_single_class() {
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let mut state = GameState::new();
 
-    let char_ref = make_drain_character(
-        &mut state,
-        "Fighter5",
-        &[("Fighter", 5, 20000)],
-        "Single",
-    );
+    let char_ref = make_drain_character(&mut state, "Fighter5", &[("Fighter", 5, 20000)], "Single");
 
     // No dice needed — single class, no tie-breaking
     let mut handler = NullHandler;
@@ -344,17 +339,12 @@ fn apply_level_drain_single_class() {
             // classes should have Fighter at level 4
             let classes = fields.get::<Name>(&"classes".into()).unwrap();
             match classes {
-                Value::List(items) => {
-                    match &items[0] {
-                        Value::Struct { fields, .. } => {
-                            assert_eq!(
-                                *fields.get::<Name>(&"level".into()).unwrap(),
-                                Value::Int(4)
-                            );
-                        }
-                        other => panic!("expected struct, got {other:?}"),
+                Value::List(items) => match &items[0] {
+                    Value::Struct { fields, .. } => {
+                        assert_eq!(*fields.get::<Name>(&"level".into()).unwrap(), Value::Int(4));
                     }
-                }
+                    other => panic!("expected struct, got {other:?}"),
+                },
                 other => panic!("expected list, got {other:?}"),
             }
             // drain_history should have 1 entry
@@ -451,12 +441,7 @@ fn restoration_restores_oldest_eligible() {
         },
     ]);
 
-    let char_ref = make_drain_character(
-        &mut state,
-        "Fighter3",
-        &[("Fighter", 3, 4000)],
-        "Single",
-    );
+    let char_ref = make_drain_character(&mut state, "Fighter3", &[("Fighter", 3, 4000)], "Single");
     set_field(&mut state, &char_ref, "drain_history", drain_history);
 
     // Restore at time 10000, caster cleric level 7 (window = 100800)
@@ -475,7 +460,11 @@ fn restoration_restores_oldest_eligible() {
             Value::Struct { name, fields } => {
                 assert_eq!(&*name, "RestoreResult");
                 let restored_level = fields.get::<Name>(&"restored_level".into()).unwrap();
-                assert_eq!(*restored_level, Value::Int(5), "restores to original level 5");
+                assert_eq!(
+                    *restored_level,
+                    Value::Int(5),
+                    "restores to original level 5"
+                );
                 // drain_history should have 1 remaining entry
                 let history = fields.get::<Name>(&"drain_history".into()).unwrap();
                 match history {
@@ -488,7 +477,7 @@ fn restoration_restores_oldest_eligible() {
             other => panic!("expected RestoreResult struct, got {other:?}"),
         },
         // DSL some() wraps in Value::Option(Some(..)), but check both none representations
-        Value::Option(None) | Value::None => panic!("expected Some(RestoreResult), got None"),
+        Value::Option(None) | Value::Void => panic!("expected Some(RestoreResult), got None"),
         other => panic!("expected Option, got {other:?}"),
     }
 }
@@ -513,12 +502,7 @@ fn restoration_returns_none_when_expired() {
         },
     }]);
 
-    let char_ref = make_drain_character(
-        &mut state,
-        "Fighter4",
-        &[("Fighter", 4, 8000)],
-        "Single",
-    );
+    let char_ref = make_drain_character(&mut state, "Fighter4", &[("Fighter", 4, 8000)], "Single");
     set_field(&mut state, &char_ref, "drain_history", drain_history);
 
     let val = interp
@@ -531,7 +515,7 @@ fn restoration_returns_none_when_expired() {
         .unwrap();
 
     assert!(
-        matches!(val, Value::None),
+        matches!(val, Value::Void),
         "expected None (expired), got {:?}",
         val
     );
