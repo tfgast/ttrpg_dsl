@@ -649,6 +649,9 @@ system "OSRIC Initiative" {
             }
         }
 
+        // End-of-round bookkeeping: ordering is intentional.
+        // Bleeding damage resolves first so that a character who
+        // hits -10 HP this round dies before conditions expire.
         process_bleeding(combatants)
         expire_conditions(combatants)
         emit RoundEnd(round: round)

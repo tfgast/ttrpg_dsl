@@ -767,6 +767,11 @@ system "OSRIC Combat" {
     // Process bleeding for all combatants at end of round.
     // Called from resolve_round. Each bleeding character loses
     // 1 HP; death at -10 HP. Scarring applied at -6 HP.
+    //
+    // This is an explicit periodic-effect function rather than
+    // an on_tick hook — periodic condition effects use functions
+    // called from the combat loop so ordering is explicit and
+    // the host controls timing. See osric_conditions.ttrpg.
     function process_bleeding(combatants: list<Character>) {
         for target in combatants {
             if any([c.name == "Bleeding" for c in conditions(target)]) {
