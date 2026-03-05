@@ -482,7 +482,7 @@ emit EventName(param: value)       // fire event (named args only)
 ## Builtin Functions
 
 ### Math
-`floor(f)` `ceil(f)` `max(a, b)` `min(a, b)`
+`floor(f)` `ceil(f)` `max(a, b)` `min(a, b)` — also accept a single `list<int>`: `max(xs)` `min(xs)`
 
 ### Dice
 `roll(expr)` `dice(count, sides)` `multiply_dice(expr, factor)` `max_value(expr)` `dice_count(expr)` `dice_sides(expr)` `dice_modifier(expr)`

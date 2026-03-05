@@ -732,8 +732,8 @@ hook Regenerate on creature: Character (
 // Available everywhere:
 //   floor(x: float) -> int          // round toward negative infinity
 //   ceil(x: float) -> int           // round toward positive infinity
-//   max(a: int, b: int) -> int
-//   min(a: int, b: int) -> int
+//   max(a: int, b: int) -> int       // also: max(xs: list<int>) -> int
+//   min(a: int, b: int) -> int       // also: min(xs: list<int>) -> int
 //   distance(a: Position, b: Position) -> int   // see Position in 01_type_system.ttrpg
 //   dice(count: int, sides: int) -> DiceExpr
 //   multiply_dice(expr: DiceExpr, factor: int) -> DiceExpr
