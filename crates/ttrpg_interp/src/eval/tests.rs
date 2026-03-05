@@ -3187,7 +3187,7 @@ fn try_from_ordinal_returns_none_on_out_of_bounds() {
             },
         ],
     });
-    assert_eq!(eval_expr(&mut env, &expr).unwrap(), Value::None);
+    assert_eq!(eval_expr(&mut env, &expr).unwrap(), Value::Option(None));
 }
 
 #[test]
@@ -3230,7 +3230,7 @@ fn try_from_ordinal_returns_none_on_negative() {
             },
         ],
     });
-    assert_eq!(eval_expr(&mut env, &expr).unwrap(), Value::None);
+    assert_eq!(eval_expr(&mut env, &expr).unwrap(), Value::Option(None));
 }
 
 // ── Issue 3: none == Option(None) ───────────────────────────

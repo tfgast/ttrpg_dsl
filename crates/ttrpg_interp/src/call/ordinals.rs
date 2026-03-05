@@ -172,7 +172,7 @@ pub(super) fn eval_try_from_ordinal(
     };
 
     if idx < 0 {
-        return Ok(Value::None);
+        return Ok(Value::Option(None));
     }
 
     let info = match env.interp.type_env.types.get(enum_name.as_str()) {
@@ -187,12 +187,12 @@ pub(super) fn eval_try_from_ordinal(
 
     let idx_usize = idx as usize;
     if idx_usize >= info.variants.len() {
-        return Ok(Value::None);
+        return Ok(Value::Option(None));
     }
 
     let variant = &info.variants[idx_usize];
     if !variant.fields.is_empty() {
-        return Ok(Value::None);
+        return Ok(Value::Option(None));
     }
 
     Ok(Value::EnumVariant {

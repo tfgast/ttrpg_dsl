@@ -95,9 +95,9 @@ fn eval_list_method(
     match method {
         "len" => Ok(Value::Int(list.len() as i64)),
         "first" => Ok(list.into_iter().next()
-            .map_or(Value::None, |v| Value::Option(Some(Box::new(v))))),
+            .map_or(Value::Option(None), |v| Value::Option(Some(Box::new(v))))),
         "last" => Ok(list.into_iter().next_back()
-            .map_or(Value::None, |v| Value::Option(Some(Box::new(v))))),
+            .map_or(Value::Option(None), |v| Value::Option(Some(Box::new(v))))),
         "reverse" => {
             let mut v = list;
             v.reverse();

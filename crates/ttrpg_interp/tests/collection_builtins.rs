@@ -263,7 +263,7 @@ system "test" {
     let val = interp
         .evaluate_derive(&state, &mut handler, "f", vec![Value::List(vec![])])
         .unwrap();
-    assert_eq!(val, Value::None);
+    assert_eq!(val, Value::Option(None));
 }
 
 #[test]
@@ -308,7 +308,7 @@ system "test" {
     let val = interp
         .evaluate_derive(&state, &mut handler, "f", vec![Value::List(vec![])])
         .unwrap();
-    assert_eq!(val, Value::None);
+    assert_eq!(val, Value::Option(None));
 }
 
 // ── append ─────────────────────────────────────────────────────
