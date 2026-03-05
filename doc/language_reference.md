@@ -78,7 +78,7 @@ entity Character {
 
 ### Restricted Fields
 
-Fields marked `restricted` can only be mutated within the declaring system. Other systems can read but not assign (`=`, `+=`, `-=`).
+Fields marked `restricted` can only be mutated within the declaring system or the system that declares the entity containing the field. Other systems can read but not assign (`=`, `+=`, `-=`).
 
 ```
 entity Character {

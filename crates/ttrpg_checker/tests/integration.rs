@@ -11812,6 +11812,91 @@ fn test_restricted_group_field_cross_system_rejected() {
 }
 
 #[test]
+fn test_restricted_group_field_entity_owner_allowed() {
+    // A group declared in "Core" with restricted fields, included by an entity
+    // declared in "Ext". "Ext" (the entity owner) should be allowed to mutate
+    // the restricted group field even though it didn't declare the group.
+    expect_multi_no_errors(&[
+        (
+            "core.ttrpg",
+            r#"
+            system "Core" {
+                group Buffs {
+                    restricted bonus: int
+                }
+            }
+            "#,
+        ),
+        (
+            "ext.ttrpg",
+            r#"
+            use "Core"
+            system "Ext" {
+                entity Character {
+                    optional Buffs
+                }
+                action Boost on target: Character () {
+                    resolve {
+                        if target has Buffs {
+                            target.Buffs.bonus += 1
+                        }
+                    }
+                }
+            }
+            "#,
+        ),
+    ]);
+}
+
+#[test]
+fn test_restricted_group_field_third_party_rejected() {
+    // Group declared in "Core", entity in "Ext", but "Third" (neither owner)
+    // should be rejected.
+    expect_multi_errors(
+        &[
+            (
+                "core.ttrpg",
+                r#"
+                system "Core" {
+                    group Buffs {
+                        restricted bonus: int
+                    }
+                }
+                "#,
+            ),
+            (
+                "ext.ttrpg",
+                r#"
+                use "Core"
+                system "Ext" {
+                    entity Character {
+                        optional Buffs
+                    }
+                }
+                "#,
+            ),
+            (
+                "third.ttrpg",
+                r#"
+                use "Core"
+                use "Ext"
+                system "Third" {
+                    action Tweak on target: Character () {
+                        resolve {
+                            if target has Buffs {
+                                target.Buffs.bonus += 1
+                            }
+                        }
+                    }
+                }
+                "#,
+            ),
+        ],
+        &["cannot mutate restricted field `bonus`"],
+    );
+}
+
+#[test]
 fn test_non_restricted_cross_system_allowed() {
     // Non-restricted field mutation from another system is fine.
     expect_multi_no_errors(&[

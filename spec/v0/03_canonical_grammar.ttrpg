@@ -193,11 +193,14 @@ field_defs      = (field_def (("," | NL) field_def)* ","?)?
 field_def       = "restricted"? IDENT ":" type ("=" expr)?
 
 // The optional `restricted` modifier marks a field as mutable only within
-// the system that declares it. Other systems that import the type can
-// read the field but cannot assign to it (`=`, `+=`, `-=`).
+// the system that declares it or the system that declares the entity
+// containing the field. Other systems that import the type can read the
+// field but cannot assign to it (`=`, `+=`, `-=`).
 //
 // This enables module-level encapsulation: a core system can expose an
-// entity's fields for reading while reserving mutation rights.
+// entity's fields for reading while reserving mutation rights. When a
+// group is included by an entity in a different system, the entity's
+// system can also mutate the group's restricted fields.
 //
 // Examples:
 //   restricted HP: resource(0..=max_HP)     // only the declaring system can modify HP

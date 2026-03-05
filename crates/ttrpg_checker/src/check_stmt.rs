@@ -398,7 +398,9 @@ impl Checker<'_> {
 
         // Now `current` is the container type and `last_field` is the field name.
         // Look up the FieldInfo to check `restricted`.
-        let (field_name, declaring_system) = match &current {
+        // Returns (field_name, group_declaring_system, entity_declaring_system).
+        // Mutation is allowed if current_system matches either owner.
+        let (field_name, group_owner, entity_owner) = match &current {
             Ty::Entity(entity_name) | Ty::Struct(entity_name) | Ty::UnitType(entity_name) => {
                 // Check entity/struct own fields
                 if let Some(fields) = self.env.lookup_fields(entity_name) {
@@ -406,8 +408,8 @@ impl Checker<'_> {
                         if !fi.restricted {
                             return;
                         }
-                        let owner = self.env.type_owner.get(entity_name).cloned();
-                        (fi.name.clone(), owner)
+                        let eo = self.env.type_owner.get(entity_name).cloned();
+                        (fi.name.clone(), None, eo)
                     } else if let Ty::Entity(ename) = &current {
                         // Check if it's a flattened included-group field
                         if let Some(group_name) = self.env.lookup_flattened_field(ename, last_field)
@@ -421,13 +423,9 @@ impl Checker<'_> {
                                     if !fi.restricted {
                                         return;
                                     }
-                                    let owner = self
-                                        .env
-                                        .group_owner
-                                        .get(group_name)
-                                        .or_else(|| self.env.type_owner.get(ename))
-                                        .cloned();
-                                    (fi.name.clone(), owner)
+                                    let go = self.env.group_owner.get(group_name).cloned();
+                                    let eo = self.env.type_owner.get(ename).cloned();
+                                    (fi.name.clone(), go, eo)
                                 } else {
                                     return;
                                 }
@@ -451,13 +449,9 @@ impl Checker<'_> {
                         if !fi.restricted {
                             return;
                         }
-                        let owner = self
-                            .env
-                            .group_owner
-                            .get(group_name)
-                            .or_else(|| self.env.type_owner.get(entity_name))
-                            .cloned();
-                        (fi.name.clone(), owner)
+                        let go = self.env.group_owner.get(group_name).cloned();
+                        let eo = self.env.type_owner.get(entity_name).cloned();
+                        (fi.name.clone(), go, eo)
                     } else {
                         return;
                     }
@@ -468,10 +462,17 @@ impl Checker<'_> {
             _ => return,
         };
 
-        // Compare declaring system with current system
-        if let Some(ref declaring_sys) = declaring_system {
-            if let Some(ref current_sys) = self.current_system {
-                if declaring_sys != current_sys {
+        // Compare declaring system(s) with current system.
+        // Mutation is allowed from the module that declared the group OR the
+        // module that declared the entity containing the group.
+        if let Some(ref current_sys) = self.current_system {
+            let allowed = [&group_owner, &entity_owner]
+                .iter()
+                .any(|owner| owner.as_ref() == Some(current_sys));
+            if !allowed {
+                // Pick the most specific owner for the error message
+                let declaring_sys = group_owner.as_ref().or(entity_owner.as_ref());
+                if let Some(declaring_sys) = declaring_sys {
                     self.error(
                         format!(
                             "cannot mutate restricted field `{field_name}` from system \"{current_sys}\"; \

@@ -935,13 +935,17 @@ hook Regenerate on creature: Character (
 // --- Restricted field mutation ---
 //
 // Fields marked `restricted` can only be mutated (`=`, `+=`, `-=`)
-// within the system that declares the containing type or group.
+// within the system that declares the containing type or group, or
+// the system that declares the entity containing the group.
 // Other systems can read restricted fields freely but cannot assign
 // to them.
 //
 // This provides module-level encapsulation: a core system can expose
 // entity state for reading while reserving mutation to its own
-// actions, functions, and hooks.
+// actions, functions, and hooks. When a group is included by an
+// entity in a different system, the entity's system can also mutate
+// the group's restricted fields — this allows entity-authoring
+// systems to fully manage their entities' state.
 //
 // EXAMPLE: Core declares HP as restricted; Extension cannot mutate it.
 //
@@ -968,9 +972,11 @@ hook Regenerate on creature: Character (
 // Rules:
 //   - Applies to entity fields, struct fields, group fields, and
 //     inline optional group fields.
-//   - The declaring system is determined by `type_owner` (for entity/
-//     struct fields) or `group_owner` (for top-level group fields),
-//     falling back to the entity's owner for inline groups.
+//   - Mutation is allowed from either:
+//     (a) the system that declares the group (`group_owner`), or
+//     (b) the system that declares the entity (`type_owner`).
+//     For inline groups without a separate `group_owner`, the
+//     entity's owner is used.
 //   - `grant` is exempt: initializing group fields via grant is not
 //     treated as mutation, allowing cross-system group provisioning.
 //   - Single-file mode and REPL mode skip the check (no modules).

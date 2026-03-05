@@ -202,7 +202,7 @@ system "Ext" {
 }
 ```
 
-Restricted fields can only be mutated within the declaring system. Other systems can read them freely. Move the mutation into the declaring system, or remove the `restricted` modifier if cross-system mutation is intended.
+Restricted fields can only be mutated within the system that declares the field's type/group, or the system that declares the entity containing the group. Other systems can read them freely. Move the mutation into a permitted system, or remove the `restricted` modifier if cross-system mutation is intended.
 
 ### 11. Missing event declaration before emit
 

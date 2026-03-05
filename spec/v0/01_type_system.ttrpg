@@ -236,8 +236,9 @@ struct RollResult {
 // --- Restricted fields ---
 //
 // Fields may be marked `restricted` to limit mutation to the declaring
-// system. Other systems that import the type can read the field but
-// cannot assign to it (`=`, `+=`, `-=`).
+// system or the system that declares the entity containing the field.
+// Other systems that import the type can read the field but cannot
+// assign to it (`=`, `+=`, `-=`).
 //
 //   entity Character {
 //       restricted HP: resource(0..=max_HP)   // only "Core" can mutate HP
