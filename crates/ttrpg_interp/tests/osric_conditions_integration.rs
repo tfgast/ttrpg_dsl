@@ -174,7 +174,7 @@ fn osric_conditions_parses_and_typechecks() {
 // ── Structure verification ─────────────────────────────────────
 
 #[test]
-fn osric_conditions_has_all_fourteen_conditions() {
+fn osric_conditions_has_all_nineteen_conditions() {
     let (program, _) = compile_osric_conditions();
     let decls = get_conditions_decls(&program);
     let conditions: Vec<_> = decls
@@ -199,6 +199,11 @@ fn osric_conditions_has_all_fourteen_conditions() {
         "Cover",
         "Charging",
         "ChargeRecovery",
+        "Unconscious",
+        "Bleeding",
+        "Dead",
+        "Scarred",
+        "Coma",
         "EncumbranceState",
     ];
 
@@ -210,8 +215,8 @@ fn osric_conditions_has_all_fourteen_conditions() {
     }
     assert_eq!(
         conditions.len(),
-        14,
-        "expected 14 conditions, found {}: {:?}",
+        19,
+        "expected 19 conditions, found {}: {:?}",
         conditions.len(),
         conditions
     );

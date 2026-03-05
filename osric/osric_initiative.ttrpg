@@ -649,6 +649,7 @@ system "OSRIC Initiative" {
             }
         }
 
+        process_bleeding(combatants)
         expire_conditions(combatants)
         emit RoundEnd(round: round)
     }

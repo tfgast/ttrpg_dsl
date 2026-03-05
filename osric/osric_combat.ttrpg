@@ -28,7 +28,7 @@ system "OSRIC Combat" {
 
     group HitPoints {
         max_hp: int
-        restricted hp: resource(0..=max_hp)
+        restricted hp: resource(-10..=max_hp)
     }
 
 
@@ -96,6 +96,12 @@ system "OSRIC Combat" {
     event Damaged(target: Character, attacker: Character, amount: int) {}
 
     event CreatureSlain(target: Character, attacker: Character) {}
+
+    event CharacterUnconscious(target: Character, attacker: entity) {}
+
+    event CharacterDead(target: Character) {}
+
+    event CharacterStabilized(target: Character) {}
 
 
     // ========================================================
@@ -533,7 +539,11 @@ system "OSRIC Combat" {
     }
 
     // Apply damage to target: runs through deal_damage pipeline,
-    // reduces HP, emits Damaged and potentially CreatureSlain.
+    // reduces HP, and handles OSRIC death rules (§1.6.6):
+    //   - At 0 HP: unconscious + bleeding (1 HP/round)
+    //   - Additional damage to unconscious creature: instant death
+    //   - Death at -10 HP
+    //   - Scarring at -6 HP or below
     action TakeDamage on target: Character (
         attacker: entity,
         raw_damage: int,
@@ -541,11 +551,33 @@ system "OSRIC Combat" {
     ) {
         cost free
         resolve {
+            let was_unconscious = any([c.name == "Unconscious" for c in conditions(target)])
             let final_damage = deal_damage(target, attacker, raw_damage, damage_type)
             target.hp = target.hp - final_damage
             emit Damaged(target: target, attacker: attacker, amount: final_damage)
-            if target.hp <= 0 {
+
+            if was_unconscious {
+                // Any damage to an unconscious creature (other than bleeding)
+                // kills instantly. Per §1.6.6.
+                target.hp = -10
+                remove_condition(target, "Unconscious")
+                remove_condition(target, "Bleeding")
+                apply_condition(target, Dead, Duration.indefinite)
                 emit CreatureSlain(target: target, attacker: attacker)
+                emit CharacterDead(target: target)
+            } else if target.hp <= -10 {
+                // Massive damage: instant death
+                apply_condition(target, Dead, Duration.indefinite)
+                emit CreatureSlain(target: target, attacker: attacker)
+                emit CharacterDead(target: target)
+            } else if target.hp <= 0 {
+                // Unconscious at 0 HP or below (but above -10)
+                apply_condition(target, Unconscious, Duration.indefinite)
+                apply_condition(target, Bleeding, Duration.indefinite)
+                emit CharacterUnconscious(target: target, attacker: attacker)
+                if target.hp <= -6 {
+                    apply_condition(target, Scarred, Duration.indefinite)
+                }
             }
         }
     }
@@ -721,4 +753,69 @@ system "OSRIC Combat" {
             }
         }
     }
+
+
+    // ========================================================
+    //  BLEEDING & STABILIZATION (§1.6.6)
+    //
+    //  Unconscious characters bleed 1 HP/round. Death at -10.
+    //  Aid in the same round stops bleeding (Stabilize).
+    //  After healing to 1+ HP: coma for 1-6 turns.
+    //  Natural healing: 1 HP/day rest, 4 weeks = full.
+    // ========================================================
+
+    // Process bleeding for all combatants at end of round.
+    // Called from resolve_round. Each bleeding character loses
+    // 1 HP; death at -10 HP. Scarring applied at -6 HP.
+    function process_bleeding(combatants: list<Character>) {
+        for target in combatants {
+            if any([c.name == "Bleeding" for c in conditions(target)]) {
+                target.hp = target.hp - 1
+                if target.hp <= -10 {
+                    target.hp = -10
+                    remove_condition(target, "Bleeding")
+                    remove_condition(target, "Unconscious")
+                    apply_condition(target, Dead, Duration.indefinite)
+                    emit CharacterDead(target: target)
+                } else if target.hp <= -6 {
+                    if !any([c.name == "Scarred" for c in conditions(target)]) {
+                        apply_condition(target, Scarred, Duration.indefinite)
+                    }
+                }
+            }
+        }
+    }
+
+    // Stabilize a bleeding character. Aid must be administered
+    // in the same round to stop blood loss. Per §1.6.6.
+    action StabilizeBleeding on healer: entity (target: Character) {
+        cost free
+        requires {
+            any([c.name == "Bleeding" for c in conditions(target)])
+        }
+        resolve {
+            remove_condition(target, "Bleeding")
+            emit CharacterStabilized(target: target)
+        }
+    }
+
+    // Heal an unconscious character. Removes Unconscious and
+    // Bleeding, applies Coma for 1-6 turns per §1.6.6.
+    // Healing amount is added to HP before condition transition.
+    function heal_unconscious(target: Character, amount: int) {
+        target.hp = target.hp + amount
+        if target.hp > 0 {
+            remove_condition(target, "Unconscious")
+            remove_condition(target, "Bleeding")
+            let coma_turns = roll(1d6).total
+            apply_condition(target, Coma, Duration.turns(coma_turns))
+        }
+    }
+
+    // Natural healing: 1 HP per day of uninterrupted rest.
+    // Four weeks of rest restores full HP regardless.
+    // CON penalty delays healing start (§1.6.6.1).
+    derive natural_healing_per_day() -> int { 1 }
+
+    derive full_rest_days() -> int { 28 }
 }

@@ -1834,7 +1834,9 @@ fn melee_attack_emits_creature_slain_on_kill() {
         wielded_melee_item("SwordLong"),
     );
 
-    // Roll 18 → hit; damage 1d8 roll 5 → 5 damage kills target (3 HP)
+    // Roll 18 → hit; damage 1d8 roll 5 → 5 damage to 3 HP target → HP -2
+    // Under OSRIC §1.6.6, at 0 HP the character is unconscious (not dead).
+    // Death occurs at -10 HP.
     let atk_roll = scripted_roll(1, 20, 0, vec![18], vec![18], 18, 18);
     let dmg_roll = scripted_roll(1, 8, 0, vec![5], vec![5], 5, 5);
     let mut handler = ScriptedHandler::with_responses(vec![
@@ -1860,7 +1862,7 @@ fn melee_attack_emits_creature_slain_on_kill() {
 
     let final_state = adapter.into_inner();
     let hp = read_group_field(&final_state, &target, "HitPoints", "hp").unwrap();
-    assert_eq!(hp, Value::Int(0), "target HP should be clamped to 0");
+    assert_eq!(hp, Value::Int(-2), "target HP should be -2 (unconscious, not dead)");
 }
 
 // ── deal_damage derive ────────────────────────────────────────
@@ -2069,7 +2071,7 @@ fn take_damage_action_emits_creature_slain_on_kill() {
 
     let final_state = adapter.into_inner();
     let hp = read_group_field(&final_state, &target, "HitPoints", "hp").unwrap();
-    assert_eq!(hp, Value::Int(0), "target HP should be clamped to 0");
+    assert_eq!(hp, Value::Int(-2), "target HP should be -2 (unconscious, not dead)");
 }
 
 // ── Backstab ──────────────────────────────────────────────────

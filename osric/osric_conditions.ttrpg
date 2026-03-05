@@ -262,6 +262,87 @@ system "OSRIC Conditions" {
 
 
     // ========================================================
+    //  UNCONSCIOUS (§1.6.6)
+    //
+    //  Applied when HP reaches 0. Automatic hit, maximum damage.
+    //  Cannot use shield or DEX bonus to AC. Cannot act.
+    //  Additional damage from attacks (not bleeding) kills
+    //  instantly. Per §1.6.6.
+    // ========================================================
+
+    condition Unconscious on bearer: entity {
+        modify [#attack_resolution](target: bearer) {
+            roll_mode = RollMode.AutoHit
+            max_damage = true
+        }
+        modify effective_target_ac(target: bearer) {
+            include_dex = false
+            include_shield = false
+        }
+        modify [#attack_resolution](attacker: bearer) {
+            result.outcome = AttackOutcome.Miss
+            result.damage = 0
+        }
+    }
+
+
+    // ========================================================
+    //  BLEEDING (§1.6.6)
+    //
+    //  Marker condition for per-round HP loss. Applied alongside
+    //  Unconscious at 0 HP. Removed by StabilizeBleeding action
+    //  or when healed. Actual HP reduction handled by
+    //  process_bleeding() called at end of each round.
+    // ========================================================
+
+    condition Bleeding on bearer: entity {}
+
+
+    // ========================================================
+    //  DEAD (§1.6.6)
+    //
+    //  Applied at -10 HP or when an unconscious creature takes
+    //  additional damage. Prevents all actions. Removed only
+    //  by raise dead / resurrection spells.
+    // ========================================================
+
+    condition Dead on bearer: entity {
+        modify [#attack_resolution](attacker: bearer) {
+            result.outcome = AttackOutcome.Miss
+            result.damage = 0
+        }
+    }
+
+
+    // ========================================================
+    //  SCARRED (§1.6.6)
+    //
+    //  Permanent marker applied when HP drops to -6 or below.
+    //  "The scars of the wound will likely be borne for the
+    //  rest of the character's life." No mechanical effect;
+    //  roleplay and GM adjudication.
+    // ========================================================
+
+    condition Scarred on bearer: entity {}
+
+
+    // ========================================================
+    //  COMA (§1.6.6)
+    //
+    //  Applied after healing from unconsciousness to 1+ HP.
+    //  Character remains in coma for 1-6 turns and must rest
+    //  for a minimum of one week. Cannot act during coma.
+    // ========================================================
+
+    condition Coma on bearer: entity {
+        modify [#attack_resolution](attacker: bearer) {
+            result.outcome = AttackOutcome.Miss
+            result.damage = 0
+        }
+    }
+
+
+    // ========================================================
     //  ENCUMBRANCE STATE (§1.5.3.3)
     //
     //  Always applied (even Unencumbered — movement is identity
