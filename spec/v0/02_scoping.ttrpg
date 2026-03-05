@@ -779,8 +779,10 @@ hook Regenerate on creature: Character (
 //   s.to_list() -> list<T>                   // converts to list (iteration order)
 //   s.contains(elem: T) -> bool              // true if elem is in the set
 //
-// List-to-set conversion (receiver syntax only):
+// List methods (receiver syntax only, all return new values):
 //   xs.to_set() -> set<T>                    // deduplicates list into a set
+//   xs.contains(elem: T) -> bool             // true if elem is in the list
+//   xs.remove_first(elem: T) -> list<T>      // returns list with first occurrence removed (no-op if absent)
 //
 // Set compound assignment sugar:
 //   s += elem    // equivalent to s = s.add(elem)

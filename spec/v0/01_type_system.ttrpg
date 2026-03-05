@@ -177,8 +177,10 @@ struct RollResult {
 //   s += elem     // add element (equivalent to s = s.add(elem))
 //   s -= elem     // remove element (equivalent to s = s.remove(elem))
 //
-// List-to-set conversion:
+// List methods (receiver syntax, all return new values):
 //   xs.to_set()              -> set<T>   // deduplicate list into set
+//   xs.contains(elem)        -> bool     // true if elem is in the list
+//   xs.remove_first(elem)    -> list<T>  // first occurrence removed (no-op if absent)
 
 
 // --- Enums ---

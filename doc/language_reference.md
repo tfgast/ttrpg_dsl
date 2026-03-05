@@ -490,6 +490,9 @@ emit EventName(param: value)       // fire event (named args only)
 ### Collections
 `len(xs)` `keys(m)` `values(m)` `first(xs)` `last(xs)` `append(xs, item)` `concat(a, b)` `reverse(xs)` `sum(xs)` `any(xs)` `all(xs)` `sort(xs)`
 
+### List Methods
+`.to_set()` `.contains(e)` `.remove_first(e)`
+
 ### Option
 `some(x)` `.unwrap()` `.unwrap_or(default)` `.is_some()` `.is_none()`
 
