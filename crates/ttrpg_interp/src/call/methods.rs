@@ -202,9 +202,27 @@ fn eval_list_method(
         "to_set" => {
             Ok(Value::Set(list.into_iter().collect()))
         }
+        "contains" => {
+            if args.is_empty() {
+                return Err(RuntimeError::with_span("contains() requires 1 argument", span));
+            }
+            let elem = eval_expr(env, &args[0].value)?;
+            Ok(Value::Bool(list.contains(&elem)))
+        }
+        "remove_first" => {
+            if args.is_empty() {
+                return Err(RuntimeError::with_span("remove_first() requires 1 argument", span));
+            }
+            let elem = eval_expr(env, &args[0].value)?;
+            let mut v = list;
+            if let Some(pos) = v.iter().position(|x| x == &elem) {
+                v.remove(pos);
+            }
+            Ok(Value::List(v))
+        }
         _ => Err(RuntimeError::with_span(
             format!(
-                "list type has no method `{method}`; available methods: len, first, last, reverse, append, concat, sum, any, all, sort, to_set"
+                "list type has no method `{method}`; available methods: len, first, last, reverse, append, concat, sum, any, all, sort, to_set, contains, remove_first"
             ),
             span,
         )),

@@ -291,8 +291,7 @@ fn derive_call_with_default_value() {
         "add_bonus",
         vec![
             Param::new("base", spanned(TypeExpr::Int)),
-            Param::new("bonus", spanned(TypeExpr::Int))
-                .with_default(spanned(ExprKind::IntLit(5))),
+            Param::new("bonus", spanned(TypeExpr::Int)).with_default(spanned(ExprKind::IntLit(5))),
         ],
         spanned(TypeExpr::Int),
         spanned(vec![spanned(StmtKind::Expr(spanned(ExprKind::BinOp {
@@ -1369,7 +1368,11 @@ fn remove_condition_string_form_uses_none_params() {
     assert_eq!(handler.log.len(), 2);
     match &handler.log[1] {
         Effect::RemoveCondition { id, .. } => {
-            assert_eq!(*id, Some(5), "String form should still remove by id after lookup");
+            assert_eq!(
+                *id,
+                Some(5),
+                "String form should still remove by id after lookup"
+            );
         }
         _ => panic!("expected RemoveCondition effect"),
     }

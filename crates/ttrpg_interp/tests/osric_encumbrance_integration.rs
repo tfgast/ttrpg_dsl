@@ -417,7 +417,8 @@ fn character_movement_no_armour_cap() {
     let mut handler = NullHandler;
 
     // Human (base 120ft), no armour cap
-    let char_ref = make_encumbrance_character(&mut state, "Test", &standard_abilities(), "Human", 0, 0);
+    let char_ref =
+        make_encumbrance_character(&mut state, "Test", &standard_abilities(), "Human", 0, 0);
     let val = interp
         .evaluate_derive(
             &state,
@@ -437,7 +438,8 @@ fn character_movement_with_armour_cap() {
     let mut handler = NullHandler;
 
     // Human (base 120ft), plate armour cap 60ft
-    let char_ref = make_encumbrance_character(&mut state, "Test", &standard_abilities(), "Human", 0, 60);
+    let char_ref =
+        make_encumbrance_character(&mut state, "Test", &standard_abilities(), "Human", 0, 60);
     let val = interp
         .evaluate_derive(
             &state,
@@ -879,7 +881,8 @@ fn surprise_adj_overloaded() {
     let mut handler = NullHandler;
 
     // DEX 10 → 0, Overloaded → min(0, 0) - 1 = -1
-    let char_ref = make_encumbrance_character(&mut state, "Test", &standard_abilities(), "Human", 0, 0);
+    let char_ref =
+        make_encumbrance_character(&mut state, "Test", &standard_abilities(), "Human", 0, 0);
     apply_encumbrance(&mut state, &char_ref, "Overloaded");
 
     let val = interp
@@ -902,7 +905,8 @@ fn update_encumbrance_applies_correct_tier() {
     let mut state = GameState::new();
 
     // STR 10 → allowance 35. Weight 0 → Unencumbered.
-    let char_ref = make_encumbrance_character(&mut state, "Test", &standard_abilities(), "Human", 0, 0);
+    let char_ref =
+        make_encumbrance_character(&mut state, "Test", &standard_abilities(), "Human", 0, 0);
 
     let adapter = StateAdapter::new(state);
     let mut handler = NullHandler;
@@ -960,7 +964,8 @@ fn update_encumbrance_replaces_previous_tier() {
     let mut state = GameState::new();
 
     // STR 10 → allowance 35. Weight 156 (121 over) → Overloaded.
-    let char_ref = make_encumbrance_character(&mut state, "Test", &standard_abilities(), "Human", 156, 0);
+    let char_ref =
+        make_encumbrance_character(&mut state, "Test", &standard_abilities(), "Human", 156, 0);
 
     let adapter = StateAdapter::new(state);
     let mut handler = NullHandler;

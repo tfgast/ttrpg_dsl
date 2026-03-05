@@ -504,9 +504,8 @@ impl EffectHandler for CliHandler<'_> {
                 id,
             } => {
                 let name = self.entity_name(&target);
-                self.log.push(format!(
-                    "[ConditionRemovalGate] {condition}#{id} on {name}"
-                ));
+                self.log
+                    .push(format!("[ConditionRemovalGate] {condition}#{id} on {name}"));
                 Response::Acknowledged
             }
         }

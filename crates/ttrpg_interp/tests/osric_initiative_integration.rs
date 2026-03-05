@@ -2227,7 +2227,12 @@ fn spell_interruption_hook_fires_on_damage() {
     state.set_turn_budget(&attacker, combat_turn_budget());
 
     // Equip weapon on attacker
-    set_field(&mut state, &attacker, "wielded_main", wielded_melee_item("SwordLong"));
+    set_field(
+        &mut state,
+        &attacker,
+        "wielded_main",
+        wielded_melee_item("SwordLong"),
+    );
 
     // Manually apply CastingSpell to caster (as if BeginCasting was called)
     state.apply_condition(&caster, "CastingSpell", BTreeMap::new(), Value::None, None);

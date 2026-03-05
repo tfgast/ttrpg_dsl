@@ -374,9 +374,7 @@ impl Checker<'_> {
             match seg {
                 LValueSegment::Field(name) => {
                     let resolved_name = if current.is_entity() {
-                        if let Some(real_group) =
-                            self.scope.resolve_group_alias(&path_key, name)
-                        {
+                        if let Some(real_group) = self.scope.resolve_group_alias(&path_key, name) {
                             real_group
                         } else {
                             name.clone()
@@ -412,8 +410,7 @@ impl Checker<'_> {
                         (fi.name.clone(), owner)
                     } else if let Ty::Entity(ename) = &current {
                         // Check if it's a flattened included-group field
-                        if let Some(group_name) =
-                            self.env.lookup_flattened_field(ename, last_field)
+                        if let Some(group_name) = self.env.lookup_flattened_field(ename, last_field)
                         {
                             if let Some(group_info) =
                                 self.env.lookup_optional_group(ename, group_name)
@@ -449,9 +446,7 @@ impl Checker<'_> {
             }
             Ty::OptionalGroupRef(entity_name, group_name) => {
                 // Field on an optional/included group
-                if let Some(group_info) =
-                    self.env.lookup_optional_group(entity_name, group_name)
-                {
+                if let Some(group_info) = self.env.lookup_optional_group(entity_name, group_name) {
                     if let Some(fi) = group_info.fields.iter().find(|f| f.name == *last_field) {
                         if !fi.restricted {
                             return;

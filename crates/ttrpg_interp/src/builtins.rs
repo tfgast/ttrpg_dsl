@@ -481,7 +481,12 @@ fn builtin_apply_condition(
                 args: cond_args,
             }),
             Some(duration),
-        ) => (*target, cond_name.clone(), cond_args.clone(), duration.clone()),
+        ) => (
+            *target,
+            cond_name.clone(),
+            cond_args.clone(),
+            duration.clone(),
+        ),
         (Some(Value::Entity(target)), Some(Value::Str(cond_name)), Some(duration)) => (
             *target,
             Name::from(cond_name.as_str()),
@@ -587,10 +592,7 @@ fn builtin_remove_condition(
         (Some(Value::Entity(target)), Some(Value::Str(cond_name))) => {
             let conditions = env.state.read_conditions(target).unwrap_or_default();
             let name = Name::from(cond_name.as_str());
-            let matching: Vec<_> = conditions
-                .into_iter()
-                .filter(|c| c.name == name)
-                .collect();
+            let matching: Vec<_> = conditions.into_iter().filter(|c| c.name == name).collect();
             (*target, matching)
         }
         (Some(Value::Entity(target)), Some(Value::Struct { name, fields }))
@@ -715,7 +717,9 @@ fn remove_condition_instances(
             params: None,
             id: Some(instance.id),
         };
-        if let Err(e) = validate_mutation_response(env.handler.handle(effect), "RemoveCondition", span) {
+        if let Err(e) =
+            validate_mutation_response(env.handler.handle(effect), "RemoveCondition", span)
+        {
             if first_error.is_none() {
                 first_error = Some(e);
             }

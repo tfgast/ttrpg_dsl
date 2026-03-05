@@ -808,7 +808,15 @@ fn call_make_saving_throw(
         saver_ancestry,
     );
 
-    let responses = vec![scripted_roll(1, 20, 0, vec![d20_roll], vec![d20_roll], d20_roll, d20_roll)];
+    let responses = vec![scripted_roll(
+        1,
+        20,
+        0,
+        vec![d20_roll],
+        vec![d20_roll],
+        d20_roll,
+        d20_roll,
+    )];
     let mut handler = ScriptedHandler::with_responses(responses);
 
     let val = interp
@@ -832,8 +840,14 @@ fn call_make_saving_throw(
 fn make_saving_throw_passes_on_high_roll() {
     // Human Fighter L1, death target 14, roll 16 → pass
     let result = call_make_saving_throw(
-        "Fighter", 1, "Human", &standard_abilities(),
-        "DeathParalysisPoison", 0, false, 16,
+        "Fighter",
+        1,
+        "Human",
+        &standard_abilities(),
+        "DeathParalysisPoison",
+        0,
+        false,
+        16,
     );
     assert!(result, "roll 16 vs target 14 should pass");
 }
@@ -842,8 +856,14 @@ fn make_saving_throw_passes_on_high_roll() {
 fn make_saving_throw_fails_on_low_roll() {
     // Human Fighter L1, death target 14, roll 5 → fail
     let result = call_make_saving_throw(
-        "Fighter", 1, "Human", &standard_abilities(),
-        "DeathParalysisPoison", 0, false, 5,
+        "Fighter",
+        1,
+        "Human",
+        &standard_abilities(),
+        "DeathParalysisPoison",
+        0,
+        false,
+        5,
     );
     assert!(!result, "roll 5 vs target 14 should fail");
 }
@@ -852,8 +872,14 @@ fn make_saving_throw_fails_on_low_roll() {
 fn make_saving_throw_natural_1_always_fails() {
     // Human Fighter L19, death target 2, roll 1 → fail (natural 1)
     let result = call_make_saving_throw(
-        "Fighter", 19, "Human", &standard_abilities(),
-        "DeathParalysisPoison", 0, false, 1,
+        "Fighter",
+        19,
+        "Human",
+        &standard_abilities(),
+        "DeathParalysisPoison",
+        0,
+        false,
+        1,
     );
     assert!(!result, "natural 1 should always fail even vs target 2");
 }
@@ -862,64 +888,125 @@ fn make_saving_throw_natural_1_always_fails() {
 fn make_saving_throw_stalwart_bonus_applies() {
     // Dwarf Fighter L1 CON 14 (+4 stalwart), death target 14, effective 10, roll 11 → pass
     let abilities: Vec<(&str, i64)> = vec![
-        ("STR", 10), ("DEX", 10), ("CON", 14),
-        ("INT", 10), ("WIS", 10), ("CHA", 10),
+        ("STR", 10),
+        ("DEX", 10),
+        ("CON", 14),
+        ("INT", 10),
+        ("WIS", 10),
+        ("CHA", 10),
     ];
     let result = call_make_saving_throw(
-        "Fighter", 1, "Dwarf", &abilities,
-        "DeathParalysisPoison", 0, false, 11,
+        "Fighter",
+        1,
+        "Dwarf",
+        &abilities,
+        "DeathParalysisPoison",
+        0,
+        false,
+        11,
     );
-    assert!(result, "Dwarf CON 14 stalwart +4: roll 11 vs effective target 10 should pass");
+    assert!(
+        result,
+        "Dwarf CON 14 stalwart +4: roll 11 vs effective target 10 should pass"
+    );
 }
 
 #[test]
 fn make_saving_throw_stalwart_no_effect_on_breath() {
     // Dwarf Fighter L1 CON 14, breath target 17, no stalwart on breath, roll 11 → fail
     let abilities: Vec<(&str, i64)> = vec![
-        ("STR", 10), ("DEX", 10), ("CON", 14),
-        ("INT", 10), ("WIS", 10), ("CHA", 10),
+        ("STR", 10),
+        ("DEX", 10),
+        ("CON", 14),
+        ("INT", 10),
+        ("WIS", 10),
+        ("CHA", 10),
     ];
     let result = call_make_saving_throw(
-        "Fighter", 1, "Dwarf", &abilities,
-        "BreathWeapons", 0, false, 11,
+        "Fighter",
+        1,
+        "Dwarf",
+        &abilities,
+        "BreathWeapons",
+        0,
+        false,
+        11,
     );
-    assert!(!result, "stalwart does not apply to breath weapons: roll 11 vs 17 should fail");
+    assert!(
+        !result,
+        "stalwart does not apply to breath weapons: roll 11 vs 17 should fail"
+    );
 }
 
 #[test]
 fn make_saving_throw_no_stalwart_for_human() {
     // Human Fighter L1 CON 14, death target 14, no stalwart, roll 11 → fail
     let abilities: Vec<(&str, i64)> = vec![
-        ("STR", 10), ("DEX", 10), ("CON", 14),
-        ("INT", 10), ("WIS", 10), ("CHA", 10),
+        ("STR", 10),
+        ("DEX", 10),
+        ("CON", 14),
+        ("INT", 10),
+        ("WIS", 10),
+        ("CHA", 10),
     ];
     let result = call_make_saving_throw(
-        "Fighter", 1, "Human", &abilities,
-        "DeathParalysisPoison", 0, false, 11,
+        "Fighter",
+        1,
+        "Human",
+        &abilities,
+        "DeathParalysisPoison",
+        0,
+        false,
+        11,
     );
-    assert!(!result, "humans do not get stalwart: roll 11 vs 14 should fail");
+    assert!(
+        !result,
+        "humans do not get stalwart: roll 11 vs 14 should fail"
+    );
 }
 
 #[test]
 fn make_saving_throw_mental_bonus_applies() {
     // Human Cleric L1 WIS 17 (+3 mental), spells target 15, effective 12, roll 12 → pass
     let abilities: Vec<(&str, i64)> = vec![
-        ("STR", 10), ("DEX", 10), ("CON", 10),
-        ("INT", 10), ("WIS", 17), ("CHA", 10),
+        ("STR", 10),
+        ("DEX", 10),
+        ("CON", 10),
+        ("INT", 10),
+        ("WIS", 17),
+        ("CHA", 10),
     ];
     let result = call_make_saving_throw(
-        "Cleric", 1, "Human", &abilities,
-        "SpellsUnlisted", 0, true, 12,
+        "Cleric",
+        1,
+        "Human",
+        &abilities,
+        "SpellsUnlisted",
+        0,
+        true,
+        12,
     );
-    assert!(result, "WIS 17 mental +3: roll 12 vs effective target 12 should pass");
+    assert!(
+        result,
+        "WIS 17 mental +3: roll 12 vs effective target 12 should pass"
+    );
 }
 
 #[test]
 fn make_saving_throw_bonus_param_stacks() {
     // Human Fighter L1, death target 14, bonus 3, effective 11, roll 12 → pass
     let result = call_make_saving_throw(
-        "Fighter", 1, "Human", &standard_abilities(),
-        "DeathParalysisPoison", 3, false, 12,
+        "Fighter",
+        1,
+        "Human",
+        &standard_abilities(),
+        "DeathParalysisPoison",
+        3,
+        false,
+        12,
     );
-    assert!(result, "bonus=3: roll 12 vs effective target 11 should pass");
+    assert!(
+        result,
+        "bonus=3: roll 12 vs effective target 11 should pass"
+    );
 }

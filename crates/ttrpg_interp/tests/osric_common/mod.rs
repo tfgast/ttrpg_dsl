@@ -157,10 +157,7 @@ pub fn wielded_missile_item(weapon: &str) -> Value {
         variant: Name::from("Missile"),
         fields: {
             let mut f = BTreeMap::new();
-            f.insert(
-                Name::from("weapon"),
-                enum_variant("MissileWeapon", weapon),
-            );
+            f.insert(Name::from("weapon"), enum_variant("MissileWeapon", weapon));
             f
         },
     })))
@@ -508,6 +505,74 @@ pub fn make_caster(
     state.add_entity("Character", fields)
 }
 
+/// Build a Character with the Spellcasting optional group pre-populated with slot data.
+/// `slots` is a list of (spell_level, max_slots) pairs.
+#[allow(clippy::too_many_arguments)]
+pub fn make_caster_with_slots(
+    state: &mut GameState,
+    name: &str,
+    class: &str,
+    level: i64,
+    abilities: &[(&str, i64)],
+    max_hp: i64,
+    ac: i64,
+    ancestry: &str,
+    slots: &[(i64, i64)],
+) -> EntityRef {
+    let mut ability_map = BTreeMap::new();
+    for &(ab, score) in abilities {
+        ability_map.insert(ability(ab), Value::Int(score));
+    }
+
+    let mut fields = FxHashMap::default();
+    fields.insert(Name::from("name"), Value::Str(name.to_string()));
+    fields.insert(
+        Name::from("classes"),
+        Value::List(vec![class_level_struct(class, level, 0)]),
+    );
+    fields.insert(Name::from("classing_mode"), classing_mode("Single"));
+    fields.insert(Name::from("ancestry"), enum_variant("Ancestry", ancestry));
+    fields.insert(
+        Name::from("alignment"),
+        enum_variant("Alignment", "TrueNeutral"),
+    );
+    fields.insert(Name::from("abilities"), Value::Map(ability_map));
+    fields.insert(Name::from("max_hp"), Value::Int(max_hp));
+    fields.insert(Name::from("hp"), Value::Int(max_hp));
+    fields.insert(Name::from("base_movement"), feet(120));
+    fields.insert(Name::from("current_weight"), Value::Int(0));
+    fields.insert(Name::from("gold"), Value::Int(0));
+    fields.insert(Name::from("saving_throws"), Value::Option(None));
+    fields.insert(Name::from("wielded_main"), Value::Option(None));
+    fields.insert(Name::from("wielded_off"), Value::Option(None));
+    fields.insert(Name::from("worn_armor"), armor_for_ac(ac));
+    fields.insert(Name::from("worn_shield"), Value::Option(None));
+
+    let mut spell_slots_map = BTreeMap::new();
+    let mut slots_used_map = BTreeMap::new();
+    for &(spell_level, max) in slots {
+        spell_slots_map.insert(Value::Int(spell_level), Value::Int(max));
+        slots_used_map.insert(Value::Int(spell_level), Value::Int(0));
+    }
+
+    fields.insert(
+        Name::from("Spellcasting"),
+        Value::Struct {
+            name: Name::from("Spellcasting"),
+            fields: {
+                let mut f = BTreeMap::new();
+                f.insert(Name::from("casting_invocation"), Value::Option(None));
+                f.insert(Name::from("spell_slots"), Value::Map(spell_slots_map));
+                f.insert(Name::from("slots_used"), Value::Map(slots_used_map));
+                f.insert(Name::from("memorised_spells"), Value::List(vec![]));
+                f
+            },
+        },
+    );
+
+    state.add_entity("Character", fields)
+}
+
 /// Build a Monster entity.
 pub fn make_monster(
     state: &mut GameState,
@@ -627,7 +692,13 @@ pub fn set_field(state: &mut GameState, entity: &EntityRef, field: &str, value: 
 pub fn apply_encumbrance(state: &mut GameState, entity: &EntityRef, tier_variant: &str) {
     let mut params = BTreeMap::new();
     params.insert(Name::from("tier"), tier(tier_variant));
-    state.apply_condition(entity, "EncumbranceState", params, Value::Option(None), None);
+    state.apply_condition(
+        entity,
+        "EncumbranceState",
+        params,
+        Value::Option(None),
+        None,
+    );
 }
 
 // ── OSRIC source loading ───────────────────────────────────────
@@ -706,18 +777,10 @@ pub fn run_all_ability(interp: &Interpreter, state: &GameState) {
 
     // Exceptional STR tables
     for pct in [1, 50, 76, 100] {
-        let _ = interp.evaluate_derive(
-            state,
-            &mut handler,
-            "exc_str_to_hit",
-            vec![Value::Int(pct)],
-        );
-        let _ = interp.evaluate_derive(
-            state,
-            &mut handler,
-            "exc_str_damage",
-            vec![Value::Int(pct)],
-        );
+        let _ =
+            interp.evaluate_derive(state, &mut handler, "exc_str_to_hit", vec![Value::Int(pct)]);
+        let _ =
+            interp.evaluate_derive(state, &mut handler, "exc_str_damage", vec![Value::Int(pct)]);
         let _ = interp.evaluate_derive(
             state,
             &mut handler,
@@ -730,16 +793,13 @@ pub fn run_all_ability(interp: &Interpreter, state: &GameState) {
     for score in [3, 10, 16, 18] {
         let _ =
             interp.evaluate_derive(state, &mut handler, "dex_surprise", vec![Value::Int(score)]);
-        let _ =
-            interp.evaluate_derive(state, &mut handler, "dex_missile", vec![Value::Int(score)]);
-        let _ =
-            interp.evaluate_derive(state, &mut handler, "dex_ac_adj", vec![Value::Int(score)]);
+        let _ = interp.evaluate_derive(state, &mut handler, "dex_missile", vec![Value::Int(score)]);
+        let _ = interp.evaluate_derive(state, &mut handler, "dex_ac_adj", vec![Value::Int(score)]);
     }
 
     // CON tables
     for score in [3, 10, 15, 18] {
-        let _ =
-            interp.evaluate_derive(state, &mut handler, "con_hp_adj", vec![Value::Int(score)]);
+        let _ = interp.evaluate_derive(state, &mut handler, "con_hp_adj", vec![Value::Int(score)]);
         let _ = interp.evaluate_derive(
             state,
             &mut handler,
@@ -768,12 +828,7 @@ pub fn run_all_ability(interp: &Interpreter, state: &GameState) {
     for anc in [
         "Dwarf", "Elf", "Gnome", "HalfElf", "HalfOrc", "Halfling", "Human",
     ] {
-        let _ = interp.evaluate_derive(
-            state,
-            &mut handler,
-            "ancestry_def",
-            vec![ancestry(anc)],
-        );
+        let _ = interp.evaluate_derive(state, &mut handler, "ancestry_def", vec![ancestry(anc)]);
     }
 }
 
@@ -783,12 +838,7 @@ pub fn run_all_character(interp: &Interpreter, state: &GameState) {
 
     // dex_ac_adj
     for score in [3, 10, 16, 18] {
-        let _ = interp.evaluate_derive(
-            state,
-            &mut handler,
-            "dex_ac_adj",
-            vec![Value::Int(score)],
-        );
+        let _ = interp.evaluate_derive(state, &mut handler, "dex_ac_adj", vec![Value::Int(score)]);
     }
 
     // apply_ancestry_mods
@@ -854,8 +904,16 @@ pub fn run_all_character(interp: &Interpreter, state: &GameState) {
 
     // prime_req_xp_bonus
     for class in [
-        "Fighter", "Paladin", "Ranger", "Cleric", "Druid", "Thief", "MagicUser", "Assassin",
-        "Illusionist", "Monk",
+        "Fighter",
+        "Paladin",
+        "Ranger",
+        "Cleric",
+        "Druid",
+        "Thief",
+        "MagicUser",
+        "Assassin",
+        "Illusionist",
+        "Monk",
     ] {
         let _ = interp.evaluate_derive(
             state,
@@ -869,12 +927,7 @@ pub fn run_all_character(interp: &Interpreter, state: &GameState) {
     for anc in [
         "Dwarf", "Elf", "Gnome", "HalfElf", "HalfOrc", "Halfling", "Human",
     ] {
-        let _ = interp.evaluate_derive(
-            state,
-            &mut handler,
-            "base_movement",
-            vec![ancestry(anc)],
-        );
+        let _ = interp.evaluate_derive(state, &mut handler, "base_movement", vec![ancestry(anc)]);
     }
 
     // check_ability_in_range
@@ -911,12 +964,8 @@ pub fn run_all_class(interp: &Interpreter, state: &GameState) {
         "Illusionist",
         "Monk",
     ] {
-        let _ = interp.evaluate_derive(
-            state,
-            &mut handler,
-            "class_def",
-            vec![class_variant(class)],
-        );
+        let _ =
+            interp.evaluate_derive(state, &mut handler, "class_def", vec![class_variant(class)]);
         // XP for levels 1, 5, 10
         for level in [1, 5, 10] {
             let _ = interp.evaluate_derive(
@@ -1089,14 +1138,8 @@ pub fn run_all_encumbrance(interp: &Interpreter) {
     }
 
     // effective_str_encumbrance
-    let char_ref = make_encumbrance_character(
-        &mut state,
-        "Enc-Test",
-        &standard_abilities(),
-        "Human",
-        0,
-        0,
-    );
+    let char_ref =
+        make_encumbrance_character(&mut state, "Enc-Test", &standard_abilities(), "Human", 0, 0);
     let _ = interp.evaluate_derive(
         &state,
         &mut handler,
@@ -1215,13 +1258,7 @@ pub fn run_all_conditions(interp: &Interpreter) {
         "Surprised",
         "RearAttacked",
     ] {
-        state.apply_condition(
-            &target,
-            cond,
-            BTreeMap::new(),
-            Value::Option(None),
-            None,
-        );
+        state.apply_condition(&target, cond, BTreeMap::new(), Value::Option(None), None);
     }
 
     // Apply parameterised conditions
@@ -1301,7 +1338,12 @@ pub fn run_all_combat(interp: &Interpreter) {
     let mut handler = NullHandler;
 
     // BTHB tables
-    for group in ["FighterGroup", "ClericGroup", "ThiefGroup", "MagicUserGroup"] {
+    for group in [
+        "FighterGroup",
+        "ClericGroup",
+        "ThiefGroup",
+        "MagicUserGroup",
+    ] {
         for level in [1, 5, 10, 15, 20] {
             let _ = interp.evaluate_derive(
                 &state,
@@ -1449,34 +1491,18 @@ pub fn run_all_initiative(interp: &Interpreter) {
 
     // wrap_segment
     for seg in [0, 5, 10, 15] {
-        let _ = interp.evaluate_derive(
-            &state,
-            &mut handler,
-            "wrap_segment",
-            vec![Value::Int(seg)],
-        );
+        let _ = interp.evaluate_derive(&state, &mut handler, "wrap_segment", vec![Value::Int(seg)]);
     }
 
     // action_segment for each action type
     for at in [
-        "Melee",
-        "Missile",
-        "Movement",
-        "SetSpear",
-        "Spell",
-        "Turning",
-        "Other",
+        "Melee", "Missile", "Movement", "SetSpear", "Spell", "Turning", "Other",
     ] {
         let _ = interp.evaluate_derive(
             &state,
             &mut handler,
             "action_segment",
-            vec![
-                action_type(at),
-                Value::Int(3),
-                Value::Int(5),
-                Value::Int(0),
-            ],
+            vec![action_type(at), Value::Int(3), Value::Int(5), Value::Int(0)],
         );
     }
 
@@ -1539,12 +1565,7 @@ pub fn run_all_initiative(interp: &Interpreter) {
         &state,
         &mut handler,
         "melee_order",
-        vec![
-            Value::Int(3),
-            Value::Int(7),
-            Value::Int(5),
-            Value::Int(5),
-        ],
+        vec![Value::Int(3), Value::Int(7), Value::Int(5), Value::Int(5)],
     );
 
     // movement_per_segment / movement_through_segment
@@ -1564,22 +1585,12 @@ pub fn run_all_initiative(interp: &Interpreter) {
     // roll_surprise (mechanic — needs scripted handler)
     let roll = scripted_roll(1, 6, 0, vec![2], vec![2], 2, 2);
     let mut handler2 = ScriptedHandler::with_responses(vec![roll]);
-    let _ = interp.evaluate_mechanic(
-        &state,
-        &mut handler2,
-        "roll_surprise",
-        vec![Value::Int(2)],
-    );
+    let _ = interp.evaluate_mechanic(&state, &mut handler2, "roll_surprise", vec![Value::Int(2)]);
 
     // roll_initiative
     let roll = scripted_roll(1, 6, 0, vec![4], vec![4], 4, 4);
     let mut handler3 = ScriptedHandler::with_responses(vec![roll]);
-    let _ = interp.evaluate_mechanic(
-        &state,
-        &mut handler3,
-        "roll_initiative",
-        vec![],
-    );
+    let _ = interp.evaluate_mechanic(&state, &mut handler3, "roll_initiative", vec![]);
 
     // CastingSpell condition + SpellInterruption hook + BeginCasting action
     let caster = make_caster(

@@ -224,10 +224,54 @@ impl Checker<'_> {
                 }
                 Ty::Set(inner)
             }
+            "contains" => {
+                if args.len() != 1 {
+                    self.error(
+                        format!("contains() takes 1 argument, found {}", args.len()),
+                        span,
+                    );
+                    for arg in args {
+                        self.check_expr(&arg.value);
+                    }
+                    return Ty::Error;
+                }
+                let elem_ty = self.check_expr_expecting(&args[0].value, Some(&inner));
+                if !elem_ty.is_error() && !self.types_compatible(&elem_ty, &inner) {
+                    self.error(
+                        format!(
+                            ".contains() element type mismatch: list is list<{inner}>, but got {elem_ty}"
+                        ),
+                        span,
+                    );
+                }
+                Ty::Bool
+            }
+            "remove_first" => {
+                if args.len() != 1 {
+                    self.error(
+                        format!("remove_first() takes 1 argument, found {}", args.len()),
+                        span,
+                    );
+                    for arg in args {
+                        self.check_expr(&arg.value);
+                    }
+                    return Ty::Error;
+                }
+                let elem_ty = self.check_expr_expecting(&args[0].value, Some(&inner));
+                if !elem_ty.is_error() && !self.types_compatible(&elem_ty, &inner) {
+                    self.error(
+                        format!(
+                            ".remove_first() element type mismatch: list is list<{inner}>, but got {elem_ty}"
+                        ),
+                        span,
+                    );
+                }
+                Ty::List(inner)
+            }
             _ => {
                 self.error(
                     format!(
-                        "list type has no method `{method}`; available methods: len, first, last, reverse, append, concat, sum, any, all, sort, to_set"
+                        "list type has no method `{method}`; available methods: len, first, last, reverse, append, concat, sum, any, all, sort, to_set, contains, remove_first"
                     ),
                     span,
                 );

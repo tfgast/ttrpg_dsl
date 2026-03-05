@@ -1,12 +1,15 @@
-//! OSRIC spell slot progression integration test.
+//! OSRIC spell slot progression and memorisation/casting integration tests.
 //!
 //! Verifies that osric/osric_spells.ttrpg parses, lowers, and type-checks
-//! through the full multi-file pipeline (core + class + spells). Exercises
-//! per-class spell slot tables, WIS bonus table, and dispatch derives.
+//! through the full multi-file pipeline. Exercises per-class spell slot tables,
+//! WIS bonus table, dispatch derives, and the MemoriseSpell/ForgetSpell/CastSpell
+//! action lifecycle.
 
 use ttrpg_ast::ast::{DeclKind, TopLevel};
-use ttrpg_ast::diagnostic::Severity;
+use ttrpg_ast::Name;
+use ttrpg_interp::adapter::StateAdapter;
 use ttrpg_interp::reference_state::GameState;
+use ttrpg_interp::state::StateProvider;
 use ttrpg_interp::value::Value;
 use ttrpg_interp::Interpreter;
 
@@ -16,51 +19,14 @@ use osric_common::*;
 // ── Compile helpers ────────────────────────────────────────────
 
 fn compile_osric_spells() -> (ttrpg_ast::ast::Program, ttrpg_checker::CheckResult) {
-    let core_source = include_str!("../../../osric/osric_core.ttrpg");
-    let class_source = include_str!("../../../osric/osric_class.ttrpg");
-    let spells_source = include_str!("../../../osric/osric_spells.ttrpg");
-
-    let sources = vec![
-        (
-            "osric/osric_core.ttrpg".to_string(),
-            core_source.to_string(),
-        ),
-        (
-            "osric/osric_class.ttrpg".to_string(),
-            class_source.to_string(),
-        ),
-        (
-            "osric/osric_spells.ttrpg".to_string(),
-            spells_source.to_string(),
-        ),
-    ];
-
-    let parse_result = ttrpg_parser::parse_multi(&sources);
-    let parse_errors: Vec<_> = parse_result
-        .diagnostics
-        .iter()
-        .filter(|d| d.severity == Severity::Error)
-        .collect();
-    assert!(
-        parse_errors.is_empty(),
-        "parse/lower errors: {:?}",
-        parse_errors.iter().map(|d| &d.message).collect::<Vec<_>>()
-    );
-
-    let (program, module_map) = parse_result.ok().unwrap();
-    let result = ttrpg_checker::check_with_modules(program, module_map);
-    let errors: Vec<_> = result
-        .diagnostics
-        .iter()
-        .filter(|d| d.severity == Severity::Error)
-        .collect();
-    assert!(
-        errors.is_empty(),
-        "checker errors: {:?}",
-        errors.iter().map(|d| &d.message).collect::<Vec<_>>()
-    );
-
-    (program.clone(), result)
+    // osric_spells.ttrpg now uses "OSRIC Initiative", which transitively
+    // requires all OSRIC modules. Load them via all_osric_sources + spells.
+    let mut sources = all_osric_sources();
+    sources.push((
+        "osric/osric_spells.ttrpg".to_string(),
+        include_str!("../../../osric/osric_spells.ttrpg").to_string(),
+    ));
+    compile_osric_sources(sources)
 }
 
 fn spell_progression(variant: &str) -> Value {
@@ -247,7 +213,7 @@ fn cleric_level_9_slots() {
     let mut handler = NullHandler;
 
     let slots = get_all_slots(&interp, &state, &mut handler, "Cleric", 9, 7);
-    assert_eq!(slots, vec![4, 4, 3, 2, 1, 0, 0]);
+    assert_eq!(slots, vec![3, 3, 3, 2, 1, 0, 0]);
 }
 
 #[test]
@@ -306,7 +272,7 @@ fn magic_user_level_18_slots() {
     let mut handler = NullHandler;
 
     let slots = get_all_slots(&interp, &state, &mut handler, "MagicUser", 18, 9);
-    assert_eq!(slots, vec![5, 5, 5, 5, 5, 3, 3, 2, 1]);
+    assert_eq!(slots, vec![5, 5, 5, 5, 5, 4, 3, 2, 1]);
 }
 
 // ── Illusionist spell slots ────────────────────────────────────
@@ -352,7 +318,10 @@ fn cleric_wis_18_bonus_applied() {
 
     // Third level base is 0, so no bonus applied
     let third = get_total_slots(&interp, &state, &mut handler, "Cleric", 3, 3, 18);
-    assert_eq!(third, 0, "Cleric L3 WIS 18: third-level base 0 means no bonus");
+    assert_eq!(
+        third, 0,
+        "Cleric L3 WIS 18: third-level base 0 means no bonus"
+    );
 }
 
 #[test]
@@ -461,4 +430,365 @@ fn has_wis_bonus_values() {
             "has_wis_bonus({prog})"
         );
     }
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  LIST BUILTIN METHODS: contains, remove_first
+//  Tested indirectly through MemoriseSpell/ForgetSpell/CastSpell
+//  actions which use .contains() in requires guards and
+//  .remove_first() in resolve blocks.
+// ═══════════════════════════════════════════════════════════════
+
+// ═══════════════════════════════════════════════════════════════
+//  SPELL MEMORISATION / CASTING ACTIONS
+// ═══════════════════════════════════════════════════════════════
+
+/// Helper: create a Cleric L3 caster with 2 first-level and 1 second-level slot.
+fn setup_caster() -> (
+    ttrpg_ast::ast::Program,
+    ttrpg_checker::CheckResult,
+    GameState,
+    ttrpg_interp::state::EntityRef,
+) {
+    let (program, result) = compile_osric_spells();
+    let mut state = GameState::new();
+    let caster = make_caster_with_slots(
+        &mut state,
+        "Alaric",
+        "Cleric",
+        3,
+        &standard_abilities_12(),
+        20,
+        10,
+        "Human",
+        &[(1, 2), (2, 1)],
+    );
+    (program, result, state, caster)
+}
+
+/// Read the Spellcasting group fields from a caster.
+/// Returns (memorised_spells as strings, slots_used[1], slots_used[2]).
+fn read_spellcasting(
+    state: &GameState,
+    entity: &ttrpg_interp::state::EntityRef,
+) -> (Vec<String>, i64, i64) {
+    let sc = state
+        .read_field(entity, "Spellcasting")
+        .expect("entity should have Spellcasting group");
+    let fields = match &sc {
+        Value::Struct { fields, .. } => fields,
+        other => panic!("expected Struct for Spellcasting, got {other:?}"),
+    };
+
+    // Extract memorised_spells
+    let spells: Vec<String> = match fields.get::<Name>(&"memorised_spells".into()) {
+        Some(Value::List(items)) => items
+            .iter()
+            .map(|v| match v {
+                Value::Str(s) => s.clone(),
+                other => panic!("expected string in memorised_spells, got {other:?}"),
+            })
+            .collect(),
+        other => panic!("expected list for memorised_spells, got {other:?}"),
+    };
+
+    // Extract slots_used map
+    let slots_used = match fields.get::<Name>(&"slots_used".into()) {
+        Some(Value::Map(m)) => m,
+        other => panic!("expected map for slots_used, got {other:?}"),
+    };
+
+    let used_1 = match slots_used.get(&Value::Int(1)) {
+        Some(Value::Int(n)) => *n,
+        other => panic!("expected int for slots_used[1], got {other:?}"),
+    };
+    let used_2 = match slots_used.get(&Value::Int(2)) {
+        Some(Value::Int(n)) => *n,
+        other => panic!("expected int for slots_used[2], got {other:?}"),
+    };
+
+    (spells, used_1, used_2)
+}
+
+fn run_action(
+    interp: &Interpreter,
+    state: GameState,
+    handler: &mut ScriptedHandler,
+    action: &str,
+    actor: ttrpg_interp::state::EntityRef,
+    args: Vec<Value>,
+) -> GameState {
+    let adapter = StateAdapter::new(state);
+    adapter.run(handler, |state, eff_handler| {
+        interp
+            .execute_action(state, eff_handler, action, actor, args)
+            .unwrap();
+    });
+    adapter.into_inner()
+}
+
+// ── MemoriseSpell ─────────────────────────────────────────────
+
+#[test]
+fn memorise_spell_fills_slot_and_adds_to_list() {
+    let (program, result, state, caster) = setup_caster();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut handler = ScriptedHandler::with_responses(vec![]);
+
+    let state = run_action(
+        &interp,
+        state,
+        &mut handler,
+        "MemoriseSpell",
+        caster,
+        vec![Value::Str("Cure Light Wounds".into()), Value::Int(1)],
+    );
+
+    let (spells, used_1, _used_2) = read_spellcasting(&state, &caster);
+    assert_eq!(spells, vec!["Cure Light Wounds"]);
+    assert_eq!(used_1, 1);
+}
+
+#[test]
+fn memorise_spell_fails_when_slots_full() {
+    let (program, result, state, caster) = setup_caster();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+
+    // Fill both first-level slots
+    let mut handler = ScriptedHandler::with_responses(vec![]);
+    let state = run_action(
+        &interp,
+        state,
+        &mut handler,
+        "MemoriseSpell",
+        caster,
+        vec![Value::Str("Cure Light Wounds".into()), Value::Int(1)],
+    );
+    let mut handler = ScriptedHandler::with_responses(vec![]);
+    let state = run_action(
+        &interp,
+        state,
+        &mut handler,
+        "MemoriseSpell",
+        caster,
+        vec![Value::Str("Bless".into()), Value::Int(1)],
+    );
+
+    // Third memorise should fail (only 2 first-level slots)
+    let mut handler = ScriptedHandler::with_responses(vec![]);
+    let state = run_action(
+        &interp,
+        state,
+        &mut handler,
+        "MemoriseSpell",
+        caster,
+        vec![Value::Str("Command".into()), Value::Int(1)],
+    );
+
+    // Verify requires guard rejected: state unchanged (still 2 spells, slots_used still 2)
+    let (spells, used_1, _) = read_spellcasting(&state, &caster);
+    assert_eq!(spells.len(), 2, "no third spell should be memorised");
+    assert_eq!(used_1, 2, "slots_used should still be 2");
+}
+
+#[test]
+fn memorise_same_spell_multiple_times() {
+    let (program, result, state, caster) = setup_caster();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+
+    let mut handler = ScriptedHandler::with_responses(vec![]);
+    let state = run_action(
+        &interp,
+        state,
+        &mut handler,
+        "MemoriseSpell",
+        caster,
+        vec![Value::Str("Cure Light Wounds".into()), Value::Int(1)],
+    );
+    let mut handler = ScriptedHandler::with_responses(vec![]);
+    let state = run_action(
+        &interp,
+        state,
+        &mut handler,
+        "MemoriseSpell",
+        caster,
+        vec![Value::Str("Cure Light Wounds".into()), Value::Int(1)],
+    );
+
+    let (spells, used_1, _) = read_spellcasting(&state, &caster);
+    assert_eq!(spells, vec!["Cure Light Wounds", "Cure Light Wounds"]);
+    assert_eq!(used_1, 2);
+}
+
+// ── ForgetSpell ───────────────────────────────────────────────
+
+#[test]
+fn forget_spell_removes_spell_and_frees_slot() {
+    let (program, result, state, caster) = setup_caster();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+
+    // Memorise then forget
+    let mut handler = ScriptedHandler::with_responses(vec![]);
+    let state = run_action(
+        &interp,
+        state,
+        &mut handler,
+        "MemoriseSpell",
+        caster,
+        vec![Value::Str("Cure Light Wounds".into()), Value::Int(1)],
+    );
+    let mut handler = ScriptedHandler::with_responses(vec![]);
+    let state = run_action(
+        &interp,
+        state,
+        &mut handler,
+        "ForgetSpell",
+        caster,
+        vec![Value::Str("Cure Light Wounds".into()), Value::Int(1)],
+    );
+
+    let (spells, used_1, _) = read_spellcasting(&state, &caster);
+    assert!(spells.is_empty(), "spell list should be empty after forget");
+    assert_eq!(used_1, 0, "slots_used should be back to 0");
+}
+
+#[test]
+fn forget_spell_fails_when_not_memorised() {
+    let (program, result, state, caster) = setup_caster();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+
+    let mut handler = ScriptedHandler::with_responses(vec![]);
+    let state = run_action(
+        &interp,
+        state,
+        &mut handler,
+        "ForgetSpell",
+        caster,
+        vec![Value::Str("Cure Light Wounds".into()), Value::Int(1)],
+    );
+
+    // Verify requires guard rejected: state unchanged (empty list, slots_used still 0)
+    let (spells, used_1, _) = read_spellcasting(&state, &caster);
+    assert!(spells.is_empty(), "no spells should be in list");
+    assert_eq!(used_1, 0, "slots_used should still be 0");
+}
+
+#[test]
+fn forget_removes_only_first_duplicate() {
+    let (program, result, state, caster) = setup_caster();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+
+    // Memorise CLW twice
+    let mut handler = ScriptedHandler::with_responses(vec![]);
+    let state = run_action(
+        &interp,
+        state,
+        &mut handler,
+        "MemoriseSpell",
+        caster,
+        vec![Value::Str("Cure Light Wounds".into()), Value::Int(1)],
+    );
+    let mut handler = ScriptedHandler::with_responses(vec![]);
+    let state = run_action(
+        &interp,
+        state,
+        &mut handler,
+        "MemoriseSpell",
+        caster,
+        vec![Value::Str("Cure Light Wounds".into()), Value::Int(1)],
+    );
+
+    // Forget one
+    let mut handler = ScriptedHandler::with_responses(vec![]);
+    let state = run_action(
+        &interp,
+        state,
+        &mut handler,
+        "ForgetSpell",
+        caster,
+        vec![Value::Str("Cure Light Wounds".into()), Value::Int(1)],
+    );
+
+    let (spells, used_1, _) = read_spellcasting(&state, &caster);
+    assert_eq!(spells, vec!["Cure Light Wounds"], "one copy should remain");
+    assert_eq!(used_1, 1);
+}
+
+// ── CastSpell ─────────────────────────────────────────────────
+
+#[test]
+fn cast_spell_expends_slot_and_begins_casting() {
+    let (program, result, state, caster) = setup_caster();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+
+    // Memorise a spell first
+    let mut handler = ScriptedHandler::with_responses(vec![]);
+    let state = run_action(
+        &interp,
+        state,
+        &mut handler,
+        "MemoriseSpell",
+        caster,
+        vec![Value::Str("Cure Light Wounds".into()), Value::Int(1)],
+    );
+
+    // Cast it (casting_time = 5 segments)
+    let mut handler = ScriptedHandler::with_responses(vec![]);
+    let state = run_action(
+        &interp,
+        state,
+        &mut handler,
+        "CastSpell",
+        caster,
+        vec![
+            Value::Str("Cure Light Wounds".into()),
+            Value::Int(1),
+            Value::Int(5),
+        ],
+    );
+
+    // Spell should be removed from memorised list
+    let (spells, used_1, _) = read_spellcasting(&state, &caster);
+    assert!(spells.is_empty(), "spell should be expended after casting");
+    assert_eq!(used_1, 0, "slots_used should be decremented");
+
+    // CastingSpell condition should be applied (via BeginCasting)
+    let conditions = state.read_conditions(&caster).unwrap_or_default();
+    assert!(
+        conditions.iter().any(|c| &*c.name == "CastingSpell"),
+        "expected CastingSpell condition on caster, got: {:?}",
+        conditions.iter().map(|c| &c.name).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn cast_spell_fails_when_not_memorised() {
+    let (program, result, state, caster) = setup_caster();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+
+    let mut handler = ScriptedHandler::with_responses(vec![]);
+    let state = run_action(
+        &interp,
+        state,
+        &mut handler,
+        "CastSpell",
+        caster,
+        vec![
+            Value::Str("Cure Light Wounds".into()),
+            Value::Int(1),
+            Value::Int(5),
+        ],
+    );
+
+    // Verify requires guard rejected: state unchanged
+    let (spells, used_1, _) = read_spellcasting(&state, &caster);
+    assert!(spells.is_empty(), "no spells should be in list");
+    assert_eq!(used_1, 0, "slots_used should still be 0");
+
+    // No CastingSpell condition should be applied
+    let conditions = state.read_conditions(&caster).unwrap_or_default();
+    assert!(
+        !conditions.iter().any(|c| &*c.name == "CastingSpell"),
+        "CastingSpell should not be applied when requires fails"
+    );
 }

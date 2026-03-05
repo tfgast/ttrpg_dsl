@@ -195,9 +195,8 @@ fn lower_one_move(
 
     // 4. Synthesize mechanic FnDecl
     // Parameters: receiver + all move params
-    let mut mechanic_params = vec![
-        Param::new(m.receiver_name.clone(), m.receiver_type.clone()).with_span(span),
-    ];
+    let mut mechanic_params =
+        vec![Param::new(m.receiver_name.clone(), m.receiver_type.clone()).with_span(span)];
     mechanic_params.extend(m.params.iter().cloned());
 
     // Body: roll(m.roll_expr)

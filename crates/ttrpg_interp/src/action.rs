@@ -1323,7 +1323,10 @@ mod tests {
         let action = make_action(
             "Attack",
             "actor",
-            vec![Param::new("target", spanned(TypeExpr::Named("Character".into())))],
+            vec![Param::new(
+                "target",
+                spanned(TypeExpr::Named("Character".into())),
+            )],
             None,
             None,
             vec![spanned(StmtKind::Expr(spanned(ExprKind::Ident(

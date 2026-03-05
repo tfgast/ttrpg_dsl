@@ -1538,8 +1538,16 @@ fn can_wield_all_restricted_classes_resolve() {
 
     // Verify all 10 classes resolve without error for both melee and missile
     let classes = [
-        "Assassin", "Cleric", "Druid", "Fighter", "Illusionist",
-        "MagicUser", "Monk", "Paladin", "Ranger", "Thief",
+        "Assassin",
+        "Cleric",
+        "Druid",
+        "Fighter",
+        "Illusionist",
+        "MagicUser",
+        "Monk",
+        "Paladin",
+        "Ranger",
+        "Thief",
     ];
 
     for class in &classes {

@@ -201,12 +201,7 @@ system "test" {
     let mut handler = ScriptedHandler::new();
     adapter.run(&mut handler, |state, handler| {
         interp
-            .evaluate_function(
-                state,
-                handler,
-                "poison_then_cure",
-                vec![Value::Entity(c)],
-            )
+            .evaluate_function(state, handler, "poison_then_cure", vec![Value::Entity(c)])
             .unwrap();
     });
 
@@ -247,12 +242,7 @@ system "test" {
     let adapter = StateAdapter::new(state);
     let mut handler = ScriptedHandler::new();
     let err = adapter.run(&mut handler, |state, handler| {
-        interp.evaluate_function(
-            state,
-            handler,
-            "apply_and_remove",
-            vec![Value::Entity(c)],
-        )
+        interp.evaluate_function(state, handler, "apply_and_remove", vec![Value::Entity(c)])
     });
 
     // on_remove error propagates
@@ -261,7 +251,10 @@ system "test" {
     // But removal still happened — condition should be gone
     let final_state = adapter.into_inner();
     let conds = final_state.read_conditions(&c).unwrap_or_default();
-    assert!(conds.is_empty(), "condition should have been removed despite on_remove error");
+    assert!(
+        conds.is_empty(),
+        "condition should have been removed despite on_remove error"
+    );
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -380,12 +373,7 @@ system "test" {
     ]);
     adapter.run(&mut handler, |state, handler| {
         interp
-            .evaluate_function(
-                state,
-                handler,
-                "poison_then_cure",
-                vec![Value::Entity(c)],
-            )
+            .evaluate_function(state, handler, "poison_then_cure", vec![Value::Entity(c)])
             .unwrap();
     });
 

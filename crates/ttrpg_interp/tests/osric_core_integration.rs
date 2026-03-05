@@ -182,10 +182,7 @@ fn osric_core_has_all_enums() {
         "missing CastingTime enum"
     );
     // SpellSave: 4 variants
-    assert!(
-        enums.contains(&("SpellSave", 4)),
-        "missing SpellSave enum"
-    );
+    assert!(enums.contains(&("SpellSave", 4)), "missing SpellSave enum");
 
     assert_eq!(enums.len(), 24, "expected 24 enums, got {enums:?}");
 }
@@ -284,15 +281,9 @@ fn osric_core_has_all_structs() {
         "missing MonsterAttack struct"
     );
     // Armor: armour_type
-    assert!(
-        structs.contains(&("Armor", 1)),
-        "missing Armor struct"
-    );
+    assert!(structs.contains(&("Armor", 1)), "missing Armor struct");
     // Shield: shield_type
-    assert!(
-        structs.contains(&("Shield", 1)),
-        "missing Shield struct"
-    );
+    assert!(structs.contains(&("Shield", 1)), "missing Shield struct");
     // ClassLevel: class, level, xp
     assert!(
         structs.contains(&("ClassLevel", 3)),

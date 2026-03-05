@@ -1565,7 +1565,12 @@ fn melee_attack_action_hits_and_damages() {
     );
     state.set_turn_budget(&attacker, combat_turn_budget());
     // Equip a longsword on the attacker
-    set_field(&mut state, &attacker, "wielded_main", wielded_melee_item("SwordLong"));
+    set_field(
+        &mut state,
+        &attacker,
+        "wielded_main",
+        wielded_melee_item("SwordLong"),
+    );
 
     // Action pipeline: ActionStarted → RequiresCheck → DeductCost → resolve body → ActionCompleted
     let atk_roll = scripted_roll(1, 20, 0, vec![15], vec![15], 15, 15);
@@ -1625,7 +1630,12 @@ fn melee_attack_action_miss_preserves_hp() {
     );
     state.set_turn_budget(&attacker, combat_turn_budget());
     // Equip a dagger on the attacker
-    set_field(&mut state, &attacker, "wielded_main", wielded_melee_item("Dagger"));
+    set_field(
+        &mut state,
+        &attacker,
+        "wielded_main",
+        wielded_melee_item("Dagger"),
+    );
 
     // Roll 5 → miss (5+0 = 5 < 17)
     let atk_roll = scripted_roll(1, 20, 0, vec![5], vec![5], 5, 5);
@@ -1684,7 +1694,12 @@ fn missile_attack_action_hits() {
     );
     state.set_turn_budget(&attacker, combat_turn_budget());
     // Equip a longbow on the attacker
-    set_field(&mut state, &attacker, "wielded_main", wielded_missile_item("BowLong"));
+    set_field(
+        &mut state,
+        &attacker,
+        "wielded_main",
+        wielded_missile_item("BowLong"),
+    );
 
     // Roll 14 → 14+2+0+0 = 16 >= 12 → Hit; damage 1d6 roll 3
     let atk_roll = scripted_roll(1, 20, 0, vec![14], vec![14], 14, 14);
@@ -1748,7 +1763,12 @@ fn charge_action_adds_attack_mod() {
     );
     state.set_turn_budget(&attacker, combat_turn_budget());
     // Equip a longsword on the charger
-    set_field(&mut state, &attacker, "wielded_main", wielded_melee_item("SwordLong"));
+    set_field(
+        &mut state,
+        &attacker,
+        "wielded_main",
+        wielded_melee_item("SwordLong"),
+    );
 
     // Roll 12 → 12+0+0+2 = 14 >= 14 → Hit (only hits because of +2 charge bonus)
     let atk_roll = scripted_roll(1, 20, 0, vec![12], vec![12], 12, 12);
@@ -1809,7 +1829,12 @@ fn charge_would_miss_without_bonus() {
         "Human",
     );
     state.set_turn_budget(&attacker, combat_turn_budget());
-    set_field(&mut state, &attacker, "wielded_main", wielded_melee_item("SwordLong"));
+    set_field(
+        &mut state,
+        &attacker,
+        "wielded_main",
+        wielded_melee_item("SwordLong"),
+    );
 
     // Roll 12 → 12+0+0 = 12 < 14 → Miss (no charge bonus)
     let atk_roll = scripted_roll(1, 20, 0, vec![12], vec![12], 12, 12);
@@ -1868,7 +1893,12 @@ fn melee_attack_emits_creature_slain_on_kill() {
         "Human",
     );
     state.set_turn_budget(&attacker, combat_turn_budget());
-    set_field(&mut state, &attacker, "wielded_main", wielded_melee_item("SwordLong"));
+    set_field(
+        &mut state,
+        &attacker,
+        "wielded_main",
+        wielded_melee_item("SwordLong"),
+    );
 
     // Roll 18 → hit; damage 1d8 roll 5 → 5 damage kills target (3 HP)
     let atk_roll = scripted_roll(1, 20, 0, vec![18], vec![18], 18, 18);

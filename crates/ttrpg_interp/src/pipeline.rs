@@ -1064,22 +1064,26 @@ mod tests {
                 })))]),
             )),
             DeclKind::Condition(
-                ConditionDecl::new("Prone", "target", spanned(TypeExpr::Named("Character".into())))
-                    .with_clauses(vec![ConditionClause::Modify(ModifyClause {
-                        target: ModifyTarget::Named("attack_roll".into()),
-                        bindings: vec![ModifyBinding {
-                            name: "attacker".into(),
-                            value: Some(spanned(ExprKind::Ident("target".into()))),
-                            span: dummy_span(),
-                        }],
-                        body: vec![ModifyStmt::ParamOverride {
-                            name: "mode".into(),
-                            value: spanned(ExprKind::StringLit("disadvantage".into())),
-                            span: dummy_span(),
-                        }],
+                ConditionDecl::new(
+                    "Prone",
+                    "target",
+                    spanned(TypeExpr::Named("Character".into())),
+                )
+                .with_clauses(vec![ConditionClause::Modify(ModifyClause {
+                    target: ModifyTarget::Named("attack_roll".into()),
+                    bindings: vec![ModifyBinding {
+                        name: "attacker".into(),
+                        value: Some(spanned(ExprKind::Ident("target".into()))),
                         span: dummy_span(),
-                        id: ModifyClauseId(0),
-                    })]),
+                    }],
+                    body: vec![ModifyStmt::ParamOverride {
+                        name: "mode".into(),
+                        value: spanned(ExprKind::StringLit("disadvantage".into())),
+                        span: dummy_span(),
+                    }],
+                    span: dummy_span(),
+                    id: ModifyClauseId(0),
+                })]),
             ),
         ]);
 
@@ -1215,7 +1219,10 @@ mod tests {
         let program = program_with_decls(vec![
             DeclKind::Derive(FnDecl::new(
                 "compute",
-                vec![Param::new("val", spanned(TypeExpr::Named("Character".into())))],
+                vec![Param::new(
+                    "val",
+                    spanned(TypeExpr::Named("Character".into())),
+                )],
                 spanned(TypeExpr::Named("Outcome".into())),
                 spanned(vec![spanned(StmtKind::Expr(spanned(
                     ExprKind::StructLit {
@@ -1230,22 +1237,26 @@ mod tests {
                 )))]),
             )),
             DeclKind::Condition(
-                ConditionDecl::new("Boosted", "target", spanned(TypeExpr::Named("Character".into())))
-                    .with_clauses(vec![ConditionClause::Modify(ModifyClause {
-                        target: ModifyTarget::Named("compute".into()),
-                        bindings: vec![ModifyBinding {
-                            name: "val".into(),
-                            value: Some(spanned(ExprKind::Ident("target".into()))),
-                            span: dummy_span(),
-                        }],
-                        body: vec![ModifyStmt::ResultOverride {
-                            field: "score".into(),
-                            value: spanned(ExprKind::IntLit(99)),
-                            span: dummy_span(),
-                        }],
+                ConditionDecl::new(
+                    "Boosted",
+                    "target",
+                    spanned(TypeExpr::Named("Character".into())),
+                )
+                .with_clauses(vec![ConditionClause::Modify(ModifyClause {
+                    target: ModifyTarget::Named("compute".into()),
+                    bindings: vec![ModifyBinding {
+                        name: "val".into(),
+                        value: Some(spanned(ExprKind::Ident("target".into()))),
                         span: dummy_span(),
-                        id: ModifyClauseId(0),
-                    })]),
+                    }],
+                    body: vec![ModifyStmt::ResultOverride {
+                        field: "score".into(),
+                        value: spanned(ExprKind::IntLit(99)),
+                        span: dummy_span(),
+                    }],
+                    span: dummy_span(),
+                    id: ModifyClauseId(0),
+                })]),
             ),
         ]);
 

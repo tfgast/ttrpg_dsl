@@ -41,11 +41,7 @@ fn osric_combined_coverage() {
     run_all_initiative(&interp);
 
     // 5. Build CoverageSource list from the source map
-    let sm = MultiSourceMap::new(
-        sources
-            .into_iter()
-            .collect(),
-    );
+    let sm = MultiSourceMap::new(sources.into_iter().collect());
     let mut cov_sources = Vec::new();
     for i in 0..sm.file_count() {
         if let Some((filename, source, line_starts)) = sm.file_info(i) {
