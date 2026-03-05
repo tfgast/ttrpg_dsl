@@ -735,6 +735,10 @@ pub fn all_osric_sources() -> Vec<(String, String)> {
             include_str!("../../../../osric/osric_conditions.ttrpg").to_string(),
         ),
         (
+            "osric/osric_thief_skills.ttrpg".to_string(),
+            include_str!("../../../../osric/osric_thief_skills.ttrpg").to_string(),
+        ),
+        (
             "osric/osric_combat.ttrpg".to_string(),
             include_str!("../../../../osric/osric_combat.ttrpg").to_string(),
         ),

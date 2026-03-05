@@ -31,6 +31,7 @@ fn compile_osric_conditions() -> (ttrpg_ast::ast::Program, ttrpg_checker::CheckR
     let character_source = include_str!("../../../osric/osric_character.ttrpg");
     let class_source = include_str!("../../../osric/osric_class.ttrpg");
     let equipment_source = include_str!("../../../osric/osric_equipment.ttrpg");
+    let thief_skills_source = include_str!("../../../osric/osric_thief_skills.ttrpg");
     let combat_source = include_str!("../../../osric/osric_combat.ttrpg");
     let conditions_source = include_str!("../../../osric/osric_conditions.ttrpg");
 
@@ -54,6 +55,10 @@ fn compile_osric_conditions() -> (ttrpg_ast::ast::Program, ttrpg_checker::CheckR
         (
             "osric/osric_equipment.ttrpg".to_string(),
             equipment_source.to_string(),
+        ),
+        (
+            "osric/osric_thief_skills.ttrpg".to_string(),
+            thief_skills_source.to_string(),
         ),
         (
             "osric/osric_combat.ttrpg".to_string(),

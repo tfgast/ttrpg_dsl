@@ -14,6 +14,7 @@ use "OSRIC Character"
 use "OSRIC Classes"
 use "OSRIC Equipment"
 use "OSRIC Conditions"
+use "OSRIC Thief Skills"
 
 system "OSRIC Combat" {
 
@@ -330,7 +331,8 @@ system "OSRIC Combat" {
         weapon: MeleeWeapon,
         attack_mod: int = 0,
         roll_mode: RollMode = RollMode.Normal,
-        max_damage: bool = false
+        max_damage: bool = false,
+        damage_mult: int = 1
     ) -> AttackResult #attack_resolution {
         let bthb_val = character_bthb(attacker)
         let str_hit = effective_str_to_hit(attacker)
@@ -356,6 +358,10 @@ system "OSRIC Combat" {
             AttackOutcome.Hit => {
                 if max_damage {
                     max(1, max_value(dmg_dice) + dmg_mod)
+                } else if damage_mult > 1 {
+                    // Backstab/multiplied damage: multiply dice before adding bonuses.
+                    let raw = roll(dmg_dice).total
+                    max(1, raw * damage_mult + dmg_mod)
                 } else {
                     damage_roll(dmg_dice, dmg_mod)
                 }
@@ -647,6 +653,57 @@ system "OSRIC Combat" {
                     target.TakeDamage(defender, doubled, wdef.damage_type)
                 },
                 _ => {}
+            }
+        }
+    }
+
+
+    // ========================================================
+    //  BACKSTAB
+    //
+    //  Thief/Assassin special attack from behind an unaware
+    //  target. +4 to hit (replacing normal +2 rear attack).
+    //  Damage dice multiplied before adding bonuses.
+    //  Requires successful Hide in Shadows check in combat
+    //  (recommended interpretation, PG p.65 sidebar).
+    //  Target loses DEX and shield AC bonuses (attacked from
+    //  behind). RearAttacked condition applied for the strike.
+    //
+    //  Reference: PG pp.64-65 (Thief), pp.30-31 (Assassin)
+    // ========================================================
+
+    // Backstab: hide, then strike from behind with multiplied damage.
+    // The +4 backstab bonus replaces the normal +2 rear attack bonus.
+    // RearAttacked provides +2 and strips DEX/shield; an extra +2
+    // in attack_mod brings the total to +4.
+    action Backstab on attacker: Character (target: Character) {
+        cost { attack }
+        requires {
+            wielded_melee(attacker).is_some()
+            && character_can_backstab(attacker)
+        }
+        resolve {
+            let hide_pct = character_thief_skill(attacker, ThiefSkill.hide_in_shadows)
+            let hidden = thief_skill_check(hide_pct)
+            if hidden {
+                let weapon = wielded_melee(attacker).unwrap()
+                let cl = backstab_class_level(attacker)
+                let mult = backstab_multiplier(cl.class, cl.level)
+                // Apply RearAttacked: strips DEX & shield AC, adds +2 to hit.
+                // Extra +2 attack_mod makes total backstab bonus +4.
+                apply_condition(target, RearAttacked, Duration.end_of_round)
+                let result = resolve_melee_attack(
+                    attacker, target, weapon, 2,
+                    RollMode.Normal, false, mult
+                )
+                remove_condition(target, "RearAttacked")
+                match result.outcome {
+                    AttackOutcome.Hit => {
+                        let wdef = melee_weapon_def(weapon)
+                        target.TakeDamage(attacker, result.damage, wdef.damage_type)
+                    },
+                    _ => {}
+                }
             }
         }
     }

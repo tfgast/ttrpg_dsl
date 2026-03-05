@@ -30,6 +30,7 @@ fn compile_osric_combat() -> (ttrpg_ast::ast::Program, ttrpg_checker::CheckResul
     let class_source = include_str!("../../../osric/osric_class.ttrpg");
     let equipment_source = include_str!("../../../osric/osric_equipment.ttrpg");
     let conditions_source = include_str!("../../../osric/osric_conditions.ttrpg");
+    let thief_skills_source = include_str!("../../../osric/osric_thief_skills.ttrpg");
     let combat_source = include_str!("../../../osric/osric_combat.ttrpg");
 
     let sources = vec![
@@ -56,6 +57,10 @@ fn compile_osric_combat() -> (ttrpg_ast::ast::Program, ttrpg_checker::CheckResul
         (
             "osric/osric_conditions.ttrpg".to_string(),
             conditions_source.to_string(),
+        ),
+        (
+            "osric/osric_thief_skills.ttrpg".to_string(),
+            thief_skills_source.to_string(),
         ),
         (
             "osric/osric_combat.ttrpg".to_string(),
@@ -2136,4 +2141,234 @@ fn take_damage_action_emits_creature_slain_on_kill() {
     let final_state = adapter.into_inner();
     let hp = final_state.read_field(&target, "hp").unwrap();
     assert_eq!(hp, Value::Int(0), "target HP should be clamped to 0");
+}
+
+// ── Backstab ──────────────────────────────────────────────────
+
+// The Backstab action should be present in the combat system.
+#[test]
+fn osric_combat_has_backstab_action() {
+    let (program, _) = compile_osric_combat();
+    let decls = get_combat_decls(&program);
+    let actions: Vec<_> = decls
+        .iter()
+        .filter_map(|d| match &d.node {
+            DeclKind::Action(a) => Some(&*a.name),
+            _ => None,
+        })
+        .collect();
+    assert!(actions.contains(&"Backstab"), "missing Backstab action");
+}
+
+// Thief backstab multiplier: x2 at L1-4, x3 at L5-8, x4 at L9-12, x5 at L13-16, x6 at L17+.
+#[test]
+fn thief_backstab_multiplier_table() {
+    let (program, result) = compile_osric_combat();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NullHandler;
+
+    let cases = vec![
+        (1, 2), (4, 2),     // L1-4 → x2
+        (5, 3), (8, 3),     // L5-8 → x3
+        (9, 4), (12, 4),    // L9-12 → x4
+        (13, 5), (16, 5),   // L13-16 → x5
+        (17, 6), (20, 6),   // L17+ → x6
+    ];
+
+    for (level, expected_mult) in cases {
+        let val = interp
+            .evaluate_derive(
+                &state,
+                &mut handler,
+                "thief_backstab_multiplier",
+                vec![Value::Int(level)],
+            )
+            .unwrap_or_else(|e| panic!("thief_backstab_multiplier({level}) failed: {e}"));
+        assert_eq!(
+            expect_int(val, &format!("thief_backstab_multiplier({level})")),
+            expected_mult,
+            "thief_backstab_multiplier({level})"
+        );
+    }
+}
+
+// Assassin backstab multiplier: x2 at L1-4, x3 at L5-8, x4 at L9-12, x5 at L13+.
+#[test]
+fn assassin_backstab_multiplier_table() {
+    let (program, result) = compile_osric_combat();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NullHandler;
+
+    let cases = vec![
+        (1, 2), (4, 2),    // L1-4 → x2
+        (5, 3), (8, 3),    // L5-8 → x3
+        (9, 4), (12, 4),   // L9-12 → x4
+        (13, 5), (15, 5),  // L13+ → x5 (caps at x5)
+    ];
+
+    for (level, expected_mult) in cases {
+        let val = interp
+            .evaluate_derive(
+                &state,
+                &mut handler,
+                "assassin_backstab_multiplier",
+                vec![Value::Int(level)],
+            )
+            .unwrap_or_else(|e| panic!("assassin_backstab_multiplier({level}) failed: {e}"));
+        assert_eq!(
+            expect_int(val, &format!("assassin_backstab_multiplier({level})")),
+            expected_mult,
+            "assassin_backstab_multiplier({level})"
+        );
+    }
+}
+
+// backstab_multiplier dispatches to thief or assassin table based on class.
+#[test]
+fn backstab_multiplier_dispatch() {
+    let (program, result) = compile_osric_combat();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NullHandler;
+
+    // Thief L17 → x6 (thief table)
+    let val = interp
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "backstab_multiplier",
+            vec![class_variant("Thief"), Value::Int(17)],
+        )
+        .unwrap();
+    assert_eq!(expect_int(val, "backstab_multiplier(Thief, 17)"), 6);
+
+    // Assassin L17 → x5 (assassin table caps at x5)
+    let val = interp
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "backstab_multiplier",
+            vec![class_variant("Assassin"), Value::Int(17)],
+        )
+        .unwrap();
+    assert_eq!(expect_int(val, "backstab_multiplier(Assassin, 17)"), 5);
+}
+
+// backstab_attack_bonus returns 4.
+#[test]
+fn backstab_attack_bonus_is_4() {
+    let (program, result) = compile_osric_combat();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NullHandler;
+
+    let val = interp
+        .evaluate_derive(&state, &mut handler, "backstab_attack_bonus", vec![])
+        .unwrap();
+    assert_eq!(expect_int(val, "backstab_attack_bonus"), 4);
+}
+
+// character_can_backstab: true for Thief and Assassin, false for others.
+#[test]
+fn character_can_backstab_thief() {
+    let (program, result) = compile_osric_combat();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut state = GameState::new();
+
+    let thief = make_character(
+        &mut state, "Thief", "Thief", 5, &standard_abilities_12(), 20, 12, "Human",
+    );
+    let fighter = make_character(
+        &mut state, "Fighter", "Fighter", 5, &standard_abilities_12(), 30, 17, "Human",
+    );
+    let assassin = make_character(
+        &mut state, "Assassin", "Assassin", 5, &standard_abilities_12(), 20, 12, "Human",
+    );
+
+    let mut handler = NullHandler;
+
+    let val = interp
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "character_can_backstab",
+            vec![Value::Entity(thief)],
+        )
+        .unwrap();
+    assert!(expect_bool(val, "character_can_backstab(Thief)"));
+
+    let val = interp
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "character_can_backstab",
+            vec![Value::Entity(assassin)],
+        )
+        .unwrap();
+    assert!(expect_bool(val, "character_can_backstab(Assassin)"));
+
+    let val = interp
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "character_can_backstab",
+            vec![Value::Entity(fighter)],
+        )
+        .unwrap();
+    assert!(!expect_bool(val, "character_can_backstab(Fighter)"));
+}
+
+// resolve_melee_attack with damage_mult > 1 multiplies dice before adding bonuses.
+#[test]
+fn resolve_melee_attack_with_damage_mult() {
+    let (program, result) = compile_osric_combat();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut state = GameState::new();
+
+    // STR 12 → +0 to hit, +0 damage (no STR modifiers at 12)
+    let attacker = make_character(
+        &mut state, "Attacker", "Thief", 5, &standard_abilities_12(), 20, 10, "Human",
+    );
+    let target = make_character(
+        &mut state, "Target", "Fighter", 1, &standard_abilities_12(), 20, 10, "Human",
+    );
+
+    // Equip attacker with a dagger
+    set_field(&mut state, &attacker, "wielded_main", wielded_melee_item("Dagger"));
+
+    // Script rolls: d20=18 (hit), damage d4=3
+    let responses = vec![
+        scripted_roll(1, 20, 0, vec![18], vec![18], 18, 18), // d20 attack roll
+        scripted_roll(1, 4, 0, vec![3], vec![3], 3, 3),      // d4 damage roll (raw dice)
+    ];
+    let mut handler = ScriptedHandler::with_responses(responses);
+
+    // Call resolve_melee_attack with damage_mult=3 (L5-8 thief backstab)
+    let val = interp
+        .evaluate_mechanic(
+            &state,
+            &mut handler,
+            "resolve_melee_attack",
+            vec![
+                Value::Entity(attacker),
+                Value::Entity(target),
+                melee_variant("Dagger"),
+                Value::Int(0),                      // attack_mod
+                enum_variant("RollMode", "Normal"), // roll_mode
+                Value::Bool(false),                 // max_damage
+                Value::Int(3),                      // damage_mult (x3)
+            ],
+        )
+        .unwrap();
+
+    // With damage_mult=3: raw=3, damage = max(1, 3*3 + 0) = 9
+    match val {
+        Value::Struct { fields, .. } => {
+            let damage = fields.get::<ttrpg_ast::Name>(&"damage".into()).unwrap();
+            assert_eq!(*damage, Value::Int(9), "backstab damage should be 3*3=9");
+        }
+        other => panic!("expected AttackResult struct, got: {other:?}"),
+    }
 }
