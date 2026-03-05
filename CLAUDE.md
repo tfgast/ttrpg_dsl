@@ -2,7 +2,7 @@
 
 ## Before Writing .ttrpg Files
 
-Read `doc/ai_authoring.md` first. It covers block categories, type system, common mistakes, and patterns. Use OSE modules (`ose/`) as reference implementations.
+Read `doc/ai_authoring.md` first. It covers block categories, type system, common mistakes, and patterns. Use OSRIC modules (`osric/`) as reference implementations.
 
 ## Project Structure
 
