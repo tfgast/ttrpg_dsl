@@ -145,6 +145,67 @@ system "OSRIC" {
         Ranger
     }
 
+    // --- Spell classification types ---
+    // Ref: OSRIC 3.0 PG §1.8.1.5
+
+    // Tradition — the first word of every spell description
+    enum SpellClassType {
+        Arcane,         // Magic-User spells
+        Divine,         // Cleric spells
+        Druidic,        // Druid spells
+        Phantasmal      // Illusionist spells
+    }
+
+    // Schools of magic (§1.8.1.4)
+    enum SpellSchool {
+        Abjuration,
+        Conjuration,
+        Divination,
+        Enchantment,
+        Evocation,
+        Illusion,
+        Necromancy,
+        Transmutation
+    }
+
+    // Spell range categories (§1.8.1.5 Range)
+    enum SpellRange {
+        Nil,                            // originates from caster position, stationary
+        Caster,                         // originates from and moves with caster
+        Touch,                          // must touch the target
+        Distance(distance: Feet),       // maximum distance in feet
+        Special(description: string)    // see spell description
+    }
+
+    // Spell duration categories (§1.8.1.5 Duration)
+    enum SpellDuration {
+        Instantaneous,
+        Permanent,
+        Rounds(count: int),
+        Turns(count: int),
+        RoundsPerLevel(base: int, per_level: int),
+        TurnsPerLevel(base: int, per_level: int),
+        Continuing,                         // lasts while caster continues casting
+        Special(description: string)        // see spell description
+    }
+
+    // Casting time (§1.8.1.5 Casting Time)
+    enum CastingTime {
+        Fast,                           // 1 segment, takes effect same segment
+        Segments(count: int),
+        Rounds(count: int),
+        Turns(count: int),
+        Special(description: string)
+    }
+
+    // Saving throw effect (§1.8.1.5)
+    enum SpellSave {
+        NoSave,
+        Negates,                            // save negates entire effect
+        Half,                               // save halves damage
+        Special(description: string)        // see spell description
+    }
+
     // --- Armour permission levels ---
 
     enum ArmourPermission {
@@ -223,6 +284,34 @@ system "OSRIC" {
         max: int
     }
 
+    // --- Spell component requirements ---
+
+    struct SpellComponents {
+        verbal: bool
+        somatic: bool
+        material: bool
+    }
+
+    // --- Spell definition ---
+    // Core data for each spell, independent of casting context.
+    // Individual spell data will be defined in per-class derive lookups.
+    // Ref: OSRIC 3.0 PG §1.8.1.5
+
+    struct SpellDef {
+        name: string
+        class_type: SpellClassType
+        school: SpellSchool
+        level: int
+        range: SpellRange
+        duration: SpellDuration
+        area_of_effect: string
+        components: SpellComponents
+        casting_time: CastingTime
+        saving_throw: SpellSave
+        reversible: bool
+        description: string
+    }
+
     // --- Monster attack entry ---
 
     struct MonsterAttack {
@@ -270,6 +359,9 @@ system "OSRIC" {
 
         optional Spellcasting {
             casting_invocation: option<Invocation>
+            spell_slots: map<int, int> = {}
+            slots_used: map<int, int> = {}
+            memorised_spells: list<string> = []
         }
 
         optional ThiefSkills {

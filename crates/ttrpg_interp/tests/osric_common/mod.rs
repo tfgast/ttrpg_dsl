@@ -497,6 +497,9 @@ pub fn make_caster(
             fields: {
                 let mut f = BTreeMap::new();
                 f.insert(Name::from("casting_invocation"), Value::Option(None));
+                f.insert(Name::from("spell_slots"), Value::Map(BTreeMap::new()));
+                f.insert(Name::from("slots_used"), Value::Map(BTreeMap::new()));
+                f.insert(Name::from("memorised_spells"), Value::List(vec![]));
                 f
             },
         },

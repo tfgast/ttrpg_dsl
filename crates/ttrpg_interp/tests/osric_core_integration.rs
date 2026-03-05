@@ -156,7 +156,38 @@ fn osric_core_has_all_enums() {
         "missing EncumbranceTier enum"
     );
 
-    assert_eq!(enums.len(), 18, "expected 18 enums, got {enums:?}");
+    // SpellClassType: 4 variants
+    assert!(
+        enums.contains(&("SpellClassType", 4)),
+        "missing SpellClassType enum"
+    );
+    // SpellSchool: 8 variants
+    assert!(
+        enums.contains(&("SpellSchool", 8)),
+        "missing SpellSchool enum"
+    );
+    // SpellRange: 5 variants
+    assert!(
+        enums.contains(&("SpellRange", 5)),
+        "missing SpellRange enum"
+    );
+    // SpellDuration: 8 variants
+    assert!(
+        enums.contains(&("SpellDuration", 8)),
+        "missing SpellDuration enum"
+    );
+    // CastingTime: 5 variants
+    assert!(
+        enums.contains(&("CastingTime", 5)),
+        "missing CastingTime enum"
+    );
+    // SpellSave: 4 variants
+    assert!(
+        enums.contains(&("SpellSave", 4)),
+        "missing SpellSave enum"
+    );
+
+    assert_eq!(enums.len(), 24, "expected 24 enums, got {enums:?}");
 }
 
 #[test]
@@ -268,7 +299,18 @@ fn osric_core_has_all_structs() {
         "missing ClassLevel struct"
     );
 
-    assert_eq!(structs.len(), 8, "expected 8 structs, got {structs:?}");
+    // SpellComponents: verbal, somatic, material
+    assert!(
+        structs.contains(&("SpellComponents", 3)),
+        "missing SpellComponents struct"
+    );
+    // SpellDef: 12 fields
+    assert!(
+        structs.contains(&("SpellDef", 12)),
+        "missing SpellDef struct"
+    );
+
+    assert_eq!(structs.len(), 10, "expected 10 structs, got {structs:?}");
 }
 
 // ── Unit type ──────────────────────────────────────────────────
