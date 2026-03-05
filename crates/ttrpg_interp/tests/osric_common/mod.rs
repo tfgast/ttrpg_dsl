@@ -772,6 +772,7 @@ pub fn make_monster(
     fields.insert(Name::from("hp"), Value::Int(max_hp));
     fields.insert(Name::from("ac"), Value::Int(ac));
     fields.insert(Name::from("morale"), Value::Int(7));
+    fields.insert(Name::from("morale_checks_made"), Value::Int(0));
     fields.insert(Name::from("xp_value"), Value::Int(0));
     fields.insert(Name::from("attacks"), Value::List(attacks));
     fields.insert(Name::from("size"), enum_variant("Size", "Medium"));
@@ -945,6 +946,10 @@ pub fn all_osric_sources() -> Vec<(String, String)> {
         (
             "osric/osric_level_drain.ttrpg".to_string(),
             include_str!("../../../../osric/osric_level_drain.ttrpg").to_string(),
+        ),
+        (
+            "osric/osric_morale.ttrpg".to_string(),
+            include_str!("../../../../osric/osric_morale.ttrpg").to_string(),
         ),
     ]
 }

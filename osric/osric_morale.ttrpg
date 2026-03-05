@@ -1,0 +1,125 @@
+// ============================================================
+// OSRIC 3.0 Morale — monster morale checks in combat
+//
+// Monster-only. Base morale = 50% + 5% per hit die.
+// Roll d100 vs modified threshold; modifiers are cumulative
+// and applied to the d100 roll (positive = worse for monster).
+// Max 2 checks per battle; passing both means the monster
+// is fanatical and fights to the death.
+//
+// Modifier table (Table 1.6.8a, all cumulative):
+//   +5%  per friend killed, surrendered, or fled
+//   +5%  own side experienced 25% casualties
+//   +10% numerical inferiority
+//   +15% own side taken 50% casualties
+//   +20% own side greatly outnumbered (2:1 or more)
+//   +25% own leader defeated or downed
+//   -5%  per foe killed, surrendered, or fled
+//   -5%  own side inflicted 25% enemy casualties
+//   -10% numerical superiority
+//   -15% own side inflicted 50% enemy casualties
+//
+// Failure outcomes:
+//   Fail by 1-50  -> retreat
+//   Fail by 51+   -> surrender
+//
+// Reference: OSRIC 3.0 Player Guide, §1.6.8 (p.100)
+// ============================================================
+
+use "OSRIC"
+use "OSRIC Combat"
+
+system "OSRIC Morale" {
+
+    // ========================================================
+    //  ENUMS & STRUCTS
+    // ========================================================
+
+    enum MoraleOutcome { Pass, Retreat, Surrender }
+
+    struct MoraleResult {
+        outcome: MoraleOutcome
+        base_morale: int
+        roll: int
+        modified_roll: int
+        margin: int
+    }
+
+
+    // ========================================================
+    //  BASE MORALE DERIVE
+    //
+    //  50% + 5% per hit die count.
+    //  Example: 8+1 HD monster -> 8 * 5 + 50 = 90%.
+    // ========================================================
+
+    derive base_morale(monster: Monster) -> int {
+        50 + dice_count(monster.hit_dice) * 5
+    }
+
+
+    // ========================================================
+    //  MORALE CHECK
+    //
+    //  Rolls d100, adds modifier, compares to base morale.
+    //  Enforces max 2 checks per battle: if the monster has
+    //  already passed 2 checks, they are fanatical and auto-pass.
+    //  Increments monster.morale_checks_made on each real check.
+    //
+    //  The modifier parameter is the sum of all applicable
+    //  situational modifiers from Table 1.6.8a. Positive values
+    //  make morale worse (added to the d100 roll).
+    // ========================================================
+
+    function check_morale(monster: Monster, modifier: int = 0) -> MoraleResult {
+        let bm = base_morale(monster)
+        if monster.morale_checks_made >= 2 {
+            // Fanatical: passed 2 checks, fights to the death.
+            MoraleResult {
+                outcome: MoraleOutcome.Pass,
+                base_morale: bm,
+                roll: 0,
+                modified_roll: 0,
+                margin: 0
+            }
+        } else {
+            let d100 = roll(1d100).total
+            let modified = d100 + modifier
+            monster.morale_checks_made = monster.morale_checks_made + 1
+            if modified <= bm {
+                MoraleResult {
+                    outcome: MoraleOutcome.Pass,
+                    base_morale: bm,
+                    roll: d100,
+                    modified_roll: modified,
+                    margin: 0
+                }
+            } else {
+                let fail_margin = modified - bm
+                let outcome = if fail_margin >= 51 {
+                    MoraleOutcome.Surrender
+                } else {
+                    MoraleOutcome.Retreat
+                }
+                MoraleResult {
+                    outcome: outcome,
+                    base_morale: bm,
+                    roll: d100,
+                    modified_roll: modified,
+                    margin: fail_margin
+                }
+            }
+        }
+    }
+
+
+    // ========================================================
+    //  RESET MORALE
+    //
+    //  Call at the start of each battle to clear the check counter.
+    // ========================================================
+
+    function reset_morale(monster: Monster) {
+        monster.morale_checks_made = 0
+    }
+}

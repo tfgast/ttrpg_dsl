@@ -393,6 +393,7 @@ system "OSRIC" {
         hp: resource(0..=max_hp)
         ac: int = 10
         morale: int = 7
+        morale_checks_made: int = 0
         xp_value: int = 0
         attacks: list<MonsterAttack>
         size: Size = Size.Medium
