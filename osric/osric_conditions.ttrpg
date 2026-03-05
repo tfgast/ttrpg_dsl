@@ -349,6 +349,82 @@ system "OSRIC Conditions" {
 
 
     // ========================================================
+    //  BLINDED (§1.6.10.1)
+    //
+    //  Blinded creatures attack at -4 to hit, -4 on saving
+    //  throws, and their AC is worsened by 4.
+    //  Per 1.6.10.1.
+    // ========================================================
+
+    condition Blinded on bearer: entity {
+        modify [#attack_resolution](attacker: bearer) {
+            attack_mod = attack_mod - 4
+        }
+        modify effective_target_ac(target: bearer) {
+            ac_mod = ac_mod - 4
+        }
+    }
+
+
+    // ========================================================
+    //  CONFUSED (§1.6.10.2)
+    //
+    //  Creature acts randomly each round per the confusion
+    //  spell effect. Actual behaviour is a random-action
+    //  table resolved by the GM (or a future confusion
+    //  resolution function). Modelled as a marker condition.
+    //  Per 1.6.10.2.
+    // ========================================================
+
+    condition Confused on bearer: entity {}
+
+
+    // ========================================================
+    //  DEAFENED (§1.6.10.4)
+    //
+    //  Cannot hear. The slight effect of deafness is not
+    //  large enough to affect surprise, initiative, fighting,
+    //  or spell casting. GM adjudicates social / narrative
+    //  consequences. Marker condition only.
+    //  Per 1.6.10.4.
+    // ========================================================
+
+    condition Deafened on bearer: entity {}
+
+
+    // ========================================================
+    //  GRAPPLING (§1.6.10.7)
+    //
+    //  Character is in physical close contact (unarmed melee).
+    //  Restrictions: (1) cannot try unarmed fend-off attacks,
+    //  (2) cannot cast spells, (3) can only attack with
+    //  dagger-length or smaller weapons (including natural
+    //  weapons like claws). Ordinary Melee Combat restrictions
+    //  still apply. Bearer's attacks are NOT suppressed — they
+    //  can still fight with eligible weapons.
+    //  Per 1.6.10.7.
+    // ========================================================
+
+    condition Grappling on bearer: entity {}
+
+
+    // ========================================================
+    //  OVERBORNE (§1.6.10.9)
+    //
+    //  Knocked prone or staggered by an overbearing attack and
+    //  unable to recover. Cannot rise to feet or shake off
+    //  Staggered while Overborne. Does not create penalties of
+    //  its own — the underlying Prone/Staggered conditions
+    //  carry the mechanical effects. Removed when the
+    //  overbearing combatant is defeated, leaves melee range,
+    //  or allies free the victim.
+    //  Per 1.6.10.9.
+    // ========================================================
+
+    condition Overborne on bearer: entity {}
+
+
+    // ========================================================
     //  ENCUMBRANCE STATE (§1.5.3.3)
     //
     //  Always applied (even Unencumbered — movement is identity

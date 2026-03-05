@@ -204,6 +204,11 @@ fn osric_conditions_has_all_nineteen_conditions() {
         "Dead",
         "Scarred",
         "Coma",
+        "Blinded",
+        "Confused",
+        "Deafened",
+        "Grappling",
+        "Overborne",
         "EncumbranceState",
     ];
 
@@ -215,8 +220,8 @@ fn osric_conditions_has_all_nineteen_conditions() {
     }
     assert_eq!(
         conditions.len(),
-        19,
-        "expected 19 conditions, found {}: {:?}",
+        24,
+        "expected 24 conditions, found {}: {:?}",
         conditions.len(),
         conditions
     );
@@ -236,6 +241,11 @@ fn osric_conditions_simple_have_no_params() {
         "Fleeing",
         "Surprised",
         "RearAttacked",
+        "Blinded",
+        "Confused",
+        "Deafened",
+        "Grappling",
+        "Overborne",
     ];
 
     for item in decls {
