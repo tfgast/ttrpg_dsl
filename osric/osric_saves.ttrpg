@@ -14,6 +14,7 @@
 
 use "OSRIC"
 use "OSRIC Classes"
+use "OSRIC Ability"
 
 system "OSRIC Saves" {
 
@@ -157,6 +158,66 @@ system "OSRIC Saves" {
             MagicUser => magic_user_saves(level),
             Illusionist => illusionist_saves(level),
             Monk      => monk_saves(level)
+        }
+    }
+
+    // Extract a single target number from SavingThrows by category.
+    derive save_target_for(saves: SavingThrows, category: SaveCategory) -> int {
+        match category {
+            AimedMagicItems      => saves.aimed_magic,
+            BreathWeapons        => saves.breath,
+            DeathParalysisPoison => saves.death_paralysis_poison,
+            PetrificationPolymorph => saves.petrification_polymorph,
+            SpellsUnlisted       => saves.spells
+        }
+    }
+
+    // True for categories that get the dwarf/gnome/halfling CON bonus
+    // (aimed magic, death/paralysis/poison, spells — per PG tables
+    // 1.2.1.2a, 1.2.3.2a, 1.2.5.2a).
+    derive is_stalwart_category(category: SaveCategory) -> bool {
+        match category {
+            AimedMagicItems      => true,
+            DeathParalysisPoison => true,
+            SpellsUnlisted       => true,
+            _                    => false
+        }
+    }
+
+    // Roll d20 vs the saver's best save target for the given category,
+    // applying stalwart (CON-based racial) and wisdom (mental) bonuses.
+    // Natural 1 always fails.
+    mechanic make_saving_throw(
+        saver: Character,
+        category: SaveCategory,
+        bonus: int = 0,
+        is_mental: bool = false
+    ) -> bool {
+        let saves = character_best_saves(saver)
+        let target = save_target_for(saves, category)
+
+        // Stalwart bonus: dwarves/gnomes/halflings vs aimed magic, poison, spells
+        let stalwart = if has_stalwart(saver.ancestry) && is_stalwart_category(category) {
+            stalwart_save_bonus(saver.abilities[CON])
+        } else {
+            0
+        }
+
+        // Wisdom bonus: mental saves only (charm, hold, etc.)
+        let mental = if is_mental {
+            wis_mental_save(saver.abilities[WIS])
+        } else {
+            0
+        }
+
+        let total_bonus = bonus + stalwart + mental
+        let result = roll(1d20)
+
+        // Natural 1 always fails
+        if result.unmodified == 1 {
+            false
+        } else {
+            result.total >= target - total_bonus
         }
     }
 }

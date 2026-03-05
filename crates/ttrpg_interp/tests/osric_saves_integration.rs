@@ -18,6 +18,7 @@ use osric_common::*;
 
 fn compile_osric_saves() -> (ttrpg_ast::ast::Program, ttrpg_checker::CheckResult) {
     let core_source = include_str!("../../../osric/osric_core.ttrpg");
+    let ability_source = include_str!("../../../osric/osric_ability.ttrpg");
     let class_source = include_str!("../../../osric/osric_class.ttrpg");
     let saves_source = include_str!("../../../osric/osric_saves.ttrpg");
 
@@ -25,6 +26,10 @@ fn compile_osric_saves() -> (ttrpg_ast::ast::Program, ttrpg_checker::CheckResult
         (
             "osric/osric_core.ttrpg".to_string(),
             core_source.to_string(),
+        ),
+        (
+            "osric/osric_ability.ttrpg".to_string(),
+            ability_source.to_string(),
         ),
         (
             "osric/osric_class.ttrpg".to_string(),
@@ -769,4 +774,152 @@ fn osric_saves_table_entry_counts() {
             }
         }
     }
+}
+
+// ── make_saving_throw mechanic ─────────────────────────────────
+
+fn save_category(variant: &str) -> Value {
+    enum_variant("SaveCategory", variant)
+}
+
+/// Helper: call make_saving_throw with a scripted d20 roll.
+fn call_make_saving_throw(
+    saver_class: &str,
+    saver_level: i64,
+    saver_ancestry: &str,
+    abilities: &[(&str, i64)],
+    category: &str,
+    bonus: i64,
+    is_mental: bool,
+    d20_roll: i64,
+) -> bool {
+    let (program, result) = compile_osric_saves();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut state = GameState::new();
+
+    let saver = make_character(
+        &mut state,
+        "Saver",
+        saver_class,
+        saver_level,
+        abilities,
+        10,
+        10,
+        saver_ancestry,
+    );
+
+    let responses = vec![scripted_roll(1, 20, 0, vec![d20_roll], vec![d20_roll], d20_roll, d20_roll)];
+    let mut handler = ScriptedHandler::with_responses(responses);
+
+    let val = interp
+        .evaluate_mechanic(
+            &state,
+            &mut handler,
+            "make_saving_throw",
+            vec![
+                Value::Entity(saver),
+                save_category(category),
+                Value::Int(bonus),
+                Value::Bool(is_mental),
+            ],
+        )
+        .unwrap_or_else(|e| panic!("make_saving_throw failed: {e}"));
+
+    expect_bool(val, "make_saving_throw")
+}
+
+#[test]
+fn make_saving_throw_passes_on_high_roll() {
+    // Human Fighter L1, death target 14, roll 16 → pass
+    let result = call_make_saving_throw(
+        "Fighter", 1, "Human", &standard_abilities(),
+        "DeathParalysisPoison", 0, false, 16,
+    );
+    assert!(result, "roll 16 vs target 14 should pass");
+}
+
+#[test]
+fn make_saving_throw_fails_on_low_roll() {
+    // Human Fighter L1, death target 14, roll 5 → fail
+    let result = call_make_saving_throw(
+        "Fighter", 1, "Human", &standard_abilities(),
+        "DeathParalysisPoison", 0, false, 5,
+    );
+    assert!(!result, "roll 5 vs target 14 should fail");
+}
+
+#[test]
+fn make_saving_throw_natural_1_always_fails() {
+    // Human Fighter L19, death target 2, roll 1 → fail (natural 1)
+    let result = call_make_saving_throw(
+        "Fighter", 19, "Human", &standard_abilities(),
+        "DeathParalysisPoison", 0, false, 1,
+    );
+    assert!(!result, "natural 1 should always fail even vs target 2");
+}
+
+#[test]
+fn make_saving_throw_stalwart_bonus_applies() {
+    // Dwarf Fighter L1 CON 14 (+4 stalwart), death target 14, effective 10, roll 11 → pass
+    let abilities: Vec<(&str, i64)> = vec![
+        ("STR", 10), ("DEX", 10), ("CON", 14),
+        ("INT", 10), ("WIS", 10), ("CHA", 10),
+    ];
+    let result = call_make_saving_throw(
+        "Fighter", 1, "Dwarf", &abilities,
+        "DeathParalysisPoison", 0, false, 11,
+    );
+    assert!(result, "Dwarf CON 14 stalwart +4: roll 11 vs effective target 10 should pass");
+}
+
+#[test]
+fn make_saving_throw_stalwart_no_effect_on_breath() {
+    // Dwarf Fighter L1 CON 14, breath target 17, no stalwart on breath, roll 11 → fail
+    let abilities: Vec<(&str, i64)> = vec![
+        ("STR", 10), ("DEX", 10), ("CON", 14),
+        ("INT", 10), ("WIS", 10), ("CHA", 10),
+    ];
+    let result = call_make_saving_throw(
+        "Fighter", 1, "Dwarf", &abilities,
+        "BreathWeapons", 0, false, 11,
+    );
+    assert!(!result, "stalwart does not apply to breath weapons: roll 11 vs 17 should fail");
+}
+
+#[test]
+fn make_saving_throw_no_stalwart_for_human() {
+    // Human Fighter L1 CON 14, death target 14, no stalwart, roll 11 → fail
+    let abilities: Vec<(&str, i64)> = vec![
+        ("STR", 10), ("DEX", 10), ("CON", 14),
+        ("INT", 10), ("WIS", 10), ("CHA", 10),
+    ];
+    let result = call_make_saving_throw(
+        "Fighter", 1, "Human", &abilities,
+        "DeathParalysisPoison", 0, false, 11,
+    );
+    assert!(!result, "humans do not get stalwart: roll 11 vs 14 should fail");
+}
+
+#[test]
+fn make_saving_throw_mental_bonus_applies() {
+    // Human Cleric L1 WIS 17 (+3 mental), spells target 15, effective 12, roll 12 → pass
+    let abilities: Vec<(&str, i64)> = vec![
+        ("STR", 10), ("DEX", 10), ("CON", 10),
+        ("INT", 10), ("WIS", 17), ("CHA", 10),
+    ];
+    let result = call_make_saving_throw(
+        "Cleric", 1, "Human", &abilities,
+        "SpellsUnlisted", 0, true, 12,
+    );
+    assert!(result, "WIS 17 mental +3: roll 12 vs effective target 12 should pass");
+}
+
+#[test]
+fn make_saving_throw_bonus_param_stacks() {
+    // Human Fighter L1, death target 14, bonus 3, effective 11, roll 12 → pass
+    let result = call_make_saving_throw(
+        "Fighter", 1, "Human", &standard_abilities(),
+        "DeathParalysisPoison", 3, false, 12,
+    );
+    assert!(result, "bonus=3: roll 12 vs effective target 11 should pass");
 }
