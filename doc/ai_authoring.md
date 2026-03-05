@@ -513,19 +513,6 @@ condition Prone on bearer: Character {
     }
 }
 
-// Condition with lifecycle hooks (on_apply / on_remove)
-// condition Poisoned(potency: int) on bearer: Character {
-//     on_apply {
-//         let dmg: RollResult = roll(dice(potency, 6))
-//         bearer.HP -= dmg.total
-//     }
-//     on_remove {
-//         bearer.poisoned_flag = false
-//     }
-//     modify saving_throw(target: bearer) {
-//         mode = disadvantage
-//     }
-// }
 ```
 
 **Lifecycle hooks (on_apply / on_remove):**
