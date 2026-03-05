@@ -273,7 +273,13 @@ fn osric_core_has_all_structs() {
         "missing SpellDef struct"
     );
 
-    assert_eq!(structs.len(), 10, "expected 10 structs, got {structs:?}");
+    // DrainEvent: class, original_level, timestamp
+    assert!(
+        structs.contains(&("DrainEvent", 3)),
+        "missing DrainEvent struct"
+    );
+
+    assert_eq!(structs.len(), 11, "expected 11 structs, got {structs:?}");
 }
 
 // ── Unit type ──────────────────────────────────────────────────
@@ -341,6 +347,7 @@ fn character_entity_fields() {
         "abilities",
         "base_movement",
         "gold",
+        "drain_history",
         "saving_throws",
     ];
     for name in &expected_fields {

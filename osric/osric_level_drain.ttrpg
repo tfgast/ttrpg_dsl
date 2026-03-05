@@ -1,0 +1,307 @@
+// ============================================================
+// OSRIC 3.0 Level Drain & Restoration
+//
+// Certain undead and spells drain "life energy levels" from
+// characters. A drained character loses one complete level and
+// is placed at the beginning XP of the new lower level.
+//
+// Multi/dual-class: highest level is drained. If tied, the
+// target class is chosen randomly.
+//
+// Death occurs if drained below level 1.
+//
+// Restoration (Cleric 7) can reverse the drain within a time
+// window of 1 day per caster's cleric level. Restoration
+// restores the oldest eligible drain event first (FIFO).
+//
+// Reference: OSRIC 3.0 Player Guide §1.6.7 (p.100), §1.8.2.7
+//            Restoration spell (p.158)
+// ============================================================
+
+use "OSRIC"
+use "OSRIC Classes"
+use "OSRIC Combat"
+
+system "OSRIC Level Drain" {
+
+    // ========================================================
+    //  HIGHEST CLASS LEVEL
+    //
+    //  Returns the maximum level across all of a character's
+    //  classes. Used to determine which class(es) are drain
+    //  candidates.
+    // ========================================================
+
+    derive highest_class_level(char: Character) -> int {
+        let levels = [cl.level for cl in char.classes]
+        last(sort(levels)).unwrap()
+    }
+
+    // ========================================================
+    //  DRAIN CANDIDATE CLASSES
+    //
+    //  Returns the list of classes at the highest level.
+    //  If only one class is at max, drain that one.
+    //  If multiple are tied, the caller must pick randomly.
+    //  §1.6.7: "the highest level of experience attained by
+    //  that character is lost"
+    // ========================================================
+
+    derive drain_candidate_classes(char: Character) -> list<Class> {
+        let max_level = highest_class_level(char)
+        [cl.class for cl in char.classes if cl.level == max_level]
+    }
+
+    // ========================================================
+    //  DRAIN TARGET CLASS (with random tie-breaking)
+    //
+    //  If one candidate, return it. If multiple, roll to pick.
+    //  §1.6.7: "the level lost should be determined randomly"
+    // ========================================================
+
+    mechanic drain_target_class(char: Character) -> Class {
+        let candidates = drain_candidate_classes(char)
+        if len(candidates) == 1 {
+            first(candidates).unwrap()
+        } else {
+            let idx = roll(dice(1, len(candidates))).total - 1
+            candidates[idx]
+        }
+    }
+
+    // ========================================================
+    //  XP AFTER DRAIN
+    //
+    //  When drained, XP is set to the beginning of the new
+    //  lower level. §1.6.7: "placed at the beginning xp of
+    //  the new level"
+    // ========================================================
+
+    derive xp_after_drain(class: Class, current_level: int) -> int {
+        let new_level = current_level - 1
+        if new_level < 1 { 0 }
+        else { xp_for_level(class, new_level) }
+    }
+
+    // ========================================================
+    //  DEATH CHECK
+    //
+    //  §1.6.7: "A player character drained below level 1 is
+    //  slain"
+    // ========================================================
+
+    derive is_killed_by_drain(current_level: int) -> bool {
+        current_level <= 1
+    }
+
+    // ========================================================
+    //  APPLY LEVEL DRAIN TO CLASS LIST
+    //
+    //  Returns a new class list with the target class's level
+    //  decremented by 1 and XP set to the start of the new
+    //  level.
+    // ========================================================
+
+    derive apply_drain_to_classes(
+        classes: list<ClassLevel>,
+        target_class: Class
+    ) -> list<ClassLevel> {
+        [
+            if cl.class == target_class {
+                ClassLevel {
+                    class: cl.class,
+                    level: cl.level - 1,
+                    xp: xp_after_drain(cl.class, cl.level)
+                }
+            } else {
+                cl
+            }
+            for cl in classes
+        ]
+    }
+
+    // ========================================================
+    //  RECORD DRAIN EVENT
+    //
+    //  Appends a DrainEvent to the drain history. The timestamp
+    //  is in segments (game time). This is needed so Restoration
+    //  can check the time window.
+    // ========================================================
+
+    derive record_drain_event(
+        drain_history: list<DrainEvent>,
+        target_class: Class,
+        original_level: int,
+        current_time: int
+    ) -> list<DrainEvent> {
+        drain_history.append(DrainEvent {
+            class: target_class,
+            original_level: original_level,
+            timestamp: current_time
+        })
+    }
+
+    // ========================================================
+    //  APPLY LEVEL DRAIN (full operation)
+    //
+    //  Rolls for target class (if tied), applies the drain,
+    //  and records the event. Returns the new class list and
+    //  updated drain history.
+    //
+    //  The caller should check is_killed_by_drain on the
+    //  target class's level before applying.
+    //
+    //  This is a function because it calls the mechanic
+    //  drain_target_class (which may roll dice).
+    // ========================================================
+
+    struct DrainResult {
+        classes: list<ClassLevel>
+        drain_history: list<DrainEvent>
+        drained_class: Class
+        killed: bool
+    }
+
+    function apply_level_drain(
+        char: Character,
+        current_time: int
+    ) -> DrainResult {
+        let target = drain_target_class(char)
+        let target_level = first([cl.level for cl in char.classes if cl.class == target]).unwrap()
+        let killed = is_killed_by_drain(target_level)
+        let new_classes = apply_drain_to_classes(char.classes, target)
+        let new_history = record_drain_event(
+            char.drain_history, target, target_level, current_time
+        )
+        DrainResult {
+            classes: new_classes,
+            drain_history: new_history,
+            drained_class: target,
+            killed: killed
+        }
+    }
+
+
+    // ========================================================
+    //  RESTORATION ELIGIBILITY
+    //
+    //  §1.8.2.7: "There is a window of time during which this
+    //  spell must be cast: one day per level you have in the
+    //  cleric class."
+    //
+    //  Time window = caster_cleric_level * segments_per_day()
+    // ========================================================
+
+    derive restoration_eligible(
+        drain: DrainEvent,
+        current_time: int,
+        caster_cleric_level: int
+    ) -> bool {
+        let window = caster_cleric_level * segments_per_day()
+        let elapsed = current_time - drain.timestamp
+        elapsed <= window
+    }
+
+    // ========================================================
+    //  FIND OLDEST ELIGIBLE DRAIN
+    //
+    //  Searches drain history for the oldest event that is
+    //  still within the restoration time window.
+    //  Returns its index (0-based), or -1 if none eligible.
+    // ========================================================
+
+    derive find_oldest_eligible_drain(
+        drain_history: list<DrainEvent>,
+        current_time: int,
+        caster_cleric_level: int
+    ) -> int {
+        let eligible_indices = [
+            i for i in 0..len(drain_history)
+            if restoration_eligible(drain_history[i], current_time, caster_cleric_level)
+        ]
+        if len(eligible_indices) > 0 {
+            first(eligible_indices).unwrap()
+        } else {
+            -1
+        }
+    }
+
+    // ========================================================
+    //  APPLY RESTORATION TO CLASS LIST
+    //
+    //  Restores one level to the class recorded in the drain
+    //  event. XP is set to the start of the restored level.
+    //  §1.8.2.7: "Your target receives enough experience
+    //  points to place it at the start of the new level."
+    // ========================================================
+
+    derive apply_restore_to_classes(
+        classes: list<ClassLevel>,
+        drain: DrainEvent
+    ) -> list<ClassLevel> {
+        [
+            if cl.class == drain.class {
+                ClassLevel {
+                    class: cl.class,
+                    level: drain.original_level,
+                    xp: xp_for_level(cl.class, drain.original_level)
+                }
+            } else {
+                cl
+            }
+            for cl in classes
+        ]
+    }
+
+    // ========================================================
+    //  REMOVE DRAIN EVENT FROM HISTORY
+    //
+    //  Removes the event at the given index from the drain
+    //  history list.
+    // ========================================================
+
+    derive remove_drain_at(
+        drain_history: list<DrainEvent>,
+        index: int
+    ) -> list<DrainEvent> {
+        [drain_history[i] for i in 0..len(drain_history) if i != index]
+    }
+
+    // ========================================================
+    //  APPLY RESTORATION (full operation)
+    //
+    //  Finds the oldest eligible drain, restores the level,
+    //  and removes the event from history.
+    //  Returns none if no eligible drain exists.
+    // ========================================================
+
+    struct RestoreResult {
+        classes: list<ClassLevel>
+        drain_history: list<DrainEvent>
+        restored_class: Class
+        restored_level: int
+    }
+
+    derive apply_restoration(
+        char: Character,
+        current_time: int,
+        caster_cleric_level: int
+    ) -> option<RestoreResult> {
+        let idx = find_oldest_eligible_drain(
+            char.drain_history, current_time, caster_cleric_level
+        )
+        if idx < 0 {
+            none
+        } else {
+            let drain = char.drain_history[idx]
+            let new_classes = apply_restore_to_classes(char.classes, drain)
+            let new_history = remove_drain_at(char.drain_history, idx)
+            some(RestoreResult {
+                classes: new_classes,
+                drain_history: new_history,
+                restored_class: drain.class,
+                restored_level: drain.original_level
+            })
+        }
+    }
+}

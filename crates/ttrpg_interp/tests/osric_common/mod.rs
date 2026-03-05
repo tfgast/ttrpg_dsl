@@ -942,6 +942,10 @@ pub fn all_osric_sources() -> Vec<(String, String)> {
             "osric/osric_dualclass.ttrpg".to_string(),
             include_str!("../../../../osric/osric_dualclass.ttrpg").to_string(),
         ),
+        (
+            "osric/osric_level_drain.ttrpg".to_string(),
+            include_str!("../../../../osric/osric_level_drain.ttrpg").to_string(),
+        ),
     ]
 }
 

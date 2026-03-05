@@ -331,6 +331,16 @@ system "OSRIC" {
         xp: int
     }
 
+    // --- Level drain history (§1.6.7) ---
+    // Records each drain event so Restoration (§1.8.2.7) can
+    // restore within the time window (1 day per caster cleric level).
+
+    struct DrainEvent {
+        class: Class         // which class was drained
+        original_level: int  // level before this drain
+        timestamp: int       // game-time in segments when drain occurred
+    }
+
     enum ClassingMode { Single, Multi, Dual }
 
     // --- Character entity ---
@@ -345,6 +355,7 @@ system "OSRIC" {
         include HitPoints
         base_movement: Feet = 120ft
         gold: int = 0
+        drain_history: list<DrainEvent> = []
         saving_throws: option<SavingThrows>
         include EquipmentSlots
 
