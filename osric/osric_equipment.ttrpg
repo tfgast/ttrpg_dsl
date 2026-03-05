@@ -357,6 +357,81 @@ system "OSRIC Equipment" {
 
 
     // ========================================================
+    //  CLASS WEAPON RESTRICTIONS
+    //
+    //  Per-class allowed weapon lists per OSRIC 3.0.
+    //  Classes with weapons_any=true (Fighter, Paladin,
+    //  Ranger, Assassin) can wield any weapon — returns [].
+    //  Restricted classes have explicit allowed weapon lists.
+    //
+    //  Oil and torch are improvised weapons not modelled as
+    //  MeleeWeapon/MissileWeapon enums, so omitted here.
+    //
+    //  Reference: OSRIC 3.0 Player Guide, class descriptions
+    // ========================================================
+
+    // Allowed melee weapons for each restricted class.
+    // Returns [] for weapons_any classes (all melee weapons allowed).
+    derive class_allowed_melee(class: Class) -> list<MeleeWeapon> {
+        if class_def(class).weapons_any { [] }
+        else {
+            match class {
+                // Clerics: blunt weapons only (all Blunt damage-type melee weapons)
+                Cleric => [Club, FistOrKick, FlailHeavy, FlailLight, MaceHeavy, MaceLight, MorningStar, Staff, WarhammerHeavy, WarhammerLight],
+                // Druids: club, dagger, scimitar, sling, spear, staff
+                Druid => [Club, Dagger, SwordScimitar, Spear, Staff],
+                // Magic-Users: dagger, staff, dart (melee only)
+                MagicUser => [Dagger, Staff],
+                // Illusionists: dagger only
+                Illusionist => [Dagger],
+                // Thieves: club, dagger, most swords (all except two-handed)
+                Thief => [Club, Dagger, SwordBastard, SwordBroad, SwordLong, SwordScimitar, SwordShort],
+                // Monks: bo stick (staff), club, dagger, hand axe, javelin, polearm, spear
+                Monk => [Club, Dagger, HandAxe, Javelin, PoleArm, Spear, Staff],
+                // weapons_any classes handled above; unreachable
+                _ => []
+            }
+        }
+    }
+
+    // Allowed missile weapons for each restricted class.
+    // Returns [] for weapons_any classes (all missile weapons allowed).
+    derive class_allowed_missile(class: Class) -> list<MissileWeapon> {
+        if class_def(class).weapons_any { [] }
+        else {
+            match class {
+                // Clerics: blunt missile weapons only
+                Cleric => [ClubThrown, Sling, SlingStone, WarhammerThrown],
+                // Druids: club, dagger, dart, sling, spear (thrown variants)
+                Druid => [ClubThrown, DaggerThrown, DartThrown, Sling, SlingStone, SpearThrown],
+                // Magic-Users: dagger, dart (thrown variants)
+                MagicUser => [DaggerThrown, DartThrown],
+                // Illusionists: dagger only
+                Illusionist => [DaggerThrown],
+                // Thieves: club, dagger, dart, sling
+                Thief => [ClubThrown, DaggerThrown, DartThrown, Sling, SlingStone],
+                // Monks: crossbow, dagger, hand axe, club, javelin, spear (thrown/launched)
+                Monk => [CrossbowHeavy, CrossbowLight, ClubThrown, DaggerThrown, HandAxeThrown, JavelinThrown, SpearThrown],
+                // weapons_any classes handled above; unreachable
+                _ => []
+            }
+        }
+    }
+
+    // True if the given class can wield the given melee weapon.
+    derive can_wield_melee(class: Class, weapon: MeleeWeapon) -> bool {
+        if class_def(class).weapons_any { true }
+        else { any([w == weapon for w in class_allowed_melee(class)]) }
+    }
+
+    // True if the given class can wield the given missile weapon.
+    derive can_wield_missile(class: Class, weapon: MissileWeapon) -> bool {
+        if class_def(class).weapons_any { true }
+        else { any([w == weapon for w in class_allowed_missile(class)]) }
+    }
+
+
+    // ========================================================
     //  EQUIPMENT PACKAGES
     //
     //  Fixed starting loadout per class. Includes weapon(s),

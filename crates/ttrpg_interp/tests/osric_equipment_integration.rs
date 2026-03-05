@@ -1274,3 +1274,303 @@ fn default_starting_armour_druid() {
     let items = get_string_list(val);
     assert_eq!(items, vec!["Leather", "Wooden shield"]);
 }
+
+// ── Class weapon restriction derives ──────────────────────────
+
+fn get_enum_variant_list(val: Value) -> Vec<String> {
+    match val {
+        Value::List(items) => items
+            .into_iter()
+            .map(|v| match v {
+                Value::EnumVariant { variant, .. } => variant.to_string(),
+                other => panic!("expected enum variant in list, got: {other:?}"),
+            })
+            .collect(),
+        other => panic!("expected list, got: {other:?}"),
+    }
+}
+
+fn eval_bool(
+    interp: &Interpreter,
+    state: &GameState,
+    handler: &mut NullHandler,
+    name: &str,
+    args: Vec<Value>,
+) -> bool {
+    match interp
+        .evaluate_derive(state, handler, name, args)
+        .unwrap_or_else(|e| panic!("{name} failed: {e}"))
+    {
+        Value::Bool(b) => b,
+        other => panic!("expected bool from {name}, got: {other:?}"),
+    }
+}
+
+#[test]
+fn class_allowed_melee_cleric_is_blunt_only() {
+    let (program, result) = compile_osric_equipment();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NullHandler;
+
+    let val = interp
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "class_allowed_melee",
+            vec![class_variant("Cleric")],
+        )
+        .expect("class_allowed_melee(Cleric) failed");
+
+    let weapons = get_enum_variant_list(val);
+    // Clerics can only use blunt weapons
+    assert!(weapons.contains(&"Club".to_string()));
+    assert!(weapons.contains(&"MaceHeavy".to_string()));
+    assert!(weapons.contains(&"Staff".to_string()));
+    assert!(weapons.contains(&"FlailHeavy".to_string()));
+    assert!(weapons.contains(&"WarhammerLight".to_string()));
+    // Should NOT contain slashing/piercing weapons
+    assert!(!weapons.contains(&"SwordLong".to_string()));
+    assert!(!weapons.contains(&"Dagger".to_string()));
+    assert!(!weapons.contains(&"Spear".to_string()));
+}
+
+#[test]
+fn class_allowed_melee_magic_user_dagger_and_staff() {
+    let (program, result) = compile_osric_equipment();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NullHandler;
+
+    let val = interp
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "class_allowed_melee",
+            vec![class_variant("MagicUser")],
+        )
+        .expect("class_allowed_melee(MagicUser) failed");
+
+    let weapons = get_enum_variant_list(val);
+    assert_eq!(weapons.len(), 2);
+    assert!(weapons.contains(&"Dagger".to_string()));
+    assert!(weapons.contains(&"Staff".to_string()));
+}
+
+#[test]
+fn class_allowed_melee_fighter_empty_means_any() {
+    let (program, result) = compile_osric_equipment();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NullHandler;
+
+    let val = interp
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "class_allowed_melee",
+            vec![class_variant("Fighter")],
+        )
+        .expect("class_allowed_melee(Fighter) failed");
+
+    let weapons = get_enum_variant_list(val);
+    // weapons_any classes return empty list (all weapons allowed)
+    assert!(weapons.is_empty());
+}
+
+#[test]
+fn class_allowed_missile_cleric_blunt_only() {
+    let (program, result) = compile_osric_equipment();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NullHandler;
+
+    let val = interp
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "class_allowed_missile",
+            vec![class_variant("Cleric")],
+        )
+        .expect("class_allowed_missile(Cleric) failed");
+
+    let weapons = get_enum_variant_list(val);
+    assert!(weapons.contains(&"Sling".to_string()));
+    assert!(weapons.contains(&"ClubThrown".to_string()));
+    assert!(weapons.contains(&"WarhammerThrown".to_string()));
+    // Should NOT contain piercing/slashing missile weapons
+    assert!(!weapons.contains(&"BowLong".to_string()));
+    assert!(!weapons.contains(&"DaggerThrown".to_string()));
+}
+
+#[test]
+fn class_allowed_missile_monk_has_crossbow() {
+    let (program, result) = compile_osric_equipment();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NullHandler;
+
+    let val = interp
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "class_allowed_missile",
+            vec![class_variant("Monk")],
+        )
+        .expect("class_allowed_missile(Monk) failed");
+
+    let weapons = get_enum_variant_list(val);
+    assert!(weapons.contains(&"CrossbowHeavy".to_string()));
+    assert!(weapons.contains(&"CrossbowLight".to_string()));
+    assert!(weapons.contains(&"DaggerThrown".to_string()));
+    // Monks cannot use bows
+    assert!(!weapons.contains(&"BowLong".to_string()));
+}
+
+#[test]
+fn can_wield_melee_fighter_any_weapon() {
+    let (program, result) = compile_osric_equipment();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NullHandler;
+
+    // Fighters can wield anything
+    assert!(eval_bool(
+        &interp,
+        &state,
+        &mut handler,
+        "can_wield_melee",
+        vec![class_variant("Fighter"), melee_variant("SwordTwoHanded")]
+    ));
+    assert!(eval_bool(
+        &interp,
+        &state,
+        &mut handler,
+        "can_wield_melee",
+        vec![class_variant("Fighter"), melee_variant("Dagger")]
+    ));
+}
+
+#[test]
+fn can_wield_melee_cleric_blunt_yes_slashing_no() {
+    let (program, result) = compile_osric_equipment();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NullHandler;
+
+    // Cleric CAN wield mace
+    assert!(eval_bool(
+        &interp,
+        &state,
+        &mut handler,
+        "can_wield_melee",
+        vec![class_variant("Cleric"), melee_variant("MaceHeavy")]
+    ));
+    // Cleric CANNOT wield longsword
+    assert!(!eval_bool(
+        &interp,
+        &state,
+        &mut handler,
+        "can_wield_melee",
+        vec![class_variant("Cleric"), melee_variant("SwordLong")]
+    ));
+}
+
+#[test]
+fn can_wield_melee_magic_user_dagger_yes_sword_no() {
+    let (program, result) = compile_osric_equipment();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NullHandler;
+
+    assert!(eval_bool(
+        &interp,
+        &state,
+        &mut handler,
+        "can_wield_melee",
+        vec![class_variant("MagicUser"), melee_variant("Dagger")]
+    ));
+    assert!(eval_bool(
+        &interp,
+        &state,
+        &mut handler,
+        "can_wield_melee",
+        vec![class_variant("MagicUser"), melee_variant("Staff")]
+    ));
+    assert!(!eval_bool(
+        &interp,
+        &state,
+        &mut handler,
+        "can_wield_melee",
+        vec![class_variant("MagicUser"), melee_variant("SwordLong")]
+    ));
+}
+
+#[test]
+fn can_wield_missile_cleric_sling_yes_bow_no() {
+    let (program, result) = compile_osric_equipment();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NullHandler;
+
+    assert!(eval_bool(
+        &interp,
+        &state,
+        &mut handler,
+        "can_wield_missile",
+        vec![class_variant("Cleric"), missile_variant("Sling")]
+    ));
+    assert!(!eval_bool(
+        &interp,
+        &state,
+        &mut handler,
+        "can_wield_missile",
+        vec![class_variant("Cleric"), missile_variant("BowLong")]
+    ));
+}
+
+#[test]
+fn can_wield_all_restricted_classes_resolve() {
+    let (program, result) = compile_osric_equipment();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NullHandler;
+
+    // Verify all 10 classes resolve without error for both melee and missile
+    let classes = [
+        "Assassin", "Cleric", "Druid", "Fighter", "Illusionist",
+        "MagicUser", "Monk", "Paladin", "Ranger", "Thief",
+    ];
+
+    for class in &classes {
+        // class_allowed_melee
+        interp
+            .evaluate_derive(
+                &state,
+                &mut handler,
+                "class_allowed_melee",
+                vec![class_variant(class)],
+            )
+            .unwrap_or_else(|e| panic!("class_allowed_melee({class}) failed: {e}"));
+
+        // class_allowed_missile
+        interp
+            .evaluate_derive(
+                &state,
+                &mut handler,
+                "class_allowed_missile",
+                vec![class_variant(class)],
+            )
+            .unwrap_or_else(|e| panic!("class_allowed_missile({class}) failed: {e}"));
+
+        // can_wield_melee with Dagger (should work for most)
+        interp
+            .evaluate_derive(
+                &state,
+                &mut handler,
+                "can_wield_melee",
+                vec![class_variant(class), melee_variant("Dagger")],
+            )
+            .unwrap_or_else(|e| panic!("can_wield_melee({class}, Dagger) failed: {e}"));
+    }
+}
