@@ -808,7 +808,7 @@ fn stalwart_save_bonus_values() {
     let state = GameState::new();
 
     let cases = [
-        (3, 1),
+        (4, 1),
         (6, 1),
         (7, 2),
         (10, 2),
