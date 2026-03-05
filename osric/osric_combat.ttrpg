@@ -15,6 +15,7 @@ use "OSRIC Classes"
 use "OSRIC Equipment"
 use "OSRIC Conditions"
 use "OSRIC Thief Skills"
+use "OSRIC Weapon Specialisation"
 
 system "OSRIC Combat" {
 
@@ -356,8 +357,9 @@ system "OSRIC Combat" {
     ) -> AttackResult #attack_resolution {
         let bthb_val = character_bthb(attacker)
         let str_hit = effective_str_to_hit(attacker)
+        let spec_hit = melee_spec_hit_mod(attacker, weapon)
         let target_ac = effective_target_ac(target)
-        let total_mod = bthb_val + str_hit + attack_mod
+        let total_mod = bthb_val + str_hit + spec_hit + attack_mod
         let outcome = match roll_mode {
             RollMode.AutoHit => AttackOutcome.Hit,
             _ => attack_roll_aac(total_mod, target_ac)
@@ -372,7 +374,8 @@ system "OSRIC Combat" {
             let base = monk_weapon_damage(class_level_for(attacker, Monk).unwrap())
             if attacker.abilities[STR] >= 15 { base } else { max(0, base - 1) }
         } else { 0 }
-        let dmg_mod = str_dmg + monk_dmg
+        let spec_dmg = melee_spec_damage_mod(attacker, weapon)
+        let dmg_mod = str_dmg + monk_dmg + spec_dmg
 
         let damage = match outcome {
             AttackOutcome.Hit => {
@@ -405,10 +408,11 @@ system "OSRIC Combat" {
     ) -> AttackResult #attack_resolution {
         let bthb_val = character_bthb(attacker)
         let dex_mod = dex_missile(attacker.abilities[DEX])
+        let spec_hit = missile_spec_hit_mod(attacker, weapon)
         let wdef = missile_weapon_def(weapon)
         let range_mod = missile_range_penalty(distance, wdef.range_increment)
         let target_ac = effective_target_ac(target)
-        let total_mod = bthb_val + dex_mod + range_mod + attack_mod
+        let total_mod = bthb_val + dex_mod + spec_hit + range_mod + attack_mod
         let outcome = match roll_mode {
             RollMode.AutoHit => AttackOutcome.Hit,
             _ => attack_roll_aac(total_mod, target_ac)
@@ -421,7 +425,8 @@ system "OSRIC Combat" {
             let base = monk_weapon_damage(class_level_for(attacker, Monk).unwrap())
             if attacker.abilities[STR] >= 15 { base } else { max(0, base - 1) }
         } else { 0 }
-        let dmg_mod = str_dmg + monk_dmg
+        let spec_dmg = missile_spec_damage_mod(attacker, weapon)
+        let dmg_mod = str_dmg + monk_dmg + spec_dmg
 
         let damage = match outcome {
             AttackOutcome.Hit => {

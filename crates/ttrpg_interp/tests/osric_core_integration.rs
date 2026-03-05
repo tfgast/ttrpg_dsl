@@ -156,7 +156,15 @@ fn osric_core_has_all_enums() {
     // SpellSave: 4 variants
     assert!(enums.contains(&("SpellSave", 4)), "missing SpellSave enum");
 
-    assert_eq!(enums.len(), 24, "expected 24 enums, got {enums:?}");
+    // SpecLevel: 2 variants (Single, Double)
+    assert!(enums.contains(&("SpecLevel", 2)), "missing SpecLevel enum");
+    // SpecWeapon: 2 variants (SpecMelee, SpecMissile)
+    assert!(
+        enums.contains(&("SpecWeapon", 2)),
+        "missing SpecWeapon enum"
+    );
+
+    assert_eq!(enums.len(), 26, "expected 26 enums, got {enums:?}");
 }
 
 #[test]
@@ -392,6 +400,7 @@ fn character_entity_optional_groups() {
         "Spellcasting",
         "ThiefSkills",
         "TurnUndead",
+        "WeaponSpecialization",
     ];
 
     for name in expected_includes.iter().chain(expected_optionals.iter()) {
@@ -465,8 +474,17 @@ fn monster_entity_fields() {
     let field_names: Vec<_> = monster.fields.iter().map(|f| f.name.as_str()).collect();
 
     let expected_fields = [
-        "name", "hit_dice", "max_hp", "hp", "ac", "morale", "morale_checks_made", "xp_value",
-        "attacks", "size", "special",
+        "name",
+        "hit_dice",
+        "max_hp",
+        "hp",
+        "ac",
+        "morale",
+        "morale_checks_made",
+        "xp_value",
+        "attacks",
+        "size",
+        "special",
     ];
     for name in &expected_fields {
         assert!(field_names.contains(name), "Monster missing field: {name}");

@@ -36,15 +36,9 @@ fn extract_morale_result(val: Value) -> (String, i64, i64, i64, i64) {
                 fields.get::<Name>(&"base_morale".into()).unwrap().clone(),
                 "base_morale",
             );
-            let roll = expect_int(
-                fields.get::<Name>(&"roll".into()).unwrap().clone(),
-                "roll",
-            );
+            let roll = expect_int(fields.get::<Name>(&"roll".into()).unwrap().clone(), "roll");
             let modified_roll = expect_int(
-                fields
-                    .get::<Name>(&"modified_roll".into())
-                    .unwrap()
-                    .clone(),
+                fields.get::<Name>(&"modified_roll".into()).unwrap().clone(),
                 "modified_roll",
             );
             let margin = expect_int(
@@ -111,12 +105,7 @@ fn base_morale_from_hit_dice() {
         vec![monster_attack("Club", 1, 6, 0)],
     );
     let val = interp
-        .evaluate_derive(
-            &state,
-            &mut handler,
-            "base_morale",
-            vec![Value::Entity(m1)],
-        )
+        .evaluate_derive(&state, &mut handler, "base_morale", vec![Value::Entity(m1)])
         .unwrap();
     assert_eq!(val, Value::Int(55), "1 HD -> base morale 55");
 
@@ -130,12 +119,7 @@ fn base_morale_from_hit_dice() {
         vec![monster_attack("Fist", 2, 6, 0)],
     );
     let val = interp
-        .evaluate_derive(
-            &state,
-            &mut handler,
-            "base_morale",
-            vec![Value::Entity(m8)],
-        )
+        .evaluate_derive(&state, &mut handler, "base_morale", vec![Value::Entity(m8)])
         .unwrap();
     assert_eq!(val, Value::Int(90), "8+1 HD -> base morale 90");
 
@@ -149,12 +133,7 @@ fn base_morale_from_hit_dice() {
         vec![monster_attack("Club", 1, 10, 0)],
     );
     let val = interp
-        .evaluate_derive(
-            &state,
-            &mut handler,
-            "base_morale",
-            vec![Value::Entity(m4)],
-        )
+        .evaluate_derive(&state, &mut handler, "base_morale", vec![Value::Entity(m4)])
         .unwrap();
     assert_eq!(val, Value::Int(70), "4 HD -> base morale 70");
 }
@@ -178,9 +157,8 @@ fn morale_check_pass() {
     let adapter = StateAdapter::new(state);
 
     // Script a d100 roll of 40 (under base morale 70 -> pass)
-    let mut handler = ScriptedHandler::with_responses(vec![scripted_roll(
-        1, 100, 0, vec![40], vec![40], 40, 40,
-    )]);
+    let mut handler =
+        ScriptedHandler::with_responses(vec![scripted_roll(1, 100, 0, vec![40], vec![40], 40, 40)]);
 
     let val = run_check_morale(&interp, &adapter, &mut handler, m, 0);
     let (outcome, base_morale, roll, modified_roll, margin) = extract_morale_result(val);
@@ -215,9 +193,8 @@ fn morale_check_retreat() {
     let adapter = StateAdapter::new(state);
 
     // Roll 85 vs base 70 -> fail by 15 -> retreat
-    let mut handler = ScriptedHandler::with_responses(vec![scripted_roll(
-        1, 100, 0, vec![85], vec![85], 85, 85,
-    )]);
+    let mut handler =
+        ScriptedHandler::with_responses(vec![scripted_roll(1, 100, 0, vec![85], vec![85], 85, 85)]);
 
     let val = run_check_morale(&interp, &adapter, &mut handler, m, 0);
     let (outcome, base_morale, _, _, margin) = extract_morale_result(val);
@@ -245,9 +222,8 @@ fn morale_check_surrender() {
     let adapter = StateAdapter::new(state);
 
     // Roll 50, modifier +60 -> modified 110 vs base 55 -> margin 55 -> surrender
-    let mut handler = ScriptedHandler::with_responses(vec![scripted_roll(
-        1, 100, 0, vec![50], vec![50], 50, 50,
-    )]);
+    let mut handler =
+        ScriptedHandler::with_responses(vec![scripted_roll(1, 100, 0, vec![50], vec![50], 50, 50)]);
 
     let val = run_check_morale(&interp, &adapter, &mut handler, m, 60);
     let (outcome, base_morale, roll, modified_roll, margin) = extract_morale_result(val);
@@ -277,9 +253,8 @@ fn morale_check_modifier_helps_pass() {
     let adapter = StateAdapter::new(state);
 
     // Roll 75, modifier -10 -> modified 65 vs base 70 -> pass
-    let mut handler = ScriptedHandler::with_responses(vec![scripted_roll(
-        1, 100, 0, vec![75], vec![75], 75, 75,
-    )]);
+    let mut handler =
+        ScriptedHandler::with_responses(vec![scripted_roll(1, 100, 0, vec![75], vec![75], 75, 75)]);
 
     let val = run_check_morale(&interp, &adapter, &mut handler, m, -10);
     let (outcome, _, _, modified_roll, _) = extract_morale_result(val);
@@ -306,15 +281,13 @@ fn morale_fanatical_after_two_checks() {
     let adapter = StateAdapter::new(state);
 
     // First check: roll 40 -> pass
-    let mut handler = ScriptedHandler::with_responses(vec![scripted_roll(
-        1, 100, 0, vec![40], vec![40], 40, 40,
-    )]);
+    let mut handler =
+        ScriptedHandler::with_responses(vec![scripted_roll(1, 100, 0, vec![40], vec![40], 40, 40)]);
     let _ = run_check_morale(&interp, &adapter, &mut handler, m, 0);
 
     // Second check: roll 50 -> pass
-    let mut handler = ScriptedHandler::with_responses(vec![scripted_roll(
-        1, 100, 0, vec![50], vec![50], 50, 50,
-    )]);
+    let mut handler =
+        ScriptedHandler::with_responses(vec![scripted_roll(1, 100, 0, vec![50], vec![50], 50, 50)]);
     let _ = run_check_morale(&interp, &adapter, &mut handler, m, 0);
 
     // Third check: auto-pass (fanatical), no dice roll needed
@@ -352,9 +325,8 @@ fn reset_morale_clears_counter() {
     let adapter = StateAdapter::new(state);
 
     // Make one check
-    let mut handler = ScriptedHandler::with_responses(vec![scripted_roll(
-        1, 100, 0, vec![40], vec![40], 40, 40,
-    )]);
+    let mut handler =
+        ScriptedHandler::with_responses(vec![scripted_roll(1, 100, 0, vec![40], vec![40], 40, 40)]);
     let _ = run_check_morale(&interp, &adapter, &mut handler, m, 0);
 
     // Reset
@@ -397,17 +369,15 @@ fn morale_retreat_surrender_boundary() {
 
     let adapter = StateAdapter::new(state);
 
-    let mut handler = ScriptedHandler::with_responses(vec![scripted_roll(
-        1, 100, 0, vec![5], vec![5], 5, 5,
-    )]);
+    let mut handler =
+        ScriptedHandler::with_responses(vec![scripted_roll(1, 100, 0, vec![5], vec![5], 5, 5)]);
     let val = run_check_morale(&interp, &adapter, &mut handler, m1, 100);
     let (outcome, _, _, _, margin) = extract_morale_result(val);
     assert_eq!(outcome, "Retreat");
     assert_eq!(margin, 50);
 
-    let mut handler = ScriptedHandler::with_responses(vec![scripted_roll(
-        1, 100, 0, vec![6], vec![6], 6, 6,
-    )]);
+    let mut handler =
+        ScriptedHandler::with_responses(vec![scripted_roll(1, 100, 0, vec![6], vec![6], 6, 6)]);
     let val = run_check_morale(&interp, &adapter, &mut handler, m2, 100);
     let (outcome, _, _, _, margin) = extract_morale_result(val);
     assert_eq!(outcome, "Surrender");

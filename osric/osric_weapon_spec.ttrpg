@@ -1,0 +1,282 @@
+// ============================================================
+// OSRIC 3.0 Weapon Specialisation (§1.3.13)
+//
+// Optional rule. Fighters, Paladins, and Rangers may specialise
+// in a single weapon at character creation, gaining +1 to hit
+// and +2 damage (non-magical). Melee specialists gain improved
+// attack rates by level. Missile specialists gain improved rate
+// of fire at higher levels.
+//
+// Double specialisation (optional): melee weapons that are not
+// pole arms or two-handed swords may take a third proficiency
+// slot for +3 to hit and +3 damage.
+//
+// Reference: OSRIC 3.0 Player Guide, p.70 (§1.3.13)
+// ============================================================
+
+use "OSRIC"
+use "OSRIC Character"
+use "OSRIC Classes"
+use "OSRIC Equipment"
+use "OSRIC Combat"
+
+system "OSRIC Weapon Specialisation" {
+
+    // ========================================================
+    //  WEAPON SPECIALISATION GROUP
+    //
+    //  Included as optional on Character entity. Tracks which
+    //  weapon is specialised and whether single or double.
+    //  Granted at character creation via:
+    //    grant char.WeaponSpecialization {
+    //        spec_weapon: SpecMelee(SwordLong),
+    //        spec_level: SpecLevel.Single
+    //    }
+    // ========================================================
+
+    group WeaponSpecialization {
+        spec_weapon: SpecWeapon
+        spec_level: SpecLevel
+    }
+
+
+    // ========================================================
+    //  SPECIALISATION VALIDATION
+    //
+    //  Only fighters, paladins, and rangers can specialise.
+    //  Double specialisation excludes pole arms and two-handed
+    //  swords.
+    // ========================================================
+
+    derive can_specialize(class: Class) -> bool {
+        class_def(class).weapon_specialization
+    }
+
+    derive can_double_specialize_melee(weapon: MeleeWeapon) -> bool {
+        match weapon {
+            PoleArm        => false,
+            SwordTwoHanded => false,
+            _              => true
+        }
+    }
+
+
+    // ========================================================
+    //  COMBAT BONUSES
+    //
+    //  Single: +1 to hit, +2 damage.
+    //  Double: +3 to hit, +3 damage.
+    //  These are non-magical (cannot hit creatures requiring
+    //  magical weapons).
+    // ========================================================
+
+    derive spec_hit_bonus(level: SpecLevel) -> int {
+        match level {
+            SpecLevel.Single => 1,
+            SpecLevel.Double => 3
+        }
+    }
+
+    derive spec_damage_bonus(level: SpecLevel) -> int {
+        match level {
+            SpecLevel.Single => 2,
+            SpecLevel.Double => 3
+        }
+    }
+
+
+    // ========================================================
+    //  SPECIALISED MELEE ATTACK RATE
+    //
+    //  Specialist melee attack rates by fighter-type level:
+    //    L1-6:  3/2 (alternating 2/1 per round)
+    //    L7-12: 2/1 (always 2)
+    //    L13+:  5/2 (alternating 3/2 per round)
+    //
+    //  These REPLACE the normal fighter_attacks progression.
+    // ========================================================
+
+    derive spec_melee_attacks(level: int, round_number: int) -> int {
+        match {
+            level < 7  => if round_number % 2 == 0 { 2 } else { 1 },
+            level < 13 => 2,
+            _          => if round_number % 2 == 0 { 3 } else { 2 }
+        }
+    }
+
+
+    // ========================================================
+    //  SPECIALISED MISSILE RATE OF FIRE
+    //
+    //  Missile specialisation does not change at low levels
+    //  (uses normal RoF). At higher levels, RoF improves:
+    //
+    //  Pulled Bow (Long/Short):
+    //    L1-6:  2 (normal)
+    //    L7-12: 3
+    //    L13+:  4
+    //
+    //  Light Crossbow:
+    //    L1-6:  1 (normal)
+    //    L7-12: 2 in odd rounds only → alternating 2/1
+    //    L13+:  2
+    //
+    //  Heavy Crossbow:
+    //    L1-6:  0 (every other round, normal)
+    //    L7-12: 1
+    //    L13+:  2 in odd rounds only → alternating 2/1
+    //
+    //  For simplicity, returns attacks-this-round given level
+    //  and round_number (for alternating rates).
+    // ========================================================
+
+    derive is_pulled_bow(weapon: MissileWeapon) -> bool {
+        match weapon {
+            BowLong          => true,
+            BowShort         => true,
+            CompositeBowLong => true,
+            CompositeBowShort=> true,
+            _                => false
+        }
+    }
+
+    derive spec_missile_rof(weapon: MissileWeapon, level: int, round_number: int) -> int {
+        match {
+            is_pulled_bow(weapon) => match {
+                level < 7  => 2,
+                level < 13 => 3,
+                _          => 4
+            },
+            weapon == CrossbowLight => match {
+                level < 7  => 1,
+                level < 13 => if round_number % 2 == 1 { 2 } else { 1 },
+                _          => 2
+            },
+            weapon == CrossbowHeavy => match {
+                level < 7  => if round_number % 2 == 1 { 1 } else { 0 },
+                level < 13 => 1,
+                _          => if round_number % 2 == 1 { 2 } else { 1 }
+            },
+            // Other missile weapons: no RoF improvement from specialisation
+            _ => missile_weapon_def(weapon).rate_of_fire
+        }
+    }
+
+
+    // ========================================================
+    //  CHARACTER SPECIALISATION QUERIES
+    //
+    //  Check whether a character is specialised in the weapon
+    //  they are currently using, and retrieve bonuses.
+    // ========================================================
+
+    derive is_specialized_melee(char: Character, weapon: MeleeWeapon) -> bool {
+        if char has WeaponSpecialization as ws {
+            match char.ws.spec_weapon {
+                SpecMelee(w) => w == weapon,
+                _ => false
+            }
+        } else {
+            false
+        }
+    }
+
+    derive is_specialized_missile(char: Character, weapon: MissileWeapon) -> bool {
+        if char has WeaponSpecialization as ws {
+            match char.ws.spec_weapon {
+                SpecMissile(w) => w == weapon,
+                _ => false
+            }
+        } else {
+            false
+        }
+    }
+
+    derive melee_spec_hit_mod(char: Character, weapon: MeleeWeapon) -> int {
+        if char has WeaponSpecialization as ws {
+            match char.ws.spec_weapon {
+                SpecMelee(w) => if w == weapon { spec_hit_bonus(char.ws.spec_level) } else { 0 },
+                _ => 0
+            }
+        } else {
+            0
+        }
+    }
+
+    derive melee_spec_damage_mod(char: Character, weapon: MeleeWeapon) -> int {
+        if char has WeaponSpecialization as ws {
+            match char.ws.spec_weapon {
+                SpecMelee(w) => if w == weapon { spec_damage_bonus(char.ws.spec_level) } else { 0 },
+                _ => 0
+            }
+        } else {
+            0
+        }
+    }
+
+    derive missile_spec_hit_mod(char: Character, weapon: MissileWeapon) -> int {
+        if char has WeaponSpecialization as ws {
+            match char.ws.spec_weapon {
+                SpecMissile(w) => if w == weapon { spec_hit_bonus(char.ws.spec_level) } else { 0 },
+                _ => 0
+            }
+        } else {
+            0
+        }
+    }
+
+    derive missile_spec_damage_mod(char: Character, weapon: MissileWeapon) -> int {
+        if char has WeaponSpecialization as ws {
+            match char.ws.spec_weapon {
+                SpecMissile(w) => if w == weapon { spec_damage_bonus(char.ws.spec_level) } else { 0 },
+                _ => 0
+            }
+        } else {
+            0
+        }
+    }
+
+
+    // ========================================================
+    //  FIGHTER ATTACKS WITH SPECIALISATION
+    //
+    //  Replaces the base fighter_attacks derive when the
+    //  character is a specialist. Non-specialists fall back
+    //  to the normal progression.
+    // ========================================================
+
+    derive character_melee_attacks(
+        char: Character,
+        weapon: MeleeWeapon,
+        round_number: int
+    ) -> int {
+        // Find the character's fighter-group class and level
+        let fighter_classes = [cl for cl in char.classes if class_def(cl.class).combat_group == FighterGroup]
+        if len(fighter_classes) == 0 {
+            1
+        } else {
+            let best = last(sort([cl.level for cl in fighter_classes])).unwrap()
+            if is_specialized_melee(char, weapon) {
+                spec_melee_attacks(best, round_number)
+            } else {
+                fighter_attacks(best, round_number)
+            }
+        }
+    }
+
+    derive character_missile_attacks(
+        char: Character,
+        weapon: MissileWeapon,
+        round_number: int
+    ) -> int {
+        if is_specialized_missile(char, weapon) {
+            let fighter_classes = [cl for cl in char.classes if class_def(cl.class).combat_group == FighterGroup]
+            let best = if len(fighter_classes) > 0 {
+                last(sort([cl.level for cl in fighter_classes])).unwrap()
+            } else { 1 }
+            spec_missile_rof(weapon, best, round_number)
+        } else {
+            missile_weapon_def(weapon).rate_of_fire
+        }
+    }
+}

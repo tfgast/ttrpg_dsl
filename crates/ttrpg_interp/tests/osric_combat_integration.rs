@@ -2617,8 +2617,8 @@ fn resolve_assassination_failure_does_normal_attack() {
     // Then normal attack: d20=18 (hit), d4=3 (damage)
     let responses = vec![
         scripted_roll(1, 100, 0, vec![80], vec![80], 80, 80), // d100 assassination roll (fail)
-        scripted_roll(1, 20, 0, vec![18], vec![18], 18, 18),   // d20 attack roll
-        scripted_roll(1, 4, 0, vec![3], vec![3], 3, 3),        // d4 damage roll
+        scripted_roll(1, 20, 0, vec![18], vec![18], 18, 18),  // d20 attack roll
+        scripted_roll(1, 4, 0, vec![3], vec![3], 3, 3),       // d4 damage roll
     ];
     let mut handler = ScriptedHandler::with_responses(responses);
 

@@ -60,6 +60,14 @@ pub fn enum_variant(enum_name: &str, variant: &str) -> Value {
     }
 }
 
+pub fn enum_variant_with(enum_name: &str, variant: &str, fields: BTreeMap<Name, Value>) -> Value {
+    Value::EnumVariant {
+        enum_name: Name::from(enum_name),
+        variant: Name::from(variant),
+        fields,
+    }
+}
+
 pub fn ability(variant: &str) -> Value {
     enum_variant("Ability", variant)
 }
@@ -870,6 +878,55 @@ pub fn set_field(state: &mut GameState, entity: &EntityRef, field: &str, value: 
     state.write_field(entity, &[FieldPathSegment::Field(field.into())], value);
 }
 
+/// Build a WeaponSpecialization optional group struct value.
+/// `spec_kind` is "SpecMelee" or "SpecMissile".
+/// `weapon_enum` is "MeleeWeapon" or "MissileWeapon".
+/// `weapon_variant` is the weapon name e.g. "SwordLong".
+/// `spec_level` is "Single" or "Double".
+pub fn weapon_spec_group(
+    spec_kind: &str,
+    weapon_enum: &str,
+    weapon_variant: &str,
+    spec_level: &str,
+) -> Value {
+    let mut weapon_fields = BTreeMap::new();
+    weapon_fields.insert(
+        Name::from("weapon"),
+        enum_variant(weapon_enum, weapon_variant),
+    );
+    let spec_weapon = enum_variant_with("SpecWeapon", spec_kind, weapon_fields);
+
+    Value::Struct {
+        name: Name::from("WeaponSpecialization"),
+        fields: {
+            let mut f = BTreeMap::new();
+            f.insert(Name::from("spec_weapon"), spec_weapon);
+            f.insert(
+                Name::from("spec_level"),
+                enum_variant("SpecLevel", spec_level),
+            );
+            f
+        },
+    }
+}
+
+/// Grant weapon specialisation to a character entity.
+pub fn grant_weapon_spec(
+    state: &mut GameState,
+    entity: &EntityRef,
+    spec_kind: &str,
+    weapon_enum: &str,
+    weapon_variant: &str,
+    spec_level: &str,
+) {
+    set_field(
+        state,
+        entity,
+        "WeaponSpecialization",
+        weapon_spec_group(spec_kind, weapon_enum, weapon_variant, spec_level),
+    );
+}
+
 pub fn apply_encumbrance(state: &mut GameState, entity: &EntityRef, tier_variant: &str) {
     let mut params = BTreeMap::new();
     params.insert(Name::from("tier"), tier(tier_variant));
@@ -950,6 +1007,10 @@ pub fn all_osric_sources() -> Vec<(String, String)> {
         (
             "osric/osric_morale.ttrpg".to_string(),
             include_str!("../../../../osric/osric_morale.ttrpg").to_string(),
+        ),
+        (
+            "osric/osric_weapon_spec.ttrpg".to_string(),
+            include_str!("../../../../osric/osric_weapon_spec.ttrpg").to_string(),
         ),
     ]
 }
