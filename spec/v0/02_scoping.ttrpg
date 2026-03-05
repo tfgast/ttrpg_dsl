@@ -22,6 +22,11 @@
 // derive/mechanic/function: last stmt MUST be expr_stmt (its value is the return).
 //   function return type is optional — omitting it gives unit (void).
 // action/reaction resolve: no constraint (any block value is discarded).
+//
+// The `return` keyword is allowed in function, action, reaction, hook, and
+// lifecycle blocks for early exit. `return expr` in functions with return types;
+// bare `return` in void/unit blocks. NOT allowed in derive/mechanic (use
+// if/else or match for conditional values instead).
 // See 03_canonical_grammar.ttrpg "Block value semantics" for details.
 //
 // "Modify?" indicates whether condition modify clauses can target this block.

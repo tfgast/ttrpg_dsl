@@ -356,6 +356,11 @@ fn collect_idents_block(block: &ttrpg_ast::ast::Block, out: &mut Vec<Name>) {
                 }
                 collect_idents_block(body, out);
             }
+            StmtKind::Return(expr) => {
+                if let Some(e) = expr {
+                    collect_idents(e, out);
+                }
+            }
         }
     }
 }

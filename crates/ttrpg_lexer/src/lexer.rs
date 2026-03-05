@@ -262,6 +262,7 @@ impl<'a> RawLexer<'a> {
             "none" => TokenKind::None,
             "in" => TokenKind::In,
             "for" => TokenKind::For,
+            "return" => TokenKind::Return,
             _ => TokenKind::Ident(self.intern(text)),
         };
 

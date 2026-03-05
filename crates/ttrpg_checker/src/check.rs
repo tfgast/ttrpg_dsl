@@ -315,10 +315,11 @@ impl<'a> Checker<'a> {
     }
 
     fn check_function(&mut self, f: &FnDecl) {
-        self.scope.push(BlockKind::FunctionBody);
         self.check_type_visible(&f.return_type);
-        self.bind_params(&f.params);
         let ret_ty = self.env.resolve_type(&f.return_type);
+        self.scope
+            .push_with_return_type(BlockKind::FunctionBody, ret_ty.clone());
+        self.bind_params(&f.params);
         let body_ty = self.check_block_with_tail_hint(&f.body, Some(&ret_ty));
         self.check_return_type(&body_ty, &ret_ty, f.body.span);
         self.scope.pop();
@@ -458,7 +459,8 @@ impl<'a> Checker<'a> {
     }
 
     fn check_action(&mut self, a: &ActionDecl) {
-        self.scope.push(BlockKind::ActionResolve);
+        self.scope
+            .push_with_return_type(BlockKind::ActionResolve, Ty::Unit);
 
         // Bind receiver (field-mutable via action context, but not rebindable)
         self.check_type_visible(&a.receiver_type);
@@ -521,7 +523,8 @@ impl<'a> Checker<'a> {
     }
 
     fn check_reaction(&mut self, r: &ReactionDecl) {
-        self.scope.push(BlockKind::ReactionResolve);
+        self.scope
+            .push_with_return_type(BlockKind::ReactionResolve, Ty::Unit);
 
         // Bind receiver (field-mutable via reaction context, but not rebindable)
         self.check_type_visible(&r.receiver_type);
@@ -549,7 +552,8 @@ impl<'a> Checker<'a> {
     }
 
     fn check_hook(&mut self, h: &HookDecl) {
-        self.scope.push(BlockKind::HookResolve);
+        self.scope
+            .push_with_return_type(BlockKind::HookResolve, Ty::Unit);
 
         // Bind receiver
         self.check_type_visible(&h.receiver_type);

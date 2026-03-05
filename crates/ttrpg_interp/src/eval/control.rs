@@ -159,6 +159,9 @@ pub(super) fn eval_for(
             let result = eval_block(env, body);
             env.pop_scope();
             result?;
+            if env.return_value.is_some() {
+                return Ok(Value::Void);
+            }
         }
     }
 
@@ -271,7 +274,16 @@ pub(crate) fn eval_block(
     let mut result = Value::Void;
     for stmt in &block.node {
         match eval_stmt(env, stmt) {
-            Ok(val) => result = val,
+            Ok(val) => {
+                if let Some(ref ret) = env.return_value {
+                    // Early return: use the return_value (not the statement value,
+                    // which may be Void from an intermediate block like eval_for).
+                    let ret = ret.clone();
+                    env.pop_scope();
+                    return Ok(ret);
+                }
+                result = val;
+            }
             Err(e) => {
                 env.pop_scope();
                 return Err(e);
@@ -420,6 +432,14 @@ pub(super) fn eval_stmt(
             }
 
             scoped_budget(env, actor, budget, *span, |env| eval_block(env, body))
+        }
+        StmtKind::Return(expr) => {
+            let val = match expr {
+                Some(e) => eval_expr(env, e)?,
+                None => Value::Void,
+            };
+            env.return_value = Some(val.clone());
+            Ok(val)
         }
     }
 }

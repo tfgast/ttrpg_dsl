@@ -185,7 +185,9 @@ fn execute_pipeline(
 
     // Execute resolve block
     let resolve = resolve.clone();
-    eval_block(env, &resolve)
+    let result = eval_block(env, &resolve);
+    env.return_value = None; // clear early-return flag at call boundary
+    result
 }
 
 // ── Action execution ───────────────────────────────────────────
@@ -351,7 +353,9 @@ pub(crate) fn execute_hook(
         env.bind(hook.receiver_name.clone(), Value::Entity(target));
         env.bind(Name::from("trigger"), event_payload);
         let resolve = hook.resolve.clone();
-        eval_block(env, &resolve)
+        let result = eval_block(env, &resolve);
+        env.return_value = None; // clear early-return flag at call boundary
+        result
     })
 }
 

@@ -683,6 +683,9 @@ impl VisitSpansMut for StmtKind {
                 body.visit_spans_mut(f);
                 span.visit_spans_mut(f);
             }
+            StmtKind::Return(expr) => {
+                expr.visit_spans_mut(f);
+            }
         }
     }
 }

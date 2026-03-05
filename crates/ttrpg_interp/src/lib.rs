@@ -463,6 +463,9 @@ pub(crate) struct Env<'a, 'p> {
     /// Uses a counter (not bool) so that hooks triggered via `emit` inside
     /// a lifecycle block can temporarily clear it.
     pub in_lifecycle_block: u32,
+    /// Set by a `return` statement to signal early exit from the enclosing block.
+    /// `eval_block` checks this after each statement and unwinds if set.
+    pub return_value: Option<Value>,
 }
 
 impl<'a, 'p> Env<'a, 'p> {
@@ -481,6 +484,7 @@ impl<'a, 'p> Env<'a, 'p> {
             current_invocation_id: None,
             emit_depth: 0,
             in_lifecycle_block: 0,
+            return_value: None,
         }
     }
 

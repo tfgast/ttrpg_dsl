@@ -73,6 +73,21 @@ impl BlockKind {
         )
     }
 
+    /// Whether `return` statements are allowed. Permitted in imperative blocks
+    /// (actions, reactions, hooks, functions, with_budget, lifecycle) but NOT
+    /// in derives, mechanics, conditions, or prompts (expression-oriented).
+    pub fn allows_return(&self) -> bool {
+        matches!(
+            self,
+            BlockKind::FunctionBody
+                | BlockKind::ActionResolve
+                | BlockKind::ReactionResolve
+                | BlockKind::HookResolve
+                | BlockKind::WithBudget
+                | BlockKind::LifecycleBlock
+        )
+    }
+
     /// Whether function calls (derives, mechanics, prompts, actions, reactions)
     /// are allowed. TriggerBinding only permits side-effect-free builtins.
     pub fn allows_calls(&self) -> bool {
@@ -115,6 +130,8 @@ struct Scope {
     narrowed_groups: FxHashMap<Name, HashSet<Name>>,
     /// Group aliases: (variable_name, alias_name) → real_group_name.
     group_aliases: FxHashMap<(Name, Name), Name>,
+    /// Expected return type for this block (set on function/action/etc. scopes).
+    return_type: Option<Ty>,
 }
 
 #[derive(Debug)]
@@ -139,6 +156,17 @@ impl ScopeStack {
             bindings: FxHashMap::default(),
             narrowed_groups: FxHashMap::default(),
             group_aliases: FxHashMap::default(),
+            return_type: None,
+        });
+    }
+
+    pub fn push_with_return_type(&mut self, block_kind: BlockKind, return_type: Ty) {
+        self.scopes.push(Scope {
+            block_kind,
+            bindings: FxHashMap::default(),
+            narrowed_groups: FxHashMap::default(),
+            group_aliases: FxHashMap::default(),
+            return_type: Some(return_type),
         });
     }
 
@@ -209,6 +237,24 @@ impl ScopeStack {
     pub fn allows_condition_manipulation(&self) -> bool {
         self.current_block_kind()
             .is_none_or(|k| k.allows_condition_manipulation())
+    }
+
+    pub fn allows_return(&self) -> bool {
+        self.current_block_kind()
+            .is_some_and(|k| k.allows_return())
+    }
+
+    /// Find the return type of the enclosing block that set one (skipping Inner scopes).
+    pub fn enclosing_return_type(&self) -> Option<&Ty> {
+        for scope in self.scopes.iter().rev() {
+            if let Some(ref ty) = scope.return_type {
+                return Some(ty);
+            }
+            if scope.block_kind != BlockKind::Inner {
+                return None;
+            }
+        }
+        None
     }
 
     /// Check if a name is already bound in the innermost scope.

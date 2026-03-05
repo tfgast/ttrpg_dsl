@@ -108,6 +108,7 @@ pub(crate) fn evaluate_fn_with_values(
 
     let result = eval_block(env, &body);
     env.pop_scope();
+    env.return_value = None; // clear early-return flag at call boundary
 
     let val = match result {
         Ok(val) => {
@@ -168,6 +169,7 @@ pub(super) fn dispatch_function(
 
     let result = eval_block(env, &body);
     env.pop_scope();
+    env.return_value = None; // clear early-return flag at call boundary
     result
 }
 
@@ -245,6 +247,7 @@ pub(crate) fn evaluate_function_with_values(
 
     let result = eval_block(env, &body);
     env.pop_scope();
+    env.return_value = None; // clear early-return flag at call boundary
     result
 }
 
@@ -309,6 +312,7 @@ pub(super) fn dispatch_derive_or_mechanic(
 
     let result = eval_block(env, &body);
     env.pop_scope();
+    env.return_value = None; // clear early-return flag at call boundary
 
     // Phase 2: rewrite output result
     let val = match result {

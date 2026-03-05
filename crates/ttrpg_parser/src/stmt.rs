@@ -65,6 +65,11 @@ impl Parser {
             return self.parse_with_budget_stmt();
         }
 
+        // return [expr]
+        if matches!(self.peek(), TokenKind::Return) {
+            return self.parse_return_stmt();
+        }
+
         // Parse as expression first, then check if it's an assignment
         let expr = self.parse_expr()?;
 
@@ -242,6 +247,25 @@ impl Parser {
             body,
             span,
         })
+    }
+
+    /// Parse `return` or `return expr`
+    fn parse_return_stmt(&mut self) -> Result<StmtKind, ()> {
+        self.expect(&TokenKind::Return)?;
+
+        // If the next token could start an expression (not a terminator),
+        // parse the return value.
+        let value = if matches!(
+            self.peek(),
+            TokenKind::Newline | TokenKind::RBrace | TokenKind::Eof
+        ) {
+            None
+        } else {
+            Some(self.parse_expr()?)
+        };
+
+        self.expect_term()?;
+        Ok(StmtKind::Return(value))
     }
 
     fn expr_to_lvalue(&mut self, expr: Spanned<ExprKind>) -> Result<LValue, ()> {

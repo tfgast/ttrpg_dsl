@@ -238,6 +238,10 @@ fn collect_stmt_inner_lines(
             collect_block_lines(body, file_id, line_starts, lines);
         }
         StmtKind::Emit { .. } | StmtKind::Grant { .. } | StmtKind::Revoke { .. } => {}
+        StmtKind::Return(Some(expr)) => {
+            collect_expr_lines(expr, file_id, line_starts, lines);
+        }
+        StmtKind::Return(None) => {}
     }
 }
 

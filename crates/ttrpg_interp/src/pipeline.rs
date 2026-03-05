@@ -85,6 +85,7 @@ pub(crate) fn execute_lifecycle_blocks(
                 }
                 let r = crate::eval::eval_block(env, block);
                 env.pop_scope();
+                env.return_value = None; // clear early-return flag at call boundary
                 r?;
             }
         }

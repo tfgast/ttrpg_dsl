@@ -423,6 +423,7 @@ function compute_heal(base: int, bonus: int) -> int {
 - Cannot use `invocation()` directly (actions called by a function get their own)
 - NOT subject to condition `modify` clauses (no modify pipeline)
 - Return type optional — omit `->` for void functions
+- Supports `return expr` for early exit (or bare `return` for void functions)
 - `with_budget(entity, { field: value }) { body }` provisions a scoped turn budget:
   - `turn` keyword becomes readable/writable inside the body
   - Actions called deduct from the provisioned budget

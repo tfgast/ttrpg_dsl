@@ -1105,6 +1105,8 @@ pub enum StmtKind {
         body: Block,
         span: Span,
     },
+    /// `return` or `return expr` — early exit from the enclosing block.
+    Return(Option<Spanned<ExprKind>>),
 }
 
 #[derive(Clone)]

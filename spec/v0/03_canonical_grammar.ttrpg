@@ -51,7 +51,7 @@
 // Keywords fall into two categories:
 //
 //   Reserved (always keyword tokens, never IDENT):
-//     let  if  else  match  true  false  none  in  for
+//     let  if  else  match  true  false  none  in  for  return
 //
 //   Contextual / soft (lexed as IDENT, recognized by parser in position):
 //     system  use  group  enum  struct  entity  derive  mechanic  action
@@ -584,13 +584,20 @@ block           = "{" stmt* "}"
 //   - action/reaction resolve: block value is discarded (no constraint).
 
 stmt            = let_stmt | assign_stmt | grant_stmt | revoke_stmt
-                | emit_stmt | with_budget_stmt | expr_stmt
+                | emit_stmt | with_budget_stmt | return_stmt | expr_stmt
 
 let_stmt        = "let" IDENT (":" type)? "=" expr term
 assign_stmt     = lvalue assign_op expr term
 assign_op       = "=" | "+=" | "-="
 lvalue          = IDENT ("." IDENT | "[" expr "]")*
 expr_stmt       = expr term
+
+// --- Return statement ---
+//
+// Early exit from a function, action, reaction, hook, or lifecycle block.
+// NOT allowed in derive, mechanic, condition, or prompt blocks.
+// Bare `return` exits with unit; `return expr` exits with a value.
+return_stmt     = "return" expr? term
 
 // --- Grant and revoke (optional group management) ---
 //

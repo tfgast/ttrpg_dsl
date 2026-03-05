@@ -121,6 +121,47 @@ impl Checker<'_> {
                 self.check_with_budget(entity, budget_fields, body, *span);
                 Ty::Unit
             }
+            StmtKind::Return(expr) => {
+                if !self.scope.allows_return() {
+                    self.error(
+                        "return is not allowed in this context (only in function, action, reaction, hook, or lifecycle blocks)".to_string(),
+                        stmt.span,
+                    );
+                }
+
+                let ret_ty = self.scope.enclosing_return_type().cloned();
+                match (expr, &ret_ty) {
+                    (Some(e), Some(ref expected)) => {
+                        let val_ty = self.check_expr_expecting(e, Some(expected));
+                        if !val_ty.is_error()
+                            && !expected.is_error()
+                            && !self.types_compatible(&val_ty, expected)
+                        {
+                            self.error(
+                                format!(
+                                    "return value has type {val_ty}, expected {expected}"
+                                ),
+                                e.span,
+                            );
+                        }
+                    }
+                    (Some(e), None) => {
+                        // No return type context — still check the expression
+                        self.check_expr(e);
+                    }
+                    (None, Some(expected)) if *expected != Ty::Unit => {
+                        self.error(
+                            format!(
+                                "bare `return` in block that expects return type {expected}"
+                            ),
+                            stmt.span,
+                        );
+                    }
+                    _ => {}
+                }
+
+                Ty::Unit
+            }
         }
     }
 
