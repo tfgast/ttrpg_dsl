@@ -1,0 +1,357 @@
+// ============================================================
+// OSRIC 3.0 Thief Skill Tables & Checks
+//
+// Percentage-based skill resolution for the 8 thief skills:
+// Climb Walls, Find Traps, Hear Noise, Hide in Shadows,
+// Move Silently, Open Locks, Pick Pockets, Read Languages.
+//
+// Base chances from per-level tables differ for Thief vs Assassin.
+// DEX adjustments (Table 1.3.10.4c) and ancestry adjustments
+// (Table 1.3.10.4d) apply. Roll d100: 01 always succeeds,
+// 00 (=100) always fails.
+//
+// Reference: OSRIC 3.0 Player Guide, pp. 64-68 (Thief),
+//            pp. 31-32 (Assassin)
+// ============================================================
+
+use "OSRIC"
+use "OSRIC Ability"
+use "OSRIC Character"
+use "OSRIC Classes"
+
+system "OSRIC Thief Skills" {
+
+    // ========================================================
+    //  THIEF SKILL BASE PERCENTAGES BY LEVEL
+    //  Table 1.3.10.4b — Thief Skills
+    //  Returns base percentage for a given skill at a given level.
+    // ========================================================
+
+    table thief_skill_base(skill: ThiefSkill, level: int) -> int {
+        // climb_walls
+        [climb_walls, 1] => 85, [climb_walls, 2] => 86, [climb_walls, 3] => 87,
+        [climb_walls, 4] => 88, [climb_walls, 5] => 90, [climb_walls, 6] => 92,
+        [climb_walls, 7] => 94, [climb_walls, 8] => 96, [climb_walls, 9] => 98,
+        [climb_walls, 10..=12] => 99, [climb_walls, _] => 99,
+
+        // find_traps
+        [find_traps, 1] => 20, [find_traps, 2] => 25, [find_traps, 3] => 30,
+        [find_traps, 4] => 35, [find_traps, 5] => 40, [find_traps, 6] => 45,
+        [find_traps, 7] => 50, [find_traps, 8] => 55, [find_traps, 9] => 60,
+        [find_traps, 10] => 65, [find_traps, 11] => 70, [find_traps, 12] => 75,
+        [find_traps, 13] => 80, [find_traps, 14] => 85, [find_traps, 15] => 90,
+        [find_traps, 16] => 95, [find_traps, _] => 99,
+
+        // hear_noise
+        [hear_noise, 1..=2] => 10, [hear_noise, 3..=4] => 15,
+        [hear_noise, 5] => 20, [hear_noise, 6..=7] => 25,
+        [hear_noise, 8] => 25, [hear_noise, 9..=10] => 30,
+        [hear_noise, 11..=12] => 35, [hear_noise, 13..=14] => 40,
+        [hear_noise, 15..=16] => 50, [hear_noise, _] => 55,
+
+        // hide_in_shadows
+        [hide_in_shadows, 1] => 10, [hide_in_shadows, 2] => 15,
+        [hide_in_shadows, 3] => 20, [hide_in_shadows, 4] => 25,
+        [hide_in_shadows, 5] => 30, [hide_in_shadows, 6] => 35,
+        [hide_in_shadows, 7] => 42, [hide_in_shadows, 8] => 48,
+        [hide_in_shadows, 9] => 55, [hide_in_shadows, 10] => 65,
+        [hide_in_shadows, 11] => 70, [hide_in_shadows, 12] => 75,
+        [hide_in_shadows, 13] => 85, [hide_in_shadows, 14] => 95,
+        [hide_in_shadows, _] => 99,
+
+        // move_silently
+        [move_silently, 1] => 15, [move_silently, 2] => 20,
+        [move_silently, 3] => 27, [move_silently, 4] => 33,
+        [move_silently, 5] => 40, [move_silently, 6] => 47,
+        [move_silently, 7] => 55, [move_silently, 8] => 62,
+        [move_silently, 9] => 70, [move_silently, 10] => 78,
+        [move_silently, 11] => 86, [move_silently, 12] => 94,
+        [move_silently, _] => 99,
+
+        // open_locks
+        [open_locks, 1] => 25, [open_locks, 2] => 29, [open_locks, 3] => 33,
+        [open_locks, 4] => 37, [open_locks, 5] => 42, [open_locks, 6] => 47,
+        [open_locks, 7] => 52, [open_locks, 8] => 57, [open_locks, 9] => 62,
+        [open_locks, 10] => 67, [open_locks, 11] => 72, [open_locks, 12] => 77,
+        [open_locks, 13] => 82, [open_locks, 14] => 87, [open_locks, 15] => 92,
+        [open_locks, 16] => 97, [open_locks, _] => 99,
+
+        // pick_pockets
+        [pick_pockets, 1] => 30, [pick_pockets, 2] => 35,
+        [pick_pockets, 3] => 40, [pick_pockets, 4] => 45,
+        [pick_pockets, 5] => 50, [pick_pockets, 6] => 55,
+        [pick_pockets, 7] => 60, [pick_pockets, 8] => 65,
+        [pick_pockets, 9] => 70, [pick_pockets, 10] => 80,
+        [pick_pockets, 11] => 90, [pick_pockets, 12] => 100,
+        [pick_pockets, 13] => 105, [pick_pockets, 14] => 110,
+        [pick_pockets, 15] => 115, [pick_pockets, 16] => 125,
+        [pick_pockets, _] => 125,
+
+        // read_languages
+        [read_languages, 1] => 1, [read_languages, 2] => 5,
+        [read_languages, 3] => 15, [read_languages, 4] => 20,
+        [read_languages, 5] => 25, [read_languages, 6] => 30,
+        [read_languages, 7] => 35, [read_languages, 8] => 40,
+        [read_languages, 9] => 45, [read_languages, 10] => 50,
+        [read_languages, 11] => 55, [read_languages, 12] => 60,
+        [read_languages, 13] => 65, [read_languages, 14] => 70,
+        [read_languages, 15] => 75, [read_languages, 16] => 80,
+        [read_languages, _] => 80
+    }
+
+    // ========================================================
+    //  ASSASSIN SKILL BASE PERCENTAGES BY LEVEL
+    //  Table 1.3.1.4b — Assassin Thief Abilities
+    //  Assassin uses the same 8 skills but different progression.
+    // ========================================================
+
+    table assassin_skill_base(skill: ThiefSkill, level: int) -> int {
+        // climb_walls
+        [climb_walls, 1..=3] => 85, [climb_walls, 4] => 86,
+        [climb_walls, 5] => 87, [climb_walls, 6] => 88,
+        [climb_walls, 7] => 90, [climb_walls, 8] => 92,
+        [climb_walls, 9] => 94, [climb_walls, 10] => 96,
+        [climb_walls, 11] => 98, [climb_walls, 12..=14] => 99,
+        [climb_walls, _] => 99,
+
+        // find_traps
+        [find_traps, 1..=3] => 20, [find_traps, 4] => 25,
+        [find_traps, 5] => 30, [find_traps, 6] => 35,
+        [find_traps, 7] => 40, [find_traps, 8] => 45,
+        [find_traps, 9] => 50, [find_traps, 10] => 55,
+        [find_traps, 11] => 60, [find_traps, 12] => 65,
+        [find_traps, 13] => 70, [find_traps, 14] => 75,
+        [find_traps, _] => 80,
+
+        // hear_noise
+        [hear_noise, 1..=3] => 10, [hear_noise, 4] => 10,
+        [hear_noise, 5] => 15, [hear_noise, 6] => 15,
+        [hear_noise, 7] => 20, [hear_noise, 8] => 20,
+        [hear_noise, 9] => 25, [hear_noise, 10] => 25,
+        [hear_noise, 11] => 30, [hear_noise, 12] => 30,
+        [hear_noise, 13] => 35, [hear_noise, 14] => 35,
+        [hear_noise, _] => 40,
+
+        // hide_in_shadows
+        [hide_in_shadows, 1..=3] => 10, [hide_in_shadows, 4] => 15,
+        [hide_in_shadows, 5] => 20, [hide_in_shadows, 6] => 25,
+        [hide_in_shadows, 7] => 30, [hide_in_shadows, 8] => 35,
+        [hide_in_shadows, 9] => 42, [hide_in_shadows, 10] => 48,
+        [hide_in_shadows, 11] => 55, [hide_in_shadows, 12] => 65,
+        [hide_in_shadows, 13] => 70, [hide_in_shadows, 14] => 75,
+        [hide_in_shadows, _] => 85,
+
+        // move_silently
+        [move_silently, 1..=3] => 15, [move_silently, 4] => 20,
+        [move_silently, 5] => 27, [move_silently, 6] => 33,
+        [move_silently, 7] => 40, [move_silently, 8] => 47,
+        [move_silently, 9] => 55, [move_silently, 10] => 62,
+        [move_silently, 11] => 70, [move_silently, 12] => 78,
+        [move_silently, 13] => 86, [move_silently, 14] => 94,
+        [move_silently, _] => 99,
+
+        // open_locks
+        [open_locks, 1..=3] => 25, [open_locks, 4] => 29,
+        [open_locks, 5] => 33, [open_locks, 6] => 37,
+        [open_locks, 7] => 42, [open_locks, 8] => 47,
+        [open_locks, 9] => 52, [open_locks, 10] => 57,
+        [open_locks, 11] => 62, [open_locks, 12] => 67,
+        [open_locks, 13] => 72, [open_locks, 14] => 77,
+        [open_locks, _] => 82,
+
+        // pick_pockets
+        [pick_pockets, 1..=3] => 30, [pick_pockets, 4] => 35,
+        [pick_pockets, 5] => 40, [pick_pockets, 6] => 45,
+        [pick_pockets, 7] => 50, [pick_pockets, 8] => 55,
+        [pick_pockets, 9] => 60, [pick_pockets, 10] => 65,
+        [pick_pockets, 11] => 70, [pick_pockets, 12] => 80,
+        [pick_pockets, 13] => 90, [pick_pockets, 14] => 100,
+        [pick_pockets, _] => 105,
+
+        // read_languages
+        [read_languages, 1..=3] => 1, [read_languages, 4] => 5,
+        [read_languages, 5] => 15, [read_languages, 6] => 20,
+        [read_languages, 7] => 25, [read_languages, 8] => 30,
+        [read_languages, 9] => 35, [read_languages, 10] => 40,
+        [read_languages, 11] => 45, [read_languages, 12] => 50,
+        [read_languages, 13] => 55, [read_languages, 14] => 60,
+        [read_languages, _] => 65
+    }
+
+    // ========================================================
+    //  DEX ADJUSTMENTS TO THIEF SKILLS
+    //  Table 1.3.10.4c — Thief Skills—Dexterity Adjustments
+    //  Climb is never adjusted by DEX. Listen is never adjusted.
+    //  Read Languages is never adjusted.
+    // ========================================================
+
+    table dex_thief_adj(skill: ThiefSkill, dex: int) -> int {
+        // climb_walls — never adjusted
+        [climb_walls, _] => 0,
+
+        // hide_in_shadows
+        [hide_in_shadows, 9] => -10, [hide_in_shadows, 10] => -5,
+        [hide_in_shadows, 11..=16] => 0,
+        [hide_in_shadows, 17] => 5, [hide_in_shadows, 18] => 10,
+        [hide_in_shadows, _] => 15,
+
+        // hear_noise — never adjusted
+        [hear_noise, _] => 0,
+
+        // open_locks
+        [open_locks, 9] => -10, [open_locks, 10] => -5,
+        [open_locks, 11..=15] => 0, [open_locks, 16] => 5,
+        [open_locks, 17] => 10, [open_locks, 18] => 15,
+        [open_locks, _] => 20,
+
+        // pick_pockets
+        [pick_pockets, 9] => -15, [pick_pockets, 10] => -10,
+        [pick_pockets, 11] => -5, [pick_pockets, 12..=15] => 0,
+        [pick_pockets, 16..=17] => 5, [pick_pockets, 18] => 10,
+        [pick_pockets, _] => 15,
+
+        // move_silently
+        [move_silently, 9] => -20, [move_silently, 10] => -15,
+        [move_silently, 11] => -10, [move_silently, 12] => -5,
+        [move_silently, 13..=16] => 0,
+        [move_silently, 17] => 5, [move_silently, 18] => 10,
+        [move_silently, _] => 15,
+
+        // find_traps
+        [find_traps, 9] => -15, [find_traps, 10] => -10,
+        [find_traps, 11] => -5, [find_traps, 12..=16] => 0,
+        [find_traps, 17] => 5, [find_traps, 18] => 10,
+        [find_traps, _] => 15,
+
+        // read_languages — never adjusted
+        [read_languages, _] => 0
+    }
+
+    // ========================================================
+    //  ANCESTRY ADJUSTMENTS TO THIEF SKILLS
+    //  Table 1.3.10.4d — Thief Skills—Ancestry Adjustments
+    //  Dashes (—) = 0 adjustment.
+    // ========================================================
+
+    table ancestry_thief_adj(skill: ThiefSkill, ancestry: Ancestry) -> int {
+        // climb_walls
+        [climb_walls, Dwarf] => -10, [climb_walls, Elf] => -5,
+        [climb_walls, Gnome] => -15, [climb_walls, HalfElf] => 0,
+        [climb_walls, Halfling] => -15, [climb_walls, HalfOrc] => 5,
+        [climb_walls, Human] => 5,
+
+        // hide_in_shadows
+        [hide_in_shadows, Dwarf] => 0, [hide_in_shadows, Elf] => 10,
+        [hide_in_shadows, Gnome] => 0, [hide_in_shadows, HalfElf] => 5,
+        [hide_in_shadows, Halfling] => 15, [hide_in_shadows, HalfOrc] => 0,
+        [hide_in_shadows, Human] => 0,
+
+        // hear_noise
+        [hear_noise, Dwarf] => 0, [hear_noise, Elf] => 5,
+        [hear_noise, Gnome] => 5, [hear_noise, HalfElf] => 0,
+        [hear_noise, Halfling] => 5, [hear_noise, HalfOrc] => 5,
+        [hear_noise, Human] => 0,
+
+        // open_locks
+        [open_locks, Dwarf] => 15, [open_locks, Elf] => -5,
+        [open_locks, Gnome] => 10, [open_locks, HalfElf] => 0,
+        [open_locks, Halfling] => 0, [open_locks, HalfOrc] => 5,
+        [open_locks, Human] => 5,
+
+        // pick_pockets
+        [pick_pockets, Dwarf] => 0, [pick_pockets, Elf] => 5,
+        [pick_pockets, Gnome] => 0, [pick_pockets, HalfElf] => 10,
+        [pick_pockets, Halfling] => 5, [pick_pockets, HalfOrc] => -5,
+        [pick_pockets, Human] => 0,
+
+        // move_silently
+        [move_silently, Dwarf] => -5, [move_silently, Elf] => 5,
+        [move_silently, Gnome] => 0, [move_silently, HalfElf] => 0,
+        [move_silently, Halfling] => 15, [move_silently, HalfOrc] => 0,
+        [move_silently, Human] => 0,
+
+        // find_traps
+        [find_traps, Dwarf] => 15, [find_traps, Elf] => 5,
+        [find_traps, Gnome] => 0, [find_traps, HalfElf] => 0,
+        [find_traps, Halfling] => 0, [find_traps, HalfOrc] => 5,
+        [find_traps, Human] => 0,
+
+        // read_languages
+        [read_languages, Dwarf] => -5, [read_languages, Elf] => 10,
+        [read_languages, Gnome] => 0, [read_languages, HalfElf] => 0,
+        [read_languages, Halfling] => -5, [read_languages, HalfOrc] => -10,
+        [read_languages, Human] => 0
+    }
+
+
+    // ========================================================
+    //  SKILL BASE DISPATCH
+    //  Routes to thief or assassin table based on class.
+    // ========================================================
+
+    derive skill_base_for_class(class: Class, skill: ThiefSkill, level: int) -> int {
+        match class {
+            Assassin => assassin_skill_base(skill, level),
+            _        => thief_skill_base(skill, level)
+        }
+    }
+
+
+    // ========================================================
+    //  EFFECTIVE SKILL PERCENTAGE
+    //  Base + DEX adjustment + ancestry adjustment.
+    //  Minimum effective percentage is 1 (01 always succeeds)
+    //  and maximum is 99 (00 always fails).
+    // ========================================================
+
+    derive effective_thief_skill(
+        class: Class,
+        skill: ThiefSkill,
+        level: int,
+        dex: int,
+        ancestry: Ancestry
+    ) -> int {
+        let base = skill_base_for_class(class, skill, level)
+        let dex_adj = dex_thief_adj(skill, dex)
+        let anc_adj = ancestry_thief_adj(skill, ancestry)
+        let raw = base + dex_adj + anc_adj
+        // Clamp to 1..99 — roll of 01 always succeeds, 00 always fails
+        min(99, max(1, raw))
+    }
+
+
+    // ========================================================
+    //  CHARACTER EFFECTIVE SKILL
+    //  Convenience derive operating on a Character entity.
+    //  Uses the character's first class with has_thief_skills.
+    // ========================================================
+
+    derive character_thief_skill(char: Character, skill: ThiefSkill) -> int {
+        let cl = first(char.classes).unwrap()
+        let class_def = class_def(cl.class)
+        if class_def.has_thief_skills {
+            effective_thief_skill(cl.class, skill, cl.level, char.abilities[DEX], char.ancestry)
+        } else {
+            0
+        }
+    }
+
+
+    // ========================================================
+    //  THIEF SKILL CHECK MECHANIC
+    //  Rolls d100 and compares against the effective percentage.
+    //  01 always succeeds, 00 (=100) always fails.
+    //  Returns true on success.
+    // ========================================================
+
+    mechanic thief_skill_check(target_pct: int) -> bool {
+        let result = roll(1d100)
+        let d100 = result.total
+        // 01 always succeeds regardless of modifiers
+        if d100 == 1 { true }
+        // 00 (=100) always fails regardless of modifiers
+        else if d100 == 100 { false }
+        // Normal: succeed if roll <= target percentage
+        else { d100 <= target_pct }
+    }
+}
