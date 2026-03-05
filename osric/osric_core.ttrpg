@@ -8,6 +8,10 @@
 // Reference: OSRIC 3.0 Player Guide, Chapters 1-3
 // ============================================================
 
+use "OSRIC Equipment"
+use "OSRIC Combat"
+use "OSRIC Spells"
+
 system "OSRIC" {
 
     // --- Unit types ---
@@ -338,31 +342,17 @@ system "OSRIC" {
         ancestry: Ancestry = Ancestry.Human
         alignment: Alignment = Alignment.TrueNeutral
         abilities: map<Ability, int>
-        max_hp: int
-        hp: resource(0..=max_hp)
+        include HitPoints
         base_movement: Feet = 120ft
-        current_weight: int = 0            // lbs carried; updated by equip/unequip functions
         gold: int = 0
         saving_throws: option<SavingThrows>
-
-        // Equipment slots — managed by equip/unequip functions in OSRIC Equipment.
-        // Weapon slots use WieldedItem enum; armour/shield use wrapper structs.
-        // AC and movement cap are derived from these slots, not stored as raw ints.
-        wielded_main: option<WieldedItem> = none
-        wielded_off: option<WieldedItem> = none
-        worn_armor: option<Armor> = none
-        worn_shield: option<Shield> = none
+        include EquipmentSlots
 
         optional ExceptionalStrength {
             percentile: int
         }
 
-        optional Spellcasting {
-            casting_invocation: option<Invocation>
-            spell_slots: map<int, int> = {}
-            slots_used: map<int, int> = {}
-            memorised_spells: list<string> = []
-        }
+        optional Spellcasting
 
         optional ThiefSkills {
             skills: map<ThiefSkill, int>

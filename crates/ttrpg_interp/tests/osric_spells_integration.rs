@@ -19,14 +19,7 @@ use osric_common::*;
 // ── Compile helpers ────────────────────────────────────────────
 
 fn compile_osric_spells() -> (ttrpg_ast::ast::Program, ttrpg_checker::CheckResult) {
-    // osric_spells.ttrpg now uses "OSRIC Initiative", which transitively
-    // requires all OSRIC modules. Load them via all_osric_sources + spells.
-    let mut sources = all_osric_sources();
-    sources.push((
-        "osric/osric_spells.ttrpg".to_string(),
-        include_str!("../../../osric/osric_spells.ttrpg").to_string(),
-    ));
-    compile_osric_sources(sources)
+    compile_osric_sources(all_osric_sources())
 }
 
 fn spell_progression(variant: &str) -> Value {

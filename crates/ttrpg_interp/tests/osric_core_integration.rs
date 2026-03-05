@@ -5,41 +5,13 @@
 //! entities (with optional groups), the Feet unit type, and the ds() derive.
 
 use ttrpg_ast::ast::{DeclKind, TopLevel};
-use ttrpg_ast::diagnostic::Severity;
-use ttrpg_ast::FileId;
 mod osric_common;
-#[allow(unused_imports)]
-use osric_common::*;
+use osric_common::{all_osric_sources, compile_osric_sources};
 
 // ── Compile helpers ────────────────────────────────────────────
 
 fn compile_osric_core() -> (ttrpg_ast::ast::Program, ttrpg_checker::CheckResult) {
-    let source = include_str!("../../../osric/osric_core.ttrpg");
-    let (program, parse_errors) = ttrpg_parser::parse(source, FileId::SYNTH);
-    assert!(
-        parse_errors.is_empty(),
-        "parse errors: {:?}",
-        parse_errors.iter().map(|d| &d.message).collect::<Vec<_>>()
-    );
-    let mut lower_diags = Vec::new();
-    let program = ttrpg_parser::lower_moves(program, &mut lower_diags);
-    assert!(
-        lower_diags.is_empty(),
-        "lowering errors: {:?}",
-        lower_diags.iter().map(|d| &d.message).collect::<Vec<_>>()
-    );
-    let result = ttrpg_checker::check(&program);
-    let errors: Vec<_> = result
-        .diagnostics
-        .iter()
-        .filter(|d| d.severity == Severity::Error)
-        .collect();
-    assert!(
-        errors.is_empty(),
-        "checker errors: {:?}",
-        errors.iter().map(|d| &d.message).collect::<Vec<_>>()
-    );
-    (program, result)
+    compile_osric_sources(all_osric_sources())
 }
 
 /// Extract all DeclKind items from the "OSRIC" system block.
@@ -358,6 +330,8 @@ fn character_entity_fields() {
 
     let field_names: Vec<_> = character.fields.iter().map(|f| f.name.as_str()).collect();
 
+    // Only directly declared fields; include-group fields (HitPoints,
+    // EquipmentSlots) are in optional_groups with is_required=true.
     let expected_fields = [
         "name",
         "classes",
@@ -365,16 +339,9 @@ fn character_entity_fields() {
         "ancestry",
         "alignment",
         "abilities",
-        "max_hp",
-        "hp",
         "base_movement",
-        "current_weight",
         "gold",
         "saving_throws",
-        "wielded_main",
-        "wielded_off",
-        "worn_armor",
-        "worn_shield",
     ];
     for name in &expected_fields {
         assert!(
@@ -407,36 +374,47 @@ fn character_entity_optional_groups() {
         .map(|g| g.name.as_str())
         .collect();
 
-    let expected_groups = [
+    // Include groups (required, external ref)
+    let expected_includes = ["HitPoints", "EquipmentSlots"];
+    // Optional groups (not required)
+    let expected_optionals = [
         "ExceptionalStrength",
         "Spellcasting",
         "ThiefSkills",
         "TurnUndead",
     ];
-    for name in &expected_groups {
+
+    for name in expected_includes.iter().chain(expected_optionals.iter()) {
         assert!(
             group_names.contains(name),
-            "Character missing optional group: {name}"
+            "Character missing group: {name}"
         );
     }
     assert_eq!(
         group_names.len(),
-        expected_groups.len(),
-        "optional group count mismatch: got {group_names:?}"
+        expected_includes.len() + expected_optionals.len(),
+        "group count mismatch: got {group_names:?}"
     );
 
-    // All groups are inline (not external refs) and optional (not required)
-    for group in &character.optional_groups {
-        assert!(
-            !group.is_external_ref,
-            "{} should be inline, not external",
-            group.name
-        );
-        assert!(
-            !group.is_required,
-            "{} should be optional, not required",
-            group.name
-        );
+    // Verify include groups are required + external
+    for name in &expected_includes {
+        let g = character
+            .optional_groups
+            .iter()
+            .find(|g| g.name.as_str() == *name)
+            .unwrap();
+        assert!(g.is_required, "{name} should be required (include)");
+        assert!(g.is_external_ref, "{name} should be external ref");
+    }
+
+    // Verify optional groups are not required
+    for name in &expected_optionals {
+        let g = character
+            .optional_groups
+            .iter()
+            .find(|g| g.name.as_str() == *name)
+            .unwrap();
+        assert!(!g.is_required, "{name} should be optional, not required");
     }
 }
 

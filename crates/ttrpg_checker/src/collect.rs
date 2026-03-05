@@ -55,6 +55,15 @@ fn collect_inner(program: &Program, modules: Option<&ModuleMap>) -> (TypeEnv, Ve
     // precedence (e.g., `enum Duration { ... }` overrides the builtin).
     register_builtin_types(&mut env);
 
+    // Collect all top-level groups across all systems BEFORE pass_1b.
+    // This ensures entities can reference groups from any system via
+    // `include` or `optional`, regardless of file/system ordering.
+    for item in &program.items {
+        if let TopLevel::System(system) = &item.node {
+            collect_all_groups(&system.decls, &mut env, &mut diagnostics);
+        }
+    }
+
     // Pass 1b: resolve all signatures
     // `processed_types` is shared across all systems so that a duplicate type
     // declaration in a later system doesn't overwrite the first definition.
@@ -276,14 +285,14 @@ fn pass_1a(
 }
 
 /// Pass 1b: Resolve all signatures — field types, param types, return types.
-fn pass_1b(
+/// Collect all top-level group schemas from a system's declarations.
+/// Called across all systems before pass_1b so that entities can reference
+/// groups from any system via `include` or `optional`.
+fn collect_all_groups(
     decls: &[ttrpg_ast::Spanned<DeclKind>],
     env: &mut TypeEnv,
     diagnostics: &mut Vec<Diagnostic>,
-    processed_types: &mut HashSet<Name>,
 ) {
-    // First, collect top-level group schemas so entities can reference groups
-    // declared later in the same system.
     for decl in decls {
         if let DeclKind::Group(g) = &decl.node {
             if check_reserved_prefix(&g.name, decl.span, diagnostics) {
@@ -292,7 +301,14 @@ fn pass_1b(
             collect_group(g, env, diagnostics, decl.span);
         }
     }
+}
 
+fn pass_1b(
+    decls: &[ttrpg_ast::Spanned<DeclKind>],
+    env: &mut TypeEnv,
+    diagnostics: &mut Vec<Diagnostic>,
+    processed_types: &mut HashSet<Name>,
+) {
     for decl in decls {
         match &decl.node {
             DeclKind::Group(_) | DeclKind::Tag(_) => {}

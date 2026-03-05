@@ -15,7 +15,6 @@
 use std::collections::BTreeMap;
 
 use ttrpg_ast::ast::{DeclKind, TopLevel};
-use ttrpg_ast::diagnostic::Severity;
 use ttrpg_interp::adapter::StateAdapter;
 use ttrpg_interp::effect::{Effect, Response};
 use ttrpg_interp::reference_state::GameState;
@@ -29,81 +28,7 @@ use osric_common::*;
 // ── Compile helpers ────────────────────────────────────────────
 
 fn compile_osric_initiative() -> (ttrpg_ast::ast::Program, ttrpg_checker::CheckResult) {
-    let core_source = include_str!("../../../osric/osric_core.ttrpg");
-    let ability_source = include_str!("../../../osric/osric_ability.ttrpg");
-    let character_source = include_str!("../../../osric/osric_character.ttrpg");
-    let class_source = include_str!("../../../osric/osric_class.ttrpg");
-    let equipment_source = include_str!("../../../osric/osric_equipment.ttrpg");
-    let conditions_source = include_str!("../../../osric/osric_conditions.ttrpg");
-    let thief_skills_source = include_str!("../../../osric/osric_thief_skills.ttrpg");
-    let combat_source = include_str!("../../../osric/osric_combat.ttrpg");
-    let initiative_source = include_str!("../../../osric/osric_initiative.ttrpg");
-
-    let sources = vec![
-        (
-            "osric/osric_core.ttrpg".to_string(),
-            core_source.to_string(),
-        ),
-        (
-            "osric/osric_ability.ttrpg".to_string(),
-            ability_source.to_string(),
-        ),
-        (
-            "osric/osric_character.ttrpg".to_string(),
-            character_source.to_string(),
-        ),
-        (
-            "osric/osric_class.ttrpg".to_string(),
-            class_source.to_string(),
-        ),
-        (
-            "osric/osric_equipment.ttrpg".to_string(),
-            equipment_source.to_string(),
-        ),
-        (
-            "osric/osric_conditions.ttrpg".to_string(),
-            conditions_source.to_string(),
-        ),
-        (
-            "osric/osric_thief_skills.ttrpg".to_string(),
-            thief_skills_source.to_string(),
-        ),
-        (
-            "osric/osric_combat.ttrpg".to_string(),
-            combat_source.to_string(),
-        ),
-        (
-            "osric/osric_initiative.ttrpg".to_string(),
-            initiative_source.to_string(),
-        ),
-    ];
-
-    let parse_result = ttrpg_parser::parse_multi(&sources);
-    let parse_errors: Vec<_> = parse_result
-        .diagnostics
-        .iter()
-        .filter(|d| d.severity == Severity::Error)
-        .collect();
-    assert!(
-        parse_errors.is_empty(),
-        "parse/lower errors: {:?}",
-        parse_errors.iter().map(|d| &d.message).collect::<Vec<_>>()
-    );
-
-    let (program, module_map) = parse_result.ok().unwrap();
-    let result = ttrpg_checker::check_with_modules(program, module_map);
-    let errors: Vec<_> = result
-        .diagnostics
-        .iter()
-        .filter(|d| d.severity == Severity::Error)
-        .collect();
-    assert!(
-        errors.is_empty(),
-        "checker errors: {:?}",
-        errors.iter().map(|d| &d.message).collect::<Vec<_>>()
-    );
-
-    (program.clone(), result)
+    compile_osric_sources(all_osric_sources())
 }
 
 /// Extract all DeclKind items from the "OSRIC Initiative" system block.
@@ -116,6 +41,17 @@ fn get_initiative_decls(program: &ttrpg_ast::ast::Program) -> &[ttrpg_ast::Spann
         }
     }
     panic!("no system block named 'OSRIC Initiative' found");
+}
+
+fn get_spells_decls(program: &ttrpg_ast::ast::Program) -> &[ttrpg_ast::Spanned<DeclKind>] {
+    for item in &program.items {
+        if let TopLevel::System(sys) = &item.node {
+            if sys.name == "OSRIC Spells" {
+                return &sys.decls;
+            }
+        }
+    }
+    panic!("no system block named 'OSRIC Spells' found");
 }
 
 // ── File-specific helpers ──────────────────────────────────────
@@ -303,7 +239,8 @@ fn initiative_has_mechanics() {
 #[test]
 fn initiative_has_events() {
     let (program, _) = compile_osric_initiative();
-    let decls = get_initiative_decls(&program);
+    // SpellInterrupted moved to OSRIC Spells module
+    let decls = get_spells_decls(&program);
     let events: Vec<_> = decls
         .iter()
         .filter_map(|d| match &d.node {
@@ -320,7 +257,8 @@ fn initiative_has_events() {
 #[test]
 fn initiative_has_conditions() {
     let (program, _) = compile_osric_initiative();
-    let decls = get_initiative_decls(&program);
+    // CastingSpell moved to OSRIC Spells module
+    let decls = get_spells_decls(&program);
     let conditions: Vec<_> = decls
         .iter()
         .filter_map(|d| match &d.node {
@@ -337,7 +275,8 @@ fn initiative_has_conditions() {
 #[test]
 fn initiative_has_hooks() {
     let (program, _) = compile_osric_initiative();
-    let decls = get_initiative_decls(&program);
+    // SpellInterruption moved to OSRIC Spells module
+    let decls = get_spells_decls(&program);
     let hooks: Vec<_> = decls
         .iter()
         .filter_map(|d| match &d.node {
@@ -354,7 +293,8 @@ fn initiative_has_hooks() {
 #[test]
 fn initiative_has_actions() {
     let (program, _) = compile_osric_initiative();
-    let decls = get_initiative_decls(&program);
+    // BeginCasting moved to OSRIC Spells module
+    let decls = get_spells_decls(&program);
     let actions: Vec<_> = decls
         .iter()
         .filter_map(|d| match &d.node {
@@ -2292,6 +2232,6 @@ fn spell_interruption_hook_fires_on_damage() {
     );
 
     // Verify caster took damage
-    let hp = final_state.read_field(&caster, "hp").unwrap();
+    let hp = read_group_field(&final_state, &caster, "HitPoints", "hp").unwrap();
     assert_eq!(hp, Value::Int(15), "caster HP should be 20 - 5 = 15");
 }

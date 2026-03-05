@@ -19,6 +19,20 @@ use "OSRIC Thief Skills"
 system "OSRIC Combat" {
 
     // ========================================================
+    //  HIT POINTS GROUP
+    //
+    //  Included by Character entity. hp is restricted to ensure
+    //  damage flows through TakeDamage for proper event emission
+    //  (Damaged, CreatureSlain) and damage pipeline processing.
+    // ========================================================
+
+    group HitPoints {
+        max_hp: int
+        restricted hp: resource(0..=max_hp)
+    }
+
+
+    // ========================================================
     //  ENUMS
     // ========================================================
 

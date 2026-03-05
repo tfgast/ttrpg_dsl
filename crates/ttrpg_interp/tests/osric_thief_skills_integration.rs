@@ -6,7 +6,6 @@
 //! computation, and the d100 skill check mechanic.
 
 use ttrpg_ast::ast::{DeclKind, TopLevel};
-use ttrpg_ast::diagnostic::Severity;
 use ttrpg_interp::reference_state::GameState;
 use ttrpg_interp::value::Value;
 use ttrpg_interp::Interpreter;
@@ -17,59 +16,7 @@ use osric_common::*;
 // ── Compile helpers ────────────────────────────────────────────
 
 fn compile_osric_thief_skills() -> (ttrpg_ast::ast::Program, ttrpg_checker::CheckResult) {
-    let sources = vec![
-        (
-            "osric/osric_core.ttrpg".to_string(),
-            include_str!("../../../osric/osric_core.ttrpg").to_string(),
-        ),
-        (
-            "osric/osric_ability.ttrpg".to_string(),
-            include_str!("../../../osric/osric_ability.ttrpg").to_string(),
-        ),
-        (
-            "osric/osric_class.ttrpg".to_string(),
-            include_str!("../../../osric/osric_class.ttrpg").to_string(),
-        ),
-        (
-            "osric/osric_character.ttrpg".to_string(),
-            include_str!("../../../osric/osric_character.ttrpg").to_string(),
-        ),
-        (
-            "osric/osric_equipment.ttrpg".to_string(),
-            include_str!("../../../osric/osric_equipment.ttrpg").to_string(),
-        ),
-        (
-            "osric/osric_thief_skills.ttrpg".to_string(),
-            include_str!("../../../osric/osric_thief_skills.ttrpg").to_string(),
-        ),
-    ];
-
-    let parse_result = ttrpg_parser::parse_multi(&sources);
-    let parse_errors: Vec<_> = parse_result
-        .diagnostics
-        .iter()
-        .filter(|d| d.severity == Severity::Error)
-        .collect();
-    assert!(
-        parse_errors.is_empty(),
-        "parse/lower errors: {:?}",
-        parse_errors.iter().map(|d| &d.message).collect::<Vec<_>>()
-    );
-
-    let (program, module_map) = parse_result.ok().unwrap();
-    let result = ttrpg_checker::check_with_modules(program, module_map);
-    let errors: Vec<_> = result
-        .diagnostics
-        .iter()
-        .filter(|d| d.severity == Severity::Error)
-        .collect();
-    assert!(
-        errors.is_empty(),
-        "checker errors: {:?}",
-        errors.iter().map(|d| &d.message).collect::<Vec<_>>()
-    );
-
-    (program.clone(), result)
+    compile_osric_sources(all_osric_sources())
 }
 
 fn thief_skill(variant: &str) -> Value {

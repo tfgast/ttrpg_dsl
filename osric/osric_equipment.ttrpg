@@ -16,6 +16,23 @@ use "OSRIC Classes"
 system "OSRIC Equipment" {
 
     // ========================================================
+    //  EQUIPMENT SLOTS GROUP
+    //
+    //  Included by Character entity. All fields are restricted
+    //  to enforce the invariant that current_weight stays in
+    //  sync with equipped items via equip/unequip functions.
+    // ========================================================
+
+    group EquipmentSlots {
+        restricted wielded_main: option<WieldedItem> = none
+        restricted wielded_off: option<WieldedItem> = none
+        restricted worn_armor: option<Armor> = none
+        restricted worn_shield: option<Shield> = none
+        restricted current_weight: int = 0
+    }
+
+
+    // ========================================================
     //  MELEE WEAPONS — Table 1.4.2.3b + 1.4.2.3c
     //
     //  All standard melee weapons with damage, speed factor,

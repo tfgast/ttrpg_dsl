@@ -13,9 +13,25 @@
 
 use "OSRIC"
 use "OSRIC Classes"
-use "OSRIC Initiative"
+use "OSRIC Combat"
 
 system "OSRIC Spells" {
+
+    // ========================================================
+    //  SPELLCASTING GROUP
+    //
+    //  Optional group on Character. Restricted fields enforce
+    //  that slot accounting (slots_used, memorised_spells) stays
+    //  in sync, and casting_invocation tracks active cast state.
+    //  spell_slots is unrestricted (set during character creation).
+    // ========================================================
+
+    group Spellcasting {
+        restricted casting_invocation: option<Invocation>
+        spell_slots: map<int, int> = {}
+        restricted slots_used: map<int, int> = {}
+        restricted memorised_spells: list<string> = []
+    }
 
     // ========================================================
     //  CLERIC SPELL SLOTS
@@ -353,6 +369,69 @@ system "OSRIC Spells" {
             caster.sc.slots_used[spell_level] = caster.sc.slots_used[spell_level] - 1
             caster.BeginCasting(casting_time)
             emit SpellCast(caster: caster, spell_name: spell_name, spell_level: spell_level)
+        }
+    }
+
+
+    // ========================================================
+    //  CASTING SPELL CONDITION
+    //
+    //  Applied when a character begins casting. Per OSRIC 3.0
+    //  §1.6.2.11:
+    //   - Caster receives no dexterity bonus to AC while casting.
+    //   - Caster cannot attack while casting (occupied).
+    //  Removed when spell completes or is interrupted.
+    // ========================================================
+
+    condition CastingSpell on bearer: Character {
+        // Per 1.6.2.11: no dexterity bonus to armour class while casting.
+        modify effective_target_ac(target: bearer) {
+            include_dex = false
+        }
+        modify [#attack_resolution](attacker: bearer) {
+            result.outcome = AttackOutcome.Miss
+            result.damage = 0
+        }
+    }
+
+
+    // ========================================================
+    //  EVENTS
+    // ========================================================
+
+    event SpellInterrupted(caster: Character) {}
+
+
+    // ========================================================
+    //  SPELL INTERRUPTION HOOK
+    //
+    //  If a casting character takes damage, the spell is lost.
+    //  The CastingSpell condition is removed and the
+    //  SpellInterrupted event is emitted.
+    // ========================================================
+
+    hook SpellInterruption on caster: Character with Spellcasting (
+        trigger: Damaged(target: caster)
+    ) {
+        remove_condition(caster, CastingSpell)
+        emit SpellInterrupted(caster: caster)
+    }
+
+
+    // ========================================================
+    //  BEGIN CASTING ACTION
+    //
+    //  Applies CastingSpell condition and stores the invocation
+    //  handle for later revocation (e.g., concentration break).
+    //  Requires Spellcasting optional group.
+    // ========================================================
+
+    action BeginCasting on caster: Character with Spellcasting as sc (
+        casting_time: int
+    ) {
+        resolve {
+            apply_condition(caster, CastingSpell, Duration.indefinite)
+            caster.sc.casting_invocation = some(invocation())
         }
     }
 }

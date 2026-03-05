@@ -12,7 +12,6 @@ use std::collections::BTreeMap;
 
 use rustc_hash::FxHashMap;
 use ttrpg_ast::ast::{DeclKind, TopLevel};
-use ttrpg_ast::diagnostic::Severity;
 use ttrpg_ast::Name;
 use ttrpg_interp::effect::{Effect, Response};
 use ttrpg_interp::reference_state::GameState;
@@ -26,76 +25,7 @@ use osric_common::*;
 // ── Compile helpers ────────────────────────────────────────────
 
 fn compile_osric_conditions() -> (ttrpg_ast::ast::Program, ttrpg_checker::CheckResult) {
-    let core_source = include_str!("../../../osric/osric_core.ttrpg");
-    let ability_source = include_str!("../../../osric/osric_ability.ttrpg");
-    let character_source = include_str!("../../../osric/osric_character.ttrpg");
-    let class_source = include_str!("../../../osric/osric_class.ttrpg");
-    let equipment_source = include_str!("../../../osric/osric_equipment.ttrpg");
-    let thief_skills_source = include_str!("../../../osric/osric_thief_skills.ttrpg");
-    let combat_source = include_str!("../../../osric/osric_combat.ttrpg");
-    let conditions_source = include_str!("../../../osric/osric_conditions.ttrpg");
-
-    let sources = vec![
-        (
-            "osric/osric_core.ttrpg".to_string(),
-            core_source.to_string(),
-        ),
-        (
-            "osric/osric_ability.ttrpg".to_string(),
-            ability_source.to_string(),
-        ),
-        (
-            "osric/osric_character.ttrpg".to_string(),
-            character_source.to_string(),
-        ),
-        (
-            "osric/osric_class.ttrpg".to_string(),
-            class_source.to_string(),
-        ),
-        (
-            "osric/osric_equipment.ttrpg".to_string(),
-            equipment_source.to_string(),
-        ),
-        (
-            "osric/osric_thief_skills.ttrpg".to_string(),
-            thief_skills_source.to_string(),
-        ),
-        (
-            "osric/osric_combat.ttrpg".to_string(),
-            combat_source.to_string(),
-        ),
-        (
-            "osric/osric_conditions.ttrpg".to_string(),
-            conditions_source.to_string(),
-        ),
-    ];
-
-    let parse_result = ttrpg_parser::parse_multi(&sources);
-    let parse_errors: Vec<_> = parse_result
-        .diagnostics
-        .iter()
-        .filter(|d| d.severity == Severity::Error)
-        .collect();
-    assert!(
-        parse_errors.is_empty(),
-        "parse/lower errors: {:?}",
-        parse_errors.iter().map(|d| &d.message).collect::<Vec<_>>()
-    );
-
-    let (program, module_map) = parse_result.ok().unwrap();
-    let result = ttrpg_checker::check_with_modules(program, module_map);
-    let errors: Vec<_> = result
-        .diagnostics
-        .iter()
-        .filter(|d| d.severity == Severity::Error)
-        .collect();
-    assert!(
-        errors.is_empty(),
-        "checker errors: {:?}",
-        errors.iter().map(|d| &d.message).collect::<Vec<_>>()
-    );
-
-    (program.clone(), result)
+    compile_osric_sources(all_osric_sources())
 }
 
 fn get_conditions_decls(program: &ttrpg_ast::ast::Program) -> &[ttrpg_ast::Spanned<DeclKind>] {

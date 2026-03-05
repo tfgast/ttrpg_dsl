@@ -10,11 +10,9 @@
 use std::collections::BTreeMap;
 
 use ttrpg_ast::ast::{DeclKind, TopLevel};
-use ttrpg_ast::diagnostic::Severity;
 use ttrpg_interp::adapter::StateAdapter;
 use ttrpg_interp::effect::{EffectHandler, Response};
 use ttrpg_interp::reference_state::GameState;
-use ttrpg_interp::state::StateProvider;
 use ttrpg_interp::value::{DiceExpr, Value};
 use ttrpg_interp::Interpreter;
 
@@ -24,76 +22,7 @@ use osric_common::*;
 // ── Compile helpers ────────────────────────────────────────────
 
 fn compile_osric_combat() -> (ttrpg_ast::ast::Program, ttrpg_checker::CheckResult) {
-    let core_source = include_str!("../../../osric/osric_core.ttrpg");
-    let ability_source = include_str!("../../../osric/osric_ability.ttrpg");
-    let character_source = include_str!("../../../osric/osric_character.ttrpg");
-    let class_source = include_str!("../../../osric/osric_class.ttrpg");
-    let equipment_source = include_str!("../../../osric/osric_equipment.ttrpg");
-    let conditions_source = include_str!("../../../osric/osric_conditions.ttrpg");
-    let thief_skills_source = include_str!("../../../osric/osric_thief_skills.ttrpg");
-    let combat_source = include_str!("../../../osric/osric_combat.ttrpg");
-
-    let sources = vec![
-        (
-            "osric/osric_core.ttrpg".to_string(),
-            core_source.to_string(),
-        ),
-        (
-            "osric/osric_ability.ttrpg".to_string(),
-            ability_source.to_string(),
-        ),
-        (
-            "osric/osric_character.ttrpg".to_string(),
-            character_source.to_string(),
-        ),
-        (
-            "osric/osric_class.ttrpg".to_string(),
-            class_source.to_string(),
-        ),
-        (
-            "osric/osric_equipment.ttrpg".to_string(),
-            equipment_source.to_string(),
-        ),
-        (
-            "osric/osric_conditions.ttrpg".to_string(),
-            conditions_source.to_string(),
-        ),
-        (
-            "osric/osric_thief_skills.ttrpg".to_string(),
-            thief_skills_source.to_string(),
-        ),
-        (
-            "osric/osric_combat.ttrpg".to_string(),
-            combat_source.to_string(),
-        ),
-    ];
-
-    let parse_result = ttrpg_parser::parse_multi(&sources);
-    let parse_errors: Vec<_> = parse_result
-        .diagnostics
-        .iter()
-        .filter(|d| d.severity == Severity::Error)
-        .collect();
-    assert!(
-        parse_errors.is_empty(),
-        "parse/lower errors: {:?}",
-        parse_errors.iter().map(|d| &d.message).collect::<Vec<_>>()
-    );
-
-    let (program, module_map) = parse_result.ok().unwrap();
-    let result = ttrpg_checker::check_with_modules(program, module_map);
-    let errors: Vec<_> = result
-        .diagnostics
-        .iter()
-        .filter(|d| d.severity == Severity::Error)
-        .collect();
-    assert!(
-        errors.is_empty(),
-        "checker errors: {:?}",
-        errors.iter().map(|d| &d.message).collect::<Vec<_>>()
-    );
-
-    (program.clone(), result)
+    compile_osric_sources(all_osric_sources())
 }
 
 /// Extract all DeclKind items from the "OSRIC Combat" system block.
@@ -1603,7 +1532,7 @@ fn melee_attack_action_hits_and_damages() {
 
     // Verify HP was reduced
     let final_state = adapter.into_inner();
-    let hp = final_state.read_field(&target, "hp").unwrap();
+    let hp = read_group_field(&final_state, &target, "HitPoints", "hp").unwrap();
     assert_eq!(hp, Value::Int(4), "target HP should be 10 - 6 = 4");
 }
 
@@ -1665,7 +1594,7 @@ fn melee_attack_action_miss_preserves_hp() {
     });
 
     let final_state = adapter.into_inner();
-    let hp = final_state.read_field(&target, "hp").unwrap();
+    let hp = read_group_field(&final_state, &target, "HitPoints", "hp").unwrap();
     assert_eq!(hp, Value::Int(10), "target HP should be unchanged on miss");
 }
 
@@ -1731,7 +1660,7 @@ fn missile_attack_action_hits() {
     });
 
     let final_state = adapter.into_inner();
-    let hp = final_state.read_field(&target, "hp").unwrap();
+    let hp = read_group_field(&final_state, &target, "HitPoints", "hp").unwrap();
     assert_eq!(hp, Value::Int(7), "target HP should be 10 - 3 = 7");
 }
 
@@ -1802,7 +1731,7 @@ fn charge_action_adds_attack_mod() {
     });
 
     let final_state = adapter.into_inner();
-    let hp = final_state.read_field(&target, "hp").unwrap();
+    let hp = read_group_field(&final_state, &target, "HitPoints", "hp").unwrap();
     assert_eq!(hp, Value::Int(5), "target HP should be 10 - 5 = 5");
 }
 
@@ -1864,7 +1793,7 @@ fn charge_would_miss_without_bonus() {
     });
 
     let final_state = adapter.into_inner();
-    let hp = final_state.read_field(&target, "hp").unwrap();
+    let hp = read_group_field(&final_state, &target, "HitPoints", "hp").unwrap();
     assert_eq!(hp, Value::Int(10), "regular attack should miss");
 }
 
@@ -1930,7 +1859,7 @@ fn melee_attack_emits_creature_slain_on_kill() {
     });
 
     let final_state = adapter.into_inner();
-    let hp = final_state.read_field(&target, "hp").unwrap();
+    let hp = read_group_field(&final_state, &target, "HitPoints", "hp").unwrap();
     assert_eq!(hp, Value::Int(0), "target HP should be clamped to 0");
 }
 
@@ -2086,7 +2015,7 @@ fn take_damage_action_reduces_hp() {
     });
 
     let final_state = adapter.into_inner();
-    let hp = final_state.read_field(&target, "hp").unwrap();
+    let hp = read_group_field(&final_state, &target, "HitPoints", "hp").unwrap();
     assert_eq!(hp, Value::Int(4), "target HP should be 10 - 6 = 4");
 }
 
@@ -2139,7 +2068,7 @@ fn take_damage_action_emits_creature_slain_on_kill() {
     });
 
     let final_state = adapter.into_inner();
-    let hp = final_state.read_field(&target, "hp").unwrap();
+    let hp = read_group_field(&final_state, &target, "HitPoints", "hp").unwrap();
     assert_eq!(hp, Value::Int(0), "target HP should be clamped to 0");
 }
 

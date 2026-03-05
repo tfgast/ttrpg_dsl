@@ -12,7 +12,7 @@ use ttrpg_ast::Name;
 use ttrpg_interp::adapter::StateAdapter;
 use ttrpg_interp::effect::{Effect, EffectHandler, Response};
 use ttrpg_interp::reference_state::GameState;
-use ttrpg_interp::state::{EntityRef, WritableState};
+use ttrpg_interp::state::{EntityRef, StateProvider, WritableState};
 use ttrpg_interp::value::{DiceExpr, RollResult, Value};
 use ttrpg_interp::Interpreter;
 
@@ -187,6 +187,49 @@ pub fn armor_for_movement_cap(cap: i64) -> Value {
         90 => worn_armor("ChainMail"),
         120 => worn_armor("Leather"),
         _ => panic!("No standard armor for movement cap {cap}ft"),
+    }
+}
+
+/// Read a field from inside an included group on an entity.
+pub fn read_group_field(
+    state: &GameState,
+    entity: &EntityRef,
+    group: &str,
+    field: &str,
+) -> Option<Value> {
+    if let Some(Value::Struct { fields, .. }) = state.read_field(entity, group) {
+        fields.get(field).cloned()
+    } else {
+        None
+    }
+}
+
+/// Build a HitPoints include-group struct value.
+pub fn hit_points_group(max_hp: i64) -> Value {
+    Value::Struct {
+        name: Name::from("HitPoints"),
+        fields: {
+            let mut f = BTreeMap::new();
+            f.insert(Name::from("max_hp"), Value::Int(max_hp));
+            f.insert(Name::from("hp"), Value::Int(max_hp));
+            f
+        },
+    }
+}
+
+/// Build an EquipmentSlots include-group struct value.
+pub fn equipment_slots_group(worn_armor: Value, worn_shield: Value) -> Value {
+    Value::Struct {
+        name: Name::from("EquipmentSlots"),
+        fields: {
+            let mut f = BTreeMap::new();
+            f.insert(Name::from("wielded_main"), Value::Option(None));
+            f.insert(Name::from("wielded_off"), Value::Option(None));
+            f.insert(Name::from("worn_armor"), worn_armor);
+            f.insert(Name::from("worn_shield"), worn_shield);
+            f.insert(Name::from("current_weight"), Value::Int(0));
+            f
+        },
     }
 }
 
@@ -388,16 +431,14 @@ pub fn make_character(
         enum_variant("Alignment", "TrueNeutral"),
     );
     fields.insert(Name::from("abilities"), Value::Map(ability_map));
-    fields.insert(Name::from("max_hp"), Value::Int(max_hp));
-    fields.insert(Name::from("hp"), Value::Int(max_hp));
+    fields.insert(Name::from("HitPoints"), hit_points_group(max_hp));
     fields.insert(Name::from("base_movement"), feet(120));
-    fields.insert(Name::from("current_weight"), Value::Int(0));
     fields.insert(Name::from("gold"), Value::Int(0));
     fields.insert(Name::from("saving_throws"), Value::Option(None));
-    fields.insert(Name::from("wielded_main"), Value::Option(None));
-    fields.insert(Name::from("wielded_off"), Value::Option(None));
-    fields.insert(Name::from("worn_armor"), armor_for_ac(ac));
-    fields.insert(Name::from("worn_shield"), Value::Option(None));
+    fields.insert(
+        Name::from("EquipmentSlots"),
+        equipment_slots_group(armor_for_ac(ac), Value::Option(None)),
+    );
 
     state.add_entity("Character", fields)
 }
@@ -433,16 +474,14 @@ pub fn make_character_with_shield(
         enum_variant("Alignment", "TrueNeutral"),
     );
     fields.insert(Name::from("abilities"), Value::Map(ability_map));
-    fields.insert(Name::from("max_hp"), Value::Int(max_hp));
-    fields.insert(Name::from("hp"), Value::Int(max_hp));
+    fields.insert(Name::from("HitPoints"), hit_points_group(max_hp));
     fields.insert(Name::from("base_movement"), feet(120));
-    fields.insert(Name::from("current_weight"), Value::Int(0));
     fields.insert(Name::from("gold"), Value::Int(0));
     fields.insert(Name::from("saving_throws"), Value::Option(None));
-    fields.insert(Name::from("wielded_main"), Value::Option(None));
-    fields.insert(Name::from("wielded_off"), Value::Option(None));
-    fields.insert(Name::from("worn_armor"), armor_for_ac(ac));
-    fields.insert(Name::from("worn_shield"), worn_shield("SmallShield"));
+    fields.insert(
+        Name::from("EquipmentSlots"),
+        equipment_slots_group(armor_for_ac(ac), worn_shield("SmallShield")),
+    );
 
     state.add_entity("Character", fields)
 }
@@ -477,16 +516,14 @@ pub fn make_caster(
         enum_variant("Alignment", "TrueNeutral"),
     );
     fields.insert(Name::from("abilities"), Value::Map(ability_map));
-    fields.insert(Name::from("max_hp"), Value::Int(max_hp));
-    fields.insert(Name::from("hp"), Value::Int(max_hp));
+    fields.insert(Name::from("HitPoints"), hit_points_group(max_hp));
     fields.insert(Name::from("base_movement"), feet(120));
-    fields.insert(Name::from("current_weight"), Value::Int(0));
     fields.insert(Name::from("gold"), Value::Int(0));
     fields.insert(Name::from("saving_throws"), Value::Option(None));
-    fields.insert(Name::from("wielded_main"), Value::Option(None));
-    fields.insert(Name::from("wielded_off"), Value::Option(None));
-    fields.insert(Name::from("worn_armor"), armor_for_ac(ac));
-    fields.insert(Name::from("worn_shield"), Value::Option(None));
+    fields.insert(
+        Name::from("EquipmentSlots"),
+        equipment_slots_group(armor_for_ac(ac), Value::Option(None)),
+    );
     fields.insert(
         Name::from("Spellcasting"),
         Value::Struct {
@@ -537,16 +574,14 @@ pub fn make_caster_with_slots(
         enum_variant("Alignment", "TrueNeutral"),
     );
     fields.insert(Name::from("abilities"), Value::Map(ability_map));
-    fields.insert(Name::from("max_hp"), Value::Int(max_hp));
-    fields.insert(Name::from("hp"), Value::Int(max_hp));
+    fields.insert(Name::from("HitPoints"), hit_points_group(max_hp));
     fields.insert(Name::from("base_movement"), feet(120));
-    fields.insert(Name::from("current_weight"), Value::Int(0));
     fields.insert(Name::from("gold"), Value::Int(0));
     fields.insert(Name::from("saving_throws"), Value::Option(None));
-    fields.insert(Name::from("wielded_main"), Value::Option(None));
-    fields.insert(Name::from("wielded_off"), Value::Option(None));
-    fields.insert(Name::from("worn_armor"), armor_for_ac(ac));
-    fields.insert(Name::from("worn_shield"), Value::Option(None));
+    fields.insert(
+        Name::from("EquipmentSlots"),
+        equipment_slots_group(armor_for_ac(ac), Value::Option(None)),
+    );
 
     let mut spell_slots_map = BTreeMap::new();
     let mut slots_used_map = BTreeMap::new();
@@ -703,7 +738,7 @@ pub fn apply_encumbrance(state: &mut GameState, entity: &EntityRef, tier_variant
 
 // ── OSRIC source loading ───────────────────────────────────────
 
-/// Load all 9 OSRIC source files as (filename, source) pairs.
+/// Load all OSRIC source files as (filename, source) pairs.
 pub fn all_osric_sources() -> Vec<(String, String)> {
     vec![
         (
@@ -745,6 +780,10 @@ pub fn all_osric_sources() -> Vec<(String, String)> {
         (
             "osric/osric_initiative.ttrpg".to_string(),
             include_str!("../../../../osric/osric_initiative.ttrpg").to_string(),
+        ),
+        (
+            "osric/osric_spells.ttrpg".to_string(),
+            include_str!("../../../../osric/osric_spells.ttrpg").to_string(),
         ),
     ]
 }

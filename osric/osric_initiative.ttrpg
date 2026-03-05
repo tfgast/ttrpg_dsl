@@ -46,6 +46,7 @@ use "OSRIC Equipment"
 use "OSRIC Character"
 use "OSRIC Combat"
 use "OSRIC Conditions"
+use "OSRIC Spells"
 
 system "OSRIC Initiative" {
 
@@ -379,68 +380,6 @@ system "OSRIC Initiative" {
     // ========================================================
     //  EVENTS
     // ========================================================
-
-    event SpellInterrupted(caster: Character) {}
-
-
-    // ========================================================
-    //  CONDITIONS
-    //
-    //  CastingSpell: applied when a character begins casting.
-    //  Per OSRIC 3.0 §1.6.2.11:
-    //   - Caster receives no dexterity bonus to AC while casting.
-    //   - Caster cannot attack while casting (occupied).
-    //  Removed when spell completes or is interrupted.
-    // ========================================================
-
-    condition CastingSpell on bearer: Character {
-        // Per 1.6.2.11: no dexterity bonus to armour class while casting.
-        modify effective_target_ac(target: bearer) {
-            include_dex = false
-        }
-        modify [#attack_resolution](attacker: bearer) {
-            result.outcome = AttackOutcome.Miss
-            result.damage = 0
-        }
-    }
-
-
-    // ========================================================
-    //  HOOKS
-    //
-    //  Spell interruption: if a casting character takes damage,
-    //  the spell is lost. The CastingSpell condition is removed
-    //  and the SpellInterrupted event is emitted.
-    //
-    //  NOTE: remove_condition on an absent condition is a safe
-    //  no-op (confirmed — silently skips if not present).
-    // ========================================================
-
-    hook SpellInterruption on caster: Character with Spellcasting (
-        trigger: Damaged(target: caster)
-    ) {
-        remove_condition(caster, CastingSpell)
-        emit SpellInterrupted(caster: caster)
-    }
-
-
-    // ========================================================
-    //  BEGIN CASTING ACTION
-    //
-    //  Applies CastingSpell condition and stores the invocation
-    //  handle for later revocation (e.g., concentration break).
-    //  Requires Spellcasting optional group.
-    // ========================================================
-
-    action BeginCasting on caster: Character with Spellcasting as sc (
-        casting_time: int
-    ) {
-        resolve {
-            apply_condition(caster, CastingSpell, Duration.indefinite)
-            caster.sc.casting_invocation = some(invocation())
-        }
-    }
-
 
     // ========================================================
     //  ROUND ACTION
