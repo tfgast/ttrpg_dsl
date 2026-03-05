@@ -303,4 +303,31 @@ system "OSRIC Classes" {
         let next = current_level + 1
         xp >= xp_for_level(class, next)
     }
+
+
+    // ========================================================
+    //  CASTER LEVEL
+    //
+    //  Returns the character's level in the class that casts
+    //  spells of the given tradition. 0 if no matching class.
+    //  Used by spell resolution to scale damage, duration, and
+    //  missile count.
+    // ========================================================
+
+    // Map spell tradition to the primary casting class.
+    derive spell_casting_class(spell_class: SpellClassType) -> Class {
+        match spell_class {
+            Arcane     => MagicUser,
+            Divine     => Class.Cleric,
+            Druidic    => Class.Druid,
+            Phantasmal => Class.Illusionist
+        }
+    }
+
+    // Caster level for a character given a spell tradition.
+    derive caster_level(char: Character, spell_class: SpellClassType) -> int {
+        let c = spell_casting_class(spell_class)
+        let matches = [cl.level for cl in char.classes if cl.class == c]
+        if len(matches) > 0 { first(matches).unwrap() } else { 0 }
+    }
 }

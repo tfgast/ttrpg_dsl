@@ -1,0 +1,107 @@
+// ============================================================
+// OSRIC 3.0 Magic-User Spell Effects
+//
+// Individual spell resolution functions for magic-user spells.
+// Each spell has a SpellDef derive (static data) and a
+// resolve function (effect application).
+//
+// Reference: OSRIC 3.0 Player Guide, §1.8.5
+// ============================================================
+
+use "OSRIC"
+use "OSRIC Ability"
+use "OSRIC Character"
+use "OSRIC Classes"
+use "OSRIC Combat"
+use "OSRIC Conditions"
+use "OSRIC Saves"
+use "OSRIC Spells"
+use "OSRIC Cleric Spells"
+
+system "OSRIC MU Spells" {
+
+    // ========================================================
+    //  MAGIC MISSILE (§1.8.5.1)
+    //
+    //  Arcane evocation, level 1. Auto-hit, no save.
+    //  Each missile deals 1d4+1 damage. Missile count:
+    //  1 at level 1-2, +1 per 2 levels beyond 1st.
+    //  Missiles can be split among targets.
+    //  Range: 60ft + 10ft/level. Casting time: Fast.
+    // ========================================================
+
+    derive magic_missile_def() -> SpellDef {
+        SpellDef {
+            name: "Magic Missile",
+            class_type: Arcane,
+            school: Evocation,
+            level: 1,
+            range: SpellRange.Special(description: "60ft + 10ft/MU level"),
+            duration: SpellDuration.Instantaneous,
+            area_of_effect: "1+ creatures in a 10ft x 10ft area",
+            components: SpellComponents { verbal: true, somatic: true, material: false },
+            casting_time: CastingTime.Fast,
+            saving_throw: SpellSave.NoSave,
+            reversible: false,
+            description: "Auto-hit missiles of magical force, 1d4+1 damage each. +1 missile per 2 caster levels above 1st."
+        }
+    }
+
+    // Number of missiles at a given caster level.
+    // Level 1-2: 1, Level 3-4: 2, Level 5-6: 3, etc.
+    derive magic_missile_count(caster_level: int) -> int {
+        1 + floor((caster_level - 1) / 2)
+    }
+
+    // ========================================================
+    //  FIREBALL (§1.8.5.3)
+    //
+    //  Arcane evocation, level 3. 20ft radius sphere.
+    //  Deals 1d6 per caster level fire damage to all
+    //  creatures in the area. Saving throw vs spells
+    //  for half damage. Range: 100ft + 10ft/level.
+    //  Casting time: 3 segments.
+    // ========================================================
+
+    derive fireball_def() -> SpellDef {
+        SpellDef {
+            name: "Fireball",
+            class_type: Arcane,
+            school: Evocation,
+            level: 3,
+            range: SpellRange.Special(description: "100ft + 10ft/MU level"),
+            duration: SpellDuration.Instantaneous,
+            area_of_effect: "20ft radius sphere",
+            components: SpellComponents { verbal: true, somatic: true, material: true },
+            casting_time: CastingTime.Segments(count: 3),
+            saving_throw: SpellSave.Half,
+            reversible: false,
+            description: "A massive explosion of magical fire dealing 1d6 per caster level. Saving throw for half damage."
+        }
+    }
+
+    // Resolve Fireball. Rolls damage once (caster_level d6),
+    // then applies to each target. Successful save halves damage.
+    function resolve_fireball(caster: Character, targets: list<Character>) {
+        let cl = caster_level(caster, Arcane)
+        let total_damage = roll(dice(cl, 6)).total
+        for target in targets {
+            let saved = make_saving_throw(target, SaveCategory.SpellsUnlisted)
+            let damage = if saved { floor(total_damage / 2) } else { total_damage }
+            target.TakeDamage(caster, damage)
+            emit SpellDamaged(caster: caster, target: target, spell_name: "Fireball", amount: damage)
+        }
+    }
+
+    // Resolve Magic Missile. The `targets` list contains one
+    // entry per missile — caller decides target allocation by
+    // repeating the same target for multiple missiles aimed at it.
+    // Each entry gets one missile (1d4+1 damage, auto-hit, no save).
+    function resolve_magic_missile(caster: Character, targets: list<Character>) {
+        for target in targets {
+            let damage = roll(1d4).total + 1
+            target.TakeDamage(caster, damage)
+            emit SpellDamaged(caster: caster, target: target, spell_name: "Magic Missile", amount: damage)
+        }
+    }
+}

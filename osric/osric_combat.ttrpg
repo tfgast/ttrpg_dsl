@@ -1036,6 +1036,16 @@ system "OSRIC Combat" {
         }
     }
 
+    // Heal a conscious character. Adds HP capped at max_hp.
+    // Returns actual HP healed. For unconscious targets, use
+    // heal_unconscious() instead (handles condition transitions).
+    function heal_damage(target: Character, amount: int) -> int {
+        let new_hp = min(target.hp + amount, target.max_hp)
+        let actual = new_hp - target.hp
+        target.hp = new_hp
+        actual
+    }
+
     // Natural healing: 1 HP per day of uninterrupted rest.
     // Four weeks of rest restores full HP regardless.
     // CON penalty delays healing start (§1.6.6.1).
