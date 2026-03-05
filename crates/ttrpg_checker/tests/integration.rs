@@ -3307,9 +3307,10 @@ system "test" {
 }
 
 #[test]
-fn list_literal_all_none_needs_context() {
-    // All none — inferred as list<option<error>>; no concrete type to unify
-    // against, so it cannot satisfy a concrete return type.
+fn list_literal_all_none_accepted_with_return_context() {
+    // All none — inferred as list<option<error>>; covariance allows this to
+    // satisfy list<option<int>> because option<error> (none) is compatible
+    // with option<int>.
     let source = r#"
 system "test" {
     derive foo() -> list<option<int>> {
@@ -3317,7 +3318,7 @@ system "test" {
     }
 }
 "#;
-    expect_errors(source, &["expected return type"]);
+    expect_no_errors(source);
 }
 
 #[test]
@@ -3330,6 +3331,67 @@ system "test" {
 }
 "#;
     expect_errors(source, &["list element has type string, expected int"]);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Covariant container types
+// ═══════════════════════════════════════════════════════════════
+
+#[test]
+fn list_entity_covariance() {
+    // list<Character> should be passable where list<entity> is expected
+    let source = r#"
+system "test" {
+    entity Character { name: string }
+    function takes_entities(es: list<entity>) {}
+    function caller(cs: list<Character>) {
+        takes_entities(cs)
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn set_entity_covariance() {
+    let source = r#"
+system "test" {
+    entity Character { name: string }
+    function takes_entities(es: set<entity>) {}
+    function caller(cs: set<Character>) {
+        takes_entities(cs)
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn option_entity_covariance() {
+    let source = r#"
+system "test" {
+    entity Character { name: string }
+    function takes_entity(e: option<entity>) {}
+    function caller(c: option<Character>) {
+        takes_entity(c)
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn list_covariance_incompatible_types_still_errors() {
+    // list<int> should NOT be passable where list<string> is expected
+    let source = r#"
+system "test" {
+    function takes_strings(ss: list<string>) {}
+    function caller(ns: list<int>) {
+        takes_strings(ns)
+    }
+}
+"#;
+    expect_errors(source, &["expected list<string>"]);
 }
 
 // ═══════════════════════════════════════════════════════════════

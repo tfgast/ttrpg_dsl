@@ -1191,6 +1191,16 @@ impl<'a> Checker<'a> {
         ) {
             return true;
         }
+        // Covariant containers: list<Sub> is compatible with list<Super>, etc.
+        match (actual, expected) {
+            (Ty::List(a), Ty::List(b)) => return self.types_compatible(a, b),
+            (Ty::Set(a), Ty::Set(b)) => return self.types_compatible(a, b),
+            (Ty::Map(ak, av), Ty::Map(bk, bv)) => {
+                return self.types_compatible(ak, bk) && self.types_compatible(av, bv)
+            }
+            (Ty::Option(a), Ty::Option(b)) => return self.types_compatible(a, b),
+            _ => {}
+        }
         // Built-in type keywords and user-defined types with the same name are equivalent
         match (actual, expected) {
             (Ty::Enum(name), Ty::Duration) | (Ty::Duration, Ty::Enum(name))
