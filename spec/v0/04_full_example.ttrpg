@@ -74,16 +74,16 @@ system "D&D 5e Combat" {
         abilities: map<Ability, int>
         proficient_saves: set<Ability>
         AC: int
-        HP: resource(0..=max_HP)
+        restricted HP: resource(0..=max_HP)
         max_HP: int
         speed: int = 30
-        resistances: set<DamageType>
+        restricted resistances: set<DamageType>
         immunities: set<DamageType>
         vulnerabilities: set<DamageType>
         conditions: set<Condition>
         position: Position
         equipped_weapon: Weapon
-        concentrating_on: option<Invocation>
+        restricted concentrating_on: option<Invocation>
     }
 
 
