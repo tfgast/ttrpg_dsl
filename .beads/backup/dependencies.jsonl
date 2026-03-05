@@ -286,6 +286,8 @@
 {"created_at":"2026-03-02T23:30:31Z","created_by":"Theodore Gast","depends_on_id":"tdsl-we1m","issue_id":"tdsl-kb4g","type":"blocks"}
 {"created_at":"2026-03-04T07:49:47Z","created_by":"Theodore Gast","depends_on_id":"tdsl-kv9r","issue_id":"tdsl-ke80","type":"blocks"}
 {"created_at":"2026-03-05T12:27:47Z","created_by":"Theodore Gast","depends_on_id":"tdsl-6ahc","issue_id":"tdsl-kn9g","type":"blocks"}
+{"created_at":"2026-03-05T13:06:59Z","created_by":"Theodore Gast","depends_on_id":"tdsl-cvox","issue_id":"tdsl-kn9g","type":"blocks"}
+{"created_at":"2026-03-05T13:06:59Z","created_by":"Theodore Gast","depends_on_id":"tdsl-x409","issue_id":"tdsl-kn9g","type":"blocks"}
 {"created_at":"2026-03-05T12:27:52Z","created_by":"Theodore Gast","depends_on_id":"tdsl-zbt8","issue_id":"tdsl-kn9g","type":"blocks"}
 {"created_at":"2026-03-02T19:51:03Z","created_by":"Theodore Gast","depends_on_id":"tdsl-l2j7","issue_id":"tdsl-koiw","type":"discovered-from"}
 {"created_at":"2026-03-02T18:38:39Z","created_by":"Theodore Gast","depends_on_id":"tdsl-vick","issue_id":"tdsl-kqc5","type":"blocks"}
