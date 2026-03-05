@@ -443,6 +443,52 @@ pub fn make_character(
     state.add_entity("Character", fields)
 }
 
+/// Build a Character with TurnUndead optional group and configurable alignment.
+/// Used for Turn Undead integration tests.
+pub fn make_turner(
+    state: &mut GameState,
+    name: &str,
+    class: &str,
+    level: i64,
+    alignment: &str,
+) -> EntityRef {
+    let mut ability_map = BTreeMap::new();
+    for &(ab, score) in &standard_abilities_12() {
+        ability_map.insert(ability(ab), Value::Int(score));
+    }
+
+    let mut fields = FxHashMap::default();
+    fields.insert(Name::from("name"), Value::Str(name.to_string()));
+    fields.insert(
+        Name::from("classes"),
+        Value::List(vec![class_level_struct(class, level, 0)]),
+    );
+    fields.insert(Name::from("classing_mode"), classing_mode("Single"));
+    fields.insert(Name::from("ancestry"), enum_variant("Ancestry", "Human"));
+    fields.insert(
+        Name::from("alignment"),
+        enum_variant("Alignment", alignment),
+    );
+    fields.insert(Name::from("abilities"), Value::Map(ability_map));
+    fields.insert(Name::from("HitPoints"), hit_points_group(30));
+    fields.insert(Name::from("base_movement"), feet(120));
+    fields.insert(Name::from("gold"), Value::Int(0));
+    fields.insert(Name::from("saving_throws"), Value::Option(None));
+    fields.insert(
+        Name::from("EquipmentSlots"),
+        equipment_slots_group(armor_for_ac(15), Value::Option(None)),
+    );
+    fields.insert(
+        Name::from("TurnUndead"),
+        Value::Struct {
+            name: Name::from("TurnUndead"),
+            fields: BTreeMap::new(),
+        },
+    );
+
+    state.add_entity("Character", fields)
+}
+
 /// Build a Character with a shield equipped (SmallShield, +1 AC).
 #[allow(clippy::too_many_arguments)]
 pub fn make_character_with_shield(
@@ -784,6 +830,10 @@ pub fn all_osric_sources() -> Vec<(String, String)> {
         (
             "osric/osric_spells.ttrpg".to_string(),
             include_str!("../../../../osric/osric_spells.ttrpg").to_string(),
+        ),
+        (
+            "osric/osric_turn_undead.ttrpg".to_string(),
+            include_str!("../../../../osric/osric_turn_undead.ttrpg").to_string(),
         ),
     ]
 }

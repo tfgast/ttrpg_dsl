@@ -1,0 +1,415 @@
+// ============================================================
+// OSRIC 3.0 Turn Undead — cleric/paladin vs undead
+//
+// Clerics (and paladins at level-2) can turn, destroy, or
+// control undead creatures. Table 1.6.5a maps undead type
+// (1-13) x cleric level to a result code:
+//   -1 = impossible (dash)
+//    0 = auto-turn (T)
+//   -2 = auto-destroy/control (D)
+//   -3 = D* (destroy 1d6+6 / control 1d6+6, fiend/paladin 1d2)
+//   1..=20 = need that number or higher on d20
+//
+// Good/neutral clerics: T = turned, D = destroyed, D* = destroyed.
+// Evil clerics: T = turned, D = controlled (d100: 01-60 not
+//   controlled but non-hostile, 61-00 controlled), D* = controlled.
+// Paladins turn as cleric 2 levels lower. Cannot be destroyed
+//   by evil clerics (paladin turned only). Good/neutral clerics
+//   cannot turn paladins.
+//
+// Reference: OSRIC 3.0 Player Guide, §1.6.5, pp.97-98
+// ============================================================
+
+use "OSRIC"
+use "OSRIC Character"
+use "OSRIC Classes"
+use "OSRIC Combat"
+
+system "OSRIC Turn Undead" {
+
+    // ========================================================
+    //  ENUMS
+    // ========================================================
+
+    // Result of a single turning attempt against one undead type.
+    enum TurnOutcome {
+        Impossible,
+        Turned(number_affected: int),
+        Destroyed(number_affected: int),
+        Controlled(number_affected: int),
+        NotControlled(number_affected: int),
+        Failed
+    }
+
+
+    // ========================================================
+    //  EVENTS
+    // ========================================================
+
+    event UndeadTurned(turner: Character, undead_type: int, outcome: TurnOutcome) {}
+
+
+    // ========================================================
+    //  TABLE — Turn Undead (Table 1.6.5a)
+    //
+    //  Maps [undead_type (1-13), cleric_level (1-19+)] to a
+    //  result code:
+    //    -1 = impossible (dash)
+    //     0 = auto-turn (T)
+    //    -2 = auto-destroy (D)
+    //    -3 = D* (destroy/control with 1d6+6 or 1d2 affected)
+    //   1+ = need that number or higher on d20
+    // ========================================================
+
+    table turn_undead_table(undead_type: int, cleric_level: int) -> int {
+        // Type 1 — Skeleton
+        [1, 1]     => 10,
+        [1, 2]     => 7,
+        [1, 3]     => 4,
+        [1, 4]     => 0,   // T
+        [1, 5]     => 0,   // T
+        [1, 6]     => -2,  // D
+        [1, 7]     => -2,  // D
+        [1, 8]     => -3,  // D*
+        [1, 9..=13]  => -3,  // D*
+        [1, 14..=18] => -3,  // D*
+        [1, _]     => -3,  // D* (19+)
+
+        // Type 2 — Zombie
+        [2, 1]     => 13,
+        [2, 2]     => 10,
+        [2, 3]     => 7,
+        [2, 4]     => 0,   // T
+        [2, 5]     => 0,   // T
+        [2, 6]     => -2,  // D
+        [2, 7]     => -2,  // D
+        [2, 8]     => -2,  // D
+        [2, 9..=13]  => -3,  // D*
+        [2, 14..=18] => -3,  // D*
+        [2, _]     => -3,  // D* (19+)
+
+        // Type 3 — Ghoul
+        [3, 1]     => 16,
+        [3, 2]     => 13,
+        [3, 3]     => 10,
+        [3, 4]     => 4,
+        [3, 5]     => 0,   // T
+        [3, 6]     => 0,   // T
+        [3, 7]     => -2,  // D
+        [3, 8]     => -2,  // D
+        [3, 9..=13]  => -2,  // D
+        [3, 14..=18] => -3,  // D*
+        [3, _]     => -3,  // D* (19+)
+
+        // Type 4 — Shadow
+        [4, 1]     => 19,
+        [4, 2]     => 16,
+        [4, 3]     => 13,
+        [4, 4]     => 7,
+        [4, 5]     => 4,
+        [4, 6]     => 0,   // T
+        [4, 7]     => 0,   // T
+        [4, 8]     => -2,  // D
+        [4, 9..=13]  => -2,  // D
+        [4, 14..=18] => -2,  // D
+        [4, _]     => -3,  // D* (19+)
+
+        // Type 5 — Wight
+        [5, 1]     => 20,
+        [5, 2]     => 19,
+        [5, 3]     => 16,
+        [5, 4]     => 10,
+        [5, 5]     => 7,
+        [5, 6]     => 4,
+        [5, 7]     => 0,   // T
+        [5, 8]     => 0,   // T
+        [5, 9..=13]  => -2,  // D
+        [5, 14..=18] => -2,  // D
+        [5, _]     => -2,  // D (19+)
+
+        // Type 6 — Ghast
+        [6, 1]     => -1,  // impossible
+        [6, 2]     => 20,
+        [6, 3]     => 19,
+        [6, 4]     => 13,
+        [6, 5]     => 10,
+        [6, 6]     => 7,
+        [6, 7]     => 4,
+        [6, 8]     => 0,   // T
+        [6, 9..=13]  => 0,   // T
+        [6, 14..=18] => -2,  // D
+        [6, _]     => -2,  // D (19+)
+
+        // Type 7 — Wraith
+        [7, 1]     => -1,
+        [7, 2]     => -1,
+        [7, 3]     => 20,
+        [7, 4]     => 16,
+        [7, 5]     => 13,
+        [7, 6]     => 10,
+        [7, 7]     => 7,
+        [7, 8]     => 4,
+        [7, 9..=13]  => 0,   // T
+        [7, 14..=18] => 0,   // T
+        [7, _]     => -2,  // D (19+)
+
+        // Type 8 — Mummy
+        [8, 1]     => -1,
+        [8, 2]     => -1,
+        [8, 3]     => -1,
+        [8, 4]     => 19,
+        [8, 5]     => 16,
+        [8, 6]     => 13,
+        [8, 7]     => 10,
+        [8, 8]     => 7,
+        [8, 9..=13]  => 4,
+        [8, 14..=18] => 0,   // T
+        [8, _]     => -2,  // D (19+)
+
+        // Type 9 — Spectre
+        [9, 1]     => -1,
+        [9, 2]     => -1,
+        [9, 3]     => -1,
+        [9, 4]     => 20,
+        [9, 5]     => 19,
+        [9, 6]     => 16,
+        [9, 7]     => 13,
+        [9, 8]     => 10,
+        [9, 9..=13]  => 7,
+        [9, 14..=18] => 0,   // T
+        [9, _]     => 0,   // T (19+)
+
+        // Type 10 — Vampire
+        [10, 1]    => -1,
+        [10, 2]    => -1,
+        [10, 3]    => -1,
+        [10, 4]    => -1,
+        [10, 5]    => 20,
+        [10, 6]    => 19,
+        [10, 7]    => 16,
+        [10, 8]    => 13,
+        [10, 9..=13]  => 10,
+        [10, 14..=18] => 7,
+        [10, _]    => 4,   // 19+
+
+        // Type 11 — Ghost
+        [11, 1]    => -1,
+        [11, 2]    => -1,
+        [11, 3]    => -1,
+        [11, 4]    => -1,
+        [11, 5]    => -1,
+        [11, 6]    => 20,
+        [11, 7]    => 19,
+        [11, 8]    => 16,
+        [11, 9..=13]  => 13,
+        [11, 14..=18] => 10,
+        [11, _]    => 7,   // 19+
+
+        // Type 12 — Lich
+        [12, 1]    => -1,
+        [12, 2]    => -1,
+        [12, 3]    => -1,
+        [12, 4]    => -1,
+        [12, 5]    => -1,
+        [12, 6]    => -1,
+        [12, 7]    => 20,
+        [12, 8]    => 19,
+        [12, 9..=13]  => 16,
+        [12, 14..=18] => 13,
+        [12, _]    => 10,  // 19+
+
+        // Type 13 — Fiend
+        [13, 1]    => -1,
+        [13, 2]    => -1,
+        [13, 3]    => -1,
+        [13, 4]    => -1,
+        [13, 5]    => -1,
+        [13, 6]    => -1,
+        [13, 7]    => -1,
+        [13, 8]    => 20,
+        [13, 9..=13]  => 19,
+        [13, 14..=18] => 16,
+        [13, _]    => 13   // 19+
+    }
+
+
+    // ========================================================
+    //  ALIGNMENT HELPERS
+    // ========================================================
+
+    derive is_evil_alignment(alignment: Alignment) -> bool {
+        match alignment {
+            LawfulEvil   => true,
+            NeutralEvil  => true,
+            ChaoticEvil  => true,
+            _            => false
+        }
+    }
+
+
+    // ========================================================
+    //  EFFECTIVE TURNING LEVEL
+    //
+    //  Clerics use their class level directly. Paladins turn
+    //  as a cleric 2 levels lower (min 1). Multi-class: pick
+    //  the best turning class.
+    // ========================================================
+
+    derive effective_turning_level(char: Character) -> int {
+        let levels = [
+            if cl.class == Cleric { cl.level }
+            else if cl.class == Paladin { max(1, cl.level - 2) }
+            else { 0 }
+            for cl in char.classes
+        ]
+        last(sort(levels)).unwrap()
+    }
+
+    // Can this character turn undead?
+    derive character_can_turn(char: Character) -> bool {
+        any([class_def(cl.class).can_turn_undead for cl in char.classes])
+    }
+
+
+    // ========================================================
+    //  NUMBER AFFECTED
+    //
+    //  Normal result (T or number): 2d6 affected.
+    //  D result: 2d6 affected (fiend/paladin target: 1d2).
+    //  D* result: 1d6+6 affected (fiend/paladin target: 1d2).
+    // ========================================================
+
+    mechanic roll_number_turned() -> int {
+        roll(2d6).total
+    }
+
+    mechanic roll_number_destroyed() -> int {
+        roll(2d6).total
+    }
+
+    mechanic roll_number_destroyed_star() -> int {
+        roll(1d6).total + 6
+    }
+
+    mechanic roll_number_fiend_paladin() -> int {
+        roll(1d2).total
+    }
+
+
+    // ========================================================
+    //  EVIL CLERIC CONTROL CHECK
+    //
+    //  When evil cleric gets D or D* result, roll d100:
+    //    01-60: not controlled (but non-hostile)
+    //    61-00: controlled
+    // ========================================================
+
+    mechanic evil_control_check() -> bool {
+        let result = roll(1d100)
+        result.total >= 61
+    }
+
+
+    // ========================================================
+    //  RESOLVE TURN ATTEMPT
+    //
+    //  Core mechanic: given a character and undead type (1-13),
+    //  resolve the turning attempt and return the outcome.
+    //  is_fiend_or_paladin: true if target is fiend/paladin
+    //  type (affects number affected for D/D* results).
+    // ========================================================
+
+    mechanic resolve_turn_undead(
+        turner: Character,
+        undead_type: int,
+        is_fiend_or_paladin: bool = false
+    ) -> TurnOutcome {
+        let level = effective_turning_level(turner)
+        let code = turn_undead_table(undead_type, level)
+        let evil = is_evil_alignment(turner.alignment)
+
+        match {
+            // Impossible
+            code == -1 => TurnOutcome.Impossible,
+
+            // D* — destroy/control 1d6+6 (or 1d2 for fiend/paladin)
+            code == -3 => {
+                let affected = if is_fiend_or_paladin {
+                    roll_number_fiend_paladin()
+                } else {
+                    roll_number_destroyed_star()
+                }
+                if evil {
+                    if evil_control_check() {
+                        TurnOutcome.Controlled(affected)
+                    } else {
+                        TurnOutcome.NotControlled(affected)
+                    }
+                } else {
+                    TurnOutcome.Destroyed(affected)
+                }
+            },
+
+            // D — destroy/control 2d6 (or 1d2 for fiend/paladin)
+            code == -2 => {
+                let affected = if is_fiend_or_paladin {
+                    roll_number_fiend_paladin()
+                } else {
+                    roll_number_destroyed()
+                }
+                if evil {
+                    if evil_control_check() {
+                        TurnOutcome.Controlled(affected)
+                    } else {
+                        TurnOutcome.NotControlled(affected)
+                    }
+                } else {
+                    TurnOutcome.Destroyed(affected)
+                }
+            },
+
+            // T — auto-turn 2d6
+            code == 0 => {
+                let affected = roll_number_turned()
+                TurnOutcome.Turned(affected)
+            },
+
+            // Number — need to roll that or higher on d20
+            _ => {
+                let d20 = roll(1d20).total
+                if d20 >= code {
+                    let affected = roll_number_turned()
+                    TurnOutcome.Turned(affected)
+                } else {
+                    TurnOutcome.Failed
+                }
+            }
+        }
+    }
+
+
+    // ========================================================
+    //  TURN UNDEAD ACTION
+    //
+    //  Player-facing action. Requires TurnUndead optional
+    //  group on the character (set during creation for
+    //  clerics and paladins). Takes effect like a fast spell
+    //  (same segment). Cannot attack or cast in same round.
+    // ========================================================
+
+    action TurnUndeadAction on turner: Character with TurnUndead (
+        undead_type: int,
+        is_fiend_or_paladin: bool = false
+    ) {
+        cost { attack }
+        requires {
+            character_can_turn(turner)
+            && undead_type >= 1
+            && undead_type <= 13
+        }
+        resolve {
+            let outcome = resolve_turn_undead(turner, undead_type, is_fiend_or_paladin)
+            emit UndeadTurned(turner: turner, undead_type: undead_type, outcome: outcome)
+        }
+    }
+}
