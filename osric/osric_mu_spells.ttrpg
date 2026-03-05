@@ -104,4 +104,103 @@ system "OSRIC MU Spells" {
             emit SpellDamaged(caster: caster, target: target, spell_name: "Magic Missile", amount: damage)
         }
     }
+
+
+    // ========================================================
+    //  SLEEP (§1.8.5.1)
+    //
+    //  Arcane enchantment, level 1. 15ft radius area.
+    //  Creatures fall into deep magical slumber, no save.
+    //  Number affected depends on HD category (weakest first):
+    //    <=1 HD:   4d4
+    //    1+ to 2:  2d4
+    //    2+ to 3:  1d4
+    //    3+ to 4:  1d2
+    //    4+1..4+4: 0 or 1 (d2-1)
+    //    >4+4:     immune
+    //  Duration: 5 rounds per caster level.
+    //  Range: 30ft + 10ft/level. Casting time: Fast.
+    // ========================================================
+
+    derive sleep_def() -> SpellDef {
+        SpellDef {
+            name: "Sleep",
+            class_type: Arcane,
+            school: Enchantment,
+            level: 1,
+            range: SpellRange.Special(description: "30ft + 10ft/MU level"),
+            duration: SpellDuration.Special(description: "5 rounds/MU level"),
+            area_of_effect: "15ft radius circle",
+            components: SpellComponents { verbal: true, somatic: true, material: true },
+            casting_time: CastingTime.Fast,
+            saving_throw: SpellSave.NoSave,
+            reversible: false,
+            description: "Creatures in area fall into magical slumber. Number affected by HD category, weakest first. No saving throw."
+        }
+    }
+
+    // Classify a Monster's hit dice into an HD category for
+    // Sleep targeting (0 = weakest .. 5 = immune).
+    //
+    //  Cat 0: <=1 HD       (count<=1, bonus<=0)
+    //  Cat 1: 1+ to 2 HD   (count==1 bonus>0, or count==2 bonus<=0)
+    //  Cat 2: 2+ to 3 HD   (count==2 bonus>0, or count==3 bonus<=0)
+    //  Cat 3: 3+ to 4 HD   (count==3 bonus>0, or count==4 bonus<=0)
+    //  Cat 4: 4+1 to 4+4   (count==4, 1<=bonus<=4)
+    //  Cat 5: immune        (everything above)
+    derive sleep_hd_category(hd: DiceExpr) -> int {
+        let count = dice_count(hd)
+        let bonus = dice_modifier(hd)
+        match {
+            count == 0                               => 0,
+            count == 1 && bonus <= 0                 => 0,
+            count == 1 && bonus > 0                  => 1,
+            count == 2 && bonus <= 0                 => 1,
+            count == 2 && bonus > 0                  => 2,
+            count == 3 && bonus <= 0                 => 2,
+            count == 3 && bonus > 0                  => 3,
+            count == 4 && bonus <= 0                 => 3,
+            count == 4 && bonus >= 1 && bonus <= 4   => 4,
+            true                                     => 5
+        }
+    }
+
+    // Dice expression for number affected per HD category.
+    derive sleep_category_dice(category: int) -> DiceExpr {
+        match category {
+            0 => 4d4,
+            1 => 2d4,
+            2 => 1d4,
+            3 => 1d2,
+            4 => 1d2,
+            _ => 0d4
+        }
+    }
+
+    // Resolve Sleep. Targets must be pre-sorted weakest-first
+    // (by HD within each category). The function classifies each
+    // target by HD category, rolls per category, and applies
+    // Sleeping to the affected creatures (weakest first).
+    function resolve_sleep(caster: Character, targets: list<Monster>) {
+        let cl = caster_level(caster, Arcane)
+        let duration_rounds = 5 * cl
+
+        // Process each HD category from weakest to strongest.
+        for cat in [0, 1, 2, 3, 4] {
+            let cat_targets = [t for t in targets if sleep_hd_category(t.hit_dice) == cat]
+            if len(cat_targets) > 0 {
+                let num_affected = if cat == 4 {
+                    // 4+1 to 4+4: d2-1 yields 0 or 1
+                    max(0, roll(1d2).total - 1)
+                } else {
+                    roll(sleep_category_dice(cat)).total
+                }
+                let to_sleep = take(cat_targets, min(num_affected, len(cat_targets)))
+                for target in to_sleep {
+                    apply_condition(target, Sleeping, Duration.rounds(duration_rounds))
+                    emit SpellApplied(caster: caster, target: target, spell_name: "Sleep")
+                }
+            }
+        }
+    }
 }

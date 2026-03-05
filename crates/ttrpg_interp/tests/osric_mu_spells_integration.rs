@@ -1,12 +1,13 @@
 //! OSRIC magic-user spell effects integration tests.
 //!
-//! Tests Magic Missile, Fireball resolve functions and SpellDef derives.
+//! Tests Magic Missile, Fireball, Sleep resolve functions and SpellDef derives.
 
 use std::collections::VecDeque;
 
 use ttrpg_interp::adapter::StateAdapter;
 use ttrpg_interp::effect::{Effect, EffectHandler, Response};
 use ttrpg_interp::reference_state::GameState;
+use ttrpg_interp::state::StateProvider;
 use ttrpg_interp::value::Value;
 use ttrpg_interp::Interpreter;
 
@@ -533,4 +534,319 @@ fn magic_missile_def_has_correct_fields() {
     };
     assert_eq!(level, 1);
     assert!(!reversible);
+}
+
+// ── Sleep ────────────────────────────────────────────────────
+
+fn has_condition(state: &GameState, entity: &ttrpg_interp::state::EntityRef, name: &str) -> bool {
+    state
+        .read_conditions(entity)
+        .unwrap_or_default()
+        .iter()
+        .any(|c| c.name.as_str() == name)
+}
+
+/// Scripted roll for NdM dice (e.g. 4d4, 2d4).
+fn roll_nd(count: u32, sides: u32, values: Vec<i64>) -> Response {
+    let total: i64 = values.iter().sum();
+    scripted_roll(count, sides, 0, values.clone(), values, total, total)
+}
+
+#[test]
+fn sleep_def_has_correct_fields() {
+    let (program, result) = compile_all();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NullHandler;
+
+    let val = interp
+        .evaluate_derive(&state, &mut handler, "sleep_def", vec![])
+        .unwrap();
+
+    let (level, school) = match &val {
+        Value::Struct { fields, .. } => (
+            expect_int(
+                fields
+                    .get::<ttrpg_ast::Name>(&"level".into())
+                    .cloned()
+                    .unwrap(),
+                "level",
+            ),
+            fields
+                .get::<ttrpg_ast::Name>(&"school".into())
+                .cloned()
+                .unwrap(),
+        ),
+        other => panic!("expected Struct for SpellDef, got {other:?}"),
+    };
+    assert_eq!(level, 1);
+    match school {
+        Value::EnumVariant { variant, .. } => assert_eq!(variant.as_str(), "Enchantment"),
+        other => panic!("expected Enchantment variant, got {other:?}"),
+    }
+}
+
+#[test]
+fn sleep_hd_category_classification() {
+    let (program, result) = compile_all();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NullHandler;
+
+    use ttrpg_interp::value::DiceExpr;
+
+    // (dice_count, dice_sides, modifier) -> expected_category
+    let cases = [
+        ((0, 4, 0), 0),  // <1 HD (e.g. kobold 1d4 mapped as 0d4)
+        ((1, 8, -1), 0),  // 1-1 HD
+        ((1, 8, 0), 0),   // 1 HD (orc)
+        ((1, 8, 1), 1),   // 1+1 HD (hobgoblin)
+        ((2, 8, 0), 1),   // 2 HD (gnoll)
+        ((2, 8, 1), 2),   // 2+1 HD
+        ((3, 8, 0), 2),   // 3 HD
+        ((3, 8, 1), 3),   // 3+1 HD
+        ((4, 8, 0), 3),   // 4 HD
+        ((4, 8, 1), 4),   // 4+1 HD
+        ((4, 8, 4), 4),   // 4+4 HD
+        ((5, 8, 0), 5),   // 5 HD (immune)
+        ((6, 8, 6), 5),   // 6+6 HD troll (immune)
+    ];
+
+    for ((count, sides, modifier), expected) in &cases {
+        let hd = DiceExpr::single(*count as u32, *sides as u32, None, *modifier);
+        let val = interp
+            .evaluate_derive(
+                &state,
+                &mut handler,
+                "sleep_hd_category",
+                vec![Value::DiceExpr(hd)],
+            )
+            .unwrap();
+        assert_eq!(
+            expect_int(val, "sleep_hd_category"),
+            *expected,
+            "sleep_hd_category({count}d{sides}{modifier:+}) should be {expected}"
+        );
+    }
+}
+
+#[test]
+fn sleep_affects_weakest_first_single_category() {
+    let (program, result) = compile_all();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut state = GameState::new();
+
+    // Caster: level 3 MU -> duration = 15 rounds
+    let caster = make_caster_with_slots(
+        &mut state,
+        "Merlin",
+        "MagicUser",
+        3,
+        &standard_abilities_12(),
+        10,
+        10,
+        "Human",
+        &[(1, 2), (2, 1)],
+    );
+
+    // 5 orcs (1 HD each) — all in category 0
+    let orcs: Vec<_> = (0..5)
+        .map(|i| {
+            make_monster(
+                &mut state,
+                &format!("Orc {i}"),
+                (1, 8, 0),
+                4,
+                14,
+                vec![],
+            )
+        })
+        .collect();
+
+    // Roll 4d4 for category 0 = 3 (put 3 orcs to sleep out of 5)
+    let state = run_function_with_rolls(
+        &interp,
+        state,
+        vec![roll_nd(4, 4, vec![1, 1, 0, 1])],
+        "resolve_sleep",
+        vec![
+            Value::Entity(caster),
+            Value::List(orcs.iter().map(|e| Value::Entity(*e)).collect()),
+        ],
+    );
+
+    // First 3 should be sleeping, last 2 should not.
+    for (i, orc) in orcs.iter().enumerate() {
+        let sleeping = has_condition(&state, orc, "Sleeping");
+        if i < 3 {
+            assert!(sleeping, "Orc {i} should be Sleeping");
+        } else {
+            assert!(!sleeping, "Orc {i} should NOT be Sleeping");
+        }
+    }
+}
+
+#[test]
+fn sleep_multiple_hd_categories() {
+    let (program, result) = compile_all();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut state = GameState::new();
+
+    let caster = make_caster_with_slots(
+        &mut state,
+        "Merlin",
+        "MagicUser",
+        5,
+        &standard_abilities_12(),
+        10,
+        10,
+        "Human",
+        &[(1, 4), (2, 2), (3, 1)],
+    );
+
+    // Category 0 (<=1 HD): 3 orcs
+    let orc0 = make_monster(&mut state, "Orc 0", (1, 8, 0), 4, 14, vec![]);
+    let orc1 = make_monster(&mut state, "Orc 1", (1, 8, 0), 4, 14, vec![]);
+    let orc2 = make_monster(&mut state, "Orc 2", (1, 8, 0), 4, 14, vec![]);
+
+    // Category 1 (1+ to 2 HD): 2 hobgoblins (1+1 HD)
+    let hob0 = make_monster(&mut state, "Hobgoblin 0", (1, 8, 1), 6, 15, vec![]);
+    let hob1 = make_monster(&mut state, "Hobgoblin 1", (1, 8, 1), 6, 15, vec![]);
+
+    // Category 5 (immune): 1 troll (6+6 HD)
+    let troll = make_monster(&mut state, "Troll", (6, 8, 6), 36, 16, vec![]);
+
+    let targets = vec![orc0, orc1, orc2, hob0, hob1, troll];
+
+    // Rolls: 4d4 for cat 0 = 10 (all 3 orcs affected),
+    //        2d4 for cat 1 = 3 (both hobgoblins affected)
+    let state = run_function_with_rolls(
+        &interp,
+        state,
+        vec![
+            roll_nd(4, 4, vec![3, 3, 2, 2]),  // cat 0: 10 affected
+            roll_nd(2, 4, vec![2, 1]),          // cat 1: 3 affected
+        ],
+        "resolve_sleep",
+        vec![
+            Value::Entity(caster),
+            Value::List(targets.iter().map(|e| Value::Entity(*e)).collect()),
+        ],
+    );
+
+    assert!(has_condition(&state, &orc0, "Sleeping"), "orc 0 should sleep");
+    assert!(has_condition(&state, &orc1, "Sleeping"), "orc 1 should sleep");
+    assert!(has_condition(&state, &orc2, "Sleeping"), "orc 2 should sleep");
+    assert!(has_condition(&state, &hob0, "Sleeping"), "hobgoblin 0 should sleep");
+    assert!(has_condition(&state, &hob1, "Sleeping"), "hobgoblin 1 should sleep");
+    assert!(!has_condition(&state, &troll, "Sleeping"), "troll should be immune");
+}
+
+#[test]
+fn sleep_category_4_zero_or_one() {
+    let (program, result) = compile_all();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut state = GameState::new();
+
+    let caster = make_caster_with_slots(
+        &mut state,
+        "Merlin",
+        "MagicUser",
+        1,
+        &standard_abilities_12(),
+        4,
+        10,
+        "Human",
+        &[(1, 1)],
+    );
+
+    // Category 4: ogre (4+1 HD)
+    let ogre = make_monster(&mut state, "Ogre", (4, 8, 1), 20, 15, vec![]);
+
+    // d2 roll = 1 => 1-1 = 0 affected
+    let state = run_function_with_rolls(
+        &interp,
+        state,
+        vec![scripted_roll(1, 2, 0, vec![1], vec![1], 1, 1)],
+        "resolve_sleep",
+        vec![
+            Value::Entity(caster),
+            Value::List(vec![Value::Entity(ogre)]),
+        ],
+    );
+
+    assert!(!has_condition(&state, &ogre, "Sleeping"), "ogre should not sleep (d2=1, 1-1=0)");
+}
+
+#[test]
+fn sleep_category_4_affects_one() {
+    let (program, result) = compile_all();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut state = GameState::new();
+
+    let caster = make_caster_with_slots(
+        &mut state,
+        "Merlin",
+        "MagicUser",
+        2,
+        &standard_abilities_12(),
+        4,
+        10,
+        "Human",
+        &[(1, 2)],
+    );
+
+    // Category 4: ogre (4+1 HD)
+    let ogre = make_monster(&mut state, "Ogre", (4, 8, 1), 20, 15, vec![]);
+
+    // d2 roll = 2 => 2-1 = 1 affected
+    let state = run_function_with_rolls(
+        &interp,
+        state,
+        vec![scripted_roll(1, 2, 0, vec![2], vec![2], 2, 2)],
+        "resolve_sleep",
+        vec![
+            Value::Entity(caster),
+            Value::List(vec![Value::Entity(ogre)]),
+        ],
+    );
+
+    assert!(has_condition(&state, &ogre, "Sleeping"), "ogre should sleep (d2=2, 2-1=1)");
+}
+
+#[test]
+fn sleep_roll_exceeds_available_targets() {
+    let (program, result) = compile_all();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut state = GameState::new();
+
+    let caster = make_caster_with_slots(
+        &mut state,
+        "Merlin",
+        "MagicUser",
+        1,
+        &standard_abilities_12(),
+        4,
+        10,
+        "Human",
+        &[(1, 1)],
+    );
+
+    // Only 2 orcs, but 4d4 roll = 12 (more than available)
+    let orc0 = make_monster(&mut state, "Orc 0", (1, 8, 0), 4, 14, vec![]);
+    let orc1 = make_monster(&mut state, "Orc 1", (1, 8, 0), 4, 14, vec![]);
+
+    let state = run_function_with_rolls(
+        &interp,
+        state,
+        vec![roll_nd(4, 4, vec![3, 3, 3, 3])],
+        "resolve_sleep",
+        vec![
+            Value::Entity(caster),
+            Value::List(vec![Value::Entity(orc0), Value::Entity(orc1)]),
+        ],
+    );
+
+    assert!(has_condition(&state, &orc0, "Sleeping"), "orc 0 should sleep");
+    assert!(has_condition(&state, &orc1, "Sleeping"), "orc 1 should sleep");
 }
