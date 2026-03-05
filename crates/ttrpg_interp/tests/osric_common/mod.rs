@@ -250,6 +250,62 @@ pub fn classing_mode(variant: &str) -> Value {
     enum_variant("ClassingMode", variant)
 }
 
+/// Build a multi-classed Character entity with multiple ClassLevel entries.
+pub fn make_multiclass_character(
+    state: &mut GameState,
+    name: &str,
+    classes: &[(&str, i64)],
+    ancestry_name: &str,
+) -> EntityRef {
+    let mut ability_map = BTreeMap::new();
+    for &(ab, score) in &standard_abilities_14() {
+        ability_map.insert(ability(ab), Value::Int(score));
+    }
+
+    let class_levels: Vec<Value> = classes
+        .iter()
+        .map(|(c, l)| class_level_struct(c, *l, 0))
+        .collect();
+
+    let mode = if classes.len() > 1 { "Multi" } else { "Single" };
+
+    let mut fields = FxHashMap::default();
+    fields.insert(Name::from("name"), Value::Str(name.to_string()));
+    fields.insert(Name::from("classes"), Value::List(class_levels));
+    fields.insert(Name::from("classing_mode"), classing_mode(mode));
+    fields.insert(
+        Name::from("ancestry"),
+        enum_variant("Ancestry", ancestry_name),
+    );
+    fields.insert(
+        Name::from("alignment"),
+        enum_variant("Alignment", "TrueNeutral"),
+    );
+    fields.insert(Name::from("abilities"), Value::Map(ability_map));
+    fields.insert(Name::from("HitPoints"), hit_points_group(20));
+    fields.insert(Name::from("base_movement"), feet(120));
+    fields.insert(Name::from("gold"), Value::Int(0));
+    fields.insert(Name::from("saving_throws"), Value::Option(None));
+    fields.insert(
+        Name::from("EquipmentSlots"),
+        equipment_slots_group(Value::Option(None), Value::Option(None)),
+    );
+
+    state.add_entity("Character", fields)
+}
+
+/// Standard abilities all at 14 (for multi-class tests).
+pub fn standard_abilities_14() -> Vec<(&'static str, i64)> {
+    vec![
+        ("STR", 14),
+        ("DEX", 14),
+        ("CON", 14),
+        ("INT", 14),
+        ("WIS", 14),
+        ("CHA", 14),
+    ]
+}
+
 pub fn monster_attack(name: &str, count: u32, sides: u32, bonus: i64) -> Value {
     Value::Struct {
         name: Name::from("MonsterAttack"),
@@ -834,6 +890,10 @@ pub fn all_osric_sources() -> Vec<(String, String)> {
         (
             "osric/osric_turn_undead.ttrpg".to_string(),
             include_str!("../../../../osric/osric_turn_undead.ttrpg").to_string(),
+        ),
+        (
+            "osric/osric_multiclass.ttrpg".to_string(),
+            include_str!("../../../../osric/osric_multiclass.ttrpg").to_string(),
         ),
     ]
 }

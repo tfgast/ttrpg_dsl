@@ -1,0 +1,247 @@
+// ============================================================
+// OSRIC 3.0 Multi-Classing Rules
+//
+// Non-human characters may combine 2-3 classes simultaneously.
+// Permitted combinations depend on ancestry. XP is split
+// equally between classes (fractions dropped). HP gains are
+// averaged across classes. Best attack/save table applies.
+// Armour restricted to most restrictive class.
+//
+// Reference: OSRIC 3.0 Player Guide §1.3.11 (p.69),
+//            ancestry sections §1.2.1–1.2.6
+// ============================================================
+
+use "OSRIC"
+use "OSRIC Classes"
+use "OSRIC Character"
+use "OSRIC Initiative"
+
+system "OSRIC Multiclass" {
+
+    // ========================================================
+    //  VALID MULTI-CLASS COMBINATIONS
+    //
+    //  Each ancestry has a fixed set of allowed multi-class
+    //  combos. Humans cannot multi-class (they dual-class
+    //  instead). Listed per ancestry sections in the PG.
+    //
+    //  Encoding: each combo is a sorted list<Class>.
+    //  Validation checks that the character's class set
+    //  matches one of the ancestry's permitted combos.
+    // ========================================================
+
+    // Dwarf: fighter/thief
+    derive dwarf_multiclass_combos() -> list<list<Class>> {
+        [
+            [Fighter, Thief]
+        ]
+    }
+
+    // Elf: fighter/magic-user, fighter/thief, magic-user/thief,
+    //       fighter/magic-user/thief
+    derive elf_multiclass_combos() -> list<list<Class>> {
+        [
+            [Fighter, MagicUser],
+            [Fighter, Thief],
+            [MagicUser, Thief],
+            [Fighter, MagicUser, Thief]
+        ]
+    }
+
+    // Gnome: fighter/illusionist, fighter/thief, illusionist/thief
+    derive gnome_multiclass_combos() -> list<list<Class>> {
+        [
+            [Fighter, Illusionist],
+            [Fighter, Thief],
+            [Illusionist, Thief]
+        ]
+    }
+
+    // Half-Elf: cleric/fighter, cleric/ranger, cleric/magic-user,
+    //           fighter/magic-user, fighter/thief,
+    //           cleric/fighter/magic-user, fighter/magic-user/thief
+    derive half_elf_multiclass_combos() -> list<list<Class>> {
+        [
+            [Class.Cleric, Fighter],
+            [Class.Cleric, Ranger],
+            [Class.Cleric, MagicUser],
+            [Fighter, MagicUser],
+            [Fighter, Thief],
+            [Class.Cleric, Fighter, MagicUser],
+            [Fighter, MagicUser, Thief]
+        ]
+    }
+
+    // Half-Orc: cleric/fighter, cleric/thief, cleric/assassin,
+    //           fighter/thief, fighter/assassin
+    derive half_orc_multiclass_combos() -> list<list<Class>> {
+        [
+            [Class.Cleric, Fighter],
+            [Class.Cleric, Thief],
+            [Assassin, Class.Cleric],
+            [Fighter, Thief],
+            [Assassin, Fighter]
+        ]
+    }
+
+    // Halfling: fighter/thief
+    derive halfling_multiclass_combos() -> list<list<Class>> {
+        [
+            [Fighter, Thief]
+        ]
+    }
+
+    // Dispatch to ancestry-specific combos. Returns empty for Human.
+    derive multiclass_combos_for(ancestry: Ancestry) -> list<list<Class>> {
+        match ancestry {
+            Dwarf    => dwarf_multiclass_combos(),
+            Elf      => elf_multiclass_combos(),
+            Gnome    => gnome_multiclass_combos(),
+            HalfElf  => half_elf_multiclass_combos(),
+            HalfOrc  => half_orc_multiclass_combos(),
+            Halfling => halfling_multiclass_combos(),
+            Human    => []
+        }
+    }
+
+    // Sort a list of classes for comparison. Uses enum ordinal
+    // (Assassin=0..Thief=9). We build a sorted copy by iterating
+    // the enum in order and collecting matches.
+    derive sort_classes(classes: list<Class>) -> list<Class> {
+        let all_ordered = [Assassin, Class.Cleric, Class.Druid, Fighter, Illusionist, MagicUser, Monk, Paladin, Ranger, Thief]
+        [c for c in all_ordered if any([x == c for x in classes])]
+    }
+
+    // Check if two sorted class lists are equal.
+    derive classes_equal(a: list<Class>, b: list<Class>) -> bool {
+        if len(a) != len(b) {
+            false
+        } else if len(a) == 0 {
+            true
+        } else if len(a) == 2 {
+            first(a).unwrap() == first(b).unwrap() && last(a).unwrap() == last(b).unwrap()
+        } else {
+            // 3-class combo
+            first(a).unwrap() == first(b).unwrap() && a[1] == b[1] && last(a).unwrap() == last(b).unwrap()
+        }
+    }
+
+    // Check if a class combo appears in a list of valid combos.
+    derive combo_in_list(combo: list<Class>, combos: list<list<Class>>) -> bool {
+        any([classes_equal(combo, valid) for valid in combos])
+    }
+
+    // Validate that a multi-class combination is legal for the ancestry.
+    // Rules: non-human, 2-3 classes, combo in ancestry's permitted list.
+    derive is_valid_multiclass(ancestry: Ancestry, classes: list<Class>) -> bool {
+        if ancestry == Ancestry.Human { false }
+        else if len(classes) < 2 { false }
+        else if len(classes) > 3 { false }
+        else {
+            let sorted = sort_classes(classes)
+            let valid_combos = multiclass_combos_for(ancestry)
+            combo_in_list(sorted, valid_combos)
+        }
+    }
+
+
+    // ========================================================
+    //  XP SPLITTING
+    //
+    //  XP earned is divided equally among all classes.
+    //  Fractions are dropped. Even if a class has reached
+    //  its level limit, it still receives its share.
+    //  §1.3.11: "divide it up equally between your classes,
+    //  and drop any fractions"
+    // ========================================================
+
+    derive split_xp(xp_earned: int, num_classes: int) -> int {
+        floor(xp_earned / num_classes)
+    }
+
+
+    // ========================================================
+    //  MULTI-CLASS HP GAIN
+    //
+    //  When gaining a level: roll class HD + CON modifier,
+    //  then divide by number of classes, drop fractions.
+    //  Minimum 1 HP per level gain.
+    //  §1.3.11: "rolling the right dice for your class,
+    //  applying your constitution modifier if any, and then
+    //  dividing by the number of classes you have"
+    // ========================================================
+
+    derive multiclass_hp_gain(die_roll: int, con_modifier: int, num_classes: int) -> int {
+        max(1, floor((die_roll + con_modifier) / num_classes))
+    }
+
+
+    // ========================================================
+    //  EFFECTIVE ARMOUR PERMISSION (MULTI-CLASS)
+    //
+    //  Multi-classed characters use the most restrictive
+    //  armour permission from any of their classes.
+    //  §1.3.11 + ancestry sections: "the least restrictive
+    //  of your classes' armour restrictions...apply to you"
+    //  (actually: most restrictive, despite the wording —
+    //  the examples clarify this).
+    //
+    //  Permission ordering (most → least restrictive):
+    //  no_armour < leather_only < leather_wooden < leather_shield < any_armour
+    // ========================================================
+
+    derive armour_permission_rank(perm: ArmourPermission) -> int {
+        match perm {
+            no_armour       => 0,
+            leather_only    => 1,
+            leather_wooden  => 2,
+            leather_shield  => 3,
+            any_armour      => 4
+        }
+    }
+
+    derive armour_permission_from_rank(rank: int) -> ArmourPermission {
+        match {
+            rank <= 0 => ArmourPermission.no_armour,
+            rank == 1 => ArmourPermission.leather_only,
+            rank == 2 => ArmourPermission.leather_wooden,
+            rank == 3 => ArmourPermission.leather_shield,
+            _         => ArmourPermission.any_armour
+        }
+    }
+
+    // Most restrictive armour permission across all of a character's classes.
+    derive effective_armour_permission(char: Character) -> ArmourPermission {
+        let ranks = [armour_permission_rank(class_def(cl.class).armour) for cl in char.classes]
+        let min_rank = first(sort(ranks)).unwrap()
+        armour_permission_from_rank(min_rank)
+    }
+
+
+    // ========================================================
+    //  NUMBER OF CLASSES
+    //
+    //  Convenience derive — used for XP splitting and HP
+    //  averaging calculations.
+    // ========================================================
+
+    derive num_classes(char: Character) -> int {
+        len(char.classes)
+    }
+
+
+    // ========================================================
+    //  MULTI-CLASS FIGHTER ATTACK CHECK
+    //
+    //  A multi-class fighter-group character (Fighter, Paladin,
+    //  Ranger) still gets multiple attacks at high level.
+    //  Check if ANY class in the character's list qualifies.
+    // ========================================================
+
+    derive has_any_fighter_multi_attack(char: Character) -> bool {
+        any([
+            has_fighter_multi_attack(cl.class, cl.level)
+            for cl in char.classes
+        ])
+    }
+}
