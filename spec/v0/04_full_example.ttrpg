@@ -522,6 +522,27 @@ system "D&D 5e Combat" {
     }
 
 
+    // --- Condition lifecycle hooks (on_apply / on_remove) ---
+    //
+    // Conditions can include imperative blocks that execute when the
+    // condition is applied or removed. These have hook-like semantics
+    // (mutation, dice, emit) but cannot call apply_condition(),
+    // remove_condition(), revoke(invocation), or invocation().
+
+    // Burning: deals initial fire damage on application, emits events
+    condition Burning(fire_damage: int) on bearer: Character {
+        on_apply {
+            let dmg: RollResult = roll(dice(fire_damage, 6))
+            bearer.HP -= dmg.total
+            emit Damaged(target: bearer, attacker: bearer, amount: dmg.total)
+        }
+
+        on_remove {
+            // Cleanup: nothing special, but fires for logging/UI
+        }
+    }
+
+
     // --- Cost modification (modify Action.cost) ---
     //
     // Conditions can override an action's cost using `.cost` modify

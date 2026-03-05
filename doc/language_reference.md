@@ -314,6 +314,37 @@ condition Prone on bearer: Character {
 Modify targets: name, `[#tag]`, `[returns Type]`, `[has param: Type?]`
 Cost modify: `modify Dash.cost(actor: bearer) { cost = bonus_action }`
 
+#### Lifecycle Hooks (on_apply / on_remove)
+
+Conditions can include imperative blocks that execute when applied or removed.
+
+```
+condition Burning(damage: int) on bearer: Character {
+    on_apply {
+        emit StatusGained(target: bearer, status: "Burning")
+        bearer.took_fire_damage = true
+    }
+    on_remove {
+        emit StatusLost(target: bearer, status: "Burning")
+    }
+    modify fire_resistance(target: bearer) { ... }
+}
+```
+
+At most one `on_apply` and one `on_remove` per condition.
+
+**Capabilities:** mutation, dice, emit, call derives/mechanics/functions (hook-like semantics).
+
+**Restrictions (checker-enforced):** `apply_condition()`, `remove_condition()`, `revoke(invocation)`, `invocation()` are forbidden. `revoke entity.Group` is allowed.
+
+**Trigger points:**
+- `on_apply`: fires before activation (modify/suppress not yet in effect). Error prevents application.
+- `on_remove`: fires before removal (modify/suppress still in effect). Error does NOT prevent removal.
+
+**Scoping:** `bearer` + condition parameters in scope. `invocation()` unavailable.
+
+**Inheritance:** with `extends`, ancestor lifecycle blocks run first (DFS post-order).
+
 ### Prompt
 
 ```
@@ -513,5 +544,5 @@ Imports are NOT transitive.
 - Comments: `// line comment` (no block comments)
 - NL suppressed: inside `()` `[]`; after `+ - * / || && == != >= <= in => -> = += -=`; after `{ , : | #`
 - Reserved keywords: `let` `if` `else` `match` `true` `false` `none` `in` `for`
-- Soft keywords (usable as identifiers): `system` `use` `group` `enum` `struct` `entity` `derive` `mechanic` `function` `action` `reaction` `hook` `condition` `prompt` `option` `event` `move` `cost` `tag` `table` `unit` `suffix` `requires` `resolve` `modify` `suppress` `trigger` `roll` `on` `returns` `when` `enabled` `hint` `suggest` `description` `default` `result` `with` `has` `include` `as` `grant` `revoke` `emit` `free` `ordered` `extends` `restricted`
+- Soft keywords (usable as identifiers): `system` `use` `group` `enum` `struct` `entity` `derive` `mechanic` `function` `action` `reaction` `hook` `condition` `prompt` `option` `event` `move` `cost` `tag` `table` `unit` `suffix` `requires` `resolve` `modify` `suppress` `trigger` `roll` `on` `returns` `when` `enabled` `hint` `suggest` `description` `default` `result` `with` `has` `include` `as` `grant` `revoke` `emit` `free` `ordered` `extends` `restricted` `on_apply` `on_remove`
 - Dice literals take precedence over unit literals (`2d6` is dice, not unit)

@@ -60,7 +60,7 @@
 //     requires  resolve  modify  suppress  trigger  roll  on  returns
 //     when  enabled  hint  suggest  description  default  result
 //     with  with_budget  has  include  as  grant  revoke  emit  free  ordered
-     restricted
+//     restricted  on_apply  on_remove
 //
 // Soft keywords CAN be used as field names, variable names, and
 // enum variants. The parser distinguishes based on position:
@@ -343,7 +343,23 @@ condition_decl  = "condition" IDENT params? extends_clause?
                       "on" IDENT ":" constrained_type "{" condition_clause* "}"
 extends_clause  = "extends" IDENT ("," IDENT)*
 
-condition_clause = modify_clause | suppress_clause
+condition_clause = modify_clause | suppress_clause | lifecycle_clause
+lifecycle_clause = ("on_apply" | "on_remove") block
+// At most one on_apply and one on_remove per condition (parser error on
+// duplicates). Lifecycle blocks have hook-like execution semantics: they
+// can mutate entity state, emit events, roll dice, and call derives,
+// mechanics, and functions. Restrictions: apply_condition(),
+// remove_condition(), revoke(invocation), and invocation() are forbidden
+// inside lifecycle blocks (checker + runtime enforced).
+//
+// `on_apply` fires before the condition activates (modify/suppress not
+// yet in effect). If it errors, the condition is never applied.
+// `on_remove` fires before the condition is stripped (modify/suppress
+// still in effect). If it errors, the condition is still removed.
+//
+// `on_apply` and `on_remove` are soft keywords — they are valid as
+// identifiers elsewhere in the language. The parser recognizes them
+// only in condition body position.
 
 modify_clause   = "modify" modify_target "(" modify_bindings? ")" modify_body
                 | "modify" IDENT "." "cost" "(" modify_bindings? ")" cost_modify_body

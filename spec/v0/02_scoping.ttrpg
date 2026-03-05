@@ -33,8 +33,10 @@
 //
 // function, action, reaction, and hook can mutate entity state and emit events.
 // mechanic can call roll() but CANNOT assign to entity fields.
-// condition does NOT mutate — its modify clauses are declarative overlays
+// condition does NOT mutate via modify/suppress — those are declarative overlays
 //   that alter computed results, not imperative assignments (see below).
+//   However, conditions MAY include on_apply/on_remove lifecycle hooks that
+//   have hook-like mutation semantics (see "Condition lifecycle hooks" below).
 //
 // Functions are general-purpose subroutines. They can do everything an
 // action resolve block can except: no receiver (`on`), no cost/requires
@@ -57,6 +59,8 @@
 //   function         → can call derives, mechanics, functions, actions, prompts, builtins
 //   action/reaction/hook resolve → can call derives, mechanics, functions, actions, prompts, builtins
 //   condition modify → can call derives, mechanics, builtins (no actions, functions, prompts)
+//   condition on_apply/on_remove → can call derives, mechanics, functions, builtins, emit
+//       (NO apply_condition, remove_condition, revoke(invocation), invocation())
 //   trigger binding  → side-effect-free builtins only
 
 
@@ -348,6 +352,99 @@ condition Prone on bearer: Character {
 //   - `cost free` is valid on both actions and reactions.
 
 
+// --- Condition lifecycle hooks (on_apply / on_remove) ---
+//
+// Conditions can include imperative lifecycle blocks that execute when
+// the condition is applied to or removed from an entity. These are
+// declared alongside modify and suppress clauses inside the condition
+// body. At most one `on_apply` and one `on_remove` per condition.
+//
+// Lifecycle blocks have hook-like execution semantics:
+//   - Can mutate entity state
+//   - Can emit events
+//   - Can roll dice
+//   - Can call derives, mechanics, functions
+//
+// Scoping: `bearer` (the receiver) and condition parameters are in scope.
+// `invocation()` is NOT available (checker error).
+//
+// RESTRICTIONS (enforced by checker + runtime):
+//   - apply_condition() — forbidden (prevents reentrancy)
+//   - remove_condition() — forbidden (same reasoning)
+//   - revoke(invocation) — forbidden (removes conditions)
+//   - invocation() — forbidden (no meaningful use)
+//   Note: `revoke entity.Group` (optional group revocation) IS allowed.
+//   These restrictions are direct-only. A lifecycle block may emit an
+//   event whose hook calls apply_condition() — that indirect path is
+//   not transitively prevented.
+//
+// TRIGGER POINTS:
+//
+//   on_apply fires immediately BEFORE the condition is activated.
+//   The condition's modify/suppress clauses are NOT yet in effect.
+//   If on_apply succeeds, the condition activates normally.
+//   If on_apply errors, the condition is never applied. Side effects
+//   from the partial execution (mutations, emits) are not undone —
+//   consistent with hook error semantics (fire-and-forget).
+//
+//   on_remove fires immediately BEFORE the condition is stripped.
+//   The condition's modify/suppress clauses ARE still in effect.
+//   Fires on: remove_condition(), revoke(invocation), future auto-expiry.
+//   When remove_condition() matches multiple instances, on_remove fires
+//   once per instance in gained_at order (oldest first). All matched
+//   instances are removed regardless of individual on_remove errors;
+//   the first error is propagated after all removals complete.
+//   If on_remove errors, the condition is STILL removed (removal must
+//   succeed for state consistency).
+//
+// INHERITANCE (extends):
+//   If `condition Stunned extends Incapacitated` and both have lifecycle
+//   blocks, ancestor blocks run first (DFS post-order):
+//     on_apply:  Incapacitated.on_apply → Stunned.on_apply
+//     on_remove: Incapacitated.on_remove → Stunned.on_remove
+//   If an ancestor's on_apply errors, descendant blocks do not run and
+//   the condition is not applied.
+//
+// DESIGN PRINCIPLE:
+//   Conditions that imply other conditions should use `extends`, not
+//   imperative apply_condition() inside on_apply. `extends` gives
+//   automatic inheritance of modify/suppress clauses and automatic
+//   cleanup on removal.
+
+// EXAMPLE: lifecycle hooks for status tracking and cleanup
+condition Burning(damage_per_tick: int) on bearer: Character {
+    on_apply {
+        emit StatusGained(target: bearer, status: "Burning")
+        bearer.took_fire_damage = true
+    }
+
+    on_remove {
+        emit StatusLost(target: bearer, status: "Burning")
+    }
+
+    modify fire_resistance(target: bearer) {
+        result.amount = result.amount - damage_per_tick
+    }
+}
+
+// EXAMPLE: lifecycle hooks with dice and mutation
+condition Poisoned(potency: int) on bearer: Character {
+    on_apply {
+        let initial_damage: RollResult = roll(dice(potency, 6))
+        bearer.HP -= initial_damage.total
+        emit Damaged(target: bearer, amount: initial_damage.total)
+    }
+
+    on_remove {
+        bearer.poisoned_flag = false
+    }
+
+    modify saving_throw(target: bearer) {
+        mode = disadvantage
+    }
+}
+
+
 // --- Cost modification (modify Action.cost) ---
 //
 // Conditions can override an action's cost using the `.cost` suffix
@@ -528,7 +625,8 @@ hook Regenerate on creature: Character (
 // The host receives the event payload and decides which reactions
 // to offer to the player.
 //
-// Emit is only allowed in action, reaction, or hook resolve blocks.
+// Emit is allowed in action, reaction, hook resolve blocks, and
+// condition lifecycle blocks (on_apply / on_remove).
 // It is a statement (fire-and-forget), not an expression — it always
 // returns unit.
 //

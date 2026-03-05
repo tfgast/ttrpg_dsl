@@ -513,7 +513,31 @@ condition Prone on bearer: Character {
         mode = advantage
     }
 }
+
+// Condition with lifecycle hooks (on_apply / on_remove)
+// condition Poisoned(potency: int) on bearer: Character {
+//     on_apply {
+//         let dmg: RollResult = roll(dice(potency, 6))
+//         bearer.HP -= dmg.total
+//     }
+//     on_remove {
+//         bearer.poisoned_flag = false
+//     }
+//     modify saving_throw(target: bearer) {
+//         mode = disadvantage
+//     }
+// }
 ```
+
+**Lifecycle hooks (on_apply / on_remove):**
+
+- At most one `on_apply` and one `on_remove` per condition
+- Hook-like capabilities: mutation, dice, emit, call derives/mechanics/functions
+- **Forbidden:** `apply_condition()`, `remove_condition()`, `revoke(invocation)`, `invocation()`
+- `on_apply` fires before activation — error prevents application
+- `on_remove` fires before removal — error does NOT prevent removal
+- `bearer` + condition params in scope; `invocation()` unavailable
+- Use `extends` (not `apply_condition` in on_apply) for conditions that imply other conditions
 
 ### Event
 
@@ -891,6 +915,62 @@ condition CunningAction on bearer: Character {
     }
 }
 ```
+
+### Condition with Lifecycle Hooks (on_apply / on_remove)
+
+```ttrpg
+entity Character {
+    name: string
+    HP: resource(0..=max_HP)
+    max_HP: int
+    poisoned_flag: bool = false
+}
+
+event StatusGained(target: Character, status: string) {}
+event StatusLost(target: Character, status: string) {}
+event Damaged(target: Character, amount: int) {}
+
+enum RollMode { normal, advantage, disadvantage }
+
+mechanic saving_throw(target: Character, mode: RollMode = normal) -> RollResult {
+    let base: DiceExpr = match mode {
+        normal       => 1d20,
+        advantage    => 2d20kh1,
+        disadvantage => 2d20kl1
+    }
+    roll(base)
+}
+
+condition Poisoned(potency: int) on bearer: Character {
+    on_apply {
+        let dmg: RollResult = roll(dice(potency, 6))
+        bearer.HP -= dmg.total
+        bearer.poisoned_flag = true
+        emit StatusGained(target: bearer, status: "Poisoned")
+        emit Damaged(target: bearer, amount: dmg.total)
+    }
+
+    on_remove {
+        bearer.poisoned_flag = false
+        emit StatusLost(target: bearer, status: "Poisoned")
+    }
+
+    modify saving_throw(target: bearer) {
+        mode = disadvantage
+    }
+}
+```
+
+**Key rules:**
+
+- At most one `on_apply` and one `on_remove` per condition
+- Hook-like capabilities: mutation, dice rolls, emit events, call derives/mechanics/functions
+- **Forbidden inside lifecycle blocks:** `apply_condition()`, `remove_condition()`, `revoke(invocation)`, `invocation()` (prevents reentrancy). `revoke entity.Group` is allowed.
+- `on_apply` fires **before** activation (modify/suppress not yet in effect). Error → condition never applied.
+- `on_remove` fires **before** removal (modify/suppress still in effect). Error → condition still removed.
+- `bearer` + condition parameters in scope. `invocation()` not available.
+- With `extends`, ancestor lifecycle blocks run first (DFS post-order).
+- **Design principle:** use `extends` for conditions that imply others, not `apply_condition()` in on_apply.
 
 ### Resistance Check (guard match)
 
