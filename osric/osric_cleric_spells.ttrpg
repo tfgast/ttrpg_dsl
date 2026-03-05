@@ -128,7 +128,7 @@ system "OSRIC Cleric Spells" {
 
     event SpellApplied(caster: Character, target: entity, spell_name: string) {}
 
-    function resolve_bless(caster: Character, targets: list<Character>) {
+    function resolve_bless(caster: Character, targets: list<entity>) {
         for target in targets {
             apply_condition(target, Blessed, Duration.rounds(6))
             emit SpellApplied(caster: caster, target: target, spell_name: "Bless")
