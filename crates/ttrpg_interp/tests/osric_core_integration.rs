@@ -164,7 +164,13 @@ fn osric_core_has_all_enums() {
         "missing SpecWeapon enum"
     );
 
-    assert_eq!(enums.len(), 26, "expected 26 enums, got {enums:?}");
+    // SpellId: 8 variants (CureLightWounds, CauseLightWounds, Bless, Curse, HoldPerson, MagicMissile, Sleep, Fireball)
+    assert!(
+        enums.contains(&("SpellId", 8)),
+        "missing SpellId enum"
+    );
+
+    assert_eq!(enums.len(), 27, "expected 27 enums, got {enums:?}");
 }
 
 #[test]
@@ -288,8 +294,13 @@ fn osric_core_has_all_structs() {
     );
     // HpRoll: class, level, amount
     assert!(structs.contains(&("HpRoll", 3)), "missing HpRoll struct");
+    // MemorizedSpell: id, level
+    assert!(
+        structs.contains(&("MemorizedSpell", 2)),
+        "missing MemorizedSpell struct"
+    );
 
-    assert_eq!(structs.len(), 12, "expected 12 structs, got {structs:?}");
+    assert_eq!(structs.len(), 13, "expected 13 structs, got {structs:?}");
 }
 
 // ── Unit type ──────────────────────────────────────────────────

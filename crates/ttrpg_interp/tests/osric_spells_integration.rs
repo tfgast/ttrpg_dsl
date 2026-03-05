@@ -459,8 +459,13 @@ fn setup_caster() -> (
     (program, result, state, caster)
 }
 
+/// Create a SpellId enum variant value.
+fn spell_id(variant: &str) -> Value {
+    enum_variant("SpellId", variant)
+}
+
 /// Read the Spellcasting group fields from a caster.
-/// Returns (memorised_spells as strings, slots_used[1], slots_used[2]).
+/// Returns (memorised SpellId variant names, slots_used[1], slots_used[2]).
 fn read_spellcasting(
     state: &GameState,
     entity: &ttrpg_interp::state::EntityRef,
@@ -473,13 +478,18 @@ fn read_spellcasting(
         other => panic!("expected Struct for Spellcasting, got {other:?}"),
     };
 
-    // Extract memorised_spells
+    // Extract memorised_spells (list of MemorizedSpell structs)
     let spells: Vec<String> = match fields.get::<Name>(&"memorised_spells".into()) {
         Some(Value::List(items)) => items
             .iter()
             .map(|v| match v {
-                Value::Str(s) => s.clone(),
-                other => panic!("expected string in memorised_spells, got {other:?}"),
+                Value::Struct { fields, .. } => {
+                    match fields.get::<Name>(&"id".into()) {
+                        Some(Value::EnumVariant { variant, .. }) => variant.to_string(),
+                        other => panic!("expected SpellId enum in MemorizedSpell.id, got {other:?}"),
+                    }
+                }
+                other => panic!("expected MemorizedSpell struct in memorised_spells, got {other:?}"),
             })
             .collect(),
         other => panic!("expected list for memorised_spells, got {other:?}"),
@@ -534,11 +544,11 @@ fn memorise_spell_fills_slot_and_adds_to_list() {
         &mut handler,
         "MemoriseSpell",
         caster,
-        vec![Value::Str("Cure Light Wounds".into()), Value::Int(1)],
+        vec![spell_id("CureLightWounds"), Value::Int(1)],
     );
 
     let (spells, used_1, _used_2) = read_spellcasting(&state, &caster);
-    assert_eq!(spells, vec!["Cure Light Wounds"]);
+    assert_eq!(spells, vec!["CureLightWounds"]);
     assert_eq!(used_1, 1);
 }
 
@@ -555,7 +565,7 @@ fn memorise_spell_fails_when_slots_full() {
         &mut handler,
         "MemoriseSpell",
         caster,
-        vec![Value::Str("Cure Light Wounds".into()), Value::Int(1)],
+        vec![spell_id("CureLightWounds"), Value::Int(1)],
     );
     let mut handler = ScriptedHandler::with_responses(vec![]);
     let state = run_action(
@@ -564,7 +574,7 @@ fn memorise_spell_fails_when_slots_full() {
         &mut handler,
         "MemoriseSpell",
         caster,
-        vec![Value::Str("Bless".into()), Value::Int(1)],
+        vec![spell_id("Bless"), Value::Int(1)],
     );
 
     // Third memorise should fail (only 2 first-level slots)
@@ -575,7 +585,7 @@ fn memorise_spell_fails_when_slots_full() {
         &mut handler,
         "MemoriseSpell",
         caster,
-        vec![Value::Str("Command".into()), Value::Int(1)],
+        vec![spell_id("CauseLightWounds"), Value::Int(1)],
     );
 
     // Verify requires guard rejected: state unchanged (still 2 spells, slots_used still 2)
@@ -596,7 +606,7 @@ fn memorise_same_spell_multiple_times() {
         &mut handler,
         "MemoriseSpell",
         caster,
-        vec![Value::Str("Cure Light Wounds".into()), Value::Int(1)],
+        vec![spell_id("CureLightWounds"), Value::Int(1)],
     );
     let mut handler = ScriptedHandler::with_responses(vec![]);
     let state = run_action(
@@ -605,11 +615,11 @@ fn memorise_same_spell_multiple_times() {
         &mut handler,
         "MemoriseSpell",
         caster,
-        vec![Value::Str("Cure Light Wounds".into()), Value::Int(1)],
+        vec![spell_id("CureLightWounds"), Value::Int(1)],
     );
 
     let (spells, used_1, _) = read_spellcasting(&state, &caster);
-    assert_eq!(spells, vec!["Cure Light Wounds", "Cure Light Wounds"]);
+    assert_eq!(spells, vec!["CureLightWounds", "CureLightWounds"]);
     assert_eq!(used_1, 2);
 }
 
@@ -628,7 +638,7 @@ fn forget_spell_removes_spell_and_frees_slot() {
         &mut handler,
         "MemoriseSpell",
         caster,
-        vec![Value::Str("Cure Light Wounds".into()), Value::Int(1)],
+        vec![spell_id("CureLightWounds"), Value::Int(1)],
     );
     let mut handler = ScriptedHandler::with_responses(vec![]);
     let state = run_action(
@@ -637,7 +647,7 @@ fn forget_spell_removes_spell_and_frees_slot() {
         &mut handler,
         "ForgetSpell",
         caster,
-        vec![Value::Str("Cure Light Wounds".into()), Value::Int(1)],
+        vec![spell_id("CureLightWounds"), Value::Int(1)],
     );
 
     let (spells, used_1, _) = read_spellcasting(&state, &caster);
@@ -657,7 +667,7 @@ fn forget_spell_fails_when_not_memorised() {
         &mut handler,
         "ForgetSpell",
         caster,
-        vec![Value::Str("Cure Light Wounds".into()), Value::Int(1)],
+        vec![spell_id("CureLightWounds"), Value::Int(1)],
     );
 
     // Verify requires guard rejected: state unchanged (empty list, slots_used still 0)
@@ -679,7 +689,7 @@ fn forget_removes_only_first_duplicate() {
         &mut handler,
         "MemoriseSpell",
         caster,
-        vec![Value::Str("Cure Light Wounds".into()), Value::Int(1)],
+        vec![spell_id("CureLightWounds"), Value::Int(1)],
     );
     let mut handler = ScriptedHandler::with_responses(vec![]);
     let state = run_action(
@@ -688,7 +698,7 @@ fn forget_removes_only_first_duplicate() {
         &mut handler,
         "MemoriseSpell",
         caster,
-        vec![Value::Str("Cure Light Wounds".into()), Value::Int(1)],
+        vec![spell_id("CureLightWounds"), Value::Int(1)],
     );
 
     // Forget one
@@ -699,11 +709,11 @@ fn forget_removes_only_first_duplicate() {
         &mut handler,
         "ForgetSpell",
         caster,
-        vec![Value::Str("Cure Light Wounds".into()), Value::Int(1)],
+        vec![spell_id("CureLightWounds"), Value::Int(1)],
     );
 
     let (spells, used_1, _) = read_spellcasting(&state, &caster);
-    assert_eq!(spells, vec!["Cure Light Wounds"], "one copy should remain");
+    assert_eq!(spells, vec!["CureLightWounds"], "one copy should remain");
     assert_eq!(used_1, 1);
 }
 
@@ -722,7 +732,7 @@ fn cast_spell_expends_slot_and_begins_casting() {
         &mut handler,
         "MemoriseSpell",
         caster,
-        vec![Value::Str("Cure Light Wounds".into()), Value::Int(1)],
+        vec![spell_id("CureLightWounds"), Value::Int(1)],
     );
 
     // Cast it (casting_time = 5 segments)
@@ -734,7 +744,7 @@ fn cast_spell_expends_slot_and_begins_casting() {
         "CastSpell",
         caster,
         vec![
-            Value::Str("Cure Light Wounds".into()),
+            spell_id("CureLightWounds"),
             Value::Int(1),
             Value::Int(5),
         ],
@@ -767,7 +777,7 @@ fn cast_spell_fails_when_not_memorised() {
         "CastSpell",
         caster,
         vec![
-            Value::Str("Cure Light Wounds".into()),
+            spell_id("CureLightWounds"),
             Value::Int(1),
             Value::Int(5),
         ],

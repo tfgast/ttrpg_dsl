@@ -30,7 +30,7 @@ system "OSRIC Spells" {
         restricted casting_invocation: option<Invocation>
         spell_slots: map<int, int> = {}
         restricted slots_used: map<int, int> = {}
-        restricted memorised_spells: list<string> = []
+        restricted memorised_spells: list<MemorizedSpell> = []
     }
 
     // ========================================================
@@ -298,9 +298,9 @@ system "OSRIC Spells" {
     //  SPELL MEMORISATION / CASTING EVENTS
     // ========================================================
 
-    event SpellMemorised(caster: Character, spell_name: string, spell_level: int) {}
-    event SpellForgotten(caster: Character, spell_name: string, spell_level: int) {}
-    event SpellCast(caster: Character, spell_name: string, spell_level: int) {}
+    event SpellMemorised(caster: Character, spell_id: SpellId, spell_level: int) {}
+    event SpellForgotten(caster: Character, spell_id: SpellId, spell_level: int) {}
+    event SpellCast(caster: Character, spell_id: SpellId, spell_level: int) {}
 
 
     // ========================================================
@@ -313,15 +313,16 @@ system "OSRIC Spells" {
     // ========================================================
 
     action MemoriseSpell on caster: Character with Spellcasting as sc (
-        spell_name: string,
+        spell_id: SpellId,
         spell_level: int
     ) {
         cost free
         requires { caster.sc.slots_used[spell_level] < caster.sc.spell_slots[spell_level] }
         resolve {
-            caster.sc.memorised_spells = caster.sc.memorised_spells.append(spell_name)
+            let entry = MemorizedSpell { id: spell_id, level: spell_level }
+            caster.sc.memorised_spells = caster.sc.memorised_spells.append(entry)
             caster.sc.slots_used[spell_level] = caster.sc.slots_used[spell_level] + 1
-            emit SpellMemorised(caster: caster, spell_name: spell_name, spell_level: spell_level)
+            emit SpellMemorised(caster: caster, spell_id: spell_id, spell_level: spell_level)
         }
     }
 
@@ -334,15 +335,16 @@ system "OSRIC Spells" {
     // ========================================================
 
     action ForgetSpell on caster: Character with Spellcasting as sc (
-        spell_name: string,
+        spell_id: SpellId,
         spell_level: int
     ) {
         cost free
-        requires { caster.sc.memorised_spells.contains(spell_name) }
+        requires { caster.sc.memorised_spells.contains(MemorizedSpell { id: spell_id, level: spell_level }) }
         resolve {
-            caster.sc.memorised_spells = caster.sc.memorised_spells.remove_first(spell_name)
+            let entry = MemorizedSpell { id: spell_id, level: spell_level }
+            caster.sc.memorised_spells = caster.sc.memorised_spells.remove_first(entry)
             caster.sc.slots_used[spell_level] = caster.sc.slots_used[spell_level] - 1
-            emit SpellForgotten(caster: caster, spell_name: spell_name, spell_level: spell_level)
+            emit SpellForgotten(caster: caster, spell_id: spell_id, spell_level: spell_level)
         }
     }
 
@@ -358,17 +360,18 @@ system "OSRIC Spells" {
     // ========================================================
 
     action CastSpell on caster: Character with Spellcasting as sc (
-        spell_name: string,
+        spell_id: SpellId,
         spell_level: int,
         casting_time: int
     ) {
         cost free
-        requires { caster.sc.memorised_spells.contains(spell_name) }
+        requires { caster.sc.memorised_spells.contains(MemorizedSpell { id: spell_id, level: spell_level }) }
         resolve {
-            caster.sc.memorised_spells = caster.sc.memorised_spells.remove_first(spell_name)
+            let entry = MemorizedSpell { id: spell_id, level: spell_level }
+            caster.sc.memorised_spells = caster.sc.memorised_spells.remove_first(entry)
             caster.sc.slots_used[spell_level] = caster.sc.slots_used[spell_level] - 1
             caster.BeginCasting(casting_time)
-            emit SpellCast(caster: caster, spell_name: spell_name, spell_level: spell_level)
+            emit SpellCast(caster: caster, spell_id: spell_id, spell_level: spell_level)
         }
     }
 

@@ -317,6 +317,33 @@ system "OSRIC" {
         description: string
     }
 
+    // --- Spell identity ---
+    // Typed spell identifier — one variant per implemented spell.
+    // Replaces string-based spell names for type-safe memorisation,
+    // casting, and registry dispatch.
+
+    enum SpellId {
+        // Cleric level 1
+        CureLightWounds,
+        CauseLightWounds,
+        Bless,
+        Curse,
+        // Cleric level 2
+        HoldPerson,
+        // Magic-User level 1
+        MagicMissile,
+        Sleep,
+        // Magic-User level 3
+        Fireball
+    }
+
+    // A memorised spell slot: bundles spell identity with the
+    // spell level it occupies (for slot accounting).
+    struct MemorizedSpell {
+        id: SpellId
+        level: int
+    }
+
     // --- Monster attack entry ---
 
     struct MonsterAttack {

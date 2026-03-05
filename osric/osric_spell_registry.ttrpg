@@ -1,0 +1,88 @@
+// ============================================================
+// OSRIC 3.0 Spell Registry
+//
+// Central dispatch for spell definitions and resolution.
+// spell_def(SpellId) -> SpellDef routes to per-spell _def derives.
+// resolve_spell(SpellId, caster, targets) routes to per-spell
+// resolve_* functions for Character-targeted spells.
+//
+// Note: Sleep targets Monsters and must be resolved directly
+// via resolve_sleep() rather than through this dispatch.
+// ============================================================
+
+use "OSRIC"
+use "OSRIC Character"
+use "OSRIC Classes"
+use "OSRIC Combat"
+use "OSRIC Conditions"
+use "OSRIC Saves"
+use "OSRIC Spells"
+use "OSRIC Cleric Spells"
+use "OSRIC MU Spells"
+
+system "OSRIC Spell Registry" {
+
+    // ========================================================
+    //  SPELL DEFINITION LOOKUP
+    //
+    //  Returns the static SpellDef for a given SpellId.
+    //  Every implemented spell must have an entry here.
+    // ========================================================
+
+    derive spell_def(id: SpellId) -> SpellDef {
+        match id {
+            SpellId.CureLightWounds  => cure_light_wounds_def(),
+            SpellId.CauseLightWounds => cause_light_wounds_def(),
+            SpellId.Bless            => bless_def(),
+            SpellId.Curse            => curse_def(),
+            SpellId.HoldPerson       => hold_person_def(),
+            SpellId.MagicMissile     => magic_missile_def(),
+            SpellId.Sleep            => sleep_def(),
+            SpellId.Fireball         => fireball_def()
+        }
+    }
+
+    // ========================================================
+    //  SPELL RESOLUTION DISPATCH
+    //
+    //  Routes spell resolution to the appropriate resolve_*
+    //  function. Accepts a target list for uniformity; single-
+    //  target spells (CLW, Cause LW) use the first element.
+    //
+    //  Sleep is excluded — it requires list<Monster> targets
+    //  and must be resolved directly via resolve_sleep().
+    // ========================================================
+
+    function resolve_spell(id: SpellId, caster: Character, targets: list<Character>) {
+        match id {
+            SpellId.CureLightWounds => {
+                let target = targets.first().unwrap()
+                resolve_cure_light_wounds(caster, target)
+            },
+            SpellId.CauseLightWounds => {
+                let target = targets.first().unwrap()
+                resolve_cause_light_wounds(caster, target)
+            },
+            SpellId.Bless => {
+                resolve_bless(caster, targets)
+            },
+            SpellId.Curse => {
+                resolve_curse(caster, targets)
+            },
+            SpellId.HoldPerson => {
+                resolve_hold_person(caster, targets)
+            },
+            SpellId.MagicMissile => {
+                resolve_magic_missile(caster, targets)
+            },
+            SpellId.Fireball => {
+                resolve_fireball(caster, targets)
+            },
+            SpellId.Sleep => {
+                // Sleep targets Monsters, not Characters.
+                // Must be resolved directly via resolve_sleep().
+            },
+            _ => {}
+        }
+    }
+}

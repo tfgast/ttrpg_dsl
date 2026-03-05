@@ -47,6 +47,7 @@ use "OSRIC Character"
 use "OSRIC Combat"
 use "OSRIC Conditions"
 use "OSRIC Spells"
+use "OSRIC Spell Registry"
 
 system "OSRIC Initiative" {
 
@@ -405,6 +406,8 @@ system "OSRIC Initiative" {
         speed_factor: int
         initiative_segment: int
         party_side: bool
+        spell_id: option<SpellId>
+        spell_targets: list<Character>
     }
 
 
@@ -445,7 +448,9 @@ system "OSRIC Initiative" {
         weapon_missile: option<MissileWeapon> = none,
         distance: Feet = 0ft,
         casting_time: int = 0,
-        dex_missile_init_adj: int = 0
+        dex_missile_init_adj: int = 0,
+        spell_id: option<SpellId> = none,
+        spell_targets: list<Character> = []
     ) -> RoundAction {
         let weapon_speed = match {
             weapon_melee.is_some() => melee_weapon_def(weapon_melee.unwrap()).speed_factor,
@@ -463,7 +468,9 @@ system "OSRIC Initiative" {
             segment: seg,
             speed_factor: weapon_speed,
             initiative_segment: initiative_segment,
-            party_side: party_side
+            party_side: party_side,
+            spell_id: spell_id,
+            spell_targets: spell_targets
         }
     }
 
@@ -551,6 +558,10 @@ system "OSRIC Initiative" {
                 // If interrupted by damage, the SpellInterruption hook
                 // already removed it and emitted SpellInterrupted.
                 remove_condition(action.combatant, CastingSpell)
+                // Apply spell effects via the registry dispatch.
+                if action.spell_id.is_some() {
+                    resolve_spell(action.spell_id.unwrap(), action.combatant, action.spell_targets)
+                }
             },
             SetAgainstChargeAction => {
                 // Resolved reactively via ChargeAction branch when
