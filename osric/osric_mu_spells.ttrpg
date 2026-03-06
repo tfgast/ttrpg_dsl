@@ -87,7 +87,7 @@ system "OSRIC MU Spells" {
         let cl = caster_level(caster, Arcane)
         let total_damage = roll(dice(cl, 6)).total
         for target in targets {
-            let result = target.MakeSavingThrow(category: SpellsUnlisted)
+            let result = target.ResistSpell(category: some(SpellsUnlisted))
             if let some(saved) = result {
                 let damage = if saved { floor(total_damage / 2) } else { total_damage }
                 target.TakeDamage(caster, damage)
@@ -103,7 +103,7 @@ system "OSRIC MU Spells" {
         let cl = caster_level(caster, Arcane)
         let total_damage = roll(dice(cl, 6)).total
         for target in targets {
-            let result = target.MakeSavingThrow(category: SpellsUnlisted)
+            let result = target.ResistSpell(category: some(SpellsUnlisted))
             if let some(saved) = result {
                 let damage = if saved { floor(total_damage / 2) } else { total_damage }
                 target.TakeDamage(caster, damage)

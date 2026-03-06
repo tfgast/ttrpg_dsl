@@ -275,10 +275,14 @@ action Attack on attacker: Character (target: Character, weapon: Weapon) #attack
 Actions may declare a return type with `-> Type`. The resolve block must produce that type. On veto or requires/cost failure, `none` is returned, so the declared type should typically be `option<T>`:
 
 ```
-action MakeSavingThrow on saver: Character (category: SaveCategory) -> option<bool> {
+action ResistSpell on target: Character (category: option<SaveCategory>) -> option<bool> {
     resolve {
-        let saves = character_best_saves(saver)
-        some(roll_saving_throw(saves, category, 0))
+        if category.is_some() {
+            let cat = category.unwrap()
+            some(roll_saving_throw(character_best_saves(target), cat, 0))
+        } else {
+            some(false)  // no save — spell lands
+        }
     }
 }
 ```

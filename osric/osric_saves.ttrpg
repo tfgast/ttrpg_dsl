@@ -273,51 +273,70 @@ system "OSRIC Saves" {
 
 
     // ========================================================
-    //  SAVING THROW ACTIONS
+    //  SPELL RESISTANCE ACTION
     //
-    //  Unified MakeSavingThrow with type-based dispatch:
+    //  Unified ResistSpell with type-based dispatch:
+    //  Determines whether a spell affects a target.
+    //
+    //  category: none for no-save spells (Magic Missile, CLW),
+    //  some(cat) for spells with a saving throw.
+    //
     //  Character overload adds stalwart (CON) and wisdom
     //  (mental) bonuses; Monster overload uses HD-based
     //  tables with no ability-score bonuses.
     //
-    //  Returns option<bool>: some(true/false) on success,
-    //  none if the action is vetoed.
+    //  Returns option<bool>:
+    //    none         — vetoed (magic resistance, anti-magic);
+    //                   spell has no effect at all
+    //    some(true)   — resisted (saved)
+    //    some(false)  — did not resist (failed save or no save)
     // ========================================================
 
-    action MakeSavingThrow on saver: Character (
-        category: SaveCategory,
+    action ResistSpell on saver: Character (
+        category: option<SaveCategory>,
         bonus: int = 0,
         is_mental: bool = false
     ) -> option<bool> {
         resolve {
-            let saves = character_best_saves(saver)
+            if category.is_some() {
+                let cat = category.unwrap()
+                let saves = character_best_saves(saver)
 
-            // Stalwart bonus: dwarves/gnomes/halflings vs aimed magic, poison, spells
-            let stalwart = if has_stalwart(saver.ancestry) && is_stalwart_category(category) {
-                stalwart_save_bonus(saver.abilities[CON])
+                // Stalwart bonus: dwarves/gnomes/halflings vs aimed magic, poison, spells
+                let stalwart = if has_stalwart(saver.ancestry) && is_stalwart_category(cat) {
+                    stalwart_save_bonus(saver.abilities[CON])
+                } else {
+                    0
+                }
+
+                // Wisdom bonus: mental saves only (charm, hold, etc.)
+                let mental = if is_mental {
+                    wis_mental_save(saver.abilities[WIS])
+                } else {
+                    0
+                }
+
+                some(roll_saving_throw(saves, cat, bonus + stalwart + mental))
             } else {
-                0
+                // No saving throw — spell lands
+                some(false)
             }
-
-            // Wisdom bonus: mental saves only (charm, hold, etc.)
-            let mental = if is_mental {
-                wis_mental_save(saver.abilities[WIS])
-            } else {
-                0
-            }
-
-            some(roll_saving_throw(saves, category, bonus + stalwart + mental))
         }
     }
 
-    action MakeSavingThrow on saver: Monster (
-        category: SaveCategory,
+    action ResistSpell on saver: Monster (
+        category: option<SaveCategory>,
         bonus: int = 0,
         is_mental: bool = false
     ) -> option<bool> {
         resolve {
-            let saves = monster_best_saves(saver)
-            some(roll_saving_throw(saves, category, bonus))
+            if category.is_some() {
+                let cat = category.unwrap()
+                let saves = monster_best_saves(saver)
+                some(roll_saving_throw(saves, cat, bonus))
+            } else {
+                some(false)
+            }
         }
     }
 }

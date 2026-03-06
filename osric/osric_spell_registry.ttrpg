@@ -10,9 +10,9 @@
 //
 // Note: Sleep targets Monsters and must be resolved directly
 // via resolve_sleep() rather than through this dispatch.
-// Saving-throw spells have separate Character/Monster resolve
-// paths for now. The unified MakeSavingThrow action dispatches
-// by receiver type (Character vs Monster) automatically.
+// The unified ResistSpell action dispatches by receiver type
+// (Character vs Monster) automatically; pass some(category)
+// for save-based spells or none for no-save spells.
 // No-save damage spells (Magic Missile, Cause Light Wounds)
 // accept entity targets directly via TakeDamage receiver
 // overloading.

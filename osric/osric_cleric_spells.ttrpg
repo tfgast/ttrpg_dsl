@@ -170,7 +170,7 @@ system "OSRIC Cleric Spells" {
 
     function resolve_curse(caster: Character, targets: list<Character>) {
         for target in targets {
-            let result = target.MakeSavingThrow(category: SpellsUnlisted)
+            let result = target.ResistSpell(category: some(SpellsUnlisted))
             if let some(saved) = result {
                 if !saved {
                     apply_condition(target, Cursed, Duration.rounds(6))
@@ -226,7 +226,7 @@ system "OSRIC Cleric Spells" {
         let duration_rounds = 4 + cl
         let save_bonus = hold_person_save_bonus(len(targets))
         for target in targets {
-            let result = target.MakeSavingThrow(category: SpellsUnlisted, bonus: save_bonus, is_mental: true)
+            let result = target.ResistSpell(category: some(SpellsUnlisted), bonus: save_bonus, is_mental: true)
             if let some(saved) = result {
                 if !saved {
                     apply_condition(target, Paralyzed, Duration.rounds(duration_rounds))

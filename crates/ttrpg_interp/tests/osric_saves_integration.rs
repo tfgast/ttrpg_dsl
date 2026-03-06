@@ -729,14 +729,14 @@ fn osric_saves_table_entry_counts() {
     }
 }
 
-// ── MakeSavingThrow action ─────────────────────────────────────
+// ── ResistSpell action ─────────────────────────────────────
 
 fn save_category(variant: &str) -> Value {
     enum_variant("SaveCategory", variant)
 }
 
-/// Helper: call MakeSavingThrow action with a scripted d20 roll.
-fn call_make_saving_throw(
+/// Helper: call ResistSpell action with a scripted d20 roll.
+fn call_resist_spell(
     saver_class: &str,
     saver_level: i64,
     saver_ancestry: &str,
@@ -774,28 +774,28 @@ fn call_make_saving_throw(
             interp.execute_action(
                 s,
                 h,
-                "MakeSavingThrow",
+                "ResistSpell",
                 saver,
                 vec![
-                    save_category(category),
+                    Value::Option(Some(Box::new(save_category(category)))),
                     Value::Int(bonus),
                     Value::Bool(is_mental),
                 ],
             )
         })
-        .unwrap_or_else(|e| panic!("MakeSavingThrow failed: {e}"));
+        .unwrap_or_else(|e| panic!("ResistSpell failed: {e}"));
 
     // Unwrap option<bool> → bool
     match val {
-        Value::Option(Some(inner)) => expect_bool(*inner, "MakeSavingThrow"),
-        other => panic!("expected option<bool> from MakeSavingThrow, got: {other:?}"),
+        Value::Option(Some(inner)) => expect_bool(*inner, "ResistSpell"),
+        other => panic!("expected option<bool> from ResistSpell, got: {other:?}"),
     }
 }
 
 #[test]
-fn make_saving_throw_passes_on_high_roll() {
+fn resist_spell_passes_on_high_roll() {
     // Human Fighter L1, death target 14, roll 16 → pass
-    let result = call_make_saving_throw(
+    let result = call_resist_spell(
         "Fighter",
         1,
         "Human",
@@ -809,9 +809,9 @@ fn make_saving_throw_passes_on_high_roll() {
 }
 
 #[test]
-fn make_saving_throw_fails_on_low_roll() {
+fn resist_spell_fails_on_low_roll() {
     // Human Fighter L1, death target 14, roll 5 → fail
-    let result = call_make_saving_throw(
+    let result = call_resist_spell(
         "Fighter",
         1,
         "Human",
@@ -825,9 +825,9 @@ fn make_saving_throw_fails_on_low_roll() {
 }
 
 #[test]
-fn make_saving_throw_natural_1_always_fails() {
+fn resist_spell_natural_1_always_fails() {
     // Human Fighter L19, death target 2, roll 1 → fail (natural 1)
-    let result = call_make_saving_throw(
+    let result = call_resist_spell(
         "Fighter",
         19,
         "Human",
@@ -841,7 +841,7 @@ fn make_saving_throw_natural_1_always_fails() {
 }
 
 #[test]
-fn make_saving_throw_stalwart_bonus_applies() {
+fn resist_spell_stalwart_bonus_applies() {
     // Dwarf Fighter L1 CON 14 (+4 stalwart), death target 14, effective 10, roll 11 → pass
     let abilities: Vec<(&str, i64)> = vec![
         ("STR", 10),
@@ -851,7 +851,7 @@ fn make_saving_throw_stalwart_bonus_applies() {
         ("WIS", 10),
         ("CHA", 10),
     ];
-    let result = call_make_saving_throw(
+    let result = call_resist_spell(
         "Fighter",
         1,
         "Dwarf",
@@ -868,7 +868,7 @@ fn make_saving_throw_stalwart_bonus_applies() {
 }
 
 #[test]
-fn make_saving_throw_stalwart_no_effect_on_breath() {
+fn resist_spell_stalwart_no_effect_on_breath() {
     // Dwarf Fighter L1 CON 14, breath target 17, no stalwart on breath, roll 11 → fail
     let abilities: Vec<(&str, i64)> = vec![
         ("STR", 10),
@@ -878,7 +878,7 @@ fn make_saving_throw_stalwart_no_effect_on_breath() {
         ("WIS", 10),
         ("CHA", 10),
     ];
-    let result = call_make_saving_throw(
+    let result = call_resist_spell(
         "Fighter",
         1,
         "Dwarf",
@@ -895,7 +895,7 @@ fn make_saving_throw_stalwart_no_effect_on_breath() {
 }
 
 #[test]
-fn make_saving_throw_no_stalwart_for_human() {
+fn resist_spell_no_stalwart_for_human() {
     // Human Fighter L1 CON 14, death target 14, no stalwart, roll 11 → fail
     let abilities: Vec<(&str, i64)> = vec![
         ("STR", 10),
@@ -905,7 +905,7 @@ fn make_saving_throw_no_stalwart_for_human() {
         ("WIS", 10),
         ("CHA", 10),
     ];
-    let result = call_make_saving_throw(
+    let result = call_resist_spell(
         "Fighter",
         1,
         "Human",
@@ -922,7 +922,7 @@ fn make_saving_throw_no_stalwart_for_human() {
 }
 
 #[test]
-fn make_saving_throw_mental_bonus_applies() {
+fn resist_spell_mental_bonus_applies() {
     // Human Cleric L1 WIS 17 (+3 mental), spells target 15, effective 12, roll 12 → pass
     let abilities: Vec<(&str, i64)> = vec![
         ("STR", 10),
@@ -932,7 +932,7 @@ fn make_saving_throw_mental_bonus_applies() {
         ("WIS", 17),
         ("CHA", 10),
     ];
-    let result = call_make_saving_throw(
+    let result = call_resist_spell(
         "Cleric",
         1,
         "Human",
@@ -949,9 +949,9 @@ fn make_saving_throw_mental_bonus_applies() {
 }
 
 #[test]
-fn make_saving_throw_bonus_param_stacks() {
+fn resist_spell_bonus_param_stacks() {
     // Human Fighter L1, death target 14, bonus 3, effective 11, roll 12 → pass
-    let result = call_make_saving_throw(
+    let result = call_resist_spell(
         "Fighter",
         1,
         "Human",
