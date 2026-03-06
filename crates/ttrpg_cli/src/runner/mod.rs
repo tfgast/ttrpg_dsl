@@ -94,6 +94,7 @@ pub struct Runner {
     roll_queue: VecDeque<i64>,
     unit_suffixes: UnitSuffixes,
     coverage: Option<Rc<RefCell<CoverageData>>>,
+    quiet: bool,
 }
 
 impl Runner {
@@ -114,6 +115,7 @@ impl Runner {
             roll_queue: VecDeque::new(),
             unit_suffixes: UnitSuffixes::new(),
             coverage: None,
+            quiet: false,
         }
     }
 
@@ -320,7 +322,8 @@ impl Runner {
             &mut self.rng,
             &mut self.roll_queue,
             &self.unit_suffixes,
-        );
+        )
+        .quiet(self.quiet);
         let bindings: rustc_hash::FxHashMap<Name, Value> = self
             .handles
             .iter()
@@ -350,6 +353,12 @@ impl Runner {
             .get(name)
             .copied()
             .ok_or_else(|| CliError::Message(format!("unknown handle: {name}")))
+    }
+
+    /// Enable quiet mode: suppress effect handler log output.
+    /// Only errors and assertion failures are shown.
+    pub fn set_quiet(&mut self, quiet: bool) {
+        self.quiet = quiet;
     }
 
     /// Enable coverage tracking. Creates the shared `Rc` that will be

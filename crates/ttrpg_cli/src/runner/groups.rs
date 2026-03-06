@@ -110,7 +110,8 @@ impl Runner {
                     &mut self.rng,
                     &mut self.roll_queue,
                     &self.unit_suffixes,
-                );
+                )
+                .quiet(self.quiet);
                 let val = interp
                     .evaluate_expr(&state, &mut handler, default_expr)
                     .map_err(|e| {
@@ -211,7 +212,8 @@ impl Runner {
                     &mut self.rng,
                     &mut self.roll_queue,
                     &self.unit_suffixes,
-                );
+                )
+                .quiet(self.quiet);
                 let val = interp
                     .evaluate_expr(&state, &mut handler, default_expr)
                     .map_err(|e| {

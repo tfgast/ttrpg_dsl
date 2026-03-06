@@ -337,7 +337,8 @@ impl Runner {
                 &mut self.rng,
                 &mut self.roll_queue,
                 &self.unit_suffixes,
-            );
+            )
+            .quiet(self.quiet);
             interp.resolve_resource_bounds(&state, &mut handler, &entity, &path_segments)
         };
 
@@ -489,7 +490,8 @@ impl Runner {
             &mut self.rng,
             &mut self.roll_queue,
             &self.unit_suffixes,
-        );
+        )
+        .quiet(self.quiet);
 
         let result = interp
             .execute_action(&state, &mut handler, action_name, actor, args)
@@ -592,7 +594,8 @@ impl Runner {
             &mut self.rng,
             &mut self.roll_queue,
             &self.unit_suffixes,
-        );
+        )
+        .quiet(self.quiet);
 
         // Dispatch to derive, mechanic, or function based on structured check
         let result = if is_derive {

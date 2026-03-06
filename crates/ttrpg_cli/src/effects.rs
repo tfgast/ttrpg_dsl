@@ -99,6 +99,7 @@ pub struct CliHandler<'a> {
     roll_queue: &'a mut VecDeque<i64>,
     unit_suffixes: &'a UnitSuffixes,
     pub log: Vec<String>,
+    quiet: bool,
 }
 
 impl<'a> CliHandler<'a> {
@@ -116,6 +117,19 @@ impl<'a> CliHandler<'a> {
             roll_queue,
             unit_suffixes,
             log: Vec::new(),
+            quiet: false,
+        }
+    }
+
+    pub fn quiet(mut self, quiet: bool) -> Self {
+        self.quiet = quiet;
+        self
+    }
+
+    /// Push a log line (suppressed in quiet mode).
+    fn log(&mut self, line: String) {
+        if !self.quiet {
+            self.log.push(line);
         }
     }
 
@@ -135,7 +149,7 @@ impl EffectHandler for CliHandler<'_> {
                 if !self.roll_queue.is_empty() {
                     match roll_dice_from_queue(self.roll_queue, self.rng, &expr) {
                         Ok(result) => {
-                            self.log.push(format!(
+                            self.log(format!(
                                 "[RollDice] {} -> {} (queued)",
                                 format_dice_expr(&expr),
                                 result.total,
@@ -143,13 +157,13 @@ impl EffectHandler for CliHandler<'_> {
                             Response::Rolled(result)
                         }
                         Err(msg) => {
-                            self.log.push(format!("[RollDice] error: {msg}"));
+                            self.log(format!("[RollDice] error: {msg}"));
                             Response::Vetoed
                         }
                     }
                 } else {
                     let result = roll_dice(self.rng, &expr);
-                    self.log.push(format!(
+                    self.log(format!(
                         "[RollDice] {} -> {}",
                         format_dice_expr(&expr),
                         result.total,
@@ -160,7 +174,7 @@ impl EffectHandler for CliHandler<'_> {
 
             Effect::ResolvePrompt { suggest, name, .. } => {
                 if let Some(val) = suggest {
-                    self.log.push(format!(
+                    self.log(format!(
                         "[ResolvePrompt] {} -> auto: {}",
                         name,
                         format_value(&val, self.unit_suffixes)
@@ -197,7 +211,7 @@ impl EffectHandler for CliHandler<'_> {
                 ) {
                     Ok(v) => v,
                     Err(e) => {
-                        self.log.push(format!(
+                        self.log(format!(
                             "[MutateField] {}.{}: error: {}",
                             name, field_str, e.message,
                         ));
@@ -223,7 +237,7 @@ impl EffectHandler for CliHandler<'_> {
                     unclamped != new_val
                 };
                 let suffix = if clamped { " (clamped)" } else { "" };
-                self.log.push(format!(
+                self.log(format!(
                     "[MutateField] {}.{}: {} -> {}{}",
                     name,
                     field_str,
@@ -250,11 +264,11 @@ impl EffectHandler for CliHandler<'_> {
                     invocation,
                 );
                 if params.is_empty() {
-                    self.log.push(format!(
+                    self.log(format!(
                         "[ApplyCondition] {name} gains {condition} ({duration:?})",
                     ));
                 } else {
-                    self.log.push(format!(
+                    self.log(format!(
                         "[ApplyCondition] {name} gains {condition}({params:?}) ({duration:?})",
                     ));
                 }
@@ -272,7 +286,7 @@ impl EffectHandler for CliHandler<'_> {
                     self.game_state
                         .borrow_mut()
                         .remove_condition_by_id(&target, cid);
-                    self.log.push(format!(
+                    self.log(format!(
                         "[RemoveCondition] {name} loses {condition} (id={cid})",
                     ));
                 } else {
@@ -314,7 +328,7 @@ impl EffectHandler for CliHandler<'_> {
                 ) {
                     Ok(v) => v,
                     Err(e) => {
-                        self.log.push(format!(
+                        self.log(format!(
                             "[MutateTurnField] {}.{}: error: {}",
                             name, field, e.message,
                         ));
@@ -324,7 +338,7 @@ impl EffectHandler for CliHandler<'_> {
                 self.game_state
                     .borrow_mut()
                     .write_turn_field(&actor, &field, new_val.clone());
-                self.log.push(format!(
+                self.log(format!(
                     "[MutateTurnField] {}.{}: {} -> {}",
                     name,
                     field,
@@ -345,7 +359,7 @@ impl EffectHandler for CliHandler<'_> {
                     &actor,
                     &budget_field,
                 );
-                self.log.push(format!("[DeductCost] {name}: {token}"));
+                self.log(format!("[DeductCost] {name}: {token}"));
                 Response::Acknowledged
             }
 
@@ -355,8 +369,7 @@ impl EffectHandler for CliHandler<'_> {
                 ..
             } => {
                 let ename = self.entity_name(&actor);
-                self.log
-                    .push(format!("[ActionStarted] {action_name} by {ename}"));
+                self.log(format!("[ActionStarted] {action_name} by {ename}"));
                 Response::Acknowledged
             }
 
@@ -367,8 +380,7 @@ impl EffectHandler for CliHandler<'_> {
             } => {
                 let status = if passed { "passed" } else { "failed" };
                 let reason_str = reason.map(|r| format!(" ({r})")).unwrap_or_default();
-                self.log
-                    .push(format!("[RequiresCheck] {action}: {status}{reason_str}",));
+                self.log(format!("[RequiresCheck] {action}: {status}{reason_str}",));
                 Response::Acknowledged
             }
 
@@ -384,7 +396,7 @@ impl EffectHandler for CliHandler<'_> {
                     ActionOutcome::Vetoed => "vetoed",
                     ActionOutcome::Failed => "failed",
                 };
-                self.log.push(format!(
+                self.log(format!(
                     "[ActionCompleted] {action_name} by {ename} ({outcome_str})"
                 ));
                 Response::Acknowledged
@@ -394,8 +406,7 @@ impl EffectHandler for CliHandler<'_> {
                 self.game_state
                     .borrow_mut()
                     .remove_conditions_by_invocation(invocation);
-                self.log
-                    .push(format!("[RevokeInvocation] invocation {}", invocation.0));
+                self.log(format!("[RevokeInvocation] invocation {}", invocation.0));
                 Response::Acknowledged
             }
 
@@ -412,7 +423,7 @@ impl EffectHandler for CliHandler<'_> {
                     )],
                     fields.clone(),
                 );
-                self.log.push(format!(
+                self.log(format!(
                     "[GrantGroup] {}.{}: {}",
                     name,
                     group_name,
@@ -426,7 +437,7 @@ impl EffectHandler for CliHandler<'_> {
                 self.game_state
                     .borrow_mut()
                     .remove_field(&entity, &group_name);
-                self.log.push(format!("[RevokeGroup] {name}.{group_name}"));
+                self.log(format!("[RevokeGroup] {name}.{group_name}"));
                 Response::Acknowledged
             }
 
@@ -439,7 +450,7 @@ impl EffectHandler for CliHandler<'_> {
                     .iter()
                     .map(|(k, v)| format!("{}: {}", k, format_value(v, self.unit_suffixes)))
                     .collect();
-                self.log.push(format!(
+                self.log(format!(
                     "[ProvisionBudget] {name}: {{ {} }}",
                     fields_str.join(", "),
                 ));
@@ -449,7 +460,7 @@ impl EffectHandler for CliHandler<'_> {
             Effect::ClearBudget { actor } => {
                 let name = self.entity_name(&actor);
                 self.game_state.borrow_mut().clear_turn_budget(&actor);
-                self.log.push(format!("[ClearBudget] {name}"));
+                self.log(format!("[ClearBudget] {name}"));
                 Response::Acknowledged
             }
 
@@ -476,7 +487,7 @@ impl EffectHandler for CliHandler<'_> {
                         )
                     })
                     .collect();
-                self.log.push(format!(
+                self.log(format!(
                     "[ModifyApplied] {} on {}: {}",
                     source_str,
                     target_fn,
@@ -485,7 +496,7 @@ impl EffectHandler for CliHandler<'_> {
                 Response::Acknowledged
             }
             Effect::AdvanceTime { amount } => {
-                self.log.push(format!("[AdvanceTime] +{amount}"));
+                self.log(format!("[AdvanceTime] +{amount}"));
                 Response::Acknowledged
             }
 
@@ -493,8 +504,7 @@ impl EffectHandler for CliHandler<'_> {
                 target, condition, ..
             } => {
                 let name = self.entity_name(&target);
-                self.log
-                    .push(format!("[ConditionApplyGate] {condition} on {name}"));
+                self.log(format!("[ConditionApplyGate] {condition} on {name}"));
                 Response::Acknowledged
             }
 
@@ -504,8 +514,7 @@ impl EffectHandler for CliHandler<'_> {
                 id,
             } => {
                 let name = self.entity_name(&target);
-                self.log
-                    .push(format!("[ConditionRemovalGate] {condition}#{id} on {name}"));
+                self.log(format!("[ConditionRemovalGate] {condition}#{id} on {name}"));
                 Response::Acknowledged
             }
         }

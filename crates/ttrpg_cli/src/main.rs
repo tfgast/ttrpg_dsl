@@ -15,12 +15,13 @@ fn main() {
         return;
     }
 
-    // Check for --vi and --coverage flags
+    // Check for --vi, --coverage, and --quiet flags
     let vi_mode = args.iter().any(|a| a == "--vi");
     let coverage_mode = args.iter().any(|a| a == "--coverage");
+    let quiet_mode = args.iter().any(|a| a == "--quiet");
     let args: Vec<&str> = args
         .iter()
-        .filter(|a| *a != "--vi" && *a != "--coverage")
+        .filter(|a| *a != "--vi" && *a != "--coverage" && *a != "--quiet")
         .map(|s| s.as_str())
         .collect();
 
@@ -30,7 +31,7 @@ fn main() {
                 eprintln!("usage: ttrpg -c <commands>");
                 process::exit(1);
             }
-            run_commands(args[1], coverage_mode);
+            run_commands(args[1], coverage_mode, quiet_mode);
         }
         Some("run") => {
             if args.get(1).copied() == Some("-c") {
@@ -38,13 +39,13 @@ fn main() {
                     eprintln!("usage: ttrpg run -c <commands>");
                     process::exit(1);
                 }
-                run_commands(args[2], coverage_mode);
+                run_commands(args[2], coverage_mode, quiet_mode);
             } else {
                 if args.len() != 2 {
                     eprintln!("usage: ttrpg run <script.ttrpg-cli>");
                     process::exit(1);
                 }
-                run_script(args[1], coverage_mode);
+                run_script(args[1], coverage_mode, quiet_mode);
             }
         }
         Some("check") => {
@@ -125,19 +126,20 @@ fn main() {
             if stdin.is_terminal() {
                 ttrpg_cli::repl::run_repl(vi_mode, coverage_mode);
             } else {
-                run_pipe(coverage_mode);
+                run_pipe(coverage_mode, quiet_mode);
             }
         }
     }
 }
 
 /// Pipe mode: read raw lines from stdin, no reedline.
-fn run_pipe(coverage: bool) {
+fn run_pipe(coverage: bool, quiet: bool) {
     let stdin = io::stdin();
     let mut runner = Runner::new();
     if coverage {
         runner.enable_coverage();
     }
+    runner.set_quiet(quiet);
     let mut had_error = false;
 
     for line in stdin.lock().lines() {
@@ -171,12 +173,12 @@ fn run_pipe(coverage: bool) {
 }
 
 /// Execute CLI commands from a string.
-fn run_commands(commands: &str, coverage: bool) {
-    exec_commands("-c", commands, coverage);
+fn run_commands(commands: &str, coverage: bool, quiet: bool) {
+    exec_commands("-c", commands, coverage, quiet);
 }
 
 /// Execute CLI commands from a script file.
-fn run_script(path: &str, coverage: bool) {
+fn run_script(path: &str, coverage: bool, quiet: bool) {
     let content = match std::fs::read_to_string(path) {
         Ok(c) => c,
         Err(e) => {
@@ -184,15 +186,16 @@ fn run_script(path: &str, coverage: bool) {
             process::exit(1);
         }
     };
-    exec_commands(path, &content, coverage);
+    exec_commands(path, &content, coverage, quiet);
 }
 
 /// Shared implementation for running CLI commands from a labeled source.
-fn exec_commands(label: &str, content: &str, coverage: bool) {
+fn exec_commands(label: &str, content: &str, coverage: bool, quiet: bool) {
     let mut runner = Runner::new();
     if coverage {
         runner.enable_coverage();
     }
+    runner.set_quiet(quiet);
     let mut had_error = false;
 
     for (lineno, line) in content.lines().enumerate() {
@@ -311,6 +314,7 @@ QUERY TOPICS:
 
 FLAGS:
   --vi                               Use vi keybindings in REPL
+  --quiet                            Suppress effect log output (run, pipe)
   --format json                      Output as JSON (check, query)
   --system <name>                    Filter query output by system name
   --xref                             Include cross-references (query entity)
