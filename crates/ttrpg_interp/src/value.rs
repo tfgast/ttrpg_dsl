@@ -511,6 +511,7 @@ pub fn value_matches_ty(val: &Value, ty: &Ty, state: &dyn StateProvider) -> bool
             .iter()
             .all(|(k, v)| value_matches_ty(k, key_ty, state) && value_matches_ty(v, val_ty, state)),
         (Value::Struct { name, .. }, Ty::Struct(n)) => name == n,
+        (Value::Struct { name, .. }, Ty::UnitType(n)) => name == n,
         (Value::Struct { name, .. }, Ty::RollResult) => name == "RollResult",
         (Value::Struct { name, .. }, Ty::TurnBudget) => name == "TurnBudget",
         (Value::Struct { name, .. }, Ty::ActiveCondition) => name == "ActiveCondition",

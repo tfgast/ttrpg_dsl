@@ -126,6 +126,7 @@ pub(super) fn value_matches_ty(val: &Value, ty: &Ty, gs: Option<&GameState>) -> 
             .iter()
             .all(|(k, v)| value_matches_ty(k, key_ty, gs) && value_matches_ty(v, val_ty, gs)),
         (Value::Struct { name, .. }, Ty::Struct(n)) => name == n,
+        (Value::Struct { name, .. }, Ty::UnitType(n)) => name == n,
         (Value::Struct { name, .. }, Ty::RollResult) => name == "RollResult",
         (Value::Struct { name, .. }, Ty::TurnBudget) => name == "TurnBudget",
         (Value::Struct { name, .. }, Ty::ActiveCondition) => name == "ActiveCondition",
