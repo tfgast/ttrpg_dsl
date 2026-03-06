@@ -741,7 +741,10 @@ system "test" {
     });
 
     // This should fail at runtime: no overload for NPC
-    assert!(result.is_err(), "expected runtime error for missing overload");
+    assert!(
+        result.is_err(),
+        "expected runtime error for missing overload"
+    );
     let err_msg = result.unwrap_err().to_string();
     assert!(
         err_msg.contains("no matching overload"),

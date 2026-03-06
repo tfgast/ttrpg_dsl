@@ -8171,23 +8171,42 @@ system "test" {
 
 #[test]
 fn test_bare_ident_in_enum_match_is_error() {
-    // A bare name that is not a known variant should error when matching an enum.
+    // A PascalCase name that is not a known variant should error when matching an enum.
+    // Lowercase unknown names are treated as variable bindings (naming convention).
     let source = r#"
 system "test" {
-    enum Color { red, green, blue }
+    enum Color { Red, Green, Blue }
     derive name(c: Color) -> string {
         match c {
-            red => "Red",
-            gren => "Green",
-            blue => "Blue"
+            Red => "Red",
+            Gren => "Green",
+            Blue => "Blue"
         }
     }
 }
 "#;
     expect_errors(
         source,
-        &["unknown identifier `gren` in match on enum `Color`"],
+        &["unknown identifier `Gren` in match on enum `Color`"],
     );
+}
+
+#[test]
+fn test_bare_lowercase_ident_in_enum_match_binds() {
+    // A lowercase name that is not a known variant is treated as a binding
+    // (naming convention: lowercase = binding, PascalCase = variant).
+    let source = r#"
+system "test" {
+    enum Color { Red, Green, Blue }
+    derive name(c: Color) -> string {
+        match c {
+            Red => "Red",
+            other => "Other"
+        }
+    }
+}
+"#;
+    expect_no_errors(source);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -8226,20 +8245,58 @@ system "test" {
 
 #[test]
 fn test_bare_ident_typo_in_enum_match_suggests_wildcard() {
-    // The error message should suggest using `_` for a catch-all.
+    // A PascalCase typo should suggest using `_` for a catch-all.
     let source = r#"
 system "test" {
-    enum Direction { north, south, east, west }
+    enum Direction { North, South, East, West }
     derive is_vertical(d: Direction) -> bool {
         match d {
-            north => true,
-            south => true,
-            other => false
+            North => true,
+            South => true,
+            Oter => false
         }
     }
 }
 "#;
     expect_errors(source, &["use `_`"]);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// if-let-some with enum inner type → binding (tdsl-my3d)
+// ═══════════════════════════════════════════════════════════════
+
+#[test]
+fn test_if_let_some_binding_with_enum_inner_type() {
+    // `if let some(x) = opt_val` where opt_val is Option<SomeEnum>
+    // should treat `x` as a variable binding, not reject it as an
+    // unknown enum variant.
+    let source = r#"
+system "test" {
+    enum Color { Red, Green, Blue }
+    derive unwrap_or_red(c: option<Color>) -> Color {
+        if let some(x) = c { x } else { Red }
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_match_some_binding_with_enum_inner_type() {
+    // Same bug in match context: `some(x) =>` where the option's
+    // inner type is an enum.
+    let source = r#"
+system "test" {
+    enum Color { Red, Green, Blue }
+    derive unwrap_or_red(c: option<Color>) -> Color {
+        match c {
+            some(x) => x,
+            none => Red
+        }
+    }
+}
+"#;
+    expect_no_errors(source);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -10980,10 +11037,7 @@ system "test" {
     }
 }
 "#;
-    expect_errors(
-        source,
-        &["overloads must all have the same return type"],
-    );
+    expect_errors(source, &["overloads must all have the same return type"]);
 }
 
 #[test]

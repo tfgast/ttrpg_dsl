@@ -89,7 +89,12 @@ impl Checker<'_> {
 
             PatternKind::Ident(name) => {
                 // Could be a bare enum variant or a binding variable.
-                // Use scrutinee type to disambiguate multi-owner variants.
+                // If the name is a known variant, resolve it. If not, use
+                // naming convention to decide: PascalCase unknown names in
+                // enum context are likely typos (error); lowercase unknown
+                // names are treated as variable bindings.
+                let starts_lowercase = name.chars().next().is_some_and(|c| c.is_ascii_lowercase());
+
                 if self.env.variant_to_enums.contains_key(name) {
                     if in_destructure {
                         // In destructuring sub-patterns, prefer binding even if
@@ -129,12 +134,13 @@ impl Checker<'_> {
                             }
                         }
                     }
-                } else if !in_destructure
+                } else if !starts_lowercase
+                    && !in_destructure
                     && !is_binding_context
                     && matches!(scrutinee_ty, Ty::Enum(_) | Ty::Duration)
                 {
-                    // Bare name is not a known variant but scrutinee is an enum —
-                    // this is almost certainly a typo, not an intentional binding.
+                    // PascalCase name is not a known variant but scrutinee is an
+                    // enum — this is almost certainly a typo, not a binding.
                     let enum_label = match scrutinee_ty {
                         Ty::Enum(ref n) => n.as_str(),
                         Ty::Duration => "Duration",

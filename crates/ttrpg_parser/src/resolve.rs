@@ -71,7 +71,9 @@ pub fn resolve_modules(
                 // hints or qualified syntax.
                 if *ns == Namespace::Variant {
                     info.variants.insert(name.clone());
-                } else if let Some(&(prev_span, prev_is_action)) = seen_names.get(&(*ns, name.clone())) {
+                } else if let Some(&(prev_span, prev_is_action)) =
+                    seen_names.get(&(*ns, name.clone()))
+                {
                     // Actions support receiver-type overloading — same action name
                     // with different receiver types is allowed. Per-receiver-type
                     // uniqueness is validated later by the checker's collect_action.
@@ -350,7 +352,11 @@ impl DeclOwnership {
                 names.push((Namespace::Tag, t.name.clone()));
             }
         }
-        Self { names, span, is_action }
+        Self {
+            names,
+            span,
+            is_action,
+        }
     }
 }
 

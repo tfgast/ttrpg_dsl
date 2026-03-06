@@ -73,7 +73,10 @@ fn read_hp(state: &GameState, entity: &EntityRef) -> i64 {
 }
 
 fn read_monster_hp(state: &GameState, entity: &EntityRef) -> i64 {
-    match state.read_field(entity, "hp").expect("monster should have hp") {
+    match state
+        .read_field(entity, "hp")
+        .expect("monster should have hp")
+    {
         Value::Int(n) => n,
         other => panic!("expected int for monster hp, got {other:?}"),
     }
@@ -907,10 +910,7 @@ fn magic_missile_damages_monster() {
         state,
         vec![roll_1d4(3)],
         "resolve_magic_missile",
-        vec![
-            Value::Entity(caster),
-            Value::List(vec![Value::Entity(orc)]),
-        ],
+        vec![Value::Entity(caster), Value::List(vec![Value::Entity(orc)])],
     );
 
     assert_eq!(

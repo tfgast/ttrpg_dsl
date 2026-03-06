@@ -495,6 +495,36 @@ fn collect_enum(e: &EnumDecl, env: &mut TypeEnv, diagnostics: &mut Vec<Diagnosti
             .or_default()
             .push(e.name.clone());
 
+        // Warn if variant name starts with lowercase (convention: PascalCase)
+        if v.name
+            .chars()
+            .next()
+            .is_some_and(|c| c.is_ascii_lowercase())
+        {
+            let suggestion = v
+                .name
+                .split('_')
+                .map(|part| {
+                    let mut chars = part.chars();
+                    match chars.next() {
+                        Some(c) => {
+                            let upper: String = c.to_uppercase().collect();
+                            format!("{upper}{}", chars.as_str())
+                        }
+                        None => String::new(),
+                    }
+                })
+                .collect::<String>();
+            diagnostics.push(Diagnostic::warning(
+                format!(
+                    "enum variant `{}` starts with a lowercase letter; \
+                     convention is PascalCase (e.g., `{suggestion}`)",
+                    v.name,
+                ),
+                v.span,
+            ));
+        }
+
         // Warn if variant name shadows a function
         if env.functions.contains_key(&v.name) || env.builtins.contains_key(&v.name) {
             diagnostics.push(Diagnostic::warning(
