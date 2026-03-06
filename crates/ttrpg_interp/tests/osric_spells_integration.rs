@@ -501,7 +501,7 @@ fn read_spellcasting(
         other => panic!("expected list for slots_used, got {other:?}"),
     };
 
-    let used_1 = match slots_used.get(0) {
+    let used_1 = match slots_used.first() {
         Some(Value::Int(n)) => *n,
         other => panic!("expected int for slots_used[0], got {other:?}"),
     };

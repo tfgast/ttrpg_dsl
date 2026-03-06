@@ -435,7 +435,7 @@ fn restoration_eligible_within_window() {
             &state,
             &mut handler,
             "restoration_eligible",
-            vec![drain, Value::Int(201000), Value::Int(7)],
+            vec![drain, Value::Int(201_000), Value::Int(7)],
         )
         .unwrap();
     assert!(!expect_bool(val2, "outside window"));
@@ -570,14 +570,13 @@ fn restoration_returns_none_when_expired() {
             &state,
             &mut handler,
             "apply_restoration",
-            vec![Value::Entity(char_ref), Value::Int(500000), Value::Int(7)],
+            vec![Value::Entity(char_ref), Value::Int(500_000), Value::Int(7)],
         )
         .unwrap();
 
     assert!(
         matches!(val, Value::Void),
-        "expected None (expired), got {:?}",
-        val
+        "expected None (expired), got {val:?}"
     );
 }
 

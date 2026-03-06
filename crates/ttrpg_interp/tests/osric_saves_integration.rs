@@ -736,6 +736,7 @@ fn save_category(variant: &str) -> Value {
 }
 
 /// Helper: call ResistSpell action with a scripted d20 roll.
+#[allow(clippy::too_many_arguments)]
 fn call_resist_spell(
     saver_class: &str,
     saver_level: i64,

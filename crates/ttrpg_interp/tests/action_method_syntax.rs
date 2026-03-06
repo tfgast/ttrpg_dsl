@@ -664,8 +664,7 @@ system "test" {
     let errors = setup_errors(source);
     assert!(
         errors.iter().any(|e| e.contains("duplicate action")),
-        "expected duplicate action error, got: {:?}",
-        errors
+        "expected duplicate action error, got: {errors:?}"
     );
 }
 
@@ -693,8 +692,7 @@ system "test" {
         errors
             .iter()
             .any(|e| e.contains("expects receiver of type")),
-        "expected receiver type mismatch error, got: {:?}",
-        errors
+        "expected receiver type mismatch error, got: {errors:?}"
     );
 }
 
@@ -887,7 +885,6 @@ system "test" {
         errors
             .iter()
             .any(|e| e.contains("expects receiver of type")),
-        "expected checker error for NPC calling TakeDamage, got: {:?}",
-        errors
+        "expected checker error for NPC calling TakeDamage, got: {errors:?}"
     );
 }

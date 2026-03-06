@@ -127,7 +127,7 @@ fn meets_from_reqs_fighter_str_15_passes() {
             vec![class_variant("Fighter"), abs],
         )
         .unwrap();
-    assert_eq!(expect_bool(val, "fighter from 15"), true);
+    assert!(expect_bool(val, "fighter from 15"));
 }
 
 #[test]
@@ -153,7 +153,7 @@ fn meets_from_reqs_fighter_str_14_fails() {
             vec![class_variant("Fighter"), abs],
         )
         .unwrap();
-    assert_eq!(expect_bool(val, "fighter from 14"), false);
+    assert!(!expect_bool(val, "fighter from 14"));
 }
 
 #[test]
@@ -180,7 +180,7 @@ fn meets_from_reqs_assassin_always_passes() {
             vec![class_variant("Assassin"), abs],
         )
         .unwrap();
-    assert_eq!(expect_bool(val, "assassin from any"), true);
+    assert!(expect_bool(val, "assassin from any"));
 }
 
 // ── meets_dual_class_to_reqs ──────────────────────────────────
@@ -208,7 +208,7 @@ fn meets_to_reqs_ranger_all_17_passes() {
             vec![class_variant("Ranger"), abs],
         )
         .unwrap();
-    assert_eq!(expect_bool(val, "ranger to 17s"), true);
+    assert!(expect_bool(val, "ranger to 17s"));
 }
 
 #[test]
@@ -235,7 +235,7 @@ fn meets_to_reqs_ranger_one_16_fails() {
             vec![class_variant("Ranger"), abs],
         )
         .unwrap();
-    assert_eq!(expect_bool(val, "ranger to 16 int"), false);
+    assert!(!expect_bool(val, "ranger to 16 int"));
 }
 
 // ── can_dual_class ────────────────────────────────────────────
@@ -270,7 +270,7 @@ fn can_dual_class_paladin_to_ranger_example() {
             ],
         )
         .unwrap();
-    assert_eq!(expect_bool(val, "paladin->ranger"), true);
+    assert!(expect_bool(val, "paladin->ranger"));
 }
 
 #[test]
@@ -301,7 +301,7 @@ fn can_dual_class_non_human_fails() {
             ],
         )
         .unwrap();
-    assert_eq!(expect_bool(val, "elf dual-class"), false);
+    assert!(!expect_bool(val, "elf dual-class"));
 }
 
 #[test]
@@ -332,7 +332,7 @@ fn can_dual_class_same_class_fails() {
             ],
         )
         .unwrap();
-    assert_eq!(expect_bool(val, "same class"), false);
+    assert!(!expect_bool(val, "same class"));
 }
 
 #[test]
@@ -364,7 +364,7 @@ fn can_dual_class_fighter_to_thief_borderline() {
             ],
         )
         .unwrap();
-    assert_eq!(expect_bool(val, "fighter->thief borderline"), true);
+    assert!(expect_bool(val, "fighter->thief borderline"));
 }
 
 #[test]
@@ -396,7 +396,7 @@ fn can_dual_class_fighter_to_thief_str_too_low() {
             ],
         )
         .unwrap();
-    assert_eq!(expect_bool(val, "fighter->thief str low"), false);
+    assert!(!expect_bool(val, "fighter->thief str low"));
 }
 
 // ── dual_class_new_exceeds_old ────────────────────────────────
@@ -437,7 +437,7 @@ fn dual_class_new_exceeds_old_false_when_equal() {
             vec![Value::Entity(char_ref)],
         )
         .unwrap();
-    assert_eq!(expect_bool(val, "5==5"), false);
+    assert!(!expect_bool(val, "5==5"));
 }
 
 #[test]
@@ -465,7 +465,7 @@ fn dual_class_new_exceeds_old_false_when_lower() {
             vec![Value::Entity(char_ref)],
         )
         .unwrap();
-    assert_eq!(expect_bool(val, "3<7"), false);
+    assert!(!expect_bool(val, "3<7"));
 }
 
 #[test]
@@ -493,7 +493,7 @@ fn dual_class_new_exceeds_old_true_when_higher() {
             vec![Value::Entity(char_ref)],
         )
         .unwrap();
-    assert_eq!(expect_bool(val, "6>5"), true);
+    assert!(expect_bool(val, "6>5"));
 }
 
 // ── dual_class_hp_gain ────────────────────────────────────────
@@ -581,7 +581,7 @@ fn old_abilities_locked_when_new_lower() {
             vec![Value::Entity(char_ref)],
         )
         .unwrap();
-    assert_eq!(expect_bool(val, "locked"), false);
+    assert!(!expect_bool(val, "locked"));
 }
 
 #[test]
@@ -608,7 +608,7 @@ fn old_abilities_unlocked_when_new_higher() {
             vec![Value::Entity(char_ref)],
         )
         .unwrap();
-    assert_eq!(expect_bool(val, "unlocked"), true);
+    assert!(expect_bool(val, "unlocked"));
 }
 
 // ── dual_class_xp_forfeit ─────────────────────────────────────
@@ -638,7 +638,7 @@ fn xp_forfeit_no_penalty_when_exceeded() {
             vec![Value::Entity(char_ref), Value::Bool(true)],
         )
         .unwrap();
-    assert_eq!(expect_bool(val, "no forfeit"), false);
+    assert!(!expect_bool(val, "no forfeit"));
 }
 
 #[test]
@@ -666,7 +666,7 @@ fn xp_forfeit_penalty_when_not_exceeded_and_used() {
             vec![Value::Entity(char_ref), Value::Bool(true)],
         )
         .unwrap();
-    assert_eq!(expect_bool(val, "forfeit"), true);
+    assert!(expect_bool(val, "forfeit"));
 }
 
 #[test]
@@ -694,7 +694,7 @@ fn xp_forfeit_no_penalty_when_not_exceeded_but_not_used() {
             vec![Value::Entity(char_ref), Value::Bool(false)],
         )
         .unwrap();
-    assert_eq!(expect_bool(val, "no forfeit"), false);
+    assert!(!expect_bool(val, "no forfeit"));
 }
 
 // ── dual_class_can_read_languages ─────────────────────────────
@@ -724,7 +724,7 @@ fn read_languages_available_when_old_class_thief() {
             vec![Value::Entity(char_ref)],
         )
         .unwrap();
-    assert_eq!(expect_bool(val, "read languages"), true);
+    assert!(expect_bool(val, "read languages"));
 }
 
 #[test]
@@ -752,5 +752,5 @@ fn read_languages_unavailable_when_old_class_not_thief() {
             vec![Value::Entity(char_ref)],
         )
         .unwrap();
-    assert_eq!(expect_bool(val, "no read languages"), false);
+    assert!(!expect_bool(val, "no read languages"));
 }

@@ -586,7 +586,7 @@ fn cause_light_wounds_def_is_reversible() {
             .unwrap(),
         other => panic!("expected Struct for SpellDef, got {other:?}"),
     };
-    assert_eq!(expect_bool(reversible, "reversible"), true);
+    assert!(expect_bool(reversible, "reversible"));
 }
 
 // ── Hold Person ──────────────────────────────────────────

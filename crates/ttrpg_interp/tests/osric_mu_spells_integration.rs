@@ -658,7 +658,7 @@ fn sleep_multiple_hd_categories() {
     // Category 5 (immune): 1 troll (6+6 HD)
     let troll = make_monster(&mut state, "Troll", (6, 8, 6), 36, 16, vec![]);
 
-    let targets = vec![orc0, orc1, orc2, hob0, hob1, troll];
+    let targets = [orc0, orc1, orc2, hob0, hob1, troll];
 
     // Rolls: 4d4 for cat 0 = 10 (all 3 orcs affected),
     //        2d4 for cat 1 = 3 (both hobgoblins affected)
