@@ -425,6 +425,14 @@ impl Runner {
             return Err(CliError::Message("missing action name".into()));
         }
 
+        // Method syntax: do handle.Action(args...) — delegate to eval()
+        if action_name.contains('.') {
+            let result = self.eval(tail)?;
+            self.output
+                .push(format!("=> {}", format_value(&result, &self.unit_suffixes)));
+            return Ok(());
+        }
+
         let args_str = tail[paren_pos + 1..]
             .strip_suffix(')')
             .ok_or_else(|| CliError::Message("unmatched '(' in do".into()))?;

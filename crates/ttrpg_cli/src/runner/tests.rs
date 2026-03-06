@@ -3887,6 +3887,34 @@ system "test" {
     runner.exec("assert hero.HP == 15").unwrap();
 }
 
+#[test]
+fn do_method_syntax() {
+    let source = r#"
+system "test" {
+    entity Character { HP: int }
+    action Heal on actor: Character () -> int {
+        resolve {
+            actor.HP += 5
+            actor.HP
+        }
+    }
+}
+"#;
+    let path = write_temp("do_method_syntax", source);
+    let mut runner = Runner::new();
+    runner.exec(&format!("load {}", path.display())).unwrap();
+    runner.take_output();
+
+    runner.exec("spawn Character hero { HP: 10 }").unwrap();
+    runner.take_output();
+
+    runner.exec("do hero.Heal()").unwrap();
+    let out = runner.take_output();
+    assert!(out.iter().any(|l| l.contains("=> 15")), "got: {out:?}");
+
+    runner.exec("assert hero.HP == 15").unwrap();
+}
+
 // ── Regression: tdsl-2i49 — bare ambiguous variant in struct lit field ──
 
 #[test]
