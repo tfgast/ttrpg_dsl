@@ -570,7 +570,7 @@ system "test" {
     runner.take_output();
 
     let err = runner.exec("do NoSuchAction(fighter)").unwrap_err();
-    assert!(err.to_string().contains("undefined action"), "got: {err}");
+    assert!(err.to_string().contains("undefined function"), "got: {err}");
 }
 
 // ── Split helpers tests ──────────────────────────────────────
