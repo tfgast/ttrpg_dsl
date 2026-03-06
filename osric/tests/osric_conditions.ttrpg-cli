@@ -1,0 +1,493 @@
+// OSRIC Conditions integration tests
+//
+// Equivalent of crates/ttrpg_interp/tests/osric_conditions_integration.rs
+// Tests condition modifiers on attack resolution, DEX/shield AC negation,
+// attacker suppression, parameterised conditions, stacking, removal,
+// cross-entity-type application, and auto-hit/max-damage mechanics.
+
+load osric/*.ttrpg
+
+// ── Baseline: no conditions ─────────────────────────────────────
+// Fighter level 5 (BTHB=4), STR 12, SwordLong vs target AC 14.
+// Roll 15 → 15+4=19 >= 14 → Hit. total_mod = 4 (BTHB only).
+
+spawn Character cond_atk { name: "Fighter", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots { worn_armor: some(Armor { armour_type: ScaleLamellar }) } }
+spawn Character cond_tgt { name: "Target", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 }, EquipmentSlots { worn_armor: some(Armor { armour_type: ScaleLamellar }) } }
+
+rolls 15 6
+let baseline = resolve_melee_attack(cond_atk, cond_tgt, SwordLong)
+assert_eq baseline.outcome, AttackOutcome.Hit
+assert_eq baseline.total_mod, 4
+assert_eq baseline.damage, 6
+
+// ── Prone on target: +4 to attack_mod ───────────────────────────
+
+spawn Character prone_atk { name: "Fighter", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots { worn_armor: some(Armor { armour_type: ScaleLamellar }) } }
+spawn Character prone_tgt { name: "Target", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 }, EquipmentSlots { worn_armor: some(Armor { armour_type: ScaleLamellar }) } }
+call apply_condition(prone_tgt, Prone, Duration.Indefinite)
+
+rolls 15 6
+let prone_result = resolve_melee_attack(prone_atk, prone_tgt, SwordLong)
+assert_eq prone_result.total_mod, 8
+assert_eq prone_result.outcome, AttackOutcome.Hit
+
+// ── Stunned on target: +4 to attack_mod ─────────────────────────
+
+spawn Character stun_atk { name: "Fighter", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots { worn_armor: some(Armor { armour_type: ScaleLamellar }) } }
+spawn Character stun_tgt { name: "Target", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 }, EquipmentSlots { worn_armor: some(Armor { armour_type: ScaleLamellar }) } }
+call apply_condition(stun_tgt, Stunned, Duration.Indefinite)
+
+rolls 15 6
+let stun_result = resolve_melee_attack(stun_atk, stun_tgt, SwordLong)
+assert_eq stun_result.total_mod, 8
+
+// ── Staggered on target: +2 to attack_mod ───────────────────────
+
+spawn Character stag_atk { name: "Fighter", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots { worn_armor: some(Armor { armour_type: ScaleLamellar }) } }
+spawn Character stag_tgt { name: "Target", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 }, EquipmentSlots { worn_armor: some(Armor { armour_type: ScaleLamellar }) } }
+call apply_condition(stag_tgt, Staggered, Duration.Indefinite)
+
+rolls 15 6
+let stag_result = resolve_melee_attack(stag_atk, stag_tgt, SwordLong)
+assert_eq stag_result.total_mod, 6
+
+// ── Invisible on target: -4 to attack_mod ───────────────────────
+
+spawn Character invis_atk { name: "Fighter", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots { worn_armor: some(Armor { armour_type: ScaleLamellar }) } }
+spawn Character invis_tgt { name: "Target", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 }, EquipmentSlots { worn_armor: some(Armor { armour_type: ScaleLamellar }) } }
+call apply_condition(invis_tgt, Invisible, Duration.Indefinite)
+
+// BTHB=4 + attack_mod=-4 = 0
+rolls 15 6
+let invis_result = resolve_melee_attack(invis_atk, invis_tgt, SwordLong)
+assert_eq invis_result.total_mod, 0
+
+// ── Invisible causes miss on borderline roll ────────────────────
+
+spawn Character invis2_atk { name: "Fighter", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 } }
+spawn Character invis2_tgt { name: "Target", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 }, EquipmentSlots { worn_armor: some(Armor { armour_type: ScaleLamellar }) } }
+call apply_condition(invis2_tgt, Invisible, Duration.Indefinite)
+
+// BTHB=0, attack_mod=-4 → total_mod=-4. Roll 17 → 17+(-4)=13 < 14 → Miss
+rolls 17
+let invis2_result = resolve_melee_attack(invis2_atk, invis2_tgt, SwordLong)
+assert_eq invis2_result.outcome, AttackOutcome.Miss
+assert_eq invis2_result.total_mod, -4
+
+// ── Paralyzed on target: auto_hit + max_damage ──────────────────
+// SwordLong: 1d8 → max = 8. No dice rolls needed.
+
+spawn Character para_atk { name: "Fighter", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 } }
+spawn Character para_tgt { name: "Target", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 }, EquipmentSlots { worn_armor: some(Armor { armour_type: PlateMail }) } }
+call apply_condition(para_tgt, Paralyzed, Duration.Indefinite)
+
+rolls clear
+let para_result = resolve_melee_attack(para_atk, para_tgt, SwordLong)
+assert_eq para_result.outcome, AttackOutcome.Hit
+assert_eq para_result.total_mod, 0
+assert_eq para_result.damage, 8
+
+// ── Sleeping on target: auto_hit + max_damage ───────────────────
+
+spawn Character sleep_atk { name: "Fighter", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 } }
+spawn Character sleep_tgt { name: "Target", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 }, EquipmentSlots { worn_armor: some(Armor { armour_type: PlateMail }) } }
+call apply_condition(sleep_tgt, Sleeping, Duration.Indefinite)
+
+rolls clear
+let sleep_result = resolve_melee_attack(sleep_atk, sleep_tgt, SwordLong)
+assert_eq sleep_result.outcome, AttackOutcome.Hit
+assert_eq sleep_result.damage, 8
+
+// ── RearAttacked on target: +2 to attack_mod ────────────────────
+
+spawn Character rear_atk { name: "Fighter", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots { worn_armor: some(Armor { armour_type: ScaleLamellar }) } }
+spawn Character rear_tgt { name: "Target", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 }, EquipmentSlots { worn_armor: some(Armor { armour_type: ScaleLamellar }) } }
+call apply_condition(rear_tgt, RearAttacked, Duration.Indefinite)
+
+rolls 15 6
+let rear_result = resolve_melee_attack(rear_atk, rear_tgt, SwordLong)
+assert_eq rear_result.total_mod, 6
+
+// ── Paralyzed affects missile attacks (auto_hit + max_damage) ───
+// BowLong: 1d6 → max = 6.
+
+spawn Character para_archer { name: "Archer", classes: [ClassLevel { class: Fighter, level: 3 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 }, EquipmentSlots { worn_armor: some(Armor { armour_type: ScaleLamellar }) } }
+spawn Character para_miss_tgt { name: "Target", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 }, EquipmentSlots { worn_armor: some(Armor { armour_type: ScaleLamellar }) } }
+call apply_condition(para_miss_tgt, Paralyzed, Duration.Indefinite)
+
+rolls clear
+let para_missile = resolve_missile_attack(para_archer, para_miss_tgt, BowLong, Feet { value: 60 })
+assert_eq para_missile.outcome, AttackOutcome.Hit
+assert_eq para_missile.total_mod, 2
+assert_eq para_missile.damage, 6
+
+// ── Attacker conditions: result override ────────────────────────
+
+// Surprised on attacker forces Miss
+spawn Character surp_atk { name: "Fighter", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots { worn_armor: some(Armor { armour_type: ScaleLamellar }) } }
+spawn Character surp_tgt { name: "Target", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 } }
+call apply_condition(surp_atk, Surprised, Duration.Indefinite)
+
+rolls 18 6
+let surp_result = resolve_melee_attack(surp_atk, surp_tgt, SwordLong)
+assert_eq surp_result.outcome, AttackOutcome.Miss
+assert_eq surp_result.damage, 0
+
+// Fleeing on attacker forces Miss
+spawn Character flee_atk { name: "Fighter", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots { worn_armor: some(Armor { armour_type: ScaleLamellar }) } }
+spawn Character flee_tgt { name: "Target", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 } }
+call apply_condition(flee_atk, Fleeing, Duration.Indefinite)
+
+rolls 18 6
+let flee_result = resolve_melee_attack(flee_atk, flee_tgt, SwordLong)
+assert_eq flee_result.outcome, AttackOutcome.Miss
+assert_eq flee_result.damage, 0
+
+// ── Fleeing on target: +4 to melee attack_mod ───────────────────
+
+spawn Character flee2_atk { name: "Fighter", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots { worn_armor: some(Armor { armour_type: ScaleLamellar }) } }
+spawn Character flee2_tgt { name: "Target", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 }, EquipmentSlots { worn_armor: some(Armor { armour_type: ScaleLamellar }) } }
+call apply_condition(flee2_tgt, Fleeing, Duration.Indefinite)
+
+rolls 15 6
+let flee2_result = resolve_melee_attack(flee2_atk, flee2_tgt, SwordLong)
+assert_eq flee2_result.total_mod, 8
+
+// ── Parameterised conditions ────────────────────────────────────
+
+// Concealed(level=1): -1 to attack_mod → BTHB=4 + (-1) = 3
+spawn Character conc1_atk { name: "Fighter", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots { worn_armor: some(Armor { armour_type: ScaleLamellar }) } }
+spawn Character conc1_tgt { name: "Target", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 }, EquipmentSlots { worn_armor: some(Armor { armour_type: ScaleLamellar }) } }
+call apply_condition(conc1_tgt, Concealed(level: 1), Duration.Indefinite)
+
+rolls 15 6
+let conc1_result = resolve_melee_attack(conc1_atk, conc1_tgt, SwordLong)
+assert_eq conc1_result.total_mod, 3
+
+// Concealed(level=4): -4 to attack_mod → BTHB=4 + (-4) = 0
+spawn Character conc4_atk { name: "Fighter", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots { worn_armor: some(Armor { armour_type: ScaleLamellar }) } }
+spawn Character conc4_tgt { name: "Target", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 }, EquipmentSlots { worn_armor: some(Armor { armour_type: ScaleLamellar }) } }
+call apply_condition(conc4_tgt, Concealed(level: 4), Duration.Indefinite)
+
+rolls 15 6
+let conc4_result = resolve_melee_attack(conc4_atk, conc4_tgt, SwordLong)
+assert_eq conc4_result.total_mod, 0
+
+// Cover(penalty=2): -2 → BTHB=4 + (-2) = 2
+spawn Character cov2_atk { name: "Fighter", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots { worn_armor: some(Armor { armour_type: ScaleLamellar }) } }
+spawn Character cov2_tgt { name: "Target", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 }, EquipmentSlots { worn_armor: some(Armor { armour_type: ScaleLamellar }) } }
+call apply_condition(cov2_tgt, Cover(penalty: 2), Duration.Indefinite)
+
+rolls 15 6
+let cov2_result = resolve_melee_attack(cov2_atk, cov2_tgt, SwordLong)
+assert_eq cov2_result.total_mod, 2
+
+// Cover(penalty=10): -10 → BTHB=4 + (-10) = -6. Roll 19 → 19+(-6)=13 < 14 → Miss
+spawn Character cov10_atk { name: "Fighter", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots { worn_armor: some(Armor { armour_type: ScaleLamellar }) } }
+spawn Character cov10_tgt { name: "Target", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 }, EquipmentSlots { worn_armor: some(Armor { armour_type: ScaleLamellar }) } }
+call apply_condition(cov10_tgt, Cover(penalty: 10), Duration.Indefinite)
+
+rolls 19
+let cov10_result = resolve_melee_attack(cov10_atk, cov10_tgt, SwordLong)
+assert_eq cov10_result.total_mod, -6
+assert_eq cov10_result.outcome, AttackOutcome.Miss
+
+// ── Cross-attack-type: Prone on missile attack ──────────────────
+
+spawn Character prone_archer { name: "Archer", classes: [ClassLevel { class: Fighter, level: 3 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 }, EquipmentSlots { worn_armor: some(Armor { armour_type: ScaleLamellar }) } }
+spawn Character prone_miss_tgt { name: "Target", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 }, EquipmentSlots { worn_armor: some(Armor { armour_type: ScaleLamellar }) } }
+call apply_condition(prone_miss_tgt, Prone, Duration.Indefinite)
+
+// BTHB=2 + attack_mod=4 = 6
+rolls 15 4
+let prone_missile = resolve_missile_attack(prone_archer, prone_miss_tgt, BowLong, Feet { value: 60 })
+assert_eq prone_missile.total_mod, 6
+
+// ── Cross-entity-type: Prone on monster attack target ───────────
+
+spawn Monster cond_ogre { name: "Ogre", hit_dice: 4d8+1, max_hp: 26, hp: 26, ac: 15, morale: 7, morale_checks_made: 0, xp_value: 0, intelligence: 1, attacks: [MonsterAttack { name: "Club", damage: 1d10 }], size: Medium, special: [] }
+spawn Character prone_victim { name: "Victim", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 8, hp: 8 }, EquipmentSlots { worn_armor: some(Armor { armour_type: ScaleLamellar }) } }
+call apply_condition(prone_victim, Prone, Duration.Indefinite)
+
+// monster_bthb(4d8+1)=5, attack_mod=+4 → total_mod=9
+rolls 12 7
+let prone_monster = resolve_monster_attack(cond_ogre, prone_victim, MonsterAttack { name: "Club", damage: 1d10 })
+assert_eq prone_monster.total_mod, 9
+
+// ── RearAttacked affects monster attacks (+2 via #attack_resolution) ──
+
+spawn Monster rear_ogre { name: "Ogre", hit_dice: 4d8+1, max_hp: 26, hp: 26, ac: 15, morale: 7, morale_checks_made: 0, xp_value: 0, intelligence: 1, attacks: [MonsterAttack { name: "Club", damage: 1d10 }], size: Medium, special: [] }
+spawn Character rear_victim { name: "Victim", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 8, hp: 8 }, EquipmentSlots { worn_armor: some(Armor { armour_type: ScaleLamellar }) } }
+call apply_condition(rear_victim, RearAttacked, Duration.Indefinite)
+
+// monster_bthb=5, attack_mod=+2 → total_mod=7
+rolls 12 7
+let rear_monster = resolve_monster_attack(rear_ogre, rear_victim, MonsterAttack { name: "Club", damage: 1d10 })
+assert_eq rear_monster.total_mod, 7
+
+// ── Condition stacking ──────────────────────────────────────────
+
+// Prone (+4) + Staggered (+2) = +6 → BTHB=4 + 6 = 10
+spawn Character stack_atk { name: "Fighter", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots { worn_armor: some(Armor { armour_type: ScaleLamellar }) } }
+spawn Character stack_tgt { name: "Target", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 }, EquipmentSlots { worn_armor: some(Armor { armour_type: ScaleLamellar }) } }
+call apply_condition(stack_tgt, Prone, Duration.Indefinite)
+call apply_condition(stack_tgt, Staggered, Duration.Indefinite)
+
+rolls 15 6
+let stack_result = resolve_melee_attack(stack_atk, stack_tgt, SwordLong)
+assert_eq stack_result.total_mod, 10
+
+// Prone (+4) + Invisible (-4) cancel out → BTHB=4
+spawn Character cancel_atk { name: "Fighter", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots { worn_armor: some(Armor { armour_type: ScaleLamellar }) } }
+spawn Character cancel_tgt { name: "Target", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 }, EquipmentSlots { worn_armor: some(Armor { armour_type: ScaleLamellar }) } }
+call apply_condition(cancel_tgt, Prone, Duration.Indefinite)
+call apply_condition(cancel_tgt, Invisible, Duration.Indefinite)
+
+rolls 15 6
+let cancel_result = resolve_melee_attack(cancel_atk, cancel_tgt, SwordLong)
+assert_eq cancel_result.total_mod, 4
+
+// Cover(7) + Concealed(2) stack to -9 → BTHB=4 + (-9) = -5
+spawn Character covconc_atk { name: "Fighter", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots { worn_armor: some(Armor { armour_type: ScaleLamellar }) } }
+spawn Character covconc_tgt { name: "Target", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 }, EquipmentSlots { worn_armor: some(Armor { armour_type: ScaleLamellar }) } }
+call apply_condition(covconc_tgt, Cover(penalty: 7), Duration.Indefinite)
+call apply_condition(covconc_tgt, Concealed(level: 2), Duration.Indefinite)
+
+rolls 19 6
+let covconc_result = resolve_melee_attack(covconc_atk, covconc_tgt, SwordLong)
+assert_eq covconc_result.total_mod, -5
+
+// ── Condition removal ───────────────────────────────────────────
+
+// Apply Prone, remove it, verify baseline
+spawn Character rem_atk { name: "Fighter", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots { worn_armor: some(Armor { armour_type: ScaleLamellar }) } }
+spawn Character rem_tgt { name: "Target", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 }, EquipmentSlots { worn_armor: some(Armor { armour_type: ScaleLamellar }) } }
+call apply_condition(rem_tgt, Prone, Duration.Indefinite)
+assert_condition rem_tgt, Prone
+call remove_condition(rem_tgt, Prone)
+assert_no_condition rem_tgt, Prone
+
+rolls 15 6
+let rem_result = resolve_melee_attack(rem_atk, rem_tgt, SwordLong)
+assert_eq rem_result.total_mod, 4
+
+// Remove one stacked condition, keep the other
+spawn Character rem2_atk { name: "Fighter", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots { worn_armor: some(Armor { armour_type: ScaleLamellar }) } }
+spawn Character rem2_tgt { name: "Target", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 }, EquipmentSlots { worn_armor: some(Armor { armour_type: ScaleLamellar }) } }
+call apply_condition(rem2_tgt, Prone, Duration.Indefinite)
+call apply_condition(rem2_tgt, Staggered, Duration.Indefinite)
+call remove_condition(rem2_tgt, Prone)
+assert_no_condition rem2_tgt, Prone
+assert_condition rem2_tgt, Staggered
+
+rolls 15 6
+let rem2_result = resolve_melee_attack(rem2_atk, rem2_tgt, SwordLong)
+assert_eq rem2_result.total_mod, 6
+
+// Remove parameterised condition
+spawn Character rem3_atk { name: "Fighter", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots { worn_armor: some(Armor { armour_type: ScaleLamellar }) } }
+spawn Character rem3_tgt { name: "Target", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 }, EquipmentSlots { worn_armor: some(Armor { armour_type: ScaleLamellar }) } }
+call apply_condition(rem3_tgt, Concealed(level: 3), Duration.Indefinite)
+call remove_condition(rem3_tgt, Concealed(level: 3))
+assert_no_condition rem3_tgt, Concealed
+
+rolls 15 6
+let rem3_result = resolve_melee_attack(rem3_atk, rem3_tgt, SwordLong)
+assert_eq rem3_result.total_mod, 4
+
+// ── Monster bearers ─────────────────────────────────────────────
+
+// Surprised on monster forces its attacks to miss
+spawn Monster surp_monster { name: "Ogre", hit_dice: 4d8+1, max_hp: 26, hp: 26, ac: 15, morale: 7, morale_checks_made: 0, xp_value: 0, intelligence: 1, attacks: [MonsterAttack { name: "Club", damage: 1d10 }], size: Medium, special: [] }
+spawn Character surp_victim { name: "Victim", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots { worn_armor: some(Armor { armour_type: PlateMail }) } }
+call apply_condition(surp_monster, Surprised, Duration.Indefinite)
+
+rolls 18 8
+let surp_mon_result = resolve_monster_attack(surp_monster, surp_victim, MonsterAttack { name: "Club", damage: 1d10 })
+assert_eq surp_mon_result.outcome, AttackOutcome.Miss
+assert_eq surp_mon_result.damage, 0
+
+// Concealed on target applies to monster attack
+spawn Monster conc_goblin { name: "Goblin", hit_dice: 1d8-1, max_hp: 4, hp: 4, ac: 13, morale: 7, morale_checks_made: 0, xp_value: 0, intelligence: 1, attacks: [MonsterAttack { name: "Shortsword", damage: 1d6 }], size: Medium, special: [] }
+spawn Character conc_ranger { name: "Ranger", classes: [ClassLevel { class: Ranger, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots { worn_armor: some(Armor { armour_type: ScaleLamellar }) } }
+call apply_condition(conc_ranger, Concealed(level: 3), Duration.Indefinite)
+
+// monster_bthb(1d8-1)=0, attack_mod=-3 → total_mod=-3
+rolls 15
+let conc_mon_result = resolve_monster_attack(conc_goblin, conc_ranger, MonsterAttack { name: "Shortsword", damage: 1d6 })
+assert_eq conc_mon_result.total_mod, -3
+
+// ── All Cover levels ────────────────────────────────────────────
+// Cover: 25%=-2, 50%=-4, 75%=-7, 90%=-10. BTHB=4.
+
+spawn Character cov_atk { name: "Fighter", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots { worn_armor: some(Armor { armour_type: ScaleLamellar }) } }
+
+spawn Character cov25_tgt { name: "T1", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 }, EquipmentSlots { worn_armor: some(Armor { armour_type: ScaleLamellar }) } }
+call apply_condition(cov25_tgt, Cover(penalty: 2), Duration.Indefinite)
+rolls 19 6
+assert_eq resolve_melee_attack(cov_atk, cov25_tgt, SwordLong).total_mod, 2
+
+spawn Character cov50_tgt { name: "T2", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 }, EquipmentSlots { worn_armor: some(Armor { armour_type: ScaleLamellar }) } }
+call apply_condition(cov50_tgt, Cover(penalty: 4), Duration.Indefinite)
+rolls 19 6
+assert_eq resolve_melee_attack(cov_atk, cov50_tgt, SwordLong).total_mod, 0
+
+spawn Character cov75_tgt { name: "T3", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 }, EquipmentSlots { worn_armor: some(Armor { armour_type: ScaleLamellar }) } }
+call apply_condition(cov75_tgt, Cover(penalty: 7), Duration.Indefinite)
+rolls 19 6
+assert_eq resolve_melee_attack(cov_atk, cov75_tgt, SwordLong).total_mod, -3
+
+spawn Character cov90_tgt { name: "T4", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 }, EquipmentSlots { worn_armor: some(Armor { armour_type: ScaleLamellar }) } }
+call apply_condition(cov90_tgt, Cover(penalty: 10), Duration.Indefinite)
+rolls 19 6
+assert_eq resolve_melee_attack(cov_atk, cov90_tgt, SwordLong).total_mod, -6
+
+// ── All Concealed levels ────────────────────────────────────────
+// Concealed: 1/4=-1, 1/2=-2, 3/4=-3, total=-4. BTHB=4.
+
+spawn Character conc_atk { name: "Fighter", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots { worn_armor: some(Armor { armour_type: ScaleLamellar }) } }
+
+spawn Character conc_l1 { name: "T1", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 }, EquipmentSlots { worn_armor: some(Armor { armour_type: ScaleLamellar }) } }
+call apply_condition(conc_l1, Concealed(level: 1), Duration.Indefinite)
+rolls 15 6
+assert_eq resolve_melee_attack(conc_atk, conc_l1, SwordLong).total_mod, 3
+
+spawn Character conc_l2 { name: "T2", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 }, EquipmentSlots { worn_armor: some(Armor { armour_type: ScaleLamellar }) } }
+call apply_condition(conc_l2, Concealed(level: 2), Duration.Indefinite)
+rolls 15 6
+assert_eq resolve_melee_attack(conc_atk, conc_l2, SwordLong).total_mod, 2
+
+spawn Character conc_l3 { name: "T3", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 }, EquipmentSlots { worn_armor: some(Armor { armour_type: ScaleLamellar }) } }
+call apply_condition(conc_l3, Concealed(level: 3), Duration.Indefinite)
+rolls 15 6
+assert_eq resolve_melee_attack(conc_atk, conc_l3, SwordLong).total_mod, 1
+
+spawn Character conc_l4 { name: "T4", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 }, EquipmentSlots { worn_armor: some(Armor { armour_type: ScaleLamellar }) } }
+call apply_condition(conc_l4, Concealed(level: 4), Duration.Indefinite)
+rolls 15 6
+assert_eq resolve_melee_attack(conc_atk, conc_l4, SwordLong).total_mod, 0
+
+// ── Surprised on attacker suppresses missile attacks too ─────────
+
+spawn Character surp_archer { name: "Archer", classes: [ClassLevel { class: Fighter, level: 3 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 }, EquipmentSlots { worn_armor: some(Armor { armour_type: ScaleLamellar }) } }
+spawn Character surp_arrow_tgt { name: "Target", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 }, EquipmentSlots { worn_armor: some(Armor { armour_type: ScaleLamellar }) } }
+call apply_condition(surp_archer, Surprised, Duration.Indefinite)
+
+rolls 18 5
+let surp_miss = resolve_missile_attack(surp_archer, surp_arrow_tgt, BowLong, Feet { value: 60 })
+assert_eq surp_miss.outcome, AttackOutcome.Miss
+assert_eq surp_miss.damage, 0
+
+// ── DEX AC negation ─────────────────────────────────────────────
+
+// Prone negates DEX AC bonus. Target DEX 17 → dex_ac_adj=+3
+spawn Character dex_atk { name: "Fighter", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots { worn_armor: some(Armor { armour_type: ScaleLamellar }) } }
+spawn Character dex_tgt { name: "Target", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 17, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 }, EquipmentSlots { worn_armor: some(Armor { armour_type: ScaleLamellar }) } }
+call apply_condition(dex_tgt, Prone, Duration.Indefinite)
+
+rolls 15 6
+let dex_prone = resolve_melee_attack(dex_atk, dex_tgt, SwordLong)
+assert_eq dex_prone.total_mod, 8
+
+// Stunned negates DEX AC bonus
+spawn Character dex2_atk { name: "Fighter", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots { worn_armor: some(Armor { armour_type: ScaleLamellar }) } }
+spawn Character dex2_tgt { name: "Target", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 17, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 }, EquipmentSlots { worn_armor: some(Armor { armour_type: ScaleLamellar }) } }
+call apply_condition(dex2_tgt, Stunned, Duration.Indefinite)
+
+rolls 15 6
+let dex_stun = resolve_melee_attack(dex2_atk, dex2_tgt, SwordLong)
+assert_eq dex_stun.total_mod, 8
+
+// RearAttacked negates DEX AC on missile
+spawn Character dex3_atk { name: "Archer", classes: [ClassLevel { class: Fighter, level: 3 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 }, EquipmentSlots { worn_armor: some(Armor { armour_type: ScaleLamellar }) } }
+spawn Character dex3_tgt { name: "Target", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 17, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 }, EquipmentSlots { worn_armor: some(Armor { armour_type: ScaleLamellar }) } }
+call apply_condition(dex3_tgt, RearAttacked, Duration.Indefinite)
+
+rolls 15 4
+let dex_rear_miss = resolve_missile_attack(dex3_atk, dex3_tgt, BowLong, Feet { value: 60 })
+assert_eq dex_rear_miss.total_mod, 4
+
+// ── Shield AC negation ──────────────────────────────────────────
+
+// Prone negates shield AC bonus
+spawn Character shld_atk { name: "Fighter", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots { worn_armor: some(Armor { armour_type: ScaleLamellar }) } }
+spawn Character shld_tgt { name: "Target", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 }, EquipmentSlots { worn_armor: some(Armor { armour_type: ScaleLamellar }), worn_shield: some(Shield { shield_type: SmallShield }) } }
+call apply_condition(shld_tgt, Prone, Duration.Indefinite)
+
+rolls 15 6
+let shld_prone = resolve_melee_attack(shld_atk, shld_tgt, SwordLong)
+assert_eq shld_prone.total_mod, 8
+
+// RearAttacked negates both DEX and shield combined
+spawn Character combo_atk { name: "Fighter", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots { worn_armor: some(Armor { armour_type: ScaleLamellar }) } }
+spawn Character combo_tgt { name: "Target", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 17, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 }, EquipmentSlots { worn_armor: some(Armor { armour_type: ScaleLamellar }), worn_shield: some(Shield { shield_type: SmallShield }) } }
+call apply_condition(combo_tgt, RearAttacked, Duration.Indefinite)
+
+rolls 15 6
+let combo_result = resolve_melee_attack(combo_atk, combo_tgt, SwordLong)
+assert_eq combo_result.total_mod, 6
+
+// ── Stunned/Paralyzed/Sleeping suppress bearer attacks ──────────
+
+// Stunned on attacker forces Miss
+spawn Character stun2_atk { name: "Fighter", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots { worn_armor: some(Armor { armour_type: ScaleLamellar }) } }
+spawn Character stun2_tgt { name: "Target", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 } }
+call apply_condition(stun2_atk, Stunned, Duration.Indefinite)
+
+rolls 18 6
+let stun2_result = resolve_melee_attack(stun2_atk, stun2_tgt, SwordLong)
+assert_eq stun2_result.outcome, AttackOutcome.Miss
+assert_eq stun2_result.damage, 0
+
+// Paralyzed on attacker forces Miss
+spawn Character para2_atk { name: "Fighter", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots { worn_armor: some(Armor { armour_type: ScaleLamellar }) } }
+spawn Character para2_tgt { name: "Target", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 } }
+call apply_condition(para2_atk, Paralyzed, Duration.Indefinite)
+
+rolls 18 6
+let para2_result = resolve_melee_attack(para2_atk, para2_tgt, SwordLong)
+assert_eq para2_result.outcome, AttackOutcome.Miss
+assert_eq para2_result.damage, 0
+
+// Sleeping on attacker forces Miss
+spawn Character sleep2_atk { name: "Fighter", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots { worn_armor: some(Armor { armour_type: ScaleLamellar }) } }
+spawn Character sleep2_tgt { name: "Target", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 } }
+call apply_condition(sleep2_atk, Sleeping, Duration.Indefinite)
+
+rolls 18 6
+let sleep2_result = resolve_melee_attack(sleep2_atk, sleep2_tgt, SwordLong)
+assert_eq sleep2_result.outcome, AttackOutcome.Miss
+assert_eq sleep2_result.damage, 0
+
+// ── Paralyzed auto-hit variations ───────────────────────────────
+
+// BattleAxe: 1d8 → max = 8
+spawn Character paxe_atk { name: "Fighter", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots { worn_armor: some(Armor { armour_type: ScaleLamellar }) } }
+spawn Character paxe_tgt { name: "Target", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 }, EquipmentSlots { worn_armor: some(Armor { armour_type: PlateMail }) } }
+call apply_condition(paxe_tgt, Paralyzed, Duration.Indefinite)
+
+rolls clear
+let paxe_result = resolve_melee_attack(paxe_atk, paxe_tgt, BattleAxe)
+assert_eq paxe_result.outcome, AttackOutcome.Hit
+assert_eq paxe_result.damage, 8
+
+// Monster attack: 2d6 → max = 12
+spawn Monster pmon_ogre { name: "Ogre", hit_dice: 4d8+1, max_hp: 26, hp: 26, ac: 15, morale: 7, morale_checks_made: 0, xp_value: 0, intelligence: 1, attacks: [MonsterAttack { name: "Greatclub", damage: 2d6 }], size: Medium, special: [] }
+spawn Character pmon_tgt { name: "Target", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 }, EquipmentSlots { worn_armor: some(Armor { armour_type: PlateMail }) } }
+call apply_condition(pmon_tgt, Paralyzed, Duration.Indefinite)
+
+rolls clear
+let pmon_result = resolve_monster_attack(pmon_ogre, pmon_tgt, MonsterAttack { name: "Greatclub", damage: 2d6 })
+assert_eq pmon_result.outcome, AttackOutcome.Hit
+assert_eq pmon_result.damage, 12
+
+// Paralyzed negates DEX and shield on auto-hit
+spawn Character pdex_atk { name: "Fighter", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots { worn_armor: some(Armor { armour_type: ScaleLamellar }) } }
+spawn Character pdex_tgt { name: "Target", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 17, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 }, EquipmentSlots { worn_armor: some(Armor { armour_type: ScaleLamellar }), worn_shield: some(Shield { shield_type: SmallShield }) } }
+call apply_condition(pdex_tgt, Paralyzed, Duration.Indefinite)
+
+rolls clear
+let pdex_result = resolve_melee_attack(pdex_atk, pdex_tgt, SwordLong)
+assert_eq pdex_result.total_mod, 4
+assert_eq pdex_result.outcome, AttackOutcome.Hit
+assert_eq pdex_result.damage, 8

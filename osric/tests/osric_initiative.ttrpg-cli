@@ -1,0 +1,355 @@
+// OSRIC Initiative integration tests
+//
+// Equivalent of crates/ttrpg_interp/tests/osric_initiative_integration.rs
+// Tests surprise_duration, free_surprise_segments, roll_surprise,
+// roll_initiative, wrap_segment, action_segment, missile_init_segment,
+// assign_segment, fighter multiple attacks, spell timing, speed factor
+// tie-breaking, melee_order, movement segments, charge interaction,
+// CastingSpell condition, and BeginCasting action.
+
+load osric/*.ttrpg
+
+// ── Surprise duration ───────────────────────────────────────────
+
+// Roll 3+ (default threshold 2): not surprised
+assert_eq surprise_duration(3, 0), 0
+assert_eq surprise_duration(4, 0), 0
+assert_eq surprise_duration(5, 0), 0
+assert_eq surprise_duration(6, 0), 0
+
+// Roll 1 with no DEX adj = 1 segment
+assert_eq surprise_duration(1, 0), 1
+
+// Roll 2 with no DEX adj = 2 segments
+assert_eq surprise_duration(2, 0), 2
+
+// Roll 2 with DEX adj 1 → max(0, 2-1) = 1
+assert_eq surprise_duration(2, 1), 1
+
+// High DEX adj fully negates surprise: max(0, 2-3) = 0
+assert_eq surprise_duration(2, 3), 0
+
+// ── Expanded surprise thresholds ────────────────────────────────
+
+// Threshold 3, roll 3 → 3 segments
+assert_eq surprise_duration(3, 0, 3), 3
+
+// Threshold 4, roll 4 → 4 segments
+assert_eq surprise_duration(4, 0, 4), 4
+
+// Threshold 3, roll 4 → not surprised
+assert_eq surprise_duration(4, 0, 3), 0
+
+// Threshold 3, roll 3, DEX adj 1 → max(0, 3-1) = 2
+assert_eq surprise_duration(3, 1, 3), 2
+
+// ── Free surprise segments ──────────────────────────────────────
+
+// Party more surprised (2 segments vs 0): monsters get 2 free
+assert_eq free_surprise_segments(2, 0), 2
+
+// Monster more surprised (0 vs 1): party gets 1 free
+assert_eq free_surprise_segments(0, 1), 1
+
+// Equal surprise: no free segments
+assert_eq free_surprise_segments(1, 1), 0
+
+// ── roll_surprise mechanic ──────────────────────────────────────
+
+// Party rolls 1 (surprised 1 seg), monster rolls 4 (not surprised)
+rolls 1 4
+let rs1 = roll_surprise()
+assert_eq rs1.party_roll, 1
+assert_eq rs1.monster_roll, 4
+assert_eq rs1.party_surprised_segments, 1
+assert_eq rs1.monster_surprised_segments, 0
+
+// High rolls: neither surprised
+rolls 5 3
+let rs2 = roll_surprise()
+assert_eq rs2.party_surprised_segments, 0
+assert_eq rs2.monster_surprised_segments, 0
+
+// Both surprised
+rolls 2 1
+let rs3 = roll_surprise()
+assert_eq rs3.party_surprised_segments, 2
+assert_eq rs3.monster_surprised_segments, 1
+
+// Monster threshold 3: party rolls 3, surprised 3 segments
+rolls 3 5
+let rs4 = roll_surprise(3, 2)
+assert_eq rs4.party_roll, 3
+assert_eq rs4.party_surprised_segments, 3
+assert_eq rs4.monster_surprised_segments, 0
+
+// Party threshold 3: monster rolls 3, surprised 3 segments
+rolls 5 3
+let rs5 = roll_surprise(2, 3)
+assert_eq rs5.party_surprised_segments, 0
+assert_eq rs5.monster_surprised_segments, 3
+
+// Asymmetric thresholds: monster surprises 1-4, party 1-2
+rolls 4 3
+let rs6 = roll_surprise(4, 2)
+assert_eq rs6.party_surprised_segments, 4
+assert_eq rs6.monster_surprised_segments, 0
+
+// ── roll_initiative mechanic ────────────────────────────────────
+
+// Simultaneous (both roll 3)
+rolls 3 3
+let ri1 = roll_initiative()
+assert_eq ri1.party_roll, 3
+assert_eq ri1.monster_roll, 3
+assert_eq ri1.party_segment, 3
+assert_eq ri1.monster_segment, 3
+assert_eq ri1.simultaneous, true
+
+// Not simultaneous (party 2, monster 5)
+rolls 2 5
+let ri2 = roll_initiative()
+assert_eq ri2.party_segment, 2
+assert_eq ri2.monster_segment, 5
+assert_eq ri2.simultaneous, false
+
+// ── Segment wrapping ────────────────────────────────────────────
+
+// 1-10 unchanged
+assert_eq wrap_segment(1), 1
+assert_eq wrap_segment(5), 5
+assert_eq wrap_segment(10), 10
+
+// Wraps
+assert_eq wrap_segment(11), 1
+assert_eq wrap_segment(12), 2
+assert_eq wrap_segment(20), 10
+
+// ── Action segment assignment ───────────────────────────────────
+
+// Melee: equals initiative segment
+assert_eq action_segment(4, MeleeAttackAction), 4
+
+// Move: always segment 1
+assert_eq action_segment(1, MoveAction), 1
+assert_eq action_segment(3, MoveAction), 1
+assert_eq action_segment(6, MoveAction), 1
+
+// Set against charge: always segment 1
+assert_eq action_segment(5, SetAgainstChargeAction), 1
+
+// Cast spell: initiative + casting_time - 1
+// Initiative 4, casting time 3 → 4+3-1 = 6
+assert_eq action_segment(4, CastSpellAction, 3), 6
+
+// Cross-round casting: initiative 6, casting time 7 → 12 (NOT wrapped)
+assert_eq action_segment(6, CastSpellAction, 7), 12
+
+// Missile with DEX adj: max(1, init + adj)
+// Initiative 4, DEX adj -1 → max(1, 3) = 3
+assert_eq action_segment(4, MissileAttackAction, 0, -1), 3
+
+// Missile DEX adj floors to 1: init 1, adj -3 → max(1, -2) = 1
+assert_eq action_segment(1, MissileAttackAction, 0, -3), 1
+
+// Simple types all equal initiative
+assert_eq action_segment(3, ChargeAction), 3
+assert_eq action_segment(3, ParryAction), 3
+assert_eq action_segment(3, FleeAction), 3
+assert_eq action_segment(3, HoldAction), 3
+assert_eq action_segment(3, TwoWeaponAttackAction), 3
+
+// ── missile_init_segment ────────────────────────────────────────
+
+// DEX 16 → dex_init_missile = -1 → base 4 + (-1) = 3
+assert_eq missile_init_segment(4, 16), 3
+
+// DEX 3 → dex_init_missile = +3 → base 2 + 3 = 5
+assert_eq missile_init_segment(2, 3), 5
+
+// ── assign_segment ──────────────────────────────────────────────
+
+// Melee: segment = initiative, speed_factor from arg
+let as1 = assign_segment(3, MeleeAttackAction, 5)
+assert_eq as1.segment, 3
+assert_eq as1.speed_factor, 5
+assert_eq as1.action_type, DeclaredActionType.MeleeAttackAction
+
+// Casting: segment adjusted by casting_time
+let as2 = assign_segment(2, CastSpellAction, 0, 5)
+assert_eq as2.segment, 6
+
+// ── Fighter multiple attacks ────────────────────────────────────
+
+// has_fighter_multi_attack
+assert_eq has_fighter_multi_attack(Fighter, 7), true
+assert_eq has_fighter_multi_attack(Fighter, 6), false
+assert_eq has_fighter_multi_attack(Paladin, 7), true
+assert_eq has_fighter_multi_attack(Thief, 10), false
+
+// fighter_attacks_this_round: level < 7 always 1
+assert_eq fighter_attacks_this_round(6, 1), 1
+assert_eq fighter_attacks_this_round(6, 2), 1
+assert_eq fighter_attacks_this_round(6, 3), 1
+
+// Level 7-12: alternates (odd=1, even=2)
+assert_eq fighter_attacks_this_round(9, 1), 1
+assert_eq fighter_attacks_this_round(9, 2), 2
+
+// Level 13+: always 2
+assert_eq fighter_attacks_this_round(13, 1), 2
+assert_eq fighter_attacks_this_round(13, 2), 2
+assert_eq fighter_attacks_this_round(13, 3), 2
+
+// fighter_attack_segments
+assert_eq fighter_attack_segments(7, 2), [1, 10]
+assert_eq fighter_attack_segments(7, 1), [1]
+assert_eq fighter_attack_segments(13, 1), [1, 10]
+assert_eq fighter_attack_segments(13, 2), [1, 10]
+assert_eq fighter_attack_segments(5, 1), []
+
+// ── Spell timing ────────────────────────────────────────────────
+
+// spell_effect_segment: initiative + casting_time - 1
+assert_eq spell_effect_segment(4, 3), 6
+
+// Cross-round: 9 + 5 - 1 = 13 (NOT wrapped)
+assert_eq spell_effect_segment(9, 5), 13
+
+// Instant cast: 2 + 1 - 1 = 2
+assert_eq spell_effect_segment(2, 1), 2
+
+// is_casting_at_segment: during casting range
+// Starts 4, casting time 3 → casting during 4,5,6
+assert_eq is_casting_at_segment(4, 3, 4), true
+assert_eq is_casting_at_segment(4, 3, 5), true
+
+// Before start
+assert_eq is_casting_at_segment(4, 3, 3), false
+
+// After completion (segment 7 >= cast_start + casting_time = 7 → false)
+assert_eq is_casting_at_segment(4, 3, 7), false
+
+// spell_completed_at_segment
+// Completes at 4+3-1=6
+assert_eq spell_completed_at_segment(4, 3, 6), true
+assert_eq spell_completed_at_segment(4, 3, 8), true
+assert_eq spell_completed_at_segment(4, 3, 5), false
+
+// ── Speed factor tie-breaking ───────────────────────────────────
+
+assert_eq acts_first_by_speed(2, 5), true
+assert_eq acts_first_by_speed(5, 2), false
+assert_eq acts_first_by_speed(4, 4), false
+
+// ── Melee order (by weapon speed factor) ────────────────────────
+
+// Dagger SF=2 vs SwordLong SF=5
+assert_eq melee_order(Dagger, SwordLong), true
+assert_eq melee_order(SwordLong, Dagger), false
+
+// Same weapon: false
+assert_eq melee_order(SwordLong, SwordLong), false
+
+// Halberd SF=9 vs FistOrKick SF=1
+assert_eq melee_order(Halberd, FistOrKick), false
+assert_eq melee_order(FistOrKick, Halberd), true
+
+// ── Movement segments ───────────────────────────────────────────
+
+// movement_per_segment: base/10
+assert_eq movement_per_segment(Feet { value: 120 }), Feet { value: 12 }
+assert_eq movement_per_segment(Feet { value: 60 }), Feet { value: 6 }
+assert_eq movement_per_segment(Feet { value: 90 }), Feet { value: 9 }
+
+// movement_through_segment: (base/10) * segment
+assert_eq movement_through_segment(Feet { value: 120 }, 1), Feet { value: 12 }
+assert_eq movement_through_segment(Feet { value: 120 }, 5), Feet { value: 60 }
+assert_eq movement_through_segment(Feet { value: 120 }, 10), Feet { value: 120 }
+
+// ── Charge interaction ──────────────────────────────────────────
+
+assert_eq set_weapon_damage_multiplier(), 2
+
+// Valid set-against-charge weapons
+assert_eq can_set_against_charge(Spear), true
+assert_eq can_set_against_charge(Javelin), true
+assert_eq can_set_against_charge(Lance), true
+assert_eq can_set_against_charge(PoleArm), true
+assert_eq can_set_against_charge(Trident), true
+
+// Invalid set-against-charge weapons
+assert_eq can_set_against_charge(SwordLong), false
+assert_eq can_set_against_charge(Dagger), false
+assert_eq can_set_against_charge(Club), false
+assert_eq can_set_against_charge(Staff), false
+assert_eq can_set_against_charge(BattleAxe), false
+
+// ── CastingSpell condition modifies attack resolution ───────────
+rolls clear
+
+// Baseline: without CastingSpell, attack hits normally
+spawn Character cs_atk { name: "Fighter", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots { worn_armor: some(Armor { armour_type: ScaleLamellar }) } }
+spawn Character cs_tgt { name: "Target", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 }, EquipmentSlots { worn_armor: some(Armor { armour_type: ScaleLamellar }) } }
+
+rolls 15 6
+let cs_base = resolve_melee_attack(cs_atk, cs_tgt, SwordLong)
+assert_eq cs_base.outcome, AttackOutcome.Hit
+assert_eq cs_base.damage, 6
+
+// CastingSpell on attacker forces Miss
+spawn Character cs2_atk { name: "Fighter", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots { worn_armor: some(Armor { armour_type: ScaleLamellar }) } }
+spawn Character cs2_tgt { name: "Target", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 }, EquipmentSlots { worn_armor: some(Armor { armour_type: ScaleLamellar }) } }
+call apply_condition(cs2_atk, CastingSpell, Duration.Indefinite)
+
+rolls 20 8
+let cs2_result = resolve_melee_attack(cs2_atk, cs2_tgt, SwordLong)
+assert_eq cs2_result.outcome, AttackOutcome.Miss
+assert_eq cs2_result.damage, 0
+
+// CastingSpell on target strips DEX AC (standard DEX 12, no visible change)
+spawn Character cs3_atk { name: "Fighter", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots { worn_armor: some(Armor { armour_type: ScaleLamellar }) } }
+spawn Character cs3_tgt { name: "Target", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 }, EquipmentSlots { worn_armor: some(Armor { armour_type: ScaleLamellar }) } }
+call apply_condition(cs3_tgt, CastingSpell, Duration.Indefinite)
+
+rolls 15 6
+let cs3_result = resolve_melee_attack(cs3_atk, cs3_tgt, SwordLong)
+assert_eq cs3_result.outcome, AttackOutcome.Hit
+assert_eq cs3_result.damage, 6
+
+// CastingSpell on high-DEX target strips DEX +2 AC bonus, enabling a hit
+// Target: armor AC 14, DEX 16 → +2 AC. Without CastingSpell: effective AC 16.
+// With CastingSpell: effective AC 14. Roll 15 + BTHB 0 = 15 >= 14 → Hit.
+spawn Character cs4_atk { name: "Fighter", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 } }
+spawn Character cs4_tgt { name: "Target", classes: [ClassLevel { class: MagicUser, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 16, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 }, EquipmentSlots { worn_armor: some(Armor { armour_type: ScaleLamellar }) } }
+call apply_condition(cs4_tgt, CastingSpell, Duration.Indefinite)
+
+rolls 15 6
+let cs4_result = resolve_melee_attack(cs4_atk, cs4_tgt, SwordLong)
+assert_eq cs4_result.outcome, AttackOutcome.Hit
+assert_eq cs4_result.damage, 6
+
+// ── BeginCasting action applies CastingSpell condition ──────────
+
+spawn Character bc_caster { name: "Mage", classes: [ClassLevel { class: MagicUser, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 }, Spellcasting { spell_slots: [], slots_used: [], memorised_spells: [] } }
+
+assert_no_condition bc_caster, CastingSpell
+do BeginCasting(bc_caster, 3)
+assert_condition bc_caster, CastingSpell
+
+// ── Spell interruption: damage removes CastingSpell ─────────────
+
+spawn Character si_caster { name: "Mage", classes: [ClassLevel { class: MagicUser, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 }, Spellcasting { spell_slots: [], slots_used: [], memorised_spells: [] } }
+spawn Character si_fighter { name: "Fighter", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots { wielded_main: some(Melee(SwordLong)) } }
+
+call apply_condition(si_caster, CastingSpell, Duration.Indefinite)
+assert_condition si_caster, CastingSpell
+
+// Attack the caster — triggers SpellInterruption hook
+rolls 18 5
+do MeleeAttack(si_fighter, si_caster)
+
+// CastingSpell should be removed by the hook
+assert_no_condition si_caster, CastingSpell
+// Caster took 5 damage: 20 - 5 = 15
+assert_eq si_caster.hp, 15
