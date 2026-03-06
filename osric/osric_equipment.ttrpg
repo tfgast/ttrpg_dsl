@@ -228,46 +228,48 @@ system "OSRIC Equipment" {
     //  wielded slots and computing derived equipment stats.
     // ========================================================
 
-    derive wielded_melee(char: Character) -> option<MeleeWeapon> {
-        if char.wielded_main.is_some() {
-            match char.wielded_main.unwrap() {
-                Melee(w) => some(w),
-                _ => none
-            }
-        } else {
-            none
-        }
+    // Extract wielded melee weapon from main hand.
+    // Works for any entity with EquipmentSlots (Character always, Monster optionally).
+    derive wielded_melee(target: entity) -> option<MeleeWeapon> {
+        if target has EquipmentSlots {
+            if target.EquipmentSlots.wielded_main.is_some() {
+                match target.EquipmentSlots.wielded_main.unwrap() {
+                    Melee(w) => some(w),
+                    _ => none
+                }
+            } else { none }
+        } else { none }
     }
 
-    derive wielded_missile(char: Character) -> option<MissileWeapon> {
-        if char.wielded_main.is_some() {
-            match char.wielded_main.unwrap() {
-                Missile(w) => some(w),
-                _ => none
-            }
-        } else {
-            none
-        }
+    derive wielded_missile(target: entity) -> option<MissileWeapon> {
+        if target has EquipmentSlots {
+            if target.EquipmentSlots.wielded_main.is_some() {
+                match target.EquipmentSlots.wielded_main.unwrap() {
+                    Missile(w) => some(w),
+                    _ => none
+                }
+            } else { none }
+        } else { none }
     }
 
-    derive wielded_off_melee(char: Character) -> option<MeleeWeapon> {
-        if char.wielded_off.is_some() {
-            match char.wielded_off.unwrap() {
-                Melee(w) => some(w),
-                _ => none
-            }
-        } else {
-            none
-        }
+    derive wielded_off_melee(target: entity) -> option<MeleeWeapon> {
+        if target has EquipmentSlots {
+            if target.EquipmentSlots.wielded_off.is_some() {
+                match target.EquipmentSlots.wielded_off.unwrap() {
+                    Melee(w) => some(w),
+                    _ => none
+                }
+            } else { none }
+        } else { none }
     }
 
     // Movement cap from worn armour; 0ft = no cap (unarmoured).
-    derive armor_movement_cap(char: Character) -> Feet {
-        if char.worn_armor.is_some() {
-            armour_def(char.worn_armor.unwrap().armour_type).movement_cap
-        } else {
-            0ft
-        }
+    derive armor_movement_cap(target: entity) -> Feet {
+        if target has EquipmentSlots {
+            if target.EquipmentSlots.worn_armor.is_some() {
+                armour_def(target.EquipmentSlots.worn_armor.unwrap().armour_type).movement_cap
+            } else { 0ft }
+        } else { 0ft }
     }
 
 

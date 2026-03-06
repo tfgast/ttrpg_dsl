@@ -438,5 +438,7 @@ system "OSRIC" {
         attacks: list<MonsterAttack>
         size: Size = Size.Medium
         special: list<string>
+
+        optional EquipmentSlots
     }
 }

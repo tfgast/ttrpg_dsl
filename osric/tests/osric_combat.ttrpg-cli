@@ -463,10 +463,10 @@ assert_eq mon_tough.hp, 30
 spawn Monster mon_ogre2 { name: "Ogre2", hit_dice: 4d8 + 1, max_hp: 26, hp: 26, ac: 15, attacks: [MonsterAttack { name: "Club", damage: 1d10 }] }
 spawn Monster mon_goblin2 { name: "Goblin2", hit_dice: 1d8 - 1, max_hp: 5, hp: 5, ac: 14, attacks: [MonsterAttack { name: "Sword", damage: 1d6 }] }
 
-// Monster MeleeAttack action (overloaded — requires MonsterAttack arg)
+// Monster natural attack action (MonsterMeleeAttack — requires MonsterAttack arg)
 rolls clear
 rolls 12 4
-do MeleeAttack(mon_ogre2, mon_goblin2, MonsterAttack { name: "Club", damage: 1d10 })
+do MonsterMeleeAttack(mon_ogre2, mon_goblin2, MonsterAttack { name: "Club", damage: 1d10 })
 assert_eq mon_goblin2.hp, 1
 
 // ── Character attacks vs monsters ──────────────────────────────

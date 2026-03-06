@@ -504,10 +504,15 @@ fn monster_entity_fields() {
         "Monster field count mismatch: got {field_names:?}"
     );
 
-    // Monster should have no optional groups
+    // Monster should have EquipmentSlots as an optional group
+    let opt_names: Vec<_> = monster
+        .optional_groups
+        .iter()
+        .map(|g| g.name.as_str())
+        .collect();
     assert!(
-        monster.optional_groups.is_empty(),
-        "Monster should have no optional groups"
+        opt_names.contains(&"EquipmentSlots"),
+        "Monster should have optional EquipmentSlots, got {opt_names:?}"
     );
 }
 

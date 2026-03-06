@@ -223,7 +223,7 @@ fn monster_melee_attack_hits_and_damages_character() {
             .execute_action(
                 state,
                 eff_handler,
-                "MeleeAttack",
+                "MonsterMeleeAttack",
                 ogre,
                 vec![Value::Entity(target), monster_attack("Club", 1, 10, 0)],
             )
@@ -275,7 +275,7 @@ fn monster_melee_attack_miss_preserves_hp() {
             .execute_action(
                 state,
                 eff_handler,
-                "MeleeAttack",
+                "MonsterMeleeAttack",
                 rat,
                 vec![Value::Entity(target), monster_attack("Bite", 1, 2, 0)],
             )
@@ -331,7 +331,7 @@ fn monster_melee_attack_against_monster() {
             .execute_action(
                 state,
                 eff_handler,
-                "MeleeAttack",
+                "MonsterMeleeAttack",
                 ogre,
                 vec![Value::Entity(goblin), monster_attack("Club", 1, 10, 0)],
             )
