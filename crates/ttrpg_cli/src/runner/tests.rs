@@ -3857,6 +3857,36 @@ system "test" {
     runner.exec("assert hero.HP == 10").unwrap();
 }
 
+// ── let captures action return values (tdsl-85tc) ───────────
+
+#[test]
+fn let_captures_action_return_value() {
+    let source = r#"
+system "test" {
+    entity Character { HP: int }
+    action Heal on actor: Character () -> int {
+        resolve {
+            actor.HP += 5
+            actor.HP
+        }
+    }
+}
+"#;
+    let path = write_temp("let_action_return", source);
+    let mut runner = Runner::new();
+    runner.exec(&format!("load {}", path.display())).unwrap();
+    runner.take_output();
+
+    runner.exec("spawn Character hero { HP: 10 }").unwrap();
+    runner.take_output();
+
+    runner.exec("let result = Heal(hero)").unwrap();
+    runner.take_output();
+
+    runner.exec("assert result == 15").unwrap();
+    runner.exec("assert hero.HP == 15").unwrap();
+}
+
 // ── Regression: tdsl-2i49 — bare ambiguous variant in struct lit field ──
 
 #[test]
