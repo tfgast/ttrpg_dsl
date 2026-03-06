@@ -1,0 +1,44 @@
+// Full D&D 5e example smoke coverage using the canonical external source.
+//
+// This script intentionally loads spec/v0/04_full_example.ttrpg instead of
+// embedding a copy of it inline. Runtime scenarios that require host-created
+// opaque Position values still remain in Rust integration tests.
+
+load spec/v0/04_full_example.ttrpg
+
+// ── Core derives and scalar mechanics ───────────────────────────
+
+assert_eq modifier(10), 0
+assert_eq modifier(16), 3
+assert_eq modifier(8), -1
+assert_eq modifier(15), 2
+
+assert_eq proficiency_bonus(1), 2
+assert_eq proficiency_bonus(5), 3
+assert_eq proficiency_bonus(9), 4
+assert_eq proficiency_bonus(17), 6
+
+assert_eq d20_expr(16, 2, 0, normal), 1d20 + 5
+assert_eq d20_expr(16, 2, 0, advantage), 2d20kh1 + 5
+assert_eq d20_expr(16, 2, 0, disadvantage), 2d20kl1 + 5
+
+// ── Weapon entity smoke checks ──────────────────────────────────
+
+spawn Weapon longsword { name: "Longsword", damage: DamageSpec { dice: 1d8, type: slashing }, ability: STR, properties: [].to_set(), range: 5, long_range: none }
+
+spawn Weapon shortsword { name: "Shortsword", damage: DamageSpec { dice: 1d6, type: piercing }, ability: DEX, properties: [finesse, light].to_set(), range: 5, long_range: none }
+
+spawn Weapon longbow { name: "Longbow", damage: DamageSpec { dice: 1d8, type: piercing }, ability: DEX, properties: [].to_set(), range: 150, long_range: some(600) }
+
+assert_eq longsword.damage.dice, 1d8
+assert_eq longsword.damage.type, slashing
+assert_eq longsword.ability, STR
+assert_eq longsword.range, 5
+assert_eq longsword.long_range, none
+
+assert finesse in shortsword.properties
+assert light in shortsword.properties
+assert_eq shortsword.damage.type, piercing
+
+assert_eq longbow.range, 150
+assert_eq longbow.long_range, some(600)
