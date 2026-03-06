@@ -202,18 +202,14 @@ assert_eq bthb(Class.Cleric, 7), 4    // Cleric needs qualifying
 
 ### Enum variants with fields
 
-Use call-style syntax (positional arguments):
+Both call-style and struct-body syntax work:
 
 ```
-some(Melee(SwordLong))           // WieldedItem.Melee with weapon field
-Missile(BowLong)                 // WieldedItem.Missile with weapon field
+Melee(SwordLong)                              // positional arg
+WieldedItem.Melee(SwordLong)                  // qualified, positional
+WieldedItem.Melee { weapon: SwordLong }       // qualified, struct body (named fields)
+some(WieldedItem.Melee { weapon: SwordLong }) // nested in option
 ```
-
-> **Known issue (tdsl-3htm):** The struct-body syntax
-> `WieldedItem.Melee { weapon: SwordLong }` fails in expressions with
-> "unexpected trailing token". Use call-style `Melee(SwordLong)` instead.
-> The bare form `Melee { weapon: SwordLong }` works in `eval` but not
-> inside `some(...)`.
 
 ### Struct literals
 
