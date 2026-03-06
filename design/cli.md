@@ -133,12 +133,12 @@ fighter.AC = 18
 ```
 eval <expr>                     # Evaluate a DSL expression
 call <fn>(<args>)               # Call a derive or mechanic by name
-do <Action>(actor, args...)     # Execute an action
+do <expr>                       # Evaluate expression for side effects
 react <Reaction>(reactor) with { field: value, ... }  # Execute a reaction
 what_triggers <event> at <entity>, <entity>, ... with { field: value, ... }  # Query event
 ```
 
-`eval` is for quick expression testing (dice math, arithmetic, function calls). `call` invokes a named derive/mechanic. `do` runs the full action pipeline (cost, requires, resolve). Entity arguments use the names from `spawn`.
+`eval` is for quick expression testing (dice math, arithmetic, function calls). `call` invokes a named derive/mechanic. `do` evaluates any expression for its side effects and prints the result — typically used for actions but works with any expression. Both function-call (`do Attack(fighter, goblin)`) and method-call (`do fighter.Attack(goblin)`) syntax work. `let` captures the result in a variable for later assertions. Entity arguments use the names from `spawn`.
 
 `react` executes a reaction directly. The `with { ... }` clause provides the event payload as a struct literal — its fields must match the event's declared shape.
 

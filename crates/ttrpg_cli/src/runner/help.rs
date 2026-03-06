@@ -38,11 +38,12 @@ const COMMANDS: &[CommandInfo] = &[
         name: "let",
         syntax: "let <name> = <expr>",
         description: "Bind expression result to a variable",
-        detail: "Evaluate an expression and store the result in a named variable.\n  The variable can then be used in subsequent eval, assert, and assert_eq expressions.\n  Useful for testing multiple fields of a struct result without re-evaluating.",
+        detail: "Evaluate an expression and store the result in a named variable.\n  The variable can then be used in subsequent eval, assert, and assert_eq expressions.\n  Works with any expression including action calls (both function-call and method syntax).\n  Useful for capturing action return values or testing multiple fields without re-evaluating.",
         examples: &[
             "let result = resolve_attack(fighter, goblin)",
             "assert result.hit == true",
             "assert_eq result.damage, 5",
+            "let hp = Heal(cleric)",
             "let x = 2 + 3",
         ],
         category: "Pipeline",
@@ -110,11 +111,12 @@ const COMMANDS: &[CommandInfo] = &[
     // Execution
     CommandInfo {
         name: "do",
-        syntax: "do <Action>(<actor>, args...)",
-        description: "Execute an action",
-        detail: "Execute a declared action. The first argument is the actor (receiver).\n  Remaining arguments are evaluated as expressions or handle names.",
+        syntax: "do <expr>",
+        description: "Evaluate an expression for its side effects",
+        detail: "Evaluate any expression and print the result. Typically used to\n  execute actions, but works with any expression.\n  Supports both function-call and method-call syntax for actions.",
         examples: &[
             "do Attack(fighter, goblin)",
+            "do fighter.Attack(goblin)",
             "do CastBless(caster, [fighter, rogue])",
         ],
         category: "Execution",

@@ -250,6 +250,17 @@ assert_eq result.outcome, AttackOutcome.Hit
 assert_eq result.damage, 6
 ```
 
+`let` also works with action calls, using either function-call or
+method-call syntax:
+
+```
+let result = Attack(fighter, goblin)
+assert result == hit(9)
+
+let hp = fighter.Heal()
+assert hp == 15
+```
+
 Variables persist for the rest of the script and can be used in any
 expression context (`eval`, `assert`, `assert_eq`).
 

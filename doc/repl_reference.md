@@ -73,14 +73,27 @@ Resource fields auto-clamp to bounds on `set`.
 
 | Command                       | Description                              |
 |-------------------------------|------------------------------------------|
-| `do <Action>(<actor>, args)`  | Execute an action                        |
+| `do <expr>`                   | Evaluate expression for side effects     |
 | `call <func>(args)`           | Call a derive or mechanic                |
+| `let <name> = <expr>`         | Bind result to a variable                |
+
+`do` evaluates any expression and prints the result. It supports both
+function-call and method-call syntax for actions:
 
 ```
 do Attack(fighter, goblin)
+do fighter.Attack(goblin)
 do CastBless(caster, [fighter, rogue])
 call modifier(16)
 call attack_roll(5)
+```
+
+`let` captures the result for use in later assertions:
+
+```
+let result = Attack(fighter, goblin)
+assert result == hit(9)
+let hp = fighter.Heal()
 ```
 
 ### Optional Groups
