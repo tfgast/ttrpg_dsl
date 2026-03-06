@@ -317,17 +317,23 @@ system "OSRIC Combat" {
     // ========================================================
 
     derive effective_target_ac(
-        target: Character,
+        target: entity,
         include_dex: bool = true,
         include_shield: bool = true,
         ac_mod: int = 0
     ) -> int #ac_defense {
-        // Monks use level-based AC (class feature) and never receive DEX AC bonus.
-        // Conditions that set include_dex = false are no-ops for monks.
-        let base_ac = if is_class(target, Monk) { monk_ac(class_level_for(target, Monk).unwrap()) } else { base_armor_ac(target) }
-        let dex_bonus = if include_dex && !is_class(target, Monk) { dex_ac_adj(target.abilities[DEX]) } else { 0 }
-        let shield_bonus = if include_shield { base_shield_bonus(target) } else { 0 }
-        base_ac + dex_bonus + shield_bonus + ac_mod
+        if target is Character {
+            // Monks use level-based AC (class feature) and never receive DEX AC bonus.
+            // Conditions that set include_dex = false are no-ops for monks.
+            let base_ac = if is_class(target, Monk) { monk_ac(class_level_for(target, Monk).unwrap()) } else { base_armor_ac(target) }
+            let dex_bonus = if include_dex && !is_class(target, Monk) { dex_ac_adj(target.abilities[DEX]) } else { 0 }
+            let shield_bonus = if include_shield { base_shield_bonus(target) } else { 0 }
+            base_ac + dex_bonus + shield_bonus + ac_mod
+        } else if target is Monster {
+            target.ac + ac_mod
+        } else {
+            10 + ac_mod
+        }
     }
 
 
@@ -445,7 +451,7 @@ system "OSRIC Combat" {
     // Monster attack using hit dice for BTHB.
     mechanic resolve_monster_attack(
         attacker: Monster,
-        target: Character,
+        target: entity,
         attack: MonsterAttack,
         attack_mod: int = 0,
         roll_mode: RollMode = RollMode.Normal,
@@ -652,6 +658,39 @@ system "OSRIC Combat" {
                 AttackOutcome.Hit => {
                     let wdef = missile_weapon_def(weapon)
                     target.TakeDamage(attacker, result.damage, wdef.damage_type)
+                },
+                _ => {}
+            }
+        }
+    }
+
+    // Monster melee attack using an entry from the attacks list.
+    action MeleeAttack on attacker: Monster (target: entity, attack: MonsterAttack) {
+        cost { attack }
+        resolve {
+            let result = resolve_monster_attack(attacker, target, attack)
+            match result.outcome {
+                AttackOutcome.Hit => {
+                    target.TakeDamage(attacker, result.damage)
+                },
+                _ => {}
+            }
+        }
+    }
+
+    // Monster ranged/missile attack — same mechanic, different action name
+    // for symmetry with Character MissileAttack.
+    action MissileAttack on attacker: Monster (
+        target: entity,
+        attack: MonsterAttack,
+        distance: Feet
+    ) {
+        cost { attack }
+        resolve {
+            let result = resolve_monster_attack(attacker, target, attack)
+            match result.outcome {
+                AttackOutcome.Hit => {
+                    target.TakeDamage(attacker, result.damage)
                 },
                 _ => {}
             }
