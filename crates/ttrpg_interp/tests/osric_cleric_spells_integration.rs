@@ -3,10 +3,7 @@
 //! Tests caster_level derive, SpellDef derives, and resolve functions
 //! for Cure Light Wounds and Cause Light Wounds.
 
-use std::collections::VecDeque;
-
-use ttrpg_interp::adapter::StateAdapter;
-use ttrpg_interp::effect::{Effect, EffectHandler, Response};
+use ttrpg_interp::effect::Response;
 use ttrpg_interp::reference_state::GameState;
 use ttrpg_interp::state::StateProvider;
 use ttrpg_interp::value::Value;
@@ -21,93 +18,8 @@ fn compile_all() -> (ttrpg_ast::ast::Program, ttrpg_checker::CheckResult) {
     compile_osric_sources(all_osric_sources())
 }
 
-fn run_action(
-    interp: &Interpreter,
-    state: GameState,
-    handler: &mut ScriptedHandler,
-    action: &str,
-    actor: ttrpg_interp::state::EntityRef,
-    args: Vec<Value>,
-) -> GameState {
-    let adapter = StateAdapter::new(state);
-    adapter.run(handler, |state, eff_handler| {
-        interp
-            .execute_action(state, eff_handler, action, actor, args)
-            .unwrap();
-    });
-    adapter.into_inner()
-}
-
-fn run_function(
-    interp: &Interpreter,
-    state: GameState,
-    handler: &mut ScriptedHandler,
-    func: &str,
-    args: Vec<Value>,
-) -> GameState {
-    let adapter = StateAdapter::new(state);
-    adapter.run(handler, |state, eff_handler| {
-        interp
-            .evaluate_function(state, eff_handler, func, args)
-            .unwrap();
-    });
-    adapter.into_inner()
-}
-
-fn read_hp(state: &GameState, entity: &ttrpg_interp::state::EntityRef) -> i64 {
-    let val = read_group_field(state, entity, "HitPoints", "hp")
-        .expect("entity should have HitPoints.hp");
-    match val {
-        Value::Int(n) => n,
-        other => panic!("expected int for hp, got {other:?}"),
-    }
-}
-
-/// Handler that returns scripted Rolled responses for RollDice effects
-/// and Acknowledged for everything else.
-struct RollHandler {
-    rolls: VecDeque<Response>,
-}
-
-impl RollHandler {
-    fn new(rolls: Vec<Response>) -> Self {
-        RollHandler {
-            rolls: rolls.into(),
-        }
-    }
-}
-
-impl EffectHandler for RollHandler {
-    fn handle(&mut self, effect: Effect) -> Response {
-        match effect {
-            Effect::RollDice { .. } => self
-                .rolls
-                .pop_front()
-                .expect("RollHandler: ran out of scripted rolls"),
-            _ => Response::Acknowledged,
-        }
-    }
-}
-
-fn run_function_with_rolls(
-    interp: &Interpreter,
-    state: GameState,
-    rolls: Vec<Response>,
-    func: &str,
-    args: Vec<Value>,
-) -> GameState {
-    let mut handler = RollHandler::new(rolls);
-    let adapter = StateAdapter::new(state);
-    adapter.run(&mut handler, |state, eff_handler| {
-        interp
-            .evaluate_function(state, eff_handler, func, args)
-            .unwrap();
-    });
-    adapter.into_inner()
-}
-
 /// Scripted 1d8 roll returning the given value.
-fn roll_1d8(val: i64) -> ttrpg_interp::effect::Response {
+fn roll_1d8(val: i64) -> Response {
     scripted_roll(1, 8, 0, vec![val], vec![val], val, val)
 }
 
@@ -678,10 +590,6 @@ fn cause_light_wounds_def_is_reversible() {
 }
 
 // ── Hold Person ──────────────────────────────────────────
-
-fn roll_save(val: i64) -> ttrpg_interp::effect::Response {
-    scripted_roll(1, 20, 0, vec![val], vec![val], val, val)
-}
 
 #[test]
 fn hold_person_save_bonus_scaling() {

@@ -483,6 +483,97 @@ pub fn scripted_roll(
     })
 }
 
+// ── Roll helpers ────────────────────────────────────────────────
+
+/// Handler that returns scripted Rolled responses for RollDice effects
+/// and Acknowledged for everything else.
+pub struct RollHandler {
+    pub rolls: VecDeque<Response>,
+}
+
+impl RollHandler {
+    pub fn new(rolls: Vec<Response>) -> Self {
+        RollHandler {
+            rolls: rolls.into(),
+        }
+    }
+}
+
+impl EffectHandler for RollHandler {
+    fn handle(&mut self, effect: Effect) -> Response {
+        match effect {
+            Effect::RollDice { .. } => self
+                .rolls
+                .pop_front()
+                .expect("RollHandler: ran out of scripted rolls"),
+            _ => Response::Acknowledged,
+        }
+    }
+}
+
+pub fn run_function_with_rolls(
+    interp: &Interpreter,
+    state: GameState,
+    rolls: Vec<Response>,
+    func: &str,
+    args: Vec<Value>,
+) -> GameState {
+    let mut handler = RollHandler::new(rolls);
+    let adapter = StateAdapter::new(state);
+    adapter.run(&mut handler, |state, eff_handler| {
+        interp
+            .evaluate_function(state, eff_handler, func, args)
+            .unwrap();
+    });
+    adapter.into_inner()
+}
+
+pub fn run_function(
+    interp: &Interpreter,
+    state: GameState,
+    handler: &mut ScriptedHandler,
+    func: &str,
+    args: Vec<Value>,
+) -> GameState {
+    let adapter = StateAdapter::new(state);
+    adapter.run(handler, |state, eff_handler| {
+        interp
+            .evaluate_function(state, eff_handler, func, args)
+            .unwrap();
+    });
+    adapter.into_inner()
+}
+
+pub fn run_action(
+    interp: &Interpreter,
+    state: GameState,
+    handler: &mut ScriptedHandler,
+    action: &str,
+    actor: EntityRef,
+    args: Vec<Value>,
+) -> GameState {
+    let adapter = StateAdapter::new(state);
+    adapter.run(handler, |state, eff_handler| {
+        interp
+            .execute_action(state, eff_handler, action, actor, args)
+            .unwrap();
+    });
+    adapter.into_inner()
+}
+
+pub fn roll_save(val: i64) -> Response {
+    scripted_roll(1, 20, 0, vec![val], vec![val], val, val)
+}
+
+pub fn read_hp(state: &GameState, entity: &EntityRef) -> i64 {
+    let val = read_group_field(state, entity, "HitPoints", "hp")
+        .expect("entity should have HitPoints.hp");
+    match val {
+        Value::Int(n) => n,
+        other => panic!("expected int for hp, got {other:?}"),
+    }
+}
+
 // ── Entity builders ────────────────────────────────────────────
 
 pub fn standard_abilities() -> Vec<(&'static str, i64)> {
