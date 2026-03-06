@@ -27,7 +27,7 @@ system "OSRIC Spells" {
     // ========================================================
 
     group Spellcasting {
-        restricted casting_invocation: option<Invocation>
+        restricted casting_invocation: option<Invocation> = none
         spell_slots: list<int> = []
         restricted slots_used: list<int> = []
         restricted memorised_spells: list<MemorizedSpell> = []
