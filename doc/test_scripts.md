@@ -183,22 +183,13 @@ mechanics                 // List all derives/mechanics
 
 ### Enum variants
 
-Bare variant names work when the name is unique across all enums:
+Bare variant names work when unambiguous. When a variant name appears in
+multiple enums, the REPL resolves it using the parameter's type hint:
 
 ```
-assert_eq bthb(Fighter, 5), 4    // Fighter is unique
+assert_eq bthb(Fighter, 5), 4        // Fighter resolved via parameter type
+assert_eq bthb(Class.Cleric, 7), 4   // qualified form also works
 ```
-
-When a variant name appears in multiple enums, qualify it:
-
-```
-assert_eq bthb(Class.Cleric, 7), 4    // Cleric needs qualifying
-```
-
-> **Known issue (tdsl-ktdj):** Bare variant names that aren't uniquely
-> owned by a single enum fail with "undefined variable". Use `Enum.Variant`
-> syntax as a workaround. When this is fixed, bare names should work
-> everywhere.
 
 ### Enum variants with fields
 
