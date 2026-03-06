@@ -465,6 +465,65 @@ assert_condition rr2_goblin, Dead
 assert_eq rr2_rogue.hp, 11
 
 
+// ── resolve_action: Monster charge via initiative ────────────────
+// Armed monster charges Character through the initiative system.
+rolls clear
+
+spawn Monster rmc_ogre { name: "Ogre", hit_dice: 4d8 + 1, max_hp: 26, hp: 26, ac: 15, attacks: [MonsterAttack { name: "Club", damage: 1d10 }], EquipmentSlots {} }
+spawn Character rmc_victim { name: "Victim", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 } }
+
+let rmc_charge = build_round_action(rmc_ogre, ChargeAction, 4, false, some(rmc_victim), some(SwordLong))
+
+// Roll 12 + BTHB 5 + charge 2 = 19 >= 14, damage 6
+rolls 12 6
+call resolve_action(rmc_charge, [rmc_charge])
+assert_eq rmc_victim.hp, 14
+assert_condition rmc_ogre, ChargeRecovery
+
+
+// ── resolve_action: Monster charge with set weapon opposition ────
+// Character sets spear against charging monster. Spear is longer than
+// sword, so defender strikes first with double damage.
+rolls clear
+
+spawn Monster rmc2_orc { name: "Orc", hit_dice: 1d8, max_hp: 8, hp: 8, ac: 14, attacks: [MonsterAttack { name: "Sword", damage: 1d8 }], EquipmentSlots {} }
+spawn Character rmc2_defender { name: "Defender", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots {} }
+
+let rmc2_charge = build_round_action(rmc2_orc, ChargeAction, 3, false, some(rmc2_defender), some(SwordLong))
+let rmc2_set = build_round_action(rmc2_defender, SetAgainstChargeAction, 1, true, some(rmc2_orc), some(Spear))
+
+// Defender set weapon hit (roll 15, damage 4 → doubled to 8), orc charge hit (roll 16, damage 5)
+rolls 15 4 16 5
+call resolve_action(rmc2_charge, [rmc2_charge, rmc2_set])
+// Orc takes doubled set weapon damage: 8 → dead (8 - 8 = 0)
+assert_eq rmc2_orc.hp, 0
+assert_condition rmc2_orc, Dead
+// Defender unscathed (orc died before charging)
+assert_eq rmc2_defender.hp, 30
+
+
+// ── resolve_round: Monster charges in full round ─────────────────
+// Monster side charges, party side does melee. Initiative: party 2, monster 4.
+rolls clear
+
+spawn Monster rrmc_hobgoblin { name: "Hobgoblin", hit_dice: 1d8 + 1, max_hp: 8, hp: 8, ac: 15, attacks: [MonsterAttack { name: "Sword", damage: 1d8 }], EquipmentSlots {} }
+spawn Character rrmc_fighter { name: "Fighter", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots {} }
+
+let rrmc_init = InitiativeResult { party_roll: 2, monster_roll: 4, party_segment: 2, monster_segment: 4, simultaneous: false }
+let rrmc_fighter_action = build_round_action(rrmc_fighter, MeleeAttackAction, 2, true, some(rrmc_hobgoblin), some(SwordLong))
+let rrmc_hob_action = build_round_action(rrmc_hobgoblin, ChargeAction, 4, false, some(rrmc_fighter), some(SwordLong))
+
+// Fighter hits in segment 2 (roll 14, damage 5), hobgoblin charges in segment 4 (roll 15, damage 4)
+rolls 14 5 15 4
+call resolve_round(1, [rrmc_fighter, rrmc_hobgoblin], rrmc_init, [rrmc_fighter_action, rrmc_hob_action])
+
+// Fighter: 30 - 4 = 26
+assert_eq rrmc_fighter.hp, 26
+// Hobgoblin: 8 - 5 = 3
+assert_eq rrmc_hobgoblin.hp, 3
+assert_condition rrmc_hobgoblin, ChargeRecovery
+
+
 // ── expire_conditions: EndOfRound removed from Monster ───────────
 
 spawn Monster ec_orc { name: "Orc", hit_dice: 1d8, max_hp: 8, hp: 8, ac: 14, attacks: [MonsterAttack { name: "Club", damage: 1d6 }] }

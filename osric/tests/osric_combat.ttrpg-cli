@@ -496,6 +496,61 @@ do Charge(vs_mon_charge, vs_mon_charge_tgt)
 assert_eq vs_mon_charge_tgt.hp, 4
 assert_condition vs_mon_charge, ChargeRecovery
 
+// ── Armed monster charge ─────────────────────────────────────
+
+// resolve_armed_melee_attack with +2 charge bonus
+// Ogre 4d8+1 HD → BTHB 5, +2 charge = +7 total. Target AC 14.
+// Roll 10: 10+7=17 >= 14 → Hit; damage roll 7
+spawn Monster mc_ogre { name: "Ogre", hit_dice: 4d8 + 1, max_hp: 26, hp: 26, ac: 15, attacks: [MonsterAttack { name: "Club", damage: 1d10 }], EquipmentSlots { wielded_main: some(Melee(SwordLong)) } }
+spawn Character mc_target { name: "Victim", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 } }
+
+rolls clear
+rolls 10 7
+do Charge(mc_ogre, mc_target)
+assert_eq mc_target.hp, 13
+assert_condition mc_ogre, ChargeRecovery
+
+// Monster charge miss: low roll doesn't hit
+spawn Monster mc_rat { name: "Rat", hit_dice: 1d8 - 1, max_hp: 3, hp: 3, ac: 10, attacks: [MonsterAttack { name: "Bite", damage: 1d2 }], EquipmentSlots { wielded_main: some(Melee(Dagger)) } }
+spawn Character mc_tough { name: "Warrior", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots { worn_armor: some(Armor { armour_type: PlateMail }) } }
+
+rolls clear
+rolls 5
+do Charge(mc_rat, mc_tough)
+assert_eq mc_tough.hp, 30
+assert_condition mc_rat, ChargeRecovery
+
+// Monster charge against another monster
+spawn Monster mc_hobgoblin { name: "Hobgoblin", hit_dice: 1d8 + 1, max_hp: 8, hp: 8, ac: 15, attacks: [MonsterAttack { name: "Sword", damage: 1d8 }], EquipmentSlots { wielded_main: some(Melee(SwordLong)) } }
+spawn Monster mc_goblin { name: "Goblin", hit_dice: 1d8 - 1, max_hp: 5, hp: 5, ac: 14, attacks: [MonsterAttack { name: "Sword", damage: 1d6 }] }
+
+rolls clear
+rolls 14 5
+do Charge(mc_hobgoblin, mc_goblin)
+assert_eq mc_goblin.hp, 0
+assert_condition mc_goblin, Dead
+assert_condition mc_hobgoblin, ChargeRecovery
+
+// Monster charge blocked by ChargeRecovery cooldown
+spawn Monster mc_cooldown { name: "Orc", hit_dice: 1d8, max_hp: 8, hp: 8, ac: 14, attacks: [MonsterAttack { name: "Sword", damage: 1d6 }], EquipmentSlots { wielded_main: some(Melee(SwordLong)) } }
+spawn Character mc_cd_tgt { name: "Target", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 } }
+
+call apply_condition(mc_cooldown, ChargeRecovery, Duration.Rounds(10))
+assert_err do Charge(mc_cooldown, mc_cd_tgt)
+
+// ── Armed monster SetWeaponStrike ────────────────────────────
+
+// Monster set weapon strike: double damage on hit
+// Hobgoblin 1d8+1 HD → BTHB 2. Target AC 14.
+// Roll 15: 15+2=17 >= 14 → Hit; damage 4, doubled = 8
+spawn Monster ms_hobgoblin { name: "Hobgoblin", hit_dice: 1d8 + 1, max_hp: 8, hp: 8, ac: 15, attacks: [MonsterAttack { name: "Spear", damage: 1d6 }], EquipmentSlots { wielded_main: some(Melee(Spear)) } }
+spawn Character ms_charger { name: "Charger", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 } }
+
+rolls clear
+rolls 15 4
+do SetWeaponStrike(ms_hobgoblin, ms_charger)
+assert_eq ms_charger.hp, 12
+
 // ── target_size ────────────────────────────────────────────────
 
 spawn Character size_human { name: "Human", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, ancestry: Human, HitPoints { max_hp: 10, hp: 10 } }
