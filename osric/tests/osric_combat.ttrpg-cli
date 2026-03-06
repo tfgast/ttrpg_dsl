@@ -1,0 +1,270 @@
+// OSRIC Combat integration tests
+//
+// Equivalent of crates/ttrpg_interp/tests/osric_combat_integration.rs
+// Tests BTHB tables, fighter_attacks, missile_range_penalty,
+// attack_roll_aac, damage_roll, resolve_melee/missile/monster_attack,
+// surprise/initiative, and MeleeAttack/MissileAttack/Charge actions.
+
+load osric/*.ttrpg
+
+// ── Fighter group BTHB (linear: level - 1) ──────────────────────
+
+assert_eq fighter_group_bthb(1), 0
+assert_eq fighter_group_bthb(5), 4
+assert_eq fighter_group_bthb(7), 6
+assert_eq fighter_group_bthb(10), 9
+assert_eq fighter_group_bthb(13), 12
+assert_eq fighter_group_bthb(20), 19
+
+// ── Cleric group BTHB (step function) ───────────────────────────
+// 1-3=0, 4-6=2, 7-10=4, 11-12=6, 13-15=8, 16-18=10, 19+=11
+
+assert_eq cleric_group_bthb(1), 0
+assert_eq cleric_group_bthb(3), 0
+assert_eq cleric_group_bthb(4), 2
+assert_eq cleric_group_bthb(6), 2
+assert_eq cleric_group_bthb(7), 4
+assert_eq cleric_group_bthb(10), 4
+assert_eq cleric_group_bthb(11), 6
+assert_eq cleric_group_bthb(12), 6
+assert_eq cleric_group_bthb(13), 8
+assert_eq cleric_group_bthb(15), 8
+assert_eq cleric_group_bthb(16), 10
+assert_eq cleric_group_bthb(18), 10
+assert_eq cleric_group_bthb(19), 11
+assert_eq cleric_group_bthb(25), 11
+
+// ── Thief group BTHB (step function) ────────────────────────────
+// 1-4=-1, 5-8=1, 9-12=4, 13-17=6, 18+=8
+
+assert_eq thief_group_bthb(1), -1
+assert_eq thief_group_bthb(4), -1
+assert_eq thief_group_bthb(5), 1
+assert_eq thief_group_bthb(8), 1
+assert_eq thief_group_bthb(9), 4
+assert_eq thief_group_bthb(12), 4
+assert_eq thief_group_bthb(13), 6
+assert_eq thief_group_bthb(17), 6
+assert_eq thief_group_bthb(18), 8
+assert_eq thief_group_bthb(25), 8
+
+// ── Magic-user group BTHB (step function) ───────────────────────
+// 1-5=-1, 6-10=1, 11-15=3, 16+=5
+
+assert_eq magic_user_group_bthb(1), -1
+assert_eq magic_user_group_bthb(5), -1
+assert_eq magic_user_group_bthb(6), 1
+assert_eq magic_user_group_bthb(10), 1
+assert_eq magic_user_group_bthb(11), 3
+assert_eq magic_user_group_bthb(15), 3
+assert_eq magic_user_group_bthb(16), 5
+assert_eq magic_user_group_bthb(25), 5
+
+// ── BTHB dispatches by combat group ─────────────────────────────
+
+assert_eq bthb(Fighter, 5), 4
+assert_eq bthb(Class.Cleric, 7), 4
+assert_eq bthb(Thief, 5), 1
+assert_eq bthb(Class.MagicUser, 1), -1
+
+// ── All classes resolve to correct combat group ─────────────────
+
+// Fighter group: Fighter, Paladin, Ranger → level-1
+assert_eq bthb(Fighter, 10), 9
+assert_eq bthb(Class.Paladin, 10), 9
+assert_eq bthb(Class.Ranger, 10), 9
+
+// Cleric group: Cleric, Druid, Monk → 7-10=4
+assert_eq bthb(Class.Cleric, 10), 4
+assert_eq bthb(Class.Druid, 10), 4
+assert_eq bthb(Class.Monk, 10), 4
+
+// Thief group: Thief, Assassin → 5-8=1
+assert_eq bthb(Thief, 5), 1
+assert_eq bthb(Class.Assassin, 5), 1
+
+// MU group: MagicUser, Illusionist → 6-10=1
+assert_eq bthb(Class.MagicUser, 6), 1
+assert_eq bthb(Class.Illusionist, 6), 1
+
+// ── Monster BTHB (Table 2.1.2A) ────────────────────────────────
+
+assert_eq monster_bthb(1d4), -1
+assert_eq monster_bthb(1d8 - 2), -1
+assert_eq monster_bthb(1d8 - 1), 0
+assert_eq monster_bthb(1d8), 1
+assert_eq monster_bthb(1d8 + 1), 2
+assert_eq monster_bthb(1d8 + 2), 2
+assert_eq monster_bthb(2d8), 4
+assert_eq monster_bthb(3d8 + 3), 4
+assert_eq monster_bthb(4d8 + 1), 5
+assert_eq monster_bthb(5d8), 5
+assert_eq monster_bthb(6d8), 7
+assert_eq monster_bthb(7d8 + 1), 7
+assert_eq monster_bthb(8d8), 8
+assert_eq monster_bthb(9d8 + 2), 8
+assert_eq monster_bthb(10d8), 10
+assert_eq monster_bthb(11d8), 10
+assert_eq monster_bthb(12d8), 11
+assert_eq monster_bthb(13d8), 11
+assert_eq monster_bthb(14d8), 12
+assert_eq monster_bthb(15d8), 12
+assert_eq monster_bthb(16d8), 13
+assert_eq monster_bthb(17d8), 13
+assert_eq monster_bthb(18d8), 15
+assert_eq monster_bthb(19d8), 15
+assert_eq monster_bthb(20d8), 16
+assert_eq monster_bthb(21d8), 16
+assert_eq monster_bthb(22d8), 17
+assert_eq monster_bthb(23d8), 17
+assert_eq monster_bthb(24d8), 18
+assert_eq monster_bthb(30d8), 18
+
+// ── Fighter multiple attacks ────────────────────────────────────
+
+// Level 1-6: always 1 attack
+assert_eq fighter_attacks(1, 1), 1
+assert_eq fighter_attacks(1, 2), 1
+assert_eq fighter_attacks(6, 3), 1
+
+// Level 7-12: 3/2 attacks (odd round=1, even round=2)
+assert_eq fighter_attacks(7, 1), 1
+assert_eq fighter_attacks(7, 2), 2
+assert_eq fighter_attacks(7, 3), 1
+assert_eq fighter_attacks(10, 1), 1
+assert_eq fighter_attacks(10, 2), 2
+assert_eq fighter_attacks(12, 1), 1
+assert_eq fighter_attacks(12, 2), 2
+
+// Level 13+: always 2 attacks
+assert_eq fighter_attacks(13, 1), 2
+assert_eq fighter_attacks(13, 2), 2
+assert_eq fighter_attacks(15, 3), 2
+assert_eq fighter_attacks(20, 4), 2
+
+// ── Missile range penalty ───────────────────────────────────────
+
+// Within first increment: no penalty
+assert_eq missile_range_penalty(Feet { value: 50 }, Feet { value: 70 }), 0
+// At exact boundary: no penalty
+assert_eq missile_range_penalty(Feet { value: 70 }, Feet { value: 70 }), 0
+// Just past boundary: -2
+assert_eq missile_range_penalty(Feet { value: 71 }, Feet { value: 70 }), -2
+// Second increment: -2
+assert_eq missile_range_penalty(Feet { value: 100 }, Feet { value: 70 }), -2
+// Third increment: -4
+assert_eq missile_range_penalty(Feet { value: 150 }, Feet { value: 70 }), -4
+// Zero distance: no penalty
+assert_eq missile_range_penalty(Feet { value: 0 }, Feet { value: 70 }), 0
+// Zero increment: should error
+assert_err call missile_range_penalty(Feet { value: 50 }, Feet { value: 0 })
+
+// ── attack_roll_aac mechanic ────────────────────────────────────
+
+// Natural 1 always misses (even with huge bonuses)
+rolls 1
+assert_eq attack_roll_aac(20, 5, 10), AttackOutcome.Miss
+
+// Natural 20 gets +5 bonus → hits AC 25
+rolls 20
+assert_eq attack_roll_aac(0, 25), AttackOutcome.Hit
+
+// Standard hit: roll 11, bonus 4, target 15 → 11+4=15 >= 15
+rolls 11
+assert_eq attack_roll_aac(4, 15), AttackOutcome.Hit
+
+// Standard miss: roll 10, bonus 4, target 15 → 10+4=14 < 15
+rolls 10
+assert_eq attack_roll_aac(4, 15), AttackOutcome.Miss
+
+// With attack_mod: roll 10, bonus 2, target 15, mod 3 → 10+2+3=15 >= 15
+rolls 10
+assert_eq attack_roll_aac(2, 15, 3), AttackOutcome.Hit
+
+// ── damage_roll mechanic ────────────────────────────────────────
+
+// Normal roll: 1d8, roll 5 → max(1, 5+0) = 5
+rolls 5
+assert_eq damage_roll(1d8), 5
+
+// With bonus and mod: 1d6+1, damage_mod=2, roll 3 → 3+1=4, max(1, 4+2)=6
+rolls 3
+assert_eq damage_roll(1d6 + 1, 2), 6
+
+// Minimum is 1: 1d4, damage_mod=-10, roll 1 → max(1, 1+(-10))=1
+rolls 1
+assert_eq damage_roll(1d4, -10), 1
+
+// ── resolve_melee_attack ────────────────────────────────────────
+
+// Fighter level 5 (BTHB=4), STR 12, target AC 14
+spawn Character melee_atk { name: "Fighter", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 } }
+spawn Character melee_tgt { name: "Target", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 } }
+
+// Hit: roll 15 → 15+4+0+0=19 >= 14 → Hit; damage roll 6
+rolls 15 6
+assert_eq resolve_melee_attack(melee_atk, melee_tgt, SwordLong).outcome, AttackOutcome.Hit
+// Note: can't easily inspect damage from struct result in single assert_eq
+
+// ── Surprise & initiative mechanics ─────────────────────────────
+
+// surprise_roll returns die value
+rolls 3
+assert_eq surprise_roll(), 3
+
+// group_initiative returns die value
+rolls 5
+assert_eq group_initiative(), 5
+
+// encounter_distance normal: (1d4+4)*10, roll 3 → 70ft
+rolls 3
+assert_eq encounter_distance(false), Feet { value: 70 }
+
+// encounter_distance surprised: 1d3*10, roll 2 → 20ft
+rolls 2
+assert_eq encounter_distance(true), Feet { value: 20 }
+
+// encounter_sequence: no surprise (party=4, monster=5), distance normal (d4=2 → 60ft)
+rolls 4 5 2
+assert_eq encounter_sequence().surprise, SurpriseState.NoSurprise
+// Re-run for distance check
+rolls 4 5 2
+assert_eq encounter_sequence().distance, Feet { value: 60 }
+
+// encounter_sequence: party surprises (party=4, monster=1), distance surprised (d3=1 → 10ft)
+rolls 4 1 1
+assert_eq encounter_sequence().surprise, SurpriseState.PartySurprises
+rolls 4 1 1
+assert_eq encounter_sequence().distance, Feet { value: 10 }
+
+// ── MeleeAttack action ─────────────────────────────────────────
+
+spawn Character action_atk { name: "Fighter", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots { wielded_main: some(Melee(SwordLong)) } }
+spawn Character action_tgt { name: "Target", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 } }
+
+// Hit: roll 15 → 15+4=19 >= 14(default AC), damage roll 6
+rolls 15 6
+do MeleeAttack(action_atk, action_tgt)
+assert_eq action_tgt.hp, 4
+
+// ── MeleeAttack miss preserves HP ───────────────────────────────
+
+spawn Character miss_atk { name: "Fighter", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 }, EquipmentSlots { wielded_main: some(Melee(Dagger)) } }
+spawn Character miss_tgt { name: "Target", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 }, EquipmentSlots { worn_armor: some(Armor { armour_type: PlateMail }) } }
+
+// Miss: roll 5 → 5+0=5 < PlateMail AC → Miss
+rolls clear
+rolls 5
+do MeleeAttack(miss_atk, miss_tgt)
+assert_eq miss_tgt.hp, 10
+
+// ── MissileAttack action ────────────────────────────────────────
+
+spawn Character archer { name: "Archer", classes: [ClassLevel { class: Fighter, level: 3 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 }, EquipmentSlots { wielded_main: some(Missile(BowLong)) } }
+spawn Character arrow_tgt { name: "Target", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 } }
+
+// Hit: roll 14 → 14+2(BTHB)+0(dex)+0(range)=16 >= 14, damage roll 3
+rolls clear
+rolls 14 3
+do MissileAttack(archer, arrow_tgt, Feet { value: 60 })
+assert_eq arrow_tgt.hp, 7

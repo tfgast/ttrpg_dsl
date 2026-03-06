@@ -25,8 +25,8 @@ test:
 check:
     cargo check --workspace --all-targets
 
-# Full CI-equivalent check: format, clippy, test
-all: fmt-check clippy test
+# Full CI-equivalent check: format, clippy, test, scripts
+all: fmt-check clippy test test-scripts
 
 # Run clippy and auto-fix what it can
 fix:
@@ -43,6 +43,23 @@ bench *ARGS:
 # Run the CLI (pass args after --)
 run *ARGS:
     cargo run --release -- {{ARGS}}
+
+# Run .ttrpg-cli integration test scripts
+test-scripts:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    failed=0
+    for script in osric/tests/*.ttrpg-cli ose/tests/*.ttrpg-cli; do
+        [ -f "$script" ] || continue
+        echo "── $script ──"
+        if cargo run --quiet --bin ttrpg -- run "$script"; then
+            echo "  PASS"
+        else
+            echo "  FAIL"
+            failed=1
+        fi
+    done
+    exit $failed
 
 # ── Fuzzing ──────────────────────────────────────────────────────
 # Use malloc_limit_mb instead of rss_limit_mb to avoid false-positive
