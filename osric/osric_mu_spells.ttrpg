@@ -82,27 +82,33 @@ system "OSRIC MU Spells" {
 
     // Resolve Fireball. Rolls damage once (caster_level d6),
     // then applies to each target. Successful save halves damage.
+    // Vetoed save (e.g. magic resistance) means no effect at all.
     function resolve_fireball(caster: Character, targets: list<Character>) {
         let cl = caster_level(caster, Arcane)
         let total_damage = roll(dice(cl, 6)).total
         for target in targets {
-            let saved = target.MakeSavingThrow(category: SpellsUnlisted).unwrap()
-            let damage = if saved { floor(total_damage / 2) } else { total_damage }
-            target.TakeDamage(caster, damage)
-            emit SpellDamaged(caster: caster, target: target, spell_name: "Fireball", amount: damage)
+            let result = target.MakeSavingThrow(category: SpellsUnlisted)
+            if let some(saved) = result {
+                let damage = if saved { floor(total_damage / 2) } else { total_damage }
+                target.TakeDamage(caster, damage)
+                emit SpellDamaged(caster: caster, target: target, spell_name: "Fireball", amount: damage)
+            }
         }
     }
 
     // Monster-targeted Fireball. Same damage dice, but uses
     // monster saving throw table instead of character saves.
+    // Vetoed save (e.g. magic resistance) means no effect at all.
     function resolve_fireball_monsters(caster: Character, targets: list<Monster>) {
         let cl = caster_level(caster, Arcane)
         let total_damage = roll(dice(cl, 6)).total
         for target in targets {
-            let saved = target.MakeSavingThrow(category: SpellsUnlisted).unwrap()
-            let damage = if saved { floor(total_damage / 2) } else { total_damage }
-            target.TakeDamage(caster, damage)
-            emit SpellDamaged(caster: caster, target: target, spell_name: "Fireball", amount: damage)
+            let result = target.MakeSavingThrow(category: SpellsUnlisted)
+            if let some(saved) = result {
+                let damage = if saved { floor(total_damage / 2) } else { total_damage }
+                target.TakeDamage(caster, damage)
+                emit SpellDamaged(caster: caster, target: target, spell_name: "Fireball", amount: damage)
+            }
         }
     }
 
