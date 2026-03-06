@@ -1,0 +1,158 @@
+// Synthetic emit integration coverage using inline source heredoc.
+// Checker-only invalid-source cases remain in Rust.
+
+source -s <<END
+entity Character {
+    hp: int
+    log_count: int = 0
+    shield: int = 0
+    count: int = 0
+    healed: int = 0
+}
+
+event Hit(target: Character, amount: int) {}
+event Logged(target: Character, amount: int) {}
+event Unlogged(target: Character, amount: int) {}
+event Nudge(target: Character, amount: int = 1) {}
+event ShieldBroken(target: Character) {}
+event Ping(target: Character) {}
+event Pong(target: Character) {}
+event Boom(x: int) {
+    computed: int = error("field default boom")
+}
+
+hook OnHit on c: Character (trigger: Hit(target: c)) {
+    c.hp -= trigger.amount
+}
+
+hook FirstLog on c: Character (trigger: Logged(target: c)) {
+    c.hp -= trigger.amount
+}
+
+hook SecondLog on c: Character (trigger: Logged(target: c)) {
+    c.log_count += 1
+}
+
+hook OnNudge on c: Character (trigger: Nudge(target: c)) {
+    c.hp -= trigger.amount
+}
+
+hook OnShieldDamage on c: Character (trigger: Hit(target: c)) {
+    if c.shield > 0 {
+        c.shield -= 1
+        if c.shield == 0 {
+            emit ShieldBroken(target: c)
+        }
+    }
+}
+
+hook OnShieldBroken on c: Character (trigger: ShieldBroken(target: c)) {
+    c.hp -= 5
+}
+
+hook OnPing on c: Character (trigger: Ping(target: c)) {
+    c.count += 1
+    emit Pong(target: c)
+}
+
+hook OnPong on c: Character (trigger: Pong(target: c)) {
+    c.count += 1
+    emit Ping(target: c)
+}
+
+action DealDamage on actor: Character (target: Character, amount: int) {
+    resolve {
+        emit Hit(target: target, amount: amount)
+    }
+}
+
+action DealLoggedDamage on actor: Character (target: Character, amount: int) {
+    resolve {
+        emit Logged(target: target, amount: amount)
+    }
+}
+
+action DealRawDamage on actor: Character (target: Character) {
+    resolve {
+        target.hp -= 5
+        emit Unlogged(target: target, amount: 5)
+    }
+}
+
+action Poke on actor: Character (target: Character) {
+    resolve {
+        emit Nudge(target: target)
+    }
+}
+
+action StartPingPong on actor: Character (target: Character) {
+    resolve {
+        emit Ping(target: target)
+    }
+}
+
+action DoBoom on actor: Character () {
+    resolve {
+        emit Boom(x: 1)
+    }
+}
+
+action Heal on actor: Character (amount: int) {
+    resolve {
+        actor.hp += amount
+        actor.healed += amount
+    }
+}
+END
+
+// ── emit fires matching hook ─────────────────────────────────────
+
+spawn Character actor_1 { hp: 50 }
+spawn Character target_1 { hp: 30 }
+do DealDamage(actor_1, target_1, 10)
+assert_eq target_1.hp, 20
+assert_eq actor_1.hp, 50
+
+// ── emit fires multiple hooks ───────────────────────────────────
+
+spawn Character actor_2 { hp: 50 }
+spawn Character target_2 { hp: 30, log_count: 0 }
+do DealLoggedDamage(actor_2, target_2, 5)
+assert_eq target_2.hp, 25
+assert_eq target_2.log_count, 1
+
+// ── emit with no matching hooks still succeeds ──────────────────
+
+spawn Character actor_3 { hp: 50 }
+spawn Character target_3 { hp: 30 }
+do DealRawDamage(actor_3, target_3)
+assert_eq target_3.hp, 25
+
+// ── emit uses default event params ──────────────────────────────
+
+spawn Character actor_4 { hp: 50 }
+spawn Character target_4 { hp: 10 }
+do Poke(actor_4, target_4)
+assert_eq target_4.hp, 9
+
+// ── cascading emit from hook ────────────────────────────────────
+
+spawn Character actor_5 { hp: 50 }
+spawn Character target_5 { hp: 30, shield: 1 }
+do DealDamage(actor_5, target_5, 3)
+assert_eq target_5.hp, 22
+assert_eq target_5.shield, 0
+
+// ── circular emit hits runtime depth limit ──────────────────────
+
+spawn Character loop_actor { count: 0 }
+spawn Character loop_target { count: 0 }
+assert_err do StartPingPong(loop_actor, loop_target)
+
+// ── field-default error cleans scope for later actions ──────────
+
+spawn Character scope_actor { hp: 10 }
+assert_err do DoBoom(scope_actor)
+do Heal(scope_actor, 5)
+assert_eq scope_actor.hp, 15
+assert_eq scope_actor.healed, 5

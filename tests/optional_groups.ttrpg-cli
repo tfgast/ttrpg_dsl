@@ -1,0 +1,286 @@
+// Optional groups integration coverage using inline DSL source.
+
+source <<END
+system "OptionalGroupsTest" {
+    entity Character {
+        name: string
+        level: int = 1
+        HP: int
+
+        optional Spellcasting {
+            spell_slots: int
+            spell_dc: int = 10
+            spellcasting_ability: string = "INT"
+        }
+
+        optional KiPowers {
+            ki_points: int
+            ki_dc: int = 8
+        }
+    }
+
+    derive effective_spell_dc(caster: Character) -> int {
+        if caster has Spellcasting {
+            caster.Spellcasting.spell_dc
+        } else {
+            0
+        }
+    }
+
+    derive total_resources(c: Character) -> int {
+        let spells = if c has Spellcasting { c.Spellcasting.spell_slots } else { 0 }
+        let ki = if c has KiPowers { c.KiPowers.ki_points } else { 0 }
+        spells + ki
+    }
+
+    action AwakeMagic on gm: Character (target: Character, slots: int, dc: int) {
+        resolve {
+            grant target.Spellcasting { spell_slots: slots, spell_dc: dc }
+        }
+    }
+
+    action SealMagic on gm: Character (target: Character) {
+        resolve {
+            revoke target.Spellcasting
+        }
+    }
+
+    action UnlockKi on gm: Character (target: Character, points: int) {
+        resolve {
+            grant target.KiPowers { ki_points: points }
+        }
+    }
+
+    action CastSpell on caster: Character with Spellcasting (cost: int) {
+        resolve {
+            caster.Spellcasting.spell_slots -= cost
+        }
+    }
+
+    derive spell_save_dc(caster: Character) -> int {
+        if caster has Spellcasting {
+            caster.Spellcasting.spell_dc + caster.level
+        } else {
+            0
+        }
+    }
+}
+END
+
+// ── Main optional-group lifecycle ───────────────────────────────
+
+spawn Character gm { name: "GM", level: 1, HP: 999 }
+spawn Character wizard { name: "Wizard", level: 5, HP: 30 }
+spawn Character monk { name: "Monk", level: 4, HP: 25 }
+
+assert_eq effective_spell_dc(wizard), 0
+assert_eq total_resources(wizard), 0
+assert_eq spell_save_dc(wizard), 0
+
+do AwakeMagic(gm, wizard, 4, 15)
+assert_eq wizard.Spellcasting.spell_slots, 4
+assert_eq wizard.Spellcasting.spell_dc, 15
+assert_eq wizard.Spellcasting.spellcasting_ability, "INT"
+assert_eq effective_spell_dc(wizard), 15
+assert_eq total_resources(wizard), 4
+assert_eq spell_save_dc(wizard), 20
+
+do UnlockKi(gm, wizard, 3)
+assert_eq wizard.KiPowers.ki_points, 3
+assert_eq wizard.KiPowers.ki_dc, 8
+assert_eq total_resources(wizard), 7
+
+do CastSpell(wizard, 1)
+assert_eq wizard.Spellcasting.spell_slots, 3
+assert_eq total_resources(wizard), 6
+
+do UnlockKi(gm, monk, 5)
+assert_eq monk.KiPowers.ki_points, 5
+assert_eq monk.KiPowers.ki_dc, 8
+assert_eq total_resources(monk), 5
+
+do SealMagic(gm, wizard)
+assert_eq effective_spell_dc(wizard), 0
+assert_eq spell_save_dc(wizard), 0
+assert_eq total_resources(wizard), 3
+
+// ── External group attachment syntax ────────────────────────────
+
+source <<END
+system "ExternalGroupsTest" {
+    group Spellcasting {
+        spell_slots: int
+        spell_dc: int = 11
+    }
+
+    entity Character {
+        name: string
+        HP: int
+        optional Spellcasting
+    }
+
+    action GrantSpellcasting on gm: Character (target: Character, slots: int) {
+        resolve {
+            grant target.Spellcasting { spell_slots: slots }
+        }
+    }
+
+    derive spell_dc(c: Character) -> int {
+        if c has Spellcasting {
+            c.Spellcasting.spell_dc
+        } else {
+            0
+        }
+    }
+}
+END
+
+spawn Character external_gm { name: "GM", HP: 999 }
+spawn Character external_wizard { name: "Wizard", HP: 12 }
+
+do GrantSpellcasting(external_gm, external_wizard, 3)
+assert_eq external_wizard.Spellcasting.spell_slots, 3
+assert_eq external_wizard.Spellcasting.spell_dc, 11
+assert_eq spell_dc(external_wizard), 11
+
+// ── Alias-based optional-group access ───────────────────────────
+
+source <<END
+system "AliasTest" {
+    entity Character {
+        name: string
+        level: int = 1
+        HP: int
+
+        optional Spellcasting {
+            spell_slots: int
+            spell_dc: int = 10
+            spellcasting_ability: string = "INT"
+        }
+
+        optional KiPowers {
+            ki_points: int
+            ki_dc: int = 8
+        }
+    }
+
+    derive effective_spell_dc(caster: Character) -> int {
+        if caster has Spellcasting as sc {
+            caster.sc.spell_dc
+        } else {
+            0
+        }
+    }
+
+    derive total_resources(c: Character) -> int {
+        let spells = if c has Spellcasting as sc { c.sc.spell_slots } else { 0 }
+        let ki = if c has KiPowers as kp { c.kp.ki_points } else { 0 }
+        spells + ki
+    }
+
+    action CastSpell on caster: Character with Spellcasting as sc (cost: int) {
+        resolve {
+            caster.sc.spell_slots -= cost
+        }
+    }
+
+    derive spell_save_dc(caster: Character) -> int {
+        if caster has Spellcasting as sc {
+            caster.sc.spell_dc + caster.level
+        } else {
+            0
+        }
+    }
+
+    action AwakeMagic on gm: Character (target: Character, slots: int, dc: int) {
+        resolve {
+            grant target.Spellcasting { spell_slots: slots, spell_dc: dc }
+        }
+    }
+
+    action UnlockKi on gm: Character (target: Character, points: int) {
+        resolve {
+            grant target.KiPowers { ki_points: points }
+        }
+    }
+
+    action DrainMagic on gm: Character (target: Character) {
+        resolve {
+            if target has Spellcasting as sc {
+                target.sc.spell_slots = 0
+            }
+            revoke target.Spellcasting
+        }
+    }
+}
+END
+
+spawn Character alias_gm { name: "GM", level: 1, HP: 999 }
+spawn Character alias_wizard { name: "Wizard", level: 5, HP: 30 }
+spawn Character alias_fighter { name: "Fighter", level: 5, HP: 40 }
+spawn Character alias_multiclass { name: "Multiclass", level: 7, HP: 35 }
+
+assert_eq effective_spell_dc(alias_fighter), 0
+
+do AwakeMagic(alias_gm, alias_wizard, 4, 15)
+assert_eq effective_spell_dc(alias_wizard), 15
+assert_eq spell_save_dc(alias_wizard), 20
+do CastSpell(alias_wizard, 1)
+assert_eq alias_wizard.Spellcasting.spell_slots, 3
+
+do AwakeMagic(alias_gm, alias_multiclass, 4, 13)
+do UnlockKi(alias_gm, alias_multiclass, 5)
+assert_eq total_resources(alias_multiclass), 9
+
+do DrainMagic(alias_gm, alias_wizard)
+assert_eq effective_spell_dc(alias_wizard), 0
+assert_eq spell_save_dc(alias_wizard), 0
+
+// ── Nested trigger payload alias mutation ───────────────────────
+
+source <<END
+system "NestedAliasTest" {
+    entity Character {
+        name: string
+        level: int = 1
+        HP: int
+
+        optional Spellcasting {
+            spell_slots: int
+            spell_dc: int = 10
+        }
+    }
+
+    event SpellCast(caster: Character, target: Character) {}
+
+    hook DrainOnCast on receiver: Character (trigger: SpellCast(caster: receiver)) {
+        if trigger.target has Spellcasting as sc {
+            trigger.target.sc.spell_slots -= 1
+        }
+    }
+
+    action CastSpell on caster: Character with Spellcasting as sc (target: Character) {
+        resolve {
+            caster.sc.spell_slots -= 1
+            emit SpellCast(caster: caster, target: target)
+        }
+    }
+
+    action AwakeMagic on gm: Character (target: Character, slots: int, dc: int) {
+        resolve {
+            grant target.Spellcasting { spell_slots: slots, spell_dc: dc }
+        }
+    }
+}
+END
+
+spawn Character nested_gm { name: "GM", level: 1, HP: 999 }
+spawn Character nested_wizard { name: "Wizard", level: 5, HP: 30 }
+spawn Character nested_target { name: "Target", level: 3, HP: 20 }
+
+do AwakeMagic(nested_gm, nested_wizard, 4, 15)
+do AwakeMagic(nested_gm, nested_target, 3, 12)
+do CastSpell(nested_wizard, nested_target)
+
+assert_eq nested_wizard.Spellcasting.spell_slots, 3
+assert_eq nested_target.Spellcasting.spell_slots, 2

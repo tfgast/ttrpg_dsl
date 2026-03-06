@@ -1,0 +1,133 @@
+// Synthetic CLI coverage for with_budget integration tests.
+// Uses inline DSL source because the Rust test is self-contained.
+
+source <<END
+system "test" {
+    struct TurnBudget { attack: int, action: int }
+
+    entity Character { hp: int }
+
+    action MeleeAttack on attacker: Character (target: Character) {
+        cost { attack }
+        resolve {
+            target.hp -= 1
+        }
+    }
+
+    action FreeAttack on attacker: Character (target: Character) {
+        cost { action }
+        resolve {
+            target.hp -= 1
+        }
+    }
+
+    function resolve_attack(attacker: Character, target: Character) {
+        with_budget(attacker, { attack: 1 }) {
+            attacker.MeleeAttack(target)
+        }
+    }
+
+    function resolve_two_attacks(attacker: Character, target: Character) {
+        with_budget(attacker, { attack: 1 }) {
+            attacker.MeleeAttack(target)
+            attacker.MeleeAttack(target)
+        }
+    }
+
+    function command_minion(wizard: Character, skeleton: Character, target: Character) {
+        with_budget(wizard, { attack: 1 }) {
+            skeleton.MeleeAttack(target)
+        }
+    }
+
+    function resolve_pair(a: Character, b: Character, target: Character) {
+        with_budget(a, { attack: 1 }) {
+            a.MeleeAttack(target)
+            with_budget(b, { attack: 1 }) {
+                b.MeleeAttack(target)
+            }
+        }
+    }
+
+    function read_budget(actor: Character) {
+        with_budget(actor, { attack: 3 }) {
+            actor.hp = turn.attack
+        }
+    }
+
+    function attack_and_read(attacker: Character, target: Character) {
+        with_budget(attacker, { attack: 2 }) {
+            attacker.MeleeAttack(target)
+            attacker.hp = turn.attack
+        }
+    }
+
+    function nested_same_entity(attacker: Character, target: Character) {
+        with_budget(attacker, { attack: 2 }) {
+            attacker.MeleeAttack(target)
+            with_budget(attacker, { attack: 99 }) {
+                let inner_budget = turn.attack
+            }
+            attacker.MeleeAttack(target)
+            attacker.hp = turn.attack
+        }
+    }
+}
+END
+
+// ── Provision + cleanup via successful action ───────────────────
+
+spawn Character resolve_attacker { hp: 10 }
+spawn Character resolve_target { hp: 10 }
+call resolve_attack(resolve_attacker, resolve_target)
+assert_eq resolve_target.hp, 9
+
+// ── Budget exhaustion stops second action ───────────────────────
+
+spawn Character double_attacker { hp: 10 }
+spawn Character double_target { hp: 10 }
+call resolve_two_attacks(double_attacker, double_target)
+assert_eq double_target.hp, 9
+
+// ── Receiver ≠ payer still spends payer budget ──────────────────
+
+spawn Character wizard { hp: 10 }
+spawn Character skeleton { hp: 5 }
+spawn Character summon_target { hp: 10 }
+call command_minion(wizard, skeleton, summon_target)
+assert_eq summon_target.hp, 9
+
+// ── Nested budgets for different entities ───────────────────────
+
+spawn Character pair_a { hp: 10 }
+spawn Character pair_b { hp: 10 }
+spawn Character pair_target { hp: 10 }
+call resolve_pair(pair_a, pair_b, pair_target)
+assert_eq pair_target.hp, 8
+
+// ── turn readability before and after deduction ─────────────────
+
+spawn Character budget_reader { hp: 10 }
+call read_budget(budget_reader)
+assert_eq budget_reader.hp, 3
+
+spawn Character attack_reader { hp: 10 }
+spawn Character attack_reader_target { hp: 10 }
+call attack_and_read(attack_reader, attack_reader_target)
+assert_eq attack_reader_target.hp, 9
+assert_eq attack_reader.hp, 1
+
+// ── Same-entity nesting restores outer budget ───────────────────
+
+spawn Character nested_attacker { hp: 10 }
+spawn Character nested_target { hp: 10 }
+call nested_same_entity(nested_attacker, nested_target)
+assert_eq nested_target.hp, 8
+assert_eq nested_attacker.hp, 0
+
+// ── No with_budget remains backward compatible ──────────────────
+
+spawn Character free_attacker { hp: 10 }
+spawn Character free_target { hp: 10 }
+do FreeAttack(free_attacker, free_target)
+assert_eq free_target.hp, 9

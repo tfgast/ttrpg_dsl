@@ -1,0 +1,82 @@
+// Restricted field integration tests
+//
+// Runtime-only coverage for same-module mutation and delegation patterns.
+
+// ── Same-module action can mutate restricted field ─────────────────
+
+source <<END
+system "Core" {
+    entity Character {
+        restricted HP: int
+    }
+
+    action TakeDamage on target: Character (amount: int) {
+        resolve {
+            target.HP -= amount
+        }
+    }
+}
+END
+
+spawn Character same_target { HP: 20 }
+do TakeDamage(same_target, 7)
+assert_eq same_target.HP, 13
+
+// ── Cross-module delegation via action call ───────────────────────
+
+source <<END
+system "Core" {
+    entity Character {
+        restricted HP: int
+    }
+
+    action TakeDamage on target: Character (amount: int) {
+        resolve {
+            target.HP -= amount
+        }
+    }
+}
+
+use "Core"
+system "Ext" {
+    action DoubleStrike on attacker: Character (target: Character) {
+        resolve {
+            target.TakeDamage(3)
+            target.TakeDamage(3)
+        }
+    }
+}
+END
+
+spawn Character striker { HP: 50 }
+spawn Character deleg_target { HP: 20 }
+do DoubleStrike(striker, deleg_target)
+assert_eq deleg_target.HP, 14
+
+// ── Declaring-module function can mutate restricted field ─────────
+
+source <<END
+system "Core" {
+    entity Character {
+        restricted HP: int
+    }
+
+    function heal(target: Character, amount: int) {
+        target.HP += amount
+    }
+}
+
+use "Core"
+system "Ext" {
+    action BigHeal on healer: Character (target: Character) {
+        resolve {
+            heal(target, 15)
+        }
+    }
+}
+END
+
+spawn Character healer { HP: 50 }
+spawn Character heal_target { HP: 10 }
+do BigHeal(healer, heal_target)
+assert_eq heal_target.HP, 25

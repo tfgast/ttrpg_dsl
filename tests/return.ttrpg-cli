@@ -1,0 +1,84 @@
+// Return integration tests
+//
+// Equivalent of the runtime portions of
+// crates/ttrpg_interp/tests/return_integration.rs.
+// Checker-only rejection cases remain in Rust.
+
+source -s <<END
+    entity Character { HP: int }
+
+    function clamp(x: int, lo: int, hi: int) -> int {
+        if x < lo { return lo }
+        if x > hi { return hi }
+        x
+    }
+
+    function find_first_positive(xs: list<int>) -> int {
+        for x in xs {
+            if x > 0 {
+                return x
+            }
+        }
+        -1
+    }
+
+    action TestClamp on actor: Character () {
+        resolve {
+            actor.HP = clamp(actor.HP, 0, 100)
+        }
+    }
+
+    action TestFind on actor: Character () {
+        resolve {
+            actor.HP = find_first_positive([-3, -1, 0, 7, 42])
+        }
+    }
+
+    action GuardedHeal on actor: Character (target: Character) {
+        resolve {
+            if target.HP >= 100 {
+                return
+            }
+            target.HP += 10
+        }
+    }
+END
+
+// ── return from function ────────────────────────────────────────
+
+assert_eq clamp(150, 0, 100), 100
+assert_eq clamp(-5, 0, 100), 0
+assert_eq clamp(50, 0, 100), 50
+
+spawn Character clamp_hi { HP: 150 }
+do TestClamp(clamp_hi)
+assert_eq clamp_hi.HP, 100
+
+spawn Character clamp_lo { HP: -5 }
+do TestClamp(clamp_lo)
+assert_eq clamp_lo.HP, 0
+
+spawn Character clamp_mid { HP: 50 }
+do TestClamp(clamp_mid)
+assert_eq clamp_mid.HP, 50
+
+// ── return from for loop ────────────────────────────────────────
+
+assert_eq find_first_positive([-3, -1, 0, 7, 42]), 7
+assert_eq find_first_positive([-3, -1, 0]), -1
+
+spawn Character finder { HP: 0 }
+do TestFind(finder)
+assert_eq finder.HP, 7
+
+// ── bare return in action ───────────────────────────────────────
+
+spawn Character healer_full { HP: 50 }
+spawn Character target_full { HP: 100 }
+do GuardedHeal(healer_full, target_full)
+assert_eq target_full.HP, 100
+
+spawn Character healer_low { HP: 50 }
+spawn Character target_low { HP: 20 }
+do GuardedHeal(healer_low, target_low)
+assert_eq target_low.HP, 30
