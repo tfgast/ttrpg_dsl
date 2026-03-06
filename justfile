@@ -52,7 +52,7 @@ test-scripts:
     for script in osric/tests/*.ttrpg-cli ose/tests/*.ttrpg-cli; do
         [ -f "$script" ] || continue
         echo "── $script ──"
-        if cargo run --quiet --bin ttrpg -- run "$script"; then
+        if cargo run --quiet --bin ttrpg -- --quiet run "$script"; then
             echo "  PASS"
         else
             echo "  FAIL"

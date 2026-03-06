@@ -16,9 +16,14 @@ interactive mode, executed sequentially from a file.
 ## Running tests
 
 ```bash
-just test-scripts           # Run all .ttrpg-cli scripts
-ttrpg run path/to/test.ttrpg-cli  # Run a single script
+just test-scripts                        # Run all .ttrpg-cli scripts (quiet)
+ttrpg run path/to/test.ttrpg-cli        # Run a single script (verbose)
+ttrpg --quiet run path/to/test.ttrpg-cli # Run a single script (quiet)
 ```
+
+The `--quiet` flag suppresses effect log output (`[RollDice]`,
+`[MutateField]`, `[ActionStarted]`, etc.) while still showing errors
+and assertion failures. `just test-scripts` uses `--quiet` by default.
 
 Scripts exit 0 on success, 1 if any assertion fails. Failed assertions
 print the file, line number, and values.
@@ -238,12 +243,6 @@ assert_eq encounter_sequence().surprise, SurpriseState.NoSurprise
 > rolls each time), since there are no let-bindings in scripts yet.
 
 ## Known limitations
-
-### Noisy output (tdsl-zv0s)
-
-Every `RollDice`, `ActionStarted`, `MutateField`, etc. event prints to
-stdout during script execution. This doesn't affect pass/fail but makes
-output hard to scan. A `--quiet` mode is planned.
 
 ### What still needs Rust tests
 
