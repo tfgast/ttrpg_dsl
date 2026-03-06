@@ -1006,6 +1006,49 @@ system "OSRIC Combat" {
         }
     }
 
+    // Armed monster charge: HD-based BTHB + weapon damage, +2 to hit.
+    // Same rules as Character Charge but uses resolve_armed_melee_attack.
+    action Charge on attacker: Monster (target: entity) {
+        cost { attack }
+        requires {
+            wielded_melee(attacker).is_some()
+            && !any([c.name == "ChargeRecovery" for c in conditions(attacker)])
+        }
+        resolve {
+            let weapon = wielded_melee(attacker).unwrap()
+            apply_condition(attacker, ChargeRecovery, Duration.Rounds(10))
+            let result = resolve_armed_melee_attack(attacker, target, weapon, 2)
+            match result.outcome {
+                AttackOutcome.Hit => {
+                    let wdef = melee_weapon_def(weapon)
+                    target.TakeDamage(attacker, result.damage, wdef.damage_type)
+                },
+                _ => {}
+            }
+        }
+    }
+
+    // Armed monster set weapon strike: same as Character but uses
+    // resolve_armed_melee_attack (HD-based BTHB, no STR/spec bonuses).
+    action SetWeaponStrike on defender: Monster (target: entity) {
+        cost { attack }
+        requires {
+            wielded_melee(defender).is_some()
+        }
+        resolve {
+            let weapon = wielded_melee(defender).unwrap()
+            let result = resolve_armed_melee_attack(defender, target, weapon, 0)
+            match result.outcome {
+                AttackOutcome.Hit => {
+                    let wdef = melee_weapon_def(weapon)
+                    let doubled = result.damage * set_weapon_damage_multiplier()
+                    target.TakeDamage(defender, doubled, wdef.damage_type)
+                },
+                _ => {}
+            }
+        }
+    }
+
 
     // ========================================================
     //  BACKSTAB

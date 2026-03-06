@@ -553,58 +553,62 @@ system "OSRIC Initiative" {
                 }
             },
             ChargeAction => {
-                // Charge is Character-only (requires class-based mechanics).
-                if action.combatant is Character {
-                    let charger = action.combatant
-                    let target = action.target.unwrap()
-                    let charge_weapon = action.weapon_melee.unwrap()
+                // Charge requires wielded weapon — Character or armed Monster.
+                let charger = action.combatant
+                let target = action.target.unwrap()
+                let charge_weapon = action.weapon_melee.unwrap()
 
-                    // Equip charger's weapon
+                // Equip charger's weapon
+                if charger is Character {
                     equip_main(charger, WieldedItem.Melee(charge_weapon))
+                } else if charger has EquipmentSlots {
+                    equip_monster_main(charger, WieldedItem.Melee(charge_weapon))
+                }
 
-                    // Apply Charging condition (strips DEX AC, -1 AC)
-                    apply_condition(charger, Charging, Duration.EndOfRound)
+                // Apply Charging condition (strips DEX AC, -1 AC)
+                apply_condition(charger, Charging, Duration.EndOfRound)
 
-                    // Check if target declared set weapon against charge
-                    let set_actions = [a for a in all_actions
-                        if a.action_type == DeclaredActionType.SetAgainstChargeAction
-                        && a.combatant == target]
+                // Check if target declared set weapon against charge
+                let set_actions = [a for a in all_actions
+                    if a.action_type == DeclaredActionType.SetAgainstChargeAction
+                    && a.combatant == target]
 
-                    if len(set_actions) > 0 {
-                        let set_action = first(set_actions).unwrap()
-                        let set_weapon = set_action.weapon_melee.unwrap()
+                if len(set_actions) > 0 {
+                    let set_action = first(set_actions).unwrap()
+                    let set_weapon = set_action.weapon_melee.unwrap()
 
-                        // Equip defender's set weapon (must be a Character)
-                        if set_action.combatant is Character {
-                            equip_main(set_action.combatant, WieldedItem.Melee(set_weapon))
+                    // Equip defender's set weapon
+                    if set_action.combatant is Character {
+                        equip_main(set_action.combatant, WieldedItem.Melee(set_weapon))
+                    } else if set_action.combatant has EquipmentSlots {
+                        equip_monster_main(set_action.combatant, WieldedItem.Melee(set_weapon))
+                    }
+
+                    if weapon_longer(set_weapon, charge_weapon) {
+                        // Set weapon is longer — defender strikes first
+                        with_budget(target, { attack: 1 }) {
+                            target.SetWeaponStrike(charger)
                         }
-
-                        if weapon_longer(set_weapon, charge_weapon) {
-                            // Set weapon is longer — defender strikes first
-                            with_budget(target, { attack: 1 }) {
-                                target.SetWeaponStrike(charger)
-                            }
-                            if is_alive(charger) {
-                                with_budget(charger, { attack: 1 }) {
-                                    charger.Charge(target)
-                                }
-                            }
-                        } else {
-                            // Charger has equal or longer weapon — strikes first
+                        if is_alive(charger) {
                             with_budget(charger, { attack: 1 }) {
                                 charger.Charge(target)
                             }
-                            if is_alive(target) {
-                                with_budget(target, { attack: 1 }) {
-                                    target.SetWeaponStrike(charger)
-                                }
-                            }
                         }
                     } else {
-                        // Normal charge, no set weapon opposition
+                        // Charger has equal or longer weapon — strikes first
                         with_budget(charger, { attack: 1 }) {
                             charger.Charge(target)
                         }
+                        if is_alive(target) {
+                            with_budget(target, { attack: 1 }) {
+                                target.SetWeaponStrike(charger)
+                            }
+                        }
+                    }
+                } else {
+                    // Normal charge, no set weapon opposition
+                    with_budget(charger, { attack: 1 }) {
+                        charger.Charge(target)
                     }
                 }
             },
