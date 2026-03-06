@@ -12,6 +12,7 @@ interactive mode, executed sequentially from a file.
 | Mechanic evaluation with dice | Custom EffectHandler logic |
 | Action execution + entity state | Interpreter/checker API surface tests |
 | Error case validation | Tests needing programmatic loops |
+| Self-contained synthetic programs (`source` heredoc) | |
 
 ## Running tests
 
@@ -43,7 +44,10 @@ ose/tests/ose_combat.ttrpg-cli
 
 ## Script structure
 
-Every script starts by loading the source files, then runs assertions:
+Every script starts by loading source, then runs assertions. There are
+two ways to provide source:
+
+**Loading files** (typical for rule module tests):
 
 ```
 // Description of what this script tests
@@ -52,6 +56,27 @@ load osric/*.ttrpg
 // ── Section heading ─────────────────────────
 assert_eq some_derive(1), expected_value
 ```
+
+**Inline source** (for self-contained tests with synthetic programs):
+
+```
+// Test return semantics
+source -s <<END
+    entity Character { HP: int }
+    function clamp(x: int, lo: int, hi: int) -> int {
+        if x < lo { return lo }
+        if x > hi { return hi }
+        x
+    }
+END
+
+assert_eq clamp(150, 0, 100), 100
+assert_eq clamp(-5, 0, 100), 0
+```
+
+Use `source <<DELIM` for full programs (must include `system` block),
+or `source -s <<DELIM` for snippets (auto-wrapped in a system block).
+The delimiter can be any identifier and must appear alone on its own line.
 
 Comments use `//`. Blank lines are ignored.
 

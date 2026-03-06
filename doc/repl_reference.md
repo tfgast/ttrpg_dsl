@@ -20,11 +20,12 @@ cat commands.txt | ttrpg        # pipe mode (no line editing)
 
 ### Loading Programs
 
-| Command            | Description                                    |
-|--------------------|------------------------------------------------|
-| `load <path...>`   | Load source files (glob patterns OK)           |
-| `reload`           | Reload last loaded files                       |
-| `errors`           | Show diagnostics from last load                |
+| Command                          | Description                                    |
+|----------------------------------|------------------------------------------------|
+| `load <path...>`                 | Load source files (glob patterns OK)           |
+| `source [-s] <<DELIM ... DELIM`  | Define inline DSL source (heredoc)             |
+| `reload`                         | Reload last loaded files                       |
+| `errors`                         | Show diagnostics from last load                |
 
 ```
 load spec/v0/04_full_example.ttrpg
@@ -32,6 +33,31 @@ load *.ttrpg
 reload
 errors
 ```
+
+#### Inline source (heredoc)
+
+Use `source <<DELIM` to define DSL source inline instead of loading files:
+
+```
+source <<END
+system "test" {
+    entity Character { HP: int }
+    function double(x: int) -> int { x * 2 }
+}
+END
+```
+
+With `-s` (snippet mode), the source is auto-wrapped in a `system` block:
+
+```
+source -s <<END
+    entity Character { HP: int }
+    function double(x: int) -> int { x * 2 }
+END
+```
+
+The delimiter can be any identifier (`END`, `EOF`, `TTRPG`, etc.).
+The closing delimiter must appear alone on its own line.
 
 ### Expression Evaluation
 
