@@ -1,0 +1,387 @@
+// OSRIC Saving Throw integration tests
+//
+// Equivalent of crates/ttrpg_interp/tests/osric_saves_integration.rs
+// (derive/table value checks and ResistSpell action tests only;
+// AST structure tests remain in Rust)
+
+load osric/*.ttrpg
+
+// ── Fighter saves ──────────────────────────────────────────────
+
+// Level 0 (zero-level human)
+let f0 = saving_throws_for(Fighter, 0)
+assert_eq f0.aimed_magic, 18
+assert_eq f0.breath, 20
+assert_eq f0.death_paralysis_poison, 16
+assert_eq f0.petrification_polymorph, 17
+assert_eq f0.spells, 19
+
+// Level 1
+let f1 = saving_throws_for(Fighter, 1)
+assert_eq f1.aimed_magic, 16
+assert_eq f1.breath, 17
+assert_eq f1.death_paralysis_poison, 14
+assert_eq f1.petrification_polymorph, 15
+assert_eq f1.spells, 17
+
+// Level 7
+let f7 = saving_throws_for(Fighter, 7)
+assert_eq f7.aimed_magic, 12
+assert_eq f7.breath, 12
+assert_eq f7.death_paralysis_poison, 10
+assert_eq f7.petrification_polymorph, 11
+assert_eq f7.spells, 13
+
+// Level 13
+let f13 = saving_throws_for(Fighter, 13)
+assert_eq f13.aimed_magic, 7
+assert_eq f13.breath, 5
+assert_eq f13.death_paralysis_poison, 5
+assert_eq f13.petrification_polymorph, 6
+assert_eq f13.spells, 8
+
+// Level 19 (wildcard tier)
+let f19 = saving_throws_for(Fighter, 19)
+assert_eq f19.aimed_magic, 4
+assert_eq f19.breath, 3
+assert_eq f19.death_paralysis_poison, 2
+assert_eq f19.petrification_polymorph, 3
+assert_eq f19.spells, 5
+
+// ── Paladin saves ──────────────────────────────────────────────
+
+let p1 = saving_throws_for(Paladin, 1)
+assert_eq p1.aimed_magic, 14
+assert_eq p1.breath, 15
+assert_eq p1.death_paralysis_poison, 12
+assert_eq p1.petrification_polymorph, 13
+assert_eq p1.spells, 15
+
+let p9 = saving_throws_for(Paladin, 9)
+assert_eq p9.aimed_magic, 8
+assert_eq p9.breath, 7
+assert_eq p9.death_paralysis_poison, 6
+assert_eq p9.petrification_polymorph, 7
+assert_eq p9.spells, 9
+
+let p19 = saving_throws_for(Paladin, 19)
+assert_eq p19.aimed_magic, 2
+assert_eq p19.breath, 2
+assert_eq p19.death_paralysis_poison, 2
+assert_eq p19.petrification_polymorph, 2
+assert_eq p19.spells, 3
+
+// ── Cleric saves ───────────────────────────────────────────────
+
+let c1 = saving_throws_for(Cleric, 1)
+assert_eq c1.aimed_magic, 14
+assert_eq c1.breath, 16
+assert_eq c1.death_paralysis_poison, 10
+assert_eq c1.petrification_polymorph, 13
+assert_eq c1.spells, 15
+
+let c7 = saving_throws_for(Cleric, 7)
+assert_eq c7.aimed_magic, 11
+assert_eq c7.breath, 13
+assert_eq c7.death_paralysis_poison, 7
+assert_eq c7.petrification_polymorph, 10
+assert_eq c7.spells, 12
+
+let c16 = saving_throws_for(Cleric, 16)
+assert_eq c16.aimed_magic, 8
+assert_eq c16.breath, 10
+assert_eq c16.death_paralysis_poison, 4
+assert_eq c16.petrification_polymorph, 7
+assert_eq c16.spells, 9
+
+let c19 = saving_throws_for(Cleric, 19)
+assert_eq c19.aimed_magic, 6
+assert_eq c19.breath, 8
+assert_eq c19.death_paralysis_poison, 2
+assert_eq c19.petrification_polymorph, 5
+assert_eq c19.spells, 7
+
+// ── Druid saves ────────────────────────────────────────────────
+
+let d1 = saving_throws_for(Druid, 1)
+assert_eq d1.aimed_magic, 14
+assert_eq d1.breath, 16
+assert_eq d1.death_paralysis_poison, 10
+assert_eq d1.petrification_polymorph, 13
+assert_eq d1.spells, 15
+
+let d10 = saving_throws_for(Druid, 10)
+assert_eq d10.aimed_magic, 10
+assert_eq d10.breath, 12
+assert_eq d10.death_paralysis_poison, 6
+assert_eq d10.petrification_polymorph, 9
+assert_eq d10.spells, 11
+
+// Wildcard tier (13+)
+let d13 = saving_throws_for(Druid, 13)
+assert_eq d13.aimed_magic, 9
+assert_eq d13.breath, 11
+assert_eq d13.death_paralysis_poison, 5
+assert_eq d13.petrification_polymorph, 8
+assert_eq d13.spells, 10
+
+// ── Thief saves ────────────────────────────────────────────────
+
+let t1 = saving_throws_for(Thief, 1)
+assert_eq t1.aimed_magic, 14
+assert_eq t1.breath, 16
+assert_eq t1.death_paralysis_poison, 13
+assert_eq t1.petrification_polymorph, 12
+assert_eq t1.spells, 15
+
+let t5 = saving_throws_for(Thief, 5)
+assert_eq t5.aimed_magic, 12
+assert_eq t5.breath, 15
+assert_eq t5.death_paralysis_poison, 12
+assert_eq t5.petrification_polymorph, 11
+assert_eq t5.spells, 13
+
+let t9 = saving_throws_for(Thief, 9)
+assert_eq t9.aimed_magic, 10
+assert_eq t9.breath, 14
+assert_eq t9.death_paralysis_poison, 11
+assert_eq t9.petrification_polymorph, 10
+assert_eq t9.spells, 11
+
+// 13-16 tier
+let t13 = saving_throws_for(Thief, 13)
+assert_eq t13.aimed_magic, 8
+assert_eq t13.breath, 13
+assert_eq t13.death_paralysis_poison, 10
+assert_eq t13.petrification_polymorph, 9
+assert_eq t13.spells, 9
+
+// Wildcard tier (17+)
+let t17 = saving_throws_for(Thief, 17)
+assert_eq t17.aimed_magic, 6
+assert_eq t17.breath, 12
+assert_eq t17.death_paralysis_poison, 9
+assert_eq t17.petrification_polymorph, 8
+assert_eq t17.spells, 7
+
+// ── Magic-User saves ───────────────────────────────────────────
+
+let mu1 = saving_throws_for(MagicUser, 1)
+assert_eq mu1.aimed_magic, 11
+assert_eq mu1.breath, 15
+assert_eq mu1.death_paralysis_poison, 14
+assert_eq mu1.petrification_polymorph, 13
+assert_eq mu1.spells, 12
+
+let mu6 = saving_throws_for(MagicUser, 6)
+assert_eq mu6.aimed_magic, 9
+assert_eq mu6.breath, 13
+assert_eq mu6.death_paralysis_poison, 13
+assert_eq mu6.petrification_polymorph, 11
+assert_eq mu6.spells, 10
+
+let mu11 = saving_throws_for(MagicUser, 11)
+assert_eq mu11.aimed_magic, 7
+assert_eq mu11.breath, 11
+assert_eq mu11.death_paralysis_poison, 11
+assert_eq mu11.petrification_polymorph, 9
+assert_eq mu11.spells, 8
+
+// Wildcard tier (16+)
+let mu16 = saving_throws_for(MagicUser, 16)
+assert_eq mu16.aimed_magic, 5
+assert_eq mu16.breath, 9
+assert_eq mu16.death_paralysis_poison, 10
+assert_eq mu16.petrification_polymorph, 7
+assert_eq mu16.spells, 6
+
+// ── Illusionist saves ──────────────────────────────────────────
+
+let il1 = saving_throws_for(Illusionist, 1)
+assert_eq il1.aimed_magic, 11
+assert_eq il1.breath, 15
+assert_eq il1.death_paralysis_poison, 14
+assert_eq il1.petrification_polymorph, 13
+assert_eq il1.spells, 12
+
+let il6 = saving_throws_for(Illusionist, 6)
+assert_eq il6.aimed_magic, 9
+assert_eq il6.breath, 13
+assert_eq il6.death_paralysis_poison, 13
+assert_eq il6.petrification_polymorph, 11
+assert_eq il6.spells, 10
+
+let il11 = saving_throws_for(Illusionist, 11)
+assert_eq il11.aimed_magic, 7
+assert_eq il11.breath, 11
+assert_eq il11.death_paralysis_poison, 11
+assert_eq il11.petrification_polymorph, 9
+assert_eq il11.spells, 8
+
+// ── Monk saves ─────────────────────────────────────────────────
+
+let m1 = saving_throws_for(Monk, 1)
+assert_eq m1.aimed_magic, 14
+assert_eq m1.breath, 16
+assert_eq m1.death_paralysis_poison, 13
+assert_eq m1.petrification_polymorph, 12
+assert_eq m1.spells, 15
+
+let m5 = saving_throws_for(Monk, 5)
+assert_eq m5.aimed_magic, 12
+assert_eq m5.breath, 15
+assert_eq m5.death_paralysis_poison, 12
+assert_eq m5.petrification_polymorph, 11
+assert_eq m5.spells, 13
+
+let m13 = saving_throws_for(Monk, 13)
+assert_eq m13.aimed_magic, 8
+assert_eq m13.breath, 13
+assert_eq m13.death_paralysis_poison, 10
+assert_eq m13.petrification_polymorph, 9
+assert_eq m13.spells, 9
+
+// Wildcard tier (17+)
+let m17 = saving_throws_for(Monk, 17)
+assert_eq m17.aimed_magic, 6
+assert_eq m17.breath, 12
+assert_eq m17.death_paralysis_poison, 9
+assert_eq m17.petrification_polymorph, 8
+assert_eq m17.spells, 7
+
+// ── Dispatch: class routing ────────────────────────────────────
+
+// Ranger uses fighter table
+assert_eq saving_throws_for(Ranger, 1), saving_throws_for(Fighter, 1)
+
+// Assassin uses thief table
+assert_eq saving_throws_for(Assassin, 5), saving_throws_for(Thief, 5)
+
+// ── Level boundary transitions ─────────────────────────────────
+
+// Fighter: level 2 → tier 1..=2, level 3 → tier 3..=4
+let fb2 = saving_throws_for(Fighter, 2)
+assert_eq fb2.aimed_magic, 16
+assert_eq fb2.breath, 17
+assert_eq fb2.death_paralysis_poison, 14
+assert_eq fb2.petrification_polymorph, 15
+assert_eq fb2.spells, 17
+
+let fb3 = saving_throws_for(Fighter, 3)
+assert_eq fb3.aimed_magic, 15
+assert_eq fb3.breath, 16
+assert_eq fb3.death_paralysis_poison, 13
+assert_eq fb3.petrification_polymorph, 14
+assert_eq fb3.spells, 16
+
+// Thief: tier boundary at level 5
+let tb4 = saving_throws_for(Thief, 4)
+assert_eq tb4.aimed_magic, 14
+assert_eq tb4.breath, 16
+assert_eq tb4.death_paralysis_poison, 13
+assert_eq tb4.petrification_polymorph, 12
+assert_eq tb4.spells, 15
+
+// (t5 already asserted above — just verify they differ)
+assert tb4.aimed_magic != t5.aimed_magic
+
+// Cleric: tier boundary at level 4
+let cb3 = saving_throws_for(Cleric, 3)
+assert_eq cb3.aimed_magic, 14
+assert_eq cb3.breath, 16
+assert_eq cb3.death_paralysis_poison, 10
+assert_eq cb3.petrification_polymorph, 13
+assert_eq cb3.spells, 15
+
+let cb4 = saving_throws_for(Cleric, 4)
+assert_eq cb4.aimed_magic, 13
+assert_eq cb4.breath, 15
+assert_eq cb4.death_paralysis_poison, 9
+assert_eq cb4.petrification_polymorph, 12
+assert_eq cb4.spells, 14
+
+// Magic-User: tier boundary at level 6
+let mub5 = saving_throws_for(MagicUser, 5)
+assert_eq mub5.aimed_magic, 11
+assert_eq mub5.breath, 15
+assert_eq mub5.death_paralysis_poison, 14
+assert_eq mub5.petrification_polymorph, 13
+assert_eq mub5.spells, 12
+
+// (mu6 already asserted above — just verify they differ)
+assert mub5.aimed_magic != mu6.aimed_magic
+
+// ── Paladin saves are better than Fighter ──────────────────────
+
+// Lower is better for saving throws
+assert p1.aimed_magic <= f1.aimed_magic
+assert p1.breath <= f1.breath
+assert p1.death_paralysis_poison <= f1.death_paralysis_poison
+assert p1.petrification_polymorph <= f1.petrification_polymorph
+assert p1.spells <= f1.spells
+
+// ── Saves improve with level ───────────────────────────────────
+
+// Fighter: level 17 should be strictly better (lower) than level 1
+let f17 = saving_throws_for(Fighter, 17)
+assert f17.aimed_magic < f1.aimed_magic
+assert f17.breath < f1.breath
+assert f17.death_paralysis_poison < f1.death_paralysis_poison
+assert f17.petrification_polymorph < f1.petrification_polymorph
+assert f17.spells < f1.spells
+
+// Cleric: level 16 should be strictly better than level 1
+assert c16.aimed_magic < c1.aimed_magic
+assert c16.breath < c1.breath
+assert c16.death_paralysis_poison < c1.death_paralysis_poison
+assert c16.petrification_polymorph < c1.petrification_polymorph
+assert c16.spells < c1.spells
+
+// ── ResistSpell action ─────────────────────────────────────────
+
+// Human Fighter L1 — standard abilities, death target 14
+spawn Character saver_pass { name: "Saver", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 } }
+
+// Roll 16 vs target 14 → pass
+rolls 16
+do ResistSpell(saver_pass, some(DeathParalysisPoison))
+// TODO: assert on action return value once supported
+
+// Human Fighter L1, roll 5 vs death target 14 → fail
+spawn Character saver_fail { name: "Saver2", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 } }
+rolls 5
+do ResistSpell(saver_fail, some(DeathParalysisPoison))
+
+// Natural 1 always fails — Fighter L19, death target 2, roll 1
+spawn Character saver_nat1 { name: "Saver3", classes: [ClassLevel { class: Fighter, level: 19 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 } }
+rolls 1
+do ResistSpell(saver_nat1, some(DeathParalysisPoison))
+
+// Dwarf stalwart bonus: CON 14 → +4, death target 14, effective 10, roll 11 → pass
+spawn Character saver_dwarf { name: "DwarfSaver", ancestry: Dwarf, classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 10, INT: 10, WIS: 10, DEX: 10, CON: 14, CHA: 10 }, HitPoints { max_hp: 10, hp: 10 } }
+rolls 11
+do ResistSpell(saver_dwarf, some(DeathParalysisPoison))
+
+// Stalwart does NOT apply to breath weapons — Dwarf CON 14, breath target 17, roll 11 → fail
+rolls clear
+spawn Character saver_dwarf_breath { name: "DwarfBreath", ancestry: Dwarf, classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 10, INT: 10, WIS: 10, DEX: 10, CON: 14, CHA: 10 }, HitPoints { max_hp: 10, hp: 10 } }
+rolls 11
+do ResistSpell(saver_dwarf_breath, some(BreathWeapons))
+
+// Human does NOT get stalwart — CON 14, death target 14, roll 11 → fail
+rolls clear
+spawn Character saver_human_con14 { name: "HumanCon14", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 10, INT: 10, WIS: 10, DEX: 10, CON: 14, CHA: 10 }, HitPoints { max_hp: 10, hp: 10 } }
+rolls 11
+do ResistSpell(saver_human_con14, some(DeathParalysisPoison))
+
+// Wisdom mental bonus: Cleric L1 WIS 17 (+3), spells target 15, effective 12, roll 12 → pass
+rolls clear
+spawn Character saver_wis { name: "WiseCleric", classes: [ClassLevel { class: Class.Cleric, level: 1 }], abilities: { STR: 10, INT: 10, WIS: 17, DEX: 10, CON: 10, CHA: 10 }, HitPoints { max_hp: 10, hp: 10 } }
+rolls 12
+do ResistSpell(saver_wis, some(SpellsUnlisted), 0, true)
+
+// Bonus parameter stacks: Fighter L1, death target 14, bonus 3, effective 11, roll 12 → pass
+rolls clear
+spawn Character saver_bonus { name: "BonusSaver", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 } }
+rolls 12
+do ResistSpell(saver_bonus, some(DeathParalysisPoison), 3)
