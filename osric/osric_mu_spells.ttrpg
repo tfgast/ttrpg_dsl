@@ -16,7 +16,6 @@ use "OSRIC Combat"
 use "OSRIC Conditions"
 use "OSRIC Saves"
 use "OSRIC Spells"
-use "OSRIC Cleric Spells"
 
 system "OSRIC MU Spells" {
 

@@ -304,6 +304,18 @@ system "OSRIC Spells" {
 
 
     // ========================================================
+    //  SHARED SPELL EFFECT EVENTS
+    //
+    //  Used by all spell files (cleric, magic-user, etc.) to
+    //  signal healing, damage, and condition application.
+    // ========================================================
+
+    event SpellHealed(caster: Character, target: Character, spell_name: string, amount: int) {}
+    event SpellDamaged(caster: entity, target: entity, spell_name: string, amount: int) {}
+    event SpellApplied(caster: Character, target: entity, spell_name: string) {}
+
+
+    // ========================================================
     //  MEMORISE SPELL
     //
     //  Fills a spell slot during rest/study. The caller chooses

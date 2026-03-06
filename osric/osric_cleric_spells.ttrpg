@@ -45,8 +45,6 @@ system "OSRIC Cleric Spells" {
         }
     }
 
-    event SpellHealed(caster: Character, target: Character, spell_name: string, amount: int) {}
-
     function resolve_cure_light_wounds(caster: Character, target: Character) {
         let healing = roll(1d8).total
         if target.hp <= 0 {
@@ -83,8 +81,6 @@ system "OSRIC Cleric Spells" {
             description: "The touched target creature takes 1d8 hit points of magical damage."
         }
     }
-
-    event SpellDamaged(caster: entity, target: entity, spell_name: string, amount: int) {}
 
     function resolve_cause_light_wounds(caster: Character, target: entity) {
         let damage = roll(1d8).total
@@ -125,8 +121,6 @@ system "OSRIC Cleric Spells" {
             description: "Selected creatures gain +1 to hit and +5% to morale checks for 6 rounds."
         }
     }
-
-    event SpellApplied(caster: Character, target: entity, spell_name: string) {}
 
     function resolve_bless(caster: Character, targets: list<entity>) {
         for target in targets {
