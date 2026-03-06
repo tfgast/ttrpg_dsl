@@ -1,0 +1,130 @@
+// OSRIC Morale integration tests
+//
+// Equivalent of crates/ttrpg_interp/tests/osric_morale_integration.rs
+// Tests base_morale derive, check_morale function (pass/retreat/surrender),
+// fanatical auto-pass after 2 checks, reset_morale, and boundary cases.
+//
+// Reference: OSRIC 3.0 Player Guide, §1.6.8 (p.100)
+
+load osric/*.ttrpg
+
+// ── base_morale: 50 + 5 * dice_count(hit_dice) ────────────────
+
+// 1 HD: 50 + 5 = 55
+spawn Monster goblin { name: "Goblin", hit_dice: 1d8, max_hp: 4, hp: 4, ac: 14, attacks: [MonsterAttack { name: "Club", damage: 1d6 }] }
+assert_eq base_morale(goblin), 55
+
+// 8+1 HD: 50 + 40 = 90
+spawn Monster hill_giant { name: "Hill Giant", hit_dice: 8d8 + 1, max_hp: 36, hp: 36, ac: 16, attacks: [MonsterAttack { name: "Fist", damage: 2d6 }] }
+assert_eq base_morale(hill_giant), 90
+
+// 4 HD: 50 + 20 = 70
+spawn Monster ogre { name: "Ogre", hit_dice: 4d8, max_hp: 18, hp: 18, ac: 15, attacks: [MonsterAttack { name: "Club", damage: 1d10 }] }
+assert_eq base_morale(ogre), 70
+
+// ── check_morale: Pass ─────────────────────────────────────────
+
+// Roll 40 vs base 70 → pass
+spawn Monster ogre_pass { name: "Ogre", hit_dice: 4d8, max_hp: 18, hp: 18, ac: 15, attacks: [MonsterAttack { name: "Club", damage: 1d10 }] }
+rolls 40
+let pass_result = check_morale(ogre_pass, 0)
+assert_eq pass_result.outcome, MoraleOutcome.Pass
+assert_eq pass_result.base_morale, 70
+assert_eq pass_result.roll, 40
+assert_eq pass_result.modified_roll, 40
+assert_eq pass_result.margin, 0
+assert_eq ogre_pass.morale_checks_made, 1
+
+// ── check_morale: Retreat ──────────────────────────────────────
+
+rolls clear
+// Roll 85 vs base 70 → fail by 15 → retreat
+spawn Monster ogre_retreat { name: "Ogre", hit_dice: 4d8, max_hp: 18, hp: 18, ac: 15, attacks: [MonsterAttack { name: "Club", damage: 1d10 }] }
+rolls 85
+let retreat_result = check_morale(ogre_retreat, 0)
+assert_eq retreat_result.outcome, MoraleOutcome.Retreat
+assert_eq retreat_result.base_morale, 70
+assert_eq retreat_result.margin, 15
+
+// ── check_morale: Surrender ────────────────────────────────────
+
+rolls clear
+// Roll 50, modifier +60 → modified 110 vs base 55 → margin 55 → surrender
+spawn Monster goblin_surrender { name: "Goblin", hit_dice: 1d8, max_hp: 4, hp: 4, ac: 14, attacks: [MonsterAttack { name: "Club", damage: 1d6 }] }
+rolls 50
+let surrender_result = check_morale(goblin_surrender, 60)
+assert_eq surrender_result.outcome, MoraleOutcome.Surrender
+assert_eq surrender_result.base_morale, 55
+assert_eq surrender_result.roll, 50
+assert_eq surrender_result.modified_roll, 110
+assert_eq surrender_result.margin, 55
+
+// ── Negative modifier helps pass ───────────────────────────────
+
+rolls clear
+// Roll 75, modifier -10 → modified 65 vs base 70 → pass
+spawn Monster ogre_mod { name: "Ogre", hit_dice: 4d8, max_hp: 18, hp: 18, ac: 15, attacks: [MonsterAttack { name: "Club", damage: 1d10 }] }
+rolls 75
+let mod_result = check_morale(ogre_mod, -10)
+assert_eq mod_result.outcome, MoraleOutcome.Pass
+assert_eq mod_result.modified_roll, 65
+
+// ── Fanatical after two passed checks ──────────────────────────
+
+rolls clear
+spawn Monster ogre_fan { name: "Ogre", hit_dice: 4d8, max_hp: 18, hp: 18, ac: 15, attacks: [MonsterAttack { name: "Club", damage: 1d10 }] }
+
+// First check: roll 40 → pass
+rolls 40
+let fan1 = check_morale(ogre_fan, 0)
+assert_eq fan1.outcome, MoraleOutcome.Pass
+
+// Second check: roll 50 → pass
+rolls clear
+rolls 50
+let fan2 = check_morale(ogre_fan, 0)
+assert_eq fan2.outcome, MoraleOutcome.Pass
+
+// Third check: fanatical auto-pass, no dice needed
+rolls clear
+let fan3 = check_morale(ogre_fan, 0)
+assert_eq fan3.outcome, MoraleOutcome.Pass
+assert_eq fan3.base_morale, 70
+assert_eq fan3.roll, 0
+assert_eq fan3.modified_roll, 0
+assert_eq fan3.margin, 0
+assert_eq ogre_fan.morale_checks_made, 2
+
+// ── reset_morale clears counter ────────────────────────────────
+
+rolls clear
+spawn Monster ogre_reset { name: "Ogre", hit_dice: 4d8, max_hp: 18, hp: 18, ac: 15, attacks: [MonsterAttack { name: "Club", damage: 1d10 }] }
+
+// Make one check
+rolls 40
+let reset1 = check_morale(ogre_reset, 0)
+assert_eq ogre_reset.morale_checks_made, 1
+
+// Reset
+rolls clear
+let reset_void = reset_morale(ogre_reset)
+assert_eq ogre_reset.morale_checks_made, 0
+
+// ── Boundary: margin 50 → Retreat, margin 51 → Surrender ──────
+
+rolls clear
+// 1 HD, base morale = 55
+// Margin 50: roll 5, modifier +100 → modified 105 vs 55 → margin 50 → Retreat
+spawn Monster goblin_a { name: "Goblin A", hit_dice: 1d8, max_hp: 4, hp: 4, ac: 14, attacks: [MonsterAttack { name: "Club", damage: 1d6 }] }
+rolls 5
+let boundary_retreat = check_morale(goblin_a, 100)
+assert_eq boundary_retreat.outcome, MoraleOutcome.Retreat
+assert_eq boundary_retreat.margin, 50
+
+// Margin 51: roll 6, modifier +100 → modified 106 vs 55 → margin 51 → Surrender
+rolls clear
+spawn Monster goblin_b { name: "Goblin B", hit_dice: 1d8, max_hp: 4, hp: 4, ac: 14, attacks: [MonsterAttack { name: "Club", damage: 1d6 }] }
+rolls 6
+let boundary_surrender = check_morale(goblin_b, 100)
+assert_eq boundary_surrender.outcome, MoraleOutcome.Surrender
+assert_eq boundary_surrender.margin, 51
