@@ -10869,7 +10869,7 @@ system "test" {
 "#;
     expect_errors(
         source,
-        &["action resolve block has type int, but actions cannot return a value"],
+        &["action resolve block has type int, but actions without a return type cannot return a value"],
     );
 }
 
@@ -10906,6 +10906,83 @@ system "test" {
     expect_errors(
         source,
         &["hook resolve block has type int, but hooks cannot return a value"],
+    );
+}
+
+#[test]
+fn test_action_with_return_type_ok() {
+    let source = r#"
+system "test" {
+    entity Character { hp: int }
+    action CheckHP on actor: Character () -> option<bool> {
+        resolve {
+            some(actor.hp > 0)
+        }
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_action_return_type_mismatch() {
+    let source = r#"
+system "test" {
+    entity Character { hp: int }
+    action CheckHP on actor: Character () -> option<bool> {
+        resolve {
+            42
+        }
+    }
+}
+"#;
+    expect_errors(
+        source,
+        &["action resolve block has type int, expected option<bool>"],
+    );
+}
+
+#[test]
+fn test_action_return_type_used_in_expression() {
+    // Action with return type can be used in let binding
+    let source = r#"
+system "test" {
+    entity Character { hp: int }
+    action CheckHP on actor: Character () -> option<bool> {
+        resolve {
+            some(actor.hp > 0)
+        }
+    }
+    action DoStuff on actor: Character () {
+        resolve {
+            let result: option<bool> = actor.CheckHP()
+            let alive = result.unwrap()
+        }
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_action_overloads_must_agree_on_return_type() {
+    let source = r#"
+system "test" {
+    entity Character { hp: int }
+    entity Monster { hp: int }
+    action CheckHP on c: Character () -> option<bool> {
+        resolve { some(c.hp > 0) }
+    }
+    action CheckHP on m: Monster () {
+        resolve {
+            m.hp += 0
+        }
+    }
+}
+"#;
+    expect_errors(
+        source,
+        &["overloads must all have the same return type"],
     );
 }
 

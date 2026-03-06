@@ -187,6 +187,7 @@ impl VisitSpansMut for ActionDecl {
     fn visit_spans_mut(&mut self, f: &mut dyn FnMut(&mut Span)) {
         self.receiver_type.visit_spans_mut(f);
         self.params.visit_spans_mut(f);
+        self.return_type.visit_spans_mut(f);
         self.cost.visit_spans_mut(f);
         self.requires.visit_spans_mut(f);
         self.resolve.visit_spans_mut(f);

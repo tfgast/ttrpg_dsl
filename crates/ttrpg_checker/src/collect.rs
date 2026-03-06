@@ -990,6 +990,26 @@ fn collect_action(
             ));
         }
 
+        // Check that all overloads agree on return type
+        if let Some(first) = existing.first() {
+            let new_return_ty = a
+                .return_type
+                .as_ref()
+                .map(|rt| env.resolve_type_validated(rt, diagnostics))
+                .unwrap_or(Ty::Unit);
+            if first.return_type != new_return_ty {
+                diagnostics.push(Diagnostic::error(
+                    format!(
+                        "action `{}` overloads must all have the same return type (expected {}, found {})",
+                        a.name,
+                        first.return_type.display(),
+                        new_return_ty.display()
+                    ),
+                    span,
+                ));
+            }
+        }
+
         // Check for name collision with a non-action function
         if let Some(existing_fn) = env.functions.get(a.name.as_str()) {
             if existing_fn.kind != FnKind::Action {
@@ -1050,11 +1070,19 @@ fn collect_action(
         tag_set.insert(tag.clone());
     }
 
+    // Resolve return type directly — no implicit wrapping.
+    // Users declare `-> option<T>` explicitly to account for veto/requires-fail.
+    let return_type = if let Some(ref rt) = a.return_type {
+        env.resolve_type_validated(rt, diagnostics)
+    } else {
+        Ty::Unit
+    };
+
     let fn_info = FnInfo {
         name: a.name.clone(),
         kind: FnKind::Action,
         params: param_infos,
-        return_type: Ty::Unit,
+        return_type,
         receiver: Some(receiver),
         tags: tag_set,
         synthetic: false,

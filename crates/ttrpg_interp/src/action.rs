@@ -126,8 +126,14 @@ fn execute_pipeline(
     requires: Option<&Spanned<ExprKind>>,
     cost: Option<&CostClause>,
     resolve: &Block,
+    has_return_type: bool,
     call_span: Span,
 ) -> Result<Value, RuntimeError> {
+    let abort_value = if has_return_type {
+        Value::Option(None)
+    } else {
+        Value::Void
+    };
     // Requires clause (if present)
     if let Some(requires_expr) = requires {
         let requires_val = eval_expr(env, requires_expr)?;
@@ -163,7 +169,7 @@ fn execute_pipeline(
 
         if !effective_passed {
             // Requires failed: no cost spent, action ends
-            return Ok(Value::Void);
+            return Ok(abort_value);
         }
     }
 
@@ -176,7 +182,7 @@ fn execute_pipeline(
             if let Some(ref eff) = effective_cost {
                 match deduct_costs(env, action_name, eff, call_span)? {
                     CostOutcome::Proceed => {}
-                    CostOutcome::ActionFailed => return Ok(Value::Void),
+                    CostOutcome::ActionFailed => return Ok(abort_value),
                 }
             }
             // else: cost was overridden to free by a modifier
@@ -210,6 +216,13 @@ pub(crate) fn execute_action(
     let action_name = action.name.clone();
     let param_values: Vec<Value> = args.iter().map(|(_, v)| v.clone()).collect();
 
+    let has_return_type = action.return_type.is_some();
+    let abort_value = if has_return_type {
+        Value::Option(None)
+    } else {
+        Value::Void
+    };
+
     // 1. Emit ActionStarted (veto → early return)
     if let LifecycleStart::Vetoed = emit_action_started(
         env,
@@ -223,7 +236,7 @@ pub(crate) fn execute_action(
         actor,
         call_span,
     )? {
-        return Ok(Value::Void);
+        return Ok(abort_value);
     }
 
     // 2–5. Scoped execution with lifecycle completion
@@ -253,6 +266,7 @@ pub(crate) fn execute_action(
             action.requires.as_ref(),
             action.cost.as_ref(),
             &action.resolve,
+            has_return_type,
             call_span,
         )
     })
@@ -306,6 +320,7 @@ pub(crate) fn execute_reaction(
             None,
             reaction.cost.as_ref(),
             &reaction.resolve,
+            false, // reactions never have return types
             call_span,
         )
     })

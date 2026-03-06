@@ -750,6 +750,105 @@ system "test" {
 }
 
 #[test]
+fn action_with_return_type_returns_value() {
+    // Action with -> option<bool> should return some(true) on success.
+    let source = r#"
+system "test" {
+    entity Character { HP: int }
+
+    action IsAlive on actor: Character () -> option<bool> {
+        resolve {
+            some(actor.HP > 0)
+        }
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut gs = GameState::new();
+    let c = make_entity(&mut gs, 10);
+
+    let mut handler = ScriptedHandler::ack_all();
+
+    let val = interp
+        .execute_action(&gs, &mut handler, "IsAlive", c, vec![])
+        .unwrap();
+
+    assert_eq!(
+        val,
+        Value::Option(Some(Box::new(Value::Bool(true)))),
+        "action with return type should return some(true)"
+    );
+}
+
+#[test]
+fn action_with_return_type_veto_returns_none() {
+    // When an action is vetoed, it should return none instead of void.
+    let source = r#"
+system "test" {
+    entity Character { HP: int }
+
+    action IsAlive on actor: Character () -> option<bool> {
+        resolve {
+            some(actor.HP > 0)
+        }
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut gs = GameState::new();
+    let c = make_entity(&mut gs, 10);
+
+    // Script a Veto response for ActionStarted
+    let mut handler = ScriptedHandler {
+        script: VecDeque::from(vec![Response::Vetoed]),
+        log: Vec::new(),
+    };
+
+    let val = interp
+        .execute_action(&gs, &mut handler, "IsAlive", c, vec![])
+        .unwrap();
+
+    assert_eq!(
+        val,
+        Value::Option(None),
+        "vetoed action with return type should return none"
+    );
+}
+
+#[test]
+fn action_without_return_type_veto_returns_void() {
+    // Actions without return type should still return Void on veto.
+    let source = r#"
+system "test" {
+    entity Character { HP: int }
+
+    action Heal on actor: Character () {
+        resolve {
+            actor.HP += 1
+        }
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut gs = GameState::new();
+    let c = make_entity(&mut gs, 10);
+
+    let mut handler = ScriptedHandler {
+        script: VecDeque::from(vec![Response::Vetoed]),
+        log: Vec::new(),
+    };
+
+    let val = interp
+        .execute_action(&gs, &mut handler, "Heal", c, vec![])
+        .unwrap();
+
+    assert_eq!(val, Value::Void, "vetoed void action should return Void");
+}
+
+#[test]
 fn action_overload_missing_entity_type_caught_by_checker() {
     // When the static type is a concrete entity with no overload, checker catches it.
     let source = r#"

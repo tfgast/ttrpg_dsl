@@ -423,6 +423,9 @@ pub struct ActionDecl {
     /// Optional group constraints on the receiver: `on actor: Entity with Group1, Group2`.
     pub receiver_with_groups: WithClause,
     pub params: Vec<Param>,
+    /// Optional return type. When present, the effective type seen by callers
+    /// is `option<T>` (actions can be vetoed or fail requires/cost).
+    pub return_type: Option<Spanned<TypeExpr>>,
     pub cost: Option<CostClause>,
     pub requires: Option<Spanned<ExprKind>>,
     pub resolve: Block,
@@ -449,6 +452,7 @@ impl ActionDecl {
             receiver_type,
             receiver_with_groups: WithClause::default(),
             params: vec![],
+            return_type: None,
             cost: None,
             requires: None,
             resolve,

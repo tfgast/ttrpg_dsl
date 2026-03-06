@@ -459,8 +459,14 @@ impl<'a> Checker<'a> {
     }
 
     fn check_action(&mut self, a: &ActionDecl) {
+        // Resolve the declared return type (used directly, no implicit wrapping).
+        let declared_return_ty = a
+            .return_type
+            .as_ref()
+            .map(|rt| self.resolve_type_validated(rt))
+            .unwrap_or(Ty::Unit);
         self.scope
-            .push_with_return_type(BlockKind::ActionResolve, Ty::Unit);
+            .push_with_return_type(BlockKind::ActionResolve, declared_return_ty.clone());
 
         // Bind receiver (field-mutable via action context, but not rebindable)
         self.check_type_visible(&a.receiver_type);
@@ -506,17 +512,29 @@ impl<'a> Checker<'a> {
             }
         }
 
-        // Check resolve block — actions cannot return a value (but synthetic
-        // actions from lowered moves are allowed to, since move branches
-        // produce outcome values by design).
+        // Check resolve block against declared return type.
+        // Synthetic actions (from lowered moves) bypass this check.
         let body_ty = self.check_block(&a.resolve);
-        if !a.synthetic && !body_ty.is_error() && body_ty != Ty::Unit {
-            self.error(
-                format!(
-                    "action resolve block has type {body_ty}, but actions cannot return a value"
-                ),
-                a.resolve.span,
-            );
+        if !a.synthetic && !body_ty.is_error() {
+            if a.return_type.is_some() {
+                // Action declares a return type — resolve block must match
+                if !self.types_compatible(&body_ty, &declared_return_ty) {
+                    self.error(
+                        format!(
+                            "action resolve block has type {body_ty}, expected {declared_return_ty}"
+                        ),
+                        a.resolve.span,
+                    );
+                }
+            } else if body_ty != Ty::Unit {
+                // No return type declared — resolve block must be void
+                self.error(
+                    format!(
+                        "action resolve block has type {body_ty}, but actions without a return type cannot return a value"
+                    ),
+                    a.resolve.span,
+                );
+            }
         }
 
         self.scope.pop();

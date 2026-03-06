@@ -586,6 +586,14 @@ impl Parser {
         let params = self.parse_params()?;
         self.expect(&TokenKind::RParen)?;
 
+        // Optional return type: -> Type
+        let return_type = if matches!(self.peek(), TokenKind::Arrow) {
+            self.advance();
+            Some(self.parse_type()?)
+        } else {
+            None
+        };
+
         // Parse tag annotations: #tag1 #tag2 ... before the body block
         let mut tags = Vec::new();
         while matches!(self.peek(), TokenKind::Hash) {
@@ -618,6 +626,7 @@ impl Parser {
             receiver_type,
             receiver_with_groups,
             params,
+            return_type,
             cost,
             requires,
             resolve,
