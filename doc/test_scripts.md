@@ -239,11 +239,43 @@ none                       // empty option
 
 ### Field access on results
 
-Chain `.field` to access struct fields from function results:
+Chain `.field` to access struct or enum variant fields from function results:
 
 ```
 assert_eq resolve_melee_attack(atk, tgt, SwordLong).outcome, AttackOutcome.Hit
 assert_eq encounter_sequence().surprise, SurpriseState.NoSurprise
+
+// Enum variant fields work the same way
+rolls 3 4
+let result = resolve_turn_undead(cleric, 1, false)
+assert_eq result.number_affected, 7
+```
+
+### Index access and length
+
+Use `[n]` to index into lists (zero-based) and `.len()` for length:
+
+```
+assert_eq [10, 20, 30][0], 10
+assert_eq [10, 20, 30][2], 30
+assert_eq [10, 20, 30][-1], 30       // negative indexing from end
+assert_eq [1, 2, 3].len(), 3
+assert_eq equipment_package(Fighter).len(), 8
+```
+
+### Comparison operators
+
+All standard comparison operators work in expressions:
+
+```
+assert 5 > 3
+assert 3 < 5
+assert 5 >= 5
+assert 3 <= 5
+assert 5 != 3
+
+// Useful for monotonicity spot-checks without needing loops
+assert thief_skill_base(ClimbWalls, 15) >= thief_skill_base(ClimbWalls, 1)
 ```
 
 ### Binding results with `let`
