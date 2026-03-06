@@ -230,6 +230,27 @@ pub(crate) fn eval_expr(env: &mut Env, expr: &Spanned<ExprKind>) -> Result<Value
             Ok(Value::Bool(has))
         }
 
+        ExprKind::Is {
+            entity,
+            entity_type,
+        } => {
+            let entity_val = eval_expr(env, entity)?;
+            let entity_ref = match entity_val {
+                Value::Entity(r) => r,
+                _ => {
+                    return Err(RuntimeError::with_span(
+                        "is: expected entity value",
+                        entity.span,
+                    ))
+                }
+            };
+            let matches = match env.state.entity_type_name(&entity_ref) {
+                Some(actual_type) => actual_type.as_ref() == entity_type.as_ref(),
+                None => false,
+            };
+            Ok(Value::Bool(matches))
+        }
+
         ExprKind::UnitLit { value, suffix } => {
             // Look up suffix → unit type name, then find the field name
             let unit_name = env

@@ -545,6 +545,9 @@ impl VisitSpansMut for ExprKind {
             ExprKind::Has { entity, .. } => {
                 entity.visit_spans_mut(f);
             }
+            ExprKind::Is { entity, .. } => {
+                entity.visit_spans_mut(f);
+            }
         }
     }
 }

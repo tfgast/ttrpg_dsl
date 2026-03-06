@@ -120,6 +120,16 @@ impl Parser {
                 },
                 self.end_span(start),
             ))
+        } else if self.at_ident("is") {
+            self.advance();
+            let (entity_type, _) = self.expect_ident()?;
+            Ok(Spanned::new(
+                ExprKind::Is {
+                    entity: Box::new(lhs),
+                    entity_type,
+                },
+                self.end_span(start),
+            ))
         } else {
             Ok(lhs)
         }

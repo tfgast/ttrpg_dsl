@@ -200,10 +200,14 @@ impl<'a> Arbitrary<'a> for ExprKind {
                     None
                 },
             },
-            _ => ExprKind::Has {
+            22 => ExprKind::Has {
                 entity: arb_boxed_expr(u)?,
                 group_name: u.arbitrary()?,
                 alias: u.arbitrary()?,
+            },
+            _ => ExprKind::Is {
+                entity: arb_boxed_expr(u)?,
+                entity_type: u.arbitrary()?,
             },
         })
     }

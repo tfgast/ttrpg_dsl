@@ -22,12 +22,18 @@ impl Checker<'_> {
             );
         }
 
-        // Extract narrowings from `has` conditions for the then-block
-        let narrowings = self.extract_has_narrowings(condition);
-        let then_ty = if narrowings.is_empty() {
+        // Extract narrowings from `has` and `is` conditions for the then-block
+        let has_narrowings = self.extract_has_narrowings(condition);
+        let is_narrowings = self.extract_is_narrowings(condition);
+        let then_ty = if has_narrowings.is_empty() && is_narrowings.is_empty() {
             self.check_block_with_tail_hint(then_block, hint)
         } else {
-            self.check_block_with_narrowings_and_hint(then_block, &narrowings, hint)
+            self.check_block_with_all_narrowings_and_hint(
+                then_block,
+                &has_narrowings,
+                &is_narrowings,
+                hint,
+            )
         };
         self.check_else_branch_type(&then_ty, else_branch, span, hint)
     }

@@ -98,6 +98,75 @@ impl Checker<'_> {
         }
     }
 
+    pub(crate) fn check_is(
+        &mut self,
+        entity: &Spanned<ExprKind>,
+        entity_type_name: &str,
+        span: ttrpg_ast::Span,
+    ) -> Ty {
+        self.check_name_visible(entity_type_name, Namespace::Type, span);
+        let is_entity_type = match self.env.types.get(entity_type_name) {
+            Some(crate::env::DeclInfo::Entity(_)) => true,
+            Some(_) => {
+                self.error(
+                    format!("`is` requires an entity type, `{entity_type_name}` is not an entity"),
+                    span,
+                );
+                return Ty::Bool;
+            }
+            None => {
+                self.error(format!("unknown type `{entity_type_name}`"), span);
+                return Ty::Bool;
+            }
+        };
+        let entity_ty = self.check_expr(entity);
+        if entity_ty.is_error() {
+            return Ty::Bool;
+        }
+        match &entity_ty {
+            Ty::AnyEntity => {}
+            Ty::Entity(name) if is_entity_type => {
+                if name.as_ref() == entity_type_name {
+                    self.warning(format!("`is {entity_type_name}` is always true here"), span);
+                }
+            }
+            _ => {
+                self.error(
+                    format!("`is` can only be used with entity types, found {entity_ty}"),
+                    span,
+                );
+            }
+        }
+        Ty::Bool
+    }
+
+    /// Extract `(path_key, entity_type)` narrowing tuples from an `is` condition.
+    pub(crate) fn extract_is_narrowings(&self, expr: &Spanned<ExprKind>) -> Vec<(Name, Name)> {
+        match &expr.node {
+            ExprKind::Is {
+                entity,
+                entity_type,
+            } => {
+                if let Some(path_key) = self.extract_path_key(entity) {
+                    vec![(path_key, entity_type.clone())]
+                } else {
+                    vec![]
+                }
+            }
+            ExprKind::BinOp {
+                op: BinOp::And,
+                lhs,
+                rhs,
+            } => {
+                let mut narrowings = self.extract_is_narrowings(lhs);
+                narrowings.extend(self.extract_is_narrowings(rhs));
+                narrowings
+            }
+            ExprKind::Paren(inner) => self.extract_is_narrowings(inner),
+            _ => vec![],
+        }
+    }
+
     /// Extract `(path_key, group_name, alias)` narrowing tuples from a `has` condition.
     /// Supports `entity has Group`, `entity has Group as alias`, `a and b` composition,
     /// and parenthesized expressions.

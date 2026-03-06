@@ -1152,13 +1152,27 @@ impl<'a> Checker<'a> {
         narrowings: &[(Name, Name, Option<Name>)],
         hint: Option<&Ty>,
     ) -> Ty {
+        self.check_block_with_all_narrowings_and_hint(block, narrowings, &[], hint)
+    }
+
+    pub fn check_block_with_all_narrowings_and_hint(
+        &mut self,
+        block: &Block,
+        has_narrowings: &[(Name, Name, Option<Name>)],
+        is_narrowings: &[(Name, Name)],
+        hint: Option<&Ty>,
+    ) -> Ty {
         self.scope.push(BlockKind::Inner);
-        for (var, group, alias) in narrowings {
+        for (var, group, alias) in has_narrowings {
             self.scope.narrow_group(var.clone(), group.clone());
             if let Some(alias) = alias {
                 self.scope
                     .add_group_alias(var.clone(), alias.clone(), group.clone());
             }
+        }
+        for (var, entity_type) in is_narrowings {
+            self.scope
+                .narrow_entity_type(var.clone(), entity_type.clone());
         }
         let stmts = &block.node;
         let mut last_ty = Ty::Unit;

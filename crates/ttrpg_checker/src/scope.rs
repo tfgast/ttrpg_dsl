@@ -284,6 +284,22 @@ impl ScopeStack {
         }
     }
 
+    /// Narrow an entity-typed variable to a specific entity type.
+    /// Re-binds the variable in the current scope with the narrowed type.
+    pub fn narrow_entity_type(&mut self, var: Name, entity_type: Name) {
+        if let Some(binding) = self.lookup(&var).cloned() {
+            if binding.ty.is_entity() {
+                self.bind(
+                    var,
+                    VarBinding {
+                        ty: Ty::Entity(entity_type),
+                        ..binding
+                    },
+                );
+            }
+        }
+    }
+
     /// Record that a variable's optional group is proven active in the current scope.
     pub fn narrow_group(&mut self, var: Name, group: Name) {
         debug_assert!(

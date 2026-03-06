@@ -954,6 +954,12 @@ pub enum ExprKind {
         group_name: Name,
         alias: Option<Name>,
     },
+    /// `entity is EntityType` — tests whether an entity is a specific type.
+    /// Produces a bool and enables flow-sensitive type narrowing.
+    Is {
+        entity: Box<Spanned<ExprKind>>,
+        entity_type: Name,
+    },
 }
 
 #[derive(Clone)]
