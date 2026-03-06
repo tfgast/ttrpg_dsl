@@ -3705,3 +3705,46 @@ system "test" {
     let output = runner.take_output();
     assert_eq!(output, vec!["hero.speed = 30ft"]);
 }
+
+// ── Regression: tdsl-ktdj — REPL bare enum variant resolves via param type hint ──
+
+#[test]
+fn eval_ambiguous_variant_resolved_by_param_type_hint() {
+    // Two enums share variant name "Shared". A derive function expects EnumA.
+    // In the REPL, `test_fn(Shared)` should resolve Shared → EnumA.Shared
+    // via the parameter type hint, even though unique_variant_owner returns None.
+    let path = write_temp(
+        "ambig_variant",
+        r#"
+system "test" {
+    enum EnumA { Shared, OnlyA }
+    enum EnumB { Shared, OnlyB }
+    derive test_fn(x: EnumA) -> string {
+        match x {
+            Shared => "got_shared_a"
+            OnlyA => "got_only_a"
+        }
+    }
+}
+"#,
+    );
+
+    let mut runner = Runner::new();
+    runner.exec(&format!("load {}", path.display())).unwrap();
+    runner.take_output();
+
+    // Bare ambiguous variant as function arg — should resolve via param type
+    runner.exec("eval test_fn(Shared)").unwrap();
+    let output = runner.take_output();
+    assert_eq!(output, vec!["\"got_shared_a\""]);
+
+    // Qualified syntax should still work
+    runner.exec("eval test_fn(EnumA.Shared)").unwrap();
+    let output = runner.take_output();
+    assert_eq!(output, vec!["\"got_shared_a\""]);
+
+    // Unique variant should still work (not ambiguous)
+    runner.exec("eval test_fn(OnlyA)").unwrap();
+    let output = runner.take_output();
+    assert_eq!(output, vec!["\"got_only_a\""]);
+}

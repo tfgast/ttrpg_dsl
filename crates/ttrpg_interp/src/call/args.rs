@@ -1,6 +1,9 @@
-use ttrpg_ast::ast::{Arg, Param};
+use std::collections::BTreeMap;
+
+use ttrpg_ast::ast::{Arg, ExprKind, Param};
 use ttrpg_ast::{Name, Span};
-use ttrpg_checker::env::ParamInfo;
+use ttrpg_checker::env::{DeclInfo, ParamInfo};
+use ttrpg_checker::ty::Ty;
 
 use crate::eval::eval_expr;
 use crate::value::Value;
@@ -54,13 +57,13 @@ pub(super) fn bind_args(
                     arg.span,
                 )
             })?;
-            let val = eval_expr(env, &arg.value)?;
+            let val = try_eval_with_hint(env, &arg.value, &params[pos].ty)?;
             result[pos] = Some(val);
         } else {
             let pos = pos_iter.next().ok_or_else(|| {
                 RuntimeError::with_span("too many positional arguments", arg.span)
             })?;
-            let val = eval_expr(env, &arg.value)?;
+            let val = try_eval_with_hint(env, &arg.value, &params[pos].ty)?;
             result[pos] = Some(val);
         }
     }
@@ -155,4 +158,61 @@ fn fill_defaults(
         }
     }
     Ok(bound)
+}
+
+/// Evaluate an argument expression, trying type-hinted enum variant resolution first.
+///
+/// If the expression is a bare ident that isn't in scope, attempts to resolve it as an
+/// enum variant using the expected parameter type before falling back to normal evaluation.
+fn try_eval_with_hint(
+    env: &mut Env,
+    expr: &ttrpg_ast::Spanned<ExprKind>,
+    hint: &Ty,
+) -> Result<Value, RuntimeError> {
+    // Only attempt hint-based resolution for bare idents that aren't already in scope
+    // and don't have a checker resolution.
+    if let ExprKind::Ident(name) = &expr.node {
+        if env.lookup(name).is_none()
+            && !env.interp.type_env.resolved_variants.contains_key(&expr.span)
+            && env.interp.type_env.unique_variant_owner(name).is_none()
+        {
+            if let Some(val) = try_resolve_variant_from_hint(env, name, hint) {
+                return Ok(val);
+            }
+        }
+    }
+    eval_expr(env, expr)
+}
+
+/// Try to resolve a bare ident as an enum variant using the parameter's expected type.
+///
+/// When the checker hasn't run on an expression (e.g. REPL eval), `resolved_variants`
+/// is empty and `unique_variant_owner` may return `None` for variants that appear in
+/// multiple enums. This function uses the parameter's declared type to disambiguate:
+/// if the param expects `Ty::Enum(E)` and `E` has a variant matching `name`, we
+/// construct the variant value directly.
+fn try_resolve_variant_from_hint(
+    env: &Env,
+    name: &str,
+    param_ty: &Ty,
+) -> Option<Value> {
+    let enum_name = match param_ty {
+        Ty::Enum(n) => n,
+        _ => return None,
+    };
+    let decl = env.interp.type_env.types.get(enum_name.as_str())?;
+    let enum_info = match decl {
+        DeclInfo::Enum(info) => info,
+        _ => return None,
+    };
+    let variant = enum_info.variants.iter().find(|v| v.name == name)?;
+    if !variant.fields.is_empty() {
+        // Variant with fields must be called, not used as a bare ident
+        return None;
+    }
+    Some(Value::EnumVariant {
+        enum_name: enum_name.clone(),
+        variant: Name::from(name),
+        fields: BTreeMap::new(),
+    })
 }
