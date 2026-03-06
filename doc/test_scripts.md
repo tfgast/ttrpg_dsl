@@ -68,6 +68,13 @@ assert_eq fighter_group_bthb(5), 4
 
 // Assert a command fails
 assert_err call missile_range_penalty(Feet { value: 50 }, Feet { value: 0 })
+
+// Assert list membership with `in`
+assert "Shield" in equipment_package(Fighter)
+assert MeleeWeapon.Club in class_allowed_melee(Cleric)
+
+// Assert non-membership (wrap in parens for == false)
+assert (MeleeWeapon.SwordLong in class_allowed_melee(Cleric)) == false
 ```
 
 `assert_eq` evaluates both sides as DSL expressions. Function calls

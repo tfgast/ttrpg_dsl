@@ -1,0 +1,344 @@
+// OSRIC Equipment integration tests
+//
+// Equivalent of crates/ttrpg_interp/tests/osric_equipment_integration.rs
+// Tests melee_weapon_def, missile_weapon_def, armour_def, shield_def derives,
+// equipment_package table, default_starting_armour, and class weapon restrictions.
+//
+// NOTE: AST structure tests (enum variant counts, struct field counts) remain
+// in the Rust integration test as they require programmatic AST inspection.
+
+load osric/*.ttrpg
+
+// ── Melee weapon: Long sword ─────────────────────────────────
+
+let long_sword = melee_weapon_def(SwordLong)
+assert_eq long_sword.hands, 1
+assert_eq long_sword.damage_sm, 1d8
+assert_eq long_sword.damage_l, 1d12
+assert_eq long_sword.weight, 7
+assert_eq long_sword.cost_cp, 1500
+assert_eq long_sword.speed_factor, 5
+assert_eq long_sword.damage_type, DamageType.Slashing
+assert_eq long_sword.one_hand_str, 0
+
+// ── Melee weapon: Dagger ─────────────────────────────────────
+
+let dagger = melee_weapon_def(Dagger)
+assert_eq dagger.hands, 1
+assert_eq dagger.damage_sm, 1d4
+assert_eq dagger.damage_l, 1d3
+assert_eq dagger.weight, 1
+assert_eq dagger.cost_cp, 200
+assert_eq dagger.speed_factor, 2
+assert_eq dagger.damage_type, DamageType.Piercing
+
+// ── Melee weapon: Halberd ────────────────────────────────────
+
+let halberd = melee_weapon_def(Halberd)
+assert_eq halberd.hands, 2
+assert_eq halberd.damage_sm, 1d10
+assert_eq halberd.damage_l, 2d6
+assert_eq halberd.weight, 18
+assert_eq halberd.cost_cp, 900
+assert_eq halberd.speed_factor, 9
+assert_eq halberd.damage_type, DamageType.Slashing
+
+// ── Melee weapon: Fist or kick ───────────────────────────────
+
+let fist = melee_weapon_def(FistOrKick)
+assert_eq fist.hands, 1
+assert_eq fist.damage_sm, 1d2
+assert_eq fist.damage_l, 1d2
+assert_eq fist.weight, 0
+assert_eq fist.cost_cp, 0
+assert_eq fist.speed_factor, 1
+assert_eq fist.damage_type, DamageType.Blunt
+
+// ── Melee weapon: Two-handed sword ───────────────────────────
+
+let two_handed = melee_weapon_def(SwordTwoHanded)
+assert_eq two_handed.hands, 2
+assert_eq two_handed.damage_sm, 1d10
+assert_eq two_handed.damage_l, 3d6
+assert_eq two_handed.weight, 25
+assert_eq two_handed.cost_cp, 3000
+assert_eq two_handed.speed_factor, 10
+assert_eq two_handed.damage_type, DamageType.Slashing
+
+// ── Melee weapon: Heavy flail (bonus damage) ─────────────────
+
+let flail_heavy = melee_weapon_def(FlailHeavy)
+assert_eq flail_heavy.damage_sm, 1d6 + 1
+assert_eq flail_heavy.damage_l, 2d4
+assert_eq flail_heavy.damage_type, DamageType.Blunt
+
+// ── Melee weapon: Lance ──────────────────────────────────────
+
+let lance = melee_weapon_def(Lance)
+assert_eq lance.hands, 1
+assert_eq lance.damage_sm, 2d4 + 1
+assert_eq lance.damage_l, 3d6
+assert_eq lance.speed_factor, 8
+assert_eq lance.damage_type, DamageType.Piercing
+
+// ── Melee weapon: Battle axe (one_hand_str) ──────────────────
+
+let battle_axe = melee_weapon_def(BattleAxe)
+assert_eq battle_axe.hands, 2
+assert_eq battle_axe.one_hand_str, 15
+
+// ── Melee weapon: Bastard sword (one_hand_str) ───────────────
+
+let bastard = melee_weapon_def(SwordBastard)
+assert_eq bastard.hands, 2
+assert_eq bastard.one_hand_str, 15
+assert_eq bastard.cost_cp, 2500
+
+// ── Melee weapon: Broad sword (one_hand_str) ─────────────────
+
+let broad = melee_weapon_def(SwordBroad)
+assert_eq broad.hands, 2
+assert_eq broad.one_hand_str, 12
+
+// ── Melee weapon: Club (cost) ────────────────────────────────
+
+let club = melee_weapon_def(Club)
+assert_eq club.cost_cp, 2
+assert_eq club.one_hand_str, 0
+
+// ── Melee weapon: Javelin (cost) ─────────────────────────────
+
+let javelin = melee_weapon_def(Javelin)
+assert_eq javelin.cost_cp, 50
+
+// ── Missile weapon: Long bow ─────────────────────────────────
+
+let long_bow = missile_weapon_def(BowLong)
+assert_eq long_bow.hands, 2
+assert_eq long_bow.is_hurled, false
+assert_eq long_bow.damage_type, DamageType.Piercing
+assert_eq long_bow.range_increment, Feet { value: 70 }
+assert_eq long_bow.rate_of_fire, 2
+assert_eq long_bow.damage_sm, 1d6
+assert_eq long_bow.damage_l, 1d6
+assert_eq long_bow.weight, 12
+assert_eq long_bow.cost_cp, 6000
+
+// ── Missile weapon: Heavy crossbow ───────────────────────────
+
+let heavy_xbow = missile_weapon_def(CrossbowHeavy)
+assert_eq heavy_xbow.hands, 2
+assert_eq heavy_xbow.is_hurled, false
+assert_eq heavy_xbow.range_increment, Feet { value: 80 }
+assert_eq heavy_xbow.rate_of_fire, 0
+assert_eq heavy_xbow.damage_sm, 1d6 + 1
+assert_eq heavy_xbow.damage_l, 1d6 + 1
+
+// ── Missile weapon: Thrown dagger (hurled) ────────────────────
+
+let dagger_thrown = missile_weapon_def(DaggerThrown)
+assert_eq dagger_thrown.hands, 1
+assert_eq dagger_thrown.is_hurled, true
+assert_eq dagger_thrown.damage_type, DamageType.Piercing
+assert_eq dagger_thrown.range_increment, Feet { value: 10 }
+assert_eq dagger_thrown.rate_of_fire, 2
+assert_eq dagger_thrown.damage_sm, 1d4
+assert_eq dagger_thrown.damage_l, 1d3
+
+// ── Missile weapon: Sling ────────────────────────────────────
+
+let sling = missile_weapon_def(Sling)
+assert_eq sling.hands, 1
+assert_eq sling.is_hurled, false
+assert_eq sling.damage_type, DamageType.Blunt
+assert_eq sling.range_increment, Feet { value: 35 }
+assert_eq sling.damage_sm, 1d4 + 1
+assert_eq sling.damage_l, 1d6 + 1
+
+// ── Missile weapon: Dart (highest ROF) ───────────────────────
+
+let dart = missile_weapon_def(DartThrown)
+assert_eq dart.is_hurled, true
+assert_eq dart.rate_of_fire, 3
+assert_eq dart.range_increment, Feet { value: 15 }
+
+// ── Missile weapon: Sling stone (lower damage) ───────────────
+
+let sling_stone = missile_weapon_def(SlingStone)
+assert_eq sling_stone.hands, 1
+assert_eq sling_stone.is_hurled, false
+assert_eq sling_stone.damage_type, DamageType.Blunt
+assert_eq sling_stone.range_increment, Feet { value: 35 }
+assert_eq sling_stone.damage_sm, 1d4
+assert_eq sling_stone.damage_l, 1d4
+assert_eq sling_stone.cost_cp, 50
+
+// ── Missile weapon: Club thrown (cost) ────────────────────────
+
+assert_eq missile_weapon_def(ClubThrown).cost_cp, 2
+
+// ── Missile weapon: Javelin thrown (cost) ─────────────────────
+
+assert_eq missile_weapon_def(JavelinThrown).cost_cp, 50
+
+// ── Armour: Plate mail ───────────────────────────────────────
+
+let plate = armour_def(PlateMail)
+assert_eq plate.ascending_ac, 17
+assert_eq plate.weight, 45
+assert_eq plate.movement_cap, Feet { value: 60 }
+assert_eq plate.cost_gp, 400
+
+// ── Armour: Chain mail ───────────────────────────────────────
+
+let chain = armour_def(ChainMail)
+assert_eq chain.ascending_ac, 15
+assert_eq chain.weight, 30
+assert_eq chain.movement_cap, Feet { value: 90 }
+assert_eq chain.cost_gp, 75
+
+// ── Armour: Leather ──────────────────────────────────────────
+
+let leather = armour_def(Leather)
+assert_eq leather.ascending_ac, 12
+assert_eq leather.weight, 15
+assert_eq leather.movement_cap, Feet { value: 120 }
+assert_eq leather.cost_gp, 5
+
+// ── Armour: Elfin mail (lightweight) ─────────────────────────
+
+let elfin = armour_def(ElfinMail)
+assert_eq elfin.ascending_ac, 15
+assert_eq elfin.weight, 15
+assert_eq elfin.movement_cap, Feet { value: 120 }
+assert_eq elfin.cost_gp, 0
+
+// ── Armour: Banded and Splint (same AC) ──────────────────────
+
+let banded = armour_def(Banded)
+let splint = armour_def(Splint)
+assert_eq banded.ascending_ac, 16
+assert_eq splint.ascending_ac, 16
+assert banded.weight < splint.weight
+
+// ── Shield: Small ────────────────────────────────────────────
+
+let small_shield = shield_def(SmallShield)
+assert_eq small_shield.ac_bonus, 1
+assert_eq small_shield.max_blocks, 1
+assert_eq small_shield.weight, 5
+assert_eq small_shield.cost_gp, 10
+
+// ── Shield: Medium ───────────────────────────────────────────
+
+let medium_shield = shield_def(MediumShield)
+assert_eq medium_shield.ac_bonus, 1
+assert_eq medium_shield.max_blocks, 2
+assert_eq medium_shield.weight, 8
+assert_eq medium_shield.cost_gp, 12
+
+// ── Shield: Large ────────────────────────────────────────────
+
+let large_shield = shield_def(LargeShield)
+assert_eq large_shield.ac_bonus, 1
+assert_eq large_shield.max_blocks, 3
+assert_eq large_shield.weight, 10
+assert_eq large_shield.cost_gp, 15
+
+// ── Default starting armour ──────────────────────────────────
+
+assert_eq default_starting_armour(Fighter), ["Chain mail", "Shield"]
+assert_eq default_starting_armour(Thief), ["Leather"]
+assert_eq default_starting_armour(MagicUser), []
+assert_eq default_starting_armour(Druid), ["Leather", "Wooden shield"]
+
+// ── Class weapon restrictions: can_wield_melee ───────────────
+
+// Fighters can wield anything
+assert can_wield_melee(Fighter, SwordTwoHanded)
+assert can_wield_melee(Fighter, Dagger)
+
+// Clerics: blunt yes, slashing no
+assert can_wield_melee(Cleric, MaceHeavy)
+assert can_wield_melee(Cleric, MaceHeavy) == true
+assert can_wield_melee(Cleric, SwordLong) == false
+
+// Magic-users: dagger and staff only
+assert can_wield_melee(MagicUser, Dagger)
+assert can_wield_melee(MagicUser, Staff)
+assert can_wield_melee(MagicUser, SwordLong) == false
+
+// ── Class weapon restrictions: can_wield_missile ─────────────
+
+// Cleric: sling yes, bow no
+assert can_wield_missile(Cleric, Sling)
+assert can_wield_missile(Cleric, BowLong) == false
+
+// ── Equipment package: Fighter ────────────────────────────────
+
+let fighter_pkg = equipment_package(Fighter)
+assert "Sword, long" in fighter_pkg
+assert "Shield" in fighter_pkg
+assert "Chain mail" in fighter_pkg
+assert "Backpack" in fighter_pkg
+
+// ── Equipment package: Magic-user ────────────────────────────
+
+let mu_pkg = equipment_package(MagicUser)
+assert "Dagger" in mu_pkg
+assert "Staff" in mu_pkg
+assert "Spell book (blank)" in mu_pkg
+
+// ── Equipment package: Thief ─────────────────────────────────
+
+let thief_pkg = equipment_package(Thief)
+assert "Sword, short" in thief_pkg
+assert "Dagger" in thief_pkg
+assert "Leather" in thief_pkg
+assert "Thieves' tools" in thief_pkg
+
+// ── Equipment package: Druid ─────────────────────────────────
+
+let druid_pkg = equipment_package(Druid)
+assert "Staff" in druid_pkg
+assert "Leather" in druid_pkg
+assert "Wooden shield" in druid_pkg
+
+// ── Class allowed melee: Fighter returns empty (any weapon) ──
+
+assert_eq class_allowed_melee(Fighter), []
+
+// ── Class allowed melee: MagicUser has exactly 2 ─────────────
+
+let mu_melee = class_allowed_melee(MagicUser)
+assert_eq mu_melee, [MeleeWeapon.Dagger, MeleeWeapon.Staff]
+
+// ── Class allowed melee: Cleric is blunt only ────────────────
+
+let cleric_melee = class_allowed_melee(Cleric)
+assert MeleeWeapon.Club in cleric_melee
+assert MeleeWeapon.MaceHeavy in cleric_melee
+assert MeleeWeapon.Staff in cleric_melee
+assert MeleeWeapon.FlailHeavy in cleric_melee
+assert MeleeWeapon.WarhammerLight in cleric_melee
+// Should NOT contain slashing/piercing
+assert (MeleeWeapon.SwordLong in cleric_melee) == false
+assert (MeleeWeapon.Dagger in cleric_melee) == false
+assert (MeleeWeapon.Spear in cleric_melee) == false
+
+// ── Class allowed missile: Cleric blunt only ─────────────────
+
+let cleric_missile = class_allowed_missile(Cleric)
+assert MissileWeapon.Sling in cleric_missile
+assert MissileWeapon.ClubThrown in cleric_missile
+assert MissileWeapon.WarhammerThrown in cleric_missile
+assert (MissileWeapon.BowLong in cleric_missile) == false
+assert (MissileWeapon.DaggerThrown in cleric_missile) == false
+
+// ── Class allowed missile: Monk has crossbow ─────────────────
+
+let monk_missile = class_allowed_missile(Monk)
+assert MissileWeapon.CrossbowHeavy in monk_missile
+assert MissileWeapon.CrossbowLight in monk_missile
+assert MissileWeapon.DaggerThrown in monk_missile
+assert (MissileWeapon.BowLong in monk_missile) == false
