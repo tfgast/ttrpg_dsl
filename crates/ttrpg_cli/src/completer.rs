@@ -35,6 +35,7 @@ const ALL_COMMANDS: &[&str] = &[
     "let",
     "assert",
     "assert_eq",
+    "assert_match",
     "assert_err",
     "seed",
     "rolls",
@@ -265,7 +266,7 @@ impl Completer for TtrpgCompleter {
                     .map(|s| suggestion(s, Span::new(word_start, pos), true))
                     .collect()
             }
-            "eval" | "assert" | "assert_eq" | "assert_err" => {
+            "eval" | "assert" | "assert_eq" | "assert_match" | "assert_err" => {
                 let current_word = last_word(rest);
                 let word_start = pos - current_word.len();
 

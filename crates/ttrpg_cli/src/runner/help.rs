@@ -294,6 +294,17 @@ const COMMANDS: &[CommandInfo] = &[
         category: "Testing",
     },
     CommandInfo {
+        name: "assert_match",
+        syntax: "assert_match <expr>, <EnumName>.<Variant>",
+        description: "Verify expression matches an enum variant",
+        detail: "Evaluate an expression and check that it is a specific enum variant.\n  Only checks the variant name — fields are ignored.",
+        examples: &[
+            "assert_match result, TurnOutcome.Turned",
+            "assert_match school, SpellSchool.Evocation",
+        ],
+        category: "Testing",
+    },
+    CommandInfo {
         name: "assert_err",
         syntax: "assert_err <command>",
         description: "Verify a command errors",

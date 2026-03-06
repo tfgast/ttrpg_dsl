@@ -30,6 +30,7 @@ pub enum Command {
     // Assertions
     Assert(String),
     AssertEq(String),
+    AssertMatch(String),
     AssertErr(String),
     // Options
     Enable(String),
@@ -210,6 +211,14 @@ pub fn parse_command(line: &str) -> Option<Command> {
                 Some(Command::Unknown("assert_eq".into()))
             } else {
                 Some(Command::AssertEq(s.into()))
+            }
+        }
+        "assert_match" => {
+            let s = strip_comment(tail).trim();
+            if s.is_empty() {
+                Some(Command::Unknown("assert_match".into()))
+            } else {
+                Some(Command::AssertMatch(s.into()))
             }
         }
         "assert_err" => {
@@ -688,6 +697,34 @@ mod tests {
         assert_eq!(
             parse_command("assert_eq"),
             Some(Command::Unknown("assert_eq".into()))
+        );
+    }
+
+    #[test]
+    fn parse_assert_match() {
+        assert_eq!(
+            parse_command("assert_match result, TurnOutcome.Turned"),
+            Some(Command::AssertMatch(
+                "result, TurnOutcome.Turned".into()
+            ))
+        );
+    }
+
+    #[test]
+    fn parse_assert_match_empty_is_unknown() {
+        assert_eq!(
+            parse_command("assert_match"),
+            Some(Command::Unknown("assert_match".into()))
+        );
+    }
+
+    #[test]
+    fn parse_assert_match_strips_comment() {
+        assert_eq!(
+            parse_command("assert_match result, TurnOutcome.Turned // check variant"),
+            Some(Command::AssertMatch(
+                "result, TurnOutcome.Turned".into()
+            ))
         );
     }
 

@@ -44,6 +44,52 @@ impl Runner {
         }
     }
 
+    pub(super) fn cmd_assert_match(&mut self, tail: &str) -> Result<(), CliError> {
+        let parts = split_top_level_commas(tail);
+        if parts.len() != 2 {
+            return Err(CliError::Message(
+                "usage: assert_match <expr>, <EnumName>.<Variant>".into(),
+            ));
+        }
+        let expr_str = parts[0].trim();
+        let pattern_str = parts[1].trim();
+        if expr_str.is_empty() || pattern_str.is_empty() {
+            return Err(CliError::Message(
+                "usage: assert_match <expr>, <EnumName>.<Variant>".into(),
+            ));
+        }
+
+        let Some((enum_name, variant_name)) = pattern_str.split_once('.') else {
+            return Err(CliError::Message(format!(
+                "invalid pattern: expected EnumName.Variant, got {pattern_str}"
+            )));
+        };
+        let enum_name = enum_name.trim();
+        let variant_name = variant_name.trim();
+        if enum_name.is_empty() || variant_name.is_empty() {
+            return Err(CliError::Message(
+                "usage: assert_match <expr>, <EnumName>.<Variant>".into(),
+            ));
+        }
+
+        let val = self.eval(expr_str)?;
+        match &val {
+            Value::EnumVariant {
+                enum_name: actual_enum,
+                variant: actual_variant,
+                ..
+            } if actual_enum.as_ref() == enum_name
+                && actual_variant.as_ref() == variant_name =>
+            {
+                Ok(())
+            }
+            _ => Err(CliError::Message(format!(
+                "assertion failed: expected {enum_name}.{variant_name}, got {}",
+                format_value(&val, &self.unit_suffixes)
+            ))),
+        }
+    }
+
     pub(super) fn cmd_assert_err(&mut self, tail: &str) -> Result<(), CliError> {
         let output_len = self.output.len();
         match self.exec_inner(tail) {
