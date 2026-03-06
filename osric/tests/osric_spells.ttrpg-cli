@@ -1,7 +1,7 @@
-// OSRIC Spell slot progression integration tests
+// OSRIC Spell integration tests
 //
 // Tests spell_slots_for, max_spell_level, has_wis_bonus,
-// total_spell_slots, and noncaster returns zero.
+// total_spell_slots, and MemoriseSpell/ForgetSpell/CastSpell actions.
 
 load osric/*.ttrpg
 
@@ -112,3 +112,83 @@ assert_eq total_spell_slots(SpellProgression.MagicUser, 3, 1, 18), spell_slots_f
 
 // WIS bonus only when base > 0
 assert_eq total_spell_slots(SpellProgression.Cleric, 1, 2, 18), 0
+
+// ═══════════════════════════════════════════════════════════════
+//  SPELL MEMORISATION / CASTING ACTIONS
+// ═══════════════════════════════════════════════════════════════
+
+// ── MemoriseSpell fills slot and adds to list ─────────────────
+
+spawn Character mem1 { name: "Alaric", classes: [ClassLevel { class: Cleric, level: 3 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 }, Spellcasting { spell_slots: [2, 1], slots_used: [0, 0], memorised_spells: [] } }
+
+do MemoriseSpell(mem1, CureLightWounds, 1)
+assert_eq mem1.Spellcasting.memorised_spells.len(), 1
+assert_eq mem1.Spellcasting.slots_used[0], 1
+
+// ── MemoriseSpell fails when slots full ───────────────────────
+
+spawn Character mem2 { name: "Alaric2", classes: [ClassLevel { class: Cleric, level: 3 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 }, Spellcasting { spell_slots: [2, 1], slots_used: [0, 0], memorised_spells: [] } }
+
+do MemoriseSpell(mem2, CureLightWounds, 1)
+do MemoriseSpell(mem2, Bless, 1)
+// Both first-level slots full — third memorise should be rejected
+do MemoriseSpell(mem2, CauseLightWounds, 1)
+assert_eq mem2.Spellcasting.memorised_spells.len(), 2
+assert_eq mem2.Spellcasting.slots_used[0], 2
+
+// ── Memorise same spell multiple times ────────────────────────
+
+spawn Character mem3 { name: "Alaric3", classes: [ClassLevel { class: Cleric, level: 3 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 }, Spellcasting { spell_slots: [2, 1], slots_used: [0, 0], memorised_spells: [] } }
+
+do MemoriseSpell(mem3, CureLightWounds, 1)
+do MemoriseSpell(mem3, CureLightWounds, 1)
+assert_eq mem3.Spellcasting.memorised_spells.len(), 2
+assert_eq mem3.Spellcasting.slots_used[0], 2
+
+// ── ForgetSpell removes spell and frees slot ──────────────────
+
+spawn Character fgt1 { name: "Forgetful", classes: [ClassLevel { class: Cleric, level: 3 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 }, Spellcasting { spell_slots: [2, 1], slots_used: [0, 0], memorised_spells: [] } }
+
+do MemoriseSpell(fgt1, CureLightWounds, 1)
+do ForgetSpell(fgt1, CureLightWounds, 1)
+assert_eq fgt1.Spellcasting.memorised_spells.len(), 0
+assert_eq fgt1.Spellcasting.slots_used[0], 0
+
+// ── ForgetSpell fails when not memorised ──────────────────────
+
+spawn Character fgt2 { name: "Forgetful2", classes: [ClassLevel { class: Cleric, level: 3 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 }, Spellcasting { spell_slots: [2, 1], slots_used: [0, 0], memorised_spells: [] } }
+
+// Forgetting a spell that was never memorised — requires guard rejects
+do ForgetSpell(fgt2, CureLightWounds, 1)
+assert_eq fgt2.Spellcasting.memorised_spells.len(), 0
+assert_eq fgt2.Spellcasting.slots_used[0], 0
+
+// ── Forget removes only first duplicate ───────────────────────
+
+spawn Character fgt3 { name: "Forgetful3", classes: [ClassLevel { class: Cleric, level: 3 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 }, Spellcasting { spell_slots: [2, 1], slots_used: [0, 0], memorised_spells: [] } }
+
+do MemoriseSpell(fgt3, CureLightWounds, 1)
+do MemoriseSpell(fgt3, CureLightWounds, 1)
+do ForgetSpell(fgt3, CureLightWounds, 1)
+assert_eq fgt3.Spellcasting.memorised_spells.len(), 1
+assert_eq fgt3.Spellcasting.slots_used[0], 1
+
+// ── CastSpell expends slot and applies CastingSpell ───────────
+
+spawn Character cast1 { name: "Caster", classes: [ClassLevel { class: Cleric, level: 3 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 }, Spellcasting { spell_slots: [2, 1], slots_used: [0, 0], memorised_spells: [] } }
+
+do MemoriseSpell(cast1, CureLightWounds, 1)
+do CastSpell(cast1, CureLightWounds, 1, 5)
+assert_eq cast1.Spellcasting.memorised_spells.len(), 0
+assert_eq cast1.Spellcasting.slots_used[0], 0
+assert_condition cast1, CastingSpell
+
+// ── CastSpell fails when not memorised ────────────────────────
+
+spawn Character cast2 { name: "Caster2", classes: [ClassLevel { class: Cleric, level: 3 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 }, Spellcasting { spell_slots: [2, 1], slots_used: [0, 0], memorised_spells: [] } }
+
+// Casting without memorising — requires guard rejects
+do CastSpell(cast2, CureLightWounds, 1, 5)
+assert_eq cast2.Spellcasting.memorised_spells.len(), 0
+assert_eq cast2.Spellcasting.slots_used[0], 0
+assert_no_condition cast2, CastingSpell
