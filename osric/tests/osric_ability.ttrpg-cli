@@ -1,0 +1,394 @@
+// OSRIC Ability modifier tables integration tests
+//
+// Equivalent of crates/ttrpg_interp/tests/osric_ability_integration.rs
+// (table/derive value checks only; AST structure tests remain in Rust)
+
+load osric/*.ttrpg
+
+// ── STR tables ─────────────────────────────────────────────────
+
+assert_eq str_to_hit(3), -3
+assert_eq str_to_hit(4), -2
+assert_eq str_to_hit(5), -2
+assert_eq str_to_hit(7), -1
+assert_eq str_to_hit(8), 0
+assert_eq str_to_hit(15), 0
+assert_eq str_to_hit(16), 0
+assert_eq str_to_hit(17), 1
+assert_eq str_to_hit(18), 1
+assert_eq str_to_hit(19), 3
+
+assert_eq str_damage(3), -1
+assert_eq str_damage(5), -1
+assert_eq str_damage(7), 0
+assert_eq str_damage(15), 0
+assert_eq str_damage(16), 1
+assert_eq str_damage(17), 1
+assert_eq str_damage(18), 2
+assert_eq str_damage(19), 6
+
+assert_eq str_encumbrance(3), 0
+assert_eq str_encumbrance(5), 10
+assert_eq str_encumbrance(7), 20
+assert_eq str_encumbrance(9), 35
+assert_eq str_encumbrance(13), 45
+assert_eq str_encumbrance(15), 55
+assert_eq str_encumbrance(16), 70
+assert_eq str_encumbrance(17), 85
+assert_eq str_encumbrance(18), 110
+assert_eq str_encumbrance(19), 300
+
+assert_eq str_minor_test(3), 1
+assert_eq str_minor_test(7), 1
+assert_eq str_minor_test(8), 2
+assert_eq str_minor_test(15), 2
+assert_eq str_minor_test(16), 3
+assert_eq str_minor_test(18), 3
+assert_eq str_minor_test(19), 5
+
+assert_eq str_minor_extraordinary(3), 0
+assert_eq str_minor_extraordinary(10), 0
+assert_eq str_minor_extraordinary(15), 0
+assert_eq str_minor_extraordinary(18), 0
+assert_eq str_minor_extraordinary(19), 2
+
+assert_eq str_major_test(3), 0
+assert_eq str_major_test(9), 1
+assert_eq str_major_test(11), 2
+assert_eq str_major_test(13), 4
+assert_eq str_major_test(15), 7
+assert_eq str_major_test(16), 10
+assert_eq str_major_test(17), 13
+assert_eq str_major_test(18), 16
+assert_eq str_major_test(19), 40
+
+// ── Exceptional STR tables ─────────────────────────────────────
+
+assert_eq exc_str_to_hit(1), 1
+assert_eq exc_str_to_hit(50), 1
+assert_eq exc_str_to_hit(51), 2
+assert_eq exc_str_to_hit(75), 2
+assert_eq exc_str_to_hit(90), 2
+assert_eq exc_str_to_hit(99), 2
+assert_eq exc_str_to_hit(100), 3
+
+assert_eq exc_str_damage(1), 3
+assert_eq exc_str_damage(50), 3
+assert_eq exc_str_damage(51), 3
+assert_eq exc_str_damage(75), 3
+assert_eq exc_str_damage(76), 4
+assert_eq exc_str_damage(90), 4
+assert_eq exc_str_damage(91), 5
+assert_eq exc_str_damage(99), 5
+assert_eq exc_str_damage(100), 6
+
+assert_eq exc_str_encumbrance(1), 135
+assert_eq exc_str_encumbrance(50), 135
+assert_eq exc_str_encumbrance(75), 160
+assert_eq exc_str_encumbrance(90), 185
+assert_eq exc_str_encumbrance(99), 235
+assert_eq exc_str_encumbrance(100), 300
+
+assert_eq exc_str_minor_test(1), 3
+assert_eq exc_str_minor_test(75), 3
+assert_eq exc_str_minor_test(76), 4
+assert_eq exc_str_minor_test(99), 4
+assert_eq exc_str_minor_test(100), 5
+
+assert_eq exc_str_minor_extraordinary(1), 0
+assert_eq exc_str_minor_extraordinary(50), 0
+assert_eq exc_str_minor_extraordinary(75), 0
+assert_eq exc_str_minor_extraordinary(90), 0
+assert_eq exc_str_minor_extraordinary(91), 1
+assert_eq exc_str_minor_extraordinary(99), 1
+assert_eq exc_str_minor_extraordinary(100), 2
+
+assert_eq exc_str_major_test(1), 20
+assert_eq exc_str_major_test(50), 20
+assert_eq exc_str_major_test(75), 25
+assert_eq exc_str_major_test(90), 30
+assert_eq exc_str_major_test(99), 35
+assert_eq exc_str_major_test(100), 40
+
+// ── DEX tables ─────────────────────────────────────────────────
+
+assert_eq dex_surprise(3), -3
+assert_eq dex_surprise(4), -2
+assert_eq dex_surprise(5), -1
+assert_eq dex_surprise(6), 0
+assert_eq dex_surprise(14), 0
+assert_eq dex_surprise(15), 0
+assert_eq dex_surprise(16), 1
+assert_eq dex_surprise(17), 2
+assert_eq dex_surprise(18), 3
+assert_eq dex_surprise(19), 3
+
+assert_eq dex_missile(3), -3
+assert_eq dex_missile(4), -2
+assert_eq dex_missile(5), -1
+assert_eq dex_missile(10), 0
+assert_eq dex_missile(15), 0
+assert_eq dex_missile(16), 1
+assert_eq dex_missile(17), 2
+assert_eq dex_missile(18), 3
+
+assert_eq dex_ac_adj(3), -4
+assert_eq dex_ac_adj(4), -3
+assert_eq dex_ac_adj(5), -2
+assert_eq dex_ac_adj(6), -1
+assert_eq dex_ac_adj(7), 0
+assert_eq dex_ac_adj(14), 0
+assert_eq dex_ac_adj(15), 1
+assert_eq dex_ac_adj(16), 2
+assert_eq dex_ac_adj(17), 3
+assert_eq dex_ac_adj(18), 4
+
+assert_eq dex_init_missile(3), 3
+assert_eq dex_init_missile(4), 2
+assert_eq dex_init_missile(5), 1
+assert_eq dex_init_missile(6), 0
+assert_eq dex_init_missile(15), 0
+assert_eq dex_init_missile(16), -1
+assert_eq dex_init_missile(17), -2
+assert_eq dex_init_missile(18), -3
+
+assert_eq dex_agility_save(3), -4
+assert_eq dex_agility_save(4), -3
+assert_eq dex_agility_save(5), -2
+assert_eq dex_agility_save(6), -1
+assert_eq dex_agility_save(10), 0
+assert_eq dex_agility_save(15), 1
+assert_eq dex_agility_save(16), 2
+assert_eq dex_agility_save(17), 3
+assert_eq dex_agility_save(18), 4
+
+// ── CON tables ─────────────────────────────────────────────────
+
+assert_eq con_hp_mod(3), -2
+assert_eq con_hp_mod(4), -1
+assert_eq con_hp_mod(6), -1
+assert_eq con_hp_mod(7), 0
+assert_eq con_hp_mod(14), 0
+assert_eq con_hp_mod(15), 1
+assert_eq con_hp_mod(16), 2
+assert_eq con_hp_mod(17), 2
+assert_eq con_hp_mod(18), 2
+assert_eq con_hp_mod(19), 2
+
+assert_eq con_hp_mod_fighter(3), -2
+assert_eq con_hp_mod_fighter(6), -1
+assert_eq con_hp_mod_fighter(14), 0
+assert_eq con_hp_mod_fighter(16), 2
+assert_eq con_hp_mod_fighter(17), 3
+assert_eq con_hp_mod_fighter(18), 4
+assert_eq con_hp_mod_fighter(19), 5
+
+assert_eq con_resurrection(3), 40
+assert_eq con_resurrection(10), 75
+assert_eq con_resurrection(14), 92
+assert_eq con_resurrection(16), 96
+assert_eq con_resurrection(18), 100
+assert_eq con_resurrection(19), 100
+
+assert_eq con_system_shock(3), 35
+assert_eq con_system_shock(10), 70
+assert_eq con_system_shock(14), 88
+assert_eq con_system_shock(16), 95
+assert_eq con_system_shock(18), 99
+assert_eq con_system_shock(19), 99
+
+// ── INT table ──────────────────────────────────────────────────
+
+assert_eq int_extra_languages(3), 0
+assert_eq int_extra_languages(7), 0
+assert_eq int_extra_languages(8), 1
+assert_eq int_extra_languages(11), 2
+assert_eq int_extra_languages(13), 3
+assert_eq int_extra_languages(15), 4
+assert_eq int_extra_languages(16), 5
+assert_eq int_extra_languages(17), 6
+assert_eq int_extra_languages(18), 7
+assert_eq int_extra_languages(19), 8
+
+// ── WIS table ──────────────────────────────────────────────────
+
+assert_eq wis_mental_save(3), -3
+assert_eq wis_mental_save(4), -2
+assert_eq wis_mental_save(5), -1
+assert_eq wis_mental_save(7), -1
+assert_eq wis_mental_save(8), 0
+assert_eq wis_mental_save(14), 0
+assert_eq wis_mental_save(15), 1
+assert_eq wis_mental_save(16), 2
+assert_eq wis_mental_save(17), 3
+assert_eq wis_mental_save(18), 4
+assert_eq wis_mental_save(19), 5
+
+// ── CHA tables ─────────────────────────────────────────────────
+
+assert_eq cha_max_henchmen(3), 1
+assert_eq cha_max_henchmen(4), 1
+assert_eq cha_max_henchmen(5), 2
+assert_eq cha_max_henchmen(7), 3
+assert_eq cha_max_henchmen(9), 4
+assert_eq cha_max_henchmen(12), 5
+assert_eq cha_max_henchmen(14), 6
+assert_eq cha_max_henchmen(15), 7
+assert_eq cha_max_henchmen(16), 8
+assert_eq cha_max_henchmen(17), 10
+assert_eq cha_max_henchmen(18), 15
+assert_eq cha_max_henchmen(19), 20
+
+assert_eq cha_loyalty(3), -30
+assert_eq cha_loyalty(5), -20
+assert_eq cha_loyalty(8), -5
+assert_eq cha_loyalty(9), 0
+assert_eq cha_loyalty(12), 0
+assert_eq cha_loyalty(14), 5
+assert_eq cha_loyalty(15), 15
+assert_eq cha_loyalty(16), 20
+assert_eq cha_loyalty(17), 30
+assert_eq cha_loyalty(18), 40
+assert_eq cha_loyalty(19), 50
+
+assert_eq cha_reaction(3), -25
+assert_eq cha_reaction(5), -15
+assert_eq cha_reaction(7), -5
+assert_eq cha_reaction(8), 0
+assert_eq cha_reaction(10), 0
+assert_eq cha_reaction(13), 5
+assert_eq cha_reaction(14), 10
+assert_eq cha_reaction(15), 15
+assert_eq cha_reaction(16), 25
+assert_eq cha_reaction(17), 30
+assert_eq cha_reaction(18), 35
+assert_eq cha_reaction(19), 40
+
+// ── Stalwart save bonus ────────────────────────────────────────
+
+assert_eq stalwart_save_bonus(4), 1
+assert_eq stalwart_save_bonus(6), 1
+assert_eq stalwart_save_bonus(7), 2
+assert_eq stalwart_save_bonus(10), 2
+assert_eq stalwart_save_bonus(11), 3
+assert_eq stalwart_save_bonus(13), 3
+assert_eq stalwart_save_bonus(14), 4
+assert_eq stalwart_save_bonus(17), 4
+assert_eq stalwart_save_bonus(18), 5
+assert_eq stalwart_save_bonus(19), 5
+
+// ── has_stalwart derive ────────────────────────────────────────
+
+assert_eq has_stalwart(Dwarf), true
+assert_eq has_stalwart(Gnome), true
+assert_eq has_stalwart(Halfling), true
+assert_eq has_stalwart(Elf), false
+assert_eq has_stalwart(HalfElf), false
+assert_eq has_stalwart(HalfOrc), false
+assert_eq has_stalwart(Human), false
+
+// ── ancestry_def derive ────────────────────────────────────────
+
+// Human: all adjustments 0, size Medium, movement 120ft, no infravision
+let human = ancestry_def(Human)
+assert_eq human.ancestry, Ancestry.Human
+assert_eq human.size, Size.Medium
+assert_eq human.base_movement, Feet { value: 120 }
+assert_eq human.infravision, Feet { value: 0 }
+assert_eq human.str_adj, 0
+assert_eq human.dex_adj, 0
+assert_eq human.con_adj, 0
+assert_eq human.int_adj, 0
+assert_eq human.wis_adj, 0
+assert_eq human.cha_adj, 0
+
+// Dwarf: CON +1, CHA -1, Small, movement 90ft
+let dwarf = ancestry_def(Dwarf)
+assert_eq dwarf.size, Size.Small
+assert_eq dwarf.base_movement, Feet { value: 90 }
+assert_eq dwarf.str_adj, 0
+assert_eq dwarf.con_adj, 1
+assert_eq dwarf.cha_adj, -1
+
+// Halfling: STR -1, DEX +1, Small
+let halfling = ancestry_def(Halfling)
+assert_eq halfling.str_adj, -1
+assert_eq halfling.dex_adj, 1
+assert_eq halfling.con_adj, 0
+assert_eq halfling.size, Size.Small
+
+// Half-Orc: STR +1, CON +1, CHA -2
+let halforc = ancestry_def(HalfOrc)
+assert_eq halforc.str_adj, 1
+assert_eq halforc.con_adj, 1
+assert_eq halforc.cha_adj, -2
+
+// ── ancestry_ability_range derive ──────────────────────────────
+
+// Human: 3-18 for all abilities
+assert_eq ancestry_ability_range(Human, STR).min, 3
+assert_eq ancestry_ability_range(Human, STR).max, 18
+assert_eq ancestry_ability_range(Human, DEX).min, 3
+assert_eq ancestry_ability_range(Human, DEX).max, 18
+assert_eq ancestry_ability_range(Human, CON).min, 3
+assert_eq ancestry_ability_range(Human, CON).max, 18
+assert_eq ancestry_ability_range(Human, INT).min, 3
+assert_eq ancestry_ability_range(Human, INT).max, 18
+assert_eq ancestry_ability_range(Human, WIS).min, 3
+assert_eq ancestry_ability_range(Human, WIS).max, 18
+assert_eq ancestry_ability_range(Human, CHA).min, 3
+assert_eq ancestry_ability_range(Human, CHA).max, 18
+
+// Dwarf: STR 8-18, DEX 3-17, CON 12-19, INT 3-18, WIS 3-18, CHA 3-16
+assert_eq ancestry_ability_range(Dwarf, STR).min, 8
+assert_eq ancestry_ability_range(Dwarf, STR).max, 18
+assert_eq ancestry_ability_range(Dwarf, DEX).min, 3
+assert_eq ancestry_ability_range(Dwarf, DEX).max, 17
+assert_eq ancestry_ability_range(Dwarf, CON).min, 12
+assert_eq ancestry_ability_range(Dwarf, CON).max, 19
+assert_eq ancestry_ability_range(Dwarf, INT).min, 3
+assert_eq ancestry_ability_range(Dwarf, INT).max, 18
+assert_eq ancestry_ability_range(Dwarf, WIS).min, 3
+assert_eq ancestry_ability_range(Dwarf, WIS).max, 18
+assert_eq ancestry_ability_range(Dwarf, CHA).min, 3
+assert_eq ancestry_ability_range(Dwarf, CHA).max, 16
+
+// Half-Orc: CON 13-19, WIS 3-14, CHA 3-12
+assert_eq ancestry_ability_range(HalfOrc, CON).min, 13
+assert_eq ancestry_ability_range(HalfOrc, CON).max, 19
+assert_eq ancestry_ability_range(HalfOrc, WIS).min, 3
+assert_eq ancestry_ability_range(HalfOrc, WIS).max, 14
+assert_eq ancestry_ability_range(HalfOrc, CHA).min, 3
+assert_eq ancestry_ability_range(HalfOrc, CHA).max, 12
+
+// ── effective_str_to_hit (entity-based) ─────────────────────────
+
+// STR 16, no exceptional → str_to_hit(16) = 0
+spawn Character fighter16 { name: "Fighter16", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 16, INT: 10, WIS: 10, DEX: 10, CON: 10, CHA: 10 }, HitPoints { max_hp: 10, hp: 10 } }
+assert_eq effective_str_to_hit(fighter16), 0
+
+// STR 17 → str_to_hit(17) = 1
+spawn Character fighter17 { name: "Fighter17", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 17, INT: 10, WIS: 10, DEX: 10, CON: 10, CHA: 10 }, HitPoints { max_hp: 10, hp: 10 } }
+assert_eq effective_str_to_hit(fighter17), 1
+
+// STR 18, no ExceptionalStrength → str_to_hit(18) = 1
+spawn Character cleric18 { name: "Cleric18", classes: [ClassLevel { class: Class.Cleric, level: 1 }], abilities: { STR: 18, INT: 10, WIS: 10, DEX: 10, CON: 10, CHA: 10 }, HitPoints { max_hp: 10, hp: 10 } }
+assert_eq effective_str_to_hit(cleric18), 1
+
+// STR 18, percentile 76 → exc_str_to_hit(76) = 2
+spawn Character fighter18_76 { name: "Fighter18_76", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 18, INT: 10, WIS: 10, DEX: 10, CON: 10, CHA: 10 }, HitPoints { max_hp: 10, hp: 10 }, ExceptionalStrength { percentile: 76 } }
+assert_eq effective_str_to_hit(fighter18_76), 2
+
+// STR 18, percentile 100 → exc_str_to_hit(100) = 3
+spawn Character fighter18_100 { name: "Fighter18_100", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 18, INT: 10, WIS: 10, DEX: 10, CON: 10, CHA: 10 }, HitPoints { max_hp: 10, hp: 10 }, ExceptionalStrength { percentile: 100 } }
+assert_eq effective_str_to_hit(fighter18_100), 3
+
+// ── effective_str_damage (entity-based) ─────────────────────────
+
+// STR 17, no exceptional → str_damage(17) = 1
+spawn Character dmg17 { name: "DmgFighter17", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 17, INT: 10, WIS: 10, DEX: 10, CON: 10, CHA: 10 }, HitPoints { max_hp: 10, hp: 10 } }
+assert_eq effective_str_damage(dmg17), 1
+
+// STR 18, percentile 91 → exc_str_damage(91) = 5
+spawn Character dmg18_91 { name: "DmgFighter18_91", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 18, INT: 10, WIS: 10, DEX: 10, CON: 10, CHA: 10 }, HitPoints { max_hp: 10, hp: 10 }, ExceptionalStrength { percentile: 91 } }
+assert_eq effective_str_damage(dmg18_91), 5

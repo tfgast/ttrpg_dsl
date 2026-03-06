@@ -115,7 +115,8 @@ Spawn blocks support:
 - Base fields: `name: "Fighter"`
 - Struct literals: `ClassLevel { class: Fighter, level: 5 }`
 - Included groups: `HitPoints { max_hp: 30, hp: 30 }`
-- Optional groups: `EquipmentSlots { ... }`
+- Optional groups: `EquipmentSlots { ... }` (omit to leave unset)
+- Optional groups with fields: `ExceptionalStrength { percentile: 76 }`
 - Option values: `some(Melee(SwordLong))`, `none`
 
 Note: spawn lines can be long. This is fine -- each command is one line.
