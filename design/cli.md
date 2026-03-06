@@ -189,7 +189,11 @@ These are convenience commands for setting up game state. During normal action e
 ```
 assert <expr>                   # Fail with error if expr is falsy
 assert_eq <expr> , <expr>       # Fail if not equal (comma-separated)
+assert_ne <expr> , <expr>       # Fail if equal (comma-separated)
+assert_match <expr> , <E>.<V>   # Fail if not the given enum variant
 assert_err <command>            # Expect the command to produce any error
+assert_condition <h>, <name>    # Fail if entity doesn't have condition
+assert_no_condition <h>, <name> # Fail if entity has condition
 ```
 
 `assert_err` expects the embedded command to fail with *any* error — parse errors, check errors, runtime errors, or unknown-command errors. This allows testing the full pipeline: `assert_err load bad_syntax.ttrpg` verifies that a malformed file fails to load; `assert_err do Attack(nobody, nothing)` verifies a runtime failure.

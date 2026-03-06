@@ -77,6 +77,12 @@ assert_match school, SpellSchool.Evocation
 // Assert a command fails
 assert_err call missile_range_penalty(Feet { value: 50 }, Feet { value: 0 })
 
+// Assert an entity has a condition
+assert_condition fighter, Prone
+
+// Assert an entity does not have a condition
+assert_no_condition fighter, Stunned
+
 // Assert list membership with `in`
 assert "Shield" in equipment_package(Fighter)
 assert MeleeWeapon.Club in class_allowed_melee(Cleric)
@@ -318,7 +324,8 @@ assert hp == 15
 ```
 
 Variables persist for the rest of the script and can be used in any
-expression context (`eval`, `assert`, `assert_eq`, `assert_ne`, `assert_match`).
+expression context (`eval`, `assert`, `assert_eq`, `assert_ne`, `assert_match`,
+`assert_condition`, `assert_no_condition`).
 
 ## Known limitations
 
@@ -332,6 +339,10 @@ expression context (`eval`, `assert`, `assert_eq`, `assert_ne`, `assert_match`).
 - **Custom effect handlers** -- tests that intercept specific effects to
   verify event payloads (e.g., confirming a `Damaged` event was emitted
   with the right fields).
+
+- **Parameterized condition assertions** -- `assert_condition` checks
+  by name only. Tests that need to verify condition parameters (e.g.,
+  `Concealed(source: attacker)`) still require Rust.
 
 - **Interpreter API tests** -- anything testing the Rust API surface
   (`StateAdapter`, `StateProvider`, etc.) rather than the DSL rules.

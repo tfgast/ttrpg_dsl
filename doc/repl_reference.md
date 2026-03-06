@@ -155,16 +155,24 @@ Options with `default: on` are auto-enabled on load.
 
 ### Testing & Assertions
 
-| Command                     | Description                                   |
-|-----------------------------|-----------------------------------------------|
-| `assert <expr>`             | Verify expression is true                     |
-| `assert_eq <a>, <b>`        | Verify two expressions are equal              |
-| `assert_err <command>`       | Verify a command produces an error            |
+| Command                                      | Description                                   |
+|----------------------------------------------|-----------------------------------------------|
+| `assert <expr>`                              | Verify expression is true                     |
+| `assert_eq <a>, <b>`                         | Verify two expressions are equal              |
+| `assert_ne <a>, <b>`                         | Verify two expressions are not equal          |
+| `assert_match <expr>, <Enum>.<Variant>`      | Verify expression matches enum variant        |
+| `assert_err <command>`                        | Verify a command produces an error            |
+| `assert_condition <handle>, <Condition>`      | Verify entity has a condition                 |
+| `assert_no_condition <handle>, <Condition>`   | Verify entity does not have a condition       |
 
 ```
 assert fighter.HP > 0
 assert_eq call modifier(16), 3
+assert_ne fighter.HP, 0
+assert_match result, TurnOutcome.Turned
 assert_err destroy nonexistent
+assert_condition fighter, Prone
+assert_no_condition fighter, Stunned
 ```
 
 ### Dice Control
