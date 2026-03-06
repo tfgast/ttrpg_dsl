@@ -203,8 +203,9 @@ spawn Character melee_tgt { name: "Target", classes: [ClassLevel { class: Fighte
 
 // Hit: roll 15 → 15+4+0+0=19 >= 14 → Hit; damage roll 6
 rolls 15 6
-assert_eq resolve_melee_attack(melee_atk, melee_tgt, SwordLong).outcome, AttackOutcome.Hit
-// Note: can't easily inspect damage from struct result in single assert_eq
+let melee_result = resolve_melee_attack(melee_atk, melee_tgt, SwordLong)
+assert_eq melee_result.outcome, AttackOutcome.Hit
+assert_eq melee_result.damage, 6
 
 // ── Surprise & initiative mechanics ─────────────────────────────
 
@@ -226,16 +227,15 @@ assert_eq encounter_distance(true), Feet { value: 20 }
 
 // encounter_sequence: no surprise (party=4, monster=5), distance normal (d4=2 → 60ft)
 rolls 4 5 2
-assert_eq encounter_sequence().surprise, SurpriseState.NoSurprise
-// Re-run for distance check
-rolls 4 5 2
-assert_eq encounter_sequence().distance, Feet { value: 60 }
+let enc1 = encounter_sequence()
+assert_eq enc1.surprise, SurpriseState.NoSurprise
+assert_eq enc1.distance, Feet { value: 60 }
 
 // encounter_sequence: party surprises (party=4, monster=1), distance surprised (d3=1 → 10ft)
 rolls 4 1 1
-assert_eq encounter_sequence().surprise, SurpriseState.PartySurprises
-rolls 4 1 1
-assert_eq encounter_sequence().distance, Feet { value: 10 }
+let enc2 = encounter_sequence()
+assert_eq enc2.surprise, SurpriseState.PartySurprises
+assert_eq enc2.distance, Feet { value: 10 }
 
 // ── MeleeAttack action ─────────────────────────────────────────
 

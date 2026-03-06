@@ -238,9 +238,20 @@ assert_eq resolve_melee_attack(atk, tgt, SwordLong).outcome, AttackOutcome.Hit
 assert_eq encounter_sequence().surprise, SurpriseState.NoSurprise
 ```
 
-> **Known issue (tdsl-wsdi):** Testing multiple fields of a returned
-> struct requires calling the function multiple times (with fresh dice
-> rolls each time), since there are no let-bindings in scripts yet.
+### Binding results with `let`
+
+Use `let` to capture a result and assert on multiple fields without
+re-evaluating (which would re-roll dice):
+
+```
+rolls 15 6
+let result = resolve_melee_attack(atk, tgt, SwordLong)
+assert_eq result.outcome, AttackOutcome.Hit
+assert_eq result.damage, 6
+```
+
+Variables persist for the rest of the script and can be used in any
+expression context (`eval`, `assert`, `assert_eq`).
 
 ## Known limitations
 
