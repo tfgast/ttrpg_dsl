@@ -59,7 +59,7 @@
 //     table  unit  suffix
 //     requires  resolve  modify  suppress  trigger  roll  on  returns
 //     when  enabled  hint  suggest  description  default  result
-//     with  with_budget  has  include  as  grant  revoke  emit  free  ordered
+//     with  with_budget  has  is  include  as  grant  revoke  emit  free  ordered
 //     restricted  on_apply  on_remove
 //
 // Soft keywords CAN be used as field names, variable names, and
@@ -719,7 +719,7 @@ or_expr         = and_expr ("||" and_expr)*
 and_expr        = cmp_expr ("&&" cmp_expr)*
 cmp_expr        = in_expr (cmp_op in_expr)?
 cmp_op          = "==" | "!=" | ">=" | "<=" | ">" | "<"
-in_expr         = add_expr ("in" add_expr | "has" IDENT ("as" IDENT)?)?
+in_expr         = add_expr ("in" add_expr | "has" IDENT ("as" IDENT)? | "is" IDENT)?
 add_expr        = mul_expr (("+" | "-") mul_expr)*
 mul_expr        = unary_expr (("*" | "/") unary_expr)*
 unary_expr      = "!" unary_expr
@@ -879,6 +879,32 @@ if_expr         = "if" expr block ("else" (block | if_expr))?
 //
 // The `has` operator sits at the same precedence level as `in`.
 // Grammar: see `in_expr` above.
+
+// --- Is expression (entity type check with narrowing) ---
+//
+// `expr is EntityType` tests whether an entity is a specific entity type
+// at runtime. Returns bool. When used as an `if` condition, the variable
+// is narrowed to the tested type within the then-block, enabling access
+// to type-specific fields:
+//
+//   if target is Character {
+//       target.level          // Character fields accessible
+//   } else if target is Monster {
+//       target.hit_dice       // Monster fields accessible
+//   }
+//
+// Requirements:
+//   - The left operand must be an entity type (specific or `entity`).
+//   - The right operand must name a declared entity type.
+//
+// The `is` operator sits at the same precedence level as `in` and `has`.
+// Grammar: see `in_expr` above.
+//
+// Type narrowing through `is` composes with `has` narrowing via `&&`:
+//
+//   if target is Character && target has Spellcasting {
+//       target.Spellcasting.spell_dc    // both narrowings active
+//   }
 
 // --- Match expressions ---
 //

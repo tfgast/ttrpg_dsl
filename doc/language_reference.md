@@ -421,7 +421,7 @@ none                  // option<T>
 | 1          | `\|\|`                              |
 | 2          | `&&`                                |
 | 3          | `==` `!=` `>=` `<=` `>` `<`        |
-| 4          | `in` `has`                          |
+| 4          | `in` `has` `is`                     |
 | 5          | `+` `-`                             |
 | 6          | `*` `/`                             |
 | 7          | `!` `-` (unary)                     |
@@ -468,6 +468,30 @@ for i in 0..=5 { ... }         // inclusive: 0,1,2,3,4,5
 ```
 if entity has Spellcasting as sc {
     entity.sc.spell_slots -= 1
+}
+```
+
+### Is Expression
+
+Tests whether an entity is a specific entity type. Enables flow-sensitive type narrowing within the then-block.
+
+```
+if target is Character {
+    target.level          // Character fields accessible here
+} else if target is Monster {
+    target.hit_dice       // Monster fields accessible here
+}
+```
+
+Requirements:
+- Left operand must be an entity type (specific or polymorphic `entity`)
+- Right operand must name a declared entity type
+
+Composes with `has` narrowing via `&&`:
+
+```
+if target is Character && target has Spellcasting {
+    target.Spellcasting.spell_dc
 }
 ```
 
@@ -564,5 +588,5 @@ Imports are NOT transitive.
 - Comments: `// line comment` (no block comments)
 - NL suppressed: inside `()` `[]`; after `+ - * / || && == != >= <= in => -> = += -=`; after `{ , : | #`
 - Reserved keywords: `let` `if` `else` `match` `true` `false` `none` `in` `for`
-- Soft keywords (usable as identifiers): `system` `use` `group` `enum` `struct` `entity` `derive` `mechanic` `function` `action` `reaction` `hook` `condition` `prompt` `option` `event` `move` `cost` `tag` `table` `unit` `suffix` `requires` `resolve` `modify` `suppress` `trigger` `roll` `on` `returns` `when` `enabled` `hint` `suggest` `description` `default` `result` `with` `has` `include` `as` `grant` `revoke` `emit` `free` `ordered` `extends` `restricted` `on_apply` `on_remove`
+- Soft keywords (usable as identifiers): `system` `use` `group` `enum` `struct` `entity` `derive` `mechanic` `function` `action` `reaction` `hook` `condition` `prompt` `option` `event` `move` `cost` `tag` `table` `unit` `suffix` `requires` `resolve` `modify` `suppress` `trigger` `roll` `on` `returns` `when` `enabled` `hint` `suggest` `description` `default` `result` `with` `has` `is` `include` `as` `grant` `revoke` `emit` `free` `ordered` `extends` `restricted` `on_apply` `on_remove`
 - Dice literals take precedence over unit literals (`2d6` is dice, not unit)

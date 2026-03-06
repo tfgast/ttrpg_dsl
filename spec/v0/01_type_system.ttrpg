@@ -347,6 +347,37 @@ struct RollResult {
 //
 // `with GroupName` constraints are allowed on `entity`, and `has` checks on
 // `entity` are valid as long as the group name exists in scope.
+//
+// --- Entity type narrowing (`is`) ---
+//
+// The `is` operator tests whether an entity value is a specific entity type
+// at runtime. It returns bool and enables flow-sensitive type narrowing:
+// within the then-block of an `if target is Character` guard, `target` is
+// treated as type `Character` and its fields are directly accessible.
+//
+//   function get_power(target: entity) -> int {
+//       if target is Character {
+//           target.level           // Character.level accessible
+//       } else if target is Monster {
+//           target.hit_dice        // Monster.hit_dice accessible
+//       } else {
+//           0
+//       }
+//   }
+//
+// The left operand must be an entity type (either a specific entity or the
+// polymorphic `entity` alias). The right operand must name a declared entity.
+// Using `is` on a non-entity type or with a non-entity type name is an error.
+//
+// `is` narrowing composes with `has` narrowing via `&&`:
+//
+//   if target is Character && target has Spellcasting {
+//       target.Spellcasting.spell_dc    // both narrowings apply
+//   }
+//
+// The `is` operator sits at the same precedence level as `in` and `has`.
+// When the operand is already the tested type, the checker warns that
+// the check is always true.
 
 
 // --- Position ---

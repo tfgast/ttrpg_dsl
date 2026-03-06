@@ -916,6 +916,51 @@ derive apply_resistances(
 }
 ```
 
+### Entity Type Narrowing (is)
+
+Use `target is EntityType` to branch on entity type and access type-specific fields. The variable is narrowed within the then-block.
+
+```ttrpg
+entity Character {
+    name: string
+    level: int
+}
+
+entity Monster {
+    name: string
+    hit_dice: int
+}
+
+function get_power(target: entity) -> int {
+    if target is Character {
+        target.level
+    } else if target is Monster {
+        target.hit_dice
+    } else {
+        0
+    }
+}
+```
+
+Composes with `has` narrowing via `&&`:
+
+```ttrpg-with-preamble
+function spellcaster_dc(target: entity) -> int {
+    if target is Character && target has Spellcasting {
+        target.Spellcasting.spell_dc
+    } else {
+        0
+    }
+}
+```
+
+**Key rules:**
+
+- Left operand must be entity type (specific or polymorphic `entity`)
+- Right operand must name a declared entity type (not struct/enum)
+- Same precedence as `in` and `has`
+- Narrowing applies only in the then-block (not the else-block)
+
 ---
 
 ## Module Structure Convention
