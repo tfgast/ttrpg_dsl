@@ -1,11 +1,21 @@
 // OSRIC Cleric Spells integration tests
 //
-// Tests pure derive functions: hold_person_save_bonus, spell def derives.
-// Spell resolve functions (CLW, Cause, Bless, Curse, Hold Person) remain
-// in Rust because they require scripted dice, entity conditions, and
-// custom effect handlers.
+// Equivalent of the runtime tests in
+// crates/ttrpg_interp/tests/osric_cleric_spells_integration.rs.
+// Tests caster_level, hold_person_save_bonus, spell def derives, and
+// cleric spell resolution in CLI form.
 
 load osric/*.ttrpg
+
+// ── caster_level derive ─────────────────────────────────────────
+
+spawn Character cl_cleric { name: "Alaric", classes: [ClassLevel { class: Cleric, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, ancestry: Human, HitPoints { max_hp: 18, hp: 18 }, Spellcasting { spell_slots: [3, 3, 1], slots_used: [0, 0, 0], memorised_spells: [] } }
+spawn Character cl_mu { name: "Merlin", classes: [ClassLevel { class: MagicUser, level: 7 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, ancestry: Human, HitPoints { max_hp: 15, hp: 15 }, Spellcasting { spell_slots: [4, 3, 2, 1], slots_used: [0, 0, 0, 0], memorised_spells: [] } }
+spawn Character cl_fighter { name: "Borin", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, ancestry: Human, HitPoints { max_hp: 40, hp: 40 } }
+
+assert_eq caster_level(cl_cleric, Divine), 5
+assert_eq caster_level(cl_mu, Arcane), 7
+assert_eq caster_level(cl_fighter, Arcane), 0
 
 // ── hold_person_save_bonus ──────────────────────────────────────
 
@@ -15,15 +25,106 @@ assert_eq hold_person_save_bonus(3), 2
 
 // ── SpellDef derives ────────────────────────────────────────────
 
-// Cure Light Wounds: level 1
 assert_eq cure_light_wounds_def().level, 1
-
-// Cause Light Wounds: reversible
 assert cause_light_wounds_def().reversible
-
-// Bless: level 1, reversible
 assert_eq bless_def().level, 1
 assert bless_def().reversible
-
-// Hold Person: level 2
 assert_eq hold_person_def().level, 2
+
+// ── Cure Light Wounds ───────────────────────────────────────────
+
+spawn Character clw_caster_1 { name: "Alaric CLW 1", classes: [ClassLevel { class: Cleric, level: 3 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, ancestry: Human, HitPoints { max_hp: 18, hp: 18 }, Spellcasting { spell_slots: [2], slots_used: [0], memorised_spells: [] } }
+spawn Character clw_target_1 { name: "Borin CLW 1", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, ancestry: Human, HitPoints { max_hp: 30, hp: 30 } }
+
+do TakeDamage(clw_target_1, clw_caster_1, 20)
+assert_eq clw_target_1.hp, 10
+rolls clear
+rolls 5
+call resolve_cure_light_wounds(clw_caster_1, clw_target_1)
+assert_eq clw_target_1.hp, 15
+
+spawn Character clw_caster_2 { name: "Alaric CLW 2", classes: [ClassLevel { class: Cleric, level: 3 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, ancestry: Human, HitPoints { max_hp: 18, hp: 18 }, Spellcasting { spell_slots: [2], slots_used: [0], memorised_spells: [] } }
+spawn Character clw_target_2 { name: "Borin CLW 2", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, ancestry: Human, HitPoints { max_hp: 30, hp: 30 } }
+
+do TakeDamage(clw_target_2, clw_caster_2, 2)
+assert_eq clw_target_2.hp, 28
+rolls clear
+rolls 8
+call resolve_cure_light_wounds(clw_caster_2, clw_target_2)
+assert_eq clw_target_2.hp, 30
+
+// ── Cause Light Wounds ──────────────────────────────────────────
+
+spawn Character cslw_caster_1 { name: "Alaric Cause 1", classes: [ClassLevel { class: Cleric, level: 3 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, ancestry: Human, HitPoints { max_hp: 18, hp: 18 }, Spellcasting { spell_slots: [2], slots_used: [0], memorised_spells: [] } }
+spawn Character cslw_target_1 { name: "Borin Cause 1", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, ancestry: Human, HitPoints { max_hp: 30, hp: 30 } }
+
+rolls clear
+rolls 6
+call resolve_cause_light_wounds(cslw_caster_1, cslw_target_1)
+assert_eq cslw_target_1.hp, 24
+
+spawn Character cslw_caster_2 { name: "Alaric Cause 2", classes: [ClassLevel { class: Cleric, level: 3 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, ancestry: Human, HitPoints { max_hp: 18, hp: 18 }, Spellcasting { spell_slots: [2], slots_used: [0], memorised_spells: [] } }
+spawn Character cslw_target_2 { name: "Borin Cause 2", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, ancestry: Human, HitPoints { max_hp: 30, hp: 30 } }
+
+do TakeDamage(cslw_target_2, cslw_caster_2, 27)
+assert_eq cslw_target_2.hp, 3
+rolls clear
+rolls 8
+call resolve_cause_light_wounds(cslw_caster_2, cslw_target_2)
+assert_eq cslw_target_2.hp, -5
+assert_condition cslw_target_2, Unconscious
+assert_condition cslw_target_2, Bleeding
+
+// ── Bless ───────────────────────────────────────────────────────
+
+spawn Character bless_caster { name: "Alaric Bless", classes: [ClassLevel { class: Cleric, level: 3 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, ancestry: Human, HitPoints { max_hp: 18, hp: 18 }, Spellcasting { spell_slots: [2], slots_used: [0], memorised_spells: [] } }
+spawn Character bless_target { name: "Borin Bless", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, ancestry: Human, HitPoints { max_hp: 30, hp: 30 } }
+
+call resolve_bless(bless_caster, [bless_target])
+assert_condition bless_target, Blessed
+
+// ── Curse ───────────────────────────────────────────────────────
+
+spawn Character curse_caster_1 { name: "Alaric Curse 1", classes: [ClassLevel { class: Cleric, level: 3 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, ancestry: Human, HitPoints { max_hp: 18, hp: 18 }, Spellcasting { spell_slots: [2], slots_used: [0], memorised_spells: [] } }
+spawn Character curse_target_1 { name: "Borin Curse 1", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, ancestry: Human, HitPoints { max_hp: 30, hp: 30 } }
+
+rolls clear
+rolls 1
+call resolve_curse(curse_caster_1, [curse_target_1])
+assert_condition curse_target_1, Cursed
+
+spawn Character curse_caster_2 { name: "Alaric Curse 2", classes: [ClassLevel { class: Cleric, level: 3 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, ancestry: Human, HitPoints { max_hp: 18, hp: 18 }, Spellcasting { spell_slots: [2], slots_used: [0], memorised_spells: [] } }
+spawn Character curse_target_2 { name: "Borin Curse 2", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, ancestry: Human, HitPoints { max_hp: 30, hp: 30 } }
+
+rolls clear
+rolls 20
+call resolve_curse(curse_caster_2, [curse_target_2])
+assert_no_condition curse_target_2, Cursed
+
+// ── Hold Person ─────────────────────────────────────────────────
+
+spawn Character hp_caster_1 { name: "Alaric Hold 1", classes: [ClassLevel { class: Cleric, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, ancestry: Human, HitPoints { max_hp: 18, hp: 18 }, Spellcasting { spell_slots: [3, 2], slots_used: [0, 0], memorised_spells: [] } }
+spawn Character hp_target_1 { name: "Bandit Hold 1", classes: [ClassLevel { class: Fighter, level: 3 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, ancestry: Human, HitPoints { max_hp: 20, hp: 20 } }
+
+rolls clear
+rolls 1
+call resolve_hold_person(hp_caster_1, [hp_target_1])
+assert_condition hp_target_1, Paralyzed
+
+spawn Character hp_caster_2 { name: "Alaric Hold 2", classes: [ClassLevel { class: Cleric, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, ancestry: Human, HitPoints { max_hp: 18, hp: 18 }, Spellcasting { spell_slots: [3, 2], slots_used: [0, 0], memorised_spells: [] } }
+spawn Character hp_target_2 { name: "Bandit Hold 2", classes: [ClassLevel { class: Fighter, level: 3 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, ancestry: Human, HitPoints { max_hp: 20, hp: 20 } }
+
+rolls clear
+rolls 20
+call resolve_hold_person(hp_caster_2, [hp_target_2])
+assert_no_condition hp_target_2, Paralyzed
+
+spawn Character hp_caster_3 { name: "Alaric Hold 3", classes: [ClassLevel { class: Cleric, level: 3 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, ancestry: Human, HitPoints { max_hp: 18, hp: 18 }, Spellcasting { spell_slots: [2, 1], slots_used: [0, 0], memorised_spells: [] } }
+spawn Character hp_target_3a { name: "Bandit Hold 3A", classes: [ClassLevel { class: Fighter, level: 3 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, ancestry: Human, HitPoints { max_hp: 20, hp: 20 } }
+spawn Character hp_target_3b { name: "Bandit Hold 3B", classes: [ClassLevel { class: Fighter, level: 3 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, ancestry: Human, HitPoints { max_hp: 20, hp: 20 } }
+
+rolls clear
+rolls 1 20
+call resolve_hold_person(hp_caster_3, [hp_target_3a, hp_target_3b])
+assert_condition hp_target_3a, Paralyzed
+assert_no_condition hp_target_3b, Paralyzed
