@@ -14,7 +14,7 @@
 | table     | -    | -      | -              | value   | -    |
 | mechanic  | yes  | -      | -              | value   | -    |
 | function  | yes  | yes    | -              | optional| -    |
-| action    | yes  | yes    | `on` receiver  | unit    | yes  |
+| action    | yes  | yes    | `on` receiver  | optional| yes  |
 | reaction  | yes  | yes    | `on` + trigger | unit    | yes  |
 | hook      | yes  | yes    | `on` + trigger | unit    | -    |
 | condition | -    | -      | `on bearer`    | -       | -    |
@@ -461,6 +461,18 @@ action Dash on actor: Character () {
     }
 }
 ```
+
+Actions may declare a return type with `-> Type` after the parameter list. The resolve block must then produce a value of that type. On veto or requires/cost failure, `none` is returned, so declare `option<T>`:
+
+```ttrpg-with-preamble
+action CheckAlive on actor: Character () -> option<bool> {
+    resolve {
+        some(actor.HP > 0)
+    }
+}
+```
+
+All overloads of the same action name must agree on return type.
 
 ### Reaction
 

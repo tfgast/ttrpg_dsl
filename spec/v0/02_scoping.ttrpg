@@ -12,7 +12,7 @@
 // derive       no      no        no          value      yes       pure computation
 // mechanic     yes     no        no          value      yes       dice + logic, returns a value
 // function     yes     yes       no          value?     no        general-purpose subroutine
-// action       yes     yes       yes         unit       no        game action, changes state
+// action       yes     yes       yes         optional   no        game action, changes state
 // reaction     yes     yes       yes         unit       no        triggered action, changes state
 // hook         yes     yes       yes         unit       no        mandatory triggered action, always fires
 // condition    no      no        yes         n/a        n/a       declarative modifier overlay
@@ -21,7 +21,12 @@
 // "Returns?" indicates whether the block is value-returning.
 // derive/mechanic/function: last stmt MUST be expr_stmt (its value is the return).
 //   function return type is optional — omitting it gives unit (void).
-// action/reaction resolve: no constraint (any block value is discarded).
+// action: return type is optional via `-> Type` after the parameter list.
+//   When present, the resolve block's last expression must match that type.
+//   On veto or requires/cost failure, the action returns the type's natural
+//   "absent" value (typically `none` for option types). When omitted, the
+//   action returns unit and the resolve block value is discarded.
+// reaction/hook resolve: no return type; any block value is discarded.
 //
 // The `return` keyword is allowed in function, action, reaction, hook, and
 // lifecycle blocks for early exit. `return expr` in functions with return types;

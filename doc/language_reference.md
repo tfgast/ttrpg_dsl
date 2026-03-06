@@ -192,7 +192,7 @@ Errors:
 | table     | -    | -      | -                 | value   | -    |
 | mechanic  | yes  | -      | -                 | value   | -    |
 | function  | yes  | yes    | -                 | optional| -    |
-| action    | yes  | yes    | `on` receiver     | unit    | yes  |
+| action    | yes  | yes    | `on` receiver     | optional| yes  |
 | reaction  | yes  | yes    | `on` + trigger    | unit    | yes  |
 | hook      | yes  | yes    | `on` + trigger    | unit    | -    |
 | condition | -    | -      | `on bearer`       | -       | -    |
@@ -271,6 +271,19 @@ action Attack on attacker: Character (target: Character, weapon: Weapon) #attack
     }
 }
 ```
+
+Actions may declare a return type with `-> Type`. The resolve block must produce that type. On veto or requires/cost failure, `none` is returned, so the declared type should typically be `option<T>`:
+
+```
+action MakeSavingThrow on saver: Character (category: SaveCategory) -> option<bool> {
+    resolve {
+        let saves = character_best_saves(saver)
+        some(roll_saving_throw(saves, category, 0))
+    }
+}
+```
+
+All overloads of the same action must agree on return type. When no return type is declared, the action returns unit and the resolve block value is discarded.
 
 Cost tokens: `action`, `bonus_action`, `reaction`, `movement`, `free_interactions`, `free` (plus plural forms and custom TurnBudget fields).
 

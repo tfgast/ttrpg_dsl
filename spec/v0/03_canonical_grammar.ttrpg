@@ -228,8 +228,12 @@ mechanic_decl   = "mechanic" IDENT "(" params ")" "->" type tag_list? block
 function_decl   = "function" IDENT "(" params ")" ("->" type)? tag_list? block
 
 // --- Action (can roll, can mutate, has receiver) ---
+// Return type is optional. When present, the resolve block must produce
+// a value of that type. On veto or requires/cost failure, `none` is returned
+// (so the declared type should typically be option<T>). When absent the
+// action returns unit and the resolve block value is discarded.
 action_decl     = "action" IDENT "on" IDENT ":" constrained_type
-                      "(" params ")" tag_list? "{"
+                      "(" params ")" ("->" type)? tag_list? "{"
                       cost_clause?
                       requires_clause*
                       resolve_block
@@ -581,7 +585,9 @@ block           = "{" stmt* "}"
 //
 // Type checking (semantic analysis, not parsing):
 //   - derive/mechanic: block type must match declared return type.
-//   - action/reaction resolve: block value is discarded (no constraint).
+//   - action resolve: if action declares `-> Type`, block type must match;
+//     otherwise block value is discarded (no constraint).
+//   - reaction/hook resolve: block value is discarded (no constraint).
 
 stmt            = let_stmt | assign_stmt | grant_stmt | revoke_stmt
                 | emit_stmt | with_budget_stmt | return_stmt | expr_stmt
