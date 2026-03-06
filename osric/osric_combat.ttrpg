@@ -337,6 +337,18 @@ system "OSRIC Combat" {
     }
 
 
+    // Target size for damage dice selection: Characters derive
+    // size from ancestry, Monsters have a direct size field.
+    derive target_size(target: entity) -> Size {
+        if target is Character {
+            ancestry_def(target.ancestry).size
+        } else if target is Monster {
+            target.size
+        } else {
+            Size.Medium
+        }
+    }
+
     // ========================================================
     //  CHARACTER ATTACK RESOLUTION
     //
@@ -354,7 +366,7 @@ system "OSRIC Combat" {
     //   max_damage — use max dice value instead of rolling (Paralyzed, Sleeping)
     mechanic resolve_melee_attack(
         attacker: Character,
-        target: Character,
+        target: entity,
         weapon: MeleeWeapon,
         attack_mod: int = 0,
         roll_mode: RollMode = RollMode.Normal,
@@ -372,8 +384,8 @@ system "OSRIC Combat" {
         }
 
         let wdef = melee_weapon_def(weapon)
-        let target_size = ancestry_def(target.ancestry).size
-        let dmg_dice = if target_size > Size.Medium { wdef.damage_l } else { wdef.damage_sm }
+        let tgt_size = target_size(target)
+        let dmg_dice = if tgt_size > Size.Medium { wdef.damage_l } else { wdef.damage_sm }
         let str_dmg = effective_str_damage(attacker)
         // Monk weapon damage bonus replaces STR damage (OSRIC 3.0, pp.52-54).
         let monk_dmg = if is_class(attacker, Monk) {
@@ -405,7 +417,7 @@ system "OSRIC Combat" {
     // Hurled weapons add STR damage (or monk weapon damage); launched weapons do not.
     mechanic resolve_missile_attack(
         attacker: Character,
-        target: Character,
+        target: entity,
         weapon: MissileWeapon,
         distance: Feet,
         attack_mod: int = 0,
@@ -424,8 +436,8 @@ system "OSRIC Combat" {
             _ => attack_roll_aac(total_mod, target_ac)
         }
 
-        let target_size = ancestry_def(target.ancestry).size
-        let dmg_dice = if target_size > Size.Medium { wdef.damage_l } else { wdef.damage_sm }
+        let tgt_size = target_size(target)
+        let dmg_dice = if tgt_size > Size.Medium { wdef.damage_l } else { wdef.damage_sm }
         let str_dmg = if wdef.is_hurled { effective_str_damage(attacker) } else { 0 }
         let monk_dmg = if wdef.is_hurled && is_class(attacker, Monk) {
             let base = monk_weapon_damage(class_level_for(attacker, Monk).unwrap())
@@ -624,7 +636,7 @@ system "OSRIC Combat" {
     // ========================================================
 
     // Standard melee attack with wielded main-hand weapon.
-    action MeleeAttack on attacker: Character (target: Character) {
+    action MeleeAttack on attacker: Character (target: entity) {
         cost { attack }
         requires {
             wielded_melee(attacker).is_some()
@@ -644,7 +656,7 @@ system "OSRIC Combat" {
 
     // Ranged attack with wielded missile weapon.
     action MissileAttack on attacker: Character (
-        target: Character,
+        target: entity,
         distance: Feet
     ) {
         cost { attack }
@@ -768,7 +780,7 @@ system "OSRIC Combat" {
     // Both attacks use the standard melee attack pipeline.
     // The off-hand weapon cannot be used to parry (enforced by
     // Parry action reading wielded_melee — main hand only).
-    action TwoWeaponAttack on attacker: Character (target: Character) {
+    action TwoWeaponAttack on attacker: Character (target: entity) {
         cost { attack }
         requires {
             wielded_melee(attacker).is_some()
@@ -832,7 +844,7 @@ system "OSRIC Combat" {
     // Per 1.6.2.1: once per 10 rounds, no DEX AC bonus for charger.
     // Charging condition (AC penalty) applied by resolve_action before
     // this action fires. ChargeRecovery cooldown applied here.
-    action Charge on attacker: Character (target: Character) {
+    action Charge on attacker: Character (target: entity) {
         cost { attack }
         requires {
             wielded_melee(attacker).is_some()
@@ -857,7 +869,7 @@ system "OSRIC Combat" {
     // damage. Per 1.6.2.1: "inflict double damage when set to receive
     // a charge if the foe actually charges."
     // Reads weapon from defender's wielded main-hand.
-    action SetWeaponStrike on defender: Character (target: Character) {
+    action SetWeaponStrike on defender: Character (target: entity) {
         cost { attack }
         requires {
             wielded_melee(defender).is_some()
@@ -895,7 +907,7 @@ system "OSRIC Combat" {
     // The +4 backstab bonus replaces the normal +2 rear attack bonus.
     // RearAttacked provides +2 and strips DEX/shield; an extra +2
     // in attack_mod brings the total to +4.
-    action Backstab on attacker: Character (target: Character) {
+    action Backstab on attacker: Character (target: entity) {
         cost { attack }
         requires {
             wielded_melee(attacker).is_some()

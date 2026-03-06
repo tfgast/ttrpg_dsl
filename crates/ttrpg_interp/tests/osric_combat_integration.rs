@@ -3595,3 +3595,215 @@ fn resolve_monster_attack_against_monster_target() {
         other => panic!("expected AttackResult struct, got: {other:?}"),
     }
 }
+
+// ── Character attacks targeting Monsters ──────────────────────
+
+#[test]
+fn character_melee_attack_vs_monster() {
+    let (program, result) = compile_osric_combat();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut state = GameState::new();
+
+    let attacker = make_character(
+        &mut state,
+        "Fighter",
+        "Fighter",
+        5,
+        &standard_abilities_12(),
+        30,
+        15,
+        "Human",
+    );
+    let orc = make_monster(&mut state, "Orc", (1, 8, 0), 8, 14, vec![]);
+    state.set_turn_budget(&attacker, combat_turn_budget());
+    set_field(
+        &mut state,
+        &attacker,
+        "wielded_main",
+        wielded_melee_item("SwordLong"),
+    );
+
+    // Roll 15 → hit vs AC 14
+    let atk_roll = scripted_roll(1, 20, 0, vec![15], vec![15], 15, 15);
+    let dmg_roll = scripted_roll(1, 8, 0, vec![5], vec![5], 5, 5);
+    let mut handler = ScriptedHandler::with_responses(vec![
+        Response::Acknowledged, // ActionStarted
+        Response::Acknowledged, // RequiresCheck
+        Response::Acknowledged, // DeductCost
+        atk_roll,
+        dmg_roll,
+        Response::Acknowledged, // TakeDamage ActionStarted
+        Response::Acknowledged, // DeductCost (free)
+        Response::Acknowledged, // Damaged event
+        Response::Acknowledged, // TakeDamage ActionCompleted
+        Response::Acknowledged, // ActionCompleted
+    ]);
+
+    let adapter = StateAdapter::new(state);
+    adapter.run(&mut handler, |state, eff_handler| {
+        interp
+            .execute_action(
+                state,
+                eff_handler,
+                "MeleeAttack",
+                attacker,
+                vec![Value::Entity(orc)],
+            )
+            .unwrap();
+    });
+
+    let final_state = adapter.into_inner();
+    let hp = final_state.read_field(&orc, "hp").unwrap();
+    assert_eq!(hp, Value::Int(3), "orc HP should be 8 - 5 = 3");
+}
+
+#[test]
+fn character_missile_attack_vs_monster() {
+    let (program, result) = compile_osric_combat();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut state = GameState::new();
+
+    let attacker = make_character(
+        &mut state,
+        "Fighter",
+        "Fighter",
+        5,
+        &standard_abilities_12(),
+        30,
+        15,
+        "Human",
+    );
+    let goblin = make_monster(&mut state, "Goblin", (1, 8, -1), 5, 14, vec![]);
+    state.set_turn_budget(&attacker, combat_turn_budget());
+    set_field(
+        &mut state,
+        &attacker,
+        "wielded_main",
+        wielded_missile_item("BowLong"),
+    );
+
+    // Roll 16 → hit vs AC 14
+    let atk_roll = scripted_roll(1, 20, 0, vec![16], vec![16], 16, 16);
+    let dmg_roll = scripted_roll(1, 6, 0, vec![4], vec![4], 4, 4);
+    let mut handler = ScriptedHandler::with_responses(vec![
+        Response::Acknowledged, // ActionStarted
+        Response::Acknowledged, // RequiresCheck
+        Response::Acknowledged, // DeductCost
+        atk_roll,
+        dmg_roll,
+        Response::Acknowledged, // TakeDamage ActionStarted
+        Response::Acknowledged, // DeductCost (free)
+        Response::Acknowledged, // Damaged event
+        Response::Acknowledged, // TakeDamage ActionCompleted
+        Response::Acknowledged, // ActionCompleted
+    ]);
+
+    let adapter = StateAdapter::new(state);
+    adapter.run(&mut handler, |state, eff_handler| {
+        interp
+            .execute_action(
+                state,
+                eff_handler,
+                "MissileAttack",
+                attacker,
+                vec![
+                    Value::Entity(goblin),
+                    feet(60),
+                ],
+            )
+            .unwrap();
+    });
+
+    let final_state = adapter.into_inner();
+    let hp = final_state.read_field(&goblin, "hp").unwrap();
+    assert_eq!(hp, Value::Int(1), "goblin HP should be 5 - 4 = 1");
+}
+
+#[test]
+fn character_charge_vs_monster() {
+    let (program, result) = compile_osric_combat();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut state = GameState::new();
+
+    let attacker = make_character(
+        &mut state,
+        "Fighter",
+        "Fighter",
+        5,
+        &standard_abilities_12(),
+        30,
+        15,
+        "Human",
+    );
+    let orc = make_monster(&mut state, "Orc", (1, 8, 0), 10, 14, vec![]);
+    state.set_turn_budget(&attacker, combat_turn_budget());
+    set_field(
+        &mut state,
+        &attacker,
+        "wielded_main",
+        wielded_melee_item("SwordLong"),
+    );
+
+    // Charge gives +2 to hit: roll 12 → 12 + BTHB(5) + charge(2) = 19 >= 14 → Hit
+    let atk_roll = scripted_roll(1, 20, 0, vec![12], vec![12], 12, 12);
+    let dmg_roll = scripted_roll(1, 8, 0, vec![6], vec![6], 6, 6);
+    let mut handler = ScriptedHandler::with_responses(vec![
+        Response::Acknowledged, // ActionStarted
+        Response::Acknowledged, // RequiresCheck
+        Response::Acknowledged, // DeductCost
+        Response::Acknowledged, // ConditionApplyGate (ChargeRecovery)
+        atk_roll,
+        dmg_roll,
+        Response::Acknowledged, // TakeDamage ActionStarted
+        Response::Acknowledged, // DeductCost (free)
+        Response::Acknowledged, // Damaged event
+        Response::Acknowledged, // TakeDamage ActionCompleted
+        Response::Acknowledged, // ActionCompleted
+    ]);
+
+    let adapter = StateAdapter::new(state);
+    adapter.run(&mut handler, |state, eff_handler| {
+        interp
+            .execute_action(
+                state,
+                eff_handler,
+                "Charge",
+                attacker,
+                vec![Value::Entity(orc)],
+            )
+            .unwrap();
+    });
+
+    let final_state = adapter.into_inner();
+    let hp = final_state.read_field(&orc, "hp").unwrap();
+    assert_eq!(hp, Value::Int(4), "orc HP should be 10 - 6 = 4");
+}
+
+#[test]
+fn target_size_derive_character_and_monster() {
+    let (program, result) = compile_osric_combat();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut state = GameState::new();
+
+    let human = make_character(
+        &mut state,
+        "Human",
+        "Fighter",
+        1,
+        &standard_abilities_12(),
+        10,
+        14,
+        "Human",
+    );
+    let ogre = make_monster(&mut state, "Ogre", (4, 8, 1), 26, 15, vec![]);
+
+    let human_size = interp
+        .evaluate_derive(&state, &mut NullHandler, "target_size", vec![Value::Entity(human)])
+        .unwrap();
+    assert_eq!(human_size, enum_variant("Size", "Medium"), "Human should be Medium");
+
+    let ogre_size = interp
+        .evaluate_derive(&state, &mut NullHandler, "target_size", vec![Value::Entity(ogre)])
+        .unwrap();
+    assert_eq!(ogre_size, enum_variant("Size", "Medium"), "default Monster should be Medium");
+}
