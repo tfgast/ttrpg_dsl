@@ -3856,3 +3856,77 @@ system "test" {
     // Handle should win — hero.HP should work
     runner.exec("assert hero.HP == 10").unwrap();
 }
+
+// ── Regression: tdsl-2i49 — bare ambiguous variant in struct lit field ──
+
+#[test]
+fn struct_lit_field_hint_disambiguates_bare_variant() {
+    // Two enums share variant "Shared". A struct field expects EnumA.
+    // Bare `Shared` in struct literal should resolve via field type hint.
+    let path = write_temp(
+        "struct_variant_hint",
+        r#"
+system "test" {
+    enum EnumA { Shared, OnlyA }
+    enum EnumB { Shared, OnlyB }
+    struct Wrapper {
+        val: EnumA
+    }
+    derive check(w: Wrapper) -> string {
+        match w.val {
+            Shared => "got_shared"
+            OnlyA => "got_only_a"
+        }
+    }
+}
+"#,
+    );
+
+    let mut runner = Runner::new();
+    runner.exec(&format!("load {}", path.display())).unwrap();
+    runner.take_output();
+
+    // Bare ambiguous variant in struct literal field — should resolve via field type hint
+    runner.exec("eval check(Wrapper { val: Shared })").unwrap();
+    let output = runner.take_output();
+    assert_eq!(output, vec!["\"got_shared\""]);
+
+    // Qualified syntax should still work
+    runner.exec("eval check(Wrapper { val: EnumA.Shared })").unwrap();
+    let output = runner.take_output();
+    assert_eq!(output, vec!["\"got_shared\""]);
+}
+
+#[test]
+fn spawn_block_bare_ambiguous_variant_in_struct_field() {
+    // Simulates the OSRIC Cleric bug: bare `Shared` in a struct constructor
+    // inside a spawn block field should resolve via struct field type hint.
+    let path = write_temp(
+        "spawn_struct_variant",
+        r#"
+system "test" {
+    enum JobClass { Shared, Fighter }
+    enum SpellType { Shared, Arcane }
+    struct ClassInfo {
+        job: JobClass,
+        level: int
+    }
+    entity Hero {
+        name: string,
+        info: ClassInfo
+    }
+}
+"#,
+    );
+
+    let mut runner = Runner::new();
+    runner.exec(&format!("load {}", path.display())).unwrap();
+    runner.take_output();
+
+    // Bare ambiguous variant in struct literal inside spawn block
+    runner
+        .exec(r#"spawn Hero h { name: "Test", info: ClassInfo { job: Shared, level: 1 } }"#)
+        .unwrap();
+    let output = runner.take_output();
+    assert!(output[0].contains("spawned Hero h"));
+}

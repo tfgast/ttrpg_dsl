@@ -1,7 +1,11 @@
+use std::collections::BTreeMap;
+
 use ttrpg_ast::ast::{
     ArmBody, DeclKind, ElseBranch, ExprKind, FieldDef, ForIterable, GuardKind, TopLevel, TypeExpr,
 };
 use ttrpg_ast::{Name, Spanned};
+use ttrpg_checker::env::DeclInfo;
+use ttrpg_checker::ty::Ty;
 
 use crate::effect::FieldPathSegment;
 use crate::state::EntityRef;
@@ -467,4 +471,59 @@ pub(crate) fn resolve_resource_bounds_pub(
     path: &[FieldPathSegment],
 ) -> Option<(Value, Value)> {
     resolve_resource_bounds(env, entity, path)
+}
+
+/// Try to resolve a bare ident as an enum variant using an expected type hint.
+///
+/// When the checker hasn't run on an expression (e.g. REPL eval), `resolved_variants`
+/// is empty and `unique_variant_owner` may return `None` for variants that appear in
+/// multiple enums. This function uses the expected type to disambiguate:
+/// if the hint is `Ty::Enum(E)` and `E` has a variant matching `name`, we
+/// construct the variant value directly.
+pub(crate) fn try_resolve_variant_from_hint(
+    env: &Env,
+    name: &str,
+    hint: &Ty,
+) -> Option<Value> {
+    let enum_name = match hint {
+        Ty::Enum(n) => n,
+        _ => return None,
+    };
+    let decl = env.interp.type_env.types.get(enum_name.as_str())?;
+    let enum_info = match decl {
+        DeclInfo::Enum(info) => info,
+        _ => return None,
+    };
+    let variant = enum_info.variants.iter().find(|v| v.name == name)?;
+    if !variant.fields.is_empty() {
+        return None;
+    }
+    Some(Value::EnumVariant {
+        enum_name: enum_name.clone(),
+        variant: Name::from(name),
+        fields: BTreeMap::new(),
+    })
+}
+
+/// Evaluate an expression, trying type-hinted enum variant resolution first.
+///
+/// If the expression is a bare ident that isn't in scope and isn't already resolved,
+/// attempts to resolve it as an enum variant using the expected type before falling
+/// back to normal evaluation.
+pub(crate) fn eval_expr_with_hint(
+    env: &mut Env,
+    expr: &Spanned<ExprKind>,
+    hint: &Ty,
+) -> Result<Value, crate::RuntimeError> {
+    if let ExprKind::Ident(name) = &expr.node {
+        if env.lookup(name).is_none()
+            && !env.interp.type_env.resolved_variants.contains_key(&expr.span)
+            && env.interp.type_env.unique_variant_owner(name).is_none()
+        {
+            if let Some(val) = try_resolve_variant_from_hint(env, name, hint) {
+                return Ok(val);
+            }
+        }
+    }
+    eval_expr(env, expr)
 }

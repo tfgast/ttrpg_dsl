@@ -13,7 +13,7 @@ use crate::RuntimeError;
 use super::access::{eval_field_access, eval_index};
 use super::compare::match_pattern;
 use super::control::{eval_arm_body, eval_for, eval_if, eval_if_let, eval_list_comprehension};
-use super::helpers::{find_struct_defaults, type_name};
+use super::helpers::{eval_expr_with_hint, find_struct_defaults, type_name};
 use super::ops::{eval_binop, eval_unary};
 
 // ── Expression evaluator ───────────────────────────────────────
@@ -84,8 +84,18 @@ pub(crate) fn eval_expr(env: &mut Env, expr: &Spanned<ExprKind>) -> Result<Value
             };
 
             // Explicit fields override base values.
+            // Look up the struct schema to get type hints for fields, allowing
+            // disambiguation of bare enum variants (e.g. Cleric → Class.Cleric).
+            let schema_fields = env.interp.type_env.lookup_fields(name);
             for f in fields {
-                let val = eval_expr(env, &f.value)?;
+                let val = if let Some(hint) = schema_fields
+                    .and_then(|sf| sf.iter().find(|fi| fi.name == f.name))
+                    .map(|fi| &fi.ty)
+                {
+                    eval_expr_with_hint(env, &f.value, hint)?
+                } else {
+                    eval_expr(env, &f.value)?
+                };
                 field_map.insert(f.name.clone(), val);
             }
 

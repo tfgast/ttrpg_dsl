@@ -14,5 +14,5 @@ mod tests;
 pub(crate) use compare::value_eq;
 pub(crate) use control::eval_block;
 pub(crate) use dispatch::eval_expr;
-pub(crate) use helpers::{resolve_resource_bounds_pub, type_name};
+pub(crate) use helpers::{resolve_resource_bounds_pub, try_resolve_variant_from_hint, type_name};
 pub(crate) use ops::variant_ordinal;

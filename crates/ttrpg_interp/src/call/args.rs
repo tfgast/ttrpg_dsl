@@ -1,11 +1,9 @@
-use std::collections::BTreeMap;
-
 use ttrpg_ast::ast::{Arg, ExprKind, Param};
 use ttrpg_ast::{Name, Span};
-use ttrpg_checker::env::{DeclInfo, ParamInfo};
+use ttrpg_checker::env::ParamInfo;
 use ttrpg_checker::ty::Ty;
 
-use crate::eval::eval_expr;
+use crate::eval::{eval_expr, try_resolve_variant_from_hint};
 use crate::value::Value;
 use crate::Env;
 use crate::RuntimeError;
@@ -184,35 +182,3 @@ fn try_eval_with_hint(
     eval_expr(env, expr)
 }
 
-/// Try to resolve a bare ident as an enum variant using the parameter's expected type.
-///
-/// When the checker hasn't run on an expression (e.g. REPL eval), `resolved_variants`
-/// is empty and `unique_variant_owner` may return `None` for variants that appear in
-/// multiple enums. This function uses the parameter's declared type to disambiguate:
-/// if the param expects `Ty::Enum(E)` and `E` has a variant matching `name`, we
-/// construct the variant value directly.
-fn try_resolve_variant_from_hint(
-    env: &Env,
-    name: &str,
-    param_ty: &Ty,
-) -> Option<Value> {
-    let enum_name = match param_ty {
-        Ty::Enum(n) => n,
-        _ => return None,
-    };
-    let decl = env.interp.type_env.types.get(enum_name.as_str())?;
-    let enum_info = match decl {
-        DeclInfo::Enum(info) => info,
-        _ => return None,
-    };
-    let variant = enum_info.variants.iter().find(|v| v.name == name)?;
-    if !variant.fields.is_empty() {
-        // Variant with fields must be called, not used as a bare ident
-        return None;
-    }
-    Some(Value::EnumVariant {
-        enum_name: enum_name.clone(),
-        variant: Name::from(name),
-        fields: BTreeMap::new(),
-    })
-}
