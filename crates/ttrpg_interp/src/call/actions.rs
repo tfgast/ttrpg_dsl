@@ -33,7 +33,7 @@ fn resolve_action_decl(
                 format!(
                     "no matching overload for action '{}' on entity type '{}'",
                     name,
-                    entity_type.map(|n| n.as_str()).unwrap_or("unknown")
+                    entity_type.map_or("unknown", |n| n.as_str())
                 ),
                 call_span,
             )

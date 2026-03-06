@@ -1025,8 +1025,7 @@ fn collect_action(
             let new_return_ty = a
                 .return_type
                 .as_ref()
-                .map(|rt| env.resolve_type_validated(rt, diagnostics))
-                .unwrap_or(Ty::Unit);
+                .map_or(Ty::Unit, |rt| env.resolve_type_validated(rt, diagnostics));
             if first.return_type != new_return_ty {
                 diagnostics.push(Diagnostic::error(
                     format!(

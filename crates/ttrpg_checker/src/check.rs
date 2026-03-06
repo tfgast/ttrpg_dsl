@@ -463,8 +463,7 @@ impl<'a> Checker<'a> {
         let declared_return_ty = a
             .return_type
             .as_ref()
-            .map(|rt| self.resolve_type_validated(rt))
-            .unwrap_or(Ty::Unit);
+            .map_or(Ty::Unit, |rt| self.resolve_type_validated(rt));
         self.scope
             .push_with_return_type(BlockKind::ActionResolve, declared_return_ty.clone());
 
@@ -1177,6 +1176,7 @@ impl<'a> Checker<'a> {
 
     /// Check type compatibility. Allows Resource <-> Int coercion
     /// and built-in/user-defined type equivalence.
+    #[allow(clippy::self_only_used_in_recursion)]
     pub fn types_compatible(&self, actual: &Ty, expected: &Ty) -> bool {
         if actual == expected {
             return true;
