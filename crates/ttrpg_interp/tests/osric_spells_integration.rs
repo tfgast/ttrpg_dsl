@@ -7,7 +7,6 @@
 
 use ttrpg_ast::ast::{DeclKind, TopLevel};
 use ttrpg_ast::Name;
-use ttrpg_interp::adapter::StateAdapter;
 use ttrpg_interp::reference_state::GameState;
 use ttrpg_interp::state::StateProvider;
 use ttrpg_interp::value::Value;
@@ -436,29 +435,6 @@ fn has_wis_bonus_values() {
 //  SPELL MEMORISATION / CASTING ACTIONS
 // ═══════════════════════════════════════════════════════════════
 
-/// Helper: create a Cleric L3 caster with 2 first-level and 1 second-level slot.
-fn setup_caster() -> (
-    ttrpg_ast::ast::Program,
-    ttrpg_checker::CheckResult,
-    GameState,
-    ttrpg_interp::state::EntityRef,
-) {
-    let (program, result) = compile_osric_spells();
-    let mut state = GameState::new();
-    let caster = make_caster_with_slots(
-        &mut state,
-        "Alaric",
-        "Cleric",
-        3,
-        &standard_abilities_12(),
-        20,
-        10,
-        "Human",
-        &[(1, 2), (2, 1)],
-    );
-    (program, result, state, caster)
-}
-
 /// Create a SpellId enum variant value.
 fn spell_id(variant: &str) -> Value {
     enum_variant("SpellId", variant)
@@ -513,58 +489,41 @@ fn read_spellcasting(
     (spells, used_1, used_2)
 }
 
-fn run_action(
-    interp: &Interpreter,
-    state: GameState,
-    handler: &mut ScriptedHandler,
-    action: &str,
-    actor: ttrpg_interp::state::EntityRef,
-    args: Vec<Value>,
-) -> GameState {
-    let adapter = StateAdapter::new(state);
-    adapter.run(handler, |state, eff_handler| {
-        interp
-            .execute_action(state, eff_handler, action, actor, args)
-            .unwrap();
-    });
-    adapter.into_inner()
-}
-
 // ── MemoriseSpell ─────────────────────────────────────────────
 
 #[test]
 fn memorise_spell_fills_slot_and_adds_to_list() {
-    let (program, result, state, caster) = setup_caster();
-    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let ctx = SpellTestContext::cleric("Alaric", 3, &[(1, 2), (2, 1)]);
+    let interp = Interpreter::new(&ctx.program, &ctx.check_result.env).unwrap();
     let mut handler = ScriptedHandler::with_responses(vec![]);
 
     let state = run_action(
         &interp,
-        state,
+        ctx.state,
         &mut handler,
         "MemoriseSpell",
-        caster,
+        ctx.caster,
         vec![spell_id("CureLightWounds"), Value::Int(1)],
     );
 
-    let (spells, used_1, _used_2) = read_spellcasting(&state, &caster);
+    let (spells, used_1, _used_2) = read_spellcasting(&state, &ctx.caster);
     assert_eq!(spells, vec!["CureLightWounds"]);
     assert_eq!(used_1, 1);
 }
 
 #[test]
 fn memorise_spell_fails_when_slots_full() {
-    let (program, result, state, caster) = setup_caster();
-    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let ctx = SpellTestContext::cleric("Alaric", 3, &[(1, 2), (2, 1)]);
+    let interp = Interpreter::new(&ctx.program, &ctx.check_result.env).unwrap();
 
     // Fill both first-level slots
     let mut handler = ScriptedHandler::with_responses(vec![]);
     let state = run_action(
         &interp,
-        state,
+        ctx.state,
         &mut handler,
         "MemoriseSpell",
-        caster,
+        ctx.caster,
         vec![spell_id("CureLightWounds"), Value::Int(1)],
     );
     let mut handler = ScriptedHandler::with_responses(vec![]);
@@ -573,7 +532,7 @@ fn memorise_spell_fails_when_slots_full() {
         state,
         &mut handler,
         "MemoriseSpell",
-        caster,
+        ctx.caster,
         vec![spell_id("Bless"), Value::Int(1)],
     );
 
@@ -584,28 +543,28 @@ fn memorise_spell_fails_when_slots_full() {
         state,
         &mut handler,
         "MemoriseSpell",
-        caster,
+        ctx.caster,
         vec![spell_id("CauseLightWounds"), Value::Int(1)],
     );
 
     // Verify requires guard rejected: state unchanged (still 2 spells, slots_used still 2)
-    let (spells, used_1, _) = read_spellcasting(&state, &caster);
+    let (spells, used_1, _) = read_spellcasting(&state, &ctx.caster);
     assert_eq!(spells.len(), 2, "no third spell should be memorised");
     assert_eq!(used_1, 2, "slots_used should still be 2");
 }
 
 #[test]
 fn memorise_same_spell_multiple_times() {
-    let (program, result, state, caster) = setup_caster();
-    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let ctx = SpellTestContext::cleric("Alaric", 3, &[(1, 2), (2, 1)]);
+    let interp = Interpreter::new(&ctx.program, &ctx.check_result.env).unwrap();
 
     let mut handler = ScriptedHandler::with_responses(vec![]);
     let state = run_action(
         &interp,
-        state,
+        ctx.state,
         &mut handler,
         "MemoriseSpell",
-        caster,
+        ctx.caster,
         vec![spell_id("CureLightWounds"), Value::Int(1)],
     );
     let mut handler = ScriptedHandler::with_responses(vec![]);
@@ -614,11 +573,11 @@ fn memorise_same_spell_multiple_times() {
         state,
         &mut handler,
         "MemoriseSpell",
-        caster,
+        ctx.caster,
         vec![spell_id("CureLightWounds"), Value::Int(1)],
     );
 
-    let (spells, used_1, _) = read_spellcasting(&state, &caster);
+    let (spells, used_1, _) = read_spellcasting(&state, &ctx.caster);
     assert_eq!(spells, vec!["CureLightWounds", "CureLightWounds"]);
     assert_eq!(used_1, 2);
 }
@@ -627,17 +586,17 @@ fn memorise_same_spell_multiple_times() {
 
 #[test]
 fn forget_spell_removes_spell_and_frees_slot() {
-    let (program, result, state, caster) = setup_caster();
-    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let ctx = SpellTestContext::cleric("Alaric", 3, &[(1, 2), (2, 1)]);
+    let interp = Interpreter::new(&ctx.program, &ctx.check_result.env).unwrap();
 
     // Memorise then forget
     let mut handler = ScriptedHandler::with_responses(vec![]);
     let state = run_action(
         &interp,
-        state,
+        ctx.state,
         &mut handler,
         "MemoriseSpell",
-        caster,
+        ctx.caster,
         vec![spell_id("CureLightWounds"), Value::Int(1)],
     );
     let mut handler = ScriptedHandler::with_responses(vec![]);
@@ -646,49 +605,49 @@ fn forget_spell_removes_spell_and_frees_slot() {
         state,
         &mut handler,
         "ForgetSpell",
-        caster,
+        ctx.caster,
         vec![spell_id("CureLightWounds"), Value::Int(1)],
     );
 
-    let (spells, used_1, _) = read_spellcasting(&state, &caster);
+    let (spells, used_1, _) = read_spellcasting(&state, &ctx.caster);
     assert!(spells.is_empty(), "spell list should be empty after forget");
     assert_eq!(used_1, 0, "slots_used should be back to 0");
 }
 
 #[test]
 fn forget_spell_fails_when_not_memorised() {
-    let (program, result, state, caster) = setup_caster();
-    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let ctx = SpellTestContext::cleric("Alaric", 3, &[(1, 2), (2, 1)]);
+    let interp = Interpreter::new(&ctx.program, &ctx.check_result.env).unwrap();
 
     let mut handler = ScriptedHandler::with_responses(vec![]);
     let state = run_action(
         &interp,
-        state,
+        ctx.state,
         &mut handler,
         "ForgetSpell",
-        caster,
+        ctx.caster,
         vec![spell_id("CureLightWounds"), Value::Int(1)],
     );
 
     // Verify requires guard rejected: state unchanged (empty list, slots_used still 0)
-    let (spells, used_1, _) = read_spellcasting(&state, &caster);
+    let (spells, used_1, _) = read_spellcasting(&state, &ctx.caster);
     assert!(spells.is_empty(), "no spells should be in list");
     assert_eq!(used_1, 0, "slots_used should still be 0");
 }
 
 #[test]
 fn forget_removes_only_first_duplicate() {
-    let (program, result, state, caster) = setup_caster();
-    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let ctx = SpellTestContext::cleric("Alaric", 3, &[(1, 2), (2, 1)]);
+    let interp = Interpreter::new(&ctx.program, &ctx.check_result.env).unwrap();
 
     // Memorise CLW twice
     let mut handler = ScriptedHandler::with_responses(vec![]);
     let state = run_action(
         &interp,
-        state,
+        ctx.state,
         &mut handler,
         "MemoriseSpell",
-        caster,
+        ctx.caster,
         vec![spell_id("CureLightWounds"), Value::Int(1)],
     );
     let mut handler = ScriptedHandler::with_responses(vec![]);
@@ -697,7 +656,7 @@ fn forget_removes_only_first_duplicate() {
         state,
         &mut handler,
         "MemoriseSpell",
-        caster,
+        ctx.caster,
         vec![spell_id("CureLightWounds"), Value::Int(1)],
     );
 
@@ -708,11 +667,11 @@ fn forget_removes_only_first_duplicate() {
         state,
         &mut handler,
         "ForgetSpell",
-        caster,
+        ctx.caster,
         vec![spell_id("CureLightWounds"), Value::Int(1)],
     );
 
-    let (spells, used_1, _) = read_spellcasting(&state, &caster);
+    let (spells, used_1, _) = read_spellcasting(&state, &ctx.caster);
     assert_eq!(spells, vec!["CureLightWounds"], "one copy should remain");
     assert_eq!(used_1, 1);
 }
@@ -721,17 +680,17 @@ fn forget_removes_only_first_duplicate() {
 
 #[test]
 fn cast_spell_expends_slot_and_begins_casting() {
-    let (program, result, state, caster) = setup_caster();
-    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let ctx = SpellTestContext::cleric("Alaric", 3, &[(1, 2), (2, 1)]);
+    let interp = Interpreter::new(&ctx.program, &ctx.check_result.env).unwrap();
 
     // Memorise a spell first
     let mut handler = ScriptedHandler::with_responses(vec![]);
     let state = run_action(
         &interp,
-        state,
+        ctx.state,
         &mut handler,
         "MemoriseSpell",
-        caster,
+        ctx.caster,
         vec![spell_id("CureLightWounds"), Value::Int(1)],
     );
 
@@ -742,17 +701,17 @@ fn cast_spell_expends_slot_and_begins_casting() {
         state,
         &mut handler,
         "CastSpell",
-        caster,
+        ctx.caster,
         vec![spell_id("CureLightWounds"), Value::Int(1), Value::Int(5)],
     );
 
     // Spell should be removed from memorised list
-    let (spells, used_1, _) = read_spellcasting(&state, &caster);
+    let (spells, used_1, _) = read_spellcasting(&state, &ctx.caster);
     assert!(spells.is_empty(), "spell should be expended after casting");
     assert_eq!(used_1, 0, "slots_used should be decremented");
 
     // CastingSpell condition should be applied (via BeginCasting)
-    let conditions = state.read_conditions(&caster).unwrap_or_default();
+    let conditions = state.read_conditions(&ctx.caster).unwrap_or_default();
     assert!(
         conditions.iter().any(|c| &*c.name == "CastingSpell"),
         "expected CastingSpell condition on caster, got: {:?}",
@@ -762,26 +721,26 @@ fn cast_spell_expends_slot_and_begins_casting() {
 
 #[test]
 fn cast_spell_fails_when_not_memorised() {
-    let (program, result, state, caster) = setup_caster();
-    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let ctx = SpellTestContext::cleric("Alaric", 3, &[(1, 2), (2, 1)]);
+    let interp = Interpreter::new(&ctx.program, &ctx.check_result.env).unwrap();
 
     let mut handler = ScriptedHandler::with_responses(vec![]);
     let state = run_action(
         &interp,
-        state,
+        ctx.state,
         &mut handler,
         "CastSpell",
-        caster,
+        ctx.caster,
         vec![spell_id("CureLightWounds"), Value::Int(1), Value::Int(5)],
     );
 
     // Verify requires guard rejected: state unchanged
-    let (spells, used_1, _) = read_spellcasting(&state, &caster);
+    let (spells, used_1, _) = read_spellcasting(&state, &ctx.caster);
     assert!(spells.is_empty(), "no spells should be in list");
     assert_eq!(used_1, 0, "slots_used should still be 0");
 
     // No CastingSpell condition should be applied
-    let conditions = state.read_conditions(&caster).unwrap_or_default();
+    let conditions = state.read_conditions(&ctx.caster).unwrap_or_default();
     assert!(
         !conditions.iter().any(|c| &*c.name == "CastingSpell"),
         "CastingSpell should not be applied when requires fails"

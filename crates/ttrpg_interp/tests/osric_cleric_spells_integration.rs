@@ -43,30 +43,17 @@ fn osric_cleric_spells_parses_and_typechecks() {
 
 #[test]
 fn caster_level_for_single_class_cleric() {
-    let (program, result) = compile_all();
-    let interp = Interpreter::new(&program, &result.env).unwrap();
-    let mut state = GameState::new();
+    let ctx = SpellTestContext::cleric("Alaric", 5, &[(1, 3), (2, 3), (3, 1)]);
+    let interp = ctx.interp();
     let mut handler = NullHandler;
-
-    let caster = make_caster_with_slots(
-        &mut state,
-        "Alaric",
-        "Cleric",
-        5,
-        &standard_abilities_12(),
-        20,
-        10,
-        "Human",
-        &[(1, 3), (2, 3), (3, 1)],
-    );
 
     let val = interp
         .evaluate_derive(
-            &state,
+            &ctx.state,
             &mut handler,
             "caster_level",
             vec![
-                Value::Entity(caster),
+                Value::Entity(ctx.caster),
                 enum_variant("SpellClassType", "Divine"),
             ],
         )
@@ -76,13 +63,7 @@ fn caster_level_for_single_class_cleric() {
 
 #[test]
 fn caster_level_for_magic_user() {
-    let (program, result) = compile_all();
-    let interp = Interpreter::new(&program, &result.env).unwrap();
-    let mut state = GameState::new();
-    let mut handler = NullHandler;
-
-    let caster = make_caster_with_slots(
-        &mut state,
+    let ctx = SpellTestContext::new(
         "Merlin",
         "MagicUser",
         7,
@@ -92,14 +73,16 @@ fn caster_level_for_magic_user() {
         "Human",
         &[(1, 4), (2, 3), (3, 2), (4, 1)],
     );
+    let interp = ctx.interp();
+    let mut handler = NullHandler;
 
     let val = interp
         .evaluate_derive(
-            &state,
+            &ctx.state,
             &mut handler,
             "caster_level",
             vec![
-                Value::Entity(caster),
+                Value::Entity(ctx.caster),
                 enum_variant("SpellClassType", "Arcane"),
             ],
         )
@@ -143,42 +126,19 @@ fn caster_level_returns_zero_for_non_caster() {
 
 #[test]
 fn clw_heals_conscious_target() {
-    let (program, result) = compile_all();
-    let interp = Interpreter::new(&program, &result.env).unwrap();
-    let mut state = GameState::new();
-
-    let caster = make_caster_with_slots(
-        &mut state,
-        "Alaric",
-        "Cleric",
-        3,
-        &standard_abilities_12(),
-        20,
-        10,
-        "Human",
-        &[(1, 2)],
-    );
-
-    let target = make_character(
-        &mut state,
-        "Borin",
-        "Fighter",
-        5,
-        &standard_abilities_12(),
-        30,
-        17,
-        "Human",
-    );
+    let mut ctx = SpellTestContext::cleric("Alaric", 3, &[(1, 2)]);
+    let target = ctx.add_target("Borin", "Fighter", 5, 30, 17);
+    let interp = Interpreter::new(&ctx.program, &ctx.check_result.env).unwrap();
 
     // Wound target: 30 -> 10 HP
     let mut handler = ScriptedHandler::with_responses(vec![]);
     let state = run_action(
         &interp,
-        state,
+        ctx.state,
         &mut handler,
         "TakeDamage",
         target,
-        vec![Value::Entity(caster), Value::Int(20)],
+        vec![Value::Entity(ctx.caster), Value::Int(20)],
     );
     assert_eq!(read_hp(&state, &target), 10);
 
@@ -189,7 +149,7 @@ fn clw_heals_conscious_target() {
         state,
         &mut handler,
         "resolve_cure_light_wounds",
-        vec![Value::Entity(caster), Value::Entity(target)],
+        vec![Value::Entity(ctx.caster), Value::Entity(target)],
     );
 
     assert_eq!(read_hp(&state, &target), 15, "should heal 5 HP (10+5=15)");
@@ -197,42 +157,19 @@ fn clw_heals_conscious_target() {
 
 #[test]
 fn clw_does_not_exceed_max_hp() {
-    let (program, result) = compile_all();
-    let interp = Interpreter::new(&program, &result.env).unwrap();
-    let mut state = GameState::new();
-
-    let caster = make_caster_with_slots(
-        &mut state,
-        "Alaric",
-        "Cleric",
-        3,
-        &standard_abilities_12(),
-        20,
-        10,
-        "Human",
-        &[(1, 2)],
-    );
-
-    let target = make_character(
-        &mut state,
-        "Borin",
-        "Fighter",
-        5,
-        &standard_abilities_12(),
-        30,
-        17,
-        "Human",
-    );
+    let mut ctx = SpellTestContext::cleric("Alaric", 3, &[(1, 2)]);
+    let target = ctx.add_target("Borin", "Fighter", 5, 30, 17);
+    let interp = Interpreter::new(&ctx.program, &ctx.check_result.env).unwrap();
 
     // Wound target: 30 -> 28
     let mut handler = ScriptedHandler::with_responses(vec![]);
     let state = run_action(
         &interp,
-        state,
+        ctx.state,
         &mut handler,
         "TakeDamage",
         target,
-        vec![Value::Entity(caster), Value::Int(2)],
+        vec![Value::Entity(ctx.caster), Value::Int(2)],
     );
     assert_eq!(read_hp(&state, &target), 28);
 
@@ -243,7 +180,7 @@ fn clw_does_not_exceed_max_hp() {
         state,
         &mut handler,
         "resolve_cure_light_wounds",
-        vec![Value::Entity(caster), Value::Entity(target)],
+        vec![Value::Entity(ctx.caster), Value::Entity(target)],
     );
 
     assert_eq!(read_hp(&state, &target), 30, "HP should cap at max_hp (30)");
@@ -253,41 +190,18 @@ fn clw_does_not_exceed_max_hp() {
 
 #[test]
 fn cause_light_wounds_deals_damage() {
-    let (program, result) = compile_all();
-    let interp = Interpreter::new(&program, &result.env).unwrap();
-    let mut state = GameState::new();
-
-    let caster = make_caster_with_slots(
-        &mut state,
-        "Alaric",
-        "Cleric",
-        3,
-        &standard_abilities_12(),
-        20,
-        10,
-        "Human",
-        &[(1, 2)],
-    );
-
-    let target = make_character(
-        &mut state,
-        "Borin",
-        "Fighter",
-        5,
-        &standard_abilities_12(),
-        30,
-        17,
-        "Human",
-    );
+    let mut ctx = SpellTestContext::cleric("Alaric", 3, &[(1, 2)]);
+    let target = ctx.add_target("Borin", "Fighter", 5, 30, 17);
+    let interp = Interpreter::new(&ctx.program, &ctx.check_result.env).unwrap();
 
     // Roll 6 for damage. TakeDamage also needs a deal_damage roll which is identity (returns raw_damage).
     let mut handler = ScriptedHandler::with_responses(vec![roll_1d8(6)]);
     let state = run_function(
         &interp,
-        state,
+        ctx.state,
         &mut handler,
         "resolve_cause_light_wounds",
-        vec![Value::Entity(caster), Value::Entity(target)],
+        vec![Value::Entity(ctx.caster), Value::Entity(target)],
     );
 
     assert_eq!(
@@ -299,42 +213,19 @@ fn cause_light_wounds_deals_damage() {
 
 #[test]
 fn cause_light_wounds_can_knock_unconscious() {
-    let (program, result) = compile_all();
-    let interp = Interpreter::new(&program, &result.env).unwrap();
-    let mut state = GameState::new();
-
-    let caster = make_caster_with_slots(
-        &mut state,
-        "Alaric",
-        "Cleric",
-        3,
-        &standard_abilities_12(),
-        20,
-        10,
-        "Human",
-        &[(1, 2)],
-    );
-
-    let target = make_character(
-        &mut state,
-        "Borin",
-        "Fighter",
-        5,
-        &standard_abilities_12(),
-        30,
-        17,
-        "Human",
-    );
+    let mut ctx = SpellTestContext::cleric("Alaric", 3, &[(1, 2)]);
+    let target = ctx.add_target("Borin", "Fighter", 5, 30, 17);
+    let interp = Interpreter::new(&ctx.program, &ctx.check_result.env).unwrap();
 
     // Wound target to 3 HP first
     let mut handler = ScriptedHandler::with_responses(vec![]);
     let state = run_action(
         &interp,
-        state,
+        ctx.state,
         &mut handler,
         "TakeDamage",
         target,
-        vec![Value::Entity(caster), Value::Int(27)],
+        vec![Value::Entity(ctx.caster), Value::Int(27)],
     );
     assert_eq!(read_hp(&state, &target), 3);
 
@@ -345,7 +236,7 @@ fn cause_light_wounds_can_knock_unconscious() {
         state,
         &mut handler,
         "resolve_cause_light_wounds",
-        vec![Value::Entity(caster), Value::Entity(target)],
+        vec![Value::Entity(ctx.caster), Value::Entity(target)],
     );
 
     assert_eq!(read_hp(&state, &target), -5);
@@ -364,41 +255,18 @@ fn cause_light_wounds_can_knock_unconscious() {
 
 #[test]
 fn bless_applies_blessed_condition() {
-    let (program, result) = compile_all();
-    let interp = Interpreter::new(&program, &result.env).unwrap();
-    let mut state = GameState::new();
-
-    let caster = make_caster_with_slots(
-        &mut state,
-        "Alaric",
-        "Cleric",
-        3,
-        &standard_abilities_12(),
-        20,
-        10,
-        "Human",
-        &[(1, 2)],
-    );
-
-    let target = make_character(
-        &mut state,
-        "Borin",
-        "Fighter",
-        5,
-        &standard_abilities_12(),
-        30,
-        17,
-        "Human",
-    );
+    let mut ctx = SpellTestContext::cleric("Alaric", 3, &[(1, 2)]);
+    let target = ctx.add_target("Borin", "Fighter", 5, 30, 17);
+    let interp = Interpreter::new(&ctx.program, &ctx.check_result.env).unwrap();
 
     let mut handler = ScriptedHandler::with_responses(vec![]);
     let state = run_function(
         &interp,
-        state,
+        ctx.state,
         &mut handler,
         "resolve_bless",
         vec![
-            Value::Entity(caster),
+            Value::Entity(ctx.caster),
             Value::List(vec![Value::Entity(target)]),
         ],
     );
@@ -449,42 +317,19 @@ fn bless_def_has_correct_fields() {
 
 #[test]
 fn curse_applies_cursed_on_failed_save() {
-    let (program, result) = compile_all();
-    let interp = Interpreter::new(&program, &result.env).unwrap();
-    let mut state = GameState::new();
-
-    let caster = make_caster_with_slots(
-        &mut state,
-        "Alaric",
-        "Cleric",
-        3,
-        &standard_abilities_12(),
-        20,
-        10,
-        "Human",
-        &[(1, 2)],
-    );
-
-    let target = make_character(
-        &mut state,
-        "Borin",
-        "Fighter",
-        5,
-        &standard_abilities_12(),
-        30,
-        17,
-        "Human",
-    );
+    let mut ctx = SpellTestContext::cleric("Alaric", 3, &[(1, 2)]);
+    let target = ctx.add_target("Borin", "Fighter", 5, 30, 17);
+    let interp = Interpreter::new(&ctx.program, &ctx.check_result.env).unwrap();
 
     // Script a failed save: roll 1 on d20 (natural 1 always fails)
     let save_roll = scripted_roll(1, 20, 0, vec![1], vec![1], 1, 1);
     let state = run_function_with_rolls(
         &interp,
-        state,
+        ctx.state,
         vec![save_roll],
         "resolve_curse",
         vec![
-            Value::Entity(caster),
+            Value::Entity(ctx.caster),
             Value::List(vec![Value::Entity(target)]),
         ],
     );
@@ -498,42 +343,19 @@ fn curse_applies_cursed_on_failed_save() {
 
 #[test]
 fn curse_does_not_apply_on_successful_save() {
-    let (program, result) = compile_all();
-    let interp = Interpreter::new(&program, &result.env).unwrap();
-    let mut state = GameState::new();
-
-    let caster = make_caster_with_slots(
-        &mut state,
-        "Alaric",
-        "Cleric",
-        3,
-        &standard_abilities_12(),
-        20,
-        10,
-        "Human",
-        &[(1, 2)],
-    );
-
-    let target = make_character(
-        &mut state,
-        "Borin",
-        "Fighter",
-        5,
-        &standard_abilities_12(),
-        30,
-        17,
-        "Human",
-    );
+    let mut ctx = SpellTestContext::cleric("Alaric", 3, &[(1, 2)]);
+    let target = ctx.add_target("Borin", "Fighter", 5, 30, 17);
+    let interp = Interpreter::new(&ctx.program, &ctx.check_result.env).unwrap();
 
     // Script a successful save: roll 20 on d20 (natural 20 always succeeds)
     let save_roll = scripted_roll(1, 20, 0, vec![20], vec![20], 20, 20);
     let state = run_function_with_rolls(
         &interp,
-        state,
+        ctx.state,
         vec![save_roll],
         "resolve_curse",
         vec![
-            Value::Entity(caster),
+            Value::Entity(ctx.caster),
             Value::List(vec![Value::Entity(target)]),
         ],
     );
@@ -618,41 +440,18 @@ fn hold_person_save_bonus_scaling() {
 
 #[test]
 fn hold_person_paralyzes_on_failed_save() {
-    let (program, result) = compile_all();
-    let interp = Interpreter::new(&program, &result.env).unwrap();
-    let mut state = GameState::new();
-
-    let caster = make_caster_with_slots(
-        &mut state,
-        "Alaric",
-        "Cleric",
-        5,
-        &standard_abilities_12(),
-        20,
-        10,
-        "Human",
-        &[(1, 3), (2, 2)],
-    );
-
-    let target = make_character(
-        &mut state,
-        "Bandit",
-        "Fighter",
-        3,
-        &standard_abilities_12(),
-        20,
-        14,
-        "Human",
-    );
+    let mut ctx = SpellTestContext::cleric("Alaric", 5, &[(1, 3), (2, 2)]);
+    let target = ctx.add_target("Bandit", "Fighter", 3, 20, 14);
+    let interp = Interpreter::new(&ctx.program, &ctx.check_result.env).unwrap();
 
     // Single target: save at -2. Roll 1 (always fails).
     let state = run_function_with_rolls(
         &interp,
-        state,
+        ctx.state,
         vec![roll_save(1)],
         "resolve_hold_person",
         vec![
-            Value::Entity(caster),
+            Value::Entity(ctx.caster),
             Value::List(vec![Value::Entity(target)]),
         ],
     );
@@ -666,41 +465,18 @@ fn hold_person_paralyzes_on_failed_save() {
 
 #[test]
 fn hold_person_no_effect_on_successful_save() {
-    let (program, result) = compile_all();
-    let interp = Interpreter::new(&program, &result.env).unwrap();
-    let mut state = GameState::new();
-
-    let caster = make_caster_with_slots(
-        &mut state,
-        "Alaric",
-        "Cleric",
-        5,
-        &standard_abilities_12(),
-        20,
-        10,
-        "Human",
-        &[(1, 3), (2, 2)],
-    );
-
-    let target = make_character(
-        &mut state,
-        "Bandit",
-        "Fighter",
-        3,
-        &standard_abilities_12(),
-        20,
-        14,
-        "Human",
-    );
+    let mut ctx = SpellTestContext::cleric("Alaric", 5, &[(1, 3), (2, 2)]);
+    let target = ctx.add_target("Bandit", "Fighter", 3, 20, 14);
+    let interp = Interpreter::new(&ctx.program, &ctx.check_result.env).unwrap();
 
     // Single target: save at -2. Roll 20 (always succeeds).
     let state = run_function_with_rolls(
         &interp,
-        state,
+        ctx.state,
         vec![roll_save(20)],
         "resolve_hold_person",
         vec![
-            Value::Entity(caster),
+            Value::Entity(ctx.caster),
             Value::List(vec![Value::Entity(target)]),
         ],
     );
@@ -714,52 +490,19 @@ fn hold_person_no_effect_on_successful_save() {
 
 #[test]
 fn hold_person_multiple_targets_mixed_saves() {
-    let (program, result) = compile_all();
-    let interp = Interpreter::new(&program, &result.env).unwrap();
-    let mut state = GameState::new();
-
-    let caster = make_caster_with_slots(
-        &mut state,
-        "Alaric",
-        "Cleric",
-        3,
-        &standard_abilities_12(),
-        20,
-        10,
-        "Human",
-        &[(1, 2), (2, 1)],
-    );
-
-    let target_a = make_character(
-        &mut state,
-        "Bandit A",
-        "Fighter",
-        3,
-        &standard_abilities_12(),
-        20,
-        14,
-        "Human",
-    );
-
-    let target_b = make_character(
-        &mut state,
-        "Bandit B",
-        "Fighter",
-        3,
-        &standard_abilities_12(),
-        20,
-        14,
-        "Human",
-    );
+    let mut ctx = SpellTestContext::cleric("Alaric", 3, &[(1, 2), (2, 1)]);
+    let target_a = ctx.add_target("Bandit A", "Fighter", 3, 20, 14);
+    let target_b = ctx.add_target("Bandit B", "Fighter", 3, 20, 14);
+    let interp = Interpreter::new(&ctx.program, &ctx.check_result.env).unwrap();
 
     // Two targets: save at 0. Target A fails (roll 1), Target B saves (roll 20).
     let state = run_function_with_rolls(
         &interp,
-        state,
+        ctx.state,
         vec![roll_save(1), roll_save(20)],
         "resolve_hold_person",
         vec![
-            Value::Entity(caster),
+            Value::Entity(ctx.caster),
             Value::List(vec![Value::Entity(target_a), Value::Entity(target_b)]),
         ],
     );

@@ -89,41 +89,18 @@ fn magic_missile_count_scales_correctly() {
 
 #[test]
 fn magic_missile_deals_damage_single_target() {
-    let (program, result) = compile_all();
-    let interp = Interpreter::new(&program, &result.env).unwrap();
-    let mut state = GameState::new();
-
-    let caster = make_caster_with_slots(
-        &mut state,
-        "Merlin",
-        "MagicUser",
-        1,
-        &standard_abilities_12(),
-        4,
-        10,
-        "Human",
-        &[(1, 1)],
-    );
-
-    let target = make_character(
-        &mut state,
-        "Orc",
-        "Fighter",
-        1,
-        &standard_abilities_12(),
-        8,
-        14,
-        "Human",
-    );
+    let mut ctx = SpellTestContext::magic_user("Merlin", 1, &[(1, 1)]);
+    let target = ctx.add_target("Orc", "Fighter", 1, 8, 14);
+    let interp = Interpreter::new(&ctx.program, &ctx.check_result.env).unwrap();
 
     // Level 1 MU = 1 missile. Roll 3 on 1d4, +1 = 4 damage.
     let state = run_function_with_rolls(
         &interp,
-        state,
+        ctx.state,
         vec![roll_1d4(3)],
         "resolve_magic_missile",
         vec![
-            Value::Entity(caster),
+            Value::Entity(ctx.caster),
             Value::List(vec![Value::Entity(target)]),
         ],
     );
@@ -137,41 +114,18 @@ fn magic_missile_deals_damage_single_target() {
 
 #[test]
 fn magic_missile_multiple_missiles_same_target() {
-    let (program, result) = compile_all();
-    let interp = Interpreter::new(&program, &result.env).unwrap();
-    let mut state = GameState::new();
-
-    let caster = make_caster_with_slots(
-        &mut state,
-        "Merlin",
-        "MagicUser",
-        5,
-        &standard_abilities_12(),
-        10,
-        10,
-        "Human",
-        &[(1, 4), (2, 2), (3, 1)],
-    );
-
-    let target = make_character(
-        &mut state,
-        "Orc",
-        "Fighter",
-        1,
-        &standard_abilities_12(),
-        30,
-        14,
-        "Human",
-    );
+    let mut ctx = SpellTestContext::magic_user("Merlin", 5, &[(1, 4), (2, 2), (3, 1)]);
+    let target = ctx.add_target("Orc", "Fighter", 1, 30, 14);
+    let interp = Interpreter::new(&ctx.program, &ctx.check_result.env).unwrap();
 
     // Level 5 MU = 3 missiles. Roll 2, 4, 1 on 1d4 => damage 3, 5, 2 = 10 total.
     let state = run_function_with_rolls(
         &interp,
-        state,
+        ctx.state,
         vec![roll_1d4(2), roll_1d4(4), roll_1d4(1)],
         "resolve_magic_missile",
         vec![
-            Value::Entity(caster),
+            Value::Entity(ctx.caster),
             Value::List(vec![
                 Value::Entity(target),
                 Value::Entity(target),
@@ -189,52 +143,19 @@ fn magic_missile_multiple_missiles_same_target() {
 
 #[test]
 fn magic_missile_split_across_targets() {
-    let (program, result) = compile_all();
-    let interp = Interpreter::new(&program, &result.env).unwrap();
-    let mut state = GameState::new();
-
-    let caster = make_caster_with_slots(
-        &mut state,
-        "Merlin",
-        "MagicUser",
-        3,
-        &standard_abilities_12(),
-        10,
-        10,
-        "Human",
-        &[(1, 2), (2, 1)],
-    );
-
-    let target_a = make_character(
-        &mut state,
-        "Orc A",
-        "Fighter",
-        1,
-        &standard_abilities_12(),
-        10,
-        14,
-        "Human",
-    );
-
-    let target_b = make_character(
-        &mut state,
-        "Orc B",
-        "Fighter",
-        1,
-        &standard_abilities_12(),
-        10,
-        14,
-        "Human",
-    );
+    let mut ctx = SpellTestContext::magic_user("Merlin", 3, &[(1, 2), (2, 1)]);
+    let target_a = ctx.add_target("Orc A", "Fighter", 1, 10, 14);
+    let target_b = ctx.add_target("Orc B", "Fighter", 1, 10, 14);
+    let interp = Interpreter::new(&ctx.program, &ctx.check_result.env).unwrap();
 
     // Level 3 MU = 2 missiles. Roll 3, 2 on 1d4 => damage 4, 3. One per target.
     let state = run_function_with_rolls(
         &interp,
-        state,
+        ctx.state,
         vec![roll_1d4(3), roll_1d4(2)],
         "resolve_magic_missile",
         vec![
-            Value::Entity(caster),
+            Value::Entity(ctx.caster),
             Value::List(vec![Value::Entity(target_a), Value::Entity(target_b)]),
         ],
     );
@@ -255,42 +176,19 @@ fn magic_missile_split_across_targets() {
 
 #[test]
 fn fireball_full_damage_on_failed_save() {
-    let (program, result) = compile_all();
-    let interp = Interpreter::new(&program, &result.env).unwrap();
-    let mut state = GameState::new();
-
-    let caster = make_caster_with_slots(
-        &mut state,
-        "Merlin",
-        "MagicUser",
-        5,
-        &standard_abilities_12(),
-        10,
-        10,
-        "Human",
-        &[(1, 4), (2, 2), (3, 1)],
-    );
-
-    let target = make_character(
-        &mut state,
-        "Orc",
-        "Fighter",
-        1,
-        &standard_abilities_12(),
-        40,
-        14,
-        "Human",
-    );
+    let mut ctx = SpellTestContext::magic_user("Merlin", 5, &[(1, 4), (2, 2), (3, 1)]);
+    let target = ctx.add_target("Orc", "Fighter", 1, 40, 14);
+    let interp = Interpreter::new(&ctx.program, &ctx.check_result.env).unwrap();
 
     // Level 5 MU: 5d6 damage. Script total=18. Save roll=1 (always fails).
     let damage_roll = scripted_roll(5, 6, 0, vec![3, 4, 2, 5, 4], vec![3, 4, 2, 5, 4], 18, 18);
     let state = run_function_with_rolls(
         &interp,
-        state,
+        ctx.state,
         vec![damage_roll, roll_save(1)],
         "resolve_fireball",
         vec![
-            Value::Entity(caster),
+            Value::Entity(ctx.caster),
             Value::List(vec![Value::Entity(target)]),
         ],
     );
@@ -304,43 +202,20 @@ fn fireball_full_damage_on_failed_save() {
 
 #[test]
 fn fireball_half_damage_on_successful_save() {
-    let (program, result) = compile_all();
-    let interp = Interpreter::new(&program, &result.env).unwrap();
-    let mut state = GameState::new();
-
-    let caster = make_caster_with_slots(
-        &mut state,
-        "Merlin",
-        "MagicUser",
-        5,
-        &standard_abilities_12(),
-        10,
-        10,
-        "Human",
-        &[(1, 4), (2, 2), (3, 1)],
-    );
-
-    let target = make_character(
-        &mut state,
-        "Orc",
-        "Fighter",
-        1,
-        &standard_abilities_12(),
-        40,
-        14,
-        "Human",
-    );
+    let mut ctx = SpellTestContext::magic_user("Merlin", 5, &[(1, 4), (2, 2), (3, 1)]);
+    let target = ctx.add_target("Orc", "Fighter", 1, 40, 14);
+    let interp = Interpreter::new(&ctx.program, &ctx.check_result.env).unwrap();
 
     // Level 5 MU: 5d6 damage. Script total=18. Save roll=20 (always succeeds).
     // Half of 18 = floor(9) = 9 damage.
     let damage_roll = scripted_roll(5, 6, 0, vec![3, 4, 2, 5, 4], vec![3, 4, 2, 5, 4], 18, 18);
     let state = run_function_with_rolls(
         &interp,
-        state,
+        ctx.state,
         vec![damage_roll, roll_save(20)],
         "resolve_fireball",
         vec![
-            Value::Entity(caster),
+            Value::Entity(ctx.caster),
             Value::List(vec![Value::Entity(target)]),
         ],
     );
@@ -354,53 +229,20 @@ fn fireball_half_damage_on_successful_save() {
 
 #[test]
 fn fireball_multiple_targets_mixed_saves() {
-    let (program, result) = compile_all();
-    let interp = Interpreter::new(&program, &result.env).unwrap();
-    let mut state = GameState::new();
-
-    let caster = make_caster_with_slots(
-        &mut state,
-        "Merlin",
-        "MagicUser",
-        3,
-        &standard_abilities_12(),
-        10,
-        10,
-        "Human",
-        &[(1, 2), (2, 1)],
-    );
-
-    let target_a = make_character(
-        &mut state,
-        "Orc A",
-        "Fighter",
-        1,
-        &standard_abilities_12(),
-        20,
-        14,
-        "Human",
-    );
-
-    let target_b = make_character(
-        &mut state,
-        "Orc B",
-        "Fighter",
-        1,
-        &standard_abilities_12(),
-        20,
-        14,
-        "Human",
-    );
+    let mut ctx = SpellTestContext::magic_user("Merlin", 3, &[(1, 2), (2, 1)]);
+    let target_a = ctx.add_target("Orc A", "Fighter", 1, 20, 14);
+    let target_b = ctx.add_target("Orc B", "Fighter", 1, 20, 14);
+    let interp = Interpreter::new(&ctx.program, &ctx.check_result.env).unwrap();
 
     // Level 3 MU: 3d6 damage = 10. Target A fails save (roll 1), Target B saves (roll 20).
     let damage_roll = scripted_roll(3, 6, 0, vec![3, 4, 3], vec![3, 4, 3], 10, 10);
     let state = run_function_with_rolls(
         &interp,
-        state,
+        ctx.state,
         vec![damage_roll, roll_save(1), roll_save(20)],
         "resolve_fireball",
         vec![
-            Value::Entity(caster),
+            Value::Entity(ctx.caster),
             Value::List(vec![Value::Entity(target_a), Value::Entity(target_b)]),
         ],
     );
@@ -583,36 +425,22 @@ fn sleep_hd_category_classification() {
 
 #[test]
 fn sleep_affects_weakest_first_single_category() {
-    let (program, result) = compile_all();
-    let interp = Interpreter::new(&program, &result.env).unwrap();
-    let mut state = GameState::new();
-
-    // Caster: level 3 MU -> duration = 15 rounds
-    let caster = make_caster_with_slots(
-        &mut state,
-        "Merlin",
-        "MagicUser",
-        3,
-        &standard_abilities_12(),
-        10,
-        10,
-        "Human",
-        &[(1, 2), (2, 1)],
-    );
+    let mut ctx = SpellTestContext::magic_user("Merlin", 3, &[(1, 2), (2, 1)]);
 
     // 5 orcs (1 HD each) — all in category 0
     let orcs: Vec<_> = (0..5)
-        .map(|i| make_monster(&mut state, &format!("Orc {i}"), (1, 8, 0), 4, 14, vec![]))
+        .map(|i| ctx.add_monster(&format!("Orc {i}"), (1, 8, 0), 4, 14))
         .collect();
+    let interp = Interpreter::new(&ctx.program, &ctx.check_result.env).unwrap();
 
     // Roll 4d4 for category 0 = 3 (put 3 orcs to sleep out of 5)
     let state = run_function_with_rolls(
         &interp,
-        state,
+        ctx.state,
         vec![roll_nd(4, 4, vec![1, 1, 0, 1])],
         "resolve_sleep",
         vec![
-            Value::Entity(caster),
+            Value::Entity(ctx.caster),
             Value::List(orcs.iter().map(|e| Value::Entity(*e)).collect()),
         ],
     );
@@ -630,48 +458,35 @@ fn sleep_affects_weakest_first_single_category() {
 
 #[test]
 fn sleep_multiple_hd_categories() {
-    let (program, result) = compile_all();
-    let interp = Interpreter::new(&program, &result.env).unwrap();
-    let mut state = GameState::new();
-
-    let caster = make_caster_with_slots(
-        &mut state,
-        "Merlin",
-        "MagicUser",
-        5,
-        &standard_abilities_12(),
-        10,
-        10,
-        "Human",
-        &[(1, 4), (2, 2), (3, 1)],
-    );
+    let mut ctx = SpellTestContext::magic_user("Merlin", 5, &[(1, 4), (2, 2), (3, 1)]);
 
     // Category 0 (<=1 HD): 3 orcs
-    let orc0 = make_monster(&mut state, "Orc 0", (1, 8, 0), 4, 14, vec![]);
-    let orc1 = make_monster(&mut state, "Orc 1", (1, 8, 0), 4, 14, vec![]);
-    let orc2 = make_monster(&mut state, "Orc 2", (1, 8, 0), 4, 14, vec![]);
+    let orc0 = ctx.add_monster("Orc 0", (1, 8, 0), 4, 14);
+    let orc1 = ctx.add_monster("Orc 1", (1, 8, 0), 4, 14);
+    let orc2 = ctx.add_monster("Orc 2", (1, 8, 0), 4, 14);
 
     // Category 1 (1+ to 2 HD): 2 hobgoblins (1+1 HD)
-    let hob0 = make_monster(&mut state, "Hobgoblin 0", (1, 8, 1), 6, 15, vec![]);
-    let hob1 = make_monster(&mut state, "Hobgoblin 1", (1, 8, 1), 6, 15, vec![]);
+    let hob0 = ctx.add_monster("Hobgoblin 0", (1, 8, 1), 6, 15);
+    let hob1 = ctx.add_monster("Hobgoblin 1", (1, 8, 1), 6, 15);
 
     // Category 5 (immune): 1 troll (6+6 HD)
-    let troll = make_monster(&mut state, "Troll", (6, 8, 6), 36, 16, vec![]);
+    let troll = ctx.add_monster("Troll", (6, 8, 6), 36, 16);
 
     let targets = [orc0, orc1, orc2, hob0, hob1, troll];
+    let interp = Interpreter::new(&ctx.program, &ctx.check_result.env).unwrap();
 
     // Rolls: 4d4 for cat 0 = 10 (all 3 orcs affected),
     //        2d4 for cat 1 = 3 (both hobgoblins affected)
     let state = run_function_with_rolls(
         &interp,
-        state,
+        ctx.state,
         vec![
             roll_nd(4, 4, vec![3, 3, 2, 2]), // cat 0: 10 affected
             roll_nd(2, 4, vec![2, 1]),       // cat 1: 3 affected
         ],
         "resolve_sleep",
         vec![
-            Value::Entity(caster),
+            Value::Entity(ctx.caster),
             Value::List(targets.iter().map(|e| Value::Entity(*e)).collect()),
         ],
     );
@@ -704,33 +519,19 @@ fn sleep_multiple_hd_categories() {
 
 #[test]
 fn sleep_category_4_zero_or_one() {
-    let (program, result) = compile_all();
-    let interp = Interpreter::new(&program, &result.env).unwrap();
-    let mut state = GameState::new();
-
-    let caster = make_caster_with_slots(
-        &mut state,
-        "Merlin",
-        "MagicUser",
-        1,
-        &standard_abilities_12(),
-        4,
-        10,
-        "Human",
-        &[(1, 1)],
-    );
-
+    let mut ctx = SpellTestContext::magic_user("Merlin", 1, &[(1, 1)]);
     // Category 4: ogre (4+1 HD)
-    let ogre = make_monster(&mut state, "Ogre", (4, 8, 1), 20, 15, vec![]);
+    let ogre = ctx.add_monster("Ogre", (4, 8, 1), 20, 15);
+    let interp = Interpreter::new(&ctx.program, &ctx.check_result.env).unwrap();
 
     // d2 roll = 1 => 1-1 = 0 affected
     let state = run_function_with_rolls(
         &interp,
-        state,
+        ctx.state,
         vec![scripted_roll(1, 2, 0, vec![1], vec![1], 1, 1)],
         "resolve_sleep",
         vec![
-            Value::Entity(caster),
+            Value::Entity(ctx.caster),
             Value::List(vec![Value::Entity(ogre)]),
         ],
     );
@@ -743,33 +544,19 @@ fn sleep_category_4_zero_or_one() {
 
 #[test]
 fn sleep_category_4_affects_one() {
-    let (program, result) = compile_all();
-    let interp = Interpreter::new(&program, &result.env).unwrap();
-    let mut state = GameState::new();
-
-    let caster = make_caster_with_slots(
-        &mut state,
-        "Merlin",
-        "MagicUser",
-        2,
-        &standard_abilities_12(),
-        4,
-        10,
-        "Human",
-        &[(1, 2)],
-    );
-
+    let mut ctx = SpellTestContext::magic_user("Merlin", 2, &[(1, 2)]);
     // Category 4: ogre (4+1 HD)
-    let ogre = make_monster(&mut state, "Ogre", (4, 8, 1), 20, 15, vec![]);
+    let ogre = ctx.add_monster("Ogre", (4, 8, 1), 20, 15);
+    let interp = Interpreter::new(&ctx.program, &ctx.check_result.env).unwrap();
 
     // d2 roll = 2 => 2-1 = 1 affected
     let state = run_function_with_rolls(
         &interp,
-        state,
+        ctx.state,
         vec![scripted_roll(1, 2, 0, vec![2], vec![2], 2, 2)],
         "resolve_sleep",
         vec![
-            Value::Entity(caster),
+            Value::Entity(ctx.caster),
             Value::List(vec![Value::Entity(ogre)]),
         ],
     );
@@ -782,33 +569,20 @@ fn sleep_category_4_affects_one() {
 
 #[test]
 fn sleep_roll_exceeds_available_targets() {
-    let (program, result) = compile_all();
-    let interp = Interpreter::new(&program, &result.env).unwrap();
-    let mut state = GameState::new();
-
-    let caster = make_caster_with_slots(
-        &mut state,
-        "Merlin",
-        "MagicUser",
-        1,
-        &standard_abilities_12(),
-        4,
-        10,
-        "Human",
-        &[(1, 1)],
-    );
+    let mut ctx = SpellTestContext::magic_user("Merlin", 1, &[(1, 1)]);
 
     // Only 2 orcs, but 4d4 roll = 12 (more than available)
-    let orc0 = make_monster(&mut state, "Orc 0", (1, 8, 0), 4, 14, vec![]);
-    let orc1 = make_monster(&mut state, "Orc 1", (1, 8, 0), 4, 14, vec![]);
+    let orc0 = ctx.add_monster("Orc 0", (1, 8, 0), 4, 14);
+    let orc1 = ctx.add_monster("Orc 1", (1, 8, 0), 4, 14);
+    let interp = Interpreter::new(&ctx.program, &ctx.check_result.env).unwrap();
 
     let state = run_function_with_rolls(
         &interp,
-        state,
+        ctx.state,
         vec![roll_nd(4, 4, vec![3, 3, 3, 3])],
         "resolve_sleep",
         vec![
-            Value::Entity(caster),
+            Value::Entity(ctx.caster),
             Value::List(vec![Value::Entity(orc0), Value::Entity(orc1)]),
         ],
     );
@@ -827,31 +601,20 @@ fn sleep_roll_exceeds_available_targets() {
 
 #[test]
 fn magic_missile_damages_monster() {
-    let (program, result) = compile_all();
-    let interp = Interpreter::new(&program, &result.env).unwrap();
-    let mut state = GameState::new();
-
-    let caster = make_caster_with_slots(
-        &mut state,
-        "Merlin",
-        "MagicUser",
-        1,
-        &standard_abilities_12(),
-        4,
-        10,
-        "Human",
-        &[(1, 1)],
-    );
-
-    let orc = make_monster(&mut state, "Orc", (1, 8, 0), 8, 14, vec![]);
+    let mut ctx = SpellTestContext::magic_user("Merlin", 1, &[(1, 1)]);
+    let orc = ctx.add_monster("Orc", (1, 8, 0), 8, 14);
+    let interp = Interpreter::new(&ctx.program, &ctx.check_result.env).unwrap();
 
     // Level 1 MU = 1 missile. Roll 3 on 1d4, +1 = 4 damage.
     let state = run_function_with_rolls(
         &interp,
-        state,
+        ctx.state,
         vec![roll_1d4(3)],
         "resolve_magic_missile",
-        vec![Value::Entity(caster), Value::List(vec![Value::Entity(orc)])],
+        vec![
+            Value::Entity(ctx.caster),
+            Value::List(vec![Value::Entity(orc)]),
+        ],
     );
 
     assert_eq!(
@@ -863,33 +626,19 @@ fn magic_missile_damages_monster() {
 
 #[test]
 fn magic_missile_kills_monster() {
-    let (program, result) = compile_all();
-    let interp = Interpreter::new(&program, &result.env).unwrap();
-    let mut state = GameState::new();
-
-    let caster = make_caster_with_slots(
-        &mut state,
-        "Merlin",
-        "MagicUser",
-        3,
-        &standard_abilities_12(),
-        10,
-        10,
-        "Human",
-        &[(1, 2), (2, 1)],
-    );
-
+    let mut ctx = SpellTestContext::magic_user("Merlin", 3, &[(1, 2), (2, 1)]);
     // Monster with only 3 HP
-    let goblin = make_monster(&mut state, "Goblin", (1, 8, -1), 3, 14, vec![]);
+    let goblin = ctx.add_monster("Goblin", (1, 8, -1), 3, 14);
+    let interp = Interpreter::new(&ctx.program, &ctx.check_result.env).unwrap();
 
     // Level 3 MU = 2 missiles. Roll 4, 2 on 1d4 => damage 5, 3 = 8 total.
     let state = run_function_with_rolls(
         &interp,
-        state,
+        ctx.state,
         vec![roll_1d4(4), roll_1d4(2)],
         "resolve_magic_missile",
         vec![
-            Value::Entity(caster),
+            Value::Entity(ctx.caster),
             Value::List(vec![Value::Entity(goblin), Value::Entity(goblin)]),
         ],
     );
@@ -906,35 +655,21 @@ fn magic_missile_kills_monster() {
 
 #[test]
 fn fireball_damages_monsters_with_saves() {
-    let (program, result) = compile_all();
-    let interp = Interpreter::new(&program, &result.env).unwrap();
-    let mut state = GameState::new();
-
-    let caster = make_caster_with_slots(
-        &mut state,
-        "Merlin",
-        "MagicUser",
-        5,
-        &standard_abilities_12(),
-        10,
-        10,
-        "Human",
-        &[(1, 4), (2, 2), (3, 1)],
-    );
-
+    let mut ctx = SpellTestContext::magic_user("Merlin", 5, &[(1, 4), (2, 2), (3, 1)]);
     // Two orcs with 20 HP each
-    let orc_a = make_monster(&mut state, "Orc A", (1, 8, 0), 20, 14, vec![]);
-    let orc_b = make_monster(&mut state, "Orc B", (1, 8, 0), 20, 14, vec![]);
+    let orc_a = ctx.add_monster("Orc A", (1, 8, 0), 20, 14);
+    let orc_b = ctx.add_monster("Orc B", (1, 8, 0), 20, 14);
+    let interp = Interpreter::new(&ctx.program, &ctx.check_result.env).unwrap();
 
     // Level 5 MU: 5d6 = 18 damage. Orc A fails save (roll 1), Orc B saves (roll 20).
     let damage_roll = scripted_roll(5, 6, 0, vec![3, 4, 2, 5, 4], vec![3, 4, 2, 5, 4], 18, 18);
     let state = run_function_with_rolls(
         &interp,
-        state,
+        ctx.state,
         vec![damage_roll, roll_save(1), roll_save(20)],
         "resolve_fireball_monsters",
         vec![
-            Value::Entity(caster),
+            Value::Entity(ctx.caster),
             Value::List(vec![Value::Entity(orc_a), Value::Entity(orc_b)]),
         ],
     );
@@ -953,33 +688,19 @@ fn fireball_damages_monsters_with_saves() {
 
 #[test]
 fn resolve_spell_monsters_dispatches_magic_missile() {
-    let (program, result) = compile_all();
-    let interp = Interpreter::new(&program, &result.env).unwrap();
-    let mut state = GameState::new();
-
-    let caster = make_caster_with_slots(
-        &mut state,
-        "Merlin",
-        "MagicUser",
-        1,
-        &standard_abilities_12(),
-        4,
-        10,
-        "Human",
-        &[(1, 1)],
-    );
-
-    let orc = make_monster(&mut state, "Orc", (1, 8, 0), 10, 14, vec![]);
+    let mut ctx = SpellTestContext::magic_user("Merlin", 1, &[(1, 1)]);
+    let orc = ctx.add_monster("Orc", (1, 8, 0), 10, 14);
+    let interp = Interpreter::new(&ctx.program, &ctx.check_result.env).unwrap();
 
     // Dispatch via resolve_spell_monsters
     let state = run_function_with_rolls(
         &interp,
-        state,
+        ctx.state,
         vec![roll_1d4(2)],
         "resolve_spell_monsters",
         vec![
             enum_variant("SpellId", "MagicMissile"),
-            Value::Entity(caster),
+            Value::Entity(ctx.caster),
             Value::List(vec![Value::Entity(orc)]),
         ],
     );

@@ -1120,6 +1120,117 @@ pub fn all_osric_sources() -> Vec<(String, String)> {
     ]
 }
 
+// ── SpellTestContext builder ───────────────────────────────────
+
+/// Pre-compiled OSRIC context with a caster entity ready for spell tests.
+///
+/// Owns `Program` and `CheckResult` so that `interp()` can borrow from them.
+/// Reduces the typical 5-8 line setup to 2-3 lines.
+///
+/// # Example
+/// ```ignore
+/// let ctx = SpellTestContext::cleric("Alaric", 3, &[(1, 2), (2, 1)]);
+/// let interp = ctx.interp();
+/// let state = run_function_with_rolls(&interp, ctx.state, rolls, "resolve_cure_light_wounds", args);
+/// ```
+pub struct SpellTestContext {
+    pub program: ttrpg_ast::ast::Program,
+    pub check_result: ttrpg_checker::CheckResult,
+    pub state: GameState,
+    pub caster: EntityRef,
+}
+
+impl SpellTestContext {
+    /// Build a caster with full customisation.
+    pub fn new(
+        name: &str,
+        class: &str,
+        level: i64,
+        abilities: &[(&str, i64)],
+        max_hp: i64,
+        ac: i64,
+        ancestry: &str,
+        slots: &[(i64, i64)],
+    ) -> Self {
+        let (program, check_result) = compile_osric_sources(all_osric_sources());
+        let mut state = GameState::new();
+        let caster = make_caster_with_slots(
+            &mut state, name, class, level, abilities, max_hp, ac, ancestry, slots,
+        );
+        Self {
+            program,
+            check_result,
+            state,
+            caster,
+        }
+    }
+
+    /// Shorthand for a Cleric caster with standard abilities (all 12), 20 HP, AC 10, Human.
+    pub fn cleric(name: &str, level: i64, slots: &[(i64, i64)]) -> Self {
+        Self::new(
+            name,
+            "Cleric",
+            level,
+            &standard_abilities_12(),
+            20,
+            10,
+            "Human",
+            slots,
+        )
+    }
+
+    /// Shorthand for a MagicUser caster with standard abilities (all 12), 10 HP, AC 10, Human.
+    pub fn magic_user(name: &str, level: i64, slots: &[(i64, i64)]) -> Self {
+        Self::new(
+            name,
+            "MagicUser",
+            level,
+            &standard_abilities_12(),
+            10,
+            10,
+            "Human",
+            slots,
+        )
+    }
+
+    /// Create an `Interpreter` that borrows from this context.
+    pub fn interp(&self) -> Interpreter<'_> {
+        Interpreter::new(&self.program, &self.check_result.env).unwrap()
+    }
+
+    /// Add a character target to the state and return its entity ref.
+    pub fn add_target(
+        &mut self,
+        name: &str,
+        class: &str,
+        level: i64,
+        max_hp: i64,
+        ac: i64,
+    ) -> EntityRef {
+        make_character(
+            &mut self.state,
+            name,
+            class,
+            level,
+            &standard_abilities_12(),
+            max_hp,
+            ac,
+            "Human",
+        )
+    }
+
+    /// Add a monster target to the state and return its entity ref.
+    pub fn add_monster(
+        &mut self,
+        name: &str,
+        hit_dice: (u32, u32, i64),
+        max_hp: i64,
+        ac: i64,
+    ) -> EntityRef {
+        make_monster(&mut self.state, name, hit_dice, max_hp, ac, vec![])
+    }
+}
+
 // ── Scenario runners (exercise DSL code paths for coverage) ────
 
 /// Exercise ability table lookups (STR, DEX, CON, INT, WIS, CHA modifiers + ancestry defs).
