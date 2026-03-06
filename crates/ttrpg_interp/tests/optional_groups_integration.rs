@@ -1,33 +1,23 @@
-//! End-to-end integration tests for optional groups.
+//! Integration tests for optional groups.
 //!
-//! Runs a self-contained DSL program through the full pipeline
-//! (parse → lower → check → interpret), exercising:
-//! - Entity declarations with optional groups
-//! - `has` expressions for group presence checks
-//! - `grant` and `revoke` statements in actions
-//! - `with` constraints on action receivers and parameters
-//! - Namespaced field reads (entity.Group.field)
-//! - Guards in derives (`if entity has Group`)
-//! - StateAdapter grant/revoke lifecycle
+//! Script-suitable lifecycle, alias, and derive/runtime coverage has moved to
+//! `tests/optional_groups.ttrpg-cli`.
+//! These Rust tests keep only pipeline construction and raw effect payload
+//! coverage that still belongs next to the interpreter.
 
 use std::collections::{BTreeMap, VecDeque};
 
 use rustc_hash::FxHashMap;
 use ttrpg_ast::diagnostic::Severity;
 use ttrpg_ast::FileId;
-use ttrpg_interp::adapter::StateAdapter;
 use ttrpg_interp::effect::{Effect, EffectHandler, Response};
 use ttrpg_interp::reference_state::GameState;
-use ttrpg_interp::state::{EntityRef, StateProvider, WritableState};
+use ttrpg_interp::state::{EntityRef, WritableState};
 use ttrpg_interp::value::Value;
 use ttrpg_interp::Interpreter;
 
-// ── DSL program source ───────────────────────────────────────
-
-/// A 5e-inspired program with optional Spellcasting and KiPowers groups.
 const PROGRAM_SOURCE: &str = r#"
 system "OptionalGroupsTest" {
-
     entity Character {
         name: string
         level: int = 1
@@ -45,7 +35,6 @@ system "OptionalGroupsTest" {
         }
     }
 
-    // Pure derive: returns spell DC if entity has Spellcasting, else 0
     derive effective_spell_dc(caster: Character) -> int {
         if caster has Spellcasting {
             caster.Spellcasting.spell_dc
@@ -54,42 +43,36 @@ system "OptionalGroupsTest" {
         }
     }
 
-    // Pure derive: total resource count from optional groups
     derive total_resources(c: Character) -> int {
         let spells = if c has Spellcasting { c.Spellcasting.spell_slots } else { 0 }
         let ki = if c has KiPowers { c.KiPowers.ki_points } else { 0 }
         spells + ki
     }
 
-    // Action: grant Spellcasting to a character
     action AwakeMagic on gm: Character (target: Character, slots: int, dc: int) {
         resolve {
             grant target.Spellcasting { spell_slots: slots, spell_dc: dc }
         }
     }
 
-    // Action: revoke Spellcasting from a character
     action SealMagic on gm: Character (target: Character) {
         resolve {
             revoke target.Spellcasting
         }
     }
 
-    // Action: grant KiPowers
     action UnlockKi on gm: Character (target: Character, points: int) {
         resolve {
             grant target.KiPowers { ki_points: points }
         }
     }
 
-    // Action with `with` constraint: only works on entities with Spellcasting
     action CastSpell on caster: Character with Spellcasting (cost: int) {
         resolve {
             caster.Spellcasting.spell_slots -= cost
         }
     }
 
-    // Derive: reads Spellcasting.spell_dc through namespaced access with has-guard
     derive spell_save_dc(caster: Character) -> int {
         if caster has Spellcasting {
             caster.Spellcasting.spell_dc + caster.level
@@ -100,40 +83,8 @@ system "OptionalGroupsTest" {
 }
 "#;
 
-/// Program using top-level groups with external entity attachment syntax.
-const EXTERNAL_GROUP_PROGRAM_SOURCE: &str = r#"
-system "ExternalGroupsTest" {
-    group Spellcasting {
-        spell_slots: int
-        spell_dc: int = 11
-    }
-
-    entity Character {
-        name: string
-        HP: int
-        optional Spellcasting
-    }
-
-    action GrantSpellcasting on gm: Character (target: Character, slots: int) {
-        resolve {
-            grant target.Spellcasting { spell_slots: slots }
-        }
-    }
-
-    derive spell_dc(c: Character) -> int {
-        if c has Spellcasting {
-            c.Spellcasting.spell_dc
-        } else {
-            0
-        }
-    }
-}
-"#;
-
-// ── Setup ────────────────────────────────────────────────────
-
-fn setup_from_source(source: &str) -> (ttrpg_ast::ast::Program, ttrpg_checker::CheckResult) {
-    let (program, parse_errors) = ttrpg_parser::parse(source, FileId::SYNTH);
+fn setup() -> (ttrpg_ast::ast::Program, ttrpg_checker::CheckResult) {
+    let (program, parse_errors) = ttrpg_parser::parse(PROGRAM_SOURCE, FileId::SYNTH);
     assert!(
         parse_errors.is_empty(),
         "parse errors: {:?}",
@@ -160,27 +111,14 @@ fn setup_from_source(source: &str) -> (ttrpg_ast::ast::Program, ttrpg_checker::C
     (program, result)
 }
 
-fn setup() -> (ttrpg_ast::ast::Program, ttrpg_checker::CheckResult) {
-    setup_from_source(PROGRAM_SOURCE)
-}
-
-// ── ScriptedHandler ──────────────────────────────────────────
-
 struct ScriptedHandler {
     script: VecDeque<Response>,
     log: Vec<Effect>,
 }
 
 impl ScriptedHandler {
-    fn new() -> Self {
-        ScriptedHandler {
-            script: VecDeque::new(),
-            log: Vec::new(),
-        }
-    }
-
     fn with_responses(responses: Vec<Response>) -> Self {
-        ScriptedHandler {
+        Self {
             script: responses.into(),
             log: Vec::new(),
         }
@@ -194,8 +132,6 @@ impl EffectHandler for ScriptedHandler {
     }
 }
 
-// ── Entity helpers ───────────────────────────────────────────
-
 fn add_character(state: &mut GameState, name: &str, level: i64, hp: i64) -> EntityRef {
     let mut fields = FxHashMap::default();
     fields.insert("name".into(), Value::Str(name.to_string()));
@@ -205,18 +141,14 @@ fn add_character(state: &mut GameState, name: &str, level: i64, hp: i64) -> Enti
 }
 
 fn standard_turn_budget() -> BTreeMap<ttrpg_ast::Name, Value> {
-    let mut b = BTreeMap::new();
-    b.insert("actions".into(), Value::Int(1));
-    b.insert("bonus_actions".into(), Value::Int(1));
-    b.insert("reactions".into(), Value::Int(1));
-    b.insert("movement".into(), Value::Int(30));
-    b.insert("free_interactions".into(), Value::Int(1));
-    b
+    let mut budget = BTreeMap::new();
+    budget.insert("actions".into(), Value::Int(1));
+    budget.insert("bonus_actions".into(), Value::Int(1));
+    budget.insert("reactions".into(), Value::Int(1));
+    budget.insert("movement".into(), Value::Int(30));
+    budget.insert("free_interactions".into(), Value::Int(1));
+    budget
 }
-
-// ════════════════════════════════════════════════════════════════
-// Group 1: Pipeline Validation
-// ════════════════════════════════════════════════════════════════
 
 #[test]
 fn pipeline_parses_checks_and_builds_interpreter() {
@@ -230,598 +162,6 @@ fn pipeline_parses_checks_and_builds_interpreter() {
 }
 
 #[test]
-fn external_group_attachment_grant_uses_group_defaults() {
-    let (program, result) = setup_from_source(EXTERNAL_GROUP_PROGRAM_SOURCE);
-    let interp = Interpreter::new(&program, &result.env).unwrap();
-    let mut state = GameState::new();
-
-    let mut gm_fields = FxHashMap::default();
-    gm_fields.insert("name".into(), Value::Str("GM".into()));
-    gm_fields.insert("HP".into(), Value::Int(999));
-    let gm = state.add_entity("Character", gm_fields);
-
-    let mut wizard_fields = FxHashMap::default();
-    wizard_fields.insert("name".into(), Value::Str("Wizard".into()));
-    wizard_fields.insert("HP".into(), Value::Int(12));
-    let wizard = state.add_entity("Character", wizard_fields);
-
-    state.set_turn_budget(&gm, standard_turn_budget());
-    let adapter = StateAdapter::new(state);
-    let mut handler = ScriptedHandler::with_responses(vec![Response::Acknowledged]);
-    adapter.run(&mut handler, |state, eff_handler| {
-        interp
-            .execute_action(
-                state,
-                eff_handler,
-                "GrantSpellcasting",
-                gm,
-                vec![Value::Entity(wizard), Value::Int(3)],
-            )
-            .unwrap();
-    });
-
-    let state = adapter.into_inner();
-    let group = state.read_field(&wizard, "Spellcasting").unwrap();
-    match group {
-        Value::Struct { fields, .. } => {
-            assert_eq!(fields.get("spell_slots"), Some(&Value::Int(3)));
-            assert_eq!(fields.get("spell_dc"), Some(&Value::Int(11)));
-        }
-        other => panic!("expected Struct, got {other:?}"),
-    }
-
-    let mut handler = ScriptedHandler::new();
-    let dc = interp
-        .evaluate_derive(
-            &state,
-            &mut handler,
-            "spell_dc",
-            vec![Value::Entity(wizard)],
-        )
-        .unwrap();
-    assert_eq!(dc, Value::Int(11));
-}
-
-// ════════════════════════════════════════════════════════════════
-// Group 2: Has Expression
-// ════════════════════════════════════════════════════════════════
-
-#[test]
-fn has_returns_false_when_no_group_granted() {
-    let (program, result) = setup();
-    let interp = Interpreter::new(&program, &result.env).unwrap();
-    let mut state = GameState::new();
-    let wizard = add_character(&mut state, "Wizard", 5, 30);
-
-    // effective_spell_dc should return 0 when no Spellcasting granted
-    let mut handler = ScriptedHandler::new();
-    let val = interp
-        .evaluate_derive(
-            &state,
-            &mut handler,
-            "effective_spell_dc",
-            vec![Value::Entity(wizard)],
-        )
-        .unwrap();
-    assert_eq!(val, Value::Int(0));
-}
-
-#[test]
-fn has_returns_true_when_group_is_granted() {
-    let (program, result) = setup();
-    let interp = Interpreter::new(&program, &result.env).unwrap();
-    let mut state = GameState::new();
-    let wizard = add_character(&mut state, "Wizard", 5, 30);
-
-    // Manually grant Spellcasting by writing the group struct to state
-    let group_val = Value::Struct {
-        name: "Spellcasting".into(),
-        fields: {
-            let mut f = BTreeMap::new();
-            f.insert("spell_slots".into(), Value::Int(4));
-            f.insert("spell_dc".into(), Value::Int(15));
-            f.insert("spellcasting_ability".into(), Value::Str("INT".into()));
-            f
-        },
-    };
-    state.write_field(
-        &wizard,
-        &[ttrpg_interp::effect::FieldPathSegment::Field(
-            "Spellcasting".into(),
-        )],
-        group_val,
-    );
-
-    // effective_spell_dc should return the spell_dc value
-    let mut handler = ScriptedHandler::new();
-    let val = interp
-        .evaluate_derive(
-            &state,
-            &mut handler,
-            "effective_spell_dc",
-            vec![Value::Entity(wizard)],
-        )
-        .unwrap();
-    assert_eq!(val, Value::Int(15));
-}
-
-// ════════════════════════════════════════════════════════════════
-// Group 3: Grant via Action (through StateAdapter)
-// ════════════════════════════════════════════════════════════════
-
-#[test]
-fn grant_action_adds_group_fields_to_state() {
-    let (program, result) = setup();
-    let interp = Interpreter::new(&program, &result.env).unwrap();
-    let mut state = GameState::new();
-    let gm = add_character(&mut state, "GM", 1, 999);
-    let wizard = add_character(&mut state, "Wizard", 5, 30);
-    state.set_turn_budget(&gm, standard_turn_budget());
-
-    let adapter = StateAdapter::new(state);
-
-    // AwakeMagic: grant wizard.Spellcasting { spell_slots: 4, spell_dc: 15 }
-    let mut handler = ScriptedHandler::with_responses(vec![
-        Response::Acknowledged, // ActionStarted
-    ]);
-
-    adapter.run(&mut handler, |state, eff_handler| {
-        interp
-            .execute_action(
-                state,
-                eff_handler,
-                "AwakeMagic",
-                gm,
-                vec![Value::Entity(wizard), Value::Int(4), Value::Int(15)],
-            )
-            .unwrap();
-    });
-
-    // Verify Spellcasting group was granted in final state
-    let final_state = adapter.into_inner();
-    let group = final_state.read_field(&wizard, "Spellcasting");
-    assert!(group.is_some(), "Spellcasting should be granted");
-
-    match group.unwrap() {
-        Value::Struct { name, fields } => {
-            assert_eq!(name, "Spellcasting");
-            assert_eq!(fields.get("spell_slots"), Some(&Value::Int(4)));
-            assert_eq!(fields.get("spell_dc"), Some(&Value::Int(15)));
-            assert_eq!(
-                fields.get("spellcasting_ability"),
-                Some(&Value::Str("INT".into())),
-                "default should be filled"
-            );
-        }
-        other => panic!("expected Struct, got {other:?}"),
-    }
-}
-
-#[test]
-fn grant_fills_defaults_from_declaration() {
-    let (program, result) = setup();
-    let interp = Interpreter::new(&program, &result.env).unwrap();
-    let mut state = GameState::new();
-    let gm = add_character(&mut state, "GM", 1, 999);
-    let monk = add_character(&mut state, "Monk", 3, 25);
-    state.set_turn_budget(&gm, standard_turn_budget());
-
-    let adapter = StateAdapter::new(state);
-
-    // UnlockKi: grant monk.KiPowers { ki_points: 3 }
-    // ki_dc has default=8, so should be filled in
-    let mut handler = ScriptedHandler::with_responses(vec![
-        Response::Acknowledged, // ActionStarted
-    ]);
-
-    adapter.run(&mut handler, |state, eff_handler| {
-        interp
-            .execute_action(
-                state,
-                eff_handler,
-                "UnlockKi",
-                gm,
-                vec![Value::Entity(monk), Value::Int(3)],
-            )
-            .unwrap();
-    });
-
-    let final_state = adapter.into_inner();
-    let group = final_state.read_field(&monk, "KiPowers").unwrap();
-    match group {
-        Value::Struct { fields, .. } => {
-            assert_eq!(fields.get("ki_points"), Some(&Value::Int(3)));
-            assert_eq!(
-                fields.get("ki_dc"),
-                Some(&Value::Int(8)),
-                "ki_dc should default to 8"
-            );
-        }
-        other => panic!("expected Struct, got {other:?}"),
-    }
-}
-
-// ════════════════════════════════════════════════════════════════
-// Group 4: Revoke via Action
-// ════════════════════════════════════════════════════════════════
-
-#[test]
-fn revoke_action_removes_group_from_state() {
-    let (program, result) = setup();
-    let interp = Interpreter::new(&program, &result.env).unwrap();
-    let mut state = GameState::new();
-    let gm = add_character(&mut state, "GM", 1, 999);
-    let wizard = add_character(&mut state, "Wizard", 5, 30);
-    state.set_turn_budget(&gm, standard_turn_budget());
-
-    // Pre-grant Spellcasting
-    let group_val = Value::Struct {
-        name: "Spellcasting".into(),
-        fields: {
-            let mut f = BTreeMap::new();
-            f.insert("spell_slots".into(), Value::Int(4));
-            f.insert("spell_dc".into(), Value::Int(15));
-            f.insert("spellcasting_ability".into(), Value::Str("INT".into()));
-            f
-        },
-    };
-    state.write_field(
-        &wizard,
-        &[ttrpg_interp::effect::FieldPathSegment::Field(
-            "Spellcasting".into(),
-        )],
-        group_val,
-    );
-
-    // Verify it's there
-    assert!(state.read_field(&wizard, "Spellcasting").is_some());
-
-    let adapter = StateAdapter::new(state);
-
-    // SealMagic: revoke wizard.Spellcasting
-    let mut handler = ScriptedHandler::with_responses(vec![
-        Response::Acknowledged, // ActionStarted
-    ]);
-
-    adapter.run(&mut handler, |state, eff_handler| {
-        interp
-            .execute_action(
-                state,
-                eff_handler,
-                "SealMagic",
-                gm,
-                vec![Value::Entity(wizard)],
-            )
-            .unwrap();
-    });
-
-    // Verify Spellcasting was removed
-    let final_state = adapter.into_inner();
-    assert!(
-        final_state.read_field(&wizard, "Spellcasting").is_none(),
-        "Spellcasting should be revoked"
-    );
-}
-
-// ════════════════════════════════════════════════════════════════
-// Group 5: Full Grant/Revoke Lifecycle
-// ════════════════════════════════════════════════════════════════
-
-#[test]
-fn full_grant_use_revoke_lifecycle() {
-    let (program, result) = setup();
-    let interp = Interpreter::new(&program, &result.env).unwrap();
-    let mut state = GameState::new();
-    let gm = add_character(&mut state, "GM", 1, 999);
-    let wizard = add_character(&mut state, "Wizard", 5, 30);
-    state.set_turn_budget(&gm, standard_turn_budget());
-    state.set_turn_budget(&wizard, standard_turn_budget());
-
-    // Step 1: Verify no groups — total_resources should be 0
-    let mut handler = ScriptedHandler::new();
-    let val = interp
-        .evaluate_derive(
-            &state,
-            &mut handler,
-            "total_resources",
-            vec![Value::Entity(wizard)],
-        )
-        .unwrap();
-    assert_eq!(val, Value::Int(0), "no groups means 0 resources");
-
-    // Step 2: Grant Spellcasting via action
-    let adapter = StateAdapter::new(state);
-    let mut handler = ScriptedHandler::with_responses(vec![Response::Acknowledged]);
-    adapter.run(&mut handler, |state, eff_handler| {
-        interp
-            .execute_action(
-                state,
-                eff_handler,
-                "AwakeMagic",
-                gm,
-                vec![Value::Entity(wizard), Value::Int(4), Value::Int(15)],
-            )
-            .unwrap();
-    });
-    let mut state = adapter.into_inner();
-    state.set_turn_budget(&gm, standard_turn_budget());
-    state.set_turn_budget(&wizard, standard_turn_budget());
-
-    // Step 3: Verify has expression + derive reads group fields
-    let mut handler = ScriptedHandler::new();
-    let val = interp
-        .evaluate_derive(
-            &state,
-            &mut handler,
-            "effective_spell_dc",
-            vec![Value::Entity(wizard)],
-        )
-        .unwrap();
-    assert_eq!(val, Value::Int(15), "spell_dc should be 15");
-
-    let val = interp
-        .evaluate_derive(
-            &state,
-            &mut handler,
-            "total_resources",
-            vec![Value::Entity(wizard)],
-        )
-        .unwrap();
-    assert_eq!(val, Value::Int(4), "only Spellcasting with 4 slots");
-
-    // Step 4: Grant KiPowers via action
-    let adapter = StateAdapter::new(state);
-    let mut handler = ScriptedHandler::with_responses(vec![Response::Acknowledged]);
-    adapter.run(&mut handler, |state, eff_handler| {
-        interp
-            .execute_action(
-                state,
-                eff_handler,
-                "UnlockKi",
-                gm,
-                vec![Value::Entity(wizard), Value::Int(3)],
-            )
-            .unwrap();
-    });
-    let mut state = adapter.into_inner();
-    state.set_turn_budget(&gm, standard_turn_budget());
-    state.set_turn_budget(&wizard, standard_turn_budget());
-
-    // Step 5: Both groups active — total_resources = 4 + 3 = 7
-    let mut handler = ScriptedHandler::new();
-    let val = interp
-        .evaluate_derive(
-            &state,
-            &mut handler,
-            "total_resources",
-            vec![Value::Entity(wizard)],
-        )
-        .unwrap();
-    assert_eq!(val, Value::Int(7), "4 spell slots + 3 ki points");
-
-    // Step 6: Revoke Spellcasting
-    let adapter = StateAdapter::new(state);
-    let mut handler = ScriptedHandler::with_responses(vec![Response::Acknowledged]);
-    adapter.run(&mut handler, |state, eff_handler| {
-        interp
-            .execute_action(
-                state,
-                eff_handler,
-                "SealMagic",
-                gm,
-                vec![Value::Entity(wizard)],
-            )
-            .unwrap();
-    });
-    let state = adapter.into_inner();
-
-    // Step 7: Verify Spellcasting gone, KiPowers remains
-    assert!(state.read_field(&wizard, "Spellcasting").is_none());
-    assert!(state.read_field(&wizard, "KiPowers").is_some());
-
-    let mut handler = ScriptedHandler::new();
-    let val = interp
-        .evaluate_derive(
-            &state,
-            &mut handler,
-            "total_resources",
-            vec![Value::Entity(wizard)],
-        )
-        .unwrap();
-    assert_eq!(val, Value::Int(3), "only ki points remain");
-
-    let val = interp
-        .evaluate_derive(
-            &state,
-            &mut handler,
-            "effective_spell_dc",
-            vec![Value::Entity(wizard)],
-        )
-        .unwrap();
-    assert_eq!(val, Value::Int(0), "no Spellcasting means dc=0");
-}
-
-// ════════════════════════════════════════════════════════════════
-// Group 6: With-Constrained Action
-// ════════════════════════════════════════════════════════════════
-
-#[test]
-fn with_constrained_action_succeeds_when_group_granted() {
-    let (program, result) = setup();
-    let interp = Interpreter::new(&program, &result.env).unwrap();
-    let mut state = GameState::new();
-    let wizard = add_character(&mut state, "Wizard", 5, 30);
-    state.set_turn_budget(&wizard, standard_turn_budget());
-
-    // Grant Spellcasting with 4 slots
-    let group_val = Value::Struct {
-        name: "Spellcasting".into(),
-        fields: {
-            let mut f = BTreeMap::new();
-            f.insert("spell_slots".into(), Value::Int(4));
-            f.insert("spell_dc".into(), Value::Int(15));
-            f.insert("spellcasting_ability".into(), Value::Str("INT".into()));
-            f
-        },
-    };
-    state.write_field(
-        &wizard,
-        &[ttrpg_interp::effect::FieldPathSegment::Field(
-            "Spellcasting".into(),
-        )],
-        group_val,
-    );
-
-    // CastSpell: costs 1 spell slot
-    let adapter = StateAdapter::new(state);
-    let mut handler = ScriptedHandler::with_responses(vec![Response::Acknowledged]);
-    adapter.run(&mut handler, |state, eff_handler| {
-        interp
-            .execute_action(state, eff_handler, "CastSpell", wizard, vec![Value::Int(1)])
-            .unwrap();
-    });
-
-    // spell_slots should go from 4 to 3
-    let final_state = adapter.into_inner();
-    let group = final_state.read_field(&wizard, "Spellcasting").unwrap();
-    match group {
-        Value::Struct { fields, .. } => {
-            assert_eq!(fields.get("spell_slots"), Some(&Value::Int(3)));
-        }
-        other => panic!("expected Struct, got {other:?}"),
-    }
-}
-
-// ════════════════════════════════════════════════════════════════
-// Group 7: Derive with Has Guard + Level
-// ════════════════════════════════════════════════════════════════
-
-#[test]
-fn spell_save_dc_uses_level_and_group() {
-    let (program, result) = setup();
-    let interp = Interpreter::new(&program, &result.env).unwrap();
-    let mut state = GameState::new();
-    let wizard = add_character(&mut state, "Wizard", 5, 30);
-
-    // Without Spellcasting: dc should be 0
-    let mut handler = ScriptedHandler::new();
-    let val = interp
-        .evaluate_derive(
-            &state,
-            &mut handler,
-            "spell_save_dc",
-            vec![Value::Entity(wizard)],
-        )
-        .unwrap();
-    assert_eq!(val, Value::Int(0));
-
-    // Grant Spellcasting with dc=12
-    let group_val = Value::Struct {
-        name: "Spellcasting".into(),
-        fields: {
-            let mut f = BTreeMap::new();
-            f.insert("spell_slots".into(), Value::Int(3));
-            f.insert("spell_dc".into(), Value::Int(12));
-            f.insert("spellcasting_ability".into(), Value::Str("WIS".into()));
-            f
-        },
-    };
-    state.write_field(
-        &wizard,
-        &[ttrpg_interp::effect::FieldPathSegment::Field(
-            "Spellcasting".into(),
-        )],
-        group_val,
-    );
-
-    // With Spellcasting: dc should be spell_dc + level = 12 + 5 = 17
-    let val = interp
-        .evaluate_derive(
-            &state,
-            &mut handler,
-            "spell_save_dc",
-            vec![Value::Entity(wizard)],
-        )
-        .unwrap();
-    assert_eq!(val, Value::Int(17));
-}
-
-// ════════════════════════════════════════════════════════════════
-// Group 8: Multiple Entities, Independent Groups
-// ════════════════════════════════════════════════════════════════
-
-#[test]
-fn groups_are_per_entity_independent() {
-    let (program, result) = setup();
-    let interp = Interpreter::new(&program, &result.env).unwrap();
-    let mut state = GameState::new();
-    let gm = add_character(&mut state, "GM", 1, 999);
-    let wizard = add_character(&mut state, "Wizard", 5, 30);
-    let monk = add_character(&mut state, "Monk", 4, 25);
-    state.set_turn_budget(&gm, standard_turn_budget());
-
-    // Grant Spellcasting to wizard
-    let adapter = StateAdapter::new(state);
-    let mut handler = ScriptedHandler::with_responses(vec![Response::Acknowledged]);
-    adapter.run(&mut handler, |state, eff_handler| {
-        interp
-            .execute_action(
-                state,
-                eff_handler,
-                "AwakeMagic",
-                gm,
-                vec![Value::Entity(wizard), Value::Int(4), Value::Int(15)],
-            )
-            .unwrap();
-    });
-    let mut state = adapter.into_inner();
-    state.set_turn_budget(&gm, standard_turn_budget());
-
-    // Grant KiPowers to monk
-    let adapter = StateAdapter::new(state);
-    let mut handler = ScriptedHandler::with_responses(vec![Response::Acknowledged]);
-    adapter.run(&mut handler, |state, eff_handler| {
-        interp
-            .execute_action(
-                state,
-                eff_handler,
-                "UnlockKi",
-                gm,
-                vec![Value::Entity(monk), Value::Int(5)],
-            )
-            .unwrap();
-    });
-    let state = adapter.into_inner();
-
-    // Wizard has Spellcasting but not KiPowers
-    let mut handler = ScriptedHandler::new();
-    let val = interp
-        .evaluate_derive(
-            &state,
-            &mut handler,
-            "total_resources",
-            vec![Value::Entity(wizard)],
-        )
-        .unwrap();
-    assert_eq!(val, Value::Int(4), "wizard: 4 spell slots, 0 ki");
-
-    // Monk has KiPowers but not Spellcasting
-    let val = interp
-        .evaluate_derive(
-            &state,
-            &mut handler,
-            "total_resources",
-            vec![Value::Entity(monk)],
-        )
-        .unwrap();
-    assert_eq!(val, Value::Int(5), "monk: 0 spell slots, 5 ki");
-}
-
-// ════════════════════════════════════════════════════════════════
-// Group 9: Grant Effect Contents
-// ════════════════════════════════════════════════════════════════
-
-#[test]
 fn grant_action_emits_correct_effect() {
     let (program, result) = setup();
     let interp = Interpreter::new(&program, &result.env).unwrap();
@@ -830,29 +170,29 @@ fn grant_action_emits_correct_effect() {
     let wizard = add_character(&mut state, "Wizard", 5, 30);
     state.set_turn_budget(&gm, standard_turn_budget());
 
-    // Use plain handler (no adapter) to inspect raw effects
     let mut handler = ScriptedHandler::with_responses(vec![
-        Response::Acknowledged, // ActionStarted
-        Response::Acknowledged, // GrantGroup
-        Response::Acknowledged, // ActionCompleted
+        Response::Acknowledged,
+        Response::Acknowledged,
+        Response::Acknowledged,
     ]);
 
-    let _ = interp.execute_action(
-        &state,
-        &mut handler,
-        "AwakeMagic",
-        gm,
-        vec![Value::Entity(wizard), Value::Int(4), Value::Int(15)],
-    );
+    interp
+        .execute_action(
+            &state,
+            &mut handler,
+            "AwakeMagic",
+            gm,
+            vec![Value::Entity(wizard), Value::Int(4), Value::Int(15)],
+        )
+        .unwrap();
 
-    // Find the GrantGroup effect
     let grant_effect = handler
         .log
         .iter()
-        .find(|e| matches!(e, Effect::GrantGroup { .. }));
-    assert!(grant_effect.is_some(), "should emit GrantGroup effect");
+        .find(|e| matches!(e, Effect::GrantGroup { .. }))
+        .expect("should emit GrantGroup effect");
 
-    match grant_effect.unwrap() {
+    match grant_effect {
         Effect::GrantGroup {
             entity,
             group_name,
@@ -865,7 +205,6 @@ fn grant_action_emits_correct_effect() {
                     assert_eq!(name, "Spellcasting");
                     assert_eq!(fields.get("spell_slots"), Some(&Value::Int(4)));
                     assert_eq!(fields.get("spell_dc"), Some(&Value::Int(15)));
-                    // Default should be filled
                     assert_eq!(
                         fields.get("spellcasting_ability"),
                         Some(&Value::Str("INT".into()))
@@ -887,15 +226,14 @@ fn revoke_action_emits_correct_effect() {
     let wizard = add_character(&mut state, "Wizard", 5, 30);
     state.set_turn_budget(&gm, standard_turn_budget());
 
-    // Pre-grant Spellcasting
     let group_val = Value::Struct {
         name: "Spellcasting".into(),
         fields: {
-            let mut f = BTreeMap::new();
-            f.insert("spell_slots".into(), Value::Int(4));
-            f.insert("spell_dc".into(), Value::Int(15));
-            f.insert("spellcasting_ability".into(), Value::Str("INT".into()));
-            f
+            let mut fields = BTreeMap::new();
+            fields.insert("spell_slots".into(), Value::Int(4));
+            fields.insert("spell_dc".into(), Value::Int(15));
+            fields.insert("spellcasting_ability".into(), Value::Str("INT".into()));
+            fields
         },
     };
     state.write_field(
@@ -907,506 +245,32 @@ fn revoke_action_emits_correct_effect() {
     );
 
     let mut handler = ScriptedHandler::with_responses(vec![
-        Response::Acknowledged, // ActionStarted
-        Response::Acknowledged, // RevokeGroup
-        Response::Acknowledged, // ActionCompleted
+        Response::Acknowledged,
+        Response::Acknowledged,
+        Response::Acknowledged,
     ]);
 
-    let _ = interp.execute_action(
-        &state,
-        &mut handler,
-        "SealMagic",
-        gm,
-        vec![Value::Entity(wizard)],
-    );
+    interp
+        .execute_action(
+            &state,
+            &mut handler,
+            "SealMagic",
+            gm,
+            vec![Value::Entity(wizard)],
+        )
+        .unwrap();
 
     let revoke_effect = handler
         .log
         .iter()
-        .find(|e| matches!(e, Effect::RevokeGroup { .. }));
-    assert!(revoke_effect.is_some(), "should emit RevokeGroup effect");
+        .find(|e| matches!(e, Effect::RevokeGroup { .. }))
+        .expect("should emit RevokeGroup effect");
 
-    match revoke_effect.unwrap() {
+    match revoke_effect {
         Effect::RevokeGroup { entity, group_name } => {
             assert_eq!(*entity, wizard);
             assert_eq!(group_name, "Spellcasting");
         }
         _ => unreachable!(),
-    }
-}
-
-// ════════════════════════════════════════════════════════════════
-// Group 10: Alias Bindings (`as <alias>`)
-// ════════════════════════════════════════════════════════════════
-
-/// DSL program using `as` aliases on `with` constraints and `has` guards.
-const ALIAS_PROGRAM_SOURCE: &str = r#"
-system "AliasTest" {
-
-    entity Character {
-        name: string
-        level: int = 1
-        HP: int
-
-        optional Spellcasting {
-            spell_slots: int
-            spell_dc: int = 10
-            spellcasting_ability: string = "INT"
-        }
-
-        optional KiPowers {
-            ki_points: int
-            ki_dc: int = 8
-        }
-    }
-
-    // Derive using `has ... as` alias for read access
-    derive effective_spell_dc(caster: Character) -> int {
-        if caster has Spellcasting as sc {
-            caster.sc.spell_dc
-        } else {
-            0
-        }
-    }
-
-    // Derive using multiple `has ... as` aliases
-    derive total_resources(c: Character) -> int {
-        let spells = if c has Spellcasting as sc { c.sc.spell_slots } else { 0 }
-        let ki = if c has KiPowers as kp { c.kp.ki_points } else { 0 }
-        spells + ki
-    }
-
-    // Action with `with ... as` alias on receiver — reads and writes through alias
-    action CastSpell on caster: Character with Spellcasting as sc (cost: int) {
-        resolve {
-            caster.sc.spell_slots -= cost
-        }
-    }
-
-    // Action that reads through alias in resolve block
-    derive spell_save_dc(caster: Character) -> int {
-        if caster has Spellcasting as sc {
-            caster.sc.spell_dc + caster.level
-        } else {
-            0
-        }
-    }
-
-    // Grant action (no alias — used for setup)
-    action AwakeMagic on gm: Character (target: Character, slots: int, dc: int) {
-        resolve {
-            grant target.Spellcasting { spell_slots: slots, spell_dc: dc }
-        }
-    }
-
-    action UnlockKi on gm: Character (target: Character, points: int) {
-        resolve {
-            grant target.KiPowers { ki_points: points }
-        }
-    }
-
-    // Action: revoke through has alias guard with mutation inside
-    action DrainMagic on gm: Character (target: Character) {
-        resolve {
-            if target has Spellcasting as sc {
-                target.sc.spell_slots = 0
-            }
-            revoke target.Spellcasting
-        }
-    }
-}
-"#;
-
-fn setup_alias() -> (ttrpg_ast::ast::Program, ttrpg_checker::CheckResult) {
-    setup_from_source(ALIAS_PROGRAM_SOURCE)
-}
-
-#[test]
-fn alias_has_guard_read_with_group_present() {
-    let (program, result) = setup_alias();
-    let interp = Interpreter::new(&program, &result.env).unwrap();
-    let mut state = GameState::new();
-    let wizard = add_character(&mut state, "Wizard", 5, 30);
-
-    // Grant Spellcasting
-    let group_val = Value::Struct {
-        name: "Spellcasting".into(),
-        fields: {
-            let mut f = BTreeMap::new();
-            f.insert("spell_slots".into(), Value::Int(4));
-            f.insert("spell_dc".into(), Value::Int(15));
-            f.insert("spellcasting_ability".into(), Value::Str("INT".into()));
-            f
-        },
-    };
-    state.write_field(
-        &wizard,
-        &[ttrpg_interp::effect::FieldPathSegment::Field(
-            "Spellcasting".into(),
-        )],
-        group_val,
-    );
-
-    // effective_spell_dc reads through `caster.sc.spell_dc` (alias for Spellcasting)
-    let mut handler = ScriptedHandler::new();
-    let val = interp
-        .evaluate_derive(
-            &state,
-            &mut handler,
-            "effective_spell_dc",
-            vec![Value::Entity(wizard)],
-        )
-        .unwrap();
-    assert_eq!(val, Value::Int(15));
-}
-
-#[test]
-fn alias_has_guard_read_without_group() {
-    let (program, result) = setup_alias();
-    let interp = Interpreter::new(&program, &result.env).unwrap();
-    let mut state = GameState::new();
-    let fighter = add_character(&mut state, "Fighter", 5, 40);
-
-    // No Spellcasting granted — else branch returns 0
-    let mut handler = ScriptedHandler::new();
-    let val = interp
-        .evaluate_derive(
-            &state,
-            &mut handler,
-            "effective_spell_dc",
-            vec![Value::Entity(fighter)],
-        )
-        .unwrap();
-    assert_eq!(val, Value::Int(0));
-}
-
-#[test]
-fn alias_multiple_has_guards_in_derive() {
-    let (program, result) = setup_alias();
-    let interp = Interpreter::new(&program, &result.env).unwrap();
-    let mut state = GameState::new();
-    let gm = add_character(&mut state, "GM", 1, 999);
-    let multiclass = add_character(&mut state, "Multiclass", 7, 35);
-    state.set_turn_budget(&gm, standard_turn_budget());
-
-    // Grant both Spellcasting and KiPowers
-    let adapter = StateAdapter::new(state);
-    let mut handler = ScriptedHandler::with_responses(vec![Response::Acknowledged]);
-    adapter.run(&mut handler, |state, eff_handler| {
-        interp
-            .execute_action(
-                state,
-                eff_handler,
-                "AwakeMagic",
-                gm,
-                vec![Value::Entity(multiclass), Value::Int(4), Value::Int(13)],
-            )
-            .unwrap();
-    });
-    let mut state = adapter.into_inner();
-    state.set_turn_budget(&gm, standard_turn_budget());
-
-    let adapter = StateAdapter::new(state);
-    let mut handler = ScriptedHandler::with_responses(vec![Response::Acknowledged]);
-    adapter.run(&mut handler, |state, eff_handler| {
-        interp
-            .execute_action(
-                state,
-                eff_handler,
-                "UnlockKi",
-                gm,
-                vec![Value::Entity(multiclass), Value::Int(5)],
-            )
-            .unwrap();
-    });
-    let state = adapter.into_inner();
-
-    // total_resources uses `c.sc.spell_slots` and `c.kp.ki_points` via aliases
-    let mut handler = ScriptedHandler::new();
-    let val = interp
-        .evaluate_derive(
-            &state,
-            &mut handler,
-            "total_resources",
-            vec![Value::Entity(multiclass)],
-        )
-        .unwrap();
-    assert_eq!(val, Value::Int(9), "4 spell slots + 5 ki points");
-}
-
-#[test]
-fn alias_with_constraint_write_in_action() {
-    let (program, result) = setup_alias();
-    let interp = Interpreter::new(&program, &result.env).unwrap();
-    let mut state = GameState::new();
-    let wizard = add_character(&mut state, "Wizard", 5, 30);
-    state.set_turn_budget(&wizard, standard_turn_budget());
-
-    // Grant Spellcasting with 4 slots
-    let group_val = Value::Struct {
-        name: "Spellcasting".into(),
-        fields: {
-            let mut f = BTreeMap::new();
-            f.insert("spell_slots".into(), Value::Int(4));
-            f.insert("spell_dc".into(), Value::Int(15));
-            f.insert("spellcasting_ability".into(), Value::Str("INT".into()));
-            f
-        },
-    };
-    state.write_field(
-        &wizard,
-        &[ttrpg_interp::effect::FieldPathSegment::Field(
-            "Spellcasting".into(),
-        )],
-        group_val,
-    );
-
-    // CastSpell writes through alias: `caster.sc.spell_slots -= cost`
-    let adapter = StateAdapter::new(state);
-    let mut handler = ScriptedHandler::with_responses(vec![Response::Acknowledged]);
-    adapter.run(&mut handler, |state, eff_handler| {
-        interp
-            .execute_action(state, eff_handler, "CastSpell", wizard, vec![Value::Int(1)])
-            .unwrap();
-    });
-
-    // spell_slots should go from 4 to 3
-    let final_state = adapter.into_inner();
-    let group = final_state.read_field(&wizard, "Spellcasting").unwrap();
-    match group {
-        Value::Struct { fields, .. } => {
-            assert_eq!(fields.get("spell_slots"), Some(&Value::Int(3)));
-        }
-        other => panic!("expected Struct, got {other:?}"),
-    }
-}
-
-#[test]
-fn alias_has_guard_with_mutation_and_revoke() {
-    let (program, result) = setup_alias();
-    let interp = Interpreter::new(&program, &result.env).unwrap();
-    let mut state = GameState::new();
-    let gm = add_character(&mut state, "GM", 1, 999);
-    let wizard = add_character(&mut state, "Wizard", 5, 30);
-    state.set_turn_budget(&gm, standard_turn_budget());
-
-    // Grant Spellcasting with 4 slots
-    let adapter = StateAdapter::new(state);
-    let mut handler = ScriptedHandler::with_responses(vec![Response::Acknowledged]);
-    adapter.run(&mut handler, |state, eff_handler| {
-        interp
-            .execute_action(
-                state,
-                eff_handler,
-                "AwakeMagic",
-                gm,
-                vec![Value::Entity(wizard), Value::Int(4), Value::Int(15)],
-            )
-            .unwrap();
-    });
-    let mut state = adapter.into_inner();
-    state.set_turn_budget(&gm, standard_turn_budget());
-
-    // Verify slots are 4 before drain
-    let group = state.read_field(&wizard, "Spellcasting").unwrap();
-    match &group {
-        Value::Struct { fields, .. } => {
-            assert_eq!(fields.get("spell_slots"), Some(&Value::Int(4)));
-        }
-        other => panic!("expected Struct, got {other:?}"),
-    }
-
-    // DrainMagic: writes `target.sc.spell_slots = 0` through has-alias, then revokes
-    let adapter = StateAdapter::new(state);
-    let mut handler = ScriptedHandler::with_responses(vec![Response::Acknowledged]);
-    adapter.run(&mut handler, |state, eff_handler| {
-        interp
-            .execute_action(
-                state,
-                eff_handler,
-                "DrainMagic",
-                gm,
-                vec![Value::Entity(wizard)],
-            )
-            .unwrap();
-    });
-
-    // After DrainMagic, Spellcasting should be revoked entirely
-    let final_state = adapter.into_inner();
-    assert!(
-        final_state.read_field(&wizard, "Spellcasting").is_none(),
-        "Spellcasting should be revoked after DrainMagic"
-    );
-}
-
-#[test]
-fn alias_spell_save_dc_with_has_alias() {
-    let (program, result) = setup_alias();
-    let interp = Interpreter::new(&program, &result.env).unwrap();
-    let mut state = GameState::new();
-    let wizard = add_character(&mut state, "Wizard", 5, 30);
-
-    // Grant Spellcasting with dc=12
-    let group_val = Value::Struct {
-        name: "Spellcasting".into(),
-        fields: {
-            let mut f = BTreeMap::new();
-            f.insert("spell_slots".into(), Value::Int(3));
-            f.insert("spell_dc".into(), Value::Int(12));
-            f.insert("spellcasting_ability".into(), Value::Str("WIS".into()));
-            f
-        },
-    };
-    state.write_field(
-        &wizard,
-        &[ttrpg_interp::effect::FieldPathSegment::Field(
-            "Spellcasting".into(),
-        )],
-        group_val,
-    );
-
-    // spell_save_dc = caster.sc.spell_dc + caster.level = 12 + 5 = 17
-    let mut handler = ScriptedHandler::new();
-    let val = interp
-        .evaluate_derive(
-            &state,
-            &mut handler,
-            "spell_save_dc",
-            vec![Value::Entity(wizard)],
-        )
-        .unwrap();
-    assert_eq!(val, Value::Int(17));
-}
-
-// ════════════════════════════════════════════════════════════════
-// Group 11: Nested-entity alias rewrite through local variable
-// ════════════════════════════════════════════════════════════════
-
-/// Regression test: when an entity is nested inside a non-entity value (like a
-/// trigger payload struct), mutation through a group alias must apply the
-/// alias rewrite from the checker's `resolved_lvalue_aliases`, adjusting the
-/// segment index by the entity depth.
-const NESTED_ENTITY_ALIAS_SOURCE: &str = r#"
-system "NestedAliasTest" {
-    entity Character {
-        name: string
-        level: int = 1
-        HP: int
-
-        optional Spellcasting {
-            spell_slots: int
-            spell_dc: int = 10
-        }
-    }
-
-    struct TurnBudget {
-        actions: int = 1
-        bonus_actions: int = 1
-        reactions: int = 1
-        movement: int = 30
-    }
-
-    event SpellCast(caster: Character, target: Character) {}
-
-    // Hook that mutates through trigger payload entity + group alias
-    hook DrainOnCast on receiver: Character (trigger: SpellCast(caster: receiver)) {
-        if trigger.target has Spellcasting as sc {
-            trigger.target.sc.spell_slots -= 1
-        }
-    }
-
-    // Action that emits the event
-    action CastSpell on caster: Character with Spellcasting as sc (target: Character) {
-        resolve {
-            caster.sc.spell_slots -= 1
-            emit SpellCast(caster: caster, target: target)
-        }
-    }
-
-    action AwakeMagic on gm: Character (target: Character, slots: int, dc: int) {
-        resolve {
-            grant target.Spellcasting { spell_slots: slots, spell_dc: dc }
-        }
-    }
-}
-"#;
-
-#[test]
-fn alias_nested_entity_trigger_write() {
-    let (program, result) = setup_from_source(NESTED_ENTITY_ALIAS_SOURCE);
-    let interp = Interpreter::new(&program, &result.env).unwrap();
-    let mut state = GameState::new();
-    let gm = add_character(&mut state, "GM", 1, 999);
-    let wizard = add_character(&mut state, "Wizard", 5, 30);
-    let target = add_character(&mut state, "Target", 3, 20);
-    state.set_turn_budget(&gm, standard_turn_budget());
-    state.set_turn_budget(&wizard, standard_turn_budget());
-
-    // Grant Spellcasting to both wizard and target
-    let adapter = StateAdapter::new(state);
-    let mut handler = ScriptedHandler::with_responses(vec![
-        Response::Acknowledged, // AwakeMagic for wizard
-        Response::Acknowledged, // AwakeMagic for target
-    ]);
-    adapter.run(&mut handler, |state, eff_handler| {
-        interp
-            .execute_action(
-                state,
-                eff_handler,
-                "AwakeMagic",
-                gm,
-                vec![Value::Entity(wizard), Value::Int(4), Value::Int(15)],
-            )
-            .unwrap();
-        interp
-            .execute_action(
-                state,
-                eff_handler,
-                "AwakeMagic",
-                gm,
-                vec![Value::Entity(target), Value::Int(3), Value::Int(12)],
-            )
-            .unwrap();
-    });
-    let mut state = adapter.into_inner();
-    state.set_turn_budget(&wizard, standard_turn_budget());
-
-    // CastSpell: wizard casts on target, hook should drain target's slots
-    let adapter = StateAdapter::new(state);
-    let mut handler = ScriptedHandler::with_responses(vec![Response::Acknowledged]);
-    adapter.run(&mut handler, |state, eff_handler| {
-        interp
-            .execute_action(
-                state,
-                eff_handler,
-                "CastSpell",
-                wizard,
-                vec![Value::Entity(target)],
-            )
-            .unwrap();
-    });
-
-    let final_state = adapter.into_inner();
-
-    // Wizard: spell_slots should go from 4 to 3 (from CastSpell's own cost)
-    let wiz_group = final_state.read_field(&wizard, "Spellcasting").unwrap();
-    match &wiz_group {
-        Value::Struct { fields, .. } => {
-            assert_eq!(fields.get("spell_slots"), Some(&Value::Int(3)));
-        }
-        other => panic!("expected Struct for wizard, got {other:?}"),
-    }
-
-    // Target: spell_slots should go from 3 to 2 (from hook's trigger.target.sc.spell_slots -= 1)
-    let tgt_group = final_state.read_field(&target, "Spellcasting").unwrap();
-    match &tgt_group {
-        Value::Struct { fields, .. } => {
-            assert_eq!(
-                fields.get("spell_slots"),
-                Some(&Value::Int(2)),
-                "hook should have drained target's spell_slots via trigger.target.sc alias"
-            );
-        }
-        other => panic!("expected Struct for target, got {other:?}"),
     }
 }

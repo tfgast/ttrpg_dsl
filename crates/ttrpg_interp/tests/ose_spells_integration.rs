@@ -1,18 +1,14 @@
 //! OSE spell metadata integration tests.
 //!
-//! Verifies that ose/ose_spells.ttrpg parses, lowers, type-checks, and
-//! evaluates correctly with dependencies.
-
-use std::collections::BTreeMap;
+//! Verifies that ose/ose_spells.ttrpg parses, lowers, and type-checks
+//! through the multi-file pipeline.
+//!
+//! Runtime table lookup tests have been moved to ose/tests/ose_spells.ttrpg-cli.
 
 use ttrpg_ast::ast::{DeclKind, TopLevel};
 use ttrpg_ast::diagnostic::Severity;
-use ttrpg_interp::effect::{Effect, EffectHandler, Response};
-use ttrpg_interp::reference_state::GameState;
-use ttrpg_interp::value::Value;
-use ttrpg_interp::Interpreter;
 
-fn compile_ose_spells() -> (ttrpg_ast::ast::Program, ttrpg_checker::CheckResult) {
+fn compile_ose_spells() -> ttrpg_ast::ast::Program {
     let core_source = include_str!("../../../ose/ose_core.ttrpg");
     let spells_source = include_str!("../../../ose/ose_spells.ttrpg");
 
@@ -49,27 +45,12 @@ fn compile_ose_spells() -> (ttrpg_ast::ast::Program, ttrpg_checker::CheckResult)
         errors.iter().map(|d| &d.message).collect::<Vec<_>>()
     );
 
-    (program.clone(), result)
-}
-
-struct NullHandler;
-impl EffectHandler for NullHandler {
-    fn handle(&mut self, _effect: Effect) -> Response {
-        Response::Acknowledged
-    }
-}
-
-fn spell_save_type_variant(name: &str) -> Value {
-    Value::EnumVariant {
-        enum_name: "SpellSaveType".into(),
-        variant: name.into(),
-        fields: BTreeMap::new(),
-    }
+    program.clone()
 }
 
 #[test]
 fn ose_spells_parses_and_typechecks() {
-    let (program, _) = compile_ose_spells();
+    let program = compile_ose_spells();
     let system_names: Vec<_> = program
         .items
         .iter()
@@ -84,7 +65,7 @@ fn ose_spells_parses_and_typechecks() {
 
 #[test]
 fn ose_spells_has_expected_decls() {
-    let (program, _) = compile_ose_spells();
+    let program = compile_ose_spells();
 
     let mut has_spell_save_enum = false;
     let mut has_spell_save_table = false;
@@ -115,80 +96,4 @@ fn ose_spells_has_expected_decls() {
     assert!(has_spell_save_enum, "expected SpellSaveType enum");
     assert!(has_spell_save_table, "expected spell_save_type table");
     assert!(has_spell_damage_table, "expected spell_damage_dice table");
-}
-
-#[test]
-fn spell_save_type_lookup_examples() {
-    let (program, result) = compile_ose_spells();
-    let interp = Interpreter::new(&program, &result.env).unwrap();
-    let state = GameState::new();
-    let mut handler = NullHandler;
-
-    let cloudkill = interp
-        .evaluate_derive(
-            &state,
-            &mut handler,
-            "spell_save_type",
-            vec![Value::Str("Cloudkill".into())],
-        )
-        .unwrap();
-    assert_eq!(cloudkill, spell_save_type_variant("SvDeath"));
-
-    let hold_person = interp
-        .evaluate_derive(
-            &state,
-            &mut handler,
-            "spell_save_type",
-            vec![Value::Str("Hold Person".into())],
-        )
-        .unwrap();
-    assert_eq!(hold_person, spell_save_type_variant("SvSpells"));
-
-    let unknown = interp
-        .evaluate_derive(
-            &state,
-            &mut handler,
-            "spell_save_type",
-            vec![Value::Str("Unknown Spell".into())],
-        )
-        .unwrap();
-    assert_eq!(unknown, spell_save_type_variant("NoSave"));
-}
-
-#[test]
-fn spell_damage_dice_lookup_examples() {
-    let (program, result) = compile_ose_spells();
-    let interp = Interpreter::new(&program, &result.env).unwrap();
-    let state = GameState::new();
-    let mut handler = NullHandler;
-
-    let fire_ball = interp
-        .evaluate_derive(
-            &state,
-            &mut handler,
-            "spell_damage_dice",
-            vec![Value::Str("Fire Ball".into())],
-        )
-        .unwrap();
-    assert_eq!(fire_ball, Value::Str("1d6 per caster level".into()));
-
-    let sleep = interp
-        .evaluate_derive(
-            &state,
-            &mut handler,
-            "spell_damage_dice",
-            vec![Value::Str("Sleep".into())],
-        )
-        .unwrap();
-    assert_eq!(sleep, Value::Str("2d8 HD affected".into()));
-
-    let unknown = interp
-        .evaluate_derive(
-            &state,
-            &mut handler,
-            "spell_damage_dice",
-            vec![Value::Str("Unknown Spell".into())],
-        )
-        .unwrap();
-    assert_eq!(unknown, Value::Str(String::new()));
 }

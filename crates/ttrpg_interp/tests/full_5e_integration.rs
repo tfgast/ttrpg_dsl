@@ -1,8 +1,9 @@
 //! Full D&D 5e integration tests.
 //!
-//! Runs the real 5e example (`spec/v0/04_full_example.ttrpg`, 321 lines) through
-//! the entire pipeline (parse → lower → check → interpret), exercising every layer
-//! together with realistic game scenarios.
+//! The scalar derive and weapon smoke coverage now lives in
+//! `tests/full_5e.ttrpg-cli`, which loads the canonical external example file.
+//! These Rust tests keep the richer runtime scenarios that still depend on
+//! interpreter-managed entities, host effects, and opaque `Position` values.
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
@@ -338,79 +339,6 @@ fn pipeline_parses_and_builds_interpreter() {
 // ════════════════════════════════════════════════════════════════
 
 #[test]
-fn modifier_scores() {
-    let (program, result) = setup();
-    let interp = Interpreter::new(&program, &result.env).unwrap();
-    let state = GameState::new();
-    let mut handler = ScriptedHandler::new();
-
-    // modifier(10) = floor((10-10)/2) = 0
-    let val = interp
-        .evaluate_derive(&state, &mut handler, "modifier", vec![Value::Int(10)])
-        .unwrap();
-    assert_eq!(val, Value::Int(0));
-
-    // modifier(16) = floor((16-10)/2) = 3
-    let val = interp
-        .evaluate_derive(&state, &mut handler, "modifier", vec![Value::Int(16)])
-        .unwrap();
-    assert_eq!(val, Value::Int(3));
-
-    // modifier(8) = floor((8-10)/2) = floor(-1.0) = -1
-    let val = interp
-        .evaluate_derive(&state, &mut handler, "modifier", vec![Value::Int(8)])
-        .unwrap();
-    assert_eq!(val, Value::Int(-1));
-
-    // modifier(15) = floor((15-10)/2) = floor(2.5) = 2
-    let val = interp
-        .evaluate_derive(&state, &mut handler, "modifier", vec![Value::Int(15)])
-        .unwrap();
-    assert_eq!(val, Value::Int(2));
-}
-
-#[test]
-fn proficiency_bonus_levels() {
-    let (program, result) = setup();
-    let interp = Interpreter::new(&program, &result.env).unwrap();
-    let state = GameState::new();
-    let mut handler = ScriptedHandler::new();
-
-    // proficiency_bonus(1) = floor((1-1)/4)+2 = 2
-    let val = interp
-        .evaluate_derive(
-            &state,
-            &mut handler,
-            "proficiency_bonus",
-            vec![Value::Int(1)],
-        )
-        .unwrap();
-    assert_eq!(val, Value::Int(2));
-
-    // proficiency_bonus(5) = floor((5-1)/4)+2 = floor(1)+2 = 3
-    let val = interp
-        .evaluate_derive(
-            &state,
-            &mut handler,
-            "proficiency_bonus",
-            vec![Value::Int(5)],
-        )
-        .unwrap();
-    assert_eq!(val, Value::Int(3));
-
-    // proficiency_bonus(9) = floor((9-1)/4)+2 = floor(2)+2 = 4
-    let val = interp
-        .evaluate_derive(
-            &state,
-            &mut handler,
-            "proficiency_bonus",
-            vec![Value::Int(9)],
-        )
-        .unwrap();
-    assert_eq!(val, Value::Int(4));
-}
-
-#[test]
 fn initial_budget() {
     let (program, result) = setup();
     let interp = Interpreter::new(&program, &result.env).unwrap();
@@ -704,73 +632,6 @@ fn choose_attack_ability_finesse_str_higher() {
         .unwrap();
     // STR mod (3) > DEX mod (2) → else branch → weapon.ability (DEX for shortsword)
     assert_eq!(val, enum_variant("Ability", "DEX"));
-}
-
-#[test]
-fn d20_expr_normal_mode() {
-    let (program, result) = setup();
-    let interp = Interpreter::new(&program, &result.env).unwrap();
-    let state = GameState::new();
-    let mut handler = ScriptedHandler::new();
-
-    // d20_expr(score=16, proficiency=2, bonus=0, mode=normal)
-    // modifier(16) = 3, total modifier = 3 + 2 + 0 = 5
-    let val = interp
-        .evaluate_mechanic(
-            &state,
-            &mut handler,
-            "d20_expr",
-            vec![
-                Value::Int(16),
-                Value::Int(2),
-                Value::Int(0),
-                enum_variant("RollMode", "normal"),
-            ],
-        )
-        .unwrap();
-
-    match val {
-        Value::DiceExpr(expr) => {
-            assert_eq!(expr.total_dice_count(), 1);
-            assert_eq!(expr.groups[0].sides, 20);
-            assert_eq!(expr.groups[0].filter, None);
-            assert_eq!(expr.modifier, 5); // 3 + 2 + 0
-        }
-        other => panic!("expected DiceExpr, got {other:?}"),
-    }
-}
-
-#[test]
-fn d20_expr_advantage_mode() {
-    let (program, result) = setup();
-    let interp = Interpreter::new(&program, &result.env).unwrap();
-    let state = GameState::new();
-    let mut handler = ScriptedHandler::new();
-
-    // d20_expr(score=16, proficiency=2, bonus=0, mode=advantage)
-    let val = interp
-        .evaluate_mechanic(
-            &state,
-            &mut handler,
-            "d20_expr",
-            vec![
-                Value::Int(16),
-                Value::Int(2),
-                Value::Int(0),
-                enum_variant("RollMode", "advantage"),
-            ],
-        )
-        .unwrap();
-
-    match val {
-        Value::DiceExpr(expr) => {
-            assert_eq!(expr.total_dice_count(), 2);
-            assert_eq!(expr.groups[0].sides, 20);
-            assert_eq!(expr.groups[0].filter, Some(DiceFilter::KeepHighest(1)));
-            assert_eq!(expr.modifier, 5);
-        }
-        other => panic!("expected DiceExpr, got {other:?}"),
-    }
 }
 
 #[test]

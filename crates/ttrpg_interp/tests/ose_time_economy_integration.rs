@@ -1,16 +1,12 @@
 //! OSE time/economy constants integration tests.
 //!
-//! Verifies that ose/ose_time_economy.ttrpg parses, lowers, type-checks, and
-//! evaluates correctly with dependencies.
-
-use std::collections::BTreeMap;
+//! Verifies that ose/ose_time_economy.ttrpg parses, lowers, and type-checks
+//! with dependencies.
+//!
+//! Runtime value tests have been moved to ose/tests/ose_time_economy.ttrpg-cli.
 
 use ttrpg_ast::ast::{DeclKind, TopLevel};
 use ttrpg_ast::diagnostic::Severity;
-use ttrpg_interp::effect::{Effect, EffectHandler, Response};
-use ttrpg_interp::reference_state::GameState;
-use ttrpg_interp::value::Value;
-use ttrpg_interp::Interpreter;
 
 fn compile_ose_time_economy() -> (ttrpg_ast::ast::Program, ttrpg_checker::CheckResult) {
     let core_source = include_str!("../../../ose/ose_core.ttrpg");
@@ -51,30 +47,6 @@ fn compile_ose_time_economy() -> (ttrpg_ast::ast::Program, ttrpg_checker::CheckR
 
     (program.clone(), result)
 }
-
-struct NullHandler;
-impl EffectHandler for NullHandler {
-    fn handle(&mut self, _effect: Effect) -> Response {
-        Response::Acknowledged
-    }
-}
-
-fn light_kind(name: &str) -> Value {
-    Value::EnumVariant {
-        enum_name: "LightSourceKind".into(),
-        variant: name.into(),
-        fields: BTreeMap::new(),
-    }
-}
-
-fn armour_kind(name: &str) -> Value {
-    Value::EnumVariant {
-        enum_name: "ArmourKind".into(),
-        variant: name.into(),
-        fields: BTreeMap::new(),
-    }
-}
-
 #[test]
 fn ose_time_economy_parses_and_typechecks() {
     let (program, _) = compile_ose_time_economy();
@@ -138,130 +110,4 @@ fn ose_time_economy_has_expected_decls() {
     assert!(has_armour_table, "expected armour_weight_cn table");
     assert!(has_rest_interval, "expected rest_interval_turns derive");
     assert!(has_training_cost, "expected training_cost_gp derive");
-}
-
-#[test]
-fn light_rest_day_and_training_values() {
-    let (program, result) = compile_ose_time_economy();
-    let interp = Interpreter::new(&program, &result.env).unwrap();
-    let state = GameState::new();
-    let mut handler = NullHandler;
-
-    assert_eq!(
-        interp
-            .evaluate_derive(
-                &state,
-                &mut handler,
-                "light_source_turns",
-                vec![light_kind("Torch")],
-            )
-            .unwrap(),
-        Value::Int(6)
-    );
-    assert_eq!(
-        interp
-            .evaluate_derive(
-                &state,
-                &mut handler,
-                "light_source_turns",
-                vec![light_kind("Lantern")],
-            )
-            .unwrap(),
-        Value::Int(24)
-    );
-
-    assert_eq!(
-        interp
-            .evaluate_derive(&state, &mut handler, "rest_interval_turns", vec![])
-            .unwrap(),
-        Value::Int(5)
-    );
-    assert_eq!(
-        interp
-            .evaluate_derive(&state, &mut handler, "rest_overdue_penalty", vec![])
-            .unwrap(),
-        Value::Int(-1)
-    );
-    assert_eq!(
-        interp
-            .evaluate_derive(&state, &mut handler, "day_length_turns", vec![])
-            .unwrap(),
-        Value::Int(144)
-    );
-    assert_eq!(
-        interp
-            .evaluate_derive(
-                &state,
-                &mut handler,
-                "training_cost_gp",
-                vec![Value::Int(3)],
-            )
-            .unwrap(),
-        Value::Int(300)
-    );
-}
-
-#[test]
-fn coin_and_armour_tables() {
-    let (program, result) = compile_ose_time_economy();
-    let interp = Interpreter::new(&program, &result.env).unwrap();
-    let state = GameState::new();
-    let mut handler = NullHandler;
-
-    assert_eq!(
-        interp
-            .evaluate_derive(
-                &state,
-                &mut handler,
-                "coin_gp_value_x100",
-                vec![Value::Str("cp".into())],
-            )
-            .unwrap(),
-        Value::Int(1)
-    );
-    assert_eq!(
-        interp
-            .evaluate_derive(
-                &state,
-                &mut handler,
-                "coin_gp_value_x100",
-                vec![Value::Str("pp".into())],
-            )
-            .unwrap(),
-        Value::Int(500)
-    );
-    assert_eq!(
-        interp
-            .evaluate_derive(
-                &state,
-                &mut handler,
-                "coin_gp_value_x100",
-                vec![Value::Str("unknown".into())],
-            )
-            .unwrap(),
-        Value::Int(0)
-    );
-
-    assert_eq!(
-        interp
-            .evaluate_derive(
-                &state,
-                &mut handler,
-                "armour_weight_cn",
-                vec![armour_kind("Plate")],
-            )
-            .unwrap(),
-        Value::Int(500)
-    );
-    assert_eq!(
-        interp
-            .evaluate_derive(
-                &state,
-                &mut handler,
-                "armour_weight_cn",
-                vec![armour_kind("Shield")],
-            )
-            .unwrap(),
-        Value::Int(100)
-    );
 }

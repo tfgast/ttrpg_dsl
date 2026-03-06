@@ -1,18 +1,15 @@
 //! OSE exploration orchestration integration tests.
 //!
-//! Verifies that ose/ose_exploration.ttrpg parses, lowers, type-checks, and
-//! evaluates correctly with dependencies.
-
-use std::collections::{BTreeMap, VecDeque};
+//! Verifies that ose/ose_exploration.ttrpg parses, lowers, and type-checks
+//! through the multi-file pipeline.
+//!
+//! Runtime derive/mechanic tests have been moved to
+//! ose/tests/ose_exploration.ttrpg-cli.
 
 use ttrpg_ast::ast::{DeclKind, TopLevel};
 use ttrpg_ast::diagnostic::Severity;
-use ttrpg_interp::effect::{Effect, EffectHandler, Response};
-use ttrpg_interp::reference_state::GameState;
-use ttrpg_interp::value::{DiceExpr, RollResult, Value};
-use ttrpg_interp::Interpreter;
 
-fn compile_ose_exploration() -> (ttrpg_ast::ast::Program, ttrpg_checker::CheckResult) {
+fn compile_ose_exploration() -> ttrpg_ast::ast::Program {
     let core_source = include_str!("../../../ose/ose_core.ttrpg");
     let exploration_source = include_str!("../../../ose/ose_exploration.ttrpg");
 
@@ -49,68 +46,12 @@ fn compile_ose_exploration() -> (ttrpg_ast::ast::Program, ttrpg_checker::CheckRe
         errors.iter().map(|d| &d.message).collect::<Vec<_>>()
     );
 
-    (program.clone(), result)
-}
-
-struct NullHandler;
-impl EffectHandler for NullHandler {
-    fn handle(&mut self, _effect: Effect) -> Response {
-        Response::Acknowledged
-    }
-}
-
-struct ScriptedHandler {
-    script: VecDeque<Response>,
-}
-
-impl ScriptedHandler {
-    fn with_responses(responses: Vec<Response>) -> Self {
-        ScriptedHandler {
-            script: responses.into(),
-        }
-    }
-}
-
-impl EffectHandler for ScriptedHandler {
-    fn handle(&mut self, _effect: Effect) -> Response {
-        self.script.pop_front().unwrap_or(Response::Acknowledged)
-    }
-}
-
-fn action_val(name: &str) -> Value {
-    enum_variant("ExplorationAction", name)
-}
-
-fn phase_val(name: &str) -> Value {
-    enum_variant("ExplorationPhase", name)
-}
-
-fn action_phase_val(name: &str) -> Value {
-    enum_variant("ExplorationActionPhase", name)
-}
-
-fn enum_variant(enum_name: &str, variant: &str) -> Value {
-    Value::EnumVariant {
-        enum_name: enum_name.into(),
-        variant: variant.into(),
-        fields: BTreeMap::new(),
-    }
-}
-
-fn scripted_roll(count: u32, sides: u32, die: i64) -> Response {
-    Response::Rolled(RollResult {
-        expr: DiceExpr::single(count, sides, None, 0),
-        dice: vec![die],
-        kept: vec![die],
-        modifier: 0,
-        total: die,
-        unmodified: die,
-    })
+    program.clone()
 }
 
 #[test]
 fn ose_exploration_parses_and_typechecks() {
-    let (program, _) = compile_ose_exploration();
+    let program = compile_ose_exploration();
     let system_names: Vec<_> = program
         .items
         .iter()
@@ -125,7 +66,7 @@ fn ose_exploration_parses_and_typechecks() {
 
 #[test]
 fn ose_exploration_has_expected_decls() {
-    let (program, _) = compile_ose_exploration();
+    let program = compile_ose_exploration();
 
     let mut has_action_enum = false;
     let mut has_phase_enum = false;
@@ -193,145 +134,4 @@ fn ose_exploration_has_expected_decls() {
         has_wandering_roll,
         "expected wandering_monster_roll mechanic"
     );
-}
-
-#[test]
-fn exploration_phase_tables_and_derives() {
-    let (program, result) = compile_ose_exploration();
-    let interp = Interpreter::new(&program, &result.env).unwrap();
-    let state = GameState::new();
-    let mut handler = NullHandler;
-
-    let turn_phases = interp
-        .evaluate_derive(&state, &mut handler, "exploration_turn_phases", vec![])
-        .unwrap();
-    assert_eq!(
-        turn_phases,
-        Value::List(vec![
-            phase_val("CheckLight"),
-            phase_val("AdvanceTime"),
-            phase_val("CheckRest"),
-            phase_val("ExecuteAction"),
-            phase_val("LightSummary"),
-            phase_val("WanderingMonsterCheck"),
-        ])
-    );
-
-    let move_phases = interp
-        .evaluate_derive(
-            &state,
-            &mut handler,
-            "exploration_action_phases",
-            vec![action_val("ExpMove")],
-        )
-        .unwrap();
-    assert_eq!(
-        move_phases,
-        Value::List(vec![
-            action_phase_val("ValidateDoor"),
-            action_phase_val("TransitionRoom"),
-            action_phase_val("CheckTrap"),
-            action_phase_val("SpawnMonsters"),
-        ])
-    );
-}
-
-#[test]
-fn skip_exploration_phase_logic() {
-    let (program, result) = compile_ose_exploration();
-    let interp = Interpreter::new(&program, &result.env).unwrap();
-    let state = GameState::new();
-    let mut handler = NullHandler;
-
-    let check_light = interp
-        .evaluate_derive(
-            &state,
-            &mut handler,
-            "skip_exploration_phase",
-            vec![
-                phase_val("CheckLight"),
-                Value::Bool(false),
-                Value::Bool(true),
-            ],
-        )
-        .unwrap();
-    assert_eq!(check_light, Value::Bool(false));
-
-    let blocked_by_darkness = interp
-        .evaluate_derive(
-            &state,
-            &mut handler,
-            "skip_exploration_phase",
-            vec![
-                phase_val("AdvanceTime"),
-                Value::Bool(false),
-                Value::Bool(true),
-            ],
-        )
-        .unwrap();
-    assert_eq!(blocked_by_darkness, Value::Bool(true));
-
-    let no_rest_needed = interp
-        .evaluate_derive(
-            &state,
-            &mut handler,
-            "skip_exploration_phase",
-            vec![
-                phase_val("CheckRest"),
-                Value::Bool(true),
-                Value::Bool(false),
-            ],
-        )
-        .unwrap();
-    assert_eq!(no_rest_needed, Value::Bool(true));
-}
-
-#[test]
-fn wandering_search_and_listen_mechanics() {
-    let (program, result) = compile_ose_exploration();
-    let interp = Interpreter::new(&program, &result.env).unwrap();
-    let state = GameState::new();
-
-    let mut handler = NullHandler;
-    let interval = interp
-        .evaluate_derive(&state, &mut handler, "wandering_monster_interval", vec![])
-        .unwrap();
-    assert_eq!(interval, Value::Int(2));
-
-    // wandering_monster_roll: 1 triggers, 3 does not.
-    let mut handler = ScriptedHandler::with_responses(vec![scripted_roll(1, 6, 1)]);
-    let triggered = interp
-        .evaluate_mechanic(&state, &mut handler, "wandering_monster_roll", vec![])
-        .unwrap();
-    assert_eq!(triggered, Value::Bool(true));
-
-    let mut handler = ScriptedHandler::with_responses(vec![scripted_roll(1, 6, 3)]);
-    let not_triggered = interp
-        .evaluate_mechanic(&state, &mut handler, "wandering_monster_roll", vec![])
-        .unwrap();
-    assert_eq!(not_triggered, Value::Bool(false));
-
-    // search_room_roll: elf threshold=2.
-    let mut handler = ScriptedHandler::with_responses(vec![scripted_roll(1, 6, 2)]);
-    let elf_search_success = interp
-        .evaluate_mechanic(
-            &state,
-            &mut handler,
-            "search_room_roll",
-            vec![Value::Bool(true)],
-        )
-        .unwrap();
-    assert_eq!(elf_search_success, Value::Bool(true));
-
-    // listen_at_door_roll: non-demihuman threshold=1, roll 2 fails.
-    let mut handler = ScriptedHandler::with_responses(vec![scripted_roll(1, 6, 2)]);
-    let human_listen_fail = interp
-        .evaluate_mechanic(
-            &state,
-            &mut handler,
-            "listen_at_door_roll",
-            vec![Value::Bool(false)],
-        )
-        .unwrap();
-    assert_eq!(human_listen_fail, Value::Bool(false));
 }
