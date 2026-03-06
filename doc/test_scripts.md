@@ -1,0 +1,283 @@
+# Writing .ttrpg-cli Test Scripts
+
+Test scripts are an alternative to Rust integration tests for validating
+`.ttrpg` rule modules. They use the same REPL commands available in
+interactive mode, executed sequentially from a file.
+
+**When to use scripts vs Rust tests:**
+
+| Use scripts for | Keep in Rust for |
+|-----------------|------------------|
+| Derive/table value checks | AST structure inspection (enum counts, field counts) |
+| Mechanic evaluation with dice | Custom EffectHandler logic |
+| Action execution + entity state | Interpreter/checker API surface tests |
+| Error case validation | Tests needing programmatic loops |
+
+## Running tests
+
+```bash
+just test-scripts           # Run all .ttrpg-cli scripts
+ttrpg run path/to/test.ttrpg-cli  # Run a single script
+```
+
+Scripts exit 0 on success, 1 if any assertion fails. Failed assertions
+print the file, line number, and values.
+
+## File layout
+
+Place test scripts alongside the rule modules they test:
+
+```
+osric/tests/osric_combat.ttrpg-cli
+osric/tests/osric_saves.ttrpg-cli
+ose/tests/ose_combat.ttrpg-cli
+```
+
+`just test-scripts` discovers `osric/tests/*.ttrpg-cli` and
+`ose/tests/*.ttrpg-cli` automatically.
+
+## Script structure
+
+Every script starts by loading the source files, then runs assertions:
+
+```
+// Description of what this script tests
+load osric/*.ttrpg
+
+// ── Section heading ─────────────────────────
+assert_eq some_derive(1), expected_value
+```
+
+Comments use `//`. Blank lines are ignored.
+
+## Core commands
+
+### Asserting values
+
+```
+// Assert an expression evaluates to true
+assert 2 + 3 == 5
+
+// Assert two expressions are equal
+assert_eq fighter_group_bthb(5), 4
+
+// Assert a command fails
+assert_err call missile_range_penalty(Feet { value: 50 }, Feet { value: 0 })
+```
+
+`assert_eq` evaluates both sides as DSL expressions. Function calls
+(derives, mechanics) can be called directly as expressions:
+
+```
+assert_eq bthb(Fighter, 5), 4
+assert_eq damage_roll(1d8), 5
+```
+
+### Controlling dice
+
+Queue deterministic rolls before any expression or command that rolls dice:
+
+```
+// Queue a single roll
+rolls 15
+assert_eq attack_roll_aac(4, 15), AttackOutcome.Hit
+
+// Queue multiple rolls (consumed left to right)
+rolls 15 6
+do MeleeAttack(attacker, target)
+
+// Clear the queue (use between unrelated test sections)
+rolls clear
+```
+
+Always `rolls clear` before a new section if a previous test might have
+leftover unconsumed rolls.
+
+### Spawning entities
+
+```
+spawn Character fighter {
+    name: "Fighter",
+    classes: [ClassLevel { class: Fighter, level: 5 }],
+    abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 },
+    HitPoints { max_hp: 30, hp: 30 },
+    EquipmentSlots { wielded_main: some(Melee(SwordLong)) }
+}
+```
+
+The handle (`fighter`) is how you refer to this entity in later commands.
+Spawn blocks support:
+- Base fields: `name: "Fighter"`
+- Struct literals: `ClassLevel { class: Fighter, level: 5 }`
+- Included groups: `HitPoints { max_hp: 30, hp: 30 }`
+- Optional groups: `EquipmentSlots { ... }`
+- Option values: `some(Melee(SwordLong))`, `none`
+
+Note: spawn lines can be long. This is fine -- each command is one line.
+
+### Modifying entities
+
+```
+set fighter.hp = 20
+set fighter.hp -= 5
+set fighter.hp += 3
+```
+
+### Executing actions
+
+```
+do MeleeAttack(attacker, target)
+do MissileAttack(archer, target, Feet { value: 60 })
+```
+
+The first argument is the actor handle, remaining arguments are action
+parameters. After execution, assert on entity state:
+
+```
+rolls 15 6
+do MeleeAttack(attacker, target)
+assert_eq target.hp, 4
+```
+
+### Calling functions directly
+
+Use `call` as a command (for `assert_err`) or call directly in expressions:
+
+```
+// In assert_eq, just call the function as an expression
+assert_eq bthb(Fighter, 5), 4
+
+// For assert_err, use the call command
+assert_err call missile_range_penalty(Feet { value: 50 }, Feet { value: 0 })
+```
+
+### Inspecting state (debugging)
+
+These print to stdout and are useful while writing tests:
+
+```
+inspect fighter           // Show all fields
+inspect fighter.hp        // Show one field
+state                     // Show all entities
+entity Character          // Show entity type schema
+actions                   // List all actions
+mechanics                 // List all derives/mechanics
+```
+
+## Value syntax
+
+### Integers and booleans
+```
+42, -3, true, false
+```
+
+### Strings
+```
+"hello world"
+```
+
+### Dice expressions
+```
+1d8, 2d6 + 1, 1d4 - 1
+```
+
+### Enum variants
+
+Bare variant names work when the name is unique across all enums:
+
+```
+assert_eq bthb(Fighter, 5), 4    // Fighter is unique
+```
+
+When a variant name appears in multiple enums, qualify it:
+
+```
+assert_eq bthb(Class.Cleric, 7), 4    // Cleric needs qualifying
+```
+
+> **Known issue (tdsl-ktdj):** Bare variant names that aren't uniquely
+> owned by a single enum fail with "undefined variable". Use `Enum.Variant`
+> syntax as a workaround. When this is fixed, bare names should work
+> everywhere.
+
+### Enum variants with fields
+
+Use call-style syntax (positional arguments):
+
+```
+some(Melee(SwordLong))           // WieldedItem.Melee with weapon field
+Missile(BowLong)                 // WieldedItem.Missile with weapon field
+```
+
+> **Known issue (tdsl-3htm):** The struct-body syntax
+> `WieldedItem.Melee { weapon: SwordLong }` fails in expressions with
+> "unexpected trailing token". Use call-style `Melee(SwordLong)` instead.
+> The bare form `Melee { weapon: SwordLong }` works in `eval` but not
+> inside `some(...)`.
+
+### Struct literals
+
+```
+Feet { value: 70 }
+ClassLevel { class: Fighter, level: 5 }
+Armor { armour_type: PlateMail }
+```
+
+### Option values
+
+```
+some(Melee(SwordLong))    // option with a value
+none                       // empty option
+```
+
+### Lists and maps
+
+```
+[ClassLevel { class: Fighter, level: 5 }]             // list
+{ STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }  // map
+```
+
+### Field access on results
+
+Chain `.field` to access struct fields from function results:
+
+```
+assert_eq resolve_melee_attack(atk, tgt, SwordLong).outcome, AttackOutcome.Hit
+assert_eq encounter_sequence().surprise, SurpriseState.NoSurprise
+```
+
+> **Known issue (tdsl-wsdi):** Testing multiple fields of a returned
+> struct requires calling the function multiple times (with fresh dice
+> rolls each time), since there are no let-bindings in scripts yet.
+
+## Known limitations
+
+### Noisy output (tdsl-zv0s)
+
+Every `RollDice`, `ActionStarted`, `MutateField`, etc. event prints to
+stdout during script execution. This doesn't affect pass/fail but makes
+output hard to scan. A `--quiet` mode is planned.
+
+### What still needs Rust tests
+
+- **AST structure verification** -- checking that a system block contains
+  specific enums, structs, or tables by name and field count. The REPL has
+  `types`/`actions`/`mechanics` commands but they're display-only, not
+  assertable.
+
+- **Custom effect handlers** -- tests that intercept specific effects to
+  verify event payloads (e.g., confirming a `Damaged` event was emitted
+  with the right fields).
+
+- **Interpreter API tests** -- anything testing the Rust API surface
+  (`StateAdapter`, `StateProvider`, etc.) rather than the DSL rules.
+
+## Tips
+
+- Use `entity <Name>` to see the full schema before writing spawn blocks.
+- Use `inspect <handle>` to debug unexpected assertion failures.
+- Group related assertions under `// ── Section ───` comment headers.
+- Use `rolls clear` between test sections to avoid stale roll queues.
+- One script per rule module (e.g., `osric_combat.ttrpg-cli` for
+  `osric_combat.ttrpg`).
+- See `osric/tests/osric_combat.ttrpg-cli` as a reference implementation.
