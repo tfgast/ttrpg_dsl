@@ -50,3 +50,5 @@ issue-prefix: "tdsl"
 # - linear.api-key
 # - github.org
 # - github.repo
+
+dolt.auto-commit: "batch"

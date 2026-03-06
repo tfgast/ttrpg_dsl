@@ -268,3 +268,239 @@ rolls clear
 rolls 14 3
 do MissileAttack(archer, arrow_tgt, Feet { value: 60 })
 assert_eq arrow_tgt.hp, 7
+
+// ── deal_damage derives ─────────────────────────────────────────
+
+spawn Character dmg_src { name: "Fighter", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 } }
+spawn Character dmg_tgt { name: "Target", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 } }
+
+assert_eq deal_damage(dmg_tgt, dmg_src, 7, DamageType.Slashing), 7
+assert_eq deal_damage(dmg_tgt, dmg_src, 3), 3
+
+// ── TakeDamage action ───────────────────────────────────────────
+
+spawn Character td_atk { name: "Fighter", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 } }
+spawn Character td_tgt { name: "Target", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 } }
+do TakeDamage(td_tgt, td_atk, 6, DamageType.Slashing)
+assert_eq td_tgt.hp, 4
+
+spawn Character td_kill_tgt { name: "Victim", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 3, hp: 3 } }
+do TakeDamage(td_kill_tgt, td_atk, 5, DamageType.Blunt)
+assert_eq td_kill_tgt.hp, -2
+assert_condition td_kill_tgt, Unconscious
+assert_condition td_kill_tgt, Bleeding
+
+spawn Monster td_orc { name: "Orc", hit_dice: 1d8, max_hp: 8, hp: 8, ac: 14, attacks: [MonsterAttack { name: "Club", damage: 1d6 }] }
+do TakeDamage(td_orc, td_atk, 3, DamageType.Slashing)
+assert_eq td_orc.hp, 5
+
+spawn Monster td_goblin { name: "Goblin", hit_dice: 1d8 - 1, max_hp: 3, hp: 3, ac: 14, attacks: [MonsterAttack { name: "Sword", damage: 1d6 }] }
+do TakeDamage(td_goblin, td_atk, 10, DamageType.Blunt)
+assert_eq td_goblin.hp, 0
+assert_condition td_goblin, Dead
+
+// ── Backstab derives and action ─────────────────────────────────
+
+assert_eq thief_backstab_multiplier(1), 2
+assert_eq thief_backstab_multiplier(8), 3
+assert_eq thief_backstab_multiplier(12), 4
+assert_eq thief_backstab_multiplier(16), 5
+assert_eq thief_backstab_multiplier(17), 6
+
+assert_eq assassin_backstab_multiplier(1), 2
+assert_eq assassin_backstab_multiplier(8), 3
+assert_eq assassin_backstab_multiplier(12), 4
+assert_eq assassin_backstab_multiplier(17), 5
+
+assert_eq backstab_multiplier(Thief, 17), 6
+assert_eq backstab_multiplier(Assassin, 17), 5
+assert_eq backstab_attack_bonus(), 4
+
+spawn Character bs_thief_check { name: "Thief", classes: [ClassLevel { class: Thief, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 } }
+spawn Character bs_assassin_check { name: "Assassin", classes: [ClassLevel { class: Assassin, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 } }
+spawn Character bs_fighter_check { name: "Fighter", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 } }
+
+assert character_can_backstab(bs_thief_check)
+assert character_can_backstab(bs_assassin_check)
+assert (character_can_backstab(bs_fighter_check)) == false
+
+spawn Character bs_mult_atk { name: "Attacker", classes: [ClassLevel { class: Thief, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 } }
+spawn Character bs_mult_tgt { name: "Target", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 } }
+
+rolls clear
+rolls 18 3
+let bs_mult = resolve_melee_attack(bs_mult_atk, bs_mult_tgt, Dagger, 0, RollMode.Normal, false, 3)
+assert_eq bs_mult.outcome, AttackOutcome.Hit
+assert_eq bs_mult.damage, 9
+
+spawn Character bs_atk { name: "Sneak", classes: [ClassLevel { class: Thief, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 18, CON: 12, CHA: 12 }, ancestry: Halfling, HitPoints { max_hp: 20, hp: 20 }, EquipmentSlots { wielded_main: some(Melee(Dagger)) } }
+spawn Character bs_tgt { name: "Guard", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 } }
+
+rolls clear
+rolls 1 18 3
+do Backstab(bs_atk, bs_tgt)
+assert_eq bs_tgt.hp, 11
+assert_no_condition bs_tgt, RearAttacked
+
+// ── Assassination ───────────────────────────────────────────────
+
+assert_eq assassination_chance(8, 8), 70
+assert_eq assassination_chance(1, 0), 55
+assert_eq assassination_chance(1, 21), 5
+assert_eq assassination_chance(4, 7), 55
+
+spawn Character assn_mech_atk { name: "Shadowblade", classes: [ClassLevel { class: Assassin, level: 8 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots { wielded_main: some(Melee(Dagger)) } }
+spawn Character assn_mech_tgt { name: "Guard", classes: [ClassLevel { class: Fighter, level: 4 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 } }
+
+rolls clear
+rolls 50
+let assn_kill = resolve_assassination(assn_mech_atk, assn_mech_tgt, Dagger, 8)
+assert_eq assn_kill.outcome, AssassinationOutcome.Kill
+assert_eq assn_kill.chance, 70
+
+spawn Character assn_fail_atk { name: "Shadowblade2", classes: [ClassLevel { class: Assassin, level: 4 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots { wielded_main: some(Melee(Dagger)) } }
+spawn Character assn_fail_tgt { name: "Guard2", classes: [ClassLevel { class: Fighter, level: 4 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots { worn_armor: some(Armor { armour_type: Leather }) } }
+
+rolls clear
+rolls 80 18 3
+let assn_hit = resolve_assassination(assn_fail_atk, assn_fail_tgt, Dagger, 6)
+assert_eq assn_hit.outcome, AssassinationOutcome.WeaponHit
+assert_eq assn_hit.damage, 3
+
+spawn Character assn_action_atk { name: "Killer", classes: [ClassLevel { class: Assassin, level: 8 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots { wielded_main: some(Melee(Dagger)) } }
+spawn Character assn_action_tgt { name: "Victim", classes: [ClassLevel { class: Fighter, level: 4 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 } }
+
+rolls clear
+rolls 50
+do Assassinate(assn_action_atk, assn_action_tgt, 8)
+assert_eq assn_action_tgt.hp, -10
+assert_condition assn_action_tgt, Dead
+
+// ── Parry ───────────────────────────────────────────────────────
+
+spawn Character parry_str { name: "Parrier1", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 17, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots { wielded_main: some(Melee(SwordLong)) } }
+assert_eq parry_bonus(parry_str), 1
+
+spawn Character parry_spec { name: "Parrier2", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 17, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots { wielded_main: some(Melee(SwordLong)) }, WeaponSpecialization { spec_weapon: SpecWeapon.SpecMelee { weapon: SwordLong }, spec_level: SpecLevel.Single } }
+assert_eq parry_bonus(parry_spec), 2
+
+spawn Character parry_zero { name: "Parrier3", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots { wielded_main: some(Melee(SwordLong)) } }
+assert_eq parry_bonus(parry_zero), 0
+
+spawn Character parry_def { name: "Parrier4", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 17, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots { wielded_main: some(Melee(SwordLong)), worn_armor: some(Armor { armour_type: ScaleLamellar }) }, WeaponSpecialization { spec_weapon: SpecWeapon.SpecMelee { weapon: SwordLong }, spec_level: SpecLevel.Single } }
+spawn Character parry_atk { name: "Attacker", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 }, EquipmentSlots { wielded_main: some(Melee(SwordLong)) } }
+
+do Parry(parry_def)
+assert_condition parry_def, Parrying
+rolls clear
+rolls 14
+do MeleeAttack(parry_atk, parry_def)
+assert_eq parry_def.hp, 30
+
+spawn Character parry_ctrl_tgt { name: "Target", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots { wielded_main: some(Melee(SwordLong)), worn_armor: some(Armor { armour_type: ScaleLamellar }) } }
+spawn Character parry_ctrl_atk { name: "Attacker2", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 }, EquipmentSlots { wielded_main: some(Melee(SwordLong)) } }
+
+rolls clear
+rolls 14 5
+do MeleeAttack(parry_ctrl_atk, parry_ctrl_tgt)
+assert_eq parry_ctrl_tgt.hp, 25
+
+// ── Two-weapon fighting ────────────────────────────────────────
+
+assert is_valid_offhand_weapon(Dagger)
+assert is_valid_offhand_weapon(HandAxe)
+assert (is_valid_offhand_weapon(SwordLong)) == false
+assert_eq two_weapon_primary_penalty(12), -2
+assert_eq two_weapon_offhand_penalty(12), -4
+assert_eq two_weapon_primary_penalty(18), -1
+assert_eq two_weapon_offhand_penalty(18), -1
+assert_eq two_weapon_offhand_penalty(3), -7
+
+spawn Character dual_atk { name: "DualWielder", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 }, EquipmentSlots { wielded_main: some(Melee(SwordLong)), wielded_off: some(Melee(Dagger)) } }
+spawn Character dual_tgt { name: "Target", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 } }
+
+rolls clear
+rolls 20 5 20 3
+do TwoWeaponAttack(dual_atk, dual_tgt)
+assert_eq dual_tgt.hp, 22
+
+// ── Monster targeting and actions ───────────────────────────────
+
+spawn Monster mon_ac_tgt { name: "Orc", hit_dice: 1d8, max_hp: 8, hp: 8, ac: 14, attacks: [MonsterAttack { name: "Club", damage: 1d6 }] }
+spawn Monster mon_ac_dragon { name: "Dragon", hit_dice: 10d8, max_hp: 50, hp: 50, ac: 18, attacks: [MonsterAttack { name: "Claw", damage: 1d8 }] }
+
+assert_eq effective_target_ac(mon_ac_tgt), 14
+assert_eq effective_target_ac(mon_ac_dragon, true, true, -2), 16
+
+spawn Monster mon_ogre { name: "Ogre", hit_dice: 4d8 + 1, max_hp: 26, hp: 26, ac: 15, attacks: [MonsterAttack { name: "Club", damage: 1d10 }] }
+spawn Monster mon_goblin { name: "Goblin", hit_dice: 1d8 - 1, max_hp: 5, hp: 5, ac: 14, attacks: [MonsterAttack { name: "Sword", damage: 1d6 }] }
+spawn Character mon_victim { name: "Victim", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 } }
+
+rolls clear
+rolls 12 7
+let mon_res = resolve_monster_attack(mon_ogre, mon_goblin, MonsterAttack { name: "Club", damage: 1d10 })
+assert_eq mon_res.outcome, AttackOutcome.Hit
+assert_eq mon_res.damage, 7
+assert_eq mon_res.total_mod, 5
+
+rolls clear
+rolls 15 6
+let mon_hit_char = resolve_monster_attack(mon_ogre, mon_victim, MonsterAttack { name: "Club", damage: 1d10 })
+assert_eq mon_hit_char.outcome, AttackOutcome.Hit
+do TakeDamage(mon_victim, mon_ogre, mon_hit_char.damage, DamageType.Blunt)
+assert_eq mon_victim.hp, 4
+
+spawn Monster mon_rat { name: "Rat", hit_dice: 0d8, max_hp: 1, hp: 1, ac: 10, attacks: [MonsterAttack { name: "Bite", damage: 1d2 }] }
+spawn Character mon_tough { name: "Warrior", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots { worn_armor: some(Armor { armour_type: PlateMail }) } }
+
+rolls clear
+rolls 10
+let mon_miss = resolve_monster_attack(mon_rat, mon_tough, MonsterAttack { name: "Bite", damage: 1d2 })
+assert_eq mon_miss.outcome, AttackOutcome.Miss
+assert_eq mon_miss.damage, 0
+assert_eq mon_tough.hp, 30
+
+spawn Monster mon_ogre2 { name: "Ogre2", hit_dice: 4d8 + 1, max_hp: 26, hp: 26, ac: 15, attacks: [MonsterAttack { name: "Club", damage: 1d10 }] }
+spawn Monster mon_goblin2 { name: "Goblin2", hit_dice: 1d8 - 1, max_hp: 5, hp: 5, ac: 14, attacks: [MonsterAttack { name: "Sword", damage: 1d6 }] }
+
+rolls clear
+rolls 12 4
+let mon_hit_mon = resolve_monster_attack(mon_ogre2, mon_goblin2, MonsterAttack { name: "Club", damage: 1d10 })
+assert_eq mon_hit_mon.outcome, AttackOutcome.Hit
+do TakeDamage(mon_goblin2, mon_ogre2, mon_hit_mon.damage, DamageType.Blunt)
+assert_eq mon_goblin2.hp, 1
+
+// ── Character attacks vs monsters ──────────────────────────────
+
+spawn Character vs_mon_melee { name: "Fighter", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots { wielded_main: some(Melee(SwordLong)) } }
+spawn Monster vs_mon_orc { name: "Orc", hit_dice: 1d8, max_hp: 8, hp: 8, ac: 14, attacks: [MonsterAttack { name: "Club", damage: 1d6 }] }
+
+rolls clear
+rolls 15 5
+do MeleeAttack(vs_mon_melee, vs_mon_orc)
+assert_eq vs_mon_orc.hp, 3
+
+spawn Character vs_mon_archer { name: "Archer", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots { wielded_main: some(Missile(BowLong)) } }
+spawn Monster vs_mon_goblin { name: "Goblin", hit_dice: 1d8 - 1, max_hp: 5, hp: 5, ac: 14, attacks: [MonsterAttack { name: "Sword", damage: 1d6 }] }
+
+rolls clear
+rolls 16 4
+do MissileAttack(vs_mon_archer, vs_mon_goblin, Feet { value: 60 })
+assert_eq vs_mon_goblin.hp, 1
+
+spawn Character vs_mon_charge { name: "Charger", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots { wielded_main: some(Melee(SwordLong)) } }
+spawn Monster vs_mon_charge_tgt { name: "Orc", hit_dice: 1d8, max_hp: 10, hp: 10, ac: 14, attacks: [MonsterAttack { name: "Club", damage: 1d6 }] }
+
+rolls clear
+rolls 12 6
+do Charge(vs_mon_charge, vs_mon_charge_tgt)
+assert_eq vs_mon_charge_tgt.hp, 4
+assert_condition vs_mon_charge, ChargeRecovery
+
+// ── target_size ────────────────────────────────────────────────
+
+spawn Character size_human { name: "Human", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, ancestry: Human, HitPoints { max_hp: 10, hp: 10 } }
+spawn Monster size_ogre { name: "Ogre", hit_dice: 4d8 + 1, max_hp: 26, hp: 26, ac: 15, size: Size.Medium, attacks: [MonsterAttack { name: "Club", damage: 1d10 }] }
+
+assert_eq target_size(size_human), Size.Medium
+assert_eq target_size(size_ogre), Size.Medium

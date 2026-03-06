@@ -1660,3 +1660,22 @@
 {"actor":"Theodore Gast","comment":null,"created_at":"2026-03-06T12:51:10Z","event_type":"created","id":1690,"issue_id":"tdsl-bfs7","new_value":"","old_value":""}
 {"actor":"Theodore Gast","comment":null,"created_at":"2026-03-06T12:52:46Z","event_type":"status_changed","id":1691,"issue_id":"tdsl-dq8i","new_value":"{\"status\":\"in_progress\"}","old_value":"{\"id\":\"tdsl-dq8i\",\"title\":\"CLI bug: Feet unit type assignment fails in spawn/set\",\"description\":\"Assigning a Feet unit type value in spawn or set fields produces 'type mismatch for field: expected Feet, got Feet'. This prevents testing Dwarf movement (base_movement: 90ft) in CLI scripts. Workaround: Dwarf movement tests remain in Rust integration tests. Reproducer: spawn a Character with base_movement: Feet { value: 90 }.\",\"status\":\"open\",\"priority\":2,\"issue_type\":\"bug\",\"owner\":\"tfgast@gmail.com\",\"created_at\":\"2026-03-06T20:51:07Z\",\"created_by\":\"Theodore Gast\",\"updated_at\":\"2026-03-06T20:51:07Z\"}"}
 {"actor":"Theodore Gast","comment":null,"created_at":"2026-03-06T12:55:42Z","event_type":"closed","id":1692,"issue_id":"tdsl-dq8i","new_value":"Added UnitType match arm to value_matches_ty in both cli and interp crates","old_value":""}
+{"actor":"Theodore Gast","comment":null,"created_at":"2026-03-06T13:07:16Z","event_type":"closed","id":1693,"issue_id":"tdsl-bfs7","new_value":"Used .unwrap() workaround to access fields on Option values in CLI scripts instead of implementing auto-unwrap","old_value":""}
+{"actor":"Theodore Gast","comment":null,"created_at":"2026-03-06T13:21:16Z","event_type":"created","id":1694,"issue_id":"tdsl-1fsr","new_value":"","old_value":""}
+{"actor":"Theodore Gast","comment":null,"created_at":"2026-03-06T13:21:16Z","event_type":"created","id":1695,"issue_id":"tdsl-naf6","new_value":"","old_value":""}
+{"actor":"Theodore Gast","comment":null,"created_at":"2026-03-06T13:21:16Z","event_type":"created","id":1696,"issue_id":"tdsl-l9bg","new_value":"","old_value":""}
+{"actor":"Theodore Gast","comment":null,"created_at":"2026-03-06T13:21:16Z","event_type":"created","id":1697,"issue_id":"tdsl-h8mw","new_value":"","old_value":""}
+{"actor":"Theodore Gast","comment":null,"created_at":"2026-03-06T13:21:16Z","event_type":"created","id":1698,"issue_id":"tdsl-7azm","new_value":"","old_value":""}
+{"actor":"Theodore Gast","comment":null,"created_at":"2026-03-06T13:21:16Z","event_type":"created","id":1699,"issue_id":"tdsl-qsl4","new_value":"","old_value":""}
+{"actor":"Theodore Gast","comment":null,"created_at":"2026-03-06T13:21:16Z","event_type":"created","id":1700,"issue_id":"tdsl-izgm","new_value":"","old_value":""}
+{"actor":"Theodore Gast","comment":null,"created_at":"2026-03-06T13:21:16Z","event_type":"created","id":1701,"issue_id":"tdsl-9lnb","new_value":"","old_value":""}
+{"actor":"Theodore Gast","comment":null,"created_at":"2026-03-06T13:21:16Z","event_type":"created","id":1702,"issue_id":"tdsl-wzcl","new_value":"","old_value":""}
+{"actor":"Theodore Gast","comment":null,"created_at":"2026-03-06T13:21:16Z","event_type":"created","id":1703,"issue_id":"tdsl-05ec","new_value":"","old_value":""}
+{"actor":"Theodore Gast","comment":null,"created_at":"2026-03-06T13:21:16Z","event_type":"created","id":1704,"issue_id":"tdsl-ygcd","new_value":"","old_value":""}
+{"actor":"Theodore Gast","comment":null,"created_at":"2026-03-06T13:21:16Z","event_type":"created","id":1705,"issue_id":"tdsl-kj2b","new_value":"","old_value":""}
+{"actor":"Theodore Gast","comment":null,"created_at":"2026-03-06T13:23:14Z","event_type":"created","id":1706,"issue_id":"tdsl-mkps","new_value":"","old_value":""}
+{"actor":"Theodore Gast","comment":null,"created_at":"2026-03-06T13:30:31Z","event_type":"created","id":1707,"issue_id":"tdsl-mkps.1","new_value":"","old_value":""}
+{"actor":"Theodore Gast","comment":null,"created_at":"2026-03-06T13:30:31Z","event_type":"created","id":1709,"issue_id":"tdsl-mkps.2","new_value":"","old_value":""}
+{"actor":"Theodore Gast","comment":null,"created_at":"2026-03-06T13:30:35Z","event_type":"created","id":1712,"issue_id":"tdsl-mkps.3","new_value":"","old_value":""}
+{"actor":"Theodore Gast","comment":null,"created_at":"2026-03-06T13:30:44Z","event_type":"created","id":1713,"issue_id":"tdsl-mkps.4","new_value":"","old_value":""}
+{"actor":"Theodore Gast","comment":null,"created_at":"2026-03-06T13:30:47Z","event_type":"created","id":1715,"issue_id":"tdsl-mkps.5","new_value":"","old_value":""}

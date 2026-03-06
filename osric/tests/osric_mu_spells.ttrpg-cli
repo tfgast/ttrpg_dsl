@@ -1,9 +1,8 @@
 // OSRIC Magic-User Spells integration tests
 //
-// Tests pure derive functions: magic_missile_count, spell def derives.
-// Spell resolve functions (Magic Missile, Fireball, Sleep) remain in Rust
-// because they require scripted dice, entity conditions, and custom
-// effect handlers.
+// Equivalent of the convertible runtime coverage from
+// crates/ttrpg_interp/tests/osric_mu_spells_integration.rs.
+// Keeps parse/typecheck and other non-scriptable coverage in Rust.
 
 load osric/*.ttrpg
 
@@ -31,3 +30,174 @@ assert (magic_missile_def().reversible) == false
 // Sleep: level 1, Enchantment
 assert_eq sleep_def().level, 1
 assert_eq sleep_def().school, SpellSchool.Enchantment
+
+// ── Magic Missile resolve: character targets ────────────────────
+
+spawn Character mm_caster_1 { name: "Merlin", classes: [ClassLevel { class: MagicUser, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 8, hp: 8 } }
+spawn Character mm_target_1 { name: "Orc", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 8, hp: 8 } }
+
+rolls clear
+rolls 3
+call resolve_magic_missile(mm_caster_1, [mm_target_1])
+assert_eq mm_target_1.hp, 4
+
+spawn Character mm_caster_2 { name: "Merlin 2", classes: [ClassLevel { class: MagicUser, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 12, hp: 12 } }
+spawn Character mm_target_2 { name: "Orc Tough", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 } }
+
+rolls clear
+rolls 2 4 1
+call resolve_magic_missile(mm_caster_2, [mm_target_2, mm_target_2, mm_target_2])
+assert_eq mm_target_2.hp, 20
+
+spawn Character mm_caster_3 { name: "Merlin 3", classes: [ClassLevel { class: MagicUser, level: 3 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 } }
+spawn Character mm_target_3a { name: "Orc A", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 } }
+spawn Character mm_target_3b { name: "Orc B", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 } }
+
+rolls clear
+rolls 3 2
+call resolve_magic_missile(mm_caster_3, [mm_target_3a, mm_target_3b])
+assert_eq mm_target_3a.hp, 6
+assert_eq mm_target_3b.hp, 7
+
+// ── Fireball resolve: character targets ─────────────────────────
+
+spawn Character fb_caster_1 { name: "Merlin 4", classes: [ClassLevel { class: MagicUser, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 12, hp: 12 } }
+spawn Character fb_target_1 { name: "Orc Burned", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 40, hp: 40 } }
+
+rolls clear
+rolls 3 4 2 5 4 1
+call resolve_fireball(fb_caster_1, [fb_target_1])
+assert_eq fb_target_1.hp, 22
+
+spawn Character fb_caster_2 { name: "Merlin 5", classes: [ClassLevel { class: MagicUser, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 12, hp: 12 } }
+spawn Character fb_target_2 { name: "Orc Saved", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 40, hp: 40 } }
+
+rolls clear
+rolls 3 4 2 5 4 20
+call resolve_fireball(fb_caster_2, [fb_target_2])
+assert_eq fb_target_2.hp, 31
+
+spawn Character fb_caster_3 { name: "Merlin 6", classes: [ClassLevel { class: MagicUser, level: 3 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 } }
+spawn Character fb_target_3a { name: "Orc A Burned", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 } }
+spawn Character fb_target_3b { name: "Orc B Burned", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 } }
+
+rolls clear
+rolls 3 4 3 1 20
+call resolve_fireball(fb_caster_3, [fb_target_3a, fb_target_3b])
+assert_eq fb_target_3a.hp, 10
+assert_eq fb_target_3b.hp, 15
+
+// ── Sleep HD classification ─────────────────────────────────────
+
+assert_eq sleep_hd_category(0d4), 0
+assert_eq sleep_hd_category(1d8 - 1), 0
+assert_eq sleep_hd_category(1d8), 0
+assert_eq sleep_hd_category(1d8 + 1), 1
+assert_eq sleep_hd_category(2d8), 1
+assert_eq sleep_hd_category(2d8 + 1), 2
+assert_eq sleep_hd_category(3d8), 2
+assert_eq sleep_hd_category(3d8 + 1), 3
+assert_eq sleep_hd_category(4d8), 3
+assert_eq sleep_hd_category(4d8 + 1), 4
+assert_eq sleep_hd_category(4d8 + 4), 4
+assert_eq sleep_hd_category(5d8), 5
+assert_eq sleep_hd_category(6d8 + 6), 5
+
+// ── Sleep resolve ───────────────────────────────────────────────
+
+spawn Character sleep_caster_1 { name: "Merlin 7", classes: [ClassLevel { class: MagicUser, level: 3 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 } }
+spawn Monster sleep_orc_1 { name: "Sleep Orc 1", hit_dice: 1d8, max_hp: 4, hp: 4, ac: 14, morale: 7, morale_checks_made: 0, xp_value: 0, intelligence: 1, attacks: [MonsterAttack { name: "Club", damage: 1d6 }], size: Medium, special: [] }
+spawn Monster sleep_orc_2 { name: "Sleep Orc 2", hit_dice: 1d8, max_hp: 4, hp: 4, ac: 14, morale: 7, morale_checks_made: 0, xp_value: 0, intelligence: 1, attacks: [MonsterAttack { name: "Club", damage: 1d6 }], size: Medium, special: [] }
+spawn Monster sleep_orc_3 { name: "Sleep Orc 3", hit_dice: 1d8, max_hp: 4, hp: 4, ac: 14, morale: 7, morale_checks_made: 0, xp_value: 0, intelligence: 1, attacks: [MonsterAttack { name: "Club", damage: 1d6 }], size: Medium, special: [] }
+spawn Monster sleep_orc_4 { name: "Sleep Orc 4", hit_dice: 1d8, max_hp: 4, hp: 4, ac: 14, morale: 7, morale_checks_made: 0, xp_value: 0, intelligence: 1, attacks: [MonsterAttack { name: "Club", damage: 1d6 }], size: Medium, special: [] }
+spawn Monster sleep_orc_5 { name: "Sleep Orc 5", hit_dice: 1d8, max_hp: 4, hp: 4, ac: 14, morale: 7, morale_checks_made: 0, xp_value: 0, intelligence: 1, attacks: [MonsterAttack { name: "Club", damage: 1d6 }], size: Medium, special: [] }
+
+rolls clear
+rolls 1 1 1 1
+call resolve_sleep(sleep_caster_1, [sleep_orc_1, sleep_orc_2, sleep_orc_3, sleep_orc_4, sleep_orc_5])
+assert_condition sleep_orc_1, Sleeping
+assert_condition sleep_orc_2, Sleeping
+assert_condition sleep_orc_3, Sleeping
+assert_condition sleep_orc_4, Sleeping
+assert_no_condition sleep_orc_5, Sleeping
+
+spawn Character sleep_caster_2 { name: "Merlin 8", classes: [ClassLevel { class: MagicUser, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 12, hp: 12 } }
+spawn Monster sleep_mix_orc_1 { name: "Mixed Orc 1", hit_dice: 1d8, max_hp: 4, hp: 4, ac: 14, morale: 7, morale_checks_made: 0, xp_value: 0, intelligence: 1, attacks: [MonsterAttack { name: "Club", damage: 1d6 }], size: Medium, special: [] }
+spawn Monster sleep_mix_orc_2 { name: "Mixed Orc 2", hit_dice: 1d8, max_hp: 4, hp: 4, ac: 14, morale: 7, morale_checks_made: 0, xp_value: 0, intelligence: 1, attacks: [MonsterAttack { name: "Club", damage: 1d6 }], size: Medium, special: [] }
+spawn Monster sleep_mix_orc_3 { name: "Mixed Orc 3", hit_dice: 1d8, max_hp: 4, hp: 4, ac: 14, morale: 7, morale_checks_made: 0, xp_value: 0, intelligence: 1, attacks: [MonsterAttack { name: "Club", damage: 1d6 }], size: Medium, special: [] }
+spawn Monster sleep_hob_1 { name: "Hobgoblin 1", hit_dice: 1d8 + 1, max_hp: 6, hp: 6, ac: 15, morale: 7, morale_checks_made: 0, xp_value: 0, intelligence: 1, attacks: [MonsterAttack { name: "Sword", damage: 1d8 }], size: Medium, special: [] }
+spawn Monster sleep_hob_2 { name: "Hobgoblin 2", hit_dice: 1d8 + 1, max_hp: 6, hp: 6, ac: 15, morale: 7, morale_checks_made: 0, xp_value: 0, intelligence: 1, attacks: [MonsterAttack { name: "Sword", damage: 1d8 }], size: Medium, special: [] }
+spawn Monster sleep_troll { name: "Troll", hit_dice: 6d8 + 6, max_hp: 36, hp: 36, ac: 16, morale: 7, morale_checks_made: 0, xp_value: 0, intelligence: 1, attacks: [MonsterAttack { name: "Claw", damage: 1d6 }], size: Large, special: [] }
+
+rolls clear
+rolls 3 3 2 2 2 1
+call resolve_sleep(sleep_caster_2, [sleep_mix_orc_1, sleep_mix_orc_2, sleep_mix_orc_3, sleep_hob_1, sleep_hob_2, sleep_troll])
+assert_condition sleep_mix_orc_1, Sleeping
+assert_condition sleep_mix_orc_2, Sleeping
+assert_condition sleep_mix_orc_3, Sleeping
+assert_condition sleep_hob_1, Sleeping
+assert_condition sleep_hob_2, Sleeping
+assert_no_condition sleep_troll, Sleeping
+
+spawn Character sleep_caster_3 { name: "Merlin 9", classes: [ClassLevel { class: MagicUser, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 8, hp: 8 } }
+spawn Monster sleep_ogre_none { name: "Ogre None", hit_dice: 4d8 + 1, max_hp: 20, hp: 20, ac: 15, morale: 7, morale_checks_made: 0, xp_value: 0, intelligence: 1, attacks: [MonsterAttack { name: "Club", damage: 1d10 }], size: Large, special: [] }
+
+rolls clear
+rolls 1
+call resolve_sleep(sleep_caster_3, [sleep_ogre_none])
+assert_no_condition sleep_ogre_none, Sleeping
+
+spawn Character sleep_caster_4 { name: "Merlin 10", classes: [ClassLevel { class: MagicUser, level: 2 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 9, hp: 9 } }
+spawn Monster sleep_ogre_one { name: "Ogre One", hit_dice: 4d8 + 1, max_hp: 20, hp: 20, ac: 15, morale: 7, morale_checks_made: 0, xp_value: 0, intelligence: 1, attacks: [MonsterAttack { name: "Club", damage: 1d10 }], size: Large, special: [] }
+
+rolls clear
+rolls 2
+call resolve_sleep(sleep_caster_4, [sleep_ogre_one])
+assert_condition sleep_ogre_one, Sleeping
+
+spawn Character sleep_caster_5 { name: "Merlin 11", classes: [ClassLevel { class: MagicUser, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 8, hp: 8 } }
+spawn Monster sleep_cap_orc_1 { name: "Cap Orc 1", hit_dice: 1d8, max_hp: 4, hp: 4, ac: 14, morale: 7, morale_checks_made: 0, xp_value: 0, intelligence: 1, attacks: [MonsterAttack { name: "Club", damage: 1d6 }], size: Medium, special: [] }
+spawn Monster sleep_cap_orc_2 { name: "Cap Orc 2", hit_dice: 1d8, max_hp: 4, hp: 4, ac: 14, morale: 7, morale_checks_made: 0, xp_value: 0, intelligence: 1, attacks: [MonsterAttack { name: "Club", damage: 1d6 }], size: Medium, special: [] }
+
+rolls clear
+rolls 3 3 3 3
+call resolve_sleep(sleep_caster_5, [sleep_cap_orc_1, sleep_cap_orc_2])
+assert_condition sleep_cap_orc_1, Sleeping
+assert_condition sleep_cap_orc_2, Sleeping
+
+// ── Monster-targeted spell resolution ───────────────────────────
+
+spawn Character mon_mm_caster_1 { name: "Merlin 12", classes: [ClassLevel { class: MagicUser, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 8, hp: 8 } }
+spawn Monster mon_mm_target_1 { name: "Monster Orc", hit_dice: 1d8, max_hp: 8, hp: 8, ac: 14, morale: 7, morale_checks_made: 0, xp_value: 0, intelligence: 1, attacks: [MonsterAttack { name: "Club", damage: 1d6 }], size: Medium, special: [] }
+
+rolls clear
+rolls 3
+call resolve_magic_missile(mon_mm_caster_1, [mon_mm_target_1])
+assert_eq mon_mm_target_1.hp, 4
+
+spawn Character mon_mm_caster_2 { name: "Merlin 13", classes: [ClassLevel { class: MagicUser, level: 3 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 } }
+spawn Monster mon_mm_target_2 { name: "Goblin", hit_dice: 1d8 - 1, max_hp: 3, hp: 3, ac: 14, morale: 7, morale_checks_made: 0, xp_value: 0, intelligence: 1, attacks: [MonsterAttack { name: "Club", damage: 1d6 }], size: Medium, special: [] }
+
+rolls clear
+rolls 4 2
+call resolve_magic_missile(mon_mm_caster_2, [mon_mm_target_2, mon_mm_target_2])
+assert_eq mon_mm_target_2.hp, 0
+assert_condition mon_mm_target_2, Dead
+
+spawn Character mon_fb_caster { name: "Merlin 14", classes: [ClassLevel { class: MagicUser, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 12, hp: 12 } }
+spawn Monster mon_fb_target_a { name: "Orc A", hit_dice: 1d8, max_hp: 20, hp: 20, ac: 14, morale: 7, morale_checks_made: 0, xp_value: 0, intelligence: 1, attacks: [MonsterAttack { name: "Club", damage: 1d6 }], size: Medium, special: [] }
+spawn Monster mon_fb_target_b { name: "Orc B", hit_dice: 1d8, max_hp: 20, hp: 20, ac: 14, morale: 7, morale_checks_made: 0, xp_value: 0, intelligence: 1, attacks: [MonsterAttack { name: "Club", damage: 1d6 }], size: Medium, special: [] }
+
+rolls clear
+rolls 3 4 2 5 4 1 20
+call resolve_fireball_monsters(mon_fb_caster, [mon_fb_target_a, mon_fb_target_b])
+assert_eq mon_fb_target_a.hp, 2
+assert_eq mon_fb_target_b.hp, 11
+
+spawn Character mon_dispatch_caster { name: "Merlin 15", classes: [ClassLevel { class: MagicUser, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 8, hp: 8 } }
+spawn Monster mon_dispatch_target { name: "Dispatch Orc", hit_dice: 1d8, max_hp: 10, hp: 10, ac: 14, morale: 7, morale_checks_made: 0, xp_value: 0, intelligence: 1, attacks: [MonsterAttack { name: "Club", damage: 1d6 }], size: Medium, special: [] }
+
+rolls clear
+rolls 2
+call resolve_spell_monsters(MagicMissile, mon_dispatch_caster, [mon_dispatch_target])
+assert_eq mon_dispatch_target.hp, 7
