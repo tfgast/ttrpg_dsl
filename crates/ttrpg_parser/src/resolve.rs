@@ -61,7 +61,8 @@ pub fn resolve_modules(
 
     for (sys_name, decl_list) in &system_decls {
         let mut info = SystemInfo::default();
-        let mut seen_names: FxHashMap<(Namespace, Name), Span> = FxHashMap::default();
+        // Tracks (namespace, name) → (span, is_action) for duplicate detection.
+        let mut seen_names: FxHashMap<(Namespace, Name), (Span, bool)> = FxHashMap::default();
 
         for owned in decl_list {
             for (ns, name) in &owned.names {
@@ -70,18 +71,23 @@ pub fn resolve_modules(
                 // hints or qualified syntax.
                 if *ns == Namespace::Variant {
                     info.variants.insert(name.clone());
-                } else if let Some(&prev_span) = seen_names.get(&(*ns, name.clone())) {
-                    diagnostics.push(Diagnostic::error(
-                        format!("duplicate declaration `{name}` in system \"{sys_name}\""),
-                        owned.span,
-                    ));
-                    // Also point to first definition
-                    diagnostics.push(Diagnostic::warning(
-                        format!("first definition of `{name}` here"),
-                        prev_span,
-                    ));
+                } else if let Some(&(prev_span, prev_is_action)) = seen_names.get(&(*ns, name.clone())) {
+                    // Actions support receiver-type overloading — same action name
+                    // with different receiver types is allowed. Per-receiver-type
+                    // uniqueness is validated later by the checker's collect_action.
+                    if !(owned.is_action && prev_is_action) {
+                        diagnostics.push(Diagnostic::error(
+                            format!("duplicate declaration `{name}` in system \"{sys_name}\""),
+                            owned.span,
+                        ));
+                        // Also point to first definition
+                        diagnostics.push(Diagnostic::warning(
+                            format!("first definition of `{name}` here"),
+                            prev_span,
+                        ));
+                    }
                 } else {
-                    seen_names.insert((*ns, name.clone()), owned.span);
+                    seen_names.insert((*ns, name.clone()), (owned.span, owned.is_action));
                     match ns {
                         Namespace::Group => {
                             info.groups.insert(name.clone());
@@ -281,11 +287,16 @@ fn system_has_name(info: &SystemInfo, name: &str) -> bool {
 struct DeclOwnership {
     names: Vec<(Namespace, Name)>,
     span: Span,
+    /// Actions support receiver-type overloading, so the same action name
+    /// may appear multiple times within a system. Duplicate detection is
+    /// deferred to the checker's `collect_action`.
+    is_action: bool,
 }
 
 impl DeclOwnership {
     fn from_decl(decl: &DeclKind, span: Span) -> Self {
         let mut names = Vec::new();
+        let is_action = matches!(decl, DeclKind::Action(_));
         match decl {
             DeclKind::Group(g) => {
                 names.push((Namespace::Group, g.name.clone()));
@@ -339,7 +350,7 @@ impl DeclOwnership {
                 names.push((Namespace::Tag, t.name.clone()));
             }
         }
-        Self { names, span }
+        Self { names, span, is_action }
     }
 }
 

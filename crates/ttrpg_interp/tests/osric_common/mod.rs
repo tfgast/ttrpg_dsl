@@ -782,6 +782,7 @@ pub fn make_monster(
     fields.insert(Name::from("morale"), Value::Int(7));
     fields.insert(Name::from("morale_checks_made"), Value::Int(0));
     fields.insert(Name::from("xp_value"), Value::Int(0));
+    fields.insert(Name::from("intelligence"), Value::Int(1));
     fields.insert(Name::from("attacks"), Value::List(attacks));
     fields.insert(Name::from("size"), enum_variant("Size", "Medium"));
     fields.insert(Name::from("special"), Value::List(vec![]));

@@ -5,12 +5,16 @@
 // spell_def(SpellId) -> SpellDef routes to per-spell _def derives.
 // resolve_spell(SpellId, caster, targets) routes to per-spell
 // resolve_* functions for Character-targeted spells.
+// resolve_spell_monsters(SpellId, caster, targets) routes
+// damage spells to their Monster-targeted overloads.
 //
 // Note: Sleep targets Monsters and must be resolved directly
 // via resolve_sleep() rather than through this dispatch.
-// Other damage/save spells are Character-only because TakeDamage
-// and make_saving_throw are Character-typed. See tdsl-p3in for
-// the 'is Entity' type narrowing feature that would unify these.
+// Saving-throw spells have separate Character/Monster resolve
+// paths because make_saving_throw and monster_saving_throw
+// require different entity types. No-save damage spells
+// (Magic Missile, Cause Light Wounds) accept entity targets
+// directly via TakeDamage receiver overloading.
 // ============================================================
 
 use "OSRIC"
@@ -46,7 +50,7 @@ system "OSRIC Spell Registry" {
     }
 
     // ========================================================
-    //  SPELL RESOLUTION DISPATCH
+    //  SPELL RESOLUTION DISPATCH — CHARACTER TARGETS
     //
     //  Routes spell resolution to the appropriate resolve_*
     //  function. Accepts a target list for uniformity; single-
@@ -54,6 +58,7 @@ system "OSRIC Spell Registry" {
     //
     //  Sleep is excluded — it requires list<Monster> targets
     //  and must be resolved directly via resolve_sleep().
+    //  For Monster targets, use resolve_spell_monsters().
     // ========================================================
 
     function resolve_spell(id: SpellId, caster: Character, targets: list<Character>) {
@@ -84,6 +89,31 @@ system "OSRIC Spell Registry" {
             SpellId.Sleep => {
                 // Sleep targets Monsters, not Characters.
                 // Must be resolved directly via resolve_sleep().
+            },
+            _ => {}
+        }
+    }
+
+
+    // ========================================================
+    //  SPELL RESOLUTION DISPATCH — MONSTER TARGETS
+    //
+    //  Routes damage spells to their Monster-targeted overloads.
+    //  Only spells that can target monsters are dispatched here.
+    //  Sleep has its own entry point (resolve_sleep).
+    // ========================================================
+
+    function resolve_spell_monsters(id: SpellId, caster: Character, targets: list<Monster>) {
+        match id {
+            SpellId.CauseLightWounds => {
+                let target = targets.first().unwrap()
+                resolve_cause_light_wounds(caster, target)
+            },
+            SpellId.MagicMissile => {
+                resolve_magic_missile(caster, targets)
+            },
+            SpellId.Fireball => {
+                resolve_fireball_monsters(caster, targets)
             },
             _ => {}
         }

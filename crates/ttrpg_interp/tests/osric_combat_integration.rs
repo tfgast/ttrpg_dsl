@@ -13,6 +13,7 @@ use ttrpg_ast::ast::{DeclKind, TopLevel};
 use ttrpg_interp::adapter::StateAdapter;
 use ttrpg_interp::effect::{EffectHandler, Response};
 use ttrpg_interp::reference_state::GameState;
+use ttrpg_interp::state::StateProvider;
 use ttrpg_interp::value::{DiceExpr, Value};
 use ttrpg_interp::Interpreter;
 
@@ -2084,6 +2085,104 @@ fn take_damage_action_emits_creature_slain_on_kill() {
         hp,
         Value::Int(-2),
         "target HP should be -2 (unconscious, not dead)"
+    );
+}
+
+// ── Monster TakeDamage ───────────────────────────────────────
+
+#[test]
+fn monster_take_damage_reduces_hp() {
+    let (program, result) = compile_osric_combat();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut state = GameState::new();
+
+    let attacker = make_character(
+        &mut state,
+        "Fighter",
+        "Fighter",
+        5,
+        &standard_abilities_12(),
+        30,
+        15,
+        "Human",
+    );
+    let orc = make_monster(&mut state, "Orc", (1, 8, 0), 8, 14, vec![]);
+
+    let mut handler =
+        ScriptedHandler::with_responses(vec![Response::Acknowledged, Response::Acknowledged]);
+
+    let adapter = StateAdapter::new(state);
+    adapter.run(&mut handler, |state, eff_handler| {
+        interp
+            .execute_action(
+                state,
+                eff_handler,
+                "TakeDamage",
+                orc,
+                vec![
+                    Value::Entity(attacker),
+                    Value::Int(3),
+                    enum_variant("DamageType", "Slashing"),
+                ],
+            )
+            .unwrap();
+    });
+
+    let final_state = adapter.into_inner();
+    let hp = final_state.read_field(&orc, "hp").unwrap();
+    assert_eq!(hp, Value::Int(5), "monster HP should be 8 - 3 = 5");
+}
+
+#[test]
+fn monster_take_damage_kills_at_zero() {
+    let (program, result) = compile_osric_combat();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut state = GameState::new();
+
+    let attacker = make_character(
+        &mut state,
+        "Fighter",
+        "Fighter",
+        5,
+        &standard_abilities_12(),
+        30,
+        15,
+        "Human",
+    );
+    let goblin = make_monster(&mut state, "Goblin", (1, 8, -1), 3, 14, vec![]);
+
+    let mut handler =
+        ScriptedHandler::with_responses(vec![Response::Acknowledged, Response::Acknowledged]);
+
+    let adapter = StateAdapter::new(state);
+    adapter.run(&mut handler, |state, eff_handler| {
+        interp
+            .execute_action(
+                state,
+                eff_handler,
+                "TakeDamage",
+                goblin,
+                vec![
+                    Value::Entity(attacker),
+                    Value::Int(10),
+                    enum_variant("DamageType", "Blunt"),
+                ],
+            )
+            .unwrap();
+    });
+
+    let final_state = adapter.into_inner();
+    let hp = final_state.read_field(&goblin, "hp").unwrap();
+    assert!(
+        matches!(hp, Value::Int(n) if n <= 0),
+        "goblin should be at or below 0 HP"
+    );
+
+    // Monster should have Dead condition
+    let conditions = final_state.read_conditions(&goblin).unwrap_or_default();
+    assert!(
+        conditions.iter().any(|c| c.name.as_str() == "Dead"),
+        "goblin should have Dead condition after lethal damage"
     );
 }
 

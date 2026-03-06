@@ -84,9 +84,9 @@ system "OSRIC Cleric Spells" {
         }
     }
 
-    event SpellDamaged(caster: Character, target: Character, spell_name: string, amount: int) {}
+    event SpellDamaged(caster: entity, target: entity, spell_name: string, amount: int) {}
 
-    function resolve_cause_light_wounds(caster: Character, target: Character) {
+    function resolve_cause_light_wounds(caster: Character, target: entity) {
         let damage = roll(1d8).total
         target.TakeDamage(caster, damage)
         emit SpellDamaged(caster: caster, target: target, spell_name: "Cause Light Wounds", amount: damage)

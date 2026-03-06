@@ -7,7 +7,7 @@ use std::collections::VecDeque;
 use ttrpg_interp::adapter::StateAdapter;
 use ttrpg_interp::effect::{Effect, EffectHandler, Response};
 use ttrpg_interp::reference_state::GameState;
-use ttrpg_interp::state::StateProvider;
+use ttrpg_interp::state::{EntityRef, StateProvider};
 use ttrpg_interp::value::Value;
 use ttrpg_interp::Interpreter;
 
@@ -63,12 +63,19 @@ fn run_function_with_rolls(
     adapter.into_inner()
 }
 
-fn read_hp(state: &GameState, entity: &ttrpg_interp::state::EntityRef) -> i64 {
+fn read_hp(state: &GameState, entity: &EntityRef) -> i64 {
     let val = read_group_field(state, entity, "HitPoints", "hp")
         .expect("entity should have HitPoints.hp");
     match val {
         Value::Int(n) => n,
         other => panic!("expected int for hp, got {other:?}"),
+    }
+}
+
+fn read_monster_hp(state: &GameState, entity: &EntityRef) -> i64 {
+    match state.read_field(entity, "hp").expect("monster should have hp") {
+        Value::Int(n) => n,
+        other => panic!("expected int for monster hp, got {other:?}"),
     }
 }
 
@@ -869,5 +876,176 @@ fn sleep_roll_exceeds_available_targets() {
     assert!(
         has_condition(&state, &orc1, "Sleeping"),
         "orc 1 should sleep"
+    );
+}
+
+// ── Monster-targeted spells ──────────────────────────────────
+
+#[test]
+fn magic_missile_damages_monster() {
+    let (program, result) = compile_all();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut state = GameState::new();
+
+    let caster = make_caster_with_slots(
+        &mut state,
+        "Merlin",
+        "MagicUser",
+        1,
+        &standard_abilities_12(),
+        4,
+        10,
+        "Human",
+        &[(1, 1)],
+    );
+
+    let orc = make_monster(&mut state, "Orc", (1, 8, 0), 8, 14, vec![]);
+
+    // Level 1 MU = 1 missile. Roll 3 on 1d4, +1 = 4 damage.
+    let state = run_function_with_rolls(
+        &interp,
+        state,
+        vec![roll_1d4(3)],
+        "resolve_magic_missile",
+        vec![
+            Value::Entity(caster),
+            Value::List(vec![Value::Entity(orc)]),
+        ],
+    );
+
+    assert_eq!(
+        read_monster_hp(&state, &orc),
+        4,
+        "monster should take 4 damage (8 - 4 = 4)"
+    );
+}
+
+#[test]
+fn magic_missile_kills_monster() {
+    let (program, result) = compile_all();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut state = GameState::new();
+
+    let caster = make_caster_with_slots(
+        &mut state,
+        "Merlin",
+        "MagicUser",
+        3,
+        &standard_abilities_12(),
+        10,
+        10,
+        "Human",
+        &[(1, 2), (2, 1)],
+    );
+
+    // Monster with only 3 HP
+    let goblin = make_monster(&mut state, "Goblin", (1, 8, -1), 3, 14, vec![]);
+
+    // Level 3 MU = 2 missiles. Roll 4, 2 on 1d4 => damage 5, 3 = 8 total.
+    let state = run_function_with_rolls(
+        &interp,
+        state,
+        vec![roll_1d4(4), roll_1d4(2)],
+        "resolve_magic_missile",
+        vec![
+            Value::Entity(caster),
+            Value::List(vec![Value::Entity(goblin), Value::Entity(goblin)]),
+        ],
+    );
+
+    assert!(
+        read_monster_hp(&state, &goblin) <= 0,
+        "goblin should be dead"
+    );
+    assert!(
+        has_condition(&state, &goblin, "Dead"),
+        "goblin should have Dead condition"
+    );
+}
+
+#[test]
+fn fireball_damages_monsters_with_saves() {
+    let (program, result) = compile_all();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut state = GameState::new();
+
+    let caster = make_caster_with_slots(
+        &mut state,
+        "Merlin",
+        "MagicUser",
+        5,
+        &standard_abilities_12(),
+        10,
+        10,
+        "Human",
+        &[(1, 4), (2, 2), (3, 1)],
+    );
+
+    // Two orcs with 20 HP each
+    let orc_a = make_monster(&mut state, "Orc A", (1, 8, 0), 20, 14, vec![]);
+    let orc_b = make_monster(&mut state, "Orc B", (1, 8, 0), 20, 14, vec![]);
+
+    // Level 5 MU: 5d6 = 18 damage. Orc A fails save (roll 1), Orc B saves (roll 20).
+    let damage_roll = scripted_roll(5, 6, 0, vec![3, 4, 2, 5, 4], vec![3, 4, 2, 5, 4], 18, 18);
+    let state = run_function_with_rolls(
+        &interp,
+        state,
+        vec![damage_roll, roll_save(1), roll_save(20)],
+        "resolve_fireball_monsters",
+        vec![
+            Value::Entity(caster),
+            Value::List(vec![Value::Entity(orc_a), Value::Entity(orc_b)]),
+        ],
+    );
+
+    assert_eq!(
+        read_monster_hp(&state, &orc_a),
+        2,
+        "orc A should take full 18 damage (20 - 18 = 2)"
+    );
+    assert_eq!(
+        read_monster_hp(&state, &orc_b),
+        11,
+        "orc B should take half 9 damage (20 - 9 = 11)"
+    );
+}
+
+#[test]
+fn resolve_spell_monsters_dispatches_magic_missile() {
+    let (program, result) = compile_all();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut state = GameState::new();
+
+    let caster = make_caster_with_slots(
+        &mut state,
+        "Merlin",
+        "MagicUser",
+        1,
+        &standard_abilities_12(),
+        4,
+        10,
+        "Human",
+        &[(1, 1)],
+    );
+
+    let orc = make_monster(&mut state, "Orc", (1, 8, 0), 10, 14, vec![]);
+
+    // Dispatch via resolve_spell_monsters
+    let state = run_function_with_rolls(
+        &interp,
+        state,
+        vec![roll_1d4(2)],
+        "resolve_spell_monsters",
+        vec![
+            enum_variant("SpellId", "MagicMissile"),
+            Value::Entity(caster),
+            Value::List(vec![Value::Entity(orc)]),
+        ],
+    );
+
+    assert_eq!(
+        read_monster_hp(&state, &orc),
+        7,
+        "monster should take 3 damage via dispatch (10 - 3 = 7)"
     );
 }

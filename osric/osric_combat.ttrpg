@@ -94,9 +94,9 @@ system "OSRIC Combat" {
     //  EVENTS
     // ========================================================
 
-    event Damaged(target: Character, attacker: Character, amount: int) {}
+    event Damaged(target: entity, attacker: entity, amount: int) {}
 
-    event CreatureSlain(target: Character, attacker: Character) {}
+    event CreatureSlain(target: entity, attacker: entity) {}
 
     event CharacterUnconscious(target: Character, attacker: entity) {}
 
@@ -583,6 +583,27 @@ system "OSRIC Combat" {
                 if target.hp <= -6 {
                     apply_condition(target, Scarred, Duration.indefinite)
                 }
+            }
+        }
+    }
+
+
+    // Monster TakeDamage overload — simpler death rules than Characters.
+    // Monsters die at 0 HP (no unconscious/bleeding/scarring).
+    action TakeDamage on target: Monster (
+        attacker: entity,
+        raw_damage: int,
+        damage_type: DamageType = DamageType.Blunt
+    ) {
+        cost free
+        resolve {
+            let final_damage = deal_damage(target, attacker, raw_damage, damage_type)
+            target.hp = target.hp - final_damage
+            emit Damaged(target: target, attacker: attacker, amount: final_damage)
+
+            if target.hp <= 0 {
+                apply_condition(target, Dead, Duration.indefinite)
+                emit CreatureSlain(target: target, attacker: attacker)
             }
         }
     }
