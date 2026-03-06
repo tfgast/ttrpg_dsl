@@ -3302,3 +3302,296 @@ fn two_weapon_attack_both_hit() {
     let hp = read_group_field(&final_state, &target, "HitPoints", "hp").unwrap();
     assert_eq!(hp, Value::Int(22), "target HP should be 30 - 5 - 3 = 22");
 }
+
+// ── effective_target_ac for Monster targets ───────────────────
+
+#[test]
+fn effective_target_ac_monster_returns_flat_ac() {
+    let (program, result) = compile_osric_combat();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut state = GameState::new();
+
+    let orc = make_monster(&mut state, "Orc", (1, 8, 0), 8, 14, vec![]);
+
+    let val = interp
+        .evaluate_derive(
+            &state,
+            &mut NullHandler,
+            "effective_target_ac",
+            vec![Value::Entity(orc)],
+        )
+        .unwrap();
+    assert_eq!(val, Value::Int(14), "monster effective AC should equal its ac field");
+}
+
+#[test]
+fn effective_target_ac_monster_with_ac_mod() {
+    let (program, result) = compile_osric_combat();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut state = GameState::new();
+
+    let dragon = make_monster(&mut state, "Dragon", (10, 8, 0), 50, 18, vec![]);
+
+    // include_dex=true, include_shield=true, ac_mod=-2
+    let val = interp
+        .evaluate_derive(
+            &state,
+            &mut NullHandler,
+            "effective_target_ac",
+            vec![
+                Value::Entity(dragon),
+                Value::Bool(true),
+                Value::Bool(true),
+                Value::Int(-2),
+            ],
+        )
+        .unwrap();
+    assert_eq!(val, Value::Int(16), "monster effective AC with ac_mod=-2: 18 + (-2) = 16");
+}
+
+// ── Monster MeleeAttack action ────────────────────────────────
+
+#[test]
+fn monster_melee_attack_hits_and_damages_character() {
+    let (program, result) = compile_osric_combat();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut state = GameState::new();
+
+    // Ogre: 4d8+1 HD → monster_bthb = 5
+    let ogre = make_monster(
+        &mut state,
+        "Ogre",
+        (4, 8, 1),
+        26,
+        15,
+        vec![monster_attack("Club", 1, 10, 0)],
+    );
+    let target = make_character(
+        &mut state,
+        "Victim",
+        "Fighter",
+        1,
+        &standard_abilities_12(),
+        10,
+        14,
+        "Human",
+    );
+    state.set_turn_budget(&ogre, combat_turn_budget());
+
+    // Roll 15 → 15+5 = 20 >= 14 → Hit
+    let atk_roll = scripted_roll(1, 20, 0, vec![15], vec![15], 15, 15);
+    // damage: 1d10, roll 6
+    let dmg_roll = scripted_roll(1, 10, 0, vec![6], vec![6], 6, 6);
+    let mut handler = ScriptedHandler::with_responses(vec![
+        Response::Acknowledged, // ActionStarted
+        Response::Acknowledged, // DeductCost
+        atk_roll,               // attack roll
+        dmg_roll,               // damage roll
+        Response::Acknowledged, // TakeDamage ActionStarted
+        Response::Acknowledged, // DeductCost (free)
+        Response::Acknowledged, // Damaged event
+        Response::Acknowledged, // TakeDamage ActionCompleted
+        Response::Acknowledged, // ActionCompleted
+    ]);
+
+    let adapter = StateAdapter::new(state);
+    adapter.run(&mut handler, |state, eff_handler| {
+        interp
+            .execute_action(
+                state,
+                eff_handler,
+                "MeleeAttack",
+                ogre,
+                vec![
+                    Value::Entity(target),
+                    monster_attack("Club", 1, 10, 0),
+                ],
+            )
+            .unwrap();
+    });
+
+    let final_state = adapter.into_inner();
+    let hp = read_group_field(&final_state, &target, "HitPoints", "hp").unwrap();
+    assert_eq!(hp, Value::Int(4), "target HP should be 10 - 6 = 4");
+}
+
+#[test]
+fn monster_melee_attack_miss_preserves_hp() {
+    let (program, result) = compile_osric_combat();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut state = GameState::new();
+
+    // Rat: sub-1 HD → BTHB -1
+    let rat = make_monster(
+        &mut state,
+        "Rat",
+        (0, 0, 0),
+        1,
+        10,
+        vec![monster_attack("Bite", 1, 2, 0)],
+    );
+    let target = make_character(
+        &mut state,
+        "Warrior",
+        "Fighter",
+        5,
+        &standard_abilities_12(),
+        30,
+        17,
+        "Human",
+    );
+    state.set_turn_budget(&rat, combat_turn_budget());
+
+    // Roll 10 → 10+(-1) = 9 < 17 → Miss
+    let atk_roll = scripted_roll(1, 20, 0, vec![10], vec![10], 10, 10);
+    let mut handler = ScriptedHandler::with_responses(vec![
+        Response::Acknowledged, // ActionStarted
+        Response::Acknowledged, // DeductCost
+        atk_roll,               // attack roll (miss, no damage roll)
+        Response::Acknowledged, // ActionCompleted
+    ]);
+
+    let adapter = StateAdapter::new(state);
+    adapter.run(&mut handler, |state, eff_handler| {
+        interp
+            .execute_action(
+                state,
+                eff_handler,
+                "MeleeAttack",
+                rat,
+                vec![
+                    Value::Entity(target),
+                    monster_attack("Bite", 1, 2, 0),
+                ],
+            )
+            .unwrap();
+    });
+
+    let final_state = adapter.into_inner();
+    let hp = read_group_field(&final_state, &target, "HitPoints", "hp").unwrap();
+    assert_eq!(hp, Value::Int(30), "target HP should remain 30 on miss");
+}
+
+#[test]
+fn monster_melee_attack_against_monster() {
+    let (program, result) = compile_osric_combat();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut state = GameState::new();
+
+    // Ogre attacks a Goblin
+    let ogre = make_monster(
+        &mut state,
+        "Ogre",
+        (4, 8, 1),
+        26,
+        15,
+        vec![monster_attack("Club", 1, 10, 0)],
+    );
+    let goblin = make_monster(
+        &mut state,
+        "Goblin",
+        (1, 8, -1),
+        5,
+        14,
+        vec![monster_attack("Sword", 1, 6, 0)],
+    );
+    state.set_turn_budget(&ogre, combat_turn_budget());
+
+    // Roll 12 → 12+5 = 17 >= 14 → Hit
+    let atk_roll = scripted_roll(1, 20, 0, vec![12], vec![12], 12, 12);
+    // damage: 1d10, roll 4
+    let dmg_roll = scripted_roll(1, 10, 0, vec![4], vec![4], 4, 4);
+    let mut handler = ScriptedHandler::with_responses(vec![
+        Response::Acknowledged, // ActionStarted
+        Response::Acknowledged, // DeductCost
+        atk_roll,               // attack roll
+        dmg_roll,               // damage roll
+        Response::Acknowledged, // TakeDamage ActionStarted
+        Response::Acknowledged, // DeductCost (free)
+        Response::Acknowledged, // Damaged event
+        Response::Acknowledged, // TakeDamage ActionCompleted
+        Response::Acknowledged, // ActionCompleted
+    ]);
+
+    let adapter = StateAdapter::new(state);
+    adapter.run(&mut handler, |state, eff_handler| {
+        interp
+            .execute_action(
+                state,
+                eff_handler,
+                "MeleeAttack",
+                ogre,
+                vec![
+                    Value::Entity(goblin),
+                    monster_attack("Club", 1, 10, 0),
+                ],
+            )
+            .unwrap();
+    });
+
+    let final_state = adapter.into_inner();
+    let hp = final_state.read_field(&goblin, "hp").unwrap();
+    assert_eq!(hp, Value::Int(1), "goblin HP should be 5 - 4 = 1");
+}
+
+// ── resolve_monster_attack vs Monster target ──────────────────
+
+#[test]
+fn resolve_monster_attack_against_monster_target() {
+    let (program, result) = compile_osric_combat();
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut state = GameState::new();
+
+    // Ogre (4 HD, BTHB=5) attacks a Goblin (AC 14)
+    let ogre = make_monster(
+        &mut state,
+        "Ogre",
+        (4, 8, 1),
+        26,
+        15,
+        vec![monster_attack("Club", 1, 10, 0)],
+    );
+    let goblin = make_monster(
+        &mut state,
+        "Goblin",
+        (1, 8, -1),
+        5,
+        14,
+        vec![],
+    );
+
+    // Roll 12 → 12+5 = 17 >= 14 → Hit
+    let atk_roll = scripted_roll(1, 20, 0, vec![12], vec![12], 12, 12);
+    let dmg_roll = scripted_roll(1, 10, 0, vec![7], vec![7], 7, 7);
+    let mut handler = ScriptedHandler::with_responses(vec![atk_roll, dmg_roll]);
+
+    let val = interp
+        .evaluate_mechanic(
+            &state,
+            &mut handler,
+            "resolve_monster_attack",
+            vec![
+                Value::Entity(ogre),
+                Value::Entity(goblin),
+                monster_attack("Club", 1, 10, 0),
+            ],
+        )
+        .unwrap();
+
+    match val {
+        Value::Struct { name, fields } => {
+            assert_eq!(&*name, "AttackResult");
+            let fields: BTreeMap<String, Value> = fields
+                .into_iter()
+                .map(|(k, v)| (k.to_string(), v))
+                .collect();
+            assert_eq!(
+                fields.get("outcome").unwrap(),
+                &enum_variant("AttackOutcome", "Hit")
+            );
+            assert_eq!(get_int(&fields, "damage"), 7);
+            assert_eq!(get_int(&fields, "total_mod"), 5);
+        }
+        other => panic!("expected AttackResult struct, got: {other:?}"),
+    }
+}
