@@ -652,8 +652,8 @@ mod tests {
     #[test]
     fn parse_let_with_comment() {
         assert_eq!(
-            parse_command("let result = call foo(a, b) // capture result"),
-            Some(Command::Let("result = call foo(a, b)".into()))
+            parse_command("let result = Attack(fighter, goblin) // capture result"),
+            Some(Command::Let("result = Attack(fighter, goblin)".into()))
         );
     }
 
