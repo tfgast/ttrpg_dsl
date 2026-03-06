@@ -1238,7 +1238,7 @@ mod tests {
             params: BTreeMap::new(),
             bearer: EntityRef(1),
             gained_at: 0,
-            duration: duration_variant("indefinite"),
+            duration: duration_variant("Indefinite"),
             invocation: None,
             applied_at: 0,
         };

@@ -145,7 +145,7 @@ fn format_enum_variant_with_fields() {
     fields.insert("value".into(), Value::Int(3));
     let val = Value::EnumVariant {
         enum_name: "Duration".into(),
-        variant: "rounds".into(),
+        variant: "Rounds".into(),
         fields,
     };
     insta::assert_snapshot!(format_value(&val, &no_units()));

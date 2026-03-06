@@ -153,7 +153,7 @@ fn light_rest_day_and_training_values() {
                 &state,
                 &mut handler,
                 "light_source_turns",
-                vec![light_kind("torch")],
+                vec![light_kind("Torch")],
             )
             .unwrap(),
         Value::Int(6)
@@ -164,7 +164,7 @@ fn light_rest_day_and_training_values() {
                 &state,
                 &mut handler,
                 "light_source_turns",
-                vec![light_kind("lantern")],
+                vec![light_kind("Lantern")],
             )
             .unwrap(),
         Value::Int(24)
@@ -248,7 +248,7 @@ fn coin_and_armour_tables() {
                 &state,
                 &mut handler,
                 "armour_weight_cn",
-                vec![armour_kind("plate")],
+                vec![armour_kind("Plate")],
             )
             .unwrap(),
         Value::Int(500)
@@ -259,7 +259,7 @@ fn coin_and_armour_tables() {
                 &state,
                 &mut handler,
                 "armour_weight_cn",
-                vec![armour_kind("shield")],
+                vec![armour_kind("Shield")],
             )
             .unwrap(),
         Value::Int(100)

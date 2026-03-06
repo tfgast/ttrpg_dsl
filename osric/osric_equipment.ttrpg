@@ -364,11 +364,11 @@ system "OSRIC Equipment" {
     derive default_starting_armour(class: Class) -> list<string> {
         let def = class_def(class)
         match def.armour {
-            any_armour     => ["Chain mail", "Shield"],
-            leather_shield => ["Leather", "Shield"],
-            leather_wooden => ["Leather", "Wooden shield"],
-            leather_only   => ["Leather"],
-            no_armour      => []
+            AnyArmour     => ["Chain mail", "Shield"],
+            LeatherShield => ["Leather", "Shield"],
+            LeatherWooden => ["Leather", "Wooden shield"],
+            LeatherOnly   => ["Leather"],
+            NoArmour      => []
         }
     }
 

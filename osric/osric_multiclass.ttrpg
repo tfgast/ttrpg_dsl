@@ -187,26 +187,26 @@ system "OSRIC Multiclass" {
     //  the examples clarify this).
     //
     //  Permission ordering (most → least restrictive):
-    //  no_armour < leather_only < leather_wooden < leather_shield < any_armour
+    //  NoArmour < LeatherOnly < LeatherWooden < LeatherShield < AnyArmour
     // ========================================================
 
     derive armour_permission_rank(perm: ArmourPermission) -> int {
         match perm {
-            no_armour       => 0,
-            leather_only    => 1,
-            leather_wooden  => 2,
-            leather_shield  => 3,
-            any_armour      => 4
+            NoArmour       => 0,
+            LeatherOnly    => 1,
+            LeatherWooden  => 2,
+            LeatherShield  => 3,
+            AnyArmour      => 4
         }
     }
 
     derive armour_permission_from_rank(rank: int) -> ArmourPermission {
         match {
-            rank <= 0 => ArmourPermission.no_armour,
-            rank == 1 => ArmourPermission.leather_only,
-            rank == 2 => ArmourPermission.leather_wooden,
-            rank == 3 => ArmourPermission.leather_shield,
-            _         => ArmourPermission.any_armour
+            rank <= 0 => ArmourPermission.NoArmour,
+            rank == 1 => ArmourPermission.LeatherOnly,
+            rank == 2 => ArmourPermission.LeatherWooden,
+            rank == 3 => ArmourPermission.LeatherShield,
+            _         => ArmourPermission.AnyArmour
         }
     }
 

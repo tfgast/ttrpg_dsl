@@ -214,24 +214,24 @@ system "OSRIC" {
     // --- Armour permission levels ---
 
     enum ArmourPermission {
-        any_armour,         // Fighter, Paladin, Ranger, Cleric
-        leather_shield,     // Assassin (leather/studded + shield)
-        leather_wooden,     // Druid (leather + wooden shield only)
-        leather_only,       // Thief (leather, no shield for abilities)
-        no_armour           // Magic-User, Illusionist, Monk
+        AnyArmour,         // Fighter, Paladin, Ranger, Cleric
+        LeatherShield,     // Assassin (leather/studded + shield)
+        LeatherWooden,     // Druid (leather + wooden shield only)
+        LeatherOnly,       // Thief (leather, no shield for abilities)
+        NoArmour           // Magic-User, Illusionist, Monk
     }
 
     // --- Thief skills (used by Thief, Assassin, Monk) ---
 
     enum ThiefSkill {
-        climb_walls,
-        find_traps,
-        hear_noise,
-        hide_in_shadows,
-        move_silently,
-        open_locks,
-        pick_pockets,
-        read_languages
+        ClimbWalls,
+        FindTraps,
+        HearNoise,
+        HideInShadows,
+        MoveSilently,
+        OpenLocks,
+        PickPockets,
+        ReadLanguages
     }
 
     // --- Saving throw values (five categories) ---

@@ -143,63 +143,63 @@ fn eval_thief_base(skill: &str, level: i64) -> i64 {
 
 #[test]
 fn thief_climb_walls_level_1() {
-    assert_eq!(eval_thief_base("climb_walls", 1), 85);
+    assert_eq!(eval_thief_base("ClimbWalls", 1), 85);
 }
 
 #[test]
 fn thief_climb_walls_level_10() {
-    assert_eq!(eval_thief_base("climb_walls", 10), 99);
+    assert_eq!(eval_thief_base("ClimbWalls", 10), 99);
 }
 
 #[test]
 fn thief_open_locks_level_1() {
-    assert_eq!(eval_thief_base("open_locks", 1), 25);
+    assert_eq!(eval_thief_base("OpenLocks", 1), 25);
 }
 
 #[test]
 fn thief_open_locks_level_9() {
-    assert_eq!(eval_thief_base("open_locks", 9), 62);
+    assert_eq!(eval_thief_base("OpenLocks", 9), 62);
 }
 
 #[test]
 fn thief_pick_pockets_level_1() {
-    assert_eq!(eval_thief_base("pick_pockets", 1), 30);
+    assert_eq!(eval_thief_base("PickPockets", 1), 30);
 }
 
 #[test]
 fn thief_pick_pockets_level_12() {
     // Pick pockets can exceed 100% — high level thieves are very good
-    assert_eq!(eval_thief_base("pick_pockets", 12), 100);
+    assert_eq!(eval_thief_base("PickPockets", 12), 100);
 }
 
 #[test]
 fn thief_hide_in_shadows_level_5() {
-    assert_eq!(eval_thief_base("hide_in_shadows", 5), 30);
+    assert_eq!(eval_thief_base("HideInShadows", 5), 30);
 }
 
 #[test]
 fn thief_move_silently_level_7() {
-    assert_eq!(eval_thief_base("move_silently", 7), 55);
+    assert_eq!(eval_thief_base("MoveSilently", 7), 55);
 }
 
 #[test]
 fn thief_find_traps_level_1() {
-    assert_eq!(eval_thief_base("find_traps", 1), 20);
+    assert_eq!(eval_thief_base("FindTraps", 1), 20);
 }
 
 #[test]
 fn thief_hear_noise_level_1() {
-    assert_eq!(eval_thief_base("hear_noise", 1), 10);
+    assert_eq!(eval_thief_base("HearNoise", 1), 10);
 }
 
 #[test]
 fn thief_read_languages_level_1() {
-    assert_eq!(eval_thief_base("read_languages", 1), 1);
+    assert_eq!(eval_thief_base("ReadLanguages", 1), 1);
 }
 
 #[test]
 fn thief_read_languages_level_10() {
-    assert_eq!(eval_thief_base("read_languages", 10), 50);
+    assert_eq!(eval_thief_base("ReadLanguages", 10), 50);
 }
 
 // ── Assassin base table spot checks ────────────────────────────
@@ -224,35 +224,35 @@ fn eval_assassin_base(skill: &str, level: i64) -> i64 {
 
 #[test]
 fn assassin_climb_walls_level_1() {
-    assert_eq!(eval_assassin_base("climb_walls", 1), 85);
+    assert_eq!(eval_assassin_base("ClimbWalls", 1), 85);
 }
 
 #[test]
 fn assassin_climb_walls_level_4() {
     // Assassin stays at 85 for 1-3, then 86 at 4
-    assert_eq!(eval_assassin_base("climb_walls", 4), 86);
+    assert_eq!(eval_assassin_base("ClimbWalls", 4), 86);
 }
 
 #[test]
 fn assassin_open_locks_level_1() {
-    assert_eq!(eval_assassin_base("open_locks", 1), 25);
+    assert_eq!(eval_assassin_base("OpenLocks", 1), 25);
 }
 
 #[test]
 fn assassin_open_locks_level_8() {
-    assert_eq!(eval_assassin_base("open_locks", 8), 47);
+    assert_eq!(eval_assassin_base("OpenLocks", 8), 47);
 }
 
 #[test]
 fn assassin_read_languages_level_3() {
     // Assassin: levels 1-3 = 1%
-    assert_eq!(eval_assassin_base("read_languages", 3), 1);
+    assert_eq!(eval_assassin_base("ReadLanguages", 3), 1);
 }
 
 #[test]
 fn assassin_find_traps_level_15() {
     // Wildcard: 80
-    assert_eq!(eval_assassin_base("find_traps", 15), 80);
+    assert_eq!(eval_assassin_base("FindTraps", 15), 80);
 }
 
 // ── Skill base dispatch: Thief vs Assassin ─────────────────────
@@ -280,18 +280,18 @@ fn eval_skill_base_for_class(class: &str, skill: &str, level: i64) -> i64 {
 
 #[test]
 fn dispatch_thief_uses_thief_table() {
-    assert_eq!(eval_skill_base_for_class("Thief", "open_locks", 5), 42);
+    assert_eq!(eval_skill_base_for_class("Thief", "OpenLocks", 5), 42);
 }
 
 #[test]
 fn dispatch_assassin_uses_assassin_table() {
-    assert_eq!(eval_skill_base_for_class("Assassin", "open_locks", 5), 33);
+    assert_eq!(eval_skill_base_for_class("Assassin", "OpenLocks", 5), 33);
 }
 
 #[test]
 fn dispatch_monk_uses_thief_table() {
     // Monk has thief skills but should use the thief progression table
-    assert_eq!(eval_skill_base_for_class("Monk", "open_locks", 5), 42);
+    assert_eq!(eval_skill_base_for_class("Monk", "OpenLocks", 5), 42);
 }
 
 // ── DEX adjustment table ───────────────────────────────────────
@@ -316,51 +316,51 @@ fn eval_dex_adj(skill: &str, dex: i64) -> i64 {
 
 #[test]
 fn dex_climb_always_zero() {
-    assert_eq!(eval_dex_adj("climb_walls", 9), 0);
-    assert_eq!(eval_dex_adj("climb_walls", 18), 0);
+    assert_eq!(eval_dex_adj("ClimbWalls", 9), 0);
+    assert_eq!(eval_dex_adj("ClimbWalls", 18), 0);
 }
 
 #[test]
 fn dex_hear_always_zero() {
-    assert_eq!(eval_dex_adj("hear_noise", 9), 0);
-    assert_eq!(eval_dex_adj("hear_noise", 18), 0);
+    assert_eq!(eval_dex_adj("HearNoise", 9), 0);
+    assert_eq!(eval_dex_adj("HearNoise", 18), 0);
 }
 
 #[test]
 fn dex_read_languages_always_zero() {
-    assert_eq!(eval_dex_adj("read_languages", 9), 0);
-    assert_eq!(eval_dex_adj("read_languages", 18), 0);
+    assert_eq!(eval_dex_adj("ReadLanguages", 9), 0);
+    assert_eq!(eval_dex_adj("ReadLanguages", 18), 0);
 }
 
 #[test]
 fn dex_9_open_locks_penalty() {
-    assert_eq!(eval_dex_adj("open_locks", 9), -10);
+    assert_eq!(eval_dex_adj("OpenLocks", 9), -10);
 }
 
 #[test]
 fn dex_18_open_locks_bonus() {
-    assert_eq!(eval_dex_adj("open_locks", 18), 15);
+    assert_eq!(eval_dex_adj("OpenLocks", 18), 15);
 }
 
 #[test]
 fn dex_9_pick_pockets_penalty() {
-    assert_eq!(eval_dex_adj("pick_pockets", 9), -15);
+    assert_eq!(eval_dex_adj("PickPockets", 9), -15);
 }
 
 #[test]
 fn dex_9_move_silently_penalty() {
-    assert_eq!(eval_dex_adj("move_silently", 9), -20);
+    assert_eq!(eval_dex_adj("MoveSilently", 9), -20);
 }
 
 #[test]
 fn dex_17_hide_bonus() {
-    assert_eq!(eval_dex_adj("hide_in_shadows", 17), 5);
+    assert_eq!(eval_dex_adj("HideInShadows", 17), 5);
 }
 
 #[test]
 fn dex_19_find_traps_bonus() {
     // DEX 19 hits the wildcard: +15
-    assert_eq!(eval_dex_adj("find_traps", 19), 15);
+    assert_eq!(eval_dex_adj("FindTraps", 19), 15);
 }
 
 // ── Ancestry adjustment table ──────────────────────────────────
@@ -385,52 +385,52 @@ fn eval_ancestry_adj(skill: &str, anc: &str) -> i64 {
 
 #[test]
 fn dwarf_climb_penalty() {
-    assert_eq!(eval_ancestry_adj("climb_walls", "Dwarf"), -10);
+    assert_eq!(eval_ancestry_adj("ClimbWalls", "Dwarf"), -10);
 }
 
 #[test]
 fn dwarf_open_locks_bonus() {
-    assert_eq!(eval_ancestry_adj("open_locks", "Dwarf"), 15);
+    assert_eq!(eval_ancestry_adj("OpenLocks", "Dwarf"), 15);
 }
 
 #[test]
 fn dwarf_find_traps_bonus() {
-    assert_eq!(eval_ancestry_adj("find_traps", "Dwarf"), 15);
+    assert_eq!(eval_ancestry_adj("FindTraps", "Dwarf"), 15);
 }
 
 #[test]
 fn elf_hide_bonus() {
-    assert_eq!(eval_ancestry_adj("hide_in_shadows", "Elf"), 10);
+    assert_eq!(eval_ancestry_adj("HideInShadows", "Elf"), 10);
 }
 
 #[test]
 fn elf_read_languages_bonus() {
-    assert_eq!(eval_ancestry_adj("read_languages", "Elf"), 10);
+    assert_eq!(eval_ancestry_adj("ReadLanguages", "Elf"), 10);
 }
 
 #[test]
 fn halfling_move_silently_bonus() {
-    assert_eq!(eval_ancestry_adj("move_silently", "Halfling"), 15);
+    assert_eq!(eval_ancestry_adj("MoveSilently", "Halfling"), 15);
 }
 
 #[test]
 fn halfling_hide_bonus() {
-    assert_eq!(eval_ancestry_adj("hide_in_shadows", "Halfling"), 15);
+    assert_eq!(eval_ancestry_adj("HideInShadows", "Halfling"), 15);
 }
 
 #[test]
 fn human_climb_bonus() {
-    assert_eq!(eval_ancestry_adj("climb_walls", "Human"), 5);
+    assert_eq!(eval_ancestry_adj("ClimbWalls", "Human"), 5);
 }
 
 #[test]
 fn human_open_locks_bonus() {
-    assert_eq!(eval_ancestry_adj("open_locks", "Human"), 5);
+    assert_eq!(eval_ancestry_adj("OpenLocks", "Human"), 5);
 }
 
 #[test]
 fn halforc_pick_pockets_penalty() {
-    assert_eq!(eval_ancestry_adj("pick_pockets", "HalfOrc"), -5);
+    assert_eq!(eval_ancestry_adj("PickPockets", "HalfOrc"), -5);
 }
 
 // ── Effective skill computation ────────────────────────────────
@@ -467,20 +467,20 @@ fn eval_effective(class: &str, skill: &str, level: i64, dex: i64, anc: &str) -> 
 #[test]
 fn effective_thief_open_locks_human_dex12_level1() {
     // Base 25 + DEX 12 adj 0 + Human adj 5 = 30
-    assert_eq!(eval_effective("Thief", "open_locks", 1, 12, "Human"), 30);
+    assert_eq!(eval_effective("Thief", "OpenLocks", 1, 12, "Human"), 30);
 }
 
 #[test]
 fn effective_thief_climb_human_dex12_level1() {
     // Base 85 + DEX 0 + Human +5 = 90
-    assert_eq!(eval_effective("Thief", "climb_walls", 1, 12, "Human"), 90);
+    assert_eq!(eval_effective("Thief", "ClimbWalls", 1, 12, "Human"), 90);
 }
 
 #[test]
 fn effective_thief_hide_halfling_dex17_level5() {
     // Base 30 + DEX 17 hide adj +5 + Halfling hide +15 = 50
     assert_eq!(
-        eval_effective("Thief", "hide_in_shadows", 5, 17, "Halfling"),
+        eval_effective("Thief", "HideInShadows", 5, 17, "Halfling"),
         50
     );
 }
@@ -488,13 +488,13 @@ fn effective_thief_hide_halfling_dex17_level5() {
 #[test]
 fn effective_thief_open_locks_dwarf_dex9_level1() {
     // Base 25 + DEX 9 adj -10 + Dwarf adj +15 = 30
-    assert_eq!(eval_effective("Thief", "open_locks", 1, 9, "Dwarf"), 30);
+    assert_eq!(eval_effective("Thief", "OpenLocks", 1, 9, "Dwarf"), 30);
 }
 
 #[test]
 fn effective_assassin_find_traps_elf_dex18_level5() {
     // Assassin base find_traps L5 = 30, DEX 18 adj +10, Elf adj +5 = 45
-    assert_eq!(eval_effective("Assassin", "find_traps", 5, 18, "Elf"), 45);
+    assert_eq!(eval_effective("Assassin", "FindTraps", 5, 18, "Elf"), 45);
 }
 
 #[test]
@@ -503,7 +503,7 @@ fn effective_clamps_minimum_to_1() {
     // But test a scenario that could go below 1:
     // Assassin read_languages L1 = 1%, DEX 0, HalfOrc -10 = -9 → clamped to 1
     assert_eq!(
-        eval_effective("Assassin", "read_languages", 1, 12, "HalfOrc"),
+        eval_effective("Assassin", "ReadLanguages", 1, 12, "HalfOrc"),
         1
     );
 }
@@ -513,7 +513,7 @@ fn effective_clamps_maximum_to_99() {
     // Pick pockets at high level can exceed 100%
     // Thief L16 pick_pockets = 125, DEX 18 +10, HalfElf +10 = 145 → clamped to 99
     assert_eq!(
-        eval_effective("Thief", "pick_pockets", 16, 18, "HalfElf"),
+        eval_effective("Thief", "PickPockets", 16, 18, "HalfElf"),
         99
     );
 }
@@ -595,14 +595,14 @@ fn skill_check_high_skill_low_roll_passes() {
 #[test]
 fn thief_skills_improve_with_level() {
     let skills = [
-        "climb_walls",
-        "find_traps",
-        "hear_noise",
-        "hide_in_shadows",
-        "move_silently",
-        "open_locks",
-        "pick_pockets",
-        "read_languages",
+        "ClimbWalls",
+        "FindTraps",
+        "HearNoise",
+        "HideInShadows",
+        "MoveSilently",
+        "OpenLocks",
+        "PickPockets",
+        "ReadLanguages",
     ];
     for skill in &skills {
         let low = eval_thief_base(skill, 1);
@@ -617,14 +617,14 @@ fn thief_skills_improve_with_level() {
 #[test]
 fn assassin_skills_improve_with_level() {
     let skills = [
-        "climb_walls",
-        "find_traps",
-        "hear_noise",
-        "hide_in_shadows",
-        "move_silently",
-        "open_locks",
-        "pick_pockets",
-        "read_languages",
+        "ClimbWalls",
+        "FindTraps",
+        "HearNoise",
+        "HideInShadows",
+        "MoveSilently",
+        "OpenLocks",
+        "PickPockets",
+        "ReadLanguages",
     ];
     for skill in &skills {
         let low = eval_assassin_base(skill, 1);
@@ -642,12 +642,12 @@ fn assassin_skills_improve_with_level() {
 fn thief_better_than_assassin_at_same_level() {
     // At level 5, thieves should be at least as good as assassins in most skills
     let skills = [
-        "open_locks",
-        "find_traps",
-        "hide_in_shadows",
-        "move_silently",
-        "pick_pockets",
-        "read_languages",
+        "OpenLocks",
+        "FindTraps",
+        "HideInShadows",
+        "MoveSilently",
+        "PickPockets",
+        "ReadLanguages",
     ];
     for skill in &skills {
         let thief_val = eval_skill_base_for_class("Thief", skill, 5);

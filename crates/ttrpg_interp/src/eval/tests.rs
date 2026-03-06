@@ -1501,11 +1501,11 @@ fn eval_pattern_match_qualified_variant() {
             ordered: false,
             variants: vec![
                 VariantInfo {
-                    name: "end_of_turn".into(),
+                    name: "EndOfTurn".into(),
                     fields: vec![],
                 },
                 VariantInfo {
-                    name: "indefinite".into(),
+                    name: "Indefinite".into(),
                     fields: vec![],
                 },
             ],
@@ -1519,7 +1519,7 @@ fn eval_pattern_match_qualified_variant() {
 
     let val = Value::EnumVariant {
         enum_name: "Duration".into(),
-        variant: "end_of_turn".into(),
+        variant: "EndOfTurn".into(),
         fields: BTreeMap::new(),
     };
     env.bind(Name::from("dur"), val);
@@ -1530,7 +1530,7 @@ fn eval_pattern_match_qualified_variant() {
             PatternArm {
                 pattern: spanned(PatternKind::QualifiedVariant {
                     ty: "Duration".into(),
-                    variant: "end_of_turn".into(),
+                    variant: "EndOfTurn".into(),
                 }),
                 body: ArmBody::Expr(spanned(ExprKind::StringLit("eot".to_string()))),
                 span: dummy_span(),
@@ -1559,7 +1559,7 @@ fn eval_pattern_match_qualified_destructure() {
             name: "Duration".into(),
             ordered: false,
             variants: vec![VariantInfo {
-                name: "rounds".into(),
+                name: "Rounds".into(),
                 fields: vec![("n".into(), ttrpg_checker::ty::Ty::Int)],
             }],
         }),
@@ -1574,18 +1574,18 @@ fn eval_pattern_match_qualified_destructure() {
     fields.insert("n".into(), Value::Int(3));
     let val = Value::EnumVariant {
         enum_name: "Duration".into(),
-        variant: "rounds".into(),
+        variant: "Rounds".into(),
         fields,
     };
     env.bind(Name::from("dur"), val);
 
-    // match dur { Duration.rounds(count) => count }
+    // match dur { Duration.Rounds(count) => count }
     let expr = spanned(ExprKind::PatternMatch {
         scrutinee: Box::new(spanned(ExprKind::Ident("dur".into()))),
         arms: vec![PatternArm {
             pattern: spanned(PatternKind::QualifiedDestructure {
                 ty: "Duration".into(),
-                variant: "rounds".into(),
+                variant: "Rounds".into(),
                 fields: vec![spanned(PatternKind::Ident("count".into()))],
             }),
             body: ArmBody::Expr(spanned(ExprKind::Ident("count".into()))),
@@ -1842,7 +1842,7 @@ fn eval_field_access_enum_variant() {
         "d".into(),
         Value::EnumVariant {
             enum_name: "Duration".into(),
-            variant: "rounds".into(),
+            variant: "Rounds".into(),
             fields,
         },
     );

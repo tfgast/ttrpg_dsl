@@ -221,7 +221,7 @@ fn skill_chance_climb_walls() {
             &state,
             &mut handler,
             "test_skill_chance",
-            vec![enum_variant("ThiefSkill", "climb_walls"), Value::Int(1)],
+            vec![enum_variant("ThiefSkill", "ClimbWalls"), Value::Int(1)],
         )
         .unwrap();
     assert_eq!(val, Value::Int(87));
@@ -232,7 +232,7 @@ fn skill_chance_climb_walls() {
             &state,
             &mut handler,
             "test_skill_chance",
-            vec![enum_variant("ThiefSkill", "climb_walls"), Value::Int(7)],
+            vec![enum_variant("ThiefSkill", "ClimbWalls"), Value::Int(7)],
         )
         .unwrap();
     assert_eq!(val, Value::Int(93));
@@ -243,7 +243,7 @@ fn skill_chance_climb_walls() {
             &state,
             &mut handler,
             "test_skill_chance",
-            vec![enum_variant("ThiefSkill", "climb_walls"), Value::Int(14)],
+            vec![enum_variant("ThiefSkill", "ClimbWalls"), Value::Int(14)],
         )
         .unwrap();
     assert_eq!(val, Value::Int(99));
@@ -262,7 +262,7 @@ fn skill_chance_hear_noise_ranges() {
             &state,
             &mut handler,
             "test_skill_chance",
-            vec![enum_variant("ThiefSkill", "hear_noise"), Value::Int(1)],
+            vec![enum_variant("ThiefSkill", "HearNoise"), Value::Int(1)],
         )
         .unwrap();
     assert_eq!(val, Value::Int(2));
@@ -273,7 +273,7 @@ fn skill_chance_hear_noise_ranges() {
             &state,
             &mut handler,
             "test_skill_chance",
-            vec![enum_variant("ThiefSkill", "hear_noise"), Value::Int(5)],
+            vec![enum_variant("ThiefSkill", "HearNoise"), Value::Int(5)],
         )
         .unwrap();
     assert_eq!(val, Value::Int(3));
@@ -284,7 +284,7 @@ fn skill_chance_hear_noise_ranges() {
             &state,
             &mut handler,
             "test_skill_chance",
-            vec![enum_variant("ThiefSkill", "hear_noise"), Value::Int(10)],
+            vec![enum_variant("ThiefSkill", "HearNoise"), Value::Int(10)],
         )
         .unwrap();
     assert_eq!(val, Value::Int(4));
@@ -295,7 +295,7 @@ fn skill_chance_hear_noise_ranges() {
             &state,
             &mut handler,
             "test_skill_chance",
-            vec![enum_variant("ThiefSkill", "hear_noise"), Value::Int(14)],
+            vec![enum_variant("ThiefSkill", "HearNoise"), Value::Int(14)],
         )
         .unwrap();
     assert_eq!(val, Value::Int(5));
@@ -314,7 +314,7 @@ fn skill_chance_read_languages() {
             &state,
             &mut handler,
             "test_skill_chance",
-            vec![enum_variant("ThiefSkill", "read_languages"), Value::Int(3)],
+            vec![enum_variant("ThiefSkill", "ReadLanguages"), Value::Int(3)],
         )
         .unwrap();
     assert_eq!(val, Value::Int(0));
@@ -325,7 +325,7 @@ fn skill_chance_read_languages() {
             &state,
             &mut handler,
             "test_skill_chance",
-            vec![enum_variant("ThiefSkill", "read_languages"), Value::Int(4)],
+            vec![enum_variant("ThiefSkill", "ReadLanguages"), Value::Int(4)],
         )
         .unwrap();
     assert_eq!(val, Value::Int(80));
@@ -344,7 +344,7 @@ fn skill_chance_pick_pockets_exceeds_100() {
             &state,
             &mut handler,
             "test_skill_chance",
-            vec![enum_variant("ThiefSkill", "pick_pockets"), Value::Int(14)],
+            vec![enum_variant("ThiefSkill", "PickPockets"), Value::Int(14)],
         )
         .unwrap();
     assert_eq!(val, Value::Int(125));
@@ -525,7 +525,7 @@ fn thief_skill_check_success() {
             &state,
             &mut handler,
             "thief_skill_check",
-            vec![enum_variant("ThiefSkill", "open_locks"), Value::Int(1)],
+            vec![enum_variant("ThiefSkill", "OpenLocks"), Value::Int(1)],
         )
         .unwrap();
     assert_eq!(val, Value::Bool(true));
@@ -546,7 +546,7 @@ fn thief_skill_check_failure() {
             &state,
             &mut handler,
             "thief_skill_check",
-            vec![enum_variant("ThiefSkill", "open_locks"), Value::Int(1)],
+            vec![enum_variant("ThiefSkill", "OpenLocks"), Value::Int(1)],
         )
         .unwrap();
     assert_eq!(val, Value::Bool(false));

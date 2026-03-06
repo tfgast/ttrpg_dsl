@@ -1197,7 +1197,7 @@ fn builtin_apply_condition_emits_effect() {
     env.bind("dur".into(), {
         let mut f = BTreeMap::new();
         f.insert("count".into(), Value::Int(3));
-        duration_variant_with("rounds", f)
+        duration_variant_with("Rounds", f)
     });
 
     let expr = spanned(ExprKind::Call {
@@ -1255,7 +1255,7 @@ fn builtin_remove_condition_emits_effect() {
             params: BTreeMap::new(),
             bearer: EntityRef(2),
             gained_at: 0,
-            duration: crate::value::duration_variant("indefinite"),
+            duration: crate::value::duration_variant("Indefinite"),
             invocation: None,
             applied_at: 0,
         }],
@@ -1325,7 +1325,7 @@ fn remove_condition_empty_args_preserves_exact_match() {
             params: BTreeMap::new(),
             bearer: EntityRef(1),
             gained_at: 0,
-            duration: crate::value::duration_variant("indefinite"),
+            duration: crate::value::duration_variant("Indefinite"),
             invocation: None,
             applied_at: 0,
         }],
@@ -1384,7 +1384,7 @@ fn remove_condition_string_form_uses_none_params() {
             params: BTreeMap::new(),
             bearer: EntityRef(1),
             gained_at: 0,
-            duration: crate::value::duration_variant("indefinite"),
+            duration: crate::value::duration_variant("Indefinite"),
             invocation: None,
             applied_at: 0,
         }],
@@ -1446,7 +1446,7 @@ fn remove_condition_active_condition_uses_id() {
     fields.insert(Name::from("id"), Value::Int(42));
     fields.insert(
         Name::from("duration"),
-        crate::value::duration_variant("indefinite"),
+        crate::value::duration_variant("Indefinite"),
     );
     env.bind(
         "cond".into(),
@@ -1507,11 +1507,11 @@ fn enum_variant_qualified_construction() {
             ordered: false,
             variants: vec![
                 VariantInfo {
-                    name: "rounds".into(),
+                    name: "Rounds".into(),
                     fields: vec![("value".into(), Ty::Int)],
                 },
                 VariantInfo {
-                    name: "indefinite".into(),
+                    name: "Indefinite".into(),
                     fields: vec![],
                 },
             ],
@@ -1519,12 +1519,12 @@ fn enum_variant_qualified_construction() {
     );
     type_env
         .variant_to_enums
-        .entry("rounds".into())
+        .entry("Rounds".into())
         .or_default()
         .push("Duration".into());
     type_env
         .variant_to_enums
-        .entry("indefinite".into())
+        .entry("Indefinite".into())
         .or_default()
         .push("Duration".into());
 
@@ -1533,11 +1533,11 @@ fn enum_variant_qualified_construction() {
     let mut handler = ScriptedHandler::new();
     let mut env = make_env(&state, &mut handler, &interp);
 
-    // Duration.rounds(3)
+    // Duration.Rounds(3)
     let expr = spanned(ExprKind::Call {
         callee: Box::new(spanned(ExprKind::FieldAccess {
             object: Box::new(spanned(ExprKind::Ident("Duration".into()))),
-            field: "rounds".into(),
+            field: "Rounds".into(),
         })),
         args: vec![Arg {
             name: None,
@@ -1553,7 +1553,7 @@ fn enum_variant_qualified_construction() {
             fields,
         } => {
             assert_eq!(enum_name, "Duration");
-            assert_eq!(variant, "rounds");
+            assert_eq!(variant, "Rounds");
             assert_eq!(fields.get("value"), Some(&Value::Int(3)));
         }
         _ => panic!("expected EnumVariant, got {result:?}"),
@@ -1571,11 +1571,11 @@ fn enum_variant_bare_construction() {
             ordered: false,
             variants: vec![
                 VariantInfo {
-                    name: "rounds".into(),
+                    name: "Rounds".into(),
                     fields: vec![("value".into(), Ty::Int)],
                 },
                 VariantInfo {
-                    name: "indefinite".into(),
+                    name: "Indefinite".into(),
                     fields: vec![],
                 },
             ],
@@ -1583,12 +1583,12 @@ fn enum_variant_bare_construction() {
     );
     type_env
         .variant_to_enums
-        .entry("rounds".into())
+        .entry("Rounds".into())
         .or_default()
         .push("Duration".into());
     type_env
         .variant_to_enums
-        .entry("indefinite".into())
+        .entry("Indefinite".into())
         .or_default()
         .push("Duration".into());
 
@@ -1597,9 +1597,9 @@ fn enum_variant_bare_construction() {
     let mut handler = ScriptedHandler::new();
     let mut env = make_env(&state, &mut handler, &interp);
 
-    // rounds(5) — bare enum variant call
+    // Rounds(5) — bare enum variant call
     let expr = spanned(ExprKind::Call {
-        callee: Box::new(spanned(ExprKind::Ident("rounds".into()))),
+        callee: Box::new(spanned(ExprKind::Ident("Rounds".into()))),
         args: vec![Arg {
             name: None,
             value: spanned(ExprKind::IntLit(5)),
@@ -1614,7 +1614,7 @@ fn enum_variant_bare_construction() {
             fields,
         } => {
             assert_eq!(enum_name, "Duration");
-            assert_eq!(variant, "rounds");
+            assert_eq!(variant, "Rounds");
             assert_eq!(fields.get("value"), Some(&Value::Int(5)));
         }
         _ => panic!("expected EnumVariant, got {result:?}"),
@@ -2288,7 +2288,7 @@ fn apply_condition_rejects_invalid_response() {
     env.bind("dur".into(), {
         let mut f = BTreeMap::new();
         f.insert("count".into(), Value::Int(3));
-        duration_variant_with("rounds", f)
+        duration_variant_with("Rounds", f)
     });
 
     let expr = spanned(ExprKind::Call {
@@ -2339,7 +2339,7 @@ fn apply_condition_accepts_vetoed_response() {
     env.bind("dur".into(), {
         let mut f = BTreeMap::new();
         f.insert("count".into(), Value::Int(3));
-        duration_variant_with("rounds", f)
+        duration_variant_with("Rounds", f)
     });
 
     let expr = spanned(ExprKind::Call {
@@ -2380,7 +2380,7 @@ fn remove_condition_rejects_invalid_response() {
             params: BTreeMap::new(),
             bearer: EntityRef(2),
             gained_at: 0,
-            duration: crate::value::duration_variant("indefinite"),
+            duration: crate::value::duration_variant("Indefinite"),
             invocation: None,
             applied_at: 0,
         }],
@@ -2464,10 +2464,10 @@ fn action_call_non_entity_receiver_error() {
 
 #[test]
 fn bare_call_prefers_variant_over_function() {
-    // Enum variant "rounds" collides with a function named "rounds".
+    // Enum variant "Rounds" collides with a function named "Rounds".
     // The interpreter should resolve to the variant, matching the checker.
     let program = program_with_decls(vec![DeclKind::Derive(FnDecl::new(
-        "rounds",
+        "Rounds",
         vec![Param::new("n", spanned(TypeExpr::Int))],
         spanned(TypeExpr::Int),
         spanned(vec![spanned(StmtKind::Expr(spanned(ExprKind::IntLit(
@@ -2477,9 +2477,9 @@ fn bare_call_prefers_variant_over_function() {
 
     let mut type_env = TypeEnv::new();
     type_env.functions.insert(
-        "rounds".into(),
+        "Rounds".into(),
         FnInfo {
-            name: "rounds".into(),
+            name: "Rounds".into(),
             kind: FnKind::Derive,
             params: vec![ParamInfo {
                 name: "n".into(),
@@ -2501,14 +2501,14 @@ fn bare_call_prefers_variant_over_function() {
             name: "Duration".into(),
             ordered: false,
             variants: vec![VariantInfo {
-                name: "rounds".into(),
+                name: "Rounds".into(),
                 fields: vec![("value".into(), Ty::Int)],
             }],
         }),
     );
     type_env
         .variant_to_enums
-        .entry("rounds".into())
+        .entry("Rounds".into())
         .or_default()
         .push("Duration".into());
 
@@ -2517,9 +2517,9 @@ fn bare_call_prefers_variant_over_function() {
     let mut handler = ScriptedHandler::new();
     let mut env = make_env(&state, &mut handler, &interp);
 
-    // Call: rounds(5) — should resolve to enum variant, not the function
+    // Call: Rounds(5) — should resolve to enum variant, not the function
     let expr = spanned(ExprKind::Call {
-        callee: Box::new(spanned(ExprKind::Ident("rounds".into()))),
+        callee: Box::new(spanned(ExprKind::Ident("Rounds".into()))),
         args: vec![Arg {
             name: None,
             value: spanned(ExprKind::IntLit(5)),
@@ -2534,7 +2534,7 @@ fn bare_call_prefers_variant_over_function() {
             fields,
         } => {
             assert_eq!(enum_name, "Duration");
-            assert_eq!(variant, "rounds");
+            assert_eq!(variant, "Rounds");
             assert_eq!(fields.get("value"), Some(&Value::Int(5)));
         }
         Value::Int(999) => panic!("resolved to function instead of enum variant"),

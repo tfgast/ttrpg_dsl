@@ -98,14 +98,14 @@ system "D&D 5e Expanded" {
     // a condition's modifier activates (for until_next_use), and
     // turn_end + conditions() enables save-based removal (for until_save).
     enum Duration {
-        end_of_turn,
-        start_of_next_turn,
-        rounds(count: int),
-        minutes(count: int),
-        hours(count: int),
-        until_next_use,
-        until_save(dc: int, ability: Ability),
-        indefinite
+        EndOfTurn,
+        StartOfNextTurn,
+        Rounds(count: int),
+        Minutes(count: int),
+        Hours(count: int),
+        UntilNextUse,
+        UntilSave(dc: int, ability: Ability),
+        Indefinite
     }
 
 
@@ -252,7 +252,7 @@ system "D&D 5e Expanded" {
             // RESOLVED: 0d6 now works as a DiceExpr default.          [ttrpg_dsl-46i]
             // RESOLVED: has_cunning_action removed — Cunning Action   [ttrpg_dsl-xh9]
             // is now a condition with cost overrides, granted via
-            // apply_condition(rogue, CunningAction, Duration.indefinite)
+            // apply_condition(rogue, CunningAction, Duration.Indefinite)
         }
 
         // Death saves (tracked on all characters; 5e uses 3 successes/failures)
@@ -712,14 +712,14 @@ system "D&D 5e Expanded" {
     action Dodge on actor: Character () {
         cost { action }
         resolve {
-            apply_condition(actor, Dodging, Duration.start_of_next_turn)
+            apply_condition(actor, Dodging, Duration.StartOfNextTurn)
         }
     }
 
     action Disengage on actor: Character () {
         cost { action }
         resolve {
-            apply_condition(actor, Disengaging, Duration.end_of_turn)
+            apply_condition(actor, Disengaging, Duration.EndOfTurn)
         }
     }
 
@@ -733,7 +733,7 @@ system "D&D 5e Expanded" {
             // correctly models "advantage on next roll only". The
             // ConsumeOnUse hook removes the condition after its modifier
             // fires once — see Hooks section below.
-            apply_condition(target, Helped, Duration.until_next_use)
+            apply_condition(target, Helped, Duration.UntilNextUse)
         }
     }
 
@@ -761,8 +761,8 @@ system "D&D 5e Expanded" {
                 target, defender_skill
             )
             if success {
-                // RESOLVED: Duration.indefinite now works.            [ttrpg_dsl-d3r]
-                apply_condition(target, Grappled, Duration.indefinite)
+                // RESOLVED: Duration.Indefinite now works.            [ttrpg_dsl-d3r]
+                apply_condition(target, Grappled, Duration.Indefinite)
             }
         }
     }
@@ -787,7 +787,7 @@ system "D&D 5e Expanded" {
                 let choice = choose_shove_outcome(shover)
                 match choice {
                     knock_prone => {
-                        apply_condition(target, Prone, Duration.indefinite)
+                        apply_condition(target, Prone, Duration.Indefinite)
                     },
                     push_away => {
                         // PAIN POINT: No position arithmetic.         [ttrpg_dsl-586]
@@ -905,7 +905,7 @@ system "D&D 5e Expanded" {
         resolve {
             // PAIN POINT: Stealth check DC depends on observer perception —
             // simplified here as a state flag.
-            apply_condition(actor, Hidden, Duration.indefinite)
+            apply_condition(actor, Hidden, Duration.Indefinite)
         }
     }
 
@@ -963,7 +963,7 @@ system "D&D 5e Expanded" {
                 result.total >= 10 => {
                     dying.death_save_successes += 1
                     if dying.death_save_successes >= 3 {
-                        apply_condition(dying, Stable, Duration.indefinite)
+                        apply_condition(dying, Stable, Duration.Indefinite)
                     }
                 },
                 result.total == 1 => {
@@ -978,7 +978,7 @@ system "D&D 5e Expanded" {
             // not entity removal. TTRPGs keep entity data for resurrection.
             // CLI `destroy` handles host-level cleanup when truly needed.
             if dying.death_save_failures >= 3 {
-                apply_condition(dying, Dead, Duration.indefinite)
+                apply_condition(dying, Dead, Duration.Indefinite)
             }
         }
     }
@@ -992,7 +992,7 @@ system "D&D 5e Expanded" {
     // modify clause activates — see spec 02_scoping.ttrpg.
     hook ConsumeOnUse on c: Character (trigger: modify_applied(bearer: c)) {
         match trigger.condition.duration {
-            until_next_use => {
+            UntilNextUse => {
                 remove_condition(c, trigger.condition)
             },
             _ => {}
@@ -1005,7 +1005,7 @@ system "D&D 5e Expanded" {
     hook UntilSaveCheck on actor: Character (trigger: turn_end(actor: actor)) {
         for cond in conditions(actor) {
             match cond.duration {
-                until_save(dc, ability) => {
+                UntilSave(dc, ability) => {
                     let save = saving_throw(actor, ability, dc)
                     match save {
                         success => {
@@ -1318,8 +1318,8 @@ system "D&D 5e Expanded" {
     //
     //  [RESOLVED] DURATION TYPES                                  [ttrpg_dsl-d3r]
     //    - Ruleset-customizable enum with any variants needed
-    //    - Duration.indefinite works for Grappled, Prone, Stable
-    //    - Duration.rounds(n), Duration.hours(n) etc. available
+    //    - Duration.Indefinite works for Grappled, Prone, Stable
+    //    - Duration.Rounds(n), Duration.Hours(n) etc. available
     //    (Remaining gap: no "next use" or "until save" durations)
     //
     //  [RESOLVED] TURN PHASE HOOKS                                [ttrpg_dsl-pzy]

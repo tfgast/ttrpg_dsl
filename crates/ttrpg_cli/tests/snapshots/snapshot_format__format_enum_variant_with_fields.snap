@@ -2,4 +2,4 @@
 source: crates/ttrpg_cli/tests/snapshot_format.rs
 expression: "format_value(&val, &no_units())"
 ---
-Duration.rounds(value: 3)
+Duration.Rounds(value: 3)

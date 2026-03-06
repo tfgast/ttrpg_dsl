@@ -115,7 +115,7 @@ pub(crate) fn eval_call(
             ))
         }
 
-        // ── Qualified access: enum constructor (e.g. Duration.rounds(3)) ──
+        // ── Qualified access: enum constructor (e.g. Duration.Rounds(3)) ──
         ExprKind::FieldAccess { object, field } => {
             if let ExprKind::Ident(obj_name) = &object.node {
                 if let Some(DeclInfo::Enum(_)) = env.interp.type_env.types.get(obj_name.as_str()) {

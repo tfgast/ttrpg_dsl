@@ -107,7 +107,7 @@ system "test" {
         }
     }
     function poison(c: Character) {
-        apply_condition(c, Poisoned, Duration.indefinite)
+        apply_condition(c, Poisoned, Duration.Indefinite)
     }
 }
 "#;
@@ -147,7 +147,7 @@ system "test" {
         }
     }
     function curse(c: Character) {
-        apply_condition(c, Cursed, Duration.indefinite)
+        apply_condition(c, Cursed, Duration.Indefinite)
     }
 }
 "#;
@@ -187,7 +187,7 @@ system "test" {
         }
     }
     function poison_then_cure(c: Character) {
-        apply_condition(c, Poisoned, Duration.indefinite)
+        apply_condition(c, Poisoned, Duration.Indefinite)
         remove_condition(c, Poisoned)
     }
 }
@@ -229,7 +229,7 @@ system "test" {
         }
     }
     function apply_and_remove(c: Character) {
-        apply_condition(c, Cursed, Duration.indefinite)
+        apply_condition(c, Cursed, Duration.Indefinite)
         remove_condition(c, Cursed)
     }
 }
@@ -272,7 +272,7 @@ system "test" {
         }
     }
     function deal_damage(c: Character, dmg: int) {
-        apply_condition(c, Damaged(amount: dmg), Duration.indefinite)
+        apply_condition(c, Damaged(amount: dmg), Duration.Indefinite)
     }
 }
 "#;
@@ -313,7 +313,7 @@ system "test" {
         }
     }
     function poison(c: Character) {
-        apply_condition(c, Poisoned, Duration.indefinite)
+        apply_condition(c, Poisoned, Duration.Indefinite)
     }
 }
 "#;
@@ -355,7 +355,7 @@ system "test" {
         }
     }
     function poison_then_cure(c: Character) {
-        apply_condition(c, Poisoned, Duration.indefinite)
+        apply_condition(c, Poisoned, Duration.Indefinite)
         remove_condition(c, Poisoned)
     }
 }
@@ -406,7 +406,7 @@ system "test" {
         }
     }
     function poison(c: Character) {
-        apply_condition(c, Poisoned, Duration.indefinite)
+        apply_condition(c, Poisoned, Duration.Indefinite)
     }
 }
 "#;
@@ -452,7 +452,7 @@ system "test" {
         }
     }
     function shield_cycle(c: Character) {
-        apply_condition(c, Shield, Duration.indefinite)
+        apply_condition(c, Shield, Duration.Indefinite)
         remove_condition(c, Shield)
     }
 }
@@ -490,8 +490,8 @@ system "test" {
         }
     }
     function apply_twice_remove_all(c: Character) {
-        apply_condition(c, Buff, Duration.indefinite)
-        apply_condition(c, Buff, Duration.indefinite)
+        apply_condition(c, Buff, Duration.Indefinite)
+        apply_condition(c, Buff, Duration.Indefinite)
         remove_condition(c, Buff)
     }
 }

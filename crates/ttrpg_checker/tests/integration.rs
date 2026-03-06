@@ -667,7 +667,7 @@ system "test" {
     }
     condition Foo on bearer: Character {}
     derive foo(target: Character) -> int {
-        apply_condition(target, Foo, Duration.indefinite)
+        apply_condition(target, Foo, Duration.Indefinite)
         0
     }
 }
@@ -2630,7 +2630,7 @@ system "test" {
     action Bash on actor: Monster (target: Monster) {
         cost { action }
         resolve {
-            apply_condition(target, Stunned, Duration.indefinite)
+            apply_condition(target, Stunned, Duration.Indefinite)
         }
     }
 }
@@ -2668,7 +2668,7 @@ system "test" {
         cost { action }
         resolve {
             let s = Stats { hp: 10 }
-            apply_condition(s, Stunned, Duration.indefinite)
+            apply_condition(s, Stunned, Duration.Indefinite)
         }
     }
 }

@@ -433,7 +433,7 @@ system "OSRIC Spells" {
         casting_time: int
     ) {
         resolve {
-            apply_condition(caster, CastingSpell, Duration.indefinite)
+            apply_condition(caster, CastingSpell, Duration.Indefinite)
             caster.sc.casting_invocation = some(invocation())
         }
     }

@@ -45,7 +45,7 @@ pub struct ActiveCondition {
     pub bearer: EntityRef,
     /// Ordering timestamp (oldest first).
     pub gained_at: u64,
-    /// Duration value (e.g., `duration_variant("rounds")` or any ruleset-defined Duration variant).
+    /// Duration value (e.g., `duration_variant("Rounds")` or any ruleset-defined Duration variant).
     pub duration: Value,
     /// The invocation that applied this condition, if any.
     /// `None` for conditions applied outside action scope (CLI grant, host-injected).
@@ -259,7 +259,7 @@ mod tests {
                 params: BTreeMap::new(),
                 bearer: entity,
                 gained_at: 5,
-                duration: duration_variant("end_of_turn"),
+                duration: duration_variant("EndOfTurn"),
                 invocation: None,
                 applied_at: 0,
             }],
@@ -308,7 +308,7 @@ mod tests {
             params: BTreeMap::new(),
             bearer: EntityRef(1),
             gained_at: 10,
-            duration: duration_variant("rounds"),
+            duration: duration_variant("Rounds"),
             invocation: None,
             applied_at: 0,
         };
@@ -326,7 +326,7 @@ mod tests {
             params: BTreeMap::new(),
             bearer: EntityRef(1),
             gained_at: 3,
-            duration: duration_variant("end_of_turn"),
+            duration: duration_variant("EndOfTurn"),
             invocation: None,
             applied_at: 42,
         };
@@ -336,10 +336,7 @@ mod tests {
                 assert_eq!(name, "ActiveCondition");
                 assert_eq!(fields.get("name"), Some(&Value::Str("Prone".into())));
                 assert_eq!(fields.get("id"), Some(&Value::Int(7)));
-                assert_eq!(
-                    fields.get("duration"),
-                    Some(&duration_variant("end_of_turn"))
-                );
+                assert_eq!(fields.get("duration"), Some(&duration_variant("EndOfTurn")));
                 assert_eq!(fields.get("applied_at"), Some(&Value::Int(42)));
             }
             _ => panic!("expected Value::Struct"),
@@ -356,7 +353,7 @@ mod tests {
             params,
             bearer: EntityRef(1),
             gained_at: 5,
-            duration: duration_variant("rounds"),
+            duration: duration_variant("Rounds"),
             invocation: None,
             applied_at: 0,
         };

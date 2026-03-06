@@ -507,11 +507,11 @@ fn armour_permission_rank_ordering() {
     let mut handler = NullHandler;
 
     let cases = [
-        ("no_armour", 0),
-        ("leather_only", 1),
-        ("leather_wooden", 2),
-        ("leather_shield", 3),
-        ("any_armour", 4),
+        ("NoArmour", 0),
+        ("LeatherOnly", 1),
+        ("LeatherWooden", 2),
+        ("LeatherShield", 3),
+        ("AnyArmour", 4),
     ];
 
     for (variant, expected) in cases {
@@ -548,7 +548,7 @@ fn effective_armour_permission_fighter_thief() {
             vec![Value::Entity(char_ref)],
         )
         .unwrap();
-    assert_eq!(val, enum_variant("ArmourPermission", "leather_only"));
+    assert_eq!(val, enum_variant("ArmourPermission", "LeatherOnly"));
 }
 
 #[test]
@@ -574,7 +574,7 @@ fn effective_armour_permission_fighter_magic_user() {
             vec![Value::Entity(char_ref)],
         )
         .unwrap();
-    assert_eq!(val, enum_variant("ArmourPermission", "no_armour"));
+    assert_eq!(val, enum_variant("ArmourPermission", "NoArmour"));
 }
 
 #[test]
@@ -600,7 +600,7 @@ fn effective_armour_permission_cleric_fighter() {
             vec![Value::Entity(char_ref)],
         )
         .unwrap();
-    assert_eq!(val, enum_variant("ArmourPermission", "any_armour"));
+    assert_eq!(val, enum_variant("ArmourPermission", "AnyArmour"));
 }
 
 // ── num_classes ────────────────────────────────────────────────

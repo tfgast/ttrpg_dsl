@@ -40,11 +40,11 @@ system "Few-Shot Examples" {
     enum Size ordered { tiny, small, medium, large, huge, gargantuan }
 
     enum Duration {
-        end_of_turn,
-        start_of_next_turn,
-        rounds(count: int),
-        minutes(count: int),
-        indefinite
+        EndOfTurn,
+        StartOfNextTurn,
+        Rounds(count: int),
+        Minutes(count: int),
+        Indefinite
     }
 
     struct DamageSpec {
@@ -455,7 +455,7 @@ system "Few-Shot Examples" {
     action Dodge on actor: Character () {
         cost { action }
         resolve {
-            apply_condition(actor, Dodging, Duration.start_of_next_turn)
+            apply_condition(actor, Dodging, Duration.StartOfNextTurn)
         }
     }
 
@@ -516,7 +516,7 @@ system "Few-Shot Examples" {
     action Disengage on actor: Character () {
         cost { action }
         resolve {
-            apply_condition(actor, Disengaging, Duration.end_of_turn)
+            apply_condition(actor, Disengaging, Duration.EndOfTurn)
         }
     }
 
@@ -562,7 +562,7 @@ system "Few-Shot Examples" {
         trigger: Damaged(target: target)
     ) {
         if target.HP <= 0 {
-            apply_condition(target, Prone, Duration.indefinite)
+            apply_condition(target, Prone, Duration.Indefinite)
         }
     }
 
@@ -590,7 +590,7 @@ system "Few-Shot Examples" {
             for dt in physical_damage_types() {
                 barbarian.resistances += dt
             }
-            apply_condition(barbarian, Raging, Duration.rounds(10))
+            apply_condition(barbarian, Raging, Duration.Rounds(10))
         }
     }
 
@@ -624,7 +624,7 @@ system "Few-Shot Examples" {
         resolve {
             let inv = invocation()
             for target in targets {
-                apply_condition(target, Blessed, Duration.rounds(10))
+                apply_condition(target, Blessed, Duration.Rounds(10))
             }
             emit ConcentrationStarted(caster: caster, inv: inv)
         }

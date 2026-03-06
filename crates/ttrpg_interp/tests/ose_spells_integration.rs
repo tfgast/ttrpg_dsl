@@ -132,7 +132,7 @@ fn spell_save_type_lookup_examples() {
             vec![Value::Str("Cloudkill".into())],
         )
         .unwrap();
-    assert_eq!(cloudkill, spell_save_type_variant("sv_death"));
+    assert_eq!(cloudkill, spell_save_type_variant("SvDeath"));
 
     let hold_person = interp
         .evaluate_derive(
@@ -142,7 +142,7 @@ fn spell_save_type_lookup_examples() {
             vec![Value::Str("Hold Person".into())],
         )
         .unwrap();
-    assert_eq!(hold_person, spell_save_type_variant("sv_spells"));
+    assert_eq!(hold_person, spell_save_type_variant("SvSpells"));
 
     let unknown = interp
         .evaluate_derive(
@@ -152,7 +152,7 @@ fn spell_save_type_lookup_examples() {
             vec![Value::Str("Unknown Spell".into())],
         )
         .unwrap();
-    assert_eq!(unknown, spell_save_type_variant("no_save"));
+    assert_eq!(unknown, spell_save_type_variant("NoSave"));
 }
 
 #[test]

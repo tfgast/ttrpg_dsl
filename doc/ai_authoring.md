@@ -683,7 +683,7 @@ DiceExpr  ──roll()──▶  RollResult  ──.total──▶  int
 |-------------------|-----------------------------------------------|
 | `entity`          | Polymorphic any-entity alias in type position  |
 | `Position`        | Opaque board location, use `distance(a, b)`    |
-| `Duration`        | `end_of_turn`, `start_of_next_turn`, `rounds(n)`, `minutes(n)`, `indefinite` |
+| `Duration`        | `EndOfTurn`, `StartOfNextTurn`, `Rounds(n)`, `Minutes(n)`, `Indefinite` |
 | `Invocation`      | Execution scope handle from `invocation()`     |
 | `ActiveCondition` | Runtime condition instance: `.name`, `.duration`, `.id` |
 
@@ -746,11 +746,11 @@ hook DeathDrop on target: Character (trigger: Damaged(target: target)) {
 
 ```ttrpg-with-preamble
 enum Duration {
-    end_of_turn,
-    start_of_next_turn,
-    rounds(count: int),
-    minutes(count: int),
-    indefinite
+    EndOfTurn,
+    StartOfNextTurn,
+    Rounds(count: int),
+    Minutes(count: int),
+    Indefinite
 }
 
 event ConcentrationStarted(caster: Character, inv: Invocation)
@@ -765,7 +765,7 @@ action CastBless on caster: Character (targets: list<Character>) #concentration 
     resolve {
         let inv = invocation()
         for target in targets {
-            apply_condition(target, Blessed, Duration.rounds(10))
+            apply_condition(target, Blessed, Duration.Rounds(10))
         }
         emit ConcentrationStarted(caster: caster, inv: inv)
     }

@@ -157,7 +157,7 @@ pub enum Value {
     Invocation(InvocationId),
 
     /// Internal: an enum type name used as a namespace for qualified variant
-    /// access (e.g., `Duration.rounds`). Not a user-facing value — only
+    /// access (e.g., `Duration.Rounds`). Not a user-facing value — only
     /// produced by `eval_ident` when an identifier resolves to an enum type.
     EnumNamespace(Name),
 
@@ -663,12 +663,12 @@ mod tests {
         assert_eq!(
             Value::EnumVariant {
                 enum_name: "Duration".into(),
-                variant: "rounds".into(),
+                variant: "Rounds".into(),
                 fields: f1
             },
             Value::EnumVariant {
                 enum_name: "Duration".into(),
-                variant: "rounds".into(),
+                variant: "Rounds".into(),
                 fields: f2
             }
         );

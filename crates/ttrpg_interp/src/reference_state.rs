@@ -478,7 +478,7 @@ mod tests {
             &entity,
             "Prone",
             BTreeMap::new(),
-            duration_variant("end_of_turn"),
+            duration_variant("EndOfTurn"),
             None,
         );
 
@@ -498,14 +498,14 @@ mod tests {
             &entity,
             "Prone",
             BTreeMap::new(),
-            duration_variant("end_of_turn"),
+            duration_variant("EndOfTurn"),
             None,
         );
         state.apply_condition(
             &entity,
             "Stunned",
             BTreeMap::new(),
-            duration_variant("rounds"),
+            duration_variant("Rounds"),
             None,
         );
 
@@ -525,14 +525,14 @@ mod tests {
             &entity,
             "Prone",
             BTreeMap::new(),
-            duration_variant("end_of_turn"),
+            duration_variant("EndOfTurn"),
             None,
         );
         state.apply_condition(
             &entity,
             "Prone",
             BTreeMap::new(),
-            duration_variant("rounds"),
+            duration_variant("Rounds"),
             None,
         );
 
@@ -736,7 +736,7 @@ mod tests {
             params: BTreeMap::new(),
             bearer: entity,
             gained_at: 0,
-            duration: duration_variant("end_of_turn"),
+            duration: duration_variant("EndOfTurn"),
             invocation: None,
             applied_at: 0,
         };
@@ -759,7 +759,7 @@ mod tests {
             params: BTreeMap::new(),
             bearer: entity,
             gained_at: 50,
-            duration: duration_variant("end_of_turn"),
+            duration: duration_variant("EndOfTurn"),
             invocation: None,
             applied_at: 0,
         };
@@ -772,7 +772,7 @@ mod tests {
             params: BTreeMap::new(),
             bearer: entity,
             gained_at: 0,
-            duration: duration_variant("rounds"),
+            duration: duration_variant("Rounds"),
             invocation: None,
             applied_at: 0,
         };
@@ -843,7 +843,7 @@ mod tests {
             &ghost,
             "Prone",
             BTreeMap::new(),
-            duration_variant("end_of_turn"),
+            duration_variant("EndOfTurn"),
             None,
         );
         assert!(state.read_conditions(&ghost).is_none());
@@ -862,7 +862,7 @@ mod tests {
             &entity,
             "Prone",
             BTreeMap::new(),
-            duration_variant("end_of_turn"),
+            duration_variant("EndOfTurn"),
             None,
         );
         let mut budget = BTreeMap::new();
@@ -893,7 +893,7 @@ mod tests {
             params: BTreeMap::new(),
             bearer: ghost,
             gained_at: 0,
-            duration: duration_variant("end_of_turn"),
+            duration: duration_variant("EndOfTurn"),
             invocation: None,
             applied_at: 0,
         };
@@ -955,7 +955,7 @@ mod tests {
             &entity,
             "Blessed",
             BTreeMap::new(),
-            duration_variant("rounds"),
+            duration_variant("Rounds"),
             Some(InvocationId(42)),
         );
 
@@ -974,14 +974,14 @@ mod tests {
             &entity,
             "Blessed",
             BTreeMap::new(),
-            duration_variant("rounds"),
+            duration_variant("Rounds"),
             Some(InvocationId(1)),
         );
         state.apply_condition(
             &entity,
             "Shielded",
             BTreeMap::new(),
-            duration_variant("rounds"),
+            duration_variant("Rounds"),
             Some(InvocationId(1)),
         );
         // 1 from invocation 2
@@ -989,7 +989,7 @@ mod tests {
             &entity,
             "Hasted",
             BTreeMap::new(),
-            duration_variant("rounds"),
+            duration_variant("Rounds"),
             Some(InvocationId(2)),
         );
         // 1 with no invocation
@@ -997,7 +997,7 @@ mod tests {
             &entity,
             "Prone",
             BTreeMap::new(),
-            duration_variant("indefinite"),
+            duration_variant("Indefinite"),
             None,
         );
 
@@ -1023,21 +1023,21 @@ mod tests {
             &e1,
             "Blessed",
             BTreeMap::new(),
-            duration_variant("rounds"),
+            duration_variant("Rounds"),
             inv,
         );
         state.apply_condition(
             &e2,
             "Blessed",
             BTreeMap::new(),
-            duration_variant("rounds"),
+            duration_variant("Rounds"),
             inv,
         );
         state.apply_condition(
             &e3,
             "Blessed",
             BTreeMap::new(),
-            duration_variant("rounds"),
+            duration_variant("Rounds"),
             inv,
         );
 

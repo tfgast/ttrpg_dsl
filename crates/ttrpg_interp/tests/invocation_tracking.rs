@@ -181,7 +181,7 @@ system "test" {
     condition Blessed on bearer: Character {}
     action CastBless on caster: Character (target: Character) {
         resolve {
-            apply_condition(target, Blessed, Duration.indefinite)
+            apply_condition(target, Blessed, Duration.Indefinite)
         }
     }
 }
@@ -229,8 +229,8 @@ system "test" {
     condition Blessed on bearer: Character {}
     action CastBless on caster: Character (t1: Character, t2: Character) {
         resolve {
-            apply_condition(t1, Blessed, Duration.indefinite)
-            apply_condition(t2, Blessed, Duration.indefinite)
+            apply_condition(t1, Blessed, Duration.Indefinite)
+            apply_condition(t2, Blessed, Duration.Indefinite)
         }
     }
     action RevokeSpell on caster: Character (inv: Invocation) {
@@ -323,7 +323,7 @@ system "test" {
     action CastBless on caster: Character (target: Character) #concentration {
         resolve {
             let inv = invocation()
-            apply_condition(target, Blessed, Duration.indefinite)
+            apply_condition(target, Blessed, Duration.Indefinite)
             emit ConcentrationStarted(caster: caster, inv: inv)
         }
     }
@@ -331,7 +331,7 @@ system "test" {
     action CastHex on caster: Character (target: Character) #concentration {
         resolve {
             let inv = invocation()
-            apply_condition(target, Hexed, Duration.indefinite)
+            apply_condition(target, Hexed, Duration.Indefinite)
             emit ConcentrationStarted(caster: caster, inv: inv)
         }
     }
@@ -434,7 +434,7 @@ system "test" {
     condition Poisoned on bearer: Character {}
     action Poison on actor: Character (target: Character) {
         resolve {
-            apply_condition(target, Poisoned, Duration.indefinite)
+            apply_condition(target, Poisoned, Duration.Indefinite)
         }
     }
 }
@@ -490,13 +490,13 @@ system "test" {
 
     action CastBless on caster: Character (target: Character) {
         resolve {
-            apply_condition(target, Blessed, Duration.indefinite)
+            apply_condition(target, Blessed, Duration.Indefinite)
             emit SpellCast(caster: caster)
         }
     }
 
     hook OnSpellCast on c: Character (trigger: SpellCast(caster: c)) {
-        apply_condition(c, HookApplied, Duration.indefinite)
+        apply_condition(c, HookApplied, Duration.Indefinite)
     }
 }
 "#;
@@ -572,7 +572,7 @@ system "test" {
     action CastBless on caster: Character (target: Character) {
         resolve {
             let inv = invocation()
-            apply_condition(target, Blessed, Duration.indefinite)
+            apply_condition(target, Blessed, Duration.Indefinite)
             caster.last_spell = some(inv)
         }
     }
@@ -905,7 +905,7 @@ system "test" {
     action CastBless on caster: Character (target: Character) {
         resolve {
             let inv = invocation()
-            apply_condition(target, Blessed, Duration.indefinite)
+            apply_condition(target, Blessed, Duration.Indefinite)
             caster.spell_a = some(inv)
         }
     }
@@ -913,7 +913,7 @@ system "test" {
     action CastShield on caster: Character (target: Character) {
         resolve {
             let inv = invocation()
-            apply_condition(target, Shielded, Duration.indefinite)
+            apply_condition(target, Shielded, Duration.Indefinite)
             caster.spell_b = some(inv)
         }
     }
@@ -1066,13 +1066,13 @@ system "test" {
 
     action CastBuff on caster: Character (target: Character) {
         resolve {
-            apply_condition(target, ActionBuff, Duration.indefinite)
+            apply_condition(target, ActionBuff, Duration.Indefinite)
             emit BuffCast(target: target)
         }
     }
 
     hook OnBuffCast on c: Character (trigger: BuffCast(target: c)) {
-        apply_condition(c, HookBuff, Duration.indefinite)
+        apply_condition(c, HookBuff, Duration.Indefinite)
         c.hook_inv = some(invocation())
     }
 

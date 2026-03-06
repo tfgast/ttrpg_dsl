@@ -477,7 +477,7 @@ system "OSRIC Conditions" {
     function update_encumbrance(character: Character) {
         remove_condition(character, "EncumbranceState")
         let tier = character_encumbrance(character)
-        apply_condition(character, EncumbranceState(tier: tier), Duration.indefinite)
+        apply_condition(character, EncumbranceState(tier: tier), Duration.Indefinite)
     }
 
 }

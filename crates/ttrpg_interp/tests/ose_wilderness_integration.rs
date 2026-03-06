@@ -145,7 +145,7 @@ fn terrain_tables_and_starvation_penalty() {
                 &state,
                 &mut handler,
                 "terrain_move_cost_num",
-                vec![terrain("wt_forest")],
+                vec![terrain("WtForest")],
             )
             .unwrap(),
         Value::Int(3)
@@ -156,7 +156,7 @@ fn terrain_tables_and_starvation_penalty() {
                 &state,
                 &mut handler,
                 "terrain_lost_chance",
-                vec![terrain("wt_jungle")],
+                vec![terrain("WtJungle")],
             )
             .unwrap(),
         Value::Int(2)
@@ -167,7 +167,7 @@ fn terrain_tables_and_starvation_penalty() {
                 &state,
                 &mut handler,
                 "terrain_can_forage",
-                vec![terrain("wt_city")],
+                vec![terrain("WtCity")],
             )
             .unwrap(),
         Value::Bool(false)
@@ -198,7 +198,7 @@ fn wilderness_roll_mechanics() {
             &state,
             &mut handler,
             "terrain_lost_check",
-            vec![terrain("wt_forest")],
+            vec![terrain("WtForest")],
         )
         .unwrap();
     assert_eq!(lost, Value::Bool(true));
@@ -210,7 +210,7 @@ fn wilderness_roll_mechanics() {
             &state,
             &mut handler,
             "terrain_encounter_check",
-            vec![terrain("wt_clear")],
+            vec![terrain("WtClear")],
         )
         .unwrap();
     assert_eq!(encounter, Value::Bool(false));
@@ -222,7 +222,7 @@ fn wilderness_roll_mechanics() {
             &state,
             &mut handler,
             "terrain_forage_check",
-            vec![terrain("wt_river")],
+            vec![terrain("WtRiver")],
         )
         .unwrap();
     assert_eq!(forage, Value::Bool(true));
@@ -234,7 +234,7 @@ fn wilderness_roll_mechanics() {
             &state,
             &mut handler,
             "terrain_orient_check",
-            vec![terrain("wt_mountains")],
+            vec![terrain("WtMountains")],
         )
         .unwrap();
     assert_eq!(orient, Value::Bool(false));

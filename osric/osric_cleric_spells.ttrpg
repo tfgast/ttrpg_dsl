@@ -130,7 +130,7 @@ system "OSRIC Cleric Spells" {
 
     function resolve_bless(caster: Character, targets: list<entity>) {
         for target in targets {
-            apply_condition(target, Blessed, Duration.rounds(6))
+            apply_condition(target, Blessed, Duration.Rounds(6))
             emit SpellApplied(caster: caster, target: target, spell_name: "Bless")
         }
     }
@@ -173,7 +173,7 @@ system "OSRIC Cleric Spells" {
             let result = target.ResistSpell(category: some(SpellsUnlisted))
             if let some(saved) = result {
                 if !saved {
-                    apply_condition(target, Cursed, Duration.rounds(6))
+                    apply_condition(target, Cursed, Duration.Rounds(6))
                     emit SpellApplied(caster: caster, target: target, spell_name: "Curse")
                 }
             }
@@ -229,7 +229,7 @@ system "OSRIC Cleric Spells" {
             let result = target.ResistSpell(category: some(SpellsUnlisted), bonus: save_bonus, is_mental: true)
             if let some(saved) = result {
                 if !saved {
-                    apply_condition(target, Paralyzed, Duration.rounds(duration_rounds))
+                    apply_condition(target, Paralyzed, Duration.Rounds(duration_rounds))
                     emit SpellApplied(caster: caster, target: target, spell_name: "Hold Person")
                 }
             }

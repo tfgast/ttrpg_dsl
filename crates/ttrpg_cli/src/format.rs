@@ -730,10 +730,10 @@ mod tests {
         fields.insert("value".into(), Value::Int(3));
         let val = Value::EnumVariant {
             enum_name: "Duration".into(),
-            variant: "rounds".into(),
+            variant: "Rounds".into(),
             fields,
         };
-        assert_eq!(format_value(&val, &no_units()), "Duration.rounds(value: 3)");
+        assert_eq!(format_value(&val, &no_units()), "Duration.Rounds(value: 3)");
     }
 
     #[test]

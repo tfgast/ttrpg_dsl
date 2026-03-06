@@ -267,12 +267,12 @@ fn condition_applied_at_reflects_game_time() {
 system "test" {
     entity Character { hp: int }
 
-    enum Duration { indefinite }
+    enum Duration { Indefinite }
 
     action Mark on actor: Character () {
         cost free
         resolve {
-            apply_condition(actor, Prone, Duration.indefinite)
+            apply_condition(actor, Prone, Duration.Indefinite)
         }
     }
 
@@ -319,12 +319,12 @@ fn condition_applied_at_zero_by_default() {
 system "test" {
     entity Character { hp: int }
 
-    enum Duration { indefinite }
+    enum Duration { Indefinite }
 
     action Mark on actor: Character () {
         cost free
         resolve {
-            apply_condition(actor, Prone, Duration.indefinite)
+            apply_condition(actor, Prone, Duration.Indefinite)
         }
     }
 

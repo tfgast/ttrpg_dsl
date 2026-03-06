@@ -247,7 +247,7 @@ fn thac0_table_and_wrapper_match() {
             &state,
             &mut handler,
             "character_thac0",
-            vec![aptitude_val("martial"), Value::Int(5)],
+            vec![aptitude_val("Martial"), Value::Int(5)],
         )
         .unwrap();
     let wrapper = interp
@@ -255,7 +255,7 @@ fn thac0_table_and_wrapper_match() {
             &state,
             &mut handler,
             "get_character_thac0",
-            vec![aptitude_val("martial"), Value::Int(5)],
+            vec![aptitude_val("Martial"), Value::Int(5)],
         )
         .unwrap();
 

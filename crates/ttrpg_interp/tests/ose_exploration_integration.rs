@@ -222,7 +222,7 @@ fn exploration_phase_tables_and_derives() {
             &state,
             &mut handler,
             "exploration_action_phases",
-            vec![action_val("exp_move")],
+            vec![action_val("ExpMove")],
         )
         .unwrap();
     assert_eq!(

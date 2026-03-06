@@ -29,11 +29,11 @@ system "PF2e Sustained Spells" {
     enum Ability { STR, DEX, CON, INT, WIS, CHA }
 
     enum Duration {
-        end_of_turn,
-        start_of_next_turn,
-        rounds(count: int),
-        minutes(count: int),
-        indefinite
+        EndOfTurn,
+        StartOfNextTurn,
+        Rounds(count: int),
+        Minutes(count: int),
+        Indefinite
     }
 
     struct TurnBudget {
@@ -152,7 +152,7 @@ system "PF2e Sustained Spells" {
             // The "sphere exists" condition on the caster tracks
             // that the spell is active. When revoked, the sphere
             // vanishes and all its effects are cleaned up.
-            apply_condition(caster, Sustaining_Flaming_Sphere, Duration.indefinite)
+            apply_condition(caster, Sustaining_Flaming_Sphere, Duration.Indefinite)
 
             // Initial damage to the target in the sphere's space.
             let save: RollResult = roll(1d20 + modifier(target.abilities[DEX]))
@@ -182,7 +182,7 @@ system "PF2e Sustained Spells" {
 
         resolve {
             let inv = invocation()
-            apply_condition(ally, InspiredCourage, Duration.indefinite)
+            apply_condition(ally, InspiredCourage, Duration.Indefinite)
             emit SpellSustained(caster: bard, inv: inv)
         }
     }

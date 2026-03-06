@@ -34,7 +34,7 @@
 |-------------------|-------------------------------------------------------------|
 | `entity`          | Polymorphic any-entity alias in type position               |
 | `Position`        | Opaque game board location                                  |
-| `Duration`        | `end_of_turn`, `start_of_next_turn`, `rounds(n)`, `minutes(n)`, `indefinite` |
+| `Duration`        | `EndOfTurn`, `StartOfNextTurn`, `Rounds(n)`, `Minutes(n)`, `Indefinite` |
 | `Invocation`      | Opaque execution scope handle                               |
 | `ActiveCondition` | Runtime condition instance — fields: `name`, `duration`, `id` |
 | `Condition`       | Reference to a condition type                               |
@@ -307,7 +307,7 @@ reaction Parry on defender: Character (trigger: Attacked(target: defender)) {
 ```
 hook DeathDrop on target: Character (trigger: Damaged(target: target)) {
     if target.HP <= 0 {
-        apply_condition(target, Unconscious, Duration.indefinite)
+        apply_condition(target, Unconscious, Duration.Indefinite)
     }
 }
 ```

@@ -42,13 +42,13 @@ system "OSRIC Combat" {
     enum RollMode { Normal, AutoHit }
 
     enum Duration {
-        end_of_round,
-        segments(count: int),
-        rounds(count: int),
-        turns(count: int),
-        hours(count: int),
-        days(count: int),
-        indefinite
+        EndOfRound,
+        Segments(count: int),
+        Rounds(count: int),
+        Turns(count: int),
+        Hours(count: int),
+        Days(count: int),
+        Indefinite
     }
 
     enum SurpriseState {
@@ -120,13 +120,13 @@ system "OSRIC Combat" {
 
     derive duration_to_segments(d: Duration) -> int {
         match d {
-            Duration.segments(n) => n,
-            Duration.rounds(n) => n * segments_per_round(),
-            Duration.turns(n) => n * segments_per_turn(),
-            Duration.hours(n) => n * segments_per_hour(),
-            Duration.days(n) => n * segments_per_day(),
-            Duration.end_of_round => 0,
-            Duration.indefinite => -1
+            Duration.Segments(n) => n,
+            Duration.Rounds(n) => n * segments_per_round(),
+            Duration.Turns(n) => n * segments_per_turn(),
+            Duration.Hours(n) => n * segments_per_hour(),
+            Duration.Days(n) => n * segments_per_day(),
+            Duration.EndOfRound => 0,
+            Duration.Indefinite => -1
         }
     }
 
@@ -567,21 +567,21 @@ system "OSRIC Combat" {
                 target.hp = -10
                 remove_condition(target, "Unconscious")
                 remove_condition(target, "Bleeding")
-                apply_condition(target, Dead, Duration.indefinite)
+                apply_condition(target, Dead, Duration.Indefinite)
                 emit CreatureSlain(target: target, attacker: attacker)
                 emit CharacterDead(target: target)
             } else if target.hp <= -10 {
                 // Massive damage: instant death
-                apply_condition(target, Dead, Duration.indefinite)
+                apply_condition(target, Dead, Duration.Indefinite)
                 emit CreatureSlain(target: target, attacker: attacker)
                 emit CharacterDead(target: target)
             } else if target.hp <= 0 {
                 // Unconscious at 0 HP or below (but above -10)
-                apply_condition(target, Unconscious, Duration.indefinite)
-                apply_condition(target, Bleeding, Duration.indefinite)
+                apply_condition(target, Unconscious, Duration.Indefinite)
+                apply_condition(target, Bleeding, Duration.Indefinite)
                 emit CharacterUnconscious(target: target, attacker: attacker)
                 if target.hp <= -6 {
-                    apply_condition(target, Scarred, Duration.indefinite)
+                    apply_condition(target, Scarred, Duration.Indefinite)
                 }
             }
         }
@@ -602,7 +602,7 @@ system "OSRIC Combat" {
             emit Damaged(target: target, attacker: attacker, amount: final_damage)
 
             if target.hp <= 0 {
-                apply_condition(target, Dead, Duration.indefinite)
+                apply_condition(target, Dead, Duration.Indefinite)
                 emit CreatureSlain(target: target, attacker: attacker)
             }
         }
@@ -684,7 +684,7 @@ system "OSRIC Combat" {
         }
         resolve {
             let bonus = parry_bonus(parrier)
-            apply_condition(parrier, Parrying(parry_bonus: bonus), Duration.end_of_round)
+            apply_condition(parrier, Parrying(parry_bonus: bonus), Duration.EndOfRound)
         }
     }
 
@@ -801,7 +801,7 @@ system "OSRIC Combat" {
         }
         resolve {
             let weapon = wielded_melee(attacker).unwrap()
-            apply_condition(attacker, ChargeRecovery, Duration.rounds(10))
+            apply_condition(attacker, ChargeRecovery, Duration.Rounds(10))
             let result = resolve_melee_attack(attacker, target, weapon, 2)
             match result.outcome {
                 AttackOutcome.Hit => {
@@ -863,7 +863,7 @@ system "OSRIC Combat" {
             && character_can_backstab(attacker)
         }
         resolve {
-            let hide_pct = character_thief_skill(attacker, ThiefSkill.hide_in_shadows)
+            let hide_pct = character_thief_skill(attacker, ThiefSkill.HideInShadows)
             let hidden = thief_skill_check(hide_pct)
             if hidden {
                 let weapon = wielded_melee(attacker).unwrap()
@@ -871,7 +871,7 @@ system "OSRIC Combat" {
                 let mult = backstab_multiplier(cl.class, cl.level)
                 // Apply RearAttacked: strips DEX & shield AC, adds +2 to hit.
                 // Extra +2 attack_mod makes total backstab bonus +4.
-                apply_condition(target, RearAttacked, Duration.end_of_round)
+                apply_condition(target, RearAttacked, Duration.EndOfRound)
                 let result = resolve_melee_attack(
                     attacker, target, weapon, 2,
                     RollMode.Normal, false, mult
@@ -982,7 +982,7 @@ system "OSRIC Combat" {
                 AssassinationOutcome.Kill => {
                     // Instant death regardless of HP
                     target.hp = -10
-                    apply_condition(target, Dead, Duration.indefinite)
+                    apply_condition(target, Dead, Duration.Indefinite)
                     emit CreatureSlain(target: target, attacker: attacker)
                 },
                 AssassinationOutcome.WeaponHit => {
@@ -1020,11 +1020,11 @@ system "OSRIC Combat" {
                     target.hp = -10
                     remove_condition(target, "Bleeding")
                     remove_condition(target, "Unconscious")
-                    apply_condition(target, Dead, Duration.indefinite)
+                    apply_condition(target, Dead, Duration.Indefinite)
                     emit CharacterDead(target: target)
                 } else if target.hp <= -6 {
                     if !any([c.name == "Scarred" for c in conditions(target)]) {
-                        apply_condition(target, Scarred, Duration.indefinite)
+                        apply_condition(target, Scarred, Duration.Indefinite)
                     }
                 }
             }
@@ -1053,7 +1053,7 @@ system "OSRIC Combat" {
             remove_condition(target, "Unconscious")
             remove_condition(target, "Bleeding")
             let coma_turns = roll(1d6).total
-            apply_condition(target, Coma, Duration.turns(coma_turns))
+            apply_condition(target, Coma, Duration.Turns(coma_turns))
         }
     }
 

@@ -458,16 +458,16 @@ fn encumbrance_level_values() {
     let mut handler = NullHandler;
 
     let cases: Vec<(i64, &str)> = vec![
-        (0, "unencumbered"),
-        (400, "unencumbered"),
-        (401, "light"),
-        (600, "light"),
-        (601, "heavy"),
-        (800, "heavy"),
-        (801, "severe"),
-        (1600, "severe"),
-        (1601, "overloaded"),
-        (5000, "overloaded"),
+        (0, "Unencumbered"),
+        (400, "Unencumbered"),
+        (401, "Light"),
+        (600, "Light"),
+        (601, "Heavy"),
+        (800, "Heavy"),
+        (801, "Severe"),
+        (1600, "Severe"),
+        (1601, "Overloaded"),
+        (5000, "Overloaded"),
     ];
     for (weight, expected) in cases {
         let val = interp
@@ -494,11 +494,11 @@ fn movement_rate_values() {
     let mut handler = NullHandler;
 
     let cases: Vec<(&str, i64)> = vec![
-        ("unencumbered", 120),
-        ("light", 90),
-        ("heavy", 60),
-        ("severe", 30),
-        ("overloaded", 0),
+        ("Unencumbered", 120),
+        ("Light", 90),
+        ("Heavy", 60),
+        ("Severe", 30),
+        ("Overloaded", 0),
     ];
     for (level, expected) in cases {
         let val = interp

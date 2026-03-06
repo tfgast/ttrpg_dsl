@@ -28,75 +28,75 @@ system "OSRIC Thief Skills" {
     // ========================================================
 
     table thief_skill_base(skill: ThiefSkill, level: int) -> int {
-        // climb_walls
-        [climb_walls, 1] => 85, [climb_walls, 2] => 86, [climb_walls, 3] => 87,
-        [climb_walls, 4] => 88, [climb_walls, 5] => 90, [climb_walls, 6] => 92,
-        [climb_walls, 7] => 94, [climb_walls, 8] => 96, [climb_walls, 9] => 98,
-        [climb_walls, 10..=12] => 99, [climb_walls, _] => 99,
+        // ClimbWalls
+        [ClimbWalls, 1] => 85, [ClimbWalls, 2] => 86, [ClimbWalls, 3] => 87,
+        [ClimbWalls, 4] => 88, [ClimbWalls, 5] => 90, [ClimbWalls, 6] => 92,
+        [ClimbWalls, 7] => 94, [ClimbWalls, 8] => 96, [ClimbWalls, 9] => 98,
+        [ClimbWalls, 10..=12] => 99, [ClimbWalls, _] => 99,
 
-        // find_traps
-        [find_traps, 1] => 20, [find_traps, 2] => 25, [find_traps, 3] => 30,
-        [find_traps, 4] => 35, [find_traps, 5] => 40, [find_traps, 6] => 45,
-        [find_traps, 7] => 50, [find_traps, 8] => 55, [find_traps, 9] => 60,
-        [find_traps, 10] => 65, [find_traps, 11] => 70, [find_traps, 12] => 75,
-        [find_traps, 13] => 80, [find_traps, 14] => 85, [find_traps, 15] => 90,
-        [find_traps, 16] => 95, [find_traps, _] => 99,
+        // FindTraps
+        [FindTraps, 1] => 20, [FindTraps, 2] => 25, [FindTraps, 3] => 30,
+        [FindTraps, 4] => 35, [FindTraps, 5] => 40, [FindTraps, 6] => 45,
+        [FindTraps, 7] => 50, [FindTraps, 8] => 55, [FindTraps, 9] => 60,
+        [FindTraps, 10] => 65, [FindTraps, 11] => 70, [FindTraps, 12] => 75,
+        [FindTraps, 13] => 80, [FindTraps, 14] => 85, [FindTraps, 15] => 90,
+        [FindTraps, 16] => 95, [FindTraps, _] => 99,
 
-        // hear_noise
-        [hear_noise, 1..=2] => 10, [hear_noise, 3..=4] => 15,
-        [hear_noise, 5] => 20, [hear_noise, 6..=7] => 25,
-        [hear_noise, 8] => 25, [hear_noise, 9..=10] => 30,
-        [hear_noise, 11..=12] => 35, [hear_noise, 13..=14] => 40,
-        [hear_noise, 15..=16] => 50, [hear_noise, _] => 55,
+        // HearNoise
+        [HearNoise, 1..=2] => 10, [HearNoise, 3..=4] => 15,
+        [HearNoise, 5] => 20, [HearNoise, 6..=7] => 25,
+        [HearNoise, 8] => 25, [HearNoise, 9..=10] => 30,
+        [HearNoise, 11..=12] => 35, [HearNoise, 13..=14] => 40,
+        [HearNoise, 15..=16] => 50, [HearNoise, _] => 55,
 
-        // hide_in_shadows
-        [hide_in_shadows, 1] => 10, [hide_in_shadows, 2] => 15,
-        [hide_in_shadows, 3] => 20, [hide_in_shadows, 4] => 25,
-        [hide_in_shadows, 5] => 30, [hide_in_shadows, 6] => 35,
-        [hide_in_shadows, 7] => 42, [hide_in_shadows, 8] => 48,
-        [hide_in_shadows, 9] => 55, [hide_in_shadows, 10] => 65,
-        [hide_in_shadows, 11] => 70, [hide_in_shadows, 12] => 75,
-        [hide_in_shadows, 13] => 85, [hide_in_shadows, 14] => 95,
-        [hide_in_shadows, _] => 99,
+        // HideInShadows
+        [HideInShadows, 1] => 10, [HideInShadows, 2] => 15,
+        [HideInShadows, 3] => 20, [HideInShadows, 4] => 25,
+        [HideInShadows, 5] => 30, [HideInShadows, 6] => 35,
+        [HideInShadows, 7] => 42, [HideInShadows, 8] => 48,
+        [HideInShadows, 9] => 55, [HideInShadows, 10] => 65,
+        [HideInShadows, 11] => 70, [HideInShadows, 12] => 75,
+        [HideInShadows, 13] => 85, [HideInShadows, 14] => 95,
+        [HideInShadows, _] => 99,
 
-        // move_silently
-        [move_silently, 1] => 15, [move_silently, 2] => 20,
-        [move_silently, 3] => 27, [move_silently, 4] => 33,
-        [move_silently, 5] => 40, [move_silently, 6] => 47,
-        [move_silently, 7] => 55, [move_silently, 8] => 62,
-        [move_silently, 9] => 70, [move_silently, 10] => 78,
-        [move_silently, 11] => 86, [move_silently, 12] => 94,
-        [move_silently, _] => 99,
+        // MoveSilently
+        [MoveSilently, 1] => 15, [MoveSilently, 2] => 20,
+        [MoveSilently, 3] => 27, [MoveSilently, 4] => 33,
+        [MoveSilently, 5] => 40, [MoveSilently, 6] => 47,
+        [MoveSilently, 7] => 55, [MoveSilently, 8] => 62,
+        [MoveSilently, 9] => 70, [MoveSilently, 10] => 78,
+        [MoveSilently, 11] => 86, [MoveSilently, 12] => 94,
+        [MoveSilently, _] => 99,
 
-        // open_locks
-        [open_locks, 1] => 25, [open_locks, 2] => 29, [open_locks, 3] => 33,
-        [open_locks, 4] => 37, [open_locks, 5] => 42, [open_locks, 6] => 47,
-        [open_locks, 7] => 52, [open_locks, 8] => 57, [open_locks, 9] => 62,
-        [open_locks, 10] => 67, [open_locks, 11] => 72, [open_locks, 12] => 77,
-        [open_locks, 13] => 82, [open_locks, 14] => 87, [open_locks, 15] => 92,
-        [open_locks, 16] => 97, [open_locks, _] => 99,
+        // OpenLocks
+        [OpenLocks, 1] => 25, [OpenLocks, 2] => 29, [OpenLocks, 3] => 33,
+        [OpenLocks, 4] => 37, [OpenLocks, 5] => 42, [OpenLocks, 6] => 47,
+        [OpenLocks, 7] => 52, [OpenLocks, 8] => 57, [OpenLocks, 9] => 62,
+        [OpenLocks, 10] => 67, [OpenLocks, 11] => 72, [OpenLocks, 12] => 77,
+        [OpenLocks, 13] => 82, [OpenLocks, 14] => 87, [OpenLocks, 15] => 92,
+        [OpenLocks, 16] => 97, [OpenLocks, _] => 99,
 
-        // pick_pockets
-        [pick_pockets, 1] => 30, [pick_pockets, 2] => 35,
-        [pick_pockets, 3] => 40, [pick_pockets, 4] => 45,
-        [pick_pockets, 5] => 50, [pick_pockets, 6] => 55,
-        [pick_pockets, 7] => 60, [pick_pockets, 8] => 65,
-        [pick_pockets, 9] => 70, [pick_pockets, 10] => 80,
-        [pick_pockets, 11] => 90, [pick_pockets, 12] => 100,
-        [pick_pockets, 13] => 105, [pick_pockets, 14] => 110,
-        [pick_pockets, 15] => 115, [pick_pockets, 16] => 125,
-        [pick_pockets, _] => 125,
+        // PickPockets
+        [PickPockets, 1] => 30, [PickPockets, 2] => 35,
+        [PickPockets, 3] => 40, [PickPockets, 4] => 45,
+        [PickPockets, 5] => 50, [PickPockets, 6] => 55,
+        [PickPockets, 7] => 60, [PickPockets, 8] => 65,
+        [PickPockets, 9] => 70, [PickPockets, 10] => 80,
+        [PickPockets, 11] => 90, [PickPockets, 12] => 100,
+        [PickPockets, 13] => 105, [PickPockets, 14] => 110,
+        [PickPockets, 15] => 115, [PickPockets, 16] => 125,
+        [PickPockets, _] => 125,
 
-        // read_languages
-        [read_languages, 1] => 1, [read_languages, 2] => 5,
-        [read_languages, 3] => 15, [read_languages, 4] => 20,
-        [read_languages, 5] => 25, [read_languages, 6] => 30,
-        [read_languages, 7] => 35, [read_languages, 8] => 40,
-        [read_languages, 9] => 45, [read_languages, 10] => 50,
-        [read_languages, 11] => 55, [read_languages, 12] => 60,
-        [read_languages, 13] => 65, [read_languages, 14] => 70,
-        [read_languages, 15] => 75, [read_languages, 16] => 80,
-        [read_languages, _] => 80
+        // ReadLanguages
+        [ReadLanguages, 1] => 1, [ReadLanguages, 2] => 5,
+        [ReadLanguages, 3] => 15, [ReadLanguages, 4] => 20,
+        [ReadLanguages, 5] => 25, [ReadLanguages, 6] => 30,
+        [ReadLanguages, 7] => 35, [ReadLanguages, 8] => 40,
+        [ReadLanguages, 9] => 45, [ReadLanguages, 10] => 50,
+        [ReadLanguages, 11] => 55, [ReadLanguages, 12] => 60,
+        [ReadLanguages, 13] => 65, [ReadLanguages, 14] => 70,
+        [ReadLanguages, 15] => 75, [ReadLanguages, 16] => 80,
+        [ReadLanguages, _] => 80
     }
 
     // ========================================================
@@ -106,76 +106,76 @@ system "OSRIC Thief Skills" {
     // ========================================================
 
     table assassin_skill_base(skill: ThiefSkill, level: int) -> int {
-        // climb_walls
-        [climb_walls, 1..=3] => 85, [climb_walls, 4] => 86,
-        [climb_walls, 5] => 87, [climb_walls, 6] => 88,
-        [climb_walls, 7] => 90, [climb_walls, 8] => 92,
-        [climb_walls, 9] => 94, [climb_walls, 10] => 96,
-        [climb_walls, 11] => 98, [climb_walls, 12..=14] => 99,
-        [climb_walls, _] => 99,
+        // ClimbWalls
+        [ClimbWalls, 1..=3] => 85, [ClimbWalls, 4] => 86,
+        [ClimbWalls, 5] => 87, [ClimbWalls, 6] => 88,
+        [ClimbWalls, 7] => 90, [ClimbWalls, 8] => 92,
+        [ClimbWalls, 9] => 94, [ClimbWalls, 10] => 96,
+        [ClimbWalls, 11] => 98, [ClimbWalls, 12..=14] => 99,
+        [ClimbWalls, _] => 99,
 
-        // find_traps
-        [find_traps, 1..=3] => 20, [find_traps, 4] => 25,
-        [find_traps, 5] => 30, [find_traps, 6] => 35,
-        [find_traps, 7] => 40, [find_traps, 8] => 45,
-        [find_traps, 9] => 50, [find_traps, 10] => 55,
-        [find_traps, 11] => 60, [find_traps, 12] => 65,
-        [find_traps, 13] => 70, [find_traps, 14] => 75,
-        [find_traps, _] => 80,
+        // FindTraps
+        [FindTraps, 1..=3] => 20, [FindTraps, 4] => 25,
+        [FindTraps, 5] => 30, [FindTraps, 6] => 35,
+        [FindTraps, 7] => 40, [FindTraps, 8] => 45,
+        [FindTraps, 9] => 50, [FindTraps, 10] => 55,
+        [FindTraps, 11] => 60, [FindTraps, 12] => 65,
+        [FindTraps, 13] => 70, [FindTraps, 14] => 75,
+        [FindTraps, _] => 80,
 
-        // hear_noise
-        [hear_noise, 1..=3] => 10, [hear_noise, 4] => 10,
-        [hear_noise, 5] => 15, [hear_noise, 6] => 15,
-        [hear_noise, 7] => 20, [hear_noise, 8] => 20,
-        [hear_noise, 9] => 25, [hear_noise, 10] => 25,
-        [hear_noise, 11] => 30, [hear_noise, 12] => 30,
-        [hear_noise, 13] => 35, [hear_noise, 14] => 35,
-        [hear_noise, _] => 40,
+        // HearNoise
+        [HearNoise, 1..=3] => 10, [HearNoise, 4] => 10,
+        [HearNoise, 5] => 15, [HearNoise, 6] => 15,
+        [HearNoise, 7] => 20, [HearNoise, 8] => 20,
+        [HearNoise, 9] => 25, [HearNoise, 10] => 25,
+        [HearNoise, 11] => 30, [HearNoise, 12] => 30,
+        [HearNoise, 13] => 35, [HearNoise, 14] => 35,
+        [HearNoise, _] => 40,
 
-        // hide_in_shadows
-        [hide_in_shadows, 1..=3] => 10, [hide_in_shadows, 4] => 15,
-        [hide_in_shadows, 5] => 20, [hide_in_shadows, 6] => 25,
-        [hide_in_shadows, 7] => 30, [hide_in_shadows, 8] => 35,
-        [hide_in_shadows, 9] => 42, [hide_in_shadows, 10] => 48,
-        [hide_in_shadows, 11] => 55, [hide_in_shadows, 12] => 65,
-        [hide_in_shadows, 13] => 70, [hide_in_shadows, 14] => 75,
-        [hide_in_shadows, _] => 85,
+        // HideInShadows
+        [HideInShadows, 1..=3] => 10, [HideInShadows, 4] => 15,
+        [HideInShadows, 5] => 20, [HideInShadows, 6] => 25,
+        [HideInShadows, 7] => 30, [HideInShadows, 8] => 35,
+        [HideInShadows, 9] => 42, [HideInShadows, 10] => 48,
+        [HideInShadows, 11] => 55, [HideInShadows, 12] => 65,
+        [HideInShadows, 13] => 70, [HideInShadows, 14] => 75,
+        [HideInShadows, _] => 85,
 
-        // move_silently
-        [move_silently, 1..=3] => 15, [move_silently, 4] => 20,
-        [move_silently, 5] => 27, [move_silently, 6] => 33,
-        [move_silently, 7] => 40, [move_silently, 8] => 47,
-        [move_silently, 9] => 55, [move_silently, 10] => 62,
-        [move_silently, 11] => 70, [move_silently, 12] => 78,
-        [move_silently, 13] => 86, [move_silently, 14] => 94,
-        [move_silently, _] => 99,
+        // MoveSilently
+        [MoveSilently, 1..=3] => 15, [MoveSilently, 4] => 20,
+        [MoveSilently, 5] => 27, [MoveSilently, 6] => 33,
+        [MoveSilently, 7] => 40, [MoveSilently, 8] => 47,
+        [MoveSilently, 9] => 55, [MoveSilently, 10] => 62,
+        [MoveSilently, 11] => 70, [MoveSilently, 12] => 78,
+        [MoveSilently, 13] => 86, [MoveSilently, 14] => 94,
+        [MoveSilently, _] => 99,
 
-        // open_locks
-        [open_locks, 1..=3] => 25, [open_locks, 4] => 29,
-        [open_locks, 5] => 33, [open_locks, 6] => 37,
-        [open_locks, 7] => 42, [open_locks, 8] => 47,
-        [open_locks, 9] => 52, [open_locks, 10] => 57,
-        [open_locks, 11] => 62, [open_locks, 12] => 67,
-        [open_locks, 13] => 72, [open_locks, 14] => 77,
-        [open_locks, _] => 82,
+        // OpenLocks
+        [OpenLocks, 1..=3] => 25, [OpenLocks, 4] => 29,
+        [OpenLocks, 5] => 33, [OpenLocks, 6] => 37,
+        [OpenLocks, 7] => 42, [OpenLocks, 8] => 47,
+        [OpenLocks, 9] => 52, [OpenLocks, 10] => 57,
+        [OpenLocks, 11] => 62, [OpenLocks, 12] => 67,
+        [OpenLocks, 13] => 72, [OpenLocks, 14] => 77,
+        [OpenLocks, _] => 82,
 
-        // pick_pockets
-        [pick_pockets, 1..=3] => 30, [pick_pockets, 4] => 35,
-        [pick_pockets, 5] => 40, [pick_pockets, 6] => 45,
-        [pick_pockets, 7] => 50, [pick_pockets, 8] => 55,
-        [pick_pockets, 9] => 60, [pick_pockets, 10] => 65,
-        [pick_pockets, 11] => 70, [pick_pockets, 12] => 80,
-        [pick_pockets, 13] => 90, [pick_pockets, 14] => 100,
-        [pick_pockets, _] => 105,
+        // PickPockets
+        [PickPockets, 1..=3] => 30, [PickPockets, 4] => 35,
+        [PickPockets, 5] => 40, [PickPockets, 6] => 45,
+        [PickPockets, 7] => 50, [PickPockets, 8] => 55,
+        [PickPockets, 9] => 60, [PickPockets, 10] => 65,
+        [PickPockets, 11] => 70, [PickPockets, 12] => 80,
+        [PickPockets, 13] => 90, [PickPockets, 14] => 100,
+        [PickPockets, _] => 105,
 
-        // read_languages
-        [read_languages, 1..=3] => 1, [read_languages, 4] => 5,
-        [read_languages, 5] => 15, [read_languages, 6] => 20,
-        [read_languages, 7] => 25, [read_languages, 8] => 30,
-        [read_languages, 9] => 35, [read_languages, 10] => 40,
-        [read_languages, 11] => 45, [read_languages, 12] => 50,
-        [read_languages, 13] => 55, [read_languages, 14] => 60,
-        [read_languages, _] => 65
+        // ReadLanguages
+        [ReadLanguages, 1..=3] => 1, [ReadLanguages, 4] => 5,
+        [ReadLanguages, 5] => 15, [ReadLanguages, 6] => 20,
+        [ReadLanguages, 7] => 25, [ReadLanguages, 8] => 30,
+        [ReadLanguages, 9] => 35, [ReadLanguages, 10] => 40,
+        [ReadLanguages, 11] => 45, [ReadLanguages, 12] => 50,
+        [ReadLanguages, 13] => 55, [ReadLanguages, 14] => 60,
+        [ReadLanguages, _] => 65
     }
 
     // ========================================================
@@ -186,45 +186,45 @@ system "OSRIC Thief Skills" {
     // ========================================================
 
     table dex_thief_adj(skill: ThiefSkill, dex: int) -> int {
-        // climb_walls — never adjusted
-        [climb_walls, _] => 0,
+        // ClimbWalls — never adjusted
+        [ClimbWalls, _] => 0,
 
-        // hide_in_shadows
-        [hide_in_shadows, 9] => -10, [hide_in_shadows, 10] => -5,
-        [hide_in_shadows, 11..=16] => 0,
-        [hide_in_shadows, 17] => 5, [hide_in_shadows, 18] => 10,
-        [hide_in_shadows, _] => 15,
+        // HideInShadows
+        [HideInShadows, 9] => -10, [HideInShadows, 10] => -5,
+        [HideInShadows, 11..=16] => 0,
+        [HideInShadows, 17] => 5, [HideInShadows, 18] => 10,
+        [HideInShadows, _] => 15,
 
-        // hear_noise — never adjusted
-        [hear_noise, _] => 0,
+        // HearNoise — never adjusted
+        [HearNoise, _] => 0,
 
-        // open_locks
-        [open_locks, 9] => -10, [open_locks, 10] => -5,
-        [open_locks, 11..=15] => 0, [open_locks, 16] => 5,
-        [open_locks, 17] => 10, [open_locks, 18] => 15,
-        [open_locks, _] => 20,
+        // OpenLocks
+        [OpenLocks, 9] => -10, [OpenLocks, 10] => -5,
+        [OpenLocks, 11..=15] => 0, [OpenLocks, 16] => 5,
+        [OpenLocks, 17] => 10, [OpenLocks, 18] => 15,
+        [OpenLocks, _] => 20,
 
-        // pick_pockets
-        [pick_pockets, 9] => -15, [pick_pockets, 10] => -10,
-        [pick_pockets, 11] => -5, [pick_pockets, 12..=15] => 0,
-        [pick_pockets, 16..=17] => 5, [pick_pockets, 18] => 10,
-        [pick_pockets, _] => 15,
+        // PickPockets
+        [PickPockets, 9] => -15, [PickPockets, 10] => -10,
+        [PickPockets, 11] => -5, [PickPockets, 12..=15] => 0,
+        [PickPockets, 16..=17] => 5, [PickPockets, 18] => 10,
+        [PickPockets, _] => 15,
 
-        // move_silently
-        [move_silently, 9] => -20, [move_silently, 10] => -15,
-        [move_silently, 11] => -10, [move_silently, 12] => -5,
-        [move_silently, 13..=16] => 0,
-        [move_silently, 17] => 5, [move_silently, 18] => 10,
-        [move_silently, _] => 15,
+        // MoveSilently
+        [MoveSilently, 9] => -20, [MoveSilently, 10] => -15,
+        [MoveSilently, 11] => -10, [MoveSilently, 12] => -5,
+        [MoveSilently, 13..=16] => 0,
+        [MoveSilently, 17] => 5, [MoveSilently, 18] => 10,
+        [MoveSilently, _] => 15,
 
-        // find_traps
-        [find_traps, 9] => -15, [find_traps, 10] => -10,
-        [find_traps, 11] => -5, [find_traps, 12..=16] => 0,
-        [find_traps, 17] => 5, [find_traps, 18] => 10,
-        [find_traps, _] => 15,
+        // FindTraps
+        [FindTraps, 9] => -15, [FindTraps, 10] => -10,
+        [FindTraps, 11] => -5, [FindTraps, 12..=16] => 0,
+        [FindTraps, 17] => 5, [FindTraps, 18] => 10,
+        [FindTraps, _] => 15,
 
-        // read_languages — never adjusted
-        [read_languages, _] => 0
+        // ReadLanguages — never adjusted
+        [ReadLanguages, _] => 0
     }
 
     // ========================================================
@@ -234,53 +234,53 @@ system "OSRIC Thief Skills" {
     // ========================================================
 
     table ancestry_thief_adj(skill: ThiefSkill, ancestry: Ancestry) -> int {
-        // climb_walls
-        [climb_walls, Dwarf] => -10, [climb_walls, Elf] => -5,
-        [climb_walls, Gnome] => -15, [climb_walls, HalfElf] => 0,
-        [climb_walls, Halfling] => -15, [climb_walls, HalfOrc] => 5,
-        [climb_walls, Human] => 5,
+        // ClimbWalls
+        [ClimbWalls, Dwarf] => -10, [ClimbWalls, Elf] => -5,
+        [ClimbWalls, Gnome] => -15, [ClimbWalls, HalfElf] => 0,
+        [ClimbWalls, Halfling] => -15, [ClimbWalls, HalfOrc] => 5,
+        [ClimbWalls, Human] => 5,
 
-        // hide_in_shadows
-        [hide_in_shadows, Dwarf] => 0, [hide_in_shadows, Elf] => 10,
-        [hide_in_shadows, Gnome] => 0, [hide_in_shadows, HalfElf] => 5,
-        [hide_in_shadows, Halfling] => 15, [hide_in_shadows, HalfOrc] => 0,
-        [hide_in_shadows, Human] => 0,
+        // HideInShadows
+        [HideInShadows, Dwarf] => 0, [HideInShadows, Elf] => 10,
+        [HideInShadows, Gnome] => 0, [HideInShadows, HalfElf] => 5,
+        [HideInShadows, Halfling] => 15, [HideInShadows, HalfOrc] => 0,
+        [HideInShadows, Human] => 0,
 
-        // hear_noise
-        [hear_noise, Dwarf] => 0, [hear_noise, Elf] => 5,
-        [hear_noise, Gnome] => 5, [hear_noise, HalfElf] => 0,
-        [hear_noise, Halfling] => 5, [hear_noise, HalfOrc] => 5,
-        [hear_noise, Human] => 0,
+        // HearNoise
+        [HearNoise, Dwarf] => 0, [HearNoise, Elf] => 5,
+        [HearNoise, Gnome] => 5, [HearNoise, HalfElf] => 0,
+        [HearNoise, Halfling] => 5, [HearNoise, HalfOrc] => 5,
+        [HearNoise, Human] => 0,
 
-        // open_locks
-        [open_locks, Dwarf] => 15, [open_locks, Elf] => -5,
-        [open_locks, Gnome] => 10, [open_locks, HalfElf] => 0,
-        [open_locks, Halfling] => 0, [open_locks, HalfOrc] => 5,
-        [open_locks, Human] => 5,
+        // OpenLocks
+        [OpenLocks, Dwarf] => 15, [OpenLocks, Elf] => -5,
+        [OpenLocks, Gnome] => 10, [OpenLocks, HalfElf] => 0,
+        [OpenLocks, Halfling] => 0, [OpenLocks, HalfOrc] => 5,
+        [OpenLocks, Human] => 5,
 
-        // pick_pockets
-        [pick_pockets, Dwarf] => 0, [pick_pockets, Elf] => 5,
-        [pick_pockets, Gnome] => 0, [pick_pockets, HalfElf] => 10,
-        [pick_pockets, Halfling] => 5, [pick_pockets, HalfOrc] => -5,
-        [pick_pockets, Human] => 0,
+        // PickPockets
+        [PickPockets, Dwarf] => 0, [PickPockets, Elf] => 5,
+        [PickPockets, Gnome] => 0, [PickPockets, HalfElf] => 10,
+        [PickPockets, Halfling] => 5, [PickPockets, HalfOrc] => -5,
+        [PickPockets, Human] => 0,
 
-        // move_silently
-        [move_silently, Dwarf] => -5, [move_silently, Elf] => 5,
-        [move_silently, Gnome] => 0, [move_silently, HalfElf] => 0,
-        [move_silently, Halfling] => 15, [move_silently, HalfOrc] => 0,
-        [move_silently, Human] => 0,
+        // MoveSilently
+        [MoveSilently, Dwarf] => -5, [MoveSilently, Elf] => 5,
+        [MoveSilently, Gnome] => 0, [MoveSilently, HalfElf] => 0,
+        [MoveSilently, Halfling] => 15, [MoveSilently, HalfOrc] => 0,
+        [MoveSilently, Human] => 0,
 
-        // find_traps
-        [find_traps, Dwarf] => 15, [find_traps, Elf] => 5,
-        [find_traps, Gnome] => 0, [find_traps, HalfElf] => 0,
-        [find_traps, Halfling] => 0, [find_traps, HalfOrc] => 5,
-        [find_traps, Human] => 0,
+        // FindTraps
+        [FindTraps, Dwarf] => 15, [FindTraps, Elf] => 5,
+        [FindTraps, Gnome] => 0, [FindTraps, HalfElf] => 0,
+        [FindTraps, Halfling] => 0, [FindTraps, HalfOrc] => 5,
+        [FindTraps, Human] => 0,
 
-        // read_languages
-        [read_languages, Dwarf] => -5, [read_languages, Elf] => 10,
-        [read_languages, Gnome] => 0, [read_languages, HalfElf] => 0,
-        [read_languages, Halfling] => -5, [read_languages, HalfOrc] => -10,
-        [read_languages, Human] => 0
+        // ReadLanguages
+        [ReadLanguages, Dwarf] => -5, [ReadLanguages, Elf] => 10,
+        [ReadLanguages, Gnome] => 0, [ReadLanguages, HalfElf] => 0,
+        [ReadLanguages, Halfling] => -5, [ReadLanguages, HalfOrc] => -10,
+        [ReadLanguages, Human] => 0
     }
 
 

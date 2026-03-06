@@ -22,11 +22,11 @@ system "D&D 5e Concentration" {
     enum RollMode { normal, advantage, disadvantage }
 
     enum Duration {
-        end_of_turn,
-        start_of_next_turn,
-        rounds(count: int),
-        minutes(count: int),
-        indefinite
+        EndOfTurn,
+        StartOfNextTurn,
+        Rounds(count: int),
+        Minutes(count: int),
+        Indefinite
     }
 
     struct TurnBudget {
@@ -172,7 +172,7 @@ system "D&D 5e Concentration" {
             // concentration event is never emitted and old
             // concentration is preserved.
             for target in targets {
-                apply_condition(target, Blessed, Duration.rounds(10))
+                apply_condition(target, Blessed, Duration.Rounds(10))
             }
 
             // Register concentration last.
@@ -198,7 +198,7 @@ system "D&D 5e Concentration" {
 
         resolve {
             let inv = invocation()
-            apply_condition(target, Hexed, Duration.indefinite)
+            apply_condition(target, Hexed, Duration.Indefinite)
             emit ConcentrationStarted(caster: caster, inv: inv)
         }
     }
@@ -224,7 +224,7 @@ system "D&D 5e Concentration" {
             let save: RollResult = roll(d20_expr(score: target.abilities[WIS]))
             let dc = 8 + proficiency_bonus(caster.level) + modifier(caster.abilities[WIS])
             if save.total < dc {
-                apply_condition(target, HeldByPerson, Duration.rounds(10))
+                apply_condition(target, HeldByPerson, Duration.Rounds(10))
                 emit ConcentrationStarted(caster: caster, inv: inv)
             }
         }

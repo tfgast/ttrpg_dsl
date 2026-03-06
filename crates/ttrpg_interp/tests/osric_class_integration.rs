@@ -215,7 +215,7 @@ fn class_def_fighter() {
     );
     assert_eq!(
         get_enum_variant(&def, "armour"),
-        ("ArmourPermission", "any_armour")
+        ("ArmourPermission", "AnyArmour")
     );
     assert_eq!(
         get_enum_variant(&def, "spell_progression"),
@@ -301,7 +301,7 @@ fn class_def_cleric() {
     );
     assert_eq!(
         get_enum_variant(&def, "armour"),
-        ("ArmourPermission", "any_armour")
+        ("ArmourPermission", "AnyArmour")
     );
     assert_eq!(
         get_enum_variant(&def, "spell_progression"),
@@ -331,7 +331,7 @@ fn class_def_druid() {
     );
     assert_eq!(
         get_enum_variant(&def, "armour"),
-        ("ArmourPermission", "leather_wooden")
+        ("ArmourPermission", "LeatherWooden")
     );
     assert_eq!(
         get_enum_variant(&def, "spell_progression"),
@@ -359,7 +359,7 @@ fn class_def_thief() {
     );
     assert_eq!(
         get_enum_variant(&def, "armour"),
-        ("ArmourPermission", "leather_only")
+        ("ArmourPermission", "LeatherOnly")
     );
     assert_eq!(
         get_enum_variant(&def, "spell_progression"),
@@ -390,7 +390,7 @@ fn class_def_assassin() {
     );
     assert_eq!(
         get_enum_variant(&def, "armour"),
-        ("ArmourPermission", "leather_shield")
+        ("ArmourPermission", "LeatherShield")
     );
     assert!(get_bool(&def, "shield_allowed"));
     assert!(get_bool(&def, "has_thief_skills"));
@@ -416,7 +416,7 @@ fn class_def_magic_user() {
     );
     assert_eq!(
         get_enum_variant(&def, "armour"),
-        ("ArmourPermission", "no_armour")
+        ("ArmourPermission", "NoArmour")
     );
     assert_eq!(
         get_enum_variant(&def, "spell_progression"),
@@ -469,7 +469,7 @@ fn class_def_monk() {
     );
     assert_eq!(
         get_enum_variant(&def, "armour"),
-        ("ArmourPermission", "no_armour")
+        ("ArmourPermission", "NoArmour")
     );
     assert_eq!(
         get_enum_variant(&def, "spell_progression"),

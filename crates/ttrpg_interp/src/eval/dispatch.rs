@@ -313,7 +313,7 @@ fn eval_ident(env: &mut Env, name: &str, expr: &Spanned<ExprKind>) -> Result<Val
         });
     }
 
-    // 4. Check if it's an enum type name (for qualified access like `Duration.rounds`)
+    // 4. Check if it's an enum type name (for qualified access like `Duration.Rounds`)
     //    Returns EnumNamespace so field access can resolve variants via eval_expr.
     if let Some(DeclInfo::Enum(_)) = env.interp.type_env.types.get(name) {
         return Ok(Value::EnumNamespace(Name::from(name)));

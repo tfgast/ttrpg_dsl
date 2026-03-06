@@ -216,7 +216,7 @@ system "OSRIC MU Spells" {
                 }
                 let to_sleep = take(cat_targets, min(num_affected, len(cat_targets)))
                 for target in to_sleep {
-                    apply_condition(target, Sleeping, Duration.rounds(duration_rounds))
+                    apply_condition(target, Sleeping, Duration.Rounds(duration_rounds))
                     emit SpellApplied(caster: caster, target: target, spell_name: "Sleep")
                 }
             }

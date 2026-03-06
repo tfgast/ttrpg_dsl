@@ -3209,14 +3209,14 @@ system "Game" {
 
 #[test]
 fn module_alias_variant_constructor_via_alias() {
-    // Enum variant constructor through alias: Core.Duration.rounds(value: 3)
+    // Enum variant constructor through alias: Core.Duration.Rounds(value: 3)
     let dir = multi_file_dir("mod_alias_variant_ctor");
     let core = dir.join("core.ttrpg");
     std::fs::write(
         &core,
         r#"
 system "Core" {
-    enum Duration { indefinite, rounds(value: int) }
+    enum Duration { Indefinite, Rounds(value: int) }
 }
 "#,
     )
@@ -3230,7 +3230,7 @@ use "Core" as Core
 
 system "Game" {
     // Derive that uses 2-level alias-qualified variant constructor
-    derive make_duration() -> Duration { Core.Duration.rounds(value: 3) }
+    derive make_duration() -> Duration { Core.Duration.Rounds(value: 3) }
 }
 "#,
     )
@@ -3244,7 +3244,7 @@ system "Game" {
 
     runner.exec("eval make_duration()").unwrap();
     let output = runner.take_output();
-    assert_eq!(output, vec!["Duration.rounds(value: 3)"]);
+    assert_eq!(output, vec!["Duration.Rounds(value: 3)"]);
 
     std::fs::remove_dir_all(&dir).ok();
 }
@@ -3507,7 +3507,7 @@ use "Core"
 system "Game" {
     action KnockDown on actor: Character (target: Character) {
         resolve {
-            apply_condition(target, Prone, indefinite)
+            apply_condition(target, Prone, Indefinite)
         }
     }
 }

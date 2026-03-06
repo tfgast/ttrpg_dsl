@@ -512,7 +512,7 @@ system "OSRIC Initiative" {
                 equip_main(charger, WieldedItem.Melee(charge_weapon))
 
                 // Apply Charging condition (strips DEX AC, -1 AC)
-                apply_condition(charger, Charging, Duration.end_of_round)
+                apply_condition(charger, Charging, Duration.EndOfRound)
 
                 // Check if target declared set weapon against charge
                 let set_actions = [a for a in all_actions
@@ -696,7 +696,7 @@ system "OSRIC Initiative" {
     //  whose duration has elapsed. Uses game_time() and each
     //  condition's applied_at to compute elapsed segments.
     //
-    //  Handles: end_of_round, rounds(n), turns(n), hours(n),
+    //  Handles: EndOfRound, rounds(n), turns(n), hours(n),
     //  days(n). Does NOT handle segments(n) — those are managed
     //  locally by surprise/casting code. Indefinite conditions
     //  are never expired.
@@ -707,13 +707,13 @@ system "OSRIC Initiative" {
         for combatant in combatants {
             for cond in conditions(combatant) {
                 match cond.duration {
-                    Duration.end_of_round => {
+                    Duration.EndOfRound => {
                         remove_condition(combatant, cond)
                     },
-                    Duration.segments(_) => {
+                    Duration.Segments(_) => {
                         // Managed locally (surprise, casting), skip.
                     },
-                    Duration.indefinite => {
+                    Duration.Indefinite => {
                         // Never expires.
                     },
                     _ => {

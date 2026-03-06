@@ -1090,7 +1090,7 @@ mod tests {
                 target: EntityRef(1),
                 condition: "Prone".into(),
                 params: BTreeMap::new(),
-                duration: duration_variant("end_of_turn"),
+                duration: duration_variant("EndOfTurn"),
                 invocation: None,
             })
         });
@@ -1115,7 +1115,7 @@ mod tests {
                 params: BTreeMap::new(),
                 bearer: EntityRef(1),
                 gained_at: 1,
-                duration: duration_variant("end_of_turn"),
+                duration: duration_variant("EndOfTurn"),
                 invocation: None,
                 applied_at: 0,
             }],
@@ -1341,7 +1341,7 @@ mod tests {
         let mut fields = BTreeMap::new();
         fields.insert("count".into(), Value::Int(3));
         let mut handler = RecordingHandler::new(vec![Response::Override(duration_variant_with(
-            "rounds", fields,
+            "Rounds", fields,
         ))]);
 
         adapter.run(&mut handler, |_state, handler| {
@@ -1349,7 +1349,7 @@ mod tests {
                 target: EntityRef(1),
                 condition: "Prone".into(),
                 params: BTreeMap::new(),
-                duration: duration_variant("end_of_turn"),
+                duration: duration_variant("EndOfTurn"),
                 invocation: None,
             })
         });
@@ -1362,7 +1362,7 @@ mod tests {
         assert_eq!(conds[0].duration, {
             let mut f = BTreeMap::new();
             f.insert("count".into(), Value::Int(3));
-            duration_variant_with("rounds", f)
+            duration_variant_with("Rounds", f)
         });
     }
 
@@ -1381,7 +1381,7 @@ mod tests {
                     params: BTreeMap::new(),
                     bearer: EntityRef(1),
                     gained_at: 1,
-                    duration: duration_variant("end_of_turn"),
+                    duration: duration_variant("EndOfTurn"),
                     invocation: None,
                     applied_at: 0,
                 },
@@ -1391,7 +1391,7 @@ mod tests {
                     params: BTreeMap::new(),
                     bearer: EntityRef(1),
                     gained_at: 2,
-                    duration: duration_variant("rounds"),
+                    duration: duration_variant("Rounds"),
                     invocation: None,
                     applied_at: 0,
                 },
@@ -1829,7 +1829,7 @@ mod tests {
                 params: params_a.clone(),
                 bearer: entity,
                 gained_at: 0,
-                duration: duration_variant("indefinite"),
+                duration: duration_variant("Indefinite"),
                 invocation: None,
                 applied_at: 0,
             },
@@ -1842,7 +1842,7 @@ mod tests {
                 params: params_b.clone(),
                 bearer: entity,
                 gained_at: 0,
-                duration: duration_variant("indefinite"),
+                duration: duration_variant("Indefinite"),
                 invocation: None,
                 applied_at: 0,
             },

@@ -1677,7 +1677,7 @@ fn register_builtin_types(env: &mut TypeEnv) {
     if !env.types.contains_key("Duration") {
         let duration_name = Name::from("Duration");
         let variants = vec![VariantInfo {
-            name: "indefinite".into(),
+            name: "Indefinite".into(),
             fields: vec![],
         }];
         for v in &variants {
