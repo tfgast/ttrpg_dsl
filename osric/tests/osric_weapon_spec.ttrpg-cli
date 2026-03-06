@@ -1,7 +1,9 @@
 // OSRIC Weapon Specialisation integration tests
 //
 // Tests spec_hit_bonus, spec_damage_bonus, can_specialize,
-// can_double_specialize_melee, spec_melee_attacks, spec_missile_rof.
+// can_double_specialize_melee, spec_melee_attacks, spec_missile_rof,
+// and entity-level specialisation queries (is_specialized_melee,
+// melee_spec_hit_mod, melee_spec_damage_mod, character_melee_attacks).
 
 load osric/*.ttrpg
 
@@ -75,3 +77,55 @@ assert_eq spec_missile_rof(CrossbowHeavy, 10, 1), 1
 // L13+: alternating 2/1
 assert_eq spec_missile_rof(CrossbowHeavy, 15, 1), 2
 assert_eq spec_missile_rof(CrossbowHeavy, 15, 2), 1
+
+// ── Entity-level: is_specialized_melee ──────────────────────────
+
+spawn Character spec_fighter { name: "Conan", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 16, DEX: 14, CON: 15, INT: 10, WIS: 10, CHA: 10 }, HitPoints { max_hp: 50, hp: 50 }, WeaponSpecialization { spec_weapon: SpecWeapon.SpecMelee { weapon: SwordLong }, spec_level: SpecLevel.Single } }
+
+// Specialized in SwordLong
+assert is_specialized_melee(spec_fighter, SwordLong)
+
+// Not specialized in Dagger
+assert (is_specialized_melee(spec_fighter, Dagger)) == false
+
+// ── Entity-level: melee_spec_hit_mod ────────────────────────────
+
+spawn Character hit_fighter { name: "Roland", classes: [ClassLevel { class: Fighter, level: 7 }], abilities: { STR: 16, DEX: 14, CON: 15, INT: 10, WIS: 10, CHA: 10 }, HitPoints { max_hp: 50, hp: 50 }, WeaponSpecialization { spec_weapon: SpecWeapon.SpecMelee { weapon: SwordLong }, spec_level: SpecLevel.Single } }
+
+// Hit bonus for specialized weapon: +1
+assert_eq melee_spec_hit_mod(hit_fighter, SwordLong), 1
+
+// Hit bonus for non-specialized weapon: 0
+assert_eq melee_spec_hit_mod(hit_fighter, Dagger), 0
+
+// ── Entity-level: melee_spec_damage_mod ─────────────────────────
+
+spawn Character dmg_fighter { name: "Guts", classes: [ClassLevel { class: Fighter, level: 7 }], abilities: { STR: 16, DEX: 14, CON: 15, INT: 10, WIS: 10, CHA: 10 }, HitPoints { max_hp: 50, hp: 50 }, WeaponSpecialization { spec_weapon: SpecWeapon.SpecMelee { weapon: SwordLong }, spec_level: SpecLevel.Single } }
+
+// Damage bonus for specialized weapon: +2
+assert_eq melee_spec_damage_mod(dmg_fighter, SwordLong), 2
+
+// ── Double specialisation bonuses ───────────────────────────────
+
+spawn Character dbl_fighter { name: "Drizzt", classes: [ClassLevel { class: Fighter, level: 10 }], abilities: { STR: 16, DEX: 14, CON: 15, INT: 10, WIS: 10, CHA: 10 }, HitPoints { max_hp: 60, hp: 60 }, WeaponSpecialization { spec_weapon: SpecWeapon.SpecMelee { weapon: SwordScimitar }, spec_level: SpecLevel.Double } }
+
+// Double spec: +3 hit, +3 damage
+assert_eq melee_spec_hit_mod(dbl_fighter, SwordScimitar), 3
+assert_eq melee_spec_damage_mod(dbl_fighter, SwordScimitar), 3
+
+// ── No spec group returns zero bonus ────────────────────────────
+
+spawn Character no_spec { name: "Unspecialized", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 16, DEX: 14, CON: 15, INT: 10, WIS: 10, CHA: 10 }, HitPoints { max_hp: 30, hp: 30 } }
+
+assert_eq melee_spec_hit_mod(no_spec, SwordLong), 0
+
+// ── character_melee_attacks: specialist vs normal ────────────────
+
+spawn Character atk_spec { name: "Specialist", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 16, DEX: 14, CON: 15, INT: 10, WIS: 10, CHA: 10 }, HitPoints { max_hp: 40, hp: 40 }, WeaponSpecialization { spec_weapon: SpecWeapon.SpecMelee { weapon: SwordLong }, spec_level: SpecLevel.Single } }
+
+// Level 5 specialist: 3/2 → odd=1, even=2
+assert_eq character_melee_attacks(atk_spec, SwordLong, 1), 1
+assert_eq character_melee_attacks(atk_spec, SwordLong, 2), 2
+
+// Same specialist with non-specialized weapon: normal 1 attack
+assert_eq character_melee_attacks(atk_spec, Dagger, 1), 1

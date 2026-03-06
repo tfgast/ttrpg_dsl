@@ -1,9 +1,9 @@
 // OSRIC Encumbrance integration tests
 //
-// Tests encumbrance_tier, encumbrance_movement_numerator derives.
-// Entity-level tests (effective_str_encumbrance, character_encumbrance,
-// character_movement with conditions, character_surprise_adj) remain in Rust
-// because they require condition application and complex state manipulation.
+// Tests encumbrance_tier, encumbrance_movement_numerator derives,
+// effective_str_encumbrance, character_encumbrance, character_movement
+// with EncumbranceState condition, character_surprise_adj, and
+// update_encumbrance lifecycle.
 
 load osric/*.ttrpg
 
@@ -27,3 +27,169 @@ assert_eq encumbrance_movement_numerator(Light), 3
 assert_eq encumbrance_movement_numerator(Moderate), 2
 assert_eq encumbrance_movement_numerator(Heavy), 1
 assert_eq encumbrance_movement_numerator(Overloaded), 0
+
+// ── effective_str_encumbrance ───────────────────────────────────
+
+// STR 10 → str_encumbrance(10) = 35
+spawn Character enc_str10 { name: "STR10", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 10, DEX: 10, CON: 10, INT: 10, WIS: 10, CHA: 10 }, HitPoints { max_hp: 10, hp: 10 } }
+assert_eq effective_str_encumbrance(enc_str10), 35
+
+// STR 18, no exceptional → str_encumbrance(18) = 110
+spawn Character enc_str18 { name: "STR18", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 18, DEX: 10, CON: 10, INT: 10, WIS: 10, CHA: 10 }, HitPoints { max_hp: 10, hp: 10 } }
+assert_eq effective_str_encumbrance(enc_str18), 110
+
+// STR 18 + exceptional 50 → exc_str_encumbrance(50) = 135
+spawn Character enc_exc50 { name: "EXC50", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 18, DEX: 10, CON: 10, INT: 10, WIS: 10, CHA: 10 }, HitPoints { max_hp: 10, hp: 10 }, ExceptionalStrength { percentile: 50 } }
+assert_eq effective_str_encumbrance(enc_exc50), 135
+
+// STR 18 + exceptional 100 → exc_str_encumbrance(100) = 300
+spawn Character enc_exc100 { name: "EXC100", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 18, DEX: 10, CON: 10, INT: 10, WIS: 10, CHA: 10 }, HitPoints { max_hp: 10, hp: 10 }, ExceptionalStrength { percentile: 100 } }
+assert_eq effective_str_encumbrance(enc_exc100), 300
+
+// ── character_encumbrance tiers ─────────────────────────────────
+// STR 10 → allowance 35. Tier based on (weight - allowance).
+
+spawn Character ct_unenc { name: "Unenc", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 10, DEX: 10, CON: 10, INT: 10, WIS: 10, CHA: 10 }, HitPoints { max_hp: 10, hp: 10 }, EquipmentSlots { current_weight: 35 } }
+assert_eq character_encumbrance(ct_unenc), EncumbranceTier.Unencumbered
+
+spawn Character ct_light { name: "Light", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 10, DEX: 10, CON: 10, INT: 10, WIS: 10, CHA: 10 }, HitPoints { max_hp: 10, hp: 10 }, EquipmentSlots { current_weight: 36 } }
+assert_eq character_encumbrance(ct_light), EncumbranceTier.Light
+
+spawn Character ct_light2 { name: "Light2", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 10, DEX: 10, CON: 10, INT: 10, WIS: 10, CHA: 10 }, HitPoints { max_hp: 10, hp: 10 }, EquipmentSlots { current_weight: 75 } }
+assert_eq character_encumbrance(ct_light2), EncumbranceTier.Light
+
+spawn Character ct_mod { name: "Mod", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 10, DEX: 10, CON: 10, INT: 10, WIS: 10, CHA: 10 }, HitPoints { max_hp: 10, hp: 10 }, EquipmentSlots { current_weight: 76 } }
+assert_eq character_encumbrance(ct_mod), EncumbranceTier.Moderate
+
+spawn Character ct_mod2 { name: "Mod2", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 10, DEX: 10, CON: 10, INT: 10, WIS: 10, CHA: 10 }, HitPoints { max_hp: 10, hp: 10 }, EquipmentSlots { current_weight: 115 } }
+assert_eq character_encumbrance(ct_mod2), EncumbranceTier.Moderate
+
+spawn Character ct_heavy { name: "Heavy", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 10, DEX: 10, CON: 10, INT: 10, WIS: 10, CHA: 10 }, HitPoints { max_hp: 10, hp: 10 }, EquipmentSlots { current_weight: 116 } }
+assert_eq character_encumbrance(ct_heavy), EncumbranceTier.Heavy
+
+spawn Character ct_heavy2 { name: "Heavy2", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 10, DEX: 10, CON: 10, INT: 10, WIS: 10, CHA: 10 }, HitPoints { max_hp: 10, hp: 10 }, EquipmentSlots { current_weight: 155 } }
+assert_eq character_encumbrance(ct_heavy2), EncumbranceTier.Heavy
+
+spawn Character ct_over { name: "Over", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 10, DEX: 10, CON: 10, INT: 10, WIS: 10, CHA: 10 }, HitPoints { max_hp: 10, hp: 10 }, EquipmentSlots { current_weight: 156 } }
+assert_eq character_encumbrance(ct_over), EncumbranceTier.Overloaded
+
+// ── character_movement (no condition, no armour cap) ────────────
+
+// Human base 120ft, no armour → 120ft
+spawn Character mv_human { name: "Human", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 10, DEX: 10, CON: 10, INT: 10, WIS: 10, CHA: 10 }, HitPoints { max_hp: 10, hp: 10 } }
+assert_eq character_movement(mv_human), Feet { value: 120 }
+
+// Human base 120ft + plate armour cap 60ft → min(120, 60) = 60ft
+spawn Character mv_plate { name: "Plated", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 10, DEX: 10, CON: 10, INT: 10, WIS: 10, CHA: 10 }, HitPoints { max_hp: 10, hp: 10 }, EquipmentSlots { worn_armor: some(Armor { armour_type: PlateMail }) } }
+assert_eq character_movement(mv_plate), Feet { value: 60 }
+
+// ── character_movement + EncumbranceState via update_encumbrance ─
+// Human 120ft base, STR 10 (allowance=35). Set weight to trigger each tier.
+
+// Unencumbered: weight=0, tier=Unenc → 120 * 4/4 = 120
+spawn Character mv_unenc { name: "Unenc", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 10, DEX: 10, CON: 10, INT: 10, WIS: 10, CHA: 10 }, HitPoints { max_hp: 10, hp: 10 }, EquipmentSlots { current_weight: 0 } }
+call update_encumbrance(mv_unenc)
+assert_eq character_movement(mv_unenc), Feet { value: 120 }
+
+// Light: weight=50 (15 over 35) → 120 * 3/4 = 90
+spawn Character mv_light { name: "Light", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 10, DEX: 10, CON: 10, INT: 10, WIS: 10, CHA: 10 }, HitPoints { max_hp: 10, hp: 10 }, EquipmentSlots { current_weight: 50 } }
+call update_encumbrance(mv_light)
+assert_eq character_movement(mv_light), Feet { value: 90 }
+
+// Moderate: weight=80 (45 over) → 120 * 2/4 = 60
+spawn Character mv_mod { name: "Moderate", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 10, DEX: 10, CON: 10, INT: 10, WIS: 10, CHA: 10 }, HitPoints { max_hp: 10, hp: 10 }, EquipmentSlots { current_weight: 80 } }
+call update_encumbrance(mv_mod)
+assert_eq character_movement(mv_mod), Feet { value: 60 }
+
+// Heavy: weight=120 (85 over) → 120 * 1/4 = 30
+spawn Character mv_heavy { name: "Heavy", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 10, DEX: 10, CON: 10, INT: 10, WIS: 10, CHA: 10 }, HitPoints { max_hp: 10, hp: 10 }, EquipmentSlots { current_weight: 120 } }
+call update_encumbrance(mv_heavy)
+assert_eq character_movement(mv_heavy), Feet { value: 30 }
+
+// Overloaded: weight=160 (125 over) → 120 * 0/4 = 0
+spawn Character mv_over { name: "Overloaded", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 10, DEX: 10, CON: 10, INT: 10, WIS: 10, CHA: 10 }, HitPoints { max_hp: 10, hp: 10 }, EquipmentSlots { current_weight: 160 } }
+call update_encumbrance(mv_over)
+assert_eq character_movement(mv_over), Feet { value: 0 }
+
+// NOTE: Dwarf movement tests remain in Rust because of a CLI bug
+// where Feet unit type values cannot be assigned in spawn or set commands.
+// See osric_encumbrance_integration.rs: character_movement_dwarf_with_encumbrance.
+
+// ── Armour cap dominates when lower than encumbered movement ────
+// Human 120ft + plate cap 60ft. Unencumbered: min(120,60)=60, then 60*4/4=60
+spawn Character cap_unenc { name: "PlateUnenc", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 10, DEX: 10, CON: 10, INT: 10, WIS: 10, CHA: 10 }, HitPoints { max_hp: 10, hp: 10 }, EquipmentSlots { current_weight: 0, worn_armor: some(Armor { armour_type: PlateMail }) } }
+call update_encumbrance(cap_unenc)
+assert_eq character_movement(cap_unenc), Feet { value: 60 }
+
+// Light: min(120,60)=60, then 60*3/4=45
+spawn Character cap_light { name: "PlateLight", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 10, DEX: 10, CON: 10, INT: 10, WIS: 10, CHA: 10 }, HitPoints { max_hp: 10, hp: 10 }, EquipmentSlots { current_weight: 50, worn_armor: some(Armor { armour_type: PlateMail }) } }
+call update_encumbrance(cap_light)
+assert_eq character_movement(cap_light), Feet { value: 45 }
+
+// ── character_surprise_adj + EncumbranceState ───────────────────
+
+// DEX 16 → dex_surprise(16) = +1, Unencumbered + no armour → +1 bonus. Total: 1+1=2
+spawn Character sa_unenc { name: "SurpUnenc", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 10, DEX: 16, CON: 10, INT: 10, WIS: 10, CHA: 10 }, HitPoints { max_hp: 10, hp: 10 }, EquipmentSlots { current_weight: 0 } }
+call update_encumbrance(sa_unenc)
+assert_eq character_surprise_adj(sa_unenc), 2
+
+// DEX 16, Unencumbered + plate (cap 60ft) → no bonus (heavy armour). Total: 1+0=1
+spawn Character sa_plate { name: "SurpPlate", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 10, DEX: 16, CON: 10, INT: 10, WIS: 10, CHA: 10 }, HitPoints { max_hp: 10, hp: 10 }, EquipmentSlots { current_weight: 0, worn_armor: some(Armor { armour_type: PlateMail }) } }
+call update_encumbrance(sa_plate)
+assert_eq character_surprise_adj(sa_plate), 1
+
+// DEX 16, Unencumbered + leather (cap 120ft, light armour) → +1 bonus. Total: 1+1=2
+spawn Character sa_leather { name: "SurpLeather", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 10, DEX: 16, CON: 10, INT: 10, WIS: 10, CHA: 10 }, HitPoints { max_hp: 10, hp: 10 }, EquipmentSlots { current_weight: 0, worn_armor: some(Armor { armour_type: Leather }) } }
+call update_encumbrance(sa_leather)
+assert_eq character_surprise_adj(sa_leather), 2
+
+// DEX 16, Light encumbrance → normal (DEX applies, no bonus/penalty). Total: 1
+spawn Character sa_light { name: "SurpLight", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 10, DEX: 16, CON: 10, INT: 10, WIS: 10, CHA: 10 }, HitPoints { max_hp: 10, hp: 10 }, EquipmentSlots { current_weight: 50 } }
+call update_encumbrance(sa_light)
+assert_eq character_surprise_adj(sa_light), 1
+
+// DEX 16, Moderate → min(0, 1) = 0. No bonuses.
+spawn Character sa_mod { name: "SurpMod", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 10, DEX: 16, CON: 10, INT: 10, WIS: 10, CHA: 10 }, HitPoints { max_hp: 10, hp: 10 }, EquipmentSlots { current_weight: 80 } }
+call update_encumbrance(sa_mod)
+assert_eq character_surprise_adj(sa_mod), 0
+
+// DEX 3 → -3, Moderate → min(0, -3) = -3. Penalties preserved.
+spawn Character sa_mod_low { name: "SurpModLow", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 10, DEX: 3, CON: 10, INT: 10, WIS: 10, CHA: 10 }, HitPoints { max_hp: 10, hp: 10 }, EquipmentSlots { current_weight: 80 } }
+call update_encumbrance(sa_mod_low)
+assert_eq character_surprise_adj(sa_mod_low), -3
+
+// DEX 16, Heavy → min(0, 1) - 1 = -1
+spawn Character sa_heavy { name: "SurpHeavy", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 10, DEX: 16, CON: 10, INT: 10, WIS: 10, CHA: 10 }, HitPoints { max_hp: 10, hp: 10 }, EquipmentSlots { current_weight: 120 } }
+call update_encumbrance(sa_heavy)
+assert_eq character_surprise_adj(sa_heavy), -1
+
+// DEX 3, Heavy → min(0, -3) - 1 = -4
+spawn Character sa_heavy_low { name: "SurpHeavyLow", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 10, DEX: 3, CON: 10, INT: 10, WIS: 10, CHA: 10 }, HitPoints { max_hp: 10, hp: 10 }, EquipmentSlots { current_weight: 120 } }
+call update_encumbrance(sa_heavy_low)
+assert_eq character_surprise_adj(sa_heavy_low), -4
+
+// DEX 10 → 0, Overloaded → min(0, 0) - 1 = -1
+spawn Character sa_over { name: "SurpOver", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 10, DEX: 10, CON: 10, INT: 10, WIS: 10, CHA: 10 }, HitPoints { max_hp: 10, hp: 10 }, EquipmentSlots { current_weight: 160 } }
+call update_encumbrance(sa_over)
+assert_eq character_surprise_adj(sa_over), -1
+
+// ── update_encumbrance lifecycle ────────────────────────────────
+
+// Start unencumbered, verify movement. Then increase weight, re-run, verify.
+spawn Character life_test { name: "Lifecycle", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 10, DEX: 10, CON: 10, INT: 10, WIS: 10, CHA: 10 }, HitPoints { max_hp: 10, hp: 10 }, EquipmentSlots { current_weight: 0 } }
+call update_encumbrance(life_test)
+assert_eq character_movement(life_test), Feet { value: 120 }
+
+// Increase weight to 76 (Moderate) and re-run
+set life_test.current_weight = 76
+call update_encumbrance(life_test)
+assert_eq character_movement(life_test), Feet { value: 60 }
+
+// Lifecycle: overloaded then reduced to light
+spawn Character life2 { name: "Lifecycle2", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 10, DEX: 10, CON: 10, INT: 10, WIS: 10, CHA: 10 }, HitPoints { max_hp: 10, hp: 10 }, EquipmentSlots { current_weight: 156 } }
+call update_encumbrance(life2)
+assert_eq character_movement(life2), Feet { value: 0 }
+
+set life2.current_weight = 36
+call update_encumbrance(life2)
+assert_eq character_movement(life2), Feet { value: 90 }

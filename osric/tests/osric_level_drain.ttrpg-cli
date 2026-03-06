@@ -1,10 +1,10 @@
 // OSRIC Level Drain integration tests
 //
-// Tests pure derive functions: xp_after_drain, is_killed_by_drain,
-// hp_for_level, con_hp_modifier_for_class.
-// Entity-level tests (apply_level_drain, apply_restoration, drain_candidate_classes,
-// highest_class_level) remain in Rust because they require complex entity state,
-// StateAdapter, and scripted dice.
+// Tests pure derive functions and entity-level derives:
+// xp_after_drain, is_killed_by_drain, hp_for_level, remove_hp_roll,
+// con_hp_modifier_for_class, restoration_eligible,
+// highest_class_level, drain_candidate_classes,
+// apply_drain_to_classes, apply_level_drain, apply_restoration.
 
 load osric/*.ttrpg
 
@@ -55,3 +55,73 @@ assert restoration_eligible(drain_event, 51000, 7)
 
 // Outside window: 201000 - 1000 = 200000 > 100800
 assert (restoration_eligible(drain_event, 201000, 7)) == false
+
+// ── highest_class_level ─────────────────────────────────────────
+
+spawn Character hl_single { name: "Fighter5", classes: [ClassLevel { class: Fighter, level: 5, xp: 17000 }], abilities: { STR: 14, DEX: 14, CON: 14, INT: 14, WIS: 14, CHA: 14 }, HitPoints { max_hp: 30, hp: 30 } }
+assert_eq highest_class_level(hl_single), 5
+
+spawn Character hl_multi { name: "FT", classes: [ClassLevel { class: Fighter, level: 5, xp: 17000 }, ClassLevel { class: Thief, level: 7, xp: 40000 }], classing_mode: Multi, abilities: { STR: 14, DEX: 14, CON: 14, INT: 14, WIS: 14, CHA: 14 }, HitPoints { max_hp: 30, hp: 30 } }
+assert_eq highest_class_level(hl_multi), 7
+
+// ── drain_candidate_classes ─────────────────────────────────────
+
+spawn Character dc_single { name: "Fighter5", classes: [ClassLevel { class: Fighter, level: 5, xp: 17000 }], abilities: { STR: 14, DEX: 14, CON: 14, INT: 14, WIS: 14, CHA: 14 }, HitPoints { max_hp: 30, hp: 30 } }
+assert_eq drain_candidate_classes(dc_single).len(), 1
+
+// Both at level 5 — tied → 2 candidates
+spawn Character dc_tied { name: "FT", classes: [ClassLevel { class: Fighter, level: 5, xp: 17000 }, ClassLevel { class: Thief, level: 5, xp: 10000 }], classing_mode: Multi, abilities: { STR: 14, DEX: 14, CON: 14, INT: 14, WIS: 14, CHA: 14 }, HitPoints { max_hp: 30, hp: 30 } }
+assert_eq drain_candidate_classes(dc_tied).len(), 2
+
+// ── apply_drain_to_classes ──────────────────────────────────────
+
+let drain_classes = [ClassLevel { class: Fighter, level: 5, xp: 20000 }, ClassLevel { class: Thief, level: 3, xp: 3000 }]
+let drained = apply_drain_to_classes(drain_classes, Fighter)
+
+// Fighter should be level 4 with XP 8000
+assert_eq drained[0].level, 4
+assert_eq drained[0].xp, 8000
+
+// Thief should be unchanged
+assert_eq drained[1].level, 3
+
+// ── apply_level_drain (function — full drain with dice) ─────────
+
+spawn Character drain_target { name: "Fighter5", classes: [ClassLevel { class: Fighter, level: 5, xp: 20000 }], abilities: { STR: 14, DEX: 14, CON: 14, INT: 14, WIS: 14, CHA: 14 }, HitPoints { max_hp: 30, hp: 30 }, hp_rolls: [HpRoll { class: Fighter, level: 1, amount: 7 }, HpRoll { class: Fighter, level: 2, amount: 7 }, HpRoll { class: Fighter, level: 3, amount: 7 }, HpRoll { class: Fighter, level: 4, amount: 7 }, HpRoll { class: Fighter, level: 5, amount: 7 }] }
+
+// No dice needed — single class, no tie-breaking
+let drain_result = apply_level_drain(drain_target, 1000)
+assert_eq drain_result.killed, false
+assert_eq drain_result.drained_class, Class.Fighter
+assert_eq drain_result.classes[0].level, 4
+assert_eq drain_result.drain_history.len(), 1
+assert_eq drain_result.hp_change, 7
+assert_eq drain_result.hp_rolls.len(), 4
+
+// ── drain with no hp_rolls (fallback to 0) ──────────────────────
+
+spawn Character drain_no_rolls { name: "Fighter5NR", classes: [ClassLevel { class: Fighter, level: 5, xp: 20000 }], abilities: { STR: 14, DEX: 14, CON: 14, INT: 14, WIS: 14, CHA: 14 }, HitPoints { max_hp: 30, hp: 30 } }
+
+let drain_nr = apply_level_drain(drain_no_rolls, 1000)
+assert_eq drain_nr.hp_change, 0
+
+// ── apply_restoration ───────────────────────────────────────────
+
+// Character was drained twice: Fighter 5→4 at time 1000, Fighter 4→3 at time 2000.
+// Current classes: Fighter level 3.
+spawn Character restore_target { name: "Fighter3", classes: [ClassLevel { class: Fighter, level: 3, xp: 4000 }], abilities: { STR: 14, DEX: 14, CON: 14, INT: 14, WIS: 14, CHA: 14 }, HitPoints { max_hp: 30, hp: 30 }, drain_history: [DrainEvent { class: Fighter, original_level: 5, timestamp: 1000 }, DrainEvent { class: Fighter, original_level: 4, timestamp: 2000 }], hp_rolls: [HpRoll { class: Fighter, level: 1, amount: 6 }, HpRoll { class: Fighter, level: 2, amount: 6 }, HpRoll { class: Fighter, level: 3, amount: 6 }] }
+
+// Restore at time 10000, caster cleric level 7 (window = 100800).
+// Both drains within window. Roll 8 for HP restoration (1d10 for Fighter).
+rolls 8
+let restore_result = apply_restoration(restore_target, 10000, 7)
+assert_ne restore_result, none
+
+// ── restoration returns none when expired ────────────────────────
+
+// Drain at time 1000, restore at time 500000 with caster level 7.
+// window = 7 * 14400 = 100800. 500000 - 1000 = 499000 > 100800 → expired.
+spawn Character restore_expired { name: "Fighter4", classes: [ClassLevel { class: Fighter, level: 4, xp: 8000 }], abilities: { STR: 14, DEX: 14, CON: 14, INT: 14, WIS: 14, CHA: 14 }, HitPoints { max_hp: 30, hp: 30 }, drain_history: [DrainEvent { class: Fighter, original_level: 5, timestamp: 1000 }] }
+
+let expired_result = apply_restoration(restore_expired, 500000, 7)
+assert_eq expired_result, none
