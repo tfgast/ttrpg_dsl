@@ -380,6 +380,19 @@ system "OSRIC Initiative" {
     }
 
 
+    // Helper: check if an entity is still alive (hp > 0).
+    // Works across entity types since both Character and Monster have hp.
+    derive is_alive(target: entity) -> bool {
+        if target is Character {
+            target.hp > 0
+        } else if target is Monster {
+            target.hp > 0
+        } else {
+            false
+        }
+    }
+
+
     // ========================================================
     //  EVENTS
     // ========================================================
@@ -395,11 +408,12 @@ system "OSRIC Initiative" {
     // ========================================================
 
     struct RoundAction {
-        combatant: Character
-        target: option<Character>
+        combatant: entity
+        target: option<entity>
         action_type: DeclaredActionType
         weapon_melee: option<MeleeWeapon>
         weapon_missile: option<MissileWeapon>
+        monster_attack: option<MonsterAttack>
         distance: Feet
         casting_time: int
         segment: int
@@ -407,7 +421,7 @@ system "OSRIC Initiative" {
         initiative_segment: int
         party_side: bool
         spell_id: option<SpellId>
-        spell_targets: list<Character>
+        spell_targets: list<entity>
     }
 
 
@@ -422,7 +436,7 @@ system "OSRIC Initiative" {
     event SegmentStart(segment: int) {}
 
     event ActionResolved(
-        combatant: Character,
+        combatant: entity,
         action_type: DeclaredActionType,
         segment: int
     ) {}
@@ -439,18 +453,19 @@ system "OSRIC Initiative" {
     // ========================================================
 
     derive build_round_action(
-        combatant: Character,
+        combatant: entity,
         action_type: DeclaredActionType,
         initiative_segment: int,
         party_side: bool,
-        target: option<Character> = none,
+        target: option<entity> = none,
         weapon_melee: option<MeleeWeapon> = none,
         weapon_missile: option<MissileWeapon> = none,
+        monster_attack: option<MonsterAttack> = none,
         distance: Feet = 0ft,
         casting_time: int = 0,
         dex_missile_init_adj: int = 0,
         spell_id: option<SpellId> = none,
-        spell_targets: list<Character> = []
+        spell_targets: list<entity> = []
     ) -> RoundAction {
         let weapon_speed = match {
             weapon_melee.is_some() => melee_weapon_def(weapon_melee.unwrap()).speed_factor,
@@ -463,6 +478,7 @@ system "OSRIC Initiative" {
             action_type: action_type,
             weapon_melee: weapon_melee,
             weapon_missile: weapon_missile,
+            monster_attack: monster_attack,
             distance: distance,
             casting_time: casting_time,
             segment: seg,
@@ -489,67 +505,106 @@ system "OSRIC Initiative" {
         match action.action_type {
             MeleeAttackAction => {
                 let target = action.target.unwrap()
-                let weapon = action.weapon_melee.unwrap()
-                equip_main(action.combatant, WieldedItem.Melee(weapon))
-                with_budget(action.combatant, { attack: 1 }) {
-                    action.combatant.MeleeAttack(target)
+                if action.combatant is Character {
+                    // Character armed melee attack
+                    let weapon = action.weapon_melee.unwrap()
+                    equip_main(action.combatant, WieldedItem.Melee(weapon))
+                    with_budget(action.combatant, { attack: 1 }) {
+                        action.combatant.MeleeAttack(target)
+                    }
+                } else if action.combatant is Monster {
+                    if action.monster_attack.is_some() {
+                        // Monster natural attack
+                        with_budget(action.combatant, { attack: 1 }) {
+                            action.combatant.MonsterMeleeAttack(target, action.monster_attack.unwrap())
+                        }
+                    } else if action.weapon_melee.is_some() && action.combatant has EquipmentSlots {
+                        // Armed monster with wielded weapon
+                        let weapon = action.weapon_melee.unwrap()
+                        equip_monster_main(action.combatant, WieldedItem.Melee(weapon))
+                        with_budget(action.combatant, { attack: 1 }) {
+                            action.combatant.MeleeAttack(target)
+                        }
+                    }
                 }
             },
             MissileAttackAction => {
                 let target = action.target.unwrap()
-                let weapon = action.weapon_missile.unwrap()
-                equip_main(action.combatant, WieldedItem.Missile(weapon))
-                with_budget(action.combatant, { attack: 1 }) {
-                    action.combatant.MissileAttack(target, action.distance)
+                if action.combatant is Character {
+                    let weapon = action.weapon_missile.unwrap()
+                    equip_main(action.combatant, WieldedItem.Missile(weapon))
+                    with_budget(action.combatant, { attack: 1 }) {
+                        action.combatant.MissileAttack(target, action.distance)
+                    }
+                } else if action.combatant is Monster {
+                    if action.monster_attack.is_some() {
+                        // Monster natural ranged attack
+                        with_budget(action.combatant, { attack: 1 }) {
+                            action.combatant.MonsterMissileAttack(target, action.monster_attack.unwrap(), action.distance)
+                        }
+                    } else if action.weapon_missile.is_some() && action.combatant has EquipmentSlots {
+                        // Armed monster with wielded missile weapon
+                        let weapon = action.weapon_missile.unwrap()
+                        equip_monster_main(action.combatant, WieldedItem.Missile(weapon))
+                        with_budget(action.combatant, { attack: 1 }) {
+                            action.combatant.MissileAttack(target, action.distance)
+                        }
+                    }
                 }
             },
             ChargeAction => {
-                let charger = action.combatant
-                let target = action.target.unwrap()
-                let charge_weapon = action.weapon_melee.unwrap()
+                // Charge is Character-only (requires class-based mechanics).
+                if action.combatant is Character {
+                    let charger = action.combatant
+                    let target = action.target.unwrap()
+                    let charge_weapon = action.weapon_melee.unwrap()
 
-                // Equip charger's weapon
-                equip_main(charger, WieldedItem.Melee(charge_weapon))
+                    // Equip charger's weapon
+                    equip_main(charger, WieldedItem.Melee(charge_weapon))
 
-                // Apply Charging condition (strips DEX AC, -1 AC)
-                apply_condition(charger, Charging, Duration.EndOfRound)
+                    // Apply Charging condition (strips DEX AC, -1 AC)
+                    apply_condition(charger, Charging, Duration.EndOfRound)
 
-                // Check if target declared set weapon against charge
-                let set_actions = [a for a in all_actions
-                    if a.action_type == DeclaredActionType.SetAgainstChargeAction
-                    && a.combatant == target]
+                    // Check if target declared set weapon against charge
+                    let set_actions = [a for a in all_actions
+                        if a.action_type == DeclaredActionType.SetAgainstChargeAction
+                        && a.combatant == target]
 
-                if len(set_actions) > 0 {
-                    let set_weapon = first(set_actions).unwrap().weapon_melee.unwrap()
+                    if len(set_actions) > 0 {
+                        let set_action = first(set_actions).unwrap()
+                        let set_weapon = set_action.weapon_melee.unwrap()
 
-                    // Equip defender's set weapon
-                    equip_main(target, WieldedItem.Melee(set_weapon))
-
-                    if weapon_longer(set_weapon, charge_weapon) {
-                        // Set weapon is longer — defender strikes first
-                        with_budget(target, { attack: 1 }) {
-                            target.SetWeaponStrike(charger)
+                        // Equip defender's set weapon (must be a Character)
+                        if set_action.combatant is Character {
+                            equip_main(set_action.combatant, WieldedItem.Melee(set_weapon))
                         }
-                        if charger.hp > 0 {
-                            with_budget(charger, { attack: 1 }) {
-                                charger.Charge(target)
-                            }
-                        }
-                    } else {
-                        // Charger has equal or longer weapon — strikes first
-                        with_budget(charger, { attack: 1 }) {
-                            charger.Charge(target)
-                        }
-                        if target.hp > 0 {
+
+                        if weapon_longer(set_weapon, charge_weapon) {
+                            // Set weapon is longer — defender strikes first
                             with_budget(target, { attack: 1 }) {
                                 target.SetWeaponStrike(charger)
                             }
+                            if is_alive(charger) {
+                                with_budget(charger, { attack: 1 }) {
+                                    charger.Charge(target)
+                                }
+                            }
+                        } else {
+                            // Charger has equal or longer weapon — strikes first
+                            with_budget(charger, { attack: 1 }) {
+                                charger.Charge(target)
+                            }
+                            if is_alive(target) {
+                                with_budget(target, { attack: 1 }) {
+                                    target.SetWeaponStrike(charger)
+                                }
+                            }
                         }
-                    }
-                } else {
-                    // Normal charge, no set weapon opposition
-                    with_budget(charger, { attack: 1 }) {
-                        charger.Charge(target)
+                    } else {
+                        // Normal charge, no set weapon opposition
+                        with_budget(charger, { attack: 1 }) {
+                            charger.Charge(target)
+                        }
                     }
                 }
             },
@@ -557,32 +612,38 @@ system "OSRIC Initiative" {
                 // Spell completes this segment — remove CastingSpell.
                 // If interrupted by damage, the SpellInterruption hook
                 // already removed it and emitted SpellInterrupted.
-                remove_condition(action.combatant, CastingSpell)
-                // Apply spell effects via the registry dispatch.
-                if action.spell_id.is_some() {
-                    resolve_spell(action.spell_id.unwrap(), action.combatant, action.spell_targets)
+                // Currently Character-only; monster spellcasting TBD.
+                if action.combatant is Character {
+                    remove_condition(action.combatant, CastingSpell)
+                    if action.spell_id.is_some() {
+                        resolve_spell(action.spell_id.unwrap(), action.combatant, action.spell_targets)
+                    }
                 }
             },
             SetAgainstChargeAction => {
                 // Resolved reactively via ChargeAction branch when
-                // a charger targets this combatant.
+                // a charger targets this combatant. Character-only.
             },
             ParryAction => {
                 // Apply Parrying condition with pre-computed bonus.
                 // The condition subtracts STR + spec to-hit from
                 // incoming melee attacks and suppresses the parrier's
-                // own attacks for the round. Per §1.6.2.9.
-                let combatant = action.combatant
-                with_budget(combatant, { attack: 1 }) {
-                    combatant.Parry()
+                // own attacks for the round. Per §1.6.2.9. Character-only.
+                if action.combatant is Character {
+                    with_budget(action.combatant, { attack: 1 }) {
+                        action.combatant.Parry()
+                    }
                 }
             },
             TwoWeaponAttackAction => {
-                let target = action.target.unwrap()
-                let weapon = action.weapon_melee.unwrap()
-                equip_main(action.combatant, WieldedItem.Melee(weapon))
-                with_budget(action.combatant, { attack: 1 }) {
-                    action.combatant.TwoWeaponAttack(target)
+                // Two-weapon fighting is Character-only.
+                if action.combatant is Character {
+                    let target = action.target.unwrap()
+                    let weapon = action.weapon_melee.unwrap()
+                    equip_main(action.combatant, WieldedItem.Melee(weapon))
+                    with_budget(action.combatant, { attack: 1 }) {
+                        action.combatant.TwoWeaponAttack(target)
+                    }
                 }
             },
             _ => {
@@ -629,7 +690,7 @@ system "OSRIC Initiative" {
 
     function resolve_round(
         round: int,
-        combatants: list<Character>,
+        combatants: list<entity>,
         initiative: InitiativeResult,
         actions: list<RoundAction>
     ) {
@@ -702,7 +763,7 @@ system "OSRIC Initiative" {
     //  are never expired.
     // ========================================================
 
-    function expire_conditions(combatants: list<Character>) {
+    function expire_conditions(combatants: list<entity>) {
         let now = game_time()
         for combatant in combatants {
             for cond in conditions(combatant) {

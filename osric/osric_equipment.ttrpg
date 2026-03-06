@@ -322,6 +322,14 @@ system "OSRIC Equipment" {
         char.current_weight = char.current_weight + wielded_item_weight(item)
     }
 
+    // Simplified equip for monsters with EquipmentSlots.
+    // No weight tracking or off-hand/shield management.
+    function equip_monster_main(mon: Monster, item: WieldedItem) {
+        if mon has EquipmentSlots as eq {
+            mon.eq.wielded_main = some(item)
+        }
+    }
+
     function equip_off(char: Character, item: WieldedItem) {
         // Validate main hand isn't two-handed
         if char.wielded_main.is_some() && wielded_item_hands(char.wielded_main.unwrap()) == 2 {

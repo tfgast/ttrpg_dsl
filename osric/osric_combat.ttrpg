@@ -1181,19 +1181,22 @@ system "OSRIC Combat" {
     // an on_tick hook — periodic condition effects use functions
     // called from the combat loop so ordering is explicit and
     // the host controls timing. See osric_conditions.ttrpg.
-    function process_bleeding(combatants: list<Character>) {
+    function process_bleeding(combatants: list<entity>) {
         for target in combatants {
-            if any([c.name == "Bleeding" for c in conditions(target)]) {
-                target.hp = target.hp - 1
-                if target.hp <= -10 {
-                    target.hp = -10
-                    remove_condition(target, "Bleeding")
-                    remove_condition(target, "Unconscious")
-                    apply_condition(target, Dead, Duration.Indefinite)
-                    emit CharacterDead(target: target)
-                } else if target.hp <= -6 {
-                    if !any([c.name == "Scarred" for c in conditions(target)]) {
-                        apply_condition(target, Scarred, Duration.Indefinite)
+            // Only Characters bleed — monsters die at 0 HP.
+            if target is Character {
+                if any([c.name == "Bleeding" for c in conditions(target)]) {
+                    target.hp = target.hp - 1
+                    if target.hp <= -10 {
+                        target.hp = -10
+                        remove_condition(target, "Bleeding")
+                        remove_condition(target, "Unconscious")
+                        apply_condition(target, Dead, Duration.Indefinite)
+                        emit CharacterDead(target: target)
+                    } else if target.hp <= -6 {
+                        if !any([c.name == "Scarred" for c in conditions(target)]) {
+                            apply_condition(target, Scarred, Duration.Indefinite)
+                        }
                     }
                 }
             }

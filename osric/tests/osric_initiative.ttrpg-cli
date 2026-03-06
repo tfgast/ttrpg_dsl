@@ -353,3 +353,133 @@ do MeleeAttack(si_fighter, si_caster)
 assert_no_condition si_caster, CastingSpell
 // Caster took 5 damage: 20 - 5 = 15
 assert_eq si_caster.hp, 15
+
+
+// ══════════════════════════════════════════════════════════════════
+//  MONSTER INITIATIVE INTEGRATION TESTS
+//
+//  Tests that the initiative system handles Monster combatants:
+//  is_alive, build_round_action, resolve_action, resolve_round,
+//  expire_conditions, and process_bleeding.
+// ══════════════════════════════════════════════════════════════════
+
+// ── is_alive derive ──────────────────────────────────────────────
+
+spawn Character alive_char { name: "Alive", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 } }
+spawn Character dead_char { name: "Dead", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 0 } }
+spawn Monster alive_orc { name: "Orc", hit_dice: 1d8, max_hp: 8, hp: 8, ac: 14, attacks: [MonsterAttack { name: "Club", damage: 1d6 }] }
+spawn Monster dead_orc { name: "Dead Orc", hit_dice: 1d8, max_hp: 8, hp: 0, ac: 14, attacks: [MonsterAttack { name: "Club", damage: 1d6 }] }
+
+assert_eq is_alive(alive_char), true
+assert_eq is_alive(dead_char), false
+assert_eq is_alive(alive_orc), true
+assert_eq is_alive(dead_orc), false
+
+
+// ── build_round_action with Monster combatant ────────────────────
+
+spawn Monster bra_ogre { name: "Ogre", hit_dice: 4d8 + 1, max_hp: 26, hp: 26, ac: 15, attacks: [MonsterAttack { name: "Club", damage: 1d10 }] }
+spawn Character bra_target { name: "Fighter", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 } }
+
+// Monster natural melee action at initiative segment 3
+let bra_ma = build_round_action(bra_ogre, MeleeAttackAction, 3, false, some(bra_target), none, none, some(MonsterAttack { name: "Club", damage: 1d10 }))
+assert_eq bra_ma.combatant, bra_ogre
+assert_eq bra_ma.segment, 3
+assert_eq bra_ma.action_type, DeclaredActionType.MeleeAttackAction
+assert_eq bra_ma.party_side, false
+assert_eq bra_ma.monster_attack.is_some(), true
+
+
+// ── resolve_action: Monster natural melee attack ─────────────────
+rolls clear
+
+spawn Monster ra_ogre { name: "Ogre", hit_dice: 4d8 + 1, max_hp: 26, hp: 26, ac: 15, attacks: [MonsterAttack { name: "Club", damage: 1d10 }] }
+spawn Character ra_victim { name: "Victim", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 } }
+
+let ra_monster_action = build_round_action(ra_ogre, MeleeAttackAction, 4, false, some(ra_victim), none, none, some(MonsterAttack { name: "Club", damage: 1d10 }))
+
+// Roll 18 hits, damage 7
+rolls 18 7
+call resolve_action(ra_monster_action, [ra_monster_action])
+assert_eq ra_victim.hp, 13
+
+
+// ── resolve_action: Character melee attack vs Monster ────────────
+rolls clear
+
+spawn Character ra_fighter { name: "Fighter", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots {} }
+spawn Monster ra_target_orc { name: "Orc", hit_dice: 1d8, max_hp: 8, hp: 8, ac: 14, attacks: [MonsterAttack { name: "Club", damage: 1d6 }] }
+
+let ra_char_action = build_round_action(ra_fighter, MeleeAttackAction, 3, true, some(ra_target_orc), some(SwordLong))
+
+// Roll 16 hits, damage 5
+rolls 16 5
+call resolve_action(ra_char_action, [ra_char_action])
+assert_eq ra_target_orc.hp, 3
+
+
+// ── resolve_round: mixed Character + Monster combat ──────────────
+// Party wins initiative (2 vs 5). Fighter attacks orc, orc attacks fighter.
+// Party side resolves first within each segment.
+rolls clear
+
+spawn Character rr_fighter { name: "Fighter", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 14, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots {} }
+spawn Monster rr_orc { name: "Orc", hit_dice: 1d8, max_hp: 8, hp: 8, ac: 14, attacks: [MonsterAttack { name: "Club", damage: 1d6 }] }
+
+let rr_init = InitiativeResult { party_roll: 2, monster_roll: 5, party_segment: 2, monster_segment: 5, simultaneous: false }
+let rr_fighter_action = build_round_action(rr_fighter, MeleeAttackAction, 2, true, some(rr_orc), some(SwordLong))
+let rr_orc_action = build_round_action(rr_orc, MeleeAttackAction, 5, false, some(rr_fighter), none, none, some(MonsterAttack { name: "Club", damage: 1d6 }))
+
+// Fighter hits in segment 2 (roll 15, damage 6), orc hits in segment 5 (roll 17, damage 4)
+rolls 15 6 17 4
+call resolve_round(1, [rr_fighter, rr_orc], rr_init, [rr_fighter_action, rr_orc_action])
+
+// Fighter: 30 - 4 = 26
+assert_eq rr_fighter.hp, 26
+// Orc: 8 - 6 = 2
+assert_eq rr_orc.hp, 2
+
+
+// ── resolve_round: Monster kills target, simultaneous initiative ──
+// Both act in segment 3. Speed factor breaks tie: dagger (SF 2) before club.
+rolls clear
+
+spawn Character rr2_rogue { name: "Rogue", classes: [ClassLevel { class: Thief, level: 3 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 16, CON: 12, CHA: 12 }, HitPoints { max_hp: 15, hp: 15 }, EquipmentSlots {} }
+spawn Monster rr2_goblin { name: "Goblin", hit_dice: 1d8 - 1, max_hp: 3, hp: 3, ac: 14, attacks: [MonsterAttack { name: "Club", damage: 1d6 }] }
+
+let rr2_init = InitiativeResult { party_roll: 3, monster_roll: 3, party_segment: 3, monster_segment: 3, simultaneous: true }
+
+// Goblin natural attack SF=0, rogue dagger SF=2. Lower SF acts first,
+// so goblin strikes before rogue in simultaneous initiative.
+let rr2_rogue_action = build_round_action(rr2_rogue, MeleeAttackAction, 3, true, some(rr2_goblin), some(Dagger))
+let rr2_goblin_action = build_round_action(rr2_goblin, MeleeAttackAction, 3, false, some(rr2_rogue), none, none, some(MonsterAttack { name: "Club", damage: 1d6 }))
+
+// Goblin hits rogue first (roll 18, damage 4), rogue hits goblin second (roll 15, damage 3)
+rolls 18 4 15 3
+call resolve_round(1, [rr2_rogue, rr2_goblin], rr2_init, [rr2_rogue_action, rr2_goblin_action])
+
+// Goblin killed: 3 - 3 = 0
+assert_eq rr2_goblin.hp, 0
+assert_condition rr2_goblin, Dead
+// Rogue took goblin's hit first: 15 - 4 = 11
+assert_eq rr2_rogue.hp, 11
+
+
+// ── expire_conditions: EndOfRound removed from Monster ───────────
+
+spawn Monster ec_orc { name: "Orc", hit_dice: 1d8, max_hp: 8, hp: 8, ac: 14, attacks: [MonsterAttack { name: "Club", damage: 1d6 }] }
+call apply_condition(ec_orc, Charging, Duration.EndOfRound)
+assert_condition ec_orc, Charging
+call expire_conditions([ec_orc])
+assert_no_condition ec_orc, Charging
+
+
+// ── process_bleeding: skips Monsters ─────────────────────────────
+// Monsters die at 0 HP — they don't use the bleeding/unconscious system.
+
+spawn Monster pb_orc { name: "Orc", hit_dice: 1d8, max_hp: 8, hp: 3, ac: 14, attacks: [MonsterAttack { name: "Club", damage: 1d6 }] }
+// Manually apply Bleeding to a monster (shouldn't happen in practice, but tests the guard)
+call apply_condition(pb_orc, Bleeding, Duration.Indefinite)
+call process_bleeding([pb_orc])
+// Monster hp unchanged — process_bleeding skips non-Characters
+assert_eq pb_orc.hp, 3
