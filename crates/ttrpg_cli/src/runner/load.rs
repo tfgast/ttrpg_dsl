@@ -151,6 +151,64 @@ impl Runner {
         }
     }
 
+    /// Load DSL source from an inline string (from `source <<DELIM` blocks).
+    /// When `snippet` is true, the source is auto-wrapped in `system "<source>" { ... }`.
+    pub(super) fn cmd_source(&mut self, source: &str, snippet: bool) -> Result<(), CliError> {
+        let actual_source = if snippet {
+            format!("system \"<source>\" {{\n{source}\n}}\n")
+        } else {
+            source.to_string()
+        };
+
+        let sources = vec![("<source>".to_string(), actual_source)];
+        self.load_sources(sources)
+    }
+
+    /// Shared implementation for loading from already-parsed source pairs.
+    /// Used by both `load_paths` (after reading files) and `cmd_source` (inline text).
+    fn load_sources(&mut self, sources: Vec<(String, String)>) -> Result<(), CliError> {
+        let result = ttrpg_parser::parse_multi(&sources);
+        let mut all_diags = result.diagnostics;
+        let check_result = ttrpg_checker::check_with_modules(&result.program, &result.module_map);
+        all_diags.extend(check_result.diagnostics);
+
+        let error_count = all_diags
+            .iter()
+            .filter(|d| d.severity == Severity::Error)
+            .count();
+
+        if error_count == 0 && !result.has_errors {
+            *self.program = result.program;
+            *self.type_env = check_result.env;
+            self.unit_suffixes = crate::format::build_unit_suffixes(&self.type_env);
+            self.module_map = result.module_map;
+            let mut gs = GameState::new();
+            for (name, decl) in &self.program.options {
+                if decl.default_on == Some(true) {
+                    gs.enable_option(name.as_str());
+                }
+            }
+            self.game_state = RefCell::new(gs);
+            self.diagnostics = all_diags;
+            self.last_paths = Vec::new();
+            self.handles.clear();
+            self.reverse_handles.clear();
+            self.output.push("loaded <source>".into());
+            self.source_map = Some(MultiSourceMap::new(sources));
+            Ok(())
+        } else {
+            self.clear_state(Vec::new());
+            self.diagnostics = all_diags;
+            self.output.push("use 'errors' to see diagnostics".into());
+            self.source_map = Some(MultiSourceMap::new(sources));
+            Err(CliError::Message(format!(
+                "source block failed: {} error{}",
+                error_count,
+                if error_count == 1 { "" } else { "s" }
+            )))
+        }
+    }
+
     pub(super) fn cmd_eval(&mut self, expr_str: &str) -> Result<(), CliError> {
         let val = self.eval(expr_str)?;
         self.output.push(format_value(&val, &self.unit_suffixes));

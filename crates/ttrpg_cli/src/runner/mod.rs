@@ -78,6 +78,13 @@ pub(super) fn render_runtime_error(
     CliError::Message(format!("runtime error: {}", e.message))
 }
 
+/// State for accumulating a multi-line `source <<DELIM ... DELIM` block.
+struct HeredocState {
+    delimiter: String,
+    lines: Vec<String>,
+    snippet: bool,
+}
+
 /// The core CLI runner. Owns program state and dispatches commands.
 pub struct Runner {
     program: Box<Program>,
@@ -96,6 +103,7 @@ pub struct Runner {
     unit_suffixes: UnitSuffixes,
     coverage: Option<Rc<RefCell<CoverageData>>>,
     quiet: bool,
+    heredoc: Option<HeredocState>,
 }
 
 impl Runner {
@@ -118,6 +126,7 @@ impl Runner {
             unit_suffixes: UnitSuffixes::new(),
             coverage: None,
             quiet: false,
+            heredoc: None,
         }
     }
 
@@ -225,13 +234,59 @@ impl Runner {
         !self.program.items.is_empty()
     }
 
+    /// Returns `true` when the runner is inside a `source <<DELIM` block
+    /// and waiting for the closing delimiter.
+    pub fn in_heredoc(&self) -> bool {
+        self.heredoc.is_some()
+    }
+
     /// Execute a single line of input. Output is collected internally.
     pub fn exec(&mut self, line: &str) -> Result<(), CliError> {
+        // If we're inside a heredoc block, accumulate or close.
+        if let Some(ref mut state) = self.heredoc {
+            if line.trim() == state.delimiter {
+                let source = std::mem::take(&mut state.lines).join("\n");
+                let snippet = state.snippet;
+                self.heredoc = None;
+                return self.cmd_source(&source, snippet);
+            }
+            state.lines.push(line.to_string());
+            return Ok(());
+        }
+
         let trimmed = line.trim();
         if trimmed.is_empty() || trimmed.starts_with("//") {
             return Ok(());
         }
+
+        // Check for `source [-s] <<DELIM`
+        if trimmed.starts_with("source ") || trimmed == "source" {
+            if let Some(heredoc) = Self::parse_source_heredoc(trimmed) {
+                self.heredoc = Some(heredoc);
+                return Ok(());
+            }
+        }
+
         self.exec_inner(line)
+    }
+
+    /// Try to parse `source [-s] <<DELIM` from a trimmed line.
+    fn parse_source_heredoc(trimmed: &str) -> Option<HeredocState> {
+        let rest = trimmed.strip_prefix("source")?.trim_start();
+        let (snippet, rest) = if let Some(after_s) = rest.strip_prefix("-s") {
+            (true, after_s.trim_start())
+        } else {
+            (false, rest)
+        };
+        let delim = rest.strip_prefix("<<")?.trim_start();
+        if delim.is_empty() {
+            return None;
+        }
+        Some(HeredocState {
+            delimiter: delim.to_string(),
+            lines: Vec::new(),
+            snippet,
+        })
     }
 
     /// Inner dispatch — called by `exec` and also by `cmd_assert_err`.

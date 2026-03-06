@@ -23,6 +23,17 @@ const COMMANDS: &[CommandInfo] = &[
         category: "Pipeline",
     },
     CommandInfo {
+        name: "source",
+        syntax: "source [-s] <<DELIM ... DELIM",
+        description: "Define inline DSL source",
+        detail: "Define DSL source inline using heredoc syntax. Lines between the opening\n  <<DELIM and the closing DELIM line are parsed, checked, and loaded as if\n  they were a .ttrpg file. Use -s for snippet mode (auto-wraps in a system block).",
+        examples: &[
+            "source <<END\nsystem \"test\" {\n    entity Character { HP: int }\n}\nEND",
+            "source -s <<END\n    entity Character { HP: int }\nEND",
+        ],
+        category: "Pipeline",
+    },
+    CommandInfo {
         name: "eval",
         syntax: "eval <expr>",
         description: "Evaluate a DSL expression",

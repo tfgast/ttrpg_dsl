@@ -3988,3 +3988,146 @@ system "test" {
     let output = runner.take_output();
     assert!(output[0].contains("spawned Hero h"));
 }
+
+// ── Source heredoc command ──────────────────────────────────────────
+
+#[test]
+fn source_heredoc_basic() {
+    let mut runner = Runner::new();
+    // Start heredoc
+    runner.exec("source <<END").unwrap();
+    assert!(runner.in_heredoc());
+    // Feed source lines
+    runner
+        .exec(r#"system "test" { entity Foo { x: int } }"#)
+        .unwrap();
+    // Close heredoc
+    runner.exec("END").unwrap();
+    assert!(!runner.in_heredoc());
+
+    let output = runner.take_output();
+    assert!(output.iter().any(|l| l.contains("loaded")));
+    assert!(runner.is_loaded());
+}
+
+#[test]
+fn source_heredoc_snippet_mode() {
+    let mut runner = Runner::new();
+    runner.exec("source -s <<END").unwrap();
+    runner.exec("entity Bar { y: int = 5 }").unwrap();
+    runner.exec("END").unwrap();
+    runner.take_output();
+
+    assert!(runner.is_loaded());
+    // Spawn an entity to prove it loaded correctly
+    runner.exec("spawn Bar b {}").unwrap();
+    runner.exec("assert_eq b.y, 5").unwrap();
+}
+
+#[test]
+fn source_heredoc_custom_delimiter() {
+    let mut runner = Runner::new();
+    runner.exec("source <<TTRPG").unwrap();
+    runner
+        .exec(r#"system "x" { entity A { n: int } }"#)
+        .unwrap();
+    runner.exec("TTRPG").unwrap();
+    runner.take_output();
+    assert!(runner.is_loaded());
+}
+
+#[test]
+fn source_heredoc_multiline() {
+    let mut runner = Runner::new();
+    let lines = [
+        "source <<EOF",
+        r#"system "multi" {"#,
+        "    entity Character {",
+        "        HP: int",
+        "        name: string",
+        "    }",
+        "    function double(x: int) -> int { x * 2 }",
+        "}",
+        "EOF",
+    ];
+    for line in &lines {
+        runner.exec(line).unwrap();
+    }
+    runner.take_output();
+
+    runner.exec("assert_eq double(7), 14").unwrap();
+}
+
+#[test]
+fn source_heredoc_with_actions() {
+    let mut runner = Runner::new();
+    let lines = [
+        "source -s <<END",
+        "entity Character { HP: int }",
+        "action Heal on target: Character (amount: int) {",
+        "    resolve { target.HP += amount }",
+        "}",
+        "END",
+    ];
+    for line in &lines {
+        runner.exec(line).unwrap();
+    }
+    runner.take_output();
+
+    runner.exec("spawn Character hero { HP: 10 }").unwrap();
+    runner.exec("do Heal(hero, 5)").unwrap();
+    runner.exec("assert_eq hero.HP, 15").unwrap();
+}
+
+#[test]
+fn source_heredoc_error_in_source() {
+    let mut runner = Runner::new();
+    runner.exec("source <<END").unwrap();
+    runner
+        .exec(r#"system "bad" { entity Foo { x: nonexistent_type } }"#)
+        .unwrap();
+    let result = runner.exec("END");
+    assert!(result.is_err());
+}
+
+#[test]
+fn source_without_heredoc_marker_is_unknown() {
+    let mut runner = Runner::new();
+    // "source" without <<DELIM falls through to unknown command handling
+    // (shows help since "source" is a known command name)
+    runner.exec("source").unwrap();
+    assert!(!runner.in_heredoc());
+}
+
+#[test]
+fn source_with_bad_syntax_shows_help() {
+    let mut runner = Runner::new();
+    // "source foo" without << falls through as unknown → shows help
+    runner.exec("source foo").unwrap();
+    assert!(!runner.in_heredoc());
+}
+
+#[test]
+fn source_heredoc_replaces_previous_program() {
+    let mut runner = Runner::new();
+    // Load first source
+    runner.exec("source -s <<END").unwrap();
+    runner.exec("entity A { x: int }").unwrap();
+    runner.exec("END").unwrap();
+    runner.take_output();
+    runner.exec("spawn A a { x: 1 }").unwrap();
+    runner.take_output();
+
+    // Load second source — should replace
+    runner.exec("source -s <<END").unwrap();
+    runner.exec("entity B { y: int }").unwrap();
+    runner.exec("END").unwrap();
+    runner.take_output();
+
+    // Old handle should be gone
+    let result = runner.exec("assert_eq a.x, 1");
+    assert!(result.is_err());
+    // New type should work
+    runner.exec("spawn B b { y: 2 }").unwrap();
+    runner.exec("assert_eq b.y, 2").unwrap();
+}
