@@ -434,6 +434,7 @@ system "OSRIC" {
         morale: int = 7
         morale_checks_made: int = 0
         xp_value: int = 0
+        intelligence: int = 1
         attacks: list<MonsterAttack>
         size: Size = Size.Medium
         special: list<string>

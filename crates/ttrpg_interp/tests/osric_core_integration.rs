@@ -493,6 +493,7 @@ fn monster_entity_fields() {
         "morale",
         "morale_checks_made",
         "xp_value",
+        "intelligence",
         "attacks",
         "size",
         "special",

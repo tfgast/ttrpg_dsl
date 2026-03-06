@@ -8,6 +8,9 @@
 //
 // Note: Sleep targets Monsters and must be resolved directly
 // via resolve_sleep() rather than through this dispatch.
+// Other damage/save spells are Character-only because TakeDamage
+// and make_saving_throw are Character-typed. See tdsl-p3in for
+// the 'is Entity' type narrowing feature that would unify these.
 // ============================================================
 
 use "OSRIC"

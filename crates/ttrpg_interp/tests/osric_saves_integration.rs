@@ -102,6 +102,8 @@ fn osric_saves_has_all_tables() {
         "magic_user_saves",
         "illusionist_saves",
         "monk_saves",
+        "monster_saves_normal",
+        "monster_saves_nonintelligent",
     ];
     for name in &expected {
         assert!(

@@ -129,7 +129,7 @@ system "OSRIC Saves" {
 
 
     // ========================================================
-    //  UNIFIED SAVE LOOKUP
+    //  CHARACTER SAVE LOOKUP
     //
     //  Dispatches to the correct table based on class.
     // ========================================================
@@ -161,6 +161,70 @@ system "OSRIC Saves" {
         }
     }
 
+
+    // ========================================================
+    //  MONSTER SAVING THROWS
+    //
+    //  GMG Tables 2.1.3a (normal, INT >= 1) and
+    //  2.1.3b (non-intelligent, INT 0).
+    //  Keyed by effective HD: dice_count, +1 if bonus > 0.
+    //  "A monster with hit dice of 1+1 is treated as a monster
+    //   with 2 hit dice on this table because 1+1 is greater
+    //   than 1." — GMG §2.1.3
+    // ========================================================
+
+    // Effective HD for table lookup. Positive modifier rounds up.
+    derive effective_hd(hd: DiceExpr) -> int {
+        let count = dice_count(hd)
+        let bonus = dice_modifier(hd)
+        if bonus > 0 { count + 1 } else { count }
+    }
+
+    // Table 2.1.3a: Normal monster saves (INT >= 1)
+    table monster_saves_normal(hd: int) -> SavingThrows {
+        0       => SavingThrows { aimed_magic: 18, breath: 20, death_paralysis_poison: 16, petrification_polymorph: 17, spells: 19 },
+        1..=2   => SavingThrows { aimed_magic: 16, breath: 17, death_paralysis_poison: 14, petrification_polymorph: 15, spells: 17 },
+        3..=4   => SavingThrows { aimed_magic: 15, breath: 16, death_paralysis_poison: 13, petrification_polymorph: 14, spells: 16 },
+        5..=6   => SavingThrows { aimed_magic: 13, breath: 13, death_paralysis_poison: 11, petrification_polymorph: 12, spells: 14 },
+        7..=8   => SavingThrows { aimed_magic: 12, breath: 12, death_paralysis_poison: 10, petrification_polymorph: 11, spells: 13 },
+        9..=10  => SavingThrows { aimed_magic: 10, breath: 9, death_paralysis_poison: 8, petrification_polymorph: 9, spells: 11 },
+        11..=12 => SavingThrows { aimed_magic: 9, breath: 8, death_paralysis_poison: 7, petrification_polymorph: 8, spells: 10 },
+        13..=14 => SavingThrows { aimed_magic: 7, breath: 5, death_paralysis_poison: 5, petrification_polymorph: 6, spells: 8 },
+        15..=16 => SavingThrows { aimed_magic: 6, breath: 4, death_paralysis_poison: 4, petrification_polymorph: 5, spells: 7 },
+        17..=18 => SavingThrows { aimed_magic: 5, breath: 4, death_paralysis_poison: 3, petrification_polymorph: 4, spells: 6 },
+        _       => SavingThrows { aimed_magic: 4, breath: 3, death_paralysis_poison: 2, petrification_polymorph: 3, spells: 5 }
+    }
+
+    // Table 2.1.3b: Non-intelligent monster saves (INT 0)
+    table monster_saves_nonintelligent(hd: int) -> SavingThrows {
+        0       => SavingThrows { aimed_magic: 18, breath: 20, death_paralysis_poison: 16, petrification_polymorph: 17, spells: 19 },
+        1..=2   => SavingThrows { aimed_magic: 16, breath: 17, death_paralysis_poison: 14, petrification_polymorph: 15, spells: 17 },
+        3..=4   => SavingThrows { aimed_magic: 16, breath: 17, death_paralysis_poison: 13, petrification_polymorph: 15, spells: 17 },
+        5..=6   => SavingThrows { aimed_magic: 15, breath: 16, death_paralysis_poison: 11, petrification_polymorph: 14, spells: 16 },
+        7..=8   => SavingThrows { aimed_magic: 15, breath: 16, death_paralysis_poison: 10, petrification_polymorph: 14, spells: 16 },
+        9..=10  => SavingThrows { aimed_magic: 13, breath: 13, death_paralysis_poison: 8, petrification_polymorph: 12, spells: 14 },
+        11..=12 => SavingThrows { aimed_magic: 13, breath: 13, death_paralysis_poison: 7, petrification_polymorph: 12, spells: 14 },
+        13..=14 => SavingThrows { aimed_magic: 12, breath: 12, death_paralysis_poison: 5, petrification_polymorph: 11, spells: 13 },
+        15..=16 => SavingThrows { aimed_magic: 12, breath: 12, death_paralysis_poison: 4, petrification_polymorph: 11, spells: 13 },
+        17..=18 => SavingThrows { aimed_magic: 10, breath: 9, death_paralysis_poison: 3, petrification_polymorph: 9, spells: 11 },
+        _       => SavingThrows { aimed_magic: 10, breath: 9, death_paralysis_poison: 2, petrification_polymorph: 9, spells: 11 }
+    }
+
+    // Best saves for a monster, dispatching by intelligence.
+    derive monster_best_saves(m: Monster) -> SavingThrows {
+        let hd = effective_hd(m.hit_dice)
+        if m.intelligence == 0 {
+            monster_saves_nonintelligent(hd)
+        } else {
+            monster_saves_normal(hd)
+        }
+    }
+
+
+    // ========================================================
+    //  SHARED SAVE HELPERS
+    // ========================================================
+
     // Extract a single target number from SavingThrows by category.
     derive save_target_for(saves: SavingThrows, category: SaveCategory) -> int {
         match category {
@@ -184,9 +248,38 @@ system "OSRIC Saves" {
         }
     }
 
-    // Roll d20 vs the saver's best save target for the given category,
-    // applying stalwart (CON-based racial) and wisdom (mental) bonuses.
-    // Natural 1 always fails.
+
+    // ========================================================
+    //  CORE SAVING THROW ROLL
+    //
+    //  Takes pre-computed SavingThrows and rolls d20 vs target.
+    //  Used by both Character and Monster save mechanics.
+    //  Natural 1 always fails.
+    // ========================================================
+
+    mechanic roll_saving_throw(
+        saves: SavingThrows,
+        category: SaveCategory,
+        bonus: int = 0
+    ) -> bool {
+        let target = save_target_for(saves, category)
+        let result = roll(1d20)
+        if result.unmodified == 1 {
+            false
+        } else {
+            result.total >= target - bonus
+        }
+    }
+
+
+    // ========================================================
+    //  CHARACTER SAVING THROW
+    //
+    //  Computes best saves across multiclass, adds stalwart
+    //  (CON-based racial) and wisdom (mental) bonuses, then
+    //  delegates to roll_saving_throw.
+    // ========================================================
+
     mechanic make_saving_throw(
         saver: Character,
         category: SaveCategory,
@@ -194,7 +287,6 @@ system "OSRIC Saves" {
         is_mental: bool = false
     ) -> bool {
         let saves = character_best_saves(saver)
-        let target = save_target_for(saves, category)
 
         // Stalwart bonus: dwarves/gnomes/halflings vs aimed magic, poison, spells
         let stalwart = if has_stalwart(saver.ancestry) && is_stalwart_category(category) {
@@ -210,14 +302,24 @@ system "OSRIC Saves" {
             0
         }
 
-        let total_bonus = bonus + stalwart + mental
-        let result = roll(1d20)
+        roll_saving_throw(saves, category, bonus + stalwart + mental)
+    }
 
-        // Natural 1 always fails
-        if result.unmodified == 1 {
-            false
-        } else {
-            result.total >= target - total_bonus
-        }
+
+    // ========================================================
+    //  MONSTER SAVING THROW
+    //
+    //  Looks up saves by HD and intelligence, then delegates
+    //  to roll_saving_throw. Monsters have no racial or
+    //  ability-score bonuses on saves.
+    // ========================================================
+
+    mechanic monster_saving_throw(
+        saver: Monster,
+        category: SaveCategory,
+        bonus: int = 0
+    ) -> bool {
+        let saves = monster_best_saves(saver)
+        roll_saving_throw(saves, category, bonus)
     }
 }
