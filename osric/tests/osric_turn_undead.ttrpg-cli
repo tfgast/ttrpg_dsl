@@ -1,0 +1,134 @@
+// OSRIC Turn Undead integration tests
+//
+// Equivalent of crates/ttrpg_interp/tests/osric_turn_undead_integration.rs
+// Tests turn_undead_table, is_evil_alignment, effective_turning_level,
+// and resolve_turn_undead mechanic (including evil cleric control).
+//
+// NOTE: AST structure tests (has_expected_enums, has_expected_tables,
+// has_expected_derives, has_expected_mechanics, has_turn_undead_action,
+// osric_turn_undead_parses_and_typechecks) remain in Rust.
+
+load osric/*.ttrpg
+
+// ── Table spot checks ──────────────────────────────────────────
+
+// Type 1 (Skeleton), level 1 => 10 (need 10+ on d20)
+assert_eq turn_undead_table(1, 1), 10
+
+// Type 1, level 4 => 0 (auto-turn, T)
+assert_eq turn_undead_table(1, 4), 0
+
+// Type 1, level 6 => -2 (destroy, D)
+assert_eq turn_undead_table(1, 6), -2
+
+// Type 1, level 8 => -3 (destroy star, D*)
+assert_eq turn_undead_table(1, 8), -3
+
+// Type 13 (Fiend), level 7 => -1 (impossible)
+assert_eq turn_undead_table(13, 7), -1
+
+// Type 10 (Vampire), level 19+ => 4
+assert_eq turn_undead_table(10, 19), 4
+
+// Type 7 (Wraith), level 9 => 0 (auto-turn, T)
+assert_eq turn_undead_table(7, 9), 0
+
+// ── Alignment helper ───────────────────────────────────────────
+
+assert_eq is_evil_alignment(LawfulEvil), true
+assert_eq is_evil_alignment(NeutralEvil), true
+assert_eq is_evil_alignment(ChaoticEvil), true
+assert_eq is_evil_alignment(LawfulGood), false
+assert_eq is_evil_alignment(TrueNeutral), false
+assert_eq is_evil_alignment(ChaoticGood), false
+
+// ── Effective turning level ────────────────────────────────────
+
+// Level 5 cleric => effective level 5
+spawn Character cleric5 { name: "Brother Marcus", classes: [ClassLevel { class: Cleric, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 }, TurnUndead {} }
+assert_eq effective_turning_level(cleric5), 5
+
+// Level 5 paladin => effective level 3 (5 - 2)
+spawn Character paladin5 { name: "Sir Galahad", classes: [ClassLevel { class: Paladin, level: 5 }], alignment: LawfulGood, abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 }, TurnUndead {} }
+assert_eq effective_turning_level(paladin5), 3
+
+// Level 1 paladin => effective level 1 (min, not -1)
+spawn Character paladin1 { name: "Sir Newbie", classes: [ClassLevel { class: Paladin, level: 1 }], alignment: LawfulGood, abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 }, TurnUndead {} }
+assert_eq effective_turning_level(paladin1), 1
+
+// ── Resolve turn undead: Impossible ────────────────────────────
+
+// Level 1 cleric vs Type 6 (Ghast) => impossible
+spawn Character cleric1 { name: "Cleric", classes: [ClassLevel { class: Cleric, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 }, TurnUndead {} }
+let impossible = resolve_turn_undead(cleric1, 6, false)
+assert_match impossible, TurnOutcome.Impossible
+
+// ── Resolve turn undead: Auto-turn ─────────────────────────────
+
+// Level 4 cleric vs Type 1 => auto-turn (code 0), 2d6=7 turned
+spawn Character cleric4 { name: "Cleric", classes: [ClassLevel { class: Cleric, level: 4 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 }, TurnUndead {} }
+rolls 3 4
+let auto_turn = resolve_turn_undead(cleric4, 1, false)
+assert_match auto_turn, TurnOutcome.Turned
+assert_eq auto_turn.number_affected, 7
+
+// ── Resolve turn undead: Number roll success ───────────────────
+
+rolls clear
+// Level 1 cleric vs Type 1 => need 10+ on d20; roll 15 (success), 2d6=5 turned
+spawn Character cleric1b { name: "Cleric", classes: [ClassLevel { class: Cleric, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 }, TurnUndead {} }
+rolls 15 2 3
+let roll_success = resolve_turn_undead(cleric1b, 1, false)
+assert_match roll_success, TurnOutcome.Turned
+assert_eq roll_success.number_affected, 5
+
+// ── Resolve turn undead: Number roll failure ───────────────────
+
+rolls clear
+// Level 1 cleric vs Type 1 => need 10+ on d20; roll 5 (failure)
+spawn Character cleric1c { name: "Cleric", classes: [ClassLevel { class: Cleric, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 }, TurnUndead {} }
+rolls 5
+let roll_fail = resolve_turn_undead(cleric1c, 1, false)
+assert_match roll_fail, TurnOutcome.Failed
+
+// ── Resolve turn undead: Destroy (good cleric) ─────────────────
+
+rolls clear
+// Level 6 good cleric vs Type 1 => D (code -2) => Destroyed, 2d6=8
+spawn Character good_cleric { name: "Good Cleric", classes: [ClassLevel { class: Cleric, level: 6 }], alignment: LawfulGood, abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 }, TurnUndead {} }
+rolls 3 5
+let destroyed = resolve_turn_undead(good_cleric, 1, false)
+assert_match destroyed, TurnOutcome.Destroyed
+assert_eq destroyed.number_affected, 8
+
+// ── Resolve turn undead: Evil cleric controlled ────────────────
+
+rolls clear
+// Level 6 evil cleric vs Type 1 => D (code -2)
+// Evil: 2d6=6 affected, d100=75 (>= 61) => Controlled
+spawn Character evil_cleric1 { name: "Evil Cleric", classes: [ClassLevel { class: Cleric, level: 6 }], alignment: ChaoticEvil, abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 }, TurnUndead {} }
+rolls 2 4 75
+let controlled = resolve_turn_undead(evil_cleric1, 1, false)
+assert_match controlled, TurnOutcome.Controlled
+assert_eq controlled.number_affected, 6
+
+// ── Resolve turn undead: Evil cleric not controlled ────────────
+
+rolls clear
+// Level 6 evil cleric vs Type 1 => D (code -2)
+// Evil: 2d6=4 affected, d100=30 (< 61) => NotControlled
+spawn Character evil_cleric2 { name: "Evil Cleric", classes: [ClassLevel { class: Cleric, level: 6 }], alignment: NeutralEvil, abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 }, TurnUndead {} }
+rolls 1 3 30
+let not_controlled = resolve_turn_undead(evil_cleric2, 1, false)
+assert_match not_controlled, TurnOutcome.NotControlled
+assert_eq not_controlled.number_affected, 4
+
+// ── Resolve turn undead: D* with fiend/paladin ─────────────────
+
+rolls clear
+// Level 8 good cleric vs Type 1 => D* (code -3), fiend target: 1d2=1
+spawn Character good_cleric2 { name: "Good Cleric", classes: [ClassLevel { class: Cleric, level: 8 }], alignment: LawfulGood, abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 }, TurnUndead {} }
+rolls 1
+let dstar = resolve_turn_undead(good_cleric2, 1, true)
+assert_match dstar, TurnOutcome.Destroyed
+assert_eq dstar.number_affected, 1

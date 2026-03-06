@@ -1,0 +1,159 @@
+// OSRIC Thief Skills integration tests
+//
+// Equivalent of crates/ttrpg_interp/tests/osric_thief_skills_integration.rs
+// Tests thief/assassin base tables, DEX adjustment, ancestry adjustment,
+// effective skill computation, skill_base_for_class dispatch, and
+// thief_skill_check mechanic.
+//
+// NOTE: AST structure tests (has_expected_tables, has_expected_derives,
+// has_thief_skill_check_mechanic, osric_thief_skills_parses_and_typechecks)
+// remain in Rust — they inspect AST internals not expressible in CLI scripts.
+
+load osric/*.ttrpg
+
+// ── Thief base table spot checks ───────────────────────────────
+
+assert_eq thief_skill_base(ClimbWalls, 1), 85
+assert_eq thief_skill_base(ClimbWalls, 10), 99
+assert_eq thief_skill_base(OpenLocks, 1), 25
+assert_eq thief_skill_base(OpenLocks, 9), 62
+assert_eq thief_skill_base(PickPockets, 1), 30
+assert_eq thief_skill_base(PickPockets, 12), 100
+assert_eq thief_skill_base(HideInShadows, 5), 30
+assert_eq thief_skill_base(MoveSilently, 7), 55
+assert_eq thief_skill_base(FindTraps, 1), 20
+assert_eq thief_skill_base(HearNoise, 1), 10
+assert_eq thief_skill_base(ReadLanguages, 1), 1
+assert_eq thief_skill_base(ReadLanguages, 10), 50
+
+// ── Assassin base table spot checks ────────────────────────────
+
+assert_eq assassin_skill_base(ClimbWalls, 1), 85
+assert_eq assassin_skill_base(ClimbWalls, 4), 86
+assert_eq assassin_skill_base(OpenLocks, 1), 25
+assert_eq assassin_skill_base(OpenLocks, 8), 47
+assert_eq assassin_skill_base(ReadLanguages, 3), 1
+assert_eq assassin_skill_base(FindTraps, 15), 80
+
+// ── Skill base dispatch: Thief vs Assassin ─────────────────────
+
+assert_eq skill_base_for_class(Thief, OpenLocks, 5), 42
+assert_eq skill_base_for_class(Assassin, OpenLocks, 5), 33
+assert_eq skill_base_for_class(Monk, OpenLocks, 5), 42
+
+// ── DEX adjustment table ───────────────────────────────────────
+
+// ClimbWalls, HearNoise, ReadLanguages always 0
+assert_eq dex_thief_adj(ClimbWalls, 9), 0
+assert_eq dex_thief_adj(ClimbWalls, 18), 0
+assert_eq dex_thief_adj(HearNoise, 9), 0
+assert_eq dex_thief_adj(HearNoise, 18), 0
+assert_eq dex_thief_adj(ReadLanguages, 9), 0
+assert_eq dex_thief_adj(ReadLanguages, 18), 0
+
+// Penalties at low DEX
+assert_eq dex_thief_adj(OpenLocks, 9), -10
+assert_eq dex_thief_adj(PickPockets, 9), -15
+assert_eq dex_thief_adj(MoveSilently, 9), -20
+
+// Bonuses at high DEX
+assert_eq dex_thief_adj(OpenLocks, 18), 15
+assert_eq dex_thief_adj(HideInShadows, 17), 5
+assert_eq dex_thief_adj(FindTraps, 19), 15
+
+// ── Ancestry adjustment table ──────────────────────────────────
+
+assert_eq ancestry_thief_adj(ClimbWalls, Dwarf), -10
+assert_eq ancestry_thief_adj(OpenLocks, Dwarf), 15
+assert_eq ancestry_thief_adj(FindTraps, Dwarf), 15
+assert_eq ancestry_thief_adj(HideInShadows, Elf), 10
+assert_eq ancestry_thief_adj(ReadLanguages, Elf), 10
+assert_eq ancestry_thief_adj(MoveSilently, Halfling), 15
+assert_eq ancestry_thief_adj(HideInShadows, Halfling), 15
+assert_eq ancestry_thief_adj(ClimbWalls, Human), 5
+assert_eq ancestry_thief_adj(OpenLocks, Human), 5
+assert_eq ancestry_thief_adj(PickPockets, HalfOrc), -5
+
+// ── Effective skill computation ────────────────────────────────
+
+// Base 25 + DEX 12 adj 0 + Human adj 5 = 30
+assert_eq effective_thief_skill(Thief, OpenLocks, 1, 12, Human), 30
+
+// Base 85 + DEX 0 + Human +5 = 90
+assert_eq effective_thief_skill(Thief, ClimbWalls, 1, 12, Human), 90
+
+// Base 30 + DEX 17 hide adj +5 + Halfling hide +15 = 50
+assert_eq effective_thief_skill(Thief, HideInShadows, 5, 17, Halfling), 50
+
+// Base 25 + DEX 9 adj -10 + Dwarf adj +15 = 30
+assert_eq effective_thief_skill(Thief, OpenLocks, 1, 9, Dwarf), 30
+
+// Assassin base find_traps L5 = 30, DEX 18 adj +10, Elf adj +5 = 45
+assert_eq effective_thief_skill(Assassin, FindTraps, 5, 18, Elf), 45
+
+// Clamps minimum to 1: Assassin read_languages L1 = 1%, DEX 0, HalfOrc -10 → clamped to 1
+assert_eq effective_thief_skill(Assassin, ReadLanguages, 1, 12, HalfOrc), 1
+
+// Clamps maximum to 99: Thief L16 pick_pockets = 125, DEX 18 +10, HalfElf +10 = 145 → 99
+assert_eq effective_thief_skill(Thief, PickPockets, 16, 18, HalfElf), 99
+
+// ── Thief skill check mechanic (d100) ──────────────────────────
+
+// Roll of 1 always succeeds
+rolls 1
+assert_eq thief_skill_check(1), true
+
+// Roll of 100 always fails
+rolls 100
+assert_eq thief_skill_check(99), false
+
+// Roll equal to target → pass
+rolls 50
+assert_eq thief_skill_check(50), true
+
+// Roll under target → pass
+rolls 30
+assert_eq thief_skill_check(50), true
+
+// Roll over target → fail
+rolls 51
+assert_eq thief_skill_check(50), false
+
+// Low skill, high roll → fail
+rolls 90
+assert_eq thief_skill_check(20), false
+
+// High skill, low roll → pass
+rolls 2
+assert_eq thief_skill_check(95), true
+
+rolls clear
+
+// ── Skills improve with level ──────────────────────────────────
+
+assert thief_skill_base(ClimbWalls, 15) >= thief_skill_base(ClimbWalls, 1)
+assert thief_skill_base(FindTraps, 15) >= thief_skill_base(FindTraps, 1)
+assert thief_skill_base(HearNoise, 15) >= thief_skill_base(HearNoise, 1)
+assert thief_skill_base(HideInShadows, 15) >= thief_skill_base(HideInShadows, 1)
+assert thief_skill_base(MoveSilently, 15) >= thief_skill_base(MoveSilently, 1)
+assert thief_skill_base(OpenLocks, 15) >= thief_skill_base(OpenLocks, 1)
+assert thief_skill_base(PickPockets, 15) >= thief_skill_base(PickPockets, 1)
+assert thief_skill_base(ReadLanguages, 15) >= thief_skill_base(ReadLanguages, 1)
+
+assert assassin_skill_base(ClimbWalls, 14) >= assassin_skill_base(ClimbWalls, 1)
+assert assassin_skill_base(FindTraps, 14) >= assassin_skill_base(FindTraps, 1)
+assert assassin_skill_base(HearNoise, 14) >= assassin_skill_base(HearNoise, 1)
+assert assassin_skill_base(HideInShadows, 14) >= assassin_skill_base(HideInShadows, 1)
+assert assassin_skill_base(MoveSilently, 14) >= assassin_skill_base(MoveSilently, 1)
+assert assassin_skill_base(OpenLocks, 14) >= assassin_skill_base(OpenLocks, 1)
+assert assassin_skill_base(PickPockets, 14) >= assassin_skill_base(PickPockets, 1)
+assert assassin_skill_base(ReadLanguages, 14) >= assassin_skill_base(ReadLanguages, 1)
+
+// ── Thief vs Assassin: Thief generally better at same level ────
+
+assert skill_base_for_class(Thief, OpenLocks, 5) >= skill_base_for_class(Assassin, OpenLocks, 5)
+assert skill_base_for_class(Thief, FindTraps, 5) >= skill_base_for_class(Assassin, FindTraps, 5)
+assert skill_base_for_class(Thief, HideInShadows, 5) >= skill_base_for_class(Assassin, HideInShadows, 5)
+assert skill_base_for_class(Thief, MoveSilently, 5) >= skill_base_for_class(Assassin, MoveSilently, 5)
+assert skill_base_for_class(Thief, PickPockets, 5) >= skill_base_for_class(Assassin, PickPockets, 5)
+assert skill_base_for_class(Thief, ReadLanguages, 5) >= skill_base_for_class(Assassin, ReadLanguages, 5)
