@@ -1,0 +1,285 @@
+// OSRIC Class Definitions integration tests
+//
+// Equivalent of crates/ttrpg_interp/tests/osric_class_integration.rs
+// Tests class_def derive for all 10 classes, xp_for_level table lookups,
+// check_level_up logic, and cross-class property checks.
+//
+// NOTE: AST structure tests (parses_and_typechecks, has_class_def_derive,
+// has_xp_table, has_check_level_up_derive) remain in Rust.
+
+load osric/*.ttrpg
+
+// ── class_def: Fighter ─────────────────────────────────────────
+
+let fighter = class_def(Fighter)
+assert_eq fighter.hit_die, 10
+assert_eq fighter.bonus_first_hd, 0
+assert_eq fighter.max_hit_dice, 9
+assert_eq fighter.hp_after_max, 3
+assert_eq fighter.non_prof_penalty, -2
+assert_eq fighter.combat_group, CombatGroup.FighterGroup
+assert_eq fighter.armour, ArmourPermission.AnyArmour
+assert_eq fighter.spell_progression, SpellProgression.NonCaster
+assert_eq fighter.shield_allowed, true
+assert_eq fighter.weapons_any, true
+assert_eq fighter.weapon_specialization, true
+assert_eq fighter.has_thief_skills, false
+assert_eq fighter.can_backstab, false
+assert_eq fighter.can_turn_undead, false
+assert_eq fighter.has_exceptional_str, true
+
+// ── class_def: Paladin ─────────────────────────────────────────
+
+let paladin = class_def(Paladin)
+assert_eq paladin.hit_die, 10
+assert_eq paladin.max_hit_dice, 9
+assert_eq paladin.hp_after_max, 3
+assert_eq paladin.combat_group, CombatGroup.FighterGroup
+assert_eq paladin.spell_progression, SpellProgression.Paladin
+assert_eq paladin.weapon_specialization, true
+assert_eq paladin.can_turn_undead, true
+assert_eq paladin.has_exceptional_str, true
+
+// ── class_def: Ranger ──────────────────────────────────────────
+
+let ranger = class_def(Ranger)
+assert_eq ranger.hit_die, 8
+assert_eq ranger.bonus_first_hd, 1
+assert_eq ranger.max_hit_dice, 10
+assert_eq ranger.hp_after_max, 2
+assert_eq ranger.combat_group, CombatGroup.FighterGroup
+assert_eq ranger.spell_progression, SpellProgression.Ranger
+assert_eq ranger.weapon_specialization, true
+assert_eq ranger.has_exceptional_str, true
+
+// ── class_def: Cleric ──────────────────────────────────────────
+
+let cleric = class_def(Cleric)
+assert_eq cleric.hit_die, 8
+assert_eq cleric.max_hit_dice, 9
+assert_eq cleric.hp_after_max, 2
+assert_eq cleric.combat_group, CombatGroup.ClericGroup
+assert_eq cleric.armour, ArmourPermission.AnyArmour
+assert_eq cleric.spell_progression, SpellProgression.Cleric
+assert_eq cleric.shield_allowed, true
+assert_eq cleric.weapons_any, false
+assert_eq cleric.can_turn_undead, true
+
+// ── class_def: Druid ───────────────────────────────────────────
+
+let druid = class_def(Druid)
+assert_eq druid.hit_die, 8
+assert_eq druid.max_hit_dice, 14
+assert_eq druid.hp_after_max, 1
+assert_eq druid.combat_group, CombatGroup.ClericGroup
+assert_eq druid.armour, ArmourPermission.LeatherWooden
+assert_eq druid.spell_progression, SpellProgression.Druid
+assert_eq druid.non_prof_penalty, -4
+
+// ── class_def: Thief ───────────────────────────────────────────
+
+let thief = class_def(Thief)
+assert_eq thief.hit_die, 6
+assert_eq thief.max_hit_dice, 10
+assert_eq thief.hp_after_max, 2
+assert_eq thief.combat_group, CombatGroup.ThiefGroup
+assert_eq thief.armour, ArmourPermission.LeatherOnly
+assert_eq thief.spell_progression, SpellProgression.NonCaster
+assert_eq thief.shield_allowed, false
+assert_eq thief.weapons_any, false
+assert_eq thief.has_thief_skills, true
+assert_eq thief.can_backstab, true
+
+// ── class_def: Assassin ────────────────────────────────────────
+
+let assassin = class_def(Assassin)
+assert_eq assassin.hit_die, 6
+assert_eq assassin.max_hit_dice, 15
+assert_eq assassin.hp_after_max, 1
+assert_eq assassin.combat_group, CombatGroup.ThiefGroup
+assert_eq assassin.armour, ArmourPermission.LeatherShield
+assert_eq assassin.shield_allowed, true
+assert_eq assassin.has_thief_skills, true
+assert_eq assassin.can_backstab, true
+
+// ── class_def: Magic-User ──────────────────────────────────────
+
+let mu = class_def(MagicUser)
+assert_eq mu.hit_die, 4
+assert_eq mu.max_hit_dice, 11
+assert_eq mu.hp_after_max, 1
+assert_eq mu.combat_group, CombatGroup.MagicUserGroup
+assert_eq mu.armour, ArmourPermission.NoArmour
+assert_eq mu.spell_progression, SpellProgression.MagicUser
+assert_eq mu.shield_allowed, false
+assert_eq mu.weapons_any, false
+assert_eq mu.non_prof_penalty, -5
+
+// ── class_def: Illusionist ─────────────────────────────────────
+
+let illusionist = class_def(Illusionist)
+assert_eq illusionist.hit_die, 4
+assert_eq illusionist.max_hit_dice, 10
+assert_eq illusionist.combat_group, CombatGroup.MagicUserGroup
+assert_eq illusionist.spell_progression, SpellProgression.Illusionist
+assert_eq illusionist.non_prof_penalty, -5
+
+// ── class_def: Monk ────────────────────────────────────────────
+
+let monk = class_def(Monk)
+assert_eq monk.hit_die, 4
+assert_eq monk.max_hit_dice, 18
+assert_eq monk.hp_after_max, 0
+assert_eq monk.combat_group, CombatGroup.ClericGroup
+assert_eq monk.armour, ArmourPermission.NoArmour
+assert_eq monk.spell_progression, SpellProgression.NonCaster
+assert_eq monk.shield_allowed, false
+assert_eq monk.weapons_any, false
+assert_eq monk.has_thief_skills, true
+assert_eq monk.can_backstab, false
+
+// ── class_def: all classes return matching class field ──────────
+
+assert_eq class_def(Fighter).class, Class.Fighter
+assert_eq class_def(Paladin).class, Class.Paladin
+assert_eq class_def(Ranger).class, Class.Ranger
+assert_eq class_def(Cleric).class, Class.Cleric
+assert_eq class_def(Druid).class, Class.Druid
+assert_eq class_def(Thief).class, Class.Thief
+assert_eq class_def(Assassin).class, Class.Assassin
+assert_eq class_def(MagicUser).class, Class.MagicUser
+assert_eq class_def(Illusionist).class, Class.Illusionist
+assert_eq class_def(Monk).class, Class.Monk
+
+// ── XP table: all classes start at 0 XP for level 1 ───────────
+
+assert_eq xp_for_level(Fighter, 1), 0
+assert_eq xp_for_level(Paladin, 1), 0
+assert_eq xp_for_level(Ranger, 1), 0
+assert_eq xp_for_level(Cleric, 1), 0
+assert_eq xp_for_level(Druid, 1), 0
+assert_eq xp_for_level(Thief, 1), 0
+assert_eq xp_for_level(Assassin, 1), 0
+assert_eq xp_for_level(MagicUser, 1), 0
+assert_eq xp_for_level(Illusionist, 1), 0
+assert_eq xp_for_level(Monk, 1), 0
+
+// ── XP table: spot checks per class ────────────────────────────
+
+assert_eq xp_for_level(Fighter, 2), 2000
+assert_eq xp_for_level(Fighter, 5), 17000
+assert_eq xp_for_level(Fighter, 9), 250000
+assert_eq xp_for_level(Fighter, 20), 3000000
+
+assert_eq xp_for_level(Thief, 2), 1250
+assert_eq xp_for_level(Thief, 8), 70000
+assert_eq xp_for_level(Thief, 12), 440000
+
+assert_eq xp_for_level(MagicUser, 2), 2400
+assert_eq xp_for_level(MagicUser, 4), 10250
+assert_eq xp_for_level(MagicUser, 10), 250000
+assert_eq xp_for_level(MagicUser, 18), 3000000
+
+assert_eq xp_for_level(Cleric, 2), 1500
+assert_eq xp_for_level(Cleric, 7), 55000
+assert_eq xp_for_level(Cleric, 20), 2700000
+
+assert_eq xp_for_level(Assassin, 2), 1500
+assert_eq xp_for_level(Assassin, 8), 100000
+assert_eq xp_for_level(Assassin, 15), 1500000
+
+assert_eq xp_for_level(Monk, 3), 5000
+assert_eq xp_for_level(Monk, 9), 350000
+assert_eq xp_for_level(Monk, 17), 3250000
+
+assert_eq xp_for_level(Paladin, 2), 2550
+assert_eq xp_for_level(Paladin, 9), 325000
+assert_eq xp_for_level(Paladin, 20), 4150000
+
+assert_eq xp_for_level(Ranger, 2), 2250
+assert_eq xp_for_level(Ranger, 8), 150000
+assert_eq xp_for_level(Ranger, 20), 3575000
+
+assert_eq xp_for_level(Druid, 2), 2000
+assert_eq xp_for_level(Druid, 9), 90000
+assert_eq xp_for_level(Druid, 14), 1500000
+
+assert_eq xp_for_level(Illusionist, 2), 2500
+assert_eq xp_for_level(Illusionist, 7), 60000
+assert_eq xp_for_level(Illusionist, 20), 2420000
+
+// ── XP increases monotonically ─────────────────────────────────
+
+// Spot-check: level N+1 XP >= level N XP for each class
+assert xp_for_level(Fighter, 20) >= xp_for_level(Fighter, 19)
+assert xp_for_level(Fighter, 2) >= xp_for_level(Fighter, 1)
+assert xp_for_level(Paladin, 20) >= xp_for_level(Paladin, 19)
+assert xp_for_level(Ranger, 20) >= xp_for_level(Ranger, 19)
+assert xp_for_level(Cleric, 20) >= xp_for_level(Cleric, 19)
+assert xp_for_level(Druid, 14) >= xp_for_level(Druid, 13)
+assert xp_for_level(Thief, 20) >= xp_for_level(Thief, 19)
+assert xp_for_level(Assassin, 15) >= xp_for_level(Assassin, 14)
+assert xp_for_level(MagicUser, 20) >= xp_for_level(MagicUser, 19)
+assert xp_for_level(Illusionist, 20) >= xp_for_level(Illusionist, 19)
+assert xp_for_level(Monk, 17) >= xp_for_level(Monk, 16)
+
+// ── check_level_up: threshold tests ────────────────────────────
+
+// Fighter: level 2 needs 2000 XP
+assert_eq check_level_up(Fighter, 1, 1999), false
+assert_eq check_level_up(Fighter, 1, 2000), true
+assert_eq check_level_up(Fighter, 1, 5000), true
+
+// Thief: level 5 needs 10000 XP
+assert_eq check_level_up(Thief, 4, 9999), false
+assert_eq check_level_up(Thief, 4, 10000), true
+
+// MagicUser: level 10 needs 250000 XP
+assert_eq check_level_up(MagicUser, 9, 249999), false
+assert_eq check_level_up(MagicUser, 9, 250000), true
+
+// Cleric: level 20 needs 2700000 XP
+assert_eq check_level_up(Cleric, 19, 2699999), false
+assert_eq check_level_up(Cleric, 19, 2700000), true
+
+// ── Fighter group shares combat group ──────────────────────────
+
+assert_eq class_def(Fighter).combat_group, CombatGroup.FighterGroup
+assert_eq class_def(Paladin).combat_group, CombatGroup.FighterGroup
+assert_eq class_def(Ranger).combat_group, CombatGroup.FighterGroup
+
+// ── Thief group: backstab + thief skills ───────────────────────
+
+assert_eq class_def(Thief).has_thief_skills, true
+assert_eq class_def(Thief).can_backstab, true
+assert_eq class_def(Assassin).has_thief_skills, true
+assert_eq class_def(Assassin).can_backstab, true
+
+// ── Caster spell progressions ──────────────────────────────────
+
+assert_eq class_def(Cleric).spell_progression, SpellProgression.Cleric
+assert_eq class_def(Druid).spell_progression, SpellProgression.Druid
+assert_eq class_def(MagicUser).spell_progression, SpellProgression.MagicUser
+assert_eq class_def(Illusionist).spell_progression, SpellProgression.Illusionist
+assert_eq class_def(Paladin).spell_progression, SpellProgression.Paladin
+assert_eq class_def(Ranger).spell_progression, SpellProgression.Ranger
+
+// ── Non-caster spell progressions ──────────────────────────────
+
+assert_eq class_def(Fighter).spell_progression, SpellProgression.NonCaster
+assert_eq class_def(Thief).spell_progression, SpellProgression.NonCaster
+assert_eq class_def(Assassin).spell_progression, SpellProgression.NonCaster
+assert_eq class_def(Monk).spell_progression, SpellProgression.NonCaster
+
+// ── Exceptional strength: only fighter types ───────────────────
+
+assert_eq class_def(Fighter).has_exceptional_str, true
+assert_eq class_def(Paladin).has_exceptional_str, true
+assert_eq class_def(Ranger).has_exceptional_str, true
+assert_eq class_def(Cleric).has_exceptional_str, false
+assert_eq class_def(Druid).has_exceptional_str, false
+assert_eq class_def(Thief).has_exceptional_str, false
+assert_eq class_def(Assassin).has_exceptional_str, false
+assert_eq class_def(MagicUser).has_exceptional_str, false
+assert_eq class_def(Illusionist).has_exceptional_str, false
+assert_eq class_def(Monk).has_exceptional_str, false
