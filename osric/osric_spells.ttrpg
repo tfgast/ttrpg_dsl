@@ -28,8 +28,8 @@ system "OSRIC Spells" {
 
     group Spellcasting {
         restricted casting_invocation: option<Invocation>
-        spell_slots: map<int, int> = {}
-        restricted slots_used: map<int, int> = {}
+        spell_slots: list<int> = []
+        restricted slots_used: list<int> = []
         restricted memorised_spells: list<MemorizedSpell> = []
     }
 
@@ -317,11 +317,11 @@ system "OSRIC Spells" {
         spell_level: int
     ) {
         cost free
-        requires { caster.sc.slots_used[spell_level] < caster.sc.spell_slots[spell_level] }
+        requires { caster.sc.slots_used[spell_level - 1] < caster.sc.spell_slots[spell_level - 1] }
         resolve {
             let entry = MemorizedSpell { id: spell_id, level: spell_level }
             caster.sc.memorised_spells = caster.sc.memorised_spells.append(entry)
-            caster.sc.slots_used[spell_level] = caster.sc.slots_used[spell_level] + 1
+            caster.sc.slots_used[spell_level - 1] = caster.sc.slots_used[spell_level - 1] + 1
             emit SpellMemorised(caster: caster, spell_id: spell_id, spell_level: spell_level)
         }
     }
@@ -343,7 +343,7 @@ system "OSRIC Spells" {
         resolve {
             let entry = MemorizedSpell { id: spell_id, level: spell_level }
             caster.sc.memorised_spells = caster.sc.memorised_spells.remove_first(entry)
-            caster.sc.slots_used[spell_level] = caster.sc.slots_used[spell_level] - 1
+            caster.sc.slots_used[spell_level - 1] = caster.sc.slots_used[spell_level - 1] - 1
             emit SpellForgotten(caster: caster, spell_id: spell_id, spell_level: spell_level)
         }
     }
@@ -369,7 +369,7 @@ system "OSRIC Spells" {
         resolve {
             let entry = MemorizedSpell { id: spell_id, level: spell_level }
             caster.sc.memorised_spells = caster.sc.memorised_spells.remove_first(entry)
-            caster.sc.slots_used[spell_level] = caster.sc.slots_used[spell_level] - 1
+            caster.sc.slots_used[spell_level - 1] = caster.sc.slots_used[spell_level - 1] - 1
             caster.BeginCasting(casting_time)
             emit SpellCast(caster: caster, spell_id: spell_id, spell_level: spell_level)
         }

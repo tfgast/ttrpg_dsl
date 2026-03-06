@@ -736,11 +736,12 @@ pub fn make_caster_with_slots(
         equipment_slots_group(armor_for_ac(ac), Value::Option(None)),
     );
 
-    let mut spell_slots_map = BTreeMap::new();
-    let mut slots_used_map = BTreeMap::new();
+    // Build list-based spell slots: index 0 = spell level 1, etc.
+    let max_level = slots.iter().map(|&(lvl, _)| lvl).max().unwrap_or(0) as usize;
+    let mut spell_slots_list = vec![Value::Int(0); max_level];
+    let slots_used_list = vec![Value::Int(0); max_level];
     for &(spell_level, max) in slots {
-        spell_slots_map.insert(Value::Int(spell_level), Value::Int(max));
-        slots_used_map.insert(Value::Int(spell_level), Value::Int(0));
+        spell_slots_list[(spell_level - 1) as usize] = Value::Int(max);
     }
 
     fields.insert(
@@ -750,8 +751,8 @@ pub fn make_caster_with_slots(
             fields: {
                 let mut f = BTreeMap::new();
                 f.insert(Name::from("casting_invocation"), Value::Option(None));
-                f.insert(Name::from("spell_slots"), Value::Map(spell_slots_map));
-                f.insert(Name::from("slots_used"), Value::Map(slots_used_map));
+                f.insert(Name::from("spell_slots"), Value::List(spell_slots_list));
+                f.insert(Name::from("slots_used"), Value::List(slots_used_list));
                 f.insert(Name::from("memorised_spells"), Value::List(vec![]));
                 f
             },

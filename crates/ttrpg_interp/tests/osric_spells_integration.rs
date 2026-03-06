@@ -495,19 +495,19 @@ fn read_spellcasting(
         other => panic!("expected list for memorised_spells, got {other:?}"),
     };
 
-    // Extract slots_used map
+    // Extract slots_used list (index 0 = spell level 1, index 1 = spell level 2)
     let slots_used = match fields.get::<Name>(&"slots_used".into()) {
-        Some(Value::Map(m)) => m,
-        other => panic!("expected map for slots_used, got {other:?}"),
+        Some(Value::List(items)) => items,
+        other => panic!("expected list for slots_used, got {other:?}"),
     };
 
-    let used_1 = match slots_used.get(&Value::Int(1)) {
+    let used_1 = match slots_used.get(0) {
+        Some(Value::Int(n)) => *n,
+        other => panic!("expected int for slots_used[0], got {other:?}"),
+    };
+    let used_2 = match slots_used.get(1) {
         Some(Value::Int(n)) => *n,
         other => panic!("expected int for slots_used[1], got {other:?}"),
-    };
-    let used_2 = match slots_used.get(&Value::Int(2)) {
-        Some(Value::Int(n)) => *n,
-        other => panic!("expected int for slots_used[2], got {other:?}"),
     };
 
     (spells, used_1, used_2)
