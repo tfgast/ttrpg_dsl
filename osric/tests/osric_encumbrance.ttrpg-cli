@@ -111,9 +111,33 @@ spawn Character mv_over { name: "Overloaded", classes: [ClassLevel { class: Figh
 call update_encumbrance(mv_over)
 assert_eq character_movement(mv_over), Feet { value: 0 }
 
-// NOTE: Dwarf movement tests remain in Rust because of a CLI bug
-// where Feet unit type values cannot be assigned in spawn or set commands.
-// See osric_encumbrance_integration.rs: character_movement_dwarf_with_encumbrance.
+// ── character_movement + EncumbranceState (Dwarf, 90ft base) ──
+// Dwarf base_movement = 90ft via ancestry_def derive.
+
+// Unencumbered: 90 * 4/4 = 90
+spawn Character dw_unenc { name: "DwarfUnenc", ancestry: Dwarf, classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 10, DEX: 10, CON: 10, INT: 10, WIS: 10, CHA: 10 }, HitPoints { max_hp: 10, hp: 10 }, EquipmentSlots { current_weight: 0 } }
+call update_encumbrance(dw_unenc)
+assert_eq character_movement(dw_unenc), Feet { value: 90 }
+
+// Light: floor(90 * 3/4) = 67
+spawn Character dw_light { name: "DwarfLight", ancestry: Dwarf, classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 10, DEX: 10, CON: 10, INT: 10, WIS: 10, CHA: 10 }, HitPoints { max_hp: 10, hp: 10 }, EquipmentSlots { current_weight: 50 } }
+call update_encumbrance(dw_light)
+assert_eq character_movement(dw_light), Feet { value: 67 }
+
+// Moderate: floor(90 * 2/4) = 45
+spawn Character dw_mod { name: "DwarfMod", ancestry: Dwarf, classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 10, DEX: 10, CON: 10, INT: 10, WIS: 10, CHA: 10 }, HitPoints { max_hp: 10, hp: 10 }, EquipmentSlots { current_weight: 80 } }
+call update_encumbrance(dw_mod)
+assert_eq character_movement(dw_mod), Feet { value: 45 }
+
+// Heavy: floor(90 * 1/4) = 22
+spawn Character dw_heavy { name: "DwarfHeavy", ancestry: Dwarf, classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 10, DEX: 10, CON: 10, INT: 10, WIS: 10, CHA: 10 }, HitPoints { max_hp: 10, hp: 10 }, EquipmentSlots { current_weight: 120 } }
+call update_encumbrance(dw_heavy)
+assert_eq character_movement(dw_heavy), Feet { value: 22 }
+
+// Overloaded: 90 * 0/4 = 0
+spawn Character dw_over { name: "DwarfOver", ancestry: Dwarf, classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 10, DEX: 10, CON: 10, INT: 10, WIS: 10, CHA: 10 }, HitPoints { max_hp: 10, hp: 10 }, EquipmentSlots { current_weight: 160 } }
+call update_encumbrance(dw_over)
+assert_eq character_movement(dw_over), Feet { value: 0 }
 
 // ── Armour cap dominates when lower than encumbered movement ────
 // Human 120ft + plate cap 60ft. Unencumbered: min(120,60)=60, then 60*4/4=60
