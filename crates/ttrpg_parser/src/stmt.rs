@@ -117,7 +117,7 @@ impl Parser {
     /// Parse `grant entity.Group { field: val, ... }`
     fn parse_grant_stmt(&mut self) -> Result<StmtKind, ()> {
         self.expect_soft_keyword("grant")?;
-        let entity_expr = self.parse_expr()?;
+        let entity_expr = self.parse_expr_no_struct()?;
 
         // Decompose trailing FieldAccess into entity + group_name
         let (entity, group_name) = match entity_expr.node {

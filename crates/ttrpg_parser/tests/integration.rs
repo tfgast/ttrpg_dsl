@@ -3548,3 +3548,68 @@ fn test_with_budget_as_variable_name() {
         diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
     );
 }
+
+#[test]
+fn test_qualified_enum_variant_struct_body() {
+    // WieldedItem.Melee { weapon: SwordLong } should parse as Call with named args
+    let (expr, diagnostics) = ttrpg_parser::parse_expr("WieldedItem.Melee { weapon: SwordLong }");
+    assert!(
+        diagnostics.is_empty(),
+        "qualified enum variant with struct body should parse without errors, got: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+    let expr = expr.expect("should produce an expression");
+    match &expr.node {
+        ExprKind::Call { callee, args } => {
+            match &callee.node {
+                ExprKind::FieldAccess { object, field } => {
+                    assert!(matches!(&object.node, ExprKind::Ident(n) if n == "WieldedItem"));
+                    assert_eq!(field, "Melee");
+                }
+                _ => panic!("expected FieldAccess callee"),
+            }
+            assert_eq!(args.len(), 1);
+            assert_eq!(args[0].name.as_deref(), Some("weapon"));
+        }
+        _ => panic!("expected Call"),
+    }
+}
+
+#[test]
+fn test_qualified_enum_variant_empty_struct_body() {
+    // WieldedItem.None {} should parse as Call with no args
+    let (expr, diagnostics) = ttrpg_parser::parse_expr("WieldedItem.None {}");
+    assert!(
+        diagnostics.is_empty(),
+        "qualified enum variant with empty struct body should parse, got: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+    let expr = expr.expect("should produce an expression");
+    match &expr.node {
+        ExprKind::Call { callee, args } => {
+            assert!(matches!(&callee.node, ExprKind::FieldAccess { .. }));
+            assert!(args.is_empty());
+        }
+        _ => panic!("expected Call"),
+    }
+}
+
+#[test]
+fn test_qualified_enum_variant_multifield_struct_body() {
+    // Enum.Variant { a: 1, b: 2 } should parse with multiple named args
+    let (expr, diagnostics) = ttrpg_parser::parse_expr("Enum.Variant { a: 1, b: 2 }");
+    assert!(
+        diagnostics.is_empty(),
+        "multi-field qualified variant should parse, got: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+    let expr = expr.expect("should produce an expression");
+    match &expr.node {
+        ExprKind::Call { args, .. } => {
+            assert_eq!(args.len(), 2);
+            assert_eq!(args[0].name.as_deref(), Some("a"));
+            assert_eq!(args[1].name.as_deref(), Some("b"));
+        }
+        _ => panic!("expected Call"),
+    }
+}

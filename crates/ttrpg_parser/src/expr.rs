@@ -231,6 +231,10 @@ impl Parser {
                         },
                         self.end_span(start),
                     );
+                    // Enum.Variant { field: val, ... } → desugar to Call with named args
+                    if !self.restrict_struct_lit && self.is_struct_body_start() {
+                        expr = self.parse_struct_body_as_call(expr, start)?;
+                    }
                 }
                 TokenKind::LBracket => {
                     self.advance();
@@ -504,6 +508,73 @@ impl Parser {
             return true;
         }
         false
+    }
+
+    /// Check if the next tokens look like a struct body: `{ IDENT: ... }` or `{ }`.
+    /// Used after parsing a field access to detect `Enum.Variant { field: val }`.
+    fn is_struct_body_start(&self) -> bool {
+        if !matches!(self.peek(), TokenKind::LBrace) {
+            return false;
+        }
+        let mut off = 1;
+        while matches!(self.peek_at(off), TokenKind::Newline) {
+            off += 1;
+        }
+        if matches!(self.peek_at(off), TokenKind::RBrace) {
+            return true;
+        }
+        let mut field_off = off + 1;
+        while matches!(self.peek_at(field_off), TokenKind::Newline) {
+            field_off += 1;
+        }
+        matches!(self.peek_at(off), TokenKind::Ident(_))
+            && matches!(self.peek_at(field_off), TokenKind::Colon)
+    }
+
+    /// Parse `{ field: val, ... }` after a field access and produce a `Call` with named args.
+    /// Desugars `Enum.Variant { field: val }` into `Enum.Variant(field: val)`.
+    fn parse_struct_body_as_call(
+        &mut self,
+        callee: Spanned<ExprKind>,
+        start: usize,
+    ) -> Result<Spanned<ExprKind>, ()> {
+        self.expect(&TokenKind::LBrace)?;
+        self.skip_newlines();
+
+        let mut args = Vec::new();
+        if !matches!(self.peek(), TokenKind::RBrace) {
+            loop {
+                let arg_start = self.start_span();
+                let (name, _) = self.expect_ident()?;
+                self.expect(&TokenKind::Colon)?;
+                let value = self.parse_expr()?;
+                self.skip_newlines();
+                args.push(Arg {
+                    name: Some(name),
+                    value,
+                    span: self.end_span(arg_start),
+                });
+                if matches!(self.peek(), TokenKind::Comma) {
+                    self.advance();
+                    self.skip_newlines();
+                    if matches!(self.peek(), TokenKind::RBrace) {
+                        break;
+                    }
+                } else {
+                    break;
+                }
+            }
+        }
+        self.skip_newlines();
+        self.expect(&TokenKind::RBrace)?;
+
+        Ok(Spanned::new(
+            ExprKind::Call {
+                callee: Box::new(callee),
+                args,
+            },
+            self.end_span(start),
+        ))
     }
 
     fn parse_struct_lit(&mut self) -> Result<Spanned<ExprKind>, ()> {
