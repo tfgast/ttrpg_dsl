@@ -66,6 +66,10 @@ assert 2 + 3 == 5
 // Assert two expressions are equal
 assert_eq fighter_group_bthb(5), 4
 
+// Assert an expression is a specific enum variant (ignoring fields)
+assert_match result, TurnResult.Turned
+assert_match school, SpellSchool.Evocation
+
 // Assert a command fails
 assert_err call missile_range_penalty(Feet { value: 50 }, Feet { value: 0 })
 
@@ -77,8 +81,10 @@ assert MeleeWeapon.Club in class_allowed_melee(Cleric)
 assert (MeleeWeapon.SwordLong in class_allowed_melee(Cleric)) == false
 ```
 
-`assert_eq` evaluates both sides as DSL expressions. Function calls
-(derives, mechanics) can be called directly as expressions:
+`assert_eq` evaluates both sides as DSL expressions. `assert_match`
+checks only the variant name — useful when an enum variant carries
+fields you don't care about (e.g., `TurnResult.Turned { number_affected }`).
+Function calls (derives, mechanics) can be called directly as expressions:
 
 ```
 assert_eq bthb(Fighter, 5), 4
@@ -288,6 +294,12 @@ rolls 15 6
 let result = resolve_melee_attack(atk, tgt, SwordLong)
 assert_eq result.outcome, AttackOutcome.Hit
 assert_eq result.damage, 6
+
+// For enum results where you only care about the variant, not the fields:
+rolls 8
+let turn = resolve_turn_undead(cleric, 1, false)
+assert_match turn, TurnResult.Turned
+assert turn.number_affected > 0
 ```
 
 `let` also works with action calls, using either function-call or
@@ -302,7 +314,7 @@ assert hp == 15
 ```
 
 Variables persist for the rest of the script and can be used in any
-expression context (`eval`, `assert`, `assert_eq`).
+expression context (`eval`, `assert`, `assert_eq`, `assert_match`).
 
 ## Known limitations
 
