@@ -231,9 +231,9 @@ system "OSRIC Equipment" {
     // Extract wielded melee weapon from main hand.
     // Works for any entity with EquipmentSlots (Character always, Monster optionally).
     derive wielded_melee(target: entity) -> option<MeleeWeapon> {
-        if target has EquipmentSlots {
-            if target.EquipmentSlots.wielded_main.is_some() {
-                match target.EquipmentSlots.wielded_main.unwrap() {
+        if target has EquipmentSlots as eq {
+            if target.eq.wielded_main.is_some() {
+                match target.eq.wielded_main.unwrap() {
                     Melee(w) => some(w),
                     _ => none
                 }
@@ -242,9 +242,9 @@ system "OSRIC Equipment" {
     }
 
     derive wielded_missile(target: entity) -> option<MissileWeapon> {
-        if target has EquipmentSlots {
-            if target.EquipmentSlots.wielded_main.is_some() {
-                match target.EquipmentSlots.wielded_main.unwrap() {
+        if target has EquipmentSlots as eq {
+            if target.eq.wielded_main.is_some() {
+                match target.eq.wielded_main.unwrap() {
                     Missile(w) => some(w),
                     _ => none
                 }
@@ -253,9 +253,9 @@ system "OSRIC Equipment" {
     }
 
     derive wielded_off_melee(target: entity) -> option<MeleeWeapon> {
-        if target has EquipmentSlots {
-            if target.EquipmentSlots.wielded_off.is_some() {
-                match target.EquipmentSlots.wielded_off.unwrap() {
+        if target has EquipmentSlots as eq {
+            if target.eq.wielded_off.is_some() {
+                match target.eq.wielded_off.unwrap() {
                     Melee(w) => some(w),
                     _ => none
                 }
@@ -265,9 +265,9 @@ system "OSRIC Equipment" {
 
     // Movement cap from worn armour; 0ft = no cap (unarmoured).
     derive armor_movement_cap(target: entity) -> Feet {
-        if target has EquipmentSlots {
-            if target.EquipmentSlots.worn_armor.is_some() {
-                armour_def(target.EquipmentSlots.worn_armor.unwrap().armour_type).movement_cap
+        if target has EquipmentSlots as eq {
+            if target.eq.worn_armor.is_some() {
+                armour_def(target.eq.worn_armor.unwrap().armour_type).movement_cap
             } else { 0ft }
         } else { 0ft }
     }
