@@ -38,10 +38,9 @@ system "OSRIC MU Spells" {
             range: SpellRange.Special(description: "60ft + 10ft/MU level"),
             duration: SpellDuration.Instantaneous,
             area_of_effect: "1+ creatures in a 10ft x 10ft area",
-            components: SpellComponents { verbal: true, somatic: true, material: false },
+            components: SpellComponents {},
             casting_time: CastingTime.Fast,
             saving_throw: SpellSave.NoSave,
-            reversible: false,
             description: "Auto-hit missiles of magical force, 1d4+1 damage each. +1 missile per 2 caster levels above 1st."
         }
     }
@@ -71,10 +70,9 @@ system "OSRIC MU Spells" {
             range: SpellRange.Special(description: "100ft + 10ft/MU level"),
             duration: SpellDuration.Instantaneous,
             area_of_effect: "20ft radius sphere",
-            components: SpellComponents { verbal: true, somatic: true, material: true },
+            components: SpellComponents { material: true },
             casting_time: CastingTime.Segments(count: 3),
             saving_throw: SpellSave.Half,
-            reversible: false,
             description: "A massive explosion of magical fire dealing 1d6 per caster level. Saving throw for half damage."
         }
     }
@@ -149,10 +147,9 @@ system "OSRIC MU Spells" {
             range: SpellRange.Special(description: "30ft + 10ft/MU level"),
             duration: SpellDuration.Special(description: "5 rounds/MU level"),
             area_of_effect: "15ft radius circle",
-            components: SpellComponents { verbal: true, somatic: true, material: true },
+            components: SpellComponents { material: true },
             casting_time: CastingTime.Fast,
             saving_throw: SpellSave.NoSave,
-            reversible: false,
             description: "Creatures in area fall into magical slumber. Number affected by HD category, weakest first. No saving throw."
         }
     }

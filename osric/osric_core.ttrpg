@@ -292,9 +292,9 @@ system "OSRIC" {
     // --- Spell component requirements ---
 
     struct SpellComponents {
-        verbal: bool
-        somatic: bool
-        material: bool
+        verbal: bool = true
+        somatic: bool = true
+        material: bool = false
     }
 
     // --- Spell definition ---
@@ -313,7 +313,7 @@ system "OSRIC" {
         components: SpellComponents
         casting_time: CastingTime
         saving_throw: SpellSave
-        reversible: bool
+        reversible: bool = false
         description: string
     }
 
