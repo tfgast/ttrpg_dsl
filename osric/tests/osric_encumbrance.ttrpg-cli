@@ -1,0 +1,29 @@
+// OSRIC Encumbrance integration tests
+//
+// Tests encumbrance_tier, encumbrance_movement_numerator derives.
+// Entity-level tests (effective_str_encumbrance, character_encumbrance,
+// character_movement with conditions, character_surprise_adj) remain in Rust
+// because they require condition application and complex state manipulation.
+
+load osric/*.ttrpg
+
+// ── encumbrance_tier ────────────────────────────────────────────
+
+assert_eq encumbrance_tier(0), EncumbranceTier.Unencumbered
+assert_eq encumbrance_tier(-10), EncumbranceTier.Unencumbered
+assert_eq encumbrance_tier(1), EncumbranceTier.Light
+assert_eq encumbrance_tier(40), EncumbranceTier.Light
+assert_eq encumbrance_tier(41), EncumbranceTier.Moderate
+assert_eq encumbrance_tier(80), EncumbranceTier.Moderate
+assert_eq encumbrance_tier(81), EncumbranceTier.Heavy
+assert_eq encumbrance_tier(120), EncumbranceTier.Heavy
+assert_eq encumbrance_tier(121), EncumbranceTier.Overloaded
+assert_eq encumbrance_tier(200), EncumbranceTier.Overloaded
+
+// ── encumbrance_movement_numerator ──────────────────────────────
+
+assert_eq encumbrance_movement_numerator(Unencumbered), 4
+assert_eq encumbrance_movement_numerator(Light), 3
+assert_eq encumbrance_movement_numerator(Moderate), 2
+assert_eq encumbrance_movement_numerator(Heavy), 1
+assert_eq encumbrance_movement_numerator(Overloaded), 0

@@ -1,0 +1,167 @@
+// OSRIC Character integration tests
+//
+// Tests dex_ac_adj, apply_ancestry_mods, check_ability_in_range,
+// validate_ancestry_scores, meets_class_requirements, prime_req_xp_bonus,
+// and base_movement derives.
+
+load osric/*.ttrpg
+
+// ── dex_ac_adj ───────────────────────────────────────────────────
+
+assert_eq dex_ac_adj(10), 0
+assert_eq dex_ac_adj(18), 4
+assert_eq dex_ac_adj(3), -4
+assert_eq dex_ac_adj(16), 2
+
+// ── apply_ancestry_mods ──────────────────────────────────────────
+
+// Human: no changes
+let human_mods = apply_ancestry_mods({ STR: 14, DEX: 12, CON: 13, INT: 10, WIS: 11, CHA: 9 }, Human)
+assert_eq human_mods[STR], 14
+assert_eq human_mods[DEX], 12
+assert_eq human_mods[CON], 13
+assert_eq human_mods[INT], 10
+assert_eq human_mods[WIS], 11
+assert_eq human_mods[CHA], 9
+
+// Dwarf: CON +1, CHA -1
+let dwarf_mods = apply_ancestry_mods({ STR: 14, DEX: 12, CON: 13, INT: 10, WIS: 11, CHA: 9 }, Dwarf)
+assert_eq dwarf_mods[STR], 14
+assert_eq dwarf_mods[DEX], 12
+assert_eq dwarf_mods[CON], 14
+assert_eq dwarf_mods[INT], 10
+assert_eq dwarf_mods[WIS], 11
+assert_eq dwarf_mods[CHA], 8
+
+// Elf: DEX +1, CON -1
+let elf_mods = apply_ancestry_mods({ STR: 10, DEX: 14, CON: 12, INT: 15, WIS: 10, CHA: 13 }, Elf)
+assert_eq elf_mods[STR], 10
+assert_eq elf_mods[DEX], 15
+assert_eq elf_mods[CON], 11
+assert_eq elf_mods[INT], 15
+assert_eq elf_mods[WIS], 10
+assert_eq elf_mods[CHA], 13
+
+// HalfOrc: STR +1, CON +1, CHA -2
+let ho_mods = apply_ancestry_mods({ STR: 14, DEX: 10, CON: 14, INT: 10, WIS: 10, CHA: 10 }, HalfOrc)
+assert_eq ho_mods[STR], 15
+assert_eq ho_mods[DEX], 10
+assert_eq ho_mods[CON], 15
+assert_eq ho_mods[INT], 10
+assert_eq ho_mods[WIS], 10
+assert_eq ho_mods[CHA], 8
+
+// Halfling: STR -1, DEX +1
+let hl_mods = apply_ancestry_mods({ STR: 12, DEX: 14, CON: 12, INT: 10, WIS: 10, CHA: 10 }, Halfling)
+assert_eq hl_mods[STR], 11
+assert_eq hl_mods[DEX], 15
+assert_eq hl_mods[CON], 12
+assert_eq hl_mods[INT], 10
+assert_eq hl_mods[WIS], 10
+assert_eq hl_mods[CHA], 10
+
+// ── check_ability_in_range ───────────────────────────────────────
+
+assert check_ability_in_range(12, AbilityRange { min: 8, max: 18 })
+assert check_ability_in_range(8, AbilityRange { min: 8, max: 18 })
+assert check_ability_in_range(18, AbilityRange { min: 8, max: 18 })
+assert (check_ability_in_range(7, AbilityRange { min: 8, max: 18 })) == false
+assert (check_ability_in_range(19, AbilityRange { min: 8, max: 18 })) == false
+
+// ── validate_ancestry_scores ─────────────────────────────────────
+
+// Human: all 3-18
+assert validate_ancestry_scores({ STR: 10, DEX: 10, CON: 10, INT: 10, WIS: 10, CHA: 10 }, Human)
+
+// Dwarf: valid
+assert validate_ancestry_scores({ STR: 14, DEX: 12, CON: 15, INT: 10, WIS: 10, CHA: 10 }, Dwarf)
+
+// Dwarf: CON too low (min 12)
+assert (validate_ancestry_scores({ STR: 14, DEX: 12, CON: 10, INT: 10, WIS: 10, CHA: 10 }, Dwarf)) == false
+
+// HalfOrc: CHA too high (max 12)
+assert (validate_ancestry_scores({ STR: 14, DEX: 10, CON: 15, INT: 10, WIS: 10, CHA: 14 }, HalfOrc)) == false
+
+// ── meets_class_requirements ─────────────────────────────────────
+
+// Fighter passes with good stats
+assert meets_class_requirements(Fighter, { STR: 15, DEX: 10, CON: 12, INT: 10, WIS: 10, CHA: 10 })
+
+// Fighter fails with STR 8 (needs 9)
+assert (meets_class_requirements(Fighter, { STR: 8, DEX: 10, CON: 12, INT: 10, WIS: 10, CHA: 10 })) == false
+
+// Fighter at exact minimums: STR 9, DEX 6, CON 7, INT 3, WIS 6, CHA 6
+assert meets_class_requirements(Fighter, { STR: 9, DEX: 6, CON: 7, INT: 3, WIS: 6, CHA: 6 })
+
+// Paladin passes
+assert meets_class_requirements(Paladin, { STR: 16, DEX: 10, CON: 14, INT: 12, WIS: 16, CHA: 17 })
+
+// Paladin fails CHA (needs 17)
+assert (meets_class_requirements(Paladin, { STR: 16, DEX: 10, CON: 14, INT: 12, WIS: 16, CHA: 16 })) == false
+
+// Thief minimal
+assert meets_class_requirements(Thief, { STR: 6, DEX: 9, CON: 6, INT: 6, WIS: 3, CHA: 6 })
+
+// Thief fails DEX (needs 9)
+assert (meets_class_requirements(Thief, { STR: 10, DEX: 8, CON: 10, INT: 10, WIS: 10, CHA: 10 })) == false
+
+// Ranger passes
+assert meets_class_requirements(Ranger, { STR: 15, DEX: 10, CON: 16, INT: 14, WIS: 15, CHA: 10 })
+
+// Ranger fails CON (needs 14)
+assert (meets_class_requirements(Ranger, { STR: 15, DEX: 10, CON: 13, INT: 14, WIS: 15, CHA: 10 })) == false
+
+// Druid passes
+assert meets_class_requirements(Druid, { STR: 10, DEX: 10, CON: 10, INT: 10, WIS: 14, CHA: 16 })
+
+// Druid fails CHA (needs 15)
+assert (meets_class_requirements(Druid, { STR: 10, DEX: 10, CON: 10, INT: 10, WIS: 14, CHA: 14 })) == false
+
+// Illusionist passes
+assert meets_class_requirements(Illusionist, { STR: 10, DEX: 17, CON: 10, INT: 16, WIS: 10, CHA: 10 })
+
+// Illusionist fails DEX (needs 16)
+assert (meets_class_requirements(Illusionist, { STR: 10, DEX: 15, CON: 10, INT: 16, WIS: 10, CHA: 10 })) == false
+
+// ── prime_req_xp_bonus ───────────────────────────────────────────
+
+// Fighter: 10% if STR >= 16
+assert_eq prime_req_xp_bonus(Fighter, { STR: 15, DEX: 10, CON: 10, INT: 10, WIS: 10, CHA: 10 }), 0
+assert_eq prime_req_xp_bonus(Fighter, { STR: 16, DEX: 10, CON: 10, INT: 10, WIS: 10, CHA: 10 }), 10
+
+// Paladin: 10% if STR 16+ AND WIS 16+
+assert_eq prime_req_xp_bonus(Paladin, { STR: 16, DEX: 10, CON: 10, INT: 10, WIS: 16, CHA: 17 }), 10
+assert_eq prime_req_xp_bonus(Paladin, { STR: 16, DEX: 10, CON: 10, INT: 10, WIS: 15, CHA: 17 }), 0
+
+// Ranger: 10% if STR 16+ AND INT 16+ AND WIS 16+
+assert_eq prime_req_xp_bonus(Ranger, { STR: 16, DEX: 10, CON: 14, INT: 16, WIS: 16, CHA: 10 }), 10
+assert_eq prime_req_xp_bonus(Ranger, { STR: 16, DEX: 10, CON: 14, INT: 15, WIS: 16, CHA: 10 }), 0
+
+// Cleric: 10% if WIS 16+
+assert_eq prime_req_xp_bonus(Cleric, { STR: 10, DEX: 10, CON: 10, INT: 10, WIS: 16, CHA: 10 }), 10
+assert_eq prime_req_xp_bonus(Cleric, { STR: 10, DEX: 10, CON: 10, INT: 10, WIS: 15, CHA: 10 }), 0
+
+// MagicUser: 10% if INT 16+
+assert_eq prime_req_xp_bonus(MagicUser, { STR: 10, DEX: 10, CON: 10, INT: 16, WIS: 10, CHA: 10 }), 10
+
+// Thief: 10% if DEX 16+
+assert_eq prime_req_xp_bonus(Thief, { STR: 10, DEX: 16, CON: 10, INT: 10, WIS: 10, CHA: 10 }), 10
+
+// Druid: 10% if WIS 16+ AND CHA 16+
+assert_eq prime_req_xp_bonus(Druid, { STR: 10, DEX: 10, CON: 10, INT: 10, WIS: 16, CHA: 16 }), 10
+assert_eq prime_req_xp_bonus(Druid, { STR: 10, DEX: 10, CON: 10, INT: 10, WIS: 16, CHA: 15 }), 0
+
+// Assassin, Illusionist, Monk: always 0
+assert_eq prime_req_xp_bonus(Assassin, { STR: 18, DEX: 18, CON: 18, INT: 18, WIS: 18, CHA: 18 }), 0
+assert_eq prime_req_xp_bonus(Illusionist, { STR: 18, DEX: 18, CON: 18, INT: 18, WIS: 18, CHA: 18 }), 0
+assert_eq prime_req_xp_bonus(Monk, { STR: 18, DEX: 18, CON: 18, INT: 18, WIS: 18, CHA: 18 }), 0
+
+// ── base_movement ────────────────────────────────────────────────
+
+assert_eq base_movement(Dwarf), Feet { value: 90 }
+assert_eq base_movement(Elf), Feet { value: 120 }
+assert_eq base_movement(Gnome), Feet { value: 90 }
+assert_eq base_movement(HalfElf), Feet { value: 120 }
+assert_eq base_movement(HalfOrc), Feet { value: 120 }
+assert_eq base_movement(Halfling), Feet { value: 90 }
+assert_eq base_movement(Human), Feet { value: 120 }

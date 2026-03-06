@@ -1,7 +1,7 @@
 //! OSRIC cleric spell effects integration tests.
 //!
-//! Tests caster_level derive, SpellDef derives, and resolve functions
-//! for Cure Light Wounds and Cause Light Wounds.
+//! Tests caster_level derive and resolve functions for cleric spells
+//! (CLW, Cause Light Wounds, Bless, Curse, Hold Person).
 
 use ttrpg_interp::effect::Response;
 use ttrpg_interp::reference_state::GameState;
@@ -279,40 +279,6 @@ fn bless_applies_blessed_condition() {
     );
 }
 
-#[test]
-fn bless_def_has_correct_fields() {
-    let (program, result) = compile_all();
-    let interp = Interpreter::new(&program, &result.env).unwrap();
-    let state = GameState::new();
-    let mut handler = NullHandler;
-
-    let val = interp
-        .evaluate_derive(&state, &mut handler, "bless_def", vec![])
-        .unwrap();
-
-    let (level, reversible) = match &val {
-        Value::Struct { fields, .. } => (
-            expect_int(
-                fields
-                    .get::<ttrpg_ast::Name>(&"level".into())
-                    .cloned()
-                    .unwrap(),
-                "level",
-            ),
-            expect_bool(
-                fields
-                    .get::<ttrpg_ast::Name>(&"reversible".into())
-                    .cloned()
-                    .unwrap(),
-                "reversible",
-            ),
-        ),
-        other => panic!("expected Struct for SpellDef, got {other:?}"),
-    };
-    assert_eq!(level, 1);
-    assert!(reversible);
-}
-
 // ── Curse ──────────────────────────────────────────────────
 
 #[test]
@@ -367,76 +333,7 @@ fn curse_does_not_apply_on_successful_save() {
     );
 }
 
-// ── SpellDef derives ───────────────────────────────────────
-
-#[test]
-fn cure_light_wounds_def_has_correct_level() {
-    let (program, result) = compile_all();
-    let interp = Interpreter::new(&program, &result.env).unwrap();
-    let state = GameState::new();
-    let mut handler = NullHandler;
-
-    let val = interp
-        .evaluate_derive(&state, &mut handler, "cure_light_wounds_def", vec![])
-        .unwrap();
-
-    let level = match &val {
-        Value::Struct { fields, .. } => fields
-            .get::<ttrpg_ast::Name>(&"level".into())
-            .cloned()
-            .unwrap(),
-        other => panic!("expected Struct for SpellDef, got {other:?}"),
-    };
-    assert_eq!(expect_int(level, "level"), 1);
-}
-
-#[test]
-fn cause_light_wounds_def_is_reversible() {
-    let (program, result) = compile_all();
-    let interp = Interpreter::new(&program, &result.env).unwrap();
-    let state = GameState::new();
-    let mut handler = NullHandler;
-
-    let val = interp
-        .evaluate_derive(&state, &mut handler, "cause_light_wounds_def", vec![])
-        .unwrap();
-
-    let reversible = match &val {
-        Value::Struct { fields, .. } => fields
-            .get::<ttrpg_ast::Name>(&"reversible".into())
-            .cloned()
-            .unwrap(),
-        other => panic!("expected Struct for SpellDef, got {other:?}"),
-    };
-    assert!(expect_bool(reversible, "reversible"));
-}
-
 // ── Hold Person ──────────────────────────────────────────
-
-#[test]
-fn hold_person_save_bonus_scaling() {
-    let (program, result) = compile_all();
-    let interp = Interpreter::new(&program, &result.env).unwrap();
-    let state = GameState::new();
-    let mut handler = NullHandler;
-
-    let cases = [(1, -2), (2, 0), (3, 2)];
-    for (count, expected) in &cases {
-        let val = interp
-            .evaluate_derive(
-                &state,
-                &mut handler,
-                "hold_person_save_bonus",
-                vec![Value::Int(*count)],
-            )
-            .unwrap();
-        assert_eq!(
-            expect_int(val, "hold_person_save_bonus"),
-            *expected,
-            "hold_person_save_bonus({count})"
-        );
-    }
-}
 
 #[test]
 fn hold_person_paralyzes_on_failed_save() {
@@ -518,25 +415,4 @@ fn hold_person_multiple_targets_mixed_saves() {
         !conds_b.iter().any(|c| &*c.name == "Paralyzed"),
         "target B should NOT be Paralyzed"
     );
-}
-
-#[test]
-fn hold_person_def_has_correct_fields() {
-    let (program, result) = compile_all();
-    let interp = Interpreter::new(&program, &result.env).unwrap();
-    let state = GameState::new();
-    let mut handler = NullHandler;
-
-    let val = interp
-        .evaluate_derive(&state, &mut handler, "hold_person_def", vec![])
-        .unwrap();
-
-    let level = match &val {
-        Value::Struct { fields, .. } => fields
-            .get::<ttrpg_ast::Name>(&"level".into())
-            .cloned()
-            .unwrap(),
-        other => panic!("expected Struct for SpellDef, got {other:?}"),
-    };
-    assert_eq!(expect_int(level, "level"), 2);
 }

@@ -1,0 +1,105 @@
+// OSRIC Multiclass integration tests
+//
+// Tests is_valid_multiclass, split_xp, multiclass_hp_gain,
+// armour_permission_rank, effective_armour_permission, num_classes.
+
+load osric/*.ttrpg
+
+// ── is_valid_multiclass ─────────────────────────────────────────
+
+// Human always invalid
+assert (is_valid_multiclass(Human, [Fighter, Thief])) == false
+
+// Single class invalid
+assert (is_valid_multiclass(Elf, [Fighter])) == false
+
+// Dwarf valid combos
+assert is_valid_multiclass(Dwarf, [Fighter, Thief])
+assert (is_valid_multiclass(Dwarf, [Fighter, Class.Cleric])) == false
+
+// Elf valid combos
+assert is_valid_multiclass(Elf, [Fighter, Class.MagicUser])
+assert is_valid_multiclass(Elf, [Fighter, Thief])
+assert is_valid_multiclass(Elf, [Class.MagicUser, Thief])
+assert is_valid_multiclass(Elf, [Fighter, Class.MagicUser, Thief])
+assert (is_valid_multiclass(Elf, [Fighter, Class.Cleric])) == false
+assert (is_valid_multiclass(Elf, [Thief, Class.Cleric])) == false
+
+// Gnome valid combos
+assert is_valid_multiclass(Gnome, [Fighter, Class.Illusionist])
+assert is_valid_multiclass(Gnome, [Fighter, Thief])
+assert is_valid_multiclass(Gnome, [Class.Illusionist, Thief])
+
+// HalfElf valid combos
+assert is_valid_multiclass(HalfElf, [Class.Cleric, Fighter])
+assert is_valid_multiclass(HalfElf, [Class.Cleric, Class.Ranger])
+assert is_valid_multiclass(HalfElf, [Class.Cleric, Class.MagicUser])
+assert is_valid_multiclass(HalfElf, [Fighter, Class.MagicUser])
+assert is_valid_multiclass(HalfElf, [Fighter, Thief])
+assert is_valid_multiclass(HalfElf, [Class.Cleric, Fighter, Class.MagicUser])
+assert is_valid_multiclass(HalfElf, [Fighter, Class.MagicUser, Thief])
+
+// HalfOrc valid combos
+assert is_valid_multiclass(HalfOrc, [Class.Cleric, Fighter])
+assert is_valid_multiclass(HalfOrc, [Class.Cleric, Thief])
+assert is_valid_multiclass(HalfOrc, [Assassin, Class.Cleric])
+assert is_valid_multiclass(HalfOrc, [Fighter, Thief])
+assert is_valid_multiclass(HalfOrc, [Assassin, Fighter])
+
+// Halfling valid combo
+assert is_valid_multiclass(Halfling, [Fighter, Thief])
+assert (is_valid_multiclass(Halfling, [Fighter, Class.Cleric])) == false
+
+// Reversed order still valid (sort_classes normalizes)
+assert is_valid_multiclass(Elf, [Thief, Fighter])
+assert is_valid_multiclass(Elf, [Thief, Class.MagicUser, Fighter])
+
+// ── split_xp ────────────────────────────────────────────────────
+
+assert_eq split_xp(125, 2), 62
+assert_eq split_xp(100, 3), 33
+assert_eq split_xp(300, 3), 100
+
+// ── multiclass_hp_gain ──────────────────────────────────────────
+
+// PG p.69 example: roll 4, CON +1, 3 classes: (4+1)/3 = 1
+assert_eq multiclass_hp_gain(4, 1, 3), 1
+
+// Roll 8, CON +2, 2 classes: (8+2)/2 = 5
+assert_eq multiclass_hp_gain(8, 2, 2), 5
+
+// Roll 1, CON -2, 3 classes: (1-2)/3 -> min 1
+assert_eq multiclass_hp_gain(1, -2, 3), 1
+
+// ── armour_permission_rank ──────────────────────────────────────
+
+assert_eq armour_permission_rank(NoArmour), 0
+assert_eq armour_permission_rank(LeatherOnly), 1
+assert_eq armour_permission_rank(LeatherWooden), 2
+assert_eq armour_permission_rank(LeatherShield), 3
+assert_eq armour_permission_rank(AnyArmour), 4
+
+// ── effective_armour_permission (entity-level) ──────────────────
+
+// Fighter/Thief: Fighter=AnyArmour(4), Thief=LeatherOnly(1) -> most restrictive = LeatherOnly
+spawn Character ft { name: "Erix", classes: [ClassLevel { class: Fighter, level: 3, xp: 0 }, ClassLevel { class: Thief, level: 3, xp: 0 }], classing_mode: Multi, ancestry: Dwarf, abilities: { STR: 14, DEX: 14, CON: 14, INT: 10, WIS: 10, CHA: 10 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots { wielded_main: none, worn_armor: none } }
+assert_eq effective_armour_permission(ft), ArmourPermission.LeatherOnly
+
+// Fighter/MagicUser: both AnyArmour(4) and NoArmour(0) -> NoArmour
+spawn Character fmu { name: "Elminster", classes: [ClassLevel { class: Fighter, level: 5, xp: 0 }, ClassLevel { class: Class.MagicUser, level: 5, xp: 0 }], classing_mode: Multi, ancestry: Elf, abilities: { STR: 14, DEX: 14, CON: 14, INT: 14, WIS: 10, CHA: 10 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots { wielded_main: none, worn_armor: none } }
+assert_eq effective_armour_permission(fmu), ArmourPermission.NoArmour
+
+// Cleric/Fighter: both AnyArmour -> AnyArmour
+spawn Character cf { name: "Grom", classes: [ClassLevel { class: Class.Cleric, level: 3, xp: 0 }, ClassLevel { class: Fighter, level: 3, xp: 0 }], classing_mode: Multi, ancestry: HalfOrc, abilities: { STR: 14, DEX: 14, CON: 14, INT: 10, WIS: 14, CHA: 10 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots { wielded_main: none, worn_armor: none } }
+assert_eq effective_armour_permission(cf), ArmourPermission.AnyArmour
+
+// ── num_classes ─────────────────────────────────────────────────
+
+spawn Character solo { name: "Solo", classes: [ClassLevel { class: Fighter, level: 5, xp: 0 }], abilities: { STR: 14, DEX: 14, CON: 14, INT: 10, WIS: 10, CHA: 10 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots { wielded_main: none, worn_armor: none } }
+assert_eq num_classes(solo), 1
+
+spawn Character duo { name: "Duo", classes: [ClassLevel { class: Fighter, level: 3, xp: 0 }, ClassLevel { class: Thief, level: 3, xp: 0 }], classing_mode: Multi, ancestry: Elf, abilities: { STR: 14, DEX: 14, CON: 14, INT: 10, WIS: 10, CHA: 10 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots { wielded_main: none, worn_armor: none } }
+assert_eq num_classes(duo), 2
+
+spawn Character trio { name: "Trio", classes: [ClassLevel { class: Fighter, level: 3, xp: 0 }, ClassLevel { class: Class.MagicUser, level: 3, xp: 0 }, ClassLevel { class: Thief, level: 3, xp: 0 }], classing_mode: Multi, ancestry: Elf, abilities: { STR: 14, DEX: 14, CON: 14, INT: 14, WIS: 10, CHA: 10 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots { wielded_main: none, worn_armor: none } }
+assert_eq num_classes(trio), 3

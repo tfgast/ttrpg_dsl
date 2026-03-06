@@ -1,0 +1,105 @@
+// OSRIC Dualclass integration tests
+//
+// Tests prime_requisites, meets_dual_class_from_reqs, meets_dual_class_to_reqs,
+// can_dual_class, dual_class_new_exceeds_old, dual_class_hp_gain,
+// dual_class_can_use_old_abilities, dual_class_xp_forfeit,
+// dual_class_can_read_languages.
+
+load osric/*.ttrpg
+
+// ── prime_requisites ────────────────────────────────────────────
+
+assert_eq prime_requisites(Fighter), [STR]
+assert_eq prime_requisites(Ranger), [STR, INT, WIS]
+assert_eq prime_requisites(Assassin), []
+
+// ── meets_dual_class_from_reqs ──────────────────────────────────
+
+// Fighter: STR >= 15
+assert meets_dual_class_from_reqs(Fighter, { STR: 15, DEX: 10, CON: 10, INT: 10, WIS: 10, CHA: 10 })
+assert (meets_dual_class_from_reqs(Fighter, { STR: 14, DEX: 10, CON: 10, INT: 10, WIS: 10, CHA: 10 })) == false
+
+// Assassin: no prime reqs -> always passes
+assert meets_dual_class_from_reqs(Assassin, { STR: 3, DEX: 3, CON: 3, INT: 3, WIS: 3, CHA: 3 })
+
+// ── meets_dual_class_to_reqs ────────────────────────────────────
+
+// Ranger: STR, INT, WIS all >= 17
+assert meets_dual_class_to_reqs(Ranger, { STR: 17, DEX: 10, CON: 10, INT: 17, WIS: 17, CHA: 10 })
+assert (meets_dual_class_to_reqs(Ranger, { STR: 17, DEX: 10, CON: 10, INT: 16, WIS: 17, CHA: 10 })) == false
+
+// ── can_dual_class ──────────────────────────────────────────────
+
+// Paladin -> Ranger
+assert can_dual_class(Human, Paladin, Ranger, { STR: 17, DEX: 10, CON: 10, INT: 17, WIS: 17, CHA: 17 })
+
+// Non-human fails
+assert (can_dual_class(Elf, Fighter, Thief, { STR: 18, DEX: 18, CON: 18, INT: 18, WIS: 18, CHA: 18 })) == false
+
+// Same class fails
+assert (can_dual_class(Human, Fighter, Fighter, { STR: 18, DEX: 18, CON: 18, INT: 18, WIS: 18, CHA: 18 })) == false
+
+// Fighter -> Thief at borderline (STR 15 from, DEX 17 to)
+assert can_dual_class(Human, Fighter, Thief, { STR: 15, DEX: 17, CON: 10, INT: 10, WIS: 10, CHA: 10 })
+
+// Fighter -> Thief, STR too low
+assert (can_dual_class(Human, Fighter, Thief, { STR: 14, DEX: 17, CON: 10, INT: 10, WIS: 10, CHA: 10 })) == false
+
+// ── dual_class_new_exceeds_old ──────────────────────────────────
+
+// Equal: not exceeded
+spawn Character dc_eq { name: "Equal", classes: [ClassLevel { class: Fighter, level: 5, xp: 0 }, ClassLevel { class: Thief, level: 5, xp: 0 }], classing_mode: Dual, ancestry: Human, abilities: { STR: 17, DEX: 17, CON: 14, INT: 17, WIS: 17, CHA: 17 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots { wielded_main: none, worn_armor: none } }
+assert (dual_class_new_exceeds_old(dc_eq)) == false
+
+// Lower: not exceeded
+spawn Character dc_lo { name: "Lower", classes: [ClassLevel { class: Fighter, level: 7, xp: 0 }, ClassLevel { class: Thief, level: 3, xp: 0 }], classing_mode: Dual, ancestry: Human, abilities: { STR: 17, DEX: 17, CON: 14, INT: 17, WIS: 17, CHA: 17 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots { wielded_main: none, worn_armor: none } }
+assert (dual_class_new_exceeds_old(dc_lo)) == false
+
+// Higher: exceeded
+spawn Character dc_hi { name: "Higher", classes: [ClassLevel { class: Fighter, level: 5, xp: 0 }, ClassLevel { class: Thief, level: 6, xp: 0 }], classing_mode: Dual, ancestry: Human, abilities: { STR: 17, DEX: 17, CON: 14, INT: 17, WIS: 17, CHA: 17 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots { wielded_main: none, worn_armor: none } }
+assert dual_class_new_exceeds_old(dc_hi)
+
+// ── dual_class_hp_gain ──────────────────────────────────────────
+
+// Not exceeded: 0
+assert_eq dual_class_hp_gain(6, 1, false), 0
+
+// Exceeded: 6+1=7
+assert_eq dual_class_hp_gain(6, 1, true), 7
+
+// Min 1
+assert_eq dual_class_hp_gain(1, -3, true), 1
+
+// ── dual_class_can_use_old_abilities ────────────────────────────
+
+// Locked when new < old
+spawn Character dc_locked { name: "Locked", classes: [ClassLevel { class: Fighter, level: 5, xp: 0 }, ClassLevel { class: Class.MagicUser, level: 3, xp: 0 }], classing_mode: Dual, ancestry: Human, abilities: { STR: 17, DEX: 17, CON: 14, INT: 17, WIS: 17, CHA: 17 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots { wielded_main: none, worn_armor: none } }
+assert (dual_class_can_use_old_abilities(dc_locked)) == false
+
+// Unlocked when new > old
+spawn Character dc_unlocked { name: "Unlocked", classes: [ClassLevel { class: Fighter, level: 5, xp: 0 }, ClassLevel { class: Class.MagicUser, level: 6, xp: 0 }], classing_mode: Dual, ancestry: Human, abilities: { STR: 17, DEX: 17, CON: 14, INT: 17, WIS: 17, CHA: 17 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots { wielded_main: none, worn_armor: none } }
+assert dual_class_can_use_old_abilities(dc_unlocked)
+
+// ── dual_class_xp_forfeit ───────────────────────────────────────
+
+// No penalty when exceeded
+spawn Character dc_free { name: "Free", classes: [ClassLevel { class: Fighter, level: 5, xp: 0 }, ClassLevel { class: Thief, level: 6, xp: 0 }], classing_mode: Dual, ancestry: Human, abilities: { STR: 17, DEX: 17, CON: 14, INT: 17, WIS: 17, CHA: 17 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots { wielded_main: none, worn_armor: none } }
+assert (dual_class_xp_forfeit(dc_free, true)) == false
+
+// Penalty when not exceeded and used old abilities
+spawn Character dc_forfeit { name: "Forfeit", classes: [ClassLevel { class: Fighter, level: 5, xp: 0 }, ClassLevel { class: Thief, level: 3, xp: 0 }], classing_mode: Dual, ancestry: Human, abilities: { STR: 17, DEX: 17, CON: 14, INT: 17, WIS: 17, CHA: 17 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots { wielded_main: none, worn_armor: none } }
+assert dual_class_xp_forfeit(dc_forfeit, true)
+
+// No penalty when not exceeded but didn't use old abilities
+spawn Character dc_safe { name: "Safe", classes: [ClassLevel { class: Fighter, level: 5, xp: 0 }, ClassLevel { class: Thief, level: 3, xp: 0 }], classing_mode: Dual, ancestry: Human, abilities: { STR: 17, DEX: 17, CON: 14, INT: 17, WIS: 17, CHA: 17 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots { wielded_main: none, worn_armor: none } }
+assert (dual_class_xp_forfeit(dc_safe, false)) == false
+
+// ── dual_class_can_read_languages ───────────────────────────────
+
+// Old class Thief -> always available
+spawn Character dc_exthief { name: "ExThief", classes: [ClassLevel { class: Thief, level: 5, xp: 0 }, ClassLevel { class: Fighter, level: 2, xp: 0 }], classing_mode: Dual, ancestry: Human, abilities: { STR: 17, DEX: 17, CON: 14, INT: 17, WIS: 17, CHA: 17 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots { wielded_main: none, worn_armor: none } }
+assert dual_class_can_read_languages(dc_exthief)
+
+// Old class Fighter -> no Read Languages
+spawn Character dc_exfighter { name: "ExFighter", classes: [ClassLevel { class: Fighter, level: 5, xp: 0 }, ClassLevel { class: Thief, level: 2, xp: 0 }], classing_mode: Dual, ancestry: Human, abilities: { STR: 17, DEX: 17, CON: 14, INT: 17, WIS: 17, CHA: 17 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots { wielded_main: none, worn_armor: none } }
+assert (dual_class_can_read_languages(dc_exfighter)) == false

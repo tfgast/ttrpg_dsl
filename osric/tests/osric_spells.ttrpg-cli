@@ -1,0 +1,114 @@
+// OSRIC Spell slot progression integration tests
+//
+// Tests spell_slots_for, max_spell_level, has_wis_bonus,
+// total_spell_slots, and noncaster returns zero.
+
+load osric/*.ttrpg
+
+// ── Cleric spell slots ──────────────────────────────────────────
+
+// Level 1: [1,0,0,0,0,0,0]
+assert_eq spell_slots_for(SpellProgression.Cleric, 1, 1), 1
+assert_eq spell_slots_for(SpellProgression.Cleric, 1, 2), 0
+assert_eq spell_slots_for(SpellProgression.Cleric, 1, 7), 0
+
+// Level 9: [3,3,3,2,1,0,0]
+assert_eq spell_slots_for(SpellProgression.Cleric, 9, 1), 3
+assert_eq spell_slots_for(SpellProgression.Cleric, 9, 2), 3
+assert_eq spell_slots_for(SpellProgression.Cleric, 9, 3), 3
+assert_eq spell_slots_for(SpellProgression.Cleric, 9, 4), 2
+assert_eq spell_slots_for(SpellProgression.Cleric, 9, 5), 1
+assert_eq spell_slots_for(SpellProgression.Cleric, 9, 6), 0
+assert_eq spell_slots_for(SpellProgression.Cleric, 9, 7), 0
+
+// Level 20: [9,9,9,8,7,5,2]
+assert_eq spell_slots_for(SpellProgression.Cleric, 20, 1), 9
+assert_eq spell_slots_for(SpellProgression.Cleric, 20, 2), 9
+assert_eq spell_slots_for(SpellProgression.Cleric, 20, 3), 9
+assert_eq spell_slots_for(SpellProgression.Cleric, 20, 4), 8
+assert_eq spell_slots_for(SpellProgression.Cleric, 20, 5), 7
+assert_eq spell_slots_for(SpellProgression.Cleric, 20, 6), 5
+assert_eq spell_slots_for(SpellProgression.Cleric, 20, 7), 2
+
+// ── Druid spell slots ───────────────────────────────────────────
+
+// Level 1: [2,0,0,0,0,0,0]
+assert_eq spell_slots_for(SpellProgression.Druid, 1, 1), 2
+assert_eq spell_slots_for(SpellProgression.Druid, 1, 2), 0
+
+// Level 14: [6,6,6,6,5,4,3]
+assert_eq spell_slots_for(SpellProgression.Druid, 14, 1), 6
+assert_eq spell_slots_for(SpellProgression.Druid, 14, 2), 6
+assert_eq spell_slots_for(SpellProgression.Druid, 14, 3), 6
+assert_eq spell_slots_for(SpellProgression.Druid, 14, 4), 6
+assert_eq spell_slots_for(SpellProgression.Druid, 14, 5), 5
+assert_eq spell_slots_for(SpellProgression.Druid, 14, 6), 4
+assert_eq spell_slots_for(SpellProgression.Druid, 14, 7), 3
+
+// ── Magic-User spell slots ──────────────────────────────────────
+
+// Level 1: [1,0,0,0,0,0,0,0,0]
+assert_eq spell_slots_for(SpellProgression.MagicUser, 1, 1), 1
+assert_eq spell_slots_for(SpellProgression.MagicUser, 1, 2), 0
+
+// Level 18: [5,5,5,5,5,4,3,2,1]
+assert_eq spell_slots_for(SpellProgression.MagicUser, 18, 1), 5
+assert_eq spell_slots_for(SpellProgression.MagicUser, 18, 2), 5
+assert_eq spell_slots_for(SpellProgression.MagicUser, 18, 3), 5
+assert_eq spell_slots_for(SpellProgression.MagicUser, 18, 4), 5
+assert_eq spell_slots_for(SpellProgression.MagicUser, 18, 5), 5
+assert_eq spell_slots_for(SpellProgression.MagicUser, 18, 6), 4
+assert_eq spell_slots_for(SpellProgression.MagicUser, 18, 7), 3
+assert_eq spell_slots_for(SpellProgression.MagicUser, 18, 8), 2
+assert_eq spell_slots_for(SpellProgression.MagicUser, 18, 9), 1
+
+// ── Illusionist spell slots ─────────────────────────────────────
+
+// Level 1: [1,0,0,0,0,0,0]
+assert_eq spell_slots_for(SpellProgression.Illusionist, 1, 1), 1
+assert_eq spell_slots_for(SpellProgression.Illusionist, 1, 2), 0
+
+// Level 20: [6,6,6,5,5,4,2]
+assert_eq spell_slots_for(SpellProgression.Illusionist, 20, 1), 6
+assert_eq spell_slots_for(SpellProgression.Illusionist, 20, 2), 6
+assert_eq spell_slots_for(SpellProgression.Illusionist, 20, 3), 6
+assert_eq spell_slots_for(SpellProgression.Illusionist, 20, 4), 5
+assert_eq spell_slots_for(SpellProgression.Illusionist, 20, 5), 5
+assert_eq spell_slots_for(SpellProgression.Illusionist, 20, 6), 4
+assert_eq spell_slots_for(SpellProgression.Illusionist, 20, 7), 2
+
+// ── NonCaster returns zero ──────────────────────────────────────
+
+assert_eq spell_slots_for(SpellProgression.NonCaster, 10, 1), 0
+
+// ── max_spell_level ─────────────────────────────────────────────
+
+assert_eq max_spell_level(SpellProgression.Cleric), 7
+assert_eq max_spell_level(SpellProgression.Druid), 7
+assert_eq max_spell_level(SpellProgression.Illusionist), 7
+assert_eq max_spell_level(SpellProgression.MagicUser), 9
+assert_eq max_spell_level(SpellProgression.NonCaster), 0
+assert_eq max_spell_level(SpellProgression.Paladin), 0
+assert_eq max_spell_level(SpellProgression.Ranger), 0
+
+// ── has_wis_bonus ───────────────────────────────────────────────
+
+assert has_wis_bonus(SpellProgression.Cleric)
+assert has_wis_bonus(SpellProgression.Druid)
+assert (has_wis_bonus(SpellProgression.MagicUser)) == false
+assert (has_wis_bonus(SpellProgression.Illusionist)) == false
+assert (has_wis_bonus(SpellProgression.NonCaster)) == false
+
+// ── total_spell_slots (WIS bonus) ───────────────────────────────
+
+// Cleric L3 WIS 18: base [2,1,0,...], bonus [+2,+2,+1,+1,...]
+assert_eq total_spell_slots(SpellProgression.Cleric, 3, 1, 18), 4
+assert_eq total_spell_slots(SpellProgression.Cleric, 3, 2, 18), 3
+// Third level base is 0, so no bonus
+assert_eq total_spell_slots(SpellProgression.Cleric, 3, 3, 18), 0
+
+// MagicUser does not get WIS bonus
+assert_eq total_spell_slots(SpellProgression.MagicUser, 3, 1, 18), spell_slots_for(SpellProgression.MagicUser, 3, 1)
+
+// WIS bonus only when base > 0
+assert_eq total_spell_slots(SpellProgression.Cleric, 1, 2, 18), 0

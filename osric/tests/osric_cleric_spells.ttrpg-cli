@@ -1,0 +1,29 @@
+// OSRIC Cleric Spells integration tests
+//
+// Tests pure derive functions: hold_person_save_bonus, spell def derives.
+// Spell resolve functions (CLW, Cause, Bless, Curse, Hold Person) remain
+// in Rust because they require scripted dice, entity conditions, and
+// custom effect handlers.
+
+load osric/*.ttrpg
+
+// ── hold_person_save_bonus ──────────────────────────────────────
+
+assert_eq hold_person_save_bonus(1), -2
+assert_eq hold_person_save_bonus(2), 0
+assert_eq hold_person_save_bonus(3), 2
+
+// ── SpellDef derives ────────────────────────────────────────────
+
+// Cure Light Wounds: level 1
+assert_eq cure_light_wounds_def().level, 1
+
+// Cause Light Wounds: reversible
+assert cause_light_wounds_def().reversible
+
+// Bless: level 1, reversible
+assert_eq bless_def().level, 1
+assert bless_def().reversible
+
+// Hold Person: level 2
+assert_eq hold_person_def().level, 2

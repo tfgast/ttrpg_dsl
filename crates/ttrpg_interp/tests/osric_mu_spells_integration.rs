@@ -48,43 +48,6 @@ fn osric_mu_spells_parses_and_typechecks() {
     assert!(system_names.contains(&"OSRIC MU Spells"));
 }
 
-// ── magic_missile_count derive ─────────────────────────────
-
-#[test]
-fn magic_missile_count_scales_correctly() {
-    let (program, result) = compile_all();
-    let interp = Interpreter::new(&program, &result.env).unwrap();
-    let state = GameState::new();
-    let mut handler = NullHandler;
-
-    let cases = [
-        (1, 1),
-        (2, 1),
-        (3, 2),
-        (4, 2),
-        (5, 3),
-        (7, 4),
-        (9, 5),
-        (11, 6),
-    ];
-
-    for (level, expected) in &cases {
-        let val = interp
-            .evaluate_derive(
-                &state,
-                &mut handler,
-                "magic_missile_count",
-                vec![Value::Int(*level)],
-            )
-            .unwrap();
-        assert_eq!(
-            expect_int(val, "magic_missile_count"),
-            *expected,
-            "magic_missile_count({level})"
-        );
-    }
-}
-
 // ── Magic Missile resolve ──────────────────────────────────
 
 #[test]
@@ -259,76 +222,6 @@ fn fireball_multiple_targets_mixed_saves() {
     );
 }
 
-// ── SpellDef ───────────────────────────────────────────────
-
-#[test]
-fn fireball_def_has_correct_fields() {
-    let (program, result) = compile_all();
-    let interp = Interpreter::new(&program, &result.env).unwrap();
-    let state = GameState::new();
-    let mut handler = NullHandler;
-
-    let val = interp
-        .evaluate_derive(&state, &mut handler, "fireball_def", vec![])
-        .unwrap();
-
-    let (level, school) = match &val {
-        Value::Struct { fields, .. } => (
-            expect_int(
-                fields
-                    .get::<ttrpg_ast::Name>(&"level".into())
-                    .cloned()
-                    .unwrap(),
-                "level",
-            ),
-            fields
-                .get::<ttrpg_ast::Name>(&"school".into())
-                .cloned()
-                .unwrap(),
-        ),
-        other => panic!("expected Struct for SpellDef, got {other:?}"),
-    };
-    assert_eq!(level, 3);
-    match school {
-        Value::EnumVariant { variant, .. } => assert_eq!(variant.as_str(), "Evocation"),
-        other => panic!("expected Evocation variant, got {other:?}"),
-    }
-}
-
-#[test]
-fn magic_missile_def_has_correct_fields() {
-    let (program, result) = compile_all();
-    let interp = Interpreter::new(&program, &result.env).unwrap();
-    let state = GameState::new();
-    let mut handler = NullHandler;
-
-    let val = interp
-        .evaluate_derive(&state, &mut handler, "magic_missile_def", vec![])
-        .unwrap();
-
-    let (level, reversible) = match &val {
-        Value::Struct { fields, .. } => (
-            expect_int(
-                fields
-                    .get::<ttrpg_ast::Name>(&"level".into())
-                    .cloned()
-                    .unwrap(),
-                "level",
-            ),
-            expect_bool(
-                fields
-                    .get::<ttrpg_ast::Name>(&"reversible".into())
-                    .cloned()
-                    .unwrap(),
-                "reversible",
-            ),
-        ),
-        other => panic!("expected Struct for SpellDef, got {other:?}"),
-    };
-    assert_eq!(level, 1);
-    assert!(!reversible);
-}
-
 // ── Sleep ────────────────────────────────────────────────────
 
 fn has_condition(state: &GameState, entity: &ttrpg_interp::state::EntityRef, name: &str) -> bool {
@@ -343,40 +236,6 @@ fn has_condition(state: &GameState, entity: &ttrpg_interp::state::EntityRef, nam
 fn roll_nd(count: u32, sides: u32, values: Vec<i64>) -> Response {
     let total: i64 = values.iter().sum();
     scripted_roll(count, sides, 0, values.clone(), values, total, total)
-}
-
-#[test]
-fn sleep_def_has_correct_fields() {
-    let (program, result) = compile_all();
-    let interp = Interpreter::new(&program, &result.env).unwrap();
-    let state = GameState::new();
-    let mut handler = NullHandler;
-
-    let val = interp
-        .evaluate_derive(&state, &mut handler, "sleep_def", vec![])
-        .unwrap();
-
-    let (level, school) = match &val {
-        Value::Struct { fields, .. } => (
-            expect_int(
-                fields
-                    .get::<ttrpg_ast::Name>(&"level".into())
-                    .cloned()
-                    .unwrap(),
-                "level",
-            ),
-            fields
-                .get::<ttrpg_ast::Name>(&"school".into())
-                .cloned()
-                .unwrap(),
-        ),
-        other => panic!("expected Struct for SpellDef, got {other:?}"),
-    };
-    assert_eq!(level, 1);
-    match school {
-        Value::EnumVariant { variant, .. } => assert_eq!(variant.as_str(), "Enchantment"),
-        other => panic!("expected Enchantment variant, got {other:?}"),
-    }
 }
 
 #[test]

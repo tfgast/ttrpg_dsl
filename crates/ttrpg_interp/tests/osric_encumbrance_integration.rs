@@ -4,8 +4,6 @@
 //! and their interaction with movement and surprise.
 //!
 //! Tests:
-//! - encumbrance_tier: boundary tests at 0, 1, 40, 41, 80, 81, 120, 121
-//! - encumbrance_movement_numerator: each tier → 4/3/2/1/0
 //! - effective_str_encumbrance: STR 10, 18, 18+exc50, 18+exc100
 //! - character_encumbrance: various weight/STR combos
 //! - character_movement + EncumbranceState: Human/Dwarf with each tier
@@ -49,79 +47,6 @@ fn osric_encumbrance_parses_and_typechecks() {
         .iter()
         .any(|item| matches!(&item.node, TopLevel::System(sys) if sys.name == "OSRIC Conditions"));
     assert!(has_conditions);
-}
-
-// ── encumbrance_tier ──────────────────────────────────────────
-
-#[test]
-fn encumbrance_tier_boundaries() {
-    let (program, result) = compile_osric_encumbrance();
-    let interp = Interpreter::new(&program, &result.env).unwrap();
-    let state = GameState::new();
-    let mut handler = NullHandler;
-
-    let cases = [
-        (0, "Unencumbered"),
-        (-10, "Unencumbered"),
-        (1, "Light"),
-        (40, "Light"),
-        (41, "Moderate"),
-        (80, "Moderate"),
-        (81, "Heavy"),
-        (120, "Heavy"),
-        (121, "Overloaded"),
-        (200, "Overloaded"),
-    ];
-
-    for (weight_over, expected) in cases {
-        let val = interp
-            .evaluate_derive(
-                &state,
-                &mut handler,
-                "encumbrance_tier",
-                vec![Value::Int(weight_over)],
-            )
-            .unwrap();
-        assert_eq!(
-            expect_tier(val, &format!("encumbrance_tier({weight_over})")),
-            expected,
-            "weight_over={weight_over}"
-        );
-    }
-}
-
-// ── encumbrance_movement_numerator ────────────────────────────
-
-#[test]
-fn encumbrance_movement_numerator_all_tiers() {
-    let (program, result) = compile_osric_encumbrance();
-    let interp = Interpreter::new(&program, &result.env).unwrap();
-    let state = GameState::new();
-    let mut handler = NullHandler;
-
-    let cases = [
-        ("Unencumbered", 4),
-        ("Light", 3),
-        ("Moderate", 2),
-        ("Heavy", 1),
-        ("Overloaded", 0),
-    ];
-
-    for (variant, expected) in cases {
-        let val = interp
-            .evaluate_derive(
-                &state,
-                &mut handler,
-                "encumbrance_movement_numerator",
-                vec![tier(variant)],
-            )
-            .unwrap();
-        assert_eq!(
-            expect_int(val, &format!("numerator({variant})")),
-            expected,
-            "tier={variant}"
-        );
-    }
 }
 
 // ── effective_str_encumbrance ─────────────────────────────────

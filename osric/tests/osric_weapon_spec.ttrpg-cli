@@ -1,0 +1,77 @@
+// OSRIC Weapon Specialisation integration tests
+//
+// Tests spec_hit_bonus, spec_damage_bonus, can_specialize,
+// can_double_specialize_melee, spec_melee_attacks, spec_missile_rof.
+
+load osric/*.ttrpg
+
+// ── Specialisation bonuses ──────────────────────────────────────
+
+assert_eq spec_hit_bonus(Single), 1
+assert_eq spec_hit_bonus(Double), 3
+assert_eq spec_damage_bonus(Single), 2
+assert_eq spec_damage_bonus(Double), 3
+
+// ── Class eligibility ───────────────────────────────────────────
+
+// Fighter types can specialize
+assert can_specialize(Fighter)
+assert can_specialize(Paladin)
+assert can_specialize(Ranger)
+
+// Non-fighter types cannot
+assert (can_specialize(Cleric)) == false
+assert (can_specialize(MagicUser)) == false
+assert (can_specialize(Thief)) == false
+assert (can_specialize(Assassin)) == false
+assert (can_specialize(Druid)) == false
+assert (can_specialize(Monk)) == false
+assert (can_specialize(Illusionist)) == false
+
+// ── Double specialisation restrictions ──────────────────────────
+
+// PoleArm and SwordTwoHanded cannot double-specialise
+assert (can_double_specialize_melee(PoleArm)) == false
+assert (can_double_specialize_melee(SwordTwoHanded)) == false
+
+// Other weapons can
+assert can_double_specialize_melee(SwordLong)
+assert can_double_specialize_melee(Dagger)
+assert can_double_specialize_melee(BattleAxe)
+assert can_double_specialize_melee(MaceHeavy)
+
+// ── Specialised melee attack rates ──────────────────────────────
+
+// L1-6: 3/2 -> odd=1, even=2
+assert_eq spec_melee_attacks(5, 1), 1
+assert_eq spec_melee_attacks(5, 2), 2
+
+// L7-12: 2/1 -> always 2
+assert_eq spec_melee_attacks(10, 1), 2
+assert_eq spec_melee_attacks(10, 2), 2
+assert_eq spec_melee_attacks(10, 3), 2
+assert_eq spec_melee_attacks(10, 4), 2
+
+// L13+: 5/2 -> odd=2, even=3
+assert_eq spec_melee_attacks(15, 1), 2
+assert_eq spec_melee_attacks(15, 2), 3
+
+// ── Specialised missile rate of fire ────────────────────────────
+
+// Pulled bow (BowLong)
+// L1-6: RoF 2
+assert_eq spec_missile_rof(BowLong, 3, 1), 2
+// L7-12: RoF 3
+assert_eq spec_missile_rof(BowLong, 10, 1), 3
+// L13+: RoF 4
+assert_eq spec_missile_rof(BowLong, 15, 1), 4
+
+// Heavy crossbow
+// L1-6: every other round (odd=1, even=0)
+assert_eq spec_missile_rof(CrossbowHeavy, 3, 1), 1
+assert_eq spec_missile_rof(CrossbowHeavy, 3, 2), 0
+// L7-12: 1 per round
+assert_eq spec_missile_rof(CrossbowHeavy, 10, 1), 1
+// L13+: alternating 2/1
+assert_eq spec_missile_rof(CrossbowHeavy, 15, 1), 2
+assert_eq spec_missile_rof(CrossbowHeavy, 15, 2), 1

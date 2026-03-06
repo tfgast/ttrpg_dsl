@@ -1,0 +1,33 @@
+// OSRIC Magic-User Spells integration tests
+//
+// Tests pure derive functions: magic_missile_count, spell def derives.
+// Spell resolve functions (Magic Missile, Fireball, Sleep) remain in Rust
+// because they require scripted dice, entity conditions, and custom
+// effect handlers.
+
+load osric/*.ttrpg
+
+// ── magic_missile_count ─────────────────────────────────────────
+
+assert_eq magic_missile_count(1), 1
+assert_eq magic_missile_count(2), 1
+assert_eq magic_missile_count(3), 2
+assert_eq magic_missile_count(4), 2
+assert_eq magic_missile_count(5), 3
+assert_eq magic_missile_count(7), 4
+assert_eq magic_missile_count(9), 5
+assert_eq magic_missile_count(11), 6
+
+// ── SpellDef derives ────────────────────────────────────────────
+
+// Fireball: level 3, Evocation
+assert_eq fireball_def().level, 3
+assert_eq fireball_def().school, SpellSchool.Evocation
+
+// Magic Missile: level 1, not reversible
+assert_eq magic_missile_def().level, 1
+assert (magic_missile_def().reversible) == false
+
+// Sleep: level 1, Enchantment
+assert_eq sleep_def().level, 1
+assert_eq sleep_def().school, SpellSchool.Enchantment

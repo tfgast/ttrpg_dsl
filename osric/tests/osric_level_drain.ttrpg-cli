@@ -1,0 +1,57 @@
+// OSRIC Level Drain integration tests
+//
+// Tests pure derive functions: xp_after_drain, is_killed_by_drain,
+// hp_for_level, con_hp_modifier_for_class.
+// Entity-level tests (apply_level_drain, apply_restoration, drain_candidate_classes,
+// highest_class_level) remain in Rust because they require complex entity state,
+// StateAdapter, and scripted dice.
+
+load osric/*.ttrpg
+
+// ── xp_after_drain ──────────────────────────────────────────────
+
+// Fighter level 5 -> drained to 4 -> XP = xp_for_level(Fighter, 4) = 8000
+assert_eq xp_after_drain(Fighter, 5), 8000
+
+// Fighter level 1 -> drained below 1 -> XP = 0
+assert_eq xp_after_drain(Fighter, 1), 0
+
+// ── is_killed_by_drain ──────────────────────────────────────────
+
+assert is_killed_by_drain(1)
+assert (is_killed_by_drain(2)) == false
+
+// ── hp_for_level ────────────────────────────────────────────────
+
+// Finds matching roll
+let rolls = [HpRoll { class: Fighter, level: 1, amount: 8 }, HpRoll { class: Fighter, level: 2, amount: 6 }, HpRoll { class: Fighter, level: 3, amount: 10 }]
+assert_eq hp_for_level(rolls, Fighter, 2), 6
+
+// Missing level -> fallback to 0
+assert_eq hp_for_level(rolls, Fighter, 5), 0
+
+// ── remove_hp_roll ──────────────────────────────────────────────
+
+let rolls2 = [HpRoll { class: Fighter, level: 1, amount: 8 }, HpRoll { class: Fighter, level: 2, amount: 6 }, HpRoll { class: Fighter, level: 3, amount: 10 }]
+let after_remove = remove_hp_roll(rolls2, Fighter, 2)
+assert_eq after_remove.len(), 2
+
+// ── con_hp_modifier_for_class ───────────────────────────────────
+
+// Fighter at CON 18 -> fighter table -> +4
+assert_eq con_hp_modifier_for_class(Fighter, 18), 4
+
+// Thief at CON 18 -> normal table -> +2
+assert_eq con_hp_modifier_for_class(Thief, 18), 2
+
+// ── restoration_eligible ────────────────────────────────────────
+
+// segments_per_day = 14400
+// caster level 7 -> window = 7 * 14400 = 100800 segments
+let drain_event = DrainEvent { class: Fighter, original_level: 5, timestamp: 1000 }
+
+// Within window: 51000 - 1000 = 50000 < 100800
+assert restoration_eligible(drain_event, 51000, 7)
+
+// Outside window: 201000 - 1000 = 200000 > 100800
+assert (restoration_eligible(drain_event, 201000, 7)) == false
