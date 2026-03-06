@@ -697,3 +697,95 @@ system "test" {
         errors
     );
 }
+
+#[test]
+fn action_overload_no_match_for_third_entity_type_at_runtime() {
+    // TakeDamage defined for Character and Monster, but called on NPC
+    // via the public API (which takes an entity, bypassing static checks).
+    let source = r#"
+system "test" {
+    entity Character { HP: int }
+    entity Monster {
+        HP: int
+        morale: int
+    }
+    entity NPC { HP: int }
+
+    action TakeDamage on target: Character (amount: int) {
+        resolve { target.HP -= amount }
+    }
+
+    action TakeDamage on target: Monster (amount: int) {
+        resolve {
+            target.HP -= amount
+            target.morale = 0
+        }
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut gs = GameState::new();
+
+    // Create an NPC — no TakeDamage overload for this type
+    let mut npc_fields = FxHashMap::default();
+    npc_fields.insert("HP".into(), Value::Int(20));
+    let npc = gs.add_entity("NPC", npc_fields);
+
+    let adapter = StateAdapter::new(gs);
+    let mut handler = ScriptedHandler::ack_all();
+
+    // Call TakeDamage directly on the NPC via the public API
+    let result = adapter.run(&mut handler, |state, eff_handler| {
+        interp.execute_action(state, eff_handler, "TakeDamage", npc, vec![Value::Int(5)])
+    });
+
+    // This should fail at runtime: no overload for NPC
+    assert!(result.is_err(), "expected runtime error for missing overload");
+    let err_msg = result.unwrap_err().to_string();
+    assert!(
+        err_msg.contains("no matching overload"),
+        "expected 'no matching overload' error, got: {err_msg}"
+    );
+}
+
+#[test]
+fn action_overload_missing_entity_type_caught_by_checker() {
+    // When the static type is a concrete entity with no overload, checker catches it.
+    let source = r#"
+system "test" {
+    entity Character { HP: int }
+    entity Monster {
+        HP: int
+        morale: int
+    }
+    entity NPC { HP: int }
+
+    action TakeDamage on target: Character (amount: int) {
+        resolve { target.HP -= amount }
+    }
+
+    action TakeDamage on target: Monster (amount: int) {
+        resolve {
+            target.HP -= amount
+            target.morale = 0
+        }
+    }
+
+    // Static type is NPC — checker should catch this
+    action Wrapper on actor: NPC () {
+        resolve {
+            actor.TakeDamage(5)
+        }
+    }
+}
+"#;
+    let errors = setup_errors(source);
+    assert!(
+        errors
+            .iter()
+            .any(|e| e.contains("expects receiver of type")),
+        "expected checker error for NPC calling TakeDamage, got: {:?}",
+        errors
+    );
+}
