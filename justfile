@@ -49,7 +49,7 @@ test-scripts:
     #!/usr/bin/env bash
     set -euo pipefail
     failed=0
-    for script in osric/tests/*.ttrpg-cli ose/tests/*.ttrpg-cli; do
+    for script in osric/tests/*.ttrpg-cli ose/tests/*.ttrpg-cli tests/*.ttrpg-cli; do
         [ -f "$script" ] || continue
         echo "── $script ──"
         if cargo run --quiet --bin ttrpg -- --quiet run "$script"; then
