@@ -528,7 +528,7 @@ system "test" {
     runner.take_output();
 
     let err = runner.exec("call add(1,,2)").unwrap_err();
-    assert!(err.to_string().contains("empty argument"), "got: {err}");
+    assert!(err.to_string().contains("parse error"), "got: {err}");
 }
 
 #[test]
