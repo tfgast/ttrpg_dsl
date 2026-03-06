@@ -1909,31 +1909,34 @@ fn action_test_setup() -> (Program, TypeEnv) {
     )]);
 
     let mut type_env = TypeEnv::new();
-    type_env.functions.insert(
-        "Attack".into(),
-        FnInfo {
-            name: "Attack".into(),
-            kind: FnKind::Action,
-            params: vec![ParamInfo {
-                name: "target".into(),
-                ty: Ty::Entity("Character".into()),
-                has_default: false,
-                with_groups: vec![],
-                with_disjunctive: false,
-            }],
-            return_type: Ty::Unit,
-            receiver: Some(ParamInfo {
-                name: "actor".into(),
-                ty: Ty::Entity("Character".into()),
-                has_default: false,
-                with_groups: vec![],
-                with_disjunctive: false,
-            }),
-            tags: HashSet::new(),
-            synthetic: false,
-            trigger: None,
-        },
-    );
+    let fn_info = FnInfo {
+        name: "Attack".into(),
+        kind: FnKind::Action,
+        params: vec![ParamInfo {
+            name: "target".into(),
+            ty: Ty::Entity("Character".into()),
+            has_default: false,
+            with_groups: vec![],
+            with_disjunctive: false,
+        }],
+        return_type: Ty::Unit,
+        receiver: Some(ParamInfo {
+            name: "actor".into(),
+            ty: Ty::Entity("Character".into()),
+            has_default: false,
+            with_groups: vec![],
+            with_disjunctive: false,
+        }),
+        tags: HashSet::new(),
+        synthetic: false,
+        trigger: None,
+    };
+    type_env
+        .action_overloads
+        .entry("Attack".into())
+        .or_default()
+        .push(fn_info.clone());
+    type_env.functions.insert("Attack".into(), fn_info);
 
     (program, type_env)
 }
@@ -2026,8 +2029,8 @@ fn action_call_missing_receiver_error() {
 
     let err = crate::eval::eval_expr(&mut env, &expr).unwrap_err();
     assert!(
-        err.message.contains("missing required argument"),
-        "Expected missing argument error, got: {}",
+        err.message.contains("requires a receiver argument"),
+        "Expected missing receiver error, got: {}",
         err.message
     );
 }
