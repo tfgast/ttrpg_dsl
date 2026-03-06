@@ -326,6 +326,28 @@ const COMMANDS: &[CommandInfo] = &[
         ],
         category: "Testing",
     },
+    CommandInfo {
+        name: "assert_condition",
+        syntax: "assert_condition <handle>, <ConditionName>",
+        description: "Verify entity has a condition",
+        detail: "Check that a spawned entity currently has the named condition active.",
+        examples: &[
+            "assert_condition fighter, Prone",
+            "assert_condition target, CastingSpell",
+        ],
+        category: "Testing",
+    },
+    CommandInfo {
+        name: "assert_no_condition",
+        syntax: "assert_no_condition <handle>, <ConditionName>",
+        description: "Verify entity does not have a condition",
+        detail: "Check that a spawned entity does not currently have the named condition active.",
+        examples: &[
+            "assert_no_condition fighter, Prone",
+            "assert_no_condition target, Stunned",
+        ],
+        category: "Testing",
+    },
     // Dice Control
     CommandInfo {
         name: "seed",

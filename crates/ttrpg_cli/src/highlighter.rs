@@ -36,6 +36,8 @@ const CLI_COMMANDS: &[&str] = &[
     "assert_ne",
     "assert_match",
     "assert_err",
+    "assert_condition",
+    "assert_no_condition",
     "seed",
     "rolls",
 ];

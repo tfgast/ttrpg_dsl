@@ -278,6 +278,8 @@ impl Runner {
             Command::AssertNe(tail) => self.cmd_assert_ne(&tail),
             Command::AssertMatch(tail) => self.cmd_assert_match(&tail),
             Command::AssertErr(tail) => self.cmd_assert_err(&tail),
+            Command::AssertCondition(tail) => self.cmd_assert_condition(&tail),
+            Command::AssertNoCondition(tail) => self.cmd_assert_no_condition(&tail),
             // Coverage
             Command::Coverage => self.cmd_coverage(),
             Command::CoverageReset => self.cmd_coverage_reset(),

@@ -33,6 +33,8 @@ pub enum Command {
     AssertNe(String),
     AssertMatch(String),
     AssertErr(String),
+    AssertCondition(String),
+    AssertNoCondition(String),
     // Options
     Enable(String),
     Disable(String),
@@ -236,6 +238,22 @@ pub fn parse_command(line: &str) -> Option<Command> {
                 Some(Command::Unknown("assert_err".into()))
             } else {
                 Some(Command::AssertErr(s.into()))
+            }
+        }
+        "assert_condition" => {
+            let s = strip_comment(tail).trim();
+            if s.is_empty() {
+                Some(Command::Unknown("assert_condition".into()))
+            } else {
+                Some(Command::AssertCondition(s.into()))
+            }
+        }
+        "assert_no_condition" => {
+            let s = strip_comment(tail).trim();
+            if s.is_empty() {
+                Some(Command::Unknown("assert_no_condition".into()))
+            } else {
+                Some(Command::AssertNoCondition(s.into()))
             }
         }
         // Configuration
@@ -774,6 +792,56 @@ mod tests {
         assert_eq!(
             parse_command("assert_err destroy nonexistent // should fail"),
             Some(Command::AssertErr("destroy nonexistent".into()))
+        );
+    }
+
+    // ── Condition assertion commands ─────────────────────────────
+
+    #[test]
+    fn parse_assert_condition() {
+        assert_eq!(
+            parse_command("assert_condition fighter, Prone"),
+            Some(Command::AssertCondition("fighter, Prone".into()))
+        );
+    }
+
+    #[test]
+    fn parse_assert_condition_empty_is_unknown() {
+        assert_eq!(
+            parse_command("assert_condition"),
+            Some(Command::Unknown("assert_condition".into()))
+        );
+    }
+
+    #[test]
+    fn parse_assert_condition_strips_comment() {
+        assert_eq!(
+            parse_command("assert_condition fighter, Prone // check prone"),
+            Some(Command::AssertCondition("fighter, Prone".into()))
+        );
+    }
+
+    #[test]
+    fn parse_assert_no_condition() {
+        assert_eq!(
+            parse_command("assert_no_condition fighter, Stunned"),
+            Some(Command::AssertNoCondition("fighter, Stunned".into()))
+        );
+    }
+
+    #[test]
+    fn parse_assert_no_condition_empty_is_unknown() {
+        assert_eq!(
+            parse_command("assert_no_condition"),
+            Some(Command::Unknown("assert_no_condition".into()))
+        );
+    }
+
+    #[test]
+    fn parse_assert_no_condition_strips_comment() {
+        assert_eq!(
+            parse_command("assert_no_condition fighter, Stunned // not stunned"),
+            Some(Command::AssertNoCondition("fighter, Stunned".into()))
         );
     }
 

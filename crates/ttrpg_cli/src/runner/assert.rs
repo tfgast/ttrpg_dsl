@@ -118,6 +118,62 @@ impl Runner {
         }
     }
 
+    pub(super) fn cmd_assert_condition(&mut self, tail: &str) -> Result<(), CliError> {
+        let parts = split_top_level_commas(tail);
+        if parts.len() != 2 {
+            return Err(CliError::Message(
+                "usage: assert_condition <handle>, <ConditionName>".into(),
+            ));
+        }
+        let handle = parts[0].trim();
+        let condition_name = parts[1].trim();
+        if handle.is_empty() || condition_name.is_empty() {
+            return Err(CliError::Message(
+                "usage: assert_condition <handle>, <ConditionName>".into(),
+            ));
+        }
+        let entity = self.resolve_handle(handle)?;
+        let gs = self.game_state.borrow();
+        let has_condition = gs
+            .read_conditions(&entity)
+            .is_some_and(|conds| conds.iter().any(|c| c.name.as_ref() == condition_name));
+        if has_condition {
+            Ok(())
+        } else {
+            Err(CliError::Message(format!(
+                "assertion failed: {handle} does not have condition '{condition_name}'"
+            )))
+        }
+    }
+
+    pub(super) fn cmd_assert_no_condition(&mut self, tail: &str) -> Result<(), CliError> {
+        let parts = split_top_level_commas(tail);
+        if parts.len() != 2 {
+            return Err(CliError::Message(
+                "usage: assert_no_condition <handle>, <ConditionName>".into(),
+            ));
+        }
+        let handle = parts[0].trim();
+        let condition_name = parts[1].trim();
+        if handle.is_empty() || condition_name.is_empty() {
+            return Err(CliError::Message(
+                "usage: assert_no_condition <handle>, <ConditionName>".into(),
+            ));
+        }
+        let entity = self.resolve_handle(handle)?;
+        let gs = self.game_state.borrow();
+        let has_condition = gs
+            .read_conditions(&entity)
+            .is_some_and(|conds| conds.iter().any(|c| c.name.as_ref() == condition_name));
+        if !has_condition {
+            Ok(())
+        } else {
+            Err(CliError::Message(format!(
+                "assertion failed: {handle} has condition '{condition_name}'"
+            )))
+        }
+    }
+
     pub(super) fn cmd_assert_err(&mut self, tail: &str) -> Result<(), CliError> {
         let output_len = self.output.len();
         match self.exec_inner(tail) {
