@@ -6,6 +6,7 @@
 //! tests the saving_throws_for dispatch derive.
 
 use ttrpg_ast::ast::{DeclKind, TopLevel};
+use ttrpg_interp::adapter::StateAdapter;
 use ttrpg_interp::reference_state::GameState;
 use ttrpg_interp::value::Value;
 use ttrpg_interp::Interpreter;
@@ -728,13 +729,13 @@ fn osric_saves_table_entry_counts() {
     }
 }
 
-// ── make_saving_throw mechanic ─────────────────────────────────
+// ── MakeSavingThrow action ─────────────────────────────────────
 
 fn save_category(variant: &str) -> Value {
     enum_variant("SaveCategory", variant)
 }
 
-/// Helper: call make_saving_throw with a scripted d20 roll.
+/// Helper: call MakeSavingThrow action with a scripted d20 roll.
 fn call_make_saving_throw(
     saver_class: &str,
     saver_level: i64,
@@ -760,32 +761,35 @@ fn call_make_saving_throw(
         saver_ancestry,
     );
 
-    let responses = vec![scripted_roll(
-        1,
-        20,
-        0,
-        vec![d20_roll],
-        vec![d20_roll],
-        d20_roll,
-        d20_roll,
-    )];
+    use ttrpg_interp::effect::Response;
+    let responses = vec![
+        Response::Acknowledged, // ActionStarted
+        scripted_roll(1, 20, 0, vec![d20_roll], vec![d20_roll], d20_roll, d20_roll),
+    ];
     let mut handler = ScriptedHandler::with_responses(responses);
 
-    let val = interp
-        .evaluate_mechanic(
-            &state,
-            &mut handler,
-            "make_saving_throw",
-            vec![
-                Value::Entity(saver),
-                save_category(category),
-                Value::Int(bonus),
-                Value::Bool(is_mental),
-            ],
-        )
-        .unwrap_or_else(|e| panic!("make_saving_throw failed: {e}"));
+    let adapter = StateAdapter::new(state);
+    let val = adapter
+        .run(&mut handler, |s, h| {
+            interp.execute_action(
+                s,
+                h,
+                "MakeSavingThrow",
+                saver,
+                vec![
+                    save_category(category),
+                    Value::Int(bonus),
+                    Value::Bool(is_mental),
+                ],
+            )
+        })
+        .unwrap_or_else(|e| panic!("MakeSavingThrow failed: {e}"));
 
-    expect_bool(val, "make_saving_throw")
+    // Unwrap option<bool> → bool
+    match val {
+        Value::Option(Some(inner)) => expect_bool(*inner, "MakeSavingThrow"),
+        other => panic!("expected option<bool> from MakeSavingThrow, got: {other:?}"),
+    }
 }
 
 #[test]

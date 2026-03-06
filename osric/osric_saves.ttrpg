@@ -273,53 +273,51 @@ system "OSRIC Saves" {
 
 
     // ========================================================
-    //  CHARACTER SAVING THROW
+    //  SAVING THROW ACTIONS
     //
-    //  Computes best saves across multiclass, adds stalwart
-    //  (CON-based racial) and wisdom (mental) bonuses, then
-    //  delegates to roll_saving_throw.
+    //  Unified MakeSavingThrow with type-based dispatch:
+    //  Character overload adds stalwart (CON) and wisdom
+    //  (mental) bonuses; Monster overload uses HD-based
+    //  tables with no ability-score bonuses.
+    //
+    //  Returns option<bool>: some(true/false) on success,
+    //  none if the action is vetoed.
     // ========================================================
 
-    mechanic make_saving_throw(
-        saver: Character,
+    action MakeSavingThrow on saver: Character (
         category: SaveCategory,
         bonus: int = 0,
         is_mental: bool = false
-    ) -> bool {
-        let saves = character_best_saves(saver)
+    ) -> option<bool> {
+        resolve {
+            let saves = character_best_saves(saver)
 
-        // Stalwart bonus: dwarves/gnomes/halflings vs aimed magic, poison, spells
-        let stalwart = if has_stalwart(saver.ancestry) && is_stalwart_category(category) {
-            stalwart_save_bonus(saver.abilities[CON])
-        } else {
-            0
+            // Stalwart bonus: dwarves/gnomes/halflings vs aimed magic, poison, spells
+            let stalwart = if has_stalwart(saver.ancestry) && is_stalwart_category(category) {
+                stalwart_save_bonus(saver.abilities[CON])
+            } else {
+                0
+            }
+
+            // Wisdom bonus: mental saves only (charm, hold, etc.)
+            let mental = if is_mental {
+                wis_mental_save(saver.abilities[WIS])
+            } else {
+                0
+            }
+
+            some(roll_saving_throw(saves, category, bonus + stalwart + mental))
         }
-
-        // Wisdom bonus: mental saves only (charm, hold, etc.)
-        let mental = if is_mental {
-            wis_mental_save(saver.abilities[WIS])
-        } else {
-            0
-        }
-
-        roll_saving_throw(saves, category, bonus + stalwart + mental)
     }
 
-
-    // ========================================================
-    //  MONSTER SAVING THROW
-    //
-    //  Looks up saves by HD and intelligence, then delegates
-    //  to roll_saving_throw. Monsters have no racial or
-    //  ability-score bonuses on saves.
-    // ========================================================
-
-    mechanic monster_saving_throw(
-        saver: Monster,
+    action MakeSavingThrow on saver: Monster (
         category: SaveCategory,
-        bonus: int = 0
-    ) -> bool {
-        let saves = monster_best_saves(saver)
-        roll_saving_throw(saves, category, bonus)
+        bonus: int = 0,
+        is_mental: bool = false
+    ) -> option<bool> {
+        resolve {
+            let saves = monster_best_saves(saver)
+            some(roll_saving_throw(saves, category, bonus))
+        }
     }
 }

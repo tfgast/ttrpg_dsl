@@ -566,11 +566,10 @@ fn curse_applies_cursed_on_failed_save() {
 
     // Script a failed save: roll 1 on d20 (natural 1 always fails)
     let save_roll = scripted_roll(1, 20, 0, vec![1], vec![1], 1, 1);
-    let mut handler = ScriptedHandler::with_responses(vec![save_roll]);
-    let state = run_function(
+    let state = run_function_with_rolls(
         &interp,
         state,
-        &mut handler,
+        vec![save_roll],
         "resolve_curse",
         vec![
             Value::Entity(caster),
@@ -616,11 +615,10 @@ fn curse_does_not_apply_on_successful_save() {
 
     // Script a successful save: roll 20 on d20 (natural 20 always succeeds)
     let save_roll = scripted_roll(1, 20, 0, vec![20], vec![20], 20, 20);
-    let mut handler = ScriptedHandler::with_responses(vec![save_roll]);
-    let state = run_function(
+    let state = run_function_with_rolls(
         &interp,
         state,
-        &mut handler,
+        vec![save_roll],
         "resolve_curse",
         vec![
             Value::Entity(caster),
@@ -740,11 +738,10 @@ fn hold_person_paralyzes_on_failed_save() {
     );
 
     // Single target: save at -2. Roll 1 (always fails).
-    let mut handler = ScriptedHandler::with_responses(vec![roll_save(1)]);
-    let state = run_function(
+    let state = run_function_with_rolls(
         &interp,
         state,
-        &mut handler,
+        vec![roll_save(1)],
         "resolve_hold_person",
         vec![
             Value::Entity(caster),
@@ -789,11 +786,10 @@ fn hold_person_no_effect_on_successful_save() {
     );
 
     // Single target: save at -2. Roll 20 (always succeeds).
-    let mut handler = ScriptedHandler::with_responses(vec![roll_save(20)]);
-    let state = run_function(
+    let state = run_function_with_rolls(
         &interp,
         state,
-        &mut handler,
+        vec![roll_save(20)],
         "resolve_hold_person",
         vec![
             Value::Entity(caster),

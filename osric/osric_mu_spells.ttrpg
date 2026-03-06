@@ -86,7 +86,7 @@ system "OSRIC MU Spells" {
         let cl = caster_level(caster, Arcane)
         let total_damage = roll(dice(cl, 6)).total
         for target in targets {
-            let saved = make_saving_throw(target, SaveCategory.SpellsUnlisted)
+            let saved = target.MakeSavingThrow(category: SpellsUnlisted).unwrap()
             let damage = if saved { floor(total_damage / 2) } else { total_damage }
             target.TakeDamage(caster, damage)
             emit SpellDamaged(caster: caster, target: target, spell_name: "Fireball", amount: damage)
@@ -99,7 +99,7 @@ system "OSRIC MU Spells" {
         let cl = caster_level(caster, Arcane)
         let total_damage = roll(dice(cl, 6)).total
         for target in targets {
-            let saved = monster_saving_throw(target, SaveCategory.SpellsUnlisted)
+            let saved = target.MakeSavingThrow(category: SpellsUnlisted).unwrap()
             let damage = if saved { floor(total_damage / 2) } else { total_damage }
             target.TakeDamage(caster, damage)
             emit SpellDamaged(caster: caster, target: target, spell_name: "Fireball", amount: damage)
