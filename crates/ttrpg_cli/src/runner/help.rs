@@ -35,6 +35,19 @@ const COMMANDS: &[CommandInfo] = &[
         category: "Pipeline",
     },
     CommandInfo {
+        name: "let",
+        syntax: "let <name> = <expr>",
+        description: "Bind expression result to a variable",
+        detail: "Evaluate an expression and store the result in a named variable.\n  The variable can then be used in subsequent eval, assert, and assert_eq expressions.\n  Useful for testing multiple fields of a struct result without re-evaluating.",
+        examples: &[
+            "let result = resolve_attack(fighter, goblin)",
+            "assert result.hit == true",
+            "assert_eq result.damage, 5",
+            "let x = 2 + 3",
+        ],
+        category: "Pipeline",
+    },
+    CommandInfo {
         name: "reload",
         syntax: "reload",
         description: "Reload last loaded files",
@@ -274,7 +287,7 @@ const COMMANDS: &[CommandInfo] = &[
         detail: "Evaluate two comma-separated expressions and fail if they differ.",
         examples: &[
             "assert_eq fighter.HP, 30",
-            "assert_eq call modifier(16), 3",
+            "assert_eq modifier(16), 3",
         ],
         category: "Testing",
     },

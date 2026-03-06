@@ -32,6 +32,7 @@ const ALL_COMMANDS: &[&str] = &[
     "enable",
     "disable",
     "options",
+    "let",
     "assert",
     "assert_eq",
     "assert_err",

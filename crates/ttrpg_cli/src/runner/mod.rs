@@ -90,6 +90,7 @@ pub struct Runner {
     output: Vec<String>,
     handles: HashMap<String, EntityRef>,
     reverse_handles: HashMap<EntityRef, String>,
+    variables: HashMap<String, Value>,
     rng: StdRng,
     roll_queue: VecDeque<i64>,
     unit_suffixes: UnitSuffixes,
@@ -111,6 +112,7 @@ impl Runner {
             output: Vec::new(),
             handles: HashMap::new(),
             reverse_handles: HashMap::new(),
+            variables: HashMap::new(),
             rng: StdRng::from_os_rng(),
             roll_queue: VecDeque::new(),
             unit_suffixes: UnitSuffixes::new(),
@@ -251,6 +253,8 @@ impl Runner {
             Command::Call(tail) => self.cmd_call(&tail),
             Command::Grant(tail) => self.cmd_grant(&tail),
             Command::Revoke(tail) => self.cmd_revoke(&tail),
+            // Variables
+            Command::Let(tail) => self.cmd_let(&tail),
             // Inspection
             Command::Inspect(tail) => self.cmd_inspect(&tail),
             Command::State => self.cmd_state(),
@@ -325,9 +329,14 @@ impl Runner {
         )
         .quiet(self.quiet);
         let bindings: rustc_hash::FxHashMap<Name, Value> = self
-            .handles
+            .variables
             .iter()
-            .map(|(name, entity)| (Name::from(name.as_str()), Value::Entity(*entity)))
+            .map(|(name, val)| (Name::from(name.as_str()), val.clone()))
+            .chain(
+                self.handles
+                    .iter()
+                    .map(|(name, entity)| (Name::from(name.as_str()), Value::Entity(*entity))),
+            )
             .collect();
         let result = interp
             .evaluate_expr_with_bindings(&state, &mut handler, &parsed, bindings)

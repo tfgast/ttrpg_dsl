@@ -3748,3 +3748,111 @@ system "test" {
     let output = runner.take_output();
     assert_eq!(output, vec!["\"got_only_a\""]);
 }
+
+// ── let command ─────────────────────────────────────────────
+
+#[test]
+fn let_binds_simple_value() {
+    let mut runner = Runner::new();
+    runner.exec("let x = 2 + 3").unwrap();
+    let output = runner.take_output();
+    assert_eq!(output, vec!["x = 5"]);
+
+    // Variable is available in subsequent eval
+    let val = runner.eval("x").unwrap();
+    assert_eq!(val, Value::Int(5));
+}
+
+#[test]
+fn let_variable_in_assert() {
+    let mut runner = Runner::new();
+    runner.exec("let x = 10").unwrap();
+    runner.take_output();
+    runner.exec("assert x == 10").unwrap();
+    runner.exec("assert_eq x, 10").unwrap();
+}
+
+#[test]
+fn let_variable_in_expression() {
+    let mut runner = Runner::new();
+    runner.exec("let x = 3").unwrap();
+    runner.take_output();
+    let val = runner.eval("x * 2").unwrap();
+    assert_eq!(val, Value::Int(6));
+}
+
+#[test]
+fn let_reassign_variable() {
+    let mut runner = Runner::new();
+    runner.exec("let x = 1").unwrap();
+    runner.take_output();
+    runner.exec("let x = 2").unwrap();
+    runner.take_output();
+    let val = runner.eval("x").unwrap();
+    assert_eq!(val, Value::Int(2));
+}
+
+#[test]
+fn let_struct_field_access() {
+    let source = r#"
+system "test" {
+    struct AttackResult {
+        hit: bool
+        damage: int
+    }
+    mechanic make_result() -> AttackResult {
+        AttackResult { hit: true, damage: 7 }
+    }
+}
+"#;
+    let path = write_temp("let_struct", source);
+    let mut runner = Runner::new();
+    runner.exec(&format!("load {}", path.display())).unwrap();
+    runner.take_output();
+
+    // Bind the struct result once
+    runner.exec("let r = make_result()").unwrap();
+    runner.take_output();
+
+    // Assert on multiple fields without re-calling
+    runner.exec("assert r.hit == true").unwrap();
+    runner.exec("assert_eq r.damage, 7").unwrap();
+}
+
+#[test]
+fn let_invalid_name() {
+    let mut runner = Runner::new();
+    let err = runner.exec("let 123bad = 1").unwrap_err();
+    assert!(err.to_string().contains("invalid variable name"));
+}
+
+#[test]
+fn let_missing_equals() {
+    let mut runner = Runner::new();
+    let err = runner.exec("let x").unwrap_err();
+    assert!(err.to_string().contains("usage:"));
+}
+
+#[test]
+fn let_handle_takes_priority() {
+    // Entity handles should shadow variables (handles are added after variables)
+    let source = r#"
+system "test" {
+    entity Creature {
+        HP: int
+    }
+}
+"#;
+    let path = write_temp("let_handle", source);
+    let mut runner = Runner::new();
+    runner.exec(&format!("load {}", path.display())).unwrap();
+    runner.take_output();
+
+    runner.exec("let hero = 42").unwrap();
+    runner.take_output();
+    runner.exec("spawn Creature hero { HP: 10 }").unwrap();
+    runner.take_output();
+
+    // Handle should win — hero.HP should work
+    runner.exec("assert hero.HP == 10").unwrap();
+}

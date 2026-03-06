@@ -25,6 +25,8 @@ pub enum Command {
     Hooks,
     Events,
     ConditionDecls,
+    // Variables
+    Let(String),
     // Assertions
     Assert(String),
     AssertEq(String),
@@ -184,6 +186,15 @@ pub fn parse_command(line: &str) -> Option<Command> {
             }
         }
         "options" => Some(Command::Options),
+        // Variables
+        "let" => {
+            let s = strip_comment(tail).trim();
+            if s.is_empty() {
+                Some(Command::Unknown("let".into()))
+            } else {
+                Some(Command::Let(s.into()))
+            }
+        }
         // Assertions
         "assert" => {
             let s = strip_comment(tail).trim();
@@ -619,6 +630,31 @@ mod tests {
     #[test]
     fn parse_hooks() {
         assert_eq!(parse_command("hooks"), Some(Command::Hooks));
+    }
+
+    // ── Phase 3: Assertion commands ──────────────────────────────
+
+    // ── Let command ─────────────────────────────────────────────
+
+    #[test]
+    fn parse_let() {
+        assert_eq!(
+            parse_command("let x = 2 + 3"),
+            Some(Command::Let("x = 2 + 3".into()))
+        );
+    }
+
+    #[test]
+    fn parse_let_empty_is_unknown() {
+        assert_eq!(parse_command("let"), Some(Command::Unknown("let".into())));
+    }
+
+    #[test]
+    fn parse_let_with_comment() {
+        assert_eq!(
+            parse_command("let result = call foo(a, b) // capture result"),
+            Some(Command::Let("result = call foo(a, b)".into()))
+        );
     }
 
     // ── Phase 3: Assertion commands ──────────────────────────────
