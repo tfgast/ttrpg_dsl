@@ -294,6 +294,17 @@ const COMMANDS: &[CommandInfo] = &[
         category: "Testing",
     },
     CommandInfo {
+        name: "assert_ne",
+        syntax: "assert_ne <expr>, <expr>",
+        description: "Verify two expressions are not equal",
+        detail: "Evaluate two comma-separated expressions and fail if they are equal.",
+        examples: &[
+            "assert_ne result, TurnOutcome.Impossible",
+            "assert_ne fighter.HP, 0",
+        ],
+        category: "Testing",
+    },
+    CommandInfo {
         name: "assert_match",
         syntax: "assert_match <expr>, <EnumName>.<Variant>",
         description: "Verify expression matches an enum variant",

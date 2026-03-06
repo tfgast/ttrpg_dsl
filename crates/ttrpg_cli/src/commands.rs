@@ -30,6 +30,7 @@ pub enum Command {
     // Assertions
     Assert(String),
     AssertEq(String),
+    AssertNe(String),
     AssertMatch(String),
     AssertErr(String),
     // Options
@@ -211,6 +212,14 @@ pub fn parse_command(line: &str) -> Option<Command> {
                 Some(Command::Unknown("assert_eq".into()))
             } else {
                 Some(Command::AssertEq(s.into()))
+            }
+        }
+        "assert_ne" => {
+            let s = strip_comment(tail).trim();
+            if s.is_empty() {
+                Some(Command::Unknown("assert_ne".into()))
+            } else {
+                Some(Command::AssertNe(s.into()))
             }
         }
         "assert_match" => {
@@ -697,6 +706,22 @@ mod tests {
         assert_eq!(
             parse_command("assert_eq"),
             Some(Command::Unknown("assert_eq".into()))
+        );
+    }
+
+    #[test]
+    fn parse_assert_ne() {
+        assert_eq!(
+            parse_command("assert_ne fighter.HP, 0"),
+            Some(Command::AssertNe("fighter.HP, 0".into()))
+        );
+    }
+
+    #[test]
+    fn parse_assert_ne_empty_is_unknown() {
+        assert_eq!(
+            parse_command("assert_ne"),
+            Some(Command::Unknown("assert_ne".into()))
         );
     }
 

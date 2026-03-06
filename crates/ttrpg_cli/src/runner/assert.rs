@@ -44,6 +44,34 @@ impl Runner {
         }
     }
 
+    pub(super) fn cmd_assert_ne(&mut self, tail: &str) -> Result<(), CliError> {
+        let parts = split_top_level_commas(tail);
+        if parts.len() != 2 {
+            return Err(CliError::Message(
+                "usage: assert_ne <expr1>, <expr2>".into(),
+            ));
+        }
+        let left_str = parts[0].trim();
+        let right_str = parts[1].trim();
+        if left_str.is_empty() || right_str.is_empty() {
+            return Err(CliError::Message(
+                "usage: assert_ne <expr1>, <expr2>".into(),
+            ));
+        }
+        let left = self.eval(left_str)?;
+        let right = self.eval(right_str)?;
+        if left != right {
+            Ok(())
+        } else {
+            Err(CliError::Message(format!(
+                "assertion failed: {} == {}\n  both: {}",
+                left_str,
+                right_str,
+                format_value(&left, &self.unit_suffixes)
+            )))
+        }
+    }
+
     pub(super) fn cmd_assert_match(&mut self, tail: &str) -> Result<(), CliError> {
         let parts = split_top_level_commas(tail);
         if parts.len() != 2 {

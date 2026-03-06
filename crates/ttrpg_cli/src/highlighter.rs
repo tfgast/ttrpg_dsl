@@ -33,6 +33,7 @@ const CLI_COMMANDS: &[&str] = &[
     "options",
     "assert",
     "assert_eq",
+    "assert_ne",
     "assert_match",
     "assert_err",
     "seed",

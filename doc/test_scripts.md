@@ -66,6 +66,10 @@ assert 2 + 3 == 5
 // Assert two expressions are equal
 assert_eq fighter_group_bthb(5), 4
 
+// Assert two expressions are not equal
+assert_ne result, TurnOutcome.Impossible
+assert_ne fighter.HP, 0
+
 // Assert an expression is a specific enum variant (ignoring fields)
 assert_match result, TurnResult.Turned
 assert_match school, SpellSchool.Evocation
@@ -314,7 +318,7 @@ assert hp == 15
 ```
 
 Variables persist for the rest of the script and can be used in any
-expression context (`eval`, `assert`, `assert_eq`, `assert_match`).
+expression context (`eval`, `assert`, `assert_eq`, `assert_ne`, `assert_match`).
 
 ## Known limitations
 

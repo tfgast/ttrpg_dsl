@@ -275,6 +275,7 @@ impl Runner {
             // Assertions
             Command::Assert(expr_str) => self.cmd_assert(&expr_str),
             Command::AssertEq(tail) => self.cmd_assert_eq(&tail),
+            Command::AssertNe(tail) => self.cmd_assert_ne(&tail),
             Command::AssertMatch(tail) => self.cmd_assert_match(&tail),
             Command::AssertErr(tail) => self.cmd_assert_err(&tail),
             // Coverage
