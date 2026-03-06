@@ -117,6 +117,13 @@ rolls 8
 let restore_result = apply_restoration(restore_target, 10000, 7)
 assert_ne restore_result, none
 
+// Unwrap and check inner fields
+let r = restore_result.unwrap()
+assert_eq r.restored_level, 5
+assert_eq r.drain_history.len(), 1
+assert_eq r.hp_change, 8
+assert_eq r.hp_rolls.len(), 4
+
 // ── restoration returns none when expired ────────────────────────
 
 // Drain at time 1000, restore at time 500000 with caster level 7.
