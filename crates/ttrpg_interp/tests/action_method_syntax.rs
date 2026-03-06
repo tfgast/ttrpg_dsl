@@ -505,3 +505,195 @@ system "test" {
         "method-call default should be able to reference receiver (healer.HP)"
     );
 }
+
+// ── Type-based action dispatch (overloading by receiver type) ─────
+
+fn make_monster(gs: &mut GameState, hp: i64) -> ttrpg_interp::state::EntityRef {
+    let mut fields = FxHashMap::default();
+    fields.insert("HP".into(), Value::Int(hp));
+    fields.insert("morale".into(), Value::Int(7));
+    gs.add_entity("Monster", fields)
+}
+
+#[test]
+fn action_overload_dispatches_by_entity_type() {
+    // Two TakeDamage actions: one for Character, one for Monster.
+    // Character version subtracts damage. Monster version subtracts damage and sets morale to 0.
+    let source = r#"
+system "test" {
+    entity Character { HP: int }
+    entity Monster {
+        HP: int
+        morale: int
+    }
+
+    action TakeDamage on target: Character (amount: int) {
+        resolve {
+            target.HP -= amount
+        }
+    }
+
+    action TakeDamage on target: Monster (amount: int) {
+        resolve {
+            target.HP -= amount
+            target.morale = 0
+        }
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut gs = GameState::new();
+    let character = make_entity(&mut gs, 50);
+    let monster = make_monster(&mut gs, 30);
+
+    let adapter = StateAdapter::new(gs);
+    let mut handler = ScriptedHandler::ack_all();
+
+    // Damage the character
+    adapter
+        .run(&mut handler, |state, eff_handler| {
+            interp.execute_action(
+                state,
+                eff_handler,
+                "TakeDamage",
+                character,
+                vec![Value::Int(10)],
+            )
+        })
+        .unwrap();
+
+    // Damage the monster
+    adapter
+        .run(&mut handler, |state, eff_handler| {
+            interp.execute_action(
+                state,
+                eff_handler,
+                "TakeDamage",
+                monster,
+                vec![Value::Int(5)],
+            )
+        })
+        .unwrap();
+
+    let gs = adapter.into_inner();
+
+    // Character: HP 50 - 10 = 40
+    assert_eq!(gs.read_field(&character, "HP").unwrap(), Value::Int(40));
+
+    // Monster: HP 30 - 5 = 25, morale set to 0
+    assert_eq!(gs.read_field(&monster, "HP").unwrap(), Value::Int(25));
+    assert_eq!(gs.read_field(&monster, "morale").unwrap(), Value::Int(0));
+}
+
+#[test]
+fn action_overload_method_syntax() {
+    // Test that method-call syntax also dispatches to the right overload.
+    let source = r#"
+system "test" {
+    entity Character { HP: int }
+    entity Monster {
+        HP: int
+        morale: int
+    }
+
+    action TakeDamage on target: Character (amount: int) {
+        resolve {
+            target.HP -= amount
+        }
+    }
+
+    action TakeDamage on target: Monster (amount: int) {
+        resolve {
+            target.HP -= amount
+            target.morale = 0
+        }
+    }
+
+    // Wrapper that calls TakeDamage via method syntax on a Character param
+    action HitMonster on actor: Character (target: Monster, amount: int) {
+        resolve {
+            target.TakeDamage(amount)
+        }
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut gs = GameState::new();
+    let character = make_entity(&mut gs, 50);
+    let monster = make_monster(&mut gs, 30);
+
+    let adapter = StateAdapter::new(gs);
+    let mut handler = ScriptedHandler::ack_all();
+
+    adapter
+        .run(&mut handler, |state, eff_handler| {
+            interp.execute_action(
+                state,
+                eff_handler,
+                "HitMonster",
+                character,
+                vec![Value::Entity(monster), Value::Int(15)],
+            )
+        })
+        .unwrap();
+
+    let gs = adapter.into_inner();
+    // Monster should have taken 15 damage and morale set to 0
+    assert_eq!(gs.read_field(&monster, "HP").unwrap(), Value::Int(15));
+    assert_eq!(gs.read_field(&monster, "morale").unwrap(), Value::Int(0));
+}
+
+#[test]
+fn action_overload_duplicate_receiver_type_error() {
+    // Two actions with the same name AND same receiver type should error.
+    let source = r#"
+system "test" {
+    entity Character { HP: int }
+
+    action TakeDamage on target: Character (amount: int) {
+        resolve { target.HP -= amount }
+    }
+
+    action TakeDamage on target: Character (amount: int) {
+        resolve { target.HP -= amount }
+    }
+}
+"#;
+    let errors = setup_errors(source);
+    assert!(
+        errors.iter().any(|e| e.contains("duplicate action")),
+        "expected duplicate action error, got: {:?}",
+        errors
+    );
+}
+
+#[test]
+fn action_overload_checker_validates_receiver_type() {
+    // Method call on wrong entity type should be caught by checker.
+    let source = r#"
+system "test" {
+    entity Character { HP: int }
+    entity Monster { HP: int }
+
+    action CharOnly on target: Character (amount: int) {
+        resolve { target.HP -= amount }
+    }
+
+    action Wrapper on actor: Monster () {
+        resolve {
+            actor.CharOnly(5)
+        }
+    }
+}
+"#;
+    let errors = setup_errors(source);
+    assert!(
+        errors
+            .iter()
+            .any(|e| e.contains("expects receiver of type")),
+        "expected receiver type mismatch error, got: {:?}",
+        errors
+    );
+}

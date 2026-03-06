@@ -46,8 +46,16 @@ impl Checker<'_> {
                             // Check module visibility (same as direct call path)
                             self.check_name_visible(field, Namespace::Function, span);
 
-                            // Verify receiver type compatibility
-                            if let Some(ref receiver) = fn_info.receiver {
+                            // Select the best overload for this receiver type.
+                            // If found, use its params for arg checking; otherwise
+                            // verify against the representative and report mismatch.
+                            let resolved = self
+                                .env
+                                .lookup_action_overload(field, &obj_ty)
+                                .cloned()
+                                .unwrap_or(fn_info);
+
+                            if let Some(ref receiver) = resolved.receiver {
                                 if !self.types_compatible(&obj_ty, &receiver.ty) {
                                     self.error(
                                         format!(
@@ -82,8 +90,14 @@ impl Checker<'_> {
                             }
 
                             // Check args against action params (without receiver — it's the object)
-                            self.check_args(field, CallKind::Function, &fn_info.params, args, span);
-                            return fn_info.return_type.clone();
+                            self.check_args(
+                                field,
+                                CallKind::Function,
+                                &resolved.params,
+                                args,
+                                span,
+                            );
+                            return resolved.return_type.clone();
                         }
                     }
                 }

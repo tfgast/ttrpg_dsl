@@ -138,9 +138,7 @@ impl Checker<'_> {
                             && !self.types_compatible(&val_ty, expected)
                         {
                             self.error(
-                                format!(
-                                    "return value has type {val_ty}, expected {expected}"
-                                ),
+                                format!("return value has type {val_ty}, expected {expected}"),
                                 e.span,
                             );
                         }
@@ -151,9 +149,7 @@ impl Checker<'_> {
                     }
                     (None, Some(expected)) if *expected != Ty::Unit => {
                         self.error(
-                            format!(
-                                "bare `return` in block that expects return type {expected}"
-                            ),
+                            format!("bare `return` in block that expects return type {expected}"),
                             stmt.span,
                         );
                     }

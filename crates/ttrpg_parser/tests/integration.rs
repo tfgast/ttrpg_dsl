@@ -600,7 +600,7 @@ fn test_multiple_requires_blocks() {
         diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
     );
     program.build_index();
-    let action = &program.actions["Attack"];
+    let action = &program.actions["Attack"][0];
     assert!(
         action.requires.is_some(),
         "combined requires should be present"
@@ -643,7 +643,7 @@ fn test_multiple_requires_with_blank_lines() {
         diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
     );
     program.build_index();
-    let action = &program.actions["Attack"];
+    let action = &program.actions["Attack"][0];
     assert!(action.requires.is_some());
     // Three requires -> two && nodes (left-associative)
     match &action.requires.as_ref().unwrap().node {

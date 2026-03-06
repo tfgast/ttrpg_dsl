@@ -3,6 +3,7 @@ use ttrpg_ast::{Name, Span};
 use ttrpg_checker::env::ParamInfo;
 
 use crate::action::execute_action;
+use crate::select_action_overload;
 use crate::value::Value;
 use crate::Env;
 use crate::RuntimeError;
@@ -10,6 +11,34 @@ use crate::RuntimeError;
 use super::args::bind_args;
 
 // ── Action dispatch ────────────────────────────────────────────
+
+/// Look up the action overloads by name and select the best match for the given entity.
+fn resolve_action_decl(
+    env: &Env,
+    name: &str,
+    entity_type: Option<&Name>,
+    call_span: Span,
+) -> Result<ttrpg_ast::ast::ActionDecl, RuntimeError> {
+    let overloads = env.interp.program.actions.get(name).ok_or_else(|| {
+        RuntimeError::with_span(
+            format!("internal error: no declaration found for action '{name}'"),
+            call_span,
+        )
+    })?;
+
+    select_action_overload(overloads, entity_type)
+        .cloned()
+        .ok_or_else(|| {
+            RuntimeError::with_span(
+                format!(
+                    "no matching overload for action '{}' on entity type '{}'",
+                    name,
+                    entity_type.map(|n| n.as_str()).unwrap_or("unknown")
+                ),
+                call_span,
+            )
+        })
+}
 
 /// Dispatch an action call from within DSL code (nested action calls from resolve blocks).
 ///
@@ -22,22 +51,6 @@ pub(super) fn dispatch_action(
     call_span: Span,
 ) -> Result<Value, RuntimeError> {
     let name = &fn_info.name;
-
-    // Look up action declaration and clone what we need before borrowing env mutably
-    let action_decl = env
-        .interp
-        .program
-        .actions
-        .get(name.as_str())
-        .ok_or_else(|| {
-            RuntimeError::with_span(
-                format!("internal error: no declaration found for action '{name}'"),
-                call_span,
-            )
-        })?;
-    let action_decl = action_decl.clone();
-    let ast_params = action_decl.params.clone();
-    let receiver_type = action_decl.receiver_type.clone();
 
     // Get receiver info (actions always have a receiver)
     let receiver_info = fn_info
@@ -59,17 +72,32 @@ pub(super) fn dispatch_action(
         params
     };
 
-    // Build aligned AST params with placeholder for receiver (for default evaluation).
+    // We need to bind args first to get the receiver value, then resolve the overload.
+    // Use a temporary placeholder action decl for the receiver type in AST params.
     // The receiver has has_default: false, so bind_args won't evaluate a default for it.
+
+    // For now, build AST params from the fn_info (we'll get the real AST params after resolving).
+    // We need the receiver type from fn_info for the placeholder.
+    let placeholder_receiver_type = ttrpg_ast::Spanned::new(
+        ttrpg_ast::ast::TypeExpr::Named(Name::from("entity")),
+        call_span,
+    );
+
     let effective_ast_params: Vec<Param> = {
         let mut params = vec![Param {
             name: receiver_info.name.clone(),
-            ty: receiver_type,
+            ty: placeholder_receiver_type,
             default: None,
             with_groups: WithClause::default(),
             span: call_span,
         }];
-        params.extend(ast_params);
+        // We need the real AST params for default evaluation. Look up overloads to get them.
+        // Since we don't know the entity type yet, grab the first overload's params as a
+        // starting point — all overloads should have compatible signatures.
+        let overloads = env.interp.program.actions.get(name.as_str());
+        if let Some(overloads) = overloads {
+            params.extend(overloads[0].params.clone());
+        }
         params
     };
 
@@ -96,6 +124,10 @@ pub(super) fn dispatch_action(
         }
     };
 
+    // Now resolve the correct overload using the actor's entity type
+    let entity_type = env.state.entity_type_name(&actor);
+    let action_decl = resolve_action_decl(env, name, entity_type.as_ref(), call_span)?;
+
     // Remaining bound arguments (skip receiver) are the action's regular params
     let action_args: Vec<(Name, Value)> = bound[1..].to_vec();
 
@@ -116,20 +148,6 @@ pub(super) fn dispatch_action_method(
 ) -> Result<Value, RuntimeError> {
     let name = &fn_info.name;
 
-    let action_decl = env
-        .interp
-        .program
-        .actions
-        .get(name.as_str())
-        .ok_or_else(|| {
-            RuntimeError::with_span(
-                format!("internal error: no declaration found for action '{name}'"),
-                call_span,
-            )
-        })?
-        .clone();
-    let ast_params = action_decl.params.clone();
-
     // Extract EntityRef from receiver value
     let actor = match &receiver {
         Value::Entity(entity_ref) => *entity_ref,
@@ -140,6 +158,11 @@ pub(super) fn dispatch_action_method(
             ));
         }
     };
+
+    // Resolve the correct overload using the actor's entity type
+    let entity_type = env.state.entity_type_name(&actor);
+    let action_decl = resolve_action_decl(env, name, entity_type.as_ref(), call_span)?;
+    let ast_params = action_decl.params.clone();
 
     // Bind remaining arguments against the action's regular params (not receiver).
     // Push receiver into scope first so default expressions can reference it

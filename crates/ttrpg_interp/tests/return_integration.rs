@@ -334,9 +334,7 @@ system "test" {
 "#,
     );
     assert!(
-        errors
-            .iter()
-            .any(|e| e.contains("bare `return`")),
+        errors.iter().any(|e| e.contains("bare `return`")),
         "expected bare return error, got: {errors:?}"
     );
 }

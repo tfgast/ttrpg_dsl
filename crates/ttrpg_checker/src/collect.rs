@@ -907,9 +907,11 @@ fn collect_fn(
     );
 }
 
-/// Actions are intentionally stored in `env.functions` and callable as regular
-/// functions. Method-call syntax (`receiver.action()`) is not yet implemented;
-/// when it is, a `FnKind` gate may be added to restrict call sites.
+/// Actions are stored in `env.functions` (representative entry for name resolution)
+/// and `env.action_overloads` (all overloads for type-based dispatch).
+///
+/// Multiple actions with the same name are allowed if they have different receiver
+/// types. Duplicate receiver types for the same action name are an error.
 fn collect_action(
     a: &ActionDecl,
     env: &mut TypeEnv,
@@ -961,7 +963,7 @@ fn collect_action(
 
     let receiver = ParamInfo {
         name: a.receiver_name.clone(),
-        ty: env.resolve_type(&a.receiver_type),
+        ty: recv_ty.clone(),
         has_default: false,
         with_groups: a
             .receiver_with_groups
@@ -972,18 +974,103 @@ fn collect_action(
         with_disjunctive: a.receiver_with_groups.disjunctive,
     };
 
-    collect_fn(
-        &a.name,
-        FnKind::Action,
-        &a.params,
-        None,
-        Some(receiver),
-        &a.tags,
-        false,
-        env,
-        diagnostics,
-        span,
-    );
+    // Check for duplicate receiver type in existing overloads
+    if let Some(existing) = env.action_overloads.get(a.name.as_str()) {
+        if existing
+            .iter()
+            .any(|fi| fi.receiver.as_ref().is_some_and(|r| r.ty == recv_ty))
+        {
+            diagnostics.push(Diagnostic::error(
+                format!(
+                    "duplicate action `{}` for receiver type {}",
+                    a.name,
+                    recv_ty.display()
+                ),
+                span,
+            ));
+        }
+
+        // Check for name collision with a non-action function
+        if let Some(existing_fn) = env.functions.get(a.name.as_str()) {
+            if existing_fn.kind != FnKind::Action {
+                diagnostics.push(Diagnostic::error(
+                    format!(
+                        "action `{}` conflicts with existing {} of the same name",
+                        a.name,
+                        match existing_fn.kind {
+                            FnKind::Function => "function",
+                            FnKind::Derive => "derive",
+                            FnKind::Mechanic => "mechanic",
+                            FnKind::Table => "table",
+                            _ => "declaration",
+                        }
+                    ),
+                    span,
+                ));
+            }
+        }
+    }
+
+    // Build FnInfo for this overload
+    let mut seen_params = HashSet::new();
+    let param_infos: Vec<ParamInfo> = a
+        .params
+        .iter()
+        .map(|p| {
+            if !seen_params.insert(p.name.clone()) {
+                diagnostics.push(Diagnostic::error(
+                    format!("duplicate parameter `{}` in action `{}`", p.name, a.name),
+                    p.span,
+                ));
+            }
+            ParamInfo {
+                name: p.name.clone(),
+                ty: env.resolve_type_validated(&p.ty, diagnostics),
+                has_default: p.default.is_some(),
+                with_groups: p
+                    .with_groups
+                    .groups
+                    .iter()
+                    .map(|g| g.name.clone())
+                    .collect(),
+                with_disjunctive: p.with_groups.disjunctive,
+            }
+        })
+        .collect();
+
+    // Validate tags
+    let mut tag_set = HashSet::new();
+    for tag in &a.tags {
+        if !env.tags.contains(tag) {
+            diagnostics.push(Diagnostic::error(
+                format!("undeclared tag `{tag}` on action `{}`", a.name),
+                span,
+            ));
+        }
+        tag_set.insert(tag.clone());
+    }
+
+    let fn_info = FnInfo {
+        name: a.name.clone(),
+        kind: FnKind::Action,
+        params: param_infos,
+        return_type: Ty::Unit,
+        receiver: Some(receiver),
+        tags: tag_set,
+        synthetic: false,
+        trigger: None,
+    };
+
+    // Store in action_overloads
+    env.action_overloads
+        .entry(a.name.clone())
+        .or_default()
+        .push(fn_info.clone());
+
+    // Store representative in env.functions (first overload wins, or update to AnyEntity receiver)
+    if !env.functions.contains_key(a.name.as_str()) {
+        env.functions.insert(a.name.clone(), fn_info);
+    }
 }
 
 /// Reactions are intentionally stored in `env.functions` and callable as regular

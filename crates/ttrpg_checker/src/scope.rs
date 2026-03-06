@@ -240,8 +240,7 @@ impl ScopeStack {
     }
 
     pub fn allows_return(&self) -> bool {
-        self.current_block_kind()
-            .is_some_and(|k| k.allows_return())
+        self.current_block_kind().is_some_and(|k| k.allows_return())
     }
 
     /// Find the return type of the enclosing block that set one (skipping Inner scopes).

@@ -16,7 +16,7 @@ use std::rc::Rc;
 
 use rustc_hash::FxHashMap;
 
-use ttrpg_ast::ast::{DeclKind, ExprKind, Program, TopLevel};
+use ttrpg_ast::ast::{ActionDecl, DeclKind, ExprKind, Program, TopLevel, TypeExpr};
 use ttrpg_ast::{Name, Span, Spanned};
 use ttrpg_checker::env::TypeEnv;
 
@@ -24,6 +24,44 @@ use crate::effect::{EffectHandler, FieldPathSegment};
 use crate::event::{EventResult, HookResult};
 use crate::state::{EntityRef, InvocationId, StateProvider};
 use crate::value::Value;
+
+// ── Action overload resolution ────────────────────────────────
+
+/// Select the best action overload for the given entity type.
+///
+/// Resolution order:
+/// 1. Exact match: overload whose receiver type matches `entity_type`
+/// 2. Generic fallback: overload with receiver type `entity` (AnyEntity)
+/// 3. Single overload: if there's only one, use it (runtime type check will catch mismatches)
+pub(crate) fn select_action_overload<'a>(
+    overloads: &'a [ActionDecl],
+    entity_type: Option<&Name>,
+) -> Option<&'a ActionDecl> {
+    if overloads.len() == 1 {
+        return Some(&overloads[0]);
+    }
+
+    // Exact match on receiver type
+    if let Some(etype) = entity_type {
+        if let Some(decl) = overloads.iter().find(|a| match &a.receiver_type.node {
+            TypeExpr::Named(n) => n == etype,
+            _ => false,
+        }) {
+            return Some(decl);
+        }
+    }
+
+    // Generic `entity` fallback
+    if let Some(decl) = overloads.iter().find(|a| match &a.receiver_type.node {
+        TypeExpr::Named(n) => n == "entity",
+        _ => false,
+    }) {
+        return Some(decl);
+    }
+
+    // No match
+    None
+}
 
 // ── RuntimeError ───────────────────────────────────────────────
 
@@ -153,12 +191,23 @@ impl<'p> Interpreter<'p> {
         actor: EntityRef,
         args: Vec<Value>,
     ) -> Result<Value, RuntimeError> {
-        let action_decl = self
+        let overloads = self
             .program
             .actions
             .get(name)
             .ok_or_else(|| RuntimeError::new(format!("undefined action '{name}'")))?;
-        let action_decl = action_decl.clone();
+
+        // Select the right overload based on the actor's entity type
+        let entity_type = state.entity_type_name(&actor);
+        let action_decl = select_action_overload(overloads, entity_type.as_ref())
+            .ok_or_else(|| {
+                RuntimeError::new(format!(
+                    "no matching overload for action '{}' on entity type '{}'",
+                    name,
+                    entity_type.as_deref().unwrap_or("unknown")
+                ))
+            })?
+            .clone();
 
         // Map positional args to param names
         if args.len() > action_decl.params.len() {

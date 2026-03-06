@@ -10,7 +10,7 @@ pub struct Program {
     pub items: Vec<Spanned<TopLevel>>,
 
     // ── Declaration index (built by `build_index()`) ────────────
-    pub actions: FxHashMap<Name, ActionDecl>,
+    pub actions: FxHashMap<Name, Vec<ActionDecl>>,
     pub derives: FxHashMap<Name, FnDecl>,
     pub mechanics: FxHashMap<Name, FnDecl>,
     pub reactions: FxHashMap<Name, ReactionDecl>,
@@ -59,7 +59,10 @@ impl Program {
                             self.tags.insert(t.name.clone());
                         }
                         DeclKind::Action(a) => {
-                            self.actions.insert(a.name.clone(), a.clone());
+                            self.actions
+                                .entry(a.name.clone())
+                                .or_default()
+                                .push(a.clone());
                         }
                         DeclKind::Function(f) => {
                             self.functions.insert(f.name.clone(), f.clone());

@@ -483,13 +483,13 @@ fn read_spellcasting(
         Some(Value::List(items)) => items
             .iter()
             .map(|v| match v {
-                Value::Struct { fields, .. } => {
-                    match fields.get::<Name>(&"id".into()) {
-                        Some(Value::EnumVariant { variant, .. }) => variant.to_string(),
-                        other => panic!("expected SpellId enum in MemorizedSpell.id, got {other:?}"),
-                    }
+                Value::Struct { fields, .. } => match fields.get::<Name>(&"id".into()) {
+                    Some(Value::EnumVariant { variant, .. }) => variant.to_string(),
+                    other => panic!("expected SpellId enum in MemorizedSpell.id, got {other:?}"),
+                },
+                other => {
+                    panic!("expected MemorizedSpell struct in memorised_spells, got {other:?}")
                 }
-                other => panic!("expected MemorizedSpell struct in memorised_spells, got {other:?}"),
             })
             .collect(),
         other => panic!("expected list for memorised_spells, got {other:?}"),
@@ -743,11 +743,7 @@ fn cast_spell_expends_slot_and_begins_casting() {
         &mut handler,
         "CastSpell",
         caster,
-        vec![
-            spell_id("CureLightWounds"),
-            Value::Int(1),
-            Value::Int(5),
-        ],
+        vec![spell_id("CureLightWounds"), Value::Int(1), Value::Int(5)],
     );
 
     // Spell should be removed from memorised list
@@ -776,11 +772,7 @@ fn cast_spell_fails_when_not_memorised() {
         &mut handler,
         "CastSpell",
         caster,
-        vec![
-            spell_id("CureLightWounds"),
-            Value::Int(1),
-            Value::Int(5),
-        ],
+        vec![spell_id("CureLightWounds"), Value::Int(1), Value::Int(5)],
     );
 
     // Verify requires guard rejected: state unchanged

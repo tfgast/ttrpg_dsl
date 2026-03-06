@@ -598,18 +598,18 @@ fn sleep_hd_category_classification() {
     // (dice_count, dice_sides, modifier) -> expected_category
     let cases = [
         ((0, 4, 0), 0),  // <1 HD (e.g. kobold 1d4 mapped as 0d4)
-        ((1, 8, -1), 0),  // 1-1 HD
-        ((1, 8, 0), 0),   // 1 HD (orc)
-        ((1, 8, 1), 1),   // 1+1 HD (hobgoblin)
-        ((2, 8, 0), 1),   // 2 HD (gnoll)
-        ((2, 8, 1), 2),   // 2+1 HD
-        ((3, 8, 0), 2),   // 3 HD
-        ((3, 8, 1), 3),   // 3+1 HD
-        ((4, 8, 0), 3),   // 4 HD
-        ((4, 8, 1), 4),   // 4+1 HD
-        ((4, 8, 4), 4),   // 4+4 HD
-        ((5, 8, 0), 5),   // 5 HD (immune)
-        ((6, 8, 6), 5),   // 6+6 HD troll (immune)
+        ((1, 8, -1), 0), // 1-1 HD
+        ((1, 8, 0), 0),  // 1 HD (orc)
+        ((1, 8, 1), 1),  // 1+1 HD (hobgoblin)
+        ((2, 8, 0), 1),  // 2 HD (gnoll)
+        ((2, 8, 1), 2),  // 2+1 HD
+        ((3, 8, 0), 2),  // 3 HD
+        ((3, 8, 1), 3),  // 3+1 HD
+        ((4, 8, 0), 3),  // 4 HD
+        ((4, 8, 1), 4),  // 4+1 HD
+        ((4, 8, 4), 4),  // 4+4 HD
+        ((5, 8, 0), 5),  // 5 HD (immune)
+        ((6, 8, 6), 5),  // 6+6 HD troll (immune)
     ];
 
     for ((count, sides, modifier), expected) in &cases {
@@ -651,16 +651,7 @@ fn sleep_affects_weakest_first_single_category() {
 
     // 5 orcs (1 HD each) — all in category 0
     let orcs: Vec<_> = (0..5)
-        .map(|i| {
-            make_monster(
-                &mut state,
-                &format!("Orc {i}"),
-                (1, 8, 0),
-                4,
-                14,
-                vec![],
-            )
-        })
+        .map(|i| make_monster(&mut state, &format!("Orc {i}"), (1, 8, 0), 4, 14, vec![]))
         .collect();
 
     // Roll 4d4 for category 0 = 3 (put 3 orcs to sleep out of 5)
@@ -724,8 +715,8 @@ fn sleep_multiple_hd_categories() {
         &interp,
         state,
         vec![
-            roll_nd(4, 4, vec![3, 3, 2, 2]),  // cat 0: 10 affected
-            roll_nd(2, 4, vec![2, 1]),          // cat 1: 3 affected
+            roll_nd(4, 4, vec![3, 3, 2, 2]), // cat 0: 10 affected
+            roll_nd(2, 4, vec![2, 1]),       // cat 1: 3 affected
         ],
         "resolve_sleep",
         vec![
@@ -734,12 +725,30 @@ fn sleep_multiple_hd_categories() {
         ],
     );
 
-    assert!(has_condition(&state, &orc0, "Sleeping"), "orc 0 should sleep");
-    assert!(has_condition(&state, &orc1, "Sleeping"), "orc 1 should sleep");
-    assert!(has_condition(&state, &orc2, "Sleeping"), "orc 2 should sleep");
-    assert!(has_condition(&state, &hob0, "Sleeping"), "hobgoblin 0 should sleep");
-    assert!(has_condition(&state, &hob1, "Sleeping"), "hobgoblin 1 should sleep");
-    assert!(!has_condition(&state, &troll, "Sleeping"), "troll should be immune");
+    assert!(
+        has_condition(&state, &orc0, "Sleeping"),
+        "orc 0 should sleep"
+    );
+    assert!(
+        has_condition(&state, &orc1, "Sleeping"),
+        "orc 1 should sleep"
+    );
+    assert!(
+        has_condition(&state, &orc2, "Sleeping"),
+        "orc 2 should sleep"
+    );
+    assert!(
+        has_condition(&state, &hob0, "Sleeping"),
+        "hobgoblin 0 should sleep"
+    );
+    assert!(
+        has_condition(&state, &hob1, "Sleeping"),
+        "hobgoblin 1 should sleep"
+    );
+    assert!(
+        !has_condition(&state, &troll, "Sleeping"),
+        "troll should be immune"
+    );
 }
 
 #[test]
@@ -775,7 +784,10 @@ fn sleep_category_4_zero_or_one() {
         ],
     );
 
-    assert!(!has_condition(&state, &ogre, "Sleeping"), "ogre should not sleep (d2=1, 1-1=0)");
+    assert!(
+        !has_condition(&state, &ogre, "Sleeping"),
+        "ogre should not sleep (d2=1, 1-1=0)"
+    );
 }
 
 #[test]
@@ -811,7 +823,10 @@ fn sleep_category_4_affects_one() {
         ],
     );
 
-    assert!(has_condition(&state, &ogre, "Sleeping"), "ogre should sleep (d2=2, 2-1=1)");
+    assert!(
+        has_condition(&state, &ogre, "Sleeping"),
+        "ogre should sleep (d2=2, 2-1=1)"
+    );
 }
 
 #[test]
@@ -847,6 +862,12 @@ fn sleep_roll_exceeds_available_targets() {
         ],
     );
 
-    assert!(has_condition(&state, &orc0, "Sleeping"), "orc 0 should sleep");
-    assert!(has_condition(&state, &orc1, "Sleeping"), "orc 1 should sleep");
+    assert!(
+        has_condition(&state, &orc0, "Sleeping"),
+        "orc 0 should sleep"
+    );
+    assert!(
+        has_condition(&state, &orc1, "Sleeping"),
+        "orc 1 should sleep"
+    );
 }

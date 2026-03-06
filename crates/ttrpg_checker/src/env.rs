@@ -166,6 +166,11 @@ pub struct TypeEnv {
     /// Per-system: alias → target system name.
     pub system_aliases: FxHashMap<Name, FxHashMap<Name, Name>>,
 
+    // ── Action overload index ────────────────────────────────────
+    /// Action name → all overloads (one per receiver type). Used for
+    /// type-based dispatch when multiple actions share the same name.
+    pub action_overloads: FxHashMap<Name, Vec<FnInfo>>,
+
     // ── Trigger index ─────────────────────────────────────────────
     /// Event name → reaction/hook function names that trigger on it (declaration order).
     pub trigger_index: FxHashMap<Name, Vec<Name>>,
@@ -222,6 +227,7 @@ impl TypeEnv {
             option_owner: FxHashMap::default(),
             system_visibility: FxHashMap::default(),
             system_aliases: FxHashMap::default(),
+            action_overloads: FxHashMap::default(),
             trigger_index: FxHashMap::default(),
             tags: FxHashSet::default(),
             tag_owner: FxHashMap::default(),
@@ -422,6 +428,30 @@ impl TypeEnv {
     /// desired, but it is not an error.
     pub fn lookup_fn(&self, name: &str) -> Option<&FnInfo> {
         self.functions.get(name).or_else(|| self.builtins.get(name))
+    }
+
+    /// Look up the best action overload for a given receiver type.
+    ///
+    /// Returns the overload whose receiver matches `receiver_ty`, falling back
+    /// to an `AnyEntity` overload, or `None` if no overload matches.
+    pub fn lookup_action_overload(&self, name: &str, receiver_ty: &Ty) -> Option<&FnInfo> {
+        let overloads = self.action_overloads.get(name)?;
+        if overloads.len() == 1 {
+            return Some(&overloads[0]);
+        }
+
+        // Exact match on receiver type
+        if let Some(info) = overloads
+            .iter()
+            .find(|fi| fi.receiver.as_ref().is_some_and(|r| r.ty == *receiver_ty))
+        {
+            return Some(info);
+        }
+
+        // AnyEntity fallback
+        overloads
+            .iter()
+            .find(|fi| fi.receiver.as_ref().is_some_and(|r| r.ty == Ty::AnyEntity))
     }
 
     /// Look up fields of a struct/entity by name.
