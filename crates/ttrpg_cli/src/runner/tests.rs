@@ -3950,7 +3950,9 @@ system "test" {
     assert_eq!(output, vec!["\"got_shared\""]);
 
     // Qualified syntax should still work
-    runner.exec("eval check(Wrapper { val: EnumA.Shared })").unwrap();
+    runner
+        .exec("eval check(Wrapper { val: EnumA.Shared })")
+        .unwrap();
     let output = runner.take_output();
     assert_eq!(output, vec!["\"got_shared\""]);
 }

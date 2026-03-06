@@ -74,11 +74,9 @@ pub(super) fn dispatch_action(
         .enumerate()
         .find(|(_, a)| a.name.is_none())
         .or_else(|| {
-            args.iter().enumerate().find(|(_, a)| {
-                a.name
-                    .as_ref()
-                    .is_some_and(|n| *n == receiver_info.name)
-            })
+            args.iter()
+                .enumerate()
+                .find(|(_, a)| a.name.as_ref().is_some_and(|n| *n == receiver_info.name))
         })
         .ok_or_else(|| {
             RuntimeError::with_span(
@@ -201,7 +199,13 @@ pub(super) fn dispatch_action_method(
     // (mirrors dispatch_action which includes receiver in effective_params).
     env.push_scope();
     env.bind(action_decl.receiver_name.clone(), receiver);
-    let bound = bind_args(&correct_fn_info.params, args, Some(&ast_params), env, call_span);
+    let bound = bind_args(
+        &correct_fn_info.params,
+        args,
+        Some(&ast_params),
+        env,
+        call_span,
+    );
     env.pop_scope();
     let bound = bound?;
 

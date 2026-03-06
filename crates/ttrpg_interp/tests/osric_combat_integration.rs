@@ -225,10 +225,7 @@ fn monster_melee_attack_hits_and_damages_character() {
                 eff_handler,
                 "MeleeAttack",
                 ogre,
-                vec![
-                    Value::Entity(target),
-                    monster_attack("Club", 1, 10, 0),
-                ],
+                vec![Value::Entity(target), monster_attack("Club", 1, 10, 0)],
             )
             .unwrap();
     });
@@ -280,10 +277,7 @@ fn monster_melee_attack_miss_preserves_hp() {
                 eff_handler,
                 "MeleeAttack",
                 rat,
-                vec![
-                    Value::Entity(target),
-                    monster_attack("Bite", 1, 2, 0),
-                ],
+                vec![Value::Entity(target), monster_attack("Bite", 1, 2, 0)],
             )
             .unwrap();
     });
@@ -339,10 +333,7 @@ fn monster_melee_attack_against_monster() {
                 eff_handler,
                 "MeleeAttack",
                 ogre,
-                vec![
-                    Value::Entity(goblin),
-                    monster_attack("Club", 1, 10, 0),
-                ],
+                vec![Value::Entity(goblin), monster_attack("Club", 1, 10, 0)],
             )
             .unwrap();
     });

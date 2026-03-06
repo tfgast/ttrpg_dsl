@@ -106,9 +106,7 @@ impl Runner {
                 enum_name: actual_enum,
                 variant: actual_variant,
                 ..
-            } if actual_enum.as_ref() == enum_name
-                && actual_variant.as_ref() == variant_name =>
-            {
+            } if actual_enum.as_ref() == enum_name && actual_variant.as_ref() == variant_name => {
                 Ok(())
             }
             _ => Err(CliError::Message(format!(

@@ -216,9 +216,9 @@ impl Runner {
     }
 
     pub(super) fn cmd_let(&mut self, tail: &str) -> Result<(), CliError> {
-        let eq_pos = tail.find('=').ok_or_else(|| {
-            CliError::Message("usage: let <name> = <expr>".into())
-        })?;
+        let eq_pos = tail
+            .find('=')
+            .ok_or_else(|| CliError::Message("usage: let <name> = <expr>".into()))?;
         let name = tail[..eq_pos].trim();
         let expr_str = tail[eq_pos + 1..].trim();
         if name.is_empty() || expr_str.is_empty() {
@@ -228,9 +228,7 @@ impl Runner {
         if !name.chars().all(|c| c.is_alphanumeric() || c == '_')
             || name.starts_with(char::is_numeric)
         {
-            return Err(CliError::Message(format!(
-                "invalid variable name: {name}"
-            )));
+            return Err(CliError::Message(format!("invalid variable name: {name}")));
         }
         let val = self.eval(expr_str)?;
         self.output.push(format!(

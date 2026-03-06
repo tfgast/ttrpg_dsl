@@ -747,9 +747,7 @@ mod tests {
     fn parse_assert_match() {
         assert_eq!(
             parse_command("assert_match result, TurnOutcome.Turned"),
-            Some(Command::AssertMatch(
-                "result, TurnOutcome.Turned".into()
-            ))
+            Some(Command::AssertMatch("result, TurnOutcome.Turned".into()))
         );
     }
 
@@ -765,9 +763,7 @@ mod tests {
     fn parse_assert_match_strips_comment() {
         assert_eq!(
             parse_command("assert_match result, TurnOutcome.Turned // check variant"),
-            Some(Command::AssertMatch(
-                "result, TurnOutcome.Turned".into()
-            ))
+            Some(Command::AssertMatch("result, TurnOutcome.Turned".into()))
         );
     }
 

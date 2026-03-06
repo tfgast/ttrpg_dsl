@@ -480,11 +480,7 @@ pub(crate) fn resolve_resource_bounds_pub(
 /// multiple enums. This function uses the expected type to disambiguate:
 /// if the hint is `Ty::Enum(E)` and `E` has a variant matching `name`, we
 /// construct the variant value directly.
-pub(crate) fn try_resolve_variant_from_hint(
-    env: &Env,
-    name: &str,
-    hint: &Ty,
-) -> Option<Value> {
+pub(crate) fn try_resolve_variant_from_hint(env: &Env, name: &str, hint: &Ty) -> Option<Value> {
     let enum_name = match hint {
         Ty::Enum(n) => n,
         _ => return None,
@@ -517,7 +513,11 @@ pub(crate) fn eval_expr_with_hint(
 ) -> Result<Value, crate::RuntimeError> {
     if let ExprKind::Ident(name) = &expr.node {
         if env.lookup(name).is_none()
-            && !env.interp.type_env.resolved_variants.contains_key(&expr.span)
+            && !env
+                .interp
+                .type_env
+                .resolved_variants
+                .contains_key(&expr.span)
             && env.interp.type_env.unique_variant_owner(name).is_none()
         {
             if let Some(val) = try_resolve_variant_from_hint(env, name, hint) {
