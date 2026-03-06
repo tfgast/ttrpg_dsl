@@ -3394,6 +3394,21 @@ system "test" {
     expect_errors(source, &["expected list<string>"]);
 }
 
+#[test]
+fn heterogeneous_entity_list_literal() {
+    // A list literal containing different entity types should unify to list<entity>
+    let source = r#"
+system "test" {
+    entity Monster { name: string }
+    entity Character { name: string }
+    function mix(m: Monster, c: Character) {
+        let party = [m, c]
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
 // ═══════════════════════════════════════════════════════════════
 // Fix: Enum values must not behave as enum namespaces
 // ═══════════════════════════════════════════════════════════════

@@ -1244,6 +1244,10 @@ impl<'a> Checker<'a> {
         if self.types_compatible(b, a) {
             return Some(b.clone());
         }
+        // Two different entity types widen to AnyEntity
+        if a.is_entity() && b.is_entity() {
+            return Some(Ty::AnyEntity);
+        }
         None
     }
 }
