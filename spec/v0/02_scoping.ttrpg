@@ -310,6 +310,53 @@ condition Prone on bearer: Character {
 // and pushes game-specific cancellation logic into explicit DSL code.
 
 
+// --- Tags on modify clauses ---
+//
+// Modify clauses can carry tag annotations for provenance tracking
+// and targeted suppression. Tags are placed after the closing ")" of
+// bindings and before the opening "{":
+//
+//   modify attack_roll(attacker: bearer) #position #penalty {
+//       mode = disadvantage
+//   }
+//
+// Tags must be declared via `tag` declarations. They appear in the
+// Effect::ModifyApplied event, enabling the REPL `breakdown` command
+// to show which modifiers came from which categories.
+
+
+// --- Suppress-modify (targeted modifier suppression) ---
+//
+// A condition can suppress modify clauses matching a selector using
+// `suppress [selector](bindings)`:
+//
+//   condition FreedomOfMovement on bearer: Character {
+//       suppress [#position](attacker: bearer)
+//   }
+//
+// This suppresses all modify clauses tagged #position where the
+// `attacker` binding matches bearer. Suppressed modifiers are filtered
+// out in collect_modifiers_owned before phase 1/phase 2 execution.
+//
+// Selector predicates reuse modify clause selector syntax:
+//   #tag        — match modify clauses with this tag
+//   returns T   — match modify clauses targeting functions returning T
+//   has p: T    — match modify clauses targeting functions with param p of type T
+//
+// Bindings are optional. Omitting them suppresses all matching modify
+// clauses regardless of which entity they target:
+//
+//   suppress [#fear]   // suppress all #fear-tagged modifiers unconditionally
+//
+// Suppress-modify is separate from event suppress (`suppress event_name(...)`)
+// and is disambiguated by the leading `[` after `suppress`.
+//
+// Evaluation order: suppress-modify clauses from all conditions on all
+// entities in scope are collected, then each candidate modifier is
+// checked against all active suppressions. A modifier is removed if
+// any suppression matches both its selector predicates and bindings.
+
+
 // --- Built-in `modify_applied` event ---
 //
 // The interpreter automatically emits a `modify_applied` event after a

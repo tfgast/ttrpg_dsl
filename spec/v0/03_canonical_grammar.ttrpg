@@ -350,7 +350,7 @@ condition_decl  = "condition" IDENT params? extends_clause?
                       "on" IDENT ":" constrained_type "{" condition_clause* "}"
 extends_clause  = "extends" IDENT ("," IDENT)*
 
-condition_clause = modify_clause | suppress_clause | lifecycle_clause
+condition_clause = modify_clause | suppress_clause | suppress_modify_clause | lifecycle_clause
 lifecycle_clause = ("on_apply" | "on_remove") block
 // At most one on_apply and one on_remove per condition (parser error on
 // duplicates). Lifecycle blocks have hook-like execution semantics: they
@@ -368,7 +368,7 @@ lifecycle_clause = ("on_apply" | "on_remove") block
 // identifiers elsewhere in the language. The parser recognizes them
 // only in condition body position.
 
-modify_clause   = "modify" modify_target "(" modify_bindings? ")" modify_body
+modify_clause   = "modify" modify_target "(" modify_bindings? ")" tag_list? modify_body
                 | "modify" IDENT "." "cost" "(" modify_bindings? ")" cost_modify_body
 modify_target   = IDENT                             // name of target mechanic/derive
                 | "[" selector_pred ("," selector_pred)* ","? "]"  // selector
@@ -389,6 +389,12 @@ modify_stmt     = "let" IDENT (":" type)? "=" expr term   // local binding (eith
 // Phase 2 stmts (result.IDENT = expr) execute after.
 // A single modify body can contain both phases; the runtime
 // partitions them. `if` blocks can contain either kind.
+//
+// Tags (tag_list) are optional annotations placed after the closing ")"
+// of bindings and before the opening "{". They enable provenance tracking
+// and targeted suppression via suppress_modify_clause. e.g.:
+//   modify attack_roll(attacker: bearer) #position #penalty { ... }
+// Tags must be declared via `tag` declarations.
 
 // --- Cost modification ---
 //
@@ -427,6 +433,19 @@ suppress_clause = "suppress" IDENT "(" modify_bindings ")" term
 //   suppress entity_leaves_reach(entity: bearer)
 // means "while this condition is active, entity_leaves_reach
 // does not fire when target == bearer"
+
+suppress_modify_clause = "suppress" "[" selector_pred ("," selector_pred)* ","? "]"
+                             ("(" modify_bindings? ")")? term
+// Suppresses modify clauses matching the selector predicates.
+// Disambiguated from event suppress by the leading `[`.
+// Bindings are optional — omitting them suppresses all matching
+// modify clauses regardless of which entity they target. e.g.:
+//   suppress [#position](attacker: bearer)
+// means "while this condition is active, suppress all modify
+// clauses tagged #position where the attacker binding matches bearer"
+//
+// Selector predicates reuse the same syntax as modify clause selectors:
+// #tag, returns Type, has param: Type?
 
 // --- Prompt (human decision point) ---
 prompt_decl     = "prompt" IDENT "(" params ")" "->" type "{"
