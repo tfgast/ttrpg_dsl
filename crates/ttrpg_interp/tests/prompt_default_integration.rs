@@ -128,8 +128,7 @@ system "test" {
     let interp = Interpreter::new(&program, &result.env).unwrap();
     let gs = GameState::new();
     let adapter = StateAdapter::new(gs);
-    let mut handler =
-        ScriptedHandler::with_responses(vec![Response::PromptResult(Value::Int(99))]);
+    let mut handler = ScriptedHandler::with_responses(vec![Response::PromptResult(Value::Int(99))]);
 
     let val = adapter
         .run(&mut handler, |state, h| {

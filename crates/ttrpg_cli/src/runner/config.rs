@@ -31,9 +31,8 @@ impl Runner {
                 msgs.join("; ")
             )));
         }
-        let parsed = parsed.ok_or_else(|| {
-            CliError::Message(format!("failed to parse prompt value: {tail}"))
-        })?;
+        let parsed = parsed
+            .ok_or_else(|| CliError::Message(format!("failed to parse prompt value: {tail}")))?;
 
         let interp = ttrpg_interp::Interpreter::new(&self.program, &self.type_env)
             .map_err(|e| render_runtime_error(&e, &self.source_map))?;
