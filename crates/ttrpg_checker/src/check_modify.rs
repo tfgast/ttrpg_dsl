@@ -938,7 +938,7 @@ impl Checker<'_> {
                     self.env
                         .functions
                         .get(fn_name)
-                        .map_or(false, |fi| fi.params.iter().any(|p| p.name == binding.name))
+                        .is_some_and(|fi| fi.params.iter().any(|p| p.name == binding.name))
                 });
                 if !found_in_any {
                     self.error(

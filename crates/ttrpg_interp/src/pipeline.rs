@@ -1,6 +1,9 @@
 use std::collections::{BTreeMap, HashSet};
 
-use ttrpg_ast::ast::{ConditionClause, ModifyClause, ModifyStmt, ModifyTarget};
+use ttrpg_ast::ast::{
+    ConditionClause, ModifyClause, ModifyStmt, ModifyTarget, SelectorPredicate,
+    SuppressModifyClause,
+};
 use ttrpg_ast::{Name, Span};
 use ttrpg_checker::env::FnInfo;
 
@@ -109,6 +112,7 @@ pub(crate) fn collect_modifiers_owned(
 ) -> Result<Vec<OwnedModifier>, RuntimeError> {
     let mut condition_modifiers: Vec<(u64, OwnedModifier)> = Vec::new(); // (gained_at, modifier)
     let mut seen_condition_ids: HashSet<u64> = HashSet::new();
+    let mut suppressions: Vec<ActiveSuppressModify> = Vec::new();
 
     // 1. For each entity-typed param, query conditions
     for (i, param_info) in fn_info.params.iter().enumerate() {
@@ -142,9 +146,20 @@ pub(crate) fn collect_modifiers_owned(
                 continue;
             }
 
-            // Check each modify clause across all ancestors
+            // Check each clause across all ancestors
             for cond_decl in &ancestor_decls {
                 for clause_item in &cond_decl.clauses {
+                    // Collect suppress-modify clauses
+                    if let ConditionClause::SuppressModify(sm) = clause_item {
+                        suppressions.push(ActiveSuppressModify {
+                            clause: sm.clone(),
+                            bearer: Value::Entity(condition.bearer),
+                            receiver_name: cond_decl.receiver_name.clone(),
+                            condition_params: condition.params.clone(),
+                        });
+                        continue;
+                    }
+
                     let clause = match clause_item {
                         ConditionClause::Modify(c) => c,
                         ConditionClause::Suppress(_)
@@ -261,7 +276,106 @@ pub(crate) fn collect_modifiers_owned(
         }
     }
 
+    // 3. Filter out modifiers suppressed by active suppress-modify clauses
+    if !suppressions.is_empty() {
+        let mut filtered = Vec::with_capacity(result.len());
+        for modifier in result {
+            if !is_modifier_suppressed(env, &modifier, fn_info, bound_params, &suppressions)? {
+                filtered.push(modifier);
+            }
+        }
+        result = filtered;
+    }
+
     Ok(result)
+}
+
+/// A collected suppress-modify clause with its condition context.
+struct ActiveSuppressModify {
+    clause: SuppressModifyClause,
+    bearer: Value,
+    receiver_name: Name,
+    condition_params: BTreeMap<Name, Value>,
+}
+
+/// Check if a modifier is suppressed by any active suppress-modify clause.
+fn is_modifier_suppressed(
+    env: &mut Env,
+    modifier: &OwnedModifier,
+    fn_info: &FnInfo,
+    bound_params: &[(Name, Value)],
+    suppressions: &[ActiveSuppressModify],
+) -> Result<bool, RuntimeError> {
+    for sup in suppressions {
+        // Check selector predicates against the modifier
+        let preds_match = sup.clause.predicates.iter().all(|pred| match pred {
+            SelectorPredicate::Tag(tag) => modifier.clause.tags.contains(tag),
+            SelectorPredicate::Returns(type_expr) => {
+                // Match against fn return type via type_env
+                if let Some(fi) = env.interp.type_env.functions.get(fn_info.name.as_str()) {
+                    let resolved = env.interp.type_env.resolve_type(type_expr);
+                    fi.return_type == resolved
+                } else {
+                    false
+                }
+            }
+            SelectorPredicate::HasParam { name, ty } => {
+                fn_info.params.iter().any(|p| {
+                    if p.name != *name {
+                        return false;
+                    }
+                    if let Some(te) = ty {
+                        let resolved = env.interp.type_env.resolve_type(te);
+                        p.ty == resolved
+                    } else {
+                        true
+                    }
+                })
+            }
+        });
+        if !preds_match {
+            continue;
+        }
+
+        // Check bindings: each suppress binding must match the modifier's bound params
+        if sup.clause.bindings.is_empty() {
+            return Ok(true);
+        }
+
+        // Evaluate suppress bindings in a scope with the condition receiver bound
+        env.push_scope();
+        env.bind(sup.receiver_name.clone(), sup.bearer.clone());
+        for (pname, pval) in &sup.condition_params {
+            env.bind(pname.clone(), pval.clone());
+        }
+
+        let mut bindings_match = true;
+        for binding in &sup.clause.bindings {
+            // Find the corresponding param value in the modifier's target function call
+            let param_val = match bound_params.iter().find(|(name, _)| *name == binding.name) {
+                Some((_, val)) => val.clone(),
+                None => {
+                    bindings_match = false;
+                    break;
+                }
+            };
+
+            if let Some(value_expr) = &binding.value {
+                let binding_val = eval_expr(env, value_expr)?;
+                if !value_eq(env.state, &param_val, &binding_val) {
+                    bindings_match = false;
+                    break;
+                }
+            }
+        }
+
+        env.pop_scope();
+
+        if bindings_match {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 /// An owned modifier with cloned clause data.
