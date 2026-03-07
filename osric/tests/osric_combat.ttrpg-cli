@@ -538,6 +538,48 @@ spawn Character mc_cd_tgt { name: "Target", classes: [ClassLevel { class: Fighte
 call apply_condition(mc_cooldown, ChargeRecovery, Duration.Rounds(10))
 assert_err do Charge(mc_cooldown, mc_cd_tgt)
 
+// ── Natural-weapon monster charge (MonsterCharge) ───────────
+
+// Bear charges with Claw natural attack, +2 charge bonus.
+// Bear 5d8 HD → BTHB 5, +2 charge = +7 total. Target AC 14.
+// Roll 10: 10+7=17 >= 14 → Hit; damage roll 6
+spawn Monster nc_bear { name: "Bear", hit_dice: 5d8, max_hp: 30, hp: 30, ac: 14, attacks: [MonsterAttack { name: "Claw", damage: 1d8 }, MonsterAttack { name: "Bite", damage: 2d6 }] }
+spawn Character nc_victim { name: "Victim", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 } }
+
+rolls clear
+rolls 10 6
+do MonsterCharge(nc_bear, nc_victim, MonsterAttack { name: "Claw", damage: 1d8 })
+assert_eq nc_victim.hp, 14
+assert_condition nc_bear, ChargeRecovery
+
+// Natural charge miss: low roll doesn't hit
+spawn Monster nc_wolf { name: "Wolf", hit_dice: 2d8 + 2, max_hp: 12, hp: 12, ac: 13, attacks: [MonsterAttack { name: "Bite", damage: 1d4 + 1 }] }
+spawn Character nc_tank { name: "Tank", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots { worn_armor: some(Armor { armour_type: PlateMail }) } }
+
+rolls clear
+rolls 3
+do MonsterCharge(nc_wolf, nc_tank, MonsterAttack { name: "Bite", damage: 1d4 + 1 })
+assert_eq nc_tank.hp, 30
+assert_condition nc_wolf, ChargeRecovery
+
+// Natural charge blocked by ChargeRecovery cooldown
+spawn Monster nc_cooldown { name: "Boar", hit_dice: 3d8, max_hp: 15, hp: 15, ac: 13, attacks: [MonsterAttack { name: "Tusk", damage: 3d4 }] }
+spawn Character nc_cd_tgt { name: "Target", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 } }
+
+call apply_condition(nc_cooldown, ChargeRecovery, Duration.Rounds(10))
+assert_err do MonsterCharge(nc_cooldown, nc_cd_tgt, MonsterAttack { name: "Tusk", damage: 3d4 })
+
+// Natural charge monster vs monster
+spawn Monster nc_bull { name: "Bull", hit_dice: 4d8, max_hp: 20, hp: 20, ac: 13, attacks: [MonsterAttack { name: "Horn", damage: 1d6 }] }
+spawn Monster nc_goblin_tgt { name: "Goblin", hit_dice: 1d8 - 1, max_hp: 4, hp: 4, ac: 14, attacks: [MonsterAttack { name: "Sword", damage: 1d6 }] }
+
+rolls clear
+rolls 12 5
+do MonsterCharge(nc_bull, nc_goblin_tgt, MonsterAttack { name: "Horn", damage: 1d6 })
+assert_eq nc_goblin_tgt.hp, 0
+assert_condition nc_goblin_tgt, Dead
+assert_condition nc_bull, ChargeRecovery
+
 // ── Armed monster SetWeaponStrike ────────────────────────────
 
 // Monster set weapon strike: double damage on hit

@@ -1028,6 +1028,26 @@ system "OSRIC Combat" {
         }
     }
 
+    // Natural-weapon monster charge: HD-based BTHB + natural attack
+    // damage, +2 to hit. For monsters without wielded weapons (bears,
+    // wolves, etc.) that charge using claws, horns, or bite.
+    action MonsterCharge on attacker: Monster (target: entity, attack: MonsterAttack) {
+        cost { attack }
+        requires {
+            !any([c.name == "ChargeRecovery" for c in conditions(attacker)])
+        }
+        resolve {
+            apply_condition(attacker, ChargeRecovery, Duration.Rounds(10))
+            let result = resolve_monster_attack(attacker, target, attack, 2)
+            match result.outcome {
+                AttackOutcome.Hit => {
+                    target.TakeDamage(attacker, result.damage)
+                },
+                _ => {}
+            }
+        }
+    }
+
     // Armed monster set weapon strike: same as Character but uses
     // resolve_armed_melee_attack (HD-based BTHB, no STR/spec bonuses).
     action SetWeaponStrike on defender: Monster (target: entity) {

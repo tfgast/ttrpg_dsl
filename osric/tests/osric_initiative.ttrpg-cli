@@ -524,6 +524,45 @@ assert_eq rrmc_hobgoblin.hp, 3
 assert_condition rrmc_hobgoblin, ChargeRecovery
 
 
+// ── resolve_action: Monster natural-weapon charge via initiative ──
+// Bear with natural Claw attack charges through initiative system.
+rolls clear
+
+spawn Monster rnc_bear { name: "Bear", hit_dice: 5d8, max_hp: 30, hp: 30, ac: 14, attacks: [MonsterAttack { name: "Claw", damage: 1d8 }, MonsterAttack { name: "Bite", damage: 2d6 }] }
+spawn Character rnc_victim { name: "Victim", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 } }
+
+let rnc_charge = build_round_action(rnc_bear, ChargeAction, 4, false, some(rnc_victim), none, none, some(MonsterAttack { name: "Claw", damage: 1d8 }))
+
+// Roll 10 + BTHB 5 + charge 2 = 17 >= 14, damage 6
+rolls 10 6
+call resolve_action(rnc_charge, [rnc_charge])
+assert_eq rnc_victim.hp, 14
+assert_condition rnc_bear, ChargeRecovery
+assert_condition rnc_bear, Charging
+
+
+// ── resolve_round: Monster natural charge in full round ──────────
+// Natural-weapon monster charges, party does melee. Initiative: party 2, monster 4.
+rolls clear
+
+spawn Monster rrnc_wolf { name: "Wolf", hit_dice: 2d8 + 2, max_hp: 12, hp: 12, ac: 13, attacks: [MonsterAttack { name: "Bite", damage: 1d4 + 1 }] }
+spawn Character rrnc_fighter { name: "Fighter", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots {} }
+
+let rrnc_init = InitiativeResult { party_roll: 2, monster_roll: 4, party_segment: 2, monster_segment: 4, simultaneous: false }
+let rrnc_fighter_action = build_round_action(rrnc_fighter, MeleeAttackAction, 2, true, some(rrnc_wolf), some(SwordLong))
+let rrnc_wolf_action = build_round_action(rrnc_wolf, ChargeAction, 4, false, some(rrnc_fighter), none, none, some(MonsterAttack { name: "Bite", damage: 1d4 + 1 }))
+
+// Fighter hits in segment 2 (roll 14, damage 5), wolf charges in segment 4 (roll 12, damage roll 4 → 4+1=5)
+rolls 14 5 12 4
+call resolve_round(1, [rrnc_fighter, rrnc_wolf], rrnc_init, [rrnc_fighter_action, rrnc_wolf_action])
+
+// Fighter: 30 - 5 = 25
+assert_eq rrnc_fighter.hp, 25
+// Wolf: 12 - 5 = 7
+assert_eq rrnc_wolf.hp, 7
+assert_condition rrnc_wolf, ChargeRecovery
+
+
 // ── expire_conditions: EndOfRound removed from Monster ───────────
 
 spawn Monster ec_orc { name: "Orc", hit_dice: 1d8, max_hp: 8, hp: 8, ac: 14, attacks: [MonsterAttack { name: "Club", damage: 1d6 }] }
