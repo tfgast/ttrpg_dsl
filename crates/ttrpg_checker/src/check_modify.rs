@@ -108,6 +108,13 @@ impl Checker<'_> {
         receiver: Option<(&Name, &Spanned<TypeExpr>, &WithClause)>,
         condition_params: &[Param],
     ) {
+        // Validate tags: each must be declared in env.tags
+        for tag in &clause.tags {
+            if !self.env.tags.contains(tag) {
+                self.error(format!("undeclared tag `{tag}` on modify clause"), clause.span);
+            }
+        }
+
         match &clause.target {
             ModifyTarget::Named(name) => {
                 self.check_modify_named(clause, name, receiver, condition_params);
