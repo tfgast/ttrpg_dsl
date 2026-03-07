@@ -112,7 +112,7 @@ fn ose_combat_has_derives() {
     assert!(derives.contains(&"target_number"));
     assert!(derives.contains(&"calc_ac"));
     assert!(derives.contains(&"missile_range_mod"));
-    assert_eq!(derives.len(), 11, "expected 11 derives");
+    assert_eq!(derives.len(), 9, "expected 9 derives");
 }
 
 #[test]

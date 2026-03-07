@@ -28,21 +28,19 @@ system "OSRIC Cleric Spells" {
     //  Reversible as Cause Light Wounds.
     // ========================================================
 
-    derive cure_light_wounds_def() -> SpellDef {
-        SpellDef {
-            name: "Cure Light Wounds",
-            class_type: Divine,
-            school: Necromancy,
-            level: 1,
-            range: SpellRange.Touch,
-            duration: SpellDuration.Instantaneous,
-            area_of_effect: "Creature touched",
-            components: SpellComponents {},
-            casting_time: CastingTime.Segments(count: 5),
-            saving_throw: SpellSave.NoSave,
-            reversible: true,
-            description: "The target creature regains 1d8 hit points, up to its normal maximum."
-        }
+    const CURE_LIGHT_WOUNDS_DEF: SpellDef = SpellDef {
+        name: "Cure Light Wounds",
+        class_type: Divine,
+        school: Necromancy,
+        level: 1,
+        range: SpellRange.Touch,
+        duration: SpellDuration.Instantaneous,
+        area_of_effect: "Creature touched",
+        components: SpellComponents {},
+        casting_time: CastingTime.Segments(count: 5),
+        saving_throw: SpellSave.NoSave,
+        reversible: true,
+        description: "The target creature regains 1d8 hit points, up to its normal maximum."
     }
 
     function resolve_cure_light_wounds(caster: Character, target: Character) {
@@ -59,21 +57,19 @@ system "OSRIC Cleric Spells" {
     //  (handled by caller). No saving throw.
     // ========================================================
 
-    derive cause_light_wounds_def() -> SpellDef {
-        SpellDef {
-            name: "Cause Light Wounds",
-            class_type: Divine,
-            school: Necromancy,
-            level: 1,
-            range: SpellRange.Touch,
-            duration: SpellDuration.Instantaneous,
-            area_of_effect: "Creature touched",
-            components: SpellComponents {},
-            casting_time: CastingTime.Segments(count: 5),
-            saving_throw: SpellSave.NoSave,
-            reversible: true,
-            description: "The touched target creature takes 1d8 hit points of magical damage."
-        }
+    const CAUSE_LIGHT_WOUNDS_DEF: SpellDef = SpellDef {
+        name: "Cause Light Wounds",
+        class_type: Divine,
+        school: Necromancy,
+        level: 1,
+        range: SpellRange.Touch,
+        duration: SpellDuration.Instantaneous,
+        area_of_effect: "Creature touched",
+        components: SpellComponents {},
+        casting_time: CastingTime.Segments(count: 5),
+        saving_throw: SpellSave.NoSave,
+        reversible: true,
+        description: "The touched target creature takes 1d8 hit points of magical damage."
     }
 
     function resolve_cause_light_wounds(caster: Character, target: entity) {
@@ -99,21 +95,19 @@ system "OSRIC Cleric Spells" {
         }
     }
 
-    derive bless_def() -> SpellDef {
-        SpellDef {
-            name: "Bless",
-            class_type: Divine,
-            school: Transmutation,
-            level: 1,
-            range: SpellRange.Distance(distance: Feet { value: 60 }),
-            duration: SpellDuration.Rounds(count: 6),
-            area_of_effect: "Cube, 50ft x 50ft x 50ft",
-            components: SpellComponents { material: true },
-            casting_time: CastingTime.Rounds(count: 1),
-            saving_throw: SpellSave.NoSave,
-            reversible: true,
-            description: "Selected creatures gain +1 to hit and +5% to morale checks for 6 rounds."
-        }
+    const BLESS_DEF: SpellDef = SpellDef {
+        name: "Bless",
+        class_type: Divine,
+        school: Transmutation,
+        level: 1,
+        range: SpellRange.Distance(distance: Feet { value: 60 }),
+        duration: SpellDuration.Rounds(count: 6),
+        area_of_effect: "Cube, 50ft x 50ft x 50ft",
+        components: SpellComponents { material: true },
+        casting_time: CastingTime.Rounds(count: 1),
+        saving_throw: SpellSave.NoSave,
+        reversible: true,
+        description: "Selected creatures gain +1 to hit and +5% to morale checks for 6 rounds."
     }
 
     function resolve_bless(caster: Character, targets: list<entity>) {
@@ -136,21 +130,19 @@ system "OSRIC Cleric Spells" {
         }
     }
 
-    derive curse_def() -> SpellDef {
-        SpellDef {
-            name: "Curse",
-            class_type: Divine,
-            school: Transmutation,
-            level: 1,
-            range: SpellRange.Distance(distance: Feet { value: 60 }),
-            duration: SpellDuration.Rounds(count: 6),
-            area_of_effect: "Cube, 50ft x 50ft x 50ft",
-            components: SpellComponents { material: true },
-            casting_time: CastingTime.Rounds(count: 1),
-            saving_throw: SpellSave.Negates,
-            reversible: true,
-            description: "Chosen creatures suffer -1 to hit and -5% to morale checks for 6 rounds."
-        }
+    const CURSE_DEF: SpellDef = SpellDef {
+        name: "Curse",
+        class_type: Divine,
+        school: Transmutation,
+        level: 1,
+        range: SpellRange.Distance(distance: Feet { value: 60 }),
+        duration: SpellDuration.Rounds(count: 6),
+        area_of_effect: "Cube, 50ft x 50ft x 50ft",
+        components: SpellComponents { material: true },
+        casting_time: CastingTime.Rounds(count: 1),
+        saving_throw: SpellSave.Negates,
+        reversible: true,
+        description: "Chosen creatures suffer -1 to hit and -5% to morale checks for 6 rounds."
     }
 
     function resolve_curse(caster: Character, targets: list<entity>) {
@@ -170,20 +162,18 @@ system "OSRIC Cleric Spells" {
     //  Applies Paralyzed condition on failed save.
     // ========================================================
 
-    derive hold_person_def() -> SpellDef {
-        SpellDef {
-            name: "Hold Person",
-            class_type: Divine,
-            school: Enchantment,
-            level: 2,
-            range: SpellRange.Distance(distance: Feet { value: 60 }),
-            duration: SpellDuration.Special(description: "4 rounds + 1/cleric level"),
-            area_of_effect: "1-3 creatures within range",
-            components: SpellComponents { material: true },
-            casting_time: CastingTime.Segments(count: 5),
-            saving_throw: SpellSave.Negates,
-            description: "Paralyzes 1-3 bipedal humanoid-like creatures. Save modifier depends on number of targets."
-        }
+    const HOLD_PERSON_DEF: SpellDef = SpellDef {
+        name: "Hold Person",
+        class_type: Divine,
+        school: Enchantment,
+        level: 2,
+        range: SpellRange.Distance(distance: Feet { value: 60 }),
+        duration: SpellDuration.Special(description: "4 rounds + 1/cleric level"),
+        area_of_effect: "1-3 creatures within range",
+        components: SpellComponents { material: true },
+        casting_time: CastingTime.Segments(count: 5),
+        saving_throw: SpellSave.Negates,
+        description: "Paralyzes 1-3 bipedal humanoid-like creatures. Save modifier depends on number of targets."
     }
 
     // Save bonus for Hold Person based on number of targets.

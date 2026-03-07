@@ -79,7 +79,7 @@ fn ose_equipment_has_expected_decls() {
             if sys.name == "OSE Equipment" {
                 for decl in &sys.decls {
                     match &decl.node {
-                        DeclKind::Derive(d) if d.name == "standard_adventuring_gear" => {
+                        DeclKind::Const(c) if c.name == "STANDARD_ADVENTURING_GEAR" => {
                             has_standard_gear = true;
                         }
                         DeclKind::Derive(d) if d.name == "default_starting_armour" => {
@@ -98,7 +98,7 @@ fn ose_equipment_has_expected_decls() {
         }
     }
 
-    assert!(has_standard_gear, "expected standard_adventuring_gear");
+    assert!(has_standard_gear, "expected STANDARD_ADVENTURING_GEAR const");
     assert!(has_default_armour, "expected default_starting_armour");
     assert!(
         has_equipment_package_table,

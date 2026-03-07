@@ -372,7 +372,7 @@ system "OSRIC Thief Skills" {
     // ========================================================
 
     // Backstab attack bonus: +4 to hit (replaces normal +2 rear attack).
-    derive backstab_attack_bonus() -> int { 4 }
+    const BACKSTAB_ATTACK_BONUS: int = 4
 
     // Thief backstab damage multiplier by level (Table 1.3.10.4b).
     table thief_backstab_multiplier(level: int) -> int {

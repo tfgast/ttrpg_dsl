@@ -29,20 +29,18 @@ system "OSRIC MU Spells" {
     //  Range: 60ft + 10ft/level. Casting time: Fast.
     // ========================================================
 
-    derive magic_missile_def() -> SpellDef {
-        SpellDef {
-            name: "Magic Missile",
-            class_type: Arcane,
-            school: Evocation,
-            level: 1,
-            range: SpellRange.Special(description: "60ft + 10ft/MU level"),
-            duration: SpellDuration.Instantaneous,
-            area_of_effect: "1+ creatures in a 10ft x 10ft area",
-            components: SpellComponents {},
-            casting_time: CastingTime.Fast,
-            saving_throw: SpellSave.NoSave,
-            description: "Auto-hit missiles of magical force, 1d4+1 damage each. +1 missile per 2 caster levels above 1st."
-        }
+    const MAGIC_MISSILE_DEF: SpellDef = SpellDef {
+        name: "Magic Missile",
+        class_type: Arcane,
+        school: Evocation,
+        level: 1,
+        range: SpellRange.Special(description: "60ft + 10ft/MU level"),
+        duration: SpellDuration.Instantaneous,
+        area_of_effect: "1+ creatures in a 10ft x 10ft area",
+        components: SpellComponents {},
+        casting_time: CastingTime.Fast,
+        saving_throw: SpellSave.NoSave,
+        description: "Auto-hit missiles of magical force, 1d4+1 damage each. +1 missile per 2 caster levels above 1st."
     }
 
     // Number of missiles at a given caster level.
@@ -61,20 +59,18 @@ system "OSRIC MU Spells" {
     //  Casting time: 3 segments.
     // ========================================================
 
-    derive fireball_def() -> SpellDef {
-        SpellDef {
-            name: "Fireball",
-            class_type: Arcane,
-            school: Evocation,
-            level: 3,
-            range: SpellRange.Special(description: "100ft + 10ft/MU level"),
-            duration: SpellDuration.Instantaneous,
-            area_of_effect: "20ft radius sphere",
-            components: SpellComponents { material: true },
-            casting_time: CastingTime.Segments(count: 3),
-            saving_throw: SpellSave.Half,
-            description: "A massive explosion of magical fire dealing 1d6 per caster level. Saving throw for half damage."
-        }
+    const FIREBALL_DEF: SpellDef = SpellDef {
+        name: "Fireball",
+        class_type: Arcane,
+        school: Evocation,
+        level: 3,
+        range: SpellRange.Special(description: "100ft + 10ft/MU level"),
+        duration: SpellDuration.Instantaneous,
+        area_of_effect: "20ft radius sphere",
+        components: SpellComponents { material: true },
+        casting_time: CastingTime.Segments(count: 3),
+        saving_throw: SpellSave.Half,
+        description: "A massive explosion of magical fire dealing 1d6 per caster level. Saving throw for half damage."
     }
 
     // Resolve Fireball. Rolls damage once (caster_level d6),
@@ -111,20 +107,18 @@ system "OSRIC MU Spells" {
     //  Range: 30ft + 10ft/level. Casting time: Fast.
     // ========================================================
 
-    derive sleep_def() -> SpellDef {
-        SpellDef {
-            name: "Sleep",
-            class_type: Arcane,
-            school: Enchantment,
-            level: 1,
-            range: SpellRange.Special(description: "30ft + 10ft/MU level"),
-            duration: SpellDuration.Special(description: "5 rounds/MU level"),
-            area_of_effect: "15ft radius circle",
-            components: SpellComponents { material: true },
-            casting_time: CastingTime.Fast,
-            saving_throw: SpellSave.NoSave,
-            description: "Creatures in area fall into magical slumber. Number affected by HD category, weakest first. No saving throw."
-        }
+    const SLEEP_DEF: SpellDef = SpellDef {
+        name: "Sleep",
+        class_type: Arcane,
+        school: Enchantment,
+        level: 1,
+        range: SpellRange.Special(description: "30ft + 10ft/MU level"),
+        duration: SpellDuration.Special(description: "5 rounds/MU level"),
+        area_of_effect: "15ft radius circle",
+        components: SpellComponents { material: true },
+        casting_time: CastingTime.Fast,
+        saving_throw: SpellSave.NoSave,
+        description: "Creatures in area fall into magical slumber. Number affected by HD category, weakest first. No saving throw."
     }
 
     // Classify a Monster's hit dice into an HD category for

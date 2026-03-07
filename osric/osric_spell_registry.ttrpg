@@ -36,14 +36,14 @@ system "OSRIC Spell Registry" {
 
     derive spell_def(id: SpellId) -> SpellDef {
         match id {
-            SpellId.CureLightWounds  => cure_light_wounds_def(),
-            SpellId.CauseLightWounds => cause_light_wounds_def(),
-            SpellId.Bless            => bless_def(),
-            SpellId.Curse            => curse_def(),
-            SpellId.HoldPerson       => hold_person_def(),
-            SpellId.MagicMissile     => magic_missile_def(),
-            SpellId.Sleep            => sleep_def(),
-            SpellId.Fireball         => fireball_def()
+            SpellId.CureLightWounds  => CURE_LIGHT_WOUNDS_DEF,
+            SpellId.CauseLightWounds => CAUSE_LIGHT_WOUNDS_DEF,
+            SpellId.Bless            => BLESS_DEF,
+            SpellId.Curse            => CURSE_DEF,
+            SpellId.HoldPerson       => HOLD_PERSON_DEF,
+            SpellId.MagicMissile     => MAGIC_MISSILE_DEF,
+            SpellId.Sleep            => SLEEP_DEF,
+            SpellId.Fireball         => FIREBALL_DEF
         }
     }
 

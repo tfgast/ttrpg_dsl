@@ -90,7 +90,7 @@ fn ose_time_economy_has_expected_decls() {
                         DeclKind::Table(t) if t.name == "armour_weight_cn" => {
                             has_armour_table = true;
                         }
-                        DeclKind::Derive(d) if d.name == "rest_interval_turns" => {
+                        DeclKind::Const(c) if c.name == "REST_INTERVAL_TURNS" => {
                             has_rest_interval = true;
                         }
                         DeclKind::Derive(d) if d.name == "training_cost_gp" => {
@@ -108,6 +108,6 @@ fn ose_time_economy_has_expected_decls() {
     assert!(has_light_table, "expected light_source_turns table");
     assert!(has_coin_table, "expected coin_gp_value_x100 table");
     assert!(has_armour_table, "expected armour_weight_cn table");
-    assert!(has_rest_interval, "expected rest_interval_turns derive");
+    assert!(has_rest_interval, "expected REST_INTERVAL_TURNS const");
     assert!(has_training_cost, "expected training_cost_gp derive");
 }

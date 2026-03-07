@@ -31,75 +31,63 @@ system "OSRIC Multiclass" {
     // ========================================================
 
     // Dwarf: fighter/thief
-    derive dwarf_multiclass_combos() -> list<list<Class>> {
-        [
-            [Fighter, Thief]
-        ]
-    }
+    const DWARF_MULTICLASS_COMBOS: list<list<Class>> = [
+        [Fighter, Thief]
+    ]
 
     // Elf: fighter/magic-user, fighter/thief, magic-user/thief,
     //       fighter/magic-user/thief
-    derive elf_multiclass_combos() -> list<list<Class>> {
-        [
-            [Fighter, MagicUser],
-            [Fighter, Thief],
-            [MagicUser, Thief],
-            [Fighter, MagicUser, Thief]
-        ]
-    }
+    const ELF_MULTICLASS_COMBOS: list<list<Class>> = [
+        [Fighter, MagicUser],
+        [Fighter, Thief],
+        [MagicUser, Thief],
+        [Fighter, MagicUser, Thief]
+    ]
 
     // Gnome: fighter/illusionist, fighter/thief, illusionist/thief
-    derive gnome_multiclass_combos() -> list<list<Class>> {
-        [
-            [Fighter, Illusionist],
-            [Fighter, Thief],
-            [Illusionist, Thief]
-        ]
-    }
+    const GNOME_MULTICLASS_COMBOS: list<list<Class>> = [
+        [Fighter, Illusionist],
+        [Fighter, Thief],
+        [Illusionist, Thief]
+    ]
 
     // Half-Elf: cleric/fighter, cleric/ranger, cleric/magic-user,
     //           fighter/magic-user, fighter/thief,
     //           cleric/fighter/magic-user, fighter/magic-user/thief
-    derive half_elf_multiclass_combos() -> list<list<Class>> {
-        [
-            [Class.Cleric, Fighter],
-            [Class.Cleric, Ranger],
-            [Class.Cleric, MagicUser],
-            [Fighter, MagicUser],
-            [Fighter, Thief],
-            [Class.Cleric, Fighter, MagicUser],
-            [Fighter, MagicUser, Thief]
-        ]
-    }
+    const HALF_ELF_MULTICLASS_COMBOS: list<list<Class>> = [
+        [Class.Cleric, Fighter],
+        [Class.Cleric, Ranger],
+        [Class.Cleric, MagicUser],
+        [Fighter, MagicUser],
+        [Fighter, Thief],
+        [Class.Cleric, Fighter, MagicUser],
+        [Fighter, MagicUser, Thief]
+    ]
 
     // Half-Orc: cleric/fighter, cleric/thief, cleric/assassin,
     //           fighter/thief, fighter/assassin
-    derive half_orc_multiclass_combos() -> list<list<Class>> {
-        [
-            [Class.Cleric, Fighter],
-            [Class.Cleric, Thief],
-            [Assassin, Class.Cleric],
-            [Fighter, Thief],
-            [Assassin, Fighter]
-        ]
-    }
+    const HALF_ORC_MULTICLASS_COMBOS: list<list<Class>> = [
+        [Class.Cleric, Fighter],
+        [Class.Cleric, Thief],
+        [Assassin, Class.Cleric],
+        [Fighter, Thief],
+        [Assassin, Fighter]
+    ]
 
     // Halfling: fighter/thief
-    derive halfling_multiclass_combos() -> list<list<Class>> {
-        [
-            [Fighter, Thief]
-        ]
-    }
+    const HALFLING_MULTICLASS_COMBOS: list<list<Class>> = [
+        [Fighter, Thief]
+    ]
 
     // Dispatch to ancestry-specific combos. Returns empty for Human.
     derive multiclass_combos_for(ancestry: Ancestry) -> list<list<Class>> {
         match ancestry {
-            Dwarf    => dwarf_multiclass_combos(),
-            Elf      => elf_multiclass_combos(),
-            Gnome    => gnome_multiclass_combos(),
-            HalfElf  => half_elf_multiclass_combos(),
-            HalfOrc  => half_orc_multiclass_combos(),
-            Halfling => halfling_multiclass_combos(),
+            Dwarf    => DWARF_MULTICLASS_COMBOS,
+            Elf      => ELF_MULTICLASS_COMBOS,
+            Gnome    => GNOME_MULTICLASS_COMBOS,
+            HalfElf  => HALF_ELF_MULTICLASS_COMBOS,
+            HalfOrc  => HALF_ORC_MULTICLASS_COMBOS,
+            Halfling => HALFLING_MULTICLASS_COMBOS,
             Human    => []
         }
     }

@@ -280,7 +280,7 @@ system "OSRIC Level Drain" {
     //  spell must be cast: one day per level you have in the
     //  cleric class."
     //
-    //  Time window = caster_cleric_level * segments_per_day()
+    //  Time window = caster_cleric_level * SEGMENTS_PER_DAY
     // ========================================================
 
     derive restoration_eligible(
@@ -288,7 +288,7 @@ system "OSRIC Level Drain" {
         current_time: int,
         caster_cleric_level: int
     ) -> bool {
-        let window = caster_cleric_level * segments_per_day()
+        let window = caster_cleric_level * SEGMENTS_PER_DAY
         let elapsed = current_time - drain.timestamp
         elapsed <= window
     }

@@ -169,18 +169,18 @@ system "OSRIC Combat" {
     //  1 hour = 6 turns = 600 segments, 1 day = 24 hours = 14400 segments.
     // ========================================================
 
-    derive segments_per_round() -> int { 10 }
-    derive segments_per_turn() -> int { 100 }
-    derive segments_per_hour() -> int { 600 }
-    derive segments_per_day() -> int { 14400 }
+    const SEGMENTS_PER_ROUND: int = 10
+    const SEGMENTS_PER_TURN: int = 100
+    const SEGMENTS_PER_HOUR: int = 600
+    const SEGMENTS_PER_DAY: int = 14400
 
     derive duration_to_segments(d: Duration) -> int {
         match d {
             Duration.Segments(n) => n,
-            Duration.Rounds(n) => n * segments_per_round(),
-            Duration.Turns(n) => n * segments_per_turn(),
-            Duration.Hours(n) => n * segments_per_hour(),
-            Duration.Days(n) => n * segments_per_day(),
+            Duration.Rounds(n) => n * SEGMENTS_PER_ROUND,
+            Duration.Turns(n) => n * SEGMENTS_PER_TURN,
+            Duration.Hours(n) => n * SEGMENTS_PER_HOUR,
+            Duration.Days(n) => n * SEGMENTS_PER_DAY,
             Duration.EndOfRound => 0,
             Duration.Indefinite => -1
         }
@@ -1891,9 +1891,7 @@ system "OSRIC Combat" {
     //  receive a charge. Per Table 1.4.2.3c footnote †.
     // ========================================================
 
-    derive set_weapon_damage_multiplier() -> int {
-        2
-    }
+    const SET_WEAPON_DAMAGE_MULTIPLIER: int = 2
 
     derive can_set_against_charge(weapon: MeleeWeapon) -> bool {
         match weapon {
@@ -1946,7 +1944,7 @@ system "OSRIC Combat" {
             match result.outcome {
                 AttackOutcome.Hit => {
                     let wdef = melee_weapon_def(weapon)
-                    let doubled = result.damage * set_weapon_damage_multiplier()
+                    let doubled = result.damage * SET_WEAPON_DAMAGE_MULTIPLIER
                     target.TakeDamage(defender, doubled, wdef.damage_type)
                 },
                 _ => {}
@@ -2009,7 +2007,7 @@ system "OSRIC Combat" {
             match result.outcome {
                 AttackOutcome.Hit => {
                     let wdef = melee_weapon_def(weapon)
-                    let doubled = result.damage * set_weapon_damage_multiplier()
+                    let doubled = result.damage * SET_WEAPON_DAMAGE_MULTIPLIER
                     target.TakeDamage(defender, doubled, wdef.damage_type)
                 },
                 _ => {}
@@ -2260,7 +2258,7 @@ system "OSRIC Combat" {
     // Natural healing: 1 HP per day of uninterrupted rest.
     // Four weeks of rest restores full HP regardless.
     // CON penalty delays healing start (§1.6.6.1).
-    derive natural_healing_per_day() -> int { 1 }
+    const NATURAL_HEALING_PER_DAY: int = 1
 
-    derive full_rest_days() -> int { 28 }
+    const FULL_REST_DAYS: int = 28
 }
