@@ -1,0 +1,67 @@
+// OSRIC 3.0 Assassin Disguise — integration tests
+// Tests detection chance calculation and disguise check mechanic.
+
+load osric/*.ttrpg
+
+// ── Detection chance: base cases ───────────────────────────
+// Base 4%, no ancestry change, no GM modifier
+assert_eq disguise_detection_chance(false), 4
+
+// +2% for ancestry change
+assert_eq disguise_detection_chance(true), 6
+
+// ── Detection chance: GM modifier ──────────────────────────
+// GM adds +10% (very suspicious viewer)
+assert_eq disguise_detection_chance(false, 10), 14
+assert_eq disguise_detection_chance(true, 10), 16
+
+// GM subtracts (dark, rainy, distant)
+assert_eq disguise_detection_chance(false, -3), 1
+
+// ── Detection chance: clamping ─────────────────────────────
+// Cannot go below 1%
+assert_eq disguise_detection_chance(false, -50), 1
+
+// Cannot go above 99%
+assert_eq disguise_detection_chance(true, 200), 99
+
+// ── Disguise check mechanic: forced detection ──────────────
+// With GM modifier pushing chance to 99%, roll of 1-99 detects
+seed 42
+let detected = disguise_check(false, 95)
+assert_eq detected.chance, 99
+
+// ── Disguise check mechanic: forced undetected ─────────────
+// With GM modifier pushing chance to 1%, almost always undetected
+seed 100
+let hidden = disguise_check(false, -50)
+assert_eq hidden.chance, 1
+
+// ── Disguise check: result structure ───────────────────────
+// Verify result fields are populated
+seed 1
+let result = disguise_check(true, 0)
+assert_eq result.chance, 6
+assert result.roll >= 1
+assert result.roll <= 100
+
+// ── Disguise check: ancestry flag propagation ──────────────
+seed 1
+let no_anc = disguise_check(false, 0)
+assert_eq no_anc.chance, 4
+
+seed 1
+let with_anc = disguise_check(true, 0)
+assert_eq with_anc.chance, 6
+
+// ── Detection chance: Example 3 from PG p.30 ──────────────
+// Disguised as goblin (ancestry change = +2%), base 4% → 6%
+assert_eq disguise_detection_chance(true), 6
+
+// ── Detection chance: Example 1 from PG p.30 ──────────────
+// GM decides only 1% chance (dark, rain, distance), so gm_modifier = -3
+assert_eq disguise_detection_chance(false, -3), 1
+
+// ── Detection chance: Example 2 from PG p.30 ──────────────
+// GM decides 50% chance (wife knows ambassador well), so gm_modifier = +46
+assert_eq disguise_detection_chance(false, 46), 50
