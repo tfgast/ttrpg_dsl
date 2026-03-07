@@ -376,6 +376,27 @@ do Assassinate(assn_action_atk, assn_action_tgt, 8)
 assert_eq assn_action_tgt.hp, -10
 assert_condition assn_action_tgt, Dead
 
+// ── Assassination vs Monster target ──────────────────────────
+
+spawn Character assn_mon_atk { name: "Killer2", classes: [ClassLevel { class: Assassin, level: 8 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots { wielded_main: some(Melee(Dagger)) } }
+spawn Monster assn_mon_tgt { name: "Orc", hit_dice: 1d8, max_hp: 8, hp: 8, ac: 14, attacks: [MonsterAttack { name: "Club", damage: 1d6 }] }
+
+// Successful assassination kill against Monster — hp goes to 0, Dead condition
+rolls clear
+rolls 50
+do Assassinate(assn_mon_atk, assn_mon_tgt, 8)
+assert_eq assn_mon_tgt.hp, 0
+assert_condition assn_mon_tgt, Dead
+
+// Failed assassination (weapon hit) against Monster — TakeDamage applies
+spawn Character assn_mon_hit_atk { name: "Killer3", classes: [ClassLevel { class: Assassin, level: 4 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots { wielded_main: some(Melee(Dagger)) } }
+spawn Monster assn_mon_hit_tgt { name: "Goblin", hit_dice: 1d8 - 1, max_hp: 5, hp: 5, ac: 14, attacks: [MonsterAttack { name: "Sword", damage: 1d6 }] }
+
+rolls clear
+rolls 80 18 3
+do Assassinate(assn_mon_hit_atk, assn_mon_hit_tgt, 6)
+assert_eq assn_mon_hit_tgt.hp, 2
+
 // ── Parry ───────────────────────────────────────────────────────
 
 spawn Character parry_str { name: "Parrier1", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 17, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots { wielded_main: some(Melee(SwordLong)) } }
