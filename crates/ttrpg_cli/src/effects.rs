@@ -221,8 +221,7 @@ impl EffectHandler for CliHandler<'_> {
                             return Response::UseDefault;
                         }
                         PromptOutcome::Vetoed => {
-                            self.log
-                                .push(format!("[ResolvePrompt] {name} -> vetoed"));
+                            self.log.push(format!("[ResolvePrompt] {name} -> vetoed"));
                             return Response::Vetoed;
                         }
                     }
@@ -949,7 +948,14 @@ mod tests {
         let mut queue = VecDeque::new();
         let mut prompt_queue = VecDeque::new();
         let no_units = UnitSuffixes::new();
-        let mut handler = CliHandler::new(&game_state, &reverse, &mut rng, &mut queue, &mut prompt_queue, &no_units);
+        let mut handler = CliHandler::new(
+            &game_state,
+            &reverse,
+            &mut rng,
+            &mut queue,
+            &mut prompt_queue,
+            &no_units,
+        );
 
         let effect = Effect::MutateField {
             entity,
@@ -986,7 +992,14 @@ mod tests {
         let mut queue = VecDeque::new();
         let mut prompt_queue = VecDeque::new();
         let no_units = UnitSuffixes::new();
-        let mut handler = CliHandler::new(&game_state, &reverse, &mut rng, &mut queue, &mut prompt_queue, &no_units);
+        let mut handler = CliHandler::new(
+            &game_state,
+            &reverse,
+            &mut rng,
+            &mut queue,
+            &mut prompt_queue,
+            &no_units,
+        );
 
         let effect = Effect::MutateField {
             entity,
@@ -1017,7 +1030,14 @@ mod tests {
         let mut queue = VecDeque::new();
         let mut prompt_queue = VecDeque::new();
         let no_units = UnitSuffixes::new();
-        let mut handler = CliHandler::new(&game_state, &reverse, &mut rng, &mut queue, &mut prompt_queue, &no_units);
+        let mut handler = CliHandler::new(
+            &game_state,
+            &reverse,
+            &mut rng,
+            &mut queue,
+            &mut prompt_queue,
+            &no_units,
+        );
 
         let effect = Effect::DeductCost {
             actor: entity,
@@ -1187,7 +1207,14 @@ mod tests {
         let mut queue = VecDeque::new();
         let mut prompt_queue = VecDeque::new();
         let no_units = UnitSuffixes::new();
-        let mut handler = CliHandler::new(&game_state, &reverse, &mut rng, &mut queue, &mut prompt_queue, &no_units);
+        let mut handler = CliHandler::new(
+            &game_state,
+            &reverse,
+            &mut rng,
+            &mut queue,
+            &mut prompt_queue,
+            &no_units,
+        );
 
         let struct_val = Value::Struct {
             name: "Spellcasting".into(),
@@ -1239,7 +1266,14 @@ mod tests {
         let mut queue = VecDeque::new();
         let mut prompt_queue = VecDeque::new();
         let no_units = UnitSuffixes::new();
-        let mut handler = CliHandler::new(&game_state, &reverse, &mut rng, &mut queue, &mut prompt_queue, &no_units);
+        let mut handler = CliHandler::new(
+            &game_state,
+            &reverse,
+            &mut rng,
+            &mut queue,
+            &mut prompt_queue,
+            &no_units,
+        );
 
         let effect = Effect::RevokeGroup {
             entity,
@@ -1278,7 +1312,14 @@ mod tests {
         let mut queue = VecDeque::new();
         let mut prompt_queue = VecDeque::new();
         let no_units = UnitSuffixes::new();
-        let mut handler = CliHandler::new(&game_state, &reverse, &mut rng, &mut queue, &mut prompt_queue, &no_units);
+        let mut handler = CliHandler::new(
+            &game_state,
+            &reverse,
+            &mut rng,
+            &mut queue,
+            &mut prompt_queue,
+            &no_units,
+        );
 
         let effect = Effect::MutateField {
             entity,
@@ -1317,7 +1358,14 @@ mod tests {
         let mut queue = VecDeque::new();
         let mut prompt_queue = VecDeque::new();
         let no_units = UnitSuffixes::new();
-        let mut handler = CliHandler::new(&game_state, &reverse, &mut rng, &mut queue, &mut prompt_queue, &no_units);
+        let mut handler = CliHandler::new(
+            &game_state,
+            &reverse,
+            &mut rng,
+            &mut queue,
+            &mut prompt_queue,
+            &no_units,
+        );
 
         let effect = Effect::MutateField {
             entity,
@@ -1345,5 +1393,189 @@ mod tests {
             "log should not show 'none' as old value; got: {}",
             handler.log[0],
         );
+    }
+
+    // ── Interactive prompt helper tests ──────────────────────────
+
+    #[test]
+    fn parse_prompt_input_int() {
+        assert_eq!(parse_prompt_input("42", &Ty::Int), Ok(Value::Int(42)));
+        assert_eq!(parse_prompt_input("-7", &Ty::Int), Ok(Value::Int(-7)));
+        assert!(parse_prompt_input("abc", &Ty::Int).is_err());
+        assert!(parse_prompt_input("3.14", &Ty::Int).is_err());
+    }
+
+    #[test]
+    fn parse_prompt_input_resource() {
+        assert_eq!(parse_prompt_input("10", &Ty::Resource), Ok(Value::Int(10)));
+        assert!(parse_prompt_input("nope", &Ty::Resource).is_err());
+    }
+
+    #[test]
+    fn parse_prompt_input_float() {
+        assert_eq!(parse_prompt_input("2.5", &Ty::Float), Ok(Value::Float(2.5)));
+        assert_eq!(parse_prompt_input("42", &Ty::Float), Ok(Value::Float(42.0)));
+        assert!(parse_prompt_input("abc", &Ty::Float).is_err());
+    }
+
+    #[test]
+    fn parse_prompt_input_bool() {
+        assert_eq!(parse_prompt_input("true", &Ty::Bool), Ok(Value::Bool(true)));
+        assert_eq!(parse_prompt_input("yes", &Ty::Bool), Ok(Value::Bool(true)));
+        assert_eq!(parse_prompt_input("y", &Ty::Bool), Ok(Value::Bool(true)));
+        assert_eq!(parse_prompt_input("1", &Ty::Bool), Ok(Value::Bool(true)));
+        assert_eq!(
+            parse_prompt_input("false", &Ty::Bool),
+            Ok(Value::Bool(false))
+        );
+        assert_eq!(parse_prompt_input("no", &Ty::Bool), Ok(Value::Bool(false)));
+        assert_eq!(parse_prompt_input("n", &Ty::Bool), Ok(Value::Bool(false)));
+        assert_eq!(parse_prompt_input("0", &Ty::Bool), Ok(Value::Bool(false)));
+        assert!(parse_prompt_input("maybe", &Ty::Bool).is_err());
+    }
+
+    #[test]
+    fn parse_prompt_input_string() {
+        assert_eq!(
+            parse_prompt_input("hello world", &Ty::String),
+            Ok(Value::Str("hello world".to_string()))
+        );
+        assert_eq!(
+            parse_prompt_input("", &Ty::String),
+            Ok(Value::Str(String::new()))
+        );
+    }
+
+    #[test]
+    fn parse_prompt_input_fallback_literal() {
+        // Unknown type falls back to parser — int literal works
+        let entity_ty = Ty::Entity("Monster".into());
+        assert_eq!(parse_prompt_input("42", &entity_ty), Ok(Value::Int(42)));
+        // String literal via parser
+        assert_eq!(
+            parse_prompt_input("\"hello\"", &entity_ty),
+            Ok(Value::Str("hello".to_string()))
+        );
+        // Complex expression is rejected
+        assert!(parse_prompt_input("1 + 2", &entity_ty).is_err());
+    }
+
+    #[test]
+    fn type_hint_returns_expected_labels() {
+        assert_eq!(type_hint(&Ty::Int), "int");
+        assert_eq!(type_hint(&Ty::Resource), "int");
+        assert_eq!(type_hint(&Ty::Float), "float");
+        assert_eq!(type_hint(&Ty::Bool), "bool");
+        assert_eq!(type_hint(&Ty::String), "string");
+        assert_eq!(type_hint(&Ty::Entity("Foo".into())), "entity");
+        assert_eq!(type_hint(&Ty::AnyEntity), "entity");
+        assert_eq!(type_hint(&Ty::DiceExpr), "value");
+    }
+
+    #[test]
+    fn format_suggest_values() {
+        assert_eq!(format_suggest(&Value::Int(42)), "42");
+        assert_eq!(format_suggest(&Value::Float(3.5)), "3.5");
+        assert_eq!(format_suggest(&Value::Bool(true)), "true");
+        assert_eq!(format_suggest(&Value::Str("hi".into())), "\"hi\"");
+    }
+
+    #[test]
+    fn interactive_handler_prefers_queue_over_stdin() {
+        // Even with interactive=true, queued values take priority
+        let game_state = RefCell::new(GameState::new());
+        let reverse_handles = HashMap::new();
+        let mut rng = StdRng::seed_from_u64(42);
+        let mut queue = VecDeque::new();
+        let mut prompt_queue = VecDeque::from(vec![Value::Int(99)]);
+        let no_units = UnitSuffixes::new();
+        let mut handler = CliHandler::new(
+            &game_state,
+            &reverse_handles,
+            &mut rng,
+            &mut queue,
+            &mut prompt_queue,
+            &no_units,
+        )
+        .interactive(true);
+
+        let effect = Effect::ResolvePrompt {
+            name: "pick".into(),
+            params: vec![],
+            return_type: Ty::Int,
+            hint: None,
+            suggest: Some(Value::Int(1)),
+            has_default: false,
+        };
+        let response = handler.handle(effect);
+        assert!(
+            matches!(response, Response::PromptResult(Value::Int(99))),
+            "queued value should take priority, got: {response:?}"
+        );
+        assert!(handler.log[0].contains("(queued)"));
+    }
+
+    #[test]
+    fn non_interactive_handler_uses_suggest() {
+        // When not interactive and no queue, suggest is used
+        let game_state = RefCell::new(GameState::new());
+        let reverse_handles = HashMap::new();
+        let mut rng = StdRng::seed_from_u64(42);
+        let mut queue = VecDeque::new();
+        let mut prompt_queue = VecDeque::new();
+        let no_units = UnitSuffixes::new();
+        let mut handler = CliHandler::new(
+            &game_state,
+            &reverse_handles,
+            &mut rng,
+            &mut queue,
+            &mut prompt_queue,
+            &no_units,
+        )
+        .interactive(false);
+
+        let effect = Effect::ResolvePrompt {
+            name: "pick".into(),
+            params: vec![],
+            return_type: Ty::Int,
+            hint: None,
+            suggest: Some(Value::Int(7)),
+            has_default: false,
+        };
+        let response = handler.handle(effect);
+        assert!(matches!(response, Response::PromptResult(Value::Int(7))));
+        assert!(handler.log[0].contains("auto:"));
+    }
+
+    #[test]
+    fn non_interactive_handler_uses_default_over_suggest() {
+        // When not interactive, has_default=true takes priority over suggest
+        let game_state = RefCell::new(GameState::new());
+        let reverse_handles = HashMap::new();
+        let mut rng = StdRng::seed_from_u64(42);
+        let mut queue = VecDeque::new();
+        let mut prompt_queue = VecDeque::new();
+        let no_units = UnitSuffixes::new();
+        let mut handler = CliHandler::new(
+            &game_state,
+            &reverse_handles,
+            &mut rng,
+            &mut queue,
+            &mut prompt_queue,
+            &no_units,
+        )
+        .interactive(false);
+
+        let effect = Effect::ResolvePrompt {
+            name: "pick".into(),
+            params: vec![],
+            return_type: Ty::Int,
+            hint: None,
+            suggest: Some(Value::Int(7)),
+            has_default: true,
+        };
+        let response = handler.handle(effect);
+        assert!(matches!(response, Response::UseDefault));
+        assert!(handler.log[0].contains("use default"));
     }
 }
