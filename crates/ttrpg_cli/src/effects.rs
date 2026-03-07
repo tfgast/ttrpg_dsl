@@ -1,6 +1,6 @@
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap, VecDeque};
-use std::io::{self, BufRead, Write as _};
+use std::io;
 
 use nu_ansi_term::Color;
 use rand::rngs::StdRng;
@@ -610,28 +610,47 @@ fn prompt_stdin_inner(
     return_type: &Ty,
     suggest: Option<&Value>,
 ) -> PromptOutcome {
+    let stdin = io::stdin();
+    let mut reader = stdin.lock();
+    let mut writer = io::stderr();
+    prompt_loop(&mut reader, &mut writer, name, hint, return_type, suggest)
+}
+
+fn prompt_loop(
+    reader: &mut dyn io::BufRead,
+    writer: &mut dyn io::Write,
+    name: &str,
+    hint: Option<&str>,
+    return_type: &Ty,
+    suggest: Option<&Value>,
+) -> PromptOutcome {
     let amber = Color::Yellow;
     let dim = Color::DarkGray;
 
     // Print prompt header
-    eprint!("{}", amber.bold().paint(format!("[prompt] {name}")));
+    write!(writer, "{}", amber.bold().paint(format!("[prompt] {name}"))).ok();
     if let Some(h) = hint {
-        eprint!(" — {}", amber.paint(h));
+        write!(writer, " — {}", amber.paint(h)).ok();
     }
-    eprint!(" {}", dim.paint(format!("({})", type_hint(return_type))));
+    write!(
+        writer,
+        " {}",
+        dim.paint(format!("({})", type_hint(return_type)))
+    )
+    .ok();
     if let Some(val) = suggest {
-        eprint!(
+        write!(
+            writer,
             " {}",
             dim.paint(format!("[default: {}]", format_suggest(val)))
-        );
+        )
+        .ok();
     }
-    eprintln!();
+    writeln!(writer).ok();
 
-    let stdin = io::stdin();
-    let mut reader = stdin.lock();
     loop {
-        eprint!("{}", amber.paint("  > "));
-        let _ = io::stderr().flush();
+        write!(writer, "{}", amber.paint("  > ")).ok();
+        writer.flush().ok();
 
         let mut line = String::new();
         match reader.read_line(&mut line) {
@@ -654,13 +673,15 @@ fn prompt_stdin_inner(
         match parse_prompt_input(trimmed, return_type) {
             Ok(val) => return PromptOutcome::Value(val),
             Err(msg) => {
-                eprintln!(
+                writeln!(
+                    writer,
                     "  {} expected {}, got {:?}: {}",
                     Color::Red.bold().paint("error:"),
                     type_hint(return_type),
                     trimmed,
                     msg,
-                );
+                )
+                .ok();
                 // Loop to re-prompt
             }
         }
@@ -1577,5 +1598,97 @@ mod tests {
         let response = handler.handle(effect);
         assert!(matches!(response, Response::UseDefault));
         assert!(handler.log[0].contains("use default"));
+    }
+
+    // ── prompt_loop tests ───────────────────────────────────────
+
+    use std::io::Cursor;
+
+    fn run_prompt_loop(
+        input: &str,
+        return_type: &Ty,
+        suggest: Option<&Value>,
+    ) -> (PromptOutcome, String) {
+        let mut reader = Cursor::new(input.as_bytes().to_vec());
+        let mut writer = Vec::new();
+        let result = prompt_loop(
+            &mut reader,
+            &mut writer,
+            "test_prompt",
+            Some("Pick a value"),
+            return_type,
+            suggest,
+        );
+        let output = String::from_utf8(writer).unwrap();
+        (result, output)
+    }
+
+    #[test]
+    fn prompt_loop_valid_int_input() {
+        let (result, output) = run_prompt_loop("42\n", &Ty::Int, None);
+        assert!(matches!(result, PromptOutcome::Value(Value::Int(42))));
+        assert!(output.contains("[prompt] test_prompt"));
+        assert!(output.contains("Pick a value"));
+        assert!(output.contains("(int)"));
+    }
+
+    #[test]
+    fn prompt_loop_valid_bool_input() {
+        let (result, _) = run_prompt_loop("yes\n", &Ty::Bool, None);
+        assert!(matches!(result, PromptOutcome::Value(Value::Bool(true))));
+    }
+
+    #[test]
+    fn prompt_loop_valid_string_input() {
+        let (result, _) = run_prompt_loop("hello world\n", &Ty::String, None);
+        assert!(matches!(result, PromptOutcome::Value(Value::Str(s)) if s == "hello world"));
+    }
+
+    #[test]
+    fn prompt_loop_empty_input_with_suggest() {
+        let suggest = Value::Int(7);
+        let (result, _) = run_prompt_loop("\n", &Ty::Int, Some(&suggest));
+        assert!(matches!(result, PromptOutcome::Value(Value::Int(7))));
+    }
+
+    #[test]
+    fn prompt_loop_empty_input_without_suggest() {
+        let (result, _) = run_prompt_loop("\n", &Ty::Int, None);
+        assert!(matches!(result, PromptOutcome::UseDefault));
+    }
+
+    #[test]
+    fn prompt_loop_eof_returns_vetoed() {
+        let (result, _) = run_prompt_loop("", &Ty::Int, None);
+        assert!(matches!(result, PromptOutcome::Vetoed));
+    }
+
+    #[test]
+    fn prompt_loop_retry_then_succeed() {
+        // First line is invalid, second is valid
+        let (result, output) = run_prompt_loop("abc\n42\n", &Ty::Int, None);
+        assert!(matches!(result, PromptOutcome::Value(Value::Int(42))));
+        assert!(output.contains("error:"));
+    }
+
+    #[test]
+    fn prompt_loop_retry_then_eof() {
+        // Invalid input followed by EOF
+        let (result, output) = run_prompt_loop("abc\n", &Ty::Int, None);
+        assert!(matches!(result, PromptOutcome::Vetoed));
+        assert!(output.contains("error:"));
+    }
+
+    #[test]
+    fn prompt_loop_shows_suggest_in_header() {
+        let suggest = Value::Int(5);
+        let (_, output) = run_prompt_loop("10\n", &Ty::Int, Some(&suggest));
+        assert!(output.contains("[default: 5]"));
+    }
+
+    #[test]
+    fn prompt_loop_float_input() {
+        let (result, _) = run_prompt_loop("2.5\n", &Ty::Float, None);
+        assert!(matches!(result, PromptOutcome::Value(Value::Float(f)) if f == 2.5));
     }
 }
