@@ -184,6 +184,7 @@ pub enum Effect {
         target_fn: Name,
         phase: Phase,
         changes: Vec<FieldChange>,
+        tags: Vec<Name>,
     },
 }
 
@@ -442,6 +443,7 @@ mod tests {
                 old: Value::Str("normal".into()),
                 new: Value::Str("disadvantage".into()),
             }],
+            tags: vec![],
         };
         if let Effect::ModifyApplied {
             source,

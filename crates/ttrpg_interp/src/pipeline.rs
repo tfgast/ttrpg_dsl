@@ -431,6 +431,7 @@ pub(crate) fn run_phase1(
                 target_fn: Name::from(fn_name),
                 phase: Phase::Phase1,
                 changes,
+                tags: modifier.clause.tags.clone(),
             });
             if !matches!(response, Response::Acknowledged) {
                 return Err(RuntimeError::with_span(
@@ -508,6 +509,7 @@ pub(crate) fn run_phase2(
                 target_fn: Name::from(fn_name),
                 phase: Phase::Phase2,
                 changes,
+                tags: modifier.clause.tags.clone(),
             });
             if !matches!(response, Response::Acknowledged) {
                 return Err(RuntimeError::with_span(
@@ -1191,6 +1193,7 @@ mod tests {
                 target_fn,
                 phase,
                 changes,
+                ..
             } => {
                 assert!(
                     matches!(source, ModifySource::Condition(name) if name == "Prone"),
@@ -1352,6 +1355,7 @@ mod tests {
                 target_fn,
                 phase,
                 changes,
+                ..
             } => {
                 assert!(matches!(source, ModifySource::Condition(name) if name == "Boosted"));
                 assert_eq!(target_fn, "compute");

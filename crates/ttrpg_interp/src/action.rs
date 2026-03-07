@@ -562,6 +562,7 @@ fn collect_and_apply_cost_modifiers(
                 target_fn: Name::from(action_name),
                 phase: Phase::Phase1,
                 changes,
+                tags: modifier.clause.tags.clone(),
             });
             if !matches!(response, Response::Acknowledged) {
                 return Err(RuntimeError::with_span(
