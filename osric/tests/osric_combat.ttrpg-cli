@@ -783,47 +783,22 @@ let ua_cond = resolve_unarmed_to_hit(ua_unarmoured, ua_armoured, 30, 0, 4)
 assert_eq ua_cond.outcome, AttackOutcome.Hit
 assert_eq ua_cond.attacker_mod, 6
 
-// ── Brawling Attack (§1.6.12, PG p105) ──────────────────────
-// Brawling uses the normal BTHB attack roll, not the unarmed to-hit table.
-// Damage is 1d2 normal (Blunt), not temporary.
+// ── Brawling via MeleeAttack fallback (§1.6.12, PG p105) ─────
+// Unarmed characters fall back to FistOrKick (1d2 Blunt, normal damage).
 
-// Fighter level 5 (BTHB +4), STR 12 (no mod), unarmoured target (AC 10).
-// Roll 10: 10 + 4 = 14 >= 10 → Hit. Damage roll 2 → 2.
+// Unarmed Fighter level 5 (BTHB +4), STR 12, vs unarmoured target (AC 10).
+// Roll 15: 15 + 4 = 19 >= 10 → Hit. Damage roll 1 → 1.
 spawn Character brawl_atk { name: "Brawler", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 } }
 spawn Character brawl_tgt { name: "BrawlTarget", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 } }
 
 rolls clear
-rolls 10 2
-let brawl_hit = resolve_brawling_attack(brawl_atk, brawl_tgt)
-assert_eq brawl_hit.outcome, AttackOutcome.Hit
-assert_eq brawl_hit.total_mod, 4
-assert_eq brawl_hit.damage, 2
-
-// Natural 1 always misses.
-rolls clear
-rolls 1
-let brawl_nat1 = resolve_brawling_attack(brawl_atk, brawl_tgt)
-assert_eq brawl_nat1.outcome, AttackOutcome.Miss
-assert_eq brawl_nat1.damage, 0
-
-// Low roll miss: Fighter level 1 (BTHB +0), STR 12, target AC 10.
-// Roll 3: 3 + 0 = 3 < 10 → Miss.
-spawn Character brawl_weak { name: "WeakBrawler", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 } }
-rolls clear
-rolls 3
-let brawl_miss = resolve_brawling_attack(brawl_weak, brawl_tgt)
-assert_eq brawl_miss.outcome, AttackOutcome.Miss
-
-// BrawlingAttack action deals normal damage (not temporary).
-// Roll 15: 15 + 4 = 19 >= 10 → Hit. Damage roll 1 → max(1,1) = 1.
-rolls clear
 rolls 15 1
-do BrawlingAttack(brawl_atk, brawl_tgt)
+do MeleeAttack(brawl_atk, brawl_tgt)
 assert_eq brawl_tgt.hp, 9
 assert_eq brawl_tgt.temp_damage, 0
 
-// BrawlingAttack miss does no damage.
+// Unarmed miss does no damage.
 rolls clear
 rolls 2
-do BrawlingAttack(brawl_atk, brawl_tgt)
+do MeleeAttack(brawl_atk, brawl_tgt)
 assert_eq brawl_tgt.hp, 9
