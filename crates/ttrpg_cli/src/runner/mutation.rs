@@ -339,7 +339,8 @@ impl Runner {
                 &mut self.prompt_queue,
                 &self.unit_suffixes,
             )
-            .quiet(self.quiet);
+            .quiet(self.quiet)
+            .interactive(self.interactive);
             interp.resolve_resource_bounds(&state, &mut handler, &entity, &path_segments)
         };
 

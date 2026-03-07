@@ -115,7 +115,8 @@ impl Runner {
                         &mut self.prompt_queue,
                         &self.unit_suffixes,
                     )
-                    .quiet(self.quiet);
+                    .quiet(self.quiet)
+                    .interactive(self.interactive);
                     let result = interp
                         .evaluate_expr(&state, &mut handler, &parsed)
                         .map_err(|e| {
@@ -192,7 +193,8 @@ impl Runner {
                     &mut self.prompt_queue,
                     &self.unit_suffixes,
                 )
-                .quiet(self.quiet);
+                .quiet(self.quiet)
+                .interactive(self.interactive);
                 let result = interp
                     .evaluate_expr(&state, &mut handler, &parsed)
                     .map_err(|e| {

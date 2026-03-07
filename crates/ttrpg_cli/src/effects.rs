@@ -1,11 +1,14 @@
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap, VecDeque};
+use std::io::{self, BufRead, Write as _};
 
+use nu_ansi_term::Color;
 use rand::rngs::StdRng;
 use rand::Rng;
 use ttrpg_ast::ast::AssignOp;
 use ttrpg_ast::DiceFilter;
 use ttrpg_ast::Name;
+use ttrpg_checker::ty::Ty;
 use ttrpg_interp::adapter;
 use ttrpg_interp::effect::{ActionOutcome, Effect, EffectHandler, Response};
 use ttrpg_interp::reference_state::GameState;
@@ -102,6 +105,7 @@ pub struct CliHandler<'a> {
     pub log: Vec<String>,
     pub effects: Vec<Effect>,
     quiet: bool,
+    interactive: bool,
 }
 
 impl<'a> CliHandler<'a> {
@@ -123,11 +127,17 @@ impl<'a> CliHandler<'a> {
             log: Vec::new(),
             effects: Vec::new(),
             quiet: false,
+            interactive: false,
         }
     }
 
     pub fn quiet(mut self, quiet: bool) -> Self {
         self.quiet = quiet;
+        self
+    }
+
+    pub fn interactive(mut self, interactive: bool) -> Self {
+        self.interactive = interactive;
         self
     }
 
@@ -182,6 +192,8 @@ impl EffectHandler for CliHandler<'_> {
                 suggest,
                 name,
                 has_default,
+                return_type,
+                hint,
                 ..
             } => {
                 if let Some(val) = self.prompt_queue.pop_front() {
@@ -190,8 +202,34 @@ impl EffectHandler for CliHandler<'_> {
                         name,
                         format_value(&val, self.unit_suffixes)
                     ));
-                    Response::PromptResult(val)
-                } else if has_default {
+                    return Response::PromptResult(val);
+                }
+
+                if self.interactive {
+                    match prompt_stdin(&name, hint.as_deref(), &return_type, suggest.as_ref()) {
+                        PromptOutcome::Value(val) => {
+                            self.log(format!(
+                                "[ResolvePrompt] {} -> {}",
+                                name,
+                                format_value(&val, self.unit_suffixes)
+                            ));
+                            return Response::PromptResult(val);
+                        }
+                        PromptOutcome::UseDefault => {
+                            self.log
+                                .push(format!("[ResolvePrompt] {name} -> use default"));
+                            return Response::UseDefault;
+                        }
+                        PromptOutcome::Vetoed => {
+                            self.log
+                                .push(format!("[ResolvePrompt] {name} -> vetoed"));
+                            return Response::Vetoed;
+                        }
+                    }
+                }
+
+                // Non-interactive fallback
+                if has_default {
                     self.log
                         .push(format!("[ResolvePrompt] {name} -> use default"));
                     Response::UseDefault
@@ -540,6 +578,160 @@ impl EffectHandler for CliHandler<'_> {
                 Response::Acknowledged
             }
         }
+    }
+}
+
+// ── Interactive prompt helpers ──────────────────────────────────
+
+enum PromptOutcome {
+    Value(Value),
+    UseDefault,
+    Vetoed,
+}
+
+/// Prompt the user via stdin for a value. Temporarily disables raw mode
+/// so the user gets normal line editing, then re-enables it.
+fn prompt_stdin(
+    name: &str,
+    hint: Option<&str>,
+    return_type: &Ty,
+    suggest: Option<&Value>,
+) -> PromptOutcome {
+    let _ = crossterm::terminal::disable_raw_mode();
+
+    let result = prompt_stdin_inner(name, hint, return_type, suggest);
+
+    let _ = crossterm::terminal::enable_raw_mode();
+    result
+}
+
+fn prompt_stdin_inner(
+    name: &str,
+    hint: Option<&str>,
+    return_type: &Ty,
+    suggest: Option<&Value>,
+) -> PromptOutcome {
+    let amber = Color::Yellow;
+    let dim = Color::DarkGray;
+
+    // Print prompt header
+    eprint!("{}", amber.bold().paint(format!("[prompt] {name}")));
+    if let Some(h) = hint {
+        eprint!(" — {}", amber.paint(h));
+    }
+    eprint!(" {}", dim.paint(format!("({})", type_hint(return_type))));
+    if let Some(val) = suggest {
+        eprint!(
+            " {}",
+            dim.paint(format!("[default: {}]", format_suggest(val)))
+        );
+    }
+    eprintln!();
+
+    let stdin = io::stdin();
+    let mut reader = stdin.lock();
+    loop {
+        eprint!("{}", amber.paint("  > "));
+        let _ = io::stderr().flush();
+
+        let mut line = String::new();
+        match reader.read_line(&mut line) {
+            Ok(0) => return PromptOutcome::Vetoed, // EOF / Ctrl-D
+            Err(_) => return PromptOutcome::Vetoed,
+            Ok(_) => {}
+        }
+
+        let trimmed = line.trim();
+
+        // Empty input: use suggest if available, else UseDefault
+        if trimmed.is_empty() {
+            if let Some(val) = suggest {
+                return PromptOutcome::Value(val.clone());
+            }
+            return PromptOutcome::UseDefault;
+        }
+
+        // Parse according to return type
+        match parse_prompt_input(trimmed, return_type) {
+            Ok(val) => return PromptOutcome::Value(val),
+            Err(msg) => {
+                eprintln!(
+                    "  {} expected {}, got {:?}: {}",
+                    Color::Red.bold().paint("error:"),
+                    type_hint(return_type),
+                    trimmed,
+                    msg,
+                );
+                // Loop to re-prompt
+            }
+        }
+    }
+}
+
+/// Parse user input string into a Value according to the expected type.
+fn parse_prompt_input(input: &str, ty: &Ty) -> Result<Value, String> {
+    match ty {
+        Ty::Int | Ty::Resource => input
+            .parse::<i64>()
+            .map(Value::Int)
+            .map_err(|_| "not a valid integer".to_string()),
+        Ty::Float => input
+            .parse::<f64>()
+            .map(Value::Float)
+            .map_err(|_| "not a valid number".to_string()),
+        Ty::Bool => match input {
+            "true" | "yes" | "y" | "1" => Ok(Value::Bool(true)),
+            "false" | "no" | "n" | "0" => Ok(Value::Bool(false)),
+            _ => Err("expected true/false".to_string()),
+        },
+        Ty::String => Ok(Value::Str(input.to_string())),
+        _ => {
+            // For entity handles and other complex types, try parsing as
+            // a DSL expression via the parser and extract literals.
+            let (parsed, diags) = ttrpg_parser::parse_expr(input);
+            if !diags.is_empty() {
+                return Err(diags[0].message.clone());
+            }
+            match parsed {
+                Some(expr) => eval_simple_expr(&expr),
+                None => Err("could not parse input".to_string()),
+            }
+        }
+    }
+}
+
+/// Evaluate a simple parsed expression into a Value without an interpreter.
+/// Handles literals (int, string, bool) that the parser produces.
+fn eval_simple_expr(expr: &ttrpg_ast::Spanned<ttrpg_ast::ast::ExprKind>) -> Result<Value, String> {
+    use ttrpg_ast::ast::ExprKind;
+    match &expr.node {
+        ExprKind::IntLit(n) => Ok(Value::Int(*n)),
+        ExprKind::StringLit(s) => Ok(Value::Str(s.clone())),
+        ExprKind::BoolLit(b) => Ok(Value::Bool(*b)),
+        _ => Err("input too complex — enter a simple value".to_string()),
+    }
+}
+
+/// Human-readable type hint for prompt display.
+fn type_hint(ty: &Ty) -> &'static str {
+    match ty {
+        Ty::Int | Ty::Resource => "int",
+        Ty::Float => "float",
+        Ty::Bool => "bool",
+        Ty::String => "string",
+        Ty::Entity(_) | Ty::AnyEntity => "entity",
+        _ => "value",
+    }
+}
+
+/// Format a suggest value for display in the prompt header.
+fn format_suggest(val: &Value) -> String {
+    match val {
+        Value::Int(n) => n.to_string(),
+        Value::Float(n) => n.to_string(),
+        Value::Bool(b) => b.to_string(),
+        Value::Str(s) => format!("{s:?}"),
+        _ => format!("{val:?}"),
     }
 }
 

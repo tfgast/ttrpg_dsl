@@ -24,6 +24,7 @@ glob.workspace = true
 rustc-hash.workspace = true
 nu-ansi-term.workspace = true
 rand.workspace = true
+crossterm.workspace = true
 reedline.workspace = true
 
 [dev-dependencies]

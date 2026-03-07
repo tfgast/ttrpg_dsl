@@ -398,7 +398,8 @@ impl Runner {
             &mut self.prompt_queue,
             &self.unit_suffixes,
         )
-        .quiet(self.quiet);
+        .quiet(self.quiet)
+        .interactive(self.interactive);
         let bindings: rustc_hash::FxHashMap<Name, Value> = self
             .variables
             .iter()
@@ -442,9 +443,8 @@ impl Runner {
     }
 
     /// Set interactive mode. When `true`, prompts without a queued
-    /// response or default may block for user input (once interactive
-    /// prompt support lands). When `false` (the default), the handler
-    /// auto-resolves using `suggest` or `UseDefault`.
+    /// response block for user input via stdin. When `false` (the
+    /// default), the handler auto-resolves using `suggest` or `UseDefault`.
     pub fn set_interactive(&mut self, interactive: bool) {
         self.interactive = interactive;
     }
