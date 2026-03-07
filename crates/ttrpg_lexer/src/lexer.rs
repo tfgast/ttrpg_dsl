@@ -296,6 +296,7 @@ impl<'a> RawLexer<'a> {
             ',' => Token::new(TokenKind::Comma, self.span(start, self.cursor.pos())),
             ':' => Token::new(TokenKind::Colon, self.span(start, self.cursor.pos())),
             '#' => Token::new(TokenKind::Hash, self.span(start, self.cursor.pos())),
+            ';' => Token::new(TokenKind::Semicolon, self.span(start, self.cursor.pos())),
 
             '.' => {
                 if self.cursor.peek() == Some('.') {
@@ -470,7 +471,12 @@ impl Iterator for Lexer<'_> {
 
     fn next(&mut self) -> Option<Token> {
         loop {
-            let tok = self.raw.next()?;
+            let mut tok = self.raw.next()?;
+
+            // Convert semicolons to newlines so the parser treats them identically
+            if tok.kind == TokenKind::Semicolon {
+                tok.kind = TokenKind::Newline;
+            }
 
             match &tok.kind {
                 TokenKind::LParen => self.paren_depth += 1,

@@ -14,7 +14,7 @@
 //   IDENT          [a-zA-Z_][a-zA-Z0-9_]*
 //   INT            [0-9]+
 //   STRING         double-quoted string literal (with standard escapes)
-//   NL             newline
+//   NL             newline (or semicolon; lexer converts ";" to NL)
 //   EOF            end of input
 //   COMMENT        "//" to end of line (lexer discards, not in grammar)
 //   &X             lookahead: succeeds when X is next, does NOT consume
@@ -45,6 +45,15 @@
 //
 // That's it — three rules, all suppression, no insertion.
 // The lexer never injects tokens.
+//
+//   4. Semicolons: `;` is converted to NL by the lexer.
+//      This allows multiple statements on one line:
+//        let x = 1; let y = 2
+//      and optional trailing semicolons:
+//        let x = 1;
+//      Since `;` becomes NL before suppression rules run,
+//      it inherits all NL suppression behavior (e.g. `+;`
+//      suppresses the `;` just like `+` followed by NL).
 //
 // --- Lexer: keyword handling ---
 //
@@ -564,12 +573,14 @@ type            = "int" | "bool" | "string" | "float"
 // 5. Statements and blocks
 // =========================
 
-term            = NL | &"}" | EOF
+term            = NL | ";" | &"}" | EOF
 // `term` terminates statements and clauses.
-// NL is a real newline. &"}" is a lookahead that succeeds when
-// the next token is "}" but does NOT consume it. EOF handles
-// top-level productions (use_decl, the last decl in a system
-// block) at end of input without a trailing newline.
+// NL is a real newline. ";" is a semicolon, which the lexer
+// converts to NL (so the parser sees both as identical tokens).
+// &"}" is a lookahead that succeeds when the next token is "}"
+// but does NOT consume it. EOF handles top-level productions
+// (use_decl, the last decl in a system block) at end of input
+// without a trailing newline.
 
 block           = "{" stmt* "}"
 

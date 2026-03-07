@@ -82,6 +82,7 @@ pub enum TokenKind {
     PipePipe, // ||
 
     // Whitespace / structure
+    Semicolon, // ; (converted to Newline by wrapping lexer)
     Newline,
     Eof,
 
