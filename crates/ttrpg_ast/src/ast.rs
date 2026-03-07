@@ -670,6 +670,8 @@ impl ConditionDecl {
 pub enum ConditionClause {
     Modify(ModifyClause),
     Suppress(SuppressClause),
+    /// Suppress modify clauses matching a selector.
+    SuppressModify(SuppressModifyClause),
     OnApply(LifecycleBlock),
     OnRemove(LifecycleBlock),
 }
@@ -741,6 +743,14 @@ pub enum ModifyStmt {
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct SuppressClause {
     pub event_name: Name,
+    pub bindings: Vec<ModifyBinding>,
+    pub span: Span,
+}
+
+#[derive(Clone)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct SuppressModifyClause {
+    pub predicates: Vec<SelectorPredicate>,
     pub bindings: Vec<ModifyBinding>,
     pub span: Span,
 }

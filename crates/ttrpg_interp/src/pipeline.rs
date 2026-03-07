@@ -148,6 +148,7 @@ pub(crate) fn collect_modifiers_owned(
                     let clause = match clause_item {
                         ConditionClause::Modify(c) => c,
                         ConditionClause::Suppress(_)
+                        | ConditionClause::SuppressModify(_)
                         | ConditionClause::OnApply(_)
                         | ConditionClause::OnRemove(_) => continue,
                     };

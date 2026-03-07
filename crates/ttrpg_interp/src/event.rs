@@ -413,6 +413,7 @@ fn is_suppressed(
                     let suppress = match clause_item {
                         ConditionClause::Suppress(s) => s,
                         ConditionClause::Modify(_)
+                        | ConditionClause::SuppressModify(_)
                         | ConditionClause::OnApply(_)
                         | ConditionClause::OnRemove(_) => continue,
                     };

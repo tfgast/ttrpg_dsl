@@ -809,6 +809,9 @@ impl<'a> Checker<'a> {
                         &c.params,
                     );
                 }
+                ConditionClause::SuppressModify(_sm) => {
+                    // TODO: validate suppress_modify predicates and bindings
+                }
                 ConditionClause::OnApply(lb) | ConditionClause::OnRemove(lb) => {
                     self.scope.push(BlockKind::LifecycleBlock);
                     let recv_ty = self.env.resolve_type(&c.receiver_type);

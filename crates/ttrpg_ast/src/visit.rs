@@ -253,6 +253,7 @@ impl VisitSpansMut for ConditionClause {
         match self {
             ConditionClause::Modify(m) => m.visit_spans_mut(f),
             ConditionClause::Suppress(s) => s.visit_spans_mut(f),
+            ConditionClause::SuppressModify(sm) => sm.visit_spans_mut(f),
             ConditionClause::OnApply(lb) | ConditionClause::OnRemove(lb) => {
                 lb.visit_spans_mut(f);
             }
@@ -343,6 +344,14 @@ impl VisitSpansMut for ModifyStmt {
 impl VisitSpansMut for SuppressClause {
     fn visit_spans_mut(&mut self, f: &mut dyn FnMut(&mut Span)) {
         self.span.visit_spans_mut(f);
+        self.bindings.visit_spans_mut(f);
+    }
+}
+
+impl VisitSpansMut for SuppressModifyClause {
+    fn visit_spans_mut(&mut self, f: &mut dyn FnMut(&mut Span)) {
+        self.span.visit_spans_mut(f);
+        self.predicates.visit_spans_mut(f);
         self.bindings.visit_spans_mut(f);
     }
 }

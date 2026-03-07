@@ -424,6 +424,7 @@ fn collect_and_apply_cost_modifiers(
                 let clause = match clause_item {
                     ConditionClause::Modify(c) => c,
                     ConditionClause::Suppress(_)
+                    | ConditionClause::SuppressModify(_)
                     | ConditionClause::OnApply(_)
                     | ConditionClause::OnRemove(_) => continue,
                 };
