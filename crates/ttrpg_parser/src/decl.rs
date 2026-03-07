@@ -1004,6 +1004,15 @@ impl Parser {
             self.parse_modify_bindings()?
         };
         self.expect(&TokenKind::RParen)?;
+
+        // Parse optional #tag annotations before the opening brace.
+        let mut tags = Vec::new();
+        while matches!(self.peek(), TokenKind::Hash) {
+            self.advance();
+            let (name, _) = self.expect_ident()?;
+            tags.push(name);
+        }
+
         self.expect(&TokenKind::LBrace)?;
         self.skip_newlines();
 
@@ -1020,7 +1029,7 @@ impl Parser {
             body,
             span: self.end_span(start),
             id: ModifyClauseId(0), // placeholder; build_index() assigns real IDs
-            tags: vec![],
+            tags,
         })
     }
 
