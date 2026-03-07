@@ -269,7 +269,7 @@ assert_eq movement_through_segment(Feet { value: 120 }, 10), Feet { value: 120 }
 
 // ── Charge interaction ──────────────────────────────────────────
 
-assert_eq set_weapon_damage_multiplier(), 2
+assert_eq SET_WEAPON_DAMAGE_MULTIPLIER, 2
 
 // Valid set-against-charge weapons
 assert_eq can_set_against_charge(Spear), true

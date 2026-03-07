@@ -314,7 +314,7 @@ assert_eq assassin_backstab_multiplier(17), 5
 
 assert_eq backstab_multiplier(Thief, 17), 6
 assert_eq backstab_multiplier(Assassin, 17), 5
-assert_eq backstab_attack_bonus(), 4
+assert_eq BACKSTAB_ATTACK_BONUS, 4
 
 spawn Character bs_thief_check { name: "Thief", classes: [ClassLevel { class: Thief, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 } }
 spawn Character bs_assassin_check { name: "Assassin", classes: [ClassLevel { class: Assassin, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 } }

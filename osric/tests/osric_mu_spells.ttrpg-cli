@@ -20,16 +20,16 @@ assert_eq magic_missile_count(11), 6
 // ── SpellDef derives ────────────────────────────────────────────
 
 // Fireball: level 3, Evocation
-assert_eq fireball_def().level, 3
-assert_eq fireball_def().school, SpellSchool.Evocation
+assert_eq FIREBALL_DEF.level, 3
+assert_eq FIREBALL_DEF.school, SpellSchool.Evocation
 
 // Magic Missile: level 1, not reversible
-assert_eq magic_missile_def().level, 1
-assert (magic_missile_def().reversible) == false
+assert_eq MAGIC_MISSILE_DEF.level, 1
+assert (MAGIC_MISSILE_DEF.reversible) == false
 
 // Sleep: level 1, Enchantment
-assert_eq sleep_def().level, 1
-assert_eq sleep_def().school, SpellSchool.Enchantment
+assert_eq SLEEP_DEF.level, 1
+assert_eq SLEEP_DEF.school, SpellSchool.Enchantment
 
 // ── Magic Missile resolve: character targets ────────────────────
 

@@ -25,11 +25,11 @@ assert_eq hold_person_save_bonus(3), 2
 
 // ── SpellDef derives ────────────────────────────────────────────
 
-assert_eq cure_light_wounds_def().level, 1
-assert cause_light_wounds_def().reversible
-assert_eq bless_def().level, 1
-assert bless_def().reversible
-assert_eq hold_person_def().level, 2
+assert_eq CURE_LIGHT_WOUNDS_DEF.level, 1
+assert CAUSE_LIGHT_WOUNDS_DEF.reversible
+assert_eq BLESS_DEF.level, 1
+assert BLESS_DEF.reversible
+assert_eq HOLD_PERSON_DEF.level, 2
 
 // ── Cure Light Wounds ───────────────────────────────────────────
 
