@@ -809,8 +809,12 @@ impl<'a> Checker<'a> {
                         &c.params,
                     );
                 }
-                ConditionClause::SuppressModify(_sm) => {
-                    // TODO: validate suppress_modify predicates and bindings
+                ConditionClause::SuppressModify(sm) => {
+                    self.check_suppress_modify_clause(
+                        sm,
+                        Some((&c.receiver_name, &c.receiver_type, &c.receiver_with_groups)),
+                        &c.params,
+                    );
                 }
                 ConditionClause::OnApply(lb) | ConditionClause::OnRemove(lb) => {
                     self.scope.push(BlockKind::LifecycleBlock);

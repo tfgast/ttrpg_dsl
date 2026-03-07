@@ -860,6 +860,105 @@ impl Checker<'_> {
         }
     }
 
+    /// Check a suppress-modify clause: validate selector predicates and bindings.
+    pub fn check_suppress_modify_clause(
+        &mut self,
+        clause: &SuppressModifyClause,
+        receiver: Option<(&Name, &Spanned<TypeExpr>, &WithClause)>,
+        condition_params: &[Param],
+    ) {
+        // Resolve predicates (same validation as modify selector)
+        let mut resolved: Vec<ResolvedPredicate> = Vec::new();
+        for pred in &clause.predicates {
+            match pred {
+                SelectorPredicate::Tag(tag_name) => {
+                    if !self.env.tags.contains(tag_name) {
+                        self.error(format!("undefined tag `{tag_name}`"), clause.span);
+                        return;
+                    }
+                    self.check_name_visible(tag_name, Namespace::Tag, clause.span);
+                    resolved.push(ResolvedPredicate::Tag(tag_name.clone()));
+                }
+                SelectorPredicate::Returns(type_expr) => {
+                    let ty = self.resolve_type_validated(type_expr);
+                    if ty.is_error() {
+                        return;
+                    }
+                    resolved.push(ResolvedPredicate::Returns(ty));
+                }
+                SelectorPredicate::HasParam { name, ty } => {
+                    let resolved_ty = if let Some(te) = ty {
+                        let t = self.resolve_type_validated(te);
+                        if t.is_error() {
+                            return;
+                        }
+                        Some(t)
+                    } else {
+                        None
+                    };
+                    resolved.push(ResolvedPredicate::HasParam {
+                        name: name.clone(),
+                        ty: resolved_ty,
+                    });
+                }
+            }
+        }
+
+        // Compute match set to verify selector isn't empty
+        let mut match_set: HashSet<Name> = HashSet::new();
+        for (fn_name, fn_info) in &self.env.functions {
+            if fn_info.kind != FnKind::Derive && fn_info.kind != FnKind::Mechanic {
+                continue;
+            }
+            if fn_info.synthetic {
+                continue;
+            }
+            if self.fn_matches_predicates(fn_info, &resolved) {
+                match_set.insert(fn_name.clone());
+            }
+        }
+
+        if match_set.is_empty() {
+            self.diagnostics
+                .push(ttrpg_ast::diagnostic::Diagnostic::warning(
+                    "suppress selector matches no functions",
+                    clause.span,
+                ));
+            return;
+        }
+
+        // Validate bindings: bind condition context and type-check binding expressions
+        if !clause.bindings.is_empty() {
+            self.scope.push(BlockKind::TriggerBinding);
+            self.bind_condition_context(receiver, condition_params);
+
+            // Validate each binding references a param that exists in at least one matched fn
+            for binding in &clause.bindings {
+                let found_in_any = match_set.iter().any(|fn_name| {
+                    self.env
+                        .functions
+                        .get(fn_name)
+                        .map_or(false, |fi| fi.params.iter().any(|p| p.name == binding.name))
+                });
+                if !found_in_any {
+                    self.error(
+                        format!(
+                            "binding `{}` does not match a parameter in any selected function",
+                            binding.name
+                        ),
+                        binding.span,
+                    );
+                }
+                // Type-check the binding value expression if present
+                if let Some(value) = &binding.value {
+                    self.check_expr(value);
+                }
+            }
+
+            self.scope.pop();
+        }
+    }
+
     /// Check a suppress clause.
     pub fn check_suppress_clause(
         &mut self,
