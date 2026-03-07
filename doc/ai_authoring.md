@@ -685,6 +685,7 @@ DiceExpr  ──roll()──▶  RollResult  ──.total──▶  int
 | `Position`        | Opaque board location, use `distance(a, b)`    |
 | `Duration`        | `EndOfTurn`, `StartOfNextTurn`, `Rounds(n)`, `Minutes(n)`, `Indefinite` |
 | `Invocation`      | Execution scope handle from `invocation()`     |
+| `Condition`       | Condition identifier — pass to `apply_condition()`, store in variables |
 | `ActiveCondition` | Runtime condition instance: `.name`, `.duration`, `.id` |
 
 ---
@@ -927,6 +928,50 @@ condition Poisoned(potency: int) on bearer: Character {
 - `bearer` + condition parameters in scope. `invocation()` not available.
 - With `extends`, ancestor lifecycle blocks run first (DFS post-order).
 - **Design principle:** use `extends` for conditions that imply others, not `apply_condition()` in on_apply.
+
+### Condition as First-Class Value
+
+Condition names are values of type `Condition`. They can be stored in variables,
+passed as function parameters, and used in `apply_condition()` / `remove_condition()`.
+This enables shared helpers that abstract common spell patterns.
+
+```ttrpg-with-preamble
+enum Duration { EndOfTurn, Rounds(count: int), Indefinite }
+
+condition Paralyzed on bearer: entity {
+    on_apply {}
+}
+
+condition Sleeping on bearer: entity {
+    on_apply {}
+}
+
+// Generic helper: save-negates-condition pattern
+function resolve_save_negates_condition(
+    caster: entity,
+    targets: list<entity>,
+    spell_name: string,
+    cond: Condition,
+    duration_rounds: int
+) {
+    for target in targets {
+        apply_condition(target, cond, Duration.Rounds(duration_rounds))
+    }
+}
+
+// Callers pass the condition by name
+function resolve_hold_person(caster: entity, targets: list<entity>) {
+    resolve_save_negates_condition(caster, targets, "Hold Person", Paralyzed, 10)
+}
+
+function resolve_sleep(caster: entity, targets: list<entity>) {
+    resolve_save_negates_condition(caster, targets, "Sleep", Sleeping, 20)
+}
+```
+
+**`Condition` vs `ActiveCondition`:**
+- `Condition` = a condition blueprint (e.g. `Prone`, `Sleeping`, `Concealed(level: 3)`)
+- `ActiveCondition` = a live instance on an entity, with `.name`, `.duration`, `.id` fields; returned by `conditions(entity)`
 
 ### Resistance Check (guard match)
 

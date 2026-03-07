@@ -37,7 +37,7 @@
 | `Duration`        | `EndOfTurn`, `StartOfNextTurn`, `Rounds(n)`, `Minutes(n)`, `Indefinite` |
 | `Invocation`      | Opaque execution scope handle                               |
 | `ActiveCondition` | Runtime condition instance — fields: `name`, `duration`, `id` |
-| `Condition`       | Reference to a condition type                               |
+| `Condition`       | Condition identifier — store in variables, pass to functions |
 
 ---
 
@@ -554,6 +554,18 @@ emit EventName(param: value)       // fire event (named args only)
 
 ### Entity & Conditions
 `apply_condition(target, cond, duration)` `remove_condition(target, cond)` `conditions(entity)`
+
+Condition names are first-class values of type `Condition`. They can be stored in variables and passed as function parameters:
+```
+let c = Prone                           // Condition value
+apply_condition(target, c, Duration.Indefinite)
+
+function apply_cond(t: entity, c: Condition, dur: Duration) {
+    apply_condition(t, c, dur)
+}
+apply_cond(target, Sleeping, Duration.Rounds(10))
+```
+`Condition` (blueprint) vs `ActiveCondition` (live instance with `.name`, `.duration`, `.id`).
 
 ### Enum
 `ordinal(v)` `from_ordinal(E, i)` `try_from_ordinal(E, i)`

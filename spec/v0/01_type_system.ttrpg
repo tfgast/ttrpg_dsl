@@ -429,6 +429,46 @@ enum Duration {
 }
 
 
+// --- Condition ---
+//
+// A first-class reference to a declared condition type. Condition names
+// (e.g., `Prone`, `Blessed`, `Sleeping`) resolve to `Condition` values
+// when used in expression position. Parameterized conditions produce a
+// `Condition` value that carries the supplied arguments
+// (e.g., `Concealed(level: 3)`).
+//
+// `Condition` is a built-in type keyword usable in type annotations.
+// It enables writing generic helpers that accept any condition:
+//
+//   function resolve_save_negates_condition(
+//       caster: Character,
+//       targets: list<entity>,
+//       spell_name: string,
+//       cond: Condition,
+//       duration_rounds: int
+//   ) {
+//       for target in targets {
+//           let result = target.ResistSpell(category: some(SpellsUnlisted))
+//           if let some(saved) = result {
+//               if !saved {
+//                   apply_condition(target, cond, Duration.Rounds(duration_rounds))
+//               }
+//           }
+//       }
+//   }
+//
+// Condition values can be:
+//   - Stored in variables:   let c = Prone
+//   - Passed as arguments:   apply_condition(target, c, Duration.Indefinite)
+//   - Compared for equality: c == Prone
+//   - Collected in lists:    let conds: list<Condition> = [Prone, Stunned]
+//
+// `Condition` is distinct from `ActiveCondition`:
+//   - `Condition`       = a condition *type* (blueprint), e.g. `Prone`
+//   - `ActiveCondition` = a condition *instance* active on an entity,
+//     with `.name`, `.duration`, `.id`, `.applied_at` fields
+
+
 // --- ActiveCondition ---
 //
 // Runtime representation of a condition currently active on an entity.
