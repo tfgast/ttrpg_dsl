@@ -581,3 +581,254 @@ call apply_condition(pb_orc, Bleeding, Duration.Indefinite)
 call process_bleeding([pb_orc])
 // Monster hp unchanged — process_bleeding skips non-Characters
 assert_eq pb_orc.hp, 3
+
+
+// ══════════════════════════════════════════════════════════════════
+//  UNARMED COMBAT INITIATIVE INTEGRATION TESTS
+//
+//  Tests that BrawlingAction, GrappleAction, and OverbearAction
+//  are wired into resolve_action with the fend-off pipeline,
+//  condition application, grapple follow-up, and temp healing.
+// ══════════════════════════════════════════════════════════════════
+
+// ── action_segment: unarmed types equal initiative segment ────
+
+assert_eq action_segment(3, BrawlingAction), 3
+assert_eq action_segment(3, GrappleAction), 3
+assert_eq action_segment(3, OverbearAction), 3
+assert_eq action_segment(5, BrawlingAction), 5
+assert_eq action_segment(1, OverbearAction), 1
+
+// ── combat_movement_rate: Character vs default ────────────────
+
+spawn Character cmr_human { name: "Human", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 } }
+spawn Monster cmr_orc { name: "Orc", hit_dice: 1d8, max_hp: 8, hp: 8, ac: 14, attacks: [MonsterAttack { name: "Club", damage: 1d6 }] }
+
+// Human base movement 120ft (no armor cap, no encumbrance condition)
+assert_eq combat_movement_rate(cmr_human), 120
+// Monster defaults to 120
+assert_eq combat_movement_rate(cmr_orc), 120
+
+
+// ── resolve_action: BrawlingAction — unarmed target, no fend-off ──
+// Both unarmed. No fend-off attempt. MeleeAttack with FistOrKick (1d2).
+rolls clear
+
+spawn Character brawl_atk { name: "Brawler", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 } }
+spawn Character brawl_tgt { name: "Victim", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 } }
+
+let brawl_action = build_round_action(brawl_atk, BrawlingAction, 3, true, some(brawl_tgt))
+
+// d20=18 (hit), d2=2 (FistOrKick damage)
+rolls 18 2
+call resolve_action(brawl_action, [brawl_action])
+assert_eq brawl_tgt.hp, 18
+
+
+// ── resolve_action: BrawlingAction — armed target fends off ───────
+// Target has SwordLong wielded. Fend-off succeeds, blocking the brawl.
+rolls clear
+
+spawn Character brawl2_atk { name: "Brawler", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 } }
+spawn Character brawl2_tgt { name: "Defender", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 }, EquipmentSlots { wielded_main: some(Melee(SwordLong)) } }
+
+let brawl2_action = build_round_action(brawl2_atk, BrawlingAction, 3, true, some(brawl2_tgt))
+
+// Fend-off: d20=15 (BTHB=4, 15+4=19 >= attacker AC 10 → hit), d8=6 (damage consumed)
+// Fend-off succeeds → brawl blocked. No further rolls consumed.
+rolls 15 6
+call resolve_action(brawl2_action, [brawl2_action])
+// Target HP unchanged — brawling was fended off
+assert_eq brawl2_tgt.hp, 20
+
+
+// ── resolve_action: BrawlingAction — fend-off misses ─────────────
+// Armed target tries fend-off but misses. Brawling attack proceeds.
+rolls clear
+
+spawn Character brawl3_atk { name: "Brawler", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 } }
+spawn Character brawl3_tgt { name: "Defender", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 }, EquipmentSlots { wielded_main: some(Melee(SwordLong)) } }
+
+let brawl3_action = build_round_action(brawl3_atk, BrawlingAction, 3, true, some(brawl3_tgt))
+
+// Fend-off: d20=1 (natural 1 always misses) → fend-off fails
+// Brawl: d20=18 (hit), d2=1 (damage)
+rolls 1 18 1
+call resolve_action(brawl3_action, [brawl3_action])
+assert_eq brawl3_tgt.hp, 19
+
+
+// ── resolve_action: GrappleAction — success, holds established ───
+// Both unarmed. No fend-off. Grapple succeeds, both get Grappling.
+rolls clear
+
+spawn Character grap_atk { name: "Grappler", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 } }
+spawn Character grap_tgt { name: "Victim", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 } }
+
+let grap_action = build_round_action(grap_atk, GrappleAction, 3, true, some(grap_tgt))
+
+// d20=15 (unarmed to-hit → hit), d8=5 (grapple results: modified=5, WaistLock)
+// grappling_temp_damage(5)=4, grappling_real_damage(5)=1
+rolls 15 5
+call resolve_action(grap_action, [grap_action])
+assert_condition grap_atk, Grappling
+assert_condition grap_tgt, Grappling
+// Target took: 4 temp + 1 real damage → hp = 20 - 1 = 19, temp_damage = 4
+assert_eq grap_tgt.hp, 19
+assert_eq grap_tgt.temp_damage, 4
+
+
+// ── resolve_action: GrappleAction — armed target fends off ───────
+rolls clear
+
+spawn Character grap2_atk { name: "Grappler", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 } }
+spawn Character grap2_tgt { name: "Defender", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 }, EquipmentSlots { wielded_main: some(Melee(SwordLong)) } }
+
+let grap2_action = build_round_action(grap2_atk, GrappleAction, 3, true, some(grap2_tgt))
+
+// Fend-off: d20=15, d8=6 → hit → fend-off succeeds
+rolls 15 6
+call resolve_action(grap2_action, [grap2_action])
+assert_no_condition grap2_atk, Grappling
+assert_no_condition grap2_tgt, Grappling
+assert_eq grap2_tgt.hp, 20
+
+
+// ── resolve_action: OverbearAction — TotalFailure (attacker Prone) ──
+// d6=1 → modified=1 → TotalFailure. Attacker falls prone, no damage.
+rolls clear
+
+spawn Character ob_tf_atk { name: "Overbear", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 } }
+spawn Character ob_tf_tgt { name: "Victim", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 } }
+
+let ob_tf_action = build_round_action(ob_tf_atk, OverbearAction, 3, true, some(ob_tf_tgt))
+
+// d20=15 (unarmed to-hit → hit), d6=1 → TotalFailure
+rolls 15 1
+call resolve_action(ob_tf_action, [ob_tf_action])
+assert_condition ob_tf_atk, Prone
+assert_no_condition ob_tf_tgt, Prone
+assert_eq ob_tf_tgt.hp, 20
+
+
+// ── resolve_action: OverbearAction — PartialSuccess (target Staggered) ──
+// d6=3 → modified=3 → PartialSuccess. Target gets Staggered, no damage.
+rolls clear
+
+spawn Character ob_ps_atk { name: "Overbear", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 } }
+spawn Character ob_ps_tgt { name: "Victim", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 } }
+
+let ob_ps_action = build_round_action(ob_ps_atk, OverbearAction, 3, true, some(ob_ps_tgt))
+
+// d20=15 (hit), d6=3 → PartialSuccess
+rolls 15 3
+call resolve_action(ob_ps_action, [ob_ps_action])
+assert_condition ob_ps_tgt, Staggered
+assert_no_condition ob_ps_tgt, Prone
+assert_eq ob_ps_tgt.hp, 20
+
+
+// ── resolve_action: OverbearAction — Success (target Prone + Overborne) ──
+// d6=5 → modified=5 → Success. temp=4, real=1.
+rolls clear
+
+spawn Character ob_s_atk { name: "Overbear", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 } }
+spawn Character ob_s_tgt { name: "Victim", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 } }
+
+let ob_s_action = build_round_action(ob_s_atk, OverbearAction, 3, true, some(ob_s_tgt))
+
+// d20=15 (hit), d6=5 → Success: temp=max(0,5-1)=4, real=1
+rolls 15 5
+call resolve_action(ob_s_action, [ob_s_action])
+assert_condition ob_s_tgt, Prone
+assert_condition ob_s_tgt, Overborne
+assert_eq ob_s_tgt.hp, 19
+assert_eq ob_s_tgt.temp_damage, 4
+
+
+// ── resolve_action: OverbearAction — TotalSuccess with grapple follow-up ──
+// STR 16 → overbearing_attacker_str_mod=+1. d6=6+1=7 → TotalSuccess.
+// temp=max(0,7-2)=5, real=2. Then immediate GrapplingAttack with +2 bonus.
+rolls clear
+
+spawn Character ob_ts_atk { name: "Overbear", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 16, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 } }
+spawn Character ob_ts_tgt { name: "Victim", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 } }
+
+let ob_ts_action = build_round_action(ob_ts_atk, OverbearAction, 3, true, some(ob_ts_tgt))
+
+// Overbear: d20=15 (hit), d6=6 → modified=6+1=7 → TotalSuccess
+// temp=5, real=2, grappling_followup_bonus=2
+// Grapple follow-up: d20=15 (hit), d8=4 → modified=4 → ArmGrab
+// grappling_temp_damage(4)=3, grappling_real_damage(4)=1
+rolls 15 6 15 4
+call resolve_action(ob_ts_action, [ob_ts_action])
+// Overbearing conditions
+assert_condition ob_ts_tgt, Prone
+assert_condition ob_ts_tgt, Overborne
+// Grappling conditions from follow-up
+assert_condition ob_ts_atk, Grappling
+assert_condition ob_ts_tgt, Grappling
+// Damage: overbear real=2, grapple real=1 → hp = 30-2-1 = 27
+assert_eq ob_ts_tgt.hp, 27
+// Temp: overbear temp=5, grapple temp=3 → 8
+assert_eq ob_ts_tgt.temp_damage, 8
+
+
+// ── resolve_action: OverbearAction — armed target fends off ──────
+rolls clear
+
+spawn Character ob_fo_atk { name: "Overbear", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 } }
+spawn Character ob_fo_tgt { name: "Defender", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 }, EquipmentSlots { wielded_main: some(Melee(SwordLong)) } }
+
+let ob_fo_action = build_round_action(ob_fo_atk, OverbearAction, 3, true, some(ob_fo_tgt))
+
+// Fend-off: d20=15, d8=6 → hit → fend-off succeeds
+rolls 15 6
+call resolve_action(ob_fo_action, [ob_fo_action])
+assert_no_condition ob_fo_tgt, Prone
+assert_no_condition ob_fo_tgt, Overborne
+assert_no_condition ob_fo_atk, Prone
+assert_eq ob_fo_tgt.hp, 20
+
+
+// ── process_temp_healing in resolve_round ────────────────────────
+// Character with temp_damage recovers 1 HP of temp at end of round.
+rolls clear
+
+spawn Character th_fighter { name: "Fighter", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 } }
+set th_fighter.temp_damage = 5
+
+let th_init = InitiativeResult { party_roll: 3, monster_roll: 5, party_segment: 3, monster_segment: 5, simultaneous: false }
+
+// Empty action list — just run end-of-round bookkeeping
+call resolve_round(1, [th_fighter], th_init, [])
+// temp_damage should decrease by 1: 5 → 4
+assert_eq th_fighter.temp_damage, 4
+
+// Run another round
+call resolve_round(2, [th_fighter], th_init, [])
+assert_eq th_fighter.temp_damage, 3
+
+
+// ── resolve_round: unarmed combat in full round ──────────────────
+// Brawler attacks in segment 3, target does melee in segment 5.
+// Both sides resolve in order. Verifies unarmed actions work in
+// the full segment loop, not just isolated resolve_action calls.
+rolls clear
+
+spawn Character rr_brawler { name: "Brawler", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 } }
+spawn Character rr_defender { name: "Defender", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 }, EquipmentSlots {} }
+
+let rr_uc_init = InitiativeResult { party_roll: 3, monster_roll: 5, party_segment: 3, monster_segment: 5, simultaneous: false }
+let rr_brawl = build_round_action(rr_brawler, BrawlingAction, 3, true, some(rr_defender))
+let rr_melee = build_round_action(rr_defender, MeleeAttackAction, 5, false, some(rr_brawler), some(SwordLong))
+
+// Brawl at segment 3: d20=18 (hit), d2=2 (damage)
+// Melee at segment 5: d20=14 (hit), d8=5 (damage)
+rolls 18 2 14 5
+call resolve_round(1, [rr_brawler, rr_defender], rr_uc_init, [rr_brawl, rr_melee])
+
+// Defender: 20 - 2 = 18
+assert_eq rr_defender.hp, 18
+// Brawler: 30 - 5 = 25
+assert_eq rr_brawler.hp, 25
