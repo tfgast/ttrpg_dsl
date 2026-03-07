@@ -14,6 +14,7 @@ const ALL_COMMANDS: &[&str] = &[
     "destroy",
     "do",
     "call",
+    "breakdown",
     "grant",
     "revoke",
     "inspect",
@@ -190,8 +191,8 @@ impl Completer for TtrpgCompleter {
                     .map(|s| suggestion(s, Span::new(word_start, pos), false))
                     .collect()
             }
-            "call" => {
-                // After call: complete derive + mechanic + function names (only before '(')
+            "call" | "breakdown" => {
+                // After call/breakdown: complete derive + mechanic + function names (only before '(')
                 if rest.trim_start().contains('(') {
                     // Cursor is inside arguments — no function name completions
                     return Vec::new();

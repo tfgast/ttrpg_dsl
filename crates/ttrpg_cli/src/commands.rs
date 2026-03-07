@@ -45,6 +45,8 @@ pub enum Command {
     // Coverage
     Coverage,
     CoverageReset,
+    // Provenance
+    Breakdown(String),
     // Help
     Help(Option<String>),
     Unknown(String),
@@ -271,6 +273,14 @@ pub fn parse_command(line: &str) -> Option<Command> {
                 Some(Command::Unknown("rolls".into()))
             } else {
                 Some(Command::Rolls(s.into()))
+            }
+        }
+        "breakdown" => {
+            let s = strip_comment(tail).trim();
+            if s.is_empty() {
+                Some(Command::Unknown("breakdown".into()))
+            } else {
+                Some(Command::Breakdown(s.into()))
             }
         }
         "coverage" => {

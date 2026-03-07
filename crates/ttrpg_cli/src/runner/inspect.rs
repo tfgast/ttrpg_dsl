@@ -463,4 +463,108 @@ impl Runner {
         }
         Ok(())
     }
+
+    /// `breakdown <expr>` — evaluate expression and show modify provenance.
+    pub(super) fn cmd_breakdown(&mut self, tail: &str) -> Result<(), CliError> {
+        use ttrpg_interp::effect::{Effect, ModifySource};
+
+        let (parsed, diags) = ttrpg_parser::parse_expr(tail);
+        if !diags.is_empty() {
+            let msgs: Vec<_> = diags.iter().map(|d| d.message.as_str()).collect();
+            return Err(CliError::Message(format!(
+                "parse error: {}",
+                msgs.join("; ")
+            )));
+        }
+        let parsed =
+            parsed.ok_or_else(|| CliError::Message("failed to parse expression".into()))?;
+
+        let cov_rc = self.coverage_rc();
+        let mut interp = TrackedInterpreter::new(
+            &self.program,
+            &self.type_env,
+            &self.game_state,
+            &self.source_map,
+        )?;
+        if let Some(cov) = cov_rc {
+            interp.interp.set_coverage(cov);
+        }
+
+        let state = crate::effects::RefCellState(&self.game_state);
+        let mut handler = crate::effects::CliHandler::new(
+            &self.game_state,
+            &self.reverse_handles,
+            &mut self.rng,
+            &mut self.roll_queue,
+            &self.unit_suffixes,
+        )
+        .quiet(true); // suppress normal log output
+
+        let bindings: rustc_hash::FxHashMap<ttrpg_ast::Name, Value> = self
+            .variables
+            .iter()
+            .map(|(name, val)| (ttrpg_ast::Name::from(name.as_str()), val.clone()))
+            .chain(self.handles.iter().map(|(name, entity)| {
+                (ttrpg_ast::Name::from(name.as_str()), Value::Entity(*entity))
+            }))
+            .collect();
+
+        let result = interp
+            .evaluate_expr_with_bindings(&state, &mut handler, &parsed, bindings)
+            .map_err(|e| render_runtime_error(&e, &self.source_map))?;
+
+        // Extract ModifyApplied effects
+        let modify_effects: Vec<_> = handler
+            .effects
+            .iter()
+            .filter_map(|e| match e {
+                Effect::ModifyApplied {
+                    source,
+                    target_fn,
+                    phase,
+                    changes,
+                    tags,
+                } => Some((source, target_fn, phase, changes, tags)),
+                _ => None,
+            })
+            .collect();
+
+        // Format result
+        self.output.push(format!(
+            "result: {}",
+            format_value(&result, &self.unit_suffixes)
+        ));
+
+        if modify_effects.is_empty() {
+            self.output.push("  (no modifiers applied)".into());
+        } else {
+            self.output
+                .push(format!("  {} modifier(s) applied:", modify_effects.len()));
+            for (source, target_fn, phase, changes, tags) in &modify_effects {
+                let source_str = match source {
+                    ModifySource::Condition(c) => format!("condition {c}"),
+                    ModifySource::Option(o) => format!("option {o}"),
+                };
+                let tag_str = if tags.is_empty() {
+                    String::new()
+                } else {
+                    let tag_list: Vec<_> = tags.iter().map(|t| format!("#{t}")).collect();
+                    format!(" [{}]", tag_list.join(", "))
+                };
+                self.output.push(format!(
+                    "  - {source_str}{tag_str} on {target_fn} ({phase:?}):"
+                ));
+                for change in *changes {
+                    self.output.push(format!(
+                        "      {}: {} -> {}",
+                        change.name,
+                        format_value(&change.old, &self.unit_suffixes),
+                        format_value(&change.new, &self.unit_suffixes),
+                    ));
+                }
+            }
+        }
+
+        Ok(())
+    }
 }

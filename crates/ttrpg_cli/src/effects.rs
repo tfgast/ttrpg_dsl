@@ -99,6 +99,7 @@ pub struct CliHandler<'a> {
     roll_queue: &'a mut VecDeque<i64>,
     unit_suffixes: &'a UnitSuffixes,
     pub log: Vec<String>,
+    pub effects: Vec<Effect>,
     quiet: bool,
 }
 
@@ -117,6 +118,7 @@ impl<'a> CliHandler<'a> {
             roll_queue,
             unit_suffixes,
             log: Vec::new(),
+            effects: Vec::new(),
             quiet: false,
         }
     }
@@ -144,6 +146,7 @@ impl<'a> CliHandler<'a> {
 
 impl EffectHandler for CliHandler<'_> {
     fn handle(&mut self, effect: Effect) -> Response {
+        self.effects.push(effect.clone());
         match effect {
             Effect::RollDice { expr } => {
                 if !self.roll_queue.is_empty() {

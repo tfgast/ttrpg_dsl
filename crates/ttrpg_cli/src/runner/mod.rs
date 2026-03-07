@@ -335,6 +335,8 @@ impl Runner {
             Command::AssertErr(tail) => self.cmd_assert_err(&tail),
             Command::AssertCondition(tail) => self.cmd_assert_condition(&tail),
             Command::AssertNoCondition(tail) => self.cmd_assert_no_condition(&tail),
+            // Provenance
+            Command::Breakdown(tail) => self.cmd_breakdown(&tail),
             // Coverage
             Command::Coverage => self.cmd_coverage(),
             Command::CoverageReset => self.cmd_coverage_reset(),

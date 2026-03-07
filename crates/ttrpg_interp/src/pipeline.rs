@@ -319,19 +319,17 @@ fn is_modifier_suppressed(
                     false
                 }
             }
-            SelectorPredicate::HasParam { name, ty } => {
-                fn_info.params.iter().any(|p| {
-                    if p.name != *name {
-                        return false;
-                    }
-                    if let Some(te) = ty {
-                        let resolved = env.interp.type_env.resolve_type(te);
-                        p.ty == resolved
-                    } else {
-                        true
-                    }
-                })
-            }
+            SelectorPredicate::HasParam { name, ty } => fn_info.params.iter().any(|p| {
+                if p.name != *name {
+                    return false;
+                }
+                if let Some(te) = ty {
+                    let resolved = env.interp.type_env.resolve_type(te);
+                    p.ty == resolved
+                } else {
+                    true
+                }
+            }),
         });
         if !preds_match {
             continue;
@@ -1528,7 +1526,7 @@ mod tests {
                         }],
                         span: dummy_span(),
                         id: ModifyClauseId(0),
-                    tags: vec![],
+                        tags: vec![],
                     })]),
             ),
             DeclKind::Condition(
@@ -1551,7 +1549,7 @@ mod tests {
                         }],
                         span: dummy_span(),
                         id: ModifyClauseId(0),
-                    tags: vec![],
+                        tags: vec![],
                     })]),
             ),
         ]);
@@ -1734,7 +1732,7 @@ mod tests {
                         }],
                         span: dummy_span(),
                         id: ModifyClauseId(0),
-                    tags: vec![],
+                        tags: vec![],
                     })]),
             ),
             DeclKind::Option(OptionDecl {
@@ -1911,7 +1909,7 @@ mod tests {
                         body: vec![],
                         span: dummy_span(),
                         id: ModifyClauseId(0),
-                    tags: vec![],
+                        tags: vec![],
                     })]),
             ),
         ]);
@@ -2243,7 +2241,7 @@ mod tests {
                         }],
                         span: dummy_span(),
                         id: ModifyClauseId(0),
-                    tags: vec![],
+                        tags: vec![],
                     })]),
             ),
         ]);
@@ -2640,7 +2638,7 @@ mod tests {
                         ],
                         span: dummy_span(),
                         id: ModifyClauseId(0),
-                    tags: vec![],
+                        tags: vec![],
                     })]),
             ),
         ]);
@@ -2776,7 +2774,7 @@ mod tests {
                         ],
                         span: dummy_span(),
                         id: ModifyClauseId(0),
-                    tags: vec![],
+                        tags: vec![],
                     })]),
             ),
         ]);

@@ -111,7 +111,10 @@ impl Checker<'_> {
         // Validate tags: each must be declared in env.tags
         for tag in &clause.tags {
             if !self.env.tags.contains(tag) {
-                self.error(format!("undeclared tag `{tag}` on modify clause"), clause.span);
+                self.error(
+                    format!("undeclared tag `{tag}` on modify clause"),
+                    clause.span,
+                );
             }
         }
 

@@ -144,6 +144,17 @@ const COMMANDS: &[CommandInfo] = &[
         ],
         category: "Execution",
     },
+    CommandInfo {
+        name: "breakdown",
+        syntax: "breakdown <expr>",
+        description: "Show modify provenance for a derive/mechanic call",
+        detail: "Evaluate an expression and display all modifiers that were applied,\n  including their source (condition/option), tags, phase, and changes.\n  Useful for debugging why a value was modified.",
+        examples: &[
+            "breakdown attack_roll(fighter, goblin)",
+            "breakdown resolve_save(target, 14)",
+        ],
+        category: "Execution",
+    },
     // Groups
     CommandInfo {
         name: "grant",
