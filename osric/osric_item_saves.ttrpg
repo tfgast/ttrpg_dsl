@@ -1,0 +1,202 @@
+// ============================================================
+// OSRIC 3.0 Item Saving Throws — Table 1.6.4a
+//
+// Material x damage type matrix. Roll d20 vs target number;
+// meeting or exceeding the target means the item survives.
+//
+// Materials: Crystal/Glass, Leather, Metal, Paper,
+//   Pottery/Bone, Rope/Cloth, Stone/Gem, Wood.
+// Damage types: Acid, Cold(Magical), Crushing, Disintegrate,
+//   Fall(per 10ft), Fire(Magical), Fire(Normal), Lightning.
+//
+// Modifiers:
+//   - All magical items get +2 on all saves.
+//   - Items with a +N bonus get +N (e.g. +1 arrow = +1).
+//   - Artifacts/relics: save of 2-3 in all categories; if
+//     they fail, only neutralised for 1d6 days.
+//
+// Reference: OSRIC 3.0 Player Guide, §1.6.4 (p.97)
+// ============================================================
+
+use "OSRIC"
+
+system "OSRIC Item Saves" {
+
+    // ========================================================
+    //  ENUMS
+    // ========================================================
+
+    enum ItemMaterial {
+        CrystalGlass,
+        Leather,
+        Metal,
+        Paper,
+        PotteryBone,
+        RopeCloth,
+        StoneGem,
+        Wood
+    }
+
+    enum ItemDamageType {
+        Acid,
+        ColdMagical,
+        Crushing,
+        Disintegrate,
+        Fall,
+        FireMagical,
+        FireNormal,
+        Lightning
+    }
+
+    // ========================================================
+    //  RESULT STRUCT
+    // ========================================================
+
+    struct ItemSaveResult {
+        survived: bool
+        roll: int
+        target: int
+        modified_target: int
+    }
+
+
+    // ========================================================
+    //  BASE SAVING THROW TABLE
+    //
+    //  Returns the d20 target number for the given material
+    //  and damage type. Must meet or exceed to survive.
+    // ========================================================
+
+    table item_save_target(material: ItemMaterial, damage_type: ItemDamageType) -> int {
+        // Crystal/Glass
+        [CrystalGlass, Acid]         => 5,
+        [CrystalGlass, ColdMagical]  => 5,
+        [CrystalGlass, Crushing]     => 19,
+        [CrystalGlass, Disintegrate] => 20,
+        [CrystalGlass, Fall]         => 10,
+        [CrystalGlass, FireMagical]  => 5,
+        [CrystalGlass, FireNormal]   => 3,
+        [CrystalGlass, Lightning]    => 15,
+
+        // Leather
+        [Leather, Acid]         => 10,
+        [Leather, ColdMagical]  => 3,
+        [Leather, Crushing]     => 4,
+        [Leather, Disintegrate] => 20,
+        [Leather, Fall]         => 1,
+        [Leather, FireMagical]  => 6,
+        [Leather, FireNormal]   => 4,
+        [Leather, Lightning]    => 13,
+
+        // Metal
+        [Metal, Acid]         => 7,
+        [Metal, ColdMagical]  => 1,
+        [Metal, Crushing]     => 6,
+        [Metal, Disintegrate] => 20,
+        [Metal, Fall]         => 1,
+        [Metal, FireMagical]  => 2,
+        [Metal, FireNormal]   => 1,
+        [Metal, Lightning]    => 11,
+
+        // Paper
+        [Paper, Acid]         => 16,
+        [Paper, ColdMagical]  => 2,
+        [Paper, Crushing]     => 11,
+        [Paper, Disintegrate] => 20,
+        [Paper, Fall]         => 1,
+        [Paper, FireMagical]  => 20,
+        [Paper, FireNormal]   => 18,
+        [Paper, Lightning]    => 20,
+
+        // Pottery/Bone
+        [PotteryBone, Acid]         => 10,
+        [PotteryBone, ColdMagical]  => 3,
+        [PotteryBone, Crushing]     => 17,
+        [PotteryBone, Disintegrate] => 20,
+        [PotteryBone, Fall]         => 5,
+        [PotteryBone, FireMagical]  => 6,
+        [PotteryBone, FireNormal]   => 3,
+        [PotteryBone, Lightning]    => 5,
+
+        // Rope/Cloth
+        [RopeCloth, Acid]         => 12,
+        [RopeCloth, ColdMagical]  => 1,
+        [RopeCloth, Crushing]     => 10,
+        [RopeCloth, Disintegrate] => 20,
+        [RopeCloth, Fall]         => 1,
+        [RopeCloth, FireMagical]  => 15,
+        [RopeCloth, FireNormal]   => 10,
+        [RopeCloth, Lightning]    => 14,
+
+        // Stone/Gem
+        [StoneGem, Acid]         => 3,
+        [StoneGem, ColdMagical]  => 1,
+        [StoneGem, Crushing]     => 17,
+        [StoneGem, Disintegrate] => 18,
+        [StoneGem, Fall]         => 1,
+        [StoneGem, FireMagical]  => 2,
+        [StoneGem, FireNormal]   => 1,
+        [StoneGem, Lightning]    => 14,
+
+        // Wood
+        [Wood, Acid]         => 10,
+        [Wood, ColdMagical]  => 1,
+        [Wood, Crushing]     => 10,
+        [Wood, Disintegrate] => 20,
+        [Wood, Fall]         => 2,
+        [Wood, FireMagical]  => 7,
+        [Wood, FireNormal]   => 5,
+        [Wood, Lightning]    => 10
+    }
+
+
+    // ========================================================
+    //  ITEM SAVING THROW MECHANIC
+    //
+    //  Rolls d20 vs the table target, applying magic bonuses.
+    //  magic_bonus: +N enhancement bonus (0 for non-magical).
+    //  is_magical:  true if the item is magical at all (adds
+    //               +2 even if magic_bonus is 0, e.g. a potion).
+    //
+    //  The bonus lowers the effective target (easier to save).
+    // ========================================================
+
+    mechanic item_saving_throw(
+        material: ItemMaterial,
+        damage_type: ItemDamageType,
+        is_magical: bool = false,
+        magic_bonus: int = 0
+    ) -> ItemSaveResult {
+        let base = item_save_target(material, damage_type)
+        let bonus = if is_magical { 2 + magic_bonus } else { 0 }
+        let effective = base - bonus
+        let d20 = roll(1d20).total
+
+        ItemSaveResult {
+            survived: d20 >= effective,
+            roll: d20,
+            target: base,
+            modified_target: effective
+        }
+    }
+
+
+    // ========================================================
+    //  ARTIFACT SAVING THROW
+    //
+    //  Artifacts/relics always save on 2-3 (i.e. target 2).
+    //  On failure they are only neutralised for 1d6 days,
+    //  not destroyed.
+    // ========================================================
+
+    mechanic artifact_saving_throw() -> ItemSaveResult {
+        let d20 = roll(1d20).total
+
+        ItemSaveResult {
+            survived: d20 >= 2,
+            roll: d20,
+            target: 2,
+            modified_target: 2
+        }
+    }
+}

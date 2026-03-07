@@ -1,0 +1,180 @@
+// OSRIC Item Saving Throw integration tests
+//
+// Tests item_save_target table (all materials x damage types),
+// item_saving_throw mechanic with magic bonuses, and
+// artifact_saving_throw mechanic.
+//
+// Reference: OSRIC 3.0 Player Guide, §1.6.4 Table 1.6.4a (p.97)
+
+load osric/*.ttrpg
+
+// ── item_save_target: Crystal/Glass row ─────────────────────
+
+assert_eq item_save_target(CrystalGlass, Acid), 5
+assert_eq item_save_target(CrystalGlass, ColdMagical), 5
+assert_eq item_save_target(CrystalGlass, Crushing), 19
+assert_eq item_save_target(CrystalGlass, Disintegrate), 20
+assert_eq item_save_target(CrystalGlass, Fall), 10
+assert_eq item_save_target(CrystalGlass, FireMagical), 5
+assert_eq item_save_target(CrystalGlass, FireNormal), 3
+assert_eq item_save_target(CrystalGlass, Lightning), 15
+
+// ── item_save_target: Leather row ───────────────────────────
+
+assert_eq item_save_target(Leather, Acid), 10
+assert_eq item_save_target(Leather, ColdMagical), 3
+assert_eq item_save_target(Leather, Crushing), 4
+assert_eq item_save_target(Leather, Disintegrate), 20
+assert_eq item_save_target(Leather, Fall), 1
+assert_eq item_save_target(Leather, FireMagical), 6
+assert_eq item_save_target(Leather, FireNormal), 4
+assert_eq item_save_target(Leather, Lightning), 13
+
+// ── item_save_target: Metal row ─────────────────────────────
+
+assert_eq item_save_target(Metal, Acid), 7
+assert_eq item_save_target(Metal, ColdMagical), 1
+assert_eq item_save_target(Metal, Crushing), 6
+assert_eq item_save_target(Metal, Disintegrate), 20
+assert_eq item_save_target(Metal, Fall), 1
+assert_eq item_save_target(Metal, FireMagical), 2
+assert_eq item_save_target(Metal, FireNormal), 1
+assert_eq item_save_target(Metal, Lightning), 11
+
+// ── item_save_target: Paper row ─────────────────────────────
+
+assert_eq item_save_target(Paper, Acid), 16
+assert_eq item_save_target(Paper, ColdMagical), 2
+assert_eq item_save_target(Paper, Crushing), 11
+assert_eq item_save_target(Paper, Disintegrate), 20
+assert_eq item_save_target(Paper, Fall), 1
+assert_eq item_save_target(Paper, FireMagical), 20
+assert_eq item_save_target(Paper, FireNormal), 18
+assert_eq item_save_target(Paper, Lightning), 20
+
+// ── item_save_target: Pottery/Bone row ──────────────────────
+
+assert_eq item_save_target(PotteryBone, Acid), 10
+assert_eq item_save_target(PotteryBone, ColdMagical), 3
+assert_eq item_save_target(PotteryBone, Crushing), 17
+assert_eq item_save_target(PotteryBone, Disintegrate), 20
+assert_eq item_save_target(PotteryBone, Fall), 5
+assert_eq item_save_target(PotteryBone, FireMagical), 6
+assert_eq item_save_target(PotteryBone, FireNormal), 3
+assert_eq item_save_target(PotteryBone, Lightning), 5
+
+// ── item_save_target: Rope/Cloth row ────────────────────────
+
+assert_eq item_save_target(RopeCloth, Acid), 12
+assert_eq item_save_target(RopeCloth, ColdMagical), 1
+assert_eq item_save_target(RopeCloth, Crushing), 10
+assert_eq item_save_target(RopeCloth, Disintegrate), 20
+assert_eq item_save_target(RopeCloth, Fall), 1
+assert_eq item_save_target(RopeCloth, FireMagical), 15
+assert_eq item_save_target(RopeCloth, FireNormal), 10
+assert_eq item_save_target(RopeCloth, Lightning), 14
+
+// ── item_save_target: Stone/Gem row ─────────────────────────
+
+assert_eq item_save_target(StoneGem, Acid), 3
+assert_eq item_save_target(StoneGem, ColdMagical), 1
+assert_eq item_save_target(StoneGem, Crushing), 17
+assert_eq item_save_target(StoneGem, Disintegrate), 18
+assert_eq item_save_target(StoneGem, Fall), 1
+assert_eq item_save_target(StoneGem, FireMagical), 2
+assert_eq item_save_target(StoneGem, FireNormal), 1
+assert_eq item_save_target(StoneGem, Lightning), 14
+
+// ── item_save_target: Wood row ──────────────────────────────
+
+assert_eq item_save_target(Wood, Acid), 10
+assert_eq item_save_target(Wood, ColdMagical), 1
+assert_eq item_save_target(Wood, Crushing), 10
+assert_eq item_save_target(Wood, Disintegrate), 20
+assert_eq item_save_target(Wood, Fall), 2
+assert_eq item_save_target(Wood, FireMagical), 7
+assert_eq item_save_target(Wood, FireNormal), 5
+assert_eq item_save_target(Wood, Lightning), 10
+
+// ── item_saving_throw: non-magical item, pass ───────────────
+
+rolls 15
+let r1 = item_saving_throw(Metal, Acid)
+assert_eq r1.roll, 15
+assert_eq r1.target, 7
+assert_eq r1.modified_target, 7
+assert r1.survived
+
+// ── item_saving_throw: non-magical item, fail ───────────────
+
+rolls clear
+rolls 4
+let r2 = item_saving_throw(Metal, Acid)
+assert_eq r2.roll, 4
+assert_eq r2.target, 7
+assert_eq r2.modified_target, 7
+assert !r2.survived
+
+// ── item_saving_throw: magical item (+2 base) ───────────────
+
+rolls clear
+rolls 5
+let r3 = item_saving_throw(Metal, Acid, true, 0)
+assert_eq r3.target, 7
+assert_eq r3.modified_target, 5
+assert r3.survived
+
+// ── item_saving_throw: +3 magical item (+2 base + 3 bonus) ─
+
+rolls clear
+rolls 3
+let r4 = item_saving_throw(Paper, FireNormal, true, 3)
+assert_eq r4.target, 18
+assert_eq r4.modified_target, 13
+assert !r4.survived
+
+rolls clear
+rolls 13
+let r5 = item_saving_throw(Paper, FireNormal, true, 3)
+assert_eq r5.target, 18
+assert_eq r5.modified_target, 13
+assert r5.survived
+
+// ── item_saving_throw: boundary — roll exactly meets target ─
+
+rolls clear
+rolls 7
+let r6 = item_saving_throw(Metal, Acid)
+assert_eq r6.roll, 7
+assert r6.survived
+
+// ── item_saving_throw: boundary — roll one below target ─────
+
+rolls clear
+rolls 6
+let r7 = item_saving_throw(Metal, Acid)
+assert_eq r7.roll, 6
+assert !r7.survived
+
+// ── artifact_saving_throw: always saves on 2+ ───────────────
+
+rolls clear
+rolls 2
+let a1 = artifact_saving_throw()
+assert_eq a1.target, 2
+assert_eq a1.modified_target, 2
+assert a1.survived
+
+// ── artifact_saving_throw: natural 1 fails ──────────────────
+
+rolls clear
+rolls 1
+let a2 = artifact_saving_throw()
+assert !a2.survived
+
+// ── artifact_saving_throw: high roll passes ─────────────────
+
+rolls clear
+rolls 20
+let a3 = artifact_saving_throw()
+assert a3.survived
