@@ -9,6 +9,7 @@
 //
 // Category     Dice?   Mutate?   Receiver?   Returns?   Modify?   Purpose
 // --------     -----   -------   ---------   --------   -------   -------
+// const        no      no        no          n/a        no        named compile-time constant
 // derive       no      no        no          value      yes       pure computation
 // mechanic     yes     no        no          value      yes       dice + logic, returns a value
 // function     yes     yes       no          value?     no        general-purpose subroutine
@@ -72,6 +73,34 @@
 //   condition on_apply/on_remove → can call derives, mechanics, functions, builtins, emit
 //       (NO apply_condition, remove_condition, revoke(invocation), invocation())
 //   trigger binding  → side-effect-free builtins only
+
+
+// --- Const declarations ---
+//
+// Named compile-time constants declared at the system (top-level) scope.
+//
+//   const MAX_LEVEL = 20
+//   const BASE_DC: int = 10
+//   const STATS: list<int> = [10, 12, 14]
+//
+// Scoping rules:
+// - Value expression is checked in Derive scope (no dice, no mutation,
+//   no entity field access). Can reference other consts, enum variants,
+//   struct literals, and pure built-in functions.
+// - Consts are visible from any block within the same system (and from
+//   importing systems, following normal module visibility rules).
+// - Consts share the Function namespace: a const name cannot collide
+//   with a derive, mechanic, function, action, reaction, hook, or prompt
+//   in the same system.
+// - A local `let` binding shadows a const of the same name within its scope.
+// - Consts are immutable — assignment to a const is a checker error.
+// - Duplicate const names within the same system are a checker error.
+// - Type annotation is optional; when omitted, the type is inferred
+//   from the value expression.
+//
+// Evaluation: consts are lazily evaluated on first reference and
+// cached for subsequent uses. Const expressions referencing other
+// consts trigger evaluation of those dependencies first.
 
 
 // --- Receivers: the `on` keyword ---
@@ -1040,7 +1069,7 @@ hook Regenerate on creature: Character (
 //
 // Namespaces checked:
 //   - Types (enums, structs, entities)
-//   - Functions (derives, mechanics, actions, reactions, hooks, prompts)
+//   - Functions (derives, mechanics, actions, reactions, hooks, prompts, consts)
 //   - Conditions
 //   - Events
 //   - Options

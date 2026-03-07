@@ -65,7 +65,7 @@
 //   Contextual / soft (lexed as IDENT, recognized by parser in position):
 //     system  use  group  enum  struct  entity  derive  mechanic  action
 //     reaction  hook  condition  prompt  option  event  move  cost  tag
-//     table  unit  suffix
+//     table  unit  suffix  const
 //     requires  resolve  modify  suppress  trigger  roll  on  returns
 //     when  enabled  hint  suggest  description  default  result
 //     with  with_budget  has  is  include  as  grant  revoke  emit  free  ordered
@@ -156,8 +156,26 @@ decl            = enum_decl
                 | prompt_decl
                 | option_decl
                 | event_decl
+                | const_decl
                 | tag_decl
                 | move_decl          // PbtA sugar (desugars to mechanic + action)
+
+// --- Const declaration ---
+const_decl      = "const" IDENT (":" type)? "=" expr term
+
+// Named compile-time constant. The value expression is evaluated in
+// derive scope (no dice, no mutation, no entity access). Consts share
+// the Function namespace — a const cannot have the same name as a
+// derive, mechanic, function, action, etc.
+//
+// The type annotation is optional; when omitted, the type is inferred
+// from the value expression. Consts are lazily evaluated on first use
+// and cached for subsequent references.
+//
+// Examples:
+//   const MAX_LEVEL = 20
+//   const BASE_DC: int = 10
+//   const STATS: list<int> = [10, 12, 14]
 
 // --- Tag declaration ---
 tag_decl        = "tag" "#"? IDENT term
