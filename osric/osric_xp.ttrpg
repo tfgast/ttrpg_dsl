@@ -1,0 +1,151 @@
+// ============================================================
+// OSRIC 3.0 XP Award Calculation — Table 2.1.4a
+//
+// Experience point awards for defeating monsters, recovering
+// treasure, and completing missions.
+//
+// Monster XP: base value per HD + bonus per special/exceptional
+//   ability + bonus per hit point.
+// Treasure XP: 1 gp = 1 XP (treasure brought to civilization).
+// Magic item XP: 1/10 of gp value if kept (1/20 for potions);
+//   full gp value if sold to NPC.
+// Mission XP: GM discretion (no table).
+//
+// Reference: OSRIC 3.0 GM Guide, §2.1.4 (p.7)
+//            OSRIC 3.0 Player Guide, §1.5.6 (p.89)
+// ============================================================
+
+use "OSRIC"
+
+system "OSRIC XP" {
+
+    // ========================================================
+    //  STRUCTS
+    // ========================================================
+
+    struct MonsterXpRow {
+        base: int
+        special: int
+        exceptional: int
+        per_hp: int
+    }
+
+    // ========================================================
+    //  TABLE 2.1.4a: EXPERIENCE POINT AWARDS FOR MONSTERS
+    //
+    //  Keyed by effective HD tier (see xp_hd_tier derive).
+    //  Each row gives base XP, per-special-ability bonus,
+    //  per-exceptional-ability bonus, and per-HP bonus.
+    // ========================================================
+
+    table monster_xp_row(hd: int) -> MonsterXpRow {
+        // Less than 1-1
+        0      => MonsterXpRow { base: 5,    special: 3,    exceptional: 25,   per_hp: 1 },
+        // 1-1 to 1
+        1      => MonsterXpRow { base: 10,   special: 5,    exceptional: 35,   per_hp: 1 },
+        // 1+1 to 2
+        2      => MonsterXpRow { base: 30,   special: 10,   exceptional: 50,   per_hp: 1 },
+        // 2+1 to 3
+        3      => MonsterXpRow { base: 50,   special: 15,   exceptional: 60,   per_hp: 2 },
+        // 3+1 to 4
+        4      => MonsterXpRow { base: 75,   special: 30,   exceptional: 70,   per_hp: 3 },
+        // 4+1 to 5
+        5      => MonsterXpRow { base: 110,  special: 45,   exceptional: 80,   per_hp: 4 },
+        // 5+1 to 6
+        6      => MonsterXpRow { base: 160,  special: 70,   exceptional: 120,  per_hp: 6 },
+        // 6+1 to 7
+        7      => MonsterXpRow { base: 225,  special: 120,  exceptional: 200,  per_hp: 8 },
+        // 7+1 to 8
+        8      => MonsterXpRow { base: 350,  special: 200,  exceptional: 300,  per_hp: 10 },
+        // 8+1 to 9
+        9      => MonsterXpRow { base: 600,  special: 300,  exceptional: 400,  per_hp: 12 },
+        // 9+1 to 10
+        10     => MonsterXpRow { base: 700,  special: 400,  exceptional: 500,  per_hp: 13 },
+        // 10+1 to 11
+        11     => MonsterXpRow { base: 900,  special: 500,  exceptional: 600,  per_hp: 14 },
+        // 11+1 to 12
+        12     => MonsterXpRow { base: 1200, special: 700,  exceptional: 850,  per_hp: 16 },
+        // 12+1 to 13
+        13     => MonsterXpRow { base: 1500, special: 800,  exceptional: 1000, per_hp: 17 },
+        // 13+1 to 14
+        14     => MonsterXpRow { base: 1800, special: 950,  exceptional: 1200, per_hp: 18 },
+        // 14+1 to 15
+        15     => MonsterXpRow { base: 2100, special: 1100, exceptional: 1400, per_hp: 19 },
+        // 15+1 to 16
+        16     => MonsterXpRow { base: 2400, special: 1250, exceptional: 1600, per_hp: 20 },
+        // 16+1 to 17
+        17     => MonsterXpRow { base: 2700, special: 1400, exceptional: 1800, per_hp: 23 },
+        // 17+1 to 18
+        18     => MonsterXpRow { base: 3000, special: 1550, exceptional: 2000, per_hp: 25 },
+        // 18+1 to 19
+        19     => MonsterXpRow { base: 3500, special: 1800, exceptional: 2250, per_hp: 28 },
+        // 19+1 to 20
+        20     => MonsterXpRow { base: 4000, special: 2100, exceptional: 2500, per_hp: 30 },
+        // 20+1 to 21
+        21     => MonsterXpRow { base: 4500, special: 2350, exceptional: 2750, per_hp: 33 },
+        // 21+1 and up
+        _      => MonsterXpRow { base: 5000, special: 2600, exceptional: 3000, per_hp: 35 }
+    }
+
+    // ========================================================
+    //  DERIVES
+    // ========================================================
+
+    // Effective HD tier for XP table lookup.
+    // Monsters with sub-d8 dice or heavy penalties are
+    // "less than 1-1" (tier 0). Positive modifier rounds up:
+    // 1d8+1 = tier 2 (same row as 2d8).
+    // Ref: GMG §2.1.4 sidebar "How to use this table"
+    derive xp_hd_tier(hd: DiceExpr) -> int {
+        let count = dice_count(hd)
+        let sides = dice_sides(hd)
+        let mod = dice_modifier(hd)
+        match {
+            count == 0              => 0,
+            count == 1 && sides < 8 => 0,
+            count == 1 && mod < -1  => 0,
+            _ => if mod > 0 { count + 1 } else { count }
+        }
+    }
+
+    // Total XP value for defeating a monster.
+    // num_special: spell use, 3+ attacks, invulnerability to
+    //   non-magic weapons, low-level spell-like powers, etc.
+    // num_exceptional: breath weapon, level drain, gaze attack,
+    //   high-level spell-like powers, etc.
+    derive calculate_monster_xp(
+        hd: DiceExpr,
+        max_hp: int,
+        num_special: int = 0,
+        num_exceptional: int = 0
+    ) -> int {
+        let row = monster_xp_row(xp_hd_tier(hd))
+        row.base + row.special * num_special + row.exceptional * num_exceptional + row.per_hp * max_hp
+    }
+
+    // XP from recovered treasure (coins, gems, jewellery).
+    // 1 gp value = 1 XP, only for treasure brought to civilisation.
+    derive treasure_xp(gold_value: int) -> int {
+        gold_value
+    }
+
+    // XP from a kept magic item. Awards 1/10 of gp value,
+    // or 1/20 for potions (half the normal rate).
+    // If the item is sold to an NPC instead, use treasure_xp
+    // with the full sale price.
+    derive magic_item_xp(gold_value: int, is_potion: bool = false) -> int {
+        if is_potion {
+            floor(gold_value / 20)
+        } else {
+            floor(gold_value / 10)
+        }
+    }
+
+    // Per-character XP share after dividing party total equally,
+    // then applying the prime requisite percentage bonus.
+    // bonus_pct: 0 or 10 (from prime_req_xp_bonus).
+    derive xp_share(total_xp: int, party_size: int, bonus_pct: int = 0) -> int {
+        let base = floor(total_xp / party_size)
+        base + floor(base * bonus_pct / 100)
+    }
+}
