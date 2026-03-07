@@ -110,6 +110,17 @@ system "OSRIC Combat" {
 
     event TempDamageHealed(target: entity, amount: int) {}
 
+    event GrapplingHit(
+        attacker: entity,
+        target: entity,
+        hold: GrapplingHold,
+        temp_damage: int,
+        real_damage: int,
+        modified_roll: int
+    ) {}
+
+    event GrapplingMiss(attacker: entity, target: entity) {}
+
 
     // ========================================================
     //  TIME CONVERSIONS
@@ -824,6 +835,256 @@ system "OSRIC Combat" {
             attacker_mod: atk_mod,
             defender_mod: def_mod,
             effective_target: effective
+        }
+    }
+
+
+    // ========================================================
+    //  GRAPPLING RESULTS TABLE & MODIFIERS (Table 1.6.12c)
+    //
+    //  On unarmed to-hit success for grappling: roll 1d8 +
+    //  modifiers. Results range from Awkward Scuffling (1 temp)
+    //  through holds (Arm Grab, Waist Lock, Rear Choke, Arm
+    //  Lock, Head Lock) to Decisive Throw (9+). Each result
+    //  has a controlling hold and inferior hold variant.
+    //  Damage is split between temporary and real.
+    //
+    //  Modifiers: attacker/defender appendages and size.
+    //  Reference: PG pp.110-113 (§1.6.12, Table 1.6.12c)
+    // ========================================================
+
+    // Hold types for grappling results. Controlling holds
+    // grant the attacker special effects; inferior holds
+    // just inflict damage each round.
+    enum GrapplingHold {
+        None,
+        ArmGrab,
+        ElbowBash,
+        WaistLock,
+        LegHold,
+        RearChoke,
+        HeadButt,
+        ArmLock,
+        WickedElbowBash,
+        HeadLock,
+        Gouge,
+        DecisiveThrow
+    }
+
+    // Result of a grappling attack (Table 1.6.12c).
+    struct GrapplingResult {
+        outcome: AttackOutcome
+        roll: int
+        modified_roll: int
+        temp_damage: int
+        real_damage: int
+        hold: GrapplingHold
+        is_controlling: bool
+    }
+
+    // Attacker size modifier for grappling result roll.
+    // Tiny -4, Small -2, Medium +0, Large +2, Huge +6, Gargantuan +10.
+    derive grappling_attacker_size_mod(size: Size) -> int {
+        match size {
+            Size.Tiny       => -4,
+            Size.Small      => -2,
+            Size.Medium     => 0,
+            Size.Large      => 2,
+            Size.Huge       => 6,
+            Size.Gargantuan => 10
+        }
+    }
+
+    // Defender size modifier for grappling result roll.
+    // Inverse of attacker: Tiny +4, Small +2, Medium +0,
+    // Large -2, Huge -6, Gargantuan -10.
+    derive grappling_defender_size_mod(size: Size) -> int {
+        match size {
+            Size.Tiny       => 4,
+            Size.Small      => 2,
+            Size.Medium     => 0,
+            Size.Large      => -2,
+            Size.Huge       => -6,
+            Size.Gargantuan => -10
+        }
+    }
+
+    // Attacker appendage modifier for grappling.
+    // 1 arm/appendage: -1, 3+: +1, otherwise 0.
+    derive grappling_attacker_appendage_mod(appendages: int) -> int {
+        match {
+            appendages <= 1 => -1,
+            appendages >= 3 => 1,
+            _               => 0
+        }
+    }
+
+    // Defender appendage modifier for grappling.
+    // 1 arm/appendage: +1, 3+: -1, otherwise 0.
+    // (Inverse of attacker — fewer defender limbs helps attacker.)
+    derive grappling_defender_appendage_mod(appendages: int) -> int {
+        match {
+            appendages <= 1 => 1,
+            appendages >= 3 => -1,
+            _               => 0
+        }
+    }
+
+    // Temporary damage for a grappling result by modified roll.
+    // Roll 1 or less: 1 temp. Roll 2-4: roll-1 temp. Roll 5: 4.
+    // Roll 6: 4. Roll 7: 5. Roll 8: 6. Roll 9+: 6.
+    derive grappling_temp_damage(modified_roll: int) -> int {
+        match {
+            modified_roll <= 1 => 1,
+            modified_roll <= 4 => modified_roll - 1,
+            modified_roll == 5 => 4,
+            modified_roll == 6 => 4,
+            modified_roll == 7 => 5,
+            modified_roll == 8 => 6,
+            _                  => 6
+        }
+    }
+
+    // Real (permanent) damage for a grappling result by modified roll.
+    // Roll 1 or less: 0. Roll 2-4: 1. Roll 5: 1. Roll 6-7: 2.
+    // Roll 8: 2. Roll 9+: 3.
+    derive grappling_real_damage(modified_roll: int) -> int {
+        match {
+            modified_roll <= 1 => 0,
+            modified_roll <= 5 => 1,
+            modified_roll <= 8 => 2,
+            _                  => 3
+        }
+    }
+
+    // Controlling hold type for a grappling result by modified roll.
+    // The attacker gets the controlling hold if their die roll is
+    // higher (or first hold established). Roll 1: None (awkward
+    // scuffle). Roll 2-4: ArmGrab. Roll 5: WaistLock. Roll 6:
+    // RearChoke. Roll 7: ArmLock. Roll 8: HeadLock. Roll 9+:
+    // DecisiveThrow.
+    derive grappling_controlling_hold(modified_roll: int) -> GrapplingHold {
+        match {
+            modified_roll <= 1 => GrapplingHold.None,
+            modified_roll <= 4 => GrapplingHold.ArmGrab,
+            modified_roll == 5 => GrapplingHold.WaistLock,
+            modified_roll == 6 => GrapplingHold.RearChoke,
+            modified_roll == 7 => GrapplingHold.ArmLock,
+            modified_roll == 8 => GrapplingHold.HeadLock,
+            _                  => GrapplingHold.DecisiveThrow
+        }
+    }
+
+    // Inferior hold type for a grappling result by modified roll.
+    // The defender (or combatant with the lower die roll) gets
+    // the inferior variant. Roll 1: None. Roll 2-4: ElbowBash.
+    // Roll 5: LegHold. Roll 6: HeadButt. Roll 7: WickedElbowBash.
+    // Roll 8: Gouge. Roll 9+: DecisiveThrow (always controlling).
+    derive grappling_inferior_hold(modified_roll: int) -> GrapplingHold {
+        match {
+            modified_roll <= 1 => GrapplingHold.None,
+            modified_roll <= 4 => GrapplingHold.ElbowBash,
+            modified_roll == 5 => GrapplingHold.LegHold,
+            modified_roll == 6 => GrapplingHold.HeadButt,
+            modified_roll == 7 => GrapplingHold.WickedElbowBash,
+            modified_roll == 8 => GrapplingHold.Gouge,
+            _                  => GrapplingHold.DecisiveThrow
+        }
+    }
+
+    // Resolve a grappling attack (Table 1.6.12c).
+    // First rolls unarmed to-hit (Table 1.6.12a). On hit, rolls
+    // 1d8 + modifiers on the grappling results table. The
+    // is_controlling flag is true when the attacker is establishing
+    // the first hold; subsequent grappling between two grapplers
+    // compares die rolls to determine controlling/inferior.
+    mechanic resolve_grappling_attack(
+        attacker: entity,
+        target: entity,
+        attacker_move: int,
+        defender_move: int,
+        attacker_appendages: int = 2,
+        defender_appendages: int = 2,
+        attack_mod: int = 0,
+        is_controlling: bool = true
+    ) -> GrapplingResult #unarmed_attack {
+        let to_hit = resolve_unarmed_to_hit(
+            attacker, target, attacker_move, defender_move, attack_mod
+        )
+        if to_hit.outcome == AttackOutcome.Miss {
+            GrapplingResult {
+                outcome: AttackOutcome.Miss,
+                roll: 0,
+                modified_roll: 0,
+                temp_damage: 0,
+                real_damage: 0,
+                hold: GrapplingHold.None,
+                is_controlling: false
+            }
+        } else {
+            let d8 = roll(1d8).total
+            let size_mod = grappling_attacker_size_mod(target_size(attacker)) + grappling_defender_size_mod(target_size(target))
+            let app_mod = grappling_attacker_appendage_mod(attacker_appendages) + grappling_defender_appendage_mod(defender_appendages)
+            let modified = d8 + size_mod + app_mod
+            let temp = grappling_temp_damage(modified)
+            let real = grappling_real_damage(modified)
+            let hold = if is_controlling {
+                grappling_controlling_hold(modified)
+            } else {
+                grappling_inferior_hold(modified)
+            }
+
+            GrapplingResult {
+                outcome: AttackOutcome.Hit,
+                roll: d8,
+                modified_roll: modified,
+                temp_damage: temp,
+                real_damage: real,
+                hold: hold,
+                is_controlling: is_controlling
+            }
+        }
+    }
+
+    // Grappling attack action. Applies temporary and real damage
+    // from the grappling results table. Does not yet track hold
+    // state (controlling/inferior) — that requires the grappling
+    // hold state tracking system (tdsl-3g4q).
+    action GrapplingAttack on attacker: Character (
+        target: entity,
+        attacker_move: int,
+        defender_move: int,
+        attacker_appendages: int = 2,
+        defender_appendages: int = 2,
+        attack_mod: int = 0
+    ) {
+        cost { attack }
+        resolve {
+            let result = resolve_grappling_attack(
+                attacker, target, attacker_move, defender_move,
+                attacker_appendages, defender_appendages, attack_mod
+            )
+            match result.outcome {
+                AttackOutcome.Hit => {
+                    if result.temp_damage > 0 {
+                        target.TakeTempDamage(attacker, result.temp_damage)
+                    }
+                    if result.real_damage > 0 {
+                        target.TakeDamage(attacker, result.real_damage, DamageType.Blunt)
+                    }
+                    emit GrapplingHit(
+                        attacker: attacker,
+                        target: target,
+                        hold: result.hold,
+                        temp_damage: result.temp_damage,
+                        real_damage: result.real_damage,
+                        modified_roll: result.modified_roll
+                    )
+                },
+                _ => {
+                    emit GrapplingMiss(attacker: attacker, target: target)
+                }
+            }
         }
     }
 
