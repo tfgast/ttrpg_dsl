@@ -85,6 +85,12 @@ struct HeredocState {
     snippet: bool,
 }
 
+/// State for accumulating a multi-line command via backslash continuation
+/// or auto-continuation (unclosed delimiters).
+struct ContinuationState {
+    lines: Vec<String>,
+}
+
 /// The core CLI runner. Owns program state and dispatches commands.
 pub struct Runner {
     program: Box<Program>,
@@ -106,6 +112,7 @@ pub struct Runner {
     quiet: bool,
     interactive: bool,
     heredoc: Option<HeredocState>,
+    continuation: Option<ContinuationState>,
 }
 
 impl Runner {
@@ -131,6 +138,7 @@ impl Runner {
             quiet: false,
             interactive: false,
             heredoc: None,
+            continuation: None,
         }
     }
 
@@ -244,6 +252,18 @@ impl Runner {
         self.heredoc.is_some()
     }
 
+    /// Returns `true` when the runner is accumulating a multi-line command
+    /// (backslash continuation or unclosed delimiters).
+    pub fn in_continuation(&self) -> bool {
+        self.continuation.is_some()
+    }
+
+    /// Cancel any in-progress continuation (e.g. on Ctrl-C).
+    pub fn cancel_continuation(&mut self) {
+        self.continuation = None;
+        self.heredoc = None;
+    }
+
     /// Execute a single line of input. Output is collected internally.
     pub fn exec(&mut self, line: &str) -> Result<(), CliError> {
         // If we're inside a heredoc block, accumulate or close.
@@ -258,6 +278,61 @@ impl Runner {
             return Ok(());
         }
 
+        // Handle line continuation (backslash or unclosed delimiters).
+        if let Some(ref mut state) = self.continuation {
+            state.lines.push(line.to_string());
+            let joined = state.lines.join(" ");
+            let trimmed = joined.trim();
+
+            // Check for explicit backslash continuation
+            if let Some(stripped) = trimmed.strip_suffix('\\') {
+                // Still continuing — update the stored line without the backslash
+                state.lines = vec![stripped.to_string()];
+                return Ok(());
+            }
+
+            // Check if delimiters are now balanced
+            if delimiters_balanced(trimmed) {
+                self.continuation = None;
+                return self.exec_continued(&joined);
+            }
+            return Ok(());
+        }
+
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with("//") {
+            return Ok(());
+        }
+
+        // Check for `source [-s] <<DELIM`
+        if trimmed.starts_with("source ") || trimmed == "source" {
+            if let Some(heredoc) = Self::parse_source_heredoc(trimmed) {
+                self.heredoc = Some(heredoc);
+                return Ok(());
+            }
+        }
+
+        // Check for explicit backslash continuation
+        if let Some(stripped) = trimmed.strip_suffix('\\') {
+            self.continuation = Some(ContinuationState {
+                lines: vec![stripped.to_string()],
+            });
+            return Ok(());
+        }
+
+        // Check for unclosed delimiters (auto-continuation)
+        if !delimiters_balanced(trimmed) {
+            self.continuation = Some(ContinuationState {
+                lines: vec![line.to_string()],
+            });
+            return Ok(());
+        }
+
+        self.exec_inner(line)
+    }
+
+    /// Execute a command that was assembled from continuation lines.
+    fn exec_continued(&mut self, line: &str) -> Result<(), CliError> {
         let trimmed = line.trim();
         if trimmed.is_empty() || trimmed.starts_with("//") {
             return Ok(());

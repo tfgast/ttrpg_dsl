@@ -14,11 +14,18 @@ use crate::runner::Runner;
 use crate::validator::TtrpgValidator;
 
 /// Custom prompt for the TTRPG REPL.
-struct TtrpgPrompt;
+struct TtrpgPrompt {
+    /// When true, show a continuation prompt instead of the normal one.
+    continuation: bool,
+}
 
 impl Prompt for TtrpgPrompt {
     fn render_prompt_left(&self) -> std::borrow::Cow<'_, str> {
-        std::borrow::Cow::Owned(Color::Green.bold().paint("ttrpg").to_string())
+        if self.continuation {
+            std::borrow::Cow::Owned(Color::Yellow.bold().paint("  ...").to_string())
+        } else {
+            std::borrow::Cow::Owned(Color::Green.bold().paint("ttrpg").to_string())
+        }
     }
 
     fn render_prompt_right(&self) -> std::borrow::Cow<'_, str> {
@@ -154,12 +161,14 @@ pub fn run_repl(vi_mode: bool, coverage: bool, interactive: bool) {
         }
     }
 
-    let prompt = TtrpgPrompt;
+    let mut prompt = TtrpgPrompt { continuation: false };
 
     // Initialize completions before first prompt
     refresh_completions(&runner, &completion_ctx);
 
     loop {
+        prompt.continuation = runner.in_heredoc() || runner.in_continuation();
+
         match editor.read_line(&prompt) {
             Ok(Signal::Success(buffer)) => {
                 let result = runner.exec(&buffer);
@@ -180,7 +189,8 @@ pub fn run_repl(vi_mode: bool, coverage: bool, interactive: bool) {
                 refresh_completions(&runner, &completion_ctx);
             }
             Ok(Signal::CtrlC) => {
-                // Clear current line, continue
+                // Cancel any in-progress continuation
+                runner.cancel_continuation();
             }
             Ok(Signal::CtrlD) => {
                 break;

@@ -175,6 +175,10 @@ fn run_pipe(coverage: bool, quiet: bool) {
         eprintln!("error: unclosed source heredoc at end of input");
         had_error = true;
     }
+    if runner.in_continuation() {
+        eprintln!("error: unclosed continuation at end of input");
+        had_error = true;
+    }
 
     if had_error {
         process::exit(1);
@@ -226,6 +230,10 @@ fn exec_commands(label: &str, content: &str, coverage: bool, quiet: bool) {
 
     if runner.in_heredoc() {
         eprintln!("{label}: error: unclosed source heredoc at end of input");
+        had_error = true;
+    }
+    if runner.in_continuation() {
+        eprintln!("{label}: error: unclosed continuation at end of input");
         had_error = true;
     }
 

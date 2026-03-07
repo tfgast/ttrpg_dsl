@@ -16,6 +16,16 @@ fn write_temp(prefix: &str, source: &str) -> PathBuf {
     path
 }
 
+/// Load snippet source via the `source -s <<END` heredoc mechanism.
+fn load_snippet(runner: &mut Runner, source: &str) {
+    runner.exec("source -s <<END").unwrap();
+    for line in source.lines() {
+        runner.exec(line).unwrap();
+    }
+    runner.exec("END").unwrap();
+    runner.take_output();
+}
+
 #[test]
 fn eval_arithmetic() {
     let mut runner = Runner::new();
@@ -4263,11 +4273,119 @@ fn cmd_prompts_multiple_consumed_in_order() {
 
     runner.exec("eval test_prompt(0)").unwrap();
     let out1 = runner.take_output();
-    assert!(out1.iter().any(|l| l == "10"), "first should be 10: {out1:?}");
+    assert!(
+        out1.iter().any(|l| l == "10"),
+        "first should be 10: {out1:?}"
+    );
 
     runner.exec("eval test_prompt(0)").unwrap();
     let out2 = runner.take_output();
-    assert!(out2.iter().any(|l| l == "20"), "second should be 20: {out2:?}");
+    assert!(
+        out2.iter().any(|l| l == "20"),
+        "second should be 20: {out2:?}"
+    );
 
     assert!(runner.prompt_queue.is_empty());
+}
+
+// ── Line continuation tests ─────────────────────────────────
+
+#[test]
+fn backslash_continuation_eval() {
+    let mut runner = Runner::new();
+    load_snippet(
+        &mut runner,
+        r#"entity Character { HP: int }
+           function double(x: int) -> int { x * 2 }"#,
+    );
+
+    // Backslash continuation across two lines
+    runner.exec(r"assert_eq double(7), \").unwrap();
+    assert!(runner.in_continuation());
+    runner.exec("14").unwrap();
+    assert!(!runner.in_continuation());
+}
+
+#[test]
+fn backslash_continuation_three_lines() {
+    let mut runner = Runner::new();
+    load_snippet(
+        &mut runner,
+        "function add3(a: int, b: int, c: int) -> int { a + b + c }",
+    );
+
+    runner.exec(r"assert_eq \").unwrap();
+    assert!(runner.in_continuation());
+    runner.exec(r"add3(1, 2, 3), \").unwrap();
+    assert!(runner.in_continuation());
+    runner.exec("6").unwrap();
+    assert!(!runner.in_continuation());
+}
+
+#[test]
+fn auto_continuation_brace() {
+    let mut runner = Runner::new();
+    load_snippet(&mut runner, "entity Character { HP: int, AC: int }");
+
+    runner.exec("spawn Character hero {").unwrap();
+    assert!(runner.in_continuation());
+    runner.exec("  HP: 30,").unwrap();
+    assert!(runner.in_continuation());
+    runner.exec("  AC: 18").unwrap();
+    assert!(runner.in_continuation());
+    runner.exec("}").unwrap();
+    assert!(!runner.in_continuation());
+    runner.take_output();
+
+    runner.exec("assert_eq hero.HP, 30").unwrap();
+    runner.exec("assert_eq hero.AC, 18").unwrap();
+}
+
+#[test]
+fn auto_continuation_paren() {
+    let mut runner = Runner::new();
+    load_snippet(
+        &mut runner,
+        "function add(a: int, b: int) -> int { a + b }",
+    );
+
+    runner.exec("assert_eq add(").unwrap();
+    assert!(runner.in_continuation());
+    runner.exec("  10, 20").unwrap();
+    assert!(runner.in_continuation());
+    runner.exec("), 30").unwrap();
+    assert!(!runner.in_continuation());
+}
+
+#[test]
+fn cancel_continuation_clears_state() {
+    let mut runner = Runner::new();
+    runner.exec(r"eval 1 + \").unwrap();
+    assert!(runner.in_continuation());
+    runner.cancel_continuation();
+    assert!(!runner.in_continuation());
+
+    // Runner should work normally after cancel
+    load_snippet(&mut runner, "function id(x: int) -> int { x }");
+    runner.exec("assert_eq id(42), 42").unwrap();
+}
+
+#[test]
+fn auto_continuation_bracket() {
+    let mut runner = Runner::new();
+    load_snippet(
+        &mut runner,
+        "entity Foo { items: list<int> }
+         function count(xs: list<int>) -> int { len(xs) }",
+    );
+
+    runner.exec("spawn Foo f { items: [").unwrap();
+    assert!(runner.in_continuation());
+    runner.exec("  1, 2, 3").unwrap();
+    assert!(runner.in_continuation());
+    runner.exec("] }").unwrap();
+    assert!(!runner.in_continuation());
+    runner.take_output();
+
+    runner.exec("assert_eq count(f.items), 3").unwrap();
 }

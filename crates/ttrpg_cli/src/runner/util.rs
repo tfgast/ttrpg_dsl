@@ -82,6 +82,47 @@ pub(super) fn find_unquoted(s: &str, needle: char) -> Option<usize> {
     None
 }
 
+/// Returns `true` if all `()`, `[]`, and `{}` delimiters are balanced,
+/// ignoring delimiters inside string literals. Used for multi-line
+/// auto-continuation: when delimiters are unbalanced, the runner
+/// accumulates more lines before dispatching.
+pub(super) fn delimiters_balanced(s: &str) -> bool {
+    let bytes = s.as_bytes();
+    let mut in_string = false;
+    let mut paren: i32 = 0;
+    let mut bracket: i32 = 0;
+    let mut brace: i32 = 0;
+    let mut i = 0;
+
+    while i < bytes.len() {
+        if in_string {
+            if bytes[i] == b'\\' {
+                i += 2;
+                continue;
+            }
+            if bytes[i] == b'"' {
+                in_string = false;
+            }
+        } else {
+            match bytes[i] {
+                b'"' => in_string = true,
+                b'(' => paren += 1,
+                b')' => paren -= 1,
+                b'[' => bracket += 1,
+                b']' => bracket -= 1,
+                b'{' => brace += 1,
+                b'}' => brace -= 1,
+                // Stop at line comments
+                b'/' if i + 1 < bytes.len() && bytes[i + 1] == b'/' => break,
+                _ => {}
+            }
+        }
+        i += 1;
+    }
+
+    paren == 0 && bracket == 0 && brace == 0
+}
+
 /// Check that a handle name is a bare identifier: `[a-zA-Z_][a-zA-Z0-9_]*`.
 pub(super) fn is_valid_handle(s: &str) -> bool {
     let mut chars = s.chars();
@@ -190,5 +231,46 @@ mod tests {
     #[test]
     fn split_first_token_tab() {
         assert_eq!(split_first_token("hello\tworld"), ("hello", "world"));
+    }
+
+    #[test]
+    fn balanced_empty() {
+        assert!(delimiters_balanced(""));
+    }
+
+    #[test]
+    fn balanced_no_delimiters() {
+        assert!(delimiters_balanced("hello world 42"));
+    }
+
+    #[test]
+    fn balanced_parens() {
+        assert!(delimiters_balanced("foo(1, 2)"));
+    }
+
+    #[test]
+    fn unbalanced_open_paren() {
+        assert!(!delimiters_balanced("foo(1, 2"));
+    }
+
+    #[test]
+    fn unbalanced_open_brace() {
+        assert!(!delimiters_balanced("spawn Character hero {"));
+    }
+
+    #[test]
+    fn balanced_nested() {
+        assert!(delimiters_balanced("foo(bar[1], {a: b})"));
+    }
+
+    #[test]
+    fn balanced_ignores_string_contents() {
+        assert!(delimiters_balanced(r#"eval "unclosed (""#));
+    }
+
+    #[test]
+    fn balanced_ignores_comment() {
+        // The `(` in the comment should be ignored
+        assert!(delimiters_balanced("foo() // unclosed ("));
     }
 }
