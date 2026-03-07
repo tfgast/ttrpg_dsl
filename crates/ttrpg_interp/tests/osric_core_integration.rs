@@ -60,8 +60,8 @@ fn osric_core_has_all_enums() {
     assert!(enums.contains(&("Class", 10)), "missing Class enum");
     // Ancestry: 7 ancestries
     assert!(enums.contains(&("Ancestry", 7)), "missing Ancestry enum");
-    // Size: ordered, 3 variants
-    assert!(enums.contains(&("Size", 3)), "missing Size enum");
+    // Size: ordered, 6 variants
+    assert!(enums.contains(&("Size", 6)), "missing Size enum");
     // SaveCategory: 5 categories
     assert!(
         enums.contains(&("SaveCategory", 5)),
