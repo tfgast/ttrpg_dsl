@@ -87,6 +87,7 @@ system "OSRIC Combat" {
     // ========================================================
 
     tag attack_resolution
+    tag unarmed_attack
     tag ac_defense
     tag damage_dealt
 
@@ -671,6 +672,157 @@ system "OSRIC Combat" {
                     emit TempDamageHealed(target: target, amount: 1)
                 }
             }
+        }
+    }
+
+
+    // ========================================================
+    //  UNARMED TO-HIT TABLE & MODIFIERS (Table 1.6.12a)
+    //
+    //  Separate from the normal BTHB system. Attacker's armour
+    //  AC maps to a d20 target number. Both attacker and
+    //  defender apply modifiers from DEX, movement rate, and
+    //  defender armour.
+    //
+    //  Roll of 1 always misses (same as saving throws).
+    //  Used for overbearing and grappling attacks alike.
+    //
+    //  Reference: PG p.107 (§1.6.12, Table 1.6.12a)
+    // ========================================================
+
+    // Result of an unarmed to-hit roll.
+    struct UnarmedToHitResult {
+        outcome: AttackOutcome
+        target_number: int
+        attacker_mod: int
+        defender_mod: int
+        effective_target: int
+    }
+
+    // Unarmed to-hit target number from attacker's armour AC.
+    // Uses ascending AC of worn armour only (not DEX/shield/magic).
+    // Unarmoured (AC 10) = target 2. Each AC step adds 2.
+    // Characters: base_armor_ac(). Monsters without armour: 10.
+    // Capped at 2 (min) and 22 (max).
+    derive unarmed_target_number(attacker_armor_ac: int) -> int {
+        let raw = (attacker_armor_ac - 10) * 2 + 2
+        min(22, max(2, raw))
+    }
+
+    // Attacker DEX modifier for unarmed attacks.
+    // DEX 15-18: +1, DEX 19+: +2, otherwise +0.
+    derive unarmed_attacker_dex_mod(dex: int) -> int {
+        match {
+            dex >= 19 => 2,
+            dex >= 15 => 1,
+            _         => 0
+        }
+    }
+
+    // Attacker movement rate modifier for unarmed attacks.
+    // Higher movement = bonus to hit. Per Table 1.6.12a.
+    table unarmed_attacker_move_mod(move_rate: int) -> int {
+        0..=29   => 0,
+        30..=59  => 2,
+        60..=89  => 4,
+        90..=119 => 6,
+        120..=149 => 8,
+        _        => 10
+    }
+
+    // Defender armour modifier for unarmed attacks.
+    // Heavier armour makes the defender harder to hit.
+    // Uses ascending AC of defender's worn armour only.
+    table unarmed_defender_armour_mod(defender_armor_ac: int) -> int {
+        0..=11  => 0,
+        12..=14 => 2,
+        15..=16 => 4,
+        17..=19 => 5,
+        _       => 7
+    }
+
+    // Defender movement rate modifier for unarmed attacks.
+    // Higher movement = harder to hit (negative modifier on roll).
+    table unarmed_defender_move_mod(move_rate: int) -> int {
+        0..=29   => 0,
+        30..=59  => -2,
+        60..=89  => -4,
+        90..=119 => -6,
+        120..=149 => -8,
+        _        => -10
+    }
+
+    // Attacker's armour AC for unarmed combat purposes.
+    // Characters: armour type AC only (no DEX, shield, or magic).
+    // Monsters: use their stat-block AC (precalculated per GMG).
+    derive unarmed_attacker_armor_ac(attacker: entity) -> int {
+        if attacker is Character {
+            base_armor_ac(attacker)
+        } else if attacker is Monster {
+            attacker.ac
+        } else {
+            10
+        }
+    }
+
+    // Defender's armour AC for unarmed combat modifier purposes.
+    // Same logic as attacker armour AC.
+    derive unarmed_defender_armor_ac(target: entity) -> int {
+        if target is Character {
+            base_armor_ac(target)
+        } else if target is Monster {
+            target.ac
+        } else {
+            10
+        }
+    }
+
+    // Combined attacker modifier for unarmed to-hit.
+    // DEX bonus + movement rate bonus + any condition-based attack_mod.
+    derive unarmed_attacker_mod(attacker: entity, attacker_move: int) -> int {
+        let dex_mod = if attacker is Character {
+            unarmed_attacker_dex_mod(attacker.abilities[DEX])
+        } else { 0 }
+        dex_mod + unarmed_attacker_move_mod(attacker_move)
+    }
+
+    // Combined defender modifier for unarmed to-hit.
+    // Armour penalty + movement rate penalty.
+    derive unarmed_defender_mod(target: entity, defender_move: int) -> int {
+        let armor_ac = unarmed_defender_armor_ac(target)
+        unarmed_defender_armour_mod(armor_ac) + unarmed_defender_move_mod(defender_move)
+    }
+
+    // Resolve an unarmed to-hit roll (Table 1.6.12a).
+    // Used by overbearing, grappling, and pummelling attacks.
+    // attack_mod allows condition-based modifiers (prone, held, etc.)
+    // to apply as they do for normal attacks.
+    // Roll of 1 always misses. Otherwise: d20 + attacker_mod >= effective_target.
+    mechanic resolve_unarmed_to_hit(
+        attacker: entity,
+        target: entity,
+        attacker_move: int,
+        defender_move: int,
+        attack_mod: int = 0
+    ) -> UnarmedToHitResult #unarmed_attack {
+        let armor_ac = unarmed_attacker_armor_ac(attacker)
+        let base_target = unarmed_target_number(armor_ac)
+        let atk_mod = unarmed_attacker_mod(attacker, attacker_move) + attack_mod
+        let def_mod = unarmed_defender_mod(target, defender_move)
+        let effective = base_target + def_mod
+        let d20 = roll(1d20).total
+        let adjusted = d20 + atk_mod
+        let outcome = match {
+            d20 == 1            => AttackOutcome.Miss,
+            adjusted >= effective => AttackOutcome.Hit,
+            _                   => AttackOutcome.Miss
+        }
+        UnarmedToHitResult {
+            outcome: outcome,
+            target_number: base_target,
+            attacker_mod: atk_mod,
+            defender_mod: def_mod,
+            effective_target: effective
         }
     }
 

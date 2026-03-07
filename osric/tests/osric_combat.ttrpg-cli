@@ -623,3 +623,162 @@ spawn Monster size_ogre { name: "Ogre", hit_dice: 4d8 + 1, max_hp: 26, hp: 26, a
 
 assert_eq target_size(size_human), Size.Medium
 assert_eq target_size(size_ogre), Size.Medium
+
+// ── Unarmed to-hit target number (Table 1.6.12a) ─────────────
+// Ascending AC 10 (unarmoured) = target 2, each AC step adds 2.
+
+assert_eq unarmed_target_number(10), 2
+assert_eq unarmed_target_number(11), 4
+assert_eq unarmed_target_number(12), 6
+assert_eq unarmed_target_number(13), 8
+assert_eq unarmed_target_number(14), 10
+assert_eq unarmed_target_number(15), 12
+assert_eq unarmed_target_number(16), 14
+assert_eq unarmed_target_number(17), 16
+assert_eq unarmed_target_number(18), 18
+assert_eq unarmed_target_number(19), 20
+assert_eq unarmed_target_number(20), 22
+// Clamped at extremes
+assert_eq unarmed_target_number(9), 2
+assert_eq unarmed_target_number(25), 22
+
+// ── Unarmed attacker DEX modifier ─────────────────────────────
+// DEX 14 or lower: +0, DEX 15-18: +1, DEX 19+: +2
+
+assert_eq unarmed_attacker_dex_mod(10), 0
+assert_eq unarmed_attacker_dex_mod(14), 0
+assert_eq unarmed_attacker_dex_mod(15), 1
+assert_eq unarmed_attacker_dex_mod(18), 1
+assert_eq unarmed_attacker_dex_mod(19), 2
+assert_eq unarmed_attacker_dex_mod(22), 2
+
+// ── Unarmed attacker movement rate modifier ───────────────────
+// <30: +0, 30: +2, 60: +4, 90: +6, 120: +8, 150+: +10
+
+assert_eq unarmed_attacker_move_mod(0), 0
+assert_eq unarmed_attacker_move_mod(29), 0
+assert_eq unarmed_attacker_move_mod(30), 2
+assert_eq unarmed_attacker_move_mod(59), 2
+assert_eq unarmed_attacker_move_mod(60), 4
+assert_eq unarmed_attacker_move_mod(89), 4
+assert_eq unarmed_attacker_move_mod(90), 6
+assert_eq unarmed_attacker_move_mod(119), 6
+assert_eq unarmed_attacker_move_mod(120), 8
+assert_eq unarmed_attacker_move_mod(149), 8
+assert_eq unarmed_attacker_move_mod(150), 10
+assert_eq unarmed_attacker_move_mod(200), 10
+
+// ── Unarmed defender armour modifier ──────────────────────────
+// Ascending AC <=11: +0, 12-14: +2, 15-16: +4, 17-19: +5, 20+: +7
+
+assert_eq unarmed_defender_armour_mod(10), 0
+assert_eq unarmed_defender_armour_mod(11), 0
+assert_eq unarmed_defender_armour_mod(12), 2
+assert_eq unarmed_defender_armour_mod(14), 2
+assert_eq unarmed_defender_armour_mod(15), 4
+assert_eq unarmed_defender_armour_mod(16), 4
+assert_eq unarmed_defender_armour_mod(17), 5
+assert_eq unarmed_defender_armour_mod(19), 5
+assert_eq unarmed_defender_armour_mod(20), 7
+assert_eq unarmed_defender_armour_mod(25), 7
+
+// ── Unarmed defender movement rate modifier ───────────────────
+// <30: +0, 30: -2, 60: -4, 90: -6, 120: -8, 150+: -10
+
+assert_eq unarmed_defender_move_mod(0), 0
+assert_eq unarmed_defender_move_mod(29), 0
+assert_eq unarmed_defender_move_mod(30), -2
+assert_eq unarmed_defender_move_mod(59), -2
+assert_eq unarmed_defender_move_mod(60), -4
+assert_eq unarmed_defender_move_mod(90), -6
+assert_eq unarmed_defender_move_mod(120), -8
+assert_eq unarmed_defender_move_mod(150), -10
+
+// ── Unarmed attacker/defender armor AC derives ────────────────
+
+// Unarmoured character → ascending AC 10
+spawn Character ua_unarmoured { name: "Brawler", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 } }
+assert_eq unarmed_attacker_armor_ac(ua_unarmoured), 10
+assert_eq unarmed_defender_armor_ac(ua_unarmoured), 10
+
+// Armoured character → armour type AC
+spawn Character ua_armoured { name: "Knight", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 }, EquipmentSlots { worn_armor: some(Armor { armour_type: PlateMail }) } }
+assert_eq unarmed_attacker_armor_ac(ua_armoured), 17
+assert_eq unarmed_defender_armor_ac(ua_armoured), 17
+
+// Monster uses stat-block AC
+spawn Monster ua_orc { name: "Orc", hit_dice: 1d8, max_hp: 8, hp: 8, ac: 14, attacks: [MonsterAttack { name: "Club", damage: 1d6 }] }
+assert_eq unarmed_attacker_armor_ac(ua_orc), 14
+assert_eq unarmed_defender_armor_ac(ua_orc), 14
+
+// ── Combined unarmed attacker mod ─────────────────────────────
+
+// Character with DEX 16 (+1), movement 120 (+8) → total +9
+spawn Character ua_fast { name: "Fast", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 16, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 } }
+assert_eq unarmed_attacker_mod(ua_fast, 120), 9
+
+// Character with DEX 12 (+0), movement 60 (+4) → total +4
+assert_eq unarmed_attacker_mod(ua_unarmoured, 60), 4
+
+// Monster gets no DEX bonus, movement 90 → +6
+assert_eq unarmed_attacker_mod(ua_orc, 90), 6
+
+// ── Combined unarmed defender mod ─────────────────────────────
+
+// Unarmoured (AC 10, mod +0) + movement 120 (-8) → -8
+assert_eq unarmed_defender_mod(ua_unarmoured, 120), -8
+
+// Plate mail (AC 17, mod +5) + movement 60 (-4) → +1
+assert_eq unarmed_defender_mod(ua_armoured, 60), 1
+
+// Orc (AC 14, mod +2) + movement 90 (-6) → -4
+assert_eq unarmed_defender_mod(ua_orc, 90), -4
+
+// ── resolve_unarmed_to_hit mechanic ───────────────────────────
+
+// Unarmoured attacker (AC 10 → target 2), DEX 16 (+1), move 120 (+8).
+// Defender unarmoured (AC 10 → armour mod +0), move 60 (-4).
+// Effective target: 2 + (+0 + -4) = -2.
+// Attacker mod: +1 + +8 = +9.
+// Roll 5: 5 + 9 = 14 >= -2 → Hit
+rolls clear
+rolls 5
+let ua_hit = resolve_unarmed_to_hit(ua_fast, ua_unarmoured, 120, 60)
+assert_eq ua_hit.outcome, AttackOutcome.Hit
+assert_eq ua_hit.target_number, 2
+assert_eq ua_hit.attacker_mod, 9
+assert_eq ua_hit.defender_mod, -4
+assert_eq ua_hit.effective_target, -2
+
+// Roll of 1 always misses, even with huge bonuses
+rolls clear
+rolls 1
+let ua_nat1 = resolve_unarmed_to_hit(ua_fast, ua_unarmoured, 120, 60)
+assert_eq ua_nat1.outcome, AttackOutcome.Miss
+
+// Hard target: plate mail defender (AC 17 → armour mod +5), move 0 (+0).
+// Attacker unarmoured (target 2), DEX 12, move 30 (+2).
+// Effective target: 2 + 5 = 7. Attacker mod: +0 + +2 = +2.
+// Roll 4: 4 + 2 = 6 < 7 → Miss
+rolls clear
+rolls 4
+let ua_miss = resolve_unarmed_to_hit(ua_unarmoured, ua_armoured, 30, 0)
+assert_eq ua_miss.outcome, AttackOutcome.Miss
+assert_eq ua_miss.target_number, 2
+assert_eq ua_miss.attacker_mod, 2
+assert_eq ua_miss.defender_mod, 5
+assert_eq ua_miss.effective_target, 7
+
+// Same scenario, roll 5: 5 + 2 = 7 >= 7 → Hit
+rolls clear
+rolls 5
+let ua_just_hit = resolve_unarmed_to_hit(ua_unarmoured, ua_armoured, 30, 0)
+assert_eq ua_just_hit.outcome, AttackOutcome.Hit
+
+// With extra attack_mod (e.g. from condition like prone +4)
+// Roll 3 + atk_mod(2) + attack_mod(4) = 9 >= 7 → Hit
+rolls clear
+rolls 3
+let ua_cond = resolve_unarmed_to_hit(ua_unarmoured, ua_armoured, 30, 0, 4)
+assert_eq ua_cond.outcome, AttackOutcome.Hit
+assert_eq ua_cond.attacker_mod, 6
