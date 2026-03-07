@@ -146,6 +146,32 @@ rolls clear
 Always `rolls clear` before a new section if a previous test might have
 leftover unconsumed rolls.
 
+### Controlling prompts
+
+Queue predetermined responses for `prompt` blocks using `prompts`:
+
+```
+// Queue a value for the next prompt (parsed and validated at queue time)
+prompts 42
+eval test_prompt(5)
+
+// Queue a string response
+prompts "longsword"
+
+// Multiple values are consumed in order
+prompts 10
+prompts 20
+do SomeAction(actor, target)
+
+// Clear the queue between test sections
+prompts clear
+```
+
+When the prompt queue is empty, the prompt falls back to its `suggest`
+value (if present) or its `default` body. Values are parsed at queue
+time, so syntax errors like `prompts @@@` are caught immediately rather
+than during execution.
+
 ### Spawning entities
 
 ```
@@ -377,7 +403,7 @@ expression context (`eval`, `assert`, `assert_eq`, `assert_ne`, `assert_match`,
 - Use `entity <Name>` to see the full schema before writing spawn blocks.
 - Use `inspect <handle>` to debug unexpected assertion failures.
 - Group related assertions under `// ── Section ───` comment headers.
-- Use `rolls clear` between test sections to avoid stale roll queues.
+- Use `rolls clear` and `prompts clear` between test sections to avoid stale queues.
 - One script per rule module (e.g., `osric_combat.ttrpg-cli` for
   `osric_combat.ttrpg`).
 - See `osric/tests/osric_combat.ttrpg-cli` as a reference implementation.

@@ -209,21 +209,31 @@ assert_condition fighter, Prone
 assert_no_condition fighter, Stunned
 ```
 
-### Dice Control
+### Dice & Prompt Control
 
 | Command              | Description                                   |
 |----------------------|-----------------------------------------------|
 | `seed <value>`       | Set RNG seed for deterministic rolls          |
 | `rolls <v1 v2 ...>`  | Queue predetermined roll results              |
 | `rolls clear`        | Clear the roll queue                          |
+| `prompts <expr>`     | Queue a value for the next prompt response    |
+| `prompts clear`      | Clear the prompt queue                        |
 
 ```
 seed 42
 rolls 18 5 12
 rolls clear
+prompts 42
+prompts "longsword"
+prompts clear
 ```
 
 Queued rolls are consumed in order; RNG resumes after queue empties.
+
+Queued prompt values are consumed in order by `ResolvePrompt` effects.
+Values are parsed and evaluated at queue time — syntax errors are caught
+immediately. When the queue is empty, prompts fall back to their
+`suggest` value or `default` body.
 
 ---
 
