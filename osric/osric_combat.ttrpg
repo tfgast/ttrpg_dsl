@@ -1157,7 +1157,7 @@ system "OSRIC Combat" {
     // a normal melee attack (no backstab bonus, no multiplier).
     mechanic resolve_assassination(
         attacker: Character,
-        target: Character,
+        target: entity,
         weapon: MeleeWeapon,
         target_hd: int
     ) -> AssassinationResult {
@@ -1201,7 +1201,7 @@ system "OSRIC Combat" {
     // Requires: attacker is an Assassin, wielding a melee weapon.
     // The target_hd parameter represents the target's hit dice or
     // level count (GM decides which to use per §1.3.1.2).
-    action Assassinate on attacker: Character (target: Character, target_hd: int) {
+    action Assassinate on attacker: Character (target: entity, target_hd: int) {
         cost { attack }
         requires {
             wielded_melee(attacker).is_some()
@@ -1213,9 +1213,16 @@ system "OSRIC Combat" {
             match result.outcome {
                 AssassinationOutcome.Kill => {
                     // Instant death regardless of HP
-                    target.hp = -10
-                    apply_condition(target, Dead, Duration.Indefinite)
-                    emit CreatureSlain(target: target, attacker: attacker)
+                    if target is Character {
+                        target.hp = -10
+                        apply_condition(target, Dead, Duration.Indefinite)
+                        emit CreatureSlain(target: target, attacker: attacker)
+                        emit CharacterDead(target: target)
+                    } else if target is Monster {
+                        target.hp = 0
+                        apply_condition(target, Dead, Duration.Indefinite)
+                        emit CreatureSlain(target: target, attacker: attacker)
+                    }
                 },
                 AssassinationOutcome.WeaponHit => {
                     let wdef = melee_weapon_def(weapon)
