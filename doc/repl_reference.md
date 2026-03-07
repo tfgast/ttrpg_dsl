@@ -233,7 +233,7 @@ Queued rolls are consumed in order; RNG resumes after queue empties.
 Queued prompt values are consumed in order by `ResolvePrompt` effects.
 Values are parsed and evaluated at queue time — syntax errors are caught
 immediately. When the queue is empty, prompts fall back to their
-`suggest` value or `default` body.
+`default` body (if present) or `suggest` value.
 
 ---
 

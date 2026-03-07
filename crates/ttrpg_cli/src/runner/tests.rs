@@ -4235,20 +4235,20 @@ fn cmd_prompts_consumed_by_resolve_prompt() {
 }
 
 #[test]
-fn cmd_prompts_fallback_to_suggest_when_queue_empty() {
+fn cmd_prompts_fallback_to_default_when_queue_empty() {
     let mut runner = Runner::new();
     load_prompt_program(&mut runner);
 
-    // No queued values — should use suggest (base + 1 = 6)
+    // No queued values — should prefer default body (base + 100 = 105) over suggest
     runner.exec("eval test_prompt(5)").unwrap();
     let output = runner.take_output();
     assert!(
-        output.iter().any(|l| l.contains("auto:")),
-        "expected auto-resolve log, got: {output:?}"
+        output.iter().any(|l| l.contains("use default")),
+        "expected use-default log, got: {output:?}"
     );
     assert!(
-        output.iter().any(|l| l == "6"),
-        "expected suggest result 6, got: {output:?}"
+        output.iter().any(|l| l == "105"),
+        "expected default result 105, got: {output:?}"
     );
 }
 

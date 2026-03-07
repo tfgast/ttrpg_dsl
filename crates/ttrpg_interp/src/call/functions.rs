@@ -522,6 +522,7 @@ pub(super) fn dispatch_prompt(
         return_type: return_type.clone(),
         hint,
         suggest,
+        has_default: default_body.is_some(),
     };
     let response = env.handler.handle(effect);
 

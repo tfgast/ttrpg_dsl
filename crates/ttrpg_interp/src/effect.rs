@@ -82,6 +82,7 @@ pub enum Effect {
         return_type: Ty,
         hint: Option<String>,
         suggest: Option<Value>,
+        has_default: bool,
     },
 
     // ── Mutation effects ────────────────────────────────────

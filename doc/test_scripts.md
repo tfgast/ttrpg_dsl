@@ -167,8 +167,8 @@ do SomeAction(actor, target)
 prompts clear
 ```
 
-When the prompt queue is empty, the prompt falls back to its `suggest`
-value (if present) or its `default` body. Values are parsed at queue
+When the prompt queue is empty, the prompt falls back to its `default`
+body (if present) or its `suggest` value. Values are parsed at queue
 time, so syntax errors like `prompts @@@` are caught immediately rather
 than during execution.
 

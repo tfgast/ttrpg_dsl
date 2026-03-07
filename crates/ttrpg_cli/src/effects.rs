@@ -178,7 +178,12 @@ impl EffectHandler for CliHandler<'_> {
                 }
             }
 
-            Effect::ResolvePrompt { suggest, name, .. } => {
+            Effect::ResolvePrompt {
+                suggest,
+                name,
+                has_default,
+                ..
+            } => {
                 if let Some(val) = self.prompt_queue.pop_front() {
                     self.log(format!(
                         "[ResolvePrompt] {} -> {} (queued)",
@@ -186,6 +191,10 @@ impl EffectHandler for CliHandler<'_> {
                         format_value(&val, self.unit_suffixes)
                     ));
                     Response::PromptResult(val)
+                } else if has_default {
+                    self.log
+                        .push(format!("[ResolvePrompt] {name} -> use default"));
+                    Response::UseDefault
                 } else if let Some(val) = suggest {
                     self.log(format!(
                         "[ResolvePrompt] {} -> auto: {}",
@@ -859,6 +868,7 @@ mod tests {
             return_type: ttrpg_checker::ty::Ty::Int,
             hint: None,
             suggest: Some(Value::Int(1)),
+            has_default: false,
         };
         let response = handler.handle(effect);
         assert!(matches!(response, Response::PromptResult(Value::Int(1))));
@@ -887,6 +897,7 @@ mod tests {
             return_type: ttrpg_checker::ty::Ty::Int,
             hint: None,
             suggest: None,
+            has_default: false,
         };
         let response = handler.handle(effect);
         assert!(matches!(response, Response::UseDefault));
