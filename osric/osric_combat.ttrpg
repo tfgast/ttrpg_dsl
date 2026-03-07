@@ -121,6 +121,18 @@ system "OSRIC Combat" {
 
     event GrapplingMiss(attacker: entity, target: entity) {}
 
+    event OverbearingHit(
+        attacker: entity,
+        target: entity,
+        tier: OverbearingTier,
+        temp_damage: int,
+        real_damage: int,
+        modified_roll: int,
+        grappling_followup_bonus: int
+    ) {}
+
+    event OverbearingMiss(attacker: entity, target: entity) {}
+
 
     // ========================================================
     //  TIME CONVERSIONS
@@ -835,6 +847,272 @@ system "OSRIC Combat" {
             attacker_mod: atk_mod,
             defender_mod: def_mod,
             effective_target: effective
+        }
+    }
+
+
+    // ========================================================
+    //  OVERBEARING RESULTS TABLE & MODIFIERS (Table 1.6.12b)
+    //
+    //  On unarmed to-hit success for overbearing: roll 1d6 +
+    //  modifiers. Five tiers from Total Failure (attacker prone)
+    //  through Total Success (target prone+overborne+immobile,
+    //  +2 bonus to follow-up grappling roll).
+    //
+    //  Modifiers: attacker/defender STR (or monster HD), size,
+    //  four legs. Defender with four legs cannot be overborne.
+    //  Damage is split between real and temporary.
+    //
+    //  Reference: PG p.108 (§1.6.12, Table 1.6.12b)
+    // ========================================================
+
+    // Result tier for overbearing attacks.
+    enum OverbearingTier {
+        TotalFailure,
+        PartialFailure,
+        PartialSuccess,
+        Success,
+        TotalSuccess
+    }
+
+    // Result of an overbearing attack (Table 1.6.12b).
+    struct OverbearingResult {
+        outcome: AttackOutcome
+        tier: OverbearingTier
+        roll: int
+        modified_roll: int
+        temp_damage: int
+        real_damage: int
+        grappling_followup_bonus: int
+    }
+
+    // Attacker strength modifier for overbearing result roll.
+    // Characters: STR 16-18 → +1, STR 18.01+ (exceptional) → +2.
+    // Monsters: 4-8 HD → +1, 9+ HD → +2.
+    derive overbearing_attacker_str_mod(attacker: entity) -> int {
+        if attacker is Character {
+            let score = attacker.abilities[STR]
+            if score >= 16 {
+                if score == 18 && attacker has ExceptionalStrength {
+                    2
+                } else {
+                    1
+                }
+            } else {
+                0
+            }
+        } else if attacker is Monster {
+            let hd = dice_count(attacker.hit_dice)
+            match {
+                hd >= 9 => 2,
+                hd >= 4 => 1,
+                _       => 0
+            }
+        } else {
+            0
+        }
+    }
+
+    // Defender strength modifier for overbearing result roll.
+    // Characters: STR 16-18 → -1, STR 18.01+ (exceptional) → -2.
+    // Monsters: 4-8 HD → -1, 9+ HD → -2.
+    derive overbearing_defender_str_mod(defender: entity) -> int {
+        if defender is Character {
+            let score = defender.abilities[STR]
+            if score >= 16 {
+                if score == 18 && defender has ExceptionalStrength {
+                    -2
+                } else {
+                    -1
+                }
+            } else {
+                0
+            }
+        } else if defender is Monster {
+            let hd = dice_count(defender.hit_dice)
+            match {
+                hd >= 9 => -2,
+                hd >= 4 => -1,
+                _       => 0
+            }
+        } else {
+            0
+        }
+    }
+
+    // Attacker size modifier for overbearing result roll.
+    // Tiny -4, Small -2, Medium +0, Large +2, Huge +6, Gargantuan +10.
+    derive overbearing_attacker_size_mod(size: Size) -> int {
+        match size {
+            Size.Tiny       => -4,
+            Size.Small      => -2,
+            Size.Medium     => 0,
+            Size.Large      => 2,
+            Size.Huge       => 6,
+            Size.Gargantuan => 10
+        }
+    }
+
+    // Defender size modifier for overbearing result roll.
+    // Inverse of attacker: Tiny +4, Small +2, Medium +0,
+    // Large -2, Huge -6, Gargantuan -10.
+    derive overbearing_defender_size_mod(size: Size) -> int {
+        match size {
+            Size.Tiny       => 4,
+            Size.Small      => 2,
+            Size.Medium     => 0,
+            Size.Large      => -2,
+            Size.Huge       => -6,
+            Size.Gargantuan => -10
+        }
+    }
+
+    // Attacker four-legs modifier for overbearing: +2.
+    derive overbearing_attacker_four_legs_mod(has_four_legs: bool) -> int {
+        if has_four_legs { 2 } else { 0 }
+    }
+
+    // Overbearing result tier by modified d6 roll.
+    derive overbearing_tier(modified_roll: int) -> OverbearingTier {
+        match {
+            modified_roll <= 1 => OverbearingTier.TotalFailure,
+            modified_roll == 2 => OverbearingTier.PartialFailure,
+            modified_roll <= 4 => OverbearingTier.PartialSuccess,
+            modified_roll <= 6 => OverbearingTier.Success,
+            _                  => OverbearingTier.TotalSuccess
+        }
+    }
+
+    // Temporary damage for an overbearing result by modified roll.
+    // Only Success (5-6) and Total Success (7+) deal damage.
+    // Damage equals the die roll: 1 real, rest temporary.
+    // For Success: roll - 1 temp. For Total Success: roll - 2 temp.
+    derive overbearing_temp_damage(modified_roll: int) -> int {
+        let tier = overbearing_tier(modified_roll)
+        match tier {
+            OverbearingTier.Success      => max(0, modified_roll - 1),
+            OverbearingTier.TotalSuccess => max(0, modified_roll - 2),
+            _                            => 0
+        }
+    }
+
+    // Real (permanent) damage for an overbearing result by modified roll.
+    // Success: 1 real. Total Success: 2 real.
+    derive overbearing_real_damage(modified_roll: int) -> int {
+        let tier = overbearing_tier(modified_roll)
+        match tier {
+            OverbearingTier.Success      => 1,
+            OverbearingTier.TotalSuccess => 2,
+            _                            => 0
+        }
+    }
+
+    // Grappling follow-up bonus from overbearing.
+    // Total Success grants +2 to an immediate grappling roll.
+    derive overbearing_grappling_bonus(modified_roll: int) -> int {
+        if overbearing_tier(modified_roll) == OverbearingTier.TotalSuccess { 2 } else { 0 }
+    }
+
+    // Resolve an overbearing attack (Table 1.6.12b).
+    // First rolls unarmed to-hit (Table 1.6.12a). On hit, rolls
+    // 1d6 + modifiers on the overbearing results table.
+    // Defender with four legs cannot be overborne (auto-miss).
+    mechanic resolve_overbearing_attack(
+        attacker: entity,
+        target: entity,
+        attacker_move: int,
+        defender_move: int,
+        attacker_four_legs: bool = false,
+        defender_four_legs: bool = false,
+        attack_mod: int = 0
+    ) -> OverbearingResult #unarmed_attack {
+        // Defender with four legs cannot be overborne.
+        if defender_four_legs {
+            OverbearingResult {
+                outcome: AttackOutcome.Miss,
+                tier: OverbearingTier.TotalFailure,
+                roll: 0,
+                modified_roll: 0,
+                temp_damage: 0,
+                real_damage: 0,
+                grappling_followup_bonus: 0
+            }
+        } else {
+            let to_hit = resolve_unarmed_to_hit(
+                attacker, target, attacker_move, defender_move, attack_mod
+            )
+            if to_hit.outcome == AttackOutcome.Miss {
+                OverbearingResult {
+                    outcome: AttackOutcome.Miss,
+                    tier: OverbearingTier.TotalFailure,
+                    roll: 0,
+                    modified_roll: 0,
+                    temp_damage: 0,
+                    real_damage: 0,
+                    grappling_followup_bonus: 0
+                }
+            } else {
+                let d6 = roll(1d6).total
+                let str_mod = overbearing_attacker_str_mod(attacker) + overbearing_defender_str_mod(target)
+                let size_mod = overbearing_attacker_size_mod(target_size(attacker)) + overbearing_defender_size_mod(target_size(target))
+                let legs_mod = overbearing_attacker_four_legs_mod(attacker_four_legs)
+                let modified = d6 + str_mod + size_mod + legs_mod
+                let tier = overbearing_tier(modified)
+                let temp = overbearing_temp_damage(modified)
+                let real = overbearing_real_damage(modified)
+                let bonus = overbearing_grappling_bonus(modified)
+
+                OverbearingResult {
+                    outcome: AttackOutcome.Hit,
+                    tier: tier,
+                    roll: d6,
+                    modified_roll: modified,
+                    temp_damage: temp,
+                    real_damage: real,
+                    grappling_followup_bonus: bonus
+                }
+            }
+        }
+    }
+
+    // Overbearing attack action. Applies temporary and real damage
+    // from the overbearing results table.
+    action OverbearingAttack on attacker: Character (
+        target: entity,
+        attacker_move: int,
+        defender_move: int,
+        attacker_four_legs: bool = false,
+        defender_four_legs: bool = false,
+        attack_mod: int = 0
+    ) {
+        cost { attack }
+        resolve {
+            let result = resolve_overbearing_attack(
+                attacker, target, attacker_move, defender_move,
+                attacker_four_legs, defender_four_legs, attack_mod
+            )
+            match result.outcome {
+                AttackOutcome.Hit => {
+                    if result.temp_damage > 0 {
+                        target.TakeTempDamage(attacker, result.temp_damage)
+                    }
+                    if result.real_damage > 0 {
+                        target.TakeDamage(attacker, result.real_damage, DamageType.Blunt)
+                    }
+                    emit OverbearingHit(
+                        attacker: attacker,
+                        target: target,
+                        tier: result.tier,
+                        temp_damage: result.temp_damage,
+                        real_damage: result.real_damage,
+                        modified_roll: result.modified_roll,
+                        grappling_followup_bonus: result.grappling_followup_bonus
+                    )
+                },
+                _ => {
+                    emit OverbearingMiss(attacker: attacker, target: target)
+                }
+            }
         }
     }
 

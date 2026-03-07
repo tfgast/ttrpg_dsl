@@ -803,6 +803,236 @@ rolls 2
 do MeleeAttack(brawl_atk, brawl_tgt)
 assert_eq brawl_tgt.hp, 9
 
+// ── Overbearing results table (Table 1.6.12b) ─────────────────
+
+// ── Overbearing attacker strength modifiers ─────────────────
+// Character STR < 16 → 0, STR 16-18 → +1, STR 18 w/exceptional → +2.
+spawn Character ob_str12 { name: "OBStr12", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 10, WIS: 10, DEX: 10, CON: 10, CHA: 10 }, HitPoints { max_hp: 10, hp: 10 } }
+spawn Character ob_str16 { name: "OBStr16", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 16, INT: 10, WIS: 10, DEX: 10, CON: 10, CHA: 10 }, HitPoints { max_hp: 10, hp: 10 } }
+spawn Character ob_str17 { name: "OBStr17", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 17, INT: 10, WIS: 10, DEX: 10, CON: 10, CHA: 10 }, HitPoints { max_hp: 10, hp: 10 } }
+spawn Character ob_str18 { name: "OBStr18", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 18, INT: 10, WIS: 10, DEX: 10, CON: 10, CHA: 10 }, HitPoints { max_hp: 10, hp: 10 } }
+spawn Character ob_str18exc { name: "OBStr18Exc", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 18, INT: 10, WIS: 10, DEX: 10, CON: 10, CHA: 10 }, HitPoints { max_hp: 10, hp: 10 }, ExceptionalStrength { percentile: 50 } }
+
+assert_eq overbearing_attacker_str_mod(ob_str12), 0
+assert_eq overbearing_attacker_str_mod(ob_str16), 1
+assert_eq overbearing_attacker_str_mod(ob_str17), 1
+assert_eq overbearing_attacker_str_mod(ob_str18), 1
+assert_eq overbearing_attacker_str_mod(ob_str18exc), 2
+
+// Monster HD: <4 → 0, 4-8 → +1, 9+ → +2.
+spawn Monster ob_mon2hd { name: "Goblin", hit_dice: 2d8, max_hp: 10, hp: 10, ac: 10, size: Size.Small, attacks: [MonsterAttack { name: "Fist", damage: 1d4 }] }
+spawn Monster ob_mon5hd { name: "Ogre", hit_dice: 5d8, max_hp: 30, hp: 30, ac: 10, size: Size.Large, attacks: [MonsterAttack { name: "Fist", damage: 1d6 }] }
+spawn Monster ob_mon10hd { name: "Giant", hit_dice: 10d8, max_hp: 60, hp: 60, ac: 10, size: Size.Huge, attacks: [MonsterAttack { name: "Fist", damage: 2d6 }] }
+
+assert_eq overbearing_attacker_str_mod(ob_mon2hd), 0
+assert_eq overbearing_attacker_str_mod(ob_mon5hd), 1
+assert_eq overbearing_attacker_str_mod(ob_mon10hd), 2
+
+// ── Overbearing defender strength modifiers ─────────────────
+// Inverse of attacker: STR < 16 → 0, STR 16-18 → -1, exc → -2.
+assert_eq overbearing_defender_str_mod(ob_str12), 0
+assert_eq overbearing_defender_str_mod(ob_str16), -1
+assert_eq overbearing_defender_str_mod(ob_str17), -1
+assert_eq overbearing_defender_str_mod(ob_str18), -1
+assert_eq overbearing_defender_str_mod(ob_str18exc), -2
+
+// Monster HD: <4 → 0, 4-8 → -1, 9+ → -2.
+assert_eq overbearing_defender_str_mod(ob_mon2hd), 0
+assert_eq overbearing_defender_str_mod(ob_mon5hd), -1
+assert_eq overbearing_defender_str_mod(ob_mon10hd), -2
+
+// ── Overbearing size modifiers ──────────────────────────────
+// Attacker: Tiny -4, Small -2, Medium +0, Large +2, Huge +6, Gargantuan +10
+assert_eq overbearing_attacker_size_mod(Size.Tiny), -4
+assert_eq overbearing_attacker_size_mod(Size.Small), -2
+assert_eq overbearing_attacker_size_mod(Size.Medium), 0
+assert_eq overbearing_attacker_size_mod(Size.Large), 2
+assert_eq overbearing_attacker_size_mod(Size.Huge), 6
+assert_eq overbearing_attacker_size_mod(Size.Gargantuan), 10
+
+// Defender: inverse of attacker
+assert_eq overbearing_defender_size_mod(Size.Tiny), 4
+assert_eq overbearing_defender_size_mod(Size.Small), 2
+assert_eq overbearing_defender_size_mod(Size.Medium), 0
+assert_eq overbearing_defender_size_mod(Size.Large), -2
+assert_eq overbearing_defender_size_mod(Size.Huge), -6
+assert_eq overbearing_defender_size_mod(Size.Gargantuan), -10
+
+// ── Overbearing four-legs modifier ──────────────────────────
+assert_eq overbearing_attacker_four_legs_mod(false), 0
+assert_eq overbearing_attacker_four_legs_mod(true), 2
+
+// ── Overbearing tier by modified roll ───────────────────────
+assert_eq overbearing_tier(0), OverbearingTier.TotalFailure
+assert_eq overbearing_tier(1), OverbearingTier.TotalFailure
+assert_eq overbearing_tier(2), OverbearingTier.PartialFailure
+assert_eq overbearing_tier(3), OverbearingTier.PartialSuccess
+assert_eq overbearing_tier(4), OverbearingTier.PartialSuccess
+assert_eq overbearing_tier(5), OverbearingTier.Success
+assert_eq overbearing_tier(6), OverbearingTier.Success
+assert_eq overbearing_tier(7), OverbearingTier.TotalSuccess
+assert_eq overbearing_tier(10), OverbearingTier.TotalSuccess
+
+// ── Overbearing damage by modified roll ─────────────────────
+// No damage for TotalFailure (≤1), PartialFailure (2), PartialSuccess (3-4).
+assert_eq overbearing_temp_damage(0), 0
+assert_eq overbearing_temp_damage(1), 0
+assert_eq overbearing_temp_damage(2), 0
+assert_eq overbearing_temp_damage(3), 0
+assert_eq overbearing_temp_damage(4), 0
+
+// Success (5-6): damage = roll, 1 real, rest temp.
+// Modified 5 → 4 temp, 1 real. Modified 6 → 5 temp, 1 real.
+assert_eq overbearing_temp_damage(5), 4
+assert_eq overbearing_real_damage(5), 1
+assert_eq overbearing_temp_damage(6), 5
+assert_eq overbearing_real_damage(6), 1
+
+// Total Success (7+): damage = roll, 2 real, rest temp.
+// Modified 7 → 5 temp, 2 real. Modified 10 → 8 temp, 2 real.
+assert_eq overbearing_temp_damage(7), 5
+assert_eq overbearing_real_damage(7), 2
+assert_eq overbearing_temp_damage(10), 8
+assert_eq overbearing_real_damage(10), 2
+
+// No damage for low tiers
+assert_eq overbearing_real_damage(0), 0
+assert_eq overbearing_real_damage(1), 0
+assert_eq overbearing_real_damage(2), 0
+assert_eq overbearing_real_damage(3), 0
+assert_eq overbearing_real_damage(4), 0
+
+// ── Overbearing grappling follow-up bonus ───────────────────
+assert_eq overbearing_grappling_bonus(1), 0
+assert_eq overbearing_grappling_bonus(5), 0
+assert_eq overbearing_grappling_bonus(6), 0
+assert_eq overbearing_grappling_bonus(7), 2
+assert_eq overbearing_grappling_bonus(10), 2
+
+// ── resolve_overbearing_attack mechanic ─────────────────────
+// Both combatants Medium, STR 12. All mods = 0.
+
+// Miss on unarmed to-hit → OverbearingResult with Miss outcome.
+// Unarmoured attacker (target 2), DEX 12 (+0), move 60 (+4).
+// Plate defender (AC 17 → armour +5), move 0 (+0). Effective target: 7.
+// Roll 2: 2 + 4 = 6 < 7 → Miss.
+rolls clear
+rolls 2
+let ob_miss = resolve_overbearing_attack(ua_unarmoured, ua_armoured, 60, 0)
+assert_eq ob_miss.outcome, AttackOutcome.Miss
+assert_eq ob_miss.roll, 0
+assert_eq ob_miss.temp_damage, 0
+assert_eq ob_miss.real_damage, 0
+
+// Hit → rolls 1d6 for overbearing result.
+// Unarmoured attacker vs unarmoured defender, both move 120.
+// Roll 10 (to-hit hit), roll 1 (d6): modified 1 → TotalFailure.
+rolls clear
+rolls 10 1
+let ob_tf = resolve_overbearing_attack(ua_unarmoured, ua_unarmoured, 120, 120)
+assert_eq ob_tf.outcome, AttackOutcome.Hit
+assert_eq ob_tf.tier, OverbearingTier.TotalFailure
+assert_eq ob_tf.roll, 1
+assert_eq ob_tf.modified_roll, 1
+assert_eq ob_tf.temp_damage, 0
+assert_eq ob_tf.real_damage, 0
+assert_eq ob_tf.grappling_followup_bonus, 0
+
+// Roll 2 → PartialFailure.
+rolls clear
+rolls 10 2
+let ob_pf = resolve_overbearing_attack(ua_unarmoured, ua_unarmoured, 120, 120)
+assert_eq ob_pf.tier, OverbearingTier.PartialFailure
+assert_eq ob_pf.temp_damage, 0
+assert_eq ob_pf.real_damage, 0
+
+// Roll 3 → PartialSuccess.
+rolls clear
+rolls 10 3
+let ob_ps = resolve_overbearing_attack(ua_unarmoured, ua_unarmoured, 120, 120)
+assert_eq ob_ps.tier, OverbearingTier.PartialSuccess
+assert_eq ob_ps.temp_damage, 0
+assert_eq ob_ps.real_damage, 0
+
+// Roll 5 → Success. Damage = 5 (4 temp, 1 real).
+rolls clear
+rolls 10 5
+let ob_suc = resolve_overbearing_attack(ua_unarmoured, ua_unarmoured, 120, 120)
+assert_eq ob_suc.tier, OverbearingTier.Success
+assert_eq ob_suc.roll, 5
+assert_eq ob_suc.modified_roll, 5
+assert_eq ob_suc.temp_damage, 4
+assert_eq ob_suc.real_damage, 1
+assert_eq ob_suc.grappling_followup_bonus, 0
+
+// Roll 6 → Success. Damage = 6 (5 temp, 1 real).
+rolls clear
+rolls 10 6
+let ob_suc6 = resolve_overbearing_attack(ua_unarmoured, ua_unarmoured, 120, 120)
+assert_eq ob_suc6.tier, OverbearingTier.Success
+assert_eq ob_suc6.temp_damage, 5
+assert_eq ob_suc6.real_damage, 1
+
+// ── Size modifiers in overbearing mechanic ──────────────────
+// Large attacker (+2) vs Small defender (+2) → total size +4.
+// Both have STR mod 0 (monster 2HD and 5HD).
+// Roll 10 (to-hit), roll 2 (d6): modified = 2 + 0 + 4 = 6 → Success.
+rolls clear
+rolls 10 2
+let ob_size = resolve_overbearing_attack(ob_mon5hd, ob_mon2hd, 90, 60)
+assert_eq ob_size.roll, 2
+// STR: 5HD atk +1, 2HD def +0 = +1. Size: Large +2, Small +2 = +4. Total +5.
+assert_eq ob_size.modified_roll, 7
+assert_eq ob_size.tier, OverbearingTier.TotalSuccess
+assert_eq ob_size.grappling_followup_bonus, 2
+
+// ── Defender four legs: cannot be overborne ─────────────────
+rolls clear
+rolls 10 6
+let ob_4legs = resolve_overbearing_attack(ua_unarmoured, ua_unarmoured, 120, 120, false, true)
+assert_eq ob_4legs.outcome, AttackOutcome.Miss
+assert_eq ob_4legs.roll, 0
+
+// ── Attacker four legs: +2 bonus ────────────────────────────
+// Roll 10 (to-hit), roll 5 (d6). Medium vs Medium, no STR mods.
+// Modified = 5 + 0 + 0 + 2 = 7 → TotalSuccess.
+rolls clear
+rolls 10 5
+let ob_4atk = resolve_overbearing_attack(ua_unarmoured, ua_unarmoured, 120, 120, true, false)
+assert_eq ob_4atk.modified_roll, 7
+assert_eq ob_4atk.tier, OverbearingTier.TotalSuccess
+assert_eq ob_4atk.grappling_followup_bonus, 2
+
+// ── STR modifiers in overbearing mechanic ───────────────────
+// STR 18 exc attacker (+2) vs STR 16 defender (-1) → total +1.
+// Roll 10 (to-hit), roll 4 (d6): modified = 4 + 1 = 5 → Success.
+rolls clear
+rolls 10 4
+let ob_str = resolve_overbearing_attack(ob_str18exc, ob_str16, 120, 120)
+assert_eq ob_str.roll, 4
+assert_eq ob_str.modified_roll, 5
+assert_eq ob_str.tier, OverbearingTier.Success
+assert_eq ob_str.temp_damage, 4
+assert_eq ob_str.real_damage, 1
+
+// ── OverbearingAttack action (applies damage) ───────────────
+spawn Character ob_atk { name: "Overbearer", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 } }
+spawn Character ob_tgt { name: "OBTarget", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 } }
+
+// Hit: roll 10 (to-hit), roll 5 (d6) → Success. 4 temp, 1 real.
+rolls clear
+rolls 10 5
+do OverbearingAttack(ob_atk, ob_tgt, 120, 120)
+assert_eq ob_tgt.temp_damage, 4
+assert_eq ob_tgt.hp, 19
+
+// Miss: roll 1 (natural 1 always misses). No damage.
+rolls clear
+rolls 1
+do OverbearingAttack(ob_atk, ob_tgt, 120, 120)
+assert_eq ob_tgt.temp_damage, 4
+assert_eq ob_tgt.hp, 19
+
 // ── Grappling results table (Table 1.6.12c) ──────────────────
 
 // ── Grappling size modifiers ──────────────────────────────────
