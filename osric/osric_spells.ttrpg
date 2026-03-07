@@ -359,6 +359,43 @@ system "OSRIC Spells" {
         }
     }
 
+    // No-save condition on each target (Bless archetype).
+    // Applies the given condition with the specified duration
+    // to every target in the list. No saving throw.
+    function resolve_no_save_condition(
+        caster: Character,
+        targets: list<entity>,
+        spell_name: string,
+        cond: Condition,
+        duration: Duration
+    ) {
+        for target in targets {
+            apply_condition(target, cond, duration)
+            emit SpellApplied(caster: caster, target: target, spell_name: spell_name)
+        }
+    }
+
+    // Save-negates condition (Curse archetype).
+    // Each target gets a saving throw; on failure the condition
+    // is applied. Vetoed saves (magic resistance) skip entirely.
+    function resolve_save_negates_condition(
+        caster: Character,
+        targets: list<entity>,
+        spell_name: string,
+        cond: Condition,
+        duration: Duration
+    ) {
+        for target in targets {
+            let result = target.ResistSpell(category: some(SpellsUnlisted))
+            if let some(saved) = result {
+                if !saved {
+                    apply_condition(target, cond, duration)
+                    emit SpellApplied(caster: caster, target: target, spell_name: spell_name)
+                }
+            }
+        }
+    }
+
     // Single-target heal (Cure Light Wounds archetype).
     // Handles unconscious targets via heal_unconscious(),
     // conscious targets via heal_damage() (capped at max HP).
