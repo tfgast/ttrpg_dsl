@@ -103,7 +103,7 @@ pub(super) fn dispatch_action(
     let entity_type = env.state.entity_type_name(&actor);
     let action_decl = resolve_action_decl(env, name, entity_type.as_ref(), call_span)?;
 
-    let recv_ty = entity_type.map(Ty::Entity).unwrap_or(Ty::AnyEntity);
+    let recv_ty = entity_type.map_or(Ty::AnyEntity, Ty::Entity);
     let correct_fn_info = env
         .interp
         .type_env
@@ -177,7 +177,7 @@ pub(super) fn dispatch_action_method(
     let ast_params = action_decl.params.clone();
 
     // Get the correct overload's FnInfo (params may differ from the representative fn_info)
-    let recv_ty = entity_type.map(Ty::Entity).unwrap_or(Ty::AnyEntity);
+    let recv_ty = entity_type.map_or(Ty::AnyEntity, Ty::Entity);
     let correct_fn_info = env
         .interp
         .type_env

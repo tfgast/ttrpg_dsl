@@ -1142,6 +1142,7 @@ pub struct SpellTestContext {
 
 impl SpellTestContext {
     /// Build a caster with full customisation.
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         name: &str,
         class: &str,
