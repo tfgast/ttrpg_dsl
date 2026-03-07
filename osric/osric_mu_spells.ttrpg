@@ -78,35 +78,12 @@ system "OSRIC MU Spells" {
     }
 
     // Resolve Fireball. Rolls damage once (caster_level d6),
-    // then applies to each target. Successful save halves damage.
-    // Vetoed save (e.g. magic resistance) means no effect at all.
-    function resolve_fireball(caster: Character, targets: list<Character>) {
+    // then applies to each target via save-or-half helper.
+    // Works for both Character and Monster targets (entity dispatch).
+    function resolve_fireball(caster: Character, targets: list<entity>) {
         let cl = caster_level(caster, Arcane)
         let total_damage = roll(dice(cl, 6)).total
-        for target in targets {
-            let result = target.ResistSpell(category: some(SpellsUnlisted))
-            if let some(saved) = result {
-                let damage = if saved { floor(total_damage / 2) } else { total_damage }
-                target.TakeDamage(caster, damage)
-                emit SpellDamaged(caster: caster, target: target, spell_name: "Fireball", amount: damage)
-            }
-        }
-    }
-
-    // Monster-targeted Fireball. Same damage dice, but uses
-    // monster saving throw table instead of character saves.
-    // Vetoed save (e.g. magic resistance) means no effect at all.
-    function resolve_fireball_monsters(caster: Character, targets: list<Monster>) {
-        let cl = caster_level(caster, Arcane)
-        let total_damage = roll(dice(cl, 6)).total
-        for target in targets {
-            let result = target.ResistSpell(category: some(SpellsUnlisted))
-            if let some(saved) = result {
-                let damage = if saved { floor(total_damage / 2) } else { total_damage }
-                target.TakeDamage(caster, damage)
-                emit SpellDamaged(caster: caster, target: target, spell_name: "Fireball", amount: damage)
-            }
-        }
+        resolve_save_or_half_damage(caster, targets, "Fireball", total_damage)
     }
 
     // Resolve Magic Missile. The `targets` list contains one
@@ -114,11 +91,7 @@ system "OSRIC MU Spells" {
     // repeating the same target for multiple missiles aimed at it.
     // Each entry gets one missile (1d4+1 damage, auto-hit, no save).
     function resolve_magic_missile(caster: Character, targets: list<entity>) {
-        for target in targets {
-            let damage = roll(1d4).total + 1
-            target.TakeDamage(caster, damage)
-            emit SpellDamaged(caster: caster, target: target, spell_name: "Magic Missile", amount: damage)
-        }
+        resolve_no_save_damage_each(caster, targets, "Magic Missile", 1d4 + 1)
     }
 
 

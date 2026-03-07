@@ -47,13 +47,7 @@ system "OSRIC Cleric Spells" {
 
     function resolve_cure_light_wounds(caster: Character, target: Character) {
         let healing = roll(1d8).total
-        if target.hp <= 0 {
-            heal_unconscious(target, healing)
-            emit SpellHealed(caster: caster, target: target, spell_name: "Cure Light Wounds", amount: healing)
-        } else {
-            let actual = heal_damage(target, healing)
-            emit SpellHealed(caster: caster, target: target, spell_name: "Cure Light Wounds", amount: actual)
-        }
+        resolve_heal_target(caster, target, "Cure Light Wounds", healing)
     }
 
 

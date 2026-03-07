@@ -14,6 +14,7 @@
 use "OSRIC"
 use "OSRIC Classes"
 use "OSRIC Combat"
+use "OSRIC Saves"
 
 system "OSRIC Spells" {
 
@@ -313,6 +314,63 @@ system "OSRIC Spells" {
     event SpellHealed(caster: Character, target: Character, spell_name: string, amount: int) {}
     event SpellDamaged(caster: entity, target: entity, spell_name: string, amount: int) {}
     event SpellApplied(caster: Character, target: entity, spell_name: string) {}
+
+
+    // ========================================================
+    //  SHARED RESOLVE HELPERS
+    //
+    //  Common spell resolution patterns factored out so that
+    //  individual spell resolve functions can call one helper
+    //  instead of duplicating the same loop + event logic.
+    // ========================================================
+
+    // Save-or-half damage (Fireball archetype).
+    // Rolls are already done; total_damage is applied to each
+    // target. Successful save halves, vetoed save (magic
+    // resistance) skips entirely.
+    function resolve_save_or_half_damage(
+        caster: Character,
+        targets: list<entity>,
+        spell_name: string,
+        total_damage: int
+    ) {
+        for target in targets {
+            let result = target.ResistSpell(category: some(SpellsUnlisted))
+            if let some(saved) = result {
+                let damage = if saved { floor(total_damage / 2) } else { total_damage }
+                target.TakeDamage(caster, damage)
+                emit SpellDamaged(caster: caster, target: target, spell_name: spell_name, amount: damage)
+            }
+        }
+    }
+
+    // No-save damage rolled per target (Magic Missile archetype).
+    // Each target gets an independent roll of damage_dice.
+    function resolve_no_save_damage_each(
+        caster: Character,
+        targets: list<entity>,
+        spell_name: string,
+        damage_dice: DiceExpr
+    ) {
+        for target in targets {
+            let damage = roll(damage_dice).total
+            target.TakeDamage(caster, damage)
+            emit SpellDamaged(caster: caster, target: target, spell_name: spell_name, amount: damage)
+        }
+    }
+
+    // Single-target heal (Cure Light Wounds archetype).
+    // Handles unconscious targets via heal_unconscious(),
+    // conscious targets via heal_damage() (capped at max HP).
+    function resolve_heal_target(caster: Character, target: Character, spell_name: string, healing: int) {
+        if target.hp <= 0 {
+            heal_unconscious(target, healing)
+            emit SpellHealed(caster: caster, target: target, spell_name: spell_name, amount: healing)
+        } else {
+            let actual = heal_damage(target, healing)
+            emit SpellHealed(caster: caster, target: target, spell_name: spell_name, amount: actual)
+        }
+    }
 
 
     // ========================================================

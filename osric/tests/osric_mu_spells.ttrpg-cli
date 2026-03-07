@@ -190,7 +190,7 @@ spawn Monster mon_fb_target_b { name: "Orc B", hit_dice: 1d8, max_hp: 20, hp: 20
 
 rolls clear
 rolls 3 4 2 5 4 1 20
-call resolve_fireball_monsters(mon_fb_caster, [mon_fb_target_a, mon_fb_target_b])
+call resolve_fireball(mon_fb_caster, [mon_fb_target_a, mon_fb_target_b])
 assert_eq mon_fb_target_a.hp, 2
 assert_eq mon_fb_target_b.hp, 11
 
