@@ -1,0 +1,126 @@
+// OSRIC NPC Reaction integration tests
+//
+// Tests reaction_tier derive (all 7 tiers + boundaries),
+// reaction_roll mechanic with CHA modifier and extra modifier.
+//
+// Reference: OSRIC 3.0 Player Guide, §1.6.2.8 Table 1.6.2.8a (p.95)
+
+load osric/*.ttrpg
+
+// ── reaction_tier: all 7 tiers ───────────────────────────────
+
+assert_eq reaction_tier(1), ReactionTier.VeryHostile
+assert_eq reaction_tier(5), ReactionTier.VeryHostile
+assert_eq reaction_tier(6), ReactionTier.Hostile
+assert_eq reaction_tier(25), ReactionTier.Hostile
+assert_eq reaction_tier(26), ReactionTier.Unfavorable
+assert_eq reaction_tier(45), ReactionTier.Unfavorable
+assert_eq reaction_tier(46), ReactionTier.Neutral
+assert_eq reaction_tier(55), ReactionTier.Neutral
+assert_eq reaction_tier(56), ReactionTier.Favorable
+assert_eq reaction_tier(75), ReactionTier.Favorable
+assert_eq reaction_tier(76), ReactionTier.Friendly
+assert_eq reaction_tier(95), ReactionTier.Friendly
+assert_eq reaction_tier(96), ReactionTier.VeryFriendly
+assert_eq reaction_tier(100), ReactionTier.VeryFriendly
+
+// ── reaction_tier: clamping beyond 1-100 ─────────────────────
+
+// Negative modified rolls (low CHA pushing below 1) → VeryHostile
+assert_eq reaction_tier(-10), ReactionTier.VeryHostile
+assert_eq reaction_tier(0), ReactionTier.VeryHostile
+
+// High modified rolls (high CHA pushing above 100) → VeryFriendly
+assert_eq reaction_tier(120), ReactionTier.VeryFriendly
+
+// ── reaction_roll: neutral CHA (modifier 0) ──────────────────
+
+rolls 50
+let r1 = reaction_roll(10, 0)
+assert_eq r1.roll, 50
+assert_eq r1.modifier, 0
+assert_eq r1.modified_roll, 50
+assert_eq r1.tier, ReactionTier.Neutral
+
+// ── reaction_roll: high CHA (18 → +35) ──────────────────────
+
+rolls clear
+rolls 50
+let r2 = reaction_roll(18, 0)
+assert_eq r2.roll, 50
+assert_eq r2.modifier, 35
+assert_eq r2.modified_roll, 85
+assert_eq r2.tier, ReactionTier.Friendly
+
+// ── reaction_roll: low CHA (3 → -25) ────────────────────────
+
+rolls clear
+rolls 50
+let r3 = reaction_roll(3, 0)
+assert_eq r3.roll, 50
+assert_eq r3.modifier, -25
+assert_eq r3.modified_roll, 25
+assert_eq r3.tier, ReactionTier.Hostile
+
+// ── reaction_roll: extra_modifier stacks with CHA ────────────
+
+rolls clear
+// CHA 10 (modifier 0) + extra +20 = +20
+rolls 60
+let r4 = reaction_roll(10, 20)
+assert_eq r4.modifier, 20
+assert_eq r4.modified_roll, 80
+assert_eq r4.tier, ReactionTier.Friendly
+
+// ── reaction_roll: negative extra_modifier ───────────────────
+
+rolls clear
+// CHA 10 (modifier 0) + extra -30 = -30
+rolls 50
+let r5 = reaction_roll(10, -30)
+assert_eq r5.modifier, -30
+assert_eq r5.modified_roll, 20
+assert_eq r5.tier, ReactionTier.Hostile
+
+// ── reaction_roll: CHA + extra combine ───────────────────────
+
+rolls clear
+// CHA 18 (+35) + extra +15 = +50; roll 50 → modified 100
+rolls 50
+let r6 = reaction_roll(18, 15)
+assert_eq r6.modifier, 50
+assert_eq r6.modified_roll, 100
+assert_eq r6.tier, ReactionTier.VeryFriendly
+
+// ── reaction_roll: Very Hostile result ───────────────────────
+
+rolls clear
+// CHA 3 (-25) + extra -30 = -55; roll 50 → modified -5
+rolls 50
+let r7 = reaction_roll(3, -30)
+assert_eq r7.modifier, -55
+assert_eq r7.modified_roll, -5
+assert_eq r7.tier, ReactionTier.VeryHostile
+
+// ── reaction_roll: boundary roll 1 (minimum d100) ────────────
+
+rolls clear
+rolls 1
+let r8 = reaction_roll(10, 0)
+assert_eq r8.roll, 1
+assert_eq r8.modified_roll, 1
+assert_eq r8.tier, ReactionTier.VeryHostile
+
+// ── reaction_roll: boundary roll 100 (maximum d100) ──────────
+
+rolls clear
+rolls 100
+let r9 = reaction_roll(10, 0)
+assert_eq r9.roll, 100
+assert_eq r9.modified_roll, 100
+assert_eq r9.tier, ReactionTier.VeryFriendly
+
+// ── ordered enum comparison ──────────────────────────────────
+
+assert reaction_tier(1) < reaction_tier(50)
+assert reaction_tier(96) > reaction_tier(50)

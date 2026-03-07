@@ -1,0 +1,96 @@
+// ============================================================
+// OSRIC 3.0 NPC Reaction — d100 reaction roll
+//
+// Roll d100, add CHA reaction modifier (from cha_reaction()).
+// Result maps to one of 7 tiers from Very Hostile to Very
+// Friendly.  The modifier can push the result below 1 or
+// above 100; the tier lookup clamps appropriately.
+//
+// Table 1.6.2.8a:
+//   01-05   Very Hostile
+//   06-25   Hostile
+//   26-45   Unfavorable
+//   46-55   Neutral
+//   56-75   Favorable
+//   76-95   Friendly
+//   96-00   Very Friendly
+//
+// Reference: OSRIC 3.0 Player Guide, §1.6.2.8 (p.95)
+// ============================================================
+
+use "OSRIC"
+use "OSRIC Ability"
+
+system "OSRIC Reaction" {
+
+    // ========================================================
+    //  ENUMS & STRUCTS
+    // ========================================================
+
+    enum ReactionTier ordered {
+        VeryHostile,
+        Hostile,
+        Unfavorable,
+        Neutral,
+        Favorable,
+        Friendly,
+        VeryFriendly
+    }
+
+    struct ReactionResult {
+        tier: ReactionTier
+        roll: int
+        modified_roll: int
+        modifier: int
+    }
+
+
+    // ========================================================
+    //  TIER LOOKUP
+    //
+    //  Maps a modified d100 result to a reaction tier.
+    //  Values below 1 clamp to VeryHostile; above 100 to
+    //  VeryFriendly.
+    // ========================================================
+
+    derive reaction_tier(score: int) -> ReactionTier {
+        if score <= 5 {
+            ReactionTier.VeryHostile
+        } else if score <= 25 {
+            ReactionTier.Hostile
+        } else if score <= 45 {
+            ReactionTier.Unfavorable
+        } else if score <= 55 {
+            ReactionTier.Neutral
+        } else if score <= 75 {
+            ReactionTier.Favorable
+        } else if score <= 95 {
+            ReactionTier.Friendly
+        } else {
+            ReactionTier.VeryFriendly
+        }
+    }
+
+
+    // ========================================================
+    //  REACTION ROLL
+    //
+    //  Rolls d100, adds the CHA reaction modifier for the
+    //  given charisma score, and returns the full result.
+    //  An optional extra_modifier parameter allows situational
+    //  adjustments (e.g. gifts, threats, reputation).
+    // ========================================================
+
+    mechanic reaction_roll(charisma: int, extra_modifier: int = 0) -> ReactionResult {
+        let modifier = cha_reaction(charisma) + extra_modifier
+        let d100 = roll(1d100).total
+        let modified = d100 + modifier
+
+        ReactionResult {
+            tier: reaction_tier(modified),
+            roll: d100,
+            modified_roll: modified,
+            modifier: modifier
+        }
+    }
+}
