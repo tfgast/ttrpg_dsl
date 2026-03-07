@@ -90,6 +90,7 @@ system "OSRIC Combat" {
     tag unarmed_attack
     tag ac_defense
     tag damage_dealt
+    tag spellcasting_gate
 
 
     // ========================================================

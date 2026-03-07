@@ -1304,6 +1304,44 @@ assert_eq grap_tgt2.temp_damage, 8
 assert_eq grap_tgt2.hp, 17
 
 
+// ── Grappling suppresses spellcasting ────────────────────────
+// Grappling condition modifies can_begin_casting via #spellcasting_gate
+// to return false, preventing CastSpell from proceeding.
+
+// can_begin_casting returns true for ungrappled entity.
+spawn Character grap_caster { name: "GrapCaster", classes: [ClassLevel { class: Cleric, level: 3 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 }, Spellcasting { spell_slots: [2], slots_used: [0], memorised_spells: [] } }
+spawn Character grap_foe { name: "GrapFoe", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 } }
+
+assert_eq can_begin_casting(grap_caster), true
+
+// Memorise a spell, apply Grappling, then try to cast.
+do MemoriseSpell(grap_caster, CureLightWounds, 1)
+assert_eq grap_caster.Spellcasting.memorised_spells.len(), 1
+
+// Apply Grappling condition (simulating being grappled).
+rolls clear
+rolls 10 5
+do GrapplingAttack(grap_foe, grap_caster, 120, 120)
+assert_condition grap_caster, Grappling
+
+// can_begin_casting now returns false.
+assert_eq can_begin_casting(grap_caster), false
+
+// CastSpell does nothing: spell not consumed, no CastingSpell applied.
+do CastSpell(grap_caster, CureLightWounds, 1, 5)
+assert_eq grap_caster.Spellcasting.memorised_spells.len(), 1
+assert_no_condition grap_caster, CastingSpell
+
+// After disengaging, casting works again.
+do DisengageGrapple(grap_foe, grap_caster)
+assert_no_condition grap_caster, Grappling
+assert_eq can_begin_casting(grap_caster), true
+
+do CastSpell(grap_caster, CureLightWounds, 1, 5)
+assert_eq grap_caster.Spellcasting.memorised_spells.len(), 0
+assert_condition grap_caster, CastingSpell
+
+
 // ── Fend-off mechanic (§1.6.12, First Step) ──────────────────
 
 // is_armed_melee: armed character returns true

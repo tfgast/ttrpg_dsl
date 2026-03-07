@@ -457,11 +457,25 @@ system "OSRIC Spells" {
 
 
     // ========================================================
+    //  SPELLCASTING GATE
+    //
+    //  Returns true if the caster is allowed to begin casting.
+    //  Conditions (e.g. Grappling, Silenced) modify this via
+    //  the #spellcasting_gate tag to suppress spellcasting.
+    // ========================================================
+
+    mechanic can_begin_casting(caster: entity) -> bool #spellcasting_gate {
+        true
+    }
+
+
+    // ========================================================
     //  CAST SPELL
     //
     //  Expends a memorised spell and enters casting state.
-    //  The spell slot is consumed immediately (even if casting
-    //  is later interrupted). BeginCasting applies CastingSpell
+    //  Checks can_begin_casting before consuming the slot —
+    //  conditions like Grappling suppress this via the
+    //  #spellcasting_gate tag. BeginCasting applies CastingSpell
     //  condition, making the caster interruptible by damage.
     //  Casting time is handled by the initiative system.
     // ========================================================
@@ -474,11 +488,13 @@ system "OSRIC Spells" {
         cost free
         requires { caster.sc.memorised_spells.contains(MemorizedSpell { id: spell_id, level: spell_level }) }
         resolve {
-            let entry = MemorizedSpell { id: spell_id, level: spell_level }
-            caster.sc.memorised_spells = caster.sc.memorised_spells.remove_first(entry)
-            caster.sc.slots_used[spell_level - 1] = caster.sc.slots_used[spell_level - 1] - 1
-            caster.BeginCasting(casting_time)
-            emit SpellCast(caster: caster, spell_id: spell_id, spell_level: spell_level)
+            if can_begin_casting(caster) {
+                let entry = MemorizedSpell { id: spell_id, level: spell_level }
+                caster.sc.memorised_spells = caster.sc.memorised_spells.remove_first(entry)
+                caster.sc.slots_used[spell_level - 1] = caster.sc.slots_used[spell_level - 1] - 1
+                caster.BeginCasting(casting_time)
+                emit SpellCast(caster: caster, spell_id: spell_id, spell_level: spell_level)
+            }
         }
     }
 

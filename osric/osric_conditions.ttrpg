@@ -427,7 +427,12 @@ system "OSRIC Conditions" {
         hold: GrapplingHold,
         is_controlling: bool,
         hold_roll: int
-    ) on bearer: entity {}
+    ) on bearer: entity {
+        // Suppress spellcasting while grappled (§1.6.10.7).
+        modify [#spellcasting_gate](caster: bearer) {
+            result = false
+        }
+    }
 
 
     // ========================================================
