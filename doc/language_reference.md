@@ -368,6 +368,29 @@ At most one `on_apply` and one `on_remove` per condition.
 
 **Inheritance:** with `extends`, ancestor lifecycle blocks run first (DFS post-order).
 
+#### Stacking Policies
+
+Controls which instances contribute effects when multiple instances of the same condition exist on one bearer.
+
+```
+condition Prone on bearer: Character
+    stacking first
+{ ... }
+
+condition Concealed(level: int) on bearer: Character
+    stacking best by highest(level) ties oldest
+{ ... }
+```
+
+| Policy | Meaning |
+|--------|---------|
+| `all` (default) | Every instance contributes |
+| `first` | Oldest instance wins |
+| `best by highest(param) ties oldest` | Highest param value wins |
+| `best by lowest(param) ties oldest` | Lowest param value wins |
+
+Suppressed instances remain in state (duration ticks). `best by` param must be `int`, declared on the condition. Not inherited via `extends`.
+
 ### Prompt
 
 ```
@@ -606,5 +629,5 @@ Imports are NOT transitive.
 - Comments: `// line comment` (no block comments)
 - NL suppressed: inside `()` `[]`; after `+ - * / || && == != >= <= in => -> = += -=`; after `{ , : | #`
 - Reserved keywords: `let` `if` `else` `match` `true` `false` `none` `in` `for`
-- Soft keywords (usable as identifiers): `system` `use` `group` `enum` `struct` `entity` `derive` `mechanic` `function` `action` `reaction` `hook` `condition` `prompt` `option` `event` `move` `cost` `tag` `table` `unit` `suffix` `requires` `resolve` `modify` `suppress` `trigger` `roll` `on` `returns` `when` `enabled` `hint` `suggest` `description` `default` `result` `with` `has` `is` `include` `as` `grant` `revoke` `emit` `free` `ordered` `extends` `restricted` `on_apply` `on_remove`
+- Soft keywords (usable as identifiers): `system` `use` `group` `enum` `struct` `entity` `derive` `mechanic` `function` `action` `reaction` `hook` `condition` `prompt` `option` `event` `move` `cost` `tag` `table` `unit` `suffix` `requires` `resolve` `modify` `suppress` `trigger` `roll` `on` `returns` `when` `enabled` `hint` `suggest` `description` `default` `result` `with` `has` `is` `include` `as` `grant` `revoke` `emit` `free` `ordered` `extends` `restricted` `on_apply` `on_remove` `stacking` `best` `by` `highest` `lowest` `ties` `oldest`
 - Dice literals take precedence over unit literals (`2d6` is dice, not unit)

@@ -929,6 +929,55 @@ condition Poisoned(potency: int) on bearer: Character {
 - With `extends`, ancestor lifecycle blocks run first (DFS post-order).
 - **Design principle:** use `extends` for conditions that imply others, not `apply_condition()` in on_apply.
 
+### Condition Stacking Policies
+
+When multiple instances of the same condition exist on one bearer, the `stacking` clause controls which instances contribute effects. Place it after the condition header, before `{`.
+
+| Policy | Syntax | Meaning |
+|--------|--------|---------|
+| `all` | (default, implicit) | Every instance contributes all effects |
+| `first` | `stacking first` | Oldest instance wins; all others suppressed |
+| `best by highest` | `stacking best by highest(param) ties oldest` | Highest param value wins; ties broken by oldest |
+| `best by lowest` | `stacking best by lowest(param) ties oldest` | Lowest param value wins; ties broken by oldest |
+
+**Suppressed instances** remain in state (duration keeps ticking). When the winner expires, the next-best becomes the new winner on next evaluation.
+
+The `stacking` clause belongs to the concrete condition — it is NOT inherited via `extends`.
+
+For `best by`, the named parameter must be `int` and declared on that condition (not inherited).
+
+```ttrpg-with-preamble
+// Parameterless non-doubling: only one instance matters
+condition Prone on bearer: Character
+    stacking first
+{
+    modify attack_roll(target: bearer) {
+        attack_mod = attack_mod + 4
+    }
+}
+
+// Parameterised: strongest concealment wins
+condition Concealed(level: int) on bearer: Character
+    stacking best by highest(level) ties oldest
+{
+    modify attack_roll(target: bearer) {
+        attack_mod = attack_mod - level
+    }
+}
+
+// Multi-opponent: each instance tracks a different opponent (default all)
+condition Grappling(opponent: entity, hold: GrapplingHold) on bearer: entity {
+    modify [#spellcasting_gate](caster: bearer) {
+        result = false
+    }
+}
+```
+
+**When to use each policy:**
+- `first` — boolean status effects that shouldn't double (Prone, Stunned, Dead)
+- `best by highest/lowest` — parameterised effects where only the strongest matters (Concealed, Cover)
+- `all` (default) — effects that genuinely stack or track distinct sources (Grappling, Buff per source)
+
 ### Condition as First-Class Value
 
 Condition names are values of type `Condition`. They can be stored in variables,
