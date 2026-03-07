@@ -1,10 +1,15 @@
 // ============================================================
-// OSRIC 3.0 Morale — monster morale checks in combat
+// OSRIC 3.0 Morale — morale checks in combat
 //
-// Monster-only. Base morale = 50% + 5% per hit die.
+// Supports both Monsters and Characters (henchmen/retainers).
+//
+// Monsters:  Base morale = 50% + 5% per hit die.
+// Henchmen:  Base morale = HenchmanMorale.morale_base (set at
+//            hire time, typically 50 + cha_loyalty(employer CHA)).
+//
 // Roll d100 vs modified threshold; modifiers are cumulative
-// and applied to the d100 roll (positive = worse for monster).
-// Max 2 checks per battle; passing both means the monster
+// and applied to the d100 roll (positive = worse for morale).
+// Max 2 checks per battle; passing both means the creature
 // is fanatical and fights to the death.
 //
 // Modifier table (Table 1.6.8a, all cumulative):
@@ -28,6 +33,7 @@
 
 use "OSRIC"
 use "OSRIC Combat"
+use "OSRIC Ability"
 
 system "OSRIC Morale" {
 
@@ -49,12 +55,23 @@ system "OSRIC Morale" {
     // ========================================================
     //  BASE MORALE DERIVE
     //
-    //  50% + 5% per hit die count.
-    //  Example: 8+1 HD monster -> 8 * 5 + 50 = 90%.
+    //  Monster:  50% + 5% per hit die count.
+    //  Character (henchman): HenchmanMorale.morale_base.
+    //  Other entity without morale: 50 (fallback).
     // ========================================================
 
-    derive base_morale(monster: Monster) -> int {
-        50 + dice_count(monster.hit_dice) * 5
+    derive base_morale(target: entity) -> int {
+        if target is Monster {
+            50 + dice_count(target.hit_dice) * 5
+        } else if target is Character {
+            if target has HenchmanMorale as hm {
+                target.hm.morale_base
+            } else {
+                50
+            }
+        } else {
+            50
+        }
     }
 
 
@@ -62,18 +79,28 @@ system "OSRIC Morale" {
     //  MORALE CHECK
     //
     //  Rolls d100, adds modifier, compares to base morale.
-    //  Enforces max 2 checks per battle: if the monster has
+    //  Enforces max 2 checks per battle: if the creature has
     //  already passed 2 checks, they are fanatical and auto-pass.
-    //  Increments monster.morale_checks_made on each real check.
+    //  Increments morale_checks_made on each real check.
     //
     //  The modifier parameter is the sum of all applicable
     //  situational modifiers from Table 1.6.8a. Positive values
     //  make morale worse (added to the d100 roll).
     // ========================================================
 
-    function check_morale(monster: Monster, modifier: int = 0) -> MoraleResult {
-        let bm = base_morale(monster)
-        if monster.morale_checks_made >= 2 {
+    function check_morale(target: entity, modifier: int = 0) -> MoraleResult {
+        let bm = base_morale(target)
+
+        // Read current check count.
+        let checks_made = if target is Monster {
+            target.morale_checks_made
+        } else if target is Character {
+            if target has HenchmanMorale as hm {
+                target.hm.morale_checks_made
+            } else { 0 }
+        } else { 0 }
+
+        if checks_made >= 2 {
             // Fanatical: passed 2 checks, fights to the death.
             MoraleResult {
                 outcome: MoraleOutcome.Pass,
@@ -85,7 +112,16 @@ system "OSRIC Morale" {
         } else {
             let d100 = roll(1d100).total
             let modified = d100 + modifier
-            monster.morale_checks_made = monster.morale_checks_made + 1
+
+            // Increment check counter.
+            if target is Monster {
+                target.morale_checks_made = target.morale_checks_made + 1
+            } else if target is Character {
+                if target has HenchmanMorale as hm {
+                    target.hm.morale_checks_made = target.hm.morale_checks_made + 1
+                }
+            }
+
             if modified <= bm {
                 MoraleResult {
                     outcome: MoraleOutcome.Pass,
@@ -119,7 +155,28 @@ system "OSRIC Morale" {
     //  Call at the start of each battle to clear the check counter.
     // ========================================================
 
-    function reset_morale(monster: Monster) {
-        monster.morale_checks_made = 0
+    function reset_morale(target: entity) {
+        if target is Monster {
+            target.morale_checks_made = 0
+        } else if target is Character {
+            if target has HenchmanMorale as hm {
+                target.hm.morale_checks_made = 0
+            }
+        }
+    }
+
+
+    // ========================================================
+    //  SET HENCHMAN MORALE
+    //
+    //  Convenience: compute and assign morale_base for a
+    //  henchman from the employer's CHA score.
+    //  Base = 50 + cha_loyalty(employer_cha).
+    // ========================================================
+
+    function set_henchman_morale(henchman: Character, employer_cha: int) {
+        if henchman has HenchmanMorale as hm {
+            henchman.hm.morale_base = 50 + cha_loyalty(employer_cha)
+        }
     }
 }

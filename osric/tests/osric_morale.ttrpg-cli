@@ -1,8 +1,8 @@
 // OSRIC Morale integration tests
 //
-// Equivalent of crates/ttrpg_interp/tests/osric_morale_integration.rs
 // Tests base_morale derive, check_morale function (pass/retreat/surrender),
-// fanatical auto-pass after 2 checks, reset_morale, and boundary cases.
+// fanatical auto-pass after 2 checks, reset_morale, boundary cases,
+// and henchman/retainer morale for Characters.
 //
 // Reference: OSRIC 3.0 Player Guide, §1.6.8 (p.100)
 
@@ -128,3 +128,102 @@ rolls 6
 let boundary_surrender = check_morale(goblin_b, 100)
 assert_eq boundary_surrender.outcome, MoraleOutcome.Surrender
 assert_eq boundary_surrender.margin, 51
+
+// ══════════════════════════════════════════════════════════════
+//  HENCHMAN / RETAINER MORALE (Character with HenchmanMorale)
+// ══════════════════════════════════════════════════════════════
+
+// ── base_morale for henchman uses HenchmanMorale.morale_base ─
+
+rolls clear
+spawn Character hench_a { name: "Henchman A", classes: [ClassLevel { class: Fighter, level: 2 }], abilities: { STR: 12, INT: 10, WIS: 10, DEX: 10, CON: 10, CHA: 10 }, HitPoints { max_hp: 12, hp: 12 }, EquipmentSlots {}, HenchmanMorale { morale_base: 65 } }
+assert_eq base_morale(hench_a), 65
+
+// ── Character without HenchmanMorale gets fallback 50 ────────
+
+spawn Character pc_fighter { name: "PC Fighter", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 16, INT: 10, WIS: 10, DEX: 12, CON: 14, CHA: 10 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots {} }
+assert_eq base_morale(pc_fighter), 50
+
+// ── check_morale: henchman pass ──────────────────────────────
+
+// morale_base 65, roll 40 → pass
+rolls 40
+let hench_pass = check_morale(hench_a, 0)
+assert_eq hench_pass.outcome, MoraleOutcome.Pass
+assert_eq hench_pass.base_morale, 65
+assert_eq hench_pass.roll, 40
+assert_eq hench_pass.modified_roll, 40
+assert_eq hench_pass.margin, 0
+assert_eq hench_a.HenchmanMorale.morale_checks_made, 1
+
+// ── check_morale: henchman retreat ───────────────────────────
+
+rolls clear
+spawn Character hench_b { name: "Henchman B", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 10, INT: 10, WIS: 10, DEX: 10, CON: 10, CHA: 10 }, HitPoints { max_hp: 8, hp: 8 }, EquipmentSlots {}, HenchmanMorale { morale_base: 50 } }
+// Roll 80 vs base 50 → fail by 30 → retreat
+rolls 80
+let hench_retreat = check_morale(hench_b, 0)
+assert_eq hench_retreat.outcome, MoraleOutcome.Retreat
+assert_eq hench_retreat.base_morale, 50
+assert_eq hench_retreat.margin, 30
+
+// ── check_morale: henchman surrender ─────────────────────────
+
+rolls clear
+spawn Character hench_c { name: "Henchman C", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 10, INT: 10, WIS: 10, DEX: 10, CON: 10, CHA: 10 }, HitPoints { max_hp: 6, hp: 6 }, EquipmentSlots {}, HenchmanMorale { morale_base: 50 } }
+// Roll 50, modifier +60 → modified 110 vs base 50 → margin 60 → surrender
+rolls 50
+let hench_surrender = check_morale(hench_c, 60)
+assert_eq hench_surrender.outcome, MoraleOutcome.Surrender
+assert_eq hench_surrender.margin, 60
+
+// ── Fanatical henchman after two passed checks ───────────────
+
+rolls clear
+spawn Character hench_fan { name: "Loyal Henchman", classes: [ClassLevel { class: Fighter, level: 3 }], abilities: { STR: 14, INT: 10, WIS: 10, DEX: 10, CON: 12, CHA: 10 }, HitPoints { max_hp: 20, hp: 20 }, EquipmentSlots {}, HenchmanMorale { morale_base: 70 } }
+
+// First check: roll 30 → pass
+rolls 30
+let hfan1 = check_morale(hench_fan, 0)
+assert_eq hfan1.outcome, MoraleOutcome.Pass
+
+// Second check: roll 40 → pass
+rolls clear
+rolls 40
+let hfan2 = check_morale(hench_fan, 0)
+assert_eq hfan2.outcome, MoraleOutcome.Pass
+
+// Third check: fanatical auto-pass
+rolls clear
+let hfan3 = check_morale(hench_fan, 0)
+assert_eq hfan3.outcome, MoraleOutcome.Pass
+assert_eq hfan3.roll, 0
+assert_eq hfan3.modified_roll, 0
+assert_eq hench_fan.HenchmanMorale.morale_checks_made, 2
+
+// ── reset_morale for henchman ────────────────────────────────
+
+rolls clear
+spawn Character hench_reset { name: "Reset Hench", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 10, INT: 10, WIS: 10, DEX: 10, CON: 10, CHA: 10 }, HitPoints { max_hp: 6, hp: 6 }, EquipmentSlots {}, HenchmanMorale { morale_base: 55 } }
+
+rolls 30
+let hr1 = check_morale(hench_reset, 0)
+assert_eq hench_reset.HenchmanMorale.morale_checks_made, 1
+
+rolls clear
+let hr_void = reset_morale(hench_reset)
+assert_eq hench_reset.HenchmanMorale.morale_checks_made, 0
+
+// ── set_henchman_morale from employer CHA ────────────────────
+
+spawn Character hench_hired { name: "Hired Hand", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 10, INT: 10, WIS: 10, DEX: 10, CON: 10, CHA: 10 }, HitPoints { max_hp: 6, hp: 6 }, EquipmentSlots {}, HenchmanMorale { morale_base: 0 } }
+
+// CHA 16 → cha_loyalty = 20 → morale_base = 50 + 20 = 70
+let shm_void = set_henchman_morale(hench_hired, 16)
+assert_eq hench_hired.HenchmanMorale.morale_base, 70
+assert_eq base_morale(hench_hired), 70
+
+// CHA 6 → cha_loyalty = -15 → morale_base = 50 + (-15) = 35
+let shm_void2 = set_henchman_morale(hench_hired, 6)
+assert_eq hench_hired.HenchmanMorale.morale_base, 35
+assert_eq base_morale(hench_hired), 35

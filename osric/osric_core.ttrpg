@@ -421,6 +421,11 @@ system "OSRIC" {
         optional TurnUndead {}
 
         optional WeaponSpecialization
+
+        optional HenchmanMorale {
+            morale_base: int
+            morale_checks_made: int = 0
+        }
     }
 
     // --- Monster entity ---

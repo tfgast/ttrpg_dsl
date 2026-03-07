@@ -409,6 +409,7 @@ fn character_entity_optional_groups() {
         "ThiefSkills",
         "TurnUndead",
         "WeaponSpecialization",
+        "HenchmanMorale",
     ];
 
     for name in expected_includes.iter().chain(expected_optionals.iter()) {
