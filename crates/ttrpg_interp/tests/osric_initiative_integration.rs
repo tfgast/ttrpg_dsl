@@ -69,8 +69,8 @@ fn initiative_has_declared_action_type_enum() {
         })
         .collect();
     assert!(
-        enums.contains(&("DeclaredActionType", 10)),
-        "expected DeclaredActionType with 10 variants, got: {enums:?}"
+        enums.contains(&("DeclaredActionType", 13)),
+        "expected DeclaredActionType with 13 variants, got: {enums:?}"
     );
 }
 

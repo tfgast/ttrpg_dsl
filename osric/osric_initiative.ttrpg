@@ -66,7 +66,10 @@ system "OSRIC Initiative" {
         SetAgainstChargeAction,
         TwoWeaponAttackAction,
         FleeAction,
-        HoldAction
+        HoldAction,
+        BrawlingAction,
+        GrappleAction,
+        OverbearAction
     }
 
 
@@ -215,7 +218,10 @@ system "OSRIC Initiative" {
             SetAgainstChargeAction => 1,
             TwoWeaponAttackAction  => initiative_segment,
             FleeAction             => initiative_segment,
-            HoldAction             => initiative_segment
+            HoldAction             => initiative_segment,
+            BrawlingAction         => initiative_segment,
+            GrappleAction          => initiative_segment,
+            OverbearAction         => initiative_segment
         }
         // Spells are NOT wrapped: values > 10 indicate cross-round
         // casting that continues into the next combat round (p. 93).
@@ -492,6 +498,59 @@ system "OSRIC Initiative" {
 
 
     // ========================================================
+    //  FEND-OFF PIPELINE (§1.6.12, First Step)
+    //
+    //  Before any unarmed attack (brawling, grappling, or
+    //  overbearing), the armed target and adjacent armed allies
+    //  each get a free melee to-hit roll. If any succeed, the
+    //  unarmed attack is blocked entirely.
+    //
+    //  The host provides adjacent armed allies via prompt;
+    //  defaults to empty (no allies attempt fend-off).
+    // ========================================================
+
+    prompt get_fend_off_allies(target: entity, attacker: entity) -> list<entity> {
+        hint: "Select armed allies adjacent to the target who can fend off the unarmed attacker"
+        default {
+            let empty: list<entity> = []
+            empty
+        }
+    }
+
+    // Attempt fend-off by the target and any adjacent armed allies.
+    // Returns true if any fend-off succeeds (blocking the unarmed attack).
+    function attempt_fend_off(
+        target: entity,
+        attacker: entity,
+        allies: list<entity>
+    ) -> bool {
+        // Target attempts first
+        if is_armed_melee(target) {
+            let result = resolve_fend_off_attempt(target, attacker)
+            if result.outcome == FendOffOutcome.FendedOff {
+                emit FendOffSuccess(defender: target, attacker: attacker, fender: target)
+                return true
+            } else {
+                emit FendOffFailure(defender: target, attacker: attacker, fender: target)
+            }
+        }
+        // Adjacent armed allies attempt
+        for ally in allies {
+            if is_armed_melee(ally) {
+                let result = resolve_fend_off_attempt(ally, attacker)
+                if result.outcome == FendOffOutcome.FendedOff {
+                    emit FendOffSuccess(defender: target, attacker: attacker, fender: ally)
+                    return true
+                } else {
+                    emit FendOffFailure(defender: target, attacker: attacker, fender: ally)
+                }
+            }
+        }
+        false
+    }
+
+
+    // ========================================================
     //  RESOLVE ACTION
     //
     //  Dispatches a single combatant action. Uses with_budget
@@ -499,6 +558,11 @@ system "OSRIC Initiative" {
     //  actions (MeleeAttack, MissileAttack, Charge) via method
     //  syntax. Spell completion removes the CastingSpell
     //  condition; non-combat actions are deferred to the host.
+    //
+    //  Unarmed actions (Brawling, Grapple, Overbear) run the
+    //  fend-off pipeline first: if the target or an adjacent
+    //  armed ally lands a hit, the unarmed attack is blocked.
+    //  On success, conditions are applied per §1.6.12 results.
     // ========================================================
 
     function resolve_action(action: RoundAction, all_actions: list<RoundAction>) {
@@ -659,6 +723,109 @@ system "OSRIC Initiative" {
                     }
                 }
             },
+            BrawlingAction => {
+                // Unarmed punch/kick: fend-off pipeline, then
+                // standard melee attack with FistOrKick (1d2 Blunt).
+                let target = action.target.unwrap()
+                let allies = get_fend_off_allies(target, action.combatant)
+                if !attempt_fend_off(target, action.combatant, allies) {
+                    if action.combatant is Character {
+                        with_budget(action.combatant, { attack: 1 }) {
+                            action.combatant.MeleeAttack(target)
+                        }
+                    }
+                }
+            },
+            GrappleAction => {
+                // Grappling attack: fend-off pipeline, then
+                // unarmed to-hit → grappling results table.
+                // Establishes holds on both combatants via Grappling condition.
+                let target = action.target.unwrap()
+                let allies = get_fend_off_allies(target, action.combatant)
+                if !attempt_fend_off(target, action.combatant, allies) {
+                    if action.combatant is Character {
+                        let atk_move = combat_movement_rate(action.combatant)
+                        let def_move = combat_movement_rate(target)
+                        with_budget(action.combatant, { attack: 1 }) {
+                            action.combatant.GrapplingAttack(
+                                target, atk_move, def_move
+                            )
+                        }
+                    }
+                }
+            },
+            OverbearAction => {
+                // Overbearing attack: fend-off pipeline, then
+                // unarmed to-hit → overbearing results table.
+                // Applies conditions based on result tier (§1.6.12).
+                // Total Success grants immediate grappling follow-up.
+                let target = action.target.unwrap()
+                let allies = get_fend_off_allies(target, action.combatant)
+                if !attempt_fend_off(target, action.combatant, allies) {
+                    let atk_move = combat_movement_rate(action.combatant)
+                    let def_move = combat_movement_rate(target)
+
+                    let result = resolve_overbearing_attack(
+                        action.combatant, target, atk_move, def_move
+                    )
+                    match result.outcome {
+                        AttackOutcome.Hit => {
+                            if result.temp_damage > 0 {
+                                target.TakeTempDamage(action.combatant, result.temp_damage)
+                            }
+                            if result.real_damage > 0 {
+                                target.TakeDamage(action.combatant, result.real_damage, DamageType.Blunt)
+                            }
+                            emit OverbearingHit(
+                                attacker: action.combatant,
+                                target: target,
+                                tier: result.tier,
+                                temp_damage: result.temp_damage,
+                                real_damage: result.real_damage,
+                                modified_roll: result.modified_roll,
+                                grappling_followup_bonus: result.grappling_followup_bonus
+                            )
+
+                            // Apply conditions based on overbearing tier.
+                            match result.tier {
+                                OverbearingTier.TotalFailure => {
+                                    // Attacker falls prone
+                                    apply_condition(action.combatant, Prone, Duration.EndOfRound)
+                                },
+                                OverbearingTier.PartialSuccess => {
+                                    // Target staggered
+                                    apply_condition(target, Staggered, Duration.EndOfRound)
+                                },
+                                OverbearingTier.Success => {
+                                    // Target prone and overborne
+                                    apply_condition(target, Prone, Duration.Indefinite)
+                                    apply_condition(target, Overborne, Duration.Indefinite)
+                                },
+                                OverbearingTier.TotalSuccess => {
+                                    // Target prone and overborne, plus
+                                    // immediate grappling follow-up with +2 bonus
+                                    apply_condition(target, Prone, Duration.Indefinite)
+                                    apply_condition(target, Overborne, Duration.Indefinite)
+                                    if is_alive(target) && action.combatant is Character {
+                                        with_budget(action.combatant, { attack: 1 }) {
+                                            action.combatant.GrapplingAttack(
+                                                target, atk_move, def_move,
+                                                attack_mod: result.grappling_followup_bonus
+                                            )
+                                        }
+                                    }
+                                },
+                                _ => {
+                                    // PartialFailure: no conditions applied
+                                }
+                            }
+                        },
+                        _ => {
+                            emit OverbearingMiss(attacker: action.combatant, target: target)
+                        }
+                    }
+                }
+            },
             _ => {
                 // MoveAction, FleeAction, HoldAction:
                 // Host manages movement tracking,
@@ -757,7 +924,10 @@ system "OSRIC Initiative" {
         // End-of-round bookkeeping: ordering is intentional.
         // Bleeding damage resolves first so that a character who
         // hits -10 HP this round dies before conditions expire.
+        // Temp damage heals 1 HP/round (§1.6.12) after bleeding
+        // but before condition expiry.
         process_bleeding(combatants)
+        process_temp_healing(combatants)
         expire_conditions(combatants)
         emit RoundEnd(round: round)
     }

@@ -475,6 +475,43 @@ system "OSRIC Conditions" {
 
 
     // ========================================================
+    //  FOUR-LEGGED (§1.6.12)
+    //
+    //  Applied to creatures with four or more legs. Grants +2
+    //  bonus when overbearing as attacker. Four-legged defenders
+    //  cannot be overborne (caller must enforce). Per Table 1.6.12b.
+    // ========================================================
+
+    condition FourLegged on bearer: entity {
+        modify resolve_overbearing_attack(attacker: bearer) {
+            attacker_four_legs = true
+        }
+        modify resolve_overbearing_attack(target: bearer) {
+            defender_four_legs = true
+        }
+    }
+
+
+    // ========================================================
+    //  MULTI-ARMED (§1.6.12)
+    //
+    //  Applied to creatures with non-standard appendage counts.
+    //  Modifies grappling rolls: 1 appendage = -1, 3+ = +1.
+    //  Default (2 appendages) is the humanoid baseline, needing
+    //  no condition. Per Table 1.6.12c.
+    // ========================================================
+
+    condition MultiArmed(count: int) on bearer: entity {
+        modify resolve_grappling_attack(attacker: bearer) {
+            attacker_appendages = count
+        }
+        modify resolve_grappling_attack(target: bearer) {
+            defender_appendages = count
+        }
+    }
+
+
+    // ========================================================
     //  ENCUMBRANCE STATE (§1.5.3.3)
     //
     //  Always applied (even Unencumbered — movement is identity
