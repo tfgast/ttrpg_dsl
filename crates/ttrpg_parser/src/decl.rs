@@ -1020,6 +1020,7 @@ impl Parser {
             body,
             span: self.end_span(start),
             id: ModifyClauseId(0), // placeholder; build_index() assigns real IDs
+            tags: vec![],
         })
     }
 

@@ -1084,6 +1084,7 @@ mod tests {
                     }],
                     span: dummy_span(),
                     id: ModifyClauseId(0),
+                    tags: vec![],
                 })]),
             ),
         ]);
@@ -1257,6 +1258,7 @@ mod tests {
                     }],
                     span: dummy_span(),
                     id: ModifyClauseId(0),
+                    tags: vec![],
                 })]),
             ),
         ]);
@@ -1407,6 +1409,7 @@ mod tests {
                         }],
                         span: dummy_span(),
                         id: ModifyClauseId(0),
+                    tags: vec![],
                     })]),
             ),
             DeclKind::Condition(
@@ -1429,6 +1432,7 @@ mod tests {
                         }],
                         span: dummy_span(),
                         id: ModifyClauseId(0),
+                    tags: vec![],
                     })]),
             ),
         ]);
@@ -1611,6 +1615,7 @@ mod tests {
                         }],
                         span: dummy_span(),
                         id: ModifyClauseId(0),
+                    tags: vec![],
                     })]),
             ),
             DeclKind::Option(OptionDecl {
@@ -1632,6 +1637,7 @@ mod tests {
                     }],
                     span: dummy_span(),
                     id: ModifyClauseId(0),
+                    tags: vec![],
                 }]),
             }),
         ]);
@@ -1786,6 +1792,7 @@ mod tests {
                         body: vec![],
                         span: dummy_span(),
                         id: ModifyClauseId(0),
+                    tags: vec![],
                     })]),
             ),
         ]);
@@ -1984,6 +1991,7 @@ mod tests {
                     }],
                     span: dummy_span(),
                     id: ModifyClauseId(0),
+                    tags: vec![],
                 }]),
             }),
         ]);
@@ -2116,6 +2124,7 @@ mod tests {
                         }],
                         span: dummy_span(),
                         id: ModifyClauseId(0),
+                    tags: vec![],
                     })]),
             ),
         ]);
@@ -2351,6 +2360,7 @@ mod tests {
                     }],
                     span: dummy_span(),
                     id: ModifyClauseId(0),
+                    tags: vec![],
                 }]),
             }),
             // Alpha declared second
@@ -2373,6 +2383,7 @@ mod tests {
                     }],
                     span: dummy_span(),
                     id: ModifyClauseId(0),
+                    tags: vec![],
                 }]),
             }),
         ]);
@@ -2510,6 +2521,7 @@ mod tests {
                         ],
                         span: dummy_span(),
                         id: ModifyClauseId(0),
+                    tags: vec![],
                     })]),
             ),
         ]);
@@ -2645,6 +2657,7 @@ mod tests {
                         ],
                         span: dummy_span(),
                         id: ModifyClauseId(0),
+                    tags: vec![],
                     })]),
             ),
         ]);

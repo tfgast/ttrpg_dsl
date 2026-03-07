@@ -691,6 +691,8 @@ pub struct ModifyClause {
     pub span: Span,
     /// Stable clause identity, assigned during `build_index()`.
     pub id: ModifyClauseId,
+    /// Optional tags for provenance and targeted suppression.
+    pub tags: Vec<Name>,
 }
 
 #[derive(Clone)]
