@@ -610,6 +610,34 @@ pub struct EventDecl {
     pub fields: Vec<FieldDef>,
 }
 
+/// Controls how multiple instances of the same condition interact on a single bearer.
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub enum StackingPolicy {
+    /// Every instance contributes all effects (default).
+    All,
+    /// Oldest instance wins; all others are suppressed.
+    First,
+    /// Instance with the best param value wins; ties broken by oldest.
+    BestBy {
+        param: Spanned<Name>,
+        direction: Direction,
+    },
+}
+
+impl Default for StackingPolicy {
+    fn default() -> Self {
+        Self::All
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub enum Direction {
+    Highest,
+    Lowest,
+}
+
 #[derive(Clone)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct ConditionDecl {
@@ -620,6 +648,8 @@ pub struct ConditionDecl {
     /// Optional parent conditions: `condition Stunned extends Incapacitated on ...`.
     /// Child inherits all modify/suppress clauses from parents.
     pub extends: Vec<Spanned<Name>>,
+    /// Stacking policy for multiple instances on the same bearer.
+    pub stacking: StackingPolicy,
     pub receiver_name: Name,
     pub receiver_type: Spanned<TypeExpr>,
     /// Optional group constraints on the bearer: `on bearer: Entity with Group`.
@@ -637,6 +667,7 @@ impl ConditionDecl {
             name: name.into(),
             params: vec![],
             extends: vec![],
+            stacking: StackingPolicy::default(),
             receiver_name: receiver_name.into(),
             receiver_type,
             receiver_with_groups: WithClause::default(),
@@ -651,6 +682,11 @@ impl ConditionDecl {
 
     pub fn with_extends(mut self, extends: Vec<Spanned<Name>>) -> Self {
         self.extends = extends;
+        self
+    }
+
+    pub fn with_stacking(mut self, stacking: StackingPolicy) -> Self {
+        self.stacking = stacking;
         self
     }
 

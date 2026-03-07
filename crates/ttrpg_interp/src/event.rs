@@ -397,8 +397,16 @@ fn is_suppressed(
             }
         };
 
+        let stacking_winners =
+            crate::pipeline::compute_stacking_winners(&conditions, env.interp.program);
+
         for condition in &conditions {
             if !seen_condition_ids.insert(condition.id) {
+                continue;
+            }
+
+            // Skip conditions that lost stacking precedence
+            if !stacking_winners.contains(&condition.id) {
                 continue;
             }
 

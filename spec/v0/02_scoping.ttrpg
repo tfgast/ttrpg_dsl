@@ -310,6 +310,80 @@ condition Prone on bearer: Character {
 // and pushes game-specific cancellation logic into explicit DSL code.
 
 
+// --- Same-condition stacking (instance precedence) ---
+//
+// When multiple instances of the same condition exist on one bearer,
+// their modifiers stack by default (all instances contribute). The
+// `stacking` clause on the condition declaration overrides this:
+//
+//   condition Prone on bearer: entity stacking first {
+//       modify [#attack_resolution](target: bearer) {
+//           attack_mod = attack_mod + 4
+//       }
+//   }
+//
+//   condition Concealed(level: int) on bearer: entity
+//       stacking best by highest(level) ties oldest
+//   {
+//       modify [#attack_resolution](target: bearer) {
+//           attack_mod = attack_mod - level
+//       }
+//   }
+//
+// Policies:
+//
+//   all (default) — Every instance contributes all effects. Use for
+//   conditions that legitimately coexist, like Grappling with
+//   different opponents.
+//
+//   first — The oldest instance (lowest gained_at) wins. All other
+//   instances are suppressed. Use for parameterless conditions where
+//   duplicates should not double effects (Prone, Stunned, etc.).
+//
+//   best by highest(<param>) ties oldest — The instance with the
+//   highest value of <param> wins. Ties broken by gained_at (oldest),
+//   then lowest condition_id. Use for parameterised conditions where
+//   the strongest effect should prevail (Concealed, Cover).
+//
+//   best by lowest(<param>) ties oldest — Same as above but the
+//   instance with the lowest value of <param> wins.
+//
+// SUPPRESSION SEMANTICS:
+//   Non-winning instances are suppressed, NOT removed. They remain
+//   in state with their duration ticking. When the winner expires,
+//   the next-best instance becomes the new winner.
+//
+//   Suppression is total: a suppressed instance contributes NO
+//   effects — its modify clauses, suppress clauses, suppress_modify
+//   clauses, and cost modifiers are all excluded from collection.
+//   The winner's full ancestor chain (via extends) still contributes.
+//
+// PARAMETER CONSTRAINT:
+//   For `best by`, <param> must name an int parameter declared on
+//   this condition. Inherited parent parameters do not qualify unless
+//   the child also declares them.
+//
+// INHERITANCE:
+//   The stacking clause belongs to the concrete declared condition.
+//   It is NOT merged or inherited via `extends`. A child condition
+//   must declare its own stacking policy. Omitting it defaults to
+//   `all` regardless of the parent's policy.
+//
+// EVALUATION:
+//   Before collecting any clauses from a condition instance, the
+//   runtime computes a per-bearer allowlist of winning condition_ids.
+//   Non-winners are skipped entirely — their ancestor chain is not
+//   walked. This applies uniformly across all collection paths:
+//   modify/suppress_modify (pipeline.rs), cost modifiers (action.rs),
+//   and suppress clauses (event.rs).
+//
+// CROSS-CONDITION OVERLAP:
+//   Stacking only governs instances of the SAME condition. Overlap
+//   between different conditions (e.g., Concealed vs Invisible) is
+//   a separate concern, handled by guard conditions in modify bodies
+//   or suppress_modify clauses.
+
+
 // --- Tags on modify clauses ---
 //
 // Modify clauses can carry tag annotations for provenance tracking

@@ -50,6 +50,89 @@ pub(crate) fn collect_ancestor_order<'p>(
     result
 }
 
+/// Compute the set of winning condition instance IDs for stacking policies.
+///
+/// Groups active conditions by `(condition_name, bearer)` and applies the
+/// stacking policy declared on each condition. Returns the set of instance
+/// IDs whose effects should be applied; all others are suppressed.
+pub(crate) fn compute_stacking_winners(
+    conditions: &[ActiveCondition],
+    program: &Program,
+) -> HashSet<u64> {
+    use ttrpg_ast::ast::{Direction, StackingPolicy};
+
+    let mut winners = HashSet::new();
+
+    // Group by (condition_name, bearer_id)
+    let mut groups: BTreeMap<(Name, u64), Vec<&ActiveCondition>> = BTreeMap::new();
+    for cond in conditions {
+        groups
+            .entry((cond.name.clone(), cond.bearer.0))
+            .or_default()
+            .push(cond);
+    }
+
+    for ((cond_name, _bearer_id), instances) in &groups {
+        let policy = program
+            .conditions
+            .get(cond_name.as_str())
+            .map(|decl| &decl.stacking)
+            .unwrap_or(&StackingPolicy::All);
+
+        match policy {
+            StackingPolicy::All => {
+                for inst in instances {
+                    winners.insert(inst.id);
+                }
+            }
+            StackingPolicy::First => {
+                // Oldest wins: min by (gained_at, id)
+                if let Some(winner) = instances
+                    .iter()
+                    .min_by_key(|c| (c.gained_at, c.id))
+                {
+                    winners.insert(winner.id);
+                }
+            }
+            StackingPolicy::BestBy { param, direction } => {
+                let extract_int = |c: &ActiveCondition| -> Option<i64> {
+                    match c.params.get(&param.node) {
+                        Some(Value::Int(n)) => Some(*n),
+                        _ => None,
+                    }
+                };
+                if let Some(winner) = instances.iter().max_by(|a, b| {
+                    let a_val = extract_int(a);
+                    let b_val = extract_int(b);
+                    match (a_val, b_val) {
+                        (Some(av), Some(bv)) => {
+                            let primary = match direction {
+                                Direction::Highest => av.cmp(&bv),
+                                Direction::Lowest => bv.cmp(&av),
+                            };
+                            // Tie-break: oldest (lowest gained_at), then lowest id
+                            primary.then_with(|| b.gained_at.cmp(&a.gained_at))
+                                   .then_with(|| b.id.cmp(&a.id))
+                        }
+                        // Instances without the param lose to those with it
+                        (Some(_), None) => std::cmp::Ordering::Greater,
+                        (None, Some(_)) => std::cmp::Ordering::Less,
+                        (None, None) => {
+                            // Both missing: fall back to oldest
+                            b.gained_at.cmp(&a.gained_at)
+                                .then_with(|| b.id.cmp(&a.id))
+                        }
+                    }
+                }) {
+                    winners.insert(winner.id);
+                }
+            }
+        }
+    }
+
+    winners
+}
+
 /// Which lifecycle hook to execute.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum LifecycleKind {
@@ -133,9 +216,16 @@ pub(crate) fn collect_modifiers_owned(
             }
         };
 
+        let stacking_winners = compute_stacking_winners(&conditions, env.interp.program);
+
         for condition in &conditions {
             // Deduplicate by condition id
             if !seen_condition_ids.insert(condition.id) {
+                continue;
+            }
+
+            // Skip conditions that lost stacking precedence
+            if !stacking_winners.contains(&condition.id) {
                 continue;
             }
 

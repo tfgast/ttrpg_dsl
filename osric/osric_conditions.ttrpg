@@ -30,7 +30,9 @@ system "OSRIC Conditions" {
     //  losing shield and DEX AC contributions.
     // ========================================================
 
-    condition Prone on bearer: entity {
+    condition Prone on bearer: entity
+        stacking first
+    {
         modify [#attack_resolution](target: bearer) {
             attack_mod = attack_mod + 4
         }
@@ -49,7 +51,9 @@ system "OSRIC Conditions" {
     //  Per 1.6.3.6 and 1.6.10.11.
     // ========================================================
 
-    condition Stunned on bearer: entity {
+    condition Stunned on bearer: entity
+        stacking first
+    {
         modify [#attack_resolution](target: bearer) {
             attack_mod = attack_mod + 4
         }
@@ -70,7 +74,9 @@ system "OSRIC Conditions" {
     //  Attacked at +2. Less severe than Prone/Stunned.
     // ========================================================
 
-    condition Staggered on bearer: entity {
+    condition Staggered on bearer: entity
+        stacking first
+    {
         modify [#attack_resolution](target: bearer) {
             attack_mod = attack_mod + 2
         }
@@ -85,7 +91,9 @@ system "OSRIC Conditions" {
     //  Bearer gets +4 on all saving throws.
     // ========================================================
 
-    condition Invisible on bearer: entity {
+    condition Invisible on bearer: entity
+        stacking first
+    {
         modify [#attack_resolution](target: bearer) {
             attack_mod = attack_mod - 4
         }
@@ -103,7 +111,9 @@ system "OSRIC Conditions" {
     //  Per 1.6.3.6 and 1.6.10.15.
     // ========================================================
 
-    condition Paralyzed on bearer: entity {
+    condition Paralyzed on bearer: entity
+        stacking first
+    {
         modify [#attack_resolution](target: bearer) {
             roll_mode = RollMode.AutoHit
             max_damage = true
@@ -130,7 +140,9 @@ system "OSRIC Conditions" {
     //  Per 1.6.3.6.
     // ========================================================
 
-    condition Sleeping on bearer: entity {
+    condition Sleeping on bearer: entity
+        stacking first
+    {
         modify [#attack_resolution](target: bearer) {
             roll_mode = RollMode.AutoHit
             max_damage = true
@@ -155,7 +167,9 @@ system "OSRIC Conditions" {
     //  immediate attack at +4 even if already attacked.
     // ========================================================
 
-    condition Fleeing on bearer: entity {
+    condition Fleeing on bearer: entity
+        stacking first
+    {
         modify resolve_melee_attack(target: bearer) {
             attack_mod = attack_mod + 4
         }
@@ -174,7 +188,9 @@ system "OSRIC Conditions" {
     //  Duration: 1-2 segments (tracked by initiative system).
     // ========================================================
 
-    condition Surprised on bearer: entity {
+    condition Surprised on bearer: entity
+        stacking first
+    {
         modify [#attack_resolution](attacker: bearer) {
             result.outcome = AttackOutcome.Miss
             result.damage = 0
@@ -189,7 +205,9 @@ system "OSRIC Conditions" {
     //  and DEX bonuses to AC. Per 1.6.3.3.
     // ========================================================
 
-    condition RearAttacked on bearer: entity {
+    condition RearAttacked on bearer: entity
+        stacking first
+    {
         modify [#attack_resolution](target: bearer) {
             attack_mod = attack_mod + 2
         }
@@ -209,7 +227,9 @@ system "OSRIC Conditions" {
     //  Per 1.6.3.1: 1/4 = -1, 1/2 = -2, 3/4 = -3, total = -4.
     // ========================================================
 
-    condition Concealed(level: int) on bearer: entity {
+    condition Concealed(level: int) on bearer: entity
+        stacking best by highest(level) ties oldest
+    {
         modify [#attack_resolution](target: bearer) {
             attack_mod = attack_mod - level
         }
@@ -225,7 +245,9 @@ system "OSRIC Conditions" {
     //  Per 1.6.3.2: 25% = -2, 50% = -4, 75% = -7, 90% = -10.
     // ========================================================
 
-    condition Cover(penalty: int) on bearer: entity {
+    condition Cover(penalty: int) on bearer: entity
+        stacking best by highest(penalty) ties oldest
+    {
         modify [#attack_resolution](target: bearer) {
             attack_mod = attack_mod - penalty
         }
@@ -241,7 +263,9 @@ system "OSRIC Conditions" {
     //  dexterity bonuses to AC for the rest of the round."
     // ========================================================
 
-    condition Charging on bearer: entity {
+    condition Charging on bearer: entity
+        stacking first
+    {
         modify effective_target_ac(target: bearer) {
             include_dex = false
             ac_mod = ac_mod - 1
@@ -258,7 +282,9 @@ system "OSRIC Conditions" {
     //  expire_conditions.
     // ========================================================
 
-    condition ChargeRecovery on bearer: entity {}
+    condition ChargeRecovery on bearer: entity
+        stacking first
+    {}
 
 
     // ========================================================
@@ -270,7 +296,9 @@ system "OSRIC Conditions" {
     //  instantly. Per §1.6.6.
     // ========================================================
 
-    condition Unconscious on bearer: entity {
+    condition Unconscious on bearer: entity
+        stacking first
+    {
         modify [#attack_resolution](target: bearer) {
             roll_mode = RollMode.AutoHit
             max_damage = true
@@ -301,7 +329,9 @@ system "OSRIC Conditions" {
     //  time scales (segments vs rounds vs turns).
     // ========================================================
 
-    condition Bleeding on bearer: entity {}
+    condition Bleeding on bearer: entity
+        stacking first
+    {}
 
 
     // ========================================================
@@ -312,7 +342,9 @@ system "OSRIC Conditions" {
     //  by raise dead / resurrection spells.
     // ========================================================
 
-    condition Dead on bearer: entity {
+    condition Dead on bearer: entity
+        stacking first
+    {
         modify [#attack_resolution](attacker: bearer) {
             result.outcome = AttackOutcome.Miss
             result.damage = 0
@@ -329,7 +361,9 @@ system "OSRIC Conditions" {
     //  roleplay and GM adjudication.
     // ========================================================
 
-    condition Scarred on bearer: entity {}
+    condition Scarred on bearer: entity
+        stacking first
+    {}
 
 
     // ========================================================
@@ -340,7 +374,9 @@ system "OSRIC Conditions" {
     //  for a minimum of one week. Cannot act during coma.
     // ========================================================
 
-    condition Coma on bearer: entity {
+    condition Coma on bearer: entity
+        stacking first
+    {
         modify [#attack_resolution](attacker: bearer) {
             result.outcome = AttackOutcome.Miss
             result.damage = 0
@@ -356,7 +392,9 @@ system "OSRIC Conditions" {
     //  Per 1.6.10.1.
     // ========================================================
 
-    condition Blinded on bearer: entity {
+    condition Blinded on bearer: entity
+        stacking first
+    {
         modify [#attack_resolution](attacker: bearer) {
             attack_mod = attack_mod - 4
         }
@@ -376,7 +414,9 @@ system "OSRIC Conditions" {
     //  Per 1.6.10.2.
     // ========================================================
 
-    condition Confused on bearer: entity {}
+    condition Confused on bearer: entity
+        stacking first
+    {}
 
 
     // ========================================================
@@ -389,7 +429,9 @@ system "OSRIC Conditions" {
     //  Per 1.6.10.4.
     // ========================================================
 
-    condition Deafened on bearer: entity {}
+    condition Deafened on bearer: entity
+        stacking first
+    {}
 
 
     // ========================================================
@@ -448,7 +490,9 @@ system "OSRIC Conditions" {
     //  Per 1.6.10.9.
     // ========================================================
 
-    condition Overborne on bearer: entity {}
+    condition Overborne on bearer: entity
+        stacking first
+    {}
 
 
     // ========================================================
@@ -463,7 +507,9 @@ system "OSRIC Conditions" {
     //  Per 1.6.2.9.
     // ========================================================
 
-    condition Parrying(parry_bonus: int) on bearer: entity {
+    condition Parrying(parry_bonus: int) on bearer: entity
+        stacking first
+    {
         modify resolve_melee_attack(target: bearer) {
             attack_mod = attack_mod - parry_bonus
         }
@@ -482,7 +528,9 @@ system "OSRIC Conditions" {
     //  cannot be overborne (caller must enforce). Per Table 1.6.12b.
     // ========================================================
 
-    condition FourLegged on bearer: entity {
+    condition FourLegged on bearer: entity
+        stacking first
+    {
         modify resolve_overbearing_attack(attacker: bearer) {
             attacker_four_legs = true
         }

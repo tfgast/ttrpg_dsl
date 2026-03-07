@@ -356,8 +356,43 @@ event_decl      = "event" IDENT "(" params ")" ("{" field_defs "}")? term
 
 // --- Condition (declarative modifiers, has receiver, no mutation) ---
 condition_decl  = "condition" IDENT params? extends_clause?
-                      "on" IDENT ":" constrained_type "{" condition_clause* "}"
+                      "on" IDENT ":" constrained_type
+                      stacking_clause?
+                      "{" condition_clause* "}"
 extends_clause  = "extends" IDENT ("," IDENT)*
+
+// --- Stacking policy (same-condition instance precedence) ---
+//
+// Controls which instance contributes effects when multiple instances
+// of the same condition exist on one bearer. Non-winning instances
+// remain active (duration ticking) but their modify, suppress,
+// suppress_modify, and cost modifier clauses are all excluded.
+//
+// Policies:
+//   all     — every instance contributes (default, backwards-compatible)
+//   first   — oldest instance wins (by gained_at, then lowest id)
+//   best by highest(<param>) ties oldest — highest param value wins
+//   best by lowest(<param>) ties oldest  — lowest param value wins
+//
+// <param> must name an int parameter declared on this condition.
+// Inherited parent parameters do not qualify unless also declared
+// on the child. The stacking clause belongs to the concrete declared
+// condition and is NOT inherited via extends. The winning instance
+// still contributes inherited parent clauses.
+//
+// Tie-breaking: gained_at (oldest first). If gained_at ties, lowest
+// condition_id wins, for full determinism.
+//
+// Examples:
+//   condition Prone on bearer: entity stacking first { ... }
+//   condition Concealed(level: int) on bearer: entity
+//       stacking best by highest(level) ties oldest { ... }
+//
+stacking_clause = "stacking" stacking_policy
+stacking_policy = "all"
+                | "first"
+                | "best" "by" stacking_dir "(" IDENT ")" "ties" "oldest"
+stacking_dir    = "highest" | "lowest"
 
 condition_clause = modify_clause | suppress_clause | suppress_modify_clause | lifecycle_clause
 lifecycle_clause = ("on_apply" | "on_remove") block

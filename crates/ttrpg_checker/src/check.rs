@@ -791,6 +791,34 @@ impl<'a> Checker<'a> {
         }
         self.scope.pop();
 
+        // Validate stacking policy
+        if let StackingPolicy::BestBy { param, .. } = &c.stacking {
+            match c.params.iter().find(|p| p.name == param.node) {
+                Some(p) => {
+                    let resolved = self.env.resolve_type(&p.ty);
+                    if resolved != Ty::Int {
+                        self.error(
+                            format!(
+                                "stacking `best by` parameter `{}` must be `int`, found {}",
+                                param.node, resolved
+                            ),
+                            param.span,
+                        );
+                    }
+                }
+                None => {
+                    self.error(
+                        format!(
+                            "stacking `best by` references unknown parameter `{}`; \
+                             must name an `int` parameter declared on this condition",
+                            param.node
+                        ),
+                        param.span,
+                    );
+                }
+            }
+        }
+
         for clause in &c.clauses {
             match clause {
                 ConditionClause::Modify(m) => {

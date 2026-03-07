@@ -1010,6 +1010,13 @@ impl Parser {
         self.expect(&TokenKind::Colon)?;
         let receiver_type = self.parse_type()?;
         let receiver_with_groups = self.parse_with_groups()?;
+        self.skip_newlines();
+        let stacking = if self.at_ident("stacking") {
+            self.parse_stacking_policy()?
+        } else {
+            StackingPolicy::default()
+        };
+        self.skip_newlines();
         self.expect(&TokenKind::LBrace)?;
         self.skip_newlines();
 
@@ -1057,11 +1064,75 @@ impl Parser {
             name,
             params,
             extends,
+            stacking,
             receiver_name,
             receiver_type,
             receiver_with_groups,
             clauses,
         })
+    }
+
+    /// Parse `stacking all | first | best by highest(<param>) ties oldest`.
+    fn parse_stacking_policy(&mut self) -> Result<StackingPolicy, ()> {
+        self.expect_soft_keyword("stacking")?;
+        if self.at_ident("all") {
+            self.advance();
+            Ok(StackingPolicy::All)
+        } else if self.at_ident("first") {
+            self.advance();
+            Ok(StackingPolicy::First)
+        } else if self.at_ident("best") {
+            self.advance();
+            if !self.at_ident("by") {
+                self.error(format!(
+                    "expected `by` after `best`, found {}",
+                    self.peek()
+                ));
+                return Err(());
+            }
+            self.advance();
+            let direction = if self.at_ident("highest") {
+                self.advance();
+                Direction::Highest
+            } else if self.at_ident("lowest") {
+                self.advance();
+                Direction::Lowest
+            } else {
+                self.error(format!(
+                    "expected `highest` or `lowest` after `best by`, found {}",
+                    self.peek()
+                ));
+                return Err(());
+            };
+            self.expect(&TokenKind::LParen)?;
+            let start = self.start_span();
+            let (param_name, _) = self.expect_ident()?;
+            let param = Spanned::new(param_name, self.end_span(start));
+            self.expect(&TokenKind::RParen)?;
+            if !self.at_ident("ties") {
+                self.error(format!(
+                    "expected `ties oldest` after stacking parameter, found {}",
+                    self.peek()
+                ));
+                return Err(());
+            }
+            self.advance();
+            if !self.at_ident("oldest") {
+                self.error(format!(
+                    "expected `oldest` after `ties`, found {}",
+                    self.peek()
+                ));
+                return Err(());
+            }
+            self.advance();
+            Ok(StackingPolicy::BestBy { param, direction })
+        } else {
+            self.error(format!(
+                "expected `all`, `first`, or `best` after `stacking`, found {}",
+                self.peek()
+            ));
+            Err(())
+        }
     }
 
     /// Parse `on_apply { ... }` or `on_remove { ... }` lifecycle block.

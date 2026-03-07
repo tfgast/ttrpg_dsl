@@ -401,6 +401,9 @@ fn collect_and_apply_cost_modifiers(
         None => return Ok(Some(effective)),
     };
 
+    let stacking_winners =
+        crate::pipeline::compute_stacking_winners(&conditions, env.interp.program);
+
     // Collect matching cost modifiers, ordered by gained_at
     struct CostModifier {
         source: ModifySource,
@@ -415,6 +418,11 @@ fn collect_and_apply_cost_modifiers(
     let mut cost_modifiers: Vec<CostModifier> = Vec::new();
 
     for condition in &conditions {
+        // Skip conditions that lost stacking precedence
+        if !stacking_winners.contains(&condition.id) {
+            continue;
+        }
+
         // Collect ancestor chain (parents first, then self)
         let ancestor_decls =
             crate::pipeline::collect_ancestor_order(env.interp.program, condition.name.as_str());
