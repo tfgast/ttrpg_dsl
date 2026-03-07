@@ -451,10 +451,12 @@ suppress_modify_clause = "suppress" "[" selector_pred ("," selector_pred)* ","? 
 prompt_decl     = "prompt" IDENT "(" params ")" "->" type "{"
                       hint_clause?
                       suggest_clause?
+                      default_clause?
                   "}"
 
 hint_clause     = "hint" ":" STRING term
 suggest_clause  = "suggest" ":" expr term
+default_clause  = "default" block
 
 // Prompts are DECLARED as above but INVOKED like function calls:
 //   let choice = choose(target, options: ["Comply", "Suffer"])

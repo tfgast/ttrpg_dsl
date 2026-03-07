@@ -185,8 +185,8 @@ impl EffectHandler for CliHandler<'_> {
                     Response::PromptResult(val)
                 } else {
                     self.log
-                        .push(format!("[ResolvePrompt] {name} -> vetoed (no suggestion)"));
-                    Response::Vetoed
+                        .push(format!("[ResolvePrompt] {name} -> use default"));
+                    Response::UseDefault
                 }
             }
 
@@ -870,7 +870,7 @@ mod tests {
             suggest: None,
         };
         let response = handler.handle(effect);
-        assert!(matches!(response, Response::Vetoed));
+        assert!(matches!(response, Response::UseDefault));
     }
 
     #[test]

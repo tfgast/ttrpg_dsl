@@ -203,6 +203,8 @@ pub enum Response {
     Override(Value),
     /// GM blocks the effect.
     Vetoed,
+    /// Host defers to the prompt's `default { ... }` body.
+    UseDefault,
 }
 
 // ── Step enum ───────────────────────────────────────────────────

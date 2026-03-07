@@ -1396,6 +1396,14 @@ impl Parser {
             None
         };
 
+        let default = if self.at_ident("default") {
+            self.advance();
+            Some(self.parse_block()?)
+        } else {
+            None
+        };
+        self.skip_newlines();
+
         self.expect(&TokenKind::RBrace)?;
         Ok(PromptDecl {
             name,
@@ -1403,6 +1411,7 @@ impl Parser {
             return_type,
             hint,
             suggest,
+            default,
         })
     }
 

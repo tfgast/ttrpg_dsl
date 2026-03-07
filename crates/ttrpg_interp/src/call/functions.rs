@@ -480,6 +480,7 @@ pub(super) fn dispatch_prompt(
 
     let hint = prompt_decl.hint.clone();
     let suggest_expr = prompt_decl.suggest.clone();
+    let default_body = prompt_decl.default.clone();
     let ast_params = prompt_decl.params.clone();
 
     // Get the FnInfo for parameter info
@@ -517,7 +518,7 @@ pub(super) fn dispatch_prompt(
     // Emit ResolvePrompt effect
     let effect = Effect::ResolvePrompt {
         name: Name::from(name),
-        params: bound,
+        params: bound.clone(),
         return_type: return_type.clone(),
         hint,
         suggest,
@@ -538,6 +539,33 @@ pub(super) fn dispatch_prompt(
                 ));
             }
             Ok(val)
+        }
+        Response::UseDefault => {
+            if let Some(ref default_block) = default_body {
+                env.push_scope();
+                for (pn, pv) in &bound {
+                    env.bind(pn.clone(), pv.clone());
+                }
+                let val = eval_block(env, default_block)?;
+                env.pop_scope();
+                if !value_matches_ty(&val, &return_type, env.state) {
+                    return Err(RuntimeError::with_span(
+                        format!(
+                            "prompt '{}' default body returned type {}, expected {}",
+                            name,
+                            value_type_display(&val),
+                            return_type.display(),
+                        ),
+                        call_span,
+                    ));
+                }
+                Ok(val)
+            } else {
+                Err(RuntimeError::with_span(
+                    format!("prompt '{name}' has no default body but host returned UseDefault"),
+                    call_span,
+                ))
+            }
         }
         _ => Err(RuntimeError::with_span(
             format!(

@@ -874,6 +874,19 @@ impl<'a> Checker<'a> {
             }
         }
 
+        if let Some(ref default) = p.default {
+            self.scope.push(BlockKind::Mechanic);
+            let default_ty = self.check_block(default);
+            self.scope.pop();
+            let ret_ty = self.env.resolve_type(&p.return_type);
+            if !default_ty.is_error() && !self.types_compatible(&default_ty, &ret_ty) {
+                self.error(
+                    format!("default body has type {default_ty}, expected {ret_ty}"),
+                    default.span,
+                );
+            }
+        }
+
         self.scope.pop();
     }
 

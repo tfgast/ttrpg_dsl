@@ -430,6 +430,7 @@ fn prompt_call_emits_resolve_prompt() {
         return_type: spanned(TypeExpr::Int),
         hint: Some("Choose a target".into()),
         suggest: None,
+        default: None,
     })]);
 
     let mut type_env = TypeEnv::new();
@@ -483,6 +484,7 @@ fn prompt_call_with_suggest() {
             lhs: Box::new(spanned(ExprKind::Ident("default_val".into()))),
             rhs: Box::new(spanned(ExprKind::IntLit(1))),
         })),
+        default: None,
     })]);
 
     let mut type_env = TypeEnv::new();
@@ -547,6 +549,7 @@ fn prompt_emits_return_type_and_named_params() {
         return_type: spanned(TypeExpr::Int),
         hint: Some("pick one".into()),
         suggest: None,
+        default: None,
     })]);
 
     let mut type_env = TypeEnv::new();
@@ -630,6 +633,7 @@ fn prompt_return_type_validation_correct_type() {
         return_type: spanned(TypeExpr::Int),
         hint: None,
         suggest: None,
+        default: None,
     })]);
 
     let mut type_env = TypeEnv::new();
@@ -668,6 +672,7 @@ fn prompt_return_type_validation_wrong_type() {
         return_type: spanned(TypeExpr::Int),
         hint: None,
         suggest: None,
+        default: None,
     })]);
 
     let mut type_env = TypeEnv::new();
@@ -718,6 +723,7 @@ fn prompt_override_validation_wrong_type() {
         return_type: spanned(TypeExpr::Int),
         hint: None,
         suggest: None,
+        default: None,
     })]);
 
     let mut type_env = TypeEnv::new();
@@ -768,6 +774,7 @@ fn prompt_entity_type_validated_via_state() {
         return_type: spanned(TypeExpr::Named("Character".into())),
         hint: None,
         suggest: None,
+        default: None,
     })]);
 
     let mut type_env = TypeEnv::new();
@@ -2186,6 +2193,7 @@ fn prompt_call_accepts_override_response() {
         return_type: spanned(TypeExpr::Int),
         hint: Some("Choose a target".into()),
         suggest: None,
+        default: None,
     })]);
 
     let mut type_env = TypeEnv::new();
@@ -2225,6 +2233,7 @@ fn prompt_call_rejects_invalid_response() {
         return_type: spanned(TypeExpr::Int),
         hint: None,
         suggest: None,
+        default: None,
     })]);
 
     let mut type_env = TypeEnv::new();
@@ -2747,6 +2756,7 @@ fn prompt_suggest_error_does_not_leak_scope() {
         hint: None,
         // suggest: undefined_var (will error)
         suggest: Some(spanned(ExprKind::Ident("undefined_var".into()))),
+        default: None,
     })]);
 
     let mut type_env = TypeEnv::new();

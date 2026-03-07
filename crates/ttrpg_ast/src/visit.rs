@@ -361,6 +361,7 @@ impl VisitSpansMut for PromptDecl {
         self.params.visit_spans_mut(f);
         self.return_type.visit_spans_mut(f);
         self.suggest.visit_spans_mut(f);
+        self.default.visit_spans_mut(f);
     }
 }
 

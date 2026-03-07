@@ -763,6 +763,7 @@ pub struct PromptDecl {
     pub return_type: Spanned<TypeExpr>,
     pub hint: Option<String>,
     pub suggest: Option<Spanned<ExprKind>>,
+    pub default: Option<Block>,
 }
 
 #[derive(Clone)]
