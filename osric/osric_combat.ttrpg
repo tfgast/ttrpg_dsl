@@ -30,6 +30,7 @@ system "OSRIC Combat" {
     group HitPoints {
         max_hp: int
         restricted hp: resource(-10..=max_hp)
+        temp_damage: int = 0
     }
 
 
@@ -103,6 +104,10 @@ system "OSRIC Combat" {
     event CharacterDead(target: Character) {}
 
     event CharacterStabilized(target: Character) {}
+
+    event TempDamaged(target: entity, attacker: entity, amount: int) {}
+
+    event TempDamageHealed(target: entity, amount: int) {}
 
 
     // ========================================================
@@ -622,6 +627,49 @@ system "OSRIC Combat" {
             if target.hp <= 0 {
                 apply_condition(target, Dead, Duration.Indefinite)
                 emit CreatureSlain(target: target, attacker: attacker)
+            }
+        }
+    }
+
+
+    // ========================================================
+    //  TEMPORARY DAMAGE (Unarmed Combat §1.6.12)
+    //
+    //  Brawling and other unarmed attacks deal temporary damage.
+    //  Temp damage heals at 1 HP/round. If temp_damage exceeds
+    //  remaining HP the target is knocked out (unconscious).
+    // ========================================================
+
+    // Apply temporary damage to a character. Does not reduce HP
+    // directly — tracked separately via temp_damage field.
+    // Knockout occurs when temp_damage >= current HP.
+    action TakeTempDamage on target: Character (
+        attacker: entity,
+        amount: int
+    ) {
+        cost free
+        resolve {
+            target.temp_damage = target.temp_damage + amount
+            emit TempDamaged(target: target, attacker: attacker, amount: amount)
+
+            if target.temp_damage >= target.hp {
+                apply_condition(target, Unconscious, Duration.Indefinite)
+                emit CharacterUnconscious(target: target, attacker: attacker)
+            }
+        }
+    }
+
+    // Heal temporary damage for all combatants at end of round.
+    // Each character with temp_damage recovers 1 HP of temp damage.
+    // Regaining consciousness when temp_damage drops below HP is
+    // handled here.
+    function process_temp_healing(combatants: list<entity>) {
+        for target in combatants {
+            if target is Character {
+                if target.temp_damage > 0 {
+                    target.temp_damage = target.temp_damage - 1
+                    emit TempDamageHealed(target: target, amount: 1)
+                }
             }
         }
     }
