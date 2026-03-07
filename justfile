@@ -17,16 +17,19 @@ fmt-check:
 clippy:
     cargo clippy --workspace --all-targets
 
-# Run the test suite
-test:
+# Run all tests (Rust + .ttrpg-cli scripts)
+test: test-rust test-scripts
+
+# Run the Rust test suite
+test-rust:
     cargo test --workspace
 
 # Type-check without codegen
 check:
     cargo check --workspace --all-targets
 
-# Full CI-equivalent check: format, clippy, test, scripts
-all: fmt-check clippy test test-scripts
+# Full CI-equivalent check: format, clippy, test
+all: fmt-check clippy test
 
 # Run clippy and auto-fix what it can
 fix:
