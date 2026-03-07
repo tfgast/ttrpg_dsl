@@ -1242,18 +1242,66 @@ spawn Character grap_atk { name: "Grappler", classes: [ClassLevel { class: Fight
 spawn Character grap_tgt { name: "GrapTarget", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 } }
 
 // Hit: roll 10 (to-hit), roll 5 (d8) → Waist Lock. 4 temp, 1 real.
+// Both sides get Grappling condition: attacker (WaistLock, controlling),
+// target (LegHold, inferior).
 rolls clear
 rolls 10 5
 do GrapplingAttack(grap_atk, grap_tgt, 120, 120)
 assert_eq grap_tgt.temp_damage, 4
 assert_eq grap_tgt.hp, 19
+assert_condition grap_atk, Grappling
+assert_condition grap_tgt, Grappling
 
 // Miss: roll 1 (natural 1 always misses). No damage.
+// Existing Grappling conditions remain (miss doesn't change state).
 rolls clear
 rolls 1
 do GrapplingAttack(grap_atk, grap_tgt, 120, 120)
 assert_eq grap_tgt.temp_damage, 4
 assert_eq grap_tgt.hp, 19
+assert_condition grap_atk, Grappling
+assert_condition grap_tgt, Grappling
+
+// ── MaintainGrapplingHold action ─────────────────────────────
+// Maintaining a hold re-inflicts the same damage as the initial hold.
+// Hold roll 5 → 4 temp, 1 real (same as WaistLock above).
+// Prior state: grap_tgt has 4 temp, hp 19.
+do MaintainGrapplingHold(grap_atk, grap_tgt, GrapplingHold.WaistLock, 5)
+assert_eq grap_tgt.temp_damage, 8
+assert_eq grap_tgt.hp, 18
+assert_condition grap_atk, Grappling
+assert_condition grap_tgt, Grappling
+
+// ── DisengageGrapple action ──────────────────────────────────
+// Voluntary disengage removes Grappling from both sides.
+do DisengageGrapple(grap_atk, grap_tgt)
+assert_no_condition grap_atk, Grappling
+assert_no_condition grap_tgt, Grappling
+
+// ── GrapplingAttack hold replacement ─────────────────────────
+// New grappling attack replaces old holds. Re-establish grapple,
+// then attack again with a different result.
+// First attack: roll 10 (to-hit), roll 3 (d8) → ArmGrab. 2 temp, 1 real.
+spawn Character grap_atk2 { name: "Grappler2", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 } }
+spawn Character grap_tgt2 { name: "GrapTarget2", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 } }
+
+rolls clear
+rolls 10 3
+do GrapplingAttack(grap_atk2, grap_tgt2, 120, 120)
+assert_condition grap_atk2, Grappling
+assert_condition grap_tgt2, Grappling
+assert_eq grap_tgt2.temp_damage, 2
+assert_eq grap_tgt2.hp, 19
+
+// Second attack: roll 10 (to-hit), roll 8 (d8) → HeadLock.
+// Old holds removed, new holds applied. 6 temp, 2 real.
+rolls clear
+rolls 10 8
+do GrapplingAttack(grap_atk2, grap_tgt2, 120, 120)
+assert_condition grap_atk2, Grappling
+assert_condition grap_tgt2, Grappling
+assert_eq grap_tgt2.temp_damage, 8
+assert_eq grap_tgt2.hp, 17
 
 
 // ── Fend-off mechanic (§1.6.12, First Step) ──────────────────

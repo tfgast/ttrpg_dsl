@@ -121,6 +121,28 @@ system "OSRIC Combat" {
 
     event GrapplingMiss(attacker: entity, target: entity) {}
 
+    event GrapplingHoldEstablished(
+        attacker: entity,
+        target: entity,
+        attacker_hold: GrapplingHold,
+        defender_hold: GrapplingHold,
+        attacker_roll: int,
+        defender_roll: int
+    ) {}
+
+    event GrapplingHoldMaintained(
+        attacker: entity,
+        target: entity,
+        hold: GrapplingHold,
+        temp_damage: int,
+        real_damage: int
+    ) {}
+
+    event GrapplingDisengaged(
+        initiator: entity,
+        opponent: entity
+    ) {}
+
     event OverbearingHit(
         attacker: entity,
         target: entity,
@@ -1409,10 +1431,12 @@ system "OSRIC Combat" {
         }
     }
 
-    // Grappling attack action. Applies temporary and real damage
-    // from the grappling results table. Does not yet track hold
-    // state (controlling/inferior) — that requires the grappling
-    // hold state tracking system (tdsl-3g4q).
+    // Grappling attack action. Resolves grappling to-hit and
+    // result table, applies damage, and establishes hold state
+    // via the parameterized Grappling condition on both sides.
+    // Attacker gets the controlling hold; target gets inferior.
+    // Any existing Grappling conditions are removed first
+    // (new attack replaces old hold). Per §1.6.12.
     action GrapplingAttack on attacker: Character (
         target: entity,
         attacker_move: int,
@@ -1435,6 +1459,31 @@ system "OSRIC Combat" {
                     if result.real_damage > 0 {
                         target.TakeDamage(attacker, result.real_damage, DamageType.Blunt)
                     }
+
+                    // Determine both sides' holds from the same roll.
+                    let atk_hold = grappling_controlling_hold(result.modified_roll)
+                    let def_hold = grappling_inferior_hold(result.modified_roll)
+
+                    // Remove existing Grappling conditions before applying new.
+                    // Note: removes ALL Grappling on each entity (fine for 1v1;
+                    // multi-opponent pile-on needs targeted removal).
+                    remove_condition(attacker, "Grappling")
+                    remove_condition(target, "Grappling")
+
+                    // Apply hold state to both sides.
+                    apply_condition(attacker, Grappling(
+                        opponent: target,
+                        hold: atk_hold,
+                        is_controlling: true,
+                        hold_roll: result.modified_roll
+                    ), Duration.Indefinite)
+                    apply_condition(target, Grappling(
+                        opponent: attacker,
+                        hold: def_hold,
+                        is_controlling: false,
+                        hold_roll: result.modified_roll
+                    ), Duration.Indefinite)
+
                     emit GrapplingHit(
                         attacker: attacker,
                         target: target,
@@ -1443,11 +1492,66 @@ system "OSRIC Combat" {
                         real_damage: result.real_damage,
                         modified_roll: result.modified_roll
                     )
+                    emit GrapplingHoldEstablished(
+                        attacker: attacker,
+                        target: target,
+                        attacker_hold: atk_hold,
+                        defender_hold: def_hold,
+                        attacker_roll: result.modified_roll,
+                        defender_roll: result.modified_roll
+                    )
                 },
                 _ => {
                     emit GrapplingMiss(attacker: attacker, target: target)
                 }
             }
+        }
+    }
+
+    // Maintain an existing grappling hold for another round.
+    // Re-inflicts the same damage as the initial hold without
+    // a new attack roll. Caller provides hold info from the
+    // bearer's current Grappling condition. Per §1.6.12.
+    action MaintainGrapplingHold on attacker: Character (
+        target: entity,
+        hold: GrapplingHold,
+        hold_roll: int
+    ) {
+        cost { attack }
+        resolve {
+            let temp = grappling_temp_damage(hold_roll)
+            let real = grappling_real_damage(hold_roll)
+            if temp > 0 {
+                target.TakeTempDamage(attacker, temp)
+            }
+            if real > 0 {
+                target.TakeDamage(attacker, real, DamageType.Blunt)
+            }
+            emit GrapplingHoldMaintained(
+                attacker: attacker,
+                target: target,
+                hold: hold,
+                temp_damage: temp,
+                real_damage: real
+            )
+        }
+    }
+
+    // Voluntarily disengage from a grapple. Removes Grappling
+    // conditions from both the initiator and their opponent.
+    // Note: removes ALL Grappling conditions on each entity
+    // (multi-opponent pile-on needs targeted removal).
+    // Per §1.6.12.
+    action DisengageGrapple on initiator: Character (
+        opponent: entity
+    ) {
+        resolve {
+            remove_condition(initiator, "Grappling")
+            remove_condition(opponent, "Grappling")
+            emit GrapplingDisengaged(
+                initiator: initiator,
+                opponent: opponent
+            )
         }
     }
 

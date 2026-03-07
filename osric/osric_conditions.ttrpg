@@ -393,19 +393,41 @@ system "OSRIC Conditions" {
 
 
     // ========================================================
-    //  GRAPPLING (§1.6.10.7)
+    //  GRAPPLING (§1.6.10.7 / §1.6.12)
     //
     //  Character is in physical close contact (unarmed melee).
-    //  Restrictions: (1) cannot try unarmed fend-off attacks,
-    //  (2) cannot cast spells, (3) can only attack with
-    //  dagger-length or smaller weapons (including natural
-    //  weapons like claws). Ordinary Melee Combat restrictions
-    //  still apply. Bearer's attacks are NOT suppressed — they
-    //  can still fight with eligible weapons.
-    //  Per 1.6.10.7.
+    //  Tracks hold state across rounds: who has the controlling
+    //  hold (highest initial die roll), hold type, and opponent.
+    //
+    //  Parameters:
+    //    opponent       — the other combatant in this grapple
+    //    hold           — type of hold (ArmGrab, RearChoke, etc.)
+    //    is_controlling — true if bearer has the controlling hold
+    //    hold_roll      — modified d8 roll that determined this hold
+    //
+    //  Restrictions enforced at the action level:
+    //    (1) cannot try unarmed fend-off attacks
+    //    (2) cannot cast spells
+    //    (3) can only attack with dagger-length or smaller weapons
+    //        (including natural weapons like claws)
+    //  Bearer's attacks are NOT suppressed — they can still
+    //  fight with eligible weapons. Per 1.6.10.7.
+    //
+    //  Hold-specific effects (controlling only):
+    //    RearChoke   — suppresses speech and alarm
+    //    ArmGrab     — may attempt disarm (save vs paralysis)
+    //    WaistLock/ArmLock/HeadLock — can disengage + prone
+    //    DecisiveThrow — breaks all existing holds
+    //  Inferior holds inflict damage only, no special effects.
+    //  Per §1.6.12, Table 1.6.12c.
     // ========================================================
 
-    condition Grappling on bearer: entity {}
+    condition Grappling(
+        opponent: entity,
+        hold: GrapplingHold,
+        is_controlling: bool,
+        hold_roll: int
+    ) on bearer: entity {}
 
 
     // ========================================================

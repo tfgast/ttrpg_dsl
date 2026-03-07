@@ -120,7 +120,6 @@ fn osric_conditions_simple_have_no_params() {
         "Blinded",
         "Confused",
         "Deafened",
-        "Grappling",
         "Overborne",
     ];
 
