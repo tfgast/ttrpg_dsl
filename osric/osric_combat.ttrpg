@@ -636,9 +636,10 @@ system "OSRIC Combat" {
     // ========================================================
     //  TEMPORARY DAMAGE (Unarmed Combat §1.6.12)
     //
-    //  Brawling and other unarmed attacks deal temporary damage.
+    //  Grappling and overbearing attacks deal temporary damage.
     //  Temp damage heals at 1 HP/round. If temp_damage exceeds
     //  remaining HP the target is knocked out (unconscious).
+    //  Note: Brawling uses normal damage, not temporary (PG p105).
     // ========================================================
 
     // Apply temporary damage to a character. Does not reduce HP
@@ -823,6 +824,69 @@ system "OSRIC Combat" {
             attacker_mod: atk_mod,
             defender_mod: def_mod,
             effective_target: effective
+        }
+    }
+
+
+    // ========================================================
+    //  BRAWLING ATTACK (§1.6.12, PG p105)
+    //
+    //  Default unarmed attack: normal attack roll (BTHB system)
+    //  for 1d2 normal damage (Blunt). All characters are
+    //  automatically proficient. Does not use the unarmed
+    //  to-hit table (that's for grappling/overbearing).
+    // ========================================================
+
+    // Resolve a brawling attack using the standard BTHB system.
+    // Uses FistOrKick weapon def (1d2, Blunt). No proficiency needed.
+    mechanic resolve_brawling_attack(
+        attacker: Character,
+        target: entity,
+        attack_mod: int = 0,
+        roll_mode: RollMode = RollMode.Normal,
+        max_damage: bool = false
+    ) -> AttackResult #attack_resolution {
+        let bthb_val = character_bthb(attacker)
+        let str_hit = effective_str_to_hit(attacker)
+        let target_ac = effective_target_ac(target)
+        let total_mod = bthb_val + str_hit + attack_mod
+        let outcome = match roll_mode {
+            RollMode.AutoHit => AttackOutcome.Hit,
+            _ => attack_roll_aac(total_mod, target_ac)
+        }
+
+        let wdef = melee_weapon_def(FistOrKick)
+        let tgt_size = target_size(target)
+        let dmg_dice = if tgt_size > Size.Medium { wdef.damage_l } else { wdef.damage_sm }
+        let str_dmg = effective_str_damage(attacker)
+
+        let damage = match outcome {
+            AttackOutcome.Hit => {
+                if max_damage {
+                    max(1, max_value(dmg_dice) + str_dmg)
+                } else {
+                    damage_roll(dmg_dice, str_dmg)
+                }
+            },
+            _ => 0
+        }
+
+        AttackResult { outcome: outcome, total_mod: total_mod, damage: damage }
+    }
+
+    // Brawling: unarmed attack with fist, foot, or pommel.
+    // Normal combat action — uses standard attack roll, deals normal damage.
+    // Always available (no weapon required, auto-proficient).
+    action BrawlingAttack on attacker: Character (target: entity) {
+        cost { attack }
+        resolve {
+            let result = resolve_brawling_attack(attacker, target)
+            match result.outcome {
+                AttackOutcome.Hit => {
+                    target.TakeDamage(attacker, result.damage, DamageType.Blunt)
+                },
+                _ => {}
+            }
         }
     }
 
