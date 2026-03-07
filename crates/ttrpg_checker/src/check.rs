@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use rustc_hash::FxHashMap;
 use ttrpg_ast::ast::*;
 use ttrpg_ast::diagnostic::Diagnostic;
 use ttrpg_ast::module::ModuleMap;
@@ -50,6 +51,8 @@ pub struct Checker<'a> {
     pub selector_matches: SelectorMatchMap,
     /// Current expression nesting depth (guards against stack overflow).
     pub(crate) expr_depth: usize,
+    /// Inferred const types (for unannotated consts). Transferred to TypeEnv after checking.
+    pub inferred_const_types: FxHashMap<Name, Ty>,
 }
 
 impl<'a> Checker<'a> {
@@ -65,6 +68,7 @@ impl<'a> Checker<'a> {
             resolved_lvalue_aliases: HashMap::new(),
             selector_matches: HashMap::new(),
             expr_depth: 0,
+            inferred_const_types: FxHashMap::default(),
         }
     }
 
@@ -295,12 +299,45 @@ impl<'a> Checker<'a> {
             DeclKind::Table(t) => self.check_table(t),
             DeclKind::Unit(u) => self.check_unit_defaults(u),
             DeclKind::Tag(_) => {} // Validated during collection
+            DeclKind::Const(c) => self.check_const(c),
             DeclKind::Move(_) => {
                 self.error(
                     "move declarations must be lowered before type-checking",
                     decl.span,
                 );
             }
+        }
+    }
+
+    fn check_const(&mut self, c: &ttrpg_ast::ast::ConstDecl) {
+        // Use Derive scope — no dice, no mutation, pure expressions only
+        self.scope.push(BlockKind::Derive);
+        let value_ty = self.check_expr(&c.value);
+        self.scope.pop();
+
+        let final_ty = if let Some(ref ty_expr) = c.ty {
+            self.check_type_visible(ty_expr);
+            let declared_ty = self.env.resolve_type(ty_expr);
+            if !value_ty.is_error()
+                && !declared_ty.is_error()
+                && !self.types_compatible(&value_ty, &declared_ty)
+            {
+                self.error(
+                    format!(
+                        "const `{}` declared as {} but value has type {}",
+                        c.name, declared_ty, value_ty
+                    ),
+                    c.value.span,
+                );
+            }
+            declared_ty
+        } else {
+            value_ty
+        };
+
+        // Store inferred type for transfer to TypeEnv later
+        if !final_ty.is_error() {
+            self.inferred_const_types.insert(c.name.clone(), final_ty);
         }
     }
 

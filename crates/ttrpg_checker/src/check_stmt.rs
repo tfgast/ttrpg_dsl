@@ -168,6 +168,16 @@ impl Checker<'_> {
         value: &Spanned<ExprKind>,
         span: ttrpg_ast::Span,
     ) {
+        // Reject assignment to const names
+        if self.env.consts.contains_key(&target.root) || self.inferred_const_types.contains_key(&target.root) {
+            self.error(
+                format!("cannot assign to const `{}`", target.root),
+                span,
+            );
+            self.check_expr(value);
+            return;
+        }
+
         if target.segments.is_empty() {
             // The implicit `turn` binding is mutable for field mutation
             // (turn.actions -= 1), but direct reassignment (turn = ...) is not allowed.

@@ -442,6 +442,12 @@ fn pass_1b(
                     collect_unit(u, env, diagnostics, decl.span);
                 }
             }
+            DeclKind::Const(c) => {
+                if check_reserved_prefix(&c.name, decl.span, diagnostics) {
+                    continue;
+                }
+                collect_const(c, env, diagnostics, decl.span);
+            }
             DeclKind::Move(_) => {
                 diagnostics.push(Diagnostic::error(
                     "move declarations must be lowered before type-checking",
@@ -835,6 +841,40 @@ fn collect_unit(
         info.fields = vec![field_info];
         info.suffix.clone_from(&u.suffix);
     }
+}
+
+fn collect_const(
+    c: &ttrpg_ast::ast::ConstDecl,
+    env: &mut TypeEnv,
+    diagnostics: &mut Vec<Diagnostic>,
+    span: Span,
+) {
+    // Check for name conflicts with functions
+    if env.functions.contains_key(&c.name) {
+        diagnostics.push(Diagnostic::error(
+            format!("const `{}` conflicts with existing function/derive/mechanic", c.name),
+            span,
+        ));
+        return;
+    }
+
+    // Check for duplicate const names
+    if env.consts.contains_key(&c.name) {
+        diagnostics.push(Diagnostic::error(
+            format!("duplicate const declaration `{}`", c.name),
+            span,
+        ));
+        return;
+    }
+
+    // Resolve type annotation if present; otherwise defer to check pass
+    let ty = if let Some(ref ty_expr) = c.ty {
+        env.resolve_type_validated(ty_expr, diagnostics)
+    } else {
+        Ty::Error // Will be inferred during check pass
+    };
+
+    env.consts.insert(c.name.clone(), ty);
 }
 
 #[allow(clippy::too_many_arguments)]

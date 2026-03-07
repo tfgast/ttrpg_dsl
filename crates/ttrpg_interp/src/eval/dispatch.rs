@@ -299,7 +299,18 @@ fn eval_ident(env: &mut Env, name: &str, expr: &Spanned<ExprKind>) -> Result<Val
         return Ok(val.clone());
     }
 
-    // 2. Check if it's a bare enum variant name
+    // 2. Check if it's a named const (lazy evaluation)
+    if let Some(val) = env.interp.consts.borrow().get(name).cloned() {
+        return Ok(val);
+    }
+    if let Some(const_decl) = env.interp.program.consts.get(name) {
+        let const_decl = const_decl.clone();
+        let val = eval_expr(env, &const_decl.value)?;
+        env.interp.consts.borrow_mut().insert(Name::from(name), val.clone());
+        return Ok(val);
+    }
+
+    // 3. Check if it's a bare enum variant name
     //    Use the resolution table (populated by the checker) first, then fall back to
     //    unique_variant_owner for CLI eval expressions that weren't checker-resolved.
     let resolved = env

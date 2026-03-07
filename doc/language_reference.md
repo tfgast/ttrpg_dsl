@@ -135,6 +135,21 @@ tag #concentration
 
 Applied on declarations: `action CastBless ... #concentration { ... }`
 
+### Const
+
+Named compile-time constant. Pure expression (same restrictions as derive — no dice, no mutation).
+
+```
+const MAX_LEVEL = 20
+const BASE_THAC0: int = 20
+const STATS = [10, 12, 14]
+```
+
+- Optional type annotation: `const NAME: Type = expr`
+- Value can be any pure expression: literals, arithmetic, struct literals, enum variants, list/map literals, references to other consts
+- Assignment to a const is a compile error
+- Consts share the function namespace (no const and derive with the same name)
+
 ### Table
 
 Static lookup declaration with pattern-matching keys.

@@ -351,6 +351,9 @@ impl DeclOwnership {
             DeclKind::Tag(t) => {
                 names.push((Namespace::Tag, t.name.clone()));
             }
+            DeclKind::Const(c) => {
+                names.push((Namespace::Function, c.name.clone()));
+            }
         }
         Self {
             names,
@@ -635,6 +638,11 @@ fn desugar_decl_types(
         }
         DeclKind::Move(_) => {}
         DeclKind::Tag(_) => {}
+        DeclKind::Const(c) => {
+            if let Some(ref mut ty) = c.ty {
+                desugar_type_expr(ty, current_system, aliases, module_map, diagnostics);
+            }
+        }
     }
 }
 

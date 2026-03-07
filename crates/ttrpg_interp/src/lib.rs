@@ -114,6 +114,8 @@ pub struct Interpreter<'p> {
     pub(crate) program: &'p Program,
     next_invocation_id: Cell<u64>,
     pub(crate) coverage: Option<Rc<RefCell<coverage::CoverageData>>>,
+    /// Lazily evaluated const values, populated on first access.
+    pub(crate) consts: RefCell<FxHashMap<Name, Value>>,
 }
 
 impl<'p> Interpreter<'p> {
@@ -142,6 +144,7 @@ impl<'p> Interpreter<'p> {
             program,
             next_invocation_id: Cell::new(1),
             coverage: None,
+            consts: RefCell::new(FxHashMap::default()),
         })
     }
 

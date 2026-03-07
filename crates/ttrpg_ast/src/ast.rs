@@ -25,6 +25,7 @@ pub struct Program {
     pub functions: FxHashMap<Name, FnDecl>,
     pub tables: FxHashMap<Name, TableDecl>,
     pub tags: FxHashSet<Name>,
+    pub consts: FxHashMap<Name, ConstDecl>,
     pub next_modify_clause_id: u32,
 }
 
@@ -48,6 +49,7 @@ impl Program {
         self.hook_order.clear();
         self.tables.clear();
         self.tags.clear();
+        self.consts.clear();
         self.next_modify_clause_id = 0;
 
         for item in &mut self.items {
@@ -111,6 +113,9 @@ impl Program {
                         DeclKind::Table(t) => {
                             self.tables.insert(t.name.clone(), t.clone());
                         }
+                        DeclKind::Const(c) => {
+                            self.consts.insert(c.name.clone(), c.clone());
+                        }
                         _ => {}
                     }
                 }
@@ -164,6 +169,7 @@ pub enum DeclKind {
     Move(MoveDecl),
     Table(TableDecl),
     Unit(UnitDecl),
+    Const(ConstDecl),
 }
 
 #[derive(Clone)]
@@ -889,6 +895,20 @@ pub struct UnitDecl {
     pub name: Name,
     pub suffix: Option<String>,
     pub fields: Vec<FieldDef>,
+}
+
+/// A `const` declaration: a named compile-time constant value.
+///
+/// Syntax:
+///   const NAME = expr
+///   const NAME: Type = expr
+#[derive(Clone)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct ConstDecl {
+    pub name: Name,
+    pub ty: Option<Spanned<TypeExpr>>,
+    pub value: Spanned<ExprKind>,
+    pub span: Span,
 }
 
 // ── Types ────────────────────────────────────────────────────────

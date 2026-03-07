@@ -23,6 +23,7 @@
 
 **Decision tree:**
 
+- Named constant value (no body needed)? → **const**
 - Static lookup / mapping data? → **table**
 - Pure computation, no dice? → **derive**
 - Needs dice, no mutation? → **mechanic**
@@ -554,6 +555,19 @@ event Damaged(target: Character, attacker: Character) {
 tag #concentration
 tag #ranged
 ```
+
+### Const
+
+Named compile-time constants. Pure expressions only (no dice, no mutation).
+Useful for magic numbers, struct literal boilerplate, and enum defaults.
+
+```ttrpg
+const MAX_LEVEL = 20
+const BASE_THAC0: int = 20
+const STATS = [10, 12, 14]
+```
+
+Consts can reference other consts and use arithmetic, struct literals, enum variants, and list/map literals. Assignment to a const is an error.
 
 ### Prompt
 

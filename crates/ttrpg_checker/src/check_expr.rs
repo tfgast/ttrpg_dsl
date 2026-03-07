@@ -162,6 +162,13 @@ impl Checker<'_> {
             return binding.ty.clone();
         }
 
+        // Check if it's a const
+        let const_ty = self.inferred_const_types.get(name).or_else(|| self.env.consts.get(name)).cloned();
+        if let Some(ty) = const_ty {
+            self.check_name_visible(name, Namespace::Function, span);
+            return ty;
+        }
+
         // Check if it's an enum variant (may be unique or ambiguous)
         if let Some(enum_name) = self.resolve_bare_variant_with_hint(name, span, hint) {
             // Only bare (no-payload) variants can be used as identifiers

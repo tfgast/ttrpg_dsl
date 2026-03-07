@@ -25,6 +25,7 @@ impl Parser {
                 "table" => self.parse_table_decl().map(DeclKind::Table),
                 "unit" => self.parse_unit_decl().map(DeclKind::Unit),
                 "tag" => self.parse_tag_decl().map(DeclKind::Tag),
+                "const" => self.parse_const_decl().map(DeclKind::Const),
                 _ => {
                     self.error(format!(
                         "unexpected identifier '{name}' in declaration position"
@@ -459,6 +460,30 @@ impl Parser {
         let (name, _) = self.expect_ident()?;
         self.expect_term()?;
         Ok(TagDecl { name })
+    }
+
+    fn parse_const_decl(&mut self) -> Result<ConstDecl, ()> {
+        let start = self.start_span();
+        self.expect_soft_keyword("const")?;
+        let (name, _) = self.expect_ident()?;
+
+        let ty = if matches!(self.peek(), TokenKind::Colon) {
+            self.advance();
+            Some(self.parse_type()?)
+        } else {
+            None
+        };
+
+        self.expect(&TokenKind::Eq)?;
+        let value = self.parse_expr()?;
+        self.expect_term()?;
+
+        Ok(ConstDecl {
+            name,
+            ty,
+            value,
+            span: self.end_span(start),
+        })
     }
 
     pub(crate) fn parse_params(&mut self) -> Result<Vec<Param>, ()> {

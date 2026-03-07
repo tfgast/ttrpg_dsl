@@ -109,6 +109,7 @@ impl VisitSpansMut for DeclKind {
             DeclKind::Move(m) => m.visit_spans_mut(f),
             DeclKind::Table(t) => t.visit_spans_mut(f),
             DeclKind::Unit(u) => u.visit_spans_mut(f),
+            DeclKind::Const(c) => c.visit_spans_mut(f),
         }
     }
 }
@@ -422,6 +423,14 @@ impl VisitSpansMut for TableKey {
 impl VisitSpansMut for UnitDecl {
     fn visit_spans_mut(&mut self, f: &mut dyn FnMut(&mut Span)) {
         self.fields.visit_spans_mut(f);
+    }
+}
+
+impl VisitSpansMut for ConstDecl {
+    fn visit_spans_mut(&mut self, f: &mut dyn FnMut(&mut Span)) {
+        self.span.visit_spans_mut(f);
+        self.ty.visit_spans_mut(f);
+        self.value.visit_spans_mut(f);
     }
 }
 

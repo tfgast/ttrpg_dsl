@@ -176,6 +176,12 @@ pub struct TypeEnv {
     pub trigger_index: FxHashMap<Name, Vec<Name>>,
 
     // ── Tag / selector data ─────────────────────────────────────────
+    // ── Const data ────────────────────────────────────────────────
+    /// Const name → resolved type.
+    pub consts: FxHashMap<Name, Ty>,
+    /// Const name → owning system.
+    pub const_owner: FxHashMap<Name, Name>,
+
     /// Declared tag names.
     pub tags: FxHashSet<Name>,
     /// Tag → owning system name.
@@ -229,6 +235,8 @@ impl TypeEnv {
             system_aliases: FxHashMap::default(),
             action_overloads: FxHashMap::default(),
             trigger_index: FxHashMap::default(),
+            consts: FxHashMap::default(),
+            const_owner: FxHashMap::default(),
             tags: FxHashSet::default(),
             tag_owner: FxHashMap::default(),
             selector_matches: HashMap::new(),
