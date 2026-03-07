@@ -911,7 +911,14 @@ impl Parser {
             if self.at_ident("modify") {
                 clauses.push(ConditionClause::Modify(self.parse_modify_clause()?));
             } else if self.at_ident("suppress") {
-                clauses.push(ConditionClause::Suppress(self.parse_suppress_clause()?));
+                // Disambiguate: suppress [selector](...) vs suppress event_name(...)
+                if matches!(self.peek_at(1), TokenKind::LBracket) {
+                    clauses.push(ConditionClause::SuppressModify(
+                        self.parse_suppress_modify_clause()?,
+                    ));
+                } else {
+                    clauses.push(ConditionClause::Suppress(self.parse_suppress_clause()?));
+                }
             } else if self.at_ident("on_apply") {
                 if seen_on_apply {
                     self.error("duplicate on_apply block in condition");
@@ -1313,6 +1320,42 @@ impl Parser {
         self.expect_term()?;
         Ok(SuppressClause {
             event_name,
+            bindings,
+            span: self.end_span(start),
+        })
+    }
+
+    fn parse_suppress_modify_clause(&mut self) -> Result<SuppressModifyClause, ()> {
+        let start = self.start_span();
+        self.expect_soft_keyword("suppress")?;
+        self.expect(&TokenKind::LBracket)?;
+        let mut predicates = Vec::new();
+        predicates.push(self.parse_selector_predicate()?);
+        while matches!(self.peek(), TokenKind::Comma) {
+            self.advance();
+            if matches!(self.peek(), TokenKind::RBracket) {
+                break;
+            }
+            predicates.push(self.parse_selector_predicate()?);
+        }
+        self.expect(&TokenKind::RBracket)?;
+
+        let bindings = if matches!(self.peek(), TokenKind::LParen) {
+            self.expect(&TokenKind::LParen)?;
+            let b = if matches!(self.peek(), TokenKind::RParen) {
+                Vec::new()
+            } else {
+                self.parse_modify_bindings()?
+            };
+            self.expect(&TokenKind::RParen)?;
+            b
+        } else {
+            Vec::new()
+        };
+        self.expect_term()?;
+
+        Ok(SuppressModifyClause {
+            predicates,
             bindings,
             span: self.end_span(start),
         })
