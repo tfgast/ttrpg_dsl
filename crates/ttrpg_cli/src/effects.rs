@@ -1689,6 +1689,6 @@ mod tests {
     #[test]
     fn prompt_loop_float_input() {
         let (result, _) = run_prompt_loop("2.5\n", &Ty::Float, None);
-        assert!(matches!(result, PromptOutcome::Value(Value::Float(f)) if f == 2.5));
+        assert!(matches!(result, PromptOutcome::Value(Value::Float(f)) if (f - 2.5).abs() < f64::EPSILON));
     }
 }
