@@ -318,18 +318,24 @@ Always fires, no cost, not suppressible.
 
 ```
 condition Prone on bearer: Character {
-    modify attack_roll(attacker: bearer) {
+    modify attack_roll(attacker: bearer) #position #penalty {
         mode = disadvantage                          // phase 1: pre-call
     }
-    modify initial_budget(actor: bearer) {
+    modify initial_budget(actor: bearer) #position {
         result.movement = floor(bearer.speed / 2)    // phase 2: post-call
     }
     suppress opportunity_attack(entity: bearer)
+}
+
+condition FreedomOfMovement on bearer: Character {
+    suppress [#position](attacker: bearer)           // suppress all #position modifiers
 }
 ```
 
 Modify targets: name, `[#tag]`, `[returns Type]`, `[has param: Type?]`
 Cost modify: `modify Dash.cost(actor: bearer) { cost = bonus_action }`
+Modify tags: `modify attack_roll(attacker: bearer) #position #penalty { ... }`
+Suppress-modify: `suppress [#position](attacker: bearer)` — suppress all modify clauses matching the selector
 
 #### Lifecycle Hooks (on_apply / on_remove)
 

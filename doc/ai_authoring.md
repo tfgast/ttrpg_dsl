@@ -788,6 +788,9 @@ mechanic d20_check(
 ### Condition with Modify (advantage/disadvantage)
 
 ```ttrpg-with-preamble
+tag position
+tag penalty
+
 mechanic attack_roll(
     attacker: Character,
     target: Character,
@@ -802,13 +805,48 @@ mechanic attack_roll(
 }
 
 condition Prone on bearer: Character {
-    modify attack_roll(attacker: bearer) {
+    modify attack_roll(attacker: bearer) #position #penalty {
         mode = disadvantage
     }
-    modify initial_budget(actor: bearer) {
+    modify initial_budget(actor: bearer) #position {
         result.movement = floor(bearer.speed / 2)
     }
 }
+```
+
+### Tags on Modify Clauses and Suppress-Modify
+
+Tags annotate modify clauses for provenance tracking and targeted suppression.
+Place `#tag` annotations after bindings, before the opening brace.
+Tags must be declared with `tag` declarations.
+
+```ttrpg-with-preamble
+tag position
+tag fear
+
+derive attack_roll(attacker: Character, attack_mod: int = 0) -> int #position {
+    attack_mod
+}
+
+condition Frightened(source: Character) on bearer: Character {
+    modify attack_roll(attacker: bearer) #fear {
+        attack_mod = attack_mod - 2
+    }
+}
+
+condition FreedomOfMovement on bearer: Character {
+    suppress [#position](attacker: bearer)    // suppress all #position modifiers
+}
+```
+
+`suppress [selector](bindings)` suppresses modify clauses matching the selector.
+Selector predicates: `#tag`, `returns Type`, `has param: Type`.
+Bindings are optional — omitting them suppresses all matching modifiers regardless of entity.
+
+Use the REPL `breakdown` command to inspect which modifiers were applied:
+```
+breakdown attack_roll(fighter, goblin)
+```
 ```
 
 ### Cost Modification (CunningAction pattern)

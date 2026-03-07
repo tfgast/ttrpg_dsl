@@ -101,6 +101,7 @@ Resource fields auto-clamp to bounds on `set`.
 |-------------------------------|------------------------------------------|
 | `do <expr>`                   | Evaluate expression for side effects     |
 | `call <func>(args)`           | Call a derive or mechanic                |
+| `breakdown <expr>`            | Show modify provenance for a call        |
 | `let <name> = <expr>`         | Bind result to a variable                |
 
 `do` evaluates any expression and prints the result. It supports both
@@ -112,6 +113,13 @@ do fighter.Attack(goblin)
 do CastBless(caster, [fighter, rogue])
 call modifier(16)
 call attack_roll(5)
+```
+
+`breakdown` evaluates an expression and shows all modifiers that were applied,
+including their source (condition/option), tags, phase, and parameter changes:
+
+```
+breakdown attack_roll(fighter, goblin)
 ```
 
 `let` captures the result for use in later assertions:
