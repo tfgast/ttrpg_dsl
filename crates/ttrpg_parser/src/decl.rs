@@ -33,7 +33,7 @@ impl Parser {
                 }
             },
             _ => {
-                self.error(format!("expected declaration, found {:?}", self.peek()));
+                self.error(format!("expected declaration, found {}", self.peek()));
                 Err(())
             }
         }
@@ -353,9 +353,17 @@ impl Parser {
     // ── Derive / Mechanic ────────────────────────────────────────
 
     fn parse_function_decl(&mut self) -> Result<FnDecl, ()> {
+        const HELP: &str = "syntax: function <name>(<params>) [-> <type>] { <body> }";
         self.expect_soft_keyword("function")?;
         let (name, _) = self.expect_ident()?;
-        self.expect(&TokenKind::LParen)?;
+        if !self.at(&TokenKind::LParen) {
+            self.error_with_help(
+                format!("expected `(` after function name `{name}`, found {}", self.peek()),
+                HELP,
+            );
+            return Err(());
+        }
+        self.advance();
         let params = self.parse_params()?;
         self.expect(&TokenKind::RParen)?;
 
@@ -392,20 +400,35 @@ impl Parser {
 
     fn parse_derive_decl(&mut self) -> Result<FnDecl, ()> {
         self.expect_soft_keyword("derive")?;
-        self.parse_fn_body()
+        self.parse_fn_body("derive")
     }
 
     fn parse_mechanic_decl(&mut self) -> Result<FnDecl, ()> {
         self.expect_soft_keyword("mechanic")?;
-        self.parse_fn_body()
+        self.parse_fn_body("mechanic")
     }
 
-    fn parse_fn_body(&mut self) -> Result<FnDecl, ()> {
+    fn parse_fn_body(&mut self, keyword: &str) -> Result<FnDecl, ()> {
+        let help = format!("syntax: {keyword} <name>(<params>) -> <type> {{ <body> }}");
         let (name, _) = self.expect_ident()?;
-        self.expect(&TokenKind::LParen)?;
+        if !self.at(&TokenKind::LParen) {
+            self.error_with_help(
+                format!("expected `(` after {keyword} name `{name}`, found {}", self.peek()),
+                &help,
+            );
+            return Err(());
+        }
+        self.advance();
         let params = self.parse_params()?;
         self.expect(&TokenKind::RParen)?;
-        self.expect(&TokenKind::Arrow)?;
+        if !self.at(&TokenKind::Arrow) {
+            self.error_with_help(
+                format!("expected `->` after {keyword} parameters, found {}", self.peek()),
+                &help,
+            );
+            return Err(());
+        }
+        self.advance();
         let return_type = self.parse_type()?;
 
         // Parse tag annotations: #tag1 #tag2 ... before the body block
@@ -575,14 +598,37 @@ impl Parser {
     // ── Action ───────────────────────────────────────────────────
 
     fn parse_action_decl(&mut self) -> Result<ActionDecl, ()> {
+        const HELP: &str =
+            "syntax: action <name> on <self>: <Type>(<params>) { cost {...} requires {...} resolve {...} }";
         self.expect_soft_keyword("action")?;
         let (name, _) = self.expect_ident()?;
-        self.expect_soft_keyword("on")?;
+        if !self.at_ident("on") {
+            self.error_with_help(
+                format!("expected `on` after action name `{name}`, found {}", self.peek()),
+                HELP,
+            );
+            return Err(());
+        }
+        self.advance();
         let (receiver_name, _) = self.expect_ident()?;
-        self.expect(&TokenKind::Colon)?;
+        if !self.at(&TokenKind::Colon) {
+            self.error_with_help(
+                format!("expected `:` after receiver name `{receiver_name}`, found {}", self.peek()),
+                HELP,
+            );
+            return Err(());
+        }
+        self.advance();
         let receiver_type = self.parse_type()?;
         let receiver_with_groups = self.parse_with_groups()?;
-        self.expect(&TokenKind::LParen)?;
+        if !self.at(&TokenKind::LParen) {
+            self.error_with_help(
+                format!("expected `(` for action parameters, found {}", self.peek()),
+                HELP,
+            );
+            return Err(());
+        }
+        self.advance();
         let params = self.parse_params()?;
         self.expect(&TokenKind::RParen)?;
 
@@ -718,14 +764,37 @@ impl Parser {
     // ── Reaction ─────────────────────────────────────────────────
 
     fn parse_reaction_decl(&mut self) -> Result<ReactionDecl, ()> {
+        const HELP: &str =
+            "syntax: reaction <name> on <self>: <Type>(trigger: <Event>(...)) { cost {...} resolve {...} }";
         self.expect_soft_keyword("reaction")?;
         let (name, _) = self.expect_ident()?;
-        self.expect_soft_keyword("on")?;
+        if !self.at_ident("on") {
+            self.error_with_help(
+                format!("expected `on` after reaction name `{name}`, found {}", self.peek()),
+                HELP,
+            );
+            return Err(());
+        }
+        self.advance();
         let (receiver_name, _) = self.expect_ident()?;
-        self.expect(&TokenKind::Colon)?;
+        if !self.at(&TokenKind::Colon) {
+            self.error_with_help(
+                format!("expected `:` after receiver name `{receiver_name}`, found {}", self.peek()),
+                HELP,
+            );
+            return Err(());
+        }
+        self.advance();
         let receiver_type = self.parse_type()?;
         let receiver_with_groups = self.parse_with_groups()?;
-        self.expect(&TokenKind::LParen)?;
+        if !self.at(&TokenKind::LParen) {
+            self.error_with_help(
+                format!("expected `(` for reaction trigger, found {}", self.peek()),
+                HELP,
+            );
+            return Err(());
+        }
+        self.advance();
         self.skip_newlines();
         let trigger = self.parse_trigger_param()?;
         self.skip_newlines();
@@ -758,14 +827,37 @@ impl Parser {
     // ── Hook ─────────────────────────────────────────────────────
 
     fn parse_hook_decl(&mut self) -> Result<HookDecl, ()> {
+        const HELP: &str =
+            "syntax: hook <name> on <self>: <Type>(trigger: <Event>(...)) { <body> }";
         self.expect_soft_keyword("hook")?;
         let (name, _) = self.expect_ident()?;
-        self.expect_soft_keyword("on")?;
+        if !self.at_ident("on") {
+            self.error_with_help(
+                format!("expected `on` after hook name `{name}`, found {}", self.peek()),
+                HELP,
+            );
+            return Err(());
+        }
+        self.advance();
         let (receiver_name, _) = self.expect_ident()?;
-        self.expect(&TokenKind::Colon)?;
+        if !self.at(&TokenKind::Colon) {
+            self.error_with_help(
+                format!("expected `:` after receiver name `{receiver_name}`, found {}", self.peek()),
+                HELP,
+            );
+            return Err(());
+        }
+        self.advance();
         let receiver_type = self.parse_type()?;
         let receiver_with_groups = self.parse_with_groups()?;
-        self.expect(&TokenKind::LParen)?;
+        if !self.at(&TokenKind::LParen) {
+            self.error_with_help(
+                format!("expected `(` for hook trigger, found {}", self.peek()),
+                HELP,
+            );
+            return Err(());
+        }
+        self.advance();
         self.skip_newlines();
         let trigger = self.parse_trigger_param()?;
         self.skip_newlines();
@@ -842,9 +934,17 @@ impl Parser {
     // ── Event ────────────────────────────────────────────────────
 
     fn parse_event_decl(&mut self) -> Result<EventDecl, ()> {
+        const HELP: &str = "syntax: event <name>(<params>) [{ <fields> }]";
         self.expect_soft_keyword("event")?;
         let (name, _) = self.expect_ident()?;
-        self.expect(&TokenKind::LParen)?;
+        if !self.at(&TokenKind::LParen) {
+            self.error_with_help(
+                format!("expected `(` after event name `{name}`, found {}", self.peek()),
+                HELP,
+            );
+            return Err(());
+        }
+        self.advance();
         let params = self.parse_params()?;
         self.expect(&TokenKind::RParen)?;
         // Body is optional — events with only params and no extra fields
@@ -869,11 +969,13 @@ impl Parser {
     // ── Condition ────────────────────────────────────────────────
 
     fn parse_condition_decl(&mut self) -> Result<ConditionDecl, ()> {
+        const HELP: &str =
+            "syntax: condition <name>[(<params>)] [extends <parent>] on <self>: <Type> { ... }";
         self.expect_soft_keyword("condition")?;
         let (name, _) = self.expect_ident()?;
         // Optional parameters: condition Frightened(source: Character) on ...
         let params = if matches!(self.peek(), TokenKind::LParen) {
-            self.expect(&TokenKind::LParen)?;
+            self.advance();
             let params = self.parse_params()?;
             self.expect(&TokenKind::RParen)?;
             params
@@ -896,7 +998,14 @@ impl Parser {
         } else {
             Vec::new()
         };
-        self.expect_soft_keyword("on")?;
+        if !self.at_ident("on") {
+            self.error_with_help(
+                format!("expected `on` after condition name `{name}`, found {}", self.peek()),
+                HELP,
+            );
+            return Err(());
+        }
+        self.advance();
         let (receiver_name, _) = self.expect_ident()?;
         self.expect(&TokenKind::Colon)?;
         let receiver_type = self.parse_type()?;
@@ -935,7 +1044,7 @@ impl Parser {
                 clauses.push(ConditionClause::OnRemove(self.parse_lifecycle_block()?));
             } else {
                 self.error(format!(
-                    "expected 'modify', 'suppress', 'on_apply', or 'on_remove' in condition body, found {:?}",
+                    "expected `modify`, `suppress`, `on_apply`, or `on_remove` in condition body, found {}",
                     self.peek()
                 ));
                 return Err(());
@@ -1066,7 +1175,7 @@ impl Parser {
             return Ok(SelectorPredicate::HasParam { name, ty });
         }
         self.error(format!(
-            "expected selector predicate (#tag, 'returns', or 'has'), found {:?}",
+            "expected selector predicate (`#tag`, `returns`, or `has`), found {}",
             self.peek()
         ));
         Err(())
@@ -1191,7 +1300,7 @@ impl Parser {
         }
 
         self.error(format!(
-            "expected modify statement (let, result.field =, or param =), found {:?}",
+            "expected modify statement (`let`, `result.field =`, or `param =`), found {}",
             self.peek()
         ));
         Err(())
@@ -1300,7 +1409,7 @@ impl Parser {
         }
 
         self.error(format!(
-            "expected cost modify statement (cost =, let, or if), found {:?}",
+            "expected cost modify statement (`cost =`, `let`, or `if`), found {}",
             self.peek()
         ));
         Err(())
@@ -1364,12 +1473,28 @@ impl Parser {
     // ── Prompt ───────────────────────────────────────────────────
 
     fn parse_prompt_decl(&mut self) -> Result<PromptDecl, ()> {
+        const HELP: &str =
+            "syntax: prompt <name>(<params>) -> <type> { [hint: \"...\"] [suggest: <expr>] [default {...}] }";
         self.expect_soft_keyword("prompt")?;
         let (name, _) = self.expect_ident()?;
-        self.expect(&TokenKind::LParen)?;
+        if !self.at(&TokenKind::LParen) {
+            self.error_with_help(
+                format!("expected `(` after prompt name `{name}`, found {}", self.peek()),
+                HELP,
+            );
+            return Err(());
+        }
+        self.advance();
         let params = self.parse_params()?;
         self.expect(&TokenKind::RParen)?;
-        self.expect(&TokenKind::Arrow)?;
+        if !self.at(&TokenKind::Arrow) {
+            self.error_with_help(
+                format!("expected `->` after prompt parameters, found {}", self.peek()),
+                HELP,
+            );
+            return Err(());
+        }
+        self.advance();
         let return_type = self.parse_type()?;
         self.expect(&TokenKind::LBrace)?;
         self.skip_newlines();
@@ -1493,13 +1618,36 @@ impl Parser {
     // ── Move ─────────────────────────────────────────────────────
 
     fn parse_move_decl(&mut self) -> Result<MoveDecl, ()> {
+        const HELP: &str =
+            "syntax: move <name> on <self>: <Type>(<params>) { trigger: \"...\" roll: <expr> on <outcome> {...} }";
         self.expect_soft_keyword("move")?;
         let (name, _) = self.expect_ident()?;
-        self.expect_soft_keyword("on")?;
+        if !self.at_ident("on") {
+            self.error_with_help(
+                format!("expected `on` after move name `{name}`, found {}", self.peek()),
+                HELP,
+            );
+            return Err(());
+        }
+        self.advance();
         let (receiver_name, _) = self.expect_ident()?;
-        self.expect(&TokenKind::Colon)?;
+        if !self.at(&TokenKind::Colon) {
+            self.error_with_help(
+                format!("expected `:` after receiver name `{receiver_name}`, found {}", self.peek()),
+                HELP,
+            );
+            return Err(());
+        }
+        self.advance();
         let receiver_type = self.parse_type()?;
-        self.expect(&TokenKind::LParen)?;
+        if !self.at(&TokenKind::LParen) {
+            self.error_with_help(
+                format!("expected `(` for move parameters, found {}", self.peek()),
+                HELP,
+            );
+            return Err(());
+        }
+        self.advance();
         let params = self.parse_params()?;
         self.expect(&TokenKind::RParen)?;
         self.expect(&TokenKind::LBrace)?;
@@ -1554,12 +1702,27 @@ impl Parser {
     // ── Table ─────────────────────────────────────────────────────
 
     fn parse_table_decl(&mut self) -> Result<TableDecl, ()> {
+        const HELP: &str = "syntax: table <name>(<params>) -> <type> { <entries> }";
         self.expect_soft_keyword("table")?;
         let (name, _) = self.expect_ident()?;
-        self.expect(&TokenKind::LParen)?;
+        if !self.at(&TokenKind::LParen) {
+            self.error_with_help(
+                format!("expected `(` after table name `{name}`, found {}", self.peek()),
+                HELP,
+            );
+            return Err(());
+        }
+        self.advance();
         let params = self.parse_params()?;
         self.expect(&TokenKind::RParen)?;
-        self.expect(&TokenKind::Arrow)?;
+        if !self.at(&TokenKind::Arrow) {
+            self.error_with_help(
+                format!("expected `->` after table parameters, found {}", self.peek()),
+                HELP,
+            );
+            return Err(());
+        }
+        self.advance();
         let return_type = self.parse_type()?;
         self.expect(&TokenKind::LBrace)?;
         self.skip_newlines();

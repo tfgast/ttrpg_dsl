@@ -32,7 +32,7 @@ impl Parser {
                     ))
                 } else {
                     self.error(format!(
-                        "expected integer after '-' in pattern, found {:?}",
+                        "expected integer after `-` in pattern, found {}",
                         self.peek()
                     ));
                     Err(())
@@ -139,7 +139,7 @@ impl Parser {
             }
 
             _ => {
-                self.error(format!("expected pattern, found {:?}", self.peek()));
+                self.error(format!("expected pattern, found {}", self.peek()));
                 Err(())
             }
         }

@@ -403,7 +403,7 @@ impl Parser {
             TokenKind::For => self.parse_for_expr(),
 
             _ => {
-                self.error(format!("expected expression, found {:?}", self.peek()));
+                self.error(format!("expected expression, found {}", self.peek()));
                 Err(())
             }
         }

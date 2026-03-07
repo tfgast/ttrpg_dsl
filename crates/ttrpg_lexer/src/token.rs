@@ -1,3 +1,4 @@
+use std::fmt;
 use std::sync::Arc;
 
 use ttrpg_ast::{DiceFilter, Span};
@@ -88,6 +89,67 @@ pub enum TokenKind {
 
     // Error
     Error(String),
+}
+
+impl fmt::Display for TokenKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            TokenKind::Int(n) => write!(f, "integer `{n}`"),
+            TokenKind::String(s) => write!(f, "string \"{}\"", s.escape_debug()),
+            TokenKind::Dice { count, sides, .. } => write!(f, "dice `{count}d{sides}`"),
+            TokenKind::UnitLiteral { value, suffix } => {
+                write!(f, "unit literal `{value}{suffix}`")
+            }
+            TokenKind::Ident(name) => write!(f, "`{name}`"),
+            TokenKind::Let => write!(f, "`let`"),
+            TokenKind::If => write!(f, "`if`"),
+            TokenKind::Else => write!(f, "`else`"),
+            TokenKind::Match => write!(f, "`match`"),
+            TokenKind::True => write!(f, "`true`"),
+            TokenKind::False => write!(f, "`false`"),
+            TokenKind::None => write!(f, "`none`"),
+            TokenKind::In => write!(f, "`in`"),
+            TokenKind::For => write!(f, "`for`"),
+            TokenKind::Return => write!(f, "`return`"),
+            TokenKind::LParen => write!(f, "`(`"),
+            TokenKind::RParen => write!(f, "`)`"),
+            TokenKind::LBrace => write!(f, "`{{`"),
+            TokenKind::RBrace => write!(f, "`}}`"),
+            TokenKind::LBracket => write!(f, "`[`"),
+            TokenKind::RBracket => write!(f, "`]`"),
+            TokenKind::Comma => write!(f, "`,`"),
+            TokenKind::Colon => write!(f, "`:`"),
+            TokenKind::Dot => write!(f, "`.`"),
+            TokenKind::DotDot => write!(f, "`..`"),
+            TokenKind::DotDotEq => write!(f, "`..=`"),
+            TokenKind::Arrow => write!(f, "`->`"),
+            TokenKind::FatArrow => write!(f, "`=>`"),
+            TokenKind::Underscore => write!(f, "`_`"),
+            TokenKind::Hash => write!(f, "`#`"),
+            TokenKind::Plus => write!(f, "`+`"),
+            TokenKind::Minus => write!(f, "`-`"),
+            TokenKind::Star => write!(f, "`*`"),
+            TokenKind::Slash => write!(f, "`/`"),
+            TokenKind::Percent => write!(f, "`%`"),
+            TokenKind::Bang => write!(f, "`!`"),
+            TokenKind::Eq => write!(f, "`=`"),
+            TokenKind::PlusEq => write!(f, "`+=`"),
+            TokenKind::MinusEq => write!(f, "`-=`"),
+            TokenKind::EqEq => write!(f, "`==`"),
+            TokenKind::BangEq => write!(f, "`!=`"),
+            TokenKind::Lt => write!(f, "`<`"),
+            TokenKind::Gt => write!(f, "`>`"),
+            TokenKind::LtEq => write!(f, "`<=`"),
+            TokenKind::GtEq => write!(f, "`>=`"),
+            TokenKind::AmpAmp => write!(f, "`&&`"),
+            TokenKind::Pipe => write!(f, "`|`"),
+            TokenKind::PipePipe => write!(f, "`||`"),
+            TokenKind::Semicolon => write!(f, "`;`"),
+            TokenKind::Newline => write!(f, "newline"),
+            TokenKind::Eof => write!(f, "end of file"),
+            TokenKind::Error(msg) => write!(f, "error: {msg}"),
+        }
+    }
 }
 
 impl TokenKind {

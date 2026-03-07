@@ -145,7 +145,7 @@ impl Parser {
                 Ok(Spanned::new(ty, self.end_span(start)))
             }
             _ => {
-                self.error(format!("expected type, found {:?}", self.peek()));
+                self.error(format!("expected type, found {}", self.peek()));
                 Err(())
             }
         }

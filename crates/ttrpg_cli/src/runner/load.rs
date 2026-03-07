@@ -161,7 +161,19 @@ impl Runner {
         };
 
         let sources = vec![("<source>".to_string(), actual_source)];
-        self.load_sources(sources)
+        let result = self.load_sources(sources);
+        if snippet {
+            for diag in &mut self.diagnostics {
+                if diag.message == "system blocks cannot be nested" && diag.help.is_none() {
+                    diag.help = Some(
+                        "snippet mode (-s) already wraps your source in a system block; \
+                         write declarations directly without a system wrapper"
+                            .into(),
+                    );
+                }
+            }
+        }
+        result
     }
 
     /// Shared implementation for loading from already-parsed source pairs.

@@ -685,11 +685,18 @@ fn check_sources(sources: Vec<(String, String)>, snippet: bool, json: bool) {
         let cr = ttrpg_checker::check_with_modules(&result.program, &result.module_map);
         diags.extend(cr.diagnostics);
 
-        // Adjust spans back to original source offsets
+        // Adjust spans and enhance snippet-specific diagnostics
         for diag in &mut diags {
             if !diag.span.is_dummy() {
                 diag.span.start = diag.span.start.saturating_sub(prefix_len as u32);
                 diag.span.end = diag.span.end.saturating_sub(prefix_len as u32);
+            }
+            if diag.message == "system blocks cannot be nested" {
+                diag.help = Some(
+                    "snippet mode (-s) already wraps your source in a system block; \
+                     write declarations directly without a system wrapper"
+                        .into(),
+                );
             }
         }
         diags

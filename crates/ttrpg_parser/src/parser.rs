@@ -84,7 +84,7 @@ impl Parser {
         if self.at(expected) {
             Ok(self.advance())
         } else {
-            self.error(format!("expected {:?}, found {:?}", expected, self.peek()));
+            self.error(format!("expected {}, found {}", expected, self.peek()));
             Err(())
         }
     }
@@ -96,7 +96,7 @@ impl Parser {
                 Ok((Name::from(name), tok.span))
             }
             _ => {
-                self.error(format!("expected identifier, found {:?}", self.peek()));
+                self.error(format!("expected identifier, found {}", self.peek()));
                 Err(())
             }
         }
@@ -106,7 +106,7 @@ impl Parser {
         if self.at_ident(kw) {
             Ok(self.advance().span)
         } else {
-            self.error(format!("expected '{}', found {:?}", kw, self.peek()));
+            self.error(format!("expected `{}`, found {}", kw, self.peek()));
             Err(())
         }
     }
@@ -118,7 +118,7 @@ impl Parser {
                 Ok((s, tok.span))
             }
             _ => {
-                self.error(format!("expected string literal, found {:?}", self.peek()));
+                self.error(format!("expected string literal, found {}", self.peek()));
                 Err(())
             }
         }
@@ -133,7 +133,7 @@ impl Parser {
             }
             TokenKind::RBrace | TokenKind::Eof => Ok(()),
             _ => {
-                self.error(format!("expected newline or '}}', found {:?}", self.peek()));
+                self.error(format!("expected newline or `}}`, found {}", self.peek()));
                 Err(())
             }
         }
@@ -230,6 +230,22 @@ impl Parser {
         self.diagnostics.push(Diagnostic::error(message, span));
     }
 
+    pub(crate) fn error_with_help(&mut self, message: impl Into<String>, help: impl Into<String>) {
+        if self.diagnostics.len() > MAX_ERRORS {
+            return;
+        }
+        let span = self.peek_span();
+        if self.diagnostics.len() == MAX_ERRORS {
+            self.diagnostics.push(Diagnostic::error(
+                "too many errors, remaining diagnostics suppressed",
+                span,
+            ));
+            return;
+        }
+        self.diagnostics
+            .push(Diagnostic::error(message, span).with_help(help));
+    }
+
     /// Returns `true` when the error cap has been reached.
     pub(crate) fn has_too_many_errors(&self) -> bool {
         self.diagnostics.len() > MAX_ERRORS
@@ -288,9 +304,13 @@ impl Parser {
                     Ok(s) => items.push(Spanned::new(TopLevel::System(s), self.end_span(start))),
                     Err(()) => self.recover_to_top_level(),
                 }
+            } else if self.at(&TokenKind::RBrace) && !self.diagnostics.is_empty() {
+                // Stray `}` at top level after earlier errors — likely an
+                // unmatched brace from a recovered system block. Skip silently.
+                self.advance();
             } else {
                 self.error(format!(
-                    "expected 'use' or 'system', found {:?}",
+                    "expected `use` or `system`, found {}",
                     self.peek()
                 ));
                 self.advance();
@@ -330,9 +350,15 @@ impl Parser {
         self.skip_newlines();
 
         let mut decls = Vec::new();
+        let mut saw_nested_system = false;
         while !matches!(self.peek(), TokenKind::RBrace | TokenKind::Eof) {
+            if self.at_ident("system") {
+                self.error("system blocks cannot be nested");
+                saw_nested_system = true;
+                break;
+            }
             // If we see a top-level keyword, this system block is missing its closing brace
-            if self.at_ident("system") || self.at_ident("use") {
+            if self.at_ident("use") {
                 break;
             }
             if self.has_too_many_errors() {
@@ -347,7 +373,9 @@ impl Parser {
             self.skip_newlines();
         }
 
-        self.expect(&TokenKind::RBrace)?;
+        if !saw_nested_system {
+            self.expect(&TokenKind::RBrace)?;
+        }
         Ok(SystemBlock { name, decls })
     }
 
