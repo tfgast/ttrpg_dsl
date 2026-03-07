@@ -104,6 +104,7 @@ pub struct Runner {
     unit_suffixes: UnitSuffixes,
     coverage: Option<Rc<RefCell<CoverageData>>>,
     quiet: bool,
+    interactive: bool,
     heredoc: Option<HeredocState>,
 }
 
@@ -128,6 +129,7 @@ impl Runner {
             unit_suffixes: UnitSuffixes::new(),
             coverage: None,
             quiet: false,
+            interactive: false,
             heredoc: None,
         }
     }
@@ -437,6 +439,19 @@ impl Runner {
     /// Only errors and assertion failures are shown.
     pub fn set_quiet(&mut self, quiet: bool) {
         self.quiet = quiet;
+    }
+
+    /// Set interactive mode. When `true`, prompts without a queued
+    /// response or default may block for user input (once interactive
+    /// prompt support lands). When `false` (the default), the handler
+    /// auto-resolves using `suggest` or `UseDefault`.
+    pub fn set_interactive(&mut self, interactive: bool) {
+        self.interactive = interactive;
+    }
+
+    /// Returns whether the runner is in interactive mode.
+    pub fn is_interactive(&self) -> bool {
+        self.interactive
     }
 
     /// Enable coverage tracking. Creates the shared `Rc` that will be

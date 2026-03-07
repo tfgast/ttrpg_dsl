@@ -15,13 +15,16 @@ fn main() {
         return;
     }
 
-    // Check for --vi, --coverage, and --quiet flags
+    // Check for global flags
     let vi_mode = args.iter().any(|a| a == "--vi");
     let coverage_mode = args.iter().any(|a| a == "--coverage");
     let quiet_mode = args.iter().any(|a| a == "--quiet");
+    let non_interactive = args.iter().any(|a| a == "--non-interactive");
     let args: Vec<&str> = args
         .iter()
-        .filter(|a| *a != "--vi" && *a != "--coverage" && *a != "--quiet")
+        .filter(|a| {
+            *a != "--vi" && *a != "--coverage" && *a != "--quiet" && *a != "--non-interactive"
+        })
         .map(|s| s.as_str())
         .collect();
 
@@ -124,7 +127,8 @@ fn main() {
         None => {
             let stdin = io::stdin();
             if stdin.is_terminal() {
-                ttrpg_cli::repl::run_repl(vi_mode, coverage_mode);
+                let interactive = !non_interactive;
+                ttrpg_cli::repl::run_repl(vi_mode, coverage_mode, interactive);
             } else {
                 run_pipe(coverage_mode, quiet_mode);
             }
@@ -324,6 +328,7 @@ QUERY TOPICS:
 
 FLAGS:
   --vi                               Use vi keybindings in REPL
+  --non-interactive                   Disable interactive prompts in REPL
   --quiet                            Suppress effect log output (run, pipe)
   --format json                      Output as JSON (check, query)
   --system <name>                    Filter query output by system name

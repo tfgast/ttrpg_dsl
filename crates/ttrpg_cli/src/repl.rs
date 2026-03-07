@@ -109,11 +109,12 @@ fn data_dir() -> Option<std::path::PathBuf> {
 }
 
 /// Run the interactive REPL with reedline.
-pub fn run_repl(vi_mode: bool, coverage: bool) {
+pub fn run_repl(vi_mode: bool, coverage: bool, interactive: bool) {
     let mut runner = Runner::new();
     if coverage {
         runner.enable_coverage();
     }
+    runner.set_interactive(interactive);
     let completion_ctx = Arc::new(Mutex::new(CompletionContext::default()));
 
     let completer = TtrpgCompleter::new(Arc::clone(&completion_ctx));
