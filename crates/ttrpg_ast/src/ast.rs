@@ -617,10 +617,11 @@ pub struct EventDecl {
 }
 
 /// Controls how multiple instances of the same condition interact on a single bearer.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum StackingPolicy {
     /// Every instance contributes all effects (default).
+    #[default]
     All,
     /// Oldest instance wins; all others are suppressed.
     First,
@@ -629,12 +630,6 @@ pub enum StackingPolicy {
         param: Spanned<Name>,
         direction: Direction,
     },
-}
-
-impl Default for StackingPolicy {
-    fn default() -> Self {
-        Self::All
-    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

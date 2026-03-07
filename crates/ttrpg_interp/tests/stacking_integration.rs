@@ -130,22 +130,32 @@ system "Stacking" {
 fn query_attack(interp: &Interpreter, state: &GameState, entity: EntityRef) -> i64 {
     let mut handler = LogHandler::new();
     let result = interp
-        .evaluate_derive(state, &mut handler, "attack_score", vec![Value::Entity(entity)])
+        .evaluate_derive(
+            state,
+            &mut handler,
+            "attack_score",
+            vec![Value::Entity(entity)],
+        )
         .unwrap();
     match result {
         Value::Int(n) => n,
-        other => panic!("expected Int, got {:?}", other),
+        other => panic!("expected Int, got {other:?}"),
     }
 }
 
 fn query_defense(interp: &Interpreter, state: &GameState, entity: EntityRef) -> i64 {
     let mut handler = LogHandler::new();
     let result = interp
-        .evaluate_derive(state, &mut handler, "defense_score", vec![Value::Entity(entity)])
+        .evaluate_derive(
+            state,
+            &mut handler,
+            "defense_score",
+            vec![Value::Entity(entity)],
+        )
         .unwrap();
     match result {
         Value::Int(n) => n,
-        other => panic!("expected Int, got {:?}", other),
+        other => panic!("expected Int, got {other:?}"),
     }
 }
 

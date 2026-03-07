@@ -41,13 +41,7 @@ fn osric_afflictions_parses_and_typechecks() {
 
 // ── Helper: build SavingThrows value ───────────────────────────
 
-fn saving_throws_struct(
-    aimed: i64,
-    breath: i64,
-    death: i64,
-    petrify: i64,
-    spells: i64,
-) -> Value {
+fn saving_throws_struct(aimed: i64, breath: i64, death: i64, petrify: i64, spells: i64) -> Value {
     Value::Struct {
         name: Name::from("SavingThrows"),
         fields: {
@@ -87,9 +81,8 @@ fn lethal_poison_save_succeeds() {
 
     // Fighter level 5: death_paralysis_poison save = 11
     // Roll 15 on d20 → 15 >= 11, saves
-    let mut handler = ScriptedHandler::with_responses(vec![
-        scripted_roll(1, 20, 0, vec![15], vec![15], 15, 15),
-    ]);
+    let mut handler =
+        ScriptedHandler::with_responses(vec![scripted_roll(1, 20, 0, vec![15], vec![15], 15, 15)]);
 
     let val = interp
         .evaluate_mechanic(
@@ -107,8 +100,14 @@ fn lethal_poison_save_succeeds() {
     match val {
         Value::Struct { name, fields } => {
             assert_eq!(&*name, "PoisonResult");
-            assert_eq!(*fields.get::<Name>(&"saved".into()).unwrap(), Value::Bool(true));
-            assert_eq!(*fields.get::<Name>(&"died".into()).unwrap(), Value::Bool(false));
+            assert_eq!(
+                *fields.get::<Name>(&"saved".into()).unwrap(),
+                Value::Bool(true)
+            );
+            assert_eq!(
+                *fields.get::<Name>(&"died".into()).unwrap(),
+                Value::Bool(false)
+            );
             assert_eq!(
                 *fields.get::<Name>(&"damage_taken".into()).unwrap(),
                 Value::Int(0)
@@ -125,9 +124,8 @@ fn lethal_poison_save_fails_kills() {
     let state = GameState::new();
 
     // death_paralysis_poison save = 11. Roll 5 → fails.
-    let mut handler = ScriptedHandler::with_responses(vec![
-        scripted_roll(1, 20, 0, vec![5], vec![5], 5, 5),
-    ]);
+    let mut handler =
+        ScriptedHandler::with_responses(vec![scripted_roll(1, 20, 0, vec![5], vec![5], 5, 5)]);
 
     let val = interp
         .evaluate_mechanic(
@@ -145,8 +143,14 @@ fn lethal_poison_save_fails_kills() {
     match val {
         Value::Struct { name, fields } => {
             assert_eq!(&*name, "PoisonResult");
-            assert_eq!(*fields.get::<Name>(&"saved".into()).unwrap(), Value::Bool(false));
-            assert_eq!(*fields.get::<Name>(&"died".into()).unwrap(), Value::Bool(true));
+            assert_eq!(
+                *fields.get::<Name>(&"saved".into()).unwrap(),
+                Value::Bool(false)
+            );
+            assert_eq!(
+                *fields.get::<Name>(&"died".into()).unwrap(),
+                Value::Bool(true)
+            );
         }
         other => panic!("expected PoisonResult struct, got {other:?}"),
     }
@@ -180,8 +184,14 @@ fn damage_poison_save_halves_damage() {
     match val {
         Value::Struct { name, fields } => {
             assert_eq!(&*name, "PoisonResult");
-            assert_eq!(*fields.get::<Name>(&"saved".into()).unwrap(), Value::Bool(true));
-            assert_eq!(*fields.get::<Name>(&"died".into()).unwrap(), Value::Bool(false));
+            assert_eq!(
+                *fields.get::<Name>(&"saved".into()).unwrap(),
+                Value::Bool(true)
+            );
+            assert_eq!(
+                *fields.get::<Name>(&"died".into()).unwrap(),
+                Value::Bool(false)
+            );
             assert_eq!(
                 *fields.get::<Name>(&"damage_taken".into()).unwrap(),
                 Value::Int(4) // floor(8/2) = 4
@@ -199,7 +209,7 @@ fn damage_poison_save_fails_full_damage() {
 
     // Save fails (roll 5 < 11), then 2d6 = 10
     let mut handler = ScriptedHandler::with_responses(vec![
-        scripted_roll(1, 20, 0, vec![5], vec![5], 5, 5),       // save
+        scripted_roll(1, 20, 0, vec![5], vec![5], 5, 5), // save
         scripted_roll(2, 6, 0, vec![4, 6], vec![4, 6], 10, 10), // 2d6 = 10
     ]);
 
@@ -219,7 +229,10 @@ fn damage_poison_save_fails_full_damage() {
     match val {
         Value::Struct { name, fields } => {
             assert_eq!(&*name, "PoisonResult");
-            assert_eq!(*fields.get::<Name>(&"saved".into()).unwrap(), Value::Bool(false));
+            assert_eq!(
+                *fields.get::<Name>(&"saved".into()).unwrap(),
+                Value::Bool(false)
+            );
             assert_eq!(
                 *fields.get::<Name>(&"damage_taken".into()).unwrap(),
                 Value::Int(10)
@@ -236,9 +249,8 @@ fn lethal_poison_natural_1_always_fails() {
     let state = GameState::new();
 
     // Natural 1 always fails, even with a very low target (save = 2)
-    let mut handler = ScriptedHandler::with_responses(vec![
-        scripted_roll(1, 20, 0, vec![1], vec![1], 1, 1),
-    ]);
+    let mut handler =
+        ScriptedHandler::with_responses(vec![scripted_roll(1, 20, 0, vec![1], vec![1], 1, 1)]);
 
     let val = interp
         .evaluate_mechanic(
@@ -255,8 +267,14 @@ fn lethal_poison_natural_1_always_fails() {
 
     match val {
         Value::Struct { fields, .. } => {
-            assert_eq!(*fields.get::<Name>(&"saved".into()).unwrap(), Value::Bool(false));
-            assert_eq!(*fields.get::<Name>(&"died".into()).unwrap(), Value::Bool(true));
+            assert_eq!(
+                *fields.get::<Name>(&"saved".into()).unwrap(),
+                Value::Bool(false)
+            );
+            assert_eq!(
+                *fields.get::<Name>(&"died".into()).unwrap(),
+                Value::Bool(true)
+            );
         }
         other => panic!("expected PoisonResult, got {other:?}"),
     }
@@ -271,9 +289,8 @@ fn disease_contraction_save_succeeds() {
     let state = GameState::new();
 
     // Save succeeds (roll 15 >= 11)
-    let mut handler = ScriptedHandler::with_responses(vec![
-        scripted_roll(1, 20, 0, vec![15], vec![15], 15, 15),
-    ]);
+    let mut handler =
+        ScriptedHandler::with_responses(vec![scripted_roll(1, 20, 0, vec![15], vec![15], 15, 15)]);
 
     let val = interp
         .evaluate_mechanic(
@@ -386,13 +403,13 @@ fn disease_fatal_when_d8_shows_eight() {
 
     // Save fails, inc_d2 = 8 → fatal
     let mut handler = ScriptedHandler::with_responses(vec![
-        scripted_roll(1, 20, 0, vec![3], vec![3], 3, 3),  // save fails
-        scripted_roll(1, 8, 0, vec![4], vec![4], 4, 4),   // inc_d1
-        scripted_roll(1, 8, 0, vec![8], vec![8], 8, 8),   // inc_d2 = 8!
-        scripted_roll(1, 8, 0, vec![3], vec![3], 3, 3),   // dur_d1
-        scripted_roll(1, 8, 0, vec![5], vec![5], 5, 5),   // dur_d2
-        scripted_roll(1, 6, 0, vec![2], vec![2], 2, 2),   // stat_pen
-        scripted_roll(1, 6, 0, vec![1], vec![1], 1, 1),   // roll_pen
+        scripted_roll(1, 20, 0, vec![3], vec![3], 3, 3), // save fails
+        scripted_roll(1, 8, 0, vec![4], vec![4], 4, 4),  // inc_d1
+        scripted_roll(1, 8, 0, vec![8], vec![8], 8, 8),  // inc_d2 = 8!
+        scripted_roll(1, 8, 0, vec![3], vec![3], 3, 3),  // dur_d1
+        scripted_roll(1, 8, 0, vec![5], vec![5], 5, 5),  // dur_d2
+        scripted_roll(1, 6, 0, vec![2], vec![2], 2, 2),  // stat_pen
+        scripted_roll(1, 6, 0, vec![1], vec![1], 1, 1),  // roll_pen
     ]);
 
     let val = interp
@@ -445,7 +462,12 @@ fn disease_recovery_reduces_penalty() {
     let mut handler = ScriptedHandler::with_responses(vec![]);
 
     let val = interp
-        .evaluate_derive(&state, &mut handler, "disease_recovery_one_day", vec![Value::Int(4)])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "disease_recovery_one_day",
+            vec![Value::Int(4)],
+        )
         .unwrap();
     assert_eq!(val, Value::Int(3));
 }
@@ -458,7 +480,12 @@ fn disease_recovery_floors_at_zero() {
     let mut handler = ScriptedHandler::with_responses(vec![]);
 
     let val = interp
-        .evaluate_derive(&state, &mut handler, "disease_recovery_one_day", vec![Value::Int(0)])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "disease_recovery_one_day",
+            vec![Value::Int(0)],
+        )
         .unwrap();
     assert_eq!(val, Value::Int(0));
 }
@@ -472,9 +499,8 @@ fn roll_insanity_type_returns_correct_variant() {
     let state = GameState::new();
 
     // Roll 1 → AbilityDecline
-    let mut handler = ScriptedHandler::with_responses(vec![
-        scripted_roll(1, 6, 0, vec![1], vec![1], 1, 1),
-    ]);
+    let mut handler =
+        ScriptedHandler::with_responses(vec![scripted_roll(1, 6, 0, vec![1], vec![1], 1, 1)]);
 
     let val = interp
         .evaluate_mechanic(&state, &mut handler, "roll_insanity_type", vec![])
@@ -490,9 +516,8 @@ fn roll_insanity_phobia_type() {
     let state = GameState::new();
 
     // Roll 6 → Phobia
-    let mut handler = ScriptedHandler::with_responses(vec![
-        scripted_roll(1, 6, 0, vec![6], vec![6], 6, 6),
-    ]);
+    let mut handler =
+        ScriptedHandler::with_responses(vec![scripted_roll(1, 6, 0, vec![6], vec![6], 6, 6)]);
 
     let val = interp
         .evaluate_mechanic(&state, &mut handler, "roll_insanity_type", vec![])
@@ -566,8 +591,8 @@ fn roll_insanity_full_phobia() {
     // roll_insanity_type → 6 (Phobia)
     // roll_phobia_object → 7 (Crowds)
     let mut handler = ScriptedHandler::with_responses(vec![
-        scripted_roll(1, 6, 0, vec![6], vec![6], 6, 6),   // type = Phobia
-        scripted_roll(1, 10, 0, vec![7], vec![7], 7, 7),  // phobia = Crowds
+        scripted_roll(1, 6, 0, vec![6], vec![6], 6, 6), // type = Phobia
+        scripted_roll(1, 10, 0, vec![7], vec![7], 7, 7), // phobia = Crowds
     ]);
 
     let val = interp
@@ -603,9 +628,8 @@ fn roll_insanity_marker_type_no_extras() {
     let state = GameState::new();
 
     // roll_insanity_type → 5 (PathologicalLiar) — no extra rolls
-    let mut handler = ScriptedHandler::with_responses(vec![
-        scripted_roll(1, 6, 0, vec![5], vec![5], 5, 5),
-    ]);
+    let mut handler =
+        ScriptedHandler::with_responses(vec![scripted_roll(1, 6, 0, vec![5], vec![5], 5, 5)]);
 
     let val = interp
         .evaluate_mechanic(&state, &mut handler, "roll_insanity", vec![])
@@ -641,13 +665,18 @@ fn disease_stat_loss_returns_all_six_abilities() {
     let mut handler = ScriptedHandler::with_responses(vec![]);
 
     let val = interp
-        .evaluate_derive(&state, &mut handler, "disease_stat_loss", vec![Value::Int(3)])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "disease_stat_loss",
+            vec![Value::Int(3)],
+        )
         .unwrap();
 
     match val {
         Value::Map(map) => {
             assert_eq!(map.len(), 6);
-            for (_k, v) in map.iter() {
+            for v in map.values() {
                 assert_eq!(*v, Value::Int(3));
             }
         }

@@ -161,7 +161,9 @@ pub fn run_repl(vi_mode: bool, coverage: bool, interactive: bool) {
         }
     }
 
-    let mut prompt = TtrpgPrompt { continuation: false };
+    let mut prompt = TtrpgPrompt {
+        continuation: false,
+    };
 
     // Initialize completions before first prompt
     refresh_completions(&runner, &completion_ctx);

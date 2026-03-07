@@ -359,7 +359,10 @@ impl Parser {
         let (name, _) = self.expect_ident()?;
         if !self.at(&TokenKind::LParen) {
             self.error_with_help(
-                format!("expected `(` after function name `{name}`, found {}", self.peek()),
+                format!(
+                    "expected `(` after function name `{name}`, found {}",
+                    self.peek()
+                ),
                 HELP,
             );
             return Err(());
@@ -414,7 +417,10 @@ impl Parser {
         let (name, _) = self.expect_ident()?;
         if !self.at(&TokenKind::LParen) {
             self.error_with_help(
-                format!("expected `(` after {keyword} name `{name}`, found {}", self.peek()),
+                format!(
+                    "expected `(` after {keyword} name `{name}`, found {}",
+                    self.peek()
+                ),
                 &help,
             );
             return Err(());
@@ -424,7 +430,10 @@ impl Parser {
         self.expect(&TokenKind::RParen)?;
         if !self.at(&TokenKind::Arrow) {
             self.error_with_help(
-                format!("expected `->` after {keyword} parameters, found {}", self.peek()),
+                format!(
+                    "expected `->` after {keyword} parameters, found {}",
+                    self.peek()
+                ),
                 &help,
             );
             return Err(());
@@ -629,7 +638,10 @@ impl Parser {
         let (name, _) = self.expect_ident()?;
         if !self.at_ident("on") {
             self.error_with_help(
-                format!("expected `on` after action name `{name}`, found {}", self.peek()),
+                format!(
+                    "expected `on` after action name `{name}`, found {}",
+                    self.peek()
+                ),
                 HELP,
             );
             return Err(());
@@ -638,7 +650,10 @@ impl Parser {
         let (receiver_name, _) = self.expect_ident()?;
         if !self.at(&TokenKind::Colon) {
             self.error_with_help(
-                format!("expected `:` after receiver name `{receiver_name}`, found {}", self.peek()),
+                format!(
+                    "expected `:` after receiver name `{receiver_name}`, found {}",
+                    self.peek()
+                ),
                 HELP,
             );
             return Err(());
@@ -795,7 +810,10 @@ impl Parser {
         let (name, _) = self.expect_ident()?;
         if !self.at_ident("on") {
             self.error_with_help(
-                format!("expected `on` after reaction name `{name}`, found {}", self.peek()),
+                format!(
+                    "expected `on` after reaction name `{name}`, found {}",
+                    self.peek()
+                ),
                 HELP,
             );
             return Err(());
@@ -804,7 +822,10 @@ impl Parser {
         let (receiver_name, _) = self.expect_ident()?;
         if !self.at(&TokenKind::Colon) {
             self.error_with_help(
-                format!("expected `:` after receiver name `{receiver_name}`, found {}", self.peek()),
+                format!(
+                    "expected `:` after receiver name `{receiver_name}`, found {}",
+                    self.peek()
+                ),
                 HELP,
             );
             return Err(());
@@ -858,7 +879,10 @@ impl Parser {
         let (name, _) = self.expect_ident()?;
         if !self.at_ident("on") {
             self.error_with_help(
-                format!("expected `on` after hook name `{name}`, found {}", self.peek()),
+                format!(
+                    "expected `on` after hook name `{name}`, found {}",
+                    self.peek()
+                ),
                 HELP,
             );
             return Err(());
@@ -867,7 +891,10 @@ impl Parser {
         let (receiver_name, _) = self.expect_ident()?;
         if !self.at(&TokenKind::Colon) {
             self.error_with_help(
-                format!("expected `:` after receiver name `{receiver_name}`, found {}", self.peek()),
+                format!(
+                    "expected `:` after receiver name `{receiver_name}`, found {}",
+                    self.peek()
+                ),
                 HELP,
             );
             return Err(());
@@ -964,7 +991,10 @@ impl Parser {
         let (name, _) = self.expect_ident()?;
         if !self.at(&TokenKind::LParen) {
             self.error_with_help(
-                format!("expected `(` after event name `{name}`, found {}", self.peek()),
+                format!(
+                    "expected `(` after event name `{name}`, found {}",
+                    self.peek()
+                ),
                 HELP,
             );
             return Err(());
@@ -1025,7 +1055,10 @@ impl Parser {
         };
         if !self.at_ident("on") {
             self.error_with_help(
-                format!("expected `on` after condition name `{name}`, found {}", self.peek()),
+                format!(
+                    "expected `on` after condition name `{name}`, found {}",
+                    self.peek()
+                ),
                 HELP,
             );
             return Err(());
@@ -1109,10 +1142,7 @@ impl Parser {
         } else if self.at_ident("best") {
             self.advance();
             if !self.at_ident("by") {
-                self.error(format!(
-                    "expected `by` after `best`, found {}",
-                    self.peek()
-                ));
+                self.error(format!("expected `by` after `best`, found {}", self.peek()));
                 return Err(());
             }
             self.advance();
@@ -1575,7 +1605,10 @@ impl Parser {
         let (name, _) = self.expect_ident()?;
         if !self.at(&TokenKind::LParen) {
             self.error_with_help(
-                format!("expected `(` after prompt name `{name}`, found {}", self.peek()),
+                format!(
+                    "expected `(` after prompt name `{name}`, found {}",
+                    self.peek()
+                ),
                 HELP,
             );
             return Err(());
@@ -1585,7 +1618,10 @@ impl Parser {
         self.expect(&TokenKind::RParen)?;
         if !self.at(&TokenKind::Arrow) {
             self.error_with_help(
-                format!("expected `->` after prompt parameters, found {}", self.peek()),
+                format!(
+                    "expected `->` after prompt parameters, found {}",
+                    self.peek()
+                ),
                 HELP,
             );
             return Err(());
@@ -1720,7 +1756,10 @@ impl Parser {
         let (name, _) = self.expect_ident()?;
         if !self.at_ident("on") {
             self.error_with_help(
-                format!("expected `on` after move name `{name}`, found {}", self.peek()),
+                format!(
+                    "expected `on` after move name `{name}`, found {}",
+                    self.peek()
+                ),
                 HELP,
             );
             return Err(());
@@ -1729,7 +1768,10 @@ impl Parser {
         let (receiver_name, _) = self.expect_ident()?;
         if !self.at(&TokenKind::Colon) {
             self.error_with_help(
-                format!("expected `:` after receiver name `{receiver_name}`, found {}", self.peek()),
+                format!(
+                    "expected `:` after receiver name `{receiver_name}`, found {}",
+                    self.peek()
+                ),
                 HELP,
             );
             return Err(());
@@ -1803,7 +1845,10 @@ impl Parser {
         let (name, _) = self.expect_ident()?;
         if !self.at(&TokenKind::LParen) {
             self.error_with_help(
-                format!("expected `(` after table name `{name}`, found {}", self.peek()),
+                format!(
+                    "expected `(` after table name `{name}`, found {}",
+                    self.peek()
+                ),
                 HELP,
             );
             return Err(());
@@ -1813,7 +1858,10 @@ impl Parser {
         self.expect(&TokenKind::RParen)?;
         if !self.at(&TokenKind::Arrow) {
             self.error_with_help(
-                format!("expected `->` after table parameters, found {}", self.peek()),
+                format!(
+                    "expected `->` after table parameters, found {}",
+                    self.peek()
+                ),
                 HELP,
             );
             return Err(());

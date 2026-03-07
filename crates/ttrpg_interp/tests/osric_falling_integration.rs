@@ -40,13 +40,7 @@ fn osric_falling_parses_and_typechecks() {
 
 // ── Helper: build SavingThrows value ───────────────────────────
 
-fn saving_throws_struct(
-    aimed: i64,
-    breath: i64,
-    death: i64,
-    petrify: i64,
-    spells: i64,
-) -> Value {
+fn saving_throws_struct(aimed: i64, breath: i64, death: i64, petrify: i64, spells: i64) -> Value {
     Value::Struct {
         name: Name::from("SavingThrows"),
         fields: {
@@ -71,7 +65,12 @@ fn falling_less_than_10ft_no_damage() {
     let mut handler = NullHandler;
 
     let val = interp
-        .evaluate_derive(&state, &mut handler, "falling_damage_dice", vec![Value::Int(5)])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "falling_damage_dice",
+            vec![Value::Int(5)],
+        )
         .unwrap();
 
     assert_eq!(val, Value::DiceExpr(DiceExpr::single(0, 6, None, 0)));
@@ -85,7 +84,12 @@ fn falling_10ft_is_1d6() {
     let mut handler = NullHandler;
 
     let val = interp
-        .evaluate_derive(&state, &mut handler, "falling_damage_dice", vec![Value::Int(10)])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "falling_damage_dice",
+            vec![Value::Int(10)],
+        )
         .unwrap();
 
     assert_eq!(val, Value::DiceExpr(DiceExpr::single(1, 6, None, 0)));
@@ -99,7 +103,12 @@ fn falling_20ft_is_3d6() {
     let mut handler = NullHandler;
 
     let val = interp
-        .evaluate_derive(&state, &mut handler, "falling_damage_dice", vec![Value::Int(20)])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "falling_damage_dice",
+            vec![Value::Int(20)],
+        )
         .unwrap();
 
     assert_eq!(val, Value::DiceExpr(DiceExpr::single(3, 6, None, 0)));
@@ -113,7 +122,12 @@ fn falling_30ft_is_6d6() {
     let mut handler = NullHandler;
 
     let val = interp
-        .evaluate_derive(&state, &mut handler, "falling_damage_dice", vec![Value::Int(30)])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "falling_damage_dice",
+            vec![Value::Int(30)],
+        )
         .unwrap();
 
     assert_eq!(val, Value::DiceExpr(DiceExpr::single(6, 6, None, 0)));
@@ -127,7 +141,12 @@ fn falling_40ft_is_10d6() {
     let mut handler = NullHandler;
 
     let val = interp
-        .evaluate_derive(&state, &mut handler, "falling_damage_dice", vec![Value::Int(40)])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "falling_damage_dice",
+            vec![Value::Int(40)],
+        )
         .unwrap();
 
     assert_eq!(val, Value::DiceExpr(DiceExpr::single(10, 6, None, 0)));
@@ -141,7 +160,12 @@ fn falling_50ft_is_15d6() {
     let mut handler = NullHandler;
 
     let val = interp
-        .evaluate_derive(&state, &mut handler, "falling_damage_dice", vec![Value::Int(50)])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "falling_damage_dice",
+            vec![Value::Int(50)],
+        )
         .unwrap();
 
     assert_eq!(val, Value::DiceExpr(DiceExpr::single(15, 6, None, 0)));
@@ -155,7 +179,12 @@ fn falling_over_50ft_is_20d6() {
     let mut handler = NullHandler;
 
     let val = interp
-        .evaluate_derive(&state, &mut handler, "falling_damage_dice", vec![Value::Int(100)])
+        .evaluate_derive(
+            &state,
+            &mut handler,
+            "falling_damage_dice",
+            vec![Value::Int(100)],
+        )
         .unwrap();
 
     assert_eq!(val, Value::DiceExpr(DiceExpr::single(20, 6, None, 0)));
@@ -170,9 +199,15 @@ fn falling_no_save_full_damage() {
     let state = GameState::new();
 
     // 20ft fall = 3d6. Script rolls: 3+4+5 = 12
-    let mut handler = ScriptedHandler::with_responses(vec![
-        scripted_roll(3, 6, 0, vec![3, 4, 5], vec![3, 4, 5], 12, 12),
-    ]);
+    let mut handler = ScriptedHandler::with_responses(vec![scripted_roll(
+        3,
+        6,
+        0,
+        vec![3, 4, 5],
+        vec![3, 4, 5],
+        12,
+        12,
+    )]);
 
     let val = interp
         .evaluate_mechanic(
@@ -180,10 +215,10 @@ fn falling_no_save_full_damage() {
             &mut handler,
             "apply_falling_damage",
             vec![
-                Value::Int(20),                                    // distance_ft
-                saving_throws_struct(13, 13, 11, 12, 14),         // saves (unused)
-                Value::Bool(false),                                // allow_save
-                Value::Int(0),                                     // save_bonus
+                Value::Int(20),                           // distance_ft
+                saving_throws_struct(13, 13, 11, 12, 14), // saves (unused)
+                Value::Bool(false),                       // allow_save
+                Value::Int(0),                            // save_bonus
             ],
         )
         .unwrap();
@@ -191,10 +226,22 @@ fn falling_no_save_full_damage() {
     match val {
         Value::Struct { name, fields } => {
             assert_eq!(&*name, "FallingResult");
-            assert_eq!(*fields.get::<Name>(&"distance_ft".into()).unwrap(), Value::Int(20));
-            assert_eq!(*fields.get::<Name>(&"base_damage".into()).unwrap(), Value::Int(12));
-            assert_eq!(*fields.get::<Name>(&"saved".into()).unwrap(), Value::Bool(false));
-            assert_eq!(*fields.get::<Name>(&"damage_taken".into()).unwrap(), Value::Int(12));
+            assert_eq!(
+                *fields.get::<Name>(&"distance_ft".into()).unwrap(),
+                Value::Int(20)
+            );
+            assert_eq!(
+                *fields.get::<Name>(&"base_damage".into()).unwrap(),
+                Value::Int(12)
+            );
+            assert_eq!(
+                *fields.get::<Name>(&"saved".into()).unwrap(),
+                Value::Bool(false)
+            );
+            assert_eq!(
+                *fields.get::<Name>(&"damage_taken".into()).unwrap(),
+                Value::Int(12)
+            );
         }
         other => panic!("expected FallingResult struct, got {other:?}"),
     }
@@ -209,7 +256,15 @@ fn falling_save_succeeds_halves_damage() {
     // 30ft fall = 6d6. Script rolls: 2+3+4+1+2+6 = 18. Save roll: 15 vs 11 = pass.
     // Halved: floor(18/2) = 9.
     let mut handler = ScriptedHandler::with_responses(vec![
-        scripted_roll(6, 6, 0, vec![2, 3, 4, 1, 2, 6], vec![2, 3, 4, 1, 2, 6], 18, 18),
+        scripted_roll(
+            6,
+            6,
+            0,
+            vec![2, 3, 4, 1, 2, 6],
+            vec![2, 3, 4, 1, 2, 6],
+            18,
+            18,
+        ),
         scripted_roll(1, 20, 0, vec![15], vec![15], 15, 15),
     ]);
 
@@ -219,10 +274,10 @@ fn falling_save_succeeds_halves_damage() {
             &mut handler,
             "apply_falling_damage",
             vec![
-                Value::Int(30),                                    // distance_ft
-                saving_throws_struct(13, 13, 11, 12, 14),         // saves: death save = 11
-                Value::Bool(true),                                 // allow_save
-                Value::Int(0),                                     // save_bonus
+                Value::Int(30),                           // distance_ft
+                saving_throws_struct(13, 13, 11, 12, 14), // saves: death save = 11
+                Value::Bool(true),                        // allow_save
+                Value::Int(0),                            // save_bonus
             ],
         )
         .unwrap();
@@ -230,9 +285,18 @@ fn falling_save_succeeds_halves_damage() {
     match val {
         Value::Struct { name, fields } => {
             assert_eq!(&*name, "FallingResult");
-            assert_eq!(*fields.get::<Name>(&"base_damage".into()).unwrap(), Value::Int(18));
-            assert_eq!(*fields.get::<Name>(&"saved".into()).unwrap(), Value::Bool(true));
-            assert_eq!(*fields.get::<Name>(&"damage_taken".into()).unwrap(), Value::Int(9));
+            assert_eq!(
+                *fields.get::<Name>(&"base_damage".into()).unwrap(),
+                Value::Int(18)
+            );
+            assert_eq!(
+                *fields.get::<Name>(&"saved".into()).unwrap(),
+                Value::Bool(true)
+            );
+            assert_eq!(
+                *fields.get::<Name>(&"damage_taken".into()).unwrap(),
+                Value::Int(9)
+            );
         }
         other => panic!("expected FallingResult struct, got {other:?}"),
     }
@@ -246,7 +310,15 @@ fn falling_save_fails_full_damage() {
 
     // 30ft fall = 6d6. Script rolls: 3+3+3+3+3+3 = 18. Save roll: 5 vs 11 = fail.
     let mut handler = ScriptedHandler::with_responses(vec![
-        scripted_roll(6, 6, 0, vec![3, 3, 3, 3, 3, 3], vec![3, 3, 3, 3, 3, 3], 18, 18),
+        scripted_roll(
+            6,
+            6,
+            0,
+            vec![3, 3, 3, 3, 3, 3],
+            vec![3, 3, 3, 3, 3, 3],
+            18,
+            18,
+        ),
         scripted_roll(1, 20, 0, vec![5], vec![5], 5, 5),
     ]);
 
@@ -267,9 +339,18 @@ fn falling_save_fails_full_damage() {
     match val {
         Value::Struct { name, fields } => {
             assert_eq!(&*name, "FallingResult");
-            assert_eq!(*fields.get::<Name>(&"base_damage".into()).unwrap(), Value::Int(18));
-            assert_eq!(*fields.get::<Name>(&"saved".into()).unwrap(), Value::Bool(false));
-            assert_eq!(*fields.get::<Name>(&"damage_taken".into()).unwrap(), Value::Int(18));
+            assert_eq!(
+                *fields.get::<Name>(&"base_damage".into()).unwrap(),
+                Value::Int(18)
+            );
+            assert_eq!(
+                *fields.get::<Name>(&"saved".into()).unwrap(),
+                Value::Bool(false)
+            );
+            assert_eq!(
+                *fields.get::<Name>(&"damage_taken".into()).unwrap(),
+                Value::Int(18)
+            );
         }
         other => panic!("expected FallingResult struct, got {other:?}"),
     }
@@ -283,9 +364,8 @@ fn falling_less_than_10ft_zero_damage_no_save_attempted() {
 
     // <10ft = 0d6. Roll result should be 0. Even with allow_save=true,
     // base==0 means no save is attempted.
-    let mut handler = ScriptedHandler::with_responses(vec![
-        scripted_roll(0, 6, 0, vec![], vec![], 0, 0),
-    ]);
+    let mut handler =
+        ScriptedHandler::with_responses(vec![scripted_roll(0, 6, 0, vec![], vec![], 0, 0)]);
 
     let val = interp
         .evaluate_mechanic(
@@ -304,8 +384,14 @@ fn falling_less_than_10ft_zero_damage_no_save_attempted() {
     match val {
         Value::Struct { name, fields } => {
             assert_eq!(&*name, "FallingResult");
-            assert_eq!(*fields.get::<Name>(&"damage_taken".into()).unwrap(), Value::Int(0));
-            assert_eq!(*fields.get::<Name>(&"saved".into()).unwrap(), Value::Bool(false));
+            assert_eq!(
+                *fields.get::<Name>(&"damage_taken".into()).unwrap(),
+                Value::Int(0)
+            );
+            assert_eq!(
+                *fields.get::<Name>(&"saved".into()).unwrap(),
+                Value::Bool(false)
+            );
         }
         other => panic!("expected FallingResult struct, got {other:?}"),
     }

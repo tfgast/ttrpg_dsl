@@ -306,7 +306,10 @@ fn eval_ident(env: &mut Env, name: &str, expr: &Spanned<ExprKind>) -> Result<Val
     if let Some(const_decl) = env.interp.program.consts.get(name) {
         let const_decl = const_decl.clone();
         let val = eval_expr(env, &const_decl.value)?;
-        env.interp.consts.borrow_mut().insert(Name::from(name), val.clone());
+        env.interp
+            .consts
+            .borrow_mut()
+            .insert(Name::from(name), val.clone());
         return Ok(val);
     }
 

@@ -249,6 +249,9 @@ struct TurnBudget {
 }
 
 tag #concentration
+tag #spellcasting_gate
+
+enum GrapplingHold { light, firm, pinned }
 
 group Spellcasting {
     spell_dc: int
@@ -961,6 +964,18 @@ The `stacking` clause belongs to the concrete condition — it is NOT inherited 
 For `best by`, the named parameter must be `int` and declared on that condition (not inherited).
 
 ```ttrpg-with-preamble
+mechanic attack_roll(
+    attacker: Character,
+    target: Character,
+    attack_mod: int = 0
+) -> RollResult {
+    roll(1d20 + attack_mod)
+}
+
+derive can_cast(caster: Character) -> bool #spellcasting_gate {
+    true
+}
+
 // Parameterless non-doubling: only one instance matters
 condition Prone on bearer: Character
     stacking first
@@ -980,7 +995,7 @@ condition Concealed(level: int) on bearer: Character
 }
 
 // Multi-opponent: each instance tracks a different opponent (default all)
-condition Grappling(opponent: entity, hold: GrapplingHold) on bearer: entity {
+condition Grappling(opponent: Character, hold: GrapplingHold) on bearer: Character {
     modify [#spellcasting_gate](caster: bearer) {
         result = false
     }

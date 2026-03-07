@@ -169,11 +169,10 @@ impl Checker<'_> {
         span: ttrpg_ast::Span,
     ) {
         // Reject assignment to const names
-        if self.env.consts.contains_key(&target.root) || self.inferred_const_types.contains_key(&target.root) {
-            self.error(
-                format!("cannot assign to const `{}`", target.root),
-                span,
-            );
+        if self.env.consts.contains_key(&target.root)
+            || self.inferred_const_types.contains_key(&target.root)
+        {
+            self.error(format!("cannot assign to const `{}`", target.root), span);
             self.check_expr(value);
             return;
         }

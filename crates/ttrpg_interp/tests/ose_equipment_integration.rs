@@ -98,7 +98,10 @@ fn ose_equipment_has_expected_decls() {
         }
     }
 
-    assert!(has_standard_gear, "expected STANDARD_ADVENTURING_GEAR const");
+    assert!(
+        has_standard_gear,
+        "expected STANDARD_ADVENTURING_GEAR const"
+    );
     assert!(has_default_armour, "expected default_starting_armour");
     assert!(
         has_equipment_package_table,

@@ -242,7 +242,9 @@ system "test" {
 "#;
     let errors = compile_errors(source);
     assert!(
-        errors.iter().any(|e| e.contains("declared as string") && e.contains("type int")),
+        errors
+            .iter()
+            .any(|e| e.contains("declared as string") && e.contains("type int")),
         "expected type mismatch error, got: {errors:?}"
     );
 }

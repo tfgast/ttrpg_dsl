@@ -309,10 +309,7 @@ impl Parser {
                 // unmatched brace from a recovered system block. Skip silently.
                 self.advance();
             } else {
-                self.error(format!(
-                    "expected `use` or `system`, found {}",
-                    self.peek()
-                ));
+                self.error(format!("expected `use` or `system`, found {}", self.peek()));
                 self.advance();
             }
             self.skip_newlines();

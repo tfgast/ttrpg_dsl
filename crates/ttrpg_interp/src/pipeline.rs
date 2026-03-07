@@ -76,8 +76,7 @@ pub(crate) fn compute_stacking_winners(
         let policy = program
             .conditions
             .get(cond_name.as_str())
-            .map(|decl| &decl.stacking)
-            .unwrap_or(&StackingPolicy::All);
+            .map_or(&StackingPolicy::All, |decl| &decl.stacking);
 
         match policy {
             StackingPolicy::All => {
@@ -87,10 +86,7 @@ pub(crate) fn compute_stacking_winners(
             }
             StackingPolicy::First => {
                 // Oldest wins: min by (gained_at, id)
-                if let Some(winner) = instances
-                    .iter()
-                    .min_by_key(|c| (c.gained_at, c.id))
-                {
+                if let Some(winner) = instances.iter().min_by_key(|c| (c.gained_at, c.id)) {
                     winners.insert(winner.id);
                 }
             }
@@ -111,16 +107,16 @@ pub(crate) fn compute_stacking_winners(
                                 Direction::Lowest => bv.cmp(&av),
                             };
                             // Tie-break: oldest (lowest gained_at), then lowest id
-                            primary.then_with(|| b.gained_at.cmp(&a.gained_at))
-                                   .then_with(|| b.id.cmp(&a.id))
+                            primary
+                                .then_with(|| b.gained_at.cmp(&a.gained_at))
+                                .then_with(|| b.id.cmp(&a.id))
                         }
                         // Instances without the param lose to those with it
                         (Some(_), None) => std::cmp::Ordering::Greater,
                         (None, Some(_)) => std::cmp::Ordering::Less,
                         (None, None) => {
                             // Both missing: fall back to oldest
-                            b.gained_at.cmp(&a.gained_at)
-                                .then_with(|| b.id.cmp(&a.id))
+                            b.gained_at.cmp(&a.gained_at).then_with(|| b.id.cmp(&a.id))
                         }
                     }
                 }) {

@@ -852,7 +852,10 @@ fn collect_const(
     // Check for name conflicts with functions
     if env.functions.contains_key(&c.name) {
         diagnostics.push(Diagnostic::error(
-            format!("const `{}` conflicts with existing function/derive/mechanic", c.name),
+            format!(
+                "const `{}` conflicts with existing function/derive/mechanic",
+                c.name
+            ),
             span,
         ));
         return;

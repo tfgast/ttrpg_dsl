@@ -163,7 +163,11 @@ impl Checker<'_> {
         }
 
         // Check if it's a const
-        let const_ty = self.inferred_const_types.get(name).or_else(|| self.env.consts.get(name)).cloned();
+        let const_ty = self
+            .inferred_const_types
+            .get(name)
+            .or_else(|| self.env.consts.get(name))
+            .cloned();
         if let Some(ty) = const_ty {
             self.check_name_visible(name, Namespace::Function, span);
             return ty;

@@ -4295,8 +4295,8 @@ fn backslash_continuation_eval() {
     let mut runner = Runner::new();
     load_snippet(
         &mut runner,
-        r#"entity Character { HP: int }
-           function double(x: int) -> int { x * 2 }"#,
+        r"entity Character { HP: int }
+           function double(x: int) -> int { x * 2 }",
     );
 
     // Backslash continuation across two lines
@@ -4344,10 +4344,7 @@ fn auto_continuation_brace() {
 #[test]
 fn auto_continuation_paren() {
     let mut runner = Runner::new();
-    load_snippet(
-        &mut runner,
-        "function add(a: int, b: int) -> int { a + b }",
-    );
+    load_snippet(&mut runner, "function add(a: int, b: int) -> int { a + b }");
 
     runner.exec("assert_eq add(").unwrap();
     assert!(runner.in_continuation());
