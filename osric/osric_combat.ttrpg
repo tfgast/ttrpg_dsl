@@ -133,6 +133,10 @@ system "OSRIC Combat" {
 
     event OverbearingMiss(attacker: entity, target: entity) {}
 
+    event FendOffSuccess(defender: entity, attacker: entity, fender: entity) {}
+
+    event FendOffFailure(defender: entity, attacker: entity, fender: entity) {}
+
 
     // ========================================================
     //  TIME CONVERSIONS
@@ -723,6 +727,17 @@ system "OSRIC Combat" {
         effective_target: int
     }
 
+    // Fend-off outcome: whether the armed defender blocked the
+    // unarmed attack or failed.
+    enum FendOffOutcome { FendedOff, Failed }
+
+    // Result of a fend-off attempt (§1.6.12, First Step).
+    struct FendOffResult {
+        outcome: FendOffOutcome
+        total_mod: int
+    }
+
+
     // Unarmed to-hit target number from attacker's armour AC.
     // Uses ascending AC of worn armour only (not DEX/shield/magic).
     // Unarmoured (AC 10) = target 2. Each AC step adds 2.
@@ -848,6 +863,76 @@ system "OSRIC Combat" {
             defender_mod: def_mod,
             effective_target: effective
         }
+    }
+
+
+    // ========================================================
+    //  FEND-OFF MECHANIC (§1.6.12, First Step)
+    //
+    //  Before grappling/overbearing, each armed defender gets
+    //  a free melee to-hit roll. On hit: the unarmed attack is
+    //  blocked entirely (no damage dealt). Adjacent armed allies
+    //  may also attempt. Uses standard melee attack roll vs the
+    //  unarmed attacker's effective AC.
+    //
+    //  Exceptions (caller must enforce): surprised, invisible
+    //  attacker, attacked from rear or shield-side flank.
+    //
+    //  Reference: PG p.106 (§1.6.12, First Step: Fending Off)
+    // ========================================================
+
+    // Resolve a single fend-off attempt by an armed entity
+    // against an unarmed attacker. The fender makes a standard
+    // melee to-hit roll (d20 + BTHB + STR + mods) against the
+    // attacker's effective AC. No damage on success — just
+    // blocks the unarmed attack.
+    mechanic resolve_fend_off_attempt(
+        fender: entity,
+        attacker: entity,
+        attack_mod: int = 0
+    ) -> FendOffResult {
+        if fender is Character {
+            let weapon = wielded_melee(fender)
+            if weapon.is_none() {
+                FendOffResult { outcome: FendOffOutcome.Failed, total_mod: 0 }
+            } else {
+                let result = resolve_melee_attack(
+                    fender, attacker, weapon.unwrap(),
+                    attack_mod: attack_mod
+                )
+                let fend_outcome = match result.outcome {
+                    AttackOutcome.Hit => FendOffOutcome.FendedOff,
+                    _ => FendOffOutcome.Failed
+                }
+                FendOffResult { outcome: fend_outcome, total_mod: result.total_mod }
+            }
+        } else if fender is Monster {
+            // Armed monsters use HD-based BTHB. Caller should verify
+            // the monster has EquipmentSlots with a wielded weapon.
+            let weapon = wielded_melee(fender)
+            if weapon.is_none() {
+                FendOffResult { outcome: FendOffOutcome.Failed, total_mod: 0 }
+            } else {
+                let result = resolve_armed_melee_attack(
+                    fender, attacker, weapon.unwrap(),
+                    attack_mod: attack_mod
+                )
+                let fend_outcome = match result.outcome {
+                    AttackOutcome.Hit => FendOffOutcome.FendedOff,
+                    _ => FendOffOutcome.Failed
+                }
+                FendOffResult { outcome: fend_outcome, total_mod: result.total_mod }
+            }
+        } else {
+            FendOffResult { outcome: FendOffOutcome.Failed, total_mod: 0 }
+        }
+    }
+
+    // Convenience: check if an entity is armed (has a melee weapon wielded).
+    // Used to filter fend-off eligible entities before calling
+    // resolve_fend_off_attempt.
+    derive is_armed_melee(target: entity) -> bool {
+        wielded_melee(target).is_some()
     }
 
 

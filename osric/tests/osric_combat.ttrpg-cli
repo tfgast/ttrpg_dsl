@@ -1254,3 +1254,85 @@ rolls 1
 do GrapplingAttack(grap_atk, grap_tgt, 120, 120)
 assert_eq grap_tgt.temp_damage, 4
 assert_eq grap_tgt.hp, 19
+
+
+// ── Fend-off mechanic (§1.6.12, First Step) ──────────────────
+
+// is_armed_melee: armed character returns true
+spawn Character fo_armed { name: "ArmedDef", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 16, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots { wielded_main: some(Melee(SwordLong)) } }
+assert_eq is_armed_melee(fo_armed), true
+
+// is_armed_melee: unarmed character returns false
+spawn Character fo_unarmed_check { name: "UnarmedChk", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 } }
+assert_eq is_armed_melee(fo_unarmed_check), false
+
+// Fend-off success: armed defender rolls high vs unarmoured attacker.
+// Fighter level 5 → BTHB 4, STR 16 → +0 to-hit, Long Sword.
+// Target (unarmed attacker) is unarmoured → effective AC 10.
+// Roll 15: 15 + 4 = 19 >= 10 → Hit → FendedOff.
+spawn Character fo_attacker { name: "UnarmedAtk", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 16, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 } }
+
+rolls clear
+rolls 15
+let fo_hit = resolve_fend_off_attempt(fo_armed, fo_attacker)
+assert_eq fo_hit.outcome, FendOffOutcome.FendedOff
+
+// Fend-off failure: armed defender rolls low.
+// Roll 2: 2 + 4 = 6 < 10 → Miss → Failed.
+rolls clear
+rolls 2
+let fo_miss = resolve_fend_off_attempt(fo_armed, fo_attacker)
+assert_eq fo_miss.outcome, FendOffOutcome.Failed
+
+// Natural 1 always misses, even with high BTHB.
+rolls clear
+rolls 1
+let fo_nat1 = resolve_fend_off_attempt(fo_armed, fo_attacker)
+assert_eq fo_nat1.outcome, FendOffOutcome.Failed
+
+// Fend-off by unarmed entity always fails (no weapon).
+spawn Character fo_unarmed_def { name: "UnarmedDef", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 16, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 } }
+
+rolls clear
+rolls 20
+let fo_no_weapon = resolve_fend_off_attempt(fo_unarmed_def, fo_attacker)
+assert_eq fo_no_weapon.outcome, FendOffOutcome.Failed
+
+// Fend-off vs armoured attacker: higher AC makes it harder.
+// Attacker in plate mail → effective AC 17. BTHB 4.
+// Roll 10: 10 + 4 = 14 < 17 → Miss → Failed.
+spawn Character fo_armoured_atk { name: "ArmouredAtk", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 }, EquipmentSlots { worn_armor: some(Armor { armour_type: PlateMail }) } }
+
+rolls clear
+rolls 10
+let fo_vs_armoured = resolve_fend_off_attempt(fo_armed, fo_armoured_atk)
+assert_eq fo_vs_armoured.outcome, FendOffOutcome.Failed
+
+// Same scenario but high roll succeeds.
+// Roll 18: 18 + 4 = 22 >= 17 → Hit → FendedOff.
+rolls clear
+rolls 18
+let fo_vs_armoured_hit = resolve_fend_off_attempt(fo_armed, fo_armoured_atk)
+assert_eq fo_vs_armoured_hit.outcome, FendOffOutcome.FendedOff
+
+// Fend-off does NOT deal damage (no HP change on attacker).
+assert_eq fo_attacker.hp, 10
+assert_eq fo_armoured_atk.hp, 10
+
+// Armed monster fend-off: Hobgoblin with sword.
+// 1d8+1 HD → BTHB 2. Target unarmoured AC 10.
+// Roll 12: 12 + 2 = 14 >= 10 → FendedOff.
+spawn Monster fo_hobgoblin { name: "Hobgoblin", hit_dice: 1d8 + 1, max_hp: 8, hp: 8, ac: 15, attacks: [MonsterAttack { name: "Sword", damage: 1d8 }], EquipmentSlots { wielded_main: some(Melee(SwordLong)) } }
+
+rolls clear
+rolls 12
+let fo_monster = resolve_fend_off_attempt(fo_hobgoblin, fo_attacker)
+assert_eq fo_monster.outcome, FendOffOutcome.FendedOff
+
+// Unarmed monster cannot fend off.
+spawn Monster fo_unarmed_mon { name: "Rat", hit_dice: 0d8, max_hp: 1, hp: 1, ac: 10, attacks: [MonsterAttack { name: "Bite", damage: 1d2 }] }
+
+rolls clear
+rolls 20
+let fo_unarmed_monster = resolve_fend_off_attempt(fo_unarmed_mon, fo_attacker)
+assert_eq fo_unarmed_monster.outcome, FendOffOutcome.Failed
