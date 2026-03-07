@@ -557,7 +557,8 @@ spawn Monster mc_cooldown { name: "Orc", hit_dice: 1d8, max_hp: 8, hp: 8, ac: 14
 spawn Character mc_cd_tgt { name: "Target", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 } }
 
 call apply_condition(mc_cooldown, ChargeRecovery, Duration.Rounds(10))
-assert_err do Charge(mc_cooldown, mc_cd_tgt)
+do Charge(mc_cooldown, mc_cd_tgt)
+assert_eq mc_cd_tgt.hp, 10
 
 // ── Natural-weapon monster charge (MonsterCharge) ───────────
 
@@ -588,7 +589,8 @@ spawn Monster nc_cooldown { name: "Boar", hit_dice: 3d8, max_hp: 15, hp: 15, ac:
 spawn Character nc_cd_tgt { name: "Target", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 } }
 
 call apply_condition(nc_cooldown, ChargeRecovery, Duration.Rounds(10))
-assert_err do MonsterCharge(nc_cooldown, nc_cd_tgt, MonsterAttack { name: "Tusk", damage: 3d4 })
+do MonsterCharge(nc_cooldown, nc_cd_tgt, MonsterAttack { name: "Tusk", damage: 3d4 })
+assert_eq nc_cd_tgt.hp, 10
 
 // Natural charge monster vs monster
 spawn Monster nc_bull { name: "Bull", hit_dice: 4d8, max_hp: 20, hp: 20, ac: 13, attacks: [MonsterAttack { name: "Horn", damage: 1d6 }] }
