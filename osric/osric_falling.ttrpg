@@ -1,0 +1,92 @@
+// ============================================================
+// OSRIC 3.0 Falling Damage (§1.5.5)
+//
+// Damage from falling is determined by distance:
+//
+//   <10ft  — no damage
+//   10ft   — 1d6
+//   20ft   — 3d6
+//   30ft   — 6d6
+//   40ft   — 10d6
+//   50ft   — 15d6
+//   >50ft  — 20d6
+//
+// The GM may optionally allow a saving throw against falling
+// damage; if successful, damage is halved.
+//
+// Reference: OSRIC 3.0 Player Guide, §1.5.5 (p.89)
+// ============================================================
+
+use "OSRIC"
+use "OSRIC Saves"
+
+system "OSRIC Falling" {
+
+    struct FallingResult {
+        distance_ft: int
+        base_damage: int
+        saved: bool
+        damage_taken: int
+    }
+
+    // Falling damage dice by distance (§1.5.5).
+    // Returns the dice expression for the given fall distance.
+    derive falling_damage_dice(distance_ft: int) -> DiceExpr {
+        if distance_ft < 10 {
+            0d6
+        } else if distance_ft < 20 {
+            1d6
+        } else if distance_ft < 30 {
+            3d6
+        } else if distance_ft < 40 {
+            6d6
+        } else if distance_ft < 50 {
+            10d6
+        } else if distance_ft == 50 {
+            15d6
+        } else {
+            20d6
+        }
+    }
+
+    // Apply falling damage. Rolls the appropriate dice for the
+    // distance fallen. If allow_save is true, a save vs
+    // DeathParalysisPoison is attempted; success halves damage.
+    mechanic apply_falling_damage(
+        distance_ft: int,
+        saves: SavingThrows,
+        allow_save: bool = false,
+        save_bonus: int = 0
+    ) -> FallingResult {
+        let dice = falling_damage_dice(distance_ft)
+        let base = roll(dice).total
+
+        if allow_save && base > 0 {
+            let saved = roll_saving_throw(saves, SaveCategory.DeathParalysisPoison, save_bonus)
+            if saved {
+                let halved = max(1, floor(base / 2))
+                FallingResult {
+                    distance_ft: distance_ft,
+                    base_damage: base,
+                    saved: true,
+                    damage_taken: halved
+                }
+            } else {
+                FallingResult {
+                    distance_ft: distance_ft,
+                    base_damage: base,
+                    saved: false,
+                    damage_taken: base
+                }
+            }
+        } else {
+            FallingResult {
+                distance_ft: distance_ft,
+                base_damage: base,
+                saved: false,
+                damage_taken: base
+            }
+        }
+    }
+
+}
