@@ -97,6 +97,7 @@ pub struct CliHandler<'a> {
     reverse_handles: &'a HashMap<EntityRef, String>,
     rng: &'a mut StdRng,
     roll_queue: &'a mut VecDeque<i64>,
+    prompt_queue: &'a mut VecDeque<Value>,
     unit_suffixes: &'a UnitSuffixes,
     pub log: Vec<String>,
     pub effects: Vec<Effect>,
@@ -109,6 +110,7 @@ impl<'a> CliHandler<'a> {
         reverse_handles: &'a HashMap<EntityRef, String>,
         rng: &'a mut StdRng,
         roll_queue: &'a mut VecDeque<i64>,
+        prompt_queue: &'a mut VecDeque<Value>,
         unit_suffixes: &'a UnitSuffixes,
     ) -> Self {
         CliHandler {
@@ -116,6 +118,7 @@ impl<'a> CliHandler<'a> {
             reverse_handles,
             rng,
             roll_queue,
+            prompt_queue,
             unit_suffixes,
             log: Vec::new(),
             effects: Vec::new(),
@@ -176,7 +179,14 @@ impl EffectHandler for CliHandler<'_> {
             }
 
             Effect::ResolvePrompt { suggest, name, .. } => {
-                if let Some(val) = suggest {
+                if let Some(val) = self.prompt_queue.pop_front() {
+                    self.log(format!(
+                        "[ResolvePrompt] {} -> {} (queued)",
+                        name,
+                        format_value(&val, self.unit_suffixes)
+                    ));
+                    Response::PromptResult(val)
+                } else if let Some(val) = suggest {
                     self.log(format!(
                         "[ResolvePrompt] {} -> auto: {}",
                         name,
@@ -703,12 +713,14 @@ mod tests {
         let reverse_handles = HashMap::new();
         let mut rng = StdRng::seed_from_u64(42);
         let mut queue = VecDeque::new();
+        let mut prompt_queue = VecDeque::new();
         let no_units = UnitSuffixes::new();
         let mut handler = CliHandler::new(
             &game_state,
             &reverse_handles,
             &mut rng,
             &mut queue,
+            &mut prompt_queue,
             &no_units,
         );
 
@@ -734,8 +746,9 @@ mod tests {
         reverse.insert(entity, "fighter".to_string());
         let mut rng = StdRng::seed_from_u64(42);
         let mut queue = VecDeque::new();
+        let mut prompt_queue = VecDeque::new();
         let no_units = UnitSuffixes::new();
-        let mut handler = CliHandler::new(&game_state, &reverse, &mut rng, &mut queue, &no_units);
+        let mut handler = CliHandler::new(&game_state, &reverse, &mut rng, &mut queue, &mut prompt_queue, &no_units);
 
         let effect = Effect::MutateField {
             entity,
@@ -770,8 +783,9 @@ mod tests {
         reverse.insert(entity, "fighter".to_string());
         let mut rng = StdRng::seed_from_u64(42);
         let mut queue = VecDeque::new();
+        let mut prompt_queue = VecDeque::new();
         let no_units = UnitSuffixes::new();
-        let mut handler = CliHandler::new(&game_state, &reverse, &mut rng, &mut queue, &no_units);
+        let mut handler = CliHandler::new(&game_state, &reverse, &mut rng, &mut queue, &mut prompt_queue, &no_units);
 
         let effect = Effect::MutateField {
             entity,
@@ -800,8 +814,9 @@ mod tests {
         reverse.insert(entity, "fighter".to_string());
         let mut rng = StdRng::seed_from_u64(42);
         let mut queue = VecDeque::new();
+        let mut prompt_queue = VecDeque::new();
         let no_units = UnitSuffixes::new();
-        let mut handler = CliHandler::new(&game_state, &reverse, &mut rng, &mut queue, &no_units);
+        let mut handler = CliHandler::new(&game_state, &reverse, &mut rng, &mut queue, &mut prompt_queue, &no_units);
 
         let effect = Effect::DeductCost {
             actor: entity,
@@ -827,12 +842,14 @@ mod tests {
         let reverse_handles = HashMap::new();
         let mut rng = StdRng::seed_from_u64(42);
         let mut queue = VecDeque::new();
+        let mut prompt_queue = VecDeque::new();
         let no_units = UnitSuffixes::new();
         let mut handler = CliHandler::new(
             &game_state,
             &reverse_handles,
             &mut rng,
             &mut queue,
+            &mut prompt_queue,
             &no_units,
         );
 
@@ -853,12 +870,14 @@ mod tests {
         let reverse_handles = HashMap::new();
         let mut rng = StdRng::seed_from_u64(42);
         let mut queue = VecDeque::new();
+        let mut prompt_queue = VecDeque::new();
         let no_units = UnitSuffixes::new();
         let mut handler = CliHandler::new(
             &game_state,
             &reverse_handles,
             &mut rng,
             &mut queue,
+            &mut prompt_queue,
             &no_units,
         );
 
@@ -929,12 +948,14 @@ mod tests {
         let reverse_handles = HashMap::new();
         let mut rng = StdRng::seed_from_u64(42);
         let mut queue = VecDeque::from(vec![15]);
+        let mut prompt_queue = VecDeque::new();
         let no_units = UnitSuffixes::new();
         let mut handler = CliHandler::new(
             &game_state,
             &reverse_handles,
             &mut rng,
             &mut queue,
+            &mut prompt_queue,
             &no_units,
         );
 
@@ -961,8 +982,9 @@ mod tests {
         reverse.insert(entity, "wizard".to_string());
         let mut rng = StdRng::seed_from_u64(42);
         let mut queue = VecDeque::new();
+        let mut prompt_queue = VecDeque::new();
         let no_units = UnitSuffixes::new();
-        let mut handler = CliHandler::new(&game_state, &reverse, &mut rng, &mut queue, &no_units);
+        let mut handler = CliHandler::new(&game_state, &reverse, &mut rng, &mut queue, &mut prompt_queue, &no_units);
 
         let struct_val = Value::Struct {
             name: "Spellcasting".into(),
@@ -1012,8 +1034,9 @@ mod tests {
         reverse.insert(entity, "wizard".to_string());
         let mut rng = StdRng::seed_from_u64(42);
         let mut queue = VecDeque::new();
+        let mut prompt_queue = VecDeque::new();
         let no_units = UnitSuffixes::new();
-        let mut handler = CliHandler::new(&game_state, &reverse, &mut rng, &mut queue, &no_units);
+        let mut handler = CliHandler::new(&game_state, &reverse, &mut rng, &mut queue, &mut prompt_queue, &no_units);
 
         let effect = Effect::RevokeGroup {
             entity,
@@ -1050,8 +1073,9 @@ mod tests {
         reverse.insert(entity, "fighter".to_string());
         let mut rng = StdRng::seed_from_u64(42);
         let mut queue = VecDeque::new();
+        let mut prompt_queue = VecDeque::new();
         let no_units = UnitSuffixes::new();
-        let mut handler = CliHandler::new(&game_state, &reverse, &mut rng, &mut queue, &no_units);
+        let mut handler = CliHandler::new(&game_state, &reverse, &mut rng, &mut queue, &mut prompt_queue, &no_units);
 
         let effect = Effect::MutateField {
             entity,
@@ -1088,8 +1112,9 @@ mod tests {
         reverse.insert(entity, "fighter".to_string());
         let mut rng = StdRng::seed_from_u64(42);
         let mut queue = VecDeque::new();
+        let mut prompt_queue = VecDeque::new();
         let no_units = UnitSuffixes::new();
-        let mut handler = CliHandler::new(&game_state, &reverse, &mut rng, &mut queue, &no_units);
+        let mut handler = CliHandler::new(&game_state, &reverse, &mut rng, &mut queue, &mut prompt_queue, &no_units);
 
         let effect = Effect::MutateField {
             entity,

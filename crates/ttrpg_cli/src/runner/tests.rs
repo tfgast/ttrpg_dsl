@@ -4133,3 +4133,141 @@ fn source_heredoc_replaces_previous_program() {
     runner.exec("spawn B b { y: 2 }").unwrap();
     runner.exec("assert_eq b.y, 2").unwrap();
 }
+
+// ── Prompt queue tests ──────────────────────────────────────
+
+/// Load a program with a prompt for testing the prompt queue.
+fn load_prompt_program(runner: &mut Runner) {
+    let path = write_temp(
+        "prompt",
+        r#"
+system "test" {
+    prompt pick_number(base: int) -> int {
+        hint: "Pick a number"
+        suggest: base + 1
+        default {
+            base + 100
+        }
+    }
+
+    derive test_prompt(x: int) -> int {
+        pick_number(x)
+    }
+}
+"#,
+    );
+    runner.exec(&format!("load {}", path.display())).unwrap();
+    runner.take_output();
+}
+
+#[test]
+fn cmd_prompts_queue_int() {
+    let mut runner = Runner::new();
+    runner.exec("prompts 42").unwrap();
+    let output = runner.take_output();
+    assert!(output[0].contains("1 prompt"));
+    assert_eq!(runner.prompt_queue.len(), 1);
+    assert_eq!(runner.prompt_queue[0], Value::Int(42));
+}
+
+#[test]
+fn cmd_prompts_queue_string() {
+    let mut runner = Runner::new();
+    runner.exec(r#"prompts "hello""#).unwrap();
+    runner.take_output();
+    assert_eq!(runner.prompt_queue[0], Value::Str("hello".into()));
+}
+
+#[test]
+fn cmd_prompts_queue_bool() {
+    let mut runner = Runner::new();
+    runner.exec("prompts true").unwrap();
+    runner.take_output();
+    assert_eq!(runner.prompt_queue[0], Value::Bool(true));
+}
+
+#[test]
+fn cmd_prompts_clear() {
+    let mut runner = Runner::new();
+    runner.exec("prompts 1").unwrap();
+    runner.exec("prompts 2").unwrap();
+    runner.take_output();
+    assert_eq!(runner.prompt_queue.len(), 2);
+
+    runner.exec("prompts clear").unwrap();
+    let output = runner.take_output();
+    assert!(output[0].contains("cleared"));
+    assert!(runner.prompt_queue.is_empty());
+}
+
+#[test]
+fn cmd_prompts_invalid_syntax() {
+    let mut runner = Runner::new();
+    let err = runner.exec("prompts @@@").unwrap_err();
+    assert!(
+        err.to_string().contains("invalid prompt value"),
+        "expected parse error, got: {err}"
+    );
+    assert!(runner.prompt_queue.is_empty());
+}
+
+#[test]
+fn cmd_prompts_consumed_by_resolve_prompt() {
+    let mut runner = Runner::new();
+    load_prompt_program(&mut runner);
+
+    runner.exec("prompts 99").unwrap();
+    runner.take_output();
+
+    runner.exec("eval test_prompt(5)").unwrap();
+    let output = runner.take_output();
+    // Should show "[ResolvePrompt] pick_number -> 99 (queued)" and the result "99"
+    assert!(
+        output.iter().any(|l| l.contains("(queued)")),
+        "expected queued log, got: {output:?}"
+    );
+    assert!(
+        output.iter().any(|l| l == "99"),
+        "expected result 99, got: {output:?}"
+    );
+    // Queue should be empty after consumption
+    assert!(runner.prompt_queue.is_empty());
+}
+
+#[test]
+fn cmd_prompts_fallback_to_suggest_when_queue_empty() {
+    let mut runner = Runner::new();
+    load_prompt_program(&mut runner);
+
+    // No queued values — should use suggest (base + 1 = 6)
+    runner.exec("eval test_prompt(5)").unwrap();
+    let output = runner.take_output();
+    assert!(
+        output.iter().any(|l| l.contains("auto:")),
+        "expected auto-resolve log, got: {output:?}"
+    );
+    assert!(
+        output.iter().any(|l| l == "6"),
+        "expected suggest result 6, got: {output:?}"
+    );
+}
+
+#[test]
+fn cmd_prompts_multiple_consumed_in_order() {
+    let mut runner = Runner::new();
+    load_prompt_program(&mut runner);
+
+    runner.exec("prompts 10").unwrap();
+    runner.exec("prompts 20").unwrap();
+    runner.take_output();
+
+    runner.exec("eval test_prompt(0)").unwrap();
+    let out1 = runner.take_output();
+    assert!(out1.iter().any(|l| l == "10"), "first should be 10: {out1:?}");
+
+    runner.exec("eval test_prompt(0)").unwrap();
+    let out2 = runner.take_output();
+    assert!(out2.iter().any(|l| l == "20"), "second should be 20: {out2:?}");
+
+    assert!(runner.prompt_queue.is_empty());
+}

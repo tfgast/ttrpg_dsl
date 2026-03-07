@@ -42,6 +42,7 @@ pub enum Command {
     // Configuration
     Seed(String),
     Rolls(String),
+    Prompts(String),
     // Coverage
     Coverage,
     CoverageReset,
@@ -273,6 +274,14 @@ pub fn parse_command(line: &str) -> Option<Command> {
                 Some(Command::Unknown("rolls".into()))
             } else {
                 Some(Command::Rolls(s.into()))
+            }
+        }
+        "prompts" => {
+            let s = strip_comment(tail).trim();
+            if s.is_empty() {
+                Some(Command::Unknown("prompts".into()))
+            } else {
+                Some(Command::Prompts(s.into()))
             }
         }
         "breakdown" => {
@@ -884,6 +893,38 @@ mod tests {
         assert_eq!(
             parse_command("rolls clear"),
             Some(Command::Rolls("clear".into()))
+        );
+    }
+
+    #[test]
+    fn parse_prompts() {
+        assert_eq!(
+            parse_command("prompts 42"),
+            Some(Command::Prompts("42".into()))
+        );
+    }
+
+    #[test]
+    fn parse_prompts_string() {
+        assert_eq!(
+            parse_command(r#"prompts "hello""#),
+            Some(Command::Prompts(r#""hello""#.into()))
+        );
+    }
+
+    #[test]
+    fn parse_prompts_clear() {
+        assert_eq!(
+            parse_command("prompts clear"),
+            Some(Command::Prompts("clear".into()))
+        );
+    }
+
+    #[test]
+    fn parse_prompts_empty_is_unknown() {
+        assert_eq!(
+            parse_command("prompts"),
+            Some(Command::Unknown("prompts".into()))
         );
     }
 

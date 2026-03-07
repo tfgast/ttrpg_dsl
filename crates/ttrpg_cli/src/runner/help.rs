@@ -390,6 +390,19 @@ const COMMANDS: &[CommandInfo] = &[
         ],
         category: "Dice Control",
     },
+    CommandInfo {
+        name: "prompts",
+        syntax: "prompts <expr> | clear",
+        description: "Queue predetermined prompt responses",
+        detail: "Queue a value for the next ResolvePrompt effect, consumed in order.\n  Values are parsed and evaluated at queue time — syntax errors are caught immediately.\n  Use 'prompts clear' to empty the queue. When the queue is empty, prompts\n  fall back to auto-resolve (suggest value or default body).",
+        examples: &[
+            "prompts 42",
+            "prompts \"longsword\"",
+            "prompts true",
+            "prompts clear",
+        ],
+        category: "Dice Control",
+    },
     // Help
     CommandInfo {
         name: "help",

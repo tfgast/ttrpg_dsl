@@ -336,6 +336,7 @@ impl Runner {
                 &self.reverse_handles,
                 &mut self.rng,
                 &mut self.roll_queue,
+                &mut self.prompt_queue,
                 &self.unit_suffixes,
             )
             .quiet(self.quiet);

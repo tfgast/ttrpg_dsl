@@ -100,6 +100,7 @@ pub struct Runner {
     variables: HashMap<String, Value>,
     rng: StdRng,
     roll_queue: VecDeque<i64>,
+    prompt_queue: VecDeque<Value>,
     unit_suffixes: UnitSuffixes,
     coverage: Option<Rc<RefCell<CoverageData>>>,
     quiet: bool,
@@ -123,6 +124,7 @@ impl Runner {
             variables: HashMap::new(),
             rng: StdRng::from_os_rng(),
             roll_queue: VecDeque::new(),
+            prompt_queue: VecDeque::new(),
             unit_suffixes: UnitSuffixes::new(),
             coverage: None,
             quiet: false,
@@ -343,6 +345,7 @@ impl Runner {
             // Configuration
             Command::Seed(tail) => self.cmd_seed(&tail),
             Command::Rolls(tail) => self.cmd_rolls(&tail),
+            Command::Prompts(tail) => self.cmd_prompts(&tail),
             // Help
             Command::Help(topic) => self.cmd_help(topic.as_deref()),
             Command::Unknown(kw) => {
@@ -390,6 +393,7 @@ impl Runner {
             &self.reverse_handles,
             &mut self.rng,
             &mut self.roll_queue,
+            &mut self.prompt_queue,
             &self.unit_suffixes,
         )
         .quiet(self.quiet);
