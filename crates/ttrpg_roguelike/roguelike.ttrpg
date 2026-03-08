@@ -1,0 +1,109 @@
+// ============================================================
+// Roguelike Rules
+//
+// Minimal combat rules for an ASCII roguelike demo.
+// The host manages positions, map, rendering, and AI.
+// The DSL handles combat math, conditions, and resources.
+// ============================================================
+
+system "Roguelike" {
+
+    // ========================================================
+    //  ENUMS
+    // ========================================================
+
+    enum CreatureKind { Player, Goblin, Rat, Snake }
+
+    // ========================================================
+    //  ENTITIES
+    // ========================================================
+
+    entity Creature {
+        name: string
+        kind: CreatureKind
+        position: Position
+
+        // combat stats
+        HP: resource(0..=max_HP)
+        max_HP: int
+        AC: int
+        attack_bonus: int
+        damage: DiceExpr
+
+        // turn economy
+        speed: int = 30
+    }
+
+    // ========================================================
+    //  EVENTS
+    // ========================================================
+
+    event AttackHit(attacker: Creature, target: Creature, damage: int) {}
+    event AttackMiss(attacker: Creature, target: Creature) {}
+    event CreatureDied(target: Creature) {}
+
+    // ========================================================
+    //  DERIVES
+    // ========================================================
+
+    derive is_alive(target: Creature) -> bool {
+        target.HP > 0
+    }
+
+    derive is_adjacent(a: Creature, b: Creature) -> bool {
+        distance(a.position, b.position) <= 1
+    }
+
+    // ========================================================
+    //  MECHANICS
+    // ========================================================
+
+    mechanic attack_roll(attacker: Creature, target: Creature, bonus: int = 0) -> RollResult {
+        roll(1d20 + attacker.attack_bonus + bonus)
+    }
+
+    // ========================================================
+    //  ACTIONS
+    // ========================================================
+
+    action MeleeAttack on attacker: Creature (target: Creature) {
+        cost { action }
+        requires { distance(attacker.position, target.position) <= 1 }
+        resolve {
+            let atk: RollResult = attack_roll(attacker, target)
+            if atk >= target.AC {
+                let dmg: RollResult = roll(attacker.damage)
+                target.HP -= dmg.total
+                emit AttackHit(
+                    attacker: attacker,
+                    target: target,
+                    damage: dmg.total
+                )
+            } else {
+                emit AttackMiss(attacker: attacker, target: target)
+            }
+        }
+    }
+
+    // ========================================================
+    //  HOOKS
+    // ========================================================
+
+    hook CheckDeath on target: Creature (trigger: AttackHit(target: target)) {
+        if target.HP <= 0 {
+            emit CreatureDied(target: target)
+        }
+    }
+
+    // ========================================================
+    //  CONDITIONS
+    // ========================================================
+
+    condition Poisoned on bearer: Creature
+        stacking first
+    {
+        modify attack_roll(attacker: bearer) {
+            bonus = bonus - 2
+        }
+    }
+}

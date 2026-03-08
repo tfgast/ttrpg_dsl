@@ -8,6 +8,7 @@ members = [
     "crates/ttrpg_interp",
     "crates/ttrpg_cli",
     "crates/ttrpg_ose_data",
+    "crates/ttrpg_roguelike",
 ]
 exclude = ["fuzz"]
 
@@ -30,6 +31,8 @@ insta = "1"
 nu-ansi-term = "0.50"
 rand = "0.9"
 crossterm = "0.29"
+ratatui = "0.30"
+pathfinding = "4"
 reedline = "0.45"
 rustc-hash = "2"
 

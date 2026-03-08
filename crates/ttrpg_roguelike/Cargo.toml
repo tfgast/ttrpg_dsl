@@ -1,0 +1,22 @@
+[package]
+name = "ttrpg_roguelike"
+version.workspace = true
+edition.workspace = true
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "roguelike"
+path = "src/main.rs"
+
+[dependencies]
+ttrpg_ast.workspace = true
+ttrpg_parser.workspace = true
+ttrpg_checker.workspace = true
+ttrpg_interp.workspace = true
+crossterm.workspace = true
+ratatui.workspace = true
+pathfinding.workspace = true
+rand.workspace = true
+rustc-hash.workspace = true
