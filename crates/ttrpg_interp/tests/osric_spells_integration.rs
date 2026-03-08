@@ -59,6 +59,7 @@ fn osric_spells_has_all_tables() {
         "magic_user_slots",
         "illusionist_slots",
         "wis_bonus_slots",
+        "paladin_slots",
         "ranger_druid_slots",
         "ranger_mu_slots",
     ];
@@ -98,6 +99,7 @@ fn osric_spells_has_dispatch_derives() {
         "max_spell_level",
         "has_wis_bonus",
         "total_spell_slots",
+        "paladin_caster_level",
         "ranger_druid_casting_level",
         "ranger_arcane_casting_level",
     ];

@@ -77,6 +77,43 @@ assert_eq spell_slots_for(SpellProgression.Illusionist, 20, 5), 5
 assert_eq spell_slots_for(SpellProgression.Illusionist, 20, 6), 4
 assert_eq spell_slots_for(SpellProgression.Illusionist, 20, 7), 2
 
+// ── Paladin spell slots ───────────────────────────────────────────
+
+// Level 8: no spells yet
+assert_eq spell_slots_for(SpellProgression.Paladin, 8, 1), 0
+
+// Level 9: [1,0,0,0]
+assert_eq spell_slots_for(SpellProgression.Paladin, 9, 1), 1
+assert_eq spell_slots_for(SpellProgression.Paladin, 9, 2), 0
+assert_eq spell_slots_for(SpellProgression.Paladin, 9, 3), 0
+assert_eq spell_slots_for(SpellProgression.Paladin, 9, 4), 0
+
+// Level 15: [3,2,1,1]
+assert_eq spell_slots_for(SpellProgression.Paladin, 15, 1), 3
+assert_eq spell_slots_for(SpellProgression.Paladin, 15, 2), 2
+assert_eq spell_slots_for(SpellProgression.Paladin, 15, 3), 1
+assert_eq spell_slots_for(SpellProgression.Paladin, 15, 4), 1
+
+// Level 20: [3,3,3,3]
+assert_eq spell_slots_for(SpellProgression.Paladin, 20, 1), 3
+assert_eq spell_slots_for(SpellProgression.Paladin, 20, 2), 3
+assert_eq spell_slots_for(SpellProgression.Paladin, 20, 3), 3
+assert_eq spell_slots_for(SpellProgression.Paladin, 20, 4), 3
+
+// ── Paladin casting level ─────────────────────────────────────────
+
+assert_eq paladin_caster_level(1), 0
+assert_eq paladin_caster_level(8), 0
+assert_eq paladin_caster_level(9), 1
+assert_eq paladin_caster_level(12), 4
+assert_eq paladin_caster_level(16), 8
+assert_eq paladin_caster_level(20), 8
+
+// ── Ranger casting level ──────────────────────────────────────────
+
+assert_eq ranger_druid_casting_level(7), 0
+assert_eq ranger_druid_casting_level(8), 1
+
 // ── NonCaster returns zero ──────────────────────────────────────
 
 assert_eq spell_slots_for(SpellProgression.NonCaster, 10, 1), 0
@@ -88,8 +125,8 @@ assert_eq max_spell_level(SpellProgression.Druid), 7
 assert_eq max_spell_level(SpellProgression.Illusionist), 7
 assert_eq max_spell_level(SpellProgression.MagicUser), 9
 assert_eq max_spell_level(SpellProgression.NonCaster), 0
-assert_eq max_spell_level(SpellProgression.Paladin), 0
-assert_eq max_spell_level(SpellProgression.Ranger), 0
+assert_eq max_spell_level(SpellProgression.Paladin), 4
+assert_eq max_spell_level(SpellProgression.Ranger), 3
 
 // ── has_wis_bonus ───────────────────────────────────────────────
 
@@ -98,6 +135,7 @@ assert has_wis_bonus(SpellProgression.Druid)
 assert (has_wis_bonus(SpellProgression.MagicUser)) == false
 assert (has_wis_bonus(SpellProgression.Illusionist)) == false
 assert (has_wis_bonus(SpellProgression.NonCaster)) == false
+assert (has_wis_bonus(SpellProgression.Paladin)) == false
 
 // ── total_spell_slots (WIS bonus) ───────────────────────────────
 
