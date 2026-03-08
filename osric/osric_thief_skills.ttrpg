@@ -179,6 +179,68 @@ system "OSRIC Thief Skills" {
     }
 
     // ========================================================
+    //  MONK SKILL BASE PERCENTAGES BY LEVEL
+    //  Table 1.3.7.4b — Thief Skills for Monks
+    //  Monks have 6 of the 8 thief skills (no PickPockets or
+    //  ReadLanguages). Listen and Traps progress differently.
+    //  Levels 1-17. DEX adjustments apply (same table).
+    // ========================================================
+
+    table monk_skill_base(skill: ThiefSkill, level: int) -> int {
+        // ClimbWalls
+        [ClimbWalls, 1] => 85, [ClimbWalls, 2] => 86, [ClimbWalls, 3] => 87,
+        [ClimbWalls, 4] => 88, [ClimbWalls, 5] => 90, [ClimbWalls, 6] => 92,
+        [ClimbWalls, 7] => 94, [ClimbWalls, 8] => 96, [ClimbWalls, 9] => 98,
+        [ClimbWalls, _] => 99,
+
+        // HideInShadows (Hide)
+        [HideInShadows, 1] => 10, [HideInShadows, 2] => 15,
+        [HideInShadows, 3] => 20, [HideInShadows, 4] => 25,
+        [HideInShadows, 5] => 30, [HideInShadows, 6] => 35,
+        [HideInShadows, 7] => 42, [HideInShadows, 8] => 48,
+        [HideInShadows, 9] => 55, [HideInShadows, 10] => 65,
+        [HideInShadows, 11] => 70, [HideInShadows, 12] => 75,
+        [HideInShadows, 13] => 85, [HideInShadows, 14] => 95,
+        [HideInShadows, _] => 99,
+
+        // HearNoise (Listen) — different from thief at L6
+        [HearNoise, 1..=2] => 10, [HearNoise, 3..=4] => 15,
+        [HearNoise, 5..=6] => 20, [HearNoise, 7..=8] => 25,
+        [HearNoise, 9..=10] => 30, [HearNoise, 11..=12] => 35,
+        [HearNoise, 13..=14] => 40, [HearNoise, 15..=16] => 50,
+        [HearNoise, _] => 55,
+
+        // OpenLocks (Pick Locks)
+        [OpenLocks, 1] => 25, [OpenLocks, 2] => 29, [OpenLocks, 3] => 33,
+        [OpenLocks, 4] => 37, [OpenLocks, 5] => 42, [OpenLocks, 6] => 47,
+        [OpenLocks, 7] => 52, [OpenLocks, 8] => 57, [OpenLocks, 9] => 62,
+        [OpenLocks, 10] => 67, [OpenLocks, 11] => 72, [OpenLocks, 12] => 77,
+        [OpenLocks, 13] => 82, [OpenLocks, 14] => 87, [OpenLocks, 15] => 92,
+        [OpenLocks, 16] => 97, [OpenLocks, _] => 99,
+
+        // MoveSilently (Move Quietly)
+        [MoveSilently, 1] => 15, [MoveSilently, 2] => 20,
+        [MoveSilently, 3] => 27, [MoveSilently, 4] => 33,
+        [MoveSilently, 5] => 40, [MoveSilently, 6] => 47,
+        [MoveSilently, 7] => 55, [MoveSilently, 8] => 62,
+        [MoveSilently, 9] => 70, [MoveSilently, 10] => 78,
+        [MoveSilently, 11] => 86, [MoveSilently, 12] => 94,
+        [MoveSilently, _] => 99,
+
+        // FindTraps (Traps) — different from thief at L11-12
+        [FindTraps, 1] => 20, [FindTraps, 2] => 25, [FindTraps, 3] => 30,
+        [FindTraps, 4] => 35, [FindTraps, 5] => 40, [FindTraps, 6] => 45,
+        [FindTraps, 7] => 50, [FindTraps, 8] => 55, [FindTraps, 9] => 60,
+        [FindTraps, 10..=11] => 65, [FindTraps, 12] => 70,
+        [FindTraps, 13] => 80, [FindTraps, 14] => 85, [FindTraps, 15] => 90,
+        [FindTraps, 16] => 95, [FindTraps, _] => 99,
+
+        // Monks do not get PickPockets or ReadLanguages
+        [PickPockets, _] => 0,
+        [ReadLanguages, _] => 0
+    }
+
+    // ========================================================
     //  DEX ADJUSTMENTS TO THIEF SKILLS
     //  Table 1.3.10.4c — Thief Skills—Dexterity Adjustments
     //  Climb is never adjusted by DEX. Listen is never adjusted.
@@ -292,6 +354,7 @@ system "OSRIC Thief Skills" {
     derive skill_base_for_class(class: Class, skill: ThiefSkill, level: int) -> int {
         match class {
             Assassin => assassin_skill_base(skill, level),
+            Monk     => monk_skill_base(skill, level),
             _        => thief_skill_base(skill, level)
         }
     }

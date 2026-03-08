@@ -35,11 +35,48 @@ assert_eq assassin_skill_base(OpenLocks, 8), 47
 assert_eq assassin_skill_base(ReadLanguages, 3), 1
 assert_eq assassin_skill_base(FindTraps, 15), 80
 
-// ── Skill base dispatch: Thief vs Assassin ─────────────────────
+// ── Monk base table spot checks ──────────────────────────────
+
+assert_eq monk_skill_base(ClimbWalls, 1), 85
+assert_eq monk_skill_base(ClimbWalls, 10), 99
+assert_eq monk_skill_base(OpenLocks, 5), 42
+assert_eq monk_skill_base(OpenLocks, 16), 97
+assert_eq monk_skill_base(HideInShadows, 7), 42
+assert_eq monk_skill_base(HideInShadows, 14), 95
+assert_eq monk_skill_base(MoveSilently, 12), 94
+assert_eq monk_skill_base(MoveSilently, 13), 99
+assert_eq monk_skill_base(FindTraps, 10), 65
+assert_eq monk_skill_base(FindTraps, 11), 65
+assert_eq monk_skill_base(FindTraps, 12), 70
+assert_eq monk_skill_base(FindTraps, 13), 80
+assert_eq monk_skill_base(FindTraps, 17), 99
+
+// Monk Listen differs from Thief HearNoise at L6
+assert_eq monk_skill_base(HearNoise, 5), 20
+assert_eq monk_skill_base(HearNoise, 6), 20
+assert_eq monk_skill_base(HearNoise, 7), 25
+assert_eq monk_skill_base(HearNoise, 17), 55
+
+// Monks do not get PickPockets or ReadLanguages
+assert_eq monk_skill_base(PickPockets, 5), 0
+assert_eq monk_skill_base(ReadLanguages, 5), 0
+
+// ── Skill base dispatch: Thief vs Assassin vs Monk ──────────────
 
 assert_eq skill_base_for_class(Thief, OpenLocks, 5), 42
 assert_eq skill_base_for_class(Assassin, OpenLocks, 5), 33
 assert_eq skill_base_for_class(Monk, OpenLocks, 5), 42
+
+// Monk dispatch uses monk table (Listen L6 differs from thief)
+assert_eq skill_base_for_class(Monk, HearNoise, 6), 20
+assert_eq skill_base_for_class(Thief, HearNoise, 6), 25
+
+// Monk dispatch: Traps L11 differs from thief
+assert_eq skill_base_for_class(Monk, FindTraps, 11), 65
+assert_eq skill_base_for_class(Thief, FindTraps, 11), 70
+
+// Monk dispatch: no PickPockets
+assert_eq skill_base_for_class(Monk, PickPockets, 5), 0
 
 // ── DEX adjustment table ───────────────────────────────────────
 
@@ -148,6 +185,13 @@ assert assassin_skill_base(MoveSilently, 14) >= assassin_skill_base(MoveSilently
 assert assassin_skill_base(OpenLocks, 14) >= assassin_skill_base(OpenLocks, 1)
 assert assassin_skill_base(PickPockets, 14) >= assassin_skill_base(PickPockets, 1)
 assert assassin_skill_base(ReadLanguages, 14) >= assassin_skill_base(ReadLanguages, 1)
+
+assert monk_skill_base(ClimbWalls, 17) >= monk_skill_base(ClimbWalls, 1)
+assert monk_skill_base(FindTraps, 17) >= monk_skill_base(FindTraps, 1)
+assert monk_skill_base(HearNoise, 17) >= monk_skill_base(HearNoise, 1)
+assert monk_skill_base(HideInShadows, 17) >= monk_skill_base(HideInShadows, 1)
+assert monk_skill_base(MoveSilently, 17) >= monk_skill_base(MoveSilently, 1)
+assert monk_skill_base(OpenLocks, 17) >= monk_skill_base(OpenLocks, 1)
 
 // ── Thief vs Assassin: Thief generally better at same level ────
 
