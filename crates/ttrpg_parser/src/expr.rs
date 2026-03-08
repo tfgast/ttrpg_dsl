@@ -584,6 +584,7 @@ impl Parser {
         self.skip_newlines();
 
         let mut fields = Vec::new();
+        let mut groups = Vec::new();
         let mut base = None;
         if !matches!(self.peek(), TokenKind::RBrace) {
             // Check for leading ..base (no fields before it)
@@ -595,7 +596,7 @@ impl Parser {
                     self.advance();
                 }
             } else {
-                fields.push(self.parse_struct_field_init()?);
+                self.parse_struct_field_or_group(&mut fields, &mut groups)?;
                 while matches!(self.peek(), TokenKind::Comma) {
                     self.advance();
                     self.skip_newlines();
@@ -612,14 +613,19 @@ impl Parser {
                         }
                         break;
                     }
-                    fields.push(self.parse_struct_field_init()?);
+                    self.parse_struct_field_or_group(&mut fields, &mut groups)?;
                 }
             }
         }
         self.skip_newlines();
         self.expect(&TokenKind::RBrace)?;
         Ok(Spanned::new(
-            ExprKind::StructLit { name, fields, base },
+            ExprKind::StructLit {
+                name,
+                fields,
+                groups,
+                base,
+            },
             self.end_span(start),
         ))
     }
@@ -633,6 +639,50 @@ impl Parser {
         Ok(StructFieldInit {
             name,
             value,
+            span: self.end_span(start),
+        })
+    }
+
+    /// Parse either a field init (`name: expr`) or a group init (`Name { ... }`).
+    /// Ident followed by `{` is a group init; Ident followed by `:` is a field init.
+    fn parse_struct_field_or_group(
+        &mut self,
+        fields: &mut Vec<StructFieldInit>,
+        groups: &mut Vec<GroupInit>,
+    ) -> Result<(), ()> {
+        if matches!(self.peek(), TokenKind::Ident(_))
+            && matches!(self.peek_at(1), TokenKind::LBrace)
+        {
+            groups.push(self.parse_group_init()?);
+        } else {
+            fields.push(self.parse_struct_field_init()?);
+        }
+        Ok(())
+    }
+
+    fn parse_group_init(&mut self) -> Result<GroupInit, ()> {
+        let start = self.start_span();
+        let (name, _) = self.expect_ident()?;
+        self.expect(&TokenKind::LBrace)?;
+        self.skip_newlines();
+
+        let mut fields = Vec::new();
+        if !matches!(self.peek(), TokenKind::RBrace) {
+            fields.push(self.parse_struct_field_init()?);
+            while matches!(self.peek(), TokenKind::Comma) {
+                self.advance();
+                self.skip_newlines();
+                if matches!(self.peek(), TokenKind::RBrace) {
+                    break; // trailing comma
+                }
+                fields.push(self.parse_struct_field_init()?);
+            }
+        }
+        self.skip_newlines();
+        self.expect(&TokenKind::RBrace)?;
+        Ok(GroupInit {
+            name,
+            fields,
             span: self.end_span(start),
         })
     }

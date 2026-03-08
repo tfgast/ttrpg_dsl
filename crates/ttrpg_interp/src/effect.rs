@@ -133,6 +133,10 @@ pub enum Effect {
     AdvanceTime {
         amount: u64,
     },
+    SpawnEntity {
+        entity_type: Name,
+        fields: rustc_hash::FxHashMap<Name, Value>,
+    },
 
     // ── Decision effects ────────────────────────────────────
     DeductCost {
@@ -200,6 +204,8 @@ pub enum Response {
     PromptResult(Value),
     /// Host accepts the effect.
     Acknowledged,
+    /// Entity was spawned (expected response for `SpawnEntity`).
+    EntitySpawned(EntityRef),
     /// GM substitutes a different value.
     Override(Value),
     /// GM blocks the effect.
@@ -256,6 +262,7 @@ pub enum EffectKind {
     ActionCompleted,
     RevokeInvocation,
     AdvanceTime,
+    SpawnEntity,
     ModifyApplied,
     ConditionApplyGate,
     ConditionRemovalGate,
@@ -281,6 +288,7 @@ impl EffectKind {
             Effect::ActionCompleted { .. } => EffectKind::ActionCompleted,
             Effect::RevokeInvocation { .. } => EffectKind::RevokeInvocation,
             Effect::AdvanceTime { .. } => EffectKind::AdvanceTime,
+            Effect::SpawnEntity { .. } => EffectKind::SpawnEntity,
             Effect::ModifyApplied { .. } => EffectKind::ModifyApplied,
             Effect::ConditionApplyGate { .. } => EffectKind::ConditionApplyGate,
             Effect::ConditionRemovalGate { .. } => EffectKind::ConditionRemovalGate,

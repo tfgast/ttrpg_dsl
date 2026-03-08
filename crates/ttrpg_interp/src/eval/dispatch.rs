@@ -1,11 +1,12 @@
 use std::collections::BTreeMap;
 
 use rustc_hash::FxHashMap;
-use ttrpg_ast::ast::ExprKind;
-use ttrpg_ast::{Name, Spanned};
+use ttrpg_ast::ast::{ExprKind, GroupInit, StructFieldInit};
+use ttrpg_ast::{Name, Span, Spanned};
 use ttrpg_checker::env::DeclInfo;
 
 use crate::coverage::{BranchKind, BranchPoint};
+use crate::effect::{Effect, Response};
 use crate::value::{DiceExpr, Value};
 use crate::Env;
 use crate::RuntimeError;
@@ -13,7 +14,10 @@ use crate::RuntimeError;
 use super::access::{eval_field_access, eval_index};
 use super::compare::match_pattern;
 use super::control::{eval_arm_body, eval_for, eval_if, eval_if_let, eval_list_comprehension};
-use super::helpers::{eval_expr_with_hint, find_struct_defaults, type_name};
+use super::helpers::{
+    eval_expr_with_hint, find_entity_defaults, find_optional_group_fields, find_required_groups,
+    find_struct_defaults, type_name,
+};
 use super::ops::{eval_binop, eval_unary};
 
 // ── Expression evaluator ───────────────────────────────────────
@@ -64,55 +68,70 @@ pub(crate) fn eval_expr(env: &mut Env, expr: &Spanned<ExprKind>) -> Result<Value
             Ok(Value::Map(map))
         }
 
-        ExprKind::StructLit { name, fields, base } => {
-            // Start from base fields if ..base spread was provided.
-            let mut field_map = if let Some(base_expr) = base {
-                match eval_expr(env, base_expr)? {
-                    Value::Struct {
-                        fields: base_fields,
-                        ..
-                    } => base_fields,
-                    other => {
-                        return Err(RuntimeError::with_span(
-                            format!("expected struct in ..base, got {}", type_name(&other)),
-                            base_expr.span,
-                        ));
-                    }
-                }
+        ExprKind::StructLit {
+            name,
+            fields,
+            groups,
+            base,
+        } => {
+            // Check if this is an entity type
+            let is_entity = matches!(
+                env.interp.type_env.types.get(name.as_str()),
+                Some(DeclInfo::Entity(_))
+            );
+
+            if is_entity {
+                return eval_entity_construction(env, name, fields, groups, expr.span);
             } else {
-                BTreeMap::new()
-            };
-
-            // Explicit fields override base values.
-            // Look up the struct schema to get type hints for fields, allowing
-            // disambiguation of bare enum variants (e.g. Cleric → Class.Cleric).
-            let schema_fields = env.interp.type_env.lookup_fields(name);
-            for f in fields {
-                let val = if let Some(hint) = schema_fields
-                    .and_then(|sf| sf.iter().find(|fi| fi.name == f.name))
-                    .map(|fi| &fi.ty)
-                {
-                    eval_expr_with_hint(env, &f.value, hint)?
+                // Start from base fields if ..base spread was provided.
+                let mut field_map = if let Some(base_expr) = base {
+                    match eval_expr(env, base_expr)? {
+                        Value::Struct {
+                            fields: base_fields,
+                            ..
+                        } => base_fields,
+                        other => {
+                            return Err(RuntimeError::with_span(
+                                format!("expected struct in ..base, got {}", type_name(&other)),
+                                base_expr.span,
+                            ));
+                        }
+                    }
                 } else {
-                    eval_expr(env, &f.value)?
+                    BTreeMap::new()
                 };
-                field_map.insert(f.name.clone(), val);
-            }
 
-            // Fill in defaults for any omitted fields.
-            let defaults: Vec<_> = find_struct_defaults(env, name)
-                .into_iter()
-                .filter(|(n, _)| !field_map.contains_key(n))
-                .collect();
-            for (fname, default_expr) in &defaults {
-                let val = eval_expr(env, default_expr)?;
-                field_map.insert(fname.clone(), val);
-            }
+                // Explicit fields override base values.
+                // Look up the struct schema to get type hints for fields, allowing
+                // disambiguation of bare enum variants (e.g. Cleric → Class.Cleric).
+                let schema_fields = env.interp.type_env.lookup_fields(name);
+                for f in fields {
+                    let val = if let Some(hint) = schema_fields
+                        .and_then(|sf| sf.iter().find(|fi| fi.name == f.name))
+                        .map(|fi| &fi.ty)
+                    {
+                        eval_expr_with_hint(env, &f.value, hint)?
+                    } else {
+                        eval_expr(env, &f.value)?
+                    };
+                    field_map.insert(f.name.clone(), val);
+                }
 
-            Ok(Value::Struct {
-                name: name.clone(),
-                fields: field_map,
-            })
+                // Fill in defaults for any omitted fields.
+                let defaults: Vec<_> = find_struct_defaults(env, name)
+                    .into_iter()
+                    .filter(|(n, _)| !field_map.contains_key(n))
+                    .collect();
+                for (fname, default_expr) in &defaults {
+                    let val = eval_expr(env, default_expr)?;
+                    field_map.insert(fname.clone(), val);
+                }
+
+                Ok(Value::Struct {
+                    name: name.clone(),
+                    fields: field_map,
+                })
+            }
         }
 
         ExprKind::If {
@@ -393,4 +412,133 @@ fn eval_ident(env: &mut Env, name: &str, expr: &Spanned<ExprKind>) -> Result<Val
         format!("undefined variable '{name}'"),
         expr.span,
     ))
+}
+
+/// Evaluate entity construction from a struct literal with an entity type name.
+fn eval_entity_construction(
+    env: &mut Env,
+    name: &Name,
+    fields: &[StructFieldInit],
+    groups: &[GroupInit],
+    span: Span,
+) -> Result<Value, RuntimeError> {
+    // 1. Evaluate base fields with type hints
+    let schema_fields = env.interp.type_env.lookup_fields(name);
+    let mut field_map: FxHashMap<Name, Value> = FxHashMap::default();
+    for f in fields {
+        let val = if let Some(hint) = schema_fields
+            .and_then(|sf| sf.iter().find(|fi| fi.name == f.name))
+            .map(|fi| &fi.ty)
+        {
+            eval_expr_with_hint(env, &f.value, hint)?
+        } else {
+            eval_expr(env, &f.value)?
+        };
+        field_map.insert(f.name.clone(), val);
+    }
+
+    // 2. Fill defaults for omitted entity fields
+    let defaults: Vec<_> = find_entity_defaults(env, name)
+        .into_iter()
+        .filter(|(n, _)| !field_map.contains_key(n))
+        .collect();
+    for (fname, default_expr) in &defaults {
+        let val = eval_expr(env, default_expr)?;
+        field_map.insert(fname.clone(), val);
+    }
+
+    // 3. Spawn the entity via effect
+    let effect = Effect::SpawnEntity {
+        entity_type: name.clone(),
+        fields: field_map,
+    };
+    let response = env.handler.handle(effect);
+    let entity_ref = match response {
+        Response::EntitySpawned(r) => r,
+        Response::Vetoed => {
+            return Err(RuntimeError::with_span(
+                format!("entity construction for `{name}` was vetoed by host"),
+                span,
+            ));
+        }
+        _ => {
+            return Err(RuntimeError::with_span(
+                format!("unexpected response to SpawnEntity for `{name}`"),
+                span,
+            ));
+        }
+    };
+
+    // 4. Process inline groups
+    for group in groups {
+        let mut group_fields = BTreeMap::new();
+        for init in &group.fields {
+            let val = eval_expr(env, &init.value)?;
+            group_fields.insert(init.name.clone(), val);
+        }
+
+        // Fill defaults for omitted group fields
+        let group_defaults: Vec<_> =
+            find_optional_group_fields(env, Some(name.as_str()), &group.name)
+                .into_iter()
+                .flatten()
+                .filter_map(|fd| {
+                    if group_fields.contains_key(&fd.name) {
+                        return None;
+                    }
+                    fd.default.clone().map(|d| (fd.name.clone(), d))
+                })
+                .collect();
+        for (fname, default_expr) in &group_defaults {
+            let val = eval_expr(env, default_expr)?;
+            group_fields.insert(fname.clone(), val);
+        }
+
+        let struct_val = Value::Struct {
+            name: group.name.clone(),
+            fields: group_fields,
+        };
+
+        let grant_effect = Effect::GrantGroup {
+            entity: entity_ref,
+            group_name: group.name.clone(),
+            fields: struct_val,
+        };
+        env.handler.handle(grant_effect);
+    }
+
+    // 5. Auto-materialize required include groups not already provided
+    let provided_groups: std::collections::HashSet<&Name> =
+        groups.iter().map(|g| &g.name).collect();
+    let required = find_required_groups(env, name);
+    for group_name in &required {
+        if provided_groups.contains(group_name) {
+            continue;
+        }
+        // Build group with all defaults
+        let mut group_fields = BTreeMap::new();
+        let group_defaults: Vec<_> =
+            find_optional_group_fields(env, Some(name.as_str()), group_name)
+                .into_iter()
+                .flatten()
+                .filter_map(|fd| fd.default.clone().map(|d| (fd.name.clone(), d)))
+                .collect();
+        for (fname, default_expr) in &group_defaults {
+            let val = eval_expr(env, default_expr)?;
+            group_fields.insert(fname.clone(), val);
+        }
+
+        let struct_val = Value::Struct {
+            name: group_name.clone(),
+            fields: group_fields,
+        };
+        let grant_effect = Effect::GrantGroup {
+            entity: entity_ref,
+            group_name: group_name.clone(),
+            fields: struct_val,
+        };
+        env.handler.handle(grant_effect);
+    }
+
+    Ok(Value::Entity(entity_ref))
 }

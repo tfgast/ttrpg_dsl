@@ -976,6 +976,7 @@ pub enum ExprKind {
     StructLit {
         name: Name,
         fields: Vec<StructFieldInit>,
+        groups: Vec<GroupInit>,
         base: Option<Box<Spanned<ExprKind>>>,
     },
     ListLit(Vec<Spanned<ExprKind>>),
@@ -1076,6 +1077,14 @@ pub struct Arg {
 pub struct StructFieldInit {
     pub name: Name,
     pub value: Spanned<ExprKind>,
+    pub span: Span,
+}
+
+#[derive(Clone)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct GroupInit {
+    pub name: Name,
+    pub fields: Vec<StructFieldInit>,
     pub span: Span,
 }
 

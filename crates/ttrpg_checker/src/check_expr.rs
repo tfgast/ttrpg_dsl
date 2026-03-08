@@ -76,9 +76,12 @@ impl Checker<'_> {
 
             ExprKind::Call { callee, args } => self.check_call(callee, args, expr.span, hint),
 
-            ExprKind::StructLit { name, fields, base } => {
-                self.check_struct_lit(name, fields, base.as_deref(), expr.span)
-            }
+            ExprKind::StructLit {
+                name,
+                fields,
+                groups,
+                base,
+            } => self.check_struct_lit(name, fields, groups, base.as_deref(), expr.span),
 
             ExprKind::ListLit(elems) => {
                 let elem_hint = match hint {

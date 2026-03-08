@@ -128,8 +128,8 @@ pub struct AdaptedHandler<'a, S: WritableState, H: EffectHandler> {
     inner: &'a mut H,
 }
 
-/// The nine mutation effect kinds.
-const MUTATION_KINDS: [EffectKind; 10] = [
+/// The mutation effect kinds.
+const MUTATION_KINDS: [EffectKind; 11] = [
     EffectKind::MutateField,
     EffectKind::ApplyCondition,
     EffectKind::RemoveCondition,
@@ -140,6 +140,7 @@ const MUTATION_KINDS: [EffectKind; 10] = [
     EffectKind::ClearBudget,
     EffectKind::RevokeInvocation,
     EffectKind::AdvanceTime,
+    EffectKind::SpawnEntity,
 ];
 
 fn is_mutation(kind: EffectKind) -> bool {
@@ -153,6 +154,21 @@ impl<S: WritableState, H: EffectHandler> EffectHandler for AdaptedHandler<'_, S,
         // DeductCost: always passed through, adapter applies mutation based on response
         if kind == EffectKind::DeductCost {
             return self.handle_deduct_cost(effect);
+        }
+
+        // SpawnEntity: special handling — must return EntitySpawned with the ref
+        if kind == EffectKind::SpawnEntity {
+            if self.adapter.pass_through.contains(&kind) {
+                let response = self.inner.handle(effect.clone());
+                if let Response::EntitySpawned(_) = &response {
+                    // Host handled spawning; sync locally too
+                    apply_spawn(&mut *self.adapter.state.borrow_mut(), &effect);
+                }
+                return response;
+            } else {
+                let entity_ref = apply_spawn(&mut *self.adapter.state.borrow_mut(), &effect);
+                return Response::EntitySpawned(entity_ref);
+            }
         }
 
         if is_mutation(kind) {
@@ -239,6 +255,17 @@ impl<S: WritableState, H: EffectHandler> AdaptedHandler<'_, S, H> {
 // ── Mutation application helpers ───────────────────────────────
 
 /// Apply a mutation effect to the writable state.
+/// Apply a SpawnEntity effect to the writable state, returning the new entity ref.
+fn apply_spawn<S: WritableState>(state: &mut S, effect: &Effect) -> EntityRef {
+    match effect {
+        Effect::SpawnEntity {
+            entity_type,
+            fields,
+        } => state.add_entity(entity_type, fields.clone()),
+        _ => unreachable!("apply_spawn called with non-SpawnEntity effect"),
+    }
+}
+
 fn apply_mutation<S: WritableState>(state: &mut S, effect: &Effect) {
     match effect {
         Effect::MutateField {
@@ -326,6 +353,9 @@ fn apply_mutation<S: WritableState>(state: &mut S, effect: &Effect) {
         Effect::AdvanceTime { amount } => {
             let current = state.read_game_time();
             state.set_game_time(current.saturating_add(*amount));
+        }
+        Effect::SpawnEntity { .. } => {
+            // Handled by apply_spawn; included here to silence exhaustiveness
         }
         _ => {} // Not a mutation effect
     }
@@ -776,6 +806,22 @@ mod tests {
 
         fn set_game_time(&mut self, time: u64) {
             self.game_time = time;
+        }
+
+        fn add_entity(
+            &mut self,
+            type_name: &str,
+            fields: rustc_hash::FxHashMap<Name, Value>,
+        ) -> EntityRef {
+            let id = self.next_condition_id as u64; // reuse counter for test simplicity
+            self.next_condition_id += 1;
+            // Store entity type as a field for test inspection
+            self.fields
+                .insert((id, "__type__".to_string()), Value::Str(type_name.into()));
+            for (k, v) in fields {
+                self.fields.insert((id, k.to_string()), v);
+            }
+            EntityRef(id)
         }
     }
 

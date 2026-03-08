@@ -1100,6 +1100,7 @@ fn eval_struct_lit() {
                 span: dummy_span(),
             },
         ],
+        groups: vec![],
         base: None,
     });
     let result = eval_expr(&mut env, &expr).unwrap();
@@ -1153,6 +1154,7 @@ fn eval_struct_lit_fills_defaults() {
                 span: dummy_span(),
             },
         ],
+        groups: vec![],
         base: None,
     });
     let result = eval_expr(&mut env, &expr).unwrap();
@@ -1204,6 +1206,7 @@ fn eval_struct_spread_override_one_field() {
             value: spanned(ExprKind::IntLit(99)),
             span: dummy_span(),
         }],
+        groups: vec![],
         base: Some(Box::new(spanned(ExprKind::Ident("base".into())))),
     });
     let result = eval_expr(&mut env, &expr).unwrap();
@@ -1252,6 +1255,7 @@ fn eval_struct_spread_base_only() {
     let expr = spanned(ExprKind::StructLit {
         name: "Point".into(),
         fields: vec![],
+        groups: vec![],
         base: Some(Box::new(spanned(ExprKind::Ident("p".into())))),
     });
     let result = eval_expr(&mut env, &expr).unwrap();

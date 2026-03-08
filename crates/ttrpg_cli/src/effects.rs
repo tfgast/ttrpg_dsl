@@ -576,6 +576,19 @@ impl EffectHandler for CliHandler<'_> {
                 self.log(format!("[ConditionRemovalGate] {condition}#{id} on {name}"));
                 Response::Acknowledged
             }
+
+            Effect::SpawnEntity {
+                entity_type,
+                fields,
+            } => {
+                // When passed through, create the entity in game state
+                let entity = self
+                    .game_state
+                    .borrow_mut()
+                    .add_entity(&entity_type, fields);
+                self.log(format!("[SpawnEntity] {entity_type} ({})", entity.0));
+                Response::EntitySpawned(entity)
+            }
         }
     }
 }

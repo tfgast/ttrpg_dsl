@@ -347,6 +347,15 @@ impl WritableState for GameState {
     fn set_game_time(&mut self, time: u64) {
         self.game_time = time;
     }
+
+    fn add_entity(
+        &mut self,
+        type_name: &str,
+        fields: rustc_hash::FxHashMap<Name, Value>,
+    ) -> EntityRef {
+        // Delegate to the inherent method
+        GameState::add_entity(self, type_name, fields)
+    }
 }
 
 /// Navigate a nested path and write the value at the leaf.

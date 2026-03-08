@@ -196,6 +196,47 @@ pub(super) fn find_struct_defaults(env: &Env, struct_name: &str) -> Vec<(Name, S
     Vec::new()
 }
 
+/// Find default field values for an entity type declaration.
+pub(super) fn find_entity_defaults(env: &Env, entity_name: &str) -> Vec<(Name, Spanned<ExprKind>)> {
+    for item in &env.interp.program.items {
+        if let TopLevel::System(system) = &item.node {
+            for decl in &system.decls {
+                if let DeclKind::Entity(e) = &decl.node {
+                    if e.name == entity_name {
+                        return e
+                            .fields
+                            .iter()
+                            .filter_map(|f| f.default.as_ref().map(|d| (f.name.clone(), d.clone())))
+                            .collect();
+                    }
+                }
+            }
+        }
+    }
+    Vec::new()
+}
+
+/// Find all required (include) group names for an entity type.
+pub(super) fn find_required_groups(env: &Env, entity_name: &str) -> Vec<Name> {
+    for item in &env.interp.program.items {
+        if let TopLevel::System(system) = &item.node {
+            for decl in &system.decls {
+                if let DeclKind::Entity(e) = &decl.node {
+                    if e.name == entity_name {
+                        return e
+                            .optional_groups
+                            .iter()
+                            .filter(|g| g.is_required)
+                            .map(|g| g.name.clone())
+                            .collect();
+                    }
+                }
+            }
+        }
+    }
+    Vec::new()
+}
+
 /// Find a field definition within a named struct declaration.
 fn find_struct_field<'a>(
     items: &'a [Spanned<TopLevel>],

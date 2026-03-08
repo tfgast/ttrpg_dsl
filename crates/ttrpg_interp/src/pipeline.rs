@@ -1436,6 +1436,7 @@ mod tests {
                             value: spanned(ExprKind::IntLit(10)),
                             span: dummy_span(),
                         }],
+                        groups: Vec::new(),
                         base: None,
                     },
                 )))]),

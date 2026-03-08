@@ -6,6 +6,7 @@ use ttrpg_ast::Spanned;
 
 use crate::check::{Checker, Namespace};
 use crate::env::*;
+use crate::scope::BlockKind;
 use crate::ty::Ty;
 
 impl Checker<'_> {
@@ -13,6 +14,7 @@ impl Checker<'_> {
         &mut self,
         name: &str,
         fields: &[StructFieldInit],
+        groups: &[GroupInit],
         base: Option<&Spanned<ExprKind>>,
         span: ttrpg_ast::Span,
     ) -> Ty {
@@ -26,29 +28,174 @@ impl Checker<'_> {
 
         self.check_name_visible(name, Namespace::Type, span);
 
-        let (declared_fields, result_ty) = match &decl {
-            DeclInfo::Struct(info) => (&info.fields, Ty::Struct(Name::from(name))),
-            DeclInfo::Unit(info) => (&info.fields, Ty::UnitType(Name::from(name))),
-            DeclInfo::Entity(_) => {
-                self.error(
-                    format!("cannot construct entity `{name}` with struct literal syntax"),
-                    span,
-                );
-                return Ty::Error;
+        match &decl {
+            DeclInfo::Struct(_) | DeclInfo::Unit(_) => {
+                if !groups.is_empty() {
+                    self.error(
+                        format!("struct `{name}` does not support inline group initializers"),
+                        groups[0].span,
+                    );
+                }
+                let (declared_fields, result_ty) = match &decl {
+                    DeclInfo::Struct(info) => (&info.fields, Ty::Struct(Name::from(name))),
+                    DeclInfo::Unit(info) => (&info.fields, Ty::UnitType(Name::from(name))),
+                    _ => unreachable!(),
+                };
+                self.check_fields(name, fields, declared_fields, base, &result_ty, span);
+                result_ty
+            }
+            DeclInfo::Entity(info) => {
+                self.check_entity_construction(name, info, fields, groups, base, span)
             }
             DeclInfo::Enum(_) => {
                 self.error(
                     format!("cannot construct enum `{name}` with struct literal syntax"),
                     span,
                 );
-                return Ty::Error;
+                Ty::Error
             }
-        };
+        }
+    }
 
+    fn check_entity_construction(
+        &mut self,
+        name: &str,
+        info: &EntityInfo,
+        fields: &[StructFieldInit],
+        groups: &[GroupInit],
+        base: Option<&Spanned<ExprKind>>,
+        span: ttrpg_ast::Span,
+    ) -> Ty {
+        // Entity construction only allowed in mutating contexts
+        let block_kind = self.scope.current_block_kind();
+        let is_mutating = matches!(
+            block_kind,
+            Some(
+                BlockKind::FunctionBody
+                    | BlockKind::ActionResolve
+                    | BlockKind::ReactionResolve
+                    | BlockKind::HookResolve
+                    | BlockKind::WithBudget
+            )
+        );
+        if !is_mutating {
+            self.error(
+                format!(
+                    "entity `{name}` can only be constructed in a function, action, reaction, or hook"
+                ),
+                span,
+            );
+            return Ty::Error;
+        }
+
+        // Base spread not supported for entities
+        if let Some(base_expr) = base {
+            self.error(
+                "spread (`..base`) is not supported for entity construction".to_string(),
+                base_expr.span,
+            );
+        }
+
+        // Check base fields
+        let result_ty = Ty::Entity(Name::from(name));
+        self.check_fields(name, fields, &info.fields, None, &result_ty, span);
+
+        // Check inline groups
+        let mut seen_groups = HashSet::new();
+        for group in groups {
+            if !seen_groups.insert(group.name.clone()) {
+                self.error(
+                    format!("duplicate group `{}` in entity literal", group.name),
+                    group.span,
+                );
+                continue;
+            }
+            if let Some(group_info) = info.optional_groups.iter().find(|g| g.name == group.name) {
+                self.check_group_fields(name, group, &group_info.fields);
+            } else {
+                self.error(
+                    format!("entity `{name}` has no optional group `{}`", group.name),
+                    group.span,
+                );
+            }
+        }
+
+        result_ty
+    }
+
+    fn check_group_fields(
+        &mut self,
+        entity_name: &str,
+        group: &GroupInit,
+        declared_fields: &[FieldInfo],
+    ) {
+        let mut seen = HashSet::new();
+        for field in &group.fields {
+            let field_hint = declared_fields
+                .iter()
+                .find(|f| f.name == field.name)
+                .map(|fi| &fi.ty);
+            let field_ty = self.check_expr_expecting(&field.value, field_hint);
+
+            if !seen.insert(field.name.clone()) {
+                self.error(
+                    format!("duplicate field `{}` in group `{}`", field.name, group.name),
+                    field.span,
+                );
+                continue;
+            }
+
+            if field_ty.is_error() {
+                continue;
+            }
+            if let Some(fi) = declared_fields.iter().find(|f| f.name == field.name) {
+                if !self.types_compatible(&field_ty, &fi.ty) {
+                    self.error(
+                        format!(
+                            "field `{}` in group `{}` has type {}, expected {}",
+                            field.name, group.name, field_ty, fi.ty
+                        ),
+                        field.span,
+                    );
+                }
+            } else {
+                self.error(
+                    format!(
+                        "group `{}` on entity `{}` has no field `{}`",
+                        group.name, entity_name, field.name
+                    ),
+                    field.span,
+                );
+            }
+        }
+
+        // Check for missing required fields in group
+        for fi in declared_fields {
+            if !fi.has_default && !seen.contains(&fi.name) {
+                self.error(
+                    format!(
+                        "missing required field `{}` in group `{}`",
+                        fi.name, group.name
+                    ),
+                    group.span,
+                );
+            }
+        }
+    }
+
+    fn check_fields(
+        &mut self,
+        name: &str,
+        fields: &[StructFieldInit],
+        declared_fields: &[FieldInfo],
+        base: Option<&Spanned<ExprKind>>,
+        result_ty: &Ty,
+        span: ttrpg_ast::Span,
+    ) {
         // Validate base expression if present
         let has_base = if let Some(base_expr) = base {
             let base_ty = self.check_expr(base_expr);
-            if !base_ty.is_error() && !self.types_compatible(&base_ty, &result_ty) {
+            if !base_ty.is_error() && !self.types_compatible(&base_ty, result_ty) {
                 self.error(
                     format!("base expression has type {base_ty}, expected {result_ty}"),
                     base_expr.span,
@@ -109,8 +256,6 @@ impl Checker<'_> {
                 }
             }
         }
-
-        result_ty
     }
 
     pub(crate) fn check_list_lit(

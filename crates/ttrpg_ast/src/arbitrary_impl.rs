@@ -131,6 +131,7 @@ impl<'a> Arbitrary<'a> for ExprKind {
                 ExprKind::StructLit {
                     name: u.arbitrary()?,
                     fields,
+                    groups: Vec::new(),
                     base: if u.arbitrary()? {
                         Some(arb_boxed_expr(u)?)
                     } else {

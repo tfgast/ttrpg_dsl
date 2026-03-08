@@ -499,8 +499,16 @@ impl VisitSpansMut for ExprKind {
                 callee.visit_spans_mut(f);
                 args.visit_spans_mut(f);
             }
-            ExprKind::StructLit { fields, base, .. } => {
+            ExprKind::StructLit {
+                fields,
+                groups,
+                base,
+                ..
+            } => {
                 fields.visit_spans_mut(f);
+                for g in groups {
+                    g.fields.visit_spans_mut(f);
+                }
                 base.visit_spans_mut(f);
             }
             ExprKind::ListLit(items) => {

@@ -172,6 +172,14 @@ pub trait WritableState: StateProvider {
 
     /// Set the game time counter.
     fn set_game_time(&mut self, time: u64);
+
+    /// Add a new entity with the given type name and fields.
+    /// Returns a reference to the new entity.
+    fn add_entity(
+        &mut self,
+        type_name: &str,
+        fields: rustc_hash::FxHashMap<Name, Value>,
+    ) -> EntityRef;
 }
 
 #[cfg(test)]

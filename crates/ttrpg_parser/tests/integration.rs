@@ -1963,7 +1963,9 @@ fn struct_lit_with_base_only() {
     );
     let expr = expr.unwrap();
     match &expr.node {
-        ExprKind::StructLit { name, fields, base } => {
+        ExprKind::StructLit {
+            name, fields, base, ..
+        } => {
             assert_eq!(name, "Point");
             assert!(fields.is_empty());
             assert!(base.is_some(), "expected base expression");
@@ -1986,7 +1988,9 @@ fn struct_lit_with_fields_and_base() {
     );
     let expr = expr.unwrap();
     match &expr.node {
-        ExprKind::StructLit { name, fields, base } => {
+        ExprKind::StructLit {
+            name, fields, base, ..
+        } => {
             assert_eq!(name, "Point");
             assert_eq!(fields.len(), 2);
             assert_eq!(fields[0].name, "x");
@@ -2007,7 +2011,9 @@ fn struct_lit_with_base_trailing_comma() {
     );
     let expr = expr.unwrap();
     match &expr.node {
-        ExprKind::StructLit { name, fields, base } => {
+        ExprKind::StructLit {
+            name, fields, base, ..
+        } => {
             assert_eq!(name, "Point");
             assert_eq!(fields.len(), 1);
             assert!(base.is_some());
@@ -2028,7 +2034,9 @@ fn struct_lit_leading_base_trailing_comma() {
     );
     let expr = expr.unwrap();
     match &expr.node {
-        ExprKind::StructLit { name, fields, base } => {
+        ExprKind::StructLit {
+            name, fields, base, ..
+        } => {
             assert_eq!(name, "Point");
             assert!(fields.is_empty(), "expected no fields");
             assert!(base.is_some(), "expected base expression");
