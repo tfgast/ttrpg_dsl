@@ -569,6 +569,11 @@ system "OSRIC Initiative" {
         match action.action_type {
             MeleeAttackAction => {
                 let target = action.target.unwrap()
+                // Position query: auto-apply RearAttacked if behind target
+                let rear = is_rear_attack(action.combatant, target)
+                if rear {
+                    apply_condition(target, RearAttacked, Duration.EndOfRound)
+                }
                 if action.combatant is Character {
                     // Character armed melee attack
                     let weapon = action.weapon_melee.unwrap()
@@ -590,6 +595,9 @@ system "OSRIC Initiative" {
                             action.combatant.MeleeAttack(target)
                         }
                     }
+                }
+                if rear {
+                    remove_condition(target, "RearAttacked")
                 }
             },
             MissileAttackAction => {
@@ -726,13 +734,27 @@ system "OSRIC Initiative" {
             BrawlingAction => {
                 // Unarmed punch/kick: fend-off pipeline, then
                 // standard melee attack with FistOrKick (1d2 Blunt).
+                // Fend-off skipped if attacker is behind or on shield flank (§1.6.12).
                 let target = action.target.unwrap()
-                let allies = get_fend_off_allies(target, action.combatant)
-                if !attempt_fend_off(target, action.combatant, allies) {
+                let rear = is_rear_attack(action.combatant, target)
+                let flank = is_shield_flank(action.combatant, target)
+                let fended = if !rear && !flank {
+                    let allies = get_fend_off_allies(target, action.combatant)
+                    attempt_fend_off(target, action.combatant, allies)
+                } else {
+                    false
+                }
+                if !fended {
+                    if rear {
+                        apply_condition(target, RearAttacked, Duration.EndOfRound)
+                    }
                     if action.combatant is Character {
                         with_budget(action.combatant, { attack: 1 }) {
                             action.combatant.MeleeAttack(target)
                         }
+                    }
+                    if rear {
+                        remove_condition(target, "RearAttacked")
                     }
                 }
             },
@@ -740,9 +762,17 @@ system "OSRIC Initiative" {
                 // Grappling attack: fend-off pipeline, then
                 // unarmed to-hit → grappling results table.
                 // Establishes holds on both combatants via Grappling condition.
+                // Fend-off skipped if attacker is behind or on shield flank (§1.6.12).
                 let target = action.target.unwrap()
-                let allies = get_fend_off_allies(target, action.combatant)
-                if !attempt_fend_off(target, action.combatant, allies) {
+                let rear = is_rear_attack(action.combatant, target)
+                let flank = is_shield_flank(action.combatant, target)
+                let fended = if !rear && !flank {
+                    let allies = get_fend_off_allies(target, action.combatant)
+                    attempt_fend_off(target, action.combatant, allies)
+                } else {
+                    false
+                }
+                if !fended {
                     if action.combatant is Character {
                         let atk_move = combat_movement_rate(action.combatant)
                         let def_move = combat_movement_rate(target)
@@ -759,9 +789,17 @@ system "OSRIC Initiative" {
                 // unarmed to-hit → overbearing results table.
                 // Applies conditions based on result tier (§1.6.12).
                 // Total Success grants immediate grappling follow-up.
+                // Fend-off skipped if attacker is behind or on shield flank (§1.6.12).
                 let target = action.target.unwrap()
-                let allies = get_fend_off_allies(target, action.combatant)
-                if !attempt_fend_off(target, action.combatant, allies) {
+                let rear = is_rear_attack(action.combatant, target)
+                let flank = is_shield_flank(action.combatant, target)
+                let fended = if !rear && !flank {
+                    let allies = get_fend_off_allies(target, action.combatant)
+                    attempt_fend_off(target, action.combatant, allies)
+                } else {
+                    false
+                }
+                if !fended {
                     let atk_move = combat_movement_rate(action.combatant)
                     let def_move = combat_movement_rate(target)
 

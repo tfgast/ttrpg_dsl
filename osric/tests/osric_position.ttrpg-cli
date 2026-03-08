@@ -1,0 +1,259 @@
+// OSRIC Position Query integration tests
+//
+// Tests the position query prompts (is_rear_attack, is_shield_flank,
+// creatures_engaged_with) and their integration with resolve_action
+// for melee attacks, brawling, grappling, and overbearing.
+//
+// Prompts are queued via the `prompts` command. When no prompts are
+// queued, the default bodies fire (false / empty list), preserving
+// existing combat behaviour.
+
+load osric/*.ttrpg
+
+
+// ══════════════════════════════════════════════════════════════════
+//  MELEE ATTACK — REAR ATTACK VIA POSITION PROMPT
+// ══════════════════════════════════════════════════════════════════
+
+
+// ── Default: no rear attack (prompts auto-resolve to false) ──────
+// Standard melee attack through resolve_action. No prompts queued,
+// so is_rear_attack defaults to false. No RearAttacked condition.
+rolls clear
+
+spawn Character pos_atk1 { name: "Fighter", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots {} }
+spawn Character pos_tgt1 { name: "Target", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 16, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 }, EquipmentSlots { worn_shield: some(Shield { shield_type: SmallShield }), worn_armor: some(Armor { armour_type: ScaleLamellar }) } }
+
+let pos_action1 = build_round_action(pos_atk1, MeleeAttackAction, 3, true, some(pos_tgt1), some(SwordLong))
+
+// BTHB=4, STR=12 (+0), no rear bonus. Target AC: base 10 + ScaleLamellar 4 + SmallShield 1 + DEX 16 (+1) = 16.
+// Roll 15 + 4 = 19 >= 16 → hit, damage 5
+rolls 15 5
+call resolve_action(pos_action1, [pos_action1])
+assert_eq pos_tgt1.hp, 15
+assert_no_condition pos_tgt1, RearAttacked
+
+
+// ── Rear melee attack: prompt returns true ───────────────────────
+// Queue is_rear_attack → true. RearAttacked should be applied during
+// the attack (strips DEX/shield AC, +2 to hit) then removed after.
+rolls clear
+prompts clear
+
+spawn Character pos_atk2 { name: "Fighter", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots {} }
+spawn Character pos_tgt2 { name: "Target", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 16, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 }, EquipmentSlots { worn_shield: some(Shield { shield_type: SmallShield }), worn_armor: some(Armor { armour_type: ScaleLamellar }) } }
+
+let pos_action2 = build_round_action(pos_atk2, MeleeAttackAction, 3, true, some(pos_tgt2), some(SwordLong))
+
+// Queue: is_rear_attack → true
+prompts true
+
+// RearAttacked: strips DEX (+1) and shield (+1), adds +2 to attack_mod.
+// Target effective AC: 10 + ScaleLamellar 4 = 14 (no DEX, no shield).
+// BTHB=4, rear +2 = 6 total mod.
+// Roll 10 + 6 = 16 >= 14 → hit, damage 4
+rolls 10 4
+call resolve_action(pos_action2, [pos_action2])
+assert_eq pos_tgt2.hp, 16
+// RearAttacked removed after attack
+assert_no_condition pos_tgt2, RearAttacked
+
+
+// ── Rear attack on monster target ────────────────────────────────
+// Character attacks monster from behind. RearAttacked affects the
+// attack_mod (+2 to hit) via #attack_resolution modify.
+rolls clear
+prompts clear
+
+spawn Character pos_atk3 { name: "Fighter", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots {} }
+spawn Monster pos_ogre { name: "Ogre", hit_dice: 4d8 + 1, max_hp: 26, hp: 26, ac: 15, attacks: [MonsterAttack { name: "Club", damage: 1d10 }] }
+
+let pos_action3 = build_round_action(pos_atk3, MeleeAttackAction, 3, true, some(pos_ogre), some(SwordLong))
+
+// Queue: is_rear_attack → true
+prompts true
+
+// BTHB=4, rear +2 = 6. Target AC=15. Roll 10 + 6 = 16 >= 15 → hit, damage 7
+rolls 10 7
+call resolve_action(pos_action3, [pos_action3])
+assert_eq pos_ogre.hp, 19
+assert_no_condition pos_ogre, RearAttacked
+
+
+// ── Monster rear attack on character ─────────────────────────────
+// Monster attacks character from behind. RearAttacked strips DEX/shield.
+rolls clear
+prompts clear
+
+spawn Monster pos_orc { name: "Orc", hit_dice: 1d8, max_hp: 8, hp: 8, ac: 14, attacks: [MonsterAttack { name: "Club", damage: 1d6 }] }
+spawn Character pos_tgt4 { name: "Victim", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 16, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 }, EquipmentSlots { worn_shield: some(Shield { shield_type: SmallShield }), worn_armor: some(Armor { armour_type: ScaleLamellar }) } }
+
+let pos_action4 = build_round_action(pos_orc, MeleeAttackAction, 5, false, some(pos_tgt4), none, none, some(MonsterAttack { name: "Club", damage: 1d6 }))
+
+// Queue: is_rear_attack → true
+prompts true
+
+// Monster BTHB=1 (1 HD), rear +2. Target effective AC: 14 (no DEX/shield).
+// Roll 14 + 3 = 17 >= 14 → hit, damage 5
+rolls 14 5
+call resolve_action(pos_action4, [pos_action4])
+assert_eq pos_tgt4.hp, 15
+assert_no_condition pos_tgt4, RearAttacked
+
+
+// ══════════════════════════════════════════════════════════════════
+//  BRAWLING — REAR/FLANK SKIP FEND-OFF
+// ══════════════════════════════════════════════════════════════════
+
+
+// ── Brawling rear attack: skip fend-off, apply RearAttacked ──────
+// Armed target would normally fend off, but rear attack bypasses it.
+rolls clear
+prompts clear
+
+spawn Character brawl_rear_atk { name: "Brawler", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 } }
+spawn Character brawl_rear_tgt { name: "Defender", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 }, EquipmentSlots { wielded_main: some(Melee(SwordLong)) } }
+
+let brawl_rear_action = build_round_action(brawl_rear_atk, BrawlingAction, 3, true, some(brawl_rear_tgt))
+
+// Queue: is_rear_attack → true, is_shield_flank → false
+prompts true
+prompts false
+
+// No fend-off rolls consumed. RearAttacked applied.
+// Brawl: d20=18 (hit with +2 rear), d2=2 (FistOrKick damage)
+rolls 18 2
+call resolve_action(brawl_rear_action, [brawl_rear_action])
+// Target took damage — fend-off was skipped
+assert_eq brawl_rear_tgt.hp, 18
+assert_no_condition brawl_rear_tgt, RearAttacked
+
+
+// ── Brawling shield-flank: skip fend-off, no RearAttacked ────────
+// Shield-flank bypasses fend-off but doesn't apply RearAttacked.
+rolls clear
+prompts clear
+
+spawn Character brawl_flank_atk { name: "Flanker", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 } }
+spawn Character brawl_flank_tgt { name: "Defender", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 }, EquipmentSlots { wielded_main: some(Melee(SwordLong)) } }
+
+let brawl_flank_action = build_round_action(brawl_flank_atk, BrawlingAction, 3, true, some(brawl_flank_tgt))
+
+// Queue: is_rear_attack → false, is_shield_flank → true
+prompts false
+prompts true
+
+// No fend-off. No rear attack bonus. Standard brawl hit.
+// Brawl: d20=18 (hit), d2=1 (damage)
+rolls 18 1
+call resolve_action(brawl_flank_action, [brawl_flank_action])
+assert_eq brawl_flank_tgt.hp, 19
+assert_no_condition brawl_flank_tgt, RearAttacked
+
+
+// ── Brawling default: armed target still fends off ───────────────
+// No prompts queued — defaults to not rear, not flank. Fend-off works.
+rolls clear
+prompts clear
+
+spawn Character brawl_def_atk { name: "Brawler", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 } }
+spawn Character brawl_def_tgt { name: "Defender", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 }, EquipmentSlots { wielded_main: some(Melee(SwordLong)) } }
+
+let brawl_def_action = build_round_action(brawl_def_atk, BrawlingAction, 3, true, some(brawl_def_tgt))
+
+// is_rear_attack → false (default), is_shield_flank → false (default)
+// Fend-off: d20=15 (BTHB=4, 15+4=19 >= 10 → hit, fend-off succeeds)
+rolls 15 6
+call resolve_action(brawl_def_action, [brawl_def_action])
+// Target HP unchanged — brawling was fended off
+assert_eq brawl_def_tgt.hp, 20
+
+
+// ══════════════════════════════════════════════════════════════════
+//  GRAPPLING — REAR ATTACK SKIPS FEND-OFF
+// ══════════════════════════════════════════════════════════════════
+
+
+// ── Grapple rear attack: skip fend-off ───────────────────────────
+// Armed target would fend off, but rear position bypasses it.
+rolls clear
+prompts clear
+
+spawn Character grap_rear_atk { name: "Grappler", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 } }
+spawn Character grap_rear_tgt { name: "Defender", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 }, EquipmentSlots { wielded_main: some(Melee(SwordLong)) } }
+
+let grap_rear_action = build_round_action(grap_rear_atk, GrappleAction, 3, true, some(grap_rear_tgt))
+
+// Queue: is_rear_attack → true, is_shield_flank → false
+prompts true
+prompts false
+
+// No fend-off rolls. Grapple: d20=15 (hit), d8=5 (WaistLock)
+// grappling_temp_damage(5)=4, grappling_real_damage(5)=1
+rolls 15 5
+call resolve_action(grap_rear_action, [grap_rear_action])
+// Both in grapple — fend-off was bypassed
+assert_condition grap_rear_atk, Grappling
+assert_condition grap_rear_tgt, Grappling
+assert_eq grap_rear_tgt.hp, 19
+assert_eq grap_rear_tgt.temp_damage, 4
+
+
+// ── Grapple default: armed target fends off ──────────────────────
+rolls clear
+prompts clear
+
+spawn Character grap_def_atk { name: "Grappler", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 } }
+spawn Character grap_def_tgt { name: "Defender", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 }, EquipmentSlots { wielded_main: some(Melee(SwordLong)) } }
+
+let grap_def_action = build_round_action(grap_def_atk, GrappleAction, 3, true, some(grap_def_tgt))
+
+// Fend-off: d20=15 → hit → fend-off succeeds
+rolls 15 6
+call resolve_action(grap_def_action, [grap_def_action])
+assert_no_condition grap_def_atk, Grappling
+assert_no_condition grap_def_tgt, Grappling
+assert_eq grap_def_tgt.hp, 20
+
+
+// ══════════════════════════════════════════════════════════════════
+//  OVERBEARING — FLANK ATTACK SKIPS FEND-OFF
+// ══════════════════════════════════════════════════════════════════
+
+
+// ── Overbear shield-flank: skip fend-off ─────────────────────────
+// Shield-flank bypasses fend-off for overbearing too.
+rolls clear
+prompts clear
+
+spawn Character ob_flank_atk { name: "Overbear", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 } }
+spawn Character ob_flank_tgt { name: "Defender", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 }, EquipmentSlots { wielded_main: some(Melee(SwordLong)) } }
+
+let ob_flank_action = build_round_action(ob_flank_atk, OverbearAction, 3, true, some(ob_flank_tgt))
+
+// Queue: is_rear_attack → false, is_shield_flank → true
+prompts false
+prompts true
+
+// No fend-off. Overbear: d20=15 (hit), d6=3 → PartialSuccess (Staggered)
+rolls 15 3
+call resolve_action(ob_flank_action, [ob_flank_action])
+assert_condition ob_flank_tgt, Staggered
+assert_eq ob_flank_tgt.hp, 20
+
+
+// ── Overbear default: armed target fends off ─────────────────────
+rolls clear
+prompts clear
+
+spawn Character ob_def_atk { name: "Overbear", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 } }
+spawn Character ob_def_tgt { name: "Defender", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 }, EquipmentSlots { wielded_main: some(Melee(SwordLong)) } }
+
+let ob_def_action = build_round_action(ob_def_atk, OverbearAction, 3, true, some(ob_def_tgt))
+
+// Fend-off: d20=15 → hit → fend-off succeeds
+rolls 15 6
+call resolve_action(ob_def_action, [ob_def_action])
+assert_no_condition ob_def_tgt, Staggered
+assert_no_condition ob_def_tgt, Prone
+assert_eq ob_def_tgt.hp, 20

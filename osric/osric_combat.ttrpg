@@ -94,6 +94,44 @@ system "OSRIC Combat" {
 
 
     // ========================================================
+    //  POSITION QUERY PROMPTS
+    //
+    //  Minimal interface the host provides for spatial facts.
+    //  The DSL uses these to apply position-based combat rules
+    //  (rear attack bonuses, fend-off exceptions, etc.).
+    //  Hosts that don't track position get safe defaults.
+    //
+    //  Reference: PG §1.6.3.3 (rear attacks), §1.6.12 (fend-off)
+    // ========================================================
+
+    // Is the attacker in the target's rear arc?
+    // Rear attacks: +2 to hit, negate shield and DEX AC bonuses.
+    prompt is_rear_attack(attacker: entity, target: entity) -> bool {
+        hint: "Is the attacker positioned in the target's rear arc?"
+        default { false }
+    }
+
+    // Is the attacker on the target's shield-side flank?
+    // Shield-flank attacks bypass the fend-off pipeline for
+    // unarmed combat (§1.6.12 exceptions).
+    prompt is_shield_flank(attacker: entity, target: entity) -> bool {
+        hint: "Is the attacker on the target's shield-side flank?"
+        default { false }
+    }
+
+    // Which creatures are currently in melee range of the target?
+    // Used for missile fire into melee (friendly fire risk) and
+    // determining engagement counts.
+    prompt creatures_engaged_with(target: entity) -> list<entity> {
+        hint: "Which creatures are currently in melee range of the target?"
+        default {
+            let empty: list<entity> = []
+            empty
+        }
+    }
+
+
+    // ========================================================
     //  EVENTS
     // ========================================================
 
