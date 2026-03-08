@@ -1507,10 +1507,12 @@ fn eval_pattern_match_qualified_variant() {
                 VariantInfo {
                     name: "EndOfTurn".into(),
                     fields: vec![],
+                    has_defaults: vec![],
                 },
                 VariantInfo {
                     name: "Indefinite".into(),
                     fields: vec![],
+                    has_defaults: vec![],
                 },
             ],
         }),
@@ -1565,6 +1567,7 @@ fn eval_pattern_match_qualified_destructure() {
             variants: vec![VariantInfo {
                 name: "Rounds".into(),
                 fields: vec![("n".into(), ttrpg_checker::ty::Ty::Int)],
+                has_defaults: vec![],
             }],
         }),
     );
@@ -1726,10 +1729,12 @@ fn eval_bare_fieldless_variant() {
                 VariantInfo {
                     name: "red".into(),
                     fields: vec![],
+                    has_defaults: vec![],
                 },
                 VariantInfo {
                     name: "blue".into(),
                     fields: vec![],
+                    has_defaults: vec![],
                 },
             ],
         }),
@@ -1777,6 +1782,7 @@ fn eval_qualified_enum_variant_via_field_access() {
             variants: vec![VariantInfo {
                 name: "red".into(),
                 fields: vec![],
+                has_defaults: vec![],
             }],
         }),
     );
@@ -1929,10 +1935,12 @@ fn eval_pattern_bare_variant_matches() {
                 VariantInfo {
                     name: "red".into(),
                     fields: vec![],
+                    has_defaults: vec![],
                 },
                 VariantInfo {
                     name: "blue".into(),
                     fields: vec![],
+                    has_defaults: vec![],
                 },
             ],
         }),
@@ -2000,6 +2008,7 @@ fn eval_pattern_bare_variant_no_match() {
             variants: vec![VariantInfo {
                 name: "red".into(),
                 fields: vec![],
+                has_defaults: vec![],
             }],
         }),
     );
@@ -2263,6 +2272,7 @@ fn eval_qualified_enum_access_via_paren() {
             variants: vec![VariantInfo {
                 name: "red".into(),
                 fields: vec![],
+                has_defaults: vec![],
             }],
         }),
     );
@@ -2309,6 +2319,7 @@ fn eval_qualified_enum_access_shadowed_by_local() {
             variants: vec![VariantInfo {
                 name: "red".into(),
                 fields: vec![],
+                has_defaults: vec![],
             }],
         }),
     );
@@ -2774,14 +2785,17 @@ fn enum_ordering_uses_declaration_order() {
                 VariantInfo {
                     name: "small".into(),
                     fields: vec![],
+                    has_defaults: vec![],
                 },
                 VariantInfo {
                     name: "medium".into(),
                     fields: vec![],
+                    has_defaults: vec![],
                 },
                 VariantInfo {
                     name: "large".into(),
                     fields: vec![],
+                    has_defaults: vec![],
                 },
             ],
         }),
@@ -2865,14 +2879,17 @@ fn ordinal_returns_declaration_index() {
                 VariantInfo {
                     name: "small".into(),
                     fields: vec![],
+                    has_defaults: vec![],
                 },
                 VariantInfo {
                     name: "medium".into(),
                     fields: vec![],
+                    has_defaults: vec![],
                 },
                 VariantInfo {
                     name: "large".into(),
                     fields: vec![],
+                    has_defaults: vec![],
                 },
             ],
         }),
@@ -2951,14 +2968,17 @@ fn from_ordinal_returns_correct_variant() {
                 VariantInfo {
                     name: "small".into(),
                     fields: vec![],
+                    has_defaults: vec![],
                 },
                 VariantInfo {
                     name: "medium".into(),
                     fields: vec![],
+                    has_defaults: vec![],
                 },
                 VariantInfo {
                     name: "large".into(),
                     fields: vec![],
+                    has_defaults: vec![],
                 },
             ],
         }),
@@ -3011,10 +3031,12 @@ fn from_ordinal_out_of_bounds_error() {
                 VariantInfo {
                     name: "small".into(),
                     fields: vec![],
+                    has_defaults: vec![],
                 },
                 VariantInfo {
                     name: "medium".into(),
                     fields: vec![],
+                    has_defaults: vec![],
                 },
             ],
         }),
@@ -3060,6 +3082,7 @@ fn from_ordinal_negative_index_error() {
             variants: vec![VariantInfo {
                 name: "small".into(),
                 fields: vec![],
+                has_defaults: vec![],
             }],
         }),
     );
@@ -3105,14 +3128,17 @@ fn try_from_ordinal_returns_some_on_valid_index() {
                 VariantInfo {
                     name: "small".into(),
                     fields: vec![],
+                    has_defaults: vec![],
                 },
                 VariantInfo {
                     name: "medium".into(),
                     fields: vec![],
+                    has_defaults: vec![],
                 },
                 VariantInfo {
                     name: "large".into(),
                     fields: vec![],
+                    has_defaults: vec![],
                 },
             ],
         }),
@@ -3164,6 +3190,7 @@ fn try_from_ordinal_returns_none_on_out_of_bounds() {
             variants: vec![VariantInfo {
                 name: "small".into(),
                 fields: vec![],
+                has_defaults: vec![],
             }],
         }),
     );
@@ -3207,6 +3234,7 @@ fn try_from_ordinal_returns_none_on_negative() {
             variants: vec![VariantInfo {
                 name: "small".into(),
                 fields: vec![],
+                has_defaults: vec![],
             }],
         }),
     );

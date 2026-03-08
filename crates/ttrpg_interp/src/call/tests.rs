@@ -1516,10 +1516,12 @@ fn enum_variant_qualified_construction() {
                 VariantInfo {
                     name: "Rounds".into(),
                     fields: vec![("value".into(), Ty::Int)],
+                    has_defaults: vec![],
                 },
                 VariantInfo {
                     name: "Indefinite".into(),
                     fields: vec![],
+                    has_defaults: vec![],
                 },
             ],
         }),
@@ -1580,10 +1582,12 @@ fn enum_variant_bare_construction() {
                 VariantInfo {
                     name: "Rounds".into(),
                     fields: vec![("value".into(), Ty::Int)],
+                    has_defaults: vec![],
                 },
                 VariantInfo {
                     name: "Indefinite".into(),
                     fields: vec![],
+                    has_defaults: vec![],
                 },
             ],
         }),
@@ -2515,6 +2519,7 @@ fn bare_call_prefers_variant_over_function() {
             variants: vec![VariantInfo {
                 name: "Rounds".into(),
                 fields: vec![("value".into(), Ty::Int)],
+                has_defaults: vec![],
             }],
         }),
     );

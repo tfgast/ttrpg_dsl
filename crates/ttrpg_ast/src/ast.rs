@@ -228,12 +228,13 @@ pub struct EnumVariant {
     pub span: Span,
 }
 
-/// Inline field in enum variant or param list: `name: type`
+/// Inline field in enum variant or param list: `name: type (= default)?`
 #[derive(Clone)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct FieldEntry {
     pub name: Name,
     pub ty: Spanned<TypeExpr>,
+    pub default: Option<Spanned<ExprKind>>,
     pub span: Span,
 }
 

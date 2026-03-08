@@ -137,6 +137,9 @@ impl VisitSpansMut for FieldEntry {
     fn visit_spans_mut(&mut self, f: &mut dyn FnMut(&mut Span)) {
         self.span.visit_spans_mut(f);
         self.ty.visit_spans_mut(f);
+        if let Some(ref mut default) = self.default {
+            default.visit_spans_mut(f);
+        }
     }
 }
 

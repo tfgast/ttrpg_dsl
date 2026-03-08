@@ -29,6 +29,7 @@ pub struct EnumInfo {
 pub struct VariantInfo {
     pub name: Name,
     pub fields: Vec<(Name, Ty)>,
+    pub has_defaults: Vec<bool>,
 }
 
 #[derive(Debug, Clone)]

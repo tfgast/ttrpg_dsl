@@ -1209,14 +1209,17 @@ mod tests {
                     VariantInfo {
                         name: "red".into(),
                         fields: vec![],
+                        has_defaults: vec![],
                     },
                     VariantInfo {
                         name: "green".into(),
                         fields: vec![],
+                        has_defaults: vec![],
                     },
                     VariantInfo {
                         name: "blue".into(),
                         fields: vec![],
+                        has_defaults: vec![],
                     },
                 ],
             }),
@@ -1237,14 +1240,17 @@ mod tests {
                     VariantInfo {
                         name: "small".into(),
                         fields: vec![],
+                        has_defaults: vec![],
                     },
                     VariantInfo {
                         name: "medium".into(),
                         fields: vec![],
+                        has_defaults: vec![],
                     },
                     VariantInfo {
                         name: "large".into(),
                         fields: vec![],
+                        has_defaults: vec![],
                     },
                 ],
             }),

@@ -472,27 +472,45 @@ fn collect_enum(e: &EnumDecl, env: &mut TypeEnv, diagnostics: &mut Vec<Diagnosti
             continue;
         }
 
-        let fields = match &v.fields {
+        let (fields, has_defaults) = match &v.fields {
             Some(field_entries) => {
                 let mut seen_fields = HashSet::new();
-                field_entries
-                    .iter()
-                    .filter_map(|f| {
-                        if !seen_fields.insert(f.name.clone()) {
-                            diagnostics.push(Diagnostic::error(
-                                format!("duplicate field `{}` in variant `{}`", f.name, v.name),
-                                f.span,
-                            ));
-                            return None;
-                        }
-                        Some((
-                            f.name.clone(),
-                            env.resolve_type_validated(&f.ty, diagnostics),
-                        ))
-                    })
-                    .collect()
+                let mut fields = Vec::new();
+                let mut defaults = Vec::new();
+                let mut seen_required_after_default = false;
+                let mut last_default_name = None;
+                for f in field_entries {
+                    if !seen_fields.insert(f.name.clone()) {
+                        diagnostics.push(Diagnostic::error(
+                            format!("duplicate field `{}` in variant `{}`", f.name, v.name),
+                            f.span,
+                        ));
+                        continue;
+                    }
+                    let has_default = f.default.is_some();
+                    if has_default {
+                        last_default_name = Some(f.name.clone());
+                    } else if last_default_name.is_some() && !seen_required_after_default {
+                        seen_required_after_default = true;
+                        diagnostics.push(Diagnostic::error(
+                            format!(
+                                "required field `{}` follows field `{}` which has a default; \
+                                 fields with defaults must come last",
+                                f.name,
+                                last_default_name.as_ref().unwrap()
+                            ),
+                            f.span,
+                        ));
+                    }
+                    fields.push((
+                        f.name.clone(),
+                        env.resolve_type_validated(&f.ty, diagnostics),
+                    ));
+                    defaults.push(has_default);
+                }
+                (fields, defaults)
             }
-            None => Vec::new(),
+            None => (Vec::new(), Vec::new()),
         };
 
         // Register variant → enum mapping (multiple enums may share a variant name)
@@ -545,6 +563,7 @@ fn collect_enum(e: &EnumDecl, env: &mut TypeEnv, diagnostics: &mut Vec<Diagnosti
         variants.push(VariantInfo {
             name: v.name.clone(),
             fields,
+            has_defaults,
         });
     }
 
@@ -1721,6 +1740,7 @@ fn register_builtin_types(env: &mut TypeEnv) {
         let variants = vec![VariantInfo {
             name: "Indefinite".into(),
             fields: vec![],
+            has_defaults: vec![],
         }];
         for v in &variants {
             let owners = env.variant_to_enums.entry(v.name.clone()).or_default();

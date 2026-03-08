@@ -153,9 +153,16 @@ impl Parser {
         let (name, _) = self.expect_ident()?;
         self.expect(&TokenKind::Colon)?;
         let ty = self.parse_type()?;
+        let default = if matches!(self.peek(), TokenKind::Eq) {
+            self.advance();
+            Some(self.parse_expr()?)
+        } else {
+            None
+        };
         Ok(FieldEntry {
             name,
             ty,
+            default,
             span: self.end_span(start),
         })
     }
