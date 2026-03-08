@@ -11,6 +11,7 @@ use "OSRIC"
 use "OSRIC Ability"
 use "OSRIC Classes"
 use "OSRIC Equipment"
+use "OSRIC Inventory"
 
 system "OSRIC Character" {
 
@@ -176,9 +177,10 @@ system "OSRIC Character" {
     }
 
     // Convenience: compute encumbrance tier from character state.
+    // Includes both equipped item weight and inventory contents.
     derive character_encumbrance(character: Character) -> EncumbranceTier {
         let allowance = effective_str_encumbrance(character)
-        let weight_over = character.current_weight - allowance
+        let weight_over = total_carried_weight(character) - allowance
         encumbrance_tier(weight_over)
     }
 

@@ -12,6 +12,7 @@ use "OSRIC Equipment"
 use "OSRIC Combat"
 use "OSRIC Spells"
 use "OSRIC Weapon Specialisation"
+use "OSRIC Inventory"
 
 system "OSRIC" {
 
@@ -412,7 +413,6 @@ system "OSRIC" {
         abilities: map<Ability, int>
         include HitPoints
         base_movement: Feet = 120ft
-        gold: int = 0
         drain_history: list<DrainEvent> = []
         hp_rolls: list<HpRoll> = []
         saving_throws: option<SavingThrows>
@@ -431,6 +431,8 @@ system "OSRIC" {
         optional TurnUndead {}
 
         optional WeaponSpecialization
+
+        optional Inventory
 
         optional HenchmanMorale {
             morale_base: int
