@@ -78,9 +78,7 @@ fn apply_dice_filter(dice: &mut [i64], filter: &Option<DiceFilter>) -> Vec<i64> 
             let mut sorted = dice.to_owned();
             sorted.sort_unstable();
             match f {
-                DiceFilter::KeepHighest(n) => {
-                    sorted.into_iter().rev().take(*n as usize).collect()
-                }
+                DiceFilter::KeepHighest(n) => sorted.into_iter().rev().take(*n as usize).collect(),
                 DiceFilter::KeepLowest(n) => sorted.into_iter().take(*n as usize).collect(),
                 DiceFilter::DropHighest(n) => {
                     let keep = sorted.len().saturating_sub(*n as usize);

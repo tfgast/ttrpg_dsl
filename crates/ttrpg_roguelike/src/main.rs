@@ -6,19 +6,17 @@ use std::collections::BTreeMap;
 use std::io;
 
 use crossterm::event::{self, Event, KeyCode, KeyEventKind};
-use rand::SeedableRng;
 use rand::rngs::StdRng;
+use rand::SeedableRng;
 use ttrpg_ast::Name;
-use ttrpg_interp::Interpreter;
 use ttrpg_interp::adapter::StateAdapter;
 use ttrpg_interp::reference_state::GameState;
 use ttrpg_interp::state::EntityRef;
 use ttrpg_interp::value::{DiceExpr, Value};
+use ttrpg_interp::Interpreter;
 
 use crate::map::{EntityDisplay, Map};
-use crate::state::{
-    RoguelikeHandler, read_hp, read_name, read_position, spawn_creature,
-};
+use crate::state::{read_hp, read_name, read_position, spawn_creature, RoguelikeHandler};
 
 // ── Game state ──────────────────────────────────────────────────
 
@@ -120,8 +118,7 @@ fn load_rules() -> (ttrpg_ast::ast::Program, ttrpg_checker::env::TypeEnv) {
         std::process::exit(1);
     }
 
-    let check_result =
-        ttrpg_checker::check_with_modules(&result.program, &result.module_map);
+    let check_result = ttrpg_checker::check_with_modules(&result.program, &result.module_map);
     let errors: Vec<_> = check_result
         .diagnostics
         .iter()
@@ -320,7 +317,13 @@ fn player_turn(
                 budget,
             });
 
-            interp.execute_action(state, eff, "MeleeAttack", game.player, vec![Value::Entity(target)])
+            interp.execute_action(
+                state,
+                eff,
+                "MeleeAttack",
+                game.player,
+                vec![Value::Entity(target)],
+            )
         });
 
         match result {
@@ -332,25 +335,20 @@ fn player_turn(
                         "You hit the {target_name} for {damage_dealt} damage! (HP: {target_hp_after})"
                     ));
                     if target_hp_after <= 0 {
-                        game.messages
-                            .push(format!("The {target_name} is slain!"));
+                        game.messages.push(format!("The {target_name} is slain!"));
                     }
                 } else {
-                    game.messages
-                        .push(format!("You miss the {target_name}!"));
+                    game.messages.push(format!("You miss the {target_name}!"));
                 }
             }
             Err(e) => {
-                game.messages
-                    .push(format!("Attack failed: {}", e.message));
+                game.messages.push(format!("Attack failed: {}", e.message));
             }
         }
 
         // Clear budget
         adapter.run(handler, |_state, eff| {
-            eff.handle(ttrpg_interp::effect::Effect::ClearBudget {
-                actor: game.player,
-            });
+            eff.handle(ttrpg_interp::effect::Effect::ClearBudget { actor: game.player });
         });
         return;
     }
@@ -450,9 +448,7 @@ fn monster_turns(
             }
 
             adapter.run(handler, |_state, eff| {
-                eff.handle(ttrpg_interp::effect::Effect::ClearBudget {
-                    actor: monster,
-                });
+                eff.handle(ttrpg_interp::effect::Effect::ClearBudget { actor: monster });
             });
         } else if dist <= 6 {
             // Close enough to chase — A* pathfind toward player

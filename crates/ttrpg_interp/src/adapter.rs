@@ -165,10 +165,9 @@ impl<S: WritableState, H: EffectHandler> EffectHandler for AdaptedHandler<'_, S,
                     apply_spawn(&mut *self.adapter.state.borrow_mut(), &effect);
                 }
                 return response;
-            } else {
-                let entity_ref = apply_spawn(&mut *self.adapter.state.borrow_mut(), &effect);
-                return Response::EntitySpawned(entity_ref);
             }
+            let entity_ref = apply_spawn(&mut *self.adapter.state.borrow_mut(), &effect);
+            return Response::EntitySpawned(entity_ref);
         }
 
         if is_mutation(kind) {

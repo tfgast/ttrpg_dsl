@@ -82,56 +82,55 @@ pub(crate) fn eval_expr(env: &mut Env, expr: &Spanned<ExprKind>) -> Result<Value
 
             if is_entity {
                 return eval_entity_construction(env, name, fields, groups, expr.span);
-            } else {
-                // Start from base fields if ..base spread was provided.
-                let mut field_map = if let Some(base_expr) = base {
-                    match eval_expr(env, base_expr)? {
-                        Value::Struct {
-                            fields: base_fields,
-                            ..
-                        } => base_fields,
-                        other => {
-                            return Err(RuntimeError::with_span(
-                                format!("expected struct in ..base, got {}", type_name(&other)),
-                                base_expr.span,
-                            ));
-                        }
-                    }
-                } else {
-                    BTreeMap::new()
-                };
-
-                // Explicit fields override base values.
-                // Look up the struct schema to get type hints for fields, allowing
-                // disambiguation of bare enum variants (e.g. Cleric → Class.Cleric).
-                let schema_fields = env.interp.type_env.lookup_fields(name);
-                for f in fields {
-                    let val = if let Some(hint) = schema_fields
-                        .and_then(|sf| sf.iter().find(|fi| fi.name == f.name))
-                        .map(|fi| &fi.ty)
-                    {
-                        eval_expr_with_hint(env, &f.value, hint)?
-                    } else {
-                        eval_expr(env, &f.value)?
-                    };
-                    field_map.insert(f.name.clone(), val);
-                }
-
-                // Fill in defaults for any omitted fields.
-                let defaults: Vec<_> = find_struct_defaults(env, name)
-                    .into_iter()
-                    .filter(|(n, _)| !field_map.contains_key(n))
-                    .collect();
-                for (fname, default_expr) in &defaults {
-                    let val = eval_expr(env, default_expr)?;
-                    field_map.insert(fname.clone(), val);
-                }
-
-                Ok(Value::Struct {
-                    name: name.clone(),
-                    fields: field_map,
-                })
             }
+            // Start from base fields if ..base spread was provided.
+            let mut field_map = if let Some(base_expr) = base {
+                match eval_expr(env, base_expr)? {
+                    Value::Struct {
+                        fields: base_fields,
+                        ..
+                    } => base_fields,
+                    other => {
+                        return Err(RuntimeError::with_span(
+                            format!("expected struct in ..base, got {}", type_name(&other)),
+                            base_expr.span,
+                        ));
+                    }
+                }
+            } else {
+                BTreeMap::new()
+            };
+
+            // Explicit fields override base values.
+            // Look up the struct schema to get type hints for fields, allowing
+            // disambiguation of bare enum variants (e.g. Cleric → Class.Cleric).
+            let schema_fields = env.interp.type_env.lookup_fields(name);
+            for f in fields {
+                let val = if let Some(hint) = schema_fields
+                    .and_then(|sf| sf.iter().find(|fi| fi.name == f.name))
+                    .map(|fi| &fi.ty)
+                {
+                    eval_expr_with_hint(env, &f.value, hint)?
+                } else {
+                    eval_expr(env, &f.value)?
+                };
+                field_map.insert(f.name.clone(), val);
+            }
+
+            // Fill in defaults for any omitted fields.
+            let defaults: Vec<_> = find_struct_defaults(env, name)
+                .into_iter()
+                .filter(|(n, _)| !field_map.contains_key(n))
+                .collect();
+            for (fname, default_expr) in &defaults {
+                let val = eval_expr(env, default_expr)?;
+                field_map.insert(fname.clone(), val);
+            }
+
+            Ok(Value::Struct {
+                name: name.clone(),
+                fields: field_map,
+            })
         }
 
         ExprKind::If {

@@ -14,7 +14,7 @@ pub fn draw(frame: &mut Frame, map: &Map, entities: &[EntityDisplay], messages: 
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Min(map.height as u16 + 2), // map + border
-            Constraint::Length(6),                   // message log
+            Constraint::Length(6),                  // message log
         ])
         .split(frame.area());
 
