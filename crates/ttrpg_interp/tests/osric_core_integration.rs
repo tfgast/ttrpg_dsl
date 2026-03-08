@@ -87,9 +87,9 @@ fn osric_core_has_all_enums() {
         enums.contains(&("ThiefSkill", 8)),
         "missing ThiefSkill enum"
     );
-    // DamageType: 3 variants
+    // DamageType: 9 variants (Slashing, Piercing, Blunt + Fire, Cold, Lightning, Acid, Poison, Corrosion)
     assert!(
-        enums.contains(&("DamageType", 3)),
+        enums.contains(&("DamageType", 9)),
         "missing DamageType enum"
     );
     // MeleeWeapon: 27 variants
@@ -492,6 +492,8 @@ fn monster_entity_fields() {
         "morale_checks_made",
         "xp_value",
         "intelligence",
+        "alignment",
+        "base_movement",
         "attacks",
         "size",
         "special",
@@ -505,7 +507,7 @@ fn monster_entity_fields() {
         "Monster field count mismatch: got {field_names:?}"
     );
 
-    // Monster should have EquipmentSlots as an optional group
+    // Monster should have EquipmentSlots and BreathWeapon as optional groups
     let opt_names: Vec<_> = monster
         .optional_groups
         .iter()
@@ -514,6 +516,10 @@ fn monster_entity_fields() {
     assert!(
         opt_names.contains(&"EquipmentSlots"),
         "Monster should have optional EquipmentSlots, got {opt_names:?}"
+    );
+    assert!(
+        opt_names.contains(&"BreathWeapon"),
+        "Monster should have optional BreathWeapon, got {opt_names:?}"
     );
 }
 

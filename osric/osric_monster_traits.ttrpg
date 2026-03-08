@@ -1,0 +1,173 @@
+// ============================================================
+// OSRIC 3.0 Monster Traits — innate ability conditions
+//
+// Indefinite-duration conditions representing innate monster
+// abilities. Applied at creation time via factory functions.
+// These model passive traits, immunities, resistances, and
+// vulnerabilities as declarative overlays.
+//
+// Reference: OSRIC 3.0 Gamemaster Guide, Chapter 3 (Monsters)
+// ============================================================
+
+use "OSRIC"
+use "OSRIC Combat"
+
+system "OSRIC Monster Traits" {
+
+    // ========================================================
+    //  SENSORY TRAITS
+    // ========================================================
+
+    // Infravision — see heat signatures in darkness.
+    // Range in feet stored as parameter.
+    condition Infravision(range: Feet) on bearer: entity
+        stacking first
+    {}
+
+    // Echolocation — navigate via sound (bats, some subterranean creatures).
+    condition Echolocation on bearer: entity
+        stacking first
+    {}
+
+
+    // ========================================================
+    //  MAGIC RESISTANCE
+    //
+    //  Percentage chance to negate any spell effect.
+    //  Checked before saving throws. Per §2.1.1.
+    // ========================================================
+
+    condition MagicResistance(percent: int) on bearer: entity
+        stacking best by highest(percent) ties oldest
+    {}
+
+
+    // ========================================================
+    //  WEAPON IMMUNITIES
+    //
+    //  Immune to normal (non-magical) weapons. Requires +1 or
+    //  better to hit. Some require specific bonus levels.
+    // ========================================================
+
+    // Immune to all non-magical weapons.
+    condition ImmuneToNormalWeapons on bearer: entity
+        stacking first
+    {}
+
+    // Requires a specific minimum weapon bonus to hit.
+    // e.g., RequiresMagicWeapon(bonus: 2) = needs +2 or better.
+    condition RequiresMagicWeapon(bonus: int) on bearer: entity
+        stacking best by highest(bonus) ties oldest
+    {}
+
+
+    // ========================================================
+    //  DAMAGE TYPE IMMUNITIES
+    // ========================================================
+
+    condition ImmuneToFire on bearer: entity
+        stacking first
+    {}
+
+    condition ImmuneToCold on bearer: entity
+        stacking first
+    {}
+
+    condition ImmuneToPoison on bearer: entity
+        stacking first
+    {}
+
+    condition ImmuneToAcid on bearer: entity
+        stacking first
+    {}
+
+    condition ImmuneToLightning on bearer: entity
+        stacking first
+    {}
+
+    condition ImmuneToMindControl on bearer: entity
+        stacking first
+    {}
+
+
+    // ========================================================
+    //  DAMAGE TYPE VULNERABILITIES
+    // ========================================================
+
+    // Takes extra damage from the specified type.
+    // extra_damage is a flat bonus added to incoming damage.
+    condition VulnerableToCold(extra_damage: int) on bearer: entity
+        stacking first
+    {}
+
+    condition VulnerableToFire(extra_damage: int) on bearer: entity
+        stacking first
+    {}
+
+
+    // ========================================================
+    //  DAMAGE TYPE RESISTANCES
+    //
+    //  Half damage from the specified type.
+    // ========================================================
+
+    condition ResistantToFire on bearer: entity
+        stacking first
+    {}
+
+    condition ResistantToBlunt on bearer: entity
+        stacking first
+    {}
+
+
+    // ========================================================
+    //  REGENERATION
+    //
+    //  Regains hp_per_round hit points at the start of each
+    //  round. Handled by combat loop, not a modify clause.
+    // ========================================================
+
+    condition Regeneration(hp_per_round: int) on bearer: entity
+        stacking best by highest(hp_per_round) ties oldest
+    {}
+
+
+    // ========================================================
+    //  SPECIAL ATTACK TRAITS
+    // ========================================================
+
+    // Petrifying gaze — targets must save or be turned to stone.
+    // Modelled as a marker; resolution handled by gaze attack action.
+    condition PetrifyingGaze on bearer: entity
+        stacking first
+    {}
+
+    // Fear aura — creatures within range must save vs spells or flee.
+    // Range in feet; duration of fear effect in rounds.
+    condition FearAura(range: Feet) on bearer: entity
+        stacking first
+    {}
+
+
+    // ========================================================
+    //  CREATURE TYPE MARKERS
+    //
+    //  Used by game logic (e.g., turn undead, hold person).
+    // ========================================================
+
+    // Undead creature — affected by turning, immune to sleep/charm/hold.
+    condition Undead on bearer: entity
+        stacking first
+    {}
+
+    // Construct — immune to sleep, charm, hold, poison, disease.
+    condition Construct on bearer: entity
+        stacking first
+    {}
+
+    // Turned as undead at the given effective HD for turning purposes.
+    // Some living creatures (e.g., mummies) turn at different HD.
+    condition TurnedAsUndead(effective_hd: int) on bearer: entity
+        stacking first
+    {}
+}

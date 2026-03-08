@@ -1,0 +1,682 @@
+// ============================================================
+// OSRIC 3.0 Monster Bestiary — factory functions
+//
+// ~27 iconic monsters across humanoids, undead, animals,
+// classic monsters, giants, dragons, and outsiders.
+// Each factory returns a Monster entity with appropriate
+// innate trait conditions applied.
+//
+// AC values use ascending notation (10 = unarmoured).
+// HP is set to max_hp (average/typical values).
+//
+// Reference: OSRIC 3.0 Gamemaster Guide, Chapter 10
+// ============================================================
+
+use "OSRIC"
+use "OSRIC Combat"
+use "OSRIC Monster Traits"
+
+system "OSRIC Bestiary" {
+
+    // ========================================================
+    //  HUMANOIDS
+    // ========================================================
+
+    function create_kobold() -> Monster {
+        let m = Monster {
+            name: "Kobold",
+            hit_dice: 1d4,
+            max_hp: 2,
+            hp: 2,
+            ac: 13,
+            morale: 6,
+            xp_value: 5,
+            intelligence: 8,
+            alignment: Alignment.LawfulEvil,
+            base_movement: 60ft,
+            attacks: [MonsterAttack { name: "Short sword", damage: 1d4 }],
+            size: Size.Small,
+            special: ["Infravision"]
+        }
+        apply_condition(m, Infravision(range: 60ft), Duration.Indefinite)
+        m
+    }
+
+    function create_goblin() -> Monster {
+        let m = Monster {
+            name: "Goblin",
+            hit_dice: 1d8 - 1,
+            max_hp: 3,
+            hp: 3,
+            ac: 14,
+            morale: 7,
+            xp_value: 10,
+            intelligence: 9,
+            alignment: Alignment.LawfulEvil,
+            base_movement: 60ft,
+            attacks: [MonsterAttack { name: "Short sword", damage: 1d6 }],
+            size: Size.Small,
+            special: ["Infravision"]
+        }
+        apply_condition(m, Infravision(range: 60ft), Duration.Indefinite)
+        m
+    }
+
+    function create_orc() -> Monster {
+        let m = Monster {
+            name: "Orc",
+            hit_dice: 1d8,
+            max_hp: 4,
+            hp: 4,
+            ac: 14,
+            morale: 7,
+            xp_value: 10,
+            intelligence: 8,
+            alignment: Alignment.LawfulEvil,
+            base_movement: 90ft,
+            attacks: [MonsterAttack { name: "Scimitar", damage: 1d8 }],
+            size: Size.Medium,
+            special: ["Infravision"]
+        }
+        apply_condition(m, Infravision(range: 60ft), Duration.Indefinite)
+        m
+    }
+
+    function create_gnoll() -> Monster {
+        let m = Monster {
+            name: "Gnoll",
+            hit_dice: 2d8,
+            max_hp: 9,
+            hp: 9,
+            ac: 15,
+            morale: 8,
+            xp_value: 30,
+            intelligence: 7,
+            alignment: Alignment.ChaoticEvil,
+            base_movement: 90ft,
+            attacks: [MonsterAttack { name: "Battle axe", damage: 2d4 }],
+            size: Size.Large,
+            special: ["Infravision"]
+        }
+        apply_condition(m, Infravision(range: 60ft), Duration.Indefinite)
+        m
+    }
+
+    function create_bugbear() -> Monster {
+        let m = Monster {
+            name: "Bugbear",
+            hit_dice: 3d8 + 1,
+            max_hp: 14,
+            hp: 14,
+            ac: 15,
+            morale: 9,
+            xp_value: 135,
+            intelligence: 7,
+            alignment: Alignment.ChaoticEvil,
+            base_movement: 90ft,
+            attacks: [MonsterAttack { name: "Morning star", damage: 2d4 }],
+            size: Size.Large,
+            special: ["Infravision", "Surprise"]
+        }
+        apply_condition(m, Infravision(range: 60ft), Duration.Indefinite)
+        m
+    }
+
+    function create_ogre() -> Monster {
+        let m = Monster {
+            name: "Ogre",
+            hit_dice: 4d8 + 1,
+            max_hp: 19,
+            hp: 19,
+            ac: 15,
+            morale: 10,
+            xp_value: 95,
+            intelligence: 6,
+            alignment: Alignment.ChaoticEvil,
+            base_movement: 90ft,
+            attacks: [MonsterAttack { name: "Club", damage: 1d10 }],
+            size: Size.Large,
+            special: []
+        }
+        m
+    }
+
+
+    // ========================================================
+    //  UNDEAD
+    // ========================================================
+
+    function create_skeleton() -> Monster {
+        let m = Monster {
+            name: "Skeleton",
+            hit_dice: 1d8,
+            max_hp: 4,
+            hp: 4,
+            ac: 13,
+            morale: 12,
+            xp_value: 15,
+            intelligence: 0,
+            alignment: Alignment.TrueNeutral,
+            base_movement: 120ft,
+            attacks: [MonsterAttack { name: "Strike", damage: 1d6 }],
+            size: Size.Medium,
+            special: ["Undead", "ResistantToBlunt"]
+        }
+        apply_condition(m, Undead, Duration.Indefinite)
+        apply_condition(m, TurnedAsUndead(effective_hd: 1), Duration.Indefinite)
+        apply_condition(m, ImmuneToCold, Duration.Indefinite)
+        apply_condition(m, ImmuneToMindControl, Duration.Indefinite)
+        apply_condition(m, ResistantToBlunt, Duration.Indefinite)
+        m
+    }
+
+    function create_zombie() -> Monster {
+        let m = Monster {
+            name: "Zombie",
+            hit_dice: 2d8,
+            max_hp: 9,
+            hp: 9,
+            ac: 12,
+            morale: 12,
+            xp_value: 30,
+            intelligence: 0,
+            alignment: Alignment.TrueNeutral,
+            base_movement: 60ft,
+            attacks: [MonsterAttack { name: "Strike", damage: 1d8 }],
+            size: Size.Medium,
+            special: ["Undead", "AlwaysLastInitiative"]
+        }
+        apply_condition(m, Undead, Duration.Indefinite)
+        apply_condition(m, TurnedAsUndead(effective_hd: 2), Duration.Indefinite)
+        apply_condition(m, ImmuneToCold, Duration.Indefinite)
+        apply_condition(m, ImmuneToMindControl, Duration.Indefinite)
+        m
+    }
+
+    function create_ghoul() -> Monster {
+        let m = Monster {
+            name: "Ghoul",
+            hit_dice: 2d8,
+            max_hp: 9,
+            hp: 9,
+            ac: 14,
+            morale: 8,
+            xp_value: 70,
+            intelligence: 6,
+            alignment: Alignment.ChaoticEvil,
+            base_movement: 90ft,
+            attacks: [
+                MonsterAttack { name: "Claw", damage: 1d3 },
+                MonsterAttack { name: "Claw", damage: 1d3 },
+                MonsterAttack { name: "Bite", damage: 1d6 }
+            ],
+            size: Size.Medium,
+            special: ["Undead", "Paralysation"]
+        }
+        apply_condition(m, Undead, Duration.Indefinite)
+        apply_condition(m, TurnedAsUndead(effective_hd: 3), Duration.Indefinite)
+        apply_condition(m, ImmuneToMindControl, Duration.Indefinite)
+        m
+    }
+
+    function create_wight() -> Monster {
+        let m = Monster {
+            name: "Wight",
+            hit_dice: 4d8 + 3,
+            max_hp: 21,
+            hp: 21,
+            ac: 15,
+            morale: 10,
+            xp_value: 590,
+            intelligence: 9,
+            alignment: Alignment.LawfulEvil,
+            base_movement: 120ft,
+            attacks: [MonsterAttack { name: "Claw", damage: 1d4 }],
+            size: Size.Medium,
+            special: ["Undead", "LevelDrain1"]
+        }
+        apply_condition(m, Undead, Duration.Indefinite)
+        apply_condition(m, TurnedAsUndead(effective_hd: 5), Duration.Indefinite)
+        apply_condition(m, ImmuneToCold, Duration.Indefinite)
+        apply_condition(m, ImmuneToMindControl, Duration.Indefinite)
+        apply_condition(m, ImmuneToNormalWeapons, Duration.Indefinite)
+        m
+    }
+
+    function create_wraith() -> Monster {
+        let m = Monster {
+            name: "Wraith",
+            hit_dice: 5d8 + 3,
+            max_hp: 25,
+            hp: 25,
+            ac: 16,
+            morale: 11,
+            xp_value: 550,
+            intelligence: 11,
+            alignment: Alignment.LawfulEvil,
+            base_movement: 120ft,
+            attacks: [MonsterAttack { name: "Touch", damage: 1d6 }],
+            size: Size.Medium,
+            special: ["Undead", "LevelDrain1", "Incorporeal"]
+        }
+        apply_condition(m, Undead, Duration.Indefinite)
+        apply_condition(m, TurnedAsUndead(effective_hd: 7), Duration.Indefinite)
+        apply_condition(m, ImmuneToCold, Duration.Indefinite)
+        apply_condition(m, ImmuneToMindControl, Duration.Indefinite)
+        apply_condition(m, ImmuneToNormalWeapons, Duration.Indefinite)
+        m
+    }
+
+    function create_vampire() -> Monster {
+        let m = Monster {
+            name: "Vampire",
+            hit_dice: 8d8 + 3,
+            max_hp: 39,
+            hp: 39,
+            ac: 19,
+            morale: 12,
+            xp_value: 3810,
+            intelligence: 16,
+            alignment: Alignment.ChaoticEvil,
+            base_movement: 120ft,
+            attacks: [MonsterAttack { name: "Strike", damage: 1d6 + 4 }],
+            size: Size.Medium,
+            special: ["Undead", "LevelDrain2", "CharmGaze", "Regeneration", "ShapeChange"]
+        }
+        apply_condition(m, Undead, Duration.Indefinite)
+        apply_condition(m, TurnedAsUndead(effective_hd: 10), Duration.Indefinite)
+        apply_condition(m, ImmuneToMindControl, Duration.Indefinite)
+        apply_condition(m, ImmuneToNormalWeapons, Duration.Indefinite)
+        apply_condition(m, Regeneration(hp_per_round: 3), Duration.Indefinite)
+        m
+    }
+
+
+    // ========================================================
+    //  ANIMALS
+    // ========================================================
+
+    function create_giant_rat() -> Monster {
+        let m = Monster {
+            name: "Giant Rat",
+            hit_dice: 1d4,
+            max_hp: 2,
+            hp: 2,
+            ac: 13,
+            morale: 7,
+            xp_value: 7,
+            intelligence: 2,
+            alignment: Alignment.TrueNeutral,
+            base_movement: 120ft,
+            attacks: [MonsterAttack { name: "Bite", damage: 1d3 }],
+            size: Size.Tiny,
+            special: ["Disease"]
+        }
+        m
+    }
+
+    function create_giant_spider() -> Monster {
+        // Large hunting spider variant (HD 4+4)
+        let m = Monster {
+            name: "Giant Spider",
+            hit_dice: 4d8 + 4,
+            max_hp: 22,
+            hp: 22,
+            ac: 16,
+            morale: 10,
+            xp_value: 325,
+            intelligence: 6,
+            alignment: Alignment.TrueNeutral,
+            base_movement: 30ft,
+            attacks: [MonsterAttack { name: "Bite", damage: 1d8 }],
+            size: Size.Large,
+            special: ["VenomousBite", "Webs"]
+        }
+        apply_condition(m, ImmuneToPoison, Duration.Indefinite)
+        m
+    }
+
+    function create_dire_wolf() -> Monster {
+        let m = Monster {
+            name: "Dire Wolf",
+            hit_dice: 3d8 + 3,
+            max_hp: 16,
+            hp: 16,
+            ac: 14,
+            morale: 9,
+            xp_value: 75,
+            intelligence: 3,
+            alignment: Alignment.TrueNeutral,
+            base_movement: 180ft,
+            attacks: [MonsterAttack { name: "Bite", damage: 2d4 }],
+            size: Size.Medium,
+            special: []
+        }
+        m
+    }
+
+    function create_owlbear() -> Monster {
+        let m = Monster {
+            name: "Owlbear",
+            hit_dice: 5d8 + 2,
+            max_hp: 24,
+            hp: 24,
+            ac: 15,
+            morale: 12,
+            xp_value: 225,
+            intelligence: 6,
+            alignment: Alignment.TrueNeutral,
+            base_movement: 120ft,
+            attacks: [
+                MonsterAttack { name: "Claw", damage: 1d6 },
+                MonsterAttack { name: "Claw", damage: 1d6 },
+                MonsterAttack { name: "Bite", damage: 1d4 }
+            ],
+            size: Size.Large,
+            special: ["HugAttack"]
+        }
+        m
+    }
+
+
+    // ========================================================
+    //  CLASSIC MONSTERS
+    // ========================================================
+
+    function create_basilisk() -> Monster {
+        let m = Monster {
+            name: "Basilisk",
+            hit_dice: 6d8,
+            max_hp: 27,
+            hp: 27,
+            ac: 16,
+            morale: 11,
+            xp_value: 1000,
+            intelligence: 1,
+            alignment: Alignment.TrueNeutral,
+            base_movement: 60ft,
+            attacks: [MonsterAttack { name: "Bite", damage: 1d10 }],
+            size: Size.Medium,
+            special: ["PetrifyingGaze"]
+        }
+        apply_condition(m, PetrifyingGaze, Duration.Indefinite)
+        m
+    }
+
+    function create_troll() -> Monster {
+        let m = Monster {
+            name: "Troll",
+            hit_dice: 6d8 + 6,
+            max_hp: 33,
+            hp: 33,
+            ac: 16,
+            morale: 10,
+            xp_value: 525,
+            intelligence: 6,
+            alignment: Alignment.ChaoticEvil,
+            base_movement: 120ft,
+            attacks: [
+                MonsterAttack { name: "Claw", damage: 1d4 + 4 },
+                MonsterAttack { name: "Claw", damage: 1d4 + 4 },
+                MonsterAttack { name: "Bite", damage: 2d6 }
+            ],
+            size: Size.Large,
+            special: ["Regeneration", "VulnerableToFire", "VulnerableToAcid"]
+        }
+        apply_condition(m, Regeneration(hp_per_round: 3), Duration.Indefinite)
+        apply_condition(m, VulnerableToFire(extra_damage: 0), Duration.Indefinite)
+        m
+    }
+
+    function create_medusa() -> Monster {
+        let m = Monster {
+            name: "Medusa",
+            hit_dice: 6d8 + 1,
+            max_hp: 28,
+            hp: 28,
+            ac: 15,
+            morale: 11,
+            xp_value: 750,
+            intelligence: 13,
+            alignment: Alignment.NeutralEvil,
+            base_movement: 90ft,
+            attacks: [MonsterAttack { name: "Snakebite", damage: 1d6 }],
+            size: Size.Medium,
+            special: ["PetrifyingGaze", "PoisonSnakebite"]
+        }
+        apply_condition(m, PetrifyingGaze, Duration.Indefinite)
+        m
+    }
+
+    function create_gelatinous_cube() -> Monster {
+        let m = Monster {
+            name: "Gelatinous Cube",
+            hit_dice: 4d8,
+            max_hp: 18,
+            hp: 18,
+            ac: 12,
+            morale: 12,
+            xp_value: 150,
+            intelligence: 0,
+            alignment: Alignment.TrueNeutral,
+            base_movement: 60ft,
+            attacks: [MonsterAttack { name: "Engulf", damage: 2d4 }],
+            size: Size.Large,
+            special: ["ParalysingTouch", "Surprise", "Ooze"]
+        }
+        apply_condition(m, Construct, Duration.Indefinite)
+        apply_condition(m, ImmuneToLightning, Duration.Indefinite)
+        apply_condition(m, ImmuneToMindControl, Duration.Indefinite)
+        m
+    }
+
+    function create_rust_monster() -> Monster {
+        let m = Monster {
+            name: "Rust Monster",
+            hit_dice: 5d8,
+            max_hp: 22,
+            hp: 22,
+            ac: 18,
+            morale: 12,
+            xp_value: 185,
+            intelligence: 1,
+            alignment: Alignment.TrueNeutral,
+            base_movement: 180ft,
+            attacks: [
+                MonsterAttack { name: "Antenna", damage: 0d1 },
+                MonsterAttack { name: "Antenna", damage: 0d1 }
+            ],
+            size: Size.Medium,
+            special: ["RustTouch"]
+        }
+        m
+    }
+
+
+    // ========================================================
+    //  GIANTS
+    // ========================================================
+
+    function create_hill_giant() -> Monster {
+        let m = Monster {
+            name: "Hill Giant",
+            hit_dice: 8d8 + 2,
+            max_hp: 38,
+            hp: 38,
+            ac: 16,
+            morale: 12,
+            xp_value: 1200,
+            intelligence: 6,
+            alignment: Alignment.ChaoticEvil,
+            base_movement: 120ft,
+            attacks: [MonsterAttack { name: "Club", damage: 2d8 }],
+            size: Size.Large,
+            special: ["RockThrowing"]
+        }
+        m
+    }
+
+    function create_fire_giant() -> Monster {
+        let m = Monster {
+            name: "Fire Giant",
+            hit_dice: 11d8 + 4,
+            max_hp: 53,
+            hp: 53,
+            ac: 17,
+            morale: 12,
+            xp_value: 2720,
+            intelligence: 8,
+            alignment: Alignment.LawfulEvil,
+            base_movement: 120ft,
+            attacks: [MonsterAttack { name: "Sword", damage: 5d6 }],
+            size: Size.Large,
+            special: ["RockThrowing", "ImmuneToFire"]
+        }
+        apply_condition(m, ImmuneToFire, Duration.Indefinite)
+        m
+    }
+
+
+    // ========================================================
+    //  DRAGONS
+    //
+    //  Dragons are parameterised by age category (1-8).
+    //  HP per die equals age category. Breath weapon damage
+    //  equals current HP. 3 charges per day.
+    // ========================================================
+
+    function create_white_dragon(age: int) -> Monster {
+        // HD 5-7 depending on sub-type; using 6 as middle value
+        let hd = 6
+        let hp = hd * age
+        let m = Monster {
+            name: "White Dragon",
+            hit_dice: 6d8,
+            max_hp: hp,
+            hp: hp,
+            ac: 17,
+            morale: 10,
+            xp_value: 500 + 100 * age,
+            intelligence: 6,
+            alignment: Alignment.ChaoticEvil,
+            base_movement: 120ft,
+            attacks: [
+                MonsterAttack { name: "Claw", damage: 1d4 },
+                MonsterAttack { name: "Claw", damage: 1d4 },
+                MonsterAttack { name: "Bite", damage: 2d8 }
+            ],
+            size: Size.Large,
+            special: ["BreathWeapon", "Infravision", "FearAura"],
+            BreathWeapon {
+                breath_name: "Frost Breath",
+                breath_damage: 6d8,
+                breath_type: DamageType.Cold,
+                breath_charges_max: 3,
+                breath_charges: 3
+            }
+        }
+        apply_condition(m, Infravision(range: 60ft), Duration.Indefinite)
+        apply_condition(m, FearAura(range: 30ft), Duration.Indefinite)
+        apply_condition(m, ImmuneToCold, Duration.Indefinite)
+        apply_condition(m, VulnerableToFire(extra_damage: 1), Duration.Indefinite)
+        m
+    }
+
+    function create_black_dragon(age: int) -> Monster {
+        // HD 6-8; using 7 as middle value
+        let hd = 7
+        let hp = hd * age
+        let m = Monster {
+            name: "Black Dragon",
+            hit_dice: 7d8,
+            max_hp: hp,
+            hp: hp,
+            ac: 17,
+            morale: 11,
+            xp_value: 700 + 100 * age,
+            intelligence: 9,
+            alignment: Alignment.ChaoticEvil,
+            base_movement: 120ft,
+            attacks: [
+                MonsterAttack { name: "Claw", damage: 1d4 },
+                MonsterAttack { name: "Claw", damage: 1d4 },
+                MonsterAttack { name: "Bite", damage: 3d6 }
+            ],
+            size: Size.Large,
+            special: ["BreathWeapon", "Infravision", "FearAura"],
+            BreathWeapon {
+                breath_name: "Acid Stream",
+                breath_damage: 7d8,
+                breath_type: DamageType.Acid,
+                breath_charges_max: 3,
+                breath_charges: 3
+            }
+        }
+        apply_condition(m, Infravision(range: 60ft), Duration.Indefinite)
+        apply_condition(m, FearAura(range: 30ft), Duration.Indefinite)
+        apply_condition(m, ImmuneToAcid, Duration.Indefinite)
+        m
+    }
+
+    function create_red_dragon(age: int) -> Monster {
+        // HD 9-11; using 10 as middle value
+        let hd = 10
+        let hp = hd * age
+        let m = Monster {
+            name: "Red Dragon",
+            hit_dice: 10d8,
+            max_hp: hp,
+            hp: hp,
+            ac: 21,
+            morale: 12,
+            xp_value: 2000 + 200 * age,
+            intelligence: 16,
+            alignment: Alignment.ChaoticEvil,
+            base_movement: 90ft,
+            attacks: [
+                MonsterAttack { name: "Claw", damage: 1d8 },
+                MonsterAttack { name: "Claw", damage: 1d8 },
+                MonsterAttack { name: "Bite", damage: 3d10 }
+            ],
+            size: Size.Huge,
+            special: ["BreathWeapon", "Infravision", "FearAura"],
+            BreathWeapon {
+                breath_name: "Fire Breath",
+                breath_damage: 10d8,
+                breath_type: DamageType.Fire,
+                breath_charges_max: 3,
+                breath_charges: 3
+            }
+        }
+        apply_condition(m, Infravision(range: 60ft), Duration.Indefinite)
+        apply_condition(m, FearAura(range: 60ft), Duration.Indefinite)
+        apply_condition(m, ImmuneToFire, Duration.Indefinite)
+        m
+    }
+
+
+    // ========================================================
+    //  OUTSIDERS
+    // ========================================================
+
+    function create_efreet() -> Monster {
+        let m = Monster {
+            name: "Efreet",
+            hit_dice: 10d8,
+            max_hp: 45,
+            hp: 45,
+            ac: 18,
+            morale: 12,
+            xp_value: 7000,
+            intelligence: 12,
+            alignment: Alignment.LawfulEvil,
+            base_movement: 90ft,
+            attacks: [MonsterAttack { name: "Fist", damage: 1d8 }],
+            size: Size.Large,
+            special: ["ImmuneToFire", "SpellLikeAbilities"]
+        }
+        apply_condition(m, ImmuneToFire, Duration.Indefinite)
+        apply_condition(m, Infravision(range: 60ft), Duration.Indefinite)
+        m
+    }
+}

@@ -74,7 +74,7 @@ system "OSRIC" {
 
     // --- Damage types ---
 
-    enum DamageType { Slashing, Piercing, Blunt }
+    enum DamageType { Slashing, Piercing, Blunt, Fire, Cold, Lightning, Acid, Poison, Corrosion }
 
     // --- Weapon enums (bare types; lookup tables in OSRIC Equipment) ---
 
@@ -351,6 +351,16 @@ system "OSRIC" {
         damage: DiceExpr
     }
 
+    // --- Breath weapon optional group (charge-based active ability) ---
+
+    group BreathWeapon {
+        breath_name: string
+        breath_damage: DiceExpr
+        breath_type: DamageType
+        breath_charges_max: int
+        restricted breath_charges: resource(0..=breath_charges_max)
+    }
+
     // --- Per-class level and XP tracking ---
 
     struct ClassLevel {
@@ -440,10 +450,14 @@ system "OSRIC" {
         morale_checks_made: int = 0
         xp_value: int = 0
         intelligence: int = 1
+        alignment: Alignment = Alignment.TrueNeutral
+        base_movement: Feet = 120ft
         attacks: list<MonsterAttack>
         size: Size = Size.Medium
         special: list<string>
 
         optional EquipmentSlots
+
+        optional BreathWeapon
     }
 }
