@@ -1,0 +1,403 @@
+// ============================================================
+// OSRIC 3.0 Inventory — coins, containers, gear, XP tracking
+//
+// Tracks what a character carries: coins in a structured purse,
+// items in containers (backpacks, sacks, pouches), and loose
+// items not stored in any container. All items have weight for
+// encumbrance. Treasure items track whether XP has been awarded.
+//
+// Weight integration: inventory_weight(char) is a derive that
+// computes total carried weight from inventory contents. The
+// encumbrance system in OSRIC Character adds this to equipped
+// item weight (current_weight) for the full encumbrance check.
+//
+// Container capacities and item weights from OSRIC 3.0 Player
+// Guide, Tables 1.4.2.3a and 1.4.2.3A.1.
+//
+// Reference: OSRIC 3.0 Player Guide, §1.4.2
+// ============================================================
+
+use "OSRIC"
+use "OSRIC Equipment"
+use "OSRIC XP"
+
+system "OSRIC Inventory" {
+
+    // ========================================================
+    //  COIN PURSE
+    //
+    //  Five coin types per OSRIC 3.0 §1.4.2:
+    //    1 pp = 5 gp, 1 gp = 2 ep = 10 sp = 100 cp
+    //  Weight: 10 coins = 1 lb (§1.4.2.2)
+    // ========================================================
+
+    struct CoinPurse {
+        cp: int = 0
+        sp: int = 0
+        ep: int = 0
+        gp: int = 0
+        pp: int = 0
+    }
+
+    derive coin_count(purse: CoinPurse) -> int {
+        purse.cp + purse.sp + purse.ep + purse.gp + purse.pp
+    }
+
+    // 10 coins = 1 lb; truncate partial pounds
+    derive coin_weight(purse: CoinPurse) -> int {
+        floor(coin_count(purse) / 10)
+    }
+
+    // Total value in gp (truncates fractional gp)
+    derive coin_gp_value(purse: CoinPurse) -> int {
+        // 100 cp = 1 gp, 10 sp = 1 gp, 2 ep = 1 gp, 1 pp = 5 gp
+        floor(purse.cp / 100) + floor(purse.sp / 10) + floor(purse.ep / 2) + purse.gp + purse.pp * 5
+    }
+
+
+    // ========================================================
+    //  ITEMS
+    //
+    //  Generic gear — everything that isn't a weapon, armour,
+    //  or shield (those are tracked via EquipmentSlots).
+    //  Quantity handles bundled consumables like "Torches (6)".
+    //  Treasure items have gp_value > 0; xp_awarded prevents
+    //  double-counting when treasure XP is granted in town.
+    // ========================================================
+
+    struct Item {
+        name: string
+        weight: int             // lbs per unit (0 for negligible)
+        cost_cp: int = 0        // purchase cost in copper pieces
+        quantity: int = 1
+        gp_value: int = 0       // treasure value (0 = mundane gear)
+        xp_awarded: bool = false
+    }
+
+    // Standard adventuring gear — Table 1.4.2.3a
+    // Weights in lbs; costs converted to cp for uniformity.
+    // Only includes items likely to appear in starting packages
+    // and common dungeon supplies. Extend as needed.
+    derive standard_item(item_name: string) -> Item {
+        match item_name {
+            "Backpack"              => Item { name: "Backpack",              weight: 2,  cost_cp: 200 },
+            "Bedroll"               => Item { name: "Bedroll",              weight: 5,  cost_cp: 2 },
+            "Candle"                => Item { name: "Candle",               weight: 0,  cost_cp: 1 },
+            "Chain (10ft)"          => Item { name: "Chain (10ft)",         weight: 10, cost_cp: 3000 },
+            "Crowbar"               => Item { name: "Crowbar",              weight: 5,  cost_cp: 200 },
+            "Flint and steel"       => Item { name: "Flint and steel",      weight: 0,  cost_cp: 100 },
+            "Grappling hook"        => Item { name: "Grappling hook",       weight: 4,  cost_cp: 100 },
+            "Hammer (tool)"         => Item { name: "Hammer (tool)",        weight: 2,  cost_cp: 5 },
+            "Holy symbol (pewter)"  => Item { name: "Holy symbol (pewter)", weight: 0,  cost_cp: 500 },
+            "Holy symbol (silver)"  => Item { name: "Holy symbol (silver)", weight: 0,  cost_cp: 2500 },
+            "Holy symbol (wooden)"  => Item { name: "Holy symbol (wooden)", weight: 0,  cost_cp: 6 },
+            "Iron spikes (12)"      => Item { name: "Iron spikes (12)",     weight: 5,  cost_cp: 100, quantity: 12 },
+            "Lantern (hooded)"      => Item { name: "Lantern (hooded)",     weight: 2,  cost_cp: 700 },
+            "Lantern (bullseye)"    => Item { name: "Lantern (bullseye)",   weight: 3,  cost_cp: 1200 },
+            "Mirror (small steel)"  => Item { name: "Mirror (small steel)", weight: 0,  cost_cp: 2000 },
+            "Oil (per pint)"        => Item { name: "Oil (per pint)",       weight: 1,  cost_cp: 1 },
+            "Rations (1 day)"       => Item { name: "Rations (1 day)",      weight: 2,  cost_cp: 200 },
+            "Rations (7 days)"      => Item { name: "Rations (7 days)",     weight: 14, cost_cp: 1400, quantity: 7 },
+            "Rope (50ft)"           => Item { name: "Rope (50ft)",          weight: 10, cost_cp: 100 },
+            "Rope, silk (50ft)"     => Item { name: "Rope, silk (50ft)",    weight: 5,  cost_cp: 1000 },
+            "Shovel"                => Item { name: "Shovel",               weight: 8,  cost_cp: 200 },
+            "Spell book (blank)"    => Item { name: "Spell book (blank)",   weight: 5,  cost_cp: 2500 },
+            "Tent"                  => Item { name: "Tent",                 weight: 20, cost_cp: 1000 },
+            "Thieves' tools"        => Item { name: "Thieves' tools",       weight: 1,  cost_cp: 3000 },
+            "Torch"                 => Item { name: "Torch",                weight: 1,  cost_cp: 1 },
+            "Torches (6)"           => Item { name: "Torches (6)",          weight: 6,  cost_cp: 6,   quantity: 6 },
+            "Waterskin"             => Item { name: "Waterskin",            weight: 1,  cost_cp: 100 },
+            "Arrows (20)"          => Item { name: "Arrows (20)",          weight: 3,  cost_cp: 200, quantity: 20 },
+            _                       => Item { name: item_name, weight: 1, cost_cp: 0 }
+        }
+    }
+
+
+    // ========================================================
+    //  CONTAINERS — Table 1.4.2.3A.1
+    //
+    //  Struct-based (not enum) so new container types can be
+    //  added freely — including magical ones like Bag of Holding.
+    //  Capacity in lbs per OSRIC 3.0.
+    // ========================================================
+
+    struct ContainerType {
+        name: string
+        capacity_lbs: int       // max weight of contents
+        weight_empty: int       // weight of the container itself
+        cost_cp: int
+    }
+
+    // Standard container definitions
+    const BACKPACK: ContainerType       = ContainerType { name: "Backpack",           capacity_lbs: 30,  weight_empty: 2, cost_cp: 200 }
+    const SMALL_POUCH: ContainerType    = ContainerType { name: "Small pouch",        capacity_lbs: 2,   weight_empty: 0, cost_cp: 2 }
+    const LARGE_POUCH: ContainerType    = ContainerType { name: "Large pouch",        capacity_lbs: 5,   weight_empty: 0, cost_cp: 4 }
+    const SMALL_SACK: ContainerType     = ContainerType { name: "Small sack",         capacity_lbs: 10,  weight_empty: 0, cost_cp: 1 }
+    const LARGE_SACK: ContainerType     = ContainerType { name: "Large sack",         capacity_lbs: 40,  weight_empty: 0, cost_cp: 2 }
+    const CHEST: ContainerType          = ContainerType { name: "Chest",              capacity_lbs: 30,  weight_empty: 10, cost_cp: 200 }
+    const BOX: ContainerType            = ContainerType { name: "Box",                capacity_lbs: 5,   weight_empty: 1, cost_cp: 100 }
+    const BARREL: ContainerType         = ContainerType { name: "Barrel",             capacity_lbs: 30,  weight_empty: 3, cost_cp: 200 }
+    const SATCHEL: ContainerType        = ContainerType { name: "Satchel",            capacity_lbs: 10,  weight_empty: 1, cost_cp: 100 }
+
+
+    // ========================================================
+    //  CONTAINER INSTANCE
+    //
+    //  What a character actually carries: a container type
+    //  plus its contents (items and coins).
+    // ========================================================
+
+    struct Container {
+        container_type: ContainerType
+        items: list<Item> = []
+        coins: CoinPurse = CoinPurse {}
+    }
+
+
+    // ========================================================
+    //  INVENTORY GROUP
+    //
+    //  Optional group on Character. All fields restricted so
+    //  mutations go through inventory functions.
+    //
+    //  coin_xp_ledger: running total of gp value already
+    //  awarded as treasure XP for coins. Prevents double-
+    //  counting when the GM calls award_coin_treasure_xp().
+    // ========================================================
+
+    group Inventory {
+        restricted coins: CoinPurse = CoinPurse {}
+        restricted containers: list<Container> = []
+        restricted loose_items: list<Item> = []
+        restricted coin_xp_ledger: int = 0
+    }
+
+
+    // ========================================================
+    //  WEIGHT DERIVES
+    //
+    //  All weights in lbs. The encumbrance system in
+    //  osric_character.ttrpg uses total_carried_weight(char)
+    //  for the full encumbrance calculation.
+    // ========================================================
+
+    derive items_weight(items: list<Item>) -> int {
+        if len(items) == 0 { 0 }
+        else { sum([item.weight * item.quantity for item in items]) }
+    }
+
+    derive container_contents_weight(container: Container) -> int {
+        items_weight(container.items) + coin_weight(container.coins)
+    }
+
+    derive container_total_weight(container: Container) -> int {
+        container.container_type.weight_empty + container_contents_weight(container)
+    }
+
+    derive container_remaining_capacity(container: Container) -> int {
+        container.container_type.capacity_lbs - container_contents_weight(container)
+    }
+
+    derive item_fits_in_container(container: Container, item: Item) -> bool {
+        container_remaining_capacity(container) >= item.weight * item.quantity
+    }
+
+    // Total weight of everything in inventory (containers + loose items + coins).
+    // Does NOT include equipped items (those are in EquipmentSlots.current_weight).
+    derive inventory_weight(char: Character) -> int {
+        if char has Inventory as inv {
+            let cw = if len(char.inv.containers) == 0 { 0 }
+                else { sum([container_total_weight(c) for c in char.inv.containers]) }
+            let lw = items_weight(char.inv.loose_items)
+            let coin_w = coin_weight(char.inv.coins)
+            cw + lw + coin_w
+        } else {
+            0
+        }
+    }
+
+    // Total carried weight: equipped gear + inventory contents.
+    derive total_carried_weight(char: Character) -> int {
+        char.current_weight + inventory_weight(char)
+    }
+
+
+    // ========================================================
+    //  CONTAINER MANAGEMENT
+    // ========================================================
+
+    function add_container(char: Character with Inventory as inv, ctype: ContainerType) {
+        let c = Container { container_type: ctype }
+        char.inv.containers = append(char.inv.containers, c)
+    }
+
+    function remove_container(char: Character with Inventory as inv, idx: int) {
+        char.inv.containers = [char.inv.containers[i] for i in 0..len(char.inv.containers) if i != idx]
+    }
+
+
+    // ========================================================
+    //  ITEM MANAGEMENT
+    // ========================================================
+
+    // Add item into a specific container (by index).
+    function add_item_to_container(char: Character with Inventory as inv, container_idx: int, item: Item) {
+        let c = char.inv.containers[container_idx]
+        if !item_fits_in_container(c, item) {
+            error("Container is full: " + c.container_type.name)
+        }
+        char.inv.containers[container_idx].items = append(c.items, item)
+    }
+
+    // Remove the first item matching name from a container.
+    function remove_item_from_container(char: Character with Inventory as inv, container_idx: int, item_name: string) {
+        let items = char.inv.containers[container_idx].items
+        let matching = [item for item in items if item.name == item_name]
+        if len(matching) > 0 {
+            let item = first(matching).unwrap()
+            char.inv.containers[container_idx].items = items.remove_first(item)
+        }
+    }
+
+    // Add a loose item (not in any container).
+    function add_loose_item(char: Character with Inventory as inv, item: Item) {
+        char.inv.loose_items = append(char.inv.loose_items, item)
+    }
+
+    // Remove the first loose item matching name.
+    function remove_loose_item(char: Character with Inventory as inv, item_name: string) {
+        let items = char.inv.loose_items
+        let matching = [item for item in items if item.name == item_name]
+        if len(matching) > 0 {
+            let item = first(matching).unwrap()
+            char.inv.loose_items = items.remove_first(item)
+        }
+    }
+
+
+    // ========================================================
+    //  CONSUMABLE USE
+    //
+    //  Decrement quantity of a consumable item. Removes the
+    //  item entirely when quantity reaches 0.
+    // ========================================================
+
+    function use_consumable_in_container(char: Character with Inventory as inv, container_idx: int, item_name: string) {
+        let items = char.inv.containers[container_idx].items
+        let matching = [item for item in items if item.name == item_name]
+        if len(matching) > 0 {
+            let item = first(matching).unwrap()
+            if item.quantity <= 1 {
+                char.inv.containers[container_idx].items = items.remove_first(item)
+            } else {
+                char.inv.containers[container_idx].items = [
+                    if i.name == item_name && i.quantity == item.quantity {
+                        Item { name: i.name, weight: i.weight, cost_cp: i.cost_cp, quantity: i.quantity - 1, gp_value: i.gp_value, xp_awarded: i.xp_awarded }
+                    } else { i }
+                    for i in items
+                ]
+            }
+        }
+    }
+
+    function use_consumable_loose(char: Character with Inventory as inv, item_name: string) {
+        let items = char.inv.loose_items
+        let matching = [item for item in items if item.name == item_name]
+        if len(matching) > 0 {
+            let item = first(matching).unwrap()
+            if item.quantity <= 1 {
+                char.inv.loose_items = items.remove_first(item)
+            } else {
+                char.inv.loose_items = [
+                    if i.name == item_name && i.quantity == item.quantity {
+                        Item { name: i.name, weight: i.weight, cost_cp: i.cost_cp, quantity: i.quantity - 1, gp_value: i.gp_value, xp_awarded: i.xp_awarded }
+                    } else { i }
+                    for i in items
+                ]
+            }
+        }
+    }
+
+
+    // ========================================================
+    //  COIN MANAGEMENT
+    //
+    //  Coins on person (not in a container). For coins stored
+    //  inside a specific container, manipulate the container's
+    //  coins field directly.
+    // ========================================================
+
+    function add_coins(char: Character with Inventory as inv, purse: CoinPurse) {
+        let old = char.inv.coins
+        char.inv.coins = CoinPurse {
+            cp: old.cp + purse.cp,
+            sp: old.sp + purse.sp,
+            ep: old.ep + purse.ep,
+            gp: old.gp + purse.gp,
+            pp: old.pp + purse.pp
+        }
+    }
+
+    function spend_coins_gp(char: Character with Inventory as inv, amount: int) {
+        if char.inv.coins.gp < amount {
+            error("Not enough gold pieces")
+        }
+        char.inv.coins.gp = char.inv.coins.gp - amount
+    }
+
+
+    // ========================================================
+    //  TREASURE XP
+    //
+    //  Item XP: per-item xp_awarded flag prevents double-
+    //  counting. Call award_item_treasure_xp when the party
+    //  returns to civilisation and sells/appraises treasure.
+    //
+    //  Coin XP: GM explicitly declares how much coin treasure
+    //  was found via award_coin_treasure_xp. The coin_xp_ledger
+    //  tracks the running total already awarded.
+    // ========================================================
+
+    // Compute un-awarded item treasure XP in a list of items.
+    derive unawarded_items_xp(items: list<Item>) -> int {
+        let eligible = [item.gp_value for item in items if item.gp_value > 0 && !item.xp_awarded]
+        if len(eligible) == 0 { 0 }
+        else { sum(eligible) }
+    }
+
+    // Mark all treasure items as XP-awarded, returning new list.
+    derive mark_items_awarded(items: list<Item>) -> list<Item> {
+        [
+            if item.gp_value > 0 && !item.xp_awarded {
+                Item { name: item.name, weight: item.weight, cost_cp: item.cost_cp, quantity: item.quantity, gp_value: item.gp_value, xp_awarded: true }
+            } else { item }
+            for item in items
+        ]
+    }
+
+    // Award XP for all un-awarded treasure items in inventory.
+    // Returns total XP awarded (to be divided among party).
+    function award_item_treasure_xp(char: Character with Inventory as inv) -> int {
+        // Loose items
+        let loose_xp = unawarded_items_xp(char.inv.loose_items)
+        char.inv.loose_items = mark_items_awarded(char.inv.loose_items)
+
+        // Items in containers
+        let container_xp = if len(char.inv.containers) == 0 { 0 }
+            else { sum([unawarded_items_xp(c.items) for c in char.inv.containers]) }
+
+        for idx in 0..len(char.inv.containers) {
+            let container = char.inv.containers[idx]
+            char.inv.containers[idx].items = mark_items_awarded(container.items)
+        }
+
+        treasure_xp(loose_xp + container_xp)
+    }
+
+    // GM declares that a specific gp amount of coin treasure was found.
+    // Awards XP and updates the ledger. Does not modify the coin purse.
+    function award_coin_treasure_xp(char: Character with Inventory as inv, gp_amount: int) -> int {
+        char.inv.coin_xp_ledger = char.inv.coin_xp_ledger + gp_amount
+        treasure_xp(gp_amount)
+    }
+}
