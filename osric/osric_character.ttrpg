@@ -9,6 +9,7 @@
 
 use "OSRIC"
 use "OSRIC Ability"
+use "OSRIC Classes"
 use "OSRIC Equipment"
 
 system "OSRIC Character" {
@@ -192,10 +193,15 @@ system "OSRIC Character" {
         }
     }
 
-    // Base movement: ancestry rate capped by armour.
+    // Base movement: ancestry rate capped by armour, or monk rate if monk.
+    // Monks use their class movement table (which replaces ancestry base).
     // EncumbranceState condition modifies the result.
     derive character_movement(character: Character) -> Feet {
-        let base = base_movement(character.ancestry)
+        let base = if is_class(character, Monk) {
+            Feet { value: monk_movement(class_level_for(character, Monk).unwrap()) }
+        } else {
+            base_movement(character.ancestry)
+        }
         let cap = armor_movement_cap(character)
         if cap.value > 0 {
             Feet { value: min(base.value, cap.value) }
