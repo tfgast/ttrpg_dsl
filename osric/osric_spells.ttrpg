@@ -250,27 +250,130 @@ system "OSRIC Spells" {
 
 
     // ========================================================
+    //  RANGER DRUID SPELL SLOTS
+    //  Table 1.3.9.4a — ranger levels 8-20, druid spell levels 1-3
+    //
+    //  Rangers cast druid spells starting at level 8.
+    //  Keyed by ranger class level (not casting level).
+    // ========================================================
+
+    table ranger_druid_slots(ranger_level: int, spell_level: int) -> int {
+        // Levels 1-7: no druid spells
+        [1..=7, _] => 0,
+        // Level 8
+        [8, 1] => 1, [8, 2..=3] => 0,
+        // Level 9
+        [9, 1] => 1, [9, 2..=3] => 0,
+        // Level 10
+        [10, 1] => 2, [10, 2..=3] => 0,
+        // Level 11
+        [11, 1] => 2, [11, 2..=3] => 0,
+        // Level 12
+        [12, 1] => 2, [12, 2] => 1, [12, 3] => 0,
+        // Level 13
+        [13, 1] => 2, [13, 2] => 1, [13, 3] => 0,
+        // Level 14
+        [14, 1] => 2, [14, 2] => 2, [14, 3] => 0,
+        // Level 15
+        [15, 1] => 2, [15, 2] => 2, [15, 3] => 0,
+        // Level 16
+        [16, 1] => 2, [16, 2] => 2, [16, 3] => 1,
+        // Level 17
+        [17, 1] => 2, [17, 2] => 2, [17, 3] => 2,
+        // Level 18
+        [18, 1] => 3, [18, 2] => 2, [18, 3] => 2,
+        // Level 19
+        [19, 1] => 3, [19, 2] => 2, [19, 3] => 2,
+        // Level 20
+        [20, 1] => 3, [20, 2] => 3, [20, 3] => 2,
+        // Out of range
+        [_, _] => 0
+    }
+
+    // ========================================================
+    //  RANGER MAGIC-USER SPELL SLOTS
+    //  Table 1.3.9.4a — ranger levels 9-20, MU spell levels 1-2
+    //
+    //  Rangers cast magic-user spells starting at level 9.
+    //  Keyed by ranger class level (not casting level).
+    // ========================================================
+
+    table ranger_mu_slots(ranger_level: int, spell_level: int) -> int {
+        // Levels 1-8: no MU spells
+        [1..=8, _] => 0,
+        // Level 9
+        [9, 1] => 1, [9, 2] => 0,
+        // Level 10
+        [10, 1] => 1, [10, 2] => 0,
+        // Level 11
+        [11, 1] => 2, [11, 2] => 0,
+        // Level 12
+        [12, 1] => 2, [12, 2] => 0,
+        // Level 13
+        [13, 1] => 2, [13, 2] => 1,
+        // Level 14
+        [14, 1] => 2, [14, 2] => 1,
+        // Level 15
+        [15, 1] => 2, [15, 2] => 2,
+        // Level 16
+        [16, 1] => 2, [16, 2] => 2,
+        // Level 17
+        [17, 1] => 2, [17, 2] => 2,
+        // Level 18
+        [18, 1] => 2, [18, 2] => 2,
+        // Level 19
+        [19, 1] => 3, [19, 2] => 2,
+        // Level 20
+        [20, 1] => 3, [20, 2] => 2,
+        // Out of range
+        [_, _] => 0
+    }
+
+    // ========================================================
+    //  RANGER CASTING LEVEL
+    //
+    //  Rangers gain a druid casting level starting at ranger L8.
+    //  It increases by 1 per 2 ranger levels, capped at 6
+    //  (reached at ranger L18). Arcane casting level equals
+    //  druid casting level per OSRIC 3.0 §1.3.9.3.
+    // ========================================================
+
+    derive ranger_druid_casting_level(ranger_level: int) -> int {
+        if ranger_level < 8 { 0 }
+        else { min(6, floor((ranger_level - 6) / 2)) }
+    }
+
+    derive ranger_arcane_casting_level(ranger_level: int) -> int {
+        ranger_druid_casting_level(ranger_level)
+    }
+
+
+    // ========================================================
     //  DISPATCH DERIVES
     // ========================================================
 
     // Base spell slots for a given progression, class level, and spell level.
+    // For Ranger, returns druid spell slots (the primary progression).
+    // Use ranger_mu_slots() directly for ranger arcane spell slots.
     derive spell_slots_for(progression: SpellProgression, class_level: int, spell_level: int) -> int {
         match progression {
             SpellProgression.Cleric      => cleric_slots(class_level, spell_level),
             SpellProgression.Druid       => druid_slots(class_level, spell_level),
             SpellProgression.MagicUser   => magic_user_slots(class_level, spell_level),
             SpellProgression.Illusionist => illusionist_slots(class_level, spell_level),
+            SpellProgression.Ranger      => ranger_druid_slots(class_level, spell_level),
             _                            => 0
         }
     }
 
-    // Maximum spell level accessible to a given progression.
+    // Maximum druid spell level accessible to a given progression.
     derive max_spell_level(progression: SpellProgression) -> int {
         match progression {
             SpellProgression.Cleric      => 7,
             SpellProgression.Druid       => 7,
             SpellProgression.Illusionist => 7,
             SpellProgression.MagicUser   => 9,
+            SpellProgression.Ranger      => 3,
             _                            => 0
         }
     }
