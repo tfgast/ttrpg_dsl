@@ -1,0 +1,595 @@
+// ============================================================
+// OSRIC 3.0 Character Generation
+//
+// Complete character creation pipeline: ability score generation,
+// ancestry selection, class selection (single and multi-class),
+// alignment, HP, starting gold, exceptional strength, optional
+// group activation, and final Character entity construction.
+//
+// Reference: OSRIC 3.0 Player Guide, Chapters 1-3
+// ============================================================
+
+use "OSRIC"
+use "OSRIC Ability"
+use "OSRIC Character"
+use "OSRIC Classes"
+use "OSRIC Saves"
+use "OSRIC Multiclass"
+use "OSRIC Thief Skills"
+use "OSRIC Spells"
+use "OSRIC Weapon Specialisation"
+
+system "OSRIC Chargen" {
+
+    // ========================================================
+    //  ABILITY GENERATION MODE
+    //
+    //  Four methods per OSRIC 3.0 §1.1:
+    //    Hardest   — 3d6 in order (STR, DEX, CON, INT, WIS, CHA)
+    //    Difficult — 3d6, player arranges
+    //    Normal    — 4d6 drop lowest, in order
+    //    Flexible  — 4d6 drop lowest, player arranges
+    // ========================================================
+
+    enum AbilityGenMode {
+        Hardest,
+        Difficult,
+        Normal,
+        Flexible
+    }
+
+    prompt choose_ability_gen_mode() -> AbilityGenMode {
+        hint: "Choose ability score generation method"
+        suggest: Normal
+    }
+
+    mechanic roll_3d6() -> int {
+        let result = roll(3d6)
+        result.total
+    }
+
+    mechanic roll_4d6_drop_lowest() -> int {
+        let result = roll(4d6kh3)
+        result.total
+    }
+
+    // Roll six ability scores using the chosen method.
+    // Returns a list of 6 ints (ordered STR, DEX, CON, INT, WIS, CHA
+    // for in-order modes; unassigned for arrange modes).
+    mechanic roll_ability_scores(mode: AbilityGenMode) -> list<int> {
+        match mode {
+            Hardest   => [roll_3d6(), roll_3d6(), roll_3d6(), roll_3d6(), roll_3d6(), roll_3d6()],
+            Difficult => [roll_3d6(), roll_3d6(), roll_3d6(), roll_3d6(), roll_3d6(), roll_3d6()],
+            Normal    => [roll_4d6_drop_lowest(), roll_4d6_drop_lowest(), roll_4d6_drop_lowest(), roll_4d6_drop_lowest(), roll_4d6_drop_lowest(), roll_4d6_drop_lowest()],
+            Flexible  => [roll_4d6_drop_lowest(), roll_4d6_drop_lowest(), roll_4d6_drop_lowest(), roll_4d6_drop_lowest(), roll_4d6_drop_lowest(), roll_4d6_drop_lowest()]
+        }
+    }
+
+    // For arrange modes: prompt to assign a rolled score to an ability.
+    prompt assign_score(score: int, remaining: list<Ability>) -> Ability {
+        hint: "Assign this score to an ability"
+        suggest: first(remaining).unwrap()
+    }
+
+    // Is this an arrange mode?
+    derive is_arrange_mode(mode: AbilityGenMode) -> bool {
+        mode == Difficult || mode == Flexible
+    }
+
+
+    // ========================================================
+    //  ANCESTRY SELECTION
+    //
+    //  Prompt to choose from all 7 ancestries, then apply
+    //  ability modifiers and validate within ancestry ranges.
+    //  §1.2: ancestry determines ability adjustments, class
+    //  access, and multi-class options.
+    // ========================================================
+
+    const ALL_ANCESTRIES: list<Ancestry> = [
+        Dwarf, Elf, Gnome, HalfElf, HalfOrc, Halfling, Human
+    ]
+
+    prompt choose_ancestry() -> Ancestry {
+        hint: "Choose your character's ancestry"
+        suggest: Human
+    }
+
+
+    // ========================================================
+    //  ANCESTRY-TO-CLASS AVAILABILITY
+    //
+    //  Single-class options per ancestry. Multi-class combos
+    //  are already defined in OSRIC Multiclass module.
+    //
+    //  Per OSRIC 3.0 ancestry chapters (§1.2.1-1.2.7):
+    //    Dwarf:    Assassin, Cleric, Fighter, Thief
+    //    Elf:      Assassin, Cleric, Fighter, MagicUser, Thief
+    //    Gnome:    Assassin, Cleric, Fighter, Illusionist, Thief
+    //    HalfElf:  Assassin, Cleric, Druid, Fighter, MagicUser, Ranger, Thief
+    //    HalfOrc:  Assassin, Cleric, Fighter, Thief
+    //    Halfling: Druid, Fighter, Thief
+    //    Human:    all 10 classes
+    // ========================================================
+
+    derive allowed_single_classes(ancestry: Ancestry) -> list<Class> {
+        match ancestry {
+            Dwarf    => [Assassin, Class.Cleric, Fighter, Thief],
+            Elf      => [Assassin, Class.Cleric, Fighter, MagicUser, Thief],
+            Gnome    => [Assassin, Class.Cleric, Fighter, Illusionist, Thief],
+            HalfElf  => [Assassin, Class.Cleric, Class.Druid, Fighter, MagicUser, Ranger, Thief],
+            HalfOrc  => [Assassin, Class.Cleric, Fighter, Thief],
+            Halfling => [Class.Druid, Fighter, Thief],
+            Human    => [Assassin, Class.Cleric, Class.Druid, Fighter, Illusionist, MagicUser, Monk, Paladin, Ranger, Thief]
+        }
+    }
+
+    // Filter to classes whose requirements the abilities meet.
+    derive qualifying_classes(
+        ancestry: Ancestry,
+        abilities: map<Ability, int>
+    ) -> list<Class> {
+        [c for c in allowed_single_classes(ancestry) if meets_class_requirements(c, abilities)]
+    }
+
+
+    // ========================================================
+    //  CLASS SELECTION
+    //
+    //  Prompt for single class. For non-humans, also offer
+    //  multi-class combinations if ability requirements met.
+    //  §1.3: class selection with minimum ability requirements.
+    //  §1.3.11: multi-class for non-humans.
+    // ========================================================
+
+    prompt choose_class(available: list<Class>) -> Class {
+        hint: "Choose your character class"
+        suggest: Fighter
+    }
+
+    // Filter multiclass combos to those whose requirements are all met.
+    derive qualifying_multiclass_combos(
+        ancestry: Ancestry,
+        abilities: map<Ability, int>
+    ) -> list<list<Class>> {
+        let combos = multiclass_combos_for(ancestry)
+        [combo for combo in combos if all([meets_class_requirements(c, abilities) for c in combo])]
+    }
+
+    prompt choose_multiclass(combos: list<list<Class>>) -> list<Class> {
+        hint: "Choose a multi-class combination (or pick a single class)"
+        suggest: first(combos).unwrap()
+    }
+
+    prompt choose_single_or_multi(can_multiclass: bool) -> bool {
+        hint: "Single class (true) or multi-class (false)?"
+        suggest: true
+    }
+
+
+    // ========================================================
+    //  ALIGNMENT SELECTION
+    //
+    //  Filter 9-fold alignment by class restrictions.
+    //  §1.3.1: Assassin = any evil
+    //  §1.3.3: Druid = any neutral
+    //  §1.3.7: Monk = any lawful
+    //  §1.3.8: Paladin = lawful good only
+    //  §1.3.9: Ranger = any good
+    //  All others: any alignment.
+    // ========================================================
+
+    const ALL_ALIGNMENTS: list<Alignment> = [
+        LawfulGood, LawfulNeutral, LawfulEvil,
+        NeutralGood, TrueNeutral, NeutralEvil,
+        ChaoticGood, ChaoticNeutral, ChaoticEvil
+    ]
+
+    // Alignments valid for a single class.
+    derive class_alignments(class: Class) -> list<Alignment> {
+        match class {
+            Assassin => [LawfulEvil, NeutralEvil, ChaoticEvil],
+            Druid    => [LawfulNeutral, NeutralGood, TrueNeutral, NeutralEvil, ChaoticNeutral],
+            Monk     => [LawfulGood, LawfulNeutral, LawfulEvil],
+            Paladin  => [LawfulGood],
+            Ranger   => [LawfulGood, NeutralGood, ChaoticGood],
+            _        => ALL_ALIGNMENTS
+        }
+    }
+
+    // Is an alignment valid for a given class?
+    derive alignment_valid_for_class(alignment: Alignment, class: Class) -> bool {
+        any([a == alignment for a in class_alignments(class)])
+    }
+
+    // Intersect alignment lists across all held classes.
+    derive valid_alignments(classes: list<Class>) -> list<Alignment> {
+        [a for a in ALL_ALIGNMENTS if all([alignment_valid_for_class(a, c) for c in classes])]
+    }
+
+    prompt choose_alignment(available: list<Alignment>) -> Alignment {
+        hint: "Choose your character's alignment"
+        suggest: TrueNeutral
+    }
+
+
+    // ========================================================
+    //  HP ROLL
+    //
+    //  Roll starting HP at level 1. Single class: roll class HD
+    //  + CON modifier (fighters get con_hp_mod_fighter).
+    //  Multi-class: roll each class HD + CON mod, sum, divide
+    //  by number of classes, drop fractions, min 1.
+    //  Ranger bonus_first_hd adds to the roll.
+    //  §1.3.x.2: Hit Dice per class.
+    //  §1.3.11: multi-class HP averaging.
+    // ========================================================
+
+    // CON modifier for HP: fighter-types get the better table.
+    derive hp_con_modifier(class: Class, con: int) -> int {
+        let cd = class_def(class)
+        if cd.combat_group == FighterGroup {
+            con_hp_mod_fighter(con)
+        } else {
+            con_hp_mod(con)
+        }
+    }
+
+    // Roll HP for a single class at level 1.
+    mechanic roll_single_class_hp(class: Class, con: int) -> int {
+        let cd = class_def(class)
+        let die_result = roll(dice(1, cd.hit_die))
+        let con_mod = hp_con_modifier(class, con)
+        let total = die_result.total + con_mod + cd.bonus_first_hd
+        max(1, total)
+    }
+
+
+    // ========================================================
+    //  STARTING GOLD
+    //
+    //  Per OSRIC 3.0 Table 1.4.2.1:
+    //    Assassin    2d6 x 10
+    //    Cleric      3d6 x 10
+    //    Druid       3d6 x 10
+    //    Fighter     5d4 x 10
+    //    Illusionist 2d4 x 10
+    //    MagicUser   2d4 x 10
+    //    Monk        5d4 (no multiplier)
+    //    Paladin     5d4 x 10
+    //    Ranger      5d4 x 10
+    //    Thief       2d6 x 10
+    // ========================================================
+
+    mechanic roll_starting_gold(class: Class) -> int {
+        match class {
+            Assassin    => roll(2d6).total * 10,
+            Cleric      => roll(3d6).total * 10,
+            Druid       => roll(3d6).total * 10,
+            Fighter     => roll(5d4).total * 10,
+            Illusionist => roll(2d4).total * 10,
+            MagicUser   => roll(2d4).total * 10,
+            Monk        => roll(5d4).total,
+            Paladin     => roll(5d4).total * 10,
+            Ranger      => roll(5d4).total * 10,
+            Thief       => roll(2d6).total * 10
+        }
+    }
+
+
+    // ========================================================
+    //  EXCEPTIONAL STRENGTH
+    //
+    //  Fighter-types (Fighter, Paladin, Ranger) with STR 18
+    //  roll d100 for exceptional strength percentile.
+    //  §1.3.4.1: only fighter-types with STR 18.
+    // ========================================================
+
+    derive qualifies_for_exceptional_str(
+        classes: list<Class>,
+        str_score: int
+    ) -> bool {
+        str_score == 18 && any([class_def(c).has_exceptional_str for c in classes])
+    }
+
+    mechanic roll_exceptional_strength() -> int {
+        roll(1d100).total
+    }
+
+
+    // ========================================================
+    //  THIEF SKILL INITIALIZATION
+    //
+    //  Compute starting thief skills for a class at level 1:
+    //  base + DEX adjustment + ancestry adjustment.
+    //  §1.3.10.4: Thief Skills tables.
+    // ========================================================
+
+    derive initial_thief_skills(
+        class: Class,
+        dex: int,
+        ancestry: Ancestry
+    ) -> map<ThiefSkill, int> {
+        {
+            ClimbWalls:    effective_thief_skill(class, ClimbWalls, 1, dex, ancestry),
+            FindTraps:     effective_thief_skill(class, FindTraps, 1, dex, ancestry),
+            HearNoise:     effective_thief_skill(class, HearNoise, 1, dex, ancestry),
+            HideInShadows: effective_thief_skill(class, HideInShadows, 1, dex, ancestry),
+            MoveSilently:  effective_thief_skill(class, MoveSilently, 1, dex, ancestry),
+            OpenLocks:     effective_thief_skill(class, OpenLocks, 1, dex, ancestry),
+            PickPockets:   effective_thief_skill(class, PickPockets, 1, dex, ancestry),
+            ReadLanguages: effective_thief_skill(class, ReadLanguages, 1, dex, ancestry)
+        }
+    }
+
+    // Find the first class with thief skills in a class list.
+    derive thief_class_in(classes: list<Class>) -> option<Class> {
+        let thief_classes = [c for c in classes if class_def(c).has_thief_skills]
+        if len(thief_classes) > 0 {
+            some(first(thief_classes).unwrap())
+        } else {
+            none
+        }
+    }
+
+
+    // ========================================================
+    //  SPELL SLOT INITIALIZATION
+    //
+    //  Compute initial spell slots list for a caster at level 1.
+    //  Returns a list where index i = slots for spell level i+1.
+    //  §1.3.x.4a: Spell Progression tables.
+    // ========================================================
+
+    derive initial_spell_slots(
+        progression: SpellProgression,
+        wis: int
+    ) -> list<int> {
+        let max_sl = max_spell_level(progression)
+        if max_sl == 0 { [] }
+        else if max_sl == 7 {
+            [
+                total_spell_slots(progression, 1, 1, wis),
+                total_spell_slots(progression, 1, 2, wis),
+                total_spell_slots(progression, 1, 3, wis),
+                total_spell_slots(progression, 1, 4, wis),
+                total_spell_slots(progression, 1, 5, wis),
+                total_spell_slots(progression, 1, 6, wis),
+                total_spell_slots(progression, 1, 7, wis)
+            ]
+        } else {
+            // MagicUser: 9 spell levels
+            [
+                total_spell_slots(progression, 1, 1, wis),
+                total_spell_slots(progression, 1, 2, wis),
+                total_spell_slots(progression, 1, 3, wis),
+                total_spell_slots(progression, 1, 4, wis),
+                total_spell_slots(progression, 1, 5, wis),
+                total_spell_slots(progression, 1, 6, wis),
+                total_spell_slots(progression, 1, 7, wis),
+                total_spell_slots(progression, 1, 8, wis),
+                total_spell_slots(progression, 1, 9, wis)
+            ]
+        }
+    }
+
+    // Find the first caster class in a class list.
+    derive caster_class_in(classes: list<Class>) -> option<Class> {
+        let casters = [c for c in classes if class_def(c).spell_progression != NonCaster]
+        if len(casters) > 0 {
+            some(first(casters).unwrap())
+        } else {
+            none
+        }
+    }
+
+    // Find the first class that can turn undead.
+    derive turner_class_in(classes: list<Class>) -> option<Class> {
+        let turners = [c for c in classes if class_def(c).can_turn_undead]
+        if len(turners) > 0 {
+            some(first(turners).unwrap())
+        } else {
+            none
+        }
+    }
+
+
+    // ========================================================
+    //  CHARACTER NAME
+    // ========================================================
+
+    prompt choose_name() -> string {
+        hint: "Enter your character's name"
+        suggest: "Adventurer"
+    }
+
+
+    // ========================================================
+    //  CHARACTER CREATION FUNCTION
+    //
+    //  Orchestrates the full chargen flow:
+    //  1. Choose ability generation mode
+    //  2. Roll/assign ability scores
+    //  3. Choose ancestry, apply modifiers
+    //  4. Choose class (single or multi)
+    //  5. Choose alignment
+    //  6. Roll HP
+    //  7. Roll starting gold
+    //  8. Roll exceptional strength (if applicable)
+    //  9. Activate optional groups
+    //  10. Construct Character entity
+    // ========================================================
+
+    function create_character() -> Character {
+
+        // --- Step 1: Ability scores ---
+        let gen_mode = choose_ability_gen_mode()
+        let scores = roll_ability_scores(gen_mode)
+
+        let abilities: map<Ability, int> = if is_arrange_mode(gen_mode) {
+            // Player assigns each score to an ability
+            let remaining = [STR, DEX, CON, INT, WIS, CHA]
+
+            let a1 = assign_score(scores[0], remaining)
+            let r2 = [a for a in remaining if a != a1]
+
+            let a2 = assign_score(scores[1], r2)
+            let r3 = [a for a in r2 if a != a2]
+
+            let a3 = assign_score(scores[2], r3)
+            let r4 = [a for a in r3 if a != a3]
+
+            let a4 = assign_score(scores[3], r4)
+            let r5 = [a for a in r4 if a != a4]
+
+            let a5 = assign_score(scores[4], r5)
+            let r6 = [a for a in r5 if a != a5]
+
+            let a6 = first(r6).unwrap()
+
+            { a1: scores[0], a2: scores[1], a3: scores[2], a4: scores[3], a5: scores[4], a6: scores[5] }
+        } else {
+            // In-order: STR, DEX, CON, INT, WIS, CHA
+            { STR: scores[0], DEX: scores[1], CON: scores[2], INT: scores[3], WIS: scores[4], CHA: scores[5] }
+        }
+
+
+        // --- Step 2: Ancestry ---
+        let ancestry = choose_ancestry()
+        let abilities = apply_ancestry_mods(abilities, ancestry)
+
+
+        // --- Step 3: Class selection ---
+        let available = qualifying_classes(ancestry, abilities)
+        let chosen_class = choose_class(available)
+
+        // Determine single vs multi-class
+        let mc_combos = qualifying_multiclass_combos(ancestry, abilities)
+        let classes: list<Class> = if ancestry != Human && len(mc_combos) > 0 {
+            let single = choose_single_or_multi(true)
+            if single {
+                [chosen_class]
+            } else {
+                choose_multiclass(mc_combos)
+            }
+        } else {
+            [chosen_class]
+        }
+
+        let classing_mode = if len(classes) > 1 { ClassingMode.Multi } else { ClassingMode.Single }
+        let class_levels = [ClassLevel { class: c, level: 1, xp: 0 } for c in classes]
+
+
+        // --- Step 4: Alignment ---
+        let valid_aligns = valid_alignments(classes)
+        let alignment = choose_alignment(valid_aligns)
+
+
+        // --- Step 5: HP ---
+        let num_cls = len(classes)
+        let con_score = abilities[CON]
+
+        let hp: int = if num_cls == 1 {
+            roll_single_class_hp(first(classes).unwrap(), con_score)
+        } else {
+            // Multi-class: roll each HD, add CON, sum, divide by num classes.
+            // Sum individual rolls then average.
+            let per_class_hp = [roll_single_class_hp(c, con_score) for c in classes]
+            let total = sum(per_class_hp)
+            max(1, floor(total / num_cls))
+        }
+
+        let hp_rolls = [HpRoll { class: c, level: 1, amount: hp } for c in classes]
+
+
+        // --- Step 6: Starting gold ---
+        // Use primary class for gold (first in list)
+        let gold = roll_starting_gold(first(classes).unwrap())
+
+
+        // --- Step 7: Exceptional strength ---
+        let has_exc_str = qualifies_for_exceptional_str(classes, abilities[STR])
+
+
+        // --- Step 8: Saving throws ---
+        let saves = if num_cls == 1 {
+            saving_throws_for(first(classes).unwrap(), 1)
+        } else {
+            // Best save across all classes at level 1
+            let all_saves = [saving_throws_for(c, 1) for c in classes]
+            SavingThrows {
+                aimed_magic: first(sort([s.aimed_magic for s in all_saves])).unwrap(),
+                breath: first(sort([s.breath for s in all_saves])).unwrap(),
+                death_paralysis_poison: first(sort([s.death_paralysis_poison for s in all_saves])).unwrap(),
+                petrification_polymorph: first(sort([s.petrification_polymorph for s in all_saves])).unwrap(),
+                spells: first(sort([s.spells for s in all_saves])).unwrap()
+            }
+        }
+
+
+        // --- Step 9: Name ---
+        let name = choose_name()
+
+
+        // --- Step 10: Construct Character ---
+        let movement = base_movement(ancestry)
+
+        let char = Character {
+            name: name,
+            classes: class_levels,
+            classing_mode: classing_mode,
+            ancestry: ancestry,
+            alignment: alignment,
+            abilities: abilities,
+            HitPoints { max_hp: hp, hp: hp },
+            base_movement: movement,
+            gold: gold,
+            hp_rolls: hp_rolls,
+            saving_throws: some(saves)
+        }
+
+
+        // --- Step 11: Grant optional groups ---
+
+        // Exceptional strength
+        if has_exc_str {
+            let pct = roll_exceptional_strength()
+            grant char.ExceptionalStrength { percentile: pct }
+        }
+
+        // Spellcasting
+        let maybe_caster = caster_class_in(classes)
+        if maybe_caster != none {
+            let caster = maybe_caster.unwrap()
+            let prog = class_def(caster).spell_progression
+            let slots = initial_spell_slots(prog, abilities[WIS])
+            grant char.Spellcasting { spell_slots: slots }
+        }
+
+        // Thief skills
+        let maybe_thief = thief_class_in(classes)
+        if maybe_thief != none {
+            let thief_cls = maybe_thief.unwrap()
+            let skills = initial_thief_skills(thief_cls, abilities[DEX], ancestry)
+            grant char.ThiefSkills { skills: skills }
+        }
+
+        // Turn undead
+        let maybe_turner = turner_class_in(classes)
+        if maybe_turner != none {
+            grant char.TurnUndead {}
+        }
+
+        // Weapon specialization (fighter-types only)
+        if any([class_def(c).weapon_specialization for c in classes]) {
+            // For simplicity at chargen, no specialization by default.
+            // Weapon specialization is chosen during play or at DM discretion.
+        }
+
+        // Henchman morale (based on CHA)
+        let loyalty = cha_loyalty(abilities[CHA])
+        grant char.HenchmanMorale { morale_base: loyalty }
+
+        char
+    }
+}
