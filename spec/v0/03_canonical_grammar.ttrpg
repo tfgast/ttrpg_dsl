@@ -909,11 +909,28 @@ filter          = ("kh" | "kl" | "dh" | "dl") INT
 // (defined in 01_type_system.ttrpg). No special grammar needed —
 // the type checker handles it.
 
-// --- Struct construction ---
+// --- Struct / entity construction ---
+//
+// Struct literals and entity literals share the same surface syntax.
+// The parser does not distinguish them — the checker determines whether
+// the name refers to a struct, entity, or unit type and validates
+// accordingly.
+//
+// Entity literals may include inline group initializers: nested brace
+// blocks that activate optional or include groups with field values.
+// The parser disambiguates group inits from field inits using 1-token
+// lookahead: `IDENT "{" ...` is a group init, `IDENT ":" ...` is a field.
+//
+// Group initializers are only valid on entity types. The checker rejects
+// them on struct and unit types. Spread (`..base`) is not valid on
+// entity types.
+//
 struct_lit      = IDENT "{" struct_body? "}"
-struct_body     = struct_field ("," struct_field)* ("," ".." expr)? ","?
+struct_body     = struct_member ("," struct_member)* ("," ".." expr)? ","?
                 | ".." expr ","?
+struct_member   = group_init | struct_field
 struct_field    = IDENT ":" expr
+group_init      = IDENT "{" (struct_field ("," struct_field)* ","?)? "}"
 
 // --- List literal / list comprehension ---
 list_lit            = "[" (list_comprehension | list_elements)? "]"

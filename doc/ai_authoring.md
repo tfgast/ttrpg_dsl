@@ -37,7 +37,7 @@
 
 ---
 
-## Top 11 Mistakes
+## Top 12 Mistakes
 
 ### 1. Dice in derive
 
@@ -227,6 +227,24 @@ action Good on actor: Character (target: Character) {
     }
 }
 ```
+
+### 12. Entity construction in non-mutating context
+
+```ttrpg-err
+entity Monster { name: string }
+derive bad() -> Monster {
+    Monster { name: "Ogre" }
+}
+```
+
+```ttrpg
+entity Monster { name: string }
+function good() -> Monster {
+    Monster { name: "Ogre" }
+}
+```
+
+Entity construction spawns mutable state, so it requires a mutating context: `function`, `action`, `reaction`, `hook`, or `with_budget`. Use `function` instead of `derive`/`mechanic`.
 
 ---
 
@@ -1076,6 +1094,72 @@ derive apply_resistances(
     }
 }
 ```
+
+### Entity Construction
+
+Entities can be constructed inline using struct literal syntax. Only allowed in mutating contexts (function, action, reaction, hook, `with_budget`).
+
+```ttrpg
+entity Monster {
+    name: string
+    hit_dice: int
+    max_hp: int
+    ac: int = 10
+    optional Spellcasting {
+        spell_slots: int
+        spell_dc: int = 10
+    }
+    include BasicStats
+}
+
+group BasicStats {
+    str_score: int = 10
+    dex_score: int = 10
+}
+
+// Basic construction — fields with defaults can be omitted
+function create_ogre() -> Monster {
+    Monster {
+        name: "Ogre",
+        hit_dice: 4,
+        max_hp: 26,
+        ac: 5,
+    }
+}
+
+// With inline group initializer — activates an optional group
+function create_wizard() -> Monster {
+    Monster {
+        name: "Goblin Wizard",
+        hit_dice: 1,
+        max_hp: 4,
+        Spellcasting {
+            spell_slots: 3,
+            spell_dc: 12,
+        },
+    }
+}
+
+// Override include group defaults
+function create_giant() -> Monster {
+    Monster {
+        name: "Hill Giant",
+        hit_dice: 8,
+        max_hp: 44,
+        BasicStats {
+            str_score: 19,
+            dex_score: 8,
+        },
+    }
+}
+```
+
+**Key rules:**
+
+- Include groups auto-materialize with defaults if not provided
+- Spread (`..base`) is not supported for entities
+- Group initializers are not valid on struct or unit types
+- Entity construction in derive, mechanic, table, condition, or prompt is a checker error
 
 ### Entity Type Narrowing (is)
 

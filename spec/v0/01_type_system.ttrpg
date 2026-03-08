@@ -334,6 +334,63 @@ struct RollResult {
 //
 // Included groups (`include GroupName`) are required/always-present and cannot
 // be granted or revoked.
+//
+// --- Entity construction ---
+//
+// Entities can be constructed in DSL code using struct literal syntax.
+// This is allowed only in mutating contexts (function, action, reaction,
+// hook, and with_budget bodies). Construction in derive, mechanic, table,
+// condition, or prompt is a checker error.
+//
+// Basic construction (fields with defaults may be omitted):
+//
+//   function create_ogre() -> Monster {
+//       Monster {
+//           name: "Ogre",
+//           hit_dice: 4,
+//           max_hp: 26,
+//           ac: 5,
+//       }
+//   }
+//
+// Inline group initializers activate optional groups at construction time.
+// The group name appears as a nested brace block within the entity literal:
+//
+//   function create_wizard() -> Monster {
+//       Monster {
+//           name: "Goblin Wizard",
+//           hit_dice: 1,
+//           max_hp: 4,
+//           Spellcasting {
+//               spell_slots: 3,
+//               spell_dc: 12,
+//           },
+//       }
+//   }
+//
+// Include groups are automatically materialized with their default values
+// when not explicitly provided. You can override include group defaults
+// by providing an inline group initializer:
+//
+//   function create_giant() -> Monster {
+//       Monster {
+//           name: "Hill Giant",
+//           hit_dice: 8,
+//           max_hp: 44,
+//           BasicStats {
+//               str_score: 19,
+//               dex_score: 8,
+//           },
+//       }
+//   }
+//
+// Key rules:
+//   - Spread (`..base`) is not supported for entity construction
+//   - Duplicate group initializers are a checker error
+//   - Unknown groups are a checker error
+//   - Group initializers on non-entity types (struct, unit) are a checker error
+//   - The constructed entity is a fresh entity with a new EntityRef
+//   - The entity type of the return value matches the declared entity type
 
 // Polymorphic entity alias:
 //

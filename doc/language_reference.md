@@ -76,6 +76,30 @@ entity Character {
 }
 ```
 
+#### Entity Construction
+
+Entities can be constructed inline using struct literal syntax, but only in mutating contexts (function, action, reaction, hook, `with_budget`).
+
+```
+// Basic construction
+function create_ogre() -> Monster {
+    Monster { name: "Ogre", hit_dice: 4, max_hp: 26 }
+}
+
+// With inline group initializer (activates optional group)
+function create_wizard() -> Monster {
+    Monster {
+        name: "Wizard", hit_dice: 1, max_hp: 4,
+        Spellcasting { spell_slots: 3, spell_dc: 12 },
+    }
+}
+```
+
+- Include groups auto-materialize with defaults if not explicitly provided
+- Spread (`..base`) not supported for entities
+- Group initializers not valid on struct/unit types
+- Construction in derive/mechanic/table/condition/prompt is a checker error
+
 ### Restricted Fields
 
 Fields marked `restricted` can only be mutated within the declaring system or the system that declares the entity containing the field. Other systems can read but not assign (`=`, `+=`, `-=`).

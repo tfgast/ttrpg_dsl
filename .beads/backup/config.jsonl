@@ -10,5 +10,7 @@
 {"key":"compaction_enabled","value":"false"}
 {"key":"issue-prefix","value":"tdsl"}
 {"key":"issue_prefix","value":"tdsl"}
+{"key":"kv.memory.has-groupname-as-alias-syntax-target-has-equipmentslots","value":"has GroupName as alias syntax: 'target has EquipmentSlots as eq' lets you access fields via target.eq.field instead of target.EquipmentSlots.field. Cleaner when accessing multiple fields from the same optional group."}
+{"key":"kv.memory.optional-group-fields-on-entity-type-require-target","value":"Optional group fields on entity type require target.GroupName.field_name access pattern (e.g., target.EquipmentSlots.wielded_main), not target.field_name directly. The has guard enables the access but doesn't flatten fields into entity scope."}
 {"key":"schema_version","value":"6"}
 {"key":"types.custom","value":"molecule,gate,convoy,merge-request,slot,agent,role,rig,message"}

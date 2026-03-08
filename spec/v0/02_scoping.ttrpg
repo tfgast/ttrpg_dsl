@@ -59,6 +59,12 @@
 // to call costed actions. Within a `with_budget` block, the `turn`
 // keyword is accessible (readable as a struct). See with_budget docs below.
 //
+// Entity construction (e.g., `Monster { name: "Ogre", hit_dice: 4 }`)
+// is allowed only in mutating contexts: function, action, reaction,
+// hook, and with_budget bodies. Entity construction in derive, mechanic,
+// table, condition, or prompt is a checker error, because creating an
+// entity requires spawning mutable state.
+//
 // Note: while `invocation()` cannot be called directly inside a function
 // body (there is no actor to anchor it), actions called BY a function
 // still get their own invocation context. The action dispatch saves the
