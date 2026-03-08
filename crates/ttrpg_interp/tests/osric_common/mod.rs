@@ -292,7 +292,7 @@ pub fn make_multiclass_character(
     fields.insert(Name::from("abilities"), Value::Map(ability_map));
     fields.insert(Name::from("HitPoints"), hit_points_group(20));
     fields.insert(Name::from("base_movement"), feet(120));
-    fields.insert(Name::from("gold"), Value::Int(0));
+
     fields.insert(Name::from("saving_throws"), Value::Option(None));
     fields.insert(
         Name::from("EquipmentSlots"),
@@ -335,7 +335,7 @@ pub fn make_dualclass_character(
     fields.insert(Name::from("abilities"), Value::Map(ability_map));
     fields.insert(Name::from("HitPoints"), hit_points_group(20));
     fields.insert(Name::from("base_movement"), feet(120));
-    fields.insert(Name::from("gold"), Value::Int(0));
+
     fields.insert(Name::from("saving_throws"), Value::Option(None));
     fields.insert(
         Name::from("EquipmentSlots"),
@@ -631,7 +631,7 @@ pub fn make_character(
     fields.insert(Name::from("abilities"), Value::Map(ability_map));
     fields.insert(Name::from("HitPoints"), hit_points_group(max_hp));
     fields.insert(Name::from("base_movement"), feet(120));
-    fields.insert(Name::from("gold"), Value::Int(0));
+
     fields.insert(Name::from("saving_throws"), Value::Option(None));
     fields.insert(
         Name::from("EquipmentSlots"),
@@ -670,7 +670,7 @@ pub fn make_turner(
     fields.insert(Name::from("abilities"), Value::Map(ability_map));
     fields.insert(Name::from("HitPoints"), hit_points_group(30));
     fields.insert(Name::from("base_movement"), feet(120));
-    fields.insert(Name::from("gold"), Value::Int(0));
+
     fields.insert(Name::from("saving_throws"), Value::Option(None));
     fields.insert(
         Name::from("EquipmentSlots"),
@@ -720,7 +720,7 @@ pub fn make_character_with_shield(
     fields.insert(Name::from("abilities"), Value::Map(ability_map));
     fields.insert(Name::from("HitPoints"), hit_points_group(max_hp));
     fields.insert(Name::from("base_movement"), feet(120));
-    fields.insert(Name::from("gold"), Value::Int(0));
+
     fields.insert(Name::from("saving_throws"), Value::Option(None));
     fields.insert(
         Name::from("EquipmentSlots"),
@@ -762,7 +762,7 @@ pub fn make_caster(
     fields.insert(Name::from("abilities"), Value::Map(ability_map));
     fields.insert(Name::from("HitPoints"), hit_points_group(max_hp));
     fields.insert(Name::from("base_movement"), feet(120));
-    fields.insert(Name::from("gold"), Value::Int(0));
+
     fields.insert(Name::from("saving_throws"), Value::Option(None));
     fields.insert(
         Name::from("EquipmentSlots"),
@@ -820,7 +820,7 @@ pub fn make_caster_with_slots(
     fields.insert(Name::from("abilities"), Value::Map(ability_map));
     fields.insert(Name::from("HitPoints"), hit_points_group(max_hp));
     fields.insert(Name::from("base_movement"), feet(120));
-    fields.insert(Name::from("gold"), Value::Int(0));
+
     fields.insert(Name::from("saving_throws"), Value::Option(None));
     fields.insert(
         Name::from("EquipmentSlots"),
@@ -917,7 +917,7 @@ pub fn make_encumbrance_character(
     fields.insert(Name::from("hp"), Value::Int(10));
     fields.insert(Name::from("base_movement"), feet(120));
     fields.insert(Name::from("current_weight"), Value::Int(current_weight));
-    fields.insert(Name::from("gold"), Value::Int(0));
+
     fields.insert(Name::from("saving_throws"), Value::Option(None));
     fields.insert(Name::from("wielded_main"), Value::Option(None));
     fields.insert(Name::from("wielded_off"), Value::Option(None));
@@ -955,7 +955,7 @@ pub fn make_ability_character(
     fields.insert(Name::from("hp"), Value::Int(10));
     fields.insert(Name::from("base_movement"), feet(120));
     fields.insert(Name::from("current_weight"), Value::Int(0));
-    fields.insert(Name::from("gold"), Value::Int(0));
+
     fields.insert(Name::from("saving_throws"), Value::Option(None));
     fields.insert(Name::from("wielded_main"), Value::Option(None));
     fields.insert(Name::from("wielded_off"), Value::Option(None));
@@ -1060,6 +1060,14 @@ pub fn all_osric_sources() -> Vec<(String, String)> {
         (
             "osric/osric_equipment.ttrpg".to_string(),
             include_str!("../../../../osric/osric_equipment.ttrpg").to_string(),
+        ),
+        (
+            "osric/osric_xp.ttrpg".to_string(),
+            include_str!("../../../../osric/osric_xp.ttrpg").to_string(),
+        ),
+        (
+            "osric/osric_inventory.ttrpg".to_string(),
+            include_str!("../../../../osric/osric_inventory.ttrpg").to_string(),
         ),
         (
             "osric/osric_conditions.ttrpg".to_string(),

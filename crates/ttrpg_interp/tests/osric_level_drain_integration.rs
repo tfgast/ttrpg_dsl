@@ -72,7 +72,7 @@ fn make_drain_character(
     fields.insert(Name::from("abilities"), Value::Map(ability_map));
     fields.insert(Name::from("HitPoints"), hit_points_group(30));
     fields.insert(Name::from("base_movement"), feet(120));
-    fields.insert(Name::from("gold"), Value::Int(0));
+
     fields.insert(Name::from("drain_history"), Value::List(vec![]));
     fields.insert(Name::from("hp_rolls"), Value::List(vec![]));
     fields.insert(Name::from("saving_throws"), Value::Option(None));

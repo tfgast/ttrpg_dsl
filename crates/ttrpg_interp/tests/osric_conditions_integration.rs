@@ -194,7 +194,7 @@ fn condition_count_after_apply_and_remove() {
     char_fields.insert(Name::from("hp"), Value::Int(10));
     char_fields.insert(Name::from("base_movement"), feet(120));
     char_fields.insert(Name::from("current_weight"), Value::Int(0));
-    char_fields.insert(Name::from("gold"), Value::Int(0));
+
     char_fields.insert(Name::from("saving_throws"), Value::Option(None));
     char_fields.insert(Name::from("wielded_main"), Value::Option(None));
     char_fields.insert(Name::from("wielded_off"), Value::Option(None));

@@ -364,7 +364,6 @@ fn character_entity_fields() {
         "alignment",
         "abilities",
         "base_movement",
-        "gold",
         "drain_history",
         "hp_rolls",
         "saving_throws",
@@ -409,6 +408,7 @@ fn character_entity_optional_groups() {
         "ThiefSkills",
         "TurnUndead",
         "WeaponSpecialization",
+        "Inventory",
         "HenchmanMorale",
     ];
 
