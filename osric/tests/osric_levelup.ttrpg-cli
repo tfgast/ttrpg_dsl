@@ -1,0 +1,147 @@
+// OSRIC Level Up integration tests
+//
+// Tests classes_ready_to_level, increment_class_level,
+// level_up_class, apply_level_up, updated_spell_slots,
+// updated_thief_skills.
+
+load osric/*.ttrpg
+
+// ── classes_ready_to_level ────────────────────────────────────
+
+// Fighter with enough XP to level up (2000 needed for level 2)
+spawn Character ready_fighter { name: "Fighter1", classes: [ClassLevel { class: Fighter, level: 1, xp: 2500 }], abilities: { STR: 14, DEX: 14, CON: 14, INT: 14, WIS: 14, CHA: 14 }, HitPoints { max_hp: 10, hp: 10 } }
+assert_eq classes_ready_to_level(ready_fighter).len(), 1
+assert_eq classes_ready_to_level(ready_fighter)[0], Class.Fighter
+
+// Fighter without enough XP
+spawn Character not_ready { name: "Fighter1", classes: [ClassLevel { class: Fighter, level: 1, xp: 1000 }], abilities: { STR: 14, DEX: 14, CON: 14, INT: 14, WIS: 14, CHA: 14 }, HitPoints { max_hp: 10, hp: 10 } }
+assert_eq classes_ready_to_level(not_ready).len(), 0
+
+// Multi-class: only one class ready
+spawn Character mc_partial { name: "FighterThief", classes: [ClassLevel { class: Fighter, level: 1, xp: 2500 }, ClassLevel { class: Thief, level: 1, xp: 500 }], classing_mode: Multi, abilities: { STR: 14, DEX: 14, CON: 14, INT: 14, WIS: 14, CHA: 14 }, HitPoints { max_hp: 8, hp: 8 } }
+assert_eq classes_ready_to_level(mc_partial).len(), 1
+assert_eq classes_ready_to_level(mc_partial)[0], Class.Fighter
+
+// ── increment_class_level ─────────────────────────────────────
+
+let cls_list = [ClassLevel { class: Fighter, level: 3, xp: 5000 }, ClassLevel { class: Thief, level: 2, xp: 3000 }]
+let incremented = increment_class_level(cls_list, Fighter)
+assert_eq incremented[0].level, 4
+assert_eq incremented[0].xp, 5000
+assert_eq incremented[1].level, 2
+
+// ── level_up_class: single-class fighter ──────────────────────
+
+spawn Character lu_fighter { name: "Fighter1", classes: [ClassLevel { class: Fighter, level: 1, xp: 2500 }], abilities: { STR: 14, DEX: 14, CON: 14, INT: 14, WIS: 14, CHA: 14 }, HitPoints { max_hp: 10, hp: 10 }, hp_rolls: [HpRoll { class: Fighter, level: 1, amount: 10 }] }
+
+// Roll 7 on d10 for Fighter HD
+rolls 7
+let lu_result = level_up_class(lu_fighter, Fighter)
+assert_eq lu_result.class, Class.Fighter
+assert_eq lu_result.new_level, 2
+// CON 14 fighter -> con_hp_mod_fighter(14) = 0, so HP = max(1, 7+0) = 7
+assert_eq lu_result.hp_gained, 7
+assert_eq lu_result.new_classes[0].level, 2
+assert_eq lu_result.new_hp_rolls.len(), 2
+
+// ── level_up_class: fighter with high CON ─────────────────────
+
+spawn Character lu_tough { name: "ToughFighter", classes: [ClassLevel { class: Fighter, level: 1, xp: 2500 }], abilities: { STR: 14, DEX: 14, CON: 18, INT: 14, WIS: 14, CHA: 14 }, HitPoints { max_hp: 14, hp: 14 }, hp_rolls: [HpRoll { class: Fighter, level: 1, amount: 14 }] }
+
+// Roll 6 on d10 + CON 18 fighter bonus (+4) = 10
+rolls 6
+let lu_tough_r = level_up_class(lu_tough, Fighter)
+assert_eq lu_tough_r.hp_gained, 10
+
+// ── level_up_class: thief ─────────────────────────────────────
+
+spawn Character lu_thief { name: "Thief1", classes: [ClassLevel { class: Thief, level: 1, xp: 1500 }], abilities: { STR: 14, DEX: 14, CON: 14, INT: 14, WIS: 14, CHA: 14 }, HitPoints { max_hp: 6, hp: 6 }, hp_rolls: [HpRoll { class: Thief, level: 1, amount: 6 }] }
+
+// Roll 4 on d6 for Thief
+rolls 4
+let lu_thief_r = level_up_class(lu_thief, Thief)
+assert_eq lu_thief_r.class, Class.Thief
+assert_eq lu_thief_r.new_level, 2
+assert_eq lu_thief_r.hp_gained, 4
+
+// ── updated_spell_slots: cleric progression ───────────────────
+
+// Cleric at level 2 with WIS 14: base 2 + WIS bonus 2 = 4 first-level
+let cleric_slots_l2 = updated_spell_slots(SpellProgression.Cleric, 2, 14)
+assert_eq cleric_slots_l2[0], 4
+assert_eq cleric_slots_l2[1], 0
+assert_eq cleric_slots_l2.len(), 7
+
+// Cleric at level 3 with WIS 14: 1st = base 2 + bonus 2 = 4, 2nd = base 1 + bonus 0 = 1
+let cleric_slots_l3 = updated_spell_slots(SpellProgression.Cleric, 3, 14)
+assert_eq cleric_slots_l3[0], 4
+assert_eq cleric_slots_l3[1], 1
+
+// ── updated_spell_slots: magic-user progression ───────────────
+
+// MU at level 2 gets [2,0,0,0,0,0,0,0,0]
+let mu_slots_l2 = updated_spell_slots(SpellProgression.MagicUser, 2, 14)
+assert_eq mu_slots_l2[0], 2
+assert_eq mu_slots_l2[1], 0
+assert_eq mu_slots_l2.len(), 9
+
+// ── updated_thief_skills ──────────────────────────────────────
+
+// Thief at level 2, DEX 14, Human
+let skills_l2 = updated_thief_skills(Thief, 2, 14, Human)
+// Base thief ClimbWalls at level 2 + DEX + ancestry adj
+// Should match effective_thief_skill output
+assert_eq skills_l2[ClimbWalls], effective_thief_skill(Thief, ClimbWalls, 2, 14, Human)
+assert_eq skills_l2[OpenLocks], effective_thief_skill(Thief, OpenLocks, 2, 14, Human)
+
+// ── apply_level_up: fighter (full mutation test) ──────────────
+
+spawn Character apply_fighter { name: "ApplyFighter", classes: [ClassLevel { class: Fighter, level: 1, xp: 2500 }], abilities: { STR: 14, DEX: 14, CON: 14, INT: 14, WIS: 14, CHA: 14 }, HitPoints { max_hp: 10, hp: 10 }, hp_rolls: [HpRoll { class: Fighter, level: 1, amount: 10 }], saving_throws: some(fighter_saves(1)) }
+
+// Roll 8 on d10 for Fighter
+rolls 8
+let apply_result = apply_level_up(apply_fighter, Fighter)
+assert_eq apply_result.new_level, 2
+assert_eq apply_result.hp_gained, 8
+
+// Character should be mutated
+assert_eq apply_fighter.classes[0].level, 2
+assert_eq apply_fighter.HitPoints.max_hp, 18
+assert_eq apply_fighter.HitPoints.hp, 18
+assert_eq apply_fighter.hp_rolls.len(), 2
+
+// ── apply_level_up: cleric with spellcasting ──────────────────
+
+spawn Character apply_cleric { name: "ApplyCleric", classes: [ClassLevel { class: Cleric, level: 1, xp: 1500 }], abilities: { STR: 14, DEX: 14, CON: 14, INT: 14, WIS: 14, CHA: 14 }, HitPoints { max_hp: 8, hp: 8 }, hp_rolls: [HpRoll { class: Cleric, level: 1, amount: 8 }], saving_throws: some(cleric_saves(1)), Spellcasting { spell_slots: [1, 0, 0, 0, 0, 0, 0] } }
+
+// Roll 5 on d8 for Cleric
+rolls 5
+let cleric_result = apply_level_up(apply_cleric, Cleric)
+assert_eq cleric_result.new_level, 2
+
+// Spell slots should be updated to level 2 values (base 2 + WIS 14 bonus 2 = 4)
+assert_eq apply_cleric.Spellcasting.spell_slots[0], 4
+
+// ── apply_level_up: thief with thief skills ───────────────────
+
+spawn Character apply_thief { name: "ApplyThief", classes: [ClassLevel { class: Thief, level: 1, xp: 1500 }], abilities: { STR: 14, DEX: 14, CON: 14, INT: 14, WIS: 14, CHA: 14 }, HitPoints { max_hp: 6, hp: 6 }, hp_rolls: [HpRoll { class: Thief, level: 1, amount: 6 }], saving_throws: some(thief_saves(1)), ThiefSkills { skills: { ClimbWalls: 90, FindTraps: 25, HearNoise: 10, HideInShadows: 20, MoveSilently: 25, OpenLocks: 30, PickPockets: 35, ReadLanguages: 1 } } }
+
+// Roll 3 on d6 for Thief
+rolls 3
+let thief_result = apply_level_up(apply_thief, Thief)
+assert_eq thief_result.new_level, 2
+
+// Thief skills should be updated to level 2 values
+assert_eq apply_thief.ThiefSkills.skills[ClimbWalls], effective_thief_skill(Thief, ClimbWalls, 2, 14, Human)
+assert_eq apply_thief.ThiefSkills.skills[OpenLocks], effective_thief_skill(Thief, OpenLocks, 2, 14, Human)
+
+// ── level_up_class: fixed HP after max hit dice ───────────────
+
+// Fighter at level 9 (max_hit_dice = 9): level 10 gets hp_after_max = 3
+spawn Character lu_highlevel { name: "HighFighter", classes: [ClassLevel { class: Fighter, level: 9, xp: 500000 }], abilities: { STR: 14, DEX: 14, CON: 18, INT: 14, WIS: 14, CHA: 14 }, HitPoints { max_hp: 80, hp: 80 }, hp_rolls: [HpRoll { class: Fighter, level: 1, amount: 10 }, HpRoll { class: Fighter, level: 2, amount: 10 }, HpRoll { class: Fighter, level: 3, amount: 10 }, HpRoll { class: Fighter, level: 4, amount: 10 }, HpRoll { class: Fighter, level: 5, amount: 10 }, HpRoll { class: Fighter, level: 6, amount: 10 }, HpRoll { class: Fighter, level: 7, amount: 10 }, HpRoll { class: Fighter, level: 8, amount: 10 }, HpRoll { class: Fighter, level: 9, amount: 10 }] }
+
+// No dice roll needed — fixed HP
+let lu_high = level_up_class(lu_highlevel, Fighter)
+assert_eq lu_high.new_level, 10
+// hp_after_max = 3, no CON mod, no roll
+assert_eq lu_high.hp_gained, 3

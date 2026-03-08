@@ -1,0 +1,328 @@
+// ============================================================
+// OSRIC 3.0 Character Level Up
+//
+// Core standard level advancement procedure. When a character
+// accumulates enough XP to reach the next level, this module
+// handles incrementing the level, rolling new HP, and updating
+// all derived statistics (saving throws, spell slots, thief
+// skills).
+//
+// Multi-class characters level each class independently —
+// each class is checked and advanced separately.
+//
+// Reference: OSRIC 3.0 Player Guide, §1.3 (class sections)
+// ============================================================
+
+use "OSRIC"
+use "OSRIC Ability"
+use "OSRIC Character"
+use "OSRIC Classes"
+use "OSRIC Saves"
+use "OSRIC Multiclass"
+use "OSRIC Spells"
+use "OSRIC Thief Skills"
+use "OSRIC Level Drain"
+use "OSRIC Combat"
+
+system "OSRIC Level Up" {
+
+    // ========================================================
+    //  LEVEL-UP RESULT
+    //
+    //  Bundles all the changes from a single class level-up
+    //  so the caller can apply them to the character.
+    // ========================================================
+
+    struct LevelUpResult {
+        class: Class
+        new_level: int
+        hp_gained: int
+        new_classes: list<ClassLevel>
+        new_hp_rolls: list<HpRoll>
+        new_saves: SavingThrows
+    }
+
+    // ========================================================
+    //  WHICH CLASSES CAN LEVEL UP
+    //
+    //  Returns the list of classes that have enough XP to
+    //  advance. For single-class this is 0 or 1 entry; for
+    //  multi-class each class is checked independently.
+    // ========================================================
+
+    derive classes_ready_to_level(character: Character) -> list<Class> {
+        [cl.class for cl in character.classes if check_level_up(cl.class, cl.level, cl.xp)]
+    }
+
+
+    // ========================================================
+    //  INCREMENT CLASS LEVEL
+    //
+    //  Returns a new class list with the target class's level
+    //  incremented by 1. XP is unchanged (it was already
+    //  accumulated).
+    // ========================================================
+
+    derive increment_class_level(
+        classes: list<ClassLevel>,
+        target_class: Class
+    ) -> list<ClassLevel> {
+        [
+            if cl.class == target_class {
+                ClassLevel {
+                    class: cl.class,
+                    level: cl.level + 1,
+                    xp: cl.xp
+                }
+            } else {
+                cl
+            }
+            for cl in classes
+        ]
+    }
+
+
+    // ========================================================
+    //  ROLL HP FOR LEVEL UP
+    //
+    //  At each new level, the character gains HP:
+    //  - If new_level <= max_hit_dice: roll 1 HD + CON mod
+    //  - If new_level > max_hit_dice: flat hp_after_max (no
+    //    CON mod, no roll)
+    //  Multi-class: HD roll is divided by number of classes
+    //  (matching the chargen pattern).
+    //
+    //  §1.3.x.2: Hit Points per class.
+    //  §1.3.11: Multi-class HP averaging.
+    // ========================================================
+
+    mechanic roll_levelup_hp(
+        class: Class,
+        new_level: int,
+        con_score: int,
+        num_classes: int
+    ) -> int {
+        let def = class_def(class)
+        if new_level > def.max_hit_dice {
+            // Fixed HP after max hit dice — no CON mod, no division
+            def.hp_after_max
+        } else {
+            let con_mod = con_hp_modifier_for_class(class, con_score)
+            let die_roll = roll(dice(1, def.hit_die)).total
+            if num_classes > 1 {
+                multiclass_hp_gain(die_roll, con_mod, num_classes)
+            } else {
+                max(1, die_roll + con_mod)
+            }
+        }
+    }
+
+
+    // ========================================================
+    //  COMPUTE UPDATED SPELL SLOTS
+    //
+    //  Recompute the spell slot list for a caster at their
+    //  new level. Returns the updated list, or the existing
+    //  list if the class is not a caster.
+    // ========================================================
+
+    derive updated_spell_slots(
+        progression: SpellProgression,
+        new_level: int,
+        wis: int
+    ) -> list<int> {
+        let max_sl = max_spell_level(progression)
+        if max_sl == 0 { [] }
+        else if max_sl == 3 {
+            // Ranger: 3 spell levels
+            [
+                total_spell_slots(progression, new_level, 1, wis),
+                total_spell_slots(progression, new_level, 2, wis),
+                total_spell_slots(progression, new_level, 3, wis)
+            ]
+        }
+        else if max_sl == 4 {
+            // Paladin: 4 spell levels
+            [
+                total_spell_slots(progression, new_level, 1, wis),
+                total_spell_slots(progression, new_level, 2, wis),
+                total_spell_slots(progression, new_level, 3, wis),
+                total_spell_slots(progression, new_level, 4, wis)
+            ]
+        }
+        else if max_sl == 7 {
+            [
+                total_spell_slots(progression, new_level, 1, wis),
+                total_spell_slots(progression, new_level, 2, wis),
+                total_spell_slots(progression, new_level, 3, wis),
+                total_spell_slots(progression, new_level, 4, wis),
+                total_spell_slots(progression, new_level, 5, wis),
+                total_spell_slots(progression, new_level, 6, wis),
+                total_spell_slots(progression, new_level, 7, wis)
+            ]
+        } else {
+            // MagicUser: 9 spell levels
+            [
+                total_spell_slots(progression, new_level, 1, wis),
+                total_spell_slots(progression, new_level, 2, wis),
+                total_spell_slots(progression, new_level, 3, wis),
+                total_spell_slots(progression, new_level, 4, wis),
+                total_spell_slots(progression, new_level, 5, wis),
+                total_spell_slots(progression, new_level, 6, wis),
+                total_spell_slots(progression, new_level, 7, wis),
+                total_spell_slots(progression, new_level, 8, wis),
+                total_spell_slots(progression, new_level, 9, wis)
+            ]
+        }
+    }
+
+
+    // ========================================================
+    //  COMPUTE UPDATED THIEF SKILLS
+    //
+    //  Recompute thief skills at the new level. Uses the same
+    //  effective_thief_skill derive as chargen.
+    // ========================================================
+
+    derive updated_thief_skills(
+        class: Class,
+        new_level: int,
+        dex: int,
+        ancestry: Ancestry
+    ) -> map<ThiefSkill, int> {
+        {
+            ClimbWalls:    effective_thief_skill(class, ClimbWalls, new_level, dex, ancestry),
+            FindTraps:     effective_thief_skill(class, FindTraps, new_level, dex, ancestry),
+            HearNoise:     effective_thief_skill(class, HearNoise, new_level, dex, ancestry),
+            HideInShadows: effective_thief_skill(class, HideInShadows, new_level, dex, ancestry),
+            MoveSilently:  effective_thief_skill(class, MoveSilently, new_level, dex, ancestry),
+            OpenLocks:     effective_thief_skill(class, OpenLocks, new_level, dex, ancestry),
+            PickPockets:   effective_thief_skill(class, PickPockets, new_level, dex, ancestry),
+            ReadLanguages: effective_thief_skill(class, ReadLanguages, new_level, dex, ancestry)
+        }
+    }
+
+
+    // ========================================================
+    //  LEVEL UP A SINGLE CLASS
+    //
+    //  Core level-up function for one class. Rolls HP,
+    //  increments the level, records the HP roll, and
+    //  recomputes saving throws.
+    //
+    //  This is a mechanic because it rolls hit dice.
+    //  The caller is responsible for applying the result
+    //  to the character (updating max_hp, saves, spell
+    //  slots, thief skills, etc.).
+    // ========================================================
+
+    mechanic level_up_class(
+        character: Character,
+        target_class: Class
+    ) -> LevelUpResult {
+        let cl = first([c for c in character.classes if c.class == target_class]).unwrap()
+        let new_level = cl.level + 1
+        let num_classes = len(character.classes)
+        let con_score = character.abilities[CON]
+
+        // Roll HP
+        let hp_gained = roll_levelup_hp(target_class, new_level, con_score, num_classes)
+
+        // Increment level in class list
+        let new_classes = increment_class_level(character.classes, target_class)
+
+        // Record HP roll
+        let new_hp_rolls = character.hp_rolls.append(HpRoll {
+            class: target_class,
+            level: new_level,
+            amount: hp_gained
+        })
+
+        // Compute new best saves across all classes at new levels
+        let new_saves = SavingThrows {
+            aimed_magic: first(sort([saving_throws_for(c.class, if c.class == target_class { new_level } else { c.level }).aimed_magic for c in character.classes])).unwrap(),
+            breath: first(sort([saving_throws_for(c.class, if c.class == target_class { new_level } else { c.level }).breath for c in character.classes])).unwrap(),
+            death_paralysis_poison: first(sort([saving_throws_for(c.class, if c.class == target_class { new_level } else { c.level }).death_paralysis_poison for c in character.classes])).unwrap(),
+            petrification_polymorph: first(sort([saving_throws_for(c.class, if c.class == target_class { new_level } else { c.level }).petrification_polymorph for c in character.classes])).unwrap(),
+            spells: first(sort([saving_throws_for(c.class, if c.class == target_class { new_level } else { c.level }).spells for c in character.classes])).unwrap()
+        }
+
+        LevelUpResult {
+            class: target_class,
+            new_level: new_level,
+            hp_gained: hp_gained,
+            new_classes: new_classes,
+            new_hp_rolls: new_hp_rolls,
+            new_saves: new_saves
+        }
+    }
+
+
+    // ========================================================
+    //  APPLY LEVEL-UP TO CHARACTER
+    //
+    //  Takes a LevelUpResult and applies all changes to the
+    //  character: class list, HP, saves, spell slots, and
+    //  thief skills.
+    //
+    //  This is a function because it mutates character state
+    //  and calls level_up_class (which rolls dice).
+    // ========================================================
+
+    function apply_level_up(
+        character: Character,
+        target_class: Class
+    ) -> LevelUpResult {
+        let result = level_up_class(character, target_class)
+
+        // Update class list and HP rolls
+        character.classes = result.new_classes
+        character.hp_rolls = result.new_hp_rolls
+
+        // Update HP: increase max first, then heal to match
+        character.HitPoints.max_hp = character.HitPoints.max_hp + result.hp_gained
+        heal_damage(character, result.hp_gained)
+
+        // Update saving throws
+        character.saving_throws = some(result.new_saves)
+
+        // Update spell slots if this class is a caster
+        let cd = class_def(target_class)
+        if cd.spell_progression != NonCaster {
+            if character has Spellcasting {
+                let new_slots = updated_spell_slots(
+                    cd.spell_progression,
+                    result.new_level,
+                    character.abilities[WIS]
+                )
+                character.Spellcasting.spell_slots = new_slots
+            } else {
+                // Class just became a caster (e.g. Paladin at level 9, Ranger at level 8)
+                let new_slots = updated_spell_slots(
+                    cd.spell_progression,
+                    result.new_level,
+                    character.abilities[WIS]
+                )
+                // Only grant if they actually get slots at this level
+                if any([s > 0 for s in new_slots]) {
+                    grant character.Spellcasting { spell_slots: new_slots }
+                }
+            }
+        }
+
+        // Update thief skills if this class has them
+        if cd.has_thief_skills {
+            if character has ThiefSkills {
+                let new_skills = updated_thief_skills(
+                    target_class,
+                    result.new_level,
+                    character.abilities[DEX],
+                    character.ancestry
+                )
+                character.ThiefSkills.skills = new_skills
+            }
+        }
+
+        result
+    }
+}
