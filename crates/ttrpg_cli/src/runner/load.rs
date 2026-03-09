@@ -1,4 +1,5 @@
 use super::*;
+use crate::manifest;
 
 impl Runner {
     /// Reset all loaded state (program, types, game state, handles, etc.)
@@ -17,6 +18,18 @@ impl Runner {
     pub(super) fn cmd_load(&mut self, paths_str: &str) -> Result<(), CliError> {
         // Split on whitespace and expand globs
         let tokens: Vec<&str> = paths_str.split_whitespace().collect();
+
+        // Try manifest-based loading for single-token package specifiers.
+        // A package specifier is a single token that either contains ':'
+        // (explicit target) or looks like a bare name (no extension, no
+        // path separators, no glob characters).
+        if tokens.len() == 1 {
+            let token = tokens[0];
+            if let Some(paths) = self.try_resolve_package(token)? {
+                return self.load_paths(paths);
+            }
+        }
+
         let mut resolved_paths: Vec<PathBuf> = Vec::new();
         for token in &tokens {
             if token.contains('*') || token.contains('?') || token.contains('[') {
@@ -62,6 +75,77 @@ impl Runner {
         }
 
         self.load_paths(resolved_paths)
+    }
+
+    /// Try to resolve a token as a package specifier (`pkg` or `pkg:target`).
+    ///
+    /// Returns `Some(paths)` if a matching manifest was found, `None` if the
+    /// token doesn't look like a package specifier, or `Err` on manifest errors.
+    fn try_resolve_package(&self, token: &str) -> Result<Option<Vec<PathBuf>>, CliError> {
+        let (pkg_name, target) = manifest::parse_load_specifier(token);
+
+        // If there's an explicit `:target`, it's definitely a package specifier.
+        // Otherwise only try if it looks like a bare name (no extension, no
+        // path separators, no glob characters).
+        let is_explicit = target.is_some();
+        if !is_explicit
+            && (pkg_name.contains('/')
+                || pkg_name.contains('\\')
+                || pkg_name.contains('.')
+                || pkg_name.contains('*')
+                || pkg_name.contains('?')
+                || pkg_name.contains('['))
+        {
+            return Ok(None);
+        }
+
+        // Search for the package manifest in known locations:
+        // 1. Current directory (the package dir itself may be cwd)
+        // 2. Sibling directories of cwd (e.g., cwd is repo root, package is ./ose/)
+        let cwd = std::env::current_dir().unwrap_or_default();
+        let search_dirs: Vec<&std::path::Path> = vec![&cwd];
+
+        // Try finding as a subdirectory of search dirs
+        if let Some((pkg_manifest, pkg_root)) = manifest::find_package(pkg_name, &search_dirs) {
+            let resolved = pkg_manifest
+                .resolve_target(target)
+                .map_err(|e| CliError::Message(e.to_string()))?;
+
+            let paths: Vec<PathBuf> = resolved
+                .entry_paths
+                .iter()
+                .map(|p| pkg_root.join(p))
+                .collect();
+
+            return Ok(Some(paths));
+        }
+
+        // Try finding manifest in cwd itself (cwd IS the package)
+        let manifest_path = cwd.join(manifest::MANIFEST_FILENAME);
+        if manifest_path.is_file() {
+            if let Ok(pkg_manifest) = manifest::load_manifest(&manifest_path) {
+                if pkg_manifest.package.name == pkg_name {
+                    let resolved = pkg_manifest
+                        .resolve_target(target)
+                        .map_err(|e| CliError::Message(e.to_string()))?;
+
+                    let paths: Vec<PathBuf> =
+                        resolved.entry_paths.iter().map(|p| cwd.join(p)).collect();
+
+                    return Ok(Some(paths));
+                }
+            }
+        }
+
+        // If `:target` was explicit, it must be a package — report error.
+        if is_explicit {
+            return Err(CliError::Message(format!(
+                "package '{pkg_name}' not found (no ttrpg.toml found)"
+            )));
+        }
+
+        // Not a package specifier — fall through to file path resolution
+        Ok(None)
     }
 
     /// Load from already-resolved paths. Used by both `cmd_load` and `cmd_reload`

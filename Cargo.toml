@@ -35,6 +35,8 @@ ratatui = "0.30"
 pathfinding = "4"
 reedline = "0.45"
 rustc-hash = "2"
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

@@ -26,6 +26,9 @@ nu-ansi-term.workspace = true
 rand.workspace = true
 crossterm.workspace = true
 reedline.workspace = true
+serde.workspace = true
+toml.workspace = true
 
 [dev-dependencies]
 insta.workspace = true
+tempfile = "3"

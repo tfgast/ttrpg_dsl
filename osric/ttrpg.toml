@@ -1,0 +1,158 @@
+manifest_version = 1
+
+[package]
+name = "osric"
+version = "0.1.0"
+default_target = "full"
+
+[entries.core]
+path = "osric_core.ttrpg"
+
+[entries.ability]
+path = "osric_ability.ttrpg"
+
+[entries.afflictions]
+path = "osric_afflictions.ttrpg"
+
+[entries.bestiary]
+path = "osric_bestiary.ttrpg"
+
+[entries.character]
+path = "osric_character.ttrpg"
+
+[entries.chargen]
+path = "osric_chargen.ttrpg"
+
+[entries.class]
+path = "osric_class.ttrpg"
+
+[entries.cleric_spells]
+path = "osric_cleric_spells.ttrpg"
+
+[entries.combat]
+path = "osric_combat.ttrpg"
+
+[entries.conditions]
+path = "osric_conditions.ttrpg"
+
+[entries.disguise]
+path = "osric_disguise.ttrpg"
+
+[entries.dualclass]
+path = "osric_dualclass.ttrpg"
+
+[entries.equipment]
+path = "osric_equipment.ttrpg"
+
+[entries.falling]
+path = "osric_falling.ttrpg"
+
+[entries.initiative]
+path = "osric_initiative.ttrpg"
+
+[entries.inventory]
+path = "osric_inventory.ttrpg"
+
+[entries.item_saves]
+path = "osric_item_saves.ttrpg"
+
+[entries.level_drain]
+path = "osric_level_drain.ttrpg"
+
+[entries.levelup]
+path = "osric_levelup.ttrpg"
+
+[entries.monster_traits]
+path = "osric_monster_traits.ttrpg"
+
+[entries.morale]
+path = "osric_morale.ttrpg"
+
+[entries.mu_spells]
+path = "osric_mu_spells.ttrpg"
+
+[entries.multiclass]
+path = "osric_multiclass.ttrpg"
+
+[entries.potions]
+path = "osric_potions.ttrpg"
+
+[entries.reaction]
+path = "osric_reaction.ttrpg"
+
+[entries.saves]
+path = "osric_saves.ttrpg"
+
+[entries.scrolls]
+path = "osric_scrolls.ttrpg"
+
+[entries.spell_registry]
+path = "osric_spell_registry.ttrpg"
+
+[entries.spells]
+path = "osric_spells.ttrpg"
+
+[entries.thief_skills]
+path = "osric_thief_skills.ttrpg"
+
+[entries.turn_undead]
+path = "osric_turn_undead.ttrpg"
+
+[entries.weapon_spec]
+path = "osric_weapon_spec.ttrpg"
+
+[entries.xp]
+path = "osric_xp.ttrpg"
+
+[bundles.full]
+entries = [
+    "core",
+    "ability",
+    "afflictions",
+    "bestiary",
+    "character",
+    "chargen",
+    "class",
+    "cleric_spells",
+    "combat",
+    "conditions",
+    "disguise",
+    "dualclass",
+    "equipment",
+    "falling",
+    "initiative",
+    "inventory",
+    "item_saves",
+    "level_drain",
+    "levelup",
+    "monster_traits",
+    "morale",
+    "mu_spells",
+    "multiclass",
+    "potions",
+    "reaction",
+    "saves",
+    "scrolls",
+    "spell_registry",
+    "spells",
+    "thief_skills",
+    "turn_undead",
+    "weapon_spec",
+    "xp",
+]
+
+[bundles.chargen]
+entries = [
+    "core",
+    "ability",
+    "character",
+    "chargen",
+    "class",
+    "equipment",
+    "inventory",
+    "multiclass",
+    "saves",
+    "spells",
+    "thief_skills",
+    "weapon_spec",
+]
