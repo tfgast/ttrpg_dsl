@@ -14,6 +14,10 @@ use "OSRIC Combat"
 
 system "OSRIC Monster Traits" {
 
+    derive halve_damage(amount: int) -> int {
+        floor(amount / 2)
+    }
+
     // ========================================================
     //  SENSORY TRAITS
     // ========================================================
@@ -77,11 +81,19 @@ system "OSRIC Monster Traits" {
 
     condition ImmuneToFire on bearer: entity
         stacking first
-    {}
+    {
+        modify [#damage_dealt](target: bearer) {
+            result = if damage_type == DamageType.Fire { 0 } else { result }
+        }
+    }
 
     condition ImmuneToCold on bearer: entity
         stacking first
-    {}
+    {
+        modify [#damage_dealt](target: bearer) {
+            result = if damage_type == DamageType.Cold { 0 } else { result }
+        }
+    }
 
     condition ImmuneToPoison on bearer: entity
         stacking first
@@ -89,11 +101,19 @@ system "OSRIC Monster Traits" {
 
     condition ImmuneToAcid on bearer: entity
         stacking first
-    {}
+    {
+        modify [#damage_dealt](target: bearer) {
+            result = if damage_type == DamageType.Acid || damage_type == DamageType.Corrosion { 0 } else { result }
+        }
+    }
 
     condition ImmuneToLightning on bearer: entity
         stacking first
-    {}
+    {
+        modify [#damage_dealt](target: bearer) {
+            result = if damage_type == DamageType.Lightning { 0 } else { result }
+        }
+    }
 
     condition ImmuneToMindControl on bearer: entity
         stacking first
@@ -108,11 +128,27 @@ system "OSRIC Monster Traits" {
     // extra_damage is a flat bonus added to incoming damage.
     condition VulnerableToCold(extra_damage: int) on bearer: entity
         stacking first
-    {}
+    {
+        modify [#damage_dealt](target: bearer) {
+            result = if damage_type == DamageType.Cold { result + extra_damage } else { result }
+        }
+    }
 
     condition VulnerableToFire(extra_damage: int) on bearer: entity
         stacking first
-    {}
+    {
+        modify [#damage_dealt](target: bearer) {
+            result = if damage_type == DamageType.Fire { result + extra_damage } else { result }
+        }
+    }
+
+    condition VulnerableToAcid(extra_damage: int) on bearer: entity
+        stacking first
+    {
+        modify [#damage_dealt](target: bearer) {
+            result = if damage_type == DamageType.Acid || damage_type == DamageType.Corrosion { result + extra_damage } else { result }
+        }
+    }
 
 
     // ========================================================
@@ -123,11 +159,31 @@ system "OSRIC Monster Traits" {
 
     condition ResistantToFire on bearer: entity
         stacking first
-    {}
+    {
+        modify [#damage_dealt](target: bearer) {
+            result = if damage_type == DamageType.Fire { halve_damage(result) } else { result }
+        }
+    }
 
     condition ResistantToBlunt on bearer: entity
         stacking first
-    {}
+    {
+        modify [#damage_dealt](target: bearer) {
+            result = if damage_type == DamageType.Blunt { halve_damage(result) } else { result }
+        }
+    }
+
+    condition ResistantToSlashingAndPiercing on bearer: entity
+        stacking first
+    {
+        modify [#damage_dealt](target: bearer) {
+            result = if damage_type == DamageType.Slashing || damage_type == DamageType.Piercing {
+                halve_damage(result)
+            } else {
+                result
+            }
+        }
+    }
 
 
     // ========================================================

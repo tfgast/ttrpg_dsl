@@ -160,13 +160,13 @@ system "OSRIC Bestiary" {
             base_movement: 120ft,
             attacks: [MonsterAttack { name: "Strike", damage: 1d6 }],
             size: Size.Medium,
-            special: ["Undead", "ResistantToBlunt"]
+            special: ["Undead", "ResistantToSlashingAndPiercing"]
         }
         apply_condition(m, Undead, Duration.Indefinite)
         apply_condition(m, TurnedAsUndead(effective_hd: 1), Duration.Indefinite)
         apply_condition(m, ImmuneToCold, Duration.Indefinite)
         apply_condition(m, ImmuneToMindControl, Duration.Indefinite)
-        apply_condition(m, ResistantToBlunt, Duration.Indefinite)
+        apply_condition(m, ResistantToSlashingAndPiercing, Duration.Indefinite)
         m
     }
 
@@ -425,6 +425,7 @@ system "OSRIC Bestiary" {
         }
         apply_condition(m, Regeneration(hp_per_round: 3), Duration.Indefinite)
         apply_condition(m, VulnerableToFire(extra_damage: 0), Duration.Indefinite)
+        apply_condition(m, VulnerableToAcid(extra_damage: 0), Duration.Indefinite)
         m
     }
 

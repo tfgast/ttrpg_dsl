@@ -490,13 +490,14 @@ system "OSRIC Spells" {
         caster: Character,
         targets: list<entity>,
         spell_name: string,
-        total_damage: int
+        total_damage: int,
+        damage_type: DamageType = DamageType.Blunt
     ) {
         for target in targets {
             let result = target.ResistSpell(category: some(SpellsUnlisted))
             if let some(saved) = result {
                 let damage = if saved { floor(total_damage / 2) } else { total_damage }
-                target.TakeDamage(caster, damage)
+                target.TakeDamage(caster, damage, damage_type)
                 emit SpellDamaged(caster: caster, target: target, spell_name: spell_name, amount: damage)
             }
         }
@@ -508,11 +509,12 @@ system "OSRIC Spells" {
         caster: Character,
         targets: list<entity>,
         spell_name: string,
-        damage_dice: DiceExpr
+        damage_dice: DiceExpr,
+        damage_type: DamageType = DamageType.Blunt
     ) {
         for target in targets {
             let damage = roll(damage_dice).total
-            target.TakeDamage(caster, damage)
+            target.TakeDamage(caster, damage, damage_type)
             emit SpellDamaged(caster: caster, target: target, spell_name: spell_name, amount: damage)
         }
     }

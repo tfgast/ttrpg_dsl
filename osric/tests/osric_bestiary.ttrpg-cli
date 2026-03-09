@@ -28,7 +28,7 @@ assert any([c.name == "Undead" for c in conditions(skeleton)])
 assert any([c.name == "TurnedAsUndead" for c in conditions(skeleton)])
 assert any([c.name == "ImmuneToCold" for c in conditions(skeleton)])
 assert any([c.name == "ImmuneToMindControl" for c in conditions(skeleton)])
-assert any([c.name == "ResistantToBlunt" for c in conditions(skeleton)])
+assert any([c.name == "ResistantToSlashingAndPiercing" for c in conditions(skeleton)])
 
 let vampire = create_vampire()
 assert_eq vampire.name, "Vampire"
@@ -42,6 +42,7 @@ let troll = create_troll()
 assert_eq troll.name, "Troll"
 assert any([c.name == "Regeneration" for c in conditions(troll)])
 assert any([c.name == "VulnerableToFire" for c in conditions(troll)])
+assert any([c.name == "VulnerableToAcid" for c in conditions(troll)])
 
 let basilisk = create_basilisk()
 assert any([c.name == "PetrifyingGaze" for c in conditions(basilisk)])

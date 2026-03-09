@@ -277,6 +277,29 @@ spawn Character dmg_tgt { name: "Target", classes: [ClassLevel { class: Fighter,
 assert_eq deal_damage(dmg_tgt, dmg_src, 7, DamageType.Slashing), 7
 assert_eq deal_damage(dmg_tgt, dmg_src, 3), 3
 
+spawn Monster dmg_fire_immune { name: "Fire Immune", hit_dice: 4d8, max_hp: 20, hp: 20, ac: 14, attacks: [MonsterAttack { name: "Fist", damage: 1d6 }] }
+call apply_condition(dmg_fire_immune, ImmuneToFire, Duration.Indefinite)
+assert_eq deal_damage(dmg_fire_immune, dmg_src, 7, DamageType.Fire), 0
+
+spawn Monster dmg_lightning_immune { name: "Shock Immune", hit_dice: 4d8, max_hp: 20, hp: 20, ac: 14, attacks: [MonsterAttack { name: "Fist", damage: 1d6 }] }
+call apply_condition(dmg_lightning_immune, ImmuneToLightning, Duration.Indefinite)
+assert_eq deal_damage(dmg_lightning_immune, dmg_src, 7, DamageType.Lightning), 0
+
+spawn Monster dmg_acid_immune { name: "Acid Immune", hit_dice: 4d8, max_hp: 20, hp: 20, ac: 14, attacks: [MonsterAttack { name: "Fist", damage: 1d6 }] }
+call apply_condition(dmg_acid_immune, ImmuneToAcid, Duration.Indefinite)
+assert_eq deal_damage(dmg_acid_immune, dmg_src, 7, DamageType.Acid), 0
+assert_eq deal_damage(dmg_acid_immune, dmg_src, 7, DamageType.Corrosion), 0
+
+spawn Monster dmg_skeleton_like { name: "Skeleton Test", hit_dice: 1d8, max_hp: 8, hp: 8, ac: 13, attacks: [MonsterAttack { name: "Strike", damage: 1d6 }] }
+call apply_condition(dmg_skeleton_like, ResistantToSlashingAndPiercing, Duration.Indefinite)
+assert_eq deal_damage(dmg_skeleton_like, dmg_src, 7, DamageType.Slashing), 3
+assert_eq deal_damage(dmg_skeleton_like, dmg_src, 7, DamageType.Piercing), 3
+assert_eq deal_damage(dmg_skeleton_like, dmg_src, 7, DamageType.Blunt), 7
+
+spawn Monster dmg_fire_vulnerable { name: "Fire Vulnerable", hit_dice: 4d8, max_hp: 20, hp: 20, ac: 14, attacks: [MonsterAttack { name: "Fist", damage: 1d6 }] }
+call apply_condition(dmg_fire_vulnerable, VulnerableToFire(extra_damage: 1), Duration.Indefinite)
+assert_eq deal_damage(dmg_fire_vulnerable, dmg_src, 7, DamageType.Fire), 8
+
 // ── TakeDamage action ───────────────────────────────────────────
 
 spawn Character td_atk { name: "Fighter", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 } }

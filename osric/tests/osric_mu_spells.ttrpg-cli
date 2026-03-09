@@ -87,6 +87,15 @@ call resolve_fireball(fb_caster_3, [fb_target_3a, fb_target_3b])
 assert_eq fb_target_3a.hp, 10
 assert_eq fb_target_3b.hp, 15
 
+spawn Character fb_caster_4 { name: "Merlin 9", classes: [ClassLevel { class: MagicUser, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 12, hp: 12 } }
+spawn Monster fb_target_fire_immune { name: "Efreet Test", hit_dice: 10d8, max_hp: 45, hp: 45, ac: 18, morale: 12, morale_checks_made: 0, xp_value: 0, intelligence: 12, attacks: [MonsterAttack { name: "Fist", damage: 1d8 }], size: Large, special: [] }
+call apply_condition(fb_target_fire_immune, ImmuneToFire, Duration.Indefinite)
+
+rolls clear
+rolls 3 4 2 5 4 1
+call resolve_fireball(fb_caster_4, [fb_target_fire_immune])
+assert_eq fb_target_fire_immune.hp, 45
+
 // ── Sleep HD classification ─────────────────────────────────────
 
 assert_eq sleep_hd_category(0d4), 0

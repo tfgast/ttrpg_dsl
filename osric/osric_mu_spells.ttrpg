@@ -79,7 +79,7 @@ system "OSRIC MU Spells" {
     function resolve_fireball(caster: Character, targets: list<entity>) {
         let cl = caster_level(caster, Arcane)
         let total_damage = roll(dice(cl, 6)).total
-        resolve_save_or_half_damage(caster, targets, "Fireball", total_damage)
+        resolve_save_or_half_damage(caster, targets, "Fireball", total_damage, DamageType.Fire)
     }
 
     // Resolve Magic Missile. The `targets` list contains one
