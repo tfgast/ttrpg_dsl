@@ -15,7 +15,7 @@ use "OSRIC Combat"
 system "OSRIC Monster Traits" {
 
     derive halve_damage(amount: int) -> int {
-        floor(amount / 2)
+        amount div 2
     }
 
     // ========================================================

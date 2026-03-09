@@ -46,7 +46,7 @@ system "OSRIC MU Spells" {
     // Number of missiles at a given caster level.
     // Level 1-2: 1, Level 3-4: 2, Level 5-6: 3, etc.
     derive magic_missile_count(caster_level: int) -> int {
-        1 + floor((caster_level - 1) / 2)
+        1 + (caster_level - 1) div 2
     }
 
     // ========================================================

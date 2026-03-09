@@ -45,13 +45,13 @@ system "OSRIC Inventory" {
 
     // 10 coins = 1 lb; truncate partial pounds
     derive coin_weight(purse: CoinPurse) -> int {
-        floor(coin_count(purse) / 10)
+        coin_count(purse) div 10
     }
 
     // Total value in gp (truncates fractional gp)
     derive coin_gp_value(purse: CoinPurse) -> int {
         // 100 cp = 1 gp, 10 sp = 1 gp, 2 ep = 1 gp, 1 pp = 5 gp
-        floor(purse.cp / 100) + floor(purse.sp / 10) + floor(purse.ep / 2) + purse.gp + purse.pp * 5
+        purse.cp div 100 + purse.sp div 10 + purse.ep div 2 + purse.gp + purse.pp * 5
     }
 
 
@@ -72,7 +72,7 @@ system "OSRIC Inventory" {
         quantity: int = 1
         bundle_size: int = 1    // how many units the stored weight applies to
         gp_value: int = 0       // treasure value (0 = mundane gear)
-        kept_xp_divisor: int = 1 // kept item XP = floor(gp_value / divisor)
+        kept_xp_divisor: int = 1 // kept item XP = gp_value div divisor
         xp_awarded: bool = false
     }
 
@@ -184,7 +184,7 @@ system "OSRIC Inventory" {
     // ========================================================
 
     derive item_weight(item: Item) -> int {
-        floor(item.weight * item.quantity / item.bundle_size)
+        (item.weight * item.quantity) div item.bundle_size
     }
 
     derive items_weight(items: list<Item>) -> int {
@@ -370,7 +370,7 @@ system "OSRIC Inventory" {
         if item.gp_value <= 0 || item.kept_xp_divisor <= 0 {
             0
         } else {
-            floor(item.gp_value / item.kept_xp_divisor)
+            item.gp_value div item.kept_xp_divisor
         }
     }
 

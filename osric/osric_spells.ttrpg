@@ -396,7 +396,7 @@ system "OSRIC Spells" {
 
     derive ranger_druid_casting_level(ranger_level: int) -> int {
         if ranger_level < 8 { 0 }
-        else { min(6, floor((ranger_level - 6) / 2)) }
+        else { min(6, (ranger_level - 6) div 2) }
     }
 
     derive ranger_arcane_casting_level(ranger_level: int) -> int {
@@ -785,7 +785,7 @@ system "OSRIC Spells" {
         for target in targets {
             let result = target.ResistSpell(category: some(SpellsUnlisted))
             if let some(saved) = result {
-                let damage = if saved { floor(total_damage / 2) } else { total_damage }
+                let damage = if saved { total_damage div 2 } else { total_damage }
                 target.TakeDamage(caster, damage, damage_type)
                 emit SpellDamaged(caster: caster, target: target, spell_name: spell_name, amount: damage)
             }

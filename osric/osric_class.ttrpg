@@ -375,7 +375,7 @@ system "OSRIC Classes" {
 
     derive ranger_spell_caster_level(class_level: int) -> int {
         if class_level < 8 { 0 }
-        else { min(6, floor((class_level - 6) / 2)) }
+        else { min(6, (class_level - 6) div 2) }
     }
 
     // Caster level for a character given a spell tradition.

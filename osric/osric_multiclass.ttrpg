@@ -144,7 +144,7 @@ system "OSRIC Multiclass" {
     // ========================================================
 
     derive split_xp(xp_earned: int, num_classes: int) -> int {
-        floor(xp_earned / num_classes)
+        xp_earned div num_classes
     }
 
 
@@ -160,7 +160,7 @@ system "OSRIC Multiclass" {
     // ========================================================
 
     derive multiclass_hp_gain(die_roll: int, con_modifier: int, num_classes: int) -> int {
-        max(1, floor((die_roll + con_modifier) / num_classes))
+        max(1, (die_roll + con_modifier) div num_classes)
     }
 
 

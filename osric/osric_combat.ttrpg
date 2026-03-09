@@ -2173,7 +2173,7 @@ system "OSRIC Combat" {
     // minus 5% per 2 target HD (rounded down).
     derive assassination_chance(assassin_level: int, target_hd: int) -> int {
         let base = 50 + assassin_level * 5
-        let penalty = floor(target_hd / 2) * 5
+        let penalty = (target_hd div 2) * 5
         max(1, base - penalty)
     }
 

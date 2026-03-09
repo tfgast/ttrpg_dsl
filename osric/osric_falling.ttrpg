@@ -64,7 +64,7 @@ system "OSRIC Falling" {
         if allow_save && base > 0 {
             let saved = roll_saving_throw(saves, SaveCategory.DeathParalysisPoison, save_bonus)
             if saved {
-                let halved = max(1, floor(base / 2))
+                let halved = max(1, base div 2)
                 FallingResult {
                     distance_ft: distance_ft,
                     base_damage: base,

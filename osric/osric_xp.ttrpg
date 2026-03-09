@@ -135,9 +135,9 @@ system "OSRIC XP" {
     // with the full sale price.
     derive magic_item_xp(gold_value: int, is_potion: bool = false) -> int {
         if is_potion {
-            floor(gold_value / 20)
+            gold_value div 20
         } else {
-            floor(gold_value / 10)
+            gold_value div 10
         }
     }
 
@@ -145,7 +145,7 @@ system "OSRIC XP" {
     // then applying the prime requisite percentage bonus.
     // bonus_pct: 0 or 10 (from prime_req_xp_bonus).
     derive xp_share(total_xp: int, party_size: int, bonus_pct: int = 0) -> int {
-        let base = floor(total_xp / party_size)
-        base + floor(base * bonus_pct / 100)
+        let base = total_xp div party_size
+        base + (base * bonus_pct) div 100
     }
 }

@@ -377,13 +377,12 @@ system "OSRIC Initiative" {
     // ========================================================
 
     derive movement_per_segment(base_movement: Feet) -> Feet {
-        Feet { value: floor(base_movement.value / 10) }
+        base_movement div 10
     }
 
     // Total movement completed through a given segment.
     derive movement_through_segment(base_movement: Feet, segment: int) -> Feet {
-        let per_seg = floor(base_movement.value / 10)
-        Feet { value: per_seg * segment }
+        (base_movement div 10) * segment
     }
 
 

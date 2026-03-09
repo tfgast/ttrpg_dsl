@@ -467,7 +467,7 @@ system "OSRIC Potions" {
         stacking first
     {
         modify character_movement(character: bearer) {
-            result = Feet { value: result.value * 2 }
+            result = result * 2
         }
     }
 

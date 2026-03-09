@@ -614,7 +614,7 @@ system "OSRIC Conditions" {
     condition EncumbranceState(tier: EncumbranceTier) on bearer: Character {
         modify character_movement(character: bearer) {
             let numerator = encumbrance_movement_numerator(tier)
-            result = Feet { value: floor(result.value * numerator / 4) }
+            result = result * numerator div 4
         }
 
         modify character_surprise_adj(character: bearer) {

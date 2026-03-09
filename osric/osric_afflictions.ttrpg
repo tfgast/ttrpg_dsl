@@ -78,7 +78,7 @@ system "OSRIC Afflictions" {
                 if saved {
                     // Save for half damage
                     let full = roll(damage).total
-                    let half = max(1, floor(full / 2))
+                    let half = max(1, full div 2)
                     PoisonResult { saved: true, died: false, damage_taken: half }
                 } else {
                     let full = roll(damage).total

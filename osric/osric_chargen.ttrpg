@@ -262,7 +262,7 @@ system "OSRIC Chargen" {
         let num_classes = len(classes)
         let per_class_hp = [roll_single_class_hp(c, con) for c in classes]
         [
-            floor(sum_first(per_class_hp, i + 1) / num_classes) - floor(sum_first(per_class_hp, i) / num_classes)
+            sum_first(per_class_hp, i + 1) div num_classes - sum_first(per_class_hp, i) div num_classes
             for i in 0..len(classes)
         ]
     }
