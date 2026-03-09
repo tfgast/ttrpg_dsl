@@ -176,7 +176,7 @@ system "OSRIC Level Drain" {
     //  ROLL HP FOR RESTORED LEVEL
     //
     //  Re-rolls the hit die for a restored level.
-    //  Levels beyond max_hit_dice get fixed hp_after_max
+    //  Levels whose total HD exceed max_hit_dice get fixed hp_after_max
     //  (no CON bonus, no multi-class division).
     //  Levels within HD range: roll 1 HD + CON mod,
     //  divided by num_classes for multi-class (min 1).
@@ -189,7 +189,7 @@ system "OSRIC Level Drain" {
         num_classes: int
     ) -> int {
         let def = class_def(class)
-        if level > def.max_hit_dice {
+        if class_hit_dice_total_for_level(class, level) > def.max_hit_dice {
             def.hp_after_max
         } else {
             let con_mod = con_hp_modifier_for_class(class, con_score)

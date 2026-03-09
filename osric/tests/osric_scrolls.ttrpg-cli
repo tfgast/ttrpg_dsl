@@ -1,0 +1,68 @@
+// OSRIC Scrolls integration tests
+//
+// Covers spell-scroll eligibility/failure math and warding protections.
+
+load osric/*.ttrpg
+
+// ── Spell scroll eligibility ────────────────────────────────────
+
+spawn Character mu_reader { name: "MU", classes: [ClassLevel { class: Class.MagicUser, level: 5 }], abilities: { STR: 10, INT: 15, WIS: 10, DEX: 12, CON: 10, CHA: 10 }, HitPoints { max_hp: 12, hp: 12 } }
+spawn Character ranger_reader { name: "Ranger", classes: [ClassLevel { class: Class.Ranger, level: 8 }], abilities: { STR: 14, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 10 }, HitPoints { max_hp: 24, hp: 24 } }
+spawn Character paladin_reader { name: "Paladin", classes: [ClassLevel { class: Class.Paladin, level: 8 }], abilities: { STR: 14, INT: 10, WIS: 13, DEX: 12, CON: 12, CHA: 17 }, HitPoints { max_hp: 30, hp: 30 } }
+spawn Character druid_reader { name: "Druid", classes: [ClassLevel { class: Class.Druid, level: 5 }], abilities: { STR: 10, INT: 12, WIS: 15, DEX: 12, CON: 10, CHA: 10 }, HitPoints { max_hp: 16, hp: 16 } }
+spawn Character thief9_reader { name: "Thief9", classes: [ClassLevel { class: Thief, level: 9 }], abilities: { STR: 10, INT: 12, WIS: 10, DEX: 16, CON: 10, CHA: 10 }, HitPoints { max_hp: 22, hp: 22 } }
+spawn Character thief10_reader { name: "Thief10", classes: [ClassLevel { class: Thief, level: 10 }], abilities: { STR: 10, INT: 12, WIS: 10, DEX: 17, CON: 10, CHA: 10 }, HitPoints { max_hp: 24, hp: 24 } }
+
+assert can_use_spell_scroll(mu_reader, Arcane)
+assert !can_use_spell_scroll(ranger_reader, Arcane)
+assert !can_use_spell_scroll(paladin_reader, Divine)
+assert can_use_spell_scroll(druid_reader, Druidic)
+assert !can_use_spell_scroll(thief9_reader, Arcane)
+assert can_use_spell_scroll(thief10_reader, Arcane)
+assert can_use_spell_scroll(thief10_reader, Phantasmal)
+assert can_use_spell_scroll(thief10_reader, Druidic)
+
+// ── Scroll failure chance uses class-specific minimum levels ────
+
+assert_eq minimum_spellcasting_level(SpellProgression.Cleric, 2), 3
+assert_eq minimum_scroll_use_level(SpellProgression.Cleric, 2), 4
+assert_eq scroll_failure_chance(2, 2, SpellProgression.Cleric), 10
+assert_eq minimum_spellcasting_level(SpellProgression.Ranger, 1), 8
+assert_eq minimum_scroll_use_level(SpellProgression.Ranger, 1), 9
+assert_eq scroll_failure_chance(7, 1, SpellProgression.Ranger), 10
+assert_eq scroll_failure_chance_for_reader(thief10_reader, Arcane, 3), 0
+
+// ── Acid warding blocks acid damage ─────────────────────────────
+
+spawn Character acid_guard { name: "Acid Guard", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 10, WIS: 10, DEX: 12, CON: 12, CHA: 10 }, HitPoints { max_hp: 20, hp: 20 } }
+spawn Character acid_source { name: "Acid Source", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 10, INT: 10, WIS: 10, DEX: 10, CON: 10, CHA: 10 }, HitPoints { max_hp: 10, hp: 10 } }
+call apply_condition(acid_guard, ScrollAcidWarding, Duration.Indefinite)
+do TakeDamage(acid_guard, acid_source, 6, DamageType.Acid)
+assert_eq acid_guard.hp, 20
+
+// ── Magic warding improves relevant saves ───────────────────────
+
+spawn Character magic_guard { name: "Magic Guard", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 10, WIS: 10, DEX: 12, CON: 12, CHA: 10 }, HitPoints { max_hp: 20, hp: 20 } }
+let magic_base = character_best_saves(magic_guard)
+call apply_condition(magic_guard, ScrollMagicWarding, Duration.Indefinite)
+assert_eq character_best_saves(magic_guard).aimed_magic, max(2, magic_base.aimed_magic - 2)
+assert_eq character_best_saves(magic_guard).spells, max(2, magic_base.spells - 2)
+
+// ── Undead warding suppresses undead attacks ────────────────────
+
+spawn Character undead_guard { name: "Undead Guard", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 10, WIS: 10, DEX: 12, CON: 12, CHA: 10 }, HitPoints { max_hp: 20, hp: 20 } }
+spawn Monster undead_attacker { name: "Ghoul Test", hit_dice: 2d8, max_hp: 9, hp: 9, ac: 12, attacks: [MonsterAttack { name: "Claw", damage: 1d4 }], special: [] }
+call apply_condition(undead_attacker, Undead, Duration.Indefinite)
+call apply_condition(undead_guard, ScrollUndeadWarding(hd_warded: 35), Duration.Indefinite)
+let undead_result = resolve_monster_attack(undead_attacker, undead_guard, MonsterAttack { name: "Claw", damage: 1d4 })
+assert_match undead_result.outcome, AttackOutcome.Miss
+assert_eq undead_result.damage, 0
+
+// ── ReadWardingScroll applies protection and consumes item ──────
+
+spawn Character ward_reader { name: "Ward Reader", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 10, WIS: 10, DEX: 12, CON: 12, CHA: 10 }, HitPoints { max_hp: 20, hp: 20 }, Inventory { loose_items: [warding_item(AcidWarding)] } }
+rolls clear
+rolls 2 2 2 2 2
+do ReadWardingScroll(ward_reader, AcidWarding)
+assert_condition ward_reader, ScrollAcidWarding
+assert_eq ward_reader.Inventory.loose_items.len(), 0

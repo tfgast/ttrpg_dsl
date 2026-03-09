@@ -145,3 +145,26 @@ let lu_high = level_up_class(lu_highlevel, Fighter)
 assert_eq lu_high.new_level, 10
 // hp_after_max = 3, no CON mod, no roll
 assert_eq lu_high.hp_gained, 3
+
+// ── apply_level_up: paladin gains Turn Undead at level 3 ───────
+
+spawn Character apply_paladin { name: "ApplyPaladin", classes: [ClassLevel { class: Paladin, level: 2, xp: 6000 }], abilities: { STR: 16, DEX: 12, CON: 12, INT: 10, WIS: 13, CHA: 17 }, alignment: LawfulGood, HitPoints { max_hp: 20, hp: 20 }, hp_rolls: [HpRoll { class: Paladin, level: 1, amount: 10 }, HpRoll { class: Paladin, level: 2, amount: 10 }], saving_throws: some(paladin_saves(2)) }
+rolls 6
+let paladin_result = apply_level_up(apply_paladin, Paladin)
+assert_eq paladin_result.new_level, 3
+assert (if apply_paladin has TurnUndead { true } else { false })
+
+// ── level_up_class: ranger keeps rolling through level 10 ──────
+
+spawn Character lu_ranger10 { name: "Ranger9", classes: [ClassLevel { class: Ranger, level: 9, xp: 400000 }], abilities: { STR: 17, DEX: 12, CON: 14, INT: 13, WIS: 14, CHA: 10 }, alignment: NeutralGood, HitPoints { max_hp: 70, hp: 70 }, hp_rolls: [HpRoll { class: Ranger, level: 1, amount: 12 }, HpRoll { class: Ranger, level: 2, amount: 7 }, HpRoll { class: Ranger, level: 3, amount: 7 }, HpRoll { class: Ranger, level: 4, amount: 7 }, HpRoll { class: Ranger, level: 5, amount: 7 }, HpRoll { class: Ranger, level: 6, amount: 7 }, HpRoll { class: Ranger, level: 7, amount: 7 }, HpRoll { class: Ranger, level: 8, amount: 7 }, HpRoll { class: Ranger, level: 9, amount: 7 }] }
+rolls 5
+let lu_ranger_rolls = level_up_class(lu_ranger10, Ranger)
+assert_eq lu_ranger_rolls.new_level, 10
+assert_eq lu_ranger_rolls.hp_gained, 5
+
+// ── level_up_class: ranger switches to fixed HP at level 11 ────
+
+spawn Character lu_ranger11 { name: "Ranger10", classes: [ClassLevel { class: Ranger, level: 10, xp: 700000 }], abilities: { STR: 17, DEX: 12, CON: 14, INT: 13, WIS: 14, CHA: 10 }, alignment: NeutralGood, HitPoints { max_hp: 75, hp: 75 }, hp_rolls: [HpRoll { class: Ranger, level: 1, amount: 12 }, HpRoll { class: Ranger, level: 2, amount: 7 }, HpRoll { class: Ranger, level: 3, amount: 7 }, HpRoll { class: Ranger, level: 4, amount: 7 }, HpRoll { class: Ranger, level: 5, amount: 7 }, HpRoll { class: Ranger, level: 6, amount: 7 }, HpRoll { class: Ranger, level: 7, amount: 7 }, HpRoll { class: Ranger, level: 8, amount: 7 }, HpRoll { class: Ranger, level: 9, amount: 7 }, HpRoll { class: Ranger, level: 10, amount: 7 }] }
+let lu_ranger_fixed = level_up_class(lu_ranger11, Ranger)
+assert_eq lu_ranger_fixed.new_level, 11
+assert_eq lu_ranger_fixed.hp_gained, 2

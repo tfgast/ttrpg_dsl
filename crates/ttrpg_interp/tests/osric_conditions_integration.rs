@@ -49,7 +49,7 @@ fn osric_conditions_parses_and_typechecks() {
 // ── Structure verification ─────────────────────────────────────
 
 #[test]
-fn osric_conditions_has_all_nineteen_conditions() {
+fn osric_conditions_has_all_conditions() {
     let (program, _) = compile_osric_conditions();
     let decls = get_conditions_decls(&program);
     let conditions: Vec<_> = decls
@@ -66,6 +66,7 @@ fn osric_conditions_has_all_nineteen_conditions() {
         "Staggered",
         "Invisible",
         "Paralyzed",
+        "NormalSleep",
         "Sleeping",
         "Fleeing",
         "Surprised",
@@ -98,8 +99,8 @@ fn osric_conditions_has_all_nineteen_conditions() {
     }
     assert_eq!(
         conditions.len(),
-        27,
-        "expected 27 conditions, found {}: {:?}",
+        28,
+        "expected 28 conditions, found {}: {:?}",
         conditions.len(),
         conditions
     );

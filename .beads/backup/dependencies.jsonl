@@ -298,6 +298,7 @@
 {"created_at":"2026-02-22T11:50:21Z","created_by":"Theodore Gast","depends_on_id":"tdsl-cfe8eadb","issue_id":"tdsl-dz3.7","type":"parent-child"}
 {"created_at":"2026-02-22T11:50:36Z","created_by":"Theodore Gast","depends_on_id":"tdsl-dz3.5","issue_id":"tdsl-dz3.7","type":"blocks"}
 {"created_at":"2026-03-05T15:24:14Z","created_by":"Theodore Gast","depends_on_id":"tdsl-566i","issue_id":"tdsl-e2in","type":"blocks"}
+{"created_at":"2026-03-09T09:25:02Z","created_by":"Theodore Gast","depends_on_id":"tdsl-infj","issue_id":"tdsl-e2o3","type":"discovered-from"}
 {"created_at":"2026-03-01T15:52:33Z","created_by":"Theodore Gast","depends_on_id":"tdsl-bywz","issue_id":"tdsl-ebm8","type":"discovered-from"}
 {"created_at":"2026-02-23T09:38:04Z","created_by":"Theodore Gast","depends_on_id":"tdsl-b9f914a1","issue_id":"tdsl-ee72be2c","type":"blocks"}
 {"created_at":"2026-02-23T09:38:04Z","created_by":"Theodore Gast","depends_on_id":"tdsl-f1b26cb2","issue_id":"tdsl-ee72be2c","type":"blocks"}

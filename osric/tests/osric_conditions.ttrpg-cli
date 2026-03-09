@@ -87,7 +87,7 @@ assert_eq para_result.outcome, AttackOutcome.Hit
 assert_eq para_result.total_mod, 0
 assert_eq para_result.damage, 8
 
-// ── Sleeping on target: auto_hit + max_damage ───────────────────
+// ── Magical Sleeping on target: auto_hit + max_damage ───────────
 
 spawn Character sleep_atk { name: "Fighter", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 } }
 spawn Character sleep_tgt { name: "Target", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 }, EquipmentSlots { worn_armor: some(Armor { armour_type: PlateMail }) } }
@@ -97,6 +97,18 @@ rolls clear
 let sleep_result = resolve_melee_attack(sleep_atk, sleep_tgt, SwordLong)
 assert_eq sleep_result.outcome, AttackOutcome.Hit
 assert_eq sleep_result.damage, 8
+
+// ── NormalSleep on target: +4, no DEX/shield, not auto-hit ─────
+
+spawn Character nsleep_atk { name: "Fighter", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 } }
+spawn Character nsleep_tgt { name: "Target", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 17, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 }, EquipmentSlots { worn_armor: some(Armor { armour_type: PlateMail }), worn_shield: some(Shield { shield_type: SmallShield }) } }
+call apply_condition(nsleep_tgt, NormalSleep, Duration.Indefinite)
+
+rolls 12
+let nsleep_result = resolve_melee_attack(nsleep_atk, nsleep_tgt, SwordLong)
+assert_eq nsleep_result.total_mod, 4
+assert_eq nsleep_result.outcome, AttackOutcome.Miss
+assert_eq effective_target_ac(nsleep_tgt), 17
 
 // ── RearAttacked on target: +2 to attack_mod ────────────────────
 
@@ -427,7 +439,7 @@ rolls 15 6
 let combo_result = resolve_melee_attack(combo_atk, combo_tgt, SwordLong)
 assert_eq combo_result.total_mod, 6
 
-// ── Stunned/Paralyzed/Sleeping suppress bearer attacks ──────────
+// ── Stunned/Paralyzed/Sleep conditions suppress bearer attacks ──
 
 // Stunned on attacker forces Miss
 spawn Character stun2_atk { name: "Fighter", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots { worn_armor: some(Armor { armour_type: ScaleLamellar }) } }
@@ -458,6 +470,16 @@ rolls 18 6
 let sleep2_result = resolve_melee_attack(sleep2_atk, sleep2_tgt, SwordLong)
 assert_eq sleep2_result.outcome, AttackOutcome.Miss
 assert_eq sleep2_result.damage, 0
+
+// NormalSleep on attacker also forces Miss
+spawn Character nsleep2_atk { name: "Fighter", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots { worn_armor: some(Armor { armour_type: ScaleLamellar }) } }
+spawn Character nsleep2_tgt { name: "Target", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 } }
+call apply_condition(nsleep2_atk, NormalSleep, Duration.Indefinite)
+
+rolls 18 6
+let nsleep2_result = resolve_melee_attack(nsleep2_atk, nsleep2_tgt, SwordLong)
+assert_eq nsleep2_result.outcome, AttackOutcome.Miss
+assert_eq nsleep2_result.damage, 0
 
 // ── Paralyzed auto-hit variations ───────────────────────────────
 

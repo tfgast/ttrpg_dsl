@@ -44,13 +44,20 @@ assert_eq paladin.has_exceptional_str, true
 
 let ranger = class_def(Ranger)
 assert_eq ranger.hit_die, 8
-assert_eq ranger.bonus_first_hd, 1
-assert_eq ranger.max_hit_dice, 10
+assert_eq ranger.bonus_first_hd, 0
+assert_eq ranger.max_hit_dice, 11
 assert_eq ranger.hp_after_max, 2
 assert_eq ranger.combat_group, CombatGroup.FighterGroup
 assert_eq ranger.spell_progression, SpellProgression.Ranger
 assert_eq ranger.weapon_specialization, true
 assert_eq ranger.has_exceptional_str, true
+assert_eq class_level_one_hit_dice(Ranger), 2
+assert_eq class_hit_dice_total_for_level(Ranger, 1), 2
+assert_eq class_hit_dice_total_for_level(Ranger, 10), 11
+assert_eq class_hit_dice_total_for_level(Fighter, 9), 9
+assert (class_can_turn_undead_at_level(Paladin, 2)) == false
+assert class_can_turn_undead_at_level(Paladin, 3)
+assert class_can_turn_undead_at_level(Cleric, 1)
 
 // ── class_def: Cleric ──────────────────────────────────────────
 

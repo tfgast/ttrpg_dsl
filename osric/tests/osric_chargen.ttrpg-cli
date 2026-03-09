@@ -1,0 +1,61 @@
+// OSRIC Chargen integration tests
+//
+// Covers chargen construction regressions for:
+// - ranger level-1 HP
+// - paladin Turn Undead gating
+// - multiclass hp_roll share recording
+// - starting gold persistence into inventory
+
+load osric/*.ttrpg
+
+// ── human paladin starts with gold but not Turn Undead ──────────
+
+rolls clear
+rolls 8 3 2 3 2 2
+let paladin_start = build_character(
+    "Sir Newbie",
+    Human,
+    [Class.Paladin],
+    LawfulGood,
+    { STR: 16, DEX: 10, CON: 12, INT: 10, WIS: 13, CHA: 17 }
+)
+assert_eq paladin_start.classes[0].class, Class.Paladin
+assert_eq paladin_start.HitPoints.max_hp, 8
+assert (if paladin_start has TurnUndead { true } else { false }) == false
+assert_eq (if paladin_start has Inventory { paladin_start.Inventory.coins.gp } else { -1 }), 120
+
+// ── human ranger rolls 2d8 at level 1 and keeps starting gold ──
+
+rolls clear
+rolls 5 6 2 2 2 2 1
+let ranger_start = build_character(
+    "Trailblazer",
+    Human,
+    [Class.Ranger],
+    NeutralGood,
+    { STR: 17, DEX: 10, CON: 14, INT: 13, WIS: 14, CHA: 10 }
+)
+assert_eq ranger_start.classes[0].class, Class.Ranger
+assert_eq ranger_start.HitPoints.max_hp, 11
+assert_eq ranger_start.hp_rolls[0].amount, 11
+assert_eq (if ranger_start has Inventory { ranger_start.Inventory.coins.gp } else { -1 }), 90
+
+// ── multiclass hp_rolls store per-class shares, not total HP ────
+
+rolls clear
+rolls 6 4 2 2 2 2 2
+let elf_fmu = build_character(
+    "Spellblade",
+    Elf,
+    [Class.Fighter, Class.MagicUser],
+    TrueNeutral,
+    { STR: 13, DEX: 12, CON: 12, INT: 12, WIS: 10, CHA: 10 }
+)
+assert_eq elf_fmu.classing_mode, ClassingMode.Multi
+assert_eq elf_fmu.HitPoints.max_hp, 5
+assert_eq elf_fmu.hp_rolls.len(), 2
+assert_eq elf_fmu.hp_rolls[0].class, Fighter
+assert_eq elf_fmu.hp_rolls[0].amount, 3
+assert_eq elf_fmu.hp_rolls[1].class, Class.MagicUser
+assert_eq elf_fmu.hp_rolls[1].amount, 2
+assert_eq (if elf_fmu has Inventory { elf_fmu.Inventory.coins.gp } else { -1 }), 100

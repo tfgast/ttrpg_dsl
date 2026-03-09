@@ -127,10 +127,14 @@ assert_eq fighter_attacks(1, 1), 1
 assert_eq fighter_attacks(1, 2), 1
 assert_eq fighter_attacks(6, 3), 1
 
-// Level 7-12: 3/2 attacks (odd round=1, even round=2)
+// Level 7: still 1 attack
 assert_eq fighter_attacks(7, 1), 1
-assert_eq fighter_attacks(7, 2), 2
+assert_eq fighter_attacks(7, 2), 1
 assert_eq fighter_attacks(7, 3), 1
+// Level 8-12: 3/2 attacks (odd round=1, even round=2)
+assert_eq fighter_attacks(8, 1), 1
+assert_eq fighter_attacks(8, 2), 2
+assert_eq fighter_attacks(8, 3), 1
 assert_eq fighter_attacks(10, 1), 1
 assert_eq fighter_attacks(10, 2), 2
 assert_eq fighter_attacks(12, 1), 1
@@ -374,6 +378,7 @@ assert_eq assassination_chance(4, 7), 55
 
 spawn Character assn_mech_atk { name: "Shadowblade", classes: [ClassLevel { class: Assassin, level: 8 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots { wielded_main: some(Melee(Dagger)) } }
 spawn Character assn_mech_tgt { name: "Guard", classes: [ClassLevel { class: Fighter, level: 4 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 } }
+call apply_condition(assn_mech_tgt, Surprised, Duration.EndOfRound)
 
 rolls clear
 rolls 50
@@ -383,6 +388,7 @@ assert_eq assn_kill.chance, 70
 
 spawn Character assn_fail_atk { name: "Shadowblade2", classes: [ClassLevel { class: Assassin, level: 4 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots { wielded_main: some(Melee(Dagger)) } }
 spawn Character assn_fail_tgt { name: "Guard2", classes: [ClassLevel { class: Fighter, level: 4 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots { worn_armor: some(Armor { armour_type: Leather }) } }
+call apply_condition(assn_fail_tgt, Surprised, Duration.EndOfRound)
 
 rolls clear
 rolls 80 18 3
@@ -392,6 +398,7 @@ assert_eq assn_hit.damage, 3
 
 spawn Character assn_action_atk { name: "Killer", classes: [ClassLevel { class: Assassin, level: 8 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots { wielded_main: some(Melee(Dagger)) } }
 spawn Character assn_action_tgt { name: "Victim", classes: [ClassLevel { class: Fighter, level: 4 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 } }
+call apply_condition(assn_action_tgt, Surprised, Duration.EndOfRound)
 
 rolls clear
 rolls 50
@@ -399,10 +406,25 @@ do Assassinate(assn_action_atk, assn_action_tgt, 8)
 assert_eq assn_action_tgt.hp, -10
 assert_condition assn_action_tgt, Dead
 
+spawn Character assn_no_surprise_atk { name: "KillerNoSurprise", classes: [ClassLevel { class: Assassin, level: 8 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots { wielded_main: some(Melee(Dagger)) } }
+spawn Character assn_no_surprise_tgt { name: "Alert Guard", classes: [ClassLevel { class: Fighter, level: 4 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 } }
+do Assassinate(assn_no_surprise_atk, assn_no_surprise_tgt, 8)
+assert_eq assn_no_surprise_tgt.hp, 30
+assert_no_condition assn_no_surprise_tgt, Dead
+
+spawn Character assn_sleep_atk { name: "KillerSleep", classes: [ClassLevel { class: Assassin, level: 8 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots { wielded_main: some(Melee(Dagger)) } }
+spawn Character assn_sleep_tgt { name: "Sleeping Guard", classes: [ClassLevel { class: Fighter, level: 4 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 } }
+call apply_condition(assn_sleep_tgt, NormalSleep, Duration.EndOfRound)
+rolls clear
+rolls 50
+do Assassinate(assn_sleep_atk, assn_sleep_tgt, 8)
+assert_condition assn_sleep_tgt, Dead
+
 // ── Assassination vs Monster target ──────────────────────────
 
 spawn Character assn_mon_atk { name: "Killer2", classes: [ClassLevel { class: Assassin, level: 8 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots { wielded_main: some(Melee(Dagger)) } }
 spawn Monster assn_mon_tgt { name: "Orc", hit_dice: 1d8, max_hp: 8, hp: 8, ac: 14, attacks: [MonsterAttack { name: "Club", damage: 1d6 }] }
+call apply_condition(assn_mon_tgt, Surprised, Duration.EndOfRound)
 
 // Successful assassination kill against Monster — hp goes to 0, Dead condition
 rolls clear
@@ -414,11 +436,19 @@ assert_condition assn_mon_tgt, Dead
 // Failed assassination (weapon hit) against Monster — TakeDamage applies
 spawn Character assn_mon_hit_atk { name: "Killer3", classes: [ClassLevel { class: Assassin, level: 4 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots { wielded_main: some(Melee(Dagger)) } }
 spawn Monster assn_mon_hit_tgt { name: "Goblin", hit_dice: 1d8 - 1, max_hp: 5, hp: 5, ac: 14, attacks: [MonsterAttack { name: "Sword", damage: 1d6 }] }
+call apply_condition(assn_mon_hit_tgt, Surprised, Duration.EndOfRound)
 
 rolls clear
 rolls 80 18 3
 do Assassinate(assn_mon_hit_atk, assn_mon_hit_tgt, 6)
 assert_eq assn_mon_hit_tgt.hp, 2
+
+spawn Monster assn_zombie_tgt { name: "Zombie", hit_dice: 2d8, max_hp: 9, hp: 9, ac: 12, attacks: [MonsterAttack { name: "Strike", damage: 1d8 }], special: ["Undead"] }
+call apply_condition(assn_zombie_tgt, Undead, Duration.Indefinite)
+call apply_condition(assn_zombie_tgt, Surprised, Duration.EndOfRound)
+do Assassinate(assn_mon_atk, assn_zombie_tgt, 2)
+assert_eq assn_zombie_tgt.hp, 9
+assert_no_condition assn_zombie_tgt, Dead
 
 // ── Parry ───────────────────────────────────────────────────────
 

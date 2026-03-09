@@ -259,16 +259,16 @@ system "OSRIC Initiative" {
     //  FIGHTER MULTIPLE ATTACKS
     //
     //  Fighters, Paladins, Rangers with multiple attacks act
-    //  at segments 1 and 10 (regardless of initiative roll).
-    //  Level 7-12: 3/2 attacks (alternating 1 and 2 per round)
+    //  once on their normal initiative segment plus an extra
+    //  attack at segment 10 when applicable.
+    //  Level 8-12: 3/2 attacks (alternating 1 and 2 per round)
     //  Level 13+: 2/1 attacks (always 2 per round)
-    //  The first attack is always at segment 1.
     // ========================================================
 
     derive has_fighter_multi_attack(class: Class, level: int) -> bool {
         let def = class_def(class)
         match {
-            def.combat_group == CombatGroup.FighterGroup && level >= 7 => true,
+            def.combat_group == CombatGroup.FighterGroup && level >= 8 => true,
             _ => false
         }
     }
@@ -277,20 +277,21 @@ system "OSRIC Initiative" {
     // At 3/2 rate, alternates between 1 and 2 attacks per round.
     derive fighter_attacks_this_round(level: int, round_number: int) -> int {
         match {
-            level < 7  => 1,
+            level < 8  => 1,
             level < 13 => if round_number % 2 == 0 { 2 } else { 1 },
             _          => 2
         }
     }
 
-    // Segments at which fighter multi-attacks occur.
-    // Returns list of segments (e.g., [1] or [1, 10]).
-    derive fighter_attack_segments(level: int, round_number: int) -> list<int> {
+    // Segments at which fighter-group attacks occur this round.
+    // The primary attack uses the normal initiative segment; an
+    // extra attack, if present, resolves at segment 10.
+    derive fighter_attack_segments(level: int, round_number: int, initiative_segment: int) -> list<int> {
         let attacks = fighter_attacks_this_round(level, round_number)
         if attacks >= 2 {
-            [1, 10]
-        } else if level >= 7 {
-            [1]
+            [wrap_segment(initiative_segment), 10]
+        } else if level >= 8 {
+            [wrap_segment(initiative_segment)]
         } else {
             []
         }
@@ -669,18 +670,10 @@ system "OSRIC Initiative" {
                             equip_monster_main(set_action.combatant, WieldedItem.Melee(set_weapon))
                         }
 
-                        if weapon_longer(set_weapon, charge_weapon) {
-                            // Set weapon is longer — defender strikes first
-                            target.SetWeaponStrike(charger)
-                            if is_alive(charger) {
-                                charger.Charge(target)
-                            }
-                        } else {
-                            // Charger has equal or longer weapon — strikes first
+                        // A properly set weapon always strikes before the charger.
+                        target.SetWeaponStrike(charger)
+                        if is_alive(charger) {
                             charger.Charge(target)
-                            if is_alive(target) {
-                                target.SetWeaponStrike(charger)
-                            }
                         }
                     } else {
                         // Normal armed charge, no set weapon opposition

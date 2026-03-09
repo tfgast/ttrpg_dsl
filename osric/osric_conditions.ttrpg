@@ -130,14 +130,42 @@ system "OSRIC Conditions" {
 
 
     // ========================================================
+    //  NORMAL SLEEP
+    //
+    //  Ordinary sleep is less severe than magical helplessness:
+    //  attackers get +4 to hit, and the sleeper loses shield
+    //  and DEX AC benefits, but attacks still resolve normally.
+    //  Bearer cannot act — attacks are suppressed.
+    //  The assassination-style coup-de-grace handling remains a
+    //  combat-layer concern; this condition only models the
+    //  reusable attack/defense modifiers. Per 1.6.10.12.
+    // ========================================================
+
+    condition NormalSleep on bearer: entity
+        stacking first
+    {
+        modify [#attack_resolution](target: bearer) {
+            attack_mod = attack_mod + 4
+        }
+        modify effective_target_ac(target: bearer) {
+            include_dex = false
+            include_shield = false
+        }
+        modify [#attack_resolution](attacker: bearer) {
+            result.outcome = AttackOutcome.Miss
+            result.damage = 0
+        }
+    }
+
+
+    // ========================================================
     //  SLEEPING
     //
-    //  Natural sleep: automatic hit, maximum damage.
-    //  Cannot use shield or DEX bonus to AC.
-    //  Instant-kill possible at melee range (GM adjudicated).
-    //  Magical sleep: depends on spell specifics.
+    //  Magical sleep is treated as full helplessness:
+    //  automatic hit, maximum damage, no shield or DEX AC.
     //  Bearer cannot act — attacks are suppressed.
-    //  Per 1.6.3.6.
+    //  Used by magical sleep effects such as the Sleep spell.
+    //  Per 1.6.10.13.
     // ========================================================
 
     condition Sleeping on bearer: entity

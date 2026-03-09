@@ -86,9 +86,10 @@ system "OSRIC Level Up" {
     //  ROLL HP FOR LEVEL UP
     //
     //  At each new level, the character gains HP:
-    //  - If new_level <= max_hit_dice: roll 1 HD + CON mod
-    //  - If new_level > max_hit_dice: flat hp_after_max (no
-    //    CON mod, no roll)
+    //  - If the class's total HD at new_level is within max_hit_dice:
+    //    roll 1 HD + CON mod
+    //  - Once total HD exceeds max_hit_dice: flat hp_after_max
+    //    (no CON mod, no roll)
     //  Multi-class: HD roll is divided by number of classes
     //  (matching the chargen pattern).
     //
@@ -103,7 +104,7 @@ system "OSRIC Level Up" {
         num_classes: int
     ) -> int {
         let def = class_def(class)
-        if new_level > def.max_hit_dice {
+        if class_hit_dice_total_for_level(class, new_level) > def.max_hit_dice {
             // Fixed HP after max hit dice — no CON mod, no division
             def.hp_after_max
         } else {
@@ -321,6 +322,10 @@ system "OSRIC Level Up" {
                 )
                 character.ThiefSkills.skills = new_skills
             }
+        }
+
+        if class_can_turn_undead_at_level(target_class, result.new_level) && !(character has TurnUndead) {
+            grant character.TurnUndead {}
         }
 
         result

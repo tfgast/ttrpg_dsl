@@ -319,13 +319,13 @@ system "OSRIC Combat" {
     //  FIGHTER MULTIPLE ATTACKS
     //
     //  Fighters, Paladins, Rangers gain extra attacks at high
-    //  levels. 3/2 at level 7 (alternating 1/2 per round),
-    //  2/1 at level 13. Attacks happen at segments 1 and 10.
+    //  levels. 3/2 at level 8 (alternating 1/2 per round),
+    //  2/1 at level 13.
     // ========================================================
 
     derive fighter_attacks(level: int, round_number: int) -> int {
         match {
-            level < 7  => 1,
+            level < 8  => 1,
             level < 13 => if round_number % 2 == 0 { 2 } else { 1 },
             _          => 2
         }
@@ -2159,6 +2159,22 @@ system "OSRIC Combat" {
         max(1, base - penalty)
     }
 
+    derive target_has_vital_organs(target: entity) -> bool {
+        let cond_names = [c.name for c in conditions(target)]
+        let is_undead = any([name == "Undead" || name == "TurnedAsUndead" for name in cond_names])
+        let is_construct = any([name == "Construct" for name in cond_names])
+        let is_ooze = if target is Monster {
+            any([tag == "Ooze" for tag in target.special])
+        } else {
+            false
+        }
+        !(is_undead || is_construct || is_ooze)
+    }
+
+    derive assassination_target_is_vulnerable(target: entity) -> bool {
+        any([c.name == "Surprised" || c.name == "NormalSleep" for c in conditions(target)])
+    }
+
     // Assassination mechanic: d100 roll against computed chance.
     // On success, target is killed outright. On failure, resolve
     // a normal melee attack (no backstab bonus, no multiplier).
@@ -2168,6 +2184,12 @@ system "OSRIC Combat" {
         weapon: MeleeWeapon,
         target_hd: int
     ) -> AssassinationResult {
+        if !assassination_target_is_vulnerable(target) {
+            error("Assassination requires a surprised or ordinarily sleeping target")
+        }
+        if !target_has_vital_organs(target) {
+            error("Target lacks the vital organs needed for assassination")
+        }
         let level = class_level_for(attacker, Assassin).unwrap()
         let chance = assassination_chance(level, target_hd)
         let d100 = roll(1d100).total
@@ -2214,6 +2236,8 @@ system "OSRIC Combat" {
         requires {
             wielded_melee(attacker).is_some()
             && is_class(attacker, Assassin)
+            && assassination_target_is_vulnerable(target)
+            && target_has_vital_organs(target)
         }
         resolve {
             let weapon = wielded_melee(attacker).unwrap()

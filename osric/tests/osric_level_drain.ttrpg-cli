@@ -132,3 +132,9 @@ spawn Character restore_expired { name: "Fighter4", classes: [ClassLevel { class
 
 let expired_result = apply_restoration(restore_expired, 500000, 7)
 assert_eq expired_result, none
+
+// ── roll_hp_for_level: ranger threshold uses total HD ───────────
+
+rolls 5
+assert_eq roll_hp_for_level(Ranger, 10, 14, 1), 5
+assert_eq roll_hp_for_level(Ranger, 11, 14, 1), 2

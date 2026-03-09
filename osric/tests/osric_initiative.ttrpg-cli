@@ -182,17 +182,21 @@ assert_eq as2.segment, 6
 // ── Fighter multiple attacks ────────────────────────────────────
 
 // has_fighter_multi_attack
-assert_eq has_fighter_multi_attack(Fighter, 7), true
-assert_eq has_fighter_multi_attack(Fighter, 6), false
-assert_eq has_fighter_multi_attack(Paladin, 7), true
+assert_eq has_fighter_multi_attack(Fighter, 8), true
+assert_eq has_fighter_multi_attack(Fighter, 7), false
+assert_eq has_fighter_multi_attack(Paladin, 8), true
 assert_eq has_fighter_multi_attack(Thief, 10), false
 
-// fighter_attacks_this_round: level < 7 always 1
+// fighter_attacks_this_round: level < 8 always 1
 assert_eq fighter_attacks_this_round(6, 1), 1
 assert_eq fighter_attacks_this_round(6, 2), 1
 assert_eq fighter_attacks_this_round(6, 3), 1
 
-// Level 7-12: alternates (odd=1, even=2)
+// Level 8-12: alternates (odd=1, even=2)
+assert_eq fighter_attacks_this_round(7, 1), 1
+assert_eq fighter_attacks_this_round(7, 2), 1
+assert_eq fighter_attacks_this_round(8, 1), 1
+assert_eq fighter_attacks_this_round(8, 2), 2
 assert_eq fighter_attacks_this_round(9, 1), 1
 assert_eq fighter_attacks_this_round(9, 2), 2
 
@@ -202,11 +206,11 @@ assert_eq fighter_attacks_this_round(13, 2), 2
 assert_eq fighter_attacks_this_round(13, 3), 2
 
 // fighter_attack_segments
-assert_eq fighter_attack_segments(7, 2), [1, 10]
-assert_eq fighter_attack_segments(7, 1), [1]
-assert_eq fighter_attack_segments(13, 1), [1, 10]
-assert_eq fighter_attack_segments(13, 2), [1, 10]
-assert_eq fighter_attack_segments(5, 1), []
+assert_eq fighter_attack_segments(8, 2, 4), [4, 10]
+assert_eq fighter_attack_segments(8, 1, 4), [4]
+assert_eq fighter_attack_segments(13, 1, 6), [6, 10]
+assert_eq fighter_attack_segments(13, 2, 6), [6, 10]
+assert_eq fighter_attack_segments(7, 1, 5), []
 
 // ── Spell timing ────────────────────────────────────────────────
 
@@ -568,6 +572,23 @@ assert_eq rmc2_orc.hp, 0
 assert_condition rmc2_orc, Dead
 // Defender unscathed (orc died before charging)
 assert_eq rmc2_defender.hp, 30
+
+
+// ── resolve_action: Set weapon still wins vs longer charger ─────
+rolls clear
+
+spawn Monster rmc3_lancer { name: "Lancer", hit_dice: 1d8 + 1, max_hp: 8, hp: 8, ac: 14, attacks: [MonsterAttack { name: "Lance", damage: 1d8 }], EquipmentSlots {} }
+spawn Character rmc3_defender { name: "Pikeman", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots {} }
+
+let rmc3_charge = build_round_action(rmc3_lancer, ChargeAction, 3, false, some(rmc3_defender), some(Lance))
+let rmc3_set = build_round_action(rmc3_defender, SetAgainstChargeAction, 1, true, some(rmc3_lancer), some(Javelin))
+
+// Even though the charge weapon is longer, the set weapon strikes first.
+rolls 15 4 16 5
+call resolve_action(rmc3_charge, [rmc3_charge, rmc3_set])
+assert_eq rmc3_lancer.hp, 0
+assert_condition rmc3_lancer, Dead
+assert_eq rmc3_defender.hp, 30
 
 
 // ── resolve_round: Monster charges in full round ─────────────────

@@ -29,8 +29,29 @@ system "OSRIC Classes" {
             MagicUser => ClassDef { class: Class.MagicUser, hit_die: 4, bonus_first_hd: 0, max_hit_dice: 11, hp_after_max: 1, combat_group: MagicUserGroup, armour: NoArmour, shield_allowed: false, weapons_any: false, non_prof_penalty: -5, weapon_specialization: false, spell_progression: SpellProgression.MagicUser, has_thief_skills: false, can_backstab: false, can_turn_undead: false, has_exceptional_str: false },
             Monk => ClassDef { class: Class.Monk, hit_die: 4, bonus_first_hd: 0, max_hit_dice: 18, hp_after_max: 0, combat_group: ClericGroup, armour: NoArmour, shield_allowed: false, weapons_any: false, non_prof_penalty: -3, weapon_specialization: false, spell_progression: NonCaster, has_thief_skills: true, can_backstab: false, can_turn_undead: false, has_exceptional_str: false },
             Paladin => ClassDef { class: Class.Paladin, hit_die: 10, bonus_first_hd: 0, max_hit_dice: 9, hp_after_max: 3, combat_group: FighterGroup, armour: AnyArmour, shield_allowed: true, weapons_any: true, non_prof_penalty: -2, weapon_specialization: true, spell_progression: SpellProgression.Paladin, has_thief_skills: false, can_backstab: false, can_turn_undead: true, has_exceptional_str: true },
-            Ranger => ClassDef { class: Class.Ranger, hit_die: 8, bonus_first_hd: 1, max_hit_dice: 10, hp_after_max: 2, combat_group: FighterGroup, armour: AnyArmour, shield_allowed: true, weapons_any: true, non_prof_penalty: -2, weapon_specialization: true, spell_progression: SpellProgression.Ranger, has_thief_skills: false, can_backstab: false, can_turn_undead: false, has_exceptional_str: true },
+            Ranger => ClassDef { class: Class.Ranger, hit_die: 8, bonus_first_hd: 0, max_hit_dice: 11, hp_after_max: 2, combat_group: FighterGroup, armour: AnyArmour, shield_allowed: true, weapons_any: true, non_prof_penalty: -2, weapon_specialization: true, spell_progression: SpellProgression.Ranger, has_thief_skills: false, can_backstab: false, can_turn_undead: false, has_exceptional_str: true },
             Thief => ClassDef { class: Class.Thief, hit_die: 6, bonus_first_hd: 0, max_hit_dice: 10, hp_after_max: 2, combat_group: ThiefGroup, armour: LeatherOnly, shield_allowed: false, weapons_any: false, non_prof_penalty: -3, weapon_specialization: false, spell_progression: NonCaster, has_thief_skills: true, can_backstab: true, can_turn_undead: false, has_exceptional_str: false }
+        }
+    }
+
+    // Rangers begin with 2 HD at level 1; all other OSRIC classes begin with 1.
+    derive class_level_one_hit_dice(class: Class) -> int {
+        if class == Ranger { 2 } else { 1 }
+    }
+
+    // max_hit_dice is tracked as total HD, not class level.
+    derive class_hit_dice_total_for_level(class: Class, level: int) -> int {
+        if level < 1 { 0 }
+        else if class == Ranger { level + 1 }
+        else { level }
+    }
+
+    // Turn undead is level-gated for paladins even though the class carries the feature.
+    derive class_can_turn_undead_at_level(class: Class, level: int) -> bool {
+        match class {
+            Class.Cleric => level >= 1,
+            Class.Paladin => level >= 3,
+            _ => false
         }
     }
 

@@ -17,6 +17,7 @@ use "OSRIC Saves"
 use "OSRIC Multiclass"
 use "OSRIC Thief Skills"
 use "OSRIC Spells"
+use "OSRIC Inventory"
 use "OSRIC Weapon Specialisation"
 
 system "OSRIC Chargen" {
@@ -236,12 +237,34 @@ system "OSRIC Chargen" {
     }
 
     // Roll HP for a single class at level 1.
+    // Rangers begin with 2 HD at first level.
     mechanic roll_single_class_hp(class: Class, con: int) -> int {
         let cd = class_def(class)
-        let die_result = roll(dice(1, cd.hit_die))
+        let hit_dice = class_level_one_hit_dice(class)
+        let die_result = roll(dice(hit_dice, cd.hit_die))
         let con_mod = hp_con_modifier(class, con)
-        let total = die_result.total + con_mod + cd.bonus_first_hd
+        let total = die_result.total + con_mod * hit_dice + cd.bonus_first_hd
         max(1, total)
+    }
+
+    derive sum_first(values: list<int>, count: int) -> int {
+        if count <= 0 { 0 }
+        else { sum([values[i] for i in 0..count]) }
+    }
+
+    // Multi-class level-1 HP needs per-class shares for later drain/restoration.
+    // We preserve the total averaged HP, but split it across classes by
+    // cumulative floor differences so the shares sum back to the actual HP.
+    mechanic roll_multiclass_level_one_hp_shares(
+        classes: list<Class>,
+        con: int
+    ) -> list<int> {
+        let num_classes = len(classes)
+        let per_class_hp = [roll_single_class_hp(c, con) for c in classes]
+        [
+            floor(sum_first(per_class_hp, i + 1) / num_classes) - floor(sum_first(per_class_hp, i) / num_classes)
+            for i in 0..len(classes)
+        ]
     }
 
 
@@ -383,9 +406,9 @@ system "OSRIC Chargen" {
         }
     }
 
-    // Find the first class that can turn undead.
-    derive turner_class_in(classes: list<Class>) -> option<Class> {
-        let turners = [c for c in classes if class_def(c).can_turn_undead]
+    // Find the first class whose current level grants turn undead.
+    derive turner_class_in(class_levels: list<ClassLevel>) -> option<Class> {
+        let turners = [cl.class for cl in class_levels if class_can_turn_undead_at_level(cl.class, cl.level)]
         if len(turners) > 0 {
             some(first(turners).unwrap())
         } else {
@@ -401,6 +424,86 @@ system "OSRIC Chargen" {
     prompt choose_name() -> string {
         hint: "Enter your character's name"
         suggest: "Adventurer"
+    }
+
+    function build_character(
+        name: string,
+        ancestry: Ancestry,
+        classes: list<Class>,
+        alignment: Alignment,
+        abilities: map<Ability, int>
+    ) -> Character {
+        let classing_mode = if len(classes) > 1 { ClassingMode.Multi } else { ClassingMode.Single }
+        let class_levels = [ClassLevel { class: c, level: 1, xp: 0 } for c in classes]
+
+        let num_cls = len(classes)
+        let con_score = abilities[CON]
+        let hp_roll_amounts: list<int> = if num_cls == 1 {
+            [roll_single_class_hp(first(classes).unwrap(), con_score)]
+        } else {
+            roll_multiclass_level_one_hp_shares(classes, con_score)
+        }
+        let hp = sum(hp_roll_amounts)
+        let hp_rolls = [HpRoll { class: classes[i], level: 1, amount: hp_roll_amounts[i] } for i in 0..len(classes)]
+
+        let gold = roll_starting_gold(first(classes).unwrap())
+        let has_exc_str = qualifies_for_exceptional_str(classes, abilities[STR])
+
+        let saves = if num_cls == 1 {
+            saving_throws_for(first(classes).unwrap(), 1)
+        } else {
+            let all_saves = [saving_throws_for(c, 1) for c in classes]
+            SavingThrows {
+                aimed_magic: first(sort([s.aimed_magic for s in all_saves])).unwrap(),
+                breath: first(sort([s.breath for s in all_saves])).unwrap(),
+                death_paralysis_poison: first(sort([s.death_paralysis_poison for s in all_saves])).unwrap(),
+                petrification_polymorph: first(sort([s.petrification_polymorph for s in all_saves])).unwrap(),
+                spells: first(sort([s.spells for s in all_saves])).unwrap()
+            }
+        }
+
+        let char = Character {
+            name: name,
+            classes: class_levels,
+            classing_mode: classing_mode,
+            ancestry: ancestry,
+            alignment: alignment,
+            abilities: abilities,
+            HitPoints { max_hp: hp, hp: hp },
+            base_movement: base_movement(ancestry),
+            hp_rolls: hp_rolls,
+            saving_throws: some(saves)
+        }
+
+        if has_exc_str {
+            let pct = roll_exceptional_strength()
+            grant char.ExceptionalStrength { percentile: pct }
+        }
+
+        let maybe_caster = caster_class_in(classes)
+        if maybe_caster != none {
+            let caster = maybe_caster.unwrap()
+            let prog = class_def(caster).spell_progression
+            let slots = initial_spell_slots(prog, abilities[WIS])
+            grant char.Spellcasting { spell_slots: slots }
+        }
+
+        let maybe_thief = thief_class_in(classes)
+        if maybe_thief != none {
+            let thief_cls = maybe_thief.unwrap()
+            let skills = initial_thief_skills(thief_cls, abilities[DEX], ancestry)
+            grant char.ThiefSkills { skills: skills }
+        }
+
+        let maybe_turner = turner_class_in(class_levels)
+        if maybe_turner != none {
+            grant char.TurnUndead {}
+        }
+
+        grant char.Inventory { coins: CoinPurse { gp: gold } }
+        grant char.HenchmanMorale { morale_base: cha_loyalty(abilities[CHA]) }
+
+        char
     }
 
 
@@ -476,119 +579,12 @@ system "OSRIC Chargen" {
             [chosen_class]
         }
 
-        let classing_mode = if len(classes) > 1 { ClassingMode.Multi } else { ClassingMode.Single }
-        let class_levels = [ClassLevel { class: c, level: 1, xp: 0 } for c in classes]
-
-
         // --- Step 4: Alignment ---
         let valid_aligns = valid_alignments(classes)
         let alignment = choose_alignment(valid_aligns)
 
-
-        // --- Step 5: HP ---
-        let num_cls = len(classes)
-        let con_score = abilities[CON]
-
-        let hp: int = if num_cls == 1 {
-            roll_single_class_hp(first(classes).unwrap(), con_score)
-        } else {
-            // Multi-class: roll each HD, add CON, sum, divide by num classes.
-            // Sum individual rolls then average.
-            let per_class_hp = [roll_single_class_hp(c, con_score) for c in classes]
-            let total = sum(per_class_hp)
-            max(1, floor(total / num_cls))
-        }
-
-        let hp_rolls = [HpRoll { class: c, level: 1, amount: hp } for c in classes]
-
-
-        // --- Step 6: Starting gold ---
-        // Use primary class for gold (first in list)
-        let gold = roll_starting_gold(first(classes).unwrap())
-
-
-        // --- Step 7: Exceptional strength ---
-        let has_exc_str = qualifies_for_exceptional_str(classes, abilities[STR])
-
-
-        // --- Step 8: Saving throws ---
-        let saves = if num_cls == 1 {
-            saving_throws_for(first(classes).unwrap(), 1)
-        } else {
-            // Best save across all classes at level 1
-            let all_saves = [saving_throws_for(c, 1) for c in classes]
-            SavingThrows {
-                aimed_magic: first(sort([s.aimed_magic for s in all_saves])).unwrap(),
-                breath: first(sort([s.breath for s in all_saves])).unwrap(),
-                death_paralysis_poison: first(sort([s.death_paralysis_poison for s in all_saves])).unwrap(),
-                petrification_polymorph: first(sort([s.petrification_polymorph for s in all_saves])).unwrap(),
-                spells: first(sort([s.spells for s in all_saves])).unwrap()
-            }
-        }
-
-
-        // --- Step 9: Name ---
+        // --- Step 5: Name ---
         let name = choose_name()
-
-
-        // --- Step 10: Construct Character ---
-        let movement = base_movement(ancestry)
-
-        let char = Character {
-            name: name,
-            classes: class_levels,
-            classing_mode: classing_mode,
-            ancestry: ancestry,
-            alignment: alignment,
-            abilities: abilities,
-            HitPoints { max_hp: hp, hp: hp },
-            base_movement: movement,
-            hp_rolls: hp_rolls,
-            saving_throws: some(saves)
-        }
-
-
-        // --- Step 11: Grant optional groups ---
-
-        // Exceptional strength
-        if has_exc_str {
-            let pct = roll_exceptional_strength()
-            grant char.ExceptionalStrength { percentile: pct }
-        }
-
-        // Spellcasting
-        let maybe_caster = caster_class_in(classes)
-        if maybe_caster != none {
-            let caster = maybe_caster.unwrap()
-            let prog = class_def(caster).spell_progression
-            let slots = initial_spell_slots(prog, abilities[WIS])
-            grant char.Spellcasting { spell_slots: slots }
-        }
-
-        // Thief skills
-        let maybe_thief = thief_class_in(classes)
-        if maybe_thief != none {
-            let thief_cls = maybe_thief.unwrap()
-            let skills = initial_thief_skills(thief_cls, abilities[DEX], ancestry)
-            grant char.ThiefSkills { skills: skills }
-        }
-
-        // Turn undead
-        let maybe_turner = turner_class_in(classes)
-        if maybe_turner != none {
-            grant char.TurnUndead {}
-        }
-
-        // Weapon specialization (fighter-types only)
-        if any([class_def(c).weapon_specialization for c in classes]) {
-            // For simplicity at chargen, no specialization by default.
-            // Weapon specialization is chosen during play or at DM discretion.
-        }
-
-        // Henchman morale (based on CHA)
-        let loyalty = cha_loyalty(abilities[CHA])
-        grant char.HenchmanMorale { morale_base: loyalty }
-
-        char
+        build_character(name, ancestry, classes, alignment, abilities)
     }
 }

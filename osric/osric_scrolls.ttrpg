@@ -29,6 +29,7 @@ use "OSRIC Combat"
 use "OSRIC Conditions"
 use "OSRIC Equipment"
 use "OSRIC Inventory"
+use "OSRIC Saves"
 use "OSRIC Spells"
 use "OSRIC Spell Registry"
 
@@ -59,13 +60,18 @@ system "OSRIC Scrolls" {
     //  §2.13.3.1
     // ========================================================
 
+    derive class_level(char: Character, cls: Class) -> int {
+        let levels = [cl.level for cl in char.classes if cl.class == cls]
+        if len(levels) > 0 { first(levels).unwrap() } else { 0 }
+    }
+
     derive can_use_spell_scroll(char: Character, scroll_class: SpellClassType) -> bool {
-        let primary_class = first(char.classes).unwrap().class
+        let thief_level = class_level(char, Thief)
         match scroll_class {
-            Arcane     => primary_class == Class.MagicUser || primary_class == Class.Ranger,
-            Phantasmal => primary_class == Class.Illusionist,
-            Divine     => primary_class == Class.Cleric || primary_class == Class.Paladin,
-            Druidic    => primary_class == Class.Druid || primary_class == Class.Ranger
+            Arcane     => class_level(char, Class.MagicUser) > 0 || thief_level >= 10,
+            Phantasmal => class_level(char, Class.Illusionist) > 0 || thief_level >= 10,
+            Divine     => class_level(char, Class.Cleric) > 0,
+            Druidic    => class_level(char, Class.Druid) > 0 || class_level(char, Class.Ranger) > 0 || thief_level >= 10
         }
     }
 
@@ -96,11 +102,19 @@ system "OSRIC Scrolls" {
     //  §2.13.3.1
     // ========================================================
 
+    derive minimum_spellcasting_level(progression: SpellProgression, spell_level: int) -> int {
+        let eligible_levels = [level for level in 1..20 if spell_slots_for(progression, level, spell_level) > 0]
+        if len(eligible_levels) > 0 { first(eligible_levels).unwrap() } else { 0 }
+    }
+
+    derive minimum_scroll_use_level(progression: SpellProgression, spell_level: int) -> int {
+        let base = minimum_spellcasting_level(progression, spell_level)
+        if base > 0 { base + 1 } else { 0 }
+    }
+
     derive scroll_failure_chance(caster_level: int, spell_level: int, progression: SpellProgression) -> int {
-        // Determine minimum caster level needed for this spell level.
-        // Use a simple heuristic: spell level * 2 - 1 for arcane,
-        // spell level * 2 - 1 for divine (close enough for OSRIC).
-        let min_level = spell_level * 2 - 1
+        let min_level = minimum_scroll_use_level(progression, spell_level)
+        if min_level <= 0 { 0 }
         if caster_level >= min_level { 0 }
         else { (min_level - caster_level) * 5 }
     }
@@ -314,45 +328,171 @@ system "OSRIC Scrolls" {
     //  use "stacking first" to prevent stacking.
     // ========================================================
 
-    condition ScrollAcidWarding on bearer: entity
-        stacking first
-    {}
+    derive has_condition_named(subject: entity, cond_name: string) -> bool {
+        any([c.name == cond_name for c in conditions(subject)])
+    }
 
-    condition ScrollDemonWarding on bearer: entity
-        stacking first
-    {}
+    derive matches_elemental_ward(attacker: entity, ward_type: ElementalWardType) -> bool {
+        match ward_type {
+            Air           => has_condition_named(attacker, "AirElemental"),
+            Earth         => has_condition_named(attacker, "EarthElemental"),
+            Fire          => has_condition_named(attacker, "FireElemental"),
+            Water         => has_condition_named(attacker, "WaterElemental"),
+            AllElementals => any([
+                has_condition_named(attacker, "AirElemental"),
+                has_condition_named(attacker, "EarthElemental"),
+                has_condition_named(attacker, "FireElemental"),
+                has_condition_named(attacker, "WaterElemental"),
+                has_condition_named(attacker, "Elemental")
+            ])
+        }
+    }
 
-    condition ScrollDevilWarding on bearer: entity
-        stacking first
-    {}
+    derive matches_lycanthrope_ward(attacker: entity, ward_type: LycanthropeWardType) -> bool {
+        match ward_type {
+            Werebears        => has_condition_named(attacker, "Werebear"),
+            Wereboars        => has_condition_named(attacker, "Wereboar"),
+            Wererats         => has_condition_named(attacker, "Wererat"),
+            Weretigers       => has_condition_named(attacker, "Weretiger"),
+            Werewolves       => has_condition_named(attacker, "Werewolf"),
+            AllLycanthropes  => any([
+                has_condition_named(attacker, "Werebear"),
+                has_condition_named(attacker, "Wereboar"),
+                has_condition_named(attacker, "Wererat"),
+                has_condition_named(attacker, "Weretiger"),
+                has_condition_named(attacker, "Werewolf"),
+                has_condition_named(attacker, "Lycanthrope")
+            ]),
+            AllShapeChangers => any([
+                has_condition_named(attacker, "Werebear"),
+                has_condition_named(attacker, "Wereboar"),
+                has_condition_named(attacker, "Wererat"),
+                has_condition_named(attacker, "Weretiger"),
+                has_condition_named(attacker, "Werewolf"),
+                has_condition_named(attacker, "Lycanthrope"),
+                has_condition_named(attacker, "ShapeChanger")
+            ])
+        }
+    }
 
-    condition ScrollElementalWarding(ward_type: ElementalWardType, hd_capacity: int) on bearer: entity
+    condition ScrollAcidWarding on bearer: Character
         stacking first
-    {}
+    {
+        modify [#damage_dealt](target: bearer) {
+            result = if damage_type == DamageType.Acid || damage_type == DamageType.Corrosion { 0 } else { result }
+        }
+    }
 
-    condition ScrollLycanthropeWarding(ward_type: LycanthropeWardType) on bearer: entity
+    condition ScrollDemonWarding on bearer: Character
         stacking first
-    {}
+    {
+        modify [#attack_resolution](target: bearer) {
+            if has_condition_named(attacker, "Demon") {
+                result.outcome = AttackOutcome.Miss
+                result.damage = 0
+            }
+        }
+    }
 
-    condition ScrollMagicWarding on bearer: entity
+    condition ScrollDevilWarding on bearer: Character
         stacking first
-    {}
+    {
+        modify [#attack_resolution](target: bearer) {
+            if has_condition_named(attacker, "Devil") {
+                result.outcome = AttackOutcome.Miss
+                result.damage = 0
+            }
+        }
+    }
 
-    condition ScrollPetrifactionWarding on bearer: entity
+    condition ScrollElementalWarding(ward_type: ElementalWardType, hd_capacity: int) on bearer: Character
         stacking first
-    {}
+    {
+        modify [#attack_resolution](target: bearer) {
+            if matches_elemental_ward(attacker, ward_type) {
+                result.outcome = AttackOutcome.Miss
+                result.damage = 0
+            }
+        }
+    }
 
-    condition ScrollPolymorphWarding on bearer: entity
+    condition ScrollLycanthropeWarding(ward_type: LycanthropeWardType) on bearer: Character
         stacking first
-    {}
+    {
+        modify [#attack_resolution](target: bearer) {
+            if matches_lycanthrope_ward(attacker, ward_type) {
+                result.outcome = AttackOutcome.Miss
+                result.damage = 0
+            }
+        }
+    }
 
-    condition ScrollPossessionWarding on bearer: entity
+    condition ScrollMagicWarding on bearer: Character
         stacking first
-    {}
+    {
+        modify character_best_saves(char: bearer) {
+            result = SavingThrows {
+                aimed_magic: max(2, result.aimed_magic - 2),
+                breath: result.breath,
+                death_paralysis_poison: result.death_paralysis_poison,
+                petrification_polymorph: result.petrification_polymorph,
+                spells: max(2, result.spells - 2)
+            }
+        }
+    }
 
-    condition ScrollUndeadWarding(hd_warded: int) on bearer: entity
+    condition ScrollPetrifactionWarding on bearer: Character
         stacking first
-    {}
+    {
+        modify character_best_saves(char: bearer) {
+            result = SavingThrows {
+                aimed_magic: result.aimed_magic,
+                breath: result.breath,
+                death_paralysis_poison: result.death_paralysis_poison,
+                petrification_polymorph: max(2, result.petrification_polymorph - 4),
+                spells: result.spells
+            }
+        }
+    }
+
+    condition ScrollPolymorphWarding on bearer: Character
+        stacking first
+    {
+        modify character_best_saves(char: bearer) {
+            result = SavingThrows {
+                aimed_magic: result.aimed_magic,
+                breath: result.breath,
+                death_paralysis_poison: result.death_paralysis_poison,
+                petrification_polymorph: max(2, result.petrification_polymorph - 4),
+                spells: result.spells
+            }
+        }
+    }
+
+    condition ScrollPossessionWarding on bearer: Character
+        stacking first
+    {
+        modify character_best_saves(char: bearer) {
+            result = SavingThrows {
+                aimed_magic: result.aimed_magic,
+                breath: result.breath,
+                death_paralysis_poison: result.death_paralysis_poison,
+                petrification_polymorph: result.petrification_polymorph,
+                spells: max(2, result.spells - 4)
+            }
+        }
+    }
+
+    condition ScrollUndeadWarding(hd_warded: int) on bearer: Character
+        stacking first
+    {
+        modify [#attack_resolution](target: bearer) {
+            if has_condition_named(attacker, "Undead") {
+                result.outcome = AttackOutcome.Miss
+                result.damage = 0
+            }
+        }
+    }
 
 
     // ========================================================
@@ -362,30 +502,45 @@ system "OSRIC Scrolls" {
     //  Rolls duration from the warding definition's dice.
     // ========================================================
 
+    mechanic roll_warding_duration(warding: WardingType) -> int {
+        match warding {
+            AcidWarding         => roll(5d6).total,
+            DemonWarding        => roll(5d4).total,
+            DevilWarding        => roll(5d4).total,
+            ElementalWarding    => roll(5d8).total,
+            LycanthropeWarding  => roll(5d6).total,
+            MagicWarding        => roll(5d6).total,
+            PetrifactionWarding => roll(5d4).total,
+            PolymorphWarding    => 60,
+            PossessionWarding   => roll(10d6).total,
+            UndeadWarding       => roll(10d8).total
+        }
+    }
+
     function resolve_acid_warding(reader: Character) {
         let def = warding_def(WardingType.AcidWarding)
-        let duration = roll(def.duration_dice).total
+        let duration = roll_warding_duration(WardingType.AcidWarding)
         apply_condition(reader, ScrollAcidWarding, Duration.Rounds(duration))
         emit WardingActivated(reader: reader, warding_type: def.name, duration_rounds: duration)
     }
 
     function resolve_demon_warding(reader: Character) {
         let def = warding_def(WardingType.DemonWarding)
-        let duration = roll(def.duration_dice).total
+        let duration = roll_warding_duration(WardingType.DemonWarding)
         apply_condition(reader, ScrollDemonWarding, Duration.Rounds(duration))
         emit WardingActivated(reader: reader, warding_type: def.name, duration_rounds: duration)
     }
 
     function resolve_devil_warding(reader: Character) {
         let def = warding_def(WardingType.DevilWarding)
-        let duration = roll(def.duration_dice).total
+        let duration = roll_warding_duration(WardingType.DevilWarding)
         apply_condition(reader, ScrollDevilWarding, Duration.Rounds(duration))
         emit WardingActivated(reader: reader, warding_type: def.name, duration_rounds: duration)
     }
 
     function resolve_elemental_warding(reader: Character, ward_type: ElementalWardType) {
         let def = warding_def(WardingType.ElementalWarding)
-        let duration = roll(def.duration_dice).total
+        let duration = roll_warding_duration(WardingType.ElementalWarding)
         let hd_cap = elemental_ward_hd_capacity(ward_type)
         apply_condition(reader, ScrollElementalWarding(ward_type: ward_type, hd_capacity: hd_cap), Duration.Rounds(duration))
         emit WardingActivated(reader: reader, warding_type: def.name, duration_rounds: duration)
@@ -393,21 +548,21 @@ system "OSRIC Scrolls" {
 
     function resolve_lycanthrope_warding(reader: Character, ward_type: LycanthropeWardType) {
         let def = warding_def(WardingType.LycanthropeWarding)
-        let duration = roll(def.duration_dice).total
+        let duration = roll_warding_duration(WardingType.LycanthropeWarding)
         apply_condition(reader, ScrollLycanthropeWarding(ward_type: ward_type), Duration.Rounds(duration))
         emit WardingActivated(reader: reader, warding_type: def.name, duration_rounds: duration)
     }
 
     function resolve_magic_warding(reader: Character) {
         let def = warding_def(WardingType.MagicWarding)
-        let duration = roll(def.duration_dice).total
+        let duration = roll_warding_duration(WardingType.MagicWarding)
         apply_condition(reader, ScrollMagicWarding, Duration.Rounds(duration))
         emit WardingActivated(reader: reader, warding_type: def.name, duration_rounds: duration)
     }
 
     function resolve_petrifaction_warding(reader: Character) {
         let def = warding_def(WardingType.PetrifactionWarding)
-        let duration = roll(def.duration_dice).total
+        let duration = roll_warding_duration(WardingType.PetrifactionWarding)
         apply_condition(reader, ScrollPetrifactionWarding, Duration.Rounds(duration))
         emit WardingActivated(reader: reader, warding_type: def.name, duration_rounds: duration)
     }
@@ -421,14 +576,14 @@ system "OSRIC Scrolls" {
 
     function resolve_possession_warding(reader: Character) {
         let def = warding_def(WardingType.PossessionWarding)
-        let duration = roll(def.duration_dice).total
+        let duration = roll_warding_duration(WardingType.PossessionWarding)
         apply_condition(reader, ScrollPossessionWarding, Duration.Rounds(duration))
         emit WardingActivated(reader: reader, warding_type: def.name, duration_rounds: duration)
     }
 
     function resolve_undead_warding(reader: Character) {
         let def = warding_def(WardingType.UndeadWarding)
-        let duration = roll(def.duration_dice).total
+        let duration = roll_warding_duration(WardingType.UndeadWarding)
         // Wards off 35 HD of undead
         apply_condition(reader, ScrollUndeadWarding(hd_warded: 35), Duration.Rounds(duration))
         emit WardingActivated(reader: reader, warding_type: def.name, duration_rounds: duration)
@@ -468,8 +623,7 @@ system "OSRIC Scrolls" {
             emit ScrollRead(reader: reader, scroll_name: scroll_name)
 
             // Check for under-level failure
-            let level = first(reader.classes).unwrap().level
-            let failure = scroll_failure_chance(level, def.level, reader_progression(reader))
+            let failure = scroll_failure_chance_for_reader(reader, scroll_class, def.level)
 
             if failure > 0 {
                 let failed = check_scroll_failure(failure)
@@ -488,18 +642,46 @@ system "OSRIC Scrolls" {
         }
     }
 
-    // Helper: determine the reader's spell progression for failure calc.
-    derive reader_progression(reader: Character) -> SpellProgression {
-        let primary_class = first(reader.classes).unwrap().class
-        match primary_class {
-            Cleric      => SpellProgression.Cleric,
-            Druid       => SpellProgression.Druid,
-            MagicUser   => SpellProgression.MagicUser,
-            Illusionist => SpellProgression.Illusionist,
-            Paladin     => SpellProgression.Paladin,
-            Ranger      => SpellProgression.Ranger,
-            _           => SpellProgression.NonCaster
+    // Determine the class progression and level relevant to this scroll.
+    derive scroll_reader_progression(reader: Character, scroll_class: SpellClassType) -> SpellProgression {
+        match scroll_class {
+            Arcane => if class_level(reader, Class.MagicUser) > 0 { SpellProgression.MagicUser } else { SpellProgression.NonCaster },
+            Phantasmal => if class_level(reader, Class.Illusionist) > 0 { SpellProgression.Illusionist } else { SpellProgression.NonCaster },
+            Divine => if class_level(reader, Class.Cleric) > 0 { SpellProgression.Cleric } else { SpellProgression.NonCaster },
+            Druidic => {
+                if class_level(reader, Class.Druid) > 0 { SpellProgression.Druid }
+                else if class_level(reader, Class.Ranger) > 0 { SpellProgression.Ranger }
+                else { SpellProgression.NonCaster }
+            }
         }
+    }
+
+    derive scroll_reader_level(reader: Character, scroll_class: SpellClassType) -> int {
+        match scroll_class {
+            Arcane => {
+                let mu_level = class_level(reader, Class.MagicUser)
+                if mu_level > 0 { mu_level } else { class_level(reader, Thief) }
+            },
+            Phantasmal => {
+                let illusionist_level = class_level(reader, Class.Illusionist)
+                if illusionist_level > 0 { illusionist_level } else { class_level(reader, Thief) }
+            },
+            Divine => class_level(reader, Class.Cleric),
+            Druidic => {
+                let druid_level = class_level(reader, Class.Druid)
+                if druid_level > 0 { druid_level }
+                else {
+                    let ranger_level = class_level(reader, Class.Ranger)
+                    if ranger_level > 0 { ranger_level } else { class_level(reader, Thief) }
+                }
+            }
+        }
+    }
+
+    derive scroll_failure_chance_for_reader(reader: Character, scroll_class: SpellClassType, spell_level: int) -> int {
+        let progression = scroll_reader_progression(reader, scroll_class)
+        if progression == SpellProgression.NonCaster { 0 }
+        else { scroll_failure_chance(scroll_reader_level(reader, scroll_class), spell_level, progression) }
     }
 
 
