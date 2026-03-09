@@ -22,6 +22,48 @@ pub struct EntityRef(pub u64);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct InvocationId(pub u64);
 
+// ── ConditionArgs ───────────────────────────────────────────────
+
+/// Arguments for applying a condition, with sensible defaults.
+///
+/// Most callers only need the condition name and target entity (passed
+/// separately to `apply_condition`). This struct bundles the optional
+/// fields so that new additions (like `source`) don't force every
+/// callsite to update.
+///
+/// ```ignore
+/// // Minimal: all defaults
+/// state.apply_condition(&entity, "Prone", ConditionArgs::default());
+///
+/// // With overrides:
+/// state.apply_condition(&entity, "Prone", ConditionArgs {
+///     duration: duration_variant("Rounds"),
+///     ..Default::default()
+/// });
+/// ```
+#[derive(Debug, Clone)]
+pub struct ConditionArgs {
+    /// Condition parameters (e.g., `source: Entity(1)` for `Frightened(source: attacker)`).
+    pub params: BTreeMap<Name, Value>,
+    /// Duration value (e.g., `duration_variant("Rounds")`). Default: `Value::Void`.
+    pub duration: Value,
+    /// The invocation that applied this condition, if any. Default: `None`.
+    pub invocation: Option<InvocationId>,
+    /// Effect source metadata. Default: `EffectSource.Unknown`.
+    pub source: Value,
+}
+
+impl Default for ConditionArgs {
+    fn default() -> Self {
+        Self {
+            params: BTreeMap::new(),
+            duration: Value::Void,
+            invocation: None,
+            source: crate::value::effect_source_unknown(),
+        }
+    }
+}
+
 // ── ActiveCondition ─────────────────────────────────────────────
 
 /// An active condition on an entity.

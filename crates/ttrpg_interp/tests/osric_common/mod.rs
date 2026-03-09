@@ -13,7 +13,8 @@ use ttrpg_interp::adapter::StateAdapter;
 use ttrpg_interp::effect::{Effect, EffectHandler, Response};
 use ttrpg_interp::reference_state::GameState;
 use ttrpg_interp::state::{EntityRef, StateProvider, WritableState};
-use ttrpg_interp::value::{effect_source_unknown, DiceExpr, RollResult, Value};
+use ttrpg_interp::state::ConditionArgs;
+use ttrpg_interp::value::{DiceExpr, RollResult, Value};
 use ttrpg_interp::Interpreter;
 
 // ── Compilation ────────────────────────────────────────────────
@@ -1237,14 +1238,11 @@ pub fn grant_weapon_spec(
 pub fn apply_encumbrance(state: &mut GameState, entity: &EntityRef, tier_variant: &str) {
     let mut params = BTreeMap::new();
     params.insert(Name::from("tier"), tier(tier_variant));
-    state.apply_condition(
-        entity,
-        "EncumbranceState",
+    state.apply_condition(entity, "EncumbranceState", ConditionArgs {
         params,
-        Value::Option(None),
-        None,
-        effect_source_unknown(),
-    );
+        duration: Value::Option(None),
+        ..Default::default()
+    });
 }
 
 // ── OSRIC source loading ───────────────────────────────────────
@@ -1992,24 +1990,39 @@ pub fn run_all_conditions(interp: &Interpreter) {
         "Surprised",
         "RearAttacked",
     ] {
-        state.apply_condition(&target, cond, BTreeMap::new(), Value::Option(None), None, effect_source_unknown());
+        state.apply_condition(&target, cond, ConditionArgs {
+            duration: Value::Option(None),
+            ..Default::default()
+        });
     }
 
     // Apply parameterised conditions
     {
         let mut params = BTreeMap::new();
         params.insert(Name::from("level"), Value::Int(2));
-        state.apply_condition(&target, "Concealed", params, Value::Option(None), None, effect_source_unknown());
+        state.apply_condition(&target, "Concealed", ConditionArgs {
+            params,
+            duration: Value::Option(None),
+            ..Default::default()
+        });
     }
     {
         let mut params = BTreeMap::new();
         params.insert(Name::from("penalty"), Value::Int(-4));
-        state.apply_condition(&target, "Cover", params, Value::Option(None), None, effect_source_unknown());
+        state.apply_condition(&target, "Cover", ConditionArgs {
+            params,
+            duration: Value::Option(None),
+            ..Default::default()
+        });
     }
     {
         let mut params = BTreeMap::new();
         params.insert(Name::from("parry_bonus"), Value::Int(2));
-        state.apply_condition(&target, "Parrying", params, Value::Option(None), None, effect_source_unknown());
+        state.apply_condition(&target, "Parrying", ConditionArgs {
+            params,
+            duration: Value::Option(None),
+            ..Default::default()
+        });
     }
 
     // Exercise resolve_melee_attack with conditions active

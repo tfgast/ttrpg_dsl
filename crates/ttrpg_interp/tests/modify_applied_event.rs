@@ -13,7 +13,8 @@ use ttrpg_interp::adapter::StateAdapter;
 use ttrpg_interp::effect::{Effect, EffectHandler, Response};
 use ttrpg_interp::reference_state::GameState;
 use ttrpg_interp::state::StateProvider;
-use ttrpg_interp::value::{effect_source_unknown, Value};
+use ttrpg_interp::state::ConditionArgs;
+use ttrpg_interp::value::Value;
 use ttrpg_interp::Interpreter;
 
 // ── Setup ──────────────────────────────────────────────────────
@@ -162,14 +163,7 @@ system "test" {
     let entity = state.add_entity("Character", fields);
 
     // Grant Blessed condition
-    state.apply_condition(
-        &entity,
-        "Blessed",
-        std::collections::BTreeMap::new(),
-        Value::Void,
-        None,
-        effect_source_unknown(),
-    );
+    state.apply_condition(&entity, "Blessed", ConditionArgs::default());
 
     let adapter = StateAdapter::new(state);
     let mut handler = ScriptedHandler::new();
@@ -223,14 +217,7 @@ system "test" {
     fields.insert("last_modified_fn".into(), Value::Str("none".into()));
     let entity = state.add_entity("Character", fields);
 
-    state.apply_condition(
-        &entity,
-        "Blessed",
-        std::collections::BTreeMap::new(),
-        Value::Void,
-        None,
-        effect_source_unknown(),
-    );
+    state.apply_condition(&entity, "Blessed", ConditionArgs::default());
 
     let adapter = StateAdapter::new(state);
     let mut handler = ScriptedHandler::new();
@@ -284,14 +271,7 @@ system "test" {
     fields.insert("HP".into(), Value::Int(10));
     let entity = state.add_entity("Character", fields);
 
-    state.apply_condition(
-        &entity,
-        "OneTimeBoost",
-        std::collections::BTreeMap::new(),
-        Value::Void,
-        None,
-        effect_source_unknown(),
-    );
+    state.apply_condition(&entity, "OneTimeBoost", ConditionArgs::default());
 
     // Verify condition exists before
     assert_eq!(state.read_conditions(&entity).unwrap().len(), 1);
@@ -348,14 +328,7 @@ system "test" {
     fields.insert("HP".into(), Value::Int(10));
     let entity = state.add_entity("Character", fields);
 
-    state.apply_condition(
-        &entity,
-        "Blessed",
-        std::collections::BTreeMap::new(),
-        Value::Void,
-        None,
-        effect_source_unknown(),
-    );
+    state.apply_condition(&entity, "Blessed", ConditionArgs::default());
 
     let adapter = StateAdapter::new(state);
     let mut handler = ScriptedHandler::new();
@@ -422,14 +395,7 @@ system "test" {
     fields.insert("counter".into(), Value::Int(0));
     let entity = state.add_entity("Character", fields);
 
-    state.apply_condition(
-        &entity,
-        "DoubleModify",
-        std::collections::BTreeMap::new(),
-        Value::Void,
-        None,
-        effect_source_unknown(),
-    );
+    state.apply_condition(&entity, "DoubleModify", ConditionArgs::default());
 
     let adapter = StateAdapter::new(state);
     let mut handler = ScriptedHandler::new();

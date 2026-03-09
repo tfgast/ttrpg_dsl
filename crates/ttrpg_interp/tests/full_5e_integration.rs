@@ -14,8 +14,8 @@ use ttrpg_ast::FileId;
 use ttrpg_interp::adapter::StateAdapter;
 use ttrpg_interp::effect::{ActionKind, Effect, EffectHandler, Response};
 use ttrpg_interp::reference_state::{GameState, GridPosition};
-use ttrpg_interp::state::{EntityRef, StateProvider};
-use ttrpg_interp::value::{duration_variant, effect_source_unknown, DiceExpr, RollResult, Value};
+use ttrpg_interp::state::{ConditionArgs, EntityRef, StateProvider};
+use ttrpg_interp::value::{duration_variant, DiceExpr, RollResult, Value};
 use ttrpg_interp::Interpreter;
 
 // ── Setup ──────────────────────────────────────────────────────
@@ -1224,10 +1224,10 @@ fn prone_on_attacker_disadvantage() {
     state.apply_condition(
         &fighter,
         "Prone",
-        BTreeMap::new(),
-        duration_variant("indefinite"),
-        None,
-        effect_source_unknown(),
+        ConditionArgs {
+            duration: duration_variant("indefinite"),
+            ..Default::default()
+        },
     );
 
     // Call attack_roll — should have disadvantage (2d20kl1)
@@ -1291,10 +1291,10 @@ fn prone_on_target_melee_advantage() {
     state.apply_condition(
         &goblin,
         "Prone",
-        BTreeMap::new(),
-        duration_variant("indefinite"),
-        None,
-        effect_source_unknown(),
+        ConditionArgs {
+            duration: duration_variant("indefinite"),
+            ..Default::default()
+        },
     );
 
     // Fighter is at (0,0), Goblin at (1,0) → distance=1 <= 5 → advantage
@@ -1406,10 +1406,10 @@ fn prone_on_target_ranged_disadvantage() {
     state.apply_condition(
         &goblin,
         "Prone",
-        BTreeMap::new(),
-        duration_variant("indefinite"),
-        None,
-        effect_source_unknown(),
+        ConditionArgs {
+            duration: duration_variant("indefinite"),
+            ..Default::default()
+        },
     );
 
     // Responses consumed: ModifyApplied(Ack), RollDice(roll)
@@ -1464,10 +1464,10 @@ fn prone_modifies_initial_budget() {
     state.apply_condition(
         &fighter,
         "Prone",
-        BTreeMap::new(),
-        duration_variant("indefinite"),
-        None,
-        effect_source_unknown(),
+        ConditionArgs {
+            duration: duration_variant("indefinite"),
+            ..Default::default()
+        },
     );
 
     let mut handler = ScriptedHandler::new();
@@ -1512,10 +1512,10 @@ fn disengaging_suppresses_entity_leaves_reach() {
     state.apply_condition(
         &goblin,
         "Disengaging",
-        BTreeMap::new(),
-        duration_variant("end_of_turn"),
-        None,
-        effect_source_unknown(),
+        ConditionArgs {
+            duration: duration_variant("end_of_turn"),
+            ..Default::default()
+        },
     );
 
     let payload = Value::Struct {
@@ -1700,10 +1700,10 @@ fn stunned_auto_fails_str_save() {
     state.apply_condition(
         &fighter,
         "Stunned",
-        BTreeMap::new(),
-        duration_variant("indefinite"),
-        None,
-        effect_source_unknown(),
+        ConditionArgs {
+            duration: duration_variant("indefinite"),
+            ..Default::default()
+        },
     );
 
     // Pattern A: mode changed to auto_fail → mechanic returns immediately, no roll.
@@ -1749,10 +1749,10 @@ fn stunned_does_not_affect_wis_save() {
     state.apply_condition(
         &fighter,
         "Stunned",
-        BTreeMap::new(),
-        duration_variant("indefinite"),
-        None,
-        effect_source_unknown(),
+        ConditionArgs {
+            duration: duration_variant("indefinite"),
+            ..Default::default()
+        },
     );
 
     // Fighter WIS=12, modifier(12)=1, prof=0 → 1d20+1
@@ -1792,10 +1792,10 @@ fn petrified_overrides_str_save_result() {
     state.apply_condition(
         &fighter,
         "Petrified",
-        BTreeMap::new(),
-        duration_variant("indefinite"),
-        None,
-        effect_source_unknown(),
+        ConditionArgs {
+            duration: duration_variant("indefinite"),
+            ..Default::default()
+        },
     );
 
     // Pattern B: body runs normally (roll happens), then result is overridden in Phase 2.

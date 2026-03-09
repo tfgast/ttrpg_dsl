@@ -6,7 +6,9 @@ use rustc_hash::FxHashMap;
 use ttrpg_ast::Name;
 
 use crate::effect::FieldPathSegment;
-use crate::state::{ActiveCondition, EntityRef, InvocationId, StateProvider, WritableState};
+use crate::state::{
+    ActiveCondition, ConditionArgs, EntityRef, InvocationId, StateProvider, WritableState,
+};
 use crate::value::{PositionValue, Value};
 
 // ── Grid position ──────────────────────────────────────────────
@@ -109,10 +111,7 @@ impl GameState {
         &mut self,
         entity: &EntityRef,
         name: &str,
-        params: BTreeMap<Name, Value>,
-        duration: Value,
-        invocation: Option<InvocationId>,
-        source: Value,
+        args: ConditionArgs,
     ) {
         if !self.entities.contains_key(&entity.0) {
             return;
@@ -123,13 +122,13 @@ impl GameState {
         let cond = ActiveCondition {
             id,
             name: Name::from(name),
-            params,
+            params: args.params,
             bearer: *entity,
             gained_at: id, // Use id as ordering timestamp for simplicity
-            duration,
-            invocation,
+            duration: args.duration,
+            invocation: args.invocation,
             applied_at,
-            source,
+            source: args.source,
         };
         self.conditions.entry(entity.0).or_default().push(cond);
     }
@@ -488,10 +487,7 @@ mod tests {
         state.apply_condition(
             &entity,
             "Prone",
-            BTreeMap::new(),
-            duration_variant("EndOfTurn"),
-            None,
-            effect_source_unknown(),
+            ConditionArgs { duration: duration_variant("EndOfTurn"), ..Default::default() },
         );
 
         let conds = state.read_conditions(&entity).unwrap();
@@ -509,18 +505,12 @@ mod tests {
         state.apply_condition(
             &entity,
             "Prone",
-            BTreeMap::new(),
-            duration_variant("EndOfTurn"),
-            None,
-            effect_source_unknown(),
+            ConditionArgs { duration: duration_variant("EndOfTurn"), ..Default::default() },
         );
         state.apply_condition(
             &entity,
             "Stunned",
-            BTreeMap::new(),
-            duration_variant("Rounds"),
-            None,
-            effect_source_unknown(),
+            ConditionArgs { duration: duration_variant("Rounds"), ..Default::default() },
         );
 
         state.remove_condition(&entity, "Prone", None);
@@ -538,18 +528,12 @@ mod tests {
         state.apply_condition(
             &entity,
             "Prone",
-            BTreeMap::new(),
-            duration_variant("EndOfTurn"),
-            None,
-            effect_source_unknown(),
+            ConditionArgs { duration: duration_variant("EndOfTurn"), ..Default::default() },
         );
         state.apply_condition(
             &entity,
             "Prone",
-            BTreeMap::new(),
-            duration_variant("Rounds"),
-            None,
-            effect_source_unknown(),
+            ConditionArgs { duration: duration_variant("Rounds"), ..Default::default() },
         );
 
         let conds = state.read_conditions(&entity).unwrap();
@@ -861,10 +845,7 @@ mod tests {
         state.apply_condition(
             &ghost,
             "Prone",
-            BTreeMap::new(),
-            duration_variant("EndOfTurn"),
-            None,
-            effect_source_unknown(),
+            ConditionArgs { duration: duration_variant("EndOfTurn"), ..Default::default() },
         );
         assert!(state.read_conditions(&ghost).is_none());
     }
@@ -881,10 +862,7 @@ mod tests {
         state.apply_condition(
             &entity,
             "Prone",
-            BTreeMap::new(),
-            duration_variant("EndOfTurn"),
-            None,
-            effect_source_unknown(),
+            ConditionArgs { duration: duration_variant("EndOfTurn"), ..Default::default() },
         );
         let mut budget = BTreeMap::new();
         budget.insert("actions".into(), Value::Int(1));
@@ -976,10 +954,7 @@ mod tests {
         state.apply_condition(
             &entity,
             "Blessed",
-            BTreeMap::new(),
-            duration_variant("Rounds"),
-            Some(InvocationId(42)),
-            effect_source_unknown(),
+            ConditionArgs { duration: duration_variant("Rounds"), invocation: Some(InvocationId(42)), ..Default::default() },
         );
 
         let conds = state.read_conditions(&entity).unwrap();
@@ -996,36 +971,24 @@ mod tests {
         state.apply_condition(
             &entity,
             "Blessed",
-            BTreeMap::new(),
-            duration_variant("Rounds"),
-            Some(InvocationId(1)),
-            effect_source_unknown(),
+            ConditionArgs { duration: duration_variant("Rounds"), invocation: Some(InvocationId(1)), ..Default::default() },
         );
         state.apply_condition(
             &entity,
             "Shielded",
-            BTreeMap::new(),
-            duration_variant("Rounds"),
-            Some(InvocationId(1)),
-            effect_source_unknown(),
+            ConditionArgs { duration: duration_variant("Rounds"), invocation: Some(InvocationId(1)), ..Default::default() },
         );
         // 1 from invocation 2
         state.apply_condition(
             &entity,
             "Hasted",
-            BTreeMap::new(),
-            duration_variant("Rounds"),
-            Some(InvocationId(2)),
-            effect_source_unknown(),
+            ConditionArgs { duration: duration_variant("Rounds"), invocation: Some(InvocationId(2)), ..Default::default() },
         );
         // 1 with no invocation
         state.apply_condition(
             &entity,
             "Prone",
-            BTreeMap::new(),
-            duration_variant("Indefinite"),
-            None,
-            effect_source_unknown(),
+            ConditionArgs { duration: duration_variant("Indefinite"), ..Default::default() },
         );
 
         assert_eq!(state.read_conditions(&entity).unwrap().len(), 4);
@@ -1049,26 +1012,17 @@ mod tests {
         state.apply_condition(
             &e1,
             "Blessed",
-            BTreeMap::new(),
-            duration_variant("Rounds"),
-            inv,
-            effect_source_unknown(),
+            ConditionArgs { duration: duration_variant("Rounds"), invocation: inv, ..Default::default() },
         );
         state.apply_condition(
             &e2,
             "Blessed",
-            BTreeMap::new(),
-            duration_variant("Rounds"),
-            inv,
-            effect_source_unknown(),
+            ConditionArgs { duration: duration_variant("Rounds"), invocation: inv, ..Default::default() },
         );
         state.apply_condition(
             &e3,
             "Blessed",
-            BTreeMap::new(),
-            duration_variant("Rounds"),
-            inv,
-            effect_source_unknown(),
+            ConditionArgs { duration: duration_variant("Rounds"), invocation: inv, ..Default::default() },
         );
 
         state.remove_conditions_by_invocation(InvocationId(7));

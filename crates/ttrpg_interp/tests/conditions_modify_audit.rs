@@ -20,8 +20,8 @@ use ttrpg_ast::FileId;
 use ttrpg_interp::adapter::StateAdapter;
 use ttrpg_interp::effect::{Effect, EffectHandler, Response};
 use ttrpg_interp::reference_state::GameState;
-use ttrpg_interp::state::StateProvider;
-use ttrpg_interp::value::{effect_source_unknown, Value};
+use ttrpg_interp::state::{ConditionArgs, StateProvider};
+use ttrpg_interp::value::Value;
 use ttrpg_interp::Interpreter;
 
 // ── Setup ──────────────────────────────────────────────────────
@@ -135,7 +135,7 @@ system "test" {
     fields.insert("HP".into(), Value::Int(10));
     let entity = state.add_entity("Character", fields);
 
-    state.apply_condition(&entity, "Mixed", BTreeMap::new(), Value::Void, None, effect_source_unknown());
+    state.apply_condition(&entity, "Mixed", ConditionArgs::default());
 
     let adapter = StateAdapter::new(state);
     let mut handler = ScriptedHandler::new();
@@ -186,14 +186,7 @@ system "test" {
     fields.insert("HP".into(), Value::Int(10));
     let entity = state.add_entity("Character", fields);
 
-    state.apply_condition(
-        &entity,
-        "ConditionalMixed",
-        BTreeMap::new(),
-        Value::Void,
-        None,
-        effect_source_unknown(),
-    );
+    state.apply_condition(&entity, "ConditionalMixed", ConditionArgs::default());
 
     let adapter = StateAdapter::new(state);
 
@@ -266,8 +259,8 @@ system "test" {
     let entity = state.add_entity("Character", fields);
 
     // Apply First, then Second — Second is newer, so it writes last
-    state.apply_condition(&entity, "First", BTreeMap::new(), Value::Void, None, effect_source_unknown());
-    state.apply_condition(&entity, "Second", BTreeMap::new(), Value::Void, None, effect_source_unknown());
+    state.apply_condition(&entity, "First", ConditionArgs::default());
+    state.apply_condition(&entity, "Second", ConditionArgs::default());
 
     let adapter = StateAdapter::new(state);
     let mut handler = ScriptedHandler::new();
@@ -319,8 +312,8 @@ system "test" {
     let entity = state.add_entity("Character", fields);
 
     // Apply Adder first, then Doubler
-    state.apply_condition(&entity, "Adder", BTreeMap::new(), Value::Void, None, effect_source_unknown());
-    state.apply_condition(&entity, "Doubler", BTreeMap::new(), Value::Void, None, effect_source_unknown());
+    state.apply_condition(&entity, "Adder", ConditionArgs::default());
+    state.apply_condition(&entity, "Doubler", ConditionArgs::default());
 
     let adapter = StateAdapter::new(state);
     let mut handler = ScriptedHandler::new();
@@ -371,7 +364,7 @@ system "test" {
     fields.insert("HP".into(), Value::Int(10));
     let entity = state.add_entity("Character", fields);
 
-    state.apply_condition(&entity, "MultiClause", BTreeMap::new(), Value::Void, None, effect_source_unknown());
+    state.apply_condition(&entity, "MultiClause", ConditionArgs::default());
 
     let adapter = StateAdapter::new(state);
     let mut handler = ScriptedHandler::new();
@@ -424,7 +417,7 @@ system "test" {
     fields.insert("HP".into(), Value::Int(10));
     let entity = state.add_entity("Character", fields);
 
-    state.apply_condition(&entity, "CunningAction", BTreeMap::new(), Value::Void, None, effect_source_unknown());
+    state.apply_condition(&entity, "CunningAction", ConditionArgs::default());
 
     let adapter = StateAdapter::new(state);
     let mut handler = ScriptedHandler::new();
@@ -483,7 +476,7 @@ system "test" {
     fields.insert("HP".into(), Value::Int(10));
     let entity = state.add_entity("Character", fields);
 
-    state.apply_condition(&entity, "FreeDash", BTreeMap::new(), Value::Void, None, effect_source_unknown());
+    state.apply_condition(&entity, "FreeDash", ConditionArgs::default());
 
     let adapter = StateAdapter::new(state);
     let mut handler = ScriptedHandler::new();
@@ -533,7 +526,7 @@ system "test" {
     let mut fields = FxHashMap::default();
     fields.insert("HP".into(), Value::Int(10));
     let entity = state.add_entity("Character", fields);
-    state.apply_condition(&entity, "MaybeFree", BTreeMap::new(), Value::Void, None, effect_source_unknown());
+    state.apply_condition(&entity, "MaybeFree", ConditionArgs::default());
 
     let adapter = StateAdapter::new(state);
     let mut handler = ScriptedHandler::new();
@@ -554,7 +547,7 @@ system "test" {
     let mut fields2 = FxHashMap::default();
     fields2.insert("HP".into(), Value::Int(3));
     let entity2 = state2.add_entity("Character", fields2);
-    state2.apply_condition(&entity2, "MaybeFree", BTreeMap::new(), Value::Void, None, effect_source_unknown());
+    state2.apply_condition(&entity2, "MaybeFree", ConditionArgs::default());
 
     let adapter2 = StateAdapter::new(state2);
     let mut handler2 = ScriptedHandler::new();
@@ -704,7 +697,7 @@ system "test" {
     );
 
     // With Disengaging on the mover: reaction should be suppressed
-    state.apply_condition(&mover, "Disengaging", BTreeMap::new(), Value::Void, None, effect_source_unknown());
+    state.apply_condition(&mover, "Disengaging", ConditionArgs::default());
 
     let result_with_cond = interp
         .what_triggers(&state, "entity_leaves_reach", payload, &[attacker])
@@ -749,7 +742,7 @@ system "test" {
     let entity = state.add_entity("Character", fields);
 
     // Apply suppress condition
-    state.apply_condition(&entity, "Disengaging", BTreeMap::new(), Value::Void, None, effect_source_unknown());
+    state.apply_condition(&entity, "Disengaging", ConditionArgs::default());
 
     let payload = Value::Struct {
         name: "__event_entity_leaves_reach".into(),
@@ -852,7 +845,7 @@ system "test" {
     let entity = state.add_entity("Character", fields);
 
     // Only apply Child — it should inherit Parent's modify clause
-    state.apply_condition(&entity, "Child", BTreeMap::new(), Value::Void, None, effect_source_unknown());
+    state.apply_condition(&entity, "Child", ConditionArgs::default());
 
     let adapter = StateAdapter::new(state);
     let mut handler = ScriptedHandler::new();
@@ -904,7 +897,7 @@ system "test" {
     let mover = state.add_entity("Character", fields);
 
     // Apply Stunned (which extends Incapacitated) — should inherit suppress
-    state.apply_condition(&mover, "Stunned", BTreeMap::new(), Value::Void, None, effect_source_unknown());
+    state.apply_condition(&mover, "Stunned", ConditionArgs::default());
 
     let payload = Value::Struct {
         name: "__event_entity_leaves_reach".into(),
@@ -963,7 +956,7 @@ system "test" {
     fields.insert("HP".into(), Value::Int(10));
     let entity = state.add_entity("Character", fields);
 
-    state.apply_condition(&entity, "Child", BTreeMap::new(), Value::Void, None, effect_source_unknown());
+    state.apply_condition(&entity, "Child", ConditionArgs::default());
 
     let adapter = StateAdapter::new(state);
     let mut handler = ScriptedHandler::new();
@@ -1035,7 +1028,7 @@ system "test" {
     fields.insert("HP".into(), Value::Int(10));
     let entity = state.add_entity("Character", fields);
 
-    state.apply_condition(&entity, "Diamond", BTreeMap::new(), Value::Void, None, effect_source_unknown());
+    state.apply_condition(&entity, "Diamond", ConditionArgs::default());
 
     let adapter = StateAdapter::new(state);
     let mut handler = ScriptedHandler::new();
@@ -1089,8 +1082,8 @@ system "test" {
     let entity = state.add_entity("Character", fields);
 
     // Apply two Blessed conditions
-    state.apply_condition(&entity, "Blessed", BTreeMap::new(), Value::Void, None, effect_source_unknown());
-    state.apply_condition(&entity, "Blessed", BTreeMap::new(), Value::Void, None, effect_source_unknown());
+    state.apply_condition(&entity, "Blessed", ConditionArgs::default());
+    state.apply_condition(&entity, "Blessed", ConditionArgs::default());
 
     assert_eq!(state.read_conditions(&entity).unwrap().len(), 2);
 
@@ -1139,11 +1132,11 @@ system "test" {
 
     let mut params1 = BTreeMap::new();
     params1.insert("source".into(), Value::Entity(source1));
-    state.apply_condition(&entity, "Frightened", params1, Value::Void, None, effect_source_unknown());
+    state.apply_condition(&entity, "Frightened", ConditionArgs { params: params1, ..Default::default() });
 
     let mut params2 = BTreeMap::new();
     params2.insert("source".into(), Value::Entity(source2));
-    state.apply_condition(&entity, "Frightened", params2, Value::Void, None, effect_source_unknown());
+    state.apply_condition(&entity, "Frightened", ConditionArgs { params: params2, ..Default::default() });
 
     assert_eq!(state.read_conditions(&entity).unwrap().len(), 2);
 
@@ -1204,8 +1197,8 @@ system "test" {
     let entity = state.add_entity("Character", fields);
 
     // Apply two Blessed conditions
-    state.apply_condition(&entity, "Blessed", BTreeMap::new(), Value::Void, None, effect_source_unknown());
-    state.apply_condition(&entity, "Blessed", BTreeMap::new(), Value::Void, None, effect_source_unknown());
+    state.apply_condition(&entity, "Blessed", ConditionArgs::default());
+    state.apply_condition(&entity, "Blessed", ConditionArgs::default());
 
     assert_eq!(state.read_conditions(&entity).unwrap().len(), 2);
 
@@ -1286,7 +1279,7 @@ system "test" {
     );
 
     // Apply Disengaging on the mover: should suppress
-    state.apply_condition(&mover, "Disengaging", BTreeMap::new(), Value::Void, None, effect_source_unknown());
+    state.apply_condition(&mover, "Disengaging", ConditionArgs::default());
 
     let result_with_cond = interp
         .what_triggers(&state, "creature_moves", payload, &[striker])
@@ -1338,7 +1331,7 @@ system "test" {
 
     // Apply ChildCond — should inherit ParentCond's modify clause.
     // ParentCond uses receiver name "subject", ChildCond uses "bearer".
-    state.apply_condition(&entity, "ChildCond", BTreeMap::new(), Value::Void, None, effect_source_unknown());
+    state.apply_condition(&entity, "ChildCond", ConditionArgs::default());
 
     let adapter = StateAdapter::new(state);
     let mut handler = ScriptedHandler::new();
@@ -1399,14 +1392,7 @@ system "test" {
     let target = state.add_entity("Character", fields);
 
     // Apply AlliedStrike on the attacker
-    state.apply_condition(
-        &attacker,
-        "AlliedStrike",
-        BTreeMap::new(),
-        Value::Void,
-        None,
-        effect_source_unknown(),
-    );
+    state.apply_condition(&attacker, "AlliedStrike", ConditionArgs::default());
 
     let adapter = StateAdapter::new(state);
     let mut handler = ScriptedHandler::new();

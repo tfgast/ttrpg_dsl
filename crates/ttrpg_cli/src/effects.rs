@@ -12,7 +12,7 @@ use ttrpg_checker::ty::Ty;
 use ttrpg_interp::adapter;
 use ttrpg_interp::effect::{ActionOutcome, Effect, EffectHandler, Response};
 use ttrpg_interp::reference_state::GameState;
-use ttrpg_interp::state::{EntityRef, StateProvider, WritableState};
+use ttrpg_interp::state::{ConditionArgs, EntityRef, StateProvider, WritableState};
 use ttrpg_interp::value::{DiceExpr, RollResult, Value};
 
 use crate::format::{format_dice_expr, format_path, format_value, UnitSuffixes};
@@ -319,10 +319,12 @@ impl EffectHandler for CliHandler<'_> {
                 self.game_state.borrow_mut().apply_condition(
                     &target,
                     &condition,
-                    params.clone(),
-                    duration.clone(),
-                    invocation,
-                    source,
+                    ConditionArgs {
+                        params: params.clone(),
+                        duration: duration.clone(),
+                        invocation,
+                        source,
+                    },
                 );
                 if params.is_empty() {
                     self.log(format!(
