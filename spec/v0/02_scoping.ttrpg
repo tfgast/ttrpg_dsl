@@ -917,6 +917,9 @@ hook Regenerate on creature: Character (
 //       // wraps a value in an option (the constructor for non-none options)
 //   conditions(entity: entity) -> list<ActiveCondition>
 //       // returns all active conditions on the entity, ordered oldest-first
+//   has_condition(entity: entity, name: string) -> bool
+//       // returns true if the entity has an active condition with the given name
+//       // shorthand for any([c.name == name for c in conditions(entity)])
 //   game_time() -> int
 //       // returns the abstract game time counter (starts at 0)
 //       // each TTRPG system defines what a "tick" means

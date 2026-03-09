@@ -617,7 +617,9 @@ emit EventName(param: value)       // fire event (named args only)
 `.roll()` `.multiply(factor)`
 
 ### Entity & Conditions
-`apply_condition(target, cond, duration)` `remove_condition(target, cond)` `conditions(entity)`
+`apply_condition(target, cond, duration)` `remove_condition(target, cond)` `conditions(entity)` `has_condition(entity, name)`
+
+`has_condition(entity, "Prone")` returns `true` if the entity has an active condition with that name. Shorthand for `any([c.name == "Prone" for c in conditions(entity)])`.
 
 Condition names are first-class values of type `Condition`. They can be stored in variables and passed as function parameters:
 ```

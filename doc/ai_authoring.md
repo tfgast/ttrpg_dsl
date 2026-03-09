@@ -1071,6 +1071,7 @@ function resolve_sleep(caster: entity, targets: list<entity>) {
 **`Condition` vs `ActiveCondition`:**
 - `Condition` = a condition blueprint (e.g. `Prone`, `Sleeping`, `Concealed(level: 3)`)
 - `ActiveCondition` = a live instance on an entity, with `.name`, `.duration`, `.id` fields; returned by `conditions(entity)`
+- `has_condition(entity, "Prone")` → `bool` — checks if entity has an active condition by name. Prefer over `any([c.name == X for c in conditions(entity)])`.
 
 ### Resistance Check (guard match)
 
