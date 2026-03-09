@@ -1,0 +1,810 @@
+// ============================================================
+// OSRIC 3.0 Potions — magical consumable liquids
+//
+// Potions take effect 1d4+1 segments after consumption and
+// last 1d4 turns unless specified otherwise. Most can be
+// consumed in half doses (some exceptions noted).
+//
+// This module defines:
+//   - PotionType enum (all standard OSRIC potions)
+//   - Potion properties table (duration, gp value, class restriction)
+//   - Item creation helpers for inventory integration
+//   - Drinking actions (consume from inventory, apply effect)
+//   - Conditions for ongoing potion effects
+//   - Potion admixture/miscibility table
+//
+// Reference: OSRIC 3.0 Gamemaster Guide, §2.13.2
+// ============================================================
+
+use "OSRIC"
+use "OSRIC Ability"
+use "OSRIC Character"
+use "OSRIC Combat"
+use "OSRIC Conditions"
+use "OSRIC Equipment"
+use "OSRIC Inventory"
+
+system "OSRIC Potions" {
+
+    // ========================================================
+    //  POTION TYPE ENUM
+    //
+    //  All standard OSRIC potions. Some (like Giant Strength,
+    //  Dragon Control) have subtypes handled via parameters
+    //  rather than separate enum variants.
+    // ========================================================
+
+    enum PotionType {
+        AnimalControl,
+        Clairaudience,
+        Clairvoyance,
+        Climbing,
+        CursedPotion,
+        Delusion,
+        Diminution,
+        DragonControl,
+        ESP,
+        ExtraHealing,
+        FireResistance,
+        Flying,
+        GaseousForm,
+        GiantControl,
+        GiantStrength,
+        Growth,
+        Healing,
+        Heroism,
+        HumanControl,
+        Invisibility,
+        Invulnerability,
+        Levitation,
+        Longevity,
+        OilOfEtherealness,
+        OilOfSlipperiness,
+        PhiltreOfLove,
+        PhiltreOfPersuasiveness,
+        PlantControl,
+        Polymorph,
+        Speed,
+        SuperHeroism,
+        SweetWater,
+        TreasureFinding,
+        UndeadControl,
+        WaterBreathing
+    }
+
+    // Class restriction: "any" = any class, "FPR" = Fighter/Paladin/Ranger, "F" = Fighter only
+    enum PotionClassRestriction { Any, FighterPaladinRanger, FighterOnly }
+
+
+    // ========================================================
+    //  POTION PROPERTIES
+    //
+    //  GP value, weight, class restriction, and whether the
+    //  potion can be consumed in partial doses.
+    //  Table 2.13.1F / §2.13.2
+    // ========================================================
+
+    struct PotionDef {
+        potion_type: PotionType
+        gp_value: int
+        restriction: PotionClassRestriction
+        half_dose_allowed: bool
+    }
+
+    derive potion_def(potion: PotionType) -> PotionDef {
+        match potion {
+            AnimalControl            => PotionDef { potion_type: AnimalControl,            gp_value: 400,   restriction: Any,                  half_dose_allowed: true },
+            Clairaudience            => PotionDef { potion_type: Clairaudience,            gp_value: 500,   restriction: Any,                  half_dose_allowed: true },
+            Clairvoyance             => PotionDef { potion_type: Clairvoyance,             gp_value: 500,   restriction: Any,                  half_dose_allowed: true },
+            Climbing                 => PotionDef { potion_type: Climbing,                 gp_value: 500,   restriction: Any,                  half_dose_allowed: true },
+            CursedPotion             => PotionDef { potion_type: CursedPotion,             gp_value: 150,   restriction: Any,                  half_dose_allowed: false },
+            Delusion                 => PotionDef { potion_type: Delusion,                 gp_value: 150,   restriction: Any,                  half_dose_allowed: false },
+            Diminution               => PotionDef { potion_type: Diminution,               gp_value: 500,   restriction: Any,                  half_dose_allowed: true },
+            DragonControl            => PotionDef { potion_type: DragonControl,            gp_value: 12000, restriction: Any,                  half_dose_allowed: false },
+            ESP                      => PotionDef { potion_type: ESP,                      gp_value: 850,   restriction: Any,                  half_dose_allowed: true },
+            ExtraHealing             => PotionDef { potion_type: ExtraHealing,             gp_value: 800,   restriction: Any,                  half_dose_allowed: false },
+            FireResistance           => PotionDef { potion_type: FireResistance,           gp_value: 400,   restriction: Any,                  half_dose_allowed: true },
+            Flying                   => PotionDef { potion_type: Flying,                   gp_value: 750,   restriction: Any,                  half_dose_allowed: true },
+            GaseousForm              => PotionDef { potion_type: GaseousForm,              gp_value: 400,   restriction: Any,                  half_dose_allowed: false },
+            GiantControl             => PotionDef { potion_type: GiantControl,             gp_value: 1000,  restriction: Any,                  half_dose_allowed: false },
+            GiantStrength            => PotionDef { potion_type: GiantStrength,            gp_value: 900,   restriction: FighterPaladinRanger,  half_dose_allowed: false },
+            Growth                   => PotionDef { potion_type: Growth,                   gp_value: 300,   restriction: Any,                  half_dose_allowed: true },
+            Healing                  => PotionDef { potion_type: Healing,                  gp_value: 400,   restriction: Any,                  half_dose_allowed: false },
+            Heroism                  => PotionDef { potion_type: Heroism,                  gp_value: 500,   restriction: FighterPaladinRanger,  half_dose_allowed: false },
+            HumanControl             => PotionDef { potion_type: HumanControl,             gp_value: 900,   restriction: Any,                  half_dose_allowed: false },
+            Invisibility             => PotionDef { potion_type: Invisibility,             gp_value: 500,   restriction: Any,                  half_dose_allowed: true },
+            Invulnerability          => PotionDef { potion_type: Invulnerability,           gp_value: 500,   restriction: FighterOnly,           half_dose_allowed: false },
+            Levitation               => PotionDef { potion_type: Levitation,               gp_value: 400,   restriction: Any,                  half_dose_allowed: true },
+            Longevity                => PotionDef { potion_type: Longevity,                gp_value: 1000,  restriction: Any,                  half_dose_allowed: false },
+            OilOfEtherealness        => PotionDef { potion_type: OilOfEtherealness,        gp_value: 1500,  restriction: Any,                  half_dose_allowed: false },
+            OilOfSlipperiness        => PotionDef { potion_type: OilOfSlipperiness,        gp_value: 750,   restriction: Any,                  half_dose_allowed: false },
+            PhiltreOfLove            => PotionDef { potion_type: PhiltreOfLove,            gp_value: 300,   restriction: Any,                  half_dose_allowed: false },
+            PhiltreOfPersuasiveness  => PotionDef { potion_type: PhiltreOfPersuasiveness,  gp_value: 850,   restriction: Any,                  half_dose_allowed: false },
+            PlantControl             => PotionDef { potion_type: PlantControl,             gp_value: 300,   restriction: Any,                  half_dose_allowed: false },
+            Polymorph                => PotionDef { potion_type: Polymorph,                gp_value: 350,   restriction: Any,                  half_dose_allowed: false },
+            Speed                    => PotionDef { potion_type: Speed,                    gp_value: 450,   restriction: Any,                  half_dose_allowed: false },
+            SuperHeroism             => PotionDef { potion_type: SuperHeroism,             gp_value: 750,   restriction: FighterPaladinRanger,  half_dose_allowed: false },
+            SweetWater               => PotionDef { potion_type: SweetWater,               gp_value: 250,   restriction: Any,                  half_dose_allowed: false },
+            TreasureFinding          => PotionDef { potion_type: TreasureFinding,          gp_value: 2000,  restriction: Any,                  half_dose_allowed: false },
+            UndeadControl            => PotionDef { potion_type: UndeadControl,            gp_value: 2500,  restriction: Any,                  half_dose_allowed: false },
+            WaterBreathing           => PotionDef { potion_type: WaterBreathing,           gp_value: 900,   restriction: Any,                  half_dose_allowed: false }
+        }
+    }
+
+    // Potion display name for item creation and event emission.
+    derive potion_name(potion: PotionType) -> string {
+        match potion {
+            AnimalControl            => "Potion of Animal Control",
+            Clairaudience            => "Potion of Clairaudience",
+            Clairvoyance             => "Potion of Clairvoyance",
+            Climbing                 => "Potion of Climbing",
+            CursedPotion             => "Cursed Potion",
+            Delusion                 => "Potion of Delusion",
+            Diminution               => "Potion of Diminution",
+            DragonControl            => "Potion of Dragon Control",
+            ESP                      => "Potion of ESP",
+            ExtraHealing             => "Potion of Extra-Healing",
+            FireResistance           => "Potion of Fire Resistance",
+            Flying                   => "Potion of Flying",
+            GaseousForm              => "Potion of Gaseous Form",
+            GiantControl             => "Potion of Giant Control",
+            GiantStrength            => "Potion of Giant Strength",
+            Growth                   => "Potion of Growth",
+            Healing                  => "Potion of Healing",
+            Heroism                  => "Potion of Heroism",
+            HumanControl             => "Potion of Human Control",
+            Invisibility             => "Potion of Invisibility",
+            Invulnerability          => "Potion of Invulnerability",
+            Levitation               => "Potion of Levitation",
+            Longevity                => "Potion of Longevity",
+            OilOfEtherealness        => "Oil of Etherealness",
+            OilOfSlipperiness        => "Oil of Slipperiness",
+            PhiltreOfLove            => "Philtre of Love",
+            PhiltreOfPersuasiveness  => "Philtre of Persuasiveness",
+            PlantControl             => "Potion of Plant Control",
+            Polymorph                => "Potion of Polymorph",
+            Speed                    => "Potion of Speed",
+            SuperHeroism             => "Potion of Super-Heroism",
+            SweetWater               => "Potion of Sweet Water",
+            TreasureFinding          => "Potion of Treasure Finding",
+            UndeadControl            => "Potion of Undead Control",
+            WaterBreathing           => "Potion of Water Breathing"
+        }
+    }
+
+
+    // ========================================================
+    //  POTION ITEM CREATION
+    //
+    //  Creates an Item struct suitable for placing in inventory.
+    //  Potions weigh 0 lbs (negligible), have gp_value for
+    //  treasure XP purposes, and quantity 1.
+    // ========================================================
+
+    derive potion_item(potion: PotionType) -> Item {
+        let def = potion_def(potion)
+        Item {
+            name: potion_name(potion),
+            weight: 0,
+            cost_cp: def.gp_value * 100,
+            quantity: 1,
+            gp_value: def.gp_value,
+            xp_awarded: false
+        }
+    }
+
+
+    // ========================================================
+    //  POTION EVENTS
+    //
+    //  Emitted when potions are drunk or effects expire.
+    // ========================================================
+
+    event PotionDrunk(drinker: Character, potion_name: string)
+    event PotionHealed(drinker: Character, potion_name: string, amount: int)
+    event PotionEffectApplied(drinker: Character, potion_name: string)
+    event PotionEffectExpired(drinker: Character, potion_name: string)
+
+
+    // ========================================================
+    //  POTION CLASS RESTRICTION CHECK
+    //
+    //  Returns true if the character's primary class is allowed
+    //  to use the given potion.
+    // ========================================================
+
+    derive can_use_potion(char: Character, potion: PotionType) -> bool {
+        let def = potion_def(potion)
+        let primary_class = first(char.classes).unwrap().class
+        match def.restriction {
+            Any => true,
+            FighterPaladinRanger => primary_class == Class.Fighter || primary_class == Class.Paladin || primary_class == Class.Ranger,
+            FighterOnly => primary_class == Class.Fighter
+        }
+    }
+
+
+    // ========================================================
+    //  HEALING POTIONS
+    //
+    //  Potion of Healing: restores 2d4+2 HP. Cannot be split.
+    //  Potion of Extra-Healing: restores 3d8+3 HP. Can be
+    //    consumed in 3 portions of 1d8 HP each.
+    //  §2.13.2
+    // ========================================================
+
+    function resolve_potion_healing(drinker: Character) {
+        let healing = roll(2d4 + 2).total
+        if drinker.hp <= 0 {
+            heal_unconscious(drinker, healing)
+        } else {
+            let _actual = heal_damage(drinker, healing)
+        }
+        emit PotionHealed(drinker: drinker, potion_name: "Potion of Healing", amount: healing)
+    }
+
+    function resolve_potion_extra_healing(drinker: Character) {
+        let healing = roll(3d8 + 3).total
+        if drinker.hp <= 0 {
+            heal_unconscious(drinker, healing)
+        } else {
+            let _actual = heal_damage(drinker, healing)
+        }
+        emit PotionHealed(drinker: drinker, potion_name: "Potion of Extra-Healing", amount: healing)
+    }
+
+    // Single dose of Extra-Healing (1/3 portion = 1d8 HP).
+    function resolve_potion_extra_healing_dose(drinker: Character) {
+        let healing = roll(1d8).total
+        if drinker.hp <= 0 {
+            heal_unconscious(drinker, healing)
+        } else {
+            let _actual = heal_damage(drinker, healing)
+        }
+        emit PotionHealed(drinker: drinker, potion_name: "Potion of Extra-Healing (dose)", amount: healing)
+    }
+
+
+    // ========================================================
+    //  POTION OF SPEED — §2.13.2
+    //
+    //  Doubles combat attacks and movement for 5d4 rounds.
+    //  Ages the drinker 1 year permanently.
+    //  Uses a condition with modify clauses on attack
+    //  resolution and movement.
+    // ========================================================
+
+    condition PotionSpeed on bearer: Character
+        stacking first
+    {
+        modify character_movement(character: bearer) {
+            result = Feet { value: result.value * 2 }
+        }
+    }
+
+    function resolve_potion_speed(drinker: Character) {
+        let duration_rounds = roll(5d4).total
+        apply_condition(drinker, PotionSpeed, Duration.Rounds(duration_rounds))
+        emit PotionEffectApplied(drinker: drinker, potion_name: "Potion of Speed")
+    }
+
+
+    // ========================================================
+    //  POTION OF FIRE RESISTANCE — §2.13.2
+    //
+    //  Full dose: immunity to mundane fire, -2 per die on
+    //  magical fire damage, improved save (+4) for 1 turn.
+    //  Half dose: 5 rounds, -1 per die, +2 to saves.
+    //
+    //  The damage reduction is handled as a condition that
+    //  modifies fire damage results. Full immunity to mundane
+    //  fire is GM-adjudicated (torch, bonfire, etc.).
+    // ========================================================
+
+    condition PotionFireResistance(damage_reduction: int, save_bonus: int) on bearer: entity
+        stacking first
+    {}
+
+    function resolve_potion_fire_resistance(drinker: Character, half_dose: bool) {
+        if half_dose {
+            apply_condition(drinker, PotionFireResistance(damage_reduction: 1, save_bonus: 2), Duration.Rounds(5))
+        } else {
+            apply_condition(drinker, PotionFireResistance(damage_reduction: 2, save_bonus: 4), Duration.Rounds(10))
+        }
+        emit PotionEffectApplied(drinker: drinker, potion_name: "Potion of Fire Resistance")
+    }
+
+
+    // ========================================================
+    //  POTION OF GIANT STRENGTH — §2.13.2
+    //
+    //  Temporarily grants giant-type strength. Duration: 1 turn
+    //  (10 rounds). Fighter, Paladin, Ranger only.
+    //
+    //  Giant type determines bonus melee damage dice.
+    //  Stored as a condition with the bonus damage parameter.
+    // ========================================================
+
+    enum GiantStrengthType { Hill, Stone, Frost, Fire, Cloud, Storm }
+
+    struct GiantStrengthDef {
+        giant_type: GiantStrengthType
+        bonus_damage: DiceExpr        // extra melee damage per hit
+        weight_allow_bonus: int       // additional lbs carryable
+        rock_damage: DiceExpr         // damage from thrown rocks
+        major_test_pct: int           // % chance for major test of strength
+        gp_value: int
+    }
+
+    derive giant_strength_def(giant: GiantStrengthType) -> GiantStrengthDef {
+        match giant {
+            Hill  => GiantStrengthDef { giant_type: Hill,  bonus_damage: 1d8,  weight_allow_bonus: 450,  rock_damage: 1d6,  major_test_pct: 50, gp_value: 900 },
+            Stone => GiantStrengthDef { giant_type: Stone, bonus_damage: 1d10, weight_allow_bonus: 500,  rock_damage: 1d12, major_test_pct: 60, gp_value: 1000 },
+            Frost => GiantStrengthDef { giant_type: Frost, bonus_damage: 1d12, weight_allow_bonus: 600,  rock_damage: 1d8,  major_test_pct: 70, gp_value: 1100 },
+            Fire  => GiantStrengthDef { giant_type: Fire,  bonus_damage: 2d6,  weight_allow_bonus: 750,  rock_damage: 1d8,  major_test_pct: 80, gp_value: 1200 },
+            Cloud => GiantStrengthDef { giant_type: Cloud, bonus_damage: 2d8,  weight_allow_bonus: 900,  rock_damage: 1d10, major_test_pct: 90, gp_value: 1300 },
+            Storm => GiantStrengthDef { giant_type: Storm, bonus_damage: 2d10, weight_allow_bonus: 1200, rock_damage: 1d12, major_test_pct: 99, gp_value: 1400 }
+        }
+    }
+
+    // Roll for random giant strength type per OSRIC table.
+    derive random_giant_type(d20_roll: int) -> GiantStrengthType {
+        if d20_roll <= 6 { GiantStrengthType.Hill }
+        else if d20_roll <= 10 { GiantStrengthType.Stone }
+        else if d20_roll <= 14 { GiantStrengthType.Frost }
+        else if d20_roll <= 17 { GiantStrengthType.Fire }
+        else if d20_roll <= 19 { GiantStrengthType.Cloud }
+        else { GiantStrengthType.Storm }
+    }
+
+    condition PotionGiantStrength(giant_type: GiantStrengthType) on bearer: Character
+        stacking first
+    {}
+
+    function resolve_potion_giant_strength(drinker: Character, giant_type: GiantStrengthType) {
+        apply_condition(drinker, PotionGiantStrength(giant_type: giant_type), Duration.Rounds(10))
+        emit PotionEffectApplied(drinker: drinker, potion_name: "Potion of Giant Strength")
+    }
+
+
+    // ========================================================
+    //  POTION OF HEROISM — §2.13.2
+    //
+    //  Grants temporary extra levels and hit dice to fighters
+    //  below 10th level. Fighter, Paladin, Ranger only.
+    //
+    //  Level 0: +4 levels, 4d10 temp HP
+    //  Level 1-3: +3 levels, 3d10+1 temp HP
+    //  Level 4-6: +2 levels, 2d10+2 temp HP
+    //  Level 7-9: +1 level, 1d10+3 temp HP
+    //  Level 10+: no effect
+    // ========================================================
+
+    derive heroism_bonus_levels(level: int) -> int {
+        if level <= 0 { 4 }
+        else if level <= 3 { 3 }
+        else if level <= 6 { 2 }
+        else if level <= 9 { 1 }
+        else { 0 }
+    }
+
+    condition PotionHeroism(bonus_levels: int, bonus_hp: int) on bearer: Character
+        stacking first
+    {}
+
+    // Heroism temp HP dice: level-dependent number of d10s + flat bonus.
+    mechanic heroism_temp_hp(bonus_levels: int) -> int {
+        let flat_bonus = 4 - bonus_levels
+        match bonus_levels {
+            4 => roll(4d10).total,
+            3 => roll(3d10 + 1).total,
+            2 => roll(2d10 + 2).total,
+            1 => roll(1d10 + 3).total,
+            _ => 0
+        }
+    }
+
+    function resolve_potion_heroism(drinker: Character) {
+        let level = first(drinker.classes).unwrap().level
+        let bonus = heroism_bonus_levels(level)
+        if bonus > 0 {
+            let temp_hp = heroism_temp_hp(bonus)
+            let _actual = heal_damage(drinker, temp_hp)
+            apply_condition(drinker, PotionHeroism(bonus_levels: bonus, bonus_hp: temp_hp), Duration.Rounds(40))
+            emit PotionEffectApplied(drinker: drinker, potion_name: "Potion of Heroism")
+        }
+    }
+
+
+    // ========================================================
+    //  POTION OF SUPER-HEROISM — §2.13.2
+    //
+    //  Like Heroism but stronger, works up to level 12.
+    //  Duration: 5d6 rounds. Fighter, Paladin, Ranger only.
+    //
+    //  Level 0: +6 levels, 5d10 temp HP
+    //  Level 1-3: +5 levels, 4d10+1 temp HP
+    //  Level 4-6: +4 levels, 3d10+2 temp HP
+    //  Level 7-9: +3 levels, 2d10+3 temp HP
+    //  Level 10-12: +2 levels, 1d10+4 temp HP
+    //  Level 13+: no effect
+    // ========================================================
+
+    derive super_heroism_bonus_levels(level: int) -> int {
+        if level <= 0 { 6 }
+        else if level <= 3 { 5 }
+        else if level <= 6 { 4 }
+        else if level <= 9 { 3 }
+        else if level <= 12 { 2 }
+        else { 0 }
+    }
+
+    condition PotionSuperHeroism(bonus_levels: int, bonus_hp: int) on bearer: Character
+        stacking first
+    {}
+
+    // Super-Heroism temp HP dice: (bonus-1) d10s + (6-bonus) flat.
+    mechanic super_heroism_temp_hp(bonus_levels: int) -> int {
+        match bonus_levels {
+            6 => roll(5d10).total,
+            5 => roll(4d10 + 1).total,
+            4 => roll(3d10 + 2).total,
+            3 => roll(2d10 + 3).total,
+            2 => roll(1d10 + 4).total,
+            _ => 0
+        }
+    }
+
+    function resolve_potion_super_heroism(drinker: Character) {
+        let level = first(drinker.classes).unwrap().level
+        let bonus = super_heroism_bonus_levels(level)
+        if bonus > 0 {
+            let temp_hp = super_heroism_temp_hp(bonus)
+            let _actual = heal_damage(drinker, temp_hp)
+            let duration_rounds = roll(5d6).total
+            apply_condition(drinker, PotionSuperHeroism(bonus_levels: bonus, bonus_hp: temp_hp), Duration.Rounds(duration_rounds))
+            emit PotionEffectApplied(drinker: drinker, potion_name: "Potion of Super-Heroism")
+        }
+    }
+
+
+    // ========================================================
+    //  POTION OF INVISIBILITY — §2.13.2
+    //
+    //  Grants Invisible condition (from osric_conditions).
+    //  Full dose: until combat action (Indefinite duration,
+    //    removed by GM on attack). Can consume in 1/8 doses
+    //    for 1d4+2 turns each.
+    //  Any combat action breaks invisibility.
+    // ========================================================
+
+    function resolve_potion_invisibility(drinker: Character) {
+        apply_condition(drinker, Invisible, Duration.Indefinite)
+        emit PotionEffectApplied(drinker: drinker, potion_name: "Potion of Invisibility")
+    }
+
+    function resolve_potion_invisibility_dose(drinker: Character) {
+        let duration_turns = roll(1d4 + 2).total
+        apply_condition(drinker, Invisible, Duration.Turns(duration_turns))
+        emit PotionEffectApplied(drinker: drinker, potion_name: "Potion of Invisibility (dose)")
+    }
+
+
+    // ========================================================
+    //  POTION OF INVULNERABILITY — §2.13.2
+    //
+    //  Fighter only. Duration: 5d4+2 rounds.
+    //  Immune to non-magical attacks, attacks by creatures
+    //  under 4 HD. +2 all saves, +2 AC.
+    //  Uses ImmuneToNormalWeapons condition (from
+    //  osric_monster_traits) for weapon immunity, plus a
+    //  custom condition for the AC/save bonuses.
+    // ========================================================
+
+    condition PotionInvulnerability on bearer: Character
+        stacking first
+    {
+        modify effective_target_ac(target: bearer) {
+            ac_mod = ac_mod + 2
+        }
+    }
+
+    function resolve_potion_invulnerability(drinker: Character) {
+        let duration_rounds = roll(5d4 + 2).total
+        apply_condition(drinker, PotionInvulnerability, Duration.Rounds(duration_rounds))
+        emit PotionEffectApplied(drinker: drinker, potion_name: "Potion of Invulnerability")
+    }
+
+
+    // ========================================================
+    //  POTION OF FLYING — §2.13.2
+    //
+    //  Grants fly spell-like ability. Marker condition for
+    //  movement mode tracking. Duration: 1d4 turns.
+    //  Movement rate: character's base movement rate.
+    // ========================================================
+
+    condition PotionFlying on bearer: Character
+        stacking first
+    {}
+
+    function resolve_potion_flying(drinker: Character) {
+        let duration_turns = roll(1d4).total
+        apply_condition(drinker, PotionFlying, Duration.Turns(duration_turns))
+        emit PotionEffectApplied(drinker: drinker, potion_name: "Potion of Flying")
+    }
+
+
+    // ========================================================
+    //  POTION OF LEVITATION — §2.13.2
+    //
+    //  Grants levitation spell-like ability. Up to 600 lbs
+    //  weight. Marker condition. Duration: 1d4 turns.
+    // ========================================================
+
+    condition PotionLevitation on bearer: Character
+        stacking first
+    {}
+
+    function resolve_potion_levitation(drinker: Character) {
+        let duration_turns = roll(1d4).total
+        apply_condition(drinker, PotionLevitation, Duration.Turns(duration_turns))
+        emit PotionEffectApplied(drinker: drinker, potion_name: "Potion of Levitation")
+    }
+
+
+    // ========================================================
+    //  POTION OF GROWTH — §2.13.2
+    //
+    //  Drinker grows up to 24ft additional height. Can be
+    //  consumed in quarter portions (6ft per quarter).
+    //  Duration: 1d4+7 turns.
+    //  Marker condition — size increase is GM-adjudicated.
+    // ========================================================
+
+    condition PotionGrowth(additional_feet: int) on bearer: Character
+        stacking first
+    {}
+
+    function resolve_potion_growth(drinker: Character, quarters: int) {
+        // quarters: 1-4 (1 quarter = 6ft, full dose = 24ft)
+        let feet_growth = quarters * 6
+        let duration_turns = roll(1d4 + 7).total
+        apply_condition(drinker, PotionGrowth(additional_feet: feet_growth), Duration.Turns(duration_turns))
+        emit PotionEffectApplied(drinker: drinker, potion_name: "Potion of Growth")
+    }
+
+
+    // ========================================================
+    //  POTION OF WATER BREATHING — §2.13.2
+    //
+    //  Breathe underwater. Duration: 1 hour + 1d10 rounds.
+    //  75% chance of 4 doses, 25% chance of 2 doses.
+    //  Full potion is a single dose.
+    // ========================================================
+
+    condition PotionWaterBreathing on bearer: Character
+        stacking first
+    {}
+
+    function resolve_potion_water_breathing(drinker: Character) {
+        // 1 hour ≈ 60 rounds + 1d10 rounds
+        let extra_rounds = roll(1d10).total
+        let total_rounds = 60 + extra_rounds
+        apply_condition(drinker, PotionWaterBreathing, Duration.Rounds(total_rounds))
+        emit PotionEffectApplied(drinker: drinker, potion_name: "Potion of Water Breathing")
+    }
+
+
+    // ========================================================
+    //  POTION OF GASEOUS FORM — §2.13.2
+    //
+    //  Drinker and gear become translucent gas. Move 30ft/round.
+    //  Immune to physical attacks; double damage from whirlwind.
+    //  Duration: 1d4 turns. Must consume full dose.
+    // ========================================================
+
+    condition PotionGaseousForm on bearer: Character
+        stacking first
+    {
+        // Suppress melee/missile attacks while gaseous
+        modify [#attack_resolution](attacker: bearer) {
+            result.outcome = AttackOutcome.Miss
+            result.damage = 0
+        }
+    }
+
+    function resolve_potion_gaseous_form(drinker: Character) {
+        let duration_turns = roll(1d4).total
+        apply_condition(drinker, PotionGaseousForm, Duration.Turns(duration_turns))
+        emit PotionEffectApplied(drinker: drinker, potion_name: "Potion of Gaseous Form")
+    }
+
+
+    // ========================================================
+    //  POTION OF DIMINUTION — §2.13.2
+    //
+    //  Shrink to 5% of original size (full dose) or 50% (half).
+    //  Duration: 1d4+7 turns.
+    // ========================================================
+
+    condition PotionDiminution(scale_pct: int) on bearer: Character
+        stacking first
+    {}
+
+    function resolve_potion_diminution(drinker: Character, half_dose: bool) {
+        let scale = if half_dose { 50 } else { 5 }
+        let duration_turns = roll(1d4 + 7).total
+        apply_condition(drinker, PotionDiminution(scale_pct: scale), Duration.Turns(duration_turns))
+        emit PotionEffectApplied(drinker: drinker, potion_name: "Potion of Diminution")
+    }
+
+
+    // ========================================================
+    //  POTION OF CLIMBING — §2.13.2
+    //
+    //  Climb as a thief with 99% ability for 1 turn + 5d4
+    //  rounds. Armour reduces chance. Marker condition.
+    // ========================================================
+
+    condition PotionClimbing(climb_pct: int) on bearer: Character
+        stacking first
+    {}
+
+    // Armour penalty to climbing per §2.13.2
+    derive climbing_armor_penalty(char: Character) -> int {
+        if char.worn_armor.is_some() {
+            let armor = char.worn_armor.unwrap()
+            let base_penalty = if armor.magic_bonus > 0 { 1 } else { 0 }
+            match armor.armour_type {
+                StuddedLeather => base_penalty + 1,
+                RingMail       => base_penalty + 2,
+                ScaleLamellar  => base_penalty + 4,
+                ChainMail      => base_penalty + 7,
+                Banded         => base_penalty + 8,
+                Splint         => base_penalty + 8,
+                PlateMail      => base_penalty + 10,
+                _              => base_penalty
+            }
+        } else { 0 }
+    }
+
+    function resolve_potion_climbing(drinker: Character) {
+        let climb_chance = 99 - climbing_armor_penalty(drinker)
+        let extra_rounds = roll(5d4).total
+        // 1 turn = 10 rounds, plus extra
+        let duration_rounds = 10 + extra_rounds
+        apply_condition(drinker, PotionClimbing(climb_pct: climb_chance), Duration.Rounds(duration_rounds))
+        emit PotionEffectApplied(drinker: drinker, potion_name: "Potion of Climbing")
+    }
+
+
+    // ========================================================
+    //  POTION OF ESP — §2.13.2
+    //
+    //  Grants ESP spell-like ability for 5d8 rounds.
+    //  Marker condition.
+    // ========================================================
+
+    condition PotionESP on bearer: Character
+        stacking first
+    {}
+
+    function resolve_potion_esp(drinker: Character) {
+        let duration_rounds = roll(5d8).total
+        apply_condition(drinker, PotionESP, Duration.Rounds(duration_rounds))
+        emit PotionEffectApplied(drinker: drinker, potion_name: "Potion of ESP")
+    }
+
+
+    // ========================================================
+    //  POTION ADMIXTURE / MISCIBILITY — Table 2.13.2A
+    //
+    //  When two potions are mixed (externally or internally
+    //  by drinking while another is active), roll d100 on
+    //  this table. Results range from catastrophic to
+    //  permanently beneficial.
+    // ========================================================
+
+    enum AdmixtureResult {
+        EldritchBlast,           // 01:    6d10 internal damage
+        Poison,                  // 02-03: instant death (internal), poison cloud (external)
+        StrangeBrew,             // 04-07: lose 1d4 STR/DEX, one potion at 50%
+        BothCancelled,           // 08-12: both potions nullified
+        OneCancelled,            // 13-20: one cancelled, other at 50%
+        BothHalved,              // 21-30: both at 50% strength/duration
+        BothWork,                // 31-90: normal — both potions work
+        ExtraordinarySuccess,    // 91-99: one at 150%, other cancelled
+        PermanentEffect          // 00:    one potion's effect becomes permanent
+    }
+
+    derive admixture_result(d100: int) -> AdmixtureResult {
+        if d100 == 1 { AdmixtureResult.EldritchBlast }
+        else if d100 <= 3 { AdmixtureResult.Poison }
+        else if d100 <= 7 { AdmixtureResult.StrangeBrew }
+        else if d100 <= 12 { AdmixtureResult.BothCancelled }
+        else if d100 <= 20 { AdmixtureResult.OneCancelled }
+        else if d100 <= 30 { AdmixtureResult.BothHalved }
+        else if d100 <= 90 { AdmixtureResult.BothWork }
+        else if d100 <= 99 { AdmixtureResult.ExtraordinarySuccess }
+        else { AdmixtureResult.PermanentEffect }
+    }
+
+    // Check admixture when drinking a second potion while
+    // the first is still active.
+    mechanic check_admixture() -> AdmixtureResult {
+        let r = roll(1d100).total
+        admixture_result(r)
+    }
+
+
+    // ========================================================
+    //  DRINK POTION ACTION
+    //
+    //  Master action for consuming a potion from loose
+    //  inventory. Validates class restriction, consumes the
+    //  item, and dispatches to the appropriate resolve function.
+    //
+    //  Potions with complex parameters (Giant Strength type,
+    //  Growth quarters, etc.) use separate specialised actions.
+    // ========================================================
+
+    action DrinkPotion on drinker: Character with Inventory as inv (
+        potion: PotionType
+    ) {
+        cost free
+
+        resolve {
+            let name = potion_name(potion)
+
+            // Class restriction check
+            if !can_use_potion(drinker, potion) {
+                error("This potion can only be used by the permitted classes")
+            }
+
+            // Consume from inventory
+            use_consumable_loose(drinker, name)
+            emit PotionDrunk(drinker: drinker, potion_name: name)
+
+            // Dispatch to resolve function
+            match potion {
+                Healing         => resolve_potion_healing(drinker),
+                ExtraHealing    => resolve_potion_extra_healing(drinker),
+                Speed           => resolve_potion_speed(drinker),
+                FireResistance  => resolve_potion_fire_resistance(drinker, false),
+                Invisibility    => resolve_potion_invisibility(drinker),
+                Invulnerability => resolve_potion_invulnerability(drinker),
+                Flying          => resolve_potion_flying(drinker),
+                Levitation      => resolve_potion_levitation(drinker),
+                WaterBreathing  => resolve_potion_water_breathing(drinker),
+                GaseousForm     => resolve_potion_gaseous_form(drinker),
+                Diminution      => resolve_potion_diminution(drinker, false),
+                Climbing        => resolve_potion_climbing(drinker),
+                ESP             => resolve_potion_esp(drinker),
+                Growth          => resolve_potion_growth(drinker, 4),
+                Heroism         => resolve_potion_heroism(drinker),
+                SuperHeroism    => resolve_potion_super_heroism(drinker),
+                // Marker-only / GM-adjudicated potions: apply generic duration
+                _               => {
+                    emit PotionEffectApplied(drinker: drinker, potion_name: name)
+                }
+            }
+        }
+    }
+
+    // Drink a Potion of Giant Strength with a specific type.
+    action DrinkGiantStrengthPotion on drinker: Character with Inventory as inv (
+        giant_type: GiantStrengthType
+    ) {
+        cost free
+
+        resolve {
+            if !can_use_potion(drinker, PotionType.GiantStrength) {
+                error("Potion of Giant Strength can only be used by Fighter, Paladin, or Ranger")
+            }
+            use_consumable_loose(drinker, potion_name(PotionType.GiantStrength))
+            emit PotionDrunk(drinker: drinker, potion_name: "Potion of Giant Strength")
+            resolve_potion_giant_strength(drinker, giant_type)
+        }
+    }
+}

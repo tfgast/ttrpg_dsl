@@ -275,6 +275,95 @@ pub fn equipment_slots_group_full(
     }
 }
 
+/// Build an Inventory optional-group value with items in loose_items.
+pub fn inventory_group(loose_items: Vec<Value>) -> Value {
+    Value::Struct {
+        name: Name::from("Inventory"),
+        fields: {
+            let mut f = BTreeMap::new();
+            f.insert(
+                Name::from("coins"),
+                Value::Struct {
+                    name: Name::from("CoinPurse"),
+                    fields: {
+                        let mut cp = BTreeMap::new();
+                        cp.insert(Name::from("cp"), Value::Int(0));
+                        cp.insert(Name::from("sp"), Value::Int(0));
+                        cp.insert(Name::from("ep"), Value::Int(0));
+                        cp.insert(Name::from("gp"), Value::Int(0));
+                        cp.insert(Name::from("pp"), Value::Int(0));
+                        cp
+                    },
+                },
+            );
+            f.insert(Name::from("containers"), Value::List(vec![]));
+            f.insert(Name::from("loose_items"), Value::List(loose_items));
+            f.insert(Name::from("coin_xp_ledger"), Value::Int(0));
+            f
+        },
+    }
+}
+
+/// Build an Item struct value (for inventory).
+pub fn item_value(name: &str, weight: i64, gp_value: i64) -> Value {
+    Value::Struct {
+        name: Name::from("Item"),
+        fields: {
+            let mut f = BTreeMap::new();
+            f.insert(Name::from("name"), Value::Str(name.to_string()));
+            f.insert(Name::from("weight"), Value::Int(weight));
+            f.insert(Name::from("cost_cp"), Value::Int(gp_value * 100));
+            f.insert(Name::from("quantity"), Value::Int(1));
+            f.insert(Name::from("gp_value"), Value::Int(gp_value));
+            f.insert(Name::from("xp_awarded"), Value::Bool(false));
+            f
+        },
+    }
+}
+
+/// Build a Character with Inventory group and optional equipment.
+#[allow(clippy::too_many_arguments)]
+pub fn make_character_with_inventory(
+    state: &mut GameState,
+    name: &str,
+    class: &str,
+    level: i64,
+    abilities: &[(&str, i64)],
+    max_hp: i64,
+    ac: i64,
+    ancestry: &str,
+    loose_items: Vec<Value>,
+) -> EntityRef {
+    let mut ability_map = BTreeMap::new();
+    for &(ab, score) in abilities {
+        ability_map.insert(ability(ab), Value::Int(score));
+    }
+
+    let mut fields = FxHashMap::default();
+    fields.insert(Name::from("name"), Value::Str(name.to_string()));
+    fields.insert(
+        Name::from("classes"),
+        Value::List(vec![class_level_struct(class, level, 0)]),
+    );
+    fields.insert(Name::from("classing_mode"), classing_mode("Single"));
+    fields.insert(Name::from("ancestry"), enum_variant("Ancestry", ancestry));
+    fields.insert(
+        Name::from("alignment"),
+        enum_variant("Alignment", "TrueNeutral"),
+    );
+    fields.insert(Name::from("abilities"), Value::Map(ability_map));
+    fields.insert(Name::from("HitPoints"), hit_points_group(max_hp));
+    fields.insert(Name::from("base_movement"), feet(120));
+    fields.insert(Name::from("saving_throws"), Value::Option(None));
+    fields.insert(
+        Name::from("EquipmentSlots"),
+        equipment_slots_group(armor_for_ac(ac), Value::Option(None)),
+    );
+    fields.insert(Name::from("Inventory"), inventory_group(loose_items));
+
+    state.add_entity("Character", fields)
+}
+
 pub fn class_level_struct(class: &str, level: i64, xp: i64) -> Value {
     Value::Struct {
         name: Name::from("ClassLevel"),
@@ -1049,6 +1138,25 @@ pub fn set_field(state: &mut GameState, entity: &EntityRef, field: &str, value: 
     state.write_field(entity, &[FieldPathSegment::Field(field.into())], value);
 }
 
+/// Write a field inside a group on an entity (e.g. HitPoints.hp).
+pub fn set_group_field(
+    state: &mut GameState,
+    entity: &EntityRef,
+    group: &str,
+    field: &str,
+    value: Value,
+) {
+    use ttrpg_interp::effect::FieldPathSegment;
+    state.write_field(
+        entity,
+        &[
+            FieldPathSegment::Field(group.into()),
+            FieldPathSegment::Field(field.into()),
+        ],
+        value,
+    );
+}
+
 /// Build a WeaponSpecialization optional group struct value.
 /// `spec_kind` is "SpecMelee" or "SpecMissile".
 /// `weapon_enum` is "MeleeWeapon" or "MissileWeapon".
@@ -1218,6 +1326,10 @@ pub fn all_osric_sources() -> Vec<(String, String)> {
         (
             "osric/osric_bestiary.ttrpg".to_string(),
             include_str!("../../../../osric/osric_bestiary.ttrpg").to_string(),
+        ),
+        (
+            "osric/osric_potions.ttrpg".to_string(),
+            include_str!("../../../../osric/osric_potions.ttrpg").to_string(),
         ),
     ]
 }
