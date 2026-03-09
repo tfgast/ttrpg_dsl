@@ -100,29 +100,36 @@ system "OSRIC Equipment" {
 
     derive wielded_item_weight(item: WieldedItem) -> int {
         match item {
-            Melee(w, _bonus) => melee_weapon_def(w).weight,
-            Missile(w, _bonus) => missile_weapon_def(w).weight
+            Melee(w, _bonus, _mat) => melee_weapon_def(w).weight,
+            Missile(w, _bonus, _mat) => missile_weapon_def(w).weight
         }
     }
 
     derive wielded_item_hands(item: WieldedItem) -> int {
         match item {
-            Melee(w, _bonus) => melee_weapon_def(w).hands,
-            Missile(w, _bonus) => missile_weapon_def(w).hands
+            Melee(w, _bonus, _mat) => melee_weapon_def(w).hands,
+            Missile(w, _bonus, _mat) => missile_weapon_def(w).hands
         }
     }
 
     derive wielded_item_speed_factor(item: WieldedItem) -> int {
         match item {
-            Melee(w, _bonus) => melee_weapon_def(w).speed_factor,
-            Missile(w, _bonus) => 0
+            Melee(w, _bonus, _mat) => melee_weapon_def(w).speed_factor,
+            Missile(w, _bonus, _mat) => 0
         }
     }
 
     derive wielded_item_magic_bonus(item: WieldedItem) -> int {
         match item {
-            Melee(_w, bonus) => bonus,
-            Missile(_w, bonus) => bonus
+            Melee(_w, bonus, _mat) => bonus,
+            Missile(_w, bonus, _mat) => bonus
+        }
+    }
+
+    derive wielded_item_material(item: WieldedItem) -> WeaponMaterial {
+        match item {
+            Melee(_w, _bonus, mat) => mat,
+            Missile(_w, _bonus, mat) => mat
         }
     }
 
@@ -241,7 +248,7 @@ system "OSRIC Equipment" {
         if target has EquipmentSlots as eq {
             if target.eq.wielded_main.is_some() {
                 match target.eq.wielded_main.unwrap() {
-                    Melee(w, _bonus) => some(w),
+                    Melee(w, _bonus, _mat) => some(w),
                     _ => none
                 }
             } else { none }
@@ -252,7 +259,7 @@ system "OSRIC Equipment" {
         if target has EquipmentSlots as eq {
             if target.eq.wielded_main.is_some() {
                 match target.eq.wielded_main.unwrap() {
-                    Missile(w, _bonus) => some(w),
+                    Missile(w, _bonus, _mat) => some(w),
                     _ => none
                 }
             } else { none }
@@ -263,7 +270,7 @@ system "OSRIC Equipment" {
         if target has EquipmentSlots as eq {
             if target.eq.wielded_off.is_some() {
                 match target.eq.wielded_off.unwrap() {
-                    Melee(w, _bonus) => some(w),
+                    Melee(w, _bonus, _mat) => some(w),
                     _ => none
                 }
             } else { none }

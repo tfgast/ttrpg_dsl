@@ -107,9 +107,11 @@ system "OSRIC" {
 
     // --- Equipment wrapper types ---
 
+    enum WeaponMaterial { Normal, Silver, ColdIron }
+
     enum WieldedItem {
-        Melee(weapon: MeleeWeapon, magic_bonus: int = 0),
-        Missile(weapon: MissileWeapon, magic_bonus: int = 0)
+        Melee(weapon: MeleeWeapon, magic_bonus: int = 0, material: WeaponMaterial = WeaponMaterial.Normal),
+        Missile(weapon: MissileWeapon, magic_bonus: int = 0, material: WeaponMaterial = WeaponMaterial.Normal)
     }
 
     struct Armor {

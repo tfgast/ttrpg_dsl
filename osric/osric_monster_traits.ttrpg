@@ -63,17 +63,15 @@ system "OSRIC Monster Traits" {
         }
     }
 
-    // Wights and wraiths are harmed by silver weapons in OSRIC, but the current
-    // weapon model only tracks magic bonus, not weapon material. Keep a distinct
-    // condition so these monsters are not conflated with creatures that truly
-    // require magic weapons only; extending this to admit silver will require a
-    // wider equipment/combat change.
+    // Wights and wraiths are harmed by silver weapons in OSRIC.
+    // Admits hits from magical weapons (+1 or better) OR silver weapons.
     condition ImmuneToNormalWeaponsExceptSilver on bearer: entity
         stacking first
     {
         modify [#attack_resolution](target: bearer) {
-            result.damage = if result.weapon_bonus >= 1 { result.damage } else { 0 }
-            result.outcome = if result.weapon_bonus >= 1 { result.outcome } else { AttackOutcome.Miss }
+            let bypassed = result.weapon_bonus >= 1 || result.weapon_material == WeaponMaterial.Silver
+            result.damage = if bypassed { result.damage } else { 0 }
+            result.outcome = if bypassed { result.outcome } else { AttackOutcome.Miss }
         }
     }
 

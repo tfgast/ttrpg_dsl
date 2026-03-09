@@ -41,7 +41,7 @@ system "OSRIC Chargen" {
 
     prompt choose_ability_gen_mode() -> AbilityGenMode {
         hint: "Choose ability score generation method"
-        suggest: Normal
+        suggest: AbilityGenMode.Normal
     }
 
     mechanic roll_3d6() -> int {

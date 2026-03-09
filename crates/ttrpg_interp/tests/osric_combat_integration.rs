@@ -71,8 +71,8 @@ fn osric_combat_has_structs() {
         })
         .collect();
     assert!(
-        structs.contains(&("AttackResult", 4)),
-        "missing AttackResult with 4 fields"
+        structs.contains(&("AttackResult", 5)),
+        "missing AttackResult with 5 fields"
     );
     assert!(
         structs.contains(&("TurnBudget", 1)),

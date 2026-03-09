@@ -164,6 +164,11 @@ pub fn wielded_melee_item(weapon: &str) -> Value {
 
 /// Construct an `option<WieldedItem>` for a melee weapon with magic bonus.
 pub fn wielded_melee_item_magic(weapon: &str, magic_bonus: i64) -> Value {
+    wielded_melee_item_full(weapon, magic_bonus, "Normal")
+}
+
+/// Construct an `option<WieldedItem>` for a melee weapon with magic bonus and material.
+pub fn wielded_melee_item_full(weapon: &str, magic_bonus: i64, material: &str) -> Value {
     Value::Option(Some(Box::new(Value::EnumVariant {
         enum_name: Name::from("WieldedItem"),
         variant: Name::from("Melee"),
@@ -171,6 +176,10 @@ pub fn wielded_melee_item_magic(weapon: &str, magic_bonus: i64) -> Value {
             let mut f = BTreeMap::new();
             f.insert(Name::from("weapon"), enum_variant("MeleeWeapon", weapon));
             f.insert(Name::from("magic_bonus"), Value::Int(magic_bonus));
+            f.insert(
+                Name::from("material"),
+                enum_variant("WeaponMaterial", material),
+            );
             f
         },
     })))
@@ -183,6 +192,11 @@ pub fn wielded_missile_item(weapon: &str) -> Value {
 
 /// Construct an `option<WieldedItem>` for a missile weapon with magic bonus.
 pub fn wielded_missile_item_magic(weapon: &str, magic_bonus: i64) -> Value {
+    wielded_missile_item_full(weapon, magic_bonus, "Normal")
+}
+
+/// Construct an `option<WieldedItem>` for a missile weapon with magic bonus and material.
+pub fn wielded_missile_item_full(weapon: &str, magic_bonus: i64, material: &str) -> Value {
     Value::Option(Some(Box::new(Value::EnumVariant {
         enum_name: Name::from("WieldedItem"),
         variant: Name::from("Missile"),
@@ -190,6 +204,10 @@ pub fn wielded_missile_item_magic(weapon: &str, magic_bonus: i64) -> Value {
             let mut f = BTreeMap::new();
             f.insert(Name::from("weapon"), enum_variant("MissileWeapon", weapon));
             f.insert(Name::from("magic_bonus"), Value::Int(magic_bonus));
+            f.insert(
+                Name::from("material"),
+                enum_variant("WeaponMaterial", material),
+            );
             f
         },
     })))

@@ -167,7 +167,7 @@ fn osric_core_has_all_enums() {
     // SpellId: 8 variants (CureLightWounds, CauseLightWounds, Bless, Curse, HoldPerson, MagicMissile, Sleep, Fireball)
     assert!(enums.contains(&("SpellId", 8)), "missing SpellId enum");
 
-    assert_eq!(enums.len(), 27, "expected 27 enums, got {enums:?}");
+    assert_eq!(enums.len(), 28, "expected 28 enums, got {enums:?}");
 }
 
 #[test]

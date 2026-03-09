@@ -69,6 +69,7 @@ system "OSRIC Combat" {
         total_mod: int
         damage: int
         weapon_bonus: int = 0
+        weapon_material: WeaponMaterial = WeaponMaterial.Normal
     }
 
     struct TurnBudget {
@@ -469,7 +470,8 @@ system "OSRIC Combat" {
         roll_mode: RollMode = RollMode.Normal,
         max_damage: bool = false,
         damage_mult: int = 1,
-        weapon_bonus: int = 0
+        weapon_bonus: int = 0,
+        weapon_material: WeaponMaterial = WeaponMaterial.Normal
     ) -> AttackResult #attack_resolution {
         let bthb_val = character_bthb(attacker)
         let str_hit = effective_str_to_hit(attacker)
@@ -508,7 +510,7 @@ system "OSRIC Combat" {
             _ => 0
         }
 
-        AttackResult { outcome: outcome, total_mod: total_mod, damage: damage, weapon_bonus: weapon_bonus }
+        AttackResult { outcome: outcome, total_mod: total_mod, damage: damage, weapon_bonus: weapon_bonus, weapon_material: weapon_material }
     }
 
     // Missile attack: d20 + BTHB + DEX missile mod - range + attack_mod vs effective AC.
@@ -521,7 +523,8 @@ system "OSRIC Combat" {
         attack_mod: int = 0,
         roll_mode: RollMode = RollMode.Normal,
         max_damage: bool = false,
-        weapon_bonus: int = 0
+        weapon_bonus: int = 0,
+        weapon_material: WeaponMaterial = WeaponMaterial.Normal
     ) -> AttackResult #attack_resolution {
         let bthb_val = character_bthb(attacker)
         let dex_mod = dex_missile(attacker.abilities[DEX])
@@ -556,7 +559,7 @@ system "OSRIC Combat" {
             _ => 0
         }
 
-        AttackResult { outcome: outcome, total_mod: total_mod, damage: damage, weapon_bonus: weapon_bonus }
+        AttackResult { outcome: outcome, total_mod: total_mod, damage: damage, weapon_bonus: weapon_bonus, weapon_material: weapon_material }
     }
 
     // Monster attack using hit dice for BTHB.
@@ -1636,7 +1639,8 @@ system "OSRIC Combat" {
                 FistOrKick
             }
             let wb = if wielded.is_some() { wielded_item_magic_bonus(wielded.unwrap()) } else { 0 }
-            let result = resolve_melee_attack(attacker, target, weapon, weapon_bonus: wb)
+            let wm = if wielded.is_some() { wielded_item_material(wielded.unwrap()) } else { WeaponMaterial.Normal }
+            let result = resolve_melee_attack(attacker, target, weapon, weapon_bonus: wb, weapon_material: wm)
             match result.outcome {
                 AttackOutcome.Hit => {
                     let wdef = melee_weapon_def(weapon)
@@ -1659,7 +1663,8 @@ system "OSRIC Combat" {
         resolve {
             let weapon = wielded_missile(attacker).unwrap()
             let wb = wielded_item_magic_bonus(attacker.wielded_main.unwrap())
-            let result = resolve_missile_attack(attacker, target, weapon, distance, weapon_bonus: wb)
+            let wm = wielded_item_material(attacker.wielded_main.unwrap())
+            let result = resolve_missile_attack(attacker, target, weapon, distance, weapon_bonus: wb, weapon_material: wm)
             match result.outcome {
                 AttackOutcome.Hit => {
                     let wdef = missile_weapon_def(weapon)
@@ -1720,7 +1725,8 @@ system "OSRIC Combat" {
         attack_mod: int = 0,
         roll_mode: RollMode = RollMode.Normal,
         max_damage: bool = false,
-        weapon_bonus: int = 0
+        weapon_bonus: int = 0,
+        weapon_material: WeaponMaterial = WeaponMaterial.Normal
     ) -> AttackResult #attack_resolution {
         let bthb_val = monster_bthb(attacker.hit_dice)
         let target_ac = effective_target_ac(target)
@@ -1743,7 +1749,7 @@ system "OSRIC Combat" {
             _ => 0
         }
 
-        AttackResult { outcome: outcome, total_mod: total_mod, damage: damage, weapon_bonus: weapon_bonus }
+        AttackResult { outcome: outcome, total_mod: total_mod, damage: damage, weapon_bonus: weapon_bonus, weapon_material: weapon_material }
     }
 
     // Armed monster missile: HD-based BTHB + range penalty + weapon damage dice.
@@ -1755,7 +1761,8 @@ system "OSRIC Combat" {
         attack_mod: int = 0,
         roll_mode: RollMode = RollMode.Normal,
         max_damage: bool = false,
-        weapon_bonus: int = 0
+        weapon_bonus: int = 0,
+        weapon_material: WeaponMaterial = WeaponMaterial.Normal
     ) -> AttackResult #attack_resolution {
         let bthb_val = monster_bthb(attacker.hit_dice)
         let wdef = missile_weapon_def(weapon)
@@ -1779,7 +1786,7 @@ system "OSRIC Combat" {
             _ => 0
         }
 
-        AttackResult { outcome: outcome, total_mod: total_mod, damage: damage, weapon_bonus: weapon_bonus }
+        AttackResult { outcome: outcome, total_mod: total_mod, damage: damage, weapon_bonus: weapon_bonus, weapon_material: weapon_material }
     }
 
     // Armed monster melee attack with wielded main-hand weapon.
@@ -1794,7 +1801,10 @@ system "OSRIC Combat" {
             let wb = if attacker has EquipmentSlots as eq {
                 if attacker.eq.wielded_main.is_some() { wielded_item_magic_bonus(attacker.eq.wielded_main.unwrap()) } else { 0 }
             } else { 0 }
-            let result = resolve_armed_melee_attack(attacker, target, weapon, weapon_bonus: wb)
+            let wm = if attacker has EquipmentSlots as eq {
+                if attacker.eq.wielded_main.is_some() { wielded_item_material(attacker.eq.wielded_main.unwrap()) } else { WeaponMaterial.Normal }
+            } else { WeaponMaterial.Normal }
+            let result = resolve_armed_melee_attack(attacker, target, weapon, weapon_bonus: wb, weapon_material: wm)
             match result.outcome {
                 AttackOutcome.Hit => {
                     let wdef = melee_weapon_def(weapon)
@@ -1820,7 +1830,10 @@ system "OSRIC Combat" {
             let wb = if attacker has EquipmentSlots as eq {
                 if attacker.eq.wielded_main.is_some() { wielded_item_magic_bonus(attacker.eq.wielded_main.unwrap()) } else { 0 }
             } else { 0 }
-            let result = resolve_armed_missile_attack(attacker, target, weapon, distance, weapon_bonus: wb)
+            let wm = if attacker has EquipmentSlots as eq {
+                if attacker.eq.wielded_main.is_some() { wielded_item_material(attacker.eq.wielded_main.unwrap()) } else { WeaponMaterial.Normal }
+            } else { WeaponMaterial.Normal }
+            let result = resolve_armed_missile_attack(attacker, target, weapon, distance, weapon_bonus: wb, weapon_material: wm)
             match result.outcome {
                 AttackOutcome.Hit => {
                     let wdef = missile_weapon_def(weapon)
@@ -1917,9 +1930,11 @@ system "OSRIC Combat" {
             let offhand_penalty = two_weapon_offhand_penalty(dex)
             let primary_wb = wielded_item_magic_bonus(attacker.wielded_main.unwrap())
             let offhand_wb = wielded_item_magic_bonus(attacker.wielded_off.unwrap())
+            let primary_wm = wielded_item_material(attacker.wielded_main.unwrap())
+            let offhand_wm = wielded_item_material(attacker.wielded_off.unwrap())
 
             // Primary hand attack
-            let result1 = resolve_melee_attack(attacker, target, primary_weapon, primary_penalty, weapon_bonus: primary_wb)
+            let result1 = resolve_melee_attack(attacker, target, primary_weapon, primary_penalty, weapon_bonus: primary_wb, weapon_material: primary_wm)
             match result1.outcome {
                 AttackOutcome.Hit => {
                     let wdef = melee_weapon_def(primary_weapon)
@@ -1929,7 +1944,7 @@ system "OSRIC Combat" {
             }
 
             // Off-hand attack
-            let result2 = resolve_melee_attack(attacker, target, offhand_weapon, offhand_penalty, weapon_bonus: offhand_wb)
+            let result2 = resolve_melee_attack(attacker, target, offhand_weapon, offhand_penalty, weapon_bonus: offhand_wb, weapon_material: offhand_wm)
             match result2.outcome {
                 AttackOutcome.Hit => {
                     let wdef = melee_weapon_def(offhand_weapon)
@@ -1975,8 +1990,9 @@ system "OSRIC Combat" {
         resolve {
             let weapon = wielded_melee(attacker).unwrap()
             let wb = wielded_item_magic_bonus(attacker.wielded_main.unwrap())
+            let wm = wielded_item_material(attacker.wielded_main.unwrap())
             apply_condition(attacker, ChargeRecovery, Duration.Rounds(10))
-            let result = resolve_melee_attack(attacker, target, weapon, 2, weapon_bonus: wb)
+            let result = resolve_melee_attack(attacker, target, weapon, 2, weapon_bonus: wb, weapon_material: wm)
             match result.outcome {
                 AttackOutcome.Hit => {
                     let wdef = melee_weapon_def(weapon)
@@ -2000,7 +2016,8 @@ system "OSRIC Combat" {
         resolve {
             let weapon = wielded_melee(defender).unwrap()
             let wb = wielded_item_magic_bonus(defender.wielded_main.unwrap())
-            let result = resolve_melee_attack(defender, target, weapon, 0, weapon_bonus: wb)
+            let wm = wielded_item_material(defender.wielded_main.unwrap())
+            let result = resolve_melee_attack(defender, target, weapon, 0, weapon_bonus: wb, weapon_material: wm)
             match result.outcome {
                 AttackOutcome.Hit => {
                     let wdef = melee_weapon_def(weapon)
@@ -2106,6 +2123,7 @@ system "OSRIC Combat" {
             if hidden {
                 let weapon = wielded_melee(attacker).unwrap()
                 let wb = wielded_item_magic_bonus(attacker.wielded_main.unwrap())
+                let wm = wielded_item_material(attacker.wielded_main.unwrap())
                 let cl = backstab_class_level(attacker)
                 let mult = backstab_multiplier(cl.class, cl.level)
                 // Apply RearAttacked: strips DEX & shield AC, adds +2 to hit.
@@ -2113,7 +2131,7 @@ system "OSRIC Combat" {
                 apply_condition(target, RearAttacked, Duration.EndOfRound)
                 let result = resolve_melee_attack(
                     attacker, target, weapon, 2,
-                    RollMode.Normal, false, mult, wb
+                    RollMode.Normal, false, mult, wb, wm
                 )
                 remove_condition(target, "RearAttacked")
                 match result.outcome {
@@ -2205,9 +2223,10 @@ system "OSRIC Combat" {
         } else {
             // Failed assassination: normal weapon attack
             let wb = wielded_item_magic_bonus(attacker.wielded_main.unwrap())
+            let wm = wielded_item_material(attacker.wielded_main.unwrap())
             let result = resolve_melee_attack(
                 attacker, target, weapon, 0,
-                RollMode.Normal, false, 1, wb
+                RollMode.Normal, false, 1, wb, wm
             )
             let dmg = match result.outcome {
                 AttackOutcome.Hit => result.damage,
