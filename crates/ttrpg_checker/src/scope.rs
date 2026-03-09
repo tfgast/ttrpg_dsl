@@ -22,6 +22,7 @@ pub enum BlockKind {
     /// side-effect-free builtins (floor, ceil, min, max, distance) are permitted.
     TriggerBinding,
     /// `with_budget` body — provisions a scoped turn budget in a function.
+    /// Does NOT grant `turn` access; use `budget_of(entity)` instead.
     WithBudget,
     /// `on_apply` / `on_remove` lifecycle block inside a condition.
     /// Hook-like permissions minus `invocation()` and `turn`.
@@ -66,10 +67,7 @@ impl BlockKind {
     pub fn allows_turn(&self) -> bool {
         matches!(
             self,
-            BlockKind::ActionResolve
-                | BlockKind::ReactionResolve
-                | BlockKind::HookResolve
-                | BlockKind::WithBudget
+            BlockKind::ActionResolve | BlockKind::ReactionResolve | BlockKind::HookResolve
         )
     }
 

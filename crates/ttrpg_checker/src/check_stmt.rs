@@ -896,17 +896,8 @@ impl Checker<'_> {
             }
         }
 
-        // Push WithBudget scope and bind `turn` as mutable TurnBudget
+        // Push WithBudget scope — `turn` is NOT bound here; use budget_of(entity) instead
         self.scope.push(BlockKind::WithBudget);
-        self.scope.bind(
-            "turn".into(),
-            VarBinding {
-                ty: Ty::TurnBudget,
-                mutable: true,
-                is_local: false,
-            },
-        );
-
         self.check_block(body);
         self.scope.pop();
     }
@@ -942,15 +933,8 @@ impl Checker<'_> {
             }
         }
 
+        // Push WithBudget scope — `turn` is NOT bound here; use budget_of(entity) instead
         self.scope.push(BlockKind::WithBudget);
-        self.scope.bind(
-            "turn".into(),
-            VarBinding {
-                ty: Ty::TurnBudget,
-                mutable: true,
-                is_local: false,
-            },
-        );
         self.check_block(body);
         self.scope.pop();
     }

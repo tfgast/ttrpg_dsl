@@ -11380,7 +11380,7 @@ system "test" {
 }
 
 #[test]
-fn test_with_budget_turn_readable_in_body() {
+fn test_with_budget_turn_rejected_in_body() {
     let source = r#"
 system "test" {
     entity Character { hp: int }
@@ -11391,11 +11391,26 @@ system "test" {
     }
 }
 "#;
+    expect_errors(source, &["undefined variable `turn`"]);
+}
+
+#[test]
+fn test_with_budget_budget_of_readable_in_body() {
+    let source = r#"
+system "test" {
+    entity Character { hp: int }
+    function foo(actor: Character) {
+        with_budget(actor, { actions: 1 }) {
+            let a = budget_of(actor).actions
+        }
+    }
+}
+"#;
     expect_no_errors(source);
 }
 
 #[test]
-fn test_with_budget_turn_writable_in_body() {
+fn test_with_budget_turn_write_rejected_in_body() {
     let source = r#"
 system "test" {
     entity Character { hp: int }
@@ -11406,7 +11421,7 @@ system "test" {
     }
 }
 "#;
-    expect_no_errors(source);
+    expect_errors(source, &["undefined variable `turn`"]);
 }
 
 #[test]
@@ -11416,7 +11431,7 @@ system "test" {
     entity Character { hp: int }
     function foo(actor: Character) {
         with_budget(actor, { actions: 1, bonus_actions: 1, movement: 30 }) {
-            let a = turn.actions
+            let a = budget_of(actor).actions
         }
     }
 }
@@ -11449,7 +11464,7 @@ system "test" {
     entity Character { hp: int }
     function foo(actor: entity) {
         with_budget(actor, { actions: 1 }) {
-            let a = turn.actions
+            let a = budget_of(actor).actions
         }
     }
 }
@@ -11468,7 +11483,7 @@ system "test" {
     entity Character { hp: int }
     function foo(actor: Character) {
         with_budget(actor, { action: 1 }) {
-            let a = turn.action
+            let a = budget_of(actor).action
         }
     }
 }
