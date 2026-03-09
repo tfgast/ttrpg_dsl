@@ -134,6 +134,26 @@ assert_eq effective_thief_skill(Assassin, ReadLanguages, 1, 12, HalfOrc), 1
 // Clamps maximum to 99: Thief L16 pick_pockets = 125, DEX 18 +10, HalfElf +10 = 145 → 99
 assert_eq effective_thief_skill(Thief, PickPockets, 16, 18, HalfElf), 99
 
+// ── Character thief skill uses the thief-bearing class ────────
+
+spawn Character fighter_thief {
+    name: "Fighter/Thief",
+    classes: [ClassLevel { class: Fighter, level: 4 }, ClassLevel { class: Thief, level: 3 }],
+    abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 },
+    ancestry: Human,
+    HitPoints { max_hp: 18, hp: 18 }
+}
+assert_eq character_thief_skill(fighter_thief, OpenLocks), effective_thief_skill(Thief, OpenLocks, 3, 12, Human)
+
+spawn Character cleric_assassin {
+    name: "Cleric/Assassin",
+    classes: [ClassLevel { class: Cleric, level: 5 }, ClassLevel { class: Assassin, level: 4 }],
+    abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 },
+    ancestry: Elf,
+    HitPoints { max_hp: 20, hp: 20 }
+}
+assert_eq character_thief_skill(cleric_assassin, MoveSilently), effective_thief_skill(Assassin, MoveSilently, 4, 12, Elf)
+
 // ── Thief skill check mechanic (d100) ──────────────────────────
 
 // Roll of 1 always succeeds

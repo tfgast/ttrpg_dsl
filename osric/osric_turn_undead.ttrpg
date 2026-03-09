@@ -41,6 +41,12 @@ system "OSRIC Turn Undead" {
         Failed
     }
 
+    enum TurnTargetKind {
+        UndeadTarget,
+        FiendTarget,
+        PaladinTarget
+    }
+
 
     // ========================================================
     //  EVENTS
@@ -274,9 +280,9 @@ system "OSRIC Turn Undead" {
     // ========================================================
     //  NUMBER AFFECTED
     //
-    //  Normal result (T or number): 2d6 affected.
-    //  D result: 2d6 affected (fiend/paladin target: 1d2).
-    //  D* result: 1d6+6 affected (fiend/paladin target: 1d2).
+    //  Normal undead: T/number = 2d6, D = 2d6, D* = 1d6+6.
+    //  Fiends and paladins are affected in 1d2 numbers on any
+    //  successful result.
     // ========================================================
 
     mechanic roll_number_turned() -> int {
@@ -291,7 +297,7 @@ system "OSRIC Turn Undead" {
         roll(1d6).total + 6
     }
 
-    mechanic roll_number_fiend_paladin() -> int {
+    mechanic roll_number_special_target() -> int {
         roll(1d2).total
     }
 
@@ -315,32 +321,38 @@ system "OSRIC Turn Undead" {
     //
     //  Core mechanic: given a character and undead type (1-13),
     //  resolve the turning attempt and return the outcome.
-    //  is_fiend_or_paladin: true if target is fiend/paladin
-    //  type (affects number affected for D/D* results).
+    //  target_kind distinguishes standard undead from fiends
+    //  and paladins, which use special number-affected rules.
     // ========================================================
 
     mechanic resolve_turn_undead(
         turner: Character,
         undead_type: int,
-        is_fiend_or_paladin: bool = false
+        target_kind: TurnTargetKind = UndeadTarget
     ) -> TurnOutcome {
         let level = effective_turning_level(turner)
         let code = turn_undead_table(undead_type, level)
         let evil = is_evil_alignment(turner.alignment)
+        let special_target = target_kind != UndeadTarget
 
         match {
+            // Good/neutral clerics cannot affect paladins.
+            target_kind == PaladinTarget && !evil => TurnOutcome.Impossible,
+
             // Impossible
             code == -1 => TurnOutcome.Impossible,
 
             // D* — destroy/control 1d6+6 (or 1d2 for fiend/paladin)
             code == -3 => {
-                let affected = if is_fiend_or_paladin {
-                    roll_number_fiend_paladin()
+                let affected = if special_target {
+                    roll_number_special_target()
                 } else {
                     roll_number_destroyed_star()
                 }
                 if evil {
-                    if evil_control_check() {
+                    if target_kind == PaladinTarget {
+                        TurnOutcome.Turned(affected)
+                    } else if evil_control_check() {
                         TurnOutcome.Controlled(affected)
                     } else {
                         TurnOutcome.NotControlled(affected)
@@ -352,13 +364,15 @@ system "OSRIC Turn Undead" {
 
             // D — destroy/control 2d6 (or 1d2 for fiend/paladin)
             code == -2 => {
-                let affected = if is_fiend_or_paladin {
-                    roll_number_fiend_paladin()
+                let affected = if special_target {
+                    roll_number_special_target()
                 } else {
                     roll_number_destroyed()
                 }
                 if evil {
-                    if evil_control_check() {
+                    if target_kind == PaladinTarget {
+                        TurnOutcome.Turned(affected)
+                    } else if evil_control_check() {
                         TurnOutcome.Controlled(affected)
                     } else {
                         TurnOutcome.NotControlled(affected)
@@ -370,7 +384,11 @@ system "OSRIC Turn Undead" {
 
             // T — auto-turn 2d6
             code == 0 => {
-                let affected = roll_number_turned()
+                let affected = if special_target {
+                    roll_number_special_target()
+                } else {
+                    roll_number_turned()
+                }
                 TurnOutcome.Turned(affected)
             },
 
@@ -378,7 +396,11 @@ system "OSRIC Turn Undead" {
             _ => {
                 let d20 = roll(1d20).total
                 if d20 >= code {
-                    let affected = roll_number_turned()
+                    let affected = if special_target {
+                        roll_number_special_target()
+                    } else {
+                        roll_number_turned()
+                    }
                     TurnOutcome.Turned(affected)
                 } else {
                     TurnOutcome.Failed
@@ -399,7 +421,7 @@ system "OSRIC Turn Undead" {
 
     action TurnUndeadAction on turner: Character with TurnUndead (
         undead_type: int,
-        is_fiend_or_paladin: bool = false
+        target_kind: TurnTargetKind = UndeadTarget
     ) {
         cost { action }
         requires {
@@ -408,7 +430,7 @@ system "OSRIC Turn Undead" {
             && undead_type <= 13
         }
         resolve {
-            let outcome = resolve_turn_undead(turner, undead_type, is_fiend_or_paladin)
+            let outcome = resolve_turn_undead(turner, undead_type, target_kind)
             emit UndeadTurned(turner: turner, undead_type: undead_type, outcome: outcome)
         }
     }

@@ -386,13 +386,13 @@ system "OSRIC Thief Skills" {
     // ========================================================
     //  CHARACTER EFFECTIVE SKILL
     //  Convenience derive operating on a Character entity.
-    //  Uses the character's first class with has_thief_skills.
+    //  Uses the first class entry that actually grants thief skills.
     // ========================================================
 
     derive character_thief_skill(char: Character, skill: ThiefSkill) -> int {
-        let cl = first(char.classes).unwrap()
-        let class_def = class_def(cl.class)
-        if class_def.has_thief_skills {
+        let thief_classes = [cl for cl in char.classes if class_def(cl.class).has_thief_skills]
+        if len(thief_classes) > 0 {
+            let cl = first(thief_classes).unwrap()
             effective_thief_skill(cl.class, skill, cl.level, char.abilities[DEX], char.ancestry)
         } else {
             0

@@ -167,12 +167,10 @@ system "OSRIC Multiclass" {
     // ========================================================
     //  EFFECTIVE ARMOUR PERMISSION (MULTI-CLASS)
     //
-    //  Multi-classed characters use the most restrictive
+    //  Multi-classed characters use the least restrictive
     //  armour permission from any of their classes.
     //  §1.3.11 + ancestry sections: "the least restrictive
     //  of your classes' armour restrictions...apply to you"
-    //  (actually: most restrictive, despite the wording —
-    //  the examples clarify this).
     //
     //  Permission ordering (most → least restrictive):
     //  NoArmour < LeatherOnly < LeatherWooden < LeatherShield < AnyArmour
@@ -198,11 +196,11 @@ system "OSRIC Multiclass" {
         }
     }
 
-    // Most restrictive armour permission across all of a character's classes.
+    // Least restrictive armour permission across all of a character's classes.
     derive effective_armour_permission(char: Character) -> ArmourPermission {
         let ranks = [armour_permission_rank(class_def(cl.class).armour) for cl in char.classes]
-        let min_rank = first(sort(ranks)).unwrap()
-        armour_permission_from_rank(min_rank)
+        let max_rank = last(sort(ranks)).unwrap()
+        armour_permission_from_rank(max_rank)
     }
 
 

@@ -23,6 +23,8 @@ use "OSRIC Combat"
 use "OSRIC Conditions"
 use "OSRIC Equipment"
 use "OSRIC Inventory"
+use "OSRIC Monster Traits"
+use "OSRIC Saves"
 
 system "OSRIC Potions" {
 
@@ -266,6 +268,192 @@ system "OSRIC Potions" {
 
 
     // ========================================================
+    //  MARKER / CONTROL / DETECTION POTIONS
+    //
+    //  These potions were previously event-only when consumed
+    //  through DrinkPotion. Even when an effect still requires
+    //  GM adjudication, we model the active magical state with
+    //  a condition so the rules surface is not a no-op.
+    // ========================================================
+
+    condition PotionAnimalControl on bearer: Character
+        stacking first
+    {}
+
+    function resolve_potion_animal_control(drinker: Character) {
+        let duration_turns = roll(1d4).total
+        apply_condition(drinker, PotionAnimalControl, Duration.Turns(duration_turns))
+        emit PotionEffectApplied(drinker: drinker, potion_name: "Potion of Animal Control")
+    }
+
+    condition PotionClairaudience on bearer: Character
+        stacking first
+    {}
+
+    function resolve_potion_clairaudience(drinker: Character) {
+        apply_condition(drinker, PotionClairaudience, Duration.Turns(2))
+        emit PotionEffectApplied(drinker: drinker, potion_name: "Potion of Clairaudience")
+    }
+
+    condition PotionClairvoyance on bearer: Character
+        stacking first
+    {}
+
+    function resolve_potion_clairvoyance(drinker: Character) {
+        apply_condition(drinker, PotionClairvoyance, Duration.Turns(1))
+        emit PotionEffectApplied(drinker: drinker, potion_name: "Potion of Clairvoyance")
+    }
+
+    condition PotionCursed on bearer: Character
+        stacking first
+    {}
+
+    function resolve_cursed_potion(drinker: Character) {
+        apply_condition(drinker, PotionCursed, Duration.Indefinite)
+        emit PotionEffectApplied(drinker: drinker, potion_name: "Cursed Potion")
+    }
+
+    condition PotionDelusion on bearer: Character
+        stacking first
+    {}
+
+    function resolve_potion_delusion(drinker: Character) {
+        apply_condition(drinker, PotionDelusion, Duration.Indefinite)
+        emit PotionEffectApplied(drinker: drinker, potion_name: "Potion of Delusion")
+    }
+
+    condition PotionDragonControl on bearer: Character
+        stacking first
+    {}
+
+    function resolve_potion_dragon_control(drinker: Character) {
+        let duration_rounds = roll(5d4).total
+        apply_condition(drinker, PotionDragonControl, Duration.Rounds(duration_rounds))
+        emit PotionEffectApplied(drinker: drinker, potion_name: "Potion of Dragon Control")
+    }
+
+    condition PotionGiantControl on bearer: Character
+        stacking first
+    {}
+
+    function resolve_potion_giant_control(drinker: Character) {
+        let duration_rounds = roll(5d6).total
+        apply_condition(drinker, PotionGiantControl, Duration.Rounds(duration_rounds))
+        emit PotionEffectApplied(drinker: drinker, potion_name: "Potion of Giant Control")
+    }
+
+    condition PotionHumanControl on bearer: Character
+        stacking first
+    {}
+
+    function resolve_potion_human_control(drinker: Character) {
+        let duration_rounds = roll(5d6).total
+        apply_condition(drinker, PotionHumanControl, Duration.Rounds(duration_rounds))
+        emit PotionEffectApplied(drinker: drinker, potion_name: "Potion of Human Control")
+    }
+
+    condition PotionLongevity(years_younger: int) on bearer: Character
+        stacking first
+    {}
+
+    function resolve_potion_longevity(drinker: Character) {
+        let years = roll(1d12).total
+        apply_condition(drinker, PotionLongevity(years_younger: years), Duration.Indefinite)
+        emit PotionEffectApplied(drinker: drinker, potion_name: "Potion of Longevity")
+    }
+
+    condition PotionOilOfEtherealness on bearer: Character
+        stacking first
+    {}
+
+    function resolve_oil_of_etherealness(drinker: Character) {
+        let duration_turns = roll(1d4 + 4).total
+        apply_condition(drinker, PotionOilOfEtherealness, Duration.Turns(duration_turns))
+        apply_condition(drinker, Invisible, Duration.Turns(duration_turns))
+        emit PotionEffectApplied(drinker: drinker, potion_name: "Oil of Etherealness")
+    }
+
+    condition PotionOilOfSlipperiness on bearer: Character
+        stacking first
+    {}
+
+    function resolve_oil_of_slipperiness(drinker: Character) {
+        apply_condition(drinker, PotionOilOfSlipperiness, Duration.Turns(48))
+        emit PotionEffectApplied(drinker: drinker, potion_name: "Oil of Slipperiness")
+    }
+
+    condition PotionPhiltreOfLove on bearer: Character
+        stacking first
+    {}
+
+    function resolve_philtre_of_love(drinker: Character) {
+        let duration_turns = 4 + roll(1d4).total
+        apply_condition(drinker, PotionPhiltreOfLove, Duration.Turns(duration_turns))
+        emit PotionEffectApplied(drinker: drinker, potion_name: "Philtre of Love")
+    }
+
+    condition PotionPhiltreOfPersuasiveness(reaction_bonus_pct: int) on bearer: Character
+        stacking first
+    {}
+
+    function resolve_philtre_of_persuasiveness(drinker: Character) {
+        let duration_turns = roll(1d4).total
+        apply_condition(drinker, PotionPhiltreOfPersuasiveness(reaction_bonus_pct: 25), Duration.Turns(duration_turns))
+        emit PotionEffectApplied(drinker: drinker, potion_name: "Philtre of Persuasiveness")
+    }
+
+    condition PotionPlantControl on bearer: Character
+        stacking first
+    {}
+
+    function resolve_potion_plant_control(drinker: Character) {
+        let duration_rounds = roll(5d4).total
+        apply_condition(drinker, PotionPlantControl, Duration.Rounds(duration_rounds))
+        emit PotionEffectApplied(drinker: drinker, potion_name: "Potion of Plant Control")
+    }
+
+    condition PotionPolymorph on bearer: Character
+        stacking first
+    {}
+
+    function resolve_potion_polymorph(drinker: Character) {
+        let duration_turns = roll(1d4).total
+        apply_condition(drinker, PotionPolymorph, Duration.Turns(duration_turns))
+        emit PotionEffectApplied(drinker: drinker, potion_name: "Potion of Polymorph")
+    }
+
+    condition PotionSweetWater(preservation_rounds: int) on bearer: Character
+        stacking first
+    {}
+
+    function resolve_potion_sweet_water(drinker: Character) {
+        let preservation_rounds = roll(5d4).total
+        apply_condition(drinker, PotionSweetWater(preservation_rounds: preservation_rounds), Duration.Indefinite)
+        emit PotionEffectApplied(drinker: drinker, potion_name: "Potion of Sweet Water")
+    }
+
+    condition PotionTreasureFinding on bearer: Character
+        stacking first
+    {}
+
+    function resolve_potion_treasure_finding(drinker: Character) {
+        let duration_rounds = roll(5d4).total
+        apply_condition(drinker, PotionTreasureFinding, Duration.Rounds(duration_rounds))
+        emit PotionEffectApplied(drinker: drinker, potion_name: "Potion of Treasure Finding")
+    }
+
+    condition PotionUndeadControl on bearer: Character
+        stacking first
+    {}
+
+    function resolve_potion_undead_control(drinker: Character) {
+        let duration_rounds = roll(5d4).total
+        apply_condition(drinker, PotionUndeadControl, Duration.Rounds(duration_rounds))
+        emit PotionEffectApplied(drinker: drinker, potion_name: "Potion of Undead Control")
+    }
+
+
+    // ========================================================
     //  POTION OF SPEED — §2.13.2
     //
     //  Doubles combat attacks and movement for 5d4 rounds.
@@ -501,17 +689,27 @@ system "OSRIC Potions" {
     //  custom condition for the AC/save bonuses.
     // ========================================================
 
-    condition PotionInvulnerability on bearer: Character
+    condition PotionInvulnerability(save_bonus: int) on bearer: Character
         stacking first
     {
         modify effective_target_ac(target: bearer) {
             ac_mod = ac_mod + 2
         }
+        modify character_best_saves(char: bearer) {
+            result = SavingThrows {
+                aimed_magic: max(2, result.aimed_magic - save_bonus),
+                breath: max(2, result.breath - save_bonus),
+                death_paralysis_poison: max(2, result.death_paralysis_poison - save_bonus),
+                petrification_polymorph: max(2, result.petrification_polymorph - save_bonus),
+                spells: max(2, result.spells - save_bonus)
+            }
+        }
     }
 
     function resolve_potion_invulnerability(drinker: Character) {
-        let duration_rounds = roll(5d4 + 2).total
-        apply_condition(drinker, PotionInvulnerability, Duration.Rounds(duration_rounds))
+        let duration_rounds = roll(3d6 + 2).total
+        apply_condition(drinker, ImmuneToNormalWeapons, Duration.Rounds(duration_rounds))
+        apply_condition(drinker, PotionInvulnerability(save_bonus: 2), Duration.Rounds(duration_rounds))
         emit PotionEffectApplied(drinker: drinker, potion_name: "Potion of Invulnerability")
     }
 
@@ -768,9 +966,27 @@ system "OSRIC Potions" {
 
             // Dispatch to resolve function
             match potion {
+                AnimalControl   => resolve_potion_animal_control(drinker),
+                Clairaudience   => resolve_potion_clairaudience(drinker),
+                Clairvoyance    => resolve_potion_clairvoyance(drinker),
+                CursedPotion    => resolve_cursed_potion(drinker),
+                Delusion        => resolve_potion_delusion(drinker),
+                DragonControl   => resolve_potion_dragon_control(drinker),
+                GiantControl    => resolve_potion_giant_control(drinker),
                 Healing         => resolve_potion_healing(drinker),
                 ExtraHealing    => resolve_potion_extra_healing(drinker),
+                HumanControl    => resolve_potion_human_control(drinker),
+                Longevity       => resolve_potion_longevity(drinker),
+                OilOfEtherealness => resolve_oil_of_etherealness(drinker),
+                OilOfSlipperiness => resolve_oil_of_slipperiness(drinker),
+                PhiltreOfLove   => resolve_philtre_of_love(drinker),
+                PhiltreOfPersuasiveness => resolve_philtre_of_persuasiveness(drinker),
+                PlantControl    => resolve_potion_plant_control(drinker),
+                Polymorph       => resolve_potion_polymorph(drinker),
                 Speed           => resolve_potion_speed(drinker),
+                SweetWater      => resolve_potion_sweet_water(drinker),
+                TreasureFinding => resolve_potion_treasure_finding(drinker),
+                UndeadControl   => resolve_potion_undead_control(drinker),
                 FireResistance  => resolve_potion_fire_resistance(drinker, false),
                 Invisibility    => resolve_potion_invisibility(drinker),
                 Invulnerability => resolve_potion_invulnerability(drinker),
@@ -784,10 +1000,6 @@ system "OSRIC Potions" {
                 Growth          => resolve_potion_growth(drinker, 4),
                 Heroism         => resolve_potion_heroism(drinker),
                 SuperHeroism    => resolve_potion_super_heroism(drinker),
-                // Marker-only / GM-adjudicated potions: apply generic duration
-                _               => {
-                    emit PotionEffectApplied(drinker: drinker, potion_name: name)
-                }
             }
         }
     }

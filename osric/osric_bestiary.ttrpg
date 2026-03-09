@@ -239,7 +239,7 @@ system "OSRIC Bestiary" {
         apply_condition(m, TurnedAsUndead(effective_hd: 5), Duration.Indefinite)
         apply_condition(m, ImmuneToCold, Duration.Indefinite)
         apply_condition(m, ImmuneToMindControl, Duration.Indefinite)
-        apply_condition(m, ImmuneToNormalWeapons, Duration.Indefinite)
+        apply_condition(m, ImmuneToNormalWeaponsExceptSilver, Duration.Indefinite)
         m
     }
 
@@ -263,7 +263,7 @@ system "OSRIC Bestiary" {
         apply_condition(m, TurnedAsUndead(effective_hd: 7), Duration.Indefinite)
         apply_condition(m, ImmuneToCold, Duration.Indefinite)
         apply_condition(m, ImmuneToMindControl, Duration.Indefinite)
-        apply_condition(m, ImmuneToNormalWeapons, Duration.Indefinite)
+        apply_condition(m, ImmuneToNormalWeaponsExceptSilver, Duration.Indefinite)
         m
     }
 

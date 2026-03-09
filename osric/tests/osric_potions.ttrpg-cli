@@ -48,8 +48,41 @@ assert_eq character_movement(speed_move), Feet { value: 240 }
 // ── PotionInvulnerability improves AC ───────────────────────────
 
 spawn Character invulnerable { name: "Knight", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 } }
-call apply_condition(invulnerable, PotionInvulnerability, Duration.Indefinite)
+call apply_condition(invulnerable, PotionInvulnerability(save_bonus: 2), Duration.Indefinite)
 assert_eq effective_target_ac(invulnerable), 12
+assert_eq character_best_saves(invulnerable).aimed_magic, 14
+assert_eq character_best_saves(invulnerable).spells, 15
+
+// ── resolve_potion_invulnerability grants broader protection ────
+
+spawn Character invuln_target { name: "Champion", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 } }
+spawn Character mundane_atk { name: "Bandit", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 } }
+spawn Monster weak_monster { name: "Wolf", hit_dice: 2d8, max_hp: 8, hp: 8, ac: 13, attacks: [MonsterAttack { name: "Bite", damage: 1d4 }], special: [] }
+rolls clear
+rolls 3 4 5
+call resolve_potion_invulnerability(invuln_target)
+let mundane_result = resolve_melee_attack(mundane_atk, invuln_target, SwordLong)
+let weak_monster_result = resolve_monster_attack(weak_monster, invuln_target, MonsterAttack { name: "Bite", damage: 1d4 })
+assert_match mundane_result.outcome, AttackOutcome.Miss
+assert_eq mundane_result.damage, 0
+assert_match weak_monster_result.outcome, AttackOutcome.Miss
+assert_eq weak_monster_result.damage, 0
+
+// ── DrinkPotion resolves previously inert marker-style potions ──
+
+spawn Character animal_ctrl { name: "Beastmaster", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 }, Inventory { loose_items: [potion_item(AnimalControl)] } }
+rolls clear
+rolls 4
+do DrinkPotion(animal_ctrl, AnimalControl)
+assert_condition animal_ctrl, PotionAnimalControl
+assert_eq animal_ctrl.Inventory.loose_items.len(), 0
+
+spawn Character ethereal_oil { name: "Scout", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 }, Inventory { loose_items: [potion_item(OilOfEtherealness)] } }
+rolls clear
+rolls 2
+do DrinkPotion(ethereal_oil, OilOfEtherealness)
+assert_condition ethereal_oil, PotionOilOfEtherealness
+assert_condition ethereal_oil, Invisible
 
 // ── admixture_result table categories ───────────────────────────
 

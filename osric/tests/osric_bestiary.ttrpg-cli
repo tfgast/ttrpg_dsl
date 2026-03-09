@@ -29,6 +29,15 @@ assert any([c.name == "TurnedAsUndead" for c in conditions(skeleton)])
 assert any([c.name == "ImmuneToCold" for c in conditions(skeleton)])
 assert any([c.name == "ImmuneToMindControl" for c in conditions(skeleton)])
 assert any([c.name == "ResistantToSlashingAndPiercing" for c in conditions(skeleton)])
+assert !any([c.name == "ResistantToBlunt" for c in conditions(skeleton)])
+
+let wight = create_wight()
+assert any([c.name == "ImmuneToNormalWeaponsExceptSilver" for c in conditions(wight)])
+assert !any([c.name == "ImmuneToNormalWeapons" for c in conditions(wight)])
+
+let wraith = create_wraith()
+assert any([c.name == "ImmuneToNormalWeaponsExceptSilver" for c in conditions(wraith)])
+assert !any([c.name == "ImmuneToNormalWeapons" for c in conditions(wraith)])
 
 let vampire = create_vampire()
 assert_eq vampire.name, "Vampire"
