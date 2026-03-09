@@ -62,6 +62,18 @@ rolls 15 6
 let invis_result = resolve_melee_attack(invis_atk, invis_tgt, SwordLong)
 assert_eq invis_result.total_mod, 0
 
+// ── Invisible on character: +4 to all saving throws ────────────
+
+spawn Character invis_save_tgt { name: "InvisibleSaver", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 } }
+let invis_save_base = character_best_saves(invis_save_tgt)
+call apply_condition(invis_save_tgt, Invisible, Duration.Indefinite)
+
+assert_eq character_best_saves(invis_save_tgt).aimed_magic, max(2, invis_save_base.aimed_magic - 4)
+assert_eq character_best_saves(invis_save_tgt).breath, max(2, invis_save_base.breath - 4)
+assert_eq character_best_saves(invis_save_tgt).death_paralysis_poison, max(2, invis_save_base.death_paralysis_poison - 4)
+assert_eq character_best_saves(invis_save_tgt).petrification_polymorph, max(2, invis_save_base.petrification_polymorph - 4)
+assert_eq character_best_saves(invis_save_tgt).spells, max(2, invis_save_base.spells - 4)
+
 // ── Invisible causes miss on borderline roll ────────────────────
 
 spawn Character invis2_atk { name: "Fighter", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 } }
@@ -259,6 +271,16 @@ rolls 15 6
 let cancel_result = resolve_melee_attack(cancel_atk, cancel_tgt, SwordLong)
 assert_eq cancel_result.total_mod, 4
 
+// Concealed does not stack with Invisible
+spawn Character invisconc_atk { name: "Fighter", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots { worn_armor: some(Armor { armour_type: ScaleLamellar }) } }
+spawn Character invisconc_tgt { name: "Target", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 }, EquipmentSlots { worn_armor: some(Armor { armour_type: ScaleLamellar }) } }
+call apply_condition(invisconc_tgt, Invisible, Duration.Indefinite)
+call apply_condition(invisconc_tgt, Concealed(level: 3), Duration.Indefinite)
+
+rolls 15 6
+let invisconc_result = resolve_melee_attack(invisconc_atk, invisconc_tgt, SwordLong)
+assert_eq invisconc_result.total_mod, 0
+
 // Cover(7) + Concealed(2) stack to -9 → BTHB=4 + (-9) = -5
 spawn Character covconc_atk { name: "Fighter", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots { worn_armor: some(Armor { armour_type: ScaleLamellar }) } }
 spawn Character covconc_tgt { name: "Target", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 }, EquipmentSlots { worn_armor: some(Armor { armour_type: ScaleLamellar }) } }
@@ -439,7 +461,17 @@ rolls 15 6
 let combo_result = resolve_melee_attack(combo_atk, combo_tgt, SwordLong)
 assert_eq combo_result.total_mod, 6
 
-// ── Stunned/Paralyzed/Sleep conditions suppress bearer attacks ──
+// ── Prone/Stunned/Paralyzed/Sleep conditions suppress bearer attacks ──
+
+// Prone on attacker forces Miss
+spawn Character prone2_atk { name: "Fighter", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots { worn_armor: some(Armor { armour_type: ScaleLamellar }) } }
+spawn Character prone2_tgt { name: "Target", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 } }
+call apply_condition(prone2_atk, Prone, Duration.Indefinite)
+
+rolls 18 6
+let prone2_result = resolve_melee_attack(prone2_atk, prone2_tgt, SwordLong)
+assert_eq prone2_result.outcome, AttackOutcome.Miss
+assert_eq prone2_result.damage, 0
 
 // Stunned on attacker forces Miss
 spawn Character stun2_atk { name: "Fighter", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots { worn_armor: some(Armor { armour_type: ScaleLamellar }) } }

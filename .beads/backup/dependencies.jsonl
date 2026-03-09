@@ -387,6 +387,7 @@
 {"created_at":"2026-03-05T12:27:47Z","created_by":"Theodore Gast","depends_on_id":"tdsl-6ahc","issue_id":"tdsl-kn9g","type":"blocks"}
 {"created_at":"2026-03-05T13:06:59Z","created_by":"Theodore Gast","depends_on_id":"tdsl-x409","issue_id":"tdsl-kn9g","type":"blocks"}
 {"created_at":"2026-03-05T12:27:52Z","created_by":"Theodore Gast","depends_on_id":"tdsl-zbt8","issue_id":"tdsl-kn9g","type":"blocks"}
+{"created_at":"2026-03-09T10:04:51Z","created_by":"Theodore Gast","depends_on_id":"tdsl-g686","issue_id":"tdsl-knb2","type":"discovered-from"}
 {"created_at":"2026-03-02T19:51:03Z","created_by":"Theodore Gast","depends_on_id":"tdsl-l2j7","issue_id":"tdsl-koiw","type":"discovered-from"}
 {"created_at":"2026-03-02T18:38:39Z","created_by":"Theodore Gast","depends_on_id":"tdsl-vick","issue_id":"tdsl-kqc5","type":"blocks"}
 {"created_at":"2026-03-04T07:49:47Z","created_by":"Theodore Gast","depends_on_id":"tdsl-yb9b","issue_id":"tdsl-kv9r","type":"blocks"}
@@ -506,8 +507,10 @@
 {"created_at":"2026-02-23T16:41:40Z","created_by":"Theodore Gast","depends_on_id":"tdsl-6o7","issue_id":"tdsl-v50","type":"blocks"}
 {"created_at":"2026-02-23T16:41:41Z","created_by":"Theodore Gast","depends_on_id":"tdsl-dkf","issue_id":"tdsl-v50","type":"blocks"}
 {"created_at":"2026-03-05T06:55:06Z","created_by":"Theodore Gast","depends_on_id":"tdsl-h4ja","issue_id":"tdsl-var1","type":"parent-child"}
+{"created_at":"2026-03-09T10:04:51Z","created_by":"Theodore Gast","depends_on_id":"tdsl-ihe2","issue_id":"tdsl-vjne","type":"discovered-from"}
 {"created_at":"2026-03-01T15:53:48Z","created_by":"Theodore Gast","depends_on_id":"tdsl-bywz","issue_id":"tdsl-vkb4","type":"discovered-from"}
 {"created_at":"2026-03-03T13:13:39Z","created_by":"Theodore Gast","depends_on_id":"tdsl-7gzq","issue_id":"tdsl-vqgq","type":"blocks"}
+{"created_at":"2026-03-09T10:04:51Z","created_by":"Theodore Gast","depends_on_id":"tdsl-6imo","issue_id":"tdsl-w32t","type":"discovered-from"}
 {"created_at":"2026-03-03T09:19:08Z","created_by":"Theodore Gast","depends_on_id":"tdsl-h2im","issue_id":"tdsl-w68h","type":"blocks"}
 {"created_at":"2026-03-03T09:19:08Z","created_by":"Theodore Gast","depends_on_id":"tdsl-t6hj","issue_id":"tdsl-w68h","type":"blocks"}
 {"created_at":"2026-03-01T16:10:37Z","created_by":"Theodore Gast","depends_on_id":"tdsl-bywz","issue_id":"tdsl-w75j","type":"discovered-from"}

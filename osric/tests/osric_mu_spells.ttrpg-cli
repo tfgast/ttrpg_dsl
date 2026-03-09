@@ -59,6 +59,16 @@ call resolve_magic_missile(mm_caster_3, [mm_target_3a, mm_target_3b])
 assert_eq mm_target_3a.hp, 6
 assert_eq mm_target_3b.hp, 7
 
+spawn Character mm_caster_ranger { name: "Talan the Ranger", classes: [ClassLevel { class: Ranger, level: 13 }], abilities: { STR: 15, INT: 12, WIS: 14, DEX: 15, CON: 12, CHA: 12 }, HitPoints { max_hp: 55, hp: 55 } }
+spawn Character mm_target_ranger_a { name: "Ranger Target A", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 } }
+spawn Character mm_target_ranger_b { name: "Ranger Target B", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 } }
+
+rolls clear
+rolls 2 3
+call resolve_magic_missile(mm_caster_ranger, [mm_target_ranger_a, mm_target_ranger_b])
+assert_eq mm_target_ranger_a.hp, 7
+assert_eq mm_target_ranger_b.hp, 6
+
 // ── Fireball resolve: character targets ─────────────────────────
 
 spawn Character fb_caster_1 { name: "Merlin 4", classes: [ClassLevel { class: MagicUser, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 12, hp: 12 } }

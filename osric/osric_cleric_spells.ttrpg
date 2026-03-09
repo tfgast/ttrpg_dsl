@@ -178,6 +178,10 @@ system "OSRIC Cleric Spells" {
 
     // Save bonus for Hold Person based on number of targets.
     // 1 target: -2, 2 targets: 0, 3 targets: +2.
+    derive hold_person_target_count_is_valid(target_count: int) -> bool {
+        target_count >= 1 && target_count <= 3
+    }
+
     derive hold_person_save_bonus(target_count: int) -> int {
         if target_count <= 1 { -2 }
         else if target_count == 2 { 0 }
@@ -188,6 +192,9 @@ system "OSRIC Cleric Spells" {
     // with a modifier based on total target count.
     // Duration = 4 + caster's cleric level rounds.
     function resolve_hold_person(caster: Character, targets: list<Character>) {
+        if !hold_person_target_count_is_valid(len(targets)) {
+            error("Hold Person must target 1-3 creatures")
+        }
         let cl = caster_level(caster, Divine)
         let duration_rounds = 4 + cl
         let save_bonus = hold_person_save_bonus(len(targets))

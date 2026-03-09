@@ -88,8 +88,19 @@ system "OSRIC Morale" {
     //  make morale worse (added to the d100 roll).
     // ========================================================
 
+    derive morale_has_condition_named(subject: entity, cond_name: string) -> bool {
+        any([c.name == cond_name for c in conditions(subject)])
+    }
+
+    derive morale_condition_modifier(target: entity) -> int {
+        let bless_modifier = if morale_has_condition_named(target, "Blessed") { -5 } else { 0 }
+        let curse_modifier = if morale_has_condition_named(target, "Cursed") { 5 } else { 0 }
+        bless_modifier + curse_modifier
+    }
+
     function check_morale(target: entity, modifier: int = 0) -> MoraleResult {
         let bm = base_morale(target)
+        let total_modifier = modifier + morale_condition_modifier(target)
 
         // Read current check count.
         let checks_made = if target is Monster {
@@ -111,7 +122,7 @@ system "OSRIC Morale" {
             }
         } else {
             let d100 = roll(1d100).total
-            let modified = d100 + modifier
+            let modified = d100 + total_modifier
 
             // Increment check counter.
             if target is Monster {

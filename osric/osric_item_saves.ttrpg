@@ -161,6 +161,16 @@ system "OSRIC Item Saves" {
     //  The bonus lowers the effective target (easier to save).
     // ========================================================
 
+    derive magical_item_save_bonus(is_magical: bool, magic_bonus: int) -> int {
+        if !is_magical {
+            0
+        } else if magic_bonus > 0 {
+            magic_bonus + 1
+        } else {
+            2
+        }
+    }
+
     mechanic item_saving_throw(
         material: ItemMaterial,
         damage_type: ItemDamageType,
@@ -168,7 +178,7 @@ system "OSRIC Item Saves" {
         magic_bonus: int = 0
     ) -> ItemSaveResult {
         let base = item_save_target(material, damage_type)
-        let bonus = if is_magical { 2 + magic_bonus } else { 0 }
+        let bonus = magical_item_save_bonus(is_magical, magic_bonus)
         let effective = base - bonus
         let d20 = roll(1d20).total
 
@@ -184,19 +194,19 @@ system "OSRIC Item Saves" {
     // ========================================================
     //  ARTIFACT SAVING THROW
     //
-    //  Artifacts/relics always save on 2-3 (i.e. target 2).
+    //  Artifacts/relics save on 2-3 depending on the item.
     //  On failure they are only neutralised for 1d6 days,
     //  not destroyed.
     // ========================================================
 
-    mechanic artifact_saving_throw() -> ItemSaveResult {
+    mechanic artifact_saving_throw(target: int = 2) -> ItemSaveResult {
         let d20 = roll(1d20).total
 
         ItemSaveResult {
-            survived: d20 >= 2,
+            survived: d20 >= target,
             roll: d20,
-            target: 2,
-            modified_target: 2
+            target: target,
+            modified_target: target
         }
     }
 }

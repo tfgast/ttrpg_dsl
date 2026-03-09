@@ -124,37 +124,44 @@ assert_eq r3.target, 7
 assert_eq r3.modified_target, 5
 assert r3.survived
 
-// ── item_saving_throw: +3 magical item (+2 base + 3 bonus) ─
+// ── item_saving_throw: +3 magical item (+4 total bonus) ─
 
 rolls clear
 rolls 3
 let r4 = item_saving_throw(Paper, FireNormal, true, 3)
 assert_eq r4.target, 18
-assert_eq r4.modified_target, 13
+assert_eq r4.modified_target, 14
 assert !r4.survived
 
 rolls clear
 rolls 13
 let r5 = item_saving_throw(Paper, FireNormal, true, 3)
 assert_eq r5.target, 18
-assert_eq r5.modified_target, 13
-assert r5.survived
+assert_eq r5.modified_target, 14
+assert !r5.survived
+
+rolls clear
+rolls 14
+let r6 = item_saving_throw(Paper, FireNormal, true, 3)
+assert_eq r6.target, 18
+assert_eq r6.modified_target, 14
+assert r6.survived
 
 // ── item_saving_throw: boundary — roll exactly meets target ─
 
 rolls clear
 rolls 7
-let r6 = item_saving_throw(Metal, Acid)
-assert_eq r6.roll, 7
-assert r6.survived
+let r7 = item_saving_throw(Metal, Acid)
+assert_eq r7.roll, 7
+assert r7.survived
 
 // ── item_saving_throw: boundary — roll one below target ─────
 
 rolls clear
 rolls 6
-let r7 = item_saving_throw(Metal, Acid)
-assert_eq r7.roll, 6
-assert !r7.survived
+let r8 = item_saving_throw(Metal, Acid)
+assert_eq r8.roll, 6
+assert !r8.survived
 
 // ── artifact_saving_throw: always saves on 2+ ───────────────
 
@@ -165,16 +172,32 @@ assert_eq a1.target, 2
 assert_eq a1.modified_target, 2
 assert a1.survived
 
+// ── artifact_saving_throw: target 3 rejects a 2 ─────────────
+
+rolls clear
+rolls 2
+let a2 = artifact_saving_throw(3)
+assert_eq a2.target, 3
+assert_eq a2.modified_target, 3
+assert !a2.survived
+
 // ── artifact_saving_throw: natural 1 fails ──────────────────
 
 rolls clear
 rolls 1
-let a2 = artifact_saving_throw()
-assert !a2.survived
+let a3 = artifact_saving_throw()
+assert !a3.survived
+
+// ── artifact_saving_throw: target 3 passes on a 3 ───────────
+
+rolls clear
+rolls 3
+let a4 = artifact_saving_throw(3)
+assert a4.survived
 
 // ── artifact_saving_throw: high roll passes ─────────────────
 
 rolls clear
 rolls 20
-let a3 = artifact_saving_throw()
-assert a3.survived
+let a5 = artifact_saving_throw()
+assert a5.survived

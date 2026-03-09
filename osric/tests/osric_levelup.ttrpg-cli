@@ -22,6 +22,15 @@ spawn Character mc_partial { name: "FighterThief", classes: [ClassLevel { class:
 assert_eq classes_ready_to_level(mc_partial).len(), 1
 assert_eq classes_ready_to_level(mc_partial)[0], Class.Fighter
 
+// Dual-class: only the current class can advance
+spawn Character dc_ready_current { name: "DualReadyCurrent", classes: [ClassLevel { class: Fighter, level: 5, xp: 32000 }, ClassLevel { class: Thief, level: 1, xp: 1500 }], classing_mode: Dual, ancestry: Human, abilities: { STR: 17, DEX: 17, CON: 14, INT: 14, WIS: 10, CHA: 10 }, HitPoints { max_hp: 30, hp: 30 } }
+assert_eq classes_ready_to_level(dc_ready_current).len(), 1
+assert_eq classes_ready_to_level(dc_ready_current)[0], Class.Thief
+
+// Dual-class: abandoned class never appears in the ready list
+spawn Character dc_old_xp_only { name: "DualOldXpOnly", classes: [ClassLevel { class: Fighter, level: 5, xp: 64000 }, ClassLevel { class: Thief, level: 1, xp: 0 }], classing_mode: Dual, ancestry: Human, abilities: { STR: 17, DEX: 17, CON: 14, INT: 14, WIS: 10, CHA: 10 }, HitPoints { max_hp: 30, hp: 30 } }
+assert_eq classes_ready_to_level(dc_old_xp_only).len(), 0
+
 // ── increment_class_level ─────────────────────────────────────
 
 let cls_list = [ClassLevel { class: Fighter, level: 3, xp: 5000 }, ClassLevel { class: Thief, level: 2, xp: 3000 }]
@@ -63,6 +72,27 @@ let lu_thief_r = level_up_class(lu_thief, Thief)
 assert_eq lu_thief_r.class, Class.Thief
 assert_eq lu_thief_r.new_level, 2
 assert_eq lu_thief_r.hp_gained, 4
+
+// ── level_up_class: dual-class stays on 0 HP until new class exceeds old ──
+
+spawn Character lu_dual_locked { name: "DualLocked", classes: [ClassLevel { class: Fighter, level: 5, xp: 32000 }, ClassLevel { class: Thief, level: 4, xp: 5000 }], classing_mode: Dual, ancestry: Human, abilities: { STR: 17, DEX: 17, CON: 14, INT: 14, WIS: 10, CHA: 10 }, HitPoints { max_hp: 30, hp: 30 }, hp_rolls: [HpRoll { class: Fighter, level: 1, amount: 8 }, HpRoll { class: Fighter, level: 2, amount: 5 }, HpRoll { class: Fighter, level: 3, amount: 5 }, HpRoll { class: Fighter, level: 4, amount: 4 }, HpRoll { class: Fighter, level: 5, amount: 4 }] }
+let lu_dual_locked_result = level_up_class(lu_dual_locked, Thief)
+assert_eq lu_dual_locked_result.new_level, 5
+assert_eq lu_dual_locked_result.hp_gained, 0
+assert_eq lu_dual_locked_result.new_hp_rolls.last().unwrap().amount, 0
+
+// ── level_up_class: dual-class gains full HP once unlocked ─────
+
+spawn Character lu_dual_unlocked { name: "DualUnlocked", classes: [ClassLevel { class: Fighter, level: 5, xp: 32000 }, ClassLevel { class: Thief, level: 5, xp: 10000 }], classing_mode: Dual, ancestry: Human, abilities: { STR: 17, DEX: 17, CON: 14, INT: 14, WIS: 10, CHA: 10 }, HitPoints { max_hp: 30, hp: 30 }, hp_rolls: [HpRoll { class: Fighter, level: 1, amount: 8 }, HpRoll { class: Fighter, level: 2, amount: 5 }, HpRoll { class: Fighter, level: 3, amount: 5 }, HpRoll { class: Fighter, level: 4, amount: 4 }, HpRoll { class: Fighter, level: 5, amount: 4 }] }
+rolls 4
+let lu_dual_unlocked_result = level_up_class(lu_dual_unlocked, Thief)
+assert_eq lu_dual_unlocked_result.new_level, 6
+assert_eq lu_dual_unlocked_result.hp_gained, 4
+
+// ── level_up_class: dual-class cannot advance abandoned class ──
+
+spawn Character lu_dual_wrong_class { name: "DualWrongClass", classes: [ClassLevel { class: Fighter, level: 5, xp: 64000 }, ClassLevel { class: Thief, level: 1, xp: 1500 }], classing_mode: Dual, ancestry: Human, abilities: { STR: 17, DEX: 17, CON: 14, INT: 14, WIS: 10, CHA: 10 }, HitPoints { max_hp: 30, hp: 30 }, hp_rolls: [HpRoll { class: Fighter, level: 1, amount: 8 }, HpRoll { class: Fighter, level: 2, amount: 5 }, HpRoll { class: Fighter, level: 3, amount: 5 }, HpRoll { class: Fighter, level: 4, amount: 4 }, HpRoll { class: Fighter, level: 5, amount: 4 }] }
+assert_err call level_up_class(lu_dual_wrong_class, Fighter)
 
 // ── updated_spell_slots: cleric progression ───────────────────
 
@@ -165,6 +195,20 @@ assert_eq thief_result.new_level, 2
 // Thief skills should be updated to level 2 values
 assert_eq apply_thief.ThiefSkills.skills[ClimbWalls], effective_thief_skill(Thief, ClimbWalls, 2, 14, Human)
 assert_eq apply_thief.ThiefSkills.skills[OpenLocks], effective_thief_skill(Thief, OpenLocks, 2, 14, Human)
+
+// ── apply_level_up: dual-class equal old level keeps HP flat ───
+
+spawn Character apply_dual_locked { name: "ApplyDualLocked", classes: [ClassLevel { class: Fighter, level: 5, xp: 32000 }, ClassLevel { class: Thief, level: 4, xp: 5000 }], classing_mode: Dual, ancestry: Human, abilities: { STR: 17, DEX: 17, CON: 14, INT: 14, WIS: 10, CHA: 10 }, HitPoints { max_hp: 30, hp: 25 }, hp_rolls: [HpRoll { class: Fighter, level: 1, amount: 8 }, HpRoll { class: Fighter, level: 2, amount: 5 }, HpRoll { class: Fighter, level: 3, amount: 5 }, HpRoll { class: Fighter, level: 4, amount: 4 }, HpRoll { class: Fighter, level: 5, amount: 4 }], saving_throws: some(thief_saves(4)), ThiefSkills { skills: { ClimbWalls: 90, FindTraps: 25, HearNoise: 10, HideInShadows: 20, MoveSilently: 25, OpenLocks: 30, PickPockets: 35, ReadLanguages: 1 } } }
+let apply_dual_locked_result = apply_level_up(apply_dual_locked, Thief)
+assert_eq apply_dual_locked_result.new_level, 5
+assert_eq apply_dual_locked_result.hp_gained, 0
+assert_eq apply_dual_locked.HitPoints.max_hp, 30
+assert_eq apply_dual_locked.HitPoints.hp, 25
+
+// ── apply_level_up: dual-class can only advance current class ──
+
+spawn Character apply_dual_wrong_class { name: "ApplyDualWrongClass", classes: [ClassLevel { class: Fighter, level: 5, xp: 64000 }, ClassLevel { class: Thief, level: 1, xp: 1500 }], classing_mode: Dual, ancestry: Human, abilities: { STR: 17, DEX: 17, CON: 14, INT: 14, WIS: 10, CHA: 10 }, HitPoints { max_hp: 30, hp: 30 }, hp_rolls: [HpRoll { class: Fighter, level: 1, amount: 8 }, HpRoll { class: Fighter, level: 2, amount: 5 }, HpRoll { class: Fighter, level: 3, amount: 5 }, HpRoll { class: Fighter, level: 4, amount: 4 }, HpRoll { class: Fighter, level: 5, amount: 4 }] }
+assert_err call apply_level_up(apply_dual_wrong_class, Fighter)
 
 // ── level_up_class: fixed HP after max hit dice ───────────────
 

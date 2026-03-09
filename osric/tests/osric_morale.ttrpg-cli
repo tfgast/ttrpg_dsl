@@ -69,6 +69,28 @@ let mod_result = check_morale(ogre_mod, -10)
 assert_eq mod_result.outcome, MoraleOutcome.Pass
 assert_eq mod_result.modified_roll, 65
 
+// ── Bless and Curse apply morale modifiers ────────────────────
+
+rolls clear
+spawn Character bless_caster { name: "Bless Caster", classes: [ClassLevel { class: Cleric, level: 3 }], abilities: { STR: 12, INT: 12, WIS: 13, DEX: 12, CON: 12, CHA: 12 }, ancestry: Human, HitPoints { max_hp: 14, hp: 14 }, Spellcasting { spell_slots: [2], slots_used: [0], memorised_spells: [] } }
+spawn Monster ogre_blessed { name: "Blessed Ogre", hit_dice: 4d8, max_hp: 18, hp: 18, ac: 15, attacks: [MonsterAttack { name: "Club", damage: 1d10 }] }
+call resolve_bless(bless_caster, [ogre_blessed])
+rolls 75
+let bless_result = check_morale(ogre_blessed, 0)
+assert_eq bless_result.outcome, MoraleOutcome.Pass
+assert_eq bless_result.modified_roll, 70
+
+rolls clear
+spawn Character curse_caster { name: "Curse Caster", classes: [ClassLevel { class: Cleric, level: 3 }], abilities: { STR: 12, INT: 12, WIS: 13, DEX: 12, CON: 12, CHA: 12 }, ancestry: Human, HitPoints { max_hp: 14, hp: 14 }, Spellcasting { spell_slots: [2], slots_used: [0], memorised_spells: [] } }
+spawn Monster ogre_cursed { name: "Cursed Ogre", hit_dice: 4d8, max_hp: 18, hp: 18, ac: 15, attacks: [MonsterAttack { name: "Club", damage: 1d10 }] }
+rolls 1
+call resolve_curse(curse_caster, [ogre_cursed])
+rolls clear
+rolls 70
+let curse_result = check_morale(ogre_cursed, 0)
+assert_eq curse_result.outcome, MoraleOutcome.Retreat
+assert_eq curse_result.modified_roll, 75
+
 // ── Fanatical after two passed checks ──────────────────────────
 
 rolls clear

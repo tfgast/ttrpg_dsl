@@ -11,7 +11,8 @@ load osric/*.ttrpg
 
 assert_eq prime_requisites(Fighter), [STR]
 assert_eq prime_requisites(Ranger), [STR, INT, WIS]
-assert_eq prime_requisites(Assassin), []
+assert_eq prime_requisites(Assassin), [DEX]
+assert_eq prime_requisites(Illusionist), [INT]
 
 // ── meets_dual_class_from_reqs ──────────────────────────────────
 
@@ -19,14 +20,19 @@ assert_eq prime_requisites(Assassin), []
 assert meets_dual_class_from_reqs(Fighter, { STR: 15, DEX: 10, CON: 10, INT: 10, WIS: 10, CHA: 10 })
 assert (meets_dual_class_from_reqs(Fighter, { STR: 14, DEX: 10, CON: 10, INT: 10, WIS: 10, CHA: 10 })) == false
 
-// Assassin: no prime reqs -> always passes
-assert meets_dual_class_from_reqs(Assassin, { STR: 3, DEX: 3, CON: 3, INT: 3, WIS: 3, CHA: 3 })
+// Assassin: DEX >= 15
+assert meets_dual_class_from_reqs(Assassin, { STR: 3, DEX: 15, CON: 3, INT: 3, WIS: 3, CHA: 3 })
+assert (meets_dual_class_from_reqs(Assassin, { STR: 3, DEX: 14, CON: 3, INT: 3, WIS: 3, CHA: 3 })) == false
 
 // ── meets_dual_class_to_reqs ────────────────────────────────────
 
 // Ranger: STR, INT, WIS all >= 17
 assert meets_dual_class_to_reqs(Ranger, { STR: 17, DEX: 10, CON: 10, INT: 17, WIS: 17, CHA: 10 })
 assert (meets_dual_class_to_reqs(Ranger, { STR: 17, DEX: 10, CON: 10, INT: 16, WIS: 17, CHA: 10 })) == false
+
+// Illusionist: INT >= 17
+assert meets_dual_class_to_reqs(Illusionist, { STR: 10, DEX: 16, CON: 10, INT: 17, WIS: 10, CHA: 10 })
+assert (meets_dual_class_to_reqs(Illusionist, { STR: 10, DEX: 16, CON: 10, INT: 16, WIS: 10, CHA: 10 })) == false
 
 // ── can_dual_class ──────────────────────────────────────────────
 

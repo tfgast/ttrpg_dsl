@@ -19,6 +19,7 @@ use "OSRIC Character"
 use "OSRIC Classes"
 use "OSRIC Saves"
 use "OSRIC Multiclass"
+use "OSRIC Dualclass"
 use "OSRIC Spells"
 use "OSRIC Thief Skills"
 use "OSRIC Level Drain"
@@ -51,7 +52,12 @@ system "OSRIC Level Up" {
     // ========================================================
 
     derive classes_ready_to_level(character: Character) -> list<Class> {
-        [cl.class for cl in character.classes if check_level_up(cl.class, cl.level, cl.xp)]
+        let candidates = if character.classing_mode == Dual {
+            [current_class(character)]
+        } else {
+            character.classes
+        }
+        [cl.class for cl in candidates if check_level_up(cl.class, cl.level, cl.xp)]
     }
 
 
@@ -179,13 +185,25 @@ system "OSRIC Level Up" {
         character: Character,
         target_class: Class
     ) -> LevelUpResult {
+        if character.classing_mode == Dual && target_class != current_class(character).class {
+            error("Dual-class characters can only advance their current class")
+        }
+
         let cl = first([c for c in character.classes if c.class == target_class]).unwrap()
         let new_level = cl.level + 1
-        let num_classes = len(character.classes)
         let con_score = character.abilities[CON]
 
-        // Roll HP
-        let hp_gained = roll_levelup_hp(target_class, new_level, con_score, num_classes)
+        // Dual-class characters gain no HP until the new class level exceeds the old.
+        let hp_gained = if character.classing_mode == Dual {
+            if new_level > dual_class_old_level(character) {
+                roll_levelup_hp(target_class, new_level, con_score, 1)
+            } else {
+                0
+            }
+        } else {
+            let num_classes = len(character.classes)
+            roll_levelup_hp(target_class, new_level, con_score, num_classes)
+        }
 
         // Increment level in class list
         let new_classes = increment_class_level(character.classes, target_class)

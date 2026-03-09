@@ -19,6 +19,7 @@ use "OSRIC Ability"
 use "OSRIC Equipment"
 use "OSRIC Character"
 use "OSRIC Combat"
+use "OSRIC Saves"
 
 system "OSRIC Conditions" {
 
@@ -39,6 +40,10 @@ system "OSRIC Conditions" {
         modify effective_target_ac(target: bearer) {
             include_dex = false
             include_shield = false
+        }
+        modify [#attack_resolution](attacker: bearer) {
+            result.outcome = AttackOutcome.Miss
+            result.damage = 0
         }
     }
 
@@ -96,6 +101,15 @@ system "OSRIC Conditions" {
     {
         modify [#attack_resolution](target: bearer) {
             attack_mod = attack_mod - 4
+        }
+        modify character_best_saves(char: bearer) {
+            result = SavingThrows {
+                aimed_magic: max(2, result.aimed_magic - 4),
+                breath: max(2, result.breath - 4),
+                death_paralysis_poison: max(2, result.death_paralysis_poison - 4),
+                petrification_polymorph: max(2, result.petrification_polymorph - 4),
+                spells: max(2, result.spells - 4)
+            }
         }
     }
 
@@ -259,7 +273,9 @@ system "OSRIC Conditions" {
         stacking best by highest(level) ties oldest
     {
         modify [#attack_resolution](target: bearer) {
-            attack_mod = attack_mod - level
+            if !any([c.name == "Invisible" for c in conditions(target)]) {
+                attack_mod = attack_mod - level
+            }
         }
     }
 

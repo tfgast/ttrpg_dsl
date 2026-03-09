@@ -181,6 +181,13 @@ assert_eq missile_weapon_def(ClubThrown).cost_cp, 2
 
 assert_eq missile_weapon_def(JavelinThrown).cost_cp, 50
 
+// ── Standard gear: silver-piece prices convert to copper ──────
+
+assert_eq standard_item("Bedroll").cost_cp, 20
+assert_eq standard_item("Hammer (tool)").cost_cp, 50
+assert_eq standard_item("Holy symbol (wooden)").cost_cp, 60
+assert_eq standard_item("Oil (per pint)").cost_cp, 10
+
 // ── Armour: Plate mail ───────────────────────────────────────
 
 let plate = armour_def(PlateMail)

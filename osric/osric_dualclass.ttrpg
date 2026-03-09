@@ -30,9 +30,8 @@ system "OSRIC Dualclass" {
     //  requisites for each class. Used for dual-class
     //  eligibility checks and XP bonus determination.
     //
-    //  Classes with no prime requisite (Assassin, Illusionist,
-    //  Monk) return an empty list — the dual-class ability
-    //  check is vacuously satisfied for them.
+    //  Monk has no prime requisite. Assassin and Illusionist
+    //  use DEX and INT respectively for dual-class checks.
     // ========================================================
 
     derive prime_requisites(class: Class) -> list<Ability> {
@@ -44,8 +43,8 @@ system "OSRIC Dualclass" {
             Druid       => [WIS, CHA],
             MagicUser   => [INT],
             Thief       => [DEX],
-            Assassin    => [],
-            Illusionist => [],
+            Assassin    => [DEX],
+            Illusionist => [INT],
             Monk        => []
         }
     }

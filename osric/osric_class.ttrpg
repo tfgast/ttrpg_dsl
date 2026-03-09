@@ -367,10 +367,39 @@ system "OSRIC Classes" {
         }
     }
 
+    // Mirror the special half-caster formulas here so caster_level()
+    // can stay inside OSRIC Classes without depending on OSRIC Spells.
+    derive paladin_spell_caster_level(class_level: int) -> int {
+        max(0, min(class_level - 8, 8))
+    }
+
+    derive ranger_spell_caster_level(class_level: int) -> int {
+        if class_level < 8 { 0 }
+        else { min(6, floor((class_level - 6) / 2)) }
+    }
+
     // Caster level for a character given a spell tradition.
     derive caster_level(char: Character, spell_class: SpellClassType) -> int {
         let c = spell_casting_class(spell_class)
         let matches = [cl.level for cl in char.classes if cl.class == c]
-        if len(matches) > 0 { first(matches).unwrap() } else { 0 }
+        if len(matches) > 0 {
+            first(matches).unwrap()
+        } else {
+            match spell_class {
+                Divine => {
+                    let paladin_matches = [paladin_spell_caster_level(cl.level) for cl in char.classes if cl.class == Class.Paladin]
+                    if len(paladin_matches) > 0 { first(paladin_matches).unwrap() } else { 0 }
+                },
+                Druidic => {
+                    let ranger_matches = [ranger_spell_caster_level(cl.level) for cl in char.classes if cl.class == Class.Ranger]
+                    if len(ranger_matches) > 0 { first(ranger_matches).unwrap() } else { 0 }
+                },
+                Arcane => {
+                    let ranger_matches = [ranger_spell_caster_level(cl.level) for cl in char.classes if cl.class == Class.Ranger]
+                    if len(ranger_matches) > 0 { first(ranger_matches).unwrap() } else { 0 }
+                },
+                _ => 0
+            }
+        }
     }
 }
