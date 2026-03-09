@@ -19,7 +19,7 @@ rolls clear
 rolls 5
 let lethal_failed = apply_poison(saving_throws_for(Fighter, 5), PoisonType.Lethal, 0)
 assert_eq lethal_failed.saved, false
-assert_eq lethal_failed.died, true
+assert_eq lethal_failed.died, false
 assert_eq lethal_failed.damage_taken, 0
 
 // ── Poison: damage poison save halves damage ────────────────────
@@ -56,7 +56,7 @@ let lethal_nat1 = apply_poison(
     0
 )
 assert_eq lethal_nat1.saved, false
-assert_eq lethal_nat1.died, true
+assert_eq lethal_nat1.died, false
 
 // ── Disease: save succeeds ──────────────────────────────────────
 

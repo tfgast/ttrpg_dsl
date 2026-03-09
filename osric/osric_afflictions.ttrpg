@@ -67,9 +67,11 @@ system "OSRIC Afflictions" {
                 if saved {
                     PoisonResult { saved: true, died: false, damage_taken: 0 }
                 } else {
-                    // Lethal poison kills on failed save.
-                    // Caller should apply Dead condition.
-                    PoisonResult { saved: false, died: true, damage_taken: 0 }
+                    // OSRIC poison death is not instantaneous; a failed
+                    // save leaves time for Slow Poison or Neutralise Poison.
+                    // Callers should preserve an active poisoned state here
+                    // rather than applying Dead immediately.
+                    PoisonResult { saved: false, died: false, damage_taken: 0 }
                 }
             },
             DamageOnly(damage) => {
