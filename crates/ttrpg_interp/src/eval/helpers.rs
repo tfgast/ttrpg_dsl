@@ -401,6 +401,10 @@ fn collect_idents_block(block: &ttrpg_ast::ast::Block, out: &mut Vec<Name>) {
                 }
                 collect_idents_block(body, out);
             }
+            StmtKind::WithBudgets { specs, body, .. } => {
+                collect_idents(specs, out);
+                collect_idents_block(body, out);
+            }
             StmtKind::WithCostPayer { entity, body, .. } => {
                 collect_idents(entity, out);
                 collect_idents_block(body, out);

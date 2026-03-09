@@ -234,7 +234,9 @@ fn collect_stmt_inner_lines(
         StmtKind::Assign { value, .. } => {
             collect_expr_lines(value, file_id, line_starts, lines);
         }
-        StmtKind::WithBudget { body, .. } | StmtKind::WithCostPayer { body, .. } => {
+        StmtKind::WithBudget { body, .. }
+        | StmtKind::WithBudgets { body, .. }
+        | StmtKind::WithCostPayer { body, .. } => {
             collect_block_lines(body, file_id, line_starts, lines);
         }
         StmtKind::Emit { .. } | StmtKind::Grant { .. } | StmtKind::Revoke { .. } => {}
@@ -421,9 +423,9 @@ fn count_branches_in_stmt(stmt: &StmtKind, file_id: FileId) -> usize {
         StmtKind::Expr(expr) => count_branches_in_expr(expr, file_id),
         StmtKind::Let { value, .. } => count_branches_in_expr(value, file_id),
         StmtKind::Assign { value, .. } => count_branches_in_expr(value, file_id),
-        StmtKind::WithBudget { body, .. } | StmtKind::WithCostPayer { body, .. } => {
-            count_branches_in_block(body, file_id)
-        }
+        StmtKind::WithBudget { body, .. }
+        | StmtKind::WithBudgets { body, .. }
+        | StmtKind::WithCostPayer { body, .. } => count_branches_in_block(body, file_id),
         _ => 0,
     }
 }

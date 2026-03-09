@@ -1330,6 +1330,11 @@ impl<'a> Checker<'a> {
             {
                 return true;
             }
+            (Ty::Struct(name), Ty::BudgetSpec) | (Ty::BudgetSpec, Ty::Struct(name))
+                if name == "BudgetSpec" =>
+            {
+                return true;
+            }
             _ => {}
         }
         false

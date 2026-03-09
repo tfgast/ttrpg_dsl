@@ -182,7 +182,7 @@ fn test_collect_counts() {
             .count(),
         7
     );
-    // Structs: DamageSpec, TurnBudget
+    // Structs: DamageSpec, TurnBudget, BudgetSpec (built-in)
     assert_eq!(
         result
             .env
@@ -190,7 +190,7 @@ fn test_collect_counts() {
             .values()
             .filter(|d| matches!(d, ttrpg_checker::env::DeclInfo::Struct(_)))
             .count(),
-        2
+        3
     );
     // Entities: Weapon, Character
     assert_eq!(

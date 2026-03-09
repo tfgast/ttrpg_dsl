@@ -121,6 +121,10 @@ impl Checker<'_> {
                 self.check_with_budget(entity, budget_fields, body, *span);
                 Ty::Unit
             }
+            StmtKind::WithBudgets { specs, body, span } => {
+                self.check_with_budgets(specs, body, *span);
+                Ty::Unit
+            }
             StmtKind::WithCostPayer {
                 entity,
                 body,
@@ -907,6 +911,50 @@ impl Checker<'_> {
             },
         );
 
+        self.check_block(body);
+        self.scope.pop();
+    }
+
+    fn check_with_budgets(
+        &mut self,
+        specs: &Spanned<ExprKind>,
+        body: &Block,
+        span: ttrpg_ast::Span,
+    ) {
+        if !self.scope.allows_mutation() {
+            self.error(
+                "with_budgets is only allowed in function, action, reaction, or hook context",
+                span,
+            );
+        }
+
+        let specs_ty = self.check_expr(specs);
+        if !specs_ty.is_error() {
+            let is_budget_spec_list = match &specs_ty {
+                Ty::List(inner) => match inner.as_ref() {
+                    Ty::BudgetSpec => true,
+                    Ty::Struct(n) if n == "BudgetSpec" => true,
+                    _ => false,
+                },
+                _ => false,
+            };
+            if !is_budget_spec_list {
+                self.error(
+                    format!("with_budgets requires list<BudgetSpec>, found {specs_ty}"),
+                    specs.span,
+                );
+            }
+        }
+
+        self.scope.push(BlockKind::WithBudget);
+        self.scope.bind(
+            "turn".into(),
+            VarBinding {
+                ty: Ty::TurnBudget,
+                mutable: true,
+                is_local: false,
+            },
+        );
         self.check_block(body);
         self.scope.pop();
     }

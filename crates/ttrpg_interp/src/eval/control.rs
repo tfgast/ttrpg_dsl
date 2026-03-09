@@ -433,6 +433,59 @@ pub(super) fn eval_stmt(
 
             scoped_budget(env, actor, budget, *span, |env| eval_block(env, body))
         }
+        StmtKind::WithBudgets {
+            specs, body, span, ..
+        } => {
+            let specs_val = eval_expr(env, specs)?;
+            let spec_list = match specs_val {
+                Value::List(items) => items,
+                _ => {
+                    return Err(RuntimeError::with_span(
+                        "with_budgets: expected list of BudgetSpec",
+                        specs.span,
+                    ))
+                }
+            };
+
+            // Extract (actor, budget) pairs from each BudgetSpec struct
+            let mut entries = Vec::with_capacity(spec_list.len());
+            for item in &spec_list {
+                match item {
+                    Value::Struct { name, fields } if name == "BudgetSpec" => {
+                        let actor = match fields.get("actor") {
+                            Some(Value::Entity(r)) => *r,
+                            _ => {
+                                return Err(RuntimeError::with_span(
+                                    "with_budgets: BudgetSpec missing entity `actor` field",
+                                    specs.span,
+                                ))
+                            }
+                        };
+                        let budget = match fields.get("budget") {
+                            Some(Value::Struct {
+                                name: bn,
+                                fields: bf,
+                            }) if bn == "TurnBudget" => bf.clone(),
+                            _ => {
+                                return Err(RuntimeError::with_span(
+                                    "with_budgets: BudgetSpec missing TurnBudget `budget` field",
+                                    specs.span,
+                                ))
+                            }
+                        };
+                        entries.push((actor, budget));
+                    }
+                    _ => {
+                        return Err(RuntimeError::with_span(
+                            "with_budgets: list elements must be BudgetSpec structs",
+                            specs.span,
+                        ))
+                    }
+                }
+            }
+
+            scoped_budgets(env, entries, *span, |env| eval_block(env, body))
+        }
         StmtKind::WithCostPayer {
             entity, body, ..
         } => {
@@ -532,6 +585,98 @@ where
         Ok(val) => {
             cleanup_result?;
             Ok(val)
+        }
+    }
+}
+
+/// Execute `body` with budgets provisioned for multiple entities, restoring
+/// all previous budgets on exit (even on error).
+fn scoped_budgets<F>(
+    env: &mut Env,
+    entries: Vec<(EntityRef, BTreeMap<Name, Value>)>,
+    span: Span,
+    body: F,
+) -> Result<Value, RuntimeError>
+where
+    F: FnOnce(&mut Env) -> Result<Value, RuntimeError>,
+{
+    // 1. Snapshot previous budgets and provision new ones
+    let mut snapshots: Vec<(EntityRef, Option<BTreeMap<Name, Value>>)> =
+        Vec::with_capacity(entries.len());
+
+    for (actor, budget) in &entries {
+        snapshots.push((*actor, env.state.read_turn_budget(actor)));
+        let response = env.handler.handle(Effect::ProvisionBudget {
+            actor: *actor,
+            budget: budget.clone(),
+        });
+        if let Response::Vetoed = response {
+            // Rollback already-provisioned budgets before returning
+            for (prev_actor, prev_budget) in snapshots.into_iter().rev() {
+                let _ = restore_budget(env, prev_actor, prev_budget, span);
+            }
+            return Err(RuntimeError::with_span(
+                "with_budgets: ProvisionBudget was vetoed by host",
+                span,
+            ));
+        }
+    }
+
+    // 2. Execute body
+    let body_result = body(env);
+
+    // 3. Restore all budgets (always runs, reverse order)
+    let mut cleanup_err = None;
+    for (actor, prev_budget) in snapshots.into_iter().rev() {
+        if let Err(e) = restore_budget(env, actor, prev_budget, span) {
+            if cleanup_err.is_none() {
+                cleanup_err = Some(e);
+            }
+        }
+    }
+
+    // 4. Body error takes precedence
+    match body_result {
+        Err(e) => Err(e),
+        Ok(val) => match cleanup_err {
+            Some(e) => Err(e),
+            None => Ok(val),
+        },
+    }
+}
+
+/// Restore a single entity's budget to its previous state, or clear it.
+fn restore_budget(
+    env: &mut Env,
+    actor: EntityRef,
+    prev: Option<BTreeMap<Name, Value>>,
+    span: Span,
+) -> Result<(), RuntimeError> {
+    match prev {
+        Some(old_budget) => {
+            let resp = env.handler.handle(Effect::ProvisionBudget {
+                actor,
+                budget: old_budget,
+            });
+            if let Response::Vetoed = resp {
+                Err(RuntimeError::with_span(
+                    "with_budgets: budget restore was vetoed by host",
+                    span,
+                ))
+            } else {
+                Ok(())
+            }
+        }
+        None => {
+            let resp = env.handler.handle(Effect::ClearBudget { actor });
+            if let Response::Vetoed = resp {
+                Err(RuntimeError::with_span(
+                    "with_budgets: budget clear was vetoed by host",
+                    span,
+                ))
+            } else {
+                Ok(())
+            }
         }
     }
 }

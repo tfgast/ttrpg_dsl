@@ -1758,6 +1758,30 @@ fn register_builtin_types(env: &mut TypeEnv) {
         );
     }
 
+    // BudgetSpec struct — used by with_budgets for multi-entity provisioning.
+    if !env.types.contains_key("BudgetSpec") {
+        env.types.insert(
+            Name::from("BudgetSpec"),
+            DeclInfo::Struct(StructInfo {
+                name: Name::from("BudgetSpec"),
+                fields: vec![
+                    FieldInfo {
+                        name: Name::from("actor"),
+                        ty: Ty::AnyEntity,
+                        has_default: false,
+                        restricted: false,
+                    },
+                    FieldInfo {
+                        name: Name::from("budget"),
+                        ty: Ty::TurnBudget,
+                        has_default: false,
+                        restricted: false,
+                    },
+                ],
+            }),
+        );
+    }
+
     // Built-in `modify_applied` event — emitted by the interpreter when a
     // condition's modify clause fires. Hooks can listen for this to implement
     // "until next use" duration patterns.

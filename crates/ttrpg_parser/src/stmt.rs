@@ -65,6 +65,11 @@ impl Parser {
             return self.parse_with_budget_stmt();
         }
 
+        // with_budgets(specs) { body }
+        if self.at_ident("with_budgets") && matches!(self.peek_at(1), TokenKind::LParen) {
+            return self.parse_with_budgets_stmt();
+        }
+
         // with_cost_payer(entity) { body }
         if self.at_ident("with_cost_payer") && matches!(self.peek_at(1), TokenKind::LParen) {
             return self.parse_with_cost_payer_stmt();
@@ -249,6 +254,23 @@ impl Parser {
         Ok(StmtKind::WithBudget {
             entity: Box::new(entity),
             budget_fields,
+            body,
+            span,
+        })
+    }
+
+    /// Parse `with_budgets(specs_expr) { body }`
+    fn parse_with_budgets_stmt(&mut self) -> Result<StmtKind, ()> {
+        let start = self.start_span();
+        self.expect_soft_keyword("with_budgets")?;
+        self.expect(&TokenKind::LParen)?;
+        let specs = self.parse_expr()?;
+        self.expect(&TokenKind::RParen)?;
+        let body = self.parse_block()?;
+        let span = self.end_span(start);
+
+        Ok(StmtKind::WithBudgets {
+            specs: Box::new(specs),
             body,
             span,
         })

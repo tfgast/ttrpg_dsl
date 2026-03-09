@@ -15,6 +15,7 @@ pub enum Ty {
 
     // Built-in opaque types
     TurnBudget,
+    BudgetSpec,
     Duration,
     Position,
     Condition,
@@ -91,6 +92,7 @@ impl Ty {
             Ty::DiceExpr => "DiceExpr".into(),
             Ty::RollResult => "RollResult".into(),
             Ty::TurnBudget => "TurnBudget".into(),
+            Ty::BudgetSpec => "BudgetSpec".into(),
             Ty::Duration => "Duration".into(),
             Ty::Position => "Position".into(),
             Ty::Condition => "Condition".into(),

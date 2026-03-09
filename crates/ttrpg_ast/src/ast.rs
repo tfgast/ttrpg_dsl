@@ -1192,6 +1192,12 @@ pub enum StmtKind {
         body: Block,
         span: Span,
     },
+    /// `with_budgets(specs) { body }` — provision budgets for multiple entities.
+    WithBudgets {
+        specs: Box<Spanned<ExprKind>>,
+        body: Block,
+        span: Span,
+    },
     /// `with_cost_payer(entity) { body }` — set `cost_payer` within lexical scope.
     WithCostPayer {
         entity: Box<Spanned<ExprKind>>,

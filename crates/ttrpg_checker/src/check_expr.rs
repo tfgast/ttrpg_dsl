@@ -721,6 +721,16 @@ impl Checker<'_> {
                 self.error(format!("TurnBudget has no field `{field}`"), span);
                 Ty::Error
             }
+            Ty::BudgetSpec => {
+                // BudgetSpec is registered as a built-in struct; look up fields there.
+                if let Some(fields) = self.env.lookup_fields("BudgetSpec") {
+                    if let Some(fi) = fields.iter().find(|f| f.name == field) {
+                        return fi.ty.clone();
+                    }
+                }
+                self.error(format!("BudgetSpec has no field `{field}`"), span);
+                Ty::Error
+            }
             // Qualified enum variant: EnumType.Variant (namespace access)
             Ty::EnumType(enum_name) => {
                 if let Some(DeclInfo::Enum(info)) = self.env.types.get(enum_name) {
