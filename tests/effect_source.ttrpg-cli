@@ -1,0 +1,83 @@
+// EffectSource integration coverage.
+//
+// Tests the EffectSource well-known enum: default Unknown, explicit source,
+// field access on ActiveCondition, and pattern matching on source variants.
+
+source -s <<END
+enum EffectSource {
+    Unknown,
+    Spell(name: string, caster_level: int),
+    Item(name: string)
+}
+
+entity Character {
+    hp: int
+}
+
+derive health(target: Character, bonus: int = 0) -> int {
+    target.hp + bonus
+}
+
+condition Held on bearer: Character {
+    modify health(target: bearer) {
+        bonus = bonus - 5
+    }
+}
+
+condition Blessed on bearer: Character {
+    modify health(target: bearer) {
+        bonus = bonus + 2
+    }
+}
+
+condition Cursed(severity: int) on bearer: Character {
+    modify health(target: bearer) {
+        bonus = bonus - severity
+    }
+}
+END
+
+// ── Default source is Unknown when omitted ───────────────────────
+
+spawn Character alice { hp: 20 }
+call apply_condition(alice, Held, Duration.Indefinite)
+
+assert_eq len(conditions(alice)), 1
+assert_eq conditions(alice)[0].name, "Held"
+assert_eq conditions(alice)[0].source, EffectSource.Unknown
+assert_eq health(alice), 15
+
+// ── Explicit Spell source is stored and accessible ───────────────
+
+spawn Character bob { hp: 20 }
+call apply_condition(bob, Held, Duration.Indefinite,
+    EffectSource.Spell(name: "Hold Person", caster_level: 7))
+
+assert_eq conditions(bob)[0].source, EffectSource.Spell(name: "Hold Person", caster_level: 7)
+
+// ── Item source variant ──────────────────────────────────────────
+
+spawn Character clara { hp: 20 }
+call apply_condition(clara, Blessed, Duration.Indefinite,
+    EffectSource.Item(name: "Ring of Protection"))
+
+assert_eq conditions(clara)[0].source, EffectSource.Item(name: "Ring of Protection")
+assert_eq health(clara), 22
+
+// ── Multiple conditions with mixed sources ───────────────────────
+
+spawn Character dave { hp: 30 }
+call apply_condition(dave, Held, Duration.Indefinite,
+    EffectSource.Spell(name: "Web", caster_level: 5))
+call apply_condition(dave, Cursed(severity: 3), Duration.Indefinite,
+    EffectSource.Item(name: "Cursed Amulet"))
+call apply_condition(dave, Blessed, Duration.Indefinite)
+
+assert_eq len(conditions(dave)), 3
+// Held(-5) + Cursed(-3) + Blessed(+2) = -6
+assert_eq health(dave), 24
+
+// Verify each condition's source independently
+assert_eq conditions(dave)[0].source, EffectSource.Spell(name: "Web", caster_level: 5)
+assert_eq conditions(dave)[1].source, EffectSource.Item(name: "Cursed Amulet")
+assert_eq conditions(dave)[2].source, EffectSource.Unknown
