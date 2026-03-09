@@ -46,6 +46,35 @@ assert_eq effective_str_encumbrance(enc_exc50), 135
 spawn Character enc_exc100 { name: "EXC100", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 18, DEX: 10, CON: 10, INT: 10, WIS: 10, CHA: 10 }, HitPoints { max_hp: 10, hp: 10 }, ExceptionalStrength { percentile: 100 } }
 assert_eq effective_str_encumbrance(enc_exc100), 300
 
+// ── bundled inventory weights ─────────────────────────────────
+
+let torches_bundle = standard_item("Torches (6)")
+let rations_bundle = standard_item("Rations (7 days)")
+let spikes_bundle = standard_item("Iron spikes (12)")
+let arrows_bundle = standard_item("Arrows (20)")
+assert_eq item_weight(torches_bundle), 6
+assert_eq item_weight(rations_bundle), 14
+assert_eq item_weight(spikes_bundle), 5
+assert_eq item_weight(arrows_bundle), 3
+
+spawn Character inv_bundle { name: "BundleWeight", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 10, DEX: 10, CON: 10, INT: 10, WIS: 10, CHA: 10 }, HitPoints { max_hp: 10, hp: 10 }, Inventory { loose_items: [standard_item("Torches (6)"), standard_item("Rations (7 days)"), standard_item("Iron spikes (12)"), standard_item("Arrows (20)")] } }
+assert_eq inventory_weight(inv_bundle), 28
+
+spawn Character inv_pack { name: "PackedBundle", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 10, DEX: 10, CON: 10, INT: 10, WIS: 10, CHA: 10 }, HitPoints { max_hp: 10, hp: 10 }, Inventory {} }
+call add_container(inv_pack, BACKPACK)
+call add_item_to_container(inv_pack, 0, standard_item("Torches (6)"))
+call add_item_to_container(inv_pack, 0, standard_item("Arrows (20)"))
+let pack = inv_pack.Inventory.containers[0]
+assert_eq container_contents_weight(pack), 9
+assert_eq container_remaining_capacity(pack), 21
+assert_eq inventory_weight(inv_pack), 11
+
+spawn Character inv_consume { name: "ConsumeBundle", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 10, DEX: 10, CON: 10, INT: 10, WIS: 10, CHA: 10 }, HitPoints { max_hp: 10, hp: 10 }, Inventory { loose_items: [standard_item("Torches (6)")] } }
+assert_eq inventory_weight(inv_consume), 6
+call use_consumable_loose(inv_consume, "Torches (6)")
+assert_eq inv_consume.Inventory.loose_items[0].quantity, 5
+assert_eq inventory_weight(inv_consume), 5
+
 // ── character_encumbrance tiers ─────────────────────────────────
 // STR 10 → allowance 35. Tier based on (weight - allowance).
 

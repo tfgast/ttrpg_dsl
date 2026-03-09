@@ -67,9 +67,10 @@ system "OSRIC Inventory" {
 
     struct Item {
         name: string
-        weight: int             // lbs per unit (0 for negligible)
+        weight: int             // lbs for the whole bundle described below
         cost_cp: int = 0        // purchase cost in copper pieces
         quantity: int = 1
+        bundle_size: int = 1    // how many units the stored weight applies to
         gp_value: int = 0       // treasure value (0 = mundane gear)
         xp_awarded: bool = false
     }
@@ -91,13 +92,13 @@ system "OSRIC Inventory" {
             "Holy symbol (pewter)"  => Item { name: "Holy symbol (pewter)", weight: 0,  cost_cp: 500 },
             "Holy symbol (silver)"  => Item { name: "Holy symbol (silver)", weight: 0,  cost_cp: 2500 },
             "Holy symbol (wooden)"  => Item { name: "Holy symbol (wooden)", weight: 0,  cost_cp: 6 },
-            "Iron spikes (12)"      => Item { name: "Iron spikes (12)",     weight: 5,  cost_cp: 100, quantity: 12 },
+            "Iron spikes (12)"      => Item { name: "Iron spikes (12)",     weight: 5,  cost_cp: 100, quantity: 12, bundle_size: 12 },
             "Lantern (hooded)"      => Item { name: "Lantern (hooded)",     weight: 2,  cost_cp: 700 },
             "Lantern (bullseye)"    => Item { name: "Lantern (bullseye)",   weight: 3,  cost_cp: 1200 },
             "Mirror (small steel)"  => Item { name: "Mirror (small steel)", weight: 0,  cost_cp: 2000 },
             "Oil (per pint)"        => Item { name: "Oil (per pint)",       weight: 1,  cost_cp: 1 },
             "Rations (1 day)"       => Item { name: "Rations (1 day)",      weight: 2,  cost_cp: 200 },
-            "Rations (7 days)"      => Item { name: "Rations (7 days)",     weight: 14, cost_cp: 1400, quantity: 7 },
+            "Rations (7 days)"      => Item { name: "Rations (7 days)",     weight: 14, cost_cp: 1400, quantity: 7,  bundle_size: 7 },
             "Rope (50ft)"           => Item { name: "Rope (50ft)",          weight: 10, cost_cp: 100 },
             "Rope, silk (50ft)"     => Item { name: "Rope, silk (50ft)",    weight: 5,  cost_cp: 1000 },
             "Shovel"                => Item { name: "Shovel",               weight: 8,  cost_cp: 200 },
@@ -105,9 +106,9 @@ system "OSRIC Inventory" {
             "Tent"                  => Item { name: "Tent",                 weight: 20, cost_cp: 1000 },
             "Thieves' tools"        => Item { name: "Thieves' tools",       weight: 1,  cost_cp: 3000 },
             "Torch"                 => Item { name: "Torch",                weight: 1,  cost_cp: 1 },
-            "Torches (6)"           => Item { name: "Torches (6)",          weight: 6,  cost_cp: 6,   quantity: 6 },
+            "Torches (6)"           => Item { name: "Torches (6)",          weight: 6,  cost_cp: 6,   quantity: 6,  bundle_size: 6 },
             "Waterskin"             => Item { name: "Waterskin",            weight: 1,  cost_cp: 100 },
-            "Arrows (20)"          => Item { name: "Arrows (20)",          weight: 3,  cost_cp: 200, quantity: 20 },
+            "Arrows (20)"           => Item { name: "Arrows (20)",          weight: 3,  cost_cp: 200, quantity: 20, bundle_size: 20 },
             _                       => Item { name: item_name, weight: 1, cost_cp: 0 }
         }
     }
@@ -181,9 +182,13 @@ system "OSRIC Inventory" {
     //  for the full encumbrance calculation.
     // ========================================================
 
+    derive item_weight(item: Item) -> int {
+        floor(item.weight * item.quantity / item.bundle_size)
+    }
+
     derive items_weight(items: list<Item>) -> int {
         if len(items) == 0 { 0 }
-        else { sum([item.weight * item.quantity for item in items]) }
+        else { sum([item_weight(item) for item in items]) }
     }
 
     derive container_contents_weight(container: Container) -> int {
@@ -199,7 +204,7 @@ system "OSRIC Inventory" {
     }
 
     derive item_fits_in_container(container: Container, item: Item) -> bool {
-        container_remaining_capacity(container) >= item.weight * item.quantity
+        container_remaining_capacity(container) >= item_weight(item)
     }
 
     // Total weight of everything in inventory (containers + loose items + coins).
@@ -292,7 +297,7 @@ system "OSRIC Inventory" {
             } else {
                 char.inv.containers[container_idx].items = [
                     if i.name == item_name && i.quantity == item.quantity {
-                        Item { name: i.name, weight: i.weight, cost_cp: i.cost_cp, quantity: i.quantity - 1, gp_value: i.gp_value, xp_awarded: i.xp_awarded }
+                        Item { name: i.name, weight: i.weight, cost_cp: i.cost_cp, quantity: i.quantity - 1, bundle_size: i.bundle_size, gp_value: i.gp_value, xp_awarded: i.xp_awarded }
                     } else { i }
                     for i in items
                 ]
@@ -310,7 +315,7 @@ system "OSRIC Inventory" {
             } else {
                 char.inv.loose_items = [
                     if i.name == item_name && i.quantity == item.quantity {
-                        Item { name: i.name, weight: i.weight, cost_cp: i.cost_cp, quantity: i.quantity - 1, gp_value: i.gp_value, xp_awarded: i.xp_awarded }
+                        Item { name: i.name, weight: i.weight, cost_cp: i.cost_cp, quantity: i.quantity - 1, bundle_size: i.bundle_size, gp_value: i.gp_value, xp_awarded: i.xp_awarded }
                     } else { i }
                     for i in items
                 ]
@@ -369,7 +374,7 @@ system "OSRIC Inventory" {
     derive mark_items_awarded(items: list<Item>) -> list<Item> {
         [
             if item.gp_value > 0 && !item.xp_awarded {
-                Item { name: item.name, weight: item.weight, cost_cp: item.cost_cp, quantity: item.quantity, gp_value: item.gp_value, xp_awarded: true }
+                Item { name: item.name, weight: item.weight, cost_cp: item.cost_cp, quantity: item.quantity, bundle_size: item.bundle_size, gp_value: item.gp_value, xp_awarded: true }
             } else { item }
             for item in items
         ]
