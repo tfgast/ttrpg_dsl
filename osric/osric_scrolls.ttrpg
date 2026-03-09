@@ -1,0 +1,581 @@
+// ============================================================
+// OSRIC 3.0 Scrolls — spell scrolls and scrolls of warding
+//
+// Spell scrolls contain a single spell that can be cast by
+// reading the scroll. Requires read magic to decipher arcane
+// scrolls. All scroll spells are cast as if by a 6th level
+// caster minimum. Under-level casters risk spell failure
+// (cumulative 5% per level short).
+//
+// Scrolls of warding produce a 10ft radius protective area
+// centered on the reader that moves with them. Different
+// warding types can stack, but same-type wardings do not
+// stack for increased duration or potency.
+//
+// This module defines:
+//   - ScrollType enum (spell scroll class types)
+//   - Spell scroll class determination table (d10)
+//   - Spell scroll failure chance for under-level casters
+//   - Scroll of Warding types and properties
+//   - Warding condition effects
+//   - ReadSpellScroll / ReadWardingScroll actions
+//
+// Reference: OSRIC 3.0 Gamemaster Guide, §2.13.3
+// ============================================================
+
+use "OSRIC"
+use "OSRIC Character"
+use "OSRIC Combat"
+use "OSRIC Conditions"
+use "OSRIC Equipment"
+use "OSRIC Inventory"
+use "OSRIC Spells"
+use "OSRIC Spell Registry"
+
+system "OSRIC Scrolls" {
+
+    // ========================================================
+    //  SPELL SCROLL CLASS TABLE
+    //
+    //  When a spell scroll is found, roll d10 to determine
+    //  which class's spell list it belongs to.
+    //  Table 2.13.3.1A
+    // ========================================================
+
+    derive scroll_spell_class(d10_roll: int) -> SpellClassType {
+        if d10_roll <= 6 { SpellClassType.Arcane }
+        else if d10_roll == 7 { SpellClassType.Phantasmal }
+        else if d10_roll <= 9 { SpellClassType.Divine }
+        else { SpellClassType.Druidic }
+    }
+
+
+    // ========================================================
+    //  SCROLL CLASS RESTRICTION
+    //
+    //  Only characters of the appropriate class can use a
+    //  spell scroll. Arcane scrolls require Magic-User (or
+    //  subclass), Divine require Cleric, etc.
+    //  §2.13.3.1
+    // ========================================================
+
+    derive can_use_spell_scroll(char: Character, scroll_class: SpellClassType) -> bool {
+        let primary_class = first(char.classes).unwrap().class
+        match scroll_class {
+            Arcane     => primary_class == Class.MagicUser || primary_class == Class.Ranger,
+            Phantasmal => primary_class == Class.Illusionist,
+            Divine     => primary_class == Class.Cleric || primary_class == Class.Paladin,
+            Druidic    => primary_class == Class.Druid || primary_class == Class.Ranger
+        }
+    }
+
+
+    // ========================================================
+    //  SCROLL CASTER LEVEL
+    //
+    //  All spells cast from a scroll function as if cast by
+    //  a spellcaster with one more level of experience than
+    //  necessary. However, all spells are cast as the minimum
+    //  equivalent of a 6th level spellcaster.
+    //  §2.13.3.1
+    // ========================================================
+
+    const SCROLL_MIN_CASTER_LEVEL: int = 6
+
+
+    // ========================================================
+    //  SPELL FAILURE CHANCE
+    //
+    //  If a caster uses a scroll for a spell of a level they
+    //  cannot normally cast, there is a cumulative 5% failure
+    //  chance per level the caster is short. On failure, there
+    //  is an equal probability of:
+    //    - the spell affects the caster instead
+    //    - produces some other unfortunate effect
+    //    - creates some other effect (GM discretion)
+    //  §2.13.3.1
+    // ========================================================
+
+    derive scroll_failure_chance(caster_level: int, spell_level: int, progression: SpellProgression) -> int {
+        // Determine minimum caster level needed for this spell level.
+        // Use a simple heuristic: spell level * 2 - 1 for arcane,
+        // spell level * 2 - 1 for divine (close enough for OSRIC).
+        let min_level = spell_level * 2 - 1
+        if caster_level >= min_level { 0 }
+        else { (min_level - caster_level) * 5 }
+    }
+
+    // Roll for scroll spell failure. Returns true if the spell fails.
+    mechanic check_scroll_failure(failure_pct: int) -> bool {
+        if failure_pct <= 0 { false }
+        else {
+            let r = roll(1d100).total
+            r <= failure_pct
+        }
+    }
+
+    // Outcome when a scroll spell fails.
+    enum ScrollFailureEffect {
+        AffectsCaster,        // spell targets the caster instead
+        UnfortunateEffect,    // some harmful side-effect (GM)
+        OtherEffect           // some unrelated effect (GM)
+    }
+
+    // Roll d6 to determine failure effect.
+    derive scroll_failure_effect(d6_roll: int) -> ScrollFailureEffect {
+        if d6_roll <= 2 { ScrollFailureEffect.AffectsCaster }
+        else if d6_roll <= 4 { ScrollFailureEffect.UnfortunateEffect }
+        else { ScrollFailureEffect.OtherEffect }
+    }
+
+
+    // ========================================================
+    //  SCROLL EVENTS
+    // ========================================================
+
+    event ScrollRead(reader: Character, scroll_name: string)
+    event ScrollSpellCast(reader: Character, spell_id: SpellId, scroll_class: SpellClassType)
+    event ScrollSpellFailed(reader: Character, spell_id: SpellId, failure_effect: ScrollFailureEffect)
+    event WardingActivated(reader: Character, warding_type: string, duration_rounds: int)
+    event WardingExpired(reader: Character, warding_type: string)
+
+
+    // ========================================================
+    //  SCROLL ITEM CREATION
+    //
+    //  Creates an Item struct for placing in inventory.
+    //  Scrolls weigh 0 lbs (negligible).
+    // ========================================================
+
+    derive spell_scroll_item(spell_id: SpellId, scroll_class: SpellClassType) -> Item {
+        let def = spell_def(spell_id)
+        Item {
+            name: "Scroll of " + def.name,
+            weight: 0,
+            cost_cp: 0,
+            quantity: 1,
+            gp_value: 300,
+            xp_awarded: false
+        }
+    }
+
+
+    // ========================================================
+    //  SCROLL OF WARDING TYPES
+    //
+    //  10ft radius protective area (unless noted), moves
+    //  with reader. Different types stack, same type does not.
+    //  §2.13.3.2
+    // ========================================================
+
+    enum WardingType {
+        AcidWarding,
+        DemonWarding,
+        DevilWarding,
+        ElementalWarding,
+        LycanthropeWarding,
+        MagicWarding,
+        PetrifactionWarding,
+        PolymorphWarding,
+        PossessionWarding,
+        UndeadWarding
+    }
+
+    // Class restriction for warding scrolls:
+    // All = any class, CP = Cleric/Paladin, CDIM = Cleric/Druid/Illusionist/MU
+    enum WardingRestriction { WardingAll, WardingCP, WardingCDIM }
+
+    struct WardingDef {
+        warding_type: WardingType
+        name: string
+        restriction: WardingRestriction
+        read_segments: int           // time to read the scroll
+        radius_ft: int               // protection radius (usually 10)
+        duration_dice: DiceExpr      // die roll for duration in rounds
+        gp_value: int
+    }
+
+    derive warding_def(warding: WardingType) -> WardingDef {
+        match warding {
+            AcidWarding         => WardingDef { warding_type: AcidWarding,         name: "Scroll of Acid Warding",         restriction: WardingAll,  read_segments: 4, radius_ft: 10, duration_dice: 5d6,  gp_value: 2500 },
+            DemonWarding        => WardingDef { warding_type: DemonWarding,        name: "Scroll of Demon Warding",        restriction: WardingCP,   read_segments: 5, radius_ft: 10, duration_dice: 5d4,  gp_value: 2500 },
+            DevilWarding        => WardingDef { warding_type: DevilWarding,        name: "Scroll of Devil Warding",        restriction: WardingCP,   read_segments: 3, radius_ft: 10, duration_dice: 5d4,  gp_value: 2500 },
+            ElementalWarding    => WardingDef { warding_type: ElementalWarding,    name: "Scroll of Elemental Warding",    restriction: WardingCDIM, read_segments: 6, radius_ft: 10, duration_dice: 5d8,  gp_value: 3000 },
+            LycanthropeWarding  => WardingDef { warding_type: LycanthropeWarding,  name: "Scroll of Lycanthrope Warding",  restriction: WardingAll,  read_segments: 4, radius_ft: 10, duration_dice: 5d6,  gp_value: 2000 },
+            MagicWarding        => WardingDef { warding_type: MagicWarding,        name: "Scroll of Magic Warding",        restriction: WardingAll,  read_segments: 8, radius_ft: 5,  duration_dice: 5d6,  gp_value: 5000 },
+            PetrifactionWarding => WardingDef { warding_type: PetrifactionWarding, name: "Scroll of Petrifaction Warding", restriction: WardingAll,  read_segments: 5, radius_ft: 10, duration_dice: 5d4,  gp_value: 2000 },
+            PolymorphWarding    => WardingDef { warding_type: PolymorphWarding,    name: "Scroll of Polymorph Warding",    restriction: WardingAll,  read_segments: 2, radius_ft: 10, duration_dice: 6d10, gp_value: 2000 },
+            PossessionWarding   => WardingDef { warding_type: PossessionWarding,   name: "Scroll of Possession Warding",  restriction: WardingCP,   read_segments: 1, radius_ft: 10, duration_dice: 10d6, gp_value: 3000 },
+            UndeadWarding       => WardingDef { warding_type: UndeadWarding,       name: "Scroll of Undead Warding",       restriction: WardingCP,   read_segments: 4, radius_ft: 5,  duration_dice: 10d8, gp_value: 3000 }
+        }
+    }
+
+    derive warding_name(warding: WardingType) -> string {
+        warding_def(warding).name
+    }
+
+
+    // ========================================================
+    //  WARDING CLASS RESTRICTION CHECK
+    //
+    //  Returns true if the character can use this warding.
+    //  "All" = any class, "CP" = Cleric/Paladin,
+    //  "CDIM" = Cleric/Druid/Illusionist/MagicUser
+    // ========================================================
+
+    derive can_use_warding(char: Character, warding: WardingType) -> bool {
+        let def = warding_def(warding)
+        let primary_class = first(char.classes).unwrap().class
+        match def.restriction {
+            WardingAll  => true,
+            WardingCP   => primary_class == Class.Cleric || primary_class == Class.Paladin,
+            WardingCDIM => primary_class == Class.Cleric || primary_class == Class.Druid || primary_class == Class.Illusionist || primary_class == Class.MagicUser
+        }
+    }
+
+
+    // ========================================================
+    //  WARDING ITEM CREATION
+    // ========================================================
+
+    derive warding_item(warding: WardingType) -> Item {
+        let def = warding_def(warding)
+        Item {
+            name: def.name,
+            weight: 0,
+            cost_cp: def.gp_value * 100,
+            quantity: 1,
+            gp_value: def.gp_value,
+            xp_awarded: false
+        }
+    }
+
+
+    // ========================================================
+    //  ELEMENTAL WARDING SUBTYPES
+    //
+    //  Elemental Warding wards against a specific type of
+    //  elemental, or all types. Roll d20 to determine.
+    //  §2.13.3.2
+    // ========================================================
+
+    enum ElementalWardType { Air, Earth, Fire, Water, AllElementals }
+
+    derive random_elemental_ward(d20_roll: int) -> ElementalWardType {
+        if d20_roll <= 3 { ElementalWardType.Air }
+        else if d20_roll <= 6 { ElementalWardType.Earth }
+        else if d20_roll <= 9 { ElementalWardType.Fire }
+        else if d20_roll <= 12 { ElementalWardType.Water }
+        else { ElementalWardType.AllElementals }
+    }
+
+    // HD capacity: wards 24 HD of a single type, 16 HD of all types.
+    derive elemental_ward_hd_capacity(ward_type: ElementalWardType) -> int {
+        match ward_type {
+            AllElementals => 16,
+            _             => 24
+        }
+    }
+
+
+    // ========================================================
+    //  LYCANTHROPE WARDING SUBTYPES
+    //
+    //  Roll d20 to determine which lycanthrope types are
+    //  warded off.
+    //  §2.13.3.2
+    // ========================================================
+
+    enum LycanthropeWardType {
+        Werebears, Wereboars, Wererats, Weretigers,
+        Werewolves, AllLycanthropes, AllShapeChangers
+    }
+
+    derive random_lycanthrope_ward(d20_roll: int) -> LycanthropeWardType {
+        if d20_roll == 1 { LycanthropeWardType.Werebears }
+        else if d20_roll == 2 { LycanthropeWardType.Wereboars }
+        else if d20_roll <= 4 { LycanthropeWardType.Wererats }
+        else if d20_roll == 5 { LycanthropeWardType.Weretigers }
+        else if d20_roll <= 8 { LycanthropeWardType.Werewolves }
+        else if d20_roll <= 19 { LycanthropeWardType.AllLycanthropes }
+        else { LycanthropeWardType.AllShapeChangers }
+    }
+
+
+    // ========================================================
+    //  WARDING CONDITIONS
+    //
+    //  Applied when a scroll of warding is activated.
+    //  Each warding type is a distinct condition so they
+    //  can stack (different types). Same-type wardings
+    //  use "stacking first" to prevent stacking.
+    // ========================================================
+
+    condition ScrollAcidWarding on bearer: entity
+        stacking first
+    {}
+
+    condition ScrollDemonWarding on bearer: entity
+        stacking first
+    {}
+
+    condition ScrollDevilWarding on bearer: entity
+        stacking first
+    {}
+
+    condition ScrollElementalWarding(ward_type: ElementalWardType, hd_capacity: int) on bearer: entity
+        stacking first
+    {}
+
+    condition ScrollLycanthropeWarding(ward_type: LycanthropeWardType) on bearer: entity
+        stacking first
+    {}
+
+    condition ScrollMagicWarding on bearer: entity
+        stacking first
+    {}
+
+    condition ScrollPetrifactionWarding on bearer: entity
+        stacking first
+    {}
+
+    condition ScrollPolymorphWarding on bearer: entity
+        stacking first
+    {}
+
+    condition ScrollPossessionWarding on bearer: entity
+        stacking first
+    {}
+
+    condition ScrollUndeadWarding(hd_warded: int) on bearer: entity
+        stacking first
+    {}
+
+
+    // ========================================================
+    //  WARDING RESOLUTION
+    //
+    //  Activates the warding condition on the reader.
+    //  Rolls duration from the warding definition's dice.
+    // ========================================================
+
+    function resolve_acid_warding(reader: Character) {
+        let def = warding_def(WardingType.AcidWarding)
+        let duration = roll(def.duration_dice).total
+        apply_condition(reader, ScrollAcidWarding, Duration.Rounds(duration))
+        emit WardingActivated(reader: reader, warding_type: def.name, duration_rounds: duration)
+    }
+
+    function resolve_demon_warding(reader: Character) {
+        let def = warding_def(WardingType.DemonWarding)
+        let duration = roll(def.duration_dice).total
+        apply_condition(reader, ScrollDemonWarding, Duration.Rounds(duration))
+        emit WardingActivated(reader: reader, warding_type: def.name, duration_rounds: duration)
+    }
+
+    function resolve_devil_warding(reader: Character) {
+        let def = warding_def(WardingType.DevilWarding)
+        let duration = roll(def.duration_dice).total
+        apply_condition(reader, ScrollDevilWarding, Duration.Rounds(duration))
+        emit WardingActivated(reader: reader, warding_type: def.name, duration_rounds: duration)
+    }
+
+    function resolve_elemental_warding(reader: Character, ward_type: ElementalWardType) {
+        let def = warding_def(WardingType.ElementalWarding)
+        let duration = roll(def.duration_dice).total
+        let hd_cap = elemental_ward_hd_capacity(ward_type)
+        apply_condition(reader, ScrollElementalWarding(ward_type: ward_type, hd_capacity: hd_cap), Duration.Rounds(duration))
+        emit WardingActivated(reader: reader, warding_type: def.name, duration_rounds: duration)
+    }
+
+    function resolve_lycanthrope_warding(reader: Character, ward_type: LycanthropeWardType) {
+        let def = warding_def(WardingType.LycanthropeWarding)
+        let duration = roll(def.duration_dice).total
+        apply_condition(reader, ScrollLycanthropeWarding(ward_type: ward_type), Duration.Rounds(duration))
+        emit WardingActivated(reader: reader, warding_type: def.name, duration_rounds: duration)
+    }
+
+    function resolve_magic_warding(reader: Character) {
+        let def = warding_def(WardingType.MagicWarding)
+        let duration = roll(def.duration_dice).total
+        apply_condition(reader, ScrollMagicWarding, Duration.Rounds(duration))
+        emit WardingActivated(reader: reader, warding_type: def.name, duration_rounds: duration)
+    }
+
+    function resolve_petrifaction_warding(reader: Character) {
+        let def = warding_def(WardingType.PetrifactionWarding)
+        let duration = roll(def.duration_dice).total
+        apply_condition(reader, ScrollPetrifactionWarding, Duration.Rounds(duration))
+        emit WardingActivated(reader: reader, warding_type: def.name, duration_rounds: duration)
+    }
+
+    function resolve_polymorph_warding(reader: Character) {
+        let def = warding_def(WardingType.PolymorphWarding)
+        // Duration is 6 full turns (not rounds), per §2.13.3.2
+        apply_condition(reader, ScrollPolymorphWarding, Duration.Turns(6))
+        emit WardingActivated(reader: reader, warding_type: def.name, duration_rounds: 60)
+    }
+
+    function resolve_possession_warding(reader: Character) {
+        let def = warding_def(WardingType.PossessionWarding)
+        let duration = roll(def.duration_dice).total
+        apply_condition(reader, ScrollPossessionWarding, Duration.Rounds(duration))
+        emit WardingActivated(reader: reader, warding_type: def.name, duration_rounds: duration)
+    }
+
+    function resolve_undead_warding(reader: Character) {
+        let def = warding_def(WardingType.UndeadWarding)
+        let duration = roll(def.duration_dice).total
+        // Wards off 35 HD of undead
+        apply_condition(reader, ScrollUndeadWarding(hd_warded: 35), Duration.Rounds(duration))
+        emit WardingActivated(reader: reader, warding_type: def.name, duration_rounds: duration)
+    }
+
+
+    // ========================================================
+    //  READ SPELL SCROLL ACTION
+    //
+    //  Reads and casts a spell from a spell scroll. The scroll
+    //  is consumed on use (spell vanishes). Checks class
+    //  restriction, and rolls for failure if the caster's
+    //  level is insufficient for the spell's level.
+    //
+    //  Spell resolution is dispatched via resolve_spell().
+    //  §2.13.3.1
+    // ========================================================
+
+    action ReadSpellScroll on reader: Character with Inventory as inv (
+        spell_id: SpellId,
+        scroll_class: SpellClassType,
+        targets: list<Character>
+    ) {
+        cost free
+
+        resolve {
+            // Class restriction
+            if !can_use_spell_scroll(reader, scroll_class) {
+                error("This scroll can only be used by the appropriate class")
+            }
+
+            let def = spell_def(spell_id)
+            let scroll_name = "Scroll of " + def.name
+
+            // Consume the scroll from inventory
+            use_consumable_loose(reader, scroll_name)
+            emit ScrollRead(reader: reader, scroll_name: scroll_name)
+
+            // Check for under-level failure
+            let level = first(reader.classes).unwrap().level
+            let failure = scroll_failure_chance(level, def.level, reader_progression(reader))
+
+            if failure > 0 {
+                let failed = check_scroll_failure(failure)
+                if failed {
+                    let effect_roll = roll(1d6).total
+                    let effect = scroll_failure_effect(effect_roll)
+                    emit ScrollSpellFailed(reader: reader, spell_id: spell_id, failure_effect: effect)
+                } else {
+                    resolve_spell(spell_id, reader, targets)
+                    emit ScrollSpellCast(reader: reader, spell_id: spell_id, scroll_class: scroll_class)
+                }
+            } else {
+                resolve_spell(spell_id, reader, targets)
+                emit ScrollSpellCast(reader: reader, spell_id: spell_id, scroll_class: scroll_class)
+            }
+        }
+    }
+
+    // Helper: determine the reader's spell progression for failure calc.
+    derive reader_progression(reader: Character) -> SpellProgression {
+        let primary_class = first(reader.classes).unwrap().class
+        match primary_class {
+            Cleric      => SpellProgression.Cleric,
+            Druid       => SpellProgression.Druid,
+            MagicUser   => SpellProgression.MagicUser,
+            Illusionist => SpellProgression.Illusionist,
+            Paladin     => SpellProgression.Paladin,
+            Ranger      => SpellProgression.Ranger,
+            _           => SpellProgression.NonCaster
+        }
+    }
+
+
+    // ========================================================
+    //  READ WARDING SCROLL ACTION
+    //
+    //  Reads a scroll of warding, consuming it and applying
+    //  the protective condition. Class restriction checked.
+    //  Elemental and Lycanthrope wardings require a subtype.
+    //  §2.13.3.2
+    // ========================================================
+
+    action ReadWardingScroll on reader: Character with Inventory as inv (
+        warding: WardingType
+    ) {
+        cost free
+
+        resolve {
+            if !can_use_warding(reader, warding) {
+                error("This warding scroll can only be used by the appropriate class")
+            }
+
+            let def = warding_def(warding)
+
+            // Consume the scroll
+            use_consumable_loose(reader, def.name)
+            emit ScrollRead(reader: reader, scroll_name: def.name)
+
+            // Dispatch to resolve function
+            match warding {
+                AcidWarding         => resolve_acid_warding(reader),
+                DemonWarding        => resolve_demon_warding(reader),
+                DevilWarding        => resolve_devil_warding(reader),
+                MagicWarding        => resolve_magic_warding(reader),
+                PetrifactionWarding => resolve_petrifaction_warding(reader),
+                PolymorphWarding    => resolve_polymorph_warding(reader),
+                PossessionWarding   => resolve_possession_warding(reader),
+                UndeadWarding       => resolve_undead_warding(reader),
+                // Elemental and Lycanthrope need subtypes — use specialised actions
+                _                   => {
+                    emit WardingActivated(reader: reader, warding_type: def.name, duration_rounds: 0)
+                }
+            }
+        }
+    }
+
+    // Specialised action for Elemental Warding (requires subtype).
+    action ReadElementalWardingScroll on reader: Character with Inventory as inv (
+        ward_type: ElementalWardType
+    ) {
+        cost free
+
+        resolve {
+            if !can_use_warding(reader, WardingType.ElementalWarding) {
+                error("This warding scroll can only be used by Cleric, Druid, Illusionist, or Magic-User")
+            }
+
+            let def = warding_def(WardingType.ElementalWarding)
+            use_consumable_loose(reader, def.name)
+            emit ScrollRead(reader: reader, scroll_name: def.name)
+            resolve_elemental_warding(reader, ward_type)
+        }
+    }
+
+    // Specialised action for Lycanthrope Warding (requires subtype).
+    action ReadLycanthropeWardingScroll on reader: Character with Inventory as inv (
+        ward_type: LycanthropeWardType
+    ) {
+        cost free
+
+        resolve {
+            if !can_use_warding(reader, WardingType.LycanthropeWarding) {
+                error("This warding scroll can only be used by the appropriate class")
+            }
+
+            let def = warding_def(WardingType.LycanthropeWarding)
+            use_consumable_loose(reader, def.name)
+            emit ScrollRead(reader: reader, scroll_name: def.name)
+            resolve_lycanthrope_warding(reader, ward_type)
+        }
+    }
+}
