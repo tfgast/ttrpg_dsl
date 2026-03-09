@@ -183,3 +183,43 @@ system "test" {
         "budget for b should be cleared after error"
     );
 }
+
+// ── User-defined BudgetSpec is safely overwritten by built-in ───
+
+#[test]
+fn user_defined_budgetspec_overwritten_by_builtin() {
+    // A user who defines their own `struct BudgetSpec` with wrong fields
+    // should get a checker error because the built-in always takes precedence.
+    let source = r#"
+system "test" {
+    struct TurnBudget { action: int }
+    entity Character { hp: int }
+
+    struct BudgetSpec { wrong_field: int }
+
+    function try_budgets(a: Character) {
+        with_budgets([
+            BudgetSpec { wrong_field: 1 },
+        ]) {
+            a.hp = 1
+        }
+    }
+}
+"#;
+    let (program, parse_errors) = ttrpg_parser::parse(source, FileId::SYNTH);
+    assert!(parse_errors.is_empty());
+    let mut lower_diags = Vec::new();
+    let program = ttrpg_parser::lower_moves(program, &mut lower_diags);
+    let result = ttrpg_checker::check(&program);
+    let errors: Vec<_> = result
+        .diagnostics
+        .iter()
+        .filter(|d| d.severity == Severity::Error)
+        .collect();
+    // The built-in BudgetSpec has {actor, budget}, not {wrong_field},
+    // so the struct literal should fail type-checking.
+    assert!(
+        !errors.is_empty(),
+        "user-defined BudgetSpec with wrong fields should produce checker errors"
+    );
+}

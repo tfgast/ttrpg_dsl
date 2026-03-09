@@ -208,6 +208,7 @@ impl Checker<'_> {
                 && matches!(
                     callee_name.as_str(),
                     "floor" | "ceil" | "min" | "max" | "distance" | "conditions" | "error"
+            | "budget_of"
                 );
             if !is_pure_builtin {
                 self.error(

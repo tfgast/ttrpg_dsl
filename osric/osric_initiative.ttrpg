@@ -832,10 +832,14 @@ system "OSRIC Initiative" {
                                     apply_condition(target, Prone, Duration.Indefinite)
                                     apply_condition(target, Overborne, Duration.Indefinite)
                                     if is_alive(target) && action.combatant is Character {
-                                        action.combatant.GrapplingAttack(
-                                            target, atk_move, def_move,
-                                            attack_mod: result.grappling_followup_bonus
-                                        )
+                                        // Follow-up gets its own budget so it doesn't
+                                        // consume the round's declared-action pool.
+                                        with_budget(action.combatant, { action: 1 }) {
+                                            action.combatant.GrapplingAttack(
+                                                target, atk_move, def_move,
+                                                attack_mod: result.grappling_followup_bonus
+                                            )
+                                        }
                                     }
                                 },
                                 _ => {

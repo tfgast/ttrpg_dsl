@@ -1759,7 +1759,9 @@ fn register_builtin_types(env: &mut TypeEnv) {
     }
 
     // BudgetSpec struct — used by with_budgets for multi-entity provisioning.
-    if !env.types.contains_key("BudgetSpec") {
+    // Always register the built-in definition (overwriting any user-defined
+    // version) because the interpreter hard-codes { actor, budget } extraction.
+    {
         env.types.insert(
             Name::from("BudgetSpec"),
             DeclInfo::Struct(StructInfo {

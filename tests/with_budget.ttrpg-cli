@@ -40,6 +40,14 @@ system "test" {
         }
     }
 
+    function payer_not_receiver(wizard: Character, skeleton: Character, target: Character) {
+        with_budget(skeleton, { action: 1 }) {
+            with_cost_payer(wizard) {
+                skeleton.MeleeAttack(target)
+            }
+        }
+    }
+
     function resolve_pair(a: Character, b: Character, target: Character) {
         with_budget(a, { action: 1 }) {
             a.MeleeAttack(target)
@@ -89,13 +97,21 @@ spawn Character double_target { hp: 10 }
 call resolve_two_attacks(double_attacker, double_target)
 assert_eq double_target.hp, 9
 
-// ── Receiver ≠ payer still spends payer budget ──────────────────
+// ── with_budget actor ≠ action performer ─────────────────────────
 
 spawn Character wizard { hp: 10 }
 spawn Character skeleton { hp: 5 }
 spawn Character summon_target { hp: 10 }
 call command_minion(wizard, skeleton, summon_target)
 assert_eq summon_target.hp, 9
+
+// ── with_cost_payer: payer ≠ receiver ────────────────────────────
+
+spawn Character payer_wizard { hp: 10 }
+spawn Character payer_skeleton { hp: 5 }
+spawn Character payer_target { hp: 10 }
+call payer_not_receiver(payer_wizard, payer_skeleton, payer_target)
+assert_eq payer_target.hp, 9
 
 // ── Nested budgets for different entities ───────────────────────
 
