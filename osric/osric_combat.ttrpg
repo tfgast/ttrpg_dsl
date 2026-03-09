@@ -72,7 +72,7 @@ system "OSRIC Combat" {
     }
 
     struct TurnBudget {
-        attack: int = 0
+        action: int = 0
     }
 
     struct EncounterStart {
@@ -1251,7 +1251,7 @@ system "OSRIC Combat" {
         defender_four_legs: bool = false,
         attack_mod: int = 0
     ) {
-        cost { attack }
+        cost { action }
         resolve {
             let result = resolve_overbearing_attack(
                 attacker, target, attacker_move, defender_move,
@@ -1504,7 +1504,7 @@ system "OSRIC Combat" {
         defender_appendages: int = 2,
         attack_mod: int = 0
     ) {
-        cost { attack }
+        cost { action }
         resolve {
             let result = resolve_grappling_attack(
                 attacker, target, attacker_move, defender_move,
@@ -1576,7 +1576,7 @@ system "OSRIC Combat" {
         hold: GrapplingHold,
         hold_roll: int
     ) {
-        cost { attack }
+        cost { action }
         resolve {
             let temp = grappling_temp_damage(hold_roll)
             let real = grappling_real_damage(hold_roll)
@@ -1627,7 +1627,7 @@ system "OSRIC Combat" {
     // Brawling is a normal attack roll for 1d2 Blunt damage (PG p105).
     // All characters are auto-proficient with FistOrKick.
     action MeleeAttack on attacker: Character (target: entity) {
-        cost { attack }
+        cost { action }
         resolve {
             let wielded = attacker.wielded_main
             let weapon = if wielded_melee(attacker).is_some() {
@@ -1652,7 +1652,7 @@ system "OSRIC Combat" {
         target: entity,
         distance: Feet
     ) {
-        cost { attack }
+        cost { action }
         requires {
             wielded_missile(attacker).is_some()
         }
@@ -1672,7 +1672,7 @@ system "OSRIC Combat" {
 
     // Monster natural/innate attack using an entry from the attacks list.
     action MonsterMeleeAttack on attacker: Monster (target: entity, attack: MonsterAttack) {
-        cost { attack }
+        cost { action }
         resolve {
             let result = resolve_monster_attack(attacker, target, attack)
             match result.outcome {
@@ -1690,7 +1690,7 @@ system "OSRIC Combat" {
         attack: MonsterAttack,
         distance: Feet
     ) {
-        cost { attack }
+        cost { action }
         resolve {
             let result = resolve_monster_attack(attacker, target, attack)
             match result.outcome {
@@ -1785,7 +1785,7 @@ system "OSRIC Combat" {
     // Armed monster melee attack with wielded main-hand weapon.
     // Same signature as Character MeleeAttack — callable on entity.
     action MeleeAttack on attacker: Monster (target: entity) {
-        cost { attack }
+        cost { action }
         requires {
             wielded_melee(attacker).is_some()
         }
@@ -1811,7 +1811,7 @@ system "OSRIC Combat" {
         target: entity,
         distance: Feet
     ) {
-        cost { attack }
+        cost { action }
         requires {
             wielded_missile(attacker).is_some()
         }
@@ -1851,7 +1851,7 @@ system "OSRIC Combat" {
     }
 
     action Parry on parrier: Character () {
-        cost { attack }
+        cost { action }
         requires {
             wielded_melee(parrier).is_some()
         }
@@ -1903,7 +1903,7 @@ system "OSRIC Combat" {
     // The off-hand weapon cannot be used to parry (enforced by
     // Parry action reading wielded_melee — main hand only).
     action TwoWeaponAttack on attacker: Character (target: entity) {
-        cost { attack }
+        cost { action }
         requires {
             wielded_melee(attacker).is_some()
             && wielded_off_melee(attacker).is_some()
@@ -1967,7 +1967,7 @@ system "OSRIC Combat" {
     // Charging condition (AC penalty) applied by resolve_action before
     // this action fires. ChargeRecovery cooldown applied here.
     action Charge on attacker: Character (target: entity) {
-        cost { attack }
+        cost { action }
         requires {
             wielded_melee(attacker).is_some()
             && !any([c.name == "ChargeRecovery" for c in conditions(attacker)])
@@ -1993,7 +1993,7 @@ system "OSRIC Combat" {
     // a charge if the foe actually charges."
     // Reads weapon from defender's wielded main-hand.
     action SetWeaponStrike on defender: Character (target: entity) {
-        cost { attack }
+        cost { action }
         requires {
             wielded_melee(defender).is_some()
         }
@@ -2015,7 +2015,7 @@ system "OSRIC Combat" {
     // Armed monster charge: HD-based BTHB + weapon damage, +2 to hit.
     // Same rules as Character Charge but uses resolve_armed_melee_attack.
     action Charge on attacker: Monster (target: entity) {
-        cost { attack }
+        cost { action }
         requires {
             wielded_melee(attacker).is_some()
             && !any([c.name == "ChargeRecovery" for c in conditions(attacker)])
@@ -2038,7 +2038,7 @@ system "OSRIC Combat" {
     // damage, +2 to hit. For monsters without wielded weapons (bears,
     // wolves, etc.) that charge using claws, horns, or bite.
     action MonsterCharge on attacker: Monster (target: entity, attack: MonsterAttack) {
-        cost { attack }
+        cost { action }
         requires {
             !any([c.name == "ChargeRecovery" for c in conditions(attacker)])
         }
@@ -2057,7 +2057,7 @@ system "OSRIC Combat" {
     // Armed monster set weapon strike: same as Character but uses
     // resolve_armed_melee_attack (HD-based BTHB, no STR/spec bonuses).
     action SetWeaponStrike on defender: Monster (target: entity) {
-        cost { attack }
+        cost { action }
         requires {
             wielded_melee(defender).is_some()
         }
@@ -2095,7 +2095,7 @@ system "OSRIC Combat" {
     // RearAttacked provides +2 and strips DEX/shield; an extra +2
     // in attack_mod brings the total to +4.
     action Backstab on attacker: Character (target: entity) {
-        cost { attack }
+        cost { action }
         requires {
             wielded_melee(attacker).is_some()
             && character_can_backstab(attacker)
@@ -2210,7 +2210,7 @@ system "OSRIC Combat" {
     // The target_hd parameter represents the target's hit dice or
     // level count (GM decides which to use per §1.3.1.2).
     action Assassinate on attacker: Character (target: entity, target_hd: int) {
-        cost { attack }
+        cost { action }
         requires {
             wielded_melee(attacker).is_some()
             && is_class(attacker, Assassin)

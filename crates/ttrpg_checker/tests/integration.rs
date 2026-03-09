@@ -11462,13 +11462,13 @@ fn test_with_budget_user_defined_turn_budget() {
     let source = r#"
 system "test" {
     struct TurnBudget {
-        attack: int
+        action: int
         move_pts: int
     }
     entity Character { hp: int }
     function foo(actor: Character) {
-        with_budget(actor, { attack: 1 }) {
-            let a = turn.attack
+        with_budget(actor, { action: 1 }) {
+            let a = turn.action
         }
     }
 }
@@ -11481,7 +11481,7 @@ fn test_with_budget_user_defined_rejects_builtin_field() {
     let source = r#"
 system "test" {
     struct TurnBudget {
-        attack: int
+        action: int
         move_pts: int
     }
     entity Character { hp: int }
@@ -11653,10 +11653,10 @@ system "test" {
 fn test_advance_time_errors_in_with_budget() {
     let source = r#"
 system "test" {
-    struct TurnBudget { attack: int }
+    struct TurnBudget { action: int }
     entity Character { hp: int }
     function foo(actor: Character) {
-        with_budget(actor, { attack: 1 }) {
+        with_budget(actor, { action: 1 }) {
             advance_time(1)
         }
     }

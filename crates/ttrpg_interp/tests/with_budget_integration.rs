@@ -84,12 +84,12 @@ fn make_character(state: &mut GameState, hp: i64) -> EntityRef {
 fn cleanup_on_error_budget_cleared() {
     let source = r#"
 system "test" {
-    struct TurnBudget { attack: int }
+    struct TurnBudget { action: int }
 
     entity Character { hp: int }
 
     function will_error(actor: Character) {
-        with_budget(actor, { attack: 1 }) {
+        with_budget(actor, { action: 1 }) {
             error("intentional error")
         }
     }
@@ -127,19 +127,19 @@ system "test" {
 fn budget_enforcement_host_override_allows_overdraft() {
     let source = r#"
 system "test" {
-    struct TurnBudget { attack: int }
+    struct TurnBudget { action: int }
 
     entity Character { hp: int }
 
     action MeleeAttack on attacker: Character (target: Character) {
-        cost { attack }
+        cost { action }
         resolve {
             target.hp -= 1
         }
     }
 
     function overdraft_attack(attacker: Character, target: Character) {
-        with_budget(attacker, { attack: 0 }) {
+        with_budget(attacker, { action: 0 }) {
             attacker.MeleeAttack(target)
         }
     }

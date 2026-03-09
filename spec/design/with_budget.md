@@ -38,7 +38,7 @@ budget_field     ::= IDENT ":" expr
 Examples:
 ```
 // Standard — actor performs action, pays from own budget
-with_budget(actor, { attack: 1 }) {
+with_budget(actor, { action: 1 }) {
     actor.MeleeAttack(target, weapon)
 }
 
@@ -225,7 +225,7 @@ Test cases should verify each row.
 
 Walkthrough with OSRIC (standard pattern):
 ```
-with_budget(attacker, { attack: 1 }) {
+with_budget(attacker, { action: 1 }) {
     // turn_actor = attacker, cost_payer = Some(attacker)
 
     attacker.MeleeAttack(target, weapon)
@@ -491,9 +491,9 @@ saves the previous budget, `turn_actor`, and `cost_payer`, restoring them on exi
 
 **Different entities** (common case):
 ```
-with_budget(a, { attack: 1 }) {
+with_budget(a, { action: 1 }) {
     // turn_actor = a, cost_payer = a, turn reads a's budget
-    with_budget(b, { attack: 1 }) {
+    with_budget(b, { action: 1 }) {
         // turn_actor = b, cost_payer = b, turn reads b's budget
         // a's budget still exists in state (untouched)
     }
@@ -505,17 +505,17 @@ with_budget(a, { attack: 1 }) {
 
 **Same entity** (re-scoping):
 ```
-with_budget(a, { attack: 2 }) {
-    // a's budget: { attack: 2 }
-    a.MeleeAttack(target, weapon)   // deducts 1, budget now { attack: 1 }
+with_budget(a, { action: 2 }) {
+    // a's budget: { action: 2 }
+    a.MeleeAttack(target, weapon)   // deducts 1, budget now { action: 1 }
 
     with_budget(a, { spell: 1 }) {
-        // a's previous budget { attack: 1 } saved
+        // a's previous budget { action: 1 } saved
         // a's budget now: { spell: 1 }
         a.CastSpell(spell)           // deducts spell
     }
-    // a's budget restored to { attack: 1 }
-    a.MeleeAttack(target2, weapon)   // deducts 1, budget now { attack: 0 }
+    // a's budget restored to { action: 1 }
+    a.MeleeAttack(target2, weapon)   // deducts 1, budget now { action: 0 }
 }
 // a's budget cleared
 ```
@@ -584,7 +584,7 @@ This is consistent with the existing model where `resolve_cost_token` and
 
 ### Success: action deducts from budget
 ```
-ProvisionBudget { actor: A, budget: { attack: 1 } }          → Acknowledged
+ProvisionBudget { actor: A, budget: { action: 1 } }          → Acknowledged
   ActionStarted { name: MeleeAttack, actor: A }               → Acknowledged
   RequiresCheck { action: MeleeAttack, passed: true }          → Acknowledged
   [Budget pre-check: A.attack (1) >= 1 — passes]
@@ -596,7 +596,7 @@ ClearBudget { actor: A }                                       → Acknowledged
 
 ### Budget exhausted: enforcement rejects action
 ```
-ProvisionBudget { actor: A, budget: { attack: 0 } }          → Acknowledged
+ProvisionBudget { actor: A, budget: { action: 0 } }          → Acknowledged
   ActionStarted { name: MeleeAttack, actor: A }               → Acknowledged
   RequiresCheck { action: MeleeAttack, passed: true }          → Acknowledged
   [Budget pre-check: A.attack (0) < 1 — fails]
@@ -610,7 +610,7 @@ ClearBudget { actor: A }                                       → Acknowledged
 
 ### Host-approved overdraft
 ```
-ProvisionBudget { actor: A, budget: { attack: 0 } }          → Acknowledged
+ProvisionBudget { actor: A, budget: { action: 0 } }          → Acknowledged
   ActionStarted { name: MeleeAttack, actor: A }               → Acknowledged
   RequiresCheck { action: MeleeAttack, passed: true }          → Acknowledged
   [Budget pre-check: A.attack (0) < 1 — fails]
@@ -627,7 +627,7 @@ ClearBudget { actor: A }                                       → Acknowledged
 
 ### Body error: cleanup still runs
 ```
-ProvisionBudget { actor: A, budget: { attack: 1 } }          → Acknowledged
+ProvisionBudget { actor: A, budget: { action: 1 } }          → Acknowledged
   [Body encounters runtime error]
 ClearBudget { actor: A }                                       → Acknowledged
 [Original error propagated]
@@ -635,7 +635,7 @@ ClearBudget { actor: A }                                       → Acknowledged
 
 ### Body error + cleanup protocol error: error precedence
 ```
-ProvisionBudget { actor: A, budget: { attack: 1 } }          → Acknowledged
+ProvisionBudget { actor: A, budget: { action: 1 } }          → Acknowledged
   [Body encounters runtime error: "division by zero"]
 ClearBudget { actor: A }                                       → Override(unexpected)
 [Warning logged: "cleanup error suppressed: ClearBudget expects Acknowledged"]
@@ -644,12 +644,12 @@ ClearBudget { actor: A }                                       → Override(unex
 
 ### Same-entity nested: inner restores outer budget
 ```
-ProvisionBudget { actor: A, budget: { attack: 2 } }          → Acknowledged
+ProvisionBudget { actor: A, budget: { action: 2 } }          → Acknowledged
   DeductCost { actor: A, token: attack, budget_field: attack } → Acknowledged
   [A.attack now 1]
   ProvisionBudget { actor: A, budget: { spell: 1 } }          → Acknowledged
     DeductCost { actor: A, token: spell, budget_field: spell } → Acknowledged
-  ProvisionBudget { actor: A, budget: { attack: 1 } }          → Acknowledged  [restore]
+  ProvisionBudget { actor: A, budget: { action: 1 } }          → Acknowledged  [restore]
   DeductCost { actor: A, token: attack, budget_field: attack } → Acknowledged
   [A.attack now 0]
 ClearBudget { actor: A }                                       → Acknowledged
@@ -731,7 +731,7 @@ and only activates when budgets are explicitly present.
 
 Each combatant gets one pre-declared action per round. Budget is trivial.
 
-Assumes: `struct TurnBudget { attack: int }`
+Assumes: `struct TurnBudget { action: int }`
 
 ```
 function resolve_round(initiative: InitiativeResult, actions: list<RoundAction>) {
@@ -739,7 +739,7 @@ function resolve_round(initiative: InitiativeResult, actions: list<RoundAction>)
         let seg_actions = [a for a in actions if a.segment == seg]
 
         for action in seg_actions {
-            with_budget(action.combatant, { attack: 1 }) {
+            with_budget(action.combatant, { action: 1 }) {
                 match action.action_type {
                     MeleeAttackAction =>
                         action.combatant.MeleeAttack(action.target, action.weapon)

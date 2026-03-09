@@ -66,7 +66,20 @@ fn damage_type_enum_has_9_variants() {
         .expect("DamageType enum not found");
 
     let variants: Vec<_> = dt.variants.iter().map(|v| v.name.as_str()).collect();
-    assert_eq!(variants, ["Slashing", "Piercing", "Blunt", "Fire", "Cold", "Lightning", "Acid", "Poison", "Corrosion"]);
+    assert_eq!(
+        variants,
+        [
+            "Slashing",
+            "Piercing",
+            "Blunt",
+            "Fire",
+            "Cold",
+            "Lightning",
+            "Acid",
+            "Poison",
+            "Corrosion"
+        ]
+    );
 }
 
 #[test]

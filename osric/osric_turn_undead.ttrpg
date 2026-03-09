@@ -401,7 +401,7 @@ system "OSRIC Turn Undead" {
         undead_type: int,
         is_fiend_or_paladin: bool = false
     ) {
-        cost { attack }
+        cost { action }
         requires {
             character_can_turn(turner)
             && undead_type >= 1

@@ -3,73 +3,73 @@
 
 source <<END
 system "test" {
-    struct TurnBudget { attack: int, action: int }
+    struct TurnBudget { action: int, bonus: int }
 
     entity Character { hp: int }
 
     action MeleeAttack on attacker: Character (target: Character) {
-        cost { attack }
-        resolve {
-            target.hp -= 1
-        }
-    }
-
-    action FreeAttack on attacker: Character (target: Character) {
         cost { action }
         resolve {
             target.hp -= 1
         }
     }
 
+    action FreeAttack on attacker: Character (target: Character) {
+        cost { bonus }
+        resolve {
+            target.hp -= 1
+        }
+    }
+
     function resolve_attack(attacker: Character, target: Character) {
-        with_budget(attacker, { attack: 1 }) {
+        with_budget(attacker, { action: 1 }) {
             attacker.MeleeAttack(target)
         }
     }
 
     function resolve_two_attacks(attacker: Character, target: Character) {
-        with_budget(attacker, { attack: 1 }) {
+        with_budget(attacker, { action: 1 }) {
             attacker.MeleeAttack(target)
             attacker.MeleeAttack(target)
         }
     }
 
     function command_minion(wizard: Character, skeleton: Character, target: Character) {
-        with_budget(wizard, { attack: 1 }) {
+        with_budget(wizard, { action: 1 }) {
             skeleton.MeleeAttack(target)
         }
     }
 
     function resolve_pair(a: Character, b: Character, target: Character) {
-        with_budget(a, { attack: 1 }) {
+        with_budget(a, { action: 1 }) {
             a.MeleeAttack(target)
-            with_budget(b, { attack: 1 }) {
+            with_budget(b, { action: 1 }) {
                 b.MeleeAttack(target)
             }
         }
     }
 
     function read_budget(actor: Character) {
-        with_budget(actor, { attack: 3 }) {
-            actor.hp = turn.attack
+        with_budget(actor, { action: 3 }) {
+            actor.hp = turn.action
         }
     }
 
     function attack_and_read(attacker: Character, target: Character) {
-        with_budget(attacker, { attack: 2 }) {
+        with_budget(attacker, { action: 2 }) {
             attacker.MeleeAttack(target)
-            attacker.hp = turn.attack
+            attacker.hp = turn.action
         }
     }
 
     function nested_same_entity(attacker: Character, target: Character) {
-        with_budget(attacker, { attack: 2 }) {
+        with_budget(attacker, { action: 2 }) {
             attacker.MeleeAttack(target)
-            with_budget(attacker, { attack: 99 }) {
-                let inner_budget = turn.attack
+            with_budget(attacker, { action: 99 }) {
+                let inner_budget = turn.action
             }
             attacker.MeleeAttack(target)
-            attacker.hp = turn.attack
+            attacker.hp = turn.action
         }
     }
 }

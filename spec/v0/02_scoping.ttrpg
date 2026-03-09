@@ -854,7 +854,7 @@ hook Regenerate on creature: Character (
 //         MeleeAttackAction => {
 //             let target = action.target.unwrap()
 //             let weapon = action.weapon_melee.unwrap()
-//             with_budget(action.combatant, { attack: 1 }) {
+//             with_budget(action.combatant, { action: 1 }) {
 //                 action.combatant.MeleeAttack(target, weapon)
 //             }
 //         },
@@ -865,7 +865,7 @@ hook Regenerate on creature: Character (
 // EXAMPLE: summoning pattern — wizard pays, skeleton acts
 //
 // function command_undead(wizard: Character, skeleton: Character, target: Character) {
-//     with_budget(wizard, { attack: 1 }) {
+//     with_budget(wizard, { action: 1 }) {
 //         skeleton.MeleeAttack(target, weapon)   // skeleton attacks, wizard's budget pays
 //     }
 // }

@@ -1037,13 +1037,13 @@ mod tests {
 
     #[test]
     fn token_resolution_custom_turn_budget_fields() {
-        let env = type_env_with_turn_budget(&["attack", "movement"]);
-        assert_eq!(env.resolve_cost_token("attack"), Some(Name::from("attack")));
+        let env = type_env_with_turn_budget(&["action", "movement"]);
+        assert_eq!(env.resolve_cost_token("action"), Some(Name::from("action")));
         assert_eq!(
             env.resolve_cost_token("movement"),
             Some(Name::from("movement"))
         );
-        assert_eq!(env.resolve_cost_token("action"), None);
+        assert_eq!(env.resolve_cost_token("attack"), None);
     }
 
     // ── Action execution tests ─────────────────────────────────
@@ -1808,14 +1808,14 @@ mod tests {
 
     #[test]
     fn budget_enforcement_insufficient_acknowledged() {
-        // Budget has attack: 0, host acknowledges → ActionFailed, no DeductCost emitted
-        let action = attack_action_with_cost("attack");
+        // Budget has action: 0, host acknowledges → ActionFailed, no DeductCost emitted
+        let action = attack_action_with_cost("action");
         let mut budget = BTreeMap::new();
-        budget.insert(Name::from("attack"), Value::Int(0));
+        budget.insert(Name::from("action"), Value::Int(0));
         let state = make_state_with_budget(1, budget);
 
         let program = empty_program();
-        let type_env = type_env_with_turn_budget(&["attack"]);
+        let type_env = type_env_with_turn_budget(&["action"]);
         let interp = Interpreter::new(&program, &type_env).unwrap();
         let mut handler = ScriptedHandler::with_responses(vec![
             Response::Acknowledged, // ActionStarted
@@ -1841,14 +1841,14 @@ mod tests {
 
     #[test]
     fn budget_enforcement_insufficient_override_allows_overdraft() {
-        // Budget has attack: 0, host overrides true → proceed, DeductCost emitted
-        let action = attack_action_with_cost("attack");
+        // Budget has action: 0, host overrides true → proceed, DeductCost emitted
+        let action = attack_action_with_cost("action");
         let mut budget = BTreeMap::new();
-        budget.insert(Name::from("attack"), Value::Int(0));
+        budget.insert(Name::from("action"), Value::Int(0));
         let state = make_state_with_budget(1, budget);
 
         let program = empty_program();
-        let type_env = type_env_with_turn_budget(&["attack"]);
+        let type_env = type_env_with_turn_budget(&["action"]);
         let interp = Interpreter::new(&program, &type_env).unwrap();
         let mut handler = ScriptedHandler::with_responses(vec![
             Response::Acknowledged,                // ActionStarted
@@ -1872,14 +1872,14 @@ mod tests {
 
     #[test]
     fn budget_enforcement_insufficient_override_denies() {
-        // Budget has attack: 0, host overrides false → ActionFailed
-        let action = attack_action_with_cost("attack");
+        // Budget has action: 0, host overrides false → ActionFailed
+        let action = attack_action_with_cost("action");
         let mut budget = BTreeMap::new();
-        budget.insert(Name::from("attack"), Value::Int(0));
+        budget.insert(Name::from("action"), Value::Int(0));
         let state = make_state_with_budget(1, budget);
 
         let program = empty_program();
-        let type_env = type_env_with_turn_budget(&["attack"]);
+        let type_env = type_env_with_turn_budget(&["action"]);
         let interp = Interpreter::new(&program, &type_env).unwrap();
         let mut handler = ScriptedHandler::with_responses(vec![
             Response::Acknowledged,                 // ActionStarted
@@ -1903,14 +1903,14 @@ mod tests {
 
     #[test]
     fn budget_enforcement_sufficient_proceeds() {
-        // Budget has attack: 1 (sufficient) → normal flow, no RequiresCheck for budget
-        let action = attack_action_with_cost("attack");
+        // Budget has action: 1 (sufficient) → normal flow, no RequiresCheck for budget
+        let action = attack_action_with_cost("action");
         let mut budget = BTreeMap::new();
-        budget.insert(Name::from("attack"), Value::Int(1));
+        budget.insert(Name::from("action"), Value::Int(1));
         let state = make_state_with_budget(1, budget);
 
         let program = empty_program();
-        let type_env = type_env_with_turn_budget(&["attack"]);
+        let type_env = type_env_with_turn_budget(&["action"]);
         let interp = Interpreter::new(&program, &type_env).unwrap();
         let mut handler = ScriptedHandler::new();
         let mut env = make_env(&state, &mut handler, &interp);
@@ -1954,14 +1954,14 @@ mod tests {
     #[test]
     fn budget_enforcement_field_absent_skips() {
         // Budget exists but doesn't have the cost token's field → no enforcement
-        let action = attack_action_with_cost("attack");
-        // Budget has "spell" but not "attack"
+        let action = attack_action_with_cost("action");
+        // Budget has "spell" but not "action"
         let mut budget = BTreeMap::new();
         budget.insert(Name::from("spell"), Value::Int(1));
         let state = make_state_with_budget(1, budget);
 
         let program = empty_program();
-        let type_env = type_env_with_turn_budget(&["attack", "spell"]);
+        let type_env = type_env_with_turn_budget(&["action", "spell"]);
         let interp = Interpreter::new(&program, &type_env).unwrap();
         let mut handler = ScriptedHandler::new();
         let mut env = make_env(&state, &mut handler, &interp);

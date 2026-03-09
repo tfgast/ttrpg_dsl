@@ -251,7 +251,12 @@ pub fn hit_points_group(max_hp: i64) -> Value {
 
 /// Build an EquipmentSlots include-group struct value.
 pub fn equipment_slots_group(worn_armor: Value, worn_shield: Value) -> Value {
-    equipment_slots_group_full(Value::Option(None), Value::Option(None), worn_armor, worn_shield)
+    equipment_slots_group_full(
+        Value::Option(None),
+        Value::Option(None),
+        worn_armor,
+        worn_shield,
+    )
 }
 
 /// Build an EquipmentSlots include-group struct value with weapon slots.
@@ -503,10 +508,10 @@ pub fn ability_map(scores: &[(&str, i64)]) -> Value {
     Value::Map(map)
 }
 
-/// Turn budget for OSRIC combat: just `attack` token.
+/// Turn budget for OSRIC combat: just `action` token.
 pub fn combat_turn_budget() -> BTreeMap<Name, Value> {
     let mut b = BTreeMap::new();
-    b.insert("attack".into(), Value::Int(1));
+    b.insert("action".into(), Value::Int(1));
     b
 }
 
@@ -802,7 +807,12 @@ pub fn make_armed_character(
     fields.insert(Name::from("saving_throws"), Value::Option(None));
     fields.insert(
         Name::from("EquipmentSlots"),
-        equipment_slots_group_full(wielded_main, Value::Option(None), worn_armor_val, worn_shield_val),
+        equipment_slots_group_full(
+            wielded_main,
+            Value::Option(None),
+            worn_armor_val,
+            worn_shield_val,
+        ),
     );
 
     state.add_entity("Character", fields)

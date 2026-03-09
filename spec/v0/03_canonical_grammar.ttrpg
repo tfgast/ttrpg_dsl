@@ -742,7 +742,7 @@ emit_stmt       = "emit" IDENT "(" arg_list? ")" term
 // be int.
 //
 // Within the body:
-//   - `turn` is readable as a struct (e.g., `turn.attack`)
+//   - `turn` is readable as a struct (e.g., `turn.action`)
 //   - Actions called within deduct from the provisioned budget
 //   - Budget enforcement fires RequiresCheck when budget is exhausted
 //
@@ -754,7 +754,7 @@ emit_stmt       = "emit" IDENT "(" arg_list? ")" term
 // called within the body. This enables summoning patterns where the
 // receiver of an action differs from the entity paying the cost:
 //
-//   with_budget(wizard, { attack: 1 }) {
+//   with_budget(wizard, { action: 1 }) {
 //       skeleton.MeleeAttack(target, weapon)  // skeleton acts, wizard pays
 //   }
 //
@@ -764,7 +764,7 @@ emit_stmt       = "emit" IDENT "(" arg_list? ")" term
 // Examples:
 //
 //   // OSRIC pattern: provision one attack, call costed action
-//   with_budget(combatant, { attack: 1 }) {
+//   with_budget(combatant, { action: 1 }) {
 //       combatant.MeleeAttack(target, weapon)
 //   }
 //

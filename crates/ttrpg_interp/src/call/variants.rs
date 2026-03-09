@@ -82,10 +82,7 @@ pub(super) fn construct_enum_variant(
         });
     }
 
-    let has_any_default = variant_info
-        .has_defaults
-        .iter()
-        .any(|d| *d);
+    let has_any_default = variant_info.has_defaults.iter().any(|d| *d);
 
     // Build ParamInfo from variant fields
     let param_infos: Vec<ParamInfo> = variant_info
@@ -108,13 +105,7 @@ pub(super) fn construct_enum_variant(
         None
     };
 
-    let bound = bind_args(
-        &param_infos,
-        args,
-        ast_params.as_deref(),
-        env,
-        call_span,
-    )?;
+    let bound = bind_args(&param_infos, args, ast_params.as_deref(), env, call_span)?;
 
     let mut fields = BTreeMap::new();
     for (name, val) in bound {

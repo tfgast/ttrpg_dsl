@@ -407,11 +407,7 @@ impl Checker<'_> {
         // Check for missing required fields (those without defaults)
         for (idx, (fname, _)) in variant.fields.iter().enumerate() {
             if !satisfied.contains(&idx) {
-                let has_default = variant
-                    .has_defaults
-                    .get(idx)
-                    .copied()
-                    .unwrap_or(false);
+                let has_default = variant.has_defaults.get(idx).copied().unwrap_or(false);
                 if !has_default {
                     self.error(
                         format!("missing required field `{fname}` in variant `{variant_name}`"),

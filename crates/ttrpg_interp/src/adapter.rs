@@ -670,7 +670,6 @@ pub fn deduct_budget_field<S: WritableState>(state: &mut S, actor: &EntityRef, f
 /// Maps legacy cost-token aliases to budget field names.
 pub fn token_to_budget_field(token: &str) -> Option<&'static str> {
     match token {
-        "action" => Some("actions"),
         "bonus_action" => Some("bonus_actions"),
         "reaction" => Some("reactions"),
         _ => None,
@@ -1061,11 +1060,11 @@ mod tests {
             .turn_budgets
             .entry(1)
             .or_default()
-            .insert("attack".into(), Value::Int(1));
+            .insert("action".into(), Value::Int(1));
         let adapter = StateAdapter::new(state);
-        // Host says: switch to custom token/field `attack`
+        // Host says: switch to custom token/field `action`
         let mut handler =
-            RecordingHandler::new(vec![Response::Override(Value::Str("attack".into()))]);
+            RecordingHandler::new(vec![Response::Override(Value::Str("action".into()))]);
 
         adapter.run(&mut handler, |_state, handler| {
             handler.handle(Effect::DeductCost {
@@ -1087,7 +1086,7 @@ mod tests {
             final_state
                 .turn_budgets
                 .get(&1)
-                .and_then(|b| b.get("attack")),
+                .and_then(|b| b.get("action")),
             Some(&Value::Int(0))
         );
     }
