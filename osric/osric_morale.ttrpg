@@ -88,13 +88,9 @@ system "OSRIC Morale" {
     //  make morale worse (added to the d100 roll).
     // ========================================================
 
-    derive morale_has_condition_named(subject: entity, cond_name: string) -> bool {
-        any([c.name == cond_name for c in conditions(subject)])
-    }
-
     derive morale_condition_modifier(target: entity) -> int {
-        let bless_modifier = if morale_has_condition_named(target, "Blessed") { -5 } else { 0 }
-        let curse_modifier = if morale_has_condition_named(target, "Cursed") { 5 } else { 0 }
+        let bless_modifier = if has_condition(target, "Blessed") { -5 } else { 0 }
+        let curse_modifier = if has_condition(target, "Cursed") { 5 } else { 0 }
         bless_modifier + curse_modifier
     }
 

@@ -1031,7 +1031,7 @@ system "OSRIC Spells" {
     hook SpellInterruption on caster: Character with Spellcasting (
         trigger: Damaged(target: caster)
     ) {
-        if any([c.name == "CastingSpell" for c in conditions(caster)]) {
+        if has_condition(caster, "CastingSpell") {
             remove_condition(caster, CastingSpell)
             emit SpellInterrupted(caster: caster)
         }

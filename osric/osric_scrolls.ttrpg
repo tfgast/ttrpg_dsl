@@ -330,49 +330,45 @@ system "OSRIC Scrolls" {
     //  use "stacking first" to prevent stacking.
     // ========================================================
 
-    derive has_condition_named(subject: entity, cond_name: string) -> bool {
-        any([c.name == cond_name for c in conditions(subject)])
-    }
-
     derive matches_elemental_ward(attacker: entity, ward_type: ElementalWardType) -> bool {
         match ward_type {
-            Air           => has_condition_named(attacker, "AirElemental"),
-            Earth         => has_condition_named(attacker, "EarthElemental"),
-            Fire          => has_condition_named(attacker, "FireElemental"),
-            Water         => has_condition_named(attacker, "WaterElemental"),
+            Air           => has_condition(attacker, "AirElemental"),
+            Earth         => has_condition(attacker, "EarthElemental"),
+            Fire          => has_condition(attacker, "FireElemental"),
+            Water         => has_condition(attacker, "WaterElemental"),
             AllElementals => any([
-                has_condition_named(attacker, "AirElemental"),
-                has_condition_named(attacker, "EarthElemental"),
-                has_condition_named(attacker, "FireElemental"),
-                has_condition_named(attacker, "WaterElemental"),
-                has_condition_named(attacker, "Elemental")
+                has_condition(attacker, "AirElemental"),
+                has_condition(attacker, "EarthElemental"),
+                has_condition(attacker, "FireElemental"),
+                has_condition(attacker, "WaterElemental"),
+                has_condition(attacker, "Elemental")
             ])
         }
     }
 
     derive matches_lycanthrope_ward(attacker: entity, ward_type: LycanthropeWardType) -> bool {
         match ward_type {
-            Werebears        => has_condition_named(attacker, "Werebear"),
-            Wereboars        => has_condition_named(attacker, "Wereboar"),
-            Wererats         => has_condition_named(attacker, "Wererat"),
-            Weretigers       => has_condition_named(attacker, "Weretiger"),
-            Werewolves       => has_condition_named(attacker, "Werewolf"),
+            Werebears        => has_condition(attacker, "Werebear"),
+            Wereboars        => has_condition(attacker, "Wereboar"),
+            Wererats         => has_condition(attacker, "Wererat"),
+            Weretigers       => has_condition(attacker, "Weretiger"),
+            Werewolves       => has_condition(attacker, "Werewolf"),
             AllLycanthropes  => any([
-                has_condition_named(attacker, "Werebear"),
-                has_condition_named(attacker, "Wereboar"),
-                has_condition_named(attacker, "Wererat"),
-                has_condition_named(attacker, "Weretiger"),
-                has_condition_named(attacker, "Werewolf"),
-                has_condition_named(attacker, "Lycanthrope")
+                has_condition(attacker, "Werebear"),
+                has_condition(attacker, "Wereboar"),
+                has_condition(attacker, "Wererat"),
+                has_condition(attacker, "Weretiger"),
+                has_condition(attacker, "Werewolf"),
+                has_condition(attacker, "Lycanthrope")
             ]),
             AllShapeChangers => any([
-                has_condition_named(attacker, "Werebear"),
-                has_condition_named(attacker, "Wereboar"),
-                has_condition_named(attacker, "Wererat"),
-                has_condition_named(attacker, "Weretiger"),
-                has_condition_named(attacker, "Werewolf"),
-                has_condition_named(attacker, "Lycanthrope"),
-                has_condition_named(attacker, "ShapeChanger")
+                has_condition(attacker, "Werebear"),
+                has_condition(attacker, "Wereboar"),
+                has_condition(attacker, "Wererat"),
+                has_condition(attacker, "Weretiger"),
+                has_condition(attacker, "Werewolf"),
+                has_condition(attacker, "Lycanthrope"),
+                has_condition(attacker, "ShapeChanger")
             ])
         }
     }
@@ -389,7 +385,7 @@ system "OSRIC Scrolls" {
         stacking first
     {
         modify [#attack_resolution](target: bearer) {
-            if has_condition_named(attacker, "Demon") {
+            if has_condition(attacker, "Demon") {
                 result.outcome = AttackOutcome.Miss
                 result.damage = 0
             }
@@ -400,7 +396,7 @@ system "OSRIC Scrolls" {
         stacking first
     {
         modify [#attack_resolution](target: bearer) {
-            if has_condition_named(attacker, "Devil") {
+            if has_condition(attacker, "Devil") {
                 result.outcome = AttackOutcome.Miss
                 result.damage = 0
             }
@@ -489,7 +485,7 @@ system "OSRIC Scrolls" {
         stacking first
     {
         modify [#attack_resolution](target: bearer) {
-            if has_condition_named(attacker, "Undead") {
+            if has_condition(attacker, "Undead") {
                 result.outcome = AttackOutcome.Miss
                 result.damage = 0
             }

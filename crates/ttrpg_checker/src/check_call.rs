@@ -213,6 +213,7 @@ impl Checker<'_> {
                         | "max"
                         | "distance"
                         | "conditions"
+                        | "has_condition"
                         | "error"
                         | "budget_of"
                 );

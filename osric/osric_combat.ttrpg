@@ -674,7 +674,7 @@ system "OSRIC Combat" {
     ) {
         cost free
         resolve {
-            let was_unconscious = any([c.name == "Unconscious" for c in conditions(target)])
+            let was_unconscious = has_condition(target, "Unconscious")
             let final_damage = deal_damage(target, attacker, raw_damage, damage_type)
             target.hp = target.hp - final_damage
             emit Damaged(target: target, attacker: attacker, amount: final_damage)
@@ -1983,7 +1983,7 @@ system "OSRIC Combat" {
         cost { action }
         requires {
             wielded_melee(attacker).is_some()
-            && !any([c.name == "ChargeRecovery" for c in conditions(attacker)])
+            && !has_condition(attacker, "ChargeRecovery")
         }
         resolve {
             let weapon = wielded_melee(attacker).unwrap()
@@ -2033,7 +2033,7 @@ system "OSRIC Combat" {
         cost { action }
         requires {
             wielded_melee(attacker).is_some()
-            && !any([c.name == "ChargeRecovery" for c in conditions(attacker)])
+            && !has_condition(attacker, "ChargeRecovery")
         }
         resolve {
             let weapon = wielded_melee(attacker).unwrap()
@@ -2055,7 +2055,7 @@ system "OSRIC Combat" {
     action MonsterCharge on attacker: Monster (target: entity, attack: MonsterAttack) {
         cost { action }
         requires {
-            !any([c.name == "ChargeRecovery" for c in conditions(attacker)])
+            !has_condition(attacker, "ChargeRecovery")
         }
         resolve {
             apply_condition(attacker, ChargeRecovery, Duration.Rounds(10))
@@ -2188,7 +2188,7 @@ system "OSRIC Combat" {
     }
 
     derive assassination_target_is_vulnerable(target: entity) -> bool {
-        any([c.name == "Surprised" || c.name == "NormalSleep" for c in conditions(target)])
+        has_condition(target, "Surprised") || has_condition(target, "NormalSleep")
     }
 
     // Assassination mechanic: d100 roll against computed chance.
@@ -2304,7 +2304,7 @@ system "OSRIC Combat" {
         for target in combatants {
             // Only Characters bleed — monsters die at 0 HP.
             if target is Character {
-                if any([c.name == "Bleeding" for c in conditions(target)]) {
+                if has_condition(target, "Bleeding") {
                     target.hp = target.hp - 1
                     if target.hp <= -10 {
                         target.hp = -10
@@ -2313,7 +2313,7 @@ system "OSRIC Combat" {
                         apply_condition(target, Dead, Duration.Indefinite)
                         emit CharacterDead(target: target)
                     } else if target.hp <= -6 {
-                        if !any([c.name == "Scarred" for c in conditions(target)]) {
+                        if !has_condition(target, "Scarred") {
                             apply_condition(target, Scarred, Duration.Indefinite)
                         }
                     }
@@ -2327,7 +2327,7 @@ system "OSRIC Combat" {
     action StabilizeBleeding on healer: entity (target: Character) {
         cost free
         requires {
-            any([c.name == "Bleeding" for c in conditions(target)])
+            has_condition(target, "Bleeding")
         }
         resolve {
             remove_condition(target, "Bleeding")

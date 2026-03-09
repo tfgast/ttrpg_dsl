@@ -87,6 +87,11 @@ pub fn register_builtins() -> Vec<FnInfo> {
             vec![param("entity", Ty::AnyEntity)],
             Ty::List(Box::new(Ty::ActiveCondition)),
         ),
+        builtin(
+            "has_condition",
+            vec![param("entity", Ty::AnyEntity), param("name", Ty::String)],
+            Ty::Bool,
+        ),
         // Available in action/reaction/hook blocks
         builtin("invocation", vec![], Ty::Invocation),
         builtin("revoke", vec![param("inv", Ty::Invocation)], Ty::Unit),

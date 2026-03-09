@@ -24,6 +24,7 @@ pub(crate) fn call_builtin(
         // min/max are handled in collection_builtins (support list overloads)
         "distance" => builtin_distance(env, &args, span),
         "conditions" => builtin_conditions(env, &args, span),
+        "has_condition" => builtin_has_condition(env, &args, span),
         "dice" => builtin_dice(&args, span),
         "multiply_dice" => builtin_multiply_dice(&args, span),
         "max_value" => builtin_max_value(&args, span),
@@ -170,6 +171,46 @@ fn builtin_conditions(env: &Env, args: &[Value], span: Span) -> Result<Value, Ru
         )),
         None => Err(RuntimeError::with_span(
             "conditions() requires 1 argument",
+            span,
+        )),
+    }
+}
+
+// ── has_condition ─────────────────────────────────────────────
+
+/// `has_condition(entity: Entity, name: String) -> Bool`
+///
+/// Returns true if the entity currently has an active condition with the given name.
+fn builtin_has_condition(env: &Env, args: &[Value], span: Span) -> Result<Value, RuntimeError> {
+    match (args.first(), args.get(1)) {
+        (Some(Value::Entity(entity)), Some(Value::Str(cond_name))) => {
+            match env.state.read_conditions(entity) {
+                Some(conditions) => {
+                    let has_it = conditions.iter().any(|c| c.name.as_str() == cond_name.as_str());
+                    Ok(Value::Bool(has_it))
+                }
+                None => Err(RuntimeError::with_span(
+                    format!("has_condition() called on unknown entity: {entity:?}"),
+                    span,
+                )),
+            }
+        }
+        (Some(Value::Entity(_)), Some(other)) => Err(RuntimeError::with_span(
+            format!(
+                "has_condition() expects String as second argument, got {}",
+                type_name(other)
+            ),
+            span,
+        )),
+        (Some(other), _) => Err(RuntimeError::with_span(
+            format!(
+                "has_condition() expects Entity as first argument, got {}",
+                type_name(other)
+            ),
+            span,
+        )),
+        _ => Err(RuntimeError::with_span(
+            "has_condition() requires 2 arguments",
             span,
         )),
     }
