@@ -291,13 +291,18 @@ fn osric_core_has_all_structs() {
     );
     // HpRoll: class, level, amount
     assert!(structs.contains(&("HpRoll", 3)), "missing HpRoll struct");
-    // MemorizedSpell: id, level
+    // SpellSlotTrack: class_type, spell_slots, slots_used
     assert!(
-        structs.contains(&("MemorizedSpell", 2)),
+        structs.contains(&("SpellSlotTrack", 3)),
+        "missing SpellSlotTrack struct"
+    );
+    // MemorizedSpell: id, level, class_type
+    assert!(
+        structs.contains(&("MemorizedSpell", 3)),
         "missing MemorizedSpell struct"
     );
 
-    assert_eq!(structs.len(), 13, "expected 13 structs, got {structs:?}");
+    assert_eq!(structs.len(), 14, "expected 14 structs, got {structs:?}");
 }
 
 // ── Unit type ──────────────────────────────────────────────────

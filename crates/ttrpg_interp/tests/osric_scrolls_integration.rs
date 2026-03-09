@@ -133,7 +133,7 @@ fn osric_scrolls_has_expected_derives() {
         "warding_def",
         "random_elemental_ward",
         "random_lycanthrope_ward",
-        "reader_progression",
+        "scroll_reader_progression",
     ] {
         assert!(
             derives.contains(&expected.to_string()),
