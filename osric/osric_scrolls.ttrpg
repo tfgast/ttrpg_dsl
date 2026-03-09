@@ -149,12 +149,14 @@ system "OSRIC Scrolls" {
 
     derive spell_scroll_item(spell_id: SpellId, scroll_class: SpellClassType) -> Item {
         let def = spell_def(spell_id)
+        // Table 2.13.1J: spell scrolls are valued at 300 gp per spell level
+        let value = 300 * def.level
         Item {
             name: "Scroll of " + def.name,
             weight: 0,
             cost_cp: 0,
             quantity: 1,
-            gp_value: 300,
+            gp_value: value,
             xp_awarded: false
         }
     }
@@ -195,18 +197,19 @@ system "OSRIC Scrolls" {
         gp_value: int
     }
 
+    // Table 2.13.1K: Scrolls of Warding gp values
     derive warding_def(warding: WardingType) -> WardingDef {
         match warding {
-            AcidWarding         => WardingDef { warding_type: AcidWarding,         name: "Scroll of Acid Warding",         restriction: WardingAll,  read_segments: 4, radius_ft: 10, duration_dice: 5d6,  gp_value: 2500 },
-            DemonWarding        => WardingDef { warding_type: DemonWarding,        name: "Scroll of Demon Warding",        restriction: WardingCP,   read_segments: 5, radius_ft: 10, duration_dice: 5d4,  gp_value: 2500 },
-            DevilWarding        => WardingDef { warding_type: DevilWarding,        name: "Scroll of Devil Warding",        restriction: WardingCP,   read_segments: 3, radius_ft: 10, duration_dice: 5d4,  gp_value: 2500 },
-            ElementalWarding    => WardingDef { warding_type: ElementalWarding,    name: "Scroll of Elemental Warding",    restriction: WardingCDIM, read_segments: 6, radius_ft: 10, duration_dice: 5d8,  gp_value: 3000 },
-            LycanthropeWarding  => WardingDef { warding_type: LycanthropeWarding,  name: "Scroll of Lycanthrope Warding",  restriction: WardingAll,  read_segments: 4, radius_ft: 10, duration_dice: 5d6,  gp_value: 2000 },
-            MagicWarding        => WardingDef { warding_type: MagicWarding,        name: "Scroll of Magic Warding",        restriction: WardingAll,  read_segments: 8, radius_ft: 5,  duration_dice: 5d6,  gp_value: 5000 },
-            PetrifactionWarding => WardingDef { warding_type: PetrifactionWarding, name: "Scroll of Petrifaction Warding", restriction: WardingAll,  read_segments: 5, radius_ft: 10, duration_dice: 5d4,  gp_value: 2000 },
-            PolymorphWarding    => WardingDef { warding_type: PolymorphWarding,    name: "Scroll of Polymorph Warding",    restriction: WardingAll,  read_segments: 2, radius_ft: 10, duration_dice: 6d10, gp_value: 2000 },
-            PossessionWarding   => WardingDef { warding_type: PossessionWarding,   name: "Scroll of Possession Warding",  restriction: WardingCP,   read_segments: 1, radius_ft: 10, duration_dice: 10d6, gp_value: 3000 },
-            UndeadWarding       => WardingDef { warding_type: UndeadWarding,       name: "Scroll of Undead Warding",       restriction: WardingCP,   read_segments: 4, radius_ft: 5,  duration_dice: 10d8, gp_value: 3000 }
+            AcidWarding         => WardingDef { warding_type: AcidWarding,         name: "Scroll of Acid Warding",         restriction: WardingAll,  read_segments: 4, radius_ft: 10, duration_dice: 5d6,  gp_value: 5000 },
+            DemonWarding        => WardingDef { warding_type: DemonWarding,        name: "Scroll of Demon Warding",        restriction: WardingCP,   read_segments: 5, radius_ft: 10, duration_dice: 5d4,  gp_value: 12500 },
+            DevilWarding        => WardingDef { warding_type: DevilWarding,        name: "Scroll of Devil Warding",        restriction: WardingCP,   read_segments: 3, radius_ft: 10, duration_dice: 5d4,  gp_value: 12500 },
+            ElementalWarding    => WardingDef { warding_type: ElementalWarding,    name: "Scroll of Elemental Warding",    restriction: WardingCDIM, read_segments: 6, radius_ft: 10, duration_dice: 5d8,  gp_value: 7500 },
+            LycanthropeWarding  => WardingDef { warding_type: LycanthropeWarding,  name: "Scroll of Lycanthrope Warding",  restriction: WardingAll,  read_segments: 4, radius_ft: 10, duration_dice: 5d6,  gp_value: 5000 },
+            MagicWarding        => WardingDef { warding_type: MagicWarding,        name: "Scroll of Magic Warding",        restriction: WardingAll,  read_segments: 8, radius_ft: 5,  duration_dice: 5d6,  gp_value: 7500 },
+            PetrifactionWarding => WardingDef { warding_type: PetrifactionWarding, name: "Scroll of Petrifaction Warding", restriction: WardingAll,  read_segments: 5, radius_ft: 10, duration_dice: 5d4,  gp_value: 10000 },
+            PolymorphWarding    => WardingDef { warding_type: PolymorphWarding,    name: "Scroll of Polymorph Warding",    restriction: WardingAll,  read_segments: 2, radius_ft: 10, duration_dice: 6d10, gp_value: 7500 },
+            PossessionWarding   => WardingDef { warding_type: PossessionWarding,   name: "Scroll of Possession Warding",  restriction: WardingCP,   read_segments: 1, radius_ft: 10, duration_dice: 10d6, gp_value: 10000 },
+            UndeadWarding       => WardingDef { warding_type: UndeadWarding,       name: "Scroll of Undead Warding",       restriction: WardingCP,   read_segments: 4, radius_ft: 5,  duration_dice: 10d8, gp_value: 7500 }
         }
     }
 
