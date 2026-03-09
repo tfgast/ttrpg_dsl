@@ -919,6 +919,7 @@ pub enum TypeExpr {
     RollResult,
     TurnBudget,
     Duration,
+    EffectSource,
     Position,
     Condition,
     ActiveCondition,

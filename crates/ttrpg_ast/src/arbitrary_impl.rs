@@ -219,7 +219,7 @@ impl<'a> Arbitrary<'a> for ExprKind {
 impl<'a> Arbitrary<'a> for TypeExpr {
     fn arbitrary(u: &mut Unstructured<'a>) -> Result<Self> {
         if u.len() < RECURSION_BUDGET {
-            let choice = u.int_in_range(0..=14)?;
+            let choice = u.int_in_range(0..=15)?;
             return Ok(match choice {
                 0 => TypeExpr::Int,
                 1 => TypeExpr::Bool,
@@ -229,12 +229,13 @@ impl<'a> Arbitrary<'a> for TypeExpr {
                 5 => TypeExpr::RollResult,
                 6 => TypeExpr::TurnBudget,
                 7 => TypeExpr::Duration,
-                8 => TypeExpr::Position,
-                9 => TypeExpr::Condition,
-                10 => TypeExpr::ActiveCondition,
-                11 => TypeExpr::Invocation,
-                12 => TypeExpr::Unit,
-                13 => TypeExpr::Named(u.arbitrary()?),
+                8 => TypeExpr::EffectSource,
+                9 => TypeExpr::Position,
+                10 => TypeExpr::Condition,
+                11 => TypeExpr::ActiveCondition,
+                12 => TypeExpr::Invocation,
+                13 => TypeExpr::Unit,
+                14 => TypeExpr::Named(u.arbitrary()?),
                 _ => TypeExpr::Qualified {
                     qualifier: u.arbitrary()?,
                     name: u.arbitrary()?,
@@ -242,7 +243,7 @@ impl<'a> Arbitrary<'a> for TypeExpr {
             });
         }
 
-        let choice = u.int_in_range(0..=19)?;
+        let choice = u.int_in_range(0..=20)?;
         Ok(match choice {
             0 => TypeExpr::Int,
             1 => TypeExpr::Bool,
@@ -252,12 +253,13 @@ impl<'a> Arbitrary<'a> for TypeExpr {
             5 => TypeExpr::RollResult,
             6 => TypeExpr::TurnBudget,
             7 => TypeExpr::Duration,
-            8 => TypeExpr::Position,
-            9 => TypeExpr::Condition,
-            10 => TypeExpr::ActiveCondition,
-            11 => TypeExpr::Invocation,
-            12 => TypeExpr::Unit,
-            13 => TypeExpr::Named(u.arbitrary()?),
+            8 => TypeExpr::EffectSource,
+            9 => TypeExpr::Position,
+            10 => TypeExpr::Condition,
+            11 => TypeExpr::ActiveCondition,
+            12 => TypeExpr::Invocation,
+            13 => TypeExpr::Unit,
+            14 => TypeExpr::Named(u.arbitrary()?),
             14 => TypeExpr::Qualified {
                 qualifier: u.arbitrary()?,
                 name: u.arbitrary()?,

@@ -7,7 +7,7 @@ use ttrpg_checker::ty::Ty;
 
 use crate::effect::{Effect, EffectHandler, Response};
 use crate::state::{ActiveCondition, EntityRef, StateProvider};
-use crate::value::{duration_variant_with, DiceExpr, PositionValue, RollResult, Value};
+use crate::value::{duration_variant_with, effect_source_unknown, DiceExpr, PositionValue, RollResult, Value};
 use crate::{Env, Interpreter};
 
 // ── Test infrastructure ────────────────────────────────────
@@ -1265,6 +1265,7 @@ fn builtin_remove_condition_emits_effect() {
             duration: crate::value::duration_variant("Indefinite"),
             invocation: None,
             applied_at: 0,
+            source: effect_source_unknown(),
         }],
     );
     let mut handler = ScriptedHandler::new();
@@ -1335,6 +1336,7 @@ fn remove_condition_empty_args_preserves_exact_match() {
             duration: crate::value::duration_variant("Indefinite"),
             invocation: None,
             applied_at: 0,
+            source: effect_source_unknown(),
         }],
     );
     let mut handler = ScriptedHandler::new();
@@ -1394,6 +1396,7 @@ fn remove_condition_string_form_uses_none_params() {
             duration: crate::value::duration_variant("Indefinite"),
             invocation: None,
             applied_at: 0,
+            source: effect_source_unknown(),
         }],
     );
     let mut handler = ScriptedHandler::new();
@@ -2399,6 +2402,7 @@ fn remove_condition_rejects_invalid_response() {
             duration: crate::value::duration_variant("Indefinite"),
             invocation: None,
             applied_at: 0,
+            source: effect_source_unknown(),
         }],
     );
     // First response is for the ConditionRemovalGate (Acknowledged),

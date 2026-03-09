@@ -112,6 +112,7 @@ impl GameState {
         params: BTreeMap<Name, Value>,
         duration: Value,
         invocation: Option<InvocationId>,
+        source: Value,
     ) {
         if !self.entities.contains_key(&entity.0) {
             return;
@@ -128,6 +129,7 @@ impl GameState {
             duration,
             invocation,
             applied_at,
+            source,
         };
         self.conditions.entry(entity.0).or_default().push(cond);
     }
@@ -407,7 +409,7 @@ fn write_nested(current: &mut Value, path: &[FieldPathSegment], value: Value) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::value::duration_variant;
+    use crate::value::{duration_variant, effect_source_unknown};
 
     // ── GameState: add entity, read fields ─────────────────────
 
@@ -489,6 +491,7 @@ mod tests {
             BTreeMap::new(),
             duration_variant("EndOfTurn"),
             None,
+            effect_source_unknown(),
         );
 
         let conds = state.read_conditions(&entity).unwrap();
@@ -509,6 +512,7 @@ mod tests {
             BTreeMap::new(),
             duration_variant("EndOfTurn"),
             None,
+            effect_source_unknown(),
         );
         state.apply_condition(
             &entity,
@@ -516,6 +520,7 @@ mod tests {
             BTreeMap::new(),
             duration_variant("Rounds"),
             None,
+            effect_source_unknown(),
         );
 
         state.remove_condition(&entity, "Prone", None);
@@ -536,6 +541,7 @@ mod tests {
             BTreeMap::new(),
             duration_variant("EndOfTurn"),
             None,
+            effect_source_unknown(),
         );
         state.apply_condition(
             &entity,
@@ -543,6 +549,7 @@ mod tests {
             BTreeMap::new(),
             duration_variant("Rounds"),
             None,
+            effect_source_unknown(),
         );
 
         let conds = state.read_conditions(&entity).unwrap();
@@ -748,6 +755,7 @@ mod tests {
             duration: duration_variant("EndOfTurn"),
             invocation: None,
             applied_at: 0,
+            source: effect_source_unknown(),
         };
         state.add_condition(&entity, cond);
 
@@ -771,6 +779,7 @@ mod tests {
             duration: duration_variant("EndOfTurn"),
             invocation: None,
             applied_at: 0,
+            source: effect_source_unknown(),
         };
         state.add_condition(&entity, cond);
 
@@ -784,6 +793,7 @@ mod tests {
             duration: duration_variant("Rounds"),
             invocation: None,
             applied_at: 0,
+            source: effect_source_unknown(),
         };
         state.add_condition(&entity, cond2);
 
@@ -854,6 +864,7 @@ mod tests {
             BTreeMap::new(),
             duration_variant("EndOfTurn"),
             None,
+            effect_source_unknown(),
         );
         assert!(state.read_conditions(&ghost).is_none());
     }
@@ -873,6 +884,7 @@ mod tests {
             BTreeMap::new(),
             duration_variant("EndOfTurn"),
             None,
+            effect_source_unknown(),
         );
         let mut budget = BTreeMap::new();
         budget.insert("actions".into(), Value::Int(1));
@@ -905,6 +917,7 @@ mod tests {
             duration: duration_variant("EndOfTurn"),
             invocation: None,
             applied_at: 0,
+            source: effect_source_unknown(),
         };
         state.add_condition(&ghost, cond);
         assert!(state.read_conditions(&ghost).is_none());
@@ -966,6 +979,7 @@ mod tests {
             BTreeMap::new(),
             duration_variant("Rounds"),
             Some(InvocationId(42)),
+            effect_source_unknown(),
         );
 
         let conds = state.read_conditions(&entity).unwrap();
@@ -985,6 +999,7 @@ mod tests {
             BTreeMap::new(),
             duration_variant("Rounds"),
             Some(InvocationId(1)),
+            effect_source_unknown(),
         );
         state.apply_condition(
             &entity,
@@ -992,6 +1007,7 @@ mod tests {
             BTreeMap::new(),
             duration_variant("Rounds"),
             Some(InvocationId(1)),
+            effect_source_unknown(),
         );
         // 1 from invocation 2
         state.apply_condition(
@@ -1000,6 +1016,7 @@ mod tests {
             BTreeMap::new(),
             duration_variant("Rounds"),
             Some(InvocationId(2)),
+            effect_source_unknown(),
         );
         // 1 with no invocation
         state.apply_condition(
@@ -1008,6 +1025,7 @@ mod tests {
             BTreeMap::new(),
             duration_variant("Indefinite"),
             None,
+            effect_source_unknown(),
         );
 
         assert_eq!(state.read_conditions(&entity).unwrap().len(), 4);
@@ -1034,6 +1052,7 @@ mod tests {
             BTreeMap::new(),
             duration_variant("Rounds"),
             inv,
+            effect_source_unknown(),
         );
         state.apply_condition(
             &e2,
@@ -1041,6 +1060,7 @@ mod tests {
             BTreeMap::new(),
             duration_variant("Rounds"),
             inv,
+            effect_source_unknown(),
         );
         state.apply_condition(
             &e3,
@@ -1048,6 +1068,7 @@ mod tests {
             BTreeMap::new(),
             duration_variant("Rounds"),
             inv,
+            effect_source_unknown(),
         );
 
         state.remove_conditions_by_invocation(InvocationId(7));

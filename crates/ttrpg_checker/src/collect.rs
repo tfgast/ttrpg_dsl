@@ -272,6 +272,15 @@ fn pass_1a(
             continue;
         }
 
+        // EffectSource must be an enum (variant validation deferred to pass_1b).
+        if name == "EffectSource" && !matches!(&stub, DeclInfo::Enum(_)) {
+            diagnostics.push(Diagnostic::error(
+                "`EffectSource` must be defined as an enum",
+                decl.span,
+            ));
+            continue;
+        }
+
         use std::collections::hash_map::Entry;
         match env.types.entry(name) {
             Entry::Occupied(e) => {
@@ -573,6 +582,25 @@ fn collect_enum(e: &EnumDecl, env: &mut TypeEnv, diagnostics: &mut Vec<Diagnosti
     // Update the stub with full variant info
     if let Some(DeclInfo::Enum(info)) = env.types.get_mut(&e.name) {
         info.variants = variants;
+    }
+
+    // EffectSource must have a plain `Unknown` variant (no fields).
+    if e.name == "EffectSource" {
+        if let Some(DeclInfo::Enum(info)) = env.types.get(&e.name) {
+            if !info
+                .variants
+                .iter()
+                .any(|v| v.name == "Unknown" && v.fields.is_empty())
+            {
+                // Use the first variant's span as best-effort location
+                if let Some(first_variant) = e.variants.first() {
+                    diagnostics.push(Diagnostic::error(
+                        "`EffectSource` must have a plain `Unknown` variant (no fields)",
+                        first_variant.span,
+                    ));
+                }
+            }
+        }
     }
 }
 
@@ -1755,6 +1783,33 @@ fn register_builtin_types(env: &mut TypeEnv) {
             duration_name.clone(),
             DeclInfo::Enum(EnumInfo {
                 name: duration_name,
+                ordered: false,
+                variants,
+            }),
+        );
+    }
+
+    // EffectSource enum (built-in fallback).
+    // Rulesets may define their own `enum EffectSource { Unknown, Spell(...), ... }`.
+    // This minimal fallback provides only `Unknown` — the default for conditions
+    // applied without explicit source metadata.
+    if !env.types.contains_key("EffectSource") {
+        let es_name = Name::from("EffectSource");
+        let variants = vec![VariantInfo {
+            name: "Unknown".into(),
+            fields: vec![],
+            has_defaults: vec![],
+        }];
+        for v in &variants {
+            let owners = env.variant_to_enums.entry(v.name.clone()).or_default();
+            if !owners.iter().any(|o| o == "EffectSource") {
+                owners.push(es_name.clone());
+            }
+        }
+        env.types.insert(
+            es_name.clone(),
+            DeclInfo::Enum(EnumInfo {
+                name: es_name,
                 ordered: false,
                 variants,
             }),

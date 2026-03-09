@@ -15,7 +15,7 @@ use ttrpg_interp::adapter::StateAdapter;
 use ttrpg_interp::effect::{ActionKind, Effect, EffectHandler, Response};
 use ttrpg_interp::reference_state::{GameState, GridPosition};
 use ttrpg_interp::state::{EntityRef, StateProvider};
-use ttrpg_interp::value::{duration_variant, DiceExpr, RollResult, Value};
+use ttrpg_interp::value::{duration_variant, effect_source_unknown, DiceExpr, RollResult, Value};
 use ttrpg_interp::Interpreter;
 
 // ── Setup ──────────────────────────────────────────────────────
@@ -1227,6 +1227,7 @@ fn prone_on_attacker_disadvantage() {
         BTreeMap::new(),
         duration_variant("indefinite"),
         None,
+        effect_source_unknown(),
     );
 
     // Call attack_roll — should have disadvantage (2d20kl1)
@@ -1293,6 +1294,7 @@ fn prone_on_target_melee_advantage() {
         BTreeMap::new(),
         duration_variant("indefinite"),
         None,
+        effect_source_unknown(),
     );
 
     // Fighter is at (0,0), Goblin at (1,0) → distance=1 <= 5 → advantage
@@ -1407,6 +1409,7 @@ fn prone_on_target_ranged_disadvantage() {
         BTreeMap::new(),
         duration_variant("indefinite"),
         None,
+        effect_source_unknown(),
     );
 
     // Responses consumed: ModifyApplied(Ack), RollDice(roll)
@@ -1464,6 +1467,7 @@ fn prone_modifies_initial_budget() {
         BTreeMap::new(),
         duration_variant("indefinite"),
         None,
+        effect_source_unknown(),
     );
 
     let mut handler = ScriptedHandler::new();
@@ -1511,6 +1515,7 @@ fn disengaging_suppresses_entity_leaves_reach() {
         BTreeMap::new(),
         duration_variant("end_of_turn"),
         None,
+        effect_source_unknown(),
     );
 
     let payload = Value::Struct {
@@ -1698,6 +1703,7 @@ fn stunned_auto_fails_str_save() {
         BTreeMap::new(),
         duration_variant("indefinite"),
         None,
+        effect_source_unknown(),
     );
 
     // Pattern A: mode changed to auto_fail → mechanic returns immediately, no roll.
@@ -1746,6 +1752,7 @@ fn stunned_does_not_affect_wis_save() {
         BTreeMap::new(),
         duration_variant("indefinite"),
         None,
+        effect_source_unknown(),
     );
 
     // Fighter WIS=12, modifier(12)=1, prof=0 → 1d20+1
@@ -1788,6 +1795,7 @@ fn petrified_overrides_str_save_result() {
         BTreeMap::new(),
         duration_variant("indefinite"),
         None,
+        effect_source_unknown(),
     );
 
     // Pattern B: body runs normally (roll happens), then result is overridden in Phase 2.

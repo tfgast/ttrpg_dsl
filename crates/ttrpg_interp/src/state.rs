@@ -53,6 +53,9 @@ pub struct ActiveCondition {
     /// Game time when this condition was applied.
     /// Set from `read_game_time()` by the adapter at application time.
     pub applied_at: u64,
+    /// Effect source metadata (e.g., `EffectSource.Spell(...)` or `EffectSource.Unknown`).
+    /// Ruleset-defined enum; defaults to `EffectSource.Unknown` when not specified.
+    pub source: Value,
 }
 
 impl ActiveCondition {
@@ -69,6 +72,7 @@ impl ActiveCondition {
             Name::from("applied_at"),
             Value::Int(self.applied_at.min(i64::MAX as u64) as i64),
         );
+        fields.insert(Name::from("source"), self.source.clone());
         Value::Struct {
             name: Name::from("ActiveCondition"),
             fields,
@@ -185,7 +189,7 @@ pub trait WritableState: StateProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::value::{default_turn_budget, duration_variant};
+    use crate::value::{default_turn_budget, duration_variant, effect_source_unknown};
     use std::collections::HashMap;
 
     // A minimal test implementation of StateProvider.
@@ -270,6 +274,7 @@ mod tests {
                 duration: duration_variant("EndOfTurn"),
                 invocation: None,
                 applied_at: 0,
+                source: effect_source_unknown(),
             }],
         );
 
@@ -319,6 +324,7 @@ mod tests {
             duration: duration_variant("Rounds"),
             invocation: None,
             applied_at: 0,
+            source: effect_source_unknown(),
         };
         assert_eq!(cond.id, 42);
         assert_eq!(cond.name, "Stunned");
@@ -337,6 +343,7 @@ mod tests {
             duration: duration_variant("EndOfTurn"),
             invocation: None,
             applied_at: 42,
+            source: effect_source_unknown(),
         };
         let val = cond.to_value();
         match &val {
@@ -364,6 +371,7 @@ mod tests {
             duration: duration_variant("Rounds"),
             invocation: None,
             applied_at: 0,
+            source: effect_source_unknown(),
         };
         let val = cond.to_value();
         match &val {

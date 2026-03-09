@@ -450,6 +450,7 @@ impl VisitSpansMut for TypeExpr {
             | TypeExpr::RollResult
             | TypeExpr::TurnBudget
             | TypeExpr::Duration
+            | TypeExpr::EffectSource
             | TypeExpr::Position
             | TypeExpr::Condition
             | TypeExpr::ActiveCondition

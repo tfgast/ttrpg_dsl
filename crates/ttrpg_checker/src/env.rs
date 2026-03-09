@@ -311,6 +311,9 @@ impl TypeEnv {
             // For TurnBudget and Duration: prefer user-defined types if they exist
             TypeExpr::TurnBudget => self.resolve_named_or("TurnBudget", Ty::TurnBudget),
             TypeExpr::Duration => self.resolve_named_or("Duration", Ty::Duration),
+            TypeExpr::EffectSource => {
+                self.resolve_named_or("EffectSource", Ty::EffectSource)
+            }
             TypeExpr::Position => self.resolve_named_or("Position", Ty::Position),
             TypeExpr::Condition => self.resolve_named_or("Condition", Ty::Condition),
             TypeExpr::ActiveCondition => Ty::ActiveCondition,
@@ -558,6 +561,7 @@ impl TypeEnv {
         vec![
             ("name", Ty::String),
             ("duration", Ty::Duration),
+            ("source", Ty::EffectSource),
             ("id", Ty::Int),
             ("applied_at", Ty::Int),
         ]

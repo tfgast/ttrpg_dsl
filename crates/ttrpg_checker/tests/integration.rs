@@ -172,7 +172,7 @@ fn test_collect_counts() {
     let source = include_str!("../../../spec/v0/04_full_example.ttrpg");
     let result = check_source(source);
 
-    // Enums: Ability, RollMode, DamageType, WeaponProperty, SaveResult, ResolvedDamage + built-in Duration
+    // Enums: Ability, RollMode, DamageType, WeaponProperty, SaveResult, ResolvedDamage + built-in Duration + built-in EffectSource
     assert_eq!(
         result
             .env
@@ -180,7 +180,7 @@ fn test_collect_counts() {
             .values()
             .filter(|d| matches!(d, ttrpg_checker::env::DeclInfo::Enum(_)))
             .count(),
-        7
+        8
     );
     // Structs: DamageSpec, TurnBudget, BudgetSpec (built-in)
     assert_eq!(

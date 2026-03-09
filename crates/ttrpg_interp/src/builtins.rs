@@ -477,7 +477,7 @@ fn builtin_apply_condition(
         ));
     }
 
-    // Extract arguments
+    // Extract arguments (3 required + 1 optional source)
     let (target, cond_name, cond_args, duration) = match (args.first(), args.get(1), args.get(2)) {
         (
             Some(Value::Entity(target)),
@@ -501,7 +501,7 @@ fn builtin_apply_condition(
         (Some(a), Some(b), Some(c)) => {
             return Err(RuntimeError::with_span(
                 format!(
-                    "apply_condition() expects (Entity, Condition, Duration), got ({}, {}, {})",
+                    "apply_condition() expects (Entity, Condition, Duration[, EffectSource]), got ({}, {}, {})",
                     type_name(a),
                     type_name(b),
                     type_name(c)
@@ -511,10 +511,17 @@ fn builtin_apply_condition(
         }
         _ => {
             return Err(RuntimeError::with_span(
-                "apply_condition() requires 3 arguments",
+                "apply_condition() requires 3-4 arguments",
                 span,
             ));
         }
+    };
+
+    // Optional 4th argument: EffectSource (defaults to EffectSource.Unknown)
+    let source = if let Some(s) = args.get(3) {
+        s.clone()
+    } else {
+        crate::value::effect_source_unknown()
     };
 
     // Phase 1: Gate — host can veto
@@ -524,6 +531,7 @@ fn builtin_apply_condition(
         params: cond_args.clone(),
         duration: duration.clone(),
         invocation: env.current_invocation_id,
+        source: source.clone(),
     };
     match env.handler.handle(gate) {
         Response::Vetoed => return Ok(Value::Void),
@@ -552,6 +560,7 @@ fn builtin_apply_condition(
         params: cond_args,
         duration,
         invocation: env.current_invocation_id,
+        source,
     };
     validate_mutation_response(env.handler.handle(effect), "ApplyCondition", span)?;
     Ok(Value::Void)
@@ -643,6 +652,7 @@ fn builtin_remove_condition(
                 duration: Value::Void,
                 invocation: None,
                 applied_at: 0,
+                source: crate::value::effect_source_unknown(),
             };
             (*target, vec![instance])
         }
@@ -1304,7 +1314,7 @@ mod tests {
 
     #[test]
     fn conditions_returns_active_conditions_as_list() {
-        use crate::value::duration_variant;
+        use crate::value::{duration_variant, effect_source_unknown};
 
         let (program, type_env) = empty_program_and_env();
         let interp = Interpreter::new(&program, &type_env).unwrap();
@@ -1317,6 +1327,7 @@ mod tests {
             duration: duration_variant("Indefinite"),
             invocation: None,
             applied_at: 0,
+            source: effect_source_unknown(),
         };
         let state = ConditionsState {
             known_entity: 1,

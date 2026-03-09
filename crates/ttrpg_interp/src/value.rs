@@ -196,6 +196,33 @@ pub fn duration_variant(variant: &str) -> Value {
     }
 }
 
+/// Convenience: construct an EffectSource enum variant with no fields.
+///
+/// Used by hosts and tests that need to create EffectSource values
+/// without going through the DSL. Most common: `effect_source_unknown()`
+/// for the default Unknown variant.
+pub fn effect_source_variant(variant: &str) -> Value {
+    Value::EnumVariant {
+        enum_name: Name::from("EffectSource"),
+        variant: Name::from(variant),
+        fields: BTreeMap::new(),
+    }
+}
+
+/// Convenience: construct an EffectSource enum variant with fields.
+pub fn effect_source_variant_with(variant: &str, fields: BTreeMap<Name, Value>) -> Value {
+    Value::EnumVariant {
+        enum_name: Name::from("EffectSource"),
+        variant: Name::from(variant),
+        fields,
+    }
+}
+
+/// Shorthand for the default `EffectSource.Unknown` value.
+pub fn effect_source_unknown() -> Value {
+    effect_source_variant("Unknown")
+}
+
 /// Convenience: construct a Duration enum variant with fields.
 pub fn duration_variant_with(variant: &str, fields: BTreeMap<Name, Value>) -> Value {
     Value::EnumVariant {
@@ -521,6 +548,7 @@ pub fn value_matches_ty(val: &Value, ty: &Ty, state: &dyn StateProvider) -> bool
         (Value::RollResult(_), Ty::RollResult) => true,
         (Value::Position(_), Ty::Position) => true,
         (Value::EnumVariant { enum_name, .. }, Ty::Duration) => enum_name == "Duration",
+        (Value::EnumVariant { enum_name, .. }, Ty::EffectSource) => enum_name == "EffectSource",
         (Value::Condition { .. }, Ty::Condition) => true,
         (Value::Invocation(_), Ty::Invocation) => true,
         (Value::ModuleAlias(_), _) => false,

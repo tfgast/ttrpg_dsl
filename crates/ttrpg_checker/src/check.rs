@@ -251,6 +251,9 @@ impl<'a> Checker<'a> {
             TypeExpr::Duration => {
                 self.check_name_visible("Duration", Namespace::Type, texpr.span);
             }
+            TypeExpr::EffectSource => {
+                self.check_name_visible("EffectSource", Namespace::Type, texpr.span);
+            }
             TypeExpr::List(inner) | TypeExpr::Set(inner) | TypeExpr::OptionType(inner) => {
                 self.check_type_visible(inner);
             }
@@ -1325,6 +1328,11 @@ impl<'a> Checker<'a> {
             {
                 return true;
             }
+            (Ty::Enum(name), Ty::EffectSource) | (Ty::EffectSource, Ty::Enum(name))
+                if name == "EffectSource" =>
+            {
+                return true;
+            }
             (Ty::Struct(name), Ty::TurnBudget) | (Ty::TurnBudget, Ty::Struct(name))
                 if name == "TurnBudget" =>
             {
@@ -1379,6 +1387,7 @@ fn enum_name_from_hint(hint: Option<&Ty>) -> Option<&str> {
     match hint? {
         Ty::Enum(name) => Some(name.as_str()),
         Ty::Duration => Some("Duration"),
+        Ty::EffectSource => Some("EffectSource"),
         _ => None,
     }
 }

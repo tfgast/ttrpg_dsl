@@ -137,13 +137,14 @@ impl Checker<'_> {
                 } else if !starts_lowercase
                     && !in_destructure
                     && !is_binding_context
-                    && matches!(scrutinee_ty, Ty::Enum(_) | Ty::Duration)
+                    && matches!(scrutinee_ty, Ty::Enum(_) | Ty::Duration | Ty::EffectSource)
                 {
                     // PascalCase name is not a known variant but scrutinee is an
                     // enum — this is almost certainly a typo, not a binding.
                     let enum_label = match scrutinee_ty {
                         Ty::Enum(ref n) => n.as_str(),
                         Ty::Duration => "Duration",
+                        Ty::EffectSource => "EffectSource",
                         _ => unreachable!(),
                     };
                     self.error(
@@ -197,6 +198,7 @@ impl Checker<'_> {
                     let s_enum_name = match scrutinee_ty {
                         Ty::Enum(ref name) => Some(name),
                         Ty::Duration => Some(&Name::from("Duration")),
+                        Ty::EffectSource => Some(&Name::from("EffectSource")),
                         _ => None,
                     };
                     if let Some(s_enum) = s_enum_name {
@@ -239,6 +241,7 @@ impl Checker<'_> {
                         let s_enum_name = match scrutinee_ty {
                             Ty::Enum(ref name) => Some(name),
                             Ty::Duration => Some(&Name::from("Duration")),
+                            Ty::EffectSource => Some(&Name::from("EffectSource")),
                             _ => None,
                         };
                         if let Some(s_enum) = s_enum_name {
@@ -361,6 +364,7 @@ impl Checker<'_> {
         let scrutinee_enum_name = match scrutinee_ty {
             Ty::Enum(ref name) => Some(name.clone()),
             Ty::Duration => Some(Name::from("Duration")),
+            Ty::EffectSource => Some(Name::from("EffectSource")),
             _ => None,
         };
 

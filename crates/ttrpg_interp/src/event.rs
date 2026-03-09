@@ -553,7 +553,7 @@ mod tests {
     use ttrpg_checker::ty::Ty;
 
     use crate::state::ActiveCondition;
-    use crate::value::Value;
+    use crate::value::{effect_source_unknown, Value};
 
     // ── Test infrastructure ────────────────────────────────────
 
@@ -1145,6 +1145,7 @@ mod tests {
                 duration: Value::Void,
                 invocation: None,
                 applied_at: 0,
+                source: effect_source_unknown(),
             }],
         );
         state.conditions.insert(2, vec![]);
@@ -1299,6 +1300,7 @@ mod tests {
                 duration: Value::Void,
                 invocation: None,
                 applied_at: 0,
+                source: effect_source_unknown(),
             }],
         );
         state.conditions.insert(2, vec![]);

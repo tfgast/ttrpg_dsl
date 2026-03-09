@@ -99,6 +99,7 @@ pub enum Effect {
         params: BTreeMap<Name, Value>,
         duration: Value,
         invocation: Option<InvocationId>,
+        source: Value,
     },
     RemoveCondition {
         target: EntityRef,
@@ -165,6 +166,7 @@ pub enum Effect {
         params: BTreeMap<Name, Value>,
         duration: Value,
         invocation: Option<InvocationId>,
+        source: Value,
     },
     /// Host gate before removing a condition instance. Host responds
     /// `Acknowledged` (allow) or `Vetoed` (deny — condition stays).

@@ -627,7 +627,7 @@ mod tests {
 
     use crate::effect::{ActionKind, Effect, Response};
     use crate::state::ActiveCondition;
-    use crate::value::{DiceExpr, RollResult};
+    use crate::value::{effect_source_unknown, DiceExpr, RollResult};
 
     // ── Test infrastructure ────────────────────────────────────
 
@@ -1109,6 +1109,7 @@ system "test" {
                 duration: Value::Void,
                 invocation: None,
                 applied_at: 0,
+                source: effect_source_unknown(),
             }],
         );
 
@@ -1660,6 +1661,7 @@ system "test" {
                 duration: Value::Void,
                 invocation: None,
                 applied_at: 0,
+                source: effect_source_unknown(),
             }],
         );
 

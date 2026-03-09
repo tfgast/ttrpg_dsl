@@ -13,7 +13,7 @@ use ttrpg_interp::adapter::StateAdapter;
 use ttrpg_interp::effect::{Effect, EffectHandler, Response};
 use ttrpg_interp::reference_state::GameState;
 use ttrpg_interp::state::StateProvider;
-use ttrpg_interp::value::Value;
+use ttrpg_interp::value::{effect_source_unknown, Value};
 use ttrpg_interp::Interpreter;
 
 // ── Setup ──────────────────────────────────────────────────────
@@ -168,6 +168,7 @@ system "test" {
         std::collections::BTreeMap::new(),
         Value::Void,
         None,
+        effect_source_unknown(),
     );
 
     let adapter = StateAdapter::new(state);
@@ -228,6 +229,7 @@ system "test" {
         std::collections::BTreeMap::new(),
         Value::Void,
         None,
+        effect_source_unknown(),
     );
 
     let adapter = StateAdapter::new(state);
@@ -288,6 +290,7 @@ system "test" {
         std::collections::BTreeMap::new(),
         Value::Void,
         None,
+        effect_source_unknown(),
     );
 
     // Verify condition exists before
@@ -351,6 +354,7 @@ system "test" {
         std::collections::BTreeMap::new(),
         Value::Void,
         None,
+        effect_source_unknown(),
     );
 
     let adapter = StateAdapter::new(state);
@@ -424,6 +428,7 @@ system "test" {
         std::collections::BTreeMap::new(),
         Value::Void,
         None,
+        effect_source_unknown(),
     );
 
     let adapter = StateAdapter::new(state);

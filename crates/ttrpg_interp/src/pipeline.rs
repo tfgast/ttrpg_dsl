@@ -1128,7 +1128,7 @@ mod tests {
 
     use crate::effect::{Effect, EffectHandler, Response};
     use crate::state::{ActiveCondition, EntityRef, StateProvider};
-    use crate::value::Value;
+    use crate::value::{effect_source_unknown, Value};
     use crate::Interpreter;
 
     // ── Test infrastructure ────────────────────────────────────
@@ -1344,6 +1344,7 @@ mod tests {
                 duration: Value::Void,
                 invocation: None,
                 applied_at: 0,
+                source: effect_source_unknown(),
             }],
         );
 
@@ -1510,6 +1511,7 @@ mod tests {
                 duration: Value::Void,
                 invocation: None,
                 applied_at: 0,
+                source: effect_source_unknown(),
             }],
         );
 
@@ -1706,6 +1708,7 @@ mod tests {
                     duration: Value::Void,
                     invocation: None,
                     applied_at: 0,
+                    source: effect_source_unknown(),
                 },
                 ActiveCondition {
                     id: 2,
@@ -1716,6 +1719,7 @@ mod tests {
                     duration: Value::Void,
                     invocation: None,
                     applied_at: 0,
+                    source: effect_source_unknown(),
                 },
             ],
         );
@@ -1900,6 +1904,7 @@ mod tests {
                 duration: Value::Void,
                 invocation: None,
                 applied_at: 0,
+                source: effect_source_unknown(),
             }],
         );
         state.enabled_options.push("Variant".into());
@@ -2055,6 +2060,7 @@ mod tests {
                 duration: Value::Void,
                 invocation: None,
                 applied_at: 0,
+                source: effect_source_unknown(),
             }],
         );
 
@@ -2386,6 +2392,7 @@ mod tests {
                 duration: Value::Void,
                 invocation: None,
                 applied_at: 0,
+                source: effect_source_unknown(),
             }],
         );
 
@@ -2784,6 +2791,7 @@ mod tests {
                 duration: Value::Void,
                 invocation: None,
                 applied_at: 0,
+                source: effect_source_unknown(),
             }],
         );
 
@@ -2920,6 +2928,7 @@ mod tests {
                 duration: Value::Void,
                 invocation: None,
                 applied_at: 0,
+                source: effect_source_unknown(),
             }],
         );
 

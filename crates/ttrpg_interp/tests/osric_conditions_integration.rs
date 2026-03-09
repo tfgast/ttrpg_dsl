@@ -12,7 +12,7 @@ use ttrpg_ast::ast::{DeclKind, TopLevel};
 use ttrpg_ast::Name;
 use ttrpg_interp::reference_state::GameState;
 use ttrpg_interp::state::{StateProvider, WritableState};
-use ttrpg_interp::value::Value;
+use ttrpg_interp::value::{effect_source_unknown, Value};
 
 mod osric_common;
 use osric_common::*;
@@ -204,9 +204,9 @@ fn condition_count_after_apply_and_remove() {
     let entity = state.add_entity("Character", char_fields);
 
     // Apply three conditions
-    state.apply_condition(&entity, "Prone", BTreeMap::new(), Value::Void, None);
-    state.apply_condition(&entity, "Stunned", BTreeMap::new(), Value::Void, None);
-    state.apply_condition(&entity, "Staggered", BTreeMap::new(), Value::Void, None);
+    state.apply_condition(&entity, "Prone", BTreeMap::new(), Value::Void, None, effect_source_unknown());
+    state.apply_condition(&entity, "Stunned", BTreeMap::new(), Value::Void, None, effect_source_unknown());
+    state.apply_condition(&entity, "Staggered", BTreeMap::new(), Value::Void, None, effect_source_unknown());
     assert_eq!(state.read_conditions(&entity).unwrap().len(), 3);
 
     // Remove one

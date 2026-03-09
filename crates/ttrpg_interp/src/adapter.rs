@@ -285,6 +285,7 @@ fn apply_mutation<S: WritableState>(state: &mut S, effect: &Effect) {
             params,
             duration,
             invocation,
+            source,
         } => {
             // The adapter creates an ActiveCondition. The host assigns a unique id
             // via the WritableState implementation (e.g., GameState auto-assigns).
@@ -300,6 +301,7 @@ fn apply_mutation<S: WritableState>(state: &mut S, effect: &Effect) {
                     duration: duration.clone(),
                     invocation: *invocation,
                     applied_at,
+                    source: source.clone(),
                 },
             );
         }
@@ -399,6 +401,7 @@ fn apply_mutation_with_override<S: WritableState>(
             condition,
             params,
             invocation,
+            source,
             ..
         } => {
             let applied_at = state.read_game_time();
@@ -413,6 +416,7 @@ fn apply_mutation_with_override<S: WritableState>(
                     duration: override_val.clone(),
                     invocation: *invocation,
                     applied_at,
+                    source: source.clone(),
                 },
             );
         }
@@ -681,7 +685,7 @@ mod tests {
     use super::*;
     use crate::effect::{ActionOutcome, Effect, Response};
     use crate::state::{ActiveCondition, InvocationId};
-    use crate::value::{duration_variant, duration_variant_with};
+    use crate::value::{duration_variant, duration_variant_with, effect_source_unknown};
     use rustc_hash::FxHashMap;
     use std::collections::{BTreeMap, HashMap};
 
@@ -1136,6 +1140,7 @@ mod tests {
                 params: BTreeMap::new(),
                 duration: duration_variant("EndOfTurn"),
                 invocation: None,
+                source: effect_source_unknown(),
             })
         });
 
@@ -1162,6 +1167,7 @@ mod tests {
                 duration: duration_variant("EndOfTurn"),
                 invocation: None,
                 applied_at: 0,
+                source: effect_source_unknown(),
             }],
         );
         let adapter = StateAdapter::new(state);
@@ -1395,6 +1401,7 @@ mod tests {
                 params: BTreeMap::new(),
                 duration: duration_variant("EndOfTurn"),
                 invocation: None,
+                source: effect_source_unknown(),
             })
         });
 
@@ -1428,6 +1435,7 @@ mod tests {
                     duration: duration_variant("EndOfTurn"),
                     invocation: None,
                     applied_at: 0,
+                    source: effect_source_unknown(),
                 },
                 ActiveCondition {
                     id: 2,
@@ -1438,6 +1446,7 @@ mod tests {
                     duration: duration_variant("Rounds"),
                     invocation: None,
                     applied_at: 0,
+                    source: effect_source_unknown(),
                 },
             ],
         );
@@ -1876,6 +1885,7 @@ mod tests {
                 duration: duration_variant("Indefinite"),
                 invocation: None,
                 applied_at: 0,
+                source: effect_source_unknown(),
             },
         );
         state.add_condition(
@@ -1889,6 +1899,7 @@ mod tests {
                 duration: duration_variant("Indefinite"),
                 invocation: None,
                 applied_at: 0,
+                source: effect_source_unknown(),
             },
         );
 

@@ -38,13 +38,14 @@ impl Parser {
                         self.advance();
                         TypeExpr::Named("entity".into())
                     }
-                    "TurnBudget" | "Duration" | "Position" | "Condition" | "ActiveCondition"
-                    | "Invocation"
+                    "TurnBudget" | "Duration" | "EffectSource" | "Position" | "Condition"
+                    | "ActiveCondition" | "Invocation"
                         if !matches!(self.peek_at(1), TokenKind::Dot) =>
                     {
                         let ty = match &*name {
                             "TurnBudget" => TypeExpr::TurnBudget,
                             "Duration" => TypeExpr::Duration,
+                            "EffectSource" => TypeExpr::EffectSource,
                             "Position" => TypeExpr::Position,
                             "Condition" => TypeExpr::Condition,
                             "ActiveCondition" => TypeExpr::ActiveCondition,

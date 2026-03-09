@@ -73,6 +73,13 @@ pub fn register_builtins() -> Vec<FnInfo> {
                 param("target", Ty::AnyEntity),
                 param("cond", Ty::Condition),
                 param("duration", Ty::Duration),
+                ParamInfo {
+                    name: "source".into(),
+                    ty: Ty::EffectSource,
+                    has_default: true,
+                    with_groups: vec![],
+                    with_disjunctive: false,
+                },
             ],
             Ty::Unit,
         ),

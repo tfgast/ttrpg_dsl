@@ -137,13 +137,9 @@ fn fill_defaults(
                             ));
                         }
                     } else {
-                        return Err(RuntimeError::with_span(
-                            format!(
-                                "internal error: no AST params available to evaluate default for '{}'",
-                                param.name
-                            ),
-                            call_span,
-                        ));
+                        // Builtin or enum constructor: no AST defaults available.
+                        // Skip this parameter — the builtin handler provides its own default.
+                        continue;
                     };
                     bound.push((param.name.clone(), default_val));
                 } else {
