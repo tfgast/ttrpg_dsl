@@ -9,14 +9,14 @@ use ttrpg_ast::ast::*;
 use ttrpg_ast::diagnostic::Diagnostic;
 use ttrpg_ast::module::{ImportInfo, ModuleMap, SystemInfo};
 use ttrpg_ast::name::Name;
+use ttrpg_ast::span::FileId;
 use ttrpg_ast::{Span, Spanned};
-
-#[cfg(test)]
-use ttrpg_ast::FileId;
 
 /// Per-file metadata extracted by `parse_multi` before calling `resolve_modules`.
 #[derive(Clone)]
 pub struct FileSystemInfo {
+    /// The FileId assigned to this source file.
+    pub file_id: FileId,
     /// Systems defined in this file (by name).
     pub system_names: Vec<String>,
     /// `use` declarations in this file.
@@ -46,9 +46,16 @@ pub fn resolve_modules(
 
     // Step 1: Build system registry — which declarations belong to which system
     let mut system_decls: FxHashMap<Name, Vec<DeclOwnership>> = FxHashMap::default();
+    // Track which FileIds contain each system
+    let mut system_files: FxHashMap<Name, Vec<FileId>> = FxHashMap::default();
 
     for item in &program.items {
         if let TopLevel::System(system) = &item.node {
+            let file_id = item.span.file;
+            let files = system_files.entry(system.name.clone()).or_default();
+            if !files.contains(&file_id) {
+                files.push(file_id);
+            }
             let entry = system_decls.entry(system.name.clone()).or_default();
             for decl in &system.decls {
                 entry.push(DeclOwnership::from_decl(&decl.node, decl.span));
@@ -61,6 +68,12 @@ pub fn resolve_modules(
 
     for (sys_name, decl_list) in &system_decls {
         let mut info = SystemInfo::default();
+
+        // Attach source file provenance
+        if let Some(files) = system_files.get(sys_name) {
+            info.source_files = files.clone();
+        }
+
         // Tracks (namespace, name) → (span, is_action) for duplicate detection.
         let mut seen_names: FxHashMap<(Namespace, Name), (Span, bool)> = FxHashMap::default();
 
@@ -71,6 +84,7 @@ pub fn resolve_modules(
                 // hints or qualified syntax.
                 if *ns == Namespace::Variant {
                     info.variants.insert(name.clone());
+                    info.decl_spans.entry(name.clone()).or_insert(owned.span);
                 } else if let Some(&(prev_span, prev_is_action)) =
                     seen_names.get(&(*ns, name.clone()))
                 {
@@ -90,6 +104,7 @@ pub fn resolve_modules(
                     }
                 } else {
                     seen_names.insert((*ns, name.clone()), (owned.span, owned.is_action));
+                    info.decl_spans.entry(name.clone()).or_insert(owned.span);
                     match ns {
                         Namespace::Group => {
                             info.groups.insert(name.clone());
@@ -167,7 +182,10 @@ pub fn resolve_modules(
             if !module_map.systems.contains_key(&import.system_name) {
                 diagnostics.push(
                     Diagnostic::error(
-                        format!("unknown system \"{}\"", import.system_name),
+                        format!(
+                            "unknown system \"{}\" (imported by \"{}\")",
+                            import.system_name, sys_name
+                        ),
                         import.span,
                     )
                     .with_help(format!(
@@ -365,9 +383,7 @@ impl DeclOwnership {
 
 /// Detect cross-system duplicate declarations in each namespace.
 fn detect_cross_system_collisions(module_map: &ModuleMap, diagnostics: &mut Vec<Diagnostic>) {
-    // For each namespace, collect: name → Vec<(system_name)>
-    // We can't track spans here easily since ModuleMap doesn't store them,
-    // but the error message names both systems which is sufficient.
+    // For each namespace, collect: name → Vec<(system_name, span)>
     // Variants are excluded: multi-owner variants are allowed across systems
     // and disambiguated by the checker via expected-type hints or qualified syntax.
     let namespaces: &[(Namespace, &str)] = &[
@@ -381,7 +397,7 @@ fn detect_cross_system_collisions(module_map: &ModuleMap, diagnostics: &mut Vec<
     ];
 
     for &(ns, ns_label) in namespaces {
-        let mut name_owners: FxHashMap<&str, Vec<&str>> = FxHashMap::default();
+        let mut name_owners: FxHashMap<&str, Vec<(&str, Span)>> = FxHashMap::default();
 
         for (sys_name, sys_info) in &module_map.systems {
             let names: &FxHashSet<Name> = match ns {
@@ -395,26 +411,42 @@ fn detect_cross_system_collisions(module_map: &ModuleMap, diagnostics: &mut Vec<
                 Namespace::Variant => &sys_info.variants,
             };
             for name in names {
+                let span = sys_info
+                    .decl_spans
+                    .get(name)
+                    .copied()
+                    .unwrap_or_else(Span::dummy);
                 name_owners
                     .entry(name.as_str())
                     .or_default()
-                    .push(sys_name.as_str());
+                    .push((sys_name.as_str(), span));
             }
         }
 
         for (name, owners) in &name_owners {
             if owners.len() > 1 {
-                let mut sorted_owners = owners.clone();
-                sorted_owners.sort_unstable();
+                let mut sorted_owners: Vec<_> = owners.clone();
+                sorted_owners.sort_by_key(|(sys, _)| *sys);
                 let owners_list = sorted_owners
                     .iter()
-                    .map(|o| format!("\"{o}\""))
+                    .map(|(o, _)| format!("\"{o}\""))
                     .collect::<Vec<_>>()
                     .join(", ");
+                // Use span of the first definition for the primary diagnostic
+                let primary_span = sorted_owners[0].1;
                 diagnostics.push(Diagnostic::error(
                     format!("duplicate {ns_label} \"{name}\": defined in {owners_list}"),
-                    Span::dummy(),
+                    primary_span,
                 ));
+                // Point to each additional definition
+                for &(sys, span) in &sorted_owners[1..] {
+                    if !span.is_dummy() {
+                        diagnostics.push(Diagnostic::warning(
+                            format!("also defined in \"{sys}\" here"),
+                            span,
+                        ));
+                    }
+                }
             }
         }
     }
@@ -887,6 +919,7 @@ mod tests {
             ],
         )]);
         let file_systems = vec![FileSystemInfo {
+            file_id: FileId(0),
             system_names: vec!["Core".into()],
             use_decls: vec![],
         }];
@@ -907,6 +940,7 @@ mod tests {
             make_system("B", vec![make_enum("Ability", &["DEX"])]),
         ]);
         let file_systems = vec![FileSystemInfo {
+            file_id: FileId(0),
             system_names: vec!["A".into(), "B".into()],
             use_decls: vec![],
         }];
@@ -932,6 +966,7 @@ mod tests {
             make_system("B", vec![make_enum("Stat", &["STR"])]),
         ]);
         let file_systems = vec![FileSystemInfo {
+            file_id: FileId(0),
             system_names: vec!["A".into(), "B".into()],
             use_decls: vec![],
         }];
@@ -955,6 +990,7 @@ mod tests {
             make_system("C", vec![make_enum("Ability", &["CON"])]),
         ]);
         let file_systems = vec![FileSystemInfo {
+            file_id: FileId(0),
             system_names: vec!["A".into(), "B".into(), "C".into()],
             use_decls: vec![],
         }];
@@ -978,6 +1014,7 @@ mod tests {
             make_system("B", vec![make_derive("Foo")]),
         ]);
         let file_systems = vec![FileSystemInfo {
+            file_id: FileId(0),
             system_names: vec!["A".into(), "B".into()],
             use_decls: vec![],
         }];
@@ -997,6 +1034,7 @@ mod tests {
     fn unknown_import_target() {
         let mut program = make_program(vec![make_system("Core", vec![make_derive("modifier")])]);
         let file_systems = vec![FileSystemInfo {
+            file_id: FileId(0),
             system_names: vec!["Core".into()],
             use_decls: vec![UseDecl {
                 path: "Unknown".into(),
@@ -1015,6 +1053,7 @@ mod tests {
     fn self_import_warning() {
         let mut program = make_program(vec![make_system("Core", vec![make_derive("modifier")])]);
         let file_systems = vec![FileSystemInfo {
+            file_id: FileId(0),
             system_names: vec!["Core".into()],
             use_decls: vec![UseDecl {
                 path: "Core".into(),
@@ -1041,6 +1080,7 @@ mod tests {
             make_system("Main", vec![make_derive("main_fn")]),
         ]);
         let file_systems = vec![FileSystemInfo {
+            file_id: FileId(0),
             system_names: vec!["Main".into()],
             use_decls: vec![
                 UseDecl {
@@ -1071,6 +1111,7 @@ mod tests {
         // Two files both import A as X for the same system
         let file_systems = vec![
             FileSystemInfo {
+                file_id: FileId(0),
                 system_names: vec!["Main".into()],
                 use_decls: vec![UseDecl {
                     path: "A".into(),
@@ -1079,6 +1120,7 @@ mod tests {
                 }],
             },
             FileSystemInfo {
+                file_id: FileId(0),
                 system_names: vec!["Main".into()],
                 use_decls: vec![UseDecl {
                     path: "A".into(),
@@ -1106,6 +1148,7 @@ mod tests {
             make_system("Main", vec![make_derive("Foo")]),
         ]);
         let file_systems = vec![FileSystemInfo {
+            file_id: FileId(0),
             system_names: vec!["Main".into()],
             use_decls: vec![UseDecl {
                 path: "Other".into(),
@@ -1125,10 +1168,12 @@ mod tests {
         let mut program = make_program(vec![make_system("Other", vec![make_derive("bar")])]);
         let file_systems = vec![
             FileSystemInfo {
+                file_id: FileId(0),
                 system_names: vec!["Other".into()],
                 use_decls: vec![],
             },
             FileSystemInfo {
+                file_id: FileId(0),
                 system_names: vec![], // No systems in this file
                 use_decls: vec![UseDecl {
                     path: "Other".into(),
@@ -1154,6 +1199,7 @@ mod tests {
             make_system("Homebrew", vec![make_derive("custom")]),
         ]);
         let file_systems = vec![FileSystemInfo {
+            file_id: FileId(0),
             system_names: vec!["Core".into(), "Homebrew".into()],
             use_decls: vec![UseDecl {
                 path: "Core".into(),
@@ -1187,6 +1233,7 @@ mod tests {
             make_system("Core", vec![make_derive("modifier")]), // same system, same name
         ]);
         let file_systems = vec![FileSystemInfo {
+            file_id: FileId(0),
             system_names: vec!["Core".into()],
             use_decls: vec![],
         }];
@@ -1205,6 +1252,7 @@ mod tests {
             make_system("Main", vec![make_enum("DamageType", &["fire", "cold"])]),
         ]);
         let file_systems = vec![FileSystemInfo {
+            file_id: FileId(0),
             system_names: vec!["Main".into()],
             use_decls: vec![UseDecl {
                 path: "Other".into(),
@@ -1232,6 +1280,7 @@ mod tests {
             make_system("Main", vec![make_derive("main_fn")]),
         ]);
         let file_systems = vec![FileSystemInfo {
+            file_id: FileId(0),
             system_names: vec!["Main".into()],
             use_decls: vec![
                 UseDecl {
@@ -1269,6 +1318,7 @@ mod tests {
             make_system("Main", vec![make_derive("main_fn")]),
         ]);
         let file_systems = vec![FileSystemInfo {
+            file_id: FileId(0),
             system_names: vec!["Main".into()],
             use_decls: vec![
                 UseDecl {
@@ -1306,6 +1356,7 @@ mod tests {
             make_system("Main", vec![make_derive("main_fn")]),
         ]);
         let file_systems = vec![FileSystemInfo {
+            file_id: FileId(0),
             system_names: vec!["Main".into()],
             use_decls: vec![
                 UseDecl {
@@ -1342,6 +1393,7 @@ mod tests {
             make_system("Main", vec![make_derive("main_fn")]),
         ]);
         let file_systems = vec![FileSystemInfo {
+            file_id: FileId(0),
             system_names: vec!["Main".into()],
             use_decls: vec![UseDecl {
                 path: "A".into(),
@@ -1372,6 +1424,7 @@ mod tests {
             make_system("Main", vec![make_derive("main_fn")]),
         ]);
         let file_systems = vec![FileSystemInfo {
+            file_id: FileId(0),
             system_names: vec!["Main".into()],
             use_decls: vec![
                 UseDecl {
@@ -1422,6 +1475,7 @@ mod tests {
         let mut p1 = make_program(program_items.clone());
         let fs_order_a = vec![
             FileSystemInfo {
+                file_id: FileId(0),
                 system_names: vec!["Main".into()],
                 use_decls: vec![UseDecl {
                     path: "Lib".into(),
@@ -1430,6 +1484,7 @@ mod tests {
                 }],
             },
             FileSystemInfo {
+                file_id: FileId(0),
                 system_names: vec!["Main".into()],
                 use_decls: vec![UseDecl {
                     path: "Utils".into(),
@@ -1444,6 +1499,7 @@ mod tests {
         let mut p2 = make_program(program_items.clone());
         let fs_order_b = vec![
             FileSystemInfo {
+                file_id: FileId(0),
                 system_names: vec!["Main".into()],
                 use_decls: vec![UseDecl {
                     path: "Utils".into(),
@@ -1452,6 +1508,7 @@ mod tests {
                 }],
             },
             FileSystemInfo {
+                file_id: FileId(0),
                 system_names: vec!["Main".into()],
                 use_decls: vec![UseDecl {
                     path: "Lib".into(),
@@ -1482,6 +1539,7 @@ mod tests {
         let mut p1 = make_program(program_items.clone());
         let fs1 = vec![
             FileSystemInfo {
+                file_id: FileId(0),
                 system_names: vec!["Main".into()],
                 use_decls: vec![UseDecl {
                     path: "A".into(),
@@ -1490,6 +1548,7 @@ mod tests {
                 }],
             },
             FileSystemInfo {
+                file_id: FileId(0),
                 system_names: vec!["Main".into()],
                 use_decls: vec![UseDecl {
                     path: "B".into(),
@@ -1504,6 +1563,7 @@ mod tests {
         let mut p2 = make_program(program_items.clone());
         let fs2 = vec![
             FileSystemInfo {
+                file_id: FileId(0),
                 system_names: vec!["Main".into()],
                 use_decls: vec![UseDecl {
                     path: "B".into(),
@@ -1512,6 +1572,7 @@ mod tests {
                 }],
             },
             FileSystemInfo {
+                file_id: FileId(0),
                 system_names: vec!["Main".into()],
                 use_decls: vec![UseDecl {
                     path: "A".into(),
@@ -1544,6 +1605,7 @@ mod tests {
 
         let make_fs = |alias_first: bool| -> Vec<FileSystemInfo> {
             let alias_file = FileSystemInfo {
+                file_id: FileId(0),
                 system_names: vec!["Main".into()],
                 use_decls: vec![UseDecl {
                     path: "Lib".into(),
@@ -1552,6 +1614,7 @@ mod tests {
                 }],
             };
             let bare_file = FileSystemInfo {
+                file_id: FileId(0),
                 system_names: vec!["Main".into()],
                 use_decls: vec![UseDecl {
                     path: "Types".into(),
@@ -1595,6 +1658,7 @@ mod tests {
         let mut p1 = make_program(items_ab);
         let mut p2 = make_program(items_ba);
         let fs = vec![FileSystemInfo {
+            file_id: FileId(0),
             system_names: vec!["Alpha".into(), "Beta".into()],
             use_decls: vec![],
         }];
@@ -1621,10 +1685,12 @@ mod tests {
         let mut p1 = make_program(items.clone());
         let fs_xy = vec![
             FileSystemInfo {
+                file_id: FileId(0),
                 system_names: vec!["X".into()],
                 use_decls: vec![],
             },
             FileSystemInfo {
+                file_id: FileId(0),
                 system_names: vec!["Y".into()],
                 use_decls: vec![],
             },
@@ -1656,10 +1722,12 @@ mod tests {
         let mut p1 = make_program(items.clone());
         let fs1 = vec![
             FileSystemInfo {
+                file_id: FileId(0),
                 system_names: vec!["Core".into()],
                 use_decls: vec![],
             },
             FileSystemInfo {
+                file_id: FileId(0),
                 system_names: vec!["Core".into()],
                 use_decls: vec![],
             },
@@ -1701,6 +1769,7 @@ mod tests {
 
         let make_fs = |lib_first: bool| -> Vec<FileSystemInfo> {
             let lib_file = FileSystemInfo {
+                file_id: FileId(0),
                 system_names: vec!["Main".into()],
                 use_decls: vec![UseDecl {
                     path: "Lib".into(),
@@ -1709,6 +1778,7 @@ mod tests {
                 }],
             };
             let utils_file = FileSystemInfo {
+                file_id: FileId(0),
                 system_names: vec!["Main".into()],
                 use_decls: vec![UseDecl {
                     path: "Utils".into(),
@@ -1759,6 +1829,7 @@ mod tests {
         let mut p1 = make_program(program_items.clone());
         let fs1 = vec![
             FileSystemInfo {
+                file_id: FileId(0),
                 system_names: vec!["Main".into()],
                 use_decls: vec![UseDecl {
                     path: "Lib".into(),
@@ -1767,6 +1838,7 @@ mod tests {
                 }],
             },
             FileSystemInfo {
+                file_id: FileId(0),
                 system_names: vec!["Main".into()],
                 use_decls: vec![UseDecl {
                     path: "Utils".into(),
@@ -1806,6 +1878,7 @@ mod tests {
             ),
         ]);
         let file_systems = vec![FileSystemInfo {
+            file_id: FileId(0),
             system_names: vec!["Main".into()],
             use_decls: vec![
                 UseDecl {
@@ -1842,6 +1915,198 @@ mod tests {
                 .iter()
                 .any(|d| d.message.contains("alias \"bar_fn\" shadows")),
             "import B alias should not shadow rejected import A's name: {errors:?}"
+        );
+    }
+
+    // ── Source provenance metadata ──
+
+    #[test]
+    fn source_files_tracked_for_single_file_system() {
+        let mut program = make_program(vec![make_system(
+            "Core",
+            vec![make_derive("modifier")],
+        )]);
+        // Give the system block a real FileId
+        program.items[0].span = Span::new(FileId(3), 0, 50);
+
+        let file_systems = vec![FileSystemInfo {
+            file_id: FileId(3),
+            system_names: vec!["Core".into()],
+            use_decls: vec![],
+        }];
+
+        let (map, diags) = resolve_modules(&mut program, &file_systems);
+        assert!(diags.is_empty(), "unexpected diagnostics: {diags:?}");
+        let core = map.systems.get("Core").unwrap();
+        assert_eq!(core.source_files, vec![FileId(3)]);
+    }
+
+    #[test]
+    fn source_files_tracked_for_multi_file_system() {
+        // Same system defined across two files
+        let mut program = make_program(vec![
+            make_system("Core", vec![make_derive("foo")]),
+            make_system("Core", vec![make_derive("bar")]),
+        ]);
+        program.items[0].span = Span::new(FileId(0), 0, 50);
+        program.items[1].span = Span::new(FileId(1), 0, 50);
+
+        let file_systems = vec![
+            FileSystemInfo {
+                file_id: FileId(0),
+                system_names: vec!["Core".into()],
+                use_decls: vec![],
+            },
+            FileSystemInfo {
+                file_id: FileId(1),
+                system_names: vec!["Core".into()],
+                use_decls: vec![],
+            },
+        ];
+
+        let (map, diags) = resolve_modules(&mut program, &file_systems);
+        assert!(diags.is_empty(), "unexpected diagnostics: {diags:?}");
+        let core = map.systems.get("Core").unwrap();
+        assert_eq!(core.source_files.len(), 2);
+        assert!(core.source_files.contains(&FileId(0)));
+        assert!(core.source_files.contains(&FileId(1)));
+    }
+
+    #[test]
+    fn decl_spans_recorded_for_provenance() {
+        let mut program = make_program(vec![make_system(
+            "Core",
+            vec![
+                make_enum("Ability", &["STR", "DEX"]),
+                make_derive("modifier"),
+            ],
+        )]);
+        // Give declarations distinct spans for tracking
+        if let TopLevel::System(ref mut sys) = program.items[0].node {
+            sys.decls[0].span = Span::new(FileId(0), 10, 30);
+            sys.decls[1].span = Span::new(FileId(0), 40, 60);
+        }
+
+        let file_systems = vec![FileSystemInfo {
+            file_id: FileId(0),
+            system_names: vec!["Core".into()],
+            use_decls: vec![],
+        }];
+
+        let (map, diags) = resolve_modules(&mut program, &file_systems);
+        assert!(diags.is_empty(), "unexpected diagnostics: {diags:?}");
+        let core = map.systems.get("Core").unwrap();
+
+        // Type "Ability" should have a recorded span
+        let ability_span = core.decl_spans.get("Ability").unwrap();
+        assert_eq!(ability_span.start, 10);
+        assert_eq!(ability_span.end, 30);
+
+        // Function "modifier" should have a recorded span
+        let modifier_span = core.decl_spans.get("modifier").unwrap();
+        assert_eq!(modifier_span.start, 40);
+        assert_eq!(modifier_span.end, 60);
+
+        // Variant spans should also be recorded
+        assert!(core.decl_spans.contains_key("STR"));
+        assert!(core.decl_spans.contains_key("DEX"));
+    }
+
+    #[test]
+    fn cross_system_collision_uses_real_spans() {
+        let mut program = make_program(vec![
+            make_system("A", vec![make_enum("Ability", &["STR"])]),
+            make_system("B", vec![make_enum("Ability", &["DEX"])]),
+        ]);
+        // Give each declaration a distinct span
+        if let TopLevel::System(ref mut sys) = program.items[0].node {
+            sys.decls[0].span = Span::new(FileId(0), 10, 30);
+        }
+        if let TopLevel::System(ref mut sys) = program.items[1].node {
+            sys.decls[0].span = Span::new(FileId(1), 10, 30);
+        }
+
+        let file_systems = vec![
+            FileSystemInfo {
+                file_id: FileId(0),
+                system_names: vec!["A".into()],
+                use_decls: vec![],
+            },
+            FileSystemInfo {
+                file_id: FileId(1),
+                system_names: vec!["B".into()],
+                use_decls: vec![],
+            },
+        ];
+
+        let (_map, diags) = resolve_modules(&mut program, &file_systems);
+        let errors: Vec<_> = diags
+            .iter()
+            .filter(|d| d.severity == Severity::Error)
+            .collect();
+
+        assert!(
+            !errors.is_empty(),
+            "expected collision error"
+        );
+        // Primary error should have a real span (not dummy)
+        let collision = errors
+            .iter()
+            .find(|d| d.message.contains("duplicate type \"Ability\""))
+            .expect("should have collision diagnostic");
+        assert!(
+            !collision.span.is_dummy(),
+            "collision diagnostic should have a real span, got dummy"
+        );
+
+        // Should also have a "also defined in" warning with real span
+        let also_defined: Vec<_> = diags
+            .iter()
+            .filter(|d| d.message.contains("also defined in"))
+            .collect();
+        assert!(
+            !also_defined.is_empty(),
+            "should have 'also defined in' pointer diagnostic"
+        );
+        assert!(
+            !also_defined[0].span.is_dummy(),
+            "pointer diagnostic should have a real span"
+        );
+    }
+
+    #[test]
+    fn unknown_system_diagnostic_includes_importing_system() {
+        let mut program = make_program(vec![make_system(
+            "Main",
+            vec![make_derive("foo")],
+        )]);
+        let file_systems = vec![FileSystemInfo {
+            file_id: FileId(0),
+            system_names: vec!["Main".into()],
+            use_decls: vec![UseDecl {
+                path: "NonExistent".into(),
+                alias: None,
+                span: Span::new(FileId(0), 0, 10),
+            }],
+        }];
+
+        let (_map, diags) = resolve_modules(&mut program, &file_systems);
+        let errors: Vec<_> = diags
+            .iter()
+            .filter(|d| d.severity == Severity::Error)
+            .collect();
+
+        assert!(!errors.is_empty(), "expected unknown system error");
+        let err = &errors[0];
+        assert!(
+            err.message.contains("imported by \"Main\""),
+            "error should mention the importing system, got: {}",
+            err.message
+        );
+        assert!(
+            err.message.contains("unknown system \"NonExistent\""),
+            "error should name the unknown system, got: {}",
+            err.message
         );
     }
 }

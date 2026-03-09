@@ -109,6 +109,7 @@ pub fn parse_multi(sources: &[(String, String)]) -> ParseMultiResult {
 
         programs.push(program);
         file_systems_info.push(FileSystemInfo {
+            file_id: file,
             system_names,
             use_decls,
         });
