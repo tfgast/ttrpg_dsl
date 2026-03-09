@@ -23,6 +23,8 @@ cat commands.txt | ttrpg        # pipe mode (no line editing)
 | Command                          | Description                                    |
 |----------------------------------|------------------------------------------------|
 | `load <path...>`                 | Load source files (glob patterns OK)           |
+| `load <pkg>`                     | Load package by name via `ttrpg.toml` manifest |
+| `load <pkg>:<target>`            | Load named entry or bundle from a package      |
 | `source [-s] <<DELIM ... DELIM`  | Define inline DSL source (heredoc)             |
 | `reload`                         | Reload last loaded files                       |
 | `errors`                         | Show diagnostics from last load                |
@@ -30,9 +32,14 @@ cat commands.txt | ttrpg        # pipe mode (no line editing)
 ```
 load spec/v0/04_full_example.ttrpg
 load *.ttrpg
+load ose              # load default target from ose/ttrpg.toml
+load ose:combat       # load named entry
+load ose:chargen      # load named bundle
 reload
 errors
 ```
+
+Package loading searches for `<name>/ttrpg.toml` relative to the current directory. See the language reference for manifest format details.
 
 #### Inline source (heredoc)
 

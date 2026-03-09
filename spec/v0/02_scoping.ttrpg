@@ -1106,6 +1106,53 @@ hook Regenerate on creature: Character (
 // files). Programs are merged into a single Program and checked
 // with module-aware visibility.
 //
+// --- Package manifests (ttrpg.toml) ---
+//
+// A package manifest declares package identity, named entrypoints,
+// and curated bundles. The file graph itself lives in source files
+// (via future `import` directives) — the manifest does not list
+// every transitive file.
+//
+// Manifest format (v1):
+//
+//   manifest_version = 1
+//
+//   [package]
+//   name = "ose"
+//   default_target = "full"
+//
+//   [entries.core]
+//   path = "ose_core.ttrpg"
+//
+//   [entries.combat]
+//   path = "ose_combat.ttrpg"
+//
+//   [bundles.full]
+//   entries = ["core", "class", "combat", "equipment"]
+//
+//   [bundles.chargen]
+//   entries = ["core", "class", "chargen"]
+//
+// Terminology:
+//   entry  — a single root source file
+//   bundle — a curated composition of multiple entries
+//   target — either an entry or a bundle (the unit of CLI loading)
+//
+// CLI semantics:
+//   load ose          → load default_target (usually a bundle)
+//   load ose:core     → load named entry
+//   load ose:chargen  → load named bundle
+//
+// The loader searches for <package_name>/ttrpg.toml relative to the
+// current working directory. If no manifest is found and the token
+// contains no path separators, extensions, or glob characters, it
+// falls through to file-path resolution.
+//
+// Bundles replace hand-maintained file lists and most glob patterns.
+// The manifest is the single source of truth for package composition.
+// default_target should be the most useful complete experience, not
+// the minimal seed file.
+//
 // --- Global name uniqueness (v0) ---
 //
 // In v0, no two loaded systems may define the same declaration

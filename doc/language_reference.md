@@ -697,6 +697,44 @@ Core.function()
 Multiple `system` blocks with the same name merge additively.
 Imports are NOT transitive.
 
+### Package Manifest (`ttrpg.toml`)
+
+A `ttrpg.toml` file at a package root declares package identity, named entries, and curated bundles:
+
+```toml
+manifest_version = 1
+
+[package]
+name = "ose"
+default_target = "full"
+
+[entries.core]
+path = "ose_core.ttrpg"
+
+[entries.combat]
+path = "ose_combat.ttrpg"
+
+[bundles.full]
+entries = ["core", "class", "combat", "equipment", "magic", "spells"]
+
+[bundles.chargen]
+entries = ["core", "class", "chargen", "equipment"]
+```
+
+| Concept          | Meaning                                            |
+|------------------|----------------------------------------------------|
+| **entry**        | A single root source file                          |
+| **bundle**       | A curated composition of multiple entries           |
+| **target**       | Either an entry or a bundle (the unit of loading)  |
+| `default_target` | What bare `load <pkg>` resolves to                 |
+
+CLI loading:
+```
+load ose          # load default target (full bundle)
+load ose:core     # load single entry
+load ose:chargen  # load named bundle
+```
+
 ---
 
 ## Lexer Rules

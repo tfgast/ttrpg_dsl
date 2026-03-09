@@ -1278,6 +1278,41 @@ Recommended declaration order within a `system` block:
 Multiple `system` blocks with the same name merge additively.
 Imports (`use`) are NOT transitive — each file must declare its own.
 
+## Package Manifests
+
+Rule module directories (e.g., `ose/`, `osric/`) use a `ttrpg.toml` manifest to declare package identity and loadable targets:
+
+```toml
+manifest_version = 1
+
+[package]
+name = "ose"
+default_target = "full"
+
+[entries.core]
+path = "ose_core.ttrpg"
+
+[entries.combat]
+path = "ose_combat.ttrpg"
+
+[bundles.full]
+entries = ["core", "class", "combat", "equipment", "magic", "spells"]
+```
+
+- **entry** = single root source file
+- **bundle** = curated list of entries loaded together
+- **target** = either an entry or bundle
+
+Load by package name instead of glob patterns:
+
+```
+load ose            # loads default target (full bundle)
+load ose:core       # loads single entry
+load ose:chargen    # loads curated subset
+```
+
+When creating a new rule module directory, add a `ttrpg.toml` with at minimum a `[package]` table, one entry per source file, and a `full` bundle listing all entries.
+
 ---
 
 ## Validation Workflow
