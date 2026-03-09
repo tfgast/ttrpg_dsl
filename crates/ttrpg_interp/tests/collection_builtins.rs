@@ -44,6 +44,174 @@ fn setup(source: &str) -> (ttrpg_ast::ast::Program, ttrpg_checker::CheckResult) 
     (program, result)
 }
 
+// ── list equality ──────────────────────────────────────────────
+
+#[test]
+fn list_eq_same_ints() {
+    let source = r#"
+system "test" {
+    derive f() -> bool {
+        [1, 2, 3] == [1, 2, 3]
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NoopHandler;
+
+    let val = interp
+        .evaluate_derive(&state, &mut handler, "f", vec![])
+        .unwrap();
+    assert_eq!(val, Value::Bool(true));
+}
+
+#[test]
+fn list_neq_different_ints() {
+    let source = r#"
+system "test" {
+    derive f() -> bool {
+        [1, 2, 3] == [1, 2, 4]
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NoopHandler;
+
+    let val = interp
+        .evaluate_derive(&state, &mut handler, "f", vec![])
+        .unwrap();
+    assert_eq!(val, Value::Bool(false));
+}
+
+#[test]
+fn list_neq_different_lengths() {
+    let source = r#"
+system "test" {
+    derive f() -> bool {
+        [1, 2] != [1, 2, 3]
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NoopHandler;
+
+    let val = interp
+        .evaluate_derive(&state, &mut handler, "f", vec![])
+        .unwrap();
+    assert_eq!(val, Value::Bool(true));
+}
+
+#[test]
+fn list_eq_empty() {
+    let source = r#"
+system "test" {
+    derive f() -> bool {
+        let a: list<int> = []
+        let b: list<int> = []
+        a == b
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NoopHandler;
+
+    let val = interp
+        .evaluate_derive(&state, &mut handler, "f", vec![])
+        .unwrap();
+    assert_eq!(val, Value::Bool(true));
+}
+
+#[test]
+fn list_eq_enums() {
+    let source = r#"
+system "test" {
+    enum Color { Red, Green, Blue }
+    derive f() -> bool {
+        let a = [Color.Red, Color.Green]
+        let b = [Color.Red, Color.Green]
+        a == b
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NoopHandler;
+
+    let val = interp
+        .evaluate_derive(&state, &mut handler, "f", vec![])
+        .unwrap();
+    assert_eq!(val, Value::Bool(true));
+}
+
+#[test]
+fn list_neq_enums() {
+    let source = r#"
+system "test" {
+    enum Color { Red, Green, Blue }
+    derive f() -> bool {
+        [Color.Red, Color.Green] != [Color.Red, Color.Blue]
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NoopHandler;
+
+    let val = interp
+        .evaluate_derive(&state, &mut handler, "f", vec![])
+        .unwrap();
+    assert_eq!(val, Value::Bool(true));
+}
+
+#[test]
+fn list_eq_strings() {
+    let source = r#"
+system "test" {
+    derive f() -> bool {
+        ["a", "b"] == ["a", "b"]
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NoopHandler;
+
+    let val = interp
+        .evaluate_derive(&state, &mut handler, "f", vec![])
+        .unwrap();
+    assert_eq!(val, Value::Bool(true));
+}
+
+#[test]
+fn list_eq_nested() {
+    let source = r#"
+system "test" {
+    derive f() -> bool {
+        [[1, 2], [3, 4]] == [[1, 2], [3, 4]]
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let state = GameState::new();
+    let mut handler = NoopHandler;
+
+    let val = interp
+        .evaluate_derive(&state, &mut handler, "f", vec![])
+        .unwrap();
+    assert_eq!(val, Value::Bool(true));
+}
+
 // ── len ────────────────────────────────────────────────────────
 
 #[test]

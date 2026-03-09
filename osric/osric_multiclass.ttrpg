@@ -100,23 +100,9 @@ system "OSRIC Multiclass" {
         [c for c in all_ordered if any([x == c for x in classes])]
     }
 
-    // Check if two sorted class lists are equal.
-    derive classes_equal(a: list<Class>, b: list<Class>) -> bool {
-        if len(a) != len(b) {
-            false
-        } else if len(a) == 0 {
-            true
-        } else if len(a) == 2 {
-            first(a).unwrap() == first(b).unwrap() && last(a).unwrap() == last(b).unwrap()
-        } else {
-            // 3-class combo
-            first(a).unwrap() == first(b).unwrap() && a[1] == b[1] && last(a).unwrap() == last(b).unwrap()
-        }
-    }
-
     // Check if a class combo appears in a list of valid combos.
     derive combo_in_list(combo: list<Class>, combos: list<list<Class>>) -> bool {
-        any([classes_equal(combo, valid) for valid in combos])
+        any([combo == valid for valid in combos])
     }
 
     // Validate that a multi-class combination is legal for the ancestry.
