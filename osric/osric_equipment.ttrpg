@@ -412,12 +412,12 @@ system "OSRIC Equipment" {
             match class {
                 // Clerics: blunt weapons only (all Blunt damage-type melee weapons)
                 Cleric => [Club, FistOrKick, FlailHeavy, FlailLight, MaceHeavy, MaceLight, MorningStar, Staff, WarhammerHeavy, WarhammerLight],
-                // Druids: club, dagger, scimitar, sling, spear, staff
-                Druid => [Club, Dagger, SwordScimitar, Spear, Staff],
+                // Druids: club, dagger, hammer, scimitar, spear, staff
+                Druid => [Club, Dagger, SwordScimitar, Spear, Staff, WarhammerLight],
                 // Magic-Users: dagger, staff, dart (melee only)
                 MagicUser => [Dagger, Staff],
-                // Illusionists: dagger only
-                Illusionist => [Dagger],
+                // Illusionists: dagger, staff
+                Illusionist => [Dagger, Staff],
                 // Thieves: club, dagger, most swords (all except two-handed)
                 Thief => [Club, Dagger, SwordBastard, SwordBroad, SwordLong, SwordScimitar, SwordShort],
                 // Monks: bo stick (staff), club, dagger, hand axe, javelin, polearm, spear
@@ -440,8 +440,8 @@ system "OSRIC Equipment" {
                 Druid => [ClubThrown, DaggerThrown, DartThrown, Sling, SlingStone, SpearThrown],
                 // Magic-Users: dagger, dart (thrown variants)
                 MagicUser => [DaggerThrown, DartThrown],
-                // Illusionists: dagger only
-                Illusionist => [DaggerThrown],
+                // Illusionists: dagger, dart
+                Illusionist => [DaggerThrown, DartThrown],
                 // Thieves: club, dagger, dart, sling
                 Thief => [ClubThrown, DaggerThrown, DartThrown, Sling, SlingStone],
                 // Monks: crossbow, dagger, hand axe, club, javelin, spear (thrown/launched)
