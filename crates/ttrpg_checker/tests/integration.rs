@@ -11650,7 +11650,7 @@ system "test" {
 }
 
 #[test]
-fn test_advance_time_errors_in_with_budget() {
+fn test_advance_time_allowed_in_with_budget_inside_function() {
     let source = r#"
 system "test" {
     struct TurnBudget { action: int }
@@ -11662,10 +11662,7 @@ system "test" {
     }
 }
 "#;
-    expect_errors(
-        source,
-        &["advance_time() can only be called in function blocks"],
-    );
+    expect_no_errors(source);
 }
 
 #[test]

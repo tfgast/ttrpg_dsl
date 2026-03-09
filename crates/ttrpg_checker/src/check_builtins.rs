@@ -2,7 +2,6 @@ use ttrpg_ast::ast::*;
 
 use crate::check::Checker;
 use crate::env::*;
-use crate::scope::BlockKind;
 use crate::ty::Ty;
 
 impl Checker<'_> {
@@ -671,7 +670,7 @@ impl Checker<'_> {
                 }
             }
             "advance_time" => {
-                if self.scope.current_block_kind() != Some(BlockKind::FunctionBody) {
+                if !self.scope.is_inside_function() {
                     self.error(
                         "advance_time() can only be called in function blocks".to_string(),
                         span,

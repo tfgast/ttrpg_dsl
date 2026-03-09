@@ -208,6 +208,15 @@ impl ScopeStack {
         None
     }
 
+    /// Whether any enclosing scope is a function body.  Used by
+    /// `advance_time()` which must be inside a function but is allowed
+    /// through transparent scopes like `with_budget` / `with_budgets`.
+    pub fn is_inside_function(&self) -> bool {
+        self.scopes
+            .iter()
+            .any(|s| s.block_kind == BlockKind::FunctionBody)
+    }
+
     pub fn allows_dice(&self) -> bool {
         self.current_block_kind().is_some_and(|k| k.allows_dice())
     }

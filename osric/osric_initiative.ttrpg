@@ -551,13 +551,32 @@ system "OSRIC Initiative" {
 
 
     // ========================================================
+    //  ROUND BUDGET
+    //
+    //  Computes how many action points to provision for an
+    //  entity for the full round.  Each budget-consuming action
+    //  type contributes 1 point.  Non-costed action types
+    //  (spellcasting, movement, fleeing, holding) add nothing.
+    // ========================================================
+
+    function round_budget(combatant: entity, actions: list<RoundAction>) -> int {
+        let costed = [a for a in actions
+            if a.combatant == combatant
+            && a.action_type != DeclaredActionType.CastSpellAction
+            && a.action_type != DeclaredActionType.MoveAction
+            && a.action_type != DeclaredActionType.FleeAction
+            && a.action_type != DeclaredActionType.HoldAction]
+        len(costed)
+    }
+
+
+    // ========================================================
     //  RESOLVE ACTION
     //
-    //  Dispatches a single combatant action. Uses with_budget
-    //  to provision a turn budget, then calls the actual costed
-    //  actions (MeleeAttack, MissileAttack, Charge) via method
-    //  syntax. Spell completion removes the CastingSpell
-    //  condition; non-combat actions are deferred to the host.
+    //  Dispatches a single combatant action.  Budget is already
+    //  provisioned at round level via with_budgets in
+    //  resolve_round; costed actions (MeleeAttack, Charge, etc.)
+    //  deduct directly from the round budget.
     //
     //  Unarmed actions (Brawling, Grapple, Overbear) run the
     //  fend-off pipeline first: if the target or an adjacent
@@ -578,22 +597,16 @@ system "OSRIC Initiative" {
                     // Character armed melee attack
                     let weapon = action.weapon_melee.unwrap()
                     equip_main(action.combatant, WieldedItem.Melee(weapon))
-                    with_budget(action.combatant, { action: 1 }) {
-                        action.combatant.MeleeAttack(target)
-                    }
+                    action.combatant.MeleeAttack(target)
                 } else if action.combatant is Monster {
                     if action.monster_attack.is_some() {
                         // Monster natural attack
-                        with_budget(action.combatant, { action: 1 }) {
-                            action.combatant.MonsterMeleeAttack(target, action.monster_attack.unwrap())
-                        }
+                        action.combatant.MonsterMeleeAttack(target, action.monster_attack.unwrap())
                     } else if action.weapon_melee.is_some() && action.combatant has EquipmentSlots {
                         // Armed monster with wielded weapon
                         let weapon = action.weapon_melee.unwrap()
                         equip_monster_main(action.combatant, WieldedItem.Melee(weapon))
-                        with_budget(action.combatant, { action: 1 }) {
-                            action.combatant.MeleeAttack(target)
-                        }
+                        action.combatant.MeleeAttack(target)
                     }
                 }
                 if rear {
@@ -605,22 +618,16 @@ system "OSRIC Initiative" {
                 if action.combatant is Character {
                     let weapon = action.weapon_missile.unwrap()
                     equip_main(action.combatant, WieldedItem.Missile(weapon))
-                    with_budget(action.combatant, { action: 1 }) {
-                        action.combatant.MissileAttack(target, action.distance)
-                    }
+                    action.combatant.MissileAttack(target, action.distance)
                 } else if action.combatant is Monster {
                     if action.monster_attack.is_some() {
                         // Monster natural ranged attack
-                        with_budget(action.combatant, { action: 1 }) {
-                            action.combatant.MonsterMissileAttack(target, action.monster_attack.unwrap(), action.distance)
-                        }
+                        action.combatant.MonsterMissileAttack(target, action.monster_attack.unwrap(), action.distance)
                     } else if action.weapon_missile.is_some() && action.combatant has EquipmentSlots {
                         // Armed monster with wielded missile weapon
                         let weapon = action.weapon_missile.unwrap()
                         equip_monster_main(action.combatant, WieldedItem.Missile(weapon))
-                        with_budget(action.combatant, { action: 1 }) {
-                            action.combatant.MissileAttack(target, action.distance)
-                        }
+                        action.combatant.MissileAttack(target, action.distance)
                     }
                 }
             },
@@ -634,9 +641,7 @@ system "OSRIC Initiative" {
                 if action.monster_attack.is_some() && charger is Monster {
                     // Monster natural-weapon charge (claw, bite, horn, etc.)
                     let attack = action.monster_attack.unwrap()
-                    with_budget(charger, { action: 1 }) {
-                        charger.MonsterCharge(target, attack)
-                    }
+                    charger.MonsterCharge(target, attack)
                 } else {
                     // Armed charge — Character or armed Monster with wielded weapon.
                     let charge_weapon = action.weapon_melee.unwrap()
@@ -666,30 +671,20 @@ system "OSRIC Initiative" {
 
                         if weapon_longer(set_weapon, charge_weapon) {
                             // Set weapon is longer — defender strikes first
-                            with_budget(target, { action: 1 }) {
-                                target.SetWeaponStrike(charger)
-                            }
+                            target.SetWeaponStrike(charger)
                             if is_alive(charger) {
-                                with_budget(charger, { action: 1 }) {
-                                    charger.Charge(target)
-                                }
+                                charger.Charge(target)
                             }
                         } else {
                             // Charger has equal or longer weapon — strikes first
-                            with_budget(charger, { action: 1 }) {
-                                charger.Charge(target)
-                            }
+                            charger.Charge(target)
                             if is_alive(target) {
-                                with_budget(target, { action: 1 }) {
-                                    target.SetWeaponStrike(charger)
-                                }
+                                target.SetWeaponStrike(charger)
                             }
                         }
                     } else {
                         // Normal armed charge, no set weapon opposition
-                        with_budget(charger, { action: 1 }) {
-                            charger.Charge(target)
-                        }
+                        charger.Charge(target)
                     }
                 }
             },
@@ -715,9 +710,7 @@ system "OSRIC Initiative" {
                 // incoming melee attacks and suppresses the parrier's
                 // own attacks for the round. Per §1.6.2.9. Character-only.
                 if action.combatant is Character {
-                    with_budget(action.combatant, { action: 1 }) {
-                        action.combatant.Parry()
-                    }
+                    action.combatant.Parry()
                 }
             },
             TwoWeaponAttackAction => {
@@ -726,9 +719,7 @@ system "OSRIC Initiative" {
                     let target = action.target.unwrap()
                     let weapon = action.weapon_melee.unwrap()
                     equip_main(action.combatant, WieldedItem.Melee(weapon))
-                    with_budget(action.combatant, { action: 1 }) {
-                        action.combatant.TwoWeaponAttack(target)
-                    }
+                    action.combatant.TwoWeaponAttack(target)
                 }
             },
             BrawlingAction => {
@@ -749,9 +740,7 @@ system "OSRIC Initiative" {
                         apply_condition(target, RearAttacked, Duration.EndOfRound)
                     }
                     if action.combatant is Character {
-                        with_budget(action.combatant, { action: 1 }) {
-                            action.combatant.MeleeAttack(target)
-                        }
+                        action.combatant.MeleeAttack(target)
                     }
                     if rear {
                         remove_condition(target, "RearAttacked")
@@ -776,11 +765,9 @@ system "OSRIC Initiative" {
                     if action.combatant is Character {
                         let atk_move = combat_movement_rate(action.combatant)
                         let def_move = combat_movement_rate(target)
-                        with_budget(action.combatant, { action: 1 }) {
-                            action.combatant.GrapplingAttack(
-                                target, atk_move, def_move
-                            )
-                        }
+                        action.combatant.GrapplingAttack(
+                            target, atk_move, def_move
+                        )
                     }
                 }
             },
@@ -845,12 +832,10 @@ system "OSRIC Initiative" {
                                     apply_condition(target, Prone, Duration.Indefinite)
                                     apply_condition(target, Overborne, Duration.Indefinite)
                                     if is_alive(target) && action.combatant is Character {
-                                        with_budget(action.combatant, { action: 1 }) {
-                                            action.combatant.GrapplingAttack(
-                                                target, atk_move, def_move,
-                                                attack_mod: result.grappling_followup_bonus
-                                            )
-                                        }
+                                        action.combatant.GrapplingAttack(
+                                            target, atk_move, def_move,
+                                            attack_mod: result.grappling_followup_bonus
+                                        )
                                     }
                                 },
                                 _ => {
@@ -915,45 +900,58 @@ system "OSRIC Initiative" {
         emit RoundStart(round: round)
         let party_won = initiative.party_segment < initiative.monster_segment
 
-        for seg in 1..=10 {
-            advance_time(1)
-
-            // Begin-casting: call BeginCasting on casters whose
-            // initiative segment is reached, applying CastingSpell
-            // (making them interruptible) and storing the invocation
-            // handle for concentration tracking.
-            for a in actions {
-                if a.action_type == DeclaredActionType.CastSpellAction && a.initiative_segment == seg {
-                    if a.combatant has Spellcasting as sc {
-                        a.combatant.BeginCasting(a.casting_time)
-                    }
-                }
+        // Provision action budgets for all combatants up-front.
+        // Each entity's budget covers all their declared actions
+        // for this round (including fighter multi-attacks).
+        let specs = [
+            BudgetSpec {
+                actor: c,
+                budget: TurnBudget { action: round_budget(c, actions) }
             }
+            for c in combatants
+            if round_budget(c, actions) > 0
+        ]
+        with_budgets(specs) {
+            for seg in 1..=10 {
+                advance_time(1)
 
-            let seg_actions = [a for a in actions if a.segment == seg]
-
-            if len(seg_actions) > 0 {
-                emit SegmentStart(segment: seg)
-
-                if initiative.simultaneous {
-                    // Speed factor tie-breaking: lower acts first (p. 92).
-                    // Melee speed factors range 1–13; 0–20 covers all cases.
-                    for sf in 0..=20 {
-                        for action in seg_actions {
-                            if action.speed_factor == sf {
-                                resolve_action(action, actions)
-                            }
+                // Begin-casting: call BeginCasting on casters whose
+                // initiative segment is reached, applying CastingSpell
+                // (making them interruptible) and storing the invocation
+                // handle for concentration tracking.
+                for a in actions {
+                    if a.action_type == DeclaredActionType.CastSpellAction && a.initiative_segment == seg {
+                        if a.combatant has Spellcasting as sc {
+                            a.combatant.BeginCasting(a.casting_time)
                         }
                     }
-                } else {
-                    // Winning side resolves first within each segment.
-                    let winners = [a for a in seg_actions if a.party_side == party_won]
-                    let losers  = [a for a in seg_actions if a.party_side != party_won]
-                    for action in winners {
-                        resolve_action(action, actions)
-                    }
-                    for action in losers {
-                        resolve_action(action, actions)
+                }
+
+                let seg_actions = [a for a in actions if a.segment == seg]
+
+                if len(seg_actions) > 0 {
+                    emit SegmentStart(segment: seg)
+
+                    if initiative.simultaneous {
+                        // Speed factor tie-breaking: lower acts first (p. 92).
+                        // Melee speed factors range 1–13; 0–20 covers all cases.
+                        for sf in 0..=20 {
+                            for action in seg_actions {
+                                if action.speed_factor == sf {
+                                    resolve_action(action, actions)
+                                }
+                            }
+                        }
+                    } else {
+                        // Winning side resolves first within each segment.
+                        let winners = [a for a in seg_actions if a.party_side == party_won]
+                        let losers  = [a for a in seg_actions if a.party_side != party_won]
+                        for action in winners {
+                            resolve_action(action, actions)
+                        }
+                        for action in losers {
+                            resolve_action(action, actions)
+                        }
                     }
                 }
             }
