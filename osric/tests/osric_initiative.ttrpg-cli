@@ -355,6 +355,74 @@ assert_no_condition si_caster, CastingSpell
 assert_eq si_caster.hp, 15
 
 
+// ── resolve_round: declared spell uses CastSpell path ───────────
+// Spell is consumed at cast start, then resolves at completion.
+rolls clear
+
+spawn Character rs_success_caster { name: "Round Spell Success", classes: [ClassLevel { class: Cleric, level: 3 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 10 }, Spellcasting { spell_slots: [2], slots_used: [0], memorised_spells: [] } }
+
+do MemoriseSpell(rs_success_caster, CureLightWounds, 1)
+assert_eq rs_success_caster.Spellcasting.memorised_spells.len(), 1
+assert_eq rs_success_caster.Spellcasting.slots_used[0], 1
+
+let rs_success_init = InitiativeResult { party_roll: 2, monster_roll: 6, party_segment: 2, monster_segment: 6, simultaneous: false }
+let rs_success_action = build_round_action(rs_success_caster, CastSpellAction, 2, true, none, none, none, none, 0ft, 5, 0, some(CureLightWounds), [rs_success_caster])
+
+// Cure Light Wounds heals 4 at completion: 10 + 4 = 14.
+rolls 4
+call resolve_round(1, [rs_success_caster], rs_success_init, [rs_success_action])
+
+assert_eq rs_success_caster.hp, 14
+assert_eq rs_success_caster.Spellcasting.memorised_spells.len(), 0
+assert_eq rs_success_caster.Spellcasting.slots_used[0], 0
+assert_no_condition rs_success_caster, CastingSpell
+
+
+// ── resolve_round: interrupted declared spell is lost ───────────
+// Damage before completion removes CastingSpell and prevents effect.
+rolls clear
+
+spawn Character rs_interrupt_caster { name: "Round Spell Interrupted", classes: [ClassLevel { class: Cleric, level: 3 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 12 }, Spellcasting { spell_slots: [2], slots_used: [0], memorised_spells: [] } }
+spawn Character rs_interrupt_foe { name: "Spell Breaker", classes: [ClassLevel { class: Fighter, level: 3 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 24, hp: 24 }, EquipmentSlots {} }
+
+do MemoriseSpell(rs_interrupt_caster, CureLightWounds, 1)
+let rs_interrupt_init = InitiativeResult { party_roll: 2, monster_roll: 3, party_segment: 2, monster_segment: 3, simultaneous: false }
+let rs_interrupt_spell = build_round_action(rs_interrupt_caster, CastSpellAction, 2, true, none, none, none, none, 0ft, 5, 0, some(CureLightWounds), [rs_interrupt_caster])
+let rs_interrupt_attack = build_round_action(rs_interrupt_foe, MeleeAttackAction, 3, false, some(rs_interrupt_caster), some(SwordLong))
+
+// Foe hits for 5 on segment 3; the queued heal must never resolve.
+rolls 18 5 4
+call resolve_round(1, [rs_interrupt_caster, rs_interrupt_foe], rs_interrupt_init, [rs_interrupt_spell, rs_interrupt_attack])
+
+assert_eq rs_interrupt_caster.hp, 7
+assert_eq rs_interrupt_caster.Spellcasting.memorised_spells.len(), 0
+assert_eq rs_interrupt_caster.Spellcasting.slots_used[0], 0
+assert_no_condition rs_interrupt_caster, CastingSpell
+
+
+// ── resolve_round: blocked declared spell never starts ──────────
+// Spellcasting gates such as Grappling must prevent both start and effect.
+rolls clear
+
+spawn Character rs_blocked_caster { name: "Round Spell Blocked", classes: [ClassLevel { class: Cleric, level: 3 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 12 }, Spellcasting { spell_slots: [2], slots_used: [0], memorised_spells: [] } }
+spawn Character rs_blocked_grappler { name: "Grappler", classes: [ClassLevel { class: Fighter, level: 3 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 24, hp: 24 } }
+
+do MemoriseSpell(rs_blocked_caster, CureLightWounds, 1)
+call apply_condition(rs_blocked_caster, Grappling(opponent: rs_blocked_grappler, hold: ArmGrab, is_controlling: false, hold_roll: 4), Duration.Indefinite)
+
+let rs_blocked_init = InitiativeResult { party_roll: 2, monster_roll: 6, party_segment: 2, monster_segment: 6, simultaneous: false }
+let rs_blocked_spell = build_round_action(rs_blocked_caster, CastSpellAction, 2, true, none, none, none, none, 0ft, 5, 0, some(CureLightWounds), [rs_blocked_caster])
+
+// If CastSpell gating is honored, no healing occurs and the memorised spell remains.
+rolls 4
+call resolve_round(1, [rs_blocked_caster], rs_blocked_init, [rs_blocked_spell])
+
+assert_eq rs_blocked_caster.hp, 12
+assert_eq rs_blocked_caster.Spellcasting.memorised_spells.len(), 1
+assert_eq rs_blocked_caster.Spellcasting.slots_used[0], 1
+assert_no_condition rs_blocked_caster, CastingSpell
+
+
 // ══════════════════════════════════════════════════════════════════
 //  MONSTER INITIATIVE INTEGRATION TESTS
 //

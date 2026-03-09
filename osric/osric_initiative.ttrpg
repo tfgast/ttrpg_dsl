@@ -689,14 +689,17 @@ system "OSRIC Initiative" {
                 }
             },
             CastSpellAction => {
-                // Spell completes this segment — remove CastingSpell.
-                // If interrupted by damage, the SpellInterruption hook
-                // already removed it and emitted SpellInterrupted.
-                // Currently Character-only; monster spellcasting TBD.
+                // Spell completes this segment only if casting is
+                // still active. Interrupted or blocked casts never
+                // apply their queued spell effect. Character-only;
+                // monster spellcasting TBD.
                 if action.combatant is Character {
-                    remove_condition(action.combatant, CastingSpell)
+                    let still_casting = any([c.name == "CastingSpell" for c in conditions(action.combatant)])
                     if action.spell_id.is_some() {
-                        resolve_spell(action.spell_id.unwrap(), action.combatant, action.spell_targets)
+                        if still_casting {
+                            remove_condition(action.combatant, CastingSpell)
+                            resolve_spell(action.spell_id.unwrap(), action.combatant, action.spell_targets)
+                        }
                     }
                 }
             },
@@ -919,14 +922,17 @@ system "OSRIC Initiative" {
             for seg in 1..=10 {
                 advance_time(1)
 
-                // Begin-casting: call BeginCasting on casters whose
-                // initiative segment is reached, applying CastingSpell
-                // (making them interruptible) and storing the invocation
-                // handle for concentration tracking.
+                // Begin-casting: route declared spells through the
+                // normal CastSpell action so memorization, slot
+                // consumption, and spellcasting gates all apply.
                 for a in actions {
                     if a.action_type == DeclaredActionType.CastSpellAction && a.initiative_segment == seg {
                         if a.combatant has Spellcasting as sc {
-                            a.combatant.BeginCasting(a.casting_time)
+                            if a.spell_id.is_some() {
+                                let spell_id = a.spell_id.unwrap()
+                                let spell_level = spell_def(spell_id).level
+                                a.combatant.CastSpell(spell_id, spell_level, a.casting_time)
+                            }
                         }
                     }
                 }
