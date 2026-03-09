@@ -68,6 +68,9 @@ fn collect_inner(program: &Program, modules: Option<&ModuleMap>) -> (TypeEnv, Ve
     // `processed_types` is shared across all systems so that a duplicate type
     // declaration in a later system doesn't overwrite the first definition.
     let mut processed_types: HashSet<Name> = HashSet::new();
+    // BudgetSpec is always the built-in definition (interpreter hard-codes
+    // { actor, budget } extraction), so prevent pass_1b from overwriting it.
+    processed_types.insert(Name::from("BudgetSpec"));
     for item in &program.items {
         if let TopLevel::System(system) = &item.node {
             pass_1b(
