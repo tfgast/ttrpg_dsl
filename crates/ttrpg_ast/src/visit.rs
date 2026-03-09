@@ -68,9 +68,16 @@ impl VisitSpansMut for Program {
 impl VisitSpansMut for TopLevel {
     fn visit_spans_mut(&mut self, f: &mut dyn FnMut(&mut Span)) {
         match self {
+            TopLevel::Import(i) => i.visit_spans_mut(f),
             TopLevel::Use(u) => u.visit_spans_mut(f),
             TopLevel::System(s) => s.visit_spans_mut(f),
         }
+    }
+}
+
+impl VisitSpansMut for ImportDecl {
+    fn visit_spans_mut(&mut self, f: &mut dyn FnMut(&mut Span)) {
+        self.span.visit_spans_mut(f);
     }
 }
 

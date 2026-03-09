@@ -294,7 +294,12 @@ impl Parser {
         self.skip_newlines();
         while !matches!(self.peek(), TokenKind::Eof) {
             let start = self.start_span();
-            if self.at_ident("use") {
+            if self.at_ident("import") {
+                match self.parse_import_decl() {
+                    Ok(i) => items.push(Spanned::new(TopLevel::Import(i), self.end_span(start))),
+                    Err(()) => self.recover_to_top_level(),
+                }
+            } else if self.at_ident("use") {
                 match self.parse_use_decl() {
                     Ok(u) => items.push(Spanned::new(TopLevel::Use(u), self.end_span(start))),
                     Err(()) => self.recover_to_top_level(),
@@ -309,7 +314,10 @@ impl Parser {
                 // unmatched brace from a recovered system block. Skip silently.
                 self.advance();
             } else {
-                self.error(format!("expected `use` or `system`, found {}", self.peek()));
+                self.error(format!(
+                    "expected `import`, `use`, or `system`, found {}",
+                    self.peek()
+                ));
                 self.advance();
             }
             self.skip_newlines();
@@ -318,6 +326,17 @@ impl Parser {
             items,
             ..Default::default()
         }
+    }
+
+    fn parse_import_decl(&mut self) -> Result<ImportDecl, ()> {
+        let start = self.start_span();
+        self.expect_soft_keyword("import")?;
+        let (path, _) = self.expect_string()?;
+        self.expect_term()?;
+        Ok(ImportDecl {
+            path,
+            span: self.end_span(start),
+        })
     }
 
     fn parse_use_decl(&mut self) -> Result<UseDecl, ()> {

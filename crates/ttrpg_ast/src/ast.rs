@@ -127,8 +127,22 @@ impl Program {
 #[derive(Clone)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum TopLevel {
+    Import(ImportDecl),
     Use(UseDecl),
     System(SystemBlock),
+}
+
+/// `import "relative/path.ttrpg"` — file-level source loading directive.
+///
+/// Unlike `use` (which controls symbol visibility between systems),
+/// `import` tells the source resolver to load another file as a transitive
+/// dependency. The resolver follows `import` edges to build the complete
+/// file graph from an entrypoint.
+#[derive(Clone)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct ImportDecl {
+    pub path: String,
+    pub span: Span,
 }
 
 #[derive(Clone)]

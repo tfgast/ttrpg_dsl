@@ -100,6 +100,7 @@ pub fn parse_multi(sources: &[(String, String)]) -> ParseMultiResult {
         let mut use_decls = Vec::new();
         for item in &program.items {
             match &item.node {
+                TopLevel::Import(_) => {} // handled by source resolver before parse_multi
                 TopLevel::System(s) => system_names.push(s.name.to_string()),
                 TopLevel::Use(u) => use_decls.push(u.clone()),
             }
@@ -136,6 +137,22 @@ pub fn parse_multi(sources: &[(String, String)]) -> ParseMultiResult {
         diagnostics: all_diagnostics,
         has_errors,
     }
+}
+
+/// Extract `import` paths from a source file without full parsing.
+///
+/// Returns `(path_string, span)` pairs for each `import "..."` directive found.
+/// Used by the source resolver to walk the import graph without running the full
+/// parse/lower/resolve pipeline.
+pub fn extract_imports(source: &str, file: FileId) -> (Vec<(String, Span)>, Vec<Diagnostic>) {
+    let (program, diags) = parse(source, file);
+    let mut imports = Vec::new();
+    for item in &program.items {
+        if let TopLevel::Import(i) = &item.node {
+            imports.push((i.path.clone(), i.span));
+        }
+    }
+    (imports, diags)
 }
 
 #[cfg(test)]

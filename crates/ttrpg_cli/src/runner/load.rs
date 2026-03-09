@@ -150,27 +150,26 @@ impl Runner {
 
     /// Load from already-resolved paths. Used by both `cmd_load` and `cmd_reload`
     /// so that reload doesn't need to round-trip paths through string tokenization.
+    ///
+    /// The source resolver follows `import` directives transitively, so callers
+    /// only need to provide entrypoint paths.
     pub(super) fn load_paths(&mut self, resolved_paths: Vec<PathBuf>) -> Result<(), CliError> {
-        // Read all files
-        let mut sources: Vec<(String, String)> = Vec::new();
-        for path in &resolved_paths {
-            let path_str = path.to_string_lossy();
-            match std::fs::read_to_string(path) {
-                Ok(s) => sources.push((path_str.into_owned(), s)),
-                Err(e) => {
-                    let msg = format!("cannot read '{path_str}': {e}");
-                    self.clear_state(resolved_paths);
-                    self.diagnostics = Vec::new();
-                    return Err(CliError::Message(msg));
-                }
-            }
-        }
+        // Resolve imports transitively: reads all files, follows `import` edges,
+        // deduplicates, and returns a stable load order.
+        let resolved = crate::source_resolve::resolve_sources(&resolved_paths).map_err(|e| {
+            self.clear_state(resolved_paths.clone());
+            self.diagnostics = Vec::new();
+            CliError::Message(e.to_string())
+        })?;
+
+        let sources = resolved.sources;
 
         // Always use parse_multi + check_with_modules so module resolution
         // works even for single-file programs.
         let result = ttrpg_parser::parse_multi(&sources);
 
-        let mut all_diags = result.diagnostics;
+        let mut all_diags = resolved.diagnostics;
+        all_diags.extend(result.diagnostics);
 
         // Run checker (module-aware)
         let check_result = ttrpg_checker::check_with_modules(&result.program, &result.module_map);
@@ -184,19 +183,16 @@ impl Runner {
         let loaded_label = if sources.len() == 1 {
             format!("loaded {}", sources[0].0)
         } else {
-            let file_list: Vec<_> = resolved_paths
-                .iter()
-                .map(|p| p.to_string_lossy().into_owned())
-                .collect();
+            let file_list: Vec<_> = sources.iter().map(|(name, _)| name.as_str()).collect();
             format!("loaded {} files: {}", file_list.len(), file_list.join(", "))
         };
 
         let error_label = if sources.len() == 1 {
             format!("'{}'", sources[0].0)
         } else {
-            resolved_paths
+            sources
                 .iter()
-                .map(|p| p.to_string_lossy().into_owned())
+                .map(|(name, _)| name.as_str())
                 .collect::<Vec<_>>()
                 .join(", ")
         };

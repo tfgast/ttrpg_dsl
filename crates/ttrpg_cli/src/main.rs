@@ -258,14 +258,14 @@ fn check_source(source: &str, snippet: bool, json: bool) {
     check_sources(sources, snippet, json);
 }
 
-/// Check DSL source files by path (with glob support).
+/// Check DSL source files by path (with glob support and import resolution).
 fn check_files(file_args: &[&str], snippet: bool, json: bool) {
-    let sources = resolve_and_read_files(file_args);
-    check_sources(sources, snippet, json);
+    let (sources, resolve_diags) = resolve_and_read_files(file_args);
+    check_sources_with_resolve_diags(sources, resolve_diags, snippet, json);
 }
 
-/// Resolve glob patterns and read file contents.
-fn resolve_and_read_files(file_args: &[&str]) -> Vec<(String, String)> {
+/// Resolve glob patterns, follow `import` directives transitively, and read file contents.
+fn resolve_and_read_files(file_args: &[&str]) -> (Vec<(String, String)>, Vec<ttrpg_parser::Diagnostic>) {
     let mut paths: Vec<PathBuf> = Vec::new();
     for arg in file_args {
         if arg.contains('*') || arg.contains('?') || arg.contains('[') {
@@ -299,17 +299,14 @@ fn resolve_and_read_files(file_args: &[&str]) -> Vec<(String, String)> {
         }
     }
 
-    let mut sources: Vec<(String, String)> = Vec::new();
-    for path in &paths {
-        match std::fs::read_to_string(path) {
-            Ok(content) => sources.push((path.to_string_lossy().into_owned(), content)),
-            Err(e) => {
-                eprintln!("cannot read '{}': {}", path.display(), e);
-                process::exit(1);
-            }
+    // Use the source resolver to follow `import` directives transitively.
+    match ttrpg_cli::source_resolve::resolve_sources(&paths) {
+        Ok(resolved) => (resolved.sources, resolved.diagnostics),
+        Err(e) => {
+            eprintln!("{e}");
+            process::exit(1);
         }
     }
-    sources
 }
 
 /// Print CLI usage and exit.
@@ -473,7 +470,7 @@ fn run_query(args: &[&str]) {
         });
         vec![("<stdin>".to_string(), source)]
     } else {
-        resolve_and_read_files(file_args)
+        resolve_and_read_files(file_args).0
     };
 
     query_sources(
@@ -665,6 +662,16 @@ fn query_all(env: &TypeEnv, system: Option<&str>) {
 /// `system "<check>" { ... }` before parsing, and diagnostic spans are
 /// adjusted so line/column numbers stay relative to the original input.
 fn check_sources(sources: Vec<(String, String)>, snippet: bool, json: bool) {
+    check_sources_with_resolve_diags(sources, Vec::new(), snippet, json);
+}
+
+/// Like `check_sources`, but prepends diagnostics from the source resolver.
+fn check_sources_with_resolve_diags(
+    sources: Vec<(String, String)>,
+    resolve_diags: Vec<ttrpg_parser::Diagnostic>,
+    snippet: bool,
+    json: bool,
+) {
     let snippet_prefix = "system \"<check>\" {\n";
     let snippet_suffix = "\n}\n";
     let prefix_len = snippet_prefix.len();
@@ -681,7 +688,8 @@ fn check_sources(sources: Vec<(String, String)>, snippet: bool, json: bool) {
             })
             .collect();
         let result = ttrpg_parser::parse_multi(&wrapped);
-        let mut diags = result.diagnostics;
+        let mut diags = resolve_diags;
+        diags.extend(result.diagnostics);
         let cr = ttrpg_checker::check_with_modules(&result.program, &result.module_map);
         diags.extend(cr.diagnostics);
 
@@ -702,7 +710,8 @@ fn check_sources(sources: Vec<(String, String)>, snippet: bool, json: bool) {
         diags
     } else {
         let result = ttrpg_parser::parse_multi(&sources);
-        let mut diags = result.diagnostics;
+        let mut diags = resolve_diags;
+        diags.extend(result.diagnostics);
         let cr = ttrpg_checker::check_with_modules(&result.program, &result.module_map);
         diags.extend(cr.diagnostics);
         diags
