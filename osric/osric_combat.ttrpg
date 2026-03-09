@@ -68,6 +68,7 @@ system "OSRIC Combat" {
         outcome: AttackOutcome
         total_mod: int
         damage: int
+        weapon_bonus: int = 0
     }
 
     struct TurnBudget {
@@ -386,7 +387,8 @@ system "OSRIC Combat" {
 
     derive base_armor_ac(char: Character) -> int {
         if char.worn_armor.is_some() {
-            armour_def(char.worn_armor.unwrap().armour_type).ascending_ac
+            let armor = char.worn_armor.unwrap()
+            armour_def(armor.armour_type).ascending_ac + armor.magic_bonus
         } else {
             10
         }
@@ -394,7 +396,8 @@ system "OSRIC Combat" {
 
     derive base_shield_bonus(char: Character) -> int {
         if char.worn_shield.is_some() {
-            shield_def(char.worn_shield.unwrap().shield_type).ac_bonus
+            let shield = char.worn_shield.unwrap()
+            shield_def(shield.shield_type).ac_bonus + shield.magic_bonus
         } else {
             0
         }
@@ -465,13 +468,14 @@ system "OSRIC Combat" {
         attack_mod: int = 0,
         roll_mode: RollMode = RollMode.Normal,
         max_damage: bool = false,
-        damage_mult: int = 1
+        damage_mult: int = 1,
+        weapon_bonus: int = 0
     ) -> AttackResult #attack_resolution {
         let bthb_val = character_bthb(attacker)
         let str_hit = effective_str_to_hit(attacker)
         let spec_hit = melee_spec_hit_mod(attacker, weapon)
         let target_ac = effective_target_ac(target)
-        let total_mod = bthb_val + str_hit + spec_hit + attack_mod
+        let total_mod = bthb_val + str_hit + spec_hit + attack_mod + weapon_bonus
         let outcome = match roll_mode {
             RollMode.AutoHit => AttackOutcome.Hit,
             _ => attack_roll_aac(total_mod, target_ac)
@@ -487,7 +491,7 @@ system "OSRIC Combat" {
             if attacker.abilities[STR] >= 15 { base } else { max(0, base - 1) }
         } else { 0 }
         let spec_dmg = melee_spec_damage_mod(attacker, weapon)
-        let dmg_mod = str_dmg + monk_dmg + spec_dmg
+        let dmg_mod = str_dmg + monk_dmg + spec_dmg + weapon_bonus
 
         let damage = match outcome {
             AttackOutcome.Hit => {
@@ -504,7 +508,7 @@ system "OSRIC Combat" {
             _ => 0
         }
 
-        AttackResult { outcome: outcome, total_mod: total_mod, damage: damage }
+        AttackResult { outcome: outcome, total_mod: total_mod, damage: damage, weapon_bonus: weapon_bonus }
     }
 
     // Missile attack: d20 + BTHB + DEX missile mod - range + attack_mod vs effective AC.
@@ -516,7 +520,8 @@ system "OSRIC Combat" {
         distance: Feet,
         attack_mod: int = 0,
         roll_mode: RollMode = RollMode.Normal,
-        max_damage: bool = false
+        max_damage: bool = false,
+        weapon_bonus: int = 0
     ) -> AttackResult #attack_resolution {
         let bthb_val = character_bthb(attacker)
         let dex_mod = dex_missile(attacker.abilities[DEX])
@@ -524,7 +529,7 @@ system "OSRIC Combat" {
         let wdef = missile_weapon_def(weapon)
         let range_mod = missile_range_penalty(distance, wdef.range_increment)
         let target_ac = effective_target_ac(target)
-        let total_mod = bthb_val + dex_mod + spec_hit + range_mod + attack_mod
+        let total_mod = bthb_val + dex_mod + spec_hit + range_mod + attack_mod + weapon_bonus
         let outcome = match roll_mode {
             RollMode.AutoHit => AttackOutcome.Hit,
             _ => attack_roll_aac(total_mod, target_ac)
@@ -538,7 +543,7 @@ system "OSRIC Combat" {
             if attacker.abilities[STR] >= 15 { base } else { max(0, base - 1) }
         } else { 0 }
         let spec_dmg = missile_spec_damage_mod(attacker, weapon)
-        let dmg_mod = str_dmg + monk_dmg + spec_dmg
+        let dmg_mod = str_dmg + monk_dmg + spec_dmg + weapon_bonus
 
         let damage = match outcome {
             AttackOutcome.Hit => {
@@ -551,7 +556,7 @@ system "OSRIC Combat" {
             _ => 0
         }
 
-        AttackResult { outcome: outcome, total_mod: total_mod, damage: damage }
+        AttackResult { outcome: outcome, total_mod: total_mod, damage: damage, weapon_bonus: weapon_bonus }
     }
 
     // Monster attack using hit dice for BTHB.
@@ -1624,12 +1629,14 @@ system "OSRIC Combat" {
     action MeleeAttack on attacker: Character (target: entity) {
         cost { attack }
         resolve {
+            let wielded = attacker.wielded_main
             let weapon = if wielded_melee(attacker).is_some() {
                 wielded_melee(attacker).unwrap()
             } else {
                 FistOrKick
             }
-            let result = resolve_melee_attack(attacker, target, weapon)
+            let wb = if wielded.is_some() { wielded_item_magic_bonus(wielded.unwrap()) } else { 0 }
+            let result = resolve_melee_attack(attacker, target, weapon, weapon_bonus: wb)
             match result.outcome {
                 AttackOutcome.Hit => {
                     let wdef = melee_weapon_def(weapon)
@@ -1651,7 +1658,8 @@ system "OSRIC Combat" {
         }
         resolve {
             let weapon = wielded_missile(attacker).unwrap()
-            let result = resolve_missile_attack(attacker, target, weapon, distance)
+            let wb = wielded_item_magic_bonus(attacker.wielded_main.unwrap())
+            let result = resolve_missile_attack(attacker, target, weapon, distance, weapon_bonus: wb)
             match result.outcome {
                 AttackOutcome.Hit => {
                     let wdef = missile_weapon_def(weapon)
@@ -1711,11 +1719,12 @@ system "OSRIC Combat" {
         weapon: MeleeWeapon,
         attack_mod: int = 0,
         roll_mode: RollMode = RollMode.Normal,
-        max_damage: bool = false
+        max_damage: bool = false,
+        weapon_bonus: int = 0
     ) -> AttackResult #attack_resolution {
         let bthb_val = monster_bthb(attacker.hit_dice)
         let target_ac = effective_target_ac(target)
-        let total_mod = bthb_val + attack_mod
+        let total_mod = bthb_val + attack_mod + weapon_bonus
         let outcome = match roll_mode {
             RollMode.AutoHit => AttackOutcome.Hit,
             _ => attack_roll_aac(total_mod, target_ac)
@@ -1724,16 +1733,17 @@ system "OSRIC Combat" {
         let wdef = melee_weapon_def(weapon)
         let tgt_size = target_size(target)
         let dmg_dice = if tgt_size > Size.Medium { wdef.damage_l } else { wdef.damage_sm }
+        let dmg_mod = weapon_bonus
 
         let damage = match outcome {
             AttackOutcome.Hit => {
-                if max_damage { max(1, max_value(dmg_dice)) }
-                else { damage_roll(dmg_dice) }
+                if max_damage { max(1, max_value(dmg_dice) + dmg_mod) }
+                else { damage_roll(dmg_dice, dmg_mod) }
             },
             _ => 0
         }
 
-        AttackResult { outcome: outcome, total_mod: total_mod, damage: damage }
+        AttackResult { outcome: outcome, total_mod: total_mod, damage: damage, weapon_bonus: weapon_bonus }
     }
 
     // Armed monster missile: HD-based BTHB + range penalty + weapon damage dice.
@@ -1744,13 +1754,14 @@ system "OSRIC Combat" {
         distance: Feet,
         attack_mod: int = 0,
         roll_mode: RollMode = RollMode.Normal,
-        max_damage: bool = false
+        max_damage: bool = false,
+        weapon_bonus: int = 0
     ) -> AttackResult #attack_resolution {
         let bthb_val = monster_bthb(attacker.hit_dice)
         let wdef = missile_weapon_def(weapon)
         let range_mod = missile_range_penalty(distance, wdef.range_increment)
         let target_ac = effective_target_ac(target)
-        let total_mod = bthb_val + range_mod + attack_mod
+        let total_mod = bthb_val + range_mod + attack_mod + weapon_bonus
         let outcome = match roll_mode {
             RollMode.AutoHit => AttackOutcome.Hit,
             _ => attack_roll_aac(total_mod, target_ac)
@@ -1758,16 +1769,17 @@ system "OSRIC Combat" {
 
         let tgt_size = target_size(target)
         let dmg_dice = if tgt_size > Size.Medium { wdef.damage_l } else { wdef.damage_sm }
+        let dmg_mod = weapon_bonus
 
         let damage = match outcome {
             AttackOutcome.Hit => {
-                if max_damage { max(1, max_value(dmg_dice)) }
-                else { damage_roll(dmg_dice) }
+                if max_damage { max(1, max_value(dmg_dice) + dmg_mod) }
+                else { damage_roll(dmg_dice, dmg_mod) }
             },
             _ => 0
         }
 
-        AttackResult { outcome: outcome, total_mod: total_mod, damage: damage }
+        AttackResult { outcome: outcome, total_mod: total_mod, damage: damage, weapon_bonus: weapon_bonus }
     }
 
     // Armed monster melee attack with wielded main-hand weapon.
@@ -1779,7 +1791,10 @@ system "OSRIC Combat" {
         }
         resolve {
             let weapon = wielded_melee(attacker).unwrap()
-            let result = resolve_armed_melee_attack(attacker, target, weapon)
+            let wb = if attacker has EquipmentSlots as eq {
+                if attacker.eq.wielded_main.is_some() { wielded_item_magic_bonus(attacker.eq.wielded_main.unwrap()) } else { 0 }
+            } else { 0 }
+            let result = resolve_armed_melee_attack(attacker, target, weapon, weapon_bonus: wb)
             match result.outcome {
                 AttackOutcome.Hit => {
                     let wdef = melee_weapon_def(weapon)
@@ -1802,7 +1817,10 @@ system "OSRIC Combat" {
         }
         resolve {
             let weapon = wielded_missile(attacker).unwrap()
-            let result = resolve_armed_missile_attack(attacker, target, weapon, distance)
+            let wb = if attacker has EquipmentSlots as eq {
+                if attacker.eq.wielded_main.is_some() { wielded_item_magic_bonus(attacker.eq.wielded_main.unwrap()) } else { 0 }
+            } else { 0 }
+            let result = resolve_armed_missile_attack(attacker, target, weapon, distance, weapon_bonus: wb)
             match result.outcome {
                 AttackOutcome.Hit => {
                     let wdef = missile_weapon_def(weapon)
@@ -1897,9 +1915,11 @@ system "OSRIC Combat" {
             let dex = attacker.abilities[DEX]
             let primary_penalty = two_weapon_primary_penalty(dex)
             let offhand_penalty = two_weapon_offhand_penalty(dex)
+            let primary_wb = wielded_item_magic_bonus(attacker.wielded_main.unwrap())
+            let offhand_wb = wielded_item_magic_bonus(attacker.wielded_off.unwrap())
 
             // Primary hand attack
-            let result1 = resolve_melee_attack(attacker, target, primary_weapon, primary_penalty)
+            let result1 = resolve_melee_attack(attacker, target, primary_weapon, primary_penalty, weapon_bonus: primary_wb)
             match result1.outcome {
                 AttackOutcome.Hit => {
                     let wdef = melee_weapon_def(primary_weapon)
@@ -1909,7 +1929,7 @@ system "OSRIC Combat" {
             }
 
             // Off-hand attack
-            let result2 = resolve_melee_attack(attacker, target, offhand_weapon, offhand_penalty)
+            let result2 = resolve_melee_attack(attacker, target, offhand_weapon, offhand_penalty, weapon_bonus: offhand_wb)
             match result2.outcome {
                 AttackOutcome.Hit => {
                     let wdef = melee_weapon_def(offhand_weapon)
@@ -1954,8 +1974,9 @@ system "OSRIC Combat" {
         }
         resolve {
             let weapon = wielded_melee(attacker).unwrap()
+            let wb = wielded_item_magic_bonus(attacker.wielded_main.unwrap())
             apply_condition(attacker, ChargeRecovery, Duration.Rounds(10))
-            let result = resolve_melee_attack(attacker, target, weapon, 2)
+            let result = resolve_melee_attack(attacker, target, weapon, 2, weapon_bonus: wb)
             match result.outcome {
                 AttackOutcome.Hit => {
                     let wdef = melee_weapon_def(weapon)
@@ -1978,7 +1999,8 @@ system "OSRIC Combat" {
         }
         resolve {
             let weapon = wielded_melee(defender).unwrap()
-            let result = resolve_melee_attack(defender, target, weapon, 0)
+            let wb = wielded_item_magic_bonus(defender.wielded_main.unwrap())
+            let result = resolve_melee_attack(defender, target, weapon, 0, weapon_bonus: wb)
             match result.outcome {
                 AttackOutcome.Hit => {
                     let wdef = melee_weapon_def(weapon)
@@ -2083,6 +2105,7 @@ system "OSRIC Combat" {
             let hidden = thief_skill_check(hide_pct)
             if hidden {
                 let weapon = wielded_melee(attacker).unwrap()
+                let wb = wielded_item_magic_bonus(attacker.wielded_main.unwrap())
                 let cl = backstab_class_level(attacker)
                 let mult = backstab_multiplier(cl.class, cl.level)
                 // Apply RearAttacked: strips DEX & shield AC, adds +2 to hit.
@@ -2090,7 +2113,7 @@ system "OSRIC Combat" {
                 apply_condition(target, RearAttacked, Duration.EndOfRound)
                 let result = resolve_melee_attack(
                     attacker, target, weapon, 2,
-                    RollMode.Normal, false, mult
+                    RollMode.Normal, false, mult, wb
                 )
                 remove_condition(target, "RearAttacked")
                 match result.outcome {
@@ -2159,9 +2182,10 @@ system "OSRIC Combat" {
             }
         } else {
             // Failed assassination: normal weapon attack
+            let wb = wielded_item_magic_bonus(attacker.wielded_main.unwrap())
             let result = resolve_melee_attack(
                 attacker, target, weapon, 0,
-                RollMode.Normal, false, 1
+                RollMode.Normal, false, 1, wb
             )
             let dmg = match result.outcome {
                 AttackOutcome.Hit => result.damage,

@@ -263,10 +263,10 @@ fn osric_core_has_all_structs() {
         structs.contains(&("MonsterAttack", 2)),
         "missing MonsterAttack struct"
     );
-    // Armor: armour_type
-    assert!(structs.contains(&("Armor", 1)), "missing Armor struct");
-    // Shield: shield_type
-    assert!(structs.contains(&("Shield", 1)), "missing Shield struct");
+    // Armor: armour_type, magic_bonus
+    assert!(structs.contains(&("Armor", 2)), "missing Armor struct");
+    // Shield: shield_type, magic_bonus
+    assert!(structs.contains(&("Shield", 2)), "missing Shield struct");
     // ClassLevel: class, level, xp
     assert!(
         structs.contains(&("ClassLevel", 3)),

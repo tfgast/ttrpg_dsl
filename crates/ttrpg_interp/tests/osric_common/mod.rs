@@ -117,6 +117,11 @@ pub fn shield_variant(variant: &str) -> Value {
 
 /// Construct an `option<Armor>` value with the given ArmourType variant.
 pub fn worn_armor(armour_type: &str) -> Value {
+    worn_armor_magic(armour_type, 0)
+}
+
+/// Construct an `option<Armor>` value with the given ArmourType variant and magic bonus.
+pub fn worn_armor_magic(armour_type: &str, magic_bonus: i64) -> Value {
     Value::Option(Some(Box::new(Value::Struct {
         name: Name::from("Armor"),
         fields: {
@@ -125,6 +130,7 @@ pub fn worn_armor(armour_type: &str) -> Value {
                 Name::from("armour_type"),
                 enum_variant("ArmourType", armour_type),
             );
+            f.insert(Name::from("magic_bonus"), Value::Int(magic_bonus));
             f
         },
     })))
@@ -132,6 +138,11 @@ pub fn worn_armor(armour_type: &str) -> Value {
 
 /// Construct an `option<Shield>` value with the given ShieldType variant.
 pub fn worn_shield(shield_type: &str) -> Value {
+    worn_shield_magic(shield_type, 0)
+}
+
+/// Construct an `option<Shield>` value with the given ShieldType variant and magic bonus.
+pub fn worn_shield_magic(shield_type: &str, magic_bonus: i64) -> Value {
     Value::Option(Some(Box::new(Value::Struct {
         name: Name::from("Shield"),
         fields: {
@@ -140,6 +151,7 @@ pub fn worn_shield(shield_type: &str) -> Value {
                 Name::from("shield_type"),
                 enum_variant("ShieldType", shield_type),
             );
+            f.insert(Name::from("magic_bonus"), Value::Int(magic_bonus));
             f
         },
     })))
@@ -147,12 +159,18 @@ pub fn worn_shield(shield_type: &str) -> Value {
 
 /// Construct an `option<WieldedItem>` for a melee weapon.
 pub fn wielded_melee_item(weapon: &str) -> Value {
+    wielded_melee_item_magic(weapon, 0)
+}
+
+/// Construct an `option<WieldedItem>` for a melee weapon with magic bonus.
+pub fn wielded_melee_item_magic(weapon: &str, magic_bonus: i64) -> Value {
     Value::Option(Some(Box::new(Value::EnumVariant {
         enum_name: Name::from("WieldedItem"),
         variant: Name::from("Melee"),
         fields: {
             let mut f = BTreeMap::new();
             f.insert(Name::from("weapon"), enum_variant("MeleeWeapon", weapon));
+            f.insert(Name::from("magic_bonus"), Value::Int(magic_bonus));
             f
         },
     })))
@@ -160,12 +178,18 @@ pub fn wielded_melee_item(weapon: &str) -> Value {
 
 /// Construct an `option<WieldedItem>` for a missile weapon.
 pub fn wielded_missile_item(weapon: &str) -> Value {
+    wielded_missile_item_magic(weapon, 0)
+}
+
+/// Construct an `option<WieldedItem>` for a missile weapon with magic bonus.
+pub fn wielded_missile_item_magic(weapon: &str, magic_bonus: i64) -> Value {
     Value::Option(Some(Box::new(Value::EnumVariant {
         enum_name: Name::from("WieldedItem"),
         variant: Name::from("Missile"),
         fields: {
             let mut f = BTreeMap::new();
             f.insert(Name::from("weapon"), enum_variant("MissileWeapon", weapon));
+            f.insert(Name::from("magic_bonus"), Value::Int(magic_bonus));
             f
         },
     })))
@@ -227,12 +251,22 @@ pub fn hit_points_group(max_hp: i64) -> Value {
 
 /// Build an EquipmentSlots include-group struct value.
 pub fn equipment_slots_group(worn_armor: Value, worn_shield: Value) -> Value {
+    equipment_slots_group_full(Value::Option(None), Value::Option(None), worn_armor, worn_shield)
+}
+
+/// Build an EquipmentSlots include-group struct value with weapon slots.
+pub fn equipment_slots_group_full(
+    wielded_main: Value,
+    wielded_off: Value,
+    worn_armor: Value,
+    worn_shield: Value,
+) -> Value {
     Value::Struct {
         name: Name::from("EquipmentSlots"),
         fields: {
             let mut f = BTreeMap::new();
-            f.insert(Name::from("wielded_main"), Value::Option(None));
-            f.insert(Name::from("wielded_off"), Value::Option(None));
+            f.insert(Name::from("wielded_main"), wielded_main);
+            f.insert(Name::from("wielded_off"), wielded_off);
             f.insert(Name::from("worn_armor"), worn_armor);
             f.insert(Name::from("worn_shield"), worn_shield);
             f.insert(Name::from("current_weight"), Value::Int(0));
@@ -636,6 +670,50 @@ pub fn make_character(
     fields.insert(
         Name::from("EquipmentSlots"),
         equipment_slots_group(armor_for_ac(ac), Value::Option(None)),
+    );
+
+    state.add_entity("Character", fields)
+}
+
+/// Build a Character with a weapon equipped and optional magic bonus.
+#[allow(clippy::too_many_arguments)]
+pub fn make_armed_character(
+    state: &mut GameState,
+    name: &str,
+    class: &str,
+    level: i64,
+    abilities: &[(&str, i64)],
+    max_hp: i64,
+    worn_armor_val: Value,
+    worn_shield_val: Value,
+    wielded_main: Value,
+    ancestry: &str,
+) -> EntityRef {
+    let mut ability_map = BTreeMap::new();
+    for &(ab, score) in abilities {
+        ability_map.insert(ability(ab), Value::Int(score));
+    }
+
+    let mut fields = FxHashMap::default();
+    fields.insert(Name::from("name"), Value::Str(name.to_string()));
+    fields.insert(
+        Name::from("classes"),
+        Value::List(vec![class_level_struct(class, level, 0)]),
+    );
+    fields.insert(Name::from("classing_mode"), classing_mode("Single"));
+    fields.insert(Name::from("ancestry"), enum_variant("Ancestry", ancestry));
+    fields.insert(
+        Name::from("alignment"),
+        enum_variant("Alignment", "TrueNeutral"),
+    );
+    fields.insert(Name::from("abilities"), Value::Map(ability_map));
+    fields.insert(Name::from("HitPoints"), hit_points_group(max_hp));
+    fields.insert(Name::from("base_movement"), feet(120));
+
+    fields.insert(Name::from("saving_throws"), Value::Option(None));
+    fields.insert(
+        Name::from("EquipmentSlots"),
+        equipment_slots_group_full(wielded_main, Value::Option(None), worn_armor_val, worn_shield_val),
     );
 
     state.add_entity("Character", fields)

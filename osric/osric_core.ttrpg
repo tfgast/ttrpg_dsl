@@ -108,16 +108,18 @@ system "OSRIC" {
     // --- Equipment wrapper types ---
 
     enum WieldedItem {
-        Melee(weapon: MeleeWeapon),
-        Missile(weapon: MissileWeapon)
+        Melee(weapon: MeleeWeapon, magic_bonus: int = 0),
+        Missile(weapon: MissileWeapon, magic_bonus: int = 0)
     }
 
     struct Armor {
-        armour_type: ArmourType
+        armour_type: ArmourType,
+        magic_bonus: int = 0
     }
 
     struct Shield {
-        shield_type: ShieldType
+        shield_type: ShieldType,
+        magic_bonus: int = 0
     }
 
     // --- Saving throw categories (five in 1e/OSRIC) ---

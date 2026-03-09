@@ -49,16 +49,26 @@ system "OSRIC Monster Traits" {
     //  better to hit. Some require specific bonus levels.
     // ========================================================
 
-    // Immune to all non-magical weapons.
+    // Immune to all non-magical weapons. Equivalent to RequiresMagicWeapon(bonus: 1).
     condition ImmuneToNormalWeapons on bearer: entity
         stacking first
-    {}
+    {
+        modify [#attack_resolution](target: bearer) {
+            result.damage = if result.weapon_bonus >= 1 { result.damage } else { 0 }
+            result.outcome = if result.weapon_bonus >= 1 { result.outcome } else { AttackOutcome.Miss }
+        }
+    }
 
     // Requires a specific minimum weapon bonus to hit.
     // e.g., RequiresMagicWeapon(bonus: 2) = needs +2 or better.
     condition RequiresMagicWeapon(bonus: int) on bearer: entity
         stacking best by highest(bonus) ties oldest
-    {}
+    {
+        modify [#attack_resolution](target: bearer) {
+            result.damage = if result.weapon_bonus >= bonus { result.damage } else { 0 }
+            result.outcome = if result.weapon_bonus >= bonus { result.outcome } else { AttackOutcome.Miss }
+        }
+    }
 
 
     // ========================================================
