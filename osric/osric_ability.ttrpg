@@ -14,6 +14,8 @@
 // Reference: OSRIC 3.0 Player Guide, Tables 1.1.2a-1.1.7a
 // ============================================================
 
+import "osric_core.ttrpg"
+
 use "OSRIC"
 
 system "OSRIC Ability" {

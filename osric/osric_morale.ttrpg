@@ -31,6 +31,10 @@
 // Reference: OSRIC 3.0 Player Guide, §1.6.8 (p.100)
 // ============================================================
 
+import "osric_ability.ttrpg"
+import "osric_combat.ttrpg"
+import "osric_core.ttrpg"
+
 use "OSRIC"
 use "OSRIC Combat"
 use "OSRIC Ability"

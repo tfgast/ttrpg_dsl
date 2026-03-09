@@ -20,6 +20,11 @@
 // Reference: OSRIC 3.0 Player Guide, §1.6.5, pp.97-98
 // ============================================================
 
+import "osric_character.ttrpg"
+import "osric_class.ttrpg"
+import "osric_combat.ttrpg"
+import "osric_core.ttrpg"
+
 use "OSRIC"
 use "OSRIC Character"
 use "OSRIC Classes"

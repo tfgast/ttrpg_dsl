@@ -23,6 +23,16 @@
 // Reference: OSRIC 3.0 Gamemaster Guide, §2.13.3
 // ============================================================
 
+import "osric_character.ttrpg"
+import "osric_combat.ttrpg"
+import "osric_conditions.ttrpg"
+import "osric_core.ttrpg"
+import "osric_equipment.ttrpg"
+import "osric_inventory.ttrpg"
+import "osric_saves.ttrpg"
+import "osric_spell_registry.ttrpg"
+import "osric_spells.ttrpg"
+
 use "OSRIC"
 use "OSRIC Character"
 use "OSRIC Combat"

@@ -12,6 +12,10 @@
 // Reference: OSRIC 3.0 Gamemaster Guide, Chapter 10
 // ============================================================
 
+import "osric_combat.ttrpg"
+import "osric_core.ttrpg"
+import "osric_monster_traits.ttrpg"
+
 use "OSRIC"
 use "OSRIC Combat"
 use "OSRIC Monster Traits"

@@ -17,6 +17,10 @@
 // Reference: OSRIC 3.0 Player Guide, §1.4.2
 // ============================================================
 
+import "osric_core.ttrpg"
+import "osric_equipment.ttrpg"
+import "osric_xp.ttrpg"
+
 use "OSRIC"
 use "OSRIC Equipment"
 use "OSRIC XP"

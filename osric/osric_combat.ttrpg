@@ -8,6 +8,15 @@
 // Reference: OSRIC 3.0 Player Guide, Chapter 6 (pp. 80–96)
 // ============================================================
 
+import "osric_ability.ttrpg"
+import "osric_character.ttrpg"
+import "osric_class.ttrpg"
+import "osric_conditions.ttrpg"
+import "osric_core.ttrpg"
+import "osric_equipment.ttrpg"
+import "osric_thief_skills.ttrpg"
+import "osric_weapon_spec.ttrpg"
+
 use "OSRIC"
 use "OSRIC Ability"
 use "OSRIC Character"

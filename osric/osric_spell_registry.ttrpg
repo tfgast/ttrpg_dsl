@@ -15,6 +15,16 @@
 // targets via entity dispatch.
 // ============================================================
 
+import "osric_character.ttrpg"
+import "osric_class.ttrpg"
+import "osric_cleric_spells.ttrpg"
+import "osric_combat.ttrpg"
+import "osric_conditions.ttrpg"
+import "osric_core.ttrpg"
+import "osric_mu_spells.ttrpg"
+import "osric_saves.ttrpg"
+import "osric_spells.ttrpg"
+
 use "OSRIC"
 use "OSRIC Character"
 use "OSRIC Classes"

@@ -13,6 +13,18 @@
 // Reference: OSRIC 3.0 Player Guide, §1.3 (class sections)
 // ============================================================
 
+import "osric_ability.ttrpg"
+import "osric_character.ttrpg"
+import "osric_class.ttrpg"
+import "osric_combat.ttrpg"
+import "osric_core.ttrpg"
+import "osric_dualclass.ttrpg"
+import "osric_level_drain.ttrpg"
+import "osric_multiclass.ttrpg"
+import "osric_saves.ttrpg"
+import "osric_spells.ttrpg"
+import "osric_thief_skills.ttrpg"
+
 use "OSRIC"
 use "OSRIC Ability"
 use "OSRIC Character"

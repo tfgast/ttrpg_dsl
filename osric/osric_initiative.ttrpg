@@ -39,6 +39,16 @@
 // Reference: OSRIC 3.0 Player Guide, Chapter 6 (pp. 90-93)
 // ============================================================
 
+import "osric_ability.ttrpg"
+import "osric_character.ttrpg"
+import "osric_class.ttrpg"
+import "osric_combat.ttrpg"
+import "osric_conditions.ttrpg"
+import "osric_core.ttrpg"
+import "osric_equipment.ttrpg"
+import "osric_spell_registry.ttrpg"
+import "osric_spells.ttrpg"
+
 use "OSRIC"
 use "OSRIC Ability"
 use "OSRIC Classes"

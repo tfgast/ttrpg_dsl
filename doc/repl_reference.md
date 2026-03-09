@@ -22,7 +22,7 @@ cat commands.txt | ttrpg        # pipe mode (no line editing)
 
 | Command                          | Description                                    |
 |----------------------------------|------------------------------------------------|
-| `load <path...>`                 | Load source files (glob patterns OK)           |
+| `load <path...>`                 | Load source files (follows `import` directives) |
 | `load <pkg>`                     | Load package by name via `ttrpg.toml` manifest |
 | `load <pkg>:<target>`            | Load named entry or bundle from a package      |
 | `source [-s] <<DELIM ... DELIM`  | Define inline DSL source (heredoc)             |

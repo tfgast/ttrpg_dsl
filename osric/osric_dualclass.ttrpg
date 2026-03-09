@@ -17,6 +17,10 @@
 // Reference: OSRIC 3.0 Player Guide §1.3.12 (p.69)
 // ============================================================
 
+import "osric_character.ttrpg"
+import "osric_class.ttrpg"
+import "osric_core.ttrpg"
+
 use "OSRIC"
 use "OSRIC Classes"
 use "OSRIC Character"

@@ -12,6 +12,10 @@
 // Reference: OSRIC 3.0 Player Guide, Tables 1.3.x.4b
 // ============================================================
 
+import "osric_ability.ttrpg"
+import "osric_class.ttrpg"
+import "osric_core.ttrpg"
+
 use "OSRIC"
 use "OSRIC Classes"
 use "OSRIC Ability"

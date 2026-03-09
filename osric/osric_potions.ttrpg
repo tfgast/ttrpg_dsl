@@ -16,6 +16,16 @@
 // Reference: OSRIC 3.0 Gamemaster Guide, §2.13.2
 // ============================================================
 
+import "osric_ability.ttrpg"
+import "osric_character.ttrpg"
+import "osric_combat.ttrpg"
+import "osric_conditions.ttrpg"
+import "osric_core.ttrpg"
+import "osric_equipment.ttrpg"
+import "osric_inventory.ttrpg"
+import "osric_monster_traits.ttrpg"
+import "osric_saves.ttrpg"
+
 use "OSRIC"
 use "OSRIC Ability"
 use "OSRIC Character"

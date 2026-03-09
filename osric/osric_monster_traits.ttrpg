@@ -9,6 +9,9 @@
 // Reference: OSRIC 3.0 Gamemaster Guide, Chapter 3 (Monsters)
 // ============================================================
 
+import "osric_combat.ttrpg"
+import "osric_core.ttrpg"
+
 use "OSRIC"
 use "OSRIC Combat"
 

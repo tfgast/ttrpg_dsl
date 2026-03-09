@@ -8,6 +8,12 @@
 // Reference: OSRIC 3.0 Player Guide, Chapters 1-3
 // ============================================================
 
+import "osric_combat.ttrpg"
+import "osric_equipment.ttrpg"
+import "osric_inventory.ttrpg"
+import "osric_spells.ttrpg"
+import "osric_weapon_spec.ttrpg"
+
 use "OSRIC Equipment"
 use "OSRIC Combat"
 use "OSRIC Spells"

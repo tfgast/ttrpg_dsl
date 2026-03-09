@@ -8,6 +8,8 @@
 // Reference: OSRIC 3.0 Player Guide, Chapter 3
 // ============================================================
 
+import "osric_core.ttrpg"
+
 use "OSRIC"
 
 system "OSRIC Classes" {

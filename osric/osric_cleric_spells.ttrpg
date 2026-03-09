@@ -8,6 +8,15 @@
 // Reference: OSRIC 3.0 Player Guide, §1.8.2
 // ============================================================
 
+import "osric_ability.ttrpg"
+import "osric_character.ttrpg"
+import "osric_class.ttrpg"
+import "osric_combat.ttrpg"
+import "osric_conditions.ttrpg"
+import "osric_core.ttrpg"
+import "osric_saves.ttrpg"
+import "osric_spells.ttrpg"
+
 use "OSRIC"
 use "OSRIC Ability"
 use "OSRIC Character"

@@ -18,6 +18,9 @@
 // Reference: OSRIC 3.0 Player Guide, §1.6.2.8 (p.95)
 // ============================================================
 
+import "osric_ability.ttrpg"
+import "osric_core.ttrpg"
+
 use "OSRIC"
 use "OSRIC Ability"
 

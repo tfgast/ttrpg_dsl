@@ -11,6 +11,11 @@
 //            ancestry sections §1.2.1–1.2.6
 // ============================================================
 
+import "osric_character.ttrpg"
+import "osric_class.ttrpg"
+import "osric_core.ttrpg"
+import "osric_initiative.ttrpg"
+
 use "OSRIC"
 use "OSRIC Classes"
 use "OSRIC Character"

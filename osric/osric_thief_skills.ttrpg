@@ -14,6 +14,11 @@
 //            pp. 31-32 (Assassin)
 // ============================================================
 
+import "osric_ability.ttrpg"
+import "osric_character.ttrpg"
+import "osric_class.ttrpg"
+import "osric_core.ttrpg"
+
 use "OSRIC"
 use "OSRIC Ability"
 use "OSRIC Character"

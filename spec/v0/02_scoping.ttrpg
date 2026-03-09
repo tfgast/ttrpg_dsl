@@ -1083,23 +1083,54 @@ hook Regenerate on creature: Character (
 
 // --- Modules and imports ---
 //
-// Each file can contain `use` declarations and `system` blocks.
-// `use` imports all public names from another system by name.
+// Each file can contain `import` declarations, `use` declarations,
+// and `system` blocks.
+//
+// `import` loads source files by path (file-level dependency).
+// `use` exposes all public names from another system by name
+//   (symbol-level visibility).
+//
 // All top-level declarations in a system block are public.
 // No private/public distinction in v0.
 //
 // Grammar:
+//   import_decl = "import" STRING TERM
 //   use_decl    = "use" STRING ("as" IDENT)? TERM
-//   top_level   = use_decl | system_decl
+//   top_level   = import_decl | use_decl | system_decl
 //
 // `as` is a soft keyword — it is recognized as a keyword after the
 // `use` string literal, after group names in `with` constraints, and
 // after group names in `has` expressions. Identifiers named `as` are
 // valid elsewhere in the language.
 //
-// Multiple files are loaded via the CLI:
+// --- Source imports (import directive) ---
+//
+// The `import` directive declares a file-level source dependency:
+//
+//   import "combat.ttrpg"
+//   import "sub/helpers.ttrpg"
+//
+// Import paths are resolved relative to the importing file's
+// directory. Transitive imports are followed automatically: if
+// a.ttrpg imports b.ttrpg and b.ttrpg imports c.ttrpg, loading
+// a.ttrpg discovers and loads all three files.
+//
+// Files are deduplicated by canonical path, so diamond-shaped
+// import graphs (a→b, a→c, b→d, c→d) load each file exactly once.
+// Mutual imports between files are allowed (deduplication prevents
+// infinite loops).
+//
+// Import ordering: entrypoint files are loaded first, then their
+// transitive dependencies in BFS discovery order.
+//
+// Prefer `import` over glob patterns or manual multi-file CLI
+// invocations. When each file declares its own imports, the
+// dependency graph is explicit and only the entrypoint file(s)
+// need to be specified to load the full source set.
+//
+// Multiple files can still be loaded via the CLI:
 //   load core.ttrpg combat.ttrpg
-//   load systems/*.ttrpg          // glob expansion
+//   load systems/*.ttrpg          // glob expansion (legacy)
 //
 // Files are parsed independently, then spans are rebased into a
 // single unified offset space (with 1-byte sentinel gaps between
@@ -1110,8 +1141,8 @@ hook Regenerate on creature: Character (
 //
 // A package manifest declares package identity, named entrypoints,
 // and curated bundles. The file graph itself lives in source files
-// (via future `import` directives) — the manifest does not list
-// every transitive file.
+// (via `import` directives) — the manifest lists root entry files,
+// and the import resolver discovers transitive dependencies.
 //
 // Manifest format (v1):
 //

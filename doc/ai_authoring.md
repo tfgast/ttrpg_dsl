@@ -195,6 +195,7 @@ system "Core" {
 }
 
 // ext.ttrpg — imports Core
+import "core.ttrpg"
 use "Core"
 system "Ext" {
     action Zap on target: Character () {
@@ -1276,7 +1277,31 @@ Recommended declaration order within a `system` block:
 18. Options
 
 Multiple `system` blocks with the same name merge additively.
-Imports (`use`) are NOT transitive — each file must declare its own.
+Symbol imports (`use`) are NOT transitive — each file must declare its own.
+
+## Source Imports
+
+Use the `import` directive to declare file-level source dependencies:
+
+```
+import "core.ttrpg"
+import "combat.ttrpg"
+
+use "Core"
+system "Ext" {
+    // can reference types from Core
+}
+```
+
+- `import` loads source files; `use` exposes symbols from another system
+- Import paths are resolved relative to the importing file's directory
+- Transitive imports are followed automatically — if `a.ttrpg` imports `b.ttrpg` and `b.ttrpg` imports `c.ttrpg`, loading `a.ttrpg` loads all three
+- Duplicate imports are deduplicated by canonical path (diamond patterns are fine)
+- Mutual imports between files are allowed (no cycle errors)
+
+**Prefer `import` over glob patterns.** When each file declares its own imports, the dependency graph is explicit and the CLI only needs the entrypoint file(s) to discover the full set of sources.
+
+`import` goes at the top of the file, before `use` declarations and `system` blocks.
 
 ## Package Manifests
 
@@ -1317,7 +1342,7 @@ When creating a new rule module directory, add a `ttrpg.toml` with at minimum a 
 
 ## Validation Workflow
 
-Check a full file:
+Check a file (transitive `import` dependencies are resolved automatically):
 
 ```bash
 ttrpg check myfile.ttrpg
@@ -1329,10 +1354,10 @@ Check a snippet (auto-wrapped in `system "<check>" { ... }`):
 echo 'derive foo() -> int { floor(10 / 3) }' | ttrpg check -s
 ```
 
-Check multiple files together:
+Check multiple files together (imports are still followed from each):
 
 ```bash
-ttrpg check core.ttrpg combat.ttrpg spells.ttrpg
+ttrpg check core.ttrpg combat.ttrpg
 ```
 
 ---

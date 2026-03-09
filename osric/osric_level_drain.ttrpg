@@ -18,6 +18,12 @@
 //            Restoration spell (p.158)
 // ============================================================
 
+import "osric_ability.ttrpg"
+import "osric_class.ttrpg"
+import "osric_combat.ttrpg"
+import "osric_core.ttrpg"
+import "osric_multiclass.ttrpg"
+
 use "OSRIC"
 use "OSRIC Ability"
 use "OSRIC Classes"
