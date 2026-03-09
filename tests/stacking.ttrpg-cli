@@ -1,0 +1,105 @@
+// Condition stacking integration coverage.
+//
+// Equivalent of the runtime portions of
+// crates/ttrpg_interp/tests/stacking_integration.rs.
+
+source <<END
+system "Stacking" {
+    entity Character {
+        base_atk: int
+        base_def: int
+    }
+
+    derive attack_score(target: Character, bonus: int = 0) -> int {
+        target.base_atk + bonus
+    }
+
+    derive defense_score(target: Character, bonus: int = 0) -> int {
+        target.base_def + bonus
+    }
+
+    condition Buff on bearer: Character {
+        modify attack_score(target: bearer) {
+            bonus = bonus + 1
+        }
+    }
+
+    condition Prone on bearer: Character
+        stacking first
+    {
+        modify attack_score(target: bearer) {
+            bonus = bonus - 4
+        }
+    }
+
+    condition Shield(level: int) on bearer: Character
+        stacking best by highest(level) ties oldest
+    {
+        modify defense_score(target: bearer) {
+            bonus = bonus + level
+        }
+    }
+
+    condition Curse(severity: int) on bearer: Character
+        stacking best by lowest(severity) ties oldest
+    {
+        modify attack_score(target: bearer) {
+            bonus = bonus - severity
+        }
+    }
+}
+END
+
+// ── stacking: all ──────────────────────────────────────────────
+
+spawn Character stacking_all { base_atk: 5, base_def: 10 }
+call apply_condition(stacking_all, Buff, Duration.Indefinite)
+call apply_condition(stacking_all, Buff, Duration.Indefinite)
+call apply_condition(stacking_all, Buff, Duration.Indefinite)
+assert_eq attack_score(stacking_all), 8
+
+// ── stacking: first suppresses duplicates ──────────────────────
+
+spawn Character first_oldest { base_atk: 10, base_def: 10 }
+call apply_condition(first_oldest, Prone, Duration.Indefinite)
+call apply_condition(first_oldest, Prone, Duration.Indefinite)
+call apply_condition(first_oldest, Prone, Duration.Indefinite)
+assert_eq attack_score(first_oldest), 6
+
+// ── stacking: best by highest picks strongest ──────────────────
+
+spawn Character highest_best { base_atk: 5, base_def: 10 }
+call apply_condition(highest_best, Shield(level: 2), Duration.Indefinite)
+call apply_condition(highest_best, Shield(level: 5), Duration.Indefinite)
+call apply_condition(highest_best, Shield(level: 3), Duration.Indefinite)
+assert_eq defense_score(highest_best), 15
+
+// ── stacking: best by lowest picks weakest value ───────────────
+
+spawn Character lowest_best { base_atk: 10, base_def: 10 }
+call apply_condition(lowest_best, Curse(severity: 5), Duration.Indefinite)
+call apply_condition(lowest_best, Curse(severity: 1), Duration.Indefinite)
+call apply_condition(lowest_best, Curse(severity: 3), Duration.Indefinite)
+assert_eq attack_score(lowest_best), 9
+
+// ── stacking: first still works for a single instance ──────────
+
+spawn Character first_single { base_atk: 10, base_def: 10 }
+call apply_condition(first_single, Prone, Duration.Indefinite)
+assert_eq attack_score(first_single), 6
+
+// ── stacking policies are independent across conditions ────────
+
+spawn Character mixed_conditions { base_atk: 10, base_def: 10 }
+call apply_condition(mixed_conditions, Buff, Duration.Indefinite)
+call apply_condition(mixed_conditions, Buff, Duration.Indefinite)
+call apply_condition(mixed_conditions, Prone, Duration.Indefinite)
+call apply_condition(mixed_conditions, Prone, Duration.Indefinite)
+assert_eq attack_score(mixed_conditions), 8
+
+// ── ties oldest keeps a single strongest instance active ───────
+
+spawn Character tied_shields { base_atk: 5, base_def: 10 }
+call apply_condition(tied_shields, Shield(level: 3), Duration.Indefinite)
+call apply_condition(tied_shields, Shield(level: 3), Duration.Indefinite)
+assert_eq defense_score(tied_shields), 13

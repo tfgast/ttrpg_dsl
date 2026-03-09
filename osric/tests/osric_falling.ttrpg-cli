@@ -1,0 +1,95 @@
+// OSRIC falling damage integration tests
+//
+// Equivalent of crates/ttrpg_interp/tests/osric_falling_integration.rs
+// Tests falling_damage_dice and apply_falling_damage.
+
+load osric/*.ttrpg
+
+// ── falling_damage_dice ───────────────────────────────────────
+
+assert_eq falling_damage_dice(5), 0d6
+assert_eq falling_damage_dice(10), 1d6
+assert_eq falling_damage_dice(20), 3d6
+assert_eq falling_damage_dice(30), 6d6
+assert_eq falling_damage_dice(40), 10d6
+assert_eq falling_damage_dice(50), 15d6
+assert_eq falling_damage_dice(100), 20d6
+
+// ── apply_falling_damage without save ─────────────────────────
+
+rolls 3 4 5
+let no_save = apply_falling_damage(
+    20,
+    SavingThrows {
+        aimed_magic: 13,
+        breath: 13,
+        death_paralysis_poison: 11,
+        petrification_polymorph: 12,
+        spells: 14
+    },
+    false,
+    0
+)
+assert_eq no_save.distance_ft, 20
+assert_eq no_save.base_damage, 12
+assert_eq no_save.saved, false
+assert_eq no_save.damage_taken, 12
+
+// ── apply_falling_damage with successful save ────────────────
+
+rolls clear
+rolls 2 3 4 1 2 6 15
+let saved = apply_falling_damage(
+    30,
+    SavingThrows {
+        aimed_magic: 13,
+        breath: 13,
+        death_paralysis_poison: 11,
+        petrification_polymorph: 12,
+        spells: 14
+    },
+    true,
+    0
+)
+assert_eq saved.base_damage, 18
+assert_eq saved.saved, true
+assert_eq saved.damage_taken, 9
+
+// ── apply_falling_damage with failed save ─────────────────────
+
+rolls clear
+rolls 3 3 3 3 3 3 5
+let failed_save = apply_falling_damage(
+    30,
+    SavingThrows {
+        aimed_magic: 13,
+        breath: 13,
+        death_paralysis_poison: 11,
+        petrification_polymorph: 12,
+        spells: 14
+    },
+    true,
+    0
+)
+assert_eq failed_save.base_damage, 18
+assert_eq failed_save.saved, false
+assert_eq failed_save.damage_taken, 18
+
+// ── <10ft falls do not attempt save or deal damage ───────────
+
+rolls clear
+let short_fall = apply_falling_damage(
+    5,
+    SavingThrows {
+        aimed_magic: 13,
+        breath: 13,
+        death_paralysis_poison: 11,
+        petrification_polymorph: 12,
+        spells: 14
+    },
+    true,
+    0
+)
+assert_eq short_fall.base_damage, 0
+assert_eq short_fall.saved, false
+assert_eq short_fall.damage_taken, 0

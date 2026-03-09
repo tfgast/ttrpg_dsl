@@ -1,0 +1,82 @@
+// OSRIC magic item enhancement bonus integration tests
+//
+// Equivalent of crates/ttrpg_interp/tests/osric_magic_items_integration.rs
+// Tests mundane vs magical weapon damage, magical armor/shield AC bonuses,
+// RequiresMagicWeapon gating, and ImmuneToNormalWeapons blocking.
+
+load osric/*.ttrpg
+
+// ── Mundane weapon attack/damage unchanged ──────────────────────
+
+spawn Character mundane_atk { name: "Fighter", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 }, EquipmentSlots { wielded_main: some(Melee(SwordLong)) } }
+spawn Character mundane_tgt { name: "Target", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 } }
+
+rolls 15 5
+do MeleeAttack(mundane_atk, mundane_tgt)
+assert_eq mundane_tgt.hp, 15
+
+// ── +2 weapon adds to attack and damage ─────────────────────────
+
+spawn Character magic_weapon_atk { name: "Fighter", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 }, EquipmentSlots { wielded_main: some(Melee(SwordLong, 2)) } }
+spawn Character magic_weapon_tgt { name: "Target", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 }, EquipmentSlots { worn_armor: some(Armor { armour_type: PlateMail }) } }
+
+rolls clear
+rolls 15 5
+do MeleeAttack(magic_weapon_atk, magic_weapon_tgt)
+assert_eq magic_weapon_tgt.hp, 13
+
+// ── +2 armor improves AC ────────────────────────────────────────
+
+spawn Character magic_armor_char { name: "Knight", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 }, EquipmentSlots { worn_armor: some(Armor { armour_type: ChainMail, magic_bonus: 2 }) } }
+
+assert_eq effective_target_ac(magic_armor_char), 17
+
+// ── +1 shield improves AC ───────────────────────────────────────
+
+spawn Character magic_shield_char { name: "Knight", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 }, EquipmentSlots { worn_armor: some(Armor { armour_type: Leather }), worn_shield: some(Shield { shield_type: SmallShield, magic_bonus: 1 }) } }
+
+assert_eq effective_target_ac(magic_shield_char), 14
+
+// ── RequiresMagicWeapon blocks mundane weapon ───────────────────
+
+spawn Character req_mundane_atk { name: "Fighter", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 }, EquipmentSlots { wielded_main: some(Melee(SwordLong)) } }
+spawn Monster req_gargoyle { name: "Gargoyle", hit_dice: 4d8, max_hp: 20, hp: 20, ac: 15, attacks: [MonsterAttack { name: "Claw", damage: 1d4 }], special: [] }
+call apply_condition(req_gargoyle, RequiresMagicWeapon(bonus: 1), Duration.Indefinite)
+
+rolls clear
+rolls 20 5
+do MeleeAttack(req_mundane_atk, req_gargoyle)
+assert_eq req_gargoyle.hp, 20
+
+// ── RequiresMagicWeapon allows sufficient bonus ─────────────────
+
+spawn Character req_magic_atk { name: "Fighter", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 }, EquipmentSlots { wielded_main: some(Melee(SwordLong, 1)) } }
+spawn Monster req_magic_gargoyle { name: "Gargoyle", hit_dice: 4d8, max_hp: 20, hp: 20, ac: 10, attacks: [MonsterAttack { name: "Claw", damage: 1d4 }], special: [] }
+call apply_condition(req_magic_gargoyle, RequiresMagicWeapon(bonus: 1), Duration.Indefinite)
+
+rolls clear
+rolls 15 5
+do MeleeAttack(req_magic_atk, req_magic_gargoyle)
+assert_eq req_magic_gargoyle.hp, 14
+
+// ── ImmuneToNormalWeapons blocks mundane attacks ────────────────
+
+spawn Character immune_mundane_atk { name: "Fighter", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 }, EquipmentSlots { wielded_main: some(Melee(SwordLong)) } }
+spawn Monster immune_wraith { name: "Wraith", hit_dice: 4d8, max_hp: 20, hp: 20, ac: 15, attacks: [MonsterAttack { name: "Touch", damage: 1d6 }], special: [] }
+call apply_condition(immune_wraith, ImmuneToNormalWeapons, Duration.Indefinite)
+
+rolls clear
+rolls 20 5
+do MeleeAttack(immune_mundane_atk, immune_wraith)
+assert_eq immune_wraith.hp, 20
+
+// ── ImmuneToNormalWeapons allows magic weapon ───────────────────
+
+spawn Character immune_magic_atk { name: "Fighter", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 }, EquipmentSlots { wielded_main: some(Melee(SwordLong, 1)) } }
+spawn Monster immune_magic_wraith { name: "Wraith", hit_dice: 4d8, max_hp: 20, hp: 20, ac: 10, attacks: [MonsterAttack { name: "Touch", damage: 1d6 }], special: [] }
+call apply_condition(immune_magic_wraith, ImmuneToNormalWeapons, Duration.Indefinite)
+
+rolls clear
+rolls 15 5
+do MeleeAttack(immune_magic_atk, immune_magic_wraith)
+assert_eq immune_magic_wraith.hp, 14

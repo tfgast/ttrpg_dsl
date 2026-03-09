@@ -1,13 +1,14 @@
 //! Hook integration tests.
 //!
-//! Tests the full pipeline (parse → check → interpret) for hook declarations,
-//! exercising event matching, execution, and the fire_hooks API.
+//! Entity-facing runtime coverage has moved to `tests/hooks.ttrpg-cli`.
+//! These Rust tests keep direct interpreter/effect-handler behavior that still
+//! depends on `execute_hook`/`fire_hooks` APIs.
 
 use std::collections::{BTreeMap, HashMap, VecDeque};
 
 use ttrpg_ast::diagnostic::Severity;
 use ttrpg_ast::FileId;
-use ttrpg_interp::effect::{ActionKind, Effect, EffectHandler, Response};
+use ttrpg_interp::effect::{Effect, EffectHandler, Response};
 use ttrpg_interp::state::{ActiveCondition, EntityRef, StateProvider};
 use ttrpg_interp::value::Value;
 use ttrpg_interp::Interpreter;
@@ -127,188 +128,6 @@ fn make_payload(event_name: &str, fields: Vec<(&str, Value)>) -> Value {
 // ── Tests ──────────────────────────────────────────────────────
 
 #[test]
-fn hook_fires_on_matching_event() {
-    let source = r#"
-system "test" {
-    entity Character { HP: int }
-    event damage(target: Character) {}
-    hook OnDamage on target: Character (trigger: damage(target: target)) {
-        target.HP -= 1
-    }
-}
-"#;
-    let (program, result) = setup(source);
-    let interp = Interpreter::new(&program, &result.env).unwrap();
-    let mut state = TestState::new();
-    state.fields.insert((1, "HP".into()), Value::Int(20));
-    state.conditions.insert(1, vec![]);
-
-    let payload = make_payload("damage", vec![("target", Value::Entity(EntityRef(1)))]);
-
-    // Query which hooks match
-    let hook_result = interp
-        .what_hooks(&state, "damage", payload.clone(), &[EntityRef(1)])
-        .unwrap();
-
-    assert_eq!(hook_result.hooks.len(), 1);
-    assert_eq!(hook_result.hooks[0].name, "OnDamage");
-    assert_eq!(hook_result.hooks[0].target, EntityRef(1));
-
-    // Execute the hook
-    let mut handler = ScriptedHandler::new();
-    let val = interp
-        .execute_hook(&state, &mut handler, "OnDamage", EntityRef(1), payload)
-        .unwrap();
-    assert_eq!(val, Value::Void); // assignment returns None
-
-    // Verify effect sequence: ActionStarted(Hook), MutateField, ActionCompleted
-    assert_eq!(handler.log.len(), 3);
-    assert!(matches!(
-        &handler.log[0],
-        Effect::ActionStarted { name, kind: ActionKind::Hook { event, .. }, .. }
-        if name == "OnDamage" && event == "damage"
-    ));
-    assert!(matches!(&handler.log[1], Effect::MutateField { .. }));
-    assert!(matches!(&handler.log[2], Effect::ActionCompleted { name, .. } if name == "OnDamage"));
-}
-
-#[test]
-fn hook_skips_non_matching_entity() {
-    let source = r#"
-system "test" {
-    entity Character { HP: int }
-    event damage(target: Character) {}
-    hook OnDamage on target: Character (trigger: damage(target: target)) {
-        target.HP -= 1
-    }
-}
-"#;
-    let (program, result) = setup(source);
-    let interp = Interpreter::new(&program, &result.env).unwrap();
-    let state = TestState::new();
-
-    // Payload targets entity(1), but candidate is entity(2)
-    let payload = make_payload("damage", vec![("target", Value::Entity(EntityRef(1)))]);
-
-    let hook_result = interp
-        .what_hooks(&state, "damage", payload, &[EntityRef(2)])
-        .unwrap();
-
-    assert_eq!(hook_result.hooks.len(), 0);
-}
-
-#[test]
-fn hook_can_mutate_entity_field() {
-    let source = r#"
-system "test" {
-    entity Character { HP: int }
-    event heal(target: Character) {}
-    hook OnHeal on target: Character (trigger: heal(target: target)) {
-        target.HP += 5
-    }
-}
-"#;
-    let (program, result) = setup(source);
-    let interp = Interpreter::new(&program, &result.env).unwrap();
-    let mut state = TestState::new();
-    state.fields.insert((1, "HP".into()), Value::Int(10));
-    state.conditions.insert(1, vec![]);
-
-    let payload = make_payload("heal", vec![("target", Value::Entity(EntityRef(1)))]);
-
-    let mut handler = ScriptedHandler::new();
-    interp
-        .execute_hook(&state, &mut handler, "OnHeal", EntityRef(1), payload)
-        .unwrap();
-
-    // Should have MutateField effect
-    assert!(handler
-        .log
-        .iter()
-        .any(|e| matches!(e, Effect::MutateField { .. })));
-}
-
-#[test]
-fn hook_declaration_order_preserved() {
-    let source = r#"
-system "test" {
-    entity Character { HP: int }
-    event damage(target: Character) {}
-    hook First on target: Character (trigger: damage(target: target)) {
-        target.HP -= 1
-    }
-    hook Second on target: Character (trigger: damage(target: target)) {
-        target.HP -= 2
-    }
-    hook Third on target: Character (trigger: damage(target: target)) {
-        target.HP -= 3
-    }
-}
-"#;
-    let (program, result) = setup(source);
-    let interp = Interpreter::new(&program, &result.env).unwrap();
-    let mut state = TestState::new();
-    state.fields.insert((1, "HP".into()), Value::Int(20));
-    state.conditions.insert(1, vec![]);
-
-    let payload = make_payload("damage", vec![("target", Value::Entity(EntityRef(1)))]);
-
-    let hook_result = interp
-        .what_hooks(&state, "damage", payload, &[EntityRef(1)])
-        .unwrap();
-
-    assert_eq!(hook_result.hooks.len(), 3);
-    assert_eq!(hook_result.hooks[0].name, "First");
-    assert_eq!(hook_result.hooks[1].name, "Second");
-    assert_eq!(hook_result.hooks[2].name, "Third");
-}
-
-#[test]
-fn hook_not_suppressed_by_conditions() {
-    // Hooks should NOT be affected by condition suppression (only reactions are)
-    let source = r#"
-system "test" {
-    entity Character { HP: int }
-    event damage(target: Character) {}
-    hook OnDamage on target: Character (trigger: damage(target: target)) {
-        target.HP -= 1
-    }
-    condition Stunned on bearer: Character {
-        suppress damage(target: bearer)
-    }
-}
-"#;
-    let (program, result) = setup(source);
-    let interp = Interpreter::new(&program, &result.env).unwrap();
-    let mut state = TestState::new();
-    state.fields.insert((1, "HP".into()), Value::Int(20));
-    // Entity 1 has Stunned condition
-    state.conditions.insert(
-        1,
-        vec![ActiveCondition {
-            id: 100,
-            name: "Stunned".into(),
-            params: BTreeMap::new(),
-            bearer: EntityRef(1),
-            gained_at: 1,
-            duration: Value::Void,
-            invocation: None,
-            applied_at: 0,
-        }],
-    );
-
-    let payload = make_payload("damage", vec![("target", Value::Entity(EntityRef(1)))]);
-
-    // Hook should still match — suppression only affects reactions
-    let hook_result = interp
-        .what_hooks(&state, "damage", payload, &[EntityRef(1)])
-        .unwrap();
-
-    assert_eq!(hook_result.hooks.len(), 1);
-    assert_eq!(hook_result.hooks[0].name, "OnDamage");
-}
-
-#[test]
 fn hook_veto_returns_none() {
     let source = r#"
 system "test" {
@@ -410,39 +229,6 @@ system "test" {
 }
 
 #[test]
-fn hook_trigger_payload_accessible() {
-    // Verify that `trigger` struct is available in the hook resolve block
-    let source = r#"
-system "test" {
-    entity Character { HP: int }
-    event damage(target: Character, amount: int) {}
-    hook OnDamage on target: Character (trigger: damage(target: target)) {
-        target.HP -= trigger.amount
-    }
-}
-"#;
-    let (program, result) = setup(source);
-    let interp = Interpreter::new(&program, &result.env).unwrap();
-    let mut state = TestState::new();
-    state.fields.insert((1, "HP".into()), Value::Int(20));
-    state.conditions.insert(1, vec![]);
-
-    let payload = make_payload(
-        "damage",
-        vec![
-            ("target", Value::Entity(EntityRef(1))),
-            ("amount", Value::Int(15)),
-        ],
-    );
-
-    let mut handler = ScriptedHandler::new();
-    let val = interp
-        .execute_hook(&state, &mut handler, "OnDamage", EntityRef(1), payload)
-        .unwrap();
-    assert_eq!(val, Value::Void);
-}
-
-#[test]
 fn undefined_hook_errors() {
     let source = r#"
 system "test" {
@@ -464,31 +250,4 @@ system "test" {
         )
         .unwrap_err();
     assert!(err.message.contains("undefined hook"));
-}
-
-#[test]
-fn hook_turn_actor_save_restore() {
-    let source = r#"
-system "test" {
-    entity Character { HP: int }
-    event damage(target: Character) {}
-    hook OnDamage on target: Character (trigger: damage(target: target)) {
-        target.HP -= 1
-    }
-}
-"#;
-    let (program, result) = setup(source);
-    let interp = Interpreter::new(&program, &result.env).unwrap();
-    let mut state = TestState::new();
-    state.fields.insert((1, "HP".into()), Value::Int(20));
-    state.conditions.insert(1, vec![]);
-
-    let payload = make_payload("damage", vec![("target", Value::Entity(EntityRef(1)))]);
-
-    // Execute hook and verify it doesn't corrupt state
-    let mut handler = ScriptedHandler::new();
-    let val = interp
-        .execute_hook(&state, &mut handler, "OnDamage", EntityRef(1), payload)
-        .unwrap();
-    assert_eq!(val, Value::Void);
 }

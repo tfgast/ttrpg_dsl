@@ -1,0 +1,95 @@
+// Synthetic CLI coverage for hook integration tests.
+// Direct interpreter/effect-handler checks remain in Rust.
+
+source -s <<END
+entity Character {
+    hp: int
+    hit_count: int = 0
+    tagged_count: int = 0
+    order: int = 0
+}
+
+event Damage(target: Character, amount: int) {}
+event Tagged(target: Character, amount: int) {}
+event Ordered(target: Character) {}
+
+hook OnDamage on target: Character (trigger: Damage(target: target)) {
+    target.hp -= trigger.amount
+    target.hit_count += 1
+}
+
+hook First on target: Character (trigger: Ordered(target: target)) {
+    target.order = target.order * 10 + 1
+}
+
+hook Second on target: Character (trigger: Ordered(target: target)) {
+    target.order = target.order * 10 + 2
+}
+
+hook Third on target: Character (trigger: Ordered(target: target)) {
+    target.order = target.order * 10 + 3
+}
+
+hook OnTagged on target: Character (trigger: Tagged(target: target)) {
+    target.hp -= trigger.amount
+    target.tagged_count += 1
+}
+
+condition Stunned on bearer: Character {
+    suppress Tagged(target: bearer)
+}
+
+action DealDamage on actor: Character (target: Character, amount: int) {
+    resolve {
+        emit Damage(target: target, amount: amount)
+    }
+}
+
+action DealTagged on actor: Character (target: Character, amount: int) {
+    resolve {
+        emit Tagged(target: target, amount: amount)
+    }
+}
+
+action TriggerOrdered on actor: Character (target: Character) {
+    resolve {
+        emit Ordered(target: target)
+    }
+}
+END
+
+// ── matching hook uses trigger payload and mutates target ───────
+
+spawn Character damage_actor { hp: 50 }
+spawn Character damage_target { hp: 20 }
+do DealDamage(damage_actor, damage_target, 7)
+assert_eq damage_target.hp, 13
+assert_eq damage_target.hit_count, 1
+
+// ── hook entity filtering only matches the targeted entity ──────
+
+spawn Character filter_actor { hp: 50 }
+spawn Character filter_target { hp: 20 }
+spawn Character filter_other { hp: 30 }
+do DealDamage(filter_actor, filter_target, 5)
+assert_eq filter_target.hp, 15
+assert_eq filter_target.hit_count, 1
+assert_eq filter_other.hp, 30
+assert_eq filter_other.hit_count, 0
+
+// ── declaration order is preserved for matching hooks ───────────
+
+spawn Character order_actor { hp: 50 }
+spawn Character order_target { hp: 10 }
+do TriggerOrdered(order_actor, order_target)
+assert_eq order_target.order, 123
+
+// ── condition suppression does not suppress hooks ───────────────
+
+spawn Character tagged_actor { hp: 50 }
+spawn Character tagged_target { hp: 20 }
+call apply_condition(tagged_target, Stunned, Duration.Indefinite)
+assert_condition tagged_target, Stunned
+do DealTagged(tagged_actor, tagged_target, 4)
+assert_eq tagged_target.hp, 16
+assert_eq tagged_target.tagged_count, 1

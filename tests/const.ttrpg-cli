@@ -1,0 +1,59 @@
+// Const integration tests
+//
+// Equivalent of the runtime portions of
+// crates/ttrpg_interp/tests/const_integration.rs.
+// Checker-only rejection cases remain in Rust.
+
+source -s <<END
+    struct SpellDef {
+        name: string
+        level: int
+    }
+
+    enum School { Evocation, Necromancy, Abjuration }
+
+    const MAX_LEVEL = 20
+    const GREETING = "hello"
+    const BASE = 10
+    const DERIVED = BASE + 5
+    const CURE = SpellDef { name: "Cure Light Wounds", level: 1 }
+    const DEFAULT_SCHOOL = Necromancy
+    const X: int = 42
+    const LEVELS: list<int> = [1, 2, 3]
+    const BONUS = 3
+    const SHADOWED = 10
+
+    derive get_max() -> int { MAX_LEVEL }
+    derive greet() -> string { GREETING }
+    derive get_derived() -> int { DERIVED }
+    derive spell_name() -> string { CURE.name }
+    derive spell_level() -> int { CURE.level }
+    derive get_school() -> School { DEFAULT_SCHOOL }
+    derive get_x() -> int { X }
+    derive count() -> int { len(LEVELS) }
+    derive total() -> int { BASE * 2 + BONUS }
+
+    derive shadowed() -> int {
+        let SHADOWED = 99
+        SHADOWED
+    }
+END
+
+// ── const literals ─────────────────────────────────────────────
+
+assert_eq get_max(), 20
+assert_eq greet(), "hello"
+assert_eq spell_name(), "Cure Light Wounds"
+assert_eq spell_level(), 1
+assert_match get_school(), School.Necromancy
+assert_eq get_x(), 42
+assert_eq count(), 3
+
+// ── const expressions and references ───────────────────────────
+
+assert_eq get_derived(), 15
+assert_eq total(), 23
+
+// ── local shadowing ────────────────────────────────────────────
+
+assert_eq shadowed(), 99

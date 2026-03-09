@@ -1,0 +1,154 @@
+// OSRIC afflictions integration tests
+//
+// Equivalent of crates/ttrpg_interp/tests/osric_afflictions_integration.rs
+// Tests poison saves, disease contraction/recovery, and insanity rolling.
+
+load osric/*.ttrpg
+
+// ── Poison: lethal save succeeds ────────────────────────────────
+
+rolls 15
+let lethal_saved = apply_poison(saving_throws_for(Fighter, 5), PoisonType.Lethal, 0)
+assert_eq lethal_saved.saved, true
+assert_eq lethal_saved.died, false
+assert_eq lethal_saved.damage_taken, 0
+
+// ── Poison: lethal save fails ───────────────────────────────────
+
+rolls clear
+rolls 5
+let lethal_failed = apply_poison(saving_throws_for(Fighter, 5), PoisonType.Lethal, 0)
+assert_eq lethal_failed.saved, false
+assert_eq lethal_failed.died, true
+assert_eq lethal_failed.damage_taken, 0
+
+// ── Poison: damage poison save halves damage ────────────────────
+
+rolls clear
+rolls 15 5 3
+let damage_saved = apply_poison(saving_throws_for(Fighter, 5), PoisonType.DamageOnly(damage: 2d6), 0)
+assert_eq damage_saved.saved, true
+assert_eq damage_saved.died, false
+assert_eq damage_saved.damage_taken, 4
+
+// ── Poison: damage poison failed save takes full damage ─────────
+
+rolls clear
+rolls 5 4 6
+let damage_failed = apply_poison(saving_throws_for(Fighter, 5), PoisonType.DamageOnly(damage: 2d6), 0)
+assert_eq damage_failed.saved, false
+assert_eq damage_failed.died, false
+assert_eq damage_failed.damage_taken, 10
+
+// ── Poison: natural 1 always fails ──────────────────────────────
+
+rolls clear
+rolls 1
+let lethal_nat1 = apply_poison(
+    SavingThrows {
+        aimed_magic: 4,
+        breath: 3,
+        death_paralysis_poison: 2,
+        petrification_polymorph: 3,
+        spells: 5
+    },
+    PoisonType.Lethal,
+    0
+)
+assert_eq lethal_nat1.saved, false
+assert_eq lethal_nat1.died, true
+
+// ── Disease: save succeeds ──────────────────────────────────────
+
+rolls clear
+rolls 15
+let disease_saved = check_disease_contraction(saving_throws_for(Fighter, 5), DiseaseSource.Plague, 0)
+assert_eq disease_saved.contracted, false
+assert_eq disease_saved.params, none
+
+// ── Disease: failed save rolls params ───────────────────────────
+
+rolls clear
+rolls 5 3 5 4 6 4 3
+let disease_failed = check_disease_contraction(saving_throws_for(Fighter, 5), DiseaseSource.Plague, 0)
+assert_eq disease_failed.contracted, true
+assert_ne disease_failed.params, none
+let disease_params = disease_failed.params.unwrap()
+assert_eq disease_params.incubation_days, 8
+assert_eq disease_params.duration_days, 10
+assert_eq disease_params.stat_penalty, 4
+assert_eq disease_params.roll_penalty, 3
+assert_eq disease_params.is_fatal, false
+assert_eq disease_params.source, DiseaseSource.Plague
+
+// ── Disease: natural 8 on d8 makes disease fatal ────────────────
+
+rolls clear
+rolls 3 4 8 3 5 2 1
+let fatal_disease = check_disease_contraction(saving_throws_for(Fighter, 5), DiseaseSource.Infection, 0)
+assert_eq fatal_disease.contracted, true
+let fatal_params = fatal_disease.params.unwrap()
+assert_eq fatal_params.is_fatal, true
+assert_eq fatal_params.incubation_days, 12
+assert_eq fatal_params.duration_days, 8
+assert_eq fatal_params.stat_penalty, 2
+assert_eq fatal_params.roll_penalty, 1
+assert_eq fatal_params.source, DiseaseSource.Infection
+
+// ── Disease recovery derives ────────────────────────────────────
+
+assert_eq disease_recovery_one_day(4), 3
+assert_eq disease_recovery_one_day(0), 0
+
+// ── Disease stat loss derive ────────────────────────────────────
+
+assert_eq disease_stat_loss(3), {
+    Ability.STR: 3,
+    Ability.DEX: 3,
+    Ability.CON: 3,
+    Ability.INT: 3,
+    Ability.WIS: 3,
+    Ability.CHA: 3
+}
+
+// ── Insanity type table ─────────────────────────────────────────
+
+rolls clear
+rolls 1
+assert_eq roll_insanity_type(), InsanityType.AbilityDecline
+
+rolls clear
+rolls 6
+assert_eq roll_insanity_type(), InsanityType.Phobia
+
+// ── Full insanity roll: ability decline ─────────────────────────
+
+rolls clear
+rolls 1 3 5 2
+let insanity_decline = roll_insanity()
+assert_eq insanity_decline.insanity_type, InsanityType.AbilityDecline
+assert_ne insanity_decline.ability_decline, none
+let decline = insanity_decline.ability_decline.unwrap()
+assert_eq decline.int_loss, 3
+assert_eq decline.wis_loss, 5
+assert_eq decline.cha_loss, 2
+assert_eq insanity_decline.phobia_object, none
+
+// ── Full insanity roll: phobia ──────────────────────────────────
+
+rolls clear
+rolls 6 7
+let insanity_phobia = roll_insanity()
+assert_eq insanity_phobia.insanity_type, InsanityType.Phobia
+assert_eq insanity_phobia.ability_decline, none
+assert_ne insanity_phobia.phobia_object, none
+assert_eq insanity_phobia.phobia_object.unwrap(), PhobiaObject.Crowds
+
+// ── Full insanity roll: marker type has no extras ───────────────
+
+rolls clear
+rolls 5
+let insanity_marker = roll_insanity()
+assert_eq insanity_marker.insanity_type, InsanityType.PathologicalLiar
+assert_eq insanity_marker.ability_decline, none
+assert_eq insanity_marker.phobia_object, none

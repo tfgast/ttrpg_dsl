@@ -1,0 +1,95 @@
+// OSRIC Bestiary integration tests
+//
+// Equivalent of the runtime portions of
+// crates/ttrpg_interp/tests/osric_bestiary_integration.rs.
+// Parser/typechecker coverage remains in Rust.
+
+load osric/*.ttrpg
+
+// ── Factory creation: humanoids ────────────────────────────────
+
+assert_eq create_goblin().name, "Goblin"
+assert_eq create_goblin().ac, 14
+assert_eq create_goblin().morale, 7
+assert_eq create_goblin().xp_value, 10
+assert_eq create_goblin().intelligence, 9
+
+assert_eq create_orc().name, "Orc"
+assert_eq create_orc().max_hp, 4
+
+assert_eq create_ogre().name, "Ogre"
+assert_eq create_ogre().ac, 15
+assert_eq create_ogre().size, Size.Large
+
+// ── Undead and classic monsters ────────────────────────────────
+
+let skeleton = create_skeleton()
+assert any([c.name == "Undead" for c in conditions(skeleton)])
+assert any([c.name == "TurnedAsUndead" for c in conditions(skeleton)])
+assert any([c.name == "ImmuneToCold" for c in conditions(skeleton)])
+assert any([c.name == "ImmuneToMindControl" for c in conditions(skeleton)])
+assert any([c.name == "ResistantToBlunt" for c in conditions(skeleton)])
+
+let vampire = create_vampire()
+assert_eq vampire.name, "Vampire"
+assert_eq vampire.ac, 19
+assert any([c.name == "Undead" for c in conditions(vampire)])
+assert any([c.name == "Regeneration" for c in conditions(vampire)])
+assert any([c.name == "ImmuneToNormalWeapons" for c in conditions(vampire)])
+assert any([c.name == "ImmuneToMindControl" for c in conditions(vampire)])
+
+let troll = create_troll()
+assert_eq troll.name, "Troll"
+assert any([c.name == "Regeneration" for c in conditions(troll)])
+assert any([c.name == "VulnerableToFire" for c in conditions(troll)])
+
+let basilisk = create_basilisk()
+assert any([c.name == "PetrifyingGaze" for c in conditions(basilisk)])
+
+let cube = create_gelatinous_cube()
+assert_eq cube.intelligence, 0
+assert any([c.name == "Construct" for c in conditions(cube)])
+assert any([c.name == "ImmuneToLightning" for c in conditions(cube)])
+assert any([c.name == "ImmuneToMindControl" for c in conditions(cube)])
+
+// ── Dragons and giants ─────────────────────────────────────────
+
+let red_dragon = create_red_dragon(5)
+assert_eq red_dragon.name, "Red Dragon"
+assert_eq red_dragon.max_hp, 50
+assert_eq red_dragon.ac, 21
+assert_eq red_dragon.size, Size.Huge
+assert any([c.name == "ImmuneToFire" for c in conditions(red_dragon)])
+assert any([c.name == "Infravision" for c in conditions(red_dragon)])
+assert any([c.name == "FearAura" for c in conditions(red_dragon)])
+
+let white_dragon = create_white_dragon(3)
+assert_eq white_dragon.max_hp, 18
+assert any([c.name == "ImmuneToCold" for c in conditions(white_dragon)])
+assert any([c.name == "VulnerableToFire" for c in conditions(white_dragon)])
+
+let fire_giant = create_fire_giant()
+assert any([c.name == "ImmuneToFire" for c in conditions(fire_giant)])
+assert_eq fire_giant.ac, 17
+
+// ── Monster saving throws ──────────────────────────────────────
+
+assert_eq monster_saves_normal(1).aimed_magic, 16
+assert_eq monster_saves_normal(1).breath, 17
+assert_eq monster_saves_normal(1).death_paralysis_poison, 14
+
+assert_eq monster_saves_nonintelligent(9).aimed_magic, 13
+assert_eq monster_saves_nonintelligent(9).petrification_polymorph, 12
+
+// ── Animals and outsiders ──────────────────────────────────────
+
+let giant_spider = create_giant_spider()
+assert any([c.name == "ImmuneToPoison" for c in conditions(giant_spider)])
+assert_eq giant_spider.size, Size.Large
+
+assert_eq create_owlbear().attacks.len(), 3
+
+let efreet = create_efreet()
+assert any([c.name == "ImmuneToFire" for c in conditions(efreet)])
+assert any([c.name == "Infravision" for c in conditions(efreet)])
+assert_eq efreet.xp_value, 7000

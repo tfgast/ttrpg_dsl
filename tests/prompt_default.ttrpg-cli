@@ -1,0 +1,59 @@
+// Prompt default integration tests
+//
+// Equivalent of the runtime portions of
+// crates/ttrpg_interp/tests/prompt_default_integration.rs.
+// Checker-only default-body type validation remains in Rust.
+
+source -s <<END
+    prompt pick_number(base: int) -> int {
+        hint: "Pick a number"
+        default {
+            base + 10
+        }
+    }
+
+    derive test_default_body(x: int) -> int {
+        pick_number(x)
+    }
+
+    prompt pick_number_no_default(base: int) -> int {
+        hint: "Pick"
+    }
+
+    derive test_missing_default(x: int) -> int {
+        pick_number_no_default(x)
+    }
+
+    prompt pick_number_with_suggest(base: int) -> int {
+        hint: "Pick"
+        suggest: base + 1
+        default {
+            base + 100
+        }
+    }
+
+    derive test_suggest_default(x: int) -> int {
+        pick_number_with_suggest(x)
+    }
+END
+
+// ── default body evaluation ──────────────────────────────────────
+
+prompts clear
+assert_eq test_default_body(5), 15
+
+// ── queued answer overrides default body ─────────────────────────
+
+prompts clear
+prompts 99
+assert_eq test_default_body(5), 99
+
+// ── missing default body errors when auto-resolving ──────────────
+
+prompts clear
+assert_err eval test_missing_default(5)
+
+// ── default body wins over suggest when queue is empty ───────────
+
+prompts clear
+assert_eq test_suggest_default(5), 105

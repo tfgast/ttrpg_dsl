@@ -1,0 +1,86 @@
+// OSRIC potions integration tests
+//
+// Equivalent of crates/ttrpg_interp/tests/osric_potions_integration.rs
+// Tests potion healing, DrinkPotion consumption, PotionSpeed and
+// PotionInvulnerability conditions, admixture_result, potion_item,
+// and healing unconscious characters.
+
+load osric/*.ttrpg
+
+// ── Potion of Healing restores HP ───────────────────────────────
+
+spawn Character heal_basic { name: "Wounded", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 10 } }
+rolls 3 4
+call resolve_potion_healing(heal_basic)
+assert_eq heal_basic.hp, 19
+
+// ── Potion of Extra-Healing restores HP ────────────────────────
+
+spawn Character heal_extra { name: "Wounded", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 5 } }
+rolls clear
+rolls 6 7 5
+call resolve_potion_extra_healing(heal_extra)
+assert_eq heal_extra.hp, 26
+
+// ── DrinkPotion consumes the potion item ────────────────────────
+
+spawn Character drink_action { name: "Thirsty", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 10 }, Inventory { loose_items: [potion_item(Healing)] } }
+rolls clear
+rolls 2 3
+do DrinkPotion(drink_action, Healing)
+assert_eq drink_action.hp, 17
+assert_eq drink_action.Inventory.loose_items.len(), 0
+
+// ── PotionSpeed applies a condition ─────────────────────────────
+
+spawn Character speed_cond { name: "Speedy", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 } }
+rolls clear
+rolls 3 2 4 3 2
+call resolve_potion_speed(speed_cond)
+assert_condition speed_cond, PotionSpeed
+
+// ── PotionSpeed doubles movement ────────────────────────────────
+
+spawn Character speed_move { name: "Speedy", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 } }
+call apply_condition(speed_move, PotionSpeed, Duration.Indefinite)
+assert_eq character_movement(speed_move), Feet { value: 240 }
+
+// ── PotionInvulnerability improves AC ───────────────────────────
+
+spawn Character invulnerable { name: "Knight", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 } }
+call apply_condition(invulnerable, PotionInvulnerability, Duration.Indefinite)
+assert_eq effective_target_ac(invulnerable), 12
+
+// ── admixture_result table categories ───────────────────────────
+
+assert_match admixture_result(1), AdmixtureResult.EldritchBlast
+assert_match admixture_result(2), AdmixtureResult.Poison
+assert_match admixture_result(3), AdmixtureResult.Poison
+assert_match admixture_result(5), AdmixtureResult.StrangeBrew
+assert_match admixture_result(10), AdmixtureResult.BothCancelled
+assert_match admixture_result(15), AdmixtureResult.OneCancelled
+assert_match admixture_result(25), AdmixtureResult.BothHalved
+assert_match admixture_result(50), AdmixtureResult.BothWork
+assert_match admixture_result(90), AdmixtureResult.BothWork
+assert_match admixture_result(95), AdmixtureResult.ExtraordinarySuccess
+assert_match admixture_result(100), AdmixtureResult.PermanentEffect
+
+// ── potion_item derive returns the expected Item ────────────────
+
+let healing_item = potion_item(Healing)
+assert_eq healing_item.name, "Potion of Healing"
+assert_eq healing_item.weight, 0
+assert_eq healing_item.gp_value, 400
+
+// ── Healing potion heals an unconscious character ───────────────
+
+spawn Character unconscious_heal { name: "Dying", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: -3 } }
+call apply_condition(unconscious_heal, Unconscious, Duration.Indefinite)
+call apply_condition(unconscious_heal, Bleeding, Duration.Indefinite)
+rolls clear
+rolls 4 4 3
+call resolve_potion_healing(unconscious_heal)
+assert_eq unconscious_heal.hp, 7
+assert_no_condition unconscious_heal, Unconscious
+assert_no_condition unconscious_heal, Bleeding
+assert_condition unconscious_heal, Coma

@@ -1,0 +1,91 @@
+// Entity construction integration coverage
+//
+// Equivalent of the runtime portions of
+// crates/ttrpg_interp/tests/entity_construction_integration.rs.
+// Checker-only rejection cases remain in Rust.
+
+source <<END
+system "EntityConstructionTest" {
+    entity Monster {
+        name: string
+        hit_dice: int
+        max_hp: int
+        ac: int = 10
+
+        optional Spellcasting {
+            spell_slots: int
+            spell_dc: int = 10
+        }
+
+        include BasicStats
+    }
+
+    group BasicStats {
+        str_score: int = 10
+        dex_score: int = 10
+    }
+
+    function create_ogre() -> Monster {
+        Monster {
+            name: "Ogre",
+            hit_dice: 4,
+            max_hp: 26,
+            ac: 5,
+        }
+    }
+
+    function create_goblin_wizard() -> Monster {
+        Monster {
+            name: "Goblin Wizard",
+            hit_dice: 1,
+            max_hp: 4,
+            ac: 6,
+            Spellcasting {
+                spell_slots: 3,
+                spell_dc: 12,
+            },
+        }
+    }
+
+    function create_strong_monster() -> Monster {
+        Monster {
+            name: "Hill Giant",
+            hit_dice: 8,
+            max_hp: 44,
+            BasicStats {
+                str_score: 19,
+                dex_score: 8,
+            },
+        }
+    }
+
+    derive monster_name(m: Monster) -> string {
+        m.name
+    }
+}
+END
+
+// -- basic entity construction -----------------------------------
+
+assert_eq monster_name(create_ogre()), "Ogre"
+assert_eq create_ogre().hit_dice, 4
+assert_eq create_ogre().max_hp, 26
+assert_eq create_ogre().ac, 5
+
+// -- inline optional group construction --------------------------
+
+assert_eq monster_name(create_goblin_wizard()), "Goblin Wizard"
+assert_eq create_goblin_wizard().Spellcasting.spell_slots, 3
+assert_eq create_goblin_wizard().Spellcasting.spell_dc, 12
+
+// -- include groups auto-materialize with defaults ---------------
+
+assert_eq create_ogre().BasicStats.str_score, 10
+assert_eq create_ogre().BasicStats.dex_score, 10
+
+// -- include groups accept custom inline values ------------------
+
+assert_eq monster_name(create_strong_monster()), "Hill Giant"
+assert_eq create_strong_monster().ac, 10
+assert_eq create_strong_monster().BasicStats.str_score, 19
+assert_eq create_strong_monster().BasicStats.dex_score, 8

@@ -1,12 +1,11 @@
 //! Integration tests for DSL-side entity construction via struct literal syntax.
+//!
+//! Runtime field/group coverage has moved to `tests/entity_construction.ttrpg-cli`.
+//! These Rust tests keep only pipeline construction and checker-only rejection
+//! cases that still belong next to the interpreter.
 
 use ttrpg_ast::diagnostic::Severity;
 use ttrpg_ast::FileId;
-use ttrpg_interp::adapter::StateAdapter;
-use ttrpg_interp::effect::{Effect, EffectHandler, Response};
-use ttrpg_interp::reference_state::GameState;
-use ttrpg_interp::state::StateProvider;
-use ttrpg_interp::value::Value;
 use ttrpg_interp::Interpreter;
 
 const PROGRAM_SOURCE: &str = r#"
@@ -98,148 +97,15 @@ fn setup() -> (ttrpg_ast::ast::Program, ttrpg_checker::CheckResult) {
     (program, result)
 }
 
-struct AckHandler {
-    log: Vec<Effect>,
-}
-
-impl AckHandler {
-    fn new() -> Self {
-        Self { log: Vec::new() }
-    }
-}
-
-impl EffectHandler for AckHandler {
-    fn handle(&mut self, effect: Effect) -> Response {
-        self.log.push(effect);
-        Response::Acknowledged
-    }
-}
-
 #[test]
-fn basic_entity_construction() {
+fn pipeline_parses_checks_and_builds_interpreter() {
     let (program, result) = setup();
-    let interp = Interpreter::new(&program, &result.env).unwrap();
-    let state = GameState::new();
-    let adapter = StateAdapter::new(state);
-    let mut handler = AckHandler::new();
-
-    let val = adapter.run(&mut handler, |state, handler| {
-        interp.evaluate_function(state, handler, "create_ogre", vec![])
-    });
-    let val = val.unwrap();
-
-    match &val {
-        Value::Entity(e) => {
-            let final_state = adapter.into_inner();
-            assert_eq!(
-                final_state.read_field(e, "name"),
-                Some(Value::Str("Ogre".into()))
-            );
-            assert_eq!(final_state.read_field(e, "hit_dice"), Some(Value::Int(4)));
-            assert_eq!(final_state.read_field(e, "max_hp"), Some(Value::Int(26)));
-            assert_eq!(final_state.read_field(e, "ac"), Some(Value::Int(5)));
-        }
-        other => panic!("expected Entity value, got {other:?}"),
-    }
-}
-
-#[test]
-fn entity_construction_with_inline_group() {
-    let (program, result) = setup();
-    let interp = Interpreter::new(&program, &result.env).unwrap();
-    let state = GameState::new();
-    let adapter = StateAdapter::new(state);
-    let mut handler = AckHandler::new();
-
-    let val = adapter.run(&mut handler, |state, handler| {
-        interp.evaluate_function(state, handler, "create_goblin_wizard", vec![])
-    });
-    let val = val.unwrap();
-
-    match &val {
-        Value::Entity(e) => {
-            let final_state = adapter.into_inner();
-            assert_eq!(
-                final_state.read_field(e, "name"),
-                Some(Value::Str("Goblin Wizard".into()))
-            );
-            // Spellcasting group should be active
-            let spell_group = final_state.read_field(e, "Spellcasting");
-            assert!(spell_group.is_some(), "Spellcasting group should be active");
-            match spell_group.unwrap() {
-                Value::Struct { fields, .. } => {
-                    assert_eq!(fields.get("spell_slots"), Some(&Value::Int(3)));
-                    assert_eq!(fields.get("spell_dc"), Some(&Value::Int(12)));
-                }
-                other => panic!("expected Struct value for Spellcasting, got {other:?}"),
-            }
-        }
-        other => panic!("expected Entity value, got {other:?}"),
-    }
-}
-
-#[test]
-fn entity_construction_auto_materializes_include_groups() {
-    let (program, result) = setup();
-    let interp = Interpreter::new(&program, &result.env).unwrap();
-    let state = GameState::new();
-    let adapter = StateAdapter::new(state);
-    let mut handler = AckHandler::new();
-
-    // create_ogre doesn't explicitly provide BasicStats — should be auto-materialized
-    let val = adapter.run(&mut handler, |state, handler| {
-        interp.evaluate_function(state, handler, "create_ogre", vec![])
-    });
-    let val = val.unwrap();
-
-    match &val {
-        Value::Entity(e) => {
-            let final_state = adapter.into_inner();
-            let stats = final_state.read_field(e, "BasicStats");
-            assert!(
-                stats.is_some(),
-                "BasicStats include group should be auto-materialized"
-            );
-            match stats.unwrap() {
-                Value::Struct { fields, .. } => {
-                    assert_eq!(fields.get("str_score"), Some(&Value::Int(10)));
-                    assert_eq!(fields.get("dex_score"), Some(&Value::Int(10)));
-                }
-                other => panic!("expected Struct, got {other:?}"),
-            }
-        }
-        other => panic!("expected Entity, got {other:?}"),
-    }
-}
-
-#[test]
-fn entity_construction_include_group_with_custom_values() {
-    let (program, result) = setup();
-    let interp = Interpreter::new(&program, &result.env).unwrap();
-    let state = GameState::new();
-    let adapter = StateAdapter::new(state);
-    let mut handler = AckHandler::new();
-
-    let val = adapter.run(&mut handler, |state, handler| {
-        interp.evaluate_function(state, handler, "create_strong_monster", vec![])
-    });
-    let val = val.unwrap();
-
-    match &val {
-        Value::Entity(e) => {
-            let final_state = adapter.into_inner();
-            let stats = final_state.read_field(e, "BasicStats");
-            assert!(stats.is_some());
-            match stats.unwrap() {
-                Value::Struct { fields, .. } => {
-                    assert_eq!(fields.get("str_score"), Some(&Value::Int(19)));
-                    assert_eq!(fields.get("dex_score"), Some(&Value::Int(8)));
-                }
-                other => panic!("expected Struct, got {other:?}"),
-            }
-        }
-        other => panic!("expected Entity, got {other:?}"),
-    }
+    let interp = Interpreter::new(&program, &result.env);
+    assert!(
+        interp.is_ok(),
+        "interpreter creation failed: {:?}",
+        interp.err()
+    );
 }
 
 #[test]
