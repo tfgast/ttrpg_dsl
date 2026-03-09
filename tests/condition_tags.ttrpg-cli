@@ -1,0 +1,95 @@
+// Condition declaration tags integration coverage.
+//
+// Tests that tags declared on condition declarations (#curse, #disease, etc.)
+// are accessible at runtime via the .tags field on ActiveCondition values.
+// Condition tags are static categorical properties of the condition type,
+// distinct from modify-clause tags (which target individual effects) and
+// EffectSource (which is per-application metadata).
+
+source -s <<END
+tag curse
+tag disease
+tag poison
+
+enum EffectSource {
+    Unknown,
+    Spell(name: string, caster_level: int)
+}
+
+entity Character {
+    hp: int
+}
+
+condition Hexed #curse on bearer: Character {
+    modify health(target: bearer) {
+        bonus = bonus - 2
+    }
+}
+
+condition MummyRot #curse #disease on bearer: Character {
+    modify health(target: bearer) {
+        bonus = bonus - 5
+    }
+}
+
+condition Poisoned #poison on bearer: Character {
+    modify health(target: bearer) {
+        bonus = bonus - 3
+    }
+}
+
+condition Prone on bearer: Character { }
+
+derive health(target: Character, bonus: int = 0) -> int {
+    target.hp + bonus
+}
+END
+
+// ── Tags appear as a set on ActiveCondition ───────────────────
+
+spawn Character alice { hp: 20 }
+call apply_condition(alice, Hexed, Duration.Indefinite)
+
+assert_eq len(conditions(alice)), 1
+assert_eq conditions(alice)[0].name, "Hexed"
+assert "curse" in conditions(alice)[0].tags
+
+// ── Multiple tags on a single condition ───────────────────────
+
+spawn Character bob { hp: 20 }
+call apply_condition(bob, MummyRot, Duration.Indefinite)
+
+assert "curse" in conditions(bob)[0].tags
+assert "disease" in conditions(bob)[0].tags
+
+// ── Condition without tags has empty tag set ──────────────────
+
+spawn Character clara { hp: 20 }
+call apply_condition(clara, Prone, Duration.Indefinite)
+
+assert_eq len(conditions(clara)[0].tags), 0
+
+// ── Tags are independent of EffectSource ──────────────────────
+
+spawn Character dave { hp: 30 }
+call apply_condition(dave, Hexed, Duration.Indefinite,
+    EffectSource.Spell(name: "Bestow Curse", caster_level: 7))
+
+assert "curse" in conditions(dave)[0].tags
+assert_eq conditions(dave)[0].source, EffectSource.Spell(name: "Bestow Curse", caster_level: 7)
+
+// ── Multiple conditions with different tags ───────────────────
+
+spawn Character eve { hp: 30 }
+call apply_condition(eve, MummyRot, Duration.Indefinite)
+call apply_condition(eve, Poisoned, Duration.Indefinite)
+call apply_condition(eve, Prone, Duration.Indefinite)
+
+assert_eq len(conditions(eve)), 3
+// MummyRot has curse + disease
+assert "curse" in conditions(eve)[0].tags
+assert "disease" in conditions(eve)[0].tags
+// Poisoned has poison
+assert "poison" in conditions(eve)[1].tags
+// Prone has no tags
+assert_eq len(conditions(eve)[2].tags), 0

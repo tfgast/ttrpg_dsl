@@ -414,7 +414,14 @@ impl Checker<'_> {
             let is_pure_builtin = fn_info.kind == FnKind::Builtin
                 && matches!(
                     name,
-                    "floor" | "ceil" | "min" | "max" | "distance" | "conditions" | "has_condition" | "error"
+                    "floor"
+                        | "ceil"
+                        | "min"
+                        | "max"
+                        | "distance"
+                        | "conditions"
+                        | "has_condition"
+                        | "error"
                 );
             if !is_pure_builtin {
                 self.error(

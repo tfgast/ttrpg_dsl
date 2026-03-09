@@ -1060,6 +1060,13 @@ impl Parser {
         } else {
             Vec::new()
         };
+        // Parse optional #tag annotations before `on`.
+        let mut tags = Vec::new();
+        while matches!(self.peek(), TokenKind::Hash) {
+            self.advance();
+            let (tag_name, _) = self.expect_ident()?;
+            tags.push(tag_name);
+        }
         if !self.at_ident("on") {
             self.error_with_help(
                 format!(
@@ -1133,6 +1140,7 @@ impl Parser {
             receiver_name,
             receiver_type,
             receiver_with_groups,
+            tags,
             clauses,
         })
     }

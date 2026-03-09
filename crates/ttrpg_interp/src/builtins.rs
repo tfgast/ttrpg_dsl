@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use ttrpg_ast::Name;
 use ttrpg_ast::Span;
 
@@ -186,7 +186,9 @@ fn builtin_has_condition(env: &Env, args: &[Value], span: Span) -> Result<Value,
         (Some(Value::Entity(entity)), Some(Value::Str(cond_name))) => {
             match env.state.read_conditions(entity) {
                 Some(conditions) => {
-                    let has_it = conditions.iter().any(|c| c.name.as_str() == cond_name.as_str());
+                    let has_it = conditions
+                        .iter()
+                        .any(|c| c.name.as_str() == cond_name.as_str());
                     Ok(Value::Bool(has_it))
                 }
                 None => Err(RuntimeError::with_span(
@@ -524,6 +526,15 @@ fn builtin_apply_condition(
         crate::value::effect_source_unknown()
     };
 
+    // Look up declaration tags for this condition
+    let tags: BTreeSet<Name> = env
+        .interp
+        .type_env
+        .conditions
+        .get(&cond_name)
+        .map(|info| info.tags.iter().cloned().collect())
+        .unwrap_or_default();
+
     // Phase 1: Gate — host can veto
     let gate = Effect::ConditionApplyGate {
         target,
@@ -532,6 +543,7 @@ fn builtin_apply_condition(
         duration: duration.clone(),
         invocation: env.current_invocation_id,
         source: source.clone(),
+        tags: tags.clone(),
     };
     match env.handler.handle(gate) {
         Response::Vetoed => return Ok(Value::Void),
@@ -561,6 +573,7 @@ fn builtin_apply_condition(
         duration,
         invocation: env.current_invocation_id,
         source,
+        tags,
     };
     validate_mutation_response(env.handler.handle(effect), "ApplyCondition", span)?;
     Ok(Value::Void)
@@ -653,6 +666,7 @@ fn builtin_remove_condition(
                 invocation: None,
                 applied_at: 0,
                 source: crate::value::effect_source_unknown(),
+                tags: BTreeSet::new(),
             };
             (*target, vec![instance])
         }
@@ -1328,6 +1342,7 @@ mod tests {
             invocation: None,
             applied_at: 0,
             source: effect_source_unknown(),
+            tags: BTreeSet::new(),
         };
         let state = ConditionsState {
             known_entity: 1,

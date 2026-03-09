@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use ttrpg_ast::ast::AssignOp;
 use ttrpg_ast::Name;
 use ttrpg_checker::ty::Ty;
@@ -100,6 +100,8 @@ pub enum Effect {
         duration: Value,
         invocation: Option<InvocationId>,
         source: Value,
+        /// Tags from the condition declaration (e.g., `#curse`, `#disease`).
+        tags: BTreeSet<Name>,
     },
     RemoveCondition {
         target: EntityRef,
@@ -167,6 +169,8 @@ pub enum Effect {
         duration: Value,
         invocation: Option<InvocationId>,
         source: Value,
+        /// Tags from the condition declaration.
+        tags: BTreeSet<Name>,
     },
     /// Host gate before removing a condition instance. Host responds
     /// `Acknowledged` (allow) or `Vetoed` (deny — condition stays).

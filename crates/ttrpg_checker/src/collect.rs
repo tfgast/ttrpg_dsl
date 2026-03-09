@@ -1426,6 +1426,17 @@ fn collect_condition(
             c.receiver_type.span,
         ));
     }
+    // Validate tags: each must be declared in env.tags
+    let mut tag_set = HashSet::new();
+    for tag in &c.tags {
+        if !env.tags.contains(tag) {
+            diagnostics.push(Diagnostic::error(
+                format!("undeclared tag `{tag}` on condition `{name}`"),
+                span,
+            ));
+        }
+        tag_set.insert(tag.clone());
+    }
     env.conditions.insert(
         name.clone(),
         ConditionInfo {
@@ -1434,6 +1445,7 @@ fn collect_condition(
             extends: c.extends.iter().map(|s| s.node.clone()).collect(),
             receiver_name: c.receiver_name.clone(),
             receiver_type: env.resolve_type(&c.receiver_type),
+            tags: tag_set,
         },
     );
 }

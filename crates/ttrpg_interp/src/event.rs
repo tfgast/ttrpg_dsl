@@ -543,7 +543,7 @@ impl EffectHandler for NoopHandler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::{BTreeMap, HashMap};
+    use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
     use ttrpg_ast::ast::*;
     use ttrpg_ast::{Name, Span, Spanned};
@@ -1127,6 +1127,7 @@ mod tests {
                 extends: vec![],
                 receiver_name: "bearer".into(),
                 receiver_type: Ty::Entity("Character".into()),
+                tags: HashSet::new(),
             },
         );
 
@@ -1146,6 +1147,7 @@ mod tests {
                 invocation: None,
                 applied_at: 0,
                 source: effect_source_unknown(),
+                tags: BTreeSet::new(),
             }],
         );
         state.conditions.insert(2, vec![]);
@@ -1282,6 +1284,7 @@ mod tests {
                 extends: vec![],
                 receiver_name: "bearer".into(),
                 receiver_type: Ty::Entity("Character".into()),
+                tags: HashSet::new(),
             },
         );
 
@@ -1301,6 +1304,7 @@ mod tests {
                 invocation: None,
                 applied_at: 0,
                 source: effect_source_unknown(),
+                tags: BTreeSet::new(),
             }],
         );
         state.conditions.insert(2, vec![]);

@@ -551,6 +551,22 @@ condition Prone on bearer: Character {
 
 ```
 
+**Condition tags** — static categorical properties placed after name/params/extends, before `on`:
+
+```ttrpg
+entity Character { hp: int }
+tag curse
+tag disease
+
+condition Afflicted on bearer: Character { }
+condition BestowCurse #curse on bearer: Character { }
+condition MummyRot(severity: int) extends Afflicted #curse #disease on bearer: Character { }
+```
+
+At runtime, tags are a `Set<string>` on `ActiveCondition.tags`: `"curse" in c.tags`.
+
+Condition tags describe **what the condition is** (`#curse`, `#disease`, `#poison`). Use `EffectSource` for **how it was applied** (magical vs non-magical). Use modify-clause tags for **individual effect suppression** (`#penalty`, `#position`).
+
 **Lifecycle hooks (on_apply / on_remove):**
 
 - At most one `on_apply` and one `on_remove` per condition

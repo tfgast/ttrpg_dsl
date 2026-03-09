@@ -621,7 +621,7 @@ impl Scope {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::{BTreeMap, HashMap, VecDeque};
+    use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 
     use ttrpg_ast::diagnostic::Severity;
 
@@ -1110,6 +1110,7 @@ system "test" {
                 invocation: None,
                 applied_at: 0,
                 source: effect_source_unknown(),
+                tags: BTreeSet::new(),
             }],
         );
 
@@ -1662,6 +1663,7 @@ system "test" {
                 invocation: None,
                 applied_at: 0,
                 source: effect_source_unknown(),
+                tags: BTreeSet::new(),
             }],
         );
 

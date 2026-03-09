@@ -1107,6 +1107,7 @@ mod tests {
             extends: vec![],
             receiver_name: "bearer".into(),
             receiver_type: Ty::Entity("Character".into()),
+            tags: HashSet::new(),
         };
         insta::assert_snapshot!(format_condition_signature(&ci));
     }
@@ -1119,6 +1120,7 @@ mod tests {
             extends: vec!["Incapacitated".into()],
             receiver_name: "bearer".into(),
             receiver_type: Ty::Entity("Character".into()),
+            tags: HashSet::new(),
         };
         insta::assert_snapshot!(format_condition_signature(&ci));
     }
@@ -1131,6 +1133,7 @@ mod tests {
             extends: vec!["Afraid".into()],
             receiver_name: "bearer".into(),
             receiver_type: Ty::Entity("Character".into()),
+            tags: HashSet::new(),
         };
         insta::assert_snapshot!(format_condition_signature(&ci));
     }

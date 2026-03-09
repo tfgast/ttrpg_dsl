@@ -107,12 +107,7 @@ impl GameState {
         self.next_invocation_id = id;
     }
 
-    pub fn apply_condition(
-        &mut self,
-        entity: &EntityRef,
-        name: &str,
-        args: ConditionArgs,
-    ) {
+    pub fn apply_condition(&mut self, entity: &EntityRef, name: &str, args: ConditionArgs) {
         if !self.entities.contains_key(&entity.0) {
             return;
         }
@@ -129,6 +124,7 @@ impl GameState {
             invocation: args.invocation,
             applied_at,
             source: args.source,
+            tags: args.tags,
         };
         self.conditions.entry(entity.0).or_default().push(cond);
     }
@@ -409,6 +405,7 @@ fn write_nested(current: &mut Value, path: &[FieldPathSegment], value: Value) {
 mod tests {
     use super::*;
     use crate::value::{duration_variant, effect_source_unknown};
+    use std::collections::BTreeSet;
 
     // ── GameState: add entity, read fields ─────────────────────
 
@@ -487,7 +484,10 @@ mod tests {
         state.apply_condition(
             &entity,
             "Prone",
-            ConditionArgs { duration: duration_variant("EndOfTurn"), ..Default::default() },
+            ConditionArgs {
+                duration: duration_variant("EndOfTurn"),
+                ..Default::default()
+            },
         );
 
         let conds = state.read_conditions(&entity).unwrap();
@@ -505,12 +505,18 @@ mod tests {
         state.apply_condition(
             &entity,
             "Prone",
-            ConditionArgs { duration: duration_variant("EndOfTurn"), ..Default::default() },
+            ConditionArgs {
+                duration: duration_variant("EndOfTurn"),
+                ..Default::default()
+            },
         );
         state.apply_condition(
             &entity,
             "Stunned",
-            ConditionArgs { duration: duration_variant("Rounds"), ..Default::default() },
+            ConditionArgs {
+                duration: duration_variant("Rounds"),
+                ..Default::default()
+            },
         );
 
         state.remove_condition(&entity, "Prone", None);
@@ -528,12 +534,18 @@ mod tests {
         state.apply_condition(
             &entity,
             "Prone",
-            ConditionArgs { duration: duration_variant("EndOfTurn"), ..Default::default() },
+            ConditionArgs {
+                duration: duration_variant("EndOfTurn"),
+                ..Default::default()
+            },
         );
         state.apply_condition(
             &entity,
             "Prone",
-            ConditionArgs { duration: duration_variant("Rounds"), ..Default::default() },
+            ConditionArgs {
+                duration: duration_variant("Rounds"),
+                ..Default::default()
+            },
         );
 
         let conds = state.read_conditions(&entity).unwrap();
@@ -740,6 +752,7 @@ mod tests {
             invocation: None,
             applied_at: 0,
             source: effect_source_unknown(),
+            tags: BTreeSet::new(),
         };
         state.add_condition(&entity, cond);
 
@@ -764,6 +777,7 @@ mod tests {
             invocation: None,
             applied_at: 0,
             source: effect_source_unknown(),
+            tags: BTreeSet::new(),
         };
         state.add_condition(&entity, cond);
 
@@ -778,6 +792,7 @@ mod tests {
             invocation: None,
             applied_at: 0,
             source: effect_source_unknown(),
+            tags: BTreeSet::new(),
         };
         state.add_condition(&entity, cond2);
 
@@ -845,7 +860,10 @@ mod tests {
         state.apply_condition(
             &ghost,
             "Prone",
-            ConditionArgs { duration: duration_variant("EndOfTurn"), ..Default::default() },
+            ConditionArgs {
+                duration: duration_variant("EndOfTurn"),
+                ..Default::default()
+            },
         );
         assert!(state.read_conditions(&ghost).is_none());
     }
@@ -862,7 +880,10 @@ mod tests {
         state.apply_condition(
             &entity,
             "Prone",
-            ConditionArgs { duration: duration_variant("EndOfTurn"), ..Default::default() },
+            ConditionArgs {
+                duration: duration_variant("EndOfTurn"),
+                ..Default::default()
+            },
         );
         let mut budget = BTreeMap::new();
         budget.insert("actions".into(), Value::Int(1));
@@ -896,6 +917,7 @@ mod tests {
             invocation: None,
             applied_at: 0,
             source: effect_source_unknown(),
+            tags: BTreeSet::new(),
         };
         state.add_condition(&ghost, cond);
         assert!(state.read_conditions(&ghost).is_none());
@@ -954,7 +976,11 @@ mod tests {
         state.apply_condition(
             &entity,
             "Blessed",
-            ConditionArgs { duration: duration_variant("Rounds"), invocation: Some(InvocationId(42)), ..Default::default() },
+            ConditionArgs {
+                duration: duration_variant("Rounds"),
+                invocation: Some(InvocationId(42)),
+                ..Default::default()
+            },
         );
 
         let conds = state.read_conditions(&entity).unwrap();
@@ -971,24 +997,39 @@ mod tests {
         state.apply_condition(
             &entity,
             "Blessed",
-            ConditionArgs { duration: duration_variant("Rounds"), invocation: Some(InvocationId(1)), ..Default::default() },
+            ConditionArgs {
+                duration: duration_variant("Rounds"),
+                invocation: Some(InvocationId(1)),
+                ..Default::default()
+            },
         );
         state.apply_condition(
             &entity,
             "Shielded",
-            ConditionArgs { duration: duration_variant("Rounds"), invocation: Some(InvocationId(1)), ..Default::default() },
+            ConditionArgs {
+                duration: duration_variant("Rounds"),
+                invocation: Some(InvocationId(1)),
+                ..Default::default()
+            },
         );
         // 1 from invocation 2
         state.apply_condition(
             &entity,
             "Hasted",
-            ConditionArgs { duration: duration_variant("Rounds"), invocation: Some(InvocationId(2)), ..Default::default() },
+            ConditionArgs {
+                duration: duration_variant("Rounds"),
+                invocation: Some(InvocationId(2)),
+                ..Default::default()
+            },
         );
         // 1 with no invocation
         state.apply_condition(
             &entity,
             "Prone",
-            ConditionArgs { duration: duration_variant("Indefinite"), ..Default::default() },
+            ConditionArgs {
+                duration: duration_variant("Indefinite"),
+                ..Default::default()
+            },
         );
 
         assert_eq!(state.read_conditions(&entity).unwrap().len(), 4);
@@ -1012,17 +1053,29 @@ mod tests {
         state.apply_condition(
             &e1,
             "Blessed",
-            ConditionArgs { duration: duration_variant("Rounds"), invocation: inv, ..Default::default() },
+            ConditionArgs {
+                duration: duration_variant("Rounds"),
+                invocation: inv,
+                ..Default::default()
+            },
         );
         state.apply_condition(
             &e2,
             "Blessed",
-            ConditionArgs { duration: duration_variant("Rounds"), invocation: inv, ..Default::default() },
+            ConditionArgs {
+                duration: duration_variant("Rounds"),
+                invocation: inv,
+                ..Default::default()
+            },
         );
         state.apply_condition(
             &e3,
             "Blessed",
-            ConditionArgs { duration: duration_variant("Rounds"), invocation: inv, ..Default::default() },
+            ConditionArgs {
+                duration: duration_variant("Rounds"),
+                invocation: inv,
+                ..Default::default()
+            },
         );
 
         state.remove_conditions_by_invocation(InvocationId(7));

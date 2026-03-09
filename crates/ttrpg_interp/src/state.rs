@@ -1,5 +1,5 @@
 use crate::effect::FieldPathSegment;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use ttrpg_ast::Name;
 
@@ -51,6 +51,8 @@ pub struct ConditionArgs {
     pub invocation: Option<InvocationId>,
     /// Effect source metadata. Default: `EffectSource.Unknown`.
     pub source: Value,
+    /// Tags from the condition declaration. Default: empty.
+    pub tags: BTreeSet<Name>,
 }
 
 impl Default for ConditionArgs {
@@ -60,6 +62,7 @@ impl Default for ConditionArgs {
             duration: Value::Void,
             invocation: None,
             source: crate::value::effect_source_unknown(),
+            tags: BTreeSet::new(),
         }
     }
 }
@@ -98,6 +101,9 @@ pub struct ActiveCondition {
     /// Effect source metadata (e.g., `EffectSource.Spell(...)` or `EffectSource.Unknown`).
     /// Ruleset-defined enum; defaults to `EffectSource.Unknown` when not specified.
     pub source: Value,
+    /// Tags from the condition declaration (e.g., `#curse`, `#disease`).
+    /// Static categorical properties of the condition type.
+    pub tags: BTreeSet<Name>,
 }
 
 impl ActiveCondition {
@@ -115,6 +121,15 @@ impl ActiveCondition {
             Value::Int(self.applied_at.min(i64::MAX as u64) as i64),
         );
         fields.insert(Name::from("source"), self.source.clone());
+        fields.insert(
+            Name::from("tags"),
+            Value::Set(
+                self.tags
+                    .iter()
+                    .map(|t| Value::Str(t.to_string()))
+                    .collect(),
+            ),
+        );
         Value::Struct {
             name: Name::from("ActiveCondition"),
             fields,
@@ -317,6 +332,7 @@ mod tests {
                 invocation: None,
                 applied_at: 0,
                 source: effect_source_unknown(),
+                tags: BTreeSet::new(),
             }],
         );
 
@@ -367,6 +383,7 @@ mod tests {
             invocation: None,
             applied_at: 0,
             source: effect_source_unknown(),
+            tags: BTreeSet::new(),
         };
         assert_eq!(cond.id, 42);
         assert_eq!(cond.name, "Stunned");
@@ -386,6 +403,7 @@ mod tests {
             invocation: None,
             applied_at: 42,
             source: effect_source_unknown(),
+            tags: BTreeSet::new(),
         };
         let val = cond.to_value();
         match &val {
@@ -414,6 +432,7 @@ mod tests {
             invocation: None,
             applied_at: 0,
             source: effect_source_unknown(),
+            tags: BTreeSet::new(),
         };
         let val = cond.to_value();
         match &val {
@@ -423,6 +442,37 @@ mod tests {
                 assert_eq!(fields.get("id"), Some(&Value::Int(99)));
                 // params are not exposed in the value (deferred)
                 assert!(!fields.contains_key("params"));
+            }
+            _ => panic!("expected Value::Struct"),
+        }
+    }
+
+    #[test]
+    fn active_condition_to_value_includes_tags() {
+        let mut tags = BTreeSet::new();
+        tags.insert(Name::from("curse"));
+        tags.insert(Name::from("disease"));
+        let cond = ActiveCondition {
+            id: 1,
+            name: "MummyRot".into(),
+            params: BTreeMap::new(),
+            bearer: EntityRef(1),
+            gained_at: 0,
+            duration: Value::Void,
+            invocation: None,
+            applied_at: 0,
+            source: effect_source_unknown(),
+            tags,
+        };
+        let val = cond.to_value();
+        match &val {
+            Value::Struct { fields, .. } => {
+                let expected_tags = Value::Set(
+                    [Value::Str("curse".into()), Value::Str("disease".into())]
+                        .into_iter()
+                        .collect(),
+                );
+                assert_eq!(fields.get("tags"), Some(&expected_tags));
             }
             _ => panic!("expected Value::Struct"),
         }

@@ -1132,11 +1132,25 @@ system "test" {
 
     let mut params1 = BTreeMap::new();
     params1.insert("source".into(), Value::Entity(source1));
-    state.apply_condition(&entity, "Frightened", ConditionArgs { params: params1, ..Default::default() });
+    state.apply_condition(
+        &entity,
+        "Frightened",
+        ConditionArgs {
+            params: params1,
+            ..Default::default()
+        },
+    );
 
     let mut params2 = BTreeMap::new();
     params2.insert("source".into(), Value::Entity(source2));
-    state.apply_condition(&entity, "Frightened", ConditionArgs { params: params2, ..Default::default() });
+    state.apply_condition(
+        &entity,
+        "Frightened",
+        ConditionArgs {
+            params: params2,
+            ..Default::default()
+        },
+    );
 
     assert_eq!(state.read_conditions(&entity).unwrap().len(), 2);
 

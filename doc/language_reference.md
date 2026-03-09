@@ -377,6 +377,35 @@ Cost modify: `modify Dash.cost(actor: bearer) { cost = bonus_action }`
 Modify tags: `modify attack_roll(attacker: bearer) #position #penalty { ... }`
 Suppress-modify: `suppress [#position](attacker: bearer)` — suppress all modify clauses matching the selector
 
+#### Condition Tags
+
+Conditions can carry declaration-level tags — static categorical properties of the condition type:
+
+```
+tag curse
+tag disease
+
+condition BestowCurse #curse on bearer: Character { ... }
+condition MummyRot #curse #disease on bearer: Character { ... }
+```
+
+Tags appear after the name (and optional params/extends), before `on`. At runtime, tags are exposed as a `Set<string>` on the `tags` field of `ActiveCondition`:
+
+```
+let c = conditions(target)[0]
+if "curse" in c.tags { ... }
+```
+
+**Three kinds of tags/metadata on conditions:**
+
+| What | Purpose | Example |
+|------|---------|---------|
+| Condition tags | Static identity of the condition type | `condition Hexed #curse on ...` |
+| Modify-clause tags | Individual effect categorization / suppression | `modify foo(...) #penalty { ... }` |
+| EffectSource | Per-application source metadata | `EffectSource.Spell(name: "Hold Person", ...)` |
+
+Use condition tags for properties that are always true (`#curse`, `#disease`, `#poison`). Use `EffectSource` for source-dependent properties like magicalness.
+
 #### Lifecycle Hooks (on_apply / on_remove)
 
 Conditions can include imperative blocks that execute when applied or removed.

@@ -656,6 +656,9 @@ pub struct ConditionDecl {
     pub receiver_type: Spanned<TypeExpr>,
     /// Optional group constraints on the bearer: `on bearer: Entity with Group`.
     pub receiver_with_groups: WithClause,
+    /// Tags on the condition declaration (e.g., `#curse #disease`).
+    /// These are static categorical properties of the condition type.
+    pub tags: Vec<Name>,
     pub clauses: Vec<ConditionClause>,
 }
 
@@ -673,6 +676,7 @@ impl ConditionDecl {
             receiver_name: receiver_name.into(),
             receiver_type,
             receiver_with_groups: WithClause::default(),
+            tags: vec![],
             clauses: vec![],
         }
     }
@@ -694,6 +698,11 @@ impl ConditionDecl {
 
     pub fn with_receiver_groups(mut self, groups: WithClause) -> Self {
         self.receiver_with_groups = groups;
+        self
+    }
+
+    pub fn with_tags(mut self, tags: Vec<Name>) -> Self {
+        self.tags = tags;
         self
     }
 

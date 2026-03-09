@@ -1027,11 +1027,14 @@ hook Regenerate on creature: Character (
 // --- Tags ---
 //
 // Tags are metadata labels declared with `tag #name` and attached to
-// derives, mechanics, functions, and actions using `#tagname` after the
-// parameter list (before the opening `{`). Tags must be declared before use.
+// derives, mechanics, functions, actions, and conditions using `#tagname`
+// after the parameter list (before the opening `{`). Tags must be
+// declared before use.
 //
 //   tag #concentration
 //   tag #ranged
+//   tag #curse
+//   tag #disease
 //
 //   action CastBless on caster: Character (targets: list<Character>) #concentration {
 //       // ...
@@ -1041,9 +1044,38 @@ hook Regenerate on creature: Character (
 //       // ...
 //   }
 //
-// Tags have no runtime semantics — they are metadata for categorization,
+// Tags on functions and actions are metadata for categorization,
 // selector-based modify clauses, and tooling. Multiple tags can be
 // applied to a single declaration: `action Foo on x: T () #a #b { }`.
+//
+// --- Tags on condition declarations ---
+//
+// Condition declarations can also carry tags. These represent static
+// categorical properties of the condition type — things that are always
+// true regardless of how the condition was applied.
+//
+//   condition BestowCurse #curse on bearer: Character { ... }
+//   condition MummyRot #curse #disease on bearer: Character { ... }
+//   condition Poisoned #poison on bearer: Character { ... }
+//
+// Tags appear after the condition name (and optional params / extends)
+// but before the `on` keyword. At runtime, declaration tags are exposed
+// as a `Set<string>` on the `tags` field of ActiveCondition values:
+//
+//   let c = conditions(target)[0]
+//   if "curse" in c.tags { ... }
+//
+// This is distinct from:
+// - Modify-clause tags (e.g., `modify foo(...) #penalty { ... }`) which
+//   describe individual mechanical effects and are used for targeted
+//   suppression within a condition.
+// - EffectSource (e.g., `EffectSource.Spell(...)`) which is per-application
+//   metadata about how a condition was applied, not what it inherently is.
+//
+// Use condition tags for inherently static properties (#curse, #disease,
+// #poison). Use EffectSource for source-dependent properties like whether
+// the condition is magical — the same condition (e.g., Paralyzed) can
+// come from a spell (magical) or a monster ability (non-magical).
 //
 // The checker validates that all tags used on declarations have been
 // declared via `tag #name`. Undeclared tags are a compile-time error.

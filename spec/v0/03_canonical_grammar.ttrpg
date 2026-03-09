@@ -373,7 +373,7 @@ hook_decl       = "hook" IDENT "on" IDENT ":" constrained_type
 event_decl      = "event" IDENT "(" params ")" ("{" field_defs "}")? term
 
 // --- Condition (declarative modifiers, has receiver, no mutation) ---
-condition_decl  = "condition" IDENT params? extends_clause?
+condition_decl  = "condition" IDENT params? extends_clause? tag_list?
                       "on" IDENT ":" constrained_type
                       stacking_clause?
                       "{" condition_clause* "}"

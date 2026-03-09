@@ -1119,7 +1119,7 @@ pub(crate) fn emit_modify_applied_events(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::{BTreeMap, HashMap};
+    use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
     use ttrpg_ast::ast::*;
     use ttrpg_ast::{Span, Spanned};
@@ -1327,6 +1327,7 @@ mod tests {
                 extends: vec![],
                 receiver_name: "target".into(),
                 receiver_type: Ty::Entity("Character".into()),
+                tags: HashSet::new(),
             },
         );
 
@@ -1345,6 +1346,7 @@ mod tests {
                 invocation: None,
                 applied_at: 0,
                 source: effect_source_unknown(),
+                tags: BTreeSet::new(),
             }],
         );
 
@@ -1495,6 +1497,7 @@ mod tests {
                 extends: vec![],
                 receiver_name: "target".into(),
                 receiver_type: Ty::Entity("Character".into()),
+                tags: HashSet::new(),
             },
         );
 
@@ -1512,6 +1515,7 @@ mod tests {
                 invocation: None,
                 applied_at: 0,
                 source: effect_source_unknown(),
+                tags: BTreeSet::new(),
             }],
         );
 
@@ -1680,6 +1684,7 @@ mod tests {
                 extends: vec![],
                 receiver_name: "t".into(),
                 receiver_type: Ty::Entity("Character".into()),
+                tags: HashSet::new(),
             },
         );
         type_env.conditions.insert(
@@ -1690,6 +1695,7 @@ mod tests {
                 extends: vec![],
                 receiver_name: "t".into(),
                 receiver_type: Ty::Entity("Character".into()),
+                tags: HashSet::new(),
             },
         );
 
@@ -1709,6 +1715,7 @@ mod tests {
                     invocation: None,
                     applied_at: 0,
                     source: effect_source_unknown(),
+                    tags: BTreeSet::new(),
                 },
                 ActiveCondition {
                     id: 2,
@@ -1720,6 +1727,7 @@ mod tests {
                     invocation: None,
                     applied_at: 0,
                     source: effect_source_unknown(),
+                    tags: BTreeSet::new(),
                 },
             ],
         );
@@ -1887,6 +1895,7 @@ mod tests {
                 extends: vec![],
                 receiver_name: "t".into(),
                 receiver_type: Ty::Entity("Character".into()),
+                tags: HashSet::new(),
             },
         );
         type_env.options.insert("Variant".into());
@@ -1905,6 +1914,7 @@ mod tests {
                 invocation: None,
                 applied_at: 0,
                 source: effect_source_unknown(),
+                tags: BTreeSet::new(),
             }],
         );
         state.enabled_options.push("Variant".into());
@@ -2043,6 +2053,7 @@ mod tests {
                 extends: vec![],
                 receiver_name: "t".into(),
                 receiver_type: Ty::Entity("Character".into()),
+                tags: HashSet::new(),
             },
         );
 
@@ -2061,6 +2072,7 @@ mod tests {
                 invocation: None,
                 applied_at: 0,
                 source: effect_source_unknown(),
+                tags: BTreeSet::new(),
             }],
         );
 
@@ -2376,6 +2388,7 @@ mod tests {
                 extends: vec![],
                 receiver_name: "t".into(),
                 receiver_type: Ty::Entity("Character".into()),
+                tags: HashSet::new(),
             },
         );
 
@@ -2393,6 +2406,7 @@ mod tests {
                 invocation: None,
                 applied_at: 0,
                 source: effect_source_unknown(),
+                tags: BTreeSet::new(),
             }],
         );
 
@@ -2774,6 +2788,7 @@ mod tests {
                 receiver_name: "target".into(),
                 receiver_type: Ty::Entity("Character".into()),
                 params: vec![],
+                tags: HashSet::new(),
             },
         );
 
@@ -2792,6 +2807,7 @@ mod tests {
                 invocation: None,
                 applied_at: 0,
                 source: effect_source_unknown(),
+                tags: BTreeSet::new(),
             }],
         );
 
@@ -2911,6 +2927,7 @@ mod tests {
                 receiver_name: "target".into(),
                 receiver_type: Ty::Entity("Character".into()),
                 params: vec![],
+                tags: HashSet::new(),
             },
         );
 
@@ -2929,6 +2946,7 @@ mod tests {
                 invocation: None,
                 applied_at: 0,
                 source: effect_source_unknown(),
+                tags: BTreeSet::new(),
             }],
         );
 
