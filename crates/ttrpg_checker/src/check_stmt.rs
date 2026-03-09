@@ -121,6 +121,14 @@ impl Checker<'_> {
                 self.check_with_budget(entity, budget_fields, body, *span);
                 Ty::Unit
             }
+            StmtKind::WithCostPayer {
+                entity,
+                body,
+                span,
+            } => {
+                self.check_with_cost_payer(entity, body, *span);
+                Ty::Unit
+            }
             StmtKind::Return(expr) => {
                 if !self.scope.allows_return() {
                     self.error(
@@ -899,6 +907,32 @@ impl Checker<'_> {
             },
         );
 
+        self.check_block(body);
+        self.scope.pop();
+    }
+
+    fn check_with_cost_payer(
+        &mut self,
+        entity: &Spanned<ExprKind>,
+        body: &Block,
+        span: ttrpg_ast::Span,
+    ) {
+        if !self.scope.allows_mutation() {
+            self.error(
+                "with_cost_payer is only allowed in function, action, reaction, or hook context",
+                span,
+            );
+        }
+
+        let entity_ty = self.check_expr(entity);
+        if !entity_ty.is_error() && !matches!(entity_ty, Ty::Entity(_) | Ty::AnyEntity) {
+            self.error(
+                format!("with_cost_payer requires an entity, found {entity_ty}"),
+                span,
+            );
+        }
+
+        self.scope.push(BlockKind::Inner);
         self.check_block(body);
         self.scope.pop();
     }

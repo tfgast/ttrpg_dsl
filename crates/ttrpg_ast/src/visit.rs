@@ -720,6 +720,15 @@ impl VisitSpansMut for StmtKind {
                 body.visit_spans_mut(f);
                 span.visit_spans_mut(f);
             }
+            StmtKind::WithCostPayer {
+                entity,
+                body,
+                span,
+            } => {
+                entity.visit_spans_mut(f);
+                body.visit_spans_mut(f);
+                span.visit_spans_mut(f);
+            }
             StmtKind::Return(expr) => {
                 expr.visit_spans_mut(f);
             }

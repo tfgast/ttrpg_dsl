@@ -433,6 +433,26 @@ pub(super) fn eval_stmt(
 
             scoped_budget(env, actor, budget, *span, |env| eval_block(env, body))
         }
+        StmtKind::WithCostPayer {
+            entity, body, ..
+        } => {
+            let entity_val = eval_expr(env, entity)?;
+            let payer = match entity_val {
+                Value::Entity(r) => r,
+                _ => {
+                    return Err(RuntimeError::with_span(
+                        "with_cost_payer: expected entity value",
+                        entity.span,
+                    ))
+                }
+            };
+
+            let prev = env.cost_payer;
+            env.cost_payer = Some(payer);
+            let result = eval_block(env, body);
+            env.cost_payer = prev;
+            result
+        }
         StmtKind::Return(expr) => {
             let val = match expr {
                 Some(e) => eval_expr(env, e)?,

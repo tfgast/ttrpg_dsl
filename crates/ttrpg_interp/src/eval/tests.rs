@@ -5233,3 +5233,89 @@ fn with_budget_restores_on_error() {
         handler.log[1],
     );
 }
+
+// ── with_cost_payer tests ──────────────────────────────────────
+
+#[test]
+fn with_cost_payer_sets_and_restores() {
+    let program = empty_program();
+    let type_env = empty_type_env();
+    let interp = Interpreter::new(&program, &type_env).unwrap();
+    let state = TestState::new();
+    let mut handler = ScriptedHandler::new();
+    let mut env = make_env(&state, &mut handler, &interp);
+
+    env.bind(Name::from("payer"), Value::Entity(EntityRef(7)));
+    env.cost_payer = Some(EntityRef(99));
+
+    let stmt = spanned(StmtKind::WithCostPayer {
+        entity: Box::new(spanned(ExprKind::Ident("payer".into()))),
+        body: Spanned::new(
+            vec![spanned(StmtKind::Expr(spanned(ExprKind::IntLit(0))))],
+            dummy_span(),
+        ),
+        span: dummy_span(),
+    });
+
+    eval_stmt(&mut env, &stmt).unwrap();
+
+    // cost_payer should be restored to previous value
+    assert_eq!(env.cost_payer, Some(EntityRef(99)));
+}
+
+#[test]
+fn with_cost_payer_restores_on_error() {
+    let program = empty_program();
+    let type_env = empty_type_env();
+    let interp = Interpreter::new(&program, &type_env).unwrap();
+    let state = TestState::new();
+    let mut handler = ScriptedHandler::new();
+    let mut env = make_env(&state, &mut handler, &interp);
+
+    env.bind(Name::from("payer"), Value::Entity(EntityRef(7)));
+    env.cost_payer = None;
+
+    let stmt = spanned(StmtKind::WithCostPayer {
+        entity: Box::new(spanned(ExprKind::Ident("payer".into()))),
+        body: Spanned::new(
+            vec![spanned(StmtKind::Expr(spanned(ExprKind::Ident(
+                "nonexistent".into(),
+            ))))],
+            dummy_span(),
+        ),
+        span: dummy_span(),
+    });
+
+    let result = eval_stmt(&mut env, &stmt);
+    assert!(result.is_err(), "body error should propagate");
+
+    // cost_payer should be restored even on error
+    assert_eq!(env.cost_payer, None);
+}
+
+#[test]
+fn with_cost_payer_does_not_touch_turn_actor() {
+    let program = empty_program();
+    let type_env = empty_type_env();
+    let interp = Interpreter::new(&program, &type_env).unwrap();
+    let state = TestState::new();
+    let mut handler = ScriptedHandler::new();
+    let mut env = make_env(&state, &mut handler, &interp);
+
+    env.bind(Name::from("payer"), Value::Entity(EntityRef(7)));
+    env.turn_actor = Some(EntityRef(42));
+
+    let stmt = spanned(StmtKind::WithCostPayer {
+        entity: Box::new(spanned(ExprKind::Ident("payer".into()))),
+        body: Spanned::new(
+            vec![spanned(StmtKind::Expr(spanned(ExprKind::IntLit(0))))],
+            dummy_span(),
+        ),
+        span: dummy_span(),
+    });
+
+    eval_stmt(&mut env, &stmt).unwrap();
+
+    // turn_actor should be untouched
+    assert_eq!(env.turn_actor, Some(EntityRef(42)));
+}

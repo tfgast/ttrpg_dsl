@@ -1192,6 +1192,12 @@ pub enum StmtKind {
         body: Block,
         span: Span,
     },
+    /// `with_cost_payer(entity) { body }` — set `cost_payer` within lexical scope.
+    WithCostPayer {
+        entity: Box<Spanned<ExprKind>>,
+        body: Block,
+        span: Span,
+    },
     /// `return` or `return expr` — early exit from the enclosing block.
     Return(Option<Spanned<ExprKind>>),
 }
