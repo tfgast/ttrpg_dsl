@@ -357,45 +357,6 @@ system "OSRIC Chargen" {
 
 
     // ========================================================
-    //  SPELL SLOT INITIALIZATION
-    //
-    //  Compute initial spell slots list for a caster at level 1.
-    //  Returns a list where index i = slots for spell level i+1.
-    //  §1.3.x.4a: Spell Progression tables.
-    // ========================================================
-
-    derive initial_spell_slots(
-        progression: SpellProgression,
-        wis: int
-    ) -> list<int> {
-        let max_sl = max_spell_level(progression)
-        if max_sl == 0 { [] }
-        else if max_sl == 7 {
-            [
-                total_spell_slots(progression, 1, 1, wis),
-                total_spell_slots(progression, 1, 2, wis),
-                total_spell_slots(progression, 1, 3, wis),
-                total_spell_slots(progression, 1, 4, wis),
-                total_spell_slots(progression, 1, 5, wis),
-                total_spell_slots(progression, 1, 6, wis),
-                total_spell_slots(progression, 1, 7, wis)
-            ]
-        } else {
-            // MagicUser: 9 spell levels
-            [
-                total_spell_slots(progression, 1, 1, wis),
-                total_spell_slots(progression, 1, 2, wis),
-                total_spell_slots(progression, 1, 3, wis),
-                total_spell_slots(progression, 1, 4, wis),
-                total_spell_slots(progression, 1, 5, wis),
-                total_spell_slots(progression, 1, 6, wis),
-                total_spell_slots(progression, 1, 7, wis),
-                total_spell_slots(progression, 1, 8, wis),
-                total_spell_slots(progression, 1, 9, wis)
-            ]
-        }
-    }
-
     // Find the first caster class in a class list.
     derive caster_class_in(classes: list<Class>) -> option<Class> {
         let casters = [c for c in classes if class_def(c).spell_progression != NonCaster]
