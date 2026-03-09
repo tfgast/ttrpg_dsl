@@ -298,8 +298,7 @@ system "OSRIC Saves" {
         is_mental: bool = false
     ) -> option<bool> {
         resolve {
-            if category.is_some() {
-                let cat = category.unwrap()
+            if let some(cat) = category {
                 let saves = character_best_saves(saver)
 
                 // Stalwart bonus: dwarves/gnomes/halflings vs aimed magic, poison, spells
@@ -330,8 +329,7 @@ system "OSRIC Saves" {
         is_mental: bool = false
     ) -> option<bool> {
         resolve {
-            if category.is_some() {
-                let cat = category.unwrap()
+            if let some(cat) = category {
                 let saves = monster_best_saves(saver)
                 some(roll_saving_throw(saves, cat, bonus))
             } else {

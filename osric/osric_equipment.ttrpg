@@ -246,8 +246,8 @@ system "OSRIC Equipment" {
     // Works for any entity with EquipmentSlots (Character always, Monster optionally).
     derive wielded_melee(target: entity) -> option<MeleeWeapon> {
         if target has EquipmentSlots as eq {
-            if target.eq.wielded_main.is_some() {
-                match target.eq.wielded_main.unwrap() {
+            if let some(wielded_main) = target.eq.wielded_main {
+                match wielded_main {
                     Melee(w, _bonus, _mat) => some(w),
                     _ => none
                 }
@@ -257,8 +257,8 @@ system "OSRIC Equipment" {
 
     derive wielded_missile(target: entity) -> option<MissileWeapon> {
         if target has EquipmentSlots as eq {
-            if target.eq.wielded_main.is_some() {
-                match target.eq.wielded_main.unwrap() {
+            if let some(wielded_main) = target.eq.wielded_main {
+                match wielded_main {
                     Missile(w, _bonus, _mat) => some(w),
                     _ => none
                 }
@@ -268,8 +268,8 @@ system "OSRIC Equipment" {
 
     derive wielded_off_melee(target: entity) -> option<MeleeWeapon> {
         if target has EquipmentSlots as eq {
-            if target.eq.wielded_off.is_some() {
-                match target.eq.wielded_off.unwrap() {
+            if let some(wielded_off) = target.eq.wielded_off {
+                match wielded_off {
                     Melee(w, _bonus, _mat) => some(w),
                     _ => none
                 }
@@ -280,8 +280,8 @@ system "OSRIC Equipment" {
     // Movement cap from worn armour; 0ft = no cap (unarmoured).
     derive armor_movement_cap(target: entity) -> Feet {
         if target has EquipmentSlots as eq {
-            if target.eq.worn_armor.is_some() {
-                armour_def(target.eq.worn_armor.unwrap().armour_type).movement_cap
+            if let some(armor) = target.eq.worn_armor {
+                armour_def(armor.armour_type).movement_cap
             } else { 0ft }
         } else { 0ft }
     }
@@ -297,29 +297,29 @@ system "OSRIC Equipment" {
     // ========================================================
 
     function unequip_main(char: Character) {
-        if char.wielded_main.is_some() {
-            char.current_weight = char.current_weight - wielded_item_weight(char.wielded_main.unwrap())
+        if let some(wielded_main) = char.wielded_main {
+            char.current_weight = char.current_weight - wielded_item_weight(wielded_main)
             char.wielded_main = none
         }
     }
 
     function unequip_off(char: Character) {
-        if char.wielded_off.is_some() {
-            char.current_weight = char.current_weight - wielded_item_weight(char.wielded_off.unwrap())
+        if let some(wielded_off) = char.wielded_off {
+            char.current_weight = char.current_weight - wielded_item_weight(wielded_off)
             char.wielded_off = none
         }
     }
 
     function unequip_armor(char: Character) {
-        if char.worn_armor.is_some() {
-            char.current_weight = char.current_weight - armour_def(char.worn_armor.unwrap().armour_type).weight
+        if let some(armor) = char.worn_armor {
+            char.current_weight = char.current_weight - armour_def(armor.armour_type).weight
             char.worn_armor = none
         }
     }
 
     function unequip_shield(char: Character) {
-        if char.worn_shield.is_some() {
-            char.current_weight = char.current_weight - shield_def(char.worn_shield.unwrap().shield_type).weight
+        if let some(shield) = char.worn_shield {
+            char.current_weight = char.current_weight - shield_def(shield.shield_type).weight
             char.worn_shield = none
         }
     }
@@ -346,8 +346,16 @@ system "OSRIC Equipment" {
 
     function equip_off(char: Character, item: WieldedItem) {
         // Validate main hand isn't two-handed
-        if char.wielded_main.is_some() && wielded_item_hands(char.wielded_main.unwrap()) == 2 {
-            error("Cannot equip off-hand: main-hand weapon is two-handed")
+        if let some(wielded_main) = char.wielded_main {
+            if wielded_item_hands(wielded_main) == 2 {
+                error("Cannot equip off-hand: main-hand weapon is two-handed")
+            } else {
+                // Off-hand and shield are mutually exclusive
+                unequip_off(char)
+                unequip_shield(char)
+                char.wielded_off = some(item)
+                char.current_weight = char.current_weight + wielded_item_weight(item)
+            }
         } else {
             // Off-hand and shield are mutually exclusive
             unequip_off(char)
@@ -367,12 +375,20 @@ system "OSRIC Equipment" {
         // Shield requires free off-hand
         if char.wielded_off.is_some() {
             error("Cannot equip shield: off-hand is occupied")
-        } else if char.wielded_main.is_some() && wielded_item_hands(char.wielded_main.unwrap()) == 2 {
-            error("Cannot equip shield: main-hand weapon is two-handed")
         } else {
-            unequip_shield(char)
-            char.worn_shield = some(shield)
-            char.current_weight = char.current_weight + shield_def(shield.shield_type).weight
+            if let some(wielded_main) = char.wielded_main {
+                if wielded_item_hands(wielded_main) == 2 {
+                    error("Cannot equip shield: main-hand weapon is two-handed")
+                } else {
+                    unequip_shield(char)
+                    char.worn_shield = some(shield)
+                    char.current_weight = char.current_weight + shield_def(shield.shield_type).weight
+                }
+            } else {
+                unequip_shield(char)
+                char.worn_shield = some(shield)
+                char.current_weight = char.current_weight + shield_def(shield.shield_type).weight
+            }
         }
     }
 

@@ -387,8 +387,7 @@ system "OSRIC Combat" {
     // ========================================================
 
     derive base_armor_ac(char: Character) -> int {
-        if char.worn_armor.is_some() {
-            let armor = char.worn_armor.unwrap()
+        if let some(armor) = char.worn_armor {
             armour_def(armor.armour_type).ascending_ac + armor.magic_bonus
         } else {
             10
@@ -396,8 +395,7 @@ system "OSRIC Combat" {
     }
 
     derive base_shield_bonus(char: Character) -> int {
-        if char.worn_shield.is_some() {
-            let shield = char.worn_shield.unwrap()
+        if let some(shield) = char.worn_shield {
             shield_def(shield.shield_type).ac_bonus + shield.magic_bonus
         } else {
             0
@@ -1633,13 +1631,13 @@ system "OSRIC Combat" {
         cost { action }
         resolve {
             let wielded = attacker.wielded_main
-            let weapon = if wielded_melee(attacker).is_some() {
-                wielded_melee(attacker).unwrap()
+            let weapon = if let some(weapon) = wielded_melee(attacker) {
+                weapon
             } else {
                 FistOrKick
             }
-            let wb = if wielded.is_some() { wielded_item_magic_bonus(wielded.unwrap()) } else { 0 }
-            let wm = if wielded.is_some() { wielded_item_material(wielded.unwrap()) } else { WeaponMaterial.Normal }
+            let wb = if let some(item) = wielded { wielded_item_magic_bonus(item) } else { 0 }
+            let wm = if let some(item) = wielded { wielded_item_material(item) } else { WeaponMaterial.Normal }
             let result = resolve_melee_attack(attacker, target, weapon, weapon_bonus: wb, weapon_material: wm)
             match result.outcome {
                 AttackOutcome.Hit => {
@@ -1799,10 +1797,10 @@ system "OSRIC Combat" {
         resolve {
             let weapon = wielded_melee(attacker).unwrap()
             let wb = if attacker has EquipmentSlots as eq {
-                if attacker.eq.wielded_main.is_some() { wielded_item_magic_bonus(attacker.eq.wielded_main.unwrap()) } else { 0 }
+                if let some(item) = attacker.eq.wielded_main { wielded_item_magic_bonus(item) } else { 0 }
             } else { 0 }
             let wm = if attacker has EquipmentSlots as eq {
-                if attacker.eq.wielded_main.is_some() { wielded_item_material(attacker.eq.wielded_main.unwrap()) } else { WeaponMaterial.Normal }
+                if let some(item) = attacker.eq.wielded_main { wielded_item_material(item) } else { WeaponMaterial.Normal }
             } else { WeaponMaterial.Normal }
             let result = resolve_armed_melee_attack(attacker, target, weapon, weapon_bonus: wb, weapon_material: wm)
             match result.outcome {
@@ -1828,10 +1826,10 @@ system "OSRIC Combat" {
         resolve {
             let weapon = wielded_missile(attacker).unwrap()
             let wb = if attacker has EquipmentSlots as eq {
-                if attacker.eq.wielded_main.is_some() { wielded_item_magic_bonus(attacker.eq.wielded_main.unwrap()) } else { 0 }
+                if let some(item) = attacker.eq.wielded_main { wielded_item_magic_bonus(item) } else { 0 }
             } else { 0 }
             let wm = if attacker has EquipmentSlots as eq {
-                if attacker.eq.wielded_main.is_some() { wielded_item_material(attacker.eq.wielded_main.unwrap()) } else { WeaponMaterial.Normal }
+                if let some(item) = attacker.eq.wielded_main { wielded_item_material(item) } else { WeaponMaterial.Normal }
             } else { WeaponMaterial.Normal }
             let result = resolve_armed_missile_attack(attacker, target, weapon, distance, weapon_bonus: wb, weapon_material: wm)
             match result.outcome {
@@ -1855,8 +1853,8 @@ system "OSRIC Combat" {
 
     derive parry_bonus(char: Character) -> int {
         let str_hit = effective_str_to_hit(char)
-        let spec_hit = if wielded_melee(char).is_some() {
-            melee_spec_hit_mod(char, wielded_melee(char).unwrap())
+        let spec_hit = if let some(weapon) = wielded_melee(char) {
+            melee_spec_hit_mod(char, weapon)
         } else {
             0
         }

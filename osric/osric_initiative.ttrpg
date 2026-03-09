@@ -473,9 +473,10 @@ system "OSRIC Initiative" {
         spell_id: option<SpellId> = none,
         spell_targets: list<entity> = []
     ) -> RoundAction {
-        let weapon_speed = match {
-            weapon_melee.is_some() => melee_weapon_def(weapon_melee.unwrap()).speed_factor,
-            _ => 0
+        let weapon_speed = if let some(weapon) = weapon_melee {
+            melee_weapon_def(weapon).speed_factor
+        } else {
+            0
         }
         let seg = action_segment(initiative_segment, action_type, casting_time, dex_missile_init_adj)
         RoundAction {
@@ -599,14 +600,15 @@ system "OSRIC Initiative" {
                     equip_main(action.combatant, WieldedItem.Melee(weapon))
                     action.combatant.MeleeAttack(target)
                 } else if action.combatant is Monster {
-                    if action.monster_attack.is_some() {
+                    if let some(attack) = action.monster_attack {
                         // Monster natural attack
-                        action.combatant.MonsterMeleeAttack(target, action.monster_attack.unwrap())
-                    } else if action.weapon_melee.is_some() && action.combatant has EquipmentSlots {
+                        action.combatant.MonsterMeleeAttack(target, attack)
+                    } else if let some(weapon) = action.weapon_melee {
                         // Armed monster with wielded weapon
-                        let weapon = action.weapon_melee.unwrap()
-                        equip_monster_main(action.combatant, WieldedItem.Melee(weapon))
-                        action.combatant.MeleeAttack(target)
+                        if action.combatant has EquipmentSlots {
+                            equip_monster_main(action.combatant, WieldedItem.Melee(weapon))
+                            action.combatant.MeleeAttack(target)
+                        }
                     }
                 }
                 if rear {
@@ -620,14 +622,15 @@ system "OSRIC Initiative" {
                     equip_main(action.combatant, WieldedItem.Missile(weapon))
                     action.combatant.MissileAttack(target, action.distance)
                 } else if action.combatant is Monster {
-                    if action.monster_attack.is_some() {
+                    if let some(attack) = action.monster_attack {
                         // Monster natural ranged attack
-                        action.combatant.MonsterMissileAttack(target, action.monster_attack.unwrap(), action.distance)
-                    } else if action.weapon_missile.is_some() && action.combatant has EquipmentSlots {
+                        action.combatant.MonsterMissileAttack(target, attack, action.distance)
+                    } else if let some(weapon) = action.weapon_missile {
                         // Armed monster with wielded missile weapon
-                        let weapon = action.weapon_missile.unwrap()
-                        equip_monster_main(action.combatant, WieldedItem.Missile(weapon))
-                        action.combatant.MissileAttack(target, action.distance)
+                        if action.combatant has EquipmentSlots {
+                            equip_monster_main(action.combatant, WieldedItem.Missile(weapon))
+                            action.combatant.MissileAttack(target, action.distance)
+                        }
                     }
                 }
             },
@@ -638,10 +641,47 @@ system "OSRIC Initiative" {
                 // Apply Charging condition (strips DEX AC, -1 AC)
                 apply_condition(charger, Charging, Duration.EndOfRound)
 
-                if action.monster_attack.is_some() && charger is Monster {
-                    // Monster natural-weapon charge (claw, bite, horn, etc.)
-                    let attack = action.monster_attack.unwrap()
-                    charger.MonsterCharge(target, attack)
+                if charger is Monster {
+                    if let some(attack) = action.monster_attack {
+                        // Monster natural-weapon charge (claw, bite, horn, etc.)
+                        charger.MonsterCharge(target, attack)
+                    } else {
+                        // Armed charge — Character or armed Monster with wielded weapon.
+                        let charge_weapon = action.weapon_melee.unwrap()
+
+                        // Equip charger's weapon
+                        if charger is Character {
+                            equip_main(charger, WieldedItem.Melee(charge_weapon))
+                        } else if charger has EquipmentSlots {
+                            equip_monster_main(charger, WieldedItem.Melee(charge_weapon))
+                        }
+
+                        // Check if target declared set weapon against charge
+                        let set_actions = [a for a in all_actions
+                            if a.action_type == DeclaredActionType.SetAgainstChargeAction
+                            && a.combatant == target]
+
+                        if len(set_actions) > 0 {
+                            let set_action = first(set_actions).unwrap()
+                            let set_weapon = set_action.weapon_melee.unwrap()
+
+                            // Equip defender's set weapon
+                            if set_action.combatant is Character {
+                                equip_main(set_action.combatant, WieldedItem.Melee(set_weapon))
+                            } else if set_action.combatant has EquipmentSlots {
+                                equip_monster_main(set_action.combatant, WieldedItem.Melee(set_weapon))
+                            }
+
+                            // A properly set weapon always strikes before the charger.
+                            target.SetWeaponStrike(charger)
+                            if is_alive(charger) {
+                                charger.Charge(target)
+                            }
+                        } else {
+                            // Normal armed charge, no set weapon opposition
+                            charger.Charge(target)
+                        }
+                    }
                 } else {
                     // Armed charge — Character or armed Monster with wielded weapon.
                     let charge_weapon = action.weapon_melee.unwrap()
@@ -687,10 +727,10 @@ system "OSRIC Initiative" {
                 // monster spellcasting TBD.
                 if action.combatant is Character {
                     let still_casting = any([c.name == "CastingSpell" for c in conditions(action.combatant)])
-                    if action.spell_id.is_some() {
+                    if let some(spell_id) = action.spell_id {
                         if still_casting {
                             remove_condition(action.combatant, CastingSpell)
-                            resolve_spell(action.spell_id.unwrap(), action.combatant, action.spell_targets)
+                            resolve_spell(spell_id, action.combatant, action.spell_targets)
                         }
                     }
                 }
@@ -920,8 +960,7 @@ system "OSRIC Initiative" {
                 for a in actions {
                     if a.action_type == DeclaredActionType.CastSpellAction && a.initiative_segment == seg {
                         if a.combatant has Spellcasting as sc {
-                            if a.spell_id.is_some() {
-                                let spell_id = a.spell_id.unwrap()
+                            if let some(spell_id) = a.spell_id {
                                 let spell_level = spell_def(spell_id).level
                                 a.combatant.CastSpell(spell_id, spell_level, a.casting_time)
                             }

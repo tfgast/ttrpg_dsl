@@ -852,8 +852,7 @@ system "OSRIC Potions" {
 
     // Armour penalty to climbing per §2.13.2
     derive climbing_armor_penalty(char: Character) -> int {
-        if char.worn_armor.is_some() {
-            let armor = char.worn_armor.unwrap()
+        if let some(armor) = char.worn_armor {
             let base_penalty = if armor.magic_bonus > 0 { 1 } else { 0 }
             match armor.armour_type {
                 StuddedLeather => base_penalty + 1,
