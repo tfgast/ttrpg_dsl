@@ -722,9 +722,10 @@ DiceExpr  ──roll()──▶  RollResult  ──.total──▶  int
 | `entity`          | Polymorphic any-entity alias in type position  |
 | `Position`        | Opaque board location, use `distance(a, b)`    |
 | `Duration`        | `EndOfTurn`, `StartOfNextTurn`, `Rounds(n)`, `Minutes(n)`, `Indefinite` |
+| `EffectSource`    | Condition provenance metadata — must have plain `Unknown` variant |
 | `Invocation`      | Execution scope handle from `invocation()`     |
 | `Condition`       | Condition identifier — pass to `apply_condition()`, store in variables |
-| `ActiveCondition` | Runtime condition instance: `.name`, `.duration`, `.id` |
+| `ActiveCondition` | Runtime condition instance: `.name`, `.duration`, `.source`, `.id` |
 
 ---
 
@@ -1070,8 +1071,31 @@ function resolve_sleep(caster: entity, targets: list<entity>) {
 
 **`Condition` vs `ActiveCondition`:**
 - `Condition` = a condition blueprint (e.g. `Prone`, `Sleeping`, `Concealed(level: 3)`)
-- `ActiveCondition` = a live instance on an entity, with `.name`, `.duration`, `.id` fields; returned by `conditions(entity)`
+- `ActiveCondition` = a live instance on an entity, with `.name`, `.duration`, `.source`, `.id`, `.applied_at` fields; returned by `conditions(entity)`
 - `has_condition(entity, "Prone")` → `bool` — checks if entity has an active condition by name. Prefer over `any([c.name == X for c in conditions(entity)])`.
+
+**`EffectSource` — condition provenance:**
+
+`EffectSource` is a user-defined enum (like `Duration`) that tags conditions with their origin. The engine requires a plain `Unknown` variant. `apply_condition()` accepts an optional 4th argument; when omitted, it defaults to `EffectSource.Unknown`.
+
+```ttrpg-snippet
+enum EffectSource {
+    Unknown,
+    Spell(name: string, caster_level: int),
+    Item(name: string)
+}
+
+// Apply with source metadata:
+apply_condition(target, Held, Duration.Rounds(10),
+    EffectSource.Spell(name: "Hold Person", caster_level: 7))
+
+// Query source on active conditions:
+for c in conditions(target) {
+    if let EffectSource.Spell(name, caster_level) = c.source {
+        // use caster_level for dispel checks
+    }
+}
+```
 
 ### Resistance Check (guard match)
 

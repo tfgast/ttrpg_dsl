@@ -486,6 +486,47 @@ enum Duration {
 }
 
 
+// --- EffectSource ---
+//
+// Provenance metadata for conditions and temporary effects.
+// Rulesets define their own variants to tag conditions with
+// information about where they came from (spell, innate ability,
+// item, environment, etc.).
+//
+// Like Duration, EffectSource is a user-defined enum recognized
+// by name. The engine requires a plain `Unknown` variant with no
+// fields — this serves as the default when source is not specified.
+//
+// If the ruleset does not define EffectSource, a minimal built-in
+// fallback with only `Unknown` is provided.
+//
+// apply_condition() accepts an optional 4th argument of type
+// EffectSource. When omitted, the source defaults to Unknown.
+//
+// Example:
+//   enum EffectSource {
+//       Unknown,
+//       Spell(name: string, caster_level: int, spell_level: int),
+//       Innate(name: string, hit_dice: int),
+//       Item(name: string),
+//       Environmental
+//   }
+//
+//   apply_condition(target, Held, Duration.Rounds(10),
+//       EffectSource.Spell(name: "Hold Person", caster_level: 7, spell_level: 3))
+//
+//   // Dispel check using source metadata:
+//   for c in conditions(target) {
+//       if let EffectSource.Spell(name, caster_level, spell_level) = c.source {
+//           // roll dispel check against caster_level
+//       }
+//   }
+
+enum EffectSource {
+    Unknown
+}
+
+
 // --- Condition ---
 //
 // A first-class reference to a declared condition type. Condition names
@@ -540,10 +581,11 @@ enum Duration {
 // Fields are read-only and accessed via dot syntax:
 
 struct ActiveCondition {
-    name: string        // condition name (e.g., "Prone", "Frightened")
-    duration: Duration  // when the condition expires
-    id: int             // unique identifier for this condition instance
-    applied_at: int     // game time when this condition was applied
+    name: string              // condition name (e.g., "Prone", "Frightened")
+    duration: Duration        // when the condition expires
+    source: EffectSource      // provenance metadata (default: Unknown)
+    id: int                   // unique identifier for this condition instance
+    applied_at: int           // game time when this condition was applied
 }
 
 // The `id` field distinguishes multiple instances of the same condition

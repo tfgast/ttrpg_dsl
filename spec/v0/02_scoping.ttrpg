@@ -978,7 +978,11 @@ hook Regenerate on creature: Character (
 //   roll(expr: DiceExpr) -> RollResult
 //
 // Available in action, reaction, hook (blocks that can mutate):
-//   apply_condition(target: entity, cond: Condition, duration: Duration)
+//   apply_condition(target: entity, cond: Condition, duration: Duration
+//                   [, source: EffectSource])
+//       Optional 4th argument: EffectSource metadata for the condition.
+//       Defaults to EffectSource.Unknown when omitted.
+//       Accessible on the resulting ActiveCondition via `.source`.
 //   remove_condition(target: entity, cond: Condition | ActiveCondition)
 //       Accepts either a Condition value (removes by name + params) or an
 //       ActiveCondition instance (removes by unique id for precise removal).

@@ -35,8 +35,9 @@
 | `entity`          | Polymorphic any-entity alias in type position               |
 | `Position`        | Opaque game board location                                  |
 | `Duration`        | `EndOfTurn`, `StartOfNextTurn`, `Rounds(n)`, `Minutes(n)`, `Indefinite` |
+| `EffectSource`    | Condition provenance — user-defined enum, must have plain `Unknown` variant |
 | `Invocation`      | Opaque execution scope handle                               |
-| `ActiveCondition` | Runtime condition instance — fields: `name`, `duration`, `id` |
+| `ActiveCondition` | Runtime condition instance — fields: `name`, `duration`, `source`, `id`, `applied_at` |
 | `Condition`       | Condition identifier — store in variables, pass to functions |
 
 ---
@@ -617,7 +618,9 @@ emit EventName(param: value)       // fire event (named args only)
 `.roll()` `.multiply(factor)`
 
 ### Entity & Conditions
-`apply_condition(target, cond, duration)` `remove_condition(target, cond)` `conditions(entity)` `has_condition(entity, name)`
+`apply_condition(target, cond, duration [, source])` `remove_condition(target, cond)` `conditions(entity)` `has_condition(entity, name)`
+
+The optional 4th argument to `apply_condition` is an `EffectSource` value (defaults to `EffectSource.Unknown`). Access it on active conditions via `.source`.
 
 `has_condition(entity, "Prone")` returns `true` if the entity has an active condition with that name. Shorthand for `any([c.name == "Prone" for c in conditions(entity)])`.
 
@@ -631,7 +634,7 @@ function apply_cond(t: entity, c: Condition, dur: Duration) {
 }
 apply_cond(target, Sleeping, Duration.Rounds(10))
 ```
-`Condition` (blueprint) vs `ActiveCondition` (live instance with `.name`, `.duration`, `.id`).
+`Condition` (blueprint) vs `ActiveCondition` (live instance with `.name`, `.duration`, `.source`, `.id`, `.applied_at`).
 
 ### Enum
 `ordinal(v)` `from_ordinal(E, i)` `try_from_ordinal(E, i)`
