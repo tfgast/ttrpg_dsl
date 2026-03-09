@@ -46,6 +46,7 @@ assert any([c.name == "Undead" for c in conditions(vampire)])
 assert any([c.name == "Regeneration" for c in conditions(vampire)])
 assert any([c.name == "ImmuneToNormalWeapons" for c in conditions(vampire)])
 assert any([c.name == "ImmuneToMindControl" for c in conditions(vampire)])
+assert any([c.name == "ShapeChanger" for c in conditions(vampire)])
 
 let troll = create_troll()
 assert_eq troll.name, "Troll"
@@ -103,3 +104,19 @@ let efreet = create_efreet()
 assert any([c.name == "ImmuneToFire" for c in conditions(efreet)])
 assert any([c.name == "Infravision" for c in conditions(efreet)])
 assert_eq efreet.xp_value, 7000
+
+// ── Warding taxonomy markers exist and can be applied ──────────
+
+spawn Monster ward_demon { name: "Demon Test", hit_dice: 4d8, max_hp: 18, hp: 18, ac: 15, attacks: [MonsterAttack { name: "Claw", damage: 1d6 }], special: [] }
+call apply_condition(ward_demon, Demon, Duration.Indefinite)
+assert any([c.name == "Demon" for c in conditions(ward_demon)])
+
+spawn Monster ward_elemental { name: "Elemental Test", hit_dice: 8d8, max_hp: 36, hp: 36, ac: 16, attacks: [MonsterAttack { name: "Slam", damage: 2d6 }], special: [] }
+call apply_condition(ward_elemental, FireElemental, Duration.Indefinite)
+assert any([c.name == "FireElemental" for c in conditions(ward_elemental)])
+
+spawn Monster ward_lycanthrope { name: "Werewolf Test", hit_dice: 4d8, max_hp: 20, hp: 20, ac: 14, attacks: [MonsterAttack { name: "Bite", damage: 1d6 }], special: [] }
+call apply_condition(ward_lycanthrope, Werewolf, Duration.Indefinite)
+call apply_condition(ward_lycanthrope, Lycanthrope, Duration.Indefinite)
+assert any([c.name == "Werewolf" for c in conditions(ward_lycanthrope)])
+assert any([c.name == "Lycanthrope" for c in conditions(ward_lycanthrope)])

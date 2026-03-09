@@ -123,6 +123,42 @@ assert_eq magic_item_xp(5000), 500
 assert_eq magic_item_xp(1000, true), 50
 assert_eq magic_item_xp(500, true), 25
 
+// ── kept_item_xp: inventory uses per-item kept rates ─────────
+
+let gem = Item { name: "Gem", weight: 0, gp_value: 500 }
+let ring = Item { name: "Magic Ring", weight: 0, gp_value: 1000, kept_xp_divisor: 10 }
+let potion = potion_item(Healing)
+let divine_scroll = spell_scroll_item(CureLightWounds, Divine)
+
+assert_eq kept_item_xp(gem), 500
+assert_eq kept_item_xp(ring), 100
+assert_eq kept_item_xp(potion), 20
+assert_eq kept_item_xp(divine_scroll), floor(divine_scroll.gp_value / 10)
+
+// ── award_item_treasure_xp: kept magic items use reduced XP ──
+
+spawn Character loot_holder {
+    name: "Loot Holder",
+    classes: [ClassLevel { class: Fighter, level: 1 }],
+    abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 },
+    HitPoints { max_hp: 10, hp: 10 },
+    Inventory {
+        loose_items: [
+            Item { name: "Gem", weight: 0, gp_value: 500 },
+            Item { name: "Magic Ring", weight: 0, gp_value: 1000, kept_xp_divisor: 10 },
+            potion_item(Healing),
+            spell_scroll_item(CureLightWounds, Divine)
+        ]
+    }
+}
+
+let kept_xp = award_item_treasure_xp(loot_holder)
+assert_eq kept_xp, 650
+assert loot_holder.Inventory.loose_items[0].xp_awarded
+assert loot_holder.Inventory.loose_items[1].xp_awarded
+assert loot_holder.Inventory.loose_items[2].xp_awarded
+assert loot_holder.Inventory.loose_items[3].xp_awarded
+
 // ── xp_share: equal division, no bonus ──────────────────────
 
 assert_eq xp_share(1000, 4), 250

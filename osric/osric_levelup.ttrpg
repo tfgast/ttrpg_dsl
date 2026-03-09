@@ -132,49 +132,7 @@ system "OSRIC Level Up" {
         new_level: int,
         wis: int
     ) -> list<int> {
-        let max_sl = max_spell_level(progression)
-        if max_sl == 0 { [] }
-        else if max_sl == 3 {
-            // Ranger: 3 spell levels
-            [
-                total_spell_slots(progression, new_level, 1, wis),
-                total_spell_slots(progression, new_level, 2, wis),
-                total_spell_slots(progression, new_level, 3, wis)
-            ]
-        }
-        else if max_sl == 4 {
-            // Paladin: 4 spell levels
-            [
-                total_spell_slots(progression, new_level, 1, wis),
-                total_spell_slots(progression, new_level, 2, wis),
-                total_spell_slots(progression, new_level, 3, wis),
-                total_spell_slots(progression, new_level, 4, wis)
-            ]
-        }
-        else if max_sl == 7 {
-            [
-                total_spell_slots(progression, new_level, 1, wis),
-                total_spell_slots(progression, new_level, 2, wis),
-                total_spell_slots(progression, new_level, 3, wis),
-                total_spell_slots(progression, new_level, 4, wis),
-                total_spell_slots(progression, new_level, 5, wis),
-                total_spell_slots(progression, new_level, 6, wis),
-                total_spell_slots(progression, new_level, 7, wis)
-            ]
-        } else {
-            // MagicUser: 9 spell levels
-            [
-                total_spell_slots(progression, new_level, 1, wis),
-                total_spell_slots(progression, new_level, 2, wis),
-                total_spell_slots(progression, new_level, 3, wis),
-                total_spell_slots(progression, new_level, 4, wis),
-                total_spell_slots(progression, new_level, 5, wis),
-                total_spell_slots(progression, new_level, 6, wis),
-                total_spell_slots(progression, new_level, 7, wis),
-                total_spell_slots(progression, new_level, 8, wis),
-                total_spell_slots(progression, new_level, 9, wis)
-            ]
-        }
+        progression_slot_list(progression, new_level, wis)
     }
 
 
@@ -290,23 +248,37 @@ system "OSRIC Level Up" {
         // Update spell slots if this class is a caster
         let cd = class_def(target_class)
         if cd.spell_progression != NonCaster {
+            let new_tracks = spell_tracks_for_classes(result.new_classes, character.abilities[WIS])
             if character has Spellcasting {
-                let new_slots = updated_spell_slots(
-                    cd.spell_progression,
-                    result.new_level,
-                    character.abilities[WIS]
+                let preserved_tracks = with_preserved_slot_usage(
+                    new_tracks,
+                    character.Spellcasting.slot_tracks,
+                    character.Spellcasting.slots_used
                 )
-                character.Spellcasting.spell_slots = new_slots
+                let granted_arcane_spells = granted_arcane_spellbook(preserved_tracks)
+                character.Spellcasting.slot_tracks = preserved_tracks
+                character.Spellcasting.spell_slots = primary_spell_slots(preserved_tracks)
+                character.Spellcasting.slots_used = primary_slots_used(preserved_tracks)
+                character.Spellcasting.spellbook_spells = merge_arcane_spellbook(
+                    character.Spellcasting.spellbook_spells,
+                    granted_arcane_spells
+                )
+                character.Spellcasting.understood_spells = merge_arcane_spellbook(
+                    character.Spellcasting.understood_spells,
+                    granted_arcane_spells
+                )
             } else {
                 // Class just became a caster (e.g. Paladin at level 9, Ranger at level 8)
-                let new_slots = updated_spell_slots(
-                    cd.spell_progression,
-                    result.new_level,
-                    character.abilities[WIS]
-                )
                 // Only grant if they actually get slots at this level
-                if any([s > 0 for s in new_slots]) {
-                    grant character.Spellcasting { spell_slots: new_slots }
+                if any_spell_slots_in_tracks(new_tracks) {
+                    let granted_arcane_spells = granted_arcane_spellbook(new_tracks)
+                    grant character.Spellcasting {
+                        spell_slots: primary_spell_slots(new_tracks),
+                        slots_used: primary_slots_used(new_tracks),
+                        slot_tracks: new_tracks,
+                        spellbook_spells: granted_arcane_spells,
+                        understood_spells: granted_arcane_spells
+                    }
                 }
             }
         }

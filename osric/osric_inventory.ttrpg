@@ -72,6 +72,7 @@ system "OSRIC Inventory" {
         quantity: int = 1
         bundle_size: int = 1    // how many units the stored weight applies to
         gp_value: int = 0       // treasure value (0 = mundane gear)
+        kept_xp_divisor: int = 1 // kept item XP = floor(gp_value / divisor)
         xp_awarded: bool = false
     }
 
@@ -297,7 +298,7 @@ system "OSRIC Inventory" {
             } else {
                 char.inv.containers[container_idx].items = [
                     if i.name == item_name && i.quantity == item.quantity {
-                        Item { name: i.name, weight: i.weight, cost_cp: i.cost_cp, quantity: i.quantity - 1, bundle_size: i.bundle_size, gp_value: i.gp_value, xp_awarded: i.xp_awarded }
+                        Item { name: i.name, weight: i.weight, cost_cp: i.cost_cp, quantity: i.quantity - 1, bundle_size: i.bundle_size, gp_value: i.gp_value, kept_xp_divisor: i.kept_xp_divisor, xp_awarded: i.xp_awarded }
                     } else { i }
                     for i in items
                 ]
@@ -315,7 +316,7 @@ system "OSRIC Inventory" {
             } else {
                 char.inv.loose_items = [
                     if i.name == item_name && i.quantity == item.quantity {
-                        Item { name: i.name, weight: i.weight, cost_cp: i.cost_cp, quantity: i.quantity - 1, bundle_size: i.bundle_size, gp_value: i.gp_value, xp_awarded: i.xp_awarded }
+                        Item { name: i.name, weight: i.weight, cost_cp: i.cost_cp, quantity: i.quantity - 1, bundle_size: i.bundle_size, gp_value: i.gp_value, kept_xp_divisor: i.kept_xp_divisor, xp_awarded: i.xp_awarded }
                     } else { i }
                     for i in items
                 ]
@@ -363,9 +364,19 @@ system "OSRIC Inventory" {
     //  tracks the running total already awarded.
     // ========================================================
 
+    // Compute XP for a kept item. Ordinary treasure uses full gp value;
+    // magic consumables or items can lower the kept-XP rate via divisor.
+    derive kept_item_xp(item: Item) -> int {
+        if item.gp_value <= 0 || item.kept_xp_divisor <= 0 {
+            0
+        } else {
+            floor(item.gp_value / item.kept_xp_divisor)
+        }
+    }
+
     // Compute un-awarded item treasure XP in a list of items.
     derive unawarded_items_xp(items: list<Item>) -> int {
-        let eligible = [item.gp_value for item in items if item.gp_value > 0 && !item.xp_awarded]
+        let eligible = [kept_item_xp(item) for item in items if item.gp_value > 0 && !item.xp_awarded]
         if len(eligible) == 0 { 0 }
         else { sum(eligible) }
     }
@@ -374,7 +385,7 @@ system "OSRIC Inventory" {
     derive mark_items_awarded(items: list<Item>) -> list<Item> {
         [
             if item.gp_value > 0 && !item.xp_awarded {
-                Item { name: item.name, weight: item.weight, cost_cp: item.cost_cp, quantity: item.quantity, bundle_size: item.bundle_size, gp_value: item.gp_value, xp_awarded: true }
+                Item { name: item.name, weight: item.weight, cost_cp: item.cost_cp, quantity: item.quantity, bundle_size: item.bundle_size, gp_value: item.gp_value, kept_xp_divisor: item.kept_xp_divisor, xp_awarded: true }
             } else { item }
             for item in items
         ]

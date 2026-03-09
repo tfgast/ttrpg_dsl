@@ -340,11 +340,18 @@ system "OSRIC" {
         Fireball
     }
 
+    struct SpellSlotTrack {
+        class_type: SpellClassType
+        spell_slots: list<int>
+        slots_used: list<int> = []
+    }
+
     // A memorised spell slot: bundles spell identity with the
     // spell level it occupies (for slot accounting).
     struct MemorizedSpell {
         id: SpellId
         level: int
+        class_type: SpellClassType = SpellClassType.Divine
     }
 
     // --- Monster attack entry ---

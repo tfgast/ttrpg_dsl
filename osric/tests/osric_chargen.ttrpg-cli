@@ -59,3 +59,24 @@ assert_eq elf_fmu.hp_rolls[0].amount, 3
 assert_eq elf_fmu.hp_rolls[1].class, Class.MagicUser
 assert_eq elf_fmu.hp_rolls[1].amount, 2
 assert_eq (if elf_fmu has Inventory { elf_fmu.Inventory.coins.gp } else { -1 }), 100
+
+// ── multiclass caster chargen gets separate tradition tracks ───
+
+rolls clear
+rolls 4 3 2 2 2
+let halfelf_cm = build_character(
+    "Sage of Two Roads",
+    HalfElf,
+    [Class.Cleric, Class.MagicUser],
+    NeutralGood,
+    { STR: 10, DEX: 12, CON: 12, INT: 16, WIS: 14, CHA: 10 }
+)
+assert (if halfelf_cm has Spellcasting { true } else { false })
+assert_eq halfelf_cm.Spellcasting.slot_tracks.len(), 2
+assert_eq halfelf_cm.Spellcasting.slot_tracks[0].class_type, SpellClassType.Divine
+assert_eq halfelf_cm.Spellcasting.slot_tracks[0].spell_slots[0], 3
+assert_eq halfelf_cm.Spellcasting.slot_tracks[1].class_type, SpellClassType.Arcane
+assert_eq halfelf_cm.Spellcasting.slot_tracks[1].spell_slots[0], 1
+assert halfelf_cm.Spellcasting.spellbook_spells.contains(MagicMissile)
+assert halfelf_cm.Spellcasting.spellbook_spells.contains(Sleep)
+assert halfelf_cm.Spellcasting.understood_spells.contains(MagicMissile)

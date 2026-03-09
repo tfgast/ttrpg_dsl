@@ -30,8 +30,11 @@ system "OSRIC Spells" {
     group Spellcasting {
         restricted casting_invocation: option<Invocation> = none
         spell_slots: list<int> = []
-        restricted slots_used: list<int> = []
+        slots_used: list<int> = []
         restricted memorised_spells: list<MemorizedSpell> = []
+        slot_tracks: list<SpellSlotTrack> = []
+        spellbook_spells: list<SpellId> = []
+        understood_spells: list<SpellId> = []
     }
 
     // ========================================================
@@ -452,6 +455,292 @@ system "OSRIC Spells" {
         }
     }
 
+    derive slot_list_value(slots: list<int>, spell_level: int) -> int {
+        if spell_level < 1 || spell_level > len(slots) {
+            0
+        } else {
+            slots[spell_level - 1]
+        }
+    }
+
+    derive zeroed_slot_usage(spell_slots: list<int>) -> list<int> {
+        [0 for i in 0..len(spell_slots)]
+    }
+
+    derive align_slot_usage(spell_slots: list<int>, existing_usage: list<int>) -> list<int> {
+        [slot_list_value(existing_usage, i + 1) for i in 0..len(spell_slots)]
+    }
+
+    derive progression_slot_list(
+        progression: SpellProgression,
+        class_level: int,
+        wis_score: int
+    ) -> list<int> {
+        [total_spell_slots(progression, class_level, i + 1, wis_score) for i in 0..max_spell_level(progression)]
+    }
+
+    derive ranger_arcane_slot_list(ranger_level: int) -> list<int> {
+        [ranger_mu_slots(ranger_level, 1), ranger_mu_slots(ranger_level, 2)]
+    }
+
+    derive spell_track(class_type: SpellClassType, spell_slots: list<int>) -> SpellSlotTrack {
+        SpellSlotTrack {
+            class_type: class_type,
+            spell_slots: spell_slots,
+            slots_used: zeroed_slot_usage(spell_slots)
+        }
+    }
+
+    derive spell_tracks_for_class(
+        class: Class,
+        class_level: int,
+        wis_score: int
+    ) -> list<SpellSlotTrack> {
+        let progression = class_def(class).spell_progression
+        match progression {
+            SpellProgression.Cleric =>
+                [spell_track(SpellClassType.Divine, progression_slot_list(progression, class_level, wis_score))],
+            SpellProgression.Druid =>
+                [spell_track(SpellClassType.Druidic, progression_slot_list(progression, class_level, wis_score))],
+            SpellProgression.MagicUser =>
+                [spell_track(SpellClassType.Arcane, progression_slot_list(progression, class_level, wis_score))],
+            SpellProgression.Illusionist =>
+                [spell_track(SpellClassType.Phantasmal, progression_slot_list(progression, class_level, wis_score))],
+            SpellProgression.Paladin =>
+                [spell_track(SpellClassType.Divine, progression_slot_list(progression, class_level, wis_score))],
+            SpellProgression.Ranger =>
+                [
+                    spell_track(SpellClassType.Druidic, progression_slot_list(progression, class_level, wis_score)),
+                    spell_track(SpellClassType.Arcane, ranger_arcane_slot_list(class_level))
+                ],
+            _ => []
+        }
+    }
+
+    derive spell_tracks_for_classes(class_levels: list<ClassLevel>, wis_score: int) -> list<SpellSlotTrack> {
+        if len(class_levels) == 0 {
+            []
+        } else if len(class_levels) == 1 {
+            spell_tracks_for_class(class_levels[0].class, class_levels[0].level, wis_score)
+        } else if len(class_levels) == 2 {
+            concat(
+                spell_tracks_for_class(class_levels[0].class, class_levels[0].level, wis_score),
+                spell_tracks_for_class(class_levels[1].class, class_levels[1].level, wis_score)
+            )
+        } else {
+            concat(
+                concat(
+                    spell_tracks_for_class(class_levels[0].class, class_levels[0].level, wis_score),
+                    spell_tracks_for_class(class_levels[1].class, class_levels[1].level, wis_score)
+                ),
+                spell_tracks_for_class(class_levels[2].class, class_levels[2].level, wis_score)
+            )
+        }
+    }
+
+    derive primary_spell_slots(tracks: list<SpellSlotTrack>) -> list<int> {
+        if len(tracks) > 0 {
+            tracks[0].spell_slots
+        } else {
+            []
+        }
+    }
+
+    derive primary_slots_used(tracks: list<SpellSlotTrack>) -> list<int> {
+        if len(tracks) > 0 {
+            tracks[0].slots_used
+        } else {
+            []
+        }
+    }
+
+    derive has_slot_track(tracks: list<SpellSlotTrack>, class_type: SpellClassType) -> bool {
+        len([track for track in tracks if track.class_type == class_type]) > 0
+    }
+
+    derive spell_slot_list_for_track(tracks: list<SpellSlotTrack>, class_type: SpellClassType) -> list<int> {
+        let matches = [track for track in tracks if track.class_type == class_type]
+        if len(matches) > 0 {
+            first(matches).unwrap().spell_slots
+        } else {
+            []
+        }
+    }
+
+    derive slot_usage_for_track(tracks: list<SpellSlotTrack>, class_type: SpellClassType) -> list<int> {
+        let matches = [track for track in tracks if track.class_type == class_type]
+        if len(matches) > 0 {
+            first(matches).unwrap().slots_used
+        } else {
+            []
+        }
+    }
+
+    derive with_preserved_slot_usage(
+        new_tracks: list<SpellSlotTrack>,
+        existing_tracks: list<SpellSlotTrack>,
+        legacy_slots_used: list<int>
+    ) -> list<SpellSlotTrack> {
+        [
+            SpellSlotTrack {
+                class_type: new_tracks[i].class_type,
+                spell_slots: new_tracks[i].spell_slots,
+                slots_used: align_slot_usage(
+                    new_tracks[i].spell_slots,
+                    if has_slot_track(existing_tracks, new_tracks[i].class_type) {
+                        slot_usage_for_track(existing_tracks, new_tracks[i].class_type)
+                    } else if i == 0 {
+                        legacy_slots_used
+                    } else {
+                        []
+                    }
+                )
+            }
+            for i in 0..len(new_tracks)
+        ]
+    }
+
+    derive any_spell_slots_in_tracks(tracks: list<SpellSlotTrack>) -> bool {
+        len([i for i in 0..len(tracks) if any([slot > 0 for slot in tracks[i].spell_slots])]) > 0
+    }
+
+    derive max_available_spell_level(slots: list<int>) -> int {
+        let available_levels = [i + 1 for i in 0..len(slots) if slots[i] > 0]
+        if len(available_levels) > 0 {
+            max(available_levels)
+        } else {
+            0
+        }
+    }
+
+    derive implemented_arcane_spells() -> list<SpellId> {
+        [MagicMissile, Sleep, Fireball]
+    }
+
+    derive granted_arcane_spellbook(tracks: list<SpellSlotTrack>) -> list<SpellId> {
+        let arcane_slots = spell_slot_list_for_track(tracks, SpellClassType.Arcane)
+        let max_level = max_available_spell_level(arcane_slots)
+        [spell_id for spell_id in implemented_arcane_spells() if true_spell_level(spell_id) <= max_level]
+    }
+
+    derive merge_arcane_spellbook(existing: list<SpellId>, granted: list<SpellId>) -> list<SpellId> {
+        let with_magic_missile = if granted.contains(MagicMissile) && !existing.contains(MagicMissile) {
+            existing.append(MagicMissile)
+        } else {
+            existing
+        }
+        let with_sleep = if granted.contains(Sleep) && !with_magic_missile.contains(Sleep) {
+            with_magic_missile.append(Sleep)
+        } else {
+            with_magic_missile
+        }
+        if granted.contains(Fireball) && !with_sleep.contains(Fireball) {
+            with_sleep.append(Fireball)
+        } else {
+            with_sleep
+        }
+    }
+
+    derive spell_class_type(spell_id: SpellId) -> SpellClassType {
+        match spell_id {
+            CureLightWounds => SpellClassType.Divine,
+            CauseLightWounds => SpellClassType.Divine,
+            Bless => SpellClassType.Divine,
+            Curse => SpellClassType.Divine,
+            HoldPerson => SpellClassType.Divine,
+            MagicMissile => SpellClassType.Arcane,
+            Sleep => SpellClassType.Arcane,
+            Fireball => SpellClassType.Arcane
+        }
+    }
+
+    derive true_spell_level(spell_id: SpellId) -> int {
+        match spell_id {
+            CureLightWounds => 1,
+            CauseLightWounds => 1,
+            Bless => 1,
+            Curse => 1,
+            HoldPerson => 2,
+            MagicMissile => 1,
+            Sleep => 1,
+            Fireball => 3
+        }
+    }
+
+    derive memorized_spell_entry(spell_id: SpellId, spell_level: int) -> MemorizedSpell {
+        MemorizedSpell {
+            id: spell_id,
+            level: spell_level,
+            class_type: spell_class_type(spell_id)
+        }
+    }
+
+    derive requires_arcane_spellbook(spell_id: SpellId) -> bool {
+        spell_class_type(spell_id) == SpellClassType.Arcane
+    }
+
+    derive can_memorise_from_spellbook(caster: Character with Spellcasting as sc, spell_id: SpellId) -> bool {
+        if requires_arcane_spellbook(spell_id) {
+            caster.sc.spellbook_spells.contains(spell_id) && caster.sc.understood_spells.contains(spell_id)
+        } else {
+            true
+        }
+    }
+
+    derive has_slot_capacity(
+        caster: Character with Spellcasting as sc,
+        spell_id: SpellId,
+        spell_level: int
+    ) -> bool {
+        let class_type = spell_class_type(spell_id)
+        if len(caster.sc.slot_tracks) > 0 {
+            if has_slot_track(caster.sc.slot_tracks, class_type) {
+                let used = slot_list_value(slot_usage_for_track(caster.sc.slot_tracks, class_type), spell_level)
+                let available = slot_list_value(spell_slot_list_for_track(caster.sc.slot_tracks, class_type), spell_level)
+                used < available
+            } else {
+                false
+            }
+        } else {
+            slot_list_value(caster.sc.slots_used, spell_level) < slot_list_value(caster.sc.spell_slots, spell_level)
+        }
+    }
+
+    derive has_memorised_spell(
+        caster: Character with Spellcasting as sc,
+        spell_id: SpellId,
+        spell_level: int
+    ) -> bool {
+        caster.sc.memorised_spells.contains(memorized_spell_entry(spell_id, spell_level))
+    }
+
+    derive update_slot_tracks_usage(
+        tracks: list<SpellSlotTrack>,
+        class_type: SpellClassType,
+        spell_level: int,
+        delta: int
+    ) -> list<SpellSlotTrack> {
+        [
+            if tracks[i].class_type == class_type {
+                SpellSlotTrack {
+                    class_type: tracks[i].class_type,
+                    spell_slots: tracks[i].spell_slots,
+                    slots_used: [
+                        if j == spell_level - 1 {
+                            slot_list_value(tracks[i].slots_used, j + 1) + delta
+                        } else {
+                            slot_list_value(tracks[i].slots_used, j + 1)
+                        }
+                        for j in 0..len(tracks[i].spell_slots)
+                    ]
+                }
+            } else {
+                tracks[i]
+            }
+            for i in 0..len(tracks)
+        ]
+    }
+
 
     // ========================================================
     //  SPELL MEMORISATION / CASTING EVENTS
@@ -584,11 +873,27 @@ system "OSRIC Spells" {
         spell_level: int
     ) {
         cost free
-        requires { caster.sc.slots_used[spell_level - 1] < caster.sc.spell_slots[spell_level - 1] }
+        requires {
+            true_spell_level(spell_id) == spell_level &&
+            can_memorise_from_spellbook(caster, spell_id) &&
+            has_slot_capacity(caster, spell_id, spell_level)
+        }
         resolve {
-            let entry = MemorizedSpell { id: spell_id, level: spell_level }
+            let entry = memorized_spell_entry(spell_id, spell_level)
             caster.sc.memorised_spells = caster.sc.memorised_spells.append(entry)
-            caster.sc.slots_used[spell_level - 1] = caster.sc.slots_used[spell_level - 1] + 1
+            if len(caster.sc.slot_tracks) > 0 {
+                caster.sc.slot_tracks = update_slot_tracks_usage(
+                    caster.sc.slot_tracks,
+                    entry.class_type,
+                    spell_level,
+                    1
+                )
+                if len(caster.sc.slot_tracks) > 0 && caster.sc.slot_tracks[0].class_type == entry.class_type {
+                    caster.sc.slots_used = primary_slots_used(caster.sc.slot_tracks)
+                }
+            } else {
+                caster.sc.slots_used[spell_level - 1] = caster.sc.slots_used[spell_level - 1] + 1
+            }
             emit SpellMemorised(caster: caster, spell_id: spell_id, spell_level: spell_level)
         }
     }
@@ -606,11 +911,23 @@ system "OSRIC Spells" {
         spell_level: int
     ) {
         cost free
-        requires { caster.sc.memorised_spells.contains(MemorizedSpell { id: spell_id, level: spell_level }) }
+        requires { has_memorised_spell(caster, spell_id, spell_level) }
         resolve {
-            let entry = MemorizedSpell { id: spell_id, level: spell_level }
+            let entry = memorized_spell_entry(spell_id, spell_level)
             caster.sc.memorised_spells = caster.sc.memorised_spells.remove_first(entry)
-            caster.sc.slots_used[spell_level - 1] = caster.sc.slots_used[spell_level - 1] - 1
+            if len(caster.sc.slot_tracks) > 0 {
+                caster.sc.slot_tracks = update_slot_tracks_usage(
+                    caster.sc.slot_tracks,
+                    entry.class_type,
+                    spell_level,
+                    -1
+                )
+                if len(caster.sc.slot_tracks) > 0 && caster.sc.slot_tracks[0].class_type == entry.class_type {
+                    caster.sc.slots_used = primary_slots_used(caster.sc.slot_tracks)
+                }
+            } else {
+                caster.sc.slots_used[spell_level - 1] = caster.sc.slots_used[spell_level - 1] - 1
+            }
             emit SpellForgotten(caster: caster, spell_id: spell_id, spell_level: spell_level)
         }
     }
@@ -646,12 +963,27 @@ system "OSRIC Spells" {
         casting_time: int
     ) {
         cost free
-        requires { caster.sc.memorised_spells.contains(MemorizedSpell { id: spell_id, level: spell_level }) }
+        requires {
+            true_spell_level(spell_id) == spell_level &&
+            has_memorised_spell(caster, spell_id, spell_level)
+        }
         resolve {
             if can_begin_casting(caster) {
-                let entry = MemorizedSpell { id: spell_id, level: spell_level }
+                let entry = memorized_spell_entry(spell_id, spell_level)
                 caster.sc.memorised_spells = caster.sc.memorised_spells.remove_first(entry)
-                caster.sc.slots_used[spell_level - 1] = caster.sc.slots_used[spell_level - 1] - 1
+                if len(caster.sc.slot_tracks) > 0 {
+                    caster.sc.slot_tracks = update_slot_tracks_usage(
+                        caster.sc.slot_tracks,
+                        entry.class_type,
+                        spell_level,
+                        -1
+                    )
+                    if len(caster.sc.slot_tracks) > 0 && caster.sc.slot_tracks[0].class_type == entry.class_type {
+                        caster.sc.slots_used = primary_slots_used(caster.sc.slot_tracks)
+                    }
+                } else {
+                    caster.sc.slots_used[spell_level - 1] = caster.sc.slots_used[spell_level - 1] - 1
+                }
                 caster.BeginCasting(casting_time)
                 emit SpellCast(caster: caster, spell_id: spell_id, spell_level: spell_level)
             }

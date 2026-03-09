@@ -191,6 +191,7 @@ system "OSRIC Potions" {
             cost_cp: def.gp_value * 100,
             quantity: 1,
             gp_value: def.gp_value,
+            kept_xp_divisor: 20,
             xp_awarded: false
         }
     }

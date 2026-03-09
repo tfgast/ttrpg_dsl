@@ -245,6 +245,63 @@ system "OSRIC Monster Traits" {
         stacking first
     {}
 
+    // Taxonomy markers used by scroll wardings and other creature-type logic.
+    condition Demon on bearer: entity
+        stacking first
+    {}
+
+    condition Devil on bearer: entity
+        stacking first
+    {}
+
+    condition Elemental on bearer: entity
+        stacking first
+    {}
+
+    condition AirElemental on bearer: entity
+        stacking first
+    {}
+
+    condition EarthElemental on bearer: entity
+        stacking first
+    {}
+
+    condition FireElemental on bearer: entity
+        stacking first
+    {}
+
+    condition WaterElemental on bearer: entity
+        stacking first
+    {}
+
+    condition Lycanthrope on bearer: entity
+        stacking first
+    {}
+
+    condition Werebear on bearer: entity
+        stacking first
+    {}
+
+    condition Wereboar on bearer: entity
+        stacking first
+    {}
+
+    condition Wererat on bearer: entity
+        stacking first
+    {}
+
+    condition Weretiger on bearer: entity
+        stacking first
+    {}
+
+    condition Werewolf on bearer: entity
+        stacking first
+    {}
+
+    condition ShapeChanger on bearer: entity
+        stacking first
+    {}
+
     // Turned as undead at the given effective HD for turning purposes.
     // Some living creatures (e.g., mummies) turn at different HD.
     condition TurnedAsUndead(effective_hd: int) on bearer: entity

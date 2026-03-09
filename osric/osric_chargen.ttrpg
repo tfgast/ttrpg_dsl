@@ -480,12 +480,16 @@ system "OSRIC Chargen" {
             grant char.ExceptionalStrength { percentile: pct }
         }
 
-        let maybe_caster = caster_class_in(classes)
-        if maybe_caster != none {
-            let caster = maybe_caster.unwrap()
-            let prog = class_def(caster).spell_progression
-            let slots = initial_spell_slots(prog, abilities[WIS])
-            grant char.Spellcasting { spell_slots: slots }
+        let spell_tracks = spell_tracks_for_classes(class_levels, abilities[WIS])
+        if len(spell_tracks) > 0 {
+            let starting_arcane_spells = granted_arcane_spellbook(spell_tracks)
+            grant char.Spellcasting {
+                spell_slots: primary_spell_slots(spell_tracks),
+                slots_used: primary_slots_used(spell_tracks),
+                slot_tracks: spell_tracks,
+                spellbook_spells: starting_arcane_spells,
+                understood_spells: starting_arcane_spells
+            }
         }
 
         let maybe_thief = thief_class_in(classes)

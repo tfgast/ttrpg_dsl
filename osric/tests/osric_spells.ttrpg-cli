@@ -114,6 +114,30 @@ assert_eq paladin_caster_level(20), 8
 assert_eq ranger_druid_casting_level(7), 0
 assert_eq ranger_druid_casting_level(8), 1
 
+// ── Multi-tradition spell tracks ───────────────────────────────
+
+let ranger_tracks = spell_tracks_for_class(Class.Ranger, 13, 14)
+assert_eq ranger_tracks.len(), 2
+assert_eq ranger_tracks[0].class_type, SpellClassType.Druidic
+assert_eq ranger_tracks[0].spell_slots[0], 2
+assert_eq ranger_tracks[0].spell_slots[1], 1
+assert_eq ranger_tracks[1].class_type, SpellClassType.Arcane
+assert_eq ranger_tracks[1].spell_slots[0], 2
+assert_eq ranger_tracks[1].spell_slots[1], 1
+
+let multi_tracks = spell_tracks_for_classes(
+    [
+        ClassLevel { class: Cleric, level: 3 },
+        ClassLevel { class: MagicUser, level: 2 }
+    ],
+    14
+)
+assert_eq multi_tracks.len(), 2
+assert_eq multi_tracks[0].class_type, SpellClassType.Divine
+assert_eq multi_tracks[0].spell_slots[0], 4
+assert_eq multi_tracks[1].class_type, SpellClassType.Arcane
+assert_eq multi_tracks[1].spell_slots[0], 2
+
 // ── NonCaster returns zero ──────────────────────────────────────
 
 assert_eq spell_slots_for(SpellProgression.NonCaster, 10, 1), 0
@@ -182,6 +206,39 @@ do MemoriseSpell(mem3, CureLightWounds, 1)
 do MemoriseSpell(mem3, CureLightWounds, 1)
 assert_eq mem3.Spellcasting.memorised_spells.len(), 2
 assert_eq mem3.Spellcasting.slots_used[0], 2
+
+// ── MemoriseSpell rejects wrong slot level for the spell ──────
+
+spawn Character mem_level_guard { name: "LevelGuard", classes: [ClassLevel { class: Cleric, level: 3 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 }, Spellcasting { spell_slots: [2, 1], slots_used: [0, 0], memorised_spells: [] } }
+
+do MemoriseSpell(mem_level_guard, CureLightWounds, 2)
+assert_eq mem_level_guard.Spellcasting.memorised_spells.len(), 0
+assert_eq mem_level_guard.Spellcasting.slots_used[1], 0
+
+// ── Arcane spellbook / understood gates memorisation ──────────
+
+spawn Character mem_book_guard { name: "BookGuard", classes: [ClassLevel { class: MagicUser, level: 2 }], abilities: { STR: 10, INT: 16, WIS: 10, DEX: 12, CON: 12, CHA: 10 }, HitPoints { max_hp: 10, hp: 10 }, Spellcasting { spell_slots: [2, 0], slots_used: [0, 0], slot_tracks: [SpellSlotTrack { class_type: Arcane, spell_slots: [2, 0], slots_used: [0, 0] }], memorised_spells: [] } }
+
+do MemoriseSpell(mem_book_guard, MagicMissile, 1)
+assert_eq mem_book_guard.Spellcasting.memorised_spells.len(), 0
+assert_eq mem_book_guard.Spellcasting.slot_tracks[0].slots_used[0], 0
+
+spawn Character mem_book_ok { name: "BookReady", classes: [ClassLevel { class: MagicUser, level: 2 }], abilities: { STR: 10, INT: 16, WIS: 10, DEX: 12, CON: 12, CHA: 10 }, HitPoints { max_hp: 10, hp: 10 }, Spellcasting { spell_slots: [2, 0], slots_used: [0, 0], slot_tracks: [SpellSlotTrack { class_type: Arcane, spell_slots: [2, 0], slots_used: [0, 0] }], spellbook_spells: [MagicMissile, Sleep], understood_spells: [MagicMissile], memorised_spells: [] } }
+
+do MemoriseSpell(mem_book_ok, MagicMissile, 1)
+assert_eq mem_book_ok.Spellcasting.memorised_spells.len(), 1
+assert_eq mem_book_ok.Spellcasting.slot_tracks[0].slots_used[0], 1
+
+// ── Multi-tradition memorisation uses the matching slot track ──
+
+spawn Character mem_multi { name: "DualCaster", classes: [ClassLevel { class: Cleric, level: 3 }, ClassLevel { class: MagicUser, level: 2 }], classing_mode: Multi, abilities: { STR: 12, INT: 16, WIS: 14, DEX: 12, CON: 12, CHA: 10 }, HitPoints { max_hp: 16, hp: 16 }, Spellcasting { spell_slots: [4, 1], slots_used: [0, 0], slot_tracks: [SpellSlotTrack { class_type: Divine, spell_slots: [4, 1], slots_used: [0, 0] }, SpellSlotTrack { class_type: Arcane, spell_slots: [2, 0], slots_used: [0, 0] }], spellbook_spells: [MagicMissile, Sleep], understood_spells: [MagicMissile], memorised_spells: [] } }
+
+do MemoriseSpell(mem_multi, CureLightWounds, 1)
+do MemoriseSpell(mem_multi, MagicMissile, 1)
+assert_eq mem_multi.Spellcasting.memorised_spells.len(), 2
+assert_eq mem_multi.Spellcasting.slot_tracks[0].slots_used[0], 1
+assert_eq mem_multi.Spellcasting.slot_tracks[1].slots_used[0], 1
+assert_eq mem_multi.Spellcasting.slots_used[0], 1
 
 // ── ForgetSpell removes spell and frees slot ──────────────────
 
