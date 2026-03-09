@@ -1251,122 +1251,54 @@ pub fn apply_encumbrance(state: &mut GameState, entity: &EntityRef, tier_variant
 
 // ── OSRIC source loading ───────────────────────────────────────
 
-/// Load all OSRIC source files as (filename, source) pairs.
+/// Load all OSRIC source files from `osric/ttrpg.toml` (the "full" bundle).
+///
+/// Reads the manifest at runtime and loads each entry from disk.
 pub fn all_osric_sources() -> Vec<(String, String)> {
-    vec![
-        (
-            "osric/osric_core.ttrpg".to_string(),
-            include_str!("../../../../osric/osric_core.ttrpg").to_string(),
-        ),
-        (
-            "osric/osric_ability.ttrpg".to_string(),
-            include_str!("../../../../osric/osric_ability.ttrpg").to_string(),
-        ),
-        (
-            "osric/osric_character.ttrpg".to_string(),
-            include_str!("../../../../osric/osric_character.ttrpg").to_string(),
-        ),
-        (
-            "osric/osric_class.ttrpg".to_string(),
-            include_str!("../../../../osric/osric_class.ttrpg").to_string(),
-        ),
-        (
-            "osric/osric_saves.ttrpg".to_string(),
-            include_str!("../../../../osric/osric_saves.ttrpg").to_string(),
-        ),
-        (
-            "osric/osric_equipment.ttrpg".to_string(),
-            include_str!("../../../../osric/osric_equipment.ttrpg").to_string(),
-        ),
-        (
-            "osric/osric_xp.ttrpg".to_string(),
-            include_str!("../../../../osric/osric_xp.ttrpg").to_string(),
-        ),
-        (
-            "osric/osric_inventory.ttrpg".to_string(),
-            include_str!("../../../../osric/osric_inventory.ttrpg").to_string(),
-        ),
-        (
-            "osric/osric_conditions.ttrpg".to_string(),
-            include_str!("../../../../osric/osric_conditions.ttrpg").to_string(),
-        ),
-        (
-            "osric/osric_thief_skills.ttrpg".to_string(),
-            include_str!("../../../../osric/osric_thief_skills.ttrpg").to_string(),
-        ),
-        (
-            "osric/osric_combat.ttrpg".to_string(),
-            include_str!("../../../../osric/osric_combat.ttrpg").to_string(),
-        ),
-        (
-            "osric/osric_initiative.ttrpg".to_string(),
-            include_str!("../../../../osric/osric_initiative.ttrpg").to_string(),
-        ),
-        (
-            "osric/osric_spells.ttrpg".to_string(),
-            include_str!("../../../../osric/osric_spells.ttrpg").to_string(),
-        ),
-        (
-            "osric/osric_turn_undead.ttrpg".to_string(),
-            include_str!("../../../../osric/osric_turn_undead.ttrpg").to_string(),
-        ),
-        (
-            "osric/osric_multiclass.ttrpg".to_string(),
-            include_str!("../../../../osric/osric_multiclass.ttrpg").to_string(),
-        ),
-        (
-            "osric/osric_dualclass.ttrpg".to_string(),
-            include_str!("../../../../osric/osric_dualclass.ttrpg").to_string(),
-        ),
-        (
-            "osric/osric_level_drain.ttrpg".to_string(),
-            include_str!("../../../../osric/osric_level_drain.ttrpg").to_string(),
-        ),
-        (
-            "osric/osric_morale.ttrpg".to_string(),
-            include_str!("../../../../osric/osric_morale.ttrpg").to_string(),
-        ),
-        (
-            "osric/osric_weapon_spec.ttrpg".to_string(),
-            include_str!("../../../../osric/osric_weapon_spec.ttrpg").to_string(),
-        ),
-        (
-            "osric/osric_cleric_spells.ttrpg".to_string(),
-            include_str!("../../../../osric/osric_cleric_spells.ttrpg").to_string(),
-        ),
-        (
-            "osric/osric_mu_spells.ttrpg".to_string(),
-            include_str!("../../../../osric/osric_mu_spells.ttrpg").to_string(),
-        ),
-        (
-            "osric/osric_spell_registry.ttrpg".to_string(),
-            include_str!("../../../../osric/osric_spell_registry.ttrpg").to_string(),
-        ),
-        (
-            "osric/osric_afflictions.ttrpg".to_string(),
-            include_str!("../../../../osric/osric_afflictions.ttrpg").to_string(),
-        ),
-        (
-            "osric/osric_falling.ttrpg".to_string(),
-            include_str!("../../../../osric/osric_falling.ttrpg").to_string(),
-        ),
-        (
-            "osric/osric_monster_traits.ttrpg".to_string(),
-            include_str!("../../../../osric/osric_monster_traits.ttrpg").to_string(),
-        ),
-        (
-            "osric/osric_bestiary.ttrpg".to_string(),
-            include_str!("../../../../osric/osric_bestiary.ttrpg").to_string(),
-        ),
-        (
-            "osric/osric_potions.ttrpg".to_string(),
-            include_str!("../../../../osric/osric_potions.ttrpg").to_string(),
-        ),
-        (
-            "osric/osric_scrolls.ttrpg".to_string(),
-            include_str!("../../../../osric/osric_scrolls.ttrpg").to_string(),
-        ),
-    ]
+    load_bundle_sources("osric", "full")
+}
+
+/// Workspace root, derived from `CARGO_MANIFEST_DIR` at compile time.
+fn workspace_root() -> std::path::PathBuf {
+    // CARGO_MANIFEST_DIR for ttrpg_interp is crates/ttrpg_interp
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent() // crates/
+        .unwrap()
+        .parent() // workspace root
+        .unwrap()
+        .to_path_buf()
+}
+
+/// Load all source files for a given package bundle from its `ttrpg.toml`.
+///
+/// `pkg_dir` is relative to the workspace root (e.g. `"osric"` or `"ose"`).
+pub fn load_bundle_sources(pkg_dir: &str, bundle: &str) -> Vec<(String, String)> {
+    let root = workspace_root();
+    let pkg_path = root.join(pkg_dir);
+    let manifest_path = pkg_path.join("ttrpg.toml");
+    let content = std::fs::read_to_string(&manifest_path)
+        .unwrap_or_else(|e| panic!("cannot read {}: {e}", manifest_path.display()));
+    let manifest: toml::Value = content.parse()
+        .unwrap_or_else(|e| panic!("cannot parse {}: {e}", manifest_path.display()));
+
+    let bundle_entries = manifest["bundles"][bundle]["entries"]
+        .as_array()
+        .unwrap_or_else(|| panic!("bundle '{bundle}' not found in {}", manifest_path.display()));
+    let entries = manifest["entries"].as_table()
+        .unwrap_or_else(|| panic!("no [entries] in {}", manifest_path.display()));
+
+    bundle_entries
+        .iter()
+        .map(|name| {
+            let name = name.as_str().unwrap();
+            let path = entries[name]["path"].as_str().unwrap();
+            let full_path = pkg_path.join(path);
+            let display_path = format!("{pkg_dir}/{path}");
+            let source = std::fs::read_to_string(&full_path)
+                .unwrap_or_else(|e| panic!("cannot read {display_path}: {e}"));
+            (display_path, source)
+        })
+        .collect()
 }
 
 // ── SpellTestContext builder ───────────────────────────────────

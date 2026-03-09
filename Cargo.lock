@@ -1992,6 +1992,7 @@ dependencies = [
  "criterion",
  "insta",
  "rustc-hash",
+ "toml",
  "ttrpg_ast",
  "ttrpg_checker",
  "ttrpg_lexer",
@@ -2009,6 +2010,9 @@ dependencies = [
 [[package]]
 name = "ttrpg_ose_data"
 version = "0.1.0"
+dependencies = [
+ "toml",
+]
 
 [[package]]
 name = "ttrpg_parser"
