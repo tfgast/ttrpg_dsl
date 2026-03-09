@@ -447,7 +447,8 @@ pub(super) fn eval_stmt(
 // ── Scoped budget helper ────────────────────────────────────────
 
 /// Execute `body` with a provisioned turn budget, restoring the previous
-/// budget/turn_actor/cost_payer on exit (even on error).
+/// budget on exit (even on error).  Does **not** set `turn_actor` or
+/// `cost_payer` — action dispatch handles those per-action.
 fn scoped_budget<F>(
     env: &mut Env,
     actor: EntityRef,
@@ -458,10 +459,8 @@ fn scoped_budget<F>(
 where
     F: FnOnce(&mut Env) -> Result<Value, RuntimeError>,
 {
-    // 1. Snapshot previous state
+    // 1. Snapshot previous budget
     let prev_budget = env.state.read_turn_budget(&actor);
-    let prev_turn_actor = env.turn_actor;
-    let prev_cost_payer = env.cost_payer;
 
     // 2. Emit ProvisionBudget
     let response = env.handler.handle(Effect::ProvisionBudget {
@@ -475,18 +474,10 @@ where
         ));
     }
 
-    // 3. Set env context
-    env.turn_actor = Some(actor);
-    env.cost_payer = Some(actor);
-
-    // 4. Execute body
+    // 3. Execute body
     let body_result = body(env);
 
-    // 5. Restore env context (always runs)
-    env.turn_actor = prev_turn_actor;
-    env.cost_payer = prev_cost_payer;
-
-    // 6. Restore or clear budget (always runs)
+    // 4. Restore or clear budget (always runs)
     let cleanup_result = match prev_budget {
         Some(old_budget) => {
             let resp = env.handler.handle(Effect::ProvisionBudget {

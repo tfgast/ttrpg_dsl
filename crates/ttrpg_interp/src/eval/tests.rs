@@ -5155,7 +5155,7 @@ fn with_budget_provisions_and_clears() {
 }
 
 #[test]
-fn with_budget_sets_turn_actor_and_cost_payer() {
+fn with_budget_does_not_set_turn_actor_or_cost_payer() {
     let program = empty_program();
     let type_env = empty_type_env();
     let interp = Interpreter::new(&program, &type_env).unwrap();
@@ -5165,9 +5165,9 @@ fn with_budget_sets_turn_actor_and_cost_payer() {
 
     env.bind(Name::from("actor"), Value::Entity(EntityRef(1)));
 
-    // Set env.turn_actor to something different before with_budget
+    // Set env.turn_actor/cost_payer to something — with_budget should NOT touch them
     env.turn_actor = Some(EntityRef(99));
-    env.cost_payer = Some(EntityRef(99));
+    env.cost_payer = None;
 
     let stmt = spanned(StmtKind::WithBudget {
         entity: Box::new(spanned(ExprKind::Ident("actor".into()))),
@@ -5181,9 +5181,9 @@ fn with_budget_sets_turn_actor_and_cost_payer() {
 
     eval_stmt(&mut env, &stmt).unwrap();
 
-    // After with_budget, turn_actor and cost_payer should be restored
+    // with_budget is provision-only — turn_actor and cost_payer unchanged
     assert_eq!(env.turn_actor, Some(EntityRef(99)));
-    assert_eq!(env.cost_payer, Some(EntityRef(99)));
+    assert_eq!(env.cost_payer, None);
 }
 
 #[test]
@@ -5201,8 +5201,6 @@ fn with_budget_restores_on_error() {
     let mut env = make_env(&state, &mut handler, &interp);
 
     env.bind(Name::from("actor"), Value::Entity(EntityRef(1)));
-    env.turn_actor = Some(EntityRef(42));
-    env.cost_payer = None;
 
     // Body references a nonexistent variable to trigger an error
     let stmt = spanned(StmtKind::WithBudget {
@@ -5219,10 +5217,6 @@ fn with_budget_restores_on_error() {
 
     let result = eval_stmt(&mut env, &stmt);
     assert!(result.is_err(), "body error should propagate");
-
-    // Env should be restored
-    assert_eq!(env.turn_actor, Some(EntityRef(42)));
-    assert_eq!(env.cost_payer, None);
 
     // Should have emitted: ProvisionBudget (new), ProvisionBudget (restore old)
     assert!(handler.log.len() >= 2);
