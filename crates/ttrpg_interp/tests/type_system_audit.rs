@@ -2197,3 +2197,120 @@ system "test" {
         &["int"],
     );
 }
+
+// ── Floor division (div operator) ─────────────────────────────
+
+#[test]
+fn floor_div_int_int() {
+    // 10 div 3 = 3 (floor division, result is int)
+    let val = eval_derive(
+        r#"
+system "test" {
+    derive f() -> int { 10 div 3 }
+}
+"#,
+        "f",
+        vec![],
+    );
+    assert_eq!(val, Value::Int(3));
+}
+
+#[test]
+fn floor_div_negative() {
+    // -7 div 2 = -4 (Euclidean floor: rounds toward negative infinity)
+    let val = eval_derive(
+        r#"
+system "test" {
+    derive f() -> int { -7 div 2 }
+}
+"#,
+        "f",
+        vec![],
+    );
+    assert_eq!(val, Value::Int(-4));
+}
+
+#[test]
+fn floor_div_unit_by_int() {
+    // Feet(100) div 3 = Feet(33)
+    let val = eval_derive(
+        r#"
+system "test" {
+    unit Feet suffix ft { value: int }
+    derive f() -> Feet { 100ft div 3 }
+}
+"#,
+        "f",
+        vec![],
+    );
+    let mut fields = BTreeMap::new();
+    fields.insert("value".into(), Value::Int(33));
+    assert_eq!(
+        val,
+        Value::Struct {
+            name: "Feet".into(),
+            fields
+        }
+    );
+}
+
+#[test]
+fn floor_div_unit_by_unit() {
+    // Feet(100) div Feet(30) = 3 (dimensionless int)
+    let val = eval_derive(
+        r#"
+system "test" {
+    unit Feet suffix ft { value: int }
+    derive f() -> int { 100ft div 30ft }
+}
+"#,
+        "f",
+        vec![],
+    );
+    assert_eq!(val, Value::Int(3));
+}
+
+#[test]
+fn floor_div_by_zero_errors() {
+    // div by zero should produce a runtime error
+    let result = std::panic::catch_unwind(|| {
+        eval_derive(
+            r#"
+system "test" {
+    derive f() -> int { 10 div 0 }
+}
+"#,
+            "f",
+            vec![],
+        )
+    });
+    assert!(result.is_err());
+}
+
+#[test]
+fn floor_div_type_errors() {
+    // Cannot floor-divide float by int (float from 10/3, then div 2)
+    expect_checker_errors(
+        r#"
+system "test" {
+    derive f() -> int { (10 / 3) div 2 }
+}
+"#,
+        &["cannot floor-divide"],
+    );
+}
+
+#[test]
+fn floor_div_different_units_error() {
+    // Cannot floor-divide different unit types
+    expect_checker_errors(
+        r#"
+system "test" {
+    unit Feet suffix ft { value: int }
+    unit Rounds suffix rnd { value: int }
+    derive f() -> int { 100ft div 1rnd }
+}
+"#,
+        &["cannot floor-divide"],
+    );
+}

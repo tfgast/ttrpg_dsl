@@ -104,7 +104,7 @@ pub(super) fn eval_binop(
     // e.g. `roll_result in list<RollResult>` compares structurally.
     match op {
         // Arithmetic — coerce
-        BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div | BinOp::Mod => {
+        BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div | BinOp::FloorDiv | BinOp::Mod => {
             let lhs = coerce_roll_result(lhs);
             let rhs = coerce_roll_result(rhs);
             match op {
@@ -112,6 +112,7 @@ pub(super) fn eval_binop(
                 BinOp::Sub => eval_sub(&lhs, &rhs, env.interp.type_env, expr),
                 BinOp::Mul => eval_mul(&lhs, &rhs, env.interp.type_env, expr),
                 BinOp::Div => eval_div(&lhs, &rhs, env.interp.type_env, expr),
+                BinOp::FloorDiv => eval_floor_div(&lhs, &rhs, env.interp.type_env, expr),
                 BinOp::Mod => eval_mod(&lhs, &rhs, expr),
                 _ => unreachable!(),
             }
@@ -401,6 +402,51 @@ fn eval_div(
         }
         _ => Err(RuntimeError::with_span(
             format!("cannot divide {:?} by {:?}", type_name(lhs), type_name(rhs)),
+            expr.span,
+        )),
+    }
+}
+
+fn eval_floor_div(
+    lhs: &Value,
+    rhs: &Value,
+    type_env: &ttrpg_checker::env::TypeEnv,
+    expr: &Spanned<ExprKind>,
+) -> Result<Value, RuntimeError> {
+    // Unit div Unit (same type) → Int (floor ratio)
+    if let (Some((n1, _, a)), Some((n2, _, b))) =
+        (as_unit_value(lhs, type_env), as_unit_value(rhs, type_env))
+    {
+        if n1 == n2 {
+            if b == 0 {
+                return Err(RuntimeError::with_span("division by zero", expr.span));
+            }
+            return Ok(Value::Int(a.div_euclid(b)));
+        }
+    }
+    // Unit div Int → Unit (scale down)
+    if let Some((name, field, a)) = as_unit_value(lhs, type_env) {
+        if let Value::Int(b) = rhs {
+            if *b == 0 {
+                return Err(RuntimeError::with_span("division by zero", expr.span));
+            }
+            return Ok(make_unit_value(name, field, a.div_euclid(*b)));
+        }
+    }
+    match (lhs, rhs) {
+        (Value::Int(a), Value::Int(b)) => {
+            if *b == 0 {
+                Err(RuntimeError::with_span("division by zero", expr.span))
+            } else {
+                Ok(Value::Int(a.div_euclid(*b)))
+            }
+        }
+        _ => Err(RuntimeError::with_span(
+            format!(
+                "cannot floor-divide {:?} by {:?}",
+                type_name(lhs),
+                type_name(rhs)
+            ),
             expr.span,
         )),
     }

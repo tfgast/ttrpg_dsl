@@ -167,6 +167,7 @@ impl Parser {
                 TokenKind::Star => BinOp::Mul,
                 TokenKind::Slash => BinOp::Div,
                 TokenKind::Percent => BinOp::Mod,
+                TokenKind::Div => BinOp::FloorDiv,
                 _ => break,
             };
             self.advance();

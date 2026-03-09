@@ -42,6 +42,7 @@ pub enum TokenKind {
     False,
     None,
     In,
+    Div,
     For,
     Return,
 
@@ -109,6 +110,7 @@ impl fmt::Display for TokenKind {
             TokenKind::False => write!(f, "`false`"),
             TokenKind::None => write!(f, "`none`"),
             TokenKind::In => write!(f, "`in`"),
+            TokenKind::Div => write!(f, "`div`"),
             TokenKind::For => write!(f, "`for`"),
             TokenKind::Return => write!(f, "`return`"),
             TokenKind::LParen => write!(f, "`(`"),
@@ -172,6 +174,7 @@ impl TokenKind {
             // Note: bare > and < are NOT suppressing because they're ambiguous
             // with generic type brackets (e.g., set<T>). >= and <= still suppress.
             | TokenKind::In
+            | TokenKind::Div
             | TokenKind::FatArrow
             | TokenKind::Arrow
             | TokenKind::Eq

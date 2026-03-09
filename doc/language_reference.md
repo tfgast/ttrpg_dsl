@@ -138,7 +138,7 @@ unit Feet suffix ft { value: int }
 ```
 
 Literal: `30ft`; struct form: `Feet { value: 30 }`
-Same-unit arithmetic: `+`, `-`, `int * unit`, `unit / unit -> float`
+Same-unit arithmetic: `+`, `-`, `int * unit`, `unit / unit -> float`, `unit div int -> unit`, `unit div unit -> int`
 
 ### Event
 
@@ -491,13 +491,15 @@ none                  // option<T>
 | 3          | `==` `!=` `>=` `<=` `>` `<`        |
 | 4          | `in` `has` `is`                     |
 | 5          | `+` `-`                             |
-| 6          | `*` `/`                             |
+| 6          | `*` `/` `div` `%`                   |
 | 7          | `!` `-` (unary)                     |
 | 8          | `.` `[]` `()`                       |
 
 ### Arithmetic Rules
 
 - `int / int` always produces `float` — use `floor()` or `ceil()` to convert back
+- `int div int` produces `int` (floor division) — e.g., `7 div 2` = `3`
+- `unit div int` produces same unit; `unit div unit` produces `int`
 - `DiceExpr + DiceExpr` combines pools; `DiceExpr + int` adds modifier
 - `RollResult` auto-coerces to `.total` in comparisons
 

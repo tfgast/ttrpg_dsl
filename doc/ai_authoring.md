@@ -710,8 +710,10 @@ DiceExpr  ──roll()──▶  RollResult  ──.total──▶  int
 ### Arithmetic Rules
 
 - `int / int` → **always float** — use `floor()` or `ceil()` to get int
+- `int div int` → **int** (floor division) — e.g., `7 div 2` = `3`, `-7 div 2` = `-4`
 - `float + int` → float (numeric promotion)
 - Unit arithmetic: same-unit `+`/`-`, `int * unit`, `unit / unit → float`
+- Unit floor division: `unit div int → unit`, `unit div unit → int`
 
 ### Special Types
 

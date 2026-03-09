@@ -129,6 +129,7 @@ fn token_style(kind: &TokenKind, is_first_cli_command: bool) -> Style {
         | TokenKind::Match
         | TokenKind::Let
         | TokenKind::In
+        | TokenKind::Div
         | TokenKind::For => Color::Blue.bold(),
 
         // Literals

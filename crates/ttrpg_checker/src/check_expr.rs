@@ -261,6 +261,7 @@ impl Checker<'_> {
             BinOp::Sub => self.check_sub(&lhs_ty, &rhs_ty, span),
             BinOp::Mul => self.check_mul(&lhs_ty, &rhs_ty, span),
             BinOp::Div => self.check_div(&lhs_ty, &rhs_ty, span),
+            BinOp::FloorDiv => self.check_floor_div(&lhs_ty, &rhs_ty, span),
             BinOp::Mod => self.check_mod(&lhs_ty, &rhs_ty, span),
             BinOp::And | BinOp::Or => {
                 if lhs_ty != Ty::Bool {
@@ -363,6 +364,31 @@ impl Checker<'_> {
             (Ty::UnitType(a), Ty::UnitType(b)) if a == b => Ty::Float,
             _ => {
                 self.error(format!("cannot divide {lhs} by {rhs}"), span);
+                Ty::Error
+            }
+        }
+    }
+
+    fn check_floor_div(&mut self, lhs: &Ty, rhs: &Ty, span: ttrpg_ast::Span) -> Ty {
+        // DiceExpr div anything is an error
+        if *lhs == Ty::DiceExpr || *rhs == Ty::DiceExpr {
+            self.error(
+                "cannot floor-divide DiceExpr; use multiply_dice() or .multiply() instead"
+                    .to_string(),
+                span,
+            );
+            return Ty::Error;
+        }
+
+        match (lhs, rhs) {
+            // int div int -> int (floor division)
+            (l, r) if l.is_int_like() && r.is_int_like() => Ty::Int,
+            // unit div int -> unit (scale down)
+            (Ty::UnitType(a), r) if r.is_int_like() => Ty::UnitType(a.clone()),
+            // unit div unit -> int (dimensionless floor ratio)
+            (Ty::UnitType(a), Ty::UnitType(b)) if a == b => Ty::Int,
+            _ => {
+                self.error(format!("cannot floor-divide {lhs} by {rhs}"), span);
                 Ty::Error
             }
         }

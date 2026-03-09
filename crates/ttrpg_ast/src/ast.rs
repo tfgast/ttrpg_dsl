@@ -1046,6 +1046,7 @@ pub enum BinOp {
     Sub,
     Mul,
     Div,
+    FloorDiv,
     Mod,
     And,
     Or,

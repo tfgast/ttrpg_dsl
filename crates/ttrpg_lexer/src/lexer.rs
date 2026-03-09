@@ -261,6 +261,7 @@ impl<'a> RawLexer<'a> {
             "false" => TokenKind::False,
             "none" => TokenKind::None,
             "in" => TokenKind::In,
+            "div" => TokenKind::Div,
             "for" => TokenKind::For,
             "return" => TokenKind::Return,
             _ => TokenKind::Ident(self.intern(text)),
@@ -609,7 +610,7 @@ mod tests {
 
     #[test]
     fn test_reserved_keywords() {
-        let result = lex("let if else match true false none in for");
+        let result = lex("let if else match true false none in div for");
         assert_eq!(
             result,
             vec![
@@ -621,6 +622,7 @@ mod tests {
                 TokenKind::False,
                 TokenKind::None,
                 TokenKind::In,
+                TokenKind::Div,
                 TokenKind::For,
                 TokenKind::Eof,
             ]

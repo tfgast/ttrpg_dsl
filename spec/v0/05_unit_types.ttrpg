@@ -150,6 +150,9 @@ unit AbstractDistance {
 //   int * unit             unit      scales the field value
 //   unit * int             unit      scales the field value (commutative)
 //   unit / unit (same)     float     dimensionless ratio
+//   unit div int           unit      floor division (scale down)
+//   unit div unit (same)   int       floor division (dimensionless)
+//   int div int            int       floor division
 //   -unit                  unit      negates the field value
 //
 //   unit + different_unit  ERROR     type mismatch
@@ -159,16 +162,16 @@ unit AbstractDistance {
 //   int + unit             ERROR     cannot add unit to raw int
 //   int - unit             ERROR     cannot subtract unit from raw int
 //   unit * unit            ERROR     no squared units
-//   unit / int             ERROR     use field access for explicit rounding
+//   unit / int             ERROR     use `div` for floor division
 //   int / unit             ERROR     meaningless
 //
-// The prohibition on unit / int is deliberate: RPG systems define
-// their own rounding conventions (floor, ceil, round-toward-zero,
-// round-half-up). Forcing the author to write:
+// The `div` operator performs Euclidean floor division and is the
+// intended way to scale units down by an integer:
 //
-//   Feet { value: floor(speed.value / 2) }
+//   30ft div 2             // -> 15ft
+//   100ft div 3            // -> 33ft (rounds toward negative infinity)
 //
-// makes the rounding explicit and system-appropriate.
+// The `/` operator still produces float for unit / unit ratios.
 
 // Examples:
 //   30ft + 10ft            // -> 40ft
@@ -176,11 +179,14 @@ unit AbstractDistance {
 //   3 * 10ft               // -> 30ft
 //   10ft * 3               // -> 30ft
 //   60ft / 30ft            // -> 2.0 (float)
+//   100ft div 3            // -> 33ft (floor division)
+//   100ft div 30ft         // -> 3 (int, floor ratio)
+//   7 div 2                // -> 3 (int, floor division)
 //   -30ft                  // -> Feet { value: -30 }
 //
 //   30ft + 5gp             // ERROR: cannot add Feet to GoldPieces
 //   30ft + 10              // ERROR: cannot add Feet to int
-//   30ft / 2               // ERROR: use floor(speed.value / 2)
+//   30ft / 2               // ERROR: use `div` for floor division
 //   30ft * 10ft            // ERROR: cannot multiply Feet by Feet
 
 
