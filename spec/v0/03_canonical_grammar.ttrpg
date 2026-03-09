@@ -742,20 +742,23 @@ emit_stmt       = "emit" IDENT "(" arg_list? ")" term
 // be int.
 //
 // Within the body:
-//   - `turn` is readable as a struct (e.g., `turn.action`)
+//   - Use `budget_of(entity)` to read an entity's budget (e.g., `budget_of(actor).action`)
+//   - `turn` keyword works inside action/reaction/hook resolve blocks (set by action dispatch)
 //   - Actions called within deduct from the provisioned budget
 //   - Budget enforcement fires RequiresCheck when budget is exhausted
 //
 // Nesting: with_budget blocks can nest. Each saves/restores the
-// previous budget and turn context. Inner blocks shadow the outer
+// previous budget. Inner blocks shadow the outer
 // budget for the same entity; the outer budget is restored on exit.
 //
-// Cost payer: the entity argument becomes the cost payer for actions
-// called within the body. This enables summoning patterns where the
-// receiver of an action differs from the entity paying the cost:
+// Cost payer: with_budget provisions budget only. Use with_cost_payer
+// to set the payer for summoning patterns where the receiver differs
+// from the entity paying the cost:
 //
 //   with_budget(wizard, { action: 1 }) {
-//       skeleton.MeleeAttack(target, weapon)  // skeleton acts, wizard pays
+//       with_cost_payer(wizard) {
+//           skeleton.MeleeAttack(target, weapon)  // skeleton acts, wizard pays
+//       }
 //   }
 //
 // Cleanup: budget is always cleared/restored on exit, even if the

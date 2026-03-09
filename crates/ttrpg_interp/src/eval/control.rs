@@ -461,18 +461,17 @@ pub(super) fn eval_stmt(
                                 ))
                             }
                         };
-                        let budget = match fields.get("budget") {
-                            Some(Value::Struct {
-                                name: bn,
-                                fields: bf,
-                            }) if bn == "TurnBudget" => bf.clone(),
-                            _ => {
-                                return Err(RuntimeError::with_span(
+                        let budget =
+                            match fields.get("budget") {
+                                Some(Value::Struct {
+                                    name: bn,
+                                    fields: bf,
+                                }) if bn == "TurnBudget" => bf.clone(),
+                                _ => return Err(RuntimeError::with_span(
                                     "with_budgets: BudgetSpec missing TurnBudget `budget` field",
                                     specs.span,
-                                ))
-                            }
-                        };
+                                )),
+                            };
                         entries.push((actor, budget));
                     }
                     _ => {
@@ -486,9 +485,7 @@ pub(super) fn eval_stmt(
 
             scoped_budgets(env, entries, *span, |env| eval_block(env, body))
         }
-        StmtKind::WithCostPayer {
-            entity, body, ..
-        } => {
+        StmtKind::WithCostPayer { entity, body, .. } => {
             let entity_val = eval_expr(env, entity)?;
             let payer = match entity_val {
                 Value::Entity(r) => r,

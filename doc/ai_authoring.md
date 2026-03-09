@@ -447,8 +447,9 @@ function compute_heal(base: int, bonus: int) -> int {
 - Return type optional — omit `->` for void functions
 - Supports `return expr` for early exit (or bare `return` for void functions)
 - `with_budget(entity, { field: value }) { body }` provisions a scoped turn budget:
-  - `turn` keyword becomes readable/writable inside the body
-  - Actions called deduct from the provisioned budget
+  - Actions called inside the body deduct from the provisioned budget
+  - `turn` keyword works inside action/reaction/hook resolve blocks (set by action dispatch)
+  - Use `budget_of(entity)` to query an entity's budget from function scope (outside actions)
   - Entity arg pays costs; action receiver can differ (summoning pattern)
   - Nesting supported; cleanup always runs (error-safe)
 

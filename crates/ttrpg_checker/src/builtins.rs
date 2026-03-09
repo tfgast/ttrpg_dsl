@@ -93,5 +93,11 @@ pub fn register_builtins() -> Vec<FnInfo> {
         // Game time
         builtin("game_time", vec![], Ty::Int),
         builtin("advance_time", vec![param("amount", Ty::Int)], Ty::Unit),
+        // Budget query
+        builtin(
+            "budget_of",
+            vec![param("entity", Ty::AnyEntity)],
+            Ty::TurnBudget,
+        ),
     ]
 }

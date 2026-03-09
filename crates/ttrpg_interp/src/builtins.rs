@@ -38,6 +38,7 @@ pub(crate) fn call_builtin(
         "revoke" => builtin_revoke(env, &args, span),
         "game_time" => builtin_game_time(env, &args, span),
         "advance_time" => builtin_advance_time(env, &args, span),
+        "budget_of" => builtin_budget_of(env, &args, span),
         _ => Err(RuntimeError::with_span(
             format!("unknown builtin function '{name}'"),
             span,
@@ -880,6 +881,40 @@ fn builtin_advance_time(env: &mut Env, args: &[Value], span: Span) -> Result<Val
             span,
         )),
     }
+}
+
+// ── budget_of ─────────────────────────────────────────────────
+
+/// `budget_of(entity: Entity) -> TurnBudget`
+///
+/// Returns the currently provisioned turn budget for an entity,
+/// without requiring `turn_actor` context.  Useful for querying
+/// remaining budget from within `with_budget` / `with_budgets`
+/// bodies (outside of an action dispatch).
+fn builtin_budget_of(env: &mut Env, args: &[Value], span: Span) -> Result<Value, RuntimeError> {
+    let entity = match args.first() {
+        Some(Value::Entity(r)) => r,
+        Some(other) => {
+            return Err(RuntimeError::with_span(
+                format!("budget_of() expects entity, got {}", type_name(other)),
+                span,
+            ))
+        }
+        None => {
+            return Err(RuntimeError::with_span(
+                "budget_of() requires 1 argument",
+                span,
+            ))
+        }
+    };
+    let budget = env
+        .state
+        .read_turn_budget(entity)
+        .ok_or_else(|| RuntimeError::with_span("no turn budget provisioned for entity", span))?;
+    Ok(Value::Struct {
+        name: Name::from("TurnBudget"),
+        fields: budget,
+    })
 }
 
 // ── Helpers ────────────────────────────────────────────────────

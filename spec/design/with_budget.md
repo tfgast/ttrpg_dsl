@@ -282,10 +282,10 @@ Changes to `execute_pipeline`:
 
 ### Turn Readability
 
-Currently `turn` is write-only, accessible only via assignment statements in
-action/reaction/hook resolve blocks. `with_budget` establishes a turn context,
-so `turn` should be readable within it (and in action resolve blocks too, for
-consistency).
+The `turn` keyword requires `turn_actor` context (set by action dispatch).
+Since `with_budget` no longer sets `turn_actor`, use `budget_of(entity)` to
+query an entity's provisioned budget from function scope (outside actions).
+Inside action resolve blocks, `turn` continues to work as before.
 
 **Checker model:**
 
@@ -1060,8 +1060,8 @@ Log `ProvisionBudget` and `ClearBudget` effects.
 - Budget enforcement: multi-token cost with second token insufficient → no
   partial deduction (first token also not deducted)
 - Non-int budget value at runtime → error
-- `turn` readable inside `with_budget`: returns correct field values
-- `turn` readable after action deduction: reflects decremented value
+- `budget_of(entity)` readable inside `with_budget`: returns correct field values
+- `budget_of(entity)` readable after action deduction: reflects decremented value
 - `turn.missing_field` access → runtime error
 - Cleanup on error: budget cleared even if body errors
 - Cleanup on error: same-entity nested budget restored even if inner body errors

@@ -51,14 +51,14 @@ system "test" {
 
     function read_budget(actor: Character) {
         with_budget(actor, { action: 3 }) {
-            actor.hp = turn.action
+            actor.hp = budget_of(actor).action
         }
     }
 
     function attack_and_read(attacker: Character, target: Character) {
         with_budget(attacker, { action: 2 }) {
             attacker.MeleeAttack(target)
-            attacker.hp = turn.action
+            attacker.hp = budget_of(attacker).action
         }
     }
 
@@ -66,10 +66,10 @@ system "test" {
         with_budget(attacker, { action: 2 }) {
             attacker.MeleeAttack(target)
             with_budget(attacker, { action: 99 }) {
-                let inner_budget = turn.action
+                let inner_budget = budget_of(attacker).action
             }
             attacker.MeleeAttack(target)
-            attacker.hp = turn.action
+            attacker.hp = budget_of(attacker).action
         }
     }
 }

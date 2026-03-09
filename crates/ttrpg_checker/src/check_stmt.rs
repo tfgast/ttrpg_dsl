@@ -125,11 +125,7 @@ impl Checker<'_> {
                 self.check_with_budgets(specs, body, *span);
                 Ty::Unit
             }
-            StmtKind::WithCostPayer {
-                entity,
-                body,
-                span,
-            } => {
+            StmtKind::WithCostPayer { entity, body, span } => {
                 self.check_with_cost_payer(entity, body, *span);
                 Ty::Unit
             }
