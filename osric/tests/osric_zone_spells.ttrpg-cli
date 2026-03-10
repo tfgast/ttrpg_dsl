@@ -1,15 +1,20 @@
 // OSRIC Zone Spells integration tests
 //
-// Proves the occupant-condition zone pattern: the host emits
-// ZoneEntered / ZoneExited events, and DSL hooks apply / remove
-// conditions keyed by zone identity.
+// Proves two zone patterns:
 //
-// Scenarios:
+// Occupant-condition pattern (ZoneEntered / ZoneExited):
 //   1. Silence zone: enter → Silenced, exit → removed
 //   2. Overlapping silence zones: exit one → still silenced
 //   3. Protection from Evil zone: enter → protected, exit → removed
 //   4. Overlapping PFE zones: exit one → still protected
 //   5. Non-matching zone: no conditions applied
+//
+// Barrier-crossing pattern (ZoneCrossed / ZoneTick):
+//   6. Wall of Fire: crossing deals 2d6+level fire damage
+//   7. Wall of Fire: non-matching zone crossing deals no damage
+//   8. Blade Barrier: crossing deals 8d8 slashing damage
+//   9. Blade Barrier: ZoneTick deals per-round slashing damage
+//  10. Blade Barrier: non-matching zone tick deals no damage
 
 load osric/*.ttrpg
 
@@ -135,3 +140,91 @@ place nm_zone 0 0
 emit ZoneEntered(target: nm_target, zone: nm_zone)
 assert_no_condition nm_target, Silenced
 assert_no_condition nm_target, ProtectedFromEvil10
+
+
+// ══════════════════════════════════════════════════════════════════
+//  WALL OF FIRE — BARRIER ZONE (CROSSING DAMAGE)
+// ══════════════════════════════════════════════════════════════════
+
+
+// ── Basic crossing damage ──────────────────────────────────────
+// Crossing a Wall of Fire deals 2d6 + caster_level fire damage.
+// With caster_level 9, minimum damage is 2+9 = 11, max is 12+9 = 21.
+
+spawn Character wof_target { name: "Wall Runner", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 16, INT: 12, WIS: 12, DEX: 14, CON: 14, CHA: 12 }, HitPoints { max_hp: 40, hp: 40 } }
+
+spawn Zone wof_zone { name: "wall-of-fire-1", source: Spell(name: "Wall of Fire", caster_level: 9), shape: Wall(length: 60ft, thickness: 5ft), contact_mode: Crossed, tracks_occupancy: true }
+place wof_zone 10 10
+
+// Before crossing: full HP
+assert_eq wof_target.hp, 40
+
+// Host emits ZoneCrossed (target walked through the wall)
+emit ZoneCrossed(target: wof_target, zone: wof_zone)
+
+// Damage dealt: 2d6+9 (range 11–21), so HP should be 19–29
+assert_eq wof_target.hp < 40, true
+assert_eq wof_target.hp >= 19, true
+
+
+// ── Non-matching zone crossing ─────────────────────────────────
+// Crossing a zone with a different source should not trigger
+// Wall of Fire damage.
+
+spawn Character wof_bystander { name: "Wall Bystander", classes: [ClassLevel { class: Fighter, level: 3 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 } }
+
+spawn Zone wof_wrong_zone { name: "silence-zone-crossed", source: Spell(name: "Silence 15' Radius", caster_level: 5), shape: Radius(radius: 15ft), contact_mode: Crossed }
+place wof_wrong_zone 20 20
+
+emit ZoneCrossed(target: wof_bystander, zone: wof_wrong_zone)
+assert_eq wof_bystander.hp, 20
+
+
+// ══════════════════════════════════════════════════════════════════
+//  BLADE BARRIER — BARRIER ZONE (CROSSING + PER-ROUND DAMAGE)
+// ══════════════════════════════════════════════════════════════════
+
+
+// ── Crossing damage ────────────────────────────────────────────
+// Crossing a Blade Barrier deals 8d8 slashing damage.
+// Range: 8–64. With 100 HP we can safely verify damage occurred.
+
+spawn Character bb_target { name: "Blade Runner", classes: [ClassLevel { class: Fighter, level: 10 }], abilities: { STR: 18, INT: 12, WIS: 12, DEX: 16, CON: 16, CHA: 12 }, HitPoints { max_hp: 100, hp: 100 } }
+
+spawn Zone bb_zone { name: "blade-barrier-1", source: Spell(name: "Blade Barrier", caster_level: 12), shape: Sphere(radius: 15ft), contact_mode: Crossed, tracks_occupancy: true }
+place bb_zone 30 30
+
+// Before crossing: full HP
+assert_eq bb_target.hp, 100
+
+// Host emits ZoneCrossed (target charged through the blades)
+emit ZoneCrossed(target: bb_target, zone: bb_zone)
+
+// Damage dealt: 8d8 (range 8–64), so HP should be 36–92
+assert_eq bb_target.hp < 100, true
+assert_eq bb_target.hp >= 36, true
+
+
+// ── Per-round occupant damage ──────────────────────────────────
+// Target remains inside the Blade Barrier. Each round, ZoneTick
+// deals another 8d8 slashing damage.
+
+let bb_hp_after_cross = bb_target.hp
+
+// Host emits ZoneTick (next round, target still inside)
+emit ZoneTick(target: bb_target, zone: bb_zone)
+
+// Additional 8d8 damage applied
+assert_eq bb_target.hp < bb_hp_after_cross, true
+
+
+// ── Non-matching zone tick ─────────────────────────────────────
+// ZoneTick on a non-Blade Barrier zone should not deal damage.
+
+spawn Character bb_bystander { name: "Tick Bystander", classes: [ClassLevel { class: Fighter, level: 3 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 } }
+
+spawn Zone bb_wrong_zone { name: "wrong-zone-tick", source: Spell(name: "Wall of Fire", caster_level: 9), shape: Wall(length: 60ft, thickness: 5ft), contact_mode: Crossed }
+place bb_wrong_zone 40 40
+
+emit ZoneTick(target: bb_bystander, zone: bb_wrong_zone)
+assert_eq bb_bystander.hp, 20

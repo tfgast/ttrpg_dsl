@@ -1,14 +1,21 @@
 // ═══════════════════════════════════════════════════════════════
 //  OSRIC Zone Spells
 //
-//  Occupant-condition zone pattern: the host owns zone membership
-//  and emits ZoneEntered / ZoneExited events. The DSL applies and
-//  removes conditions keyed by zone identity so overlapping zones
-//  remove their effects precisely.
+//  Two zone patterns are covered here:
 //
-//  Covered spells:
+//  Occupant-condition pattern: the host emits ZoneEntered /
+//  ZoneExited events. The DSL applies and removes conditions
+//  keyed by zone identity so overlapping zones remove their
+//  effects precisely.
 //    • Silence 15' Radius   (stationary area)
 //    • Protection from Evil 10' Radius (anchored to caster)
+//
+//  Barrier-crossing pattern: the host emits ZoneCrossed when a
+//  target's movement path contacts a barrier boundary, and
+//  ZoneTick each round for occupants that remain inside. The
+//  DSL deals damage directly — no conditions needed.
+//    • Wall of Fire          (stationary wall or anchored ring)
+//    • Blade Barrier         (stationary sphere of blades)
 // ═══════════════════════════════════════════════════════════════
 
 use "OSRIC"
@@ -166,6 +173,129 @@ system "OSRIC Zone Spells" {
         if let EffectSource.Spell(spell_name, cl) = zone.source {
             if spell_name == "Protection from Evil 10' Radius" {
                 remove_zone_keyed_condition(target, zone.name, "ProtectedFromEvil10")
+            }
+        }
+    }
+
+
+    // ========================================================
+    //  ZONE DAMAGE HELPER
+    //
+    //  Deals damage from a zone effect and emits SpellDamaged
+    //  for event tracking. Uses the zone's creator as the
+    //  damage source when available.
+    // ========================================================
+
+    function deal_zone_damage(target: entity, zone: Zone, damage: int, damage_type: DamageType) {
+        if let some(creator) = zone.creator {
+            target.TakeDamage(creator, damage, damage_type)
+            emit SpellDamaged(caster: creator, target: target, spell_name: zone.name, amount: damage)
+        } else {
+            target.TakeDamage(zone, damage, damage_type)
+            emit SpellDamaged(caster: zone, target: target, spell_name: zone.name, amount: damage)
+        }
+    }
+
+
+    // ========================================================
+    //  WALL OF FIRE
+    //
+    //  Creates a stationary wall or mobile ring of fire.
+    //  Two shapes: a flat wall (20 sq ft per level, 10ft
+    //  thick) or a ring (10ft + 3ft/level radius, moves
+    //  with caster).
+    //
+    //  Crossing: 2d6 + 1/caster level fire damage, no save.
+    //  Proximity heat (1d6 at 10ft, 1d3 at 20ft) is a host
+    //  spatial concept not modeled by zone membership.
+    //
+    //  Zone type: barrier zone (contact_mode = Crossed,
+    //  tracks_occupancy = true).
+    // ========================================================
+
+    const WALL_OF_FIRE_DEF: SpellDef = SpellDef {
+        name: "Wall of Fire",
+        class_type: Arcane,
+        school: Evocation,
+        level: 4,
+        range: SpellRange.Distance(distance: Feet { value: 60 }),
+        duration: SpellDuration.Rounds(count: 0),   // concentration or 1 round/level
+        area_of_effect: "Wall or ring, see description",
+        components: SpellComponents { material: false },
+        casting_time: CastingTime.Segments(count: 4),
+        saving_throw: SpellSave.NoSave,
+        reversible: false,
+        description: "Creates a wall or ring of fire. Crossing deals 2d6+1/level fire damage. Proximity deals 1d6 (10ft) or 1d3 (20ft)."
+    }
+
+    // Crossing damage: 2d6 + caster_level fire damage.
+    // Fires when a target's movement path contacts the barrier.
+    hook WallOfFireCrossed on target: entity (
+        trigger: ZoneCrossed(target: target)
+    ) {
+        let zone = trigger.zone
+        if let EffectSource.Spell(spell_name, cl) = zone.source {
+            if spell_name == "Wall of Fire" {
+                let damage = roll(2d6).total + cl
+                deal_zone_damage(target, zone, damage, DamageType.Fire)
+            }
+        }
+    }
+
+
+    // ========================================================
+    //  BLADE BARRIER
+    //
+    //  Creates a stationary sphere of whirling blades.
+    //  Radius chosen at cast time (5ft / 10ft / 15ft / 20ft).
+    //
+    //  Contact damage: 8d8 slashing, no save. Applies on
+    //  crossing the boundary and each round for occupants
+    //  remaining inside. Melee attacks reaching through the
+    //  barrier also provoke damage (not modeled here).
+    //
+    //  Zone type: barrier zone (contact_mode = Crossed,
+    //  tracks_occupancy = true).
+    // ========================================================
+
+    const BLADE_BARRIER_DEF: SpellDef = SpellDef {
+        name: "Blade Barrier",
+        class_type: Divine,
+        school: Evocation,
+        level: 6,
+        range: SpellRange.Distance(distance: Feet { value: 30 }),
+        duration: SpellDuration.Rounds(count: 0),   // 3 rounds/level
+        area_of_effect: "Sphere, 5ft to 20ft radius",
+        components: SpellComponents { material: false },
+        casting_time: CastingTime.Segments(count: 9),
+        saving_throw: SpellSave.NoSave,
+        reversible: false,
+        description: "Creates a sphere of whirling blades. 8d8 slashing damage on contact, no save. Damage each round for occupants."
+    }
+
+    // Crossing damage: 8d8 slashing when path crosses the barrier.
+    hook BladeBarrierCrossed on target: entity (
+        trigger: ZoneCrossed(target: target)
+    ) {
+        let zone = trigger.zone
+        if let EffectSource.Spell(spell_name, cl) = zone.source {
+            if spell_name == "Blade Barrier" {
+                let damage = roll(8d8).total
+                deal_zone_damage(target, zone, damage, DamageType.Slashing)
+            }
+        }
+    }
+
+    // Per-round occupant damage: 8d8 slashing each round for
+    // targets remaining inside the barrier.
+    hook BladeBarrierTick on target: entity (
+        trigger: ZoneTick(target: target)
+    ) {
+        let zone = trigger.zone
+        if let EffectSource.Spell(spell_name, cl) = zone.source {
+            if spell_name == "Blade Barrier" {
+                let damage = roll(8d8).total
+                deal_zone_damage(target, zone, damage, DamageType.Slashing)
             }
         }
     }

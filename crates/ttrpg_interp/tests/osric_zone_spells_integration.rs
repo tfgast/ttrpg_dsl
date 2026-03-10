@@ -75,6 +75,9 @@ fn osric_zone_spells_has_hooks() {
         "SilenceZoneRemove",
         "ProtFromEvil10ZoneApply",
         "ProtFromEvil10ZoneRemove",
+        "WallOfFireCrossed",
+        "BladeBarrierCrossed",
+        "BladeBarrierTick",
     ];
     for name in &expected {
         assert!(hooks.contains(name), "missing hook: {name}");
