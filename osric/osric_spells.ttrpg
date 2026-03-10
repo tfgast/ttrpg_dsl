@@ -653,8 +653,13 @@ system "OSRIC Spells" {
             Bless => SpellClassType.Divine,
             Curse => SpellClassType.Divine,
             HoldPerson => SpellClassType.Divine,
+            DispelMagicCleric => SpellClassType.Divine,
+            RemoveCurse => SpellClassType.Divine,
+            BestowCurse => SpellClassType.Divine,
+            NeutralisePoison => SpellClassType.Divine,
             MagicMissile => SpellClassType.Arcane,
             Sleep => SpellClassType.Arcane,
+            DispelMagicMU => SpellClassType.Arcane,
             Fireball => SpellClassType.Arcane
         }
     }
@@ -666,8 +671,13 @@ system "OSRIC Spells" {
             Bless => 1,
             Curse => 1,
             HoldPerson => 2,
+            DispelMagicCleric => 3,
+            RemoveCurse => 3,
+            BestowCurse => 3,
+            NeutralisePoison => 4,
             MagicMissile => 1,
             Sleep => 1,
+            DispelMagicMU => 3,
             Fireball => 3
         }
     }
@@ -766,6 +776,7 @@ system "OSRIC Spells" {
     event SpellHealed(caster: Character, target: Character, spell_name: string, amount: int) {}
     event SpellDamaged(caster: entity, target: entity, spell_name: string, amount: int) {}
     event SpellApplied(caster: Character, target: entity, spell_name: string) {}
+    event SpellDispelled(target: entity, condition_name: string, dispeller_level: int) {}
 
 
     // ========================================================
@@ -775,6 +786,38 @@ system "OSRIC Spells" {
     //  individual spell resolve functions can call one helper
     //  instead of duplicating the same loop + event logic.
     // ========================================================
+
+    // Dispel check: percentage chance to dispel a single effect.
+    //   same or higher: 50% + 5% per level above target
+    //   lower: 50% - 2% per level below target
+    // Always at least 1% chance, capped at 99%.
+    derive dispel_check_chance(dispeller_level: int, target_level: int) -> int {
+        let diff = dispeller_level - target_level
+        let chance = if diff >= 0 {
+            50 + (diff * 5)
+        } else {
+            50 + (diff * 2)
+        }
+        max(1, min(99, chance))
+    }
+
+    // Shared dispel logic used by both Cleric and MU versions.
+    // For each target, iterates conditions and attempts to dispel
+    // those with spell sources based on the caster-level check.
+    function resolve_dispel_magic_on_targets(dispeller_level: int, targets: list<entity>) {
+        for target in targets {
+            for cond in conditions(target) {
+                if let EffectSource.Spell(name, caster_level) = cond.source {
+                    let chance = dispel_check_chance(dispeller_level, caster_level)
+                    let d100 = roll(1d100).total
+                    if d100 <= chance {
+                        remove_condition(target, cond)
+                        emit SpellDispelled(target: target, condition_name: cond.name, dispeller_level: dispeller_level)
+                    }
+                }
+            }
+        }
+    }
 
     // Save-or-half damage (Fireball archetype).
     // Rolls are already done; total_damage is applied to each

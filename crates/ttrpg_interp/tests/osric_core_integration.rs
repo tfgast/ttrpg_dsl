@@ -164,8 +164,8 @@ fn osric_core_has_all_enums() {
         "missing SpecWeapon enum"
     );
 
-    // SpellId: 8 variants (CureLightWounds, CauseLightWounds, Bless, Curse, HoldPerson, MagicMissile, Sleep, Fireball)
-    assert!(enums.contains(&("SpellId", 8)), "missing SpellId enum");
+    // SpellId: 13 variants (CureLightWounds..Fireball + DispelMagicCleric, RemoveCurse, BestowCurse, NeutralisePoison, DispelMagicMU)
+    assert!(enums.contains(&("SpellId", 13)), "missing SpellId enum");
 
     // EffectSource: 5 variants (Unknown, Spell, Item, Poison, MonsterAbility)
     assert!(

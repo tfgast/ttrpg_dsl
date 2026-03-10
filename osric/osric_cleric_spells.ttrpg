@@ -222,4 +222,164 @@ system "OSRIC Cleric Spells" {
             }
         }
     }
+
+
+    // ========================================================
+    //  DISPEL MAGIC (§1.8.2.3)
+    //
+    //  Divine abjuration, level 3. Range 60ft, instantaneous.
+    //  30ft radius sphere. Removes or suppresses magical effects.
+    //  Own spells are auto-removed. Other effects require a
+    //  d100 check based on caster level difference:
+    //    Same or higher: 50% + 5% per level above
+    //    Lower: 50% - 2% per level below
+    //  Casting time: 6 segments. No saving throw.
+    // ========================================================
+
+    const DISPEL_MAGIC_CLERIC_DEF: SpellDef = SpellDef {
+        name: "Dispel Magic",
+        class_type: Divine,
+        school: Abjuration,
+        level: 3,
+        range: SpellRange.Distance(distance: 60ft),
+        duration: SpellDuration.Instantaneous,
+        area_of_effect: "30ft radius sphere",
+        components: SpellComponents { material: false },
+        casting_time: CastingTime.Segments(count: 6),
+        saving_throw: SpellSave.Special(description: "No save; percentage-based dispel check"),
+        description: "Removes or suppresses magical effects in a 30ft radius sphere. Dispel chance based on caster level comparison."
+    }
+
+    // Resolve Dispel Magic (Cleric version).
+    // Iterates all conditions on each target and attempts to
+    // dispel those with EffectSource.Spell provenance.
+    function resolve_dispel_magic_cleric(caster: Character, targets: list<entity>) {
+        let cl = caster_level(caster, Divine)
+        resolve_dispel_magic_on_targets(cl, targets)
+    }
+
+
+    // ========================================================
+    //  REMOVE CURSE (§1.8.2.3)
+    //
+    //  Divine abjuration, level 3. Touch, instantaneous.
+    //  Ends one curse on the target creature, object, or place.
+    //  If multiple curses, caster chooses which to remove.
+    //  Does not affect curses from gods, demigods, artifacts,
+    //  or relics. Does not cure vampirism or lycanthropy.
+    //  Casting time: 6 segments. No saving throw.
+    // ========================================================
+
+    const REMOVE_CURSE_DEF: SpellDef = SpellDef {
+        name: "Remove Curse",
+        class_type: Divine,
+        school: Abjuration,
+        level: 3,
+        range: SpellRange.Touch,
+        duration: SpellDuration.Instantaneous,
+        area_of_effect: "One creature, object, or place",
+        components: SpellComponents { material: false },
+        casting_time: CastingTime.Segments(count: 6),
+        saving_throw: SpellSave.NoSave,
+        reversible: true,
+        description: "Ends one curse on the target. If multiple curses, caster chooses which to remove."
+    }
+
+    // Resolve Remove Curse. Removes the first condition tagged
+    // with #curse from the target. If no curse-tagged conditions
+    // exist, the spell has no effect.
+    function resolve_remove_curse(caster: Character, target: entity) {
+        for cond in conditions(target) {
+            if "curse" in cond.tags {
+                remove_condition(target, cond)
+                emit SpellApplied(caster: caster, target: target, spell_name: "Remove Curse")
+                return
+            }
+        }
+    }
+
+
+    // ========================================================
+    //  BESTOW CURSE (reverse of Remove Curse) (§1.8.2.3)
+    //
+    //  Divine abjuration, level 3. Touch, permanent.
+    //  Inflicts a curse on the target creature. Saving throw
+    //  vs. spells negates. The exact curse effect is chosen by
+    //  the caster from a predefined list or GM discretion.
+    //  Modelled here as a condition with the #curse tag.
+    //  Casting time: 6 segments.
+    // ========================================================
+
+    condition BestowedCurse on bearer: entity {
+        tags: #curse
+    }
+
+    const BESTOW_CURSE_DEF: SpellDef = SpellDef {
+        name: "Bestow Curse",
+        class_type: Divine,
+        school: Abjuration,
+        level: 3,
+        range: SpellRange.Touch,
+        duration: SpellDuration.Permanent,
+        area_of_effect: "One creature",
+        components: SpellComponents { material: false },
+        casting_time: CastingTime.Segments(count: 6),
+        saving_throw: SpellSave.Negates,
+        reversible: true,
+        description: "Curses the target creature. Save vs spells negates. The curse persists until removed by Remove Curse or Dispel Magic."
+    }
+
+    // Resolve Bestow Curse. Target saves vs spells; on failure
+    // the BestowedCurse condition is applied permanently.
+    function resolve_bestow_curse(caster: Character, target: entity) {
+        let cl = caster_level(caster, Divine)
+        let source = EffectSource.Spell(name: "Bestow Curse", caster_level: cl)
+        let result = target.ResistSpell(category: some(SpellsUnlisted))
+        if let some(saved) = result {
+            if !saved {
+                apply_condition(target, BestowedCurse, Duration.Indefinite, source)
+                emit SpellApplied(caster: caster, target: target, spell_name: "Bestow Curse")
+            }
+        }
+    }
+
+
+    // ========================================================
+    //  NEUTRALISE POISON (§1.8.2.4)
+    //
+    //  Divine transmutation, level 4. Touch, instantaneous.
+    //  Makes venom/toxin/contaminant harmless. Can revive
+    //  someone who "died" from poison (within limits).
+    //  Removes all #poison-tagged conditions from the target.
+    //  Casting time: 7 segments. No saving throw on allies.
+    // ========================================================
+
+    const NEUTRALISE_POISON_DEF: SpellDef = SpellDef {
+        name: "Neutralise Poison",
+        class_type: Divine,
+        school: Transmutation,
+        level: 4,
+        range: SpellRange.Touch,
+        duration: SpellDuration.Instantaneous,
+        area_of_effect: "One creature or object",
+        components: SpellComponents { material: true },
+        casting_time: CastingTime.Segments(count: 7),
+        saving_throw: SpellSave.Special(description: "None on willing; save negates on venomous creature"),
+        description: "Neutralises all poisons affecting the target creature. Removes all poison-tagged conditions."
+    }
+
+    // Resolve Neutralise Poison. Removes all conditions tagged
+    // with #poison from the target. Also removes conditions whose
+    // source is EffectSource.Poison.
+    function resolve_neutralise_poison(caster: Character, target: entity) {
+        for cond in conditions(target) {
+            if "poison" in cond.tags {
+                remove_condition(target, cond)
+                emit SpellApplied(caster: caster, target: target, spell_name: "Neutralise Poison")
+            } else if let EffectSource.Poison(name) = cond.source {
+                remove_condition(target, cond)
+                emit SpellApplied(caster: caster, target: target, spell_name: "Neutralise Poison")
+            }
+        }
+    }
 }

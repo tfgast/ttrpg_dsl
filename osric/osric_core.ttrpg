@@ -368,10 +368,17 @@ system "OSRIC" {
         Curse,
         // Cleric level 2
         HoldPerson,
+        // Cleric level 3
+        DispelMagicCleric,
+        RemoveCurse,
+        BestowCurse,
+        // Cleric level 4
+        NeutralisePoison,
         // Magic-User level 1
         MagicMissile,
         Sleep,
         // Magic-User level 3
+        DispelMagicMU,
         Fireball
     }
 

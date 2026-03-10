@@ -564,6 +564,7 @@ impl TypeEnv {
             ("source", Ty::EffectSource),
             ("id", Ty::Int),
             ("applied_at", Ty::Int),
+            ("tags", Ty::Set(Box::new(Ty::String))),
         ]
     }
 

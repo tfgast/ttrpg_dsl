@@ -195,4 +195,36 @@ system "OSRIC MU Spells" {
             }
         }
     }
+
+
+    // ========================================================
+    //  DISPEL MAGIC (§1.8.5.3)
+    //
+    //  Arcane abjuration, level 3. Range 120ft, permanent.
+    //  30ft cube. Removes or suppresses magical effects.
+    //  Uses same percentage-based dispel check as cleric
+    //  version but keyed off magic-user class level.
+    //  Casting time: 3 segments. No saving throw.
+    // ========================================================
+
+    const DISPEL_MAGIC_MU_DEF: SpellDef = SpellDef {
+        name: "Dispel Magic",
+        class_type: Arcane,
+        school: Abjuration,
+        level: 3,
+        range: SpellRange.Distance(distance: 120ft),
+        duration: SpellDuration.Instantaneous,
+        area_of_effect: "30ft cube",
+        components: SpellComponents { material: false },
+        casting_time: CastingTime.Segments(count: 3),
+        saving_throw: SpellSave.Special(description: "No save; percentage-based dispel check"),
+        description: "Removes or suppresses magical effects in a 30ft cube. Dispel chance based on caster level comparison."
+    }
+
+    // Resolve Dispel Magic (MU version).
+    // Uses the shared dispel logic from the Cleric Spells module.
+    function resolve_dispel_magic_mu(caster: Character, targets: list<entity>) {
+        let cl = caster_level(caster, Arcane)
+        resolve_dispel_magic_on_targets(cl, targets)
+    }
 }

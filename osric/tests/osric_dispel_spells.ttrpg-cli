@@ -1,0 +1,181 @@
+// OSRIC Dispel/Anti-Magic Spell integration tests
+//
+// Tests for Dispel Magic (Cleric & MU), Remove Curse, Bestow Curse,
+// and Neutralise Poison. Verifies the core dispel-check mechanic,
+// tag-based condition removal, and source-based condition removal.
+
+load osric/*.ttrpg
+
+// ── dispel_check_chance derive ───────────────────────────────────
+
+// Same level: 50%
+assert_eq dispel_check_chance(5, 5), 50
+
+// Higher by 3: 50 + 15 = 65
+assert_eq dispel_check_chance(8, 5), 65
+
+// Higher by 10: 50 + 50 = 99 (capped)
+assert_eq dispel_check_chance(20, 5), 99
+
+// Lower by 5: 50 - 10 = 40
+assert_eq dispel_check_chance(5, 10), 40
+
+// Lower by 25: 50 - 50 = 1 (floor)
+assert_eq dispel_check_chance(1, 26), 1
+
+// ── SpellDef lookups ─────────────────────────────────────────────
+
+assert_eq DISPEL_MAGIC_CLERIC_DEF.level, 3
+assert_eq DISPEL_MAGIC_CLERIC_DEF.school, Abjuration
+assert_eq DISPEL_MAGIC_MU_DEF.level, 3
+assert_eq DISPEL_MAGIC_MU_DEF.school, Abjuration
+assert_eq REMOVE_CURSE_DEF.level, 3
+assert REMOVE_CURSE_DEF.reversible
+assert_eq BESTOW_CURSE_DEF.level, 3
+assert BESTOW_CURSE_DEF.reversible
+assert_eq NEUTRALISE_POISON_DEF.level, 4
+
+// ── Dispel Magic (Cleric): successful dispel ─────────────────────
+
+spawn Character dm_cleric { name: "Alaric DM", classes: [ClassLevel { class: Cleric, level: 7 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, ancestry: Human, HitPoints { max_hp: 30, hp: 30 }, Spellcasting { spell_slots: [3, 3, 2], slots_used: [0, 0, 0], memorised_spells: [] } }
+spawn Character dm_target { name: "Bandit DM", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 14, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, ancestry: Human, HitPoints { max_hp: 30, hp: 30 } }
+
+// Apply a spell-sourced condition (Hold Person, caster level 5)
+call apply_condition(dm_target, Paralyzed, Duration.Rounds(9), EffectSource.Spell(name: "Hold Person", caster_level: 5))
+assert_condition dm_target, Paralyzed
+
+// Dispel: cleric level 7 vs caster level 5 => 50 + 10 = 60% chance
+// Roll d100 = 30 (success, <= 60)
+rolls clear
+rolls 30
+call resolve_dispel_magic_cleric(dm_cleric, [dm_target])
+assert_no_condition dm_target, Paralyzed
+
+// ── Dispel Magic (Cleric): failed dispel ─────────────────────────
+
+spawn Character dm_cleric2 { name: "Alaric DM2", classes: [ClassLevel { class: Cleric, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, ancestry: Human, HitPoints { max_hp: 30, hp: 30 }, Spellcasting { spell_slots: [3, 2, 1], slots_used: [0, 0, 0], memorised_spells: [] } }
+spawn Character dm_target2 { name: "Bandit DM2", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 14, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, ancestry: Human, HitPoints { max_hp: 30, hp: 30 } }
+
+call apply_condition(dm_target2, Paralyzed, Duration.Rounds(9), EffectSource.Spell(name: "Hold Person", caster_level: 10))
+assert_condition dm_target2, Paralyzed
+
+// Cleric level 5 vs caster level 10 => 50 - 10 = 40% chance
+// Roll d100 = 90 (failure, > 40)
+rolls clear
+rolls 90
+call resolve_dispel_magic_cleric(dm_cleric2, [dm_target2])
+assert_condition dm_target2, Paralyzed
+
+// ── Dispel Magic (MU): successful dispel ─────────────────────────
+
+spawn Character dm_mu { name: "Merlin DM", classes: [ClassLevel { class: MagicUser, level: 9 }], abilities: { STR: 12, INT: 16, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, ancestry: Human, HitPoints { max_hp: 20, hp: 20 }, Spellcasting { spell_slots: [4, 3, 3, 2, 1], slots_used: [0, 0, 0, 0, 0], memorised_spells: [] } }
+spawn Character dm_mu_target { name: "Victim MU DM", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 14, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, ancestry: Human, HitPoints { max_hp: 30, hp: 30 } }
+
+call apply_condition(dm_mu_target, Sleeping, Duration.Rounds(25), EffectSource.Spell(name: "Sleep", caster_level: 5))
+assert_condition dm_mu_target, Sleeping
+
+// MU level 9 vs caster level 5 => 50 + 20 = 70% chance
+// Roll d100 = 50 (success)
+rolls clear
+rolls 50
+call resolve_dispel_magic_mu(dm_mu, [dm_mu_target])
+assert_no_condition dm_mu_target, Sleeping
+
+// ── Dispel Magic: non-spell conditions are NOT dispelled ─────────
+
+spawn Character dm_non_spell_caster { name: "Alaric NonSpell", classes: [ClassLevel { class: Cleric, level: 10 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, ancestry: Human, HitPoints { max_hp: 30, hp: 30 }, Spellcasting { spell_slots: [3, 3, 2, 1], slots_used: [0, 0, 0, 0], memorised_spells: [] } }
+spawn Character dm_non_spell_target { name: "Target NonSpell", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 14, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, ancestry: Human, HitPoints { max_hp: 30, hp: 30 } }
+
+// Apply a condition without spell source (e.g. poison)
+call apply_condition(dm_non_spell_target, Stunned, Duration.Rounds(5), EffectSource.Poison(name: "Spider Venom"))
+assert_condition dm_non_spell_target, Stunned
+
+// Dispel should not remove non-spell-sourced conditions
+rolls clear
+rolls 1
+call resolve_dispel_magic_cleric(dm_non_spell_caster, [dm_non_spell_target])
+assert_condition dm_non_spell_target, Stunned
+
+// ── Remove Curse: removes curse-tagged condition ─────────────────
+
+spawn Character rc_caster { name: "Alaric RC", classes: [ClassLevel { class: Cleric, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, ancestry: Human, HitPoints { max_hp: 30, hp: 30 }, Spellcasting { spell_slots: [3, 2, 1], slots_used: [0, 0, 0], memorised_spells: [] } }
+spawn Character rc_target { name: "Victim RC", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 14, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, ancestry: Human, HitPoints { max_hp: 30, hp: 30 } }
+
+call apply_condition(rc_target, BestowedCurse, Duration.Indefinite, EffectSource.Spell(name: "Bestow Curse", caster_level: 5))
+assert_condition rc_target, BestowedCurse
+
+call resolve_remove_curse(rc_caster, rc_target)
+assert_no_condition rc_target, BestowedCurse
+
+// ── Remove Curse: only removes first curse ───────────────────────
+
+spawn Character rc_caster2 { name: "Alaric RC2", classes: [ClassLevel { class: Cleric, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, ancestry: Human, HitPoints { max_hp: 30, hp: 30 }, Spellcasting { spell_slots: [3, 2, 1], slots_used: [0, 0, 0], memorised_spells: [] } }
+spawn Character rc_target2 { name: "Victim RC2", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 14, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, ancestry: Human, HitPoints { max_hp: 30, hp: 30 } }
+
+// Apply a non-curse condition and a curse condition
+call apply_condition(rc_target2, Stunned, Duration.Rounds(5))
+call apply_condition(rc_target2, BestowedCurse, Duration.Indefinite, EffectSource.Spell(name: "Bestow Curse", caster_level: 5))
+
+call resolve_remove_curse(rc_caster2, rc_target2)
+// Curse should be removed, stun should remain
+assert_no_condition rc_target2, BestowedCurse
+assert_condition rc_target2, Stunned
+
+// ── Bestow Curse: save fails, curse applied ──────────────────────
+
+spawn Character bc_caster { name: "Alaric BC", classes: [ClassLevel { class: Cleric, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, ancestry: Human, HitPoints { max_hp: 30, hp: 30 }, Spellcasting { spell_slots: [3, 2, 1], slots_used: [0, 0, 0], memorised_spells: [] } }
+spawn Character bc_target { name: "Victim BC", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 14, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, ancestry: Human, HitPoints { max_hp: 30, hp: 30 } }
+
+// Roll low on save (fail)
+rolls clear
+rolls 1
+call resolve_bestow_curse(bc_caster, bc_target)
+assert_condition bc_target, BestowedCurse
+
+// ── Bestow Curse: save succeeds, no curse ────────────────────────
+
+spawn Character bc_caster2 { name: "Alaric BC2", classes: [ClassLevel { class: Cleric, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, ancestry: Human, HitPoints { max_hp: 30, hp: 30 }, Spellcasting { spell_slots: [3, 2, 1], slots_used: [0, 0, 0], memorised_spells: [] } }
+spawn Character bc_target2 { name: "Victim BC2", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 14, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, ancestry: Human, HitPoints { max_hp: 30, hp: 30 } }
+
+// Roll high on save (succeed)
+rolls clear
+rolls 20
+call resolve_bestow_curse(bc_caster2, bc_target2)
+assert_no_condition bc_target2, BestowedCurse
+
+// ── Neutralise Poison: removes poison-tagged conditions ──────────
+
+spawn Character np_caster { name: "Alaric NP", classes: [ClassLevel { class: Cleric, level: 7 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, ancestry: Human, HitPoints { max_hp: 30, hp: 30 }, Spellcasting { spell_slots: [3, 3, 2, 1], slots_used: [0, 0, 0, 0], memorised_spells: [] } }
+spawn Character np_target { name: "Victim NP", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 14, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, ancestry: Human, HitPoints { max_hp: 30, hp: 30 } }
+
+// Apply a condition with poison source
+call apply_condition(np_target, Stunned, Duration.Rounds(10), EffectSource.Poison(name: "Spider Venom"))
+// Also apply a non-poison condition
+call apply_condition(np_target, Paralyzed, Duration.Rounds(5), EffectSource.Spell(name: "Hold Person", caster_level: 5))
+assert_condition np_target, Stunned
+assert_condition np_target, Paralyzed
+
+call resolve_neutralise_poison(np_caster, np_target)
+// Poison-sourced condition removed, spell-sourced condition remains
+assert_no_condition np_target, Stunned
+assert_condition np_target, Paralyzed
+
+// ── Spell registry: new spells are in the registry ───────────────
+
+assert_eq spell_def(DispelMagicCleric).level, 3
+assert_eq spell_def(DispelMagicMU).level, 3
+assert_eq spell_def(RemoveCurse).level, 3
+assert_eq spell_def(BestowCurse).level, 3
+assert_eq spell_def(NeutralisePoison).level, 4
+
+assert_eq true_spell_level(DispelMagicCleric), 3
+assert_eq true_spell_level(DispelMagicMU), 3
+assert_eq true_spell_level(RemoveCurse), 3
+assert_eq true_spell_level(BestowCurse), 3
+assert_eq true_spell_level(NeutralisePoison), 4
+
+assert_eq spell_class_type(DispelMagicCleric), Divine
+assert_eq spell_class_type(DispelMagicMU), Arcane
+assert_eq spell_class_type(RemoveCurse), Divine
+assert_eq spell_class_type(BestowCurse), Divine
+assert_eq spell_class_type(NeutralisePoison), Divine
