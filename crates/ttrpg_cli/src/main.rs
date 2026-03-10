@@ -265,7 +265,9 @@ fn check_files(file_args: &[&str], snippet: bool, json: bool) {
 }
 
 /// Resolve glob patterns, follow `import` directives transitively, and read file contents.
-fn resolve_and_read_files(file_args: &[&str]) -> (Vec<(String, String)>, Vec<ttrpg_parser::Diagnostic>) {
+fn resolve_and_read_files(
+    file_args: &[&str],
+) -> (Vec<(String, String)>, Vec<ttrpg_parser::Diagnostic>) {
     let mut paths: Vec<PathBuf> = Vec::new();
     for arg in file_args {
         if arg.contains('*') || arg.contains('?') || arg.contains('[') {

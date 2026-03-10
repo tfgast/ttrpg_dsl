@@ -1278,13 +1278,15 @@ pub fn load_bundle_sources(pkg_dir: &str, bundle: &str) -> Vec<(String, String)>
     let manifest_path = pkg_path.join("ttrpg.toml");
     let content = std::fs::read_to_string(&manifest_path)
         .unwrap_or_else(|e| panic!("cannot read {}: {e}", manifest_path.display()));
-    let manifest: toml::Value = content.parse()
+    let manifest: toml::Value = content
+        .parse()
         .unwrap_or_else(|e| panic!("cannot parse {}: {e}", manifest_path.display()));
 
     let bundle_entries = manifest["bundles"][bundle]["entries"]
         .as_array()
         .unwrap_or_else(|| panic!("bundle '{bundle}' not found in {}", manifest_path.display()));
-    let entries = manifest["entries"].as_table()
+    let entries = manifest["entries"]
+        .as_table()
         .unwrap_or_else(|| panic!("no [entries] in {}", manifest_path.display()));
 
     bundle_entries

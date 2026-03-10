@@ -1922,10 +1922,7 @@ mod tests {
 
     #[test]
     fn source_files_tracked_for_single_file_system() {
-        let mut program = make_program(vec![make_system(
-            "Core",
-            vec![make_derive("modifier")],
-        )]);
+        let mut program = make_program(vec![make_system("Core", vec![make_derive("modifier")])]);
         // Give the system block a real FileId
         program.items[0].span = Span::new(FileId(3), 0, 50);
 
@@ -2045,10 +2042,7 @@ mod tests {
             .filter(|d| d.severity == Severity::Error)
             .collect();
 
-        assert!(
-            !errors.is_empty(),
-            "expected collision error"
-        );
+        assert!(!errors.is_empty(), "expected collision error");
         // Primary error should have a real span (not dummy)
         let collision = errors
             .iter()
@@ -2076,10 +2070,7 @@ mod tests {
 
     #[test]
     fn unknown_system_diagnostic_includes_importing_system() {
-        let mut program = make_program(vec![make_system(
-            "Main",
-            vec![make_derive("foo")],
-        )]);
+        let mut program = make_program(vec![make_system("Main", vec![make_derive("foo")])]);
         let file_systems = vec![FileSystemInfo {
             file_id: FileId(0),
             system_names: vec!["Main".into()],

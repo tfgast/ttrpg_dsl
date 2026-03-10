@@ -46,7 +46,11 @@ mod tests {
     fn list_files_returns_all_bundled() {
         let files = list_files();
         // Count is driven by ose/ttrpg.toml [bundles.full]; spot-check a few.
-        assert!(files.len() >= 13, "expected at least 13 files, got {}", files.len());
+        assert!(
+            files.len() >= 13,
+            "expected at least 13 files, got {}",
+            files.len()
+        );
         assert!(files.contains(&"ose_core.ttrpg"));
         assert!(files.contains(&"ose_class.ttrpg"));
         assert!(files.contains(&"ose_combat.ttrpg"));

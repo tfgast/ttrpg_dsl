@@ -95,12 +95,11 @@ pub fn resolve_sources(entrypoints: &[PathBuf]) -> Result<ResolvedSources, Resol
 
     while let Some((canonical, display, importer)) = queue.pop_front() {
         // Read file
-        let content =
-            std::fs::read_to_string(&canonical).map_err(|e| ResolveError::IoError {
-                path: canonical.clone(),
-                importing_file: importer,
-                error: e,
-            })?;
+        let content = std::fs::read_to_string(&canonical).map_err(|e| ResolveError::IoError {
+            path: canonical.clone(),
+            importing_file: importer,
+            error: e,
+        })?;
 
         // Extract imports
         let file_id = FileId(sources.len() as u32);
@@ -108,9 +107,7 @@ pub fn resolve_sources(entrypoints: &[PathBuf]) -> Result<ResolvedSources, Resol
         diagnostics.append(&mut parse_diags);
 
         // Resolve each import path relative to the current file's directory
-        let parent_dir = canonical
-            .parent()
-            .unwrap_or_else(|| Path::new("."));
+        let parent_dir = canonical.parent().unwrap_or_else(|| Path::new("."));
 
         for (import_path, _span) in &imports {
             let resolved = parent_dir.join(import_path);
@@ -122,11 +119,7 @@ pub fn resolve_sources(entrypoints: &[PathBuf]) -> Result<ResolvedSources, Resol
                 })?;
 
             if seen.insert(import_canonical.clone()) {
-                queue.push_back((
-                    import_canonical,
-                    import_path.clone(),
-                    Some(display.clone()),
-                ));
+                queue.push_back((import_canonical, import_path.clone(), Some(display.clone())));
             }
         }
 
@@ -245,7 +238,10 @@ system "A" { derive a() -> int { 1 } }"#,
         let err = resolve_sources(&[dir.path().join("a.ttrpg")]).unwrap_err();
         let msg = err.to_string();
         assert!(msg.contains("nonexistent.ttrpg"), "error: {msg}");
-        assert!(msg.contains("a.ttrpg"), "error should mention importer: {msg}");
+        assert!(
+            msg.contains("a.ttrpg"),
+            "error should mention importer: {msg}"
+        );
     }
 
     #[test]
