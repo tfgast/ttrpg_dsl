@@ -2,7 +2,7 @@
 // OSRIC 3.0 Spell Registry
 //
 // Central dispatch for spell definitions and resolution.
-// spell_def(SpellId) -> SpellDef routes to per-spell _def derives.
+// spell_def(SpellId) -> SpellDef is a table lookup keyed by SpellId.
 // resolve_spell(SpellId, caster, targets) routes to per-spell
 // resolve_* functions. All resolvers accept entity-typed targets
 // so the same dispatch works for Characters and Monsters alike.
@@ -37,22 +37,20 @@ system "OSRIC Spell Registry" {
     //  Every implemented spell must have an entry here.
     // ========================================================
 
-    derive spell_def(id: SpellId) -> SpellDef {
-        match id {
-            SpellId.CureLightWounds    => CURE_LIGHT_WOUNDS_DEF,
-            SpellId.CauseLightWounds   => CAUSE_LIGHT_WOUNDS_DEF,
-            SpellId.Bless              => BLESS_DEF,
-            SpellId.Curse              => CURSE_DEF,
-            SpellId.HoldPerson         => HOLD_PERSON_DEF,
-            SpellId.DispelMagicCleric  => DISPEL_MAGIC_CLERIC_DEF,
-            SpellId.RemoveCurse        => REMOVE_CURSE_DEF,
-            SpellId.BestowCurse        => BESTOW_CURSE_DEF,
-            SpellId.NeutralisePoison   => NEUTRALISE_POISON_DEF,
-            SpellId.MagicMissile       => MAGIC_MISSILE_DEF,
-            SpellId.Sleep              => SLEEP_DEF,
-            SpellId.DispelMagicMU      => DISPEL_MAGIC_MU_DEF,
-            SpellId.Fireball           => FIREBALL_DEF
-        }
+    table spell_def(id: SpellId) -> SpellDef {
+        SpellId.CureLightWounds    => CURE_LIGHT_WOUNDS_DEF,
+        SpellId.CauseLightWounds   => CAUSE_LIGHT_WOUNDS_DEF,
+        SpellId.Bless              => BLESS_DEF,
+        SpellId.Curse              => CURSE_DEF,
+        SpellId.HoldPerson         => HOLD_PERSON_DEF,
+        SpellId.DispelMagicCleric  => DISPEL_MAGIC_CLERIC_DEF,
+        SpellId.RemoveCurse        => REMOVE_CURSE_DEF,
+        SpellId.BestowCurse        => BESTOW_CURSE_DEF,
+        SpellId.NeutralisePoison   => NEUTRALISE_POISON_DEF,
+        SpellId.MagicMissile       => MAGIC_MISSILE_DEF,
+        SpellId.Sleep              => SLEEP_DEF,
+        SpellId.DispelMagicMU      => DISPEL_MAGIC_MU_DEF,
+        SpellId.Fireball           => FIREBALL_DEF
     }
 
     // ========================================================
