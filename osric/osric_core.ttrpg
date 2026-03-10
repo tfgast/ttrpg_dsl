@@ -242,6 +242,12 @@ system "OSRIC" {
         Glyph
     }
 
+    // Zone contact detection mode (see spatial_zone_protocol.md)
+    enum ContactMode {
+        None,
+        Crossed
+    }
+
     // Casting time (§1.8.1.5 Casting Time)
     enum CastingTime {
         Fast,                           // 1 segment, takes effect same segment
@@ -536,6 +542,9 @@ system "OSRIC" {
         shape: ZoneShape
         active: bool = true
         created_at: int = 0
+        contact_mode: ContactMode = ContactMode.None
+        tracks_occupancy: bool = true
+        trigger: bool = false
     }
 
     // Standard zone event vocabulary. Ordering and host membership semantics

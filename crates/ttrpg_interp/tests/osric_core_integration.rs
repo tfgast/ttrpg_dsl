@@ -149,10 +149,7 @@ fn osric_core_has_all_enums() {
         "missing SpellDuration enum"
     );
     // ZoneShape: 5 variants
-    assert!(
-        enums.contains(&("ZoneShape", 5)),
-        "missing ZoneShape enum"
-    );
+    assert!(enums.contains(&("ZoneShape", 5)), "missing ZoneShape enum");
     // CastingTime: 5 variants
     assert!(
         enums.contains(&("CastingTime", 5)),
@@ -178,7 +175,13 @@ fn osric_core_has_all_enums() {
         "missing EffectSource enum"
     );
 
-    assert_eq!(enums.len(), 30, "expected 30 enums, got {enums:?}");
+    // ContactMode: 2 variants (None, Crossed)
+    assert!(
+        enums.contains(&("ContactMode", 2)),
+        "missing ContactMode enum"
+    );
+
+    assert_eq!(enums.len(), 31, "expected 31 enums, got {enums:?}");
 }
 
 #[test]
@@ -563,6 +566,9 @@ fn zone_entity_fields() {
         "shape",
         "active",
         "created_at",
+        "contact_mode",
+        "tracks_occupancy",
+        "trigger",
     ];
     for name in &expected_fields {
         assert!(field_names.contains(name), "Zone missing field: {name}");
