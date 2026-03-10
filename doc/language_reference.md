@@ -379,17 +379,21 @@ Suppress-modify: `suppress [#position](attacker: bearer)` — suppress all modif
 
 #### Condition Tags
 
-Conditions can carry declaration-level tags — static categorical properties of the condition type:
+Conditions can carry declaration-level tags — static categorical properties of the condition type. Tags are declared inside the condition body with `tags:`:
 
 ```
 tag curse
 tag disease
 
-condition BestowCurse #curse on bearer: Character { ... }
-condition MummyRot #curse #disease on bearer: Character { ... }
+condition BestowCurse on bearer: Character {
+    tags: #curse
+}
+condition MummyRot on bearer: Character {
+    tags: #curse, #disease
+}
 ```
 
-Tags appear after the name (and optional params/extends), before `on`. At runtime, tags are exposed as a `Set<string>` on the `tags` field of `ActiveCondition`:
+At runtime, tags are exposed as a `Set<string>` on the `tags` field of `ActiveCondition`:
 
 ```
 let c = conditions(target)[0]
@@ -400,7 +404,7 @@ if "curse" in c.tags { ... }
 
 | What | Purpose | Example |
 |------|---------|---------|
-| Condition tags | Static identity of the condition type | `condition Hexed #curse on ...` |
+| Condition tags | Static identity of the condition type | `tags: #curse` in condition body |
 | Modify-clause tags | Individual effect categorization / suppression | `modify foo(...) #penalty { ... }` |
 | EffectSource | Per-application source metadata | `EffectSource.Spell(name: "Hold Person", ...)` |
 
