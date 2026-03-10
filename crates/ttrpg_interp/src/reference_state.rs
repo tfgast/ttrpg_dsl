@@ -5,7 +5,8 @@ use ttrpg_ast::Name;
 
 use crate::effect::FieldPathSegment;
 use crate::state::{
-    ActiveCondition, ConditionArgs, EntityRef, InvocationId, StateProvider, WritableState,
+    ActiveCondition, ConditionArgs, ConditionToken, EntityRef, InvocationId, Presence,
+    StateProvider, SuspensionRecord, WritableState,
 };
 use crate::value::{PositionValue, Value};
 
@@ -44,6 +45,11 @@ pub struct GameState {
     /// Maps opaque position handles to grid coordinates.
     positions: HashMap<u64, GridPosition>,
     next_position_id: u64,
+    /// Suspension records per entity. Multiple sources can suspend one entity.
+    suspensions: HashMap<u64, Vec<SuspensionRecord>>,
+    /// Game time when duration-freezing started, per entity.
+    /// Set when the first `freeze_durations` record is added, cleared on last removal.
+    duration_freeze_start: HashMap<u64, u64>,
 }
 
 impl GameState {
@@ -58,6 +64,8 @@ impl GameState {
             next_condition_id: 1,
             next_invocation_id: 1,
             game_time: 0,
+            suspensions: HashMap::new(),
+            duration_freeze_start: HashMap::new(),
             positions: HashMap::new(),
             next_position_id: 1,
         }
@@ -143,13 +151,15 @@ impl GameState {
         self.entities.get(&entity.0).map(|e| &e.name)
     }
 
-    /// Remove an entity and all associated data (conditions, turn budgets).
+    /// Remove an entity and all associated data (conditions, turn budgets, suspensions).
     /// Returns `true` if the entity existed and was removed.
     pub fn remove_entity(&mut self, entity: &EntityRef) -> bool {
         let existed = self.entities.remove(&entity.0).is_some();
         if existed {
             self.conditions.remove(&entity.0);
             self.turn_budgets.remove(&entity.0);
+            self.suspensions.remove(&entity.0);
+            self.duration_freeze_start.remove(&entity.0);
         }
         existed
     }
@@ -235,6 +245,41 @@ impl StateProvider for GameState {
     fn resolve_position(&self, handle: u64) -> Option<(i64, i64)> {
         let gp = self.positions.get(&handle)?;
         Some((gp.0, gp.1))
+    }
+
+    fn entities_in_play(&self) -> Vec<EntityRef> {
+        self.entities
+            .keys()
+            .filter(|id| {
+                !self
+                    .suspensions
+                    .get(id)
+                    .is_some_and(|recs| recs.iter().any(|r| r.presence == Presence::OffBoard))
+            })
+            .map(|&id| EntityRef(id))
+            .collect()
+    }
+
+    fn is_suspended(&self, entity: &EntityRef) -> bool {
+        self.suspensions
+            .get(&entity.0)
+            .is_some_and(|recs| !recs.is_empty())
+    }
+
+    fn is_off_board(&self, entity: &EntityRef) -> bool {
+        self.suspensions
+            .get(&entity.0)
+            .is_some_and(|recs| recs.iter().any(|r| r.presence == Presence::OffBoard))
+    }
+
+    fn are_turns_frozen(&self, entity: &EntityRef) -> bool {
+        self.suspensions
+            .get(&entity.0)
+            .is_some_and(|recs| recs.iter().any(|r| r.freeze_turns))
+    }
+
+    fn are_durations_frozen(&self, entity: &EntityRef) -> bool {
+        self.duration_freeze_start.contains_key(&entity.0)
     }
 }
 
@@ -359,6 +404,64 @@ impl WritableState for GameState {
     fn remove_entity(&mut self, entity: &EntityRef) {
         // Delegate to the inherent method
         GameState::remove_entity(self, entity);
+    }
+
+    fn allocate_condition_id(&mut self) -> ConditionToken {
+        let id = self.next_condition_id;
+        self.next_condition_id = id.saturating_add(1);
+        ConditionToken(id)
+    }
+
+    fn add_suspension(&mut self, entity: &EntityRef, record: SuspensionRecord) {
+        if !self.entities.contains_key(&entity.0) {
+            return;
+        }
+        // If this is the first freeze_durations record, record the freeze start time
+        if record.freeze_durations && !self.duration_freeze_start.contains_key(&entity.0) {
+            self.duration_freeze_start.insert(entity.0, self.game_time);
+        }
+        self.suspensions.entry(entity.0).or_default().push(record);
+    }
+
+    fn remove_suspension_source(&mut self, entity: &EntityRef, source_id: u64) {
+        let Some(records) = self.suspensions.get_mut(&entity.0) else {
+            return;
+        };
+
+        // Check if we're about to lose the last freeze_durations record
+        let had_freeze = records.iter().any(|r| r.freeze_durations);
+
+        records.retain(|r| r.source_id != source_id);
+
+        let still_has_freeze = records.iter().any(|r| r.freeze_durations);
+
+        // If durations were frozen and this removal ends that, bump applied_at
+        if had_freeze && !still_has_freeze {
+            if let Some(freeze_start) = self.duration_freeze_start.remove(&entity.0) {
+                let now = self.game_time;
+                if let Some(conds) = self.conditions.get_mut(&entity.0) {
+                    for cond in conds.iter_mut() {
+                        // Per-condition rule: applied_at += now - max(applied_at, freeze_start)
+                        let effective_start = cond.applied_at.max(freeze_start);
+                        if now > effective_start {
+                            cond.applied_at += now - effective_start;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Clean up empty records
+        if records.is_empty() {
+            self.suspensions.remove(&entity.0);
+        }
+    }
+
+    fn suspension_records(&self, entity: &EntityRef) -> Vec<SuspensionRecord> {
+        self.suspensions
+            .get(&entity.0)
+            .cloned()
+            .unwrap_or_default()
     }
 }
 
@@ -1108,5 +1211,236 @@ mod tests {
 
         state.set_next_invocation_id(100);
         assert_eq!(state.next_invocation_id(), 100);
+    }
+
+    // ── Suspension tests ──────────────────────────────────────────
+
+    #[test]
+    fn suspension_basic_add_remove() {
+        let mut state = GameState::new();
+        let e1 = state.add_entity("Character", FxHashMap::default());
+
+        assert!(!state.is_suspended(&e1));
+        assert!(!state.is_off_board(&e1));
+
+        state.add_suspension(
+            &e1,
+            SuspensionRecord {
+                source_id: 100,
+                presence: Presence::OffBoard,
+                freeze_turns: true,
+                freeze_durations: true,
+                suspended_at: 0,
+            },
+        );
+
+        assert!(state.is_suspended(&e1));
+        assert!(state.is_off_board(&e1));
+        assert!(state.are_turns_frozen(&e1));
+        assert!(state.are_durations_frozen(&e1));
+
+        // entities_in_play excludes off-board
+        let in_play = state.entities_in_play();
+        assert!(!in_play.contains(&e1));
+
+        // all_entities still includes it
+        let all = state.all_entities();
+        assert!(all.contains(&e1));
+
+        state.remove_suspension_source(&e1, 100);
+
+        assert!(!state.is_suspended(&e1));
+        assert!(!state.is_off_board(&e1));
+        assert!(state.entities_in_play().contains(&e1));
+    }
+
+    #[test]
+    fn suspension_on_map_stays_in_play() {
+        let mut state = GameState::new();
+        let e1 = state.add_entity("Character", FxHashMap::default());
+
+        state.add_suspension(
+            &e1,
+            SuspensionRecord {
+                source_id: 200,
+                presence: Presence::OnMap,
+                freeze_turns: true,
+                freeze_durations: true,
+                suspended_at: 0,
+            },
+        );
+
+        assert!(state.is_suspended(&e1));
+        assert!(!state.is_off_board(&e1));
+        // OnMap entities stay in entities_in_play
+        assert!(state.entities_in_play().contains(&e1));
+    }
+
+    #[test]
+    fn suspension_worst_case_wins() {
+        let mut state = GameState::new();
+        let e1 = state.add_entity("Character", FxHashMap::default());
+
+        // First record: on-map, no duration freeze
+        state.add_suspension(
+            &e1,
+            SuspensionRecord {
+                source_id: 1,
+                presence: Presence::OnMap,
+                freeze_turns: false,
+                freeze_durations: false,
+                suspended_at: 0,
+            },
+        );
+
+        assert!(!state.is_off_board(&e1));
+        assert!(!state.are_turns_frozen(&e1));
+
+        // Second record: off-board, freeze turns
+        state.add_suspension(
+            &e1,
+            SuspensionRecord {
+                source_id: 2,
+                presence: Presence::OffBoard,
+                freeze_turns: true,
+                freeze_durations: true,
+                suspended_at: 0,
+            },
+        );
+
+        // Worst-case-wins: off-board and frozen
+        assert!(state.is_off_board(&e1));
+        assert!(state.are_turns_frozen(&e1));
+        assert!(state.are_durations_frozen(&e1));
+        assert!(!state.entities_in_play().contains(&e1));
+
+        // Remove the OffBoard record
+        state.remove_suspension_source(&e1, 2);
+
+        // Back to OnMap, unfrozen
+        assert!(!state.is_off_board(&e1));
+        assert!(!state.are_turns_frozen(&e1));
+        assert!(state.is_suspended(&e1)); // still has record 1
+        assert!(state.entities_in_play().contains(&e1));
+    }
+
+    #[test]
+    fn suspension_duration_freeze_bumps_applied_at() {
+        let mut state = GameState::new();
+        let e1 = state.add_entity("Character", FxHashMap::default());
+
+        // Apply condition at game_time 5
+        state.set_game_time(5);
+        state.add_condition(
+            &e1,
+            ActiveCondition {
+                id: 0,
+                name: "Stunned".into(),
+                params: BTreeMap::new(),
+                bearer: e1,
+                gained_at: 0,
+                duration: Value::Void,
+                invocation: None,
+                applied_at: 5,
+                source: effect_source_unknown(),
+                tags: BTreeSet::new(),
+            },
+        );
+
+        // Suspend at game_time 7 with duration freeze
+        state.set_game_time(7);
+        state.add_suspension(
+            &e1,
+            SuspensionRecord {
+                source_id: 10,
+                presence: Presence::OnMap,
+                freeze_turns: true,
+                freeze_durations: true,
+                suspended_at: 7,
+            },
+        );
+
+        // Restore at game_time 12
+        state.set_game_time(12);
+        state.remove_suspension_source(&e1, 10);
+
+        // applied_at should be bumped: 5 + (12 - max(5, 7)) = 5 + 5 = 10
+        let conds = state.read_conditions(&e1).unwrap();
+        assert_eq!(conds[0].applied_at, 10);
+    }
+
+    #[test]
+    fn suspension_mid_freeze_condition_applied_at_adjusted_correctly() {
+        let mut state = GameState::new();
+        let e1 = state.add_entity("Character", FxHashMap::default());
+
+        // Suspend at game_time 5
+        state.set_game_time(5);
+        state.add_suspension(
+            &e1,
+            SuspensionRecord {
+                source_id: 10,
+                presence: Presence::OnMap,
+                freeze_turns: true,
+                freeze_durations: true,
+                suspended_at: 5,
+            },
+        );
+
+        // Apply condition mid-freeze at game_time 8
+        state.set_game_time(8);
+        state.add_condition(
+            &e1,
+            ActiveCondition {
+                id: 0,
+                name: "Poisoned".into(),
+                params: BTreeMap::new(),
+                bearer: e1,
+                gained_at: 0,
+                duration: Value::Void,
+                invocation: None,
+                applied_at: 8,
+                source: effect_source_unknown(),
+                tags: BTreeSet::new(),
+            },
+        );
+
+        // Restore at game_time 12
+        state.set_game_time(12);
+        state.remove_suspension_source(&e1, 10);
+
+        // applied_at for mid-freeze condition: 8 + (12 - max(8, 5)) = 8 + 4 = 12
+        let conds = state.read_conditions(&e1).unwrap();
+        assert_eq!(conds[0].applied_at, 12);
+    }
+
+    #[test]
+    fn suspension_allocate_condition_id() {
+        let mut state = GameState::new();
+        let t1 = state.allocate_condition_id();
+        let t2 = state.allocate_condition_id();
+        assert_ne!(t1, t2);
+        assert_eq!(t1.0 + 1, t2.0);
+    }
+
+    #[test]
+    fn remove_entity_cleans_up_suspensions() {
+        let mut state = GameState::new();
+        let e1 = state.add_entity("Character", FxHashMap::default());
+
+        state.add_suspension(
+            &e1,
+            SuspensionRecord {
+                source_id: 1,
+                presence: Presence::OffBoard,
+                freeze_turns: true,
+                freeze_durations: true,
+                suspended_at: 0,
+            },
+        );
+
+        state.remove_entity(&e1);
+        assert!(!state.is_suspended(&e1));
+        assert!(state.suspension_records(&e1).is_empty());
     }
 }

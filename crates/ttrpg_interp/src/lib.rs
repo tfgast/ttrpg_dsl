@@ -22,7 +22,7 @@ use ttrpg_checker::env::TypeEnv;
 
 use crate::effect::{EffectHandler, FieldPathSegment};
 use crate::event::{EventResult, HookResult};
-use crate::state::{EntityRef, InvocationId, StateProvider};
+use crate::state::{ConditionToken, EntityRef, InvocationId, StateProvider};
 use crate::value::Value;
 
 // ── Action overload resolution ────────────────────────────────
@@ -113,6 +113,7 @@ pub struct Interpreter<'p> {
     pub(crate) type_env: &'p TypeEnv,
     pub(crate) program: &'p Program,
     next_invocation_id: Cell<u64>,
+    next_condition_id: Cell<u64>,
     pub(crate) coverage: Option<Rc<RefCell<coverage::CoverageData>>>,
     /// Lazily evaluated const values, populated on first access.
     pub(crate) consts: RefCell<FxHashMap<Name, Value>>,
@@ -143,6 +144,7 @@ impl<'p> Interpreter<'p> {
             type_env,
             program,
             next_invocation_id: Cell::new(1),
+            next_condition_id: Cell::new(1),
             coverage: None,
             consts: RefCell::new(FxHashMap::default()),
         })
@@ -162,6 +164,19 @@ impl<'p> Interpreter<'p> {
         Ok(interp)
     }
 
+    /// Construct a new interpreter seeded with starting invocation and condition counters.
+    pub fn new_with_counters(
+        program: &'p Program,
+        type_env: &'p TypeEnv,
+        invocation_start: u64,
+        condition_start: u64,
+    ) -> Result<Self, RuntimeError> {
+        let interp = Self::new(program, type_env)?;
+        interp.next_invocation_id.set(invocation_start);
+        interp.next_condition_id.set(condition_start);
+        Ok(interp)
+    }
+
     /// Allocate the next invocation ID, bumping the internal counter.
     pub(crate) fn alloc_invocation_id(&self) -> Result<InvocationId, RuntimeError> {
         let id = self.next_invocation_id.get();
@@ -175,6 +190,25 @@ impl<'p> Interpreter<'p> {
     /// Read the current invocation counter value (for host persistence).
     pub fn next_invocation_id(&self) -> u64 {
         self.next_invocation_id.get()
+    }
+
+    /// Allocate the next condition ID, bumping the internal counter.
+    ///
+    /// Called before `on_apply` so the lifecycle block can reference the
+    /// upcoming condition (e.g. for suspension records). The returned token
+    /// becomes `ActiveCondition.id`.
+    pub(crate) fn alloc_condition_id(&self) -> Result<ConditionToken, RuntimeError> {
+        let id = self.next_condition_id.get();
+        self.next_condition_id.set(
+            id.checked_add(1)
+                .ok_or_else(|| RuntimeError::new("condition ID counter overflow"))?,
+        );
+        Ok(ConditionToken(id))
+    }
+
+    /// Read the current condition counter value (for host persistence).
+    pub fn next_condition_id(&self) -> u64 {
+        self.next_condition_id.get()
     }
 
     /// Attach shared coverage data to this interpreter.
@@ -515,6 +549,11 @@ pub(crate) struct Env<'a, 'p> {
     /// Uses a counter (not bool) so that hooks triggered via `emit` inside
     /// a lifecycle block can temporarily clear it.
     pub in_lifecycle_block: u32,
+    /// Pre-allocated condition token for the currently-being-applied condition.
+    /// Set before `on_apply` runs so lifecycle blocks can reference the
+    /// upcoming condition instance (e.g. for suspension records).
+    /// `None` outside of condition application.
+    pub current_condition_token: Option<ConditionToken>,
     /// Set by a `return` statement to signal early exit from the enclosing block.
     /// `eval_block` checks this after each statement and unwinds if set.
     pub return_value: Option<Value>,
@@ -536,6 +575,7 @@ impl<'a, 'p> Env<'a, 'p> {
             current_invocation_id: None,
             emit_depth: 0,
             in_lifecycle_block: 0,
+            current_condition_token: None,
             return_value: None,
         }
     }

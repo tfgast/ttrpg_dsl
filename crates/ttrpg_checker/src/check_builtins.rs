@@ -686,6 +686,24 @@ impl Checker<'_> {
                     );
                 }
             }
+            "suspend" => {
+                // suspend() is lifecycle-only — runtime enforced (checker just checks mutation context)
+                if !self.scope.allows_mutation() {
+                    self.error(
+                        "suspend() can only be called in lifecycle blocks (on_apply/on_remove)"
+                            .to_string(),
+                        span,
+                    );
+                }
+            }
+            "suspend_with_source" | "remove_suspension_source" => {
+                if !self.scope.allows_mutation() {
+                    self.error(
+                        format!("{name}() can only be called in function, action, reaction, or hook blocks"),
+                        span,
+                    );
+                }
+            }
             _ => {}
         }
     }

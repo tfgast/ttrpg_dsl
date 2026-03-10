@@ -127,6 +127,26 @@ impl<S: WritableState> StateProvider for StateAdapter<S> {
     fn resolve_position(&self, handle: u64) -> Option<(i64, i64)> {
         self.state.borrow().resolve_position(handle)
     }
+
+    fn entities_in_play(&self) -> Vec<EntityRef> {
+        self.state.borrow().entities_in_play()
+    }
+
+    fn is_suspended(&self, entity: &EntityRef) -> bool {
+        self.state.borrow().is_suspended(entity)
+    }
+
+    fn is_off_board(&self, entity: &EntityRef) -> bool {
+        self.state.borrow().is_off_board(entity)
+    }
+
+    fn are_turns_frozen(&self, entity: &EntityRef) -> bool {
+        self.state.borrow().are_turns_frozen(entity)
+    }
+
+    fn are_durations_frozen(&self, entity: &EntityRef) -> bool {
+        self.state.borrow().are_durations_frozen(entity)
+    }
 }
 
 // ── AdaptedHandler ─────────────────────────────────────────────
@@ -141,7 +161,7 @@ pub struct AdaptedHandler<'a, S: WritableState, H: EffectHandler> {
 }
 
 /// The mutation effect kinds.
-const MUTATION_KINDS: [EffectKind; 12] = [
+const MUTATION_KINDS: [EffectKind; 14] = [
     EffectKind::MutateField,
     EffectKind::ApplyCondition,
     EffectKind::RemoveCondition,
@@ -154,6 +174,8 @@ const MUTATION_KINDS: [EffectKind; 12] = [
     EffectKind::AdvanceTime,
     EffectKind::SpawnEntity,
     EffectKind::RemoveEntity,
+    EffectKind::AddSuspension,
+    EffectKind::RemoveSuspensionSource,
 ];
 
 fn is_mutation(kind: EffectKind) -> bool {
@@ -300,14 +322,13 @@ fn apply_mutation<S: WritableState>(state: &mut S, effect: &Effect) {
             invocation,
             source,
             tags,
+            condition_id,
         } => {
-            // The adapter creates an ActiveCondition. The host assigns a unique id
-            // via the WritableState implementation (e.g., GameState auto-assigns).
             let applied_at = state.read_game_time();
             state.add_condition(
                 target,
                 ActiveCondition {
-                    id: 0, // WritableState impl is responsible for assigning a unique id
+                    id: *condition_id, // Pre-allocated by interpreter; 0 = auto-assign
                     name: condition.clone(),
                     params: params.clone(),
                     bearer: *target,
@@ -376,6 +397,27 @@ fn apply_mutation<S: WritableState>(state: &mut S, effect: &Effect) {
         Effect::RemoveEntity { entity } => {
             state.remove_entity(entity);
         }
+        Effect::AddSuspension {
+            entity,
+            source_id,
+            presence,
+            freeze_turns,
+            freeze_durations,
+        } => {
+            state.add_suspension(
+                entity,
+                crate::state::SuspensionRecord {
+                    source_id: *source_id,
+                    presence: *presence,
+                    freeze_turns: *freeze_turns,
+                    freeze_durations: *freeze_durations,
+                    suspended_at: state.read_game_time(),
+                },
+            );
+        }
+        Effect::RemoveSuspensionSource { entity, source_id } => {
+            state.remove_suspension_source(entity, *source_id);
+        }
         _ => {} // Not a mutation effect
     }
 }
@@ -421,13 +463,14 @@ fn apply_mutation_with_override<S: WritableState>(
             invocation,
             source,
             tags,
+            condition_id,
             ..
         } => {
             let applied_at = state.read_game_time();
             state.add_condition(
                 target,
                 ActiveCondition {
-                    id: 0,
+                    id: *condition_id,
                     name: condition.clone(),
                     params: params.clone(),
                     bearer: *target,
@@ -851,6 +894,31 @@ mod tests {
             self.conditions.remove(&entity.0);
             self.turn_budgets.remove(&entity.0);
         }
+
+        fn allocate_condition_id(&mut self) -> crate::state::ConditionToken {
+            let id = self.next_condition_id;
+            self.next_condition_id += 1;
+            crate::state::ConditionToken(id)
+        }
+
+        fn add_suspension(
+            &mut self,
+            _entity: &EntityRef,
+            _record: crate::state::SuspensionRecord,
+        ) {
+            // No-op for test state
+        }
+
+        fn remove_suspension_source(&mut self, _entity: &EntityRef, _source_id: u64) {
+            // No-op for test state
+        }
+
+        fn suspension_records(
+            &self,
+            _entity: &EntityRef,
+        ) -> Vec<crate::state::SuspensionRecord> {
+            Vec::new()
+        }
     }
 
     // ── Recording handler ──────────────────────────────────────
@@ -1168,6 +1236,7 @@ mod tests {
                 invocation: None,
                 source: effect_source_unknown(),
                 tags: BTreeSet::new(),
+                condition_id: 0,
             })
         });
 
@@ -1431,6 +1500,7 @@ mod tests {
                 invocation: None,
                 source: effect_source_unknown(),
                 tags: BTreeSet::new(),
+                condition_id: 0,
             })
         });
 

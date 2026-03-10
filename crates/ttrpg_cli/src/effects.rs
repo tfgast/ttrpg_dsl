@@ -315,6 +315,7 @@ impl EffectHandler for CliHandler<'_> {
                 invocation,
                 source,
                 tags,
+                ..
             } => {
                 let name = self.entity_name(&target);
                 self.game_state.borrow_mut().apply_condition(
@@ -600,6 +601,29 @@ impl EffectHandler for CliHandler<'_> {
                 let name = self.entity_name(&entity);
                 self.game_state.borrow_mut().remove_entity(&entity);
                 self.log(format!("[RemoveEntity] {name}"));
+                Response::Acknowledged
+            }
+
+            Effect::AddSuspension {
+                entity,
+                source_id,
+                presence,
+                freeze_turns,
+                freeze_durations,
+            } => {
+                let name = self.entity_name(&entity);
+                self.log(format!(
+                    "[AddSuspension] {name} source={source_id} presence={presence:?} \
+                     freeze_turns={freeze_turns} freeze_durations={freeze_durations}"
+                ));
+                Response::Acknowledged
+            }
+
+            Effect::RemoveSuspensionSource { entity, source_id } => {
+                let name = self.entity_name(&entity);
+                self.log(format!(
+                    "[RemoveSuspensionSource] {name} source={source_id}"
+                ));
                 Response::Acknowledged
             }
         }

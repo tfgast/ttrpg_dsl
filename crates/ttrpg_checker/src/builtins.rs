@@ -113,5 +113,56 @@ pub fn register_builtins() -> Vec<FnInfo> {
         ),
         // Entity removal
         builtin("despawn", vec![param("entity", Ty::AnyEntity)], Ty::Unit),
+        // Suspension
+        builtin(
+            "suspend",
+            vec![
+                param("entity", Ty::AnyEntity),
+                param("presence", Ty::Enum("Presence".into())),
+                param("freeze_turns", Ty::Bool),
+                param("freeze_durations", Ty::Bool),
+            ],
+            Ty::Unit,
+        ),
+        builtin(
+            "suspend_with_source",
+            vec![
+                param("entity", Ty::AnyEntity),
+                param("source_id", Ty::Int),
+                param("presence", Ty::Enum("Presence".into())),
+                param("freeze_turns", Ty::Bool),
+                param("freeze_durations", Ty::Bool),
+            ],
+            Ty::Unit,
+        ),
+        builtin(
+            "remove_suspension_source",
+            vec![
+                param("entity", Ty::AnyEntity),
+                param("source_id", Ty::Int),
+            ],
+            Ty::Unit,
+        ),
+        builtin(
+            "is_suspended",
+            vec![param("entity", Ty::AnyEntity)],
+            Ty::Bool,
+        ),
+        builtin(
+            "is_off_board",
+            vec![param("entity", Ty::AnyEntity)],
+            Ty::Bool,
+        ),
+        builtin(
+            "are_turns_frozen",
+            vec![param("entity", Ty::AnyEntity)],
+            Ty::Bool,
+        ),
+        builtin(
+            "are_durations_frozen",
+            vec![param("entity", Ty::AnyEntity)],
+            Ty::Bool,
+        ),
+        builtin("condition_token", vec![], Ty::Int),
     ]
 }

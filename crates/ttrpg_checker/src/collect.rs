@@ -1880,6 +1880,37 @@ fn register_builtin_types(env: &mut TypeEnv) {
             fields: vec![(Name::from("target_fn"), Ty::String)],
             builtin: true,
         });
+
+    // Presence enum — used by suspend() builtins.
+    if !env.types.contains_key("Presence") {
+        let presence_name = Name::from("Presence");
+        let variants = vec![
+            VariantInfo {
+                name: "OnMap".into(),
+                fields: vec![],
+                has_defaults: vec![],
+            },
+            VariantInfo {
+                name: "OffBoard".into(),
+                fields: vec![],
+                has_defaults: vec![],
+            },
+        ];
+        for v in &variants {
+            let owners = env.variant_to_enums.entry(v.name.clone()).or_default();
+            if !owners.iter().any(|o| o == "Presence") {
+                owners.push(presence_name.clone());
+            }
+        }
+        env.types.insert(
+            presence_name.clone(),
+            DeclInfo::Enum(EnumInfo {
+                name: presence_name,
+                ordered: false,
+                variants,
+            }),
+        );
+    }
 }
 
 fn validate_all_cost_tokens(program: &Program, env: &TypeEnv, diagnostics: &mut Vec<Diagnostic>) {

@@ -22,6 +22,51 @@ pub struct EntityRef(pub u64);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct InvocationId(pub u64);
 
+// ── ConditionToken ──────────────────────────────────────────────
+
+/// Pre-allocated unique ID for a condition instance.
+///
+/// Allocated *before* `on_apply` runs so that lifecycle blocks can
+/// reference the upcoming condition (e.g. to create suspension records
+/// keyed to this condition). Becomes `ActiveCondition.id` when the
+/// condition is activated.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct ConditionToken(pub u64);
+
+// ── Suspension ─────────────────────────────────────────────────
+
+/// Whether a suspended entity remains on the map or is off-board.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Presence {
+    /// Entity stays on the map (e.g. Temporal Stasis — inert but visible).
+    OnMap,
+    /// Entity is removed from ordinary play (e.g. Imprisonment, Trap the Soul).
+    /// Off-board entities are excluded from `entities_in_play()` scans.
+    OffBoard,
+}
+
+/// A single suspension record tied to a source (typically a condition instance).
+///
+/// Multiple records can coexist on one entity. Resolution uses worst-case-wins:
+/// off-board if ANY record says OffBoard, turns frozen if ANY says so, etc.
+/// Records are keyed by `source_id` (usually a `ConditionToken` value) so that
+/// overlapping effects don't restore too early.
+#[derive(Debug, Clone)]
+pub struct SuspensionRecord {
+    /// Identifier of the source that created this suspension.
+    /// Typically the `ConditionToken` / `ActiveCondition.id` value.
+    pub source_id: u64,
+    /// Whether the entity remains on the map or is off-board.
+    pub presence: Presence,
+    /// Whether the entity's turns are frozen (skipped by initiative).
+    pub freeze_turns: bool,
+    /// Whether condition durations on this entity are frozen.
+    pub freeze_durations: bool,
+    /// Game time when this suspension started. Used to compute
+    /// `applied_at` adjustments on unfreeze.
+    pub suspended_at: u64,
+}
+
 // ── ConditionArgs ───────────────────────────────────────────────
 
 /// Arguments for applying a condition, with sensible defaults.
@@ -195,6 +240,36 @@ pub trait StateProvider {
     fn all_entities(&self) -> Vec<EntityRef> {
         Vec::new()
     }
+
+    // ── Suspension queries ──────────────────────────────────────
+
+    /// Return entities that are in ordinary play (excludes off-board suspended).
+    ///
+    /// Use for event/hook/reaction candidate scans. Direct-ref access
+    /// (e.g. Freedom targeting an imprisoned entity) should use `all_entities()`.
+    fn entities_in_play(&self) -> Vec<EntityRef> {
+        self.all_entities()
+    }
+
+    /// Whether the entity has any suspension records.
+    fn is_suspended(&self, _entity: &EntityRef) -> bool {
+        false
+    }
+
+    /// Whether the entity is off-board (excluded from `entities_in_play()`).
+    fn is_off_board(&self, _entity: &EntityRef) -> bool {
+        false
+    }
+
+    /// Whether the entity's turns should be skipped.
+    fn are_turns_frozen(&self, _entity: &EntityRef) -> bool {
+        false
+    }
+
+    /// Whether the entity's condition durations are frozen.
+    fn are_durations_frozen(&self, _entity: &EntityRef) -> bool {
+        false
+    }
 }
 
 // ── WritableState trait ─────────────────────────────────────────
@@ -250,6 +325,28 @@ pub trait WritableState: StateProvider {
 
     /// Remove an entity and all associated data (conditions, turn budgets).
     fn remove_entity(&mut self, entity: &EntityRef);
+
+    /// Pre-allocate a condition ID for use as a `ConditionToken`.
+    ///
+    /// The returned ID will become `ActiveCondition.id` when the condition
+    /// is activated via `add_condition`. This allows lifecycle blocks to
+    /// reference the upcoming condition before it exists in state.
+    fn allocate_condition_id(&mut self) -> ConditionToken;
+
+    // ── Suspension methods ──────────────────────────────────────
+
+    /// Add a suspension record to an entity.
+    fn add_suspension(&mut self, entity: &EntityRef, record: SuspensionRecord);
+
+    /// Remove the suspension record with the given `source_id` from an entity.
+    ///
+    /// If this was the last `freeze_durations` record, adjusts `applied_at`
+    /// on all the entity's conditions using the per-condition rule:
+    /// `applied_at += now - max(applied_at, freeze_start)`
+    fn remove_suspension_source(&mut self, entity: &EntityRef, source_id: u64);
+
+    /// Get all suspension records for an entity.
+    fn suspension_records(&self, entity: &EntityRef) -> Vec<SuspensionRecord>;
 }
 
 #[cfg(test)]

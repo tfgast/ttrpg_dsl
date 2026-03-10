@@ -1083,7 +1083,7 @@ pub(crate) fn emit_modify_applied_events(
                 fields: all_fields,
             };
 
-            let candidates = env.state.all_entities();
+            let candidates = env.state.entities_in_play();
             let hook_result = event::find_matching_hooks(
                 env.interp,
                 env.state,

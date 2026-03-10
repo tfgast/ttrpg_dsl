@@ -41,6 +41,14 @@ pub(crate) fn call_builtin(
         "advance_time" => builtin_advance_time(env, &args, span),
         "budget_of" => builtin_budget_of(env, &args, span),
         "despawn" => builtin_despawn(env, &args, span),
+        "suspend" => builtin_suspend(env, &args, span),
+        "suspend_with_source" => builtin_suspend_with_source(env, &args, span),
+        "remove_suspension_source" => builtin_remove_suspension_source(env, &args, span),
+        "is_suspended" => builtin_is_suspended(env, &args, span),
+        "is_off_board" => builtin_is_off_board(env, &args, span),
+        "are_turns_frozen" => builtin_are_turns_frozen(env, &args, span),
+        "are_durations_frozen" => builtin_are_durations_frozen(env, &args, span),
+        "condition_token" => builtin_condition_token(env, &args, span),
         _ => Err(RuntimeError::with_span(
             format!("unknown builtin function '{name}'"),
             span,
@@ -538,6 +546,9 @@ fn builtin_apply_condition(
         .map(|info| info.tags.iter().cloned().collect())
         .unwrap_or_default();
 
+    // Pre-allocate condition ID so lifecycle blocks can reference it
+    let token = env.interp.alloc_condition_id()?;
+
     // Phase 1: Gate — host can veto
     let gate = Effect::ConditionApplyGate {
         target,
@@ -559,16 +570,20 @@ fn builtin_apply_condition(
         }
     }
 
-    // Phase 2: Execute on_apply lifecycle blocks
-    crate::pipeline::execute_lifecycle_blocks(
+    // Phase 2: Execute on_apply lifecycle blocks (token available via env)
+    let saved_token = env.current_condition_token;
+    env.current_condition_token = Some(token);
+    let lifecycle_result = crate::pipeline::execute_lifecycle_blocks(
         env,
         cond_name.as_str(),
         target,
         &cond_args,
         crate::pipeline::LifecycleKind::OnApply,
-    )?;
+    );
+    env.current_condition_token = saved_token;
+    lifecycle_result?;
 
-    // Phase 3: Activate the condition
+    // Phase 3: Activate the condition (using pre-allocated ID)
     let effect = Effect::ApplyCondition {
         target,
         condition: cond_name,
@@ -577,6 +592,7 @@ fn builtin_apply_condition(
         invocation: env.current_invocation_id,
         source,
         tags,
+        condition_id: token.0,
     };
     validate_mutation_response(env.handler.handle(effect), "ApplyCondition", span)?;
     Ok(Value::Void)
@@ -756,6 +772,14 @@ fn remove_condition_instances(
                 first_error = Some(e);
             }
         }
+
+        // Phase 4: Auto-cleanup suspension records keyed to this condition
+        // This happens after RemoveCondition succeeds, not during on_remove.
+        let suspension_effect = Effect::RemoveSuspensionSource {
+            entity: target,
+            source_id: instance.id,
+        };
+        let _ = env.handler.handle(suspension_effect);
     }
 
     if let Some(err) = first_error {
@@ -1004,6 +1028,217 @@ fn builtin_despawn(env: &mut Env, args: &[Value], span: Span) -> Result<Value, R
         )),
         None => Err(RuntimeError::with_span(
             "despawn() requires 1 argument",
+            span,
+        )),
+    }
+}
+
+// ── suspend / suspension queries ──────────────────────────────
+
+/// Parse a DSL `Presence` enum variant into the Rust `Presence` type.
+fn parse_presence(val: &Value, span: Span) -> Result<crate::state::Presence, RuntimeError> {
+    match val {
+        Value::EnumVariant {
+            enum_name, variant, ..
+        } if enum_name == "Presence" => match variant.as_str() {
+            "OnMap" => Ok(crate::state::Presence::OnMap),
+            "OffBoard" => Ok(crate::state::Presence::OffBoard),
+            _ => Err(RuntimeError::with_span(
+                format!("unknown Presence variant '{variant}'"),
+                span,
+            )),
+        },
+        _ => Err(RuntimeError::with_span(
+            format!(
+                "expected Presence enum, got {}",
+                type_name(val)
+            ),
+            span,
+        )),
+    }
+}
+
+/// `suspend(entity, presence: Presence, freeze_turns: bool, freeze_durations: bool) -> unit`
+///
+/// Only legal inside lifecycle blocks (on_apply/on_remove). Auto-keyed to
+/// the current condition token.
+fn builtin_suspend(env: &mut Env, args: &[Value], span: Span) -> Result<Value, RuntimeError> {
+    if env.in_lifecycle_block == 0 {
+        return Err(RuntimeError::with_span(
+            "suspend() can only be called inside on_apply/on_remove blocks. \
+             Use suspend_with_source() for explicit source keying outside lifecycle blocks.",
+            span,
+        ));
+    }
+
+    let token = env.current_condition_token.ok_or_else(|| {
+        RuntimeError::with_span(
+            "suspend() requires a condition token (no condition being applied/removed)",
+            span,
+        )
+    })?;
+
+    match (args.first(), args.get(1), args.get(2), args.get(3)) {
+        (
+            Some(Value::Entity(entity)),
+            Some(presence_val),
+            Some(Value::Bool(freeze_turns)),
+            Some(Value::Bool(freeze_durations)),
+        ) => {
+            let presence = parse_presence(presence_val, span)?;
+            let effect = Effect::AddSuspension {
+                entity: *entity,
+                source_id: token.0,
+                presence,
+                freeze_turns: *freeze_turns,
+                freeze_durations: *freeze_durations,
+            };
+            validate_mutation_response(env.handler.handle(effect), "AddSuspension", span)?;
+            Ok(Value::Void)
+        }
+        _ => Err(RuntimeError::with_span(
+            "suspend() requires 4 arguments: (entity, Presence, bool, bool)",
+            span,
+        )),
+    }
+}
+
+/// `suspend_with_source(entity, source_id: int, presence: Presence, freeze_turns: bool, freeze_durations: bool) -> unit`
+///
+/// Escape hatch for explicit source keying. Legal anywhere.
+fn builtin_suspend_with_source(
+    env: &mut Env,
+    args: &[Value],
+    span: Span,
+) -> Result<Value, RuntimeError> {
+    match (
+        args.first(),
+        args.get(1),
+        args.get(2),
+        args.get(3),
+        args.get(4),
+    ) {
+        (
+            Some(Value::Entity(entity)),
+            Some(Value::Int(source_id)),
+            Some(presence_val),
+            Some(Value::Bool(freeze_turns)),
+            Some(Value::Bool(freeze_durations)),
+        ) if *source_id >= 0 => {
+            let presence = parse_presence(presence_val, span)?;
+            let effect = Effect::AddSuspension {
+                entity: *entity,
+                source_id: *source_id as u64,
+                presence,
+                freeze_turns: *freeze_turns,
+                freeze_durations: *freeze_durations,
+            };
+            validate_mutation_response(env.handler.handle(effect), "AddSuspension", span)?;
+            Ok(Value::Void)
+        }
+        _ => Err(RuntimeError::with_span(
+            "suspend_with_source() requires 5 arguments: (entity, int, Presence, bool, bool)",
+            span,
+        )),
+    }
+}
+
+/// `remove_suspension_source(entity, source_id: int) -> unit`
+fn builtin_remove_suspension_source(
+    env: &mut Env,
+    args: &[Value],
+    span: Span,
+) -> Result<Value, RuntimeError> {
+    match (args.first(), args.get(1)) {
+        (Some(Value::Entity(entity)), Some(Value::Int(source_id))) if *source_id >= 0 => {
+            let effect = Effect::RemoveSuspensionSource {
+                entity: *entity,
+                source_id: *source_id as u64,
+            };
+            validate_mutation_response(
+                env.handler.handle(effect),
+                "RemoveSuspensionSource",
+                span,
+            )?;
+            Ok(Value::Void)
+        }
+        _ => Err(RuntimeError::with_span(
+            "remove_suspension_source() requires 2 arguments: (entity, int)",
+            span,
+        )),
+    }
+}
+
+/// `is_suspended(entity) -> bool`
+fn builtin_is_suspended(env: &Env, args: &[Value], span: Span) -> Result<Value, RuntimeError> {
+    match args.first() {
+        Some(Value::Entity(entity)) => Ok(Value::Bool(env.state.is_suspended(entity))),
+        _ => Err(RuntimeError::with_span(
+            "is_suspended() requires 1 entity argument",
+            span,
+        )),
+    }
+}
+
+/// `is_off_board(entity) -> bool`
+fn builtin_is_off_board(env: &Env, args: &[Value], span: Span) -> Result<Value, RuntimeError> {
+    match args.first() {
+        Some(Value::Entity(entity)) => Ok(Value::Bool(env.state.is_off_board(entity))),
+        _ => Err(RuntimeError::with_span(
+            "is_off_board() requires 1 entity argument",
+            span,
+        )),
+    }
+}
+
+/// `are_turns_frozen(entity) -> bool`
+fn builtin_are_turns_frozen(
+    env: &Env,
+    args: &[Value],
+    span: Span,
+) -> Result<Value, RuntimeError> {
+    match args.first() {
+        Some(Value::Entity(entity)) => Ok(Value::Bool(env.state.are_turns_frozen(entity))),
+        _ => Err(RuntimeError::with_span(
+            "are_turns_frozen() requires 1 entity argument",
+            span,
+        )),
+    }
+}
+
+/// `are_durations_frozen(entity) -> bool`
+fn builtin_are_durations_frozen(
+    env: &Env,
+    args: &[Value],
+    span: Span,
+) -> Result<Value, RuntimeError> {
+    match args.first() {
+        Some(Value::Entity(entity)) => Ok(Value::Bool(env.state.are_durations_frozen(entity))),
+        _ => Err(RuntimeError::with_span(
+            "are_durations_frozen() requires 1 entity argument",
+            span,
+        )),
+    }
+}
+
+/// `condition_token() -> int`
+///
+/// Returns the current condition token ID. Only valid inside lifecycle blocks.
+fn builtin_condition_token(
+    env: &Env,
+    args: &[Value],
+    span: Span,
+) -> Result<Value, RuntimeError> {
+    if !args.is_empty() {
+        return Err(RuntimeError::with_span(
+            "condition_token() takes no arguments",
+            span,
+        ));
+    }
+    match env.current_condition_token {
+        Some(token) => Ok(Value::Int(token.0 as i64)),
+        None => Err(RuntimeError::with_span(
+            "condition_token() requires an active condition token (only valid in lifecycle blocks)",
             span,
         )),
     }

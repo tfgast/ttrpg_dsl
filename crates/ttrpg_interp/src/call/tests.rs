@@ -1287,8 +1287,8 @@ fn builtin_remove_condition_emits_effect() {
     let result = crate::eval::eval_expr(&mut env, &expr).unwrap();
     assert_eq!(result, Value::Void);
 
-    // Now emits ConditionRemovalGate first, then RemoveCondition
-    assert_eq!(handler.log.len(), 2);
+    // Now emits ConditionRemovalGate, RemoveCondition, then RemoveSuspensionSource (auto-cleanup)
+    assert_eq!(handler.log.len(), 3);
     assert!(
         matches!(&handler.log[0], Effect::ConditionRemovalGate { condition, .. } if condition == "Stunned"),
         "expected ConditionRemovalGate first"
@@ -1302,6 +1302,10 @@ fn builtin_remove_condition_emits_effect() {
         }
         _ => panic!("expected RemoveCondition effect"),
     }
+    assert!(
+        matches!(&handler.log[2], Effect::RemoveSuspensionSource { entity, source_id } if entity.0 == 2 && *source_id == 1),
+        "expected RemoveSuspensionSource auto-cleanup"
+    );
 }
 
 // ── remove_condition param semantics (tdsl-3av) ────────────
@@ -1358,8 +1362,8 @@ fn remove_condition_empty_args_preserves_exact_match() {
     });
     crate::eval::eval_expr(&mut env, &expr).unwrap();
 
-    // Gate + RemoveCondition (by id)
-    assert_eq!(handler.log.len(), 2);
+    // Gate + RemoveCondition (by id) + RemoveSuspensionSource (auto-cleanup)
+    assert_eq!(handler.log.len(), 3);
     match &handler.log[1] {
         Effect::RemoveCondition { id, .. } => {
             assert_eq!(*id, Some(10), "should remove by instance id");
@@ -1413,8 +1417,8 @@ fn remove_condition_string_form_uses_none_params() {
     });
     crate::eval::eval_expr(&mut env, &expr).unwrap();
 
-    // Gate + RemoveCondition by id
-    assert_eq!(handler.log.len(), 2);
+    // Gate + RemoveCondition by id + RemoveSuspensionSource (auto-cleanup)
+    assert_eq!(handler.log.len(), 3);
     match &handler.log[1] {
         Effect::RemoveCondition { id, .. } => {
             assert_eq!(
@@ -1474,8 +1478,8 @@ fn remove_condition_active_condition_uses_id() {
     });
     crate::eval::eval_expr(&mut env, &expr).unwrap();
 
-    // Gate + RemoveCondition
-    assert_eq!(handler.log.len(), 2);
+    // Gate + RemoveCondition + RemoveSuspensionSource (auto-cleanup)
+    assert_eq!(handler.log.len(), 3);
     assert!(
         matches!(&handler.log[0], Effect::ConditionRemovalGate { id, .. } if *id == 42),
         "expected ConditionRemovalGate with id=42"

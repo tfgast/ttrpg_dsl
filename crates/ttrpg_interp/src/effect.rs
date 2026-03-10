@@ -3,7 +3,7 @@ use ttrpg_ast::ast::AssignOp;
 use ttrpg_ast::Name;
 use ttrpg_checker::ty::Ty;
 
-use crate::state::{EntityRef, InvocationId};
+use crate::state::{EntityRef, InvocationId, Presence};
 use crate::value::{DiceExpr, RollResult, Value};
 
 // ── Supporting types ────────────────────────────────────────────
@@ -102,6 +102,9 @@ pub enum Effect {
         source: Value,
         /// Tags from the condition declaration (e.g., `#curse`, `#disease`).
         tags: BTreeSet<Name>,
+        /// Pre-allocated condition ID. If non-zero, the host must use this
+        /// as `ActiveCondition.id` instead of auto-assigning.
+        condition_id: u64,
     },
     RemoveCondition {
         target: EntityRef,
@@ -142,6 +145,17 @@ pub enum Effect {
     },
     RemoveEntity {
         entity: EntityRef,
+    },
+    AddSuspension {
+        entity: EntityRef,
+        source_id: u64,
+        presence: Presence,
+        freeze_turns: bool,
+        freeze_durations: bool,
+    },
+    RemoveSuspensionSource {
+        entity: EntityRef,
+        source_id: u64,
     },
 
     // ── Decision effects ────────────────────────────────────
@@ -276,6 +290,8 @@ pub enum EffectKind {
     ConditionApplyGate,
     ConditionRemovalGate,
     RemoveEntity,
+    AddSuspension,
+    RemoveSuspensionSource,
 }
 
 impl EffectKind {
@@ -303,6 +319,8 @@ impl EffectKind {
             Effect::ConditionApplyGate { .. } => EffectKind::ConditionApplyGate,
             Effect::ConditionRemovalGate { .. } => EffectKind::ConditionRemovalGate,
             Effect::RemoveEntity { .. } => EffectKind::RemoveEntity,
+            Effect::AddSuspension { .. } => EffectKind::AddSuspension,
+            Effect::RemoveSuspensionSource { .. } => EffectKind::RemoveSuspensionSource,
         }
     }
 }

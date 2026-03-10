@@ -105,8 +105,8 @@ pub(crate) fn eval_emit(
         fields: all_fields,
     };
 
-    // 6. Get candidates and find matching hooks
-    let candidates = env.state.all_entities();
+    // 6. Get candidates and find matching hooks (off-board entities excluded)
+    let candidates = env.state.entities_in_play();
     let hook_result =
         event::find_matching_hooks(env.interp, env.state, event_name, &payload, &candidates)?;
 
