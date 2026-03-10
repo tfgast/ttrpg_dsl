@@ -20,19 +20,22 @@ entity Character {
     hp: int
 }
 
-condition Hexed #curse on bearer: Character {
+condition Hexed on bearer: Character {
+    tags: #curse
     modify health(target: bearer) {
         bonus = bonus - 2
     }
 }
 
-condition MummyRot #curse #disease on bearer: Character {
+condition MummyRot on bearer: Character {
+    tags: #curse, #disease
     modify health(target: bearer) {
         bonus = bonus - 5
     }
 }
 
-condition Poisoned #poison on bearer: Character {
+condition Poisoned on bearer: Character {
+    tags: #poison
     modify health(target: bearer) {
         bonus = bonus - 3
     }
