@@ -592,12 +592,7 @@ fn osric_core_has_zone_events() {
         })
         .collect();
 
-    let expected_events = [
-        "ZoneEntered",
-        "ZoneExited",
-        "ZoneCrossed",
-        "ZoneExpired",
-    ];
+    let expected_events = ["ZoneEntered", "ZoneExited", "ZoneCrossed", "ZoneExpired"];
     for name in &expected_events {
         assert!(events.contains(name), "missing zone event: {name}");
     }

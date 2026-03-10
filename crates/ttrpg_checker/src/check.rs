@@ -914,6 +914,56 @@ impl<'a> Checker<'a> {
                     self.check_block(&lb.body);
                     self.scope.pop();
                 }
+                ConditionClause::Periodic(pc) => {
+                    // Validate tag is declared
+                    if !self.env.tags.contains(&pc.tag) {
+                        self.error(
+                            format!(
+                                "undeclared tag `{}` on periodic block in condition `{}`",
+                                pc.tag, c.name
+                            ),
+                            pc.span,
+                        );
+                    }
+                    // Type-check the periodic body with bearer, self, and params in scope
+                    self.scope.push(BlockKind::PeriodicBlock);
+                    let recv_ty = self.env.resolve_type(&c.receiver_type);
+                    self.scope.bind(
+                        c.receiver_name.clone(),
+                        VarBinding {
+                            ty: recv_ty.clone(),
+                            mutable: false,
+                            is_local: false,
+                        },
+                    );
+                    self.validate_with_groups(
+                        &c.receiver_name,
+                        &recv_ty,
+                        &c.receiver_with_groups,
+                        c.receiver_type.span,
+                    );
+                    for param in &c.params {
+                        self.scope.bind(
+                            param.name.clone(),
+                            VarBinding {
+                                ty: self.env.resolve_type(&param.ty),
+                                mutable: false,
+                                is_local: false,
+                            },
+                        );
+                    }
+                    // Bind `self` as ActiveCondition
+                    self.scope.bind(
+                        "self".into(),
+                        VarBinding {
+                            ty: Ty::ActiveCondition,
+                            mutable: false,
+                            is_local: false,
+                        },
+                    );
+                    self.check_block(&pc.body);
+                    self.scope.pop();
+                }
             }
         }
     }

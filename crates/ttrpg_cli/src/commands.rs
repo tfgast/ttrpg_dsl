@@ -1052,5 +1052,4 @@ mod tests {
     fn parse_zone_sync() {
         assert_eq!(parse_command("zone_sync"), Some(Command::ZoneSync));
     }
-
 }

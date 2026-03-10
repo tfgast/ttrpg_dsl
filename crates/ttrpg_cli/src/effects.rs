@@ -12,7 +12,9 @@ use ttrpg_checker::ty::Ty;
 use ttrpg_interp::adapter;
 use ttrpg_interp::effect::{ActionOutcome, Effect, EffectHandler, Response};
 use ttrpg_interp::reference_state::GameState;
-use ttrpg_interp::state::{ConditionArgs, EntityRef, StateProvider, SuspensionRecord, WritableState};
+use ttrpg_interp::state::{
+    ConditionArgs, EntityRef, StateProvider, SuspensionRecord, WritableState,
+};
 use ttrpg_interp::value::{DiceExpr, RollResult, Value};
 
 use crate::format::{format_dice_expr, format_path, format_value, UnitSuffixes};

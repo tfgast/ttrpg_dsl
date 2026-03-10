@@ -1009,11 +1009,11 @@ system "OSRIC Initiative" {
         }
 
         // End-of-round bookkeeping: ordering is intentional.
-        // Bleeding damage resolves first so that a character who
-        // hits -10 HP this round dies before conditions expire.
-        // Temp damage heals 1 HP/round (§1.6.12) after bleeding
-        // but before condition expiry.
-        process_bleeding(combatants)
+        // Periodic condition damage (bleeding, zone effects) resolves
+        // first so that a character who hits -10 HP this round dies
+        // before conditions expire. Temp damage heals 1 HP/round
+        // (§1.6.12) after periodic damage but before condition expiry.
+        process_periodic_conditions(combatants, "round_end_damage")
         process_temp_healing(combatants)
         expire_conditions(combatants)
         emit RoundEnd(round: round)

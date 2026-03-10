@@ -423,7 +423,8 @@ fn is_suppressed(
                         ConditionClause::Modify(_)
                         | ConditionClause::SuppressModify(_)
                         | ConditionClause::OnApply(_)
-                        | ConditionClause::OnRemove(_) => continue,
+                        | ConditionClause::OnRemove(_)
+                        | ConditionClause::Periodic(_) => continue,
                     };
 
                     if suppress.event_name != event_name {

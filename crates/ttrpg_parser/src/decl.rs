@@ -1090,6 +1090,7 @@ impl Parser {
         let mut seen_on_apply = false;
         let mut seen_on_remove = false;
         let mut seen_tags = false;
+        let mut seen_periodic_tags: Vec<ttrpg_ast::Name> = Vec::new();
         while !matches!(self.peek(), TokenKind::RBrace | TokenKind::Eof) {
             if self.at_ident("tags") {
                 if seen_tags {
@@ -1134,9 +1135,20 @@ impl Parser {
                 }
                 seen_on_remove = true;
                 clauses.push(ConditionClause::OnRemove(self.parse_lifecycle_block()?));
+            } else if self.at_ident("periodic") {
+                let pc = self.parse_periodic_clause()?;
+                if seen_periodic_tags.contains(&pc.tag) {
+                    self.error(format!(
+                        "duplicate periodic tag `{}` in condition `{}`",
+                        pc.tag, name
+                    ));
+                    return Err(());
+                }
+                seen_periodic_tags.push(pc.tag.clone());
+                clauses.push(ConditionClause::Periodic(pc));
             } else {
                 self.error(format!(
-                    "expected `tags`, `modify`, `suppress`, `on_apply`, or `on_remove` in condition body, found {}",
+                    "expected `tags`, `modify`, `suppress`, `on_apply`, `on_remove`, or `periodic` in condition body, found {}",
                     self.peek()
                 ));
                 return Err(());
@@ -1225,6 +1237,20 @@ impl Parser {
         self.advance();
         let body = self.parse_block()?;
         Ok(LifecycleBlock {
+            body,
+            span: self.end_span(start),
+        })
+    }
+
+    /// Parse `periodic #tag { ... }` clause inside a condition body.
+    fn parse_periodic_clause(&mut self) -> Result<PeriodicClause, ()> {
+        let start = self.start_span();
+        self.expect_soft_keyword("periodic")?;
+        self.expect(&TokenKind::Hash)?;
+        let (tag, _) = self.expect_ident()?;
+        let body = self.parse_block()?;
+        Ok(PeriodicClause {
+            tag,
             body,
             span: self.end_span(start),
         })

@@ -79,6 +79,7 @@ impl Checker<'_> {
                                         | BlockKind::ReactionResolve
                                         | BlockKind::HookResolve
                                         | BlockKind::WithBudget
+                                        | BlockKind::PeriodicBlock
                                 )
                             ) {
                                 self.error(
@@ -257,6 +258,7 @@ impl Checker<'_> {
                         | BlockKind::HookResolve
                         | BlockKind::WithBudget
                         | BlockKind::LifecycleBlock
+                        | BlockKind::PeriodicBlock
                 )
             ) {
                 self.error(
@@ -280,6 +282,7 @@ impl Checker<'_> {
                         | BlockKind::HookResolve
                         | BlockKind::WithBudget
                         | BlockKind::LifecycleBlock
+                        | BlockKind::PeriodicBlock
                 )
             ) {
                 self.error(

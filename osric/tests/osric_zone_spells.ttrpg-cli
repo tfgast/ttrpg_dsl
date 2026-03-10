@@ -14,7 +14,7 @@
 //   7. Wall of Fire: non-matching zone crossing deals no damage
 //   8. Blade Barrier: crossing deals 8d8 slashing damage
 //   9. Blade Barrier: ZoneEntered applies InsideBladeBarrier condition
-//  10. Blade Barrier: process_blade_barrier_damage deals per-round damage
+//  10. Blade Barrier: periodic condition block deals per-round damage
 //  11. Blade Barrier: ZoneExited removes InsideBladeBarrier condition
 
 load osric/*.ttrpg
@@ -214,13 +214,13 @@ emit ZoneEntered(target: bb_target, zone: bb_zone)
 assert_condition bb_target, InsideBladeBarrier
 
 
-// ── Per-round occupant damage via process function ────────────
-// Instead of ZoneTick, per-round damage uses the condition-based
-// process_blade_barrier_damage() function called from the combat loop.
+// ── Per-round occupant damage via periodic condition block ────
+// Per-round damage uses the periodic block on InsideBladeBarrier,
+// triggered by process_periodic_conditions() from the combat loop.
 
 let bb_hp_after_cross = bb_target.hp
 
-call process_blade_barrier_damage([bb_target])
+call process_periodic_conditions([bb_target], "round_end_damage")
 
 // Additional 8d8 damage applied
 assert_eq bb_target.hp < bb_hp_after_cross, true
@@ -245,7 +245,7 @@ emit ZoneEntered(target: bb_bystander, zone: bb_wrong_zone)
 assert_no_condition bb_bystander, InsideBladeBarrier
 
 // process function should not deal damage to target without the condition
-call process_blade_barrier_damage([bb_bystander])
+call process_periodic_conditions([bb_bystander], "round_end_damage")
 assert_eq bb_bystander.hp, 20
 
 
@@ -313,7 +313,7 @@ assert_no_condition zs_overlap, Silenced
 // ── zone_sync + condition-based per-round damage ─────────────────
 // Place a target inside a Blade Barrier via zone_sync (which emits
 // ZoneEntered and applies InsideBladeBarrier), then verify
-// process_blade_barrier_damage deals per-round damage.
+// process_periodic_conditions deals per-round damage.
 
 spawn Character zt_target { name: "Tick Target", classes: [ClassLevel { class: Fighter, level: 10 }], abilities: { STR: 18, INT: 12, WIS: 12, DEX: 16, CON: 16, CHA: 12 }, HitPoints { max_hp: 100, hp: 100 } }
 
@@ -327,5 +327,5 @@ assert_condition zt_target, InsideBladeBarrier
 
 // Process per-round damage: should deal 8d8
 assert_eq zt_target.hp, 100
-call process_blade_barrier_damage([zt_target])
+call process_periodic_conditions([zt_target], "round_end_damage")
 assert_eq zt_target.hp < 100, true

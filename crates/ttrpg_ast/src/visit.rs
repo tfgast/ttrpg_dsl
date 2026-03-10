@@ -271,11 +271,19 @@ impl VisitSpansMut for ConditionClause {
             ConditionClause::OnApply(lb) | ConditionClause::OnRemove(lb) => {
                 lb.visit_spans_mut(f);
             }
+            ConditionClause::Periodic(pc) => pc.visit_spans_mut(f),
         }
     }
 }
 
 impl VisitSpansMut for LifecycleBlock {
+    fn visit_spans_mut(&mut self, f: &mut dyn FnMut(&mut Span)) {
+        self.span.visit_spans_mut(f);
+        self.body.visit_spans_mut(f);
+    }
+}
+
+impl VisitSpansMut for PeriodicClause {
     fn visit_spans_mut(&mut self, f: &mut dyn FnMut(&mut Span)) {
         self.span.visit_spans_mut(f);
         self.body.visit_spans_mut(f);

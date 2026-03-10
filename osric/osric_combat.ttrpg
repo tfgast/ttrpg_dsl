@@ -2301,30 +2301,25 @@ system "OSRIC Combat" {
     //  Natural healing: 1 HP/day rest, 4 weeks = full.
     // ========================================================
 
-    // Process bleeding for all combatants at end of round.
-    // Called from resolve_round. Each bleeding character loses
-    // 1 HP; death at -10 HP. Scarring applied at -6 HP.
-    //
-    // This is an explicit periodic-effect function rather than
-    // an on_tick hook — periodic condition effects use functions
-    // called from the combat loop so ordering is explicit and
-    // the host controls timing. See osric_conditions.ttrpg.
-    function process_bleeding(combatants: list<entity>) {
-        for target in combatants {
+    // Per-round HP loss for unconscious characters. The periodic
+    // block runs via process_periodic_conditions(combatants,
+    // "round_end_damage") in the combat loop.
+    condition Bleeding on bearer: entity
+        stacking first
+    {
+        periodic #round_end_damage {
             // Only Characters bleed — monsters die at 0 HP.
-            if target is Character {
-                if has_condition(target, "Bleeding") {
-                    target.hp = target.hp - 1
-                    if target.hp <= -10 {
-                        target.hp = -10
-                        remove_condition(target, "Bleeding")
-                        remove_condition(target, "Unconscious")
-                        apply_condition(target, Dead, Duration.Indefinite)
-                        emit CharacterDead(target: target)
-                    } else if target.hp <= -6 {
-                        if !has_condition(target, "Scarred") {
-                            apply_condition(target, Scarred, Duration.Indefinite)
-                        }
+            if bearer is Character {
+                bearer.hp = bearer.hp - 1
+                if bearer.hp <= -10 {
+                    bearer.hp = -10
+                    remove_condition(bearer, "Bleeding")
+                    remove_condition(bearer, "Unconscious")
+                    apply_condition(bearer, Dead, Duration.Indefinite)
+                    emit CharacterDead(target: bearer)
+                } else if bearer.hp <= -6 {
+                    if !has_condition(bearer, "Scarred") {
+                        apply_condition(bearer, Scarred, Duration.Indefinite)
                     }
                 }
             }

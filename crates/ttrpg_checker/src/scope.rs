@@ -27,6 +27,10 @@ pub enum BlockKind {
     /// `on_apply` / `on_remove` lifecycle block inside a condition.
     /// Hook-like permissions minus `invocation()` and `turn`.
     LifecycleBlock,
+    /// `periodic #tag { ... }` block inside a condition.
+    /// Function-body-like permissions: allows mutations, dice, emit,
+    /// condition manipulation, return. No `invocation()` or `turn`.
+    PeriodicBlock,
     /// Inner blocks (if, match, etc.) inherit from enclosing real block.
     Inner,
 }
@@ -42,6 +46,7 @@ impl BlockKind {
                 | BlockKind::HookResolve
                 | BlockKind::WithBudget
                 | BlockKind::LifecycleBlock
+                | BlockKind::PeriodicBlock
         )
     }
 
@@ -54,6 +59,7 @@ impl BlockKind {
                 | BlockKind::HookResolve
                 | BlockKind::WithBudget
                 | BlockKind::LifecycleBlock
+                | BlockKind::PeriodicBlock
         )
     }
 
@@ -83,6 +89,7 @@ impl BlockKind {
                 | BlockKind::HookResolve
                 | BlockKind::WithBudget
                 | BlockKind::LifecycleBlock
+                | BlockKind::PeriodicBlock
         )
     }
 
@@ -101,6 +108,7 @@ impl BlockKind {
                 | BlockKind::HookResolve
                 | BlockKind::WithBudget
                 | BlockKind::LifecycleBlock
+                | BlockKind::PeriodicBlock
         )
     }
 

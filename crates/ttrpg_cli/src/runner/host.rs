@@ -492,11 +492,7 @@ impl Runner {
 /// evaluated with simple point-in-region math (Wall, Line, Glyph).
 ///
 /// Grid scale: 1 square = 5 feet (standard D&D grid).
-fn zone_contains_target(
-    gs: &GameState,
-    zone: &EntityRef,
-    target: &EntityRef,
-) -> bool {
+fn zone_contains_target(gs: &GameState, zone: &EntityRef, target: &EntityRef) -> bool {
     // Resolve zone center
     let center_handle = match gs.read_field(zone, "center") {
         Some(Value::Position(PositionValue(h))) => h,

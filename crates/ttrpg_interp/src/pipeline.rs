@@ -251,7 +251,8 @@ pub(crate) fn collect_modifiers_owned(
                         ConditionClause::Suppress(_)
                         | ConditionClause::SuppressModify(_)
                         | ConditionClause::OnApply(_)
-                        | ConditionClause::OnRemove(_) => continue,
+                        | ConditionClause::OnRemove(_)
+                        | ConditionClause::Periodic(_) => continue,
                     };
 
                     // Does the target function name match?

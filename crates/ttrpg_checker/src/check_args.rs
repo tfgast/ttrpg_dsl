@@ -461,6 +461,7 @@ impl Checker<'_> {
                         | BlockKind::HookResolve
                         | BlockKind::WithBudget
                         | BlockKind::LifecycleBlock
+                        | BlockKind::PeriodicBlock
                 )
             ) {
                 self.error(

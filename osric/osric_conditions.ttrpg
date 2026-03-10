@@ -375,21 +375,16 @@ system "OSRIC Conditions" {
     // ========================================================
     //  BLEEDING (§1.6.6)
     //
-    //  Marker condition for per-round HP loss. Applied alongside
-    //  Unconscious at 0 HP. Removed by StabilizeBleeding action
-    //  or when healed.
+    //  Per-round HP loss for unconscious characters. Applied
+    //  alongside Unconscious at 0 HP. Removed by
+    //  StabilizeBleeding action or when healed.
     //
-    //  Design note: periodic HP loss is handled by the explicit
-    //  process_bleeding() function called from resolve_round,
-    //  NOT by an on_tick lifecycle hook. This keeps the combat
-    //  loop's ordering visible (bleeding before expiry) and
-    //  avoids ambiguity about tick frequency across different
-    //  time scales (segments vs rounds vs turns).
+    //  Declared in osric_combat.ttrpg (needs access to restricted
+    //  `hp` field). The periodic block runs via
+    //  process_periodic_conditions(combatants, "round_end_damage")
+    //  in the combat loop.
     // ========================================================
-
-    condition Bleeding on bearer: entity
-        stacking first
-    {}
+    // (condition Bleeding is defined in osric_combat.ttrpg)
 
 
     // ========================================================

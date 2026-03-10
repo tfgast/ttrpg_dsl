@@ -901,11 +901,7 @@ mod tests {
             crate::state::ConditionToken(id)
         }
 
-        fn add_suspension(
-            &mut self,
-            _entity: &EntityRef,
-            _record: crate::state::SuspensionRecord,
-        ) {
+        fn add_suspension(&mut self, _entity: &EntityRef, _record: crate::state::SuspensionRecord) {
             // No-op for test state
         }
 
@@ -913,10 +909,7 @@ mod tests {
             // No-op for test state
         }
 
-        fn suspension_records(
-            &self,
-            _entity: &EntityRef,
-        ) -> Vec<crate::state::SuspensionRecord> {
+        fn suspension_records(&self, _entity: &EntityRef) -> Vec<crate::state::SuspensionRecord> {
             Vec::new()
         }
     }

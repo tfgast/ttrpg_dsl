@@ -434,7 +434,8 @@ fn collect_and_apply_cost_modifiers(
                     ConditionClause::Suppress(_)
                     | ConditionClause::SuppressModify(_)
                     | ConditionClause::OnApply(_)
-                    | ConditionClause::OnRemove(_) => continue,
+                    | ConditionClause::OnRemove(_)
+                    | ConditionClause::Periodic(_) => continue,
                 };
 
                 // Only match Cost targets for this action

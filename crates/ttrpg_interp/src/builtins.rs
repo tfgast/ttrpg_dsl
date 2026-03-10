@@ -49,6 +49,7 @@ pub(crate) fn call_builtin(
         "are_turns_frozen" => builtin_are_turns_frozen(env, &args, span),
         "are_durations_frozen" => builtin_are_durations_frozen(env, &args, span),
         "condition_token" => builtin_condition_token(env, &args, span),
+        "process_periodic_conditions" => builtin_process_periodic_conditions(env, &args, span),
         _ => Err(RuntimeError::with_span(
             format!("unknown builtin function '{name}'"),
             span,
@@ -1049,10 +1050,7 @@ fn parse_presence(val: &Value, span: Span) -> Result<crate::state::Presence, Run
             )),
         },
         _ => Err(RuntimeError::with_span(
-            format!(
-                "expected Presence enum, got {}",
-                type_name(val)
-            ),
+            format!("expected Presence enum, got {}", type_name(val)),
             span,
         )),
     }
@@ -1155,11 +1153,7 @@ fn builtin_remove_suspension_source(
                 entity: *entity,
                 source_id: *source_id as u64,
             };
-            validate_mutation_response(
-                env.handler.handle(effect),
-                "RemoveSuspensionSource",
-                span,
-            )?;
+            validate_mutation_response(env.handler.handle(effect), "RemoveSuspensionSource", span)?;
             Ok(Value::Void)
         }
         _ => Err(RuntimeError::with_span(
@@ -1192,11 +1186,7 @@ fn builtin_is_off_board(env: &Env, args: &[Value], span: Span) -> Result<Value, 
 }
 
 /// `are_turns_frozen(entity) -> bool`
-fn builtin_are_turns_frozen(
-    env: &Env,
-    args: &[Value],
-    span: Span,
-) -> Result<Value, RuntimeError> {
+fn builtin_are_turns_frozen(env: &Env, args: &[Value], span: Span) -> Result<Value, RuntimeError> {
     match args.first() {
         Some(Value::Entity(entity)) => Ok(Value::Bool(env.state.are_turns_frozen(entity))),
         _ => Err(RuntimeError::with_span(
@@ -1224,11 +1214,7 @@ fn builtin_are_durations_frozen(
 /// `condition_token() -> int`
 ///
 /// Returns the current condition token ID. Only valid inside lifecycle blocks.
-fn builtin_condition_token(
-    env: &Env,
-    args: &[Value],
-    span: Span,
-) -> Result<Value, RuntimeError> {
+fn builtin_condition_token(env: &Env, args: &[Value], span: Span) -> Result<Value, RuntimeError> {
     if !args.is_empty() {
         return Err(RuntimeError::with_span(
             "condition_token() takes no arguments",
@@ -1286,6 +1272,98 @@ fn type_name(val: &Value) -> &'static str {
         Value::EnumNamespace(_) => "EnumNamespace",
         Value::ModuleAlias(_) => "ModuleAlias",
     }
+}
+
+// ── process_periodic_conditions ──────────────────────────────────
+
+fn builtin_process_periodic_conditions(
+    env: &mut Env,
+    args: &[Value],
+    span: Span,
+) -> Result<Value, RuntimeError> {
+    use crate::state::EntityRef;
+    use ttrpg_ast::ast::ConditionClause;
+
+    let (combatants, tag) = match (args.first(), args.get(1)) {
+        (Some(Value::List(combatants)), Some(Value::Str(tag))) => (combatants.clone(), tag.clone()),
+        _ => {
+            return Err(RuntimeError::with_span(
+                "process_periodic_conditions() requires (list<entity>, string)",
+                span,
+            ))
+        }
+    };
+
+    // Runtime tag validation: ensure the tag is declared
+    if !env.interp.program.tags.contains(tag.as_str()) {
+        return Err(RuntimeError::with_span(
+            format!(
+                "process_periodic_conditions: unknown tag `{tag}` — \
+                 no `tag {tag}` declaration found in the program"
+            ),
+            span,
+        ));
+    }
+
+    for combatant_val in combatants.iter() {
+        let bearer: EntityRef = match combatant_val {
+            Value::Entity(e) => *e,
+            _ => continue,
+        };
+
+        // Snapshot: read conditions and compute stacking winners for this combatant
+        let snapshot = env.state.read_conditions(&bearer).unwrap_or_default();
+        let winners = crate::pipeline::compute_stacking_winners(&snapshot, env.interp.program);
+
+        for cond_instance in &snapshot {
+            // Only stacking winners execute periodic blocks
+            if !winners.contains(&cond_instance.id) {
+                continue;
+            }
+
+            // Check if the condition still exists (may have been removed by a previous block)
+            let still_exists = env
+                .state
+                .read_conditions(&bearer)
+                .unwrap_or_default()
+                .iter()
+                .any(|c| c.id == cond_instance.id);
+            if !still_exists {
+                continue;
+            }
+
+            // Walk ancestor chain (parent-first), looking for periodic blocks with matching tag
+            let chain = crate::pipeline::collect_ancestor_order(
+                env.interp.program,
+                cond_instance.name.as_str(),
+            );
+
+            for decl in &chain {
+                for clause in &decl.clauses {
+                    let pc = match clause {
+                        ConditionClause::Periodic(pc) if pc.tag == tag.as_str() => pc,
+                        _ => continue,
+                    };
+
+                    // Execute the periodic block
+                    env.push_scope();
+                    env.bind(decl.receiver_name.clone(), Value::Entity(bearer));
+                    // Bind `self` as the active condition instance
+                    env.bind("self".into(), cond_instance.to_value());
+                    // Bind condition parameters
+                    for (pname, pval) in &cond_instance.params {
+                        env.bind(pname.clone(), pval.clone());
+                    }
+                    let result = crate::eval::eval_block(env, &pc.body);
+                    env.pop_scope();
+                    env.return_value = None; // clear early-return flag
+                    result?;
+                }
+            }
+        }
+    }
+
+    Ok(Value::Void)
 }
 
 #[cfg(test)]

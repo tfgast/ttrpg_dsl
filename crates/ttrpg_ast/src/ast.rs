@@ -735,12 +735,26 @@ pub enum ConditionClause {
     SuppressModify(SuppressModifyClause),
     OnApply(LifecycleBlock),
     OnRemove(LifecycleBlock),
+    /// Periodic effect block: `periodic #tag { ... }`.
+    Periodic(PeriodicClause),
 }
 
 /// An imperative block that runs when a condition is applied or removed.
 #[derive(Clone)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct LifecycleBlock {
+    pub body: Block,
+    pub span: Span,
+}
+
+/// A periodic effect block inside a condition, tagged for phase filtering.
+///
+/// Executed by `process_periodic_conditions(combatants, tag)` — only blocks
+/// whose tag matches the requested tag name are executed.
+#[derive(Clone)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct PeriodicClause {
+    pub tag: Name,
     pub body: Block,
     pub span: Span,
 }

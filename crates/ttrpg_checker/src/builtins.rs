@@ -137,10 +137,7 @@ pub fn register_builtins() -> Vec<FnInfo> {
         ),
         builtin(
             "remove_suspension_source",
-            vec![
-                param("entity", Ty::AnyEntity),
-                param("source_id", Ty::Int),
-            ],
+            vec![param("entity", Ty::AnyEntity), param("source_id", Ty::Int)],
             Ty::Unit,
         ),
         builtin(
@@ -164,5 +161,14 @@ pub fn register_builtins() -> Vec<FnInfo> {
             Ty::Bool,
         ),
         builtin("condition_token", vec![], Ty::Int),
+        // Periodic condition processing
+        builtin(
+            "process_periodic_conditions",
+            vec![
+                param("combatants", Ty::List(Box::new(Ty::AnyEntity))),
+                param("tag", Ty::String),
+            ],
+            Ty::Unit,
+        ),
     ]
 }

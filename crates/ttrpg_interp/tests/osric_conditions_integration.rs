@@ -76,7 +76,7 @@ fn osric_conditions_has_all_conditions() {
         "Charging",
         "ChargeRecovery",
         "Unconscious",
-        "Bleeding",
+        // Bleeding moved to OSRIC Combat (needs restricted hp access)
         "Dead",
         "Scarred",
         "Coma",
@@ -99,8 +99,8 @@ fn osric_conditions_has_all_conditions() {
     }
     assert_eq!(
         conditions.len(),
-        28,
-        "expected 28 conditions, found {}: {:?}",
+        27,
+        "expected 27 conditions, found {}: {:?}",
         conditions.len(),
         conditions
     );

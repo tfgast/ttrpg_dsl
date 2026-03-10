@@ -432,7 +432,7 @@ assert_no_condition rs_blocked_caster, CastingSpell
 //
 //  Tests that the initiative system handles Monster combatants:
 //  is_alive, build_round_action, resolve_action, resolve_round,
-//  expire_conditions, and process_bleeding.
+//  expire_conditions, and process_periodic_conditions.
 // ══════════════════════════════════════════════════════════════════
 
 // ── is_alive derive ──────────────────────────────────────────────
@@ -661,14 +661,14 @@ call expire_conditions([ec_orc])
 assert_no_condition ec_orc, Charging
 
 
-// ── process_bleeding: skips Monsters ─────────────────────────────
+// ── process_periodic_conditions: Bleeding skips Monsters ─────────
 // Monsters die at 0 HP — they don't use the bleeding/unconscious system.
 
 spawn Monster pb_orc { name: "Orc", hit_dice: 1d8, max_hp: 8, hp: 3, ac: 14, attacks: [MonsterAttack { name: "Club", damage: 1d6 }] }
 // Manually apply Bleeding to a monster (shouldn't happen in practice, but tests the guard)
 call apply_condition(pb_orc, Bleeding, Duration.Indefinite)
-call process_bleeding([pb_orc])
-// Monster hp unchanged — process_bleeding skips non-Characters
+call process_periodic_conditions([pb_orc], "round_end_damage")
+// Monster hp unchanged — Bleeding periodic block has `if bearer is Character` guard
 assert_eq pb_orc.hp, 3
 
 

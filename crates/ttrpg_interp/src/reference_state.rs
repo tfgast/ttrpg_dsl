@@ -458,10 +458,7 @@ impl WritableState for GameState {
     }
 
     fn suspension_records(&self, entity: &EntityRef) -> Vec<SuspensionRecord> {
-        self.suspensions
-            .get(&entity.0)
-            .cloned()
-            .unwrap_or_default()
+        self.suspensions.get(&entity.0).cloned().unwrap_or_default()
     }
 }
 

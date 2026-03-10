@@ -297,11 +297,20 @@ system "OSRIC Zone Spells" {
     }
 
     // Condition tracking for per-round Blade Barrier damage.
-    // Applied on ZoneEntered, removed on ZoneExited, processed
-    // each round by process_blade_barrier_damage().
+    // Applied on ZoneEntered, removed on ZoneExited. Periodic
+    // block fires via process_periodic_conditions(combatants,
+    // "round_end_damage") in the combat loop.
     condition InsideBladeBarrier on bearer: entity
         stacking all
-    {}
+    {
+        periodic #round_end_damage {
+            if let EffectSource.Spell(zone_name, cl) = self.source {
+                let damage = roll(8d8).total
+                bearer.TakeDamage(bearer, damage, DamageType.Slashing)
+                emit SpellDamaged(caster: bearer, target: bearer, spell_name: zone_name, amount: damage)
+            }
+        }
+    }
 
     // Apply InsideBladeBarrier when a target enters the zone.
     hook BladeBarrierZoneApply on target: entity (
@@ -324,24 +333,6 @@ system "OSRIC Zone Spells" {
         if let EffectSource.Spell(spell_name, cl) = zone.source {
             if spell_name == "Blade Barrier" {
                 remove_zone_keyed_condition(target, zone.name, "InsideBladeBarrier")
-            }
-        }
-    }
-
-    // Per-round occupant damage: 8d8 slashing each round for
-    // targets remaining inside a Blade Barrier. Called from the
-    // combat loop (e.g. resolve_round), following the same pattern
-    // as process_bleeding().
-    function process_blade_barrier_damage(combatants: list<entity>) {
-        for target in combatants {
-            for cond in conditions(target) {
-                if cond.name == "InsideBladeBarrier" {
-                    if let EffectSource.Spell(zone_name, cl) = cond.source {
-                        let damage = roll(8d8).total
-                        target.TakeDamage(target, damage, DamageType.Slashing)
-                        emit SpellDamaged(caster: target, target: target, spell_name: zone_name, amount: damage)
-                    }
-                }
             }
         }
     }
