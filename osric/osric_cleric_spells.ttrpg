@@ -250,11 +250,11 @@ system "OSRIC Cleric Spells" {
         description: "Removes or suppresses magical effects in a 30ft radius sphere. Dispel chance based on caster level comparison."
     }
 
-    // Resolve Dispel Magic (Cleric version).
-    // Iterates all conditions on each target and attempts to
-    // dispel those with EffectSource.Spell provenance.
-    function resolve_dispel_magic_cleric(caster: Character, targets: list<entity>) {
+    // Resolve Dispel Magic (Cleric version). Prompts for area
+    // occupants, then uses the shared dispel logic.
+    function resolve_dispel_magic_cleric(caster: Character, placement: Placement) {
         let cl = caster_level(caster, Divine)
+        let targets = area_occupants(placement, DISPEL_MAGIC_CLERIC_DEF.area)
         resolve_dispel_magic_on_targets(cl, targets)
     }
 

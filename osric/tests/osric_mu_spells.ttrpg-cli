@@ -69,6 +69,14 @@ call resolve_magic_missile(mm_caster_ranger, [mm_target_ranger_a, mm_target_rang
 assert_eq mm_target_ranger_a.hp, 7
 assert_eq mm_target_ranger_b.hp, 6
 
+// ── AoE position helper ────────────────────────────────────────
+// AoE spells now take Placement and prompt for area occupants.
+// Create a reusable placement from a dummy zone position.
+
+spawn Zone _aoe_zone { name: "_aoe", source: EffectSource.Unknown, shape: ZoneShape.Radius(radius: 1ft) }
+place _aoe_zone 0 0
+let _p = Placement { anchor: AnchorPoint.AtPosition(position: _aoe_zone.center), position: _aoe_zone.center }
+
 // ── Fireball resolve: character targets ─────────────────────────
 
 spawn Character fb_caster_1 { name: "Merlin 4", classes: [ClassLevel { class: MagicUser, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 12, hp: 12 } }
@@ -76,7 +84,8 @@ spawn Character fb_target_1 { name: "Orc Burned", classes: [ClassLevel { class: 
 
 rolls clear
 rolls 3 4 2 5 4 1
-call resolve_fireball(fb_caster_1, [fb_target_1])
+prompts [fb_target_1]
+call resolve_fireball(fb_caster_1, _p)
 assert_eq fb_target_1.hp, 22
 
 spawn Character fb_caster_2 { name: "Merlin 5", classes: [ClassLevel { class: MagicUser, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 12, hp: 12 } }
@@ -84,7 +93,8 @@ spawn Character fb_target_2 { name: "Orc Saved", classes: [ClassLevel { class: F
 
 rolls clear
 rolls 3 4 2 5 4 20
-call resolve_fireball(fb_caster_2, [fb_target_2])
+prompts [fb_target_2]
+call resolve_fireball(fb_caster_2, _p)
 assert_eq fb_target_2.hp, 31
 
 spawn Character fb_caster_3 { name: "Merlin 6", classes: [ClassLevel { class: MagicUser, level: 3 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 } }
@@ -93,7 +103,8 @@ spawn Character fb_target_3b { name: "Orc B Burned", classes: [ClassLevel { clas
 
 rolls clear
 rolls 3 4 3 1 20
-call resolve_fireball(fb_caster_3, [fb_target_3a, fb_target_3b])
+prompts [fb_target_3a, fb_target_3b]
+call resolve_fireball(fb_caster_3, _p)
 assert_eq fb_target_3a.hp, 10
 assert_eq fb_target_3b.hp, 15
 
@@ -103,7 +114,8 @@ call apply_condition(fb_target_fire_immune, ImmuneToFire, Duration.Indefinite)
 
 rolls clear
 rolls 3 4 2 5 4 1
-call resolve_fireball(fb_caster_4, [fb_target_fire_immune])
+prompts [fb_target_fire_immune]
+call resolve_fireball(fb_caster_4, _p)
 assert_eq fb_target_fire_immune.hp, 45
 
 // ── Sleep HD classification ─────────────────────────────────────
@@ -133,7 +145,8 @@ spawn Monster sleep_orc_5 { name: "Sleep Orc 5", hit_dice: 1d8, max_hp: 4, hp: 4
 
 rolls clear
 rolls 1 1 1 1
-call resolve_sleep(sleep_caster_1, [sleep_orc_1, sleep_orc_2, sleep_orc_3, sleep_orc_4, sleep_orc_5])
+prompts [sleep_orc_1, sleep_orc_2, sleep_orc_3, sleep_orc_4, sleep_orc_5]
+call resolve_sleep(sleep_caster_1, _p)
 assert_condition sleep_orc_1, Sleeping
 assert_condition sleep_orc_2, Sleeping
 assert_condition sleep_orc_3, Sleeping
@@ -150,7 +163,8 @@ spawn Monster sleep_troll { name: "Troll", hit_dice: 6d8 + 6, max_hp: 36, hp: 36
 
 rolls clear
 rolls 3 3 2 2 2 1
-call resolve_sleep(sleep_caster_2, [sleep_mix_orc_1, sleep_mix_orc_2, sleep_mix_orc_3, sleep_hob_1, sleep_hob_2, sleep_troll])
+prompts [sleep_mix_orc_1, sleep_mix_orc_2, sleep_mix_orc_3, sleep_hob_1, sleep_hob_2, sleep_troll]
+call resolve_sleep(sleep_caster_2, _p)
 assert_condition sleep_mix_orc_1, Sleeping
 assert_condition sleep_mix_orc_2, Sleeping
 assert_condition sleep_mix_orc_3, Sleeping
@@ -163,7 +177,8 @@ spawn Monster sleep_ogre_none { name: "Ogre None", hit_dice: 4d8 + 1, max_hp: 20
 
 rolls clear
 rolls 1
-call resolve_sleep(sleep_caster_3, [sleep_ogre_none])
+prompts [sleep_ogre_none]
+call resolve_sleep(sleep_caster_3, _p)
 assert_no_condition sleep_ogre_none, Sleeping
 
 spawn Character sleep_caster_4 { name: "Merlin 10", classes: [ClassLevel { class: MagicUser, level: 2 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 9, hp: 9 } }
@@ -171,7 +186,8 @@ spawn Monster sleep_ogre_one { name: "Ogre One", hit_dice: 4d8 + 1, max_hp: 20, 
 
 rolls clear
 rolls 2
-call resolve_sleep(sleep_caster_4, [sleep_ogre_one])
+prompts [sleep_ogre_one]
+call resolve_sleep(sleep_caster_4, _p)
 assert_condition sleep_ogre_one, Sleeping
 
 spawn Character sleep_caster_5 { name: "Merlin 11", classes: [ClassLevel { class: MagicUser, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 8, hp: 8 } }
@@ -180,7 +196,8 @@ spawn Monster sleep_cap_orc_2 { name: "Cap Orc 2", hit_dice: 1d8, max_hp: 4, hp:
 
 rolls clear
 rolls 3 3 3 3
-call resolve_sleep(sleep_caster_5, [sleep_cap_orc_1, sleep_cap_orc_2])
+prompts [sleep_cap_orc_1, sleep_cap_orc_2]
+call resolve_sleep(sleep_caster_5, _p)
 assert_condition sleep_cap_orc_1, Sleeping
 assert_condition sleep_cap_orc_2, Sleeping
 
@@ -209,7 +226,8 @@ spawn Monster mon_fb_target_b { name: "Orc B", hit_dice: 1d8, max_hp: 20, hp: 20
 
 rolls clear
 rolls 3 4 2 5 4 1 20
-call resolve_fireball(mon_fb_caster, [mon_fb_target_a, mon_fb_target_b])
+prompts [mon_fb_target_a, mon_fb_target_b]
+call resolve_fireball(mon_fb_caster, _p)
 assert_eq mon_fb_target_a.hp, 2
 assert_eq mon_fb_target_b.hp, 11
 

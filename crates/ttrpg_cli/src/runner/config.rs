@@ -46,8 +46,18 @@ impl Runner {
             &self.unit_suffixes,
         )
         .quiet(true);
+        let bindings: rustc_hash::FxHashMap<Name, Value> = self
+            .variables
+            .iter()
+            .map(|(name, val)| (Name::from(name.as_str()), val.clone()))
+            .chain(
+                self.handles
+                    .iter()
+                    .map(|(name, entity)| (Name::from(name.as_str()), Value::Entity(*entity))),
+            )
+            .collect();
         let val = interp
-            .evaluate_expr(&state, &mut handler, &parsed)
+            .evaluate_expr_with_bindings(&state, &mut handler, &parsed, bindings)
             .map_err(|e| render_runtime_error(&e, &self.source_map))?;
 
         self.prompt_queue.push_back(val);

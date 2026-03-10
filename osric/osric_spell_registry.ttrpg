@@ -3,9 +3,10 @@
 //
 // Central dispatch for spell definitions and resolution.
 // spell_def(SpellId) -> SpellDef is a table lookup keyed by SpellId.
-// resolve_spell(SpellId, caster, targets) routes to per-spell
-// resolve_* functions. All resolvers accept entity-typed targets
-// so the same dispatch works for Characters and Monsters alike.
+// resolve_spell(SpellId, caster, targets) routes targeted spells.
+// resolve_area_spell(SpellId, caster, placement) routes spatial spells
+// (both instant AoE and persistent zones). All resolvers accept
+// entity-typed targets so dispatch works for Characters and Monsters.
 // ============================================================
 
 import "osric_character.ttrpg"
@@ -90,7 +91,7 @@ system "OSRIC Spell Registry" {
                 resolve_hold_person(caster, targets)
             },
             SpellId.DispelMagicCleric => {
-                resolve_dispel_magic_cleric(caster, targets)
+                error("resolve_spell: Dispel Magic (Cleric) requires spatial targeting, use resolve_area_spell instead")
             },
             SpellId.RemoveCurse => {
                 let target = targets.first().unwrap()
@@ -108,32 +109,50 @@ system "OSRIC Spell Registry" {
                 resolve_magic_missile(caster, targets)
             },
             SpellId.DispelMagicMU => {
-                resolve_dispel_magic_mu(caster, targets)
+                error("resolve_spell: Dispel Magic (MU) requires spatial targeting, use resolve_area_spell instead")
             },
             SpellId.Fireball => {
-                resolve_fireball(caster, targets)
+                error("resolve_spell: Fireball requires spatial targeting, use resolve_area_spell instead")
             },
             SpellId.Sleep => {
-                resolve_sleep(caster, targets)
+                error("resolve_spell: Sleep requires spatial targeting, use resolve_area_spell instead")
             },
             _ => {
-                error("resolve_spell: spell requires spatial targeting, use resolve_zone_spell instead")
+                error("resolve_spell: spell requires spatial targeting, use resolve_area_spell instead")
             }
         }
     }
 
     // ========================================================
-    //  ZONE SPELL RESOLUTION DISPATCH
+    //  AREA SPELL RESOLUTION DISPATCH
     //
-    //  Routes zone spell resolution to the appropriate resolve_*
-    //  function. Zone spells take a Placement (spatial targeting
-    //  input from the host) instead of a target list.
+    //  Routes spells that require spatial targeting (Placement)
+    //  to their resolve functions. Covers both:
+    //  - Instant AoE spells (Fireball, Sleep, Dispel Magic) that
+    //    prompt the host for area occupants internally
+    //  - Zone spells (Silence, Wall of Fire) that spawn persistent
+    //    Zone entities
+    //
     //  Blade Barrier and Glyph of Warding require extra parameters
     //  beyond Placement — call their resolve functions directly.
     // ========================================================
 
-    function resolve_zone_spell(id: SpellId, caster: Character, placement: Placement) {
+    function resolve_area_spell(id: SpellId, caster: Character, placement: Placement) {
         match id {
+            // Instant AoE spells — prompt for occupants internally
+            SpellId.Fireball => {
+                resolve_fireball(caster, placement)
+            },
+            SpellId.Sleep => {
+                resolve_sleep(caster, placement)
+            },
+            SpellId.DispelMagicCleric => {
+                resolve_dispel_magic_cleric(caster, placement)
+            },
+            SpellId.DispelMagicMU => {
+                resolve_dispel_magic_mu(caster, placement)
+            },
+            // Zone spells — spawn persistent Zone entities
             SpellId.Silence15Radius => {
                 resolve_silence_15(caster, placement)
             },
@@ -144,7 +163,7 @@ system "OSRIC Spell Registry" {
                 resolve_wall_of_fire(caster, placement)
             },
             _ => {
-                error("resolve_zone_spell: unknown zone spell or requires extra parameters (use resolve_blade_barrier / resolve_glyph_of_warding directly)")
+                error("resolve_area_spell: unknown area spell or requires extra parameters (use resolve_blade_barrier / resolve_glyph_of_warding directly)")
             }
         }
     }

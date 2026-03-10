@@ -819,6 +819,25 @@ system "OSRIC Spells" {
         }
     }
 
+    // ========================================================
+    //  AREA OCCUPANT PROMPT
+    //
+    //  AoE spells call this to ask the host which creatures
+    //  are within the spell's area of effect. The host receives
+    //  the placement (where the spell was aimed) and the area
+    //  descriptor(s) from the SpellDef, and returns the list of
+    //  affected entities. Works for theater-of-the-mind (GM
+    //  picks), physical table, or VTT (auto-resolves from grid).
+    // ========================================================
+
+    prompt area_occupants(placement: Placement, area: list<SpellArea>) -> list<entity> {
+        hint: "Which creatures are within the spell's area of effect?"
+        default {
+            let empty: list<entity> = []
+            empty
+        }
+    }
+
     // Save-or-half damage (Fireball archetype).
     // Rolls are already done; total_damage is applied to each
     // target. Successful save halves, vetoed save (magic

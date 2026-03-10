@@ -35,6 +35,13 @@ assert_eq BESTOW_CURSE_DEF.level, 3
 assert BESTOW_CURSE_DEF.reversible
 assert_eq NEUTRALISE_POISON_DEF.level, 4
 
+// ── AoE position helper ────────────────────────────────────────
+// AoE spells now take Placement and prompt for area occupants.
+
+spawn Zone _dm_zone { name: "_dm", source: EffectSource.Unknown, shape: ZoneShape.Radius(radius: 1ft) }
+place _dm_zone 0 0
+let _p = Placement { anchor: AnchorPoint.AtPosition(position: _dm_zone.center), position: _dm_zone.center }
+
 // ── Dispel Magic (Cleric): successful dispel ─────────────────────
 
 spawn Character dm_cleric { name: "Alaric DM", classes: [ClassLevel { class: Cleric, level: 7 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, ancestry: Human, HitPoints { max_hp: 30, hp: 30 }, Spellcasting { spell_slots: [3, 3, 2], slots_used: [0, 0, 0], memorised_spells: [] } }
@@ -48,7 +55,8 @@ assert_condition dm_target, Paralyzed
 // Roll d100 = 30 (success, <= 60)
 rolls clear
 rolls 30
-call resolve_dispel_magic_cleric(dm_cleric, [dm_target])
+prompts [dm_target]
+call resolve_dispel_magic_cleric(dm_cleric, _p)
 assert_no_condition dm_target, Paralyzed
 
 // ── Dispel Magic (Cleric): failed dispel ─────────────────────────
@@ -63,7 +71,8 @@ assert_condition dm_target2, Paralyzed
 // Roll d100 = 90 (failure, > 40)
 rolls clear
 rolls 90
-call resolve_dispel_magic_cleric(dm_cleric2, [dm_target2])
+prompts [dm_target2]
+call resolve_dispel_magic_cleric(dm_cleric2, _p)
 assert_condition dm_target2, Paralyzed
 
 // ── Dispel Magic (MU): successful dispel ─────────────────────────
@@ -78,7 +87,8 @@ assert_condition dm_mu_target, Sleeping
 // Roll d100 = 50 (success)
 rolls clear
 rolls 50
-call resolve_dispel_magic_mu(dm_mu, [dm_mu_target])
+prompts [dm_mu_target]
+call resolve_dispel_magic_mu(dm_mu, _p)
 assert_no_condition dm_mu_target, Sleeping
 
 // ── Dispel Magic: non-spell conditions are NOT dispelled ─────────
@@ -93,7 +103,8 @@ assert_condition dm_non_spell_target, Stunned
 // Dispel should not remove non-spell-sourced conditions
 rolls clear
 rolls 1
-call resolve_dispel_magic_cleric(dm_non_spell_caster, [dm_non_spell_target])
+prompts [dm_non_spell_target]
+call resolve_dispel_magic_cleric(dm_non_spell_caster, _p)
 assert_condition dm_non_spell_target, Stunned
 
 // ── Remove Curse: removes curse-tagged condition ─────────────────

@@ -82,11 +82,12 @@ system "OSRIC MU Spells" {
         description: "A massive explosion of magical fire dealing 1d6 per caster level. Saving throw for half damage."
     }
 
-    // Resolve Fireball. Rolls damage once (caster_level d6),
-    // then applies to each target via save-or-half helper.
-    // Works for both Character and Monster targets (entity dispatch).
-    function resolve_fireball(caster: Character, targets: list<entity>) {
+    // Resolve Fireball. Prompts the host for area occupants,
+    // rolls damage once (caster_level d6), then applies to each
+    // target via save-or-half helper.
+    function resolve_fireball(caster: Character, placement: Placement) {
         let cl = caster_level(caster, Arcane)
+        let targets = area_occupants(placement, FIREBALL_DEF.area)
         let total_damage = roll(dice(cl, 6)).total
         resolve_save_or_half_damage(caster, targets, "Fireball", total_damage, DamageType.Fire)
     }
@@ -168,12 +169,12 @@ system "OSRIC MU Spells" {
         }
     }
 
-    // Resolve Sleep. Accepts any entity targets — uses
-    // entity_hit_dice() to compute HD for both Characters and
-    // Monsters. Targets should be pre-sorted weakest-first.
-    // Classifies each target by HD category, rolls per category,
-    // and applies Sleeping to the affected creatures.
-    function resolve_sleep(caster: Character, targets: list<entity>) {
+    // Resolve Sleep. Prompts the host for area occupants, then
+    // processes by HD category from weakest to strongest. Uses
+    // entity_hit_dice() for both Characters and Monsters.
+    // Host should return targets sorted weakest-first.
+    function resolve_sleep(caster: Character, placement: Placement) {
+        let targets = area_occupants(placement, SLEEP_DEF.area)
         let cl = caster_level(caster, Arcane)
         let duration_rounds = 5 * cl
         let source = EffectSource.Spell(name: "Sleep", caster_level: cl)
@@ -222,10 +223,11 @@ system "OSRIC MU Spells" {
         description: "Removes or suppresses magical effects in a 30ft cube. Dispel chance based on caster level comparison."
     }
 
-    // Resolve Dispel Magic (MU version).
-    // Uses the shared dispel logic from the Cleric Spells module.
-    function resolve_dispel_magic_mu(caster: Character, targets: list<entity>) {
+    // Resolve Dispel Magic (MU version). Prompts for area
+    // occupants, then uses the shared dispel logic.
+    function resolve_dispel_magic_mu(caster: Character, placement: Placement) {
         let cl = caster_level(caster, Arcane)
+        let targets = area_occupants(placement, DISPEL_MAGIC_MU_DEF.area)
         resolve_dispel_magic_on_targets(cl, targets)
     }
 }
