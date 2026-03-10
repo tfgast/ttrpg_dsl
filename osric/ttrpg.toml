@@ -104,6 +104,9 @@ path = "osric_weapon_spec.ttrpg"
 [entries.xp]
 path = "osric_xp.ttrpg"
 
+[entries.zone_spells]
+path = "osric_zone_spells.ttrpg"
+
 [bundles.full]
 entries = [
     "core",
@@ -139,6 +142,7 @@ entries = [
     "turn_undead",
     "weapon_spec",
     "xp",
+    "zone_spells",
 ]
 
 [bundles.chargen]

@@ -1,0 +1,172 @@
+// ═══════════════════════════════════════════════════════════════
+//  OSRIC Zone Spells
+//
+//  Occupant-condition zone pattern: the host owns zone membership
+//  and emits ZoneEntered / ZoneExited events. The DSL applies and
+//  removes conditions keyed by zone identity so overlapping zones
+//  remove their effects precisely.
+//
+//  Covered spells:
+//    • Silence 15' Radius   (stationary area)
+//    • Protection from Evil 10' Radius (anchored to caster)
+// ═══════════════════════════════════════════════════════════════
+
+use "OSRIC"
+use "OSRIC Combat"
+use "OSRIC Spells"
+
+system "OSRIC Zone Spells" {
+
+    // ========================================================
+    //  ZONE-KEYED CONDITION REMOVAL
+    //
+    //  Remove a condition applied by a specific zone instance.
+    //  Conditions are keyed by storing zone.name in the
+    //  EffectSource.Spell name field. When a zone exits, only
+    //  the condition from *that* zone is removed — overlapping
+    //  zones of the same type keep their separate instances.
+    // ========================================================
+
+    function remove_zone_keyed_condition(target: entity, zone_name: string, condition_name: string) {
+        for cond in conditions(target) {
+            if cond.name == condition_name {
+                if let EffectSource.Spell(src_name, src_cl) = cond.source {
+                    if src_name == zone_name {
+                        remove_condition(target, cond)
+                    }
+                }
+            }
+        }
+    }
+
+
+    // ========================================================
+    //  SILENCE 15' RADIUS
+    //
+    //  Creates a stationary 15' sphere of absolute silence.
+    //  Creatures inside cannot cast spells with verbal
+    //  components (i.e. nearly all spells). No sound passes
+    //  through the boundary.
+    //
+    //  Zone type: stationary occupancy zone (tracks_occupancy,
+    //  no contact_mode).
+    // ========================================================
+
+    const SILENCE_15_DEF: SpellDef = SpellDef {
+        name: "Silence 15' Radius",
+        class_type: Divine,
+        school: Transmutation,
+        level: 2,
+        range: SpellRange.Distance(distance: Feet { value: 120 }),
+        duration: SpellDuration.Rounds(count: 0),   // 2 rounds/level, set at resolution
+        area_of_effect: "Sphere, 15ft radius",
+        components: SpellComponents { material: false },
+        casting_time: CastingTime.Segments(count: 5),
+        saving_throw: SpellSave.NoSave,
+        reversible: false,
+        description: "Creates a sphere of silence that prevents all sound and spellcasting within."
+    }
+
+    // Condition applied to occupants of a Silence zone.
+    // Blocks spellcasting via the #spellcasting_gate tag.
+    condition Silenced on bearer: entity
+        stacking all
+    {
+        modify [#spellcasting_gate](caster: bearer) {
+            result = false
+        }
+    }
+
+    // Apply Silenced when a target enters a Silence zone.
+    hook SilenceZoneApply on target: entity (
+        trigger: ZoneEntered(target: target)
+    ) {
+        let zone = trigger.zone
+        if let EffectSource.Spell(spell_name, cl) = zone.source {
+            if spell_name == "Silence 15' Radius" {
+                apply_condition(target, Silenced, Duration.Indefinite,
+                    EffectSource.Spell(name: zone.name, caster_level: cl))
+            }
+        }
+    }
+
+    // Remove Silenced when a target exits a Silence zone.
+    // Only removes the condition instance from *this* zone.
+    hook SilenceZoneRemove on target: entity (
+        trigger: ZoneExited(target: target)
+    ) {
+        let zone = trigger.zone
+        if let EffectSource.Spell(spell_name, cl) = zone.source {
+            if spell_name == "Silence 15' Radius" {
+                remove_zone_keyed_condition(target, zone.name, "Silenced")
+            }
+        }
+    }
+
+
+    // ========================================================
+    //  PROTECTION FROM EVIL 10' RADIUS
+    //
+    //  Moves with the caster (anchor). All creatures within
+    //  10' of the caster receive:
+    //    • Attackers suffer -2 to attack rolls against
+    //      protected targets
+    //
+    //  The full OSRIC spell also checks attacker alignment
+    //  and grants save bonuses; those require additional
+    //  infrastructure and are deferred to a follow-up.
+    //
+    //  Zone type: anchored occupancy zone (tracks_occupancy,
+    //  moves_with_anchor, no contact_mode).
+    // ========================================================
+
+    const PROTECTION_FROM_EVIL_10_DEF: SpellDef = SpellDef {
+        name: "Protection from Evil 10' Radius",
+        class_type: Divine,
+        school: Abjuration,
+        level: 4,
+        range: SpellRange.Touch,
+        duration: SpellDuration.Rounds(count: 0),   // 2 rounds/level, set at resolution
+        area_of_effect: "Sphere, 10ft radius",
+        components: SpellComponents { material: true },
+        casting_time: CastingTime.Rounds(count: 1),
+        saving_throw: SpellSave.NoSave,
+        reversible: true,
+        description: "Creates a 10' radius mobile barrier against evil. Attackers suffer -2 to hit protected creatures."
+    }
+
+    // Condition applied to occupants of a Protection from Evil zone.
+    // Attackers suffer -2 to hit the bearer.
+    condition ProtectedFromEvil10 on bearer: entity
+        stacking all
+    {
+        modify [#attack_resolution](target: bearer) {
+            attack_mod = attack_mod - 2
+        }
+    }
+
+    // Apply ProtectedFromEvil10 when a target enters the zone.
+    hook ProtFromEvil10ZoneApply on target: entity (
+        trigger: ZoneEntered(target: target)
+    ) {
+        let zone = trigger.zone
+        if let EffectSource.Spell(spell_name, cl) = zone.source {
+            if spell_name == "Protection from Evil 10' Radius" {
+                apply_condition(target, ProtectedFromEvil10, Duration.Indefinite,
+                    EffectSource.Spell(name: zone.name, caster_level: cl))
+            }
+        }
+    }
+
+    // Remove ProtectedFromEvil10 when a target exits the zone.
+    hook ProtFromEvil10ZoneRemove on target: entity (
+        trigger: ZoneExited(target: target)
+    ) {
+        let zone = trigger.zone
+        if let EffectSource.Spell(spell_name, cl) = zone.source {
+            if spell_name == "Protection from Evil 10' Radius" {
+                remove_zone_keyed_condition(target, zone.name, "ProtectedFromEvil10")
+            }
+        }
+    }
+}

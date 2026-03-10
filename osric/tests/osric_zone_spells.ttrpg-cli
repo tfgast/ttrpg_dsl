@@ -1,0 +1,137 @@
+// OSRIC Zone Spells integration tests
+//
+// Proves the occupant-condition zone pattern: the host emits
+// ZoneEntered / ZoneExited events, and DSL hooks apply / remove
+// conditions keyed by zone identity.
+//
+// Scenarios:
+//   1. Silence zone: enter → Silenced, exit → removed
+//   2. Overlapping silence zones: exit one → still silenced
+//   3. Protection from Evil zone: enter → protected, exit → removed
+//   4. Overlapping PFE zones: exit one → still protected
+//   5. Non-matching zone: no conditions applied
+
+load osric/*.ttrpg
+
+
+// ══════════════════════════════════════════════════════════════════
+//  SILENCE 15' RADIUS — STATIONARY ZONE
+// ══════════════════════════════════════════════════════════════════
+
+
+// ── Basic enter / exit ───────────────────────────────────────────
+
+spawn Character sil_target { name: "Cleric", classes: [ClassLevel { class: Cleric, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 }, Spellcasting { spell_slots: [3, 2], slots_used: [0, 0], memorised_spells: [] } }
+
+spawn Zone sil_zone_1 { name: "silence-zone-1", source: Spell(name: "Silence 15' Radius", caster_level: 5), shape: Radius(radius: 15ft) }
+place sil_zone_1 5 5
+
+// Before entering: no condition
+assert_no_condition sil_target, Silenced
+
+// Host emits ZoneEntered
+emit ZoneEntered(target: sil_target, zone: sil_zone_1)
+assert_condition sil_target, Silenced
+
+// Verify spellcasting is blocked
+assert_eq can_begin_casting(sil_target), false
+
+// Host emits ZoneExited
+emit ZoneExited(target: sil_target, zone: sil_zone_1)
+assert_no_condition sil_target, Silenced
+
+// Spellcasting restored
+assert_eq can_begin_casting(sil_target), true
+
+
+// ── Overlapping silence zones ────────────────────────────────────
+// Two silence zones overlap. Target enters both. Exiting one zone
+// removes only that zone's condition; the other remains.
+
+spawn Character sil_overlap_target { name: "Wizard", classes: [ClassLevel { class: MagicUser, level: 7 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 12, hp: 12 }, Spellcasting { spell_slots: [4, 3, 2, 1], slots_used: [0, 0, 0, 0], memorised_spells: [] } }
+
+spawn Zone sil_zone_2a { name: "silence-zone-2a", source: Spell(name: "Silence 15' Radius", caster_level: 5), shape: Radius(radius: 15ft) }
+place sil_zone_2a 10 10
+
+spawn Zone sil_zone_2b { name: "silence-zone-2b", source: Spell(name: "Silence 15' Radius", caster_level: 3), shape: Radius(radius: 15ft) }
+place sil_zone_2b 12 10
+
+// Enter both zones
+emit ZoneEntered(target: sil_overlap_target, zone: sil_zone_2a)
+emit ZoneEntered(target: sil_overlap_target, zone: sil_zone_2b)
+assert_condition sil_overlap_target, Silenced
+assert_eq can_begin_casting(sil_overlap_target), false
+
+// Exit zone 2a — still silenced by 2b
+emit ZoneExited(target: sil_overlap_target, zone: sil_zone_2a)
+assert_condition sil_overlap_target, Silenced
+assert_eq can_begin_casting(sil_overlap_target), false
+
+// Exit zone 2b — fully unsilenced
+emit ZoneExited(target: sil_overlap_target, zone: sil_zone_2b)
+assert_no_condition sil_overlap_target, Silenced
+assert_eq can_begin_casting(sil_overlap_target), true
+
+
+// ══════════════════════════════════════════════════════════════════
+//  PROTECTION FROM EVIL 10' RADIUS — ANCHORED ZONE
+// ══════════════════════════════════════════════════════════════════
+
+
+// ── Basic enter / exit ───────────────────────────────────────────
+
+spawn Character pfe_target { name: "Fighter PFE", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 40, hp: 40 } }
+
+spawn Zone pfe_zone { name: "pfe-zone-1", source: Spell(name: "Protection from Evil 10' Radius", caster_level: 7), moves_with_anchor: true, shape: Radius(radius: 10ft) }
+place pfe_zone 5 5
+
+// Before entering: no condition
+assert_no_condition pfe_target, ProtectedFromEvil10
+
+// Enter zone
+emit ZoneEntered(target: pfe_target, zone: pfe_zone)
+assert_condition pfe_target, ProtectedFromEvil10
+
+// Exit zone
+emit ZoneExited(target: pfe_target, zone: pfe_zone)
+assert_no_condition pfe_target, ProtectedFromEvil10
+
+
+// ── Overlapping PFE zones ────────────────────────────────────────
+
+spawn Character pfe_target_2 { name: "Ranger PFE", classes: [ClassLevel { class: Ranger, level: 5 }], abilities: { STR: 15, INT: 12, WIS: 14, DEX: 15, CON: 12, CHA: 12 }, HitPoints { max_hp: 35, hp: 35 } }
+
+spawn Zone pfe_zone_2a { name: "pfe-zone-2a", source: Spell(name: "Protection from Evil 10' Radius", caster_level: 7), shape: Radius(radius: 10ft), moves_with_anchor: true }
+place pfe_zone_2a 5 5
+
+spawn Zone pfe_zone_2b { name: "pfe-zone-2b", source: Spell(name: "Protection from Evil 10' Radius", caster_level: 5), shape: Radius(radius: 10ft), moves_with_anchor: true }
+place pfe_zone_2b 6 5
+
+// Enter both
+emit ZoneEntered(target: pfe_target_2, zone: pfe_zone_2a)
+emit ZoneEntered(target: pfe_target_2, zone: pfe_zone_2b)
+assert_condition pfe_target_2, ProtectedFromEvil10
+
+// Exit one — still protected by the other
+emit ZoneExited(target: pfe_target_2, zone: pfe_zone_2a)
+assert_condition pfe_target_2, ProtectedFromEvil10
+
+// Exit the other — fully unprotected
+emit ZoneExited(target: pfe_target_2, zone: pfe_zone_2b)
+assert_no_condition pfe_target_2, ProtectedFromEvil10
+
+
+// ══════════════════════════════════════════════════════════════════
+//  NON-MATCHING ZONE — HOOK SELECTIVITY
+// ══════════════════════════════════════════════════════════════════
+
+// A zone with a different source should not trigger any conditions.
+
+spawn Character nm_target { name: "Bystander", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 } }
+
+spawn Zone nm_zone { name: "fire-zone-1", source: Spell(name: "Wall of Fire", caster_level: 9), shape: Wall(length: 60ft, thickness: 5ft), contact_mode: Crossed }
+place nm_zone 0 0
+
+emit ZoneEntered(target: nm_target, zone: nm_zone)
+assert_no_condition nm_target, Silenced
+assert_no_condition nm_target, ProtectedFromEvil10
