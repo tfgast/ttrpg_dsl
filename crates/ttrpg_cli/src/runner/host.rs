@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use ttrpg_ast::Name;
 use ttrpg_interp::reference_state::GridPosition;
-use ttrpg_interp::value::Value;
+use ttrpg_interp::value::PositionValue;
 
 use super::*;
 
@@ -346,6 +346,248 @@ impl Runner {
         self.output.push(format!("placed {handle} at ({x}, {y})"));
 
         Ok(())
+    }
+
+    /// `zone_sync`
+    ///
+    /// Recompute zone membership for all positioned entities and active zones.
+    /// Emits `ZoneExited` and `ZoneEntered` events for membership changes,
+    /// following the protocol's deterministic ordering rules (sorted by zone
+    /// entity ID then target entity ID, exits before enters).
+    ///
+    /// This is a thin reference-host convenience for integration tests.
+    /// It uses Chebyshev distance against Radius/Sphere shapes only.
+    pub(super) fn cmd_zone_sync(&mut self) -> Result<(), CliError> {
+        // Gather zones and targets from game state
+        let (zones, targets) = {
+            let gs = self.game_state.borrow();
+            let all = gs.all_entities();
+            let mut zones = Vec::new();
+            let mut targets = Vec::new();
+            for entity in &all {
+                let type_name = gs.entity_type_name(entity);
+                if type_name.as_ref().map(|n| n.as_str()) == Some("Zone") {
+                    zones.push(*entity);
+                } else {
+                    targets.push(*entity);
+                }
+            }
+            // Sort for deterministic ordering
+            zones.sort_by_key(|e| e.0);
+            targets.sort_by_key(|e| e.0);
+            (zones, targets)
+        };
+
+        // Compute new membership and collect events
+        let mut exits: Vec<(EntityRef, EntityRef)> = Vec::new(); // (target, zone)
+        let mut enters: Vec<(EntityRef, EntityRef)> = Vec::new();
+
+        for &zone in &zones {
+            // Check zone is active
+            let active = {
+                let gs = self.game_state.borrow();
+                match gs.read_field(&zone, "active") {
+                    Some(Value::Bool(b)) => b,
+                    _ => true,
+                }
+            };
+            if !active {
+                // Inactive zone: any prior members should exit
+                for &target in &targets {
+                    let key = (target.0, zone.0);
+                    if self.zone_membership.remove(&key) {
+                        exits.push((target, zone));
+                    }
+                }
+                continue;
+            }
+
+            let is_trigger = {
+                let gs = self.game_state.borrow();
+                match gs.read_field(&zone, "trigger") {
+                    Some(Value::Bool(b)) => b,
+                    _ => false,
+                }
+            };
+
+            let tracks = {
+                let gs = self.game_state.borrow();
+                match gs.read_field(&zone, "tracks_occupancy") {
+                    Some(Value::Bool(b)) => b,
+                    _ => true,
+                }
+            };
+
+            if !tracks && !is_trigger {
+                continue;
+            }
+
+            let mut trigger_fired = false;
+            for &target in &targets {
+                let key = (target.0, zone.0);
+                let was_inside = self.zone_membership.contains(&key);
+                let is_inside = zone_contains_target(&self.game_state.borrow(), &zone, &target);
+
+                if was_inside && !is_inside {
+                    self.zone_membership.remove(&key);
+                    exits.push((target, zone));
+                } else if !was_inside && is_inside {
+                    if is_trigger {
+                        if !trigger_fired {
+                            trigger_fired = true;
+                            self.zone_membership.insert(key);
+                            enters.push((target, zone));
+                        }
+                        // Skip remaining targets for this trigger zone
+                    } else {
+                        self.zone_membership.insert(key);
+                        enters.push((target, zone));
+                    }
+                }
+            }
+        }
+
+        // Protocol ordering: exits before enters (already sorted by zone ID,
+        // target ID within each zone due to iteration order)
+        let event_count = exits.len() + enters.len();
+        for (target, zone) in &exits {
+            self.emit_zone_event("ZoneExited", *target, *zone)?;
+        }
+        for (target, zone) in &enters {
+            self.emit_zone_event("ZoneEntered", *target, *zone)?;
+        }
+
+        self.output
+            .push(format!("zone_sync: {event_count} event(s)"));
+        Ok(())
+    }
+
+    /// `zone_tick`
+    ///
+    /// Emit `ZoneTick` for every target currently inside an active zone that
+    /// tracks occupancy. Useful for per-round processing (e.g. Blade Barrier
+    /// damage each round). Events are ordered by zone ID then target ID.
+    pub(super) fn cmd_zone_tick(&mut self) -> Result<(), CliError> {
+        // Collect current membership pairs, sorted by (zone_id, target_id)
+        let mut pairs: Vec<(EntityRef, EntityRef)> = self
+            .zone_membership
+            .iter()
+            .map(|&(target_id, zone_id)| (EntityRef(target_id), EntityRef(zone_id)))
+            .collect();
+        pairs.sort_by_key(|(t, z)| (z.0, t.0));
+
+        // Filter to active zones that track occupancy
+        let pairs: Vec<_> = pairs
+            .into_iter()
+            .filter(|(_target, zone)| {
+                let gs = self.game_state.borrow();
+                let active = match gs.read_field(zone, "active") {
+                    Some(Value::Bool(b)) => b,
+                    _ => true,
+                };
+                let tracks = match gs.read_field(zone, "tracks_occupancy") {
+                    Some(Value::Bool(b)) => b,
+                    _ => true,
+                };
+                active && tracks
+            })
+            .collect();
+
+        let event_count = pairs.len();
+        for (target, zone) in &pairs {
+            self.emit_zone_event("ZoneTick", *target, *zone)?;
+        }
+
+        self.output
+            .push(format!("zone_tick: {event_count} event(s)"));
+        Ok(())
+    }
+
+    /// Emit a zone event by name with `target` and `zone` params,
+    /// delegating to `cmd_emit` for full hook/reaction processing.
+    fn emit_zone_event(
+        &mut self,
+        event_name: &str,
+        target: EntityRef,
+        zone: EntityRef,
+    ) -> Result<(), CliError> {
+        // Look up handles for readable output
+        let target_handle = self
+            .reverse_handles
+            .get(&target)
+            .cloned()
+            .unwrap_or_else(|| format!("#{}", target.0));
+        let zone_handle = self
+            .reverse_handles
+            .get(&zone)
+            .cloned()
+            .unwrap_or_else(|| format!("#{}", zone.0));
+        self.cmd_emit(&format!(
+            "{event_name}(target: {target_handle}, zone: {zone_handle})"
+        ))
+    }
+}
+
+/// Check whether a target entity is inside a zone using Chebyshev distance
+/// against Radius/Sphere shapes. Returns `false` for shapes that cannot be
+/// evaluated with simple point-in-region math (Wall, Line, Glyph).
+///
+/// Grid scale: 1 square = 5 feet (standard D&D grid).
+fn zone_contains_target(
+    gs: &GameState,
+    zone: &EntityRef,
+    target: &EntityRef,
+) -> bool {
+    // Resolve zone center
+    let center_handle = match gs.read_field(zone, "center") {
+        Some(Value::Position(PositionValue(h))) => h,
+        _ => return false,
+    };
+    let center = match gs.resolve_position(center_handle) {
+        Some(pos) => pos,
+        None => return false,
+    };
+
+    // Resolve target position
+    let target_handle = match gs.read_field(target, "position") {
+        Some(Value::Position(PositionValue(h))) => h,
+        _ => return false,
+    };
+    let target_pos = match gs.resolve_position(target_handle) {
+        Some(pos) => pos,
+        None => return false,
+    };
+
+    // Extract shape and compute containment
+    match gs.read_field(zone, "shape") {
+        Some(Value::EnumVariant {
+            variant, fields, ..
+        }) => match variant.as_str() {
+            "Radius" | "Sphere" => {
+                let radius_feet = extract_feet_value(&fields, "radius");
+                // Convert feet to grid squares (5ft per square)
+                let radius_squares = radius_feet / 5;
+                let dx = (target_pos.0 - center.0).abs();
+                let dy = (target_pos.1 - center.1).abs();
+                let dist = dx.max(dy); // Chebyshev distance
+                dist <= radius_squares
+            }
+            // Wall, Line, Glyph require geometry beyond point-in-region
+            _ => false,
+        },
+        _ => false,
+    }
+}
+
+/// Extract the integer value from a Feet struct field within an enum variant's fields.
+/// Returns 0 if the field is missing or has unexpected structure.
+fn extract_feet_value(fields: &BTreeMap<Name, Value>, field_name: &str) -> i64 {
+    match fields.get(field_name) {
+        Some(Value::Struct { fields, .. }) => match fields.get("value") {
+            Some(Value::Int(v)) => *v,
+            _ => 0,
+        },
+        _ => 0,
     }
 }
 

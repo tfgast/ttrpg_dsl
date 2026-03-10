@@ -51,6 +51,8 @@ pub enum Command {
     // Host simulation
     Emit(String),
     Place(String),
+    ZoneSync,
+    ZoneTick,
     // Help
     Help(Option<String>),
     Unknown(String),
@@ -312,6 +314,8 @@ pub fn parse_command(line: &str) -> Option<Command> {
                 Some(Command::Place(s.into()))
             }
         }
+        "zone_sync" => Some(Command::ZoneSync),
+        "zone_tick" => Some(Command::ZoneTick),
         "coverage" => {
             let s = strip_comment(tail).trim();
             if s == "reset" {
@@ -1042,5 +1046,17 @@ mod tests {
             parse_command("place hero 5 3 // move hero"),
             Some(Command::Place("hero 5 3".into()))
         );
+    }
+
+    // ── Zone sync commands ────────────────────────────────────────
+
+    #[test]
+    fn parse_zone_sync() {
+        assert_eq!(parse_command("zone_sync"), Some(Command::ZoneSync));
+    }
+
+    #[test]
+    fn parse_zone_tick() {
+        assert_eq!(parse_command("zone_tick"), Some(Command::ZoneTick));
     }
 }

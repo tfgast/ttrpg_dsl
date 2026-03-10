@@ -428,6 +428,26 @@ const COMMANDS: &[CommandInfo] = &[
         ],
         category: "Host Simulation",
     },
+    CommandInfo {
+        name: "zone_sync",
+        syntax: "zone_sync",
+        description: "Recompute zone membership and emit events",
+        detail: "Scan all positioned entities and active zones, compute membership\n  diffs from last sync, and emit ZoneExited/ZoneEntered events in\n  protocol order (zone ID, target ID, exits before enters).\n  Uses Chebyshev distance for Radius/Sphere shapes (5ft grid scale).\n  Wall/Line/Glyph shapes are not evaluated.",
+        examples: &[
+            "zone_sync",
+        ],
+        category: "Host Simulation",
+    },
+    CommandInfo {
+        name: "zone_tick",
+        syntax: "zone_tick",
+        description: "Emit ZoneTick for all current zone occupants",
+        detail: "Emit ZoneTick(target, zone) for every target currently tracked\n  as inside an active zone. Useful for per-round occupant effects\n  (e.g. Blade Barrier damage). Events ordered by zone ID, target ID.",
+        examples: &[
+            "zone_tick",
+        ],
+        category: "Host Simulation",
+    },
     // Help
     CommandInfo {
         name: "help",

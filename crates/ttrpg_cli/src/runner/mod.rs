@@ -1,5 +1,5 @@
 use std::cell::RefCell;
-use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::path::PathBuf;
 use std::rc::Rc;
 
@@ -114,6 +114,9 @@ pub struct Runner {
     interactive: bool,
     heredoc: Option<HeredocState>,
     continuation: Option<ContinuationState>,
+    /// Prior zone membership: `(target_id, zone_id) -> is_inside`.
+    /// Tracked across `zone_sync` calls for membership diffing.
+    zone_membership: HashSet<(u64, u64)>,
 }
 
 impl Runner {
@@ -140,6 +143,7 @@ impl Runner {
             interactive: false,
             heredoc: None,
             continuation: None,
+            zone_membership: HashSet::new(),
         }
     }
 
@@ -420,6 +424,8 @@ impl Runner {
             // Host simulation
             Command::Emit(tail) => self.cmd_emit(&tail),
             Command::Place(tail) => self.cmd_place(&tail),
+            Command::ZoneSync => self.cmd_zone_sync(),
+            Command::ZoneTick => self.cmd_zone_tick(),
             // Coverage
             Command::Coverage => self.cmd_coverage(),
             Command::CoverageReset => self.cmd_coverage_reset(),

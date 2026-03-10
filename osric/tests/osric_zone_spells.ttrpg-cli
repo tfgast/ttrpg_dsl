@@ -228,3 +228,82 @@ place bb_wrong_zone 40 40
 
 emit ZoneTick(target: bb_bystander, zone: bb_wrong_zone)
 assert_eq bb_bystander.hp, 20
+
+
+// ══════════════════════════════════════════════════════════════════
+//  ZONE_SYNC — AUTOMATED MEMBERSHIP DIFFING
+// ══════════════════════════════════════════════════════════════════
+
+
+// ── Basic zone_sync: enter a silence zone ────────────────────────
+// Place a target inside a silence zone's radius, then run zone_sync.
+// Should auto-emit ZoneEntered and apply the Silenced condition.
+// Coordinates use 200+ to avoid overlap with zones from prior tests.
+
+spawn Character zs_target { name: "Sync Target", classes: [ClassLevel { class: Cleric, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 }, Spellcasting { spell_slots: [3, 2], slots_used: [0, 0], memorised_spells: [] } }
+
+spawn Zone zs_zone { name: "zs-silence-1", source: Spell(name: "Silence 15' Radius", caster_level: 5), shape: Radius(radius: 15ft) }
+place zs_zone 200 200
+
+// Target outside the zone (distance = 100 > 3 squares)
+place zs_target 300 300
+zone_sync
+assert_no_condition zs_target, Silenced
+
+// Move target inside the zone (distance = 2 <= 3 squares)
+place zs_target 202 200
+zone_sync
+assert_condition zs_target, Silenced
+assert_eq can_begin_casting(zs_target), false
+
+// Move target back out (distance = 100 > 3 squares)
+place zs_target 300 300
+zone_sync
+assert_no_condition zs_target, Silenced
+assert_eq can_begin_casting(zs_target), true
+
+
+// ── zone_sync with overlapping zones ─────────────────────────────
+// Two silence zones. Target enters both, exits one — still silenced.
+
+spawn Character zs_overlap { name: "Sync Overlap", classes: [ClassLevel { class: MagicUser, level: 7 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 12, hp: 12 }, Spellcasting { spell_slots: [4, 3, 2, 1], slots_used: [0, 0, 0, 0], memorised_spells: [] } }
+
+spawn Zone zs_zone_a { name: "zs-silence-a", source: Spell(name: "Silence 15' Radius", caster_level: 5), shape: Radius(radius: 15ft) }
+place zs_zone_a 210 200
+
+spawn Zone zs_zone_b { name: "zs-silence-b", source: Spell(name: "Silence 15' Radius", caster_level: 3), shape: Radius(radius: 15ft) }
+place zs_zone_b 212 200
+
+// Move into both zones (distance to 210,200 = 1, to 212,200 = 1)
+place zs_overlap 211 200
+zone_sync
+assert_condition zs_overlap, Silenced
+assert_eq can_begin_casting(zs_overlap), false
+
+// Move to overlap with zone_b only (distance to 212,200 = 2, to 210,200 = 4)
+place zs_overlap 214 200
+zone_sync
+assert_condition zs_overlap, Silenced
+
+// Move fully out of both
+place zs_overlap 500 500
+zone_sync
+assert_no_condition zs_overlap, Silenced
+
+
+// ── zone_tick convenience ─────────────────────────────────────────
+// Place a target inside a Blade Barrier and verify zone_tick deals damage.
+
+spawn Character zt_target { name: "Tick Target", classes: [ClassLevel { class: Fighter, level: 10 }], abilities: { STR: 18, INT: 12, WIS: 12, DEX: 16, CON: 16, CHA: 12 }, HitPoints { max_hp: 100, hp: 100 } }
+
+spawn Zone zt_bb_zone { name: "zt-blade-barrier", source: Spell(name: "Blade Barrier", caster_level: 12), shape: Sphere(radius: 15ft), contact_mode: Crossed, tracks_occupancy: true }
+place zt_bb_zone 220 200
+
+// Place target inside and sync to register membership
+place zt_target 220 200
+zone_sync
+
+// Now tick: should deal 8d8 damage
+assert_eq zt_target.hp, 100
+zone_tick
+assert_eq zt_target.hp < 100, true
