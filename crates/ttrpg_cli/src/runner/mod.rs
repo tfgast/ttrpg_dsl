@@ -424,6 +424,7 @@ impl Runner {
             // Host simulation
             Command::Emit(tail) => self.cmd_emit(&tail),
             Command::Place(tail) => self.cmd_place(&tail),
+            Command::Pos(tail) => self.cmd_pos(&tail),
             Command::ZoneSync => self.cmd_zone_sync(),
             // Coverage
             Command::Coverage => self.cmd_coverage(),

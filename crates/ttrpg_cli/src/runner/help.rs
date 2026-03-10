@@ -429,6 +429,20 @@ const COMMANDS: &[CommandInfo] = &[
         category: "Host Simulation",
     },
     CommandInfo {
+        name: "pos",
+        syntax: "pos <name> <x> <y>",
+        description: "Create a standalone Position value",
+        detail: "Register a GridPosition(x, y) and bind it to a named variable.\n  The variable can then be used in expressions, assignments, and distance checks.\n  Supports 'x y', 'x,y', or 'at x,y' coordinate syntax (same as place).",
+        examples: &[
+            "pos p 5 3",
+            "pos origin 0,0",
+            "pos target at 10, 10",
+            "eval distance(p, q)",
+            "set hero.position = p",
+        ],
+        category: "Host Simulation",
+    },
+    CommandInfo {
         name: "zone_sync",
         syntax: "zone_sync",
         description: "Recompute zone membership and emit events",

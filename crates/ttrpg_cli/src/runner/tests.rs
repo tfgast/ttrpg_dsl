@@ -4529,7 +4529,7 @@ fn place_missing_coords_errors() {
     runner.take_output();
 
     let err = runner.exec("place f 5").unwrap_err();
-    assert!(err.to_string().contains("usage:"));
+    assert!(err.to_string().contains("expected two coordinates"));
 }
 
 // ── Position formatting ─────────────────────────────────────
@@ -4568,4 +4568,132 @@ fn distance_with_placed_entities() {
         Value::Int(d) => assert_eq!(d, 4, "Chebyshev distance max(3,4) = 4"),
         other => panic!("expected Int, got {other:?}"),
     }
+}
+
+// ── Pos command ─────────────────────────────────────────────
+
+#[test]
+fn pos_binds_variable() {
+    let mut runner = Runner::new();
+    load_snippet(&mut runner, "entity Foo { position: Position }");
+
+    runner.exec("pos p 5 3").unwrap();
+    let out = runner.take_output();
+    assert_eq!(out, vec!["p = Position(5, 3)"]);
+
+    // Variable is usable in eval
+    let val = runner.eval("p").unwrap();
+    assert!(matches!(val, Value::Position(_)));
+}
+
+#[test]
+fn pos_comma_syntax() {
+    let mut runner = Runner::new();
+    load_snippet(&mut runner, "entity Foo { position: Position }");
+
+    runner.exec("pos q 10,10").unwrap();
+    let out = runner.take_output();
+    assert_eq!(out, vec!["q = Position(10, 10)"]);
+}
+
+#[test]
+fn pos_at_syntax() {
+    let mut runner = Runner::new();
+    load_snippet(&mut runner, "entity Foo { position: Position }");
+
+    runner.exec("pos r at 7, 2").unwrap();
+    let out = runner.take_output();
+    assert_eq!(out, vec!["r = Position(7, 2)"]);
+}
+
+#[test]
+fn pos_distance_between_two() {
+    let mut runner = Runner::new();
+    load_snippet(&mut runner, "entity Foo { position: Position }");
+
+    runner.exec("pos p 0 0").unwrap();
+    runner.exec("pos q 3 4").unwrap();
+    runner.take_output();
+
+    // Chebyshev distance: max(|3|, |4|) = 4
+    let val = runner.eval("distance(p, q)").unwrap();
+    match val {
+        Value::Int(d) => assert_eq!(d, 4),
+        other => panic!("expected Int, got {other:?}"),
+    }
+}
+
+#[test]
+fn pos_assign_to_entity_field() {
+    let mut runner = Runner::new();
+    load_snippet(&mut runner, "entity Character { position: Position }");
+
+    runner.exec("pos p 5 3").unwrap();
+    runner.exec("spawn Character hero").unwrap();
+    runner.exec("set hero.position = p").unwrap();
+    runner.take_output();
+
+    // Check the entity got the position
+    let val = runner.eval("hero.position").unwrap();
+    assert!(matches!(val, Value::Position(_)));
+
+    // Check distance from the assigned position
+    runner.exec("pos q 5 3").unwrap();
+    runner.take_output();
+    let val = runner.eval("distance(hero.position, q)").unwrap();
+    match val {
+        Value::Int(d) => assert_eq!(d, 0),
+        other => panic!("expected Int, got {other:?}"),
+    }
+}
+
+#[test]
+fn pos_assign_to_zone_center() {
+    let mut runner = Runner::new();
+    load_snippet(
+        &mut runner,
+        "entity Zone { center: Position, active: bool = true }",
+    );
+
+    runner.exec("pos c 10 10").unwrap();
+    runner.exec("spawn Zone z { active: true }").unwrap();
+    runner.exec("set z.center = c").unwrap();
+    runner.take_output();
+
+    let val = runner.eval("z.center").unwrap();
+    assert!(matches!(val, Value::Position(_)));
+}
+
+#[test]
+fn pos_missing_name_shows_help() {
+    let mut runner = Runner::new();
+
+    // "pos" with no args shows help (same pattern as other commands)
+    runner.exec("pos").unwrap();
+    let out = runner.take_output();
+    assert!(out.iter().any(|l| l.contains("pos")));
+}
+
+#[test]
+fn pos_missing_coords_errors() {
+    let mut runner = Runner::new();
+
+    let err = runner.exec("pos p").unwrap_err();
+    assert!(err.to_string().contains("usage:") || err.to_string().contains("expected two"));
+}
+
+#[test]
+fn pos_bad_coords_errors() {
+    let mut runner = Runner::new();
+
+    let err = runner.exec("pos p abc 3").unwrap_err();
+    assert!(err.to_string().contains("invalid x coordinate"));
+}
+
+#[test]
+fn pos_invalid_name_errors() {
+    let mut runner = Runner::new();
+
+    let err = runner.exec("pos 123bad 5 3").unwrap_err();
+    assert!(err.to_string().contains("invalid variable name"));
 }

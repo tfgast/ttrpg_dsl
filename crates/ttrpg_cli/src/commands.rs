@@ -51,6 +51,7 @@ pub enum Command {
     // Host simulation
     Emit(String),
     Place(String),
+    Pos(String),
     ZoneSync,
     // Help
     Help(Option<String>),
@@ -311,6 +312,14 @@ pub fn parse_command(line: &str) -> Option<Command> {
                 Some(Command::Unknown("place".into()))
             } else {
                 Some(Command::Place(s.into()))
+            }
+        }
+        "pos" => {
+            let s = strip_comment(tail).trim();
+            if s.is_empty() {
+                Some(Command::Unknown("pos".into()))
+            } else {
+                Some(Command::Pos(s.into()))
             }
         }
         "zone_sync" => Some(Command::ZoneSync),
@@ -1043,6 +1052,29 @@ mod tests {
         assert_eq!(
             parse_command("place hero 5 3 // move hero"),
             Some(Command::Place("hero 5 3".into()))
+        );
+    }
+
+    // ── Pos command ──────────────────────────────────────────────
+
+    #[test]
+    fn parse_pos() {
+        assert_eq!(
+            parse_command("pos p 5 3"),
+            Some(Command::Pos("p 5 3".into()))
+        );
+    }
+
+    #[test]
+    fn parse_pos_empty_is_unknown() {
+        assert_eq!(parse_command("pos"), Some(Command::Unknown("pos".into())));
+    }
+
+    #[test]
+    fn parse_pos_with_comment() {
+        assert_eq!(
+            parse_command("pos origin 0 0 // origin point"),
+            Some(Command::Pos("origin 0 0".into()))
         );
     }
 
