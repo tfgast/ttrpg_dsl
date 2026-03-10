@@ -493,6 +493,48 @@ condition Concealed(level: int) on bearer: Character
 
 Suppressed instances remain in state (duration ticks). `best by` param must be `int`, declared on the condition. Not inherited via `extends`.
 
+#### Periodic Blocks
+
+Periodic blocks co-locate per-round effects with the condition that causes them. They execute via `process_periodic_conditions(combatants, tag)`, which filters by tag.
+
+```
+tag round_end_damage
+
+condition Bleeding on bearer: entity
+    stacking first
+{
+    periodic #round_end_damage {
+        if bearer is Character {
+            bearer.hp = bearer.hp - 1
+            if bearer.hp <= -10 {
+                bearer.hp = -10
+                remove_condition(bearer, "Bleeding")
+                remove_condition(bearer, "Unconscious")
+                apply_condition(bearer, Dead, Duration.Indefinite)
+                emit CharacterDead(target: bearer)
+            }
+        }
+    }
+}
+```
+
+**Syntax:** `periodic #tag { statements }` — the tag must be declared with `tag` at system level.
+
+**Scope:** `bearer` + condition parameters + `self` (the full `ActiveCondition` instance — `.name`, `.duration`, `.source`, `.id`, `.applied_at`, `.tags`).
+
+**Capabilities:** Full function-body semantics — mutations, dice, emit, `apply_condition()`, `remove_condition()`, action calls. Unlike lifecycle blocks, periodic blocks are NOT restricted from condition manipulation.
+
+**Execution:** `process_periodic_conditions(combatants, tag)`:
+1. For each combatant, snapshots active conditions and computes stacking winners
+2. For each winning instance with a matching periodic block (including inherited), executes the block
+3. Conditions removed during the pass are skipped; conditions applied to the same bearer don't tick until the next call
+
+**Tags:** A condition may have multiple periodic blocks with different tags. Duplicate tags within a single condition declaration are a parser error.
+
+**Stacking:** Only stacking winners execute periodic blocks (`all` = every instance, `first` = oldest, `best by` = winner).
+
+**Inheritance:** Parent periodic blocks execute before child blocks (same DFS post-order as lifecycle blocks).
+
 ### Prompt
 
 ```
@@ -710,6 +752,9 @@ apply_cond(target, Sleeping, Duration.Rounds(10))
 `remove_suspension_source(target, source_id)` — removes suspension records by source
 `condition_token()` — lifecycle-only, returns pre-allocated condition instance ID
 `is_suspended(target)` `is_off_board(target)` `are_turns_frozen(target)` `are_durations_frozen(target)` — queries
+
+### Periodic Conditions
+`process_periodic_conditions(combatants, tag)` — executes periodic blocks on all combatants' conditions matching the tag. Runtime error if tag is undeclared.
 
 ### Time
 `game_time()` `advance_time(amount)` — advance\_time only callable from function scope (not during action/reaction/hook execution)

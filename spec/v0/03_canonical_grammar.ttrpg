@@ -413,8 +413,9 @@ stacking_policy = "all"
                 | "best" "by" stacking_dir "(" IDENT ")" "ties" "oldest"
 stacking_dir    = "highest" | "lowest"
 
-condition_clause = modify_clause | suppress_clause | suppress_modify_clause | lifecycle_clause
+condition_clause = modify_clause | suppress_clause | suppress_modify_clause | lifecycle_clause | periodic_clause
 lifecycle_clause = ("on_apply" | "on_remove") block
+periodic_clause  = "periodic" "#" IDENT block
 // At most one on_apply and one on_remove per condition (parser error on
 // duplicates). Lifecycle blocks have hook-like execution semantics: they
 // can mutate entity state, emit events, roll dice, and call derives,
@@ -430,6 +431,24 @@ lifecycle_clause = ("on_apply" | "on_remove") block
 // `on_apply` and `on_remove` are soft keywords — they are valid as
 // identifiers elsewhere in the language. The parser recognizes them
 // only in condition body position.
+
+// `periodic` is a soft keyword, recognized only in condition body position.
+// The tag after `#` must reference a tag declared with `tag` at system level.
+// No duplicate periodic tags per condition declaration (parser error).
+//
+// Periodic blocks have function-body execution semantics:
+//   - Can mutate entity state, emit events, roll dice
+//   - Can call derives, mechanics, functions, actions
+//   - CAN call apply_condition(), remove_condition() (unlike lifecycle blocks)
+//   - `invocation()` is NOT available
+//
+// Scoping: `bearer` (the receiver), condition parameters, and `self`
+// (the full ActiveCondition instance) are in scope. `self` provides
+// access to .name, .duration, .source, .id, .applied_at, .tags.
+//
+// Executed by `process_periodic_conditions(combatants, tag_string)`.
+// Only stacking winners execute. Ancestor periodic blocks run before
+// child blocks (DFS post-order, same as lifecycle blocks).
 
 modify_clause   = "modify" modify_target "(" modify_bindings? ")" tag_list? modify_body
                 | "modify" IDENT "." "cost" "(" modify_bindings? ")" cost_modify_body

@@ -1,6 +1,6 @@
 # Design: Periodic Condition Blocks
 
-**Status:** Draft
+**Status:** Implemented
 **Last updated:** 2026-03-10
 
 ---

@@ -549,6 +549,39 @@ system "D&D 5e Combat" {
     }
 
 
+    // --- Condition periodic blocks (periodic #tag { ... }) ---
+    //
+    // Periodic blocks co-locate per-round effects with the condition.
+    // Executed by process_periodic_conditions(combatants, tag), which
+    // filters by tag. Unlike lifecycle blocks, periodic blocks CAN call
+    // apply_condition(), remove_condition(), and actions.
+    // Scope: bearer + condition params + self (ActiveCondition instance).
+
+    tag round_end_damage
+
+    // Bleeding: per-round HP loss, co-located with the condition
+    condition Bleeding on bearer: Character {
+        periodic #round_end_damage {
+            bearer.HP -= 1
+            if bearer.HP <= 0 {
+                remove_condition(bearer, "Bleeding")
+                apply_condition(bearer, Stunned, Duration.indefinite)
+            }
+        }
+    }
+
+    // Multiple instances can each tick independently with stacking all
+    condition OnFire on bearer: Character
+        stacking all
+    {
+        periodic #round_end_damage {
+            let damage: RollResult = roll(1d6)
+            bearer.HP -= damage.total
+            emit Damaged(target: bearer, attacker: bearer, amount: damage.total)
+        }
+    }
+
+
     // --- Cost modification (modify Action.cost) ---
     //
     // Conditions can override an action's cost using `.cost` modify

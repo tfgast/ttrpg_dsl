@@ -582,6 +582,15 @@ Condition tags describe **what the condition is** (`#curse`, `#disease`, `#poiso
 - `bearer` + condition params in scope; `invocation()` unavailable
 - Use `extends` (not `apply_condition` in on_apply) for conditions that imply other conditions
 
+**Periodic blocks (`periodic #tag { ... }`):**
+
+- Per-round effects co-located with the condition — replaces standalone processing functions
+- Tag must be declared with `tag` at system level; no duplicate tags per condition
+- Executed by `process_periodic_conditions(combatants, "tag_name")` from the combat loop
+- **Scope:** `bearer` + condition params + `self` (full `ActiveCondition` instance)
+- **Full function-body permissions:** mutations, dice, emit, `apply_condition()`, `remove_condition()`, action calls — NOT restricted like lifecycle blocks
+- Only stacking winners execute; inherits via `extends` (parent before child)
+
 ### Event
 
 ```ttrpg
@@ -990,6 +999,52 @@ condition Poisoned(potency: int) on bearer: Character {
 - **Available in lifecycle blocks:** `suspend()` and `condition_token()` — see Suspension pattern below.
 - With `extends`, ancestor lifecycle blocks run first (DFS post-order).
 - **Design principle:** use `extends` for conditions that imply others, not `apply_condition()` in on_apply.
+
+### Condition with Periodic Blocks
+
+Periodic blocks run during the combat loop via `process_periodic_conditions()`, not at condition apply/remove time. They replace standalone processing functions like `process_bleeding()`.
+
+```ttrpg
+tag round_end_damage
+
+entity Creature { hp: int }
+
+event Ticked(target: entity, amount: int)
+
+condition Bleeding on bearer: Creature
+    stacking first
+{
+    periodic #round_end_damage {
+        bearer.hp = bearer.hp - 1
+        emit Ticked(target: bearer, amount: 1)
+        if bearer.hp <= 0 {
+            remove_condition(bearer, "Bleeding")
+        }
+    }
+}
+
+condition OnFire on bearer: Creature
+    stacking all
+{
+    periodic #round_end_damage {
+        let damage = roll(1d6).total
+        bearer.hp = bearer.hp - damage
+        emit Ticked(target: bearer, amount: damage)
+    }
+}
+```
+
+**Key rules:**
+
+- `periodic #tag { ... }` — tag must be declared with `tag` at system level
+- Multiple periodic blocks allowed (different tags); duplicate tags per condition is a parser error
+- **Scope:** `bearer` + condition params + `self` (the `ActiveCondition` instance: `.name`, `.duration`, `.source`, `.id`, `.applied_at`, `.tags`)
+- **Full permissions:** unlike lifecycle blocks, periodic blocks CAN call `apply_condition()`, `remove_condition()`, and actions
+- **Processing:** `process_periodic_conditions(combatants, "round_end_damage")` — iterates combatants, snapshots conditions, executes matching periodic blocks on stacking winners only
+- **Snapshot semantics:** conditions removed mid-pass are skipped; conditions applied to the same bearer don't tick until the next call
+- **Stacking:** `all` = every instance ticks separately (e.g., overlapping Blade Barriers), `first` = only oldest, `best by` = only winner
+- **Inheritance:** parent periodic blocks execute before child (DFS post-order, same as lifecycle blocks)
+- **Runtime tag validation:** `process_periodic_conditions(combatants, "typo")` raises a runtime error if the tag is undeclared
 
 ### Condition Stacking Policies
 

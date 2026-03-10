@@ -107,14 +107,13 @@ Host behavior by field combination:
 These fields are fully orthogonal. A zone can track occupancy and detect
 crossings simultaneously, or do neither, or any combination.
 
-> **Deferred: periodic zone ticking.** This protocol does not define a
-> host-driven `ZoneTick` event or tick cadence mechanism. Periodic zone effects
-> (e.g., Cloudkill damage each round) should be implemented as explicit
-> functions called from the combat loop, following the same pattern used for
-> condition expiry and periodic condition effects (see `expire_conditions()` and
-> `process_bleeding()` in `osric_initiative.ttrpg`). If that pattern proves
-> insufficient, a tick protocol can be designed with concrete requirements
-> driving it.
+> **Periodic zone effects use periodic condition blocks.** Periodic zone effects
+> (e.g., Blade Barrier damage each round) are implemented as `periodic #tag`
+> blocks on zone-tracking conditions (e.g., `InsideBladeBarrier`). The combat
+> loop calls `process_periodic_conditions(combatants, "round_end_damage")` to
+> execute all matching periodic blocks. See `spec/design/periodic_condition_blocks.md`
+> for the full design. This replaces the earlier pattern of standalone processing
+> functions like `process_blade_barrier_damage()`.
 
 ### Zone-Motion Crossing (Optional)
 
@@ -703,8 +702,8 @@ trigger = false
 ```
 
 Use `ZoneEntered` and `ZoneExited`. For periodic damage or healing effects,
-implement an explicit processing function called from the combat loop (see
-"Deferred: periodic zone ticking" above).
+use `periodic #tag` blocks on zone-tracking conditions, processed by
+`process_periodic_conditions()` from the combat loop.
 
 ### Barrier Zones
 
@@ -721,8 +720,8 @@ trigger = false
 Barrier effects use `ZoneCrossed` for path contact. Set `tracks_occupancy` to
 `true` if the zone also applies conditions or effects to occupants (e.g., Wall
 of Fire deals damage both on crossing and while standing in the flames). Set it
-to `false` if only crossing matters. For periodic occupant damage, implement an
-explicit processing function called from the combat loop.
+to `false` if only crossing matters. For periodic occupant damage, use
+`periodic #tag` blocks on zone-tracking conditions (e.g., `InsideBladeBarrier`).
 
 ### Anchored Barrier Zones
 
@@ -840,8 +839,10 @@ surface.
   should later iterations standardize path-order behavior more tightly?
 - Should zone-motion crossing be promoted from OPTIONAL to REQUIRED in a future
   protocol version once reference geometry helpers exist?
-- When concrete spells require periodic zone effects, should the project add a
-  host-driven `ZoneTick` event, or continue with explicit combat-loop functions?
+- ~~When concrete spells require periodic zone effects, should the project add a
+  host-driven `ZoneTick` event, or continue with explicit combat-loop functions?~~
+  **Resolved:** Periodic condition blocks (`periodic #tag { ... }`) now handle this.
+  See `spec/design/periodic_condition_blocks.md`.
 
 ## Recommendation
 

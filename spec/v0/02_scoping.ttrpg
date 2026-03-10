@@ -29,8 +29,8 @@
 //   action returns unit and the resolve block value is discarded.
 // reaction/hook resolve: no return type; any block value is discarded.
 //
-// The `return` keyword is allowed in function, action, reaction, hook, and
-// lifecycle blocks for early exit. `return expr` in functions with return types;
+// The `return` keyword is allowed in function, action, reaction, hook,
+// lifecycle, and periodic blocks for early exit. `return expr` in functions with return types;
 // bare `return` in void/unit blocks. NOT allowed in derive/mechanic (use
 // if/else or match for conditional values instead).
 // See 03_canonical_grammar.ttrpg "Block value semantics" for details.
@@ -47,7 +47,9 @@
 // condition does NOT mutate via modify/suppress — those are declarative overlays
 //   that alter computed results, not imperative assignments (see below).
 //   However, conditions MAY include on_apply/on_remove lifecycle hooks that
-//   have hook-like mutation semantics (see "Condition lifecycle hooks" below).
+//   have hook-like mutation semantics (see "Condition lifecycle hooks" below),
+//   and `periodic #tag { ... }` blocks that have full function-body semantics
+//   (see "Condition periodic blocks" below).
 //
 // Functions are general-purpose subroutines. They can do everything an
 // action resolve block can except: no receiver (`on`), no cost/requires
@@ -78,6 +80,9 @@
 //   condition modify → can call derives, mechanics, builtins (no actions, functions, prompts)
 //   condition on_apply/on_remove → can call derives, mechanics, functions, builtins, emit
 //       (NO apply_condition, remove_condition, revoke(invocation), invocation())
+//   condition periodic → can call derives, mechanics, functions, actions, builtins, emit
+//       CAN call apply_condition, remove_condition (full function-body permissions)
+//       (NO invocation())
 //   trigger binding  → side-effect-free builtins only
 
 
@@ -611,6 +616,101 @@ condition Poisoned(potency: int) on bearer: Character {
 }
 
 
+// --- Condition periodic blocks (periodic #tag { ... }) ---
+//
+// Conditions can include periodic blocks that execute during the combat
+// loop via `process_periodic_conditions(combatants, tag)`. Unlike lifecycle
+// blocks, periodic blocks are NOT restricted from calling apply_condition()
+// or remove_condition() — they have full function-body semantics.
+//
+// Periodic blocks replace standalone processing functions (e.g.,
+// process_bleeding(), process_blade_barrier_damage()) by co-locating the
+// per-round effect logic with the condition that causes it.
+//
+// SYNTAX: periodic #tag { statements }
+//   The tag must be declared with `tag` at system level.
+//   A condition may have multiple periodic blocks with different tags.
+//   Duplicate tags within a single condition declaration are a parser error.
+//
+// SCOPING:
+//   `bearer`  — the entity carrying the condition (receiver)
+//   condition parameters — bound from the active condition instance
+//   `self`    — the full ActiveCondition instance being processed
+//              (.name, .duration, .source, .id, .applied_at, .tags)
+//
+//   Note: lifecycle blocks bind only `bearer` + params. Periodic blocks
+//   additionally bind `self` because they replace standalone functions
+//   that had full access to condition instance data via `conditions()`.
+//
+// CAPABILITIES (checker-enforced):
+//   - Can mutate entity state, emit events, roll dice
+//   - Can call derives, mechanics, functions, actions
+//   - CAN call apply_condition(), remove_condition()
+//   - `invocation()` is NOT available
+//
+// EXECUTION (process_periodic_conditions):
+//   1. For each combatant, snapshot active conditions and compute stacking winners
+//   2. For each winning instance whose declaration (including ancestors)
+//      has a periodic block matching the requested tag:
+//      - Execute the block with bearer, self, and params bound
+//   3. Conditions removed during the pass are skipped (snapshot-based)
+//   4. Conditions applied to the same bearer during the pass don't tick
+//      until the next call (cross-bearer applies may tick if the recipient
+//      hasn't been processed yet)
+//
+// STACKING:
+//   Only stacking winners execute periodic blocks:
+//   - `all`: every instance ticks separately (e.g., overlapping Blade Barriers)
+//   - `first`: only the oldest instance ticks
+//   - `best by`: only the winning instance ticks
+//
+// INHERITANCE:
+//   Parent periodic blocks execute before child blocks (DFS post-order),
+//   same ordering as lifecycle blocks.
+//
+// TAG VALIDATION:
+//   Periodic tags are validated against the tag namespace by the checker
+//   at declaration sites. Call-site strings in process_periodic_conditions()
+//   are validated at runtime — unknown tags produce a runtime error.
+
+// EXAMPLE: bleeding damage as a periodic block
+condition Bleeding on bearer: entity
+    stacking first
+{
+    periodic #round_end_damage {
+        if bearer is Character {
+            bearer.hp = bearer.hp - 1
+            if bearer.hp <= -10 {
+                bearer.hp = -10
+                remove_condition(bearer, "Bleeding")
+                remove_condition(bearer, "Unconscious")
+                apply_condition(bearer, Dead, Duration.Indefinite)
+                emit CharacterDead(target: bearer)
+            }
+        }
+    }
+}
+
+// EXAMPLE: zone damage using self.source
+condition InsideBladeBarrier on bearer: entity
+    stacking all
+{
+    periodic #round_end_damage {
+        if let EffectSource.Spell(zone_name, cl) = self.source {
+            let damage = roll(8d8).total
+            bearer.TakeDamage(bearer, damage, DamageType.Slashing)
+            emit SpellDamaged(caster: bearer, target: bearer,
+                spell_name: zone_name, amount: damage)
+        }
+    }
+}
+
+// EXAMPLE: combat loop integration
+// process_periodic_conditions(combatants, "round_end_damage")
+// process_temp_healing(combatants)    // not condition-based
+// expire_conditions(combatants)
+
+
 // --- Suspension (entity presence and turn/duration freezing) ---
 //
 // The suspension system temporarily removes entities from ordinary play
@@ -998,6 +1098,10 @@ hook Regenerate on creature: Character (
 //       // returns the abstract game time counter (starts at 0)
 //       // each TTRPG system defines what a "tick" means
 //       // (e.g., OSRIC: 1 tick = 1 segment, 10 segments per round)
+//   process_periodic_conditions(combatants: list<entity>, tag: string) -> void
+//       // executes periodic blocks on all combatants' conditions matching the tag
+//       // only stacking winners execute; ancestor blocks run before child blocks
+//       // runtime error if tag is not a declared tag name
 //
 // Collection builtins (available everywhere, also as methods):
 //   len(xs: list<T> | set<T> | map<K, V>) -> int

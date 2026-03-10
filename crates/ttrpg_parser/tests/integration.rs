@@ -70,7 +70,7 @@ fn test_parse_full_example() {
     assert_eq!(mechanics, 7, "mechanic count"); // +saving_throw
     assert_eq!(actions, 10, "action count"); // +Rage
     assert_eq!(reactions, 2, "reaction count");
-    assert_eq!(conditions, 10, "condition count"); // +Stunned, Petrified, Burning, Raging
+    assert_eq!(conditions, 12, "condition count"); // +Stunned, Petrified, Burning, Raging, Bleeding, OnFire
     assert_eq!(prompts, 3, "prompt count"); // +choose_target (typed prompt)
     assert_eq!(events, 5, "event count");
 }
