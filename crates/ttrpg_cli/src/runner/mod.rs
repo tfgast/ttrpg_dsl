@@ -425,7 +425,6 @@ impl Runner {
             Command::Emit(tail) => self.cmd_emit(&tail),
             Command::Place(tail) => self.cmd_place(&tail),
             Command::ZoneSync => self.cmd_zone_sync(),
-            Command::ZoneTick => self.cmd_zone_tick(),
             // Coverage
             Command::Coverage => self.cmd_coverage(),
             Command::CoverageReset => self.cmd_coverage_reset(),

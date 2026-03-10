@@ -553,8 +553,6 @@ system "OSRIC" {
 
     event ZoneExited(target: entity, zone: Zone) {}
 
-    event ZoneTick(target: entity, zone: Zone) {}
-
     event ZoneCrossed(target: entity, zone: Zone) {}
 
     event ZoneExpired(zone: Zone) {}

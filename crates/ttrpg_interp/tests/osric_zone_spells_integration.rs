@@ -57,6 +57,10 @@ fn osric_zone_spells_has_conditions() {
         conditions.contains(&"ProtectedFromEvil10"),
         "missing ProtectedFromEvil10 condition"
     );
+    assert!(
+        conditions.contains(&"InsideBladeBarrier"),
+        "missing InsideBladeBarrier condition"
+    );
 }
 
 #[test]
@@ -77,7 +81,8 @@ fn osric_zone_spells_has_hooks() {
         "ProtFromEvil10ZoneRemove",
         "WallOfFireCrossed",
         "BladeBarrierCrossed",
-        "BladeBarrierTick",
+        "BladeBarrierZoneApply",
+        "BladeBarrierZoneRemove",
         "GlyphOfWardingTriggered",
     ];
     for name in &expected {

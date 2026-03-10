@@ -438,16 +438,6 @@ const COMMANDS: &[CommandInfo] = &[
         ],
         category: "Host Simulation",
     },
-    CommandInfo {
-        name: "zone_tick",
-        syntax: "zone_tick",
-        description: "Emit ZoneTick for all current zone occupants",
-        detail: "Emit ZoneTick(target, zone) for every target currently tracked\n  as inside an active zone. Useful for per-round occupant effects\n  (e.g. Blade Barrier damage). Events ordered by zone ID, target ID.",
-        examples: &[
-            "zone_tick",
-        ],
-        category: "Host Simulation",
-    },
     // Help
     CommandInfo {
         name: "help",

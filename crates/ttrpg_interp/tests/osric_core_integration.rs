@@ -595,7 +595,6 @@ fn osric_core_has_zone_events() {
     let expected_events = [
         "ZoneEntered",
         "ZoneExited",
-        "ZoneTick",
         "ZoneCrossed",
         "ZoneExpired",
     ];

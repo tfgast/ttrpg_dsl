@@ -9,12 +9,13 @@
 //   4. Overlapping PFE zones: exit one → still protected
 //   5. Non-matching zone: no conditions applied
 //
-// Barrier-crossing pattern (ZoneCrossed / ZoneTick):
+// Barrier-crossing pattern (ZoneCrossed / condition-based per-round):
 //   6. Wall of Fire: crossing deals 2d6+level fire damage
 //   7. Wall of Fire: non-matching zone crossing deals no damage
 //   8. Blade Barrier: crossing deals 8d8 slashing damage
-//   9. Blade Barrier: ZoneTick deals per-round slashing damage
-//  10. Blade Barrier: non-matching zone tick deals no damage
+//   9. Blade Barrier: ZoneEntered applies InsideBladeBarrier condition
+//  10. Blade Barrier: process_blade_barrier_damage deals per-round damage
+//  11. Blade Barrier: ZoneExited removes InsideBladeBarrier condition
 
 load osric/*.ttrpg
 
@@ -205,28 +206,46 @@ assert_eq bb_target.hp < 100, true
 assert_eq bb_target.hp >= 36, true
 
 
-// ── Per-round occupant damage ──────────────────────────────────
-// Target remains inside the Blade Barrier. Each round, ZoneTick
-// deals another 8d8 slashing damage.
+// ── Condition applied on zone entry ────────────────────────────
+// Entering a Blade Barrier zone should apply the InsideBladeBarrier
+// condition via the ZoneEntered hook.
+
+emit ZoneEntered(target: bb_target, zone: bb_zone)
+assert_condition bb_target, InsideBladeBarrier
+
+
+// ── Per-round occupant damage via process function ────────────
+// Instead of ZoneTick, per-round damage uses the condition-based
+// process_blade_barrier_damage() function called from the combat loop.
 
 let bb_hp_after_cross = bb_target.hp
 
-// Host emits ZoneTick (next round, target still inside)
-emit ZoneTick(target: bb_target, zone: bb_zone)
+call process_blade_barrier_damage([bb_target])
 
 // Additional 8d8 damage applied
 assert_eq bb_target.hp < bb_hp_after_cross, true
 
 
-// ── Non-matching zone tick ─────────────────────────────────────
-// ZoneTick on a non-Blade Barrier zone should not deal damage.
+// ── Condition removed on zone exit ────────────────────────────
+// Exiting a Blade Barrier zone removes the InsideBladeBarrier condition.
+
+emit ZoneExited(target: bb_target, zone: bb_zone)
+assert_no_condition bb_target, InsideBladeBarrier
+
+
+// ── Non-matching zone entry ───────────────────────────────────
+// Entering a non-Blade Barrier zone should not apply InsideBladeBarrier.
 
 spawn Character bb_bystander { name: "Tick Bystander", classes: [ClassLevel { class: Fighter, level: 3 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 } }
 
 spawn Zone bb_wrong_zone { name: "wrong-zone-tick", source: Spell(name: "Wall of Fire", caster_level: 9), shape: Wall(length: 60ft, thickness: 5ft), contact_mode: Crossed }
 place bb_wrong_zone 40 40
 
-emit ZoneTick(target: bb_bystander, zone: bb_wrong_zone)
+emit ZoneEntered(target: bb_bystander, zone: bb_wrong_zone)
+assert_no_condition bb_bystander, InsideBladeBarrier
+
+// process function should not deal damage to target without the condition
+call process_blade_barrier_damage([bb_bystander])
 assert_eq bb_bystander.hp, 20
 
 
@@ -291,19 +310,22 @@ zone_sync
 assert_no_condition zs_overlap, Silenced
 
 
-// ── zone_tick convenience ─────────────────────────────────────────
-// Place a target inside a Blade Barrier and verify zone_tick deals damage.
+// ── zone_sync + condition-based per-round damage ─────────────────
+// Place a target inside a Blade Barrier via zone_sync (which emits
+// ZoneEntered and applies InsideBladeBarrier), then verify
+// process_blade_barrier_damage deals per-round damage.
 
 spawn Character zt_target { name: "Tick Target", classes: [ClassLevel { class: Fighter, level: 10 }], abilities: { STR: 18, INT: 12, WIS: 12, DEX: 16, CON: 16, CHA: 12 }, HitPoints { max_hp: 100, hp: 100 } }
 
 spawn Zone zt_bb_zone { name: "zt-blade-barrier", source: Spell(name: "Blade Barrier", caster_level: 12), shape: Sphere(radius: 15ft), contact_mode: Crossed, tracks_occupancy: true }
 place zt_bb_zone 220 200
 
-// Place target inside and sync to register membership
+// Place target inside and sync to register membership + apply condition
 place zt_target 220 200
 zone_sync
+assert_condition zt_target, InsideBladeBarrier
 
-// Now tick: should deal 8d8 damage
+// Process per-round damage: should deal 8d8
 assert_eq zt_target.hp, 100
-zone_tick
+call process_blade_barrier_damage([zt_target])
 assert_eq zt_target.hp < 100, true

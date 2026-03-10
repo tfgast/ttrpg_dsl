@@ -11,9 +11,10 @@
 //    • Protection from Evil 10' Radius (anchored to caster)
 //
 //  Barrier-crossing pattern: the host emits ZoneCrossed when a
-//  target's movement path contacts a barrier boundary, and
-//  ZoneTick each round for occupants that remain inside. The
-//  DSL deals damage directly — no conditions needed.
+//  target's movement path contacts a barrier boundary. Per-round
+//  occupant damage uses condition tracking: ZoneEntered applies
+//  a zone-keyed condition, ZoneExited removes it, and an explicit
+//  combat-loop function processes damage each round.
 //    • Wall of Fire          (stationary wall or anchored ring)
 //    • Blade Barrier         (stationary sphere of blades)
 //
@@ -258,9 +259,10 @@ system "OSRIC Zone Spells" {
     //  Radius chosen at cast time (5ft / 10ft / 15ft / 20ft).
     //
     //  Contact damage: 8d8 slashing, no save. Applies on
-    //  crossing the boundary and each round for occupants
-    //  remaining inside. Melee attacks reaching through the
-    //  barrier also provoke damage (not modeled here).
+    //  crossing the boundary. Per-round occupant damage uses
+    //  the InsideBladeBarrier condition processed by
+    //  process_blade_barrier_damage(). Melee attacks reaching
+    //  through the barrier also provoke damage (not modeled here).
     //
     //  Zone type: barrier zone (contact_mode = Crossed,
     //  tracks_occupancy = true).
@@ -294,16 +296,52 @@ system "OSRIC Zone Spells" {
         }
     }
 
-    // Per-round occupant damage: 8d8 slashing each round for
-    // targets remaining inside the barrier.
-    hook BladeBarrierTick on target: entity (
-        trigger: ZoneTick(target: target)
+    // Condition tracking for per-round Blade Barrier damage.
+    // Applied on ZoneEntered, removed on ZoneExited, processed
+    // each round by process_blade_barrier_damage().
+    condition InsideBladeBarrier on bearer: entity
+        stacking all
+    {}
+
+    // Apply InsideBladeBarrier when a target enters the zone.
+    hook BladeBarrierZoneApply on target: entity (
+        trigger: ZoneEntered(target: target)
     ) {
         let zone = trigger.zone
         if let EffectSource.Spell(spell_name, cl) = zone.source {
             if spell_name == "Blade Barrier" {
-                let damage = roll(8d8).total
-                deal_zone_damage(target, zone, damage, DamageType.Slashing)
+                apply_condition(target, InsideBladeBarrier, Duration.Indefinite,
+                    EffectSource.Spell(name: zone.name, caster_level: cl))
+            }
+        }
+    }
+
+    // Remove InsideBladeBarrier when a target exits the zone.
+    hook BladeBarrierZoneRemove on target: entity (
+        trigger: ZoneExited(target: target)
+    ) {
+        let zone = trigger.zone
+        if let EffectSource.Spell(spell_name, cl) = zone.source {
+            if spell_name == "Blade Barrier" {
+                remove_zone_keyed_condition(target, zone.name, "InsideBladeBarrier")
+            }
+        }
+    }
+
+    // Per-round occupant damage: 8d8 slashing each round for
+    // targets remaining inside a Blade Barrier. Called from the
+    // combat loop (e.g. resolve_round), following the same pattern
+    // as process_bleeding().
+    function process_blade_barrier_damage(combatants: list<entity>) {
+        for target in combatants {
+            for cond in conditions(target) {
+                if cond.name == "InsideBladeBarrier" {
+                    if let EffectSource.Spell(zone_name, cl) = cond.source {
+                        let damage = roll(8d8).total
+                        target.TakeDamage(target, damage, DamageType.Slashing)
+                        emit SpellDamaged(caster: target, target: target, spell_name: zone_name, amount: damage)
+                    }
+                }
             }
         }
     }
