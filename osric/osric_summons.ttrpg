@@ -1,0 +1,134 @@
+// ============================================================
+// OSRIC 3.0 Summoning Lifecycle — Summoned condition & utilities
+//
+// Defines the Summoned condition (controller tracking, hostile-
+// on-loss behaviour) and reusable helper functions for conjuration
+// and summoning spells:
+//
+//   bind_summoned()      — apply Summoned condition + emit event
+//   dismiss_summoned()   — remove Summoned condition (triggers
+//                          on_remove cleanup / despawn)
+//
+// The on_remove hook handles two outcomes:
+//   hostile_on_loss=false → creature despawns immediately
+//   hostile_on_loss=true  → creature remains, emits control-loss
+//                           event for host to mark hostile
+//
+// Duration-based expiry is handled by the engine's Duration
+// system: apply with Duration.Rounds(n) and the condition auto-
+// expires, firing on_remove for cleanup.
+//
+// Reference: OSRIC 3.0 Gamemaster Guide, §8 Conjuration/Summoning
+// ============================================================
+
+import "osric_core.ttrpg"
+import "osric_combat.ttrpg"
+import "osric_spells.ttrpg"
+
+use "OSRIC"
+use "OSRIC Combat"
+use "OSRIC Spells"
+
+system "OSRIC Summons" {
+
+    tag summoning
+
+    // ========================================================
+    //  SUMMONED CONDITION
+    //
+    //  Tracks who controls a summoned creature and what happens
+    //  when control is lost (duration expiry, dispel, dismissal).
+    //
+    //  Stacking: first — a creature can only be summoned once.
+    //  Bearer: entity — applies to Monsters (and theoretically
+    //  Characters for charm-like summon variants).
+    // ========================================================
+
+    condition Summoned(controller: entity, hostile_on_loss: bool) on bearer: entity stacking first {
+        tags: #summoning
+
+        on_apply {
+            emit SummonBound(
+                creature: bearer,
+                controller: controller,
+                hostile_on_loss: hostile_on_loss
+            )
+        }
+
+        on_remove {
+            if hostile_on_loss {
+                // Creature stays in play but is no longer controlled.
+                // Host handles marking it hostile to all parties.
+                emit SummonControlLost(
+                    creature: bearer,
+                    former_controller: controller
+                )
+            } else {
+                // Creature winks out of existence.
+                emit SummonDespawned(creature: bearer)
+                despawn(bearer)
+            }
+        }
+    }
+
+
+    // ========================================================
+    //  EVENTS
+    // ========================================================
+
+    event SummonBound(
+        creature: entity,
+        controller: entity,
+        hostile_on_loss: bool
+    ) {}
+
+    event SummonControlLost(
+        creature: entity,
+        former_controller: entity
+    ) {}
+
+    event SummonDespawned(creature: entity) {}
+
+
+    // ========================================================
+    //  UTILITY FUNCTIONS
+    // ========================================================
+
+    // --- bind_summoned ---
+    //
+    // Applies the Summoned condition to a freshly-created creature.
+    // Caller provides the duration (Rounds, Indefinite, etc.) and
+    // an EffectSource for provenance tracking.
+    //
+    // Typical usage:
+    //   let m = create_goblin()
+    //   bind_summoned(m, caster, Duration.Rounds(n: rounds),
+    //       hostile_on_loss: false,
+    //       source: EffectSource.Spell(name: "Monster Summoning I",
+    //                                  caster_level: cl))
+
+    function bind_summoned(
+        creature: entity,
+        controller: entity,
+        duration: Duration,
+        hostile_on_loss: bool,
+        source: EffectSource = EffectSource.Unknown
+    ) {
+        apply_condition(
+            creature,
+            Summoned(controller: controller, hostile_on_loss: hostile_on_loss),
+            duration,
+            source
+        )
+    }
+
+    // --- dismiss_summoned ---
+    //
+    // Explicitly removes the Summoned condition from a creature,
+    // triggering the on_remove hook (despawn or control loss).
+
+    function dismiss_summoned(creature: entity) {
+        remove_condition(creature, "Summoned")
+    }
+
+}
