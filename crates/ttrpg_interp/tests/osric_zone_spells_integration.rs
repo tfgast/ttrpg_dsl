@@ -78,8 +78,43 @@ fn osric_zone_spells_has_hooks() {
         "WallOfFireCrossed",
         "BladeBarrierCrossed",
         "BladeBarrierTick",
+        "GlyphOfWardingTriggered",
     ];
     for name in &expected {
         assert!(hooks.contains(name), "missing hook: {name}");
     }
+}
+
+#[test]
+fn osric_zone_spells_has_glyph_event() {
+    let (program, _) = compile_all();
+    let decls = get_decls(&program);
+    let events: Vec<_> = decls
+        .iter()
+        .filter_map(|d| match &d.node {
+            DeclKind::Event(e) => Some(&*e.name),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        events.contains(&"GlyphDischarged"),
+        "missing GlyphDischarged event"
+    );
+}
+
+#[test]
+fn osric_zone_spells_has_glyph_spell_def() {
+    let (program, _) = compile_all();
+    let decls = get_decls(&program);
+    let consts: Vec<_> = decls
+        .iter()
+        .filter_map(|d| match &d.node {
+            DeclKind::Const(c) => Some(&*c.name),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        consts.contains(&"GLYPH_OF_WARDING_DEF"),
+        "missing GLYPH_OF_WARDING_DEF const"
+    );
 }

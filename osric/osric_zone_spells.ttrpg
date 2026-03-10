@@ -1,7 +1,7 @@
 // ═══════════════════════════════════════════════════════════════
 //  OSRIC Zone Spells
 //
-//  Two zone patterns are covered here:
+//  Three zone patterns are covered here:
 //
 //  Occupant-condition pattern: the host emits ZoneEntered /
 //  ZoneExited events. The DSL applies and removes conditions
@@ -16,6 +16,14 @@
 //  DSL deals damage directly — no conditions needed.
 //    • Wall of Fire          (stationary wall or anchored ring)
 //    • Blade Barrier         (stationary sphere of blades)
+//
+//  Triggered (single-fire) pattern: the host emits ZoneEntered
+//  for only the first qualifying entrant per step. The DSL
+//  handler applies the one-shot effect and deactivates the
+//  zone immediately. The zone.trigger field enables this
+//  short-circuit in the host.
+//    • Glyph of Warding      (damage glyphs: Fire, Lightning,
+//                              Ice, Acid)
 // ═══════════════════════════════════════════════════════════════
 
 use "OSRIC"
@@ -296,6 +304,95 @@ system "OSRIC Zone Spells" {
             if spell_name == "Blade Barrier" {
                 let damage = roll(8d8).total
                 deal_zone_damage(target, zone, damage, DamageType.Slashing)
+            }
+        }
+    }
+
+
+    // ========================================================
+    //  GLYPH OF WARDING
+    //
+    //  Inscribes an invisible ward on a surface. When a
+    //  "forbidden creature" (defined at cast time) enters the
+    //  warded area or performs the triggering action, the glyph
+    //  discharges and the zone deactivates.
+    //
+    //  Damage glyphs (level 3+): 2 hp per caster level of the
+    //  chosen element. Save vs spells for half (modelled by
+    //  the host calling ResistSpell before or after this hook).
+    //
+    //  Higher-level glyphs (Blind, Paralysis, Drain, Petrify,
+    //  Banish) inflict conditions on a failed save. These are
+    //  deferred until the condition infrastructure supports
+    //  zone-triggered application with typed save dispatch.
+    //
+    //  Zone type: triggered zone (trigger = true,
+    //  tracks_occupancy = true, contact_mode = None).
+    //
+    //  The glyph subtype is encoded in the zone source name:
+    //    EffectSource.Spell(name: "Glyph of Warding (Fire)", ...)
+    //  This lets a single hook dispatch on damage type while
+    //  keeping zone creation a host responsibility.
+    // ========================================================
+
+    const GLYPH_OF_WARDING_DEF: SpellDef = SpellDef {
+        name: "Glyph of Warding",
+        class_type: Divine,
+        school: Evocation,
+        level: 3,
+        range: SpellRange.Touch,
+        duration: SpellDuration.Special(description: "Until discharged"),
+        area_of_effect: "Up to 25 sq ft per caster level",
+        components: SpellComponents { material: true },
+        casting_time: CastingTime.Special(description: "1 segment per sq ft"),
+        saving_throw: SpellSave.Half,
+        reversible: false,
+        description: "Inscribes an invisible glyph that discharges when a forbidden creature enters. Damage glyphs deal 2hp per caster level of the chosen element."
+    }
+
+    // Emitted when a glyph discharges, for event tracking.
+    event GlyphDischarged(target: entity, zone: Zone, damage: int) {}
+
+    // Map a glyph source name to its damage type. Returns none
+    // for unrecognised names (non-damage glyphs, future types).
+    function glyph_damage_type(spell_name: string) -> option<DamageType> {
+        if spell_name == "Glyph of Warding (Fire)" { some(DamageType.Fire) }
+        else if spell_name == "Glyph of Warding (Lightning)" { some(DamageType.Lightning) }
+        else if spell_name == "Glyph of Warding (Ice)" { some(DamageType.Cold) }
+        else if spell_name == "Glyph of Warding (Acid)" { some(DamageType.Acid) }
+        else { none }
+    }
+
+    // Triggered zone handler: fires once for the first entrant,
+    // deals damage, emits GlyphDischarged, and despawns the
+    // zone so it cannot fire again.
+    //
+    // Despawn (RemoveEntity) is used rather than setting
+    // zone.active = false because trigger payload bindings are
+    // immutable in the DSL. Despawn is the preferred long-term
+    // cleanup path (see tdsl-i5bf). The host emits ZoneExited
+    // for any remaining occupants before removing the entity.
+    //
+    // The host is responsible for:
+    //  1. Creating the Zone with trigger=true and the correct
+    //     source name (e.g. "Glyph of Warding (Fire)")
+    //  2. Only emitting ZoneEntered for the first qualifying
+    //     entrant per step (trigger short-circuit rule)
+    //  3. Resolving the saving throw (save for half) either
+    //     before this hook (pre-reducing damage) or after
+    //     (halving via ResistSpell on the concrete entity type)
+    hook GlyphOfWardingTriggered on target: entity (
+        trigger: ZoneEntered(target: target)
+    ) {
+        let zone = trigger.zone
+        if zone.trigger {
+            if let EffectSource.Spell(spell_name, cl) = zone.source {
+                if let some(dt) = glyph_damage_type(spell_name) {
+                    let damage = 2 * cl
+                    deal_zone_damage(target, zone, damage, dt)
+                    emit GlyphDischarged(target: target, zone: zone, damage: damage)
+                    despawn(zone)
+                }
             }
         }
     }
