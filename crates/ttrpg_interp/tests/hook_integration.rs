@@ -106,10 +106,10 @@ impl StateProvider for TestState {
     fn read_enabled_options(&self) -> Vec<ttrpg_ast::Name> {
         self.enabled_options.clone()
     }
-    fn position_eq(&self, _a: &Value, _b: &Value) -> bool {
+    fn position_eq(&self, _a: u64, _b: u64) -> bool {
         false
     }
-    fn distance(&self, _a: &Value, _b: &Value) -> Option<i64> {
+    fn distance(&self, _a: u64, _b: u64) -> Option<i64> {
         None
     }
 }

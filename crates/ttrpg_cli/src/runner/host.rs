@@ -305,7 +305,10 @@ impl Runner {
         let entity = self.resolve_handle(handle)?;
 
         // Write the position as a GridPosition value
-        let pos_value = GridPosition(x, y).to_value();
+        let pos_value = self
+            .game_state
+            .borrow_mut()
+            .register_position(GridPosition(x, y));
 
         // Determine which field to set — use "center" for Zone entities,
         // "position" for anything else

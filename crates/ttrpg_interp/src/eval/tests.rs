@@ -3,7 +3,6 @@ use super::control::eval_stmt;
 use super::*;
 use rustc_hash::FxHashMap;
 use std::collections::{BTreeMap, HashMap};
-use std::sync::Arc;
 
 use ttrpg_ast::ast::*;
 use ttrpg_ast::{Name, Span, Spanned};
@@ -76,28 +75,11 @@ impl StateProvider for TestState {
         self.enabled_options.clone()
     }
 
-    fn position_eq(&self, a: &Value, b: &Value) -> bool {
-        // For testing: compare as (i64, i64) grid positions
-        if let (Value::Position(pa), Value::Position(pb)) = (a, b) {
-            if let (Some(a), Some(b)) = (
-                pa.0.downcast_ref::<(i64, i64)>(),
-                pb.0.downcast_ref::<(i64, i64)>(),
-            ) {
-                return a == b;
-            }
-        }
+    fn position_eq(&self, _a: u64, _b: u64) -> bool {
         false
     }
 
-    fn distance(&self, a: &Value, b: &Value) -> Option<i64> {
-        if let (Value::Position(pa), Value::Position(pb)) = (a, b) {
-            if let (Some(a), Some(b)) = (
-                pa.0.downcast_ref::<(i64, i64)>(),
-                pb.0.downcast_ref::<(i64, i64)>(),
-            ) {
-                return Some(std::cmp::max((a.0 - b.0).abs(), (a.1 - b.1).abs()));
-            }
-        }
+    fn distance(&self, _a: u64, _b: u64) -> Option<i64> {
         None
     }
 
@@ -654,9 +636,9 @@ fn eval_equality_position_delegation() {
     let mut handler = ScriptedHandler::new();
     let mut env = make_env(&state, &mut handler, &interp);
 
-    // Two different Arc allocations with same logical position
-    let pos1 = Value::Position(PositionValue(Arc::new((1i64, 2i64))));
-    let pos2 = Value::Position(PositionValue(Arc::new((1i64, 2i64))));
+    // Two different position handles
+    let pos1 = Value::Position(PositionValue(1));
+    let pos2 = Value::Position(PositionValue(2));
 
     env.bind(Name::from("p1"), pos1);
     env.bind(Name::from("p2"), pos2);
@@ -666,8 +648,8 @@ fn eval_equality_position_delegation() {
         lhs: Box::new(spanned(ExprKind::Ident("p1".into()))),
         rhs: Box::new(spanned(ExprKind::Ident("p2".into()))),
     });
-    // TestState's position_eq compares the underlying (i64, i64)
-    assert_eq!(eval_expr(&mut env, &expr).unwrap(), Value::Bool(true));
+    // TestState's position_eq stub returns false
+    assert_eq!(eval_expr(&mut env, &expr).unwrap(), Value::Bool(false));
 }
 
 // ── Logical operator tests ─────────────────────────────────
@@ -1697,12 +1679,13 @@ fn value_eq_float_nan() {
 #[test]
 fn value_eq_position_delegates() {
     let state = TestState::new();
-    let p1 = Value::Position(PositionValue(Arc::new((5i64, 10i64))));
-    let p2 = Value::Position(PositionValue(Arc::new((5i64, 10i64))));
-    assert!(value_eq(&state, &p1, &p2)); // same logical position
+    let p1 = Value::Position(PositionValue(1));
+    let p2 = Value::Position(PositionValue(1));
+    // Same handle → position_eq(1,1) called; stub returns false
+    assert!(!value_eq(&state, &p1, &p2));
 
-    let p3 = Value::Position(PositionValue(Arc::new((5i64, 11i64))));
-    assert!(!value_eq(&state, &p1, &p3)); // different position
+    let p3 = Value::Position(PositionValue(2));
+    assert!(!value_eq(&state, &p1, &p3)); // different handle, stub also returns false
 }
 
 #[test]

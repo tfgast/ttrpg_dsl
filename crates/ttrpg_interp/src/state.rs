@@ -164,13 +164,13 @@ pub trait StateProvider {
     /// Names of currently enabled options.
     fn read_enabled_options(&self) -> Vec<Name>;
 
-    /// Test equality of two opaque Position values.
+    /// Test equality of two opaque position handles.
     /// The interpreter calls this when evaluating `==` or `!=` on Positions.
-    fn position_eq(&self, a: &Value, b: &Value) -> bool;
+    fn position_eq(&self, a: u64, b: u64) -> bool;
 
-    /// Compute the distance between two opaque Position values.
-    /// Returns `None` if the inputs are not valid positions.
-    fn distance(&self, a: &Value, b: &Value) -> Option<i64>;
+    /// Compute the distance between two opaque position handles.
+    /// Returns `None` if a handle is unknown.
+    fn distance(&self, a: u64, b: u64) -> Option<i64>;
 
     /// Read the current game time counter.
     /// Returns `0` by default (no time tracking).
@@ -181,6 +181,12 @@ pub trait StateProvider {
     /// Get the entity's declared type name (e.g. "Character", "Monster").
     /// Returns `None` if unknown. Used by `grant` to resolve group defaults.
     fn entity_type_name(&self, _entity: &EntityRef) -> Option<Name> {
+        None
+    }
+
+    /// Resolve an opaque position handle to its (x, y) coordinates.
+    /// Returns `None` if the handle is unknown.
+    fn resolve_position(&self, _handle: u64) -> Option<(i64, i64)> {
         None
     }
 
@@ -288,11 +294,11 @@ mod tests {
             self.enabled_options.clone()
         }
 
-        fn position_eq(&self, _a: &Value, _b: &Value) -> bool {
+        fn position_eq(&self, _a: u64, _b: u64) -> bool {
             false
         }
 
-        fn distance(&self, _a: &Value, _b: &Value) -> Option<i64> {
+        fn distance(&self, _a: u64, _b: u64) -> Option<i64> {
             None
         }
     }

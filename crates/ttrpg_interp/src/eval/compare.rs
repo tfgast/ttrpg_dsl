@@ -110,7 +110,7 @@ pub(crate) fn value_eq(state: &dyn StateProvider, a: &Value, b: &Value) -> bool 
         }
 
         // Position: delegate to host
-        (Value::Position(_), Value::Position(_)) => state.position_eq(a, b),
+        (Value::Position(pa), Value::Position(pb)) => state.position_eq(pa.0, pb.0),
 
         // Composites: recursive
         (Value::List(a), Value::List(b)) => {

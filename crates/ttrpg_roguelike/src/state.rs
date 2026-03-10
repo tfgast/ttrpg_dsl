@@ -120,7 +120,7 @@ pub fn spawn_creature(
     );
     fields.insert(
         Name::from("position"),
-        GridPosition(pos.0, pos.1).to_value(),
+        state.register_position(GridPosition(pos.0, pos.1)),
     );
     fields.insert(Name::from("HP"), Value::Int(hp));
     fields.insert(Name::from("max_HP"), Value::Int(hp));
@@ -137,20 +137,18 @@ pub fn set_position(state: &mut GameState, entity: &EntityRef, x: i64, y: i64) {
     use ttrpg_interp::effect::FieldPathSegment;
     use ttrpg_interp::state::WritableState;
 
+    let pos_val = state.register_position(GridPosition(x, y));
     state.write_field(
         entity,
         &[FieldPathSegment::Field(Name::from("position"))],
-        GridPosition(x, y).to_value(),
+        pos_val,
     );
 }
 
 /// Read a creature's current position as (x, y).
 pub fn read_position(state: &dyn StateProvider, entity: &EntityRef) -> Option<(i64, i64)> {
     match state.read_field(entity, "position")? {
-        Value::Position(pv) => {
-            let gp = pv.0.downcast_ref::<GridPosition>()?;
-            Some((gp.0, gp.1))
-        }
+        Value::Position(pv) => state.resolve_position(pv.0),
         _ => None,
     }
 }

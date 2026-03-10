@@ -1,7 +1,5 @@
-use std::any::Any;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
-use std::sync::Arc;
 
 use ttrpg_ast::DiceFilter;
 use ttrpg_ast::Name;
@@ -61,49 +59,22 @@ pub struct RollResult {
 
 // ── Position ────────────────────────────────────────────────────
 
-/// An opaque position value owned by the host.
+/// An opaque position handle owned by the host.
 ///
-/// Uses `Arc` so `Value` can derive `Clone`. `Send + Sync` bounds
-/// future-proof for potential multi-threaded host integrations.
+/// The `u64` value is a host-assigned handle — the interpreter never
+/// inspects it, and all position operations (equality, distance) are
+/// delegated to the host via `StateProvider`.
 ///
-/// `Ord` orders by `Arc` pointer (deterministic but arbitrary) — the
-/// checker prevents `Position` in sets/maps, so this is a safety net.
-/// `PartialEq` uses `Arc::ptr_eq` — same allocation means same position.
-/// For cross-object comparison, the evaluator routes through `value_eq()`
+/// `PartialEq`/`Ord`/`Hash` compare by handle value.  The checker
+/// prevents `Position` in sets/maps, so these impls are a safety net.
+/// For runtime equality the evaluator routes through `value_eq()`
 /// which delegates to `StateProvider::position_eq`.
-pub struct PositionValue(pub Arc<dyn Any + Send + Sync>);
-
-impl Clone for PositionValue {
-    fn clone(&self) -> Self {
-        PositionValue(Arc::clone(&self.0))
-    }
-}
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct PositionValue(pub u64);
 
 impl fmt::Debug for PositionValue {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Position({:p})", Arc::as_ptr(&self.0))
-    }
-}
-
-impl PartialEq for PositionValue {
-    fn eq(&self, other: &Self) -> bool {
-        Arc::ptr_eq(&self.0, &other.0)
-    }
-}
-
-impl Eq for PositionValue {}
-
-impl PartialOrd for PositionValue {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl Ord for PositionValue {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        let a = Arc::as_ptr(&self.0).cast::<()>() as usize;
-        let b = Arc::as_ptr(&other.0).cast::<()>() as usize;
-        a.cmp(&b)
+        write!(f, "Position(#{})", self.0)
     }
 }
 
@@ -263,7 +234,7 @@ fn discriminant(v: &Value) -> u8 {
 //
 // Structural equality for BTreeSet/BTreeMap invariants.
 // Float uses `to_bits()` (NaN == NaN, +0 != -0).
-// Position uses `Arc::ptr_eq`.
+// Position compares by handle value.
 //
 // Runtime equality checks use `value_eq()` in eval.rs instead,
 // which gives user-expected semantics (Float: -0.0 == +0.0,
@@ -486,7 +457,7 @@ impl std::hash::Hash for Value {
                 }
             }
             Value::Position(v) => {
-                (Arc::as_ptr(&v.0).cast::<()>() as usize).hash(state);
+                v.0.hash(state);
             }
             Value::Condition { name, args } => {
                 name.hash(state);
@@ -743,15 +714,13 @@ mod tests {
     // ── Position ────────────────────────────────────────────────
 
     #[test]
-    fn position_ptr_eq() {
-        let pos: Arc<dyn Any + Send + Sync> = Arc::new((1i64, 2i64));
-        let v1 = Value::Position(PositionValue(Arc::clone(&pos)));
-        let v2 = Value::Position(PositionValue(Arc::clone(&pos)));
+    fn position_handle_eq() {
+        let v1 = Value::Position(PositionValue(42));
+        let v2 = Value::Position(PositionValue(42));
         assert_eq!(v1, v2);
 
-        let other: Arc<dyn Any + Send + Sync> = Arc::new((1i64, 2i64));
-        let v3 = Value::Position(PositionValue(other));
-        assert_ne!(v1, v3); // different Arc, even if same data
+        let v3 = Value::Position(PositionValue(99));
+        assert_ne!(v1, v3); // different handle
     }
 
     // ── Value in BTreeSet ───────────────────────────────────────
@@ -875,7 +844,6 @@ mod tests {
 
     #[test]
     fn ord_eq_contract_all_variants() {
-        let pos: Arc<dyn Any + Send + Sync> = Arc::new(42i64);
         let expr = DiceExpr::single(1, 20, None, 5);
 
         // Build pairs of (equal, different) for each variant
@@ -931,9 +899,9 @@ mod tests {
                 Value::Entity(EntityRef(2)),
             ),
             (
-                Value::Position(PositionValue(Arc::clone(&pos))),
-                Value::Position(PositionValue(Arc::clone(&pos))),
-                Value::Position(PositionValue(Arc::new(99i64))),
+                Value::Position(PositionValue(42)),
+                Value::Position(PositionValue(42)),
+                Value::Position(PositionValue(99)),
             ),
             (
                 Value::Condition {

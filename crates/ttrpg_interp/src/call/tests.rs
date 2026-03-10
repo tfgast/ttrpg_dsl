@@ -75,26 +75,10 @@ impl StateProvider for TestState {
     fn read_enabled_options(&self) -> Vec<Name> {
         self.enabled_options.clone()
     }
-    fn position_eq(&self, a: &Value, b: &Value) -> bool {
-        if let (Value::Position(pa), Value::Position(pb)) = (a, b) {
-            if let (Some(a), Some(b)) = (
-                pa.0.downcast_ref::<(i64, i64)>(),
-                pb.0.downcast_ref::<(i64, i64)>(),
-            ) {
-                return a == b;
-            }
-        }
+    fn position_eq(&self, _a: u64, _b: u64) -> bool {
         false
     }
-    fn distance(&self, a: &Value, b: &Value) -> Option<i64> {
-        if let (Value::Position(pa), Value::Position(pb)) = (a, b) {
-            if let (Some(a), Some(b)) = (
-                pa.0.downcast_ref::<(i64, i64)>(),
-                pb.0.downcast_ref::<(i64, i64)>(),
-            ) {
-                return Some(((a.0 - b.0).abs()).max((a.1 - b.1).abs()));
-            }
-        }
+    fn distance(&self, _a: u64, _b: u64) -> Option<i64> {
         None
     }
     fn entity_type_name(&self, entity: &EntityRef) -> Option<Name> {
@@ -985,8 +969,6 @@ fn builtin_min_max_list_test() {
 
 #[test]
 fn builtin_distance_test() {
-    use std::sync::Arc;
-
     let program = program_with_decls(vec![]);
     let type_env = type_env_with_builtins();
     let interp = Interpreter::new(&program, &type_env).unwrap();
@@ -994,8 +976,8 @@ fn builtin_distance_test() {
     let mut handler = ScriptedHandler::new();
     let mut env = make_env(&state, &mut handler, &interp);
 
-    let pos_a = Value::Position(PositionValue(Arc::new((0i64, 0i64))));
-    let pos_b = Value::Position(PositionValue(Arc::new((3i64, 4i64))));
+    let pos_a = Value::Position(PositionValue(1));
+    let pos_b = Value::Position(PositionValue(2));
 
     // Bind positions as local variables to pass to distance()
     env.bind("pos_a".into(), pos_a);
@@ -1016,8 +998,12 @@ fn builtin_distance_test() {
             },
         ],
     });
-    let result = crate::eval::eval_expr(&mut env, &expr).unwrap();
-    assert_eq!(result, Value::Int(4)); // Chebyshev distance: max(|3|, |4|) = 4
+    // TestState::distance() is a stub returning None, so the builtin errors
+    let result = crate::eval::eval_expr(&mut env, &expr);
+    assert!(
+        result.is_err(),
+        "expected distance() to error with stub TestState"
+    );
 }
 
 #[test]

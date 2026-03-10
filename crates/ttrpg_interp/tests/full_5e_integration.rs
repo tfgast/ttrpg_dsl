@@ -250,7 +250,7 @@ fn standard_combatants() -> (GameState, EntityRef, EntityRef) {
         None,
     );
 
-    let fighter_pos = GridPosition(0, 0).to_value();
+    let fighter_pos = state.register_position(GridPosition(0, 0));
     let fighter = add_character(
         &mut state,
         "Fighter",
@@ -269,7 +269,7 @@ fn standard_combatants() -> (GameState, EntityRef, EntityRef) {
         longsword,
     );
 
-    let goblin_pos = GridPosition(1, 0).to_value();
+    let goblin_pos = state.register_position(GridPosition(1, 0));
     let goblin = add_character(
         &mut state,
         "Goblin",
@@ -384,6 +384,7 @@ fn apply_resistances_immune() {
         5,
         None,
     );
+    let pos = state.register_position(GridPosition(0, 0));
     let target = add_character(
         &mut state,
         "FireImmune",
@@ -398,7 +399,7 @@ fn apply_resistances_immune() {
         damage_type_set(&["fire"]), // immunities: fire
         damage_type_set(&[]),
         Value::Set(BTreeSet::new()),
-        GridPosition(0, 0).to_value(),
+        pos,
         sword,
     );
 
@@ -433,6 +434,7 @@ fn apply_resistances_resistant() {
         5,
         None,
     );
+    let pos = state.register_position(GridPosition(0, 0));
     let target = add_character(
         &mut state,
         "FireResistant",
@@ -447,7 +449,7 @@ fn apply_resistances_resistant() {
         damage_type_set(&[]),
         damage_type_set(&[]),
         Value::Set(BTreeSet::new()),
-        GridPosition(0, 0).to_value(),
+        pos,
         sword,
     );
 
@@ -483,6 +485,7 @@ fn apply_resistances_vulnerable() {
         5,
         None,
     );
+    let pos = state.register_position(GridPosition(0, 0));
     let target = add_character(
         &mut state,
         "FireVulnerable",
@@ -497,7 +500,7 @@ fn apply_resistances_vulnerable() {
         damage_type_set(&[]),
         damage_type_set(&["fire"]), // vulnerabilities: fire
         Value::Set(BTreeSet::new()),
-        GridPosition(0, 0).to_value(),
+        pos,
         sword,
     );
 
@@ -533,6 +536,7 @@ fn apply_resistances_normal() {
         5,
         None,
     );
+    let pos = state.register_position(GridPosition(0, 0));
     let target = add_character(
         &mut state,
         "Normal",
@@ -547,7 +551,7 @@ fn apply_resistances_normal() {
         damage_type_set(&[]),
         damage_type_set(&[]),
         Value::Set(BTreeSet::new()),
-        GridPosition(0, 0).to_value(),
+        pos,
         sword,
     );
 
@@ -937,7 +941,7 @@ fn attack_action_out_of_range() {
         5,
         None,
     );
-    let fighter_pos = GridPosition(0, 0).to_value();
+    let fighter_pos = state.register_position(GridPosition(0, 0));
     let fighter = add_character(
         &mut state,
         "Fighter",
@@ -955,7 +959,7 @@ fn attack_action_out_of_range() {
         fighter_pos,
         longsword,
     );
-    let goblin_pos = GridPosition(10, 0).to_value(); // distance=10 > range=5
+    let goblin_pos = state.register_position(GridPosition(10, 0)); // distance=10 > range=5
     let goblin = add_character(
         &mut state,
         "Goblin",
@@ -1099,7 +1103,7 @@ fn disengage_action() {
 fn fire_entity_leaves_reach_triggers_opportunity_attack() {
     let (program, result) = setup();
     let interp = Interpreter::new(&program, &result.env).unwrap();
-    let (state, fighter, goblin) = standard_combatants();
+    let (mut state, fighter, goblin) = standard_combatants();
 
     // Fire entity_leaves_reach with reactor=fighter, entity=goblin
     let payload = Value::Struct {
@@ -1108,8 +1112,14 @@ fn fire_entity_leaves_reach_triggers_opportunity_attack() {
             let mut f = BTreeMap::new();
             f.insert("reactor".into(), Value::Entity(fighter));
             f.insert("entity".into(), Value::Entity(goblin));
-            f.insert("from_position".into(), GridPosition(1, 0).to_value());
-            f.insert("to_position".into(), GridPosition(2, 0).to_value());
+            f.insert(
+                "from_position".into(),
+                state.register_position(GridPosition(1, 0)),
+            );
+            f.insert(
+                "to_position".into(),
+                state.register_position(GridPosition(2, 0)),
+            );
             f
         },
     };
@@ -1128,7 +1138,7 @@ fn fire_entity_leaves_reach_triggers_opportunity_attack() {
 fn execute_opportunity_attack_reaction() {
     let (program, result) = setup();
     let interp = Interpreter::new(&program, &result.env).unwrap();
-    let (state, fighter, goblin) = standard_combatants();
+    let (mut state, fighter, goblin) = standard_combatants();
 
     let payload = Value::Struct {
         name: "__event_entity_leaves_reach".into(),
@@ -1136,8 +1146,14 @@ fn execute_opportunity_attack_reaction() {
             let mut f = BTreeMap::new();
             f.insert("reactor".into(), Value::Entity(fighter));
             f.insert("entity".into(), Value::Entity(goblin));
-            f.insert("from_position".into(), GridPosition(1, 0).to_value());
-            f.insert("to_position".into(), GridPosition(2, 0).to_value());
+            f.insert(
+                "from_position".into(),
+                state.register_position(GridPosition(1, 0)),
+            );
+            f.insert(
+                "to_position".into(),
+                state.register_position(GridPosition(2, 0)),
+            );
             f
         },
     };
@@ -1182,7 +1198,7 @@ fn execute_opportunity_attack_reaction() {
 fn fire_entity_leaves_reach_no_match() {
     let (program, result) = setup();
     let interp = Interpreter::new(&program, &result.env).unwrap();
-    let (state, _fighter, goblin) = standard_combatants();
+    let (mut state, _fighter, goblin) = standard_combatants();
 
     // Fire entity_leaves_reach with reactor=goblin but candidate is also goblin
     // The trigger is: trigger: entity_leaves_reach(reactor: reactor)
@@ -1195,8 +1211,14 @@ fn fire_entity_leaves_reach_no_match() {
             let mut f = BTreeMap::new();
             f.insert("reactor".into(), Value::Entity(EntityRef(99))); // doesn't match any candidate
             f.insert("entity".into(), Value::Entity(goblin));
-            f.insert("from_position".into(), GridPosition(1, 0).to_value());
-            f.insert("to_position".into(), GridPosition(2, 0).to_value());
+            f.insert(
+                "from_position".into(),
+                state.register_position(GridPosition(1, 0)),
+            );
+            f.insert(
+                "to_position".into(),
+                state.register_position(GridPosition(2, 0)),
+            );
             f
         },
     };
@@ -1365,7 +1387,7 @@ fn prone_on_target_ranged_disadvantage() {
         5,
         None,
     );
-    let fighter_pos = GridPosition(0, 0).to_value();
+    let fighter_pos = state.register_position(GridPosition(0, 0));
     let fighter = add_character(
         &mut state,
         "Fighter",
@@ -1383,7 +1405,7 @@ fn prone_on_target_ranged_disadvantage() {
         fighter_pos,
         longsword,
     );
-    let goblin_pos = GridPosition(10, 0).to_value(); // distance=10 > 5
+    let goblin_pos = state.register_position(GridPosition(10, 0)); // distance=10 > 5
     let goblin = add_character(
         &mut state,
         "Goblin",
@@ -1524,8 +1546,14 @@ fn disengaging_suppresses_entity_leaves_reach() {
             let mut f = BTreeMap::new();
             f.insert("reactor".into(), Value::Entity(fighter));
             f.insert("entity".into(), Value::Entity(goblin));
-            f.insert("from_position".into(), GridPosition(1, 0).to_value());
-            f.insert("to_position".into(), GridPosition(2, 0).to_value());
+            f.insert(
+                "from_position".into(),
+                state.register_position(GridPosition(1, 0)),
+            );
+            f.insert(
+                "to_position".into(),
+                state.register_position(GridPosition(2, 0)),
+            );
             f
         },
     };
@@ -1544,7 +1572,7 @@ fn disengaging_suppresses_entity_leaves_reach() {
 fn no_disengaging_allows_entity_leaves_reach() {
     let (program, result) = setup();
     let interp = Interpreter::new(&program, &result.env).unwrap();
-    let (state, fighter, goblin) = standard_combatants();
+    let (mut state, fighter, goblin) = standard_combatants();
 
     // No Disengaging condition — reaction should be triggerable
     let payload = Value::Struct {
@@ -1553,8 +1581,14 @@ fn no_disengaging_allows_entity_leaves_reach() {
             let mut f = BTreeMap::new();
             f.insert("reactor".into(), Value::Entity(fighter));
             f.insert("entity".into(), Value::Entity(goblin));
-            f.insert("from_position".into(), GridPosition(1, 0).to_value());
-            f.insert("to_position".into(), GridPosition(2, 0).to_value());
+            f.insert(
+                "from_position".into(),
+                state.register_position(GridPosition(1, 0)),
+            );
+            f.insert(
+                "to_position".into(),
+                state.register_position(GridPosition(2, 0)),
+            );
             f
         },
     };

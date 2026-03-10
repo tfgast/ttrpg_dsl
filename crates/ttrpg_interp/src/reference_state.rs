@@ -1,6 +1,4 @@
-use std::any::Any;
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::sync::Arc;
 
 use rustc_hash::FxHashMap;
 use ttrpg_ast::Name;
@@ -19,13 +17,6 @@ use crate::value::{PositionValue, Value};
 /// movement rules where diagonal movement costs the same as orthogonal.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct GridPosition(pub i64, pub i64);
-
-impl GridPosition {
-    /// Create a `Value::Position` wrapping this grid position.
-    pub fn to_value(self) -> Value {
-        Value::Position(PositionValue(Arc::new(self) as Arc<dyn Any + Send + Sync>))
-    }
-}
 
 // ── EntityState ────────────────────────────────────────────────
 
@@ -50,6 +41,9 @@ pub struct GameState {
     next_condition_id: u64,
     next_invocation_id: u64,
     game_time: u64,
+    /// Maps opaque position handles to grid coordinates.
+    positions: HashMap<u64, GridPosition>,
+    next_position_id: u64,
 }
 
 impl GameState {
@@ -64,7 +58,22 @@ impl GameState {
             next_condition_id: 1,
             next_invocation_id: 1,
             game_time: 0,
+            positions: HashMap::new(),
+            next_position_id: 1,
         }
+    }
+
+    /// Register a grid position and return its opaque handle as a `Value::Position`.
+    pub fn register_position(&mut self, pos: GridPosition) -> Value {
+        let handle = self.next_position_id;
+        self.next_position_id += 1;
+        self.positions.insert(handle, pos);
+        Value::Position(PositionValue(handle))
+    }
+
+    /// Resolve an opaque handle back to its `GridPosition`, if known.
+    pub fn resolve_position(&self, handle: u64) -> Option<GridPosition> {
+        self.positions.get(&handle).copied()
     }
 
     /// Add a new entity with the given name and fields.
@@ -194,33 +203,21 @@ impl StateProvider for GameState {
         opts
     }
 
-    fn position_eq(&self, a: &Value, b: &Value) -> bool {
-        match (a, b) {
-            (Value::Position(pa), Value::Position(pb)) => {
-                let a_grid = pa.0.downcast_ref::<GridPosition>();
-                let b_grid = pb.0.downcast_ref::<GridPosition>();
-                match (a_grid, b_grid) {
-                    (Some(a), Some(b)) => a == b,
-                    _ => false,
-                }
-            }
+    fn position_eq(&self, a: u64, b: u64) -> bool {
+        match (self.positions.get(&a), self.positions.get(&b)) {
+            (Some(a), Some(b)) => a == b,
             _ => false,
         }
     }
 
-    fn distance(&self, a: &Value, b: &Value) -> Option<i64> {
-        match (a, b) {
-            (Value::Position(pa), Value::Position(pb)) => {
-                let a_grid = pa.0.downcast_ref::<GridPosition>()?;
-                let b_grid = pb.0.downcast_ref::<GridPosition>()?;
-                // Chebyshev distance: max(|dx|, |dy|)
-                // Use saturating arithmetic to avoid overflow/panic on extreme coordinates.
-                let dx = a_grid.0.saturating_sub(b_grid.0).saturating_abs();
-                let dy = a_grid.1.saturating_sub(b_grid.1).saturating_abs();
-                Some(dx.max(dy))
-            }
-            _ => None,
-        }
+    fn distance(&self, a: u64, b: u64) -> Option<i64> {
+        let a_grid = self.positions.get(&a)?;
+        let b_grid = self.positions.get(&b)?;
+        // Chebyshev distance: max(|dx|, |dy|)
+        // Use saturating arithmetic to avoid overflow/panic on extreme coordinates.
+        let dx = a_grid.0.saturating_sub(b_grid.0).saturating_abs();
+        let dy = a_grid.1.saturating_sub(b_grid.1).saturating_abs();
+        Some(dx.max(dy))
     }
 
     fn read_game_time(&self) -> u64 {
@@ -233,6 +230,11 @@ impl StateProvider for GameState {
 
     fn all_entities(&self) -> Vec<EntityRef> {
         self.entities.keys().map(|&id| EntityRef(id)).collect()
+    }
+
+    fn resolve_position(&self, handle: u64) -> Option<(i64, i64)> {
+        let gp = self.positions.get(&handle)?;
+        Some((gp.0, gp.1))
     }
 }
 
@@ -667,66 +669,75 @@ mod tests {
 
     // ── GameState: position equality and Chebyshev distance ────
 
+    /// Extract the opaque handle from a `Value::Position`.
+    fn pos_handle(v: &Value) -> u64 {
+        match v {
+            Value::Position(pv) => pv.0,
+            _ => panic!("expected Position value"),
+        }
+    }
+
     #[test]
     fn position_equality_same_coords() {
-        let state = GameState::new();
-        let p1 = GridPosition(3, 4).to_value();
-        let p2 = GridPosition(3, 4).to_value();
-        assert!(state.position_eq(&p1, &p2));
+        let mut state = GameState::new();
+        let p1 = state.register_position(GridPosition(3, 4));
+        let p2 = state.register_position(GridPosition(3, 4));
+        assert!(state.position_eq(pos_handle(&p1), pos_handle(&p2)));
     }
 
     #[test]
     fn position_equality_different_coords() {
-        let state = GameState::new();
-        let p1 = GridPosition(3, 4).to_value();
-        let p2 = GridPosition(5, 4).to_value();
-        assert!(!state.position_eq(&p1, &p2));
+        let mut state = GameState::new();
+        let p1 = state.register_position(GridPosition(3, 4));
+        let p2 = state.register_position(GridPosition(5, 4));
+        assert!(!state.position_eq(pos_handle(&p1), pos_handle(&p2)));
     }
 
     #[test]
-    fn position_equality_non_position_values() {
+    fn position_equality_unknown_handles() {
         let state = GameState::new();
-        assert!(!state.position_eq(&Value::Int(1), &Value::Int(1)));
+        // Unknown handles should not be equal
+        assert!(!state.position_eq(999, 1000));
     }
 
     #[test]
     fn chebyshev_distance_orthogonal() {
-        let state = GameState::new();
-        let p1 = GridPosition(0, 0).to_value();
-        let p2 = GridPosition(3, 0).to_value();
-        assert_eq!(state.distance(&p1, &p2), Some(3));
+        let mut state = GameState::new();
+        let p1 = state.register_position(GridPosition(0, 0));
+        let p2 = state.register_position(GridPosition(3, 0));
+        assert_eq!(state.distance(pos_handle(&p1), pos_handle(&p2)), Some(3));
     }
 
     #[test]
     fn chebyshev_distance_diagonal() {
-        let state = GameState::new();
-        let p1 = GridPosition(0, 0).to_value();
-        let p2 = GridPosition(3, 4).to_value();
+        let mut state = GameState::new();
+        let p1 = state.register_position(GridPosition(0, 0));
+        let p2 = state.register_position(GridPosition(3, 4));
         // max(3, 4) = 4
-        assert_eq!(state.distance(&p1, &p2), Some(4));
+        assert_eq!(state.distance(pos_handle(&p1), pos_handle(&p2)), Some(4));
     }
 
     #[test]
     fn chebyshev_distance_same_point() {
-        let state = GameState::new();
-        let p1 = GridPosition(5, 5).to_value();
-        let p2 = GridPosition(5, 5).to_value();
-        assert_eq!(state.distance(&p1, &p2), Some(0));
+        let mut state = GameState::new();
+        let p1 = state.register_position(GridPosition(5, 5));
+        let p2 = state.register_position(GridPosition(5, 5));
+        assert_eq!(state.distance(pos_handle(&p1), pos_handle(&p2)), Some(0));
     }
 
     #[test]
     fn chebyshev_distance_negative_coords() {
-        let state = GameState::new();
-        let p1 = GridPosition(-2, -3).to_value();
-        let p2 = GridPosition(1, 2).to_value();
+        let mut state = GameState::new();
+        let p1 = state.register_position(GridPosition(-2, -3));
+        let p2 = state.register_position(GridPosition(1, 2));
         // max(|3|, |5|) = 5
-        assert_eq!(state.distance(&p1, &p2), Some(5));
+        assert_eq!(state.distance(pos_handle(&p1), pos_handle(&p2)), Some(5));
     }
 
     #[test]
-    fn distance_non_position_values() {
+    fn distance_unknown_handles() {
         let state = GameState::new();
-        assert_eq!(state.distance(&Value::Int(1), &Value::Int(2)), None);
+        assert_eq!(state.distance(999, 1000), None);
     }
 
     // ── GameState: entity ids are unique ───────────────────────
@@ -827,21 +838,21 @@ mod tests {
 
     #[test]
     fn distance_extreme_coordinates_no_panic() {
-        let state = GameState::new();
-        let p1 = GridPosition(i64::MIN, 0).to_value();
-        let p2 = GridPosition(i64::MAX, 0).to_value();
+        let mut state = GameState::new();
+        let p1 = state.register_position(GridPosition(i64::MIN, 0));
+        let p2 = state.register_position(GridPosition(i64::MAX, 0));
         // Should not panic; saturating arithmetic clamps the result
-        let d = state.distance(&p1, &p2);
+        let d = state.distance(pos_handle(&p1), pos_handle(&p2));
         assert!(d.is_some());
         assert!(d.unwrap() > 0);
     }
 
     #[test]
     fn distance_i64_min_abs_no_panic() {
-        let state = GameState::new();
-        let p1 = GridPosition(i64::MIN, i64::MIN).to_value();
-        let p2 = GridPosition(0, 0).to_value();
-        let d = state.distance(&p1, &p2);
+        let mut state = GameState::new();
+        let p1 = state.register_position(GridPosition(i64::MIN, i64::MIN));
+        let p2 = state.register_position(GridPosition(0, 0));
+        let d = state.distance(pos_handle(&p1), pos_handle(&p2));
         assert!(d.is_some());
     }
 

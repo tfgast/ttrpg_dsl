@@ -368,16 +368,19 @@ fn player_turn(
     // use a ProvisionBudget/ClearBudget hack... Actually, let me
     // use write_field through the adapter's StateProvider path.
     // The adapter auto-applies MutateField effects.
+    let pos_val = adapter.with_state_mut(|state| {
+        use ttrpg_interp::reference_state::GridPosition;
+        state.register_position(GridPosition(nx, ny))
+    });
     adapter.run(handler, |_state, eff| {
         use ttrpg_ast::ast::AssignOp;
         use ttrpg_interp::effect::FieldPathSegment;
-        use ttrpg_interp::reference_state::GridPosition;
 
         eff.handle(ttrpg_interp::effect::Effect::MutateField {
             entity: game.player,
             path: vec![FieldPathSegment::Field(Name::from("position"))],
             op: AssignOp::Eq,
-            value: GridPosition(nx, ny).to_value(),
+            value: pos_val,
             bounds: None,
         });
     });
@@ -461,16 +464,19 @@ fn monster_turns(
             if let Some((nx, ny)) = game.map.astar_next_step((mx, my), (px, py), &blocked) {
                 // Don't move onto the player (attack range handled above)
                 if (nx, ny) != (px, py) {
+                    let pos_val = adapter.with_state_mut(|state| {
+                        use ttrpg_interp::reference_state::GridPosition;
+                        state.register_position(GridPosition(nx, ny))
+                    });
                     adapter.run(handler, |_state, eff| {
                         use ttrpg_ast::ast::AssignOp;
                         use ttrpg_interp::effect::FieldPathSegment;
-                        use ttrpg_interp::reference_state::GridPosition;
 
                         eff.handle(ttrpg_interp::effect::Effect::MutateField {
                             entity: monster,
                             path: vec![FieldPathSegment::Field(Name::from("position"))],
                             op: AssignOp::Eq,
-                            value: GridPosition(nx, ny).to_value(),
+                            value: pos_val,
                             bounds: None,
                         });
                     });

@@ -72,11 +72,11 @@ impl StateProvider for RefCellState<'_> {
         self.0.borrow().read_enabled_options()
     }
 
-    fn position_eq(&self, a: &Value, b: &Value) -> bool {
+    fn position_eq(&self, a: u64, b: u64) -> bool {
         self.0.borrow().position_eq(a, b)
     }
 
-    fn distance(&self, a: &Value, b: &Value) -> Option<i64> {
+    fn distance(&self, a: u64, b: u64) -> Option<i64> {
         self.0.borrow().distance(a, b)
     }
 

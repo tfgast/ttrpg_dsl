@@ -68,6 +68,14 @@ impl<S: WritableState> StateAdapter<S> {
         f(self, &mut handler)
     }
 
+    /// Borrow the inner state mutably for direct manipulation.
+    ///
+    /// Use this when you need `&mut S` outside of an interpreter call,
+    /// e.g. to register positions or apply host-side mutations.
+    pub fn with_state_mut<R>(&self, f: impl FnOnce(&mut S) -> R) -> R {
+        f(&mut self.state.borrow_mut())
+    }
+
     /// Consume the adapter and return the inner state.
     pub fn into_inner(self) -> S {
         self.state.into_inner()
@@ -96,11 +104,11 @@ impl<S: WritableState> StateProvider for StateAdapter<S> {
         self.state.borrow().read_enabled_options()
     }
 
-    fn position_eq(&self, a: &Value, b: &Value) -> bool {
+    fn position_eq(&self, a: u64, b: u64) -> bool {
         self.state.borrow().position_eq(a, b)
     }
 
-    fn distance(&self, a: &Value, b: &Value) -> Option<i64> {
+    fn distance(&self, a: u64, b: u64) -> Option<i64> {
         self.state.borrow().distance(a, b)
     }
 
@@ -114,6 +122,10 @@ impl<S: WritableState> StateProvider for StateAdapter<S> {
 
     fn all_entities(&self) -> Vec<EntityRef> {
         self.state.borrow().all_entities()
+    }
+
+    fn resolve_position(&self, handle: u64) -> Option<(i64, i64)> {
+        self.state.borrow().resolve_position(handle)
     }
 }
 
@@ -738,11 +750,11 @@ mod tests {
             self.enabled_options.clone()
         }
 
-        fn position_eq(&self, _a: &Value, _b: &Value) -> bool {
+        fn position_eq(&self, _a: u64, _b: u64) -> bool {
             false
         }
 
-        fn distance(&self, _a: &Value, _b: &Value) -> Option<i64> {
+        fn distance(&self, _a: u64, _b: u64) -> Option<i64> {
             None
         }
     }

@@ -129,11 +129,13 @@ fn builtin_ceil(args: &[Value], span: Span) -> Result<Value, RuntimeError> {
 /// Delegates to `StateProvider::distance()`.
 fn builtin_distance(env: &Env, args: &[Value], span: Span) -> Result<Value, RuntimeError> {
     match (args.first(), args.get(1)) {
-        (Some(a @ Value::Position(_)), Some(b @ Value::Position(_))) => {
-            env.state.distance(a, b).map(Value::Int).ok_or_else(|| {
+        (Some(Value::Position(pa)), Some(Value::Position(pb))) => env
+            .state
+            .distance(pa.0, pb.0)
+            .map(Value::Int)
+            .ok_or_else(|| {
                 RuntimeError::with_span("distance() received invalid position values", span)
-            })
-        }
+            }),
         (Some(a), Some(b)) => Err(RuntimeError::with_span(
             format!(
                 "distance() expects (Position, Position), got ({}, {})",
@@ -1172,10 +1174,10 @@ mod tests {
         fn read_enabled_options(&self) -> Vec<Name> {
             vec![]
         }
-        fn position_eq(&self, _: &Value, _: &Value) -> bool {
+        fn position_eq(&self, _: u64, _: u64) -> bool {
             false
         }
-        fn distance(&self, _: &Value, _: &Value) -> Option<i64> {
+        fn distance(&self, _: u64, _: u64) -> Option<i64> {
             None
         }
     }
@@ -1319,10 +1321,10 @@ mod tests {
         fn read_enabled_options(&self) -> Vec<Name> {
             vec![]
         }
-        fn position_eq(&self, _: &Value, _: &Value) -> bool {
+        fn position_eq(&self, _: u64, _: u64) -> bool {
             false
         }
-        fn distance(&self, _: &Value, _: &Value) -> Option<i64> {
+        fn distance(&self, _: u64, _: u64) -> Option<i64> {
             None
         }
     }

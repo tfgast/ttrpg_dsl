@@ -110,14 +110,7 @@ pub fn format_value(val: &Value, units: &UnitSuffixes) -> String {
             None => "none".into(),
         },
 
-        Value::Position(ref pv) => {
-            use ttrpg_interp::reference_state::GridPosition;
-            if let Some(gp) = pv.0.downcast_ref::<GridPosition>() {
-                format!("Position({}, {})", gp.0, gp.1)
-            } else {
-                "Position(...)".into()
-            }
-        }
+        Value::Position(pv) => format!("Position(#{})", pv.0),
 
         Value::Condition { name, args } => {
             if args.is_empty() {
