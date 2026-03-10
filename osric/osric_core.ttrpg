@@ -22,6 +22,33 @@ use "OSRIC Inventory"
 
 system "OSRIC" {
 
+    // --- Effect source tracking ---
+    // User-defined EffectSource for condition provenance.
+    // Allows dispel/anti-magic to identify what applied a condition.
+
+    enum EffectSource {
+        Unknown,
+        Spell(name: string, caster_level: int),
+        Item(name: string),
+        Poison(name: string),
+        MonsterAbility(name: string)
+    }
+
+    // --- Condition category tags ---
+    // Static properties of condition types. Used by removal/immunity
+    // effects (e.g. Neutralize Poison targets #poison conditions,
+    // Cure Disease targets #disease conditions).
+
+    tag poison
+    tag disease
+    tag curse
+    tag mental
+    tag physical
+    tag death
+    tag movement
+    tag fear
+    tag insanity
+
     // --- Unit types ---
 
     unit Feet suffix ft { value: int }

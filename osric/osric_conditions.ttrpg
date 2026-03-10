@@ -41,6 +41,7 @@ system "OSRIC Conditions" {
     condition Prone on bearer: entity
         stacking first
     {
+        tags: #physical
         modify [#attack_resolution](target: bearer) {
             attack_mod = attack_mod + 4
         }
@@ -66,6 +67,7 @@ system "OSRIC Conditions" {
     condition Stunned on bearer: entity
         stacking first
     {
+        tags: #physical
         modify [#attack_resolution](target: bearer) {
             attack_mod = attack_mod + 4
         }
@@ -89,6 +91,7 @@ system "OSRIC Conditions" {
     condition Staggered on bearer: entity
         stacking first
     {
+        tags: #physical
         modify [#attack_resolution](target: bearer) {
             attack_mod = attack_mod + 2
         }
@@ -135,6 +138,7 @@ system "OSRIC Conditions" {
     condition Paralyzed on bearer: entity
         stacking first
     {
+        tags: #physical
         modify [#attack_resolution](target: bearer) {
             roll_mode = RollMode.AutoHit
             max_damage = true
@@ -192,6 +196,7 @@ system "OSRIC Conditions" {
     condition Sleeping on bearer: entity
         stacking first
     {
+        tags: #mental
         modify [#attack_resolution](target: bearer) {
             roll_mode = RollMode.AutoHit
             max_damage = true
@@ -219,6 +224,7 @@ system "OSRIC Conditions" {
     condition Fleeing on bearer: entity
         stacking first
     {
+        tags: #fear
         modify resolve_melee_attack(target: bearer) {
             attack_mod = attack_mod + 4
         }
@@ -350,6 +356,7 @@ system "OSRIC Conditions" {
     condition Unconscious on bearer: entity
         stacking first
     {
+        tags: #death
         modify [#attack_resolution](target: bearer) {
             roll_mode = RollMode.AutoHit
             max_damage = true
@@ -396,6 +403,7 @@ system "OSRIC Conditions" {
     condition Dead on bearer: entity
         stacking first
     {
+        tags: #death
         modify [#attack_resolution](attacker: bearer) {
             result.outcome = AttackOutcome.Miss
             result.damage = 0
@@ -428,6 +436,7 @@ system "OSRIC Conditions" {
     condition Coma on bearer: entity
         stacking first
     {
+        tags: #death
         modify [#attack_resolution](attacker: bearer) {
             result.outcome = AttackOutcome.Miss
             result.damage = 0
@@ -446,6 +455,7 @@ system "OSRIC Conditions" {
     condition Blinded on bearer: entity
         stacking first
     {
+        tags: #physical
         modify [#attack_resolution](attacker: bearer) {
             attack_mod = attack_mod - 4
         }
@@ -467,7 +477,9 @@ system "OSRIC Conditions" {
 
     condition Confused on bearer: entity
         stacking first
-    {}
+    {
+        tags: #mental
+    }
 
 
     // ========================================================
@@ -521,6 +533,7 @@ system "OSRIC Conditions" {
         is_controlling: bool,
         hold_roll: int
     ) on bearer: entity {
+        tags: #physical
         // Suppress spellcasting while grappled (§1.6.10.7).
         modify [#spellcasting_gate](caster: bearer) {
             result = false
@@ -543,7 +556,9 @@ system "OSRIC Conditions" {
 
     condition Overborne on bearer: entity
         stacking first
-    {}
+    {
+        tags: #physical
+    }
 
 
     // ========================================================
@@ -619,6 +634,7 @@ system "OSRIC Conditions" {
     // ========================================================
 
     condition EncumbranceState(tier: EncumbranceTier) on bearer: Character {
+        tags: #movement
         modify character_movement(character: bearer) {
             let numerator = encumbrance_movement_numerator(tier)
             result = result * numerator div 4

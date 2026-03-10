@@ -528,21 +528,24 @@ system "OSRIC Scrolls" {
     function resolve_acid_warding(reader: Character) {
         let def = warding_def(WardingType.AcidWarding)
         let duration = roll_warding_duration(WardingType.AcidWarding)
-        apply_condition(reader, ScrollAcidWarding, Duration.Rounds(duration))
+        let source = EffectSource.Item(name: def.name)
+        apply_condition(reader, ScrollAcidWarding, Duration.Rounds(duration), source)
         emit WardingActivated(reader: reader, warding_type: def.name, duration_rounds: duration)
     }
 
     function resolve_demon_warding(reader: Character) {
         let def = warding_def(WardingType.DemonWarding)
         let duration = roll_warding_duration(WardingType.DemonWarding)
-        apply_condition(reader, ScrollDemonWarding, Duration.Rounds(duration))
+        let source = EffectSource.Item(name: def.name)
+        apply_condition(reader, ScrollDemonWarding, Duration.Rounds(duration), source)
         emit WardingActivated(reader: reader, warding_type: def.name, duration_rounds: duration)
     }
 
     function resolve_devil_warding(reader: Character) {
         let def = warding_def(WardingType.DevilWarding)
         let duration = roll_warding_duration(WardingType.DevilWarding)
-        apply_condition(reader, ScrollDevilWarding, Duration.Rounds(duration))
+        let source = EffectSource.Item(name: def.name)
+        apply_condition(reader, ScrollDevilWarding, Duration.Rounds(duration), source)
         emit WardingActivated(reader: reader, warding_type: def.name, duration_rounds: duration)
     }
 
@@ -550,50 +553,57 @@ system "OSRIC Scrolls" {
         let def = warding_def(WardingType.ElementalWarding)
         let duration = roll_warding_duration(WardingType.ElementalWarding)
         let hd_cap = elemental_ward_hd_capacity(ward_type)
-        apply_condition(reader, ScrollElementalWarding(ward_type: ward_type, hd_capacity: hd_cap), Duration.Rounds(duration))
+        let source = EffectSource.Item(name: def.name)
+        apply_condition(reader, ScrollElementalWarding(ward_type: ward_type, hd_capacity: hd_cap), Duration.Rounds(duration), source)
         emit WardingActivated(reader: reader, warding_type: def.name, duration_rounds: duration)
     }
 
     function resolve_lycanthrope_warding(reader: Character, ward_type: LycanthropeWardType) {
         let def = warding_def(WardingType.LycanthropeWarding)
         let duration = roll_warding_duration(WardingType.LycanthropeWarding)
-        apply_condition(reader, ScrollLycanthropeWarding(ward_type: ward_type), Duration.Rounds(duration))
+        let source = EffectSource.Item(name: def.name)
+        apply_condition(reader, ScrollLycanthropeWarding(ward_type: ward_type), Duration.Rounds(duration), source)
         emit WardingActivated(reader: reader, warding_type: def.name, duration_rounds: duration)
     }
 
     function resolve_magic_warding(reader: Character) {
         let def = warding_def(WardingType.MagicWarding)
         let duration = roll_warding_duration(WardingType.MagicWarding)
-        apply_condition(reader, ScrollMagicWarding, Duration.Rounds(duration))
+        let source = EffectSource.Item(name: def.name)
+        apply_condition(reader, ScrollMagicWarding, Duration.Rounds(duration), source)
         emit WardingActivated(reader: reader, warding_type: def.name, duration_rounds: duration)
     }
 
     function resolve_petrifaction_warding(reader: Character) {
         let def = warding_def(WardingType.PetrifactionWarding)
         let duration = roll_warding_duration(WardingType.PetrifactionWarding)
-        apply_condition(reader, ScrollPetrifactionWarding, Duration.Rounds(duration))
+        let source = EffectSource.Item(name: def.name)
+        apply_condition(reader, ScrollPetrifactionWarding, Duration.Rounds(duration), source)
         emit WardingActivated(reader: reader, warding_type: def.name, duration_rounds: duration)
     }
 
     function resolve_polymorph_warding(reader: Character) {
         let def = warding_def(WardingType.PolymorphWarding)
+        let source = EffectSource.Item(name: def.name)
         // Duration is 6 full turns (not rounds), per §2.13.3.2
-        apply_condition(reader, ScrollPolymorphWarding, Duration.Turns(6))
+        apply_condition(reader, ScrollPolymorphWarding, Duration.Turns(6), source)
         emit WardingActivated(reader: reader, warding_type: def.name, duration_rounds: 60)
     }
 
     function resolve_possession_warding(reader: Character) {
         let def = warding_def(WardingType.PossessionWarding)
         let duration = roll_warding_duration(WardingType.PossessionWarding)
-        apply_condition(reader, ScrollPossessionWarding, Duration.Rounds(duration))
+        let source = EffectSource.Item(name: def.name)
+        apply_condition(reader, ScrollPossessionWarding, Duration.Rounds(duration), source)
         emit WardingActivated(reader: reader, warding_type: def.name, duration_rounds: duration)
     }
 
     function resolve_undead_warding(reader: Character) {
         let def = warding_def(WardingType.UndeadWarding)
         let duration = roll_warding_duration(WardingType.UndeadWarding)
+        let source = EffectSource.Item(name: def.name)
         // Wards off 35 HD of undead
-        apply_condition(reader, ScrollUndeadWarding(hd_warded: 35), Duration.Rounds(duration))
+        apply_condition(reader, ScrollUndeadWarding(hd_warded: 35), Duration.Rounds(duration), source)
         emit WardingActivated(reader: reader, warding_type: def.name, duration_rounds: duration)
     }
 

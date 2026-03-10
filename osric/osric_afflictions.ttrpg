@@ -53,11 +53,15 @@ system "OSRIC Afflictions" {
 
     // Poisoned condition: marker for active poison.
     // Removed by neutralize poison or after slow poison expires.
-    condition Poisoned(poison_type: PoisonType, save_modifier: int) on bearer: entity {}
+    condition Poisoned(poison_type: PoisonType, save_modifier: int) on bearer: entity {
+        tags: #poison
+    }
 
     // SlowPoisoned: lethal poison delayed by slow poison spell.
     // The cleric_level tracks the caster's level (window in turns).
-    condition SlowPoisoned(cleric_level: int) on bearer: entity {}
+    condition SlowPoisoned(cleric_level: int) on bearer: entity {
+        tags: #poison
+    }
 
     // Apply poison using pre-computed saves. Works for both
     // Characters (via character_best_saves) and Monsters
@@ -141,6 +145,7 @@ system "OSRIC Afflictions" {
         is_fatal: bool,
         source: DiseaseSource
     ) on bearer: entity {
+        tags: #disease
         modify [#attack_resolution](attacker: bearer) {
             attack_mod = attack_mod - roll_penalty
         }
@@ -261,7 +266,9 @@ system "OSRIC Afflictions" {
         int_loss: int,
         wis_loss: int,
         cha_loss: int
-    ) on bearer: entity {}
+    ) on bearer: entity {
+        tags: #insanity, #mental
+    }
 
     mechanic roll_ability_decline() -> AbilityDeclineResult {
         AbilityDeclineResult {
@@ -276,7 +283,9 @@ system "OSRIC Afflictions" {
     // 50% chance each morning to forget weapon proficiency.
     // Marker condition; checks resolved by caller.
 
-    condition InsaneAmnesia on bearer: entity {}
+    condition InsaneAmnesia on bearer: entity {
+        tags: #insanity, #mental
+    }
 
     // Check if amnesia causes spell failure (50% chance).
     mechanic amnesia_spell_check() -> bool {
@@ -294,7 +303,9 @@ system "OSRIC Afflictions" {
 
     condition InsaneDivergentPersonality(
         alt_alignment: Alignment
-    ) on bearer: entity {}
+    ) on bearer: entity {
+        tags: #insanity, #mental
+    }
 
     // Check if personality switches (25% chance).
     mechanic divergent_personality_check() -> bool {
@@ -304,7 +315,9 @@ system "OSRIC Afflictions" {
     // --- Disinterest (Insanity 4) ---
     // 25% chance at start of action to do nothing unless attacked.
 
-    condition InsaneDisinterest on bearer: entity {}
+    condition InsaneDisinterest on bearer: entity {
+        tags: #insanity, #mental
+    }
 
     // Check if disinterest prevents action (25% chance).
     mechanic disinterest_check() -> bool {
@@ -314,7 +327,9 @@ system "OSRIC Afflictions" {
     // --- Pathological Liar (Insanity 5) ---
     // Compulsive lies. Pure roleplay marker — no mechanical effect.
 
-    condition InsanePathologicalLiar on bearer: entity {}
+    condition InsanePathologicalLiar on bearer: entity {
+        tags: #insanity, #mental
+    }
 
     // --- Phobia (Insanity 6) ---
     // 25% confusion when forced into contact with feared thing.
@@ -333,7 +348,9 @@ system "OSRIC Afflictions" {
         BooksAndScrolls
     }
 
-    condition InsanePhobia(feared: PhobiaObject) on bearer: entity {}
+    condition InsanePhobia(feared: PhobiaObject) on bearer: entity {
+        tags: #insanity, #mental
+    }
 
     // Roll a random phobia object (d10).
     mechanic roll_phobia_object() -> PhobiaObject {

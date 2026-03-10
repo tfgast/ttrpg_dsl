@@ -821,10 +821,11 @@ system "OSRIC Spells" {
         targets: list<entity>,
         spell_name: string,
         cond: Condition,
-        duration: Duration
+        duration: Duration,
+        source: EffectSource = EffectSource.Unknown
     ) {
         for target in targets {
-            apply_condition(target, cond, duration)
+            apply_condition(target, cond, duration, source)
             emit SpellApplied(caster: caster, target: target, spell_name: spell_name)
         }
     }
@@ -837,13 +838,14 @@ system "OSRIC Spells" {
         targets: list<entity>,
         spell_name: string,
         cond: Condition,
-        duration: Duration
+        duration: Duration,
+        source: EffectSource = EffectSource.Unknown
     ) {
         for target in targets {
             let result = target.ResistSpell(category: some(SpellsUnlisted))
             if let some(saved) = result {
                 if !saved {
-                    apply_condition(target, cond, duration)
+                    apply_condition(target, cond, duration, source)
                     emit SpellApplied(caster: caster, target: target, spell_name: spell_name)
                 }
             }

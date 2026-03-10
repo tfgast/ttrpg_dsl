@@ -293,7 +293,8 @@ system "OSRIC Potions" {
 
     function resolve_potion_animal_control(drinker: Character) {
         let duration_turns = roll(1d4).total
-        apply_condition(drinker, PotionAnimalControl, Duration.Turns(duration_turns))
+        let source = EffectSource.Item(name: "Potion of Animal Control")
+        apply_condition(drinker, PotionAnimalControl, Duration.Turns(duration_turns), source)
         emit PotionEffectApplied(drinker: drinker, potion_name: "Potion of Animal Control")
     }
 
@@ -302,7 +303,8 @@ system "OSRIC Potions" {
     {}
 
     function resolve_potion_clairaudience(drinker: Character) {
-        apply_condition(drinker, PotionClairaudience, Duration.Turns(2))
+        let source = EffectSource.Item(name: "Potion of Clairaudience")
+        apply_condition(drinker, PotionClairaudience, Duration.Turns(2), source)
         emit PotionEffectApplied(drinker: drinker, potion_name: "Potion of Clairaudience")
     }
 
@@ -311,7 +313,8 @@ system "OSRIC Potions" {
     {}
 
     function resolve_potion_clairvoyance(drinker: Character) {
-        apply_condition(drinker, PotionClairvoyance, Duration.Turns(1))
+        let source = EffectSource.Item(name: "Potion of Clairvoyance")
+        apply_condition(drinker, PotionClairvoyance, Duration.Turns(1), source)
         emit PotionEffectApplied(drinker: drinker, potion_name: "Potion of Clairvoyance")
     }
 
@@ -320,7 +323,8 @@ system "OSRIC Potions" {
     {}
 
     function resolve_cursed_potion(drinker: Character) {
-        apply_condition(drinker, PotionCursed, Duration.Indefinite)
+        let source = EffectSource.Item(name: "Cursed Potion")
+        apply_condition(drinker, PotionCursed, Duration.Indefinite, source)
         emit PotionEffectApplied(drinker: drinker, potion_name: "Cursed Potion")
     }
 
@@ -329,7 +333,8 @@ system "OSRIC Potions" {
     {}
 
     function resolve_potion_delusion(drinker: Character) {
-        apply_condition(drinker, PotionDelusion, Duration.Indefinite)
+        let source = EffectSource.Item(name: "Potion of Delusion")
+        apply_condition(drinker, PotionDelusion, Duration.Indefinite, source)
         emit PotionEffectApplied(drinker: drinker, potion_name: "Potion of Delusion")
     }
 
@@ -339,7 +344,8 @@ system "OSRIC Potions" {
 
     function resolve_potion_dragon_control(drinker: Character) {
         let duration_rounds = roll(5d4).total
-        apply_condition(drinker, PotionDragonControl, Duration.Rounds(duration_rounds))
+        let source = EffectSource.Item(name: "Potion of Dragon Control")
+        apply_condition(drinker, PotionDragonControl, Duration.Rounds(duration_rounds), source)
         emit PotionEffectApplied(drinker: drinker, potion_name: "Potion of Dragon Control")
     }
 
@@ -349,7 +355,8 @@ system "OSRIC Potions" {
 
     function resolve_potion_giant_control(drinker: Character) {
         let duration_rounds = roll(5d6).total
-        apply_condition(drinker, PotionGiantControl, Duration.Rounds(duration_rounds))
+        let source = EffectSource.Item(name: "Potion of Giant Control")
+        apply_condition(drinker, PotionGiantControl, Duration.Rounds(duration_rounds), source)
         emit PotionEffectApplied(drinker: drinker, potion_name: "Potion of Giant Control")
     }
 
@@ -359,7 +366,8 @@ system "OSRIC Potions" {
 
     function resolve_potion_human_control(drinker: Character) {
         let duration_rounds = roll(5d6).total
-        apply_condition(drinker, PotionHumanControl, Duration.Rounds(duration_rounds))
+        let source = EffectSource.Item(name: "Potion of Human Control")
+        apply_condition(drinker, PotionHumanControl, Duration.Rounds(duration_rounds), source)
         emit PotionEffectApplied(drinker: drinker, potion_name: "Potion of Human Control")
     }
 
@@ -369,7 +377,8 @@ system "OSRIC Potions" {
 
     function resolve_potion_longevity(drinker: Character) {
         let years = roll(1d12).total
-        apply_condition(drinker, PotionLongevity(years_younger: years), Duration.Indefinite)
+        let source = EffectSource.Item(name: "Potion of Longevity")
+        apply_condition(drinker, PotionLongevity(years_younger: years), Duration.Indefinite, source)
         emit PotionEffectApplied(drinker: drinker, potion_name: "Potion of Longevity")
     }
 
@@ -379,8 +388,9 @@ system "OSRIC Potions" {
 
     function resolve_oil_of_etherealness(drinker: Character) {
         let duration_turns = roll(1d4 + 4).total
-        apply_condition(drinker, PotionOilOfEtherealness, Duration.Turns(duration_turns))
-        apply_condition(drinker, Invisible, Duration.Turns(duration_turns))
+        let source = EffectSource.Item(name: "Oil of Etherealness")
+        apply_condition(drinker, PotionOilOfEtherealness, Duration.Turns(duration_turns), source)
+        apply_condition(drinker, Invisible, Duration.Turns(duration_turns), source)
         emit PotionEffectApplied(drinker: drinker, potion_name: "Oil of Etherealness")
     }
 
@@ -389,7 +399,8 @@ system "OSRIC Potions" {
     {}
 
     function resolve_oil_of_slipperiness(drinker: Character) {
-        apply_condition(drinker, PotionOilOfSlipperiness, Duration.Turns(48))
+        let source = EffectSource.Item(name: "Oil of Slipperiness")
+        apply_condition(drinker, PotionOilOfSlipperiness, Duration.Turns(48), source)
         emit PotionEffectApplied(drinker: drinker, potion_name: "Oil of Slipperiness")
     }
 
@@ -399,7 +410,8 @@ system "OSRIC Potions" {
 
     function resolve_philtre_of_love(drinker: Character) {
         let duration_turns = 4 + roll(1d4).total
-        apply_condition(drinker, PotionPhiltreOfLove, Duration.Turns(duration_turns))
+        let source = EffectSource.Item(name: "Philtre of Love")
+        apply_condition(drinker, PotionPhiltreOfLove, Duration.Turns(duration_turns), source)
         emit PotionEffectApplied(drinker: drinker, potion_name: "Philtre of Love")
     }
 
@@ -409,7 +421,8 @@ system "OSRIC Potions" {
 
     function resolve_philtre_of_persuasiveness(drinker: Character) {
         let duration_turns = roll(1d4).total
-        apply_condition(drinker, PotionPhiltreOfPersuasiveness(reaction_bonus_pct: 25), Duration.Turns(duration_turns))
+        let source = EffectSource.Item(name: "Philtre of Persuasiveness")
+        apply_condition(drinker, PotionPhiltreOfPersuasiveness(reaction_bonus_pct: 25), Duration.Turns(duration_turns), source)
         emit PotionEffectApplied(drinker: drinker, potion_name: "Philtre of Persuasiveness")
     }
 
@@ -419,7 +432,8 @@ system "OSRIC Potions" {
 
     function resolve_potion_plant_control(drinker: Character) {
         let duration_rounds = roll(5d4).total
-        apply_condition(drinker, PotionPlantControl, Duration.Rounds(duration_rounds))
+        let source = EffectSource.Item(name: "Potion of Plant Control")
+        apply_condition(drinker, PotionPlantControl, Duration.Rounds(duration_rounds), source)
         emit PotionEffectApplied(drinker: drinker, potion_name: "Potion of Plant Control")
     }
 
@@ -429,7 +443,8 @@ system "OSRIC Potions" {
 
     function resolve_potion_polymorph(drinker: Character) {
         let duration_turns = roll(1d4).total
-        apply_condition(drinker, PotionPolymorph, Duration.Turns(duration_turns))
+        let source = EffectSource.Item(name: "Potion of Polymorph")
+        apply_condition(drinker, PotionPolymorph, Duration.Turns(duration_turns), source)
         emit PotionEffectApplied(drinker: drinker, potion_name: "Potion of Polymorph")
     }
 
@@ -439,7 +454,8 @@ system "OSRIC Potions" {
 
     function resolve_potion_sweet_water(drinker: Character) {
         let preservation_rounds = roll(5d4).total
-        apply_condition(drinker, PotionSweetWater(preservation_rounds: preservation_rounds), Duration.Indefinite)
+        let source = EffectSource.Item(name: "Potion of Sweet Water")
+        apply_condition(drinker, PotionSweetWater(preservation_rounds: preservation_rounds), Duration.Indefinite, source)
         emit PotionEffectApplied(drinker: drinker, potion_name: "Potion of Sweet Water")
     }
 
@@ -449,7 +465,8 @@ system "OSRIC Potions" {
 
     function resolve_potion_treasure_finding(drinker: Character) {
         let duration_rounds = roll(5d4).total
-        apply_condition(drinker, PotionTreasureFinding, Duration.Rounds(duration_rounds))
+        let source = EffectSource.Item(name: "Potion of Treasure Finding")
+        apply_condition(drinker, PotionTreasureFinding, Duration.Rounds(duration_rounds), source)
         emit PotionEffectApplied(drinker: drinker, potion_name: "Potion of Treasure Finding")
     }
 
@@ -459,7 +476,8 @@ system "OSRIC Potions" {
 
     function resolve_potion_undead_control(drinker: Character) {
         let duration_rounds = roll(5d4).total
-        apply_condition(drinker, PotionUndeadControl, Duration.Rounds(duration_rounds))
+        let source = EffectSource.Item(name: "Potion of Undead Control")
+        apply_condition(drinker, PotionUndeadControl, Duration.Rounds(duration_rounds), source)
         emit PotionEffectApplied(drinker: drinker, potion_name: "Potion of Undead Control")
     }
 
@@ -483,7 +501,8 @@ system "OSRIC Potions" {
 
     function resolve_potion_speed(drinker: Character) {
         let duration_rounds = roll(5d4).total
-        apply_condition(drinker, PotionSpeed, Duration.Rounds(duration_rounds))
+        let source = EffectSource.Item(name: "Potion of Speed")
+        apply_condition(drinker, PotionSpeed, Duration.Rounds(duration_rounds), source)
         emit PotionEffectApplied(drinker: drinker, potion_name: "Potion of Speed")
     }
 
@@ -505,10 +524,11 @@ system "OSRIC Potions" {
     {}
 
     function resolve_potion_fire_resistance(drinker: Character, half_dose: bool) {
+        let source = EffectSource.Item(name: "Potion of Fire Resistance")
         if half_dose {
-            apply_condition(drinker, PotionFireResistance(damage_reduction: 1, save_bonus: 2), Duration.Rounds(5))
+            apply_condition(drinker, PotionFireResistance(damage_reduction: 1, save_bonus: 2), Duration.Rounds(5), source)
         } else {
-            apply_condition(drinker, PotionFireResistance(damage_reduction: 2, save_bonus: 4), Duration.Rounds(10))
+            apply_condition(drinker, PotionFireResistance(damage_reduction: 2, save_bonus: 4), Duration.Rounds(10), source)
         }
         emit PotionEffectApplied(drinker: drinker, potion_name: "Potion of Fire Resistance")
     }
@@ -561,7 +581,8 @@ system "OSRIC Potions" {
     {}
 
     function resolve_potion_giant_strength(drinker: Character, giant_type: GiantStrengthType) {
-        apply_condition(drinker, PotionGiantStrength(giant_type: giant_type), Duration.Rounds(10))
+        let source = EffectSource.Item(name: "Potion of Giant Strength")
+        apply_condition(drinker, PotionGiantStrength(giant_type: giant_type), Duration.Rounds(10), source)
         emit PotionEffectApplied(drinker: drinker, potion_name: "Potion of Giant Strength")
     }
 
@@ -609,7 +630,8 @@ system "OSRIC Potions" {
         if bonus > 0 {
             let temp_hp = heroism_temp_hp(bonus)
             let _actual = heal_damage(drinker, temp_hp)
-            apply_condition(drinker, PotionHeroism(bonus_levels: bonus, bonus_hp: temp_hp), Duration.Rounds(40))
+            let source = EffectSource.Item(name: "Potion of Heroism")
+            apply_condition(drinker, PotionHeroism(bonus_levels: bonus, bonus_hp: temp_hp), Duration.Rounds(40), source)
             emit PotionEffectApplied(drinker: drinker, potion_name: "Potion of Heroism")
         }
     }
@@ -661,7 +683,8 @@ system "OSRIC Potions" {
             let temp_hp = super_heroism_temp_hp(bonus)
             let _actual = heal_damage(drinker, temp_hp)
             let duration_rounds = roll(5d6).total
-            apply_condition(drinker, PotionSuperHeroism(bonus_levels: bonus, bonus_hp: temp_hp), Duration.Rounds(duration_rounds))
+            let source = EffectSource.Item(name: "Potion of Super-Heroism")
+            apply_condition(drinker, PotionSuperHeroism(bonus_levels: bonus, bonus_hp: temp_hp), Duration.Rounds(duration_rounds), source)
             emit PotionEffectApplied(drinker: drinker, potion_name: "Potion of Super-Heroism")
         }
     }
@@ -678,13 +701,15 @@ system "OSRIC Potions" {
     // ========================================================
 
     function resolve_potion_invisibility(drinker: Character) {
-        apply_condition(drinker, Invisible, Duration.Indefinite)
+        let source = EffectSource.Item(name: "Potion of Invisibility")
+        apply_condition(drinker, Invisible, Duration.Indefinite, source)
         emit PotionEffectApplied(drinker: drinker, potion_name: "Potion of Invisibility")
     }
 
     function resolve_potion_invisibility_dose(drinker: Character) {
         let duration_turns = roll(1d4 + 2).total
-        apply_condition(drinker, Invisible, Duration.Turns(duration_turns))
+        let source = EffectSource.Item(name: "Potion of Invisibility")
+        apply_condition(drinker, Invisible, Duration.Turns(duration_turns), source)
         emit PotionEffectApplied(drinker: drinker, potion_name: "Potion of Invisibility (dose)")
     }
 
@@ -719,8 +744,9 @@ system "OSRIC Potions" {
 
     function resolve_potion_invulnerability(drinker: Character) {
         let duration_rounds = roll(3d6 + 2).total
-        apply_condition(drinker, ImmuneToNormalWeapons, Duration.Rounds(duration_rounds))
-        apply_condition(drinker, PotionInvulnerability(save_bonus: 2), Duration.Rounds(duration_rounds))
+        let source = EffectSource.Item(name: "Potion of Invulnerability")
+        apply_condition(drinker, ImmuneToNormalWeapons, Duration.Rounds(duration_rounds), source)
+        apply_condition(drinker, PotionInvulnerability(save_bonus: 2), Duration.Rounds(duration_rounds), source)
         emit PotionEffectApplied(drinker: drinker, potion_name: "Potion of Invulnerability")
     }
 
@@ -739,7 +765,8 @@ system "OSRIC Potions" {
 
     function resolve_potion_flying(drinker: Character) {
         let duration_turns = roll(1d4).total
-        apply_condition(drinker, PotionFlying, Duration.Turns(duration_turns))
+        let source = EffectSource.Item(name: "Potion of Flying")
+        apply_condition(drinker, PotionFlying, Duration.Turns(duration_turns), source)
         emit PotionEffectApplied(drinker: drinker, potion_name: "Potion of Flying")
     }
 
@@ -757,7 +784,8 @@ system "OSRIC Potions" {
 
     function resolve_potion_levitation(drinker: Character) {
         let duration_turns = roll(1d4).total
-        apply_condition(drinker, PotionLevitation, Duration.Turns(duration_turns))
+        let source = EffectSource.Item(name: "Potion of Levitation")
+        apply_condition(drinker, PotionLevitation, Duration.Turns(duration_turns), source)
         emit PotionEffectApplied(drinker: drinker, potion_name: "Potion of Levitation")
     }
 
@@ -779,7 +807,8 @@ system "OSRIC Potions" {
         // quarters: 1-4 (1 quarter = 6ft, full dose = 24ft)
         let feet_growth = quarters * 6
         let duration_turns = roll(1d4 + 7).total
-        apply_condition(drinker, PotionGrowth(additional_feet: feet_growth), Duration.Turns(duration_turns))
+        let source = EffectSource.Item(name: "Potion of Growth")
+        apply_condition(drinker, PotionGrowth(additional_feet: feet_growth), Duration.Turns(duration_turns), source)
         emit PotionEffectApplied(drinker: drinker, potion_name: "Potion of Growth")
     }
 
@@ -800,7 +829,8 @@ system "OSRIC Potions" {
         // 1 hour ≈ 60 rounds + 1d10 rounds
         let extra_rounds = roll(1d10).total
         let total_rounds = 60 + extra_rounds
-        apply_condition(drinker, PotionWaterBreathing, Duration.Rounds(total_rounds))
+        let source = EffectSource.Item(name: "Potion of Water Breathing")
+        apply_condition(drinker, PotionWaterBreathing, Duration.Rounds(total_rounds), source)
         emit PotionEffectApplied(drinker: drinker, potion_name: "Potion of Water Breathing")
     }
 
@@ -825,7 +855,8 @@ system "OSRIC Potions" {
 
     function resolve_potion_gaseous_form(drinker: Character) {
         let duration_turns = roll(1d4).total
-        apply_condition(drinker, PotionGaseousForm, Duration.Turns(duration_turns))
+        let source = EffectSource.Item(name: "Potion of Gaseous Form")
+        apply_condition(drinker, PotionGaseousForm, Duration.Turns(duration_turns), source)
         emit PotionEffectApplied(drinker: drinker, potion_name: "Potion of Gaseous Form")
     }
 
@@ -844,7 +875,8 @@ system "OSRIC Potions" {
     function resolve_potion_diminution(drinker: Character, half_dose: bool) {
         let scale = if half_dose { 50 } else { 5 }
         let duration_turns = roll(1d4 + 7).total
-        apply_condition(drinker, PotionDiminution(scale_pct: scale), Duration.Turns(duration_turns))
+        let source = EffectSource.Item(name: "Potion of Diminution")
+        apply_condition(drinker, PotionDiminution(scale_pct: scale), Duration.Turns(duration_turns), source)
         emit PotionEffectApplied(drinker: drinker, potion_name: "Potion of Diminution")
     }
 
@@ -882,7 +914,8 @@ system "OSRIC Potions" {
         let extra_rounds = roll(5d4).total
         // 1 turn = 10 rounds, plus extra
         let duration_rounds = 10 + extra_rounds
-        apply_condition(drinker, PotionClimbing(climb_pct: climb_chance), Duration.Rounds(duration_rounds))
+        let source = EffectSource.Item(name: "Potion of Climbing")
+        apply_condition(drinker, PotionClimbing(climb_pct: climb_chance), Duration.Rounds(duration_rounds), source)
         emit PotionEffectApplied(drinker: drinker, potion_name: "Potion of Climbing")
     }
 
@@ -900,7 +933,8 @@ system "OSRIC Potions" {
 
     function resolve_potion_esp(drinker: Character) {
         let duration_rounds = roll(5d8).total
-        apply_condition(drinker, PotionESP, Duration.Rounds(duration_rounds))
+        let source = EffectSource.Item(name: "Potion of ESP")
+        apply_condition(drinker, PotionESP, Duration.Rounds(duration_rounds), source)
         emit PotionEffectApplied(drinker: drinker, potion_name: "Potion of ESP")
     }
 

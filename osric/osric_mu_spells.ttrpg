@@ -175,6 +175,7 @@ system "OSRIC MU Spells" {
     function resolve_sleep(caster: Character, targets: list<Monster>) {
         let cl = caster_level(caster, Arcane)
         let duration_rounds = 5 * cl
+        let source = EffectSource.Spell(name: "Sleep", caster_level: cl)
 
         // Process each HD category from weakest to strongest.
         for cat in [0, 1, 2, 3, 4] {
@@ -188,7 +189,7 @@ system "OSRIC MU Spells" {
                 }
                 let to_sleep = take(cat_targets, min(num_affected, len(cat_targets)))
                 for target in to_sleep {
-                    apply_condition(target, Sleeping, Duration.Rounds(duration_rounds))
+                    apply_condition(target, Sleeping, Duration.Rounds(duration_rounds), source)
                     emit SpellApplied(caster: caster, target: target, spell_name: "Sleep")
                 }
             }

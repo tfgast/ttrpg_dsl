@@ -120,7 +120,9 @@ system "OSRIC Cleric Spells" {
     }
 
     function resolve_bless(caster: Character, targets: list<entity>) {
-        resolve_no_save_condition(caster, targets, "Bless", Blessed, Duration.Rounds(6))
+        let cl = caster_level(caster, Divine)
+        resolve_no_save_condition(caster, targets, "Bless", Blessed, Duration.Rounds(6),
+            EffectSource.Spell(name: "Bless", caster_level: cl))
     }
 
 
@@ -155,7 +157,9 @@ system "OSRIC Cleric Spells" {
     }
 
     function resolve_curse(caster: Character, targets: list<entity>) {
-        resolve_save_negates_condition(caster, targets, "Curse", Cursed, Duration.Rounds(6))
+        let cl = caster_level(caster, Divine)
+        resolve_save_negates_condition(caster, targets, "Curse", Cursed, Duration.Rounds(6),
+            EffectSource.Spell(name: "Curse", caster_level: cl))
     }
 
 
@@ -207,11 +211,12 @@ system "OSRIC Cleric Spells" {
         let cl = caster_level(caster, Divine)
         let duration_rounds = 4 + cl
         let save_bonus = hold_person_save_bonus(len(targets))
+        let source = EffectSource.Spell(name: "Hold Person", caster_level: cl)
         for target in targets {
             let result = target.ResistSpell(category: some(SpellsUnlisted), bonus: save_bonus, is_mental: true)
             if let some(saved) = result {
                 if !saved {
-                    apply_condition(target, Paralyzed, Duration.Rounds(duration_rounds))
+                    apply_condition(target, Paralyzed, Duration.Rounds(duration_rounds), source)
                     emit SpellApplied(caster: caster, target: target, spell_name: "Hold Person")
                 }
             }
