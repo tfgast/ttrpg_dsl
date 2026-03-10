@@ -102,21 +102,53 @@ impl Checker<'_> {
                         }
                     }
                 }
+                // Check if the field is a fn-ref type on a struct (e.g., entry.resolve(args))
+                if let Ty::Struct(ref struct_name) = obj_ty {
+                    if let Some(crate::env::DeclInfo::Struct(ref info)) =
+                        self.env.types.get(struct_name.as_str())
+                    {
+                        if let Some(field_info) = info.fields.iter().find(|f| f.name == *field) {
+                            if let Ty::Fn(ref param_tys, ref ret_ty) = field_info.ty {
+                                let param_tys = param_tys.clone();
+                                let ret_ty = ret_ty.clone();
+                                return self.check_fn_ref_call(&param_tys, &ret_ty, args, span);
+                            }
+                        }
+                    }
+                }
                 // Method call: obj.method(args)
                 return self.check_method_call(&obj_ty, field, args, span);
             }
             _ => {
-                self.error("callee must be a function name".to_string(), span);
+                // General fallback: evaluate the callee as an expression and check
+                // if it produces a function reference type.
+                let callee_ty = self.check_expr(callee);
+                if let Ty::Fn(ref param_tys, ref ret_ty) = callee_ty {
+                    return self.check_fn_ref_call(param_tys, ret_ty, args, span);
+                }
+                if !callee_ty.is_error() {
+                    self.error(
+                        format!("expression of type {} is not callable", callee_ty.display()),
+                        span,
+                    );
+                }
+                for arg in args {
+                    self.check_expr(&arg.value);
+                }
                 return Ty::Error;
             }
         };
 
-        // If a local binding shadows the name, it wins — local values aren't callable.
+        // If a local binding shadows the name, it wins.
+        // If the binding is a fn type, allow calling through it.
         if let Some(binding) = self.scope.lookup(&callee_name) {
+            let binding_ty = binding.ty.clone();
+            if let Ty::Fn(ref param_tys, ref ret_ty) = binding_ty {
+                return self.check_fn_ref_call(param_tys, ret_ty, args, span);
+            }
             self.error(
                 format!(
-                    "`{}` is a local binding of type {}, not a callable function",
-                    callee_name, binding.ty
+                    "`{callee_name}` is a local binding of type {binding_ty}, not a callable function"
                 ),
                 callee.span,
             );
@@ -429,5 +461,62 @@ impl Checker<'_> {
         }
 
         Ty::Enum(Name::from(enum_name))
+    }
+
+    /// Check a call through a function reference (fn type).
+    /// Validates positional args against the fn type's parameter types.
+    /// Named args are not supported for fn ref calls (no param names available).
+    fn check_fn_ref_call(
+        &mut self,
+        param_tys: &[Ty],
+        ret_ty: &Ty,
+        args: &[Arg],
+        span: ttrpg_ast::Span,
+    ) -> Ty {
+        // Reject named arguments — fn types don't carry parameter names
+        for arg in args {
+            if let Some(ref name) = arg.name {
+                self.error(
+                    format!(
+                        "named argument `{name}` is not supported when calling through a function reference"
+                    ),
+                    arg.span,
+                );
+            }
+        }
+
+        if args.len() != param_tys.len() {
+            self.error(
+                format!(
+                    "function reference expects {} argument(s), found {}",
+                    param_tys.len(),
+                    args.len()
+                ),
+                span,
+            );
+        }
+
+        // Check each argument type (exact match, not types_compatible)
+        for (i, arg) in args.iter().enumerate() {
+            let hint = param_tys.get(i);
+            let arg_ty = self.check_expr_expecting(&arg.value, hint);
+            if !arg_ty.is_error() {
+                if let Some(expected) = param_tys.get(i) {
+                    if !expected.is_error() && arg_ty != *expected {
+                        self.error(
+                            format!(
+                                "argument {} has type {}, expected {}",
+                                i + 1,
+                                arg_ty.display(),
+                                expected.display()
+                            ),
+                            arg.span,
+                        );
+                    }
+                }
+            }
+        }
+
+        ret_ty.clone()
     }
 }

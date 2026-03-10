@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use rustc_hash::FxHashMap;
 use ttrpg_ast::ast::{ExprKind, GroupInit, StructFieldInit};
 use ttrpg_ast::{Name, Span, Spanned};
-use ttrpg_checker::env::DeclInfo;
+use ttrpg_checker::env::{DeclInfo, FnKind};
 
 use crate::coverage::{BranchKind, BranchPoint};
 use crate::effect::{Effect, Response};
@@ -376,7 +376,27 @@ fn eval_ident(env: &mut Env, name: &str, expr: &Spanned<ExprKind>) -> Result<Val
         });
     }
 
-    // 4. Check if it's an enum type name (for qualified access like `Duration.Rounds`)
+    // 4. Check if it's a function reference (bare function name in value position)
+    //    Use the resolution table (populated by the checker) first.
+    if env
+        .interp
+        .type_env
+        .resolved_fn_refs
+        .contains_key(&expr.span)
+    {
+        return Ok(Value::FnRef(Name::from(name)));
+    }
+    // Fallback for CLI eval expressions that weren't checker-resolved:
+    // if the name is a FnKind::Function with no with-constraints, treat it as a fn ref.
+    if let Some(fn_info) = env.interp.type_env.lookup_fn(name) {
+        if fn_info.kind == FnKind::Function
+            && fn_info.params.iter().all(|p| p.with_groups.is_empty())
+        {
+            return Ok(Value::FnRef(Name::from(name)));
+        }
+    }
+
+    // 5. Check if it's an enum type name (for qualified access like `Duration.Rounds`)
     //    Returns EnumNamespace so field access can resolve variants via eval_expr.
     if let Some(DeclInfo::Enum(_)) = env.interp.type_env.types.get(name) {
         return Ok(Value::EnumNamespace(Name::from(name)));

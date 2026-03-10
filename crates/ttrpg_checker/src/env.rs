@@ -150,6 +150,8 @@ pub struct TypeEnv {
     pub suffix_to_unit: FxHashMap<String, Name>,
     pub options: FxHashSet<Name>,
 
+    /// Maps each bare function-reference expression span to the function name.
+    pub resolved_fn_refs: HashMap<Span, Name>,
     /// Maps FieldAccess spans where a group alias was used → real group name.
     pub resolved_group_aliases: HashMap<Span, Name>,
     /// Maps LValue spans where a group alias was used → (segment_index, real_group_name).
@@ -226,6 +228,7 @@ impl TypeEnv {
             builtins: FxHashMap::default(),
             suffix_to_unit: FxHashMap::default(),
             options: FxHashSet::default(),
+            resolved_fn_refs: HashMap::new(),
             resolved_group_aliases: HashMap::new(),
             resolved_lvalue_aliases: HashMap::new(),
             type_owner: FxHashMap::default(),
@@ -352,6 +355,20 @@ impl TypeEnv {
                 Ty::Option(Box::new(self.resolve_type_depth(&inner.node, depth + 1)))
             }
             TypeExpr::Resource(_, _) => Ty::Resource,
+            TypeExpr::Fn {
+                params,
+                return_type,
+            } => {
+                let param_tys: Vec<Ty> = params
+                    .iter()
+                    .map(|p| self.resolve_type_depth(&p.node, depth + 1))
+                    .collect();
+                let ret_ty = match return_type {
+                    Some(r) => self.resolve_type_depth(&r.node, depth + 1),
+                    None => Ty::Unit,
+                };
+                Ty::Fn(param_tys, Box::new(ret_ty))
+            }
         }
     }
 
@@ -418,6 +435,17 @@ impl TypeEnv {
                 }
                 self.validate_type_names_depth(k, diagnostics, depth + 1);
                 self.validate_type_names_depth(v, diagnostics, depth + 1);
+            }
+            TypeExpr::Fn {
+                params,
+                return_type,
+            } => {
+                for p in params {
+                    self.validate_type_names_depth(p, diagnostics, depth + 1);
+                }
+                if let Some(ret) = return_type {
+                    self.validate_type_names_depth(ret, diagnostics, depth + 1);
+                }
             }
             TypeExpr::Qualified { qualifier, name } => {
                 diagnostics.push(Diagnostic::error(

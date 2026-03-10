@@ -964,12 +964,20 @@ pub enum TypeExpr {
     Invocation,
     Unit,
     Named(Name),
-    Qualified { qualifier: Name, name: Name },
+    Qualified {
+        qualifier: Name,
+        name: Name,
+    },
     Map(Box<Spanned<TypeExpr>>, Box<Spanned<TypeExpr>>),
     List(Box<Spanned<TypeExpr>>),
     Set(Box<Spanned<TypeExpr>>),
     OptionType(Box<Spanned<TypeExpr>>),
     Resource(Box<Spanned<ExprKind>>, Box<Spanned<ExprKind>>),
+    /// Function reference type: `fn(T1, T2) -> R` or `fn(T1, T2)` (implicit unit return).
+    Fn {
+        params: Vec<Spanned<TypeExpr>>,
+        return_type: Option<Box<Spanned<TypeExpr>>>,
+    },
 }
 
 // ── Expressions ──────────────────────────────────────────────────

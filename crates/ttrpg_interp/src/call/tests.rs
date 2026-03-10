@@ -1894,7 +1894,7 @@ fn invalid_callee_expression_error() {
         args: vec![],
     });
     let err = crate::eval::eval_expr(&mut env, &expr).unwrap_err();
-    assert!(err.message.contains("invalid callee"));
+    assert!(err.message.contains("not callable"));
 }
 
 // ── Action dispatch tests ─────────────────────────────────────

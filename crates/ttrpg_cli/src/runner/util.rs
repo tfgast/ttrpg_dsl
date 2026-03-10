@@ -204,6 +204,7 @@ pub(super) fn value_type_display(val: &Value) -> String {
         Value::Direction(_) => "Direction".into(),
         Value::Condition { .. } => "Condition".into(),
         Value::Invocation(_) => "Invocation".into(),
+        Value::FnRef(name) => format!("<fn {name}>"),
         Value::EnumNamespace(name) => format!("{name}(namespace)"),
         Value::ModuleAlias(name) => format!("{name}(module alias)"),
     }

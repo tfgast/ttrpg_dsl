@@ -53,6 +53,9 @@ pub enum Ty {
     // Reference to an optional group's field namespace (entity.Group)
     OptionalGroupRef(Name, Name), // (entity_type, group_name)
 
+    // Function reference: fn(T1, T2) -> R
+    Fn(Vec<Ty>, Box<Ty>),
+
     // Module alias: intermediate marker for `use "..." as Alias` identifiers.
     // Consumed by resolve_field and check_call; cannot appear in signatures.
     ModuleAlias(Name),
@@ -111,6 +114,14 @@ impl Ty {
             Ty::Set(inner) => format!("set<{}>", inner.display()),
             Ty::Map(k, v) => format!("map<{}, {}>", k.display(), v.display()),
             Ty::Option(inner) => format!("option<{}>", inner.display()),
+            Ty::Fn(params, ret) => {
+                let params_str: Vec<_> = params.iter().map(|p| p.display()).collect();
+                if **ret == Ty::Unit {
+                    format!("fn({})", params_str.join(", "))
+                } else {
+                    format!("fn({}) -> {}", params_str.join(", "), ret.display())
+                }
+            }
             Ty::OptionalGroupRef(entity, group) => format!("{entity}.{group}"),
             Ty::Resource => "resource".into(),
             Ty::Unit => "unit".into(),

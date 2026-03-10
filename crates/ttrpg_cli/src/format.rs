@@ -124,6 +124,7 @@ pub fn format_value(val: &Value, units: &UnitSuffixes) -> String {
                 format!("Condition({}({}))", name, inner.join(", "))
             }
         }
+        Value::FnRef(name) => format!("<fn {name}>"),
         Value::EnumNamespace(name) => format!("<enum {name}>"),
         Value::ModuleAlias(name) => format!("<module alias {name}>"),
         Value::Invocation(id) => format!("Invocation({})", id.0),

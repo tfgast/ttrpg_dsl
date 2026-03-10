@@ -485,6 +485,17 @@ impl VisitSpansMut for TypeExpr {
                 lo.visit_spans_mut(f);
                 hi.visit_spans_mut(f);
             }
+            TypeExpr::Fn {
+                params,
+                return_type,
+            } => {
+                for p in params {
+                    p.visit_spans_mut(f);
+                }
+                if let Some(ret) = return_type {
+                    ret.visit_spans_mut(f);
+                }
+            }
         }
     }
 }

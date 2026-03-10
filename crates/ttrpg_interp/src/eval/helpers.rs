@@ -37,6 +37,7 @@ pub(crate) fn type_name(val: &Value) -> &'static str {
         Value::Direction(_) => "Direction",
         Value::Condition { .. } => "Condition",
         Value::Invocation(_) => "Invocation",
+        Value::FnRef(_) => "FnRef",
         Value::EnumNamespace(_) => "EnumNamespace",
         Value::ModuleAlias(_) => "ModuleAlias",
     }

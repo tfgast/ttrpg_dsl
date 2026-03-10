@@ -49,6 +49,9 @@ pub struct Checker<'a> {
     /// Maps selector-targeted modify clause IDs → set of matched function names.
     /// Transferred to `TypeEnv` for interpreter use.
     pub selector_matches: SelectorMatchMap,
+    /// Maps each bare function-reference expression span to the function name.
+    /// Transferred to `TypeEnv` after checking for use by the interpreter.
+    pub resolved_fn_refs: HashMap<Span, Name>,
     /// Current expression nesting depth (guards against stack overflow).
     pub(crate) expr_depth: usize,
     /// Inferred const types (for unannotated consts). Transferred to TypeEnv after checking.
@@ -67,6 +70,7 @@ impl<'a> Checker<'a> {
             resolved_group_aliases: HashMap::new(),
             resolved_lvalue_aliases: HashMap::new(),
             selector_matches: HashMap::new(),
+            resolved_fn_refs: HashMap::new(),
             expr_depth: 0,
             inferred_const_types: FxHashMap::default(),
         }

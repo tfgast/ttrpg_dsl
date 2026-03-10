@@ -172,9 +172,15 @@ fn osric_core_has_all_enums() {
     // AreaShape: 7 variants (Radius, Sphere, Cube, Wall, Cone, Line, Special)
     assert!(enums.contains(&("AreaShape", 7)), "missing AreaShape enum");
     // AnchorMode: 3 variants (PositionOnly, EntityOnly, Either)
-    assert!(enums.contains(&("AnchorMode", 3)), "missing AnchorMode enum");
+    assert!(
+        enums.contains(&("AnchorMode", 3)),
+        "missing AnchorMode enum"
+    );
     // AnchorPoint: 2 variants (AtPosition, AtEntity)
-    assert!(enums.contains(&("AnchorPoint", 2)), "missing AnchorPoint enum");
+    assert!(
+        enums.contains(&("AnchorPoint", 2)),
+        "missing AnchorPoint enum"
+    );
 
     // EffectSource: 5 variants (Unknown, Spell, Item, Poison, MonsterAbility)
     assert!(

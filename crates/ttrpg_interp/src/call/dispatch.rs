@@ -38,6 +38,12 @@ pub(crate) fn eval_call(
     match &callee.node {
         // ── Simple identifier: condition, variant, or function name ──
         ExprKind::Ident(name) => {
+            // 0. Check if it's a local binding holding a fn ref (shadows everything)
+            if let Some(Value::FnRef(fn_name)) = env.lookup(name) {
+                let fn_name = fn_name.clone();
+                return dispatch_fn_ref(env, &fn_name, args, call_span);
+            }
+
             // 1. Check if it's a condition with parameters (e.g., Frightened(source: attacker))
             //    Conditions shadow variants and functions, matching the
             //    checker's resolution order (check_call.rs).
@@ -146,14 +152,69 @@ pub(crate) fn eval_call(
             if let Value::EnumNamespace(ref enum_name) = object_val {
                 return construct_enum_variant(env, enum_name, field, args, call_span);
             }
+            // Struct field holding a fn ref: entry.resolve(args)
+            if let Value::Struct { ref fields, .. } = object_val {
+                if let Some(Value::FnRef(fn_name)) = fields.get(field.as_str()) {
+                    let fn_name = fn_name.clone();
+                    return dispatch_fn_ref(env, &fn_name, args, call_span);
+                }
+            }
             eval_method_call(env, object_val, field, args, call_span)
         }
 
-        _ => Err(RuntimeError::with_span(
-            "invalid callee expression",
-            call_span,
-        )),
+        // General fallback: evaluate the callee as an expression and dispatch
+        // if it produces a Value::FnRef.
+        _ => {
+            let callee_val = eval_expr(env, callee)?;
+            if let Value::FnRef(fn_name) = callee_val {
+                return dispatch_fn_ref(env, &fn_name, args, call_span);
+            }
+            Err(RuntimeError::with_span(
+                format!(
+                    "expression of type {} is not callable",
+                    crate::value::value_type_display(&callee_val)
+                ),
+                call_span,
+            ))
+        }
     }
+}
+
+// ── Function reference dispatch ────────────────────────────────
+
+/// Dispatch a call through a function reference.
+///
+/// Only dispatches to `FnKind::Function` — other kinds are not referenceable.
+fn dispatch_fn_ref(
+    env: &mut Env,
+    fn_name: &str,
+    args: &[Arg],
+    call_span: Span,
+) -> Result<Value, RuntimeError> {
+    if let Some(fn_info) = env.interp.type_env.lookup_fn(fn_name) {
+        let fn_info = fn_info.clone();
+        if fn_info.kind == FnKind::Function {
+            return dispatch_function(env, &fn_info.name, args, call_span);
+        }
+        return Err(RuntimeError::with_span(
+            format!(
+                "cannot call through reference to {} `{fn_name}`",
+                match fn_info.kind {
+                    FnKind::Derive => "derive",
+                    FnKind::Mechanic => "mechanic",
+                    FnKind::Action => "action",
+                    FnKind::Table => "table",
+                    FnKind::Builtin => "builtin",
+                    _ => "non-function",
+                }
+            ),
+            call_span,
+        ));
+    }
+    Err(RuntimeError::with_span(
+        format!("function reference points to undefined function '{fn_name}'"),
+        call_span,
+    ))
 }
 
 // ── Module alias call dispatch ─────────────────────────────────

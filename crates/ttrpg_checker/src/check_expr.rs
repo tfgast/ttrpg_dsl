@@ -207,6 +207,28 @@ impl Checker<'_> {
             return Ty::Condition;
         }
 
+        // Check if it's a function reference (bare function name in value position).
+        // Only FnKind::Function is allowed; functions with `with` constraints are rejected.
+        if let Some(fn_info) = self.env.lookup_fn(name) {
+            if fn_info.kind == crate::env::FnKind::Function {
+                let has_with = fn_info.params.iter().any(|p| !p.with_groups.is_empty());
+                if has_with {
+                    self.error(
+                        format!(
+                            "cannot take a reference to function `{name}` because it has `with` constraints on its parameters"
+                        ),
+                        span,
+                    );
+                    return Ty::Error;
+                }
+                self.check_name_visible(name, Namespace::Function, span);
+                let param_tys: Vec<Ty> = fn_info.params.iter().map(|p| p.ty.clone()).collect();
+                let ret_ty = fn_info.return_type.clone();
+                self.resolved_fn_refs.insert(span, Name::from(name));
+                return Ty::Fn(param_tys, Box::new(ret_ty));
+            }
+        }
+
         // Enum type names resolve as values to support qualified variant access
         // (e.g., `DamageType.fire`). Struct/entity names are NOT values — they
         // exist only in the type namespace. Using a struct/entity name bare in

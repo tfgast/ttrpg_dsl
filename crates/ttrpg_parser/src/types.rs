@@ -110,6 +110,32 @@ impl Parser {
                             }
                         }
                     }
+                    "fn" if matches!(self.peek_at(1), TokenKind::LParen) => {
+                        self.advance(); // consume "fn"
+                        self.expect(&TokenKind::LParen)?;
+                        let mut params = Vec::new();
+                        if !matches!(self.peek(), TokenKind::RParen) {
+                            params.push(self.parse_type()?);
+                            while matches!(self.peek(), TokenKind::Comma) {
+                                self.advance();
+                                if matches!(self.peek(), TokenKind::RParen) {
+                                    break; // trailing comma
+                                }
+                                params.push(self.parse_type()?);
+                            }
+                        }
+                        self.expect(&TokenKind::RParen)?;
+                        let return_type = if matches!(self.peek(), TokenKind::Arrow) {
+                            self.advance();
+                            Some(Box::new(self.parse_type()?))
+                        } else {
+                            None
+                        };
+                        TypeExpr::Fn {
+                            params,
+                            return_type,
+                        }
+                    }
                     "resource" => {
                         self.advance();
                         self.expect(&TokenKind::LParen)?;

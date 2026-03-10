@@ -153,6 +153,10 @@ pub enum Value {
     /// produced by `eval_ident` when an identifier resolves to an enum type.
     EnumNamespace(Name),
 
+    /// A reference to a named function. Produced when a function name is used
+    /// in value position (not as a call). Equality/ordering by name.
+    FnRef(Name),
+
     /// Internal: a module alias name used as a namespace for qualified
     /// access (e.g., `Core.Ability`, `Core.modifier()`). Not a user-facing
     /// value — only produced by `eval_ident` when an identifier resolves
@@ -247,8 +251,9 @@ fn discriminant(v: &Value) -> u8 {
         Value::Direction(_) => 15,
         Value::Condition { .. } => 16,
         Value::Invocation(_) => 17,
-        Value::EnumNamespace(_) => 18,
-        Value::ModuleAlias(_) => 19,
+        Value::FnRef(_) => 18,
+        Value::EnumNamespace(_) => 19,
+        Value::ModuleAlias(_) => 20,
     }
 }
 
@@ -305,6 +310,7 @@ impl PartialEq for Value {
                 n1 == n2 && a1 == a2
             }
             (Value::Invocation(a), Value::Invocation(b)) => a == b,
+            (Value::FnRef(a), Value::FnRef(b)) => a == b,
             (Value::EnumNamespace(a), Value::EnumNamespace(b)) => a == b,
             (Value::ModuleAlias(a), Value::ModuleAlias(b)) => a == b,
             _ => false,
@@ -379,6 +385,7 @@ impl Ord for Value {
                 n1.cmp(n2).then_with(|| ordered_map_cmp(a1, a2))
             }
             (Value::Invocation(a), Value::Invocation(b)) => a.0.cmp(&b.0),
+            (Value::FnRef(a), Value::FnRef(b)) => a.cmp(b),
             (Value::EnumNamespace(a), Value::EnumNamespace(b)) => a.cmp(b),
             (Value::ModuleAlias(a), Value::ModuleAlias(b)) => a.cmp(b),
             // Same discriminant guarantees same variant.
@@ -494,6 +501,7 @@ impl std::hash::Hash for Value {
                 }
             }
             Value::Invocation(v) => v.0.hash(state),
+            Value::FnRef(v) => v.hash(state),
             Value::EnumNamespace(v) => v.hash(state),
             Value::ModuleAlias(v) => v.hash(state),
         }
@@ -550,6 +558,7 @@ pub fn value_matches_ty(val: &Value, ty: &Ty, state: &dyn StateProvider) -> bool
         (Value::EnumVariant { enum_name, .. }, Ty::EffectSource) => enum_name == "EffectSource",
         (Value::Condition { .. }, Ty::Condition) => true,
         (Value::Invocation(_), Ty::Invocation) => true,
+        (Value::FnRef(_), Ty::Fn(_, _)) => true,
         (Value::ModuleAlias(_), _) => false,
         _ => false,
     }
@@ -576,6 +585,7 @@ pub fn value_type_display(val: &Value) -> String {
         Value::Direction(_) => "Direction".into(),
         Value::Condition { .. } => "Condition".into(),
         Value::Invocation(_) => "Invocation".into(),
+        Value::FnRef(name) => format!("<fn {name}>"),
         Value::EnumNamespace(name) => format!("{name}(namespace)"),
         Value::ModuleAlias(name) => format!("{name}(module alias)"),
     }
