@@ -218,5 +218,5 @@ spawn Monster mon_dispatch_target { name: "Dispatch Orc", hit_dice: 1d8, max_hp:
 
 rolls clear
 rolls 2
-call resolve_spell_monsters(MagicMissile, mon_dispatch_caster, [mon_dispatch_target])
+call resolve_spell(MagicMissile, mon_dispatch_caster, [mon_dispatch_target])
 assert_eq mon_dispatch_target.hp, 7

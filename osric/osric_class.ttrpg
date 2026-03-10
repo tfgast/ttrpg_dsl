@@ -48,6 +48,22 @@ system "OSRIC Classes" {
         else { level }
     }
 
+    // Effective hit dice for any entity. For Characters, uses the
+    // max HD count and max die size across all classes (correct for
+    // single, multi, and dual classing). For Monsters, returns
+    // hit_dice directly. Other entity types return 0d8.
+    derive entity_hit_dice(target: entity) -> DiceExpr {
+        if target is Character {
+            let hd_count = max([class_hit_dice_total_for_level(cl.class, cl.level) for cl in target.classes])
+            let hd_sides = max([class_def(cl.class).hit_die for cl in target.classes])
+            dice(hd_count, hd_sides)
+        } else if target is Monster {
+            target.hit_dice
+        } else {
+            dice(0, 8)
+        }
+    }
+
     // Turn undead is level-gated for paladins even though the class carries the feature.
     derive class_can_turn_undead_at_level(class: Class, level: int) -> bool {
         match class {

@@ -130,8 +130,8 @@ system "OSRIC MU Spells" {
         description: "Creatures in area fall into magical slumber. Number affected by HD category, weakest first. No saving throw."
     }
 
-    // Classify a Monster's hit dice into an HD category for
-    // Sleep targeting (0 = weakest .. 5 = immune).
+    // Classify hit dice into an HD category for Sleep targeting
+    // (0 = weakest .. 5 = immune).
     //
     //  Cat 0: <=1 HD       (count<=1, bonus<=0)
     //  Cat 1: 1+ to 2 HD   (count==1 bonus>0, or count==2 bonus<=0)
@@ -168,18 +168,19 @@ system "OSRIC MU Spells" {
         }
     }
 
-    // Resolve Sleep. Targets must be pre-sorted weakest-first
-    // (by HD within each category). The function classifies each
-    // target by HD category, rolls per category, and applies
-    // Sleeping to the affected creatures (weakest first).
-    function resolve_sleep(caster: Character, targets: list<Monster>) {
+    // Resolve Sleep. Accepts any entity targets — uses
+    // entity_hit_dice() to compute HD for both Characters and
+    // Monsters. Targets should be pre-sorted weakest-first.
+    // Classifies each target by HD category, rolls per category,
+    // and applies Sleeping to the affected creatures.
+    function resolve_sleep(caster: Character, targets: list<entity>) {
         let cl = caster_level(caster, Arcane)
         let duration_rounds = 5 * cl
         let source = EffectSource.Spell(name: "Sleep", caster_level: cl)
 
         // Process each HD category from weakest to strongest.
         for cat in [0, 1, 2, 3, 4] {
-            let cat_targets = [t for t in targets if sleep_hd_category(t.hit_dice) == cat]
+            let cat_targets = [t for t in targets if sleep_hd_category(entity_hit_dice(t)) == cat]
             if len(cat_targets) > 0 {
                 let num_affected = if cat == 4 {
                     // 4+1 to 4+4: d2-1 yields 0 or 1

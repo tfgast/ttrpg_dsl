@@ -896,12 +896,19 @@ system "OSRIC Spells" {
     }
 
     // Single-target heal (Cure Light Wounds archetype).
-    // Handles unconscious targets via heal_unconscious(),
-    // conscious targets via heal_damage() (capped at max HP).
-    function resolve_heal_target(caster: Character, target: Character, spell_name: string, healing: int) {
-        if target.hp <= 0 {
-            heal_unconscious(target, healing)
-            emit SpellHealed(caster: caster, target: target, spell_name: spell_name, amount: healing)
+    // For Characters: unconscious targets are healed via
+    // heal_unconscious() (condition transitions); conscious
+    // targets via heal_damage() (capped at max HP).
+    // For other entities: always uses heal_damage().
+    function resolve_heal_target(caster: Character, target: entity, spell_name: string, healing: int) {
+        if target is Character {
+            if target.hp <= 0 {
+                heal_unconscious(target, healing)
+                emit SpellHealed(caster: caster, target: target, spell_name: spell_name, amount: healing)
+            } else {
+                let actual = heal_damage(target, healing)
+                emit SpellHealed(caster: caster, target: target, spell_name: spell_name, amount: actual)
+            }
         } else {
             let actual = heal_damage(target, healing)
             emit SpellHealed(caster: caster, target: target, spell_name: spell_name, amount: actual)

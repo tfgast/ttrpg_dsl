@@ -52,7 +52,7 @@ system "OSRIC Cleric Spells" {
         description: "The target creature regains 1d8 hit points, up to its normal maximum."
     }
 
-    function resolve_cure_light_wounds(caster: Character, target: Character) {
+    function resolve_cure_light_wounds(caster: Character, target: entity) {
         let healing = roll(1d8).total
         resolve_heal_target(caster, target, "Cure Light Wounds", healing)
     }
@@ -204,7 +204,7 @@ system "OSRIC Cleric Spells" {
     // Resolve Hold Person. Each target saves vs spells (mental)
     // with a modifier based on total target count.
     // Duration = 4 + caster's cleric level rounds.
-    function resolve_hold_person(caster: Character, targets: list<Character>) {
+    function resolve_hold_person(caster: Character, targets: list<entity>) {
         if !hold_person_target_count_is_valid(len(targets)) {
             error("Hold Person must target 1-3 creatures")
         }

@@ -2339,27 +2339,39 @@ system "OSRIC Combat" {
         }
     }
 
-    // Heal an unconscious character. Removes Unconscious and
-    // Bleeding, applies Coma for 1-6 turns per §1.6.6.
-    // Healing amount is added to HP before condition transition.
-    function heal_unconscious(target: Character, amount: int) {
-        target.hp = target.hp + amount
-        if target.hp > 0 {
-            remove_condition(target, "Unconscious")
-            remove_condition(target, "Bleeding")
-            let coma_turns = roll(1d6).total
-            apply_condition(target, Coma, Duration.Turns(coma_turns))
+    // Heal an unconscious creature. For Characters, removes
+    // Unconscious and Bleeding, applies Coma for 1-6 turns per
+    // §1.6.6. For other entity types this is a no-op (monsters
+    // die at 0 HP rather than going unconscious).
+    function heal_unconscious(target: entity, amount: int) {
+        if target is Character {
+            target.hp = target.hp + amount
+            if target.hp > 0 {
+                remove_condition(target, "Unconscious")
+                remove_condition(target, "Bleeding")
+                let coma_turns = roll(1d6).total
+                apply_condition(target, Coma, Duration.Turns(coma_turns))
+            }
         }
     }
 
-    // Heal a conscious character. Adds HP capped at max_hp.
-    // Returns actual HP healed. For unconscious targets, use
+    // Heal a creature. Adds HP capped at max_hp.
+    // Returns actual HP healed. For unconscious Characters, use
     // heal_unconscious() instead (handles condition transitions).
-    function heal_damage(target: Character, amount: int) -> int {
-        let new_hp = min(target.hp + amount, target.max_hp)
-        let actual = new_hp - target.hp
-        target.hp = new_hp
-        actual
+    function heal_damage(target: entity, amount: int) -> int {
+        if target is Character {
+            let new_hp = min(target.hp + amount, target.max_hp)
+            let actual = new_hp - target.hp
+            target.hp = new_hp
+            actual
+        } else if target is Monster {
+            let new_hp = min(target.hp + amount, target.max_hp)
+            let actual = new_hp - target.hp
+            target.hp = new_hp
+            actual
+        } else {
+            0
+        }
     }
 
     // Natural healing: 1 HP per day of uninterrupted rest.

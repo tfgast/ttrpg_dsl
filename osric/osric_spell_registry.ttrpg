@@ -4,15 +4,8 @@
 // Central dispatch for spell definitions and resolution.
 // spell_def(SpellId) -> SpellDef routes to per-spell _def derives.
 // resolve_spell(SpellId, caster, targets) routes to per-spell
-// resolve_* functions for Character-targeted spells.
-// resolve_spell_monsters(SpellId, caster, targets) routes
-// damage spells to their Monster-targeted variants.
-//
-// Note: Sleep targets Monsters and must be resolved directly
-// via resolve_sleep() rather than through this dispatch.
-// Spells using entity-typed helpers (resolve_save_or_half_damage,
-// resolve_no_save_damage_each) accept both Character and Monster
-// targets via entity dispatch.
+// resolve_* functions. All resolvers accept entity-typed targets
+// so the same dispatch works for Characters and Monsters alike.
 // ============================================================
 
 import "osric_character.ttrpg"
@@ -63,18 +56,16 @@ system "OSRIC Spell Registry" {
     }
 
     // ========================================================
-    //  SPELL RESOLUTION DISPATCH — CHARACTER TARGETS
+    //  SPELL RESOLUTION DISPATCH
     //
     //  Routes spell resolution to the appropriate resolve_*
-    //  function. Accepts a target list for uniformity; single-
-    //  target spells (CLW, Cause LW) use the first element.
-    //
-    //  Sleep is excluded — it requires list<Monster> targets
-    //  and must be resolved directly via resolve_sleep().
-    //  For Monster targets, use resolve_spell_monsters().
+    //  function. Accepts entity-typed targets so the same
+    //  dispatch works for Characters, Monsters, or any mix.
+    //  Single-target spells (CLW, Cause LW) unwrap the first
+    //  element from the list.
     // ========================================================
 
-    function resolve_spell(id: SpellId, caster: Character, targets: list<Character>) {
+    function resolve_spell(id: SpellId, caster: Character, targets: list<entity>) {
         match id {
             SpellId.CureLightWounds => {
                 let target = targets.first().unwrap()
@@ -118,45 +109,8 @@ system "OSRIC Spell Registry" {
                 resolve_fireball(caster, targets)
             },
             SpellId.Sleep => {
-                // Sleep targets Monsters, not Characters.
-                // Must be resolved directly via resolve_sleep().
-            },
-            _ => {}
-        }
-    }
-
-
-    // ========================================================
-    //  SPELL RESOLUTION DISPATCH — MONSTER TARGETS
-    //
-    //  Routes damage spells to their Monster-targeted overloads.
-    //  Only spells that can target monsters are dispatched here.
-    //  Sleep has its own entry point (resolve_sleep).
-    // ========================================================
-
-    function resolve_spell_monsters(id: SpellId, caster: Character, targets: list<Monster>) {
-        match id {
-            SpellId.CauseLightWounds => {
-                let target = targets.first().unwrap()
-                resolve_cause_light_wounds(caster, target)
-            },
-            SpellId.DispelMagicCleric => {
-                resolve_dispel_magic_cleric(caster, targets)
-            },
-            SpellId.DispelMagicMU => {
-                resolve_dispel_magic_mu(caster, targets)
-            },
-            SpellId.NeutralisePoison => {
-                let target = targets.first().unwrap()
-                resolve_neutralise_poison(caster, target)
-            },
-            SpellId.MagicMissile => {
-                resolve_magic_missile(caster, targets)
-            },
-            SpellId.Fireball => {
-                resolve_fireball(caster, targets)
-            },
-            _ => {}
+                resolve_sleep(caster, targets)
+            }
         }
     }
 }
