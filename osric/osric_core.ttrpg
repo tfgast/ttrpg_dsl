@@ -252,6 +252,54 @@ system "OSRIC" {
         Crossed
     }
 
+    // --- Structured spell area metadata ---
+    // Replaces free-text area_of_effect on SpellDef so the host
+    // knows what spatial input to collect without spell-specific logic.
+    // Covers zone spells, AoE damage spells, and any future spatial effect.
+
+    // Shape of the spell's area of effect.
+    enum AreaShape {
+        None,
+        Radius(radius: Feet),
+        Sphere(radius: Feet),
+        Cube(side: Feet),
+        Wall(length_per_level: Feet, thickness: Feet),
+        Cone(length: Feet),
+        Line(length: Feet, width: Feet),
+        Special(description: string)
+    }
+
+    // How the spell's area is anchored in the world.
+    enum AnchorMode {
+        PositionOnly,       // must target a point (Glyph of Warding, Blade Barrier)
+        EntityOnly,         // always anchored to an entity (Protection from Evil 10')
+        Either              // point or creature (Silence 15' Radius)
+    }
+
+    // Structured area description for SpellDef.
+    struct SpellArea {
+        shape: AreaShape
+        anchor_mode: AnchorMode = AnchorMode.PositionOnly
+    }
+
+    // --- Generic spatial targeting primitives ---
+    // Shared by zone spells, AoE spells, breath weapons, etc.
+
+    // Where a spatial effect is anchored.
+    enum AnchorPoint {
+        AtPosition(position: Position),
+        AtEntity(target: entity)
+    }
+
+    // Host-provided spatial targeting input for area/zone spells.
+    // The position field is always populated (even for entity-
+    // anchored placements, where it is the entity's current position).
+    struct Placement {
+        anchor: AnchorPoint
+        position: Position
+        orientation: option<Direction> = none
+    }
+
     // Casting time (§1.8.1.5 Casting Time)
     enum CastingTime {
         Fast,                           // 1 segment, takes effect same segment
@@ -367,7 +415,7 @@ system "OSRIC" {
         level: int
         range: SpellRange
         duration: SpellDuration
-        area_of_effect: string
+        area: SpellArea
         components: SpellComponents
         casting_time: CastingTime
         saving_throw: SpellSave
@@ -388,18 +436,25 @@ system "OSRIC" {
         Curse,
         // Cleric level 2
         HoldPerson,
+        Silence15Radius,
         // Cleric level 3
         DispelMagicCleric,
         RemoveCurse,
         BestowCurse,
+        GlyphOfWarding,
         // Cleric level 4
         NeutralisePoison,
+        ProtectionFromEvil10Radius,
+        // Cleric level 6
+        BladeBarrier,
         // Magic-User level 1
         MagicMissile,
         Sleep,
         // Magic-User level 3
         DispelMagicMU,
-        Fireball
+        Fireball,
+        // Magic-User level 4
+        WallOfFire
     }
 
     struct SpellSlotTrack {

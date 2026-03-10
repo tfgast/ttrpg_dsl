@@ -27,7 +27,10 @@
 //                              Ice, Acid)
 // ═══════════════════════════════════════════════════════════════
 
+import "osric_class.ttrpg"
+
 use "OSRIC"
+use "OSRIC Classes"
 use "OSRIC Combat"
 use "OSRIC Spells"
 
@@ -75,7 +78,7 @@ system "OSRIC Zone Spells" {
         level: 2,
         range: SpellRange.Distance(distance: Feet { value: 120 }),
         duration: SpellDuration.Rounds(count: 0),   // 2 rounds/level, set at resolution
-        area_of_effect: "Sphere, 15ft radius",
+        area: SpellArea { shape: AreaShape.Sphere(radius: 15ft), anchor_mode: AnchorMode.Either },
         components: SpellComponents { material: false },
         casting_time: CastingTime.Segments(count: 5),
         saving_throw: SpellSave.NoSave,
@@ -143,7 +146,7 @@ system "OSRIC Zone Spells" {
         level: 4,
         range: SpellRange.Touch,
         duration: SpellDuration.Rounds(count: 0),   // 2 rounds/level, set at resolution
-        area_of_effect: "Sphere, 10ft radius",
+        area: SpellArea { shape: AreaShape.Sphere(radius: 10ft), anchor_mode: AnchorMode.EntityOnly },
         components: SpellComponents { material: true },
         casting_time: CastingTime.Rounds(count: 1),
         saving_throw: SpellSave.NoSave,
@@ -229,7 +232,7 @@ system "OSRIC Zone Spells" {
         level: 4,
         range: SpellRange.Distance(distance: Feet { value: 60 }),
         duration: SpellDuration.Rounds(count: 0),   // concentration or 1 round/level
-        area_of_effect: "Wall or ring, see description",
+        area: SpellArea { shape: AreaShape.Wall(length_per_level: 20ft, thickness: 10ft), anchor_mode: AnchorMode.PositionOnly },
         components: SpellComponents { material: false },
         casting_time: CastingTime.Segments(count: 4),
         saving_throw: SpellSave.NoSave,
@@ -275,7 +278,7 @@ system "OSRIC Zone Spells" {
         level: 6,
         range: SpellRange.Distance(distance: Feet { value: 30 }),
         duration: SpellDuration.Rounds(count: 0),   // 3 rounds/level
-        area_of_effect: "Sphere, 5ft to 20ft radius",
+        area: SpellArea { shape: AreaShape.Special(description: "Sphere, 5ft to 20ft radius"), anchor_mode: AnchorMode.PositionOnly },
         components: SpellComponents { material: false },
         casting_time: CastingTime.Segments(count: 9),
         saving_throw: SpellSave.NoSave,
@@ -371,7 +374,7 @@ system "OSRIC Zone Spells" {
         level: 3,
         range: SpellRange.Touch,
         duration: SpellDuration.Special(description: "Until discharged"),
-        area_of_effect: "Up to 25 sq ft per caster level",
+        area: SpellArea { shape: AreaShape.Special(description: "Up to 25 sq ft per caster level"), anchor_mode: AnchorMode.PositionOnly },
         components: SpellComponents { material: true },
         casting_time: CastingTime.Special(description: "1 segment per sq ft"),
         saving_throw: SpellSave.Half,
@@ -424,5 +427,121 @@ system "OSRIC Zone Spells" {
                 }
             }
         }
+    }
+
+
+    // ========================================================
+    //  ZONE SPELL RESOLVE FUNCTIONS
+    //
+    //  Each resolve function accepts a caster and a Placement
+    //  (host-provided spatial targeting input). The function
+    //  constructs a Zone entity with the appropriate fields and
+    //  emits SpellApplied for event tracking.
+    //
+    //  Entity-anchored zones set moves_with_anchor=true;
+    //  position-anchored zones are stationary.
+    // ========================================================
+
+    // --- Silence 15' Radius resolve ---
+    // Creates a stationary or entity-anchored 15' silence sphere.
+    // Duration: 2 rounds per caster level.
+    function resolve_silence_15(caster: Character, placement: Placement) {
+        let cl = caster_level(caster, Divine)
+        let source = EffectSource.Spell(name: "Silence 15' Radius", caster_level: cl)
+        let anchor_entity = match placement.anchor {
+            AnchorPoint.AtEntity(target) => some(target),
+            AnchorPoint.AtPosition(p)    => none
+        }
+        let moves = match placement.anchor {
+            AnchorPoint.AtEntity(target) => true,
+            AnchorPoint.AtPosition(p)    => false
+        }
+        let zone = Zone {
+            name: "Silence 15' Radius",
+            source: source,
+            creator: some(caster),
+            anchor: anchor_entity,
+            moves_with_anchor: moves,
+            center: placement.position,
+            shape: ZoneShape.Sphere(radius: 15ft)
+        }
+        emit SpellApplied(caster: caster, target: zone, spell_name: "Silence 15' Radius")
+    }
+
+    // --- Protection from Evil 10' Radius resolve ---
+    // Always anchored to the caster. Duration: 2 rounds per level.
+    function resolve_protection_from_evil_10(caster: Character, placement: Placement) {
+        let cl = caster_level(caster, Divine)
+        let source = EffectSource.Spell(name: "Protection from Evil 10' Radius", caster_level: cl)
+        let anchor_entity = match placement.anchor {
+            AnchorPoint.AtEntity(target) => some(target),
+            AnchorPoint.AtPosition(p)    => some(caster)
+        }
+        let zone = Zone {
+            name: "Protection from Evil 10' Radius",
+            source: source,
+            creator: some(caster),
+            anchor: anchor_entity,
+            moves_with_anchor: true,
+            center: placement.position,
+            shape: ZoneShape.Sphere(radius: 10ft)
+        }
+        emit SpellApplied(caster: caster, target: zone, spell_name: "Protection from Evil 10' Radius")
+    }
+
+    // --- Wall of Fire resolve ---
+    // Creates a stationary wall of fire. Wall dimensions scale
+    // with caster level (20 sq ft per level). The host provides
+    // orientation for wall placement via Placement.orientation.
+    function resolve_wall_of_fire(caster: Character, placement: Placement) {
+        let cl = caster_level(caster, Arcane)
+        let source = EffectSource.Spell(name: "Wall of Fire", caster_level: cl)
+        let wall_length = Feet { value: 20 * cl }
+        let zone = Zone {
+            name: "Wall of Fire",
+            source: source,
+            creator: some(caster),
+            center: placement.position,
+            shape: ZoneShape.Wall(length: wall_length, thickness: 10ft),
+            contact_mode: ContactMode.Crossed
+        }
+        emit SpellApplied(caster: caster, target: zone, spell_name: "Wall of Fire")
+    }
+
+    // --- Blade Barrier resolve ---
+    // Creates a stationary sphere of whirling blades.
+    // Radius is fixed at cast time (5ft to 20ft, chosen by caster).
+    // Duration: 3 rounds per caster level.
+    function resolve_blade_barrier(caster: Character, placement: Placement, radius: Feet) {
+        let cl = caster_level(caster, Divine)
+        let source = EffectSource.Spell(name: "Blade Barrier", caster_level: cl)
+        let zone = Zone {
+            name: "Blade Barrier",
+            source: source,
+            creator: some(caster),
+            center: placement.position,
+            shape: ZoneShape.Sphere(radius: radius),
+            contact_mode: ContactMode.Crossed
+        }
+        emit SpellApplied(caster: caster, target: zone, spell_name: "Blade Barrier")
+    }
+
+    // --- Glyph of Warding resolve ---
+    // Inscribes a triggered zone on a surface. The glyph_type
+    // string selects the damage element (e.g. "Fire", "Lightning",
+    // "Ice", "Acid") and is encoded in the source name.
+    function resolve_glyph_of_warding(caster: Character, placement: Placement, glyph_type: string) {
+        let cl = caster_level(caster, Divine)
+        let spell_name = "Glyph of Warding (" + glyph_type + ")"
+        let source = EffectSource.Spell(name: spell_name, caster_level: cl)
+        let zone = Zone {
+            name: spell_name,
+            source: source,
+            creator: some(caster),
+            center: placement.position,
+            shape: ZoneShape.Glyph,
+            trigger: true
+        }
+        emit SpellApplied(caster: caster, target: zone, spell_name: spell_name)
     }
 }

@@ -166,8 +166,15 @@ fn osric_core_has_all_enums() {
         "missing SpecWeapon enum"
     );
 
-    // SpellId: 13 variants (CureLightWounds..Fireball + DispelMagicCleric, RemoveCurse, BestowCurse, NeutralisePoison, DispelMagicMU)
-    assert!(enums.contains(&("SpellId", 13)), "missing SpellId enum");
+    // SpellId: 18 variants (13 original + Silence15Radius, ProtectionFromEvil10Radius, WallOfFire, BladeBarrier, GlyphOfWarding)
+    assert!(enums.contains(&("SpellId", 18)), "missing SpellId enum");
+
+    // AreaShape: 8 variants (None, Radius, Sphere, Cube, Wall, Cone, Line, Special)
+    assert!(enums.contains(&("AreaShape", 8)), "missing AreaShape enum");
+    // AnchorMode: 3 variants (PositionOnly, EntityOnly, Either)
+    assert!(enums.contains(&("AnchorMode", 3)), "missing AnchorMode enum");
+    // AnchorPoint: 2 variants (AtPosition, AtEntity)
+    assert!(enums.contains(&("AnchorPoint", 2)), "missing AnchorPoint enum");
 
     // EffectSource: 5 variants (Unknown, Spell, Item, Poison, MonsterAbility)
     assert!(
@@ -181,7 +188,7 @@ fn osric_core_has_all_enums() {
         "missing ContactMode enum"
     );
 
-    assert_eq!(enums.len(), 31, "expected 31 enums, got {enums:?}");
+    assert_eq!(enums.len(), 34, "expected 34 enums, got {enums:?}");
 }
 
 #[test]
@@ -316,7 +323,18 @@ fn osric_core_has_all_structs() {
         "missing MemorizedSpell struct"
     );
 
-    assert_eq!(structs.len(), 14, "expected 14 structs, got {structs:?}");
+    // SpellArea: shape, anchor_mode
+    assert!(
+        structs.contains(&("SpellArea", 2)),
+        "missing SpellArea struct"
+    );
+    // Placement: anchor, position, orientation
+    assert!(
+        structs.contains(&("Placement", 3)),
+        "missing Placement struct"
+    );
+
+    assert_eq!(structs.len(), 16, "expected 16 structs, got {structs:?}");
 }
 
 // ── Unit type ──────────────────────────────────────────────────

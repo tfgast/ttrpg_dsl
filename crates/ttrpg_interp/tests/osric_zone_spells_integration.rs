@@ -91,6 +91,29 @@ fn osric_zone_spells_has_hooks() {
 }
 
 #[test]
+fn osric_zone_spells_has_resolve_functions() {
+    let (program, _) = compile_all();
+    let decls = get_decls(&program);
+    let functions: Vec<_> = decls
+        .iter()
+        .filter_map(|d| match &d.node {
+            DeclKind::Function(f) => Some(&*f.name),
+            _ => None,
+        })
+        .collect();
+    let expected = [
+        "resolve_silence_15",
+        "resolve_protection_from_evil_10",
+        "resolve_wall_of_fire",
+        "resolve_blade_barrier",
+        "resolve_glyph_of_warding",
+    ];
+    for name in &expected {
+        assert!(functions.contains(name), "missing resolve function: {name}");
+    }
+}
+
+#[test]
 fn osric_zone_spells_has_glyph_event() {
     let (program, _) = compile_all();
     let decls = get_decls(&program);

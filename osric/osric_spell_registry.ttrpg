@@ -17,6 +17,7 @@ import "osric_core.ttrpg"
 import "osric_mu_spells.ttrpg"
 import "osric_saves.ttrpg"
 import "osric_spells.ttrpg"
+import "osric_zone_spells.ttrpg"
 
 use "OSRIC"
 use "OSRIC Character"
@@ -27,6 +28,7 @@ use "OSRIC Saves"
 use "OSRIC Spells"
 use "OSRIC Cleric Spells"
 use "OSRIC MU Spells"
+use "OSRIC Zone Spells"
 
 system "OSRIC Spell Registry" {
 
@@ -38,19 +40,24 @@ system "OSRIC Spell Registry" {
     // ========================================================
 
     table spell_def(id: SpellId) -> SpellDef {
-        SpellId.CureLightWounds    => CURE_LIGHT_WOUNDS_DEF,
-        SpellId.CauseLightWounds   => CAUSE_LIGHT_WOUNDS_DEF,
-        SpellId.Bless              => BLESS_DEF,
-        SpellId.Curse              => CURSE_DEF,
-        SpellId.HoldPerson         => HOLD_PERSON_DEF,
-        SpellId.DispelMagicCleric  => DISPEL_MAGIC_CLERIC_DEF,
-        SpellId.RemoveCurse        => REMOVE_CURSE_DEF,
-        SpellId.BestowCurse        => BESTOW_CURSE_DEF,
-        SpellId.NeutralisePoison   => NEUTRALISE_POISON_DEF,
-        SpellId.MagicMissile       => MAGIC_MISSILE_DEF,
-        SpellId.Sleep              => SLEEP_DEF,
-        SpellId.DispelMagicMU      => DISPEL_MAGIC_MU_DEF,
-        SpellId.Fireball           => FIREBALL_DEF
+        SpellId.CureLightWounds             => CURE_LIGHT_WOUNDS_DEF,
+        SpellId.CauseLightWounds            => CAUSE_LIGHT_WOUNDS_DEF,
+        SpellId.Bless                       => BLESS_DEF,
+        SpellId.Curse                       => CURSE_DEF,
+        SpellId.HoldPerson                  => HOLD_PERSON_DEF,
+        SpellId.Silence15Radius             => SILENCE_15_DEF,
+        SpellId.DispelMagicCleric           => DISPEL_MAGIC_CLERIC_DEF,
+        SpellId.RemoveCurse                 => REMOVE_CURSE_DEF,
+        SpellId.BestowCurse                 => BESTOW_CURSE_DEF,
+        SpellId.GlyphOfWarding              => GLYPH_OF_WARDING_DEF,
+        SpellId.NeutralisePoison            => NEUTRALISE_POISON_DEF,
+        SpellId.ProtectionFromEvil10Radius  => PROTECTION_FROM_EVIL_10_DEF,
+        SpellId.BladeBarrier                => BLADE_BARRIER_DEF,
+        SpellId.MagicMissile                => MAGIC_MISSILE_DEF,
+        SpellId.Sleep                       => SLEEP_DEF,
+        SpellId.DispelMagicMU               => DISPEL_MAGIC_MU_DEF,
+        SpellId.Fireball                    => FIREBALL_DEF,
+        SpellId.WallOfFire                  => WALL_OF_FIRE_DEF
     }
 
     // ========================================================
@@ -108,6 +115,36 @@ system "OSRIC Spell Registry" {
             },
             SpellId.Sleep => {
                 resolve_sleep(caster, targets)
+            },
+            _ => {
+                error("resolve_spell: spell requires spatial targeting, use resolve_zone_spell instead")
+            }
+        }
+    }
+
+    // ========================================================
+    //  ZONE SPELL RESOLUTION DISPATCH
+    //
+    //  Routes zone spell resolution to the appropriate resolve_*
+    //  function. Zone spells take a Placement (spatial targeting
+    //  input from the host) instead of a target list.
+    //  Blade Barrier and Glyph of Warding require extra parameters
+    //  beyond Placement — call their resolve functions directly.
+    // ========================================================
+
+    function resolve_zone_spell(id: SpellId, caster: Character, placement: Placement) {
+        match id {
+            SpellId.Silence15Radius => {
+                resolve_silence_15(caster, placement)
+            },
+            SpellId.ProtectionFromEvil10Radius => {
+                resolve_protection_from_evil_10(caster, placement)
+            },
+            SpellId.WallOfFire => {
+                resolve_wall_of_fire(caster, placement)
+            },
+            _ => {
+                error("resolve_zone_spell: unknown zone spell or requires extra parameters (use resolve_blade_barrier / resolve_glyph_of_warding directly)")
             }
         }
     }
