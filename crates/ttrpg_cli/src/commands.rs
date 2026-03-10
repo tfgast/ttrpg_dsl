@@ -48,6 +48,9 @@ pub enum Command {
     CoverageReset,
     // Provenance
     Breakdown(String),
+    // Host simulation
+    Emit(String),
+    Place(String),
     // Help
     Help(Option<String>),
     Unknown(String),
@@ -290,6 +293,23 @@ pub fn parse_command(line: &str) -> Option<Command> {
                 Some(Command::Unknown("breakdown".into()))
             } else {
                 Some(Command::Breakdown(s.into()))
+            }
+        }
+        // Host simulation
+        "emit" => {
+            let s = strip_comment(tail).trim();
+            if s.is_empty() {
+                Some(Command::Unknown("emit".into()))
+            } else {
+                Some(Command::Emit(s.into()))
+            }
+        }
+        "place" => {
+            let s = strip_comment(tail).trim();
+            if s.is_empty() {
+                Some(Command::Unknown("place".into()))
+            } else {
+                Some(Command::Place(s.into()))
             }
         }
         "coverage" => {
@@ -973,5 +993,54 @@ mod tests {
     #[test]
     fn parse_options() {
         assert_eq!(parse_command("options"), Some(Command::Options));
+    }
+
+    // ── Emit command ────────────────────────────────────────────
+
+    #[test]
+    fn parse_emit() {
+        assert_eq!(
+            parse_command("emit ZoneEntered(target: orc, zone: z)"),
+            Some(Command::Emit("ZoneEntered(target: orc, zone: z)".into()))
+        );
+    }
+
+    #[test]
+    fn parse_emit_empty_is_unknown() {
+        assert_eq!(parse_command("emit"), Some(Command::Unknown("emit".into())));
+    }
+
+    #[test]
+    fn parse_emit_with_comment() {
+        assert_eq!(
+            parse_command("emit Ping(target: hero) // fire event"),
+            Some(Command::Emit("Ping(target: hero)".into()))
+        );
+    }
+
+    // ── Place command ───────────────────────────────────────────
+
+    #[test]
+    fn parse_place() {
+        assert_eq!(
+            parse_command("place hero 5 3"),
+            Some(Command::Place("hero 5 3".into()))
+        );
+    }
+
+    #[test]
+    fn parse_place_empty_is_unknown() {
+        assert_eq!(
+            parse_command("place"),
+            Some(Command::Unknown("place".into()))
+        );
+    }
+
+    #[test]
+    fn parse_place_with_comment() {
+        assert_eq!(
+            parse_command("place hero 5 3 // move hero"),
+            Some(Command::Place("hero 5 3".into()))
+        );
     }
 }

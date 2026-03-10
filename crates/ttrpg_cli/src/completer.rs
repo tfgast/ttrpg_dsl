@@ -43,6 +43,8 @@ const ALL_COMMANDS: &[&str] = &[
     "assert_no_condition",
     "seed",
     "rolls",
+    "emit",
+    "place",
     "help",
 ];
 

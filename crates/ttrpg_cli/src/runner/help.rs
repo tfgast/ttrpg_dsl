@@ -403,6 +403,31 @@ const COMMANDS: &[CommandInfo] = &[
         ],
         category: "Dice Control",
     },
+    // Host Simulation
+    CommandInfo {
+        name: "emit",
+        syntax: "emit <Event>(param: expr, ...)",
+        description: "Fire a DSL event from the host side",
+        detail: "Emit an event, executing all matching hooks and reactions.\n  Arguments are evaluated as DSL expressions with handle resolution.\n  Useful for testing zone events and host-driven interactions.",
+        examples: &[
+            "emit ZoneEntered(target: orc, zone: silence_zone)",
+            "emit ZoneExited(target: fighter, zone: wall)",
+            "emit ZoneCrossed(target: goblin, zone: fire_wall)",
+        ],
+        category: "Host Simulation",
+    },
+    CommandInfo {
+        name: "place",
+        syntax: "place <handle> <x> <y>",
+        description: "Set entity position on a grid",
+        detail: "Set an entity's position field to a GridPosition(x, y) value.\n  Uses 'center' for Zone entities, 'position' for others.\n  Supports 'x y', 'x,y', or 'at x,y' syntax.",
+        examples: &[
+            "place fighter 5 3",
+            "place silence_zone at 10,10",
+            "place goblin 0, 0",
+        ],
+        category: "Host Simulation",
+    },
     // Help
     CommandInfo {
         name: "help",
@@ -427,6 +452,7 @@ const CATEGORIES: &[&str] = &[
     "Options",
     "Testing",
     "Dice Control",
+    "Host Simulation",
     "Help",
 ];
 

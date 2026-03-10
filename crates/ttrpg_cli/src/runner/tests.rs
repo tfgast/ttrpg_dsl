@@ -4386,3 +4386,189 @@ fn auto_continuation_bracket() {
 
     runner.exec("assert_eq count(f.items), 3").unwrap();
 }
+
+// ── Emit command ────────────────────────────────────────────
+
+#[test]
+fn emit_fires_hooks() {
+    let mut runner = Runner::new();
+    load_snippet(
+        &mut runner,
+        r#"
+        entity Character { hp: int = 10 }
+        event Ping(target: Character) {}
+        hook PingHook on target: Character (trigger: Ping(target: target)) {
+            target.hp -= 1
+        }
+        "#,
+    );
+
+    runner.exec("spawn Character hero").unwrap();
+    runner.take_output();
+
+    runner.exec("emit Ping(target: hero)").unwrap();
+    let out = runner.take_output();
+    let summary = out.last().unwrap();
+    assert!(summary.contains("emitted Ping"), "got: {out:?}");
+
+    runner.exec("assert_eq hero.hp, 9").unwrap();
+}
+
+#[test]
+fn emit_no_handlers() {
+    let mut runner = Runner::new();
+    load_snippet(
+        &mut runner,
+        "entity Foo { x: int = 0 }\nevent Nothing(a: Foo) {}",
+    );
+
+    runner.exec("spawn Foo f").unwrap();
+    runner.take_output();
+
+    runner.exec("emit Nothing(a: f)").unwrap();
+    let out = runner.take_output();
+    assert!(out.iter().any(|l| l.contains("no handlers matched")));
+}
+
+#[test]
+fn emit_undefined_event_errors() {
+    let mut runner = Runner::new();
+    load_snippet(&mut runner, "entity Foo { x: int = 0 }");
+
+    let err = runner.exec("emit Bogus()").unwrap_err();
+    assert!(err.to_string().contains("undefined event"));
+}
+
+#[test]
+fn emit_missing_parens_errors() {
+    let mut runner = Runner::new();
+    let err = runner.exec("emit Foo").unwrap_err();
+    assert!(err.to_string().contains("usage:"));
+}
+
+// ── Place command ───────────────────────────────────────────
+
+#[test]
+fn place_sets_position_field() {
+    let mut runner = Runner::new();
+    load_snippet(
+        &mut runner,
+        "entity Character { hp: int = 10, position: Position }",
+    );
+
+    runner.exec("spawn Character hero { hp: 30 }").unwrap();
+    runner.take_output();
+
+    runner.exec("place hero 5 3").unwrap();
+    let out = runner.take_output();
+    assert!(out.iter().any(|l| l.contains("placed hero at (5, 3)")));
+
+    // Verify we can inspect the position
+    runner.exec("inspect hero.position").unwrap();
+    let out = runner.take_output();
+    assert!(out.iter().any(|l| l.contains("Position(5, 3)")));
+}
+
+#[test]
+fn place_comma_syntax() {
+    let mut runner = Runner::new();
+    load_snippet(&mut runner, "entity Character { position: Position }");
+
+    runner.exec("spawn Character hero").unwrap();
+    runner.take_output();
+
+    runner.exec("place hero 10,20").unwrap();
+    runner.exec("inspect hero.position").unwrap();
+    let out = runner.take_output();
+    assert!(out.iter().any(|l| l.contains("Position(10, 20)")));
+}
+
+#[test]
+fn place_at_syntax() {
+    let mut runner = Runner::new();
+    load_snippet(&mut runner, "entity Character { position: Position }");
+
+    runner.exec("spawn Character hero").unwrap();
+    runner.take_output();
+
+    runner.exec("place hero at 7, 8").unwrap();
+    runner.exec("inspect hero.position").unwrap();
+    let out = runner.take_output();
+    assert!(out.iter().any(|l| l.contains("Position(7, 8)")));
+}
+
+#[test]
+fn place_zone_uses_center() {
+    let mut runner = Runner::new();
+    load_snippet(
+        &mut runner,
+        "entity Zone { name: string, center: Position }",
+    );
+
+    runner.exec("spawn Zone z { name: \"test\" }").unwrap();
+    runner.take_output();
+
+    runner.exec("place z 3 4").unwrap();
+    runner.exec("inspect z.center").unwrap();
+    let out = runner.take_output();
+    assert!(out.iter().any(|l| l.contains("Position(3, 4)")));
+}
+
+#[test]
+fn place_invalid_handle_errors() {
+    let mut runner = Runner::new();
+    let err = runner.exec("place nonexistent 1 2").unwrap_err();
+    assert!(err.to_string().contains("nonexistent"));
+}
+
+#[test]
+fn place_missing_coords_errors() {
+    let mut runner = Runner::new();
+    load_snippet(&mut runner, "entity Foo { position: Position }");
+    runner.exec("spawn Foo f").unwrap();
+    runner.take_output();
+
+    let err = runner.exec("place f 5").unwrap_err();
+    assert!(err.to_string().contains("usage:"));
+}
+
+// ── Position formatting ─────────────────────────────────────
+
+#[test]
+fn position_display_in_format() {
+    let mut runner = Runner::new();
+    load_snippet(&mut runner, "entity Character { position: Position }");
+
+    runner.exec("spawn Character hero").unwrap();
+    runner.exec("place hero 42 -7").unwrap();
+    runner.take_output();
+
+    runner.exec("eval hero.position").unwrap();
+    let out = runner.take_output();
+    // The eval should show Position(42, -7)
+    assert!(
+        out.iter().any(|l| l.contains("Position(42, -7)")),
+        "got: {out:?}"
+    );
+}
+
+// ── Distance with placed entities ───────────────────────────
+
+#[test]
+fn distance_with_placed_entities() {
+    let mut runner = Runner::new();
+    load_snippet(&mut runner, "entity Character { position: Position }");
+
+    runner.exec("spawn Character a").unwrap();
+    runner.exec("spawn Character b").unwrap();
+    runner.exec("place a 0 0").unwrap();
+    runner.exec("place b 3 4").unwrap();
+    runner.take_output();
+
+    // Chebyshev distance: max(|3|, |4|) = 4
+    let val = runner.eval("distance(a.position, b.position)").unwrap();
+    match val {
+        Value::Int(d) => assert_eq!(d, 4, "Chebyshev distance max(3,4) = 4"),
+        other => panic!("expected Int, got {other:?}"),
+    }
+}

@@ -26,6 +26,7 @@ mod assert;
 mod config;
 mod groups;
 mod help;
+mod host;
 mod inspect;
 mod load;
 mod mutation;
@@ -416,6 +417,9 @@ impl Runner {
             Command::AssertNoCondition(tail) => self.cmd_assert_no_condition(&tail),
             // Provenance
             Command::Breakdown(tail) => self.cmd_breakdown(&tail),
+            // Host simulation
+            Command::Emit(tail) => self.cmd_emit(&tail),
+            Command::Place(tail) => self.cmd_place(&tail),
             // Coverage
             Command::Coverage => self.cmd_coverage(),
             Command::CoverageReset => self.cmd_coverage_reset(),
