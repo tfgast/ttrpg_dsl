@@ -677,6 +677,15 @@ impl Checker<'_> {
                     );
                 }
             }
+            "despawn" => {
+                if !self.scope.allows_mutation() {
+                    self.error(
+                        "despawn() can only be called in function, action, reaction, or hook blocks"
+                            .to_string(),
+                        span,
+                    );
+                }
+            }
             _ => {}
         }
     }

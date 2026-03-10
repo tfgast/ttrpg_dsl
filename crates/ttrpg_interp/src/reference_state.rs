@@ -353,6 +353,11 @@ impl WritableState for GameState {
         // Delegate to the inherent method
         GameState::add_entity(self, type_name, fields)
     }
+
+    fn remove_entity(&mut self, entity: &EntityRef) {
+        // Delegate to the inherent method
+        GameState::remove_entity(self, entity);
+    }
 }
 
 /// Navigate a nested path and write the value at the leaf.

@@ -140,6 +140,9 @@ pub enum Effect {
         entity_type: Name,
         fields: rustc_hash::FxHashMap<Name, Value>,
     },
+    RemoveEntity {
+        entity: EntityRef,
+    },
 
     // ── Decision effects ────────────────────────────────────
     DeductCost {
@@ -272,6 +275,7 @@ pub enum EffectKind {
     ModifyApplied,
     ConditionApplyGate,
     ConditionRemovalGate,
+    RemoveEntity,
 }
 
 impl EffectKind {
@@ -298,6 +302,7 @@ impl EffectKind {
             Effect::ModifyApplied { .. } => EffectKind::ModifyApplied,
             Effect::ConditionApplyGate { .. } => EffectKind::ConditionApplyGate,
             Effect::ConditionRemovalGate { .. } => EffectKind::ConditionRemovalGate,
+            Effect::RemoveEntity { .. } => EffectKind::RemoveEntity,
         }
     }
 }

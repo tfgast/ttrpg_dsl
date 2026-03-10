@@ -595,6 +595,13 @@ impl EffectHandler for CliHandler<'_> {
                 self.log(format!("[SpawnEntity] {entity_type} ({})", entity.0));
                 Response::EntitySpawned(entity)
             }
+
+            Effect::RemoveEntity { entity } => {
+                let name = self.entity_name(&entity);
+                self.game_state.borrow_mut().remove_entity(&entity);
+                self.log(format!("[RemoveEntity] {name}"));
+                Response::Acknowledged
+            }
         }
     }
 }

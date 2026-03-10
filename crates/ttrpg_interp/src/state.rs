@@ -241,6 +241,9 @@ pub trait WritableState: StateProvider {
         type_name: &str,
         fields: rustc_hash::FxHashMap<Name, Value>,
     ) -> EntityRef;
+
+    /// Remove an entity and all associated data (conditions, turn budgets).
+    fn remove_entity(&mut self, entity: &EntityRef);
 }
 
 #[cfg(test)]

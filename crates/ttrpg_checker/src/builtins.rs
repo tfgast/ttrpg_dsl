@@ -111,5 +111,7 @@ pub fn register_builtins() -> Vec<FnInfo> {
             vec![param("entity", Ty::AnyEntity)],
             Ty::TurnBudget,
         ),
+        // Entity removal
+        builtin("despawn", vec![param("entity", Ty::AnyEntity)], Ty::Unit),
     ]
 }

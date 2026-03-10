@@ -129,7 +129,7 @@ pub struct AdaptedHandler<'a, S: WritableState, H: EffectHandler> {
 }
 
 /// The mutation effect kinds.
-const MUTATION_KINDS: [EffectKind; 11] = [
+const MUTATION_KINDS: [EffectKind; 12] = [
     EffectKind::MutateField,
     EffectKind::ApplyCondition,
     EffectKind::RemoveCondition,
@@ -141,6 +141,7 @@ const MUTATION_KINDS: [EffectKind; 11] = [
     EffectKind::RevokeInvocation,
     EffectKind::AdvanceTime,
     EffectKind::SpawnEntity,
+    EffectKind::RemoveEntity,
 ];
 
 fn is_mutation(kind: EffectKind) -> bool {
@@ -359,6 +360,9 @@ fn apply_mutation<S: WritableState>(state: &mut S, effect: &Effect) {
         }
         Effect::SpawnEntity { .. } => {
             // Handled by apply_spawn; included here to silence exhaustiveness
+        }
+        Effect::RemoveEntity { entity } => {
+            state.remove_entity(entity);
         }
         _ => {} // Not a mutation effect
     }
@@ -828,6 +832,12 @@ mod tests {
                 self.fields.insert((id, k.to_string()), v);
             }
             EntityRef(id)
+        }
+
+        fn remove_entity(&mut self, entity: &EntityRef) {
+            self.fields.retain(|(id, _), _| *id != entity.0);
+            self.conditions.remove(&entity.0);
+            self.turn_budgets.remove(&entity.0);
         }
     }
 

@@ -40,6 +40,7 @@ pub(crate) fn call_builtin(
         "game_time" => builtin_game_time(env, &args, span),
         "advance_time" => builtin_advance_time(env, &args, span),
         "budget_of" => builtin_budget_of(env, &args, span),
+        "despawn" => builtin_despawn(env, &args, span),
         _ => Err(RuntimeError::with_span(
             format!("unknown builtin function '{name}'"),
             span,
@@ -980,6 +981,30 @@ fn builtin_budget_of(env: &mut Env, args: &[Value], span: Span) -> Result<Value,
         name: Name::from("TurnBudget"),
         fields: budget,
     })
+}
+
+// ── despawn ────────────────────────────────────────────────────
+
+/// `despawn(entity: Entity) -> None`
+///
+/// Removes an entity from the game state, including all associated
+/// conditions and turn budgets.
+fn builtin_despawn(env: &mut Env, args: &[Value], span: Span) -> Result<Value, RuntimeError> {
+    match args.first() {
+        Some(Value::Entity(entity)) => {
+            let effect = Effect::RemoveEntity { entity: *entity };
+            validate_mutation_response(env.handler.handle(effect), "RemoveEntity", span)?;
+            Ok(Value::Void)
+        }
+        Some(other) => Err(RuntimeError::with_span(
+            format!("despawn() expects entity, got {}", type_name(other)),
+            span,
+        )),
+        None => Err(RuntimeError::with_span(
+            "despawn() requires 1 argument",
+            span,
+        )),
+    }
 }
 
 // ── Helpers ────────────────────────────────────────────────────
