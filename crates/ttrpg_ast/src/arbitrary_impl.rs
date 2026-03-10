@@ -219,7 +219,7 @@ impl<'a> Arbitrary<'a> for ExprKind {
 impl<'a> Arbitrary<'a> for TypeExpr {
     fn arbitrary(u: &mut Unstructured<'a>) -> Result<Self> {
         if u.len() < RECURSION_BUDGET {
-            let choice = u.int_in_range(0..=15)?;
+            let choice = u.int_in_range(0..=16)?;
             return Ok(match choice {
                 0 => TypeExpr::Int,
                 1 => TypeExpr::Bool,
@@ -231,11 +231,12 @@ impl<'a> Arbitrary<'a> for TypeExpr {
                 7 => TypeExpr::Duration,
                 8 => TypeExpr::EffectSource,
                 9 => TypeExpr::Position,
-                10 => TypeExpr::Condition,
-                11 => TypeExpr::ActiveCondition,
-                12 => TypeExpr::Invocation,
-                13 => TypeExpr::Unit,
-                14 => TypeExpr::Named(u.arbitrary()?),
+                10 => TypeExpr::Direction,
+                11 => TypeExpr::Condition,
+                12 => TypeExpr::ActiveCondition,
+                13 => TypeExpr::Invocation,
+                14 => TypeExpr::Unit,
+                15 => TypeExpr::Named(u.arbitrary()?),
                 _ => TypeExpr::Qualified {
                     qualifier: u.arbitrary()?,
                     name: u.arbitrary()?,
@@ -243,7 +244,7 @@ impl<'a> Arbitrary<'a> for TypeExpr {
             });
         }
 
-        let choice = u.int_in_range(0..=20)?;
+        let choice = u.int_in_range(0..=21)?;
         Ok(match choice {
             0 => TypeExpr::Int,
             1 => TypeExpr::Bool,
@@ -255,29 +256,30 @@ impl<'a> Arbitrary<'a> for TypeExpr {
             7 => TypeExpr::Duration,
             8 => TypeExpr::EffectSource,
             9 => TypeExpr::Position,
-            10 => TypeExpr::Condition,
-            11 => TypeExpr::ActiveCondition,
-            12 => TypeExpr::Invocation,
-            13 => TypeExpr::Unit,
-            14 => TypeExpr::Named(u.arbitrary()?),
-            14 => TypeExpr::Qualified {
+            10 => TypeExpr::Direction,
+            11 => TypeExpr::Condition,
+            12 => TypeExpr::ActiveCondition,
+            13 => TypeExpr::Invocation,
+            14 => TypeExpr::Unit,
+            15 => TypeExpr::Named(u.arbitrary()?),
+            15 => TypeExpr::Qualified {
                 qualifier: u.arbitrary()?,
                 name: u.arbitrary()?,
             },
-            14 => {
+            15 => {
                 let k: Spanned<TypeExpr> = arb_spanned(u)?;
                 let v: Spanned<TypeExpr> = arb_spanned(u)?;
                 TypeExpr::Map(Box::new(k), Box::new(v))
             }
-            15 => {
+            16 => {
                 let inner: Spanned<TypeExpr> = arb_spanned(u)?;
                 TypeExpr::List(Box::new(inner))
             }
-            16 => {
+            17 => {
                 let inner: Spanned<TypeExpr> = arb_spanned(u)?;
                 TypeExpr::Set(Box::new(inner))
             }
-            17 => {
+            18 => {
                 let inner: Spanned<TypeExpr> = arb_spanned(u)?;
                 TypeExpr::OptionType(Box::new(inner))
             }

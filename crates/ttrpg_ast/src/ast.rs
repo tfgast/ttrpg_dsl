@@ -958,6 +958,7 @@ pub enum TypeExpr {
     Duration,
     EffectSource,
     Position,
+    Direction,
     Condition,
     ActiveCondition,
     Invocation,

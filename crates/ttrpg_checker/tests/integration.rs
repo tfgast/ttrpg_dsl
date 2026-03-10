@@ -3895,6 +3895,16 @@ system "test" {
     expect_errors(source, &["Position cannot be used as a set element type"]);
 }
 
+#[test]
+fn test_set_direction_rejected() {
+    let source = r#"
+system "test" {
+    derive foo(s: set<Direction>) -> int { 0 }
+}
+"#;
+    expect_errors(source, &["Direction cannot be used as a set element type"]);
+}
+
 // ── set methods ──────────────────────────────────────────────
 
 #[test]
@@ -4138,6 +4148,16 @@ system "test" {
 }
 "#;
     expect_errors(source, &["Position cannot be used as a map key type"]);
+}
+
+#[test]
+fn test_map_direction_key_rejected() {
+    let source = r#"
+system "test" {
+    derive foo(m: map<Direction, int>) -> int { 0 }
+}
+"#;
+    expect_errors(source, &["Direction cannot be used as a map key type"]);
 }
 
 #[test]

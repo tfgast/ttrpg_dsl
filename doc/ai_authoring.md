@@ -751,6 +751,7 @@ DiceExpr  ──roll()──▶  RollResult  ──.total──▶  int
 |-------------------|-----------------------------------------------|
 | `entity`          | Polymorphic any-entity alias in type position  |
 | `Position`        | Opaque board location, use `distance(a, b)`    |
+| `Direction`       | Opaque spatial orientation (host-provided)      |
 | `Duration`        | `EndOfTurn`, `StartOfNextTurn`, `Rounds(n)`, `Minutes(n)`, `Indefinite` |
 | `EffectSource`    | Condition provenance metadata — must have plain `Unknown` variant |
 | `Invocation`      | Execution scope handle from `invocation()`     |

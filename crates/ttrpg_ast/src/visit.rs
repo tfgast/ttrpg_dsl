@@ -467,6 +467,7 @@ impl VisitSpansMut for TypeExpr {
             | TypeExpr::Duration
             | TypeExpr::EffectSource
             | TypeExpr::Position
+            | TypeExpr::Direction
             | TypeExpr::Condition
             | TypeExpr::ActiveCondition
             | TypeExpr::Invocation

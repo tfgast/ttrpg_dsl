@@ -452,6 +452,19 @@ struct RollResult {
 // cannot construct Position values directly in v0.
 
 
+// --- Direction ---
+//
+// Opaque runtime-provided type representing a spatial orientation.
+// Used for walls, cones, breath weapons, and other directed effects.
+// Like Position, internal representation is host-determined.
+//
+// Direction values are obtained from entity fields, event payloads,
+// or host prompts. The DSL cannot construct, inspect, or compare
+// Direction values directly. No builtins operate on Direction in v0.
+//
+// Cannot be used as set elements or map keys.
+
+
 // --- Invocation ---
 //
 // Opaque handle representing a specific action/reaction/hook execution.

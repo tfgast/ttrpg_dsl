@@ -1267,6 +1267,7 @@ fn type_name(val: &Value) -> &'static str {
         Value::Entity(_) => "Entity",
         Value::EnumVariant { .. } => "EnumVariant",
         Value::Position(_) => "Position",
+        Value::Direction(_) => "Direction",
         Value::Condition { .. } => "Condition",
         Value::Invocation(_) => "Invocation",
         Value::EnumNamespace(_) => "EnumNamespace",

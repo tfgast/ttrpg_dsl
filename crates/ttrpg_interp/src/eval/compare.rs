@@ -109,8 +109,9 @@ pub(crate) fn value_eq(state: &dyn StateProvider, a: &Value, b: &Value) -> bool 
                     .all(|((k1, v1), (k2, v2))| k1 == k2 && value_eq(state, v1, v2))
         }
 
-        // Position: delegate to host
+        // Position/Direction: delegate to host
         (Value::Position(pa), Value::Position(pb)) => state.position_eq(pa.0, pb.0),
+        (Value::Direction(da), Value::Direction(db)) => state.direction_eq(da.0, db.0),
 
         // Composites: recursive
         (Value::List(a), Value::List(b)) => {

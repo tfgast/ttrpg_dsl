@@ -10,7 +10,9 @@ use ttrpg_checker::env::{DeclInfo, EnumInfo, TypeEnv, VariantInfo};
 
 use crate::effect::{Effect, EffectHandler, FieldPathSegment, Response};
 use crate::state::{ActiveCondition, EntityRef, StateProvider};
-use crate::value::{default_turn_budget, DiceExpr, PositionValue, RollResult, Value};
+use crate::value::{
+    default_turn_budget, DiceExpr, DirectionValue, PositionValue, RollResult, Value,
+};
 use crate::{Env, Interpreter};
 
 // ── Test infrastructure ────────────────────────────────────
@@ -1686,6 +1688,18 @@ fn value_eq_position_delegates() {
 
     let p3 = Value::Position(PositionValue(2));
     assert!(!value_eq(&state, &p1, &p3)); // different handle, stub also returns false
+}
+
+#[test]
+fn value_eq_direction_delegates() {
+    let state = TestState::new();
+    let d1 = Value::Direction(DirectionValue(1));
+    let d2 = Value::Direction(DirectionValue(1));
+    // Same handle → direction_eq(1,1) called; stub returns false
+    assert!(!value_eq(&state, &d1, &d2));
+
+    let d3 = Value::Direction(DirectionValue(2));
+    assert!(!value_eq(&state, &d1, &d3)); // different handle, stub also returns false
 }
 
 #[test]

@@ -78,6 +78,26 @@ impl fmt::Debug for PositionValue {
     }
 }
 
+// ── Direction ───────────────────────────────────────────────────
+
+/// An opaque direction handle owned by the host.
+///
+/// Mirrors `PositionValue` exactly: the `u64` value is a host-assigned
+/// handle, the interpreter never inspects it, and no operations
+/// (equality, arithmetic) are available in the DSL.
+///
+/// The checker prevents `Direction` in sets/maps. For runtime equality
+/// the evaluator routes through `value_eq()` which delegates to
+/// `StateProvider::direction_eq`.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct DirectionValue(pub u64);
+
+impl fmt::Debug for DirectionValue {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Direction(#{})", self.0)
+    }
+}
+
 // ── Value enum ──────────────────────────────────────────────────
 
 /// The unified runtime value type for the interpreter.
@@ -117,6 +137,7 @@ pub enum Value {
 
     // Opaque
     Position(PositionValue),
+    Direction(DirectionValue),
 
     // Special
     Condition {
@@ -223,10 +244,11 @@ fn discriminant(v: &Value) -> u8 {
         Value::Entity(_) => 12,
         Value::EnumVariant { .. } => 13,
         Value::Position(_) => 14,
-        Value::Condition { .. } => 15,
-        Value::Invocation(_) => 16,
-        Value::EnumNamespace(_) => 17,
-        Value::ModuleAlias(_) => 18,
+        Value::Direction(_) => 15,
+        Value::Condition { .. } => 16,
+        Value::Invocation(_) => 17,
+        Value::EnumNamespace(_) => 18,
+        Value::ModuleAlias(_) => 19,
     }
 }
 
@@ -278,6 +300,7 @@ impl PartialEq for Value {
                 },
             ) => e1 == e2 && v1 == v2 && f1 == f2,
             (Value::Position(a), Value::Position(b)) => a == b,
+            (Value::Direction(a), Value::Direction(b)) => a == b,
             (Value::Condition { name: n1, args: a1 }, Value::Condition { name: n2, args: a2 }) => {
                 n1 == n2 && a1 == a2
             }
@@ -351,6 +374,7 @@ impl Ord for Value {
                 .then_with(|| v1.cmp(v2))
                 .then_with(|| ordered_map_cmp(f1, f2)),
             (Value::Position(a), Value::Position(b)) => a.cmp(b),
+            (Value::Direction(a), Value::Direction(b)) => a.cmp(b),
             (Value::Condition { name: n1, args: a1 }, Value::Condition { name: n2, args: a2 }) => {
                 n1.cmp(n2).then_with(|| ordered_map_cmp(a1, a2))
             }
@@ -459,6 +483,9 @@ impl std::hash::Hash for Value {
             Value::Position(v) => {
                 v.0.hash(state);
             }
+            Value::Direction(v) => {
+                v.0.hash(state);
+            }
             Value::Condition { name, args } => {
                 name.hash(state);
                 for (k, v) in args {
@@ -518,6 +545,7 @@ pub fn value_matches_ty(val: &Value, ty: &Ty, state: &dyn StateProvider) -> bool
         (Value::DiceExpr(_), Ty::DiceExpr) => true,
         (Value::RollResult(_), Ty::RollResult) => true,
         (Value::Position(_), Ty::Position) => true,
+        (Value::Direction(_), Ty::Direction) => true,
         (Value::EnumVariant { enum_name, .. }, Ty::Duration) => enum_name == "Duration",
         (Value::EnumVariant { enum_name, .. }, Ty::EffectSource) => enum_name == "EffectSource",
         (Value::Condition { .. }, Ty::Condition) => true,
@@ -545,6 +573,7 @@ pub fn value_type_display(val: &Value) -> String {
         Value::DiceExpr(_) => "DiceExpr".into(),
         Value::RollResult(_) => "RollResult".into(),
         Value::Position(_) => "Position".into(),
+        Value::Direction(_) => "Direction".into(),
         Value::Condition { .. } => "Condition".into(),
         Value::Invocation(_) => "Invocation".into(),
         Value::EnumNamespace(name) => format!("{name}(namespace)"),
@@ -720,6 +749,18 @@ mod tests {
         assert_eq!(v1, v2);
 
         let v3 = Value::Position(PositionValue(99));
+        assert_ne!(v1, v3); // different handle
+    }
+
+    // ── Direction ───────────────────────────────────────────────
+
+    #[test]
+    fn direction_handle_eq() {
+        let v1 = Value::Direction(DirectionValue(42));
+        let v2 = Value::Direction(DirectionValue(42));
+        assert_eq!(v1, v2);
+
+        let v3 = Value::Direction(DirectionValue(99));
         assert_ne!(v1, v3); // different handle
     }
 
@@ -902,6 +943,11 @@ mod tests {
                 Value::Position(PositionValue(42)),
                 Value::Position(PositionValue(42)),
                 Value::Position(PositionValue(99)),
+            ),
+            (
+                Value::Direction(DirectionValue(42)),
+                Value::Direction(DirectionValue(42)),
+                Value::Direction(DirectionValue(99)),
             ),
             (
                 Value::Condition {

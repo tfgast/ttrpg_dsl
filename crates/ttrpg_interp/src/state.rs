@@ -213,6 +213,12 @@ pub trait StateProvider {
     /// The interpreter calls this when evaluating `==` or `!=` on Positions.
     fn position_eq(&self, a: u64, b: u64) -> bool;
 
+    /// Test equality of two opaque direction handles.
+    /// The interpreter calls this when evaluating `==` or `!=` on Directions.
+    fn direction_eq(&self, _a: u64, _b: u64) -> bool {
+        false
+    }
+
     /// Compute the distance between two opaque position handles.
     /// Returns `None` if a handle is unknown.
     fn distance(&self, a: u64, b: u64) -> Option<i64>;

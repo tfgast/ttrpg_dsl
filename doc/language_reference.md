@@ -34,6 +34,7 @@
 |-------------------|-------------------------------------------------------------|
 | `entity`          | Polymorphic any-entity alias in type position               |
 | `Position`        | Opaque game board location                                  |
+| `Direction`       | Opaque spatial orientation (host-provided)                   |
 | `Duration`        | `EndOfTurn`, `StartOfNextTurn`, `Rounds(n)`, `Minutes(n)`, `Indefinite` |
 | `EffectSource`    | Condition provenance — user-defined enum, must have plain `Unknown` variant |
 | `Invocation`      | Opaque execution scope handle                               |

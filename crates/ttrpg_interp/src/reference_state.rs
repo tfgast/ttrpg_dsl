@@ -8,7 +8,7 @@ use crate::state::{
     ActiveCondition, ConditionArgs, ConditionToken, EntityRef, InvocationId, Presence,
     StateProvider, SuspensionRecord, WritableState,
 };
-use crate::value::{PositionValue, Value};
+use crate::value::{DirectionValue, PositionValue, Value};
 
 // ── Grid position ──────────────────────────────────────────────
 
@@ -45,6 +45,9 @@ pub struct GameState {
     /// Maps opaque position handles to grid coordinates.
     positions: HashMap<u64, GridPosition>,
     next_position_id: u64,
+    /// Maps opaque direction handles to (from, to) grid coordinate pairs.
+    directions: HashMap<u64, (GridPosition, GridPosition)>,
+    next_direction_id: u64,
     /// Suspension records per entity. Multiple sources can suspend one entity.
     suspensions: HashMap<u64, Vec<SuspensionRecord>>,
     /// Game time when duration-freezing started, per entity.
@@ -68,6 +71,8 @@ impl GameState {
             duration_freeze_start: HashMap::new(),
             positions: HashMap::new(),
             next_position_id: 1,
+            directions: HashMap::new(),
+            next_direction_id: 1,
         }
     }
 
@@ -82,6 +87,19 @@ impl GameState {
     /// Resolve an opaque handle back to its `GridPosition`, if known.
     pub fn resolve_position(&self, handle: u64) -> Option<GridPosition> {
         self.positions.get(&handle).copied()
+    }
+
+    /// Register a direction and return its opaque handle as a `Value::Direction`.
+    pub fn register_direction(&mut self, from: GridPosition, to: GridPosition) -> Value {
+        let handle = self.next_direction_id;
+        self.next_direction_id += 1;
+        self.directions.insert(handle, (from, to));
+        Value::Direction(DirectionValue(handle))
+    }
+
+    /// Resolve an opaque direction handle back to its (from, to) pair, if known.
+    pub fn resolve_direction(&self, handle: u64) -> Option<(GridPosition, GridPosition)> {
+        self.directions.get(&handle).copied()
     }
 
     /// Add a new entity with the given name and fields.
@@ -215,6 +233,13 @@ impl StateProvider for GameState {
 
     fn position_eq(&self, a: u64, b: u64) -> bool {
         match (self.positions.get(&a), self.positions.get(&b)) {
+            (Some(a), Some(b)) => a == b,
+            _ => false,
+        }
+    }
+
+    fn direction_eq(&self, a: u64, b: u64) -> bool {
+        match (self.directions.get(&a), self.directions.get(&b)) {
             (Some(a), Some(b)) => a == b,
             _ => false,
         }

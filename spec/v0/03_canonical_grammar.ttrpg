@@ -627,7 +627,7 @@ group_constraint = IDENT ("as" IDENT)?
 
 type            = "int" | "bool" | "string" | "float"
                 | "DiceExpr" | "RollResult"
-                | "TurnBudget" | "Duration" | "Position"
+                | "TurnBudget" | "Duration" | "Position" | "Direction"
                 | "Condition" | "ActiveCondition" | "Invocation"
                 | "entity"                           // polymorphic any-entity type alias
                 | IDENT                              // user-defined type

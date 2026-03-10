@@ -315,6 +315,7 @@ impl TypeEnv {
             TypeExpr::Duration => self.resolve_named_or("Duration", Ty::Duration),
             TypeExpr::EffectSource => self.resolve_named_or("EffectSource", Ty::EffectSource),
             TypeExpr::Position => self.resolve_named_or("Position", Ty::Position),
+            TypeExpr::Direction => self.resolve_named_or("Direction", Ty::Direction),
             TypeExpr::Condition => self.resolve_named_or("Condition", Ty::Condition),
             TypeExpr::ActiveCondition => Ty::ActiveCondition,
             TypeExpr::Invocation => Ty::Invocation,
@@ -394,12 +395,24 @@ impl TypeEnv {
                         inner.span,
                     ));
                 }
+                if matches!(inner.node, TypeExpr::Direction) {
+                    diagnostics.push(Diagnostic::error(
+                        "Direction cannot be used as a set element type",
+                        inner.span,
+                    ));
+                }
                 self.validate_type_names_depth(inner, diagnostics, depth + 1);
             }
             TypeExpr::Map(k, v) => {
                 if matches!(k.node, TypeExpr::Position) {
                     diagnostics.push(Diagnostic::error(
                         "Position cannot be used as a map key type",
+                        k.span,
+                    ));
+                }
+                if matches!(k.node, TypeExpr::Direction) {
+                    diagnostics.push(Diagnostic::error(
+                        "Direction cannot be used as a map key type",
                         k.span,
                     ));
                 }

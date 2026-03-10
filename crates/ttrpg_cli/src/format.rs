@@ -111,6 +111,7 @@ pub fn format_value(val: &Value, units: &UnitSuffixes) -> String {
         },
 
         Value::Position(pv) => format!("Position(#{})", pv.0),
+        Value::Direction(dv) => format!("Direction(#{})", dv.0),
 
         Value::Condition { name, args } => {
             if args.is_empty() {
