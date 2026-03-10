@@ -747,6 +747,7 @@ DiceExpr  ──roll()──▶  RollResult  ──.total──▶  int
 | `Invocation`      | Execution scope handle from `invocation()`     |
 | `Condition`       | Condition identifier — pass to `apply_condition()`, store in variables |
 | `ActiveCondition` | Runtime condition instance: `.name`, `.duration`, `.source`, `.id` |
+| `Presence`        | Built-in enum: `OnMap`, `OffBoard` — entity board presence state |
 
 ---
 
@@ -986,6 +987,7 @@ condition Poisoned(potency: int) on bearer: Character {
 - `on_apply` fires **before** activation (modify/suppress not yet in effect). Error → condition never applied.
 - `on_remove` fires **before** removal (modify/suppress still in effect). Error → condition still removed.
 - `bearer` + condition parameters in scope. `invocation()` not available.
+- **Available in lifecycle blocks:** `suspend()` and `condition_token()` — see Suspension pattern below.
 - With `extends`, ancestor lifecycle blocks run first (DFS post-order).
 - **Design principle:** use `extends` for conditions that imply others, not `apply_condition()` in on_apply.
 
@@ -1117,6 +1119,59 @@ for c in conditions(target) {
     }
 }
 ```
+
+### Suspension (Imprisonment / Stasis Pattern)
+
+The suspension system temporarily removes entities from play or freezes their progression. Models imprisonment, soul trapping, temporal stasis, and similar effects.
+
+**Core concepts:**
+- **SuspensionRecord**: source-keyed record with `presence` (Presence enum), `freeze_turns`, `freeze_durations`
+- **Worst-case-wins**: off-board if ANY record says OffBoard, turns frozen if ANY says so
+- **Auto-cleanup**: suspension keyed to a condition token is removed when the condition is removed
+- **Presence**: built-in enum with `OnMap` and `OffBoard` variants
+
+**Lifecycle-based suspension** (preferred — auto-cleans on condition removal):
+
+```ttrpg
+entity Character { name: string }
+
+condition Imprisoned on bearer: entity
+    stacking first
+{
+    on_apply {
+        suspend(bearer, Presence.OffBoard, freeze_turns: true, freeze_durations: true)
+    }
+}
+```
+
+`suspend(entity, ...)` is only available in lifecycle blocks. It keys the suspension to `condition_token()` automatically. When the condition is removed (via `remove_condition()` or `revoke()`), the suspension record is cleaned up after the removal succeeds.
+
+**Manual suspension** (for effects not tied to a single condition):
+
+```ttrpg-snippet
+// In an action or function:
+suspend_with_source(target, source_id: 42,
+    Presence.OffBoard, freeze_turns: true, freeze_durations: true)
+
+// Later, to restore:
+remove_suspension_source(target, source_id: 42)
+```
+
+**Query builtins** (available anywhere):
+- `is_suspended(target)` → true if any suspension records exist
+- `is_off_board(target)` → true if any record sets OffBoard
+- `are_turns_frozen(target)` → true if any record freezes turns
+- `are_durations_frozen(target)` → true if any record freezes durations
+
+**Duration freeze semantics:** when durations are unfrozen, each condition's `applied_at` is bumped forward to preserve remaining duration. Conditions applied mid-freeze get a proportionally smaller bump.
+
+**Enumeration:** off-board entities are excluded from hook candidate scanning and modify evaluation but remain accessible for direct queries (e.g., checking conditions, revoking).
+
+**Typical spell patterns:**
+- **Imprisonment / Trap the Soul**: `suspend(bearer, Presence.OffBoard, freeze_turns: true, freeze_durations: true)` in on_apply
+- **Temporal Stasis**: same as above — entity removed from all interaction
+- **On-map freeze** (e.g., paralysis variant that also pauses durations): `suspend(bearer, Presence.OnMap, freeze_turns: true, freeze_durations: true)`
+- **Astral Spell**: suspend body with OffBoard + spawn astral proxy (composes with entity construction and summoning patterns)
 
 ### Resistance Check (guard match)
 

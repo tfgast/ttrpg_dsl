@@ -39,6 +39,7 @@
 | `Invocation`      | Opaque execution scope handle                               |
 | `ActiveCondition` | Runtime condition instance — fields: `name`, `duration`, `source`, `id`, `applied_at` |
 | `Condition`       | Condition identifier — store in variables, pass to functions |
+| `Presence`        | Built-in enum: `OnMap`, `OffBoard` — entity board presence state |
 
 ---
 
@@ -441,6 +442,34 @@ At most one `on_apply` and one `on_remove` per condition.
 
 **Inheritance:** with `extends`, ancestor lifecycle blocks run first (DFS post-order).
 
+#### Suspension (Entity Presence and Freeze)
+
+The suspension system temporarily removes entities from play or freezes their turn/duration progression. Models imprisonment, soul trapping, temporal stasis, and similar effects.
+
+Suspension records are source-keyed (typically by condition token). Resolution uses **worst-case-wins**: off-board if ANY record says `OffBoard`, turns frozen if ANY says so, etc.
+
+**In lifecycle blocks** (`on_apply`/`on_remove`):
+```
+condition Imprisoned on bearer: entity stacking first {
+    on_apply {
+        suspend(bearer, Presence.OffBoard, freeze_turns: true, freeze_durations: true)
+    }
+}
+```
+`suspend(entity, ...)` is only available in lifecycle blocks. It keys the suspension to `condition_token()` automatically. When the condition is removed, the suspension record is auto-cleaned.
+
+**Outside lifecycle blocks** (actions, functions):
+```
+suspend_with_source(target, source_id: 42, Presence.OffBoard,
+    freeze_turns: true, freeze_durations: true)
+// Later:
+remove_suspension_source(target, source_id: 42)
+```
+
+**Duration freeze:** when unfrozen, each condition's `applied_at` is bumped forward to preserve remaining duration.
+
+**Enumeration:** off-board entities are excluded from hook scanning and modify evaluation but still exist for direct queries.
+
 #### Stacking Policies
 
 Controls which instances contribute effects when multiple instances of the same condition exist on one bearer.
@@ -674,6 +703,13 @@ apply_cond(target, Sleeping, Duration.Rounds(10))
 
 ### Invocation
 `invocation()` `revoke(inv)` — revokes all conditions tagged with that invocation
+
+### Suspension
+`suspend(target, presence, freeze_turns, freeze_durations)` — lifecycle-only, keys to current condition token
+`suspend_with_source(target, source_id, presence, freeze_turns, freeze_durations)` — explicit source key
+`remove_suspension_source(target, source_id)` — removes suspension records by source
+`condition_token()` — lifecycle-only, returns pre-allocated condition instance ID
+`is_suspended(target)` `is_off_board(target)` `are_turns_frozen(target)` `are_durations_frozen(target)` — queries
 
 ### Time
 `game_time()` `advance_time(amount)` — advance\_time only callable from function scope (not during action/reaction/hook execution)

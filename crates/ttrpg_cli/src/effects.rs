@@ -12,7 +12,7 @@ use ttrpg_checker::ty::Ty;
 use ttrpg_interp::adapter;
 use ttrpg_interp::effect::{ActionOutcome, Effect, EffectHandler, Response};
 use ttrpg_interp::reference_state::GameState;
-use ttrpg_interp::state::{ConditionArgs, EntityRef, StateProvider, WritableState};
+use ttrpg_interp::state::{ConditionArgs, EntityRef, StateProvider, SuspensionRecord, WritableState};
 use ttrpg_interp::value::{DiceExpr, RollResult, Value};
 
 use crate::format::{format_dice_expr, format_path, format_value, UnitSuffixes};
@@ -86,6 +86,26 @@ impl StateProvider for RefCellState<'_> {
 
     fn all_entities(&self) -> Vec<EntityRef> {
         self.0.borrow().all_entities()
+    }
+
+    fn entities_in_play(&self) -> Vec<EntityRef> {
+        self.0.borrow().entities_in_play()
+    }
+
+    fn is_suspended(&self, entity: &EntityRef) -> bool {
+        self.0.borrow().is_suspended(entity)
+    }
+
+    fn is_off_board(&self, entity: &EntityRef) -> bool {
+        self.0.borrow().is_off_board(entity)
+    }
+
+    fn are_turns_frozen(&self, entity: &EntityRef) -> bool {
+        self.0.borrow().are_turns_frozen(entity)
+    }
+
+    fn are_durations_frozen(&self, entity: &EntityRef) -> bool {
+        self.0.borrow().are_durations_frozen(entity)
     }
 }
 
@@ -612,6 +632,17 @@ impl EffectHandler for CliHandler<'_> {
                 freeze_durations,
             } => {
                 let name = self.entity_name(&entity);
+                let time = self.game_state.borrow().read_game_time();
+                self.game_state.borrow_mut().add_suspension(
+                    &entity,
+                    SuspensionRecord {
+                        source_id,
+                        presence,
+                        freeze_turns,
+                        freeze_durations,
+                        suspended_at: time,
+                    },
+                );
                 self.log(format!(
                     "[AddSuspension] {name} source={source_id} presence={presence:?} \
                      freeze_turns={freeze_turns} freeze_durations={freeze_durations}"
@@ -621,6 +652,9 @@ impl EffectHandler for CliHandler<'_> {
 
             Effect::RemoveSuspensionSource { entity, source_id } => {
                 let name = self.entity_name(&entity);
+                self.game_state
+                    .borrow_mut()
+                    .remove_suspension_source(&entity, source_id);
                 self.log(format!(
                     "[RemoveSuspensionSource] {name} source={source_id}"
                 ));

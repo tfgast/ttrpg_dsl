@@ -611,6 +611,80 @@ condition Poisoned(potency: int) on bearer: Character {
 }
 
 
+// --- Suspension (entity presence and turn/duration freezing) ---
+//
+// The suspension system temporarily removes entities from ordinary play
+// or freezes their turn/duration progression. This models spells like
+// Imprisonment, Trap the Soul, Temporal Stasis, and similar effects
+// that take an entity out of the game while preserving its state for
+// later restoration.
+//
+// Suspension operates through source-keyed records. Each record is
+// identified by a source_id (typically a ConditionToken value) and
+// specifies:
+//   - presence: Presence.OnMap or Presence.OffBoard
+//   - freeze_turns: bool — whether turns are frozen
+//   - freeze_durations: bool — whether condition durations are frozen
+//
+// Multiple suspension records can coexist on one entity.
+// Resolution uses worst-case-wins semantics:
+//   - Off-board if ANY record says OffBoard
+//   - Turns frozen if ANY record says freeze_turns: true
+//   - Durations frozen if ANY record says freeze_durations: true
+//
+// LIFECYCLE INTEGRATION:
+//   The `suspend()` builtin is only available inside condition lifecycle
+//   blocks (on_apply / on_remove). It automatically keys the suspension
+//   record to the current condition instance via `condition_token()`.
+//   When the condition is removed, the suspension record is automatically
+//   cleaned up — no manual bookkeeping is needed.
+//
+//   The `condition_token()` builtin returns the pre-allocated token for
+//   the condition being applied/removed. This token is allocated before
+//   on_apply runs, so it is available for use as a suspension source key.
+//
+// AUTO-CLEANUP:
+//   Suspension records keyed to a condition instance are automatically
+//   removed when that condition is removed (via remove_condition() or
+//   revoke()). The cleanup happens after the RemoveCondition mutation
+//   succeeds, not during on_remove. This means on_remove still sees
+//   the suspension in effect.
+//
+// DURATION FREEZE SEMANTICS:
+//   When durations are frozen, condition timers stop ticking. When
+//   unfrozen, each condition's applied_at is bumped forward so that
+//   remaining duration is preserved:
+//     cond.applied_at += now - max(cond.applied_at, freeze_start)
+//   Conditions applied mid-freeze get a smaller bump than pre-freeze
+//   conditions, correctly preserving their shorter elapsed time.
+//
+// ENUMERATION:
+//   `entities_in_play()` (host-side) excludes off-board entities from
+//   hook candidate scanning and modify_applied evaluation. Off-board
+//   entities still exist and can be queried with `all_entities()`.
+//
+// EXAMPLE: Imprisonment spell using suspend() in lifecycle block
+//
+//   condition Imprisoned on bearer: entity
+//       stacking first
+//   {
+//       on_apply {
+//           suspend(bearer, Presence.OffBoard, freeze_turns: true,
+//                   freeze_durations: true)
+//       }
+//   }
+//
+// EXAMPLE: Manual suspension with explicit source key
+//
+//   // In an action or function:
+//   let token = condition_token()  // ERROR — only in lifecycle blocks
+//   // Instead, use suspend_with_source():
+//   suspend_with_source(target, source_id: 42,
+//       Presence.OffBoard, freeze_turns: true, freeze_durations: true)
+//   // Later:
+//   remove_suspension_source(target, source_id: 42)
+
+
 // --- Cost modification (modify Action.cost) ---
 //
 // Conditions can override an action's cost using the `.cost` suffix
@@ -1018,6 +1092,42 @@ hook Regenerate on creature: Character (
 //       Also accepts `option<Invocation>` — `none` values are a no-op.
 //       This avoids requiring explicit unwrapping when revoking from
 //       nullable entity fields (e.g., `revoke(caster.concentrating_on)`).
+//
+// Available in condition lifecycle blocks only (on_apply / on_remove):
+//   condition_token() -> int
+//       Returns the pre-allocated token for the condition being applied
+//       or removed. The value matches ActiveCondition.id once applied.
+//       Checker error outside lifecycle blocks.
+//
+//   suspend(target: entity, presence: Presence, freeze_turns: bool,
+//           freeze_durations: bool) -> unit
+//       Adds a suspension record keyed to the current condition token.
+//       Equivalent to suspend_with_source(target, condition_token(), ...).
+//       Only callable inside lifecycle blocks (on_apply/on_remove).
+//
+// Available in action, reaction, hook, function (mutation contexts):
+//   suspend_with_source(target: entity, source_id: int,
+//       presence: Presence, freeze_turns: bool,
+//       freeze_durations: bool) -> unit
+//       Adds a suspension record with an explicit source key.
+//       Use when suspension is not tied to a condition lifecycle.
+//
+//   remove_suspension_source(target: entity, source_id: int) -> unit
+//       Removes suspension records matching the given source_id.
+//       Duration freeze applied_at bump is performed on removal.
+//
+// Available anywhere (pure queries):
+//   is_suspended(target: entity) -> bool
+//       True if target has any suspension records.
+//
+//   is_off_board(target: entity) -> bool
+//       True if any suspension record sets presence to OffBoard.
+//
+//   are_turns_frozen(target: entity) -> bool
+//       True if any suspension record freezes turns.
+//
+//   are_durations_frozen(target: entity) -> bool
+//       True if any suspension record freezes durations.
 //
 // The `turn` keyword (available in action/reaction/hook resolve blocks):
 //   Refers to the current turn's mutable TurnBudget.

@@ -1,0 +1,176 @@
+// Suspension system integration tests
+//
+// Tests suspend(), suspend_with_source(), remove_suspension_source(),
+// condition_token(), and the query builtins (is_suspended, is_off_board,
+// are_turns_frozen, are_durations_frozen). Uses inline source programs.
+
+// ── Basic suspend() in lifecycle block ─────────────────────────
+source -s <<END
+entity Character { name: string, hp: int }
+
+condition Imprisoned on bearer: entity
+    stacking first
+{
+    on_apply {
+        suspend(bearer, Presence.OffBoard, freeze_turns: true, freeze_durations: true)
+    }
+}
+END
+
+spawn Character prisoner { name: "Prisoner", hp: 20 }
+
+// Before suspension: not suspended
+assert is_suspended(prisoner) == false
+assert is_off_board(prisoner) == false
+assert are_turns_frozen(prisoner) == false
+assert are_durations_frozen(prisoner) == false
+
+// Apply Imprisoned condition
+call apply_condition(prisoner, Imprisoned, Duration.Indefinite)
+assert_condition prisoner, Imprisoned
+
+// After suspension: fully suspended and off-board
+assert is_suspended(prisoner) == true
+assert is_off_board(prisoner) == true
+assert are_turns_frozen(prisoner) == true
+assert are_durations_frozen(prisoner) == true
+
+// Remove the condition — auto-cleanup removes suspension
+call remove_condition(prisoner, Imprisoned)
+assert_no_condition prisoner, Imprisoned
+
+assert is_suspended(prisoner) == false
+assert is_off_board(prisoner) == false
+assert are_turns_frozen(prisoner) == false
+assert are_durations_frozen(prisoner) == false
+
+
+// ── OnMap suspension (freeze without removing from board) ──────
+source -s <<END
+entity Character { name: string, hp: int }
+
+condition TemporalStasis on bearer: entity
+    stacking first
+{
+    on_apply {
+        suspend(bearer, Presence.OnMap, freeze_turns: true, freeze_durations: true)
+    }
+}
+END
+
+spawn Character frozen_guy { name: "Frozen", hp: 15 }
+
+call apply_condition(frozen_guy, TemporalStasis, Duration.Indefinite)
+
+assert is_suspended(frozen_guy) == true
+assert is_off_board(frozen_guy) == false
+assert are_turns_frozen(frozen_guy) == true
+assert are_durations_frozen(frozen_guy) == true
+
+call remove_condition(frozen_guy, TemporalStasis)
+
+assert is_suspended(frozen_guy) == false
+assert are_turns_frozen(frozen_guy) == false
+
+
+// ── suspend_with_source() / remove_suspension_source() ─────────
+source -s <<END
+entity Character { name: string, hp: int }
+
+function trap_soul(target: entity, source_key: int) {
+    suspend_with_source(target, source_id: source_key, Presence.OffBoard, freeze_turns: true, freeze_durations: true)
+}
+
+function release_soul(target: entity, source_key: int) {
+    remove_suspension_source(target, source_id: source_key)
+}
+END
+
+spawn Character soul { name: "Soul", hp: 10 }
+
+assert is_suspended(soul) == false
+
+call trap_soul(soul, 999)
+
+assert is_suspended(soul) == true
+assert is_off_board(soul) == true
+assert are_turns_frozen(soul) == true
+
+call release_soul(soul, 999)
+
+assert is_suspended(soul) == false
+assert is_off_board(soul) == false
+
+
+// ── Worst-case-wins with multiple suspension sources ───────────
+source -s <<END
+entity Character { name: string, hp: int }
+
+function add_onmap_freeze(target: entity, key: int) {
+    suspend_with_source(target, source_id: key, Presence.OnMap, freeze_turns: true, freeze_durations: false)
+}
+
+function add_offboard(target: entity, key: int) {
+    suspend_with_source(target, source_id: key, Presence.OffBoard, freeze_turns: false, freeze_durations: true)
+}
+
+function release(target: entity, key: int) {
+    remove_suspension_source(target, source_id: key)
+}
+END
+
+spawn Character multi { name: "Multi", hp: 10 }
+
+// First source: on-map, freeze turns only
+call add_onmap_freeze(multi, 1)
+assert is_suspended(multi) == true
+assert is_off_board(multi) == false
+assert are_turns_frozen(multi) == true
+assert are_durations_frozen(multi) == false
+
+// Second source: off-board, freeze durations only
+call add_offboard(multi, 2)
+// Worst-case-wins: off-board (from source 2), turns frozen (from source 1),
+// durations frozen (from source 2)
+assert is_off_board(multi) == true
+assert are_turns_frozen(multi) == true
+assert are_durations_frozen(multi) == true
+
+// Remove source 2 — back to source 1 only
+call release(multi, 2)
+assert is_suspended(multi) == true
+assert is_off_board(multi) == false
+assert are_turns_frozen(multi) == true
+assert are_durations_frozen(multi) == false
+
+// Remove source 1 — fully restored
+call release(multi, 1)
+assert is_suspended(multi) == false
+assert is_off_board(multi) == false
+assert are_turns_frozen(multi) == false
+assert are_durations_frozen(multi) == false
+
+
+// ── condition_token() returns the pre-allocated ID ─────────────
+source -s <<END
+entity Character { name: string, hp: int, saved_token: int = 0 }
+
+condition Tracked on bearer: Character
+    stacking first
+{
+    on_apply {
+        bearer.saved_token = condition_token()
+    }
+}
+END
+
+spawn Character tracked { name: "Tracked", hp: 10 }
+call apply_condition(tracked, Tracked, Duration.Indefinite)
+
+// The saved token should be positive (allocated by the interpreter)
+assert tracked.saved_token > 0
+
+// The token should match the active condition's id
+let conds = conditions(tracked)
+assert_eq conds.len(), 1
+assert_eq conds[0].id, tracked.saved_token

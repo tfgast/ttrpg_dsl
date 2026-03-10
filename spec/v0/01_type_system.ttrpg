@@ -473,6 +473,47 @@ struct RollResult {
 // See 02_scoping.ttrpg for the `invocation()` and `revoke()` builtins.
 
 
+// --- ConditionToken ---
+//
+// Opaque handle representing a specific condition instance, pre-allocated
+// before on_apply runs. This allows lifecycle hooks to reference the
+// condition that is about to be applied — e.g., to key a suspension
+// record to the condition instance.
+//
+// DSL code obtains a ConditionToken via the `condition_token()` builtin,
+// which is only available inside condition lifecycle blocks (on_apply,
+// on_remove). Outside lifecycle blocks, `condition_token()` is a checker
+// error.
+//
+// The token's numeric value matches the `id` field of the resulting
+// ActiveCondition once applied. This enables suspension records (and
+// other side effects initiated during on_apply) to be automatically
+// cleaned up when the condition is removed.
+//
+// See 02_scoping.ttrpg for the `condition_token()` builtin and
+// suspension builtins.
+
+
+// --- Presence ---
+//
+// Built-in enum describing an entity's presence state on the game board.
+// Used by the suspension system to distinguish entities that are
+// temporarily removed from play (imprisonment, soul trapping, stasis)
+// from those that remain on-map but are otherwise affected.
+
+enum Presence {
+    OnMap,
+    OffBoard
+}
+
+// The suspension system uses worst-case-wins semantics: if ANY active
+// suspension record sets presence to OffBoard, the entity is off-board.
+// An entity is only OnMap when all suspension records (if any) say OnMap.
+//
+// Presence is a built-in enum — user code cannot redefine it.
+// See 02_scoping.ttrpg for the suspension builtins.
+
+
 // --- Duration ---
 //
 // Temporal anchor for conditions and temporary effects.
