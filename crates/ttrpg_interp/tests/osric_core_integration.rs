@@ -148,6 +148,11 @@ fn osric_core_has_all_enums() {
         enums.contains(&("SpellDuration", 8)),
         "missing SpellDuration enum"
     );
+    // ZoneShape: 5 variants
+    assert!(
+        enums.contains(&("ZoneShape", 5)),
+        "missing ZoneShape enum"
+    );
     // CastingTime: 5 variants
     assert!(
         enums.contains(&("CastingTime", 5)),
@@ -173,7 +178,7 @@ fn osric_core_has_all_enums() {
         "missing EffectSource enum"
     );
 
-    assert_eq!(enums.len(), 29, "expected 29 enums, got {enums:?}");
+    assert_eq!(enums.len(), 30, "expected 30 enums, got {enums:?}");
 }
 
 #[test]
@@ -348,7 +353,8 @@ fn osric_core_has_entities() {
 
     assert!(entities.contains(&"Character"), "missing Character entity");
     assert!(entities.contains(&"Monster"), "missing Monster entity");
-    assert_eq!(entities.len(), 2, "expected 2 entities");
+    assert!(entities.contains(&"Zone"), "missing Zone entity");
+    assert_eq!(entities.len(), 3, "expected 3 entities");
 }
 
 #[test]
@@ -532,6 +538,64 @@ fn monster_entity_fields() {
         opt_names.contains(&"BreathWeapon"),
         "Monster should have optional BreathWeapon, got {opt_names:?}"
     );
+}
+
+#[test]
+fn zone_entity_fields() {
+    let (program, _) = compile_osric_core();
+    let decls = get_decls(&program);
+    let zone = decls
+        .iter()
+        .find_map(|d| match &d.node {
+            DeclKind::Entity(e) if &*e.name == "Zone" => Some(e),
+            _ => None,
+        })
+        .expect("Zone entity not found");
+
+    let field_names: Vec<_> = zone.fields.iter().map(|f| f.name.as_str()).collect();
+    let expected_fields = [
+        "name",
+        "source",
+        "creator",
+        "anchor",
+        "moves_with_anchor",
+        "center",
+        "shape",
+        "active",
+        "created_at",
+    ];
+    for name in &expected_fields {
+        assert!(field_names.contains(name), "Zone missing field: {name}");
+    }
+    assert_eq!(
+        field_names.len(),
+        expected_fields.len(),
+        "Zone field count mismatch: got {field_names:?}"
+    );
+}
+
+#[test]
+fn osric_core_has_zone_events() {
+    let (program, _) = compile_osric_core();
+    let decls = get_decls(&program);
+    let events: Vec<_> = decls
+        .iter()
+        .filter_map(|d| match &d.node {
+            DeclKind::Event(e) => Some(&*e.name),
+            _ => None,
+        })
+        .collect();
+
+    let expected_events = [
+        "ZoneEntered",
+        "ZoneExited",
+        "ZoneTick",
+        "ZoneCrossed",
+        "ZoneExpired",
+    ];
+    for name in &expected_events {
+        assert!(events.contains(name), "missing zone event: {name}");
+    }
 }
 
 // ── Derives ────────────────────────────────────────────────────

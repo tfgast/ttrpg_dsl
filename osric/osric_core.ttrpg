@@ -232,6 +232,16 @@ system "OSRIC" {
         Special(description: string)        // see spell description
     }
 
+    // Zone shape taxonomy for persistent positioned effects.
+    // This is ruleset-specific rather than part of shared core semantics.
+    enum ZoneShape {
+        Radius(radius: Feet),
+        Sphere(radius: Feet),
+        Wall(length: Feet, thickness: Feet),
+        Line(length: Feet, width: Feet),
+        Glyph
+    }
+
     // Casting time (§1.8.1.5 Casting Time)
     enum CastingTime {
         Fast,                           // 1 segment, takes effect same segment
@@ -513,4 +523,30 @@ system "OSRIC" {
 
         optional BreathWeapon
     }
+
+    // Generic persistent positioned effect. Provenance is tracked via
+    // EffectSource rather than spell-specific fields.
+    entity Zone {
+        name: string
+        source: EffectSource = EffectSource.Unknown
+        creator: option<entity> = none
+        anchor: option<entity> = none
+        moves_with_anchor: bool = false
+        center: Position
+        shape: ZoneShape
+        active: bool = true
+        created_at: int = 0
+    }
+
+    // Standard zone event vocabulary. Ordering and host membership semantics
+    // are defined separately from these declarations.
+    event ZoneEntered(target: entity, zone: Zone) {}
+
+    event ZoneExited(target: entity, zone: Zone) {}
+
+    event ZoneTick(target: entity, zone: Zone) {}
+
+    event ZoneCrossed(target: entity, zone: Zone) {}
+
+    event ZoneExpired(zone: Zone) {}
 }
