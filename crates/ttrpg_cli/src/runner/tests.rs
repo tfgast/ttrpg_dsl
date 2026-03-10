@@ -4552,18 +4552,16 @@ fn position_display_in_format() {
 // ── Distance with placed entities ───────────────────────────
 
 #[test]
-fn distance_with_placed_entities() {
+fn distance_with_pos_variables() {
     let mut runner = Runner::new();
     load_snippet(&mut runner, "entity Character { position: Position }");
 
-    runner.exec("spawn Character a").unwrap();
-    runner.exec("spawn Character b").unwrap();
-    runner.exec("place a 0 0").unwrap();
-    runner.exec("place b 3 4").unwrap();
+    runner.exec("pos a 0 0").unwrap();
+    runner.exec("pos b 3 4").unwrap();
     runner.take_output();
 
     // Chebyshev distance: max(|3|, |4|) = 4
-    let val = runner.eval("distance(a.position, b.position)").unwrap();
+    let val = runner.eval("distance(a, b)").unwrap();
     match val {
         Value::Int(d) => assert_eq!(d, 4, "Chebyshev distance max(3,4) = 4"),
         other => panic!("expected Int, got {other:?}"),
