@@ -552,7 +552,7 @@ condition Prone on bearer: Character {
 
 ```
 
-**Condition tags** — static categorical properties placed after name/params/extends, before `on`:
+**Condition tags** — static categorical properties declared inside the condition body with `tags:`:
 
 ```ttrpg
 entity Character { hp: int }
@@ -560,8 +560,12 @@ tag curse
 tag disease
 
 condition Afflicted on bearer: Character { }
-condition BestowCurse #curse on bearer: Character { }
-condition MummyRot(severity: int) extends Afflicted #curse #disease on bearer: Character { }
+condition BestowCurse on bearer: Character {
+    tags: #curse
+}
+condition MummyRot(severity: int) extends Afflicted on bearer: Character {
+    tags: #curse, #disease
+}
 ```
 
 At runtime, tags are a `Set<string>` on `ActiveCondition.tags`: `"curse" in c.tags`.

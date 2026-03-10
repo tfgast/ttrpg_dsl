@@ -1027,8 +1027,9 @@ hook Regenerate on creature: Character (
 // --- Tags ---
 //
 // Tags are metadata labels declared with `tag #name` and attached to
-// derives, mechanics, functions, actions, and conditions using `#tagname`
-// after the parameter list (before the opening `{`). Tags must be
+// derives, mechanics, functions, and actions using `#tagname` after
+// the parameter list (before the opening `{`). Conditions use a
+// `tags: #name, ...` statement inside the body instead. Tags must be
 // declared before use.
 //
 //   tag #concentration
@@ -1054,13 +1055,20 @@ hook Regenerate on creature: Character (
 // categorical properties of the condition type — things that are always
 // true regardless of how the condition was applied.
 //
-//   condition BestowCurse #curse on bearer: Character { ... }
-//   condition MummyRot #curse #disease on bearer: Character { ... }
-//   condition Poisoned #poison on bearer: Character { ... }
+// Tags are declared inside the condition body using `tags: #name, ...`:
 //
-// Tags appear after the condition name (and optional params / extends)
-// but before the `on` keyword. At runtime, declaration tags are exposed
-// as a `Set<string>` on the `tags` field of ActiveCondition values:
+//   condition BestowCurse on bearer: Character {
+//       tags: #curse
+//   }
+//   condition MummyRot on bearer: Character {
+//       tags: #curse, #disease
+//   }
+//   condition Poisoned on bearer: Character {
+//       tags: #poison
+//   }
+//
+// At runtime, declaration tags are exposed as a `Set<string>` on the
+// `tags` field of ActiveCondition values:
 //
 //   let c = conditions(target)[0]
 //   if "curse" in c.tags { ... }

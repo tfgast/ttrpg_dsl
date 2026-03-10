@@ -1032,7 +1032,7 @@ impl Parser {
 
     fn parse_condition_decl(&mut self) -> Result<ConditionDecl, ()> {
         const HELP: &str =
-            "syntax: condition <name>[(<params>)] [extends <parent>] on <self>: <Type> { ... }";
+            "syntax: condition <name>[(<params>)] [extends <parent>] on <self>: <Type> { [tags: #a, #b] ... }";
         self.expect_soft_keyword("condition")?;
         let (name, _) = self.expect_ident()?;
         // Optional parameters: condition Frightened(source: Character) on ...
@@ -1060,13 +1060,6 @@ impl Parser {
         } else {
             Vec::new()
         };
-        // Parse optional #tag annotations before `on`.
-        let mut tags = Vec::new();
-        while matches!(self.peek(), TokenKind::Hash) {
-            self.advance();
-            let (tag_name, _) = self.expect_ident()?;
-            tags.push(tag_name);
-        }
         if !self.at_ident("on") {
             self.error_with_help(
                 format!(
@@ -1092,11 +1085,31 @@ impl Parser {
         self.expect(&TokenKind::LBrace)?;
         self.skip_newlines();
 
+        let mut tags = Vec::new();
         let mut clauses = Vec::new();
         let mut seen_on_apply = false;
         let mut seen_on_remove = false;
+        let mut seen_tags = false;
         while !matches!(self.peek(), TokenKind::RBrace | TokenKind::Eof) {
-            if self.at_ident("modify") {
+            if self.at_ident("tags") {
+                if seen_tags {
+                    self.error("duplicate `tags:` in condition body");
+                    return Err(());
+                }
+                seen_tags = true;
+                self.advance();
+                self.expect(&TokenKind::Colon)?;
+                // Parse #tag1, #tag2, ...
+                self.expect(&TokenKind::Hash)?;
+                let (tag_name, _) = self.expect_ident()?;
+                tags.push(tag_name);
+                while matches!(self.peek(), TokenKind::Comma) {
+                    self.advance();
+                    self.expect(&TokenKind::Hash)?;
+                    let (tag_name, _) = self.expect_ident()?;
+                    tags.push(tag_name);
+                }
+            } else if self.at_ident("modify") {
                 clauses.push(ConditionClause::Modify(self.parse_modify_clause()?));
             } else if self.at_ident("suppress") {
                 // Disambiguate: suppress [selector](...) vs suppress event_name(...)
@@ -1123,7 +1136,7 @@ impl Parser {
                 clauses.push(ConditionClause::OnRemove(self.parse_lifecycle_block()?));
             } else {
                 self.error(format!(
-                    "expected `modify`, `suppress`, `on_apply`, or `on_remove` in condition body, found {}",
+                    "expected `tags`, `modify`, `suppress`, `on_apply`, or `on_remove` in condition body, found {}",
                     self.peek()
                 ));
                 return Err(());
